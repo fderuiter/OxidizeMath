@@ -285,16 +285,32 @@ impl AstVisitor {
         }
     }
 
-    fn process_doc_attr(&mut self, attr: &syn::Attribute, attr_line: usize) -> bool {
-        let doc_text = quote::quote!(#attr).to_string();
-        let extracted =
-            crate::traceability::TraceabilityEngine::<crate::vfs::DefaultVfs>::extract_citations(
-                &doc_text,
-            );
-        for cite in &extracted {
-            self.record_module(cite.clone(), attr_line);
+    fn inspect_fn_attr(&mut self, attr: &syn::Attribute) -> (bool, bool) {
+        if attr_has_opt_out(attr) {
+            return (false, false);
         }
-        !extracted.is_empty()
+        let attr_line = span_line(attr.span());
+        if attr.path().is_ident("doc") {
+            let doc_text = quote::quote!(#attr).to_string();
+            let extracted =
+                crate::traceability::TraceabilityEngine::<crate::vfs::DefaultVfs>::extract_citations(
+                    &doc_text,
+                );
+            for cite in &extracted {
+                self.record_module(cite.clone(), attr_line);
+            }
+            return (false, !extracted.is_empty());
+        }
+
+        let attr_str = quote::quote!(#attr).to_string().replace(' ', "");
+        let mut is_verified = attr_str.contains("verified_engine::verified")
+            || attr_str.contains("#[verified]")
+            || attr_str.starts_with("#[verified(");
+        if attr_str.contains("embed_theory") {
+            is_verified = true;
+            self.extract_embed_theory(&attr_str, attr_line);
+        }
+        (is_verified, is_verified)
     }
 
     fn process_fn_attrs(
@@ -308,29 +324,9 @@ impl AstVisitor {
         let mut is_verified = false;
         let mut has_semantic = false;
         for attr in attrs {
-            if attr_has_opt_out(attr) {
-                continue;
-            }
-            let attr_line = span_line(attr.span());
-            if attr.path().is_ident("doc") {
-                has_semantic |= self.process_doc_attr(attr, attr_line);
-                continue;
-            }
-            let attr_str = quote::quote!(#attr).to_string().replace(' ', "");
-
-            if attr_str.contains("verified_engine::verified")
-                || attr_str.contains("#[verified]")
-                || attr_str.starts_with("#[verified(")
-            {
-                is_verified = true;
-                has_semantic = true;
-            }
-
-            if attr_str.contains("embed_theory") {
-                is_verified = true;
-                has_semantic = true;
-                self.extract_embed_theory(&attr_str, attr_line);
-            }
+            let (attr_verified, attr_semantic) = self.inspect_fn_attr(attr);
+            is_verified |= attr_verified;
+            has_semantic |= attr_semantic;
         }
 
         if self.opted_out {
