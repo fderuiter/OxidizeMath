@@ -43,9 +43,10 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .into_iter()
         .map(ChallengeMetadata::to_card)
         .collect();
+    let expected_min = if cfg!(feature = "biology") { 16 } else { 15 };
     assert!(
-        cards.len() >= 15,
-        "Expected at least 15 registered ChallengeMetadata entries, got {}",
+        cards.len() >= expected_min,
+        "Expected at least {expected_min} registered ChallengeMetadata entries, got {}",
         cards.len()
     );
     for required_id in [
@@ -64,6 +65,8 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         "epidemiology_bridge_quarantine",
         "astrophysics_mystery_halo_fit",
         "hasse_weil_boundary_p23",
+        #[cfg(feature = "biology")]
+        "lenia_orbium_tail_regeneration",
     ] {
         let meta = find_challenge_metadata(required_id)
             .unwrap_or_else(|| panic!("Missing ChallengeMetadata '{required_id}'"));
@@ -74,15 +77,7 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         assert!(clamped.len() <= MAX_DECODED_URL_STATE_BYTES);
     }
 
-    assert_eq!(get_challenge_cards_for_domain("quantum").len(), 1);
-    assert_eq!(get_challenge_cards_for_domain("mri").len(), 3);
-    assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 2);
-    assert_eq!(get_challenge_cards_for_domain("financial_math").len(), 2);
-    assert_eq!(get_challenge_cards_for_domain("fluid_dynamics").len(), 1);
-    assert_eq!(get_challenge_cards_for_domain("medical").len(), 2);
-    assert_eq!(get_challenge_cards_for_domain("epidemiology").len(), 2);
-    assert_eq!(get_challenge_cards_for_domain("astrophysics").len(), 1);
-    assert_eq!(get_challenge_cards_for_domain("elliptic_curves").len(), 1);
+    assert_domain_challenge_counts();
 
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
@@ -99,6 +94,20 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .label()
         .unwrap_or("")
         .contains("Bloch 180° Spin Inversion")));
+}
+
+fn assert_domain_challenge_counts() {
+    assert_eq!(get_challenge_cards_for_domain("quantum").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("mri").len(), 3);
+    assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("financial_math").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("fluid_dynamics").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("medical").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("epidemiology").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("astrophysics").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("elliptic_curves").len(), 1);
+    #[cfg(feature = "biology")]
+    assert_eq!(get_challenge_cards_for_domain("biology").len(), 1);
 }
 
 fn assert_theme_hud_contrast(theme: ThemeMode, ctx: &egui::Context) {
