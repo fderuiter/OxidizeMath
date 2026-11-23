@@ -1,12 +1,22 @@
-//! Gaussian copula implementation with bivariate and multivariate Genz-Sobol evaluation.
+//! Gaussian copula implementation with stack-buffered, caller-scratch, and randomized Genz-Sobol evaluation.
 
+use super::bivariate::bivariate_copula_cdf;
 use super::core::{Correlation, CorrelationMatrix, Probability};
-use super::transforms::{inverse_standard_normal, standard_normal_cdf};
+use super::multivariate::{evaluate_copula_cdf_with_scratch, required_scratch_len};
 use crate::error::CopulaError;
 use crate::pure_math::analysis::integration::MultivariateIntegrator;
 use crate::pure_math::statistics::monte_carlo::{normal_cdf_fast, normal_inv_cdf_fast};
 use crate::pure_math::statistics::qmc::MAX_SOBOL_DIM;
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::Dimension;
 use nalgebra::DMatrix;
+
+/// Maximum number of parlay legs evaluated entirely on the stack by [`GaussianCopula::cdf`]
+/// and [`sgp_joint_probability`].
+pub const MAX_STACK_LEGS: usize = 16;
+
+/// Stack scratch length corresponding to [`MAX_STACK_LEGS`].
+const MAX_STACK_SCRATCH: usize = required_scratch_len(MAX_STACK_LEGS);
 
 /// Default sample budget for multivariate Genz-Sobol Gaussian copula integration.
 const DEFAULT_GENZ_SOBOL_SAMPLES: usize = 2048;
@@ -14,147 +24,107 @@ const DEFAULT_GENZ_SOBOL_SAMPLES: usize = 2048;
 /// Default deterministic Cranley-Patterson seed for multivariate copula evaluation.
 const DEFAULT_GENZ_SEED: u64 = 0x4745_4E5A_534F_424F;
 
-/// Gaussian copula over arbitrary positive-definite correlation matrices.
+/// Evaluates `C(u; corr)` using stack scratch up to [`MAX_STACK_LEGS`] and heap fallback above.
+#[verified_engine::verified]
+pub(crate) fn evaluate_copula_cdf(
+    u: &[Probability],
+    corr: &CorrelationMatrix,
+) -> Result<Probability, CopulaError> {
+    let d = corr.dimension();
+    if u.len() != d {
+        return Err(CopulaError::Math(MathError::DimensionMismatch {
+            expected: Dimension(d),
+            actual: Dimension(u.len()),
+        }));
+    }
+    if d <= MAX_STACK_LEGS {
+        let mut stack_scratch = [0.0_f64; MAX_STACK_SCRATCH];
+        return evaluate_copula_cdf_with_scratch(
+            u,
+            corr,
+            &mut stack_scratch[..required_scratch_len(d)],
+        );
+    }
+    let mut heap_scratch = vec![0.0_f64; required_scratch_len(d)];
+    evaluate_copula_cdf_with_scratch(u, corr, &mut heap_scratch)
+}
+
+/// Multivariate Gaussian copula `C(u_1, ..., u_d; Sigma) = Phi_Sigma(Phi^-1(u_1), ..., Phi^-1(u_d))`.
 ///
-/// Models the joint cumulative distribution of $d$ uniform marginals $(u_1, \dots, u_d)$ via
-///
-/// ```text
-/// C(u₁, ..., u_d; Σ) = Φ_Σ(Φ⁻¹(u₁), ..., Φ⁻¹(u_d))
-/// ```
-///
-/// using exact Cholesky separation of variables (Genz, 1992) integrated over randomized
-/// Joe-Kuo [`SobolSequence`](crate::pure_math::statistics::qmc::SobolSequence) points.
+/// Uses exact copula boundary reduction, 20-point Genz (2004) Gauss-Legendre quadrature for two
+/// active legs, and Genz (1992) separation-of-variables over a deterministic Richtmyer QMC
+/// sequence for three or more active legs in [`Self::cdf`], plus replicated Cranley-Patterson
+/// Joe-Kuo [`SobolSequence`](crate::pure_math::statistics::qmc::SobolSequence) error estimation
+/// in [`Self::multivariate_cdf_with_error`].
 ///
 /// # Example
 ///
 /// ```
 /// # use pure_math::__doctest_facade as math_explorer;
 /// use math_explorer::pure_math::statistics::copula::{
-///     GaussianCopula, Probability, Correlation
+///     Correlation, GaussianCopula, Probability,
 /// };
 ///
 /// let rho = Correlation::new(-0.3).unwrap();
 /// let copula = GaussianCopula::bivariate(rho).unwrap();
 ///
-/// let u1 = Probability::new(0.99).unwrap();
+/// let u1 = Probability::new(0.01).unwrap();
 /// let u2 = Probability::new(0.60).unwrap();
-///
 /// let joint_prob = copula.cdf(&[u1, u2]).unwrap();
-/// assert!(joint_prob.value() > 0.0 && joint_prob.value() < 1.0);
+/// assert!(joint_prob.value() < 0.01 * 0.60);
 /// ```
 pub struct GaussianCopula {
     correlation: CorrelationMatrix,
 }
 
 impl GaussianCopula {
-    /// Creates a new Gaussian copula from a validated correlation matrix.
+    /// Creates a new Gaussian copula from a validated [`CorrelationMatrix`].
     #[verified_engine::verified]
     pub fn new(correlation: CorrelationMatrix) -> Self {
         Self { correlation }
     }
 
-    /// Creates a bivariate Gaussian copula with correlation `rho`.
+    /// Creates a bivariate Gaussian copula from a single correlation coefficient.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::copula::{Correlation, GaussianCopula};
+    ///
+    /// let rho = Correlation::new(0.5).unwrap();
+    /// let copula = GaussianCopula::bivariate(rho).unwrap();
+    /// assert_eq!(copula.correlation().dimension(), 2);
+    /// ```
     #[verified_engine::verified]
     pub fn bivariate(rho: Correlation) -> Result<Self, CopulaError> {
         let correlation = CorrelationMatrix::bivariate(rho)?;
         Ok(Self::new(correlation))
     }
 
-    /// Computes the copula CDF $C(u_1, \dots, u_d)$.
+    /// Returns the scratch slice length in `f64` elements required by [`Self::cdf_with_scratch`]
+    /// for a copula of `dimension` legs.
+    #[verified_engine::verified]
+    pub const fn scratch_len(dimension: usize) -> usize {
+        required_scratch_len(dimension)
+    }
+
+    /// Computes the copula CDF `C(u_1, ..., u_d)` using a stack buffer for up to
+    /// [`MAX_STACK_LEGS`] (`16`) legs without heap allocation.
     #[verified_engine::verified]
     pub fn cdf(&self, u: &[Probability]) -> Result<Probability, CopulaError> {
-        if u.len() != self.correlation.dimension() {
-            return Err(CopulaError::Math(
-                math_commons::error::MathError::DimensionMismatch {
-                    expected: math_commons::math_kernel::types::Dimension(
-                        self.correlation.dimension(),
-                    ),
-                    actual: math_commons::math_kernel::types::Dimension(u.len()),
-                },
-            ));
-        }
-
-        if u.len() == 2 {
-            return self.bivariate_cdf(u[0], u[1]);
-        }
-
-        self.multivariate_cdf(u)
+        evaluate_copula_cdf(u, &self.correlation)
     }
 
-    /// Computes the bivariate Gaussian copula CDF.
+    /// Computes the copula CDF `C(u_1, ..., u_d)` for arbitrary leg counts with zero heap
+    /// allocations using caller-supplied `scratch` (`scratch.len() >= Self::scratch_len(d)`).
     #[verified_engine::verified]
-    fn bivariate_cdf(&self, u1: Probability, u2: Probability) -> Result<Probability, CopulaError> {
-        if u1.value() == 0.0 || u2.value() == 0.0 {
-            return Probability::new(0.0);
-        }
-        if u1.value() == 1.0 {
-            return Ok(u2);
-        }
-        if u2.value() == 1.0 {
-            return Ok(u1);
-        }
-        let z1 = inverse_standard_normal(u1)?;
-        let z2 = inverse_standard_normal(u2)?;
-        let rho = self
-            .correlation
-            .get_correlation(0, 1)
-            .ok_or(CopulaError::Math(
-                math_commons::error::MathError::NumericalError {
-                    reason: "Failed to get correlation".to_string(),
-                },
-            ))?;
-        let prob = self.bivariate_normal_cdf(z1, z2, rho)?;
-        Probability::new(prob)
-    }
-
-    /// Evaluates the bivariate normal CDF with degenerate correlation handling.
-    #[verified_engine::verified]
-    fn bivariate_normal_cdf(&self, z1: f64, z2: f64, rho: f64) -> Result<f64, CopulaError> {
-        if !z1.is_finite() || !z2.is_finite() {
-            return Err(CopulaError::Math(
-                math_commons::error::MathError::NumericalError {
-                    reason: "Non-finite z-scores".to_string(),
-                },
-            ));
-        }
-        if (rho.abs() - 1.0).abs() < math_commons::registry::TOLERANCE_HIGH {
-            if rho > 0.0 {
-                let prob1 = standard_normal_cdf(z1)?.value();
-                let prob2 = standard_normal_cdf(z2)?.value();
-                return Ok(prob1.min(prob2));
-            }
-            let prob1 = standard_normal_cdf(z1)?.value();
-            let prob2 = standard_normal_cdf(-z2)?.value();
-            return Ok((prob1 + prob2 - 1.0).max(0.0));
-        }
-        self.integrate_bivariate_normal(z1, z2, rho)
-    }
-
-    /// Midpoint quadrature for bivariate normal CDF.
-    #[verified_engine::verified]
-    fn integrate_bivariate_normal(&self, z1: f64, z2: f64, rho: f64) -> Result<f64, CopulaError> {
-        let n_points = 100;
-        let x_min = -10.0;
-        let y_min = -10.0;
-        if z1 < x_min || z2 < y_min {
-            return Ok(0.0);
-        }
-        let dx = (z1 - x_min) / (n_points as f64);
-        let dy = (z2 - y_min) / (n_points as f64);
-        let rho_sq = rho * rho;
-        let denom = 2.0 * std::f64::consts::PI * (1.0 - rho_sq).sqrt();
-        let factor = -1.0 / (2.0 * (1.0 - rho_sq));
-
-        let mut sum = 0.0;
-        for i in 0..n_points {
-            let x = x_min + ((i as f64) + 0.5) * dx;
-            for j in 0..n_points {
-                let y = y_min + ((j as f64) + 0.5) * dy;
-                let exponent = factor * (x * x - 2.0 * rho * x * y + y * y);
-                sum += (1.0 / denom) * exponent.exp() * dx * dy;
-            }
-        }
-        Ok(sum.clamp(0.0, 1.0))
+    pub fn cdf_with_scratch(
+        &self,
+        u: &[Probability],
+        scratch: &mut [f64],
+    ) -> Result<Probability, CopulaError> {
+        evaluate_copula_cdf_with_scratch(u, &self.correlation, scratch)
     }
 
     /// Evaluates the multivariate Gaussian copula CDF via Cholesky factorization and Genz
@@ -176,20 +146,11 @@ impl GaussianCopula {
     ) -> Result<(Probability, f64), CopulaError> {
         let dim = self.correlation.dimension();
         if u.len() != dim {
-            return Err(CopulaError::Math(
-                math_commons::error::MathError::DimensionMismatch {
-                    expected: math_commons::math_kernel::types::Dimension(dim),
-                    actual: math_commons::math_kernel::types::Dimension(u.len()),
-                },
-            ));
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(dim),
+                actual: Dimension(u.len()),
+            }));
         }
-
-        // Verify the full correlation matrix is SPD even if marginals sit on 0/1 boundaries.
-        let full_cov = self.correlation.matrix();
-        if full_cov.clone().cholesky().is_none() {
-            return Err(CopulaError::NotPositiveDefinite);
-        }
-
         if u.iter().any(|p| p.value() == 0.0) {
             return Ok((Probability::new(0.0)?, 0.0));
         }
@@ -203,11 +164,21 @@ impl GaussianCopula {
             return Ok((u[active[0]], 0.0));
         }
 
+        let full_cov = self.correlation.matrix();
+        if active.len() == 2 {
+            let rho_raw = full_cov[(active[0], active[1])].clamp(-1.0, 1.0);
+            if (rho_raw.abs() - 1.0).abs() <= 1e-12 {
+                let prob =
+                    bivariate_copula_cdf(u[active[0]], u[active[1]], Correlation::new(rho_raw)?)?;
+                return Ok((prob, 0.0));
+            }
+        }
+
         let (chol_l, ordered_bounds) = build_ordered_cholesky(full_cov, u, &active)?;
         integrate_genz_sobol(&chol_l, &ordered_bounds, n_samples, seed)
     }
 
-    /// Returns the correlation matrix.
+    /// Returns the underlying correlation matrix.
     #[verified_engine::verified]
     pub fn correlation(&self) -> &CorrelationMatrix {
         &self.correlation
@@ -257,7 +228,7 @@ fn integrate_genz_sobol(
         MultivariateIntegrator::new_halton(qmc_dim, budget)
     }
     .map_err(|e| {
-        CopulaError::Math(math_commons::error::MathError::NumericalError {
+        CopulaError::Math(MathError::NumericalError {
             reason: e.to_string(),
         })
     })?
@@ -283,7 +254,7 @@ fn integrate_genz_sobol(
             prod
         })
         .map_err(|e| {
-            CopulaError::Math(math_commons::error::MathError::NumericalError {
+            CopulaError::Math(MathError::NumericalError {
                 reason: e.to_string(),
             })
         })?;
@@ -292,25 +263,40 @@ fn integrate_genz_sobol(
     Ok((Probability::new(clamped)?, res.error))
 }
 
-/// Computes the joint probability for a Same Game Parlay (SGP).
+/// Computes the correlated joint win probability for a Same Game Parlay (SGP) without cloning
+/// `correlation_matrix` (zero heap allocation up to [`MAX_STACK_LEGS`] legs).
+///
+/// # Example
+///
+/// ```
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::copula::{
+///     Correlation, CorrelationMatrix, Probability, sgp_joint_probability,
+/// };
+///
+/// let p_a = Probability::new(0.01).unwrap();
+/// let p_b = Probability::new(0.60).unwrap();
+/// let corr_matrix = CorrelationMatrix::bivariate(Correlation::new(-0.15).unwrap()).unwrap();
+/// let joint_prob = sgp_joint_probability(&[p_a, p_b], &corr_matrix).unwrap();
+/// assert!(joint_prob.value() < 0.006);
+/// ```
 #[verified_engine::verified]
 pub fn sgp_joint_probability(
     marginals: &[Probability],
     correlation_matrix: &CorrelationMatrix,
 ) -> Result<Probability, CopulaError> {
-    if marginals.len() != correlation_matrix.dimension() {
-        return Err(CopulaError::Math(
-            math_commons::error::MathError::DimensionMismatch {
-                expected: math_commons::math_kernel::types::Dimension(
-                    correlation_matrix.dimension(),
-                ),
-                actual: math_commons::math_kernel::types::Dimension(marginals.len()),
-            },
-        ));
-    }
+    evaluate_copula_cdf(marginals, correlation_matrix)
+}
 
-    let copula = GaussianCopula::new(correlation_matrix.clone());
-    copula.cdf(marginals)
+/// Computes the correlated joint win probability for an arbitrary-leg Same Game Parlay (SGP)
+/// with zero heap allocations using caller-supplied `scratch`.
+#[verified_engine::verified]
+pub fn sgp_joint_probability_with_scratch(
+    marginals: &[Probability],
+    correlation_matrix: &CorrelationMatrix,
+    scratch: &mut [f64],
+) -> Result<Probability, CopulaError> {
+    evaluate_copula_cdf_with_scratch(marginals, correlation_matrix, scratch)
 }
 
 #[cfg(test)]

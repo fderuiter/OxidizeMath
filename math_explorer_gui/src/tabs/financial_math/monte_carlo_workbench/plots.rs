@@ -30,12 +30,7 @@ impl MonteCarloWorkbenchTool {
         }
     }
 
-    fn render_convergence_card(
-        &self,
-        ui: &mut egui::Ui,
-        palette: &SemanticPalette,
-        height: f32,
-    ) {
+    fn render_convergence_card(&self, ui: &mut egui::Ui, palette: &SemanticPalette, height: f32) {
         ui.horizontal_wrapped(|ui| {
             ui.strong(format!(
                 "Log-Log RMSE Error Decay — {} (Exact = {:.5})",
@@ -95,12 +90,10 @@ impl MonteCarloWorkbenchTool {
         plot_ui.line(
             Line::new("Control Variate", &self.decay_control[..]).color(palette.series_color(2)),
         );
-        plot_ui.line(
-            Line::new("Latin Hypercube", &self.decay_lhs[..]).color(palette.series_color(3)),
-        );
-        plot_ui.line(
-            Line::new("Halton RQMC", &self.decay_halton[..]).color(palette.series_color(4)),
-        );
+        plot_ui
+            .line(Line::new("Latin Hypercube", &self.decay_lhs[..]).color(palette.series_color(3)));
+        plot_ui
+            .line(Line::new("Halton RQMC", &self.decay_halton[..]).color(palette.series_color(4)));
         plot_ui.line(
             Line::new("Joe-Kuo Sobol RQMC", &self.decay_sobol[..])
                 .color(palette.success)
@@ -118,12 +111,7 @@ impl MonteCarloWorkbenchTool {
         );
     }
 
-    fn render_bootstrap_card(
-        &self,
-        ui: &mut egui::Ui,
-        palette: &SemanticPalette,
-        height: f32,
-    ) {
+    fn render_bootstrap_card(&self, ui: &mut egui::Ui, palette: &SemanticPalette, height: f32) {
         ui.horizontal_wrapped(|ui| {
             ui.strong(format!(
                 "Nonparametric Bootstrap Replicate Histogram ({} — B = {})",
@@ -195,9 +183,8 @@ impl MonteCarloWorkbenchTool {
             .iter()
             .map(|&(cx, density)| Bar::new(cx, density).width(bar_width))
             .collect();
-        plot_ui.bar_chart(
-            BarChart::new("Bootstrap Replicates", bars).color(palette.series_color(2)),
-        );
+        plot_ui
+            .bar_chart(BarChart::new("Bootstrap Replicates", bars).color(palette.series_color(2)));
 
         if self.boot_comparison.is_none() {
             return;

@@ -8,8 +8,8 @@ mod state;
 mod tests;
 mod ui;
 
-pub use state::{BootstrapStatKind, WorkbenchBenchmark, WorkbenchViewMode};
 use state::{evaluate_control, evaluate_iid, evaluate_snis, WorkbenchState};
+pub use state::{BootstrapStatKind, WorkbenchBenchmark, WorkbenchViewMode};
 
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use crate::web_io::PlatformInstant;
@@ -254,7 +254,13 @@ impl MonteCarloWorkbenchTool {
         }
     }
 
-    fn push_decay_point(&mut self, bench: WorkbenchBenchmark, budget: usize, conf: f64, exact: f64) {
+    fn push_decay_point(
+        &mut self,
+        bench: WorkbenchBenchmark,
+        budget: usize,
+        conf: f64,
+        exact: f64,
+    ) {
         let log_n = (budget as f64).log10();
         let seed = self.seed;
         let mut sq = [0.0_f64; 6];
@@ -299,12 +305,14 @@ impl MonteCarloWorkbenchTool {
         }
         let inv_r = 1.0 / (MICRO_REPEATS as f64);
         let to_log_rmse = |sum_sq: f64| ((sum_sq * inv_r).sqrt().max(1e-12)).log10();
-        self.decay_iid.push(PlotPoint::new(log_n, to_log_rmse(sq[0])));
+        self.decay_iid
+            .push(PlotPoint::new(log_n, to_log_rmse(sq[0])));
         self.decay_antithetic
             .push(PlotPoint::new(log_n, to_log_rmse(sq[1])));
         self.decay_control
             .push(PlotPoint::new(log_n, to_log_rmse(sq[2])));
-        self.decay_lhs.push(PlotPoint::new(log_n, to_log_rmse(sq[3])));
+        self.decay_lhs
+            .push(PlotPoint::new(log_n, to_log_rmse(sq[3])));
         self.decay_halton
             .push(PlotPoint::new(log_n, to_log_rmse(sq[4])));
         self.decay_sobol

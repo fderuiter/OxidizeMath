@@ -2,6 +2,7 @@ use super::*;
 use crate::pure_math::analysis::integration::{ClenshawCurtis, Integrator};
 use crate::pure_math::statistics::monte_carlo::{normal_cdf_fast, normal_inv_cdf_fast};
 use approx::assert_relative_eq;
+use math_commons::registry::TOLERANCE_HIGH;
 
 /// Exact 1D factor integral for equicorrelated Gaussian copula ($\rho \in [0, 1)$):
 /// $\Phi_\Sigma(b) = \int_{-\infty}^\infty \phi(z) \prod_{i=1}^d \Phi((b_i - \sqrt{\rho} z)/\sqrt{1 - \rho}) dz$.
@@ -48,74 +49,105 @@ fn test_gaussian_copula_independence() {
 
     let u1 = Probability::new(0.7).unwrap();
     let u2 = Probability::new(0.8).unwrap();
-
     let joint = copula.cdf(&[u1, u2]).unwrap();
+
     let expected = u1.value() * u2.value();
-    assert_relative_eq!(joint.value(), expected, epsilon = 0.05);
+    assert_relative_eq!(joint.value(), expected, epsilon = TOLERANCE_HIGH);
 }
 
 #[test]
 #[verified_engine::verified]
-fn test_gaussian_copula_positive_correlation() {
-    let rho_indep = Correlation::new(0.0).unwrap();
-    let rho_pos = Correlation::new(0.7).unwrap();
-
-    let copula_indep = GaussianCopula::bivariate(rho_indep).unwrap();
-    let copula_pos = GaussianCopula::bivariate(rho_pos).unwrap();
+fn test_gaussian_copula_positive_and_negative_correlation() {
+    let copula_indep = GaussianCopula::bivariate(Correlation::new(0.0).unwrap()).unwrap();
+    let copula_pos = GaussianCopula::bivariate(Correlation::new(0.7).unwrap()).unwrap();
+    let copula_neg = GaussianCopula::bivariate(Correlation::new(-0.5).unwrap()).unwrap();
 
     let u1 = Probability::new(0.8).unwrap();
     let u2 = Probability::new(0.8).unwrap();
-
-    let joint_indep = copula_indep.cdf(&[u1, u2]).unwrap();
-    let joint_pos = copula_pos.cdf(&[u1, u2]).unwrap();
-    assert!(joint_pos.value() > joint_indep.value());
+    let joint_indep = copula_indep.cdf(&[u1, u2]).unwrap().value();
+    assert!(copula_pos.cdf(&[u1, u2]).unwrap().value() > joint_indep);
+    assert!(copula_neg.cdf(&[u1, u2]).unwrap().value() < joint_indep);
 }
 
 #[test]
 #[verified_engine::verified]
-fn test_gaussian_copula_negative_correlation() {
-    let rho_indep = Correlation::new(0.0).unwrap();
-    let rho_neg = Correlation::new(-0.5).unwrap();
+fn test_boundary_axioms_and_single_leg_identity() {
+    let one_d = GaussianCopula::new(CorrelationMatrix::new(DMatrix::identity(1, 1)).unwrap());
+    let u = Probability::new(0.37).unwrap();
+    assert_eq!(one_d.cdf(&[u]).unwrap().value(), 0.37);
 
-    let copula_indep = GaussianCopula::bivariate(rho_indep).unwrap();
-    let copula_neg = GaussianCopula::bivariate(rho_neg).unwrap();
-
-    let u1 = Probability::new(0.9).unwrap();
-    let u2 = Probability::new(0.9).unwrap();
-
-    let joint_indep = copula_indep.cdf(&[u1, u2]).unwrap();
-    let joint_neg = copula_neg.cdf(&[u1, u2]).unwrap();
-    assert!(joint_neg.value() < joint_indep.value());
+    let copula = GaussianCopula::bivariate(Correlation::new(-0.42).unwrap()).unwrap();
+    let p0 = Probability::new(0.0).unwrap();
+    let p1 = Probability::new(1.0).unwrap();
+    assert_eq!(copula.cdf(&[p0, p0]).unwrap().value(), 0.0);
+    assert_eq!(copula.cdf(&[p0, u]).unwrap().value(), 0.0);
+    assert_eq!(copula.cdf(&[u, p0]).unwrap().value(), 0.0);
+    assert_eq!(copula.cdf(&[p1, u]).unwrap().value(), 0.37);
+    assert_eq!(copula.cdf(&[u, p1]).unwrap().value(), 0.37);
+    assert_eq!(copula.cdf(&[p1, p1]).unwrap().value(), 1.0);
 }
 
 #[test]
 #[verified_engine::verified]
-fn test_sgp_joint_probability() {
-    let p_a = Probability::new(0.99).unwrap();
+fn test_comonotonic_and_countermonotonic_frechet_bounds() {
+    let pos = GaussianCopula::bivariate(Correlation::new(1.0).unwrap()).unwrap();
+    let neg = GaussianCopula::bivariate(Correlation::new(-1.0).unwrap()).unwrap();
+    let u1 = Probability::new(0.35).unwrap();
+    let u2 = Probability::new(0.80).unwrap();
+
+    assert_relative_eq!(pos.cdf(&[u1, u2]).unwrap().value(), 0.35, epsilon = 1e-15);
+    assert_relative_eq!(neg.cdf(&[u1, u2]).unwrap().value(), 0.15, epsilon = 1e-15);
+    assert_relative_eq!(
+        pos.multivariate_cdf(&[u1, u2]).unwrap().value(),
+        0.35,
+        epsilon = 1e-15
+    );
+    assert_relative_eq!(
+        neg.multivariate_cdf(&[u1, u2]).unwrap().value(),
+        0.15,
+        epsilon = 1e-15
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_sgp_joint_probability_and_multileg_reduction() {
+    let p_a = Probability::new(0.01).unwrap();
     let p_b = Probability::new(0.60).unwrap();
+    let corr2 = CorrelationMatrix::bivariate(Correlation::new(-0.15).unwrap()).unwrap();
+    let joint2 = sgp_joint_probability(&[p_a, p_b], &corr2).unwrap();
+    assert!(joint2.value() < p_a.value() * p_b.value());
 
-    let rho = Correlation::new(-0.15).unwrap();
-    let corr_matrix = CorrelationMatrix::bivariate(rho).unwrap();
-
-    let joint = sgp_joint_probability(&[p_a, p_b], &corr_matrix).unwrap();
-    let independent = p_a.value() * p_b.value();
-    assert!(joint.value() < independent);
+    let corr3 = CorrelationMatrix::new(DMatrix::from_row_slice(
+        3,
+        3,
+        &[1.0, -0.15, 0.25, -0.15, 1.0, 0.30, 0.25, 0.30, 1.0],
+    ))
+    .unwrap();
+    let reduced =
+        sgp_joint_probability(&[p_a, p_b, Probability::new(1.0).unwrap()], &corr3).unwrap();
+    assert_relative_eq!(reduced.value(), joint2.value(), epsilon = 1e-15);
 }
 
 #[test]
 #[verified_engine::verified]
-fn test_copula_bounds() {
-    let rho = Correlation::new(0.3).unwrap();
-    let copula = GaussianCopula::bivariate(rho).unwrap();
+fn test_multivariate_cholesky_validation() {
+    let mat = DMatrix::from_row_slice(3, 3, &[1.0, 0.2, 0.1, 0.2, 1.0, 0.3, 0.1, 0.3, 1.0]);
+    let corr = CorrelationMatrix::new(mat).unwrap();
+    let copula = GaussianCopula::new(corr);
+    let u = [
+        Probability::new(0.4).unwrap(),
+        Probability::new(0.5).unwrap(),
+        Probability::new(0.6).unwrap(),
+    ];
+    let joint = copula.cdf(&u).unwrap().value();
+    assert!(joint > 0.4 * 0.5 * 0.6 && joint <= 0.4);
 
-    for &u1_val in &[0.1, 0.5, 0.9] {
-        for &u2_val in &[0.1, 0.5, 0.9] {
-            let u1 = Probability::new(u1_val).unwrap();
-            let u2 = Probability::new(u2_val).unwrap();
-            let joint = copula.cdf(&[u1, u2]).unwrap();
-            assert!(joint.value() >= 0.0 && joint.value() <= 1.0);
-        }
-    }
+    let invalid = DMatrix::from_row_slice(3, 3, &[1.0, 0.9, 0.9, 0.9, 1.0, -0.9, 0.9, -0.9, 1.0]);
+    assert!(matches!(
+        CorrelationMatrix::new(invalid),
+        Err(CopulaError::NotPositiveDefinite)
+    ));
 }
 
 #[test]
@@ -138,21 +170,20 @@ fn test_multivariate_gaussian_copula_3d_5d_10d_accuracy() {
     );
     assert!((0.0..2e-3).contains(&se3));
 
-    // 5D equicorrelated (rho = 0.35) via sgp_joint_probability
+    // 5D equicorrelated (rho = 0.35) via both multivariate_cdf and sgp_joint_probability
     let u5_raw = [0.7, 0.6, 0.8, 0.65, 0.75];
     let u5: Vec<Probability> = u5_raw
         .iter()
         .map(|&v| Probability::new(v).unwrap())
         .collect();
     let mat5 = equicorrelated_matrix(5, 0.35);
+    let p5_qmc = GaussianCopula::new(mat5.clone())
+        .multivariate_cdf(&u5)
+        .unwrap();
     let p5 = sgp_joint_probability(&u5, &mat5).unwrap();
     let exact5 = exact_equicorrelated_copula_cdf(&u5_raw, 0.35);
-    assert!(
-        (p5.value() - exact5).abs() < 2.5e-3,
-        "5D got {} vs {}",
-        p5.value(),
-        exact5
-    );
+    assert!((p5_qmc.value() - exact5).abs() < 2.5e-3);
+    assert!((p5.value() - exact5).abs() < 2.5e-3);
 
     // 10D equicorrelated (rho = 0.3)
     let u10_raw = [0.75; 10];
@@ -161,32 +192,17 @@ fn test_multivariate_gaussian_copula_3d_5d_10d_accuracy() {
         .map(|&v| Probability::new(v).unwrap())
         .collect();
     let cop10 = GaussianCopula::new(equicorrelated_matrix(10, 0.3));
+    let p10_qmc = cop10.multivariate_cdf(&u10).unwrap();
     let p10 = cop10.cdf(&u10).unwrap();
     let exact10 = exact_equicorrelated_copula_cdf(&u10_raw, 0.3);
-    assert!(
-        (p10.value() - exact10).abs() < 5e-3,
-        "10D got {} vs {}",
-        p10.value(),
-        exact10
-    );
-
-    // General non-equicorrelated 3x3 SPD matrix
-    let general_spd = DMatrix::from_row_slice(3, 3, &[1.0, 0.2, 0.1, 0.2, 1.0, 0.3, 0.1, 0.3, 1.0]);
-    let general_cop = GaussianCopula::new(CorrelationMatrix::new(general_spd).unwrap());
-    let u_gen = [
-        Probability::new(0.4).unwrap(),
-        Probability::new(0.5).unwrap(),
-        Probability::new(0.6).unwrap(),
-    ];
-    let p_gen = general_cop.cdf(&u_gen).unwrap();
-    assert!(p_gen.value() > 0.4 * 0.5 * 0.6 && p_gen.value() < 0.4);
+    assert!((p10_qmc.value() - exact10).abs() < 5e-3);
+    assert!((p10.value() - exact10).abs() < 5e-3);
 
     // Non-positive-definite 3x3 matrix (all off-diagonals -0.8 -> eigenvalue -0.6 < 0)
-    let non_spd = equicorrelated_matrix(3, -0.8);
-    let bad_cop = GaussianCopula::new(non_spd);
+    let non_spd = DMatrix::from_fn(3, 3, |i, j| if i == j { 1.0 } else { -0.8 });
     assert_eq!(
-        bad_cop.cdf(&u3).unwrap_err(),
-        CopulaError::NotPositiveDefinite
+        CorrelationMatrix::new(non_spd),
+        Err(CopulaError::NotPositiveDefinite)
     );
 }
 

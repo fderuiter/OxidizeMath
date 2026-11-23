@@ -133,7 +133,9 @@ impl MonteCarloWorkbenchTool {
         ui.horizontal_wrapped(|ui| {
             if ui
                 .button("🎲 Advance Seed")
-                .accessible_hover_text("Increment OxidizeRng seed and rerun preallocated workspaces.")
+                .accessible_hover_text(
+                    "Increment OxidizeRng seed and rerun preallocated workspaces.",
+                )
                 .clicked()
             {
                 self.seed = self.seed.wrapping_add(1);
@@ -141,7 +143,9 @@ impl MonteCarloWorkbenchTool {
             }
             if ui
                 .button("↻ Reset Defaults")
-                .accessible_hover_text("Restore canonical 4D Geometric Basket Call workbench settings.")
+                .accessible_hover_text(
+                    "Restore canonical 4D Geometric Basket Call workbench settings.",
+                )
                 .clicked()
             {
                 self.reset_defaults();
@@ -181,10 +185,7 @@ impl MonteCarloWorkbenchTool {
                 ));
             }
             Err(err) => {
-                ui.colored_label(
-                    palette.error,
-                    format!("SNIS Weight Guard Triggered: {err}"),
-                );
+                ui.colored_label(palette.error, format!("SNIS Weight Guard Triggered: {err}"));
             }
         }
 
