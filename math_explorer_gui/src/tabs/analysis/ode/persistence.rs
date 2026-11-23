@@ -410,6 +410,13 @@ impl OdeSolverTool {
     }
 
     pub(crate) fn collect_full_xy_pairs(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
+        if self
+            .series_cache
+            .matches_series(&self.time_series, &self.y_series, &self.v_series)
+        {
+            let (py, pv) = self.series_cache.shared_points();
+            return (py.to_vec(), pv.to_vec());
+        }
         let mut plot_points_y = Vec::with_capacity(self.time_series.len());
         let mut plot_points_v = if self.v_series.is_empty() {
             Vec::new()
@@ -428,12 +435,20 @@ impl OdeSolverTool {
     }
 
     pub(crate) fn build_current_trace_series(&self) -> Vec<crate::framework::TraceSeries> {
-        let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
-        let mut series = vec![crate::framework::TraceSeries::new("y(t)", plot_points_y)];
-        if self.has_second_state() && !plot_points_v.is_empty() {
+        let (py, pv) = if self
+            .series_cache
+            .matches_series(&self.time_series, &self.y_series, &self.v_series)
+        {
+            self.series_cache.shared_points()
+        } else {
+            let (y, v) = self.collect_full_xy_pairs();
+            (y.into(), v.into())
+        };
+        let mut series = vec![crate::framework::TraceSeries::new("y(t)", py)];
+        if self.has_second_state() && !pv.is_empty() {
             series.push(crate::framework::TraceSeries::new(
                 self.second_state_label(),
-                plot_points_v,
+                pv,
             ));
         }
         series

@@ -22,6 +22,7 @@ impl TheoryDescribable for SirTool {
             self.beta, self.gamma, r0
         )
     }
+
     fn phonetic_description(&self) -> String {
         "Kermack-McKendrick SIR compartmental epidemic model theory".into()
     }
@@ -35,16 +36,48 @@ impl TheoryDescribable for SirTool {
     }
 
     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        [
-            ("N", 100.0, 100_000.0, 100.0),
-            ("I0", 1.0, 50_000.0, 1.0),
-            ("beta", 0.0, 5.0, 0.02),
-            ("gamma", 0.0, 1.0, 0.01),
-            ("duration", MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0),
-        ]
-        .into_iter()
-        .map(|(k, min, max, step)| (k.to_string(), ParameterConstraint { min, max, step }))
-        .collect()
+        let mut map = HashMap::with_capacity(5);
+        map.insert(
+            "N".to_string(),
+            ParameterConstraint {
+                min: 100.0,
+                max: 100_000.0,
+                step: 100.0,
+            },
+        );
+        map.insert(
+            "I0".to_string(),
+            ParameterConstraint {
+                min: 1.0,
+                max: 50_000.0,
+                step: 1.0,
+            },
+        );
+        map.insert(
+            "beta".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 5.0,
+                step: 0.02,
+            },
+        );
+        map.insert(
+            "gamma".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 1.0,
+                step: 0.01,
+            },
+        );
+        map.insert(
+            "duration".to_string(),
+            ParameterConstraint {
+                min: MIN_SIR_DURATION,
+                max: MAX_SIR_DURATION,
+                step: 1.0,
+            },
+        );
+        map
     }
 }
 

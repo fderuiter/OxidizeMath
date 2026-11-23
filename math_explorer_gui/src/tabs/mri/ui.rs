@@ -202,6 +202,7 @@ impl MriTool {
             "MRI Physics",
             self.worker.state(),
         )
+        .timeline(self.worker.timeline_metadata())
         .reset_label("↻ Reset (90° Pulse)")
         .can_reset(true)
         .show(ui)
@@ -215,6 +216,12 @@ impl MriTool {
                 }
                 PlaybackAction::Step => {
                     let _ = self.worker.send_command(SimCommand::Step(1));
+                }
+                PlaybackAction::StepBack => {
+                    let _ = self.worker.send_command(SimCommand::StepBack(1));
+                }
+                PlaybackAction::ScrubTo(step) => {
+                    let _ = self.worker.send_command(SimCommand::SeekStep(step));
                 }
                 PlaybackAction::Reset => {
                     self.reset();

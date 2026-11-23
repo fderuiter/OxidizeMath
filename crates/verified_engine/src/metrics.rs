@@ -1,4 +1,7 @@
 use std::cell::Cell;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static ACTIVE_VERIFIERS: AtomicUsize = AtomicUsize::new(0);
 
 /// Snapshot of runtime execution complexity counters recorded on the current thread during a
 /// verified run.
@@ -58,17 +61,22 @@ thread_local! {
 
 /// Enables runtime verification mode and metric accumulation on the calling thread.
 pub fn enable_verification() {
-    VERIFICATION_MODE.set(true);
+    if !VERIFICATION_MODE.replace(true) {
+        ACTIVE_VERIFIERS.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 /// Disables runtime verification mode on the calling thread.
 pub fn disable_verification() {
-    VERIFICATION_MODE.set(false);
+    if VERIFICATION_MODE.replace(false) {
+        ACTIVE_VERIFIERS.fetch_sub(1, Ordering::Relaxed);
+    }
 }
 
 /// Returns `true` when verification instrumentation is active on the calling thread.
+#[inline(always)]
 pub fn is_verification_enabled() -> bool {
-    VERIFICATION_MODE.get()
+    ACTIVE_VERIFIERS.load(Ordering::Relaxed) != 0 && VERIFICATION_MODE.get()
 }
 
 /// Resets all thread-local complexity counters (`ARITHMETIC_OPS`, `MEMORY_LOADS`, `FUNCTION_CALLS`) to zero.
