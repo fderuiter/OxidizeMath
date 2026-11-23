@@ -5337,6 +5337,9 @@
       "signature": "impl SpinLattice { pub fn evolve (& mut self , steps : usize , temperature : f64 , j_coupling : f64 , h_field : f64) }"
     },
     {
+      "signature": "impl SpinLattice { pub fn evolve_fermi_game (& mut self , steps : usize , temperature : f64 , payoff : & MatrixPayoff) }"
+    },
+    {
       "signature": "impl SpinLattice { pub fn get (& self , x : usize , y : usize) -> i8 }"
     },
     {
