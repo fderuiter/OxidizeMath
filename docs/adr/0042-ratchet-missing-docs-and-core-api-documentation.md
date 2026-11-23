@@ -1,4 +1,4 @@
-# ADR 0041: Ratchet `missing_docs` Exemptions and Document Core API Entrypoints
+# ADR 0042: Ratchet `missing_docs` Exemptions and Document Core API Entrypoints
 
 ## Status
 Accepted (extends [ADR 0005](0005-active-documentation-standard.md), [ADR 0013](0013-workspace-doc-lints-and-path-scoping.md), and [ADR 0036](0036-harden-ast-and-doctest-policy-audits.md))
