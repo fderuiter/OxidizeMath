@@ -7,7 +7,7 @@ use crate::starter_gallery::StarterPresetMetadata;
 #[test]
 fn test_all_68_tools_have_non_empty_curated_tags() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 74, "Expected all 74 registered ToolMetadata");
+    assert_eq!(tools.len(), 75, "Expected all 75 registered ToolMetadata");
 
     for meta in tools {
         assert!(
@@ -58,10 +58,10 @@ fn test_command_palette_indexes_all_85_starter_presets_and_16_workspace_actions(
         .count();
 
     assert_eq!(tab_count, 26, "Expected 26 ExplorerTab entries");
-    assert_eq!(tool_count, 74, "Expected 74 ToolMetadata entries");
+    assert_eq!(tool_count, 75, "Expected 75 ToolMetadata entries");
     assert_eq!(
-        preset_count, 105,
-        "Expected 105 StarterPresetMetadata cards"
+        preset_count, 108,
+        "Expected 108 StarterPresetMetadata cards"
     );
     assert_eq!(
         action_count,
@@ -76,7 +76,7 @@ fn verify_every_preset_title_matches(tabs: &[Box<dyn crate::tabs::ExplorerTab>])
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 105);
+    assert_eq!(presets.len(), 108);
 
     for preset in presets {
         let palette = CommandPalette {
@@ -136,6 +136,8 @@ fn test_synonym_and_bounded_gap_queries_match_expected_models() {
         ("braess", "Braess"),
         ("schwarzschild", "Geodesic Playground"),
         ("weierstrass", "Weierstrass"),
+        ("symplectic", "Hamiltonian"),
+        ("henon", "Hamiltonian Chaos Lab"),
         ("explore catalog", "Explore Catalog"),
         ("2x2 quad", "2x2 Quad Grid"),
         ("high contrast", "High Contrast"),
