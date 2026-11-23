@@ -2,6 +2,7 @@
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
+pub mod bankroll_ensemble;
 pub mod bankroll_growth;
 pub mod bet_size;
 pub mod parrondo;
