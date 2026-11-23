@@ -1,4 +1,4 @@
-# ADR-0039: Promote Zero-Allocation Curve and Critical-Point Solvers to `math_commons`
+# ADR-0040: Promote Zero-Allocation Curve and Critical-Point Solvers to `math_commons`
 
 ## Status
 
