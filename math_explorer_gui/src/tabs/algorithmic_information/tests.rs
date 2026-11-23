@@ -105,7 +105,12 @@ fn test_custom_fraction_validation_and_finite_state_guard_rollback() {
     assert!(framework.rollback_step_back());
     assert!(!framework.is_diverged());
     assert_eq!(
-        framework.active_tool.as_ref().unwrap().save_state().unwrap(),
+        framework
+            .active_tool
+            .as_ref()
+            .unwrap()
+            .save_state()
+            .unwrap(),
         baseline
     );
 }

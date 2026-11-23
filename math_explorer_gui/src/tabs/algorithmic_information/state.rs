@@ -6,9 +6,9 @@ use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 use eframe::egui;
 use math_explorer::math_types::Integer;
 use math_explorer::pure_math::algorithmic_information::fractran::{
-    FIRST_64_PRIMES, FractranProgram, FractranState,
+    FractranProgram, FractranState, FIRST_64_PRIMES,
 };
-use math_explorer::pure_math::algorithmic_information::geometry::{Point2D, distance};
+use math_explorer::pure_math::algorithmic_information::geometry::{distance, Point2D};
 use math_explorer::pure_math::algorithmic_information::kolmogorov::{
     bdm_complexity, exponents_to_bits, integer_to_bits, k_floor_r, lz76_complexity,
     prefix_kolmogorov_approx, shannon_entropy_bits,
@@ -132,7 +132,9 @@ impl FractranToolConfig {
             return Err(format!("warmup_steps must be <= {MAX_WARMUP_STEPS}"));
         }
         if self.initial_value == 0 || self.initial_value > MAX_INITIAL_VALUE {
-            return Err(format!("initial_value must be within 1..={MAX_INITIAL_VALUE}"));
+            return Err(format!(
+                "initial_value must be within 1..={MAX_INITIAL_VALUE}"
+            ));
         }
         if self.custom_fractions.len() > MAX_CUSTOM_FRACTIONS_LEN {
             return Err("custom_fractions exceeds maximum length budget".to_string());

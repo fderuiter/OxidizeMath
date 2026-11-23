@@ -2,9 +2,7 @@
 
 //! Side-panel controls for [`super::state::FractranMachineTool`].
 
-use super::state::{
-    FractranMachineTool, FractranPreset, MAX_INITIAL_VALUE, MAX_STEPS_PER_FRAME,
-};
+use super::state::{FractranMachineTool, FractranPreset, MAX_INITIAL_VALUE, MAX_STEPS_PER_FRAME};
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;

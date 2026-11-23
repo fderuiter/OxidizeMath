@@ -49,7 +49,9 @@ impl FractranMachineTool {
 
     fn render_rule_strip(&self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.label(egui::RichText::new(format!("State N = {}", self.format_factored_state())).strong());
+        ui.label(
+            egui::RichText::new(format!("State N = {}", self.format_factored_state())).strong(),
+        );
         ui.horizontal_wrapped(|ui| {
             ui.label("Rules:");
             for (idx, rule) in self.program.rules().iter().enumerate() {
@@ -101,7 +103,11 @@ impl FractranMachineTool {
             .map(|idx| {
                 let prime = FIRST_64_PRIMES[idx];
                 let exp = f64::from(self.live.exponents[idx]);
-                let fill = if idx < 4 { palette.info } else { palette.accent };
+                let fill = if idx < 4 {
+                    palette.info
+                } else {
+                    palette.accent
+                };
                 Bar::new(idx as f64, exp)
                     .name(format!("p={prime} (r={})", self.live.exponents[idx]))
                     .width(0.68)

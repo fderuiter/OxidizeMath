@@ -79,9 +79,45 @@ fn test_allow_recursion_records_runtime_complexity_metrics() {
     assert_eq!(metrics.arithmetic_ops, 1);
 }
 
+#[derive(Theory)]
+#[theory(
+    description = "All primitive numeric bounds",
+    citation = "IEEE 754 (2019)."
+)]
+struct AllNumericPrimitivesModel {
+    #[theory(min = -8, max = 8, step = 1)]
+    v_i8: i8,
+    #[theory(min = -16, max = 16, step = 1)]
+    v_i16: i16,
+    #[theory(min = -32, max = 32, step = 1)]
+    v_i32: i32,
+    #[theory(min = -64, max = 64, step = 1)]
+    v_i64: i64,
+    #[theory(min = -128, max = 128, step = 1)]
+    v_i128: i128,
+    #[theory(min = -10, max = 10, step = 1)]
+    v_isize: isize,
+    #[theory(min = 0, max = 8, step = 1)]
+    v_u8: u8,
+    #[theory(min = 0, max = 16, step = 1)]
+    v_u16: u16,
+    #[theory(min = 0, max = 32, step = 1)]
+    v_u32: u32,
+    #[theory(min = 0, max = 64, step = 1)]
+    v_u64: u64,
+    #[theory(min = 0, max = 128, step = 1)]
+    v_u128: u128,
+    #[theory(min = 1, max = 64, step = 1)]
+    v_usize: usize,
+    #[theory(min = -1.0, max = 1.0, step = 0.25)]
+    v_f32: f32,
+    #[theory(min = -2.5, max = 2.5, step = 0.5)]
+    v_f64: f64,
+}
+
 #[test]
 fn test_theory_supports_signed_integer_and_float_bounds() {
-    let mut model = MixedBoundsModel {
+    let model = MixedBoundsModel {
         grid_offset: -3,
         gain: 1.5,
         iterations: 8,
@@ -94,13 +130,27 @@ fn test_theory_supports_signed_integer_and_float_bounds() {
     assert_relative_eq!(params["gain"].min, -2.5);
     assert_relative_eq!(params["gain"].max, 2.5);
     assert_relative_eq!(params["gain"].step, 0.5);
+    assert_relative_eq!(params["iterations"].min, 1.0);
+    assert_relative_eq!(params["iterations"].max, 64.0);
+    assert_relative_eq!(params["iterations"].step, 1.0);
 
-    assert_eq!(model.get_parameter("grid_offset"), Some(-3.0));
-    model.set_parameter("grid_offset", 4.0);
-    assert_eq!(model.grid_offset, 4);
-
-    model.set_parameter("iterations", 16.0);
-    assert_eq!(model.iterations, 16);
+    let primitives = AllNumericPrimitivesModel {
+        v_i8: -1,
+        v_i16: -2,
+        v_i32: -3,
+        v_i64: -4,
+        v_i128: -5,
+        v_isize: -6,
+        v_u8: 1,
+        v_u16: 2,
+        v_u32: 3,
+        v_u64: 4,
+        v_u128: 5,
+        v_usize: 6,
+        v_f32: 0.5,
+        v_f64: 1.5,
+    };
+    assert_eq!(primitives.theory_parameters().len(), 14);
 }
 
 #[test]

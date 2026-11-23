@@ -373,10 +373,10 @@ fn test_mri_reset_live_region_theory_and_preset_io() {
     assert!(tab.framework.show_theory_portal);
     let mut frame = eframe::Frame::_new_kittest();
     let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
-    assert!(scientific_metadata::citation_registry::CitationRegistry::get(
-        "MRI Bloch Relaxation"
-    )
-    .is_some_and(|c| c.contains("Bloch, F. (1946)")));
+    assert!(
+        scientific_metadata::citation_registry::CitationRegistry::get("MRI Bloch Relaxation")
+            .is_some_and(|c| c.contains("Bloch, F. (1946)"))
+    );
 }
 
 #[test]
