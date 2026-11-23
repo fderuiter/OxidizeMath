@@ -52,6 +52,36 @@ impl TokenizationTool {
             })
             .collect();
     }
+
+    fn build_export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        use crate::framework::export_table::{ExportCell, ExportTable};
+        if self.tokens.is_empty() {
+            return Vec::new();
+        }
+        let mut headers = Vec::with_capacity(2 + self.d_model);
+        headers.push("token_index".into());
+        headers.push("token".into());
+        for d in 0..self.d_model {
+            headers.push(format!("dim_{d}"));
+        }
+        let rows = self
+            .tokens
+            .iter()
+            .enumerate()
+            .map(|(idx, tok)| {
+                let mut row = Vec::with_capacity(2 + self.d_model);
+                row.push(ExportCell::UInt(idx as u64));
+                row.push(ExportCell::Text(tok.text.clone()));
+                for d in 0..self.d_model {
+                    row.push(ExportCell::Float(
+                        tok.embedding.get(d).copied().unwrap_or(0.0),
+                    ));
+                }
+                row
+            })
+            .collect();
+        vec![ExportTable::new("Token Embeddings", headers, rows)]
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -70,7 +100,16 @@ impl InteractiveTool for TokenizationTool {
         "Tokenization & Embeddings"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        if self.tokens.is_empty() {
+            crate::framework::ExportCapabilities::unpopulated(
+                "Enter non-empty input text to tokenize before exporting embeddings.",
+            )
+        } else {
+            crate::framework::ExportCapabilities::dataset_only()
+        }
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
     fn domain(&self) -> &'static str {
         "ai"

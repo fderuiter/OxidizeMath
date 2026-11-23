@@ -175,6 +175,11 @@ fn sample_and_encode_plot_gif(
 ) -> Result<Vec<u8>, String> {
     let initial_prims = resolve_tool_primitives_with_fallback(tool, fallback_datasets, None);
     if has_non_polyline_primitives(&initial_prims) {
+        if let Some(gif) =
+            try_encode_stepped_primitive_gif(tool, &initial_prims, options, count, fps)
+        {
+            return gif;
+        }
         return encode_progressive_primitive_gif(&initial_prims, options, count, fps);
     }
     let sampled = tool.sample_animation_frames(count);
@@ -188,6 +193,43 @@ fn sample_and_encode_plot_gif(
         "{} produced no finite plot data or raster image for GIF export",
         tool.name()
     ))
+}
+
+fn try_encode_stepped_primitive_gif(
+    tool: &mut dyn InteractiveTool,
+    initial_prims: &[ExportPrimitive],
+    options: &ExportOptions,
+    count: usize,
+    fps: u32,
+) -> Option<Result<Vec<u8>, String>> {
+    if count <= 1 || !tool.export_datasets().is_empty() {
+        return None;
+    }
+    tool.step_simulation();
+    let second = tool.export_plot_primitives();
+    if !has_drawable_primitives(&second) || format!("{initial_prims:?}") == format!("{second:?}") {
+        return None;
+    }
+    let mut all_frames = Vec::with_capacity(count);
+    all_frames.push(initial_prims.to_vec());
+    all_frames.push(second);
+    for _ in 2..count {
+        tool.step_simulation();
+        let next = tool.export_plot_primitives();
+        if has_drawable_primitives(&next) {
+            all_frames.push(next);
+        }
+    }
+    let flat: Vec<ExportPrimitive> = all_frames.iter().flatten().cloned().collect();
+    let bounds = compute_primitive_bounds_for_options(&flat, options);
+    let mut images = Vec::with_capacity(all_frames.len());
+    for frame in &all_frames {
+        match render_primitives_image_with_bounds(frame, options, bounds) {
+            Ok(img) => images.push(img),
+            Err(err) => return Some(Err(err)),
+        }
+    }
+    Some(color32_images_to_gif(&images, fps))
 }
 
 fn has_non_polyline_primitives(primitives: &[ExportPrimitive]) -> bool {

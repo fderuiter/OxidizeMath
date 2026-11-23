@@ -294,43 +294,6 @@ impl SimulationFramework {
         }
     }
 
-    fn serialize_active_dataset_export(
-        &self,
-        tool_name: &str,
-        format: ExportFormat,
-    ) -> Result<String, String> {
-        let datasets_3d: Vec<(String, Vec<[f64; 3]>)> = self
-            .export_datasets_3d_with_fallback()
-            .into_iter()
-            .filter(|(_, pts)| {
-                pts.iter()
-                    .any(|p| p[0].is_finite() && p[1].is_finite() && p[2].is_finite())
-            })
-            .collect();
-        if !datasets_3d.is_empty() {
-            return match format {
-                ExportFormat::Csv => Ok(egui_plot::export::format_csv_3d(&datasets_3d)),
-                ExportFormat::Json => Ok(egui_plot::export::format_json_3d(&datasets_3d)),
-                _ => Err("Unsupported dataset format".to_string()),
-            };
-        }
-        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
-            .export_datasets_with_fallback()
-            .into_iter()
-            .filter(|(_, pts)| pts.iter().any(|p| p[0].is_finite() && p[1].is_finite()))
-            .collect();
-        if !egui_plot::export_primitives::has_finite_dataset_points(&datasets) {
-            return Err(format!(
-                "No dataset points available to export from {tool_name}."
-            ));
-        }
-        match format {
-            ExportFormat::Csv => Ok(egui_plot::export::format_csv(&datasets)),
-            ExportFormat::Json => Ok(egui_plot::export::format_json(&datasets)),
-            _ => Err("Unsupported dataset format".to_string()),
-        }
-    }
-
     fn dispatch_dataset_export(
         &mut self,
         format: ExportFormat,

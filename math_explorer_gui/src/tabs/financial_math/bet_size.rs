@@ -35,6 +35,63 @@ impl Default for BetSizeCalculatorTool {
     }
 }
 
+impl BetSizeCalculatorTool {
+    fn compute_kelly_export_table(&self) -> Option<crate::framework::ExportTable> {
+        use crate::framework::export_table::{ExportCell, ExportTable};
+        if !self.bankroll.is_finite() || self.bankroll <= 0.0 {
+            return None;
+        }
+        let prob = UnitInterval::new(self.probability_input / 100.0).ok()?;
+        let odds = match self.odds_format {
+            OddsFormat::Decimal => Odds::new(self.decimal_odds).ok()?,
+            OddsFormat::American => Odds::from_american(self.american_odds).ok()?,
+            OddsFormat::Fractional => {
+                Odds::from_fractional(self.fractional_numerator, self.fractional_denominator).ok()?
+            }
+        };
+        let ev = expected_value(&prob, &odds);
+        let full_frac = kelly_fraction(&prob, &odds)
+            .map(|k| k.value())
+            .unwrap_or(0.0)
+            .max(0.0);
+        let dec_odds = odds.value();
+        let win_p = prob.value();
+        let tiers = [
+            ("Full Kelly", 1.0_f64),
+            ("Half Kelly", 0.5_f64),
+            ("Quarter Kelly", 0.25_f64),
+        ];
+        let rows = tiers
+            .into_iter()
+            .map(|(label, mult)| {
+                let frac = full_frac * mult;
+                vec![
+                    ExportCell::Text(label.into()),
+                    ExportCell::Float(mult),
+                    ExportCell::Float(frac),
+                    ExportCell::Float(frac * self.bankroll),
+                    ExportCell::Float(ev),
+                    ExportCell::Float(dec_odds),
+                    ExportCell::Float(win_p),
+                ]
+            })
+            .collect();
+        Some(ExportTable::new(
+            "Kelly Strategies",
+            vec![
+                "strategy".into(),
+                "kelly_multiplier".into(),
+                "bankroll_fraction".into(),
+                "bet_amount".into(),
+                "expected_value_per_unit".into(),
+                "decimal_odds".into(),
+                "win_probability".into(),
+            ],
+            rows,
+        ))
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BetSizeState {
@@ -58,7 +115,16 @@ impl InteractiveTool for BetSizeCalculatorTool {
         "financial_math"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        if self.compute_kelly_export_table().is_some() {
+            crate::framework::ExportCapabilities::dataset_only()
+        } else {
+            crate::framework::ExportCapabilities::unpopulated(
+                "Enter valid win probability, odds, and positive bankroll before exporting.",
+            )
+        }
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.compute_kelly_export_table().into_iter().collect()
     }
 
     fn save_state(&self) -> Option<String> {

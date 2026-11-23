@@ -226,12 +226,12 @@ impl FrankWolfeScratch {
             }
             self.visited[u] = true;
 
-            for e in 0..self.edge_u.len() {
+            for (e, &flow_e) in flows.iter().enumerate().take(self.edge_u.len()) {
                 if !self.edge_active[e] || skip_edge == Some(e) || self.edge_u[e] != u {
                     continue;
                 }
                 let v = self.edge_v[e];
-                let w = self.clamped_a[e] * flows[e] + self.clamped_b[e];
+                let w = self.clamped_a[e] * flow_e + self.clamped_b[e];
                 let cand = best_d + w;
                 if cand < self.dist[v] {
                     self.dist[v] = cand;
@@ -325,12 +325,12 @@ pub fn solve_wardrop_in_place(
 
 fn compute_fw_gap(scratch: &FrankWolfeScratch, flows: &[f64], skip_edge: Option<usize>) -> f64 {
     let mut gap = 0.0;
-    for e in 0..flows.len() {
+    for (e, &flow_e) in flows.iter().enumerate() {
         if !scratch.edge_active[e] || skip_edge == Some(e) {
             continue;
         }
-        let lat = scratch.clamped_a[e] * flows[e] + scratch.clamped_b[e];
-        gap += (flows[e] - scratch.aux_flow[e]) * lat;
+        let lat = scratch.clamped_a[e] * flow_e + scratch.clamped_b[e];
+        gap += (flow_e - scratch.aux_flow[e]) * lat;
     }
     gap.max(0.0)
 }
@@ -342,11 +342,11 @@ fn exact_line_search_step(
     skip_edge: Option<usize>,
 ) -> f64 {
     let mut curvature = 0.0;
-    for e in 0..flows.len() {
+    for (e, &flow_e) in flows.iter().enumerate() {
         if !scratch.edge_active[e] || skip_edge == Some(e) {
             continue;
         }
-        let diff = scratch.aux_flow[e] - flows[e];
+        let diff = scratch.aux_flow[e] - flow_e;
         curvature += scratch.clamped_a[e] * diff * diff;
     }
     if curvature > 1e-15 {

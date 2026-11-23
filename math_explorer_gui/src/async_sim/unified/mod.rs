@@ -150,6 +150,17 @@ pub trait UnifiedModel:
         false
     }
 
+    /// Optional hook to build typed [`crate::framework::ExportTable`]s from a [`StateSnapshot`] for raster models.
+    fn export_tables_from_snapshot(
+        _snapshot: &StateSnapshot,
+        _params: &HashMap<String, f64>,
+    ) -> Vec<crate::framework::ExportTable>
+    where
+        Self: Sized,
+    {
+        Vec::new()
+    }
+
     /// Allow the model to draw custom visualization in the central panel.
     /// Return true if custom rendering was performed.
     fn custom_central_panel(_ui: &mut eframe::egui::Ui, _snapshot: Option<&StateSnapshot>) -> bool

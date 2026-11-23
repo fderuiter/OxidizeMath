@@ -22,6 +22,61 @@ impl Default for UalbfWidget {
     }
 }
 
+impl UalbfWidget {
+    /// Executes the UALBF quasiperfect search pipeline using the current parameters.
+    pub fn run_pipeline(&mut self) {
+        let threshold_str = format!("{:.0}", 10f64.powf(self.stop_threshold_log));
+        let target_max = "1000000000000";
+        match ualbf_search(self.limit_p, self.max_exponent, &threshold_str, target_max) {
+            Ok(result) => {
+                self.status_message = format!(
+                    "Done. Valid: {}, Pruned: {}, Prefixes: {}, Rejected: {}, Candidates: {}",
+                    result.valid_components,
+                    result.pruned_components,
+                    result.prefix_count,
+                    result.rejected_by_lattice,
+                    result.candidates_checked,
+                );
+                self.result = Some(result);
+            }
+            Err(e) => {
+                self.status_message = format!("Error: {e}");
+                self.result = None;
+            }
+        }
+    }
+
+    fn build_export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        use crate::framework::export_table::{ExportCell, ExportTable};
+        let Some(ref res) = self.result else {
+            return Vec::new();
+        };
+        vec![ExportTable::new(
+            "UALBF Search Summary",
+            vec![
+                "limit_p".into(),
+                "max_exponent".into(),
+                "stop_threshold_log10".into(),
+                "valid_components".into(),
+                "pruned_components".into(),
+                "prefix_count".into(),
+                "rejected_by_lattice".into(),
+                "candidates_checked".into(),
+            ],
+            vec![vec![
+                ExportCell::UInt(self.limit_p),
+                ExportCell::UInt(u64::from(self.max_exponent)),
+                ExportCell::Float(self.stop_threshold_log),
+                ExportCell::UInt(res.valid_components as u64),
+                ExportCell::UInt(res.pruned_components as u64),
+                ExportCell::UInt(res.prefix_count as u64),
+                ExportCell::UInt(res.rejected_by_lattice as u64),
+                ExportCell::UInt(res.candidates_checked as u64),
+            ]],
+        )]
+    }
+}
+
 use crate::framework::InteractiveTool;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -40,7 +95,21 @@ impl InteractiveTool for UalbfWidget {
         "UALBF"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        if self.result.is_some() {
+            crate::framework::ExportCapabilities::dataset_only()
+        } else {
+            crate::framework::ExportCapabilities::unpopulated(
+                "Click 'Run UALBF Pipeline' to execute the quasiperfect search before exporting.",
+            )
+        }
+    }
+    fn step_simulation(&mut self) {
+        if self.result.is_none() {
+            self.run_pipeline();
+        }
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
     fn domain(&self) -> &'static str {
         "number_theory"
@@ -107,25 +176,7 @@ impl InteractiveTool for UalbfWidget {
                     .accessible_hover_text("Execute the Unified Algebraic-Lattice Bipartition Framework search pipeline")
                     .clicked()
                 {
-                    let threshold_str = format!("{:.0}", 10f64.powf(self.stop_threshold_log));
-                    let target_max = "1000000000000";
-                    match ualbf_search(self.limit_p, self.max_exponent, &threshold_str, target_max) {
-                        Ok(result) => {
-                            self.status_message = format!(
-                                "Done. Valid: {}, Pruned: {}, Prefixes: {}, Rejected: {}, Candidates: {}",
-                                result.valid_components,
-                                result.pruned_components,
-                                result.prefix_count,
-                                result.rejected_by_lattice,
-                                result.candidates_checked,
-                            );
-                            self.result = Some(result);
-                        }
-                        Err(e) => {
-                            self.status_message = format!("Error: {}", e);
-                            self.result = None;
-                        }
-                    }
+                    self.run_pipeline();
                 }
             });
 

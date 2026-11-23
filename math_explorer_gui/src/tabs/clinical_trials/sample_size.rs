@@ -56,6 +56,38 @@ impl SampleSizeCalculatorTool {
             }
         };
     }
+
+    fn build_export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        use crate::framework::export_table::{ExportCell, ExportTable};
+        let Ok(per_arm) = self.result else {
+            return Vec::new();
+        };
+        let (mode_name, param_1, param_2) = match self.mode {
+            CalculationMode::Means => ("Means", self.delta, self.sigma),
+            CalculationMode::Proportions => ("Proportions", self.p1, self.p2),
+        };
+        vec![ExportTable::new(
+            "Sample Size",
+            vec![
+                "mode".into(),
+                "alpha".into(),
+                "power".into(),
+                "param_1".into(),
+                "param_2".into(),
+                "sample_size_per_arm".into(),
+                "total_sample_size".into(),
+            ],
+            vec![vec![
+                ExportCell::Text(mode_name.into()),
+                ExportCell::Float(self.alpha),
+                ExportCell::Float(self.power),
+                ExportCell::Float(param_1),
+                ExportCell::Float(param_2),
+                ExportCell::UInt(per_arm as u64),
+                ExportCell::UInt((per_arm * 2) as u64),
+            ]],
+        )]
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -81,7 +113,16 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         "clinical_trials"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        if self.result.is_ok() {
+            crate::framework::ExportCapabilities::dataset_only()
+        } else {
+            crate::framework::ExportCapabilities::unpopulated(
+                "Configure valid statistical parameters (non-zero effect size) before exporting.",
+            )
+        }
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
 
     fn save_state(&self) -> Option<String> {

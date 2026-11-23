@@ -270,7 +270,11 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only()
+        ExportCapabilities::plot()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        super::export::build_morphogenesis_tables(self)
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {

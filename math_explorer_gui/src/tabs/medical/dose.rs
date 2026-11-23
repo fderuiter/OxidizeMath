@@ -50,7 +50,50 @@ impl InteractiveTool for DoseCalculationTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only()
+        ExportCapabilities::plot()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        use crate::framework::{compute_matrix_stride, ExportCell, ExportTable};
+
+        let width = self.width.max(1);
+        let height = self.height.max(1);
+        let (r_stride, c_stride) = compute_matrix_stride(height, width);
+        let kernel = ExponentialKernel::new(self.amplitude, self.beta);
+        let max_dose = kernel.value_at(0.1).unwrap_or(10.0);
+        let dx = 20.0 / width as f64;
+        let dy = 20.0 / height as f64;
+        let mut rows = Vec::new();
+        for y in (0..height).step_by(r_stride) {
+            let py = (y as f64 - height as f64 / 2.0) * dy;
+            for x in (0..width).step_by(c_stride) {
+                let px = (x as f64 - width as f64 / 2.0) * dx;
+                let r = px.hypot(py);
+                let dose = if r < 1e-3 {
+                    max_dose
+                } else {
+                    kernel.value_at(r).unwrap_or(0.0)
+                };
+                rows.push(vec![
+                    ExportCell::UInt(y as u64),
+                    ExportCell::UInt(x as u64),
+                    ExportCell::Float(px),
+                    ExportCell::Float(py),
+                    ExportCell::Float(dose),
+                ]);
+            }
+        }
+        vec![ExportTable::new(
+            "Dose Field",
+            vec![
+                "row".into(),
+                "col".into(),
+                "x_cm".into(),
+                "y_cm".into(),
+                "dose".into(),
+            ],
+            rows,
+        )]
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {

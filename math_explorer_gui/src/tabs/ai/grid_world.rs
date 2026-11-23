@@ -10,6 +10,9 @@ use math_explorer::ai::reinforcement_learning::{
     MarkovDecisionProcess,
 };
 
+#[path = "grid_world_export.rs"]
+mod export;
+
 pub struct GridWorldTool {
     env: GridWorldEnv,
     agent: TabularQAgent<GridState, Move>,
@@ -263,7 +266,16 @@ impl InteractiveTool for GridWorldTool {
         "Grid World (RL)"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn step_simulation(&mut self) {
+        self.step_agent();
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::export_primitives::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
     fn domain(&self) -> &'static str {
         "ai"

@@ -1,5 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "gaussian_splatting_export.rs"]
+mod export;
 #[path = "gaussian_splatting_scene.rs"]
 mod scene;
 #[path = "gaussian_splatting_ui.rs"]
@@ -242,7 +244,19 @@ impl InteractiveTool for GaussianSplattingTool {
         "Gaussian Splatting"
     }
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::none()
+        ExportCapabilities::plot()
+    }
+    fn step_simulation(&mut self) {
+        self.step_export_simulation();
+    }
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        Some(self.build_export_raster_image())
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::export_primitives::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
     fn domain(&self) -> &'static str {
         "ai"

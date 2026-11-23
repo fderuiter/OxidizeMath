@@ -90,6 +90,32 @@ impl ExportCapabilities {
         }
     }
 
+    /// Capability profile for tabular calculators and text inspectors without offscreen plots or figures.
+    #[must_use]
+    pub const fn dataset_only() -> Self {
+        Self {
+            dataset: true,
+            figure: false,
+            shader: false,
+            dataset_disabled_reason: "",
+            figure_disabled_reason: "Figure export is unavailable: this tool produces tabular results rather than an offscreen plot or visual scene.",
+            shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+        }
+    }
+
+    /// Capability profile for tools awaiting user input or execution before producing exportable data or figures.
+    #[must_use]
+    pub const fn unpopulated(reason: &'static str) -> Self {
+        Self {
+            dataset: false,
+            figure: false,
+            shader: false,
+            dataset_disabled_reason: reason,
+            figure_disabled_reason: reason,
+            shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+        }
+    }
+
     /// Enables standalone WebGL2 and Shadertoy `.frag` shader exports on this capability profile.
     #[must_use]
     pub const fn with_shader(mut self) -> Self {

@@ -49,6 +49,85 @@ pub fn ising_spin_color(spin: i8, palette: &crate::app::SemanticPalette) -> egui
     }
 }
 
+/// Builds bounded spin-lattice and physical observable [`crate::framework::ExportTable`]s for Ising exports.
+#[must_use]
+pub fn build_ising_export_tables(
+    snapshot: Option<&StateSnapshot>,
+    default_size: usize,
+    temperature: f64,
+    j_coupling: f64,
+    h_field: f64,
+) -> Vec<crate::framework::ExportTable> {
+    use crate::framework::{compute_matrix_stride, ExportCell, ExportTable};
+
+    let (width, height, spins, m_avg, energy) = if let Some(snap) = snapshot {
+        let spins_opt = snap
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<Vec<i8>>())
+            .cloned();
+        if let Some(sp) = spins_opt.filter(|v| v.len() == snap.width * snap.height && !v.is_empty())
+        {
+            let m = snap.custom_data.first().copied().unwrap_or(0.0);
+            let e = snap.custom_data.get(1).copied().unwrap_or(0.0);
+            (snap.width, snap.height, sp, m, e)
+        } else {
+            fallback_ising_state(default_size, j_coupling, h_field)
+        }
+    } else {
+        fallback_ising_state(default_size, j_coupling, h_field)
+    };
+
+    let (r_stride, c_stride) = compute_matrix_stride(height, width);
+    let mut lattice_rows = Vec::new();
+    for r in (0..height).step_by(r_stride) {
+        for c in (0..width).step_by(c_stride) {
+            let idx = math_commons::math_kernel::types::flatten_2d_index(c, r, width);
+            let spin = i64::from(spins[idx]);
+            lattice_rows.push(vec![
+                ExportCell::UInt(r as u64),
+                ExportCell::UInt(c as u64),
+                ExportCell::Int(spin),
+            ]);
+        }
+    }
+    let lattice_table = ExportTable::new(
+        "Spin Lattice",
+        vec!["row".into(), "col".into(), "spin".into()],
+        lattice_rows,
+    );
+    let obs_table = ExportTable::new(
+        "Observables",
+        vec![
+            "magnetization_per_spin".into(),
+            "hamiltonian_energy".into(),
+            "temperature".into(),
+            "j_coupling".into(),
+            "h_field".into(),
+        ],
+        vec![vec![
+            ExportCell::Float(m_avg),
+            ExportCell::Float(energy),
+            ExportCell::Float(temperature),
+            ExportCell::Float(j_coupling),
+            ExportCell::Float(h_field),
+        ]],
+    );
+    vec![lattice_table, obs_table]
+}
+
+fn fallback_ising_state(
+    size: usize,
+    j_coupling: f64,
+    h_field: f64,
+) -> (usize, usize, Vec<i8>, f64, f64) {
+    let s = size.max(2);
+    let lattice = SpinLattice::new(s, s, None);
+    let m_avg = (lattice.magnetization() as f64) / ((s * s) as f64);
+    let energy = lattice.hamiltonian(j_coupling, h_field);
+    (s, s, lattice.spins().to_vec(), m_avg, energy)
+}
+
 /// Paints a clamped circular droplet onto `lattice` using `SpinLattice::set`.
 pub fn apply_circular_droplet(lattice: &mut SpinLattice, cx: i32, cy: i32, r: i32, spin_val: i8) {
     let width = lattice.width();

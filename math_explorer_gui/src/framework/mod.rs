@@ -12,6 +12,9 @@ mod export_queue_tests;
 mod export_shader;
 #[cfg(test)]
 mod export_shader_tests;
+pub mod export_table;
+#[cfg(test)]
+mod export_table_tests;
 pub mod export_types;
 mod export_ui;
 #[cfg(test)]
@@ -47,6 +50,10 @@ pub use clamp::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
+pub use export_table::{
+    compute_matrix_stride, format_tables_csv, format_tables_json, ExportCell, ExportTable,
+    MAX_EXPORT_MATRIX_ENTRIES,
+};
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use math_input::*;
@@ -265,6 +272,13 @@ pub trait InteractiveTool {
     /// Optional hook to export 3D world-coordinate `(X, Y, Z)` datasets.
     fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
         egui_plot::get_last_plot_datasets_3d()
+    }
+
+    /// Optional hook to export named multi-column [`ExportTable`] payloads for CSV, clipboard, and JSON targets.
+    ///
+    /// Defaults to converting [`Self::export_datasets_3d`] or [`Self::export_datasets`] into a legacy table.
+    fn export_tables(&self) -> Vec<ExportTable> {
+        ExportTable::from_legacy_datasets(&self.export_datasets_3d(), &self.export_datasets())
     }
 
     /// Optional hook to extract offscreen drawable plot primitives (`Bar`, `Arrow`, `BoxElem`, `Polyline`, `Points`).

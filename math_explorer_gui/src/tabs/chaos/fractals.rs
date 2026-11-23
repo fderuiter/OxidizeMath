@@ -17,6 +17,9 @@ pub use formula::{default_fractal_input_bar, CompiledFractalJob, DEFAULT_FRACTAL
 mod runner;
 pub use runner::*;
 
+#[path = "fractals/export.rs"]
+mod export;
+
 #[path = "fractals/shader.rs"]
 mod shader;
 
@@ -145,7 +148,11 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_only().with_shader()
+        crate::framework::ExportCapabilities::plot().with_shader()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_fractal_export_tables()
     }
 
     fn export_glsl_shader(&self, dialect: crate::framework::ShaderDialect) -> Result<String, String> {

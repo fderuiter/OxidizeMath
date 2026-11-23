@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 
 pub mod braess;
 mod braess_host;
+mod export;
 mod keyboard;
 mod snapshot;
 pub use braess::{AffineLatency, BraessCongestionConfig, BraessCongestionLab};
@@ -61,11 +62,13 @@ impl InteractiveTool for GraphEditorTool {
         "graph_theory"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        if self.braess.config.enabled {
-            crate::framework::ExportCapabilities::plot()
-        } else {
-            crate::framework::ExportCapabilities::none()
-        }
+        self.current_export_capabilities()
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::export_primitives::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
 
     fn state_revision(&self) -> u64 {

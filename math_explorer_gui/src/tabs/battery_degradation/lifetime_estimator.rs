@@ -19,6 +19,41 @@ impl Default for LifetimeEstimatorTool {
     }
 }
 
+impl LifetimeEstimatorTool {
+    fn compute_lifetime_table(&self) -> Option<crate::framework::ExportTable> {
+        use crate::framework::export_table::{ExportCell, ExportTable};
+        if !self.cycles_per_day.is_finite() || self.cycles_per_day <= 0.0 {
+            return None;
+        }
+        let dod = DepthOfDischarge::new(self.dod).ok()?;
+        let cap = Capacity::new(self.target_capacity / 100.0).ok()?;
+        let total_cycles = PowerLawModel::standard()
+            .cycles_to_capacity(cap, dod)
+            .as_f64();
+        let days = total_cycles / self.cycles_per_day;
+        let years = days / 365.25;
+        Some(ExportTable::new(
+            "Battery Lifetime Estimate",
+            vec![
+                "dod_pct".into(),
+                "target_capacity_pct".into(),
+                "cycles_per_day".into(),
+                "estimated_total_cycles".into(),
+                "estimated_days".into(),
+                "estimated_years".into(),
+            ],
+            vec![vec![
+                ExportCell::Float(self.dod),
+                ExportCell::Float(self.target_capacity),
+                ExportCell::Float(self.cycles_per_day),
+                ExportCell::Float(total_cycles),
+                ExportCell::Float(days),
+                ExportCell::Float(years),
+            ]],
+        ))
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LifetimeEstimatorState {
@@ -38,7 +73,16 @@ impl InteractiveTool for LifetimeEstimatorTool {
         "battery_degradation"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        if self.compute_lifetime_table().is_some() {
+            crate::framework::ExportCapabilities::dataset_only()
+        } else {
+            crate::framework::ExportCapabilities::unpopulated(
+                "Configure valid depth-of-discharge, target capacity, and cycles per day before exporting.",
+            )
+        }
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.compute_lifetime_table().into_iter().collect()
     }
 
     fn save_state(&self) -> Option<String> {

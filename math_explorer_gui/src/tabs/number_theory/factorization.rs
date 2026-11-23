@@ -29,6 +29,36 @@ pub struct FactorizationTool {
     results: Option<FactorizationResult>,
 }
 
+impl FactorizationTool {
+    fn build_export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        use crate::framework::export_table::{ExportCell, ExportTable};
+        let Some(Ok((num, prime_check, ref factors))) = self.results else {
+            return Vec::new();
+        };
+        let rows = factors
+            .iter()
+            .map(|&(p, exp)| {
+                vec![
+                    ExportCell::UInt(num),
+                    ExportCell::Bool(prime_check),
+                    ExportCell::UInt(p),
+                    ExportCell::UInt(u64::from(exp)),
+                ]
+            })
+            .collect();
+        vec![ExportTable::new(
+            "Prime Factorization",
+            vec![
+                "number".into(),
+                "is_prime".into(),
+                "prime_factor".into(),
+                "exponent".into(),
+            ],
+            rows,
+        )]
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FactorizationState {
@@ -43,7 +73,30 @@ impl InteractiveTool for FactorizationTool {
         "Factorization Tool"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        if matches!(&self.results, Some(Ok((_, _, f))) if !f.is_empty()) {
+            crate::framework::ExportCapabilities::dataset_only()
+        } else {
+            crate::framework::ExportCapabilities::unpopulated(
+                "Enter an integer >= 2 and click 'Analyze' before exporting factorization results.",
+            )
+        }
+    }
+    fn step_simulation(&mut self) {
+        if !matches!(self.results, Some(Ok(_))) {
+            let trimmed = self.input_text.trim();
+            let candidate = trimmed
+                .parse::<u64>()
+                .ok()
+                .filter(|&n| (2..=MAX_SYNC_FACTORIZATION_INPUT).contains(&n))
+                .unwrap_or(42);
+            if trimmed.is_empty() {
+                self.input_text = candidate.to_string();
+            }
+            self.results = Some(factorize_bounded(candidate));
+        }
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
     fn domain(&self) -> &'static str {
         "number_theory"

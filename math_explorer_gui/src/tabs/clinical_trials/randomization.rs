@@ -158,17 +158,60 @@ impl RandomizationTool {
         ui.label(format!("Total Treatment: {treatment_count}"));
         ui.label(format!("Total Control: {control_count}"));
 
-        egui::ScrollArea::vertical()
-            .max_height(300.0)
-            .show(ui, |ui| {
-                for (i, group) in self.assignments.iter().enumerate() {
-                    let group_str = match group {
-                        Group::Treatment => "Treatment",
-                        Group::Control => "Control",
-                    };
-                    ui.label(format!("Subject {}: {group_str}", i + 1));
-                }
-            });
+            egui::ScrollArea::vertical()
+                .max_height(300.0)
+                .show(ui, |ui| {
+                    for (i, group) in self.assignments.iter().enumerate() {
+                        let group_str = match group {
+                            Group::Treatment => "Treatment",
+                            Group::Control => "Control",
+                        };
+                        ui.label(format!("Subject {}: {group_str}", i + 1));
+                    }
+                });
+    }
+
+    fn build_export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        use crate::framework::export_table::{ExportCell, ExportTable};
+        if self.randomization_type == RandomizationType::Stratified || self.assignments.is_empty() {
+            return Vec::new();
+        }
+        let method = match self.randomization_type {
+            RandomizationType::Simple => "Simple",
+            RandomizationType::Block => "Block",
+            RandomizationType::Stratified => "Stratified",
+        };
+        let block = match self.randomization_type {
+            RandomizationType::Block => self.block_size as u64,
+            _ => 0,
+        };
+        let rows = self
+            .assignments
+            .iter()
+            .enumerate()
+            .map(|(idx, grp)| {
+                let g_name = match grp {
+                    Group::Treatment => "Treatment",
+                    Group::Control => "Control",
+                };
+                vec![
+                    ExportCell::UInt((idx + 1) as u64),
+                    ExportCell::Text(g_name.into()),
+                    ExportCell::Text(method.into()),
+                    ExportCell::UInt(block),
+                ]
+            })
+            .collect();
+        vec![ExportTable::new(
+            "Subject Allocations",
+            vec![
+                "subject_number".into(),
+                "group".into(),
+                "method".into(),
+                "block_size".into(),
+            ],
+            rows,
+        )]
     }
 }
 
@@ -195,9 +238,21 @@ impl InteractiveTool for RandomizationTool {
     fn export_capabilities(&self) -> ExportCapabilities {
         if self.randomization_type == RandomizationType::Stratified {
             ExportCapabilities::plot()
+        } else if !self.assignments.is_empty() {
+            ExportCapabilities::dataset_only()
         } else {
-            ExportCapabilities::none()
+            ExportCapabilities::unpopulated(
+                "Click 'Allocate Subjects' to generate a trial randomization schedule before exporting.",
+            )
         }
+    }
+    fn step_simulation(&mut self) {
+        if self.randomization_type != RandomizationType::Stratified && self.assignments.is_empty() {
+            self.allocate_subjects();
+        }
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
 
     fn save_state(&self) -> Option<String> {

@@ -205,7 +205,17 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_only()
+        crate::framework::ExportCapabilities::plot()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        runner::build_ising_export_tables(
+            self.worker.latest_snapshot(),
+            DEFAULT_ISING_SIZE,
+            self.temperature,
+            self.j_coupling,
+            self.h_field,
+        )
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {

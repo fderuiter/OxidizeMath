@@ -5,6 +5,9 @@ use egui::Color32;
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 use std::f32::consts::TAU;
 
+#[path = "neural_network_viz_export.rs"]
+mod export;
+
 pub struct NeuralNetworkVizTool {
     neurons: Vec<HodgkinHuxleyNeuron>,
     positions: Vec<[f32; 2]>,
@@ -216,7 +219,18 @@ impl InteractiveTool for NeuralNetworkVizTool {
         "Neural Network Viz"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn step_simulation(&mut self) {
+        for _ in 0..5 {
+            self.step();
+        }
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::export_primitives::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
     fn domain(&self) -> &'static str {
         "neuroscience"

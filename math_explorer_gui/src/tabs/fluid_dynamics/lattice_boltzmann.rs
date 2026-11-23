@@ -12,6 +12,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
+struct LbmFieldSnapshot {
+    density: Vec<f64>,
+    velocity_x: Vec<f64>,
+    velocity_y: Vec<f64>,
+    obstacles: Vec<bool>,
+}
+
+#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct LbmUnified {
     pub(crate) solver: LatticeBoltzmannD2Q9<BgkCollision>,
     pub(crate) diverged: bool,
@@ -147,12 +155,21 @@ impl UnifiedModel for LbmUnified {
             }
         }
 
+        let field = LbmFieldSnapshot {
+            density: self.solver.state.density().to_vec(),
+            velocity_x: self.solver.state.velocity_x().to_vec(),
+            velocity_y: self.solver.state.velocity_y().to_vec(),
+            obstacles: (0..height)
+                .flat_map(|y| (0..width).map(move |x| self.solver.is_obstacle(x, y)))
+                .collect(),
+        };
+
         StateSnapshot {
             width,
             height,
             pixels: Arc::new(std::sync::RwLock::new(pixels)),
             custom_data: Vec::new(),
-            structured_data: None,
+            structured_data: Some(Box::new(field)),
         }
     }
 
@@ -201,6 +218,62 @@ impl UnifiedModel for LbmUnified {
 
     fn is_raster_model() -> bool {
         true
+    }
+
+    fn export_tables_from_snapshot(
+        snapshot: &StateSnapshot,
+        _params: &HashMap<String, f64>,
+    ) -> Vec<crate::framework::ExportTable> {
+        use crate::framework::{compute_matrix_stride, ExportCell, ExportTable};
+
+        let Some(field) = snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<LbmFieldSnapshot>())
+        else {
+            return Vec::new();
+        };
+        let (width, height) = (snapshot.width, snapshot.height);
+        let expected = width * height;
+        if expected == 0
+            || field.density.len() != expected
+            || field.velocity_x.len() != expected
+            || field.velocity_y.len() != expected
+            || field.obstacles.len() != expected
+        {
+            return Vec::new();
+        }
+        let (r_stride, c_stride) = compute_matrix_stride(height, width);
+        let mut rows = Vec::new();
+        for y in (0..height).step_by(r_stride) {
+            for x in (0..width).step_by(c_stride) {
+                let idx = flatten_2d_index(x, y, width);
+                let vx = field.velocity_x[idx];
+                let vy = field.velocity_y[idx];
+                rows.push(vec![
+                    ExportCell::UInt(y as u64),
+                    ExportCell::UInt(x as u64),
+                    ExportCell::Float(field.density[idx]),
+                    ExportCell::Float(vx),
+                    ExportCell::Float(vy),
+                    ExportCell::Float(vx.hypot(vy)),
+                    ExportCell::Bool(field.obstacles[idx]),
+                ]);
+            }
+        }
+        vec![ExportTable::new(
+            "Fluid Lattice",
+            vec![
+                "row".into(),
+                "col".into(),
+                "density".into(),
+                "velocity_x".into(),
+                "velocity_y".into(),
+                "speed".into(),
+                "is_obstacle".into(),
+            ],
+            rows,
+        )]
     }
 
     fn parameters() -> HashMap<String, ParameterConstraint> {

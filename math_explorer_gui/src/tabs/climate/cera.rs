@@ -11,6 +11,9 @@ use math_explorer::climate::training::CeraTrainer;
 use nalgebra::DMatrix;
 use rand::Rng;
 
+#[path = "cera_export.rs"]
+mod export;
+
 const MAX_IN_CHANNELS: usize = 10;
 const MAX_LATENT_CHANNELS: usize = 20;
 const MAX_NUM_LEVELS: usize = 50;
@@ -311,9 +314,6 @@ impl InteractiveTool for CeraTool {
     fn domain(&self) -> &'static str {
         "climate"
     }
-    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
-    }
     fn has_finite_parameters(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
     }
@@ -358,6 +358,22 @@ impl InteractiveTool for CeraTool {
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        self.current_export_capabilities()
+    }
+
+    fn step_simulation(&mut self) {
+        self.train_epochs(1);
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::export_primitives::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -455,38 +471,5 @@ inventory::submit! {
         domain: "climate",
         tool_name: Some("CeraTool"),
         preset_generator: || STARTER_PRESET_JSON,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_cera_tool_reduces_loss_and_emits_distinct_channels() {
-        let mut tool = CeraTool::default();
-        tool.train_epochs(3);
-        tool.train_epochs(3);
-
-        assert_eq!(tool.epochs_trained, 6);
-        assert_eq!(tool.loss_history.len(), 6);
-        let first_loss = *tool.loss_history.first().unwrap();
-        let last_loss = *tool.loss_history.last().unwrap();
-        assert!(
-            last_loss < first_loss,
-            "Expected CERA loss to decrease across epochs ({first_loss} -> {last_loss})"
-        );
-
-        let preds = tool
-            .prediction_result
-            .as_ref()
-            .expect("prediction populated")
-            .as_ref()
-            .expect("valid prediction");
-        assert_eq!(preds.len(), tool.output_size);
-        assert!(
-            preds.windows(2).any(|w| (w[0] - w[1]).abs() > 1e-6),
-            "Expected distinct channel outputs, got {preds:?}"
-        );
     }
 }

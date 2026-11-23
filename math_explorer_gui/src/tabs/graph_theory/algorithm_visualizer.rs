@@ -277,6 +277,8 @@ impl AlgorithmVisualizerTool {
 
 #[path = "algorithm_visualizer/canvas.rs"]
 mod canvas;
+#[path = "algorithm_visualizer_export.rs"]
+mod export;
 
 impl InteractiveTool for AlgorithmVisualizerTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
@@ -288,7 +290,16 @@ impl InteractiveTool for AlgorithmVisualizerTool {
         "graph_theory"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn step_simulation(&mut self) {
+        self.step_export_simulation();
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::export_primitives::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
 
     fn save_state(&self) -> Option<String> {

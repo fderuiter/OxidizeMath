@@ -3,6 +3,9 @@ use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 
+#[path = "network_propagation_export.rs"]
+mod export;
+
 pub struct NetworkPropagationTool {
     model: NetworkEpidemicModel,
     rng: oxidize_core::rng::OxidizeRng,
@@ -179,7 +182,16 @@ impl InteractiveTool for NetworkPropagationTool {
         "epidemiology"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn step_simulation(&mut self) {
+        self.step_once();
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::export_primitives::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
 
     fn save_state(&self) -> Option<String> {

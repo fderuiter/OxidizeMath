@@ -10,6 +10,9 @@ use math_explorer::pure_math::graph_theory::parameters::network_metrics::{
 use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
 
+#[path = "network_metrics_export.rs"]
+mod export;
+
 #[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum MetricType {
     DegreeCentrality,
@@ -131,7 +134,13 @@ impl InteractiveTool for NetworkMetricsTool {
         "graph_theory"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::export_primitives::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_export_tables()
     }
 
     fn save_state(&self) -> Option<String> {

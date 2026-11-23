@@ -121,7 +121,19 @@ impl InteractiveTool for AttentionMapsTool {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_only()
+        crate::framework::ExportCapabilities::plot()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        vec![
+            matrix_to_export_table(
+                "Attention Weights",
+                "query_row",
+                "key",
+                &self.attention_weights,
+            ),
+            matrix_to_export_table("Context Output", "token_row", "dim", &self.output_matrix),
+        ]
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
@@ -234,3 +246,28 @@ mod preset;
 #[cfg(test)]
 #[path = "attention_maps/tests.rs"]
 mod tests;
+
+fn matrix_to_export_table(
+    name: &str,
+    row_header: &str,
+    col_prefix: &str,
+    mat: &DMatrix<f64>,
+) -> crate::framework::ExportTable {
+    let (r_stride, c_stride) = crate::framework::compute_matrix_stride(mat.nrows(), mat.ncols());
+    let sampled_cols: Vec<usize> = (0..mat.ncols()).step_by(c_stride).collect();
+    let mut headers = Vec::with_capacity(1 + sampled_cols.len());
+    headers.push(row_header.to_string());
+    for &c in &sampled_cols {
+        headers.push(format!("{col_prefix}_{c}"));
+    }
+    let mut rows = Vec::new();
+    for r in (0..mat.nrows()).step_by(r_stride) {
+        let mut row = Vec::with_capacity(1 + sampled_cols.len());
+        row.push(crate::framework::ExportCell::UInt(r as u64));
+        for &c in &sampled_cols {
+            row.push(crate::framework::ExportCell::Float(mat[(r, c)]));
+        }
+        rows.push(row);
+    }
+    crate::framework::ExportTable::new(name, headers, rows)
+}

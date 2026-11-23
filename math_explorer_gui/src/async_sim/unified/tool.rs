@@ -260,11 +260,31 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
         if M::is_raster_model() {
-            crate::framework::ExportCapabilities::raster_only()
-        } else {
-            crate::framework::ExportCapabilities::plot()
+            let params_guard = self.params.read().ok();
+            let empty_params = HashMap::new();
+            let params = params_guard.as_deref().unwrap_or(&empty_params);
+            if let Some(snap) = self
+                .stepped_snapshot
+                .as_ref()
+                .or_else(|| self.controller.latest_snapshot())
+            {
+                let tables = M::export_tables_from_snapshot(snap, params);
+                if !tables.is_empty() {
+                    return tables;
+                }
+            }
+            let fresh = M::new(params).get_snapshot();
+            return M::export_tables_from_snapshot(&fresh, params);
         }
+        crate::framework::ExportTable::from_legacy_datasets(
+            &self.export_datasets_3d(),
+            &self.export_datasets(),
+        )
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
