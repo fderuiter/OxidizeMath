@@ -11,13 +11,14 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 ### Module Structure
 
 - **`algebra`**: Abstract algebraic structures and type hierarchies:
-  - Groups, rings, and finite fields (`Fp`).
-  - Polynomial rings and polynomial arithmetic over arbitrary fields.
+  - Groups, rings, finite fields (`Fp`), and infinite Artin braid groups (`BraidWord`) with word reduction, Yang-Baxter braid relations, and smooth 3D Alexander closures.
+  - Polynomial rings (`Polynomial`) and signed-exponent Laurent polynomial rings (`LaurentPolynomial<T>`) with reciprocal checks and Alexander canonical normalization.
 - **`number_theory`**: Prime number generation (`primes_up_to`), primality testing, integer partition theory, and Q-series.
 - **`analysis`**: Differential equation solvers (`OdeSystem`, explicit Runge-Kutta and zero-allocation symplectic `StormerVerlet`, `Yoshida4`, and `GaussLegendre4` steppers), 1D and zero-allocation 2D partial differential equation solvers (`pde::wave_2d::Wave2DSolver` for hyperbolic wave tanks, Kirchhoff-Love biharmonic Chladni plates, Chladni sand drift, Marching-Squares nodal contours, and pre-planned 2D FFT spectra), numerical integration, and calculus algorithms.
 - **`differential_geometry`**: Manifolds, metric tensors, and Riemannian curvature.
 - **`elliptic_curves`**: Zero-allocation short-Weierstrass curve group arithmetic ($P + Q$, $\[k\]P$, cyclic orbits) over $\mathbb{R}$ and prime fields $\mathbb{F}_p$, Frobenius traces $a_p$, Hasse-Weil verification, Breuer modular polynomial valuation bounds, and bridges to binary quadratic forms (`BQF`), Hurwitz-Kronecker class numbers, and modular $q$-series (`QSeries<i64>`).
 - **`graph_theory`**: Network graph structures, centrality metrics, and traversal algorithms.
+- **`knot_theory`**: Parametric 3D knots and multi-component links (torus knots, Lissajous knots, figure-eight, Hopf link, Borromean rings), rotation-minimizing Bishop parallel-transport frames and watertight tubular meshes, zero-allocation Gauss writhe and pairwise Gauss linking integrals, oriented planar link diagrams (`PlanarDiagram`) with validated Reidemeister I/II/III ambient isotopy moves, Fox and reduced Burau Alexander polynomials, and state-sum Kauffman/Jones skein invariants.
 - **`statistics`**: Stochastic processes (Markov chains, Ornstein-Uhlenbeck), ranking systems (Glicko-2), and Kelly criterion decision models.
 - **`special_functions`**: Classical mathematical functions (Bessel functions, Legendre polynomials).
 

@@ -5,6 +5,7 @@ use eframe::egui;
 pub mod curvature_heatmap;
 pub mod custom_surface;
 pub mod export_utils;
+pub mod knot_braid_studio;
 pub mod surface_viewer;
 pub mod vietoris_rips;
 
@@ -55,3 +56,4 @@ impl ExplorerTab for GeometryTopologyTab {
 }
 
 // [cite:graph_parameters_rust]
+// [cite:knot_braid_topology]

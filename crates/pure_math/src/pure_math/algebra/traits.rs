@@ -83,6 +83,19 @@ impl Ring for i64 {
 
 impl EuclideanDomain for i64 {}
 
+impl Ring for i128 {
+    #[verified_engine::verified]
+    fn zero() -> Self {
+        0
+    }
+    #[verified_engine::verified]
+    fn one() -> Self {
+        1
+    }
+}
+
+impl EuclideanDomain for i128 {}
+
 impl Ring for f64 {
     #[verified_engine::verified]
     fn zero() -> Self {

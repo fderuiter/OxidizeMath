@@ -31,10 +31,10 @@ pub use domain_physics::error::{
 
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
-    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
-    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
-    TransformError, ZipError,
+    AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EvolutionError,
+    FractranError, Glicko2Error, KellyError, KnotError, LinearAlgebraError, MarkovError,
+    NumberTheoryError, OptimizationError, OuError, PureMathError, StochasticError, TdaError,
+    TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -162,12 +162,18 @@ pub enum Error {
     /// Numerical root-finding and analysis error.
     #[cfg(feature = "pure_math")]
     Analysis(AnalysisError),
+    /// Artin braid group error.
+    #[cfg(feature = "pure_math")]
+    Braid(BraidError),
     /// Copula modeling error.
     #[cfg(feature = "pure_math")]
     Copula(CopulaError),
     /// Elliptic curve error.
     #[cfg(feature = "pure_math")]
     EllipticCurve(EllipticCurveError),
+    /// Knot theory and skein invariant error.
+    #[cfg(feature = "pure_math")]
+    Knot(KnotError),
     /// Unified numerical evolution engine error.
     #[cfg(feature = "pure_math")]
     Evolution(EvolutionError),

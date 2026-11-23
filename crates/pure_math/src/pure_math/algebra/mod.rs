@@ -83,9 +83,11 @@ pub mod polynomial;
 pub mod traits;
 
 pub use fields::Fp;
-pub use group::{CyclicElement, Permutation, Zn};
+pub use group::{
+    BraidError, BraidWord, CyclicElement, MAX_BRAID_STRANDS, MAX_BRAID_WORD_LEN, Permutation, Zn,
+};
 pub use linear_algebra::LinearAlgebraError;
-pub use polynomial::Polynomial;
+pub use polynomial::{LaurentPolynomial, Polynomial};
 pub use traits::{EuclideanDomain, Field, Group, Monoid, Ring, Semigroup};
 
 // [cite:advanced_linear_algebra]

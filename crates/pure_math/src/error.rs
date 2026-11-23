@@ -387,13 +387,14 @@ mod submodule_diagnostics;
 mod umbrella;
 
 pub use crate::pure_math::{
-    algebra::linear_algebra::numerical::LinearAlgebraError,
+    algebra::{BraidError, linear_algebra::numerical::LinearAlgebraError},
     algorithmic_information::FractranError,
     analysis::{
         evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
         stochastic::StochasticError, transforms::TransformError,
     },
     elliptic_curves::EllipticCurveError,
+    knot_theory::KnotError,
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };

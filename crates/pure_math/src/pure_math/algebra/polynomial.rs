@@ -5,6 +5,11 @@
 use crate::pure_math::algebra::traits::Ring;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
+pub mod laurent;
+mod laurent_ops;
+
+pub use laurent::LaurentPolynomial;
+
 /// A polynomial with coefficients in a Ring T.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Polynomial<T: Ring> {

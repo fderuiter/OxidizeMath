@@ -11,6 +11,9 @@ use crate::pure_math::algebra::traits::{Group, Monoid, Semigroup};
 use std::collections::HashSet;
 use std::hash::Hash;
 
+pub mod braid;
+pub use braid::{BraidError, BraidWord, MAX_BRAID_STRANDS, MAX_BRAID_WORD_LEN};
+
 // ============================================================================
 // Cyclic Group (Integers Modulo n)
 // ============================================================================
