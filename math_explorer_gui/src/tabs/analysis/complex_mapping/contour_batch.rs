@@ -227,6 +227,31 @@ impl PlotItem for ContourBatch<'_> {
         out
     }
 
+    fn shared_vec_ptr(&self) -> Option<usize> {
+        Some(self.item_content_hash() as usize)
+    }
+
+    fn matches_cached_shared_points(&self, cached: &egui_plot::SharedPoints) -> bool {
+        cached.len() == self.point_count()
+            && self
+                .families
+                .iter()
+                .flatten()
+                .flat_map(|e| e.family.points.iter())
+                .zip(cached.iter())
+                .all(|(p, c)| p.x.to_bits() == c[0].to_bits() && p.y.to_bits() == c[1].to_bits())
+    }
+
+    fn matches_cached_series(
+        &self,
+        cached: &egui_plot::SharedPoints,
+        cached_vec_ptr: Option<usize>,
+    ) -> bool {
+        cached.len() == self.point_count()
+            && (cached_vec_ptr == Some(self.item_content_hash() as usize)
+                || self.matches_cached_shared_points(cached))
+    }
+
     fn append_deferred_export(
         &mut self,
         datasets: &mut Vec<egui_plot::DeferredDatasetEntry>,

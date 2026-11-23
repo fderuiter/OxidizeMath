@@ -144,6 +144,22 @@ impl Plot3DSeriesSidecar {
             .collect()
     }
 
+    /// Extracts `(name, shared_projected_points, color)` tuples for zero-copy 2D plot consumers.
+    #[must_use]
+    pub fn accessible_shared_datasets_2d(&self) -> Vec<(String, crate::SharedPoints, Color32)> {
+        self.series()
+            .iter()
+            .filter(|s| !s.projected.is_empty())
+            .map(|s| {
+                (
+                    s.name.clone(),
+                    crate::SharedPoints::from_slice(&s.projected),
+                    s.color,
+                )
+            })
+            .collect()
+    }
+
     /// Resolves the immutable world `[x, y, z]` coordinate for a hovered [`crate::PlotItem`] vertex.
     #[must_use]
     pub fn world_point(&self, item_id: Id, index: usize, projected: [f64; 2]) -> Option<[f64; 3]> {

@@ -19,6 +19,7 @@ use super::{Cursor, LabelFormatter, PlotBounds, PlotTransform};
 pub use bar::Bar;
 pub use box_elem::{BoxElem, BoxSpread};
 pub use callout::{Callout, SavedCallout};
+pub use shared_points::SharedPoints;
 pub use values::{
     ClosestElem, LineStyle, MarkerShape, Orientation, PlotGeometry, PlotPoint, PlotPoints,
 };
@@ -97,6 +98,7 @@ mod bar;
 mod box_elem;
 mod callout;
 mod rect_elem;
+mod shared_points;
 mod values;
 
 /// Container to pass-through several parameters related to plot visualization
@@ -126,8 +128,31 @@ pub trait PlotItem {
         vec![]
     }
 
+    fn extract_shared_points(&self) -> SharedPoints {
+        SharedPoints::from(self.extract_points())
+    }
+
+    fn shared_vec_ptr(&self) -> Option<usize> {
+        None
+    }
+
+    fn matches_cached_shared_points(&self, _cached: &SharedPoints) -> bool {
+        false
+    }
+
+    fn matches_cached_series(&self, cached: &SharedPoints, _cached_vec_ptr: Option<usize>) -> bool {
+        self.matches_cached_shared_points(cached)
+    }
+
     fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
         vec![]
+    }
+
+    fn extract_export_primitives_shared(
+        &self,
+        _points: &SharedPoints,
+    ) -> Vec<crate::export_primitives::ExportPrimitive> {
+        self.extract_export_primitives()
     }
 
     fn is_companion_visual_only(&self) -> bool {
@@ -160,12 +185,22 @@ pub trait PlotItem {
         }
     }
 
+    fn append_deferred_export_with_cached(
+        &mut self,
+        _cached_points: Option<&SharedPoints>,
+        datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        self.append_deferred_export(datasets, primitives);
+    }
+
     fn point_count(&self) -> usize {
         if let Some(segs) = self.line_segments() {
             return segs.iter().map(Vec::len).sum();
         }
         match self.geometry() {
             PlotGeometry::Points(pts) => pts.len(),
+            PlotGeometry::Shared(pts) => pts.len(),
             PlotGeometry::None | PlotGeometry::Rects => self.extract_points().len(),
         }
     }
@@ -202,6 +237,9 @@ pub trait PlotItem {
         } else if let PlotGeometry::Points(pts) = self.geometry() {
             4u8.hash(&mut hasher);
             hash_plot_point_slice(pts, None, &mut hasher);
+        } else if let PlotGeometry::Shared(pts) = self.geometry() {
+            4u8.hash(&mut hasher);
+            hash_coord_pair_slice(pts, Some(pts.as_ptr() as usize), &mut hasher);
         } else {
             5u8.hash(&mut hasher);
             let b = self.bounds();
@@ -246,6 +284,14 @@ pub trait PlotItem {
         None
     }
 
+    fn line_shared_points(&self) -> Option<&SharedPoints> {
+        None
+    }
+
+    fn is_line_item(&self) -> bool {
+        false
+    }
+
     fn hline_y(&self) -> Option<f64> {
         None
     }
@@ -277,6 +323,18 @@ pub trait PlotItem {
                 })
                 .min_by_key(|e| e.dist_sq.ord()),
 
+            PlotGeometry::Shared(points) => points
+                .iter()
+                .enumerate()
+                .map(|(index, &[x, y])| (index, PlotPoint::new(x, y)))
+                .filter(|(_, value)| transform.is_point_valid_for_scale(value))
+                .map(|(index, value)| {
+                    let pos = transform.position_from_point(&value);
+                    let dist_sq = point.distance_sq(pos);
+                    ClosestElem { index, dist_sq }
+                })
+                .min_by_key(|e| e.dist_sq.ord()),
+
             PlotGeometry::Rects => {
                 panic!("If the PlotItem is made of rects, it should implement find_closest()")
             }
@@ -292,8 +350,9 @@ pub trait PlotItem {
         plot: &PlotConfig<'_>,
         label_formatter: &LabelFormatter<'_>,
     ) -> Option<PlotPoint> {
-        let points = match self.geometry() {
-            PlotGeometry::Points(points) => points,
+        let value = match self.geometry() {
+            PlotGeometry::Points(points) => points[elem.index],
+            PlotGeometry::Shared(points) => PlotPoint::from(points[elem.index]),
             PlotGeometry::None => {
                 panic!("If the PlotItem has no geometry, on_hover() must not be called")
             }
@@ -303,7 +362,6 @@ pub trait PlotItem {
         };
 
         // this method is only called, if the value is in the result set of find_closest()
-        let value = points[elem.index];
         let world_point = plot.world_point.or_else(|| {
             plot.sidecar_3d
                 .and_then(|s| s.world_point(self.id(), elem.index, [value.x, value.y]))
@@ -482,6 +540,10 @@ impl PlotItem for HLine {
         Some(self.y)
     }
 
+    fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
+        cached.is_empty()
+    }
+
     fn closest_continuous_point(
         &self,
         pointer: Pos2,
@@ -615,6 +677,10 @@ impl PlotItem for VLine {
 
     fn vline_x(&self) -> Option<f64> {
         Some(self.x)
+    }
+
+    fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
+        cached.is_empty()
     }
 
     fn closest_continuous_point(
@@ -829,7 +895,7 @@ impl PlotItem for Line<'_> {
         if let Some(batch) = &self.segment_batch {
             return batch.iter().map(Vec::len).sum();
         }
-        self.series.points().len()
+        self.series.len()
     }
 
     fn extract_points(&self) -> Vec<[f64; 2]> {
@@ -849,7 +915,32 @@ impl PlotItem for Line<'_> {
             }
             return out;
         }
-        self.series.points().iter().map(|p| [p.x, p.y]).collect()
+        self.series.iter_plot_points().map(|p| [p.x, p.y]).collect()
+    }
+
+    fn extract_shared_points(&self) -> SharedPoints {
+        if self.segment_batch.is_some() || self.colored_segment_batch.is_some() {
+            return SharedPoints::default();
+        }
+        self.series.to_shared_points()
+    }
+
+    fn shared_vec_ptr(&self) -> Option<usize> {
+        self.series.shared_vec_ptr()
+    }
+
+    fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
+        if self.segment_batch.is_some() || self.colored_segment_batch.is_some() {
+            return cached.is_empty();
+        }
+        self.series.matches_cached_shared(cached, None)
+    }
+
+    fn matches_cached_series(&self, cached: &SharedPoints, cached_vec_ptr: Option<usize>) -> bool {
+        if self.segment_batch.is_some() || self.colored_segment_batch.is_some() {
+            return cached.is_empty();
+        }
+        self.series.matches_cached_shared(cached, cached_vec_ptr)
     }
 
     fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
@@ -860,7 +951,7 @@ impl PlotItem for Line<'_> {
                 .filter(|seg| !seg.points.is_empty())
                 .map(|seg| crate::export_primitives::ExportPrimitive::Polyline {
                     name: name.clone(),
-                    points: seg.points.iter().map(|p| [p.x, p.y]).collect(),
+                    points: SharedPoints::from_plot_points(&seg.points),
                     color: seg.color,
                     stroke_width: seg.width,
                     closed: false,
@@ -875,7 +966,7 @@ impl PlotItem for Line<'_> {
                 .filter(|seg| !seg.is_empty())
                 .map(|seg| crate::export_primitives::ExportPrimitive::Polyline {
                     name: name.clone(),
-                    points: seg.iter().map(|p| [p.x, p.y]).collect(),
+                    points: SharedPoints::from_plot_points(seg),
                     color: self.stroke.color,
                     stroke_width: self.stroke.width,
                     closed: false,
@@ -883,13 +974,23 @@ impl PlotItem for Line<'_> {
                 })
                 .collect();
         }
-        let points = self.extract_points();
+        let points = self.extract_shared_points();
+        self.extract_export_primitives_shared(&points)
+    }
+
+    fn extract_export_primitives_shared(
+        &self,
+        points: &SharedPoints,
+    ) -> Vec<crate::export_primitives::ExportPrimitive> {
+        if self.segment_batch.is_some() || self.colored_segment_batch.is_some() {
+            return self.extract_export_primitives();
+        }
         if points.is_empty() {
             return vec![];
         }
         vec![crate::export_primitives::ExportPrimitive::Polyline {
             name: self.name().to_owned(),
-            points,
+            points: points.clone(),
             color: self.stroke.color,
             stroke_width: self.stroke.width,
             closed: false,
@@ -902,11 +1003,20 @@ impl PlotItem for Line<'_> {
         datasets: &mut Vec<crate::DeferredDatasetEntry>,
         primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
     ) {
-        let emit_ds = !self.is_companion_visual_only();
+        self.append_deferred_export_with_cached(None, datasets, primitives);
+    }
+
+    fn append_deferred_export_with_cached(
+        &mut self,
+        cached_points: Option<&SharedPoints>,
+        datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        let include_dataset = !self.is_companion_visual_only();
         if let Some(batch) = &self.colored_segment_batch {
             if batch.iter().any(|seg| !seg.points.is_empty()) {
                 let name = self.base.name.clone();
-                if emit_ds {
+                if include_dataset {
                     datasets.push(crate::DeferredDatasetEntry::SharedColoredSegments {
                         name: name.clone(),
                         segments: Arc::clone(batch),
@@ -924,7 +1034,7 @@ impl PlotItem for Line<'_> {
         if let Some(batch) = &self.segment_batch {
             if batch.iter().any(|seg| !seg.is_empty()) {
                 let name = self.base.name.clone();
-                if emit_ds {
+                if include_dataset {
                     datasets.push(crate::DeferredDatasetEntry::SharedSegments {
                         name: name.clone(),
                         segments: Arc::clone(batch),
@@ -941,10 +1051,32 @@ impl PlotItem for Line<'_> {
             }
             return;
         }
+        if let Some(shared) = cached_points.or_else(|| self.series.shared()) {
+            if !shared.is_empty() {
+                let name = self.base.name.clone();
+                if include_dataset {
+                    datasets.push(crate::DeferredDatasetEntry::SharedCoords {
+                        name: name.clone(),
+                        points: shared.clone(),
+                    });
+                }
+                primitives.push(
+                    crate::export_primitives::DeferredPlotPrimitive::SharedPolyline {
+                        name,
+                        points: shared.clone(),
+                        color: self.stroke.color,
+                        stroke_width: self.stroke.width,
+                        closed: false,
+                        fill: None,
+                    },
+                );
+            }
+            return;
+        }
         let points = self.series.take_shared_points();
         if !points.is_empty() {
             let name = self.base.name.clone();
-            if emit_ds {
+            if include_dataset {
                 datasets.push(crate::DeferredDatasetEntry::SharedPoints {
                     name: name.clone(),
                     points: Arc::clone(&points),
@@ -998,6 +1130,9 @@ impl PlotItem for Line<'_> {
                 last.x.to_bits().hash(&mut hasher);
                 last.y.to_bits().hash(&mut hasher);
             }
+        } else if let Some(shared) = self.series.shared() {
+            4u8.hash(&mut hasher);
+            hash_coord_pair_slice(shared.as_slice(), self.series.shared_ptr_id(), &mut hasher);
         } else {
             4u8.hash(&mut hasher);
             hash_plot_point_slice(
@@ -1136,6 +1271,13 @@ impl PlotItem for Line<'_> {
             final_stroke = PathStroke::new_uv(stroke.width, wrapped_callback.clone());
         }
 
+        let decimate_subpixel =
+            series.len() > 2048 && fill.is_none() && self.gradient_color.is_none();
+        let init_cap = if decimate_subpixel {
+            series.len().min(4096)
+        } else {
+            series.len()
+        };
         let mut segments: Vec<Vec<Pos2>> = Vec::new();
         if let Some(batch) = segment_batch {
             segments.reserve(batch.len());
@@ -1153,17 +1295,75 @@ impl PlotItem for Line<'_> {
                 }
             }
         } else {
-            let mut current: Vec<Pos2> = Vec::new();
-            for v in series.points() {
-                if transform.is_point_valid_for_scale(v) {
-                    current.push(transform.position_from_point(v));
-                } else if !current.is_empty() {
-                    segments.push(std::mem::take(&mut current));
+            let mut current: Vec<Pos2> = Vec::with_capacity(init_cap);
+            let mut pending_tail: Option<Pos2> = None;
+            let push_screen_pos = |pos: Pos2, cur: &mut Vec<Pos2>, tail: &mut Option<Pos2>| {
+                if decimate_subpixel {
+                    if let Some(&last_kept) = cur.last() {
+                        if (pos - last_kept).length_sq() >= 0.5625 {
+                            cur.push(pos);
+                            *tail = None;
+                        } else {
+                            *tail = Some(pos);
+                        }
+                    } else {
+                        cur.push(pos);
+                    }
+                } else {
+                    cur.push(pos);
+                }
+            };
+            let flush_segment =
+                |segs: &mut Vec<Vec<Pos2>>, cur: &mut Vec<Pos2>, tail: &mut Option<Pos2>| {
+                    if !cur.is_empty() {
+                        if let Some(t) = tail.take() {
+                            cur.push(t);
+                        }
+                        segs.push(std::mem::take(cur));
+                    }
+                };
+
+            if let Some(proj) = transform.linear_projector() {
+                match series.geometry() {
+                    PlotGeometry::Shared(pts) => {
+                        for &[x, y] in pts {
+                            if x.is_finite() && y.is_finite() {
+                                push_screen_pos(
+                                    proj.project(x, y),
+                                    &mut current,
+                                    &mut pending_tail,
+                                );
+                            } else {
+                                flush_segment(&mut segments, &mut current, &mut pending_tail);
+                            }
+                        }
+                    }
+                    PlotGeometry::Points(pts) => {
+                        for p in pts {
+                            if p.x.is_finite() && p.y.is_finite() {
+                                push_screen_pos(
+                                    proj.project(p.x, p.y),
+                                    &mut current,
+                                    &mut pending_tail,
+                                );
+                            } else {
+                                flush_segment(&mut segments, &mut current, &mut pending_tail);
+                            }
+                        }
+                    }
+                    PlotGeometry::None | PlotGeometry::Rects => {}
+                }
+            } else {
+                for v in series.iter_plot_points() {
+                    if transform.is_point_valid_for_scale(&v) {
+                        let pos = transform.position_from_point(&v);
+                        push_screen_pos(pos, &mut current, &mut pending_tail);
+                    } else {
+                        flush_segment(&mut segments, &mut current, &mut pending_tail);
+                    }
                 }
             }
-            if !current.is_empty() {
-                segments.push(current);
-            }
+            flush_segment(&mut segments, &mut current, &mut pending_tail);
         }
 
         if let Some(y_reference) = fill {
@@ -1254,7 +1454,7 @@ impl PlotItem for Line<'_> {
         if self.segment_batch.is_some() || self.colored_segment_batch.is_some() {
             PlotGeometry::None
         } else {
-            PlotGeometry::Points(self.series.points())
+            self.series.geometry()
         }
     }
 
@@ -1285,10 +1485,26 @@ impl PlotItem for Line<'_> {
 
     fn line_points(&self) -> Option<&[PlotPoint]> {
         if self.segment_batch.is_some() || self.colored_segment_batch.is_some() {
+            return None;
+        }
+        match &self.series {
+            PlotPoints::Owned(pts) => Some(pts.as_slice()),
+            PlotPoints::SharedVec(pts) => Some(pts.as_slice()),
+            PlotPoints::Borrowed(pts) => Some(pts),
+            PlotPoints::Shared(_) | PlotPoints::Generator(_) => None,
+        }
+    }
+
+    fn line_shared_points(&self) -> Option<&SharedPoints> {
+        if self.segment_batch.is_some() || self.colored_segment_batch.is_some() {
             None
         } else {
-            Some(self.series.points())
+            self.series.shared()
         }
+    }
+
+    fn is_line_item(&self) -> bool {
+        self.segment_batch.is_none() && self.colored_segment_batch.is_none()
     }
 
     fn closest_continuous_point(
@@ -1299,16 +1515,20 @@ impl PlotItem for Line<'_> {
         if let Some(batch) = &self.colored_segment_batch {
             return batch
                 .iter()
-                .filter_map(|seg| closest_point_on_polyline(&seg.points, pointer, transform))
+                .filter_map(|seg| {
+                    closest_point_on_series(&PlotPoints::Borrowed(&seg.points), pointer, transform)
+                })
                 .min_by_key(|(_, d)| d.ord());
         }
         if let Some(batch) = &self.segment_batch {
             return batch
                 .iter()
-                .filter_map(|seg| closest_point_on_polyline(seg, pointer, transform))
+                .filter_map(|seg| {
+                    closest_point_on_series(&PlotPoints::Borrowed(seg), pointer, transform)
+                })
                 .min_by_key(|(_, d)| d.ord());
         }
-        closest_point_on_polyline(self.series.points(), pointer, transform)
+        closest_point_on_series(&self.series, pointer, transform)
     }
 
     fn find_closest(&self, point: Pos2, transform: &PlotTransform) -> Option<ClosestElem> {
@@ -1337,13 +1557,12 @@ impl PlotItem for Line<'_> {
                 .min_by_key(|e| e.dist_sq.ord());
         }
         self.series
-            .points()
-            .iter()
+            .iter_plot_points()
             .enumerate()
             .filter(|(_, value)| transform.is_point_valid_for_scale(value))
             .map(|(index, value)| ClosestElem {
                 index,
-                dist_sq: point.distance_sq(transform.position_from_point(value)),
+                dist_sq: point.distance_sq(transform.position_from_point(&value)),
             })
             .min_by_key(|e| e.dist_sq.ord())
     }
@@ -1365,7 +1584,7 @@ impl PlotItem for Line<'_> {
         } else if let Some(batch) = &self.segment_batch {
             *batch.iter().flat_map(|seg| seg.iter()).nth(elem.index)?
         } else {
-            *self.series.points().get(elem.index)?
+            self.series.iter_plot_points().nth(elem.index)?
         };
         let world_point = plot.world_point.or_else(|| {
             plot.sidecar_3d
@@ -1384,6 +1603,36 @@ impl PlotItem for Line<'_> {
             &item_plot,
             label_formatter,
         ))
+    }
+}
+
+fn hash_coord_pair_slice<H: std::hash::Hasher>(
+    pts: &[[f64; 2]],
+    shared_ptr: Option<usize>,
+    hasher: &mut H,
+) {
+    use std::hash::Hash as _;
+    pts.len().hash(hasher);
+    if let Some(ptr) = shared_ptr {
+        ptr.hash(hasher);
+    }
+    if pts.len() <= 512 {
+        for pt in pts {
+            pt[0].to_bits().hash(hasher);
+            pt[1].to_bits().hash(hasher);
+        }
+    } else {
+        let step = (pts.len() / 128).max(1);
+        let mut idx = 0;
+        while idx < pts.len() {
+            pts[idx][0].to_bits().hash(hasher);
+            pts[idx][1].to_bits().hash(hasher);
+            idx += step;
+        }
+        if let Some(last) = pts.last() {
+            last[0].to_bits().hash(hasher);
+            last[1].to_bits().hash(hasher);
+        }
     }
 }
 
@@ -1417,14 +1666,22 @@ fn hash_plot_point_slice<H: std::hash::Hasher>(
     }
 }
 
-fn closest_point_on_polyline(
-    pts: &[PlotPoint],
+fn closest_point_on_series(
+    series: &PlotPoints<'_>,
     pointer: Pos2,
     transform: &PlotTransform,
 ) -> Option<(PlotPoint, f32)> {
     const VERTEX_MAGNET_SQ: f32 = 36.0;
+    let n = series.len();
+    if n == 0 {
+        return None;
+    }
     let mut best_vertex: Option<(PlotPoint, f32)> = None;
-    for &pt in pts {
+    let mut first_pt: Option<PlotPoint> = None;
+    for pt in series.iter_plot_points() {
+        if first_pt.is_none() {
+            first_pt = Some(pt);
+        }
         if !transform.is_point_valid_for_scale(&pt) {
             continue;
         }
@@ -1434,9 +1691,9 @@ fn closest_point_on_polyline(
             best_vertex = Some((pt, d_sq));
         }
     }
-    if best_vertex.is_some() || pts.len() == 1 {
+    if best_vertex.is_some() || n == 1 {
         return best_vertex.or_else(|| {
-            let p0 = *pts.first()?;
+            let p0 = first_pt?;
             transform.is_point_valid_for_scale(&p0).then(|| {
                 let s0 = transform.position_from_point(&p0);
                 (p0, pointer.distance_sq(s0))
@@ -1444,14 +1701,16 @@ fn closest_point_on_polyline(
         });
     }
     let mut best: Option<(PlotPoint, f32)> = None;
-    for pair in pts.windows(2) {
-        if !transform.is_point_valid_for_scale(&pair[0])
-            || !transform.is_point_valid_for_scale(&pair[1])
-        {
+    let mut iter = series.iter_plot_points();
+    let mut prev = iter.next()?;
+    for next in iter {
+        let p0 = prev;
+        prev = next;
+        if !transform.is_point_valid_for_scale(&p0) || !transform.is_point_valid_for_scale(&next) {
             continue;
         }
-        let s0 = transform.position_from_point(&pair[0]);
-        let s1 = transform.position_from_point(&pair[1]);
+        let s0 = transform.position_from_point(&p0);
+        let s1 = transform.position_from_point(&next);
         if !s0.is_finite() || !s1.is_finite() {
             continue;
         }
@@ -1528,17 +1787,40 @@ impl<'a> Polygon<'a> {
 
 impl PlotItem for Polygon<'_> {
     fn extract_points(&self) -> Vec<[f64; 2]> {
-        self.series.points().iter().map(|p| [p.x, p.y]).collect()
+        self.series.iter_plot_points().map(|p| [p.x, p.y]).collect()
+    }
+
+    fn extract_shared_points(&self) -> SharedPoints {
+        self.series.to_shared_points()
+    }
+
+    fn shared_vec_ptr(&self) -> Option<usize> {
+        self.series.shared_vec_ptr()
+    }
+
+    fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
+        self.series.matches_cached_shared(cached, None)
+    }
+
+    fn matches_cached_series(&self, cached: &SharedPoints, cached_vec_ptr: Option<usize>) -> bool {
+        self.series.matches_cached_shared(cached, cached_vec_ptr)
     }
 
     fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
-        let points = self.extract_points();
+        let points = self.extract_shared_points();
+        self.extract_export_primitives_shared(&points)
+    }
+
+    fn extract_export_primitives_shared(
+        &self,
+        points: &SharedPoints,
+    ) -> Vec<crate::export_primitives::ExportPrimitive> {
         if points.is_empty() {
             return vec![];
         }
         vec![crate::export_primitives::ExportPrimitive::Polyline {
             name: self.name().to_owned(),
-            points,
+            points: points.clone(),
             color: self.stroke.color,
             stroke_width: self.stroke.width,
             closed: true,
@@ -1551,6 +1833,35 @@ impl PlotItem for Polygon<'_> {
         datasets: &mut Vec<crate::DeferredDatasetEntry>,
         primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
     ) {
+        self.append_deferred_export_with_cached(None, datasets, primitives);
+    }
+
+    fn append_deferred_export_with_cached(
+        &mut self,
+        cached_points: Option<&SharedPoints>,
+        datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        if let Some(shared) = cached_points.or_else(|| self.series.shared()) {
+            if !shared.is_empty() {
+                let name = self.base.name.clone();
+                datasets.push(crate::DeferredDatasetEntry::SharedCoords {
+                    name: name.clone(),
+                    points: shared.clone(),
+                });
+                primitives.push(
+                    crate::export_primitives::DeferredPlotPrimitive::SharedPolyline {
+                        name,
+                        points: shared.clone(),
+                        color: self.stroke.color,
+                        stroke_width: self.stroke.width,
+                        closed: true,
+                        fill: self.fill_color,
+                    },
+                );
+            }
+            return;
+        }
         let points = self.series.take_shared_points();
         if !points.is_empty() {
             let name = self.base.name.clone();
@@ -1579,9 +1890,8 @@ impl PlotItem for Polygon<'_> {
         } = self;
 
         let mut values_tf: Vec<_> = series
-            .points()
-            .iter()
-            .map(|v| transform.position_from_point(v))
+            .iter_plot_points()
+            .map(|v| transform.position_from_point(&v))
             .collect();
 
         let fill_color = fill_color.unwrap_or(stroke.color.linear_multiply(DEFAULT_FILL_ALPHA));
@@ -1610,7 +1920,7 @@ impl PlotItem for Polygon<'_> {
     }
 
     fn geometry(&self) -> PlotGeometry<'_> {
-        PlotGeometry::Points(self.series.points())
+        self.series.geometry()
     }
 
     fn bounds(&self) -> PlotBounds {
@@ -1704,6 +2014,10 @@ impl PlotItem for Text {
 
     fn geometry(&self) -> PlotGeometry<'_> {
         PlotGeometry::None
+    }
+
+    fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
+        cached.is_empty()
     }
 
     fn bounds(&self) -> PlotBounds {
@@ -1850,14 +2164,52 @@ impl PlotItem for Points<'_> {
         if let Some(batch) = &self.colored_point_batch {
             return batch.len();
         }
-        self.series.points().len()
+        self.series.len()
     }
 
     fn extract_points(&self) -> Vec<[f64; 2]> {
         if let Some(batch) = &self.colored_point_batch {
             return batch.iter().map(|cp| [cp.point.x, cp.point.y]).collect();
         }
-        self.series.points().iter().map(|p| [p.x, p.y]).collect()
+        self.series.iter_plot_points().map(|p| [p.x, p.y]).collect()
+    }
+
+    fn extract_shared_points(&self) -> SharedPoints {
+        if let Some(batch) = &self.colored_point_batch {
+            return SharedPoints::from(
+                batch
+                    .iter()
+                    .map(|cp| [cp.point.x, cp.point.y])
+                    .collect::<Vec<_>>(),
+            );
+        }
+        self.series.to_shared_points()
+    }
+
+    fn shared_vec_ptr(&self) -> Option<usize> {
+        if let Some(batch) = &self.colored_point_batch {
+            return Some(Arc::as_ptr(batch) as usize);
+        }
+        self.series.shared_vec_ptr()
+    }
+
+    fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
+        if let Some(batch) = &self.colored_point_batch {
+            return cached.len() == batch.len()
+                && batch.iter().zip(cached.iter()).all(|(cp, c)| {
+                    cp.point.x.to_bits() == c[0].to_bits() && cp.point.y.to_bits() == c[1].to_bits()
+                });
+        }
+        self.series.matches_cached_shared(cached, None)
+    }
+
+    fn matches_cached_series(&self, cached: &SharedPoints, cached_vec_ptr: Option<usize>) -> bool {
+        if let Some(batch) = &self.colored_point_batch {
+            return cached.len() == batch.len()
+                && (cached_vec_ptr == Some(Arc::as_ptr(batch) as usize)
+                    || self.matches_cached_shared_points(cached));
+        }
+        self.series.matches_cached_shared(cached, cached_vec_ptr)
     }
 
     fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
@@ -1867,19 +2219,29 @@ impl PlotItem for Points<'_> {
                 .iter()
                 .map(|cp| crate::export_primitives::ExportPrimitive::Points {
                     name: name.clone(),
-                    points: vec![[cp.point.x, cp.point.y]],
+                    points: SharedPoints::from_slice(&[[cp.point.x, cp.point.y]]),
                     color: cp.color,
                     radius: cp.radius,
                 })
                 .collect();
         }
-        let points = self.extract_points();
+        let points = self.extract_shared_points();
+        self.extract_export_primitives_shared(&points)
+    }
+
+    fn extract_export_primitives_shared(
+        &self,
+        points: &SharedPoints,
+    ) -> Vec<crate::export_primitives::ExportPrimitive> {
+        if self.colored_point_batch.is_some() {
+            return self.extract_export_primitives();
+        }
         if points.is_empty() {
             return vec![];
         }
         vec![crate::export_primitives::ExportPrimitive::Points {
             name: self.name().to_owned(),
-            points,
+            points: points.clone(),
             color: self.color,
             radius: self.radius,
         }]
@@ -1890,13 +2252,25 @@ impl PlotItem for Points<'_> {
         datasets: &mut Vec<crate::DeferredDatasetEntry>,
         primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
     ) {
+        self.append_deferred_export_with_cached(None, datasets, primitives);
+    }
+
+    fn append_deferred_export_with_cached(
+        &mut self,
+        cached_points: Option<&SharedPoints>,
+        datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        let include_dataset = !self.is_companion_visual_only();
         if let Some(batch) = &self.colored_point_batch {
             if !batch.is_empty() {
                 let name = self.base.name.clone();
-                datasets.push(crate::DeferredDatasetEntry::SharedColoredPoints {
-                    name: name.clone(),
-                    points: Arc::clone(batch),
-                });
+                if include_dataset {
+                    datasets.push(crate::DeferredDatasetEntry::SharedColoredPoints {
+                        name: name.clone(),
+                        points: Arc::clone(batch),
+                    });
+                }
                 primitives.push(
                     crate::export_primitives::DeferredPlotPrimitive::ColoredPointsBatch {
                         name,
@@ -1906,13 +2280,35 @@ impl PlotItem for Points<'_> {
             }
             return;
         }
+        if let Some(shared) = cached_points.or_else(|| self.series.shared()) {
+            if !shared.is_empty() {
+                let name = self.base.name.clone();
+                if include_dataset {
+                    datasets.push(crate::DeferredDatasetEntry::SharedCoords {
+                        name: name.clone(),
+                        points: shared.clone(),
+                    });
+                }
+                primitives.push(
+                    crate::export_primitives::DeferredPlotPrimitive::SharedPoints {
+                        name,
+                        points: shared.clone(),
+                        color: self.color,
+                        radius: self.radius,
+                    },
+                );
+            }
+            return;
+        }
         let points = self.series.take_shared_points();
         if !points.is_empty() {
             let name = self.base.name.clone();
-            datasets.push(crate::DeferredDatasetEntry::SharedPoints {
-                name: name.clone(),
-                points: Arc::clone(&points),
-            });
+            if include_dataset {
+                datasets.push(crate::DeferredDatasetEntry::SharedPoints {
+                    name: name.clone(),
+                    points: Arc::clone(&points),
+                });
+            }
             primitives.push(crate::export_primitives::DeferredPlotPrimitive::Points {
                 name,
                 points,
@@ -1941,6 +2337,9 @@ impl PlotItem for Points<'_> {
                 last.point.x.to_bits().hash(&mut hasher);
                 last.point.y.to_bits().hash(&mut hasher);
             }
+        } else if let Some(shared) = self.series.shared() {
+            4u8.hash(&mut hasher);
+            hash_coord_pair_slice(shared.as_slice(), self.series.shared_ptr_id(), &mut hasher);
         } else {
             4u8.hash(&mut hasher);
             hash_plot_point_slice(
@@ -2020,100 +2419,93 @@ impl PlotItem for Points<'_> {
             transform.position_from_point_y(y_val)
         });
 
-        series
-            .points()
-            .iter()
-            .filter(|value| transform.is_point_valid_for_scale(value))
-            .map(|value| transform.position_from_point(value))
-            .for_each(|center| {
-                let tf = |dx: f32, dy: f32| -> Pos2 { center + radius * vec2(dx, dy) };
+        for center in collect_point_screen_centers(series, transform, radius, stems.is_some()) {
+            let tf = |dx: f32, dy: f32| -> Pos2 { center + radius * vec2(dx, dy) };
 
-                if let Some(y) = y_reference {
-                    let stem = Shape::line_segment([center, pos2(center.x, y)], stem_stroke);
-                    shapes.push(stem);
-                }
+            if let Some(y) = y_reference {
+                let stem = Shape::line_segment([center, pos2(center.x, y)], stem_stroke);
+                shapes.push(stem);
+            }
 
-                match shape {
-                    MarkerShape::Circle => {
-                        shapes.push(Shape::Circle(CircleShape {
-                            center,
-                            radius,
-                            fill,
-                            stroke,
-                        }));
-                    }
-                    MarkerShape::Diamond => {
-                        let points = vec![
-                            tf(0.0, 1.0),  // bottom
-                            tf(-1.0, 0.0), // left
-                            tf(0.0, -1.0), // top
-                            tf(1.0, 0.0),  // right
-                        ];
-                        shapes.push(Shape::convex_polygon(points, fill, stroke));
-                    }
-                    MarkerShape::Square => {
-                        let points = vec![
-                            tf(-frac_1_sqrt_2, frac_1_sqrt_2),
-                            tf(-frac_1_sqrt_2, -frac_1_sqrt_2),
-                            tf(frac_1_sqrt_2, -frac_1_sqrt_2),
-                            tf(frac_1_sqrt_2, frac_1_sqrt_2),
-                        ];
-                        shapes.push(Shape::convex_polygon(points, fill, stroke));
-                    }
-                    MarkerShape::Cross => {
-                        let diagonal1 = [
-                            tf(-frac_1_sqrt_2, -frac_1_sqrt_2),
-                            tf(frac_1_sqrt_2, frac_1_sqrt_2),
-                        ];
-                        let diagonal2 = [
-                            tf(frac_1_sqrt_2, -frac_1_sqrt_2),
-                            tf(-frac_1_sqrt_2, frac_1_sqrt_2),
-                        ];
-                        shapes.push(Shape::line_segment(diagonal1, default_stroke));
-                        shapes.push(Shape::line_segment(diagonal2, default_stroke));
-                    }
-                    MarkerShape::Plus => {
-                        let horizontal = [tf(-1.0, 0.0), tf(1.0, 0.0)];
-                        let vertical = [tf(0.0, -1.0), tf(0.0, 1.0)];
-                        shapes.push(Shape::line_segment(horizontal, default_stroke));
-                        shapes.push(Shape::line_segment(vertical, default_stroke));
-                    }
-                    MarkerShape::Up => {
-                        let points =
-                            vec![tf(0.0, -1.0), tf(0.5 * sqrt_3, 0.5), tf(-0.5 * sqrt_3, 0.5)];
-                        shapes.push(Shape::convex_polygon(points, fill, stroke));
-                    }
-                    MarkerShape::Down => {
-                        let points = vec![
-                            tf(0.0, 1.0),
-                            tf(-0.5 * sqrt_3, -0.5),
-                            tf(0.5 * sqrt_3, -0.5),
-                        ];
-                        shapes.push(Shape::convex_polygon(points, fill, stroke));
-                    }
-                    MarkerShape::Left => {
-                        let points =
-                            vec![tf(-1.0, 0.0), tf(0.5, -0.5 * sqrt_3), tf(0.5, 0.5 * sqrt_3)];
-                        shapes.push(Shape::convex_polygon(points, fill, stroke));
-                    }
-                    MarkerShape::Right => {
-                        let points = vec![
-                            tf(1.0, 0.0),
-                            tf(-0.5, 0.5 * sqrt_3),
-                            tf(-0.5, -0.5 * sqrt_3),
-                        ];
-                        shapes.push(Shape::convex_polygon(points, fill, stroke));
-                    }
-                    MarkerShape::Asterisk => {
-                        let vertical = [tf(0.0, -1.0), tf(0.0, 1.0)];
-                        let diagonal1 = [tf(-frac_sqrt_3_2, 0.5), tf(frac_sqrt_3_2, -0.5)];
-                        let diagonal2 = [tf(-frac_sqrt_3_2, -0.5), tf(frac_sqrt_3_2, 0.5)];
-                        shapes.push(Shape::line_segment(vertical, default_stroke));
-                        shapes.push(Shape::line_segment(diagonal1, default_stroke));
-                        shapes.push(Shape::line_segment(diagonal2, default_stroke));
-                    }
+            match shape {
+                MarkerShape::Circle => {
+                    shapes.push(Shape::Circle(CircleShape {
+                        center,
+                        radius,
+                        fill,
+                        stroke,
+                    }));
                 }
-            });
+                MarkerShape::Diamond => {
+                    let points = vec![
+                        tf(0.0, 1.0),  // bottom
+                        tf(-1.0, 0.0), // left
+                        tf(0.0, -1.0), // top
+                        tf(1.0, 0.0),  // right
+                    ];
+                    shapes.push(Shape::convex_polygon(points, fill, stroke));
+                }
+                MarkerShape::Square => {
+                    let points = vec![
+                        tf(-frac_1_sqrt_2, frac_1_sqrt_2),
+                        tf(-frac_1_sqrt_2, -frac_1_sqrt_2),
+                        tf(frac_1_sqrt_2, -frac_1_sqrt_2),
+                        tf(frac_1_sqrt_2, frac_1_sqrt_2),
+                    ];
+                    shapes.push(Shape::convex_polygon(points, fill, stroke));
+                }
+                MarkerShape::Cross => {
+                    let diagonal1 = [
+                        tf(-frac_1_sqrt_2, -frac_1_sqrt_2),
+                        tf(frac_1_sqrt_2, frac_1_sqrt_2),
+                    ];
+                    let diagonal2 = [
+                        tf(frac_1_sqrt_2, -frac_1_sqrt_2),
+                        tf(-frac_1_sqrt_2, frac_1_sqrt_2),
+                    ];
+                    shapes.push(Shape::line_segment(diagonal1, default_stroke));
+                    shapes.push(Shape::line_segment(diagonal2, default_stroke));
+                }
+                MarkerShape::Plus => {
+                    let horizontal = [tf(-1.0, 0.0), tf(1.0, 0.0)];
+                    let vertical = [tf(0.0, -1.0), tf(0.0, 1.0)];
+                    shapes.push(Shape::line_segment(horizontal, default_stroke));
+                    shapes.push(Shape::line_segment(vertical, default_stroke));
+                }
+                MarkerShape::Up => {
+                    let points = vec![tf(0.0, -1.0), tf(0.5 * sqrt_3, 0.5), tf(-0.5 * sqrt_3, 0.5)];
+                    shapes.push(Shape::convex_polygon(points, fill, stroke));
+                }
+                MarkerShape::Down => {
+                    let points = vec![
+                        tf(0.0, 1.0),
+                        tf(-0.5 * sqrt_3, -0.5),
+                        tf(0.5 * sqrt_3, -0.5),
+                    ];
+                    shapes.push(Shape::convex_polygon(points, fill, stroke));
+                }
+                MarkerShape::Left => {
+                    let points = vec![tf(-1.0, 0.0), tf(0.5, -0.5 * sqrt_3), tf(0.5, 0.5 * sqrt_3)];
+                    shapes.push(Shape::convex_polygon(points, fill, stroke));
+                }
+                MarkerShape::Right => {
+                    let points = vec![
+                        tf(1.0, 0.0),
+                        tf(-0.5, 0.5 * sqrt_3),
+                        tf(-0.5, -0.5 * sqrt_3),
+                    ];
+                    shapes.push(Shape::convex_polygon(points, fill, stroke));
+                }
+                MarkerShape::Asterisk => {
+                    let vertical = [tf(0.0, -1.0), tf(0.0, 1.0)];
+                    let diagonal1 = [tf(-frac_sqrt_3_2, 0.5), tf(frac_sqrt_3_2, -0.5)];
+                    let diagonal2 = [tf(-frac_sqrt_3_2, -0.5), tf(frac_sqrt_3_2, 0.5)];
+                    shapes.push(Shape::line_segment(vertical, default_stroke));
+                    shapes.push(Shape::line_segment(diagonal1, default_stroke));
+                    shapes.push(Shape::line_segment(diagonal2, default_stroke));
+                }
+            }
+        }
     }
 
     fn initialize(&mut self, x_range: RangeInclusive<f64>) {
@@ -2128,7 +2520,7 @@ impl PlotItem for Points<'_> {
         if self.colored_point_batch.is_some() {
             PlotGeometry::None
         } else {
-            PlotGeometry::Points(self.series.points())
+            self.series.geometry()
         }
     }
 
@@ -2159,13 +2551,12 @@ impl PlotItem for Points<'_> {
                 .min_by_key(|e| e.dist_sq.ord());
         }
         self.series
-            .points()
-            .iter()
+            .iter_plot_points()
             .enumerate()
             .filter(|(_, value)| transform.is_point_valid_for_scale(value))
             .map(|(index, value)| ClosestElem {
                 index,
-                dist_sq: point.distance_sq(transform.position_from_point(value)),
+                dist_sq: point.distance_sq(transform.position_from_point(&value)),
             })
             .min_by_key(|e| e.dist_sq.ord())
     }
@@ -2182,7 +2573,7 @@ impl PlotItem for Points<'_> {
         let value = if let Some(batch) = &self.colored_point_batch {
             batch.get(elem.index)?.point
         } else {
-            *self.series.points().get(elem.index)?
+            self.series.iter_plot_points().nth(elem.index)?
         };
         let world_point = plot.world_point.or_else(|| {
             plot.sidecar_3d
@@ -2210,6 +2601,56 @@ impl PlotItem for Points<'_> {
     fn base_mut(&mut self) -> &mut PlotItemBase {
         &mut self.base
     }
+}
+
+fn collect_point_screen_centers(
+    series: &PlotPoints<'_>,
+    transform: &PlotTransform,
+    radius: f32,
+    has_stems: bool,
+) -> Vec<Pos2> {
+    if series.len() <= 256 {
+        return series
+            .iter_plot_points()
+            .filter(|v| transform.is_point_valid_for_scale(v))
+            .map(|v| transform.position_from_point(&v))
+            .collect();
+    }
+    let min_x_step = (radius * 3.0).max(8.0);
+    let mut out = Vec::with_capacity(256);
+    let mut tail: Option<Pos2> = None;
+    let push_pos = |pos: Pos2, out: &mut Vec<Pos2>, tail: &mut Option<Pos2>| {
+        let keep = match out.last() {
+            None => true,
+            Some(&prev) if has_stems => (pos.x - prev.x).abs() >= min_x_step,
+            Some(&prev) => (pos - prev).length_sq() >= 2.25,
+        };
+        if keep {
+            out.push(pos);
+            *tail = None;
+        } else {
+            *tail = Some(pos);
+        }
+    };
+    if let Some(proj) = transform.linear_projector()
+        && let PlotGeometry::Shared(pts) = series.geometry()
+    {
+        for &[x, y] in pts {
+            if x.is_finite() && y.is_finite() {
+                push_pos(proj.project(x, y), &mut out, &mut tail);
+            }
+        }
+    } else {
+        for v in series.iter_plot_points() {
+            if transform.is_point_valid_for_scale(&v) {
+                push_pos(transform.position_from_point(&v), &mut out, &mut tail);
+            }
+        }
+    }
+    if let Some(last) = tail {
+        out.push(last);
+    }
+    out
 }
 
 /// A set of arrows.
@@ -2255,19 +2696,40 @@ impl<'a> Arrows<'a> {
 
 impl PlotItem for Arrows<'_> {
     fn extract_points(&self) -> Vec<[f64; 2]> {
-        let mut pts = Vec::with_capacity(self.origins.points().len() * 2);
-        for (origin, tip) in self.origins.points().iter().zip(self.tips.points().iter()) {
+        let mut pts = Vec::with_capacity(self.origins.len() * 2);
+        for (origin, tip) in self
+            .origins
+            .iter_plot_points()
+            .zip(self.tips.iter_plot_points())
+        {
             pts.push([origin.x, origin.y]);
             pts.push([tip.x, tip.y]);
         }
         pts
     }
 
+    fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
+        let pairs = self.origins.len().min(self.tips.len());
+        cached.len() == pairs * 2
+            && self
+                .origins
+                .iter_plot_points()
+                .zip(self.tips.iter_plot_points())
+                .enumerate()
+                .all(|(idx, (o, t))| {
+                    let c0 = cached[idx * 2];
+                    let c1 = cached[idx * 2 + 1];
+                    c0[0].to_bits() == o.x.to_bits()
+                        && c0[1].to_bits() == o.y.to_bits()
+                        && c1[0].to_bits() == t.x.to_bits()
+                        && c1[1].to_bits() == t.y.to_bits()
+                })
+    }
+
     fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
         self.origins
-            .points()
-            .iter()
-            .zip(self.tips.points().iter())
+            .iter_plot_points()
+            .zip(self.tips.iter_plot_points())
             .map(
                 |(origin, tip)| crate::export_primitives::ExportPrimitive::Arrow {
                     name: self.name().to_owned(),
@@ -2315,13 +2777,12 @@ impl PlotItem for Arrows<'_> {
         } = self;
         let stroke = Stroke::new(if base.highlight { 2.0_f32 } else { 1.0_f32 }, *color);
         origins
-            .points()
-            .iter()
-            .zip(tips.points().iter())
+            .iter_plot_points()
+            .zip(tips.iter_plot_points())
             .map(|(origin, tip)| {
                 (
-                    transform.position_from_point(origin),
-                    transform.position_from_point(tip),
+                    transform.position_from_point(&origin),
+                    transform.position_from_point(&tip),
                 )
             })
             .for_each(|(origin, tip)| {
@@ -2357,7 +2818,7 @@ impl PlotItem for Arrows<'_> {
     }
 
     fn geometry(&self) -> PlotGeometry<'_> {
-        PlotGeometry::Points(self.origins.points())
+        self.origins.geometry()
     }
 
     fn bounds(&self) -> PlotBounds {
@@ -2562,6 +3023,10 @@ impl PlotItem for PlotImage {
         PlotGeometry::None
     }
 
+    fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
+        cached.is_empty()
+    }
+
     fn bounds(&self) -> PlotBounds {
         let mut bounds = PlotBounds::NOTHING;
         let left_top = PlotPoint::new(
@@ -2701,6 +3166,14 @@ impl PlotItem for BarChart {
                 [pt.x, pt.y]
             })
             .collect()
+    }
+
+    fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
+        cached.len() == self.bars.len()
+            && self.bars.iter().zip(cached.iter()).all(|(b, c)| {
+                let pt = b.point_at(b.argument, b.base_offset.unwrap_or(0.0) + b.value);
+                c[0].to_bits() == pt.x.to_bits() && c[1].to_bits() == pt.y.to_bits()
+            })
     }
 
     fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
@@ -2870,6 +3343,25 @@ impl PlotItem for BoxPlot {
             }
         }
         pts
+    }
+
+    fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
+        cached.len() == self.boxes.len() * 5
+            && self
+                .boxes
+                .iter()
+                .flat_map(|b| {
+                    [
+                        b.spread.lower_whisker,
+                        b.spread.quartile1,
+                        b.spread.median,
+                        b.spread.quartile3,
+                        b.spread.upper_whisker,
+                    ]
+                    .map(|val| b.point_at(b.argument, val))
+                })
+                .zip(cached.iter())
+                .all(|(pt, c)| c[0].to_bits() == pt.x.to_bits() && c[1].to_bits() == pt.y.to_bits())
     }
 
     fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {

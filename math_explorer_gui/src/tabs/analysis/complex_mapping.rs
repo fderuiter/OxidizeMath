@@ -220,7 +220,6 @@ impl InteractiveTool for ComplexMappingTool {
     ) -> Vec<egui_plot::export::DatasetFrame> {
         Vec::new()
     }
-
     fn export_glsl_shader(
         &self,
         dialect: crate::framework::ShaderDialect,

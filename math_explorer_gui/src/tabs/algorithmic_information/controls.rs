@@ -70,6 +70,7 @@ impl FractranMachineTool {
                     self.is_playing = false;
                     let _ = self.step_once();
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.config.warmup_steps = 0;
                     self.rebuild_machine(0);

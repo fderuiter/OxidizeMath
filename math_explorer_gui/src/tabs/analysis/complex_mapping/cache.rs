@@ -2,7 +2,7 @@
 
 pub(super) use super::contour_batch::ContourBatch;
 use super::ui::CONTOUR_RESOLUTION;
-use super::{COMPLEX_COORD_MAX, COMPLEX_COORD_MIN, ComplexMappingTool, MappingFunction};
+use super::{ComplexMappingTool, MappingFunction, COMPLEX_COORD_MAX, COMPLEX_COORD_MIN};
 use egui_plot::{PlotBounds, PlotPoint};
 use math_explorer::pure_math::analysis::complex::mapping::conformal_scale_factor;
 use num_complex::Complex64;

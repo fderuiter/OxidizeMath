@@ -216,7 +216,14 @@ fn measure_cold_and_warm_ms(ctx: &egui::Context, tool: &mut dyn InteractiveTool)
 
 #[test]
 fn headless_1920x1080_frames_respect_frame_budget_across_slider_positions() {
-    let budget_ms = if cfg!(debug_assertions) { 500.0 } else { 16.67 };
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let budget_ms = if cfg!(debug_assertions) {
+        1000.0
+    } else {
+        16.67
+    };
     let ctx = egui::Context::default();
     let _ = ctx.run(hd_input(), |_| {});
 

@@ -9,9 +9,12 @@ mod tests;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use crate::export::{
-    EXPORT_PALETTE, ExportOptions, MAX_EXPORT_DIMENSION, color32_image_to_png,
-    color32_images_to_gif,
+use crate::{
+    SharedPoints,
+    export::{
+        EXPORT_PALETTE, ExportOptions, MAX_EXPORT_DIMENSION, color32_image_to_png,
+        color32_images_to_gif,
+    },
 };
 
 pub use raster::{render_primitives_image, render_primitives_image_with_bounds, scale_color_image};
@@ -25,7 +28,7 @@ pub enum ExportPrimitive {
         /// Series name.
         name: String,
         /// Ordered 2D coordinates in plot space.
-        points: Vec<[f64; 2]>,
+        points: SharedPoints,
         /// Stroke color (`Color32::TRANSPARENT` falls back to [`EXPORT_PALETTE`]).
         color: egui::Color32,
         /// Stroke width in UI points.
@@ -40,7 +43,7 @@ pub enum ExportPrimitive {
         /// Series name.
         name: String,
         /// 2D marker coordinates in plot space.
-        points: Vec<[f64; 2]>,
+        points: SharedPoints,
         /// Marker color (`Color32::TRANSPARENT` falls back to [`EXPORT_PALETTE`]).
         color: egui::Color32,
         /// Marker radius in UI points.
@@ -117,6 +120,32 @@ pub enum ExportPrimitive {
 /// Deferred offscreen primitive handle stored during interactive frame rendering and materialized on export.
 #[derive(Clone, Debug)]
 pub enum DeferredPlotPrimitive {
+    /// Zero-copy [`SharedPoints`] polyline or polygon series.
+    SharedPolyline {
+        /// Series name.
+        name: String,
+        /// Shared `[x, y]` plot-space coordinates.
+        points: SharedPoints,
+        /// Stroke color.
+        color: egui::Color32,
+        /// Stroke width in UI points.
+        stroke_width: f32,
+        /// Whether the polyline is closed.
+        closed: bool,
+        /// Optional polygon fill color.
+        fill: Option<egui::Color32>,
+    },
+    /// Zero-copy [`SharedPoints`] scatter marker series.
+    SharedPoints {
+        /// Series name.
+        name: String,
+        /// Shared `[x, y]` plot-space coordinates.
+        points: SharedPoints,
+        /// Marker color.
+        color: egui::Color32,
+        /// Marker radius in UI points.
+        radius: f32,
+    },
     /// Zero-copy shared polyline or polygon series.
     Polyline {
         /// Series name.
@@ -210,6 +239,40 @@ pub enum DeferredPlotPrimitive {
 impl DeferredPlotPrimitive {
     fn materialize_into(&self, out: &mut Vec<ExportPrimitive>) {
         match self {
+            Self::SharedPolyline {
+                name,
+                points,
+                color,
+                stroke_width,
+                closed,
+                fill,
+            } => {
+                if !points.is_empty() {
+                    out.push(ExportPrimitive::Polyline {
+                        name: name.clone(),
+                        points: points.clone(),
+                        color: *color,
+                        stroke_width: *stroke_width,
+                        closed: *closed,
+                        fill: *fill,
+                    });
+                }
+            }
+            Self::SharedPoints {
+                name,
+                points,
+                color,
+                radius,
+            } => {
+                if !points.is_empty() {
+                    out.push(ExportPrimitive::Points {
+                        name: name.clone(),
+                        points: points.clone(),
+                        color: *color,
+                        radius: *radius,
+                    });
+                }
+            }
             Self::Polyline {
                 name,
                 points,
@@ -221,7 +284,7 @@ impl DeferredPlotPrimitive {
                 if !points.is_empty() {
                     out.push(ExportPrimitive::Polyline {
                         name: name.clone(),
-                        points: points.iter().map(|p| [p.x, p.y]).collect(),
+                        points: SharedPoints::from_plot_points(points),
                         color: *color,
                         stroke_width: *stroke_width,
                         closed: *closed,
@@ -241,7 +304,7 @@ impl DeferredPlotPrimitive {
                 if !points.is_empty() {
                     out.push(ExportPrimitive::Points {
                         name: name.clone(),
-                        points: points.iter().map(|p| [p.x, p.y]).collect(),
+                        points: SharedPoints::from_plot_points(points),
                         color: *color,
                         radius: *radius,
                     });
@@ -251,7 +314,7 @@ impl DeferredPlotPrimitive {
                 for cp in points.iter() {
                     out.push(ExportPrimitive::Points {
                         name: name.clone(),
-                        points: vec![[cp.point.x, cp.point.y]],
+                        points: SharedPoints::from_slice(&[[cp.point.x, cp.point.y]]),
                         color: cp.color,
                         radius: cp.radius,
                     });
@@ -300,7 +363,7 @@ impl DeferredPlotPrimitive {
                 for seg in segments.iter().filter(|seg| !seg.is_empty()) {
                     out.push(ExportPrimitive::Polyline {
                         name: name.clone(),
-                        points: seg.iter().map(|p| [p.x, p.y]).collect(),
+                        points: SharedPoints::from_plot_points(seg),
                         color: *color,
                         stroke_width: *stroke_width,
                         closed: false,
@@ -312,7 +375,7 @@ impl DeferredPlotPrimitive {
                 for seg in segments.iter().filter(|seg| !seg.points.is_empty()) {
                     out.push(ExportPrimitive::Polyline {
                         name: name.clone(),
-                        points: seg.points.iter().map(|p| [p.x, p.y]).collect(),
+                        points: SharedPoints::from_plot_points(&seg.points),
                         color: seg.color,
                         stroke_width: seg.width,
                         closed: false,
@@ -332,7 +395,7 @@ impl DeferredPlotPrimitive {
                     if let Some(seg) = slice_src.get(range.clone()).filter(|s| s.len() >= 2) {
                         out.push(ExportPrimitive::Polyline {
                             name: name.clone(),
-                            points: seg.iter().map(|p| [p.x, p.y]).collect(),
+                            points: SharedPoints::from_plot_points(seg),
                             color: *color,
                             stroke_width: *stroke_width,
                             closed: false,
@@ -410,6 +473,14 @@ pub fn has_finite_dataset_points(datasets: &[(String, Vec<[f64; 2]>)]) -> bool {
         .any(|p| p[0].is_finite() && p[1].is_finite())
 }
 
+/// Returns `true` if `datasets` contains at least one finite `[x, y]` coordinate pair without cloning.
+pub fn has_finite_shared_dataset_points(datasets: &[(String, SharedPoints)]) -> bool {
+    datasets
+        .iter()
+        .flat_map(|(_, pts)| pts.iter())
+        .any(|p| p[0].is_finite() && p[1].is_finite())
+}
+
 /// Returns `true` if `primitives` contains at least one finite drawable shape or non-empty raster image.
 pub fn has_drawable_primitives(primitives: &[ExportPrimitive]) -> bool {
     compute_primitive_bounds(primitives).is_some()
@@ -467,6 +538,23 @@ pub(crate) fn sanitize_bar_corners(
 
 /// Converts legacy `(name, points)` datasets into [`ExportPrimitive::Polyline`] entries.
 pub fn datasets_to_primitives(datasets: &[(String, Vec<[f64; 2]>)]) -> Vec<ExportPrimitive> {
+    datasets
+        .iter()
+        .enumerate()
+        .filter(|(_, (_, pts))| pts.iter().any(|p| p[0].is_finite() && p[1].is_finite()))
+        .map(|(idx, (name, pts))| ExportPrimitive::Polyline {
+            name: name.clone(),
+            points: SharedPoints::from_slice(pts),
+            color: EXPORT_PALETTE[idx % EXPORT_PALETTE.len()],
+            stroke_width: 2.0,
+            closed: false,
+            fill: None,
+        })
+        .collect()
+}
+
+/// Converts shared `(name, points)` datasets into [`ExportPrimitive::Polyline`] entries without copying coordinates.
+pub fn shared_datasets_to_primitives(datasets: &[(String, SharedPoints)]) -> Vec<ExportPrimitive> {
     datasets
         .iter()
         .enumerate()

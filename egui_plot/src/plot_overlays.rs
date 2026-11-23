@@ -1,13 +1,11 @@
 //! CSV overlay rendering, `Overlays` toolbar/menu controls, `Zoom Fit` framing,
 //! narrow-pane toolbar overflow compaction, clipboard paste, and drag-and-drop handling.
 
-use std::sync::Arc;
-
 use egui::{Color32, Id, Rect, Response, Ui, Vec2b};
 
 use crate::{
     AccessState, Line, MarkerShape, Plot3DSeriesSidecar, PlotBounds, PlotItem, PlotMemory, PlotUi,
-    Points, TabularSeries,
+    Points, SharedPoints, TabularSeries,
     a11y::{self, AccessibleTooltipExt as _},
     apply_aspect_and_sync_linked,
     commands::CommandRegistryData,
@@ -16,6 +14,7 @@ use crate::{
     export::{self, ImportedDataset},
     file_io::parse_immediate_csv_overlay,
     fit_overlay,
+    runtime_cache::CachedItemSeries,
 };
 
 /// Plot width below which secondary toolbar controls collapse into a `⋯ More` overflow menu.
@@ -35,10 +34,11 @@ pub(crate) struct PlotToolbarConfig<'a, 'b> {
     pub scene_3d_mode: bool,
     pub has_table_content: bool,
     pub has_fit_candidates: bool,
-    pub base_items_hash: u64,
     pub items: &'a [Box<dyn PlotItem + 'b>],
     pub sidecar_3d: Option<&'a Plot3DSeriesSidecar>,
     pub tabular_series: Option<&'a [TabularSeries]>,
+    pub item_shared_points: &'a [SharedPoints],
+    pub base_series_for_menu: &'a [CachedItemSeries],
     pub fit_status: &'a fit_overlay::FitOverlayStatus,
     pub viewport_sync: OverlayViewportSync<'a>,
 }
@@ -441,6 +441,7 @@ fn render_secondary_toolbar_actions(
         } else {
             export::export_csv(&crate::collect_export_datasets(
                 cfg.items,
+                cfg.item_shared_points,
                 cfg.tabular_series,
             ));
         }
@@ -454,6 +455,7 @@ fn render_secondary_toolbar_actions(
         } else {
             export::export_json(&crate::collect_export_datasets(
                 cfg.items,
+                cfg.item_shared_points,
                 cfg.tabular_series,
             ));
         }
@@ -494,13 +496,13 @@ fn render_toolbar_fit_controls(
         return;
     }
     ui.menu_button("Fit Curve", |ui| {
-        let base_ds = Arc::clone(crate::get_or_populate_base_datasets(
-            cfg.items,
-            cfg.tabular_series,
-            cfg.base_items_hash,
-            &mut access_state.cached_base_datasets,
-        ));
-        fit_overlay::render_fit_curve_menu(ui, &base_ds, access_state, in_overflow, cfg.fit_status);
+        fit_overlay::render_fit_curve_menu(
+            ui,
+            cfg.base_series_for_menu,
+            access_state,
+            in_overflow,
+            cfg.fit_status,
+        );
     });
     if cfg.fit_status.can_toggle_visibility() {
         let toggle_text = if access_state.show_fit_overlay {
@@ -519,7 +521,6 @@ fn render_toolbar_fit_controls(
 
 fn clear_active_fit_state(access_state: &mut AccessState) {
     access_state.fit_model = None;
-    access_state.cached_fit = None;
     access_state.custom_fit_error = None;
     access_state.last_fit_error_announced = None;
 }

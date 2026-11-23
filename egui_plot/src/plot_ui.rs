@@ -9,17 +9,21 @@ use crate::{BoundsModification, PlotBounds, PlotItem, PlotPoint, PlotTransform};
 #[derive(Clone, Debug, PartialEq)]
 pub struct TabularSeries {
     pub name: String,
-    pub points: Vec<[f64; 2]>,
+    pub points: crate::SharedPoints,
     pub color: Color32,
 }
 
 impl TabularSeries {
     /// Creates a named tabular series with `[x, y]` coordinate pairs and accent color.
     #[must_use]
-    pub fn new(name: impl Into<String>, points: Vec<[f64; 2]>, color: Color32) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        points: impl Into<crate::SharedPoints>,
+        color: Color32,
+    ) -> Self {
         Self {
             name: name.into(),
-            points,
+            points: points.into(),
             color,
         }
     }
