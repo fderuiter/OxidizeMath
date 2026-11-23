@@ -1,7 +1,7 @@
 //! Unified feature-gated error re-exports and facade umbrella error across all OxidizeMath domains.
 
 pub use math_commons::error::{
-    EvalError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
+    EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
 };
 
 #[cfg(feature = "ai")]
@@ -46,6 +46,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub enum Error {
     /// AST evaluation error.
     Eval(EvalError),
+    /// Zero-allocation curve-fitting solver error.
+    Fit(FitError),
     /// AST-to-GLSL transpilation error.
     Glsl(GlslError),
     /// AST lexer error.

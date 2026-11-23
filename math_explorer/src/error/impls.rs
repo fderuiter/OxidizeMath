@@ -144,6 +144,7 @@ impl Error {
     fn classify(&self) -> Option<InnerErrorRef<'_>> {
         match self {
             Self::Eval(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Fit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Glsl(err) => Some(InnerErrorRef::Domain(err)),
             Self::Lex(err) => Some(InnerErrorRef::Domain(err)),
             Self::Math(err) => Some(InnerErrorRef::Domain(err)),

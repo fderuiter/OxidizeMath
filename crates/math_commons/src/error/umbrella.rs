@@ -1,4 +1,5 @@
-use super::{EvalError, GlslError, LexError, MathError, ParseError};
+// [cite:math_commons]
+use super::{EvalError, FitError, GlslError, LexError, MathError, ParseError};
 use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -10,6 +11,9 @@ pub enum MathCommonsError {
     /// Core mathematical validation or dimension failure.
     #[error("{0}")]
     Math(#[from] MathError),
+    /// Zero-allocation curve-fitting failure.
+    #[error("{0}")]
+    Fit(#[from] FitError),
     /// AST lexical analysis failure.
     #[error("{0}")]
     Lex(#[from] LexError),
@@ -28,6 +32,7 @@ impl MathCommonsError {
     fn as_diagnostic(&self) -> &dyn Diagnostic {
         match self {
             Self::Math(err) => err,
+            Self::Fit(err) => err,
             Self::Lex(err) => err,
             Self::Parse(err) => err,
             Self::Eval(err) => err,

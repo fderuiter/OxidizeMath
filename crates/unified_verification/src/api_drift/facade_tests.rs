@@ -8,7 +8,7 @@ fn write_minimal_facade_fixture(dir: &Path, include_ai_error: bool, extra_sig: &
     fs::create_dir_all(&me).unwrap();
     fs::write(
         me.join("lib.rs"),
-        "pub mod error;\npub mod prelude;\npub use diagnostics;\npub use math_commons::{ast, constants, math_kernel, primitives, registry, wigner};\npub use domain_ai::ai;\npub use nalgebra;\npub use num_complex;\npub use oxidize_core::{mesh, rng};\npub use petgraph;\npub use ::pure_math::{math_types, pure_math};\npub use rand;\n",
+        "pub mod error;\npub mod prelude;\npub use diagnostics;\npub use math_commons::{ast, constants, fit, math_kernel, poi, primitives, registry, series, wigner};\npub use domain_ai::ai;\npub use nalgebra;\npub use num_complex;\npub use oxidize_core::{mesh, rng};\npub use petgraph;\npub use ::pure_math::{math_types, pure_math};\npub use rand;\n",
     )
     .unwrap();
     let err_export = if include_ai_error {
