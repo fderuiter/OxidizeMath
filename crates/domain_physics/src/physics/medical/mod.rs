@@ -44,6 +44,8 @@ pub mod radar_gating;
 pub mod signal;
 pub mod thermodynamics;
 
+pub use radar_gating::GatingError;
+
 // [cite:favorite_child]
 
 use pure_math::theory_verification;

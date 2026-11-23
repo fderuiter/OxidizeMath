@@ -112,6 +112,12 @@ fn test_pure_math_custom_canvases_and_rasters_receive_tab_focus_and_labels() {
         &mut fractran,
         "FRACTRAN Minsky Counter-Machine Graph",
     );
+
+    let mut chladni = crate::tabs::analysis::chladni_wave_tank::ChladniWaveTankTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut chladni,
+        "2D Chladni Plate & Wave Tank Visualization",
+    );
 }
 
 #[cfg(feature = "biology")]
@@ -119,6 +125,12 @@ fn test_pure_math_custom_canvases_and_rasters_receive_tab_focus_and_labels() {
 fn test_neuroscience_canvas_receives_tab_focus_and_accesskit_label() {
     let mut neuro = crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut neuro, "Neural Network Visualization");
+
+    let mut lenia = crate::tabs::morphogenesis::LeniaTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut lenia,
+        "Lenia Studio Continuous Automaton Canvas",
+    );
 
     let mut sheet = crate::tabs::neuroscience::excitable_sheet::ExcitableSheetTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(
