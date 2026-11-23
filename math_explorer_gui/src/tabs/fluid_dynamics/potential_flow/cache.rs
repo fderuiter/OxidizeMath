@@ -1,7 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{FlowElement, PotentialFlowTool, SerializedFlowElement};
+use super::{ElementType, FlowElement, PotentialFlowTool, SerializedFlowElement};
 use egui_plot::PlotPoint;
+use std::f64::consts::PI;
 use std::hash::{Hash as _, Hasher as _};
 use std::sync::Arc;
 
@@ -10,9 +11,9 @@ pub(crate) struct ArrowFieldCache {
     key: Option<u64>,
     origins: Arc<Vec<PlotPoint>>,
     tips: Arc<Vec<PlotPoint>>,
-    contour_key: Option<u64>,
-    streamlines: Vec<Arc<Vec<PlotPoint>>>,
-    stagnation: Arc<Vec<PlotPoint>>,
+    pub(crate) contour_key: Option<u64>,
+    pub(crate) streamlines: Vec<Arc<Vec<PlotPoint>>>,
+    pub(crate) stagnation: Arc<Vec<PlotPoint>>,
     pub(crate) eval_count: usize,
 }
 
@@ -30,6 +31,10 @@ fn hash_flow_element(el: &SerializedFlowElement, h: &mut impl std::hash::Hasher)
     canonical_bits(el.x).hash(h);
     canonical_bits(el.y).hash(h);
     canonical_bits(el.angle).hash(h);
+}
+
+fn is_inside_cylinder(x: f64, y: f64, cyl: Option<(f64, f64, f64)>, ratio: f64) -> bool {
+    cyl.is_some_and(|(cx, cy, r)| (x - cx).hypot(y - cy) < r * ratio)
 }
 
 impl PotentialFlowTool {
@@ -76,6 +81,75 @@ impl PotentialFlowTool {
         h.finish().max(1)
     }
 
+    pub(crate) fn aerodynamic_summary(&self) -> (f64, f64, f64, f64) {
+        let (mut ux, mut uy, mut gamma, mut net_q) = (0.0, 0.0, 0.0, 0.0);
+        for el in &self.elements {
+            match el.element_type {
+                ElementType::Uniform => {
+                    let rad = el.angle.to_radians();
+                    ux += el.strength * rad.cos();
+                    uy += el.strength * rad.sin();
+                }
+                ElementType::Vortex => gamma += el.strength,
+                ElementType::Source => net_q += el.strength,
+                ElementType::Sink => net_q -= el.strength,
+                ElementType::Doublet => {}
+            }
+        }
+        let u_inf = ux.hypot(uy);
+        let lift = -u_inf * gamma;
+        let drag = if net_q.abs() <= 1e-6 {
+            0.0
+        } else {
+            (u_inf * net_q).abs()
+        };
+        (u_inf, gamma, lift, drag)
+    }
+
+    pub(crate) fn inferred_cylinder(&self) -> Option<(f64, f64, f64)> {
+        let (u_inf, _, _, _) = self.aerodynamic_summary();
+        let doublet = self
+            .elements
+            .iter()
+            .find(|e| e.element_type == ElementType::Doublet && e.strength > 1e-6)?;
+        if u_inf <= 1e-6 {
+            return None;
+        }
+        let r = (doublet.strength / (2.0 * PI * u_inf)).sqrt();
+        (r.is_finite() && r > 0.05).then_some((doublet.x, doublet.y, r))
+    }
+
+    pub(crate) fn compute_exterior_stagnation(&self) -> Vec<PlotPoint> {
+        let r = self.view_range.max(0.5);
+        let cyl = self.inferred_cylinder();
+        self.field
+            .detect_stagnation_points((-r, r, -r, r), 40)
+            .into_iter()
+            .filter(|p| !is_inside_cylinder(p.x, p.y, cyl, 0.96))
+            .map(|p| PlotPoint::new(p.x, p.y))
+            .collect()
+    }
+
+    pub(crate) fn flow_observables(&self) -> Vec<(&'static str, f64)> {
+        let (u_inf, gamma, lift, drag) = self.aerodynamic_summary();
+        let r_cyl = self.inferred_cylinder().map_or(0.0, |(_, _, r)| r);
+        let stag_count = if self.cache.contour_key == Some(self.contour_geometry_key()) {
+            self.cache.stagnation.len()
+        } else {
+            self.compute_exterior_stagnation().len()
+        };
+        vec![
+            ("freestream_speed", u_inf),
+            ("circulation", gamma),
+            ("circulation_abs", gamma.abs()),
+            ("kutta_joukowski_lift", lift),
+            ("lift_magnitude", lift.abs()),
+            ("pressure_drag", drag),
+            ("cylinder_radius", r_cyl),
+            ("stagnation_count", stag_count as f64),
+        ]
+    }
+
     pub(crate) fn compute_arrow_field(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
         if !self.view_range.is_finite()
             || self.view_range <= 0.0
@@ -88,6 +162,7 @@ impl PotentialFlowTool {
             return (Vec::new(), Vec::new());
         }
         let min = -self.view_range;
+        let cyl = self.inferred_cylinder();
         let cap = (self.grid_size + 1) * (self.grid_size + 1);
         let mut origins = Vec::with_capacity(cap);
         let mut tips = Vec::with_capacity(cap);
@@ -96,21 +171,18 @@ impl PotentialFlowTool {
             let x = min + (ix as f64) * step;
             for iy in 0..=self.grid_size {
                 let y = min + (iy as f64) * step;
-                let v = self.field.velocity(x, y);
-                if !v.x.is_finite() || !v.y.is_finite() {
+                if is_inside_cylinder(x, y, cyl, 0.92) {
                     continue;
                 }
+                let v = self.field.velocity(x, y);
                 let magnitude = v.norm();
-                if !magnitude.is_finite() || magnitude <= 1e-6 {
+                if !v.x.is_finite() || !v.y.is_finite() || !magnitude.is_finite() || magnitude <= 1e-6 {
                     continue;
                 }
                 let arrow_len = (magnitude * 0.1).min(step * 0.8);
-                if !arrow_len.is_finite() || arrow_len <= 0.0 {
-                    continue;
-                }
                 let direction = v / magnitude;
                 let end = [x + direction.x * arrow_len, y + direction.y * arrow_len];
-                if end[0].is_finite() && end[1].is_finite() {
+                if arrow_len > 0.0 && end[0].is_finite() && end[1].is_finite() {
                     origins.push([x, y]);
                     tips.push(end);
                 }
@@ -164,13 +236,7 @@ impl PotentialFlowTool {
                     )
                 })
                 .collect();
-            let stag = self
-                .field
-                .detect_stagnation_points(bounds, 40)
-                .into_iter()
-                .map(|p| PlotPoint::new(p.x, p.y))
-                .collect();
-            self.cache.stagnation = Arc::new(stag);
+            self.cache.stagnation = Arc::new(self.compute_exterior_stagnation());
             self.cache.contour_key = Some(key);
         }
         (

@@ -205,9 +205,18 @@ mod tests {
     #[verified_engine::verified]
     fn test_potential_flow_contours_and_branch_cut_skip() {
         use crate::physics::fluid_dynamics::potential_flow::{
-            Doublet, PotentialFlowField, Source, UniformFlow,
+            Doublet, FlowElement, PotentialFlowField, Source, UniformFlow, Vortex,
         };
         use std::f64::consts::PI;
+
+        let vortex = Vortex::new(15.0, -0.5, 0.25);
+        let (vx, vy, h) = (1.8, -1.3, 1e-6);
+        let vel = vortex.velocity(vx, vy);
+        let dpsi_dy =
+            (vortex.stream_function(vx, vy + h) - vortex.stream_function(vx, vy - h)) / (2.0 * h);
+        let neg_dpsi_dx =
+            -(vortex.stream_function(vx + h, vy) - vortex.stream_function(vx - h, vy)) / (2.0 * h);
+        assert!((dpsi_dy - vel.x).abs() < 1e-6 && (neg_dpsi_dx - vel.y).abs() < 1e-6);
 
         let mut cylinder = PotentialFlowField::new();
         cylinder.add(Box::new(UniformFlow::new(10.0, 0.0)));

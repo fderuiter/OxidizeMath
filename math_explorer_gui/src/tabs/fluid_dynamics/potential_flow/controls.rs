@@ -250,7 +250,11 @@ impl PotentialFlowTool {
     }
 
     fn draw_probe_readout(&self, ui: &mut egui::Ui) {
-        ui.label("RK4 Dye Probe & Euler Telemetry");
+        let (u_inf, gamma, lift, drag) = self.aerodynamic_summary();
+        ui.label("Aerodynamic & RK4 Dye Telemetry");
+        ui.monospace(format!(
+            "U∞={u_inf:.1} | Γ={gamma:.1} | L'={lift:.1} | D'={drag:.1}"
+        ));
         if let Some(readout) = self.active_probe_readout() {
             ui.monospace(format!(
                 "Pos: ({:+.2}, {:+.2}) | |V|: {:.2} m/s",

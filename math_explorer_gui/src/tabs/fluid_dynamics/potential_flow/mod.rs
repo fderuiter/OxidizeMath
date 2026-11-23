@@ -140,6 +140,7 @@ pub struct PotentialFlowTool {
     pub(crate) dye_probes: Vec<DyeProbe>,
     pub(crate) cached_handles: Vec<(DragTarget, egui::Pos2)>,
     pub(crate) last_canvas_id: Option<egui::Id>,
+    pub(crate) callout_manager: crate::framework::CalloutManager,
     pub(crate) cache: cache::ArrowFieldCache,
 }
 
@@ -192,6 +193,7 @@ impl Default for PotentialFlowTool {
             dye_probes: Vec::new(),
             cached_handles: Vec::new(),
             last_canvas_id: None,
+            callout_manager: crate::framework::CalloutManager::new(),
             cache: cache::ArrowFieldCache::default(),
         };
         tool.rebuild_field();
@@ -249,6 +251,14 @@ impl InteractiveTool for PotentialFlowTool {
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         self.collect_export_datasets()
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.flow_observables()
+    }
+
+    fn sync_callouts(&mut self, callouts: &[crate::framework::CalloutSpec]) {
+        self.callout_manager.sync_specs(callouts);
     }
 
     #[cfg(test)]

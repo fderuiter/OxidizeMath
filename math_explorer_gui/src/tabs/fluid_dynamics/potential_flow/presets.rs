@@ -148,6 +148,7 @@ impl PotentialFlowTool {
             dye_rake_span: loaded.dye_rake_span,
             dye_count: loaded.dye_count,
             stamp_mode: loaded.stamp_mode,
+            callout_manager: self.callout_manager.clone(),
             ..Default::default()
         };
         if !candidate.parameters_are_valid() {
@@ -222,7 +223,7 @@ impl scientific_metadata::theory::TheoryDescribable for PotentialFlowTool {
         );
         map.insert(
             "Vortex".into(),
-            "Circulation flow psi = (Gamma / 2 pi) ln(r), Kutta-Joukowski lift L' = -rho U Gamma"
+            "Circulation flow psi = -(Gamma / 2 pi) ln(r), Kutta-Joukowski lift L' = -rho U Gamma"
                 .into(),
         );
         map.insert(

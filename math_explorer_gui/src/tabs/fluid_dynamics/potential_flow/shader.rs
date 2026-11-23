@@ -1,8 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{
-    ElementType, FLOW_VIEW_MAX, FLOW_VIEW_MIN, PotentialFlowTool, SerializedFlowElement,
-};
+use super::{ElementType, PotentialFlowTool, SerializedFlowElement, FLOW_VIEW_MAX, FLOW_VIEW_MIN};
 use crate::framework::{InteractiveTool, ShaderDialect};
 use math_commons::ast::format_glsl_float;
 use math_commons::math_kernel::glsl_colormap::{
@@ -20,8 +18,8 @@ impl PotentialFlowTool {
         }
         let view_range = format_glsl_float(self.view_range.clamp(FLOW_VIEW_MIN, FLOW_VIEW_MAX))
             .map_err(|e| e.to_string())?;
-        let ref_speed = format_glsl_float(self.reference_flow_speed())
-            .map_err(|e| e.to_string())?;
+        let ref_speed =
+            format_glsl_float(self.reference_flow_speed()).map_err(|e| e.to_string())?;
         let capped_count = self.elements.len().min(MAX_SHADER_SINGULARITIES);
 
         let mut out = String::with_capacity(4096);
@@ -49,7 +47,11 @@ impl PotentialFlowTool {
                 sum += el.strength.abs() / (2.0 * std::f64::consts::PI * self.view_range.max(1.0));
             }
         }
-        if sum > 1.0e-3 { sum * 1.75 } else { 10.0 }
+        if sum > 1.0e-3 {
+            sum * 1.75
+        } else {
+            10.0
+        }
     }
 }
 
@@ -141,8 +143,8 @@ vec4 flow_vortex(vec2 p, float gamma, vec2 center) {
     vec2 d = p - center;
     float r2 = max(dot(d, d), 1.0e-6);
     vec2 uv = (gamma * INV_TWO_PI / r2) * vec2(-d.y, d.x);
-    float psi = (gamma * INV_TWO_PI) * 0.5 * log(r2);
-    float phi = -(gamma * INV_TWO_PI) * safe_atan2(d.y, d.x);
+    float psi = -(gamma * INV_TWO_PI) * 0.5 * log(r2);
+    float phi = (gamma * INV_TWO_PI) * safe_atan2(d.y, d.x);
     return vec4(uv, psi, phi);
 }
 

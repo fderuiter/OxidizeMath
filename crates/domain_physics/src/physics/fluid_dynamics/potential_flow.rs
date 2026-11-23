@@ -213,14 +213,14 @@ impl FlowElement for Vortex {
         if r < math_commons::registry::TOLERANCE_HIGH {
             return 0.0;
         }
-        (self.strength / (2.0 * PI)) * r.ln()
+        -(self.strength / (2.0 * PI)) * r.ln()
     }
 
     #[verified_engine::verified]
     fn potential(&self, x: f64, y: f64) -> f64 {
         let dx = x - self.x;
         let dy = y - self.y;
-        -(self.strength / (2.0 * PI)) * dy.atan2(dx)
+        (self.strength / (2.0 * PI)) * dy.atan2(dx)
     }
 
     #[verified_engine::verified]

@@ -218,3 +218,45 @@ fn potential_flow_clamps_high_grid_state_and_caches_static_arrow_field() {
     let _ = ctx.run(egui::RawInput::default(), |c| live_tool.show(c));
     assert_eq!(live_tool.cache.eval_count, 2);
 }
+
+#[test]
+fn test_cylinder_streamlines_stagnation_and_kutta_lift_observables() {
+    let mut tool = PotentialFlowTool::default();
+    let (streamlines, stag) = tool.ensure_cached_contours();
+    assert!(!streamlines.is_empty(), "streamline contours must be generated");
+    assert_eq!(stag.len(), 2, "symmetric cylinder has 2 exterior stagnation points");
+
+    let mut spinning = PotentialFlowTool::default();
+    spinning.elements.push(SerializedFlowElement {
+        element_type: ElementType::Vortex,
+        strength: -40.0 * PI,
+        x: 0.0,
+        y: 0.0,
+        angle: 0.0,
+    });
+    spinning.rebuild_field();
+    let obs = spinning.flow_observables();
+    let lift = obs
+        .iter()
+        .find(|(k, _)| *k == "kutta_joukowski_lift")
+        .unwrap()
+        .1;
+    let drag = obs.iter().find(|(k, _)| *k == "pressure_drag").unwrap().1;
+    let stag_count = obs
+        .iter()
+        .find(|(k, _)| *k == "stagnation_count")
+        .unwrap()
+        .1;
+    assert!(lift > 1250.0 && drag.abs() < 1e-9);
+    assert_eq!(stag_count, 2.0);
+
+    spinning.elements[2].strength = -300.0;
+    spinning.rebuild_field();
+    let sup_stag = spinning
+        .flow_observables()
+        .into_iter()
+        .find(|(k, _)| *k == "stagnation_count")
+        .unwrap()
+        .1;
+    assert_eq!(sup_stag, 1.0, "supercritical spin detaches a single exterior saddle");
+}

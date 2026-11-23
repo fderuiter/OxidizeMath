@@ -418,5 +418,6 @@ impl PotentialFlowTool {
             );
         }
         self.draw_handle_markers(plot_ui, &palette, canvas_focused);
+        self.callout_manager.render_on_plot(plot_ui);
     }
 }
