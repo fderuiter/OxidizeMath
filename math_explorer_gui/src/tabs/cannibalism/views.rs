@@ -92,6 +92,7 @@ fn handle_playback_action(tool: &mut PopulationStructureTool, action: PlaybackAc
             tool.paused = true;
             tool.rebuild_and_warmup();
         }
+        PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
     }
 }
 

@@ -144,8 +144,8 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     assert_eq!(
         tools.len(),
-        76,
-        "Expected all 76 registered InteractiveTools"
+        77,
+        "Expected all 77 registered InteractiveTools"
     );
 
     let mut source_app = MathExplorerApp::default();
@@ -207,8 +207,8 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
         .collect();
     assert_eq!(
         presets.len(),
-        111,
-        "Expected all 111 StarterPresetMetadata entries"
+        112,
+        "Expected all 112 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -273,11 +273,19 @@ fn build_invalid_share_url_cases() -> Vec<String> {
     let traversal_trace_b64 = encode_base64url(
         br#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"traceability","timestamp":"0"},"config":{"repo_path":"../../etc/passwd"}}"#,
     );
+    let non_finite_b64 = encode_base64url(
+        br#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"chaos","timestamp":"0"},"config":{"x":1e309}}"#,
+    );
+    let oversized_decoded_b64 = encode_base64url(
+        format!(r#"{{"pad":"{}"}}"#, "x".repeat(MAX_DECODED_URL_STATE_BYTES)).as_bytes(),
+    );
     vec![
         "#tab=chaos&tool=AttractorPlotter&state=***invalid_base64***".to_string(),
         format!("#tab=chaos&tool=AttractorPlotter&state={unknown_field_b64}"),
         format!("#tab=chaos&tool=AttractorPlotter&state={wrong_domain_b64}"),
         format!("#tab=chaos&tool=AttractorPlotter&state={wrong_schema_b64}"),
+        format!("#tab=chaos&tool=AttractorPlotter&state={non_finite_b64}"),
+        format!("#tab=chaos&tool=AttractorPlotter&state={oversized_decoded_b64}"),
         format!("#tab=morphogenesis&state={bad_morpho_b64}"),
         format!("#tab=chaos&tool=FractalViewer&state={bad_fractal_b64}"),
         format!("#tab=traceability&state={traversal_trace_b64}"),

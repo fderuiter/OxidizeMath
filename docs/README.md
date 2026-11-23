@@ -43,7 +43,9 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](adr/0045-spatial-brush-kit-and-field-sculpting.md)
 - [ADR 0045: Short-Weierstrass Elliptic Curves and Modular GUI Tab](adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md)
 - [ADR 0046: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0046-symplectic-hamiltonian-solvers-and-poincare-lab.md)
-- [ADR 0047: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0047-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
+- [ADR 20261123: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/20261123-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
+- [ADR 20261123: Feature-Gate Core AST Tools and Unify Workspace Crates](adr/20261123-feature-gate-core-ast-tools-and-unify-crates.md)
+- [ADR 20261123: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics](adr/20261123-glicko2-copula-ou-workbenches-and-kelly-net-odds.md)
 
 ## Contributing
 
