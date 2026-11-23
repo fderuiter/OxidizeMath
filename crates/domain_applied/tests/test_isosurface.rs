@@ -2,7 +2,8 @@
 #[cfg(test)]
 mod tests {
     use domain_applied::applied::isosurface::{
-        Mesh, Point3D, SolidClosureConfig, VoxelGrid, extract_isosurface, extract_solid_isosurface,
+        CutPlaneCap, Mesh, Point3D, SolidClosureConfig, VoxelGrid, extract_capped_isosurface,
+        extract_isosurface, extract_solid_isosurface,
     };
     use std::collections::HashMap;
     use verified_engine::allocator::VerifiedAllocator;
@@ -306,5 +307,53 @@ mod tests {
         assert!(mesh.vertices.is_empty());
         assert!(mesh.normals.is_empty());
         assert!(mesh.indices.is_empty());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_capped_gyroid_and_cut_plane_are_outward_watertight_manifolds() {
+        let n = 18usize;
+        let step = std::f32::consts::TAU / ((n - 1) as f32);
+        let orig = -std::f32::consts::PI;
+        let mut data = Vec::with_capacity(n * n * n);
+        for z in 0..n {
+            let wz = orig + (z as f32) * step;
+            for y in 0..n {
+                let wy = orig + (y as f32) * step;
+                for x in 0..n {
+                    let wx = orig + (x as f32) * step;
+                    let gyroid = wx.sin() * wy.cos() + wy.sin() * wz.cos() + wz.sin() * wx.cos();
+                    data.push(gyroid);
+                }
+            }
+        }
+        let grid = VoxelGrid::builder()
+            .dimensions(n, n, n)
+            .data(data)
+            .voxel_size(Point3D::new(step, step, step))
+            .origin(Point3D::new(orig, orig, orig))
+            .build()
+            .unwrap();
+
+        let uncut = extract_capped_isosurface(&grid, 0.0, true, None).unwrap();
+        assert_closed_manifold(&uncut);
+        assert!(uncut.normals.iter().all(|n| n.is_finite()));
+        assert!(compute_signed_volume(&uncut) > 0.0);
+
+        let cut = extract_capped_isosurface(
+            &grid,
+            0.0,
+            true,
+            Some(CutPlaneCap {
+                axis: 2,
+                max_coord: 0.35,
+            }),
+        )
+        .unwrap();
+        assert_closed_manifold(&cut);
+        assert!(cut.normals.iter().all(|n| n.is_finite()));
+        assert!(cut.vertices.iter().all(|v| v.z <= 0.35 + 1.0e-5));
+        assert!(compute_signed_volume(&cut) > 0.0);
+        assert!(compute_signed_volume(&cut) < compute_signed_volume(&uncut));
     }
 }

@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-//! Side-panel controls, `PlaybackTransport`, orbital/Turing/implicit parameter editors, and
-//! cutting-plane inspector for [`super::VolumetricFieldStudioTool`].
+//! Side-panel controls, `PlaybackTransport`, orbital/Turing/implicit CAD parameter editors,
+//! cutting-plane inspector, and millimeter export sizing for [`super::VolumetricFieldStudioTool`].
 // [cite:quantum_mechanics]
 // [cite:isosurface_extraction]
 
 use super::state::{
-    FieldSourceMode, QuantumObservableChoice, SliceAxis, VolumetricRenderMode, MAX_VOLUMETRIC_GRID,
-    MIN_VOLUMETRIC_GRID,
+    FieldSourceMode, QuantumObservableChoice, SliceAxis, VolumetricRenderMode, MAX_EXPORT_SIZE_MM,
+    MAX_VOLUMETRIC_GRID, MIN_EXPORT_SIZE_MM, MIN_VOLUMETRIC_GRID,
 };
 use super::VolumetricFieldStudioTool;
 use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
@@ -35,10 +35,12 @@ impl VolumetricFieldStudioTool {
         let panel_id = scoped_panel_id(parent_ui, "volumetric_field_studio_controls");
         PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Volumetric Field Studio");
-            ui.small("3D MarchingCubes & Gaussian3D Splatting");
+            ui.small("3D Implicit CAD, MarchingCubes & Gaussian3D");
             ui.separator();
-            self.draw_playback_bar(ui);
-            ui.separator();
+            if self.config.source != FieldSourceMode::CustomImplicit {
+                self.draw_playback_bar(ui);
+                ui.separator();
+            }
             let mut dirty = self.draw_source_and_model_controls(ui);
             ui.separator();
             dirty |= self.draw_render_and_slice_controls(ui);
@@ -47,7 +49,7 @@ impl VolumetricFieldStudioTool {
                 self.refresh_zero_alloc();
             }
             ui.separator();
-            self.draw_probe_and_telemetry_section(ui);
+            self.draw_probe_and_export_section(ui);
             ui.separator();
             egui::CollapsingHeader::new("View")
                 .default_open(true)
@@ -102,7 +104,7 @@ impl VolumetricFieldStudioTool {
                 for mode in [
                     FieldSourceMode::QuantumSuperposition,
                     FieldSourceMode::TuringMorphogenesis,
-                    FieldSourceMode::CustomImplicitFormula,
+                    FieldSourceMode::CustomImplicit,
                 ] {
                     ui.selectable_value(&mut self.config.source, mode, mode.label());
                 }
@@ -111,8 +113,8 @@ impl VolumetricFieldStudioTool {
         match self.config.source {
             FieldSourceMode::QuantumSuperposition => changed |= self.draw_quantum_controls(ui),
             FieldSourceMode::TuringMorphogenesis => changed |= self.draw_turing_controls(ui),
-            FieldSourceMode::CustomImplicitFormula => {
-                changed |= super::formula::draw_implicit_controls(self, ui);
+            FieldSourceMode::CustomImplicit => {
+                changed |= self.implicit_ui.draw_controls(ui, &mut self.config);
             }
         }
         changed
@@ -237,7 +239,7 @@ impl VolumetricFieldStudioTool {
                 .text("Grid Voxels³"),
             )
             .changed();
-        if self.config.source != FieldSourceMode::CustomImplicitFormula {
+        if self.config.source != FieldSourceMode::CustomImplicit {
             c |= ui
                 .add(
                     egui::Slider::new(&mut self.config.iso_threshold, 0.002..=0.8)
@@ -274,7 +276,25 @@ impl VolumetricFieldStudioTool {
         c
     }
 
-    fn draw_probe_and_telemetry_section(&mut self, ui: &mut egui::Ui) {
+    fn draw_probe_and_export_section(&mut self, ui: &mut egui::Ui) {
+        if self.config.render_mode.uses_mesh() {
+            if ui
+                .add(
+                    egui::Slider::new(
+                        &mut self.config.export_size_mm,
+                        MIN_EXPORT_SIZE_MM..=MAX_EXPORT_SIZE_MM,
+                    )
+                    .suffix(" mm")
+                    .text("Print Size"),
+                )
+                .changed()
+            {
+                self.config.clamp_in_place();
+            }
+            ui.small("Use toolbar Export STL / PLY / OBJ for watertight 3D solids.");
+        } else {
+            ui.small("Use toolbar Export PLY for INRIA-compatible 3DGS radiance splats.");
+        }
         ui.checkbox(
             &mut self.config.probe_brush_enabled,
             "Click Viewport to Perturb / Pulse",
@@ -285,7 +305,6 @@ impl VolumetricFieldStudioTool {
                 p.world_pos[0], p.world_pos[1], p.world_pos[2], p.scalar_value, p.legendre_polar
             ));
         }
-        ui.small("3D Export: use toolbar Export modal for STL / PLY / OBJ.");
         let dc = self.engine.splat_ws.density_counts;
         let tris = (self.engine.pos_mesh.indices.len() + self.engine.neg_mesh.indices.len()) / 3;
         ui.small(format!(
