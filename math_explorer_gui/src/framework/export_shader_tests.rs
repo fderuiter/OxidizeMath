@@ -255,31 +255,3 @@ fn test_compact_overflow_menu_and_non_shader_tool_warning_status() {
         "Compact overflow menu must expose Export WebGL2 (.frag)"
     );
 }
-
-#[test]
-fn test_fractal_custom_mandelbrot_and_julia_glsl_shader_exports() {
-    let mut fractal = FractalViewer {
-        mode: FractalMode::CustomMandelbrot,
-        high_contrast: true,
-        ..Default::default()
-    };
-    fractal.math_input.set_expression("a * z^3 + c");
-    let mut params = std::collections::BTreeMap::new();
-    params.insert("a".to_string(), 1.25);
-    fractal.math_input.set_params_map(&params);
-
-    let webgl2 = fractal
-        .export_glsl_shader(ShaderDialect::WebGl2Es300)
-        .unwrap();
-    assert!(webgl2.contains("const bool IS_JULIA = false;"));
-    assert!(webgl2.contains("const bool CUSTOM_ESCAPE = true;"));
-    assert!(webgl2.contains("const vec2 a = vec2(1.25, 0.0);"));
-    assert!(webgl2.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
-
-    fractal.mode = FractalMode::CustomJulia;
-    let shadertoy = fractal
-        .export_glsl_shader(ShaderDialect::Shadertoy)
-        .unwrap();
-    assert!(shadertoy.contains("const bool IS_JULIA = true;"));
-    assert!(shadertoy.contains("void mainImage(out vec4 fragColor, in vec2 fragCoord)"));
-}

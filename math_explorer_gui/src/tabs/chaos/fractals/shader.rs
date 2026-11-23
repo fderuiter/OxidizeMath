@@ -8,10 +8,8 @@ use math_commons::math_kernel::glsl_colormap::{
 };
 use std::fmt::Write;
 
-const FRACTAL_RESERVED_SYMBOLS: &[&str] = &[
+const FRACTAL_RESERVED_IDENTS: &[&str] = &[
     "CENTER",
-    "CUSTOM_ESCAPE",
-    "ESCAPE_R2",
     "HIGH_CONTRAST",
     "IS_JULIA",
     "JULIA_C",
@@ -24,8 +22,8 @@ const FRACTAL_RESERVED_SYMBOLS: &[&str] = &[
     "catan",
     "catan2",
     "cclamp",
-    "ccos",
     "ccosh",
+    "ccos",
     "cdiv",
     "cexp",
     "cln",
@@ -35,72 +33,69 @@ const FRACTAL_RESERVED_SYMBOLS: &[&str] = &[
     "cmul",
     "cpow",
     "crect",
-    "csin",
     "csinh",
+    "csin",
     "csqrt",
     "cstep",
-    "ctan",
     "ctanh",
+    "ctan",
     "cyclic_cosine_palette",
     "ensure_dark_canvas_contrast",
-    "eval_escape_step",
     "fragColor",
     "iResolution",
     "linear_channel_to_srgb",
     "relative_luminance_srgb",
     "render_fractal",
     "srgb_channel_to_linear",
+    "step_fractal",
     "u_mouse",
     "u_resolution",
     "u_time",
 ];
 
 impl FractalViewer {
-    fn compile_escape_step_fn(&self) -> Result<String, String> {
+    fn compile_step_glsl(&self) -> Result<(bool, String, String), String> {
         if !self.mode.is_custom() {
-            return Ok(
-                "vec2 eval_escape_step(vec2 z, vec2 c) {\n    return vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;\n}\n"
-                    .to_string(),
-            );
+            return Ok((
+                false,
+                String::new(),
+                "vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c".to_string(),
+            ));
         }
-        let expr = self.math_input.expr().ok_or_else(|| {
+        let invalid_err = || {
             self.math_input
                 .error_message()
                 .unwrap_or_else(|| "Custom fractal expression is invalid".to_string())
-        })?;
-        let compiled = self.math_input.compiled().ok_or_else(|| {
-            self.math_input
-                .error_message()
-                .unwrap_or_else(|| "Custom fractal expression failed to compile".to_string())
-        })?;
-        let values = self.math_input.param_slice();
-        let names = compiled.param_names();
-        let mut scope_vars = Vec::with_capacity(2 + names.len());
-        scope_vars.extend(["z", "c"]);
-        let mut body = String::from("vec2 eval_escape_step(vec2 z, vec2 c) {\n");
-        for (i, param_name) in names.iter().enumerate() {
-            if FRACTAL_RESERVED_SYMBOLS.contains(&param_name.as_str()) {
+        };
+        let expr = self.math_input.expr().ok_or_else(invalid_err)?;
+        let compiled = self.math_input.compiled().ok_or_else(invalid_err)?;
+        let param_names = compiled.param_names();
+        let param_vals = self.math_input.param_slice();
+        let mut allowed_vars = Vec::with_capacity(2 + param_names.len());
+        allowed_vars.extend(["z", "c"]);
+        let mut param_decls = String::new();
+        for (idx, name) in param_names.iter().enumerate() {
+            if FRACTAL_RESERVED_IDENTS.contains(&name.as_str()) {
                 return Err(format!(
-                    "Parameter '{param_name}' conflicts with a reserved fractal shader identifier"
+                    "Parameter '{name}' collides with a reserved GLSL shader symbol"
                 ));
             }
-            let raw_val = values.get(i).copied().unwrap_or(1.0);
-            let glsl_val = format_glsl_float(raw_val).map_err(|e| e.to_string())?;
-            writeln!(body, "    const vec2 {param_name} = vec2({glsl_val}, 0.0);").unwrap();
-            scope_vars.push(param_name.as_str());
+            let val = param_vals.get(idx).copied().unwrap_or(1.0);
+            let lit = format_glsl_float(val).map_err(|e| e.to_string())?;
+            writeln!(param_decls, "    const vec2 {name} = vec2({lit}, 0.0);").unwrap();
+            allowed_vars.push(name.as_str());
         }
-        let step_expr = expr
-            .to_glsl_complex_with_vars(&scope_vars)
+        let expr_glsl = expr
+            .to_glsl_complex_with_vars(&allowed_vars)
             .map_err(|e| e.to_string())?;
-        writeln!(body, "    return {step_expr};\n}}").unwrap();
-        Ok(body)
+        Ok((true, param_decls, expr_glsl))
     }
 
     pub(super) fn build_glsl_shader(&self, dialect: ShaderDialect) -> Result<String, String> {
         if !self.has_finite_parameters() {
             return Err("Fractal parameters are non-finite or out of bounds".to_string());
         }
-        let step_fn = self.compile_escape_step_fn()?;
+        let (needs_helpers, param_decls, step_glsl) = self.compile_step_glsl()?;
         let cx = format_glsl_float(self.center.re.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
         let cy = format_glsl_float(self.center.im.clamp(COORD_MIN, COORD_MAX))
@@ -115,29 +110,27 @@ impl FractalViewer {
             .max_iter
             .clamp(10, math_commons::registry::MAX_ITERATIONS as u32);
         let is_julia = self.mode.uses_julia_c();
-        let is_custom = self.mode.is_custom();
-        let escape_r2 = if is_custom { "4.0" } else { "256.0" };
 
-        let mut out = String::with_capacity(4096);
+        let mut out = String::with_capacity(3072);
         write_dialect_header(&mut out, dialect, self.mode);
         writeln!(out, "const vec2 CENTER = vec2({cx}, {cy});").unwrap();
         writeln!(out, "const float ZOOM = {zoom};").unwrap();
         writeln!(out, "const int MAX_ITER = {max_iter};").unwrap();
         writeln!(out, "const bool IS_JULIA = {is_julia};").unwrap();
-        writeln!(out, "const bool CUSTOM_ESCAPE = {is_custom};").unwrap();
-        writeln!(out, "const float ESCAPE_R2 = {escape_r2};").unwrap();
         writeln!(out, "const vec2 JULIA_C = vec2({jx}, {jy});").unwrap();
         writeln!(out, "const bool HIGH_CONTRAST = {};\n", self.high_contrast).unwrap();
-        if is_custom {
+        if needs_helpers {
             out.push_str(GLSL_COMPLEX_HELPERS);
             out.push('\n');
         }
         out.push_str(glsl_cyclic_cosine_palette_fn());
         out.push('\n');
         out.push_str(glsl_ensure_dark_canvas_contrast_fn());
-        out.push('\n');
-        out.push_str(&step_fn);
-        out.push('\n');
+        writeln!(
+            out,
+            "\nvec2 step_fractal(vec2 z, vec2 c) {{\n{param_decls}    return {step_glsl};\n}}\n"
+        )
+        .unwrap();
         out.push_str(FRACTAL_KERNEL_GLSL);
         write_dialect_entrypoint(&mut out, dialect);
         Ok(out)
@@ -150,14 +143,14 @@ fn write_dialect_header(out: &mut String, dialect: ShaderDialect, mode: FractalM
         out.push_str("uniform vec2 u_resolution;\nuniform float u_time;\nuniform vec4 u_mouse;\nout vec4 fragColor;\n\n");
     }
     let family = match mode {
-        FractalMode::Mandelbrot => "Analytical Mandelbrot",
-        FractalMode::Julia => "Analytical Julia",
-        FractalMode::CustomMandelbrot => "Custom Escape",
-        FractalMode::CustomJulia => "Custom Julia Escape",
+        FractalMode::Mandelbrot => "Mandelbrot",
+        FractalMode::Julia => "Julia",
+        FractalMode::CustomMandelbrot => "Custom Mandelbrot",
+        FractalMode::CustomJulia => "Custom Julia",
     };
     writeln!(
         out,
-        "// OxidizeMath {family} Escape-Time Shader ({})",
+        "// OxidizeMath Analytical {family} Escape-Time Shader ({})",
         dialect.label()
     )
     .unwrap();
@@ -191,24 +184,21 @@ const FRACTAL_KERNEL_GLSL: &str = r#"vec4 render_fractal(vec2 frag_coord, vec2 r
 
     for (int i = 0; i < MAX_ITER; ++i) {
         float r2 = dot(z, z);
-        if (r2 > ESCAPE_R2) {
+        if (r2 > 256.0) {
             escaped = true;
             iter = i;
             break;
         }
-        z = eval_escape_step(z, c);
+        z = step_fractal(z, c);
     }
 
     if (!escaped) {
         return vec4(0.0, 0.0, 0.0, 1.0);
     }
 
-    float band = float(iter);
-    if (!CUSTOM_ESCAPE) {
-        float r2 = max(dot(z, z), 4.0001);
-        band = max(band - log2(max(log2(r2), 1.0e-6)) + 4.0, 0.0);
-    }
-    vec3 col = cyclic_cosine_palette(band);
+    float r2 = max(dot(z, z), 4.0001);
+    float smooth_iter = max(float(iter) - log2(max(log2(r2), 1.0e-6)) + 4.0, 0.0);
+    vec3 col = cyclic_cosine_palette(smooth_iter);
     if (HIGH_CONTRAST) {
         col = ensure_dark_canvas_contrast(col);
     }
