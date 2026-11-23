@@ -38,4 +38,10 @@ job = "deploy-pages"
 allow_write = ["pages", "id-token"]
 reason = "Deploying to GitHub Pages requires pages: write and id-token: write"
 
+[[unused_dependencies]]
+crate = "crates/oxidize_core"
+dependency = "getrandom"
+reason = "Activates the getrandom js backend feature on wasm32-unknown-unknown for rand without direct Rust imports"
+
+
 

@@ -1,55 +1,29 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 //! Nonlinear least-squares RK4 trajectory calibration for [`super::OdeSolverTool`]
-//! presets (`Exponential`, `HarmonicOscillator`, `LogisticGrowth`) and custom [`DynamicAstOde`].
+//! presets (`Exponential`, `HarmonicOscillator`, `LogisticGrowth`) and custom [`CustomOdeSpec`].
+
+#[path = "calibration_models.rs"]
+mod models;
 
 use super::OdeSolverTool;
-use super::systems::DynamicAstOde;
+use super::systems::CustomOdeSpec;
 use crate::framework::empirical_csv::{CalibrationReport, EmpiricalPanelOptions};
+use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
 use crate::framework::recovery::FiniteStateGuard;
 use crate::presets::OdePreset;
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use egui_plot::{MarkerShape, PlotUi, Points};
-use math_commons::ast::Expr;
-use math_explorer::pure_math::analysis::ode::{ArrayState, OdeSystem, RungeKutta4, Solver, VecState};
+use math_commons::ast::CompiledExpr;
+use math_explorer::pure_math::analysis::ode::ArrayState;
 use math_explorer::pure_math::analysis::optimization::{
-    CalibrationSummary, DEFAULT_SHOOTING_MAX_DT, LevenbergMarquardtSolver,
-    LevenbergMarquardtWorkspace, MAX_SUBSTEPS_PER_INTERVAL, ParameterBounds, Rk4ShootingObjective,
+    CalibrationSummary, DEFAULT_SHOOTING_MAX_DT, ParameterBounds,
 };
-use std::collections::HashMap;
-
-struct ScalarExpOde {
-    k: f64,
-}
-
-impl OdeSystem<ArrayState<1>> for ScalarExpOde {
-    fn derivative(&self, _t: f64, state: &ArrayState<1>) -> ArrayState<1> {
-        ArrayState([self.k * state.0[0]])
-    }
-}
-
-struct ScalarLogisticOde {
-    r: f64,
-    cap_k: f64,
-}
-
-impl OdeSystem<ArrayState<1>> for ScalarLogisticOde {
-    fn derivative(&self, _t: f64, state: &ArrayState<1>) -> ArrayState<1> {
-        let y = state.0[0];
-        ArrayState([self.r * y * (1.0 - y / self.cap_k)])
-    }
-}
-
-struct OscArrayOde {
-    k: f64,
-}
-
-impl OdeSystem<ArrayState<2>> for OscArrayOde {
-    fn derivative(&self, _t: f64, state: &ArrayState<2>) -> ArrayState<2> {
-        ArrayState([state.0[1], -self.k * state.0[0]])
-    }
-}
+use models::{
+    CompiledCoupledOde, CompiledScalarOde, OscArrayOde, ScalarExpOde, ScalarLogisticOde,
+    advance_from_zero, solve_shooting,
+};
 
 impl OdeSolverTool {
     /// Renders the empirical CSV calibration panel inside the ODE sidebar and triggers fitting.
@@ -107,7 +81,10 @@ impl OdeSolverTool {
         };
         let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
         match outcome {
-            Ok((names, summary)) => self.commit_ode_fit(ctx, &names, &summary, &times, &observed, elapsed_ms),
+            Ok((names, summary)) => {
+                let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+                self.commit_ode_fit(ctx, &name_refs, &summary, &times, &observed, elapsed_ms)
+            }
             Err(err) => {
                 self.empirical_csv.record_error(ctx, err.clone());
                 Err(err)
@@ -148,14 +125,31 @@ impl OdeSolverTool {
     }
 
     fn apply_fitted_preset_params(&mut self, names: &[&str], params: &[f64], times: &[f64]) {
+        let mut scalar_map = self.math_input.params_map();
+        let mut coupled_map = self.coupled_bank.params_map();
+        let is_coupled_custom = self.preset == OdePreset::Custom && self.custom_coupled;
+
         for (&name, &val) in names.iter().zip(params.iter()) {
+            if is_coupled_custom && !matches!(name, "y0" | "v0") {
+                coupled_map.insert(name.to_string(), val);
+                continue;
+            }
             match name {
                 "k" => self.param_k = val,
                 "r" => self.param_r = val,
-                "K" => self.param_cap_k = val,
+                "K" | "cap_k" => self.param_cap_k = val,
                 "y0" => self.ic_y0 = val,
                 "v0" => self.ic_v0 = val,
-                _ => {}
+                other => {
+                    scalar_map.insert(other.to_string(), val);
+                }
+            }
+        }
+        if self.preset == OdePreset::Custom {
+            if self.custom_coupled {
+                self.coupled_bank.set_params_map(&coupled_map);
+            } else {
+                self.math_input.set_params_map(&scalar_map);
             }
         }
         if let Some(&t_last) = times.last() {
@@ -169,15 +163,20 @@ impl OdeSolverTool {
         &self,
         times: &[f64],
         observed: &[f64],
-    ) -> Result<(Vec<&'static str>, CalibrationSummary), String> {
+    ) -> Result<(Vec<String>, CalibrationSummary), String> {
         let max_dt = self.dt.clamp(1e-4, DEFAULT_SHOOTING_MAX_DT);
-        let example = ArrayState([self.ic_y0]);
-        let mut obj = Rk4ShootingObjective::new(
+        let bounds = [
+            ParameterBounds::new(-5.0, 5.0).unwrap(),
+            ParameterBounds::new(-50.0, 50.0).unwrap(),
+        ];
+        let summary = solve_shooting(
             ScalarExpOde { k: self.param_k },
-            &example,
+            &ArrayState([self.ic_y0]),
             times,
             observed,
             max_dt,
+            &[self.param_k, self.ic_y0],
+            &bounds,
             move |sys, p, t0, st| {
                 sys.k = p[0];
                 st.0[0] = p[1];
@@ -185,32 +184,30 @@ impl OdeSolverTool {
             },
             |st| st.0[0],
             |st| st.0[0].is_finite(),
-        )
-        .map_err(|e| e.to_string())?;
-        let bounds = [
-            ParameterBounds::new(-5.0, 5.0).unwrap(),
-            ParameterBounds::new(-50.0, 50.0).unwrap(),
-        ];
-        let mut ws = LevenbergMarquardtWorkspace::new(times.len(), 2).map_err(|e| e.to_string())?;
-        let summary = LevenbergMarquardtSolver::default()
-            .fit(&mut obj, &[self.param_k, self.ic_y0], &bounds, &mut ws)
-            .map_err(|e| e.to_string())?;
-        Ok((vec!["k", "y0"], summary))
+        )?;
+        Ok((vec!["k".to_string(), "y0".to_string()], summary))
     }
 
     fn fit_harmonic(
         &self,
         times: &[f64],
         observed: &[f64],
-    ) -> Result<(Vec<&'static str>, CalibrationSummary), String> {
+    ) -> Result<(Vec<String>, CalibrationSummary), String> {
         let max_dt = self.dt.clamp(1e-4, DEFAULT_SHOOTING_MAX_DT);
-        let example = ArrayState([self.ic_y0, self.ic_v0]);
-        let mut obj = Rk4ShootingObjective::new(
+        let bounds = [
+            ParameterBounds::new(0.05, 10.0).unwrap(),
+            ParameterBounds::new(-20.0, 20.0).unwrap(),
+            ParameterBounds::new(-20.0, 20.0).unwrap(),
+        ];
+        let init = [self.param_k.clamp(0.05, 10.0), self.ic_y0, self.ic_v0];
+        let summary = solve_shooting(
             OscArrayOde { k: self.param_k },
-            &example,
+            &ArrayState([self.ic_y0, self.ic_v0]),
             times,
             observed,
             max_dt,
+            &init,
+            &bounds,
             move |sys, p, t0, st| {
                 if p[0] <= 0.0 {
                     return false;
@@ -221,37 +218,41 @@ impl OdeSolverTool {
             },
             |st| st.0[0],
             |st| st.0.iter().all(|v| v.is_finite()),
-        )
-        .map_err(|e| e.to_string())?;
-        let bounds = [
-            ParameterBounds::new(0.05, 10.0).unwrap(),
-            ParameterBounds::new(-20.0, 20.0).unwrap(),
-            ParameterBounds::new(-20.0, 20.0).unwrap(),
-        ];
-        let mut ws = LevenbergMarquardtWorkspace::new(times.len(), 3).map_err(|e| e.to_string())?;
-        let init = [self.param_k.clamp(0.05, 10.0), self.ic_y0, self.ic_v0];
-        let summary = LevenbergMarquardtSolver::default()
-            .fit(&mut obj, &init, &bounds, &mut ws)
-            .map_err(|e| e.to_string())?;
-        Ok((vec!["k", "y0", "v0"], summary))
+        )?;
+        Ok((
+            vec!["k".to_string(), "y0".to_string(), "v0".to_string()],
+            summary,
+        ))
     }
 
     fn fit_logistic(
         &self,
         times: &[f64],
         observed: &[f64],
-    ) -> Result<(Vec<&'static str>, CalibrationSummary), String> {
+    ) -> Result<(Vec<String>, CalibrationSummary), String> {
         let max_dt = self.dt.clamp(1e-4, DEFAULT_SHOOTING_MAX_DT);
-        let example = ArrayState([self.ic_y0]);
-        let mut obj = Rk4ShootingObjective::new(
+        let max_obs = observed.iter().copied().fold(10.0_f64, f64::max);
+        let bounds = [
+            ParameterBounds::new(0.01, 5.0).unwrap(),
+            ParameterBounds::new(0.5, (max_obs * 5.0).max(100.0)).unwrap(),
+            ParameterBounds::new(1e-3, (max_obs * 2.0).max(50.0)).unwrap(),
+        ];
+        let init = [
+            self.param_r.clamp(0.05, 5.0),
+            self.param_cap_k.max(1.0),
+            observed[0].clamp(1e-2, max_obs * 1.5),
+        ];
+        let summary = solve_shooting(
             ScalarLogisticOde {
                 r: self.param_r,
                 cap_k: self.param_cap_k,
             },
-            &example,
+            &ArrayState([self.ic_y0]),
             times,
             observed,
             max_dt,
+            &init,
+            &bounds,
             move |sys, p, t0, st| {
                 if p[1] <= 1e-6 {
                     return false;
@@ -263,166 +264,139 @@ impl OdeSolverTool {
             },
             |st| st.0[0],
             |st| st.0[0].is_finite(),
-        )
-        .map_err(|e| e.to_string())?;
-        let max_obs = observed.iter().copied().fold(10.0_f64, f64::max);
-        let bounds = [
-            ParameterBounds::new(0.01, 5.0).unwrap(),
-            ParameterBounds::new(0.5, (max_obs * 5.0).max(100.0)).unwrap(),
-            ParameterBounds::new(1e-3, (max_obs * 2.0).max(50.0)).unwrap(),
-        ];
-        let mut ws = LevenbergMarquardtWorkspace::new(times.len(), 3).map_err(|e| e.to_string())?;
-        let init = [
-            self.param_r.clamp(0.05, 5.0),
-            self.param_cap_k.max(1.0),
-            observed[0].clamp(1e-2, max_obs * 1.5),
-        ];
-        let summary = LevenbergMarquardtSolver::default()
-            .fit(&mut obj, &init, &bounds, &mut ws)
-            .map_err(|e| e.to_string())?;
-        Ok((vec!["r", "K", "y0"], summary))
+        )?;
+        Ok((
+            vec!["r".to_string(), "K".to_string(), "y0".to_string()],
+            summary,
+        ))
     }
 
     fn fit_custom_ast(
         &self,
         times: &[f64],
         observed: &[f64],
-    ) -> Result<(Vec<&'static str>, CalibrationSummary), String> {
-        let Some(expr) = self.math_input.expr().cloned() else {
+    ) -> Result<(Vec<String>, CalibrationSummary), String> {
+        if self.custom_coupled {
+            if !self.coupled_bank.is_valid() {
+                return Err("Enter valid coupled differential equations (y', v') first".into());
+            }
+        } else if !self.math_input.is_valid() {
             return Err("Enter a valid custom differential equation y' = f(t, y) first".into());
-        };
-        let (names, ast_keys, init, bounds) = self.build_custom_ast_spec(&expr);
-        let mut base_map = HashMap::with_capacity(5);
-        base_map.insert("k".to_string(), self.param_k);
-        base_map.insert("r".to_string(), self.param_r);
-        base_map.insert("cap_k".to_string(), self.param_cap_k);
-        base_map.insert("K".to_string(), self.param_cap_k);
+        }
+        match self.build_custom_ode_spec() {
+            Some(CustomOdeSpec::Scalar {
+                expr,
+                params,
+                param_len,
+            }) => self.fit_compiled_scalar(expr, params, param_len, times, observed),
+            Some(CustomOdeSpec::Coupled {
+                dy,
+                dv,
+                params,
+                param_len,
+            }) => self.fit_compiled_coupled(dy, dv, params, param_len, times, observed),
+            None => Err("Enter a valid custom differential equation y' = f(t, y) first".into()),
+        }
+    }
+
+    fn fit_compiled_scalar(
+        &self,
+        expr: CompiledExpr,
+        params: [f64; MAX_SYNTHESIZED_PARAMS],
+        param_len: usize,
+        times: &[f64],
+        observed: &[f64],
+    ) -> Result<(Vec<String>, CalibrationSummary), String> {
+        let mut names = Vec::with_capacity(param_len + 1);
+        let mut init = Vec::with_capacity(param_len + 1);
+        let mut bounds = Vec::with_capacity(param_len + 1);
+        for (idx, raw) in expr.param_names().iter().take(param_len).enumerate() {
+            if raw == "cap_k" || raw == "K" {
+                names.push("K".to_string());
+                init.push(params[idx].clamp(0.5, 500.0));
+                bounds.push(ParameterBounds::new(0.1, 500.0).unwrap());
+            } else {
+                names.push(raw.clone());
+                init.push(params[idx].clamp(-10.0, 10.0));
+                bounds.push(ParameterBounds::new(-10.0, 10.0).unwrap());
+            }
+        }
+        names.push("y0".to_string());
+        init.push(self.ic_y0.clamp(-50.0, 50.0));
+        bounds.push(ParameterBounds::new(-50.0, 50.0).unwrap());
+
         let max_dt = self.dt.clamp(1e-4, DEFAULT_SHOOTING_MAX_DT);
-        let example = VecState(vec![self.ic_y0]);
-        let dyn_ode = DynamicAstOde {
+        let dyn_ode = CompiledScalarOde {
             expr,
-            params: base_map,
+            params,
+            param_len,
         };
-        let mut obj = Rk4ShootingObjective::new(
+        let summary = solve_shooting(
             dyn_ode,
-            &example,
+            &ArrayState([self.ic_y0]),
             times,
             observed,
             max_dt,
+            &init,
+            &bounds,
             move |sys, p, t0, st| {
-                for (idx, &key) in ast_keys.iter().enumerate() {
-                    if key == "y0" {
-                        st.0[0] = p[idx];
-                    } else if key == "cap_k" {
-                        if let Some(slot) = sys.params.get_mut("cap_k") {
-                            *slot = p[idx];
-                        }
-                        if let Some(slot) = sys.params.get_mut("K") {
-                            *slot = p[idx];
-                        }
-                    } else if let Some(slot) = sys.params.get_mut(key) {
-                        *slot = p[idx];
-                    }
-                }
+                sys.params[..param_len].copy_from_slice(&p[..param_len]);
+                st.0[0] = p[param_len];
                 advance_from_zero(sys, t0, max_dt, st, |s| s.0[0].is_finite())
             },
             |st| st.0[0],
             |st| st.0[0].is_finite(),
-        )
-        .map_err(|e| e.to_string())?;
-        let mut ws =
-            LevenbergMarquardtWorkspace::new(times.len(), init.len()).map_err(|e| e.to_string())?;
-        let summary = LevenbergMarquardtSolver::default()
-            .fit(&mut obj, &init, &bounds, &mut ws)
-            .map_err(|e| e.to_string())?;
+        )?;
         Ok((names, summary))
     }
 
-    fn build_custom_ast_spec(
+    fn fit_compiled_coupled(
         &self,
-        expr: &Expr,
-    ) -> (
-        Vec<&'static str>,
-        Vec<&'static str>,
-        Vec<f64>,
-        Vec<ParameterBounds>,
-    ) {
-        let mut names = Vec::new();
-        let mut keys = Vec::new();
-        let mut init = Vec::new();
-        let mut bounds = Vec::new();
-        if expr_mentions_var(expr, "k") {
-            names.push("k");
-            keys.push("k");
-            init.push(self.param_k);
+        dy: CompiledExpr,
+        dv: CompiledExpr,
+        params: [f64; MAX_SYNTHESIZED_PARAMS],
+        param_len: usize,
+        times: &[f64],
+        observed: &[f64],
+    ) -> Result<(Vec<String>, CalibrationSummary), String> {
+        let mut names = Vec::with_capacity(param_len + 2);
+        let mut init = Vec::with_capacity(param_len + 2);
+        let mut bounds = Vec::with_capacity(param_len + 2);
+        for (idx, raw) in self.coupled_bank.param_names().iter().take(param_len).enumerate() {
+            names.push(raw.clone());
+            init.push(params[idx].clamp(-10.0, 10.0));
             bounds.push(ParameterBounds::new(-10.0, 10.0).unwrap());
         }
-        if expr_mentions_var(expr, "r") {
-            names.push("r");
-            keys.push("r");
-            init.push(self.param_r);
-            bounds.push(ParameterBounds::new(-10.0, 10.0).unwrap());
-        }
-        if expr_mentions_var(expr, "cap_k") || expr_mentions_var(expr, "K") {
-            names.push("K");
-            keys.push("cap_k");
-            init.push(self.param_cap_k.max(0.5));
-            bounds.push(ParameterBounds::new(0.1, 500.0).unwrap());
-        }
-        names.push("y0");
-        keys.push("y0");
-        init.push(self.ic_y0);
-        bounds.push(ParameterBounds::new(-50.0, 50.0).unwrap());
-        (names, keys, init, bounds)
-    }
-}
+        names.extend(["y0".to_string(), "v0".to_string()]);
+        init.extend([self.ic_y0.clamp(-50.0, 50.0), self.ic_v0.clamp(-50.0, 50.0)]);
+        bounds.extend([
+            ParameterBounds::new(-50.0, 50.0).unwrap(),
+            ParameterBounds::new(-50.0, 50.0).unwrap(),
+        ]);
 
-fn expr_mentions_var(expr: &Expr, target: &str) -> bool {
-    let mut stack = vec![expr];
-    while let Some(node) = stack.pop() {
-        match node {
-            Expr::Number(_) => {}
-            Expr::Variable(v) => {
-                if v == target {
-                    return true;
-                }
-            }
-            Expr::Unary { expr: inner, .. } => stack.push(inner),
-            Expr::Binary { left, right, .. } => {
-                stack.push(left);
-                stack.push(right);
-            }
-            Expr::Function { args, .. } => stack.extend(args.iter()),
-        }
+        let max_dt = self.dt.clamp(1e-4, DEFAULT_SHOOTING_MAX_DT);
+        let dyn_ode = CompiledCoupledOde {
+            dy,
+            dv,
+            params,
+            param_len,
+        };
+        let summary = solve_shooting(
+            dyn_ode,
+            &ArrayState([self.ic_y0, self.ic_v0]),
+            times,
+            observed,
+            max_dt,
+            &init,
+            &bounds,
+            move |sys, p, t0, st| {
+                sys.params[..param_len].copy_from_slice(&p[..param_len]);
+                st.0 = [p[param_len], p[param_len + 1]];
+                advance_from_zero(sys, t0, max_dt, st, |s| s.0.iter().all(|v| v.is_finite()))
+            },
+            |st| st.0[0],
+            |st| st.0.iter().all(|v| v.is_finite()),
+        )?;
+        Ok((names, summary))
     }
-    false
-}
-
-fn advance_from_zero<S, St, F>(
-    sys: &S,
-    t0: f64,
-    max_dt: f64,
-    state: &mut St,
-    is_finite: F,
-) -> bool
-where
-    S: OdeSystem<St>,
-    St: math_explorer::pure_math::analysis::ode::VectorOperations,
-    F: Fn(&St) -> bool,
-{
-    if t0 <= 0.0 {
-        return is_finite(state);
-    }
-    let steps = ((t0 / max_dt).ceil() as usize).clamp(1, MAX_SUBSTEPS_PER_INTERVAL);
-    let dt = t0 / (steps as f64);
-    let mut rk4 = RungeKutta4::new(state);
-    let mut t = 0.0;
-    for _ in 0..steps {
-        rk4.step(sys, t, state, dt);
-        if !is_finite(state) {
-            return false;
-        }
-        t += dt;
-    }
-    true
 }
