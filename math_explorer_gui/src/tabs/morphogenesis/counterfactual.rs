@@ -2,16 +2,18 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::runner::MorphogenesisKineticsAdapter;
 use super::SimpleRng;
 use crate::app::ThemeMode;
 use crate::framework::{
     field_difference_norms, sanitize_perturbation_delta, DivergenceSnapshot,
     DomainInterventionDelta, SeparationTracker,
 };
+use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui::{Color32, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::{DiffusionCoeff, SchnakenbergKinetics, TuringSystem};
+use math_explorer::biology::morphogenesis::{DiffusionCoeff, TuringSystem};
 use math_explorer::math_kernel::types::{Dimension, StepSize};
 use serde::{Deserialize, Serialize};
 
@@ -59,6 +61,12 @@ pub struct MorphogenesisForkDescriptor {
     pub baseline_du: f64,
     /// Frozen baseline inhibitor diffusion `D_v` on `Branch A`.
     pub baseline_dv: f64,
+    /// Optional frozen baseline Gray-Scott substrate feed rate `f` on `Branch A`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_f: Option<f64>,
+    /// Optional frozen baseline Gray-Scott catalyst kill rate `k` on `Branch A`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_k: Option<f64>,
     /// Spatial activator perturbation amplitude `δu` applied at `t_k` on `Branch B`.
     pub delta_u: f64,
     /// Active spatial heatmap comparison mode.
@@ -72,8 +80,8 @@ impl MorphogenesisForkDescriptor {
         let checks = [
             ("baseline_a", self.baseline_a, 0.0, 1.0),
             ("baseline_b", self.baseline_b, 0.0, 2.0),
-            ("baseline_du", self.baseline_du, 0.1, 5.0),
-            ("baseline_dv", self.baseline_dv, 10.0, 200.0),
+            ("baseline_du", self.baseline_du, 0.01, 5.0),
+            ("baseline_dv", self.baseline_dv, 0.005, 200.0),
             ("delta_u", self.delta_u, 0.0, 1.0),
         ];
         if self.fork_step == 0 || self.fork_step > 20_000 || self.post_fork_steps > 20_000 {
@@ -84,6 +92,15 @@ impl MorphogenesisForkDescriptor {
                 return Err(format!(
                     "Invalid morphogenesis fork field '{name}' = {val} (expected [{min}, {max}])"
                 ));
+            }
+        }
+        for (name, opt) in [("baseline_f", self.baseline_f), ("baseline_k", self.baseline_k)] {
+            if let Some(val) = opt {
+                if !val.is_finite() || !(0.0..=0.12).contains(&val) {
+                    return Err(format!(
+                        "Invalid morphogenesis fork field '{name}' = {val} (expected [0, 0.12])"
+                    ));
+                }
             }
         }
         Ok(())
@@ -103,10 +120,33 @@ pub struct MorphogenesisSnapshotData {
     pub divergence: Option<DivergenceSnapshot>,
 }
 
-/// Pre-allocated counterfactual shadow twin state for `MorphogenesisRunner` (zero-alloc `step()`).
+/// Returns the primary pattern-forming species slice (`u` for Schnakenberg, `v` for Gray-Scott).
+#[inline]
+#[must_use]
+pub fn active_morphogen_slice(
+    sys: &TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
+) -> &[f64] {
+    match sys.kinetics.mode {
+        MorphogenesisKineticsMode::Schnakenberg => sys.u(),
+        MorphogenesisKineticsMode::GrayScott => sys.v(),
+    }
+}
+
+/// Returns a mutable slice of the primary pattern-forming species (`u` or `v`).
+#[inline]
+pub fn active_morphogen_slice_mut(
+    sys: &mut TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
+) -> &mut [f64] {
+    match sys.kinetics.mode {
+        MorphogenesisKineticsMode::Schnakenberg => sys.u_mut(),
+        MorphogenesisKineticsMode::GrayScott => sys.v_mut(),
+    }
+}
+
+/// Pre-allocated counterfactual shadow twin state for `MorphogenesisKineticsRunner` (zero-alloc `step()`).
 pub struct MorphogenesisTwinState {
     /// Frozen baseline `TuringSystem` (`Branch A`) with pre-allocated double buffers.
-    pub system_a: TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+    pub system_a: TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
     /// Cloned baseline PRNG state at `t_k`.
     pub rng_a: SimpleRng,
     /// Step index `k > 0` where the fork was anchored.
@@ -125,18 +165,15 @@ pub struct MorphogenesisTwinState {
 
 /// Clones a 2D `TuringSystem` (pre-allocating both `state` and `next_state` buffers).
 pub fn clone_turing_system(
-    src: &TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+    src: &TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
     width: usize,
     height: usize,
-) -> TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D> {
+) -> TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D> {
     let mut dst = TuringSystem::new_with_kinetics(
         Dimension(width * height),
         DiffusionCoeff(src.diffusion_coeffs[0]),
         DiffusionCoeff(src.diffusion_coeffs[1]),
-        SchnakenbergKinetics {
-            a: src.kinetics.a,
-            b: src.kinetics.b,
-        },
+        src.kinetics,
         FiniteDifference2D::new(
             Dimension(width),
             Dimension(height),
@@ -156,7 +193,7 @@ impl MorphogenesisTwinState {
         dt: f64,
         width: usize,
         height: usize,
-        system_b: &mut TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
+        system_b: &mut TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
         rng_b: &mut SimpleRng,
         delta_u: f64,
     ) -> Self {
@@ -165,9 +202,9 @@ impl MorphogenesisTwinState {
         let rng_a = *rng_b;
 
         if clean_delta > 0.0 {
-            let u_b = system_b.u_mut();
-            let center = u_b.len() / 2;
-            for (idx, cell) in u_b.iter_mut().enumerate() {
+            let field_b = active_morphogen_slice_mut(system_b);
+            let center = field_b.len() / 2;
+            for (idx, cell) in field_b.iter_mut().enumerate() {
                 let jitter = if idx == center {
                     1.0
                 } else {
@@ -177,7 +214,10 @@ impl MorphogenesisTwinState {
             }
         }
 
-        let (l2_norm, linf_norm) = field_difference_norms(system_a.u(), system_b.u());
+        let (l2_norm, linf_norm) = field_difference_norms(
+            active_morphogen_slice(&system_a),
+            active_morphogen_slice(system_b),
+        );
         let safe_dt = if dt.is_finite() && dt > 0.0 {
             dt
         } else {
@@ -221,7 +261,7 @@ impl MorphogenesisTwinState {
     #[inline]
     pub fn observe_lockstep(&mut self, step_count: usize, dt: f64, u_b: &[f64]) {
         self.post_fork_steps = step_count.saturating_sub(self.fork_step);
-        let (l2, linf) = field_difference_norms(self.system_a.u(), u_b);
+        let (l2, linf) = field_difference_norms(active_morphogen_slice(&self.system_a), u_b);
         self.l2_norm = l2;
         self.linf_norm = linf;
         let safe_dt = if dt.is_finite() && dt > 0.0 {
@@ -269,6 +309,7 @@ impl MorphogenesisTwinState {
         &self,
         heatmap_mode: MorphogenesisHeatmapMode,
     ) -> MorphogenesisForkDescriptor {
+        let is_gs = self.system_a.kinetics.mode == MorphogenesisKineticsMode::GrayScott;
         MorphogenesisForkDescriptor {
             fork_step: self.fork_step,
             post_fork_steps: self.post_fork_steps,
@@ -276,6 +317,8 @@ impl MorphogenesisTwinState {
             baseline_b: self.system_a.kinetics.b,
             baseline_du: self.system_a.diffusion_coeffs[0],
             baseline_dv: self.system_a.diffusion_coeffs[1],
+            baseline_f: is_gs.then_some(self.system_a.kinetics.f),
+            baseline_k: is_gs.then_some(self.system_a.kinetics.k),
             delta_u: self.delta_u,
             heatmap_mode,
         }

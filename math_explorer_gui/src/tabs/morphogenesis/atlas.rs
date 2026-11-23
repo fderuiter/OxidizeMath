@@ -402,29 +402,27 @@ impl MorphogenesisTool {
             let v = grid_u_variance(sr.system.u());
             return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
         }
-        if let Some(snap) = self.worker.latest_snapshot() {
-            if let Some(data) = snap
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<super::counterfactual::MorphogenesisSnapshotData>())
-            {
-                let v = grid_u_variance(&data.u_b);
-                return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
-            }
-            if let Some(u_data) = snap
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<Vec<f64>>())
-            {
-                let v = grid_u_variance(u_data);
-                return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
-            }
-        }
-        false
+        self.worker
+            .latest_snapshot()
+            .and_then(|snap| {
+                snap.structured_data
+                    .as_ref()
+                    .and_then(|d| d.downcast_ref::<super::counterfactual::MorphogenesisSnapshotData>())
+                    .map(|data| grid_u_variance(&data.u_b))
+            })
+            .is_some_and(|v| v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD)
     }
 
     /// Re-seeds deterministic spatial noise if the active grid washed out and current parameters form patterns.
     pub fn reseed_if_washed_out_entering_pattern(&mut self) -> bool {
+        let mode = self
+            .kinetics_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .mode;
+        if mode != crate::presets::MorphogenesisKineticsMode::Schnakenberg {
+            return false;
+        }
         let (a, b, d_u, d_v, dt) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.dt)
@@ -433,10 +431,11 @@ impl MorphogenesisTool {
             return false;
         }
         if let Some(sr) = &mut self.step_runner {
+            sr.system.kinetics.mode = crate::presets::MorphogenesisKineticsMode::Schnakenberg;
             sr.system.kinetics.a = a;
             sr.system.kinetics.b = b;
             sr.system.diffusion_coeffs = [d_u, d_v];
-            Self::initialize_system(&mut sr.system, self.width, self.height);
+            Self::initialize_adapter_system(&mut sr.system, self.width, self.height);
         }
         let _ = self
             .worker
@@ -448,6 +447,16 @@ impl MorphogenesisTool {
     /// Applies an [`AtlasTeleportEvent`] to live morphogenesis parameters with CFL recovery and washout re-seeding.
     pub fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
         let was_faulted = self.worker.state() == SimWorkerState::Faulted;
+        let switched_from_gray_scott = {
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            let was_gs = ks.mode != crate::presets::MorphogenesisKineticsMode::Schnakenberg;
+            ks.mode = crate::presets::MorphogenesisKineticsMode::Schnakenberg;
+            was_gs
+        };
+        self.theory.mode = crate::presets::MorphogenesisKineticsMode::Schnakenberg;
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             for (key, val) in [(ev.x_key, ev.x_val), (ev.y_key, ev.y_val)] {
@@ -460,7 +469,12 @@ impl MorphogenesisTool {
                     _ => {}
                 }
             }
-            if was_faulted
+            if switched_from_gray_scott {
+                p.d_u = p.d_u.clamp(0.1, 5.0);
+                p.d_v = p.d_v.clamp(10.0, 200.0);
+                p.dt = p.dt.clamp(1e-4, 0.1);
+            }
+            if (was_faulted || switched_from_gray_scott)
                 && ev.x_key != "dt"
                 && ev.y_key != "dt"
                 && 4.0 * p.d_u.max(p.d_v) * p.dt >= 1.0
@@ -468,7 +482,7 @@ impl MorphogenesisTool {
                 p.dt = (0.2 / p.d_u.max(p.d_v).max(1e-6)).clamp(1e-4, 0.1);
             }
         }
-        if was_faulted {
+        if was_faulted || switched_from_gray_scott {
             self.reset_system();
             return;
         }

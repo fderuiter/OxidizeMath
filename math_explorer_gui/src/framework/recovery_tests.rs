@@ -245,15 +245,8 @@ fn test_morphogenesis_divergence_and_recovery() {
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
     }));
 
-    let mut runner = MorphogenesisRunner {
-        system,
-        params,
-        width,
-        height,
-        rng: crate::tabs::morphogenesis::SimpleRng::new(12345),
-        step_count: 0,
-        twin: None,
-    };
+    let mut runner = MorphogenesisRunner::new_seeded(&params, width, height);
+    assert_eq!(runner.system.u(), system.u());
 
     assert!(FiniteStateGuard::is_finite_state(&runner));
     assert!(!runner.diverged());

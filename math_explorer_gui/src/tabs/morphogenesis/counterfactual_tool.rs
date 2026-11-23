@@ -1,38 +1,17 @@
-//! Counterfactual shadow twin actions, recovery, and twin exports for [`super::MorphogenesisTool`].
+//! Counterfactual shadow twin actions and twin exports for [`super::MorphogenesisTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::counterfactual::{
-    render_morphogenesis_heatmap, MorphogenesisForkDescriptor, MorphogenesisHeatmapMode,
-    MorphogenesisSnapshotData,
+    active_morphogen_slice, active_morphogen_slice_mut, render_morphogenesis_heatmap,
+    MorphogenesisForkDescriptor, MorphogenesisHeatmapMode, MorphogenesisSnapshotData,
 };
-use super::runner::MorphogenesisRunner;
 use super::MorphogenesisTool;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimulationRunner};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::BranchControlAction;
 use eframe::egui::ColorImage;
 
 impl MorphogenesisTool {
-    #[cfg(test)]
-    #[allow(missing_docs)]
-    pub fn restart_worker(&mut self) {
-        self.local_runner = Self::create_runner(&self.params, self.width, self.height);
-        let runner = Self::create_runner(&self.params, self.width, self.height);
-        self.worker = BackgroundWorker::new(runner);
-        self.branch_engine.clear();
-        self.stepped_pixels = None;
-        self.step_runner = None;
-        self.pending_initial_start = false;
-        self.dirty = true;
-    }
-
-    #[cfg(test)]
-    #[allow(missing_docs)]
-    pub fn retry(&mut self) {
-        self.restart_worker();
-    }
-
     /// Returns `true` when a counterfactual shadow twin is currently active.
     #[must_use]
     pub fn is_forked(&self) -> bool {
@@ -91,6 +70,7 @@ impl MorphogenesisTool {
         if !self.local_runner.swap_branches() {
             return false;
         }
+        self.theory.mode = self.local_runner.system.kinetics.mode;
         let _ = self.worker.send_command(SimCommand::Custom("swap".into()));
         self.sync_branch_engine_from_local();
         self.stepped_pixels = None;
@@ -147,10 +127,10 @@ impl MorphogenesisTool {
             && data.u_b.len() == self.width * self.height
         {
             self.local_runner.step_count = data.step_count;
-            self.local_runner.system.u_mut().copy_from_slice(&data.u_b);
+            active_morphogen_slice_mut(&mut self.local_runner.system).copy_from_slice(&data.u_b);
             if let (Some(ref mut twin), Some(ref ua)) = (&mut self.local_runner.twin, &data.u_a) {
                 if ua.len() == self.width * self.height {
-                    twin.system_a.u_mut().copy_from_slice(ua);
+                    active_morphogen_slice_mut(&mut twin.system_a).copy_from_slice(ua);
                     let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
                     twin.observe_lockstep(data.step_count, dt, &data.u_b);
                 }
@@ -166,29 +146,58 @@ impl MorphogenesisTool {
         self.worker = BackgroundWorker::new(cloned);
     }
 
-    /// Reconstructs a forked Turing morphogenesis simulation from a compact descriptor.
+    fn stage_baseline_fork_params(
+        &self,
+        desc: &MorphogenesisForkDescriptor,
+    ) -> (f64, f64, f64, f64, f64, f64, f64) {
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.heatmap_mode = desc.heatmap_mode;
+        let (active_a, active_b, active_du, active_dv, dt) = (p.a, p.b, p.d_u, p.d_v, p.dt);
+        p.a = desc.baseline_a;
+        p.b = desc.baseline_b;
+        p.d_u = desc.baseline_du;
+        p.d_v = desc.baseline_dv;
+        drop(p);
+        let mut ks = self
+            .kinetics_state
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        let (active_f, active_k) = (ks.f, ks.k);
+        if let Some(bf) = desc.baseline_f {
+            ks.f = bf;
+        }
+        if let Some(bk) = desc.baseline_k {
+            ks.k = bk;
+        }
+        (active_a, active_b, active_du, active_dv, dt, active_f, active_k)
+    }
+
+    /// Reconstructs a forked reaction-diffusion simulation from a compact descriptor.
     pub(crate) fn apply_morpho_fork_descriptor(
         &mut self,
         desc: MorphogenesisForkDescriptor,
     ) -> Result<(), String> {
         desc.validate()?;
-        let (active_a, active_b, active_du, active_dv, dt) = {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.heatmap_mode = desc.heatmap_mode;
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
-        };
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.a = desc.baseline_a;
-            p.b = desc.baseline_b;
-            p.d_u = desc.baseline_du;
-            p.d_v = desc.baseline_dv;
-        }
-        let mut runner = MorphogenesisRunner::new_seeded(&self.params, self.width, self.height);
+        let (active_a, active_b, active_du, active_dv, dt, active_f, active_k) =
+            self.stage_baseline_fork_params(&desc);
+        let mut runner = Self::create_kinetics_runner(
+            &self.params,
+            &self.kinetics_state,
+            self.width,
+            self.height,
+        );
         for _ in 0..desc.fork_step {
             runner.step();
         }
         let _ = runner.fork_here(desc.delta_u);
+        {
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            ks.f = active_f;
+            ks.k = active_k;
+        }
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.a = active_a;
@@ -232,9 +241,13 @@ impl MorphogenesisTool {
                 );
             }
         }
-        let ua = self.local_runner.twin.as_ref().map(|t| t.system_a.u());
+        let ua = self
+            .local_runner
+            .twin
+            .as_ref()
+            .map(|t| active_morphogen_slice(&t.system_a));
         render_morphogenesis_heatmap(
-            self.local_runner.system.u(),
+            active_morphogen_slice(&self.local_runner.system),
             ua,
             self.width,
             self.height,
@@ -248,11 +261,13 @@ impl MorphogenesisTool {
         let Some(ref twin) = self.local_runner.twin else {
             return Vec::new();
         };
+        let full_b = active_morphogen_slice(&self.local_runner.system);
+        let full_a = active_morphogen_slice(&twin.system_a);
         let row_y = self.height / 2;
         let start = row_y * self.width;
-        let end = (start + self.width).min(self.local_runner.system.u().len());
-        let ub = &self.local_runner.system.u()[start..end];
-        let ua = &twin.system_a.u()[start..end];
+        let end = (start + self.width).min(full_b.len()).min(full_a.len());
+        let ub = &full_b[start..end];
+        let ua = &full_a[start..end];
         let mut series_b = Vec::with_capacity(ub.len());
         let mut series_a = Vec::with_capacity(ua.len());
         let mut series_diff = Vec::with_capacity(ub.len());
@@ -267,50 +282,5 @@ impl MorphogenesisTool {
             ("Activator u_A (Baseline)".to_string(), series_a),
             ("Difference |u_B - u_A|".to_string(), series_diff),
         ]
-    }
-}
-
-impl FiniteStateGuard for MorphogenesisTool {
-    fn is_finite_state(&self) -> bool {
-        self.worker.state() != crate::async_sim::SimWorkerState::Faulted
-            && self.worker.diagnostic_report().is_none()
-            && FiniteStateGuard::is_finite_state(&self.local_runner)
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.worker.diagnostic_report()
-    }
-
-    fn diverged(&self) -> bool {
-        !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn auto_scale_step_size(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.dt = (p.dt * 0.5).clamp(1e-4, 0.1);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn clamp_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = p.a.clamp(0.0, 1.0);
-        p.b = p.b.clamp(0.0, 2.0);
-        p.d_u = p.d_u.clamp(0.1, 5.0);
-        p.d_v = p.d_v.clamp(10.0, 200.0);
-        p.dt = p.dt.clamp(0.001, 0.1);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn reset_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = 0.1;
-        p.b = 0.9;
-        p.d_u = 1.0;
-        p.d_v = 100.0;
-        p.dt = 0.05;
-        drop(p);
-        self.reset_system();
     }
 }
