@@ -99,6 +99,7 @@ impl_error_from!(@cfg "pure_math":
     HyperbolicError => Hyperbolic,
     KellyError => Kelly,
     LinearAlgebraError => LinearAlgebra,
+    MarketPricingError => MarketPricing,
     MarkovError => Markov,
     NumberTheoryError => NumberTheory,
     OptimizationError => Optimization,
