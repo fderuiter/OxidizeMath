@@ -231,10 +231,12 @@ impl SimulationFramework {
         self.challenge_was_passed = false;
         self.selected_tool_index = Some(target_idx);
         self.active_tool = Some(candidate);
+        self.promote_legacy_plot_keys_for_active_tool();
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.show_starter_gallery = false;
         self.preset_dialog.toast_error = None;
+        self.reset_active_tool_manual_bounds();
     }
 }
 

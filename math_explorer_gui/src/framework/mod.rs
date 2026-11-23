@@ -34,6 +34,11 @@ mod persistence;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;
+pub mod plot_persistence;
+#[cfg(test)]
+mod plot_persistence_session_tests;
+#[cfg(test)]
+mod plot_persistence_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
@@ -399,6 +404,8 @@ pub struct SimulationFramework {
     pub show_theory_portal: bool,
     pub show_starter_gallery: bool,
     pub saved_tool_states: std::collections::HashMap<String, String>,
+    pub saved_plot_states: plot_persistence::SavedPlotStatesMap,
+    pub(super) plot_sync_generation: u64,
     pub search_query: String,
     last_announced_count: Option<usize>,
     last_announced_query: String,
