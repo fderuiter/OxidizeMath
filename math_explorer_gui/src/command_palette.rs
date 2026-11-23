@@ -1,37 +1,75 @@
+mod actions;
 mod scoring;
+mod ui;
 
+use actions::score_workspace_action;
+pub use actions::WorkspaceAction;
 use eframe::egui;
+pub(crate) use scoring::score_tool_in_domain;
 use scoring::score_tool_metadata;
 pub use scoring::{format_domain_title, fuzzy_match_score};
 
-/// Target tab index and optional tool name selected from the command palette.
+/// Target tab, tool, starter preset, or workspace action selected from the command palette.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PaletteSelection {
     /// Target explorer tab index.
     pub tab_index: usize,
     /// Optional tool name to activate within the domain tab.
     pub tool_name: Option<String>,
+    /// Optional validated starter preset card to launch.
+    pub preset: Option<crate::starter_gallery::StarterCard>,
+    /// Optional global workspace action to execute.
+    pub action: Option<WorkspaceAction>,
 }
 
 impl PaletteSelection {
     /// Creates a selection pointing to a domain tab.
+    #[must_use]
     pub fn tab(tab_index: usize) -> Self {
         Self {
             tab_index,
             tool_name: None,
+            preset: None,
+            action: None,
         }
     }
 
     /// Creates a selection pointing to a specific simulation tool within a domain tab.
+    #[must_use]
     pub fn tool(tab_index: usize, tool_name: impl Into<String>) -> Self {
         Self {
             tab_index,
             tool_name: Some(tool_name.into()),
+            preset: None,
+            action: None,
+        }
+    }
+
+    /// Creates a selection launching a curated [`crate::starter_gallery::StarterCard`].
+    #[must_use]
+    pub fn preset(tab_index: usize, card: crate::starter_gallery::StarterCard) -> Self {
+        let tool_name = card.tool_name.map(str::to_string);
+        Self {
+            tab_index,
+            tool_name,
+            preset: Some(card),
+            action: None,
+        }
+    }
+
+    /// Creates a selection executing a [`WorkspaceAction`].
+    #[must_use]
+    pub const fn action(action: WorkspaceAction) -> Self {
+        Self {
+            tab_index: 0,
+            tool_name: None,
+            preset: None,
+            action: Some(action),
         }
     }
 }
 
-/// Search result item in the command palette representing either a top-level tab or an individual tool.
+/// Search result item in the command palette representing a tab, tool, starter preset, or action.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PaletteItem {
     Tab {
@@ -44,29 +82,43 @@ pub enum PaletteItem {
         domain: &'static str,
         tags: &'static [&'static str],
     },
+    Preset {
+        tab_index: usize,
+        card: crate::starter_gallery::StarterCard,
+    },
+    Action {
+        action: WorkspaceAction,
+    },
 }
 
 impl PaletteItem {
-    /// Converts this item into a `PaletteSelection`.
+    /// Converts this item into a [`PaletteSelection`].
+    #[must_use]
     pub fn to_selection(&self) -> PaletteSelection {
         match self {
             PaletteItem::Tab { index, .. } => PaletteSelection::tab(*index),
             PaletteItem::Tool {
                 tab_index, name, ..
             } => PaletteSelection::tool(*tab_index, *name),
+            PaletteItem::Preset { tab_index, card } => {
+                PaletteSelection::preset(*tab_index, card.clone())
+            }
+            PaletteItem::Action { action } => PaletteSelection::action(*action),
         }
     }
 
     /// Primary display title of this item.
+    #[must_use]
     pub fn title(&self) -> &'static str {
         match self {
-            PaletteItem::Tab { name, .. } => name,
-            PaletteItem::Tool { name, .. } => name,
+            PaletteItem::Tab { name, .. } | PaletteItem::Tool { name, .. } => name,
+            PaletteItem::Preset { card, .. } => card.title,
+            PaletteItem::Action { action } => action.title(),
         }
     }
 }
 
-/// Modal command palette providing instant search-driven tab switching and command execution.
+/// Modal command palette providing instant search-driven navigation, presets, and actions.
 #[derive(Default)]
 pub struct CommandPalette {
     /// Whether the command palette modal is currently open.
@@ -75,7 +127,7 @@ pub struct CommandPalette {
     pub query: String,
     /// Last query captured to detect search term changes and reset selection.
     pub last_query: String,
-    /// Currently highlighted tab index in the filtered results list.
+    /// Currently highlighted item index in the filtered results list.
     pub selected_index: usize,
     /// Flag indicating whether the palette was opened on this frame (for auto-focusing).
     pub just_opened: bool,
@@ -83,20 +135,25 @@ pub struct CommandPalette {
     pub prior_focus: Option<egui::Id>,
 }
 
-const SEARCH_INPUT_LABEL: &str = "Search tabs and tools";
-const SEARCH_HINT_TEXT: &str = "Type tab or tool name (e.g. dijkstra, lorenz, cera, fluid)...";
 pub(crate) const SEARCH_WIDGET_INFO_ID: &str = "command_palette_search_info";
 
-fn format_search_count_status(count: usize) -> String {
-    match count {
-        0 => "No matching tools found".to_string(),
-        1 => "1 matching result found".to_string(),
-        n => format!("{n} matching results found"),
+pub(crate) fn resolve_tab_index_for_domain(
+    tabs: &[Box<dyn crate::tabs::ExplorerTab>],
+    domain_slug: &str,
+) -> usize {
+    if let Some(idx) = tabs
+        .iter()
+        .position(|t| crate::url_state::matches_tab_slug(domain_slug, t.url_slug(), t.name()))
+    {
+        return idx;
     }
-}
-
-fn announce_palette_status(ctx: &egui::Context, message: impl Into<String>) {
-    crate::accessibility::announce_live_status(ctx, message);
+    tabs.iter()
+        .position(|t| {
+            let t_name = t.name().to_ascii_lowercase().replace(' ', "_");
+            let t_clean = t_name.replace('&', "").replace("__", "_");
+            t_clean.contains(domain_slug)
+        })
+        .unwrap_or(0)
 }
 
 impl CommandPalette {
@@ -128,7 +185,7 @@ impl CommandPalette {
         }
     }
 
-    /// Filters registered domain tabs using case-insensitive fuzzy and substring matching.
+    /// Filters registered domain tabs using case-insensitive word-prefix and token matching.
     pub fn filter_tabs(
         &self,
         tabs: &[Box<dyn crate::tabs::ExplorerTab>],
@@ -149,11 +206,27 @@ impl CommandPalette {
             .collect()
     }
 
-    /// Filters registered domain tabs and simulation tools using case-insensitive fuzzy and tag matching.
+    /// Filters domain tabs, `ToolMetadata`, `StarterPresetMetadata` cards, and `WorkspaceAction`s.
     pub fn filter_items(&self, tabs: &[Box<dyn crate::tabs::ExplorerTab>]) -> Vec<PaletteItem> {
         let mut matched: Vec<(PaletteItem, usize, usize)> = Vec::new();
+        self.collect_tab_matches(tabs, &mut matched);
+        self.collect_tool_matches(tabs, &mut matched);
+        self.collect_preset_matches(tabs, &mut matched);
+        self.collect_action_matches(&mut matched);
 
-        // 1. Index domain tabs
+        matched.sort_by(|a, b| {
+            a.1.cmp(&b.1)
+                .then_with(|| a.2.cmp(&b.2))
+                .then_with(|| a.0.title().cmp(b.0.title()))
+        });
+        matched.into_iter().map(|(item, _, _)| item).collect()
+    }
+
+    fn collect_tab_matches(
+        &self,
+        tabs: &[Box<dyn crate::tabs::ExplorerTab>],
+        matched: &mut Vec<(PaletteItem, usize, usize)>,
+    ) {
         for (idx, tab) in tabs.iter().enumerate() {
             let tab_name = tab.name();
             let mut score = fuzzy_match_score(tab_name, &self.query);
@@ -174,22 +247,16 @@ impl CommandPalette {
                 ));
             }
         }
+    }
 
-        // 2. Index simulation tools registered in inventory
+    fn collect_tool_matches(
+        &self,
+        tabs: &[Box<dyn crate::tabs::ExplorerTab>],
+        matched: &mut Vec<(PaletteItem, usize, usize)>,
+    ) {
         for meta in inventory::iter::<crate::framework::ToolMetadata> {
             if let Some(s) = score_tool_metadata(meta, &self.query) {
-                // Find matching tab index for this tool's domain, safely falling back to 0
-                let tab_index = tabs
-                    .iter()
-                    .position(|t| {
-                        let t_name = t.name().to_lowercase().replace(' ', "_");
-                        let t_clean = t_name.replace('&', "").replace("__", "_");
-                        t_clean.contains(meta.domain)
-                            || (meta.domain == "ai" && t.name() == "Artificial Intelligence")
-                            || (meta.domain == "biology" && t.name() == "Morphogenesis")
-                    })
-                    .unwrap_or(0);
-
+                let tab_index = resolve_tab_index_for_domain(tabs, meta.domain);
                 matched.push((
                     PaletteItem::Tool {
                         tab_index,
@@ -202,16 +269,27 @@ impl CommandPalette {
                 ));
             }
         }
+    }
 
-        // Sort by match score ascending (lower score = higher relevance / better match).
-        // On tie, sort tabs before tools (item_type_order 0 vs 1), then deterministically by title.
-        matched.sort_by(|a, b| {
-            a.1.cmp(&b.1)
-                .then_with(|| a.2.cmp(&b.2))
-                .then_with(|| a.0.title().cmp(b.0.title()))
-        });
+    fn collect_preset_matches(
+        &self,
+        tabs: &[Box<dyn crate::tabs::ExplorerTab>],
+        matched: &mut Vec<(PaletteItem, usize, usize)>,
+    ) {
+        for card in crate::starter_gallery::get_all_starter_cards() {
+            if let Some(s) = crate::starter_gallery::score_starter_card(&card, &self.query) {
+                let tab_index = resolve_tab_index_for_domain(tabs, card.domain);
+                matched.push((PaletteItem::Preset { tab_index, card }, s, 2));
+            }
+        }
+    }
 
-        matched.into_iter().map(|(item, _, _)| item).collect()
+    fn collect_action_matches(&self, matched: &mut Vec<(PaletteItem, usize, usize)>) {
+        for &action in WorkspaceAction::ALL {
+            if let Some(s) = score_workspace_action(action, &self.query) {
+                matched.push((PaletteItem::Action { action }, s, 3));
+            }
+        }
     }
 
     /// Processes keyboard shortcuts (Arrow Up/Down, Enter, Escape) for navigating and selecting items.
@@ -227,14 +305,12 @@ impl CommandPalette {
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) {
                 self.selected_index = (self.selected_index + 1) % filtered_items.len();
             }
-
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) {
                 self.selected_index = self
                     .selected_index
                     .checked_sub(1)
                     .unwrap_or(filtered_items.len() - 1);
             }
-
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
                 if let Some(item) = filtered_items.get(self.selected_index) {
                     selected_item = Some(item.to_selection());
@@ -248,183 +324,12 @@ impl CommandPalette {
 
         (selected_item, esc_pressed)
     }
-
-    /// Renders search header and text field with auto-focus and accessible WidgetInfo label.
-    fn render_header_and_search(&mut self, ui: &mut egui::Ui, prev_query: &str) {
-        ui.horizontal(|ui| {
-            ui.heading("🔍 Command Palette");
-        });
-        ui.separator();
-
-        let text_edit_response = ui.add(
-            egui::TextEdit::singleline(&mut self.query)
-                .hint_text(SEARCH_HINT_TEXT)
-                .desired_width(f32::INFINITY),
-        );
-
-        let search_info = egui::WidgetInfo {
-            label: Some(SEARCH_INPUT_LABEL.to_string()),
-            ..egui::WidgetInfo::text_edit(
-                ui.is_enabled(),
-                prev_query,
-                &self.query,
-                SEARCH_HINT_TEXT,
-            )
-        };
-        text_edit_response.widget_info({
-            let search_info = search_info.clone();
-            move || search_info.clone()
-        });
-        ui.ctx().data_mut(|d| {
-            d.insert_temp(egui::Id::new(SEARCH_WIDGET_INFO_ID), search_info);
-        });
-
-        if self.just_opened {
-            if self.prior_focus.is_none() {
-                self.prior_focus = ui.ctx().memory(|m| m.focused());
-            }
-            text_edit_response.request_focus();
-            self.just_opened = false;
-        }
-    }
-
-    /// Renders vertical scrollable list of filtered simulation domain tabs and tools.
-    fn render_results_list(
-        &mut self,
-        ui: &mut egui::Ui,
-        filtered_items: &[PaletteItem],
-    ) -> Option<PaletteSelection> {
-        let mut clicked_selection = None;
-
-        egui::ScrollArea::vertical()
-            .max_height(280.0)
-            .show(ui, |ui| {
-                if filtered_items.is_empty() {
-                    ui.label(
-                        egui::RichText::new("No matching simulation domain tabs or tools found.")
-                            .italics(),
-                    );
-                } else {
-                    for (list_idx, item) in filtered_items.iter().enumerate() {
-                        let is_selected = list_idx == self.selected_index;
-                        let text =
-                            match item {
-                                PaletteItem::Tab { name, .. } => {
-                                    egui::RichText::new(format!("📁 [Tab] {}", name))
-                                        .size(14.0)
-                                        .strong()
-                                }
-                                PaletteItem::Tool { name, domain, .. } => egui::RichText::new(
-                                    format!("🔧 {} ({})", name, format_domain_title(domain)),
-                                )
-                                .size(14.0),
-                            };
-                        let response = ui.selectable_label(is_selected, text);
-
-                        if is_selected {
-                            response.scroll_to_me(Some(egui::Align::Center));
-                        }
-
-                        if response.clicked() {
-                            clicked_selection = Some(item.to_selection());
-                        }
-                    }
-                }
-            });
-
-        clicked_selection
-    }
-
-    /// Renders footer keyboard hint bar.
-    fn render_footer(&self, ui: &mut egui::Ui) {
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new("↑↓ Navigate • Enter Select • Esc Close")
-                    .small()
-                    .weak(),
-            );
-        });
-    }
-
-    /// Renders the command palette modal overlay if open.
-    ///
-    /// Returns `Some(PaletteSelection)` if a tab or tool was selected (via Enter key or mouse click),
-    /// which also dismisses the command palette.
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        tabs: &[Box<dyn crate::tabs::ExplorerTab>],
-    ) -> Option<PaletteSelection> {
-        if !self.is_open {
-            if let Some(prev_id) = self.prior_focus.take() {
-                ctx.memory_mut(|m| m.request_focus(prev_id));
-            }
-            return None;
-        }
-
-        let prev_query = self.last_query.clone();
-        let mut filtered_items = self.filter_items(tabs);
-        let mut query_changed = self.sync_selection_with_results(filtered_items.len());
-
-        let (mut selected_item, esc_pressed) = self.handle_keyboard_inputs(ctx, &filtered_items);
-        let modal = egui::Modal::new(egui::Id::new("command_palette_modal"))
-            .backdrop_color(egui::Color32::from_black_alpha(150));
-
-        let modal_res = modal.show(ctx, |ui| {
-            ui.set_width(550.0);
-            ui.set_max_height(400.0);
-            ui.vertical(|ui| {
-                self.render_header_and_search(ui, &prev_query);
-                if self.query != self.last_query {
-                    filtered_items = self.filter_items(tabs);
-                    query_changed |= self.sync_selection_with_results(filtered_items.len());
-                }
-                ui.add_space(8.0);
-                if let Some(clicked) = self.render_results_list(ui, &filtered_items) {
-                    selected_item = Some(clicked);
-                }
-                ui.add_space(4.0);
-                self.render_footer(ui);
-            });
-        });
-
-        if esc_pressed || modal_res.should_close() {
-            let prior_focus = self.prior_focus.take();
-            self.close();
-            if let Some(prev_id) = prior_focus {
-                ctx.memory_mut(|m| m.request_focus(prev_id));
-            }
-            announce_palette_status(ctx, "Command palette closed");
-        } else if selected_item.is_some() {
-            let prior_focus = self.prior_focus.take();
-            self.close();
-            if let Some(prev_id) = prior_focus {
-                ctx.memory_mut(|m| m.request_focus(prev_id));
-            }
-        } else if query_changed {
-            announce_palette_status(ctx, format_search_count_status(filtered_items.len()));
-        }
-
-        selected_item
-    }
-
-    fn sync_selection_with_results(&mut self, item_count: usize) -> bool {
-        if self.query != self.last_query {
-            self.selected_index = 0;
-            self.last_query = self.query.clone();
-            true
-        } else {
-            if item_count == 0 {
-                self.selected_index = 0;
-            } else if self.selected_index >= item_count {
-                self.selected_index = item_count - 1;
-            }
-            false
-        }
-    }
 }
 
 #[cfg(test)]
 #[path = "command_palette_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "command_palette_actions_tests.rs"]
+mod actions_tests;

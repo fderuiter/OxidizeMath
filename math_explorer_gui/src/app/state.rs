@@ -332,6 +332,7 @@ impl AppState {
 
     /// Restores serialized state into the provided `MathExplorerApp` instance.
     pub fn apply(self, app: &mut super::MathExplorerApp) {
+        app.starter_gallery.dismiss_cold_boot();
         app.show_info = self.show_info;
         app.show_warnings = self.show_warnings;
         app.show_errors = self.show_errors;

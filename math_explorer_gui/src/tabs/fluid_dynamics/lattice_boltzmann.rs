@@ -236,7 +236,7 @@ inventory::submit! {
         id: "LatticeBoltzmannTool",
         display_name: "Lattice Boltzmann (Demo)",
         domain: "fluid_dynamics",
-        tags: &[],
+        tags: &["lbm", "d2q9", "bgk", "vortex", "navier-stokes"],
         build: || Box::new(UnifiedSimTool::<LbmUnified>::new()),
     }
 }

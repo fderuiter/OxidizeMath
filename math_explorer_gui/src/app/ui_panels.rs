@@ -282,6 +282,14 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
         });
 
         ui.menu_button("View", |ui| {
+            let catalog_shortcut = format!("{shift_cmd_str}G");
+            if ui
+                .add(egui::Button::new("🧭 Explore Catalog...").shortcut_text(catalog_shortcut))
+                .clicked()
+            {
+                app.open_explore_catalog(ctx);
+                ui.close();
+            }
             let cmd_shortcut = if cfg!(target_os = "macos") {
                 "Cmd+K"
             } else {

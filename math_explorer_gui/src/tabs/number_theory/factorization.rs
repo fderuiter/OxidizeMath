@@ -175,7 +175,7 @@ inventory::submit! {
         id: "FactorizationTool",
         display_name: "Factorization Tool",
         domain: "number_theory",
-        tags: &[],
+        tags: &["prime factors", "trial division", "divisors", "composite"],
         build: || Box::new(FactorizationTool::default()),
     }
 }

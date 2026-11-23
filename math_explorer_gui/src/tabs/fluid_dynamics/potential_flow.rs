@@ -174,7 +174,10 @@ impl InteractiveTool for PotentialFlowTool {
         crate::framework::ExportCapabilities::plot().with_shader()
     }
 
-    fn export_glsl_shader(&self, dialect: crate::framework::ShaderDialect) -> Result<String, String> {
+    fn export_glsl_shader(
+        &self,
+        dialect: crate::framework::ShaderDialect,
+    ) -> Result<String, String> {
         self.build_glsl_shader(dialect)
     }
 
@@ -386,7 +389,7 @@ inventory::submit! {
         id: "PotentialFlowTool",
         display_name: "Potential Flow",
         domain: "fluid_dynamics",
-        tags: &[],
+        tags: &["streamlines", "velocity potential", "laplace", "source-sink"],
         build: || Box::new(PotentialFlowTool::default()),
     }
 }

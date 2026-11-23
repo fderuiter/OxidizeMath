@@ -1,10 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::filter::StarterGalleryFilterState;
+use super::modal_ui::{compute_gallery_metrics, render_searchable_gallery_body};
 use super::StarterCard;
 use eframe::egui;
+use std::collections::HashSet;
 
 const DEFER_STARTER_GALLERY_TO_ROOT_KEY: &str = "DEFER_STARTER_GALLERY_TO_ROOT";
 const DEFERRED_STARTER_GALLERY_QUEUE_KEY: &str = "DEFERRED_STARTER_GALLERY_QUEUE";
+const GLOBAL_STARTER_GALLERY_MODAL_ID: &str = "global_starter_gallery_modal";
 
 #[derive(Clone)]
 struct DeferredStarterGalleryRequest {
@@ -12,169 +16,100 @@ struct DeferredStarterGalleryRequest {
     id_source: String,
     modal_source: String,
     cards: Vec<StarterCard>,
+    initial_domain_slug: Option<String>,
 }
 
-struct GalleryOverlayMetrics {
-    max_w: f32,
-    max_h: f32,
-    inner_w: f32,
-    scroll_h: f32,
-    card_w: f32,
-    cols: usize,
+/// Root-level global Starter Template Gallery modal state owned by `MathExplorerApp`.
+#[derive(Clone, Debug, Default)]
+pub struct GlobalStarterGallery {
+    /// Whether the global starter gallery modal is currently open.
+    pub is_open: bool,
+    /// True only for the initial cold-boot presentation before any session/URL/tab override.
+    pub is_cold_boot: bool,
+    /// Active text search and `AcademicDomain` filter state.
+    pub filter: StarterGalleryFilterState,
+    was_open: bool,
 }
 
-fn compute_gallery_metrics(ctx: &egui::Context) -> GalleryOverlayMetrics {
-    let raw_screen = ctx.content_rect();
-    let avail_w = if raw_screen.width().is_finite() && raw_screen.width() > 64.0 {
-        raw_screen.width()
-    } else {
-        1024.0
-    };
-    let avail_h = if raw_screen.height().is_finite() && raw_screen.height() > 64.0 {
-        raw_screen.height()
-    } else {
-        768.0
-    };
-    let max_w = (avail_w - 32.0).clamp(180.0, 740.0);
-    let max_h = (avail_h - 32.0).clamp(160.0, 520.0);
-    let inner_w = (max_w - 36.0).max(144.0);
-    let scroll_h = (max_h - 124.0).max(64.0);
-    let grid_avail_w = (inner_w - 14.0).max(130.0);
-    let (cols, card_w) = if grid_avail_w >= 660.0 {
-        (3, ((grid_avail_w - 28.0) / 3.0 - 30.0).floor())
-    } else if grid_avail_w >= 430.0 {
-        (2, ((grid_avail_w - 14.0) / 2.0 - 30.0).floor().min(215.0))
-    } else {
-        (1, (grid_avail_w - 30.0).clamp(98.0, 215.0))
-    };
-    GalleryOverlayMetrics {
-        max_w,
-        max_h,
-        inner_w,
-        scroll_h,
-        card_w,
-        cols,
+impl GlobalStarterGallery {
+    /// Creates a cold-boot global starter gallery showing all registered presets across all domains.
+    #[must_use]
+    pub fn cold_boot() -> Self {
+        let has_presets = !super::get_all_starter_cards().is_empty();
+        Self {
+            is_open: has_presets,
+            is_cold_boot: has_presets,
+            filter: StarterGalleryFilterState::default(),
+            was_open: has_presets,
+        }
+    }
+
+    /// Opens the global starter gallery across `All Domains` and emits a polite live announcement.
+    pub fn open_all(&mut self, ctx: &egui::Context) {
+        self.is_open = true;
+        self.is_cold_boot = false;
+        self.was_open = true;
+        self.filter.reset_to_all();
+        crate::accessibility::announce_live_status(ctx, "Starter template gallery opened");
+    }
+
+    /// Opens the global starter gallery pre-filtered to `domain_slug`'s `AcademicDomain`.
+    pub fn open_for_domain(&mut self, ctx: &egui::Context, domain_slug: &str) {
+        self.is_open = true;
+        self.is_cold_boot = false;
+        self.was_open = true;
+        self.filter.reset_to_domain(domain_slug);
+        crate::accessibility::announce_live_status(ctx, "Starter template gallery opened");
+    }
+
+    /// Silently dismisses the gallery if it was only open due to initial cold boot.
+    pub fn dismiss_cold_boot(&mut self) {
+        if self.is_cold_boot {
+            self.is_open = false;
+            self.is_cold_boot = false;
+            self.was_open = false;
+        }
+    }
+
+    /// Closes the gallery without emitting a dismissal announcement (e.g. when superseded by `Ctrl+K`).
+    pub fn close_silently(&mut self) {
+        self.is_open = false;
+        self.is_cold_boot = false;
+        self.was_open = false;
+    }
+
+    /// Renders the global starter gallery via `ModalLifecycle`, returning a selected `StarterCard`.
+    pub fn show(&mut self, ctx: &egui::Context) -> Option<StarterCard> {
+        let cards = super::get_all_starter_cards();
+        let was_open = self.was_open;
+        let selected = run_gallery_modal_lifecycle(
+            ctx,
+            egui::Id::new(GLOBAL_STARTER_GALLERY_MODAL_ID),
+            &cards,
+            &mut self.filter,
+            &mut self.is_open,
+        );
+        if selected.is_some() {
+            self.is_open = false;
+            self.is_cold_boot = false;
+        } else if (was_open || self.is_cold_boot) && !self.is_open {
+            self.is_cold_boot = false;
+            crate::accessibility::announce_live_status(ctx, "Starter template gallery closed");
+        }
+        self.was_open = self.is_open;
+        selected
     }
 }
 
-fn render_starter_card(ui: &mut egui::Ui, card: &StarterCard, card_width: f32) -> bool {
-    let mut launched = false;
-    egui::Frame::group(ui.style())
-        .inner_margin(14.0)
-        .corner_radius(8.0)
-        .show(ui, |ui| {
-            ui.set_width(card_width);
-            ui.set_max_width(card_width);
-            ui.set_min_height(150.0);
-            ui.vertical(|ui| {
-                ui.set_max_width(card_width);
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(card.icon).size(26.0));
-                    let text_w = (card_width - 42.0).max(56.0);
-                    ui.vertical(|ui| {
-                        ui.set_max_width(text_w);
-                        ui.add(
-                            egui::Label::new(egui::RichText::new(card.title).strong().size(15.0))
-                                .wrap(),
-                        );
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(format!("[{}]", card.category))
-                                    .small()
-                                    .color(ui.visuals().weak_text_color()),
-                            )
-                            .truncate(),
-                        );
-                    });
-                });
-                ui.add_space(8.0);
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(card.description)
-                            .size(12.0)
-                            .color(ui.visuals().text_color()),
-                    )
-                    .wrap(),
-                );
-                ui.add_space(10.0);
-                let launch_btn = egui::Button::new(format!("▶ Launch {}", card.title)).truncate();
-                if ui.add_sized([card_width, 26.0], launch_btn).clicked() {
-                    launched = true;
-                }
-            });
-        });
-    launched
-}
-
-fn render_starter_gallery_body(
-    ui: &mut egui::Ui,
-    frame_ctx: &mut crate::ModalFrameContext,
-    cards: &[StarterCard],
-    m: &GalleryOverlayMetrics,
-) -> Option<StarterCard> {
-    let mut selected_card = None;
-    ui.set_max_width(m.inner_w);
-    ui.set_width(m.inner_w);
-    ui.horizontal(|ui| {
-        ui.set_width(m.inner_w);
-        ui.add(
-            egui::Label::new(egui::RichText::new("🚀 Starter Template Gallery").heading())
-                .truncate(),
-        );
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("✖ Close Gallery").clicked() {
-                frame_ctx.close();
-            }
-        });
-    });
-
-    ui.add(
-        egui::Label::new(
-            egui::RichText::new(
-                "Choose a guided starter model to launch pre-configured simulation parameters:",
-            )
-            .color(ui.visuals().weak_text_color()),
-        )
-        .wrap(),
-    );
-    ui.add_space(6.0);
-    ui.separator();
-    ui.add_space(8.0);
-
-    egui::ScrollArea::vertical()
-        .max_height(m.scroll_h)
-        .auto_shrink([false, true])
-        .show(ui, |ui| {
-            ui.set_max_width(m.inner_w);
-            ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-            for row in cards.chunks(m.cols.max(1)) {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-                    for card in row {
-                        if render_starter_card(ui, card, m.card_w) {
-                            selected_card = Some(card.clone());
-                            frame_ctx.close();
-                        }
-                    }
-                });
-            }
-        });
-    selected_card
-}
-
-/// Renders the central canvas starter gallery card overlay clamped to root window bounds.
-pub fn show_starter_gallery_overlay(
+fn run_gallery_modal_lifecycle(
     ctx: &egui::Context,
-    id_source: &str,
+    modal_id: egui::Id,
     cards: &[StarterCard],
+    filter: &mut StarterGalleryFilterState,
     is_open: &mut bool,
 ) -> Option<StarterCard> {
-    if cards.is_empty() {
-        return None;
-    }
     let m = compute_gallery_metrics(ctx);
     let mut selected_card = None;
-    let modal_id = egui::Id::new(format!("{id_source}_starter_gallery_overlay"));
     let frame = egui::Frame::window(&ctx.style())
         .inner_margin(16)
         .corner_radius(12.0)
@@ -186,10 +121,84 @@ pub fn show_starter_gallery_overlay(
         .max_width(m.max_w)
         .max_height(m.max_h)
         .show(ctx, is_open, |ui, frame_ctx| {
-            selected_card = render_starter_gallery_body(ui, frame_ctx, cards, &m);
+            selected_card = render_searchable_gallery_body(ui, frame_ctx, cards, filter, &m);
         });
 
     selected_card
+}
+
+fn spans_multiple_academic_domains(cards: &[StarterCard]) -> bool {
+    let mut seen = HashSet::new();
+    cards
+        .iter()
+        .any(|c| seen.insert(super::academic_domain_for_slug(c.domain)) && seen.len() > 1)
+}
+
+/// Renders a starter gallery overlay with optional initial domain pre-filtering.
+pub fn show_starter_gallery_overlay_for_domain(
+    ctx: &egui::Context,
+    id_source: &str,
+    cards: &[StarterCard],
+    initial_domain_slug: Option<&str>,
+    is_open: &mut bool,
+) -> Option<StarterCard> {
+    if cards.is_empty() {
+        return None;
+    }
+    let modal_id = egui::Id::new(format!("{id_source}_starter_gallery_overlay"));
+    let filter_key = modal_id.with("filter_state");
+    let open_key = modal_id.with("was_open");
+    let was_open = ctx.data(|d| d.get_temp::<bool>(open_key)).unwrap_or(false);
+
+    if !*is_open {
+        if was_open {
+            ctx.data_mut(|d| {
+                d.remove::<StarterGalleryFilterState>(filter_key);
+                d.insert_temp(open_key, false);
+            });
+        }
+        return None;
+    }
+
+    let mut filter = ctx
+        .data(|d| d.get_temp::<StarterGalleryFilterState>(filter_key))
+        .unwrap_or_else(|| {
+            let mut f = StarterGalleryFilterState::default();
+            if let Some(slug) = initial_domain_slug {
+                if spans_multiple_academic_domains(cards) {
+                    f.reset_to_domain(slug);
+                }
+            }
+            f
+        });
+
+    let selected = run_gallery_modal_lifecycle(ctx, modal_id, cards, &mut filter, is_open);
+    if selected.is_some() {
+        *is_open = false;
+    } else if !*is_open {
+        crate::accessibility::announce_live_status(ctx, "Starter template gallery closed");
+    }
+
+    ctx.data_mut(|d| {
+        if *is_open {
+            d.insert_temp(filter_key, filter);
+            d.insert_temp(open_key, true);
+        } else {
+            d.remove::<StarterGalleryFilterState>(filter_key);
+            d.insert_temp(open_key, false);
+        }
+    });
+    selected
+}
+
+/// Renders the central canvas starter gallery card overlay clamped to root window bounds.
+pub fn show_starter_gallery_overlay(
+    ctx: &egui::Context,
+    id_source: &str,
+    cards: &[StarterCard],
+    is_open: &mut bool,
+) -> Option<StarterCard> {
+    show_starter_gallery_overlay_for_domain(ctx, id_source, cards, None, is_open)
 }
 
 /// Enables root-level hoisting of `StarterGallery` modals rendered during pane updates.
@@ -208,6 +217,7 @@ pub(crate) fn try_defer_starter_gallery(
     id_source: &str,
     modal_source: &str,
     cards: Vec<StarterCard>,
+    initial_domain_slug: Option<&str>,
 ) -> bool {
     ctx.data_mut(|d| {
         let defer = d
@@ -230,13 +240,14 @@ pub(crate) fn try_defer_starter_gallery(
             id_source: id_source.to_string(),
             modal_source: modal_source.to_string(),
             cards,
+            initial_domain_slug: initial_domain_slug.map(str::to_string),
         });
         d.insert_temp(key, queue);
         true
     })
 }
 
-/// Renders all deferred `StarterGallery` modals at the root `egui::Context` level and applies selections to their owning panes.
+/// Renders all deferred `StarterGallery` modals at the root `egui::Context` level and routes selections.
 pub(crate) fn flush_deferred_starter_galleries(
     app: &mut crate::app::MathExplorerApp,
     ctx: &egui::Context,
@@ -248,15 +259,25 @@ pub(crate) fn flush_deferred_starter_galleries(
         d.remove::<Vec<DeferredStarterGalleryRequest>>(key);
         q.unwrap_or_default()
     });
+    if !requests.is_empty() {
+        app.starter_gallery.close_silently();
+    }
     for req in requests {
         let mut is_open = true;
-        let selected =
-            show_starter_gallery_overlay(ctx, &req.modal_source, &req.cards, &mut is_open);
-        if selected.is_some() {
-            is_open = false;
-        }
-        if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
-            tab.apply_starter_gallery_outcome(ctx, &req.id_source, is_open, selected);
+        let selected = show_starter_gallery_overlay_for_domain(
+            ctx,
+            &req.modal_source,
+            &req.cards,
+            req.initial_domain_slug.as_deref(),
+            &mut is_open,
+        );
+        if let Some(card) = selected {
+            if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
+                tab.apply_starter_gallery_outcome(ctx, &req.id_source, false, None);
+            }
+            let _ = app.launch_starter_card_in_pane(ctx, req.pane_idx, &card);
+        } else if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
+            tab.apply_starter_gallery_outcome(ctx, &req.id_source, is_open, None);
         }
     }
 }

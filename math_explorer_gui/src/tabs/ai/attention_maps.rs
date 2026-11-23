@@ -9,7 +9,7 @@ pub use crate::app::ThemeMode as ThemeContrastMode;
 mod heatmap;
 #[cfg(test)]
 pub use heatmap::cell_at_pos;
-pub use heatmap::{HeatmapTexture, compute_attention_cell_color};
+pub use heatmap::{compute_attention_cell_color, HeatmapTexture};
 
 pub struct AttentionMapsTool {
     q_matrix: DMatrix<f64>,
@@ -224,7 +224,7 @@ inventory::submit! {
         id: "AttentionMapsTool",
         display_name: "Attention Maps",
         domain: "ai",
-        tags: &[],
+        tags: &["transformer", "self-attention", "softmax", "heatmap", "qkv"],
         build: || Box::new(AttentionMapsTool::default()),
     }
 }

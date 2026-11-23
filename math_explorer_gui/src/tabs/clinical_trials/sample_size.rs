@@ -113,8 +113,10 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             return Err("Sample size parameters out of bounds".into());
         }
         let result = match s.mode {
-            CalculationMode::Means => calculate_sample_size_means(s.alpha, s.power, s.delta, s.sigma)
-                .map_err(|e| e.to_string())?,
+            CalculationMode::Means => {
+                calculate_sample_size_means(s.alpha, s.power, s.delta, s.sigma)
+                    .map_err(|e| e.to_string())?
+            }
             CalculationMode::Proportions => {
                 calculate_sample_size_proportions(s.alpha, s.power, s.p1, s.p2)
                     .map_err(|e| e.to_string())?
@@ -286,7 +288,7 @@ inventory::submit! {
         id: "SampleSizeCalculatorTool",
         display_name: "Sample Size Calculator",
         domain: "clinical_trials",
-        tags: &[],
+        tags: &["statistical power", "alpha", "cohort", "biostatistics", "trial"],
         build: || Box::new(SampleSizeCalculatorTool::default()),
     }
 }

@@ -165,7 +165,7 @@ impl SimulationFramework {
         });
     }
 
-    fn active_tool_slug_and_caps(&self) -> (String, ExportCapabilities) {
+    pub(super) fn active_tool_slug_and_caps(&self) -> (String, ExportCapabilities) {
         let (tool_name, caps) = if let Some(tool) = &self.active_tool {
             (tool.name(), tool.export_capabilities())
         } else {
@@ -332,7 +332,7 @@ impl SimulationFramework {
         }
     }
 
-    fn export_active_preset_json(&mut self, file_slug: &str) {
+    pub(super) fn export_active_preset_json(&mut self, file_slug: &str) {
         if let Some(tool) = &self.active_tool {
             self.preset_dialog
                 .export_preset_result(tool.export_preset_json(), file_slug);

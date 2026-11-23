@@ -630,6 +630,25 @@ pub(crate) fn resolve_color(explicit: egui::Color32, idx: usize) -> egui::Color3
     }
 }
 
+/// Encodes `primitives` directly into PNG bytes using offscreen raster rendering.
+pub fn export_primitives_png(
+    primitives: &[ExportPrimitive],
+    options: &ExportOptions,
+) -> Result<Vec<u8>, String> {
+    let img = render_primitives_image(primitives, options)?;
+    crate::color32_image_to_png(&img)
+}
+
+/// Decodes PNG bytes into `(width, height, rgba_pixels)` for verification and export pipelines.
+pub fn decode_png_rgba(png_bytes: &[u8]) -> Result<(usize, usize, Vec<[u8; 4]>), String> {
+    let decoded = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png)
+        .map_err(|e| format!("Failed to decode PNG bytes: {e}"))?
+        .into_rgba8();
+    let (w, h) = (decoded.width() as usize, decoded.height() as usize);
+    let pixels = decoded.pixels().map(|p| [p[0], p[1], p[2], p[3]]).collect();
+    Ok((w, h, pixels))
+}
+
 /// Encodes a sequence of raster `ColorImage` frames scaled to `options` as an animated GIF.
 pub fn export_raster_gif(
     frames: &[egui::ColorImage],

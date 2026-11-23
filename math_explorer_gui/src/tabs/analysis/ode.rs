@@ -399,7 +399,7 @@ inventory::submit! {
         id: "OdeSolverTool",
         display_name: "ODE Solvers",
         domain: "analysis",
-        tags: &[],
+        tags: &["ode", "runge-kutta", "rk4", "euler", "oscillator", "logistic"],
         build: || Box::new(OdeSolverTool::default()),
     }
 }

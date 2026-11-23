@@ -385,7 +385,7 @@ inventory::submit! {
         id: "RewardPlotsTool",
         display_name: "Reward Plots",
         domain: "ai",
-        tags: &[],
+        tags: &["reinforcement learning", "episode return", "convergence", "regret"],
         build: || Box::new(RewardPlotsTool::default()),
     }
 }

@@ -28,6 +28,7 @@ mod persistence;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;
+mod quick_export;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
@@ -54,6 +55,7 @@ pub use pane_scope::{
     is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id,
 };
 pub use playback::*;
+pub use quick_export::QuickExportAction;
 pub use recovery::*;
 pub use side_panel::{
     clear_pane_side_panel_records, pane_side_panel_records, PaneSidePanel, PaneSidePanelRecord,

@@ -226,7 +226,7 @@ inventory::submit! {
         id: "PartitionsWidget",
         display_name: "Partition Function",
         domain: "number_theory",
-        tags: &[],
+        tags: &["integer partitions", "ramanujan", "hardy", "q-series", "combinatorics"],
         build: || Box::new(PartitionsWidget::default()),
     }
 }

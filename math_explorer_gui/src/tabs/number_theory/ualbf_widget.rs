@@ -163,7 +163,7 @@ inventory::submit! {
         id: "UalbfWidget",
         display_name: "UALBF",
         domain: "number_theory",
-        tags: &[],
+        tags: &["quasiperfect", "abundant", "divisor sum", "sigma", "arithmetic"],
         build: || Box::new(UalbfWidget::default()),
     }
 }

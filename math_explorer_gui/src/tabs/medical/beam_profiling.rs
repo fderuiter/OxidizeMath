@@ -25,7 +25,9 @@ struct BeamProfilingState {
 }
 
 impl InteractiveTool for BeamProfilingTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Beam Profiling"
     }
@@ -102,13 +104,12 @@ impl InteractiveTool for BeamProfilingTool {
 
 // [cite:dwarf_galaxy_empirical_dependencies]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "BeamProfilingTool",
         display_name: "Beam Profiling",
         domain: "medical",
-        tags: &[],
+        tags: &["terma", "attenuation", "photon beam", "depth dose", "radiotherapy"],
         build: || Box::new(BeamProfilingTool::default()),
     }
 }
@@ -117,9 +118,15 @@ impl scientific_metadata::theory::TheoryDescribable for BeamProfilingTool {
     fn theory_description(&self) -> String {
         "TERMA depth dose: $D(d) = \\mu \\Psi_0 e^{-\\mu d}$ represents the primary energy fluence released into the medium at depth $d$.".into()
     }
-    fn phonetic_description(&self) -> String { "TERMA beam profiling theory".into() }
-    fn theory_citation(&self) -> String { "The Physics of Radiation Therapy (Khan, 2014)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "TERMA beam profiling theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "The Physics of Radiation Therapy (Khan, 2014)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{

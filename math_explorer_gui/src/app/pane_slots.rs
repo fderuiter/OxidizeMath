@@ -354,6 +354,7 @@ impl MathExplorerApp {
         if self.is_dragging_divider
             || self.dragging_quad_axes != (false, false)
             || self.command_palette.is_open
+            || self.starter_gallery.is_open
             || self.show_help_menu
             || egui::Popup::is_any_open(ctx)
             || ctx.memory(|m| m.top_modal_layer().is_some())
@@ -399,27 +400,8 @@ impl MathExplorerApp {
 
     /// Applies any selection returned by the global command palette to `focused_pane`.
     pub(super) fn apply_command_palette_selection(&mut self, ctx: &egui::Context) {
-        let Some(selection) = self.command_palette.show(ctx, &self.tabs) else {
-            return;
-        };
-        if selection.tab_index >= self.tabs.len() {
-            return;
-        }
-        self.select_tab(ctx, selection.tab_index);
-        let Some(tool_name) = &selection.tool_name else {
-            return;
-        };
-        if let Some(tab) = self.focused_pane_tab_mut() {
-            tab.select_tool_by_name(tool_name);
-            let display_label = inventory::iter::<crate::framework::ToolMetadata>
-                .into_iter()
-                .find(|m| {
-                    m.id.eq_ignore_ascii_case(tool_name)
-                        || m.display_name.eq_ignore_ascii_case(tool_name)
-                })
-                .map_or(tool_name.as_str(), |m| m.display_name);
-            let msg = format!("Switched to tool {} in tab {}", display_label, tab.name());
-            crate::accessibility::announce_live_status(ctx, msg);
+        if let Some(selection) = self.command_palette.show(ctx, &self.tabs) {
+            self.execute_palette_selection(ctx, selection);
         }
     }
 

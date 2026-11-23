@@ -134,6 +134,13 @@ fn build_primary_module_submenu(app: &MathExplorerApp) -> Submenu {
 
 pub(super) fn build_view_menu(app: &MathExplorerApp) -> Submenu {
     let view_menu = Submenu::new("View", true);
+    let catalog_item = MenuItem::with_id(
+        MenuId::new("view_explore_catalog"),
+        "Explore Catalog...",
+        true,
+        None,
+    );
+    view_menu.append(&catalog_item).unwrap();
     let palette_item =
         MenuItem::with_id(MenuId::new("cmd_palette"), "Command Palette...", true, None);
     view_menu.append(&palette_item).unwrap();

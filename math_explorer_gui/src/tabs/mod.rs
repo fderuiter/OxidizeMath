@@ -155,6 +155,18 @@ pub trait ExplorerTab {
         }
     }
 
+    /// Activates the target tool on this tab and loads the validated starter preset JSON.
+    fn launch_starter_card(
+        &mut self,
+        card: &crate::starter_gallery::StarterCard,
+    ) -> Result<(), String> {
+        let tab_name = self.name();
+        let fw = self
+            .framework_mut()
+            .ok_or_else(|| format!("Tab '{tab_name}' does not support starter presets"))?;
+        fw.launch_starter_card(card)
+    }
+
     /// Canonical URL slug identifying this tab in `#tab=<slug>` share links.
     fn url_slug(&self) -> &'static str {
         match self.name() {

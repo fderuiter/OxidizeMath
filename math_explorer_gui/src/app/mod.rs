@@ -1,3 +1,4 @@
+mod catalog;
 pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
@@ -18,6 +19,8 @@ pub(crate) mod viewport;
 mod tests;
 #[cfg(test)]
 mod tests_adaptive_chrome;
+#[cfg(test)]
+mod tests_catalog;
 #[cfg(test)]
 mod tests_command_palette;
 #[cfg(test)]
@@ -83,6 +86,7 @@ pub struct MathExplorerApp {
     pub theme: ThemeMode,
     pub(super) last_synced_theme: Option<ThemeMode>,
     pub command_palette: CommandPalette,
+    pub starter_gallery: crate::starter_gallery::GlobalStarterGallery,
     pub session_manager: WorkspaceSessionManager,
     pub viewport_layout: ViewportLayout,
     pub pane_tabs: Vec<usize>,
@@ -121,6 +125,7 @@ impl Default for MathExplorerApp {
             theme: ThemeMode::Dark,
             last_synced_theme: Some(ThemeMode::Dark),
             command_palette: CommandPalette::default(),
+            starter_gallery: crate::starter_gallery::GlobalStarterGallery::cold_boot(),
             session_manager: WorkspaceSessionManager::new(),
             viewport_layout: ViewportLayout::Single,
             pane_tabs: vec![0, 1, 2, 3],
@@ -157,6 +162,7 @@ impl MathExplorerApp {
 
     /// Sets the assigned tab index for a specific pane.
     pub fn set_pane_tab(&mut self, pane_idx: usize, tab_idx: usize) {
+        self.starter_gallery.dismiss_cold_boot();
         if pane_idx < self.pane_tabs.len() && tab_idx < self.tabs.len() {
             self.pane_tabs[pane_idx] = tab_idx;
             if pane_idx == 0 {
@@ -170,6 +176,7 @@ impl MathExplorerApp {
 
     /// Sets the authoritative viewport layout preset and synchronizes legacy layout mode.
     pub fn set_layout(&mut self, layout: ViewportLayout) {
+        self.starter_gallery.dismiss_cold_boot();
         self.seed_uninitialized_panes_on_initial_split(layout);
         self.viewport_layout = layout;
         self.sync_layout();
@@ -365,6 +372,7 @@ impl eframe::App for MathExplorerApp {
             crate::accessibility::announce_live_status(ctx, status_msg);
         }
 
+        self.poll_explore_catalog_shortcut(ctx);
         self.poll_share_shortcut_and_clipboard(ctx);
         self.poll_duplicate_pane_shortcut(ctx);
 
@@ -454,8 +462,9 @@ impl eframe::App for MathExplorerApp {
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
 
-        // Render Command Palette Overlay
+        // Render Command Palette and Global Starter Gallery Overlays
         self.apply_command_palette_selection(ctx);
+        self.render_global_starter_gallery(ctx);
         crate::accessibility::sync_context_live_messages(ctx, false);
 
         self.last_frame_had_input =

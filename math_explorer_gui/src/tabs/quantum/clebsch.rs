@@ -1,8 +1,8 @@
 use crate::accessibility::AccessibleTheoryHover;
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Plot};
-use scientific_metadata::theory::TheoryDescribable;
 use math_explorer::physics::quantum::clebsch_gordan;
+use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 use crate::framework::InteractiveTool;
@@ -81,8 +81,10 @@ struct ClebschGordanState {
 }
 
 impl InteractiveTool for ClebschGordanTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
-    
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+
     fn name(&self) -> &'static str {
         "Clebsch-Gordan"
     }
@@ -105,9 +107,11 @@ impl InteractiveTool for ClebschGordanTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let parsed: ClebschGordanState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid Clebsch-Gordan state: {e}"))?;
-        if ![parsed.j1, parsed.m1, parsed.j2, parsed.m2, parsed.j, parsed.m]
-            .iter()
-            .all(|v| v.is_finite())
+        if ![
+            parsed.j1, parsed.m1, parsed.j2, parsed.m2, parsed.j, parsed.m,
+        ]
+        .iter()
+        .all(|v| v.is_finite())
             || !(0.0..=10.0).contains(&parsed.j1)
             || !(-10.0..=10.0).contains(&parsed.m1)
             || !(0.0..=10.0).contains(&parsed.j2)
@@ -271,13 +275,12 @@ impl InteractiveTool for ClebschGordanTool {
 
 // [cite:quantum_mechanics]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "ClebschGordanTool",
         display_name: "Clebsch-Gordan",
         domain: "quantum",
-        tags: &[],
+        tags: &["angular momentum", "spin coupling", "su2", "wigner", "multiplet"],
         build: || Box::new(ClebschGordanTool::default()),
     }
 }

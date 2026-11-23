@@ -292,6 +292,18 @@ impl FiniteStateGuard for MorphogenesisTab {
     }
 }
 
+impl MorphogenesisTab {
+    fn sync_params_from_framework(&mut self) {
+        let cfg = self.export_config();
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.a = cfg.a;
+        p.b = cfg.b;
+        p.d_u = cfg.d_u;
+        p.d_v = cfg.d_v;
+        p.dt = cfg.dt;
+    }
+}
+
 impl ExplorerTab for MorphogenesisTab {
     fn name(&self) -> &'static str {
         "Morphogenesis"
@@ -327,19 +339,37 @@ impl ExplorerTab for MorphogenesisTab {
         Some(&mut self.framework)
     }
 
+    fn apply_starter_gallery_outcome(
+        &mut self,
+        ctx: &egui::Context,
+        id_source: &str,
+        is_open: bool,
+        selected: Option<crate::starter_gallery::StarterCard>,
+    ) {
+        let had_selection = selected.is_some();
+        self.framework
+            .apply_starter_gallery_outcome(ctx, id_source, is_open, selected);
+        if had_selection {
+            self.sync_params_from_framework();
+        }
+    }
+
+    fn launch_starter_card(
+        &mut self,
+        card: &crate::starter_gallery::StarterCard,
+    ) -> Result<(), String> {
+        self.framework.launch_starter_card(card)?;
+        self.sync_params_from_framework();
+        Ok(())
+    }
+
     fn import_url_preset_json(
         &mut self,
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
         self.framework.import_url_preset_json(tool_id, preset_json)?;
-        let cfg = self.export_config();
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = cfg.a;
-        p.b = cfg.b;
-        p.d_u = cfg.d_u;
-        p.d_v = cfg.d_v;
-        p.dt = cfg.dt;
+        self.sync_params_from_framework();
         Ok(())
     }
 }

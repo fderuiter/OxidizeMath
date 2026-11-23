@@ -256,7 +256,7 @@ inventory::submit! {
         id: "PrimeSpiralWidget",
         display_name: "Prime Spiral (Ulam Spiral)",
         domain: "number_theory",
-        tags: &[],
+        tags: &["ulam spiral", "sieve", "prime distribution", "diagonal"],
         build: || Box::new(PrimeSpiralWidget::default()),
     }
 }

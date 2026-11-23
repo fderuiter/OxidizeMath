@@ -298,7 +298,7 @@ inventory::submit! {
         id: "GraphEditorTool",
         display_name: "Graph Editor",
         domain: "graph_theory",
-        tags: &[],
+        tags: &["vertices", "edges", "adjacency", "planar", "network"],
         build: || Box::new(GraphEditorTool::default()),
     }
 }

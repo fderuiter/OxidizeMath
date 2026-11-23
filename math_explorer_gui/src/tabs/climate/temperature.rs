@@ -161,7 +161,7 @@ inventory::submit! {
         id: "TemperatureAnomaliesTool",
         display_name: "Temperature Anomalies",
         domain: "climate",
-        tags: &[],
+        tags: &["global warming", "anomaly", "surface temperature", "climatology"],
         build: || Box::new(TemperatureAnomaliesTool::default()),
     }
 }
@@ -234,7 +234,10 @@ mod tests {
             .collect();
         assert_eq!(baseline.len(), 30);
         let mean = baseline.iter().sum::<f64>() / baseline.len() as f64;
-        assert!(mean.abs() < 0.01, "Expected ~0.0°C baseline mean, got {mean}");
+        assert!(
+            mean.abs() < 0.01,
+            "Expected ~0.0°C baseline mean, got {mean}"
+        );
 
         tool.synthetic_walk = true;
         assert_ne!(tool.active_series(), calibrated.as_slice());

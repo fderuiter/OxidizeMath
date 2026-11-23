@@ -140,6 +140,9 @@ fn handle_file_event(app: &mut MathExplorerApp, ctx: &egui::Context, id: &str) -
 
 fn handle_palette_theme_event(app: &mut MathExplorerApp, ctx: &egui::Context, id: &str) -> bool {
     match id {
+        "view_explore_catalog" => {
+            app.open_explore_catalog(ctx);
+        }
         "cmd_palette" => {
             app.command_palette.toggle();
             let status_msg = if app.command_palette.is_open {

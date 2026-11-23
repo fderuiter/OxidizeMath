@@ -86,6 +86,7 @@ impl AcademicDomain {
 
 /// Selects an active tab by index, updating the focused pane and emitting accessibility announcements.
 pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize) {
+    app.starter_gallery.dismiss_cold_boot();
     if tab_idx < app.tabs.len() {
         let target_pane = app.active_focused_pane();
         if target_pane == 0 {
@@ -102,6 +103,7 @@ pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize
 
 /// Explicitly updates Pane 0's primary simulation module (used by `View -> Primary Module`).
 pub fn select_primary_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize) {
+    app.starter_gallery.dismiss_cold_boot();
     if tab_idx < app.tabs.len() {
         app.selected_tab = tab_idx;
         if !app.pane_tabs.is_empty() {
@@ -253,6 +255,16 @@ pub fn render_domain_switcher_bar(
             render_domain_button(app, ctx, ui, *domain, active_domain);
         }
 
+        ui.separator();
+        let catalog_resp = ui.button("🧭 Explore Catalog");
+        let clicked_catalog = catalog_resp.clicked();
+        attach_hover_hint(catalog_resp, || {
+            "Browse starter simulation presets across all academic domains".to_string()
+        });
+        if clicked_catalog {
+            app.open_explore_catalog(ctx);
+        }
+
         render_active_path_label(ui, active_domain, active_tab_name);
     });
 }
@@ -336,15 +348,18 @@ fn render_active_path_label(
     active_tab_name: &str,
 ) {
     if let Some(active_dom) = active_domain {
-        if ui.available_width() > 200.0 {
+        if ui.available_width() > 220.0 {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Active: {} › {}",
-                        active_dom.name(),
-                        active_tab_name
-                    ))
-                    .weak(),
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(format!(
+                            "Active: {} › {}",
+                            active_dom.name(),
+                            active_tab_name
+                        ))
+                        .weak(),
+                    )
+                    .truncate(),
                 );
             });
         }

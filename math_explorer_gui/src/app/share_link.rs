@@ -148,6 +148,7 @@ impl MathExplorerApp {
         }
 
         let tab_name = self.tabs[tab_idx].name();
+        self.starter_gallery.dismiss_cold_boot();
         self.tab_state_cache.invalidate_tab(tab_name);
         self.selected_tab = tab_idx;
         self.focused_pane = 0;

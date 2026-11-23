@@ -223,7 +223,12 @@ impl RegimeCartographer for HodgkinHuxleyCartographer {
             HodgkinHuxleyRegime::TonicFiring,
         ]
         .into_iter()
-        .map(|r| (r.label(), atlas_regime_color(r as u8, 3, 0.7, high_contrast)))
+        .map(|r| {
+            (
+                r.label(),
+                atlas_regime_color(r as u8, 3, 0.7, high_contrast),
+            )
+        })
         .collect()
     }
 }
@@ -424,7 +429,7 @@ inventory::submit! {
         id: "HodgkinHuxleyTool",
         display_name: "Hodgkin-Huxley Model",
         domain: "neuroscience",
-        tags: &[],
+        tags: &["action potential", "ion channels", "membrane", "squid axon"],
         build: || Box::new(UnifiedSimTool::<HodgkinHuxleyUnified>::new()),
     }
 }
