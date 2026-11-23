@@ -87,7 +87,24 @@ fn test_temperature_c_rate_and_preset_controls_drive_arrhenius_aging() {
 
     let custom_json = tool.save_state().expect("save custom state");
     let mut restored = CapacityFadeTool::default();
+    let rev_default = restored.state_revision();
+    let sig_default = restored.atlas_context_signature(("dod", "cycles_to_simulate"));
+    let cart_25 = restored
+        .build_atlas_cartographer(("dod", "cycles_to_simulate"))
+        .expect("25C cartographer");
     restored.try_load_state(&custom_json).expect("load custom");
+    assert_ne!(restored.state_revision(), rev_default);
+    assert_ne!(
+        restored.atlas_context_signature(("dod", "cycles_to_simulate")),
+        sig_default
+    );
+    let cart_lto = restored
+        .build_atlas_cartographer(("dod", "cycles_to_simulate"))
+        .expect("LTO cartographer");
+    assert!(
+        cart_lto.evaluate_cell(80.0, 2000.0).primary > cart_25.evaluate_cell(80.0, 2000.0).primary
+    );
+    assert!(cart_25.overlay_contour().is_some());
     assert_eq!(restored.chemistry, ChemistryChoice::Lto);
     assert!((restored.c_rate - 2.5).abs() < 1e-9);
     assert!((restored.temperature - 45.0).abs() < 1e-9);

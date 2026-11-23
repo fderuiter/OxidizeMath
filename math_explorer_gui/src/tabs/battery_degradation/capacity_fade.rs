@@ -10,7 +10,9 @@ pub mod io;
 mod tests;
 mod ui;
 
+use super::capacity_fade_atlas::{CapacityFadeCartographer, CAPACITY_FADE_ATLAS_AXIS_PAIRS};
 use super::cell_card::{BatteryCellCard, BatteryDialogIo, ChemistryChoice};
+use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use io::CalibratedLabSummary;
@@ -89,6 +91,60 @@ impl InteractiveTool for CapacityFadeTool {
     }
     fn domain(&self) -> &'static str {
         "battery_degradation"
+    }
+
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.dod.to_bits().hash(&mut h);
+        self.temperature.to_bits().hash(&mut h);
+        self.cycles_to_simulate.to_bits().hash(&mut h);
+        self.chemistry.hash(&mut h);
+        self.c_rate.to_bits().hash(&mut h);
+        self.exponent_z.to_bits().hash(&mut h);
+        self.calibrated_alpha.map(f64::to_bits).hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        CAPACITY_FADE_ATLAS_AXIS_PAIRS
+    }
+
+    fn active_atlas_coords(&self, _axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        (self.dod, self.cycles_to_simulate)
+    }
+
+    fn atlas_context_signature(&self, _axis_keys: (&'static str, &'static str)) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.temperature.to_bits().hash(&mut h);
+        self.chemistry.hash(&mut h);
+        self.c_rate.to_bits().hash(&mut h);
+        self.exponent_z.to_bits().hash(&mut h);
+        self.calibrated_alpha.map(f64::to_bits).hash(&mut h);
+        h.finish()
+    }
+
+    fn build_atlas_cartographer(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<std::sync::Arc<dyn RegimeCartographer>> {
+        CapacityFadeCartographer::new(self, axis_keys)
+            .map(|c| std::sync::Arc::new(c) as std::sync::Arc<dyn RegimeCartographer>)
+    }
+
+    fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
+        self.apply_capacity_fade_teleport(ev);
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn save_state(&self) -> Option<String> {
@@ -295,6 +351,20 @@ impl scientific_metadata::theory::TheoryDescribable for CapacityFadeTool {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
+    }
+
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use scientific_metadata::theory::ParameterConstraint;
+        let c = |min, max, step| ParameterConstraint { min, max, step };
+        std::collections::HashMap::from([
+            ("dod".to_string(), c(5.0, 100.0, 1.0)),
+            ("temperature".to_string(), c(-20.0, 60.0, 1.0)),
+            ("c_rate".to_string(), c(0.05, 10.0, 0.05)),
+            ("exponent_z".to_string(), c(0.1, 2.0, 0.05)),
+            ("cycles_to_simulate".to_string(), c(100.0, 10_000.0, 50.0)),
+        ])
     }
 }
 

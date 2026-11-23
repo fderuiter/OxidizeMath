@@ -369,3 +369,46 @@ fn test_cli_runner_parity_mismatch_and_rc_output_emission() {
     let gh_written = fs::read_to_string(&gh_out).unwrap();
     assert_eq!(gh_written, "is_prerelease=true\nwix_version=0.5.0-20001\n");
 }
+
+#[test]
+#[cfg(unix)]
+fn test_ci_detect_changes_release_meta_matches_evaluate_release_tag() {
+    use std::process::Command;
+
+    let script = extract_ci_job_step_script("detect-changes", "Resolve WiX Pre-Release Metadata");
+    let temp = TempTestDir::new("ci_detect_changes_release_meta");
+
+    for version in [
+        "0.4.0",
+        "0.5.0-alpha.1",
+        "0.5.0-beta.3",
+        "0.5.0-rc.1",
+        "0.5.0-42",
+        "255.255.65535-rc.45535",
+    ] {
+        fs::write(
+            temp.join("Cargo.toml"),
+            format!("[workspace]\nmembers = []\n[workspace.package]\nversion = \"{version}\"\n"),
+        )
+        .unwrap();
+        let gh_out = temp.join("gh_out.txt");
+        let _ = fs::remove_file(&gh_out);
+        let status = Command::new("bash")
+            .arg("-c")
+            .arg(&script)
+            .current_dir(&*temp)
+            .env("GITHUB_OUTPUT", &gh_out)
+            .status()
+            .unwrap();
+        assert!(status.success(), "release-meta bash failed for {version}");
+        let expected = evaluate_release_tag(version, None).unwrap();
+        assert_eq!(
+            fs::read_to_string(&gh_out).unwrap(),
+            format!(
+                "is_prerelease={}\nwix_version={}\n",
+                expected.is_prerelease, expected.wix_version
+            ),
+            "detect-changes release-meta diverged from evaluate_release_tag for {version}"
+        );
+    }
+}

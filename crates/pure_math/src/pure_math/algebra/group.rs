@@ -8,7 +8,7 @@
 //! - **Analysis Tools**: Functions to check for subgroups, normal subgroups, and generate cosets.
 
 use crate::error::NumberTheoryError;
-use crate::pure_math::algebra::traits::{Group, Monoid, Semigroup};
+use crate::pure_math::algebra::traits::{AbelianGroup, Group, Monoid, Semigroup};
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use std::collections::HashSet;
@@ -184,6 +184,8 @@ impl<const N: usize> Group for Zn<N> {
         }
     }
 }
+
+impl<const N: usize> AbelianGroup for Zn<N> {}
 
 // ============================================================================
 // Symmetric Group (Permutations)

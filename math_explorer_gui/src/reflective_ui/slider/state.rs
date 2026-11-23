@@ -246,6 +246,23 @@ pub fn live_active_sweep_count(ctx: &egui::Context) -> usize {
     read_valid_flags(ctx, egui::Id::new(LIVE_SWEEP_FLAGS_KEY)).active_sweep_count
 }
 
+/// Returns the count of actively playing `AnimatedSlider` sweeps recorded during the current
+/// rendering pass, scoped to the active pane when `begin_pane_sweep_scope` is active.
+#[must_use]
+pub fn current_pass_active_sweep_count(ctx: &egui::Context) -> usize {
+    let current_pass = ctx.cumulative_pass_nr();
+    ctx.data(|d| {
+        let target_id = d
+            .get_temp::<usize>(egui::Id::new("CURRENT_RENDERING_PANE"))
+            .map(|p| egui::Id::new((PANE_SWEEP_FLAGS_KEY, p)))
+            .filter(|pane_id| d.get_temp::<SweepFrameFlags>(*pane_id).is_some())
+            .unwrap_or_else(|| egui::Id::new(LIVE_SWEEP_FLAGS_KEY));
+        d.get_temp::<SweepFrameFlags>(target_id)
+    })
+    .filter(|f| f.pass_nr == Some(current_pass))
+    .map_or(0, |f| f.active_sweep_count)
+}
+
 /// Returns the live intra-pass count of `AnimatedSlider` parameter mutations.
 #[must_use]
 pub fn live_sweep_mutation_count(ctx: &egui::Context) -> u64 {
