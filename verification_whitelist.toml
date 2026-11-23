@@ -355,7 +355,6 @@ vendored_crates = [
 "math_explorer_gui/src/framework/ui.rs" = 2
 "math_explorer_gui/src/main.rs" = 6
 "math_explorer_gui/src/tabs/ai/q_table_inspector/runner.rs" = 2
-"math_explorer_gui/src/tabs/ai/reward_plots.rs" = 4
 "math_explorer_gui/src/tabs/chaos/attractors/runner.rs" = 3
 "math_explorer_gui/src/tabs/epidemiology/sir.rs" = 2
 "math_explorer_gui/src/tabs/morphogenesis/runner.rs" = 2

@@ -291,6 +291,21 @@
     },
     {
       "signature": "pub type TabularQAgent < S , A > = QLearningAgent < S , A , TabularQFunction < S , A > >"
+    },
+    {
+      "signature": "pub use super :: rollouts :: RlStepOutcome"
+    },
+    {
+      "signature": "pub use super :: rollouts :: compute_softmax_pg_delta"
+    },
+    {
+      "signature": "pub use super :: rollouts :: softmax_action_probs"
+    },
+    {
+      "signature": "pub use super :: rollouts :: step_softmax_pg_into"
+    },
+    {
+      "signature": "pub use super :: rollouts :: step_tabular_q_into"
     }
   ],
   "crates/domain_ai/src/ai/reinforcement_learning/bellman.rs": [
@@ -302,6 +317,50 @@
     },
     {
       "signature": "pub fn state_value_bellman_equation < M > (_ : & M , _ : & impl Policy < M :: S , M :: A > , _ : & M :: S , _ : & [M :: S] , _ : impl Fn (& M :: S) -> f64 ,) -> f64 where M : MarkovDecisionProcess ,"
+    }
+  ],
+  "crates/domain_ai/src/ai/reinforcement_learning/bellman_solver.rs": [
+    {
+      "signature": "impl BellmanSolution { pub fn evaluate_policy (& mut self , _ : & SculptedGridMdp , _ : & TabularGridPolicy , _ : f64 , _ : usize ,) }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn optimal_action_at (& self , _ : GridState) -> Option < Move > }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn q_residual_summary (& self , _ : & SculptedGridMdp , _ : & DenseRlWorkspace) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn q_star_at (& self , _ : GridState , _ : Move) -> f64 }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn residual_at (& self , _ : GridState , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn solve (_ : & SculptedGridMdp , _ : f64 , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn v_pi_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn v_star_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn action_probabilities (& self , _ : GridState) -> [f64 ; 4] }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn from_q_table (_ : usize , _ : usize , _ : & [[f64 ; 4]]) -> Self }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn from_softmax_logits (_ : usize , _ : usize , _ : & [[f64 ; 4]]) -> Self }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn uniform (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct BellmanSolution"
+    },
+    {
+      "signature": "pub struct TabularGridPolicy"
     }
   ],
   "crates/domain_ai/src/ai/reinforcement_learning/grid_world.rs": [
@@ -318,12 +377,137 @@
       "signature": "pub struct GridWorldEnv"
     }
   ],
+  "crates/domain_ai/src/ai/reinforcement_learning/maze.rs": [
+    {
+      "signature": "impl GridCellRole { pub const fn from_u8 (_ : u8) -> Option < Self > }"
+    },
+    {
+      "signature": "impl GridCellRole { pub const fn to_u8 (self) -> u8 }"
+    },
+    {
+      "signature": "impl GridCellRole { pub const fn wind_delta (self) -> Option < (i32 , i32) > }"
+    },
+    {
+      "signature": "impl GridCellRole { pub const fn wind_pan (self) -> f32 }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub const fn in_bounds (& self , _ : GridState) -> bool }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn apply_cells_u8 (& mut self , _ : & [u8]) -> Result < () , String > }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn cell_index (& self , _ : GridState) -> usize }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn cell_role (& self , _ : GridState) -> GridCellRole }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn cells_to_u8 (& self) -> Vec < u8 > }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn default_with_traps (_ : i32 , _ : i32 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn is_default_layout (& self) -> bool }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn new (_ : i32 , _ : i32 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn reachable_next_states (& self , _ : GridState) -> ([GridState ; 9] , usize) }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn sample_step (& self , _ : GridState , _ : Move , _ : & mut OxidizeRng ,) -> (GridState , f64 , bool , f32) }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn set_cell_role (& mut self , _ : GridState , _ : GridCellRole) }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn step_deterministic (& self , _ : GridState , _ : Move) -> GridState }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn transition_outcomes (& self , _ : GridState , _ : Move ,) -> [(GridState , f64) ; 2] }"
+    },
+    {
+      "signature": "pub const MAX_RL_GRID_DIM : i32"
+    },
+    {
+      "signature": "pub const MIN_RL_GRID_DIM : i32"
+    },
+    {
+      "signature": "pub enum GridCellRole"
+    },
+    {
+      "signature": "pub struct SculptedGridMdp"
+    },
+    {
+      "signature": "pub use super :: workspace :: ALL_MOVES"
+    },
+    {
+      "signature": "pub use super :: workspace :: DenseRlWorkspace"
+    },
+    {
+      "signature": "pub use super :: workspace :: index_to_move"
+    },
+    {
+      "signature": "pub use super :: workspace :: move_to_index"
+    }
+  ],
   "crates/domain_ai/src/ai/reinforcement_learning/mod.rs": [
     {
       "signature": "pub use algorithms :: QLearningAgent"
     },
     {
+      "signature": "pub use algorithms :: RlStepOutcome"
+    },
+    {
+      "signature": "pub use algorithms :: TabularQAgent"
+    },
+    {
+      "signature": "pub use algorithms :: compute_softmax_pg_delta"
+    },
+    {
+      "signature": "pub use algorithms :: softmax_action_probs"
+    },
+    {
+      "signature": "pub use algorithms :: step_softmax_pg_into"
+    },
+    {
+      "signature": "pub use algorithms :: step_tabular_q_into"
+    },
+    {
+      "signature": "pub use bellman_solver :: BellmanSolution"
+    },
+    {
+      "signature": "pub use bellman_solver :: TabularGridPolicy"
+    },
+    {
       "signature": "pub use grid_world :: *"
+    },
+    {
+      "signature": "pub use maze :: ALL_MOVES"
+    },
+    {
+      "signature": "pub use maze :: DenseRlWorkspace"
+    },
+    {
+      "signature": "pub use maze :: GridCellRole"
+    },
+    {
+      "signature": "pub use maze :: MAX_RL_GRID_DIM"
+    },
+    {
+      "signature": "pub use maze :: MIN_RL_GRID_DIM"
+    },
+    {
+      "signature": "pub use maze :: SculptedGridMdp"
+    },
+    {
+      "signature": "pub use maze :: index_to_move"
+    },
+    {
+      "signature": "pub use maze :: move_to_index"
     },
     {
       "signature": "pub use q_function :: TabularQFunction"
@@ -356,6 +540,23 @@
     },
     {
       "signature": "pub struct TabularQFunction < S , A > where S : State + Hash + Eq , A : Action + Hash + Eq ,"
+    }
+  ],
+  "crates/domain_ai/src/ai/reinforcement_learning/rollouts.rs": [
+    {
+      "signature": "pub fn compute_softmax_pg_delta (_ : [f64 ; 4] , _ : Move , _ : f64 , _ : UnitInterval ,) -> [f64 ; 4]"
+    },
+    {
+      "signature": "pub fn softmax_action_probs (_ : [f64 ; 4]) -> [f64 ; 4]"
+    },
+    {
+      "signature": "pub fn step_softmax_pg_into (_ : & SculptedGridMdp , _ : & mut DenseRlWorkspace , _ : UnitInterval ,) -> RlStepOutcome"
+    },
+    {
+      "signature": "pub fn step_tabular_q_into (_ : & SculptedGridMdp , _ : & mut DenseRlWorkspace , _ : UnitInterval , _ : UnitInterval ,) -> RlStepOutcome"
+    },
+    {
+      "signature": "pub struct RlStepOutcome"
     }
   ],
   "crates/domain_ai/src/ai/reinforcement_learning/strategies.rs": [
@@ -420,6 +621,56 @@
     },
     {
       "signature": "pub trait State : Clone + Debug + PartialEq"
+    }
+  ],
+  "crates/domain_ai/src/ai/reinforcement_learning/workspace.rs": [
+    {
+      "signature": "impl DenseRlWorkspace { pub fn greedy_policy_action (& self , _ : GridState) -> Option < Move > }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn greedy_q_action (& self , _ : GridState) -> Option < Move > }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn is_finite_state (& self) -> bool }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn max_q (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn max_q_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn new (_ : usize , _ : usize , _ : usize , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn q_value (& self , _ : GridState , _ : Move) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn reset_episode (& mut self , _ : & SculptedGridMdp) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn reset_learning (& mut self , _ : GridState) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn resize_and_clear (& mut self , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn state_value_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn sync_topology (& mut self , _ : & SculptedGridMdp) }"
+    },
+    {
+      "signature": "pub const ALL_MOVES : [Move ; 4]"
+    },
+    {
+      "signature": "pub const fn index_to_move (_ : usize) -> Move"
+    },
+    {
+      "signature": "pub const fn move_to_index (_ : Move) -> usize"
+    },
+    {
+      "signature": "pub struct DenseRlWorkspace"
     }
   ],
   "crates/domain_ai/src/ai/sds/diffusion.rs": [
