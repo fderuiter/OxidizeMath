@@ -4,8 +4,13 @@
 pub(crate) mod format;
 #[path = "data_table_poi.rs"]
 mod poi_view;
+#[path = "data_table_3d.rs"]
+mod table_3d;
 
-pub(crate) use format::{TableSeriesRef, format_table_value, format_tsv, series_share_x};
+pub(crate) use format::{
+    TableSeriesRef, TableSeriesRef3D, format_table_value, format_tsv, format_tsv_3d, series_share_x,
+};
+pub(crate) use table_3d::show_data_table_modal_3d;
 
 use egui::{
     Align, Align2, Color32, Context, FontId, Id, Key, Modifiers, Rect, RichText, ScrollArea, Sense,
@@ -97,7 +102,13 @@ pub(crate) struct RowCells<'a> {
 }
 
 impl RowCells<'_> {
-    fn paint(&self, col_idx: usize, text: &str, fg: Color32, dot: Option<Color32>) -> Rect {
+    pub(crate) fn paint(
+        &self,
+        col_idx: usize,
+        text: &str,
+        fg: Color32,
+        dot: Option<Color32>,
+    ) -> Rect {
         let (x_off, w) = if col_idx == 0 {
             (0.0, IDX_W)
         } else {
