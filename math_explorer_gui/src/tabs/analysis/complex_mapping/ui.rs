@@ -280,7 +280,7 @@ impl ComplexMappingTool {
         if self.inspection_point.iter().all(|v| v.is_finite()) {
             out.push(egui_plot::ExportPrimitive::Points {
                 name: "z".to_owned(),
-                points: vec![self.inspection_point],
+                points: egui_plot::SharedPoints::from_slice(&[self.inspection_point]),
                 color: palette.error,
                 radius: 5.0,
             });
@@ -291,7 +291,7 @@ impl ComplexMappingTool {
             if w0.re.is_finite() && w0.im.is_finite() {
                 out.push(egui_plot::ExportPrimitive::Points {
                     name: "w = f(z)".to_owned(),
-                    points: vec![[w0.re, w0.im]],
+                    points: egui_plot::SharedPoints::from_slice(&[[w0.re, w0.im]]),
                     color: palette.error,
                     radius: 5.0,
                 });
@@ -313,7 +313,7 @@ fn append_family_polylines(
             if slice.len() >= 2 {
                 out.push(egui_plot::ExportPrimitive::Polyline {
                     name: name.to_owned(),
-                    points: slice.iter().map(|p| [p.x, p.y]).collect(),
+                    points: egui_plot::SharedPoints::from_plot_points(slice),
                     color,
                     stroke_width: 1.5,
                     closed: false,

@@ -47,6 +47,8 @@ mod plot_persistence_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
+#[cfg(test)]
+mod shared_points_perf_tests;
 pub mod side_panel;
 pub mod spatial_brush;
 #[cfg(all(test, feature = "physics", feature = "biology"))]
@@ -387,8 +389,8 @@ pub(super) struct FrameworkRevisionCache {
     pub(super) active_tool_json:
         std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
     pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
+    pub(super) last_snapshot_source_datasets: Vec<(String, egui_plot::SharedPoints)>,
     pub(super) last_plot_capture_hash: Option<(&'static str, u64)>,
-    pub(super) last_snapshot_plot_sig: Option<u64>,
 }
 
 #[allow(missing_docs)]
@@ -421,7 +423,7 @@ pub struct SimulationFramework {
     /// Baseline parameters snapshot on tool load.
     pub baseline_tool_state: Option<String>,
     /// Last validated finite plot datasets.
-    pub current_valid_plot_datasets: Vec<(String, Vec<[f64; 2]>)>,
+    pub current_valid_plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
     /// Last validated finite 3D world-coordinate plot datasets.
     pub current_valid_plot_datasets_3d: Vec<(String, Vec<[f64; 3]>)>,
     /// Whether divergence has been detected in the active tool.
