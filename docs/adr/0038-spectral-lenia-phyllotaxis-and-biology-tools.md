@@ -1,4 +1,4 @@
-# ADR 0037: Zero-Allocation Spectral Lenia, Developmental Phyllotaxis, and Multi-Tool Biology Playground
+# ADR 0038: Zero-Allocation Spectral Lenia, Developmental Phyllotaxis, and Multi-Tool Biology Playground
 
 ## Status
 Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md) and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
