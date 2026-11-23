@@ -105,22 +105,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         if let Some(action) =
             PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
+                .timeline(self.controller.timeline_metadata())
                 .can_reset(true)
                 .show(ui)
         {
-            match action {
-                PlaybackAction::Play => {
-                    let _ = self.controller.send_command(SimCommand::Start);
-                }
-                PlaybackAction::Pause => {
-                    let _ = self.controller.send_command(SimCommand::Pause);
-                }
-                PlaybackAction::Step => {
-                    let _ = self.controller.send_command(SimCommand::Step(1));
-                }
+            let cmd = match action {
+                PlaybackAction::Play => Some(SimCommand::Start),
+                PlaybackAction::Pause => Some(SimCommand::Pause),
+                PlaybackAction::Step => Some(SimCommand::Step(1)),
+                PlaybackAction::StepBack => Some(SimCommand::StepBack(1)),
+                PlaybackAction::ScrubTo(step) => Some(SimCommand::SeekStep(step)),
                 PlaybackAction::Reset => {
                     self.reset_simulation(Some(ctx));
+                    None
                 }
+            };
+            if let Some(c) = cmd {
+                let _ = self.controller.send_command(c);
             }
         }
     }

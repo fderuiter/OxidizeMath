@@ -173,6 +173,32 @@ pub(crate) fn draw_morpho_sculpt_controls(
 }
 
 impl super::MorphogenesisTool {
+    pub(crate) fn handle_sculpt_preset_action(&mut self, cmd: &str, ctx: &egui::Context) {
+        match cmd {
+            "stamp_maze" => {
+                *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
+                    build_maze_rle(self.width, self.height);
+                let _ = self
+                    .worker
+                    .send_command(crate::async_sim::SimCommand::Custom("stamp_maze".to_string()));
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+            "clear_mask" => {
+                self.mask_rle
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clear();
+                let _ = self
+                    .worker
+                    .send_command(crate::async_sim::SimCommand::ClearObstacles);
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+            _ => {}
+        }
+    }
+
     pub(crate) fn apply_microfluidic_raster_stroke(
         &mut self,
         stroke: crate::framework::RasterBrushStroke,

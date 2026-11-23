@@ -1,24 +1,29 @@
-//! Test-only single-kinetics [`MorphogenesisRunner`] harness exercising `FiniteDifference2D`
-//! and `SpatialSchnakenbergKinetics` offload and fault-recovery contracts.
+//! Legacy single-kinetics Schnakenberg runner retained for unit tests.
 
-#![cfg_attr(any(), verified(opt_out = "tests"))]
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
 use super::brush::{apply_brush_sim_command, apply_mask_rle_to_kinetics};
-use super::runner::{MorphoSnapshotData, MorphogenesisSharedParams};
+use super::runner::{
+    apply_uniform_noise, MorphoSnapshotData, MorphogenesisSharedParams, DEFAULT_MORPHOGENESIS_SEED,
+};
 use super::MorphogenesisTool;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_explorer::biology::diffusion::FiniteDifference2D;
 use math_explorer::biology::morphogenesis::{SpatialSchnakenbergKinetics, TuringSystem};
+use oxidize_core::rng::OxidizeRng;
 use std::sync::Arc;
 
-/// Test runner wrapping a direct `SpatialSchnakenbergKinetics` + `FiniteDifference2D` system.
+/// Legacy Schnakenberg-only 2D reaction-diffusion runner used in baseline unit tests.
 pub struct MorphogenesisRunner {
     pub(crate) system: TuringSystem<2, SpatialSchnakenbergKinetics, FiniteDifference2D>,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) width: usize,
     pub(crate) height: usize,
+    pub(crate) step_count: usize,
+    pub(crate) rng: OxidizeRng,
+    pub(crate) noise_amplitude: f64,
 }
 
 impl FiniteStateGuard for MorphogenesisRunner {
@@ -78,10 +83,14 @@ impl SimulationRunner for MorphogenesisRunner {
                     mask_rle.as_deref(),
                 );
                 MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
+                self.step_count = 0;
+                self.rng = OxidizeRng::new(DEFAULT_MORPHOGENESIS_SEED);
             }
             SimCommand::Custom(ref s) if s == "reinit" => {
                 let _ = self.sync_system_params();
                 MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
+                self.step_count = 0;
+                self.rng = OxidizeRng::new(DEFAULT_MORPHOGENESIS_SEED);
             }
             other => apply_brush_sim_command(&mut self.system, self.width, self.height, &other),
         }
@@ -94,8 +103,8 @@ impl SimulationRunner for MorphogenesisRunner {
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
         (!FiniteStateGuard::is_finite_state(self)).then(|| {
             DiagnosticReport::new(
-                0.0,
-                0,
+                self.step_count as f64,
+                self.step_count,
                 "concentration",
                 "Turing morphogenesis diverged: non-finite concentration encountered.",
             )
@@ -106,8 +115,16 @@ impl SimulationRunner for MorphogenesisRunner {
         if !FiniteStateGuard::is_finite_state(self) {
             return;
         }
+        let amp = self.noise_amplitude;
         if let Some(dt) = self.sync_system_params() {
             self.system.step(dt);
+            apply_uniform_noise(
+                &mut self.system,
+                self.width * self.height,
+                &mut self.rng,
+                amp,
+            );
+            self.step_count += 1;
         }
     }
 

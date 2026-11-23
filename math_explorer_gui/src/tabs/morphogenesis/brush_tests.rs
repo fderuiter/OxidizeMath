@@ -5,6 +5,7 @@ use super::*;
 use crate::async_sim::{SimCommand, SimulationRunner};
 use crate::framework::{decode_u8_grid, encode_u8_grid, InteractiveTool, RasterBrushStroke};
 use crate::url_state::{encode_share_fragment, parse_share_location, URL_JSON_BOUNDS};
+use std::sync::Arc;
 
 #[test]
 fn test_morphogenesis_chemical_seed_and_hybrid_spot_stripe_mask_evolution() {

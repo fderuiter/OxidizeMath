@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::runner::MorphoSnapshotData;
-use super::sculpt::{build_maze_rle, draw_morpho_sculpt_controls, overlay_cell_mask_colors};
+use super::sculpt::{draw_morpho_sculpt_controls, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
 use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::{
@@ -276,27 +276,37 @@ impl MorphogenesisTool {
         }
     }
 
-    fn handle_sculpt_preset_action(&mut self, cmd: &str, ctx: &egui::Context) {
-        match cmd {
-            "stamp_maze" => {
-                *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
-                    build_maze_rle(self.width, self.height);
-                let _ = self
-                    .worker
-                    .send_command(SimCommand::Custom("stamp_maze".to_string()));
-                self.dirty = true;
+    fn draw_playback_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let Some(action) = PlaybackTransport::from_worker_state(
+            "morphogenesis_transport",
+            "Morphogenesis",
+            self.worker.state(),
+        )
+        .timeline(self.worker.timeline_metadata())
+        .can_reset(true)
+        .show(ui) else {
+            return;
+        };
+        match action {
+            PlaybackAction::Play => {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            PlaybackAction::Pause => {
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+            PlaybackAction::Step => {
+                let _ = self.worker.send_command(SimCommand::Step(1));
+            }
+            PlaybackAction::StepBack => {
+                let _ = self.worker.send_command(SimCommand::StepBack(1));
+            }
+            PlaybackAction::ScrubTo(step) => {
+                let _ = self.worker.send_command(SimCommand::SeekStep(step));
+            }
+            PlaybackAction::Reset => {
+                self.reset();
                 ctx.request_repaint();
             }
-            "clear_mask" => {
-                self.mask_rle
-                    .write()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clear();
-                let _ = self.worker.send_command(SimCommand::ClearObstacles);
-                self.dirty = true;
-                ctx.request_repaint();
-            }
-            _ => {}
         }
     }
 
@@ -312,31 +322,7 @@ impl MorphogenesisTool {
             ui.separator();
             self.draw_parameter_sliders(ui);
             ui.separator();
-
-            if let Some(action) = PlaybackTransport::from_worker_state(
-                "morphogenesis_transport",
-                "Morphogenesis",
-                self.worker.state(),
-            )
-            .can_reset(true)
-            .show(ui)
-            {
-                match action {
-                    PlaybackAction::Play => {
-                        let _ = self.worker.send_command(SimCommand::Start);
-                    }
-                    PlaybackAction::Pause => {
-                        let _ = self.worker.send_command(SimCommand::Pause);
-                    }
-                    PlaybackAction::Step => {
-                        let _ = self.worker.send_command(SimCommand::Step(1));
-                    }
-                    PlaybackAction::Reset => {
-                        self.reset();
-                        ctx.request_repaint();
-                    }
-                }
-            }
+            self.draw_playback_transport(ui, &ctx);
 
             if let Some(cmd) = draw_morpho_sculpt_controls(
                 ui,
