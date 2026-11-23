@@ -1,5 +1,9 @@
 # Architecture Decision Record: Consolidate Workspace Discovery into oxidize_core
 
+## Status
+
+Accepted
+
 ## Context
 Previously, `get_workspace_members` was implemented separately in `crates/oxidize_core/src/bin/traceability_cli.rs` and `crates/unified_verification/src/main.rs`. These duplicate implementations created redundant maintenance and inconsistent directory resolution when CLI tools were executed from crate subdirectories.
 

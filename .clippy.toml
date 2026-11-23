@@ -1,2 +1,5 @@
 too-many-lines-threshold = 60
 cognitive-complexity-threshold = 25
+disallowed-methods = [
+    { path = "std::time::Instant::now", reason = "guard host-only timing with #[cfg(not(target_arch = \"wasm32\"))] or use PlatformInstant::now() so wasm32-unknown-unknown builds do not panic" },
+]

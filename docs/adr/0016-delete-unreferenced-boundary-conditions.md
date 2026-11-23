@@ -1,5 +1,9 @@
 # ADR 0016: Delete Unreferenced Boundary Conditions
 
+## Status
+
+Accepted
+
 ## Context
 The boundary module in `crates/oxidize_core/src/boundary.rs` previously contained struct definitions and `BoundaryCondition` implementations for `PeriodicBoundary` and `BounceBackBoundary`. Neither struct had active callers anywhere across the workspace crates or applications. Furthermore, `BounceBackBoundary` and `PeriodicBoundary` were tracked in the public API baseline (`crates/unified_verification/api_baseline.json`), adding maintenance overhead and representing dead code.
 

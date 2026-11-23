@@ -1,4 +1,4 @@
-# ADR 0035: Dual-Backend Web Audio Sonification, Stack-Allocated `SonificationFrame`, and Accessible Visual Metering
+# ADR 0037: Dual-Backend Web Audio Sonification, Stack-Allocated `SonificationFrame`, and Accessible Visual Metering
 
 ## Status
 Accepted (extends [ADR 0008](0008-finite-state-solver-guard.md), [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), and [ADR 0033](0033-wasm32-browser-tests-and-playwright-ci-smoke-gate.md))
