@@ -1,11 +1,11 @@
-# ADR 0041: Unified 2D Scalar-Field Contours and 16-Bit Texture Exports
+# ADR 0043: Unified 2D Scalar-Field Contours and 16-Bit Texture Exports
 
 ## Status
 
 Accepted — 2026-11-22
 
 - **Supersedes (partial):** [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md) (base64 raster `<image>` SVG fallback on 2D spatial tools)
-- **Relates to:** [ADR 0016](0016-delete-unreferenced-boundary-conditions.md) (`PeriodicBoundary` removal from `oxidize_core`), [ADR 0035](0035-iterative-ast-glsl-transpiler-and-shader-exports.md) (`ExportCapabilities::with_shader` composition on `FractalViewer`)
+- **Relates to:** [ADR 0016](0016-delete-unreferenced-boundary-conditions.md) (`PeriodicBoundary` removal from `oxidize_core`), [ADR 0035](0035-iterative-ast-glsl-transpiler-and-shader-exports.md) (`ExportCapabilities::with_shader` composition on `FractalViewer`), [ADR 0042](0042-fft-lenia-engine-and-gray-scott-kinetics.md) (`GrayScottKinetics` and `MorphogenesisKineticsMode`)
 
 ## Context
 
@@ -19,7 +19,7 @@ Under [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), all seven 
 
 1. **Toroidal 2D PDE Boundary Conditions and `GrayScottKinetics` (`pure_math` & `domain_biology`):**
    - Introduce `PeriodicBoundary` and `BoundaryMode::{Neumann, Periodic}` directly in `crates/domain_biology/src/biology/diffusion/fd2d/boundary.rs` (where active 2D finite-difference callers reside, rather than re-bloating `oxidize_core`), paired with zero-allocation `FusedStencilStepper::step_2d_coupled_periodic` in `crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs`.
-   - Promote `GrayScottKinetics { f, k }` and `MorphogenesisKinetics` into `crates/domain_biology/src/biology/morphogenesis/reaction.rs` and expose kinetics (`Schnakenberg` / `GrayScott`) and boundary (`Neumann` / `Periodic`) selectors in `MorphogenesisTool`.
+   - Consolidate with [ADR 0042](0042-fft-lenia-engine-and-gray-scott-kinetics.md)'s `GrayScottKinetics { f, k }` in `crates/domain_biology/src/biology/morphogenesis/reaction.rs` and expose boundary (`Neumann` / `Periodic`) selection alongside `Schnakenberg` / `GrayScott` kinetics in `MorphogenesisTool`.
 2. **Continuous Escape-Time Renormalization (`domain_physics`):**
    - Add zero-allocation `smooth_escape_mandelbrot` and `smooth_escape_julia` (`n + 1 - log2(ln|z|)`) in `crates/domain_physics/src/physics/chaos/fractals.rs` and remove the `480x320` export cap in `FractalViewer` via resolution-aware `export_scalar_field_at`.
 3. **Feature-Independent `ScalarField2D` and `MarchingSquares` (`math_commons`):**
@@ -29,7 +29,7 @@ Under [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), all seven 
    - Add `egui_plot/src/export_primitives/texture_maps.rs` reusing existing `png` `0.18` (zero new dependencies) to encode borderless power-of-two (`256`, `512`, `1024`, `2048`) 16-bit grayscale heightmaps (`png::ColorType::Grayscale`, `png::BitDepth::Sixteen`) and 16-bit RGB tangent-space normal maps (`encode_normal_map_png`) with periodic or clamped central differences and adjustable normal strength.
 5. **Unified Spatial Export Hooks (`math_explorer_gui`):**
    - Extend `InteractiveTool` with `export_scalar_field`, `export_scalar_field_at`, and `export_vector_svg`, extend `ExportCapabilities` with `scalar_field()`, `discrete_lattice()`, and `vector_grid()`, and add `ExportFormat::{Heightmap16Png, NormalMapPng}` plus `Copy SVG` clipboard dispatch in `SimulationFramework`.
-   - Wire continuous `ScalarField2D` contours and 16-bit textures on `MorphogenesisTool`, `FractalViewer` (composed with `.with_shader()`), `DoseCalculationTool`, and `LbmUnified`; discrete `<path>` geometry plus 16-bit textures on `IsingModelTool` and `PrimeSpiralWidget`; and crisp `<rect>` cell SVG plus scalar-field exports on `AttentionMapsTool`. This supersedes ADR 0024's base64 PNG-in-SVG fallback for all seven spatial tools while preserving the workspace audit invariant across all registered GUI tools (`41` plot tools, `7` spatial figure tools, and `16` non-export tools).
+   - Wire continuous `ScalarField2D` contours and 16-bit textures on `MorphogenesisTool`, `FractalViewer` (composed with `.with_shader()`), `DoseCalculationTool`, and `LbmUnified`; discrete `<path>` geometry plus 16-bit textures on `IsingModelTool` and `PrimeSpiralWidget`; and crisp `<rect>` cell SVG plus scalar-field exports on `AttentionMapsTool`. This supersedes ADR 0024's base64 PNG-in-SVG fallback for all seven spatial tools while preserving the workspace audit invariant across all registered GUI tools (`45` plot tools, `7` spatial figure tools, and `16` non-export tools).
 
 ## Verification Commands
 
@@ -37,7 +37,7 @@ Under [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), all seven 
 # Verify domain kernels, Marching Squares, and zero-allocation PDE/fractal guards
 cargo test -p pure_math -p domain_biology -p domain_physics -p math_commons -p egui_plot
 
-# Verify vector SVG and 16-bit PNG export audits across all 64 registered GUI tools
+# Verify vector SVG and 16-bit PNG export audits across all 68 registered GUI tools
 cargo test -p math_explorer_gui deferred_export
 
 # Full static, isolated-feature, and WebAssembly budget gates

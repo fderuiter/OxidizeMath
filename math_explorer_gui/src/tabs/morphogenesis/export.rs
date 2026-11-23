@@ -1,64 +1,12 @@
-//! Cold-path scalar-field, raster, and state serialization helpers for [`super::MorphogenesisTool`].
+//! Cold-path scalar-field and raster export helpers for [`super::MorphogenesisTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::tool::{
-    MorphogenesisBoundaryMode, MorphogenesisKineticsMode, MorphogenesisTool, MorphogenesisToolState,
-};
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::framework::InteractiveTool;
+use super::presets::MorphogenesisBoundaryMode;
+use super::tool::MorphogenesisTool;
+use crate::async_sim::SimulationRunner;
 use eframe::egui::ColorImage;
 use math_commons::math_kernel::marching_squares::ScalarField2D;
-
-impl FiniteStateGuard for MorphogenesisTool {
-    fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.worker.diagnostic_report()
-    }
-
-    fn diverged(&self) -> bool {
-        !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn auto_scale_step_size(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.dt = (p.dt * 0.5).max(1e-4);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn clamp_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = p.a.clamp(0.0, 1.0);
-        p.b = p.b.clamp(0.0, 2.0);
-        p.d_u = p.d_u.clamp(0.1, 5.0);
-        p.d_v = p.d_v.clamp(10.0, 200.0);
-        p.dt = p.dt.clamp(0.001, 0.1);
-        p.feed_rate = p.feed_rate.clamp(0.001, 0.12);
-        p.kill_rate = p.kill_rate.clamp(0.01, 0.12);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn reset_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = 0.1;
-        p.b = 0.9;
-        p.d_u = 1.0;
-        p.d_v = 100.0;
-        p.dt = 0.05;
-        p.kinetics = MorphogenesisKineticsMode::Schnakenberg;
-        p.boundary = MorphogenesisBoundaryMode::Neumann;
-        p.feed_rate = 0.037;
-        p.kill_rate = 0.060;
-        drop(p);
-        self.reset_system();
-    }
-}
 
 impl MorphogenesisTool {
     pub(super) fn build_export_raster_image(&self) -> Option<ColorImage> {
@@ -95,7 +43,7 @@ impl MorphogenesisTool {
 
     pub(super) fn build_export_scalar_field(&self) -> Option<ScalarField2D> {
         let periodic = self
-            .params
+            .kinetics_state
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .boundary
@@ -127,7 +75,12 @@ impl MorphogenesisTool {
                 });
             }
         }
-        let runner = Self::create_runner(&self.params, self.width, self.height);
+        let runner = Self::create_kinetics_runner(
+            &self.params,
+            &self.kinetics_state,
+            self.width,
+            self.height,
+        );
         Some(ScalarField2D {
             width: self.width,
             height: self.height,
@@ -138,9 +91,14 @@ impl MorphogenesisTool {
     }
 
     pub(super) fn step_simulation_offscreen(&mut self) {
-        let runner = self
-            .step_runner
-            .get_or_insert_with(|| Self::create_runner(&self.params, self.width, self.height));
+        let runner = self.step_runner.get_or_insert_with(|| {
+            Self::create_kinetics_runner(
+                &self.params,
+                &self.kinetics_state,
+                self.width,
+                self.height,
+            )
+        });
         for _ in 0..5 {
             runner.step();
         }
@@ -155,140 +113,17 @@ impl MorphogenesisTool {
             self.stepped_scalar = Some((snap.width, snap.height, vals.clone()));
         }
     }
-
-    pub(super) fn snapshot_tool_state(&self) -> MorphogenesisToolState {
-        let (a, b, d_u, d_v, dt, kinetics, boundary, feed_rate, kill_rate) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (
-                p.a,
-                p.b,
-                p.d_u,
-                p.d_v,
-                p.dt,
-                p.kinetics,
-                p.boundary,
-                p.feed_rate,
-                p.kill_rate,
-            )
-        };
-        let (xk, yk) = self.atlas.axis_keys();
-        MorphogenesisToolState {
-            a,
-            b,
-            d_u,
-            d_v,
-            dt,
-            width: self.width,
-            height: self.height,
-            kinetics,
-            boundary,
-            feed_rate,
-            kill_rate,
-            state: Some(self.worker.state()),
-            paused: None,
-            pending_initial_start: self.pending_initial_start,
-            atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
-        }
-    }
-
-    pub(super) fn apply_parsed_state(&mut self, state: &str) -> Result<(), String> {
-        self.state_bounds().validate_json(state)?;
-        let parsed: MorphogenesisToolState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
-        parsed.validate()?;
-        self.atlas
-            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
-        self.atlas.set_visible(parsed.atlas_visible);
-        let target_state = if let Some(s) = parsed.state {
-            s
-        } else if parsed.paused.unwrap_or(false) {
-            SimWorkerState::Ready
-        } else {
-            SimWorkerState::Running
-        };
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.a = parsed.a;
-            p.b = parsed.b;
-            p.d_u = parsed.d_u;
-            p.d_v = parsed.d_v;
-            p.dt = parsed.dt;
-            p.kinetics = parsed.kinetics;
-            p.boundary = parsed.boundary;
-            p.feed_rate = parsed.feed_rate;
-            p.kill_rate = parsed.kill_rate;
-        }
-        if parsed.width != self.width || parsed.height != self.height {
-            self.width = parsed.width;
-            self.height = parsed.height;
-            let runner = Self::create_runner(&self.params, self.width, self.height);
-            self.worker = BackgroundWorker::new(runner);
-            self.stepped_pixels = None;
-            self.stepped_scalar = None;
-            self.step_runner = None;
-            self.dirty = true;
-        } else {
-            self.reset();
-        }
-        if target_state == SimWorkerState::Running {
-            self.pending_initial_start = false;
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-        } else {
-            self.pending_initial_start = parsed.pending_initial_start;
-            if self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Pause);
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) fn apply_named_preset(&mut self, a: f64, b: f64, d_u: f64, d_v: f64, dt: f64) {
-        let target_state = if self.worker.is_running() {
-            SimWorkerState::Running
-        } else {
-            SimWorkerState::Ready
-        };
-        let boundary = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .boundary;
-        let (xk, yk) = self.atlas.axis_keys();
-        let preset_state = MorphogenesisToolState {
-            a,
-            b,
-            d_u,
-            d_v,
-            dt,
-            width: self.width,
-            height: self.height,
-            kinetics: MorphogenesisKineticsMode::Schnakenberg,
-            boundary,
-            feed_rate: 0.037,
-            kill_rate: 0.060,
-            state: Some(target_state),
-            paused: None,
-            pending_initial_start: false,
-            atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
-        };
-        if let Ok(json) = serde_json::to_string(&preset_state) {
-            let _ = self.try_load_state(&json);
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::framework::InteractiveTool;
 
     #[test]
     fn test_morphogenesis_gray_scott_periodic_state_and_scalar_field() {
         let mut tool = MorphogenesisTool::default();
-        let json = r#"{"a":0.1,"b":0.9,"d_u":1.0,"d_v":40.0,"dt":0.05,"width":64,"height":64,"kinetics":"GrayScott","boundary":"Periodic","feed_rate":0.035,"kill_rate":0.065,"paused":true}"#;
+        let json = r#"{"a":0.1,"b":0.9,"d_u":0.16,"d_v":0.08,"dt":1.0,"width":64,"height":64,"kinetics_mode":"GrayScott","boundary":"Periodic","f":0.0367,"k":0.0649,"paused":true}"#;
         tool.try_load_state(json)
             .expect("valid Gray-Scott periodic state");
         for _ in 0..8 {

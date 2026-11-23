@@ -34,7 +34,6 @@ fn test_morphogenesis_runner_offload() {
         d_v: 100.0,
         dt: 0.05,
         high_contrast: false,
-        ..Default::default()
     }));
 
     let mut runner =

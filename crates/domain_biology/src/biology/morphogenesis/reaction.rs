@@ -109,27 +109,29 @@ impl ReactionModel for SchnakenbergKinetics {
     }
 }
 
-/// Gray-Scott reaction-diffusion kinetics generating spots, stripes, and coral patterns.
+/// Gray-Scott autocatalytic reaction kinetics ($U + 2V \to 3V$).
+///
+/// Generates self-replicating spot mitosis, labyrinthine coral, and soliton wave patterns.
 ///
 /// ## Equations
 ///
-/// $$ \frac{du}{dt} = -u v^2 + f (1 - u) $$
-/// $$ \frac{dv}{dt} = u v^2 - (f + k) v $$
+/// $$ \frac{du}{dt} = -u v^2 + f(1 - u) $$
+/// $$ \frac{dv}{dt} = u v^2 - (f + k)v $$
 ///
 /// Where:
 /// - $f$: Dimensionless feed rate replenishing substrate $u$.
 /// - $k$: Dimensionless kill rate removing autocatalyst $v$.
 #[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
-    description = "Gray-Scott reaction-diffusion kinetics generating spots, stripes, and coral patterns.",
+    description = "Gray-Scott autocatalytic reaction kinetics generating spot mitosis and coral morphologies.",
     citation = "Pearson, J. E. (1993). Complex patterns in a simple system. Science, 261(5118), 189-192."
 )]
 pub struct GrayScottKinetics {
     /// Feed rate ($f$) replenishing substrate $u$.
-    #[theory(min = 0.0, max = 0.12, step = 0.001)]
+    #[theory(min = 0.0, max = 0.1, step = 0.001)]
     pub f: f64,
-    /// Kill rate ($k$) removing autocatalyst $v$.
-    #[theory(min = 0.0, max = 0.10, step = 0.001)]
+    /// Kill rate ($k$) draining autocatalyst $v$.
+    #[theory(min = 0.0, max = 0.1, step = 0.001)]
     pub k: f64,
 }
 
@@ -139,12 +141,30 @@ impl GrayScottKinetics {
     pub fn new(f: f64, k: f64) -> Self {
         Self { f, k }
     }
+
+    /// Canonical Pearson (1993) spot-division (`Mitosis`) regime (`f = 0.0367`, `k = 0.0649`).
+    #[verified_engine::verified]
+    pub fn mitosis() -> Self {
+        Self {
+            f: 0.0367,
+            k: 0.0649,
+        }
+    }
+
+    /// Canonical Pearson (1993) dendritic branching (`Coral`) regime (`f = 0.0545`, `k = 0.0620`).
+    #[verified_engine::verified]
+    pub fn coral() -> Self {
+        Self {
+            f: 0.0545,
+            k: 0.0620,
+        }
+    }
 }
 
 impl Default for GrayScottKinetics {
     #[verified_engine::verified]
     fn default() -> Self {
-        Self { f: 0.037, k: 0.060 }
+        Self::mitosis()
     }
 }
 
@@ -166,8 +186,8 @@ impl ReactionModel for GrayScottKinetics {
         if concentrations.len() < 2 || rates.len() < 2 {
             return;
         }
-        let out =
-            <Self as ReactionKinetics<2>>::reaction(self, [concentrations[0], concentrations[1]]);
+        let inp = [concentrations[0], concentrations[1]];
+        let out = <Self as ReactionKinetics<2>>::reaction(self, inp);
         rates[0] = out[0];
         rates[1] = out[1];
     }
@@ -186,58 +206,10 @@ impl ReactionModel for GrayScottKinetics {
         let n = state.grid_size();
         let (rates_u, rates_v) = rates.grid.as_mut_slice().split_at_mut(n);
         for i in 0..n {
-            let out = <Self as ReactionKinetics<2>>::reaction(self, [u_vec[i], v_vec[i]]);
+            let inp = [u_vec[i], v_vec[i]];
+            let out = <Self as ReactionKinetics<2>>::reaction(self, inp);
             rates_u[i] += out[0];
             rates_v[i] += out[1];
-        }
-    }
-}
-
-/// Zero-allocation runtime kinetics selector across Schnakenberg and Gray-Scott models.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum MorphogenesisKinetics {
-    /// Classical Schnakenberg activator-inhibitor kinetics.
-    Schnakenberg(SchnakenbergKinetics),
-    /// Gray-Scott feed/kill autocatalytic kinetics.
-    GrayScott(GrayScottKinetics),
-}
-
-impl Default for MorphogenesisKinetics {
-    #[verified_engine::verified]
-    fn default() -> Self {
-        Self::Schnakenberg(SchnakenbergKinetics::default())
-    }
-}
-
-impl ReactionKinetics<2> for MorphogenesisKinetics {
-    #[inline(always)]
-    #[verified_engine::verified]
-    fn reaction(&self, concentrations: [f64; 2]) -> [f64; 2] {
-        match self {
-            Self::Schnakenberg(k) => ReactionKinetics::<2>::reaction(k, concentrations),
-            Self::GrayScott(k) => ReactionKinetics::<2>::reaction(k, concentrations),
-        }
-    }
-}
-
-impl ReactionModel for MorphogenesisKinetics {
-    #[verified_engine::verified]
-    fn reaction(&self, concentrations: &[f64], rates: &mut [f64]) {
-        match self {
-            Self::Schnakenberg(k) => ReactionModel::reaction(k, concentrations, rates),
-            Self::GrayScott(k) => ReactionModel::reaction(k, concentrations, rates),
-        }
-    }
-
-    #[verified_engine::verified]
-    fn add_reaction_batch(
-        &self,
-        state: &crate::biology::reaction_diffusion::ChemicalState,
-        rates: &mut crate::biology::reaction_diffusion::ChemicalState,
-    ) {
-        match self {
-            Self::Schnakenberg(k) => k.add_reaction_batch(state, rates),
-            Self::GrayScott(k) => k.add_reaction_batch(state, rates),
         }
     }
 }

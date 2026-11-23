@@ -29,6 +29,8 @@ impl SimulationFramework {
             show_theory_portal: false,
             show_starter_gallery: false,
             saved_tool_states: std::collections::HashMap::new(),
+            saved_plot_states: std::collections::BTreeMap::new(),
+            plot_sync_generation: 1,
             search_query: String::new(),
             last_announced_count: None,
             last_announced_query: String::new(),

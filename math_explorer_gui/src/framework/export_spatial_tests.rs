@@ -222,7 +222,7 @@ fn test_periodic_gray_scott_normal_map_seam_continuity() {
     let mut morpho = find_registered_tool("MorphogenesisTool");
     morpho
         .try_load_state(
-            r#"{"a":0.1,"b":0.9,"d_u":1.0,"d_v":40.0,"dt":0.05,"width":64,"height":64,"kinetics":"GrayScott","boundary":"Periodic","feed_rate":0.037,"kill_rate":0.060,"paused":true}"#,
+            r#"{"a":0.1,"b":0.9,"d_u":0.16,"d_v":0.08,"dt":1.0,"width":64,"height":64,"kinetics_mode":"GrayScott","boundary":"Periodic","f":0.0367,"k":0.0649,"paused":true}"#,
         )
         .expect("periodic Gray-Scott state");
     for _ in 0..15 {

@@ -241,7 +241,6 @@ fn test_morphogenesis_divergence_and_recovery() {
         d_v: 100.0,
         dt: 0.05,
         high_contrast: false,
-        ..Default::default()
     }));
 
     let mut runner = MorphogenesisRunner::from_schnakenberg(system, params, width, height);

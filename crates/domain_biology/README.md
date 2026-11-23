@@ -12,8 +12,9 @@ By formalizing biological dynamics into clean, verified Rust algorithms, the cra
 
 - **`neuroscience`**: Biophysical neuron models (Hodgkin-Huxley action potential generation, Izhikevich spiking patterns).
 - **`kinetics`**: Enzyme reaction kinetics, Michaelis-Menten equations, and cooperativity models (Hill equation).
-- **`reaction_diffusion`**: Spatial pattern generation including Gray-Scott and Turing reaction-diffusion systems.
-- **`morphogenesis`**: Mathematical models of biological tissue growth, morphogen gradients, and cellular patterning.
+- **`reaction_diffusion`**: Spatial pattern generation including `GrayScottKinetics` and Turing reaction-diffusion systems.
+- **`morphogenesis`**: Mathematical models of biological tissue growth, `SchnakenbergKinetics` / `GrayScottKinetics` morphogen gradients, and cellular patterning.
+- **`lenia`**: Spectral 2D Lenia continuous cellular automata (`LeniaEngine`, concentric-ring `KernelShells`, Gaussian growth curves, and `Orbium` / `Geminium` / `Hydrogeminium` / `Scutium` solitons).
 - **`evolution`**: Replicator dynamics, selection equations, and evolutionary game theory.
 - **`diffusion`**: Molecular concentration gradient solvers and Fickian diffusion mechanics.
 
