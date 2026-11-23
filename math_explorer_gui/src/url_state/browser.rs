@@ -99,7 +99,7 @@ fn retain_non_share_query(search: &str) -> String {
         .filter(|pair| {
             !pair.is_empty() && {
                 let key = pair.split_once('=').map_or(*pair, |(k, _)| k);
-                !matches!(key, "ws" | "tab" | "tool" | "state")
+                !matches!(key, "ws" | "tab" | "tool" | "challenge" | "state")
             }
         })
         .collect();

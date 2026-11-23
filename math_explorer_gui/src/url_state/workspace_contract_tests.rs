@@ -189,21 +189,25 @@ fn test_atomic_multi_pane_ws_failure_preserves_layout_focus_and_panes() {
             ShareUrlParams {
                 tab: "chaos".to_string(),
                 tool: Some("FractalViewer".to_string()),
+                challenge: None,
                 state_json: None,
             },
             ShareUrlParams {
                 tab: "physics".to_string(),
                 tool: None,
+                challenge: None,
                 state_json: None,
             },
             ShareUrlParams {
                 tab: "quantum".to_string(),
                 tool: None,
+                challenge: None,
                 state_json: None,
             },
             ShareUrlParams {
                 tab: "chaos".to_string(),
                 tool: Some("NonExistentFourthPaneTool".to_string()),
+                challenge: None,
                 state_json: None,
             },
         ],
@@ -310,4 +314,73 @@ fn test_external_url_navigation_records_undo_on_startup_and_hashchange_popstate(
     booted.undo();
     assert_eq!(booted.viewport_layout, ViewportLayout::SplitHorizontal);
     assert_eq!(booted.focused_pane, 1);
+}
+
+#[test]
+fn test_multi_pane_workspace_url_preserves_inverse_challenge_and_clamps_locks() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let mut app = MathExplorerApp::default();
+    let mri_idx = find_tab_idx(&app, "mri");
+    let pk_idx = find_tab_idx(&app, "clinical_trials");
+
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    app.set_pane_tab(0, mri_idx);
+    app.set_pane_tab(1, pk_idx);
+    app.focus_pane(1);
+
+    app.tabs[mri_idx]
+        .import_url_share_params(Some("MriTool"), Some("bloch_pi_inversion"), None)
+        .unwrap();
+    app.pane_tab_mut(1)
+        .unwrap()
+        .import_url_share_params(
+            Some("PharmacokineticsTool"),
+            Some("pk_therapeutic_window"),
+            None,
+        )
+        .unwrap();
+
+    let ws_frag = app.encode_current_share_fragment().unwrap();
+    assert!(ws_frag.starts_with("#ws="));
+    let ws_token = ws_frag.strip_prefix("#ws=").unwrap();
+    let mut decoded = super::decode_workspace_share_param(ws_token).unwrap();
+    assert_eq!(
+        decoded.panes[0].challenge.as_deref(),
+        Some("bloch_pi_inversion")
+    );
+    assert_eq!(
+        decoded.panes[1].challenge.as_deref(),
+        Some("pk_therapeutic_window")
+    );
+
+    // Tamper with locked `mtc` and `ke` fields inside secondary pane `#ws=...` envelope
+    let mut env1: serde_json::Value =
+        serde_json::from_str(decoded.panes[1].state_json.as_ref().unwrap()).unwrap();
+    env1["config"]["dose_mg"] = serde_json::json!(165.0);
+    env1["config"]["mtc"] = serde_json::json!(99.0);
+    env1["config"]["ke"] = serde_json::json!(0.45);
+    decoded.panes[1].state_json = Some(env1.to_string());
+    let tampered_ws = encode_workspace_share_fragment(&decoded).unwrap();
+
+    let mut restored = MathExplorerApp::default();
+    assert!(restored
+        .apply_share_location_strings(&tampered_ws, "", None)
+        .unwrap());
+    assert_eq!(restored.viewport_layout, ViewportLayout::SplitHorizontal);
+    assert_eq!(restored.focused_pane, 1);
+    assert_eq!(
+        restored.tabs[mri_idx].active_challenge_id(),
+        Some("bloch_pi_inversion")
+    );
+    let pane1_fw = restored.pane_tab(1).unwrap().framework().unwrap();
+    assert_eq!(
+        pane1_fw.active_challenge_id(),
+        Some("pk_therapeutic_window")
+    );
+    let cfg: serde_json::Value =
+        serde_json::from_str(&pane1_fw.active_tool.as_ref().unwrap().save_state().unwrap())
+            .unwrap();
+    assert_eq!(cfg["dose_mg"], serde_json::json!(165.0));
+    assert_eq!(cfg["mtc"], serde_json::json!(12.0));
+    assert_eq!(cfg["ke"], serde_json::json!(0.12));
 }

@@ -1,50 +1,12 @@
 //! Offscreen raster (`egui::ColorImage`) renderer for [`super::ExportPrimitive`] items.
 
-use crate::export::{ExportOptions, color32_image_to_png};
+use crate::export::ExportOptions;
 
 use super::pixel_ops::{blend_over, draw_dot, draw_segment, fill_triangle};
 use super::{
     ExportPrimitive, PrimitiveCanvasLayout, compute_primitive_bounds_for_options,
     has_drawable_primitives, resolve_canvas_dimensions, resolve_color, sanitize_bar_corners,
 };
-
-/// Renders `primitives` into an offscreen RGBA PNG byte buffer using automatic bounds.
-pub fn export_primitives_png(
-    primitives: &[ExportPrimitive],
-    options: &ExportOptions,
-) -> Result<Vec<u8>, String> {
-    let image = render_primitives_image(primitives, options)?;
-    color32_image_to_png(&image)
-}
-
-/// Decodes an 8-bit RGBA PNG byte buffer into `(width, height, pixels)`.
-pub fn decode_png_rgba(png_bytes: &[u8]) -> Result<(usize, usize, Vec<egui::Color32>), String> {
-    let mut reader = png::Decoder::new(std::io::Cursor::new(png_bytes))
-        .read_info()
-        .map_err(|e| format!("Failed to parse PNG header: {e}"))?;
-    let buf_len = reader
-        .output_buffer_size()
-        .ok_or_else(|| "PNG buffer size overflow".to_string())?;
-    let mut buf = vec![0_u8; buf_len];
-    let info = reader
-        .next_frame(&mut buf)
-        .map_err(|e| format!("Failed to decode PNG frame: {e}"))?;
-    if info.color_type != png::ColorType::Rgba || info.bit_depth != png::BitDepth::Eight {
-        return Err(format!(
-            "Expected 8-bit RGBA PNG, got {:?} {:?}",
-            info.color_type, info.bit_depth
-        ));
-    }
-    let width = info.width as usize;
-    let height = info.height as usize;
-    let pixels = buf[..info.buffer_size()]
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|px| egui::Color32::from_rgba_unmultiplied(px[0], px[1], px[2], px[3]))
-        .collect();
-    Ok((width, height, pixels))
-}
 
 /// Renders `primitives` into an offscreen `egui::ColorImage` using automatic bounds.
 pub fn render_primitives_image(

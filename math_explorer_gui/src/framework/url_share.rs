@@ -60,6 +60,7 @@ impl SimulationFramework {
     pub fn url_state_revision(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.selected_tool_index.hash(&mut hasher);
+        self.active_challenge_id().hash(&mut hasher);
         if let Some(tool) = &self.active_tool {
             tool.name().hash(&mut hasher);
             let tool_rev = tool.state_revision();
@@ -97,9 +98,10 @@ impl SimulationFramework {
             self.domain.as_str()
         };
         let preset_json = self.export_url_preset_json()?;
-        let fragment = crate::url_state::encode_share_fragment(
+        let fragment = crate::url_state::encode_share_fragment_with_challenge(
             tab_slug,
             self.active_tool_id(),
+            self.active_challenge_id(),
             preset_json.as_deref(),
         )?;
         Ok(crate::url_state::build_share_url_from_fragment(&fragment))
@@ -114,9 +116,10 @@ impl SimulationFramework {
             self.domain.as_str()
         };
         let preset_json = self.export_url_preset_json()?;
-        let fragment = crate::url_state::encode_single_pane_smart_fragment(
+        let fragment = crate::url_state::encode_single_pane_smart_fragment_with_challenge(
             tab_slug,
             self.active_tool_id(),
+            self.active_challenge_id(),
             preset_json.as_deref(),
         )?;
         Ok(crate::url_state::build_share_url_from_fragment(&fragment))
@@ -154,7 +157,7 @@ impl SimulationFramework {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.import_url_preset_internal(tool_id, preset_json, false)
+        self.import_url_share_params_internal(tool_id, None, preset_json, false)
     }
 
     /// Validates and atomically applies a `#ws=...` workspace pane tool and preset JSON (up to 32 KiB).
@@ -163,15 +166,41 @@ impl SimulationFramework {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.import_url_preset_internal(tool_id, preset_json, true)
+        self.import_url_share_params_internal(tool_id, None, preset_json, true)
     }
 
-    fn import_url_preset_internal(
+    /// Validates and atomically applies a shared URL tool identifier, optional inverse challenge ID,
+    /// and optional `PresetWrapper` JSON payload, clamping any tampered locked fields back to the
+    /// canonical [`crate::starter_gallery::ChallengeMetadata`] definition.
+    pub fn import_url_share_params(
         &mut self,
         tool_id: Option<&str>,
+        challenge_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        self.import_url_share_params_internal(tool_id, challenge_id, preset_json, false)
+    }
+
+    /// Validates and atomically applies `#ws=...` workspace pane `tool`, `challenge`, and `state` (up to 32 KiB).
+    pub fn import_workspace_url_share_params(
+        &mut self,
+        tool_id: Option<&str>,
+        challenge_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        self.import_url_share_params_internal(tool_id, challenge_id, preset_json, true)
+    }
+
+    fn import_url_share_params_internal(
+        &mut self,
+        tool_id: Option<&str>,
+        challenge_id: Option<&str>,
         preset_json: Option<&str>,
         allow_workspace_bounds: bool,
     ) -> Result<(), String> {
+        if let Some(cid) = challenge_id {
+            return self.import_url_challenge(tool_id, cid, preset_json, allow_workspace_bounds);
+        }
         let target_idx = self.resolve_url_tool_index(tool_id)?;
         let meta = self.available_tools[target_idx];
         let mut candidate = (meta.build)();
@@ -200,13 +229,100 @@ impl SimulationFramework {
             candidate.name().to_string(),
             candidate.theory().theory_citation(),
         );
+        self.active_challenge = None;
+        self.challenge_was_passed = false;
         self.selected_tool_index = Some(target_idx);
         self.active_tool = Some(candidate);
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.show_starter_gallery = false;
         self.preset_dialog.toast_error = None;
+        self.reset_active_tool_manual_bounds();
         self.sync_active_baseline();
         Ok(())
     }
+
+    fn import_url_challenge(
+        &mut self,
+        tool_id: Option<&str>,
+        challenge_id: &str,
+        preset_json: Option<&str>,
+        allow_workspace_bounds: bool,
+    ) -> Result<(), String> {
+        let Some(ch_meta) = crate::starter_gallery::find_challenge_metadata(challenge_id) else {
+            return Err(format!("Unknown challenge '{challenge_id}' in shared URL"));
+        };
+        if !crate::starter_gallery::challenge_matches_domain(ch_meta, &self.domain) {
+            return Err(format!(
+                "Challenge '{}' belongs to domain '{}', not '{}'",
+                ch_meta.id, ch_meta.domain, self.domain
+            ));
+        }
+        let target_idx = self.resolve_challenge_tool_index(ch_meta)?;
+        if let Some(explicit_tool) = tool_id {
+            let requested_idx = self.resolve_url_tool_index(Some(explicit_tool))?;
+            if requested_idx != target_idx {
+                return Err(format!(
+                    "Challenge '{}' belongs to tool '{}', not '{explicit_tool}'",
+                    ch_meta.id, ch_meta.tool_name
+                ));
+            }
+        }
+        let clamped_config_json = match preset_json {
+            Some(json_str) => extract_and_clamp_challenge_json(
+                json_str,
+                self.available_tools[target_idx],
+                ch_meta,
+                allow_workspace_bounds,
+            )?,
+            None => {
+                let raw_base = ch_meta.generate_baseline_state();
+                ch_meta.clamp_state_json(&raw_base)?
+            }
+        };
+        self.commit_challenge_instance(target_idx, ch_meta, &clamped_config_json)?;
+        self.show_starter_gallery = false;
+        crate::framework::challenge::dispatch_challenge_announcement(
+            None,
+            &format!("Hydrated challenge from URL: {}", ch_meta.title),
+        );
+        Ok(())
+    }
+}
+
+fn extract_and_clamp_challenge_json(
+    json_str: &str,
+    tool_meta: &super::ToolMetadata,
+    ch_meta: &crate::starter_gallery::ChallengeMetadata,
+    allow_workspace_bounds: bool,
+) -> Result<String, String> {
+    if allow_workspace_bounds {
+        crate::url_state::validate_workspace_url_preset_json(json_str)?;
+    } else {
+        crate::url_state::validate_url_preset_json(json_str)?;
+    }
+    let probe = (tool_meta.build)();
+    let bounds = probe.state_bounds();
+    let parsed: serde_json::Value =
+        serde_json::from_str(egui_plot::export::strip_utf8_bom(json_str))
+            .map_err(|e| format!("Invalid URL challenge JSON: {e}"))?;
+    let raw_inner = if parsed.get("metadata").is_some() || parsed.get("config").is_some() {
+        let raw_cfg: Box<serde_json::value::RawValue> =
+            crate::presets::deserialize_preset_envelope_bounded(
+                json_str,
+                probe.domain(),
+                probe.name(),
+                bounds,
+            )?;
+        raw_cfg.get().to_string()
+    } else {
+        json_str.to_string()
+    };
+    let clamped = ch_meta.clamp_state_json(&raw_inner)?;
+    if allow_workspace_bounds {
+        crate::url_state::validate_workspace_url_preset_json(&clamped)?;
+    } else {
+        crate::url_state::validate_url_preset_json(&clamped)?;
+    }
+    Ok(clamped)
 }

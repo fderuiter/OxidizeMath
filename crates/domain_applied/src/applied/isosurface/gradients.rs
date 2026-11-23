@@ -73,6 +73,33 @@ pub trait GradientEstimator {
 /// $ \nabla f \approx \left( \frac{f(x+1) - f(x-1)}{2}, \frac{f(y+1) - f(y-1)}{2}, \frac{f(z+1) - f(z-1)}{2} \right) $
 pub struct CentralDifferenceEstimator;
 
+impl CentralDifferenceEstimator {
+    /// Computes the physical world-space unit normal and Euclidean gradient magnitude $|\nabla f|$ at `(x, y, z)`.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn world_normal_and_magnitude(
+        &self,
+        grid: &VoxelGrid,
+        x: usize,
+        y: usize,
+        z: usize,
+    ) -> (Point3D, f32) {
+        let raw = self.gradient(grid, x, y, z);
+        let vs = grid.voxel_size();
+        let gx = raw.x / vs.x.max(Point3D::EPSILON);
+        let gy = raw.y / vs.y.max(Point3D::EPSILON);
+        let gz = raw.z / vs.z.max(Point3D::EPSILON);
+        let world_grad = Point3D::new(gx, gy, gz);
+        let mag = world_grad.magnitude();
+        let normal = if mag > Point3D::EPSILON {
+            world_grad / mag
+        } else {
+            Point3D::new(0.0, 0.0, 1.0)
+        };
+        (normal, mag)
+    }
+}
+
 impl GradientEstimator for CentralDifferenceEstimator {
     #[inline]
     #[verified_engine::verified]

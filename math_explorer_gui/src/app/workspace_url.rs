@@ -6,9 +6,9 @@
 use super::{ComparisonSyncConfig, MathExplorerApp, ViewportLayout};
 use crate::tabs::ExplorerTab;
 use crate::url_state::{
-    encode_single_pane_smart_fragment, encode_workspace_share_fragment, matches_tab_slug,
-    parse_workspace_or_share_location, replace_browser_url_fragment, PaneUrlSignature,
-    ParsedShareLocation, ShareUrlParams, UrlStateSignature, WorkspaceShareParams,
+    encode_single_pane_smart_fragment_with_challenge, encode_workspace_share_fragment,
+    matches_tab_slug, parse_workspace_or_share_location, replace_browser_url_fragment,
+    PaneUrlSignature, ParsedShareLocation, ShareUrlParams, UrlStateSignature, WorkspaceShareParams,
 };
 use eframe::egui;
 use std::hash::{Hash, Hasher};
@@ -106,6 +106,7 @@ impl MathExplorerApp {
             return Ok(ShareUrlParams {
                 tab: tab.url_slug().to_string(),
                 tool: tab.active_tool_id().map(str::to_string),
+                challenge: tab.active_challenge_id().map(str::to_string),
                 state_json: tab.export_url_preset_json()?,
             });
         }
@@ -114,6 +115,7 @@ impl MathExplorerApp {
             return Ok(ShareUrlParams {
                 tab: tab.url_slug().to_string(),
                 tool: tab.active_tool_id().map(str::to_string),
+                challenge: tab.active_challenge_id().map(str::to_string),
                 state_json: tab.export_url_preset_json()?,
             });
         }
@@ -127,6 +129,7 @@ impl MathExplorerApp {
         Ok(ShareUrlParams {
             tab: temp_tab.url_slug().to_string(),
             tool: temp_tab.active_tool_id().map(str::to_string),
+            challenge: temp_tab.active_challenge_id().map(str::to_string),
             state_json: temp_tab.export_url_preset_json()?,
         })
     }
@@ -135,9 +138,10 @@ impl MathExplorerApp {
         let layout = self.viewport_layout;
         if layout == ViewportLayout::Single {
             let primary = self.export_pane_share_params(0)?;
-            return encode_single_pane_smart_fragment(
+            return encode_single_pane_smart_fragment_with_challenge(
                 &primary.tab,
                 primary.tool.as_deref(),
+                primary.challenge.as_deref(),
                 primary.state_json.as_deref(),
             );
         }
@@ -188,12 +192,17 @@ impl MathExplorerApp {
             }
         }
         let res = if allow_workspace_bounds {
-            candidate.import_workspace_url_preset_json(
+            candidate.import_workspace_url_share_params(
                 params.tool.as_deref(),
+                params.challenge.as_deref(),
                 params.state_json.as_deref(),
             )
         } else {
-            candidate.import_url_preset_json(params.tool.as_deref(), params.state_json.as_deref())
+            candidate.import_url_share_params(
+                params.tool.as_deref(),
+                params.challenge.as_deref(),
+                params.state_json.as_deref(),
+            )
         };
         res?;
         Ok((tab_idx, candidate))

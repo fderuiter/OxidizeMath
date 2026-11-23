@@ -1,6 +1,5 @@
 use super::{SessionLifecycleState, WorkspaceSessionManager};
 use crate::app::{AppState, MathExplorerApp};
-use crate::framework::CalloutManager;
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -12,7 +11,6 @@ pub(crate) struct WorkspaceRecoverySnapshot {
     pub app_state: AppState,
     pub undo_stack: Vec<AppState>,
     pub redo_stack: Vec<AppState>,
-    pub callout_manager: Option<CalloutManager>,
     pub active_file_path: Option<PathBuf>,
     pub envelope_json: String,
 }
@@ -48,7 +46,6 @@ impl WorkspaceSessionManager {
     fn apply_recovery_snapshot(&mut self, snapshot: &WorkspaceRecoverySnapshot) {
         self.undo_stack = snapshot.undo_stack.clone();
         self.redo_stack = snapshot.redo_stack.clone();
-        self.callout_manager = snapshot.callout_manager.clone();
         self.set_active_file_path(snapshot.active_file_path.clone());
         self.last_committed_state = Some(snapshot.app_state.clone());
         self.set_is_restoring(true);
@@ -72,7 +69,6 @@ impl MathExplorerApp {
             app_state,
             undo_stack: self.session_manager.undo_stack.clone(),
             redo_stack: self.session_manager.redo_stack.clone(),
-            callout_manager: self.session_manager.callout_manager.clone(),
             active_file_path: self.session_manager.active_file_path().cloned(),
             envelope_json,
         }
@@ -176,6 +172,7 @@ mod tests {
 
     #[test]
     fn test_fresh_app_rebuilds_clean_context_state_and_texture_handles() {
+        #[cfg(feature = "physics")]
         use crate::framework::InteractiveTool;
 
         let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX

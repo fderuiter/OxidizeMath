@@ -42,8 +42,6 @@ pub struct WorkspaceSessionManager {
     pub(crate) lifecycle_state: SessionLifecycleState,
     /// Number of consecutive quiescent frames observed during history restoration.
     pub(crate) quiescent_frames: usize,
-    /// Active callout manager instance.
-    pub(super) callout_manager: Option<crate::framework::CalloutManager>,
 }
 
 impl Default for WorkspaceSessionManager {
@@ -61,7 +59,6 @@ impl Default for WorkspaceSessionManager {
             last_committed_fingerprint: None,
             lifecycle_state: SessionLifecycleState::Idle,
             quiescent_frames: 0,
-            callout_manager: None,
         }
     }
 }
@@ -193,18 +190,6 @@ impl WorkspaceSessionManager {
             self.lifecycle_state = SessionLifecycleState::Idle;
             self.quiescent_frames = 0;
         }
-    }
-
-    /// Sets the active callout manager for workspace session persistence.
-    #[cfg(test)]
-    pub fn set_callout_manager(&mut self, manager: Option<crate::framework::CalloutManager>) {
-        self.callout_manager = manager;
-    }
-
-    /// Returns a reference to the active callout manager if set.
-    #[cfg(test)]
-    pub fn callout_manager(&self) -> Option<&crate::framework::CalloutManager> {
-        self.callout_manager.as_ref()
     }
 
     /// Tracks per-frame workspace changes lazily from `MathExplorerApp`:

@@ -2,6 +2,17 @@ use super::*;
 use crate::utils::test_utils::{CurrentDirGuard, TempTestDir};
 use std::path::PathBuf;
 
+mod config;
+
+fn write_bytes_fixture(dir: &Path, name: &str, body: &[u8]) -> PathBuf {
+    let path = dir.join(name);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
+    fs::write(&path, body).unwrap();
+    path
+}
+
 fn create_test_dir(prefix: &str) -> TempTestDir {
     TempTestDir::new(prefix)
 }
@@ -317,30 +328,6 @@ fn test_skip_git_and_target_dirs() {
 }
 
 #[test]
-fn test_load_whitelist_config_parsing_and_sibling_sections() {
-    let dir = create_test_dir("test_load_config");
-    let cfg_file = write_fixture(
-        &dir,
-        "test_whitelist.toml",
-        concat!(
-            "[doc_verification]\nallowlist = [\"crates/diagnostics\"]\n",
-            "[entropy_guard]\nscan_paths = [\"custom_dir\"]\n",
-            "target_extensions = [\"rs\", \"toml\", \"js\", \"html\"]\nallowlist = [\"fixture.rs\"]\n",
-            "[[dead_code]]\nfile = \"crates/demo/src/lib.rs\"\n",
-            "[[workflow_linter.exceptions]]\nworkflow = \".github/workflows/ci.yml\"\n",
-            "job = \"deploy-pages\"\nallow_write = [\"pages\"]\n",
-        ),
-    );
-    let cfg = load_whitelist_config(Some(&cfg_file)).expect("valid whitelist should parse");
-    assert_eq!(cfg.scan_paths, Some(vec!["custom_dir".into()]));
-    assert_eq!(
-        cfg.target_extensions,
-        Some(vec!["rs".into(), "toml".into(), "js".into(), "html".into()])
-    );
-    assert_eq!(cfg.allowlist, Some(vec!["fixture.rs".into()]));
-}
-
-#[test]
 fn test_egui_plot_scanned_without_exclusion() {
     let _lock = crate::DIR_LOCK.lock().unwrap();
     let dir = create_test_dir("test_egui_plot_scan");
@@ -355,64 +342,140 @@ fn test_egui_plot_scanned_without_exclusion() {
 }
 
 #[test]
-fn test_whitelist_fails_closed_on_invalid_or_unknown_fields() {
-    let dir = create_test_dir("test_fail_closed_toml");
-    let broken = write_fixture(&dir, "broken.toml", "invalid = toml [ [ syntax");
-    assert!(load_whitelist_config(Some(&broken)).is_err());
-
-    let inner = write_fixture(&dir, "i.toml", "[entropy_guard]\ntypo = [\"a.rs\"]\n");
-    assert!(load_whitelist_config(Some(&inner)).is_err());
-
-    let outer = write_fixture(&dir, "o.toml", "[entropy_gaurd]\nallowlist = [\"a.rs\"]\n");
-    assert!(load_whitelist_config(Some(&outer)).is_err());
-
-    assert!(load_whitelist_config(Some(&dir.join("non_existent.toml"))).is_err());
-}
-
-#[test]
-fn test_check_entropy_fails_closed_and_allows_missing_default_whitelist() {
+fn test_detect_secrets_in_macro_token_streams() {
     let _lock = crate::DIR_LOCK.lock().unwrap();
-    let _guard = CurrentDirGuard(std::env::current_dir().unwrap());
-
-    let root = create_test_dir("test_cwd_whitelist");
-    let nested = root.join("a/b/c");
-    write_fixture(&nested, "src/clean.rs", "pub fn ok() {}\n");
-    std::env::set_current_dir(&nested).unwrap();
-
-    assert!(check_entropy(&["src".into()]).is_empty());
-
+    let dir = create_test_dir("test_macro_secrets");
     write_fixture(
-        &nested,
-        "verification_whitelist.toml",
-        "[entropy_guard\nbad =",
+        &dir,
+        "macros.rs",
+        concat!(
+            "pub fn leak() -> Vec<String> {\n",
+            "    let a = format!(\"key={}\", \"AKIAIOSFODNN7EXAMPLE\");\n",
+            "    println!(\"{}\", r#\"ghp_123456789012345678901234567890123456\"#);\n",
+            "    vec![a, String::from({ concat!(\"xoxb-1234567890-1234567890\") })]\n",
+            "}\n",
+        ),
     );
-    let err_violations = check_entropy(&["src".into()]);
-    assert_eq!(err_violations.len(), 1);
-    assert!(err_violations[0].contains("Failed to parse"));
-
-    write_fixture(
-        &nested,
-        "verification_whitelist.toml",
-        "[entropy_guard]\nbad_key = 1\n",
+    let violations = scan_dir(&dir);
+    assert_eq!(
+        violations.len(),
+        3,
+        "Expected 3 macro secret hits: {violations:?}"
     );
-    let unknown_violations = check_entropy(&["src".into()]);
-    assert_eq!(unknown_violations.len(), 1);
-    assert!(unknown_violations[0].contains("Failed to parse"));
+    assert!(has_match(&violations, "AWS Access Key", "at line 2"));
+    assert!(has_match(&violations, "GitHub API Token", "at line 3"));
+    assert!(has_match(&violations, "Slack API Token", "at line 4"));
 }
 
 #[test]
-fn test_whitelist_config_aliases() {
-    let dir = create_test_dir("test_aliases");
-    let cfg_file = write_fixture(
+fn test_detect_macro_entropy_calls_and_aliases() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let dir = create_test_dir("test_macro_entropy_calls");
+    write_fixture(
         &dir,
-        "test_aliases.toml",
-        "[entropy_guard]\nscan_targets = [\"custom_dir\"]\nfile_extensions = [\"rs\", \"toml\"]\npath_exemptions = [\"fixture.rs\"]\n",
+        "macro_unseeded.rs",
+        concat!(
+            "use rand::random as rnd;\n",
+            "use rand::thread_rng as trng;\n",
+            "use std::time::SystemTime as SysTime;\n",
+            "pub fn bad_macros() -> String {\n",
+            "    let _v = vec![rand::random::<u64>(), rnd::<Option<Vec<u8>>>().is_some() as u64];\n",
+            "    assert_eq!(format!(\"{:?}\", trng()), \"\");\n",
+            "    format!(\"{:?}\", SysTime::now().duration_since(std::time::UNIX_EPOCH))\n",
+            "}\n",
+        ),
     );
-    let cfg = load_whitelist_config(Some(&cfg_file)).expect("aliases should parse");
-    assert_eq!(cfg.scan_paths, Some(vec!["custom_dir".into()]));
+    let violations = scan_dir(&dir);
     assert_eq!(
-        cfg.target_extensions,
-        Some(vec!["rs".into(), "toml".into()])
+        violations.len(),
+        4,
+        "Expected 4 macro entropy hits: {violations:?}"
     );
-    assert_eq!(cfg.allowlist, Some(vec!["fixture.rs".into()]));
+    assert_eq!(
+        violations
+            .iter()
+            .filter(|v| v.contains("'random()'") && v.contains("at line 5"))
+            .count(),
+        2
+    );
+    assert!(has_match(&violations, "'thread_rng()'", "at line 6"));
+    assert!(has_match(&violations, "'SystemTime::now()'", "at line 7"));
+}
+
+#[test]
+fn test_macro_ignores_method_calls_and_deterministic_paths() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let dir = create_test_dir("test_macro_clean_calls");
+    write_fixture(
+        &dir,
+        "macro_clean.rs",
+        concat!(
+            "struct CustomSystemTime;\n",
+            "impl CustomSystemTime { fn now<T>() -> u64 { 0 } }\n",
+            "struct SeededRng;\n",
+            "impl SeededRng { fn random<T>(&self) -> u64 { 1 } fn thread_rng(&self) -> u64 { 2 } fn now(&self) -> u64 { 3 } }\n",
+            "fn random_walk_1d_with_rng() -> u64 { 42 }\n",
+            "fn det<F>() -> u64 { 9 }\n",
+            "macro_rules! def_fn { () => { fn random() -> u64 { 0 } }; }\n",
+            "pub fn clean() -> String {\n",
+            "    let rng = SeededRng;\n",
+            "    format!(\"{} {} {} {} {} {}\", CustomSystemTime::now::<u8>(), CustomSystemTime::now(), random_walk_1d_with_rng(), rng.random::<u64>(), rng.thread_rng() + rng.now(), det::<fn() -> u64>())\n",
+            "}\n",
+        ),
+    );
+    let violations = scan_dir(&dir);
+    assert!(
+        violations.is_empty(),
+        "Unexpected false positives: {violations:?}"
+    );
+}
+
+#[test]
+fn test_scan_githooks_dotfiles_and_extensionless_files() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let dir = create_test_dir("test_dotfiles_extensionless");
+    write_fixture(
+        &dir,
+        ".githooks/pre-commit",
+        "#!/bin/sh\nGH_TOKEN=ghp_123456789012345678901234567890123456\n",
+    );
+    write_fixture(&dir, ".env", "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\n");
+    write_fixture(
+        &dir,
+        ".env.local",
+        "SLACK_TOKEN=xoxb-1234567890-1234567890\n",
+    );
+    write_fixture(
+        &dir,
+        "Dockerfile",
+        "FROM scratch\nENV API_SECRET=aZ9kL2mN5qR8_vW1xY4bC7dE0fG3hJ6iK9lM-9\n",
+    );
+    let violations = scan_dir(&dir);
+    assert_eq!(violations.len(), 4, "Expected 4 violations: {violations:?}");
+    assert!(has_match(&violations, "GitHub API Token", "pre-commit"));
+    assert!(has_match(&violations, "AWS Access Key", ".env"));
+    assert!(has_match(&violations, "Slack API Token", ".env.local"));
+    assert!(has_match(&violations, "High-Entropy Secret", "Dockerfile"));
+}
+
+#[test]
+fn test_skip_license_files_and_binary_assets() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let dir = create_test_dir("test_skip_license_and_binaries");
+    for lic in ["LICENSE", "NOTICE", "COPYING", "LICENSE-MIT"] {
+        write_fixture(
+            &dir,
+            lic,
+            "AKIAIOSFODNN7EXAMPLE aZ9kL2mN5qR8_vW1xY4bC7dE0fG3hJ6iK9lM-9\n",
+        );
+    }
+    write_bytes_fixture(&dir, "icon.png", b"\x89PNG\r\n\x1a\nAKIAIOSFODNN7EXAMPLE");
+    write_bytes_fixture(&dir, "elf_blob", b"\x7fELF\x00AKIAIOSFODNN7EXAMPLE\x00");
+    write_bytes_fixture(&dir, ".bin_secret", b"\xff\xfeAKIAIOSFODNN7EXAMPLE");
+
+    let violations = scan_dir(&dir);
+    assert!(
+        violations.is_empty(),
+        "Expected clean skip, got: {violations:?}"
+    );
 }

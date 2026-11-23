@@ -3,9 +3,96 @@ use super::io::{
     spawn_save_direct,
 };
 use super::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
-use crate::app::{AppState, MathExplorerApp};
+use crate::app::{AppState, MathExplorerApp, SharedTabJson};
 use eframe::egui;
 use std::sync::mpsc::{channel, TryRecvError};
+
+fn resolve_legacy_callout_target(app_state: &AppState) -> Option<(String, Option<String>)> {
+    let tabs = crate::tabs::instantiate_tabs();
+    if let Some(raw_name) = app_state
+        .selected_tab_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        if let Some(tab) = tabs
+            .iter()
+            .find(|t| t.framework().is_some() && t.name().eq_ignore_ascii_case(raw_name))
+        {
+            return Some((tab.name().to_string(), None));
+        }
+        let singular = raw_name.strip_suffix('s').unwrap_or(raw_name);
+        for tab in &tabs {
+            if let Some(meta) = tab.framework().and_then(|fw| {
+                fw.available_tools.iter().find(|m| {
+                    m.id.eq_ignore_ascii_case(raw_name)
+                        || m.display_name.eq_ignore_ascii_case(raw_name)
+                        || m.id.eq_ignore_ascii_case(singular)
+                        || m.display_name.eq_ignore_ascii_case(singular)
+                })
+            }) {
+                return Some((tab.name().to_string(), Some(meta.display_name.to_string())));
+            }
+        }
+    }
+    if let Some(tab) = tabs
+        .get(app_state.selected_tab)
+        .filter(|t| t.framework().is_some())
+        .or_else(|| tabs.iter().find(|t| t.framework().is_some()))
+    {
+        return Some((tab.name().to_string(), None));
+    }
+    app_state
+        .selected_tab_name
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .map(|name| (name, None))
+}
+
+fn migrate_legacy_callout_manager(
+    app_state: &mut AppState,
+    mgr: &crate::framework::CalloutManager,
+) {
+    let saved: Vec<egui_plot::SavedCallout> = mgr
+        .callouts()
+        .iter()
+        .filter(|c| {
+            c.visible
+                && c.target_point[0].is_finite()
+                && c.target_point[1].is_finite()
+                && c.label_offset[0].is_finite()
+                && c.label_offset[1].is_finite()
+        })
+        .map(|c| egui_plot::SavedCallout::new(c.target_point, c.text.clone(), c.label_offset))
+        .collect();
+    if saved.is_empty() {
+        return;
+    }
+    let Some((tab_name, tool_name)) = resolve_legacy_callout_target(app_state) else {
+        return;
+    };
+    if tool_name.is_some() {
+        app_state.selected_tab_name = Some(tab_name.clone());
+    }
+    if let Some(merged) = crate::framework::plot_persistence::merge_migrated_callouts_into_tab_json(
+        app_state
+            .tab_states
+            .get(&tab_name)
+            .map(SharedTabJson::as_str),
+        tool_name.as_deref(),
+        &saved,
+    ) {
+        let merged = SharedTabJson::from(merged);
+        app_state
+            .tab_states
+            .insert(tab_name.clone(), merged.clone());
+        if let Some(primary_pane) = app_state.pane_tab_states.first_mut() {
+            if primary_pane.contains_key(&tab_name) {
+                primary_pane.insert(tab_name, merged);
+            }
+        }
+    }
+}
 
 impl WorkspaceSessionManager {
     /// Wraps the given application state inside a versioned workspace envelope and serializes it to JSON.
@@ -28,7 +115,7 @@ impl WorkspaceSessionManager {
             app_state,
             history_undo_stack: self.undo_stack.clone(),
             history_redo_stack: self.redo_stack.clone(),
-            callout_manager: self.callout_manager.clone(),
+            callout_manager: None,
         }
     }
 
@@ -55,17 +142,19 @@ impl WorkspaceSessionManager {
                     envelope.schema_version
                 ));
             }
+            let mut app_state = envelope.app_state;
+            if let Some(ref legacy_mgr) = envelope.callout_manager {
+                migrate_legacy_callout_manager(&mut app_state, legacy_mgr);
+            }
             self.undo_stack = envelope.history_undo_stack;
             self.redo_stack = envelope.history_redo_stack;
-            self.callout_manager = envelope.callout_manager;
-            self.last_committed_state = Some(envelope.app_state.clone());
+            self.last_committed_state = Some(app_state.clone());
             self.last_committed_fingerprint = None;
             self.set_is_restoring(true);
-            Ok(envelope.app_state)
+            Ok(app_state)
         } else {
             self.undo_stack.clear();
             self.redo_stack.clear();
-            self.callout_manager = None;
             let state: AppState = serde_json::from_str(json_str)
                 .map_err(|e| format!("Corrupted workspace state JSON: {}", e))?;
             self.last_committed_state = Some(state.clone());

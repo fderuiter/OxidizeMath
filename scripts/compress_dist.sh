@@ -9,10 +9,16 @@ if [ ! -d "$TARGET_DIR" ]; then
     exit 1
 fi
 
-echo "Pre-compressing static distribution assets in $TARGET_DIR..."
+if [ "$#" -gt 1 ]; then
+    EXTS=("${@:2}")
+else
+    EXTS=(wasm js html css svg webmanifest json)
+fi
+
+echo "Pre-compressing static distribution assets in $TARGET_DIR (${EXTS[*]})..."
 
 shopt -s nullglob
-for ext in wasm js html css svg webmanifest json; do
+for ext in "${EXTS[@]}"; do
     for f in "$TARGET_DIR"/*."$ext"; do
         if [ -f "$f" ]; then
             gzip -k -9 -f "$f"

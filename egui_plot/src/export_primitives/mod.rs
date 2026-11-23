@@ -9,12 +9,12 @@ mod tests;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use crate::export::{EXPORT_PALETTE, ExportOptions, MAX_EXPORT_DIMENSION, color32_images_to_gif};
-
-pub use raster::{
-    decode_png_rgba, export_primitives_png, render_primitives_image,
-    render_primitives_image_with_bounds, scale_color_image,
+use crate::export::{
+    EXPORT_PALETTE, ExportOptions, MAX_EXPORT_DIMENSION, color32_image_to_png,
+    color32_images_to_gif,
 };
+
+pub use raster::{render_primitives_image, render_primitives_image_with_bounds, scale_color_image};
 pub use svg::{encode_base64, export_primitives_svg, export_raster_svg};
 
 /// Offscreen-drawable plot primitive extracted from [`crate::PlotItem`] instances.
@@ -652,4 +652,23 @@ pub fn export_raster_gif(
         return Err("All raster frames were empty".to_string());
     }
     color32_images_to_gif(&scaled, fps)
+}
+
+/// Renders `primitives` offscreen and encodes the resulting canvas as PNG bytes.
+pub fn export_primitives_png(
+    primitives: &[ExportPrimitive],
+    options: &ExportOptions,
+) -> Result<Vec<u8>, String> {
+    let image = render_primitives_image(primitives, options)?;
+    color32_image_to_png(&image)
+}
+
+/// Decodes PNG bytes into `(width, height, rgba_pixels)` for offscreen verification.
+pub fn decode_png_rgba(png_bytes: &[u8]) -> Result<(usize, usize, Vec<[u8; 4]>), String> {
+    let img = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png)
+        .map_err(|e| format!("Failed to decode PNG: {e}"))?
+        .to_rgba8();
+    let (w, h) = img.dimensions();
+    let pixels = img.pixels().map(|p| p.0).collect();
+    Ok((w as usize, h as usize, pixels))
 }

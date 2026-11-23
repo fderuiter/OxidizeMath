@@ -32,6 +32,7 @@ fn sample_pane(tab: &str, tool: Option<&str>, x0: f64) -> ShareUrlParams {
     ShareUrlParams {
         tab: tab.to_string(),
         tool: tool.map(str::to_string),
+        challenge: None,
         state_json: Some(state_json),
     }
 }
@@ -157,6 +158,8 @@ fn test_workspace_rejects_wrong_version_mixed_params_and_invalid_pane_counts() {
     .unwrap();
     let mixed = format!("{valid_ws}&tab=physics");
     assert!(parse_workspace_or_share_location(&mixed, "").is_err());
+    let mixed_ch = format!("{valid_ws}&challenge=bloch_pi_inversion");
+    assert!(parse_workspace_or_share_location(&mixed_ch, "").is_err());
     assert!(parse_workspace_or_share_location("#ws=", "").is_err());
     assert!(parse_workspace_or_share_location("#ws=***not_base64***", "").is_err());
 }
@@ -186,6 +189,7 @@ fn test_non_share_anchors_return_ok_none_while_malformed_share_params_error() {
     for malformed in [
         "#tab=chaos&unknown=1",
         "#tool=AttractorPlotter",
+        "#challenge=bloch_pi_inversion",
         "#state=e30",
         "#tab=",
         "#ws=bad!token",

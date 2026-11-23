@@ -8,8 +8,9 @@
 
 use super::base64url;
 use super::codec::{
-    clamp_decoded_url_grid_state, encode_share_fragment, ensure_all_json_numbers_finite,
-    ShareUrlParams, MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
+    clamp_decoded_url_grid_state, encode_share_fragment_with_challenge,
+    ensure_all_json_numbers_finite, validate_challenge_id, ShareUrlParams,
+    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
 };
 use crate::app::{ComparisonSyncConfig, ViewportLayout};
 use crate::framework::{ToolStateBounds, MAX_JSON_ARRAY_LEN, MAX_JSON_NESTING_DEPTH};
@@ -100,6 +101,8 @@ struct WirePaneShareEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tool: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    challenge: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     state: Option<Box<RawValue>>,
 }
 
@@ -148,6 +151,10 @@ fn build_wire_panes(panes: &[ShareUrlParams]) -> Result<Vec<WirePaneShareEntry>,
             .map(str::trim)
             .filter(|t| !t.is_empty())
             .map(str::to_string);
+        let challenge = match pane.challenge.as_deref().filter(|c| !c.trim().is_empty()) {
+            Some(raw_ch) => Some(validate_challenge_id(raw_ch)?),
+            None => None,
+        };
         let state = match pane.state_json.as_deref() {
             Some(raw_json) => {
                 let cleaned = egui_plot::export::strip_utf8_bom(raw_json);
@@ -167,6 +174,7 @@ fn build_wire_panes(panes: &[ShareUrlParams]) -> Result<Vec<WirePaneShareEntry>,
         out.push(WirePaneShareEntry {
             tab: tab.to_string(),
             tool,
+            challenge,
             state,
         });
     }
@@ -250,9 +258,22 @@ pub fn encode_single_pane_smart_fragment(
     tool_id: Option<&str>,
     preset_json: Option<&str>,
 ) -> Result<String, String> {
+    encode_single_pane_smart_fragment_with_challenge(tab_slug, tool_id, None, preset_json)
+}
+
+/// Encodes a single simulation pane (including optional `challenge_id`) as `#tab=...` when raw
+/// preset JSON fits in 4,096 bytes, falling back to a 1-pane `#ws=...` envelope up to 32,768 bytes.
+pub fn encode_single_pane_smart_fragment_with_challenge(
+    tab_slug: &str,
+    tool_id: Option<&str>,
+    challenge_id: Option<&str>,
+    preset_json: Option<&str>,
+) -> Result<String, String> {
     let fits_legacy = preset_json.is_none_or(|j| j.len() <= MAX_DECODED_URL_STATE_BYTES);
     if fits_legacy {
-        if let Ok(legacy_frag) = encode_share_fragment(tab_slug, tool_id, preset_json) {
+        if let Ok(legacy_frag) =
+            encode_share_fragment_with_challenge(tab_slug, tool_id, challenge_id, preset_json)
+        {
             return Ok(legacy_frag);
         }
     }
@@ -265,6 +286,7 @@ pub fn encode_single_pane_smart_fragment(
         panes: vec![ShareUrlParams {
             tab: tab_slug.to_string(),
             tool: tool_id.map(str::to_string),
+            challenge: challenge_id.map(str::to_string),
             state_json: preset_json.map(str::to_string),
         }],
     };
@@ -302,6 +324,10 @@ fn decode_wire_panes(panes: Vec<WirePaneShareEntry>) -> Result<Vec<ShareUrlParam
             Some(t) => Some(t.trim().to_string()),
             None => None,
         };
+        let challenge = match entry.challenge {
+            Some(c) => Some(validate_challenge_id(&c)?),
+            None => None,
+        };
         let state_json = match entry.state {
             Some(raw_val) => {
                 let raw_str = raw_val.get();
@@ -317,6 +343,7 @@ fn decode_wire_panes(panes: Vec<WirePaneShareEntry>) -> Result<Vec<ShareUrlParam
         out.push(ShareUrlParams {
             tab,
             tool,
+            challenge,
             state_json,
         });
     }

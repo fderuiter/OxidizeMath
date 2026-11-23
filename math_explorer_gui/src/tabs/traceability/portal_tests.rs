@@ -21,7 +21,9 @@ fn render_tab_text_hit(tab: &mut TraceabilityTab, needle: &str) -> bool {
     };
     let out = ctx.run(raw, |ctx| {
         let mut frame = eframe::Frame::_new_kittest();
-        tab.show(ctx, &mut frame);
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
     out.shapes
         .iter()
