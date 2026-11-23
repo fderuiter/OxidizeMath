@@ -3,7 +3,7 @@
 use super::{COMPLEX_COORD_MAX, COMPLEX_COORD_MIN, ComplexMappingTool, MappingFunction};
 use crate::framework::export_shader::compile_complex_bar_glsl;
 use crate::framework::{InteractiveTool, ShaderDialect};
-use math_commons::ast::{GLSL_COMPLEX_HELPERS, format_glsl_float};
+use math_commons::ast::{format_glsl_float, GLSL_COMPLEX_HELPERS};
 use math_commons::math_kernel::glsl_colormap::{
     glsl_cyclic_cosine_palette_fn, glsl_ensure_dark_canvas_contrast_fn,
 };

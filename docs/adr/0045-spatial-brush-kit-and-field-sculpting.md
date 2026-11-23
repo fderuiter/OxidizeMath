@@ -1,4 +1,4 @@
-# ADR 0044: Spatial Brush Kit and Accessible Direct Field Sculpting
+# ADR 0045: Spatial Brush Kit and Accessible Direct Field Sculpting
 
 ## Status
 Accepted (extends [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0027](0027-precompute-quantum-propagators-inplace-evolution.md), and [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md))

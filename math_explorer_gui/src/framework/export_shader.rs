@@ -71,7 +71,10 @@ pub(crate) fn compile_complex_bar_glsl(
     let mut param_decls = String::new();
     for (idx, name) in param_names.iter().enumerate() {
         let key = name.as_str();
-        if COMMON_COMPLEX_SHADER_RESERVED.contains(&key) || extra_reserved.contains(&key) {
+        if axis_vars.contains(&key)
+            || COMMON_COMPLEX_SHADER_RESERVED.contains(&key)
+            || extra_reserved.contains(&key)
+        {
             return Err(format!(
                 "Parameter '{name}' collides with a reserved GLSL shader symbol"
             ));

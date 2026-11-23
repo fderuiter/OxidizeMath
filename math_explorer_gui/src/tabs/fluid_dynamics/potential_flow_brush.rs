@@ -3,13 +3,87 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::potential_flow::{
-    ElementType, PotentialFlowTool, SerializedFlowElement, FLOW_POS_MAX, FLOW_POS_MIN,
-    FLOW_STRENGTH_MAX, FLOW_STRENGTH_MIN,
+    ElementType, PotentialFlowTool, SerializedFlowElement, FLOW_ANGLE_MAX, FLOW_ANGLE_MIN,
+    FLOW_POS_MAX, FLOW_POS_MIN, FLOW_STRENGTH_MAX, FLOW_STRENGTH_MIN,
 };
-use crate::framework::{BrushInteractionMode, BrushMode, BrushStroke, SpatialBrushKit};
+use crate::accessibility::AccessibleHoverText;
+use crate::framework::{
+    bounded_drag_value, BrushInteractionMode, BrushMode, BrushStroke, SpatialBrushKit,
+};
 use eframe::egui;
 
 impl PotentialFlowTool {
+    pub(super) fn draw_add_element_controls(&mut self, ui: &mut egui::Ui) {
+        ui.collapsing("Add Element", |ui| {
+            for (elem, label) in [
+                (ElementType::Uniform, "Uniform Flow"),
+                (ElementType::Source, "Source"),
+                (ElementType::Sink, "Sink"),
+                (ElementType::Vortex, "Vortex"),
+                (ElementType::Doublet, "Doublet"),
+            ] {
+                ui.radio_value(&mut self.selected_element_type, elem, label);
+            }
+            ui.separator();
+            ui.label("Strength / Velocity");
+            ui.add(bounded_drag_value(
+                &mut self.new_element_strength,
+                FLOW_STRENGTH_MIN..=FLOW_STRENGTH_MAX,
+                0.1,
+            ));
+            if self.selected_element_type == ElementType::Uniform {
+                ui.add(
+                    egui::Slider::new(&mut self.new_element_angle, FLOW_ANGLE_MIN..=FLOW_ANGLE_MAX)
+                        .text("Angle (degrees)"),
+                );
+            } else {
+                ui.label("Position X");
+                ui.add(bounded_drag_value(
+                    &mut self.new_element_x,
+                    FLOW_POS_MIN..=FLOW_POS_MAX,
+                    0.1,
+                ));
+                ui.label("Position Y");
+                ui.add(bounded_drag_value(
+                    &mut self.new_element_y,
+                    FLOW_POS_MIN..=FLOW_POS_MAX,
+                    0.1,
+                ));
+            }
+            if ui
+                .button("➕ Add Element")
+                .accessible_hover_text("Add the selected flow element to the field")
+                .clicked()
+            {
+                self.add_element();
+            }
+        });
+    }
+
+    pub(super) fn draw_active_element_sliders(&mut self, ui: &mut egui::Ui) {
+        if self.elements.is_empty() {
+            return;
+        }
+        let has_vortex = self
+            .elements
+            .iter()
+            .any(|el| el.element_type == ElementType::Vortex);
+        let mut modified = false;
+        egui::CollapsingHeader::new("Active Elements")
+            .default_open(has_vortex)
+            .show(ui, |ui| {
+                for (idx, el) in self.elements.iter_mut().enumerate() {
+                    let label = format!("#{} {}", idx + 1, el.element_type.label());
+                    modified |= ui
+                        .add(egui::Slider::new(&mut el.strength, -500.0..=500.0).text(label))
+                        .changed();
+                }
+            });
+        if modified {
+            self.rebuild_field();
+        }
+    }
+
     pub(super) fn default_flow_brush_kit() -> SpatialBrushKit {
         SpatialBrushKit::new(BrushMode::FlowSource, 1.5)
             .with_interaction_mode(BrushInteractionMode::Pan)
