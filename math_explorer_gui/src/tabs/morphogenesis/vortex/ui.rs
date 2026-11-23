@@ -339,7 +339,6 @@ impl VortexMorphogenesisTool {
                 egui::vec2(target_w, target_h),
                 egui::Sense::click_and_drag(),
             );
-            self.last_canvas_id = Some(response.id);
 
             self.handle_canvas_input(ui, &response);
 

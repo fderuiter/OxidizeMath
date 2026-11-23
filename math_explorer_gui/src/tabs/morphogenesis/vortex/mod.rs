@@ -53,7 +53,6 @@ pub struct VortexMorphogenesisTool {
     pub(crate) dirty: bool,
     pub(crate) last_high_contrast: Option<bool>,
     pub(crate) cursor_cell: (usize, usize),
-    pub(crate) last_canvas_id: Option<egui::Id>,
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
@@ -81,7 +80,6 @@ impl Default for VortexMorphogenesisTool {
             pixels: Vec::new(),
             dirty: true,
             last_high_contrast: None,
-            last_canvas_id: None,
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
@@ -398,10 +396,6 @@ impl InteractiveTool for VortexMorphogenesisTool {
 
     fn state_revision(&self) -> u64 {
         self.revision
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.last_canvas_id
     }
 
     fn has_finite_parameters(&self) -> bool {
