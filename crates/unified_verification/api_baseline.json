@@ -8033,10 +8033,34 @@
   ],
   "crates/pure_math/src/pure_math/algebra/linear_algebra/decomposition.rs": [
     {
+      "signature": "pub enum MatrixNorm"
+    },
+    {
+      "signature": "pub fn cholesky_decomposition (_ : & DMatrix < f64 >) -> Result < DMatrix < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn condition_number (_ : & DMatrix < f64 >) -> Result < f64 , LinearAlgebraError >"
+    },
+    {
       "signature": "pub fn effective_rank (_ : & DMatrix < f64 > , _ : Option < f64 >) -> usize"
     },
     {
-      "signature": "pub fn low_rank_approximation (_ : & DMatrix < f64 > , _ : usize) -> DMatrix < f64 >"
+      "signature": "pub fn low_rank_approximation (_ : & DMatrix < f64 > , _ : usize ,) -> Result < DMatrix < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn matrix_norm (_ : & DMatrix < f64 > , _ : MatrixNorm) -> Result < f64 , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn qr_decomposition (_ : & DMatrix < f64 >) -> Result < QrFactors , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn svd_decomposition (_ : & DMatrix < f64 >) -> Result < SvdFactors , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub type QrFactors = (DMatrix < f64 > , DMatrix < f64 >)"
+    },
+    {
+      "signature": "pub type SvdFactors = (DMatrix < f64 > , DVector < f64 > , DMatrix < f64 >)"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/linear_algebra/eigen.rs": [
@@ -8049,7 +8073,52 @@
   ],
   "crates/pure_math/src/pure_math/algebra/linear_algebra/mod.rs": [
     {
+      "signature": "pub use decomposition :: MatrixNorm"
+    },
+    {
+      "signature": "pub use decomposition :: QrFactors"
+    },
+    {
+      "signature": "pub use decomposition :: SvdFactors"
+    },
+    {
+      "signature": "pub use decomposition :: cholesky_decomposition"
+    },
+    {
+      "signature": "pub use decomposition :: condition_number"
+    },
+    {
+      "signature": "pub use decomposition :: effective_rank"
+    },
+    {
+      "signature": "pub use decomposition :: low_rank_approximation"
+    },
+    {
+      "signature": "pub use decomposition :: matrix_norm"
+    },
+    {
+      "signature": "pub use decomposition :: qr_decomposition"
+    },
+    {
+      "signature": "pub use decomposition :: svd_decomposition"
+    },
+    {
       "signature": "pub use numerical :: LinearAlgebraError"
+    },
+    {
+      "signature": "pub use numerical :: moore_penrose_pseudoinverse"
+    },
+    {
+      "signature": "pub use numerical :: solve_linear_system"
+    },
+    {
+      "signature": "pub use numerical :: solve_nnls"
+    },
+    {
+      "signature": "pub use numerical :: solve_normal_equation"
+    },
+    {
+      "signature": "pub use numerical :: solve_ridge_regression"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/linear_algebra/numerical.rs": [
@@ -8057,13 +8126,19 @@
       "signature": "pub enum LinearAlgebraError"
     },
     {
-      "signature": "pub fn moore_penrose_pseudoinverse (_ : & DMatrix < f64 > , _ : f64) -> DMatrix < f64 >"
+      "signature": "pub fn moore_penrose_pseudoinverse (_ : & DMatrix < f64 > , _ : f64 ,) -> Result < DMatrix < f64 > , LinearAlgebraError >"
     },
     {
       "signature": "pub fn solve_linear_system (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
     },
     {
+      "signature": "pub fn solve_nnls (_ : & DMatrix < f64 > , _ : & DVector < f64 >) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
       "signature": "pub fn solve_normal_equation (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn solve_ridge_regression (_ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : f64 ,) -> Result < DVector < f64 > , LinearAlgebraError >"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/mod.rs": [

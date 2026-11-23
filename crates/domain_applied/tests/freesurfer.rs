@@ -141,3 +141,41 @@ fn test_glm_t_statistic() {
     // The expected value was re-calculated to be 2.1602...
     assert!((t - 2.1602).abs() < 1e-4);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_glm_lauchli_and_vandermonde_qr_stability() {
+    // Lauchli design matrix with mu = 1e-8 makes X^T X rank-1 in f64,
+    // whereas QR-based estimate_beta and t_statistic remain well-behaved.
+    let mu = 1e-8_f64;
+    let x = DMatrix::from_row_slice(
+        4,
+        3,
+        &[1.0, 1.0, 1.0, mu, 0.0, 0.0, 0.0, mu, 0.0, 0.0, 0.0, mu],
+    );
+    let beta_true = DVector::from_vec(vec![2.0, -1.0, 0.5]);
+    let noise = DVector::from_vec(vec![1e-10, -1e-10, 0.5e-10, -0.5e-10]);
+    let y = &x * &beta_true + &noise;
+
+    let beta_hat = estimate_beta(&x, &y).unwrap();
+    assert!((&beta_hat - &beta_true).norm() < 1e-2 * beta_true.norm());
+
+    let residuals = &y - &x * &beta_hat;
+    let sigma2 = (residuals.norm_squared() / 1.0).max(1e-24);
+    let contrast = DVector::from_vec(vec![1.0, -1.0, 0.0]);
+    let t_val = t_statistic(&contrast, &beta_hat, &x, sigma2).unwrap();
+    assert!(t_val.is_finite() && t_val > 0.0);
+
+    // Ill-conditioned Vandermonde polynomial design matrix
+    let vand = DMatrix::from_fn(12, 6, |i, j| ((i as f64) / 11.0).powi(j as i32));
+    let poly_beta = DVector::from_vec(vec![1.0, -0.5, 0.25, 0.1, -0.2, 0.05]);
+    let vand_y = &vand * &poly_beta;
+    let vand_est = estimate_beta(&vand, &vand_y).unwrap();
+    assert!((&vand_est - &poly_beta).norm() < 1e-8);
+
+    // Reject NaN and singular design matrices cleanly
+    let nan_x = DMatrix::from_row_slice(2, 2, &[1.0, f64::NAN, 0.0, 1.0]);
+    assert!(estimate_beta(&nan_x, &DVector::from_vec(vec![1.0, 2.0])).is_err());
+    let sing_x = DMatrix::from_row_slice(3, 2, &[1.0, 2.0, 1.0, 2.0, 1.0, 2.0]);
+    assert!(estimate_beta(&sing_x, &DVector::from_vec(vec![1.0, 2.0, 3.0])).is_err());
+}
