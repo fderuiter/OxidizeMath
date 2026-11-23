@@ -96,6 +96,8 @@ fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
         show_nodal_contours: true,
         show_sand_particles: false,
         rng_seed: 0xC41A_D21E,
+        atlas_visible: false,
+        atlas_axes: super::atlas::default_chladni_atlas_axes(),
     }
 }
 
@@ -108,11 +110,11 @@ fn plate_preset_state(preset: TankPreset) -> ChladniWaveTankState {
             secondary_plot: SecondaryPlotMode::RadialFftSpectrum,
             wave_speed: 0.0,
             plate_stiffness: 0.0004,
-            damping: 0.08,
+            damping: 0.02,
             time_step: 0.002,
-            driver_x: 0.22,
-            driver_y: 0.50,
-            driver_frequency: 0.56,
+            driver_x: 0.333,
+            driver_y: 0.333,
+            driver_frequency: 0.565,
             driver_amplitude: 65.0,
             show_sand_particles: true,
             ..base_tank_state(preset)
@@ -121,11 +123,11 @@ fn plate_preset_state(preset: TankPreset) -> ChladniWaveTankState {
             boundary: BoundaryMode2D::Dirichlet,
             colormap: WaveColormap::BipolarPhase,
             secondary_plot: SecondaryPlotMode::RadialFftSpectrum,
-            damping: 0.03,
+            damping: 0.015,
             time_step: 0.004,
-            driver_x: 0.34,
+            driver_x: 0.337,
             driver_y: 0.50,
-            driver_frequency: 2.98,
+            driver_frequency: 2.952,
             driver_amplitude: 42.0,
             show_sand_particles: true,
             rng_seed: 0xD80A_BEEF,
@@ -181,7 +183,7 @@ fn resonant_seed_sample(state: &ChladniWaveTankState, xn: f64, yn: f64) -> f64 {
             0.0
         }
     } else if state.medium == Wave2DMedium::BiharmonicPlate {
-        0.45 * ((3.0 * pi * xn).cos() * (pi * yn).cos() - (pi * xn).cos() * (3.0 * pi * yn).cos())
+        0.45 * (3.0 * pi * xn).cos() * (3.0 * pi * yn).cos()
     } else {
         0.0
     }
@@ -200,7 +202,7 @@ pub(super) fn seed_initial_resonant_field(
     for y in 0..h {
         let yn = (y as f64) / denom_y;
         for x in 0..w {
-            let idx = y * w + x;
+            let idx = math_explorer::math_kernel::types::flatten_2d_index(x, y, w);
             if solver.wall_mask[idx] > 0.5 {
                 init[idx] = resonant_seed_sample(state, (x as f64) / denom_x, yn);
             }
@@ -247,6 +249,12 @@ impl scientific_metadata::theory::TheoryDescribable for ChladniWaveTankTool {
         );
         map
     }
+
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        super::atlas::chladni_parameter_constraints()
+    }
 }
 
 const SQUARE_CHLADNI_PRESET_JSON: &str = r#"{
@@ -265,13 +273,13 @@ const SQUARE_CHLADNI_PRESET_JSON: &str = r#"{
     "secondary_plot": "RadialFftSpectrum",
     "wave_speed": 0.0,
     "plate_stiffness": 0.0004,
-    "damping": 0.08,
+    "damping": 0.02,
     "time_step": 0.002,
     "driver_enabled": true,
     "line_source": false,
-    "driver_x": 0.22,
-    "driver_y": 0.5,
-    "driver_frequency": 0.56,
+    "driver_x": 0.333,
+    "driver_y": 0.333,
+    "driver_frequency": 0.565,
     "driver_amplitude": 65.0,
     "barrier_enabled": false,
     "slit_count": 2,
@@ -304,13 +312,13 @@ const CIRCULAR_DRUMHEAD_PRESET_JSON: &str = r#"{
     "secondary_plot": "RadialFftSpectrum",
     "wave_speed": 1.0,
     "plate_stiffness": 0.0,
-    "damping": 0.03,
+    "damping": 0.015,
     "time_step": 0.004,
     "driver_enabled": true,
     "line_source": false,
-    "driver_x": 0.34,
+    "driver_x": 0.337,
     "driver_y": 0.5,
-    "driver_frequency": 2.98,
+    "driver_frequency": 2.952,
     "driver_amplitude": 42.0,
     "barrier_enabled": false,
     "slit_count": 2,

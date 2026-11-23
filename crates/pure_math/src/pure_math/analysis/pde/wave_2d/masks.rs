@@ -7,7 +7,7 @@ use math_commons::math_kernel::types::flatten_2d_index;
 use super::DriverConfig2D;
 
 /// Evaluates localized spot or line-source forcing acceleration at grid cell `(x, y)`.
-#[verified_engine::verified]
+#[inline]
 pub(super) fn driver_force_at(
     width: usize,
     height: usize,
@@ -245,4 +245,81 @@ pub fn clamped_beam_eigenfunction(mode: usize, xi: f64) -> f64 {
     let sigma = (beta.cosh() - beta.cos()) / (beta.sinh() - beta.sin());
     let bx = beta * x;
     (bx.cosh() - bx.cos()) - sigma * (bx.sinh() - bx.sin())
+}
+
+/// Reads time-averaged detector column intensity (or fallback `energy_ema`) into `out`.
+#[verified_engine::verified]
+pub(super) fn read_detector_profile_into(
+    detector_accum: &[f64],
+    detector_samples: usize,
+    energy_ema: &[f64],
+    width: usize,
+    height: usize,
+    det_x: usize,
+    out: &mut [f64],
+) {
+    assert!(
+        out.len() >= height,
+        "Output buffer shorter than grid height"
+    );
+    if detector_samples > 0 {
+        let inv = 1.0 / (detector_samples as f64);
+        for (dst, &acc) in out.iter_mut().zip(detector_accum.iter()) {
+            *dst = acc * inv;
+        }
+    } else {
+        let col = det_x.min(width - 1);
+        for (y, dst) in out.iter_mut().enumerate().take(height) {
+            *dst = energy_ema[flatten_2d_index(col, y, width)];
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[inline]
+pub(super) fn eval_boundary_laplacian_2d(
+    u_curr: &[f64],
+    wall_mask: &[f64],
+    ops: &crate::pure_math::analysis::pde::fused_stepper::StencilOperators,
+    w: usize,
+    h: usize,
+    x: usize,
+    y: usize,
+    idx: usize,
+    boundary: super::config::BoundaryMode2D,
+) -> f64 {
+    use super::config::BoundaryMode2D;
+    match boundary {
+        BoundaryMode2D::Dirichlet | BoundaryMode2D::Sponge => 0.0,
+        BoundaryMode2D::Clamped => {
+            let corner = (x == 0 || x == w - 1) && (y == 0 || y == h - 1);
+            if corner {
+                0.0
+            } else if x == 0 {
+                2.0 * u_curr[flatten_2d_index(1, y, w)] * ops.inv_dx_sq
+            } else if x == w - 1 {
+                2.0 * u_curr[flatten_2d_index(w - 2, y, w)] * ops.inv_dx_sq
+            } else if y == 0 {
+                2.0 * u_curr[flatten_2d_index(x, 1, w)] * ops.inv_dy_sq
+            } else {
+                2.0 * u_curr[flatten_2d_index(x, h - 2, w)] * ops.inv_dy_sq
+            }
+        }
+        BoundaryMode2D::Neumann => {
+            if wall_mask[idx] <= 0.5 {
+                return 0.0;
+            }
+            let xl = if x > 0 { x - 1 } else { 1 };
+            let xr = if x + 1 < w { x + 1 } else { w - 2 };
+            let yu = if y > 0 { y - 1 } else { 1 };
+            let yd = if y + 1 < h { y + 1 } else { h - 2 };
+            ops.central_diff_2nd_2d(
+                u_curr[idx],
+                u_curr[flatten_2d_index(xl, y, w)],
+                u_curr[flatten_2d_index(xr, y, w)],
+                u_curr[flatten_2d_index(x, yu, w)],
+                u_curr[flatten_2d_index(x, yd, w)],
+            )
+        }
+    }
 }

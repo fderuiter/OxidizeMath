@@ -5,17 +5,23 @@
 use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_point_clamp,
+    apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier,
     apply_sponge_layer, BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D,
     SpectralAnalyzer2D, SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver,
 };
 
-use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
+use crate::async_sim::atlas::ParameterAtlasController;
+use crate::framework::{ChallengeEvaluation, ExportCapabilities, InteractiveTool, ToolStateBounds};
 
+pub(crate) mod atlas;
 mod canvas;
+pub(crate) mod challenge;
+pub(crate) mod lock_in;
 mod presets;
 mod ui;
 
+#[cfg(test)]
+mod atlas_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
@@ -132,6 +138,13 @@ pub(crate) struct ChladniWaveTankState {
     pub show_nodal_contours: bool,
     pub show_sand_particles: bool,
     pub rng_seed: u64,
+    #[serde(default, skip_serializing_if = "atlas::is_false")]
+    pub atlas_visible: bool,
+    #[serde(
+        default = "atlas::default_chladni_atlas_axes",
+        skip_serializing_if = "atlas::is_default_chladni_atlas_axes"
+    )]
+    pub atlas_axes: [String; 2],
 }
 
 pub struct ChladniWaveTankTool {
@@ -154,6 +167,8 @@ pub struct ChladniWaveTankTool {
     pub(crate) state_rev: u64,
     pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) analysis_dirty: bool,
+    pub(crate) atlas: ParameterAtlasController,
+    pub(crate) active_challenge: Option<&'static str>,
 }
 
 impl Default for ChladniWaveTankTool {
@@ -187,6 +202,8 @@ impl Default for ChladniWaveTankTool {
             state_rev: 1,
             focused_canvas: None,
             analysis_dirty: true,
+            atlas: ParameterAtlasController::new(atlas::CHLADNI_ATLAS_AXIS_PAIRS.to_vec()),
+            active_challenge: None,
         };
         tool.rebuild_domain_and_warmup(0);
         tool
@@ -296,37 +313,6 @@ impl ChladniWaveTankTool {
         }
     }
 
-    fn apply_clamp_pins(&mut self) {
-        let (pins, radius): (&[(f64, f64)], f64) = match self.state.clamp_layout {
-            ClampLayout::None => (&[], 0.0),
-            ClampLayout::CenterPin => (&[(0.5, 0.5)], 2.0),
-            ClampLayout::QuadSymmetry => (&[(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)], 1.8),
-            ClampLayout::EdgeMidpoints => {
-                (&[(0.5, 0.04), (0.5, 0.96), (0.04, 0.5), (0.96, 0.5)], 2.2)
-            }
-        };
-        for &(cx, cy) in pins {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                radius,
-            );
-        }
-        for &[cx, cy] in &self.custom_clamps {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                1.8,
-            );
-        }
-    }
-
     pub(crate) fn advance_physics_step(&mut self) {
         let start = crate::web_io::PlatformInstant::now();
         let params = self.pde_params();
@@ -414,7 +400,7 @@ impl InteractiveTool for ChladniWaveTankTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&self.state).ok()
+        self.serialize_chladni_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
@@ -424,11 +410,27 @@ impl InteractiveTool for ChladniWaveTankTool {
         if !presets::is_valid_state(&parsed) {
             return Err("Chladni Wave Tank parameters out of finite valid bounds".into());
         }
+        self.atlas
+            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.atlas.set_visible(parsed.atlas_visible);
         self.state = parsed;
         self.custom_clamps.clear();
+        self.enforce_chladni_challenge_locks();
         self.state_rev = self.state_rev.wrapping_add(1);
         self.rebuild_domain_and_warmup(0);
         Ok(())
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_chladni_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.eval_chladni_challenge()
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {

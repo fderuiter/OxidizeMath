@@ -6088,6 +6088,30 @@
       "signature": "pub use hydrogenic :: hydrogenic_radial_wavefunction"
     },
     {
+      "signature": "pub use scattering :: TransferMatrix2x2"
+    },
+    {
+      "signature": "pub use scattering :: compiled_barrier_transmission"
+    },
+    {
+      "signature": "pub use scattering :: compiled_barrier_transmission_with_overrides"
+    },
+    {
+      "signature": "pub use scattering :: double_barrier_transmission"
+    },
+    {
+      "signature": "pub use scattering :: gauss_hermite_wavepacket_transmission"
+    },
+    {
+      "signature": "pub use scattering :: piecewise_potential_transmission"
+    },
+    {
+      "signature": "pub use scattering :: rectangular_barrier_transmission"
+    },
+    {
+      "signature": "pub use scattering :: symmetric_double_barrier_transmission"
+    },
+    {
       "signature": "pub use schrodinger :: evolve_state"
     },
     {
@@ -6116,6 +6140,44 @@
     },
     {
       "signature": "pub use types :: QuantumState"
+    }
+  ],
+  "crates/domain_physics/src/physics/quantum/scattering.rs": [
+    {
+      "signature": "impl TransferMatrix2x2 { pub const fn identity () -> Self }"
+    },
+    {
+      "signature": "impl TransferMatrix2x2 { pub fn compose (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl TransferMatrix2x2 { pub fn constant_slice (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Option < Self > }"
+    },
+    {
+      "signature": "impl TransferMatrix2x2 { pub fn transmission_for_wavenumber (self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub fn compiled_barrier_transmission (_ : f64 , _ : & CompiledExpr , _ : & [f64] , _ : (f64 , f64 , usize) , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn compiled_barrier_transmission_with_overrides (_ : f64 , _ : & CompiledExpr , _ : & [f64] , _ : (f64 , f64 , usize) , _ : & [(u16 , f64)] , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn double_barrier_transmission (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn gauss_hermite_wavepacket_transmission < F > (_ : f64 , _ : f64 , _ : F) -> f64 where F : Fn (f64) -> f64 ,"
+    },
+    {
+      "signature": "pub fn piecewise_potential_transmission (_ : f64 , _ : & [f64] , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn rectangular_barrier_transmission (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn symmetric_double_barrier_transmission (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub struct TransferMatrix2x2"
     }
   ],
   "crates/domain_physics/src/physics/quantum/schrodinger.rs": [
@@ -9179,6 +9241,42 @@
       "signature": "pub use config :: young_double_slit_fringe_spacing"
     },
     {
+      "signature": "pub use eigenmodes :: BESSEL_JN_ZEROS"
+    },
+    {
+      "signature": "pub use eigenmodes :: Eigenmode2D"
+    },
+    {
+      "signature": "pub use eigenmodes :: PinConstraint2D"
+    },
+    {
+      "signature": "pub use eigenmodes :: PlateEigenmodeKind"
+    },
+    {
+      "signature": "pub use eigenmodes :: bessel_jn"
+    },
+    {
+      "signature": "pub use eigenmodes :: bessel_jn_zero"
+    },
+    {
+      "signature": "pub use eigenmodes :: circular_drumhead_eigenfrequency_hz"
+    },
+    {
+      "signature": "pub use eigenmodes :: evaluate_eigenmode_amplitude"
+    },
+    {
+      "signature": "pub use eigenmodes :: lorentzian_modal_response"
+    },
+    {
+      "signature": "pub use eigenmodes :: populate_eigenmodes"
+    },
+    {
+      "signature": "pub use eigenmodes :: snap_to_mode_antinode"
+    },
+    {
+      "signature": "pub use eigenmodes :: square_plate_eigenfrequency_hz"
+    },
+    {
       "signature": "pub use masks :: apply_biconvex_lens"
     },
     {
@@ -9233,6 +9331,47 @@
     },
     {
       "signature": "pub struct Wave2DParams"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/eigenmodes.rs": [
+    {
+      "signature": "impl Eigenmode2D { pub fn fft_radial_bin (& self , _ : usize , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub enum PinConstraint2D"
+    },
+    {
+      "signature": "pub enum PlateEigenmodeKind"
+    },
+    {
+      "signature": "pub fn circular_drumhead_eigenfrequency_hz (_ : usize , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : & Wave2DParams ,) -> f64"
+    },
+    {
+      "signature": "pub fn evaluate_eigenmode_amplitude (_ : & Eigenmode2D , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn lorentzian_modal_response (_ : & [Eigenmode2D] , _ : f64 , _ : f64 , _ : Option < (f64 , f64) > , _ : f64 ,) -> (f64 , usize)"
+    },
+    {
+      "signature": "pub fn populate_eigenmodes (_ : bool , _ : usize , _ : f64 , _ : f64 , _ : & Wave2DParams , _ : PinConstraint2D , _ : & mut [Eigenmode2D] ,) -> usize"
+    },
+    {
+      "signature": "pub fn snap_to_mode_antinode (_ : & Eigenmode2D , _ : f64 , _ : f64 , _ : PinConstraint2D , _ : f64 ,) -> (f64 , f64)"
+    },
+    {
+      "signature": "pub fn square_plate_eigenfrequency_hz (_ : usize , _ : usize , _ : usize , _ : f64 , _ : & Wave2DParams ,) -> f64"
+    },
+    {
+      "signature": "pub struct Eigenmode2D"
+    },
+    {
+      "signature": "pub use bessel :: BESSEL_JN_ZEROS"
+    },
+    {
+      "signature": "pub use bessel :: bessel_jn"
+    },
+    {
+      "signature": "pub use bessel :: bessel_jn_zero"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/wave_2d/masks.rs": [

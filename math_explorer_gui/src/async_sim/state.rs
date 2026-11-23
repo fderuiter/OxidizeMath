@@ -35,9 +35,9 @@ pub enum SimCommand {
         #[allow(missing_docs)]
         is_obstacle: bool,
     },
-    #[allow(missing_docs)]
+    /// Applies a continuous spatial brush stroke to the active worker model.
     ApplyBrushStroke(BrushStroke),
-    #[allow(missing_docs)]
+    /// Synchronizes persisted spatial sculpt state into the worker model.
     SyncSculptState(SculptStatePayload),
     #[allow(missing_docs)]
     ClearObstacles,

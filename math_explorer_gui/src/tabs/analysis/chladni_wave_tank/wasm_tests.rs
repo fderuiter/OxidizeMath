@@ -39,4 +39,14 @@ fn wasm_smoke_chladni_wave_tank_presets_stepping_and_exports() {
         let json = format_json(&datasets);
         assert!(json.starts_with('['));
     }
+
+    let theory = super::atlas::chladni_parameter_constraints();
+    let cart = std::sync::Arc::new(super::atlas::ChladniModalCartographer::new(
+        &theory,
+        ("driver_frequency", "plate_stiffness"),
+        &tool.state,
+        tool.domain_physical_length(),
+    ));
+    let cell = crate::async_sim::atlas::RegimeCartographer::evaluate_cell(&*cart, 0.565, 0.0004);
+    assert!(cell.primary.is_finite());
 }

@@ -78,6 +78,7 @@ pub mod fourier;
 #[allow(missing_docs)]
 pub mod hamiltonian;
 pub mod hydrogenic;
+pub mod scattering;
 pub mod schrodinger;
 #[allow(missing_docs)]
 pub mod spin;
@@ -94,6 +95,12 @@ pub use hamiltonian::{
 pub use hydrogenic::{
     HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumFieldObservable, hydrogenic_energy_au,
     hydrogenic_orbital_cartesian, hydrogenic_radial_wavefunction,
+};
+pub use scattering::{
+    TransferMatrix2x2, compiled_barrier_transmission, compiled_barrier_transmission_with_overrides,
+    double_barrier_transmission, gauss_hermite_wavepacket_transmission,
+    piecewise_potential_transmission, rectangular_barrier_transmission,
+    symmetric_double_barrier_transmission,
 };
 pub use schrodinger::{
     evolve_state, evolve_state_in_place, state_norm_squared, time_evolution_operator,

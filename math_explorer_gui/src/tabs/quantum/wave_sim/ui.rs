@@ -138,16 +138,22 @@ impl WaveSimulatorTool {
         );
 
         ui.add_space(4.0);
-        if ui
-            .button("🎯 50% Tunneling Split")
-            .accessible_hover_text(
-                "Configure a sub-barrier wavepacket (E0 = 12.5, V0 = 11.35, width = 0.5) that splits 50/50 across a rectangular barrier.",
-            )
-            .clicked()
-        {
-            self.apply_tunneling_split_challenge(Some(ctx));
-            let _ = self.worker.send_command(SimCommand::Start);
-            return;
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("🎯 50% Tunneling Split")
+                .accessible_hover_text(
+                    "Configure a sub-barrier wavepacket (E0 = 12.5, V0 = 11.35, width = 0.5) that splits 50/50 across a rectangular barrier.",
+                )
+                .clicked()
+            {
+                self.active_challenge = None;
+                self.apply_tunneling_split_challenge(Some(ctx));
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            let _ = self.atlas.show_toggle_button(ui);
+        });
+        if self.active_challenge.is_some() {
+            ui.small("🔒 Fabry-Pérot Challenge active: V₀ = 20.0, w = 1.0, x₀ = -2.5 locked.");
         }
 
         ui.add_space(4.0);
@@ -173,21 +179,24 @@ impl WaveSimulatorTool {
 
     fn draw_wavepacket_and_barrier_sliders(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.label("Wavepacket & Barrier Controls");
+        let locked = self.active_challenge.is_some();
         let mut reset_needed = false;
 
-        reset_needed |= draw_bounded_slider(
-            ui,
-            &mut self.x0,
-            X0_MIN..=X0_MAX,
-            0.05,
-            wave_parameter_label("x0"),
-            "Initial center x0 of the normalized Gaussian wavepacket.",
-        );
+        if !locked {
+            reset_needed |= draw_bounded_slider(
+                ui,
+                &mut self.x0,
+                X0_MIN..=X0_MAX,
+                0.05,
+                wave_parameter_label("x0"),
+                "Initial center x0 of the normalized Gaussian wavepacket.",
+            );
+        }
         reset_needed |= draw_bounded_slider(
             ui,
             &mut self.k0,
             K0_MIN..=K0_MAX,
-            0.1,
+            0.05,
             wave_parameter_label("k0"),
             "Initial wave number k0 setting kinetic energy E0 = k0² / 2.",
         );
@@ -200,7 +209,7 @@ impl WaveSimulatorTool {
             "Spatial spread σ of the initial Gaussian wavepacket.",
         );
 
-        if self.preset.uses_barrier_controls() {
+        if self.preset.uses_barrier_controls() && !locked {
             reset_needed |= draw_bounded_slider(
                 ui,
                 &mut self.v0,
@@ -220,8 +229,24 @@ impl WaveSimulatorTool {
         }
 
         self.draw_dt_and_energy_summary(ui);
+        self.flush_pending_slider_reset(ctx, reset_needed);
+    }
+
+    fn flush_pending_slider_reset(&mut self, ctx: &egui::Context, reset_needed: bool) {
         if reset_needed {
-            self.sync_config_and_reset(Some(ctx));
+            self.enforce_wave_challenge_locks();
+            self.bump_revision();
+            self.export_runner = None;
+            self.export_data = None;
+            self.pending_slider_reset = true;
+        }
+        if self.pending_slider_reset {
+            if ctx.input(|i| i.pointer.primary_down()) {
+                ctx.request_repaint();
+            } else {
+                self.pending_slider_reset = false;
+                self.sync_config_and_reset(Some(ctx));
+            }
         }
     }
 
@@ -255,6 +280,17 @@ impl WaveSimulatorTool {
 
     fn draw_tunneling_readouts(&self, ui: &mut egui::Ui) {
         ui.label("Born Tunneling Observables");
+        let (t_stat, t_wp) = self.stationary_and_wavepacket_transmission();
+        crate::reflective_ui::render_copyable_metric(
+            ui,
+            "Stationary T(k0)",
+            &format!("{:.1}% ({t_stat:.4})", t_stat * 100.0),
+        );
+        crate::reflective_ui::render_copyable_metric(
+            ui,
+            "Wavepacket <T>_σ",
+            &format!("{:.1}% ({t_wp:.4})", t_wp * 100.0),
+        );
         let Some(wave_data) = self.latest_wave_data() else {
             ui.small("Awaiting initial wavepacket snapshot...");
             return;
@@ -284,7 +320,13 @@ impl WaveSimulatorTool {
             wave_data.x_right
         ));
         let scatter_text = match wave_data.latched_transmission {
-            Some(latched) if wave_data.right_wall_prob >= 0.02 => {
+            Some(latched) if wave_data.quasi_bound_latched => {
+                format!(
+                    "{:.1}% ({latched:.4}, quasi-bound pre-wall)",
+                    latched * 100.0
+                )
+            }
+            Some(latched) if wave_data.wall_arrived => {
                 format!("{:.1}% ({latched:.4}, pre-wall frozen)", latched * 100.0)
             }
             Some(latched) => format!("{:.1}% ({latched:.4})", latched * 100.0),
@@ -298,6 +340,10 @@ impl WaveSimulatorTool {
         let ctx = parent_ui.ctx().clone();
         let mut pending_strokes = Vec::new();
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
+            if self.atlas.is_visible() {
+                self.render_wave_atlas_panel(ui);
+                ui.separator();
+            }
             let Some(wave_data) = self.latest_wave_data().cloned() else {
                 render_empty_plot_guidance(
                     ui,
@@ -308,7 +354,9 @@ impl WaveSimulatorTool {
             pending_strokes = render_wave_plot(ui, &wave_data, &mut self.brush_kit);
         });
         for stroke in pending_strokes {
-            self.apply_ui_brush_stroke(stroke, Some(&ctx));
+            if self.active_challenge.is_none() {
+                self.apply_ui_brush_stroke(stroke, Some(&ctx));
+            }
         }
     }
 

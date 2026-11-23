@@ -17,6 +17,10 @@ impl ChladniWaveTankTool {
     pub(super) fn draw_central_workspace(&mut self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Wave Tank & 2D Chladni Plate");
+            if self.atlas.is_visible() {
+                self.render_chladni_atlas_panel(ui);
+                ui.separator();
+            }
             let avail = ui.available_size();
             if avail.x > 620.0 {
                 ui.columns(2, |cols| {
@@ -117,23 +121,37 @@ impl ChladniWaveTankTool {
         }
 
         if (response.clicked() || response.dragged()) && rect.width() > 1.0 && rect.height() > 1.0 {
-            if let Some(pos) = response.interact_pointer_pos() {
-                let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
-                let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
-                let shift = ctx.input(|i| i.modifiers.shift);
-                if shift && response.clicked() && self.custom_clamps.len() < 16 {
-                    self.custom_clamps.push([nx, ny]);
-                    self.rebuild_masks();
-                } else {
-                    self.state.driver_x = nx;
-                    self.state.driver_y = ny;
-                    if response.clicked() {
-                        self.solver.inject_gaussian_pulse(nx, ny, 0.04, 0.65);
-                    }
-                }
-                self.state_rev = self.state_rev.wrapping_add(1);
+            self.handle_canvas_pointer(&ctx, response, rect);
+        }
+    }
+
+    fn handle_canvas_pointer(
+        &mut self,
+        ctx: &egui::Context,
+        response: &egui::Response,
+        rect: Rect,
+    ) {
+        let Some(pos) = response.interact_pointer_pos() else {
+            return;
+        };
+        let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
+        let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
+        let shift = ctx.input(|i| i.modifiers.shift);
+        if shift
+            && response.clicked()
+            && self.custom_clamps.len() < 16
+            && self.active_challenge.is_none()
+        {
+            self.custom_clamps.push([nx, ny]);
+            self.rebuild_masks();
+        } else {
+            self.state.driver_x = nx;
+            self.state.driver_y = ny;
+            if response.clicked() {
+                self.solver.inject_gaussian_pulse(nx, ny, 0.04, 0.65);
             }
         }
+        self.state_rev = self.state_rev.wrapping_add(1);
     }
 
     fn paint_canvas_overlays(&self, painter: &egui::Painter, rect: Rect, palette: SemanticPalette) {
@@ -181,7 +199,7 @@ impl ChladniWaveTankTool {
         painter.circle_stroke(drv_pos, 5.0_f32, Stroke::new(1.8_f32, palette.axis_x));
     }
 
-    fn draw_secondary_analysis_plot(&self, ui: &mut egui::Ui) {
+    fn draw_secondary_analysis_plot(&mut self, ui: &mut egui::Ui) {
         match self.state.secondary_plot {
             SecondaryPlotMode::DetectorCrossSection => self.draw_detector_cross_section_plot(ui),
             SecondaryPlotMode::RadialFftSpectrum => self.draw_radial_fft_plot(ui),
@@ -254,9 +272,12 @@ impl ChladniWaveTankTool {
         }
     }
 
-    fn draw_radial_fft_plot(&self, ui: &mut egui::Ui) {
+    fn draw_radial_fft_plot(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
-        ui.label("2D FFT Azimuthal Radial Spectrum S(|k|)");
+        ui.label("2D FFT Azimuthal Radial Spectrum S(|k|) — Click eigenmode line to lock");
+        let (modes, count) = self.active_eigenmodes();
+        let dom_len = self.domain_physical_length();
+        let max_k = (GRID_SIZE / 2) as f64;
         let pts: PlotPoints = self
             .radial_spectrum
             .iter()
@@ -264,7 +285,8 @@ impl ChladniWaveTankTool {
             .skip(1)
             .map(|(k, &val)| [k as f64, if val.is_finite() { val } else { 0.0 }])
             .collect();
-        Plot::new("chladni_fft_plot")
+        let mut ptr_k = None;
+        let plot_resp = Plot::new("chladni_fft_plot")
             .allow_boxed_zoom(false)
             .show(ui, |plot_ui| {
                 plot_ui.line(
@@ -278,7 +300,32 @@ impl ChladniWaveTankTool {
                             .color(palette.series_color(1)),
                     );
                 }
+                for m in modes[..count].iter().take(10) {
+                    let k_bin = m.fft_radial_bin(GRID_SIZE, dom_len);
+                    if (0.2..=max_k).contains(&k_bin) {
+                        plot_ui.vline(
+                            VLine::new(format!("f({},{})", m.m, m.n), k_bin)
+                                .color(palette.accent.gamma_multiply(0.55))
+                                .style(egui_plot::LineStyle::Dashed { length: 4.0 }),
+                        );
+                    }
+                }
+                ptr_k = plot_ui.pointer_coordinate().map(|c| c.x);
             });
+        if let Some(kx) = ptr_k {
+            if plot_resp.response.clicked() {
+                let ctx = ui.ctx().clone();
+                let _ = self.lock_nearest_fft_eigenmode(kx, Some(&ctx));
+            } else if let Some(m) = modes[..count]
+                .iter()
+                .find(|m| (m.fft_radial_bin(GRID_SIZE, dom_len) - kx).abs() <= 1.5)
+            {
+                plot_resp.response.on_hover_text(format!(
+                    "Eigenmode ({}, {}): {:.3} Hz — Click to lock resonance & snap antinode",
+                    m.m, m.n, m.frequency_hz
+                ));
+            }
+        }
     }
 
     fn upload_wave_texture(&mut self, ctx: &egui::Context) {
