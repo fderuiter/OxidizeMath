@@ -170,6 +170,11 @@ impl AdvectiveMorphogenesisTool {
             && self.engine.gray_scott.v().iter().all(|v| v.is_finite())
             && self.engine.vorticity.iter().all(|v| v.is_finite())
     }
+
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
 }
 
 impl FiniteStateGuard for AdvectiveMorphogenesisTool {
@@ -271,10 +276,6 @@ impl InteractiveTool for AdvectiveMorphogenesisTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.render_studio(ui);
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {

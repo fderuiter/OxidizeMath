@@ -12,11 +12,13 @@ use eframe::egui;
 
 pub mod lattice_boltzmann;
 pub mod lattice_boltzmann_sculpt;
+pub mod lbm_atlas;
 pub mod lbm_fairing;
 pub mod lbm_fairing_ui;
 pub mod potential_flow;
 mod potential_flow_brush;
 pub mod turbulence;
+pub mod turbulence_atlas;
 
 pub struct FluidDynamicsTab {
     framework: crate::framework::SimulationFramework,
@@ -52,6 +54,23 @@ impl FluidDynamicsTab {
             if let Ok(parsed) = serde_json::from_str::<lbm_fairing::LbmSerializedState>(&json) {
                 handoff.viscosity = parsed.viscosity.clamp(0.018, 0.25);
                 handoff.mask_hex = parsed.mask_hex;
+            } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json) {
+                if let Some(visc) = val.get("viscosity").and_then(serde_json::Value::as_f64) {
+                    handoff.viscosity = visc.clamp(0.018, 0.25);
+                }
+                if let Some(runs) = val
+                    .get("rle_mask")
+                    .and_then(|v| serde_json::from_value::<Vec<[u32; 2]>>(v.clone()).ok())
+                {
+                    if let Ok(bytes) = crate::framework::decode_rle_mask(&runs, LBM_CELL_COUNT) {
+                        let mut mask = [false; LBM_CELL_COUNT];
+                        for (dst, &b) in mask.iter_mut().zip(bytes.iter()) {
+                            *dst = b != 0;
+                        }
+                        crate::framework::restore_inlet_and_core_mask(&mut mask);
+                        handoff.mask_hex = Some(crate::framework::encode_mask_hex(&mask));
+                    }
+                }
             }
         }
         if handoff.mask_hex.is_none() {
