@@ -88,27 +88,6 @@ pub enum MorphogenesisKineticsMode {
     /// Autocatalytic substrate-depletion mitosis and coral waves (`GrayScottKinetics`).
     GrayScott,
 }
-
-/// Configuration struct for Turing Morphogenesis simulation parameters.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct MorphogenesisPresetConfig {
-    /// Reaction kinetic parameter a.
-    pub a: f64,
-    /// Reaction kinetic parameter b.
-    pub b: f64,
-    /// Diffusion coefficient for activator (u).
-    pub d_u: f64,
-    /// Diffusion coefficient for inhibitor (v).
-    pub d_v: f64,
-    /// Simulation time step size.
-    pub dt: f64,
-    /// Grid width.
-    pub width: usize,
-    /// Grid height.
-    pub height: usize,
-}
-
 /// Configuration struct for Replicator Dynamics evolutionary game parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -227,6 +206,14 @@ pub use glicko2_preset_validation::{
     Glicko2TournamentPresetConfig, MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS,
 };
 
+#[path = "presets/markov.rs"]
+mod markov_preset_validation;
+pub use markov_preset_validation::{
+    AbsorbingDtmcWorkbenchConfig, CtmcWorkbenchConfig, DtmcStateKind, HmmWorkbenchConfig,
+    MarkovWorkbenchMode, MarkovWorkbenchPresetConfig, MAX_BAUM_WELCH_ITERATIONS, MAX_HMM_SYMBOLS,
+    MAX_MARKOV_STATES, MAX_OBSERVATION_SEQUENCE_LEN,
+};
+
 /// Packs `config` into a `"1.0"` [`PresetWrapper`] metadata envelope and serializes it as pretty JSON.
 pub fn serialize_preset_envelope<T: Serialize>(
     title: &str,
@@ -291,21 +278,6 @@ pub fn deserialize_preset_envelope_bounded<T: for<'de> Deserialize<'de>>(
         ));
     }
     Ok(envelope.config)
-}
-
-/// Strips any UTF-8 BOM, enforces default preset envelope bounds, parses a [`PresetWrapper`]
-/// JSON envelope, and validates `metadata.domain`.
-pub fn deserialize_preset_envelope<T: for<'de> Deserialize<'de>>(
-    json_str: &str,
-    expected_domain: &str,
-    target_name: &str,
-) -> Result<T, String> {
-    deserialize_preset_envelope_bounded(
-        json_str,
-        expected_domain,
-        target_name,
-        crate::framework::ToolStateBounds::DEFAULT,
-    )
 }
 
 /// UI helper state for non-blocking file operations and user warnings/toasts.
@@ -437,56 +409,6 @@ impl PresetDialogState {
         }
         loaded
     }
-}
-
-/// Renders Export/Import buttons and any active inline toast message in the egui UI.
-pub fn render_preset_buttons<T, E, I>(
-    dialog_state: &mut PresetDialogState,
-    ui: &mut eframe::egui::Ui,
-    target: &mut T,
-    file_prefix: &str,
-    export_json: E,
-    import_json: I,
-) -> bool
-where
-    E: FnOnce(&T) -> Result<String, String>,
-    I: FnOnce(&mut T, &str) -> Result<(), String>,
-{
-    ui.separator();
-    ui.heading("Preset Import / Export");
-    let mut changed = false;
-
-    ui.horizontal(|ui| {
-        if ui.button("📥 Import Preset JSON").clicked() {
-            dialog_state.trigger_import();
-        }
-        if ui.button("📤 Export Preset JSON").clicked() {
-            dialog_state.export_preset_result(export_json(target), file_prefix);
-        }
-    });
-
-    if dialog_state.poll_pending_import(|json_str| import_json(target, json_str)) {
-        changed = true;
-    }
-
-    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-    if let Some(ref msg) = dialog_state.toast_info {
-        ui.add_space(4.0);
-        ui.colored_label(palette.success, format!("ℹ️ {}", msg));
-        if ui.small_button("Dismiss").clicked() {
-            dialog_state.toast_info = None;
-        }
-    }
-
-    if let Some(ref err) = dialog_state.toast_error {
-        ui.add_space(4.0);
-        ui.colored_label(palette.error, format!("⚠️ {}", err));
-        if ui.small_button("Dismiss Warning").clicked() {
-            dialog_state.toast_error = None;
-        }
-    }
-
-    changed
 }
 
 #[cfg(test)]

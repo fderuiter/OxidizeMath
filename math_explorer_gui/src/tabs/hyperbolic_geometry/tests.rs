@@ -1,16 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::HyperbolicGeometryTab;
 use super::billiards_tool::HyperbolicBilliardsTool;
 use super::disk_tool::HyperbolicDiskTool;
-use crate::framework::{
-    ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework,
-};
+use super::HyperbolicGeometryTab;
+use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework};
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use math_explorer::num_complex::Complex64;
 use math_explorer::pure_math::differential_geometry::hyperbolic::{
-    HyperbolicModel, POINCARE_DISK_RADIUS_MAX, gauss_bonnet_triangle,
+    gauss_bonnet_triangle, HyperbolicModel, POINCARE_DISK_RADIUS_MAX,
 };
 
 fn viewport_input(events: Vec<egui::Event>) -> egui::RawInput {
@@ -137,7 +135,10 @@ fn test_poincare_vs_klein_projection_switching_and_state_roundtrip() {
         .import_preset_json(&preset)
         .expect("import valid preset");
     assert_eq!(restored.model, tool.model);
-    assert_eq!((restored.p, restored.q, restored.depth), (tool.p, tool.q, tool.depth));
+    assert_eq!(
+        (restored.p, restored.q, restored.depth),
+        (tool.p, tool.q, tool.depth)
+    );
     for idx in 0..3 {
         assert!((restored.ruler_vertices[idx] - tool.ruler_vertices[idx]).norm() < 1e-14);
     }

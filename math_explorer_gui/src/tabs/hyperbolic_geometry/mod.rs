@@ -1,5 +1,6 @@
-// @explorer_feature = "pure_math"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod billiards_tool;
@@ -66,13 +67,6 @@ impl ExplorerTab for HyperbolicGeometryTab {
         }
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework
-            .active_tool
-            .as_ref()
-            .and_then(|tool| tool.focused_canvas_id())
-    }
-
     fn state_revision(&self) -> u64 {
         self.framework.state_revision()
     }
@@ -95,6 +89,14 @@ impl ExplorerTab for HyperbolicGeometryTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "hyperbolic_geometry",
+        order: 27,
+        build: || Box::new(HyperbolicGeometryTab::default()),
     }
 }
 

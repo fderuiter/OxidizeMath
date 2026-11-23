@@ -136,7 +136,7 @@ impl std::fmt::Display for HyperbolicError {
             Self::NonHyperbolicSchlafli { p, q } => {
                 write!(
                     f,
-                    "Schlafli symbol {{{p}, {q}}} is not hyperbolic: requires 3 <= p,q <= {MAX_POLYGON_SIDES} and (p - 2)*(q - 2) > 4"
+                    "Schlafli symbol ({p}, {q}) is not hyperbolic: requires 3 <= p,q <= {MAX_POLYGON_SIDES} and (p - 2)*(q - 2) > 4"
                 )
             }
             Self::InvalidDomainPoint { reason } => write!(f, "invalid hyperbolic point: {reason}"),

@@ -83,6 +83,7 @@ impl Error {
             Self::HighEnergy(err) => Some(err),
             Self::Nuclear(err) => Some(err),
             Self::Radar(err) => Some(err),
+            Self::Sandpile(err) => Some(err),
             Self::SolidState(err) => Some(err),
             Self::StandardModel(err) => Some(err),
             Self::StatMech(err) => Some(err),
@@ -95,6 +96,7 @@ impl Error {
         feature = "ai",
         feature = "applied",
         feature = "biology",
+        feature = "climate",
         feature = "epidemiology",
         feature = "physics"
     ))]
@@ -111,6 +113,8 @@ impl Error {
             Self::Kinetics(err) => Some(err),
             #[cfg(feature = "biology")]
             Self::ReactionDiffusion(err) => Some(err),
+            #[cfg(feature = "climate")]
+            Self::Climate(err) => Some(err),
             #[cfg(feature = "epidemiology")]
             Self::EpidemiologyDomain(err) => Some(err),
             #[cfg(feature = "epidemiology")]
@@ -126,6 +130,7 @@ impl Error {
         feature = "ai",
         feature = "applied",
         feature = "biology",
+        feature = "climate",
         feature = "epidemiology",
         feature = "physics"
     ))]
@@ -157,6 +162,7 @@ impl Error {
                 feature = "ai",
                 feature = "applied",
                 feature = "biology",
+                feature = "climate",
                 feature = "epidemiology",
                 feature = "physics"
             ))]

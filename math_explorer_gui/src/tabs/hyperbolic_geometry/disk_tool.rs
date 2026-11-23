@@ -4,9 +4,9 @@ use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 use eframe::egui;
 use math_explorer::num_complex::Complex64;
 use math_explorer::pure_math::differential_geometry::hyperbolic::{
-    GeodesicArc, HyperbolicModel, HyperbolicTilingBuffer, MAX_TILING_DEPTH,
-    POINCARE_DISK_RADIUS_MAX, Su11Matrix, clamp_to_disk, gauss_bonnet_triangle,
-    is_hyperbolic_schlafli, project_disk_point,
+    clamp_to_disk, gauss_bonnet_triangle, is_hyperbolic_schlafli, project_disk_point, GeodesicArc,
+    HyperbolicModel, HyperbolicTilingBuffer, Su11Matrix, MAX_TILING_DEPTH,
+    POINCARE_DISK_RADIUS_MAX,
 };
 use std::f64::consts::PI;
 
@@ -157,10 +157,7 @@ impl HyperbolicDiskTool {
                     ring.push([pt.re, pt.im]);
                 }
             }
-            out.push((
-                format!("Tile {poly_idx} (layer {})", poly.layer),
-                ring,
-            ));
+            out.push((format!("Tile {poly_idx} (layer {})", poly.layer), ring));
         }
         if self.show_ruler {
             out.push(self.export_ruler_series());
@@ -205,18 +202,14 @@ impl InteractiveTool for HyperbolicDiskTool {
         self.revision
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.last_canvas_id
-    }
-
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds::DEFAULT
     }
 
     fn has_finite_parameters(&self) -> bool {
         let coeffs = self.tiling.view_matrix().to_coeffs();
-        let view_ok = coeffs.iter().all(|c| c.is_finite())
-            && self.tiling.view_matrix().determinant() > 0.5;
+        let view_ok =
+            coeffs.iter().all(|c| c.is_finite()) && self.tiling.view_matrix().determinant() > 0.5;
         let ruler_ok = self.ruler_vertices.iter().all(|z| {
             z.re.is_finite() && z.im.is_finite() && z.norm() <= POINCARE_DISK_RADIUS_MAX + 1e-7
         });
@@ -266,6 +259,7 @@ impl InteractiveTool for HyperbolicDiskTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let parsed: HyperbolicDiskState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid HyperbolicDiskTool state: {e}"))?;
         if !is_hyperbolic_schlafli(parsed.p, parsed.q) {

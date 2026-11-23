@@ -2,19 +2,17 @@
 
 use super::billiards_tool::HyperbolicBilliardsTool;
 use crate::accessibility::{
-    AccessibleHoverText, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility,
+    lock_canvas_arrow_keys, paint_canvas_focus_ring, register_canvas_accessibility,
+    AccessibleHoverText,
 };
 use crate::app::SemanticPalette;
-use crate::framework::{
-    PaneSidePanel, PlaybackAction, PlaybackTransport, scoped_panel_id,
-};
+use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::num_complex::Complex64;
 use math_explorer::pure_math::differential_geometry::hyperbolic::{
-    HyperbolicModel, project_disk_point, unproject_disk_point,
+    project_disk_point, unproject_disk_point, HyperbolicModel,
 };
 
 const WALL_ARC_PTS: usize = 17;
@@ -64,7 +62,9 @@ impl HyperbolicBilliardsTool {
                 .changed();
             let k_sel = ui
                 .selectable_value(&mut self.model, HyperbolicModel::Klein, "Beltrami-Klein")
-                .accessible_hover_text("Projective disk where geodesic walls and rays are straight chords.")
+                .accessible_hover_text(
+                    "Projective disk where geodesic walls and rays are straight chords.",
+                )
                 .changed();
             if p_sel || k_sel {
                 self.revision = self.revision.wrapping_add(1);
@@ -112,6 +112,7 @@ impl HyperbolicBilliardsTool {
                 self.system.reset_particles();
                 self.revision = self.revision.wrapping_add(1);
             }
+            PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
         }
     }
 
@@ -119,10 +120,7 @@ impl HyperbolicBilliardsTool {
         ui.heading("Twin-Particle Perturbation");
         let mut changed = false;
         changed |= ui
-            .add(
-                egui::Slider::new(&mut self.log10_epsilon, -9.0..=-2.0)
-                    .text("log10(epsilon)"),
-            )
+            .add(egui::Slider::new(&mut self.log10_epsilon, -9.0..=-2.0).text("log10(epsilon)"))
             .changed();
         changed |= ui
             .add(
@@ -151,21 +149,13 @@ impl HyperbolicBilliardsTool {
             "Wall Reflections",
             &format!("{} bounces", self.system.primary_bounces()),
         );
-        render_copyable_metric(
-            ui,
-            "Path Length s",
-            &format!("{:.3}", sample.path_length),
-        );
+        render_copyable_metric(ui, "Path Length s", &format!("{:.3}", sample.path_length));
         render_copyable_metric(
             ui,
             "Separation d_H(z1, z2)",
             &format!("{:.3e}", sample.separation),
         );
-        render_copyable_metric(
-            ui,
-            "ln(d_H / eps)",
-            &format!("{:.4}", sample.log_ratio),
-        );
+        render_copyable_metric(ui, "ln(d_H / eps)", &format!("{:.4}", sample.log_ratio));
         render_copyable_metric(ui, "FTLE lambda(s)", &format!("{:.4}", sample.ftle));
     }
 
@@ -268,7 +258,11 @@ impl HyperbolicBilliardsTool {
             )
         };
         painter.circle_filled(center, radius, visuals.extreme_bg_color);
-        painter.circle_stroke(center, radius, egui::Stroke::new(1.5_f32, palette.graph_edge));
+        painter.circle_stroke(
+            center,
+            radius,
+            egui::Stroke::new(1.5_f32, palette.graph_edge),
+        );
 
         let mut wall_buf = [Complex64::new(0.0, 0.0); WALL_ARC_PTS];
         for wall in self.system.walls() {

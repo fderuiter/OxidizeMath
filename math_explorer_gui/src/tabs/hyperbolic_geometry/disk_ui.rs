@@ -1,18 +1,18 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::disk_tool::{ARC_SAMPLE_POINTS, HyperbolicDiskTool, RulerTarget};
+use super::disk_tool::{HyperbolicDiskTool, RulerTarget, ARC_SAMPLE_POINTS};
 use crate::accessibility::{
-    AccessibleHoverText, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility,
+    lock_canvas_arrow_keys, paint_canvas_focus_ring, register_canvas_accessibility,
+    AccessibleHoverText,
 };
 use crate::app::SemanticPalette;
-use crate::framework::{PaneSidePanel, scoped_panel_id};
+use crate::framework::{scoped_panel_id, PaneSidePanel};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use math_explorer::num_complex::Complex64;
 use math_explorer::pure_math::differential_geometry::hyperbolic::{
-    GeodesicArc, HYPERBOLIC_CURVATURE, HyperbolicModel, MAX_TILING_DEPTH, gauss_bonnet_triangle,
-    project_disk_point, regular_polygon_gauss_bonnet_area, unproject_disk_point,
+    gauss_bonnet_triangle, project_disk_point, regular_polygon_gauss_bonnet_area,
+    unproject_disk_point, GeodesicArc, HyperbolicModel, HYPERBOLIC_CURVATURE, MAX_TILING_DEPTH,
 };
 use std::f64::consts::PI;
 
@@ -157,10 +157,26 @@ impl HyperbolicDiskTool {
         }
         ui.label("Canvas Drag / Click Action:");
         ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut self.active_ruler_target, RulerTarget::PanOnly, "Pan Disk");
-            ui.selectable_value(&mut self.active_ruler_target, RulerTarget::VertexA, "Place A");
-            ui.selectable_value(&mut self.active_ruler_target, RulerTarget::VertexB, "Place B");
-            ui.selectable_value(&mut self.active_ruler_target, RulerTarget::VertexC, "Place C");
+            ui.selectable_value(
+                &mut self.active_ruler_target,
+                RulerTarget::PanOnly,
+                "Pan Disk",
+            );
+            ui.selectable_value(
+                &mut self.active_ruler_target,
+                RulerTarget::VertexA,
+                "Place A",
+            );
+            ui.selectable_value(
+                &mut self.active_ruler_target,
+                RulerTarget::VertexB,
+                "Place B",
+            );
+            ui.selectable_value(
+                &mut self.active_ruler_target,
+                RulerTarget::VertexC,
+                "Place C",
+            );
         });
     }
 
@@ -171,7 +187,11 @@ impl HyperbolicDiskTool {
             self.ruler_vertices[2],
         );
         ui.heading("Intrinsic Metrics");
-        render_copyable_metric(ui, "Gaussian Curvature K", &format!("{HYPERBOLIC_CURVATURE:.1}"));
+        render_copyable_metric(
+            ui,
+            "Gaussian Curvature K",
+            &format!("{HYPERBOLIC_CURVATURE:.1}"),
+        );
         render_copyable_metric(
             ui,
             "Active Tiles",
@@ -195,7 +215,11 @@ impl HyperbolicDiskTool {
         render_copyable_metric(
             ui,
             "Angle Sum (alpha+beta+gamma)",
-            &format!("{:.4} rad ({:.2} deg)", gb.angle_sum, gb.angle_sum.to_degrees()),
+            &format!(
+                "{:.4} rad ({:.2} deg)",
+                gb.angle_sum,
+                gb.angle_sum.to_degrees()
+            ),
         );
         render_copyable_metric(
             ui,
@@ -254,9 +278,7 @@ impl HyperbolicDiskTool {
         response: &egui::Response,
         viewport: &DiskViewport,
     ) {
-        if response.clicked()
-            && self.active_ruler_target == RulerTarget::PanOnly
-        {
+        if response.clicked() && self.active_ruler_target == RulerTarget::PanOnly {
             response.request_focus();
         }
         if matches!(

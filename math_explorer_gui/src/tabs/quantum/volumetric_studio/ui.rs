@@ -98,6 +98,7 @@ impl VolumetricFieldStudioTool {
                     self.engine.step_and_extract_zero_alloc(&self.config, true);
                     self.splat_dirty = true;
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.config.running = false;
                     self.engine.reset_simulation(&self.config);

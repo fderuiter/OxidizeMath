@@ -4,7 +4,7 @@ use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 use eframe::egui;
 use math_explorer::num_complex::Complex64;
 use math_explorer::pure_math::differential_geometry::hyperbolic::{
-    HyperbolicBilliardConfig, HyperbolicBilliardSystem, HyperbolicModel, is_hyperbolic_schlafli,
+    is_hyperbolic_schlafli, HyperbolicBilliardConfig, HyperbolicBilliardSystem, HyperbolicModel,
 };
 
 const INITIAL_WARMUP_STEPS: usize = 120;
@@ -141,10 +141,6 @@ impl InteractiveTool for HyperbolicBilliardsTool {
         self.revision
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.last_canvas_id
-    }
-
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds::DEFAULT
     }
@@ -220,6 +216,7 @@ impl InteractiveTool for HyperbolicBilliardsTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let s: HyperbolicBilliardsState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid HyperbolicBilliardsTool state: {e}"))?;
         if !is_hyperbolic_schlafli(s.p, s.q) {
@@ -295,7 +292,8 @@ impl scientific_metadata::theory::TheoryDescribable for HyperbolicBilliardsTool 
     }
 
     fn phonetic_description(&self) -> String {
-        "Hyperbolic geodesic billiards with circle inversion reflections and Lyapunov divergence".into()
+        "Hyperbolic geodesic billiards with circle inversion reflections and Lyapunov divergence"
+            .into()
     }
 
     fn theory_citation(&self) -> String {

@@ -76,7 +76,18 @@ impl MorphogenesisTool {
         } else {
             SimWorkerState::Ready
         };
-        let (xk, yk) = self.atlas.axis_keys();
+        let current_mode = self
+            .kinetics_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .mode;
+        let atlas_axes =
+            if current_mode != kinetics_mode || self.atlas.has_default_persisted_state() {
+                super::atlas::default_morpho_atlas_axes()
+            } else {
+                let (xk, yk) = self.atlas.axis_keys();
+                [xk.to_string(), yk.to_string()]
+            };
         let preset_state = MorphogenesisToolState {
             a,
             b,
@@ -97,7 +108,7 @@ impl MorphogenesisTool {
                 .unwrap_or_else(|e| e.into_inner())
                 .clone(),
             atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
+            atlas_axes,
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);
@@ -132,12 +143,12 @@ impl MorphogenesisTool {
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .clone();
-            let _ = self.worker.send_command(SimCommand::SyncSculptState(
-                SculptStatePayload {
+            let _ = self
+                .worker
+                .send_command(SimCommand::SyncSculptState(SculptStatePayload {
                     rle_mask,
                     sparse_potential: Vec::new(),
-                },
-            ));
+                }));
         }
         if target_state == SimWorkerState::Running {
             self.pending_initial_start = false;
