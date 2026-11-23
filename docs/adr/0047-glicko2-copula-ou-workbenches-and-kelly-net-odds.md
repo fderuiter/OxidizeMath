@@ -1,4 +1,4 @@
-# ADR 0046: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics
+# ADR 0047: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics
 
 ## Status
 Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0037](0037-glicko2-frozen-period-tournament-simulator.md))
@@ -23,12 +23,12 @@ Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 002
 
 ```text
 Updated GUI inventory totals:
-- InteractiveTools: 75 (53 plot + 7 raster + 15 non-figure)
-- StarterPresetMetadata cards: 106
+- InteractiveTools: 76 (54 plot + 7 raster + 15 non-figure)
+- StarterPresetMetadata cards: 109
 ```
 
-4. **Ignore Rustdoc Examples When Scanning `#[verified]` and `#[embed_theory]` Attributes in `oxidize_core`**:
-   - Guard `AstVisitor::inspect_fn_attr` in [`crates/oxidize_core/src/ast_visitor.rs`](../../crates/oxidize_core/src/ast_visitor.rs) so `#[doc = "..."]` attributes extract `[cite:...]` tags without misclassifying rustdoc code blocks mentioning `#[verified]` or `embed_theory` (such as procedural macro docs in `verified_engine_macros`) as unlinked verified modules in `traceability_manifest.json`.
+4. **Ignore Rustdoc Examples in `oxidize_core::ast_visitor` and Remove `Verification_Certificate.json` Test Race**:
+   - Guard `AstVisitor::inspect_fn_attr` in [`crates/oxidize_core/src/ast_visitor.rs`](../../crates/oxidize_core/src/ast_visitor.rs) so `#[doc = "..."]` attributes extract `[cite:...]` tags without misclassifying rustdoc code blocks mentioning `#[verified]` or `embed_theory` (such as procedural macro docs in `verified_engine_macros`) as unlinked verified modules in `traceability_manifest.json`, and remove the unlocked `Verification_Certificate.json` deletion in [`crates/unified_verification/src/report/tests.rs`](../../crates/unified_verification/src/report/tests.rs).
 
 ## Consequences
 - **Positive**: Users can analyze simultaneous Glicko-2 tournaments, bivariate tail dependence, mean-reverting OU trajectories, and accurate net-odds Kelly compounding directly in the browser with full PNG, SVG, CSV, JSON, Markdown, and `#tab=...` URL share support.
