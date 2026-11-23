@@ -1,4 +1,5 @@
 //! Iterative LaTeX, Rust, and Python code generators for [`Expr`] bounded by [`MAX_EVAL_DEPTH`].
+// [cite:math_commons]
 
 #[path = "codegen_funcs.rs"]
 mod codegen_funcs;

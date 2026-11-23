@@ -37,11 +37,18 @@ fn dataset_slug(name: &str) -> String {
 fn required_coeff_count(fit_type: FitType) -> usize {
     match fit_type {
         FitType::Custom => 0,
-        FitType::Linear | FitType::Polynomial(_) => 1,
+        FitType::Linear | FitType::Quadratic | FitType::Cubic | FitType::Quartic => 1,
         FitType::Exponential | FitType::PowerLaw | FitType::Logarithmic => 2,
         FitType::Logistic => 3,
         FitType::Sinusoidal => 4,
     }
+}
+
+fn is_polynomial_fit(fit_type: FitType) -> bool {
+    matches!(
+        fit_type,
+        FitType::Linear | FitType::Quadratic | FitType::Cubic | FitType::Quartic
+    )
 }
 
 fn format_tex_num(val: f64) -> String {
@@ -53,13 +60,17 @@ impl FitResult {
     /// Returns `true` when the regression contains non-empty finite coefficients and finite $R^2$.
     #[must_use]
     pub fn has_finite_coefficients(&self) -> bool {
-        let centered_ok = self.poly_centered.as_ref().is_none_or(|(m, s, c)| {
-            m.is_finite()
-                && s.is_finite()
-                && *s > 0.0
-                && !c.is_empty()
-                && c.iter().all(|v| v.is_finite())
-        });
+        let centered_ok = self
+            .curve_fit
+            .as_ref()
+            .and_then(|cf| cf.centered_polynomial())
+            .is_none_or(|(m, s, c)| {
+                m.is_finite()
+                    && s.is_finite()
+                    && s > 0.0
+                    && !c.is_empty()
+                    && c.iter().all(|v| v.is_finite())
+            });
         let custom_ok = self.fit_type != FitType::Custom
             || self.custom_evaluator.as_ref().is_some_and(|h| {
                 self.coefficients.len() >= h.0.param_names().len()
@@ -88,7 +99,7 @@ impl FitResult {
     pub fn to_latex(&self) -> Result<String, String> {
         self.validate_exportable()?;
         let eq_line = match self.fit_type {
-            FitType::Linear | FitType::Polynomial(_) => {
+            ft if is_polynomial_fit(ft) => {
                 let u_sym = if self.log_x {
                     r"\log_{10}\left(x\right)"
                 } else {
@@ -131,7 +142,7 @@ impl FitResult {
                 "1.0_f64"
             };
         let body = match self.fit_type {
-            FitType::Linear | FitType::Polynomial(_) => format_poly_rust_body(self),
+            ft if is_polynomial_fit(ft) => format_poly_rust_body(self),
             FitType::Custom => self
                 .custom_evaluator
                 .as_ref()
@@ -162,7 +173,7 @@ impl FitResult {
                 "1.0"
             };
         let body = match self.fit_type {
-            FitType::Linear | FitType::Polynomial(_) => format_poly_python_body(self),
+            ft if is_polynomial_fit(ft) => format_poly_python_body(self),
             FitType::Custom => self
                 .custom_evaluator
                 .as_ref()
@@ -183,15 +194,19 @@ impl FitResult {
 }
 
 fn format_poly_rust_body(fit: &FitResult) -> String {
+    let centered_opt = fit
+        .curve_fit
+        .as_ref()
+        .and_then(|cf| cf.centered_polynomial());
     let (z_binding, active_coeffs): (String, &[f64]) =
-        if let Some((u_mean, u_scale, ref centered)) = fit.poly_centered {
+        if let Some((u_mean, u_scale, centered)) = centered_opt {
             (
                 format!(
                     "    let z = (u - {}) / {};",
                     format_rs_f64(u_mean),
                     format_rs_f64(u_scale)
                 ),
-                centered.as_slice(),
+                centered,
             )
         } else {
             ("    let z = u;".to_string(), fit.coefficients.as_slice())
@@ -225,15 +240,19 @@ fn format_poly_rust_body(fit: &FitResult) -> String {
 }
 
 fn format_poly_python_body(fit: &FitResult) -> String {
+    let centered_opt = fit
+        .curve_fit
+        .as_ref()
+        .and_then(|cf| cf.centered_polynomial());
     let (z_line, active_coeffs): (String, &[f64]) =
-        if let Some((u_mean, u_scale, ref centered)) = fit.poly_centered {
+        if let Some((u_mean, u_scale, centered)) = centered_opt {
             (
                 format!(
                     "    z = (u - {}) / {}",
                     format_py_f64(u_mean),
                     format_py_f64(u_scale)
                 ),
-                centered.as_slice(),
+                centered,
             )
         } else {
             ("    z = u".to_string(), fit.coefficients.as_slice())
@@ -282,13 +301,13 @@ fn format_nonlinear_latex(fit_type: FitType, c: &[f64]) -> String {
         }
         FitType::Logarithmic => {
             format!(
-                r"{} \cdot \ln\left(x\right) + {}",
+                r"{} + {} \cdot \ln\left(x\right)",
                 format_tex_num(c[0]),
                 format_tex_num(c[1])
             )
         }
         FitType::Logistic => format!(
-            r"\frac{{{}}}{{1 + {} \cdot \exp\left(-{} \cdot x\right)}}",
+            r"\frac{{{}}}{{1 + \exp\left(-{} \cdot \left(x - {}\right)\right)}}",
             format_tex_num(c[0]),
             format_tex_num(c[1]),
             format_tex_num(c[2])
@@ -300,16 +319,20 @@ fn format_nonlinear_latex(fit_type: FitType, c: &[f64]) -> String {
             format_tex_num(c[2]),
             format_tex_num(c[3])
         ),
-        FitType::Linear | FitType::Polynomial(_) | FitType::Custom => String::new(),
+        FitType::Linear
+        | FitType::Quadratic
+        | FitType::Cubic
+        | FitType::Quartic
+        | FitType::Custom => String::new(),
     }
 }
 
 fn format_nonlinear_rust_body(fit_type: FitType, c: &[f64]) -> String {
     match fit_type {
         FitType::Exponential => format!(
-            "    let arg = ({}) * x;\n    if !x.is_finite() || !arg.is_finite() || arg > 700.0_f64 {{\n        return f64::NAN;\n    }}\n    ({}) * arg.exp()",
-            format_rs_f64(c[1]),
-            format_rs_f64(c[0])
+            "    if !x.is_finite() {{\n        return f64::NAN;\n    }}\n    ({}) * (({}) * x).exp()",
+            format_rs_f64(c[0]),
+            format_rs_f64(c[1])
         ),
         FitType::PowerLaw => format!(
             "    if !x.is_finite() || x <= 0.0_f64 {{\n        return f64::NAN;\n    }}\n    ({}) * x.powf({})",
@@ -317,12 +340,12 @@ fn format_nonlinear_rust_body(fit_type: FitType, c: &[f64]) -> String {
             format_rs_f64(c[1])
         ),
         FitType::Logarithmic => format!(
-            "    if !x.is_finite() || x <= 0.0_f64 {{\n        return f64::NAN;\n    }}\n    ({}) * x.ln() + ({})",
+            "    if !x.is_finite() || x <= 0.0_f64 {{\n        return f64::NAN;\n    }}\n    ({}) + ({}) * x.ln()",
             format_rs_f64(c[0]),
             format_rs_f64(c[1])
         ),
         FitType::Logistic => format!(
-            "    if !x.is_finite() {{\n        return f64::NAN;\n    }}\n    let denom = 1.0_f64 + ({}) * (-({}) * x).clamp(-700.0_f64, 700.0_f64).exp();\n    if !denom.is_finite() || denom.abs() <= 1e-15_f64 {{\n        return f64::NAN;\n    }}\n    ({}) / denom",
+            "    if !x.is_finite() {{\n        return f64::NAN;\n    }}\n    let z = (-({}) * (x - ({}))).clamp(-500.0_f64, 500.0_f64);\n    ({}) / (1.0_f64 + z.exp())",
             format_rs_f64(c[1]),
             format_rs_f64(c[2]),
             format_rs_f64(c[0])
@@ -334,16 +357,20 @@ fn format_nonlinear_rust_body(fit_type: FitType, c: &[f64]) -> String {
             format_rs_f64(c[0]),
             format_rs_f64(c[3])
         ),
-        FitType::Linear | FitType::Polynomial(_) | FitType::Custom => "    f64::NAN".to_string(),
+        FitType::Linear
+        | FitType::Quadratic
+        | FitType::Cubic
+        | FitType::Quartic
+        | FitType::Custom => "    f64::NAN".to_string(),
     }
 }
 
 fn format_nonlinear_python_body(fit_type: FitType, c: &[f64]) -> String {
     match fit_type {
         FitType::Exponential => format!(
-            "    arg = ({}) * float(x)\n    if not np.isfinite(x) or not np.isfinite(arg) or arg > 700.0:\n        return float(\"nan\")\n    return float(({}) * np.exp(arg))",
-            format_py_f64(c[1]),
-            format_py_f64(c[0])
+            "    if not np.isfinite(x):\n        return float(\"nan\")\n    return float(({}) * np.exp(({}) * float(x)))",
+            format_py_f64(c[0]),
+            format_py_f64(c[1])
         ),
         FitType::PowerLaw => format!(
             "    if not np.isfinite(x) or x <= 0.0:\n        return float(\"nan\")\n    return float(({}) * (float(x) ** ({})))",
@@ -351,12 +378,12 @@ fn format_nonlinear_python_body(fit_type: FitType, c: &[f64]) -> String {
             format_py_f64(c[1])
         ),
         FitType::Logarithmic => format!(
-            "    if not np.isfinite(x) or x <= 0.0:\n        return float(\"nan\")\n    return float(({}) * np.log(float(x)) + ({}))",
+            "    if not np.isfinite(x) or x <= 0.0:\n        return float(\"nan\")\n    return float(({}) + ({}) * np.log(float(x)))",
             format_py_f64(c[0]),
             format_py_f64(c[1])
         ),
         FitType::Logistic => format!(
-            "    if not np.isfinite(x):\n        return float(\"nan\")\n    denom = 1.0 + ({}) * float(np.exp(np.clip(-({}) * float(x), -700.0, 700.0)))\n    if not np.isfinite(denom) or abs(denom) <= 1e-15:\n        return float(\"nan\")\n    return float(({}) / denom)",
+            "    if not np.isfinite(x):\n        return float(\"nan\")\n    z = float(np.clip(-({}) * (float(x) - ({})), -500.0, 500.0))\n    return float(({}) / (1.0 + np.exp(z)))",
             format_py_f64(c[1]),
             format_py_f64(c[2]),
             format_py_f64(c[0])
@@ -368,9 +395,11 @@ fn format_nonlinear_python_body(fit_type: FitType, c: &[f64]) -> String {
             format_py_f64(c[0]),
             format_py_f64(c[3])
         ),
-        FitType::Linear | FitType::Polynomial(_) | FitType::Custom => {
-            "    return float(\"nan\")".to_string()
-        }
+        FitType::Linear
+        | FitType::Quadratic
+        | FitType::Cubic
+        | FitType::Quartic
+        | FitType::Custom => "    return float(\"nan\")".to_string(),
     }
 }
 
@@ -574,7 +603,7 @@ mod tests {
         let pts = vec![[1.0, 2.0], [2.0, 5.0], [3.0, 10.0], [4.0, 17.0]];
         let fit = fit_model_with_axes(
             &pts,
-            FitType::Polynomial(2),
+            FitType::Quadratic,
             "Sensor Curve",
             false,
             false,
@@ -658,7 +687,7 @@ mod tests {
             log_y: false,
             log_mode: false,
             custom_evaluator: None,
-            poly_centered: None,
+            curve_fit: None,
         };
         assert!(!bad.has_finite_coefficients());
         assert!(bad.to_latex().is_err());
@@ -690,7 +719,7 @@ mod tests {
             let fit_type = if deg == 1 {
                 FitType::Linear
             } else {
-                FitType::Polynomial(deg)
+                FitType::Quadratic
             };
             let fit = fit_model_with_axes(&pts, fit_type, "Sensor Series", log_x, log_y, false)
                 .expect("fit must succeed");

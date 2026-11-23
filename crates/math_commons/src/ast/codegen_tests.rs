@@ -1,3 +1,4 @@
+// [cite:math_commons]
 use super::*;
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]

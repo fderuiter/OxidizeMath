@@ -353,13 +353,10 @@ mod tests {
         tool.cycles_to_simulate = (n70 * 1.2).max(2000.0);
 
         let datasets = tool.export_datasets();
-        let cap_pts: Vec<egui_plot::PlotPoint> = datasets[0]
-            .1
-            .iter()
-            .map(|p| egui_plot::PlotPoint::new(p[0], p[1]))
-            .collect();
-        let crossings = egui_plot::poi::interpolate_threshold_crossings(&cap_pts, 0.8);
-        assert_eq!(crossings.len(), 1);
+        let mut crossings = [0.0_f64; 4];
+        let count =
+            math_explorer::poi::threshold_crossings_into(&datasets[0].1, 0.8, &mut crossings);
+        assert_eq!(count, 1);
         assert!(
             (crossings[0] - n80).abs() < 0.5,
             "80% threshold cycle error = {} cycles",
@@ -373,12 +370,9 @@ mod tests {
                 [dod as f64, life70]
             })
             .collect();
-        let fit = egui_plot::fit_model_with_axes(
+        let fit = math_explorer::fit::fit_model(
             &n70_curve,
-            egui_plot::FitType::PowerLaw,
-            "PowerLawModel::n70",
-            false,
-            false,
+            math_explorer::fit::FitModel::PowerLaw,
             false,
         )
         .expect("power law fit");

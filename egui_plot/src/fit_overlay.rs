@@ -222,7 +222,7 @@ fn resolve_active_fit(
         }
     } else {
         access_state.custom_fit_error = None;
-        fit_model_with_axes(ds_pts, fit_type, ds_name, log_x, log_y, log_mode)
+        fit_model_with_axes(ds_pts, fit_type, ds_name, log_x, log_y, log_mode).ok()
     }
 }
 

@@ -70,7 +70,7 @@ walkdir = "2.4"
 wasm-bindgen = "0.2.130"
 wasm-bindgen-futures = "0.4.80"
 wasm-bindgen-test = "0.3.80"
-web-sys = { version = "0.3.107", features = ["Window", "Document", "History", "Location", "HtmlCanvasElement", "HtmlElement", "Element", "Node", "Worker", "MessageEvent", "DedicatedWorkerGlobalScope", "ErrorEvent"] }
+web-sys = { version = "0.3.107", features = ["Window", "Document", "History", "Location", "HtmlCanvasElement", "HtmlElement", "Element", "Node", "ErrorEvent"] }
 
 
 [patch.crates-io]

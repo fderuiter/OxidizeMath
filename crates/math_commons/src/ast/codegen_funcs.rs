@@ -1,4 +1,5 @@
 //! Function-call Rust and Python AST code generation helpers supporting unary, binary, and ternary [`Func`]s.
+// [cite:math_commons]
 
 use super::{CodeFrame, CodeTarget};
 use crate::ast::eval::EvalError;
