@@ -228,6 +228,73 @@ pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
     violations
 }
 
+/// Audits Cargo CLI commands, TOML `[dependencies]` blocks, examples catalog parity,
+/// paper/rustdoc gate instructions, and trait/GUI onboarding contracts across `workspace_root`.
+pub fn audit_workspace_guides_and_manifests(workspace_root: &Path) -> Vec<String> {
+    let mut violations = Vec::new();
+    let model = match super::manifest_model::WorkspaceManifestModel::load(workspace_root) {
+        Ok(m) => m,
+        Err(err) => {
+            violations.push(err);
+            return violations;
+        }
+    };
+
+    let active_md = super::cargo_cli_checks::collect_active_markdown_files(workspace_root);
+    let trait_registry = super::trait_contracts::TraitContractRegistry::load(workspace_root);
+
+    for md_path in &active_md {
+        let Ok(content) = fs::read_to_string(md_path) else {
+            continue;
+        };
+        violations.extend(super::cargo_cli_checks::check_markdown_cargo_commands(
+            md_path,
+            workspace_root,
+            &content,
+            &model,
+        ));
+        violations.extend(super::toml_dep_checks::check_markdown_toml_dependencies(
+            md_path,
+            workspace_root,
+            &content,
+            &model,
+        ));
+        violations.extend(
+            super::trait_contracts::check_markdown_trait_and_gui_contracts(
+                md_path,
+                &content,
+                &trait_registry,
+            ),
+        );
+    }
+
+    let mut ex_files = Vec::new();
+    collect_files_with_ext(
+        &workspace_root.join("math_explorer/examples"),
+        "rs",
+        &mut ex_files,
+    );
+    for ex_path in ex_files {
+        if let Ok(content) = fs::read_to_string(&ex_path) {
+            violations.extend(super::cargo_cli_checks::check_rustdoc_cargo_commands(
+                &ex_path, &content, &model,
+            ));
+        }
+    }
+
+    violations.extend(super::catalog_and_guide_checks::audit_examples_catalog(
+        workspace_root,
+        &model,
+    ));
+    violations.extend(
+        super::catalog_and_guide_checks::audit_paper_and_gate_instructions(
+            workspace_root,
+            &active_md,
+        ),
+    );
+    violations
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

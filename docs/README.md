@@ -35,7 +35,9 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0040: Galactic Dynamics Kernels and Auto-Discovered Astrophysics Tab](adr/0040-galactic-dynamics-and-astrophysics-tab.md)
 - [ADR 0041: Unified 3D Volumetric Field Studio and Zero-Allocation Surface/Splat Kernels](adr/0041-volumetric-field-studio-zero-alloc-3d-kernels.md)
 - [ADR 0042: Zero-Allocation 2D Chladni Plate and Wave Tank Solver](adr/0042-2d-chladni-plate-and-wave-tank-solver.md)
-- [ADR 0043: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0043-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
+- [ADR 0043: Auto-Discovered Paradox Lab Tab for Stochastic Ratchets and Network Congestion](adr/0043-paradox-lab-interactive-tab.md)
+- [ADR 0043: Repair Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates](adr/0043-repair-guides-and-enforce-static-doc-gates.md)
+- [ADR 0044: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0044-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 
 ## Contributing
 
