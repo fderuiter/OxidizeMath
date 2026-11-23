@@ -5,6 +5,32 @@ use domain_biology::biology::diffusion::FiniteDifference2D;
 use domain_biology::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
+#[cfg(not(target_arch = "wasm32"))]
+use verified_engine::allocator::VerifiedAllocator;
+#[cfg(not(target_arch = "wasm32"))]
+use verified_engine::engine::VerifiedEngine;
+#[cfg(not(target_arch = "wasm32"))]
+use verified_engine::metrics::ComplexityMetrics;
+
+#[cfg(not(target_arch = "wasm32"))]
+#[global_allocator]
+static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
+
+#[cfg(not(target_arch = "wasm32"))]
+fn assert_turing_invariants(
+    u: &[f64],
+    v: &[f64],
+    expected_len: usize,
+    metrics: &ComplexityMetrics,
+) {
+    assert_eq!(u.len(), expected_len);
+    assert_eq!(v.len(), expected_len);
+    assert!(u.iter().all(|&val| val.is_finite() && val > 0.0));
+    assert!(v.iter().all(|&val| val.is_finite() && val >= 0.0));
+    assert!(metrics.function_calls > 0);
+    assert!(metrics.arithmetic_ops > 0);
+    assert!(metrics.memory_loads > 0);
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(clippy::disallowed_methods)]
@@ -40,7 +66,8 @@ fn bench_turing_2d_step() {
     }
 
     let iterations = 100;
-    let dt = 0.01;
+    // 2D explicit Euler CFL stability requires 2 * D_max * dt / dx^2 <= 0.5 (40.0 * 2 * 0.005 = 0.4).
+    let dt = 0.005;
 
     // Warmup
     for _ in 0..10 {
@@ -48,11 +75,14 @@ fn bench_turing_2d_step() {
     }
 
     let start = Instant::now();
-    for _ in 0..iterations {
-        system.step(dt);
-    }
+    let ((), metrics) = VerifiedEngine::run_verified(|| {
+        for _ in 0..iterations {
+            system.step(dt);
+        }
+    });
     let duration = start.elapsed();
 
+    assert_turing_invariants(system.u(), system.v(), width * height, &metrics);
     println!(
         "Turing 2D ({}x{}) - {} iterations: {:?}",
         width, height, iterations, duration
@@ -60,5 +90,34 @@ fn bench_turing_2d_step() {
     println!(
         "Average time per iteration: {:?}",
         duration / iterations as u32
+    );
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn bench_turing_aborts_if_hot_loop_allocates() {
+    const PROBE_ENV: &str = "OXIDIZE_TURING_ALLOC_ABORT_PROBE";
+    if std::env::var_os(PROBE_ENV).is_some() {
+        let mut system = TuringSystem::new(
+            math_commons::math_kernel::types::Dimension(32),
+            domain_biology::biology::morphogenesis::DiffusionCoeff(0.1),
+            domain_biology::biology::morphogenesis::DiffusionCoeff(0.05),
+            math_commons::math_kernel::types::StepSize(1.0),
+        );
+        VerifiedEngine::run_verified(|| {
+            system.step(0.01);
+            let snapshot = system.u().to_vec();
+            std::hint::black_box(snapshot.len());
+        });
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+        .env(PROBE_ENV, "1")
+        .args(["--exact", "bench_turing_aborts_if_hot_loop_allocates"])
+        .output()
+        .expect("spawn Turing allocation probe");
+    assert!(
+        !output.status.success(),
+        "VerifiedAllocator must abort when reaction-diffusion hot loop allocates on the heap"
     );
 }
