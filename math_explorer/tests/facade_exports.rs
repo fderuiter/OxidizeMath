@@ -157,6 +157,7 @@ fn assert_pure_math_twenty_one_errors() {
         e::EllipticCurveError::InvalidDegree.severity(),
         e::EvolutionError::InvalidState.severity(),
         e::FractranError::InvalidFractionSyntax.severity(),
+        e::HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.severity(),
         e::OptimizationError::ConversionError.severity(),
         e::StochasticError::InvalidReactionIndex(1).severity(),
         e::TensorError::IndexOutOfBounds.severity(),
@@ -458,7 +459,7 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     feature = "physics"
 ))]
 #[test]
-fn all_fifty_two_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
+fn all_fifty_three_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
     umbrella_checks::verify_prelude_error_reexports();
     umbrella_checks::verify_bus_capture_and_zero_alloc_facade_result();
 }

@@ -475,6 +475,7 @@ pub use crate::pure_math::{
         stochastic::StochasticError, transforms::TransformError,
     },
     elliptic_curves::EllipticCurveError,
+    hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
     statistics::{poisson::PoissonError, queueing::QueueingError},
     tensor::types::TensorError,
