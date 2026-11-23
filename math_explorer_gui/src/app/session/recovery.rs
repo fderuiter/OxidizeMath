@@ -35,7 +35,7 @@ impl WorkspaceSessionManager {
     fn finalize_drag_before_snapshot(&mut self, current_state: &AppState) {
         if self.lifecycle_state == SessionLifecycleState::DragEditing {
             if let Some(ref last_state) = self.last_committed_state {
-                if current_state != last_state {
+                if !current_state.semantically_eq(last_state) {
                     self.push_undo(last_state.clone());
                 }
             }

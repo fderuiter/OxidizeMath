@@ -1,16 +1,22 @@
-use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport, Scene3DBuilder};
 use eframe::egui;
-use egui_plot::{Line, PlotPoints, Points};
+use egui_plot::MarkerShape;
 use math_explorer::physics::solid_state::lattice::{
     BodyCenteredCubic, CrystalSystem, FaceCenteredCubic, SimpleCubic, UnitCell,
 };
-use nalgebra::Vector3;
+use nalgebra::Point3;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
+/// Supported cubic Bravais crystal systems in [`CrystalViewer`].
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[allow(clippy::enum_variant_names)]
 pub enum CrystalSystemEnum {
+    /// Primitive simple cubic lattice ($1$ atom per cell).
     SimpleCubic,
+    /// Body-centered cubic lattice ($2$ atoms per cell).
     BodyCenteredCubic,
+    /// Face-centered cubic lattice ($4$ atoms per cell).
     FaceCenteredCubic,
 }
 
@@ -33,68 +39,119 @@ impl CrystalSystemEnum {
     }
 }
 
+/// Interactive 3D crystallographic Bravais unit-cell viewer built on `Plot3DViewport` and `Scene3DBuilder`.
 pub struct CrystalViewer {
     system: CrystalSystemEnum,
     lattice_constant: f64,
-    camera: Camera3D,
+    pub(crate) camera: Camera3D,
+    pub(crate) scene_builder: Scene3DBuilder,
+    atoms_scratch: Vec<Point3<f64>>,
 }
 
 impl Default for CrystalViewer {
     fn default() -> Self {
+        let camera = Camera3D::new(0.5, 0.5, 1.0);
         Self {
             system: CrystalSystemEnum::FaceCenteredCubic,
             lattice_constant: 2.0,
-            camera: Camera3D::new(0.5, 0.5, 1.0),
+            camera,
+            scene_builder: Scene3DBuilder::new(camera),
+            atoms_scratch: Vec::new(),
         }
     }
 }
 
 impl CrystalViewer {
-    fn project(&self, p: Vector3<f64>) -> [f64; 2] {
-        let half = self.lattice_constant * 0.5;
-        self.camera
-            .project(&[p.x - half, p.y - half, p.z - half])
-    }
-
-    fn draw_unit_cell_box(&self, ui: &mut egui_plot::PlotUi) {
+    /// Populates `self.scene_builder` with world `Point3<f64>` unit-cell edges and atomic sites.
+    pub fn populate_scene(&mut self, edge_color: egui::Color32, atom_color: egui::Color32) {
         let a = self.lattice_constant;
-        let corners = [
-            Vector3::new(0.0, 0.0, 0.0), // 0
-            Vector3::new(a, 0.0, 0.0),   // 1
-            Vector3::new(a, a, 0.0),     // 2
-            Vector3::new(0.0, a, 0.0),   // 3
-            Vector3::new(0.0, 0.0, a),   // 4
-            Vector3::new(a, 0.0, a),     // 5
-            Vector3::new(a, a, a),       // 6
-            Vector3::new(0.0, a, a),     // 7
-        ];
+        let half = a * 0.5;
+        self.scene_builder.begin(self.camera);
+        self.scene_builder
+            .set_origin_offset(Point3::new(half, half, half));
 
+        let corners = [
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(a, 0.0, 0.0),
+            Point3::new(a, a, 0.0),
+            Point3::new(0.0, a, 0.0),
+            Point3::new(0.0, 0.0, a),
+            Point3::new(a, 0.0, a),
+            Point3::new(a, a, a),
+            Point3::new(0.0, a, a),
+        ];
         let edges = [
             (0, 1),
             (1, 2),
             (2, 3),
-            (3, 0), // Bottom face
+            (3, 0),
             (4, 5),
             (5, 6),
             (6, 7),
-            (7, 4), // Top face
+            (7, 4),
             (0, 4),
             (1, 5),
             (2, 6),
-            (3, 7), // Verticals
+            (3, 7),
         ];
-
-        let edge_color =
-            crate::app::SemanticPalette::from_visuals(&ui.ctx().style().visuals).graph_edge;
+        let stroke = egui::Stroke::new(1.0_f32, edge_color);
         for (start_idx, end_idx) in edges {
-            let start = self.project(corners[start_idx]);
-            let end = self.project(corners[end_idx]);
-            ui.line(
-                Line::new("Edge", PlotPoints::new(vec![start, end]))
-                    .color(edge_color)
-                    .width(1.0_f32),
+            self.scene_builder.add_segment(
+                "Edge",
+                corners[start_idx],
+                corners[end_idx],
+                stroke,
+                false,
             );
         }
+
+        let unit_cell = self.system.generate(a);
+        self.atoms_scratch.clear();
+        self.atoms_scratch.extend(
+            unit_cell
+                .atomic_positions
+                .iter()
+                .map(|p| Point3::new(p.x, p.y, p.z)),
+        );
+        self.scene_builder.add_points(
+            "Atoms",
+            &self.atoms_scratch,
+            5.0_f32,
+            atom_color,
+            MarkerShape::Circle,
+            true,
+        );
+    }
+
+    fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "crystal_controls");
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+            ui.heading("Crystal Lattice");
+            ui.separator();
+
+            ui.label("Crystal System");
+            egui::ComboBox::from_id_salt("crystal_system_combo")
+                .selected_text(self.system.label())
+                .show_ui(ui, |ui| {
+                    for variant in [
+                        CrystalSystemEnum::SimpleCubic,
+                        CrystalSystemEnum::BodyCenteredCubic,
+                        CrystalSystemEnum::FaceCenteredCubic,
+                    ] {
+                        ui.selectable_value(&mut self.system, variant, variant.label());
+                    }
+                });
+
+            ui.add(
+                egui::Slider::new(&mut self.lattice_constant, 0.5..=5.0)
+                    .text("Lattice Constant (a)"),
+            );
+
+            ui.separator();
+            egui::CollapsingHeader::new("View")
+                .default_open(true)
+                .show(ui, |ui| self.camera.ui(ui));
+        });
     }
 }
 
@@ -121,12 +178,23 @@ struct CrystalState {
 }
 
 impl InteractiveTool for CrystalViewer {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Crystal Lattice Viewer"
     }
     fn domain(&self) -> &'static str {
         "solid_state"
+    }
+
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.system.hash(&mut h);
+        self.lattice_constant.to_bits().hash(&mut h);
+        self.camera.hash_state(&mut h);
+        h.finish().max(1)
     }
 
     fn save_state(&self) -> Option<String> {
@@ -139,6 +207,7 @@ impl InteractiveTool for CrystalViewer {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let s: CrystalState =
             serde_json::from_str(state).map_err(|e| format!("Invalid CrystalViewer state: {e}"))?;
         if !s.lattice_constant.is_finite() || !(0.5..=5.0).contains(&s.lattice_constant) {
@@ -170,58 +239,13 @@ impl InteractiveTool for CrystalViewer {
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "crystal_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Crystal Lattice");
-            ui.separator();
-
-            ui.label("Crystal System");
-            egui::ComboBox::from_id_salt("crystal_system_combo")
-                .selected_text(self.system.label())
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut self.system,
-                        CrystalSystemEnum::SimpleCubic,
-                        CrystalSystemEnum::SimpleCubic.label(),
-                    );
-                    ui.selectable_value(
-                        &mut self.system,
-                        CrystalSystemEnum::BodyCenteredCubic,
-                        CrystalSystemEnum::BodyCenteredCubic.label(),
-                    );
-                    ui.selectable_value(
-                        &mut self.system,
-                        CrystalSystemEnum::FaceCenteredCubic,
-                        CrystalSystemEnum::FaceCenteredCubic.label(),
-                    );
-                });
-
-            ui.add(egui::Slider::new(&mut self.lattice_constant, 0.5..=5.0).text("Lattice Constant (a)"));
-
-            ui.separator();
-            egui::CollapsingHeader::new("View")
-                .default_open(true)
-                .show(ui, |ui| self.camera.ui(ui));
-        });
-
+        self.draw_side_panel(parent_ui);
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            self.populate_scene(palette.graph_edge, palette.axis_x);
             let mut camera = self.camera;
             Plot3DViewport::new("crystal_plot", 3.5).show(ui, &mut camera, |plot_ui| {
-                self.draw_unit_cell_box(plot_ui);
-
-                let unit_cell = self.system.generate(self.lattice_constant);
-                let points: Vec<[f64; 2]> = unit_cell
-                    .atomic_positions
-                    .iter()
-                    .map(|p| self.project(*p))
-                    .collect();
-
-                plot_ui.points(
-                    Points::new("Atoms", points)
-                        .radius(5.0_f32)
-                        .color(palette.axis_x),
-                );
+                self.scene_builder.finish(plot_ui);
             });
             self.camera = camera;
         });
@@ -229,7 +253,6 @@ impl InteractiveTool for CrystalViewer {
 }
 
 // [cite:modular_polynomials_review]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -244,22 +267,44 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for CrystalViewer {
     fn theory_description(&self) -> String {
         let (sys_name, formula) = match self.system {
-            CrystalSystemEnum::SimpleCubic => ("Simple Cubic (SC)", "1 atom per unit cell, coordination number 6, packing fraction $\\pi/6 \\approx 0.52$"),
-            CrystalSystemEnum::BodyCenteredCubic => ("Body-Centered Cubic (BCC)", "2 atoms per unit cell, coordination number 8, packing fraction $\\sqrt{3}\\pi/8 \\approx 0.68$"),
-            CrystalSystemEnum::FaceCenteredCubic => ("Face-Centered Cubic (FCC)", "4 atoms per unit cell, coordination number 12, close-packed fraction $\\pi/(3\\sqrt{2}) \\approx 0.74$"),
+            CrystalSystemEnum::SimpleCubic => (
+                "Simple Cubic (SC)",
+                "1 atom per unit cell, coordination number 6, packing fraction $\\pi/6 \\approx 0.52$",
+            ),
+            CrystalSystemEnum::BodyCenteredCubic => (
+                "Body-Centered Cubic (BCC)",
+                "2 atoms per unit cell, coordination number 8, packing fraction $\\sqrt{3}\\pi/8 \\approx 0.68$",
+            ),
+            CrystalSystemEnum::FaceCenteredCubic => (
+                "Face-Centered Cubic (FCC)",
+                "4 atoms per unit cell, coordination number 12, close-packed fraction $\\pi/(3\\sqrt{2}) \\approx 0.74$",
+            ),
         };
         format!(
-            "Crystallographic Bravais lattice geometry for {} with lattice constant $a = {:.2}\\,\\text{{\\AA}}$: {}.",
-            sys_name, self.lattice_constant, formula
+            "Crystallographic Bravais lattice geometry for {sys_name} with lattice constant $a = {:.2}\\,\\text{{\\AA}}$: {formula}.",
+            self.lattice_constant
         )
     }
-    fn phonetic_description(&self) -> String { "Crystallographic Bravais lattice and unit cell geometry theory".into() }
-    fn theory_citation(&self) -> String { "Introduction to Solid State Physics (Kittel, 2004); Solid State Physics (Ashcroft & Mermin, 1976)".into() }
+    fn phonetic_description(&self) -> String {
+        "Crystallographic Bravais lattice and unit cell geometry theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Introduction to Solid State Physics (Kittel, 2004); Solid State Physics (Ashcroft & Mermin, 1976)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Simple Cubic".into(), "Primitive cubic lattice with basis at (0,0,0)".into());
-        map.insert("BCC".into(), "Body-centered lattice with basis at (0,0,0) and (1/2, 1/2, 1/2)".into());
-        map.insert("FCC".into(), "Face-centered close-packed cubic lattice".into());
+        map.insert(
+            "Simple Cubic".into(),
+            "Primitive cubic lattice with basis at (0,0,0)".into(),
+        );
+        map.insert(
+            "BCC".into(),
+            "Body-centered lattice with basis at (0,0,0) and (1/2, 1/2, 1/2)".into(),
+        );
+        map.insert(
+            "FCC".into(),
+            "Face-centered close-packed cubic lattice".into(),
+        );
         map
     }
 }
@@ -326,5 +371,6 @@ mod tests {
         let ctx = egui::Context::default();
         let _ = ctx.run(egui::RawInput::default(), |ctx| restored.show(ctx));
         assert!(!egui_plot::get_last_plot_datasets().is_empty());
+        assert!(!egui_plot::get_last_plot_datasets_3d().is_empty());
     }
 }

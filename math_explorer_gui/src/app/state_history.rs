@@ -14,6 +14,7 @@ struct HistoryFingerprint {
     secondary_tab: usize,
     split_mode_discriminant: u8,
     viewport_discriminant: u8,
+    compare_sync_bits: u8,
     split_ratio_bits: u32,
     quad_split_ratio_bits: (u32, u32),
     pane_tabs: [usize; 4],
@@ -104,6 +105,9 @@ fn build_history_fingerprint(
             ViewportLayout::SplitVertical => 2,
             ViewportLayout::QuadGrid => 3,
         },
+        compare_sync_bits: u8::from(app.compare_sync.link_axes)
+            | (u8::from(app.compare_sync.link_cursors) << 1)
+            | (u8::from(app.compare_sync.sync_playback) << 2),
         split_ratio_bits: app.split_ratio.clamp(0.20, 0.80).to_bits(),
         quad_split_ratio_bits: (
             app.quad_split_ratios.0.clamp(0.20, 0.80).to_bits(),
@@ -224,6 +228,7 @@ impl AppState {
             && self.quad_split_ratios.0.to_bits() == other.quad_split_ratios.0.to_bits()
             && self.quad_split_ratios.1.to_bits() == other.quad_split_ratios.1.to_bits()
             && self.viewport_layout == other.viewport_layout
+            && self.compare_sync == other.compare_sync
             && self.pane_tabs == other.pane_tabs
             && tab_maps_semantically_eq(&self.tab_states, &other.tab_states)
             && pane_tab_maps_semantically_eq(&self.pane_tab_states, &other.pane_tab_states)

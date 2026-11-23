@@ -13,12 +13,15 @@ use egui::{
 pub(crate) struct PointTooltipState {
     pub anchor_pos: Pos2,
     pub point: [f64; 2],
+    pub world_point: Option<[f64; 3]>,
+    pub suppress_rulers: bool,
     pub title: String,
     pub body_lines: Vec<(String, bool)>,
     pub active_last_frame: bool,
     pub dismissed: bool,
     pub dismissed_anchor: Option<Pos2>,
     pub dismissed_point: Option<[f64; 2]>,
+    pub dismissed_world_point: Option<[f64; 3]>,
     pub announced_text: Option<String>,
 }
 
@@ -241,6 +244,7 @@ pub(crate) fn preprocess_point_tooltip_frame(
         state.dismissed = true;
         state.dismissed_anchor = Some(state.anchor_pos);
         state.dismissed_point = Some(state.point);
+        state.dismissed_world_point = state.world_point;
         state.active_last_frame = false;
         state.announced_text = None;
         plot_area_response
@@ -253,6 +257,7 @@ pub(crate) fn preprocess_point_tooltip_frame(
         state.dismissed = false;
         state.dismissed_anchor = None;
         state.dismissed_point = None;
+        state.dismissed_world_point = None;
         state.active_last_frame = false;
         state.announced_text = None;
         plot_area_response
@@ -264,15 +269,33 @@ pub(crate) fn preprocess_point_tooltip_frame(
     (popup_hovered && !state.dismissed && state.active_last_frame).then_some(state)
 }
 
+pub(crate) struct SnappedTooltipArgs<'a> {
+    pub anchor_pos: Pos2,
+    pub point: [f64; 2],
+    pub world_point: Option<[f64; 3]>,
+    pub suppress_rulers: bool,
+    pub title: &'a str,
+    pub body_lines: &'a [(String, bool)],
+    pub announce_on_open: bool,
+}
+
+fn world_point_changed(prev: Option<[f64; 3]>, curr: Option<[f64; 3]>) -> bool {
+    match (prev, curr) {
+        (Some(a), Some(b)) => {
+            (a[0] - b[0]).abs() > 1e-12
+                || (a[1] - b[1]).abs() > 1e-12
+                || (a[2] - b[2]).abs() > 1e-12
+        }
+        (None, None) => false,
+        _ => true,
+    }
+}
+
 /// Renders a point tooltip anchored at `anchor_pos` (snapped data point screen
 /// coordinates) unless dismissed by `Escape`, updating hover-persistence state.
 pub(crate) fn show_snapped_point_tooltip(
     plot_area_response: &Response,
-    anchor_pos: Pos2,
-    point: [f64; 2],
-    title: &str,
-    body_lines: &[(String, bool)],
-    announce_on_open: bool,
+    args: SnappedTooltipArgs<'_>,
 ) {
     let state_id = plot_area_response.id.with("a11y_point_tooltip_state");
     let mut state = plot_area_response
@@ -282,14 +305,17 @@ pub(crate) fn show_snapped_point_tooltip(
 
     let anchor_moved = state
         .dismissed_anchor
-        .is_some_and(|prev| prev.distance(anchor_pos) > 2.5);
+        .is_some_and(|prev| prev.distance(args.anchor_pos) > 2.5);
     let point_changed = state.dismissed_point.is_some_and(|prev| {
-        (prev[0] - point[0]).abs() > 1e-12 || (prev[1] - point[1]).abs() > 1e-12
+        (prev[0] - args.point[0]).abs() > 1e-12
+            || (prev[1] - args.point[1]).abs() > 1e-12
+            || world_point_changed(state.dismissed_world_point, args.world_point)
     });
     if anchor_moved || point_changed {
         state.dismissed = false;
         state.dismissed_anchor = None;
         state.dismissed_point = None;
+        state.dismissed_world_point = None;
     }
     if state.dismissed {
         state.active_last_frame = false;
@@ -299,14 +325,16 @@ pub(crate) fn show_snapped_point_tooltip(
         return;
     }
 
-    state.anchor_pos = anchor_pos;
-    state.point = point;
-    state.title = title.to_owned();
-    state.body_lines = body_lines.to_vec();
+    state.anchor_pos = args.anchor_pos;
+    state.point = args.point;
+    state.world_point = args.world_point;
+    state.suppress_rulers = args.suppress_rulers;
+    state.title = args.title.to_owned();
+    state.body_lines = args.body_lines.to_vec();
     state.active_last_frame = true;
 
-    let summary = format_point_tooltip_summary(title, body_lines);
-    if announce_on_open && state.announced_text.as_deref() != Some(summary.as_str()) {
+    let summary = format_point_tooltip_summary(args.title, args.body_lines);
+    if args.announce_on_open && state.announced_text.as_deref() != Some(summary.as_str()) {
         if !summary.is_empty() {
             crate::emit_plot_live_message(&plot_area_response.ctx, summary.clone(), false);
         }
@@ -316,7 +344,12 @@ pub(crate) fn show_snapped_point_tooltip(
     plot_area_response
         .ctx
         .data_mut(|d| d.insert_temp(state_id, state));
-    paint_anchored_point_popup(plot_area_response, anchor_pos, title, body_lines);
+    paint_anchored_point_popup(
+        plot_area_response,
+        args.anchor_pos,
+        args.title,
+        args.body_lines,
+    );
 }
 
 /// Formats a polite ARIA live announcement for a focused or snapped critical point.
@@ -354,11 +387,15 @@ pub(crate) fn show_critical_point_tooltip(
     }
     show_snapped_point_tooltip(
         plot_area_response,
-        anchor_pos,
-        poi.point,
-        &poi.tooltip_title(),
-        &body_lines,
-        announce_on_open,
+        SnappedTooltipArgs {
+            anchor_pos,
+            point: poi.point,
+            world_point: None,
+            suppress_rulers: false,
+            title: &poi.tooltip_title(),
+            body_lines: &body_lines,
+            announce_on_open,
+        },
     );
 }
 

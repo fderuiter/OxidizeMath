@@ -216,6 +216,21 @@ impl SimulationFramework {
         }
     }
 
+    pub(crate) fn export_datasets_3d_with_fallback(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        let Some(tool) = &self.active_tool else {
+            return Vec::new();
+        };
+        let datasets = tool.export_datasets_3d();
+        if datasets.is_empty()
+            && self.sync_state.datasets_owner_tool == Some(tool.name())
+            && !self.current_valid_plot_datasets_3d.is_empty()
+        {
+            self.current_valid_plot_datasets_3d.clone()
+        } else {
+            datasets
+        }
+    }
+
     /// Queues a direct CSV dataset clipboard export for deferred end-of-frame dispatch.
     pub(crate) fn queue_clipboard_export(&mut self) {
         self.export_queue.queue_clipboard_export();
@@ -253,6 +268,43 @@ impl SimulationFramework {
         }
     }
 
+    fn serialize_active_dataset_export(
+        &self,
+        tool_name: &str,
+        format: ExportFormat,
+    ) -> Result<String, String> {
+        let datasets_3d: Vec<(String, Vec<[f64; 3]>)> = self
+            .export_datasets_3d_with_fallback()
+            .into_iter()
+            .filter(|(_, pts)| {
+                pts.iter()
+                    .any(|p| p[0].is_finite() && p[1].is_finite() && p[2].is_finite())
+            })
+            .collect();
+        if !datasets_3d.is_empty() {
+            return match format {
+                ExportFormat::Csv => Ok(egui_plot::export::format_csv_3d(&datasets_3d)),
+                ExportFormat::Json => Ok(egui_plot::export::format_json_3d(&datasets_3d)),
+                _ => Err("Unsupported dataset format".to_string()),
+            };
+        }
+        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
+            .export_datasets_with_fallback()
+            .into_iter()
+            .filter(|(_, pts)| pts.iter().any(|p| p[0].is_finite() && p[1].is_finite()))
+            .collect();
+        if !egui_plot::export_primitives::has_finite_dataset_points(&datasets) {
+            return Err(format!(
+                "No dataset points available to export from {tool_name}."
+            ));
+        }
+        match format {
+            ExportFormat::Csv => Ok(egui_plot::export::format_csv(&datasets)),
+            ExportFormat::Json => Ok(egui_plot::export::format_json(&datasets)),
+            _ => Err("Unsupported dataset format".to_string()),
+        }
+    }
+
     fn dispatch_dataset_export(
         &mut self,
         format: ExportFormat,
@@ -268,22 +320,12 @@ impl SimulationFramework {
             return;
         }
         let tool_name = tool.name().to_string();
-        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
-            .export_datasets_with_fallback()
-            .into_iter()
-            .filter(|(_, pts)| pts.iter().any(|p| p[0].is_finite() && p[1].is_finite()))
-            .collect();
-        if !egui_plot::export_primitives::has_finite_dataset_points(&datasets) {
-            self.set_export_status(
-                ExportStatusSeverity::Error,
-                format!("No dataset points available to export from {tool_name}."),
-            );
-            return;
-        }
-        let content = match format {
-            ExportFormat::Csv => egui_plot::export::format_csv(&datasets),
-            ExportFormat::Json => egui_plot::export::format_json(&datasets),
-            _ => return,
+        let content = match self.serialize_active_dataset_export(&tool_name, format) {
+            Ok(s) => s,
+            Err(err) => {
+                self.set_export_status(ExportStatusSeverity::Error, err);
+                return;
+            }
         };
         match target {
             ExportTarget::File => {
@@ -445,7 +487,7 @@ impl SimulationFramework {
 
 #[cfg(test)]
 #[path = "deferred_export_tests.rs"]
-mod deferred_export_tests;
+pub(crate) mod deferred_export_tests;
 
 #[cfg(test)]
 #[path = "deferred_export_audit_tests.rs"]
