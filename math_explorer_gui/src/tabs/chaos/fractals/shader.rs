@@ -3,7 +3,7 @@
 use super::{COORD_MAX, COORD_MIN, FractalMode, FractalViewer, ZOOM_MAX, ZOOM_MIN};
 use crate::framework::export_shader::compile_complex_bar_glsl;
 use crate::framework::{InteractiveTool, ShaderDialect};
-use math_commons::ast::{GLSL_COMPLEX_HELPERS, format_glsl_float};
+use math_commons::ast::{format_glsl_float, GLSL_COMPLEX_HELPERS};
 use math_commons::math_kernel::glsl_colormap::{
     glsl_cyclic_cosine_palette_fn, glsl_ensure_dark_canvas_contrast_fn,
 };
@@ -12,6 +12,7 @@ use std::fmt::Write;
 const FRACTAL_SHADER_RESERVED: &[&str] = &[
     "CENTER",
     "ESCAPE_R2",
+    "HIGH_CONTRAST",
     "IS_JULIA",
     "JULIA_C",
     "MAX_ITER",
@@ -46,8 +47,8 @@ impl FractalViewer {
             .map_err(|e| e.to_string())?;
         let cy = format_glsl_float(self.center.im.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
-        let zoom = format_glsl_float(self.zoom.clamp(ZOOM_MIN, ZOOM_MAX))
-            .map_err(|e| e.to_string())?;
+        let zoom =
+            format_glsl_float(self.zoom.clamp(ZOOM_MIN, ZOOM_MAX)).map_err(|e| e.to_string())?;
         let jx = format_glsl_float(self.julia_c.re.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
         let jy = format_glsl_float(self.julia_c.im.clamp(COORD_MIN, COORD_MAX))

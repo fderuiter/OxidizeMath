@@ -5,9 +5,12 @@
 use super::export_ui::export_action_button;
 use super::*;
 use eframe::egui;
+#[cfg(any(feature = "pure_math", feature = "physics"))]
 use math_commons::ast::format_glsl_float;
+#[cfg(any(feature = "pure_math", feature = "physics"))]
 use std::fmt::Write as _;
 
+#[cfg(any(feature = "pure_math", feature = "physics"))]
 const COMMON_COMPLEX_SHADER_RESERVED: &[&str] = &[
     "HIGH_CONTRAST",
     "cabs",
@@ -47,6 +50,7 @@ const COMMON_COMPLEX_SHADER_RESERVED: &[&str] = &[
 ];
 
 /// Compiles a complex [`MathExpressionInputBar`] into `(const_param_decls, glsl_vec2_expr)`.
+#[cfg(any(feature = "pure_math", feature = "physics"))]
 pub(crate) fn compile_complex_bar_glsl(
     bar: &MathExpressionInputBar,
     axis_vars: &[&str],

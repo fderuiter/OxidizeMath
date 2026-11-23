@@ -12,6 +12,7 @@
 pub mod a11y;
 mod axis;
 pub mod commands;
+pub mod csv_import;
 mod data_table;
 pub mod export;
 pub mod export_modal;
@@ -24,6 +25,7 @@ mod latex;
 mod legend;
 mod memory;
 mod modal_lifecycle;
+mod plot_overlays;
 mod plot_ui;
 pub mod poi;
 mod poi_interaction;
@@ -74,7 +76,7 @@ pub use crate::{
         LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
         PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, Text, VLine,
     },
-    latex::{parse_latex_to_layout_job, render_math_label},
+    latex::{parse_latex_to_layout_job, parse_prose_with_inline_math, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::{CanvasCallout, PlotMemory},
     modal_lifecycle::{ModalFrameContext, ModalLifecycle},
@@ -461,6 +463,7 @@ pub struct Plot<'a> {
     show_navigation_controls: bool,
     show_zoom_buttons: bool,
     allow_2d_analysis: bool,
+    allow_csv_import: bool,
 }
 
 impl<'a> Plot<'a> {
@@ -518,6 +521,7 @@ impl<'a> Plot<'a> {
             show_navigation_controls: true,
             show_zoom_buttons: true,
             allow_2d_analysis: true,
+            allow_csv_import: true,
         }
     }
 
@@ -1099,6 +1103,16 @@ impl<'a> Plot<'a> {
         self
     }
 
+    /// Enable or disable 2D CSV/TSV dataset overlays, toolbar `Import CSV` / `Overlays` controls,
+    /// `Ctrl+Shift+I`, clipboard paste, and file drag-and-drop.
+    ///
+    /// Set to `false` on locked 3D viewports such as `Plot3DViewport`. Default: `true`.
+    #[inline]
+    pub fn allow_csv_import(mut self, allow: bool) -> Self {
+        self.allow_csv_import = allow;
+        self
+    }
+
     /// Interact with and add items to the plot and finally draw it.
     pub fn show<'b, R>(
         self,
@@ -1159,6 +1173,7 @@ impl<'a> Plot<'a> {
             show_navigation_controls,
             show_zoom_buttons: _,
             allow_2d_analysis,
+            allow_csv_import,
         } = self;
 
         resolve_ambient_plot_links(
@@ -1313,19 +1328,12 @@ impl<'a> Plot<'a> {
 
         // Drain any newly imported CSV datasets for this plot
         let newly_imported = export::drain_imported_datasets(plot_id);
-        if !newly_imported.is_empty() {
-            for new_ds in newly_imported {
-                if let Some(existing) = mem
-                    .imported_datasets
-                    .iter_mut()
-                    .find(|d| d.name == new_ds.name)
-                {
-                    existing.points = new_ds.points;
-                    existing.visible = true;
-                } else {
-                    mem.imported_datasets.push(new_ds);
-                }
+        if allow_csv_import {
+            if !newly_imported.is_empty() {
+                plot_overlays::merge_imported_datasets(&mut mem.imported_datasets, newly_imported);
             }
+        } else {
+            mem.imported_datasets.clear();
         }
 
         let last_plot_transform = mem.transform;
@@ -1343,18 +1351,14 @@ impl<'a> Plot<'a> {
             sidecar_3d: None,
         };
 
-        // Render persisted imported datasets as overlay items
-        for dataset in &mem.imported_datasets {
-            if dataset.visible && !dataset.points.is_empty() {
-                plot_ui.points(
-                    Points::new(&dataset.name, dataset.points.clone())
-                        .radius(3.0_f32)
-                        .shape(MarkerShape::Circle),
-                );
-            }
-        }
-
         let inner = build_fn(&mut plot_ui);
+
+        let effective_allow_csv_import = allow_csv_import && plot_ui.sidecar_3d.is_none();
+        if effective_allow_csv_import {
+            plot_overlays::render_imported_overlays(&mut plot_ui, &mem.imported_datasets);
+        } else {
+            mem.imported_datasets.clear();
+        }
 
         // Drain any remaining canvas callouts not consumed by a custom CalloutManager
         let newly_added_callouts = drain_pending_callouts(plot_id);
@@ -2086,9 +2090,21 @@ impl<'a> Plot<'a> {
         let transform = mem.transform;
 
         // --- ACCESSIBILITY LOGIC INJECTED ---
-        if let Some(status) = export::drain_import_status(plot_id) {
+        data_table::set_data_table_allow_csv_import(ui.ctx(), plot_id, effective_allow_csv_import);
+        if let Some(status) = export::drain_import_status(plot_id)
+            && effective_allow_csv_import
+        {
             access_state.import_toast = Some(status);
         }
+        plot_overlays::handle_plot_csv_inputs(
+            ui,
+            &response,
+            plot_rect,
+            plot_id,
+            effective_allow_csv_import,
+            &mut mem,
+            &mut access_state,
+        );
 
         if ui.ctx().data_mut(|d| {
             d.get_temp::<bool>(plot_id.with("toggle_settings"))
@@ -2115,13 +2131,19 @@ impl<'a> Plot<'a> {
         }
 
         let focus_response = &response;
+        let logical_item_count = items
+            .iter()
+            .filter(|it| !it.is_companion_visual_only())
+            .count();
         let series_count = sidecar_3d
             .as_ref()
             .filter(|s| !s.series().is_empty())
-            .map_or_else(|| items.len(), |s| s.series().len());
+            .map_or(logical_item_count, |s| s.series().len());
         let has_any_export_points =
             !export_datasets_3d.is_empty() || items.iter().any(|it| it.has_any_points());
-        let has_table_content = has_any_export_points || !critical_points.is_empty();
+        let has_table_content = has_any_export_points
+            || !critical_points.is_empty()
+            || (effective_allow_csv_import && items.is_empty());
         let plot_a11y_label = match title.as_deref() {
             Some(t) => format!("Interactive Plot ({t}), {series_count} series"),
             None => format!("Interactive Plot, {series_count} series"),
@@ -2137,114 +2159,23 @@ impl<'a> Plot<'a> {
                 builder.set_label(plot_a11y_label);
             });
 
-        let overlay_rect =
-            egui::Rect::from_min_size(plot_rect.min, egui::vec2(plot_rect.width(), 30.0_f32));
-        ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("Save PNG").clicked() {
-                    access_state.export_modal.open = true;
-                }
-                if ui.button("Export CSV").clicked() {
-                    if !export_datasets_3d.is_empty() {
-                        export::export_csv_3d(&export_datasets_3d);
-                    } else {
-                        let export_datasets = collect_export_datasets(&items);
-                        export::export_csv(&export_datasets);
-                    }
-                }
-                if ui.button("Export JSON").clicked() {
-                    if !export_datasets_3d.is_empty() {
-                        export::export_json_3d(&export_datasets_3d);
-                    } else {
-                        let export_datasets = collect_export_datasets(&items);
-                        export::export_json(&export_datasets);
-                    }
-                }
-                let mut table_btn = a11y::focusable_action_button(
-                    ui,
-                    has_table_content,
-                    egui::Button::new("Table View"),
-                    Some("Table View"),
-                );
-                if !has_table_content {
-                    table_btn = table_btn
-                        .accessible_tooltip("No tabular data points available for this plot");
-                }
-                if has_table_content && table_btn.clicked() {
-                    access_state.show_table = !access_state.show_table;
-                }
-                if ui.button("🔧 Settings").clicked() {
-                    access_state.show_settings_modal = !access_state.show_settings_modal;
-                }
-
-                if allow_2d_analysis {
-                    ui.separator();
-
-                    if !has_fit_candidates {
-                        let _ = a11y::focusable_action_button(
-                            ui,
-                            false,
-                            egui::Button::new("Fit Curve"),
-                            Some("Fit Curve"),
-                        )
-                        .accessible_tooltip(
-                            "Requires a dataset with at least 2 points for curve fitting",
-                        );
-                    } else {
-                        ui.menu_button("Fit Curve", |ui| {
-                            let base_ds = Arc::clone(get_or_populate_base_datasets(
-                                &items,
-                                base_items_hash,
-                                &mut access_state.cached_base_datasets,
-                            ));
-                            fit_overlay::render_fit_curve_menu(
-                                ui,
-                                &base_ds,
-                                &mut access_state,
-                                false,
-                            );
-                        });
-
-                        if access_state.fit_model.is_some() {
-                            let toggle_text = if access_state.show_fit_overlay {
-                                "Hide Fit"
-                            } else {
-                                "Show Fit"
-                            };
-                            if ui.button(toggle_text).clicked() {
-                                access_state.show_fit_overlay = !access_state.show_fit_overlay;
-                            }
-                            if ui.button("Clear Fit").clicked() {
-                                access_state.fit_model = None;
-                            }
-                        }
-                    }
-                }
-
-                if let Some((ref msg, is_error)) = access_state.import_toast {
-                    ui.separator();
-                    let dark_mode = ui.visuals().dark_mode;
-                    let (color, icon) = match (is_error, dark_mode) {
-                        (true, true) => (Color32::from_rgb(255, 118, 118), "⚠️"),
-                        (true, false) => (Color32::from_rgb(180, 28, 28), "⚠️"),
-                        (false, true) => (Color32::from_rgb(74, 214, 122), "ℹ️"),
-                        (false, false) => (Color32::from_rgb(15, 115, 54), "ℹ️"),
-                    };
-                    ui.colored_label(color, format!("{icon} {msg}"));
-                    if a11y::focusable_action_button(
-                        ui,
-                        true,
-                        egui::Button::new("✖").small(),
-                        Some("Dismiss import notification"),
-                    )
-                    .accessible_tooltip("Dismiss import notification")
-                    .clicked()
-                    {
-                        access_state.import_toast = None;
-                    }
-                }
-            });
-        });
+        let toolbar_cfg = plot_overlays::PlotToolbarConfig {
+            plot_id,
+            plot_rect,
+            allow_csv_import: effective_allow_csv_import,
+            allow_2d_analysis,
+            has_table_content,
+            has_fit_candidates,
+            base_items_hash,
+            items: &items,
+            export_datasets_3d: &export_datasets_3d,
+            viewport_sync: plot_overlays::OverlayViewportSync {
+                data_aspect,
+                linked_axes: &linked_axes,
+                default_auto_bounds,
+            },
+        };
+        plot_overlays::render_plot_top_toolbar(ui, &toolbar_cfg, &mut mem, &mut access_state);
 
         if show_navigation_controls {
             let zoom_config = FloatingZoomConfig {
@@ -2738,9 +2669,27 @@ impl<'a> Plot<'a> {
                 ui.separator();
             }
 
-            if ui.button("Import CSV").clicked() {
-                export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
-                ui.close();
+            if effective_allow_csv_import {
+                if ui.button("Import CSV").clicked() {
+                    export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
+                    ui.close();
+                }
+                if !mem.imported_datasets.is_empty() {
+                    let sync = plot_overlays::OverlayViewportSync {
+                        data_aspect,
+                        linked_axes: &linked_axes,
+                        default_auto_bounds,
+                    };
+                    ui.menu_button("Overlays", |ui| {
+                        plot_overlays::render_overlays_menu_contents(
+                            ui,
+                            &mut mem,
+                            &mut access_state,
+                            &sync,
+                            true,
+                        );
+                    });
+                }
             }
             if ui.button("Save PNG").clicked() {
                 access_state.export_modal.open = true;
@@ -2816,8 +2765,13 @@ impl<'a> Plot<'a> {
                 item.append_deferred_export(&mut ignored_datasets, &mut deferred_primitives);
             }
         } else {
+            let mut ignored_datasets = Vec::new();
             for item in &mut items {
-                item.append_deferred_export(&mut deferred_datasets, &mut deferred_primitives);
+                if item.is_companion_visual_only() {
+                    item.append_deferred_export(&mut ignored_datasets, &mut deferred_primitives);
+                } else {
+                    item.append_deferred_export(&mut deferred_datasets, &mut deferred_primitives);
+                }
             }
         }
         append_deferred_plot_datasets(deferred_datasets, items_hash);
@@ -3067,7 +3021,7 @@ fn drain_headless_zoom_signals(ctx: &egui::Context, plot_id: Id) -> (bool, bool,
     })
 }
 
-fn apply_aspect_and_sync_linked(
+pub(crate) fn apply_aspect_and_sync_linked(
     ui: &mut Ui,
     mem: &mut PlotMemory,
     data_aspect: Option<f32>,
@@ -3332,7 +3286,7 @@ fn item_point_count(item: &dyn PlotItem) -> usize {
 type BaseDatasetList = Vec<fit_overlay::BaseDatasetTuple>;
 type BaseDatasetCache = Option<(u64, Arc<BaseDatasetList>)>;
 
-fn get_or_populate_base_datasets<'c>(
+pub(crate) fn get_or_populate_base_datasets<'c>(
     items: &[Box<dyn PlotItem + '_>],
     base_items_hash: u64,
     cache: &'c mut BaseDatasetCache,
@@ -3343,6 +3297,7 @@ fn get_or_populate_base_datasets<'c>(
     if needs_refresh {
         let built: BaseDatasetList = items
             .iter()
+            .filter(|it| !it.is_companion_visual_only())
             .map(|it| (it.name().to_owned(), it.extract_points(), it.color()))
             .collect();
         *cache = Some((base_items_hash, Arc::new(built)));
@@ -3353,13 +3308,17 @@ fn get_or_populate_base_datasets<'c>(
 fn collect_accessible_datasets(items: &[Box<dyn PlotItem + '_>]) -> BaseDatasetList {
     items
         .iter()
+        .filter(|item| !item.is_companion_visual_only())
         .map(|item| (item.name().to_owned(), item.extract_points(), item.color()))
         .collect()
 }
 
-fn collect_export_datasets(items: &[Box<dyn PlotItem + '_>]) -> Vec<(String, Vec<[f64; 2]>)> {
+pub(crate) fn collect_export_datasets(
+    items: &[Box<dyn PlotItem + '_>],
+) -> Vec<(String, Vec<[f64; 2]>)> {
     items
         .iter()
+        .filter(|item| !item.is_companion_visual_only())
         .filter_map(|item| {
             let pts = item.extract_points();
             (!pts.is_empty()).then(|| (item.name().to_owned(), pts))

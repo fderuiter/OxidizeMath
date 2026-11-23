@@ -174,9 +174,7 @@ impl WaveRunner {
         let n = self.n_points.max(2);
         let dx = (self.x_max - self.x_min) / (n as f64 - 1.0);
         self.x_axis = (0..n).map(|i| self.x_min + i as f64 * dx).collect();
-        let (x_left, x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
-        self.x_left = x_left;
-        self.x_right = x_right;
+        (self.x_left, self.x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
         self.potential = evaluate_potential_grid(
             cfg.preset,
             &self.x_axis,

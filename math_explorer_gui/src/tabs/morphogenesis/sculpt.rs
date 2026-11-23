@@ -1,5 +1,5 @@
 //! Microfluidic cell-role brush rasterization, RLE synchronization, and high-contrast
-//! mask overlays for [`super::MorphogenesisTool`] and [`super::runner::MorphogenesisRunner`].
+//! mask overlays for [`super::MorphogenesisTool`] and [`super::runner::MorphogenesisKineticsRunner`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -11,7 +11,7 @@ use eframe::egui::{self, Color32, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::biology::diffusion::{CellMask2D, MaskedFiniteDifference2D, ReactionCellRole};
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use math_explorer::biology::morphogenesis::{ReactionKinetics, TuringSystem};
 
 pub(crate) fn default_morpho_brush_kit() -> SpatialBrushKit {
     SpatialBrushKit::new(BrushMode::ZeroFluxWall, 2.0)
@@ -30,8 +30,8 @@ pub(crate) fn mode_to_cell_role(mode: BrushMode) -> ReactionCellRole {
     }
 }
 
-pub(crate) fn apply_stroke_to_morpho_system(
-    system: &mut TuringSystem<2, SchnakenbergKinetics, MaskedFiniteDifference2D>,
+pub(crate) fn apply_stroke_to_morpho_system<K: ReactionKinetics<2>>(
+    system: &mut TuringSystem<2, K, MaskedFiniteDifference2D>,
     width: usize,
     height: usize,
     stroke: &BrushStroke,
@@ -164,61 +164,6 @@ pub(crate) fn draw_morpho_sculpt_controls(
 }
 
 impl super::MorphogenesisTool {
-    #[cfg(test)]
-    pub(crate) fn create_runner(
-        params: &std::sync::Arc<std::sync::RwLock<super::runner::MorphogenesisSharedParams>>,
-        width: usize,
-        height: usize,
-    ) -> super::runner::MorphogenesisRunner<MaskedFiniteDifference2D> {
-        let empty_mask = std::sync::Arc::new(std::sync::RwLock::new(Vec::new()));
-        Self::create_runner_with_mask(params, &empty_mask, width, height)
-    }
-
-    pub(crate) fn create_runner_with_mask(
-        params: &std::sync::Arc<std::sync::RwLock<super::runner::MorphogenesisSharedParams>>,
-        mask_rle: &std::sync::Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
-        width: usize,
-        height: usize,
-    ) -> super::runner::MorphogenesisRunner<MaskedFiniteDifference2D> {
-        use math_explorer::biology::diffusion::FiniteDifference2D;
-        use math_explorer::biology::morphogenesis::DiffusionCoeff;
-        use math_explorer::math_kernel::types::{Dimension, StepSize};
-        let (a, b, d_u, d_v) = {
-            let p = params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v)
-        };
-        let kinetics = SchnakenbergKinetics { a, b };
-        let diffusion = FiniteDifference2D::new(
-            Dimension(width),
-            Dimension(height),
-            StepSize(1.0),
-            StepSize(1.0),
-        )
-        .with_mask();
-        let mut system = TuringSystem::new_with_kinetics(
-            Dimension(width * height),
-            DiffusionCoeff(d_u),
-            DiffusionCoeff(d_v),
-            kinetics,
-            diffusion,
-        );
-        Self::initialize_system(&mut system, width, height);
-        let rle = mask_rle.read().unwrap_or_else(|e| e.into_inner()).clone();
-        if let Ok(bytes) = decode_rle_mask(&rle, width * height) {
-            if !rle.is_empty() {
-                let _ = system.diffusion.mask.set_roles_slice(&bytes);
-            }
-        }
-        let mut runner = super::runner::MorphogenesisRunner {
-            system,
-            params: std::sync::Arc::clone(params),
-            width,
-            height,
-        };
-        runner.enforce_mask_concentrations();
-        runner
-    }
-
     /// Dispatches a [`BrushStroke`] to both UI-side RLE state and the background reaction-diffusion worker.
     pub fn dispatch_brush_stroke(&mut self, stroke: BrushStroke, ctx: Option<&egui::Context>) {
         {

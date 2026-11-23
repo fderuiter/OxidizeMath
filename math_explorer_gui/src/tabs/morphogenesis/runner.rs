@@ -1,26 +1,78 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{
-    grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD,
-};
+use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
 use super::sculpt::{apply_stroke_to_morpho_system, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::decode_rle_mask;
-use math_explorer::biology::diffusion::{
-    FiniteDifference2D, MaskedFiniteDifference2D, ReactionCellRole, SpatialDiffusion,
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::presets::MorphogenesisKineticsMode;
+#[cfg(test)]
+use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::diffusion::{MaskedFiniteDifference2D, ReactionCellRole};
+use math_explorer::biology::morphogenesis::{
+    GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics, TuringSystem,
 };
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use std::sync::Arc;
 
-/// Snapshot payload bundling activator field `u` with active `CellMask2D` bytes.
+/// Snapshot payload bundling active concentration field with `CellMask2D` role bytes.
 #[derive(Clone)]
 pub struct MorphoSnapshotData {
-    /// Flattened activator `u` concentration grid.
+    /// Flattened active species concentration grid (`u` in Schnakenberg, `v` in Gray-Scott).
     pub u_data: Vec<f64>,
     /// Optional row-major `ReactionCellRole` byte grid when any cell is non-`Free`.
     pub mask_roles: Vec<u8>,
+}
+
+/// Zero-allocation kinetics adapter switching cleanly between [`SchnakenbergKinetics`]
+/// and [`GrayScottKinetics`] inside [`TuringSystem`].
+#[derive(Clone, Copy, Debug)]
+pub struct MorphogenesisKineticsAdapter {
+    /// Active reaction kinetics family.
+    pub mode: MorphogenesisKineticsMode,
+    /// Schnakenberg activator feed `a`.
+    pub a: f64,
+    /// Schnakenberg inhibitor feed `b`.
+    pub b: f64,
+    /// Gray-Scott substrate feed rate `f`.
+    pub f: f64,
+    /// Gray-Scott catalyst kill rate `k`.
+    pub k: f64,
+}
+
+impl ReactionKinetics<2> for MorphogenesisKineticsAdapter {
+    fn reaction(&self, concentrations: [f64; 2]) -> [f64; 2] {
+        match self.mode {
+            MorphogenesisKineticsMode::Schnakenberg => {
+                SchnakenbergKinetics::new(self.a, self.b).reaction(concentrations)
+            }
+            MorphogenesisKineticsMode::GrayScott => {
+                GrayScottKinetics::new(self.f, self.k).reaction(concentrations)
+            }
+        }
+    }
+}
+
+/// Shared Gray-Scott mode and `(f, k)` parameters paired with [`MorphogenesisSharedParams`].
+#[derive(Clone, Copy, Debug)]
+pub struct MorphogenesisKineticsState {
+    /// Selected kinetics regime.
+    pub mode: MorphogenesisKineticsMode,
+    /// Gray-Scott substrate feed rate `f`.
+    pub f: f64,
+    /// Gray-Scott autocatalyst kill rate `k`.
+    pub k: f64,
+}
+
+impl Default for MorphogenesisKineticsState {
+    fn default() -> Self {
+        let gs = GrayScottKinetics::mitosis();
+        Self {
+            mode: MorphogenesisKineticsMode::Schnakenberg,
+            f: gs.f,
+            k: gs.k,
+        }
+    }
 }
 
 #[allow(missing_docs)]
@@ -33,15 +85,17 @@ pub struct MorphogenesisSharedParams {
     pub high_contrast: bool,
 }
 
+#[cfg(test)]
 #[allow(missing_docs)]
-pub struct MorphogenesisRunner<D: SpatialDiffusion<2> = FiniteDifference2D> {
-    pub(crate) system: TuringSystem<2, SchnakenbergKinetics, D>,
+pub struct MorphogenesisRunner {
+    pub(crate) system: TuringSystem<2, SchnakenbergKinetics, FiniteDifference2D>,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) width: usize,
     pub(crate) height: usize,
 }
 
-impl<D: SpatialDiffusion<2>> FiniteStateGuard for MorphogenesisRunner<D> {
+#[cfg(test)]
+impl FiniteStateGuard for MorphogenesisRunner {
     fn is_finite_state(&self) -> bool {
         self.system.u().iter().all(|&x| x.is_finite())
             && self.system.v().iter().all(|&x| x.is_finite())
@@ -56,7 +110,8 @@ impl<D: SpatialDiffusion<2>> FiniteStateGuard for MorphogenesisRunner<D> {
     }
 }
 
-impl<D: SpatialDiffusion<2>> MorphogenesisRunner<D> {
+#[cfg(test)]
+impl MorphogenesisRunner {
     fn sync_system_params(&mut self) -> Option<f64> {
         let (a, b, d_u, d_v, dt) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -73,31 +128,21 @@ impl<D: SpatialDiffusion<2>> MorphogenesisRunner<D> {
         if dt.is_finite() && dt > 0.0 && is_pattern_forming_regime(a, b, d_u, d_v, dt) {
             let var_u = grid_u_variance(self.system.u());
             if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
-                MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
+                MorphogenesisTool::initialize_schnakenberg(&mut self.system, self.width, self.height);
             }
         }
         (dt.is_finite() && dt > 0.0).then_some(dt)
     }
-
-    fn diagnostic_if_diverged(&self) -> Option<DiagnosticReport> {
-        (!FiniteStateGuard::is_finite_state(self)).then(|| {
-            DiagnosticReport::new(
-                0.0,
-                0,
-                "concentration",
-                "Turing morphogenesis diverged: non-finite concentration encountered.",
-            )
-        })
-    }
 }
 
-impl SimulationRunner for MorphogenesisRunner<FiniteDifference2D> {
+#[cfg(test)]
+impl SimulationRunner for MorphogenesisRunner {
     fn process_command(&mut self, cmd: SimCommand) {
         if matches!(cmd, SimCommand::Reset)
             || matches!(cmd, SimCommand::Custom(ref s) if s == "reinit")
         {
             let _ = self.sync_system_params();
-            MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
+            MorphogenesisTool::initialize_schnakenberg(&mut self.system, self.width, self.height);
         }
     }
 
@@ -106,7 +151,14 @@ impl SimulationRunner for MorphogenesisRunner<FiniteDifference2D> {
     }
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
-        self.diagnostic_if_diverged()
+        (!FiniteStateGuard::is_finite_state(self)).then(|| {
+            DiagnosticReport::new(
+                0.0,
+                0,
+                "concentration",
+                "Turing morphogenesis diverged: non-finite concentration encountered.",
+            )
+        })
     }
 
     fn step(&mut self) {
@@ -149,7 +201,32 @@ impl SimulationRunner for MorphogenesisRunner<FiniteDifference2D> {
     }
 }
 
-impl MorphogenesisRunner<MaskedFiniteDifference2D> {
+/// Multi-kinetics worker runner supporting [`SchnakenbergKinetics`], [`GrayScottKinetics`],
+/// and zero-allocation [`MaskedFiniteDifference2D`] microfluidic field sculpting.
+pub struct MorphogenesisKineticsRunner {
+    pub(crate) system: TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D>,
+    pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+    pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+    pub(crate) width: usize,
+    pub(crate) height: usize,
+}
+
+impl FiniteStateGuard for MorphogenesisKineticsRunner {
+    fn is_finite_state(&self) -> bool {
+        self.system.u().iter().all(|&x| x.is_finite())
+            && self.system.v().iter().all(|&x| x.is_finite())
+    }
+
+    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
+        None
+    }
+
+    fn diverged(&self) -> bool {
+        !FiniteStateGuard::is_finite_state(self)
+    }
+}
+
+impl MorphogenesisKineticsRunner {
     pub(crate) fn enforce_mask_concentrations(&mut self) {
         if !self.system.diffusion.mask.has_active_cells() {
             return;
@@ -168,19 +245,73 @@ impl MorphogenesisRunner<MaskedFiniteDifference2D> {
             }
         }
     }
+
+    fn sync_system_params(&mut self) -> Option<f64> {
+        let (a, b, d_u, d_v, dt) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.a, p.b, p.d_u, p.d_v, p.dt)
+        };
+        let (mode, f, k) = {
+            let ks = self
+                .kinetics_state
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            (ks.mode, ks.f, ks.k)
+        };
+        if !a.is_finite()
+            || !b.is_finite()
+            || !f.is_finite()
+            || !k.is_finite()
+            || !d_u.is_finite()
+            || !d_v.is_finite()
+        {
+            return None;
+        }
+        self.system.kinetics.mode = mode;
+        self.system.kinetics.a = a;
+        self.system.kinetics.b = b;
+        self.system.kinetics.f = f;
+        self.system.kinetics.k = k;
+        self.system.diffusion_coeffs[0] = d_u;
+        self.system.diffusion_coeffs[1] = d_v;
+        if mode == MorphogenesisKineticsMode::Schnakenberg
+            && dt.is_finite()
+            && dt > 0.0
+            && is_pattern_forming_regime(a, b, d_u, d_v, dt)
+        {
+            let var_u = grid_u_variance(self.system.u());
+            if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
+                MorphogenesisTool::initialize_adapter_system(
+                    &mut self.system,
+                    self.width,
+                    self.height,
+                );
+                self.enforce_mask_concentrations();
+            }
+        }
+        (dt.is_finite() && dt > 0.0).then_some(dt)
+    }
 }
 
-impl SimulationRunner for MorphogenesisRunner<MaskedFiniteDifference2D> {
+impl SimulationRunner for MorphogenesisKineticsRunner {
     fn process_command(&mut self, cmd: SimCommand) {
         match cmd {
             SimCommand::Reset => {
                 let _ = self.sync_system_params();
-                MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
+                MorphogenesisTool::initialize_adapter_system(
+                    &mut self.system,
+                    self.width,
+                    self.height,
+                );
                 self.enforce_mask_concentrations();
             }
             SimCommand::Custom(ref s) if s == "reinit" => {
                 let _ = self.sync_system_params();
-                MorphogenesisTool::initialize_system(&mut self.system, self.width, self.height);
+                MorphogenesisTool::initialize_adapter_system(
+                    &mut self.system,
+                    self.width,
+                    self.height,
+                );
                 self.enforce_mask_concentrations();
             }
             SimCommand::ApplyBrush {
@@ -225,7 +356,14 @@ impl SimulationRunner for MorphogenesisRunner<MaskedFiniteDifference2D> {
     }
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
-        self.diagnostic_if_diverged()
+        (!FiniteStateGuard::is_finite_state(self)).then(|| {
+            DiagnosticReport::new(
+                0.0,
+                0,
+                "concentration",
+                "Morphogenesis reaction-diffusion diverged: non-finite concentration encountered.",
+            )
+        })
     }
 
     fn step(&mut self) {
@@ -244,9 +382,17 @@ impl SimulationRunner for MorphogenesisRunner<MaskedFiniteDifference2D> {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .high_contrast;
-        let u_vec = self.system.u().to_vec();
+        let mode = self
+            .kinetics_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .mode;
+        let field_vec = match mode {
+            MorphogenesisKineticsMode::Schnakenberg => self.system.u().to_vec(),
+            MorphogenesisKineticsMode::GrayScott => self.system.v().to_vec(),
+        };
         let mut image = MorphogenesisTool::plot_concentration_with_contrast(
-            &u_vec,
+            &field_vec,
             self.width,
             self.height,
             high_contrast,
@@ -264,7 +410,7 @@ impl SimulationRunner for MorphogenesisRunner<MaskedFiniteDifference2D> {
             pixels: Arc::new(std::sync::RwLock::new(image.pixels)),
             custom_data: Vec::new(),
             structured_data: Some(Box::new(MorphoSnapshotData {
-                u_data: u_vec,
+                u_data: field_vec,
                 mask_roles,
             })),
             sonification: crate::audio::SonificationFrame::silent(),
@@ -272,6 +418,9 @@ impl SimulationRunner for MorphogenesisRunner<MaskedFiniteDifference2D> {
     }
 
     fn get_steps_per_frame(&self) -> usize {
-        1
+        match self.system.kinetics.mode {
+            MorphogenesisKineticsMode::Schnakenberg => 1,
+            MorphogenesisKineticsMode::GrayScott => 4,
+        }
     }
 }
