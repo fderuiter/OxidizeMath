@@ -56,12 +56,10 @@ pub(super) fn evaluate_scene_density_counts_with_thresholds(
         DEFAULT_OPACITY_THRESHOLD
     };
     let mut counts = DensityActionCounts::default();
-    let len = scene.gaussians.len().min(grads.len());
-    for i in 0..len {
-        let g = &scene.gaussians[i];
+    for (g, &grad) in scene.gaussians.iter().zip(grads.iter()) {
         let max_base = g.scale.x.max(g.scale.y).max(g.scale.z);
         let action = determine_density_action(
-            grads[i],
+            grad,
             max_base * safe_scale,
             g.opacity,
             safe_grad,

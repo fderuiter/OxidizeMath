@@ -31,6 +31,8 @@ mod markup_tests;
 mod modal_accessibility_tests;
 #[allow(missing_docs)]
 pub mod plot3d_viewport;
+#[cfg(test)]
+mod plot_chrome_tests;
 pub mod presets;
 mod reflective_ui;
 #[allow(missing_docs)]
