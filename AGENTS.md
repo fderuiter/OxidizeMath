@@ -70,7 +70,7 @@ cargo run -p xtask -- check-api-drift
 cargo run -p unified_verification --release -- regenerate-baseline
 cargo run -p xtask -- regenerate-baseline
 
-# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA or ./ local action pins, and safe run expressions)
+# Lint GitHub Actions workflows (permissions, event-scoped concurrency, timeouts, 40-char SHA or ./ local action pins, and safe run expressions)
 cargo run -p unified_verification --release -- lint-workflows
 
 # Run workflow linter unit tests directly
@@ -105,9 +105,9 @@ cargo check --workspace --target wasm32-unknown-unknown --all-features
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
 
-### Workflow `run` Script Expression & Reusable Caller Policy
+### Workflow Concurrency, `run` Script Expression & Reusable Caller Policy
 
-`lint-workflows` audits `.github/workflows` (including full permission, concurrency, timeout, pinning, and `run` expression checks on local reusable workflows) and `.github/actions` manifests. It rejects `${{ github.* }}`, `${{ inputs.* }}`, and non-static or unmapped `${{ env.* }}` expressions interpolated directly inside workflow `jobs.<id>.steps[*].run` and composite action `runs.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, `${{ github.event.* }}`, or `${{ inputs.target }}`) to prevent script and argument injection. Reusable workflow caller jobs (`jobs.<id>.uses`) are exempt from `timeout-minutes` and must omit `timeout-minutes` at the caller level (configure `timeout-minutes` on concrete jobs inside the called workflow instead). Always bind `github` and `inputs` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
+`lint-workflows` audits `.github/workflows` (including full permission, concurrency, timeout, pinning, and `run` expression checks on local reusable workflows) and `.github/actions` manifests. For workflows with `on.push.branches`, root and branch-active job `concurrency` blocks must not group runs by `github.ref` or `github.ref_name` without a run-unique `github.run_id` or `github.sha` fallback, and `cancel-in-progress` must never cancel configured push branches such as `main` or `master` (scope cancellation to `pull_request` events and isolate serialized deployments like `deploy-pages` under job-level `group: pages` with `cancel-in-progress: false`). It also rejects `${{ github.* }}`, `${{ inputs.* }}`, and non-static or unmapped `${{ env.* }}` expressions interpolated directly inside workflow `jobs.<id>.steps[*].run` and composite action `runs.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, `${{ github.event.* }}`, or `${{ inputs.target }}`) to prevent script and argument injection. Reusable workflow caller jobs (`jobs.<id>.uses`) are exempt from `timeout-minutes` and must omit `timeout-minutes` at the caller level (configure `timeout-minutes` on concrete jobs inside the called workflow instead). Always bind `github` and `inputs` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
 
 ```text
 env:
@@ -175,7 +175,7 @@ cargo run -p xtask -- test-wasm
 The `package` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) defines a static three-OS matrix (`ubuntu-latest`/`deb`, `macos-latest`/`dmg`, and `windows-latest`/`wix`) so every workflow event posts deterministic `Package Installers` check runs across all three operating systems:
 
 - **Linux (`deb`)**: Runs on every `pull_request`, `merge_group`, `push`, and `workflow_dispatch` event.
-- **macOS (`dmg`) & Windows (`wix`)**: Run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `pre-flight` sets `installer_changed=true` (diffs touching `math_explorer_gui/**`, [Cargo.toml](Cargo.toml), `Cargo.lock`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when git diff falls back). On unrelated pull requests (`installer_changed=false`), the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` and skip build, manifest, and upload steps via `if:`.
+- **macOS (`dmg`) & Windows (`wix`)**: Because `pull_request` runs gate direct merges to `main` (without relying solely on `merge_group`), these legs run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `pre-flight` sets `installer_changed=true` — matching `crates/*` (after ignoring non-linked `crates/markdown_tests/*` and `crates/unified_verification/*`), `math_explorer_gui/*`, `math_explorer/*`, `egui_plot/*`, [LICENSE](LICENSE), `papers/*`, [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*` (see [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml)), and [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back because `BASE_SHA` or `HEAD_SHA` is missing or unreachable. When a `pull_request` touches only paths outside those globs (such as `docs/*`, `AGENTS.md`, [CONTRIBUTING.md](CONTRIBUTING.md), `crates/markdown_tests/*`, or `crates/unified_verification/*`), `installer_changed` is `false` and the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` to post passing check runs while skipping build, manifest, and upload steps via `if:`.
 
 ### Prerequisites (Ubuntu / Debian)
 
@@ -233,7 +233,7 @@ rm -rf math_explorer_gui/dist
 
 ## 6. Local Academic Paper Compilation Checks
 
-Because `traceability` only checks `.tex` filename presence in `papers/` and `.githooks/pre-commit` omits LaTeX builds so contributors do not need TeXLive for unrelated Rust commits, [.github/workflows/ci.yml](.github/workflows/ci.yml) enforces full paper compilation in the `compile-papers` (`Compile Academic Papers`) job whenever `pre-flight` sets `papers_changed=true` on `pull_request` (diffs touching `papers/**`, `apps/xtask/src/papers*`, [traceability.toml](traceability.toml), or [.github/workflows/ci.yml](.github/workflows/ci.yml), or on git diff fallback) and unconditionally on `merge_group`, `push`, and `workflow_dispatch`.
+Because `traceability` only checks `.tex` filename presence in `papers/` and `.githooks/pre-commit` omits LaTeX builds so contributors do not need TeXLive for unrelated Rust commits — and because `pull_request` runs gate direct merges to `main` — [.github/workflows/ci.yml](.github/workflows/ci.yml) enforces full paper compilation in the `compile-papers` (`Compile Academic Papers`) job whenever `pre-flight` sets `papers_changed=true` on `pull_request` (diffs touching `papers/*`, `apps/xtask/*`, [traceability.toml](traceability.toml), [Verification_Certificate.json](Verification_Certificate.json), [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back) and unconditionally on `merge_group`, `push`, and `workflow_dispatch`. Pull requests limited to paths outside those globs (such as `docs/*`, `crates/markdown_tests/*`, or `crates/unified_verification/*`) set `papers_changed=false` and skip `compile-papers`.
 
 ### Prerequisites (Ubuntu / Debian)
 
