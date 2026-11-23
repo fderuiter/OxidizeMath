@@ -29,6 +29,7 @@ mod main_wasm_tests;
 mod markup_tests;
 #[cfg(test)]
 mod modal_accessibility_tests;
+pub mod plot3d_viewport;
 #[cfg(test)]
 mod plot_chrome_tests;
 pub mod presets;

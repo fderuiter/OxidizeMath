@@ -20,7 +20,10 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
                     .all(|v| v.is_finite())
         }
         OdePreset::Custom => {
-            tool.param_k.is_finite() && tool.math_input.param_slice().iter().all(|v| v.is_finite())
+            tool.param_k.is_finite()
+                && tool.param_r.is_finite()
+                && tool.param_cap_k.is_finite()
+                && tool.math_input.param_slice().iter().all(|v| v.is_finite())
         }
         OdePreset::HarmonicOscillator => tool.param_k.is_finite() && tool.ic_v0.is_finite(),
         OdePreset::LogisticGrowth => tool.param_r.is_finite() && tool.param_cap_k.is_finite(),
@@ -139,6 +142,16 @@ pub fn clamp_ode_parameters(
                 param_k.clamp(-10.0, 10.0)
             } else {
                 1.0
+            };
+            *param_r = if param_r.is_finite() {
+                param_r.clamp(0.01, 5.0)
+            } else {
+                1.0
+            };
+            *param_cap_k = if param_cap_k.is_finite() {
+                param_cap_k.clamp(0.1, 100.0)
+            } else {
+                10.0
             };
         }
     }

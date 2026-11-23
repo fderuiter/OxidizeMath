@@ -60,6 +60,36 @@ pub struct OdeSolverTool {
     pub(crate) synced_legacy_params: [f64; 3],
 }
 
+fn default_ode_math_input() -> MathExpressionInputBar {
+    MathExpressionInputBar::new(
+        "y'",
+        "-k * y * sin(t)",
+        vec![
+            ("y' = -k*y*sin(t) (Non-linear Sine)", "-k * y * sin(t)"),
+            ("y' = k*y (Exponential)", "k * y"),
+            (
+                "y' = r*y*(1 - y/cap_k) (Logistic)",
+                "r * y * (1 - y / cap_k)",
+            ),
+            ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
+            ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
+        ],
+    )
+    .with_axes(&["t", "y"])
+    .with_disallowed_vars(&[
+        ("x", "allowed variables: t, y"),
+        ("z", "allowed variables: t, y"),
+        (
+            "v",
+            "allowed variables: t, y; enable Coupled (y', v') mode to use v",
+        ),
+    ])
+    .with_param_spec("k", "k (Rate / Parameter)", -5.0..=5.0, 1.0)
+    .with_param_spec("r", "r (Growth Rate)", 0.0..=5.0, 1.0)
+    .with_param_spec("cap_k", "K (Carrying Capacity)", 1.0..=100.0, 10.0)
+    .with_param_spec("K", "K (Carrying Capacity)", 1.0..=100.0, 10.0)
+}
+
 impl Default for OdeSolverTool {
     fn default() -> Self {
         let mut tool = Self {
@@ -78,21 +108,7 @@ impl Default for OdeSolverTool {
             display_y: std::sync::Arc::new(Vec::new()),
             display_v: std::sync::Arc::new(Vec::new()),
             diverged: false,
-            math_input: MathExpressionInputBar::new(
-                "y'",
-                "-k * y * sin(t)",
-                vec![
-                    ("y' = -k*y*sin(t) (Non-linear Sine)", "-k * y * sin(t)"),
-                    ("y' = k*y (Exponential)", "k * y"),
-                    (
-                        "y' = r*y*(1 - y/cap_k) (Logistic)",
-                        "r * y * (1 - y / cap_k)",
-                    ),
-                    ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
-                    ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
-                ],
-            )
-            .with_axes(&["t", "y"]),
+            math_input: default_ode_math_input(),
             custom_coupled: false,
             coupled_bank: default_coupled_ode_bank(),
             diagnostic_report: None,
@@ -133,6 +149,15 @@ impl OdeSolverTool {
         } else {
             "v(t)"
         }
+    }
+
+    pub(crate) fn has_custom_input_error(&self) -> bool {
+        self.preset == OdePreset::Custom
+            && if self.custom_coupled {
+                !self.coupled_bank.is_valid()
+            } else {
+                !self.math_input.is_valid()
+            }
     }
 
     pub(crate) fn build_custom_ode_spec(&self) -> Option<CustomOdeSpec> {
@@ -213,6 +238,7 @@ impl OdeSolverTool {
         );
         self.math_input.clamp_active_params(-10.0..=10.0);
         self.coupled_bank.clamp_active_params(-10.0..=10.0);
+        self.push_clamped_legacy_params_to_bar();
         clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
         self.recalculate();
     }
@@ -374,6 +400,7 @@ impl OdeSolverTool {
     }
 
     fn recalculate_active(&mut self) {
+        let input_has_err = self.has_custom_input_error();
         let custom_spec = self.build_custom_ode_spec();
         let active_traj = simulate_preset(
             self.preset,
@@ -387,6 +414,9 @@ impl OdeSolverTool {
             self.ic_v0,
             custom_spec.as_ref(),
         );
+        if input_has_err && (active_traj.diverged || active_traj.divergence_info.is_some()) {
+            return;
+        }
         self.time_series = active_traj.time_series;
         self.y_series = active_traj.y_series;
         self.v_series = active_traj.v_series;

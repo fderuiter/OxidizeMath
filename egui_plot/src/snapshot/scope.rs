@@ -193,6 +193,7 @@ pub(crate) struct AfterShowSyncParams<'a> {
     pub has_data_aspect: bool,
     pub allow_bounds_persist: bool,
     pub allow_2d_analysis: bool,
+    pub scene_3d_mode: bool,
 }
 
 pub(crate) fn sync_plot_after_show(
@@ -210,7 +211,7 @@ pub(crate) fn sync_plot_after_show(
         return;
     };
 
-    let snap = PlotOverlaySnapshot::capture(
+    let mut snap = PlotOverlaySnapshot::capture(
         mem,
         access,
         params.default_auto_bounds,
@@ -219,6 +220,11 @@ pub(crate) fn sync_plot_after_show(
         params.allow_bounds_persist,
         params.allow_2d_analysis,
     );
+    if params.scene_3d_mode {
+        snap.log_x = false;
+        snap.log_y = false;
+        snap.show_grid = [true, true];
+    }
     ctx.data_mut(|d| {
         let store: &mut ScopePlotStore = d.get_temp_mut_or_default(scope_store_id(active.scope_id));
         if snap.is_default() {
