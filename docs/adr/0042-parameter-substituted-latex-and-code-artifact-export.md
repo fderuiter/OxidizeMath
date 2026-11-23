@@ -1,4 +1,4 @@
-# ADR 0041: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
+# ADR 0042: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
 
 ## Status
 
