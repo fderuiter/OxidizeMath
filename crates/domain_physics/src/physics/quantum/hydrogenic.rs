@@ -280,27 +280,20 @@ impl HydrogenicSuperposition3D {
     pub fn write_field_into(&self, observable: QuantumFieldObservable, out_voxels: &mut [f32]) {
         let c_a = self.state.vector[0];
         let c_b = self.state.vector[1];
-        let len = out_voxels
-            .len()
-            .min(self.basis_a.len())
-            .min(self.basis_b.len());
+        let zipped = out_voxels
+            .iter_mut()
+            .zip(self.basis_a.iter().zip(self.basis_b.iter()));
         match observable {
             QuantumFieldObservable::SignedRealWavefunction => {
-                for ((out, &ba), &bb) in out_voxels[..len]
-                    .iter_mut()
-                    .zip(&self.basis_a[..len])
-                    .zip(&self.basis_b[..len])
-                {
-                    *out = (c_a.re * ba + c_b.re * bb) as f32;
+                for (out, (&ba, &bb)) in zipped {
+                    let re = c_a.re * ba + c_b.re * bb;
+                    *out = re as f32;
                 }
             }
             QuantumFieldObservable::ProbabilityDensity => {
-                for ((out, &ba), &bb) in out_voxels[..len]
-                    .iter_mut()
-                    .zip(&self.basis_a[..len])
-                    .zip(&self.basis_b[..len])
-                {
-                    *out = (c_a * ba + c_b * bb).norm_sqr() as f32;
+                for (out, (&ba, &bb)) in zipped {
+                    let psi = c_a * ba + c_b * bb;
+                    *out = psi.norm_sqr() as f32;
                 }
             }
         }

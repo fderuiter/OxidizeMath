@@ -1,4 +1,4 @@
-# ADR 0043: Calibrated `ParameterConstraint` Defaults and Domain Simulation Calibration
+# ADR 0044: Calibrated `ParameterConstraint` Defaults and Domain Simulation Calibration
 
 ## Status
 Accepted (extends [ADR 0007](0007-reflective-ui-fallback-constraints.md), [ADR 0034](0034-harden-verification-macros-and-facade-reexports.md), and [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md))
