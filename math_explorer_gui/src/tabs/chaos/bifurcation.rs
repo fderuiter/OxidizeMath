@@ -379,7 +379,7 @@ impl InteractiveTool for BifurcationDiagram {
         self.build_state_json(true)
     }
 
-    fn save_url_state(&self) -> Option<String> {
+    fn export_url_state(&self) -> Option<String> {
         self.build_state_json(false)
     }
 
