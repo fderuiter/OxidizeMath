@@ -312,6 +312,18 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
                 let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
                 *guard = payload;
             }
+            SimCommand::Custom(ref action) if action == super::SYNC_PARAMETERS_COMMAND => {
+                let had_sculpt = !self
+                    .sculpt_state
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .is_empty();
+                self.sync_formula(&current_params);
+                self.model.sync_parameters(&current_params);
+                if had_sculpt {
+                    self.sync_sculpt_from_model(&current_params);
+                }
+            }
             other => {
                 self.sync_formula(&current_params);
                 self.model.process_command(other, &current_params);
