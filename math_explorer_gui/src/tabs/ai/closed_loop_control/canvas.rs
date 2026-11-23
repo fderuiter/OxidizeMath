@@ -42,10 +42,24 @@ pub fn show_phase_kick_canvas(
     }
 
     let palette = SemanticPalette::from_visuals(ui.visuals());
-    paint_phase_backdrop(&painter, rect, state, &bounds, ui.visuals().extreme_bg_color, &palette);
+    paint_phase_backdrop(
+        &painter,
+        rect,
+        state,
+        &bounds,
+        ui.visuals().extreme_bg_color,
+        &palette,
+    );
     paint_phase_trajectories(&painter, rect, &bounds, pipeline, &palette);
     paint_ekf_uncertainty_and_markers(&painter, rect, &bounds, pipeline, &palette);
-    paint_overlay_caption(&painter, rect, state, pipeline, ui.visuals().text_color(), &palette);
+    paint_overlay_caption(
+        &painter,
+        rect,
+        state,
+        pipeline,
+        ui.visuals().text_color(),
+        &palette,
+    );
 
     let out = pipeline.last_output;
     let a11y_label = format!(
@@ -57,10 +71,7 @@ pub fn show_phase_kick_canvas(
         out.ekf_primary_std,
         out.innovation,
     );
-    let a11y_val = format!(
-        "u={:+.3}, innovation={:+.3}",
-        out.actuation, out.innovation
-    );
+    let a11y_val = format!("u={:+.3}, innovation={:+.3}", out.actuation, out.innovation);
     register_canvas_accessibility(
         ui,
         &response,
@@ -214,11 +225,17 @@ fn paint_phase_backdrop(
         let band_rect = Rect::from_min_max(p_min, p_max);
         painter.rect_filled(band_rect, 0.0, palette.success.gamma_multiply(0.14));
         painter.line_segment(
-            [Pos2::new(p_min.x, band_rect.top()), Pos2::new(p_min.x, band_rect.bottom())],
+            [
+                Pos2::new(p_min.x, band_rect.top()),
+                Pos2::new(p_min.x, band_rect.bottom()),
+            ],
             Stroke::new(1.4_f32, palette.success),
         );
         painter.line_segment(
-            [Pos2::new(p_max.x, band_rect.top()), Pos2::new(p_max.x, band_rect.bottom())],
+            [
+                Pos2::new(p_max.x, band_rect.top()),
+                Pos2::new(p_max.x, band_rect.bottom()),
+            ],
             Stroke::new(1.4_f32, palette.error),
         );
     }

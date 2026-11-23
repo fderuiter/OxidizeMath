@@ -110,11 +110,7 @@ pub fn lorenz_rhs_and_jac(
 ) -> ([f64; 3], [[f64; 3]; 3]) {
     let (x, y, z) = (state[0], state[1], state[2]);
     let rhs = [sigma * (y - x), x * (rho_eff - z) - y, x * y - beta * z];
-    let jac = [
-        [-sigma, sigma, 0.0],
-        [rho_eff - z, -1.0, -x],
-        [y, x, -beta],
-    ];
+    let jac = [[-sigma, sigma, 0.0], [rho_eff - z, -1.0, -x], [y, x, -beta]];
     (rhs, jac)
 }
 
@@ -131,7 +127,12 @@ pub fn seir_rhs_and_jac(
     let inf_flow = beta_eff * s * inf * inv_n;
     let d_s = beta_eff * inf * inv_n;
     let d_i = beta_eff * s * inv_n;
-    let rhs = [-inf_flow, inf_flow - sigma * e, sigma * e - gamma * inf, gamma * inf];
+    let rhs = [
+        -inf_flow,
+        inf_flow - sigma * e,
+        sigma * e - gamma * inf,
+        gamma * inf,
+    ];
     let jac = [
         [-d_s, 0.0, -d_i, 0.0],
         [d_s, -sigma, d_i, 0.0],
@@ -266,9 +267,8 @@ impl KalmanSystem<f64> for PkKalmanModel {
             state[1],
             state[2],
         ];
-        let (nx, jac) = rk4_step_with_jacobian(&dosed, dt, |x| {
-            pk_rhs_and_jac(x, self.ka, self.volume)
-        });
+        let (nx, jac) =
+            rk4_step_with_jacobian(&dosed, dt, |x| pk_rhs_and_jac(x, self.ka, self.volume));
         (array_to_dvec(&nx), array_to_dmat(&jac))
     }
 

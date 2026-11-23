@@ -126,7 +126,8 @@ impl ClosedLoopControlTool {
 
     /// Applies a normalized `[dx, dy]` state perturbation kick and immediately updates EKF innovation.
     pub fn apply_kick(&mut self, dx_norm: f64, dy_norm: f64) -> PlantStepOutput {
-        self.pipeline.apply_state_kick(dx_norm, dy_norm, &self.state)
+        self.pipeline
+            .apply_state_kick(dx_norm, dy_norm, &self.state)
     }
 }
 
@@ -171,7 +172,10 @@ impl InteractiveTool for ClosedLoopControlTool {
             ("innovation", out.innovation),
             ("actuation", out.actuation),
             ("tracking_metric", out.tracking_metric),
-            ("episodes_trained", f64::from(self.pipeline.episodes_trained)),
+            (
+                "episodes_trained",
+                f64::from(self.pipeline.episodes_trained),
+            ),
         ]
     }
 

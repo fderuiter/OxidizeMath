@@ -1,5 +1,7 @@
 //! Quantum Foundations of MRI.
 
+use crate::error::StatMechError;
+
 /// Gyromagnetic Ratio for Hydrogen in rad/s/T.
 /// $\gamma \approx 2.675 \times 10^8$ rad/s/T.
 pub const GYROMAGNETIC_RATIO: f64 = 2.675e8;
@@ -31,11 +33,11 @@ pub fn larmor_frequency(b0: f64) -> f64 {
 /// * `b0` - Magnetic field strength in Tesla.
 ///
 /// # Returns
-/// * Population ratio or an error if temperature is invalid (<= 0).
+/// * Population ratio or [`StatMechError::InvalidTemperature`] if temperature is invalid (`<= 0`).
 #[verified_engine::verified]
-pub fn boltzmann_ratio(temperature: f64, b0: f64) -> Result<f64, String> {
-    if temperature <= 0.0 {
-        return Err("Temperature must be positive".to_string());
+pub fn boltzmann_ratio(temperature: f64, b0: f64) -> Result<f64, StatMechError> {
+    if !temperature.is_finite() || temperature <= 0.0 {
+        return Err(StatMechError::InvalidTemperature(temperature));
     }
     let exponent = -(H_BAR * GYROMAGNETIC_RATIO * b0) / (K_B * temperature);
     Ok(exponent.exp())

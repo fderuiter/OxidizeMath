@@ -2,9 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::controllers::{
-    DiscreteQController, GrpoController, GRPO_GROUP_SIZE, ROLLOUT_HORIZON,
-};
+use super::controllers::{DiscreteQController, GrpoController, GRPO_GROUP_SIZE, ROLLOUT_HORIZON};
 use super::plants::{
     sample_standard_normal, LorenzPlantTwin, PkPlantTwin, PlantStepOutput, SeirPlantTwin,
 };
@@ -195,7 +193,11 @@ impl ClosedLoopPipeline {
     ) -> PlantStepOutput {
         let mag = cfg.kick_magnitude.clamp(0.05, 3.0);
         let eff_dx = if dx_norm.abs() < 0.20 {
-            if dx_norm >= 0.0 { 0.45 } else { -0.45 }
+            if dx_norm >= 0.0 {
+                0.45
+            } else {
+                -0.45
+            }
         } else {
             dx_norm.clamp(-1.0, 1.0)
         };
@@ -298,11 +300,10 @@ impl ClosedLoopPipeline {
     fn step_rollout_plant(&mut self, raw_action: f64, cfg: &ClosedLoopState) -> PlantStepOutput {
         match cfg.plant {
             PlantKind::LorenzChaos => {
-                self.rollout_lorenz.step(raw_action, cfg, &mut self.train_rng)
+                self.rollout_lorenz
+                    .step(raw_action, cfg, &mut self.train_rng)
             }
-            PlantKind::SeirEpidemic => {
-                self.rollout_seir.step(raw_action, cfg, &mut self.train_rng)
-            }
+            PlantKind::SeirEpidemic => self.rollout_seir.step(raw_action, cfg, &mut self.train_rng),
             PlantKind::Pharmacokinetics => {
                 self.rollout_pk.step(raw_action, cfg, &mut self.train_rng)
             }
@@ -319,10 +320,26 @@ impl ClosedLoopPipeline {
 
     fn record_step_telemetry(&mut self, out: PlantStepOutput, open_latent: f64) {
         let t = out.time;
-        push_ring(&mut self.uncontrolled_trace, HISTORY_CAPACITY, [t, out.uncontrolled_primary]);
-        push_ring(&mut self.controlled_trace, HISTORY_CAPACITY, [t, out.controlled_primary]);
-        push_ring(&mut self.noisy_meas_trace, HISTORY_CAPACITY, [t, out.noisy_measurement]);
-        push_ring(&mut self.ekf_primary_trace, HISTORY_CAPACITY, [t, out.ekf_primary]);
+        push_ring(
+            &mut self.uncontrolled_trace,
+            HISTORY_CAPACITY,
+            [t, out.uncontrolled_primary],
+        );
+        push_ring(
+            &mut self.controlled_trace,
+            HISTORY_CAPACITY,
+            [t, out.controlled_primary],
+        );
+        push_ring(
+            &mut self.noisy_meas_trace,
+            HISTORY_CAPACITY,
+            [t, out.noisy_measurement],
+        );
+        push_ring(
+            &mut self.ekf_primary_trace,
+            HISTORY_CAPACITY,
+            [t, out.ekf_primary],
+        );
         push_ring(
             &mut self.ekf_upper_trace,
             HISTORY_CAPACITY,
@@ -333,10 +350,26 @@ impl ClosedLoopPipeline {
             HISTORY_CAPACITY,
             [t, out.ekf_primary - out.ekf_primary_std],
         );
-        push_ring(&mut self.true_latent_trace, HISTORY_CAPACITY, [t, out.true_latent]);
-        push_ring(&mut self.ekf_latent_trace, HISTORY_CAPACITY, [t, out.ekf_latent]);
-        push_ring(&mut self.actuation_trace, HISTORY_CAPACITY, [t, out.actuation]);
-        push_ring(&mut self.innovation_trace, HISTORY_CAPACITY, [t, out.innovation]);
+        push_ring(
+            &mut self.true_latent_trace,
+            HISTORY_CAPACITY,
+            [t, out.true_latent],
+        );
+        push_ring(
+            &mut self.ekf_latent_trace,
+            HISTORY_CAPACITY,
+            [t, out.ekf_latent],
+        );
+        push_ring(
+            &mut self.actuation_trace,
+            HISTORY_CAPACITY,
+            [t, out.actuation],
+        );
+        push_ring(
+            &mut self.innovation_trace,
+            HISTORY_CAPACITY,
+            [t, out.innovation],
+        );
         self.record_phase_and_band(out, open_latent);
     }
 

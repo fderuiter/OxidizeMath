@@ -143,7 +143,10 @@ fn test_bateman_analytical_parity_and_pk_hidden_clearance_convergence() {
     }
     for _ in 0..36 {
         let out = twin.step(-1.0, &cfg, &mut rng);
-        let analytic = twin.open_loop_superposition.base_model.concentration(out.time);
+        let analytic = twin
+            .open_loop_superposition
+            .base_model
+            .concentration(out.time);
         assert!(
             (out.controlled_primary - analytic).abs() < 2.0e-3,
             "RK4 ADME C_p={} diverged from BatemanModel={analytic} at t={}",
@@ -165,17 +168,23 @@ fn test_grpo_lorenz_ogy_stabilization() {
         .import_preset_json(STARTER_LORENZ_OGY_JSON)
         .expect("Lorenz preset loads");
     lorenz_tool.reset_untrained_policy();
-    let r0 = lorenz_tool.pipeline.train_episode_zero_alloc(&lorenz_tool.state);
+    let r0 = lorenz_tool
+        .pipeline
+        .train_episode_zero_alloc(&lorenz_tool.state);
     assert!(
         lorenz_tool.pipeline.grpo.last_surrogate_after
             >= lorenz_tool.pipeline.grpo.last_surrogate_before - 1.0e-12
     );
     for _ in 0..11 {
-        let _ = lorenz_tool.pipeline.train_episode_zero_alloc(&lorenz_tool.state);
+        let _ = lorenz_tool
+            .pipeline
+            .train_episode_zero_alloc(&lorenz_tool.state);
     }
     assert!(lorenz_tool.pipeline.grpo.last_mean_return > r0);
 
-    lorenz_tool.pipeline.reset_live_traces_only(&lorenz_tool.state);
+    lorenz_tool
+        .pipeline
+        .reset_live_traces_only(&lorenz_tool.state);
     let mut ctrl_tube_sum = 0.0;
     let mut open_tube_sum = 0.0;
     for k in 0..220 {
@@ -322,7 +331,10 @@ fn test_deterministic_oxidize_rng_replay_and_click_to_kick_recovery() {
     for _ in 0..24 {
         let oa = a.step_closed_loop();
         let ob = b.step_closed_loop();
-        assert_eq!(oa.noisy_measurement.to_bits(), ob.noisy_measurement.to_bits());
+        assert_eq!(
+            oa.noisy_measurement.to_bits(),
+            ob.noisy_measurement.to_bits()
+        );
         assert_eq!(oa.ekf_primary.to_bits(), ob.ekf_primary.to_bits());
         assert_eq!(oa.actuation.to_bits(), ob.actuation.to_bits());
     }
@@ -397,7 +409,13 @@ fn test_canvas_click_to_kick_and_tab_traversal() {
     ctx.enable_accesskit();
     let mut ui_tool = ClosedLoopControlTool::default();
     let screen = Some(Rect::from_min_size(Pos2::ZERO, vec2(1280.0, 800.0)));
-    let _ = ctx.run(RawInput { screen_rect: screen, ..Default::default() }, |c| ui_tool.show(c));
+    let _ = ctx.run(
+        RawInput {
+            screen_rect: screen,
+            ..Default::default()
+        },
+        |c| ui_tool.show(c),
+    );
     let before_len = ui_tool.pipeline.controlled_trace.len();
     let click_pos = Pos2::new(760.0, 95.0);
     let _ = ctx.run(

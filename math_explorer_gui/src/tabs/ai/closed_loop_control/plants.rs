@@ -2,7 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::ekf::{lorenz_rhs_and_jac, seir_rhs_and_jac, FastEkf, LorenzKalmanModel, SeirKalmanModel};
+use super::ekf::{
+    lorenz_rhs_and_jac, seir_rhs_and_jac, FastEkf, LorenzKalmanModel, SeirKalmanModel,
+};
 pub use super::plants_pk::PkPlantTwin;
 use super::state::{ClosedLoopState, PlantKind};
 use math_explorer::epidemiology::compartmental::{SEIRModel, SEIRState};
@@ -25,7 +27,8 @@ const SEIR_GAMMA: f64 = 0.12;
 
 /// Generates a deterministic standard normal sample $\mathcal{N}(0, 1)$ via Box-Muller using `OxidizeRng`.
 pub fn sample_standard_normal(rng: &mut OxidizeRng) -> f64 {
-    let u1 = ((rng.next_u64() as f64 + 1.0) / (u64::MAX as f64 + 2.0)).clamp(1.0e-12, 1.0 - 1.0e-12);
+    let u1 =
+        ((rng.next_u64() as f64 + 1.0) / (u64::MAX as f64 + 2.0)).clamp(1.0e-12, 1.0 - 1.0e-12);
     let u2 = (rng.next_u64() as f64) / (u64::MAX as f64 + 1.0);
     (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
 }
@@ -124,10 +127,8 @@ impl LorenzPlantTwin {
         self.controlled.state.vec = init;
         self.uncontrolled.rho = LORENZ_RHO0;
         self.uncontrolled.state.vec = init;
-        self.ekf.reset_in_place(
-            [init.x - 0.8, init.y + 1.6, init.z - 1.4],
-            [2.5, 8.0, 8.0],
-        );
+        self.ekf
+            .reset_in_place([init.x - 0.8, init.y + 1.6, init.z - 1.4], [2.5, 8.0, 8.0]);
         self.time = 0.0;
     }
 
@@ -181,7 +182,12 @@ impl LorenzPlantTwin {
     }
 
     /// Steps controlled and uncontrolled `LorenzSystem` twins plus `FastEkf<3>` with zero allocations.
-    pub fn step(&mut self, raw_action: f64, cfg: &ClosedLoopState, rng: &mut OxidizeRng) -> PlantStepOutput {
+    pub fn step(
+        &mut self,
+        raw_action: f64,
+        cfg: &ClosedLoopState,
+        rng: &mut OxidizeRng,
+    ) -> PlantStepOutput {
         let dt = PlantKind::LorenzChaos.dt();
         let u_max = 4.5 * cfg.actuation_budget.max(0.0);
         let delta_rho = (raw_action.clamp(-1.0, 1.0) * u_max).clamp(-u_max, u_max);
@@ -206,11 +212,17 @@ impl LorenzPlantTwin {
         let c_vec = self.controlled.state.vec;
         let noise_std = 0.8 * cfg.sensor_noise.max(0.0);
         let z_meas = c_vec.x + noise_std * sample_standard_normal(rng);
-        self.ekf.update_unit_obs(0, z_meas, lorenz_r_var(cfg.sensor_noise));
+        self.ekf
+            .update_unit_obs(0, z_meas, lorenz_r_var(cfg.sensor_noise));
 
         let (_, tube_dist) = self.nearest_upo_index(&[c_vec.x, c_vec.y, c_vec.z]);
-        let norm_u = if u_max > 1.0e-6 { delta_rho / u_max } else { 0.0 };
-        let reward = 2.0 * (-0.25 * tube_dist * tube_dist).exp() - 0.08 * tube_dist - 0.03 * norm_u * norm_u;
+        let norm_u = if u_max > 1.0e-6 {
+            delta_rho / u_max
+        } else {
+            0.0
+        };
+        let reward =
+            2.0 * (-0.25 * tube_dist * tube_dist).exp() - 0.08 * tube_dist - 0.03 * norm_u * norm_u;
 
         PlantStepOutput {
             time: self.time,
@@ -230,7 +242,9 @@ impl LorenzPlantTwin {
     }
 }
 
-fn precompute_viswanath_upo(dt: f64) -> ([[f64; 3]; LORENZ_UPO_STEPS], [[f64; 3]; LORENZ_UPO_STEPS]) {
+fn precompute_viswanath_upo(
+    dt: f64,
+) -> ([[f64; 3]; LORENZ_UPO_STEPS], [[f64; 3]; LORENZ_UPO_STEPS]) {
     let mut sys = LorenzBuilder::new()
         .sigma(LORENZ_SIGMA)
         .rho(LORENZ_RHO0)
@@ -279,9 +293,8 @@ impl SeirPlantTwin {
     /// Constructs the `SEIRModel` twin and validates `SeirKalmanModel` via `KalmanFilter::builder`.
     pub fn new(cfg: &ClosedLoopState) -> Self {
         let dt = PlantKind::SeirEpidemic.dt();
-        let mut controlled =
-            SEIRModel::new(SEIR_POP_N, 12.0, SEIR_BETA0, SEIR_SIGMA, SEIR_GAMMA)
-                .expect("valid SEIR parameters");
+        let mut controlled = SEIRModel::new(SEIR_POP_N, 12.0, SEIR_BETA0, SEIR_SIGMA, SEIR_GAMMA)
+            .expect("valid SEIR parameters");
         set_seir_state(controlled.get_state_mut(), 35.0, 12.0);
         let uncontrolled = controlled.clone();
         let model = SeirKalmanModel {
@@ -335,7 +348,12 @@ impl SeirPlantTwin {
     }
 
     /// Steps controlled and uncontrolled `SEIRModel` twins plus `FastEkf<4>` with zero allocations.
-    pub fn step(&mut self, raw_action: f64, cfg: &ClosedLoopState, rng: &mut OxidizeRng) -> PlantStepOutput {
+    pub fn step(
+        &mut self,
+        raw_action: f64,
+        cfg: &ClosedLoopState,
+        rng: &mut OxidizeRng,
+    ) -> PlantStepOutput {
         let dt = PlantKind::SeirEpidemic.dt();
         let u_max = (0.72 * cfg.actuation_budget.max(0.0)).clamp(0.0, 0.94);
         let frac = positive_control_fraction(raw_action);
@@ -362,7 +380,8 @@ impl SeirPlantTwin {
         let c_st = *self.controlled.get_state();
         let noise_std = 14.0 * cfg.sensor_noise.max(0.0);
         let z_meas = (c_st.i + noise_std * sample_standard_normal(rng)).max(0.0);
-        self.ekf.update_unit_obs(2, z_meas, seir_r_var(cfg.sensor_noise));
+        self.ekf
+            .update_unit_obs(2, z_meas, seir_r_var(cfg.sensor_noise));
         for slot in &mut self.ekf.state {
             *slot = slot.clamp(0.0, SEIR_POP_N);
         }

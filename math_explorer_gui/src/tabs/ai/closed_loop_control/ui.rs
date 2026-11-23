@@ -82,7 +82,11 @@ fn render_transport_and_telemetry(tool: &mut ClosedLoopControlTool, ui: &mut egu
     let out = tool.pipeline.last_output;
     ui.horizontal_wrapped(|ui| {
         ui.label("Plant:");
-        ui.label(RichText::new(tool.state.plant.label()).strong().color(palette.info));
+        ui.label(
+            RichText::new(tool.state.plant.label())
+                .strong()
+                .color(palette.info),
+        );
     });
     ui.label(format!(
         "EKF: {:.3} ± {:.3} | ν: {:+.3} | u: {:+.3}",
@@ -97,7 +101,9 @@ fn render_transport_and_telemetry(tool: &mut ClosedLoopControlTool, ui: &mut egu
         ),
         ControllerKind::DiscreteQLearning => format!(
             "Episodes: {} | Q-Return: {:+.2} | Frame: {:.2} ms",
-            tool.pipeline.episodes_trained, tool.pipeline.q_ctrl.last_episode_return, tool.last_frame_ms
+            tool.pipeline.episodes_trained,
+            tool.pipeline.q_ctrl.last_episode_return,
+            tool.last_frame_ms
         ),
     };
     ui.label(rl_summary);
@@ -125,7 +131,10 @@ fn render_plant_and_controller_selectors(state: &mut ClosedLoopState, ui: &mut e
     egui::ComboBox::from_label("Controller")
         .selected_text(state.controller.label())
         .show_ui(ui, |ui| {
-            for candidate in [ControllerKind::GrpoPolicy, ControllerKind::DiscreteQLearning] {
+            for candidate in [
+                ControllerKind::GrpoPolicy,
+                ControllerKind::DiscreteQLearning,
+            ] {
                 if ui
                     .selectable_value(&mut state.controller, candidate, candidate.label())
                     .changed()
@@ -174,13 +183,7 @@ fn render_rl_hyperparameters(state: &mut ClosedLoopState, ui: &mut egui::Ui) -> 
     match state.controller {
         ControllerKind::GrpoPolicy => {
             changed |= drag_f64_row(ui, "GRPO Step η:", &mut state.grpo_lr, 0.005..=0.80, 0.01);
-            changed |= drag_f64_row(
-                ui,
-                "Clip ε:",
-                &mut state.grpo_clip_eps,
-                0.05..=0.50,
-                0.01,
-            );
+            changed |= drag_f64_row(ui, "Clip ε:", &mut state.grpo_clip_eps, 0.05..=0.50, 0.01);
             changed |= drag_f64_row(
                 ui,
                 "KL Penalty β:",
@@ -287,7 +290,11 @@ fn render_closed_loop_ekf_plot(
 ) -> Option<[f64; 2]> {
     let palette = SemanticPalette::from_visuals(ui.visuals());
     ui.label(
-        RichText::new(format!("EKF + {} Closed-Loop (±1σ Band)", state.controller.label())).strong(),
+        RichText::new(format!(
+            "EKF + {} Closed-Loop (±1σ Band)",
+            state.controller.label()
+        ))
+        .strong(),
     );
     let band_fill = Color32::from_rgba_unmultiplied(
         palette.success.r(),

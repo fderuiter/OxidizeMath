@@ -137,7 +137,8 @@ impl PkPlantTwin {
         let cp_true = self.controlled_state[1];
         let noise_std = 0.28 * cfg.sensor_noise.max(0.0);
         let z_meas = (cp_true + noise_std * sample_standard_normal(rng)).max(0.0);
-        self.ekf.update_unit_obs(1, z_meas, pk_r_var(cfg.sensor_noise));
+        self.ekf
+            .update_unit_obs(1, z_meas, pk_r_var(cfg.sensor_noise));
         self.ekf.state[0] = self.ekf.state[0].max(0.0);
         self.ekf.state[1] = self.ekf.state[1].max(0.0);
         self.ekf.state[2] = self.ekf.state[2].clamp(0.03, 0.70);

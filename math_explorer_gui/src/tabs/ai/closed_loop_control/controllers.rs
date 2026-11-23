@@ -106,8 +106,7 @@ impl GrpoController {
     /// Updates `weights` in place from `group_returns` using `normalize_group_advantages` and `clipped_surrogate_objective`.
     pub fn finish_group_update(&mut self, cfg: &ClosedLoopState) {
         normalize_group_advantages(&self.group_returns, &mut self.group_advantages);
-        self.last_mean_return =
-            self.group_returns.iter().sum::<f64>() / (GRPO_GROUP_SIZE as f64);
+        self.last_mean_return = self.group_returns.iter().sum::<f64>() / (GRPO_GROUP_SIZE as f64);
 
         let old_weights = self.weights;
         for ((pi_slot, phis), acts) in self
@@ -307,7 +306,10 @@ impl DiscreteQController {
             .agent
             .select_action_into(&state, &self.actions, &mut self.q_scratch)
             .unwrap_or(DiscreteAction(3));
-        (picked, DISCRETE_ACTION_LEVELS[picked.0.min(Q_ACTION_BINS - 1)])
+        (
+            picked,
+            DISCRETE_ACTION_LEVELS[picked.0.min(Q_ACTION_BINS - 1)],
+        )
     }
 
     /// Selects the greedy argmax action $\arg\max_a Q(s, a)$ during live closed-loop evaluation.
