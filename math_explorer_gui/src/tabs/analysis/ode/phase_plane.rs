@@ -3,7 +3,7 @@
 //! 2D phase-portrait canvas, bounded quiver vector field (`egui_plot::Arrows`),
 //! marching-squares nullclines, click-to-seed orbits, and synchronized $(x(t), y(t))$ twin timelines.
 
-use super::comparison::{OdeSimSpec, SolverTrajectory, simulate_ode};
+use super::comparison::{simulate_ode, OdeSimSpec, SolverTrajectory};
 use super::recovery;
 use super::systems::build_ode_param_map;
 use super::OdeSolverTool;
@@ -142,7 +142,9 @@ impl OdeSolverTool {
         }
         let orbit_count = (1 + self.seeded_ic.len()).min(1 + MAX_SEEDED_ORBITS);
         let max_steps_each = (crate::presets::MAX_ODE_STEPS / orbit_count).max(1);
-        let effective_dt = self.dt.max((self.total_time / max_steps_each as f64).max(1e-6));
+        let effective_dt = self
+            .dt
+            .max((self.total_time / max_steps_each as f64).max(1e-6));
 
         let custom_expr = self.math_input.cached_expr();
         let px_expr = self.planar_x_input.cached_expr();
@@ -224,10 +226,14 @@ impl OdeSolverTool {
                     grid[ix + 1][iy + 1],
                     grid[ix][iy + 1],
                 );
-                if let Some(s) = march_cell_zero_segment(x0, y0, step, c00[0], c10[0], c11[0], c01[0]) {
+                if let Some(s) =
+                    march_cell_zero_segment(x0, y0, step, c00[0], c10[0], c11[0], c01[0])
+                {
                     x_segs.push(s);
                 }
-                if let Some(s) = march_cell_zero_segment(x0, y0, step, c00[1], c10[1], c11[1], c01[1]) {
+                if let Some(s) =
+                    march_cell_zero_segment(x0, y0, step, c00[1], c10[1], c11[1], c01[1])
+                {
                     y_segs.push(s);
                 }
             }
@@ -239,11 +245,15 @@ impl OdeSolverTool {
         let mut changed = false;
         ui.add_space(8.0);
         ui.heading("Phase Space & Seeding");
-        changed |= ui.checkbox(&mut self.phase_plane_mode, "2D Phase Portrait View").changed();
+        changed |= ui
+            .checkbox(&mut self.phase_plane_mode, "2D Phase Portrait View")
+            .changed();
         if !self.phase_plane_mode {
             return changed;
         }
-        changed |= ui.checkbox(&mut self.show_quiver, "Show Quiver Vector Field").changed();
+        changed |= ui
+            .checkbox(&mut self.show_quiver, "Show Quiver Vector Field")
+            .changed();
         if self.show_quiver {
             let mut density = self.quiver_density.clamp(5, MAX_QUIVER_GRID);
             if ui
@@ -258,7 +268,10 @@ impl OdeSolverTool {
             .checkbox(&mut self.show_nullclines, "Show Nullclines (x'=0, y'=0)")
             .changed();
         ui.horizontal(|ui| {
-            ui.label(format!("Seeded Orbits: {}/{MAX_SEEDED_ORBITS}", self.seeded_ic.len()));
+            ui.label(format!(
+                "Seeded Orbits: {}/{MAX_SEEDED_ORBITS}",
+                self.seeded_ic.len()
+            ));
             if !self.seeded_ic.is_empty() && ui.small_button("Clear Seeds").clicked() {
                 self.clear_seeded_orbits();
                 changed = true;
@@ -267,16 +280,12 @@ impl OdeSolverTool {
         changed
     }
 
-    pub(super) fn render_phase_plane_canvas(
-        &mut self,
-        ui: &mut egui::Ui,
-        mut plot_points_y: Vec<[f64; 2]>,
-        mut plot_points_v: Vec<[f64; 2]>,
-        changed: &mut bool,
-    ) {
+    pub(super) fn render_phase_plane_canvas(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
         ui.heading("2D Phase Portrait & Twin Timelines (Click Canvas to Seed Orbits)");
         if FiniteStateGuard::diverged(self) {
-            recovery::render_recovery_ui(ui, self, changed, &mut plot_points_y, &mut plot_points_v);
+            let mut scratch_y = Vec::new();
+            let mut scratch_v = Vec::new();
+            recovery::render_recovery_ui(ui, self, changed, &mut scratch_y, &mut scratch_v);
         }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
@@ -285,7 +294,7 @@ impl OdeSolverTool {
 
         ui.add_space(4.0);
         let twin_h = ui.available_height().max(110.0);
-        self.render_twin_timelines(ui, &palette, &plot_points_y, &plot_points_v, twin_h);
+        self.render_twin_timelines(ui, &palette, twin_h);
 
         if let Some(seed) = clicked_seed {
             self.seed_orbit(seed);
@@ -305,7 +314,9 @@ impl OdeSolverTool {
         } else {
             (Vec::new(), Vec::new())
         };
-        let nullclines = self.show_nullclines.then(|| self.compute_nullcline_segments());
+        let nullclines = self
+            .show_nullclines
+            .then(|| self.compute_nullcline_segments());
         let mut clicked_seed = None;
 
         Plot::new("ode_phase_plot")
@@ -317,7 +328,11 @@ impl OdeSolverTool {
             .show(ui, |plot_ui| {
                 if !origins.is_empty() {
                     let color = palette.series_color(4).gamma_multiply(0.55);
-                    plot_ui.arrows(Arrows::new("Vector Field", origins, tips).color(color).tip_length(4.5));
+                    plot_ui.arrows(
+                        Arrows::new("Vector Field", origins, tips)
+                            .color(color)
+                            .tip_length(4.5),
+                    );
                 }
                 if let Some((ref x_segs, ref y_segs)) = nullclines {
                     render_nullcline_lines(plot_ui, x_segs, "x-nullcline (x'=0)", palette.warning);
@@ -348,9 +363,12 @@ impl OdeSolverTool {
             let pts = finite_phase_pairs(&self.y_series, &self.v_series);
             if !pts.is_empty() {
                 plot_ui.line(
-                    Line::new(format!("Primary ({px_lbl}, {py_lbl})"), PlotPoints::new(pts))
-                        .color(palette.series_color(0))
-                        .width(2.0_f32),
+                    Line::new(
+                        format!("Primary ({px_lbl}, {py_lbl})"),
+                        PlotPoints::new(pts),
+                    )
+                    .color(palette.series_color(0))
+                    .width(2.0_f32),
                 );
                 if self.ic_y0.is_finite() && self.ic_v0.is_finite() {
                     plot_ui.points(
@@ -366,7 +384,11 @@ impl OdeSolverTool {
             let Some(&ic) = pts.first() else { continue };
             let color = palette.series_color(idx + 1);
             let name = format!("Orbit {} ({:.2}, {:.2})", idx + 1, ic[0], ic[1]);
-            plot_ui.line(Line::new(name, PlotPoints::new(pts)).color(color).width(1.75_f32));
+            plot_ui.line(
+                Line::new(name, PlotPoints::new(pts))
+                    .color(color)
+                    .width(1.75_f32),
+            );
             plot_ui.points(Points::new("", vec![ic]).radius(4.0_f32).color(color));
         }
     }
@@ -375,8 +397,6 @@ impl OdeSolverTool {
         &self,
         ui: &mut egui::Ui,
         palette: &crate::app::SemanticPalette,
-        primary_y: &[[f64; 2]],
-        primary_v: &[[f64; 2]],
         height: f32,
     ) {
         let (t1_lbl, t2_lbl, _, _) = self.preset.state_labels();
@@ -384,14 +404,14 @@ impl OdeSolverTool {
             draw_timeline_plot(
                 &mut cols[0],
                 ("ode_twin_x_plot", t1_lbl, height, false),
-                primary_y,
+                &self.display_y,
                 &self.seeded_trajectories,
                 palette,
             );
             draw_timeline_plot(
                 &mut cols[1],
                 ("ode_twin_y_plot", t2_lbl, height, true),
-                primary_v,
+                &self.display_v,
                 &self.seeded_trajectories,
                 palette,
             );
@@ -411,11 +431,12 @@ fn finite_phase_pairs(xs: &[f64], ys: &[f64]) -> Vec<[f64; 2]> {
 fn draw_timeline_plot(
     ui: &mut egui::Ui,
     meta: (&str, &str, f32, bool),
-    primary: &[[f64; 2]],
+    primary: &std::sync::Arc<Vec<egui_plot::PlotPoint>>,
     seeded: &[SolverTrajectory],
     palette: &crate::app::SemanticPalette,
 ) {
     let (plot_id, label, height, second_component) = meta;
+    let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
     Plot::new(plot_id)
         .height(height)
         .x_axis_label("t")
@@ -423,8 +444,11 @@ fn draw_timeline_plot(
         .show(ui, |plot_ui| {
             if !primary.is_empty() {
                 plot_ui.line(
-                    Line::new(label, PlotPoints::new(primary.to_vec()))
-                        .color(palette.series_color(0)),
+                    Line::new(
+                        label,
+                        PlotPoints::from_shared(std::sync::Arc::clone(primary)),
+                    )
+                    .color(palette.series_color(0)),
                 );
             }
             for (idx, traj) in seeded.iter().enumerate() {
@@ -433,16 +457,14 @@ fn draw_timeline_plot(
                 } else {
                     &traj.y_series
                 };
-                let pts: Vec<[f64; 2]> = traj
-                    .time_series
-                    .iter()
-                    .copied()
-                    .zip(values.iter().copied())
-                    .map(|(t, val)| [t, val])
-                    .collect();
+                let decimated =
+                    crate::framework::decimate_xy_series_minmax(&traj.time_series, values, cap);
                 plot_ui.line(
-                    Line::new(format!("Orbit {} {label}", idx + 1), PlotPoints::new(pts))
-                        .color(palette.series_color(idx + 1)),
+                    Line::new(
+                        format!("Orbit {} {label}", idx + 1),
+                        PlotPoints::from_shared(decimated),
+                    )
+                    .color(palette.series_color(idx + 1)),
                 );
             }
         });

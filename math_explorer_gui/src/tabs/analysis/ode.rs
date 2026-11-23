@@ -11,9 +11,9 @@ pub mod ui;
 
 #[cfg(test)]
 use comparison::simulate_preset;
-use comparison::{SolverDiscrepancy, SolverTrajectory, simulate_ode};
+use comparison::{simulate_ode, SolverDiscrepancy, SolverTrajectory};
 use phase_plane::{DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID};
-use poincare_map::{DEFAULT_MATRIX_A, trace_det_from_matrix};
+use poincare_map::{trace_det_from_matrix, DEFAULT_MATRIX_A};
 
 use crate::framework::recovery::emit_divergence_telemetry;
 pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -37,6 +37,8 @@ pub struct OdeSolverTool {
     pub time_series: Vec<f64>,
     pub y_series: Vec<f64>,
     pub v_series: Vec<f64>,
+    pub(crate) display_y: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
+    pub(crate) display_v: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
     pub(crate) diverged: bool,
     pub(crate) math_input: MathExpressionInputBar,
     pub(crate) planar_x_input: MathExpressionInputBar,
@@ -100,7 +102,10 @@ fn default_ode_math_inputs() -> (
                 "k * (1 - x^2) * y - x",
             ),
             ("y' = k*x*y - y (Lotka-Volterra)", "k * x * y - y"),
-            ("y' = -k*sin(x) - 0.25*y (Pendulum)", "-k * sin(x) - 0.25 * y"),
+            (
+                "y' = -k*sin(x) - 0.25*y (Pendulum)",
+                "-k * sin(x) - 0.25 * y",
+            ),
             ("y' = x - x^3 - 0.3*k*y (Duffing)", "x - x^3 - 0.3 * k * y"),
         ],
     );
@@ -123,6 +128,8 @@ impl Default for OdeSolverTool {
             time_series: Vec::new(),
             y_series: Vec::new(),
             v_series: Vec::new(),
+            display_y: std::sync::Arc::new(Vec::new()),
+            display_v: std::sync::Arc::new(Vec::new()),
             diverged: false,
             math_input,
             planar_x_input,
@@ -236,30 +243,11 @@ impl OdeSolverTool {
         &self.comparison_manager
     }
 
-    fn build_current_trace_series(
-        &self,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
-    ) -> Vec<TraceSeries> {
-        let (t1_lbl, t2_lbl, _, _) = self.preset.state_labels();
-        let mut series = vec![TraceSeries::new(t1_lbl, plot_points_y.to_vec())];
-        if self.preset.is_2d() && !plot_points_v.is_empty() {
-            series.push(TraceSeries::new(t2_lbl, plot_points_v.to_vec()));
-        }
-        series
-    }
-
-    fn apply_sidebar_changes(
-        &mut self,
-        changed: bool,
-        sweep_active: bool,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
-    ) {
+    fn apply_sidebar_changes(&mut self, changed: bool, sweep_active: bool) {
         if sweep_active {
             if changed {
                 if self.pending_sweep_run.is_none() {
-                    let series = self.build_current_trace_series(plot_points_y, plot_points_v);
+                    let series = self.build_current_trace_series();
                     self.pending_sweep_run = Some((self.last_param_summary.clone(), series));
                 }
                 self.recalculate();
@@ -275,7 +263,7 @@ impl OdeSolverTool {
                 self.bump_revision();
             }
         } else if changed {
-            let series = self.build_current_trace_series(plot_points_y, plot_points_v);
+            let series = self.build_current_trace_series();
             self.snapshot_manager
                 .push_history_run(&self.last_param_summary, series);
             self.recalculate();
@@ -292,6 +280,11 @@ impl OdeSolverTool {
 
         self.recalculate_active();
         self.recalculate_seeded_orbits();
+        let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
+        self.display_y =
+            crate::framework::decimate_xy_series_minmax(&self.time_series, &self.y_series, cap);
+        self.display_v =
+            crate::framework::decimate_xy_series_minmax(&self.time_series, &self.v_series, cap);
         self.recalculate_comparison();
         self.last_param_summary = self.param_summary();
         self.update_callouts();
@@ -355,7 +348,7 @@ impl InteractiveTool for OdeSolverTool {
         FiniteStateGuard::is_finite_state(self)
     }
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        self.collect_export_datasets()
+        self.build_full_export_datasets()
     }
     fn save_state(&self) -> Option<String> {
         self.serialize_full_state()
@@ -377,30 +370,18 @@ impl InteractiveTool for OdeSolverTool {
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let mut changed = false;
-        let mut plot_points_y = Vec::new();
-        let mut plot_points_v = Vec::new();
-        for (i, &t) in self.time_series.iter().enumerate() {
-            if let Some(&y) = self.y_series.get(i) {
-                plot_points_y.push([t, y]);
-            }
-            if let Some(&v) = self.v_series.get(i) {
-                plot_points_v.push([t, v]);
-            }
-        }
-
-        let sweeps_before =
-            crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx());
+        let sweeps_before = crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx());
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "ode_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            changed |= self.render_sidebar_controls(ui, &plot_points_y, &plot_points_v);
+            changed |= self.render_sidebar_controls(ui);
         });
         let sweep_active =
             crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx()) > sweeps_before;
 
-        self.apply_sidebar_changes(changed, sweep_active, &plot_points_y, &plot_points_v);
+        self.apply_sidebar_changes(changed, sweep_active);
 
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            self.render_plot_canvas(ui, plot_points_y, plot_points_v, &mut changed);
+            self.render_plot_canvas(ui, &mut changed);
         });
     }
 

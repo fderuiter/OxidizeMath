@@ -11,14 +11,10 @@ use crate::reflective_ui::{render_copyable_metric, AnimatedSlider};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
+use std::sync::Arc;
 
 impl OdeSolverTool {
-    pub(super) fn render_sidebar_controls(
-        &mut self,
-        ui: &mut egui::Ui,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
-    ) -> bool {
+    pub(super) fn render_sidebar_controls(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         changed |= self.render_preset_selector(ui);
         if self.preset.is_2d() {
@@ -30,7 +26,7 @@ impl OdeSolverTool {
         }
         changed |= self.render_initial_condition_inputs(ui);
         changed |= self.render_solver_settings_controls(ui);
-        self.render_snapshots_and_sensitivity(ui, plot_points_y, plot_points_v);
+        self.render_snapshots_and_sensitivity(ui);
         if self.callout_manager.render_ui(ui) {
             changed = true;
         }
@@ -214,13 +210,14 @@ impl OdeSolverTool {
             .checkbox(&mut self.comparison_mode, "Multi-Solver Comparison")
             .changed();
 
+        let min_dt = (self.total_time.max(0.1) / crate::presets::MAX_ODE_STEPS as f64).max(1e-6);
         ui.horizontal(|ui| {
             ui.label("dt (Step Size):");
             changed |= ui
                 .add(
                     egui::DragValue::new(&mut self.dt)
                         .speed(0.01)
-                        .range(0.001..=1.0),
+                        .range(min_dt..=1.0),
                 )
                 .changed();
         });
@@ -246,24 +243,30 @@ impl OdeSolverTool {
         changed
     }
 
-    fn render_snapshots_and_sensitivity(
-        &mut self,
-        ui: &mut egui::Ui,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
-    ) {
+    fn render_snapshots_and_sensitivity(&mut self, ui: &mut egui::Ui) {
         ui.add_space(10.0);
         let param_summary = self.param_summary();
         let (t1_lbl, t2_lbl, _, _) = self.preset.state_labels();
         let is_2d = self.preset.is_2d();
-        let py = plot_points_y.to_vec();
-        let pv = plot_points_v.to_vec();
         let current_len = self.snapshot_manager.len();
+        let time_series = &self.time_series;
+        let y_series = &self.y_series;
+        let v_series = &self.v_series;
 
         if self.snapshot_manager.render_ui(ui, || {
             let label = format!("Baseline {}", current_len + 1);
+            let py: Vec<[f64; 2]> = time_series
+                .iter()
+                .zip(y_series)
+                .map(|(&t, &y)| [t, y])
+                .collect();
             let mut series = vec![TraceSeries::new(t1_lbl, py)];
-            if is_2d && !pv.is_empty() {
+            if is_2d && !v_series.is_empty() {
+                let pv: Vec<[f64; 2]> = time_series
+                    .iter()
+                    .zip(v_series)
+                    .map(|(&t, &v)| [t, v])
+                    .collect();
                 series.push(TraceSeries::new(t2_lbl, pv));
             }
             Some((label, param_summary, series))
@@ -277,12 +280,18 @@ impl OdeSolverTool {
 
     fn sensitivity_params(&self) -> Vec<(&'static str, f64)> {
         match self.preset {
-            OdePreset::Exponential | OdePreset::Custom => vec![("k", self.param_k), ("y0", self.ic_y0)],
+            OdePreset::Exponential | OdePreset::Custom => {
+                vec![("k", self.param_k), ("y0", self.ic_y0)]
+            }
             OdePreset::HarmonicOscillator => {
                 vec![("k", self.param_k), ("y0", self.ic_y0), ("v0", self.ic_v0)]
             }
             OdePreset::LogisticGrowth => {
-                vec![("r", self.param_r), ("cap_k", self.param_cap_k), ("y0", self.ic_y0)]
+                vec![
+                    ("r", self.param_r),
+                    ("cap_k", self.param_cap_k),
+                    ("y0", self.ic_y0),
+                ]
             }
             OdePreset::LinearSystem2D => vec![
                 ("a11", self.matrix_a[0][0]),
@@ -328,7 +337,8 @@ impl OdeSolverTool {
             base_spec.method as u8,
             canonical_f64_bits(base_spec.dt),
             canonical_f64_bits(base_spec.total_time),
-            (base_spec.preset == OdePreset::Custom).then_some(super::systems::AstContext(custom_expr)),
+            (base_spec.preset == OdePreset::Custom)
+                .then_some(super::systems::AstContext(custom_expr)),
             (base_spec.preset == OdePreset::PlanarCustom).then_some((
                 super::systems::AstContext(px_expr),
                 super::systems::AstContext(py_expr),
@@ -350,21 +360,23 @@ impl OdeSolverTool {
                 ("Heun vs RK4", self.discrepancy_heun_rk4),
                 ("Euler vs Heun", self.discrepancy_euler_heun),
             ] {
-                render_copyable_metric(ui, &format!("{label} (Max)"), &format!("{:.4e}", disc.max_error));
-                render_copyable_metric(ui, &format!("{label} (RMS)"), &format!("{:.4e}", disc.rms_error));
+                render_copyable_metric(
+                    ui,
+                    &format!("{label} (Max)"),
+                    &format!("{:.4e}", disc.max_error),
+                );
+                render_copyable_metric(
+                    ui,
+                    &format!("{label} (RMS)"),
+                    &format!("{:.4e}", disc.rms_error),
+                );
             }
         });
     }
 
-    pub(super) fn render_plot_canvas(
-        &mut self,
-        ui: &mut egui::Ui,
-        mut plot_points_y: Vec<[f64; 2]>,
-        mut plot_points_v: Vec<[f64; 2]>,
-        changed: &mut bool,
-    ) {
+    pub(super) fn render_plot_canvas(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
         if self.is_phase_plane_active() {
-            self.render_phase_plane_canvas(ui, plot_points_y, plot_points_v, changed);
+            self.render_phase_plane_canvas(ui, changed);
             return;
         }
 
@@ -372,11 +384,14 @@ impl OdeSolverTool {
         ui.heading("Solution Trajectory");
 
         if FiniteStateGuard::diverged(self) {
-            recovery::render_recovery_ui(ui, self, changed, &mut plot_points_y, &mut plot_points_v);
+            let mut scratch_y = Vec::new();
+            let mut scratch_v = Vec::new();
+            recovery::render_recovery_ui(ui, self, changed, &mut scratch_y, &mut scratch_v);
         }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let line_y = Line::new(t1_lbl, PlotPoints::new(plot_points_y)).color(palette.series_color(0));
+        let line_y = Line::new(t1_lbl, PlotPoints::from_shared(Arc::clone(&self.display_y)))
+            .color(palette.series_color(0));
 
         Plot::new("ode_plot")
             .view_aspect(2.0)
@@ -386,9 +401,10 @@ impl OdeSolverTool {
             .show(ui, |plot_ui| {
                 if !self.comparison_mode {
                     plot_ui.line(line_y);
-                    if self.preset.is_2d() && !plot_points_v.is_empty() {
-                        let line_v = Line::new(t2_lbl, PlotPoints::new(plot_points_v))
-                            .color(palette.series_color(1));
+                    if self.preset.is_2d() && !self.display_v.is_empty() {
+                        let line_v =
+                            Line::new(t2_lbl, PlotPoints::from_shared(Arc::clone(&self.display_v)))
+                                .color(palette.series_color(1));
                         plot_ui.line(line_v);
                     }
                 } else {

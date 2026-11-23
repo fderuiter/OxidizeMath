@@ -109,16 +109,15 @@ pub fn simulate_ode(spec: &OdeSimSpec<'_>) -> SolverTrajectory {
 }
 
 fn dispatch_sim_preset(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps: usize) {
+    if spec.preset.is_2d() {
+        dispatch_sim_2d(traj, spec, num_steps);
+        return;
+    }
     let init_1d = ArrayState([spec.ic_y0]);
-    let init_2d = ArrayState([spec.ic_y0, spec.ic_v0]);
     match spec.preset {
         OdePreset::Exponential => {
             let dyn_sys = ExponentialOde { k: spec.param_k };
             run_loop_1d(traj, init_1d, &dyn_sys, spec.method, spec.dt, num_steps);
-        }
-        OdePreset::HarmonicOscillator => {
-            let dyn_sys = HarmonicOscillatorOde { k: spec.param_k };
-            run_loop_2d(traj, init_2d, &dyn_sys, spec.method, spec.dt, num_steps, ("y(t)", "y'(t)"));
         }
         OdePreset::LogisticGrowth => {
             let dyn_sys = LogisticGrowthOde {
@@ -126,22 +125,6 @@ fn dispatch_sim_preset(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_s
                 cap_k: spec.param_cap_k,
             };
             run_loop_1d(traj, init_1d, &dyn_sys, spec.method, spec.dt, num_steps);
-        }
-        OdePreset::LinearSystem2D => {
-            let dyn_sys = Linear2DOde {
-                matrix_a: spec.matrix_a,
-            };
-            run_loop_2d(traj, init_2d, &dyn_sys, spec.method, spec.dt, num_steps, ("x(t)", "y(t)"));
-        }
-        OdePreset::PlanarCustom => {
-            if let (Some(x_expr), Some(y_expr)) = (spec.planar_x_expr, spec.planar_y_expr) {
-                let dyn_sys = PlanarAstOde {
-                    x_expr,
-                    y_expr,
-                    params: build_ode_param_map(spec.param_k, spec.param_r, spec.param_cap_k),
-                };
-                run_loop_2d(traj, init_2d, &dyn_sys, spec.method, spec.dt, num_steps, ("x(t)", "y(t)"));
-            }
         }
         OdePreset::Custom => {
             if let Some(expr) = spec.custom_expr {
@@ -152,6 +135,58 @@ fn dispatch_sim_preset(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_s
                 run_loop_1d(traj, init_1d, &dyn_sys, spec.method, spec.dt, num_steps);
             }
         }
+        OdePreset::HarmonicOscillator | OdePreset::LinearSystem2D | OdePreset::PlanarCustom => {}
+    }
+}
+
+fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps: usize) {
+    let init_2d = ArrayState([spec.ic_y0, spec.ic_v0]);
+    match spec.preset {
+        OdePreset::HarmonicOscillator => {
+            let dyn_sys = HarmonicOscillatorOde { k: spec.param_k };
+            run_loop_2d(
+                traj,
+                init_2d,
+                &dyn_sys,
+                spec.method,
+                spec.dt,
+                num_steps,
+                ("y(t)", "y'(t)"),
+            );
+        }
+        OdePreset::LinearSystem2D => {
+            let dyn_sys = Linear2DOde {
+                matrix_a: spec.matrix_a,
+            };
+            run_loop_2d(
+                traj,
+                init_2d,
+                &dyn_sys,
+                spec.method,
+                spec.dt,
+                num_steps,
+                ("x(t)", "y(t)"),
+            );
+        }
+        OdePreset::PlanarCustom => {
+            if let (Some(x_expr), Some(y_expr)) = (spec.planar_x_expr, spec.planar_y_expr) {
+                let dyn_sys = PlanarAstOde {
+                    x_expr,
+                    y_expr,
+                    params: build_ode_param_map(spec.param_k, spec.param_r, spec.param_cap_k),
+                };
+                run_loop_2d(
+                    traj,
+                    init_2d,
+                    &dyn_sys,
+                    spec.method,
+                    spec.dt,
+                    num_steps,
+                    ("x(t)", "y(t)"),
+                );
+            }
+        }
+        OdePreset::Exponential | OdePreset::LogisticGrowth | OdePreset::Custom => {}
     }
 }
 
@@ -188,7 +223,14 @@ fn run_loop_1d<D: OdeSystem<ArrayState<1>>>(
 ) {
     match method {
         IntegrationMethod::RungeKutta4 => {
-            execute_steps_1d(traj, init, dynamics, &mut RungeKutta4::new(&init), dt, num_steps);
+            execute_steps_1d(
+                traj,
+                init,
+                dynamics,
+                &mut RungeKutta4::new(&init),
+                dt,
+                num_steps,
+            );
         }
         IntegrationMethod::Euler => {
             execute_steps_1d(traj, init, dynamics, &mut Euler::new(&init), dt, num_steps);
@@ -232,13 +274,37 @@ fn run_loop_2d<D: OdeSystem<ArrayState<2>>>(
 ) {
     match method {
         IntegrationMethod::RungeKutta4 => {
-            execute_steps_2d(traj, init, dynamics, &mut RungeKutta4::new(&init), dt, num_steps, names);
+            execute_steps_2d(
+                traj,
+                init,
+                dynamics,
+                &mut RungeKutta4::new(&init),
+                dt,
+                num_steps,
+                names,
+            );
         }
         IntegrationMethod::Euler => {
-            execute_steps_2d(traj, init, dynamics, &mut Euler::new(&init), dt, num_steps, names);
+            execute_steps_2d(
+                traj,
+                init,
+                dynamics,
+                &mut Euler::new(&init),
+                dt,
+                num_steps,
+                names,
+            );
         }
         IntegrationMethod::Heun => {
-            execute_steps_2d(traj, init, dynamics, &mut Heun::new(&init), dt, num_steps, names);
+            execute_steps_2d(
+                traj,
+                init,
+                dynamics,
+                &mut Heun::new(&init),
+                dt,
+                num_steps,
+                names,
+            );
         }
     }
 }

@@ -269,86 +269,79 @@ pub fn eval_ode_final_state_planar(
     let cap_k = p_map.get("cap_k").copied().unwrap_or(spec.param_cap_k);
 
     match spec.preset {
-        OdePreset::Exponential => step_final_1d(ArrayState([y0]), &ExponentialOde { k }, spec.method, steps, spec.dt),
-        OdePreset::HarmonicOscillator => {
-            step_final_2d(ArrayState([y0, v0]), &HarmonicOscillatorOde { k }, spec.method, steps, spec.dt)
-        }
-        OdePreset::LogisticGrowth => {
-            step_final_1d(ArrayState([y0]), &LogisticGrowthOde { r, cap_k }, spec.method, steps, spec.dt)
-        }
+        OdePreset::Exponential => step_final(ArrayState([y0]), &ExponentialOde { k }, spec, steps),
+        OdePreset::HarmonicOscillator => step_final(
+            ArrayState([y0, v0]),
+            &HarmonicOscillatorOde { k },
+            spec,
+            steps,
+        ),
+        OdePreset::LogisticGrowth => step_final(
+            ArrayState([y0]),
+            &LogisticGrowthOde { r, cap_k },
+            spec,
+            steps,
+        ),
         OdePreset::LinearSystem2D => {
-            let a11 = p_map.get("a11").copied().unwrap_or(spec.matrix_a[0][0]);
-            let a12 = p_map.get("a12").copied().unwrap_or(spec.matrix_a[0][1]);
-            let a21 = p_map.get("a21").copied().unwrap_or(spec.matrix_a[1][0]);
-            let a22 = p_map.get("a22").copied().unwrap_or(spec.matrix_a[1][1]);
             let dyn_sys = Linear2DOde {
-                matrix_a: [[a11, a12], [a21, a22]],
+                matrix_a: [
+                    [
+                        p_map.get("a11").copied().unwrap_or(spec.matrix_a[0][0]),
+                        p_map.get("a12").copied().unwrap_or(spec.matrix_a[0][1]),
+                    ],
+                    [
+                        p_map.get("a21").copied().unwrap_or(spec.matrix_a[1][0]),
+                        p_map.get("a22").copied().unwrap_or(spec.matrix_a[1][1]),
+                    ],
+                ],
             };
-            step_final_2d(ArrayState([y0, v0]), &dyn_sys, spec.method, steps, spec.dt)
+            step_final(ArrayState([y0, v0]), &dyn_sys, spec, steps)
         }
-        OdePreset::PlanarCustom => match (spec.planar_x_expr, spec.planar_y_expr) {
-            (Some(fx), Some(fy)) => {
-                let mut params = p_map.clone();
-                params.insert("K".to_string(), cap_k);
-                let dyn_sys = PlanarAstOde {
-                    x_expr: fx,
-                    y_expr: fy,
-                    params,
-                };
-                step_final_2d(ArrayState([y0, v0]), &dyn_sys, spec.method, steps, spec.dt)
-            }
-            _ => f64::NAN,
-        },
+        OdePreset::PlanarCustom => eval_planar_custom_final([y0, v0], cap_k, spec, p_map, steps),
         OdePreset::Custom => match spec.custom_expr {
             Some(expr) => {
                 let mut params = p_map.clone();
                 params.insert("K".to_string(), cap_k);
-                let dyn_sys = DynamicAstOde { expr, params };
-                step_final_1d(ArrayState([y0]), &dyn_sys, spec.method, steps, spec.dt)
+                step_final(
+                    ArrayState([y0]),
+                    &DynamicAstOde { expr, params },
+                    spec,
+                    steps,
+                )
             }
             None => f64::NAN,
         },
     }
 }
 
-fn step_final_1d<D: OdeSystem<ArrayState<1>>>(
-    mut state: ArrayState<1>,
-    dyn_sys: &D,
-    method: IntegrationMethod,
+fn eval_planar_custom_final(
+    ic: [f64; 2],
+    cap_k: f64,
+    spec: &super::comparison::OdeSimSpec<'_>,
+    p_map: &HashMap<String, f64>,
     steps: usize,
-    dt: f64,
 ) -> f64 {
-    match method {
-        IntegrationMethod::RungeKutta4 => {
-            let mut solver = RungeKutta4::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
-        }
-        IntegrationMethod::Euler => {
-            let mut solver = Euler::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
-        }
-        IntegrationMethod::Heun => {
-            let mut solver = Heun::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
-        }
-    }
-    state.0[0]
+    let (Some(x_expr), Some(y_expr)) = (spec.planar_x_expr, spec.planar_y_expr) else {
+        return f64::NAN;
+    };
+    let mut params = p_map.clone();
+    params.insert("K".to_string(), cap_k);
+    let dyn_sys = PlanarAstOde {
+        x_expr,
+        y_expr,
+        params,
+    };
+    step_final(ArrayState(ic), &dyn_sys, spec, steps)
 }
 
-fn step_final_2d<D: OdeSystem<ArrayState<2>>>(
-    mut state: ArrayState<2>,
+fn step_final<const N: usize, D: OdeSystem<ArrayState<N>>>(
+    mut state: ArrayState<N>,
     dyn_sys: &D,
-    method: IntegrationMethod,
+    spec: &super::comparison::OdeSimSpec<'_>,
     steps: usize,
-    dt: f64,
 ) -> f64 {
-    match method {
+    let dt = spec.dt;
+    match spec.method {
         IntegrationMethod::RungeKutta4 => {
             let mut solver = RungeKutta4::new(&state);
             for i in 0..steps {
@@ -387,7 +380,10 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
     }
     fn theory_citation(&self) -> String {
         match self.preset {
-            OdePreset::Exponential | OdePreset::LinearSystem2D | OdePreset::PlanarCustom | OdePreset::Custom => {
+            OdePreset::Exponential
+            | OdePreset::LinearSystem2D
+            | OdePreset::PlanarCustom
+            | OdePreset::Custom => {
                 "Differential Equations and Dynamical Systems (Perko, 2001)".into()
             }
             OdePreset::HarmonicOscillator => {
@@ -409,14 +405,33 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
         Some(eq.into())
     }
     fn available_descriptions(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("Exponential".into(), "First-order linear ODE representing exponential growth or decay".into());
-        map.insert("Harmonic Oscillator".into(), "Second-order linear ODE representing simple harmonic motion".into());
-        map.insert("Logistic Growth".into(), "Nonlinear first-order ODE modeling population growth with carrying capacity".into());
-        map.insert("Linear 2D".into(), "Planar 2x2 linear system with Poincaré stability regimes".into());
-        map.insert("Planar Custom".into(), "Coupled 2D user-defined ODE phase-plane system".into());
-        map.insert("Custom".into(), "Custom user-defined ordinary differential equation".into());
-        map
+        HashMap::from([
+            (
+                "Exponential".into(),
+                "First-order linear ODE representing exponential growth or decay".into(),
+            ),
+            (
+                "Harmonic Oscillator".into(),
+                "Second-order linear ODE representing simple harmonic motion".into(),
+            ),
+            (
+                "Logistic Growth".into(),
+                "Nonlinear first-order ODE modeling population growth with carrying capacity"
+                    .into(),
+            ),
+            (
+                "Linear 2D".into(),
+                "Planar 2x2 linear system with Poincaré stability regimes".into(),
+            ),
+            (
+                "Planar Custom".into(),
+                "Coupled 2D user-defined ODE phase-plane system".into(),
+            ),
+            (
+                "Custom".into(),
+                "Custom user-defined ordinary differential equation".into(),
+            ),
+        ])
     }
 }
 

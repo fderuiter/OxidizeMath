@@ -22,31 +22,25 @@ fn test_ode_sensitivity_converges_and_stops_repainting_across_presets() {
     let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
     assert!(tool.sensitivity_engine.is_converged());
     let out_exp_idle = ctx.run(compact_input(), |ctx| tool.show(ctx));
-    assert!(
-        !out_exp_idle.viewport_output[&egui::ViewportId::ROOT]
-            .repaint_delay
-            .is_zero()
-    );
+    assert!(!out_exp_idle.viewport_output[&egui::ViewportId::ROOT]
+        .repaint_delay
+        .is_zero());
 
     // HarmonicOscillator has 3 parameters (k, y0, v0) -> converges in 2 frames
     tool.preset = OdePreset::HarmonicOscillator;
     tool.recalculate();
     let out_osc_1 = ctx.run(compact_input(), |ctx| tool.show(ctx));
     assert!(!tool.sensitivity_engine.is_converged());
-    assert!(
-        out_osc_1.viewport_output[&egui::ViewportId::ROOT]
-            .repaint_delay
-            .is_zero()
-    );
+    assert!(out_osc_1.viewport_output[&egui::ViewportId::ROOT]
+        .repaint_delay
+        .is_zero());
 
     let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
     assert!(tool.sensitivity_engine.is_converged());
     let out_osc_idle = ctx.run(compact_input(), |ctx| tool.show(ctx));
-    assert!(
-        !out_osc_idle.viewport_output[&egui::ViewportId::ROOT]
-            .repaint_delay
-            .is_zero()
-    );
+    assert!(!out_osc_idle.viewport_output[&egui::ViewportId::ROOT]
+        .repaint_delay
+        .is_zero());
 }
 
 #[test]
@@ -130,9 +124,7 @@ fn test_ode_sensitivity_nan_initial_condition_converges_cleanly() {
     let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
     assert!(tool.sensitivity_engine.is_converged());
     let out_idle = ctx.run(compact_input(), |ctx| tool.show(ctx));
-    assert!(
-        !out_idle.viewport_output[&egui::ViewportId::ROOT]
-            .repaint_delay
-            .is_zero()
-    );
+    assert!(!out_idle.viewport_output[&egui::ViewportId::ROOT]
+        .repaint_delay
+        .is_zero());
 }

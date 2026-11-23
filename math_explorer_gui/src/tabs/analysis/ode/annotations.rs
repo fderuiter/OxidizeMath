@@ -113,9 +113,7 @@ pub(crate) fn harmonic_equilibrium_root(tool: &OdeSolverTool) -> Option<f64> {
         .into_iter()
         .filter(|t| t.is_finite() && *t >= 0.0 && *t <= tool.total_time)
         .min_by(|a, b| (a - mid).abs().total_cmp(&(b - mid).abs()))
-        .or_else(|| {
-            (tool.ic_y0.abs() <= 1e-12 && tool.ic_v0.abs() <= 1e-12).then_some(0.0)
-        })
+        .or_else(|| (tool.ic_y0.abs() <= 1e-12 && tool.ic_v0.abs() <= 1e-12).then_some(0.0))
 }
 
 /// Renders simulation callout annotations onto the ODE plot canvas.

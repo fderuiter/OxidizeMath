@@ -340,13 +340,40 @@ impl OdeSolverTool {
         Ok(())
     }
 
-    pub(crate) fn collect_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut datasets = egui_plot::get_last_plot_datasets();
-        if !datasets.is_empty() {
-            return datasets;
+    pub(crate) fn collect_full_xy_pairs(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
+        let mut plot_points_y = Vec::with_capacity(self.time_series.len());
+        let mut plot_points_v = if self.v_series.is_empty() {
+            Vec::new()
+        } else {
+            Vec::with_capacity(self.v_series.len())
+        };
+        for (i, &t) in self.time_series.iter().enumerate() {
+            if let Some(&y) = self.y_series.get(i) {
+                plot_points_y.push([t, y]);
+            }
+            if let Some(&v) = self.v_series.get(i) {
+                plot_points_v.push([t, v]);
+            }
         }
+        (plot_points_y, plot_points_v)
+    }
+
+    pub(crate) fn build_current_trace_series(&self) -> Vec<crate::framework::TraceSeries> {
+        let (t1_lbl, t2_lbl, _, _) = self.preset.state_labels();
+        let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
+        let mut series = vec![crate::framework::TraceSeries::new(t1_lbl, plot_points_y)];
+        if self.preset.is_2d() && !plot_points_v.is_empty() {
+            series.push(crate::framework::TraceSeries::new(t2_lbl, plot_points_v));
+        }
+        series
+    }
+
+    pub(crate) fn build_full_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let (t1_lbl, t2_lbl, px_lbl, py_lbl) = self.preset.state_labels();
-        if self.is_phase_plane_active() {
+        let mut datasets = Vec::new();
+        if self.comparison_mode && !self.comparison_manager.is_empty() {
+            datasets.extend(self.comparison_manager.export_datasets());
+        } else if self.is_phase_plane_active() {
             let phase_pts: Vec<[f64; 2]> = self
                 .y_series
                 .iter()
@@ -355,29 +382,34 @@ impl OdeSolverTool {
                 .map(|(x, y)| [x, y])
                 .collect();
             datasets.push((format!("Primary ({px_lbl}, {py_lbl})"), phase_pts));
-        } else {
-            let pts_y: Vec<[f64; 2]> = self
-                .time_series
-                .iter()
-                .copied()
-                .zip(self.y_series.iter().copied())
-                .map(|(t, y)| [t, y])
-                .collect();
-            datasets.push((t1_lbl.to_string(), pts_y));
-            if self.preset.is_2d() && !self.v_series.is_empty() {
-                let pts_v: Vec<[f64; 2]> = self
-                    .time_series
+            for (idx, traj) in self.seeded_trajectories.iter().enumerate() {
+                let pts: Vec<[f64; 2]> = traj
+                    .y_series
                     .iter()
                     .copied()
-                    .zip(self.v_series.iter().copied())
-                    .map(|(t, v)| [t, v])
+                    .zip(traj.v_series.iter().copied())
+                    .filter(|(x, y)| x.is_finite() && y.is_finite())
+                    .map(|(x, y)| [x, y])
                     .collect();
-                datasets.push((t2_lbl.to_string(), pts_v));
+                if let Some(&ic) = pts.first() {
+                    datasets.push((
+                        format!("Orbit {} ({:.2}, {:.2})", idx + 1, ic[0], ic[1]),
+                        pts,
+                    ));
+                }
+            }
+        } else {
+            let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
+            datasets.push((t1_lbl.to_string(), plot_points_y));
+            if self.preset.is_2d() && !plot_points_v.is_empty() {
+                datasets.push((t2_lbl.to_string(), plot_points_v));
             }
         }
         datasets.extend(self.snapshot_manager.export_datasets());
-        if self.comparison_mode {
-            datasets.extend(self.comparison_manager.export_datasets());
+        for (name, pts) in egui_plot::get_last_plot_datasets() {
+            if !datasets.iter().any(|(existing, _)| existing == &name) {
+                datasets.push((name, pts));
+            }
         }
         datasets
     }
