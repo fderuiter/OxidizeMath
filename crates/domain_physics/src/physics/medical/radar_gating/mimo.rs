@@ -4,6 +4,7 @@
 //! radar signals. It allows "steering" the radar beam to focus on specific anatomical regions
 //! (e.g., sternum vs. abdomen), resolving the "Human Shape Geometric Error".
 
+use crate::error::RadarError;
 use num_complex::Complex;
 use std::f64::consts::PI;
 
@@ -47,9 +48,12 @@ impl Beamformer {
 
     /// Sets custom weights for the antennas (e.g., Hamming window to reduce sidelobes).
     #[verified_engine::verified]
-    pub fn set_weights(&mut self, weights: &[f64]) -> Result<(), &'static str> {
+    pub fn set_weights(&mut self, weights: &[f64]) -> Result<(), RadarError> {
         if weights.len() != self.antenna_positions.len() {
-            return Err("Number of weights must match number of antennas");
+            return Err(RadarError::AntennaWeightCountMismatch {
+                expected: self.antenna_positions.len(),
+                actual: weights.len(),
+            });
         }
         self.weights = weights.iter().map(|&w| Complex::new(w, 0.0)).collect();
         Ok(())

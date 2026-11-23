@@ -284,6 +284,7 @@ impl MriTool {
             self.pulse_config = RfPulseConfig::default();
         }
         self.pulse_workspace.playhead_playing = false;
+        self.pulse_workspace.playhead_idx = super::pulse::MRI_PULSE_SAMPLES - 1;
         self.fault_notified = false;
         let params = Arc::clone(&self.params);
         let m0 = self.simulator.m0;

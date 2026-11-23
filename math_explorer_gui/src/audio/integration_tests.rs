@@ -10,6 +10,7 @@ use super::*;
 use crate::async_sim::unified::UnifiedModel;
 use crate::framework::{ExportFormat, InteractiveTool, SimulationFramework, ToolStateBounds};
 use crate::tabs::chaos::attractors::AttractorPlotter;
+use crate::tabs::mri::pulse::CHALLENGE_BLOCH_HAHN_ECHO;
 use crate::tabs::mri::tool::MriTool;
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 use crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool;
@@ -380,6 +381,12 @@ fn test_attractor_atlas_audio_revision_and_hh_paused_sync() {
     hh.sync_parameters(&HashMap::from([("i_ext".to_string(), 35.0)]));
     let frame_after = hh.sonification_frame().expect("hh frame after sync");
     assert_ne!(frame_before, frame_after);
+
+    let mut mri = MriTool::default();
+    mri.apply_challenge(Some(CHALLENGE_BLOCH_HAHN_ECHO))
+        .expect("enable Hahn spin echo challenge");
+    let hahn_frames = mri.sample_sonification_frames(16);
+    assert_eq!(hahn_frames[0].active_voices, 8);
 }
 
 #[cfg(target_arch = "wasm32")]

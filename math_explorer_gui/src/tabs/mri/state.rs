@@ -153,31 +153,61 @@ impl MriTool {
         }
     }
 
+    pub(super) fn pulse_sonification_frame_at(
+        &self,
+        sample_idx: usize,
+    ) -> crate::audio::SonificationFrame {
+        let idx = sample_idx.min(super::pulse::MRI_PULSE_SAMPLES - 1);
+        let t_s = self.pulse_workspace.times[idx];
+        match self.pulse_config.mode {
+            MriPulseMode::ContinuousField => crate::audio::mappings::mri_bloch_frame(
+                self.simulator.magnetization,
+                self.simulator.m0,
+                self.simulator.b_field,
+                self.pulse_config.detuning_hz,
+            ),
+            MriPulseMode::InversionPulse => crate::audio::mappings::mri_pulse_playhead_frame(
+                MriPulseMode::InversionPulse,
+                t_s,
+                self.pulse_workspace.trajectory[idx],
+                self.pulse_workspace.dispersion[idx],
+                self.simulator.m0,
+                self.simulator.b_field.z,
+                &self.pulse_config,
+            ),
+            MriPulseMode::HahnSpinEcho => {
+                let mut frame = self.pulse_workspace.sample_sonification_frame(
+                    MriPulseMode::HahnSpinEcho,
+                    idx,
+                    self.simulator.b_field,
+                    self.simulator.m0,
+                );
+                let detune_shift =
+                    0.25 * (self.pulse_config.detuning_hz.clamp(-5000.0, 5000.0) as f32);
+                if detune_shift.abs() > 1e-3 {
+                    for v in &mut frame.voices[..frame.active_voices as usize] {
+                        v.freq_hz = crate::audio::frame::clamp_freq_hz(v.freq_hz + detune_shift);
+                    }
+                }
+                if crate::audio::mappings::is_rf_pulse_window(
+                    MriPulseMode::HahnSpinEcho,
+                    t_s,
+                    &self.pulse_config,
+                ) {
+                    frame.voices[0].transient_impulse = 0.85;
+                }
+                frame.sanitize()
+            }
+        }
+    }
+
     /// Computes the stack-allocated [`crate::audio::SonificationFrame`] for the active mode/playhead.
     #[must_use]
     pub fn current_sonification_frame(&self) -> crate::audio::SonificationFrame {
         if self.worker.state() == SimWorkerState::Faulted {
             return crate::audio::SonificationFrame::silent();
         }
-        if self.pulse_config.mode.is_continuous() {
-            crate::audio::mappings::mri_bloch_frame(
-                self.simulator.magnetization,
-                self.simulator.m0,
-                self.simulator.b_field,
-                self.pulse_config.detuning_hz,
-            )
-        } else {
-            let (t_s, m_sample, disp) = self.pulse_workspace.playhead_sample();
-            crate::audio::mappings::mri_pulse_playhead_frame(
-                self.pulse_config.mode,
-                t_s,
-                m_sample,
-                disp,
-                self.simulator.m0,
-                self.simulator.b_field.z,
-                &self.pulse_config,
-            )
-        }
+        self.pulse_sonification_frame_at(self.pulse_workspace.playhead_idx)
     }
 
     pub(super) fn collect_mri_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {

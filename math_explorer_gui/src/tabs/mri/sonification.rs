@@ -4,7 +4,7 @@
 
 use super::pulse::MRI_PULSE_SAMPLES;
 use super::tool::MriTool;
-use crate::audio::mappings::{mri_bloch_frame, mri_pulse_playhead_frame};
+use crate::audio::mappings::mri_bloch_frame;
 use crate::audio::SonificationFrame;
 use math_explorer::physics::mri::bloch::{rotating_frame_effective_field, BlochSimulator};
 use math_explorer::physics::mri::proton;
@@ -17,23 +17,12 @@ impl MriTool {
             return vec![SonificationFrame::silent(); count];
         }
         if !self.pulse_config.mode.is_continuous() {
-            let mut out = Vec::with_capacity(count);
-            for idx in 0..count {
-                let sample_idx = (idx * MRI_PULSE_SAMPLES / count).min(MRI_PULSE_SAMPLES - 1);
-                let t_s = self.pulse_workspace.times[sample_idx];
-                let m_sample = self.pulse_workspace.trajectory[sample_idx];
-                let disp = self.pulse_workspace.dispersion[sample_idx];
-                out.push(mri_pulse_playhead_frame(
-                    self.pulse_config.mode,
-                    t_s,
-                    m_sample,
-                    disp,
-                    self.simulator.m0,
-                    self.simulator.b_field.z,
-                    &self.pulse_config,
-                ));
-            }
-            return out;
+            return (0..count)
+                .map(|idx| {
+                    let sample_idx = (idx * MRI_PULSE_SAMPLES / count).min(MRI_PULSE_SAMPLES - 1);
+                    self.pulse_sonification_frame_at(sample_idx)
+                })
+                .collect();
         }
 
         let b_lab = self.simulator.b_field;
