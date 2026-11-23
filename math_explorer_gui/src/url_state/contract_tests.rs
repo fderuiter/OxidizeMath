@@ -77,6 +77,15 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
                 tab.import_url_preset_json(Some("FavoritismTool"), Some(&val.to_string()))
                     .unwrap();
             }
+            "optics_waves" => {
+                let mut val: serde_json::Value =
+                    serde_json::from_str(&tab.export_url_preset_json().unwrap().unwrap()).unwrap();
+                val["config"]["preset"] = serde_json::json!("VeselagoLens");
+                val["config"]["frequency"] = serde_json::json!(13.5);
+                val["config"]["detector_x"] = serde_json::json!(0.76);
+                tab.import_url_preset_json(Some("OpticsWaveTool"), Some(&val.to_string()))
+                    .unwrap();
+            }
             "cannibalism" => {
                 let orig = tab.export_url_preset_json().unwrap().unwrap();
                 let mut val: serde_json::Value = serde_json::from_str(&orig).unwrap();
@@ -94,7 +103,7 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
 fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut source_app = MathExplorerApp::default();
-    assert_eq!(source_app.tabs.len(), 27, "Expected all 27 ExplorerTabs");
+    assert_eq!(source_app.tabs.len(), 28, "Expected all 28 ExplorerTabs");
 
     let mut slugs = HashSet::new();
     for tab in &source_app.tabs {
@@ -142,7 +151,7 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
 fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    let expected_tools = 86 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
+    let expected_tools = 87 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(
         tools.len(),
         expected_tools,
@@ -206,7 +215,7 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = 138
+    let expected_presets = 148
         + if cfg!(all(feature = "physics", feature = "biology")) {
             4
         } else {

@@ -99,4 +99,17 @@ inventory::submit! {
     }
 }
 
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "sir_lockdown_timing",
+        title: "SIR Lockdown Timing",
+        description: "Counterfactual shadow twin forked at day 10 lowering β from 0.5 to 0.2 to measure ΔI_peak infections averted.",
+        category: "Counterfactual Epidemiology",
+        icon: "⑂",
+        domain: "epidemiology",
+        tool_name: Some("SirTool"),
+        preset_generator: || crate::starter_gallery::PRESET_SIR_LOCKDOWN_TIMING,
+    }
+}
+
 // [cite:graph_parameters_rust]
