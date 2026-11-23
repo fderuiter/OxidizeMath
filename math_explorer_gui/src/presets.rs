@@ -59,6 +59,12 @@ impl OdePreset {
 /// Maximum allowed integration step count for ODE solvers.
 pub const MAX_ODE_STEPS: usize = 200_000;
 
+/// Maximum interactive parametric UV grid resolution for 3D surface tools (`120`).
+pub const MAX_INTERACTIVE_SURFACE_RESOLUTION: usize = 120;
+
+/// Maximum interactive 2D vector and conformal-contour grid density (`100`).
+pub const MAX_INTERACTIVE_GRID_SIZE: usize = 100;
+
 /// Computes a bounded ODE integration step count when `dt` and `total_time` are finite,
 /// strictly positive, and require at most [`MAX_ODE_STEPS`] steps.
 #[must_use]
@@ -107,10 +113,16 @@ pub struct ReplicatorPresetConfig {
     pub dt: f64,
     /// Descriptive strategy names.
     pub strategy_names: Vec<String>,
+    /// Optional symbolic payoff cell formulas `(rows x cols)` evaluated via `CompiledExpr`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbolic_payoffs: Option<Vec<Vec<String>>>,
+    /// Shared parameter values for symbolic payoff cells (e.g. `v`, `c` in Hawk-Dove).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub symbolic_params: std::collections::BTreeMap<String, f64>,
 }
 
 impl ReplicatorPresetConfig {
-    /// Validates matrix dimensions and strategy counts.
+    /// Validates matrix dimensions, strategy counts, and optional symbolic payoff formulas.
     pub fn validate(&self) -> Result<(), String> {
         let rows = self.payoff_matrix.len();
         if rows == 0 {
@@ -141,7 +153,60 @@ impl ReplicatorPresetConfig {
                 rows
             ));
         }
-        Ok(())
+        self.validate_symbolic(rows)
+    }
+
+    fn validate_symbolic(&self, rows: usize) -> Result<(), String> {
+        match &self.symbolic_payoffs {
+            Some(sym_rows) => {
+                if sym_rows.len() != rows {
+                    return Err(format!(
+                        "Symbolic payoff matrix row count ({}) does not match dimensions ({rows}x{rows})",
+                        sym_rows.len()
+                    ));
+                }
+                for (i, row) in sym_rows.iter().enumerate() {
+                    if row.len() != rows {
+                        return Err(format!(
+                            "Symbolic payoff row {i} has length {}, expected {rows}",
+                            row.len()
+                        ));
+                    }
+                    for (j, expr_str) in row.iter().enumerate() {
+                        let trimmed = expr_str.trim();
+                        if trimmed.is_empty() || trimmed.len() > 256 {
+                            return Err(format!(
+                                "Symbolic payoff cell ({i}, {j}) must be non-empty and <= 256 chars"
+                            ));
+                        }
+                    }
+                }
+                if self.symbolic_params.len() > crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
+                {
+                    return Err(format!(
+                        "Symbolic parameter count ({}) exceeds maximum ({})",
+                        self.symbolic_params.len(),
+                        crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
+                    ));
+                }
+                for (name, &val) in &self.symbolic_params {
+                    if !val.is_finite() || !(-1e4..=1e4).contains(&val) {
+                        return Err(format!(
+                            "Symbolic parameter '{name}' must be finite and within [-10000, 10000]"
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            None => {
+                if !self.symbolic_params.is_empty() {
+                    return Err(
+                        "symbolic_params cannot be specified without symbolic_payoffs".to_string(),
+                    );
+                }
+                Ok(())
+            }
+        }
     }
 }
 

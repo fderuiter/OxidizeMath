@@ -1,5 +1,6 @@
 use super::*;
 use crate::utils::test_utils::{CurrentDirGuard, TempTestDir};
+use std::fs;
 
 fn write_member_crate(root: &Path, member: &str, lib_source: &str) -> String {
     let member_dir = root.join(member);
@@ -319,4 +320,78 @@ fn test_vendored_egui_plot_lints_exemption_conditions() {
         &[vendored.as_str()],
         &whitelist_file
     ));
+}
+
+#[test]
+fn test_dead_code_visitor_enforces_256_step_attr_bound() {
+    let build_nested_cfg_attr = |wrappers: usize| -> String {
+        let mut attr = "allow(dead_code)".to_string();
+        for _ in 0..wrappers {
+            attr = format!("cfg_attr(unix, {attr})");
+        }
+        format!("#[{attr}]\nfn bounded_target() {{}}\n")
+    };
+
+    // 255 cfg_attr wrappers + 1 allow(dead_code) = 256 total stack steps -> detected
+    assert!(scan_snippet(&build_nested_cfg_attr(255), vec![]));
+    // 256 cfg_attr wrappers + 1 allow(dead_code) = 257 total stack steps -> stops at 256 bound
+    assert!(!scan_snippet(&build_nested_cfg_attr(256), vec![]));
+}
+
+#[test]
+fn test_dead_code_visitor_nested_paren_and_qself_rejection() {
+    let demo_entry = DeadCodeEntry {
+        file: "crates/sample/src/lib.rs".to_string(),
+        identifier: Some("Demo".to_string()),
+    };
+
+    let nested_paren =
+        "pub struct Demo;\n#[allow(dead_code)]\nimpl ((Demo)) {\n    fn ok() {}\n}\n";
+    assert!(scan_snippet(nested_paren, vec![]));
+    assert!(!scan_snippet(nested_paren, vec![demo_entry.clone()]));
+
+    let mut deep_ty = "Demo".to_string();
+    for _ in 0..32 {
+        deep_ty = format!("({deep_ty})");
+    }
+    let over_32_parens =
+        format!("pub struct Demo;\n#[allow(dead_code)]\nimpl {deep_ty} {{\n    fn f() {{}}\n}}\n");
+    assert!(scan_snippet(&over_32_parens, vec![demo_entry.clone()]));
+
+    let qself_impl = concat!(
+        "trait Assoc { type Demo; }\n",
+        "struct Other;\n",
+        "impl Assoc for Other { type Demo = u8; }\n",
+        "#[allow(dead_code)]\n",
+        "impl <Other as Assoc>::Demo {}\n",
+    );
+    assert!(scan_snippet(qself_impl, vec![demo_entry]));
+}
+
+#[test]
+fn test_standalone_policy_audit_rejects_missing_lints_from_root_and_subdir() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let dir = TempTestDir::new("policy_audit_root_and_subdir");
+    let _guard = CurrentDirGuard(std::env::current_dir().unwrap());
+
+    fs::write(
+        dir.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/good\", \"crates/bad\"]\n",
+    )
+    .unwrap();
+    write_member_crate(&dir, "crates/good", "pub fn ok() {}\n");
+    write_member_crate(&dir, "crates/bad", "pub fn bad() {}\n");
+    fs::write(
+        dir.join("crates/bad/Cargo.toml"),
+        "[package]\nname = \"bad\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+
+    std::env::set_current_dir(&*dir).unwrap();
+    assert!(run_policy_audit(&["crates/good"]));
+    assert!(!run_policy_audit(&["crates/good", "crates/bad"]));
+
+    std::env::set_current_dir(dir.join("crates/good")).unwrap();
+    assert!(run_policy_audit(&["crates/good"]));
+    assert!(!run_policy_audit(&["crates/good", "crates/bad"]));
 }
