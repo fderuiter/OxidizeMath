@@ -4429,12 +4429,62 @@
       "signature": "pub trait GatingKinetics { fn beta_n (& self , _ : f64 , _ : f64) -> f64 }"
     }
   ],
+  "crates/domain_biology/src/biology/neuroscience/kuramoto.rs": [
+    {
+      "signature": "impl KuramotoNetwork { pub fn coupling (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn frequency_spread (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn natural_frequencies (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn new (_ : usize , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn num_nodes (& self) -> usize }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn order_parameter (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn phases (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn reconfigure_topology (& mut self , _ : usize , _ : & [(usize , usize , f64)] , _ : bool , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn reset_phases (& mut self) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn set_coupling (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn set_frequency_spread (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn set_phase (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct KuramotoNetwork"
+    }
+  ],
   "crates/domain_biology/src/biology/neuroscience/mod.rs": [
     {
       "signature": "pub use kinetics :: GatingKinetics"
     },
     {
       "signature": "pub use kinetics :: StandardKinetics"
+    },
+    {
+      "signature": "pub use kuramoto :: KuramotoNetwork"
     },
     {
       "signature": "pub use model :: HodgkinHuxleyModel"

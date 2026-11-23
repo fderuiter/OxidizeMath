@@ -10,7 +10,7 @@ use super::runner::{
 use super::sculpt::default_morpho_brush_kit;
 use crate::app::ThemeMode;
 use crate::async_sim::atlas::ParameterAtlasController;
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{
     BranchControlAction, CounterfactualBranchEngine, DivergenceSnapshot, ExportCapabilities,
@@ -45,6 +45,7 @@ pub struct MorphogenesisTool {
     /// Counterfactual shadow twin branch state & perturbation settings.
     pub branch_engine: CounterfactualBranchEngine,
     pub(crate) theory: MorphogenesisTheory,
+    pub(crate) field_stream: super::dataflow::MorphoFieldStreamState,
 }
 
 impl Default for MorphogenesisTool {
@@ -90,6 +91,7 @@ impl Default for MorphogenesisTool {
             last_theme_mode: None,
             branch_engine: CounterfactualBranchEngine::default(),
             theory: MorphogenesisTheory::default(),
+            field_stream: super::dataflow::MorphoFieldStreamState::default(),
         }
     }
 }
@@ -143,6 +145,7 @@ impl MorphogenesisTool {
         self.step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
+        self.invalidate_scalar_field_cache();
     }
 
     #[cfg(test)]
@@ -166,6 +169,7 @@ impl MorphogenesisTool {
         self.step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
+        self.invalidate_scalar_field_cache();
     }
 
     pub(crate) fn reset_system(&mut self) {
@@ -196,60 +200,11 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
-        if self.is_forked() {
-            return Some(self.render_current_heatmap_image());
-        }
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && px.len() == w * h {
-                return Some(ColorImage {
-                    size: [w, h],
-                    pixels: px.clone(),
-                    ..Default::default()
-                });
-            }
-        }
-        if !self.dirty && self.pixels.len() == self.width * self.height && !self.pixels.is_empty() {
-            return Some(ColorImage {
-                size: [self.width, self.height],
-                pixels: self.pixels.clone(),
-                ..Default::default()
-            });
-        }
-        let snapshot = self.worker.latest_snapshot()?;
-        let px = snapshot.pixels.read().unwrap_or_else(|e| e.into_inner());
-        if snapshot.width == 0
-            || snapshot.height == 0
-            || px.len() != snapshot.width * snapshot.height
-        {
-            return None;
-        }
-        Some(ColorImage {
-            size: [snapshot.width, snapshot.height],
-            pixels: px.clone(),
-            ..Default::default()
-        })
+        self.export_morpho_raster_image()
     }
 
     fn step_simulation(&mut self) {
-        if self.is_forked() {
-            self.step_lockstep(5);
-            return;
-        }
-        let runner = self.step_runner.get_or_insert_with(|| {
-            Self::create_kinetics_runner(
-                &self.params,
-                &self.kinetics_state,
-                &self.mask_rle,
-                self.width,
-                self.height,
-            )
-        });
-        for _ in 0..5 {
-            runner.step();
-        }
-        let snap = runner.get_snapshot();
-        let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
-        self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
+        self.advance_morpho_step();
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
@@ -272,10 +227,12 @@ impl InteractiveTool for MorphogenesisTool {
         if std::mem::take(&mut self.pending_initial_start) && self.worker.state().is_ready() {
             let _ = self.worker.send_command(SimCommand::Start);
         }
-        if self.worker.update().is_some() {
+        if let Some(snap) = self.worker.update() {
+            self.field_stream.record_snapshot(snap);
             self.pull_latest_worker_snapshot();
             self.dirty = true;
         }
+        self.publish_bus_scalar_field(&ctx);
         self.draw_controls(ui);
         self.draw_canvas(ui);
         if matches!(
