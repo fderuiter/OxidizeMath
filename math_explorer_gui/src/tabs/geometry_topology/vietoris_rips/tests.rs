@@ -223,13 +223,11 @@ fn test_interval_csv_json_exports_and_svg_png_figure_primitives() {
         let opts = ExportOptions::default();
         let svg = export_primitives_svg(&prims, &opts).unwrap();
         assert!(svg.contains("<svg") && svg.len() > 250);
-        let rendered = render_primitives_image(&prims, &opts).unwrap();
+        let img = render_primitives_image(&prims, &opts).unwrap();
         assert!(
-            rendered.width() > 0
-                && rendered.height() > 0
-                && rendered.pixels.len() == rendered.width() * rendered.height()
+            img.width() > 0 && img.height() > 0 && img.pixels.len() == img.width() * img.height()
         );
-        let png = color32_image_to_png(&rendered).unwrap();
+        let png = color32_image_to_png(&img).unwrap();
         assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
 }
