@@ -53,7 +53,7 @@ Binary .stl (UNITS=mm) / Colored .ply / .obj                INRIA 3DGS Binary .p
 
 - **Positive**: Clipped spheres, Gyroid/Schwarz-P TPMS shells, CSG solids, hydrogenic orbitals, and sliced 3D Turing gyroid labyrinths export as closed, outward-oriented millimeter-scaled 2-manifolds (`(0, 0)` open/non-manifold edges, `signed_volume > 0.0`) with vertex-colored `.ply` support, while `GaussianRadianceCloud` scenes load directly in INRIA-compatible 3DGS viewers.
 - **Positive**: Hot-path 3D bytecode evaluation, isosurface extraction, and splat projection allocate `0` heap bytes per frame under `VerifiedAllocator`.
-- **Trade-off**: Interactive cubic voxel resolution remains capped at `16..=48` to sustain 60 FPS on native CPU and WebAssembly targets within the 4 MB compressed `.wasm` budget in [verify_wasm_budget.sh](../../scripts/verify_wasm_budget.sh) across the 27-tab / 86-tool / 141-preset workspace.
+- **Trade-off**: Interactive cubic voxel resolution remains capped at `16..=48` to sustain 60 FPS on native CPU and WebAssembly targets within the 4 MB compressed `.wasm` budget in [verify_wasm_budget.sh](../../scripts/verify_wasm_budget.sh) across the full multi-tab workspace (`28` tabs, `87` tools, `148` presets).
 
 ## Verification
 
