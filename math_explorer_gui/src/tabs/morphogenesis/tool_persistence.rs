@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::counterfactual::MorphogenesisHeatmapMode;
 use super::state::MorphogenesisToolState;
 use super::types::{MorphogenesisBrushMode, MorphogenesisFlowState, MorphogenesisKineticsMode};
 use super::MorphogenesisTool;
@@ -13,7 +14,9 @@ use std::hash::{Hash, Hasher};
 
 impl FiniteStateGuard for MorphogenesisTool {
     fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
+        self.worker.state() != SimWorkerState::Faulted
+            && self.worker.diagnostic_report().is_none()
+            && FiniteStateGuard::is_finite_state(&self.local_runner)
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -86,6 +89,7 @@ impl FiniteStateGuard for MorphogenesisTool {
             p.d_u = 1.0;
             p.d_v = 100.0;
             p.dt = 0.05;
+            p.heatmap_mode = MorphogenesisHeatmapMode::ActiveUb;
         }
         {
             let mut flow = self.flow_state.write().unwrap_or_else(|e| e.into_inner());
@@ -111,6 +115,7 @@ impl MorphogenesisTool {
             p.d_u.to_bits().hash(&mut h);
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
+            p.heatmap_mode.hash(&mut h);
         }
         {
             let ks = self
@@ -133,6 +138,8 @@ impl MorphogenesisTool {
         }
         self.width.hash(&mut h);
         self.height.hash(&mut h);
+        self.is_forked().hash(&mut h);
+        self.local_runner.step_count.hash(&mut h);
         self.mask_rle
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -151,6 +158,11 @@ impl MorphogenesisTool {
             .read()
             .unwrap_or_else(|e| e.into_inner());
         let flow = *self.flow_state.read().unwrap_or_else(|e| e.into_inner());
+        let fork = self
+            .local_runner
+            .twin
+            .as_ref()
+            .map(|t| t.to_descriptor(p.heatmap_mode));
         let mask_rle = self
             .mask_rle
             .read()
@@ -183,6 +195,7 @@ impl MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            fork,
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes,
@@ -190,20 +203,7 @@ impl MorphogenesisTool {
         .ok()
     }
 
-    pub(crate) fn load_tool_state(&mut self, state: &str) -> Result<(), String> {
-        self.state_bounds().validate_json(state)?;
-        let parsed: MorphogenesisToolState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
-        parsed.validate()?;
-        self.sync_atlas_options_for_mode(parsed.kinetics_mode);
-        let use_mode_default = parsed.kinetics_mode == MorphogenesisKineticsMode::GrayScott
-            && super::atlas::is_default_morpho_atlas_axes(&parsed.atlas_axes);
-        if !use_mode_default {
-            self.atlas
-                .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
-        }
-        self.atlas.set_visible(parsed.atlas_visible);
-        let target_state = parsed.resolve_target_state();
+    fn stage_loaded_shared_states(&mut self, parsed: &MorphogenesisToolState) {
         self.theory.set_mode(parsed.kinetics_mode);
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
@@ -212,6 +212,9 @@ impl MorphogenesisTool {
             p.d_u = parsed.d_u;
             p.d_v = parsed.d_v;
             p.dt = parsed.dt;
+            p.heatmap_mode = parsed
+                .fork
+                .map_or(MorphogenesisHeatmapMode::ActiveUb, |fk| fk.heatmap_mode);
         }
         {
             let mut ks = self
@@ -235,13 +238,40 @@ impl MorphogenesisTool {
         if parsed.brush_mode == MorphogenesisBrushMode::PanZoom {
             self.brush_kit.interaction_mode = crate::framework::BrushInteractionMode::Pan;
         }
+    }
+
+    pub(crate) fn load_tool_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
+        let parsed: MorphogenesisToolState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
+        parsed.validate()?;
+        self.sync_atlas_options_for_mode(parsed.kinetics_mode);
+        let use_mode_default = parsed.kinetics_mode == MorphogenesisKineticsMode::GrayScott
+            && super::atlas::is_default_morpho_atlas_axes(&parsed.atlas_axes);
+        if !use_mode_default {
+            self.atlas
+                .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        }
+        self.atlas.set_visible(parsed.atlas_visible);
+        let target_state = parsed.resolve_target_state();
+        self.stage_loaded_shared_states(&parsed);
         *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) = parsed.mask_rle;
-        self.apply_dimensions_and_target_state(
-            parsed.width,
-            parsed.height,
-            target_state,
-            parsed.pending_initial_start,
-        );
+        if let Some(fork_desc) = parsed.fork {
+            self.apply_loaded_fork_state(
+                parsed.width,
+                parsed.height,
+                fork_desc,
+                target_state,
+                parsed.pending_initial_start,
+            )?;
+        } else {
+            self.apply_dimensions_and_target_state(
+                parsed.width,
+                parsed.height,
+                target_state,
+                parsed.pending_initial_start,
+            );
+        }
         Ok(())
     }
 

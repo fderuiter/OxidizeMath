@@ -1,0 +1,474 @@
+//! Counterfactual shadow twin state and spatial difference heatmaps for `MorphogenesisTool`.
+
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use super::diffusion::CoupledMorphoDiffusion;
+use super::runner::{MorphogenesisKineticsAdapter, MAX_CFL_SUBSTEPS, TARGET_ADVECTIVE_CFL};
+use super::runner_twin::clone_turing_system;
+use crate::app::ThemeMode;
+use crate::framework::{
+    field_difference_norms, sanitize_perturbation_delta, DivergenceSnapshot,
+    DomainInterventionDelta, SeparationTracker,
+};
+use crate::presets::MorphogenesisKineticsMode;
+use eframe::egui::{Color32, ColorImage};
+use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
+use math_explorer::biology::diffusion::SpatialDiffusion;
+use math_explorer::biology::morphogenesis::TuringSystem;
+use oxidize_core::rng::OxidizeRng;
+use rand::RngCore;
+use serde::{Deserialize, Serialize};
+
+/// Spatial heatmap visualization mode when a counterfactual Turing fork is active.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MorphogenesisHeatmapMode {
+    /// Active perturbed activator concentration `u_B(x, y)`.
+    #[default]
+    ActiveUb,
+    /// Side-by-side spatial split `u_A | u_B` separated by a vertical divider seam.
+    SplitUaUb,
+    /// Pointwise absolute activator difference `|u_B(x, y) - u_A(x, y)|`.
+    DifferenceAbs,
+}
+
+impl MorphogenesisHeatmapMode {
+    /// All selectable spatial heatmap modes in toolbar display order.
+    pub const ALL: [Self; 3] = [Self::ActiveUb, Self::SplitUaUb, Self::DifferenceAbs];
+
+    /// Human-readable UI label for segmented mode buttons and accessibility announcements.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ActiveUb => "Active u_B",
+            Self::SplitUaUb => "Split u_A | u_B",
+            Self::DifferenceAbs => "Difference |u_B - u_A|",
+        }
+    }
+}
+
+/// Compact serializable fork descriptor for `MorphogenesisTool` (`< 320` bytes JSON).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MorphogenesisForkDescriptor {
+    /// Step index `k > 0` where the reaction-diffusion field was forked.
+    pub fork_step: usize,
+    /// Number of lockstep `dt` steps evolved after `fork_step`.
+    #[serde(default)]
+    pub post_fork_steps: usize,
+    /// Frozen baseline activator production rate `a` on `Branch A`.
+    pub baseline_a: f64,
+    /// Frozen baseline inhibitor production rate `b` on `Branch A`.
+    pub baseline_b: f64,
+    /// Frozen baseline activator diffusion `D_u` on `Branch A`.
+    pub baseline_du: f64,
+    /// Frozen baseline inhibitor diffusion `D_v` on `Branch A`.
+    pub baseline_dv: f64,
+    /// Optional frozen baseline Gray-Scott substrate feed rate `f` on `Branch A`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_f: Option<f64>,
+    /// Optional frozen baseline Gray-Scott catalyst kill rate `k` on `Branch A`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_k: Option<f64>,
+    /// Spatial activator perturbation amplitude `δu` applied at `t_k` on `Branch B`.
+    pub delta_u: f64,
+    /// Active spatial heatmap comparison mode.
+    #[serde(default)]
+    pub heatmap_mode: MorphogenesisHeatmapMode,
+}
+
+impl MorphogenesisForkDescriptor {
+    /// Validates finiteness and domain bounds of a serialized fork descriptor.
+    pub fn validate(&self) -> Result<(), String> {
+        let checks = [
+            ("baseline_a", self.baseline_a, 0.0, 1.0),
+            ("baseline_b", self.baseline_b, 0.0, 2.0),
+            ("baseline_du", self.baseline_du, 0.01, 5.0),
+            ("baseline_dv", self.baseline_dv, 0.005, 200.0),
+            ("delta_u", self.delta_u, 0.0, 1.0),
+        ];
+        if self.fork_step == 0 || self.fork_step > 20_000 || self.post_fork_steps > 20_000 {
+            return Err("Morphogenesis fork steps must be in 1..=20000".to_string());
+        }
+        for (name, val, min, max) in checks {
+            if !val.is_finite() || val < min || val > max {
+                return Err(format!(
+                    "Invalid morphogenesis fork field '{name}' = {val} (expected [{min}, {max}])"
+                ));
+            }
+        }
+        for (name, opt) in [
+            ("baseline_f", self.baseline_f),
+            ("baseline_k", self.baseline_k),
+        ] {
+            if let Some(val) = opt {
+                if !val.is_finite() || !(0.0..=0.12).contains(&val) {
+                    return Err(format!(
+                        "Invalid morphogenesis fork field '{name}' = {val} (expected [0, 0.12])"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Structured worker payload carrying active species `u_data`, optional baseline `u_A`, mask roles, and twin metrics.
+#[derive(Clone, Debug)]
+pub struct MorphogenesisSnapshotData {
+    /// Active `Branch B` species field (`u` in Schnakenberg, `v` in Gray-Scott).
+    pub u_data: Vec<f64>,
+    /// Unperturbed `Branch A` species field `u_A` when forked.
+    pub u_a: Option<Vec<f64>>,
+    /// Optional row-major `ReactionCellRole` byte grid when any cell is non-`Free`.
+    pub mask_roles: Vec<u8>,
+    /// Current step index `k`.
+    pub step_count: usize,
+    /// Live spatial divergence snapshot when forked.
+    pub divergence: Option<DivergenceSnapshot>,
+    /// Row-major discrete hydrodynamic vorticity field `\omega_z`.
+    pub vorticity: Vec<f64>,
+    /// Row-major solid obstacle mask.
+    pub obstacles: Vec<bool>,
+    /// Dimensionless Péclet number `\mathrm{Pe} = U L / D_u`.
+    pub peclet: f64,
+    /// Dimensionless Damköhler number `\mathrm{Da}`.
+    pub damkohler: f64,
+}
+
+/// Returns the primary pattern-forming species slice (`u` for Schnakenberg, `v` for Gray-Scott).
+#[inline]
+#[must_use]
+pub fn active_morphogen_slice<D: SpatialDiffusion<2>>(
+    sys: &TuringSystem<2, MorphogenesisKineticsAdapter, D>,
+) -> &[f64] {
+    match sys.kinetics.mode {
+        MorphogenesisKineticsMode::Schnakenberg => sys.u(),
+        MorphogenesisKineticsMode::GrayScott => sys.v(),
+    }
+}
+
+/// Returns a mutable slice of the primary pattern-forming species (`u` or `v`).
+#[inline]
+pub fn active_morphogen_slice_mut<D: SpatialDiffusion<2>>(
+    sys: &mut TuringSystem<2, MorphogenesisKineticsAdapter, D>,
+) -> &mut [f64] {
+    match sys.kinetics.mode {
+        MorphogenesisKineticsMode::Schnakenberg => sys.u_mut(),
+        MorphogenesisKineticsMode::GrayScott => sys.v_mut(),
+    }
+}
+
+/// Pre-allocated counterfactual shadow twin state for `MorphogenesisKineticsRunner` (zero-alloc `step()`).
+pub struct MorphogenesisTwinState {
+    /// Frozen baseline `TuringSystem` (`Branch A`) with pre-allocated double buffers and coupled diffusion.
+    pub system_a: TuringSystem<2, MorphogenesisKineticsAdapter, CoupledMorphoDiffusion>,
+    /// Cloned baseline PRNG state at `t_k`.
+    pub rng_a: OxidizeRng,
+    /// Step index `k > 0` where the fork was anchored.
+    pub fork_step: usize,
+    /// Number of lockstep steps taken since `fork_step`.
+    pub post_fork_steps: usize,
+    /// Spatial activator perturbation amplitude `δu` applied at `t_k`.
+    pub delta_u: f64,
+    /// Latest spatial Euclidean difference `||u_B - u_A||_2`.
+    pub l2_norm: f64,
+    /// Latest pointwise supremum difference `||u_B - u_A||_∞`.
+    pub linf_norm: f64,
+    /// Live separation and logarithmic slope tracker.
+    pub tracker: SeparationTracker,
+}
+
+impl MorphogenesisTwinState {
+    /// Clones `(fork_step, system_b, rng_b)` into `Branch A` and perturbs `system_b` by `delta_u`.
+    pub fn fork_from(
+        fork_step: usize,
+        dt: f64,
+        width: usize,
+        height: usize,
+        system_b: &mut TuringSystem<2, MorphogenesisKineticsAdapter, CoupledMorphoDiffusion>,
+        rng_b: &mut OxidizeRng,
+        delta_u: f64,
+    ) -> Self {
+        let clean_delta = sanitize_perturbation_delta(delta_u);
+        let system_a = clone_turing_system(system_b, width, height);
+        let rng_a = rng_b.clone();
+
+        if clean_delta > 0.0 {
+            const INV_2_POW_53: f64 = 1.0 / ((1u64 << 53) as f64);
+            let mut fork_rng = OxidizeRng::new(0x5457_494E_464F_524B ^ (fork_step as u64));
+            let field_b = active_morphogen_slice_mut(system_b);
+            let center = field_b.len() / 2;
+            for (idx, cell) in field_b.iter_mut().enumerate() {
+                let jitter = if idx == center {
+                    1.0
+                } else {
+                    2.0 * (((fork_rng.next_u64() >> 11) as f64) * INV_2_POW_53) - 1.0
+                };
+                *cell += clean_delta * jitter;
+            }
+        }
+
+        let (l2_norm, linf_norm) = field_difference_norms(
+            active_morphogen_slice(&system_a),
+            active_morphogen_slice(system_b),
+        );
+        let safe_dt = if dt.is_finite() && dt > 0.0 {
+            dt
+        } else {
+            0.005
+        };
+        let fork_time = (fork_step as f64) * safe_dt;
+        Self {
+            system_a,
+            rng_a,
+            fork_step,
+            post_fork_steps: 0,
+            delta_u: clean_delta,
+            l2_norm,
+            linf_norm,
+            tracker: SeparationTracker::new(fork_time, l2_norm),
+        }
+    }
+
+    /// Clones `MorphogenesisTwinState` outside the verified step loop.
+    #[must_use]
+    pub fn clone_with_dims(&self, width: usize, height: usize) -> Self {
+        Self {
+            system_a: clone_turing_system(&self.system_a, width, height),
+            rng_a: self.rng_a.clone(),
+            fork_step: self.fork_step,
+            post_fork_steps: self.post_fork_steps,
+            delta_u: self.delta_u,
+            l2_norm: self.l2_norm,
+            linf_norm: self.linf_norm,
+            tracker: self.tracker,
+        }
+    }
+
+    /// Steps frozen baseline `Branch A` by `dt` with zero heap allocations.
+    #[inline]
+    pub fn step_branch_a(&mut self, dt: f64, width: usize, height: usize, noise_amp: f64) {
+        if self.system_a.diffusion.flow_active {
+            let d_max = self.system_a.diffusion_coeffs[0].max(self.system_a.diffusion_coeffs[1]);
+            let substeps = self.system_a.diffusion.advection.cfl_substeps(
+                dt,
+                d_max,
+                TARGET_ADVECTIVE_CFL,
+                MAX_CFL_SUBSTEPS,
+            );
+            let sub_dt = dt / (substeps as f64);
+            for _ in 0..substeps {
+                self.system_a.step(sub_dt);
+            }
+        } else {
+            self.system_a.step(dt);
+        }
+        super::runner::apply_uniform_noise(
+            &mut self.system_a,
+            width * height,
+            &mut self.rng_a,
+            noise_amp,
+        );
+        if self.system_a.diffusion.mask.has_active_cells() {
+            super::sculpt::enforce_system_mask(&mut self.system_a, width, height);
+        }
+    }
+
+    /// Updates spatial `L2` and `L_∞` norms after a lockstep tick with zero heap allocations.
+    #[inline]
+    pub fn observe_lockstep(&mut self, step_count: usize, dt: f64, u_b: &[f64]) {
+        self.post_fork_steps = step_count.saturating_sub(self.fork_step);
+        let (l2, linf) = field_difference_norms(active_morphogen_slice(&self.system_a), u_b);
+        self.l2_norm = l2;
+        self.linf_norm = linf;
+        let safe_dt = if dt.is_finite() && dt > 0.0 {
+            dt
+        } else {
+            0.005
+        };
+        self.tracker.observe((step_count as f64) * safe_dt, l2);
+    }
+
+    /// Builds a live [`DivergenceSnapshot`] reporting spatial `L2` and `L_∞` norms.
+    #[must_use]
+    pub fn snapshot(&self, step_count: usize, dt: f64) -> DivergenceSnapshot {
+        let safe_dt = if dt.is_finite() && dt > 0.0 {
+            dt
+        } else {
+            0.005
+        };
+        DivergenceSnapshot {
+            fork_step: self.fork_step,
+            fork_time: self.tracker.fork_time(),
+            current_time: (step_count as f64) * safe_dt,
+            delta_x: self.delta_u,
+            l2_separation: self.l2_norm,
+            log_separation_slope: self.tracker.log_separation_slope(),
+            peak_separation: self.tracker.peak_separation(),
+            primary_delta: Some(DomainInterventionDelta::new(
+                "||u_B - u_A||_∞",
+                format!("{:.4e}", self.linf_norm),
+                self.linf_norm,
+                "Maximum pointwise activator difference ||u_B(x,y) - u_A(x,y)||_∞",
+            )),
+            secondary_delta: Some(DomainInterventionDelta::new(
+                "Spatial L2",
+                format!("{:.4e}", self.l2_norm),
+                self.l2_norm,
+                "Spatial Euclidean activator difference ||u_B - u_A||_2",
+            )),
+        }
+    }
+
+    /// Serializes current twin metadata into a [`MorphogenesisForkDescriptor`].
+    #[must_use]
+    pub fn to_descriptor(
+        &self,
+        heatmap_mode: MorphogenesisHeatmapMode,
+    ) -> MorphogenesisForkDescriptor {
+        let is_gs = self.system_a.kinetics.mode == MorphogenesisKineticsMode::GrayScott;
+        MorphogenesisForkDescriptor {
+            fork_step: self.fork_step,
+            post_fork_steps: self.post_fork_steps,
+            baseline_a: self.system_a.kinetics.a,
+            baseline_b: self.system_a.kinetics.b,
+            baseline_du: self.system_a.diffusion_coeffs[0],
+            baseline_dv: self.system_a.diffusion_coeffs[1],
+            baseline_f: is_gs.then_some(self.system_a.kinetics.f),
+            baseline_k: is_gs.then_some(self.system_a.kinetics.k),
+            delta_u: self.delta_u,
+            heatmap_mode,
+        }
+    }
+}
+
+fn lerp_u8(a: u8, b: u8, t: f64) -> u8 {
+    (f64::from(a) + (f64::from(b) - f64::from(a)) * t.clamp(0.0, 1.0)).round() as u8
+}
+
+fn lerp_rgb(a: [u8; 3], b: [u8; 3], t: f64) -> [u8; 3] {
+    [
+        lerp_u8(a[0], b[0], t),
+        lerp_u8(a[1], b[1], t),
+        lerp_u8(a[2], b[2], t),
+    ]
+}
+
+fn concentration_rgb(norm: f64, theme: ThemeMode) -> [u8; 3] {
+    let t = if norm.is_finite() {
+        norm.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    match theme {
+        ThemeMode::Dark => heatmap_color(t),
+        ThemeMode::HighContrast => heatmap_color_high_contrast(t),
+        ThemeMode::Light if t < 0.5 => lerp_rgb([244, 247, 252], [32, 138, 156], t * 2.0),
+        ThemeMode::Light => lerp_rgb([32, 138, 156], [18, 34, 108], (t - 0.5) * 2.0),
+    }
+}
+
+fn difference_rgb(norm: f64, theme: ThemeMode) -> [u8; 3] {
+    let t = if norm.is_finite() {
+        norm.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    match (theme, t < 0.5) {
+        (ThemeMode::Dark, true) => lerp_rgb([16, 20, 32], [198, 48, 108], t * 2.0),
+        (ThemeMode::Dark, false) => lerp_rgb([198, 48, 108], [255, 214, 72], (t - 0.5) * 2.0),
+        (ThemeMode::Light, true) => lerp_rgb([246, 248, 252], [217, 95, 14], t * 2.0),
+        (ThemeMode::Light, false) => lerp_rgb([217, 95, 14], [127, 0, 38], (t - 0.5) * 2.0),
+        (ThemeMode::HighContrast, true) => lerp_rgb([0, 0, 0], [0, 220, 255], t * 2.0),
+        (ThemeMode::HighContrast, false) => lerp_rgb([0, 220, 255], [255, 255, 0], (t - 0.5) * 2.0),
+    }
+}
+
+fn finite_bounds(primary: &[f64], secondary: Option<&[f64]>) -> (f64, f64) {
+    let mut min = f64::INFINITY;
+    let mut max = f64::NEG_INFINITY;
+    for &v in primary.iter().chain(secondary.unwrap_or(&[]).iter()) {
+        if v.is_finite() {
+            min = min.min(v);
+            max = max.max(v);
+        }
+    }
+    if min.is_finite() && max.is_finite() && max >= min {
+        let range = max - min;
+        (min, if range > 1e-6 { 1.0 / range } else { 1.0 })
+    } else {
+        (0.0, 1.0)
+    }
+}
+
+/// Renders `Active u_B`, `Split u_A | u_B`, or `Difference |u_B - u_A|` across `Dark`, `Light`, and `HighContrast`.
+#[must_use]
+pub fn render_morphogenesis_heatmap(
+    u_b: &[f64],
+    u_a: Option<&[f64]>,
+    width: usize,
+    height: usize,
+    mode: MorphogenesisHeatmapMode,
+    theme: ThemeMode,
+) -> ColorImage {
+    let n = width * height;
+    let mut pixels = Vec::with_capacity(n);
+    let effective_ua = u_a.filter(|a| a.len() == n && u_b.len() == n);
+
+    match (mode, effective_ua) {
+        (MorphogenesisHeatmapMode::SplitUaUb, Some(ua)) if width >= 2 => {
+            let (min, inv) = finite_bounds(u_b, Some(ua));
+            let seam_x = width / 2;
+            let seam_rgb = match theme {
+                ThemeMode::Dark => [226, 232, 240],
+                ThemeMode::Light => [15, 23, 42],
+                ThemeMode::HighContrast => [255, 255, 0],
+            };
+            for idx in 0..n {
+                let x = idx % width;
+                let rgb = if x == seam_x {
+                    seam_rgb
+                } else {
+                    let val = if x < seam_x { ua[idx] } else { u_b[idx] };
+                    let safe = if val.is_finite() { val } else { min };
+                    concentration_rgb((safe - min) * inv, theme)
+                };
+                pixels.push(Color32::from_rgb(rgb[0], rgb[1], rgb[2]));
+            }
+        }
+        (MorphogenesisHeatmapMode::DifferenceAbs, Some(ua)) => {
+            let mut max_diff = 0.0_f64;
+            for (&a, &b) in ua.iter().zip(u_b.iter()) {
+                let d = (b - a).abs();
+                if d.is_finite() {
+                    max_diff = max_diff.max(d);
+                }
+            }
+            let inv = if max_diff > 1e-12 {
+                1.0 / max_diff
+            } else {
+                0.0
+            };
+            for (&a, &b) in ua.iter().zip(u_b.iter()) {
+                let d = (b - a).abs();
+                let rgb = difference_rgb(if d.is_finite() { d * inv } else { 0.0 }, theme);
+                pixels.push(Color32::from_rgb(rgb[0], rgb[1], rgb[2]));
+            }
+        }
+        _ => {
+            let (min, inv) = finite_bounds(u_b, None);
+            for &val in u_b.iter().take(n) {
+                let safe = if val.is_finite() { val } else { min };
+                let rgb = concentration_rgb((safe - min) * inv, theme);
+                pixels.push(Color32::from_rgb(rgb[0], rgb[1], rgb[2]));
+            }
+            pixels.resize(n, Color32::BLACK);
+        }
+    }
+
+    ColorImage {
+        size: [width, height],
+        pixels,
+        ..Default::default()
+    }
+}

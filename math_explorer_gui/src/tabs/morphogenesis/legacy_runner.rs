@@ -132,7 +132,10 @@ impl SimulationRunner for MorphogenesisRunner {
             custom_data: Vec::new(),
             structured_data: Some(Box::new(MorphoSnapshotData {
                 u_data: u_vec,
+                u_a: None,
                 mask_roles: Vec::new(),
+                step_count: self.step_count,
+                divergence: None,
                 vorticity: Vec::new(),
                 obstacles: Vec::new(),
                 peclet: 0.0,

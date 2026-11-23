@@ -271,6 +271,19 @@ inventory::submit! {
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
+        id: "morphogenesis_inhibitor_fork",
+        title: "Morphogenesis Inhibitor Fork",
+        description: "Counterfactual Schnakenberg twin forked at step 60 lowering D_v from 40 to 18 with |u_B - u_A| difference heatmap.",
+        category: "Counterfactual Biology",
+        icon: "⑂",
+        domain: "biology",
+        tool_name: Some("MorphogenesisTool"),
+        preset_generator: || crate::starter_gallery::PRESET_MORPHOGENESIS_INHIBITOR_FORK,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
         id: "gray_scott_mitosis",
         title: "Gray-Scott Mitosis",
         description: "∂v/∂t = D_v∇²v + uv² - (f+k)v: Autocatalytic spot division and self-replicating wavefronts.",

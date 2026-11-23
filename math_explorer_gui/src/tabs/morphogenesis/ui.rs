@@ -1,11 +1,11 @@
 //! Control panel widgets, dimensionless Péclet/Damköhler badges, microfluidic brush controls,
-//! time-travel transport, and CFL stabilization actions.
+//! counterfactual shadow-twin transport, time-travel transport, and CFL stabilization actions.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::{PRESET_GRAY_SCOTT_SPIRAL_FLOW, PRESET_KARMAN_TURING_WAKE};
 use super::runner::{MorphoSnapshotData, MorphogenesisKineticsState};
-use super::sculpt::{build_maze_rle, draw_morpho_sculpt_controls};
+use super::sculpt::draw_morpho_sculpt_controls;
 use super::types::{
     compute_peclet_damkohler, MorphogenesisBrushMode, MorphogenesisFlowMode,
     MorphogenesisFlowState, MorphogenesisKineticsMode, MorphogenesisOverlayMode,
@@ -14,9 +14,11 @@ use super::types::{
 use super::MorphogenesisTool;
 use crate::app::SemanticPalette;
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
-use crate::async_sim::SimCommand;
+use crate::async_sim::{SimCommand, SimulationRunner};
 use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
-use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    CounterfactualTransport, InteractiveTool, PlaybackAction, PlaybackTransport,
+};
 use eframe::egui;
 use math_explorer::biology::morphogenesis::GrayScottKinetics;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
@@ -327,7 +329,7 @@ impl MorphogenesisTool {
         if let Some(snapshot) = self.worker.latest_snapshot() {
             if let Some(u_data) = snapshot.structured_data.as_ref().and_then(|d| {
                 d.downcast_ref::<MorphoSnapshotData>()
-                    .map(|m| m.u_data.as_slice())
+                    .map(|s| s.u_data.as_slice())
                     .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
             }) {
                 let splat_count =
@@ -389,12 +391,21 @@ impl MorphogenesisTool {
                 let _ = self.worker.send_command(SimCommand::Pause);
             }
             PlaybackAction::Step => {
+                self.local_runner.step();
+                self.live_peclet = self.local_runner.peclet;
+                self.live_damkohler = self.local_runner.damkohler;
+                self.sync_branch_engine_from_local();
                 let _ = self.worker.send_command(SimCommand::Step(1));
+                self.dirty = true;
             }
             PlaybackAction::StepBack => {
+                let _ = self.local_runner.clear_fork();
+                self.branch_engine.clear();
                 let _ = self.worker.send_command(SimCommand::StepBack(1));
             }
             PlaybackAction::ScrubTo(step) => {
+                let _ = self.local_runner.clear_fork();
+                self.branch_engine.clear();
                 let _ = self.worker.send_command(SimCommand::SeekStep(step));
             }
             PlaybackAction::Reset => {
@@ -402,6 +413,24 @@ impl MorphogenesisTool {
                 ctx.request_repaint();
             }
         }
+    }
+
+    fn draw_counterfactual_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let current_step = self
+            .worker
+            .timeline_metadata()
+            .map_or(self.local_runner.step_count, |m| {
+                m.current_step.max(self.local_runner.step_count)
+            });
+        let can_fork = current_step > 0 && FiniteStateGuard::is_finite_state(self);
+        let is_forked = self.is_forked();
+        if let Some(cf_action) =
+            CounterfactualTransport::new(&mut self.branch_engine, can_fork, is_forked).show(ui)
+        {
+            let _ = self.apply_morpho_branch_action(cf_action);
+            ctx.request_repaint();
+        }
+        self.draw_heatmap_mode_selector(ui);
     }
 
     pub(crate) fn draw_controls(&mut self, ui: &mut egui::Ui) {
@@ -416,31 +445,11 @@ impl MorphogenesisTool {
                 self.draw_kinetics_and_reaction_sliders(ui);
                 ui.separator();
                 self.draw_playback_transport(ui, &ctx);
+                self.draw_counterfactual_controls(ui, &ctx);
                 ui.separator();
                 self.draw_flow_and_overlay_controls(ui);
-
                 if let Some(cmd) = draw_morpho_sculpt_controls(ui, &mut self.brush_kit) {
-                    match cmd {
-                        "stamp_maze" => {
-                            *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
-                                build_maze_rle(self.width, self.height);
-                            let _ = self
-                                .worker
-                                .send_command(SimCommand::Custom("stamp_maze".to_string()));
-                            self.dirty = true;
-                            ctx.request_repaint();
-                        }
-                        "clear_mask" => {
-                            self.mask_rle
-                                .write()
-                                .unwrap_or_else(|e| e.into_inner())
-                                .clear();
-                            let _ = self.worker.send_command(SimCommand::ClearObstacles);
-                            self.dirty = true;
-                            ctx.request_repaint();
-                        }
-                        _ => {}
-                    }
+                    self.apply_sculpt_quick_action(cmd, &ctx);
                 }
                 self.draw_presets(ui);
             });

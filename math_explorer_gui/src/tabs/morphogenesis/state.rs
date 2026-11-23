@@ -103,6 +103,9 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Optional counterfactual shadow twin fork descriptor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork: Option<super::counterfactual::MorphogenesisForkDescriptor>,
     /// Optional RLE-encoded `ReactionCellRole` mask (`[role, run_len]` pairs).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mask_rle: Vec<[u32; 2]>,
@@ -140,6 +143,7 @@ impl Default for MorphogenesisToolState {
             state: None,
             paused: None,
             pending_initial_start: false,
+            fork: None,
             mask_rle: Vec::new(),
             atlas_visible: false,
             atlas_axes: default_morpho_atlas_axes(),
@@ -194,6 +198,9 @@ impl MorphogenesisToolState {
                 "Morphogenesis dimensions {}x{} must be within 1..=512",
                 self.width, self.height
             ));
+        }
+        if let Some(ref fork) = self.fork {
+            fork.validate()?;
         }
         if !self.mask_rle.is_empty() {
             decode_rle_mask(&self.mask_rle, self.width * self.height)?;

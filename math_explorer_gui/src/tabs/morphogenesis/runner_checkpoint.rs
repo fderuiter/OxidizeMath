@@ -2,37 +2,39 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::counterfactual::{
+    active_morphogen_slice, render_morphogenesis_heatmap, MorphogenesisHeatmapMode,
+};
 use super::overlay::render_morphogenesis_overlay;
 use super::runner::{MorphoSnapshotData, MorphogenesisKineticsRunner};
 use super::sculpt::overlay_cell_mask_colors;
-use super::types::{MorphogenesisFlowMode, MorphogenesisKineticsMode, MorphogenesisOverlayMode};
-use super::MorphogenesisTool;
+use super::types::{MorphogenesisFlowMode, MorphogenesisOverlayMode};
 use crate::app::ThemeMode;
 use crate::async_sim::{CheckpointParams, CheckpointPayload, StateSnapshot, TimeTravelCheckpoint};
 use eframe::egui::ColorImage;
 use std::sync::Arc;
 
 impl MorphogenesisKineticsRunner {
-    fn render_snapshot_image(&self, field_vec: &[f64]) -> (ColorImage, Vec<u8>) {
-        let high_contrast = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .high_contrast;
+    fn render_snapshot_image(
+        &self,
+        field_vec: &[f64],
+        u_a: Option<&[f64]>,
+        heatmap_mode: MorphogenesisHeatmapMode,
+        theme_mode: ThemeMode,
+    ) -> (ColorImage, Vec<u8>) {
         let flow = self.read_flow();
-        let theme_mode = if high_contrast {
-            ThemeMode::HighContrast
-        } else {
-            flow.theme_mode
-        };
-        let mut image = if flow.flow_mode == MorphogenesisFlowMode::None
-            && flow.overlay_mode == MorphogenesisOverlayMode::Concentration
-        {
-            MorphogenesisTool::plot_concentration_with_contrast(
+        let use_twin_or_base_heatmap = (u_a.is_some()
+            && heatmap_mode != MorphogenesisHeatmapMode::ActiveUb)
+            || (flow.flow_mode == MorphogenesisFlowMode::None
+                && flow.overlay_mode == MorphogenesisOverlayMode::Concentration);
+        let mut image = if use_twin_or_base_heatmap {
+            render_morphogenesis_heatmap(
                 field_vec,
+                u_a,
                 self.width,
                 self.height,
-                high_contrast,
+                heatmap_mode,
+                theme_mode,
             )
         } else {
             render_morphogenesis_overlay(
@@ -47,7 +49,9 @@ impl MorphogenesisKineticsRunner {
         };
         let mask_roles = if self.system.diffusion.mask.has_active_cells() {
             let roles = self.system.diffusion.mask.roles().to_vec();
-            overlay_cell_mask_colors(&mut image, &roles, high_contrast);
+            if heatmap_mode == MorphogenesisHeatmapMode::ActiveUb {
+                overlay_cell_mask_colors(&mut image, &roles, theme_mode == ThemeMode::HighContrast);
+            }
             roles
         } else {
             Vec::new()
@@ -56,19 +60,34 @@ impl MorphogenesisKineticsRunner {
     }
 
     pub(crate) fn build_snapshot(&self) -> StateSnapshot {
-        let field_vec = match self.system.kinetics.mode {
-            MorphogenesisKineticsMode::Schnakenberg => self.system.u().to_vec(),
-            MorphogenesisKineticsMode::GrayScott => self.system.v().to_vec(),
+        let (high_contrast, param_theme, heatmap_mode, dt) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.high_contrast, p.theme_mode, p.heatmap_mode, p.dt)
         };
-        let (image, mask_roles) = self.render_snapshot_image(&field_vec);
+        let theme_mode = if high_contrast {
+            ThemeMode::HighContrast
+        } else {
+            param_theme
+        };
+        let u_data = active_morphogen_slice(&self.system).to_vec();
+        let u_a = self
+            .twin
+            .as_ref()
+            .map(|t| active_morphogen_slice(&t.system_a).to_vec());
+        let (image, mask_roles) =
+            self.render_snapshot_image(&u_data, u_a.as_deref(), heatmap_mode, theme_mode);
+        let divergence = self.twin.as_ref().map(|t| t.snapshot(self.step_count, dt));
         StateSnapshot {
             width: self.width,
             height: self.height,
             pixels: Arc::new(std::sync::RwLock::new(image.pixels)),
             custom_data: vec![self.peclet, self.damkohler],
             structured_data: Some(Box::new(MorphoSnapshotData {
-                u_data: field_vec,
+                u_data,
+                u_a,
                 mask_roles,
+                step_count: self.step_count,
+                divergence,
                 vorticity: self.vorticity_buf.clone(),
                 obstacles: self.system.diffusion.obstacles().to_vec(),
                 peclet: self.peclet,
@@ -146,6 +165,7 @@ impl MorphogenesisKineticsRunner {
         }
         self.step_count = checkpoint.step;
         self.rng = checkpoint.rng.clone();
+        self.twin = None;
     }
 
     pub(crate) fn replay_step_impl(&mut self, params: &CheckpointParams) {

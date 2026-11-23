@@ -1,10 +1,15 @@
 //! Multi-kinetics morphogenesis worker runner coupling LBM / PotentialFlow advection,
-//! microfluidic `ReactionCellRole` masks, and `K = 16` zero-allocation time-travel checkpoints.
+//! microfluidic `ReactionCellRole` masks, counterfactual shadow twins, and `K = 16` checkpoints.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub use super::counterfactual::MorphogenesisSnapshotData as MorphoSnapshotData;
+use super::counterfactual::{active_morphogen_slice, MorphogenesisTwinState};
 use super::diffusion::CoupledMorphoDiffusion;
-use super::sculpt::apply_stroke_to_morpho_system;
+#[cfg(test)]
+pub use super::legacy_runner::MorphogenesisRunner;
+pub(crate) use super::runner_twin::apply_uniform_noise;
+use super::sculpt::{apply_stroke_to_morpho_system, enforce_system_mask};
 pub use super::types::MorphogenesisSharedParams;
 use super::types::{
     compute_peclet_damkohler, MorphogenesisFlowMode, MorphogenesisFlowState,
@@ -16,7 +21,6 @@ use crate::async_sim::{
 };
 use crate::framework::decode_rle_mask;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use math_explorer::biology::diffusion::{ReactionCellRole, SpatialDiffusion};
 use math_explorer::biology::morphogenesis::{
     GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics, TuringSystem,
 };
@@ -27,52 +31,13 @@ use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
 #[cfg(feature = "physics")]
 use math_explorer::physics::fluid_dynamics::potential_flow::PotentialFlowField;
 use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
 use std::sync::Arc;
 
-#[cfg(test)]
-pub use super::legacy_runner::MorphogenesisRunner;
-
-const MAX_CFL_SUBSTEPS: usize = 64;
-const TARGET_ADVECTIVE_CFL: f64 = 0.40;
+pub(super) const MAX_CFL_SUBSTEPS: usize = 64;
+pub(super) const TARGET_ADVECTIVE_CFL: f64 = 0.40;
 
 /// Default PRNG seed for deterministic morphogenesis perturbation streams.
 pub const DEFAULT_MORPHOGENESIS_SEED: u64 = 0x4D4F_5250_484F_3244;
-
-/// Snapshot payload bundling active concentration, microfluidic mask roles, vorticity, and dimensionless numbers.
-#[derive(Clone, Debug)]
-pub struct MorphoSnapshotData {
-    /// Flattened active species concentration grid (`u` in Schnakenberg, `v` in Gray-Scott).
-    pub u_data: Vec<f64>,
-    /// Optional row-major `ReactionCellRole` byte grid when any cell is non-`Free`.
-    pub mask_roles: Vec<u8>,
-    /// Row-major discrete hydrodynamic vorticity field `\omega_z`.
-    pub vorticity: Vec<f64>,
-    /// Row-major solid obstacle mask.
-    pub obstacles: Vec<bool>,
-    /// Dimensionless Péclet number `\mathrm{Pe} = U L / D_u`.
-    pub peclet: f64,
-    /// Dimensionless Damköhler number `\mathrm{Da}`.
-    pub damkohler: f64,
-}
-
-pub(crate) fn apply_uniform_noise<K: ReactionKinetics<2>, D: SpatialDiffusion<2>>(
-    system: &mut TuringSystem<2, K, D>,
-    count: usize,
-    rng: &mut OxidizeRng,
-    amp: f64,
-) {
-    if !amp.is_finite() || amp <= 0.0 {
-        return;
-    }
-    const INV_2_POW_53: f64 = 1.0 / ((1u64 << 53) as f64);
-    for idx in 0..count {
-        let u_unit = ((rng.next_u64() >> 11) as f64) * INV_2_POW_53;
-        let v_unit = ((rng.next_u64() >> 11) as f64) * INV_2_POW_53;
-        system.u_mut()[idx] += (2.0 * u_unit - 1.0) * amp;
-        system.v_mut()[idx] += (2.0 * v_unit - 1.0) * amp;
-    }
-}
 
 /// Zero-allocation kinetics adapter switching cleanly between [`SchnakenbergKinetics`]
 /// and [`GrayScottKinetics`] inside [`TuringSystem`].
@@ -128,7 +93,7 @@ impl Default for MorphogenesisKineticsState {
 
 /// Multi-kinetics worker runner supporting [`SchnakenbergKinetics`], [`GrayScottKinetics`],
 /// microfluidic [`CoupledMorphoDiffusion`] sculpting, coupled LBM / PotentialFlow advection,
-/// and `K = 16` zero-allocation time-travel checkpoint replay.
+/// counterfactual shadow twins, and `K = 16` zero-allocation time-travel checkpoint replay.
 pub struct MorphogenesisKineticsRunner {
     pub(crate) system: TuringSystem<2, MorphogenesisKineticsAdapter, CoupledMorphoDiffusion>,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
@@ -151,12 +116,18 @@ pub struct MorphogenesisKineticsRunner {
     pub(crate) last_potential_key: (u64, u64),
     #[cfg(feature = "physics")]
     pub(crate) potential_dirty: bool,
+    pub(crate) twin: Option<MorphogenesisTwinState>,
 }
 
 impl FiniteStateGuard for MorphogenesisKineticsRunner {
     fn is_finite_state(&self) -> bool {
-        self.system.u().iter().all(|&x| x.is_finite())
-            && self.system.v().iter().all(|&x| x.is_finite())
+        let b_ok = self.system.u().iter().all(|&x| x.is_finite())
+            && self.system.v().iter().all(|&x| x.is_finite());
+        let a_ok = self.twin.as_ref().is_none_or(|t| {
+            t.system_a.u().iter().all(|&x| x.is_finite())
+                && t.system_a.v().iter().all(|&x| x.is_finite())
+        });
+        b_ok && a_ok
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -196,22 +167,7 @@ impl MorphogenesisKineticsRunner {
     }
 
     pub(crate) fn enforce_mask_concentrations(&mut self) {
-        if !self.system.diffusion.mask.has_active_cells() {
-            return;
-        }
-        let emit_u = self.system.diffusion.mask.emitter_u_level;
-        let emit_v = self.system.diffusion.mask.emitter_v_level;
-        for idx in 0..(self.width * self.height) {
-            match ReactionCellRole::from_u8(self.system.diffusion.mask.roles()[idx]) {
-                ReactionCellRole::ZeroFluxWall | ReactionCellRole::Sink => {
-                    self.system.u_mut()[idx] = 0.0;
-                    self.system.v_mut()[idx] = 0.0;
-                }
-                ReactionCellRole::EmitterU => self.system.u_mut()[idx] = emit_u,
-                ReactionCellRole::EmitterV => self.system.v_mut()[idx] = emit_v,
-                ReactionCellRole::Free => {}
-            }
-        }
+        enforce_system_mask(&mut self.system, self.width, self.height);
     }
 
     pub(crate) fn refresh_diagnostics(&mut self) {
@@ -236,7 +192,7 @@ impl MorphogenesisKineticsRunner {
         self.damkohler = da;
     }
 
-    fn sync_system_params(&mut self) -> Option<(f64, MorphogenesisFlowState)> {
+    pub(super) fn sync_system_params(&mut self) -> Option<f64> {
         let p = *self.params.read().unwrap_or_else(|e| e.into_inner());
         let ks = self.read_kinetics();
         let flow = self.read_flow();
@@ -251,7 +207,7 @@ impl MorphogenesisKineticsRunner {
         if flow.flow_mode != MorphogenesisFlowMode::None {
             self.refresh_diagnostics();
         }
-        Some((dt, flow))
+        Some(dt)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -276,8 +232,14 @@ impl MorphogenesisKineticsRunner {
         self.system.kinetics.f = f;
         self.system.kinetics.k = k;
         self.system.diffusion_coeffs = [d_u, d_v];
-        if prev_mode != mode
-            || super::gray_scott_atlas::should_reseed_washed_out_system(&self.system, d_u, d_v, dt)
+        if !self.has_counterfactual_twin()
+            && (prev_mode != mode
+                || super::gray_scott_atlas::should_reseed_washed_out_system(
+                    &self.system,
+                    d_u,
+                    d_v,
+                    dt,
+                ))
         {
             MorphogenesisTool::initialize_adapter_system(&mut self.system, self.width, self.height);
             self.enforce_mask_concentrations();
@@ -333,6 +295,7 @@ impl MorphogenesisKineticsRunner {
             self.potential_dirty = true;
         }
         self.system.diffusion.advection.clear_velocity();
+        self.twin = None;
         let _ = self.sync_system_params();
         MorphogenesisTool::initialize_adapter_system(&mut self.system, self.width, self.height);
         self.enforce_mask_concentrations();
@@ -386,6 +349,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
         match cmd {
             SimCommand::Reset => self.reset_grid_and_counters(),
             SimCommand::Custom(ref s) if s == "reinit" => self.reset_grid_and_counters(),
+            SimCommand::Custom(ref s) if self.process_twin_custom_command(s) => {}
             _ => self.apply_sculpt_command(&cmd),
         }
     }
@@ -405,13 +369,50 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
         })
     }
 
+    fn has_counterfactual_twin(&self) -> bool {
+        self.twin.is_some()
+    }
+
+    fn step_branch_a(&mut self) {
+        if !FiniteStateGuard::is_finite_state(self) {
+            return;
+        }
+        let noise_amp = self.noise_amplitude;
+        if let Some(dt) = self.sync_system_params() {
+            if let Some(ref mut twin) = self.twin {
+                enforce_system_mask(&mut twin.system_a, self.width, self.height);
+                twin.step_branch_a(dt, self.width, self.height, noise_amp);
+            }
+        }
+    }
+
+    fn step_branch_b(&mut self) {
+        if !FiniteStateGuard::is_finite_state(self) {
+            return;
+        }
+        let noise_amp = self.noise_amplitude;
+        if let Some(dt) = self.sync_system_params() {
+            self.advance_grid_step(dt, noise_amp);
+            if let Some(ref mut twin) = self.twin {
+                twin.observe_lockstep(self.step_count, dt, active_morphogen_slice(&self.system));
+            }
+        }
+    }
+
     fn step(&mut self) {
         if !FiniteStateGuard::is_finite_state(self) {
             return;
         }
         let noise_amp = self.noise_amplitude;
-        if let Some((dt, _flow)) = self.sync_system_params() {
+        if let Some(dt) = self.sync_system_params() {
+            if let Some(ref mut twin) = self.twin {
+                enforce_system_mask(&mut twin.system_a, self.width, self.height);
+                twin.step_branch_a(dt, self.width, self.height, noise_amp);
+            }
             self.advance_grid_step(dt, noise_amp);
+            if let Some(ref mut twin) = self.twin {
+                twin.observe_lockstep(self.step_count, dt, active_morphogen_slice(&self.system));
+            }
         }
     }
 

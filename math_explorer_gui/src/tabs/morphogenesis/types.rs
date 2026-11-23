@@ -113,6 +113,10 @@ pub struct MorphogenesisSharedParams {
     pub dt: f64,
     /// Whether high-contrast palette rendering is active.
     pub high_contrast: bool,
+    /// Active visual theme mode (`Dark`, `Light`, or `HighContrast`).
+    pub theme_mode: crate::app::ThemeMode,
+    /// Active counterfactual spatial heatmap mode (`ActiveUb`, `SplitUaUb`, or `DifferenceAbs`).
+    pub heatmap_mode: super::counterfactual::MorphogenesisHeatmapMode,
 }
 
 impl Default for MorphogenesisSharedParams {
@@ -124,6 +128,8 @@ impl Default for MorphogenesisSharedParams {
             d_v: 100.0,
             dt: 0.05,
             high_contrast: false,
+            theme_mode: crate::app::ThemeMode::Dark,
+            heatmap_mode: super::counterfactual::MorphogenesisHeatmapMode::ActiveUb,
         }
     }
 }

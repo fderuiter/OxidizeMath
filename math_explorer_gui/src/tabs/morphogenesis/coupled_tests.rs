@@ -118,7 +118,7 @@ fn test_lbm_coupling_zero_alloc_step_and_live_peclet_damkohler() {
         d_u: 0.4,
         d_v: 16.0,
         dt: 0.02,
-        high_contrast: false,
+        ..MorphogenesisSharedParams::default()
     }));
     let ks = Arc::new(RwLock::new(MorphogenesisKineticsState::default()));
     let flow = Arc::new(RwLock::new(MorphogenesisFlowState {
@@ -164,7 +164,7 @@ fn test_potential_flow_gray_scott_zero_alloc_and_circulation_readouts() {
         d_u: 0.20,
         d_v: 0.10,
         dt: 0.40,
-        high_contrast: false,
+        ..MorphogenesisSharedParams::default()
     }));
     let ks = Arc::new(RwLock::new(MorphogenesisKineticsState {
         mode: MorphogenesisKineticsMode::GrayScott,

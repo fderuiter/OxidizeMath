@@ -1,15 +1,19 @@
-//! Snapshot texture synchronization, `SpatialBrushKit` canvas plot, and side-by-side parameter atlas view.
+//! Snapshot texture synchronization, `SpatialBrushKit` canvas plot, counterfactual divergence
+//! strip, and side-by-side parameter atlas view.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::counterfactual::{render_morphogenesis_heatmap, MorphogenesisHeatmapMode};
 use super::overlay::render_morphogenesis_overlay;
 use super::runner::MorphoSnapshotData;
 use super::sculpt::overlay_cell_mask_colors;
 use super::types::{MorphogenesisFlowMode, MorphogenesisOverlayMode};
 use super::MorphogenesisTool;
-use crate::app::ThemeMode;
+use crate::app::{SemanticPalette, ThemeMode};
 use crate::async_sim::ui::render_empty_plot_guidance;
-use crate::framework::{BrushMode, InteractionContext, InteractiveTool};
+use crate::framework::{
+    fork_marker_callout, render_divergence_strip, BrushMode, InteractionContext, InteractiveTool,
+};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use egui_plot::{Plot, PlotImage, PlotPoint};
@@ -20,13 +24,23 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
         flow: super::types::MorphogenesisFlowState,
+        heatmap_mode: MorphogenesisHeatmapMode,
         theme_mode: ThemeMode,
     ) -> ColorImage {
         let high_contrast = theme_mode == ThemeMode::HighContrast;
-        let mut recolored = if flow.flow_mode == MorphogenesisFlowMode::None
-            && flow.overlay_mode == MorphogenesisOverlayMode::Concentration
-        {
-            Self::plot_concentration_with_contrast(&mdata.u_data, width, height, high_contrast)
+        let use_twin_or_base_heatmap = (mdata.u_a.is_some()
+            && heatmap_mode != MorphogenesisHeatmapMode::ActiveUb)
+            || (flow.flow_mode == MorphogenesisFlowMode::None
+                && flow.overlay_mode == MorphogenesisOverlayMode::Concentration);
+        let mut recolored = if use_twin_or_base_heatmap {
+            render_morphogenesis_heatmap(
+                &mdata.u_data,
+                mdata.u_a.as_deref(),
+                width,
+                height,
+                heatmap_mode,
+                theme_mode,
+            )
         } else {
             render_morphogenesis_overlay(
                 &mdata.u_data,
@@ -38,60 +52,67 @@ impl MorphogenesisTool {
                 theme_mode,
             )
         };
-        if !mdata.mask_roles.is_empty() {
+        if heatmap_mode == MorphogenesisHeatmapMode::ActiveUb && !mdata.mask_roles.is_empty() {
             overlay_cell_mask_colors(&mut recolored, &mdata.mask_roles, high_contrast);
         }
         recolored
+    }
+
+    fn resolve_next_canvas_image(&mut self, theme_mode: ThemeMode) -> Option<ColorImage> {
+        let heatmap_mode = self.heatmap_mode();
+        let flow = *self.flow_state.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(snapshot) = self.worker.latest_snapshot() {
+            let num_pixels = snapshot.width * snapshot.height;
+            if let Some(mdata) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<MorphoSnapshotData>())
+                .filter(|m| {
+                    m.u_data.len() == num_pixels
+                        && (!self.is_forked() || m.step_count >= self.local_runner.step_count)
+                })
+            {
+                self.live_peclet = mdata.peclet;
+                self.live_damkohler = mdata.damkohler;
+                return Some(Self::recolor_snapshot_data(
+                    mdata,
+                    snapshot.width,
+                    snapshot.height,
+                    flow,
+                    heatmap_mode,
+                    theme_mode,
+                ));
+            }
+            if let Ok(px) = snapshot.pixels.try_read() {
+                if px.len() == num_pixels && !px.is_empty() && !self.is_forked() {
+                    return Some(ColorImage {
+                        size: [snapshot.width, snapshot.height],
+                        pixels: px.clone(),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+        self.is_forked()
+            .then(|| self.render_current_heatmap_image())
     }
 
     pub(crate) fn sync_texture_from_snapshot(&mut self, ctx: &egui::Context) {
         if !self.dirty && self.texture.is_some() {
             return;
         }
-        let Some(snapshot) = self.worker.latest_snapshot() else {
-            return;
-        };
-        let Ok(snapshot_pixels) = snapshot.pixels.try_read() else {
-            return;
-        };
-        if snapshot_pixels.is_empty() {
-            return;
-        }
-
-        let num_pixels = snapshot.width * snapshot.height;
-        if self.pixels.len() != num_pixels {
-            self.pixels.resize(num_pixels, egui::Color32::BLACK);
-        }
         let theme_mode = self
             .last_theme_mode
             .unwrap_or_else(|| ThemeMode::from_visuals(&ctx.style().visuals));
-        let flow = *self.flow_state.read().unwrap_or_else(|e| e.into_inner());
-
-        if let Some(mdata) = snapshot
-            .structured_data
-            .as_ref()
-            .and_then(|d| d.downcast_ref::<MorphoSnapshotData>())
-            .filter(|m| m.u_data.len() == num_pixels)
-        {
-            self.live_peclet = mdata.peclet;
-            self.live_damkohler = mdata.damkohler;
-            let recolored = Self::recolor_snapshot_data(
-                mdata,
-                snapshot.width,
-                snapshot.height,
-                flow,
-                theme_mode,
-            );
-            self.pixels.copy_from_slice(&recolored.pixels);
-        } else if snapshot_pixels.len() == num_pixels {
-            self.pixels.copy_from_slice(&snapshot_pixels);
-        }
-
-        let image = ColorImage {
-            size: [snapshot.width, snapshot.height],
-            pixels: self.pixels.clone(),
-            ..Default::default()
+        let Some(image) = self.resolve_next_canvas_image(theme_mode) else {
+            return;
         };
+        let num_pixels = image.size[0] * image.size[1];
+        if self.pixels.len() != num_pixels {
+            self.pixels.resize(num_pixels, egui::Color32::BLACK);
+        }
+        self.pixels.copy_from_slice(&image.pixels);
+
         let texture_opts = egui::TextureOptions::NEAREST;
         if let Some(texture) = &mut self.texture {
             texture.set(image, texture_opts);
@@ -105,6 +126,8 @@ impl MorphogenesisTool {
         if let Some(texture) = self.texture.clone() {
             let w = self.width as f32;
             let h = self.height as f32;
+            let forked = self.local_runner.twin.as_ref().map(|t| t.fork_step);
+            let palette = SemanticPalette::from_visuals(ui.visuals());
             let allow_pan = !self.brush_kit.is_sculpting();
             let mut strokes = Vec::new();
             let plot_resp = Plot::new("morphogenesis_plot")
@@ -121,6 +144,14 @@ impl MorphogenesisTool {
                         PlotPoint::new(f64::from(w) / 2.0, f64::from(h) / 2.0),
                         [w, h],
                     ));
+                    if let Some(step) = forked {
+                        let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+                        plot_ui.callout(fork_marker_callout(
+                            [f64::from(w) * 0.5, f64::from(h) * 0.94],
+                            (step as f64) * dt,
+                            &palette,
+                        ));
+                    }
                     strokes = self.brush_kit.sample_plot(
                         plot_ui,
                         [0.5, 0.5],
@@ -143,6 +174,10 @@ impl MorphogenesisTool {
     pub(crate) fn draw_canvas(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         egui::CentralPanel::default().show_inside(ui, |ui| {
+            if let Some(snap) = self.counterfactual_snapshot() {
+                render_divergence_strip(ui, self.name(), &snap);
+                ui.add_space(4.0);
+            }
             self.sync_texture_from_snapshot(&ctx);
             if !self.atlas.is_visible() {
                 self.draw_turing_field_plot(ui);

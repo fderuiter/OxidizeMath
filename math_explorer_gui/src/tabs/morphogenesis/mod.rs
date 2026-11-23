@@ -10,6 +10,9 @@ pub mod atlas;
 mod atlas_bridge;
 /// Snapshot texture sync, sculpted canvas plot, and side-by-side parameter atlas view.
 pub mod canvas;
+/// Counterfactual shadow twin state and spatial difference heatmaps.
+pub mod counterfactual;
+mod counterfactual_tool;
 /// Unified spatial diffusion operator combining `CellMask2D` microfluidics and 2D upwind advection.
 pub mod diffusion;
 /// Progressive 2D Gray-Scott saddle-node, Hopf, and Turing-mitosis parameter cartography.
@@ -25,7 +28,9 @@ pub mod presets;
 /// Background simulation runner coupling LBM / PotentialFlow, microfluidics, and `K = 16` checkpoints.
 pub mod runner;
 mod runner_checkpoint;
-/// Microfluidic cell-role brush rasterization, RLE synchronization, and fluid velocity coupling.
+mod runner_flow;
+mod runner_twin;
+/// Microfluidic cell-role brush rasterization, RLE synchronization, and mask overlays.
 pub mod sculpt;
 mod seeding;
 /// Validated serializable state schema for `MorphogenesisTool`.
@@ -43,6 +48,8 @@ pub use atlas::{
     classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
 };
 #[cfg(test)]
+pub use counterfactual::MorphogenesisHeatmapMode;
+#[cfg(test)]
 pub use gray_scott_atlas::{
     classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
 };
@@ -54,7 +61,7 @@ pub use overlay::render_morphogenesis_overlay;
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
-pub use runner::{MorphogenesisRunner, MorphogenesisSharedParams};
+pub use runner::{MorphogenesisKineticsRunner, MorphogenesisRunner, MorphogenesisSharedParams};
 pub use state::MorphogenesisToolState;
 pub use tool::MorphogenesisTool;
 #[cfg(test)]
@@ -178,6 +185,8 @@ inventory::submit! {
     }
 }
 
+#[cfg(test)]
+mod counterfactual_tests;
 #[cfg(test)]
 mod coupled_tests;
 #[cfg(test)]
