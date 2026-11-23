@@ -4,7 +4,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::runner::{MorphogenesisRunner, MorphogenesisSharedParams};
-use super::state::initialize_for_kinetics;
+use super::state::{initialize_for_kinetics, MorphogenesisKinetics};
 use crate::async_sim::{BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState};
 use crate::framework::{
     decode_rle_mask, encode_rle_mask, rasterize_disk_stroke, BrushInteractionMode, BrushMode,
@@ -14,13 +14,102 @@ use eframe::egui::{self, Color32, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::biology::diffusion::{
-    CellMask2D, FiniteDifference2D, MaskedFiniteDifference2D, ReactionCellRole,
+    CellMask2D, FiniteDifference2D, MaskedFiniteDifference2D, ReactionCellRole, SpatialDiffusion,
 };
 use math_explorer::biology::morphogenesis::{
     DiffusionCoeff, GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics, TuringSystem,
 };
 use math_explorer::math_kernel::types::{Dimension, StepSize};
 use std::sync::Arc;
+
+/// Diffusion stencil capabilities shared between unmasked and masked 2D operators.
+pub trait MorphoDiffusion: SpatialDiffusion<2> + Send + 'static {
+    /// Returns `true` when at least one cell role is non-`Free`.
+    fn has_active_mask(&self) -> bool {
+        false
+    }
+
+    /// Returns the row-major `ReactionCellRole` byte slice when active.
+    fn mask_roles(&self) -> &[u8] {
+        &[]
+    }
+
+    /// Returns `(emitter_u_level, emitter_v_level)` for active emitter cells.
+    fn emitter_levels(&self) -> (f64, f64) {
+        (1.8, 1.8)
+    }
+
+    /// Synchronizes emitter levels to suit the active reaction kinetics scale.
+    fn sync_emitter_levels(&mut self, _kinetics: MorphogenesisKinetics) {}
+
+    /// Clears all mask cells back to `Free`.
+    fn clear_mask(&mut self) {}
+
+    /// Loads validated `ReactionCellRole` bytes into the mask buffer.
+    fn set_mask_slice(&mut self, _bytes: &[u8]) {}
+
+    /// Stamps the serpentine microfluidic maze onto the mask buffer.
+    fn stamp_maze(&mut self) {}
+
+    /// Applies an interactive [`BrushStroke`] to `system`.
+    fn apply_morpho_stroke(
+        _system: &mut TuringSystem<2, SchnakenbergKinetics, Self>,
+        _dims: (usize, usize),
+        _stroke: &BrushStroke,
+    ) where
+        Self: Sized,
+    {
+    }
+}
+
+impl MorphoDiffusion for FiniteDifference2D {}
+
+impl MorphoDiffusion for MaskedFiniteDifference2D {
+    fn has_active_mask(&self) -> bool {
+        self.mask.has_active_cells()
+    }
+
+    fn mask_roles(&self) -> &[u8] {
+        self.mask.roles()
+    }
+
+    fn emitter_levels(&self) -> (f64, f64) {
+        (self.mask.emitter_u_level, self.mask.emitter_v_level)
+    }
+
+    fn sync_emitter_levels(&mut self, kinetics: MorphogenesisKinetics) {
+        match kinetics {
+            MorphogenesisKinetics::Schnakenberg => {
+                self.mask.emitter_u_level = 1.8;
+                self.mask.emitter_v_level = 1.8;
+            }
+            MorphogenesisKinetics::GrayScott => {
+                self.mask.emitter_u_level = 1.0;
+                self.mask.emitter_v_level = 0.5;
+            }
+        }
+    }
+
+    fn clear_mask(&mut self) {
+        self.mask.clear();
+    }
+
+    fn set_mask_slice(&mut self, bytes: &[u8]) {
+        let _ = self.mask.set_roles_slice(bytes);
+    }
+
+    fn stamp_maze(&mut self) {
+        self.mask.stamp_microfluidic_maze();
+    }
+
+    fn apply_morpho_stroke(
+        system: &mut TuringSystem<2, SchnakenbergKinetics, Self>,
+        dims: (usize, usize),
+        stroke: &BrushStroke,
+    ) {
+        apply_stroke_to_morpho_system(system, dims.0, dims.1, stroke);
+    }
+}
 
 pub(crate) fn default_morpho_brush_kit() -> SpatialBrushKit {
     SpatialBrushKit::new(BrushMode::ZeroFluxWall, 2.0)
@@ -226,6 +315,9 @@ impl super::MorphogenesisTool {
             params: Arc::clone(params),
             width,
             height,
+            step_count: 0,
+            rng: oxidize_core::rng::OxidizeRng::new(super::runner::DEFAULT_MORPHOGENESIS_SEED),
+            noise_amplitude: 0.0,
         };
         runner.enforce_mask_concentrations();
         runner

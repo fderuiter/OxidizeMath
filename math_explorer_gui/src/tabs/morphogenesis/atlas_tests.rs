@@ -13,6 +13,7 @@ use super::presets::{
 use super::state::spatial_variance;
 use super::*;
 use crate::async_sim::{SimCommand, SimWorkerState, SimulationRunner};
+use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::InteractiveTool;
 use math_commons::math_kernel::types::flatten_2d_index;
 use std::sync::{Arc, RwLock};
@@ -143,7 +144,7 @@ fn test_atlas_unstable_samples_yield_nonzero_variance_after_500_cfl_steps() {
             auto_dt: true,
             ..Default::default()
         }));
-        let mut runner = MorphogenesisTab::create_runner(&params, 24, 24);
+        let mut runner = MorphogenesisTool::create_runner(&params, 24, 24);
         for _ in 0..500 {
             runner.step();
         }
@@ -166,7 +167,7 @@ fn test_atlas_unstable_samples_yield_nonzero_variance_after_500_cfl_steps() {
             auto_dt: true,
             ..Default::default()
         }));
-        let mut runner = MorphogenesisTab::create_runner(&params, 24, 24);
+        let mut runner = MorphogenesisTool::create_runner(&params, 24, 24);
         for _ in 0..500 {
             runner.step();
         }
@@ -177,6 +178,8 @@ fn test_atlas_unstable_samples_yield_nonzero_variance_after_500_cfl_steps() {
 
 #[test]
 fn test_atlas_click_updates_state_revision_in_both_kinetics_modes() {
+    use super::tests::morpho_state;
+
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
     let mut tab = MorphogenesisTab::default();
@@ -193,7 +196,7 @@ fn test_atlas_click_updates_state_revision_in_both_kinetics_modes() {
     let rev2 = tab.state_revision();
     assert_ne!(rev2, rev1);
     assert_eq!(
-        tab.export_config().kinetics,
+        morpho_state(&tab).kinetics_mode,
         MorphogenesisKinetics::GrayScott
     );
 
@@ -207,6 +210,8 @@ fn test_atlas_click_updates_state_revision_in_both_kinetics_modes() {
 
 #[test]
 fn test_all_five_starter_presets_evolve_without_fault_and_roundtrip_urls() {
+    use super::tests::morpho_state;
+
     let cards = [
         ("Turing Spots", crate::starter_gallery::PRESET_TURING_SPOTS),
         (
@@ -233,23 +238,14 @@ fn test_all_five_starter_presets_evolve_without_fault_and_roundtrip_urls() {
         restored
             .import_url_preset_json(parsed.tool.as_deref(), parsed.state_json.as_deref())
             .expect("URL import");
-        assert_eq!(restored.export_config(), tab.export_config());
-        let restored_state: MorphogenesisToolState = serde_json::from_str(
-            &restored
-                .framework
-                .active_tool
-                .as_ref()
-                .unwrap()
-                .save_state()
-                .unwrap(),
-        )
-        .unwrap();
+        let cfg = morpho_state(&tab);
+        let restored_state = morpho_state(&restored);
+        assert_eq!(restored_state, cfg);
         assert_eq!(restored_state.state, Some(SimWorkerState::Ready));
         assert!(restored_state.pending_initial_start);
 
-        let cfg = tab.export_config();
         let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
-            kinetics: cfg.kinetics,
+            kinetics: cfg.kinetics_mode,
             a: cfg.a,
             b: cfg.b,
             f: cfg.f,
@@ -260,7 +256,7 @@ fn test_all_five_starter_presets_evolve_without_fault_and_roundtrip_urls() {
             auto_dt: cfg.auto_dt,
             high_contrast: false,
         }));
-        let mut runner = MorphogenesisTab::create_runner(&params, 24, 24);
+        let mut runner = MorphogenesisTool::create_runner(&params, 24, 24);
         for _ in 0..40 {
             runner.step();
         }
@@ -283,7 +279,7 @@ fn test_apply_brush_injection_erasure_and_paused_worker_snapshots() {
         auto_dt: true,
         ..Default::default()
     }));
-    let mut runner = MorphogenesisTab::create_runner(&params, 24, 24);
+    let mut runner = MorphogenesisTool::create_runner(&params, 24, 24);
     let idx = flatten_2d_index(5, 5, 24);
     assert!((runner.system.u()[idx] - 1.0).abs() < 1e-12);
     assert!(runner.system.v()[idx].abs() < 1e-12);
@@ -353,7 +349,7 @@ fn test_canvas_pointer_drag_dispatches_brush_and_zero_alloc_gray_scott_step() {
         auto_dt: true,
         ..Default::default()
     }));
-    let mut runner = MorphogenesisTab::create_runner(&params, 24, 24);
+    let mut runner = MorphogenesisTool::create_runner(&params, 24, 24);
     runner.step();
     {
         let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
@@ -426,51 +422,33 @@ fn test_morphogenesis_theory_and_canvas_pointer_drag_brush_dispatch() {
 
 #[test]
 fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
-    use super::tests::{active_morpho_tool_state, render_tool_frame};
+    use super::tests::{morpho_state, morpho_tool_mut, render_tab_frame, render_tool_frame};
 
     let ctx = egui::Context::default();
     let mut tab = MorphogenesisTab::default();
     let mut tool = MorphogenesisTool::default();
-    assert_eq!(
-        active_morpho_tool_state(&tab).state,
-        Some(SimWorkerState::Ready)
-    );
+    assert_eq!(morpho_state(&tab).state, Some(SimWorkerState::Ready));
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 
     thread::sleep(Duration::from_millis(40));
-    assert_eq!(
-        active_morpho_tool_state(&tab).state,
-        Some(SimWorkerState::Ready)
-    );
+    assert_eq!(morpho_state(&tab).state, Some(SimWorkerState::Ready));
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 
-    let mut frame = eframe::Frame::_new_kittest();
     for _ in 0..8 {
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default()
-                .frame(egui::Frame::NONE)
-                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
-        });
+        render_tab_frame(&ctx, &mut tab);
         let _ = render_tool_frame(&ctx, &mut tool);
         thread::sleep(Duration::from_millis(8));
     }
-    assert_eq!(
-        active_morpho_tool_state(&tab).state,
-        Some(SimWorkerState::Running)
-    );
+    assert_eq!(morpho_state(&tab).state, Some(SimWorkerState::Running));
     assert_eq!(tool.worker.state(), SimWorkerState::Running);
     assert!(tool.worker.diagnostic_report().is_none());
 
-    tab.params.write().unwrap().auto_dt = false;
+    morpho_tool_mut(&mut tab).params.write().unwrap().auto_dt = false;
     tool.params.write().unwrap().auto_dt = false;
     for _ in 0..1200 {
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default()
-                .frame(egui::Frame::NONE)
-                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
-        });
+        render_tab_frame(&ctx, &mut tab);
         let _ = render_tool_frame(&ctx, &mut tool);
-        if active_morpho_tool_state(&tab).state == Some(SimWorkerState::Faulted)
+        if morpho_state(&tab).state == Some(SimWorkerState::Faulted)
             && tool.worker.state() == SimWorkerState::Faulted
         {
             break;
@@ -478,10 +456,7 @@ fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
         thread::sleep(Duration::from_millis(10));
     }
 
-    assert_eq!(
-        active_morpho_tool_state(&tab).state,
-        Some(SimWorkerState::Faulted)
-    );
+    assert_eq!(morpho_state(&tab).state, Some(SimWorkerState::Faulted));
     assert_eq!(tool.worker.state(), SimWorkerState::Faulted);
     assert!(tool.worker.diagnostic_report().is_some());
 }

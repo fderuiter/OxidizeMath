@@ -60,7 +60,11 @@ impl MorphogenesisTool {
     #[must_use]
     pub fn is_active_grid_washed_out(&self) -> bool {
         if let Some(sr) = &self.step_runner {
-            let v = grid_u_variance(sr.system.u());
+            let slice = match sr.kinetics {
+                MorphogenesisKinetics::Schnakenberg => sr.system.u(),
+                MorphogenesisKinetics::GrayScott => sr.system.v(),
+            };
+            let v = grid_u_variance(slice);
             return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
         }
         if let Some(snap) = self.worker.latest_snapshot() {
@@ -193,7 +197,7 @@ impl FiniteStateGuard for MorphogenesisTool {
 
     fn auto_scale_step_size(&mut self) {
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.dt = (p.dt * 0.5).max(1e-5);
+        p.dt = (p.dt * 0.5).max(1e-4);
         drop(p);
         self.reset_system();
     }

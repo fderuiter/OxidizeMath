@@ -307,6 +307,40 @@ impl MorphogenesisTool {
         }
     }
 
+    fn draw_playback_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let Some(action) = PlaybackTransport::from_worker_state(
+            "morphogenesis_transport",
+            "Morphogenesis",
+            self.worker.state(),
+        )
+        .timeline(self.worker.timeline_metadata())
+        .can_reset(true)
+        .show(ui) else {
+            return;
+        };
+        match action {
+            PlaybackAction::Play => {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            PlaybackAction::Pause => {
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+            PlaybackAction::Step => {
+                let _ = self.worker.send_command(SimCommand::Step(1));
+            }
+            PlaybackAction::StepBack => {
+                let _ = self.worker.send_command(SimCommand::StepBack(1));
+            }
+            PlaybackAction::ScrubTo(step) => {
+                let _ = self.worker.send_command(SimCommand::SeekStep(step));
+            }
+            PlaybackAction::Reset => {
+                self.reset();
+                ctx.request_repaint();
+            }
+        }
+    }
+
     pub(crate) fn draw_controls(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(ui, "morphogenesis_controls");
@@ -320,31 +354,7 @@ impl MorphogenesisTool {
                 ui.separator();
                 self.draw_parameter_sliders(ui);
                 ui.separator();
-
-                if let Some(action) = PlaybackTransport::from_worker_state(
-                    "morphogenesis_transport",
-                    "Morphogenesis",
-                    self.worker.state(),
-                )
-                .can_reset(true)
-                .show(ui)
-                {
-                    match action {
-                        PlaybackAction::Play => {
-                            let _ = self.worker.send_command(SimCommand::Start);
-                        }
-                        PlaybackAction::Pause => {
-                            let _ = self.worker.send_command(SimCommand::Pause);
-                        }
-                        PlaybackAction::Step => {
-                            let _ = self.worker.send_command(SimCommand::Step(1));
-                        }
-                        PlaybackAction::Reset => {
-                            self.reset();
-                            ctx.request_repaint();
-                        }
-                    }
-                }
+                self.draw_playback_transport(ui, &ctx);
 
                 if let Some(cmd) =
                     draw_morpho_sculpt_controls(ui, &mut self.brush_kit, &mut self.reagent_brush)

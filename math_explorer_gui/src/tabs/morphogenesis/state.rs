@@ -15,7 +15,36 @@ use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_cont
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::biology::diffusion::SpatialDiffusion;
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use oxidize_core::rng::OxidizeRng;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
+
+/// Snapshot payload bundling active concentration field with `CellMask2D` role bytes.
+#[derive(Clone, Debug)]
+pub struct MorphoSnapshotData {
+    /// Flattened visualized concentration grid (`u` for Schnakenberg, `v` for Gray-Scott).
+    pub u_data: Vec<f64>,
+    /// Optional row-major `ReactionCellRole` byte grid when any cell is non-`Free`.
+    pub mask_roles: Vec<u8>,
+}
+
+pub(crate) fn apply_uniform_noise<D: SpatialDiffusion<2>>(
+    system: &mut TuringSystem<2, SchnakenbergKinetics, D>,
+    count: usize,
+    rng: &mut OxidizeRng,
+    amp: f64,
+) {
+    if !amp.is_finite() || amp <= 0.0 {
+        return;
+    }
+    const INV_2_POW_53: f64 = 1.0 / ((1_u64 << 53) as f64);
+    for idx in 0..count {
+        let u_unit = ((rng.next_u64() >> 11) as f64) * INV_2_POW_53;
+        let v_unit = ((rng.next_u64() >> 11) as f64) * INV_2_POW_53;
+        system.u_mut()[idx] += (2.0 * u_unit - 1.0) * amp;
+        system.v_mut()[idx] += (2.0 * v_unit - 1.0) * amp;
+    }
+}
 
 const fn default_grid_dim() -> usize {
     100
@@ -84,6 +113,30 @@ pub struct MorphogenesisToolState {
         skip_serializing_if = "super::cartographer::is_default_morpho_atlas_axes"
     )]
     pub atlas_axes: [String; 2],
+}
+
+impl Default for MorphogenesisToolState {
+    fn default() -> Self {
+        Self {
+            kinetics_mode: MorphogenesisKinetics::Schnakenberg,
+            a: default_schnakenberg_a(),
+            b: default_schnakenberg_b(),
+            f: DEFAULT_GRAY_SCOTT_F,
+            k: DEFAULT_GRAY_SCOTT_K,
+            d_u: 1.0,
+            d_v: 100.0,
+            dt: 0.05,
+            auto_dt: true,
+            width: default_grid_dim(),
+            height: default_grid_dim(),
+            state: None,
+            paused: None,
+            pending_initial_start: false,
+            mask_rle: Vec::new(),
+            atlas_visible: false,
+            atlas_axes: super::cartographer::default_morpho_atlas_axes(),
+        }
+    }
 }
 
 impl MorphogenesisToolState {
