@@ -29,6 +29,6 @@ Following the removal of dead `oxidize_core::{ModelConfig, ModelState, Simulatio
 - **Positive**:
   - `LorenzSystem::step`, `BlochSimulator::step`, `FluidParticleSystem`, `TimeStepper::step_with`, `ReactionDiffusionSystem::step`, and `TuringSystem` execute in place with zero post-initialization heap allocations verified under `VerifiedAllocator`.
   - Non-autonomous differential equations and time-dependent reaction kinetics receive accurate elapsed simulation time `t` on every substep while autonomous trajectories remain bit-identical.
-  - All 554 reachable public structs and enums across the eight mathematical crates implement `Debug` (with `Clone` and `PartialEq` on plain-data types), enforced continuously by `unified_verification`.
+  - All 557 reachable public structs and enums across the eight mathematical crates implement `Debug` (with `Clone` and `PartialEq` on plain-data types), enforced continuously by `unified_verification`.
 - **Negative**:
   - Pre-allocating `Euler`, `Heun`, and `RungeKutta4` `Vector3<f64>` scratch buffers increases stack size of `LorenzSystem` and `BlochSimulator` by seven `Vector3<f64>` values (168 bytes), enabling zero-allocation runtime switching between integrators.

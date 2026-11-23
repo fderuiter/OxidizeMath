@@ -1,6 +1,7 @@
 //! The Higgs Mechanism explains the origin of mass for gauge bosons via Spontaneous Symmetry Breaking.
 
 use super::gauge::GaugeCouplings;
+use crate::error::StandardModelError;
 
 /// Represents the Higgs Potential parameters.
 ///
@@ -21,15 +22,17 @@ impl HiggsPotential {
     /// Formula: $v = \sqrt{-\frac{\mu^2}{\lambda}}$
     ///
     /// # Returns
-    /// * `Ok(f64)`: The VEV if $\mu^2 < 0$.
-    /// * `Err(String)`: If $\mu^2 \ge 0$, indicating no symmetry breaking.
+    /// * `Ok(f64)`: The VEV if $\mu^2 < 0$ and $\lambda > 0$.
+    /// * `Err(StandardModelError)`: If $\mu^2 \ge 0$ or $\lambda \le 0$.
     #[verified_engine::verified]
-    pub fn vev(&self) -> Result<f64, String> {
-        if self.mu2 >= 0.0 {
-            return Err("Symmetry is not broken: mu^2 must be negative.".to_string());
+    pub fn vev(&self) -> Result<f64, StandardModelError> {
+        if !self.mu2.is_finite() || self.mu2 >= 0.0 {
+            return Err(StandardModelError::UnbrokenSymmetry { mu2: self.mu2 });
         }
-        if self.lambda <= 0.0 {
-            return Err("Potential is unstable: lambda must be positive.".to_string());
+        if !self.lambda.is_finite() || self.lambda <= 0.0 {
+            return Err(StandardModelError::UnstableHiggsPotential {
+                lambda: self.lambda,
+            });
         }
         Ok((-self.mu2 / self.lambda).sqrt())
     }

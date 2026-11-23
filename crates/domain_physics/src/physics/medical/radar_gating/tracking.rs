@@ -6,7 +6,8 @@
 //! **Update (2026-06-XX):** This module now uses the generic `KalmanFilter` implementation from
 //! `applied::algorithms::kalman`, adapted for the specific domain of Radar Gating.
 
-use domain_applied::applied::algorithms::kalman::{KalmanFilter, KalmanModel};
+use crate::error::RadarError;
+use domain_applied::applied::algorithms::kalman::{KalmanError, KalmanFilter, KalmanModel};
 use nalgebra::{DMatrix, DVector};
 
 /// Constant Velocity (CV) Model.
@@ -66,6 +67,56 @@ pub struct TrackingFilter {
 }
 
 impl TrackingFilter {
+    /// Fallibly constructs a 1D radar-gating Kalman filter.
+    ///
+    /// Returns [`RadarError::InvalidTrackingParameter`] if `initial_amplitude` is non-finite,
+    /// `dt <= 0.0`, `model.process_noise_var < 0.0`, or `model.measurement_noise_var < 0.0`.
+    #[verified_engine::verified]
+    pub fn try_new(
+        initial_amplitude: f64,
+        dt: f64,
+        model: ConstantVelocityModel,
+    ) -> Result<Self, RadarError> {
+        if !initial_amplitude.is_finite() {
+            return Err(RadarError::InvalidTrackingParameter {
+                parameter: "initial_amplitude",
+                value: initial_amplitude,
+            });
+        }
+        if !dt.is_finite() || dt <= 0.0 {
+            return Err(RadarError::InvalidTrackingParameter {
+                parameter: "dt",
+                value: dt,
+            });
+        }
+        if !model.process_noise_var.is_finite() || model.process_noise_var < 0.0 {
+            return Err(RadarError::InvalidTrackingParameter {
+                parameter: "process_noise_var",
+                value: model.process_noise_var,
+            });
+        }
+        if !model.measurement_noise_var.is_finite() || model.measurement_noise_var < 0.0 {
+            return Err(RadarError::InvalidTrackingParameter {
+                parameter: "measurement_noise_var",
+                value: model.measurement_noise_var,
+            });
+        }
+
+        let initial_state = DVector::from_vec(vec![initial_amplitude, 0.0]);
+        let initial_covariance = DMatrix::identity(2, 2);
+
+        let inner = KalmanFilter::builder(model, dt)
+            .initial_state(initial_state)
+            .initial_covariance(initial_covariance)
+            .build()
+            .map_err(|err| match err {
+                KalmanError::Math(math_err) => RadarError::Math(math_err),
+                other => RadarError::InvalidConfiguration(other.to_string()),
+            })?;
+
+        Ok(Self { inner })
+    }
+
     /// Creates a new Kalman Filter with a specific physics model.
     ///
     /// # Arguments
@@ -74,16 +125,8 @@ impl TrackingFilter {
     /// * `model` - The physics model implementation (e.g., `ConstantVelocityModel`).
     #[verified_engine::verified]
     pub fn new(initial_amplitude: f64, dt: f64, model: ConstantVelocityModel) -> Self {
-        let initial_state = DVector::from_vec(vec![initial_amplitude, 0.0]);
-        let initial_covariance = DMatrix::identity(2, 2);
-
-        Self {
-            inner: KalmanFilter::builder(model, dt)
-                .initial_state(initial_state)
-                .initial_covariance(initial_covariance)
-                .build()
-                .expect("TrackingFilter encountered invalid dimensions"),
-        }
+        Self::try_new(initial_amplitude, dt, model)
+            .unwrap_or_else(|e| panic!("TrackingFilter encountered invalid parameters: {e}"))
     }
 
     /// Predicts the next state.

@@ -2,6 +2,7 @@
 
 use crate::ai::activations::softmax_row_wise;
 use crate::ai::transformer::traits::AttentionMechanism;
+use crate::error::AIError;
 use nalgebra::{DMatrix, DMatrixView};
 
 /// Computes the Scaled Dot-Product Attention from strided matrix views.
@@ -81,20 +82,34 @@ pub struct MultiHeadAttention {
     pub w_o: DMatrix<f64>,
 }
 
-impl MultiHeadAttention {
-    /// Creates a new `MultiHeadAttention` instance with zero-initialized weights.
-    ///
-    /// In a real model, the weight matrices would be initialized randomly.
-    /// Here, they are initialized as zeros for simplicity.
-    #[verified_engine::verified]
-    pub fn new(d_model: usize, h: usize) -> Self {
-        assert!(
-            d_model.is_multiple_of(h),
-            "d_model must be divisible by the number of heads h"
-        );
-        let d_k = d_model / h;
+fn validate_head_matrix(
+    head: usize,
+    projection: &'static str,
+    expected: (usize, usize),
+    matrix: &DMatrix<f64>,
+) -> Result<(), AIError> {
+    if matrix.shape() != expected {
+        return Err(AIError::HeadProjectionShapeMismatch {
+            head,
+            projection,
+            expected,
+            actual: matrix.shape(),
+        });
+    }
+    Ok(())
+}
 
-        Self {
+impl MultiHeadAttention {
+    /// Fallibly constructs a zero-initialized `MultiHeadAttention` layer.
+    ///
+    /// Returns [`AIError::InvalidHeadConfiguration`] if `h == 0` or `d_model` is not divisible by `h`.
+    #[verified_engine::verified]
+    pub fn try_new(d_model: usize, h: usize) -> Result<Self, AIError> {
+        if h == 0 || !d_model.is_multiple_of(h) {
+            return Err(AIError::InvalidHeadConfiguration { d_model, heads: h });
+        }
+        let d_k = d_model / h;
+        Ok(Self {
             d_model,
             h,
             d_k,
@@ -102,21 +117,23 @@ impl MultiHeadAttention {
             w_k: DMatrix::zeros(d_model, d_model),
             w_v: DMatrix::zeros(d_model, d_model),
             w_o: DMatrix::zeros(d_model, d_model),
-        }
+        })
+    }
+
+    /// Creates a new `MultiHeadAttention` instance with zero-initialized weights.
+    ///
+    /// In a real model, the weight matrices would be initialized randomly.
+    /// Here, they are initialized as zeros for simplicity.
+    #[verified_engine::verified]
+    pub fn new(d_model: usize, h: usize) -> Self {
+        Self::try_new(d_model, h)
+            .unwrap_or_else(|_| panic!("d_model must be divisible by the number of heads h"))
     }
 
     /// Constructs a `MultiHeadAttention` instance from legacy per-head weight matrices.
     ///
     /// This provides backward conversion compatibility for models or serialized weights
     /// stored in separate per-head projection format.
-    ///
-    /// # Arguments
-    /// * `d_model` - Total model dimension.
-    /// * `h` - Number of attention heads.
-    /// * `w_q` - Slice of query weight matrices for each head, each of shape `(d_model, d_k)`.
-    /// * `w_k` - Slice of key weight matrices for each head, each of shape `(d_model, d_k)`.
-    /// * `w_v` - Slice of value weight matrices for each head, each of shape `(d_model, d_k)`.
-    /// * `w_o` - Output projection weight matrix of shape `(d_model, d_model)`.
     #[verified_engine::verified]
     pub fn from_head_weights(
         d_model: usize,
@@ -125,77 +142,48 @@ impl MultiHeadAttention {
         w_k: &[DMatrix<f64>],
         w_v: &[DMatrix<f64>],
         w_o: DMatrix<f64>,
-    ) -> Result<Self, String> {
-        if !d_model.is_multiple_of(h) {
-            return Err("d_model must be divisible by the number of heads h".to_string());
+    ) -> Result<Self, AIError> {
+        if h == 0 || !d_model.is_multiple_of(h) {
+            return Err(AIError::InvalidHeadConfiguration { d_model, heads: h });
         }
         let d_k = d_model / h;
 
         if w_q.len() != h || w_k.len() != h || w_v.len() != h {
-            return Err(format!(
-                "Expected {} weight matrices per projection type, got w_q: {}, w_k: {}, w_v: {}",
-                h,
-                w_q.len(),
-                w_k.len(),
-                w_v.len()
-            ));
+            return Err(AIError::HeadCountMismatch {
+                expected: h,
+                got_q: w_q.len(),
+                got_k: w_k.len(),
+                got_v: w_v.len(),
+            });
         }
 
-        if w_o.nrows() != d_model || w_o.ncols() != d_model {
-            return Err(format!(
-                "w_o dimension mismatch: expected ({}, {}), got ({}, {})",
-                d_model,
-                d_model,
-                w_o.nrows(),
-                w_o.ncols()
-            ));
+        if w_o.shape() != (d_model, d_model) {
+            return Err(AIError::ProjectionShapeMismatch {
+                projection: "w_o",
+                expected: (d_model, d_model),
+                actual: w_o.shape(),
+            });
         }
 
         let mut fused_q = DMatrix::zeros(d_model, d_model);
         let mut fused_k = DMatrix::zeros(d_model, d_model);
         let mut fused_v = DMatrix::zeros(d_model, d_model);
+        let expected_head = (d_model, d_k);
 
         for (i, ((q_i, k_i), v_i)) in w_q.iter().zip(w_k.iter()).zip(w_v.iter()).enumerate() {
-            if q_i.nrows() != d_model || q_i.ncols() != d_k {
-                return Err(format!(
-                    "Head {} w_q dimension mismatch: expected ({}, {}), got ({}, {})",
-                    i,
-                    d_model,
-                    d_k,
-                    q_i.nrows(),
-                    q_i.ncols()
-                ));
-            }
-            if k_i.nrows() != d_model || k_i.ncols() != d_k {
-                return Err(format!(
-                    "Head {} w_k dimension mismatch: expected ({}, {}), got ({}, {})",
-                    i,
-                    d_model,
-                    d_k,
-                    k_i.nrows(),
-                    k_i.ncols()
-                ));
-            }
-            if v_i.nrows() != d_model || v_i.ncols() != d_k {
-                return Err(format!(
-                    "Head {} w_v dimension mismatch: expected ({}, {}), got ({}, {})",
-                    i,
-                    d_model,
-                    d_k,
-                    v_i.nrows(),
-                    v_i.ncols()
-                ));
-            }
+            validate_head_matrix(i, "w_q", expected_head, q_i)?;
+            validate_head_matrix(i, "w_k", expected_head, k_i)?;
+            validate_head_matrix(i, "w_v", expected_head, v_i)?;
 
             let start_col = i * d_k;
             fused_q
-                .view_mut((0, start_col), (d_model, d_k))
+                .view_mut((0, start_col), expected_head)
                 .copy_from(q_i);
             fused_k
-                .view_mut((0, start_col), (d_model, d_k))
+                .view_mut((0, start_col), expected_head)
                 .copy_from(k_i);
             fused_v
-                .view_mut((0, start_col), (d_model, d_k))
+                .view_mut((0, start_col), expected_head)
                 .copy_from(v_i);
         }
 
