@@ -4,12 +4,14 @@ use math_explorer::pure_math::differential_geometry::surface::ParametricSurface;
 use oxidize_core::mesh::{Mesh, Point3D};
 
 /// Builds a seam- and pole-welded triangle [`Mesh`] for `surface` over its natural `(u, v)` domain.
+#[cfg(test)]
 #[must_use]
 pub fn surface_to_mesh(surface: &dyn ParametricSurface, u_res: usize, v_res: usize) -> Mesh {
     surface_to_mesh_scaled(surface, u_res, v_res, 1.0)
 }
 
 /// Builds a seam- and pole-welded triangle [`Mesh`] scaled by `scale_mm` physical millimeters.
+#[cfg(test)]
 #[must_use]
 pub fn surface_to_mesh_scaled(
     surface: &dyn ParametricSurface,
@@ -17,13 +19,61 @@ pub fn surface_to_mesh_scaled(
     v_res: usize,
     scale_mm: f32,
 ) -> Mesh {
+    surface_to_mesh_with_domain_scaled(
+        surface,
+        surface.u_domain(),
+        surface.v_domain(),
+        u_res,
+        v_res,
+        scale_mm,
+    )
+}
+
+/// Builds a triangle [`Mesh`] for `surface` over explicit `(u_range, v_range)` parameter domains.
+#[cfg(test)]
+#[must_use]
+pub fn surface_to_mesh_with_domain(
+    surface: &dyn ParametricSurface,
+    u_range: (f64, f64),
+    v_range: (f64, f64),
+    u_res: usize,
+    v_res: usize,
+) -> Mesh {
+    surface_to_mesh_with_domain_scaled(surface, u_range, v_range, u_res, v_res, 1.0)
+}
+
+/// Builds a seam- and pole-welded triangle [`Mesh`] over explicit `(u_range, v_range)` domains,
+/// scaled by `scale_mm` physical millimeters.
+#[must_use]
+pub fn surface_to_mesh_with_domain_scaled(
+    surface: &dyn ParametricSurface,
+    u_range: (f64, f64),
+    v_range: (f64, f64),
+    u_res: usize,
+    v_res: usize,
+    scale_mm: f32,
+) -> Mesh {
     let u_steps = u_res.max(3);
     let v_steps = v_res.max(3);
-    if surface.has_v_poles() {
-        build_polar_surface_mesh(surface, u_steps, v_steps, scale_mm)
+    let natural_u = same_interval(u_range, surface.u_domain());
+    let natural_v = same_interval(v_range, surface.v_domain());
+    if surface.has_v_poles() && natural_u && natural_v {
+        build_polar_surface_mesh(surface, u_range, v_range, u_steps, v_steps, scale_mm)
     } else {
-        build_grid_surface_mesh(surface, u_steps, v_steps, scale_mm)
+        build_grid_surface_mesh(
+            surface,
+            u_range,
+            v_range,
+            (natural_u && surface.is_u_periodic(), natural_v && surface.is_v_periodic()),
+            u_steps,
+            v_steps,
+            scale_mm,
+        )
     }
+}
+
+fn same_interval(a: (f64, f64), b: (f64, f64)) -> bool {
+    (a.0 - b.0).abs() < 1e-9 && (a.1 - b.1).abs() < 1e-9
 }
 
 fn push_surface_sample(
@@ -46,12 +96,14 @@ fn push_surface_sample(
 
 fn build_polar_surface_mesh(
     surface: &dyn ParametricSurface,
+    u_range: (f64, f64),
+    v_range: (f64, f64),
     u_steps: usize,
     v_steps: usize,
     scale_mm: f32,
 ) -> Mesh {
-    let (u_min, u_max) = surface.u_domain();
-    let (v_min, v_max) = surface.v_domain();
+    let (u_min, u_max) = u_range;
+    let (v_min, v_max) = v_range;
     let u_periodic = surface.is_u_periodic();
     let u_cols = if u_periodic { u_steps } else { u_steps + 1 };
     let ring_count = v_steps - 1;
@@ -107,14 +159,16 @@ fn build_polar_surface_mesh(
 
 fn build_grid_surface_mesh(
     surface: &dyn ParametricSurface,
+    u_range: (f64, f64),
+    v_range: (f64, f64),
+    periodicity: (bool, bool),
     u_steps: usize,
     v_steps: usize,
     scale_mm: f32,
 ) -> Mesh {
-    let (u_min, u_max) = surface.u_domain();
-    let (v_min, v_max) = surface.v_domain();
-    let u_periodic = surface.is_u_periodic();
-    let v_periodic = surface.is_v_periodic();
+    let (u_min, u_max) = u_range;
+    let (v_min, v_max) = v_range;
+    let (u_periodic, v_periodic) = periodicity;
     let u_cols = if u_periodic { u_steps } else { u_steps + 1 };
     let v_rows = if v_periodic { v_steps } else { v_steps + 1 };
 

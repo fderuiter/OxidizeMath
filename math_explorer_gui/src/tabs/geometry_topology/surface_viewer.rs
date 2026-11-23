@@ -33,6 +33,10 @@ struct SurfaceViewerSaveState {
     parametric_exprs: Option<[String; 3]>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    u_bounds: Option<[f64; 2]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    v_bounds: Option<[f64; 2]>,
 }
 
 #[derive(serde::Deserialize)]
@@ -61,6 +65,10 @@ struct SurfaceViewerState {
     parametric_exprs: Option<[String; 3]>,
     #[serde(default)]
     custom_params: BTreeMap<String, f64>,
+    #[serde(default)]
+    u_bounds: Option<[f64; 2]>,
+    #[serde(default)]
+    v_bounds: Option<[f64; 2]>,
 }
 
 pub struct SurfaceViewer {
@@ -115,7 +123,15 @@ impl SurfaceViewer {
 
     #[cfg(test)]
     fn build_obj_string(&self) -> String {
-        let mesh = self.build_scaled_mesh();
+        let surface = self.create_surface();
+        let (u_range, v_range) = self.custom_sandbox.uv_domain_for(self.surface_type);
+        let mesh = super::export_utils::surface_to_mesh_with_domain(
+            surface.as_ref(),
+            u_range,
+            v_range,
+            self.u_resolution,
+            self.v_resolution,
+        );
         export_mesh_to_obj_string(&mesh).unwrap_or_default()
     }
 
@@ -264,20 +280,15 @@ impl SurfaceViewer {
 
     fn build_scaled_mesh(&self) -> oxidize_core::mesh::Mesh {
         let surface = self.create_surface();
-        if (self.scale_mm - 1.0).abs() <= f32::EPSILON {
-            super::export_utils::surface_to_mesh(
-                surface.as_ref(),
-                self.u_resolution,
-                self.v_resolution,
-            )
-        } else {
-            super::export_utils::surface_to_mesh_scaled(
-                surface.as_ref(),
-                self.u_resolution,
-                self.v_resolution,
-                self.scale_mm,
-            )
-        }
+        let (u_range, v_range) = self.custom_sandbox.uv_domain_for(self.surface_type);
+        super::export_utils::surface_to_mesh_with_domain_scaled(
+            surface.as_ref(),
+            u_range,
+            v_range,
+            self.u_resolution,
+            self.v_resolution,
+            self.scale_mm,
+        )
     }
 }
 
@@ -323,6 +334,7 @@ impl InteractiveTool for SurfaceViewer {
     fn save_state(&self) -> Option<String> {
         let (custom_expr, parametric_exprs, custom_params) =
             self.custom_sandbox.export_fields(self.surface_type);
+        let (u_bounds, v_bounds) = self.custom_sandbox.export_domain_bounds(self.surface_type);
         serde_json::to_string(&SurfaceViewerSaveState {
             surface_type: self.surface_type,
             sphere_radius: self.sphere_radius,
@@ -336,6 +348,8 @@ impl InteractiveTool for SurfaceViewer {
             custom_expr,
             parametric_exprs,
             custom_params,
+            u_bounds,
+            v_bounds,
         })
         .ok()
     }
@@ -368,6 +382,11 @@ impl InteractiveTool for SurfaceViewer {
             loaded.yaw,
             loaded.zoom,
             Some(Camera3D::default()),
+        )?;
+        self.custom_sandbox.load_domain_bounds(
+            loaded.surface_type,
+            loaded.u_bounds,
+            loaded.v_bounds,
         )?;
         let cap = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION;
         self.surface_type = loaded.surface_type;
@@ -425,44 +444,6 @@ inventory::submit! {
         domain: "geometry_topology",
         tags: &[],
         build: || Box::new(SurfaceViewer::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for SurfaceViewer {
-    fn theory_description(&self) -> String {
-        let surf_desc = match self.surface_type {
-            SurfaceType::Sphere => "sphere $S^2$: $\\vec{r}(u, v) = (R \\sin v \\cos u, R \\sin v \\sin u, R \\cos v)$",
-            SurfaceType::Torus => "torus $T^2$: $\\vec{r}(u, v) = ((R + r \\cos v)\\cos u, (R + r \\cos v)\\sin u, r \\sin v)$",
-            SurfaceType::KleinBottle => "non-orientable Klein bottle embedded in 3D: $\\chi(M) = 0$",
-            SurfaceType::CustomHeightfield => "custom Monge heightfield $z = f(x, y)$ compiled to stack bytecode",
-            SurfaceType::CustomParametric => "custom 3D parametric immersion $\\vec{r}(u, v) = (x(u,v), y(u,v), z(u,v))$",
-        };
-        format!("Parametric 2-manifold surface representation: {surf_desc}.")
-    }
-
-    fn phonetic_description(&self) -> String {
-        "Parametric 2-manifold differential geometry theory".into()
-    }
-
-    fn theory_citation(&self) -> String {
-        "Differential Geometry of Curves and Surfaces (do Carmo, 2016)".into()
-    }
-
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert(
-            "Sphere".into(),
-            "Compact orientable manifold of genus 0 with Euler characteristic 2".into(),
-        );
-        map.insert(
-            "Torus".into(),
-            "Compact orientable manifold of genus 1 with Euler characteristic 0".into(),
-        );
-        map.insert(
-            "KleinBottle".into(),
-            "Non-orientable closed surface with Euler characteristic 0".into(),
-        );
-        map
     }
 }
 
