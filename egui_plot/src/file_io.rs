@@ -29,7 +29,7 @@ pub fn infer_mime_type(filename: &str) -> &'static str {
         "text/csv"
     } else if lower.ends_with(".tsv") {
         "text/tab-separated-values"
-    } else if lower.ends_with(".txt") {
+    } else if lower.ends_with(".txt") || lower.ends_with(".frag") || lower.ends_with(".glsl") {
         "text/plain"
     } else if lower.ends_with(".svg") {
         "image/svg+xml"

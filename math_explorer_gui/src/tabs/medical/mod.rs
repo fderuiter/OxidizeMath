@@ -4,6 +4,7 @@ use eframe::egui;
 
 pub mod beam_profiling;
 pub mod dose;
+pub mod radar_gating;
 
 
 pub struct MedicalTab {
@@ -37,6 +38,10 @@ impl ExplorerTab for MedicalTab {
 
     fn load_state(&mut self, state: &str) {
         self.framework.load_state(state);
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.framework.focused_canvas_id()
     }
 
     fn select_tool_by_name(&mut self, name: &str) -> bool {

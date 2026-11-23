@@ -222,14 +222,8 @@ impl SimulationFramework {
         if export_action_button(ui, caps.figure, "Export PNG Image", fig_tip, close_on_click) {
             self.open_export_modal_for_active_tool();
         }
-        let wav_tip = if caps.audio {
-            "Synthesize and export 16-bit PCM WAV audio clip"
-        } else {
-            caps.audio_disabled_reason
-        };
-        if export_action_button(ui, caps.audio, "Export WAV", wav_tip, close_on_click) {
-            self.queue_export(ExportFormat::Wav);
-        }
+        self.render_audio_export_items(ui, caps, close_on_click);
+        self.render_shader_export_items(ui, caps, close_on_click);
     }
 
     fn render_compact_export_menu(&mut self, ui: &mut egui::Ui) -> String {

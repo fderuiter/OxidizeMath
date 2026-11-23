@@ -2,11 +2,13 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{ExportFormat, ExportStatusSeverity, SimulationFramework};
+use super::export_ui::export_action_button;
+use super::{ExportCapabilities, ExportFormat, ExportStatusSeverity, SimulationFramework};
 use crate::audio::{
     synthesize_wav_16bit, DEFAULT_WAV_DURATION_SECS, DEFAULT_WAV_FRAME_COUNT,
     DEFAULT_WAV_SAMPLE_RATE,
 };
+use eframe::egui;
 use std::hash::{Hash, Hasher};
 
 fn deterministic_tool_seed(tool_name: &str, state_json: Option<&str>) -> u64 {
@@ -19,6 +21,22 @@ fn deterministic_tool_seed(tool_name: &str, state_json: Option<&str>) -> u64 {
 }
 
 impl SimulationFramework {
+    pub(super) fn render_audio_export_items(
+        &mut self,
+        ui: &mut egui::Ui,
+        caps: ExportCapabilities,
+        close_on_click: bool,
+    ) {
+        let wav_tip = if caps.audio {
+            "Synthesize and export 16-bit PCM WAV audio clip"
+        } else {
+            caps.audio_disabled_reason
+        };
+        if export_action_button(ui, caps.audio, "Export WAV", wav_tip, close_on_click) {
+            self.queue_export(ExportFormat::Wav);
+        }
+    }
+
     pub(super) fn dispatch_wav_export(&mut self) {
         let (tool_name, caps, settings, saved_state) = {
             let Some(tool) = self.active_tool.as_ref() else {
