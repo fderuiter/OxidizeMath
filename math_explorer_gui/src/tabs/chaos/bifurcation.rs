@@ -218,6 +218,11 @@ impl BifurcationDiagram {
         self.recompute_coupled_views();
     }
 
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     fn build_state_json(&self, include_hover_r: bool) -> Option<String> {
         let is_custom = self.map_mode.is_custom();
         let midpoint = (self.r_min + self.r_max) * 0.5;
@@ -301,10 +306,6 @@ impl InteractiveTool for BifurcationDiagram {
 
     fn domain(&self) -> &'static str {
         "chaos"
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn step_simulation(&mut self) {

@@ -160,6 +160,13 @@ impl Default for FractalViewer {
     }
 }
 
+impl FractalViewer {
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+}
+
 impl TheoryDescribable for FractalViewer {
     fn theory_description(&self) -> String {
         let name = match self.mode {
@@ -215,10 +222,6 @@ impl InteractiveTool for FractalViewer {
 
     fn domain(&self) -> &'static str {
         "chaos"
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
