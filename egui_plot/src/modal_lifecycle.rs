@@ -12,11 +12,6 @@ impl ModalFrameContext {
     pub fn close(&mut self) {
         self.close_requested = true;
     }
-
-    /// Returns whether closure dismissal has been requested during this frame.
-    pub fn is_close_requested(&self) -> bool {
-        self.close_requested
-    }
 }
 
 #[derive(Clone, Default)]

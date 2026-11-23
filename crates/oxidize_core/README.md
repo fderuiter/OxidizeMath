@@ -1,25 +1,22 @@
 # Oxidize Core
 
-Foundational simulation traits, deterministic random generation, virtual filesystems, and indexed 3D meshes.
+Deterministic random generation, indexed 3D meshes, spatial boundary and iteration utilities, virtual filesystems, and workspace traceability infrastructure.
 
 ## 1. Overview & Architecture
 
-The `oxidize_core` crate defines the primary architectural contracts and runtime utilities for simulations in the OxidizeMath ecosystem. It provides the standardized lifecycle models for configuration, state representation, and step execution.
-
-By decoupling simulation state contracts from concrete numerical algorithms and graphical renderers, simulation models can be executed deterministically in native headless tests, multi-threaded worker pools, and WebAssembly browser targets without architecture divergence.
+The `oxidize_core` crate provides shared runtime primitives and static verification utilities across the OxidizeMath ecosystem. It supplies platform-independent foundations for deterministic stochastic seeding, indexed 3D geometry export, grid traversal, virtual asset I/O, Cargo workspace inspection, and academic citation traceability across native targets and `wasm32-unknown-unknown`.
 
 ### Module Structure
 
-- **Core Lifecycle Traits**:
-  - `ModelConfig`: Serializable configuration contract for simulation parameters.
-  - `ModelState`: Cloneable state representation supporting checkpoints and history buffers.
-  - `SimulationModel`: Lifecycle interface defining `initialize`, `step`, and `get_state`.
-- **`rng`**: Deterministic pseudo-random number generator (`OxidizeRng`) based on ChaCha8, enforcing workspace reproducible simulation policies.
+- **`ast_visitor`**: Syntax tree visitor (`AstVisitor`) counting functions, assertions, and `#[verified]` coverage across Rust source files.
+- **`boundary`**: Coordinate boundary condition traits and clamping resolvers (`BoundaryCondition`, `NeumannBoundary`) for spatial grids.
+- **`iteration`**: Interior and boundary 2D coordinate traversal helpers (`IterationPattern`) separating hot interior loops from edge handling.
 - **`mesh`**: Indexed 3D geometry primitives (`Point3D`, `Mesh`) and Wavefront OBJ serialization (`export_mesh_to_obj_string`).
-- **`boundary`**: Coordinate boundary condition traits and clamping resolvers (`BoundaryCondition`, `NeumannBoundary`).
-- **`iteration`**: Interior and boundary coordinate traversal helpers (`IterationPattern`).
-- **`vfs`**: Virtual file system layer abstracting asset access across native and web environments.
-- **`workspace`**: Cargo workspace inspection, path normalization, and manifest parsing utilities.
+- **`path_utils`**: Cross-platform forward-slash path normalization helpers (`normalize_path`, `strip_and_normalize`, `join_and_normalize`).
+- **`rng`**: Deterministic pseudo-random number generator (`OxidizeRng`) backed by ChaCha8, enforcing workspace reproducible simulation policies.
+- **`traceability`**: Literature citation scanner, shared `syn` AST cache (`AstCache`), and `TraceabilityEngine` / `TraceabilityReport` auditing `papers/` bindings.
+- **`vfs`**: Asynchronous virtual file system layer (`VirtualFileSystem`, `NativeVfs`, `WasmVfs`, `DefaultVfs`) abstracting asset access across native and browser environments.
+- **`workspace`**: Cargo workspace member discovery and manifest parsing utilities (`get_workspace_members`, `parse_workspace_members`).
 
 ---
 
@@ -59,4 +56,4 @@ assert!(obj.contains("f 1//1 2//2 3//3"));
 
 ## 3. Ecosystem Integration
 
-All domain simulation engines (`domain_ai`, `domain_physics`, `domain_biology`, `domain_applied`, `domain_climate`, `domain_epidemiology`) implement the lifecycle traits from `oxidize_core`, allowing the unified runner in `math_explorer` to schedule simulation steps seamlessly.
+Domain crates (`pure_math`, `domain_applied`, `domain_biology`, `domain_climate`, `domain_epidemiology`, `domain_physics`) and the `math_explorer` facade consume `rng`, `mesh`, `boundary`, and `iteration` primitives from `oxidize_core`, while numerical stepping contracts (`TimeStepper`, `EvolutionEngine`) live in `pure_math` and interactive orchestration (`SimulationFramework`) lives in `math_explorer_gui`. Developer gates in `unified_verification` and traceability views in `math_explorer_gui` share `ast_visitor`, `path_utils`, `traceability`, `vfs`, and `workspace`.

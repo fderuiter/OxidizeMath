@@ -2,13 +2,13 @@ pub(crate) const MAX_ATTR_STACK_STEPS: usize = 256;
 pub(crate) const MAX_TYPE_UNWRAP_STEPS: usize = 32;
 
 /// Iteratively traverses `allow(...)`, `expect(...)`, and nested `cfg_attr(pred, ...)`
-/// attributes up to [`MAX_ATTR_STACK_STEPS`] stack steps, returning the first match
+/// meta trees up to [`MAX_ATTR_STACK_STEPS`] stack steps, returning the first match
 /// produced by `matcher` on a suppressed lint path.
-pub(crate) fn find_suppressed_lint_in_attr<T, F>(attr: &syn::Attribute, mut matcher: F) -> Option<T>
+pub(crate) fn find_suppressed_lint_in_meta<T, F>(root_meta: &syn::Meta, mut matcher: F) -> Option<T>
 where
     F: FnMut(&syn::Path) -> Option<T>,
 {
-    let mut stack = vec![attr.meta.clone()];
+    let mut stack = vec![root_meta.clone()];
     let mut steps = 0usize;
     while let Some(meta) = stack.pop() {
         if steps >= MAX_ATTR_STACK_STEPS {
@@ -43,6 +43,16 @@ where
         }
     }
     None
+}
+
+/// Iteratively traverses `allow(...)`, `expect(...)`, and nested `cfg_attr(pred, ...)`
+/// attributes up to [`MAX_ATTR_STACK_STEPS`] stack steps, returning the first match
+/// produced by `matcher` on a suppressed lint path.
+pub(crate) fn find_suppressed_lint_in_attr<T, F>(attr: &syn::Attribute, matcher: F) -> Option<T>
+where
+    F: FnMut(&syn::Path) -> Option<T>,
+{
+    find_suppressed_lint_in_meta(&attr.meta, matcher)
 }
 
 /// Unwraps `Group` and `Paren` wrappers around an `impl` self-type up to

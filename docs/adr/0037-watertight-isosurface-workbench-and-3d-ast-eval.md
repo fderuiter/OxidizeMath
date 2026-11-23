@@ -1,7 +1,7 @@
-# ADR 0035: Watertight Isosurface Workbench, Padded Box-SDF Sampling, and Zero-Allocation 3D AST Evaluation
+# ADR 0037: Watertight Isosurface Workbench, Padded Box-SDF Sampling, and Zero-Allocation 3D AST Evaluation
 
 ## Status
-Accepted (extends [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md) and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
+Accepted (extends [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0035](0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md))
 
 ## Context
 [`crates/domain_applied/src/applied/isosurface/marching_cubes.rs`](../../crates/domain_applied/src/applied/isosurface/marching_cubes.rs) implements Marching Cubes over `VoxelGrid` using the rolling `SliceEdgeCache` introduced in [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md), yet three gaps prevented interactive implicit solid modeling and 3D-printable mesh export in `math_explorer_gui`:

@@ -301,7 +301,7 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
                 ui.close();
             }
             ui.separator();
-            viewport_menus::render_viewport_layout_submenu(app, ui);
+            viewport_menus::render_viewport_layout_submenu(app, ctx, ui);
             viewport_menus::render_focus_pane_submenu(app, ctx, ui);
 
             if app.viewport_layout != crate::app::ViewportLayout::Single {
