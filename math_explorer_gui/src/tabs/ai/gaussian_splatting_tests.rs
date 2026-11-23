@@ -242,3 +242,32 @@ fn test_gaussian_splatting_animated_scale_sweep_updates_density_counts() {
         GaussianSplattingTool::compute_density_counts_for_scale(tool.scale)
     );
 }
+
+#[test]
+fn test_gaussian_splatting_exports_valid_inria_3dgs_ply_binary() {
+    let tool = GaussianSplattingTool {
+        scale: 1.5,
+        ..Default::default()
+    };
+    let caps = tool.export_capabilities();
+    assert!(!caps.dataset && !caps.figure);
+    assert!(caps.ply && !caps.stl && !caps.obj);
+
+    let ply_bytes = tool
+        .export_splat_ply_3d()
+        .expect("3DGS PLY hook present")
+        .expect("3DGS PLY serializes");
+    let header_end = ply_bytes
+        .windows(b"end_header\n".len())
+        .position(|w| w == b"end_header\n")
+        .expect("end_header present")
+        + b"end_header\n".len();
+    let header = std::str::from_utf8(&ply_bytes[..header_end]).expect("ASCII PLY header");
+    assert!(header.contains("element vertex 8\n"));
+    assert!(header.contains("property float f_dc_0\n"));
+    assert!(header.contains("property float opacity\n"));
+    assert!(header.contains("property float scale_0\n"));
+    assert!(header.contains("property float rot_0\n"));
+    // 8 splats * 17 f32 properties * 4 bytes = 544 payload bytes
+    assert_eq!(ply_bytes.len() - header_end, 8 * 17 * 4);
+}

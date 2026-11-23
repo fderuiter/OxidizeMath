@@ -333,6 +333,9 @@ impl<'a> egui::Widget for AnimatedSlider<'a> {
     fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
         let id = resolve_scoped_slider_id(ui, self.id_salt, self.label);
         let mut state = load_slider_state(ui.ctx(), id, self.default_sweep_mode);
+        if !ui.is_enabled() {
+            state.playing = false;
+        }
         let mut settings = load_slider_settings(ui.ctx(), id);
         let was_playing = state.playing;
         let mut changed = false;
