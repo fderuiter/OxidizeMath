@@ -8,10 +8,13 @@ use super::{
     DECIMAL_ODDS_MIN, FRACTIONAL_MAX, FRACTIONAL_MAX_DENOMINATOR, FRACTIONAL_MIN, IMPLIED_PROB_MAX,
     IMPLIED_PROB_MIN, PROBABILITY_MAX, PROBABILITY_MIN,
 };
-use crate::accessibility::AccessibleHoverText;
+use crate::accessibility::{
+    paint_canvas_focus_ring, register_canvas_accessibility, AccessibleHoverText,
+};
 use crate::framework::bounded_drag_value;
 use eframe::egui;
-use egui_plot::{Legend, Line, LineStyle, MarkerShape, Plot, Points};
+use eframe::egui::accesskit::Role;
+use egui_plot::{Legend, Line, LineStyle, MarkerShape, Plot, Points, VLine};
 use math_explorer::pure_math::statistics::kelly::Odds;
 
 impl BetSizeCalculatorTool {
@@ -348,91 +351,89 @@ impl BetSizeCalculatorTool {
         });
     }
 
-    fn show_table_export_bar(&mut self, ui: &mut egui::Ui) {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("📋 Copy CSV")
-                .accessible_hover_text("Copy formula-safe CSV Kelly sizing table to clipboard")
-                .clicked()
-            {
-                self.copy_sizing_to_clipboard(ui.ctx(), false);
-            }
-            if ui
-                .button("💾 Save CSV")
-                .accessible_hover_text("Download or save CSV Kelly sizing table")
-                .clicked()
-            {
-                self.save_sizing_file(false);
-            }
-            if ui
-                .button("📋 Copy Markdown")
-                .accessible_hover_text("Copy Markdown Kelly sizing table to clipboard")
-                .clicked()
-            {
-                self.copy_sizing_to_clipboard(ui.ctx(), true);
-            }
-            if ui
-                .button("💾 Save Markdown")
-                .accessible_hover_text("Download or save Markdown Kelly sizing table")
-                .clicked()
-            {
-                self.save_sizing_file(true);
-            }
-        });
-        if let Some((ref msg, is_err)) = self.io_status {
-            let color = if is_err { palette.error } else { palette.info };
-            ui.colored_label(color, msg);
-        }
-    }
-
     fn show_growth_curve_plot(&self, ui: &mut egui::Ui) {
         if self.growth_curve_points.is_empty() {
             return;
         }
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         ui.heading("Expected Logarithmic Growth Curve g(f)");
-        Plot::new("bet_size_growth_plot")
+        let resp = Plot::new("bet_size_growth_plot")
             .view_aspect(2.2)
             .legend(Legend::default())
             .x_axis_label("Wager Fraction (f)")
             .y_axis_label("Expected Log Growth Rate g(f)")
             .show(ui, |plot_ui| {
-                plot_ui.line(
-                    Line::new("Break-Even (g = 0)", &self.zero_line_points[..])
-                        .color(palette.graph_edge)
-                        .style(LineStyle::Dashed { length: 6.0 }),
-                );
-                plot_ui.line(
-                    Line::new("Expected Growth Rate g(f)", &self.growth_curve_points[..])
-                        .color(palette.series_color(0))
-                        .width(2.0_f32),
-                );
-                if !self.quarter_marker.is_empty() {
-                    plot_ui.points(
-                        Points::new("Quarter Kelly (0.25 f*)", &self.quarter_marker[..])
-                            .color(palette.series_color(2))
-                            .radius(5.0_f32)
-                            .shape(MarkerShape::Diamond),
-                    );
-                }
-                if !self.half_marker.is_empty() {
-                    plot_ui.points(
-                        Points::new("Half Kelly (0.50 f*)", &self.half_marker[..])
-                            .color(palette.series_color(5))
-                            .radius(5.5_f32)
-                            .shape(MarkerShape::Square),
-                    );
-                }
-                if !self.full_marker.is_empty() {
-                    plot_ui.points(
-                        Points::new("Full Kelly (1.00 f*)", &self.full_marker[..])
-                            .color(palette.series_color(3))
-                            .radius(6.0_f32)
-                            .shape(MarkerShape::Circle),
-                    );
-                }
+                self.draw_growth_curve_items(plot_ui, &palette);
             });
+        let summary = format!(
+            "Kelly growth curve g(f) with {} samples; optimal f* = {:.3}, g(f*) = {:+.5}",
+            self.growth_curve_points.len(),
+            self.optimal_f_star.unwrap_or(0.0),
+            self.optimal_growth_rate
+        );
+        register_canvas_accessibility(
+            ui,
+            &resp.response,
+            Role::GraphicsDocument,
+            "Logarithmic Capital Growth Rate g(f) vs Wager Fraction f",
+            Some(&summary),
+        );
+        paint_canvas_focus_ring(ui, &resp.response);
+    }
+
+    fn draw_growth_curve_items<'a>(
+        &'a self,
+        plot_ui: &mut egui_plot::PlotUi<'a>,
+        palette: &crate::app::SemanticPalette,
+    ) {
+        plot_ui.line(
+            Line::new("Break-Even (g = 0)", &self.zero_line_points[..])
+                .color(palette.graph_edge)
+                .style(LineStyle::Dashed { length: 6.0 }),
+        );
+        plot_ui.line(
+            Line::new("Expected Growth Rate g(f)", &self.growth_curve_points[..])
+                .color(palette.series_color(0))
+                .width(2.0_f32),
+        );
+        if let Some(fs) = self.optimal_f_star {
+            plot_ui.vline(
+                VLine::new("Optimal Kelly f*", fs)
+                    .color(palette.success)
+                    .style(LineStyle::Dashed { length: 6.0 }),
+            );
+            if 2.0 * fs < 0.98 {
+                plot_ui.vline(
+                    VLine::new("Over-Allocation Boundary 2f*", 2.0 * fs)
+                        .color(palette.error)
+                        .style(LineStyle::Dotted { spacing: 5.0 }),
+                );
+            }
+        }
+        if !self.quarter_marker.is_empty() {
+            plot_ui.points(
+                Points::new("Quarter Kelly (0.25 f*)", &self.quarter_marker[..])
+                    .color(palette.series_color(2))
+                    .radius(5.0_f32)
+                    .shape(MarkerShape::Diamond),
+            );
+        }
+        if !self.half_marker.is_empty() {
+            plot_ui.points(
+                Points::new("Half Kelly (0.50 f*)", &self.half_marker[..])
+                    .color(palette.series_color(5))
+                    .radius(5.5_f32)
+                    .shape(MarkerShape::Square),
+            );
+        }
+        if !self.full_marker.is_empty() {
+            plot_ui.points(
+                Points::new("Full Kelly (1.00 f*)", &self.full_marker[..])
+                    .color(palette.series_color(3))
+                    .radius(6.0_f32)
+                    .shape(MarkerShape::Circle),
+            );
+        }
     }
 
     pub(super) fn render_workbench_ui(&mut self, ui: &mut egui::Ui) {

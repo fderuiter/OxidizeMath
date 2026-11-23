@@ -11,6 +11,7 @@ use crate::pure_math::{
     elliptic_curves::EllipticCurveError,
     hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
+    statistics::risk::RiskError,
     tensor::types::TensorError,
 };
 use diagnostics::{Diagnostic, Severity};
@@ -285,5 +286,17 @@ impl Diagnostic for HyperbolicError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("HyperbolicError", self.to_string())
+    }
+}
+
+impl Diagnostic for RiskError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("RiskError", self.to_string())
     }
 }

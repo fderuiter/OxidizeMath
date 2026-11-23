@@ -9,7 +9,10 @@ pub mod bet_size;
 pub mod correlated_risk;
 pub mod market_devig;
 pub mod market_execution;
+#[cfg(feature = "applied")]
+pub mod markowitz;
 pub mod parrondo;
+pub mod tail_risk;
 #[cfg(test)]
 mod tests;
 

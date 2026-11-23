@@ -1,8 +1,20 @@
-//! Kelly Criterion Bet Size, Synchronized Odds, Solvency Barrier, and Closing Line Value Calculator.
+//! Kelly Criterion Capital Sizing, Synchronized Odds, Solvency Barrier, and Closing Line Value Calculator.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "bet_size/export.rs"]
+mod export;
+#[path = "bet_size/state.rs"]
+mod state;
+#[path = "bet_size/ui.rs"]
+mod ui;
+
+#[cfg(test)]
+#[path = "bet_size/tests.rs"]
+mod tests;
+
 use crate::framework::{ExportCapabilities, InteractiveTool};
+use crate::web_io::PlatformInstant;
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::error::KellyError;
@@ -18,13 +30,6 @@ use math_explorer::pure_math::statistics::validation::{
 };
 use std::sync::mpsc::Receiver;
 
-#[path = "bet_size/export.rs"]
-mod export;
-#[path = "bet_size/state.rs"]
-mod state;
-#[path = "bet_size/ui.rs"]
-mod ui;
-
 pub(super) const PROBABILITY_MIN: f64 = 0.0;
 pub(super) const PROBABILITY_MAX: f64 = 100.0;
 pub(super) const DECIMAL_ODDS_MIN: f64 = 1.01;
@@ -38,6 +43,8 @@ pub(super) const IMPLIED_PROB_MIN: f64 = 0.1;
 pub(super) const IMPLIED_PROB_MAX: f64 = 99.0;
 pub(super) const BANKROLL_MIN: f64 = 1.0;
 pub(super) const BANKROLL_MAX: f64 = 1_000_000.0;
+pub(crate) const DEFAULT_CLOSING_DECIMAL: f64 = 1.91;
+pub(crate) const DEFAULT_DRAWDOWN_FLOOR_PCT: f64 = 50.0;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(crate) enum OddsFormat {
@@ -75,9 +82,6 @@ pub(super) fn resolve_odds_for(
     }
 }
 
-pub(crate) const DEFAULT_CLOSING_DECIMAL: f64 = 1.91;
-pub(crate) const DEFAULT_DRAWDOWN_FLOOR_PCT: f64 = 50.0;
-
 #[derive(Debug, Clone)]
 pub(crate) struct KellyStrategyRow {
     pub label: String,
@@ -88,7 +92,7 @@ pub(crate) struct KellyStrategyRow {
     pub barrier_bound: Option<f64>,
 }
 
-/// Interactive Kelly Criterion bet-sizing calculator supporting synchronized odds formats and growth curves.
+/// Interactive Kelly capital-sizing calculator supporting synchronized odds formats, growth curves, solvency bounds, and CLV.
 pub struct BetSizeCalculatorTool {
     pub(crate) probability_input: f64,
     pub(crate) odds_format: OddsFormat,
@@ -111,6 +115,9 @@ pub struct BetSizeCalculatorTool {
     pub(crate) zero_line_points: [PlotPoint; 2],
     pub(crate) strategy_rows: Vec<KellyStrategyRow>,
     pub(crate) ev_per_unit: Option<f64>,
+    pub(crate) optimal_f_star: Option<f64>,
+    pub(crate) optimal_growth_rate: f64,
+    pub(crate) last_compute_ms: f64,
     pub(crate) lundberg_summary: Option<LundbergSolution>,
     pub(crate) sample_size_95: Option<SampleSize95>,
     pub(crate) clv_audit: Option<Result<(f64, ClvMetrics), &'static str>>,
@@ -135,13 +142,16 @@ impl Default for BetSizeCalculatorTool {
             closing_line_enabled: false,
             closing_for_decimal: DEFAULT_CLOSING_DECIMAL,
             closing_against_decimal: DEFAULT_CLOSING_DECIMAL,
-            growth_curve_points: Vec::new(),
-            quarter_marker: Vec::new(),
-            half_marker: Vec::new(),
-            full_marker: Vec::new(),
+            growth_curve_points: Vec::with_capacity(121),
+            quarter_marker: Vec::with_capacity(1),
+            half_marker: Vec::with_capacity(1),
+            full_marker: Vec::with_capacity(1),
             zero_line_points: [PlotPoint::new(0.0, 0.0), PlotPoint::new(0.25, 0.0)],
-            strategy_rows: Vec::new(),
+            strategy_rows: Vec::with_capacity(3),
             ev_per_unit: None,
+            optimal_f_star: None,
+            optimal_growth_rate: 0.0,
+            last_compute_ms: 0.0,
             lundberg_summary: None,
             sample_size_95: None,
             clv_audit: None,
@@ -209,7 +219,10 @@ impl BetSizeCalculatorTool {
             match marker_slot {
                 0 => self.quarter_marker.push(pt),
                 1 => self.half_marker.push(pt),
-                _ => self.full_marker.push(pt),
+                _ => {
+                    self.optimal_growth_rate = g;
+                    self.full_marker.push(pt);
+                }
             }
         }
         self.strategy_rows.push(KellyStrategyRow {
@@ -267,6 +280,8 @@ impl BetSizeCalculatorTool {
         self.full_marker.clear();
         self.strategy_rows.clear();
         self.ev_per_unit = None;
+        self.optimal_f_star = None;
+        self.optimal_growth_rate = 0.0;
         self.lundberg_summary = None;
         self.sample_size_95 = None;
         self.clv_audit = None;
@@ -281,6 +296,7 @@ impl BetSizeCalculatorTool {
         ev: f64,
         f_domain_cap: f64,
     ) {
+        self.optimal_f_star = Some(fk.value());
         let f_max = (fk.value() * 2.25).clamp(0.05_f64.min(f_domain_cap), f_domain_cap);
         self.populate_growth_curve(prob, odds, f_max);
         if let Ok(qk) = variants::quarter_kelly(prob, odds) {
@@ -300,6 +316,7 @@ impl BetSizeCalculatorTool {
     }
 
     pub(crate) fn recalculate(&mut self) {
+        let start = PlatformInstant::now();
         self.reset_cached_outputs();
 
         let prob = match UnitInterval::new(self.probability_input / 100.0) {
@@ -320,8 +337,7 @@ impl BetSizeCalculatorTool {
         let ev = expected_value(&prob, &odds);
         self.ev_per_unit = Some(ev);
         self.recompute_clv_audit(&odds);
-        let b = odds.net_profit_multiplier();
-        let f_domain_cap = (0.98 / b).clamp(1e-4, 0.98);
+        let f_domain_cap = (0.98 / odds.net_profit_multiplier()).clamp(1e-4, 0.98);
 
         let full_kelly_opt = if ev > 0.0 {
             kelly_fraction(&prob, &odds).ok()
@@ -331,8 +347,7 @@ impl BetSizeCalculatorTool {
         if let Some(fk) = full_kelly_opt {
             self.populate_positive_edge_metrics(&prob, &odds, &fk, ev, f_domain_cap);
         } else {
-            let f_max = f_domain_cap.min(0.50);
-            self.populate_growth_curve(&prob, &odds, f_max);
+            self.populate_growth_curve(&prob, &odds, f_domain_cap.min(0.50));
             self.strategy_rows.push(KellyStrategyRow {
                 label: "No Wager (No Edge)".to_string(),
                 fraction: 0.0,
@@ -342,6 +357,7 @@ impl BetSizeCalculatorTool {
                 barrier_bound: None,
             });
         }
+        self.last_compute_ms = start.elapsed().as_secs_f64() * 1000.0;
     }
 }
 
@@ -366,8 +382,20 @@ impl InteractiveTool for BetSizeCalculatorTool {
         self.has_valid_state()
     }
 
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("expected_value", self.ev_per_unit.unwrap_or(0.0)),
+            ("optimal_fraction", self.optimal_f_star.unwrap_or(0.0)),
+            ("optimal_growth_rate", self.optimal_growth_rate),
+        ]
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         self.build_export_datasets()
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_export_primitives()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -395,8 +423,6 @@ impl InteractiveTool for BetSizeCalculatorTool {
     }
 }
 
-// [cite:modular_polynomials_review]
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "BetSizeCalculatorTool",
@@ -407,6 +433,4 @@ inventory::submit! {
     }
 }
 
-#[cfg(test)]
-#[path = "bet_size/tests.rs"]
-mod tests;
+// [cite:modular_polynomials_review]

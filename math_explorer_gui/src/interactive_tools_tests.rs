@@ -144,6 +144,13 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool,
         >(ctx);
+        exercise_interactive_tool::<crate::tabs::financial_math::tail_risk::TailRiskDrawdownTool>(
+            ctx,
+        );
+        #[cfg(feature = "applied")]
+        exercise_interactive_tool::<crate::tabs::financial_math::markowitz::MarkowitzFrontierTool>(
+            ctx,
+        );
     }
 
     #[test]

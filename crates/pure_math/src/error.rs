@@ -477,6 +477,7 @@ pub use crate::pure_math::{
     elliptic_curves::EllipticCurveError,
     hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
+    statistics::risk::RiskError,
     tensor::types::TensorError,
 };
 pub use sports::{EloError, MatchModelError};

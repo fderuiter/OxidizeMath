@@ -35,6 +35,10 @@ pub mod win_ratio;
 /// using Bateman functions and multi-dose superposition.
 pub mod pharmacokinetics;
 
+/// Constrained and unconstrained Markowitz mean-variance portfolio optimization,
+/// efficient frontiers, and maximum-Sharpe tangency capital allocation.
+pub mod portfolio;
+
 /// Logic for merging Low-Rank Adaptation (LoRA) weights for Large Language Models
 /// (LLMs), including ensemble composition.
 pub mod lorahub;
