@@ -1,11 +1,13 @@
-// @explorer_feature = "biology"
-// @explorer_order = 40
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::async_sim::SimWorkerState;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
 pub mod atlas;
+mod atlas_bridge;
+pub mod gray_scott_atlas;
 #[cfg(test)]
 mod legacy_runner;
 pub mod lenia;
@@ -19,6 +21,10 @@ pub mod ui;
 #[cfg(test)]
 pub use atlas::{
     classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+};
+#[cfg(test)]
+pub use gray_scott_atlas::{
+    classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
 };
 #[cfg(test)]
 pub use lenia::LeniaTool;
@@ -133,6 +139,14 @@ impl ExplorerTab for MorphogenesisTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "morphogenesis",
+        order: 40,
+        build: || Box::new(MorphogenesisTab::default()),
     }
 }
 

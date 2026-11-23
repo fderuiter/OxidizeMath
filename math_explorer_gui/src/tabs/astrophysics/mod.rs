@@ -1,9 +1,10 @@
-// @explorer_feature = "physics"
-// @explorer_order = 16
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use math_explorer::physics::astrophysics::HaloProfile;
 
+pub mod challenge;
 pub mod galactic_orbits_tool;
 mod galactic_orbits_ui;
 pub mod rotation_curve_tool;
@@ -112,10 +113,6 @@ impl ExplorerTab for AstrophysicsTab {
         self.framework.load_state(state);
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework.focused_canvas_id()
-    }
-
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
     }
@@ -126,6 +123,14 @@ impl ExplorerTab for AstrophysicsTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "astrophysics",
+        order: 16,
+        build: || Box::new(AstrophysicsTab::default()),
     }
 }
 

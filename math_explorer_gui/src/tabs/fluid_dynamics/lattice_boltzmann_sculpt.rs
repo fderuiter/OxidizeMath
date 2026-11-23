@@ -420,6 +420,37 @@ fn parse_naca_action(action: &str, params: &HashMap<String, f64>) -> (u16, f64) 
     (code, aoa)
 }
 
+pub(crate) fn apply_lbm_sculpt_payload(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    active_profile_param: &mut f64,
+    stamped_airfoil: &mut Option<(u16, f64)>,
+    payload: &SculptStatePayload,
+    params: &HashMap<String, f64>,
+) -> bool {
+    if payload.rle_mask.is_empty() {
+        return false;
+    }
+    let w = solver.width();
+    let h = solver.height();
+    let Ok(bytes) = crate::framework::decode_rle_mask(&payload.rle_mask, w * h) else {
+        return false;
+    };
+    for y in 0..h {
+        for x in 0..w {
+            solver.set_obstacle(
+                x,
+                y,
+                bytes[math_commons::math_kernel::types::flatten_2d_index(x, y, w)] != 0,
+            );
+        }
+    }
+    let profile = *params.get("naca_profile").unwrap_or(&0.0);
+    let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+    *active_profile_param = profile;
+    *stamped_airfoil = (profile >= 1.0).then_some((profile.round() as u16, aoa));
+    true
+}
+
 pub(crate) fn apply_lbm_custom_action(
     solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
     stamped_airfoil: &mut Option<(u16, f64)>,

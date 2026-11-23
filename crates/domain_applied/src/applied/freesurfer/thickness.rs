@@ -92,9 +92,7 @@ fn update_min_distance(point: &[f64; 3], verts: &[[f64; 3]], mut min_distance: f
 /// # use domain_applied::__doctest_facade as math_explorer;
 /// use math_explorer::applied::freesurfer::{SpatialGrid, Surface};
 ///
-/// let surface = Surface {
-///     vertices: vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
-/// };
+/// let surface = Surface::from_vertices(vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]);
 /// let grid = SpatialGrid::from_surface(&surface);
 /// assert_eq!(grid.shortest_distance(&[0.0, 3.0, 4.0]), 5.0);
 /// ```
@@ -325,7 +323,7 @@ fn point_to_surface_distance(point: &[f64; 3], surface: &Surface) -> f64 {
 ///
 /// For repeated or whole-mesh queries across $V$ vertices, prefer pre-indexing both surfaces once
 /// with [`SpatialGrid::from_surface`] and calling [`cortical_thickness_with_grid`],
-/// [`cortical_thickness_into`], or [`cortical_thickness_mesh`].
+/// [`cortical_thickness_into`], [`cortical_thickness_mesh`], or [`cortical_thickness_map`].
 #[verified_engine::verified]
 pub fn cortical_thickness(
     v_w: &[f64; 3],
@@ -399,6 +397,14 @@ pub fn cortical_thickness_mesh(white_surface: &Surface, pial_surface: &Surface) 
     out
 }
 
+/// Computes symmetric cortical thickness across all corresponding `(white, pial)` vertex pairs,
+/// constructing a uniform [`SpatialGrid`] once per surface mesh.
+#[must_use]
+#[verified_engine::verified]
+pub fn cortical_thickness_map(white_surface: &Surface, pial_surface: &Surface) -> Vec<f64> {
+    cortical_thickness_mesh(white_surface, pial_surface)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,16 +422,14 @@ mod tests {
 
     #[test]
     fn test_empty_and_zero_extent_surfaces() {
-        let empty = Surface { vertices: vec![] };
+        let empty = Surface::from_vertices(vec![]);
         let empty_grid = SpatialGrid::from_surface(&empty);
         let q0 = [1.0, 2.0, 3.0];
         assert_eq!(point_to_surface_distance(&q0, &empty), f64::INFINITY);
         assert_eq!(empty_grid.shortest_distance(&q0), f64::INFINITY);
 
-        let single = Surface { vertices: vec![q0] };
-        let coincident = Surface {
-            vertices: vec![q0; 3],
-        };
+        let single = Surface::from_vertices(vec![q0]);
+        let coincident = Surface::from_vertices(vec![q0; 3]);
         let g1 = SpatialGrid::from_surface(&single);
         let g2 = SpatialGrid::from_surface(&coincident);
         let q1 = [4.0, 6.0, 3.0];
@@ -437,9 +441,7 @@ mod tests {
 
     #[test]
     fn test_nan_and_infinite_queries() {
-        let surface = Surface {
-            vertices: vec![[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]],
-        };
+        let surface = Surface::from_vertices(vec![[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]);
         let grid = SpatialGrid::from_surface(&surface);
         for d in 0..3 {
             let mut nan_pt = [0.0; 3];
@@ -463,7 +465,7 @@ mod tests {
                 ]
             })
             .collect();
-        let surface = Surface { vertices };
+        let surface = Surface::from_vertices(vertices);
         let grid = SpatialGrid::from_surface(&surface);
         for j in 0..50 {
             let q = [
@@ -476,12 +478,14 @@ mod tests {
             assert_eq!(expected, grid.shortest_distance(&q));
         }
 
-        let sparse = Surface {
-            vertices: vec![[100.0, 100.0, 100.0], [-100.0, -100.0, -100.0]],
-        };
+        let sparse = Surface::from_vertices(vec![[100.0, 100.0, 100.0], [-100.0, -100.0, -100.0]]);
         let sparse_grid = SpatialGrid::from_surface(&sparse);
         for q in [[0.0, 0.0, 0.0], [500.0, -300.0, 200.0]] {
             assert_eq!(naive_dist(&q, &sparse), sparse_grid.shortest_distance(&q));
         }
+        assert_eq!(
+            cortical_thickness_map(&surface, &sparse),
+            cortical_thickness_mesh(&surface, &sparse)
+        );
     }
 }
