@@ -407,17 +407,7 @@ mod tests {
         assert!(ci_yaml.contains(
             "- name: Run Workspace Tests (Native)\n        if: runner.os != 'Linux' && matrix.target != 'wasm32-unknown-unknown'\n        run: cargo test --workspace --lib --tests --all-features"
         ));
-
-        for preflight_cmd in [
-            "cargo run -p unified_verification --release -- check-profiles",
-            "cargo run -p unified_verification --release -- check-duplicates",
-            "cargo run -p unified_verification --release -- check-api-drift",
-        ] {
-            assert!(
-                ci_yaml.contains(preflight_cmd),
-                "ci.yml missing pre-flight command: {preflight_cmd}"
-            );
-        }
+        crate::ci_filter_tests::assert_ci_static_and_dedup_parity(&ci_yaml);
     }
 
     #[test]

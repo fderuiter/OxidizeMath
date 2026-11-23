@@ -102,14 +102,27 @@ fn parse_case_arms(case_body: &str) -> Vec<CaseArm> {
 }
 
 pub(super) fn extract_detect_changes_step(ci_yaml: &str) -> (String, Vec<Vec<CaseArm>>) {
-    let start = ci_yaml
+    let job_start = ci_yaml
+        .find("\n  detect-changes:\n")
+        .expect("ci.yml missing top-level detect-changes job");
+    let preflight_start = ci_yaml[job_start..]
+        .find("\n  pre-flight:\n")
+        .expect("ci.yml missing pre-flight job after detect-changes")
+        + job_start;
+    let detect_job = &ci_yaml[job_start..preflight_start];
+    assert!(
+        detect_job.contains("timeout-minutes: 5"),
+        "detect-changes job must set timeout-minutes: 5"
+    );
+    assert!(
+        !detect_job.contains("Set up Rust") && !detect_job.contains("cargo "),
+        "detect-changes job must remain bash-only without Rust or Cargo steps"
+    );
+
+    let step_offset = detect_job
         .find("- name: Detect Scoped Change Paths")
-        .expect("ci.yml missing Detect Scoped Change Paths step");
-    let rest = &ci_yaml[start..];
-    let end = rest
-        .find("- name: Set up Rust")
-        .expect("ci.yml missing Set up Rust step after Detect Scoped Change Paths");
-    let step = &rest[..end];
+        .expect("detect-changes job missing Detect Scoped Change Paths step");
+    let step = &detect_job[step_offset..];
 
     let mut blocks = Vec::new();
     let marker = "case \"$file_path\" in\n";
@@ -151,6 +164,82 @@ pub(super) fn evaluate_pull_request_diff(
     (papers_changed, installer_changed)
 }
 
+pub(super) fn assert_ci_static_and_dedup_parity(ci_yaml: &str) {
+    for required_cmd in [
+        "cargo build -p unified_verification",
+        "cargo run -p unified_verification -- batch-static",
+        "cargo run -p unified_verification -- verify-suite --coverage-only",
+        "- name: Build (Native)\n        if: runner.os != 'Linux' && matrix.target != 'wasm32-unknown-unknown'",
+    ] {
+        assert!(
+            ci_yaml.contains(required_cmd),
+            "ci.yml missing expected CI command: {required_cmd}"
+        );
+    }
+    for forbidden in [
+        "unified_verification --release",
+        "name: Check Workspace (WASM)",
+        "name: Check Workspace Tests (WASM)",
+    ] {
+        assert!(
+            !ci_yaml.contains(forbidden),
+            "ci.yml must not retain redundant step or release verification flag: {forbidden}"
+        );
+    }
+}
+
+fn slice_job_block<'a>(ci_yaml: &'a str, job_id: &str, next_job_id: Option<&str>) -> &'a str {
+    let header = format!("\n  {job_id}:\n");
+    let start = ci_yaml
+        .find(&header)
+        .unwrap_or_else(|| panic!("ci.yml missing job '{job_id}'"));
+    match next_job_id {
+        Some(next) => {
+            let next_header = format!("\n  {next}:\n");
+            let rel_end = ci_yaml[start..]
+                .find(&next_header)
+                .unwrap_or_else(|| panic!("ci.yml missing job '{next}' after '{job_id}'"));
+            &ci_yaml[start..start + rel_end]
+        }
+        None => &ci_yaml[start..],
+    }
+}
+
+fn assert_parallel_dag_invariants(ci_yaml: &str) {
+    let preflight = slice_job_block(ci_yaml, "pre-flight", Some("build-and-test"));
+    let build_and_test = slice_job_block(ci_yaml, "build-and-test", Some("compile-papers"));
+    let compile_papers = slice_job_block(ci_yaml, "compile-papers", Some("feature-matrix"));
+    let feature_matrix = slice_job_block(ci_yaml, "feature-matrix", Some("package"));
+    let package = slice_job_block(ci_yaml, "package", Some("deploy-pages"));
+    let deploy_pages = slice_job_block(ci_yaml, "deploy-pages", Some("publish-release"));
+    let publish_release = slice_job_block(ci_yaml, "publish-release", None);
+
+    for (job_name, block) in [
+        ("pre-flight", preflight),
+        ("build-and-test", build_and_test),
+        ("feature-matrix", feature_matrix),
+    ] {
+        assert!(
+            !block.contains("\n    needs:"),
+            "{job_name} must start immediately without job-level needs"
+        );
+    }
+    assert!(!preflight.contains("\n    outputs:"));
+    assert!(compile_papers.contains("\n    needs: detect-changes\n"));
+    assert!(compile_papers.contains("needs.detect-changes.outputs.papers_changed == 'true'"));
+    assert!(package.contains("\n    needs: detect-changes\n"));
+    assert!(package.contains("needs.detect-changes.outputs.installer_changed == 'true'"));
+    assert!(!ci_yaml.contains("needs.pre-flight.outputs."));
+    assert!(
+        deploy_pages.contains(
+            "\n    needs: [pre-flight, build-and-test, compile-papers, feature-matrix]\n"
+        )
+    );
+    assert!(publish_release.contains(
+        "\n    needs: [pre-flight, build-and-test, package, compile-papers, feature-matrix]\n"
+    ));
+}
+
 pub(super) fn assert_detect_changes_invariants(ci_yaml: &str, step: &str) {
     for env_binding in ["EVENT_NAME:", "BASE_SHA:", "HEAD_SHA:"] {
         assert!(
@@ -180,6 +269,7 @@ pub(super) fn assert_detect_changes_invariants(ci_yaml: &str, step: &str) {
         "stale package skip message must be updated"
     );
     assert!(ci_yaml.contains("skipping ${{ matrix.target }} installer build on pull_request."));
+    assert_parallel_dag_invariants(ci_yaml);
 }
 
 pub(super) fn assert_workspace_members_parity(blocks: &[Vec<CaseArm>], root_toml: &str) {
