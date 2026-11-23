@@ -1,4 +1,4 @@
-# ADR 0045: Closed-Form Schwarzschild 4D Connection, Geodesic Bundle, and Relativistic Jet Workbench
+# ADR 20261123: Closed-Form Schwarzschild 4D Connection, Geodesic Bundle, and Relativistic Jet Workbench
 
 ## Status
 

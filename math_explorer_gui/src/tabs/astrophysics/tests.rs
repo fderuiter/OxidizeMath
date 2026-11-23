@@ -141,6 +141,17 @@ fn test_relativistic_jet_lab_verified_zero_alloc_and_beaming_benchmarks() {
     assert!(!lab.has_finite_parameters());
     FiniteStateGuard::clamp_parameters(&mut lab);
     assert!(lab.has_finite_parameters());
+
+    assert!(lab.cfg.snapshot_manager.add_snapshot(
+        "Pinned jet",
+        "beta=0.90",
+        vec![crate::framework::TraceSeries::new(
+            "lobe",
+            vec![[0.0, 0.0], [1.0, 1.0]]
+        )],
+    ));
+    assert!(lab.save_state().unwrap().contains("snapshot_manager"));
+    assert!(!lab.save_url_state().unwrap().contains("snapshot_manager"));
 }
 
 #[cfg(target_arch = "wasm32")]

@@ -265,6 +265,13 @@ impl InteractiveTool for RelativisticJetBeamingLab {
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&self.cfg).ok()
     }
+    fn save_recovery_state(&self) -> Option<String> {
+        let recovery_cfg = RelativisticJetState {
+            snapshot_manager: TraceSnapshotManager::new(),
+            ..self.cfg
+        };
+        serde_json::to_string(&recovery_cfg).ok()
+    }
     fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
         let parsed: RelativisticJetState = serde_json::from_str(state)

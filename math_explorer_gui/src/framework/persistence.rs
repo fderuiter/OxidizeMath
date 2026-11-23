@@ -142,15 +142,20 @@ struct FrameworkStateDeserialize {
 
 pub(super) fn capture_isolated_tool_datasets(
     tool: &dyn InteractiveTool,
-) -> Vec<(String, Vec<[f64; 2]>)> {
-    let prev = egui_plot::get_last_plot_datasets();
+) -> Vec<(String, egui_plot::SharedPoints)> {
+    let prev = egui_plot::get_last_plot_shared_datasets();
     let prev_3d = egui_plot::get_last_plot_datasets_3d();
     let prev_prims = egui_plot::get_last_plot_primitives();
     egui_plot::clear_last_plot_datasets();
-    let datasets = tool.export_datasets();
+    egui_plot::clear_last_plot_primitives();
+    let datasets: Vec<(String, egui_plot::SharedPoints)> = tool
+        .export_datasets()
+        .into_iter()
+        .map(|(name, pts)| (name, egui_plot::SharedPoints::from(pts)))
+        .collect();
     egui_plot::clear_last_plot_datasets();
     if !prev.is_empty() {
-        egui_plot::append_last_plot_datasets(&prev);
+        egui_plot::append_last_plot_shared_datasets(&prev);
     }
     if !prev_3d.is_empty() {
         egui_plot::append_last_plot_datasets_3d(&prev_3d);
@@ -161,15 +166,18 @@ pub(super) fn capture_isolated_tool_datasets(
     datasets
 }
 
-fn capture_isolated_tool_datasets_3d(tool: &dyn InteractiveTool) -> Vec<(String, Vec<[f64; 3]>)> {
-    let prev = egui_plot::get_last_plot_datasets();
+pub(super) fn capture_isolated_tool_datasets_3d(
+    tool: &dyn InteractiveTool,
+) -> Vec<(String, Vec<[f64; 3]>)> {
+    let prev = egui_plot::get_last_plot_shared_datasets();
     let prev_3d = egui_plot::get_last_plot_datasets_3d();
     let prev_prims = egui_plot::get_last_plot_primitives();
     egui_plot::clear_last_plot_datasets();
+    egui_plot::clear_last_plot_primitives();
     let datasets_3d = tool.export_datasets_3d();
     egui_plot::clear_last_plot_datasets();
     if !prev.is_empty() {
-        egui_plot::append_last_plot_datasets(&prev);
+        egui_plot::append_last_plot_shared_datasets(&prev);
     }
     if !prev_3d.is_empty() {
         egui_plot::append_last_plot_datasets_3d(&prev_3d);
@@ -236,8 +244,10 @@ impl SimulationFramework {
         self.rev_cache.framework_revision = self.rev_cache.framework_revision.wrapping_add(1);
         self.rev_cache.untracked_tool_revision =
             self.rev_cache.untracked_tool_revision.wrapping_add(1);
+        self.rev_cache.untracked_url_digest.set(None);
         *self.rev_cache.active_tool_json.borrow_mut() = None;
         self.rev_cache.last_snapshot_rev = None;
+        self.rev_cache.last_snapshot_source_datasets.clear();
     }
 
     /// Computes a deterministic O(1) revision token for this framework's persisted state.
@@ -382,12 +392,15 @@ impl SimulationFramework {
             self.current_valid_plot_datasets = refreshed.clone();
             self.current_valid_plot_datasets_3d = refreshed_3d;
             self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
-            self.last_valid_snapshot = Some(StateSnapshot {
+            self.rev_cache.last_snapshot_source_datasets = refreshed.clone();
+            let mut snap = StateSnapshot {
                 tool_state: recovery,
                 plot_datasets: refreshed,
                 step_index: self.step_counter,
                 timestamp: crate::web_io::PlatformInstant::now(),
-            });
+            };
+            snap.enforce_memory_budget();
+            self.last_valid_snapshot = Some(snap);
         }
     }
 
@@ -432,12 +445,15 @@ impl SimulationFramework {
         self.current_valid_plot_datasets = initial_datasets.clone();
         self.current_valid_plot_datasets_3d = initial_datasets_3d;
         self.rev_cache.last_snapshot_rev = (rev > 0).then_some((new_tool.name(), rev));
-        self.last_valid_snapshot = Some(StateSnapshot {
+        self.rev_cache.last_snapshot_source_datasets = initial_datasets.clone();
+        let mut snap = StateSnapshot {
             tool_state: recovery_state,
             plot_datasets: initial_datasets,
             step_index: 0,
             timestamp: crate::web_io::PlatformInstant::now(),
-        });
+        };
+        snap.enforce_memory_budget();
+        self.last_valid_snapshot = Some(snap);
         scientific_metadata::citation_registry::CitationRegistry::register(
             new_tool.name().to_string(),
             new_tool.theory().theory_citation(),
