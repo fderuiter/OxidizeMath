@@ -1,4 +1,4 @@
-# ADR 0037: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
+# ADR 0038: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
 
 ## Status
 
