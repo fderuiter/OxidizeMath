@@ -5,6 +5,7 @@ use super::kspace_types::{
     KSpaceMaskPreset, MriKSpaceSharedParams, MriKSpaceToolState, PhantomPreset, ISOCHROMAT_COUNT,
     MAX_TRAJECTORY_POINTS, STUDIO_FOV_METERS,
 };
+use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::mri::bloch::BlochSimulator;
 use math_explorer::physics::mri::proton;
 use math_explorer::physics::mri::reconstruction::Fft2dWorkspace;
@@ -20,6 +21,8 @@ use std::sync::Arc;
 pub(crate) const DELTA_B0_POCKET_TESLA: f64 = 2.2e-7;
 /// Sub-voxel inhomogeneity spread fraction driving reversible $T_2^*$ dephasing.
 pub(crate) const ISOCHROMAT_SPREAD_FRAC: f64 = 0.85;
+/// Per-step inhomogeneity spread fraction matching `[-spread, +spread]` across 8 sonification voices.
+pub(crate) const PROBE_SPREAD_FRAC: f64 = ISOCHROMAT_SPREAD_FRAC * (2.0 / 7.0);
 /// Worker integration step `dt` in seconds (`2 ms`).
 pub(crate) const BLOCH_STEP_DT: f64 = 0.002;
 
@@ -53,6 +56,8 @@ pub struct MriKSpaceRunner {
     pub(crate) dft_spikes: Vec<Complex<f64>>,
     pub(crate) is_identity_kspace: bool,
     pub(crate) spins: Vec<[Vector3<f64>; ISOCHROMAT_COUNT]>,
+    pub(crate) probe_spins: [Vector3<f64>; crate::audio::frame::MAX_VOICES],
+    pub(crate) probe_voxel_idx: usize,
     pub(crate) phasor_x: Vec<Complex<f64>>,
     pub(crate) phasor_y: Vec<Complex<f64>>,
     pub(crate) transverse_grid: DMatrix<Complex<f64>>,
@@ -103,6 +108,8 @@ impl MriKSpaceRunner {
             dft_spikes: vec![Complex::new(0.0, 0.0); total],
             is_identity_kspace: true,
             spins: vec![[Vector3::zeros(); ISOCHROMAT_COUNT]; total],
+            probe_spins: [Vector3::zeros(); crate::audio::frame::MAX_VOICES],
+            probe_voxel_idx: 0,
             phasor_x: vec![Complex::new(1.0, 0.0); size],
             phasor_y: vec![Complex::new(1.0, 0.0); size],
             transverse_grid: DMatrix::zeros(size, size),
@@ -204,6 +211,7 @@ impl MriKSpaceRunner {
         self.current_time = te;
         self.echo_tau = None;
         self.cached_sequence_key = Self::sequence_key(cfg);
+        self.reseed_probe_for_voxel(cfg.selected_voxel);
         self.selected_trajectory.clear();
         let sel_m = self.net_voxel_spin(cfg.selected_voxel);
         self.selected_trajectory.push_back(sel_m);
@@ -232,6 +240,10 @@ impl MriKSpaceRunner {
                 spin.x = -spin.x;
                 spin.z = -spin.z;
             }
+        }
+        for spin in &mut self.probe_spins {
+            spin.x = -spin.x;
+            spin.z = -spin.z;
         }
         self.record_trajectory_point(selected_voxel);
         self.reconstruct_in_place(gx, gy, selected_voxel);
@@ -270,7 +282,10 @@ impl MriKSpaceRunner {
     pub(crate) fn advance_spatial_bloch(&mut self, dt: f64, selected_voxel: [usize; 2]) {
         let sel_r = selected_voxel[0].min(self.size.saturating_sub(1));
         let sel_c = selected_voxel[1].min(self.size.saturating_sub(1));
-        let sel_idx = sel_r * self.size + sel_c;
+        let sel_idx = flatten_2d_index(sel_c, sel_r, self.size);
+        if sel_idx != self.probe_voxel_idx {
+            self.reseed_probe_for_voxel(selected_voxel);
+        }
         self.bloch_scratch.m0 = self.rho[sel_idx];
         self.bloch_scratch.t1 = self.t1[sel_idx].max(1e-4);
         self.bloch_scratch.t2 = self.t2[sel_idx].max(1e-4);
@@ -278,6 +293,15 @@ impl MriKSpaceRunner {
         self.bloch_scratch.magnetization = self.spins[sel_idx][1];
         TimeStepper::step_with(&mut self.bloch_scratch, &mut self.rk4_solver, dt);
 
+        self.bloch_scratch.advance_isochromat_grid(
+            std::slice::from_mut(&mut self.probe_spins),
+            &self.rho[sel_idx..=sel_idx],
+            &self.exp_t1[sel_idx..=sel_idx],
+            &self.exp_t2[sel_idx..=sel_idx],
+            &self.delta_b0[sel_idx..=sel_idx],
+            PROBE_SPREAD_FRAC,
+            dt,
+        );
         self.bloch_scratch.advance_isochromat_grid(
             &mut self.spins,
             &self.rho,

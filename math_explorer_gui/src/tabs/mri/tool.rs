@@ -121,6 +121,12 @@ pub struct MriTool {
     pub pulse_config: RfPulseConfig,
     /// Preallocated zero-allocation workspace for pulse sequences.
     pub pulse_workspace: MriPulseWorkspace,
+    /// Latest zero-allocation sonification frame emitted by worker or pulse scrubber.
+    pub latest_sonification: crate::audio::SonificationFrame,
+    /// Scrubbed sample index (`0..=200`) for rotating-frame RF pulse playback.
+    pub pulse_cursor: usize,
+    /// Whether rotating-frame RF pulse audio scrub is actively playing.
+    pub pulse_playing: bool,
     /// Active inverse challenge identifier, if any.
     pub active_challenge: Option<&'static str>,
     theory: MriBlochTheory,
@@ -171,6 +177,13 @@ impl Default for MriTool {
             callout_manager,
             pulse_config,
             pulse_workspace: MriPulseWorkspace::default(),
+            latest_sonification: crate::audio::mappings::bloch_fid_frame(
+                initial_m,
+                Vector3::new(0.0, 0.0, DEFAULT_MRI_BZ),
+                m0,
+            ),
+            pulse_cursor: super::pulse::MRI_PULSE_SAMPLES - 1,
+            pulse_playing: false,
             active_challenge: None,
             theory: MriBlochTheory,
         }
@@ -258,6 +271,8 @@ impl MriTool {
         self.mx_points.clear();
         self.my_points.clear();
         self.mz_points.clear();
+        self.pulse_playing = false;
+        self.pulse_cursor = super::pulse::MRI_PULSE_SAMPLES - 1;
         if self.active_challenge.is_none() {
             self.pulse_config = RfPulseConfig::default();
         }
@@ -268,6 +283,8 @@ impl MriTool {
         if !self.pulse_config.mode.is_continuous() {
             self.recompute_pulse_sequence();
         } else {
+            self.latest_sonification =
+                crate::audio::mappings::bloch_fid_frame(initial_m, default_b, m0);
             sync_mri_callouts(
                 &mut self.callout_manager,
                 MriPulseMode::ContinuousField,
@@ -374,6 +391,11 @@ impl InteractiveTool for MriTool {
         }
         self.history
             .push_back((self.current_time, self.simulator.magnetization));
+        self.latest_sonification = crate::audio::mappings::bloch_fid_frame(
+            self.simulator.magnetization,
+            self.simulator.b_field,
+            self.simulator.m0,
+        );
         self.update_plot_buffers();
     }
 

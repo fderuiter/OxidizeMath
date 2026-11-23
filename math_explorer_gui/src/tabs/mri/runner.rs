@@ -160,13 +160,18 @@ impl SimulationRunner for MriRunner {
             magnetization: m,
             history: self.history.clone(),
         };
+        let sonification = if self.is_finite_state() {
+            crate::audio::mappings::bloch_fid_frame(m, self.simulator.b_field, self.simulator.m0)
+        } else {
+            crate::audio::SonificationFrame::silent()
+        };
         StateSnapshot {
             width: 0,
             height: 0,
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data: vec![self.current_time, m.x, m.y, m.z],
             structured_data: Some(Box::new(snapshot)),
-            sonification: crate::audio::SonificationFrame::silent(),
+            sonification,
         }
     }
 

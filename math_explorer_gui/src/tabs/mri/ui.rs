@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::pulse::MriPulseMode;
+use super::pulse::{MriPulseMode, MRI_PULSE_SAMPLES};
 use super::runner::MriSnapshot;
 use super::tool::MriTool;
 use crate::async_sim::ui::{
@@ -238,6 +238,39 @@ impl MriTool {
         }
     }
 
+    fn draw_pulse_scrub_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut scrubbed = false;
+        ui.horizontal(|ui| {
+            let label = if self.pulse_playing {
+                "⏸ Pause Echo Scrub"
+            } else {
+                "▶ Play Echo Scrub"
+            };
+            if ui.button(label).clicked() {
+                self.pulse_playing = !self.pulse_playing;
+            }
+            let t_ms =
+                self.pulse_workspace.times[self.pulse_cursor.min(MRI_PULSE_SAMPLES - 1)] * 1.0e3;
+            ui.small(format!("t = {t_ms:.1} ms"));
+        });
+        if ui
+            .add(
+                egui::Slider::new(&mut self.pulse_cursor, 0..=(MRI_PULSE_SAMPLES - 1))
+                    .text("Pulse Sample"),
+            )
+            .changed()
+        {
+            self.latest_sonification = self.pulse_workspace.sample_sonification_frame(
+                self.pulse_config.mode,
+                self.pulse_cursor,
+                self.simulator.b_field,
+                self.simulator.m0,
+            );
+            scrubbed = true;
+        }
+        scrubbed
+    }
+
     fn draw_side_panel(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(ui, "controls_panel");
@@ -265,6 +298,26 @@ impl MriTool {
             ui.separator();
             if self.pulse_config.mode.is_continuous() {
                 self.draw_playback_controls(ui, &ctx);
+                let is_paused = !matches!(
+                    self.worker.state(),
+                    SimWorkerState::Running | SimWorkerState::Stepping
+                );
+                crate::audio::render_sonification_panel(
+                    ui,
+                    "mri_bloch",
+                    &self.latest_sonification,
+                    is_paused,
+                );
+                ui.separator();
+            } else {
+                let scrubbed = self.draw_pulse_scrub_controls(ui);
+                let is_paused = !(self.pulse_playing || scrubbed);
+                crate::audio::render_sonification_panel(
+                    ui,
+                    "mri_bloch",
+                    &self.latest_sonification,
+                    is_paused,
+                );
                 ui.separator();
             }
             ui.label(format!("Time: {:.3} s", self.current_time));
@@ -342,6 +395,7 @@ impl MriTool {
     pub(crate) fn show_ui_inside(&mut self, ui: &mut egui::Ui) {
         if self.pulse_config.mode.is_continuous() {
             if let Some(snapshot) = self.worker.update() {
+                self.latest_sonification = snapshot.sonification;
                 if let Some(data) = snapshot
                     .structured_data
                     .as_ref()
@@ -353,6 +407,15 @@ impl MriTool {
                     self.update_plot_buffers();
                 }
             }
+        } else if self.pulse_playing {
+            self.pulse_cursor = (self.pulse_cursor + 1) % MRI_PULSE_SAMPLES;
+            self.latest_sonification = self.pulse_workspace.sample_sonification_frame(
+                self.pulse_config.mode,
+                self.pulse_cursor,
+                self.simulator.b_field,
+                self.simulator.m0,
+            );
+            ui.ctx().request_repaint();
         }
 
         if matches!(

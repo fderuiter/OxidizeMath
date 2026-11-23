@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::kspace_tool::MriKSpaceTool;
-use super::kspace_types::{KSpaceMaskPreset, MriKSpaceSnapshot, PhantomPreset, StudioBrushMode};
+use super::kspace_types::{KSpaceMaskPreset, PhantomPreset, StudioBrushMode};
 use crate::accessibility::{
     lock_canvas_arrow_keys, paint_canvas_focus_ring, register_canvas_accessibility,
 };
@@ -25,25 +25,7 @@ impl MriKSpaceTool {
     pub(crate) fn show_studio_inside(&mut self, ui: &mut egui::Ui) {
         let high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
             == crate::app::ThemeMode::HighContrast;
-        if self.last_high_contrast != Some(high_contrast) {
-            self.last_high_contrast = Some(high_contrast);
-            self.params
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .high_contrast = high_contrast;
-            self.sync_and_notify("sync_view");
-        }
-
-        while let Some(snap) = self.worker.update() {
-            if let Some(data) = snap
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<MriKSpaceSnapshot>())
-            {
-                self.latest = data.clone();
-                self.textures_dirty = true;
-            }
-        }
+        self.poll_worker_snapshots(high_contrast);
 
         if matches!(
             self.worker.state(),

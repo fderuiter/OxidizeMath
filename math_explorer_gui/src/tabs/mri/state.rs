@@ -43,6 +43,13 @@ impl MriTool {
         }
         self.current_time = self.pulse_workspace.times[MRI_PULSE_SAMPLES - 1];
         self.simulator.magnetization = final_m;
+        self.pulse_cursor = self.pulse_cursor.min(MRI_PULSE_SAMPLES - 1);
+        self.latest_sonification = self.pulse_workspace.sample_sonification_frame(
+            self.pulse_config.mode,
+            self.pulse_cursor,
+            self.simulator.b_field,
+            m0,
+        );
         self.update_plot_buffers();
     }
 

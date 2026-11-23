@@ -28,7 +28,8 @@ pub const CHALLENGE_MRI_B0: f64 = 1.5;
 /// Locked echo time `TE` (s) for the Hahn spin-echo challenge.
 pub const CHALLENGE_MRI_TE: f64 = 0.040;
 
-const ISOCHROMAT_OFFSETS_HZ: [f64; HAHN_ISOCHROMAT_COUNT] =
+/// Static-inhomogeneity frequency offsets (`Hz`) across the 9 Hahn spin-echo isochromats.
+pub const ISOCHROMAT_OFFSETS_HZ: [f64; HAHN_ISOCHROMAT_COUNT] =
     [-42.0, -31.5, -21.0, -10.5, 0.0, 10.5, 21.0, 31.5, 42.0];
 
 /// Operating mode of [`super::tool::MriTool`].
@@ -115,6 +116,8 @@ pub struct MriPulseWorkspace {
     pub times: [f64; MRI_PULSE_SAMPLES],
     /// Ensemble-averaged magnetization vectors across the sequence horizon.
     pub trajectory: [Vector3<f64>; MRI_PULSE_SAMPLES],
+    /// Per-sample 9-isochromat spin states recorded during Hahn spin-echo evaluation.
+    pub echo_spins: [[Vector3<f64>; HAHN_ISOCHROMAT_COUNT]; MRI_PULSE_SAMPLES],
     isochromats: [Vector3<f64>; HAHN_ISOCHROMAT_COUNT],
     sim: BlochSimulator,
     rk4: RungeKutta4<Vector3<f64>>,
@@ -126,6 +129,7 @@ impl Default for MriPulseWorkspace {
         Self {
             times: [0.0; MRI_PULSE_SAMPLES],
             trajectory: [m_eq; MRI_PULSE_SAMPLES],
+            echo_spins: [[m_eq; HAHN_ISOCHROMAT_COUNT]; MRI_PULSE_SAMPLES],
             isochromats: [m_eq; HAHN_ISOCHROMAT_COUNT],
             sim: BlochSimulator::new(m_eq, 1.0),
             rk4: RungeKutta4::new(&m_eq),
@@ -194,6 +198,7 @@ impl MriPulseWorkspace {
         self.sim.set_relaxation(t1, t2);
         self.times[0] = 0.0;
         self.trajectory[0] = m_init;
+        self.echo_spins[0] = self.isochromats;
 
         for idx in 1..=steps {
             let t_mid = ((idx as f64) - 0.5) * dt;
@@ -212,8 +217,32 @@ impl MriPulseWorkspace {
             let mean_m = sum / (HAHN_ISOCHROMAT_COUNT as f64);
             self.times[idx] = (idx as f64) * dt;
             self.trajectory[idx] = mean_m;
+            self.echo_spins[idx] = self.isochromats;
         }
         self.trajectory[steps]
+    }
+
+    /// Extracts a zero-allocation sonification frame at trajectory sample `idx` (`0..=200`).
+    #[must_use]
+    pub fn sample_sonification_frame(
+        &self,
+        mode: MriPulseMode,
+        idx: usize,
+        b_field: Vector3<f64>,
+        m0: f64,
+    ) -> crate::audio::SonificationFrame {
+        let clamped = idx.min(MRI_PULSE_SAMPLES - 1);
+        match mode {
+            MriPulseMode::HahnSpinEcho => crate::audio::mappings::hahn_echo_isochromat_frame(
+                &self.echo_spins[clamped],
+                &ISOCHROMAT_OFFSETS_HZ,
+                b_field.z,
+                m0,
+            ),
+            MriPulseMode::InversionPulse | MriPulseMode::ContinuousField => {
+                crate::audio::mappings::bloch_fid_frame(self.trajectory[clamped], b_field, m0)
+            }
+        }
     }
 }
 

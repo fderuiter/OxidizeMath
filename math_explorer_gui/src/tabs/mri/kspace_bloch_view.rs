@@ -21,6 +21,16 @@ impl MriKSpaceTool {
         ui.small(format!(
             "ρ={rho:.2}, T1={t1:.2}s, T2={t2:.3}s, ΔB0={db0:.2e}T"
         ));
+        let is_paused = !matches!(
+            self.worker.state(),
+            crate::async_sim::SimWorkerState::Running | crate::async_sim::SimWorkerState::Stepping
+        );
+        crate::audio::render_sonification_panel(
+            ui,
+            "mri_kspace_studio",
+            &self.latest_sonification,
+            is_paused,
+        );
     }
 
     pub(crate) fn paint_voxel_crosshair(&self, ui: &egui::Ui, rect: egui::Rect) {

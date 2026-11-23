@@ -24,6 +24,8 @@ pub struct MriKSpaceTool {
     pub worker: BackgroundWorker<MriKSpaceRunner>,
     /// Most recent frame snapshot rendered across spatial, k-space, recon, and 3D Bloch views.
     pub latest: MriKSpaceSnapshot,
+    /// Most recent 8-voice sub-voxel sonification frame at `selected_voxel`.
+    pub latest_sonification: crate::audio::SonificationFrame,
     pub(crate) phantom_tex: Option<egui::TextureHandle>,
     pub(crate) kspace_tex: Option<egui::TextureHandle>,
     pub(crate) recon_tex: Option<egui::TextureHandle>,
@@ -42,6 +44,7 @@ impl Default for MriKSpaceTool {
         }));
         let runner = MriKSpaceRunner::new(Arc::clone(&params));
         let initial_snap = runner.get_snapshot();
+        let latest_sonification = initial_snap.sonification;
         let latest = initial_snap
             .structured_data
             .as_ref()
@@ -55,6 +58,7 @@ impl Default for MriKSpaceTool {
             params,
             worker,
             latest,
+            latest_sonification,
             phantom_tex: None,
             kspace_tex: None,
             recon_tex: None,
@@ -108,8 +112,9 @@ impl MriKSpaceTool {
             .config = target_state;
         let params = Arc::clone(&self.params);
         let fresh_runner = MriKSpaceRunner::new(Arc::clone(&params));
-        if let Some(snap) = fresh_runner
-            .get_snapshot()
+        let fresh_snap = fresh_runner.get_snapshot();
+        self.latest_sonification = fresh_snap.sonification;
+        if let Some(snap) = fresh_snap
             .structured_data
             .as_ref()
             .and_then(|d| d.downcast_ref::<MriKSpaceSnapshot>())
@@ -119,6 +124,28 @@ impl MriKSpaceTool {
         self.worker
             .reset_or_respawn(move || MriKSpaceRunner::new(params));
         self.textures_dirty = true;
+    }
+
+    pub(crate) fn poll_worker_snapshots(&mut self, high_contrast: bool) {
+        if self.last_high_contrast != Some(high_contrast) {
+            self.last_high_contrast = Some(high_contrast);
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .high_contrast = high_contrast;
+            self.sync_and_notify("sync_view");
+        }
+        while let Some(snap) = self.worker.update() {
+            self.latest_sonification = snap.sonification;
+            if let Some(data) = snap
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<MriKSpaceSnapshot>())
+            {
+                self.latest = data.clone();
+                self.textures_dirty = true;
+            }
+        }
     }
 
     /// Applies a brush stroke at grid coordinates `(cx, cy)` and dispatches `SimCommand::ApplyBrush`.
@@ -313,8 +340,9 @@ impl InteractiveTool for MriKSpaceTool {
             .config = parsed;
 
         let fresh_runner = MriKSpaceRunner::new(Arc::clone(&self.params));
-        if let Some(snap) = fresh_runner
-            .get_snapshot()
+        let fresh_snap = fresh_runner.get_snapshot();
+        self.latest_sonification = fresh_snap.sonification;
+        if let Some(snap) = fresh_snap
             .structured_data
             .as_ref()
             .and_then(|d| d.downcast_ref::<MriKSpaceSnapshot>())
