@@ -474,8 +474,9 @@ pub use crate::pure_math::{
         evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
         stochastic::StochasticError, transforms::TransformError,
     },
-    differential_geometry::hyperbolic::HyperbolicError,
+    differential_geometry::hyperbolic::Su11HyperbolicError,
     elliptic_curves::EllipticCurveError,
+    hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };

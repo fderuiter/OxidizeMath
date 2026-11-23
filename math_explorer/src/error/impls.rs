@@ -48,6 +48,7 @@ impl Error {
             Self::Optimization(err) => Some(err),
             Self::Ou(err) => Some(err),
             Self::Stochastic(err) => Some(err),
+            Self::Su11Hyperbolic(err) => Some(err),
             Self::Tda(err) => Some(err),
             Self::Tensor(err) => Some(err),
             Self::Transform(err) => Some(err),

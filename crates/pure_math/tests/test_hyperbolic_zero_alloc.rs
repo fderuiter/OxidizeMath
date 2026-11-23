@@ -1,70 +1,67 @@
-//! Zero-allocation verification tests for the SU(1,1) hyperbolic geometry engine.
+//! Zero-allocation integration tests for hyperbolic billiards and Möbius drag updates.
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use num_complex::Complex64;
-use pure_math::pure_math::differential_geometry::hyperbolic::{
-    GeodesicArc, HyperbolicBilliardConfig, HyperbolicBilliardSystem, HyperbolicModel,
-    HyperbolicTilingBuffer, POINCARE_DISK_RADIUS_MAX, gauss_bonnet_triangle, poincare_to_klein,
+use pure_math::pure_math::hyperbolic::{
+    BilliardDomainKind, DiskPoint, HalfPlanePoint, HyperbolicTilingBuffer, MAX_BILLIARD_SEGMENTS,
+    MAX_TILING_POLYGONS, Psl2R, Psu11, TiledPolygon, TilingKind, TwinBilliardSystem,
+    sample_disk_geodesic_into,
 };
-use verified_engine::allocator::{VerifiedAllocator, lock_allocations, unlock_allocations};
-use verified_engine::metrics::{disable_verification, enable_verification};
+use verified_engine::allocator::VerifiedAllocator;
+use verified_engine::engine::VerifiedEngine;
 
 #[global_allocator]
 static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
-fn test_zero_heap_allocations_across_1000_mobius_pan_and_billiard_steps() {
-    let mut tiling = HyperbolicTilingBuffer::with_capacity(256);
-    let tile_count = tiling
-        .configure(7, 3, 3)
-        .expect("pre-allocated {7, 3} tiling");
-    assert!(tile_count > 20);
+fn test_zero_alloc_across_100_billiard_reflections_and_mobius_drags() {
+    let tiling = HyperbolicTilingBuffer::new(TilingKind::Regular { p: 7, q: 3 }, 3)
+        .expect("pre-allocated {7,3} tiling");
+    let mut transformed_tiles = vec![TiledPolygon::default(); MAX_TILING_POLYGONS];
+    let mut arc_scratch = [[0.0_f64; 2]; 24];
 
-    let mut billiards = HyperbolicBilliardSystem::with_history_capacity(
-        HyperbolicBilliardConfig {
-            p: 7,
-            q: 3,
-            initial_pos: Complex64::new(0.06, 0.03),
-            initial_angle: 0.62,
-            epsilon: 1e-6,
-        },
-        512,
+    let mut billiards = TwinBilliardSystem::new(
+        BilliardDomainKind::RegularPolygon { p: 8, q: 3 },
+        1337,
+        1.0e-6,
     )
-    .expect("pre-allocated {7, 3} billiard system");
+    .expect("pre-allocated octagon billiard");
+    let mut seg_scratch = vec![Default::default(); MAX_BILLIARD_SEGMENTS];
+    let mut code_scratch = vec![0u8; MAX_BILLIARD_SEGMENTS];
+    let mut sep_scratch = vec![[0.0_f64; 2]; MAX_BILLIARD_SEGMENTS];
 
-    let mut arc_scratch = [Complex64::new(0.0, 0.0); 17];
+    let mut disk_iso = Psu11::identity();
+    let mut hp_iso = Psl2R::identity();
 
-    enable_verification();
-    lock_allocations();
+    VerifiedEngine::run_verified(|| {
+        for step in 0..100usize {
+            let phase = (step as f64) * 0.05;
+            let from = DiskPoint::new_clamped(0.15 * phase.cos(), 0.15 * phase.sin());
+            let to = DiskPoint::new_clamped(0.18 * (phase + 0.1).cos(), 0.18 * (phase + 0.1).sin());
+            let delta = Psu11::drag_between(from, to);
+            disk_iso = delta.compose(disk_iso);
+            disk_iso.renormalize();
 
-    for step_idx in 0..1_000_usize {
-        let phase = (step_idx as f64) * 0.07;
-        let pan_delta = Complex64::new(0.045 * phase.cos(), 0.045 * phase.sin());
-        let _ = tiling.apply_pan(pan_delta);
+            let hp_from = HalfPlanePoint::new_clamped(0.2 * phase.sin(), 1.0 + 0.1 * phase.cos());
+            let hp_to = HalfPlanePoint::new_clamped(0.25 * phase.cos(), 1.1);
+            hp_iso = Psl2R::drag_between(hp_from, hp_to).compose(hp_iso);
+            hp_iso.renormalize();
 
-        let central = &tiling.polygons()[0];
-        let arc = GeodesicArc::through_points(central.vertices[0], central.vertices[1]);
-        arc.sample_into(HyperbolicModel::Poincare, &mut arc_scratch);
-        let _ = poincare_to_klein(arc_scratch[8]);
-        let _ = gauss_bonnet_triangle(central.center, central.vertices[0], central.vertices[1]);
-
-        billiards.step(0.035);
-    }
-
-    unlock_allocations();
-    disable_verification();
-
-    assert_eq!(tiling.polygons().len(), tile_count);
-    assert!((tiling.view_matrix().determinant() - 1.0).abs() < 1e-11);
-    for poly in tiling.polygons() {
-        for &v in poly.active_vertices() {
-            assert!(v.norm() <= POINCARE_DISK_RADIUS_MAX);
+            let count = tiling.transform_into(disk_iso, &mut transformed_tiles);
+            assert!(count > 0);
+            let first = &transformed_tiles[0];
+            let written =
+                sample_disk_geodesic_into(first.vertices[0], first.vertices[1], &mut arc_scratch);
+            assert_eq!(written, arc_scratch.len());
         }
-    }
-    assert!(billiards.primary_bounces() >= 10);
-    assert!(billiards.primary().pos.norm() <= POINCARE_DISK_RADIUS_MAX);
-    assert!(billiards.twin().pos.norm() <= POINCARE_DISK_RADIUS_MAX);
-    assert!(billiards.latest_sample().separation.is_finite());
-}
 
-// [cite:modular_polynomials_review]
+        billiards.advance_reflections(100);
+        assert!(billiards.total_bounces() >= 100);
+
+        let n_seg = billiards.copy_primary_segments_into(&mut seg_scratch);
+        let n_codes = billiards.copy_edge_hits_into(&mut code_scratch);
+        let n_sep = billiards.copy_separation_series_into(&mut sep_scratch);
+        assert!(n_seg >= 100);
+        assert!(n_codes >= 100);
+        assert!(n_sep >= 100);
+    });
+}

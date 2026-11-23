@@ -107,6 +107,7 @@ impl_error_from!(@cfg "pure_math":
     OptimizationError => Optimization,
     OuError => Ou,
     StochasticError => Stochastic,
+    Su11HyperbolicError => Su11Hyperbolic,
     TdaError => Tda,
     TensorError => Tensor,
     TransformError => Transform,

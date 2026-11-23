@@ -2,7 +2,7 @@
 
 use super::billiards_kernel::propagate_particle;
 use super::{
-    GeodesicArc, HyperbolicError, MAX_BILLIARD_HISTORY, MAX_POLYGON_SIDES, Su11Matrix,
+    GeodesicArc, MAX_BILLIARD_HISTORY, MAX_POLYGON_SIDES, Su11HyperbolicError, Su11Matrix,
     clamp_to_disk, poincare_distance, regular_polygon_inradius, regular_polygon_poincare_radius,
 };
 use num_complex::Complex64;
@@ -138,7 +138,7 @@ pub struct HyperbolicBilliardSystem {
 
 impl HyperbolicBilliardSystem {
     /// Creates a pre-allocated billiard system with default [`MAX_BILLIARD_HISTORY`] ring capacity.
-    pub fn new(config: HyperbolicBilliardConfig) -> Result<Self, HyperbolicError> {
+    pub fn new(config: HyperbolicBilliardConfig) -> Result<Self, Su11HyperbolicError> {
         Self::with_history_capacity(config, MAX_BILLIARD_HISTORY)
     }
 
@@ -146,7 +146,7 @@ impl HyperbolicBilliardSystem {
     pub fn with_history_capacity(
         config: HyperbolicBilliardConfig,
         history_capacity: usize,
-    ) -> Result<Self, HyperbolicError> {
+    ) -> Result<Self, Su11HyperbolicError> {
         let cap = history_capacity.clamp(16, MAX_BILLIARD_HISTORY);
         let z = Complex64::new(0.0, 0.0);
         let mut sys = Self {
@@ -181,9 +181,12 @@ impl HyperbolicBilliardSystem {
 
     /// Rebuilds the $\{p, q\}$ walls and resets both trajectories without reallocating ring buffers.
     #[verified_engine::verified]
-    pub fn reconfigure(&mut self, config: HyperbolicBilliardConfig) -> Result<(), HyperbolicError> {
+    pub fn reconfigure(
+        &mut self,
+        config: HyperbolicBilliardConfig,
+    ) -> Result<(), Su11HyperbolicError> {
         if !config.epsilon.is_finite() || !(1e-12..=0.25).contains(&config.epsilon) {
-            return Err(HyperbolicError::InvalidBilliardConfig {
+            return Err(Su11HyperbolicError::InvalidBilliardConfig {
                 reason: "epsilon must be finite and within [1e-12, 0.25]",
             });
         }
@@ -191,7 +194,7 @@ impl HyperbolicBilliardSystem {
             || !config.initial_pos.re.is_finite()
             || !config.initial_pos.im.is_finite()
         {
-            return Err(HyperbolicError::InvalidBilliardConfig {
+            return Err(Su11HyperbolicError::InvalidBilliardConfig {
                 reason: "initial position and angle must be finite",
             });
         }

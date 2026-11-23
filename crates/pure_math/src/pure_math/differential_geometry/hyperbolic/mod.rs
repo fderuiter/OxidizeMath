@@ -96,9 +96,9 @@ pub enum HyperbolicModel {
     Klein,
 }
 
-/// Domain error returned when constructing invalid hyperbolic configurations or matrices.
+/// Domain error returned when constructing invalid $\mathrm{SU}(1,1)$ hyperbolic configurations or matrices.
 #[derive(Debug, Clone, PartialEq)]
-pub enum HyperbolicError {
+pub enum Su11HyperbolicError {
     /// Matrix entries violate finiteness or positive $\mathrm{SU}(1,1)$ pseudo-determinant $|a|^2 - |b|^2 > 0$.
     DegenerateSu11Matrix {
         /// Computed $|a|^2 - |b|^2$ determinant value.
@@ -123,7 +123,7 @@ pub enum HyperbolicError {
     },
 }
 
-impl std::fmt::Display for HyperbolicError {
+impl std::fmt::Display for Su11HyperbolicError {
     #[verified_engine::verified]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -147,9 +147,9 @@ impl std::fmt::Display for HyperbolicError {
     }
 }
 
-impl std::error::Error for HyperbolicError {}
+impl std::error::Error for Su11HyperbolicError {}
 
-impl Diagnostic for HyperbolicError {
+impl Diagnostic for Su11HyperbolicError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
         Severity::Error
@@ -158,7 +158,7 @@ impl Diagnostic for HyperbolicError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "HyperbolicError".to_string());
+        map.insert("error_type".to_string(), "Su11HyperbolicError".to_string());
         map.insert("description".to_string(), self.to_string());
         map
     }

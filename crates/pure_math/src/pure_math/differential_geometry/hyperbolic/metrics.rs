@@ -1,7 +1,7 @@
 //! Intrinsic Poincaré/Klein metrics, geodesic arcs, conformal angles, and Gauss-Bonnet defects.
 
 use super::{
-    HYPERBOLIC_CURVATURE, HyperbolicError, HyperbolicModel, Su11Matrix, clamp_to_disk,
+    HYPERBOLIC_CURVATURE, HyperbolicModel, Su11HyperbolicError, Su11Matrix, clamp_to_disk,
     is_hyperbolic_schlafli, klein_to_poincare, poincare_to_klein,
 };
 use num_complex::Complex64;
@@ -230,9 +230,9 @@ pub fn gauss_bonnet_triangle(a: Complex64, b: Complex64, c: Complex64) -> GaussB
 
 /// Returns the exact Gauss-Bonnet area $(p - 2)\pi - \frac{2\pi p}{q}$ of a regular $\{p, q\}$ tile.
 #[verified_engine::verified]
-pub fn regular_polygon_gauss_bonnet_area(p: usize, q: usize) -> Result<f64, HyperbolicError> {
+pub fn regular_polygon_gauss_bonnet_area(p: usize, q: usize) -> Result<f64, Su11HyperbolicError> {
     if !is_hyperbolic_schlafli(p, q) {
-        return Err(HyperbolicError::NonHyperbolicSchlafli { p, q });
+        return Err(Su11HyperbolicError::NonHyperbolicSchlafli { p, q });
     }
     let pf = p as f64;
     let qf = q as f64;

@@ -1,6 +1,6 @@
 //! Orientation-preserving $\mathrm{SU}(1,1)$ Möbius transformations and disk projections.
 
-use super::{HyperbolicError, HyperbolicModel, POINCARE_DISK_RADIUS_MAX};
+use super::{HyperbolicModel, POINCARE_DISK_RADIUS_MAX, Su11HyperbolicError};
 use num_complex::Complex64;
 
 /// Element $\begin{pmatrix} a & b \\ \bar{b} & \bar{a} \end{pmatrix} \in \mathrm{SU}(1,1)$
@@ -58,7 +58,7 @@ impl Su11Matrix {
 
     /// Reconstructs and normalizes an $\mathrm{SU}(1,1)$ matrix from `[a.re, a.im, b.re, b.im]`.
     #[verified_engine::verified]
-    pub fn from_coeffs(coeffs: [f64; 4]) -> Result<Self, HyperbolicError> {
+    pub fn from_coeffs(coeffs: [f64; 4]) -> Result<Self, Su11HyperbolicError> {
         Self::new(
             Complex64::new(coeffs[0], coeffs[1]),
             Complex64::new(coeffs[2], coeffs[3]),
@@ -67,15 +67,15 @@ impl Su11Matrix {
 
     /// Constructs a normalized $\mathrm{SU}(1,1)$ matrix when $|a|^2 - |b|^2 > 0$ and finite.
     #[verified_engine::verified]
-    pub fn new(a: Complex64, b: Complex64) -> Result<Self, HyperbolicError> {
+    pub fn new(a: Complex64, b: Complex64) -> Result<Self, Su11HyperbolicError> {
         if !a.re.is_finite() || !a.im.is_finite() || !b.re.is_finite() || !b.im.is_finite() {
-            return Err(HyperbolicError::DegenerateSu11Matrix {
+            return Err(Su11HyperbolicError::DegenerateSu11Matrix {
                 determinant: f64::NAN,
             });
         }
         let det = a.norm_sqr() - b.norm_sqr();
         if !det.is_finite() || det <= 1e-15 {
-            return Err(HyperbolicError::DegenerateSu11Matrix { determinant: det });
+            return Err(Su11HyperbolicError::DegenerateSu11Matrix { determinant: det });
         }
         if (det - 1.0).abs() <= 1e-13 {
             return Ok(Self { a, b });
@@ -316,9 +316,9 @@ pub fn poincare_to_upper_half_plane(z: Complex64) -> Complex64 {
 
 /// Cayley transform mapping $\tau \in \mathbb{H}$ ($\operatorname{Im}(\tau) > 0$) to $z = \frac{\tau - i}{\tau + i} \in \mathbb{D}$.
 #[verified_engine::verified]
-pub fn upper_half_plane_to_poincare(tau: Complex64) -> Result<Complex64, HyperbolicError> {
+pub fn upper_half_plane_to_poincare(tau: Complex64) -> Result<Complex64, Su11HyperbolicError> {
     if !tau.re.is_finite() || !tau.im.is_finite() || tau.im <= 0.0 {
-        return Err(HyperbolicError::InvalidDomainPoint {
+        return Err(Su11HyperbolicError::InvalidDomainPoint {
             reason: "upper half-plane coordinate requires finite Re(tau) and Im(tau) > 0",
         });
     }

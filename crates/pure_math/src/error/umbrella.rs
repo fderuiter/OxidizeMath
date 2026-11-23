@@ -2,7 +2,7 @@ use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
     FractranError, Glicko2Error, HyperbolicError, KellyError, LinearAlgebraError,
     MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
-    OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    OuError, StochasticError, Su11HyperbolicError, TdaError, TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -63,9 +63,12 @@ pub enum PureMathError {
     /// Prime-exponent FRACTRAN register machine error.
     #[error("{0}")]
     Fractran(#[from] FractranError),
-    /// Intrinsic hyperbolic geometry error.
+    /// Hyperbolic geometry and geodesic billiard error.
     #[error("{0}")]
     Hyperbolic(#[from] HyperbolicError),
+    /// Intrinsic `SU(1,1)` hyperbolic geometry error.
+    #[error("{0}")]
+    Su11Hyperbolic(#[from] Su11HyperbolicError),
     /// Numerical linear algebra error.
     #[error("{0}")]
     LinearAlgebra(#[from] LinearAlgebraError),
@@ -145,6 +148,7 @@ impl PureMathError {
             Self::Evolution(err) => err,
             Self::Fractran(err) => err,
             Self::Hyperbolic(err) => err,
+            Self::Su11Hyperbolic(err) => err,
             Self::LinearAlgebra(err) => err,
             Self::Optimization(err) => err,
             Self::Stochastic(err) => err,

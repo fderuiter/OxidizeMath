@@ -15,10 +15,10 @@ use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
     AIError, BatteryError, ChaosError, ClimateError, CopulaError, DoseFluenceError, EloError,
     EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error,
-    HighEnergyError, HodgkinHuxleyError, HyperbolicError, IsosurfaceError, KellyError, LoraError,
+    HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError,
     MarketPricingError, MarkovError, MatchModelError, MathError, NumberTheoryError, OuError,
     PharmacokineticsError, RadarError, SandpileError, SolidStateError, StandardModelError,
-    StatMechError, TdaError, ZipError,
+    StatMechError, Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -85,8 +85,8 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         &Glicko2Error::InvalidSystemConstant { value: 0.0 },
     );
     assert_readable_diagnostic(
-        "HyperbolicError",
-        &HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 },
+        "Su11HyperbolicError",
+        &Su11HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 },
     );
     assert_readable_diagnostic(
         "MatchModelError",

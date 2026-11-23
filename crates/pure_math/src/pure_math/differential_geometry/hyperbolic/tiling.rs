@@ -1,7 +1,7 @@
 //! Zero-allocation Fuchsian $\{p, q\}$ tessellations and fundamental-domain re-centering.
 
 use super::{
-    HyperbolicError, MAX_POLYGON_SIDES, MAX_TILING_DEPTH, MAX_TILING_POLYGONS, Su11Matrix,
+    MAX_POLYGON_SIDES, MAX_TILING_DEPTH, MAX_TILING_POLYGONS, Su11HyperbolicError, Su11Matrix,
     clamp_to_disk, poincare_distance,
 };
 use num_complex::Complex64;
@@ -21,9 +21,9 @@ pub fn is_hyperbolic_schlafli(p: usize, q: usize) -> bool {
 /// Returns the Euclidean circumradius $r_0 \in (0, 1)$ in the Poincaré disk of the central
 /// regular $\{p, q\}$ polygon.
 #[verified_engine::verified]
-pub fn regular_polygon_poincare_radius(p: usize, q: usize) -> Result<f64, HyperbolicError> {
+pub fn regular_polygon_poincare_radius(p: usize, q: usize) -> Result<f64, Su11HyperbolicError> {
     if !is_hyperbolic_schlafli(p, q) {
-        return Err(HyperbolicError::NonHyperbolicSchlafli { p, q });
+        return Err(Su11HyperbolicError::NonHyperbolicSchlafli { p, q });
     }
     let cot_p = 1.0 / (PI / (p as f64)).tan();
     let cot_q = 1.0 / (PI / (q as f64)).tan();
@@ -34,9 +34,9 @@ pub fn regular_polygon_poincare_radius(p: usize, q: usize) -> Result<f64, Hyperb
 /// Returns the intrinsic hyperbolic inradius $h$ (distance from center to edge midpoint)
 /// of a regular $\{p, q\}$ polygon: $\cosh h = \frac{\cos(\pi/q)}{\sin(\pi/p)}$.
 #[verified_engine::verified]
-pub fn regular_polygon_inradius(p: usize, q: usize) -> Result<f64, HyperbolicError> {
+pub fn regular_polygon_inradius(p: usize, q: usize) -> Result<f64, Su11HyperbolicError> {
     if !is_hyperbolic_schlafli(p, q) {
-        return Err(HyperbolicError::NonHyperbolicSchlafli { p, q });
+        return Err(Su11HyperbolicError::NonHyperbolicSchlafli { p, q });
     }
     let cosh_h = (PI / (q as f64)).cos() / (PI / (p as f64)).sin();
     Ok(cosh_h.max(1.0).acosh())
@@ -178,7 +178,7 @@ impl HyperbolicTilingBuffer {
         p: usize,
         q: usize,
         depth: usize,
-    ) -> Result<usize, HyperbolicError> {
+    ) -> Result<usize, Su11HyperbolicError> {
         let r0 = regular_polygon_poincare_radius(p, q)?;
         let inradius = regular_polygon_inradius(p, q)?;
         let mid_r = (0.5 * inradius).tanh();
