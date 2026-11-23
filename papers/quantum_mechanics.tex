@@ -66,6 +66,24 @@ Commutators $[\hat{A}, \hat{B}]$ quantify the simultaneous measurability of obse
 \section{Fourier Analysis}
 To switch between position and momentum representations in discrete systems, the Discrete Fourier Transform (DFT) operator is provided.
 
+\section{Stationary 1D Transfer-Matrix Scattering}
+For an incident free-particle wave number $k > 0$ with kinetic energy $E = \frac{\hbar^2 k^2}{2m}$, a piecewise-constant potential $V(x) = V_j$ on slice $[x_j, x_j + \Delta x_j]$ propagates the boundary state vector $[\psi(x), \partial_x \psi(x)]^\top$ via a real unimodular transfer matrix $M_j \in \mathrm{SL}(2, \mathbb{R})$ ($\det M_j = 1$). Let $q_j^2 = \frac{2m}{\hbar^2}(E - V_j)$ and $\kappa_j = \sqrt{-q_j^2}$ when $E < V_j$:
+\begin{equation}
+    M_j = \begin{cases}
+        \begin{pmatrix} \cos(q_j \Delta x_j) & \frac{\sin(q_j \Delta x_j)}{q_j} \\ -q_j \sin(q_j \Delta x_j) & \cos(q_j \Delta x_j) \end{pmatrix}, & E > V_j, \\[10pt]
+        \begin{pmatrix} 1 & \Delta x_j \\ 0 & 1 \end{pmatrix}, & E = V_j, \\[10pt]
+        \begin{pmatrix} \cosh(\kappa_j \Delta x_j) & \frac{\sinh(\kappa_j \Delta x_j)}{\kappa_j} \\ \kappa_j \sinh(\kappa_j \Delta x_j) & \cosh(\kappa_j \Delta x_j) \end{pmatrix}, & E < V_j.
+    \end{cases}
+\end{equation}
+Composing $M = M_N \cdots M_2 M_1$ across $N$ barrier or cavity segments bounded asymptotically by $V = 0$ yields the exact stationary transmission probability:
+\begin{equation}
+    T(k) = \frac{4}{(M_{00} + M_{11})^2 + \left(k M_{01} - \frac{M_{10}}{k}\right)^2} \in [0, 1].
+\end{equation}
+Across a symmetric double barrier ($[V_0, b] \to [0, L] \to [V_0, b]$), constructive cavity interference produces sub-barrier Fabry-P\'erot resonances ($T(k_{\mathrm{res}}) = 1$ for $E < V_0$), whereas $q b = n\pi$ ($n \in \mathbb{Z}^+$) produces over-barrier Ramsauer-Townsend transparency. For a normalized Gaussian wavepacket of initial spatial spread $\sigma > 0$ centered at momentum $k_0$, the momentum-space Born density $|\tilde{\psi}(k)|^2 = \frac{\sigma}{\sqrt{\pi}} e^{-\sigma^2 (k - k_0)^2}$ yields the 12-point Gauss-Hermite wavepacket transmission expectation:
+\begin{equation}
+    \langle T \rangle_\sigma = \frac{1}{\sqrt{\pi}} \int_{-\infty}^{\infty} e^{-u^2} T\!\left(k_0 + \frac{u}{\sigma}\right) \Theta\!\left(k_0 + \frac{u}{\sigma}\right) du \approx \frac{1}{\sqrt{\pi}} \sum_{r=1}^{12} w_r \, T\!\left(k_0 + \frac{u_r}{\sigma}\right).
+\end{equation}
+
 \section{Nonlinear Gross--Pitaevskii Condensates and Quantized Vortices}
 At ultracold temperatures, a weakly interacting two-dimensional Bose--Einstein condensate order parameter $\psi(x, y, t)$ obeys the dimensionless Gross--Pitaevskii equation~\cite{gross1961vortex,pitaevskii1961vortex}:
 \begin{equation}

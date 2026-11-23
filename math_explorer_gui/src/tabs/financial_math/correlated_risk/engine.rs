@@ -6,7 +6,7 @@ use math_explorer::pure_math::statistics::copula::{
     sgp_joint_probability, Correlation, CorrelationMatrix, GaussianCopula, Probability,
 };
 use math_explorer::pure_math::statistics::ou_process::{
-    EulerMaruyama, MomentumType, OuParams, TimeStep,
+    summarize_terminal_values_with_workspace, EulerMaruyama, MomentumType, OuParams, TimeStep,
 };
 
 pub const MAX_OU_PATHS: usize = 200;
@@ -290,24 +290,19 @@ impl CorrelatedRiskScenarioTool {
                 .push(PlotPoint::new(s as f64 * dt_val, mean_t));
         }
 
-        let mut finals: Vec<f64> = trajectories
-            .iter()
-            .filter_map(|p| p.last().copied())
-            .collect();
-        finals.sort_unstable_by(|a, b| a.total_cmp(b));
-        let mean_final = finals.iter().sum::<f64>() / finals.len() as f64;
-        let var = finals
-            .iter()
-            .map(|&x| (x - mean_final).powi(2))
-            .sum::<f64>()
-            / finals.len() as f64;
-        let idx05 = ((finals.len() - 1) as f64 * 0.05) as usize;
-        let idx95 = ((finals.len() - 1) as f64 * 0.95) as usize;
-        self.ou_stats = Some(OuSummaryStats {
-            mean_final,
-            std_final: var.sqrt(),
-            p05_final: finals[idx05],
-            p95_final: finals[idx95],
+        self.ou_finals_scratch.clear();
+        self.ou_finals_scratch
+            .extend(trajectories.iter().filter_map(|p| p.last().copied()));
+        self.ou_stats = summarize_terminal_values_with_workspace(
+            &mut self.ou_workspace,
+            &self.ou_finals_scratch,
+            None,
+        )
+        .map(|perf| OuSummaryStats {
+            mean_final: perf.mean_final,
+            std_final: perf.std_final,
+            p05_final: perf.percentile_05,
+            p95_final: perf.percentile_95,
             horizon,
         });
     }

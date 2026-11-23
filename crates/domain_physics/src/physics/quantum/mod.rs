@@ -73,6 +73,7 @@
 //! ```
 
 pub mod coupling;
+pub mod crank_nicolson;
 #[allow(missing_docs)]
 pub mod fourier;
 /// Zero-allocation 2D Strang split-step Gross-Pitaevskii superfluid condensate and vortex solver.
@@ -80,6 +81,7 @@ pub mod gross_pitaevskii;
 #[allow(missing_docs)]
 pub mod hamiltonian;
 pub mod hydrogenic;
+pub mod scattering;
 pub mod schrodinger;
 #[allow(missing_docs)]
 pub mod spin;
@@ -89,6 +91,7 @@ pub mod types;
 
 // Re-export key types for convenience
 pub use coupling::clebsch_gordan;
+pub use crank_nicolson::CrankNicolson1D;
 pub use fourier::{dft_operator, idft_operator};
 pub use gross_pitaevskii::{
     GpeInvariants2D, GpeParams2D, GpeTrapConfig, GpeTrapKind, GrossPitaevskiiSolver2D,
@@ -96,18 +99,24 @@ pub use gross_pitaevskii::{
 };
 pub use hamiltonian::{
     construct_1d_hamiltonian, construct_1d_hamiltonian_into, construct_two_state_eigen_hamiltonian,
-    gaussian_wavepacket,
+    construct_two_state_eigen_hamiltonian_into, gaussian_wavepacket, gaussian_wavepacket_into,
 };
 pub use hydrogenic::{
     HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumFieldObservable, hydrogenic_energy_au,
     hydrogenic_orbital_cartesian, hydrogenic_radial_wavefunction,
 };
+pub use scattering::{
+    TransferMatrix2x2, compiled_barrier_transmission, compiled_barrier_transmission_with_overrides,
+    double_barrier_transmission, gauss_hermite_wavepacket_transmission,
+    piecewise_potential_transmission, rectangular_barrier_transmission,
+    symmetric_double_barrier_transmission,
+};
 pub use schrodinger::{
     evolve_state, evolve_state_in_place, state_norm_squared, time_evolution_operator,
-    transmission_probability,
+    time_evolution_operator_2x2_into, transmission_probability,
 };
 pub use spin::{set_spin_bloch_angles_in_place, sigma_x, sigma_y, sigma_z, spin_from_bloch_angles};
-pub use tridiagonal::{CrankNicolsonPropagator1D, TridiagonalHamiltonian1D};
+pub use tridiagonal::{CrankNicolsonPropagator1D, SolverWorkspace, TridiagonalHamiltonian1D};
 pub use types::{QuantumOperator, QuantumState};
 
 // [cite:quantum_mechanics]
