@@ -184,6 +184,9 @@ fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
     }
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut ising, "2D Ising Model spin lattice");
 
+    let mut optics = crate::tabs::optics_waves::OpticsWaveTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(&mut optics, "2D Wave & Caustics Playground");
+
     let mut radar = crate::tabs::medical::radar_gating::RadarGatingTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(
         &mut radar,

@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 /// Progressive 2D parameter regime atlas and Schnakenberg dispersion cartographer.
 pub mod atlas;
 mod atlas_bridge;
+pub mod counterfactual;
+mod counterfactual_tool;
 /// Evolutionary replicator and enzyme saturation kinetics tool.
 pub mod evolution_kinetics_tool;
 /// UI rendering for [`evolution_kinetics_tool::EvolutionKineticsTool`].
@@ -25,6 +27,7 @@ pub mod phyllotaxis_ui;
 pub mod presets;
 /// Multi-model reaction-diffusion simulation runner.
 pub mod runner;
+mod runner_twin;
 /// Microfluidic cell-role brush rasterization, RLE synchronization, and mask overlays.
 pub mod sculpt;
 mod seeding;
@@ -40,6 +43,8 @@ pub use atlas::{
     classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
 };
 #[cfg(test)]
+pub use counterfactual::MorphogenesisHeatmapMode;
+#[cfg(test)]
 pub use evolution_kinetics_tool::EvolutionKineticsTool;
 #[cfg(test)]
 pub use gray_scott_atlas::{
@@ -53,7 +58,7 @@ pub use phyllotaxis_tool::PhyllotaxisLSystemTool;
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
-pub use runner::{MorphogenesisRunner, MorphogenesisSharedParams};
+pub use runner::{MorphogenesisKineticsRunner, MorphogenesisRunner, MorphogenesisSharedParams};
 pub use tool::{MorphogenesisTool, MorphogenesisToolState};
 
 /// Legacy flat `MorphoState` schema saved by pre-framework `.mws` workspaces.
@@ -171,6 +176,8 @@ inventory::submit! {
     }
 }
 
+#[cfg(test)]
+mod counterfactual_tests;
 #[cfg(test)]
 mod new_tools_tests;
 #[cfg(test)]

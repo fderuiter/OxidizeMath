@@ -1,7 +1,7 @@
 [links]
 generative_turbulence = "generative_turbulence.tex"
 ai = "spec:transformer_v1"
-optics = "graph_parameters_rust.tex"
+optics = "spec:wave_optics_caustics_v1"
 standard_model = "graph_parameters_rust.tex"
 stat_mech = "graph_parameters_rust.tex"
 fluid_dynamics = "dwarf_galaxy_empirical_dependencies.tex"

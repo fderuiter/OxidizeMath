@@ -297,6 +297,21 @@
     },
     {
       "signature": "pub type TabularQAgent < S , A > = QLearningAgent < S , A , TabularQFunction < S , A > >"
+    },
+    {
+      "signature": "pub use super :: rollouts :: RlStepOutcome"
+    },
+    {
+      "signature": "pub use super :: rollouts :: compute_softmax_pg_delta"
+    },
+    {
+      "signature": "pub use super :: rollouts :: softmax_action_probs"
+    },
+    {
+      "signature": "pub use super :: rollouts :: step_softmax_pg_into"
+    },
+    {
+      "signature": "pub use super :: rollouts :: step_tabular_q_into"
     }
   ],
   "crates/domain_ai/src/ai/reinforcement_learning/bellman.rs": [
@@ -308,6 +323,50 @@
     },
     {
       "signature": "pub fn state_value_bellman_equation < M > (_ : & M , _ : & impl Policy < M :: S , M :: A > , _ : & M :: S , _ : & [M :: S] , _ : impl Fn (& M :: S) -> f64 ,) -> f64 where M : MarkovDecisionProcess ,"
+    }
+  ],
+  "crates/domain_ai/src/ai/reinforcement_learning/bellman_solver.rs": [
+    {
+      "signature": "impl BellmanSolution { pub fn evaluate_policy (& mut self , _ : & SculptedGridMdp , _ : & TabularGridPolicy , _ : f64 , _ : usize ,) }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn optimal_action_at (& self , _ : GridState) -> Option < Move > }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn q_residual_summary (& self , _ : & SculptedGridMdp , _ : & DenseRlWorkspace) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn q_star_at (& self , _ : GridState , _ : Move) -> f64 }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn residual_at (& self , _ : GridState , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn solve (_ : & SculptedGridMdp , _ : f64 , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn v_pi_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn v_star_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn action_probabilities (& self , _ : GridState) -> [f64 ; 4] }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn from_q_table (_ : usize , _ : usize , _ : & [[f64 ; 4]]) -> Self }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn from_softmax_logits (_ : usize , _ : usize , _ : & [[f64 ; 4]]) -> Self }"
+    },
+    {
+      "signature": "impl TabularGridPolicy { pub fn uniform (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct BellmanSolution"
+    },
+    {
+      "signature": "pub struct TabularGridPolicy"
     }
   ],
   "crates/domain_ai/src/ai/reinforcement_learning/grid_world.rs": [
@@ -324,12 +383,137 @@
       "signature": "pub struct GridWorldEnv"
     }
   ],
+  "crates/domain_ai/src/ai/reinforcement_learning/maze.rs": [
+    {
+      "signature": "impl GridCellRole { pub const fn from_u8 (_ : u8) -> Option < Self > }"
+    },
+    {
+      "signature": "impl GridCellRole { pub const fn to_u8 (self) -> u8 }"
+    },
+    {
+      "signature": "impl GridCellRole { pub const fn wind_delta (self) -> Option < (i32 , i32) > }"
+    },
+    {
+      "signature": "impl GridCellRole { pub const fn wind_pan (self) -> f32 }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub const fn in_bounds (& self , _ : GridState) -> bool }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn apply_cells_u8 (& mut self , _ : & [u8]) -> Result < () , String > }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn cell_index (& self , _ : GridState) -> usize }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn cell_role (& self , _ : GridState) -> GridCellRole }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn cells_to_u8 (& self) -> Vec < u8 > }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn default_with_traps (_ : i32 , _ : i32 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn is_default_layout (& self) -> bool }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn new (_ : i32 , _ : i32 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn reachable_next_states (& self , _ : GridState) -> ([GridState ; 9] , usize) }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn sample_step (& self , _ : GridState , _ : Move , _ : & mut OxidizeRng ,) -> (GridState , f64 , bool , f32) }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn set_cell_role (& mut self , _ : GridState , _ : GridCellRole) }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn step_deterministic (& self , _ : GridState , _ : Move) -> GridState }"
+    },
+    {
+      "signature": "impl SculptedGridMdp { pub fn transition_outcomes (& self , _ : GridState , _ : Move ,) -> [(GridState , f64) ; 2] }"
+    },
+    {
+      "signature": "pub const MAX_RL_GRID_DIM : i32"
+    },
+    {
+      "signature": "pub const MIN_RL_GRID_DIM : i32"
+    },
+    {
+      "signature": "pub enum GridCellRole"
+    },
+    {
+      "signature": "pub struct SculptedGridMdp"
+    },
+    {
+      "signature": "pub use super :: workspace :: ALL_MOVES"
+    },
+    {
+      "signature": "pub use super :: workspace :: DenseRlWorkspace"
+    },
+    {
+      "signature": "pub use super :: workspace :: index_to_move"
+    },
+    {
+      "signature": "pub use super :: workspace :: move_to_index"
+    }
+  ],
   "crates/domain_ai/src/ai/reinforcement_learning/mod.rs": [
     {
       "signature": "pub use algorithms :: QLearningAgent"
     },
     {
+      "signature": "pub use algorithms :: RlStepOutcome"
+    },
+    {
+      "signature": "pub use algorithms :: TabularQAgent"
+    },
+    {
+      "signature": "pub use algorithms :: compute_softmax_pg_delta"
+    },
+    {
+      "signature": "pub use algorithms :: softmax_action_probs"
+    },
+    {
+      "signature": "pub use algorithms :: step_softmax_pg_into"
+    },
+    {
+      "signature": "pub use algorithms :: step_tabular_q_into"
+    },
+    {
+      "signature": "pub use bellman_solver :: BellmanSolution"
+    },
+    {
+      "signature": "pub use bellman_solver :: TabularGridPolicy"
+    },
+    {
       "signature": "pub use grid_world :: *"
+    },
+    {
+      "signature": "pub use maze :: ALL_MOVES"
+    },
+    {
+      "signature": "pub use maze :: DenseRlWorkspace"
+    },
+    {
+      "signature": "pub use maze :: GridCellRole"
+    },
+    {
+      "signature": "pub use maze :: MAX_RL_GRID_DIM"
+    },
+    {
+      "signature": "pub use maze :: MIN_RL_GRID_DIM"
+    },
+    {
+      "signature": "pub use maze :: SculptedGridMdp"
+    },
+    {
+      "signature": "pub use maze :: index_to_move"
+    },
+    {
+      "signature": "pub use maze :: move_to_index"
     },
     {
       "signature": "pub use q_function :: DiscreteAction"
@@ -394,6 +578,23 @@
       "signature": "pub struct TabularQFunction < S , A > where S : State + Hash + Eq , A : Action + Hash + Eq ,"
     }
   ],
+  "crates/domain_ai/src/ai/reinforcement_learning/rollouts.rs": [
+    {
+      "signature": "pub fn compute_softmax_pg_delta (_ : [f64 ; 4] , _ : Move , _ : f64 , _ : UnitInterval ,) -> [f64 ; 4]"
+    },
+    {
+      "signature": "pub fn softmax_action_probs (_ : [f64 ; 4]) -> [f64 ; 4]"
+    },
+    {
+      "signature": "pub fn step_softmax_pg_into (_ : & SculptedGridMdp , _ : & mut DenseRlWorkspace , _ : UnitInterval ,) -> RlStepOutcome"
+    },
+    {
+      "signature": "pub fn step_tabular_q_into (_ : & SculptedGridMdp , _ : & mut DenseRlWorkspace , _ : UnitInterval , _ : UnitInterval ,) -> RlStepOutcome"
+    },
+    {
+      "signature": "pub struct RlStepOutcome"
+    }
+  ],
   "crates/domain_ai/src/ai/reinforcement_learning/strategies.rs": [
     {
       "signature": "impl EpsilonGreedy { pub fn new (_ : UnitInterval) -> Self }"
@@ -456,6 +657,56 @@
     },
     {
       "signature": "pub trait State : Clone + Debug + PartialEq"
+    }
+  ],
+  "crates/domain_ai/src/ai/reinforcement_learning/workspace.rs": [
+    {
+      "signature": "impl DenseRlWorkspace { pub fn greedy_policy_action (& self , _ : GridState) -> Option < Move > }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn greedy_q_action (& self , _ : GridState) -> Option < Move > }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn is_finite_state (& self) -> bool }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn max_q (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn max_q_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn new (_ : usize , _ : usize , _ : usize , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn q_value (& self , _ : GridState , _ : Move) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn reset_episode (& mut self , _ : & SculptedGridMdp) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn reset_learning (& mut self , _ : GridState) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn resize_and_clear (& mut self , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn state_value_at (& self , _ : GridState) -> f64 }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn sync_topology (& mut self , _ : & SculptedGridMdp) }"
+    },
+    {
+      "signature": "pub const ALL_MOVES : [Move ; 4]"
+    },
+    {
+      "signature": "pub const fn index_to_move (_ : usize) -> Move"
+    },
+    {
+      "signature": "pub const fn move_to_index (_ : Move) -> usize"
+    },
+    {
+      "signature": "pub struct DenseRlWorkspace"
     }
   ],
   "crates/domain_ai/src/ai/sds/diffusion.rs": [
@@ -2194,6 +2445,20 @@
       "signature": "pub fn uncertainty_reward (_ : f64) -> f64"
     }
   ],
+  "crates/domain_applied/src/applied/isosurface/capped.rs": [
+    {
+      "signature": "pub fn extract_capped_isosurface (_ : & VoxelGrid , _ : f32 , _ : bool , _ : Option < CutPlaneCap > ,) -> Result < Mesh , IsosurfaceError >"
+    },
+    {
+      "signature": "pub fn extract_capped_isosurface_into (_ : & VoxelGrid , _ : f32 , _ : bool , _ : Option < CutPlaneCap > , _ : & mut VoxelGrid , _ : & mut IsosurfaceWorkspace , _ : & mut Mesh ,) -> Result < () , IsosurfaceError >"
+    },
+    {
+      "signature": "pub struct CappedBoxBounds"
+    },
+    {
+      "signature": "pub struct CutPlaneCap"
+    }
+  ],
   "crates/domain_applied/src/applied/isosurface/gradients.rs": [
     {
       "signature": "impl CentralDifferenceEstimator { pub fn world_normal_and_magnitude (& self , _ : & VoxelGrid , _ : usize , _ : usize , _ : usize ,) -> (Point3D , f32) }"
@@ -2226,6 +2491,18 @@
     }
   ],
   "crates/domain_applied/src/applied/isosurface/mod.rs": [
+    {
+      "signature": "pub use capped :: CappedBoxBounds"
+    },
+    {
+      "signature": "pub use capped :: CutPlaneCap"
+    },
+    {
+      "signature": "pub use capped :: extract_capped_isosurface"
+    },
+    {
+      "signature": "pub use capped :: extract_capped_isosurface_into"
+    },
     {
       "signature": "pub use gradients :: CentralDifferenceEstimator"
     },
@@ -6869,12 +7146,97 @@
       "signature": "pub struct MassNumber"
     }
   ],
+  "crates/domain_physics/src/physics/optics/caustics.rs": [
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn caustic_points (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn ray_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn ray_points (& self , _ : usize) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn trace_in_place (& mut self , _ : & OpticalMediumConfig , _ : usize , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl HamiltonianRayTracer { pub fn trace_single_ray_in_place (& mut self , _ : & OpticalMediumConfig , _ : usize , _ : [f64 ; 2] , _ : [f64 ; 2] , _ : f64 ,) }"
+    },
+    {
+      "signature": "pub struct HamiltonianRayTracer"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/refraction.rs": [
+    {
+      "signature": "impl OpticalMediumConfig { pub fn apply_to_wave_field (& self , _ : & mut WaveField2D) }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn default_wave_source (& self , _ : & WaveFieldConfig2D) -> WaveSource2D }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn discrete_region_id (& self , _ : f64 , _ : f64) -> u8 }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn grad_n_squared (& self , _ : f64 , _ : f64) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn interface_normal (& self , _ : f64 , _ : f64 , _ : [f64 ; 2]) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn is_obstacle_at (& self , _ : f64 , _ : f64 , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn lens_center (& self) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn refractive_index_at (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn slit_wall_x (& self) -> f64 }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn source_position (& self) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticalMediumConfig { pub fn veselago_slab_bounds (& self) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl OpticsPreset { pub const ALL : [Self ; 5] }"
+    },
+    {
+      "signature": "impl OpticsPreset { pub const fn label (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum OpticsPreset"
+    },
+    {
+      "signature": "pub fn snell_refract_vector (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : f64 , _ : f64 ,) -> [f64 ; 2]"
+    },
+    {
+      "signature": "pub fn snell_refracted_angle (_ : f64 , _ : f64 , _ : f64) -> Option < f64 >"
+    },
+    {
+      "signature": "pub struct OpticalMediumConfig"
+    }
+  ],
   "crates/domain_physics/src/physics/optics/sensing.rs": [
     {
       "signature": "pub fn lambertian_intensity (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
     },
     {
       "signature": "pub fn lws_range_resolution (_ : f64 , _ : f64 , _ : u32) -> f64"
+    },
+    {
+      "signature": "pub fn sample_detector_line_in_place (_ : & WaveField2D , _ : & DetectorConfig , _ : & mut [f64] ,) -> DetectorReadout"
+    },
+    {
+      "signature": "pub struct DetectorConfig"
+    },
+    {
+      "signature": "pub struct DetectorReadout"
     }
   ],
   "crates/domain_physics/src/physics/quantum/coupling.rs": [
@@ -8506,13 +8868,28 @@
   ],
   "crates/oxidize_core/src/mesh/export_stl.rs": [
     {
+      "signature": "pub const MAX_EXPORT_SPAN_MM : f32"
+    },
+    {
+      "signature": "pub const MIN_EXPORT_SPAN_MM : f32"
+    },
+    {
+      "signature": "pub const STL_HEADER_TEXT : & [u8]"
+    },
+    {
       "signature": "pub fn export_mesh_to_stl_ascii (_ : & Mesh) -> Result < String , Error >"
     },
     {
       "signature": "pub fn export_mesh_to_stl_binary (_ : & Mesh) -> Result < Vec < u8 > , Error >"
     },
     {
+      "signature": "pub fn export_mesh_to_stl_binary_scaled (_ : & Mesh , _ : f32 ,) -> Result < Vec < u8 > , Error >"
+    },
+    {
       "signature": "pub fn parse_stl_ascii (_ : & str) -> Result < Mesh , Error >"
+    },
+    {
+      "signature": "pub fn scale_mesh_to_millimeters (_ : & mut Mesh , _ : f32) -> Result < () , Error >"
     }
   ],
   "crates/oxidize_core/src/mesh/mod.rs": [
@@ -10380,6 +10757,18 @@
     },
     {
       "signature": "pub struct WaveEquation1D"
+    },
+    {
+      "signature": "pub use super :: wave_fdtd :: WaveField2D"
+    },
+    {
+      "signature": "pub use super :: wave_fdtd :: WaveFieldConfig2D"
+    },
+    {
+      "signature": "pub use super :: wave_fdtd :: WaveSource2D"
+    },
+    {
+      "signature": "pub use super :: wave_fdtd :: WaveSourceKind"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/wave_2d.rs": [
@@ -10405,9 +10794,6 @@
       "signature": "impl Wave2DSolver { pub fn height (& self) -> usize }"
     },
     {
-      "signature": "impl Wave2DSolver { pub fn inject_gaussian_pulse (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) }"
-    },
-    {
       "signature": "impl Wave2DSolver { pub fn modal_field (& self) -> & [f64] }"
     },
     {
@@ -10415,9 +10801,6 @@
     },
     {
       "signature": "impl Wave2DSolver { pub fn new_unit_square (_ : usize) -> Self }"
-    },
-    {
-      "signature": "impl Wave2DSolver { pub fn read_detector_profile (& self , _ : usize , _ : & mut [f64]) }"
     },
     {
       "signature": "impl Wave2DSolver { pub fn reset_all (& mut self) }"
@@ -10493,6 +10876,9 @@
     },
     {
       "signature": "pub use particles_and_contours :: MarchingSquares2D"
+    },
+    {
+      "signature": "pub use probes :: WaveProbeSample"
     },
     {
       "signature": "pub use spectral :: SpectralAnalyzer2D"
@@ -10597,6 +10983,26 @@
       "signature": "pub struct MarchingSquares2D"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/probes.rs": [
+    {
+      "signature": "impl Wave2DSolver { pub fn inject_gaussian_pulse (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn read_detector_profile (& self , _ : usize , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn sample_displacement_bilinear (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn sample_probe (& self , _ : f64 , _ : f64) -> WaveProbeSample }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn sample_velocity_bilinear (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub struct WaveProbeSample"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/pde/wave_2d/spectral.rs": [
     {
       "signature": "impl SpectralAnalyzer2D { pub fn compute_radial_profile (& self , _ : & mut [f64] , _ : & mut [usize]) }"
@@ -10623,6 +11029,9 @@
       "signature": "impl SpectralAnalyzer2D { pub fn spectrum (& self) -> & [f64] }"
     },
     {
+      "signature": "impl SpectralAnalyzer2D { pub fn top_peaks (& self , _ : & mut [SpectralPeak2D]) -> usize }"
+    },
+    {
       "signature": "impl SpectralAnalyzer2D { pub fn width (& self) -> usize }"
     },
     {
@@ -10633,6 +11042,71 @@
     },
     {
       "signature": "pub struct SpectralPeak2D"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_fdtd.rs": [
+    {
+      "signature": "impl WaveField2D { pub fn cfl_dt (& self) -> f64 }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn clamp_dt (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn clear_state (& mut self) }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn config (& self) -> & WaveFieldConfig2D }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn configure_medium_in_place < F > (& mut self , _ : F) where F : FnMut (usize , usize , & WaveFieldConfig2D , & mut f64 , & mut u8) , }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn has_negative_index (& self) -> bool }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn irradiance (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn is_finite (& self) -> bool }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn new (_ : WaveFieldConfig2D) -> Self }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn obstacle_mask (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn refractive_index (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn set_reference_frequency (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn step (& mut self , _ : f64 , _ : Option < & WaveSource2D >) -> f64 }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn step_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl WaveSource2D { pub fn evaluate_at_time (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub enum WaveSourceKind"
+    },
+    {
+      "signature": "pub struct WaveField2D"
+    },
+    {
+      "signature": "pub struct WaveFieldConfig2D"
+    },
+    {
+      "signature": "pub struct WaveSource2D"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/roots.rs": [
