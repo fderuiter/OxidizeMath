@@ -2,8 +2,8 @@
 
 use super::helpers::{
     click_pos, cmd_mods, configure_layout_with_canary_panes, copied_texts, find_ak_nodes,
-    find_text_centers, focus_ak_node, has_close_viewport_cmd, has_rendered_text, key_evt, run_app,
-    screen_rect,
+    find_ak_nodes_exact, find_text_centers, focus_ak_node, has_close_viewport_cmd,
+    has_rendered_text, key_evt, run_app, screen_rect,
 };
 use crate::app::{MathExplorerApp, ViewportLayout};
 use eframe::egui::{self, accesskit, Context, Id, Key, Modifiers};
@@ -313,7 +313,7 @@ fn verify_theory_portal_in_tab(tab_idx: usize) {
 
     let _ = run_app(&ctx, &mut app, vec![click_toggle]);
     let out_reopen = run_app(&ctx, &mut app, Vec::new());
-    let close_node = find_ak_nodes(&out_reopen, accesskit::Role::Button, "Close")
+    let close_node = find_ak_nodes_exact(&out_reopen, accesskit::Role::Button, "Close")
         .last()
         .unwrap_or_else(|| panic!("Tab '{tab_name}' Theory portal Close button node"))
         .0;

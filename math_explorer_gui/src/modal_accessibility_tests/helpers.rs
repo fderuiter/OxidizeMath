@@ -53,24 +53,17 @@ pub(super) fn ak_action_evt(action: accesskit::Action, target: accesskit::NodeId
     })
 }
 
-pub(super) fn find_ak_nodes(
+fn find_ak_nodes_matching(
     out: &FullOutput,
     role: accesskit::Role,
-    label_substr: &str,
+    pred: impl Fn(Option<&str>) -> bool,
 ) -> Vec<(accesskit::NodeId, Rect)> {
     let Some(ak) = out.platform_output.accesskit_update.as_ref() else {
         return Vec::new();
     };
     let mut found = Vec::new();
     for (id, node) in &ak.nodes {
-        if node.role() != role {
-            continue;
-        }
-        let matches_label = match node.label() {
-            Some(lbl) => lbl.contains(label_substr),
-            None => label_substr.is_empty(),
-        };
-        if matches_label {
+        if node.role() == role && pred(node.label()) {
             let rect = match node.bounds() {
                 Some(b) => Rect::from_min_max(
                     egui::pos2(b.x0 as f32, b.y0 as f32),
@@ -88,6 +81,27 @@ pub(super) fn find_ak_nodes(
             .then_with(|| a.1.min.x.total_cmp(&b.1.min.x))
     });
     found
+}
+
+pub(super) fn find_ak_nodes(
+    out: &FullOutput,
+    role: accesskit::Role,
+    label_substr: &str,
+) -> Vec<(accesskit::NodeId, Rect)> {
+    find_ak_nodes_matching(out, role, |lbl| match lbl {
+        Some(s) => s.contains(label_substr),
+        None => label_substr.is_empty(),
+    })
+}
+
+pub(super) fn find_ak_nodes_exact(
+    out: &FullOutput,
+    role: accesskit::Role,
+    exact_label: &str,
+) -> Vec<(accesskit::NodeId, Rect)> {
+    find_ak_nodes_matching(out, role, |lbl| {
+        lbl.is_some_and(|s| s.trim() == exact_label)
+    })
 }
 
 pub(super) fn find_ak_node_in_pane(

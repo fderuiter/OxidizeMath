@@ -153,7 +153,7 @@ pub(crate) fn register_and_handle_pane_focus_shortcuts(
 }
 
 /// Synchronizes `app.focused_pane` with the currently focused widget in `ctx` and reports
-/// whether a shell bar, popup, modal, or split sash currently owns focus.
+/// whether a modal or popup overlay currently blocks pane keyboard shortcuts.
 pub(super) fn sync_focused_pane_from_widget_focus(
     app: &mut MathExplorerApp,
     ctx: &egui::Context,
@@ -161,20 +161,19 @@ pub(super) fn sync_focused_pane_from_widget_focus(
     sash_focused: bool,
     has_pending_pane_focus: bool,
 ) -> bool {
-    let modal_or_popup = app.is_dragging_divider
-        || app.dragging_quad_axes != (false, false)
-        || sash_focused
-        || app.command_palette.is_open
+    let modal_or_popup = app.command_palette.is_open
         || app.show_starter_gallery
         || app.show_help_menu
         || egui::Popup::is_any_open(ctx)
         || egui_plot::active_top_modal_layer(ctx).is_some();
+    let sash_active =
+        app.is_dragging_divider || app.dragging_quad_axes != (false, false) || sash_focused;
 
     let Some(fid) = ctx.memory(|m| m.focused()) else {
         return modal_or_popup;
     };
     if super::sash::is_any_sash_id(fid) {
-        return true;
+        return modal_or_popup;
     }
     let Some(resp) = inspect_widget_response(ctx, fid) else {
         return modal_or_popup;
@@ -186,13 +185,11 @@ pub(super) fn sync_focused_pane_from_widget_focus(
         .iter()
         .position(|&rect| response_belongs_to_pane(&resp, rect))
     {
-        if !modal_or_popup && !has_pending_pane_focus {
+        if !modal_or_popup && !sash_active && !has_pending_pane_focus {
             app.focus_pane(idx);
         }
-        modal_or_popup
-    } else {
-        true
     }
+    modal_or_popup
 }
 
 /// Prepares `egui::Memory` so the first focusable widget rendered inside the target pane acquires focus.

@@ -291,6 +291,7 @@ impl SimulationFramework {
             instance_id: next_framework_id(),
             sync_state: FrameworkSyncState::default(),
             rev_cache: super::FrameworkRevisionCache::default(),
+            atlas_host: super::atlas_host::FrameworkAtlasHost::default(),
         };
 
         if !framework.available_tools.is_empty() {
