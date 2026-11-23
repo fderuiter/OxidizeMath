@@ -19,4 +19,4 @@ Accepted (extends [ADR 0001](0001-dynamic-workspace-discovery.md), [ADR 0008](00
 ## Consequences
 - **Positive**: Users and SDK consumers gain a globally complete, allocation-free hyperbolic geometry kernel ($K = -1.0$) with exact $\mathrm{SU}(1,1)$ group closure, Gauss-Bonnet defect rulers, $\{p, q\}$ Fuchsian tilings, and chaotic geodesic billiards verified under both native `VerifiedAllocator` and `wasm32` headless browser tests.
 - **Positive**: Static `TabDescriptor` inventory registration isolates hyperbolic UI components inside `math_explorer_gui/src/tabs/hyperbolic_geometry/`, preventing coupling with extrinsic 3D surface and TDA modules.
-- **Neutral**: Adding 1 tab, 2 interactive plot tools, and 3 starter presets increments workspace contract counts (`29` tabs, `89` tools, `151` starter presets) and updates `crates/unified_verification/api_baseline.json`.
+- **Neutral**: Adding 1 tab, 2 interactive plot tools, and 3 starter presets increments workspace contract counts (`29` tabs, `90` tools, `152` starter presets) and updates `crates/unified_verification/api_baseline.json`.
