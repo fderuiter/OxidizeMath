@@ -234,15 +234,7 @@ fn test_morphogenesis_divergence_and_recovery() {
     );
     MorphogenesisTool::initialize_system(&mut system, width, height);
 
-    let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
-        a: 0.1,
-        b: 0.9,
-        d_u: 1.0,
-        d_v: 100.0,
-        dt: 0.05,
-        high_contrast: false,
-        ..Default::default()
-    }));
+    let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams::default()));
 
     let mut runner = MorphogenesisRunner {
         system,

@@ -143,83 +143,30 @@ impl TheoryDescribable for MorphogenesisTheory {
     fn theory_parameters(
         &self,
     ) -> HashMap<String, scientific_metadata::theory::ParameterConstraint> {
-        use scientific_metadata::theory::ParameterConstraint;
+        let constraint =
+            |min, max, step| scientific_metadata::theory::ParameterConstraint { min, max, step };
         let (mode, schnak, gs) = self.snapshot();
         match mode {
             MorphogenesisKinetics::Schnakenberg => {
                 let mut map = schnak.theory_parameters();
-                map.entry("a".to_string()).or_insert(ParameterConstraint {
-                    min: 0.0,
-                    max: 1.0,
-                    step: 0.01,
-                });
-                map.entry("b".to_string()).or_insert(ParameterConstraint {
-                    min: 0.0,
-                    max: 2.0,
-                    step: 0.01,
-                });
-                map.insert(
-                    "d_u".to_string(),
-                    ParameterConstraint {
-                        min: 0.1,
-                        max: 5.0,
-                        step: 0.05,
-                    },
-                );
-                map.insert(
-                    "d_v".to_string(),
-                    ParameterConstraint {
-                        min: 10.0,
-                        max: 200.0,
-                        step: 1.0,
-                    },
-                );
-                map.insert(
-                    "dt".to_string(),
-                    ParameterConstraint {
-                        min: 1e-4,
-                        max: 0.1,
-                        step: 5e-4,
-                    },
-                );
+                map.entry("a".to_string())
+                    .or_insert_with(|| constraint(0.0, 1.0, 0.01));
+                map.entry("b".to_string())
+                    .or_insert_with(|| constraint(0.0, 2.0, 0.01));
+                map.insert("d_u".to_string(), constraint(0.1, 5.0, 0.05));
+                map.insert("d_v".to_string(), constraint(10.0, 200.0, 1.0));
+                map.insert("dt".to_string(), constraint(1e-4, 0.1, 5e-4));
                 map
             }
             MorphogenesisKinetics::GrayScott => {
                 let mut map = gs.theory_parameters();
-                map.entry("f".to_string()).or_insert(ParameterConstraint {
-                    min: 0.005,
-                    max: 0.10,
-                    step: 0.001,
-                });
-                map.entry("k".to_string()).or_insert(ParameterConstraint {
-                    min: 0.01,
-                    max: 0.09,
-                    step: 0.001,
-                });
-                map.insert(
-                    "d_u".to_string(),
-                    ParameterConstraint {
-                        min: 0.02,
-                        max: 0.50,
-                        step: 0.005,
-                    },
-                );
-                map.insert(
-                    "d_v".to_string(),
-                    ParameterConstraint {
-                        min: 0.01,
-                        max: 0.25,
-                        step: 0.005,
-                    },
-                );
-                map.insert(
-                    "dt".to_string(),
-                    ParameterConstraint {
-                        min: 0.05,
-                        max: 1.60,
-                        step: 0.01,
-                    },
-                );
+                map.entry("f".to_string())
+                    .or_insert_with(|| constraint(0.005, 0.10, 0.001));
+                map.entry("k".to_string())
+                    .or_insert_with(|| constraint(0.01, 0.09, 0.001));
+                map.insert("d_u".to_string(), constraint(0.02, 0.50, 0.005));
+                map.insert("d_v".to_string(), constraint(0.01, 0.25, 0.005));
+                map.insert("dt".to_string(), constraint(0.05, 1.60, 0.01));
                 map
             }
         }

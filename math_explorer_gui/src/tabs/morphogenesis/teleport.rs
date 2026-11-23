@@ -46,7 +46,7 @@ impl Default for MorphogenesisKineticsState {
     }
 }
 
-/// Thread-safe parameter block shared between [`super::MorphogenesisTool`] and [`super::MorphogenesisRunner`].
+/// Thread-safe parameter block shared between [`super::MorphogenesisTool`] and [`super::runner::MorphogenesisRunner`].
 #[derive(Clone, Copy, Debug)]
 pub struct MorphogenesisSharedParams {
     /// Active reaction kinetics family (`Schnakenberg` or `GrayScott`).

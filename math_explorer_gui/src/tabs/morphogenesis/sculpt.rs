@@ -278,6 +278,7 @@ pub(crate) fn draw_morpho_sculpt_controls(
 }
 
 impl super::MorphogenesisTool {
+    #[cfg(test)]
     pub(crate) fn create_masked_runner(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
@@ -297,6 +298,47 @@ impl super::MorphogenesisTool {
         Self::build_masked_runner(params, Some(kinetics_state), mask_rle, width, height)
     }
 
+    fn initial_kinetics_sync(
+        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        kinetics_state: Option<&Arc<std::sync::RwLock<MorphogenesisKineticsState>>>,
+        p: &mut MorphogenesisSharedParams,
+    ) -> MorphogenesisKineticsState {
+        let Some(ks_arc) = kinetics_state else {
+            return MorphogenesisKineticsState {
+                mode: p.kinetics,
+                f: p.f,
+                k: p.k,
+            };
+        };
+        let ks = *ks_arc.read().unwrap_or_else(|e| e.into_inner());
+        let def = MorphogenesisKineticsState::default();
+        if ks != def
+            && p.kinetics == def.mode
+            && p.f.to_bits() == def.f.to_bits()
+            && p.k.to_bits() == def.k.to_bits()
+        {
+            p.kinetics = ks.mode;
+            p.f = ks.f;
+            p.k = ks.k;
+            if let Ok(mut wg) = params.try_write() {
+                wg.kinetics = ks.mode;
+                wg.f = ks.f;
+                wg.k = ks.k;
+            }
+            ks
+        } else {
+            let next_ks = MorphogenesisKineticsState {
+                mode: p.kinetics,
+                f: p.f,
+                k: p.k,
+            };
+            if let Ok(mut wg) = ks_arc.try_write() {
+                *wg = next_ks;
+            }
+            next_ks
+        }
+    }
+
     fn build_masked_runner(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         kinetics_state: Option<&Arc<std::sync::RwLock<MorphogenesisKineticsState>>>,
@@ -305,41 +347,7 @@ impl super::MorphogenesisTool {
         height: usize,
     ) -> MorphogenesisRunner {
         let mut p = *params.read().unwrap_or_else(|e| e.into_inner());
-        let synced_ks = if let Some(ks_arc) = kinetics_state {
-            let ks = *ks_arc.read().unwrap_or_else(|e| e.into_inner());
-            let default_ks = MorphogenesisKineticsState::default();
-            if ks != default_ks
-                && p.kinetics == default_ks.mode
-                && p.f.to_bits() == default_ks.f.to_bits()
-                && p.k.to_bits() == default_ks.k.to_bits()
-            {
-                p.kinetics = ks.mode;
-                p.f = ks.f;
-                p.k = ks.k;
-                if let Ok(mut wg) = params.try_write() {
-                    wg.kinetics = ks.mode;
-                    wg.f = ks.f;
-                    wg.k = ks.k;
-                }
-                ks
-            } else {
-                let next_ks = MorphogenesisKineticsState {
-                    mode: p.kinetics,
-                    f: p.f,
-                    k: p.k,
-                };
-                if let Ok(mut wg) = ks_arc.try_write() {
-                    *wg = next_ks;
-                }
-                next_ks
-            }
-        } else {
-            MorphogenesisKineticsState {
-                mode: p.kinetics,
-                f: p.f,
-                k: p.k,
-            }
-        };
+        let synced_ks = Self::initial_kinetics_sync(params, kinetics_state, &mut p);
         let kinetics = SchnakenbergKinetics { a: p.a, b: p.b };
         let gray_scott = GrayScottKinetics::new(p.f, p.k);
         let diffusion = FiniteDifference2D::new(

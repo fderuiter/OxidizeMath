@@ -151,43 +151,42 @@ impl MorphogenesisTool {
         );
     }
 
-    fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
+    fn draw_kinetics_sliders(
+        ui: &mut egui::Ui,
+        params: &mut super::runner::MorphogenesisSharedParams,
+    ) -> (bool, Option<(f64, f64)>) {
         let mut changed = false;
-        let mut cfl_exceeded = false;
         let mut gs_sync = None;
-        {
-            let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
-            match params.kinetics {
-                MorphogenesisKinetics::Schnakenberg => {
-                    changed |= ui
-                        .add(egui::Slider::new(&mut params.a, 0.0..=1.0).text("a"))
-                        .changed();
-                    changed |= ui
-                        .add(egui::Slider::new(&mut params.b, 0.0..=2.0).text("b"))
-                        .changed();
-                    changed |= ui
-                        .add(egui::Slider::new(&mut params.d_u, 0.1..=5.0).text("D_u"))
-                        .changed();
-                    changed |= ui
-                        .add(egui::Slider::new(&mut params.d_v, 10.0..=200.0).text("D_v"))
-                        .changed();
-                }
-                MorphogenesisKinetics::GrayScott => {
-                    changed |= ui
-                        .add(egui::Slider::new(&mut params.f, 0.005..=0.085).text("F"))
-                        .changed();
-                    changed |= ui
-                        .add(egui::Slider::new(&mut params.k, 0.030..=0.070).text("k"))
-                        .changed();
-                    changed |= ui
-                        .add(egui::Slider::new(&mut params.d_u, 0.05..=1.0).text("D_u"))
-                        .changed();
-                    changed |= ui
-                        .add(egui::Slider::new(&mut params.d_v, 0.02..=0.5).text("D_v"))
-                        .changed();
-                    gs_sync = Some((params.f, params.k));
+        match params.kinetics {
+            MorphogenesisKinetics::Schnakenberg => {
+                for (val, range, label) in [
+                    (&mut params.a, 0.0..=1.0, "a"),
+                    (&mut params.b, 0.0..=2.0, "b"),
+                    (&mut params.d_u, 0.1..=5.0, "D_u"),
+                    (&mut params.d_v, 10.0..=200.0, "D_v"),
+                ] {
+                    changed |= ui.add(egui::Slider::new(val, range).text(label)).changed();
                 }
             }
+            MorphogenesisKinetics::GrayScott => {
+                for (val, range, label) in [
+                    (&mut params.f, 0.005..=0.085, "F"),
+                    (&mut params.k, 0.030..=0.070, "k"),
+                    (&mut params.d_u, 0.05..=1.0, "D_u"),
+                    (&mut params.d_v, 0.02..=0.5, "D_v"),
+                ] {
+                    changed |= ui.add(egui::Slider::new(val, range).text(label)).changed();
+                }
+                gs_sync = Some((params.f, params.k));
+            }
+        }
+        (changed, gs_sync)
+    }
+
+    fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
+        let (changed, gs_sync, cfl_exceeded) = {
+            let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
+            let (mut ch, gs) = Self::draw_kinetics_sliders(ui, &mut params);
             ui.checkbox(&mut params.auto_dt, "Auto CFL Time Step");
             let (substeps, sub_dt) = FusedEulerSolver::cfl_substeps_2d(
                 params.dt,
@@ -196,17 +195,19 @@ impl MorphogenesisTool {
                 params.d_v,
                 MAX_CFL_SUBSTEPS,
             );
+            let mut exceeded = false;
             if params.auto_dt {
                 ui.small(format!("CFL sub_dt = {sub_dt:.4} ({substeps}x/step)"));
             } else {
                 let max_dt = FusedEulerSolver::cfl_dt_2d(1.0, params.d_u, params.d_v);
-                changed |= ui
+                ch |= ui
                     .add(egui::Slider::new(&mut params.dt, 1e-4..=1.5).text("Manual dt"))
                     .changed();
                 ui.small(format!("2D CFL bound: {max_dt:.4}"));
-                cfl_exceeded = 4.0 * params.d_u.max(params.d_v) * params.dt >= 1.0;
+                exceeded = 4.0 * params.d_u.max(params.d_v) * params.dt >= 1.0;
             }
-        }
+            (ch, gs, exceeded)
+        };
         if let Some((f, k)) = gs_sync {
             let mut ks = self
                 .kinetics_state
