@@ -312,31 +312,35 @@ impl ChladniWaveTankTool {
         let (m_vals, n_vals) = lattice_axes(&self.state);
         let active = normalized_mode(&self.state, self.active_mode);
         let axis_hint = if self.state.preset == TankPreset::CircularDrumhead {
-            "Bessel Modes (m, n):"
+            "Bessel Modes"
         } else {
-            "Eigenmode Lattice (m, n):"
+            "Eigenmode Lattice"
         };
-        ui.label(axis_hint);
         let mut clicked_mode: Option<(usize, usize)> = None;
-        egui::Grid::new("chladni_eigenmode_6x6_grid")
-            .spacing([2.0, 2.0])
+        egui::CollapsingHeader::new(format!("{axis_hint} ({}, {})", active.0, active.1))
+            .id_salt("chladni_eigenmode_lattice")
+            .default_open(false)
             .show(ui, |ui| {
-                for &m in &m_vals {
-                    for &n in &n_vals {
-                        let hz = mode_frequency_hz(&self.state, self.solver.dx(), m, n);
-                        let selected = active == (m, n);
-                        let resp = ui
-                            .selectable_label(selected, format!("{m},{n}"))
-                            .on_hover_text(format!(
-                                "{} = {hz:.4} Hz (click to tune & seed antinode)",
-                                mode_metric_label(&self.state, m, n)
-                            ));
-                        if resp.clicked() {
-                            clicked_mode = Some((m, n));
+                egui::Grid::new("chladni_eigenmode_6x6_grid")
+                    .spacing([2.0, 2.0])
+                    .show(ui, |ui| {
+                        for &m in &m_vals {
+                            for &n in &n_vals {
+                                let hz = mode_frequency_hz(&self.state, self.solver.dx(), m, n);
+                                let selected = active == (m, n);
+                                let resp = ui
+                                    .selectable_label(selected, format!("{m},{n}"))
+                                    .on_hover_text(format!(
+                                        "{} = {hz:.4} Hz (click to tune & seed antinode)",
+                                        mode_metric_label(&self.state, m, n)
+                                    ));
+                                if resp.clicked() {
+                                    clicked_mode = Some((m, n));
+                                }
+                            }
+                            ui.end_row();
                         }
-                    }
-                    ui.end_row();
-                }
+                    });
             });
         if let Some((m, n)) = clicked_mode {
             self.select_eigenmode(m, n);

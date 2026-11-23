@@ -128,7 +128,7 @@ fn default_headless_curve_fitting_and_poi_solvers_work_without_gui_deps() {
 }
 
 #[cfg(feature = "pure_math")]
-fn assert_pure_math_eighteen_errors() {
+fn assert_pure_math_twenty_two_errors() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error as e;
     use math_explorer::prelude::PureMathError as PreludePureMathError;
@@ -139,17 +139,24 @@ fn assert_pure_math_eighteen_errors() {
     let severities = [
         e::NumberTheoryError::ModuloError.severity(),
         e::KellyError::InvalidOdds { value: 0.5 }.severity(),
+        e::MarketPricingError::NoArbitrage {
+            reciprocal_sum: 1.05,
+        }
+        .severity(),
         e::MarkovError::InvalidProbability { value: -0.1 }.severity(),
         e::OuError::InvalidTimeStep { value: 0.0 }.severity(),
         e::ZipError::InvalidCount { value: -1.0 }.severity(),
         e::TdaError::EmptyPointCloud.severity(),
         e::CopulaError::NotSymmetric.severity(),
+        e::EloError::InvalidScale { value: 0.0 }.severity(),
         e::Glicko2Error::EmptyMatchResults.severity(),
+        e::MatchModelError::InvalidGoalRate { value: 0.0 }.severity(),
         e::AnalysisError::ConvergenceError(0.0).severity(),
         e::EllipticCurveError::InvalidDegree.severity(),
         e::EvolutionError::InvalidState.severity(),
         e::FractranError::InvalidFractionSyntax.severity(),
         e::OptimizationError::ConversionError.severity(),
+        e::OptionPricingError::InvalidSpot { value: -1.0 }.severity(),
         e::StochasticError::InvalidReactionIndex(1).severity(),
         e::TensorError::IndexOutOfBounds.severity(),
         e::TransformError::InvalidDimension.severity(),
@@ -157,11 +164,54 @@ fn assert_pure_math_eighteen_errors() {
         umbrella.severity(),
     ];
     assert!(severities.iter().all(|s| *s == Severity::Error));
+    assert_kelly_validation_and_ruin_exports();
+}
+
+#[cfg(feature = "pure_math")]
+fn assert_kelly_validation_and_ruin_exports() {
+    use math_explorer::diagnostics::{Diagnostic, Severity};
+    use math_explorer::error as e;
+
+    let k_stake: e::Error = e::KellyError::InvalidStake { value: 0.0 }.into();
+    let k_barrier: e::Error = e::KellyError::InvalidBarrier {
+        floor: 1.2,
+        initial_wealth: 1.0,
+    }
+    .into();
+    let k_bets: e::PureMathError = e::KellyError::InsufficientBets {
+        required: 2,
+        actual: 1,
+    }
+    .into();
+    let k_dim: e::PureMathError = e::KellyError::DimensionMismatch {
+        expected: 3,
+        actual: 2,
+    }
+    .into();
+    let k_conv: e::PureMathError = e::KellyError::ConvergenceFailed {
+        reason: "bracket failed",
+    }
+    .into();
+    assert!(!format!("{k_stake:?}{k_barrier:?}").is_empty());
+    assert_eq!(k_bets.severity(), Severity::Error);
+    assert_eq!(k_dim.severity(), Severity::Error);
+    assert_eq!(k_conv.severity(), Severity::Error);
+
+    let placed = math_explorer::pure_math::statistics::kelly::Odds::new(2.10).unwrap();
+    let close = math_explorer::pure_math::statistics::kelly::UnitInterval::new(0.50).unwrap();
+    let clv = math_explorer::pure_math::statistics::validation::single_bet_clv(&placed, &close)
+        .expect("facade single_bet_clv");
+    assert!((clv.ev_pct - 5.0).abs() < 1e-9);
+    let fk = math_explorer::pure_math::statistics::kelly::kelly_fraction(&close, &placed).unwrap();
+    let barrier =
+        math_explorer::pure_math::statistics::ruin::kelly_barrier_risk(&close, &placed, &fk, 0.5)
+            .expect("facade kelly_barrier_risk");
+    assert!((barrier.lundberg_barrier_bound - 0.5).abs() < 1e-6);
 }
 
 #[cfg(feature = "pure_math")]
 #[test]
-fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors() {
+fn pure_math_facade_exports_containers_third_party_types_and_all_twenty_two_errors() {
     use math_explorer::math_types::{Float, IBig, Integer, Rational};
     use math_explorer::mesh::{Mesh, Point3D};
     use math_explorer::nalgebra::{DMatrix, DVector};
@@ -197,7 +247,14 @@ fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors
     let (a, b) = (g.add_node("a"), g.add_node("b"));
     g.add_edge(a, b, 1.0);
     assert_eq!(g.node_count(), 2);
-    assert_pure_math_eighteen_errors();
+    let r = math_explorer::pure_math::statistics::elo::EloRating::default();
+    assert_eq!(r.value(), 1500.0);
+    let dc = math_explorer::pure_math::statistics::match_models::DixonColesParams::new(
+        1.35, 1.15, -0.13,
+    )
+    .expect("valid Dixon-Coles params");
+    assert!(dc.default_grid().expect("valid score grid").prob(0, 0) > 0.09);
+    assert_pure_math_twenty_two_errors();
 }
 
 #[cfg(feature = "ai")]
@@ -238,7 +295,8 @@ fn ai_facade_exports_adam_and_ai_error_without_internal_crate_imports() {
 #[test]
 fn applied_facade_exports_all_nine_errors_and_umbrella() {
     use math_explorer::applied::battery_degradation::{
-        BatteryError as SubBatteryError, Capacity, Cycles, DepthOfDischarge, PowerLawModel,
+        BatteryError as SubBatteryError, Capacity, ChemistryPreset, Cycles, DepthOfDischarge,
+        ElectrochemicalAgingModel, PowerLawModel,
     };
     use math_explorer::applied::error as inner_error;
     use math_explorer::applied::game_theory::mechanism_design::{ContinuousCDF, Distribution};
@@ -254,6 +312,8 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
         DepthOfDischarge::new_clamped(0.8),
     );
     assert!(cap / Capacity::new_clamped(1.0) > 0.0);
+    let coupled = ElectrochemicalAgingModel::from_preset(ChemistryPreset::Lfp);
+    assert!(coupled.n70(DepthOfDischarge::new_clamped(60.0)).as_f64() > 0.0);
     let bad_err: SubBatteryError = Cycles::new(-1.0).expect_err("negative cycles must fail");
     let root_err: BatteryError = bad_err;
     assert_eq!(root_err.severity(), Severity::Error);

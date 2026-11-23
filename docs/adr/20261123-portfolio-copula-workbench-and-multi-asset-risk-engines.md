@@ -26,8 +26,8 @@ Quantitative portfolio construction, multi-leg Same Game Parlay (SGP) pricing, a
 
 ```text
 Updated GUI inventory totals:
-- InteractiveTools: 81 (60 plot + 7 raster + 14 non-figure; 78 non-shader + 3 shader)
-- StarterPresetMetadata cards: 120
+- InteractiveTools: 88 (67 plot + 8 raster + 13 non-figure; 85 non-shader + 3 shader)
+- StarterPresetMetadata cards: 149
 ```
 
 ## Consequences

@@ -53,19 +53,28 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::AnalysisError::ConvergenceError(1.0), bus),
         check_leaf(error::CopulaError::NotSymmetric, bus),
         check_leaf(error::EllipticCurveError::InvalidDegree, bus),
+        check_leaf(error::EloError::InvalidScale { value: 0.0 }, bus),
         check_leaf(error::EvolutionError::BoundsError, bus),
         check_leaf(error::FractranError::InvalidFractionSyntax, bus),
         check_leaf(error::Glicko2Error::EmptyMatchResults, bus),
         check_leaf(error::KellyError::InvalidBankroll { value: -1.0 }, bus),
         check_leaf(error::LinearAlgebraError::SingularMatrix, bus),
         check_leaf(
+            error::MarketPricingError::NoArbitrage {
+                reciprocal_sum: 1.05,
+            },
+            bus,
+        ),
+        check_leaf(
             error::MarkovError::InvalidState {
                 reason: "s".to_string(),
             },
             bus,
         ),
+        check_leaf(error::MatchModelError::InvalidGoalRate { value: 0.0 }, bus),
         check_leaf(error::NumberTheoryError::ConversionError, bus),
         check_leaf(error::OptimizationError::ConversionError, bus),
+        check_leaf(error::OptionPricingError::InvalidSpot { value: -1.0 }, bus),
         check_leaf(error::OuError::InvalidVolatility { value: -0.1 }, bus),
         check_leaf(error::StochasticError::InvalidReactionIndex(2), bus),
         check_leaf(error::TdaError::EmptyPointCloud, bus),
@@ -130,7 +139,7 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     ]
 }
 
-pub fn verify_six_umbrellas_and_fifteen_wrappers(bus: &DiagnosticBus) {
+pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
     let umbrellas: [Error; 6] = [
         error::MathCommonsError::from(sample_math()).into(),
         error::PureMathError::from(error::KellyError::InvalidOdds { value: 0.5 }).into(),
@@ -158,6 +167,9 @@ pub fn verify_six_umbrellas_and_fifteen_wrappers(bus: &DiagnosticBus) {
         error::OptimizationError::from(error::EvolutionError::BoundsError)
             .source()
             .is_some(),
+        error::MarketPricingError::from(error::AnalysisError::ConvergenceError(0.0))
+            .source()
+            .is_some(),
         error::AIError::from(sample_math()).source().is_some(),
         error::PharmacokineticsError::from(error::AnalysisError::ConvergenceError(0.0))
             .source()
@@ -180,7 +192,7 @@ pub fn verify_six_umbrellas_and_fifteen_wrappers(bus: &DiagnosticBus) {
             .is_some(),
         error::StatMechError::from(sample_math()).source().is_some(),
     ];
-    assert_eq!(wrapper_sources_present.len(), 16);
+    assert_eq!(wrapper_sources_present.len(), 17);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
 }
 
@@ -194,11 +206,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 50);
-    assert_eq!(*events.lock().unwrap(), 50);
+    assert_eq!(converted.len(), 54);
+    assert_eq!(*events.lock().unwrap(), 54);
 
-    verify_six_umbrellas_and_fifteen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 56);
+    verify_six_umbrellas_and_seventeen_wrappers(&bus);
+    assert_eq!(*events.lock().unwrap(), 60);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -274,14 +286,18 @@ pub fn verify_prelude_error_reexports() {
         p::AnalysisError,
         p::CopulaError,
         p::EllipticCurveError,
+        p::EloError,
         p::EvolutionError,
         p::FractranError,
         p::Glicko2Error,
         p::KellyError,
         p::LinearAlgebraError,
+        p::MarketPricingError,
         p::MarkovError,
+        p::MatchModelError,
         p::NumberTheoryError,
         p::OptimizationError,
+        p::OptionPricingError,
         p::OuError,
         p::StochasticError,
         p::TdaError,
