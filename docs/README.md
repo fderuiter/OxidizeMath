@@ -45,6 +45,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0046: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0046-symplectic-hamiltonian-solvers-and-poincare-lab.md)
 - [ADR 20261123: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/20261123-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 - [ADR 20261123: Right-Censored Win-Ratio U-Statistics, Bivariate Weibull Power Sweeps, and Interactive Stress Tester](adr/20261123-censored-win-ratio-u-statistics-and-weibull-power-sweeps.md)
+- [ADR 20261123: Checked Companion APIs, Typed Domain Errors, and Human-Readable Diagnostics](adr/20261123-checked-apis-and-typed-domain-errors.md)
 - [ADR 20261123: Feature-Gate Core AST Tools and Unify Workspace Crates](adr/20261123-feature-gate-core-ast-tools-and-unify-crates.md)
 - [ADR 20261123: Deterministic Genz Gaussian Copula and Parlay Engine](adr/20261123-genz-gaussian-copula-and-parlay-engine.md)
 - [ADR 20261123: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics](adr/20261123-glicko2-copula-ou-workbenches-and-kelly-net-odds.md)
