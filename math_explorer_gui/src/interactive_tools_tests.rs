@@ -18,6 +18,9 @@ mod tests {
         let ctx = eframe::egui::Context::default();
 
         exercise_interactive_tool::<crate::tabs::ai::q_table_inspector::QTableInspectorTool>(&ctx);
+        exercise_interactive_tool::<crate::tabs::ai::calibration_workbench::CalibrationWorkbenchTool>(
+            &ctx,
+        );
         exercise_interactive_tool::<crate::tabs::ai::attention_maps::AttentionMapsTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::ai::tokenization::TokenizationTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::financial_math::bet_size::BetSizeCalculatorTool>(

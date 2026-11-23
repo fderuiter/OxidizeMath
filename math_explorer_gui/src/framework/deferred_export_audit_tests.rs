@@ -232,9 +232,10 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
 fn assert_expected_capability_counts(counts: [usize; 8]) {
     let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader] = counts;
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
-    let expected_plot = if has_surface_morpho { 69 } else { 68 };
+    let has_ai = cfg!(feature = "ai");
+    let expected_plot = 68 + usize::from(has_surface_morpho) + usize::from(has_ai);
     let expected_solid = if has_surface_morpho { 8 } else { 7 };
-    let expected_non_shader = if has_surface_morpho { 86 } else { 85 };
+    let expected_non_shader = 85 + usize::from(has_surface_morpho) + usize::from(has_ai);
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"

@@ -95,6 +95,8 @@
 pub(crate) mod activation_kernels;
 #[allow(missing_docs)]
 pub mod activations;
+/// Supervised proper scoring rules, calibration diagnostics, and post-hoc recalibrators.
+pub mod calibration;
 pub mod deep_learning_theory;
 pub mod gaussian_splatting;
 #[allow(missing_docs)]

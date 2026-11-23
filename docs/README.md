@@ -48,6 +48,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/20261123-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 - [ADR 20261123: Bidirectional Zero-Allocation Odds Conversions, Format-Aware Kelly Errors, and Bet Size Calculator Synchronization](adr/20261123-bidirectional-odds-conversions-and-bet-calculator-sync.md)
 - [ADR 20261123: Calibrated 2D Score Grids and Venue-Adjusted Sports Elo Engine](adr/20261123-calibrated-2d-score-grids-and-sports-elo.md)
+- [ADR 20261123: Probabilistic Calibration Metrics, Post-Hoc Recalibrators, and Interactive Workbench](adr/20261123-calibration-metrics-and-workbench.md)
 - [ADR 20261123: Right-Censored Win-Ratio U-Statistics, Bivariate Weibull Power Sweeps, and Interactive Stress Tester](adr/20261123-censored-win-ratio-u-statistics-and-weibull-power-sweeps.md)
 - [ADR 20261123: Checked Companion APIs, Typed Domain Errors, and Human-Readable Diagnostics](adr/20261123-checked-apis-and-typed-domain-errors.md)
 - [ADR 20261123: Local Win Ratio and Clinical Cohort Workbench](adr/20261123-clinical-cohort-and-win-ratio-workbench.md)

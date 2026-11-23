@@ -24,6 +24,9 @@
 //!     where performance fluctuates around a long-term average.
 //!
 //! ###  Risk & Decision Theory
+//! *   **[Calibration & Proper Scoring Rules](calibration)**: Brier score with Murphy decomposition,
+//!     dataset log-loss, Gaussian and ensemble `CRPS`, `ECE`/`MCE` reliability curves, `ROC`/`PR-AUC`,
+//!     and post-hoc Platt, temperature, and `PAVA` isotonic recalibrators.
 //! *   **[Kelly Criterion](kelly)**: Optimal capital allocation strategy to maximize logarithmic wealth growth.
 //! *   **[Market Pricing & Devigging](market_pricing)**: Zero-allocation bookmaker overround removal (`Multiplicative`, `Additive`, `Power`, `Shin`), `+EV` valuation, arbitrage, subset Dutching, middling, and live hedging.
 //! *   **[Risk of Ruin & Solvency](ruin)**: Exact Gambler's Ruin, Cramér-Lundberg adjustment coefficients,
@@ -106,6 +109,7 @@
 //! }
 //! ```
 
+pub mod calibration;
 pub mod copula;
 pub mod elo;
 pub mod glicko2;
