@@ -1,29 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub use crate::presets::MorphogenesisKineticsMode;
 use math_explorer::biology::morphogenesis::{
     GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics,
 };
 use serde::{Deserialize, Serialize};
-
-/// Selectable reaction kinetics strategy for [`super::MorphogenesisTool`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum MorphogenesisKineticsMode {
-    /// Classic Schnakenberg activator-inhibitor kinetics (`du/dt = a - u + u^2 v`).
-    #[default]
-    Schnakenberg,
-    /// Gray-Scott cubic autocatalytic kinetics (`du/dt = -u v^2 + f(1 - u)`).
-    GrayScott,
-}
-
-impl MorphogenesisKineticsMode {
-    /// Display label shown in UI selectors.
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Schnakenberg => "Schnakenberg",
-            Self::GrayScott => "Gray-Scott",
-        }
-    }
-}
 
 /// Selectable hydrodynamic velocity coupling mode for [`super::MorphogenesisTool`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -97,23 +78,31 @@ impl MorphogenesisOverlayMode {
     }
 }
 
-/// Unified zero-allocation kinetics adapter switching cleanly between Schnakenberg and Gray-Scott.
+/// Unified zero-allocation kinetics adapter switching cleanly between Schnakenberg `(a, b)`
+/// and Gray-Scott `(f, k)`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MorphogenesisKinetics {
-    /// Primary rate parameter (`a` in Schnakenberg, feed rate `f` in Gray-Scott).
-    pub a: f64,
-    /// Secondary rate parameter (`b` in Schnakenberg, kill rate `k` in Gray-Scott).
-    pub b: f64,
     /// Active reaction model variant.
     pub mode: MorphogenesisKineticsMode,
+    /// Schnakenberg activator production rate `a`.
+    pub a: f64,
+    /// Schnakenberg inhibitor production rate `b`.
+    pub b: f64,
+    /// Gray-Scott substrate feed rate `f`.
+    pub f: f64,
+    /// Gray-Scott autocatalyst kill rate `k`.
+    pub k: f64,
 }
 
 impl Default for MorphogenesisKinetics {
     fn default() -> Self {
+        let gs = GrayScottKinetics::mitosis();
         Self {
+            mode: MorphogenesisKineticsMode::Schnakenberg,
             a: 0.1,
             b: 0.9,
-            mode: MorphogenesisKineticsMode::Schnakenberg,
+            f: gs.f,
+            k: gs.k,
         }
     }
 }
@@ -125,7 +114,7 @@ impl ReactionKinetics<2> for MorphogenesisKinetics {
                 SchnakenbergKinetics::new(self.a, self.b).reaction(concentrations)
             }
             MorphogenesisKineticsMode::GrayScott => {
-                GrayScottKinetics::new(self.a, self.b).reaction(concentrations)
+                GrayScottKinetics::new(self.f, self.k).reaction(concentrations)
             }
         }
     }
@@ -152,8 +141,8 @@ pub fn compute_peclet_damkohler(
     u_char: f64,
     length: f64,
     d_u: f64,
-    a: f64,
-    b: f64,
+    rate_primary: f64,
+    rate_secondary: f64,
     _mode: MorphogenesisKineticsMode,
 ) -> (f64, f64) {
     let safe_u = if u_char.is_finite() && u_char > 0.0 {
@@ -171,8 +160,9 @@ pub fn compute_peclet_damkohler(
     } else {
         1e-9
     };
-    let k_rxn = if (a + b).is_finite() && (a + b) > 1e-6 {
-        a + b
+    let sum_rates = rate_primary + rate_secondary;
+    let k_rxn = if sum_rates.is_finite() && sum_rates > 1e-6 {
+        sum_rates
     } else {
         1e-6
     };
@@ -199,12 +189,14 @@ pub(crate) fn default_brush_radius() -> i32 {
 pub struct MorphogenesisSharedParams {
     pub a: f64,
     pub b: f64,
+    pub f: f64,
+    pub k: f64,
     pub d_u: f64,
     pub d_v: f64,
     pub dt: f64,
     pub high_contrast: bool,
     pub theme_mode: crate::app::ThemeMode,
-    pub kinetics: MorphogenesisKineticsMode,
+    pub kinetics_mode: MorphogenesisKineticsMode,
     pub flow_mode: MorphogenesisFlowMode,
     pub inlet_velocity: f64,
     pub viscosity: f64,
@@ -216,15 +208,18 @@ pub struct MorphogenesisSharedParams {
 
 impl Default for MorphogenesisSharedParams {
     fn default() -> Self {
+        let gs = GrayScottKinetics::mitosis();
         Self {
             a: 0.1,
             b: 0.9,
+            f: gs.f,
+            k: gs.k,
             d_u: 1.0,
             d_v: 100.0,
             dt: 0.05,
             high_contrast: false,
             theme_mode: crate::app::ThemeMode::Dark,
-            kinetics: MorphogenesisKineticsMode::Schnakenberg,
+            kinetics_mode: MorphogenesisKineticsMode::Schnakenberg,
             flow_mode: MorphogenesisFlowMode::None,
             inlet_velocity: 0.0,
             viscosity: 0.02,

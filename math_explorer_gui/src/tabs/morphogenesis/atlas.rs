@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::types::MorphogenesisKineticsMode;
 use super::MorphogenesisTool;
 use crate::async_sim::atlas::{
     atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
@@ -97,12 +98,7 @@ pub fn grid_u_variance(u: &[f64]) -> f64 {
 }
 
 #[inline]
-fn mode_growth_and_euler_amp(
-    jac: [f64; 4],
-    diff: [f64; 2],
-    dt: f64,
-    mu: f64,
-) -> (f64, f64, bool) {
+fn mode_growth_and_euler_amp(jac: [f64; 4], diff: [f64; 2], dt: f64, mu: f64) -> (f64, f64, bool) {
     let [fu, fv, gu, gv] = jac;
     let [d_u, d_v] = diff;
     let tr = (fu - mu * d_u) + (gv - mu * d_v);
@@ -304,7 +300,9 @@ impl RegimeCartographer for MorphogenesisCartographer {
 
     fn color_for_cell(&self, cell: AtlasCell, high_contrast: bool) -> egui::Color32 {
         let intensity = match MorphogenesisRegime::from_u8(cell.regime) {
-            MorphogenesisRegime::StableWashout => (1.0 / (1.0 - cell.primary).max(1.0)).clamp(0.0, 1.0),
+            MorphogenesisRegime::StableWashout => {
+                (1.0 / (1.0 - cell.primary).max(1.0)).clamp(0.0, 1.0)
+            }
             MorphogenesisRegime::TuringPattern => (cell.primary * 4.0).clamp(0.15, 1.0),
             MorphogenesisRegime::BulkHopfOscillation => (cell.primary * 2.0).clamp(0.2, 1.0),
             MorphogenesisRegime::EulerCflUnstable => ((cell.primary - 1.0) * 0.25).clamp(0.2, 1.0),
@@ -354,7 +352,12 @@ impl RegimeCartographer for MorphogenesisCartographer {
             MorphogenesisRegime::EulerCflUnstable,
         ]
         .into_iter()
-        .map(|r| (r.label(), atlas_regime_color(r as u8, 4, 0.7, high_contrast)))
+        .map(|r| {
+            (
+                r.label(),
+                atlas_regime_color(r as u8, 4, 0.7, high_contrast),
+            )
+        })
         .collect()
     }
 }
@@ -415,17 +418,18 @@ impl MorphogenesisTool {
 
     /// Re-seeds deterministic spatial noise if the active grid washed out and current parameters form patterns.
     pub fn reseed_if_washed_out_entering_pattern(&mut self) -> bool {
-        let (a, b, d_u, d_v, dt, kinetics) = {
+        let (a, b, d_u, d_v, dt, mode) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt, p.kinetics)
+            (p.a, p.b, p.d_u, p.d_v, p.dt, p.kinetics_mode)
         };
-        if kinetics != super::types::MorphogenesisKineticsMode::Schnakenberg
+        if mode != MorphogenesisKineticsMode::Schnakenberg
             || !is_pattern_forming_regime(a, b, d_u, d_v, dt)
             || !self.is_active_grid_washed_out()
         {
             return false;
         }
         if let Some(sr) = &mut self.step_runner {
+            sr.system.kinetics.mode = MorphogenesisKineticsMode::Schnakenberg;
             sr.system.kinetics.a = a;
             sr.system.kinetics.b = b;
             sr.system.diffusion_coeffs = [d_u, d_v];
@@ -441,9 +445,10 @@ impl MorphogenesisTool {
     /// Applies an [`AtlasTeleportEvent`] to live morphogenesis parameters with CFL recovery and washout re-seeding.
     pub fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
         let was_faulted = self.worker.state() == SimWorkerState::Faulted;
-        {
+        let switched_from_gray_scott = {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.kinetics = super::types::MorphogenesisKineticsMode::Schnakenberg;
+            let was_gs = p.kinetics_mode != MorphogenesisKineticsMode::Schnakenberg;
+            p.kinetics_mode = MorphogenesisKineticsMode::Schnakenberg;
             for (key, val) in [(ev.x_key, ev.x_val), (ev.y_key, ev.y_val)] {
                 match key {
                     "a" => p.a = val,
@@ -454,17 +459,22 @@ impl MorphogenesisTool {
                     _ => {}
                 }
             }
-            if was_faulted
+            if was_gs {
+                p.d_u = p.d_u.clamp(0.1, 5.0);
+                p.d_v = p.d_v.clamp(10.0, 200.0);
+                p.dt = p.dt.clamp(1e-4, 0.1);
+            }
+            if (was_faulted || was_gs)
                 && ev.x_key != "dt"
                 && ev.y_key != "dt"
                 && 4.0 * p.d_u.max(p.d_v) * p.dt >= 1.0
             {
                 p.dt = (0.2 / p.d_u.max(p.d_v).max(1e-6)).clamp(1e-4, 0.1);
             }
-        }
-        self.theory
-            .set_mode(super::types::MorphogenesisKineticsMode::Schnakenberg);
-        if was_faulted {
+            was_gs
+        };
+        self.theory.set_mode(MorphogenesisKineticsMode::Schnakenberg);
+        if was_faulted || switched_from_gray_scott {
             self.reset_system();
             return;
         }

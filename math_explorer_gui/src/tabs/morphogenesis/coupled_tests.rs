@@ -1,6 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::presets::{PRESET_GRAY_SCOTT_SPIRAL_FLOW, PRESET_KARMAN_TURING_WAKE};
+use super::presets::{
+    PRESET_GRAY_SCOTT_MITOSIS, PRESET_GRAY_SCOTT_SPIRAL_FLOW, PRESET_KARMAN_TURING_WAKE,
+};
 use super::*;
 use crate::app::{contrast_ratio, ThemeMode};
 use crate::async_sim::{SimCommand, SimulationRunner};
@@ -21,7 +23,7 @@ fn test_legacy_presets_load_zero_velocity_and_advected_presets_roundtrip() {
     assert_eq!(spots_state.inlet_velocity, 0.0);
     assert_eq!(spots_state.circulation, 0.0);
     assert_eq!(
-        spots_state.kinetics,
+        spots_state.kinetics_mode,
         MorphogenesisKineticsMode::Schnakenberg
     );
 
@@ -31,6 +33,18 @@ fn test_legacy_presets_load_zero_velocity_and_advected_presets_roundtrip() {
         serde_json::from_str(&tool.save_state().unwrap()).unwrap();
     assert_eq!(stripes_state.flow_mode, MorphogenesisFlowMode::None);
     assert_eq!(stripes_state.inlet_velocity, 0.0);
+
+    tool.import_preset_json(PRESET_GRAY_SCOTT_MITOSIS)
+        .expect("PRESET_GRAY_SCOTT_MITOSIS must load");
+    let mitosis_state: MorphogenesisToolState =
+        serde_json::from_str(&tool.save_state().unwrap()).unwrap();
+    assert_eq!(
+        mitosis_state.kinetics_mode,
+        MorphogenesisKineticsMode::GrayScott
+    );
+    assert_eq!(mitosis_state.flow_mode, MorphogenesisFlowMode::None);
+    assert!((mitosis_state.f - 0.0367).abs() < 1e-9);
+    assert!((mitosis_state.k - 0.0649).abs() < 1e-9);
 
     tool.import_preset_json(PRESET_KARMAN_TURING_WAKE)
         .expect("PRESET_KARMAN_TURING_WAKE must load");
@@ -46,7 +60,7 @@ fn test_legacy_presets_load_zero_velocity_and_advected_presets_roundtrip() {
         .expect("PRESET_GRAY_SCOTT_SPIRAL_FLOW must load");
     let gs_state: MorphogenesisToolState =
         serde_json::from_str(&tool.save_state().unwrap()).unwrap();
-    assert_eq!(gs_state.kinetics, MorphogenesisKineticsMode::GrayScott);
+    assert_eq!(gs_state.kinetics_mode, MorphogenesisKineticsMode::GrayScott);
     assert_eq!(gs_state.flow_mode, MorphogenesisFlowMode::PotentialFlow);
     assert!(tool.theory().theory_citation().contains("Pearson"));
 }
@@ -99,7 +113,7 @@ fn test_lbm_coupling_zero_alloc_step_and_live_peclet_damkohler() {
         d_u: 0.4,
         d_v: 16.0,
         dt: 0.02,
-        kinetics: MorphogenesisKineticsMode::Schnakenberg,
+        kinetics_mode: MorphogenesisKineticsMode::Schnakenberg,
         flow_mode: MorphogenesisFlowMode::LbmVortexWake,
         inlet_velocity: 0.09,
         viscosity: 0.018,
@@ -136,12 +150,12 @@ fn test_lbm_coupling_zero_alloc_step_and_live_peclet_damkohler() {
 #[test]
 fn test_potential_flow_gray_scott_zero_alloc_and_circulation_readouts() {
     let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
-        a: 0.037,
-        b: 0.060,
+        f: 0.037,
+        k: 0.060,
         d_u: 0.20,
         d_v: 0.10,
         dt: 0.40,
-        kinetics: MorphogenesisKineticsMode::GrayScott,
+        kinetics_mode: MorphogenesisKineticsMode::GrayScott,
         flow_mode: MorphogenesisFlowMode::PotentialFlow,
         inlet_velocity: 0.08,
         circulation: 2.0,

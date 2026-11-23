@@ -1,8 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{
-    grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD,
-};
+use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
 use super::overlay::render_morphogenesis_overlay;
 use super::types::{
     compute_peclet_damkohler, MorphogenesisFlowMode, MorphogenesisKinetics,
@@ -26,6 +24,8 @@ use std::sync::Arc;
 const MAX_CFL_SUBSTEPS: usize = 64;
 const TARGET_ADVECTIVE_CFL: f64 = 0.40;
 
+/// Coupled multi-kinetics worker runner supporting [`MorphogenesisKineticsMode::Schnakenberg`]
+/// and [`MorphogenesisKineticsMode::GrayScott`] over [`AdvectionDiffusion2D`].
 #[allow(missing_docs)]
 pub struct MorphogenesisRunner {
     pub(crate) system: TuringSystem<2, MorphogenesisKinetics, AdvectionDiffusion2D>,
@@ -70,9 +70,11 @@ impl MorphogenesisRunner {
     ) -> Self {
         let snap = params.read().unwrap_or_else(|e| e.into_inner()).clone();
         let kinetics = MorphogenesisKinetics {
+            mode: snap.kinetics_mode,
             a: snap.a,
             b: snap.b,
-            mode: snap.kinetics,
+            f: snap.f,
+            k: snap.k,
         };
         let diffusion = AdvectionDiffusion2D::new(
             Dimension(width),
@@ -99,7 +101,7 @@ impl MorphogenesisRunner {
             vorticity_buf: vec![0.0; width * height],
             peclet: 0.0,
             damkohler: 0.0,
-            last_kinetics_mode: snap.kinetics,
+            last_kinetics_mode: snap.kinetics_mode,
             last_flow_mode: snap.flow_mode,
             #[cfg(feature = "physics")]
             lbm: LatticeBoltzmannD2Q9::new(width.max(1), height.max(1), tau),
@@ -165,6 +167,8 @@ impl MorphogenesisRunner {
         if ![
             snap.a,
             snap.b,
+            snap.f,
+            snap.k,
             snap.d_u,
             snap.d_v,
             snap.inlet_velocity,
@@ -178,13 +182,15 @@ impl MorphogenesisRunner {
         }
         self.system.kinetics.a = snap.a;
         self.system.kinetics.b = snap.b;
+        self.system.kinetics.f = snap.f;
+        self.system.kinetics.k = snap.k;
         self.system.diffusion_coeffs = [snap.d_u, snap.d_v];
 
-        if self.last_kinetics_mode != snap.kinetics {
-            self.last_kinetics_mode = snap.kinetics;
-            self.system.kinetics.mode = snap.kinetics;
+        if self.last_kinetics_mode != snap.kinetics_mode {
+            self.last_kinetics_mode = snap.kinetics_mode;
+            self.system.kinetics.mode = snap.kinetics_mode;
             MorphogenesisTool::initialize_coupled_system(&mut self.system, self.width, self.height);
-        } else if snap.kinetics == MorphogenesisKineticsMode::Schnakenberg
+        } else if snap.kinetics_mode == MorphogenesisKineticsMode::Schnakenberg
             && snap.dt.is_finite()
             && snap.dt > 0.0
             && is_pattern_forming_regime(snap.a, snap.b, snap.d_u, snap.d_v, snap.dt)
@@ -210,8 +216,11 @@ impl MorphogenesisRunner {
             .compute_vorticity(&mut self.vorticity_buf);
         let u_char = self.system.diffusion.characteristic_speed();
         let length = self.system.diffusion.characteristic_length();
-        let (pe, da) =
-            compute_peclet_damkohler(u_char, length, snap.d_u, snap.a, snap.b, snap.kinetics);
+        let (r1, r2) = match snap.kinetics_mode {
+            MorphogenesisKineticsMode::Schnakenberg => (snap.a, snap.b),
+            MorphogenesisKineticsMode::GrayScott => (snap.f, snap.k),
+        };
+        let (pe, da) = compute_peclet_damkohler(u_char, length, snap.d_u, r1, r2, snap.kinetics_mode);
         self.peclet = pe;
         self.damkohler = da;
     }
@@ -224,8 +233,10 @@ impl SimulationRunner for MorphogenesisRunner {
                 let snap = self.read_params();
                 self.system.kinetics.a = snap.a;
                 self.system.kinetics.b = snap.b;
-                self.system.kinetics.mode = snap.kinetics;
-                self.last_kinetics_mode = snap.kinetics;
+                self.system.kinetics.f = snap.f;
+                self.system.kinetics.k = snap.k;
+                self.system.kinetics.mode = snap.kinetics_mode;
+                self.last_kinetics_mode = snap.kinetics_mode;
                 #[cfg(feature = "physics")]
                 self.lbm.init_equilibrium();
                 self.system.diffusion.clear_velocity();
@@ -263,16 +274,14 @@ impl SimulationRunner for MorphogenesisRunner {
     }
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
-        if !FiniteStateGuard::is_finite_state(self) {
-            Some(DiagnosticReport::new(
+        (!FiniteStateGuard::is_finite_state(self)).then(|| {
+            DiagnosticReport::new(
                 0.0,
                 0,
                 "concentration",
                 "Turing morphogenesis diverged: non-finite concentration encountered.",
-            ))
-        } else {
-            None
-        }
+            )
+        })
     }
 
     fn step(&mut self) {
@@ -343,6 +352,12 @@ impl SimulationRunner for MorphogenesisRunner {
     }
 
     fn get_steps_per_frame(&self) -> usize {
-        1
+        if self.last_flow_mode == MorphogenesisFlowMode::None
+            && self.system.kinetics.mode == MorphogenesisKineticsMode::GrayScott
+        {
+            4
+        } else {
+            1
+        }
     }
 }

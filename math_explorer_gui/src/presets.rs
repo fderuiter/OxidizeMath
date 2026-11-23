@@ -35,8 +35,9 @@ pub struct PresetWrapper<T> {
 mod configs;
 
 pub use configs::{
-    checked_ode_step_count, MorphogenesisPresetConfig, OdePreset, ReplicatorPresetConfig,
-    MAX_INTERACTIVE_GRID_SIZE, MAX_INTERACTIVE_SURFACE_RESOLUTION, MAX_ODE_STEPS,
+    checked_ode_step_count, MorphogenesisKineticsMode, MorphogenesisPresetConfig, OdePreset,
+    ReplicatorPresetConfig, MAX_INTERACTIVE_GRID_SIZE, MAX_INTERACTIVE_SURFACE_RESOLUTION,
+    MAX_ODE_STEPS,
 };
 
 #[path = "presets/glicko2.rs"]

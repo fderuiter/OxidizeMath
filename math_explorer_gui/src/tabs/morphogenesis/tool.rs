@@ -119,53 +119,14 @@ impl MorphogenesisTool {
         let _ = self.worker.send_command(SimCommand::Start);
     }
 
-    pub(crate) fn apply_named_preset(&mut self, a: f64, b: f64, d_u: f64, d_v: f64, dt: f64) {
-        let target_state = if self.worker.is_running() {
-            SimWorkerState::Running
-        } else {
-            SimWorkerState::Ready
-        };
-        let p = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let (xk, yk) = self.atlas.axis_keys();
-        let preset_state = MorphogenesisToolState {
-            a,
-            b,
-            d_u,
-            d_v,
-            dt,
-            width: self.width,
-            height: self.height,
-            kinetics: MorphogenesisKineticsMode::Schnakenberg,
-            flow_mode: p.flow_mode,
-            inlet_velocity: p.inlet_velocity,
-            viscosity: p.viscosity,
-            circulation: p.circulation,
-            overlay_mode: p.overlay_mode,
-            brush_mode: p.brush_mode,
-            brush_radius: p.brush_radius,
-            state: Some(target_state),
-            paused: None,
-            pending_initial_start: false,
-            atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
-        };
-        if let Ok(json) = serde_json::to_string(&preset_state) {
-            let _ = self.try_load_state(&json);
-        }
-    }
-
     fn sync_visual_preferences(&mut self, visuals: &egui::Visuals) {
         let theme_mode = ThemeMode::from_visuals(visuals);
         let high_contrast = theme_mode == ThemeMode::HighContrast;
-        let (kinetics, overlay_mode) = {
+        let (kinetics_mode, overlay_mode) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.kinetics, p.overlay_mode)
+            (p.kinetics_mode, p.overlay_mode)
         };
-        self.theory.set_mode(kinetics);
+        self.theory.set_mode(kinetics_mode);
         if self.last_theme_mode != Some(theme_mode)
             || self.last_high_contrast != Some(high_contrast)
             || self.last_overlay_mode != Some(overlay_mode)
@@ -205,9 +166,20 @@ impl FiniteStateGuard for MorphogenesisTool {
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.a = p.a.clamp(0.0, 1.0);
         p.b = p.b.clamp(0.0, 2.0);
-        p.d_u = p.d_u.clamp(0.01, 5.0);
-        p.d_v = p.d_v.clamp(0.01, 200.0);
-        p.dt = p.dt.clamp(0.001, 1.0);
+        p.f = p.f.clamp(0.0, 0.12);
+        p.k = p.k.clamp(0.0, 0.12);
+        match p.kinetics_mode {
+            MorphogenesisKineticsMode::Schnakenberg => {
+                p.d_u = p.d_u.clamp(0.1, 5.0);
+                p.d_v = p.d_v.clamp(10.0, 200.0);
+                p.dt = p.dt.clamp(0.001, 0.1);
+            }
+            MorphogenesisKineticsMode::GrayScott => {
+                p.d_u = p.d_u.clamp(0.01, 1.0);
+                p.d_v = p.d_v.clamp(0.005, 1.0);
+                p.dt = p.dt.clamp(0.001, 2.0);
+            }
+        }
         p.inlet_velocity = p.inlet_velocity.clamp(0.0, 2.0);
         p.viscosity = p.viscosity.clamp(0.003, 0.5);
         p.circulation = p.circulation.clamp(-25.0, 25.0);
@@ -226,9 +198,11 @@ impl FiniteStateGuard for MorphogenesisTool {
             ..MorphogenesisSharedParams::default()
         };
         drop(p);
+        self.theory.set_mode(MorphogenesisKineticsMode::Schnakenberg);
         self.reset_system();
     }
 }
+
 impl InteractiveTool for MorphogenesisTool {
     fn name(&self) -> &'static str {
         "Turing Morphogenesis"
@@ -317,10 +291,12 @@ impl InteractiveTool for MorphogenesisTool {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             p.a.to_bits().hash(&mut h);
             p.b.to_bits().hash(&mut h);
+            p.f.to_bits().hash(&mut h);
+            p.k.to_bits().hash(&mut h);
             p.d_u.to_bits().hash(&mut h);
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
-            p.kinetics.hash(&mut h);
+            p.kinetics_mode.hash(&mut h);
             p.flow_mode.hash(&mut h);
             p.inlet_velocity.to_bits().hash(&mut h);
             p.viscosity.to_bits().hash(&mut h);
@@ -353,7 +329,9 @@ impl InteractiveTool for MorphogenesisTool {
             dt: p.dt,
             width: self.width,
             height: self.height,
-            kinetics: p.kinetics,
+            kinetics_mode: p.kinetics_mode,
+            f: p.f,
+            k: p.k,
             flow_mode: p.flow_mode,
             inlet_velocity: p.inlet_velocity,
             viscosity: p.viscosity,
@@ -379,15 +357,17 @@ impl InteractiveTool for MorphogenesisTool {
             .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
         self.atlas.set_visible(parsed.atlas_visible);
         let target_state = parsed.resolve_target_state();
-        self.theory.set_mode(parsed.kinetics);
+        self.theory.set_mode(parsed.kinetics_mode);
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.a = parsed.a;
             p.b = parsed.b;
+            p.f = parsed.f;
+            p.k = parsed.k;
             p.d_u = parsed.d_u;
             p.d_v = parsed.d_v;
             p.dt = parsed.dt;
-            p.kinetics = parsed.kinetics;
+            p.kinetics_mode = parsed.kinetics_mode;
             p.flow_mode = parsed.flow_mode;
             p.inlet_velocity = parsed.inlet_velocity;
             p.viscosity = parsed.viscosity;
@@ -429,6 +409,8 @@ impl InteractiveTool for MorphogenesisTool {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         p.a.is_finite()
             && p.b.is_finite()
+            && p.f.is_finite()
+            && p.k.is_finite()
             && p.d_u.is_finite()
             && p.d_v.is_finite()
             && p.dt.is_finite()
@@ -453,6 +435,8 @@ inventory::submit! {
             "morphogenesis",
             "schnakenberg",
             "gray-scott",
+            "mitosis",
+            "coral",
             "advection",
             "vorticity",
             "reaction-diffusion",

@@ -3,7 +3,8 @@
 use super::presets::{PRESET_GRAY_SCOTT_SPIRAL_FLOW, PRESET_KARMAN_TURING_WAKE};
 use super::types::{
     compute_peclet_damkohler, MorphogenesisBrushMode, MorphogenesisFlowMode,
-    MorphogenesisKineticsMode, MorphogenesisOverlayMode,
+    MorphogenesisKineticsMode, MorphogenesisOverlayMode, MorphogenesisSharedParams,
+    MorphogenesisSnapshotData,
 };
 use super::MorphogenesisTool;
 use crate::app::SemanticPalette;
@@ -12,6 +13,7 @@ use crate::async_sim::SimCommand;
 use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
+use math_explorer::biology::morphogenesis::GrayScottKinetics;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 
 impl MorphogenesisTool {
@@ -35,7 +37,11 @@ impl MorphogenesisTool {
             (self.live_peclet, self.live_damkohler)
         } else {
             let length = ((self.height as f64) / 6.0).max(1.0);
-            compute_peclet_damkohler(u_est, length, p.d_u, p.a, p.b, p.kinetics)
+            let (r1, r2) = match p.kinetics_mode {
+                MorphogenesisKineticsMode::Schnakenberg => (p.a, p.b),
+                MorphogenesisKineticsMode::GrayScott => (p.f, p.k),
+            };
+            compute_peclet_damkohler(u_est, length, p.d_u, r1, r2, p.kinetics_mode)
         }
     }
 
@@ -63,35 +69,11 @@ impl MorphogenesisTool {
         );
     }
 
-    fn apply_kinetics_mode_switch(&mut self, new_mode: MorphogenesisKineticsMode) {
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            match new_mode {
-                MorphogenesisKineticsMode::Schnakenberg => {
-                    p.a = 0.14;
-                    p.b = 0.86;
-                    p.d_u = 1.0;
-                    p.d_v = 50.0;
-                    p.dt = 0.02;
-                }
-                MorphogenesisKineticsMode::GrayScott => {
-                    p.a = 0.037;
-                    p.b = 0.060;
-                    p.d_u = 0.20;
-                    p.d_v = 0.10;
-                    p.dt = 0.50;
-                }
-            }
-        }
-        self.theory.set_mode(new_mode);
-        self.reset();
-    }
-
-    fn render_reaction_param_sliders(
+    fn render_schnakenberg_sliders(
         ui: &mut egui::Ui,
-        p: &mut super::types::MorphogenesisSharedParams,
+        p: &mut MorphogenesisSharedParams,
         constraints: &std::collections::HashMap<String, ParameterConstraint>,
-    ) -> (bool, f64, f64) {
+    ) -> bool {
         let bound = |key: &str, min: f64, max: f64, step: f64| {
             constraints
                 .get(key)
@@ -102,34 +84,81 @@ impl MorphogenesisTool {
         let cb = bound("b", 0.0, 2.0, 0.01);
         let cdu = bound("d_u", 0.1, 5.0, 0.05);
         let cdv = bound("d_v", 10.0, 200.0, 1.0);
-        let cdt = bound("dt", 1e-4, 0.1, 5e-4);
         let mut changed = false;
-        let max_dt = match p.kinetics {
-            MorphogenesisKineticsMode::Schnakenberg => {
-                changed |= ui
-                    .add(egui::Slider::new(&mut p.a, ca.min..=ca.max).step_by(ca.step).text("a"))
-                    .changed();
-                changed |= ui
-                    .add(egui::Slider::new(&mut p.b, cb.min..=cb.max).step_by(cb.step).text("b"))
-                    .changed();
-                changed |= ui
-                    .add(egui::Slider::new(&mut p.d_u, cdu.min..=cdu.max).step_by(cdu.step).text("D_u"))
-                    .changed();
-                changed |= ui
-                    .add(egui::Slider::new(&mut p.d_v, cdv.min..=cdv.max).step_by(cdv.step).text("D_v"))
-                    .changed();
-                cdt.max
-            }
-            MorphogenesisKineticsMode::GrayScott => {
-                changed |= ui.add(egui::Slider::new(&mut p.a, 0.01..=0.10).text("Feed f")).changed();
-                changed |= ui.add(egui::Slider::new(&mut p.b, 0.03..=0.08).text("Kill k")).changed();
-                changed |= ui.add(egui::Slider::new(&mut p.d_u, 0.05..=0.50).text("D_u")).changed();
-                changed |= ui.add(egui::Slider::new(&mut p.d_v, 0.02..=0.25).text("D_v")).changed();
-                1.0
-            }
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut p.a, ca.min..=ca.max)
+                    .step_by(ca.step)
+                    .text("a"),
+            )
+            .changed();
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut p.b, cb.min..=cb.max)
+                    .step_by(cb.step)
+                    .text("b"),
+            )
+            .changed();
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut p.d_u, cdu.min..=cdu.max)
+                    .step_by(cdu.step)
+                    .text("D_u"),
+            )
+            .changed();
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut p.d_v, cdv.min..=cdv.max)
+                    .step_by(cdv.step)
+                    .text("D_v"),
+            )
+            .changed();
+        changed
+    }
+
+    fn render_gray_scott_sliders(ui: &mut egui::Ui, p: &mut MorphogenesisSharedParams) -> bool {
+        let mut changed = false;
+        changed |= ui
+            .add(egui::Slider::new(&mut p.f, 0.01..=0.09).text("f (feed)"))
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut p.k, 0.03..=0.08).text("k (kill)"))
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut p.d_u, 0.05..=0.40).text("D_u"))
+            .changed();
+        changed |= ui
+            .add(egui::Slider::new(&mut p.d_v, 0.02..=0.25).text("D_v"))
+            .changed();
+        changed
+    }
+
+    fn render_reaction_param_sliders(
+        ui: &mut egui::Ui,
+        p: &mut MorphogenesisSharedParams,
+        constraints: &std::collections::HashMap<String, ParameterConstraint>,
+    ) -> (bool, f64, f64) {
+        let cdt = constraints
+            .get("dt")
+            .cloned()
+            .unwrap_or(ParameterConstraint {
+                min: 1e-4,
+                max: 0.1,
+                step: 5e-4,
+            });
+        let (mut changed, max_dt) = match p.kinetics_mode {
+            MorphogenesisKineticsMode::Schnakenberg => (
+                Self::render_schnakenberg_sliders(ui, p, constraints),
+                cdt.max,
+            ),
+            MorphogenesisKineticsMode::GrayScott => (Self::render_gray_scott_sliders(ui, p), 1.5),
         };
         changed |= ui
-            .add(egui::Slider::new(&mut p.dt, cdt.min..=max_dt).logarithmic(true).text("dt"))
+            .add(
+                egui::Slider::new(&mut p.dt, cdt.min..=max_dt)
+                    .logarithmic(true)
+                    .text("dt"),
+            )
             .changed();
         (changed, cdt.min, max_dt)
     }
@@ -139,15 +168,17 @@ impl MorphogenesisTool {
         let mut switched_to = None;
         let (changed, cfl_exceeded, dt_bounds) = {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            ui.horizontal(|ui| {
+            let current_mode = p.kinetics_mode;
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Kinetics:");
                 for mode in [
                     MorphogenesisKineticsMode::Schnakenberg,
                     MorphogenesisKineticsMode::GrayScott,
                 ] {
                     if ui
-                        .selectable_value(&mut p.kinetics, mode, mode.label())
-                        .changed()
+                        .selectable_label(current_mode == mode, mode.label())
+                        .clicked()
+                        && current_mode != mode
                     {
                         switched_to = Some(mode);
                     }
@@ -161,7 +192,15 @@ impl MorphogenesisTool {
         };
 
         if let Some(new_mode) = switched_to {
-            self.apply_kinetics_mode_switch(new_mode);
+            match new_mode {
+                MorphogenesisKineticsMode::Schnakenberg => {
+                    self.apply_named_preset(0.1, 0.9, 1.0, 100.0, 0.05);
+                }
+                MorphogenesisKineticsMode::GrayScott => {
+                    let mitosis = GrayScottKinetics::mitosis();
+                    self.apply_gray_scott_preset(mitosis.f, mitosis.k);
+                }
+            }
         } else if changed {
             let _ = self.reseed_if_washed_out_entering_pattern();
         }
@@ -253,6 +292,7 @@ impl MorphogenesisTool {
     }
 
     fn draw_presets(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
         ui.label("Presets:");
         ui.horizontal_wrapped(|ui| {
             if ui.button("Spots").clicked() {
@@ -261,6 +301,14 @@ impl MorphogenesisTool {
             if ui.button("Stripes").clicked() {
                 self.apply_named_preset(0.14, 0.86, 1.0, 50.0, 0.02);
             }
+            if ui.button("Mitosis").clicked() {
+                let m = GrayScottKinetics::mitosis();
+                self.apply_gray_scott_preset(m.f, m.k);
+            }
+            if ui.button("Coral").clicked() {
+                let c = GrayScottKinetics::coral();
+                self.apply_gray_scott_preset(c.f, c.k);
+            }
             if ui.button("Kármán Wake").clicked() {
                 let _ = self.import_preset_json(PRESET_KARMAN_TURING_WAKE);
             }
@@ -268,6 +316,23 @@ impl MorphogenesisTool {
                 let _ = self.import_preset_json(PRESET_GRAY_SCOTT_SPIRAL_FLOW);
             }
         });
+        if let Some(snapshot) = self.worker.latest_snapshot() {
+            if let Some(data) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<MorphogenesisSnapshotData>())
+            {
+                let splat_count =
+                    crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
+                        &data.concentration,
+                        snapshot.width,
+                        snapshot.height,
+                    )
+                    .gaussians
+                    .len();
+                ui.small(format!("Extruded 3D Gaussian splats: {splat_count}"));
+            }
+        }
         ui.separator();
         let _ = self.atlas.show_toggle_button(ui);
     }

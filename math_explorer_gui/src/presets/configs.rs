@@ -52,17 +52,39 @@ pub fn checked_ode_step_count(dt: f64, total_time: f64) -> Option<usize> {
     Some(steps as usize)
 }
 
-/// Configuration struct for Turing Morphogenesis simulation parameters.
+/// Reaction kinetics model selector for 2D morphogenesis presets.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum MorphogenesisKineticsMode {
+    /// Classical activator-inhibitor Turing spots and stripes (`SchnakenbergKinetics`).
+    #[default]
+    Schnakenberg,
+    /// Autocatalytic substrate-depletion mitosis, coral waves, and filaments (`GrayScottKinetics`).
+    GrayScott,
+}
+
+impl MorphogenesisKineticsMode {
+    /// Display label shown in UI selectors.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Schnakenberg => "Schnakenberg",
+            Self::GrayScott => "Gray-Scott",
+        }
+    }
+}
+
+/// Configuration struct for Turing and Gray-Scott Morphogenesis simulation parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct MorphogenesisPresetConfig {
-    /// Reaction kinetic parameter a (or Gray-Scott feed rate f).
+    /// Schnakenberg activator production rate `a`.
+    #[serde(default = "default_preset_a")]
     pub a: f64,
-    /// Reaction kinetic parameter b (or Gray-Scott kill rate k).
+    /// Schnakenberg inhibitor production rate `b`.
+    #[serde(default = "default_preset_b")]
     pub b: f64,
-    /// Diffusion coefficient for activator/substrate (u).
+    /// Diffusion coefficient for activator/substrate (`u`).
     pub d_u: f64,
-    /// Diffusion coefficient for inhibitor/autocatalyst (v).
+    /// Diffusion coefficient for inhibitor/autocatalyst (`v`).
     pub d_v: f64,
     /// Simulation time step size.
     pub dt: f64,
@@ -71,9 +93,14 @@ pub struct MorphogenesisPresetConfig {
     /// Grid height.
     pub height: usize,
     /// Reaction kinetics model (`"Schnakenberg"` or `"GrayScott"`).
-    #[cfg(feature = "biology")]
-    #[serde(default)]
-    pub kinetics: crate::tabs::morphogenesis::MorphogenesisKineticsMode,
+    #[serde(default, alias = "kinetics")]
+    pub kinetics_mode: MorphogenesisKineticsMode,
+    /// Gray-Scott dimensionless substrate feed rate `f`.
+    #[serde(default = "default_preset_gs_f")]
+    pub f: f64,
+    /// Gray-Scott dimensionless autocatalyst kill rate `k`.
+    #[serde(default = "default_preset_gs_k")]
+    pub k: f64,
     /// Coupled hydrodynamic flow mode (`"None"`, `"LbmVortexWake"`, `"PotentialFlow"`).
     #[cfg(feature = "biology")]
     #[serde(default)]
@@ -100,6 +127,22 @@ pub struct MorphogenesisPresetConfig {
     pub brush_radius: i32,
 }
 
+fn default_preset_a() -> f64 {
+    0.1
+}
+
+fn default_preset_b() -> f64 {
+    0.9
+}
+
+fn default_preset_gs_f() -> f64 {
+    0.0367
+}
+
+fn default_preset_gs_k() -> f64 {
+    0.0649
+}
+
 fn default_preset_viscosity() -> f64 {
     0.02
 }
@@ -111,15 +154,16 @@ fn default_preset_brush_radius() -> i32 {
 impl Default for MorphogenesisPresetConfig {
     fn default() -> Self {
         Self {
-            a: 0.1,
-            b: 0.9,
+            a: default_preset_a(),
+            b: default_preset_b(),
             d_u: 1.0,
             d_v: 100.0,
             dt: 0.05,
             width: 100,
             height: 100,
-            #[cfg(feature = "biology")]
-            kinetics: crate::tabs::morphogenesis::MorphogenesisKineticsMode::default(),
+            kinetics_mode: MorphogenesisKineticsMode::default(),
+            f: default_preset_gs_f(),
+            k: default_preset_gs_k(),
             #[cfg(feature = "biology")]
             flow_mode: crate::tabs::morphogenesis::MorphogenesisFlowMode::default(),
             inlet_velocity: 0.0,

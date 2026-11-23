@@ -15,6 +15,8 @@ use std::sync::Arc;
 pub mod atlas;
 /// Snapshot texture sync, sculpted canvas plot, and side-by-side parameter atlas view.
 pub mod canvas;
+/// 2D FFT Lenia continuous cellular automaton studio.
+pub mod lenia;
 /// Theme-aware concentration, vorticity, and dual composite pixel overlays.
 pub mod overlay;
 /// Starter gallery registrations, PRNG helper, and dynamic theory adapter.
@@ -36,6 +38,8 @@ pub mod ui;
 pub use atlas::{
     classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
 };
+#[cfg(test)]
+pub use lenia::LeniaTool;
 #[cfg(test)]
 pub use overlay::render_morphogenesis_overlay;
 #[cfg(test)]
@@ -70,7 +74,7 @@ pub struct LegacyMorphoState {
     pub pending_initial_start: bool,
 }
 
-/// Biology tab hosting [`MorphogenesisTool`] inside [`crate::framework::SimulationFramework`].
+/// Biology tab hosting [`MorphogenesisTool`] and [`lenia::LeniaTool`] inside [`crate::framework::SimulationFramework`].
 pub struct MorphogenesisTab {
     /// Underlying simulation framework managing exports, presets, theory portal, and state guard.
     pub framework: crate::framework::SimulationFramework,
@@ -80,6 +84,11 @@ pub struct MorphogenesisTab {
 impl Default for MorphogenesisTab {
     fn default() -> Self {
         let mut framework = crate::framework::SimulationFramework::new("biology");
+        framework.selected_tool_index = framework
+            .available_tools
+            .iter()
+            .position(|m| m.id == "MorphogenesisTool");
+
         let tool = MorphogenesisTool::default();
         let params = Arc::clone(&tool.params);
         let name = crate::framework::InteractiveTool::name(&tool).to_string();
@@ -116,12 +125,13 @@ impl MorphogenesisTab {
         MorphogenesisTool::create_runner(params, width, height)
     }
 
-    /// Exports active simulation parameters into [`MorphogenesisPresetConfig`].
+    /// Exports active [`MorphogenesisTool`] simulation parameters into [`MorphogenesisPresetConfig`].
     pub fn export_config(&self) -> MorphogenesisPresetConfig {
         if let Some(json) = self
             .framework
             .active_tool
             .as_ref()
+            .filter(|t| t.name() == "Turing Morphogenesis")
             .and_then(|t| t.save_state())
         {
             if let Ok(s) = serde_json::from_str::<MorphogenesisToolState>(&json) {
@@ -133,7 +143,9 @@ impl MorphogenesisTab {
                     dt: s.dt,
                     width: s.width,
                     height: s.height,
-                    kinetics: s.kinetics,
+                    kinetics_mode: s.kinetics_mode,
+                    f: s.f,
+                    k: s.k,
                     flow_mode: s.flow_mode,
                     inlet_velocity: s.inlet_velocity,
                     viscosity: s.viscosity,
@@ -157,7 +169,9 @@ impl MorphogenesisTab {
             dt: p.dt,
             width: 100,
             height: 100,
-            kinetics: p.kinetics,
+            kinetics_mode: p.kinetics_mode,
+            f: p.f,
+            k: p.k,
             flow_mode: p.flow_mode,
             inlet_velocity: p.inlet_velocity,
             viscosity: p.viscosity,
@@ -168,8 +182,11 @@ impl MorphogenesisTab {
         }
     }
 
-    /// Applies [`MorphogenesisPresetConfig`] to the active [`MorphogenesisTool`].
+    /// Applies [`MorphogenesisPresetConfig`] to [`MorphogenesisTool`].
     pub fn apply_config(&mut self, config: MorphogenesisPresetConfig) -> Result<(), String> {
+        if self.framework.active_tool_id() != Some("MorphogenesisTool") {
+            let _ = self.framework.select_tool_by_name("MorphogenesisTool");
+        }
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
@@ -197,7 +214,9 @@ impl MorphogenesisTab {
             dt: config.dt,
             width: config.width,
             height: config.height,
-            kinetics: config.kinetics,
+            kinetics_mode: config.kinetics_mode,
+            f: config.f,
+            k: config.k,
             flow_mode: config.flow_mode,
             inlet_velocity: config.inlet_velocity,
             viscosity: config.viscosity,
@@ -213,8 +232,28 @@ impl MorphogenesisTab {
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;
+        self.sync_shared_params_from_config(&config);
         self.sync_framework_after_direct_tool_mutation();
         Ok(())
+    }
+
+    fn sync_shared_params_from_config(&mut self, cfg: &MorphogenesisPresetConfig) {
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.a = cfg.a;
+        p.b = cfg.b;
+        p.f = cfg.f;
+        p.k = cfg.k;
+        p.d_u = cfg.d_u;
+        p.d_v = cfg.d_v;
+        p.dt = cfg.dt;
+        p.kinetics_mode = cfg.kinetics_mode;
+        p.flow_mode = cfg.flow_mode;
+        p.inlet_velocity = cfg.inlet_velocity;
+        p.viscosity = cfg.viscosity;
+        p.circulation = cfg.circulation;
+        p.overlay_mode = cfg.overlay_mode;
+        p.brush_mode = cfg.brush_mode;
+        p.brush_radius = cfg.brush_radius;
     }
 
     /// Serializes active simulation parameters to a formatted preset envelope JSON string.
@@ -251,6 +290,9 @@ impl MorphogenesisTab {
         let Ok(legacy) = serde_json::from_str::<LegacyMorphoState>(state) else {
             return false;
         };
+        if self.framework.active_tool_id() != Some("MorphogenesisTool") {
+            let _ = self.framework.select_tool_by_name("MorphogenesisTool");
+        }
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return true;
         };
@@ -261,12 +303,14 @@ impl MorphogenesisTab {
         else {
             return true;
         };
-        current_state.dt = legacy.dt.clamp(1e-4, 1.0);
+        current_state.dt = legacy.dt.clamp(1e-4, 2.0);
         current_state.state = legacy.state;
         current_state.paused = legacy.paused;
         current_state.pending_initial_start = legacy.pending_initial_start;
         if let Ok(updated_json) = serde_json::to_string(&current_state) {
             if tool.try_load_state(&updated_json).is_ok() {
+                let cfg = self.export_config();
+                self.sync_shared_params_from_config(&cfg);
                 self.framework.show_starter_gallery = false;
                 self.sync_framework_after_direct_tool_mutation();
             }
@@ -280,6 +324,8 @@ impl FiniteStateGuard for MorphogenesisTab {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         p.a.is_finite()
             && p.b.is_finite()
+            && p.f.is_finite()
+            && p.k.is_finite()
             && p.d_u.is_finite()
             && p.d_v.is_finite()
             && p.dt.is_finite()
@@ -299,7 +345,7 @@ impl FiniteStateGuard for MorphogenesisTab {
     fn auto_scale_step_size(&mut self) {
         let mut cfg = self.export_config();
         let current_dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
-        cfg.dt = (current_dt * 0.5).clamp(1e-4, 1.0);
+        cfg.dt = (current_dt * 0.5).clamp(1e-4, 2.0);
         let _ = self.apply_config(cfg);
     }
 
@@ -312,9 +358,11 @@ impl FiniteStateGuard for MorphogenesisTab {
         let mut cfg = self.export_config();
         cfg.a = p.a.clamp(0.0, 1.0);
         cfg.b = p.b.clamp(0.0, 2.0);
-        cfg.d_u = p.d_u.clamp(0.01, 5.0);
-        cfg.d_v = p.d_v.clamp(0.01, 200.0);
-        cfg.dt = p.dt.clamp(0.001, 1.0);
+        cfg.f = p.f.clamp(0.0, 0.12);
+        cfg.k = p.k.clamp(0.0, 0.12);
+        cfg.d_u = p.d_u.clamp(0.005, 5.0);
+        cfg.d_v = p.d_v.clamp(0.005, 200.0);
+        cfg.dt = p.dt.clamp(0.001, 2.0);
         cfg.inlet_velocity = p.inlet_velocity.clamp(0.0, 2.0);
         cfg.viscosity = p.viscosity.clamp(0.003, 0.5);
         cfg.circulation = p.circulation.clamp(-25.0, 25.0);
@@ -326,10 +374,12 @@ impl FiniteStateGuard for MorphogenesisTab {
         let mut cfg = self.export_config();
         cfg.a = 0.1;
         cfg.b = 0.9;
+        cfg.f = 0.0367;
+        cfg.k = 0.0649;
         cfg.d_u = 1.0;
         cfg.d_v = 100.0;
         cfg.dt = 0.05;
-        cfg.kinetics = MorphogenesisKineticsMode::Schnakenberg;
+        cfg.kinetics_mode = MorphogenesisKineticsMode::Schnakenberg;
         cfg.flow_mode = MorphogenesisFlowMode::None;
         cfg.inlet_velocity = 0.0;
         cfg.viscosity = 0.02;
@@ -380,21 +430,10 @@ impl ExplorerTab for MorphogenesisTab {
     ) -> Result<(), String> {
         self.framework
             .import_url_preset_json(tool_id, preset_json)?;
-        let cfg = self.export_config();
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = cfg.a;
-        p.b = cfg.b;
-        p.d_u = cfg.d_u;
-        p.d_v = cfg.d_v;
-        p.dt = cfg.dt;
-        p.kinetics = cfg.kinetics;
-        p.flow_mode = cfg.flow_mode;
-        p.inlet_velocity = cfg.inlet_velocity;
-        p.viscosity = cfg.viscosity;
-        p.circulation = cfg.circulation;
-        p.overlay_mode = cfg.overlay_mode;
-        p.brush_mode = cfg.brush_mode;
-        p.brush_radius = cfg.brush_radius;
+        if self.framework.active_tool_id() == Some("MorphogenesisTool") {
+            let cfg = self.export_config();
+            self.sync_shared_params_from_config(&cfg);
+        }
         Ok(())
     }
 }
