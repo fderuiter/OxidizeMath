@@ -1,7 +1,7 @@
-# ADR 0046: LBM Double-Buffer Swap Consolidation and Zero-Allocation Bounce-Back Force Telemetry
+# ADR 0047: LBM Double-Buffer Swap Consolidation and Zero-Allocation Bounce-Back Force Telemetry
 
 ## Status
-Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0037](0037-retire-physics-compatibility-shims.md), [ADR 0038](0038-federated-inverse-challenges-and-hud.md), [ADR 0039](0039-metric-agnostic-3d-tda-exact-z2-homology-and-chaos-mashup.md), [ADR 0040](0040-promote-zero-alloc-curve-solvers-to-math-commons.md), and [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md))
+Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0037](0037-retire-physics-compatibility-shims.md), [ADR 0038](0038-federated-inverse-challenges-and-hud.md), [ADR 0039](0039-metric-agnostic-3d-tda-exact-z2-homology-and-chaos-mashup.md), [ADR 0040](0040-promote-zero-alloc-curve-solvers-to-math-commons.md), [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md), and [ADR 0046](0046-symplectic-hamiltonian-solvers-and-poincare-lab.md))
 
 ## Context
 The D2Q9 Lattice Boltzmann solver in [`crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/`](../../crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/mod.rs) separates pre-streaming distributions (`f`) and post-streaming/post-collision distributions (`f_new`) inside [`LatticeState`](../../crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/state.rs):
