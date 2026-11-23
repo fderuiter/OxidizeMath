@@ -122,6 +122,7 @@ fn test_url_sync_controller_debounces_300ms_and_defers_pointer_drag() {
         selected_tab: 0,
         active_tool_id: Some("ToolA"),
         state_revision: rev,
+        ..UrlStateSignature::default()
     };
 
     assert_eq!(

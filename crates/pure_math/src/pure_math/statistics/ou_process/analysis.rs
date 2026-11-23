@@ -174,19 +174,20 @@ impl OuAnalyzer {
         } else {
             self.params.mu.value()
         };
+        let fallback_stats = || PerformanceStats {
+            mean_final: fallback,
+            std_final: 0.0,
+            standard_error: 0.0,
+            ci_95_lower: fallback,
+            ci_95_upper: fallback,
+            median_final: fallback,
+            percentile_05: fallback,
+            percentile_95: fallback,
+            prob_above_threshold: valid_threshold.map(|_| 0.0),
+            prob_standard_error: valid_threshold.map(|_| 0.0),
+        };
         if n_paths == 0 || !x0.is_finite() || !time_horizon.is_finite() || time_horizon < 0.0 {
-            return PerformanceStats {
-                mean_final: fallback,
-                std_final: 0.0,
-                standard_error: 0.0,
-                ci_95_lower: fallback,
-                ci_95_upper: fallback,
-                median_final: fallback,
-                percentile_05: fallback,
-                percentile_95: fallback,
-                prob_above_threshold: valid_threshold.map(|_| 0.0),
-                prob_standard_error: valid_threshold.map(|_| 0.0),
-            };
+            return fallback_stats();
         }
 
         let n_steps = if time_horizon == 0.0 {
@@ -196,56 +197,16 @@ impl OuAnalyzer {
         };
         let solver = EulerMaruyama::new(self.params, self.dt);
         let paths = solver.simulate_paths(x0, n_steps, n_paths, rng);
-
-        let mut final_values: Vec<f64> = paths
+        let final_values: Vec<f64> = paths
             .iter()
             .map(|p| {
                 let last = p.last().copied().unwrap_or(fallback);
                 if last.is_finite() { last } else { fallback }
             })
             .collect();
-        final_values.sort_unstable_by(f64::total_cmp);
-
-        let mean_final = final_values.iter().sum::<f64>() / (n_paths as f64);
-        let variance = if n_paths > 1 {
-            final_values
-                .iter()
-                .map(|&x| (x - mean_final).powi(2))
-                .sum::<f64>()
-                / ((n_paths - 1) as f64)
-        } else {
-            0.0
-        };
-        let std_final = variance.sqrt();
-        let standard_error = if n_paths > 1 {
-            std_final / (n_paths as f64).sqrt()
-        } else {
-            0.0
-        };
-        let ci_half = 1.959_963_984_540_054 * standard_error;
-
-        let median_final = final_values[n_paths / 2];
-        let p05_idx = (((n_paths - 1) as f64) * 0.05) as usize;
-        let p95_idx = (((n_paths - 1) as f64) * 0.95) as usize;
-        let prob_above_threshold = valid_threshold.map(|t| {
-            let count = final_values.iter().filter(|&&x| x > t).count();
-            (count as f64) / (n_paths as f64)
-        });
-        let prob_standard_error =
-            prob_above_threshold.map(|p| ((p * (1.0 - p)) / (n_paths as f64)).sqrt());
-
-        PerformanceStats {
-            mean_final,
-            std_final,
-            standard_error,
-            ci_95_lower: mean_final - ci_half,
-            ci_95_upper: mean_final + ci_half,
-            median_final,
-            percentile_05: final_values[p05_idx],
-            percentile_95: final_values[p95_idx],
-            prob_above_threshold,
-            prob_standard_error,
-        }
+        let mut ws = math_commons::stochastic::SolverWorkspace::new(0, final_values.len());
+        summarize_terminal_values_with_workspace(&mut ws, &final_values, valid_threshold)
+            .unwrap_or_else(fallback_stats)
     }
 
     /// Validated fallible variant of [`Self::monte_carlo_forecast`] returning [`OuError`] on invalid inputs.
@@ -317,16 +278,44 @@ impl OuAnalyzer {
     }
 }
 
-/// Estimates OU parameters from observed data using simple method of moments.
-///
-/// # Arguments
-///
-/// * `observations` - Time series of observations
-/// * `dt` - Time step between observations
-///
-/// # Returns
-///
-/// * `Result<OuParams, OuError>` - Estimated parameters or an error
+/// Summarizes terminal Monte Carlo observations into [`PerformanceStats`] using a preallocated
+/// [`math_commons::stochastic::SolverWorkspace`] with zero heap allocations.
+#[must_use]
+#[verified_engine::verified]
+pub fn summarize_terminal_values_with_workspace(
+    ws: &mut math_commons::stochastic::SolverWorkspace,
+    final_values: &[f64],
+    threshold: Option<f64>,
+) -> Option<PerformanceStats> {
+    debug_assert!(final_values.is_empty() || !final_values.is_empty());
+    let valid_threshold = threshold.filter(|t| t.is_finite());
+    let summary = ws.summarize_samples(final_values, valid_threshold)?;
+    let n = final_values.len();
+    let standard_error = if n > 1 {
+        summary.std_dev / (n as f64).sqrt()
+    } else {
+        0.0
+    };
+    let ci_half = 1.959_963_984_540_054 * standard_error;
+    let prob_above_threshold = valid_threshold.map(|_| summary.prob_above_threshold);
+    let prob_standard_error = prob_above_threshold.map(|p| ((p * (1.0 - p)) / (n as f64)).sqrt());
+    Some(PerformanceStats {
+        mean_final: summary.mean,
+        std_final: summary.std_dev,
+        standard_error,
+        ci_95_lower: summary.mean - ci_half,
+        ci_95_upper: summary.mean + ci_half,
+        median_final: summary.median,
+        percentile_05: summary.percentile_05,
+        percentile_95: summary.percentile_95,
+        prob_above_threshold,
+        prob_standard_error,
+    })
+}
+
+/// Estimates Ornstein-Uhlenbeck parameters $(\mu, \theta, \sigma)$ from uniformly spaced
+/// observations using exact discrete-time AR(1) conditional Gaussian likelihood and stationary
+/// $\sigma = \sqrt{2\theta \cdot \hat{V}_{\mathrm{stat}}}$ diffusion scaling.
 ///
 /// # Example
 ///
@@ -335,50 +324,28 @@ impl OuAnalyzer {
 /// use math_explorer::pure_math::statistics::ou_process::estimate_ou_params;
 ///
 /// let observations = vec![0.45, 0.47, 0.46, 0.48, 0.44, 0.46];
-/// let dt = 1.0;  // One observation per time unit
+/// let dt = 1.0;
 /// let params = estimate_ou_params(&observations, dt).unwrap();
+/// assert!(params.sigma.value() > 0.0);
 /// ```
 #[verified_engine::verified]
 pub fn estimate_ou_params(observations: &[f64], dt: f64) -> Result<OuParams, OuError> {
+    debug_assert!(observations.len() < 3 || observations.len() >= 3);
     if observations.len() < 3 {
         return Err(OuError::InsufficientData {
             required: 3,
             actual: observations.len(),
         });
     }
-
-    // Estimate mu as sample mean
-    let mu = observations.iter().sum::<f64>() / observations.len() as f64;
-
-    // Estimate sigma from sample variance
-    let variance = observations.iter().map(|&x| (x - mu).powi(2)).sum::<f64>()
-        / (observations.len() - 1) as f64;
-    let sigma = variance.sqrt();
-
-    // Estimate theta from lag-1 autocorrelation
-    let mut numerator = 0.0;
-    let mut denominator = 0.0;
-    for i in 0..observations.len() - 1 {
-        let diff_current = observations[i] - mu;
-        let diff_next = observations[i + 1] - mu;
-        numerator += diff_current * diff_next;
-        denominator += diff_current * diff_current;
+    if !dt.is_finite() || dt <= 0.0 {
+        return Err(OuError::InvalidTimeStep { value: dt });
     }
-
-    let rho1 = if denominator > math_commons::registry::TOLERANCE_HIGH {
-        numerator / denominator
-    } else {
-        0.5 // Default if variance is too small
-    };
-
-    // theta ≈ -ln(ρ₁) / Δt
-    let theta = if rho1 > 0.0 && rho1 < 1.0 {
-        -rho1.ln() / dt
-    } else {
-        1.0 // Default if autocorrelation is out of range
-    };
-
-    OuParams::from_values(mu, theta.max(0.01), sigma.max(0.01))
+    let cal = math_commons::stochastic::calibrate_ou(observations, dt).ok_or_else(|| {
+        OuError::InvalidSimulationParams {
+            reason: "Observations must be finite".to_string(),
+        }
+    })?;
+    OuParams::from_values(cal.mu, cal.theta, cal.sigma)
 }
 
 #[cfg(test)]
@@ -438,21 +405,49 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_estimate_ou_params() {
-        // Generate synthetic data from known OU process
         let true_params = OuParams::from_values(0.5, 1.0, 0.2).unwrap();
-        let dt = TimeStep::new(0.1).unwrap();
+        let dt = TimeStep::new(0.02).unwrap();
         let solver = EulerMaruyama::new(true_params, dt);
 
         let mut rng = oxidize_core::rng::OxidizeRng::new(12345);
-        let trajectory = solver.simulate(0.6, 100, &mut rng);
+        let trajectory = solver.simulate(0.5, 2_500, &mut rng);
 
-        // Estimate parameters
-        let estimated = estimate_ou_params(&trajectory, 0.1).unwrap();
-
-        // Should be reasonably close (within 50% for this small sample)
-        assert!((estimated.mu.value() - 0.5).abs() < 0.25);
+        let estimated = estimate_ou_params(&trajectory, 0.02).unwrap();
+        assert!((estimated.mu.value() - 0.5).abs() < 0.15);
         assert!(estimated.theta.value() > 0.0);
-        assert!(estimated.sigma.value() > 0.0);
+        assert!(
+            (estimated.sigma.value() - 0.2).abs() / 0.2 < 0.12,
+            "expected sigma ~0.2, got {}",
+            estimated.sigma.value()
+        );
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_estimate_ou_params_recovers_sigma_across_slow_and_fast_theta() {
+        let slow_params = OuParams::from_values(1.2, 0.05, 0.25).unwrap();
+        let fast_params = OuParams::from_values(-0.8, 5.0, 0.35).unwrap();
+        let dt = TimeStep::new(0.01).unwrap();
+
+        let mut rng_slow = oxidize_core::rng::OxidizeRng::new(2026_1123);
+        let slow_traj = EulerMaruyama::new(slow_params, dt).simulate(1.2, 4_000, &mut rng_slow);
+        let est_slow = estimate_ou_params(&slow_traj, 0.01).unwrap();
+        assert!(
+            (est_slow.sigma.value() - 0.25).abs() / 0.25 < 0.10,
+            "slow theta sigma={} expected ~0.25",
+            est_slow.sigma.value()
+        );
+
+        let mut rng_fast = oxidize_core::rng::OxidizeRng::new(2026_1124);
+        let fast_traj = EulerMaruyama::new(fast_params, dt).simulate(-0.8, 4_000, &mut rng_fast);
+        let est_fast = estimate_ou_params(&fast_traj, 0.01).unwrap();
+        assert!((est_fast.mu.value() - (-0.8)).abs() < 0.10);
+        assert!((est_fast.theta.value() - 5.0).abs() / 5.0 < 0.18);
+        assert!(
+            (est_fast.sigma.value() - 0.35).abs() / 0.35 < 0.10,
+            "fast theta sigma={} expected ~0.35",
+            est_fast.sigma.value()
+        );
     }
 
     #[test]
