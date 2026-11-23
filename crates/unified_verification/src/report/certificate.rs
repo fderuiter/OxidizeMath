@@ -179,6 +179,36 @@ fn check_readme_badge(cert: &IntegrityReport, readme_path: &Path, diffs: &mut Ve
     }
 }
 
+fn verify_on_disk_ast_parity(
+    expected: &IntegrityReport,
+    coverage_tolerance_pct: f64,
+    cert_path: &Path,
+    readme_path: &Path,
+) -> bool {
+    if std::env::var_os(super::VERIFY_SUITE_WRITE_ENV).is_some() {
+        return true;
+    }
+    match verify_certificate_against_report(
+        expected,
+        None,
+        coverage_tolerance_pct,
+        cert_path,
+        readme_path,
+    ) {
+        Ok(()) => {
+            println!("Verification_Certificate.json AST parity verified.");
+            true
+        }
+        Err(diffs) => {
+            eprintln!("\n[!] Verification_Certificate.json parity check failed:");
+            for diff in diffs {
+                eprintln!("  - {diff}");
+            }
+            false
+        }
+    }
+}
+
 pub fn check_ast_certificate_parity_with_cache(members: &[String], cache: &mut AstCache) -> bool {
     let config = match load_verify_suite_config_strict(None) {
         Ok(cfg) => cfg,
@@ -217,23 +247,10 @@ pub fn check_ast_certificate_parity_with_cache(members: &[String], cache: &mut A
         super::print_gate_failures(&eval);
         return false;
     }
-    match verify_certificate_against_report(
+    verify_on_disk_ast_parity(
         &eval.report,
-        None,
         config.coverage_tolerance_pct,
         cert_path,
         readme_path,
-    ) {
-        Ok(()) => {
-            println!("Verification_Certificate.json AST parity verified.");
-            true
-        }
-        Err(diffs) => {
-            eprintln!("\n[!] Verification_Certificate.json parity check failed:");
-            for diff in diffs {
-                eprintln!("  - {diff}");
-            }
-            false
-        }
-    }
+    )
 }

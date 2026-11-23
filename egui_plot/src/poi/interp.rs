@@ -9,28 +9,31 @@ pub fn interpolate_threshold_crossings(pts: &[PlotPoint], y_target: f64) -> Vec<
     }
     let mut roots = Vec::new();
     let n = pts.len();
-    for i in 0..n - 1 {
-        let p0 = pts[i];
-        let p1 = pts[i + 1];
-        if !is_finite_pt(p0) || !is_finite_pt(p1) {
-            continue;
-        }
-        let f0 = p0.y - y_target;
-        let f1 = p1.y - y_target;
-        if f0 == 0.0 && f1 == 0.0 {
-            continue;
-        }
-        if f0 == 0.0 {
-            roots.push(p0.x);
-            continue;
-        }
-        if (f0 > 0.0 && f1 < 0.0) || (f0 < 0.0 && f1 > 0.0) {
-            if let Some(x) = solve_segment_crossing(pts, i, y_target) {
-                roots.push(x);
+    let mut iter = pts.iter();
+    let Some(&first) = iter.next() else {
+        return roots;
+    };
+    let mut p0 = first;
+    let mut p0_fin = p0.x.abs() <= f64::MAX && p0.y.abs() <= f64::MAX;
+    for (i, &p1) in iter.enumerate() {
+        let p1_fin = p1.x.abs() <= f64::MAX && p1.y.abs() <= f64::MAX;
+        if p0_fin && p1_fin {
+            let f0 = p0.y - y_target;
+            let f1 = p1.y - y_target;
+            if !(f0 == 0.0 && f1 == 0.0) {
+                if f0 == 0.0 {
+                    roots.push(p0.x);
+                } else if (f0 > 0.0 && f1 < 0.0) || (f0 < 0.0 && f1 > 0.0) {
+                    if let Some(x) = solve_segment_crossing(pts, i, y_target) {
+                        roots.push(x);
+                    }
+                } else if i + 2 == n && f1 == 0.0 {
+                    roots.push(p1.x);
+                }
             }
-        } else if i + 2 == n && f1 == 0.0 {
-            roots.push(p1.x);
         }
+        p0 = p1;
+        p0_fin = p1_fin;
     }
     roots
 }
@@ -42,71 +45,224 @@ pub fn interpolate_y_at_x(pts: &[PlotPoint], x_target: f64) -> Vec<f64> {
     }
     let mut values = Vec::new();
     let n = pts.len();
-    for i in 0..n - 1 {
-        let p0 = pts[i];
-        let p1 = pts[i + 1];
-        if !is_finite_pt(p0) || !is_finite_pt(p1) {
-            continue;
-        }
-        let dx0 = p0.x - x_target;
-        let dx1 = p1.x - x_target;
-        if dx0 == 0.0 && dx1 == 0.0 {
-            continue;
-        }
-        if dx0 == 0.0 {
-            values.push(p0.y);
-            continue;
-        }
-        if (dx0 > 0.0 && dx1 < 0.0) || (dx0 < 0.0 && dx1 > 0.0) {
-            if let Some(y) = eval_segment_at_x(pts, i, x_target) {
-                values.push(y);
+    let mut iter = pts.iter();
+    let Some(&first) = iter.next() else {
+        return values;
+    };
+    let mut p0 = first;
+    let mut p0_fin = p0.x.abs() <= f64::MAX && p0.y.abs() <= f64::MAX;
+    for (i, &p1) in iter.enumerate() {
+        let p1_fin = p1.x.abs() <= f64::MAX && p1.y.abs() <= f64::MAX;
+        if p0_fin && p1_fin {
+            let dx0 = p0.x - x_target;
+            let dx1 = p1.x - x_target;
+            if !(dx0 == 0.0 && dx1 == 0.0) {
+                if dx0 == 0.0 {
+                    values.push(p0.y);
+                } else if (dx0 > 0.0 && dx1 < 0.0) || (dx0 < 0.0 && dx1 > 0.0) {
+                    if let Some(y) = eval_segment_at_x(pts, i, x_target) {
+                        values.push(y);
+                    }
+                } else if i + 2 == n && dx1 == 0.0 {
+                    values.push(p1.y);
+                }
             }
-        } else if i + 2 == n && dx1 == 0.0 {
-            values.push(p1.y);
         }
+        p0 = p1;
+        p0_fin = p1_fin;
     }
     values
 }
 
-/// Detect local maxima and minima via three-point parabolic interpolation.
-pub(crate) fn detect_local_extrema(pts: &[PlotPoint]) -> Vec<([f64; 2], bool)> {
-    if pts.len() < 3 {
-        return Vec::new();
+#[cold]
+fn finish_plateau_extremum(
+    mode: u8,
+    prev: PlotPoint,
+    start: PlotPoint,
+    second: PlotPoint,
+    last: PlotPoint,
+    after: PlotPoint,
+    extrema: &mut Vec<([f64; 2], bool)>,
+) {
+    let p2 = if mode == 1 { after } else { second };
+    let x_ok = (prev.x < start.x && start.x < p2.x) || (prev.x > start.x && start.x > p2.x);
+    if !x_ok {
+        return;
     }
-    let mut out = Vec::new();
-    for i in 1..pts.len() - 1 {
-        let (p0, p1, p2) = (pts[i - 1], pts[i], pts[i + 1]);
-        if !is_finite_pt(p0) || !is_finite_pt(p1) || !is_finite_pt(p2) {
-            continue;
-        }
-        let x_inc = p0.x < p1.x && p1.x < p2.x;
-        let x_dec = p0.x > p1.x && p1.x > p2.x;
-        if !x_inc && !x_dec {
-            continue;
-        }
-        let Some(next_y) = next_distinct_y(pts, i) else {
-            continue;
+    let is_max = start.y > prev.y && start.y > after.y && start.y >= p2.y;
+    let is_min = start.y < prev.y && start.y < after.y && start.y <= p2.y;
+    if is_max || is_min {
+        let pt = if mode == 1 {
+            parabolic_vertex(prev, start, after)
+        } else {
+            [0.5 * (start.x + last.x), start.y]
         };
-        let is_max = p1.y > p0.y && p1.y > next_y && p1.y >= p2.y;
-        let is_min = p1.y < p0.y && p1.y < next_y && p1.y <= p2.y;
-        if is_max || is_min {
-            out.push((parabolic_vertex(p0, p1, p2), is_max));
-        }
+        extrema.push((pt, is_max));
     }
-    out
 }
 
-fn next_distinct_y(pts: &[PlotPoint], idx: usize) -> Option<f64> {
-    let base_y = pts[idx].y;
-    for pt in &pts[idx + 1..] {
-        if !is_finite_pt(*pt) {
-            return None;
-        }
-        if (pt.y - base_y).abs() > 0.0 {
-            return Some(pt.y);
-        }
+pub(crate) struct SingleLineScan {
+    pub(crate) roots: Vec<f64>,
+    pub(crate) y_ints: Vec<f64>,
+    pub(crate) extrema: Vec<([f64; 2], bool)>,
+}
+
+fn fast_forward_plateau(
+    orig: &[PlotPoint],
+    flat_y: f64,
+    want_y_ints: bool,
+    last: PlotPoint,
+) -> (PlotPoint, usize) {
+    let mut rem = orig;
+    macro_rules! scan_run {
+        (|$p:ident| $cond:expr) => {{
+            while let [a, b, c, d, e, f, g, h, rest @ ..] = rem {
+                let ok = ({
+                    let $p = a;
+                    $cond
+                }) & ({
+                    let $p = b;
+                    $cond
+                }) & ({
+                    let $p = c;
+                    $cond
+                }) & ({
+                    let $p = d;
+                    $cond
+                }) & ({
+                    let $p = e;
+                    $cond
+                }) & ({
+                    let $p = f;
+                    $cond
+                }) & ({
+                    let $p = g;
+                    $cond
+                }) & ({
+                    let $p = h;
+                    $cond
+                });
+                if ok {
+                    rem = rest;
+                } else {
+                    break;
+                }
+            }
+            while let [$p, rest @ ..] = rem {
+                if $cond {
+                    rem = rest;
+                } else {
+                    break;
+                }
+            }
+        }};
     }
-    None
+    if !want_y_ints {
+        scan_run!(|p| (p.y == flat_y) & ((p.x * 0.0) == 0.0));
+    } else if last.x > 0.0 {
+        scan_run!(|p| (p.y == flat_y) & (p.x > 0.0) & ((p.x * 0.0) == 0.0));
+    } else if last.x < 0.0 {
+        scan_run!(|p| (p.y == flat_y) & (p.x < 0.0) & ((p.x * 0.0) == 0.0));
+    }
+    let skipped = orig.len() - rem.len();
+    let end = if skipped > 0 { orig[skipped - 1] } else { last };
+    (end, skipped)
+}
+
+/// Fused single-pass streaming scan for $y = 0$ roots, $x = 0$ intercepts, and local extrema.
+pub(crate) fn scan_single_line_all(
+    pts: &[PlotPoint],
+    want_roots: bool,
+    want_y_ints: bool,
+) -> SingleLineScan {
+    let mut out = SingleLineScan {
+        roots: Vec::new(),
+        y_ints: Vec::new(),
+        extrema: Vec::new(),
+    };
+    let n = pts.len();
+    if n < 2 {
+        return out;
+    }
+    let dummy = PlotPoint { x: 0.0, y: 0.0 };
+    let mut p0 = pts[0];
+    let mut p0_fin = (p0.x * 0.0 + p0.y * 0.0) == 0.0;
+    let (mut mode, mut prev, mut start, mut second, mut last) = (0u8, dummy, dummy, dummy, dummy);
+    let mut i = 1;
+    while i < n {
+        let idx = i - 1;
+        let p1 = pts[i];
+        i += 1;
+        let p1_fin = (p1.x * 0.0 + p1.y * 0.0) == 0.0;
+        if p0_fin && p1_fin {
+            if want_roots && p0.y != p1.y {
+                if p0.y == 0.0 {
+                    out.roots.push(p0.x);
+                } else if (p0.y > 0.0) != (p1.y > 0.0) && p1.y != 0.0 {
+                    if let Some(x) = solve_segment_crossing(pts, idx, 0.0) {
+                        out.roots.push(x);
+                    }
+                } else if idx + 2 == n && p1.y == 0.0 {
+                    out.roots.push(p1.x);
+                }
+            }
+            if want_y_ints && p0.x != p1.x {
+                if p0.x == 0.0 {
+                    out.y_ints.push(p0.y);
+                } else if (p0.x > 0.0) != (p1.x > 0.0) && p1.x != 0.0 {
+                    if let Some(y) = eval_segment_at_x(pts, idx, 0.0) {
+                        out.y_ints.push(y);
+                    }
+                } else if idx + 2 == n && p1.x == 0.0 {
+                    out.y_ints.push(p1.y);
+                }
+            }
+            let mut cur_end = p1;
+            if mode != 0 && p1.y == start.y {
+                if mode == 2 {
+                    let (ff_last, skipped) =
+                        fast_forward_plateau(&pts[i..], start.y, want_y_ints, p1);
+                    last = ff_last;
+                    cur_end = ff_last;
+                    i += skipped;
+                } else if (prev.x < start.x && start.x < p1.x)
+                    || (prev.x > start.x && start.x > p1.x)
+                {
+                    second = p1;
+                    let (ff_last, skipped) =
+                        fast_forward_plateau(&pts[i..], start.y, want_y_ints, p1);
+                    last = ff_last;
+                    cur_end = ff_last;
+                    i += skipped;
+                    mode = 2;
+                } else {
+                    mode = 0;
+                }
+            } else {
+                if mode != 0 {
+                    finish_plateau_extremum(mode, prev, start, second, last, p1, &mut out.extrema);
+                }
+                if p1.y != p0.y {
+                    mode = 1;
+                    prev = p0;
+                    start = p1;
+                    last = p1;
+                } else {
+                    let (ff_last, skipped) = fast_forward_plateau(&pts[i..], p1.y, want_y_ints, p1);
+                    cur_end = ff_last;
+                    i += skipped;
+                    mode = 0;
+                }
+            }
+            p0 = cur_end;
+            p0_fin = true;
+            continue;
+        }
+        mode = 0;
+        p0 = p1;
+        p0_fin = p1_fin;
+    }
+    out
 }
 
 fn parabolic_vertex(p0: PlotPoint, p1: PlotPoint, p2: PlotPoint) -> [f64; 2] {

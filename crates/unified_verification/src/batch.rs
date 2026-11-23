@@ -21,12 +21,22 @@ pub fn run_traceability_with_cache(auto_fix: bool, cache: &mut AstCache) -> bool
 }
 
 pub fn run_traceability_in_process(args: &[String]) -> bool {
+    let _root_guard = crate::manifest_cache::WorkspaceRootGuard::enter();
     let auto_fix = args.iter().any(|arg| arg == "--auto-fix");
     let mut cache = AstCache::new();
     run_traceability_with_cache(auto_fix, &mut cache)
 }
 
 pub fn run_batch_ast_with_cache(members: &[String], cache: &mut AstCache) -> bool {
+    let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
+    run_batch_ast_with_caches(members, cache, &mut manifest_cache)
+}
+
+pub(crate) fn run_batch_ast_with_caches(
+    members: &[String],
+    cache: &mut AstCache,
+    manifest_cache: &mut crate::manifest_cache::ManifestCache,
+) -> bool {
     println!("=== Running Single-Pass AST Verification Batch ===");
     let mut passed = true;
 
@@ -43,7 +53,7 @@ pub fn run_batch_ast_with_cache(members: &[String], cache: &mut AstCache) -> boo
         passed = false;
     }
     let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
-    if !crate::policy_audit::run_policy_audit_with_cache(&member_refs, cache) {
+    if !crate::policy_audit::run_policy_audit_with_caches(&member_refs, cache, manifest_cache) {
         passed = false;
     }
 
@@ -55,19 +65,31 @@ pub fn run_batch_ast_with_cache(members: &[String], cache: &mut AstCache) -> boo
 }
 
 pub fn run_batch_ast() -> bool {
-    let (_, members) = oxidize_core::workspace::get_workspace_members();
+    let _root_guard = crate::manifest_cache::WorkspaceRootGuard::enter();
+    let (_, members) = crate::manifest_cache::discover_workspace();
     let mut cache = AstCache::new();
     run_batch_ast_with_cache(&members, &mut cache)
 }
 
 pub fn run_batch_static(args: &[String]) -> bool {
+    let mut cache = AstCache::new();
+    let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
+    run_batch_static_with_caches(args, &mut cache, &mut manifest_cache)
+}
+
+pub(crate) fn run_batch_static_with_caches(
+    args: &[String],
+    cache: &mut AstCache,
+    manifest_cache: &mut crate::manifest_cache::ManifestCache,
+) -> bool {
     println!("=== Running Batched Static Verification Suite ===");
-    let (_, members) = oxidize_core::workspace::get_workspace_members();
+    let _root_guard = crate::manifest_cache::WorkspaceRootGuard::enter();
+    let (_, members) = crate::manifest_cache::discover_workspace();
     let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
     let mut passed = true;
 
     println!("\n--- Static Gate 1: Cargo Profile Verification ---");
-    if !crate::profile::check_profiles(&member_refs, false) {
+    if !crate::profile::check_profiles_with_cache(&member_refs, false, manifest_cache) {
         passed = false;
     }
 
@@ -92,13 +114,12 @@ pub fn run_batch_static(args: &[String]) -> bool {
     }
 
     println!("\n--- Static Gate 6: Single-Pass AST Checks ---");
-    let mut cache = AstCache::new();
-    if !run_batch_ast_with_cache(&members, &mut cache) {
+    if !run_batch_ast_with_caches(&members, cache, manifest_cache) {
         passed = false;
     }
 
     println!("\n--- Static Gate 7: Verification Certificate AST Parity ---");
-    if !crate::report::certificate::check_ast_certificate_parity_with_cache(&members, &mut cache) {
+    if !crate::report::certificate::check_ast_certificate_parity_with_cache(&members, cache) {
         passed = false;
     }
 
@@ -342,11 +363,12 @@ mod tests {
         let _lock = crate::DIR_LOCK.lock().unwrap();
         let orig = env::current_dir().unwrap();
         let _guard = CurrentDirGuard(orig);
-        if !Path::new("crates").is_dir() && Path::new("../../crates").is_dir() {
-            env::set_current_dir("../..").unwrap();
+        let root = crate::manifest_cache::workspace_root_dir();
+        if root != Path::new(".") {
+            env::set_current_dir(root).unwrap();
         }
 
-        let (_, members) = oxidize_core::workspace::get_workspace_members();
+        let (_, members) = crate::manifest_cache::discover_workspace();
         let mut cache = AstCache::new();
 
         assert!(crate::ast_visitor::run_clone_detector_with_cache(
@@ -380,5 +402,33 @@ mod tests {
             cache.parse_calls(),
             "Every physical Rust file in the workspace must be parsed by syn::parse_file at most once across batch_ast + report"
         );
+    }
+
+    #[test]
+    fn test_batch_static_parses_each_member_manifest_and_checks_lints_once() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
+        let orig = env::current_dir().unwrap();
+        let _guard = CurrentDirGuard(orig);
+        let root = crate::manifest_cache::workspace_root_dir();
+        if root != Path::new(".") {
+            env::set_current_dir(root).unwrap();
+        }
+
+        let (_, members) = crate::manifest_cache::discover_workspace();
+        let mut ast_cache = AstCache::new();
+        let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
+
+        assert!(run_batch_static_with_caches(
+            &[],
+            &mut ast_cache,
+            &mut manifest_cache,
+        ));
+
+        assert_eq!(manifest_cache.lint_check_calls(), members.len());
+        assert_eq!(manifest_cache.parse_calls(), members.len() + 1);
+        for member in &members {
+            let manifest = Path::new(member).join("Cargo.toml");
+            assert_eq!(manifest_cache.parse_count_for(&manifest), 1);
+        }
     }
 }

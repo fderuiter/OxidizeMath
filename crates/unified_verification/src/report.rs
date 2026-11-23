@@ -72,9 +72,14 @@ pub fn load_verify_suite_config_strict(
         .map(|wl| wl.verify_suite.unwrap_or_default())
 }
 
-pub fn get_llvm_cov_output() -> std::process::Output {
+pub const VERIFY_SUITE_WRITE_ENV: &str = "OXIDIZE_VERIFY_SUITE_WRITE";
+
+pub fn get_llvm_cov_output(mode: ReportMode) -> std::process::Output {
     let mut cmd = Command::new("cargo");
     cmd.args(["llvm-cov", "--all-features", "--workspace", "--json"]);
+    if mode == ReportMode::Write {
+        cmd.env(VERIFY_SUITE_WRITE_ENV, "1");
+    }
     cmd.output().expect("Failed to run cargo llvm-cov")
 }
 
