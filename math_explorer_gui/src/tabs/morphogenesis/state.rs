@@ -74,7 +74,10 @@ pub struct MorphogenesisToolState {
     #[serde(default, skip_serializing_if = "is_zero_f64")]
     pub inlet_velocity: f64,
     /// Kinematic fluid viscosity `\nu` (`0.003..=0.5`).
-    #[serde(default = "default_viscosity", skip_serializing_if = "is_default_viscosity")]
+    #[serde(
+        default = "default_viscosity",
+        skip_serializing_if = "is_default_viscosity"
+    )]
     pub viscosity: f64,
     /// Analytical vortex circulation `\Gamma` (`-25.0..=25.0`).
     #[serde(default, skip_serializing_if = "is_zero_f64")]
@@ -199,6 +202,7 @@ impl MorphogenesisToolState {
         }
         let valid_axes = MORPHO_ATLAS_AXIS_PAIRS
             .iter()
+            .chain(super::gray_scott_atlas::GRAY_SCOTT_ATLAS_AXIS_PAIRS.iter())
             .any(|&(xk, yk)| xk == self.atlas_axes[0] && yk == self.atlas_axes[1]);
         if !valid_axes {
             return Err(format!(

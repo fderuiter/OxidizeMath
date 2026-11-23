@@ -1,16 +1,19 @@
-// @explorer_feature = "biology"
-// @explorer_order = 40
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::async_sim::SimWorkerState;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
 /// Progressive 2D dispersion & CFL parameter regime cartography.
 pub mod atlas;
+mod atlas_bridge;
 /// Snapshot texture sync, sculpted canvas plot, and side-by-side parameter atlas view.
 pub mod canvas;
 /// Unified spatial diffusion operator combining `CellMask2D` microfluidics and 2D upwind advection.
 pub mod diffusion;
+/// Progressive 2D Gray-Scott saddle-node, Hopf, and Turing-mitosis parameter cartography.
+pub mod gray_scott_atlas;
 #[cfg(test)]
 mod legacy_runner;
 /// 2D FFT Lenia continuous cellular automaton studio.
@@ -38,6 +41,10 @@ pub mod ui;
 #[cfg(test)]
 pub use atlas::{
     classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+};
+#[cfg(test)]
+pub use gray_scott_atlas::{
+    classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
 };
 #[cfg(test)]
 pub use lenia::LeniaTool;
@@ -160,6 +167,14 @@ impl ExplorerTab for MorphogenesisTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "morphogenesis",
+        order: 40,
+        build: || Box::new(MorphogenesisTab::default()),
     }
 }
 

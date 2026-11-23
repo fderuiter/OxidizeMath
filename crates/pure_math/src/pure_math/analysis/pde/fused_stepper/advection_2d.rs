@@ -1,6 +1,78 @@
 use super::{FusedStencilStepper, StencilOperators};
 use math_commons::math_kernel::types::flatten_2d_index;
 
+impl StencilOperators {
+    /// Central difference for 1st derivative in Y: `(down - up) / (2 * dy)`.
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn central_diff_1st_y(&self, up: f64, down: f64) -> f64 {
+        (down - up) * self.inv_two_dy
+    }
+
+    /// Upwind scheme for 1D Y-advection flux: evaluates `d/dy (vy * c)` with donor-cell selection.
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn upwind_flux_y(&self, vy: f64, up: f64, curr: f64, down: f64) -> f64 {
+        if vy > 0.0 {
+            (curr * vy - up * vy) * self.inv_dy
+        } else {
+            (down * vy - curr * vy) * self.inv_dy
+        }
+    }
+
+    /// First-order 2D upwind directional advection operator `vx * dc/dx + vy * dc/dy`.
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    #[verified_engine::verified]
+    pub fn upwind_flux_2d(
+        &self,
+        vx: f64,
+        vy: f64,
+        curr: f64,
+        left: f64,
+        right: f64,
+        up: f64,
+        down: f64,
+    ) -> f64 {
+        self.upwind_flux(vx, left, curr, right) + self.upwind_flux_y(vy, up, curr, down)
+    }
+
+    /// Conservative 2D donor-cell flux divergence across `[west, east, up, down]` cell faces.
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn upwind_divergence_2d(
+        &self,
+        face_vel: [f64; 4],
+        curr: f64,
+        left: f64,
+        right: f64,
+        up: f64,
+        down: f64,
+    ) -> f64 {
+        let flux_w = if face_vel[0] >= 0.0 {
+            face_vel[0] * left
+        } else {
+            face_vel[0] * curr
+        };
+        let flux_e = if face_vel[1] >= 0.0 {
+            face_vel[1] * curr
+        } else {
+            face_vel[1] * right
+        };
+        let flux_n = if face_vel[2] >= 0.0 {
+            face_vel[2] * up
+        } else {
+            face_vel[2] * curr
+        };
+        let flux_s = if face_vel[3] >= 0.0 {
+            face_vel[3] * curr
+        } else {
+            face_vel[3] * down
+        };
+        (flux_e - flux_w) * self.inv_dx + (flux_s - flux_n) * self.inv_dy
+    }
+}
+
 /// Computes `(idx, left, right, up, down)` row-major indices with zero-flux reflection at domain
 /// edges and solid `obstacles` cells.
 #[inline(always)]

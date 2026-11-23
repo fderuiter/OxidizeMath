@@ -13,7 +13,6 @@ use crate::framework::{BrushMode, InteractionContext, InteractiveTool};
 use eframe::egui;
 use eframe::egui::ColorImage;
 use egui_plot::{Plot, PlotImage, PlotPoint};
-use scientific_metadata::theory::TheoryDescribable;
 
 impl MorphogenesisTool {
     fn recolor_snapshot_data(
@@ -149,38 +148,31 @@ impl MorphogenesisTool {
                 self.draw_turing_field_plot(ui);
                 return;
             }
+            let current_mode = self
+                .kinetics_state
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .mode;
+            self.sync_atlas_options_for_mode(current_mode);
             let (ax, ay) = self.active_axis_values();
             let sig = self.non_axis_context_sig();
-            let cart_p = {
-                let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-                (p.a, p.b, p.d_u, p.d_v, p.dt)
-            };
-            let theory_params = self.theory.theory_parameters();
-            let build_cart = |keys: (&'static str, &'static str)| -> std::sync::Arc<
-                dyn crate::async_sim::atlas::RegimeCartographer,
-            > {
-                std::sync::Arc::new(super::atlas::MorphogenesisCartographer::new(
-                    &theory_params,
-                    keys,
-                    cart_p.0,
-                    cart_p.1,
-                    cart_p.2,
-                    cart_p.3,
-                    cart_p.4,
-                ))
-            };
+            let cart = self.build_active_morpho_cartographer(self.atlas.axis_keys());
             let mut teleport = None;
             if ui.available_width() >= 620.0 {
                 ui.columns(2, |cols| {
                     self.draw_turing_field_plot(&mut cols[0]);
                     teleport =
                         self.atlas
-                            .show_panel(&mut cols[1], "morphogenesis", ax, ay, sig, build_cart);
+                            .show_panel(&mut cols[1], "morphogenesis", ax, ay, sig, |_| {
+                                std::sync::Arc::clone(&cart)
+                            });
                 });
             } else {
                 teleport = self
                     .atlas
-                    .show_panel(ui, "morphogenesis", ax, ay, sig, build_cart);
+                    .show_panel(ui, "morphogenesis", ax, ay, sig, |_| {
+                        std::sync::Arc::clone(&cart)
+                    });
                 ui.separator();
                 self.draw_turing_field_plot(ui);
             }

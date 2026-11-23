@@ -201,7 +201,8 @@ impl MorphogenesisKineticsRunner {
         {
             for y in 0..self.height {
                 for x in 0..self.width {
-                    let is_obs = self.system.diffusion.obstacles()[flatten_2d_index(x, y, self.width)];
+                    let is_obs =
+                        self.system.diffusion.obstacles()[flatten_2d_index(x, y, self.width)];
                     self.lbm.set_obstacle(x, y, is_obs);
                 }
             }
@@ -261,7 +262,8 @@ impl MorphogenesisKineticsRunner {
         {
             for y in 0..self.height {
                 for x in 0..self.width {
-                    let is_obs = self.system.diffusion.obstacles()[flatten_2d_index(x, y, self.width)];
+                    let is_obs =
+                        self.system.diffusion.obstacles()[flatten_2d_index(x, y, self.width)];
                     self.lbm.set_obstacle(x, y, is_obs);
                 }
             }
@@ -429,11 +431,10 @@ impl MorphogenesisKineticsRunner {
         {
             self.lbm.clear_obstacles();
             self.potential_dirty = true;
-        }
-        let flow = self.read_flow();
-        #[cfg(feature = "physics")]
-        if flow.flow_mode == MorphogenesisFlowMode::PotentialFlow {
-            self.rebuild_potential_elements(flow.inlet_velocity, flow.circulation);
+            let flow = self.read_flow();
+            if flow.flow_mode == MorphogenesisFlowMode::PotentialFlow {
+                self.rebuild_potential_elements(flow.inlet_velocity, flow.circulation);
+            }
         }
         self.refresh_diagnostics();
     }

@@ -205,8 +205,8 @@ impl MorphogenesisTool {
                         .text("dt"),
                 )
                 .changed();
-            let cfl_bad = flow_mode == MorphogenesisFlowMode::None
-                && 4.0 * p.d_u.max(p.d_v) * p.dt >= 1.0;
+            let cfl_bad =
+                flow_mode == MorphogenesisFlowMode::None && 4.0 * p.d_u.max(p.d_v) * p.dt >= 1.0;
             (sw, ch, cfl_bad, dt_hi)
         };
 

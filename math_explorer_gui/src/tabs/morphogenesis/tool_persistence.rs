@@ -1,13 +1,11 @@
-//! Persistence, recovery guard, and parameter-atlas teleport helpers for [`MorphogenesisTool`].
+//! Persistence and recovery guard helpers for [`MorphogenesisTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::is_pattern_forming_regime;
 use super::state::MorphogenesisToolState;
 use super::types::{MorphogenesisBrushMode, MorphogenesisFlowState, MorphogenesisKineticsMode};
 use super::MorphogenesisTool;
-use crate::async_sim::atlas::AtlasTeleportEvent;
-use crate::async_sim::{SimCommand, SimWorkerState};
+use crate::async_sim::SimWorkerState;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::InteractiveTool;
 use math_explorer::biology::morphogenesis::GrayScottKinetics;
@@ -97,7 +95,8 @@ impl FiniteStateGuard for MorphogenesisTool {
                 ..MorphogenesisFlowState::default()
             };
         }
-        self.theory.set_mode(MorphogenesisKineticsMode::Schnakenberg);
+        self.theory
+            .set_mode(MorphogenesisKineticsMode::Schnakenberg);
         self.reset_system();
     }
 }
@@ -157,7 +156,12 @@ impl MorphogenesisTool {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let (xk, yk) = self.atlas.axis_keys();
+        let atlas_axes = if self.atlas.has_default_persisted_state() {
+            super::atlas::default_morpho_atlas_axes()
+        } else {
+            let (xk, yk) = self.atlas.axis_keys();
+            [xk.to_string(), yk.to_string()]
+        };
         serde_json::to_string(&MorphogenesisToolState {
             a: p.a,
             b: p.b,
@@ -181,7 +185,7 @@ impl MorphogenesisTool {
             pending_initial_start: self.pending_initial_start,
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
+            atlas_axes,
         })
         .ok()
     }
@@ -191,8 +195,13 @@ impl MorphogenesisTool {
         let parsed: MorphogenesisToolState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
-        self.atlas
-            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.sync_atlas_options_for_mode(parsed.kinetics_mode);
+        let use_mode_default = parsed.kinetics_mode == MorphogenesisKineticsMode::GrayScott
+            && super::atlas::is_default_morpho_atlas_axes(&parsed.atlas_axes);
+        if !use_mode_default {
+            self.atlas
+                .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        }
         self.atlas.set_visible(parsed.atlas_visible);
         let target_state = parsed.resolve_target_state();
         self.theory.set_mode(parsed.kinetics_mode);
@@ -257,83 +266,5 @@ impl MorphogenesisTool {
         ]
         .into_iter()
         .all(f64::is_finite)
-    }
-
-    /// Re-seeds deterministic spatial noise if the active grid washed out and current parameters form patterns.
-    pub fn reseed_if_washed_out_entering_pattern(&mut self) -> bool {
-        let (a, b, d_u, d_v, dt) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
-        };
-        let mode = self
-            .kinetics_state
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .mode;
-        if mode != MorphogenesisKineticsMode::Schnakenberg
-            || !is_pattern_forming_regime(a, b, d_u, d_v, dt)
-            || !self.is_active_grid_washed_out()
-        {
-            return false;
-        }
-        if let Some(sr) = &mut self.step_runner {
-            sr.system.kinetics.mode = MorphogenesisKineticsMode::Schnakenberg;
-            sr.system.kinetics.a = a;
-            sr.system.kinetics.b = b;
-            sr.system.diffusion_coeffs = [d_u, d_v];
-            Self::initialize_adapter_system(&mut sr.system, self.width, self.height);
-            sr.enforce_mask_concentrations();
-        }
-        let _ = self
-            .worker
-            .send_command(SimCommand::Custom("reinit".to_string()));
-        self.dirty = true;
-        true
-    }
-
-    /// Applies an [`AtlasTeleportEvent`] to live morphogenesis parameters with CFL recovery and washout re-seeding.
-    pub fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
-        let was_faulted = self.worker.state() == SimWorkerState::Faulted;
-        let switched_from_gray_scott = {
-            let mut ks = self
-                .kinetics_state
-                .write()
-                .unwrap_or_else(|e| e.into_inner());
-            let was_gs = ks.mode != MorphogenesisKineticsMode::Schnakenberg;
-            ks.mode = MorphogenesisKineticsMode::Schnakenberg;
-            was_gs
-        };
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (key, val) in [(ev.x_key, ev.x_val), (ev.y_key, ev.y_val)] {
-                match key {
-                    "a" => p.a = val,
-                    "b" => p.b = val,
-                    "d_u" => p.d_u = val,
-                    "d_v" => p.d_v = val,
-                    "dt" => p.dt = val,
-                    _ => {}
-                }
-            }
-            if switched_from_gray_scott {
-                p.d_u = p.d_u.clamp(0.1, 5.0);
-                p.d_v = p.d_v.clamp(10.0, 200.0);
-                p.dt = p.dt.clamp(1e-4, 0.1);
-            }
-            if (was_faulted || switched_from_gray_scott)
-                && ev.x_key != "dt"
-                && ev.y_key != "dt"
-                && 4.0 * p.d_u.max(p.d_v) * p.dt >= 1.0
-            {
-                p.dt = (0.2 / p.d_u.max(p.d_v).max(1e-6)).clamp(1e-4, 0.1);
-            }
-        }
-        self.theory.set_mode(MorphogenesisKineticsMode::Schnakenberg);
-        if was_faulted || switched_from_gray_scott {
-            self.reset_system();
-            return;
-        }
-        let _ = self.reseed_if_washed_out_entering_pattern();
-        self.dirty = true;
     }
 }

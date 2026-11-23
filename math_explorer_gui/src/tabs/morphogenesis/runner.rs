@@ -3,7 +3,6 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
 use super::diffusion::CoupledMorphoDiffusion;
 use super::sculpt::apply_stroke_to_morpho_system;
 pub use super::types::MorphogenesisSharedParams;
@@ -277,23 +276,11 @@ impl MorphogenesisKineticsRunner {
         self.system.kinetics.f = f;
         self.system.kinetics.k = k;
         self.system.diffusion_coeffs = [d_u, d_v];
-        if prev_mode != mode {
+        if prev_mode != mode
+            || super::gray_scott_atlas::should_reseed_washed_out_system(&self.system, d_u, d_v, dt)
+        {
             MorphogenesisTool::initialize_adapter_system(&mut self.system, self.width, self.height);
             self.enforce_mask_concentrations();
-        } else if mode == MorphogenesisKineticsMode::Schnakenberg
-            && dt.is_finite()
-            && dt > 0.0
-            && is_pattern_forming_regime(a, b, d_u, d_v, dt)
-        {
-            let var_u = grid_u_variance(self.system.u());
-            if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
-                MorphogenesisTool::initialize_adapter_system(
-                    &mut self.system,
-                    self.width,
-                    self.height,
-                );
-                self.enforce_mask_concentrations();
-            }
         }
         (dt.is_finite() && dt > 0.0).then_some(dt)
     }

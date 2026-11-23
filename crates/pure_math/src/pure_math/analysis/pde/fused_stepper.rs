@@ -1,3 +1,4 @@
+use math_commons::error::MathError;
 use math_commons::math_kernel::types::{StepSize, flatten_2d_index, flatten_3d_index};
 
 mod advection_2d;
@@ -35,7 +36,7 @@ pub struct StencilOperators {
     pub inv_dy: f64,
     #[allow(missing_docs)]
     pub inv_two_dx: f64,
-    #[allow(missing_docs)]
+    /// Half-reciprocal y-grid spacing `1.0 / (2.0 * dy)`.
     pub inv_two_dy: f64,
     #[allow(missing_docs)]
     pub inv_dx_sq: f64,
@@ -46,24 +47,42 @@ pub struct StencilOperators {
 }
 
 impl StencilOperators {
-    #[allow(missing_docs)]
+    /// Creates 1D stencil operators after validating that `dx` is finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `dx <= 0.0` or non-finite.
     #[verified_engine::verified]
-    pub fn new(dx: StepSize) -> Self {
-        Self::new_3d(dx, StepSize(1.0), StepSize(1.0))
+    pub fn try_new(dx: StepSize) -> Result<Self, MathError> {
+        Self::try_new_3d(dx, StepSize(1.0), StepSize(1.0))
     }
 
-    #[allow(missing_docs)]
+    /// Creates 2D stencil operators after validating that `dx` and `dy` are finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `dx <= 0.0`, `dy <= 0.0`, or either is non-finite.
     #[verified_engine::verified]
-    pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
-        Self::new_3d(dx, dy, StepSize(1.0))
+    pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, MathError> {
+        Self::try_new_3d(dx, dy, StepSize(1.0))
     }
 
-    /// Precomputes 3D finite-difference reciprocal spacings for `(dx, dy, dz)`.
+    /// Creates 3D stencil operators after validating that `dx`, `dy`, and `dz` are finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when any step size is `<= 0.0` or non-finite.
     #[verified_engine::verified]
-    pub fn new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Self {
-        assert!(*dx > 0.0, "Step size dx must be positive and non-zero");
-        assert!(*dy > 0.0, "Step size dy must be positive and non-zero");
-        assert!(*dz > 0.0, "Step size dz must be positive and non-zero");
+    pub fn try_new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Result<Self, MathError> {
+        for step in [*dx, *dy, *dz] {
+            if !(step > 0.0 && step.is_finite()) {
+                return Err(MathError::StrictlyOutOfBounds {
+                    value: step,
+                    min: 0.0,
+                    max: f64::INFINITY,
+                });
+            }
+        }
         let inv_dx = 1.0 / *dx;
         let inv_dy = 1.0 / *dy;
         let inv_two_dx = 1.0 / (2.0 * *dx);
@@ -71,7 +90,7 @@ impl StencilOperators {
         let inv_dx_sq = 1.0 / (*dx * *dx);
         let inv_dy_sq = 1.0 / (*dy * *dy);
         let inv_dz_sq = 1.0 / (*dz * *dz);
-        Self {
+        Ok(Self {
             dx,
             dy,
             dz,
@@ -82,7 +101,49 @@ impl StencilOperators {
             inv_dx_sq,
             inv_dy_sq,
             inv_dz_sq,
-        }
+        })
+    }
+
+    /// Creates 1D stencil operators.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `*dx <= 0.0` or non-finite. Prefer [`Self::try_new`].
+    #[verified_engine::verified]
+    pub fn new(dx: StepSize) -> Self {
+        Self::new_3d(dx, StepSize(1.0), StepSize(1.0))
+    }
+
+    /// Creates 2D stencil operators.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `*dx <= 0.0`, `*dy <= 0.0`, or either is non-finite. Prefer [`Self::try_new_2d`].
+    #[verified_engine::verified]
+    pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
+        Self::new_3d(dx, dy, StepSize(1.0))
+    }
+
+    /// Precomputes 3D finite-difference reciprocal spacings for `(dx, dy, dz)`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any step size is `<= 0.0` or non-finite. Prefer [`Self::try_new_3d`].
+    #[verified_engine::verified]
+    pub fn new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Self {
+        assert!(
+            *dx > 0.0 && dx.is_finite(),
+            "Step size dx must be positive and non-zero"
+        );
+        assert!(
+            *dy > 0.0 && dy.is_finite(),
+            "Step size dy must be positive and non-zero"
+        );
+        assert!(
+            *dz > 0.0 && dz.is_finite(),
+            "Step size dz must be positive and non-zero"
+        );
+        Self::try_new_3d(dx, dy, dz).expect("Step sizes validated positive")
     }
 
     /// Central difference for 1st derivative in X: `(next - prev) / (2 * dx)`.
@@ -90,13 +151,6 @@ impl StencilOperators {
     #[verified_engine::verified]
     pub fn central_diff_1st(&self, prev: f64, next: f64) -> f64 {
         (next - prev) * self.inv_two_dx
-    }
-
-    /// Central difference for 1st derivative in Y: `(down - up) / (2 * dy)`.
-    #[inline(always)]
-    #[verified_engine::verified]
-    pub fn central_diff_1st_y(&self, up: f64, down: f64) -> f64 {
-        (down - up) * self.inv_two_dy
     }
 
     /// Central difference for 2nd derivative (Laplacian) in 1D.
@@ -135,69 +189,6 @@ impl StencilOperators {
             (next * v - curr * v) * self.inv_dx
         }
     }
-
-    /// Upwind scheme for 1D Y-advection flux: evaluates `d/dy (vy * c)` with donor-cell selection.
-    #[inline(always)]
-    #[verified_engine::verified]
-    pub fn upwind_flux_y(&self, vy: f64, up: f64, curr: f64, down: f64) -> f64 {
-        if vy > 0.0 {
-            (curr * vy - up * vy) * self.inv_dy
-        } else {
-            (down * vy - curr * vy) * self.inv_dy
-        }
-    }
-
-    /// First-order 2D upwind directional advection operator `vx * dc/dx + vy * dc/dy`.
-    #[inline(always)]
-    #[allow(clippy::too_many_arguments)]
-    #[verified_engine::verified]
-    pub fn upwind_flux_2d(
-        &self,
-        vx: f64,
-        vy: f64,
-        curr: f64,
-        left: f64,
-        right: f64,
-        up: f64,
-        down: f64,
-    ) -> f64 {
-        self.upwind_flux(vx, left, curr, right) + self.upwind_flux_y(vy, up, curr, down)
-    }
-
-    /// Conservative 2D donor-cell flux divergence across `[west, east, up, down]` cell faces.
-    #[inline(always)]
-    #[verified_engine::verified]
-    pub fn upwind_divergence_2d(
-        &self,
-        face_vel: [f64; 4],
-        curr: f64,
-        left: f64,
-        right: f64,
-        up: f64,
-        down: f64,
-    ) -> f64 {
-        let flux_w = if face_vel[0] >= 0.0 {
-            face_vel[0] * left
-        } else {
-            face_vel[0] * curr
-        };
-        let flux_e = if face_vel[1] >= 0.0 {
-            face_vel[1] * curr
-        } else {
-            face_vel[1] * right
-        };
-        let flux_n = if face_vel[2] >= 0.0 {
-            face_vel[2] * up
-        } else {
-            face_vel[2] * curr
-        };
-        let flux_s = if face_vel[3] >= 0.0 {
-            face_vel[3] * curr
-        } else {
-            face_vel[3] * down
-        };
-        (flux_e - flux_w) * self.inv_dx + (flux_s - flux_n) * self.inv_dy
-    }
 }
 
 /// A generic Fused Stencil Stepper for performance-optimized grid updates.
@@ -209,6 +200,42 @@ pub struct FusedStencilStepper {
 }
 
 impl FusedStencilStepper {
+    /// Creates a 1D fused stencil stepper after validating `dx > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `*dx <= 0.0` or non-finite.
+    #[verified_engine::verified]
+    pub fn try_new(dx: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new(dx)?,
+        })
+    }
+
+    /// Creates a 2D fused stencil stepper after validating `dx > 0.0` and `dy > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `*dx <= 0.0`, `*dy <= 0.0`, or either is non-finite.
+    #[verified_engine::verified]
+    pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new_2d(dx, dy)?,
+        })
+    }
+
+    /// Creates a 3D fused stencil stepper after validating `dx > 0.0`, `dy > 0.0`, and `dz > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when any step size is `<= 0.0` or non-finite.
+    #[verified_engine::verified]
+    pub fn try_new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new_3d(dx, dy, dz)?,
+        })
+    }
+
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(dx: StepSize) -> Self {

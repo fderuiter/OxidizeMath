@@ -7,6 +7,7 @@ use super::runner::MorphogenesisKineticsState;
 use super::*;
 use crate::app::{contrast_ratio, ThemeMode};
 use crate::async_sim::{SimCommand, SimulationRunner};
+#[cfg(feature = "physics")]
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::InteractiveTool;
 use eframe::egui::Color32;

@@ -2,21 +2,31 @@
 
 // [cite:graph_parameters_rust]
 
+use std::collections::BTreeMap;
+
 use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_point_clamp,
-    apply_sponge_layer, BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D,
-    SpectralAnalyzer2D, SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver,
+    apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_sponge_layer, BoundaryMode2D,
+    ChladniSandSystem, DriverConfig2D, MarchingSquares2D, SpectralAnalyzer2D, SpectralPeak2D,
+    Wave2DMedium, Wave2DParams, Wave2DSolver,
 };
 
-use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
+use crate::framework::{
+    CalloutManager, CalloutSpec, ExportCapabilities, InteractiveTool, ToolStateBounds,
+};
 
 mod canvas;
+mod eigenmodes;
 mod presets;
+mod refractive;
 mod sonification;
 mod ui;
 
+pub(crate) use refractive::RefractiveMode;
+
+#[cfg(test)]
+mod modal_and_lens_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
@@ -135,10 +145,19 @@ pub(crate) struct ChladniWaveTankState {
     pub rng_seed: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_clamps: Vec<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "RefractiveMode::is_default")]
+    pub refractive_mode: RefractiveMode,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub refractive_expr: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub refractive_params: BTreeMap<String, f64>,
 }
 
 pub struct ChladniWaveTankTool {
     pub(crate) state: ChladniWaveTankState,
+    pub(crate) active_mode: (usize, usize),
+    pub(crate) refractive: refractive::RefractiveSandbox,
+    pub(crate) callout_manager: CalloutManager,
     pub(crate) audio: sonification::ChladniSonificationState,
     pub(crate) solver: Wave2DSolver,
     pub(crate) sand: ChladniSandSystem,
@@ -155,7 +174,6 @@ pub struct ChladniWaveTankTool {
     pub(crate) last_step_ms: f64,
     pub(crate) last_substeps: usize,
     pub(crate) state_rev: u64,
-    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) analysis_dirty: bool,
 }
 
@@ -170,8 +188,12 @@ impl Default for ChladniWaveTankTool {
             GRID_SIZE,
             &solver.wall_mask,
         );
+        let active_mode = eigenmodes::default_mode_for_preset(state.preset);
         let mut tool = Self {
             state,
+            active_mode,
+            refractive: refractive::RefractiveSandbox::new(),
+            callout_manager: CalloutManager::new(),
             audio: sonification::ChladniSonificationState::default(),
             solver,
             sand,
@@ -188,7 +210,6 @@ impl Default for ChladniWaveTankTool {
             last_step_ms: 0.0,
             last_substeps: 1,
             state_rev: 1,
-            focused_canvas: None,
             analysis_dirty: true,
         };
         tool.rebuild_domain_and_warmup(0);
@@ -221,6 +242,8 @@ impl ChladniWaveTankTool {
 
     pub(crate) fn apply_preset(&mut self, preset: TankPreset) {
         self.state = presets::default_state_for_preset(preset);
+        self.active_mode = eigenmodes::default_mode_for_preset(preset);
+        self.refractive.sync_from_state(&self.state);
         self.state_rev = self.state_rev.wrapping_add(1);
         let warmup = match preset {
             TankPreset::DoubleSlitInterference | TankPreset::AcousticLens => 24,
@@ -244,7 +267,12 @@ impl ChladniWaveTankTool {
             self.solver.reset_all();
         }
         self.rebuild_masks();
-        presets::seed_initial_resonant_field(&mut self.solver, &self.state);
+        eigenmodes::seed_eigenmode_field(
+            &mut self.solver,
+            &self.state,
+            self.active_mode.0,
+            self.active_mode.1,
+        );
         self.sand.reseed(
             self.state.rng_seed,
             GRID_SIZE,
@@ -272,7 +300,7 @@ impl ChladniWaveTankTool {
         if self.state.boundary == BoundaryMode2D::Sponge {
             apply_sponge_layer(&mut self.solver.sponge_mask, GRID_SIZE, GRID_SIZE, 12, 1.8);
         }
-        self.apply_clamp_pins();
+        presets::apply_clamp_pins(&mut self.solver.wall_mask, &self.state);
         if self.state.barrier_enabled {
             apply_multi_slit_barrier(
                 &mut self.solver.wall_mask,
@@ -286,46 +314,7 @@ impl ChladniWaveTankTool {
             );
         }
         if self.state.lens_enabled {
-            apply_biconvex_lens(
-                &mut self.solver.wave_speed_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                44,
-                self.state.lens_aperture,
-                8.0,
-                self.state.refractive_index,
-            );
-        }
-    }
-
-    fn apply_clamp_pins(&mut self) {
-        let (pins, radius): (&[(f64, f64)], f64) = match self.state.clamp_layout {
-            ClampLayout::None => (&[], 0.0),
-            ClampLayout::CenterPin => (&[(0.5, 0.5)], 2.0),
-            ClampLayout::QuadSymmetry => (&[(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)], 1.8),
-            ClampLayout::EdgeMidpoints => {
-                (&[(0.5, 0.04), (0.5, 0.96), (0.04, 0.5), (0.96, 0.5)], 2.2)
-            }
-        };
-        for &(cx, cy) in pins {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                radius,
-            );
-        }
-        for &[cx, cy] in &self.state.custom_clamps {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                1.8,
-            );
+            self.apply_active_lens_mask();
         }
     }
 
@@ -394,10 +383,6 @@ impl InteractiveTool for ChladniWaveTankTool {
         self.state_rev
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds {
             max_bytes: 8_192,
@@ -429,9 +414,19 @@ impl InteractiveTool for ChladniWaveTankTool {
             return Err("Chladni Wave Tank parameters out of finite valid bounds".into());
         }
         self.state = parsed;
+        self.active_mode = eigenmodes::default_mode_for_preset(self.state.preset);
+        self.refractive.sync_from_state(&self.state);
         self.state_rev = self.state_rev.wrapping_add(1);
         self.rebuild_domain_and_warmup(0);
         Ok(())
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.compute_observables()
+    }
+
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.callout_manager.sync_specs(callouts);
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {

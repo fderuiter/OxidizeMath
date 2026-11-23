@@ -1,13 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::MorphogenesisTool;
 use crate::async_sim::atlas::{
     atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
 };
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
 /// Washout variance threshold below which activator grid `u` is treated as spatially uniform.
 pub const WASHOUT_VARIANCE_THRESHOLD: f64 = 1e-8;
@@ -95,7 +93,12 @@ pub fn grid_u_variance(u: &[f64]) -> f64 {
 }
 
 #[inline]
-fn mode_growth_and_euler_amp(jac: [f64; 4], diff: [f64; 2], dt: f64, mu: f64) -> (f64, f64, bool) {
+pub(super) fn mode_growth_and_euler_amp(
+    jac: [f64; 4],
+    diff: [f64; 2],
+    dt: f64,
+    mu: f64,
+) -> (f64, f64, bool) {
     let [fu, fv, gu, gv] = jac;
     let [d_u, d_v] = diff;
     let tr = (fu - mu * d_u) + (gv - mu * d_v);
@@ -356,61 +359,5 @@ impl RegimeCartographer for MorphogenesisCartographer {
             )
         })
         .collect()
-    }
-}
-
-impl MorphogenesisTool {
-    pub(crate) fn non_axis_context_sig(&self) -> u64 {
-        let (xk, yk) = self.atlas.axis_keys();
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        for (name, val) in [
-            ("a", p.a),
-            ("b", p.b),
-            ("d_u", p.d_u),
-            ("d_v", p.d_v),
-            ("dt", p.dt),
-        ] {
-            if name != xk && name != yk {
-                name.hash(&mut h);
-                val.to_bits().hash(&mut h);
-            }
-        }
-        h.finish()
-    }
-
-    pub(crate) fn active_axis_values(&self) -> (f64, f64) {
-        let (xk, yk) = self.atlas.axis_keys();
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let get = |k: &str| match k {
-            "a" => p.a,
-            "b" => p.b,
-            "d_u" => p.d_u,
-            "d_v" => p.d_v,
-            "dt" => p.dt,
-            _ => 0.0,
-        };
-        (get(xk), get(yk))
-    }
-
-    /// Returns `true` when the latest activator concentration grid is uniform (`Var(u) < 1e-8`).
-    #[must_use]
-    pub fn is_active_grid_washed_out(&self) -> bool {
-        if let Some(sr) = &self.step_runner {
-            let v = grid_u_variance(sr.system.u());
-            return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
-        }
-        if let Some(snap) = self.worker.latest_snapshot() {
-            let u_slice = snap.structured_data.as_ref().and_then(|d| {
-                d.downcast_ref::<super::runner::MorphoSnapshotData>()
-                    .map(|m| m.u_data.as_slice())
-                    .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
-            });
-            if let Some(u_data) = u_slice {
-                let v = grid_u_variance(u_data);
-                return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
-            }
-        }
-        false
     }
 }

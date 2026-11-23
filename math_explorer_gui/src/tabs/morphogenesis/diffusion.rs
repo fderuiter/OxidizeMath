@@ -206,8 +206,13 @@ impl<const N: usize> SpatialDiffusion<N> for CoupledMorphoDiffusion {
         kinetics: &K,
     ) {
         if self.flow_active {
-            self.advection
-                .step_fused(state, next_state.each_mut().map(|s| &mut **s), dt, coeffs, kinetics);
+            self.advection.step_fused(
+                state,
+                next_state.each_mut().map(|s| &mut **s),
+                dt,
+                coeffs,
+                kinetics,
+            );
             if self.mask.has_active_cells() {
                 let roles = self.mask.roles();
                 for (idx, &code) in roles.iter().enumerate() {
