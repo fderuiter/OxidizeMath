@@ -81,10 +81,6 @@ mod tests {
     use nalgebra as na;
     use scientific_metadata::theory::TheoryDescribable;
 
-    #[global_allocator]
-    static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
-        verified_engine::allocator::VerifiedAllocator;
-
     #[test]
     #[verified_engine::verified]
     fn test_logistic_chaos_lyapunov() {
@@ -268,6 +264,9 @@ mod tests {
             na::Vector3::new(5.0, 0.0, 0.0),
         ];
 
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let ((lam_zero, lam_sing, lam_chaos, lam_substep, lam_conv, lam_sig0, corr), m) =
             VerifiedEngine::run_verified(|| {
                 let lz = metrics::logistic_lyapunov(3.9, 0.1, 0);

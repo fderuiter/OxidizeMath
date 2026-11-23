@@ -3,6 +3,14 @@
 pub mod error;
 pub mod physics;
 
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
+#[cfg(test)]
+pub(crate) static VERIFIED_ALLOC_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[allow(missing_docs)]
 pub mod prelude {
     pub use crate::error::*;

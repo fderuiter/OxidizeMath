@@ -106,7 +106,9 @@ struct SurvivalState {
 }
 
 impl InteractiveTool for SurvivalAnalysisTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Survival Curves (Kaplan-Meier)"
     }
@@ -221,7 +223,6 @@ impl SurvivalAnalysisTool {
 
 // [cite:clinical_trials_statistics]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "SurvivalAnalysisTool",
@@ -239,9 +240,15 @@ impl scientific_metadata::theory::TheoryDescribable for SurvivalAnalysisTool {
             self.observations.len()
         )
     }
-    fn phonetic_description(&self) -> String { "Kaplan-Meier non-parametric survival analysis theory".into() }
-    fn theory_citation(&self) -> String { "Nonparametric Estimation from Incomplete Observations (Kaplan & Meier, 1958)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Kaplan-Meier non-parametric survival analysis theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Nonparametric Estimation from Incomplete Observations (Kaplan & Meier, 1958)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{
@@ -344,7 +351,9 @@ mod tests {
     fn test_median_survival_and_half_probability_step_crossing() {
         let mut tool = SurvivalAnalysisTool::default();
         tool.import_preset_json(STARTER_PRESET_JSON).unwrap();
-        let median = tool.median_survival_time().expect("median survival reached");
+        let median = tool
+            .median_survival_time()
+            .expect("median survival reached");
         assert!((median - 18.0).abs() < 1e-9);
 
         let step_pts = tool.build_step_points();

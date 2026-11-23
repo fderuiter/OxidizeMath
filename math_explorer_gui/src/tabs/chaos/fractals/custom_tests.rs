@@ -109,3 +109,32 @@ fn test_custom_fractal_url_roundtrip() {
     assert_eq!(restored.math_input.raw_text, "a * z^3 + c");
     assert_eq!(restored.math_input.params_map(), pmap);
 }
+
+#[test]
+fn test_custom_fractal_glsl_shader_export_mandelbrot_and_julia() {
+    let mut pmap = BTreeMap::new();
+    pmap.insert("a".to_string(), 1.5);
+    let mut viewer = FractalViewer {
+        mode: FractalMode::CustomJulia,
+        julia_c: Complex::new(-0.4, 0.6),
+        high_contrast: true,
+        ..Default::default()
+    };
+    viewer.math_input.set_expression("a * z^3 + c");
+    viewer.math_input.set_params_map(&pmap);
+
+    let webgl2 = viewer
+        .export_glsl_shader(crate::framework::ShaderDialect::WebGl2Es300)
+        .expect("custom Julia WebGL2 shader exports");
+    assert!(webgl2.starts_with("#version 300 es"));
+    assert!(webgl2.contains("const bool IS_JULIA = true;"));
+    assert!(webgl2.contains("const vec2 a = vec2(1.5, 0.0);"));
+    assert!(webgl2.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
+
+    viewer.mode = FractalMode::CustomMandelbrot;
+    let shadertoy = viewer
+        .export_glsl_shader(crate::framework::ShaderDialect::Shadertoy)
+        .expect("custom Mandelbrot Shadertoy shader exports");
+    assert!(shadertoy.contains("const bool IS_JULIA = false;"));
+    assert!(shadertoy.contains("void mainImage("));
+}
