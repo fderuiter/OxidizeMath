@@ -1,9 +1,49 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{NetPropState, MAX_CONTAINMENT_BUDGET};
+use super::{DEFAULT_CONTAINMENT_BUDGET, DEFAULT_NETWORK_SEED, MAX_CONTAINMENT_BUDGET};
+use crate::app::TopologySource;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 use std::collections::HashSet;
 
+const fn default_seed() -> u64 {
+    DEFAULT_NETWORK_SEED
+}
+
+const fn is_default_seed(seed: &u64) -> bool {
+    *seed == DEFAULT_NETWORK_SEED
+}
+
+const fn default_budget() -> usize {
+    DEFAULT_CONTAINMENT_BUDGET
+}
+
+const fn is_default_budget(budget: &usize) -> bool {
+    *budget == DEFAULT_CONTAINMENT_BUDGET
+}
+
+const fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct NetPropState {
+    pub(super) num_nodes: usize,
+    pub(super) beta: f64,
+    pub(super) gamma: f64,
+    #[serde(default = "default_seed", skip_serializing_if = "is_default_seed")]
+    pub(super) seed: u64,
+    #[serde(default = "default_budget", skip_serializing_if = "is_default_budget")]
+    pub(super) budget: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) vaccinated_nodes: Vec<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) quarantined_edges: Vec<usize>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(super) is_running: bool,
+    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
+    pub(super) topology_source: TopologySource,
+}
 fn validate_unique_indices(items: &[usize], label: &str) -> Result<Vec<usize>, String> {
     let mut seen = HashSet::with_capacity(items.len());
     for &idx in items {

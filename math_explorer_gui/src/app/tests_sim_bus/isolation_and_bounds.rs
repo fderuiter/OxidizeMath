@@ -1,13 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::run_app_frame;
-#[cfg(all(
-    feature = "pure_math",
-    feature = "physics",
-    feature = "biology",
-    feature = "applied",
-    feature = "epidemiology"
-))]
+#[cfg(feature = "pure_math")]
 use super::{assign_pane_tool, pane_tool_mut, pane_tool_ref, seed_two_community_bridge_graph};
 use crate::accessibility::{all_announcements, clear_test_announcements, with_live_region};
 use crate::app::*;
@@ -18,7 +12,9 @@ use crate::app::*;
     feature = "applied",
     feature = "epidemiology"
 ))]
-use crate::framework::{InteractiveTool, ToolStateBounds};
+use crate::framework::InteractiveTool;
+#[cfg(feature = "pure_math")]
+use crate::framework::ToolStateBounds;
 #[cfg(all(
     feature = "pure_math",
     feature = "physics",

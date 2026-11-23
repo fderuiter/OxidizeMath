@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::NeuralNetworkVizTool;
+use super::{NeuralDynamicsMode, NeuralNetworkVizTool};
 use crate::accessibility::AccessibleHoverText;
 use crate::app::{contrasting_text_color, render_topology_source_bar, SemanticPalette};
 use crate::framework::{PlaybackAction, PlaybackTransport};
@@ -15,41 +15,61 @@ impl NeuralNetworkVizTool {
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.heading("Controls");
-                let badge = self.clamp_badge_text();
-                if render_topology_source_bar(
-                    ui,
-                    "neural_network_viz",
-                    &mut self.topology_source,
-                    self.synced_bus_revision,
-                    badge.as_deref(),
-                ) {
-                    self.sync_shared_topology(&ctx);
+                if !self.upstream_linked {
+                    let badge = self.clamp_badge_text();
+                    if render_topology_source_bar(
+                        ui,
+                        "neural_network_viz",
+                        &mut self.topology_source,
+                        self.synced_bus_revision,
+                        badge.as_deref(),
+                    ) {
+                        self.sync_shared_topology(&ctx);
+                    }
                 }
                 ui.separator();
                 self.render_nn_transport(ui, &ctx);
                 ui.separator();
-                crate::audio::render_sonification_panel(
-                    ui,
-                    "neural_network_viz",
-                    &self.sonification,
-                    !self.is_running,
-                );
-                ui.separator();
-                ui.heading("External Current (uA/cm^2)");
-                for i in 0..self.external_input.len() {
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::Slider::new(&mut self.external_input[i], -10.0..=50.0)
-                                .text(format!("Neuron {i}")),
-                        );
-                    });
+                self.draw_mode_and_kuramoto_controls(ui);
+                if self.mode == NeuralDynamicsMode::HodgkinHuxley {
+                    self.render_hh_controls(ui);
                 }
-                ui.separator();
-                ui.label(
-                    "Synaptic activity is modeled via CSR conductance pulses: when presynaptic V > 0 mV, scaled synaptic current drives postsynaptic targets.",
-                );
             });
         });
+    }
+
+    fn render_hh_controls(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        crate::audio::render_sonification_panel(
+            ui,
+            "neural_network_viz",
+            &self.sonification,
+            !self.is_running,
+        );
+        ui.separator();
+        ui.heading("External Current (uA/cm^2)");
+        let max_sliders = if self.upstream_linked {
+            self.external_input.len().min(12)
+        } else {
+            self.external_input.len()
+        };
+        for i in 0..max_sliders {
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        egui::Slider::new(&mut self.external_input[i], -10.0..=50.0)
+                            .text(format!("Neuron {i}")),
+                    )
+                    .changed()
+                {
+                    self.bump_revision();
+                }
+            });
+        }
+        ui.separator();
+        ui.label(
+            "Synaptic activity is modeled via CSR conductance pulses: when presynaptic V > 0 mV, scaled synaptic current drives postsynaptic targets.",
+        );
     }
 
     fn render_nn_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -64,13 +84,16 @@ impl NeuralNetworkVizTool {
                 PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.reset();
-                    self.sync_shared_topology(ctx);
+                    if !self.upstream_linked {
+                        self.sync_shared_topology(ctx);
+                    }
                 }
             }
+            self.bump_revision();
         }
     }
 
-    fn draw_synaptic_edges(
+    pub(super) fn draw_synaptic_edges(
         &self,
         painter: &egui::Painter,
         center: egui::Pos2,
@@ -104,6 +127,10 @@ impl NeuralNetworkVizTool {
 
     pub(super) fn draw_network(&self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
+            if self.mode == NeuralDynamicsMode::Kuramoto {
+                self.draw_kuramoto_view(ui);
+                return;
+            }
             ui.heading("Network Visualization");
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
@@ -127,8 +154,7 @@ impl NeuralNetworkVizTool {
                 let v = self.neurons[i].v() as f32;
                 let p = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
                 let normalized_v = ((v + 65.0) / 105.0).clamp(0.0, 1.0);
-                let low = palette.axis_z;
-                let high = palette.axis_x;
+                let (low, high) = (palette.axis_z, palette.axis_x);
                 let lerp = |a: u8, b: u8| {
                     (f32::from(a) + (f32::from(b) - f32::from(a)) * normalized_v).round() as u8
                 };

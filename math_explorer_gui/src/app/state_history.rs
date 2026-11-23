@@ -20,6 +20,7 @@ struct HistoryFingerprint {
     pane_tabs: [usize; 4],
     primary_history_hash: u64,
     secondary_history_hash: u64,
+    pipeline_links_hash: u64,
 }
 
 /// Zero-allocation O(1) state fingerprint separating semantic history from transient UI chrome.
@@ -92,6 +93,13 @@ fn build_history_fingerprint(
     if app.viewport_layout != ViewportLayout::QuadGrid {
         pane_tabs[1] = app.secondary_tab;
     }
+    let mut pipe_hasher = std::collections::hash_map::DefaultHasher::new();
+    let active_links = if app.viewport_layout == ViewportLayout::Single {
+        &[][..]
+    } else {
+        app.pipeline_dag.links()
+    };
+    active_links.hash(&mut pipe_hasher);
     HistoryFingerprint {
         selected_tab: app.selected_tab,
         secondary_tab: app.secondary_tab,
@@ -118,6 +126,7 @@ fn build_history_fingerprint(
         pane_tabs,
         primary_history_hash,
         secondary_history_hash,
+        pipeline_links_hash: pipe_hasher.finish(),
     }
 }
 
@@ -238,6 +247,7 @@ impl AppState {
             && self.viewport_layout == other.viewport_layout
             && self.compare_sync == other.compare_sync
             && self.pane_tabs == other.pane_tabs
+            && self.pipeline_links == other.pipeline_links
             && tab_maps_semantically_eq(&self.tab_states, &other.tab_states)
             && pane_tab_maps_semantically_eq(&self.pane_tab_states, &other.pane_tab_states)
     }

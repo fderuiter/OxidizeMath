@@ -76,6 +76,7 @@ impl NetworkPropagationTool {
         self.baseline_rng = oxidize_core::rng::OxidizeRng::new(self.seed);
         self.vaccinated_nodes.clear();
         self.quarantined_edges.clear();
+        self.last_upstream_graph_rev = 0;
         self.is_running = false;
         self.clamp_focus_indices();
         #[cfg(test)]

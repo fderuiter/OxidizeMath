@@ -1,36 +1,66 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "kuramoto_ui.rs"]
+mod kuramoto_ui;
+#[path = "neural_network_viz/topology.rs"]
+mod topology;
 #[path = "neural_network_viz/ui.rs"]
 mod ui;
 
-use crate::app::{
-    SharedGraphTopology, SharedSimulationBus, TopologySource, MAX_NEURAL_SHARED_NODES,
-};
+use crate::app::dataflow_bus::MAX_DATAFLOW_GRAPH_NODES;
+use crate::app::{TopologySource, MAX_NEURAL_SHARED_NODES};
 use crate::framework::InteractiveTool;
 use eframe::egui;
-use math_explorer::biology::neuroscience::{step_csr_hodgkin_huxley_network, HodgkinHuxleyNeuron};
+use math_explorer::biology::neuroscience::{
+    step_csr_hodgkin_huxley_network, HodgkinHuxleyNeuron, KuramotoNetwork,
+};
+use std::collections::VecDeque;
 use std::f32::consts::TAU;
 
 const SYNAPTIC_GAIN: f64 = 50.0;
+pub(crate) const MAX_ORDER_HISTORY: usize = 200;
+
+/// Selectable dynamical regime in [`NeuralNetworkVizTool`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NeuralDynamicsMode {
+    /// Biophysical conductance-based Hodgkin-Huxley spiking neurons.
+    #[default]
+    HodgkinHuxley,
+    /// Coupled Kuramoto phase oscillators tracking order parameter $r(t)$.
+    Kuramoto,
+}
+
+impl NeuralDynamicsMode {
+    const fn is_default(&self) -> bool {
+        matches!(self, Self::HodgkinHuxley)
+    }
+}
 
 pub struct NeuralNetworkVizTool {
     pub(crate) neurons: Vec<HodgkinHuxleyNeuron>,
     pub(crate) positions: Vec<[f32; 2]>,
     pub(crate) weights: Vec<Vec<f64>>,
     pub(crate) external_input: Vec<f64>,
-    local_preset_inputs: Vec<f64>,
-    local_preset_weights: Vec<Vec<f64>>,
-    next_inputs: Vec<f64>,
+    pub(super) local_preset_inputs: Vec<f64>,
+    pub(super) local_preset_weights: Vec<Vec<f64>>,
+    pub(super) next_inputs: Vec<f64>,
     pub(crate) csr_row_ptr: Vec<usize>,
     pub(crate) csr_col_idx: Vec<usize>,
     pub(crate) csr_weights: Vec<f64>,
     pub topology_source: TopologySource,
     pub(crate) synced_bus_revision: Option<u64>,
-    clamped_source_nodes: Option<usize>,
+    pub(super) clamped_source_nodes: Option<usize>,
+    pub(crate) mode: NeuralDynamicsMode,
+    pub(crate) kuramoto: KuramotoNetwork,
+    pub(crate) order_history: VecDeque<[f64; 2]>,
     pub(crate) is_running: bool,
-    dt: f64,
+    pub(crate) dt: f64,
     prev_ring_v: [f64; 5],
     pub(crate) sonification: crate::audio::SonificationFrame,
+    pub(crate) last_upstream_graph_rev: u64,
+    pub(crate) upstream_linked: bool,
+    revision: u64,
 }
 
 fn dense_weights_to_csr(weights: &[Vec<f64>]) -> (Vec<usize>, Vec<usize>, Vec<f64>) {
@@ -55,6 +85,9 @@ fn dense_weights_to_csr(weights: &[Vec<f64>]) -> (Vec<usize>, Vec<usize>, Vec<f6
 
 impl Default for NeuralNetworkVizTool {
     fn default() -> Self {
+        let kuramoto = KuramotoNetwork::new(5, 3.0);
+        let mut order_history = VecDeque::with_capacity(MAX_ORDER_HISTORY + 16);
+        order_history.push_back([0.0, kuramoto.order_parameter().0]);
         let mut tool = Self {
             neurons: Vec::new(),
             positions: Vec::new(),
@@ -69,10 +102,16 @@ impl Default for NeuralNetworkVizTool {
             topology_source: TopologySource::SharedBus,
             synced_bus_revision: None,
             clamped_source_nodes: None,
+            mode: NeuralDynamicsMode::HodgkinHuxley,
+            kuramoto,
+            order_history,
             is_running: false,
             dt: 0.05,
             prev_ring_v: [-65.0; 5],
             sonification: crate::audio::SonificationFrame::silent(),
+            last_upstream_graph_rev: 0,
+            upstream_linked: false,
+            revision: 1,
         };
         tool.build_default_ring();
         tool
@@ -80,7 +119,11 @@ impl Default for NeuralNetworkVizTool {
 }
 
 impl NeuralNetworkVizTool {
-    fn build_default_ring(&mut self) {
+    pub(crate) fn bump_revision(&mut self) {
+        self.revision = self.revision.wrapping_add(1).max(1);
+    }
+
+    pub(super) fn build_default_ring(&mut self) {
         let num_neurons = 5;
         self.neurons = (0..num_neurons)
             .map(|_| HodgkinHuxleyNeuron::new(-65.0))
@@ -109,7 +152,7 @@ impl NeuralNetworkVizTool {
         self.sonification = crate::audio::SonificationFrame::silent();
     }
 
-    fn rebuild_csr_from_dense(&mut self) {
+    pub(super) fn rebuild_csr_from_dense(&mut self) {
         let n = self.neurons.len();
         if self.next_inputs.len() < n {
             self.next_inputs.resize(n.max(MAX_NEURAL_SHARED_NODES), 0.0);
@@ -122,123 +165,10 @@ impl NeuralNetworkVizTool {
 
     pub(crate) fn reset(&mut self) {
         let src = self.topology_source;
+        let keep_mode = self.mode;
         *self = Self::default();
         self.topology_source = src;
-    }
-
-    /// Synchronizes Hodgkin-Huxley neurons (`1..=32`) and directed/symmetric synapses from `SharedSimulationBus`.
-    pub fn sync_shared_topology(&mut self, ctx: &egui::Context) {
-        match SharedSimulationBus::active_graph_for(ctx, self.topology_source) {
-            Some(snap) => {
-                if self.synced_bus_revision != Some(snap.revision) && self.apply_shared_graph(&snap)
-                {
-                    self.synced_bus_revision = Some(snap.revision);
-                }
-            }
-            None => {
-                if self.synced_bus_revision.take().is_some() {
-                    self.clamped_source_nodes = None;
-                    self.restore_local_circuit();
-                }
-            }
-        }
-    }
-
-    fn restore_local_circuit(&mut self) {
-        let n = self.local_preset_inputs.len();
-        if n == 0 {
-            self.build_default_ring();
-            return;
-        }
-        self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
-        let radius = 100.0;
-        self.positions = (0..n)
-            .map(|i| {
-                let angle = i as f32 * TAU / n as f32;
-                [angle.cos() * radius, angle.sin() * radius]
-            })
-            .collect();
-        self.external_input = self.local_preset_inputs.clone();
-        self.weights = self.local_preset_weights.clone();
-        self.rebuild_csr_from_dense();
-    }
-
-    fn apply_shared_graph(&mut self, snap: &SharedGraphTopology) -> bool {
-        let raw_n = snap.node_count();
-        if raw_n == 0 {
-            return false;
-        }
-        let source_total = snap.original_node_count.max(raw_n);
-        let n = raw_n.min(MAX_NEURAL_SHARED_NODES);
-        self.clamped_source_nodes =
-            (source_total > MAX_NEURAL_SHARED_NODES).then_some(source_total);
-        self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
-        let mapped = snap.map_positions_to_bounds(-120.0, -120.0, 120.0, 120.0);
-        self.positions = mapped.into_iter().take(n).collect();
-
-        let mut dense = vec![vec![0.0; n]; n];
-        let mut row_ptr = Vec::with_capacity(n + 1);
-        let mut col_idx = Vec::new();
-        let mut csr_weights = Vec::new();
-        row_ptr.push(0);
-        for (pre, (&start, &end)) in snap.row_ptr[..n]
-            .iter()
-            .zip(&snap.row_ptr[1..=n])
-            .enumerate()
-        {
-            for idx in start..end {
-                let post = snap.col_idx[idx];
-                let w = snap.weights[idx];
-                if post < n && post != pre && w.is_finite() && w != 0.0 {
-                    dense[post][pre] = w;
-                    col_idx.push(post);
-                    csr_weights.push(w);
-                }
-            }
-            row_ptr.push(col_idx.len());
-        }
-        self.weights = dense;
-        self.csr_row_ptr = row_ptr;
-        self.csr_col_idx = col_idx;
-        self.csr_weights = csr_weights;
-        self.external_input = vec![0.0; n];
-        self.external_input[0] = 12.0;
-        if self.next_inputs.len() < n {
-            self.next_inputs.resize(MAX_NEURAL_SHARED_NODES, 0.0);
-        }
-        true
-    }
-
-    /// Returns the human-readable neuron clamping status badge text when `> 32` nodes were clamped.
-    #[must_use]
-    pub fn clamp_badge_text(&self) -> Option<String> {
-        self.clamped_source_nodes
-            .map(|orig| format!("Clamped {orig} -> {MAX_NEURAL_SHARED_NODES} neurons"))
-    }
-
-    /// Returns the currently synced shared bus revision, if active.
-    #[cfg(test)]
-    #[must_use]
-    pub fn synced_bus_revision(&self) -> Option<u64> {
-        self.synced_bus_revision
-    }
-
-    /// Returns the active neuron count (`1..=32`).
-    #[cfg(test)]
-    #[must_use]
-    pub fn neuron_count(&self) -> usize {
-        self.neurons.len()
-    }
-
-    /// Returns incoming synaptic weight `pre -> post` (`weights[post][pre]`).
-    #[cfg(test)]
-    #[must_use]
-    pub fn synaptic_weight(&self, pre: usize, post: usize) -> f64 {
-        self.weights
-            .get(post)
-            .and_then(|r| r.get(pre))
-            .copied()
-            .unwrap_or(0.0)
+        self.mode = keep_mode;
     }
 
     pub(crate) fn step_once(&mut self) {
@@ -246,8 +176,13 @@ impl NeuralNetworkVizTool {
         self.step();
     }
 
-    /// Advances all coupled Hodgkin-Huxley neurons by one `dt` step with zero heap allocations.
+    /// Advances either Hodgkin-Huxley or Kuramoto dynamics by one `dt` step with zero heap allocations.
     pub fn step(&mut self) {
+        if self.mode == NeuralDynamicsMode::Kuramoto {
+            self.kuramoto.step(self.dt);
+            self.record_kuramoto_history_zero_alloc();
+            return;
+        }
         let mut before = [-65.0; 5];
         for (idx, slot) in before.iter_mut().enumerate() {
             if let Some(neuron) = self.neurons.get(idx) {
@@ -286,6 +221,12 @@ struct NeuralNetworkVizState {
     is_running: bool,
     #[serde(default, skip_serializing_if = "TopologySource::is_default")]
     topology_source: TopologySource,
+    #[serde(default, skip_serializing_if = "NeuralDynamicsMode::is_default")]
+    mode: NeuralDynamicsMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kuramoto_coupling: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frequency_spread: Option<f64>,
 }
 
 impl InteractiveTool for NeuralNetworkVizTool {
@@ -300,6 +241,9 @@ impl InteractiveTool for NeuralNetworkVizTool {
     }
     fn domain(&self) -> &'static str {
         "neuroscience"
+    }
+    fn state_revision(&self) -> u64 {
+        self.revision
     }
 
     #[cfg(test)]
@@ -328,14 +272,15 @@ impl InteractiveTool for NeuralNetworkVizTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let on_bus = self.synced_bus_revision.is_some();
+        let on_external = self.synced_bus_revision.is_some() || self.upstream_linked;
+        let include_kuramoto = self.mode == NeuralDynamicsMode::Kuramoto;
         serde_json::to_string(&NeuralNetworkVizState {
-            external_input: if on_bus {
+            external_input: if on_external && !self.local_preset_inputs.is_empty() {
                 self.local_preset_inputs.clone()
             } else {
                 self.external_input.clone()
             },
-            weights: if on_bus {
+            weights: if on_external && !self.local_preset_weights.is_empty() {
                 self.local_preset_weights.clone()
             } else {
                 self.weights.clone()
@@ -343,6 +288,9 @@ impl InteractiveTool for NeuralNetworkVizTool {
             dt: self.dt,
             is_running: self.is_running,
             topology_source: self.topology_source,
+            mode: self.mode,
+            kuramoto_coupling: include_kuramoto.then(|| self.kuramoto.coupling()),
+            frequency_spread: include_kuramoto.then(|| self.kuramoto.frequency_spread()),
         })
         .ok()
     }
@@ -356,7 +304,7 @@ impl InteractiveTool for NeuralNetworkVizTool {
                 && s.weights
                     .iter()
                     .all(|row| row.len() == n && row.iter().all(|w| w.is_finite())));
-        if !(1..=MAX_NEURAL_SHARED_NODES).contains(&n)
+        if !(1..=MAX_DATAFLOW_GRAPH_NODES).contains(&n)
             || !weights_valid
             || !s
                 .external_input
@@ -369,6 +317,8 @@ impl InteractiveTool for NeuralNetworkVizTool {
         }
         self.synced_bus_revision = None;
         self.clamped_source_nodes = None;
+        self.last_upstream_graph_rev = 0;
+        self.upstream_linked = false;
         self.topology_source = s.topology_source;
         if s.weights.is_empty() && n == 5 {
             self.build_default_ring();
@@ -393,19 +343,33 @@ impl InteractiveTool for NeuralNetworkVizTool {
         self.rebuild_csr_from_dense();
         self.dt = s.dt;
         self.is_running = s.is_running;
+        self.mode = s.mode;
+        let spread = s.frequency_spread.unwrap_or(0.6);
+        self.sync_kuramoto_from_weight_matrix(spread);
+        if let Some(k) = s.kuramoto_coupling {
+            self.kuramoto.set_coupling(k);
+        }
+        self.bump_revision();
         Ok(())
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        self.sync_shared_topology(&ctx);
+        self.poll_upstream_graph(&ctx);
+        if !self.upstream_linked {
+            self.sync_shared_topology(&ctx);
+        }
         if self.is_running {
-            for _ in 0..10 {
+            let substeps = if self.mode == NeuralDynamicsMode::Kuramoto {
+                2
+            } else {
+                10
+            };
+            for _ in 0..substeps {
                 self.step();
             }
             ctx.request_repaint();
         }
-
         self.draw_controls(ui);
         self.draw_network(ui);
     }
@@ -418,23 +382,38 @@ inventory::submit! {
         id: "NeuralNetworkVizTool",
         display_name: "Neural Network Viz",
         domain: "neuroscience",
-        tags: &["synapse", "coupled neurons", "connectome", "membrane", "spiking"],
+        tags: &[
+            "synapse",
+            "coupled neurons",
+            "connectome",
+            "membrane",
+            "spiking",
+            "kuramoto",
+            "synchronization",
+            "hodgkin-huxley",
+        ],
         build: || Box::new(NeuralNetworkVizTool::default()),
     }
 }
 
 impl scientific_metadata::theory::TheoryDescribable for NeuralNetworkVizTool {
     fn theory_description(&self) -> String {
-        format!(
-            "Coupled network of {} biophysical Hodgkin-Huxley conductance-based neurons: membrane potential dynamics $C_m \\frac{{dV_i}}{{dt}} = I_{{ext,i}} - I_{{ion}}(V_i) + \\sum_j W_{{ij}} s_j(t)$ with synaptic weight matrix $W$.",
-            self.neurons.len()
-        )
+        match self.mode {
+            NeuralDynamicsMode::HodgkinHuxley => format!(
+                "Coupled network of {} biophysical Hodgkin-Huxley conductance-based neurons: membrane potential dynamics $C_m \\frac{{dV_i}}{{dt}} = I_{{ext,i}} - I_{{ion}}(V_i) + \\sum_j W_{{ij}} s_j(t)$ with synaptic weight matrix $W$.",
+                self.neurons.len()
+            ),
+            NeuralDynamicsMode::Kuramoto => format!(
+                "Coupled network of {} Kuramoto phase oscillators: $\\frac{{d\\theta_i}}{{dt}} = \\omega_i + \\frac{{K}}{{N}} \\sum_j A_{{ji}} \\sin(\\theta_j - \\theta_i)$ with complex synchronization order parameter $r(t) e^{{i\\psi(t)}} = \\frac{{1}}{{N}} \\sum_j e^{{i\\theta_j}}$.",
+                self.kuramoto.num_nodes()
+            ),
+        }
     }
     fn phonetic_description(&self) -> String {
-        "Coupled Hodgkin-Huxley neural network and synaptic transmission theory".into()
+        "Coupled Hodgkin-Huxley neural network and Kuramoto phase synchronization theory".into()
     }
     fn theory_citation(&self) -> String {
-        "A Quantitative Description of Membrane Current and Its Application to Conduction and Excitation in Nerve (Hodgkin & Huxley, 1952); Theoretical Neuroscience (Dayan & Abbott, 2001)".into()
+        "Hodgkin & Huxley (1952); Chemical Oscillations, Waves, and Turbulence (Kuramoto, 1984); Theoretical Neuroscience (Dayan & Abbott, 2001)".into()
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()

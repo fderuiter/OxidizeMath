@@ -1,3 +1,4 @@
+pub mod dataflow_bus;
 pub mod domain_bar;
 pub(crate) mod global_shortcuts;
 #[cfg(target_os = "macos")]
@@ -31,6 +32,16 @@ mod tests_cold_start_and_palette;
 #[cfg(test)]
 mod tests_command_palette;
 #[cfg(test)]
+mod tests_dataflow_bus;
+#[cfg(all(
+    test,
+    feature = "pure_math",
+    feature = "epidemiology",
+    feature = "biology",
+    feature = "physics"
+))]
+mod tests_dataflow_pipelines;
+#[cfg(test)]
 mod tests_diagnostics;
 #[cfg(test)]
 mod tests_domain_bar;
@@ -63,6 +74,7 @@ mod tests_tab_cache_perf;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
+pub use dataflow_bus::{DataflowStreamKind, PaneDataflowBus, PanePipelineDag};
 #[allow(unused_imports)]
 pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
@@ -121,6 +133,8 @@ pub struct MathExplorerApp {
     pending_focus_prune: bool,
     pub compare_sync: ComparisonSyncConfig,
     pub sim_bus: SharedSimulationBus,
+    pub dataflow_bus: PaneDataflowBus,
+    pub pipeline_dag: PanePipelineDag,
     pub(super) url_sync: crate::url_state::UrlSyncController,
 }
 
@@ -160,6 +174,8 @@ impl Default for MathExplorerApp {
             pending_focus_prune: false,
             compare_sync: ComparisonSyncConfig::default(),
             sim_bus: SharedSimulationBus::new(),
+            dataflow_bus: PaneDataflowBus::default(),
+            pipeline_dag: PanePipelineDag::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
         }
     }
@@ -291,6 +307,7 @@ impl MathExplorerApp {
 
         if active_layout != ViewportLayout::Single {
             viewport::render_multi_pane_manager(self, ctx, frame);
+            self.prune_incompatible_pipeline_links();
         } else {
             viewport::render_single_pane_viewport(self, ctx, frame);
         }

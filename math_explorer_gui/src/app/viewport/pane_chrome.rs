@@ -1,7 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{focus, CURRENT_PANE_RECT_KEY};
-use crate::app::MathExplorerApp;
+use crate::app::dataflow_bus::{
+    commit_pane_outputs, compatible_stream_kind, stage_pane_inputs, tool_accepted_streams,
+    tool_produced_stream,
+};
+use crate::app::{MathExplorerApp, SemanticPalette};
 use eframe::egui;
 
 pub(super) fn build_pane_region_ui(
@@ -238,6 +242,147 @@ pub(super) fn render_pane_header(
     if let Some(new_idx) = tab_to_switch {
         app.select_pane_tab(ctx, pane_idx, new_idx);
     }
+    render_pipeline_source_menu(
+        app,
+        ctx,
+        &mut header_ui,
+        pane_idx,
+        header_rect.width(),
+        label,
+    );
+}
+
+fn render_pipeline_source_menu(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    header_ui: &mut egui::Ui,
+    pane_idx: usize,
+    header_width: f32,
+    pane_label: &str,
+) {
+    let pane_count = app.viewport_layout.pane_count();
+    if pane_count <= 1 {
+        return;
+    }
+    let my_tool = app.pane_active_tool_id(pane_idx);
+    let accepts = tool_accepted_streams(my_tool.as_deref());
+    let produces = tool_produced_stream(my_tool.as_deref());
+    let upstream = app.pipeline_dag.upstream_for(pane_idx);
+    let feeds_downstream = app.pipeline_dag.has_downstream(pane_idx);
+    if accepts.is_empty() && produces.is_none() && upstream.is_none() && !feeds_downstream {
+        return;
+    }
+
+    let palette = SemanticPalette::from_visuals(header_ui.visuals());
+    let linked = upstream.is_some() || feeds_downstream;
+    let text = match (header_width >= 380.0, upstream, feeds_downstream) {
+        (true, Some(_), _) => "⚡ Pipe ←",
+        (true, None, true) => "⚡ Pipe →",
+        (true, None, false) => "⚡ Pipe",
+        (false, Some(_), _) => "⚡←",
+        (false, None, true) => "⚡→",
+        (false, None, false) => "⚡",
+    };
+    let rich = if linked {
+        egui::RichText::new(text).color(palette.accent).strong()
+    } else {
+        egui::RichText::new(text).color(palette.info)
+    };
+
+    header_ui.separator();
+    header_ui.push_id(("pane_pipeline_menu", pane_idx), |pipe_ui| {
+        let resp = pipe_ui.menu_button(rich, |menu_ui| {
+            render_pipeline_menu_entries(app, ctx, menu_ui, pane_idx, my_tool.as_deref(), palette);
+        });
+        resp.response
+            .on_hover_text(format!("Configure live dataflow pipeline for {pane_label}"));
+    });
+}
+
+fn render_pipeline_menu_entries(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    menu_ui: &mut egui::Ui,
+    pane_idx: usize,
+    my_tool: Option<&str>,
+    palette: SemanticPalette,
+) {
+    let labels = app.viewport_layout.pane_labels();
+    let pane_count = app.viewport_layout.pane_count();
+    let active_up = app.pipeline_dag.upstream_for(pane_idx);
+    if let Some(prod) = tool_produced_stream(my_tool) {
+        menu_ui.colored_label(palette.success, format!("Publishes live {}", prod.label()));
+        menu_ui.separator();
+    }
+    if tool_accepted_streams(my_tool).is_empty() && active_up.is_none() {
+        menu_ui.colored_label(
+            palette.muted_text,
+            "Select a downstream sink in another pane.",
+        );
+        return;
+    }
+
+    menu_ui.label("Upstream Source:");
+    let mut action: Option<Option<usize>> = None;
+    if menu_ui
+        .selectable_label(active_up.is_none(), "None (Standalone)")
+        .clicked()
+    {
+        action = Some(None);
+    }
+    for src_idx in 0..pane_count {
+        if src_idx == pane_idx {
+            continue;
+        }
+        let src_lbl = labels.get(src_idx).copied().unwrap_or("Pane");
+        let src_tool = app.pane_active_tool_id(src_idx);
+        let compat = compatible_stream_kind(src_tool.as_deref(), my_tool);
+        let cyclic = app.pipeline_dag.would_create_cycle(src_idx, pane_idx);
+        let is_selected = active_up.is_some_and(|l| l.from_pane == src_idx);
+        if render_pipeline_candidate_row(menu_ui, src_lbl, compat, cyclic, is_selected, palette) {
+            action = Some(Some(src_idx));
+        }
+    }
+    match action {
+        Some(None) => {
+            let _ = app.disconnect_pane_pipeline_interactive(Some(ctx), pane_idx);
+            menu_ui.close();
+        }
+        Some(Some(src_idx)) => {
+            let _ = app.connect_pane_pipeline_interactive(Some(ctx), src_idx, pane_idx);
+            menu_ui.close();
+        }
+        None => {}
+    }
+}
+
+fn render_pipeline_candidate_row(
+    menu_ui: &mut egui::Ui,
+    src_lbl: &str,
+    compat: Option<crate::app::dataflow_bus::DataflowStreamKind>,
+    cyclic: bool,
+    is_selected: bool,
+    palette: SemanticPalette,
+) -> bool {
+    if let Some(kind) = compat {
+        let item_text = if cyclic {
+            format!("{src_lbl} — {} (cycle blocked)", kind.label())
+        } else {
+            format!("{src_lbl} — {}", kind.label())
+        };
+        let rich = if cyclic {
+            egui::RichText::new(item_text).color(palette.warning)
+        } else {
+            egui::RichText::new(item_text)
+        };
+        menu_ui.selectable_label(is_selected, rich).clicked()
+    } else {
+        menu_ui.add_enabled(
+            false,
+            egui::Button::selectable(false, format!("{src_lbl} (no compatible stream)")),
+        );
+        false
+    }
 }
 
 pub(super) fn render_pane_content(
@@ -261,6 +406,7 @@ pub(super) fn render_pane_content(
         d.insert_temp(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY), pane_idx);
         d.insert_temp(egui::Id::new(CURRENT_PANE_RECT_KEY), content_rect);
     });
+    stage_pane_inputs(ctx, pane_idx, &app.pipeline_dag, &app.dataflow_bus);
     crate::reflective_ui::slider::begin_pane_sweep_scope(ctx, pane_idx);
     egui_plot::clear_last_plot_datasets();
     focus::with_pane_scoped_input(ctx, pane_idx, || {
@@ -274,6 +420,7 @@ pub(super) fn render_pane_content(
     });
     egui_plot::clear_last_plot_datasets();
     crate::reflective_ui::slider::merge_pane_sweep_flags(ctx, pane_idx);
+    commit_pane_outputs(ctx, pane_idx, &app.pipeline_dag, &mut app.dataflow_bus);
     ctx.data_mut(|d| {
         d.remove::<usize>(egui::Id::new(focus::CURRENT_RENDERING_PANE_KEY));
         d.remove::<egui::Rect>(egui::Id::new(CURRENT_PANE_RECT_KEY));
