@@ -77,9 +77,11 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "TokenizationTool"
         | "FactorizationTool"
         | "FractranMachineTool"
-        | "AlgorithmicFractranTool" => &["algorithmic_information_rust"],
+        | "AlgorithmicFractranTool"
+        | "AlgorithmicComplexityTool" => &["algorithmic_information_rust"],
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
+        "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
         _ => &[],
     };
     tokens.extend(explicit.iter().map(|s| (*s).to_string()));
@@ -93,7 +95,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         tokens.push(clean.clone());
     }
     let aliases: &[&str] = match clean.as_str() {
-        "algorithmic_information" => &["algorithmic_information_rust"],
+        "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
         "chaos" => &["chaos_theory"],
         "game_theory" => &["graph_parameters_rust"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
@@ -102,6 +104,12 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "neuroscience" => &["biology", "graph_parameters_rust"],
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
         "ai" => &["graph_parameters_rust"],
+        "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
+        "relativity" => &[
+            "general_relativity_geodesics",
+            "general_relativity",
+            "tensors",
+        ],
         _ => &[],
     };
     tokens.extend(aliases.iter().map(|s| (*s).to_string()));

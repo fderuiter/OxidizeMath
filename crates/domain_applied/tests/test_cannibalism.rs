@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test cannibalism.
 #[cfg(test)]
 mod tests {
     use domain_applied::applied::cannibalism::two_dimensional_ode::CannibalismModel;

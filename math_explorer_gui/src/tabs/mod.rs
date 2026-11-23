@@ -84,14 +84,17 @@ pub trait ExplorerTab {
     /// Academic domain category of the tab for top navigation bar grouping.
     fn academic_domain(&self) -> &'static str {
         match self.name() {
-            "Analysis & Calculus"
+            "Algorithmic Information"
+            | "Analysis & Calculus"
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
             | "Number Theory" => "Pure Math",
 
-            "Chaos Theory"
+            "Astrophysics"
+            | "Chaos Theory"
             | "Fluid Dynamics"
+            | "General Relativity"
             | "Medical Physics"
             | "MRI Physics"
             | "Optics & Waves"
@@ -102,6 +105,7 @@ pub trait ExplorerTab {
             | "Clinical Trials"
             | "Favoritism"
             | "Game Theory"
+            | "Paradox Lab"
             | "Traceability Portal" => "Applied Math",
 
             "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
@@ -167,7 +171,9 @@ pub trait ExplorerTab {
     fn url_slug(&self) -> &'static str {
         match self.name() {
             "Artificial Intelligence" => "ai",
+            "Algorithmic Information" => "algorithmic_information",
             "Analysis & Calculus" => "analysis",
+            "Astrophysics" => "astrophysics",
             "Battery Degradation" => "battery_degradation",
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
@@ -177,6 +183,7 @@ pub trait ExplorerTab {
             "Financial Math" => "financial_math",
             "Fluid Dynamics" => "fluid_dynamics",
             "Game Theory" => "game_theory",
+            "General Relativity" => "relativity",
             "Geometry & Topology" => "geometry_topology",
             "Graph Theory" => "graph_theory",
             "Medical Physics" => "medical",
@@ -185,6 +192,7 @@ pub trait ExplorerTab {
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
             "Optics & Waves" => "optics_waves",
+            "Paradox Lab" => "paradox_lab",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",
@@ -216,6 +224,38 @@ pub trait ExplorerTab {
         }
     }
 
+    /// Encodes a `#tab=<slug>...` URL fragment for this tab (including active story or challenge IDs when present).
+    fn encode_url_share_fragment(&self) -> Result<String, String> {
+        if let Some(fw) = self.framework() {
+            return fw.encode_share_fragment_for_tab(self.url_slug());
+        }
+        let preset_json = self.export_url_preset_json()?;
+        crate::url_state::encode_share_fragment(
+            self.url_slug(),
+            self.active_tool_id(),
+            preset_json.as_deref(),
+        )
+    }
+
+    /// Validates and applies `ShareUrlParams` (supporting `&preset=`, `&challenge=`, `&step=`, and `&state=`).
+    fn import_url_share_params(
+        &mut self,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        if params.preset.is_none() && params.challenge.is_none() {
+            return self
+                .import_url_preset_json(params.tool.as_deref(), params.state_json.as_deref());
+        }
+        if let Some(fw) = self.framework_mut() {
+            return fw.import_url_share_params(params, ctx);
+        }
+        Err(format!(
+            "Tab '{}' does not support story presets or challenges",
+            self.name()
+        ))
+    }
+
     /// Validates and applies a shared URL tool identifier and `PresetWrapper` JSON payload.
     fn import_url_preset_json(
         &mut self,
@@ -238,25 +278,6 @@ pub trait ExplorerTab {
             ));
         }
         Ok(())
-    }
-
-    /// Validates and applies shared URL `tool`, `challenge`, and `state` parameters.
-    fn import_url_share_params(
-        &mut self,
-        tool_id: Option<&str>,
-        challenge_id: Option<&str>,
-        preset_json: Option<&str>,
-    ) -> Result<(), String> {
-        if challenge_id.is_none() {
-            return self.import_url_preset_json(tool_id, preset_json);
-        }
-        if let Some(fw) = self.framework_mut() {
-            return fw.import_url_share_params(tool_id, challenge_id, preset_json);
-        }
-        Err(format!(
-            "Tab '{}' does not support inverse challenges",
-            self.name()
-        ))
     }
 }
 
