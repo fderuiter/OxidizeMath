@@ -238,6 +238,10 @@ impl SimulationFramework {
             return;
         }
         let active_name = self.active_tool.as_ref().map(|t| t.name());
+        let plot_datasets_3d = egui_plot::get_last_plot_datasets_3d();
+        if !plot_datasets_3d.is_empty() {
+            self.current_valid_plot_datasets_3d = plot_datasets_3d;
+        }
         if has_plot_datasets {
             let capture_hash = egui_plot::last_plot_capture_hash();
             let same_capture = active_name.is_some_and(|name| {

@@ -148,6 +148,52 @@ pub(crate) struct SingleLineScan {
     pub(crate) extrema: Vec<([f64; 2], bool)>,
 }
 
+fn skip_plateau_chunks<C: CoordSlice + ?Sized>(
+    pts: &C,
+    start_idx: usize,
+    y_val: f64,
+    want_y_ints: bool,
+    p0_x: f64,
+) -> Option<(usize, PlotPoint)> {
+    let (x_min, x_max) = if !want_y_ints {
+        (f64::MIN, f64::MAX)
+    } else if p0_x > 0.0 {
+        (f64::from_bits(1), f64::MAX)
+    } else if p0_x < 0.0 {
+        (f64::MIN, -f64::from_bits(1))
+    } else {
+        return None;
+    };
+    macro_rules! ok_pt {
+        ($p:expr) => {
+            ($p.y == y_val) & ($p.x >= x_min) & ($p.x <= x_max)
+        };
+    }
+    let n = pts.coord_len();
+    let mut idx = start_idx;
+    let mut tail = PlotPoint { x: 0.0, y: 0.0 };
+    while idx + 8 <= n {
+        let (a0, a1) = (pts.coord_at(idx), pts.coord_at(idx + 1));
+        let (a2, a3) = (pts.coord_at(idx + 2), pts.coord_at(idx + 3));
+        let (a4, a5) = (pts.coord_at(idx + 4), pts.coord_at(idx + 5));
+        let (a6, a7) = (pts.coord_at(idx + 6), pts.coord_at(idx + 7));
+        if !(ok_pt!(a0)
+            & ok_pt!(a1)
+            & ok_pt!(a2)
+            & ok_pt!(a3)
+            & ok_pt!(a4)
+            & ok_pt!(a5)
+            & ok_pt!(a6)
+            & ok_pt!(a7))
+        {
+            break;
+        }
+        idx += 8;
+        tail = a7;
+    }
+    (idx > start_idx).then_some((idx, tail))
+}
+
 /// Fused single-pass streaming scan for $y = 0$ roots, $x = 0$ intercepts, and local extrema.
 pub(crate) fn scan_single_line_all<C: CoordSlice + ?Sized>(
     pts: &C,
@@ -169,6 +215,18 @@ pub(crate) fn scan_single_line_all<C: CoordSlice + ?Sized>(
     let (mut mode, mut prev, mut start, mut second, mut last) = (0u8, dummy, dummy, dummy, dummy);
     let mut i = 1;
     while i < n {
+        if p0_fin
+            && (mode == 0 || mode == 2)
+            && n - i >= 8
+            && let Some((next_i, tail)) = skip_plateau_chunks(pts, i, p0.y, want_y_ints, p0.x)
+        {
+            if mode == 2 {
+                last = tail;
+            }
+            p0 = tail;
+            i = next_i;
+            continue;
+        }
         let idx = i - 1;
         let p1 = pts.coord_at(i);
         i += 1;

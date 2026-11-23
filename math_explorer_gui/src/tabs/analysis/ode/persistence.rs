@@ -15,6 +15,46 @@ fn is_false(v: &bool) -> bool {
     !*v
 }
 
+fn default_ode_custom_params(k: f64, r: f64, cap_k: f64) -> BTreeMap<String, f64> {
+    BTreeMap::from([
+        ("k".to_string(), k),
+        ("r".to_string(), r),
+        ("cap_k".to_string(), cap_k),
+    ])
+}
+
+fn sync_one_legacy_param(
+    math_input: &mut crate::framework::MathExpressionInputBar,
+    name: &str,
+    field: &mut f64,
+    last_synced: &mut f64,
+) {
+    if !field.is_finite() {
+        *last_synced = *field;
+        return;
+    }
+    if field.to_bits() != last_synced.to_bits() {
+        math_input.set_param(name, *field);
+        *last_synced = *field;
+    } else if let Some(val) = math_input.active_param_value(name) {
+        *field = val;
+        *last_synced = val;
+    }
+}
+
+fn format_named_param_summary(names: &[String], vals: &[f64], dt: f64) -> String {
+    if names.is_empty() {
+        return format!(r"\Delta t={dt:.2}");
+    }
+    let mut parts: Vec<String> = names
+        .iter()
+        .zip(vals)
+        .map(|(name, val)| format!("{name}={val:.2}"))
+        .collect();
+    parts.push(format!(r"\Delta t={dt:.2}"));
+    parts.join(", ")
+}
+
 #[derive(serde::Serialize)]
 struct OdeStateRef<'a> {
     preset: Option<OdePreset>,
@@ -102,6 +142,74 @@ struct OdeState {
 }
 
 impl OdeSolverTool {
+    pub(crate) fn seed_default_custom_params(&mut self) {
+        self.math_input.set_params_map(&default_ode_custom_params(
+            self.param_k,
+            self.param_r,
+            self.param_cap_k,
+        ));
+        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
+    }
+
+    pub(crate) fn reset_custom_parameters(&mut self) {
+        self.param_k = 1.0;
+        self.param_r = 1.0;
+        self.param_cap_k = 10.0;
+        self.ic_y0 = 1.0;
+        self.seed_default_custom_params();
+        self.math_input.set_expression("-k * y * sin(t)");
+    }
+
+    pub(crate) fn sync_legacy_params_from_math_input(&mut self) {
+        if let Some(k) = self.math_input.active_param_value("k") {
+            self.param_k = k;
+        }
+        if let Some(r) = self.math_input.active_param_value("r") {
+            self.param_r = r;
+        }
+        if let Some(cap_k) = self.math_input.active_param_value("cap_k") {
+            self.param_cap_k = cap_k;
+        }
+        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
+    }
+
+    pub(crate) fn sync_custom_params(&mut self) {
+        sync_one_legacy_param(
+            &mut self.math_input,
+            "k",
+            &mut self.param_k,
+            &mut self.synced_legacy_params[0],
+        );
+        sync_one_legacy_param(
+            &mut self.math_input,
+            "r",
+            &mut self.param_r,
+            &mut self.synced_legacy_params[1],
+        );
+        sync_one_legacy_param(
+            &mut self.math_input,
+            "cap_k",
+            &mut self.param_cap_k,
+            &mut self.synced_legacy_params[2],
+        );
+    }
+
+    pub(crate) fn custom_param_summary(&self) -> String {
+        format_named_param_summary(
+            self.math_input.active_param_names(),
+            self.math_input.param_slice(),
+            self.dt,
+        )
+    }
+
+    pub(crate) fn coupled_param_summary(&self) -> String {
+        format_named_param_summary(
+            self.coupled_bank.param_names(),
+            self.coupled_bank.param_slice(),
+            self.dt,
+        )
+    }
+
     pub(crate) fn compute_state_revision(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.revision.hash(&mut hasher);
@@ -115,10 +223,17 @@ impl OdeSolverTool {
         self.ic_y0.to_bits().hash(&mut hasher);
         self.ic_v0.to_bits().hash(&mut hasher);
         self.math_input.raw_text.hash(&mut hasher);
+        let param_slice = self.math_input.param_slice();
+        param_slice.len().hash(&mut hasher);
+        for &val in param_slice {
+            val.to_bits().hash(&mut hasher);
+        }
         self.custom_coupled.hash(&mut hasher);
         self.coupled_bank.raw_text(0).hash(&mut hasher);
         self.coupled_bank.raw_text(1).hash(&mut hasher);
-        for &v in self.coupled_bank.param_slice() {
+        let coupled_slice = self.coupled_bank.param_slice();
+        coupled_slice.len().hash(&mut hasher);
+        for &v in coupled_slice {
             v.to_bits().hash(&mut hasher);
         }
         self.comparison_mode.hash(&mut hasher);
@@ -153,14 +268,9 @@ impl OdeSolverTool {
                 coupled_params: self.coupled_bank.params_map(),
             }
         } else {
-            let mut extra = self.math_input.params_map();
-            extra.remove("k");
-            extra.remove("r");
-            extra.remove("cap_k");
-            extra.remove("K");
             CustomSerializationMaps {
                 coupled_exprs: None,
-                custom_params: extra,
+                custom_params: self.math_input.params_map(),
                 coupled_params: BTreeMap::new(),
             }
         }
@@ -231,23 +341,37 @@ impl OdeSolverTool {
         let s: OdeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {e}"))?;
         validate_deserialized_ode_state(&s)?;
+        self.apply_deserialized_ode_state(s, preserve_snapshots);
+        self.recalculate();
+        Ok(())
+    }
+
+    fn apply_deserialized_ode_state(&mut self, s: OdeState, preserve_snapshots: bool) {
         if let Some(p) = s.preset {
             self.preset = p;
         }
         self.dt = s.dt;
         self.total_time = s.total_time;
-        self.param_k = s.param_k;
-        self.param_r = s.param_r;
-        self.param_cap_k = s.param_cap_k;
+        self.param_k = s.custom_params.get("k").copied().unwrap_or(s.param_k);
+        self.param_r = s.custom_params.get("r").copied().unwrap_or(s.param_r);
+        self.param_cap_k = s
+            .custom_params
+            .get("cap_k")
+            .copied()
+            .unwrap_or(s.param_cap_k);
         self.ic_y0 = s.ic_y0;
         self.ic_v0 = s.ic_v0;
         self.custom_coupled = s.custom_coupled;
+        let mut merged_params =
+            default_ode_custom_params(self.param_k, self.param_r, self.param_cap_k);
+        for (k, &v) in &s.custom_params {
+            merged_params.insert(k.clone(), v);
+        }
         if !s.custom_expr.is_empty() {
             self.math_input.set_expression(&s.custom_expr);
         }
-        if !s.custom_params.is_empty() {
-            self.math_input.set_params_map(&s.custom_params);
-        }
+        self.math_input.set_params_map(&merged_params);
+        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
         if let Some([e0, e1]) = s.coupled_exprs {
             self.coupled_bank.set_expressions(&[e0, e1]);
         }
@@ -262,8 +386,6 @@ impl OdeSolverTool {
         self.comparison_mode = s.comparison_mode;
         self.show_annotations = s.show_annotations;
         self.pending_sweep_run = None;
-        self.recalculate();
-        Ok(())
     }
 
     pub(crate) fn collect_full_xy_pairs(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {

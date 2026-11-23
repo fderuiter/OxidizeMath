@@ -57,6 +57,7 @@ pub struct OdeSolverTool {
     pub show_annotations: bool,
     pub(crate) revision: u64,
     pub(crate) series_cache: series_cache::OdeSeriesCache,
+    pub(crate) synced_legacy_params: [f64; 3],
 }
 
 impl Default for OdeSolverTool {
@@ -91,8 +92,7 @@ impl Default for OdeSolverTool {
                     ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
                 ],
             )
-            .with_axes(&["t", "y"])
-            .with_inline_sliders(false),
+            .with_axes(&["t", "y"]),
             custom_coupled: false,
             coupled_bank: default_coupled_ode_bank(),
             diagnostic_report: None,
@@ -109,7 +109,9 @@ impl Default for OdeSolverTool {
             show_annotations: true,
             revision: 1,
             series_cache: series_cache::OdeSeriesCache::default(),
+            synced_legacy_params: [1.0, 1.0, 10.0],
         };
+        tool.seed_default_custom_params();
         tool.recalculate();
         tool
     }
@@ -151,24 +153,15 @@ impl OdeSolverTool {
 
     pub fn param_summary(&self) -> String {
         match self.preset {
-            OdePreset::Custom if self.custom_coupled => {
-                let mut parts: Vec<String> = self
-                    .coupled_bank
-                    .param_names()
-                    .iter()
-                    .zip(self.coupled_bank.param_slice())
-                    .map(|(n, v)| format!("{n}={v:.2}"))
-                    .collect();
-                parts.push(format!(r"\Delta t={:.2}", self.dt));
-                parts.join(", ")
-            }
-            OdePreset::Exponential | OdePreset::HarmonicOscillator | OdePreset::Custom => {
+            OdePreset::Exponential | OdePreset::HarmonicOscillator => {
                 format!(r"k={:.2}, \Delta t={:.2}", self.param_k, self.dt)
             }
             OdePreset::LogisticGrowth => format!(
                 r"r={:.2}, K={:.2}, \Delta t={:.2}",
                 self.param_r, self.param_cap_k, self.dt
             ),
+            OdePreset::Custom if self.custom_coupled => self.coupled_param_summary(),
+            OdePreset::Custom => self.custom_param_summary(),
         }
     }
 
@@ -218,26 +211,8 @@ impl OdeSolverTool {
             &mut self.ic_y0,
             &mut self.ic_v0,
         );
-        let mut scalar_map = self.math_input.params_map();
-        for val in scalar_map.values_mut() {
-            *val = if val.is_finite() {
-                val.clamp(-10.0, 10.0)
-            } else {
-                1.0
-            };
-        }
-        self.math_input.set_params_map(&scalar_map);
-
-        let mut coupled_map = self.coupled_bank.params_map();
-        for val in coupled_map.values_mut() {
-            *val = if val.is_finite() {
-                val.clamp(-10.0, 10.0)
-            } else {
-                1.0
-            };
-        }
-        self.coupled_bank.set_params_map(&coupled_map);
-
+        self.math_input.clamp_active_params(-10.0..=10.0);
+        self.coupled_bank.clamp_active_params(-10.0..=10.0);
         clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
         self.recalculate();
     }
@@ -312,9 +287,7 @@ impl OdeSolverTool {
                 self.coupled_bank = default_coupled_ode_bank();
             }
             OdePreset::Custom => {
-                self.param_k = 1.0;
-                self.ic_y0 = 1.0;
-                self.math_input.set_expression("-k * y * sin(t)");
+                self.reset_custom_parameters();
             }
         }
         self.dt = 0.05;
@@ -351,6 +324,7 @@ impl OdeSolverTool {
     }
 
     pub fn recalculate(&mut self) {
+        self.sync_custom_params();
         self.bump_revision();
         self.time_series.clear();
         self.y_series.clear();
@@ -446,6 +420,9 @@ mod comparison_tests;
 
 #[cfg(test)]
 mod coupled_tests;
+
+#[cfg(test)]
+mod custom_tests;
 
 #[cfg(test)]
 mod ode_tests;

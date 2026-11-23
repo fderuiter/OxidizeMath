@@ -103,6 +103,8 @@ pub struct PlotConfig<'a> {
     pub transform: &'a PlotTransform,
     pub show_x: bool,
     pub show_y: bool,
+    pub sidecar_3d: Option<&'a crate::Plot3DSeriesSidecar>,
+    pub world_point: Option<[f64; 3]>,
 }
 
 /// Trait shared by things that can be drawn in the plot.
@@ -341,13 +343,22 @@ pub trait PlotItem {
             }
         };
 
+        // this method is only called, if the value is in the result set of find_closest()
+        let world_point = plot.world_point.or_else(|| {
+            plot.sidecar_3d
+                .and_then(|s| s.world_point(self.id(), elem.index, [value.x, value.y]))
+        });
+        let item_plot = PlotConfig {
+            world_point,
+            ..*plot
+        };
         Some(render_snapped_hover_point(
             self,
             plot_area_response,
             value,
             shapes,
             cursors,
-            plot,
+            &item_plot,
             label_formatter,
         ))
     }
@@ -2902,11 +2913,14 @@ pub(super) fn rulers_and_tooltip_at_value(
     cursors: &mut Vec<Cursor>,
     label_formatter: &LabelFormatter<'_>,
 ) {
-    if plot.show_x {
-        cursors.push(Cursor::Vertical { x: value.x });
-    }
-    if plot.show_y {
-        cursors.push(Cursor::Horizontal { y: value.y });
+    let suppress_rulers = plot.sidecar_3d.is_some() || plot.world_point.is_some();
+    if !suppress_rulers {
+        if plot.show_x {
+            cursors.push(Cursor::Vertical { x: value.x });
+        }
+        if plot.show_y {
+            cursors.push(Cursor::Horizontal { y: value.y });
+        }
     }
 
     let raw_anchor = plot.transform.position_from_point(&value);
@@ -2916,11 +2930,15 @@ pub(super) fn rulers_and_tooltip_at_value(
         !name.is_empty() && (plot_area_response.hovered() || plot_area_response.gained_focus());
     crate::a11y::show_snapped_point_tooltip(
         plot_area_response,
-        anchor_pos,
-        [value.x, value.y],
-        &title,
-        &body_lines,
-        announce,
+        crate::a11y::SnappedTooltipArgs {
+            anchor_pos,
+            point: [value.x, value.y],
+            world_point: plot.world_point,
+            suppress_rulers,
+            title: &title,
+            body_lines: &body_lines,
+            announce_on_open: announce,
+        },
     );
 }
 
@@ -2933,6 +2951,24 @@ fn format_value_tooltip_content(
     if let Some(custom_label) = label_formatter {
         let formatted = custom_label(name, &value);
         return (String::new(), vec![(formatted, false)]);
+    }
+
+    if let Some([wx, wy, wz]) = plot.world_point {
+        let lines = vec![
+            (
+                format!("x = {}", crate::sidecar_3d::format_world_coord(wx)),
+                true,
+            ),
+            (
+                format!("y = {}", crate::sidecar_3d::format_world_coord(wy)),
+                true,
+            ),
+            (
+                format!("z = {}", crate::sidecar_3d::format_world_coord(wz)),
+                true,
+            ),
+        ];
+        return (name.to_owned(), lines);
     }
 
     let scale = plot.transform.dvalue_dpos();
