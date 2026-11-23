@@ -310,8 +310,11 @@ fn plateau_200k_series_detects_extrema_in_linear_time_under_5ms() {
 
     // Warm up instruction cache once before timing
     let _ = detect_critical_points(&items, &tf);
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
     let start = std::time::Instant::now();
     let pois = detect_critical_points(&items, &tf);
+    #[cfg(not(target_arch = "wasm32"))]
     let elapsed = start.elapsed();
 
     let max_poi = pois
@@ -326,6 +329,7 @@ fn plateau_200k_series_detects_extrema_in_linear_time_under_5ms() {
     assert!((max_poi.point[1] - 5.0).abs() < 1e-9);
     assert!((min_poi.point[0] - 149_999.5).abs() <= 1.0);
     assert!((min_poi.point[1] + 3.0).abs() < 1e-9);
+    #[cfg(not(target_arch = "wasm32"))]
     assert!(
         elapsed < std::time::Duration::from_millis(5),
         "200k plateau detect_critical_points took {elapsed:?} (>= 5ms)"

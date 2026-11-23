@@ -3,7 +3,21 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[path = "../../../crates/oxidize_core/src/workspace_wasm.rs"]
+pub mod workspace_wasm;
+
 static VERIFICATION_BUILT: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn resolve_workspace_root() -> PathBuf {
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| workspace_wasm::find_workspace_root(&cwd))
+        .or_else(|| workspace_wasm::find_workspace_root(Path::new(env!("CARGO_MANIFEST_DIR"))))
+        .unwrap_or_else(|| {
+            eprintln!("Error: Unable to locate workspace root Cargo.toml");
+            exit(1);
+        })
+}
 
 pub const HOST_CLIPPY_ARGS: &[&str] = &[
     "clippy",
@@ -27,25 +41,6 @@ pub const WASM_CLIPPY_ARGS: &[&str] = &[
     "--",
     "-D",
     "warnings",
-];
-
-pub const WASM_OXIDIZE_CORE_TEST_ARGS: &[&str] = &[
-    "test",
-    "--target",
-    "wasm32-unknown-unknown",
-    "-p",
-    "oxidize_core",
-    "--lib",
-];
-
-pub const WASM_GUI_TEST_ARGS: &[&str] = &[
-    "test",
-    "--target",
-    "wasm32-unknown-unknown",
-    "-p",
-    "math_explorer_gui",
-    "--bin",
-    "math_explorer_gui",
 ];
 
 pub fn run_cmd(cmd: &str, args: &[&str]) {
@@ -280,8 +275,8 @@ pub fn regenerate_baseline() {
     run_verification("regenerate-baseline");
 }
 
-fn run_cmd_in_dir(cmd: &str, args: &[&str], dir: &str) {
-    println!("Running (in {dir}): {cmd} {}", args.join(" "));
+pub(crate) fn run_cmd_in_path(cmd: &str, args: &[&str], dir: &Path) {
+    println!("Running (in {}): {cmd} {}", dir.display(), args.join(" "));
     let status = Command::new(cmd).args(args).current_dir(dir).status();
     match status {
         Ok(s) if s.success() => (),
@@ -292,16 +287,21 @@ fn run_cmd_in_dir(cmd: &str, args: &[&str], dir: &str) {
     }
 }
 
-pub fn test_wasm(args: &[String]) {
-    println!("=== Running WebAssembly Unit Tests & Headless Chromium Smoke Suite ===");
+fn parse_test_wasm_args(args: &[String], caller_cwd: &Path) -> (bool, Option<PathBuf>) {
     let mut skip_build = false;
-    let mut screenshot_dir: Option<&str> = None;
+    let mut screenshot_dir: Option<PathBuf> = None;
     let mut idx = 0;
     while idx < args.len() {
         match args[idx].as_str() {
             "--skip-build" => skip_build = true,
             "--screenshot-dir" if idx + 1 < args.len() => {
-                screenshot_dir = Some(args[idx + 1].as_str());
+                let raw = Path::new(&args[idx + 1]);
+                let resolved = if raw.is_absolute() {
+                    raw.to_path_buf()
+                } else {
+                    caller_cwd.join(raw)
+                };
+                screenshot_dir = Some(resolved);
                 idx += 1;
             }
             other => {
@@ -311,41 +311,57 @@ pub fn test_wasm(args: &[String]) {
         }
         idx += 1;
     }
+    (skip_build, screenshot_dir)
+}
 
-    let runner_script = std::fs::canonicalize("scripts/wasm_test_runner.py")
-        .unwrap_or_else(|_| PathBuf::from("scripts/wasm_test_runner.py"));
-    let runner_val = format!("python3 {}", runner_script.display());
-    let runner_env = [(
-        "CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER",
-        runner_val.as_str(),
-    )];
-    println!("\n--- Step 1a: WASM Unit Tests (oxidize_core) ---");
-    run_cmd_with_env("cargo", WASM_OXIDIZE_CORE_TEST_ARGS, &runner_env);
+pub fn test_wasm(args: &[String]) {
+    println!("=== Running WebAssembly Unit Tests & Headless Chromium Smoke Suite ===");
+    let caller_cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let (skip_build, screenshot_dir) = parse_test_wasm_args(args, &caller_cwd);
+    let ws_root = resolve_workspace_root();
 
-    println!("\n--- Step 1b: WASM Unit Tests (math_explorer_gui) ---");
-    run_cmd_with_env("cargo", WASM_GUI_TEST_ARGS, &runner_env);
+    let wasm_crates = workspace_wasm::discover_wasm_crates(&ws_root).unwrap_or_else(|err| {
+        eprintln!("Failed to discover wasm32 workspace crates: {err}");
+        exit(1);
+    });
+    let invocations = workspace_wasm::build_wasm_cargo_test_invocations(&wasm_crates);
+    for (step_idx, cargo_args) in invocations.iter().enumerate() {
+        println!(
+            "\n--- Step 1{}: WASM Workspace Crate Tests ({} crates discovered) ---",
+            (b'a' + step_idx as u8) as char,
+            wasm_crates.len()
+        );
+        let arg_refs: Vec<&str> = cargo_args.iter().map(String::as_str).collect();
+        run_cmd_in_path("cargo", &arg_refs, &ws_root);
+    }
 
     if !skip_build {
         println!("\n--- Step 2: Build Release Web Bundle & Verify Budget ---");
-        run_cmd_in_dir("trunk", &["build", "--release"], "math_explorer_gui");
-        run_cmd(
+        run_cmd_in_path(
+            "trunk",
+            &["build", "--release"],
+            &ws_root.join("math_explorer_gui"),
+        );
+        run_cmd_in_path(
             "bash",
             &["scripts/verify_wasm_budget.sh", "math_explorer_gui/dist"],
+            &ws_root,
         );
     }
 
     println!("\n--- Step 3: Headless Chromium CSP & Fault-Injection Smoke Checks ---");
+    let screenshot_str = screenshot_dir.map(|p| p.to_string_lossy().into_owned());
     let mut smoke_args = vec![
         "scripts/playwright_smoke.py",
         "--dist",
         "math_explorer_gui/dist",
         "--verify-regression-detection",
     ];
-    if let Some(dir) = screenshot_dir {
+    if let Some(dir) = screenshot_str.as_deref() {
         smoke_args.push("--screenshot-dir");
         smoke_args.push(dir);
     }
-    run_cmd("python3", &smoke_args);
+    run_cmd_in_path(crate::setup::resolve_python_bin(), &smoke_args, &ws_root);
 }
 
 #[cfg(test)]

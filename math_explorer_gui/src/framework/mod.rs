@@ -23,7 +23,6 @@ mod metadata_label_tests;
 mod overlay_sync;
 mod pane_scope;
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod perf_guard_tests;
 mod persistence;
 pub mod playback;
@@ -31,7 +30,6 @@ pub mod playback;
 mod playback_tests;
 pub mod recovery;
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod recovery_tests;
 pub mod side_panel;
 pub mod state_bounds;
@@ -39,7 +37,6 @@ pub mod state_bounds;
 mod state_bounds_tests;
 pub mod state_guard;
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod state_guard_tests;
 pub mod trace_overlay;
 mod ui;
