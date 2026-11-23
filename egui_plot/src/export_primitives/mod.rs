@@ -638,45 +638,6 @@ pub(crate) fn resolve_color(explicit: egui::Color32, idx: usize) -> egui::Color3
     }
 }
 
-/// Renders `primitives` offscreen under `options` and encodes the resulting canvas as PNG bytes.
-pub fn export_primitives_png(
-    primitives: &[ExportPrimitive],
-    options: &ExportOptions,
-) -> Result<Vec<u8>, String> {
-    let image = render_primitives_image(primitives, options)?;
-    color32_image_to_png(&image)
-}
-
-/// Decodes PNG bytes into `(width, height, rgba_pixels)` for verification and round-trip inspection.
-pub fn decode_png_rgba(png_bytes: &[u8]) -> Result<(usize, usize, Vec<[u8; 4]>), String> {
-    let mut decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
-    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::ALPHA);
-    let mut reader = decoder
-        .read_info()
-        .map_err(|e| format!("PNG decode header failed: {e}"))?;
-    let buf_len = reader
-        .output_buffer_size()
-        .ok_or_else(|| "PNG output buffer size overflow".to_string())?;
-    let mut buf = vec![0u8; buf_len];
-    let info = reader
-        .next_frame(&mut buf)
-        .map_err(|e| format!("PNG decode frame failed: {e}"))?;
-    let w = info.width as usize;
-    let h = info.height as usize;
-    let raw = &buf[..info.buffer_size()];
-    let pixels = match info.color_type {
-        png::ColorType::Rgba => raw.as_chunks::<4>().0.to_vec(),
-        png::ColorType::Rgb => raw
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .map(|&[r, g, b]| [r, g, b, 255])
-            .collect(),
-        other => return Err(format!("Unsupported decoded PNG color type: {other:?}")),
-    };
-    Ok((w, h, pixels))
-}
-
 /// Encodes a sequence of raster `ColorImage` frames scaled to `options` as an animated GIF.
 pub fn export_raster_gif(
     frames: &[egui::ColorImage],
@@ -696,4 +657,23 @@ pub fn export_raster_gif(
         return Err("All raster frames were empty".to_string());
     }
     color32_images_to_gif(&scaled, fps)
+}
+
+/// Renders `primitives` offscreen and encodes the resulting canvas as PNG bytes.
+pub fn export_primitives_png(
+    primitives: &[ExportPrimitive],
+    options: &ExportOptions,
+) -> Result<Vec<u8>, String> {
+    let image = render_primitives_image(primitives, options)?;
+    color32_image_to_png(&image)
+}
+
+/// Decodes PNG bytes into `(width, height, rgba_pixels)` for offscreen verification.
+pub fn decode_png_rgba(png_bytes: &[u8]) -> Result<(usize, usize, Vec<[u8; 4]>), String> {
+    let img = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png)
+        .map_err(|e| format!("Failed to decode PNG: {e}"))?
+        .to_rgba8();
+    let (w, h) = img.dimensions();
+    let pixels = img.pixels().map(|p| p.0).collect();
+    Ok((w as usize, h as usize, pixels))
 }
