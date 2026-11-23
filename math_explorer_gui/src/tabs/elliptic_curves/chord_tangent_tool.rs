@@ -276,6 +276,11 @@ impl WeierstrassPlaygroundTool {
             self.lattice_points[self.state.selected_q_idx % len],
         )
     }
+
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
 }
 
 impl InteractiveTool for WeierstrassPlaygroundTool {
@@ -293,10 +298,6 @@ impl InteractiveTool for WeierstrassPlaygroundTool {
 
     fn state_revision(&self) -> u64 {
         self.revision
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {
