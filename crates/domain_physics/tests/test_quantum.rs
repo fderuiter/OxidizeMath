@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test quantum.
 use approx::assert_relative_eq;
 use domain_physics::physics::quantum::{
     PotentialPreset1D, QuantumOperator, QuantumState, apply_bresenham_potential_stroke,

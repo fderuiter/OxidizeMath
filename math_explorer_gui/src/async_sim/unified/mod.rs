@@ -371,7 +371,7 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
         )
     }
 
-    #[allow(missing_docs)]
+    /// Creates a runner sharing both `params` and `custom_series`.
     pub fn new_with_series(
         params: Arc<RwLock<HashMap<String, f64>>>,
         custom_series: Arc<RwLock<HashMap<String, Vec<f64>>>>,

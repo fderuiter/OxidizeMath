@@ -25,24 +25,24 @@ pub enum SimCommand {
         #[allow(missing_docs)]
         is_obstacle: bool,
     },
-    #[allow(missing_docs)]
+    /// Interpolates a 1D potential stroke across discrete grid indices `[i0, i1]`.
     SculptStroke1D {
-        #[allow(missing_docs)]
+        /// Starting grid index.
         i0: usize,
-        #[allow(missing_docs)]
+        /// Potential value at `i0`.
         v0: f64,
-        #[allow(missing_docs)]
+        /// Ending grid index.
         i1: usize,
-        #[allow(missing_docs)]
+        /// Potential value at `i1`.
         v1: f64,
     },
-    #[allow(missing_docs)]
+    /// Re-initializes the Gaussian wavepacket emitter while preserving sculpted potentials.
     SetWavepacket {
-        #[allow(missing_docs)]
+        /// Packet center position $x_0$.
         x0: f64,
-        #[allow(missing_docs)]
+        /// Initial momentum wavenumber $k_0$.
         k0: f64,
-        #[allow(missing_docs)]
+        /// Spatial packet width $\sigma$.
         sigma: f64,
     },
     #[allow(missing_docs)]

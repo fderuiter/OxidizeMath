@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for astrophysics.
 use domain_physics::physics::astrophysics::galaxies::{
     GalaxyModel, GeneralIrregular, Magnitude, Mpc, SolarMassLog, TypeCode10, TypeCode95To99,
 };

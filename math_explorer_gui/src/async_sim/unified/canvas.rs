@@ -10,11 +10,14 @@ use std::sync::{Arc, RwLock};
 
 /// Interactive central-panel context granting `UnifiedModel` implementations access to the
 /// simulation worker controller, active snapshot, shared parameters, and custom series state.
-#[allow(missing_docs)]
 pub struct UnifiedCanvasContext<'a> {
+    /// Handle to the background simulation controller for dispatching commands.
     pub controller: &'a mut SimulationController,
+    /// Optional deterministic export snapshot overriding live worker snapshots.
     pub stepped_snapshot: Option<&'a StateSnapshot>,
+    /// Shared scalar simulation parameters synchronized with the worker.
     pub params: &'a Arc<RwLock<HashMap<String, f64>>>,
+    /// Shared custom series vectors (such as `"custom_potential"`) synchronized with the worker.
     pub custom_series: &'a Arc<RwLock<HashMap<String, Vec<f64>>>>,
 }
 
