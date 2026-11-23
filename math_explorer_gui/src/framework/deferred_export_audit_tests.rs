@@ -150,16 +150,16 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 53, "Expected 53 Plot dataset+figure tools");
+    assert_eq!(plot_tool_count, 59, "Expected 59 Plot dataset+figure tools");
     assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
-    assert_eq!(unsupported_tool_count, 16, "Expected 16 non-figure tools");
-    assert_eq!(solid_3d_count, 6, "Expected 6 solid 3D geometric tools");
+    assert_eq!(unsupported_tool_count, 14, "Expected 14 non-figure tools");
+    assert_eq!(solid_3d_count, 7, "Expected 7 solid 3D geometric tools");
     assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
         shader_tool_count, 3,
         "Expected 3 analytical GLSL shader tools"
     );
-    assert_eq!(non_shader_tool_count, 73, "Expected 73 non-shader tools");
+    assert_eq!(non_shader_tool_count, 77, "Expected 77 non-shader tools");
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
@@ -231,6 +231,7 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         "AttractorPlotter",
         "CrystalViewer",
         "SpinVisualizer",
+        "CorticalMorphometryTool",
         "KnotBraidStudio",
     ];
     for id in solid_ids {

@@ -6,7 +6,7 @@ use super::presets::{
 };
 use super::viewport::diagram_theme_colors;
 use super::KnotBraidStudioTool;
-use crate::app::theme::{ThemeMode, contrast_ratio};
+use crate::app::theme::{contrast_ratio, ThemeMode};
 use crate::framework::InteractiveTool;
 use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
 use eframe::egui;
@@ -59,13 +59,11 @@ fn chiral_trefoils_borromean_linking_and_fox_burau_parity() {
         borromean.model.linking_matrix,
         vec![vec![0, 0, 0], vec![0, 0, 0], vec![0, 0, 0]]
     );
-    assert!(
-        borromean
-            .model
-            .jones_half_power
-            .as_ref()
-            .is_some_and(|j| j.coeffs.len() > 1)
-    );
+    assert!(borromean
+        .model
+        .jones_half_power
+        .as_ref()
+        .is_some_and(|j| j.coeffs.len() > 1));
 }
 
 #[test]

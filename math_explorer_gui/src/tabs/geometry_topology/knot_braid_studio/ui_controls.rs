@@ -132,7 +132,10 @@ impl KnotBraidStudioTool {
                 .collect::<Vec<_>>()
                 .join(" ")
         };
-        ui.monospace(format!("Word ({}): {word_str}", self.braid_generators.len()));
+        ui.monospace(format!(
+            "Word ({}): {word_str}",
+            self.braid_generators.len()
+        ));
         ui.horizontal_wrapped(|ui| {
             if ui.button("Pop").clicked() {
                 self.braid_generators.pop();
@@ -165,7 +168,8 @@ impl KnotBraidStudioTool {
     }
 
     fn draw_braid_relation_buttons(&mut self, ui: &mut egui::Ui) {
-        let Ok(mut braid) = BraidWord::new(self.braid_strands, self.braid_generators.clone()) else {
+        let Ok(mut braid) = BraidWord::new(self.braid_strands, self.braid_generators.clone())
+        else {
             return;
         };
         if braid.len() >= 2 {
@@ -393,10 +397,7 @@ impl KnotBraidStudioTool {
             if let Some(kb) = &m.kauffman_bracket {
                 ui.monospace(format!("Kauffman <D>(A):   {}", kb.format_in_var("A")));
             }
-            let span = m
-                .jones_half_power
-                .as_ref()
-                .map_or(0, |j| j.span() / 2);
+            let span = m.jones_half_power.as_ref().map_or(0, |j| j.span() / 2);
             ui.monospace(format!("Jones V(t) [span {span}]: {}", m.jones_display));
             if let Some(chiral) = m.is_chiral {
                 let tag = if chiral {
@@ -424,9 +425,7 @@ impl KnotBraidStudioTool {
                             .text("Minor Radius (r)"),
                     );
                 }
-                ui.add(
-                    egui::Slider::new(&mut self.curve_samples, 24..=160).text("Curve Samples"),
-                );
+                ui.add(egui::Slider::new(&mut self.curve_samples, 24..=160).text("Curve Samples"));
                 ui.add(
                     egui::Slider::new(&mut self.radial_segments, 6..=24).text("Tube Radial Sides"),
                 );

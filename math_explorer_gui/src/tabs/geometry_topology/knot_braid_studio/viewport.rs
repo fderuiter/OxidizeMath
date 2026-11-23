@@ -5,8 +5,8 @@
 mod diagram_canvas;
 
 use self::diagram_canvas::{
-    DiagramMapper, build_segment_screen_polyline, paint_crossing_bridge_and_badge,
-    paint_free_loops, paint_midpoint_arrow,
+    build_segment_screen_polyline, paint_crossing_bridge_and_badge, paint_free_loops,
+    paint_midpoint_arrow, DiagramMapper,
 };
 use super::model::DiagramEditOp;
 use super::KnotBraidStudioTool;

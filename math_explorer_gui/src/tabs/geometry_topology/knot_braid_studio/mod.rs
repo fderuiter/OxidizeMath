@@ -194,14 +194,19 @@ fn validate_loaded_state(s: &KnotBraidState) -> Result<(), String> {
     for &g in &s.braid_generators {
         let idx = g.unsigned_abs() as usize;
         if idx == 0 || idx >= s.braid_strands {
-            return Err(format!("invalid Artin generator {g} for B_{}", s.braid_strands));
+            return Err(format!(
+                "invalid Artin generator {g} for B_{}",
+                s.braid_strands
+            ));
         }
     }
     if !(2..=8).contains(&s.torus_p) || s.torus_q == 0 || !(-11..=11).contains(&s.torus_q) {
         return Err("torus_p or torus_q out of bounds".to_string());
     }
     if s.lissajous_freqs.iter().any(|&f| !(1..=9).contains(&f))
-        || s.lissajous_phases.iter().any(|p| !p.is_finite() || !(-6.5..=6.5).contains(p))
+        || s.lissajous_phases
+            .iter()
+            .any(|p| !p.is_finite() || !(-6.5..=6.5).contains(p))
     {
         return Err("Lissajous frequencies or phases out of bounds".to_string());
     }

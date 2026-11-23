@@ -6,8 +6,13 @@ use math_explorer::biology::reaction_diffusion::ReactionDiffusionSystem;
 use std::time::Instant;
 
 fn main() {
-    let size = 100_000;
-    let iterations = 100;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let (size, warmup, iterations) = if smoke {
+        (1_000, 2, 10)
+    } else {
+        (100_000, 10, 100)
+    };
 
     let kinetics = SchnakenbergKinetics::default();
     let diffusion = FiniteDifference1D::new(math_explorer::math_kernel::types::StepSize(1.0));
@@ -29,7 +34,7 @@ fn main() {
     }
 
     // Warmup
-    for _ in 0..10 {
+    for _ in 0..warmup {
         system.step(0.01);
     }
 

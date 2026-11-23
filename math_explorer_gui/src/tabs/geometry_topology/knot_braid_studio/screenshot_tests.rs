@@ -12,10 +12,7 @@ use eframe::egui::{self, Color32, ColorImage, Pos2, Rect, TextureId};
 use math_commons::math_kernel::types::flatten_2d_index;
 use std::collections::HashMap;
 
-fn apply_textures_delta(
-    atlas: &mut HashMap<TextureId, ColorImage>,
-    delta: &egui::TexturesDelta,
-) {
+fn apply_textures_delta(atlas: &mut HashMap<TextureId, ColorImage>, delta: &egui::TexturesDelta) {
     for (id, img_delta) in &delta.set {
         let egui::ImageData::Color(patch) = &img_delta.image;
         if let Some([ox, oy]) = img_delta.pos {
@@ -72,9 +69,23 @@ fn rasterize_triangle(
     if area.abs() < 1e-4 {
         return;
     }
-    let min_x = v0.pos.x.min(v1.pos.x).min(v2.pos.x).max(clip.min.x).floor().max(0.0) as usize;
+    let min_x = v0
+        .pos
+        .x
+        .min(v1.pos.x)
+        .min(v2.pos.x)
+        .max(clip.min.x)
+        .floor()
+        .max(0.0) as usize;
     let max_x = v0.pos.x.max(v1.pos.x).max(v2.pos.x).min(clip.max.x).ceil() as usize;
-    let min_y = v0.pos.y.min(v1.pos.y).min(v2.pos.y).max(clip.min.y).floor().max(0.0) as usize;
+    let min_y = v0
+        .pos
+        .y
+        .min(v1.pos.y)
+        .min(v2.pos.y)
+        .max(clip.min.y)
+        .floor()
+        .max(0.0) as usize;
     let max_y = v0.pos.y.max(v1.pos.y).max(v2.pos.y).min(clip.max.y).ceil() as usize;
     let w = fb.width();
     let h = fb.height();
@@ -91,8 +102,8 @@ fn rasterize_triangle(
                     w0 * v0.uv.y + w1 * v1.uv.y + w2 * v2.uv.y,
                 );
                 let interp = |c0: u8, c1: u8, c2: u8| {
-                    (w0 * f32::from(c0) + w1 * f32::from(c1) + w2 * f32::from(c2))
-                        .clamp(0.0, 255.0) as u8
+                    (w0 * f32::from(c0) + w1 * f32::from(c1) + w2 * f32::from(c2)).clamp(0.0, 255.0)
+                        as u8
                 };
                 let v_col = Color32::from_rgba_premultiplied(
                     interp(v0.color.r(), v1.color.r(), v2.color.r()),

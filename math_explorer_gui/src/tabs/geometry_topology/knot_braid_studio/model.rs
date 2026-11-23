@@ -5,11 +5,11 @@
 use super::{KnotBraidStudioTool, MAX_REIDEMEISTER_HISTORY};
 use math_explorer::pure_math::algebra::{BraidWord, LaurentPolynomial};
 use math_explorer::pure_math::knot_theory::{
+    alexander_polynomial_burau, alexander_polynomial_fox, borromean_rings, compute_bishop_frames,
+    figure_eight_knot, format_jones_polynomial, gauss_writhe_quadrature, hopf_link,
+    is_chiral_by_jones, jones_polynomial_half_power, kauffman_bracket, pairwise_linking_matrix,
     BishopFrame, ClosedLink3D, CrossingSign, KnotError, LissajousKnot, PlanarDiagram,
-    ReidemeisterTriangle, TorusKnot, alexander_polynomial_burau, alexander_polynomial_fox,
-    borromean_rings, compute_bishop_frames, figure_eight_knot, format_jones_polynomial,
-    gauss_writhe_quadrature, hopf_link, is_chiral_by_jones, jones_polynomial_half_power,
-    kauffman_bracket, pairwise_linking_matrix,
+    ReidemeisterTriangle, TorusKnot,
 };
 use nalgebra::Point3;
 use std::f64::consts::TAU;
@@ -51,11 +51,26 @@ impl StudioFamily {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "op")]
 pub enum DiagramEditOp {
-    RiAdd { segment: usize, positive: bool },
-    RiRemove { crossing: usize },
-    RiiAdd { over_seg: usize, under_seg: usize },
-    RiiRemove { c1: usize, c2: usize },
-    RiiiSlide { c_tb: usize, c_tm: usize, c_mb: usize },
+    RiAdd {
+        segment: usize,
+        positive: bool,
+    },
+    RiRemove {
+        crossing: usize,
+    },
+    RiiAdd {
+        over_seg: usize,
+        under_seg: usize,
+    },
+    RiiRemove {
+        c1: usize,
+        c2: usize,
+    },
+    RiiiSlide {
+        c_tb: usize,
+        c_tm: usize,
+        c_mb: usize,
+    },
 }
 
 pub(crate) type ComponentPolyline = (usize, Vec<Point3<f64>>);
@@ -186,8 +201,7 @@ impl KnotBraidStudioTool {
                 (link, PlanarDiagram::hopf_link(true), Some(braid))
             }
             StudioFamily::BorromeanRings => {
-                let braid =
-                    BraidWord::new(3, vec![1, -2, 1, -2, 1, -2]).expect("borromean braid");
+                let braid = BraidWord::new(3, vec![1, -2, 1, -2, 1, -2]).expect("borromean braid");
                 let link = borromean_rings(
                     self.major_radius,
                     (self.major_radius * 0.52).max(0.45),
@@ -381,8 +395,7 @@ fn populate_invariants(
         match kauffman_bracket(&diagram) {
             Ok(kb) => {
                 let jh = jones_polynomial_half_power(&diagram).ok();
-                let j_str =
-                    format_jones_polynomial(&diagram).unwrap_or_else(|_| "n/a".to_string());
+                let j_str = format_jones_polynomial(&diagram).unwrap_or_else(|_| "n/a".to_string());
                 let chiral = is_chiral_by_jones(&diagram).ok();
                 (Some(kb), jh, j_str, chiral, None)
             }
@@ -400,7 +413,13 @@ fn populate_invariants(
                      Fox/Burau Alexander polynomials remain active."
                 )),
             ),
-            Err(err) => (None, None, "unavailable".to_string(), None, Some(err.to_string())),
+            Err(err) => (
+                None,
+                None,
+                "unavailable".to_string(),
+                None,
+                Some(err.to_string()),
+            ),
         };
 
     StudioComputedModel {

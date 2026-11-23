@@ -98,8 +98,14 @@ pub(super) fn paint_midpoint_arrow(painter: &egui::Painter, pts: &[Pos2], color:
     let dir = delta.normalized();
     let perp = Vec2::new(-dir.y, dir.x);
     let tip = a.lerp(b, 0.55);
-    painter.line_segment([tip, tip - dir * 7.0 + perp * 4.2], Stroke::new(2.0_f32, color));
-    painter.line_segment([tip, tip - dir * 7.0 - perp * 4.2], Stroke::new(2.0_f32, color));
+    painter.line_segment(
+        [tip, tip - dir * 7.0 + perp * 4.2],
+        Stroke::new(2.0_f32, color),
+    );
+    painter.line_segment(
+        [tip, tip - dir * 7.0 - perp * 4.2],
+        Stroke::new(2.0_f32, color),
+    );
 }
 
 pub(super) fn paint_crossing_bridge_and_badge(
