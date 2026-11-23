@@ -12,10 +12,10 @@ use eframe::egui::{self, accesskit::Role, Color32, Key, Pos2, Rect, Sense, Strok
 
 /// Outcome of rendering and interacting with the 2D phase-portrait perturbation pad.
 pub struct PhaseCanvasInteraction {
+    /// Canvas widget ID when it holds keyboard focus.
+    pub focused_id: Option<egui::Id>,
     /// Normalized `[dx, dy]` perturbation kick requested via pointer click or keyboard.
     pub kick_request: Option<[f64; 2]>,
-    /// `egui::Id` of the phase perturbation canvas when focused.
-    pub focused_id: Option<egui::Id>,
 }
 
 /// Renders the interactive 2D phase portrait, EKF `1-sigma` ellipse, and click-to-kick pad.
@@ -60,21 +60,7 @@ pub fn show_phase_kick_canvas(
         ui.visuals().text_color(),
         &palette,
     );
-    register_phase_canvas_a11y(ui, &response, state, pipeline);
-    paint_canvas_focus_ring(ui, &response);
 
-    PhaseCanvasInteraction {
-        kick_request,
-        focused_id: response.has_focus().then_some(response.id),
-    }
-}
-
-fn register_phase_canvas_a11y(
-    ui: &egui::Ui,
-    response: &egui::Response,
-    state: &ClosedLoopState,
-    pipeline: &ClosedLoopPipeline,
-) {
     let out = pipeline.last_output;
     let a11y_label = format!(
         "Closed-Loop Phase & Perturbation Visualization: {} with {}, controlled state {:.2}, EKF estimate {:.2} +/- {:.2}, latest innovation {:+.3}. Click canvas or press arrow keys to inject state kick.",
@@ -88,11 +74,17 @@ fn register_phase_canvas_a11y(
     let a11y_val = format!("u={:+.3}, innovation={:+.3}", out.actuation, out.innovation);
     register_canvas_accessibility(
         ui,
-        response,
+        &response,
         Role::GraphicsDocument,
         &a11y_label,
         Some(&a11y_val),
     );
+    paint_canvas_focus_ring(ui, &response);
+
+    PhaseCanvasInteraction {
+        focused_id: response.has_focus().then_some(response.id),
+        kick_request,
+    }
 }
 
 #[derive(Clone, Copy)]
