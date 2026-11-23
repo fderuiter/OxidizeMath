@@ -1,7 +1,8 @@
-# ADR 0035: Staged Git Index Snapshot Isolation and Dependency-Graph Pre-Commit Gates
+# ADR 0037: Staged Git Index Snapshot Isolation and Dependency-Graph Pre-Commit Gates
 
-- **Status:** Accepted
-- **Date:** 2026-11-22
+## Status
+
+Accepted (2026-11-22)
 
 ## Context
 

@@ -1,97 +1,13 @@
+#[path = "export_queue_models.rs"]
+mod export_queue_models;
+use export_queue_models::format_clipboard_error;
+pub(crate) use export_queue_models::{
+    ActionBarExportStatus, CustomClipboardWriter, CustomExportWriter, ExportFormat, ExportRequest,
+    ExportTarget,
+};
+
 use super::*;
 use std::path::PathBuf;
-use std::sync::Arc;
-
-/// Supported formats for deferred end-of-frame dataset and figure exports.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ExportFormat {
-    /// Comma-separated values dataset format (`.csv`).
-    Csv,
-    /// JavaScript Object Notation dataset format (`.json`).
-    Json,
-    /// High-resolution Portable Network Graphics figure format (`.png`).
-    Png,
-    /// Scalable Vector Graphics figure format (`.svg`).
-    Svg,
-    /// Animated Graphics Interchange Format (`.gif`).
-    Gif,
-}
-
-impl ExportFormat {
-    const fn meta(self) -> (&'static str, &'static str, &'static str, &'static str) {
-        match self {
-            Self::Csv => ("csv", "CSV", "CSV File", "dataset"),
-            Self::Json => ("json", "JSON", "JSON File", "dataset"),
-            Self::Png => ("png", "PNG", "PNG Image", "figure"),
-            Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
-            Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
-        }
-    }
-
-    /// Returns the standard file extension for this format.
-    pub(crate) const fn extension(&self) -> &'static str {
-        self.meta().0
-    }
-
-    /// Returns the uppercase label for display messages.
-    pub(crate) const fn label(&self) -> &'static str {
-        self.meta().1
-    }
-
-    /// Returns the file dialog filter description.
-    pub(crate) const fn filter_name(&self) -> &'static str {
-        self.meta().2
-    }
-
-    /// Returns the filename stem suffix (`dataset`, `figure`, or `animation`).
-    pub(crate) const fn stem_suffix(&self) -> &'static str {
-        self.meta().3
-    }
-}
-
-/// Output destination target for deferred simulation dataset and figure export.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ExportTarget {
-    /// Save serialized dataset or figure to disk via file save dialog or browser download.
-    File,
-    /// Copy serialized dataset text or rendered figure image directly to the system clipboard.
-    Clipboard,
-}
-
-/// A deferred export request combining format and output destination target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct ExportRequest {
-    /// Dataset or figure serialization format.
-    pub(crate) format: ExportFormat,
-    /// Output destination target.
-    pub(crate) target: ExportTarget,
-}
-
-/// Inline status feedback for action-bar export operations.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct ActionBarExportStatus {
-    /// Human-readable confirmation or error message.
-    pub(crate) message: String,
-    /// Whether this status indicates an error or warning condition.
-    pub(crate) is_error: bool,
-    /// Optional `egui` timestamp (`ctx.input(|i| i.time)`) when temporary confirmation expires.
-    pub(crate) expires_at_time: Option<f64>,
-}
-
-/// Type alias for custom export file writer function.
-pub(crate) type CustomExportWriter = Arc<dyn Fn(&str, &[u8]) + Send + Sync>;
-
-/// Type alias for custom clipboard text writer function (useful for deterministic testing).
-pub(crate) type CustomClipboardWriter = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
-
-/// Formats a clipboard failure error with guidance toward disk export.
-fn format_clipboard_error(err: &str) -> String {
-    if err.contains("Export CSV") {
-        format!("Clipboard unavailable: {err}")
-    } else {
-        format!("Clipboard unavailable ({err}). Please use Export CSV to save to disk.")
-    }
-}
 
 /// Manages pending dataset and figure export requests deferred to the end of the rendering frame.
 #[derive(Default)]
@@ -216,6 +132,21 @@ impl SimulationFramework {
         }
     }
 
+    pub(crate) fn export_datasets_3d_with_fallback(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        let Some(tool) = &self.active_tool else {
+            return Vec::new();
+        };
+        let datasets = tool.export_datasets_3d();
+        if datasets.is_empty()
+            && self.sync_state.datasets_owner_tool == Some(tool.name())
+            && !self.current_valid_plot_datasets_3d.is_empty()
+        {
+            self.current_valid_plot_datasets_3d.clone()
+        } else {
+            datasets
+        }
+    }
+
     /// Queues a direct CSV dataset clipboard export for deferred end-of-frame dispatch.
     pub(crate) fn queue_clipboard_export(&mut self) {
         self.export_queue.queue_clipboard_export();
@@ -250,6 +181,46 @@ impl SimulationFramework {
             (ExportFormat::Png, ExportTarget::Clipboard) => self.dispatch_png_clipboard_export(ctx),
             (ExportFormat::Svg, _) => self.dispatch_svg_export(),
             (ExportFormat::Gif, _) => self.dispatch_gif_export(),
+            (ExportFormat::GlslWebGl2 | ExportFormat::GlslShadertoy, target) => {
+                self.dispatch_shader_export(req.format, target, ctx);
+            }
+        }
+    }
+
+    fn serialize_active_dataset_export(
+        &self,
+        tool_name: &str,
+        format: ExportFormat,
+    ) -> Result<String, String> {
+        let datasets_3d: Vec<(String, Vec<[f64; 3]>)> = self
+            .export_datasets_3d_with_fallback()
+            .into_iter()
+            .filter(|(_, pts)| {
+                pts.iter()
+                    .any(|p| p[0].is_finite() && p[1].is_finite() && p[2].is_finite())
+            })
+            .collect();
+        if !datasets_3d.is_empty() {
+            return match format {
+                ExportFormat::Csv => Ok(egui_plot::export::format_csv_3d(&datasets_3d)),
+                ExportFormat::Json => Ok(egui_plot::export::format_json_3d(&datasets_3d)),
+                _ => Err("Unsupported dataset format".to_string()),
+            };
+        }
+        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
+            .export_datasets_with_fallback()
+            .into_iter()
+            .filter(|(_, pts)| pts.iter().any(|p| p[0].is_finite() && p[1].is_finite()))
+            .collect();
+        if !egui_plot::export_primitives::has_finite_dataset_points(&datasets) {
+            return Err(format!(
+                "No dataset points available to export from {tool_name}."
+            ));
+        }
+        match format {
+            ExportFormat::Csv => Ok(egui_plot::export::format_csv(&datasets)),
+            ExportFormat::Json => Ok(egui_plot::export::format_json(&datasets)),
+            _ => Err("Unsupported dataset format".to_string()),
         }
     }
 
@@ -268,22 +239,12 @@ impl SimulationFramework {
             return;
         }
         let tool_name = tool.name().to_string();
-        let datasets: Vec<(String, Vec<[f64; 2]>)> = self
-            .export_datasets_with_fallback()
-            .into_iter()
-            .filter(|(_, pts)| pts.iter().any(|p| p[0].is_finite() && p[1].is_finite()))
-            .collect();
-        if !egui_plot::export_primitives::has_finite_dataset_points(&datasets) {
-            self.set_export_status(
-                ExportStatusSeverity::Error,
-                format!("No dataset points available to export from {tool_name}."),
-            );
-            return;
-        }
-        let content = match format {
-            ExportFormat::Csv => egui_plot::export::format_csv(&datasets),
-            ExportFormat::Json => egui_plot::export::format_json(&datasets),
-            _ => return,
+        let content = match self.serialize_active_dataset_export(&tool_name, format) {
+            Ok(s) => s,
+            Err(err) => {
+                self.set_export_status(ExportStatusSeverity::Error, err);
+                return;
+            }
         };
         match target {
             ExportTarget::File => {
@@ -302,17 +263,18 @@ impl SimulationFramework {
         }
     }
 
-    fn dispatch_clipboard_text_request(
+    pub(super) fn dispatch_clipboard_text_request(
         &mut self,
         format: ExportFormat,
         content: String,
         ctx: Option<&egui::Context>,
     ) {
         let label = format.label();
+        let noun = format.clipboard_item_noun();
         let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
             writer(&content)
         } else {
-            self.write_system_text_clipboard(label, &content, ctx)
+            self.write_system_text_clipboard(label, noun, &content, ctx)
         };
         match res {
             Ok(()) => {
@@ -321,9 +283,9 @@ impl SimulationFramework {
                 let msg = if cfg!(target_arch = "wasm32")
                     && self.export_queue.custom_clipboard_writer.is_none()
                 {
-                    format!("Copying {label} dataset to clipboard...")
+                    format!("Copying {label} {noun} to clipboard...")
                 } else {
-                    format!("Copied {label} dataset to clipboard!")
+                    format!("Copied {label} {noun} to clipboard!")
                 };
                 self.set_export_status(ExportStatusSeverity::Success, msg);
             }
@@ -336,12 +298,13 @@ impl SimulationFramework {
     fn write_system_text_clipboard(
         &self,
         label: &'static str,
+        noun: &'static str,
         content: &str,
         ctx: Option<&egui::Context>,
     ) -> Result<(), String> {
         #[cfg(test)]
         {
-            let _ = (label, content, ctx);
+            let _ = (label, noun, content, ctx);
             Ok(())
         }
         #[cfg(not(test))]
@@ -353,7 +316,7 @@ impl SimulationFramework {
                     egui_ctx.data_mut(|d| {
                         let status = match cb {
                             Ok(()) => ActionBarExportStatus {
-                                message: format!("Copied {label} dataset to clipboard!"),
+                                message: format!("Copied {label} {noun} to clipboard!"),
                                 is_error: false,
                                 expires_at_time: None,
                             },

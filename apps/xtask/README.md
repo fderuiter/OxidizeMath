@@ -20,13 +20,13 @@ These commands run automated checks in git hooks or CI.
 | `check-staged-duplicates` | Checks for duplicated patterns in git staging (non-blocking legacy helper). | Active |
 | `check-vulnerabilities` | Scans workspace dependencies for known vulnerabilities. | Active |
 | `lint-all` | Runs the full PR verification suite (formatting, single-pass batched static & AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift, traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, markdown links, and OSV vulnerabilities). | Active |
-| `lint-staged` | Syncs the staged Git index into `<target_dir>/lint-staged-snapshot` and runs offline pre-commit gates (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged` (profiles, file lengths, docs, AST clones, traceability, entropy, policy audit), single `.github/` workflow linting, `.md` or deletion/rename link scans, and reverse-dependent + 17-web-crate host/`wasm32` Clippy with root config escalation. | Active |
+| `lint-staged` | Syncs the staged Git index into `<target_dir>/lint-staged-snapshot` and runs offline pre-commit gates (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged` (staged ADR verification, profiles, file lengths, docs, AST clones, traceability, entropy, policy audit), single `.github/` workflow linting, `.md` or deletion/rename link scans, and reverse-dependent + 17-web-crate host/`wasm32` Clippy with root config escalation. | Active |
 | `lint-workflows` | Validates CI workflow definitions. | Active |
 | `test-features` | Runs tests for various cargo features. | Active |
 | `test-policy-audit` | Audits workspace crates for unauthorized dead-code bypasses and unused dependencies. | Active |
-| `test-wasm` | Executes `wasm32-unknown-unknown` browser unit tests, builds `math_explorer_gui/dist` (unless `--skip-build` is passed), verifies the 3 MB bundle budget, and runs headless Chromium CSP & fault-injection smoke checks (`--screenshot-dir <dir>` supported). | Active |
+| `test-wasm` | Discovers and executes `wasm32-unknown-unknown` unit and browser tests across all compatible workspace crates (anchored to the workspace root), builds `math_explorer_gui/dist` (unless `--skip-build` is passed), verifies the 3 MB bundle budget, and runs headless Chromium CSP & fault-injection smoke checks (`--screenshot-dir <dir>` supported). | Active |
 | `traceability` | Generates and checks the traceability report. | Active |
-| `verify-records` | Verifies architectural decision records (`--staged` supported). | Active |
+| `verify-records` | Verifies architectural decision records (`--staged` supported), enforcing `NNNN-slug.md` naming, `# ` and `## Status` headings, unique 4-digit IDs, and ACMR updates on core changes. | Active |
 | `verify-suite` | Runs the high-integrity verification suite. | Active |
 
 ### WebAssembly & Browser Smoke Prerequisites (`test-wasm`)
@@ -49,4 +49,4 @@ These commands are used for manual repository maintenance or legacy workflows.
 |---|---|---|
 | `compile-papers` | Compiles academic papers using Tectonic. | Legacy |
 | `regenerate-baseline` | Regenerates the public API baseline. | Legacy |
-| `setup` | Installs `wasm32-unknown-unknown`, builds and tests the workspace, and configures version-controlled git hooks. | Legacy |
+| `setup` | Installs `wasm32-unknown-unknown`, validates `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites, builds and tests the workspace, and configures version-controlled git hooks. | Legacy |

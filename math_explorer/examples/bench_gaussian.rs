@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+#![cfg_attr(not(target_arch = "wasm32"), allow(clippy::disallowed_methods))]
 use math_explorer::ai::gaussian_splatting::rendering::blend_gaussians;
 use math_explorer::ai::gaussian_splatting::structs::Gaussian2D;
 use math_explorer::nalgebra::{Matrix2, Point2, Vector3};

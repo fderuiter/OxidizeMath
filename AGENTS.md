@@ -33,9 +33,9 @@ cargo check --workspace
 cargo build --workspace --all-features
 
 # Run fast offline snapshot-backed pre-commit checks on the staged Git index (executed automatically by
-# .githooks/pre-commit; syncs <target_dir>/lint-staged-snapshot, runs rustfmt, batch-staged profiles/lengths/docs/
-# duplicates/traceability/entropy/policy, single .github/ workflow lint, .md or deletion/rename link scans, and
-# reverse-dependent + 17-web-crate host/wasm32 Clippy without OSV network calls, API drift, or ADR checks)
+# .githooks/pre-commit; syncs <target_dir>/lint-staged-snapshot, runs rustfmt, batch-staged profiles/ADR records/
+# lengths/docs/duplicates/traceability/entropy/policy, single .github/ workflow lint, .md or deletion/rename link
+# scans, and reverse-dependent + 17-web-crate host/wasm32 Clippy without OSV network calls or API drift)
 cargo run -p xtask -- lint-staged
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static
@@ -92,9 +92,9 @@ cargo run -p unified_verification --release -- check-file-lengths
 cargo run -p unified_verification --release -- check-entropy
 cargo run -p unified_verification --release -- traceability
 
-# Verify architectural decision records across staged index edits or commit ranges when core crates change
+# Verify architectural decision records (NNNN-slug.md, # and ## Status headings, unique IDs, and ACMR updates) across staged index edits or commit ranges
 cargo run -p unified_verification --release -- verify-records --staged
-BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
+BASE_SHA="$(git merge-base HEAD origin/main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
 
 # Run the full high-integrity verified suite (including cargo llvm-cov coverage and Verification_Certificate.json)
 cargo run -p unified_verification --release -- verify-suite

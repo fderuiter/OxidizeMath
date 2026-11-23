@@ -1,5 +1,13 @@
 //! Workspace discovery and manifest parsing utilities.
 
+#[path = "workspace_wasm.rs"]
+mod workspace_wasm;
+
+pub use workspace_wasm::{
+    HOST_ONLY_WORKSPACE_PACKAGES, WasmCrateSpec, WasmTestTargetKind,
+    build_wasm_cargo_test_invocations, discover_wasm_crates, parse_workspace_members_std,
+};
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -19,12 +27,17 @@ const RELATIVE_ROOT_FALLBACKS: &[&str] = &["..", "../..", "../../..", "../../../
 /// let _ = find_workspace_root_from(Path::new("."));
 /// ```
 pub fn find_workspace_root_from(start: &Path) -> Option<PathBuf> {
-    for ancestor in start.ancestors().take(MAX_ANCESTOR_DEPTH) {
+    let base = if start.is_file() {
+        start.parent()?
+    } else {
+        start
+    };
+    for ancestor in base.ancestors().take(MAX_ANCESTOR_DEPTH) {
         if try_read_members(&ancestor.join("Cargo.toml")).is_some() {
             return Some(ancestor.to_path_buf());
         }
     }
-    None
+    workspace_wasm::find_workspace_root(base)
 }
 
 /// Locates the workspace root directory relative to the current working directory.
@@ -57,7 +70,7 @@ pub fn find_workspace_root() -> Option<PathBuf> {
     None
 }
 
-/// Discovers workspace members from Cargo.toml manifests.
+/// Discovers workspace members from `Cargo.toml` manifests.
 ///
 /// First checks `Cargo.toml` in the current directory. If it contains a `[workspace]`
 /// definition, returns `(true, members)`.
@@ -124,11 +137,13 @@ pub fn parse_workspace_members(content: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    #[cfg(not(target_arch = "wasm32"))]
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    #[cfg(not(target_arch = "wasm32"))]
     static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn next_nonce() -> usize {
         TEST_COUNTER.fetch_add(1, Ordering::SeqCst)
     }
@@ -138,13 +153,15 @@ mod tests {
         let content = r#"
 [workspace]
 members = [
-    "crates/foo",
+    "crates/foo", # inline comment
     "crates/bar",
     "apps/baz"
 ]
 "#;
         let members = parse_workspace_members(content).unwrap();
         assert_eq!(members, vec!["crates/foo", "crates/bar", "apps/baz"]);
+        let std_members = parse_workspace_members_std(content).unwrap();
+        assert_eq!(std_members, members);
     }
 
     #[test]
@@ -156,6 +173,7 @@ version = "0.1.0"
 "#;
         let err = parse_workspace_members(content).unwrap_err();
         assert!(err.contains("Could not find workspace.members array"));
+        assert!(parse_workspace_members_std(content).is_err());
     }
 
     #[test]
@@ -165,6 +183,7 @@ version = "0.1.0"
         assert!(err.contains("Failed to parse Cargo.toml"));
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn test_get_workspace_members_from_paths_primary() {
         let nonce = next_nonce();
@@ -189,6 +208,7 @@ members = ["crates/primary_a", "crates/primary_b"]
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn test_get_workspace_members_from_paths_fallback() {
         let nonce = next_nonce();
@@ -220,6 +240,7 @@ members = ["sub_crate", "other_crate"]
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn test_find_workspace_root_from_nested_depths() {
         let nonce = next_nonce();
@@ -260,5 +281,36 @@ members = ["sub_crate", "other_crate"]
 
         let _ = fs::remove_dir_all(dir);
         let _ = fs::remove_dir_all(isolated);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_discover_wasm_crates_covers_workspace_targets() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let root = find_workspace_root_from(manifest_dir).expect("must find workspace root");
+        let crates = discover_wasm_crates(&root).expect("must discover wasm crates");
+        let names: Vec<&str> = crates.iter().map(|c| c.package_name.as_str()).collect();
+        for required in [
+            "oxidize_core",
+            "egui_plot",
+            "math_explorer_gui",
+            "math_explorer",
+            "math_commons",
+            "pure_math",
+            "domain_physics",
+        ] {
+            assert!(names.contains(&required), "missing wasm crate {required}");
+        }
+        for excluded in [
+            "xtask",
+            "unified_verification",
+            "markdown_tests",
+            "verified_engine_macros",
+        ] {
+            assert!(
+                !names.contains(&excluded),
+                "host-only crate {excluded} must not be in wasm discovery"
+            );
+        }
     }
 }

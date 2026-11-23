@@ -16,6 +16,8 @@ pub const ROOT_ONLY_WHITELIST_CANDIDATES: &[&str] = &["verification_whitelist.to
 #[serde(deny_unknown_fields)]
 pub(crate) struct VerificationWhitelist {
     #[serde(default)]
+    pub adr_verification: Option<AdrVerificationConfig>,
+    #[serde(default)]
     pub doc_verification: Option<DocVerificationConfig>,
     #[serde(default)]
     pub entropy_guard: Option<EntropyGuardConfig>,
@@ -25,6 +27,19 @@ pub(crate) struct VerificationWhitelist {
     pub dead_code: Vec<DeadCodeEntry>,
     #[serde(default)]
     pub unused_dependencies: Vec<UnusedDependencyEntry>,
+}
+
+/// Configuration for `records` ADR verification loaded from `[adr_verification]`.
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AdrVerificationConfig {
+    #[serde(
+        default,
+        alias = "legacy_allowlist",
+        alias = "duplicate_allowlist",
+        alias = "legacy_duplicate_files"
+    )]
+    pub allowlist: Option<Vec<String>>,
 }
 
 /// Configuration for `doc_audit` loaded from `[doc_verification]`.
@@ -219,6 +234,7 @@ mod tests {
         fs::write(
             &valid,
             concat!(
+                "[adr_verification]\nallowlist = [\"docs/adr/0002-portable-build-paths.md\"]\n",
                 "[doc_verification]\nallowlist = [\"crates/demo\"]\n",
                 "[entropy_guard]\nscan_targets = [\"crates\"]\n",
                 "file_extensions = [\"rs\"]\npath_exemptions = [\"allow.rs\"]\n",
@@ -231,6 +247,10 @@ mod tests {
         .unwrap();
 
         let parsed = load_whitelist_strict(Some(&valid), &[] as &[&Path]).unwrap();
+        assert_eq!(
+            parsed.adr_verification.unwrap().allowlist,
+            Some(vec!["docs/adr/0002-portable-build-paths.md".to_string()])
+        );
         assert_eq!(
             parsed.doc_verification.unwrap().allowlist,
             Some(vec!["crates/demo".to_string()])
