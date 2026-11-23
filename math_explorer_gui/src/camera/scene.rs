@@ -339,6 +339,16 @@ impl Scene3DBuilder {
         }
     }
 
+    /// Adds a projected 3D text label anchored at world coordinate `pos`.
+    pub fn add_label(&mut self, pos: Point3<f64>, text: impl Into<String>, color: egui::Color32) {
+        let (proj, _, _) = self.project_world(pos);
+        self.labels.push(LabelPrimitive3D {
+            proj,
+            text: text.into(),
+            color,
+        });
+    }
+
     /// Adds a decorative projected `xOy` floor grid at `z_plane` sorted alongside scene geometry.
     pub fn add_floor_grid(
         &mut self,
