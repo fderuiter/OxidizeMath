@@ -137,19 +137,40 @@ pub(super) fn capture_isolated_tool_datasets(
     tool: &dyn InteractiveTool,
 ) -> Vec<(String, Vec<[f64; 2]>)> {
     let prev = egui_plot::get_last_plot_datasets();
+    let prev_3d = egui_plot::get_last_plot_datasets_3d();
     let prev_prims = egui_plot::get_last_plot_primitives();
     egui_plot::clear_last_plot_datasets();
-    egui_plot::clear_last_plot_primitives();
     let datasets = tool.export_datasets();
     egui_plot::clear_last_plot_datasets();
-    egui_plot::clear_last_plot_primitives();
     if !prev.is_empty() {
         egui_plot::append_last_plot_datasets(&prev);
+    }
+    if !prev_3d.is_empty() {
+        egui_plot::append_last_plot_datasets_3d(&prev_3d);
     }
     if !prev_prims.is_empty() {
         egui_plot::append_last_plot_primitives(&prev_prims);
     }
     datasets
+}
+
+fn capture_isolated_tool_datasets_3d(tool: &dyn InteractiveTool) -> Vec<(String, Vec<[f64; 3]>)> {
+    let prev = egui_plot::get_last_plot_datasets();
+    let prev_3d = egui_plot::get_last_plot_datasets_3d();
+    let prev_prims = egui_plot::get_last_plot_primitives();
+    egui_plot::clear_last_plot_datasets();
+    let datasets_3d = tool.export_datasets_3d();
+    egui_plot::clear_last_plot_datasets();
+    if !prev.is_empty() {
+        egui_plot::append_last_plot_datasets(&prev);
+    }
+    if !prev_3d.is_empty() {
+        egui_plot::append_last_plot_datasets_3d(&prev_3d);
+    }
+    if !prev_prims.is_empty() {
+        egui_plot::append_last_plot_primitives(&prev_prims);
+    }
+    datasets_3d
 }
 
 impl SimulationFramework {
@@ -292,10 +313,12 @@ impl SimulationFramework {
                 }
             }
             let refreshed = capture_isolated_tool_datasets(tool.as_ref());
+            let refreshed_3d = capture_isolated_tool_datasets_3d(tool.as_ref());
             let recovery = tool.save_recovery_state();
             let rev = tool.state_revision();
             self.sync_state.datasets_owner_tool = Some(tool.name());
             self.current_valid_plot_datasets = refreshed.clone();
+            self.current_valid_plot_datasets_3d = refreshed_3d;
             self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
             self.last_valid_snapshot = Some(StateSnapshot {
                 tool_state: recovery,
@@ -339,8 +362,10 @@ impl SimulationFramework {
         let recovery_state = new_tool.save_recovery_state();
         let rev = new_tool.state_revision();
         let initial_datasets = capture_isolated_tool_datasets(new_tool.as_ref());
+        let initial_datasets_3d = capture_isolated_tool_datasets_3d(new_tool.as_ref());
         self.sync_state.datasets_owner_tool = Some(new_tool.name());
         self.current_valid_plot_datasets = initial_datasets.clone();
+        self.current_valid_plot_datasets_3d = initial_datasets_3d;
         self.rev_cache.last_snapshot_rev = (rev > 0).then_some((new_tool.name(), rev));
         self.last_valid_snapshot = Some(StateSnapshot {
             tool_state: recovery_state,

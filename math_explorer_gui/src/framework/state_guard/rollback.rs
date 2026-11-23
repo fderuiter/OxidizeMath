@@ -248,6 +248,7 @@ impl SimulationFramework {
         }
         egui_plot::clear_last_plot_datasets();
         self.current_valid_plot_datasets.clear();
+        self.current_valid_plot_datasets_3d.clear();
         self.sync_state.datasets_owner_tool = None;
         self.is_diverged = false;
         self.diagnostic_report = None;

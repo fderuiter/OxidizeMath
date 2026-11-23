@@ -68,7 +68,7 @@ fn test_kelly_challenge_completes_and_announces_once_via_live_region() {
     fw.launch_challenge(challenge).expect("launches challenge");
     assert_eq!(fw.evaluate_challenge_predicates(Some(&ctx)), Some(false));
 
-    let overbet_state = r#"{"initial_bankroll":1000.0,"probability":0.6,"odds":2.0,"num_bets":200,"stake_multiplier":2.5}"#;
+    let overbet_state = r#"{"initial_bankroll":1000.0,"probability":0.6,"odds":1.0,"num_bets":200,"stake_multiplier":2.5}"#;
     fw.active_tool
         .as_mut()
         .unwrap()

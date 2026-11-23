@@ -11,8 +11,12 @@ use std::f64::consts::PI;
 
 #[path = "potential_flow/cache.rs"]
 mod cache;
+#[path = "potential_flow/shader.rs"]
+mod shader;
 #[path = "potential_flow/streamlines.rs"]
 mod streamlines;
+#[cfg(test)]
+pub(crate) use shader::MAX_SHADER_SINGULARITIES;
 
 pub(crate) const FLOW_STRENGTH_MIN: f64 = -1_000.0;
 pub(crate) const FLOW_STRENGTH_MAX: f64 = 1_000.0;
@@ -39,6 +43,7 @@ pub struct PotentialFlowTool {
     pub(crate) cached_stagnation: Vec<[f64; 2]>,
     pub(crate) cached_view_range: f64,
     pub(crate) callout_manager: CalloutManager,
+    pub(crate) high_contrast: bool,
     pub(crate) cache: cache::ArrowFieldCache,
 }
 
@@ -126,6 +131,7 @@ impl Default for PotentialFlowTool {
             cached_stagnation: Vec::new(),
             cached_view_range: 10.0,
             callout_manager: CalloutManager::new(),
+            high_contrast: false,
             cache: cache::ArrowFieldCache::default(),
         };
         tool.rebuild_field();
@@ -156,6 +162,17 @@ impl InteractiveTool for PotentialFlowTool {
 
     fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
         self.callout_manager.sync_specs(callouts);
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot().with_shader()
+    }
+
+    fn export_glsl_shader(
+        &self,
+        dialect: crate::framework::ShaderDialect,
+    ) -> Result<String, String> {
+        self.build_glsl_shader(dialect)
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -193,6 +210,8 @@ impl InteractiveTool for PotentialFlowTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
         self.draw_controls(ui);
         if (self.cached_view_range - self.view_range).abs() > 1e-9 {
             self.refresh_streamline_cache();
