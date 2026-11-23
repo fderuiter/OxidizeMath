@@ -3,7 +3,7 @@ use super::io::{
     spawn_save_direct,
 };
 use super::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
-use crate::app::{AppState, MathExplorerApp};
+use crate::app::{AppState, MathExplorerApp, SharedTabJson};
 use eframe::egui;
 use std::sync::mpsc::{channel, TryRecvError};
 
@@ -75,10 +75,14 @@ fn migrate_legacy_callout_manager(
         app_state.selected_tab_name = Some(tab_name.clone());
     }
     if let Some(merged) = crate::framework::plot_persistence::merge_migrated_callouts_into_tab_json(
-        app_state.tab_states.get(&tab_name).map(String::as_str),
+        app_state
+            .tab_states
+            .get(&tab_name)
+            .map(SharedTabJson::as_str),
         tool_name.as_deref(),
         &saved,
     ) {
+        let merged = SharedTabJson::from(merged);
         app_state
             .tab_states
             .insert(tab_name.clone(), merged.clone());

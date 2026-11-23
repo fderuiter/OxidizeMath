@@ -393,6 +393,9 @@ impl SimulationFramework {
                 self.preset_dialog.record_import_error(msg.clone());
                 return Err(msg);
             }
+            self.active_challenge = None;
+            self.challenge_was_passed = false;
+            let _ = tool.apply_challenge(None);
             self.preset_dialog.toast_error = None;
             self.reset_active_tool_manual_bounds();
             self.sync_active_baseline();
@@ -426,6 +429,8 @@ impl SimulationFramework {
             new_tool.name().to_string(),
             new_tool.theory().theory_citation(),
         );
+        self.active_challenge = None;
+        self.challenge_was_passed = false;
         self.selected_tool_index = Some(idx);
         self.active_tool = Some(new_tool);
         self.preset_dialog.toast_error = None;

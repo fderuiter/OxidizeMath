@@ -303,6 +303,39 @@ fn test_preset_starter_and_reset_clear_manual_bounds() {
 }
 
 #[test]
+fn test_challenge_commit_clears_manual_bounds_and_preserves_overlays() {
+    static MOCK_CHALLENGE: crate::starter_gallery::ChallengeMetadata =
+        crate::starter_gallery::ChallengeMetadata {
+            id: "mock_plot_challenge",
+            title: "Mock Plot Challenge",
+            description: "Match target scale",
+            category: "Test",
+            icon: "🎯",
+            domain: "test_plot_persistence",
+            tool_name: "MockToolA",
+            locked_inputs: "none",
+            tunable_budget: "scale",
+            target_summary: "scale == 2.5",
+            baseline_state_generator: || r#"{"scale":2.5}"#.to_string(),
+            clamp_locked_state: |json| Ok(json.to_string()),
+        };
+
+    let mut fw = build_test_framework();
+    fw.saved_plot_states
+        .entry("Mock Tool A".to_string())
+        .or_default()
+        .insert("shared_canvas".to_string(), rich_test_snapshot());
+    fw.bump_plot_sync_generation();
+
+    fw.commit_challenge_instance(0, &MOCK_CHALLENGE, r#"{"scale":2.5}"#)
+        .expect("challenge commit resets manual bounds");
+    let after_challenge = &fw.saved_plot_states["Mock Tool A"]["shared_canvas"];
+    assert_eq!(after_challenge.bounds, None);
+    assert_eq!(after_challenge.auto_bounds, None);
+    assert_eq!(after_challenge.callouts.len(), 1);
+}
+
+#[test]
 fn test_untrusted_json_rejects_non_finite_and_clamps_fit_degree() {
     let mut fw = build_test_framework();
     let baseline_json = fw.save_state().unwrap();

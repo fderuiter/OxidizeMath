@@ -6,73 +6,11 @@ use super::export_ui::export_action_button;
 use super::*;
 use eframe::egui;
 
-/// Supported formats for deferred end-of-frame dataset and figure exports.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ExportFormat {
-    /// Comma-separated values dataset format (`.csv`).
-    Csv,
-    /// JavaScript Object Notation dataset format (`.json`).
-    Json,
-    /// High-resolution Portable Network Graphics figure format (`.png`).
-    Png,
-    /// Scalable Vector Graphics figure format (`.svg`).
-    Svg,
-    /// Animated Graphics Interchange Format (`.gif`).
-    Gif,
-    /// Standalone WebGL2 (`#version 300 es`) fragment shader (`.frag`).
-    GlslWebGl2,
-    /// Standalone Shadertoy (`mainImage`) fragment shader (`.frag`).
-    GlslShadertoy,
-}
-
-impl ExportFormat {
-    const fn meta(self) -> (&'static str, &'static str, &'static str, &'static str) {
-        match self {
-            Self::Csv => ("csv", "CSV", "CSV File", "dataset"),
-            Self::Json => ("json", "JSON", "JSON File", "dataset"),
-            Self::Png => ("png", "PNG", "PNG Image", "figure"),
-            Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
-            Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
-            Self::GlslWebGl2 => (
-                "frag",
-                "WebGL2 GLSL",
-                "WebGL2 GLSL Fragment Shader",
-                "webgl2",
-            ),
-            Self::GlslShadertoy => (
-                "frag",
-                "Shadertoy GLSL",
-                "Shadertoy Fragment Shader",
-                "shadertoy",
-            ),
-        }
-    }
-
-    pub(super) const fn clipboard_item_noun(self) -> &'static str {
-        match self {
-            Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
-            _ => "dataset",
-        }
-    }
-
-    /// Returns the standard file extension for this format.
-    pub(crate) const fn extension(&self) -> &'static str {
-        self.meta().0
-    }
-
-    /// Returns the uppercase label for display messages.
-    pub(crate) const fn label(&self) -> &'static str {
-        self.meta().1
-    }
-
-    /// Returns the file dialog filter description.
-    pub(crate) const fn filter_name(&self) -> &'static str {
-        self.meta().2
-    }
-
-    /// Returns the filename stem suffix (`dataset`, `figure`, or `animation`).
-    pub(crate) const fn stem_suffix(&self) -> &'static str {
-        self.meta().3
+fn format_clipboard_error(err: &str) -> String {
+    if err.contains("Export CSV") {
+        format!("Clipboard unavailable: {err}")
+    } else {
+        format!("Clipboard unavailable ({err}). Please use Export CSV to save to disk.")
     }
 }
 
@@ -186,6 +124,79 @@ impl SimulationFramework {
             }
             ExportTarget::Clipboard => {
                 self.dispatch_clipboard_text_request(format, shader_src, ctx);
+            }
+        }
+    }
+
+    pub(super) fn dispatch_clipboard_text_request(
+        &mut self,
+        format: ExportFormat,
+        content: String,
+        ctx: Option<&egui::Context>,
+    ) {
+        let label = format.label();
+        let noun = format.clipboard_item_noun();
+        let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
+            writer(&content)
+        } else {
+            self.write_system_text_clipboard(label, noun, &content, ctx)
+        };
+        match res {
+            Ok(()) => {
+                self.export_queue.last_exported_content = Some(content.clone());
+                self.export_queue.last_clipboard_content = Some(content);
+                let msg = if cfg!(target_arch = "wasm32")
+                    && self.export_queue.custom_clipboard_writer.is_none()
+                {
+                    format!("Copying {label} {noun} to clipboard...")
+                } else {
+                    format!("Copied {label} {noun} to clipboard!")
+                };
+                self.set_export_status(ExportStatusSeverity::Success, msg);
+            }
+            Err(err) => {
+                self.set_export_status(ExportStatusSeverity::Error, format_clipboard_error(&err));
+            }
+        }
+    }
+
+    fn write_system_text_clipboard(
+        &self,
+        label: &'static str,
+        noun: &'static str,
+        content: &str,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        #[cfg(test)]
+        {
+            let _ = (label, noun, content, ctx);
+            Ok(())
+        }
+        #[cfg(not(test))]
+        {
+            if let Some(egui_ctx) = ctx.cloned() {
+                let status_id =
+                    egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
+                egui_plot::export::copy_text_to_clipboard_with_callback(content, move |cb| {
+                    egui_ctx.data_mut(|d| {
+                        let status = match cb {
+                            Ok(()) => ActionBarExportStatus {
+                                message: format!("Copied {label} {noun} to clipboard!"),
+                                is_error: false,
+                                expires_at_time: None,
+                            },
+                            Err(err) => ActionBarExportStatus {
+                                message: format_clipboard_error(&err),
+                                is_error: true,
+                                expires_at_time: None,
+                            },
+                        };
+                        d.insert_temp(status_id, status);
+                    });
+                    egui_ctx.request_repaint();
+                })
+            } else {
+                egui_plot::export::copy_text_to_clipboard(content)
             }
         }
     }

@@ -12,6 +12,10 @@ const fn default_annotations_enabled() -> bool {
     true
 }
 
+const fn default_tube_radius() -> f64 {
+    super::export::DEFAULT_TUBE_RADIUS
+}
+
 fn is_default_fixed_callout_offsets(v: &[[f32; 2]; 2]) -> bool {
     (0..2).all(|i| {
         (0..2).all(|j| (v[i][j] - DEFAULT_FIXED_CALLOUT_OFFSETS[i][j]).abs() <= f32::EPSILON)
@@ -24,6 +28,7 @@ struct AttractorSaveState {
     rho: f64,
     beta: f64,
     dt: f64,
+    tube_radius: f64,
     simulation_speed: usize,
     execution_state: SolverExecutionState,
     show_annotations: bool,
@@ -45,6 +50,8 @@ struct AttractorState {
     rho: f64,
     beta: f64,
     dt: f64,
+    #[serde(default = "default_tube_radius")]
+    tube_radius: f64,
     simulation_speed: usize,
     #[serde(default)]
     execution_state: Option<SolverExecutionState>,
@@ -77,8 +84,13 @@ impl AttractorPlotter {
             .iter()
             .zip(DEFAULT_FLOW_EXPRS.iter())
             .any(|(a, b)| a != b);
-        let custom_exprs = (self.mode == AttractorMode::Custom || nondefault_exprs)
-            .then(|| [expr_vec[0].clone(), expr_vec[1].clone(), expr_vec[2].clone()]);
+        let custom_exprs = (self.mode == AttractorMode::Custom || nondefault_exprs).then(|| {
+            [
+                expr_vec[0].clone(),
+                expr_vec[1].clone(),
+                expr_vec[2].clone(),
+            ]
+        });
         let custom_params = if self.mode == AttractorMode::Custom {
             self.flow_bank.params_map()
         } else {
@@ -89,6 +101,7 @@ impl AttractorPlotter {
             rho: self.system.rho,
             beta: self.system.beta,
             dt: self.dt,
+            tube_radius: self.tube_radius,
             simulation_speed: self.simulation_speed,
             execution_state: self.execution_state,
             show_annotations: self.show_annotations,
@@ -105,25 +118,7 @@ impl AttractorPlotter {
         <Self as crate::framework::InteractiveTool>::state_bounds(self).validate_json(state)?;
         let s: AttractorState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid AttractorPlotter state: {e}"))?;
-        if !s.sigma.is_finite()
-            || !s.rho.is_finite()
-            || !s.beta.is_finite()
-            || !s.dt.is_finite()
-            || s.dt <= 0.0
-            || !(1..=super::MAX_SIMULATION_SPEED).contains(&s.simulation_speed)
-            || s.custom_params.values().any(|v| !v.is_finite())
-        {
-            return Err(format!(
-                "AttractorPlotter parameters must be finite with dt > 0 and simulation_speed in 1..={}",
-                super::MAX_SIMULATION_SPEED
-            ));
-        }
-        let offsets = s
-            .fixed_callout_offsets
-            .unwrap_or(DEFAULT_FIXED_CALLOUT_OFFSETS);
-        if offsets.iter().flatten().any(|c| !c.is_finite()) {
-            return Err("AttractorPlotter fixed_callout_offsets must be finite".to_string());
-        }
+        let offsets = validate_attractor_state(&s)?;
         let camera = Camera3D::from_preset_fields(
             s.camera,
             s.pitch,
@@ -138,6 +133,7 @@ impl AttractorPlotter {
         self.system.rho = s.rho;
         self.system.beta = s.beta;
         self.dt = s.dt;
+        self.tube_radius = s.tube_radius;
         self.simulation_speed = s.simulation_speed;
         self.show_annotations = s.show_annotations;
         self.fixed_callout_offsets = offsets.map(egui::Vec2::from);
@@ -180,4 +176,30 @@ impl AttractorPlotter {
             }
         }
     }
+}
+
+fn validate_attractor_state(s: &AttractorState) -> Result<[[f32; 2]; 2], String> {
+    if !s.sigma.is_finite()
+        || !s.rho.is_finite()
+        || !s.beta.is_finite()
+        || !s.dt.is_finite()
+        || s.dt <= 0.0
+        || !s.tube_radius.is_finite()
+        || !(super::export::MIN_TUBE_RADIUS..=super::export::MAX_TUBE_RADIUS)
+            .contains(&s.tube_radius)
+        || !(1..=super::MAX_SIMULATION_SPEED).contains(&s.simulation_speed)
+        || s.custom_params.values().any(|v| !v.is_finite())
+    {
+        return Err(format!(
+            "AttractorPlotter parameters must be finite with dt > 0 and simulation_speed in 1..={}",
+            super::MAX_SIMULATION_SPEED
+        ));
+    }
+    let offsets = s
+        .fixed_callout_offsets
+        .unwrap_or(DEFAULT_FIXED_CALLOUT_OFFSETS);
+    if offsets.iter().flatten().any(|c| !c.is_finite()) {
+        return Err("AttractorPlotter fixed_callout_offsets must be finite".to_string());
+    }
+    Ok(offsets)
 }
