@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for 3D hydrogenic orbital and superposition kernels.
 use approx::assert_relative_eq;
 use domain_physics::physics::quantum::{
     HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumFieldObservable,
