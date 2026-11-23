@@ -32,8 +32,6 @@ pub struct ClosedLoopControlTool {
     pub worker: Option<SimulationController>,
     /// Whether live closed-loop stepping is currently active.
     pub playing: bool,
-    /// Canvas widget ID when the 2D phase-portrait perturbation pad owns keyboard focus.
-    pub focused_canvas: Option<egui::Id>,
     /// Last rendered UI frame wall-clock duration in milliseconds.
     pub last_frame_ms: f64,
 }
@@ -47,7 +45,6 @@ impl Default for ClosedLoopControlTool {
             pipeline,
             worker: None,
             playing: false,
-            focused_canvas: None,
             last_frame_ms: 0.0,
         }
     }

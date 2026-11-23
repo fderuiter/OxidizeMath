@@ -48,6 +48,8 @@ mod telemetry;
 pub mod url_state;
 #[cfg(any(feature = "ai", feature = "biology", feature = "physics"))]
 pub mod volumetric_scene;
+#[cfg(test)]
+mod walkthrough_tool_tests;
 pub mod web_io;
 #[cfg(target_arch = "wasm32")]
 mod webgl_recovery;

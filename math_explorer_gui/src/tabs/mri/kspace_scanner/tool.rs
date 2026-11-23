@@ -243,7 +243,7 @@ impl MriKSpaceScannerTool {
     }
 
     #[cfg(test)]
-    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
         self.focused_kspace_id
     }
 }

@@ -1,11 +1,90 @@
-//! Workspace setup verification for WebAssembly build and Playwright browser prerequisites.
+//! Workspace setup verification for Git hooks, WebAssembly build, and Playwright browser prerequisites.
 
+use crate::gates::run_cmd_in_path;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, exit};
 
 /// Default workspace `wasm-bindgen` version expected when parsing `Cargo.toml`.
 pub const DEFAULT_EXPECTED_WASM_BINDGEN_VERSION: &str = "0.2.130";
+
+/// Parsed CLI flags controlling `xtask setup` stages.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SetupOptions {
+    /// Configure `.githooks` only and exit without probing toolchains or checking crates.
+    pub hooks_only: bool,
+    /// Skip `cargo check --workspace` after configuring hooks and probing prerequisites.
+    pub check_only: bool,
+    /// Require all WebAssembly and Playwright browser prerequisites (exit `1` when missing).
+    pub web: bool,
+}
+
+impl SetupOptions {
+    /// Parses `xtask setup` CLI arguments (`--hooks-only`, `--check-only`, `--web`).
+    pub fn parse(args: &[String]) -> Result<Self, String> {
+        let mut opts = Self::default();
+        for arg in args {
+            match arg.as_str() {
+                "--hooks-only" => opts.hooks_only = true,
+                "--check-only" => opts.check_only = true,
+                "--web" => opts.web = true,
+                other => {
+                    return Err(format!(
+                        "Unknown setup argument: `{other}` (expected `--hooks-only`, `--check-only`, or `--web`)"
+                    ));
+                }
+            }
+        }
+        Ok(opts)
+    }
+}
+
+/// Configures `core.hooksPath` to `.githooks` and ensures `.githooks/pre-commit` is executable.
+pub(crate) fn configure_git_hooks_in_dir(repo_dir: &Path) {
+    println!("\n--- Configuring Git Hooks ---");
+    let status = Command::new("git")
+        .current_dir(repo_dir)
+        .args(["config", "core.hooksPath", ".githooks"])
+        .status();
+    if !matches!(status, Ok(s) if s.success()) {
+        eprintln!("Command failed!");
+        exit(1);
+    }
+
+    let hook_path = repo_dir.join(".githooks/pre-commit");
+    if hook_path.exists() {
+        #[cfg(unix)]
+        ensure_hook_executable(&hook_path);
+        println!("Git core.hooksPath configured to .githooks");
+    } else {
+        eprintln!(
+            "Warning: Expected hook script not found at {}.",
+            hook_path.display()
+        );
+    }
+}
+
+#[cfg(unix)]
+fn ensure_hook_executable(hook_path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    if let Ok(metadata) = fs::metadata(hook_path) {
+        let mut perms = metadata.permissions();
+        if perms.mode() & 0o111 == 0 {
+            perms.set_mode(0o755);
+            if let Err(e) = fs::set_permissions(hook_path, perms) {
+                eprintln!(
+                    "Warning: Failed to set executable permissions on {}: {}",
+                    hook_path.display(),
+                    e
+                );
+            } else {
+                println!("Pre-commit hook permissions set to executable (0755).");
+            }
+        } else {
+            println!("Pre-commit hook executable permissions verified.");
+        }
+    }
+}
 
 /// Result of probing a single external CLI or browser runtime dependency.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -225,67 +304,104 @@ pub fn format_probe_report(results: &[ToolProbeResult]) -> (bool, String) {
     (all_ok, lines.join("\n"))
 }
 
-/// Verifies all required WebAssembly and Playwright browser tools, exiting non-zero on failure.
-pub fn verify_browser_tools_or_exit(workspace_root: &Path) {
+/// Verifies WebAssembly and Playwright browser tools; warns by default and exits `1` only when `strict_web` is `true`.
+pub fn verify_browser_tools(workspace_root: &Path, strict_web: bool) -> bool {
     println!("\n--- Verifying WebAssembly & Playwright Browser Prerequisites ---");
     let probes = collect_browser_tool_probes(workspace_root);
     let (all_ok, report) = format_probe_report(&probes);
     println!("{report}");
     if !all_ok {
-        eprintln!(
-            "\nSetup failed: one or more WebAssembly/Playwright prerequisites are missing or mismatched."
+        if strict_web {
+            eprintln!(
+                "\nSetup failed (--web): one or more WebAssembly/Playwright prerequisites are missing or mismatched."
+            );
+            exit(1);
+        } else {
+            println!(
+                "\nWarning: Optional WebAssembly/Playwright browser tools are missing or mismatched (continuing; pass `--web` to enforce)."
+            );
+        }
+    }
+    all_ok
+}
+
+fn ensure_wasm_rustup_target(workspace_root: &Path, strict_web: bool) {
+    if strict_web {
+        run_cmd_in_path(
+            "rustup",
+            &["target", "add", "wasm32-unknown-unknown"],
+            workspace_root,
         );
-        exit(1);
+        return;
+    }
+    println!(
+        "Running (in {}): rustup target add wasm32-unknown-unknown",
+        workspace_root.display()
+    );
+    let status = Command::new("rustup")
+        .args(["target", "add", "wasm32-unknown-unknown"])
+        .current_dir(workspace_root)
+        .status();
+    if !matches!(status, Ok(s) if s.success()) {
+        println!(
+            "Warning: Unable to add `wasm32-unknown-unknown` via `rustup` (continuing; pass `--web` to enforce)."
+        );
     }
 }
 
-/// Configures `core.hooksPath = .githooks` and ensures `.githooks/pre-commit` is executable.
-pub(crate) fn configure_git_hooks_in_dir(repo_dir: &Path) {
-    println!("\n--- Configuring Git Hooks ---");
-    let status = Command::new("git")
-        .current_dir(repo_dir)
-        .args(["config", "core.hooksPath", ".githooks"])
-        .status();
-    if !matches!(status, Ok(s) if s.success()) {
-        eprintln!("Command failed!");
+/// Runs `xtask setup`, configuring `.githooks` first before optional toolchain, browser, and workspace checks.
+pub fn run_setup(args: &[String], ws_root: &Path) {
+    println!("=== Math Explorer Setup Script ===");
+    let opts = SetupOptions::parse(args).unwrap_or_else(|err| {
+        eprintln!("{err}");
         exit(1);
+    });
+
+    configure_git_hooks_in_dir(ws_root);
+    if opts.hooks_only && !opts.web {
+        println!("=== Setup Complete ===");
+        return;
     }
 
-    let hook_path = repo_dir.join(".githooks/pre-commit");
-    if hook_path.exists() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Ok(metadata) = fs::metadata(&hook_path) {
-                let mut perms = metadata.permissions();
-                if perms.mode() & 0o111 == 0 {
-                    perms.set_mode(0o755);
-                    if let Err(e) = fs::set_permissions(&hook_path, perms) {
-                        eprintln!(
-                            "Warning: Failed to set executable permissions on {}: {}",
-                            hook_path.display(),
-                            e
-                        );
-                    } else {
-                        println!("Pre-commit hook permissions set to executable (0755).");
-                    }
-                } else {
-                    println!("Pre-commit hook executable permissions verified.");
-                }
-            }
-        }
-        println!("Git core.hooksPath configured to .githooks");
-    } else {
-        eprintln!(
-            "Warning: Expected hook script not found at {}.",
-            hook_path.display()
-        );
+    ensure_wasm_rustup_target(ws_root, opts.web);
+    verify_browser_tools(ws_root, opts.web);
+
+    if !opts.hooks_only && !opts.check_only {
+        run_cmd_in_path("cargo", &["check", "--workspace"], ws_root);
     }
+    println!("=== Setup Complete ===");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_setup_options_parsing() {
+        assert_eq!(
+            SetupOptions::parse(&[]).unwrap(),
+            SetupOptions {
+                hooks_only: false,
+                check_only: false,
+                web: false,
+            }
+        );
+        assert_eq!(
+            SetupOptions::parse(&[
+                "--hooks-only".to_string(),
+                "--check-only".to_string(),
+                "--web".to_string(),
+            ])
+            .unwrap(),
+            SetupOptions {
+                hooks_only: true,
+                check_only: true,
+                web: true,
+            }
+        );
+        let err = SetupOptions::parse(&["--invalid-flag".to_string()]).unwrap_err();
+        assert!(err.contains("--hooks-only") && err.contains("--web"));
+    }
 
     #[test]
     fn test_wasm_runner_cli_flags_and_filtering() {
