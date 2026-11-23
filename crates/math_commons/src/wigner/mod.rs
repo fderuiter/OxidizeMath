@@ -1,3 +1,4 @@
+// [cite:math_commons]
 /// Clebsch-Gordan coefficient calculator for angular momentum coupling.
 ///
 /// # Example

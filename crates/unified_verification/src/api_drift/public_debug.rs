@@ -2,7 +2,7 @@ use super::traversal::{
     ExportFilter, child_module_dir_for_file, collect_facade_exports, has_cfg_test,
     resolve_child_mod_file,
 };
-use crate::ast_helpers::impl_base_ident;
+use crate::ast_helpers::{format_file_line, impl_base_ident};
 use oxidize_core::traceability::AstCache;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -114,9 +114,9 @@ impl ModuleDebugScan<'_> {
         *self.checked_count += 1;
         let name = ident.to_string();
         if !has_derive_debug(attrs) && !self.manual_debug.contains(&name) {
+            let loc = format_file_line(self.display_path, ident.span().start().line);
             self.violations.push(format!(
-                "{}: public {kind} `{name}` does not implement `Debug`",
-                self.display_path
+                "{loc}: public {kind} `{name}` does not implement `Debug` (Hint: add `#[derive(Debug)]` or a manual `impl std::fmt::Debug for {name}`)"
             ));
         }
     }
@@ -285,7 +285,7 @@ pub(crate) fn check_workspace_public_debug_with_cache(
 pub fn run_public_debug_check() -> bool {
     let mut cache = AstCache::new();
     let root = crate::manifest_cache::workspace_root_dir();
-    let (checked, violations) = check_workspace_public_debug_with_cache(root, &mut cache);
+    let (checked, violations) = check_workspace_public_debug_with_cache(&root, &mut cache);
     if violations.is_empty() {
         println!("Public Debug coverage check passed ({checked} public structs/enums verified).");
         return true;
@@ -393,7 +393,7 @@ pub struct MissingDebugStruct;
         let _lock = crate::DIR_LOCK.lock().unwrap();
         let root = crate::manifest_cache::workspace_root_dir();
         let mut cache = AstCache::new();
-        let (checked, violations) = check_workspace_public_debug_with_cache(root, &mut cache);
+        let (checked, violations) = check_workspace_public_debug_with_cache(&root, &mut cache);
         assert!(
             checked >= 430,
             "Expected at least 430 reachable public structs/enums across 8 math crates, got {checked}"

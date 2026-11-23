@@ -27,11 +27,7 @@ fn scan_clippy_snippet(source: &str) -> bool {
 
 fn scan_snippet(source: &str, allowed: Vec<DeadCodeEntry>) -> bool {
     let ast = syn::parse_file(source).expect("valid Rust snippet");
-    let mut visitor = DeadCodeVisitor {
-        file_path: "crates/sample/src/lib.rs".to_string(),
-        allowed,
-        has_unauthorized: false,
-    };
+    let mut visitor = DeadCodeVisitor::new("crates/sample/src/lib.rs".to_string(), allowed);
     visitor.visit_file(&ast);
     visitor.has_unauthorized
 }
@@ -443,26 +439,49 @@ fn test_standalone_policy_audit_rejects_missing_lints_from_root_and_subdir() {
 #[test]
 fn test_policy_audit_rejects_missing_public_debug_in_mathematical_crate() {
     let dir = TempTestDir::new("policy_audit_public_debug");
-    let member_path = write_member_crate(
+    let member = write_member_crate(
         &dir,
         "crates/pure_math",
-        "pub struct UndebuggableConfig {\n    pub dt: f64,\n}\n",
+        "pub struct Undebuggable { pub dt: f64 }\n",
     );
-    let whitelist_file = dir.join("verification_whitelist.toml");
-    fs::write(&whitelist_file, "").unwrap();
-
-    assert!(!run_policy_audit_with_whitelist(
-        &[member_path.as_str()],
-        &whitelist_file,
-    ));
-
+    let wl = dir.join("verification_whitelist.toml");
+    fs::write(&wl, "").unwrap();
+    assert!(!run_policy_audit_with_whitelist(&[member.as_str()], &wl));
     fs::write(
         dir.join("crates/pure_math/src/lib.rs"),
-        "#[derive(Debug)]\npub struct UndebuggableConfig {\n    pub dt: f64,\n}\n",
+        "#[derive(Debug)]\npub struct Undebuggable { pub dt: f64 }\n",
     )
     .unwrap();
-    assert!(run_policy_audit_with_whitelist(
-        &[member_path.as_str()],
-        &whitelist_file,
-    ));
+    assert!(run_policy_audit_with_whitelist(&[member.as_str()], &wl));
+}
+
+#[test]
+fn test_dead_code_and_clippy_diagnostics_emit_spans_idents_and_guidance() {
+    let dc_src = "pub fn ok() {\n    #[allow(dead_code)]\n    let local_buf = 1;\n}\n#[allow(dead_code)]\nfn hidden_fn() {}\n";
+    let dc_ast = syn::parse_file(dc_src).unwrap();
+    let mut dc = DeadCodeVisitor::new("crates/sample/src/lib.rs".to_string(), vec![]);
+    dc.visit_file(&dc_ast);
+    assert_eq!(dc.violations.len(), 2);
+    assert!(dc.violations[0].contains("crates/sample/src/lib.rs:2 (identifier `local_buf`)"));
+    assert!(dc.violations[1].contains("crates/sample/src/lib.rs:5 (identifier `hidden_fn`)"));
+    assert!(dc.violations[1].contains("#[cfg(test)]"));
+    assert!(dc.violations[1].contains("verification_whitelist.toml"));
+
+    let mut syn_dc = DeadCodeVisitor::new("crates/sample/src/lib.rs".to_string(), vec![]);
+    syn_dc.record_violation(0, Some("macro_fn"));
+    assert!(syn_dc.violations[0].contains("at crates/sample/src/lib.rs (identifier `macro_fn`)"));
+    assert!(!syn_dc.violations[0].contains(":0"));
+
+    let clippy_src =
+        "pub struct Widget;\n#[allow(clippy::all)]\nimpl Widget {\n    pub fn f() {}\n}\n";
+    let clippy_ast = syn::parse_file(clippy_src).unwrap();
+    let mut cv = lint_policy::ClippyBypassVisitor::new("crates/sample/src/lib.rs".to_string(), 60);
+    cv.visit_file(&clippy_ast);
+    assert_eq!(cv.violations.len(), 1);
+    assert!(
+        cv.violations[0]
+            .contains("crates/sample/src/lib.rs:2 (impl `Widget` `#[...]` attribute: clippy::all)")
+    );
+    assert!(cv.violations[0].contains("#[cfg(test)]"));
+    assert!(cv.violations[0].contains("verification_whitelist.toml"));
 }

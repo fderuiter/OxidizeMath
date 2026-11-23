@@ -176,13 +176,13 @@ fn test_attractor_plotter_invariants_and_one_click_handoff_to_vietoris_rips() {
 
     plotter.system.rho = 28.0;
     let ctx = egui::Context::default();
+    let mut app = crate::app::MathExplorerApp::default();
     let t0 = crate::web_io::PlatformInstant::now();
     let payload = plotter
         .send_landmarks_to_vietoris_rips(Some(&ctx))
         .expect("handoff succeeds");
     assert_eq!(payload.points.len(), MAX_CHAOS_LANDMARKS);
 
-    let mut app = crate::app::MathExplorerApp::default();
     crate::app::domain_bar::poll_cross_tab_tool_handoffs(&mut app, &ctx);
     assert_eq!(app.tabs[app.selected_tab].name(), "Geometry & Topology");
 
