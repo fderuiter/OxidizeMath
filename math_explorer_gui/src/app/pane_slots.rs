@@ -170,8 +170,14 @@ impl MathExplorerApp {
         }
         if active_pane_count <= 1 {
             self.focused_pane = 0;
-        } else if self.focused_pane >= active_pane_count {
-            self.focused_pane = active_pane_count - 1;
+            self.pipeline_dag.clear();
+            self.dataflow_bus.prune_inactive(1);
+        } else {
+            if self.focused_pane >= active_pane_count {
+                self.focused_pane = active_pane_count - 1;
+            }
+            self.pipeline_dag.prune_inactive(active_pane_count);
+            self.dataflow_bus.prune_inactive(active_pane_count);
         }
     }
 
@@ -209,6 +215,8 @@ impl MathExplorerApp {
                 slot.drop_active();
             }
         }
+        self.dataflow_bus.clear_pane(pane_idx);
+        self.prune_incompatible_pipeline_links();
     }
 
     /// Returns a mutable reference to the `ExplorerTab` assigned to `pane_idx`, instantiating lazily for secondary panes.
@@ -448,48 +456,4 @@ impl MathExplorerApp {
                 .and_then(|s| s.active.as_ref().map(|(_, b)| b.as_ref()))
         }
     }
-
-    /// Applies any queued cross-tab navigation request to `focused_pane`.
-    pub(super) fn apply_cross_tab_navigation(&mut self, ctx: &egui::Context) {
-        let req_id = egui::Id::new("CROSS_TAB_NAV_REQUEST");
-        let pending = ctx.data_mut(|d| {
-            let req = d.get_temp::<(&'static str, Option<&'static str>)>(req_id);
-            d.remove::<(&'static str, Option<&'static str>)>(req_id);
-            req
-        });
-        let Some((tab_name, tool_name)) = pending else {
-            return;
-        };
-        let Some(tab_idx) = self
-            .tabs
-            .iter()
-            .position(|t| t.name().eq_ignore_ascii_case(tab_name))
-        else {
-            return;
-        };
-        self.select_tab(ctx, tab_idx);
-        if let Some(tool_id) = tool_name {
-            if let Some(tab) = self.focused_pane_tab_mut() {
-                tab.select_tool_by_name(tool_id);
-                let msg = format!("Switched to {} in tab {}", tool_id, tab.name());
-                crate::accessibility::announce_live_status(ctx, msg);
-            }
-        }
-    }
-}
-
-/// Queues a cross-tab (and optional tool) navigation request processed on the current `MathExplorerApp` frame.
-#[cfg(all(feature = "physics", feature = "biology"))]
-pub fn request_cross_tab_navigation(
-    ctx: &egui::Context,
-    tab_name: &'static str,
-    tool_name: Option<&'static str>,
-) {
-    ctx.data_mut(|d| {
-        d.insert_temp(
-            egui::Id::new("CROSS_TAB_NAV_REQUEST"),
-            (tab_name, tool_name),
-        );
-    });
-    ctx.request_repaint();
 }

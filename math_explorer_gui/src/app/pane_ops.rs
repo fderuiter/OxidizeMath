@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{MathExplorerApp, SplitLayoutMode, ViewportLayout};
+use eframe::egui;
 
 impl MathExplorerApp {
     /// Swaps the primary and secondary pane active tabs and their per-pane states immediately.
@@ -73,6 +74,135 @@ impl MathExplorerApp {
         } else {
             self.tab_state_cache.clear();
             self.pane_slots.swap_secondary_slots(lo, hi);
+        }
+        self.pipeline_dag.swap_panes(lo, hi);
+        self.dataflow_bus.swap_panes(lo, hi);
+    }
+
+    /// Queries the active `InteractiveTool` ID of `pane_idx` without mutating lazy secondary slots.
+    pub fn pane_active_tool_id(&self, pane_idx: usize) -> Option<String> {
+        if let Some(tab) = self.pane_tab(pane_idx) {
+            return tab.active_tool_id().map(str::to_string);
+        }
+        let tab_idx = self.pane_tabs.get(pane_idx).copied()?;
+        let template_tab = self.tabs.get(tab_idx)?;
+        if let Some(saved) = self
+            .pane_slots
+            .slot(pane_idx)
+            .and_then(|s| s.saved_states.get(template_tab.name()))
+        {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(saved) {
+                for key in ["active_tool_id", "tool_id", "selected_tool"] {
+                    if let Some(id) = val.get(key).and_then(serde_json::Value::as_str) {
+                        return Some(id.to_string());
+                    }
+                }
+            }
+            if let Some(mut temp) = crate::tabs::instantiate_tab(tab_idx) {
+                temp.load_state(saved);
+                return temp.active_tool_id().map(str::to_string);
+            }
+        }
+        crate::tabs::instantiate_tab(tab_idx).and_then(|t| t.active_tool_id().map(str::to_string))
+    }
+
+    /// Prunes any pipeline links whose active tools are no longer stream-compatible.
+    pub fn prune_incompatible_pipeline_links(&mut self) {
+        let count = self.viewport_layout.pane_count();
+        if count <= 1 {
+            self.pipeline_dag.clear();
+            self.dataflow_bus.prune_inactive(1);
+            return;
+        }
+        let tool_ids: [Option<String>; 4] = std::array::from_fn(|idx| {
+            (idx < count)
+                .then(|| self.pane_active_tool_id(idx))
+                .flatten()
+        });
+        self.pipeline_dag
+            .prune_incompatible(count, |idx| tool_ids.get(idx).and_then(Option::as_deref));
+    }
+
+    /// Connects `from_pane -> to_pane` on `pipeline_dag` and emits WCAG 2.2 AA ARIA announcements.
+    pub fn connect_pane_pipeline_interactive(
+        &mut self,
+        ctx: Option<&egui::Context>,
+        from_pane: usize,
+        to_pane: usize,
+    ) -> Result<super::DataflowStreamKind, super::dataflow_bus::DagLinkError> {
+        use super::dataflow_bus::{compatible_stream_kind, DagLinkError};
+        let count = self.viewport_layout.pane_count();
+        if from_pane >= count || to_pane >= count {
+            Self::announce_pipeline_error(ctx, DagLinkError::OutOfBounds);
+            return Err(DagLinkError::OutOfBounds);
+        }
+        if from_pane == to_pane {
+            Self::announce_pipeline_error(ctx, DagLinkError::SelfLoop);
+            return Err(DagLinkError::SelfLoop);
+        }
+        if self.pipeline_dag.would_create_cycle(from_pane, to_pane) {
+            Self::announce_pipeline_error(ctx, DagLinkError::CycleDetected);
+            return Err(DagLinkError::CycleDetected);
+        }
+        let src_tool = self.pane_active_tool_id(from_pane);
+        let dst_tool = self.pane_active_tool_id(to_pane);
+        let Some(kind) = compatible_stream_kind(src_tool.as_deref(), dst_tool.as_deref()) else {
+            Self::announce_pipeline_error(ctx, DagLinkError::IncompatibleStream);
+            return Err(DagLinkError::IncompatibleStream);
+        };
+        if let Err(err) = self.pipeline_dag.connect(from_pane, to_pane, kind) {
+            Self::announce_pipeline_error(ctx, err);
+            return Err(err);
+        }
+        let labels = self.viewport_layout.pane_labels();
+        let src_lbl = labels.get(from_pane).copied().unwrap_or("Upstream");
+        let dst_lbl = labels.get(to_pane).copied().unwrap_or("Downstream");
+        let msg = format!(
+            "Connected {} {} stream into {}",
+            src_lbl,
+            kind.label(),
+            dst_lbl
+        );
+        if let Some(c) = ctx {
+            crate::accessibility::announce_live_status(c, &msg);
+        } else {
+            crate::accessibility::announce_status(&msg);
+        }
+        Ok(kind)
+    }
+
+    /// Disconnects any upstream pipeline feeding `to_pane` and announces the change politely.
+    pub fn disconnect_pane_pipeline_interactive(
+        &mut self,
+        ctx: Option<&egui::Context>,
+        to_pane: usize,
+    ) -> bool {
+        let Some(removed) = self.pipeline_dag.disconnect_target(to_pane) else {
+            return false;
+        };
+        let labels = self.viewport_layout.pane_labels();
+        let dst_lbl = labels.get(to_pane).copied().unwrap_or("Pane");
+        let msg = format!(
+            "Disconnected {} stream from {}",
+            removed.kind.label(),
+            dst_lbl
+        );
+        if let Some(c) = ctx {
+            crate::accessibility::announce_live_status(c, &msg);
+        } else {
+            crate::accessibility::announce_status(&msg);
+        }
+        true
+    }
+
+    fn announce_pipeline_error(
+        ctx: Option<&egui::Context>,
+        err: super::dataflow_bus::DagLinkError,
+    ) {
+        if let Some(c) = ctx {
+            crate::accessibility::announce_live_assertive_status(c, err.message());
+        } else {
+            crate::accessibility::announce_status_with_priority(err.message(), "assertive");
         }
     }
 
@@ -216,4 +346,48 @@ impl MathExplorerApp {
             }
         }
     }
+
+    /// Applies any queued cross-tab navigation request to `focused_pane`.
+    pub(super) fn apply_cross_tab_navigation(&mut self, ctx: &eframe::egui::Context) {
+        let req_id = eframe::egui::Id::new("CROSS_TAB_NAV_REQUEST");
+        let pending = ctx.data_mut(|d| {
+            let req = d.get_temp::<(&'static str, Option<&'static str>)>(req_id);
+            d.remove::<(&'static str, Option<&'static str>)>(req_id);
+            req
+        });
+        let Some((tab_name, tool_name)) = pending else {
+            return;
+        };
+        let Some(tab_idx) = self
+            .tabs
+            .iter()
+            .position(|t| t.name().eq_ignore_ascii_case(tab_name))
+        else {
+            return;
+        };
+        self.select_tab(ctx, tab_idx);
+        if let Some(tool_id) = tool_name {
+            if let Some(tab) = self.focused_pane_tab_mut() {
+                tab.select_tool_by_name(tool_id);
+                let msg = format!("Switched to {} in tab {}", tool_id, tab.name());
+                crate::accessibility::announce_live_status(ctx, msg);
+            }
+        }
+    }
+}
+
+/// Queues a cross-tab (and optional tool) navigation request processed on the current `MathExplorerApp` frame.
+#[cfg(all(feature = "physics", feature = "biology"))]
+pub fn request_cross_tab_navigation(
+    ctx: &eframe::egui::Context,
+    tab_name: &'static str,
+    tool_name: Option<&'static str>,
+) {
+    ctx.data_mut(|d| {
+        d.insert_temp(
+            eframe::egui::Id::new("CROSS_TAB_NAV_REQUEST"),
+            (tab_name, tool_name),
+        );
+    });
+    ctx.request_repaint();
 }
