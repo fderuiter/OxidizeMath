@@ -378,7 +378,11 @@ fn test_unified_model_observable_hook_and_voltage_derivatives() {
     use std::collections::HashMap;
 
     let lbm_params = HashMap::from([("viscosity".to_string(), 0.02)]);
-    assert!(LbmUnified::evaluate_observable(&lbm_params).is_none());
+    let (lbm_label, lbm_cd_low) = LbmUnified::evaluate_observable(&lbm_params).unwrap();
+    assert_eq!(lbm_label, "Drag Coefficient (C_D)");
+    let (_, lbm_cd_high) =
+        LbmUnified::evaluate_observable(&HashMap::from([("viscosity".to_string(), 0.10)])).unwrap();
+    assert!(lbm_cd_low > 0.0 && lbm_cd_high > lbm_cd_low);
 
     // Verify negative conductance perturbations near zero clamp cleanly instead of failing builder
     let zero_perturbation = HashMap::from([
@@ -429,52 +433,57 @@ fn test_unified_sim_tool_panel_gating() {
     use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
     use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
     use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
+    use eframe::egui::{vec2, Context, Pos2, RawInput, Rect, ViewportId};
 
-    let render_texts = |tool: &mut dyn InteractiveTool| -> Vec<String> {
-        let ctx = eframe::egui::Context::default();
-        let out = ctx.run(eframe::egui::RawInput::default(), |ctx| tool.show(ctx));
+    let has_text = |tool: &mut dyn InteractiveTool, needle: &str| -> bool {
+        let ctx = Context::default();
+        let out = ctx.run(RawInput::default(), |ctx| tool.show(ctx));
         let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
         let mut texts = Vec::new();
         crate::sensitivity::tests::collect_shape_texts(&shapes, &mut texts);
-        texts
+        texts.iter().any(|t| t.contains(needle))
     };
 
-    let lbm_texts = render_texts(&mut UnifiedSimTool::<LbmUnified>::new());
-    assert!(!lbm_texts
-        .iter()
-        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+    assert!(has_text(
+        &mut UnifiedSimTool::<LbmUnified>::new(),
+        "Baseline Drag Coefficient (C_D):"
+    ));
+    assert!(!has_text(
+        &mut WaveSimulatorTool::new(),
+        "Sensitivity & Perturbation Analysis"
+    ));
+    assert!(has_text(
+        &mut UnifiedSimTool::<HodgkinHuxleyUnified>::new(),
+        "Baseline Peak Membrane Potential (mV):"
+    ));
 
-    let wave_texts = render_texts(&mut WaveSimulatorTool::new());
-    assert!(!wave_texts
-        .iter()
-        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
-
-    let hh_texts = render_texts(&mut UnifiedSimTool::<HodgkinHuxleyUnified>::new());
-    assert!(hh_texts
-        .iter()
-        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
-    assert!(hh_texts
-        .iter()
-        .any(|t| t.contains("Baseline Peak Membrane Potential (mV):")));
-
-    let ctx = eframe::egui::Context::default();
-    let input = eframe::egui::RawInput {
-        screen_rect: Some(eframe::egui::Rect::from_min_size(
-            eframe::egui::Pos2::ZERO,
-            eframe::egui::vec2(960.0, 640.0),
-        )),
+    let ctx = Context::default();
+    let input = RawInput {
+        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(960.0, 640.0))),
         ..Default::default()
     };
     let mut hh_tool = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
     let out1 = ctx.run(input.clone(), |ctx| hh_tool.show(ctx));
     assert!(!hh_tool.sensitivity_engine.is_converged());
-    assert!(out1.viewport_output[&eframe::egui::ViewportId::ROOT]
+    assert!(out1.viewport_output[&ViewportId::ROOT]
         .repaint_delay
         .is_zero());
     let _ = ctx.run(input.clone(), |ctx| hh_tool.show(ctx));
     assert!(hh_tool.sensitivity_engine.is_converged());
     let out_idle = ctx.run(input, |ctx| hh_tool.show(ctx));
-    assert!(!out_idle.viewport_output[&eframe::egui::ViewportId::ROOT]
+    assert!(!out_idle.viewport_output[&ViewportId::ROOT]
         .repaint_delay
         .is_zero());
+
+    hh_tool.uncertainty.enabled = true;
+    hh_tool.uncertainty.seed = 42;
+    hh_tool.uncertainty.target_samples = 16;
+    while !hh_tool.sensitivity_engine.is_tornado_converged()
+        || !hh_tool.sensitivity_engine.is_monte_carlo_converged()
+    {
+        assert!(hh_tool.step_cooperative_sensitivity().is_some());
+    }
+    let mc = hh_tool.sensitivity_engine.monte_carlo_summary().unwrap();
+    assert_eq!(mc.sample_count, 16);
+    assert!(mc.p05 <= mc.p50 && mc.p50 <= mc.p95);
 }

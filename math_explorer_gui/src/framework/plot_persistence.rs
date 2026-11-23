@@ -23,6 +23,14 @@ pub type ToolPlotSnapshotMap = BTreeMap<String, egui_plot::PlotOverlaySnapshot>;
 /// Deterministically ordered map from tool identifier/name to [`ToolPlotSnapshotMap`].
 pub type SavedPlotStatesMap = BTreeMap<String, ToolPlotSnapshotMap>;
 
+fn collect_imported_datasets(plot_map: &ToolPlotSnapshotMap) -> Vec<egui_plot::ImportedDataset> {
+    let mut out = Vec::new();
+    for snap in plot_map.values() {
+        out.extend(snap.imported_datasets.iter().cloned());
+    }
+    out
+}
+
 fn cap_tool_plot_map(plot_map: &mut ToolPlotSnapshotMap) -> Result<(), String> {
     if plot_map.len() > MAX_PLOTS_PER_TOOL {
         return Err("plot_states per-tool plot count limit exceeded".to_owned());
@@ -269,22 +277,59 @@ impl SimulationFramework {
 
     pub(super) fn end_plot_scope(&mut self, ctx: &egui::Context) {
         let mut updated = egui_plot::end_plot_persistence_scope(ctx, self.instance_id);
-        let Some(tool_name) = self.active_tool.as_ref().map(|t| t.name()) else {
+        let Some(tool_name) = self.active_tool.as_ref().map(|t| t.name().to_owned()) else {
             return;
         };
-        let _ = cap_tool_plot_map(&mut updated);
-        let changed = match self.saved_plot_states.get(tool_name) {
+        let prev_imported = self
+            .saved_plot_states
+            .get(&tool_name)
+            .map(collect_imported_datasets)
+            .unwrap_or_default();
+        let raw_imported = collect_imported_datasets(&updated);
+        let imported_changed = !raw_imported.is_empty() && raw_imported != prev_imported;
+        if cap_tool_plot_map(&mut updated).is_err() {
+            for snap in updated.values_mut() {
+                snap.imported_datasets.retain(|ds| {
+                    ds.points
+                        .iter()
+                        .all(|p| p[0].is_finite() && p[1].is_finite())
+                });
+                let _ = snap.sanitize_and_validate();
+            }
+            updated.retain(|_, snap| !snap.is_default());
+        }
+        let changed = match self.saved_plot_states.get(&tool_name) {
             Some(existing) => existing != &updated,
             None => !updated.is_empty(),
         };
-        if changed {
+        if changed || imported_changed {
             if updated.is_empty() {
-                self.saved_plot_states.remove(tool_name);
+                self.saved_plot_states.remove(&tool_name);
             } else {
-                self.saved_plot_states.insert(tool_name.to_owned(), updated);
+                self.saved_plot_states.insert(tool_name, updated);
+            }
+            if imported_changed
+                && self
+                    .calibrate_active_tool_from_datasets(&raw_imported)
+                    .is_ok()
+            {
+                ctx.request_repaint();
             }
             self.bump_framework_revision();
         }
+    }
+
+    /// Returns all CSV datasets currently imported into `egui_plot` [`PlotMemory`](egui_plot::PlotMemory)
+    /// scopes for the active tool.
+    #[must_use]
+    pub fn latest_imported_datasets(&self) -> Vec<egui_plot::ImportedDataset> {
+        let Some(tool_name) = self.active_tool.as_ref().map(|t| t.name()) else {
+            return Vec::new();
+        };
+        self.saved_plot_states
+            .get(tool_name)
+            .map(collect_imported_datasets)
+            .unwrap_or_default()
     }
 
     /// Clears persisted manual 2D viewport bounds for the active tool while retaining overlays

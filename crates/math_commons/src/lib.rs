@@ -13,6 +13,7 @@ pub mod poi;
 #[allow(missing_docs)]
 pub mod primitives;
 pub mod registry;
+pub mod sensitivity;
 pub mod series;
 #[allow(missing_docs)]
 pub mod wigner;

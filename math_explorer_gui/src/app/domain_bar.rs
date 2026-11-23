@@ -100,22 +100,12 @@ pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize
     }
 }
 
-/// Polls cross-domain handoff triggers (e.g., `AttractorPlotter -> VietorisRipsTool`).
+#[path = "cross_tool_routing.rs"]
+mod cross_tool_routing;
+
+/// Polls instance-scoped [`crate::framework::CrossToolBus`] queues across all tabs and split panes.
 pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Context) {
-    #[cfg(feature = "pure_math")]
-    if crate::tabs::geometry_topology::vietoris_rips::handoff::take_open_vietoris_rips_request(ctx)
-    {
-        if let Some(tab_idx) = app
-            .tabs
-            .iter()
-            .position(|t| t.name() == "Geometry & Topology")
-        {
-            select_primary_tab(app, ctx, tab_idx);
-            let _ = app.tabs[tab_idx].select_tool_by_name("VietorisRipsTool");
-        }
-    }
-    #[cfg(not(feature = "pure_math"))]
-    let _ = (app, ctx);
+    cross_tool_routing::poll_cross_tab_tool_handoffs(app, ctx);
 }
 
 /// Explicitly updates Pane 0's primary simulation module (used by `View -> Primary Module`).

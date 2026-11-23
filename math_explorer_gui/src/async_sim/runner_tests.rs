@@ -239,13 +239,9 @@ fn test_mri_runner_offload() {
 }
 
 #[test]
-fn test_physics_and_chaos_runners_step_once() {
-    use crate::tabs::chaos::attractors::{
-        AttractorMode, AttractorRunner, AttractorSharedParams, SolverExecutionState,
-    };
+fn test_physics_runners_step_once() {
     use crate::tabs::mri::{MriRunner, MriSharedParams};
     use crate::tabs::solid_state::ising::{IsingRunner, IsingSharedParams};
-    use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
     use math_explorer::physics::mri::bloch::BlochSimulator;
     use math_explorer::physics::stat_mech::ising::SpinLattice;
     use math_explorer::pure_math::analysis::ode::RungeKutta4;
@@ -283,6 +279,15 @@ fn test_physics_and_chaos_runners_step_once() {
     mri.step_once();
     assert!((mri.current_time - 0.001).abs() < 1e-12);
     assert_eq!(mri.history.len(), 1);
+}
+
+#[test]
+fn test_chaos_runner_step_once() {
+    use crate::tabs::chaos::attractors::{
+        AttractorMode, AttractorRunner, AttractorSharedParams, SolverExecutionState,
+    };
+    use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
+    use std::collections::VecDeque;
 
     let mut attractor = AttractorRunner {
         system: LorenzBuilder::new().build(LorenzState::new(1.0, 1.0, 1.0)),
@@ -295,6 +300,8 @@ fn test_physics_and_chaos_runners_step_once() {
             max_points: 500,
             mode: AttractorMode::Lorenz,
             custom_flow: None,
+            live_landmark_seq: 0,
+            latest_live_landmarks: None,
         })),
         history: VecDeque::new(),
         step_count: 0,

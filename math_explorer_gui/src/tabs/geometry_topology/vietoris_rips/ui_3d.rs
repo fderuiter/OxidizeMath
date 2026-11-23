@@ -2,7 +2,6 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::handoff::{poll_live_attractor_landmarks, take_chaos_landmark_handoff};
 use super::presets::GeneratorDescriptor;
 use super::state::{SculptBrush, VrSourceMode};
 use super::{CloudSource, VietorisRipsTool, MAX_CHAOS_LANDMARKS};
@@ -14,13 +13,8 @@ use egui_plot::{Line, Points, Polygon};
 
 impl VietorisRipsTool {
     pub(super) fn poll_incoming_landmarks(&mut self, ctx: &egui::Context) {
-        if let Some(handoff) = take_chaos_landmark_handoff() {
-            let _ = self.ingest_chaos_handoff(handoff);
-        } else if self.mode == VrSourceMode::Lorenz3D && self.chaos.playing {
-            if let Some((seq, live)) = poll_live_attractor_landmarks(self.chaos.live_stream_seq) {
-                self.chaos.live_stream_seq = seq;
-                let _ = self.ingest_live_stream_landmarks(live);
-            } else {
+        if self.mode == VrSourceMode::Lorenz3D && self.chaos.playing {
+            if std::mem::take(&mut self.chaos.live_stream_seq) == 0 {
                 self.chaos.advance_live_steps(4);
                 let _ = self.rebuild_chaos_landmarks();
             }

@@ -1,7 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{resolve_trace_color, TraceSeries, TraceSnapshot, TraceSnapshotManager};
+use super::{
+    resolve_trace_color, KpiComparisonRow, ScenarioKpi, TraceSeries, TraceSnapshot,
+    TraceSnapshotManager,
+};
 use crate::accessibility::AccessibleHoverText;
+use crate::app::SemanticPalette;
 use eframe::egui;
 use egui_plot::{render_math_label, Line, LineStyle, PlotPoints, PlotUi};
 
@@ -55,6 +59,20 @@ impl TraceSnapshotManager {
     where
         F: FnOnce() -> Option<(String, String, Vec<TraceSeries>)>,
     {
+        self.render_ui_with_kpis(ui, &[], || {
+            pin_callback().map(|(label, summary, series)| (label, summary, series, Vec::new()))
+        })
+    }
+
+    pub fn render_ui_with_kpis<F>(
+        &mut self,
+        ui: &mut egui::Ui,
+        current_kpis: &[ScenarioKpi],
+        pin_callback: F,
+    ) -> bool
+    where
+        F: FnOnce() -> Option<(String, String, Vec<TraceSeries>, Vec<ScenarioKpi>)>,
+    {
         let mut changed = false;
         ui.group(|ui| {
             ui.vertical(|ui| {
@@ -66,6 +84,10 @@ impl TraceSnapshotManager {
                 }
                 if !self.snapshots.is_empty() {
                     changed |= self.render_pinned_section(ui);
+                }
+                let kpi_rows = self.kpi_comparison_rows(current_kpis);
+                if !kpi_rows.is_empty() {
+                    self.render_kpi_comparison_section(ui, current_kpis, &kpi_rows);
                 }
             });
         });
@@ -94,7 +116,7 @@ impl TraceSnapshotManager {
 
     fn render_pin_toolbar<F>(&mut self, ui: &mut egui::Ui, pin_callback: F) -> bool
     where
-        F: FnOnce() -> Option<(String, String, Vec<TraceSeries>)>,
+        F: FnOnce() -> Option<(String, String, Vec<TraceSeries>, Vec<ScenarioKpi>)>,
     {
         let mut changed = false;
         ui.horizontal(|ui| {
@@ -114,8 +136,8 @@ impl TraceSnapshotManager {
                 .accessible_hover_text(pin_hover);
 
             if pin_btn.clicked() && !full {
-                if let Some((label, param_summary, series)) = pin_callback() {
-                    if self.add_snapshot(label, param_summary, series) {
+                if let Some((label, param_summary, series, kpis)) = pin_callback() {
+                    if self.add_snapshot_with_kpis(label, param_summary, series, kpis) {
                         changed = true;
                     }
                 }
@@ -230,4 +252,100 @@ impl TraceSnapshotManager {
         }
         changed
     }
+
+    fn render_kpi_comparison_section(
+        &self,
+        ui: &mut egui::Ui,
+        current_kpis: &[ScenarioKpi],
+        rows: &[KpiComparisonRow],
+    ) {
+        ui.add_space(6.0);
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new("📊 Scenario KPI Comparison")
+                    .small()
+                    .strong(),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .button("⬇ Export KPI CSV")
+                    .accessible_hover_text("Export scenario KPI comparison table to CSV")
+                    .clicked()
+                {
+                    let csv = self.export_kpi_csv(current_kpis);
+                    ui.ctx().copy_text(csv.clone());
+                    #[cfg(not(test))]
+                    {
+                        let (tx, _rx) = std::sync::mpsc::channel();
+                        crate::web_io::spawn_save_as_file_dialog(
+                            tx,
+                            crate::web_io::SaveAsDialogConfig {
+                                filter_name: "CSV Spreadsheet (*.csv)",
+                                extensions: &["csv"],
+                                fallback_filename: "scenario_kpis.csv",
+                                write_error_prefix: "Failed to export KPI CSV",
+                            },
+                            "scenario_kpis.csv",
+                            csv,
+                            |path, _| path,
+                        );
+                    }
+                }
+            });
+        });
+
+        let palette = SemanticPalette::from_visuals(ui.visuals());
+        egui::Grid::new(ui.id().with("scenario_kpi_grid"))
+            .striped(true)
+            .spacing([10.0, 4.0])
+            .show(ui, |ui| {
+                for col in ["Scenario", "KPI", "Value", "Δ", "Δ%"] {
+                    ui.label(egui::RichText::new(col).small().strong());
+                }
+                ui.end_row();
+                for row in rows {
+                    render_kpi_grid_row(ui, row, &palette);
+                }
+            });
+    }
+}
+
+fn render_kpi_grid_row(ui: &mut egui::Ui, row: &KpiComparisonRow, palette: &SemanticPalette) {
+    ui.label(egui::RichText::new(&row.scenario_label).small());
+    let kpi_lbl = if row.unit.is_empty() {
+        row.kpi_name.clone()
+    } else {
+        format!("{} ({})", row.kpi_name, row.unit)
+    };
+    ui.label(egui::RichText::new(kpi_lbl).small());
+    ui.monospace(format!("{:.4}", row.value));
+    if row.is_reference {
+        ui.label(egui::RichText::new("ref").small().color(palette.muted_text));
+        ui.label(egui::RichText::new("—").small().color(palette.muted_text));
+    } else {
+        let delta_color = if row.abs_delta > 1e-12 {
+            palette.success
+        } else if row.abs_delta < -1e-12 {
+            palette.warning
+        } else {
+            palette.muted_text
+        };
+        ui.label(
+            egui::RichText::new(format!("{:+.4}", row.abs_delta))
+                .monospace()
+                .small()
+                .color(delta_color),
+        );
+        let pct_txt = row
+            .pct_delta
+            .map_or_else(|| "N/A".to_string(), |p| format!("{p:+.2}%"));
+        ui.label(
+            egui::RichText::new(pct_txt)
+                .monospace()
+                .small()
+                .color(delta_color),
+        );
+    }
+    ui.end_row();
 }

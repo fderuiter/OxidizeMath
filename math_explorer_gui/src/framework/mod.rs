@@ -1,3 +1,4 @@
+pub mod calibration;
 pub mod callout_overlay;
 pub mod challenge;
 mod challenge_hud;
@@ -6,6 +7,10 @@ mod challenge_hud_tests;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod cooperative_hooks;
+#[cfg(all(test, feature = "applied", feature = "pure_math"))]
+mod cooperative_hooks_tests;
+pub mod cross_tool_bus;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
@@ -59,9 +64,12 @@ pub mod trace_overlay;
 mod ui;
 mod url_share;
 
+pub use calibration::*;
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
+pub use cooperative_hooks::*;
+pub use cross_tool_bus::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
@@ -196,6 +204,53 @@ pub trait InteractiveTool {
     /// Named scalar observables exposed to the Challenge HUD and `math_commons::ast` evaluator.
     fn observables(&self) -> Vec<(&'static str, f64)> {
         Vec::new()
+    }
+
+    /// Bounded scalar parameters exposed to cooperative sensitivity, tornado, and Monte Carlo hooks.
+    fn sensitivity_parameters(&self) -> Vec<SensitivityParamSpec> {
+        Vec::new()
+    }
+
+    /// Evaluates a named scalar observable `(label, value)` at perturbed parameter values.
+    fn evaluate_sensitivity_observable(
+        &self,
+        _params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        None
+    }
+
+    /// Calibrates bounded tool parameters against imported `PlotMemory` CSV datasets.
+    fn calibrate_from_datasets(
+        &mut self,
+        _datasets: &[egui_plot::ImportedDataset],
+    ) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    /// Drains outgoing one-shot [`CrossToolEnvelope`] messages queued by this tool.
+    fn drain_cross_tool_envelopes(&mut self) -> Vec<CrossToolEnvelope> {
+        Vec::new()
+    }
+
+    /// Polls a newer live-stream [`CrossToolEnvelope`] when `seq > last_seq`.
+    fn poll_live_cross_tool_envelope(&mut self, _last_seq: u64) -> Option<CrossToolEnvelope> {
+        None
+    }
+
+    /// Consumes a one-shot [`CrossToolEnvelope`] routed to this tool.
+    fn receive_cross_tool_envelope(
+        &mut self,
+        _envelope: CrossToolEnvelope,
+    ) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    /// Consumes a live-stream [`CrossToolEnvelope`] routed to this tool.
+    fn receive_live_cross_tool_envelope(
+        &mut self,
+        _envelope: CrossToolEnvelope,
+    ) -> Result<bool, String> {
+        Ok(false)
     }
 
     /// Synchronizes declarative guided story or challenge callout pins onto the tool's plot.
@@ -355,25 +410,7 @@ pub trait InteractiveTool {
         &mut self,
         num_frames: usize,
     ) -> Vec<egui_plot::export::DatasetFrame> {
-        let count = num_frames.max(1);
-        let mut frames = Vec::with_capacity(count);
-
-        for _ in 0..count {
-            self.step_simulation();
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames.push(ds);
-            }
-        }
-
-        if frames.is_empty() {
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames = egui_plot::export::sample_progressive_frames(&ds, count);
-            }
-        }
-
-        frames
+        cooperative_hooks::sample_tool_animation_frames(self, num_frames)
     }
 
     /// Returns a type-erased reference for test inspection of concrete tool state.
@@ -407,6 +444,7 @@ pub struct SimulationFramework {
     pub selected_tool_index: Option<usize>,
     pub input_mode: InputMode,
     pub show_theory_portal: bool,
+    pub show_sensitivity_panel: bool,
     pub show_starter_gallery: bool,
     pub saved_tool_states: std::collections::HashMap<String, String>,
     pub saved_plot_states: plot_persistence::SavedPlotStatesMap,
@@ -446,6 +484,8 @@ pub struct SimulationFramework {
     /// Active inverse challenge contract displayed in the Challenge HUD, if any.
     pub active_challenge: Option<&'static ChallengeMetadata>,
     pub(super) challenge_was_passed: bool,
+    pub cross_tool_bus: CrossToolBus,
+    pub cooperative_sensitivity: CooperativeSensitivityState,
     pub(super) instance_id: u64,
     pub(super) sync_state: FrameworkSyncState,
     pub(super) rev_cache: FrameworkRevisionCache,

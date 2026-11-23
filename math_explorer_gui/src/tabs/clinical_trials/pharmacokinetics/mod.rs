@@ -4,6 +4,7 @@
 
 pub mod challenge;
 pub mod export;
+pub mod hooks;
 pub mod metrics;
 pub mod model;
 pub mod persistence;
@@ -343,6 +344,24 @@ impl InteractiveTool for PharmacokineticsTool {
 
     fn clamp_parameters(&mut self) -> bool {
         self.clamp_all_parameters()
+    }
+
+    fn sensitivity_parameters(&self) -> Vec<crate::framework::SensitivityParamSpec> {
+        self.pk_sensitivity_parameters()
+    }
+
+    fn evaluate_sensitivity_observable(
+        &self,
+        params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        self.eval_pk_sensitivity_observable(params)
+    }
+
+    fn calibrate_from_datasets(
+        &mut self,
+        datasets: &[egui_plot::ImportedDataset],
+    ) -> Result<bool, String> {
+        self.calibrate_pk_from_datasets(datasets)
     }
 
     fn save_state(&self) -> Option<String> {

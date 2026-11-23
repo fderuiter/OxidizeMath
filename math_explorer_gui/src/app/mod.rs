@@ -460,6 +460,7 @@ impl eframe::App for MathExplorerApp {
         } else {
             viewport::render_single_pane_viewport(self, ctx, frame);
         }
+        domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
         self.drain_workspace_history_bridge(ctx);
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);

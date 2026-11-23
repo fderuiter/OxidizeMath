@@ -354,6 +354,36 @@ impl InteractiveTool for BankrollGrowthTool {
         self.callout_manager.sync_specs(callouts);
     }
 
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.export_kelly_datasets()
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.check_finite_params()
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        self.clamp_bankroll_params()
+    }
+
+    fn sensitivity_parameters(&self) -> Vec<crate::framework::SensitivityParamSpec> {
+        self.build_sensitivity_specs()
+    }
+
+    fn evaluate_sensitivity_observable(
+        &self,
+        params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        self.eval_sensitivity_from_pairs(params)
+    }
+
+    fn calibrate_from_datasets(
+        &mut self,
+        datasets: &[egui_plot::ImportedDataset],
+    ) -> Result<bool, String> {
+        self.calibrate_from_csv(datasets)
+    }
+
     fn save_state(&self) -> Option<String> {
         self.save_state_json()
     }

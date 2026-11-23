@@ -38,10 +38,35 @@ biology = ["applied", "pure_math", "dep:domain_biology"]
 climate = ["ai", "pure_math", "dep:domain_climate"]
 epidemiology = ["pure_math", "dep:domain_epidemiology"]
 physics = ["applied", "pure_math", "dep:domain_physics"]
+cli = []
+
+[[bin]]
+name = "math_explorer"
+path = "src/bin/math_explorer.rs"
+required-features = ["cli"]
 
 [dev-dependencies]
 approx = { workspace = true }
 criterion = { workspace = true }
+
+[[bench]]
+name = "math_commons_benchmark"
+harness = false
+
+[[bench]]
+name = "pure_math_benchmark"
+harness = false
+required-features = ["pure_math"]
+
+[[bench]]
+name = "applied_benchmark"
+harness = false
+required-features = ["applied"]
+
+[[bench]]
+name = "ai_benchmark"
+harness = false
+required-features = ["ai"]
 
 [[bench]]
 name = "sorting_benchmark"

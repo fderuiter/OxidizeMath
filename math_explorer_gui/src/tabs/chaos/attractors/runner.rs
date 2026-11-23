@@ -5,8 +5,7 @@ use super::serde_vec3;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use crate::tabs::geometry_topology::vietoris_rips::{
-    handoff::{publish_live_attractor_landmarks, ChaosLandmarkHandoff},
-    MAX_CHAOS_LANDMARKS,
+    handoff::ChaosLandmarkHandoff, MAX_CHAOS_LANDMARKS,
 };
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
@@ -39,6 +38,8 @@ pub struct AttractorSharedParams {
     pub max_points: usize,
     pub mode: AttractorMode,
     pub custom_flow: Option<Arc<CompiledFlowJob>>,
+    pub live_landmark_seq: u64,
+    pub latest_live_landmarks: Option<ChaosLandmarkHandoff>,
 }
 
 #[derive(Clone)]
@@ -210,7 +211,9 @@ impl SimulationRunner for AttractorRunner {
                 .map(|v| Point3D::new(v.x, v.y, v.z))
                 .collect();
             if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
-                publish_live_attractor_landmarks(ChaosLandmarkHandoff {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                p.live_landmark_seq = p.live_landmark_seq.wrapping_add(1).max(1);
+                p.latest_live_landmarks = Some(ChaosLandmarkHandoff {
                     points: landmarks,
                     sigma: self.system.sigma,
                     rho: self.system.rho,

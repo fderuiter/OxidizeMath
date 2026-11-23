@@ -72,6 +72,100 @@ impl InteractiveTool for CapacityFadeTool {
         vec![("Capacity".to_string(), self.capacity_curve_points())]
     }
 
+    fn has_finite_parameters(&self) -> bool {
+        self.dod.is_finite()
+            && (0.0..=100.0).contains(&self.dod)
+            && self.temperature.is_finite()
+            && self.cycles_to_simulate.is_finite()
+            && self.cycles_to_simulate >= 100.0
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        self.dod = if self.dod.is_finite() {
+            self.dod.clamp(0.0, 100.0)
+        } else {
+            80.0
+        };
+        self.temperature = if self.temperature.is_finite() {
+            self.temperature.clamp(-20.0, 60.0)
+        } else {
+            25.0
+        };
+        self.cycles_to_simulate = if self.cycles_to_simulate.is_finite() {
+            self.cycles_to_simulate.clamp(100.0, 10_000.0)
+        } else {
+            2000.0
+        };
+        true
+    }
+
+    fn sensitivity_parameters(&self) -> Vec<crate::framework::SensitivityParamSpec> {
+        use crate::framework::SensitivityParamSpec;
+        vec![
+            SensitivityParamSpec::new(
+                "dod",
+                "Depth of Discharge (%)",
+                self.dod.clamp(1.0, 100.0),
+                5.0,
+                100.0,
+            ),
+            SensitivityParamSpec::new(
+                "cycles_to_simulate",
+                "Simulation Horizon (cycles)",
+                self.cycles_to_simulate.clamp(100.0, 10_000.0),
+                100.0,
+                10_000.0,
+            ),
+        ]
+    }
+
+    fn evaluate_sensitivity_observable(
+        &self,
+        params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        let mut dod = self.dod;
+        let mut horizon = self.cycles_to_simulate;
+        for &(k, v) in params {
+            if !v.is_finite() {
+                return None;
+            }
+            match k {
+                "dod" => dod = v.clamp(0.5, 100.0),
+                "cycles_to_simulate" => horizon = v.clamp(10.0, 20_000.0),
+                _ => {}
+            }
+        }
+        let model = PowerLawModel::standard();
+        let c = Cycles::new(horizon).ok()?;
+        let d = DepthOfDischarge::new(dod).ok()?;
+        let cap = model.capacity(c, d).as_f64();
+        cap.is_finite()
+            .then_some(("Remaining Capacity at Horizon", cap))
+    }
+
+    fn calibrate_from_datasets(
+        &mut self,
+        datasets: &[egui_plot::ImportedDataset],
+    ) -> Result<bool, String> {
+        use crate::framework::{
+            extract_calibration_series, fit_bounded_parameters, CalibratableParamSpec,
+        };
+        let points = extract_calibration_series(datasets)?;
+        let model = PowerLawModel::standard();
+        let specs = [CalibratableParamSpec::new("dod", 50.0, 1.0, 100.0)];
+        let fitted = fit_bounded_parameters(points, &specs, |cycle, theta| {
+            let c = Cycles::new(cycle.max(0.0)).ok()?;
+            let d = DepthOfDischarge::new(theta[0]).ok()?;
+            Some(model.capacity(c, d).as_f64())
+        })?;
+        self.dod = fitted[0].clamp(1.0, 100.0);
+        let max_x = points.iter().fold(0.0_f64, |acc, pt| acc.max(pt[0]));
+        if max_x >= 100.0 {
+            self.cycles_to_simulate = max_x.clamp(100.0, 10_000.0);
+        }
+        Ok(true)
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.dod = self.dod.clamp(0.0, 100.0);
         self.cycles_to_simulate = self.cycles_to_simulate.max(100.0);

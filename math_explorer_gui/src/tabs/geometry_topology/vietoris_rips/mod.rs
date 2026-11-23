@@ -21,7 +21,7 @@ mod wasm_tests;
 
 pub use io::MAX_VIETORIS_RIPS_POINTS;
 
-use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool};
+use crate::framework::{Camera3D, CrossToolEnvelope, ExportCapabilities, InteractiveTool};
 use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
 use eframe::egui;
 use egui_plot::PlotPoint;
@@ -391,8 +391,33 @@ impl InteractiveTool for VietorisRipsTool {
         }
     }
 
+    fn receive_cross_tool_envelope(&mut self, envelope: CrossToolEnvelope) -> Result<bool, String> {
+        self.apply_cross_tool_payload(envelope.payload, false, envelope.seq)
+    }
+
+    fn receive_live_cross_tool_envelope(
+        &mut self,
+        envelope: CrossToolEnvelope,
+    ) -> Result<bool, String> {
+        if self.mode == VrSourceMode::Lorenz3D && self.chaos.playing {
+            self.apply_cross_tool_payload(envelope.payload, true, envelope.seq)
+        } else {
+            Ok(false)
+        }
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         plots::render_workbench(self, ui);
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 

@@ -181,7 +181,7 @@ fn capture_isolated_tool_datasets_3d(tool: &dyn InteractiveTool) -> Vec<(String,
 }
 
 impl SimulationFramework {
-    #[allow(missing_docs)]
+    /// Constructs a [`SimulationFramework`] populated with tools registered for `domain`.
     pub fn new(domain: &str) -> Self {
         let mut available_tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>
             .into_iter()
@@ -194,6 +194,7 @@ impl SimulationFramework {
             selected_tool_index: None,
             input_mode: InputMode::Mouse,
             show_theory_portal: false,
+            show_sensitivity_panel: false,
             show_starter_gallery: false,
             saved_tool_states: HashMap::new(),
             saved_plot_states: std::collections::BTreeMap::new(),
@@ -222,6 +223,8 @@ impl SimulationFramework {
             challenge_hud: ChallengeHudState::default(),
             active_challenge: None,
             challenge_was_passed: false,
+            cross_tool_bus: CrossToolBus::new(),
+            cooperative_sensitivity: CooperativeSensitivityState::default(),
             instance_id: overlay_sync::next_framework_id(),
             sync_state: FrameworkSyncState::default(),
             rev_cache: FrameworkRevisionCache::default(),
@@ -407,6 +410,7 @@ impl SimulationFramework {
         self.clear_challenge_hud();
         self.active_challenge = None;
         self.challenge_was_passed = false;
+        self.cooperative_sensitivity = CooperativeSensitivityState::default();
         self.selected_tool_index = Some(index);
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();

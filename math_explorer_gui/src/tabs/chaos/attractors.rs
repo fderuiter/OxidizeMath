@@ -2,7 +2,8 @@
 
 use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::{
-    Camera3D, CoupledExpressionBank, ExportCapabilities, InteractiveTool, Scene3DBuilder,
+    Camera3D, CoupledExpressionBank, CrossToolEnvelope, ExportCapabilities, InteractiveTool,
+    Scene3DBuilder,
 };
 use eframe::egui;
 use egui_plot::{LineStyle, MarkerShape};
@@ -70,6 +71,8 @@ impl Default for AttractorPlotter {
             max_points: 2000,
             mode: AttractorMode::Lorenz,
             custom_flow,
+            live_landmark_seq: 0,
+            latest_live_landmarks: None,
         }));
         let runner = AttractorRunner::from_params(Arc::clone(&params));
         let worker = BackgroundWorker::new(runner);
@@ -309,18 +312,8 @@ impl InteractiveTool for AttractorPlotter {
         self.diverged().hash(&mut h);
         self.show_annotations.hash(&mut h);
         for offset in &self.fixed_callout_offsets {
-            let x_bits = if offset.x == 0.0 {
-                0
-            } else {
-                offset.x.to_bits()
-            };
-            let y_bits = if offset.y == 0.0 {
-                0
-            } else {
-                offset.y.to_bits()
-            };
-            x_bits.hash(&mut h);
-            y_bits.hash(&mut h);
+            (offset.x.to_bits() * u32::from(offset.x != 0.0)).hash(&mut h);
+            (offset.y.to_bits() * u32::from(offset.y != 0.0)).hash(&mut h);
         }
         self.camera.hash_state(&mut h);
         h.finish().max(1)
@@ -412,6 +405,16 @@ impl InteractiveTool for AttractorPlotter {
         vec![("Trajectory".to_string(), points)]
     }
 
+    fn drain_cross_tool_envelopes(&mut self) -> Vec<CrossToolEnvelope> {
+        self.drain_queued_envelopes()
+    }
+    fn poll_live_cross_tool_envelope(&mut self, last_seq: u64) -> Option<CrossToolEnvelope> {
+        self.poll_live_envelope(last_seq)
+    }
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let current_vec = self.system.state.vec;

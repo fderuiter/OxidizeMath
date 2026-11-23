@@ -9,6 +9,8 @@ use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
 use nalgebra::{DMatrix, DVector};
 use std::collections::{BTreeMap, BTreeSet};
 
+#[path = "replicator/hooks.rs"]
+mod hooks;
 #[path = "replicator/presets.rs"]
 mod presets;
 #[path = "replicator/ui.rs"]
@@ -296,6 +298,32 @@ impl InteractiveTool for ReplicatorDynamicsTool {
 
     fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
         self.callout_manager.sync_specs(callouts);
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.export_replicator_datasets()
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.check_replicator_finite()
+    }
+
+    fn sensitivity_parameters(&self) -> Vec<crate::framework::SensitivityParamSpec> {
+        self.replicator_sensitivity_specs()
+    }
+
+    fn evaluate_sensitivity_observable(
+        &self,
+        params: &[(&str, f64)],
+    ) -> Option<(&'static str, f64)> {
+        self.eval_replicator_sensitivity(params)
+    }
+
+    fn calibrate_from_datasets(
+        &mut self,
+        datasets: &[egui_plot::ImportedDataset],
+    ) -> Result<bool, String> {
+        self.calibrate_replicator_from_csv(datasets)
     }
 
     fn save_state(&self) -> Option<String> {

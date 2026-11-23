@@ -808,6 +808,21 @@
       "signature": "pub mod __doctest_facade { pub mod error }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: ai :: transformer :: Encoder } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: ai :: transformer :: FeedForward } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: ai :: transformer :: LayerNorm } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: ai :: transformer :: MultiHeadAttention } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: ai :: transformer :: attention :: scaled_dot_product_attention } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: AIError } }"
     },
     {
@@ -866,6 +881,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: sensitivity }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: series }"
@@ -2576,6 +2594,54 @@
       "signature": "pub mod __doctest_facade { pub mod error }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: battery_degradation :: Capacity } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: battery_degradation :: Cycles } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: battery_degradation :: DepthOfDischarge } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: battery_degradation :: PowerLawModel } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: battery_degradation :: model :: DegradationModel } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: clinical_trials :: sample_size :: calculate_sample_size_means } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: clinical_trials :: sample_size :: calculate_sample_size_proportions } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: clinical_trials :: survival_analysis :: Observation } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: clinical_trials :: survival_analysis :: TimePoint } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: clinical_trials :: survival_analysis :: kaplan_meier } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: game_theory :: evolutionary :: ReplicatorDynamics } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: pharmacokinetics :: BatemanModel } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: pharmacokinetics :: PKParameters } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: pharmacokinetics :: PharmacokineticModel } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: pharmacokinetics :: SuperpositionModel } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: applied :: pharmacokinetics :: concentration_bateman } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: AppliedError } }"
     },
     {
@@ -2661,6 +2727,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: sensitivity }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: series }"
@@ -3425,6 +3494,9 @@
       "signature": "pub mod __doctest_facade { pub mod error }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: biology :: neuroscience :: HodgkinHuxleyNeuron } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: BiologyError } }"
     },
     {
@@ -3495,6 +3567,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: sensitivity }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: series }"
@@ -3719,6 +3794,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: sensitivity }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: series }"
@@ -4143,6 +4221,9 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: sensitivity }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: series }"
     },
     {
@@ -4266,6 +4347,12 @@
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: StatMechError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: physics :: chaos :: lorenz :: LorenzState } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: physics :: chaos :: lorenz :: LorenzSystem } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use domain_applied :: __doctest_facade :: prelude :: * } }"
     },
     {
@@ -4324,6 +4411,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: sensitivity }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: series }"
@@ -7170,6 +7260,126 @@
       "signature": "pub const TOLERANCE_STANDARD_F32 : f32"
     }
   ],
+  "crates/math_commons/src/sensitivity/mod.rs": [
+    {
+      "signature": "impl SensitivityEngine { pub fn compute < K , F > (& mut self , _ : & [(K , f64)] , _ : F) -> & Vec < SensitivityMetric > where K : AsRef < str > , F : FnMut (& HashMap < String , f64 >) -> f64 , }"
+    },
+    {
+      "signature": "impl SensitivityEngine { pub fn compute_slice < K , F > (& mut self , _ : & [(K , f64)] , _ : F ,) -> & [SensitivityMetric] where K : AsRef < str > , F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl SensitivityEngine { pub fn compute_with_context < K , C , F > (& mut self , _ : & [(K , f64)] , _ : & C , _ : F ,) -> & Vec < SensitivityMetric > where K : AsRef < str > , C : Hash , F : FnMut (& HashMap < String , f64 >) -> f64 , }"
+    },
+    {
+      "signature": "impl SensitivityEngine { pub fn has_pending_work (& self) -> bool }"
+    },
+    {
+      "signature": "impl SensitivityEngine { pub fn is_converged (& self) -> bool }"
+    },
+    {
+      "signature": "impl SensitivityEngine { pub fn is_monte_carlo_converged (& self) -> bool }"
+    },
+    {
+      "signature": "impl SensitivityEngine { pub fn is_tornado_converged (& self) -> bool }"
+    },
+    {
+      "signature": "impl SensitivityEngine { pub fn matches_cache < K : AsRef < str > , C : Hash > (& self , _ : & [(K , f64)] , _ : & C) -> bool }"
+    },
+    {
+      "signature": "impl SensitivityEngine { pub fn monte_carlo_summary (& self) -> Option < & MonteCarloSummary > }"
+    },
+    {
+      "signature": "impl SensitivityEngine { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl SensitivityEngine { pub fn tornado_intervals (& self) -> & [TornadoInterval] }"
+    },
+    {
+      "signature": "pub const HIGH_SENSITIVITY_THRESHOLD : f64"
+    },
+    {
+      "signature": "pub const MAX_SENSITIVITY_BATCH_EVALS : usize"
+    },
+    {
+      "signature": "pub fn canonical_f64_bits (_ : f64) -> u64"
+    },
+    {
+      "signature": "pub struct SensitivityEngine"
+    },
+    {
+      "signature": "pub struct SensitivityMetric"
+    },
+    {
+      "signature": "pub use monte_carlo :: DEFAULT_MONTE_CARLO_SAMPLES"
+    },
+    {
+      "signature": "pub use monte_carlo :: DEFAULT_MONTE_CARLO_SEED"
+    },
+    {
+      "signature": "pub use monte_carlo :: MonteCarloSummary"
+    },
+    {
+      "signature": "pub use monte_carlo :: ParameterUncertainty"
+    },
+    {
+      "signature": "pub use monte_carlo :: SplitMix64"
+    },
+    {
+      "signature": "pub use tornado :: TornadoBounds"
+    },
+    {
+      "signature": "pub use tornado :: TornadoInterval"
+    }
+  ],
+  "crates/math_commons/src/sensitivity/monte_carlo.rs": [
+    {
+      "signature": "impl ParameterUncertainty { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ParameterUncertainty { pub fn relative (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SplitMix64 { pub const fn new (_ : u64) -> Self }"
+    },
+    {
+      "signature": "impl SplitMix64 { pub fn next_open_unit_f64 (& mut self) -> f64 }"
+    },
+    {
+      "signature": "impl SplitMix64 { pub fn next_standard_normal (& mut self) -> f64 }"
+    },
+    {
+      "signature": "impl SplitMix64 { pub fn next_u64 (& mut self) -> u64 }"
+    },
+    {
+      "signature": "pub const DEFAULT_MONTE_CARLO_SAMPLES : usize"
+    },
+    {
+      "signature": "pub const DEFAULT_MONTE_CARLO_SEED : u64"
+    },
+    {
+      "signature": "pub struct MonteCarloSummary"
+    },
+    {
+      "signature": "pub struct ParameterUncertainty"
+    },
+    {
+      "signature": "pub struct SplitMix64"
+    }
+  ],
+  "crates/math_commons/src/sensitivity/tornado.rs": [
+    {
+      "signature": "impl TornadoBounds { pub fn new (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TornadoBounds { pub fn relative (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct TornadoBounds"
+    },
+    {
+      "signature": "pub struct TornadoInterval"
+    }
+  ],
   "crates/math_commons/src/series.rs": [
     {
       "signature": "pub trait PointSeries"
@@ -7756,13 +7966,118 @@
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: math_types :: Rational } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: analysis :: ode :: ArrayState } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: analysis :: ode :: Euler } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: analysis :: ode :: Heun } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: analysis :: ode :: IntegrationMethod } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: analysis :: ode :: OdeModel } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: analysis :: ode :: OdeSystem } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: analysis :: ode :: RungeKutta4 } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: analysis :: ode :: Solver } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: analysis :: ode :: SolverExt } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: analysis :: ode :: TimeStepper } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: analysis :: ode :: VecState } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: glicko2 :: GlickoPlayer } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: glicko2 :: MatchResult } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: glicko2 :: Rating } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: glicko2 :: RatingDeviation } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: glicko2 :: SystemConstant } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: glicko2 :: Volatility } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: glicko2 :: update_rating } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: kelly :: BankrollFraction } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: kelly :: Odds } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: kelly :: expected_growth_rate } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: kelly :: kelly_fraction } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: tda :: PersistenceInterval } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: tda :: RipsPersistenceResult } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: tda :: SimplicialComplex } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: tda :: TdaFiltrationWorkspace } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: tda :: betti_numbers } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: pure_math :: statistics :: tda :: compute_rips_persistence } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use diagnostics :: Diagnostic } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use diagnostics :: Severity } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: fit :: CurveFit } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: fit :: FitModel } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: fit :: MAX_FIT_PARAMS } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: fit :: fit_model } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: fit :: levenberg_marquardt_numeric } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: fit :: sum_squared_errors_numeric } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: poi :: closest_threshold_crossing } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: poi :: intersect_polylines } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: primitives :: NonNegativeFloat } }"
@@ -7772,6 +8087,27 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: primitives :: UnitInterval } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: sensitivity :: MonteCarloSummary } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: sensitivity :: ParameterUncertainty } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: sensitivity :: SensitivityEngine } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: sensitivity :: SensitivityMetric } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: sensitivity :: SplitMix64 } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: sensitivity :: TornadoBounds } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: sensitivity :: TornadoInterval } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use math_commons :: series :: PointSeries } }"
@@ -7832,6 +8168,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use math_commons :: registry }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_commons :: sensitivity }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use math_commons :: series }"
@@ -11923,6 +12262,9 @@
       "signature": "pub use math_commons :: registry"
     },
     {
+      "signature": "pub use math_commons :: sensitivity"
+    },
+    {
       "signature": "pub use math_commons :: series"
     },
     {
@@ -11970,7 +12312,100 @@
       "signature": "pub use diagnostics :: Severity"
     },
     {
+      "signature": "pub use domain_ai :: ai :: transformer :: Encoder"
+    },
+    {
+      "signature": "pub use domain_ai :: ai :: transformer :: FeedForward"
+    },
+    {
+      "signature": "pub use domain_ai :: ai :: transformer :: LayerNorm"
+    },
+    {
+      "signature": "pub use domain_ai :: ai :: transformer :: MultiHeadAttention"
+    },
+    {
+      "signature": "pub use domain_ai :: ai :: transformer :: attention :: scaled_dot_product_attention"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: battery_degradation :: Capacity"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: battery_degradation :: Cycles"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: battery_degradation :: DepthOfDischarge"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: battery_degradation :: PowerLawModel"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: battery_degradation :: model :: DegradationModel"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: clinical_trials :: sample_size :: calculate_sample_size_means"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: clinical_trials :: sample_size :: calculate_sample_size_proportions"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: clinical_trials :: survival_analysis :: Observation"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: clinical_trials :: survival_analysis :: TimePoint"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: clinical_trials :: survival_analysis :: kaplan_meier"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: game_theory :: evolutionary :: ReplicatorDynamics"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: pharmacokinetics :: BatemanModel"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: pharmacokinetics :: PKParameters"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: pharmacokinetics :: PharmacokineticModel"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: pharmacokinetics :: SuperpositionModel"
+    },
+    {
+      "signature": "pub use domain_applied :: applied :: pharmacokinetics :: concentration_bateman"
+    },
+    {
+      "signature": "pub use domain_biology :: biology :: neuroscience :: HodgkinHuxleyNeuron"
+    },
+    {
+      "signature": "pub use domain_physics :: physics :: chaos :: lorenz :: LorenzState"
+    },
+    {
+      "signature": "pub use domain_physics :: physics :: chaos :: lorenz :: LorenzSystem"
+    },
+    {
+      "signature": "pub use math_commons :: fit :: CurveFit"
+    },
+    {
       "signature": "pub use math_commons :: fit :: FitModel"
+    },
+    {
+      "signature": "pub use math_commons :: fit :: MAX_FIT_PARAMS"
+    },
+    {
+      "signature": "pub use math_commons :: fit :: fit_model"
+    },
+    {
+      "signature": "pub use math_commons :: fit :: levenberg_marquardt_numeric"
+    },
+    {
+      "signature": "pub use math_commons :: fit :: sum_squared_errors_numeric"
+    },
+    {
+      "signature": "pub use math_commons :: poi :: closest_threshold_crossing"
+    },
+    {
+      "signature": "pub use math_commons :: poi :: intersect_polylines"
     },
     {
       "signature": "pub use math_commons :: primitives :: NonNegativeFloat"
@@ -11980,6 +12415,27 @@
     },
     {
       "signature": "pub use math_commons :: primitives :: UnitInterval"
+    },
+    {
+      "signature": "pub use math_commons :: sensitivity :: MonteCarloSummary"
+    },
+    {
+      "signature": "pub use math_commons :: sensitivity :: ParameterUncertainty"
+    },
+    {
+      "signature": "pub use math_commons :: sensitivity :: SensitivityEngine"
+    },
+    {
+      "signature": "pub use math_commons :: sensitivity :: SensitivityMetric"
+    },
+    {
+      "signature": "pub use math_commons :: sensitivity :: SplitMix64"
+    },
+    {
+      "signature": "pub use math_commons :: sensitivity :: TornadoBounds"
+    },
+    {
+      "signature": "pub use math_commons :: sensitivity :: TornadoInterval"
     },
     {
       "signature": "pub use math_commons :: series :: PointSeries"
@@ -12013,6 +12469,90 @@
     },
     {
       "signature": "pub use pure_math :: math_types :: Rational"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: ArrayState"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: Euler"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: Heun"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: IntegrationMethod"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: OdeModel"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: OdeSystem"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: RungeKutta4"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: Solver"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: SolverExt"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: TimeStepper"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: VecState"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2 :: GlickoPlayer"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2 :: MatchResult"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2 :: Rating"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2 :: RatingDeviation"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2 :: SystemConstant"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2 :: Volatility"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2 :: update_rating"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: kelly :: BankrollFraction"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: kelly :: Odds"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: kelly :: expected_growth_rate"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: kelly :: kelly_fraction"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: tda :: PersistenceInterval"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: tda :: RipsPersistenceResult"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: tda :: SimplicialComplex"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: tda :: TdaFiltrationWorkspace"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: tda :: betti_numbers"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: tda :: compute_rips_persistence"
     }
   ]
 }

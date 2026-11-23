@@ -1,37 +1,7 @@
 use super::*;
 use eframe::egui;
 
-pub(crate) fn format_theory_context_key(key: &str) -> String {
-    match key.trim() {
-        "g_na" => "Sodium Conductance".to_string(),
-        "g_k" => "Potassium Conductance".to_string(),
-        "g_l" => "Leak Conductance".to_string(),
-        "i_ext" => "External Stimulus Current".to_string(),
-        "potential_type" => "Potential Profile".to_string(),
-        "dt" => "Time Step".to_string(),
-        "params" => "Model Parameters".to_string(),
-        "viscosity" => "Kinematic Viscosity".to_string(),
-        other if other.contains('_') => other
-            .split('_')
-            .filter(|s| !s.is_empty())
-            .map(|w| {
-                let mut chars = w.chars();
-                match chars.next() {
-                    Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
-                    None => String::new(),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-        other => {
-            let mut chars = other.chars();
-            match chars.next() {
-                Some(c) if c.is_lowercase() => format!("{}{}", c.to_uppercase(), chars.as_str()),
-                _ => other.to_string(),
-            }
-        }
-    }
-}
+pub(crate) use super::cooperative_hooks::format_theory_context_key;
 
 fn has_interactive_ui_input(ctx: &egui::Context) -> bool {
     ctx.input(|i| {
@@ -444,7 +414,9 @@ impl SimulationFramework {
         self.render_challenge_hud_panel(ui, &ctx, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
+        self.show_cooperative_sensitivity_panel(ui, id_source);
 
+        let _ = self.deliver_tool_bus_inbox(Some(&ctx));
         self.begin_plot_scope(&ctx);
         if !self.is_diverged {
             self.cache_valid_snapshot();
@@ -472,6 +444,7 @@ impl SimulationFramework {
             });
         }
         self.end_plot_scope(&ctx);
+        self.collect_tool_bus_outbox(Some(&ctx));
 
         if !interactive_input
             && crate::reflective_ui::slider::live_sweep_mutation_count(&ctx) > sweep_mut_before

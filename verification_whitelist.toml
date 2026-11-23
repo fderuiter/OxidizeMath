@@ -145,6 +145,9 @@ allowlist = [
     "docs/adr/0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md",
     "docs/adr/0043-paradox-lab-interactive-tab.md",
     "docs/adr/0043-repair-guides-and-enforce-static-doc-gates.md",
+    "docs/adr/0044-geodesic-engine-and-relativity-tab.md",
+    "docs/adr/0044-ratchet-missing-docs-and-core-api-documentation.md",
+    "docs/adr/0044-unify-build-time-traceability-engine.md",
 ]
 
 [[unused_dependencies]]
@@ -248,7 +251,6 @@ vendored_crates = [
 "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/mod.rs" = 4
 "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/model.rs" = 6
 "crates/domain_physics/src/physics/fluid_dynamics/turbulence.rs" = 4
-"crates/domain_physics/src/physics/high_energy/general_relativity.rs" = 1
 "crates/domain_physics/src/physics/high_energy/mod.rs" = 5
 "crates/domain_physics/src/physics/medical/dose/kernel.rs" = 3
 "crates/domain_physics/src/physics/medical/dose/mod.rs" = 2
@@ -347,7 +349,7 @@ vendored_crates = [
 "math_explorer_gui/src/async_sim/unified/mod.rs" = 4
 "math_explorer_gui/src/async_sim/unified/tool.rs" = 3
 "math_explorer_gui/src/camera/mod.rs" = 1
-"math_explorer_gui/src/framework/mod.rs" = 9
+"math_explorer_gui/src/framework/mod.rs" = 8
 "math_explorer_gui/src/framework/ui.rs" = 2
 "math_explorer_gui/src/main.rs" = 6
 "math_explorer_gui/src/tabs/ai/q_table_inspector/runner.rs" = 2
