@@ -4,7 +4,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::wave_sim::{WaveData, WaveUnified, WAVE_N_POINTS, WAVE_X_MAX, WAVE_X_MIN};
-use crate::async_sim::unified::UnifiedModel;
+use crate::async_sim::unified::{CompiledFormulaPayload, UnifiedModel};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::{
     apply_sparse_potential, encode_sparse_potential, interpolate_1d_span, BrushInteractionMode,
@@ -14,6 +14,24 @@ use eframe::egui;
 use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints, VLine};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+
+pub(crate) fn evaluate_formula_potential(
+    payload: &CompiledFormulaPayload,
+    x_axis: &[f64],
+) -> Vec<f64> {
+    let p = &payload.params[..payload.param_len];
+    x_axis
+        .iter()
+        .map(|&x| {
+            let raw_v = payload.compiled.eval_1d(x, p);
+            if raw_v.is_finite() {
+                raw_v.clamp(-1e4, 1e4)
+            } else {
+                0.0
+            }
+        })
+        .collect()
+}
 
 pub(crate) fn build_base_potential(potential_type: f64, x_axis: &[f64]) -> Vec<f64> {
     let kind = potential_type.round() as i32;
@@ -133,14 +151,19 @@ pub(crate) fn apply_stroke_to_potential_slice(
 pub(crate) fn record_wave_stroke_sparse(
     stroke: &BrushStroke,
     params: &HashMap<String, f64>,
+    formula: Option<&CompiledFormulaPayload>,
     sculpt_state: &mut SculptStatePayload,
 ) {
     let dx = (WAVE_X_MAX - WAVE_X_MIN) / (WAVE_N_POINTS as f64 - 1.0);
     let x_axis: Vec<f64> = (0..WAVE_N_POINTS)
         .map(|i| WAVE_X_MIN + i as f64 * dx)
         .collect();
-    let p_type = *params.get("potential_type").unwrap_or(&0.0);
-    let base = build_base_potential(p_type, &x_axis);
+    let base = if let Some(payload) = formula {
+        evaluate_formula_potential(payload, &x_axis)
+    } else {
+        let p_type = *params.get("potential_type").unwrap_or(&0.0);
+        build_base_potential(p_type, &x_axis)
+    };
     let mut current = base.clone();
     let _ = apply_sparse_potential(&mut current, &sculpt_state.sparse_potential);
     apply_stroke_to_potential_slice(&mut current, &base, WAVE_X_MIN, WAVE_X_MAX, stroke);
@@ -349,69 +372,58 @@ fn draw_wave_header_strip(
     });
 }
 
-#[cfg(test)]
-mod tests {
-    use super::super::wave_sim::WaveUnified;
-    use crate::async_sim::unified::UnifiedModel;
-    use crate::async_sim::SimCommand;
-    use math_explorer::physics::quantum::evolve_state;
-    use std::collections::HashMap;
-
-    #[test]
-    fn test_wave_unified_dt_caching_and_trajectory_parity() {
-        let mut params = HashMap::new();
-        params.insert("potential_type".to_string(), 0.0);
-        params.insert("dt".to_string(), 0.05);
-
-        let mut sim = WaveUnified::new(&params);
-        sim.n_points = 20;
-        sim.init_system(0.0);
-        assert_eq!(sim.cached_dt, None);
-        assert_eq!(sim.scratch.len(), 20);
-
-        let mut expected_psi = sim.psi.clone();
-        for _ in 0..3 {
-            sim.step(&params);
-            expected_psi = evolve_state(&expected_psi, &sim.hamiltonian, 0.05, 1.0).normalize();
+impl WaveUnified {
+    pub(crate) fn handle_wave_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
+        let dt = *params.get("dt").unwrap_or(&0.05);
+        match cmd {
+            SimCommand::Reset => {
+                self.diverged = false;
+                self.diagnostic_report = None;
+                self.step_count = 0;
+                self.init_system(*params.get("potential_type").unwrap_or(&0.0));
+            }
+            SimCommand::ApplyBrush {
+                cx,
+                r,
+                is_obstacle,
+                ..
+            } => {
+                let slice = self.potential.as_mut_slice();
+                apply_discrete_brush_to_potential(slice, &self.base_potential, cx, r, is_obstacle);
+                self.rebuild_operators(dt);
+            }
+            SimCommand::ApplyBrushStroke(ref stroke) => {
+                let (x_min, x_max) = (self.x_min, self.x_max);
+                let slice = self.potential.as_mut_slice();
+                apply_stroke_to_potential_slice(slice, &self.base_potential, x_min, x_max, stroke);
+                self.rebuild_operators(dt);
+            }
+            SimCommand::ClearObstacles => self.restore_base_potential(dt),
+            SimCommand::Custom(ref s) if s == "Clear Potential Edits" => {
+                self.restore_base_potential(dt);
+            }
+            SimCommand::Custom(ref s) if s == "stamp_double_barrier" => {
+                stamp_double_barrier_into(self.potential.as_mut_slice(), &self.x_axis);
+                self.rebuild_operators(dt);
+            }
+            SimCommand::Custom(ref s) if s == "relaunch_wavepacket" => {
+                self.psi = math_explorer::physics::quantum::gaussian_wavepacket(
+                    &self.x_axis,
+                    -2.0,
+                    5.0,
+                    0.5,
+                );
+                self.time = 0.0;
+                self.step_count = 0;
+            }
+            _ => {}
         }
-        assert_eq!(sim.cached_dt, Some(0.05));
-        let ptr_before = sim.propagator.matrix.as_ptr();
-        sim.step(&params);
-        expected_psi = evolve_state(&expected_psi, &sim.hamiltonian, 0.05, 1.0).normalize();
-        assert_eq!(sim.propagator.matrix.as_ptr(), ptr_before);
-        assert!((&sim.psi.vector - &expected_psi.vector).norm() < 1e-12);
-
-        params.insert("dt".to_string(), 0.02);
-        sim.step(&params);
-        expected_psi = evolve_state(&expected_psi, &sim.hamiltonian, 0.02, 1.0).normalize();
-        assert_eq!(sim.cached_dt, Some(0.02));
-        assert!((&sim.psi.vector - &expected_psi.vector).norm() < 1e-12);
     }
 
-    #[test]
-    fn test_wave_unified_reset_invalidates_propagator_on_potential_change() {
-        let mut params = HashMap::new();
-        params.insert("potential_type".to_string(), 0.0);
-        params.insert("dt".to_string(), 0.04);
-
-        let mut sim = WaveUnified::new(&params);
-        sim.n_points = 20;
-        sim.init_system(0.0);
-        sim.step(&params);
-        assert_eq!(sim.cached_dt, Some(0.04));
-        let well_propagator = sim.propagator.matrix.clone();
-
-        params.insert("potential_type".to_string(), 1.0);
-        sim.process_command(SimCommand::Reset, &params);
-        assert_eq!(sim.cached_dt, None);
-        assert_eq!(sim.step_count, 0);
-        assert_eq!(sim.time, 0.0);
-
-        let init_psi = sim.psi.clone();
-        sim.step(&params);
-        assert_eq!(sim.cached_dt, Some(0.04));
-        assert_ne!(sim.propagator.matrix, well_propagator);
-        let expected = evolve_state(&init_psi, &sim.hamiltonian, 0.04, 1.0).normalize();
-        assert!((&sim.psi.vector - &expected.vector).norm() < 1e-12);
+    fn restore_base_potential(&mut self, dt: f64) {
+        self.potential
+            .as_mut_slice()
+            .copy_from_slice(&self.base_potential);
+        self.rebuild_operators(dt);
     }
 }

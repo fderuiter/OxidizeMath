@@ -1,10 +1,11 @@
 // [cite:quantum_mechanics]
 use super::wave_sim_sculpt::{
-    apply_discrete_brush_to_potential, apply_stroke_to_potential_slice, build_base_potential,
-    detect_barrier_split_index, draw_wave_brush_controls, record_wave_stroke_sparse,
-    render_wave_central_panel, stamp_double_barrier_into,
+    build_base_potential, detect_barrier_split_index, draw_wave_brush_controls,
+    evaluate_formula_potential, record_wave_stroke_sparse, render_wave_central_panel,
 };
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
+use crate::async_sim::unified::{
+    CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool,
+};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{
@@ -27,6 +28,8 @@ pub(crate) const WAVE_N_POINTS: usize = 200;
 pub(crate) const WAVE_X_MIN: f64 = -5.0;
 pub(crate) const WAVE_X_MAX: f64 = 5.0;
 
+const DEFAULT_CUSTOM_POTENTIAL: &str = "a * exp(-x^2)";
+
 pub struct WaveData {
     pub time: f64,
     pub x_axis: Vec<f64>,
@@ -48,8 +51,9 @@ pub struct WaveUnified {
     pub(crate) x_axis: Vec<f64>,
     pub(crate) time: f64,
     pub(crate) n_points: usize,
-    x_min: f64,
-    x_max: f64,
+    pub(crate) x_min: f64,
+    pub(crate) x_max: f64,
+    last_formula: Option<CompiledFormulaPayload>,
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
@@ -104,6 +108,7 @@ impl UnifiedModel for WaveUnified {
             n_points: WAVE_N_POINTS,
             x_min: WAVE_X_MIN,
             x_max: WAVE_X_MAX,
+            last_formula: None,
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
@@ -202,59 +207,7 @@ impl UnifiedModel for WaveUnified {
     }
 
     fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
-        let dt = *params.get("dt").unwrap_or(&0.05);
-        match cmd {
-            SimCommand::Reset => {
-                self.diverged = false;
-                self.diagnostic_report = None;
-                self.step_count = 0;
-                let potential_type = *params.get("potential_type").unwrap_or(&0.0);
-                self.init_system(potential_type);
-            }
-            SimCommand::ApplyBrush {
-                cx,
-                cy: _,
-                r,
-                is_obstacle,
-            } => {
-                apply_discrete_brush_to_potential(
-                    self.potential.as_mut_slice(),
-                    &self.base_potential,
-                    cx,
-                    r,
-                    is_obstacle,
-                );
-                self.rebuild_operators(dt);
-            }
-            SimCommand::ApplyBrushStroke(ref stroke) => {
-                apply_stroke_to_potential_slice(
-                    self.potential.as_mut_slice(),
-                    &self.base_potential,
-                    self.x_min,
-                    self.x_max,
-                    stroke,
-                );
-                self.rebuild_operators(dt);
-            }
-            SimCommand::ClearObstacles => {
-                self.potential.as_mut_slice().copy_from_slice(&self.base_potential);
-                self.rebuild_operators(dt);
-            }
-            SimCommand::Custom(ref s) if s == "Clear Potential Edits" => {
-                self.potential.as_mut_slice().copy_from_slice(&self.base_potential);
-                self.rebuild_operators(dt);
-            }
-            SimCommand::Custom(ref s) if s == "stamp_double_barrier" => {
-                stamp_double_barrier_into(self.potential.as_mut_slice(), &self.x_axis);
-                self.rebuild_operators(dt);
-            }
-            SimCommand::Custom(ref s) if s == "relaunch_wavepacket" => {
-                self.psi = gaussian_wavepacket(&self.x_axis, -2.0, 5.0, 0.5);
-                self.time = 0.0;
-                self.step_count = 0;
-            }
-            _ => {}
-        }
+        self.handle_wave_command(cmd, params);
     }
 
     fn custom_actions() -> Vec<&'static str> {
@@ -284,9 +237,10 @@ impl UnifiedModel for WaveUnified {
     fn record_ui_brush_stroke(
         stroke: &BrushStroke,
         params: &HashMap<String, f64>,
+        formula: Option<&CompiledFormulaPayload>,
         sculpt_state: &mut SculptStatePayload,
     ) {
-        record_wave_stroke_sparse(stroke, params, sculpt_state);
+        record_wave_stroke_sparse(stroke, params, formula, sculpt_state);
     }
 
     fn apply_sculpt_payload(&mut self, payload: &SculptStatePayload, params: &HashMap<String, f64>) {
@@ -350,6 +304,40 @@ impl UnifiedModel for WaveUnified {
         }
     }
 
+    fn formula_spec() -> Option<UnifiedFormulaSpec> {
+        Some(UnifiedFormulaSpec {
+            lhs_label: "V(x)",
+            default_expr: DEFAULT_CUSTOM_POTENTIAL,
+            axes: &["x"],
+            presets: &[
+                ("Gaussian Barrier", "a * exp(-x^2)"),
+                ("Double Well", "0.08 * x^4 - a * x^2 + 3.0"),
+                ("Periodic Lattice", "a * cos(2 * x)^2"),
+                ("Tilted Harmonic", "0.3 * x^2 + a * x"),
+            ],
+            param_range: -8.0..=12.0,
+            param_default: 4.0,
+        })
+    }
+
+    fn apply_compiled_formula(
+        &mut self,
+        formula: Option<&CompiledFormulaPayload>,
+        params: &HashMap<String, f64>,
+    ) {
+        self.last_formula = formula.cloned();
+        if self.x_axis.len() < 2 {
+            return;
+        }
+        let potential_type = *params.get("potential_type").unwrap_or(&0.0);
+        self.base_potential = self.compute_active_base_potential(potential_type);
+        self.potential
+            .as_mut_slice()
+            .copy_from_slice(&self.base_potential);
+        let dt = *params.get("dt").unwrap_or(&0.05);
+        self.rebuild_operators(dt);
+    }
+
     fn name() -> &'static str {
         "Wave Simulator"
     }
@@ -380,6 +368,14 @@ impl WaveUnified {
         }
     }
 
+    fn compute_active_base_potential(&self, potential_type: f64) -> Vec<f64> {
+        if let Some(ref payload) = self.last_formula {
+            evaluate_formula_potential(payload, &self.x_axis)
+        } else {
+            build_base_potential(potential_type, &self.x_axis)
+        }
+    }
+
     /// Rebuilds the 1D finite-difference Hamiltonian in place and invalidates the cached propagator $U(\Delta t)$.
     pub(crate) fn rebuild_operators(&mut self, _dt: f64) {
         construct_1d_hamiltonian_into(&self.potential, self.dx(), 1.0, 1.0, &mut self.hamiltonian);
@@ -391,7 +387,7 @@ impl WaveUnified {
         self.x_axis = (0..self.n_points)
             .map(|i| self.x_min + i as f64 * dx)
             .collect();
-        self.base_potential = build_base_potential(potential_type, &self.x_axis);
+        self.base_potential = self.compute_active_base_potential(potential_type);
         self.potential = DVector::from_vec(self.base_potential.clone());
 
         self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
@@ -415,7 +411,7 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for WaveUnified {
     fn theory_description(&self) -> String {
-        "Time-dependent 1D Schrödinger wave packet evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ for infinite well, harmonic oscillator, and sculpted resonant-tunneling potentials.".to_string()
+        "Time-dependent 1D Schrödinger wave packet evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ for infinite well, harmonic oscillator, custom $V(x)$, and sculpted resonant-tunneling potentials.".to_string()
     }
     fn phonetic_description(&self) -> String {
         "Time-dependent one-dimensional Schrodinger wave packet simulation".to_string()
@@ -427,7 +423,7 @@ impl scientific_metadata::theory::TheoryDescribable for WaveUnified {
         let mut map = HashMap::new();
         map.insert(
             "potential_type".to_string(),
-            "Selects baseline potential profile V(x) (infinite square well, harmonic oscillator, single/double finite barrier, or potential step).".to_string(),
+            "Selects baseline potential profile V(x) (infinite square well, harmonic oscillator, custom compiled V(x), or sculpted resonant barriers).".to_string(),
         );
         map.insert(
             "dt".to_string(),
@@ -462,3 +458,7 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+#[cfg(test)]
+#[path = "wave_sim/tests.rs"]
+mod tests;

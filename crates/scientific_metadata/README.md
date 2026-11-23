@@ -14,9 +14,7 @@ By isolating these contracts into a lightweight, standalone library, mathematica
   - Verified human-readable descriptions of states and operational regimes.
   - Screen-reader phonetic strings for accessible scientific computing.
   - Literature citations for underlying mathematical formulations.
-  - Dynamic parameter querying and modification (`get_parameter`, `set_parameter`).
   - Parameter boundary constraints (`min`, `max`, `step`) for UI controls and numerical validity guards.
-  * The `theory_description!` macro for fetching theory descriptions in UI contexts.
 - **`citation_registry`**: Provides `CitationRegistry`, a thread-safe global catalog for storing and looking up academic citations across the workspace.
 
 ---
@@ -70,26 +68,17 @@ impl TheoryDescribable for SimpleOscillator {
         );
         params
     }
-
-    fn get_parameter(&self, name: &str) -> Option<f64> {
-        match name {
-            "frequency" => Some(self.frequency),
-            _ => None,
-        }
-    }
-
-    fn set_parameter(&mut self, name: &str, value: f64) {
-        if name == "frequency" {
-            self.frequency = value;
-        }
-    }
 }
 
-let mut oscillator = SimpleOscillator { frequency: 440.0 };
-assert_eq!(oscillator.get_parameter("frequency"), Some(440.0));
-
-oscillator.set_parameter("frequency", 880.0);
-assert_eq!(oscillator.get_parameter("frequency"), Some(880.0));
+let oscillator = SimpleOscillator { frequency: 440.0 };
+assert_eq!(
+    oscillator.theory_description(),
+    "Harmonic oscillator with frequency 440.00 Hz"
+);
+let params = oscillator.theory_parameters();
+assert_eq!(params["frequency"].min, 0.1);
+assert_eq!(params["frequency"].max, 1000.0);
+assert_eq!(params["frequency"].step, 0.5);
 ```
 
 ### Using `CitationRegistry`

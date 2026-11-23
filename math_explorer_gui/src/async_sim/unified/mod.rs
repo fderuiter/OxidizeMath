@@ -2,15 +2,48 @@
 
 mod canvas;
 mod controls;
+mod persistence;
 pub mod sculpt;
 pub mod tool;
 pub use tool::*;
 
 use crate::async_sim::{SculptStatePayload, SimCommand, SimulationRunner, StateSnapshot};
-use crate::framework::{BrushStroke, SpatialBrushKit};
+use crate::framework::{BrushStroke, SpatialBrushKit, MAX_SYNTHESIZED_PARAMS};
+use math_commons::ast::CompiledExpr;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
+use std::ops::RangeInclusive;
 use std::sync::{Arc, RwLock};
+
+/// Specification for an opt-in custom formula input bar on a [`UnifiedModel`].
+#[derive(Clone, Debug)]
+pub struct UnifiedFormulaSpec {
+    /// Left-hand side equation label (e.g. `"V(x)"`).
+    pub lhs_label: &'static str,
+    /// Initial default expression string.
+    pub default_expr: &'static str,
+    /// Coordinate axis variable names bound to leading bytecode slots (e.g. `&["x"]`).
+    pub axes: &'static [&'static str],
+    /// Curated `(display_name, expression)` presets.
+    pub presets: &'static [(&'static str, &'static str)],
+    /// Slider range bounds for auto-synthesized free parameters.
+    pub param_range: RangeInclusive<f64>,
+    /// Default value assigned to newly discovered free parameters.
+    pub param_default: f64,
+}
+
+/// `Arc`-shared compiled formula payload streamed to [`UnifiedSimRunner`] without worker-side parsing.
+#[derive(Clone, Debug)]
+pub struct CompiledFormulaPayload {
+    /// Monotonic revision incremented on formula or parameter slider edits.
+    pub revision: u64,
+    /// Compiled postfix AST bytecode.
+    pub compiled: Arc<CompiledExpr>,
+    /// Stack-allocated parameter values aligned with `compiled`.
+    pub params: [f64; MAX_SYNTHESIZED_PARAMS],
+    /// Number of active parameter slots in `params`.
+    pub param_len: usize,
+}
 
 #[allow(missing_docs)]
 pub trait UnifiedModel:
@@ -62,6 +95,22 @@ pub trait UnifiedModel:
         Self: Sized,
     {
         &[]
+    }
+
+    /// Opt-in custom mathematical expression input bar specification.
+    fn formula_spec() -> Option<UnifiedFormulaSpec>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
+    /// Applies an updated [`CompiledFormulaPayload`] (or `None` when disabled) to rebuild model operators.
+    fn apply_compiled_formula(
+        &mut self,
+        _formula: Option<&CompiledFormulaPayload>,
+        _params: &HashMap<String, f64>,
+    ) {
     }
 
     /// The name of the tool.
@@ -136,6 +185,7 @@ pub trait UnifiedModel:
     fn record_ui_brush_stroke(
         _stroke: &BrushStroke,
         _params: &HashMap<String, f64>,
+        _formula: Option<&CompiledFormulaPayload>,
         _sculpt_state: &mut SculptStatePayload,
     ) where
         Self: Sized,
@@ -193,33 +243,62 @@ pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,
     sculpt_state: Arc<RwLock<SculptStatePayload>>,
+    formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+    applied_formula_rev: Option<u64>,
     steps_per_frame: usize,
 }
 
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
     #[allow(missing_docs)]
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
-        Self::new_with_sculpt(params, Arc::new(RwLock::new(SculptStatePayload::default())))
+        Self::with_shared(
+            params,
+            Arc::new(RwLock::new(SculptStatePayload::default())),
+            Arc::new(RwLock::new(None)),
+        )
     }
 
-    #[allow(missing_docs)]
-    pub fn new_with_sculpt(
+    /// Creates a runner sharing `params`, `sculpt_state`, and an optional [`CompiledFormulaPayload`] slot.
+    pub fn with_shared(
         params: Arc<RwLock<HashMap<String, f64>>>,
         sculpt_state: Arc<RwLock<SculptStatePayload>>,
+        formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
     ) -> Self {
         let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
-        let mut model = M::new(&initial_params);
-        if M::supports_spatial_brush() {
-            let sculpt = sculpt_state.read().unwrap_or_else(|e| e.into_inner());
-            if !sculpt.is_empty() {
-                model.apply_sculpt_payload(&sculpt, &initial_params);
-            }
-        }
-        Self {
-            model,
+        let mut runner = Self {
+            model: M::new(&initial_params),
             params,
             sculpt_state,
+            formula,
+            applied_formula_rev: None,
             steps_per_frame: 5,
+        };
+        runner.sync_formula(&initial_params);
+        runner.apply_sculpt_if_present(&initial_params);
+        runner
+    }
+
+    fn apply_sculpt_if_present(&mut self, current_params: &HashMap<String, f64>) {
+        if M::supports_spatial_brush() {
+            let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+            if !sculpt.is_empty() {
+                self.model.apply_sculpt_payload(&sculpt, current_params);
+            }
+        }
+    }
+
+    fn sync_formula(&mut self, current_params: &HashMap<String, f64>) {
+        let payload_opt = self
+            .formula
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let next_rev = payload_opt.as_ref().map(|p| p.revision);
+        if next_rev != self.applied_formula_rev {
+            self.model
+                .apply_compiled_formula(payload_opt.as_ref(), current_params);
+            self.applied_formula_rev = next_rev;
+            self.apply_sculpt_if_present(current_params);
         }
     }
 
@@ -243,19 +322,18 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
             SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
             SimCommand::Reset => {
                 self.model = M::new(&current_params);
-                if M::supports_spatial_brush() {
-                    let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
-                    if !sculpt.is_empty() {
-                        self.model.apply_sculpt_payload(&sculpt, &current_params);
-                    }
-                }
+                self.applied_formula_rev = None;
+                self.sync_formula(&current_params);
+                self.apply_sculpt_if_present(&current_params);
             }
             SimCommand::SyncSculptState(payload) => {
+                self.sync_formula(&current_params);
                 self.model.apply_sculpt_payload(&payload, &current_params);
                 let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
                 *guard = payload;
             }
             other => {
+                self.sync_formula(&current_params);
                 self.model.process_command(other, &current_params);
                 self.sync_sculpt_from_model(&current_params);
             }
@@ -268,6 +346,7 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        self.sync_formula(&current_params);
         self.model.step(&current_params);
     }
 

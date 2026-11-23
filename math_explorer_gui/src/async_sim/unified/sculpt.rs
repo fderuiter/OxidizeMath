@@ -31,6 +31,32 @@ impl SculptStatePayload {
     }
 }
 
+pub(super) fn validate_rle_mask_entries(entries: &[[u32; 2]]) -> Result<(), String> {
+    let total_cells: usize = entries.iter().try_fold(0_usize, |acc, &[v, len]| {
+        if v > u32::from(u8::MAX) {
+            return Err("RLE value out of u8 range".to_string());
+        }
+        acc.checked_add(len as usize)
+            .ok_or_else(|| "RLE length overflow".to_string())
+    })?;
+    if total_cells > MAX_RLE_MASK_CELLS {
+        return Err(format!(
+            "rle_mask cell count {total_cells} exceeds {MAX_RLE_MASK_CELLS}"
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn validate_sparse_potential_entries(
+    entries: &[(u16, f64)],
+    model_name: &str,
+) -> Result<(), String> {
+    if entries.iter().any(|&(_, v)| !v.is_finite()) {
+        return Err(format!("Non-finite sparse_potential value in {model_name}"));
+    }
+    Ok(())
+}
+
 impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(super) fn serialize_unified_state(&self) -> Option<String> {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -69,29 +95,13 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         if key == "rle_mask" && M::supports_spatial_brush() && M::is_raster_model() {
             *parsed_rle = serde_json::from_value(val)
                 .map_err(|e| format!("Invalid rle_mask in {}: {e}", M::name()))?;
-            let total_cells: usize = parsed_rle.iter().try_fold(0_usize, |acc, &[v, len]| {
-                if v > u32::from(u8::MAX) {
-                    return Err("RLE value out of u8 range".to_string());
-                }
-                acc.checked_add(len as usize)
-                    .ok_or_else(|| "RLE length overflow".to_string())
-            })?;
-            if total_cells > MAX_RLE_MASK_CELLS {
-                return Err(format!(
-                    "rle_mask cell count {total_cells} exceeds {MAX_RLE_MASK_CELLS}"
-                ));
-            }
+            validate_rle_mask_entries(parsed_rle)?;
             return Ok(());
         }
         if key == "sparse_potential" && M::supports_spatial_brush() && !M::is_raster_model() {
             *parsed_sparse = serde_json::from_value(val)
                 .map_err(|e| format!("Invalid sparse_potential in {}: {e}", M::name()))?;
-            if parsed_sparse.iter().any(|&(_, v)| !v.is_finite()) {
-                return Err(format!(
-                    "Non-finite sparse_potential value in {}",
-                    M::name()
-                ));
-            }
+            validate_sparse_potential_entries(parsed_sparse, M::name())?;
             return Ok(());
         }
         if !self.param_metadata.iter().any(|meta| meta.0 == key) {
@@ -147,6 +157,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             for (key, value) in parsed_params {
                 guard.insert(key, value);
             }
+        }
+        self.custom_formula_enabled = false;
+        if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_mut()) {
+            bar.set_expression(spec.default_expr);
+            bar.set_params_map(&BTreeMap::new());
+            self.publish_formula_update();
         }
         {
             let mut s_guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());

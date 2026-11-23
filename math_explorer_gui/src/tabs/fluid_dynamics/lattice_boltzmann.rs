@@ -303,6 +303,7 @@ impl UnifiedModel for LbmUnified {
     fn record_ui_brush_stroke(
         stroke: &BrushStroke,
         params: &HashMap<String, f64>,
+        _formula: Option<&crate::async_sim::unified::CompiledFormulaPayload>,
         sculpt_state: &mut SculptStatePayload,
     ) {
         record_stroke_in_rle(stroke, params, sculpt_state);
