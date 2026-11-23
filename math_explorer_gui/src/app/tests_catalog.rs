@@ -87,9 +87,9 @@ fn test_cold_boot_opens_global_starter_gallery_and_session_or_url_dismisses_it()
     let _ = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
     assert!(find_node_by_label(&out, "Starter Template Gallery").is_some());
-    assert!(find_node_by_label(&out, "All Domains (112)").is_some());
-    assert!(find_node_by_label(&out, "Guided Stories (4)").is_some());
-    assert!(find_node_by_label(&out, "Challenges (9)").is_some());
+    assert!(find_node_by_label(&out, "All Domains (116)").is_some());
+    assert!(find_node_by_label(&out, "Guided Stories (5)").is_some());
+    assert!(find_node_by_label(&out, "Challenges (11)").is_some());
     for domain in AcademicDomain::ALL {
         assert!(
             find_node_by_label(&out, domain.name()).is_some(),
@@ -289,15 +289,15 @@ fn test_per_tab_starter_gallery_prefilters_active_domain_and_expands_to_all_doma
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
 
     // Pre-filtered to Biology (with Kermack-McKendrick SIR Model visible)
-    assert!(find_node_by_label(&out, "of 112)").is_some());
-    assert!(find_node_by_label(&out, "(112 of 112)").is_none());
+    assert!(find_node_by_label(&out, "of 116)").is_some());
+    assert!(find_node_by_label(&out, "(116 of 116)").is_none());
     assert!(find_node_by_label(&out, "Kermack-McKendrick SIR Model").is_some());
 
-    // One-click expansion to "All Domains (112)" without closing modal
-    let all_chip = find_node_by_label(&out, "All Domains (112)").expect("All Domains chip");
+    // One-click expansion to "All Domains (116)" without closing modal
+    let all_chip = find_node_by_label(&out, "All Domains (116)").expect("All Domains chip");
     let _ = click_accesskit_node(&ctx, &mut app, &mut frame, all_chip);
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
-    assert!(find_node_by_label(&out, "(112 of 112)").is_some());
+    assert!(find_node_by_label(&out, "(116 of 116)").is_some());
     assert!(
         app.tabs[epi_idx].framework().unwrap().show_starter_gallery,
         "Per-tab modal must stay open after expanding to All Domains"
@@ -427,7 +427,7 @@ fn test_global_starter_gallery_inverse_challenges_tab_launches_in_focused_pane()
     app.open_explore_catalog(&ctx);
     let _ = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
-    let challenges_tab = find_node_by_label(&out, "Challenges (9)").expect("Challenges sub-tab");
+    let challenges_tab = find_node_by_label(&out, "Challenges (11)").expect("Challenges sub-tab");
     let _ = click_accesskit_node(&ctx, &mut app, &mut frame, challenges_tab);
 
     app.starter_gallery.filter.search_query = "therapeutic".to_string();
@@ -449,7 +449,7 @@ fn test_global_starter_gallery_inverse_challenges_tab_launches_in_focused_pane()
     let _ = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
     let stories_tab =
-        find_node_by_label(&out, "Guided Stories (4)").expect("Guided Stories sub-tab");
+        find_node_by_label(&out, "Guided Stories (5)").expect("Guided Stories sub-tab");
     let _ = click_accesskit_node(&ctx, &mut app, &mut frame, stories_tab);
     let out = run_app_frame(&ctx, &mut app, &mut frame, screen_raw());
     let story_btn = find_node_by_label(&out, "Launch Kelly Overbetting Ruin Tour")
