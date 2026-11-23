@@ -228,8 +228,9 @@ impl WaveRunner {
         self.cached_dt = None;
         self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
 
-        let safe_x0 = cfg.x0.is_finite().then_some(cfg.x0).unwrap_or(DEFAULT_X0);
-        let safe_k0 = cfg.k0.is_finite().then_some(cfg.k0).unwrap_or(DEFAULT_K0);
+        let fin = |v: f64, d: f64| if v.is_finite() { v } else { d };
+        let safe_x0 = fin(cfg.x0, DEFAULT_X0);
+        let safe_k0 = fin(cfg.k0, DEFAULT_K0);
         let safe_sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {
