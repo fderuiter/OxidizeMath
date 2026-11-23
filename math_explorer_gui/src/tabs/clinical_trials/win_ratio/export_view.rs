@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use eframe::egui;
-use egui_plot::ExportPrimitive;
+use egui_plot::{ExportPrimitive, SharedPoints};
 
 use super::ui::km_step_points;
 use super::{ChartMode, WinRatioStressTesterTool};
@@ -73,7 +73,7 @@ impl WinRatioStressTesterTool {
                 vec![
                     ExportPrimitive::Polyline {
                         name: "Treatment Survival".to_string(),
-                        points: km_step_points(&c.trt_km),
+                        points: SharedPoints::from(km_step_points(&c.trt_km)),
                         color: palette.accent,
                         stroke_width: 2.5,
                         closed: false,
@@ -81,7 +81,7 @@ impl WinRatioStressTesterTool {
                     },
                     ExportPrimitive::Polyline {
                         name: "Control Survival".to_string(),
-                        points: km_step_points(&c.ctrl_km),
+                        points: SharedPoints::from(km_step_points(&c.ctrl_km)),
                         color: palette.error,
                         stroke_width: 2.2,
                         closed: false,
@@ -142,16 +142,18 @@ impl WinRatioStressTesterTool {
     fn build_power_primitives(&self) -> Vec<ExportPrimitive> {
         let rep = self.report();
         let palette = crate::app::palette::DARK_PALETTE;
-        let pwr_pts: Vec<[f64; 2]> = rep
-            .points
-            .iter()
-            .map(|p| [p.n_per_arm as f64, p.empirical_power])
-            .collect();
-        let tie_pts: Vec<[f64; 2]> = rep
-            .points
-            .iter()
-            .map(|p| [p.n_per_arm as f64, p.tie_fraction])
-            .collect();
+        let pwr_pts = SharedPoints::from(
+            rep.points
+                .iter()
+                .map(|p| [p.n_per_arm as f64, p.empirical_power])
+                .collect::<Vec<[f64; 2]>>(),
+        );
+        let tie_pts = SharedPoints::from(
+            rep.points
+                .iter()
+                .map(|p| [p.n_per_arm as f64, p.tie_fraction])
+                .collect::<Vec<[f64; 2]>>(),
+        );
         vec![
             ExportPrimitive::Polyline {
                 name: "Empirical Power".to_string(),
