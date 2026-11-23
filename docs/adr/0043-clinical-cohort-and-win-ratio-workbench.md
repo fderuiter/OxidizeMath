@@ -1,4 +1,4 @@
-# ADR 0042: Local Win Ratio and Clinical Cohort Workbench
+# ADR 0043: Local Win Ratio and Clinical Cohort Workbench
 
 ## Status
 Accepted
@@ -20,5 +20,5 @@ Biostatistics researchers using `ClinicalTrialsTab` in `math_explorer_gui` faced
    - Upgrade `RandomizationTool` and `SampleSizeCalculatorTool` (`sample_size.rs` and `sample_size_cards.rs`) to `ExportCapabilities::plot()`, adding seeded `StratifiedRandomizer` schedules, cumulative arm-balance trajectories, sample-size power curves, and `TTestIndependent`, `ChiSquare2x2`, and `calculate_risk_metrics` cards while preserving backward-compatible `#[serde(default, skip_serializing_if = ...)]` state serialization.
 
 ## Consequences
-- **Positive**: All clinical cohort tools in `ClinicalTrialsTab` now support `ExportCapabilities::plot()` (raising audited plot tools to `45` and cutting non-export tools to `14` across `66` total registered tools), local patient CSV/TSV cohorts never leave the browser or desktop sandbox, and verified hot loops allocate zero bytes under `VerifiedAllocator`.
+- **Positive**: All clinical cohort tools in `ClinicalTrialsTab` now support `ExportCapabilities::plot()` (raising audited plot tools to `48` and cutting non-export tools to `14` across `69` total registered tools), local patient CSV/TSV cohorts never leave the browser or desktop sandbox, and verified hot loops allocate zero bytes under `VerifiedAllocator`.
 - **Neutral**: Existing public signatures remain backward-compatible while newly verified items are recorded in `crates/unified_verification/api_baseline.json`, with zero new Cargo dependencies so the WebAssembly bundle stays well below the `3 MB` ceiling.
