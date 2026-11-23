@@ -10,10 +10,10 @@ Rather than relying on unmaintained third-party tools or custom scripts, `markdo
 
 ### Module Structure
 
-- **`build.rs`**: Build-time file discovery script:
-  - Recursively scans the workspace directory tree for all `*.md` files.
-  - Generates synthetic Rust test modules of the form `#[doc = include_str!(...)] pub mod md_test_N {}` into `$OUT_DIR/generated_tests.rs`.
-  - Configures `cargo:rerun-if-changed` triggers for all discovered Markdown paths and parent directories.
+- **`build.rs`**: Build-time file discovery script (Rust 2024 edition):
+  - Recursively scans the workspace directory tree in deterministic sorted order for `*.md` files, skipping library crate `README.md` files that are already verified via `#![doc = include_str!("../README.md")]` under `doc_audit`.
+  - Generates path-derived Rust test modules of the form `#[doc = include_str!(...)] pub mod docs_architecture_cera_framework_md {}` into `$OUT_DIR/generated_tests.rs`, writing only when bytes change.
+  - Configures deterministic `cargo:rerun-if-changed` triggers for discovered Markdown paths and directories.
 - **`lib.rs`**: The crate root module that includes the synthesized doctest files and enables rustdoc evaluation.
 - **`Cargo.toml`**: Centralized test dependency catalog specifying workspace crate paths to satisfy imports across all documentation code samples.
 

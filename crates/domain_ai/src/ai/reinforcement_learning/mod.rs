@@ -96,7 +96,7 @@ pub mod types;
 
 // Re-exports for ease of use
 pub use algorithms::QLearningAgent;
-pub use q_function::TabularQFunction;
+pub use q_function::{DiscreteAction, DiscreteState, FixedArrayQFunction, TabularQFunction};
 pub use strategies::{EpsilonGreedy, ExplorationStrategy};
 pub use types::{Action, MarkovDecisionProcess, Policy, QFunction, State};
 

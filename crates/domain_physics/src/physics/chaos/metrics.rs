@@ -15,14 +15,25 @@ use pure_math::pure_math::analysis::ode::{OdeSystem, Solver, SolverExt};
 /// where $f'(x) = r(1 - 2x)$.
 #[verified_engine::verified]
 pub fn logistic_lyapunov(r: f64, x0: f64, n: usize) -> f64 {
+    if n == 0 || !r.is_finite() || !x0.is_finite() {
+        return 0.0;
+    }
     let mut map = LogisticMap::new(r, x0);
     let mut sum_logs = 0.0;
 
     for _ in 0..n {
         let x = map.state;
-        let derivative = r * (1.0 - 2.0 * x);
-        // Handle singularity at x = 0.5 (f'(x) = 0).
-        sum_logs += derivative.abs().ln();
+        if !x.is_finite() {
+            break;
+        }
+        // Clamp superstable zero derivatives above 1e-15 and cap escaping overflow at 1e150 so ln stays finite.
+        let raw_deriv = (r * (1.0 - 2.0 * x)).abs();
+        let derivative = if raw_deriv.is_finite() {
+            raw_deriv.clamp(1e-15, 1e150)
+        } else {
+            1e150
+        };
+        sum_logs += derivative.ln();
         map.next();
     }
 
@@ -57,50 +68,54 @@ where
     Sol: Solver<Vector3<f64>>,
 {
     let d0 = 1e-8;
+    if !time_step.is_finite()
+        || time_step <= 0.0
+        || !evolution_time.is_finite()
+        || evolution_time <= 0.0
+        || iterations == 0
+    {
+        return Err(ChaosError::InvalidParameter(String::new()));
+    }
     let steps_per_iter = (evolution_time / time_step).round() as usize;
-
     if steps_per_iter == 0 {
-        return Err(ChaosError::InvalidParameter(
-            "evolution_time must be greater than time_step".to_string(),
-        ));
+        return Err(ChaosError::InvalidParameter(String::new()));
     }
 
     let mut current_state = initial_state;
     let mut shadow_state = current_state + Vector3::new(d0, 0.0, 0.0);
-
-    // Normalize initial separation
-    let initial_diff = shadow_state - current_state;
-    shadow_state = current_state + initial_diff.normalize() * d0;
-
     let mut sum_log_divergence = 0.0;
     let mut total_time = 0.0;
 
     for _ in 0..iterations {
-        // Evolve both systems
         for _ in 0..steps_per_iter {
             current_state = solver.solve(system, 0.0, &current_state, time_step);
             shadow_state = solver.solve(system, 0.0, &shadow_state, time_step);
         }
 
-        // Measure distance
         let dist_vec = shadow_state - current_state;
         let d_t = dist_vec.norm();
-
-        if d_t == 0.0 {
+        if !d_t.is_finite()
+            || !current_state.x.is_finite()
+            || !current_state.y.is_finite()
+            || !current_state.z.is_finite()
+        {
             return Err(ChaosError::Math(
                 math_commons::error::MathError::NumericalError {
-                    reason: "Trajectories converged completely (distance 0), cannot compute log."
-                        .to_string(),
+                    reason: String::new(),
                 },
             ));
         }
 
-        sum_log_divergence += (d_t / d0).ln();
+        let ratio = (d_t / d0).clamp(1e-15, 1e150);
+        sum_log_divergence += ratio.ln();
         total_time += evolution_time;
 
-        // Rescale: Reset shadow system to be distance d0 away from system
-        // along the direction of the current separation.
-        shadow_state = current_state + dist_vec.normalize() * d0;
+        let unit_dir = if d_t > 1e-30 {
+            dist_vec / d_t
+        } else {
+            Vector3::new(1.0, 0.0, 0.0)
+        };
+        shadow_state = current_state + unit_dir * d0;
     }
 
     Ok(sum_log_divergence / total_time)

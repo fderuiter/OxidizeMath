@@ -2,10 +2,10 @@
 // [cite:modular_polynomials_review]
 
 use super::{chord_tangent_canvas, chord_tangent_scene, chord_tangent_ui};
-use crate::framework::{InteractiveTool, PaneSidePanel, ToolStateBounds, scoped_panel_id};
+use crate::framework::{scoped_panel_id, InteractiveTool, PaneSidePanel, ToolStateBounds};
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{
-    CurvePoint, MAX_LATTICE_PRIME, PrimeWeierstrassCurve, WeierstrassCurve,
+    CurvePoint, PrimeWeierstrassCurve, WeierstrassCurve, MAX_LATTICE_PRIME,
 };
 use math_explorer::pure_math::number_theory::primes::is_prime;
 use serde::{Deserialize, Serialize};
@@ -224,6 +224,11 @@ impl WeierstrassPlaygroundTool {
             self.lattice_points[self.state.selected_q_idx % len],
         )
     }
+
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
 }
 
 impl InteractiveTool for WeierstrassPlaygroundTool {
@@ -241,10 +246,6 @@ impl InteractiveTool for WeierstrassPlaygroundTool {
 
     fn state_revision(&self) -> u64 {
         self.revision
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -275,14 +276,12 @@ impl InteractiveTool for WeierstrassPlaygroundTool {
     fn step_simulation(&mut self) {
         let max_cycle = match self.state.field_mode {
             CurveFieldMode::Real => 24_i64,
-            CurveFieldMode::FiniteField => PrimeWeierstrassCurve::new(
-                self.state.mod_a,
-                self.state.mod_b,
-                self.state.prime_p,
-            )
-            .ok()
-            .and_then(|c| c.point_count().ok())
-            .map_or(24_i64, |n| (n as i64).clamp(2, 128)),
+            CurveFieldMode::FiniteField => {
+                PrimeWeierstrassCurve::new(self.state.mod_a, self.state.mod_b, self.state.prime_p)
+                    .ok()
+                    .and_then(|c| c.point_count().ok())
+                    .map_or(24_i64, |n| (n as i64).clamp(2, 128))
+            }
         };
         self.state.scalar_k = (self.state.scalar_k % max_cycle) + 1;
         self.bump_revision();
