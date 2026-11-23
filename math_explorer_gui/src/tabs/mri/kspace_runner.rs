@@ -15,6 +15,7 @@ use nalgebra::{DMatrix, Vector3};
 use num_complex::Complex;
 use std::collections::VecDeque;
 use std::f64::consts::PI;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 /// Rotating-frame $\Delta B_0$ pocket amplitude in Tesla (`0.22 uT`, $\gamma \Delta B_0 \approx 58.9\,\text{rad/s}$).
@@ -65,6 +66,7 @@ pub struct MriKSpaceRunner {
     pub(crate) recon_grid: DMatrix<Complex<f64>>,
     pub(crate) recon_mag: Vec<f64>,
     pub(crate) selected_trajectory: VecDeque<Vector3<f64>>,
+    pub(crate) rf_spike_pending: AtomicBool,
 }
 
 impl MriKSpaceRunner {
@@ -117,6 +119,7 @@ impl MriKSpaceRunner {
             recon_grid: DMatrix::zeros(size, size),
             recon_mag: vec![0.0; total],
             selected_trajectory: traj,
+            rf_spike_pending: AtomicBool::new(false),
         };
         runner.rebuild_from_config(&cfg);
         runner
@@ -438,7 +441,7 @@ impl MriKSpaceRunner {
     pub(crate) fn net_voxel_spin(&self, voxel: [usize; 2]) -> Vector3<f64> {
         let r = voxel[0].min(self.size.saturating_sub(1));
         let c = voxel[1].min(self.size.saturating_sub(1));
-        let ens = &self.spins[r * self.size + c];
+        let ens = &self.spins[flatten_2d_index(c, r, self.size)];
         (ens[0] + ens[1] + ens[2]) / (ISOCHROMAT_COUNT as f64)
     }
 

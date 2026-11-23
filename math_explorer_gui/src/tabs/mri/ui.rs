@@ -9,7 +9,7 @@ use crate::async_sim::ui::{
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
-use egui_plot::{Legend, Line, Plot, Points};
+use egui_plot::{Legend, Line, Plot, Points, VLine};
 
 impl MriTool {
     fn draw_relaxation_controls(&mut self, ui: &mut egui::Ui) {
@@ -86,6 +86,11 @@ impl MriTool {
             });
             if !self.pulse_config.mode.is_continuous() {
                 changed |= self.draw_rf_pulse_sliders(ui, challenge_locked);
+            } else {
+                let _ = ui.add(
+                    egui::Slider::new(&mut self.pulse_config.detuning_hz, -2000.0..=2000.0)
+                        .text("Detuning Offset [Hz]"),
+                );
             }
             if changed {
                 if !self.pulse_config.mode.is_continuous() {
@@ -202,6 +207,7 @@ impl MriTool {
             "MRI Physics",
             self.worker.state(),
         )
+        .timeline(self.worker.timeline_metadata())
         .reset_label("↻ Reset (90° Pulse)")
         .can_reset(true)
         .show(ui)
@@ -215,6 +221,12 @@ impl MriTool {
                 }
                 PlaybackAction::Step => {
                     let _ = self.worker.send_command(SimCommand::Step(1));
+                }
+                PlaybackAction::StepBack => {
+                    let _ = self.worker.send_command(SimCommand::StepBack(1));
+                }
+                PlaybackAction::ScrubTo(step) => {
+                    let _ = self.worker.send_command(SimCommand::SeekStep(step));
                 }
                 PlaybackAction::Reset => {
                     self.reset();
@@ -238,93 +250,109 @@ impl MriTool {
         }
     }
 
-    fn draw_pulse_scrub_controls(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut scrubbed = false;
-        ui.horizontal(|ui| {
-            let label = if self.pulse_playing {
-                "⏸ Pause Echo Scrub"
-            } else {
-                "▶ Play Echo Scrub"
-            };
-            if ui.button(label).clicked() {
-                self.pulse_playing = !self.pulse_playing;
-            }
-            let t_ms =
-                self.pulse_workspace.times[self.pulse_cursor.min(MRI_PULSE_SAMPLES - 1)] * 1.0e3;
-            ui.small(format!("t = {t_ms:.1} ms"));
-        });
-        if ui
-            .add(
-                egui::Slider::new(&mut self.pulse_cursor, 0..=(MRI_PULSE_SAMPLES - 1))
-                    .text("Pulse Sample"),
-            )
-            .changed()
+    fn draw_pulse_playhead_controls(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Pulse Sequence Playhead");
+        if let Some(action) = PlaybackTransport::in_thread(
+            "mri_pulse_playhead_transport",
+            "MRI Pulse Playhead",
+            self.pulse_workspace.playhead_playing,
+        )
+        .can_reset(true)
+        .show(ui)
         {
-            self.latest_sonification = self.pulse_workspace.sample_sonification_frame(
-                self.pulse_config.mode,
-                self.pulse_cursor,
-                self.simulator.b_field,
-                self.simulator.m0,
-            );
-            scrubbed = true;
+            let last = MRI_PULSE_SAMPLES - 1;
+            match action {
+                PlaybackAction::Play => {
+                    if self.pulse_workspace.playhead_idx >= last {
+                        self.pulse_workspace.playhead_idx = 0;
+                    }
+                    self.pulse_workspace.playhead_playing = true;
+                }
+                PlaybackAction::Pause => self.pulse_workspace.playhead_playing = false,
+                PlaybackAction::Step => {
+                    self.pulse_workspace.playhead_playing = false;
+                    self.pulse_workspace.playhead_idx =
+                        (self.pulse_workspace.playhead_idx + 1) % MRI_PULSE_SAMPLES;
+                }
+                PlaybackAction::StepBack => {
+                    self.pulse_workspace.playhead_playing = false;
+                    self.pulse_workspace.playhead_idx =
+                        self.pulse_workspace.playhead_idx.saturating_sub(1);
+                }
+                PlaybackAction::ScrubTo(step) => {
+                    self.pulse_workspace.playhead_playing = false;
+                    self.pulse_workspace.playhead_idx = step.min(last);
+                }
+                PlaybackAction::Reset => {
+                    self.pulse_workspace.playhead_playing = false;
+                    self.pulse_workspace.playhead_idx = 0;
+                }
+            }
         }
-        scrubbed
+        let max_idx = MRI_PULSE_SAMPLES - 1;
+        let _ = ui.add(
+            egui::Slider::new(&mut self.pulse_workspace.playhead_idx, 0..=max_idx).text("Sample"),
+        );
+        let (t_play, m_play, _) = self.pulse_workspace.playhead_sample();
+        ui.small(format!(
+            "Playhead: {:.2} ms | |Mxy| = {:.3}",
+            t_play * 1.0e3,
+            m_play.x.hypot(m_play.y)
+        ));
     }
 
     fn draw_side_panel(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(ui, "controls_panel");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
-            ui.heading("MRI Physics Control");
-            ui.separator();
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.heading("MRI Physics Control");
+                ui.separator();
 
-            if let Some(WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters) =
-                render_worker_fault_banner(
-                    ui,
-                    self.worker.state(),
-                    self.worker.diagnostic_report(),
-                    false,
-                )
-            {
-                self.reset();
-                ctx.request_repaint();
-                ui.separator();
-            }
+                let is_faulted = self.worker.state() == SimWorkerState::Faulted;
+                if is_faulted {
+                    if !self.fault_notified {
+                        self.fault_notified = true;
+                        crate::audio::notify_solver_diverged();
+                    }
+                } else {
+                    self.fault_notified = false;
+                }
 
-            self.draw_relaxation_controls(ui);
-            self.draw_magnetic_field_controls(ui);
-            self.draw_rf_pulse_controls(ui);
-            let _ = self.callout_manager.render_ui(ui);
-            ui.separator();
-            if self.pulse_config.mode.is_continuous() {
-                self.draw_playback_controls(ui, &ctx);
-                let is_paused = !matches!(
-                    self.worker.state(),
-                    SimWorkerState::Running | SimWorkerState::Stepping
-                );
-                crate::audio::render_sonification_panel(
-                    ui,
-                    "mri_bloch",
-                    &self.latest_sonification,
-                    is_paused,
-                );
+                if let Some(WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters) =
+                    render_worker_fault_banner(
+                        ui,
+                        self.worker.state(),
+                        self.worker.diagnostic_report(),
+                        false,
+                    )
+                {
+                    self.reset();
+                    ctx.request_repaint();
+                    ui.separator();
+                }
+
+                self.draw_relaxation_controls(ui);
+                self.draw_magnetic_field_controls(ui);
+                self.draw_rf_pulse_controls(ui);
+                let _ = self.callout_manager.render_ui(ui);
                 ui.separator();
-            } else {
-                let scrubbed = self.draw_pulse_scrub_controls(ui);
-                let is_paused = !(self.pulse_playing || scrubbed);
-                crate::audio::render_sonification_panel(
-                    ui,
-                    "mri_bloch",
-                    &self.latest_sonification,
-                    is_paused,
-                );
+                if self.pulse_config.mode.is_continuous() {
+                    self.draw_playback_controls(ui, &ctx);
+                } else {
+                    self.draw_pulse_playhead_controls(ui);
+                }
                 ui.separator();
-            }
-            ui.label(format!("Time: {:.3} s", self.current_time));
-            ui.label(format!("|M|: {:.3}", self.simulator.magnetization.norm()));
-            ui.label(format!("Mx: {:.3}", self.simulator.magnetization.x));
-            ui.label(format!("My: {:.3}", self.simulator.magnetization.y));
-            ui.label(format!("Mz: {:.3}", self.simulator.magnetization.z));
+                self.latest_sonification = self.current_sonification_frame();
+                let frame = self.latest_sonification;
+                crate::audio::render_sonification_panel(ui, "mri_bloch", &frame, is_faulted);
+                ui.separator();
+                ui.label(format!("Time: {:.3} s", self.current_time));
+                ui.label(format!("|M|: {:.3}", self.simulator.magnetization.norm()));
+                ui.label(format!("Mx: {:.3}", self.simulator.magnetization.x));
+                ui.label(format!("My: {:.3}", self.simulator.magnetization.y));
+                ui.label(format!("Mz: {:.3}", self.simulator.magnetization.z));
+            });
         });
     }
 
@@ -375,6 +403,10 @@ impl MriTool {
                                 .color(palette.axis_z),
                         );
                     }
+                    if !self.pulse_config.mode.is_continuous() {
+                        let (t_play, _, _) = self.pulse_workspace.playhead_sample();
+                        plot_ui.vline(VLine::new("Playhead", t_play).color(palette.warning));
+                    }
                     self.callout_manager.render_on_plot(plot_ui);
                 });
 
@@ -407,15 +439,13 @@ impl MriTool {
                     self.update_plot_buffers();
                 }
             }
-        } else if self.pulse_playing {
-            self.pulse_cursor = (self.pulse_cursor + 1) % MRI_PULSE_SAMPLES;
-            self.latest_sonification = self.pulse_workspace.sample_sonification_frame(
-                self.pulse_config.mode,
-                self.pulse_cursor,
-                self.simulator.b_field,
-                self.simulator.m0,
-            );
-            ui.ctx().request_repaint();
+        } else if self.pulse_workspace.playhead_playing {
+            if self.pulse_workspace.playhead_idx + 1 < MRI_PULSE_SAMPLES {
+                self.pulse_workspace.playhead_idx += 1;
+                ui.ctx().request_repaint();
+            } else {
+                self.pulse_workspace.playhead_playing = false;
+            }
         }
 
         if matches!(

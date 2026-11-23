@@ -300,6 +300,7 @@ impl MriKSpaceTool {
                     PlaybackAction::Step => {
                         let _ = self.worker.send_command(SimCommand::Step(1));
                     }
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => {
                         self.reset();
                         ctx.request_repaint();

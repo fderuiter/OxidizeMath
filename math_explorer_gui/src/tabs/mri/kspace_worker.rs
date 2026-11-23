@@ -19,21 +19,6 @@ use std::f64::consts::PI;
 use std::sync::Arc;
 
 impl MriKSpaceRunner {
-    fn snapshot_sonification(&self, sidx: usize) -> crate::audio::SonificationFrame {
-        if self.is_finite_state() {
-            let probe = self.probe_spins_for_idx(sidx);
-            crate::audio::mappings::kspace_voxel_ensemble_frame(
-                &probe,
-                self.delta_b0[sidx],
-                self.selected_grad_phase_rad,
-                self.k_coord_cycles_per_m,
-                self.rho[sidx],
-            )
-        } else {
-            crate::audio::SonificationFrame::silent()
-        }
-    }
-
     pub(crate) fn probe_spins_for_idx(
         &self,
         idx: usize,
@@ -88,6 +73,10 @@ impl MriKSpaceRunner {
                 let spike_amp = 0.35 * ((self.size * self.size) as f64);
                 self.kspace_spikes[(cy as usize) * self.size + (cx as usize)] =
                     Complex::new(spike_amp, 0.0);
+                if tip_live_spins {
+                    self.rf_spike_pending
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                }
             }
             return;
         }
@@ -190,6 +179,54 @@ impl MriKSpaceRunner {
                 );
             }
             _ => {}
+        }
+    }
+
+    fn build_probe_audio_input(
+        &self,
+        sel_voxel: [usize; 2],
+        rf_spike_triggered: bool,
+    ) -> crate::audio::mappings::MriKSpaceProbeAudioInput {
+        let sr = sel_voxel[0].min(self.size.saturating_sub(1));
+        let sc = sel_voxel[1].min(self.size.saturating_sub(1));
+        let sidx = flatten_2d_index(sc, sr, self.size);
+        let idx = if self.rho[sidx] > 1e-4 && self.delta_b0[sidx].abs() > 0.0 {
+            sidx
+        } else if let Some(p_idx) =
+            (0..self.rho.len()).find(|&i| self.rho[i] > 1e-4 && self.delta_b0[i].abs() > 0.0)
+        {
+            p_idx
+        } else if self.rho[sidx] > 1e-4 {
+            sidx
+        } else {
+            (0..self.rho.len())
+                .find(|&i| self.rho[i] > 1e-4)
+                .unwrap_or(sidx)
+        };
+        crate::audio::mappings::MriKSpaceProbeAudioInput {
+            probe_spins: self.probe_spins_for_idx(idx),
+            rho: self.rho[idx],
+            t2: self.t2[idx],
+            delta_b0: self.delta_b0[idx],
+            turing_uv: self.phantom_engine.sample_turing_uv(idx, self.rho[idx]),
+            current_time: self.current_time,
+            echo_tau: self.echo_tau,
+            k_coord_cycles_per_m: self.k_coord_cycles_per_m,
+            selected_grad_phase_rad: self.selected_grad_phase_rad,
+            rf_spike_triggered,
+        }
+    }
+
+    fn snapshot_sonification(&self, sel_voxel: [usize; 2]) -> crate::audio::SonificationFrame {
+        let rf_spike = self
+            .rf_spike_pending
+            .swap(false, std::sync::atomic::Ordering::Relaxed);
+        if self.is_finite_state() {
+            crate::audio::mappings::mri_kspace_probe_frame(
+                &self.build_probe_audio_input(sel_voxel, rf_spike),
+            )
+        } else {
+            crate::audio::SonificationFrame::silent()
         }
     }
 }
@@ -320,7 +357,7 @@ impl SimulationRunner for MriKSpaceRunner {
         let sr = sel_voxel[0].min(self.size.saturating_sub(1));
         let sc = sel_voxel[1].min(self.size.saturating_sub(1));
         let sidx = flatten_2d_index(sc, sr, self.size);
-        let sonification = self.snapshot_sonification(sidx);
+        let sonification = self.snapshot_sonification(sel_voxel);
         let structured = MriKSpaceSnapshot {
             grid_size: self.size,
             current_time: self.current_time,

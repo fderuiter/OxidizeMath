@@ -324,7 +324,7 @@ inventory::submit! {
         id: "SpinVisualizer",
         display_name: "Spin Dynamics (Bloch Sphere)",
         domain: "quantum",
-        tags: &[],
+        tags: &["bloch sphere", "qubit", "zeeman", "larmor", "precession", "pauli"],
         build: || Box::new(SpinVisualizer::default()),
     }
 }

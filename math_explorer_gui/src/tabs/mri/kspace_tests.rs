@@ -339,7 +339,7 @@ fn test_mri_hahn_echo_scrub_sonification_and_zero_alloc_pulse() {
     );
     assert_eq!(echo_frame.active_voices, 8);
     assert!(echo_frame.master_gain > mid_frame.master_gain * 1.4);
-    mri.pulse_cursor = 60;
+    mri.pulse_workspace.playhead_idx = 60;
     mri.latest_sonification = mid_frame;
     assert_eq!(eval_before.score, mri.evaluate_challenge().unwrap().score);
 

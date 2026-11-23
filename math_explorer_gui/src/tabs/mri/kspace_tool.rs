@@ -24,8 +24,9 @@ pub struct MriKSpaceTool {
     pub worker: BackgroundWorker<MriKSpaceRunner>,
     /// Most recent frame snapshot rendered across spatial, k-space, recon, and 3D Bloch views.
     pub latest: MriKSpaceSnapshot,
-    /// Most recent 8-voice sub-voxel sonification frame at `selected_voxel`.
+    /// Latest stack-allocated 8-voice sonification frame for Web Audio and `.wav` export.
     pub latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) fault_notified: bool,
     pub(crate) phantom_tex: Option<egui::TextureHandle>,
     pub(crate) kspace_tex: Option<egui::TextureHandle>,
     pub(crate) recon_tex: Option<egui::TextureHandle>,
@@ -59,6 +60,7 @@ impl Default for MriKSpaceTool {
             worker,
             latest,
             latest_sonification,
+            fault_notified: false,
             phantom_tex: None,
             kspace_tex: None,
             recon_tex: None,
@@ -121,6 +123,7 @@ impl MriKSpaceTool {
         {
             self.latest = snap.clone();
         }
+        self.fault_notified = false;
         self.worker
             .reset_or_respawn(move || MriKSpaceRunner::new(params));
         self.textures_dirty = true;
@@ -349,6 +352,7 @@ impl InteractiveTool for MriKSpaceTool {
         {
             self.latest = snap.clone();
         }
+        self.fault_notified = false;
         let params = Arc::clone(&self.params);
         self.worker
             .reset_or_respawn(move || MriKSpaceRunner::new(params));
