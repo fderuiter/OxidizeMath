@@ -5,6 +5,7 @@ use eframe::egui;
 pub mod bankroll_ensemble;
 pub mod bankroll_growth;
 pub mod bet_size;
+pub mod correlated_risk;
 pub mod monte_carlo_workbench;
 pub mod parrondo;
 

@@ -1,4 +1,4 @@
-# ADR 0047: Preallocated Monte Carlo, Randomized QMC, and Nonparametric Bootstrap Suite
+# ADR 20261123: Preallocated Monte Carlo, Randomized QMC, and Nonparametric Bootstrap Suite
 
 ## Status
 Accepted (2026-11-23)
@@ -46,4 +46,4 @@ cargo run -p xtask -- lint-all
 
 - **Positive:** All Monte Carlo, randomized QMC, Genz copula, and `BCa` bootstrap hot paths execute with strictly `0` heap allocations under `VerifiedAllocator` while leaving `crates/oxidize_core` untouched.
 - **Positive:** Smooth multivariate integrals achieve $O(N^{-1} (\log N)^d)$ randomized Sobol convergence, skewed estimators gain second-order accurate `BCa` intervals, and `OuAnalyzer` / `AuctionSimulator` edge cases are guarded against `NaN` and zero-sample panics.
-- **Neutral:** Registered `InteractiveTool`, `StarterPresetMetadata`, and plot-export tool counts in `math_explorer_gui` contract suites advance from `75 -> 76`, `108 -> 110`, and `52 -> 53`, respectively.
+- **Neutral:** Registered `InteractiveTool`, `StarterPresetMetadata`, and plot-export tool counts in `math_explorer_gui` contract suites advance from `76 -> 77`, `109 -> 111`, and `54 -> 55`, respectively.

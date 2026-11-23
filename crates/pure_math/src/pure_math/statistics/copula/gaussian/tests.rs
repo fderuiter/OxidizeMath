@@ -170,6 +170,17 @@ fn test_multivariate_gaussian_copula_3d_5d_10d_accuracy() {
         exact10
     );
 
+    // General non-equicorrelated 3x3 SPD matrix
+    let general_spd = DMatrix::from_row_slice(3, 3, &[1.0, 0.2, 0.1, 0.2, 1.0, 0.3, 0.1, 0.3, 1.0]);
+    let general_cop = GaussianCopula::new(CorrelationMatrix::new(general_spd).unwrap());
+    let u_gen = [
+        Probability::new(0.4).unwrap(),
+        Probability::new(0.5).unwrap(),
+        Probability::new(0.6).unwrap(),
+    ];
+    let p_gen = general_cop.cdf(&u_gen).unwrap();
+    assert!(p_gen.value() > 0.4 * 0.5 * 0.6 && p_gen.value() < 0.4);
+
     // Non-positive-definite 3x3 matrix (all off-diagonals -0.8 -> eigenvalue -0.6 < 0)
     let non_spd = equicorrelated_matrix(3, -0.8);
     let bad_cop = GaussianCopula::new(non_spd);

@@ -444,7 +444,7 @@ impl MonteCarloWorkbenchTool {
                     ] {
                         prims.push(ExportPrimitive::Polyline {
                             name: name.into(),
-                            points: vec![[x, 0.0], [x, top]],
+                            points: vec![[x, 0.0], [x, top]].into(),
                             color: col,
                             stroke_width: 2.2,
                             closed: false,
@@ -470,7 +470,7 @@ fn polyline_prim(
 ) -> ExportPrimitive {
     ExportPrimitive::Polyline {
         name: name.to_string(),
-        points: pts_to_pairs(pts),
+        points: pts_to_pairs(pts).into(),
         color,
         stroke_width,
         closed: false,
