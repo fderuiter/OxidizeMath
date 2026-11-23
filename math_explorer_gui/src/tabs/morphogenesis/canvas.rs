@@ -12,7 +12,8 @@ use super::MorphogenesisTool;
 use crate::app::ThemeMode;
 use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::framework::{
-    fork_marker_callout, render_divergence_strip, BrushMode, InteractionContext, InteractiveTool,
+    fork_marker_callout, render_divergence_strip, BrushMode, InteractiveTool, PlotBrushController,
+    PlotBrushFrame,
 };
 use eframe::egui::{self, ColorImage};
 use egui_plot::{Plot, PlotImage, PlotPoint};
@@ -118,7 +119,7 @@ impl MorphogenesisTool {
         let forked = self.local_runner.twin.as_ref().map(|t| t.fork_step);
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let allow_pan = !self.brush_kit.is_sculpting();
-        let mut strokes = Vec::new();
+        let mut brush_frame: Option<PlotBrushFrame> = None;
         let plot_resp = Plot::new("morphogenesis_plot")
             .data_aspect(1.0)
             .view_aspect(1.0)
@@ -142,16 +143,16 @@ impl MorphogenesisTool {
                         &palette,
                     ));
                 }
-                strokes = self.brush_kit.sample_plot(
+                brush_frame = Some(PlotBrushController::capture_plot(
+                    &mut self.brush_kit,
                     plot_ui,
                     [0.5, 0.5],
                     [f64::from(w) - 0.5, f64::from(h) - 0.5],
                     Some(BrushMode::Erase),
-                );
+                ));
             });
-        for stroke in strokes {
-            let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
-            self.on_brush(&ic);
+        if let Some(frame) = brush_frame {
+            frame.dispatch(ui, &plot_resp.response, self);
         }
     }
 

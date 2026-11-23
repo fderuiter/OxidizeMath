@@ -105,9 +105,7 @@ impl<D: MorphoDiffusion> MorphogenesisRunner<D> {
             &mut self.rng,
             noise_amp,
         );
-        if self.system.diffusion.has_active_mask() {
-            self.enforce_mask_concentrations();
-        }
+        self.enforce_mask_concentrations();
         self.step_count += 1;
     }
 

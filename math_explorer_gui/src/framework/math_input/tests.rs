@@ -186,6 +186,29 @@ fn test_parameter_slider_synthesis_persistence_and_last_valid_fallback() {
 }
 
 #[test]
+fn test_cached_expr_persists_across_incomplete_keystrokes() {
+    let mut bar = MathExpressionInputBar::new("y'", "-k * y * sin(t)", vec![]);
+    assert!(bar.is_valid());
+    let valid_ast = bar.expr().cloned().expect("initial expr valid");
+
+    bar.set_expression("cos(");
+    assert!(!bar.is_valid());
+    assert!(bar.expr().is_none());
+    assert!(bar.error_message().is_some());
+    assert_eq!(bar.cached_expr(), Some(&valid_ast));
+
+    bar.set_expression("sin(t, y)");
+    assert!(!bar.is_valid());
+    assert!(bar.expr().is_none());
+    assert_eq!(bar.cached_expr(), Some(&valid_ast));
+
+    bar.set_expression("cos(t) - y");
+    assert!(bar.is_valid());
+    assert_eq!(bar.cached_expr(), bar.expr());
+    assert_ne!(bar.cached_expr(), Some(&valid_ast));
+}
+
+#[test]
 fn test_parameter_slider_bank_custom_bounds_popover_sync_and_unchanged_schema() {
     use crate::reflective_ui::slider::state::AnimatedSliderSettings;
     use crate::reflective_ui::slider::{

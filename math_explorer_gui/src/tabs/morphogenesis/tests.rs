@@ -208,6 +208,7 @@ fn test_morphogenesis_starter_gallery_and_spots_stripes_reset_turing_system() {
         preset: Some("turing_stripes".to_string()),
         challenge: None,
         step: None,
+        pipeline: None,
     };
     tab.import_url_share_params(&share_params, None)
         .expect("URL share params import via default ExplorerTab hook");

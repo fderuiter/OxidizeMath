@@ -11,6 +11,7 @@ pub mod cartographer;
 pub mod counterfactual;
 mod counterfactual_heatmap;
 mod counterfactual_tool;
+mod dataflow;
 pub mod gray_scott_atlas;
 pub mod lenia;
 mod persistence;

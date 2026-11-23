@@ -1,9 +1,11 @@
-//! Domain-specific simulation preset configuration models and validation helpers.
+//! Domain-specific simulation preset enums, configuration schemas, and validation helpers.
+
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use serde::{Deserialize, Serialize};
 
 /// ODE System preset type enum.
-#[derive(Serialize, Deserialize, PartialEq, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Copy, Debug)]
 pub enum OdePreset {
     /// Exponential growth/decay model.
     Exponential,
@@ -11,18 +13,54 @@ pub enum OdePreset {
     HarmonicOscillator,
     /// Logistic population growth model.
     LogisticGrowth,
-    /// Custom dynamic user equation.
+    /// Coupled 2x2 linear system x' = A * x with Poincaré trace-determinant classification.
+    LinearSystem2D,
+    /// Coupled 2D planar custom dynamic equations x' = f(t, x, y), y' = g(t, x, y).
+    PlanarCustom,
+    /// Custom dynamic scalar user equation y' = f(t, y).
     Custom,
 }
 
 impl OdePreset {
+    /// All selectable ODE presets in sidebar order.
+    pub const ALL: [Self; 6] = [
+        Self::Exponential,
+        Self::HarmonicOscillator,
+        Self::LogisticGrowth,
+        Self::LinearSystem2D,
+        Self::PlanarCustom,
+        Self::Custom,
+    ];
+
     /// User-friendly display name of the ODE preset.
+    #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
             OdePreset::Exponential => "y' = k*y (Exponential)",
             OdePreset::HarmonicOscillator => "y'' = -k*y (Harmonic Oscillator)",
             OdePreset::LogisticGrowth => "y' = r*y*(1 - y/K) (Logistic Growth)",
+            OdePreset::LinearSystem2D => "x' = A*x (2x2 Linear / Poincaré)",
+            OdePreset::PlanarCustom => "x' = f(t,x,y), y' = g(t,x,y) (2D Planar)",
             OdePreset::Custom => "y' = f(t, y) (Custom Equation)",
+        }
+    }
+
+    /// Returns `true` when this preset evolves a 2D state vector and supports phase-plane portraits.
+    #[must_use]
+    pub fn is_2d(self) -> bool {
+        matches!(
+            self,
+            Self::HarmonicOscillator | Self::LinearSystem2D | Self::PlanarCustom
+        )
+    }
+
+    /// Returns `(first_time_label, second_time_label, phase_x_label, phase_y_label)`.
+    #[must_use]
+    pub fn state_labels(self) -> (&'static str, &'static str, &'static str, &'static str) {
+        match self {
+            Self::HarmonicOscillator => ("y(t)", "y'(t)", "y", "y'"),
+            Self::LinearSystem2D | Self::PlanarCustom => ("x(t)", "y(t)", "x", "y"),
+            Self::Exponential | Self::LogisticGrowth | Self::Custom => ("y(t)", "y'(t)", "y", "y'"),
         }
     }
 }
@@ -96,7 +134,6 @@ pub const fn default_gray_scott_k() -> f64 {
 pub const fn default_auto_dt() -> bool {
     true
 }
-
 /// Configuration struct for Replicator Dynamics evolutionary game parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]

@@ -11,7 +11,6 @@ use super::state::{initialize_for_kinetics, MorphogenesisToolState};
 use super::MorphogenesisTool;
 use crate::async_sim::{BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState};
 use crate::framework::{decode_rle_mask, InteractiveTool};
-use eframe::egui::ColorImage;
 use math_explorer::biology::diffusion::FiniteDifference2D;
 use math_explorer::biology::morphogenesis::{
     DiffusionCoeff, GrayScottKinetics, SchnakenbergKinetics, TuringSystem,
@@ -163,6 +162,7 @@ impl MorphogenesisTool {
             self.stepped_pixels = None;
             self.step_runner = None;
             self.dirty = true;
+            self.invalidate_scalar_field_cache();
         } else {
             self.reset();
             let rle_mask = self
@@ -190,41 +190,6 @@ impl MorphogenesisTool {
                 let _ = self.worker.send_command(SimCommand::Pause);
             }
         }
-    }
-
-    pub(crate) fn export_current_raster_image(&self) -> Option<ColorImage> {
-        if self.is_forked() {
-            return Some(self.render_current_heatmap_image());
-        }
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && px.len() == w * h {
-                return Some(ColorImage {
-                    size: [w, h],
-                    pixels: px.clone(),
-                    ..Default::default()
-                });
-            }
-        }
-        if !self.dirty && self.pixels.len() == self.width * self.height && !self.pixels.is_empty() {
-            return Some(ColorImage {
-                size: [self.width, self.height],
-                pixels: self.pixels.clone(),
-                ..Default::default()
-            });
-        }
-        let snapshot = self.worker.latest_snapshot()?;
-        let px = snapshot.pixels.read().unwrap_or_else(|e| e.into_inner());
-        if snapshot.width == 0
-            || snapshot.height == 0
-            || px.len() != snapshot.width * snapshot.height
-        {
-            return None;
-        }
-        Some(ColorImage {
-            size: [snapshot.width, snapshot.height],
-            pixels: px.clone(),
-            ..Default::default()
-        })
     }
 
     pub(crate) fn compute_state_revision(&self) -> u64 {
