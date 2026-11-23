@@ -8496,7 +8496,30 @@
       "signature": "pub trait EvolutionEngine < State , AuxState > { fn step < R : RngCore + ? Sized > (& mut self , _ : & mut State , _ : & mut AuxState , _ : & mut R , _ : f64 ,) -> Result < () , EvolutionError > }"
     }
   ],
-  "crates/pure_math/src/pure_math/analysis/integration.rs": [
+  "crates/pure_math/src/pure_math/analysis/integration/gauss_kronrod.rs": [
+    {
+      "signature": "impl GaussKronrod15 { pub fn integrate_panels < F > (& self , _ : F , _ : f64 , _ : f64 , _ : f64 , _ : & mut [GkSubinterval] ,) -> (IntegrationResult , usize) where F : Fn (f64) -> f64 , }"
+    },
+    {
+      "signature": "impl GaussKronrod15 { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl GaussKronrod15 { pub fn with_max_panels (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub const GK15_MAX_PANELS : usize"
+    },
+    {
+      "signature": "pub struct GaussKronrod15"
+    },
+    {
+      "signature": "pub struct GkSubinterval"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/integration/mod.rs": [
+    {
+      "signature": "impl Simpson { pub fn new (_ : usize) -> Self }"
+    },
     {
       "signature": "impl Trapezoidal { pub fn new (_ : usize) -> Self }"
     },
@@ -8507,6 +8530,9 @@
       "signature": "pub struct IntegrationResult"
     },
     {
+      "signature": "pub struct Simpson"
+    },
+    {
       "signature": "pub struct Trapezoidal"
     },
     {
@@ -8514,6 +8540,15 @@
     },
     {
       "signature": "pub trait Integrator { fn integrate < F > (& self , _ : F , _ : f64 , _ : f64 , _ : f64) -> IntegrationResult where F : Fn (f64) -> f64 }"
+    },
+    {
+      "signature": "pub use gauss_kronrod :: GK15_MAX_PANELS"
+    },
+    {
+      "signature": "pub use gauss_kronrod :: GaussKronrod15"
+    },
+    {
+      "signature": "pub use gauss_kronrod :: GkSubinterval"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/mod.rs": [
@@ -8610,9 +8645,55 @@
       "signature": "pub struct PhasePoint2D"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/ode/dormand_prince.rs": [
+    {
+      "signature": "impl < State : IndexedState > DormandPrince45 < State > { pub fn last_error (& self) -> f64 }"
+    },
+    {
+      "signature": "impl < State : IndexedState > DormandPrince45 < State > { pub fn last_substeps (& self) -> usize }"
+    },
+    {
+      "signature": "impl < State : IndexedState > DormandPrince45 < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : IndexedState > DormandPrince45 < State > { pub fn with_max_substeps (self , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < State : IndexedState > DormandPrince45 < State > { pub fn with_tolerances (self , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct DormandPrince45 < State : IndexedState >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/ode/implicit.rs": [
+    {
+      "signature": "impl < State : IndexedState > BackwardEuler < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : IndexedState > BackwardEuler < State > { pub fn with_newton_params (self , _ : f64 , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < State : IndexedState > ImplicitTrapezoidal < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : IndexedState > ImplicitTrapezoidal < State > { pub fn with_newton_params (self , _ : f64 , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct BackwardEuler < State : IndexedState >"
+    },
+    {
+      "signature": "pub struct ImplicitTrapezoidal < State : IndexedState >"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/ode/mod.rs": [
     {
-      "signature": "impl IntegrationMethod { pub const ALL : [Self ; 3] }"
+      "signature": "impl IntegrationMethod { pub const ALL : [Self ; 7] }"
+    },
+    {
+      "signature": "impl IntegrationMethod { pub fn is_adaptive (& self) -> bool }"
+    },
+    {
+      "signature": "impl IntegrationMethod { pub fn is_implicit (& self) -> bool }"
     },
     {
       "signature": "impl IntegrationMethod { pub fn name (& self) -> & 'static str }"
@@ -8621,7 +8702,19 @@
       "signature": "pub enum IntegrationMethod"
     },
     {
+      "signature": "pub use dormand_prince :: DormandPrince45"
+    },
+    {
+      "signature": "pub use implicit :: BackwardEuler"
+    },
+    {
+      "signature": "pub use implicit :: ImplicitTrapezoidal"
+    },
+    {
       "signature": "pub use model :: OdeModel"
+    },
+    {
+      "signature": "pub use rosenbrock :: Rosenbrock23"
     },
     {
       "signature": "pub use solvers :: Euler"
@@ -8642,6 +8735,9 @@
       "signature": "pub use stepper :: TimeStepper"
     },
     {
+      "signature": "pub use traits :: IndexedState"
+    },
+    {
       "signature": "pub use traits :: OdeSystem"
     },
     {
@@ -8659,7 +8755,30 @@
       "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub fn new (_ : State , _ : Dynamics , _ : S) -> Self }"
     },
     {
+      "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub fn with_time (_ : State , _ : Dynamics , _ : S , _ : f64) -> Self }"
+    },
+    {
       "signature": "pub struct OdeModel < State , Dynamics , S >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/ode/rosenbrock.rs": [
+    {
+      "signature": "impl < State : IndexedState > Rosenbrock23 < State > { pub fn last_error (& self) -> f64 }"
+    },
+    {
+      "signature": "impl < State : IndexedState > Rosenbrock23 < State > { pub fn last_substeps (& self) -> usize }"
+    },
+    {
+      "signature": "impl < State : IndexedState > Rosenbrock23 < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : IndexedState > Rosenbrock23 < State > { pub fn with_max_substeps (self , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < State : IndexedState > Rosenbrock23 < State > { pub fn with_tolerances (self , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct Rosenbrock23 < State : IndexedState >"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/ode/solvers.rs": [
@@ -8695,6 +8814,12 @@
       "signature": "pub trait TimeStepper < State : VectorOperations > : OdeSystem < State >"
     },
     {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn advance_time (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn current_time (& self) -> f64 }"
+    },
+    {
       "signature": "pub trait TimeStepper < State : VectorOperations > { fn get_state (& self) -> & State }"
     },
     {
@@ -8708,6 +8833,21 @@
     }
   ],
   "crates/pure_math/src/pure_math/analysis/ode/traits.rs": [
+    {
+      "signature": "pub trait IndexedState : VectorOperations"
+    },
+    {
+      "signature": "pub trait IndexedState { fn get (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "pub trait IndexedState { fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "pub trait IndexedState { fn len (& self) -> usize }"
+    },
+    {
+      "signature": "pub trait IndexedState { fn set (& mut self , _ : usize , _ : f64) }"
+    },
     {
       "signature": "pub trait OdeSystem < State : VectorOperations >"
     },
@@ -9201,10 +9341,79 @@
       "signature": "pub struct SpectralPeak2D"
     }
   ],
-  "crates/pure_math/src/pure_math/analysis/roots.rs": [
+  "crates/pure_math/src/pure_math/analysis/roots/bracketing.rs": [
     {
       "signature": "impl Bisection { pub fn new (_ : usize , _ : f64) -> Self }"
     },
+    {
+      "signature": "impl Brent { pub fn new (_ : usize , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct Bisection"
+    },
+    {
+      "signature": "pub struct Brent"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/roots/mod.rs": [
+    {
+      "signature": "pub enum AnalysisError"
+    },
+    {
+      "signature": "pub trait RootFinder"
+    },
+    {
+      "signature": "pub trait RootFinder { fn find_root < F > (& self , _ : F , _ : f64 , _ : f64) -> Result < f64 , AnalysisError > where F : Fn (f64) -> f64 }"
+    },
+    {
+      "signature": "pub use bracketing :: Bisection"
+    },
+    {
+      "signature": "pub use bracketing :: Brent"
+    },
+    {
+      "signature": "pub use multivariate :: MultivariateNewton"
+    },
+    {
+      "signature": "pub use open :: NewtonRaphson"
+    },
+    {
+      "signature": "pub use open :: Secant"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/roots/multivariate.rs": [
+    {
+      "signature": "impl MultivariateNewton { pub fn new (_ : usize , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl MultivariateNewton { pub fn solve_dvector_in_place < F > (& mut self , _ : F , _ : & mut DVector < f64 > ,) -> Result < () , AnalysisError > where F : FnMut (& [f64] , & mut [f64]) , }"
+    },
+    {
+      "signature": "impl MultivariateNewton { pub fn solve_dynamic < F > (& mut self , _ : F , _ : & [f64]) -> Result < Vec < f64 > , AnalysisError > where F : FnMut (& [f64] , & mut [f64]) , }"
+    },
+    {
+      "signature": "impl MultivariateNewton { pub fn solve_fixed < const N : usize , F > (& self , _ : F , _ : [f64 ; N] ,) -> Result < [f64 ; N] , AnalysisError > where F : FnMut (& [f64 ; N]) -> [f64 ; N] , }"
+    },
+    {
+      "signature": "impl MultivariateNewton { pub fn solve_fixed_with_jacobian < const N : usize , F , J > (& self , _ : F , _ : J , _ : [f64 ; N] ,) -> Result < [f64 ; N] , AnalysisError > where F : FnMut (& [f64 ; N]) -> [f64 ; N] , J : FnMut (& [f64 ; N]) -> [[f64 ; N] ; N] , }"
+    },
+    {
+      "signature": "impl MultivariateNewton { pub fn solve_in_place < F > (& mut self , _ : F , _ : & mut [f64]) -> Result < () , AnalysisError > where F : FnMut (& [f64] , & mut [f64]) , }"
+    },
+    {
+      "signature": "impl MultivariateNewton { pub fn solve_state < S , F > (& mut self , _ : F , _ : & mut S) -> Result < () , AnalysisError > where S : IndexedState , F : FnMut (& S , & mut S) , }"
+    },
+    {
+      "signature": "impl MultivariateNewton { pub fn solve_svector < const N : usize , F > (& self , _ : F , _ : SVector < f64 , N > ,) -> Result < SVector < f64 , N > , AnalysisError > where F : FnMut (& SVector < f64 , N >) -> SVector < f64 , N > , }"
+    },
+    {
+      "signature": "impl MultivariateNewton { pub fn with_dimension (_ : usize , _ : usize , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct MultivariateNewton"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/roots/open.rs": [
     {
       "signature": "impl NewtonRaphson { pub fn find_root_with_derivative < F , D > (& self , _ : F , _ : D , _ : f64 ,) -> Result < f64 , AnalysisError > where F : Fn (f64) -> f64 , D : Fn (f64) -> f64 , }"
     },
@@ -9212,19 +9421,16 @@
       "signature": "impl NewtonRaphson { pub fn new (_ : usize , _ : f64) -> Self }"
     },
     {
-      "signature": "pub enum AnalysisError"
+      "signature": "impl Secant { pub fn find_root_from_pair < F > (& self , _ : F , _ : f64 , _ : f64) -> Result < f64 , AnalysisError > where F : Fn (f64) -> f64 , }"
     },
     {
-      "signature": "pub struct Bisection"
+      "signature": "impl Secant { pub fn new (_ : usize , _ : f64) -> Self }"
     },
     {
       "signature": "pub struct NewtonRaphson"
     },
     {
-      "signature": "pub trait RootFinder"
-    },
-    {
-      "signature": "pub trait RootFinder { fn find_root < F > (& self , _ : F , _ : f64 , _ : f64) -> Result < f64 , AnalysisError > where F : Fn (f64) -> f64 }"
+      "signature": "pub struct Secant"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/stochastic.rs": [

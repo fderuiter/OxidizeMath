@@ -185,3 +185,56 @@ fn test_riemann_clenshaw_curtis_error_estimate_and_state_roundtrip() {
     assert!((restored.cc_tolerance - 1e-10).abs() < 1e-15);
     assert!((restored.result - 2.0).abs() < 1e-9);
 }
+
+#[test]
+fn test_riemann_simpson_and_gauss_kronrod15_accuracy_and_panels() {
+    let mut simp = RiemannIntegrationTool {
+        preset: FunctionPreset::SinX,
+        quadrature_method: QuadratureMethod::Simpson,
+        min_x: 0.0,
+        max_x: std::f64::consts::PI,
+        steps: 20,
+        ..Default::default()
+    };
+    simp.recalculate();
+    assert!((simp.result - 2.0).abs() <= simp.error_estimate);
+    assert!((simp.result - 2.0).abs() < 1e-5);
+    assert_eq!(simp.active_panel_count, 10);
+    assert_eq!(simp.cached_trapezoid_polygons.len(), 10);
+
+    let mut gk = RiemannIntegrationTool {
+        preset: FunctionPreset::Custom,
+        quadrature_method: QuadratureMethod::GaussKronrod15,
+        cc_tolerance: 1e-9,
+        min_x: -2.0,
+        max_x: 2.0,
+        steps: 24,
+        ..Default::default()
+    };
+    gk.math_input.set_expression("clamp(sin(k * x), -0.5, 0.8)");
+    let mut params = BTreeMap::new();
+    params.insert("k".to_string(), 3.0);
+    gk.math_input.set_params_map(&params);
+    gk.recalculate();
+    assert!(gk.error_estimate > 0.0);
+    assert!(gk.active_panel_count >= 4);
+    assert_eq!(gk.cached_trapezoid_polygons.len(), gk.active_panel_count);
+
+    egui_plot::clear_last_plot_datasets();
+    let ctx = eframe::egui::Context::default();
+    let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+        gk.show(ctx);
+    });
+    let datasets = gk.export_datasets();
+    assert!(datasets.iter().any(|(n, _)| n == "GK15 Panel Centers"));
+
+    let saved = gk.save_state().expect("save gk state");
+    assert!(saved.len() < 4096);
+    let mut restored = RiemannIntegrationTool::default();
+    restored.try_load_state(&saved).expect("load gk state");
+    assert_eq!(
+        restored.quadrature_method,
+        QuadratureMethod::GaussKronrod15
+    );
+    assert!((restored.result - gk.result).abs() < 1e-12);
+}

@@ -8,7 +8,9 @@ pub mod recovery;
 pub mod systems;
 pub mod ui;
 
-use comparison::{simulate_preset, SolverDiscrepancy};
+#[cfg(test)]
+use comparison::simulate_preset;
+use comparison::SolverDiscrepancy;
 use systems::{default_coupled_ode_bank, CustomOdeSpec};
 
 use crate::framework::math_input::CoupledExpressionBank;
@@ -23,11 +25,16 @@ use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 use recovery::{clamp_ode_parameters, clamp_ode_step_settings};
 
+pub(crate) const DEFAULT_ODE_ADAPTIVE_TOL: f64 = 1e-7;
+pub(crate) const MIN_ODE_ADAPTIVE_TOL: f64 = 1e-12;
+pub(crate) const MAX_ODE_ADAPTIVE_TOL: f64 = 1e-2;
+
 pub struct OdeSolverTool {
     pub(crate) preset: OdePreset,
     pub(crate) method: IntegrationMethod,
     pub(crate) dt: f64,
     pub(crate) total_time: f64,
+    pub(crate) adaptive_tol: f64,
     pub(crate) param_k: f64,
     pub(crate) param_r: f64,
     pub(crate) param_cap_k: f64,
@@ -47,6 +54,8 @@ pub struct OdeSolverTool {
     pub(crate) discrepancy_euler_rk4: SolverDiscrepancy,
     pub(crate) discrepancy_heun_rk4: SolverDiscrepancy,
     pub(crate) discrepancy_euler_heun: SolverDiscrepancy,
+    pub(crate) discrepancy_rk4_dp45: SolverDiscrepancy,
+    pub(crate) discrepancy_be_ros23: SolverDiscrepancy,
     pub snapshot_manager: TraceSnapshotManager,
     pub(crate) comparison_manager: TraceSnapshotManager,
     pub callout_manager: CalloutManager,
@@ -70,6 +79,7 @@ fn default_ode_math_input() -> MathExpressionInputBar {
                 "r * y * (1 - y / cap_k)",
             ),
             ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
+            ("y' = -1000 * y (Ultra-Stiff Linear)", "-1000 * y"),
             ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
         ],
     )
@@ -95,6 +105,7 @@ impl Default for OdeSolverTool {
             method: IntegrationMethod::RungeKutta4,
             dt: 0.05,
             total_time: 10.0,
+            adaptive_tol: DEFAULT_ODE_ADAPTIVE_TOL,
             param_k: 1.0,
             param_r: 1.0,
             param_cap_k: 10.0,
@@ -114,6 +125,8 @@ impl Default for OdeSolverTool {
             discrepancy_euler_rk4: SolverDiscrepancy::default(),
             discrepancy_heun_rk4: SolverDiscrepancy::default(),
             discrepancy_euler_heun: SolverDiscrepancy::default(),
+            discrepancy_rk4_dp45: SolverDiscrepancy::default(),
+            discrepancy_be_ros23: SolverDiscrepancy::default(),
             snapshot_manager: TraceSnapshotManager::new(),
             comparison_manager: TraceSnapshotManager::new(),
             callout_manager: CalloutManager::new(),
@@ -237,6 +250,12 @@ impl OdeSolverTool {
         self.coupled_bank.clamp_active_params(-10.0..=10.0);
         self.push_clamped_legacy_params_to_bar();
         clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
+        self.adaptive_tol = if self.adaptive_tol.is_finite() {
+            self.adaptive_tol
+                .clamp(MIN_ODE_ADAPTIVE_TOL, MAX_ODE_ADAPTIVE_TOL)
+        } else {
+            DEFAULT_ODE_ADAPTIVE_TOL
+        };
         self.recalculate();
     }
 
@@ -315,6 +334,7 @@ impl OdeSolverTool {
         }
         self.dt = 0.05;
         self.total_time = 10.0;
+        self.adaptive_tol = DEFAULT_ODE_ADAPTIVE_TOL;
         self.pending_sweep_run = None;
         self.recalculate();
     }
@@ -391,11 +411,12 @@ impl OdeSolverTool {
     fn recalculate_active(&mut self) {
         let input_has_err = self.has_custom_input_error();
         let custom_spec = self.build_custom_ode_spec();
-        let active_traj = simulate_preset(
+        let active_traj = comparison::simulate_preset_with_tol(
             self.preset,
             self.method,
             self.dt,
             self.total_time,
+            self.adaptive_tol,
             self.param_k,
             self.param_r,
             self.param_cap_k,

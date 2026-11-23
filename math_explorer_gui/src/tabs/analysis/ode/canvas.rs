@@ -113,6 +113,16 @@ impl OdeSolverTool {
                 "Euler vs Heun (RMS)",
                 &format!("{:.4e}", self.discrepancy_euler_heun.rms_error),
             );
+            render_copyable_metric(
+                ui,
+                "RK4 vs DP45 (Max)",
+                &format!("{:.4e}", self.discrepancy_rk4_dp45.max_error),
+            );
+            render_copyable_metric(
+                ui,
+                "Backward Euler vs Ros23 (Max)",
+                &format!("{:.4e}", self.discrepancy_be_ros23.max_error),
+            );
         });
     }
 

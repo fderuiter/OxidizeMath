@@ -179,58 +179,64 @@ impl OdeSolverTool {
                 .selected_text(self.method.name())
                 .show_ui(ui, |ui| {
                     for m in IntegrationMethod::ALL {
-                        if ui.selectable_value(&mut self.method, m, m.name()).changed() {
-                            changed = true;
-                        }
+                        changed |= ui.selectable_value(&mut self.method, m, m.name()).changed();
                     }
                 });
         });
-        if ui
+        changed |= ui
             .checkbox(&mut self.comparison_mode, "Multi-Solver Comparison")
-            .changed()
+            .changed();
+        changed |= self.render_step_and_horizon_controls(ui);
+        ui.add_space(5.0);
+        changed |= ui
+            .checkbox(&mut self.show_annotations, "Show Annotations")
+            .changed();
+        if self.comparison_mode {
+            self.render_discrepancy_panel(ui);
+        }
+        changed
+    }
+
+    fn render_step_and_horizon_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        if (self.method.is_adaptive() || self.comparison_mode)
+            && ui
+                .add(
+                    egui::Slider::new(
+                        &mut self.adaptive_tol,
+                        super::MIN_ODE_ADAPTIVE_TOL..=super::MAX_ODE_ADAPTIVE_TOL,
+                    )
+                    .logarithmic(true)
+                    .text("Adaptive Tol (rtol)"),
+                )
+                .changed()
         {
             changed = true;
         }
-
+        if self.method.is_implicit() {
+            ui.small("Stiff / implicit stage solver active");
+        }
         let min_dt = (self.total_time.max(0.1) / crate::presets::MAX_ODE_STEPS as f64).max(1e-6);
         ui.horizontal(|ui| {
             ui.label("dt (Step Size):");
-            if ui
+            changed |= ui
                 .add(
                     egui::DragValue::new(&mut self.dt)
                         .speed(0.01)
                         .range(min_dt..=1.0),
                 )
-                .changed()
-            {
-                changed = true;
-            }
+                .changed();
         });
         ui.horizontal(|ui| {
             ui.label("Total Time:");
-            if ui
+            changed |= ui
                 .add(
                     egui::DragValue::new(&mut self.total_time)
                         .speed(1.0)
                         .range(1.0..=100.0),
                 )
-                .changed()
-            {
-                changed = true;
-            }
+                .changed();
         });
-
-        ui.add_space(5.0);
-        if ui
-            .checkbox(&mut self.show_annotations, "Show Annotations")
-            .changed()
-        {
-            changed = true;
-        }
-
-        if self.comparison_mode {
-            self.render_discrepancy_panel(ui);
-        }
         changed
     }
 

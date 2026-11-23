@@ -1,5 +1,6 @@
 #[allow(missing_docs)]
 pub mod complex;
+pub(crate) mod dense_linear;
 pub mod evolution;
 pub mod integration;
 pub mod momentum_dynamics;

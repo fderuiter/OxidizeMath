@@ -14,7 +14,11 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
   - Groups, rings, and finite fields (`Fp`).
   - Polynomial rings and polynomial arithmetic over arbitrary fields.
 - **`number_theory`**: Prime number generation (`primes_up_to`), primality testing, integer partition theory, and Q-series.
-- **`analysis`**: Differential equation solvers (`OdeSystem`, Runge-Kutta steppers), 1D and zero-allocation 2D partial differential equation solvers (`pde::wave_2d::Wave2DSolver` for hyperbolic wave tanks, Kirchhoff-Love biharmonic Chladni plates, Chladni sand drift, Marching-Squares nodal contours, and pre-planned 2D FFT spectra), numerical integration, and calculus algorithms.
+- **`analysis`**:
+  - **Root-Finding (`roots`)**: Hardened sign-change `Bisection` (`NaN`/`Inf` rejection and canonical `0.0`), Brent-Dekker hybrid `Brent`, open `NewtonRaphson` and derivative-free `Secant`, and zero-allocation `MultivariateNewton` (`SVector<f64, N>` and `DVector<f64>`).
+  - **Numerical Integration (`integration`)**: Two-grid Richardson `Trapezoidal`, composite `Simpson`, adaptive Chebyshev `ClenshawCurtis`, and stack-bounded 64-panel adaptive `GaussKronrod15` (`G7-K15`).
+  - **Ordinary Differential Equations (`ode`)**: Time-aware `TimeStepper` and `OdeModel`, `IndexedState`, explicit fixed-step (`Euler`, `Midpoint`, `RungeKutta4`), embedded adaptive (`DormandPrince45`), L-stable / stiff implicit Newton (`BackwardEuler`, `ImplicitTrapezoidal`), and linearly implicit adaptive (`Rosenbrock23`) solvers.
+  - **Partial Differential Equations (`pde`)**: 1D and zero-allocation 2D solvers (`pde::wave_2d::Wave2DSolver` for hyperbolic wave tanks, Kirchhoff-Love biharmonic Chladni plates, Chladni sand drift, Marching-Squares nodal contours, and pre-planned 2D FFT spectra).
 - **`differential_geometry`**: Manifolds, metric tensors, and Riemannian curvature.
 - **`elliptic_curves`**: Curve group arithmetic and cryptographic operations over finite fields.
 - **`graph_theory`**: Network graph structures, centrality metrics, and traversal algorithms.

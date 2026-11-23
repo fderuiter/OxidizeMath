@@ -2,9 +2,14 @@
 
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
-use math_explorer::pure_math::analysis::integration::{ClenshawCurtis, Integrator, Trapezoidal};
+use math_explorer::pure_math::analysis::integration::{
+    ClenshawCurtis, GK15_MAX_PANELS, GaussKronrod15, GkSubinterval, Integrator, Simpson,
+    Trapezoidal,
+};
 use std::collections::BTreeMap;
 
+#[path = "riemann/presets.rs"]
+mod presets;
 #[path = "riemann/ui.rs"]
 mod ui;
 
@@ -20,16 +25,32 @@ const DEFAULT_RIEMANN_EXPR: &str = "clamp(sin(k * x), -0.5, 0.8)";
 pub enum QuadratureMethod {
     #[default]
     Trapezoidal,
+    Simpson,
     ClenshawCurtis,
+    GaussKronrod15,
 }
 
 impl QuadratureMethod {
+    pub const ALL: [Self; 4] = [
+        Self::Trapezoidal,
+        Self::Simpson,
+        Self::ClenshawCurtis,
+        Self::GaussKronrod15,
+    ];
+
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
             Self::Trapezoidal => "Composite Trapezoidal",
+            Self::Simpson => "Composite Simpson (1/3)",
             Self::ClenshawCurtis => "Clenshaw-Curtis (Adaptive Chebyshev)",
+            Self::GaussKronrod15 => "Gauss-Kronrod 15 (Adaptive G7-K15)",
         }
+    }
+
+    #[must_use]
+    pub const fn uses_tolerance(self) -> bool {
+        matches!(self, Self::ClenshawCurtis | Self::GaussKronrod15)
     }
 }
 
@@ -76,9 +97,11 @@ pub struct RiemannIntegrationTool {
     pub(crate) steps: usize,
     pub(crate) result: f64,
     pub(crate) error_estimate: f64,
+    pub(crate) active_panel_count: usize,
     pub(crate) math_input: MathExpressionInputBar,
     cached_trapezoid_polygons: Vec<Vec<[f64; 2]>>,
     cached_true_curve: Vec<[f64; 2]>,
+    cached_gk_panels: Vec<GkSubinterval>,
 }
 
 impl Default for RiemannIntegrationTool {
@@ -92,6 +115,7 @@ impl Default for RiemannIntegrationTool {
             steps: 10,
             result: 0.0,
             error_estimate: 0.0,
+            active_panel_count: 10,
             math_input: MathExpressionInputBar::new(
                 "f(x)",
                 DEFAULT_RIEMANN_EXPR,
@@ -105,6 +129,7 @@ impl Default for RiemannIntegrationTool {
             .with_axes(&["x"]),
             cached_trapezoid_polygons: Vec::new(),
             cached_true_curve: Vec::new(),
+            cached_gk_panels: Vec::new(),
         };
         tool.recalculate();
         tool
@@ -129,27 +154,50 @@ impl RiemannIntegrationTool {
         }
     }
 
-    fn compute_quadrature(&self, a: f64, b: f64) -> (f64, f64) {
+    fn effective_tolerance(&self) -> f64 {
+        if self.cc_tolerance.is_finite() {
+            self.cc_tolerance.clamp(MIN_CC_TOLERANCE, MAX_CC_TOLERANCE)
+        } else {
+            DEFAULT_CC_TOLERANCE
+        }
+    }
+
+    fn compute_quadrature(&mut self, a: f64, b: f64) -> (f64, f64) {
+        self.cached_gk_panels.clear();
         if a >= b {
             return (0.0, 0.0);
         }
-        let f = |x: f64| self.evaluate_at(x);
+        let eps = self.effective_tolerance();
         match self.quadrature_method {
             QuadratureMethod::Trapezoidal => {
-                let val_n = Trapezoidal::new(self.steps).integrate(f, a, b, 1e-6).value;
-                let val_2n = Trapezoidal::new(self.steps.saturating_mul(2))
-                    .integrate(f, a, b, 1e-6)
-                    .value;
-                let est = ((val_2n - val_n).abs() * (4.0 / 3.0)).max(0.0);
-                (val_n, est)
+                let res = Trapezoidal::new(self.steps).integrate(|x| self.evaluate_at(x), a, b, eps);
+                self.active_panel_count = self.steps;
+                (res.value, res.error.abs())
+            }
+            QuadratureMethod::Simpson => {
+                let res = Simpson::new(self.steps).integrate(|x| self.evaluate_at(x), a, b, eps);
+                let base = self.steps.max(2);
+                let even_n = if base % 2 == 1 { base + 1 } else { base };
+                self.active_panel_count = even_n / 2;
+                (res.value, res.error.abs())
             }
             QuadratureMethod::ClenshawCurtis => {
-                let eps = if self.cc_tolerance.is_finite() {
-                    self.cc_tolerance.clamp(MIN_CC_TOLERANCE, MAX_CC_TOLERANCE)
-                } else {
-                    DEFAULT_CC_TOLERANCE
-                };
-                let res = ClenshawCurtis.integrate(f, a, b, eps);
+                let res = ClenshawCurtis.integrate(|x| self.evaluate_at(x), a, b, eps);
+                self.active_panel_count = self.steps;
+                (res.value, res.error.abs())
+            }
+            QuadratureMethod::GaussKronrod15 => {
+                let mut stack_panels = [GkSubinterval::default(); GK15_MAX_PANELS];
+                let (res, count) = GaussKronrod15::new().integrate_panels(
+                    |x| self.evaluate_at(x),
+                    a,
+                    b,
+                    eps,
+                    &mut stack_panels,
+                );
+                self.cached_gk_panels
+                    .extend_from_slice(&stack_panels[..count]);
+                self.active_panel_count = count;
                 (res.value, res.error.abs())
             }
         }
@@ -163,8 +211,10 @@ impl RiemannIntegrationTool {
         {
             self.result = 0.0;
             self.error_estimate = 0.0;
+            self.active_panel_count = 0;
             self.cached_trapezoid_polygons.clear();
             self.cached_true_curve.clear();
+            self.cached_gk_panels.clear();
             return;
         }
 
@@ -202,42 +252,95 @@ impl RiemannIntegrationTool {
     }
 
     fn rebuild_partition_polygons(&mut self, span: f64) {
-        let n = self.steps;
-        let mid = 0.5 * (self.min_x + self.max_x);
-        let half = 0.5 * span;
-        self.cached_trapezoid_polygons = (0..n)
-            .filter_map(|i| {
-                let (x0, x1) = match self.quadrature_method {
-                    QuadratureMethod::Trapezoidal => {
-                        let dx = span / (n as f64);
-                        let left = self.min_x + (i as f64) * dx;
-                        (left, left + dx)
-                    }
-                    QuadratureMethod::ClenshawCurtis => {
-                        let t0 = std::f64::consts::PI * (i as f64) / (n as f64);
-                        let t1 = std::f64::consts::PI * ((i + 1) as f64) / (n as f64);
-                        (mid - half * t0.cos(), mid - half * t1.cos())
-                    }
-                };
-                let y0 = self.evaluate_at(x0);
-                let y1 = self.evaluate_at(x1);
-                [x0, x1, y0, y1]
+        match self.quadrature_method {
+            QuadratureMethod::Simpson => self.rebuild_simpson_polygons(span),
+            QuadratureMethod::GaussKronrod15 => self.rebuild_gk_polygons(),
+            QuadratureMethod::Trapezoidal | QuadratureMethod::ClenshawCurtis => {
+                let n = self.steps;
+                let mid = 0.5 * (self.min_x + self.max_x);
+                let half = 0.5 * span;
+                self.cached_trapezoid_polygons = (0..n)
+                    .filter_map(|i| {
+                        let (x0, x1) = if self.quadrature_method == QuadratureMethod::Trapezoidal {
+                            let dx = span / (n as f64);
+                            let left = self.min_x + (i as f64) * dx;
+                            (left, left + dx)
+                        } else {
+                            let t0 = std::f64::consts::PI * (i as f64) / (n as f64);
+                            let t1 = std::f64::consts::PI * ((i + 1) as f64) / (n as f64);
+                            (mid - half * t0.cos(), mid - half * t1.cos())
+                        };
+                        let y0 = self.evaluate_at(x0);
+                        let y1 = self.evaluate_at(x1);
+                        [x0, x1, y0, y1]
+                            .iter()
+                            .all(|v| v.is_finite())
+                            .then(|| vec![[x0, 0.0], [x1, 0.0], [x1, y1], [x0, y0]])
+                    })
+                    .collect();
+            }
+        }
+    }
+
+    fn rebuild_simpson_polygons(&mut self, span: f64) {
+        let base = self.steps.max(2);
+        let n_even = if base % 2 == 1 { base + 1 } else { base };
+        let h = span / (n_even as f64);
+        self.cached_trapezoid_polygons = (0..(n_even / 2))
+            .filter_map(|k| {
+                let x0 = self.min_x + ((2 * k) as f64) * h;
+                let (x1, x2) = (x0 + h, x0 + 2.0 * h);
+                let (y0, y1, y2) = (
+                    self.evaluate_at(x0),
+                    self.evaluate_at(x1),
+                    self.evaluate_at(x2),
+                );
+                if ![x0, x1, x2, y0, y1, y2].iter().all(|v| v.is_finite()) {
+                    return None;
+                }
+                let mut pts = Vec::with_capacity(11);
+                pts.extend([[x0, 0.0], [x2, 0.0]]);
+                for s in (0..=8).rev() {
+                    let u = (s as f64) / 4.0;
+                    let (l0, l1, l2) = (
+                        0.5 * (u - 1.0) * (u - 2.0),
+                        -u * (u - 2.0),
+                        0.5 * u * (u - 1.0),
+                    );
+                    pts.push([x0 + u * h, l0 * y0 + l1 * y1 + l2 * y2]);
+                }
+                Some(pts)
+            })
+            .collect();
+    }
+
+    fn rebuild_gk_polygons(&mut self) {
+        self.cached_trapezoid_polygons = self
+            .cached_gk_panels
+            .iter()
+            .filter_map(|panel| {
+                let (x0, x1) = (panel.left, panel.right);
+                let xm = 0.5 * (x0 + x1);
+                let (y0, ym, y1) = (
+                    self.evaluate_at(x0),
+                    self.evaluate_at(xm),
+                    self.evaluate_at(x1),
+                );
+                [x0, xm, x1, y0, ym, y1]
                     .iter()
                     .all(|v| v.is_finite())
-                    .then(|| vec![[x0, 0.0], [x1, 0.0], [x1, y1], [x0, y0]])
+                    .then(|| vec![[x0, 0.0], [x1, 0.0], [x1, y1], [xm, ym], [x0, y0]])
             })
             .collect();
     }
 }
 
-fn default_cc_tolerance() -> f64 {
+const fn default_cc_tolerance() -> f64 {
     DEFAULT_CC_TOLERANCE
 }
-
-fn is_default_quadrature(m: &QuadratureMethod) -> bool {
+const fn is_default_quadrature(m: &QuadratureMethod) -> bool {
     matches!(m, QuadratureMethod::Trapezoidal)
 }
-
 fn is_default_cc_tolerance(v: &f64) -> bool {
     (*v - DEFAULT_CC_TOLERANCE).abs() < 1e-15
 }
@@ -369,108 +472,8 @@ inventory::submit! {
     }
 }
 
-impl scientific_metadata::theory::TheoryDescribable for RiemannIntegrationTool {
-    fn theory_description(&self) -> String {
-        format!(
-            "Numerical approximation of the definite integral $\\int_a^b f(x) dx$ for {} using {} over interval [{:.2}, {:.2}] (estimated error {:.2e}).",
-            self.preset.name(),
-            self.quadrature_method.name(),
-            self.min_x,
-            self.max_x,
-            self.error_estimate
-        )
-    }
-
-    fn phonetic_description(&self) -> String {
-        "Riemann integration, composite trapezoidal, and Clenshaw-Curtis Chebyshev quadrature theory"
-            .into()
-    }
-
-    fn theory_citation(&self) -> String {
-        "Calculus, Vol. 1 (Apostol, 1967); Clenshaw & Curtis (1960), Numerische Mathematik".into()
-    }
-
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert(
-            "SinX".into(),
-            "Integral of sin(x) showing oscillatory area cancellation".into(),
-        );
-        map.insert(
-            "XSquared".into(),
-            "Integral of x^2 demonstrating parabolic quadrature".into(),
-        );
-        map.insert(
-            "EToX".into(),
-            "Integral of e^x demonstrating exponential growth integration".into(),
-        );
-        map.insert(
-            "Custom".into(),
-            "Composite trapezoidal and Clenshaw-Curtis quadrature over compiled formulas".into(),
-        );
-        map
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Composite Trapezoidal Integration",
-    "domain": "analysis",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "preset": "SinX",
-    "min_x": 0.0,
-    "max_x": 3.141592653589793,
-    "steps": 20
-  }
-}"#;
-
-const CUSTOM_PIECEWISE_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Piecewise Pulse Quadrature",
-    "domain": "analysis",
-    "timestamp": "2026-11-21T00:00:00Z"
-  },
-  "config": {
-    "preset": "Custom",
-    "min_x": -3.0,
-    "max_x": 3.0,
-    "steps": 36,
-    "custom_expr": "clamp(sin(k * x), -0.5, 0.8)",
-    "custom_params": {
-      "k": 3.0
-    }
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "riemann_integration_starter",
-        title: "Composite Trapezoidal Integration",
-        description: "Definite integral numerical quadrature via composite trapezoidal rule partitions.",
-        category: "Integral Calculus",
-        icon: "📐",
-        domain: "analysis",
-        tool_name: Some("RiemannIntegrationTool"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "riemann_custom_piecewise_quadrature",
-        title: "Piecewise Pulse Quadrature",
-        description: "Trapezoidal quadrature of clamp(sin(k*x), -0.5, 0.8) with live frequency slider k.",
-        category: "Integral Calculus",
-        icon: "∫",
-        domain: "analysis",
-        tool_name: Some("RiemannIntegrationTool"),
-        preset_generator: || CUSTOM_PIECEWISE_PRESET_JSON,
-    }
-}
+#[cfg(test)]
+use presets::STARTER_PRESET_JSON;
 
 #[cfg(test)]
 #[path = "riemann/tests.rs"]

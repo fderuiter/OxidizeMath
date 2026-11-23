@@ -31,6 +31,7 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
     !tool.diverged
         && tool.dt.is_finite()
         && tool.total_time.is_finite()
+        && tool.adaptive_tol.is_finite()
         && tool.ic_y0.is_finite()
         && params_finite
         && tool.time_series.iter().all(|t| t.is_finite())

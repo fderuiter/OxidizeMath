@@ -1,11 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::systems::{CustomOdeSpec, ExponentialOde, HarmonicOscillatorOde, LogisticGrowthOde};
-use super::OdeSolverTool;
+use super::{OdeSolverTool, DEFAULT_ODE_ADAPTIVE_TOL, MAX_ODE_ADAPTIVE_TOL, MIN_ODE_ADAPTIVE_TOL};
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
 use math_explorer::pure_math::analysis::ode::{
-    Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, Solver, TimeStepper, VecState,
+    BackwardEuler, DormandPrince45, Euler, Heun, ImplicitTrapezoidal, IntegrationMethod, OdeModel,
+    OdeSystem, Rosenbrock23, RungeKutta4, Solver, TimeStepper, VecState,
 };
 use serde::{Deserialize, Serialize};
 
@@ -32,16 +33,48 @@ struct StepSchedule {
     method: IntegrationMethod,
     dt: f64,
     num_steps: usize,
+    adaptive_tol: f64,
     v_label: &'static str,
 }
 
-/// Simulates an ODE preset or custom compiled specification with the specified solver algorithm.
+/// Simulates an ODE preset or custom compiled specification with default adaptive tolerances.
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub fn simulate_preset(
     preset: OdePreset,
     method: IntegrationMethod,
     dt: f64,
     total_time: f64,
+    param_k: f64,
+    param_r: f64,
+    param_cap_k: f64,
+    ic_y0: f64,
+    ic_v0: f64,
+    custom_spec: Option<&CustomOdeSpec>,
+) -> SolverTrajectory {
+    simulate_preset_with_tol(
+        preset,
+        method,
+        dt,
+        total_time,
+        DEFAULT_ODE_ADAPTIVE_TOL,
+        param_k,
+        param_r,
+        param_cap_k,
+        ic_y0,
+        ic_v0,
+        custom_spec,
+    )
+}
+
+/// Simulates an ODE preset or custom compiled specification with explicit adaptive tolerance `adaptive_tol`.
+#[allow(clippy::too_many_arguments)]
+pub fn simulate_preset_with_tol(
+    preset: OdePreset,
+    method: IntegrationMethod,
+    dt: f64,
+    total_time: f64,
+    adaptive_tol: f64,
     param_k: f64,
     param_r: f64,
     param_cap_k: f64,
@@ -78,31 +111,57 @@ pub fn simulate_preset(
         method,
         dt,
         num_steps,
+        adaptive_tol: sanitize_adaptive_tol(adaptive_tol),
         v_label,
     };
+    dispatch_preset_simulation(
+        &mut traj,
+        preset,
+        [param_k, param_r, param_cap_k],
+        [ic_y0, ic_v0],
+        custom_spec,
+        sched,
+    );
+    traj
+}
+
+fn sanitize_adaptive_tol(adaptive_tol: f64) -> f64 {
+    if adaptive_tol.is_finite() {
+        adaptive_tol.clamp(MIN_ODE_ADAPTIVE_TOL, MAX_ODE_ADAPTIVE_TOL)
+    } else {
+        DEFAULT_ODE_ADAPTIVE_TOL
+    }
+}
+
+fn dispatch_preset_simulation(
+    traj: &mut SolverTrajectory,
+    preset: OdePreset,
+    params: [f64; 3],
+    ic: [f64; 2],
+    custom_spec: Option<&CustomOdeSpec>,
+    sched: StepSchedule,
+) {
     match preset {
         OdePreset::Exponential => {
-            run_step_loop(
-                &mut traj,
-                VecState(vec![ic_y0]),
-                ExponentialOde { k: param_k },
-                sched,
-            );
+            run_step_loop(traj, VecState(vec![ic[0]]), ExponentialOde { k: params[0] }, sched)
         }
-        OdePreset::HarmonicOscillator => {
-            let init = VecState(vec![ic_y0, ic_v0]);
-            run_step_loop(&mut traj, init, HarmonicOscillatorOde { k: param_k }, sched);
-        }
-        OdePreset::LogisticGrowth => {
-            let dyn_log = LogisticGrowthOde {
-                r: param_r,
-                cap_k: param_cap_k,
-            };
-            run_step_loop(&mut traj, VecState(vec![ic_y0]), dyn_log, sched);
-        }
-        OdePreset::Custom => run_custom_ode(&mut traj, custom_spec, [ic_y0, ic_v0], sched),
+        OdePreset::HarmonicOscillator => run_step_loop(
+            traj,
+            VecState(vec![ic[0], ic[1]]),
+            HarmonicOscillatorOde { k: params[0] },
+            sched,
+        ),
+        OdePreset::LogisticGrowth => run_step_loop(
+            traj,
+            VecState(vec![ic[0]]),
+            LogisticGrowthOde {
+                r: params[1],
+                cap_k: params[2],
+            },
+            sched,
+        ),
+        OdePreset::Custom => run_custom_ode(traj, custom_spec, ic, sched),
     }
-    traj
 }
 
 fn reserve_trajectory_capacity(
@@ -163,19 +222,36 @@ fn run_step_loop<D: OdeSystem<VecState> + Clone>(
     dynamics: D,
     sched: StepSchedule,
 ) {
+    let rtol = sched.adaptive_tol;
+    let atol = (rtol * 0.01).max(1e-14);
     match sched.method {
         IntegrationMethod::RungeKutta4 => {
-            let solver = RungeKutta4::new(&init);
-            let mut model = OdeModel::new(init, dynamics, solver);
+            let mut model = OdeModel::new(init.clone(), dynamics, RungeKutta4::new(&init));
             execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
         }
         IntegrationMethod::Euler => {
-            let solver = Euler::new(&init);
-            let mut model = OdeModel::new(init, dynamics, solver);
+            let mut model = OdeModel::new(init.clone(), dynamics, Euler::new(&init));
             execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
         }
         IntegrationMethod::Heun => {
-            let solver = Heun::new(&init);
+            let mut model = OdeModel::new(init.clone(), dynamics, Heun::new(&init));
+            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+        }
+        IntegrationMethod::DormandPrince45 => {
+            let solver = DormandPrince45::new(&init).with_tolerances(rtol, atol);
+            let mut model = OdeModel::new(init, dynamics, solver);
+            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+        }
+        IntegrationMethod::BackwardEuler => {
+            let mut model = OdeModel::new(init.clone(), dynamics, BackwardEuler::new(&init));
+            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+        }
+        IntegrationMethod::ImplicitTrapezoidal => {
+            let mut model = OdeModel::new(init.clone(), dynamics, ImplicitTrapezoidal::new(&init));
+            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+        }
+        IntegrationMethod::Rosenbrock23 => {
+            let solver = Rosenbrock23::new(&init).with_tolerances(rtol, atol);
             let mut model = OdeModel::new(init, dynamics, solver);
             execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
         }
@@ -214,8 +290,7 @@ fn execute_steps<D, S>(
     }
 }
 
-/// Computes maximum discrepancy and root-mean-square discrepancy between two solver trajectories
-/// across `y(t)` and (when present for coupled 2-state systems) `v(t)`.
+/// Computes maximum discrepancy and root-mean-square discrepancy between two solver trajectories.
 pub fn compute_discrepancy(a: &SolverTrajectory, b: &SolverTrajectory) -> SolverDiscrepancy {
     let mut max_err: f64 = 0.0;
     let mut sum_sq_err: f64 = 0.0;
@@ -243,7 +318,6 @@ pub fn compute_discrepancy(a: &SolverTrajectory, b: &SolverTrajectory) -> Solver
     } else {
         0.0
     };
-
     SolverDiscrepancy {
         max_error: max_err,
         rms_error,
@@ -277,52 +351,37 @@ impl OdeSolverTool {
         }
 
         let custom_spec = self.build_custom_ode_spec();
-        let rk4 = simulate_preset(
-            self.preset,
-            IntegrationMethod::RungeKutta4,
-            self.dt,
-            self.total_time,
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-            self.ic_y0,
-            self.ic_v0,
-            custom_spec.as_ref(),
-        );
-        let euler = simulate_preset(
-            self.preset,
-            IntegrationMethod::Euler,
-            self.dt,
-            self.total_time,
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-            self.ic_y0,
-            self.ic_v0,
-            custom_spec.as_ref(),
-        );
-        let heun = simulate_preset(
-            self.preset,
-            IntegrationMethod::Heun,
-            self.dt,
-            self.total_time,
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-            self.ic_y0,
-            self.ic_v0,
-            custom_spec.as_ref(),
-        );
+        let trajs: Vec<SolverTrajectory> = IntegrationMethod::ALL
+            .iter()
+            .map(|&m| {
+                simulate_preset_with_tol(
+                    self.preset,
+                    m,
+                    self.dt,
+                    self.total_time,
+                    self.adaptive_tol,
+                    self.param_k,
+                    self.param_r,
+                    self.param_cap_k,
+                    self.ic_y0,
+                    self.ic_v0,
+                    custom_spec.as_ref(),
+                )
+            })
+            .collect();
 
-        if rk4.diverged || euler.diverged || heun.diverged {
+        if trajs.iter().any(|t| t.diverged) {
             self.diverged = true;
         }
 
-        self.discrepancy_euler_rk4 = compute_discrepancy(&euler, &rk4);
-        self.discrepancy_heun_rk4 = compute_discrepancy(&heun, &rk4);
-        self.discrepancy_euler_heun = compute_discrepancy(&euler, &heun);
+        // Order matches IntegrationMethod::ALL: [RK4, Euler, Heun, DP45, BE, Trap, Ros23]
+        self.discrepancy_euler_rk4 = compute_discrepancy(&trajs[1], &trajs[0]);
+        self.discrepancy_heun_rk4 = compute_discrepancy(&trajs[2], &trajs[0]);
+        self.discrepancy_euler_heun = compute_discrepancy(&trajs[1], &trajs[2]);
+        self.discrepancy_rk4_dp45 = compute_discrepancy(&trajs[0], &trajs[3]);
+        self.discrepancy_be_ros23 = compute_discrepancy(&trajs[4], &trajs[6]);
 
-        self.populate_comparison_snapshots(&[rk4, euler, heun]);
+        self.populate_comparison_snapshots(&trajs);
     }
 
     pub(super) fn populate_comparison_snapshots(&mut self, trajs: &[SolverTrajectory]) {

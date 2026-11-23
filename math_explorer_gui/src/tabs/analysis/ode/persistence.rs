@@ -11,6 +11,14 @@ fn default_annotations_enabled() -> bool {
     true
 }
 
+fn default_adaptive_tol() -> f64 {
+    super::DEFAULT_ODE_ADAPTIVE_TOL
+}
+
+fn is_default_adaptive_tol(v: &f64) -> bool {
+    (*v - super::DEFAULT_ODE_ADAPTIVE_TOL).abs() < 1e-16
+}
+
 fn is_false(v: &bool) -> bool {
     !*v
 }
@@ -79,6 +87,8 @@ struct OdeStateRef<'a> {
     snapshot_manager: &'a TraceSnapshotManager,
     callout_manager: &'a CalloutManager,
     method: IntegrationMethod,
+    #[serde(skip_serializing_if = "is_default_adaptive_tol")]
+    adaptive_tol: f64,
     comparison_mode: bool,
     show_annotations: bool,
 }
@@ -104,6 +114,8 @@ struct OdeRecoveryStateRef<'a> {
     coupled_params: BTreeMap<String, f64>,
     callout_manager: &'a CalloutManager,
     method: IntegrationMethod,
+    #[serde(skip_serializing_if = "is_default_adaptive_tol")]
+    adaptive_tol: f64,
     comparison_mode: bool,
     show_annotations: bool,
 }
@@ -136,6 +148,8 @@ struct OdeState {
     callout_manager: CalloutManager,
     #[serde(default)]
     method: IntegrationMethod,
+    #[serde(default = "default_adaptive_tol")]
+    adaptive_tol: f64,
     #[serde(default)]
     comparison_mode: bool,
     #[serde(default = "default_annotations_enabled")]
@@ -187,47 +201,25 @@ impl OdeSolverTool {
     }
 
     pub(crate) fn sync_custom_params(&mut self) {
-        sync_one_legacy_param(
-            &mut self.math_input,
-            "k",
-            &mut self.param_k,
-            &mut self.synced_legacy_params[0],
-        );
-        sync_one_legacy_param(
-            &mut self.math_input,
-            "r",
-            &mut self.param_r,
-            &mut self.synced_legacy_params[1],
-        );
-        let cap_symbol = if self.math_input.active_param_value("K").is_some()
-            && self.math_input.active_param_value("cap_k").is_none()
-        {
-            "K"
-        } else {
-            "cap_k"
-        };
-        sync_one_legacy_param(
-            &mut self.math_input,
-            cap_symbol,
-            &mut self.param_cap_k,
-            &mut self.synced_legacy_params[2],
-        );
+        let s0 = &mut self.synced_legacy_params[0];
+        sync_one_legacy_param(&mut self.math_input, "k", &mut self.param_k, s0);
+        let s1 = &mut self.synced_legacy_params[1];
+        sync_one_legacy_param(&mut self.math_input, "r", &mut self.param_r, s1);
+        let use_upper_k = self.math_input.active_param_value("K").is_some()
+            && self.math_input.active_param_value("cap_k").is_none();
+        let cap_sym = if use_upper_k { "K" } else { "cap_k" };
+        let s2 = &mut self.synced_legacy_params[2];
+        sync_one_legacy_param(&mut self.math_input, cap_sym, &mut self.param_cap_k, s2);
     }
 
     pub(crate) fn custom_param_summary(&self) -> String {
-        format_named_param_summary(
-            self.math_input.active_param_names(),
-            self.math_input.param_slice(),
-            self.dt,
-        )
+        let names = self.math_input.active_param_names();
+        format_named_param_summary(names, self.math_input.param_slice(), self.dt)
     }
 
     pub(crate) fn coupled_param_summary(&self) -> String {
-        format_named_param_summary(
-            self.coupled_bank.param_names(),
-            self.coupled_bank.param_slice(),
-            self.dt,
-        )
+        let names = self.coupled_bank.param_names();
+        format_named_param_summary(names, self.coupled_bank.param_slice(), self.dt)
     }
 
     pub(crate) fn compute_state_revision(&self) -> u64 {
@@ -237,6 +229,7 @@ impl OdeSolverTool {
         (self.method as u8).hash(&mut hasher);
         self.dt.to_bits().hash(&mut hasher);
         self.total_time.to_bits().hash(&mut hasher);
+        self.adaptive_tol.to_bits().hash(&mut hasher);
         self.param_k.to_bits().hash(&mut hasher);
         self.param_r.to_bits().hash(&mut hasher);
         self.param_cap_k.to_bits().hash(&mut hasher);
@@ -319,6 +312,7 @@ impl OdeSolverTool {
             snapshot_manager: &self.snapshot_manager,
             callout_manager: &self.callout_manager,
             method: self.method,
+            adaptive_tol: self.adaptive_tol,
             comparison_mode: self.comparison_mode,
             show_annotations: self.show_annotations,
         })
@@ -347,6 +341,7 @@ impl OdeSolverTool {
             coupled_params,
             callout_manager: &self.callout_manager,
             method: self.method,
+            adaptive_tol: self.adaptive_tol,
             comparison_mode: self.comparison_mode,
             show_annotations: self.show_annotations,
         })
@@ -404,6 +399,7 @@ impl OdeSolverTool {
         }
         self.callout_manager = s.callout_manager;
         self.method = s.method;
+        self.adaptive_tol = s.adaptive_tol;
         self.comparison_mode = s.comparison_mode;
         self.show_annotations = s.show_annotations;
         self.pending_sweep_run = None;
@@ -465,6 +461,8 @@ fn validate_deserialized_ode_state(s: &OdeState) -> Result<(), String> {
         || s.dt <= 0.0
         || !s.total_time.is_finite()
         || s.total_time <= 0.0
+        || !s.adaptive_tol.is_finite()
+        || !(super::MIN_ODE_ADAPTIVE_TOL..=super::MAX_ODE_ADAPTIVE_TOL).contains(&s.adaptive_tol)
         || !s.param_k.is_finite()
         || !s.param_r.is_finite()
         || !s.param_cap_k.is_finite()
