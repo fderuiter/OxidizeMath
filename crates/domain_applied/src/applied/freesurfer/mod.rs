@@ -92,7 +92,7 @@ pub mod surface;
 pub mod thickness;
 
 // Re-export public items preserving baseline compatibility and exposing upgraded kernels
-pub use glm::{estimate_beta, t_statistic};
+pub use glm::{GlmDesignQr, estimate_beta, t_statistic};
 pub use segmentation::{
     MAX_TISSUE_CLASSES, TissueClass, bayesian_classification, mrf_segment_volume,
     mrf_voxel_posteriors, normalized_posteriors, normalized_posteriors_into,
