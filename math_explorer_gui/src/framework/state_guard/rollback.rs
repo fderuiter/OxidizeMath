@@ -89,6 +89,7 @@ impl SimulationFramework {
         };
         let (details, used_fallback) =
             self.restore_verified_recovery_state(snapshot.tool_state.as_deref());
+        self.bump_plot_sync_generation();
         self.bump_framework_revision();
         let plots =
             if !used_fallback && inspect_datasets_for_divergence(&snapshot.plot_datasets).is_ok() {
@@ -149,6 +150,7 @@ impl SimulationFramework {
             let (_, fb) = self.restore_verified_recovery_state(snapshot.tool_state.as_deref());
             used_fallback = fb;
         }
+        self.bump_plot_sync_generation();
         self.bump_framework_revision();
         let plots =
             if !used_fallback && inspect_datasets_for_divergence(&snapshot.plot_datasets).is_ok() {

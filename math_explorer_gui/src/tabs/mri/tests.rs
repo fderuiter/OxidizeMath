@@ -4,6 +4,7 @@ use super::runner::MAX_MRI_STEPS_PER_FRAME;
 use super::*;
 use crate::async_sim::{SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
+use egui::{CentralPanel, Frame};
 use egui_plot::PlotPoint;
 use math_explorer::physics::mri::bloch::BlochSimulator;
 use math_explorer::pure_math::analysis::ode::RungeKutta4;
@@ -73,26 +74,22 @@ fn test_mri_worker_simulation_step_and_zero_allocation() {
 fn test_mri_fault_halts_repaints_and_recovers() {
     let ctx = egui::Context::default();
     let mut tool = MriTool::default();
+    let repaint_delay = |out: &egui::FullOutput| {
+        out.viewport_output
+            .get(&egui::ViewportId::ROOT)
+            .unwrap()
+            .repaint_delay
+    };
 
     let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
     let output_ready = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
-    let delay_ready = output_ready
-        .viewport_output
-        .get(&egui::ViewportId::ROOT)
-        .unwrap()
-        .repaint_delay;
-    assert_ne!(delay_ready, std::time::Duration::ZERO);
+    assert_ne!(repaint_delay(&output_ready), std::time::Duration::ZERO);
 
     let _ = tool.worker.send_command(SimCommand::Start);
     let output_running = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
     assert_eq!(tool.worker.state(), SimWorkerState::Running);
-    let delay_running = output_running
-        .viewport_output
-        .get(&egui::ViewportId::ROOT)
-        .unwrap()
-        .repaint_delay;
-    assert_eq!(delay_running, std::time::Duration::ZERO);
+    assert_eq!(repaint_delay(&output_running), std::time::Duration::ZERO);
 
     let _ = tool.worker.send_command(SimCommand::Pause);
     tool.worker.wait_until_paused();
@@ -101,12 +98,7 @@ fn test_mri_fault_halts_repaints_and_recovers() {
     tool.worker.set_state_for_test(SimWorkerState::Faulted);
     let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
     let output_faulted = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
-    let delay_faulted = output_faulted
-        .viewport_output
-        .get(&egui::ViewportId::ROOT)
-        .unwrap()
-        .repaint_delay;
-    assert_ne!(delay_faulted, std::time::Duration::ZERO);
+    assert_ne!(repaint_delay(&output_faulted), std::time::Duration::ZERO);
 
     tool.retry();
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
@@ -115,32 +107,33 @@ fn test_mri_fault_halts_repaints_and_recovers() {
 fn mutate_all_6_mri_controls(tool: &mut MriTool) {
     let mut prev_rev = tool.state_revision();
     assert!(prev_rev > 0);
-    for mutate in [
-        |t: &mut MriTool| {
+    let mutations: [fn(&mut MriTool); 6] = [
+        |t| {
             t.simulator.t1 = 2.4;
             t.params.write().unwrap().t1 = 2.4;
         },
-        |t: &mut MriTool| {
+        |t| {
             t.simulator.t2 = 0.45;
             t.params.write().unwrap().t2 = 0.45;
         },
-        |t: &mut MriTool| {
+        |t| {
             t.simulator.b_field.z = 1.75;
             t.params.write().unwrap().b_field.z = 1.75;
         },
-        |t: &mut MriTool| {
+        |t| {
             t.simulator.b_field.x = 0.03;
             t.params.write().unwrap().b_field.x = 0.03;
         },
-        |t: &mut MriTool| {
+        |t| {
             t.simulator.b_field.y = -0.02;
             t.params.write().unwrap().b_field.y = -0.02;
         },
-        |t: &mut MriTool| {
+        |t| {
             t.time_scale = 12.0;
             t.params.write().unwrap().time_scale = 12.0;
         },
-    ] {
+    ];
+    for mutate in mutations {
         mutate(tool);
         let next_rev = tool.state_revision();
         assert_ne!(next_rev, prev_rev);
@@ -259,7 +252,9 @@ fn test_mri_save_load_legacy_compatibility_and_exports() {
             },
             |ctx| {
                 loaded.framework.queue_export(fmt);
-                loaded.show(ctx, &mut frame);
+                CentralPanel::default()
+                    .frame(Frame::NONE)
+                    .show(ctx, |ui| loaded.show_inside(ui, &mut frame));
             },
         );
         assert_eq!(
@@ -329,14 +324,19 @@ fn test_mri_poisoned_lock_recovery_and_plot_buffers_reuse() {
 
 fn click_mri_button(ctx: &egui::Context, tab: &mut MriTab, label_substr: &str) {
     let mut frame = eframe::Frame::_new_kittest();
-    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
-    let out = ctx.run(
-        egui::RawInput {
-            screen_rect: Some(screen_rect),
-            ..Default::default()
-        },
-        |ctx| tab.show(ctx, &mut frame),
-    );
+    let raw = |events| egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        events,
+        ..Default::default()
+    };
+    let out = ctx.run(raw(Vec::new()), |ctx| {
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+    });
     let ak = out.platform_output.accesskit_update.as_ref().unwrap();
     let bounds = ak
         .nodes
@@ -348,27 +348,23 @@ fn click_mri_button(ctx: &egui::Context, tab: &mut MriTab, label_substr: &str) {
         ((bounds.x0 + bounds.x1) * 0.5) as f32,
         ((bounds.y0 + bounds.y1) * 0.5) as f32,
     );
+    let btn = |pressed| egui::Event::PointerButton {
+        pos: center,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
     let _ = ctx.run(
-        egui::RawInput {
-            screen_rect: Some(screen_rect),
-            events: vec![
-                egui::Event::PointerMoved(center),
-                egui::Event::PointerButton {
-                    pos: center,
-                    button: egui::PointerButton::Primary,
-                    pressed: true,
-                    modifiers: egui::Modifiers::NONE,
-                },
-                egui::Event::PointerButton {
-                    pos: center,
-                    button: egui::PointerButton::Primary,
-                    pressed: false,
-                    modifiers: egui::Modifiers::NONE,
-                },
-            ],
-            ..Default::default()
+        raw(vec![
+            egui::Event::PointerMoved(center),
+            btn(true),
+            btn(false),
+        ]),
+        |ctx| {
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
         },
-        |ctx| tab.show(ctx, &mut frame),
     );
 }
 
@@ -421,7 +417,11 @@ fn test_mri_reset_live_region_theory_and_preset_io() {
     click_mri_button(&ctx, &mut tab, "Theory");
     assert!(tab.framework.show_theory_portal);
     let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+    });
     assert!(
         scientific_metadata::citation_registry::CitationRegistry::get("MRI Bloch Relaxation")
             .is_some_and(|c| c.contains("Bloch, F. (1946)"))
@@ -454,7 +454,9 @@ fn test_mri_workspace_undo_mws_and_figure_export() {
         },
         |ctx| {
             tab.framework.queue_export(ExportFormat::Png);
-            tab.show(ctx, &mut frame);
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
         },
     );
     let _ = std::fs::write(

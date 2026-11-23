@@ -11,7 +11,9 @@ pub mod kspace_tool;
 pub mod kspace_types;
 pub mod kspace_ui;
 pub mod kspace_worker;
+pub mod pulse;
 pub mod runner;
+mod state;
 pub mod theory;
 pub mod tool;
 pub mod ui;
@@ -152,6 +154,8 @@ impl tool::MriTool {
                 "b_field"
             } else if !self.time_scale.is_finite() {
                 "time_scale"
+            } else if self.pulse_config.validate().is_err() {
+                "pulse_config"
             } else {
                 "magnetization"
             };
@@ -189,6 +193,9 @@ impl tool::MriTool {
             clamp_b(self.simulator.b_field.z, tool::DEFAULT_MRI_BZ),
         );
         self.time_scale = sanitize_mri_time_scale(self.time_scale);
+        if self.pulse_config.validate().is_err() {
+            self.pulse_config = pulse::RfPulseConfig::default();
+        }
         self.reset();
     }
 }

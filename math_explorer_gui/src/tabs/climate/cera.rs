@@ -3,11 +3,10 @@ use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
-use math_explorer::climate::autoencoder::Autoencoder;
-use math_explorer::climate::cera::Cera;
-use math_explorer::climate::config::CeraConfig;
-use math_explorer::climate::predictor::Predictor;
-use math_explorer::climate::training::CeraTrainer;
+use math_explorer::climate::{
+    autoencoder::Autoencoder, cera::Cera, config::CeraConfig, predictor::Predictor,
+    training::CeraTrainer,
+};
 use nalgebra::DMatrix;
 use rand::Rng;
 
@@ -402,18 +401,14 @@ impl InteractiveTool for CeraTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.show_ui(ui);
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            ui.heading("CERA Climate Representation Alignment");
+            self.draw_controls(ui);
+            ui.separator();
+            if !self.diverged {
+                self.draw_results(ui);
+            }
         });
-    }
-
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        ui.heading("CERA Climate Representation Alignment");
-        self.draw_controls(ui);
-        ui.separator();
-        if !self.diverged {
-            self.draw_results(ui);
-        }
     }
 }
 
@@ -461,19 +456,8 @@ impl scientific_metadata::theory::TheoryDescribable for CeraTool {
 }
 
 const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "CERA Climate Alignment",
-    "domain": "climate",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "in_channels": 4,
-    "latent_channels": 8,
-    "aligned_channels": 4,
-    "num_levels": 12,
-    "output_size": 2
-  }
+  "metadata": { "schema_version": "1.0", "title": "CERA Climate Alignment", "domain": "climate", "timestamp": "2026-11-16T00:00:00Z" },
+  "config": { "in_channels": 4, "latent_channels": 8, "aligned_channels": 4, "num_levels": 12, "output_size": 2 }
 }"#;
 
 inventory::submit! {

@@ -56,6 +56,7 @@ impl SimulationFramework {
         self.baseline_tool_state = Some(preset_state.clone());
         self.apply_target_parameter_state(&preset_state);
         self.clear_runtime_plots_and_divergence();
+        self.reset_active_tool_manual_bounds();
         self.refresh_saved_and_snapshot_after_reset();
         emit_recovery_telemetry(
             "SimulationFramework",
@@ -87,6 +88,7 @@ impl SimulationFramework {
             self.active_tool = Some(new_tool);
         }
         self.clear_runtime_plots_and_divergence();
+        self.reset_active_tool_manual_bounds();
         self.refresh_saved_and_snapshot_after_reset();
         emit_recovery_telemetry(
             "SimulationFramework",
@@ -117,6 +119,7 @@ impl SimulationFramework {
             self.active_tool = Some(new_tool);
         }
         self.clear_runtime_plots_and_divergence();
+        self.reset_active_tool_manual_bounds();
         self.refresh_saved_and_snapshot_after_reset();
         emit_recovery_telemetry(
             "SimulationFramework",
@@ -213,6 +216,7 @@ impl SimulationFramework {
         match res {
             Ok(()) => {
                 self.preset_dialog.toast_error = None;
+                self.reset_active_tool_manual_bounds();
                 self.sync_active_baseline();
                 Ok(())
             }
@@ -261,7 +265,11 @@ impl SimulationFramework {
                 self.preset_dialog.record_import_error(msg.clone());
                 return Err(msg);
             }
+            self.active_challenge = None;
+            self.challenge_was_passed = false;
+            let _ = tool.apply_challenge(None);
             self.preset_dialog.toast_error = None;
+            self.reset_active_tool_manual_bounds();
             self.sync_active_baseline();
         }
         self.show_starter_gallery = false;
@@ -294,10 +302,14 @@ impl SimulationFramework {
             new_tool.name().to_string(),
             new_tool.theory().theory_citation(),
         );
+        self.active_challenge = None;
+        self.challenge_was_passed = false;
         self.selected_tool_index = Some(idx);
         self.factory_tool_state = factory_state.clone();
         self.active_tool = Some(new_tool);
+        self.promote_legacy_plot_keys_for_active_tool();
         self.preset_dialog.toast_error = None;
+        self.reset_active_tool_manual_bounds();
         if preset_json.is_some() {
             self.sync_active_baseline();
         } else {

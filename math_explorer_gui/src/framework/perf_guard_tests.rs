@@ -26,8 +26,8 @@ impl InteractiveTool for SaveStateTrapTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self.inner.theory()
     }
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        self.inner.show_ui(ui);
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.inner.show_inside(ui);
     }
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         self.inner.export_datasets()

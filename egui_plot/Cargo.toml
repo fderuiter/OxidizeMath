@@ -82,6 +82,9 @@ features = ["accesskit"]
 version = "0.33.0"
 default-features = false
 
+[dependencies.math_commons]
+path = "../crates/math_commons"
+
 [dependencies.serde]
 version = "1"
 features = ["derive"]
@@ -123,6 +126,9 @@ web-sys = { workspace = true, features = [
     "EventTarget",
     "Node",
 ] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = { workspace = true }

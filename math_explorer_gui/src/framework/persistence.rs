@@ -128,6 +128,8 @@ struct FrameworkStateSerialize<'a> {
     tool_states: RawToolStates<'a>,
     #[serde(skip_serializing_if = "RawToolStates::is_empty")]
     preset_tool_states: RawToolStates<'a>,
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    plot_states: &'a plot_persistence::SavedPlotStatesMap,
 }
 
 #[derive(Deserialize)]
@@ -141,6 +143,11 @@ struct FrameworkStateDeserialize {
     tool_states: HashMap<String, String>,
     #[serde(default, deserialize_with = "deserialize_tool_states")]
     preset_tool_states: HashMap<String, String>,
+    #[serde(
+        default,
+        deserialize_with = "plot_persistence::deserialize_plot_states"
+    )]
+    plot_states: plot_persistence::SavedPlotStatesMap,
 }
 
 pub(super) fn capture_isolated_tool_datasets(
@@ -201,6 +208,7 @@ impl SimulationFramework {
         self.show_starter_gallery.hash(&mut hasher);
         self.saved_tool_states.len().hash(&mut hasher);
         self.preset_tool_states.len().hash(&mut hasher);
+        self.hash_saved_plot_states(&mut hasher);
         if let Some(tool) = &self.active_tool {
             tool.name().hash(&mut hasher);
             let tool_rev = tool.state_revision();
@@ -259,6 +267,7 @@ impl SimulationFramework {
                 saved: &self.preset_tool_states,
                 active: None,
             },
+            plot_states: &self.saved_plot_states,
         };
         serde_json::to_string(&state).ok()
     }
@@ -277,6 +286,8 @@ impl SimulationFramework {
         self.show_starter_gallery = false;
         self.saved_tool_states = state.tool_states;
         self.preset_tool_states = state.preset_tool_states;
+        self.saved_plot_states = state.plot_states;
+        self.bump_plot_sync_generation();
         self.bump_framework_revision();
 
         let tool_idx = state
@@ -368,7 +379,10 @@ impl SimulationFramework {
             self.saved_tool_states
                 .insert(old_name.to_string(), old_json.to_string());
         }
+        self.bump_plot_sync_generation();
         self.bump_framework_revision();
+        self.active_challenge = None;
+        self.challenge_was_passed = false;
         self.selected_tool_index = Some(index);
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();
@@ -412,6 +426,7 @@ impl SimulationFramework {
             new_tool.theory().theory_citation(),
         );
         self.active_tool = Some(new_tool);
+        self.promote_legacy_plot_keys_for_active_tool();
     }
 
     /// Selects and activates a tool by ID, display name, or tag in `available_tools` (case-insensitively).

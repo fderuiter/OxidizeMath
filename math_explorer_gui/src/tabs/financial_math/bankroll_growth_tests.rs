@@ -8,7 +8,7 @@ fn test_bankroll_growth_omits_local_reset_and_restores_via_framework() {
     ctx.enable_accesskit();
     let mut tool = BankrollGrowthTool::default();
     let out = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| tool.show_ui(ui));
+        egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
     });
     let ak = out.platform_output.accesskit_update.as_ref().unwrap();
     assert!(
