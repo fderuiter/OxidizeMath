@@ -181,15 +181,13 @@ fn capture_isolated_tool_datasets_3d(tool: &dyn InteractiveTool) -> Vec<(String,
 }
 
 impl SimulationFramework {
-    #[allow(missing_docs)]
+    /// Creates a new simulation framework populated with registered tools for `domain`.
     pub fn new(domain: &str) -> Self {
         let mut available_tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>
             .into_iter()
             .filter(|t| t.domain == domain)
             .collect();
-
         available_tools.sort_by_key(|t| (t.display_name, t.id));
-
         let mut framework = Self {
             available_tools,
             active_tool: None,
@@ -221,17 +219,16 @@ impl SimulationFramework {
             diagnostic_report: None,
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
+            challenge_hud: ChallengeHudState::default(),
             active_challenge: None,
             challenge_was_passed: false,
             instance_id: overlay_sync::next_framework_id(),
             sync_state: FrameworkSyncState::default(),
             rev_cache: FrameworkRevisionCache::default(),
         };
-
         if !framework.available_tools.is_empty() {
             framework.select_tool(0);
         }
-
         framework
     }
 
@@ -408,6 +405,7 @@ impl SimulationFramework {
         }
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
+        self.clear_challenge_hud();
         self.active_challenge = None;
         self.challenge_was_passed = false;
         self.selected_tool_index = Some(index);

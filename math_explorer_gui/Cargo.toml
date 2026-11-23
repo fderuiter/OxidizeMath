@@ -71,7 +71,7 @@ rand = { workspace = true }
 petgraph = { workspace = true }
 inventory = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 chrono = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -129,6 +129,11 @@ verified_engine = { path = "../crates/verified_engine" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = { workspace = true }
+
+[build-dependencies]
+futures = { workspace = true }
+oxidize_core = { path = "../crates/oxidize_core" }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

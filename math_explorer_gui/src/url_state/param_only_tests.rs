@@ -61,13 +61,7 @@ fn assert_ode_url_restore_and_snapshot_revision_isolation(fw: &mut SimulationFra
     let hash = &share_url[share_url.find('#').unwrap()..];
     let parsed = parse_share_location(hash, "").unwrap().unwrap();
     let mut restored_fw = SimulationFramework::new("analysis");
-    restored_fw
-        .import_url_share_params(
-            parsed.tool.as_deref(),
-            parsed.challenge.as_deref(),
-            parsed.state_json.as_deref(),
-        )
-        .unwrap();
+    restored_fw.import_url_share_params(&parsed, None).unwrap();
     let restored_ode = restored_fw
         .active_tool
         .as_ref()
@@ -191,13 +185,7 @@ fn assert_sir_url_restore_and_snapshot_revision_isolation(fw: &mut SimulationFra
     let hash = &share_url[share_url.find('#').unwrap()..];
     let parsed = parse_share_location(hash, "").unwrap().unwrap();
     let mut restored_fw = SimulationFramework::new("epidemiology");
-    restored_fw
-        .import_url_share_params(
-            parsed.tool.as_deref(),
-            parsed.challenge.as_deref(),
-            parsed.state_json.as_deref(),
-        )
-        .unwrap();
+    restored_fw.import_url_share_params(&parsed, None).unwrap();
     let restored_sir = restored_fw
         .active_tool
         .as_ref()
