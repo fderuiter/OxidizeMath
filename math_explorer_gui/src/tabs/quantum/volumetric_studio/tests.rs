@@ -3,12 +3,19 @@
 
 use super::presets::{
     PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3DZ2_CONE_JSON, PRESET_3D_TURING_GYROID_JSON,
+    PRESET_CSG_BOOLEAN_SOLID_JSON, PRESET_GYROID_TPMS_JSON, PRESET_SCHWARZ_P_SHELL_JSON,
 };
-use super::state::{FieldSourceMode, SliceAxis, VolumetricRenderMode, VolumetricStudioConfig};
+use super::state::{
+    FieldSourceMode, ImplicitClosureMode, SliceAxis, VolumetricRenderMode, VolumetricStudioConfig,
+};
 use super::VolumetricFieldStudioTool;
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::InteractiveTool;
+use crate::tabs::geometry_topology::export_utils::{
+    count_open_and_nonmanifold_edges, signed_volume,
+};
 use eframe::egui;
+use oxidize_core::mesh::export_mesh_to_stl_binary;
 
 #[test]
 fn test_zero_alloc_hot_path_quantum_and_turing_under_verified_allocator() {
@@ -175,6 +182,9 @@ fn test_state_bounds_validation_starter_presets_and_finite_state_guard() {
         PRESET_1S_2PZ_DIPOLE_JSON,
         PRESET_3DZ2_CONE_JSON,
         PRESET_3D_TURING_GYROID_JSON,
+        PRESET_GYROID_TPMS_JSON,
+        PRESET_SCHWARZ_P_SHELL_JSON,
+        PRESET_CSG_BOOLEAN_SOLID_JSON,
     ] {
         tool.import_preset_json(preset)
             .expect("starter preset must load cleanly");
@@ -197,4 +207,116 @@ fn test_state_bounds_validation_starter_presets_and_finite_state_guard() {
     FiniteStateGuard::reset_parameters(&mut tool);
     assert!(!FiniteStateGuard::diverged(&tool));
     assert!(FiniteStateGuard::is_finite_state(&tool));
+}
+
+#[test]
+fn test_zero_alloc_custom_implicit_refresh_and_step_under_verified_allocator() {
+    let mut tool = VolumetricFieldStudioTool::default();
+    tool.import_preset_json(PRESET_GYROID_TPMS_JSON)
+        .expect("gyroid preset loads");
+    tool.config.grid_resolution = 24;
+    tool.config.render_mode = VolumetricRenderMode::HybridShellAndCloud;
+    tool.config.cut_enabled = true;
+    tool.config.cut_axis = SliceAxis::Y;
+    tool.config.cut_offset = 0.15;
+    tool.refresh_zero_alloc();
+
+    let _alloc_lock = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    verified_engine::engine::VerifiedEngine::run_verified(|| {
+        tool.config.implicit_level = 0.12;
+        tool.config.wall_thickness = 0.62;
+        tool.config.cut_offset = -0.10;
+        tool.refresh_zero_alloc();
+        tool.step_zero_alloc();
+    });
+
+    assert!(!tool.engine.pos_mesh.vertices.is_empty());
+    assert!(!tool.engine.slice_contours.is_empty());
+}
+
+fn assert_watertight_outward_solid_and_stl(
+    tool: &VolumetricFieldStudioTool,
+    expected_span_mm: f32,
+    label: &str,
+) {
+    let caps = tool.export_capabilities();
+    assert!(caps.stl && caps.ply && caps.obj);
+    let mesh = tool
+        .export_mesh_3d()
+        .expect("solid 3D capability")
+        .unwrap_or_else(|e| panic!("{label} export_mesh_3d failed: {e}"));
+    assert!(!mesh.indices.is_empty(), "{label} mesh empty");
+    assert_eq!(
+        mesh.normals.iter().filter(|n| !n.is_finite()).count(),
+        0,
+        "{label} emitted NaN/Inf normals"
+    );
+    assert_eq!(
+        count_open_and_nonmanifold_edges(&mesh),
+        (0, 0),
+        "{label} must have (0, 0) open/non-manifold edges"
+    );
+    assert!(
+        signed_volume(&mesh) > 0.0,
+        "{label} must have positive outward signed_volume"
+    );
+    let stl = export_mesh_to_stl_binary(&mesh).expect("binary STL serialization");
+    assert_eq!(stl.len(), 84 + 50 * (mesh.indices.len() / 3));
+    assert!(std::str::from_utf8(&stl[..80])
+        .unwrap_or("")
+        .contains("UNITS=mm"));
+    let max_span = compute_mesh_max_span(&mesh);
+    assert!(
+        (max_span - expected_span_mm).abs() <= 0.01,
+        "{label} max span {max_span} mm differed from {expected_span_mm} mm"
+    );
+}
+
+fn compute_mesh_max_span(mesh: &oxidize_core::mesh::Mesh) -> f32 {
+    let mut min_v = [f32::INFINITY; 3];
+    let mut max_v = [f32::NEG_INFINITY; 3];
+    for v in &mesh.vertices {
+        min_v[0] = min_v[0].min(v.x);
+        min_v[1] = min_v[1].min(v.y);
+        min_v[2] = min_v[2].min(v.z);
+        max_v[0] = max_v[0].max(v.x);
+        max_v[1] = max_v[1].max(v.y);
+        max_v[2] = max_v[2].max(v.z);
+    }
+    (max_v[0] - min_v[0])
+        .max(max_v[1] - min_v[1])
+        .max(max_v[2] - min_v[2])
+}
+
+#[test]
+fn test_watertight_manifold_topology_and_mm_stl_across_implicit_orbital_and_turing() {
+    let mut tool = VolumetricFieldStudioTool::default();
+    let cases = [
+        ("Gyroid TPMS", PRESET_GYROID_TPMS_JSON, 60.0_f32),
+        ("Schwarz-P Shell", PRESET_SCHWARZ_P_SHELL_JSON, 50.0_f32),
+        ("CSG Cube-Sphere", PRESET_CSG_BOOLEAN_SOLID_JSON, 45.0_f32),
+        ("3dz2 Orbital", PRESET_3DZ2_CONE_JSON, 85.0_f32),
+        ("Cut-Plane Turing", PRESET_3D_TURING_GYROID_JSON, 120.0_f32),
+    ];
+    for (label, preset, span_mm) in cases {
+        tool.import_preset_json(preset).expect("valid preset");
+        tool.config.grid_resolution = 26;
+        tool.config.export_size_mm = f64::from(span_mm);
+        tool.refresh_zero_alloc();
+        assert_watertight_outward_solid_and_stl(&tool, span_mm, label);
+    }
+
+    // Verify clamp + exp + cut-plane half-space implicit solid also seals with (0, 0) open edges.
+    tool.config.source = FieldSourceMode::CustomImplicit;
+    tool.config.implicit_expr =
+        "exp(-0.35 * (x^2 + y^2 + z^2)) - clamp(0.5 + 0.15 * z, 0.2, 0.8) = 0".into();
+    tool.config.implicit_closure = ImplicitClosureMode::HalfSpaceSolid;
+    tool.config.cut_enabled = true;
+    tool.config.cut_axis = SliceAxis::X;
+    tool.config.cut_offset = 0.05;
+    tool.config.export_size_mm = 32.5;
+    tool.refresh_zero_alloc();
+    assert_watertight_outward_solid_and_stl(&tool, 32.5, "Cut Clamped-Gaussian Implicit");
 }

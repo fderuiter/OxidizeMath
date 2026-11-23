@@ -347,17 +347,17 @@ impl SirTool {
 
     pub(super) fn render_sir_readouts_and_atlas(&mut self, ui: &mut egui::Ui) {
         let (_r0, final_frac) = self.final_outbreak_metrics();
-        render_copyable_metric(
-            ui,
-            "Final Outbreak Size (S_∞ Solver)",
-            &format!(
-                "{:.2}% ({:.0} / {:.0})",
-                final_frac * 100.0,
-                final_frac * self.n,
-                self.n
-            ),
-        );
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
+            render_copyable_metric(
+                ui,
+                "Final Outbreak Size (S_∞ Solver)",
+                &format!(
+                    "{:.2}% ({:.0} / {:.0})",
+                    final_frac * 100.0,
+                    final_frac * self.n,
+                    self.n
+                ),
+            );
             let _ = self.atlas.show_toggle_button(ui);
         });
         self.render_sir_atlas_panel(ui);
