@@ -8703,6 +8703,38 @@
       "signature": "pub use diagnostics :: Severity"
     }
   ],
+  "crates/math_commons/src/ast/codegen.rs": [
+    {
+      "signature": "impl Expr { pub fn to_latex_with_params (& self , _ : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_python_expr (& self , _ : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_python_expr_with_vars (& self , _ : & [& str] , _ : & HashMap < String , f64 > ,) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_python_ode_rhs (& self , _ : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_rust_expr (& self , _ : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_rust_expr_with_vars (& self , _ : & [& str] , _ : & HashMap < String , f64 > ,) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_rust_fn (& self , _ : & str , _ : & [& str] , _ : & HashMap < String , f64 > ,) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "pub fn format_latex_scalar (_ : f64) -> Result < String , EvalError >"
+    },
+    {
+      "signature": "pub fn format_python_float (_ : f64) -> Result < String , EvalError >"
+    },
+    {
+      "signature": "pub fn format_rust_f64 (_ : f64) -> Result < String , EvalError >"
+    }
+  ],
   "crates/math_commons/src/ast/compiled.rs": [
     {
       "signature": "impl CompiledExpr { pub const fn axis_count (& self) -> usize }"
@@ -8884,6 +8916,15 @@
     }
   ],
   "crates/math_commons/src/ast/mod.rs": [
+    {
+      "signature": "pub use codegen :: format_latex_scalar"
+    },
+    {
+      "signature": "pub use codegen :: format_python_float"
+    },
+    {
+      "signature": "pub use codegen :: format_rust_f64"
+    },
     {
       "signature": "pub use compiled :: CompiledExpr"
     },
@@ -9085,6 +9126,9 @@
     }
   ],
   "crates/math_commons/src/fit/mod.rs": [
+    {
+      "signature": "impl CurveFit { pub fn centered_polynomial (& self) -> Option < (f64 , f64 , & [f64]) > }"
+    },
     {
       "signature": "impl CurveFit { pub fn coefficients (& self) -> & [f64] }"
     },
@@ -9458,6 +9502,9 @@
   "crates/math_commons/src/series.rs": [
     {
       "signature": "pub trait PointSeries"
+    },
+    {
+      "signature": "pub trait PointSeries { fn advance_plateau_run (& self , _ : usize , _ : f64 , _ : f64 , _ : f64) -> usize }"
     },
     {
       "signature": "pub trait PointSeries { fn is_empty (& self) -> bool }"
