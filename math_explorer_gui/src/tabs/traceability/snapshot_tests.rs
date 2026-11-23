@@ -109,7 +109,7 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
         serde_json::from_str(embedded_json).expect("deserialize TraceabilityReport directly");
     let (manifest_report, embedded_cert) =
         web_snapshot::parse_manifest_json(embedded_json).expect("valid manifest JSON");
-    assert_eq!(direct_report.paper_coverage, manifest_report.paper_coverage);
+    assert_eq!(direct_report, manifest_report);
 
     let live_report = futures::executor::block_on(execute_workspace_scan(
         oxidize_core::vfs::DefaultVfs,
@@ -125,14 +125,17 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
         .filter(|k| k.ends_with(".tex"))
         .count();
     assert_eq!(
-        tex_paper_count, 29,
-        "Manifest must cover all 29 .tex papers"
+        tex_paper_count, 30,
+        "Manifest must cover all 30 .tex papers"
     );
     assert!(manifest_report.orphaned_papers.is_empty());
     assert!(manifest_report.unlinked_code.is_empty());
     assert!(manifest_report.invalid_links.is_empty());
-    assert_eq!(manifest_report.scanned_files, live_report.scanned_files);
-    assert_eq!(manifest_report.paper_coverage, live_report.paper_coverage);
+    assert!(manifest_report.total_funcs > 0);
+    assert!(manifest_report.total_asserts > 0);
+    assert!(manifest_report.verified_funcs > 0);
+    assert!(manifest_report.verified_asserts > 0);
+    assert_eq!(manifest_report, live_report);
 
     let cert = embedded_cert.expect("embedded Verification_Certificate.json");
     assert!(cert.passed);
