@@ -30,7 +30,9 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0034: Curate `math_explorer` Facade Exports and Doctests](adr/0034-curate-math-explorer-facade-exports-and-doctests.md)
 - [ADR 0035: Spatial Fermi Games and Ising Droplet Brushes](adr/0035-fermi-spatial-games-and-ising-droplet-brushes.md)
 - [ADR 0037: Frozen-Period Glicko-2 Tournament Engine and Interactive Simulator](adr/0037-glicko2-frozen-period-tournament-simulator.md)
-- [ADR 0038: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0038-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
+- [ADR 0038: Prime-Exponent FRACTRAN Virtual Machine and Minsky Counter Automaton Explorer](adr/0038-prime-exponent-fractran-vm-and-minsky-gui.md)
+- [ADR 0039: Network Epidemic Containment Primitives, Active Degree Moments, and Zero-Allocation Stepping](adr/0039-network-epidemic-containment-primitives.md)
+- [ADR 0040: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0040-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 
 ## Contributing
 

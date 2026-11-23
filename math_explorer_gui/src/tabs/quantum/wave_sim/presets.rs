@@ -191,16 +191,6 @@ pub fn clamp_potential_sample(value: f64) -> f64 {
     }
 }
 
-/// Returns `value` if finite, or `fallback` otherwise.
-#[must_use]
-pub(super) fn finite_or(value: f64, fallback: f64) -> f64 {
-    if value.is_finite() {
-        value
-    } else {
-        fallback
-    }
-}
-
 /// Computes the scattering barrier interval `[x_left, x_right]` for Born R/B/T integration.
 #[must_use]
 pub fn barrier_interval_for_preset(preset: WavePotentialPreset, width: f64, dx: f64) -> (f64, f64) {
