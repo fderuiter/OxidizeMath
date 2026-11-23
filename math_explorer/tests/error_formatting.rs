@@ -1,4 +1,4 @@
-//! Verifies that all 31 public error enums re-exported by `math_explorer::error`
+//! Verifies that all 33 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -14,11 +14,11 @@
 use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
     AIError, BatteryError, BotanicalError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
-    EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error,
-    HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError,
-    MarketPricingError, MarkovError, MathError, NumberTheoryError, OuError, PharmacokineticsError,
-    RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError, TdaError,
-    ZipError,
+    EloError, EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError,
+    Glicko2Error, HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError,
+    MarketPricingError, MarkovError, MatchModelError, MathError, NumberTheoryError, OuError,
+    PharmacokineticsError, RadarError, SandpileError, SolidStateError, StandardModelError,
+    StatMechError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -79,9 +79,14 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic("ZipError", &ZipError::InvalidRate { value: -0.5 });
     assert_readable_diagnostic("TdaError", &TdaError::EmptyPointCloud);
     assert_readable_diagnostic("CopulaError", &CopulaError::NotPositiveDefinite);
+    assert_readable_diagnostic("EloError", &EloError::InvalidScale { value: 0.0 });
     assert_readable_diagnostic(
         "Glicko2Error",
         &Glicko2Error::InvalidSystemConstant { value: 0.0 },
+    );
+    assert_readable_diagnostic(
+        "MatchModelError",
+        &MatchModelError::InvalidGoalRate { value: 0.0 },
     );
 }
 

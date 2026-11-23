@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 pub mod atlas;
 mod atlas_bridge;
+pub mod counterfactual;
+mod counterfactual_tool;
 pub mod gray_scott_atlas;
 #[cfg(test)]
 mod legacy_runner;
@@ -14,6 +16,7 @@ pub mod lenia;
 pub mod phyllotaxis_lsystem;
 pub mod presets;
 pub mod runner;
+mod runner_twin;
 pub mod sculpt;
 mod seeding;
 pub mod tool;
@@ -23,6 +26,8 @@ pub mod ui;
 pub use atlas::{
     classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
 };
+#[cfg(test)]
+pub use counterfactual::MorphogenesisHeatmapMode;
 #[cfg(test)]
 pub use gray_scott_atlas::{
     classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
@@ -35,7 +40,7 @@ pub use phyllotaxis_lsystem::PhyllotaxisLSystemTool;
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
-pub use runner::{MorphogenesisRunner, MorphogenesisSharedParams};
+pub use runner::{MorphogenesisKineticsRunner, MorphogenesisRunner, MorphogenesisSharedParams};
 pub use tool::{MorphogenesisTool, MorphogenesisToolState};
 
 /// Legacy flat `MorphoState` schema saved by pre-framework `.mws` workspaces.
@@ -153,6 +158,8 @@ inventory::submit! {
     }
 }
 
+#[cfg(test)]
+mod counterfactual_tests;
 #[cfg(test)]
 mod tests;
 

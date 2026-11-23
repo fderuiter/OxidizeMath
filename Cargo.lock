@@ -2415,6 +2415,8 @@ dependencies = [
  "pure_math",
  "rand",
  "scientific_metadata",
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "verified_engine",
  "verified_engine_macros",
