@@ -37,6 +37,28 @@ const INNER_BLOCKED_LINTS: &[&str] = &[
 const SCOPE_EXTRA_BLOCKED_LINTS: &[&str] = &["too_many_lines", "cognitive_complexity"];
 const TOO_MANY_LINES_ONLY: &[&str] = &["too_many_lines"];
 
+pub(crate) fn is_missing_docs_lint_path(path: &syn::Path) -> bool {
+    if path.segments.iter().any(|seg| !seg.arguments.is_empty()) {
+        return false;
+    }
+    match path.segments.len() {
+        1 => path.segments[0].ident == "missing_docs",
+        2 => path.segments[0].ident == "rust" && path.segments[1].ident == "missing_docs",
+        _ => false,
+    }
+}
+
+pub(crate) fn meta_suppresses_missing_docs(root_meta: &syn::Meta) -> bool {
+    crate::ast_helpers::find_suppressed_lint_in_meta(root_meta, |lint_path| {
+        is_missing_docs_lint_path(lint_path).then_some(())
+    })
+    .is_some()
+}
+
+pub(crate) fn attr_suppresses_missing_docs(attr: &syn::Attribute) -> bool {
+    meta_suppresses_missing_docs(&attr.meta)
+}
+
 pub(crate) fn load_too_many_lines_threshold() -> usize {
     let candidates = [
         PathBuf::from(".clippy.toml"),

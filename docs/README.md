@@ -37,7 +37,10 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0042: Zero-Allocation 2D Chladni Plate and Wave Tank Solver](adr/0042-2d-chladni-plate-and-wave-tank-solver.md)
 - [ADR 0043: Auto-Discovered Paradox Lab Tab for Stochastic Ratchets and Network Congestion](adr/0043-paradox-lab-interactive-tab.md)
 - [ADR 0043: Repair Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates](adr/0043-repair-guides-and-enforce-static-doc-gates.md)
-- [ADR 0044: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0044-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
+- [ADR 0044: Stack-Allocated Geodesic Engine and General Relativity Tab](adr/0044-geodesic-engine-and-relativity-tab.md)
+- [ADR 0044: Ratchet `missing_docs` Exemptions and Document Core API Entrypoints](adr/0044-ratchet-missing-docs-and-core-api-documentation.md)
+- [ADR 0044: Unify Build-Time and Runtime Traceability Scanning via `TraceabilityEngine`](adr/0044-unify-build-time-traceability-engine.md)
+- [ADR 0045: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0045-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 
 ## Contributing
 
