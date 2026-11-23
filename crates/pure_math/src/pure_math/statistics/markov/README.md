@@ -15,17 +15,23 @@ This module is part of the `math_explorer` core library. To use it, include the 
 
 ```toml
 [dependencies]
-math_explorer = { path = "path/to/math_explorer" }
+math_explorer = { path = "path/to/math_explorer", features = ["pure_math"] }
 ```
 
 ---
 
 ## Usage
 
-You can see all these models in action by running the standalone, fully executable example:
+Explore stationary distributions and non-stationary transition tensors interactively in the desktop or WebAssembly GUI under **Applied Math -> Paradox Lab -> Parrondo's Paradox**:
 
 ```bash
-cargo run --release --package math_explorer --example markov_demo
+cargo run --release -p math_explorer_gui
+```
+
+You can also see the standalone CLI models in action by running the executable example:
+
+```bash
+cargo run --release --package math_explorer --features pure_math --example markov_demo
 ```
 
 This executable demonstrates:
@@ -36,7 +42,7 @@ This executable demonstrates:
 5. **Birth-Death Process (CTMC)**
 6. **Market Regime Detection (HMM)**
 
-*(See `math_explorer/examples/markov_demo.rs` for implementation details)*
+*(See `math_explorer_gui/src/tabs/paradox_lab/parrondo.rs` for interactive `MarkovChain` and `TransitionTensor` usage, and `math_explorer/examples/markov_demo.rs` for CLI examples)*
 
 ---
 
@@ -80,5 +86,5 @@ graph TD
 See the [Project Contributing Guide](../../../../../../CONTRIBUTING.md) for details on adding new architectures, models, or algorithms. Run the comprehensive test suite to ensure mathematical integrity:
 
 ```bash
-cargo test --lib pure_math::statistics::markov
+cargo test -p pure_math --lib pure_math::statistics::markov
 ```
