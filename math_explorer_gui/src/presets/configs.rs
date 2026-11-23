@@ -155,55 +155,77 @@ impl ReplicatorPresetConfig {
     }
 
     fn validate_symbolic(&self, rows: usize) -> Result<(), String> {
-        match &self.symbolic_payoffs {
-            Some(sym_rows) => {
-                if sym_rows.len() != rows {
-                    return Err(format!(
-                        "Symbolic payoff matrix row count ({}) does not match dimensions ({rows}x{rows})",
-                        sym_rows.len()
-                    ));
-                }
-                for (i, row) in sym_rows.iter().enumerate() {
-                    if row.len() != rows {
-                        return Err(format!(
-                            "Symbolic payoff row {i} has length {}, expected {rows}",
-                            row.len()
-                        ));
-                    }
-                    for (j, expr_str) in row.iter().enumerate() {
-                        let trimmed = expr_str.trim();
-                        if trimmed.is_empty() || trimmed.len() > 256 {
-                            return Err(format!(
-                                "Symbolic payoff cell ({i}, {j}) must be non-empty and <= 256 chars"
-                            ));
-                        }
-                    }
-                }
-                if self.symbolic_params.len() > crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
-                {
-                    return Err(format!(
-                        "Symbolic parameter count ({}) exceeds maximum ({})",
-                        self.symbolic_params.len(),
-                        crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
-                    ));
-                }
-                for (name, &val) in &self.symbolic_params {
-                    if !val.is_finite() || !(-1e4..=1e4).contains(&val) {
-                        return Err(format!(
-                            "Symbolic parameter '{name}' must be finite and within [-10000, 10000]"
-                        ));
-                    }
-                }
-                Ok(())
+        let Some(sym_rows) = &self.symbolic_payoffs else {
+            if !self.symbolic_params.is_empty() {
+                return Err(
+                    "symbolic_params cannot be specified without symbolic_payoffs".to_string(),
+                );
             }
-            None => {
-                if !self.symbolic_params.is_empty() {
-                    return Err(
-                        "symbolic_params cannot be specified without symbolic_payoffs".to_string(),
-                    );
-                }
-                Ok(())
+            return Ok(());
+        };
+        if sym_rows.len() != rows {
+            return Err(format!(
+                "Symbolic payoff matrix row count ({}) does not match dimensions ({rows}x{rows})",
+                sym_rows.len()
+            ));
+        }
+        let mut free_vars = std::collections::BTreeSet::new();
+        for (i, row) in sym_rows.iter().enumerate() {
+            if row.len() != rows {
+                return Err(format!(
+                    "Symbolic payoff row {i} has length {}, expected {rows}",
+                    row.len()
+                ));
+            }
+            for (j, expr_str) in row.iter().enumerate() {
+                Self::validate_symbolic_cell(i, j, expr_str, &mut free_vars)?;
             }
         }
+        if self.symbolic_params.len() > crate::framework::math_input::MAX_SYNTHESIZED_PARAMS {
+            return Err(format!(
+                "Symbolic parameter count ({}) exceeds maximum ({})",
+                self.symbolic_params.len(),
+                crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
+            ));
+        }
+        for (name, &val) in &self.symbolic_params {
+            if !val.is_finite() || !(-1e4..=1e4).contains(&val) {
+                return Err(format!(
+                    "Symbolic parameter '{name}' must be finite and within [-10000, 10000]"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_symbolic_cell(
+        i: usize,
+        j: usize,
+        expr_str: &str,
+        free_vars: &mut std::collections::BTreeSet<String>,
+    ) -> Result<(), String> {
+        let max_params = crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
+        let trimmed = expr_str.trim();
+        if trimmed.is_empty() || trimmed.len() > 256 {
+            return Err(format!(
+                "Symbolic payoff cell ({i}, {j}) must be non-empty and <= 256 chars"
+            ));
+        }
+        let (_, ast) = math_commons::ast::parse_equation(trimmed).map_err(|e| {
+            format!(
+                "Symbolic payoff cell ({i}, {j}) is invalid: {}",
+                e.user_message_for_input(trimmed)
+            )
+        })?;
+        let compiled = math_commons::ast::CompiledExpr::compile(&ast).map_err(|e| {
+            format!("Symbolic payoff cell ({i}, {j}) exceeds complexity limit: {e}")
+        })?;
+        free_vars.extend(compiled.var_names().iter().cloned());
+        if free_vars.len() > max_params {
+            return Err(format!(
+                "Symbolic payoff cell ({i}, {j}) exceeds maximum free parameters ({max_params})"
+            ));
+        }
+        Ok(())
     }
 }

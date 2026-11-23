@@ -8824,6 +8824,9 @@
       "signature": "impl CompiledExpr { pub fn eval_slice (& self , _ : & [f64]) -> f64 }"
     },
     {
+      "signature": "impl CompiledExpr { pub fn instruction_count (& self) -> usize }"
+    },
+    {
       "signature": "impl CompiledExpr { pub fn instructions (& self) -> & [Instruction] }"
     },
     {
@@ -8941,9 +8944,18 @@
   "crates/math_commons/src/ast/latex.rs": [
     {
       "signature": "impl Expr { pub fn to_latex (& self) -> String }"
+    },
+    {
+      "signature": "impl Expr { pub fn try_to_latex (& self) -> Result < String , EvalError > }"
     }
   ],
   "crates/math_commons/src/ast/lexer.rs": [
+    {
+      "signature": "impl LexError { pub fn input_too_long (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl LexError { pub fn token_limit_exceeded (_ : usize , _ : usize) -> Self }"
+    },
     {
       "signature": "impl LexError { pub fn user_message (& self) -> String }"
     },
@@ -8964,6 +8976,32 @@
     },
     {
       "signature": "pub struct Token"
+    }
+  ],
+  "crates/math_commons/src/ast/limits.rs": [
+    {
+      "signature": "pub const MAX_AST_NODES : usize"
+    },
+    {
+      "signature": "pub const MAX_CODEGEN_OUTPUT_BYTES : usize"
+    },
+    {
+      "signature": "pub const MAX_COMPILED_INSTRUCTIONS : usize"
+    },
+    {
+      "signature": "pub const MAX_EXPR_BYTES : usize"
+    },
+    {
+      "signature": "pub const MAX_EXPR_TOKENS : usize"
+    },
+    {
+      "signature": "pub const MAX_GLSL_OUTPUT_BYTES : usize"
+    },
+    {
+      "signature": "pub const MAX_LATEX_FALLBACK_NODES : usize"
+    },
+    {
+      "signature": "pub const MAX_LATEX_OUTPUT_BYTES : usize"
     }
   ],
   "crates/math_commons/src/ast/mod.rs": [
@@ -9029,6 +9067,30 @@
     },
     {
       "signature": "pub use lexer :: tokenize"
+    },
+    {
+      "signature": "pub use limits :: MAX_AST_NODES"
+    },
+    {
+      "signature": "pub use limits :: MAX_CODEGEN_OUTPUT_BYTES"
+    },
+    {
+      "signature": "pub use limits :: MAX_COMPILED_INSTRUCTIONS"
+    },
+    {
+      "signature": "pub use limits :: MAX_EXPR_BYTES"
+    },
+    {
+      "signature": "pub use limits :: MAX_EXPR_TOKENS"
+    },
+    {
+      "signature": "pub use limits :: MAX_GLSL_OUTPUT_BYTES"
+    },
+    {
+      "signature": "pub use limits :: MAX_LATEX_FALLBACK_NODES"
+    },
+    {
+      "signature": "pub use limits :: MAX_LATEX_OUTPUT_BYTES"
     },
     {
       "signature": "pub use num_complex :: Complex64"
