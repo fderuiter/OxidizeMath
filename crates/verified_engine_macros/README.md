@@ -16,7 +16,7 @@ By analyzing abstract syntax trees (AST) during compilation, these macros emit s
   - Injects runtime `ComplexityMetrics` instrumentation on non-`const` function bodies.
 - **`#[derive(Theory)]`**: Derive macro implementing `TheoryDescribable` on structs with named fields:
   - Validates struct-level `#[theory(description = "...", phonetic = "...", citation = "...")]` and field-level `#[theory(min = ..., max = ..., step = ...)]` attributes with full `syn::Error` accumulation.
-  - Accepts finite integer and floating-point bounds (including negative literals), enforces `min <= max` and `step > 0.0` at macro-expansion time, and spans numeric casts to each field's type token.
+  - Accepts finite integer and floating-point bounds (including negative literals), enforces `min <= max` and `step > 0.0` at macro-expansion time, and spans primitive numeric trait checks to each field's type token.
 - **`#[embed_theory]`**: Attribute macro dynamically resolving workspace `.tex` formulations from `CARGO_MANIFEST_DIR`, checking AST semantic integrity, and emitting unnamed `const _` file-change trackers.
 - **`runtime_violation!`**: Procedural macro generating structured JSON fatal violation payloads for runtime allocator aborts.
 
@@ -46,16 +46,17 @@ pub struct GravityModel {
     pub substeps: usize,
 }
 
-let mut model = GravityModel { g: 9.81, substeps: 4 };
+let model = GravityModel { g: 9.81, substeps: 4 };
 assert_eq!(model.theory_description(), "Gravitational acceleration model");
 assert_eq!(
     model.theory_citation(),
     "Newton, I. (1687). Philosophiae Naturalis Principia Mathematica."
 );
-assert_eq!(model.get_parameter("g"), Some(9.81));
-
-model.set_parameter("substeps", 8.0);
-assert_eq!(model.substeps, 8);
+let params = model.theory_parameters();
+assert_eq!(params["g"].max, 100.0);
+assert_eq!(params["substeps"].max, 64.0);
+assert_eq!(model.g, 9.81);
+assert_eq!(model.substeps, 4);
 ```
 
 ---
