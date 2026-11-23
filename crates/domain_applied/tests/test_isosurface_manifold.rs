@@ -5,7 +5,7 @@ use domain_applied::applied::isosurface::{
     analyze_mesh_manifold, extract_isosurface, sample_watertight_grid,
 };
 use math_commons::ast::parse;
-use oxidize_core::mesh::{export_mesh_to_binary_stl, export_mesh_to_obj_string};
+use oxidize_core::mesh::{export_mesh_to_obj_string, export_mesh_to_stl_binary};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use verified_engine::allocator::VerifiedAllocator;
@@ -39,6 +39,21 @@ fn assert_closed_manifold(mesh: &Mesh) {
         3 * stats.triangle_count,
         2 * stats.undirected_edges,
         "Closed 2-manifold must satisfy 3*F == 2*E: {stats:?}"
+    );
+
+    let mut signed_vol6 = 0.0_f64;
+    for &[i0, i1, i2] in mesh.indices.as_chunks::<3>().0 {
+        let (a, b, c) = (mesh.vertices[i0], mesh.vertices[i1], mesh.vertices[i2]);
+        let (ax, ay, az) = (f64::from(a.x), f64::from(a.y), f64::from(a.z));
+        let (bx, by, bz) = (f64::from(b.x), f64::from(b.y), f64::from(b.z));
+        let (cx, cy, cz) = (f64::from(c.x), f64::from(c.y), f64::from(c.z));
+        signed_vol6 +=
+            ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
+    }
+    assert!(
+        signed_vol6 > 0.0,
+        "Expected positive outward-wound signed volume, got {}",
+        signed_vol6 / 6.0
     );
 }
 
@@ -121,7 +136,7 @@ fn test_tpms_and_clipped_sphere_32_cubed_are_closed_manifolds() {
         let mesh = extract_isosurface(&grid, 0.0).expect("extract_isosurface");
         assert_closed_manifold(&mesh);
 
-        let stl = export_mesh_to_binary_stl(&mesh).expect("stl export");
+        let stl = export_mesh_to_stl_binary(&mesh).expect("stl export");
         assert_welded_stl_watertight(&stl, mesh.indices.len() / 3);
 
         let obj = export_mesh_to_obj_string(&mesh).expect("obj export");

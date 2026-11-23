@@ -425,8 +425,8 @@ impl<'a, G: GradientEstimator> MarchingCubes<'a, G> {
             let v3_lookup = TRIANGLE_CONNECTION_TABLE[cube.index][i + 2];
 
             indices.push(edge_vertex_indices[v1_lookup as usize]);
-            indices.push(edge_vertex_indices[v2_lookup as usize]);
             indices.push(edge_vertex_indices[v3_lookup as usize]);
+            indices.push(edge_vertex_indices[v2_lookup as usize]);
 
             i += 3;
         }

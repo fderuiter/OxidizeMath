@@ -10,7 +10,7 @@ use super::presets::{
 };
 use crate::accessibility::announce_live_status;
 use crate::camera::Camera3D;
-use crate::framework::{InteractiveTool, MathExpressionInputBar, ToolMetadata};
+use crate::framework::{ExportCapabilities, InteractiveTool, MathExpressionInputBar, ToolMetadata};
 use crate::web_io::{spawn_save_as_file_dialog, PlatformInstant, SaveAsDialogConfig};
 use crate::web_io_bytes::{spawn_save_as_bytes_dialog, SaveAsBytesDialogConfig};
 use eframe::egui;
@@ -19,7 +19,7 @@ use math_explorer::applied::isosurface::{
     analyze_mesh_manifold, extract_isosurface, sample_watertight_grid, IsosurfaceMode,
     ManifoldStats, Mesh, WatertightGridConfig,
 };
-use oxidize_core::mesh::{export_mesh_to_binary_stl, export_mesh_to_obj_string};
+use oxidize_core::mesh::{export_mesh_to_obj_string, export_mesh_to_stl_binary};
 use std::hash::{Hash, Hasher};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::OnceLock;
@@ -199,7 +199,7 @@ impl IsosurfaceTool {
             self.report_export_error(ctx, "Cannot export STL: current mesh contains 0 triangles.");
             return;
         }
-        match export_mesh_to_binary_stl(&self.mesh) {
+        match export_mesh_to_stl_binary(&self.mesh) {
             Ok(bytes) => {
                 let default_name = format!("{}.stl", self.current_filename_stem());
                 let byte_len = bytes.len();
@@ -279,6 +279,20 @@ impl InteractiveTool for IsosurfaceTool {
 
     fn domain(&self) -> &'static str {
         "isosurface"
+    }
+
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<Mesh, String>> {
+        if self.mesh.indices.is_empty() {
+            Some(Err(self.field_error.clone().unwrap_or_else(|| {
+                "Current isosurface contains 0 triangles.".to_string()
+            })))
+        } else {
+            Some(Ok(self.mesh.clone()))
+        }
     }
 
     fn state_revision(&self) -> u64 {

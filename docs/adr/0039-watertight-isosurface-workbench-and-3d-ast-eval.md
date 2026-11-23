@@ -1,7 +1,7 @@
-# ADR 0038: Watertight Isosurface Workbench, Padded Box-SDF Sampling, and Zero-Allocation 3D AST Evaluation
+# ADR 0039: Watertight Isosurface Workbench, Padded Box-SDF Sampling, and Zero-Allocation 3D AST Evaluation
 
 ## Status
-Accepted (extends [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0035](0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md))
+Accepted (extends [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md), and [ADR 0038](0038-watertight-3d-stl-and-ply-exports.md))
 
 ## Context
 [`crates/domain_applied/src/applied/isosurface/marching_cubes.rs`](../../crates/domain_applied/src/applied/isosurface/marching_cubes.rs) implements Marching Cubes over `VoxelGrid` using the rolling `SliceEdgeCache` introduced in [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md), yet three gaps prevented interactive implicit solid modeling and 3D-printable mesh export in `math_explorer_gui`:
@@ -16,10 +16,10 @@ Accepted (extends [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md), [
 2. **Cell-Centered Box-SDF Padding and Slab Offsetting (`manifold.rs`)**:
    - Introduce [`crates/domain_applied/src/applied/isosurface/manifold.rs`](../../crates/domain_applied/src/applied/isosurface/manifold.rs) with `IsosurfaceMode::{Solid, Sheet { thickness }}`, `WatertightGridConfig`, `sample_watertight_grid`, and `analyze_mesh_manifold`, capped at `64^3` synchronous interior samples (`66^3` padded).
    - Sample interior voxels at cell centers `min + (i - 0.5) * step` (`i = 1..=N`), intersect scalar fields with the axis-aligned bounding-box SDF (`max(field_sdf, box_sdf)`), surround the domain with a 1-voxel positive exterior halo (`i = 0` and `i = N + 1`), and nudge interior near-zero values (`|v| < 2.5e-6`) outside `Point3D::EPSILON` so `extract_isosurface(&grid, 0.0)` emits watertight 2-manifolds (`0` open boundary half-edges, `0` degenerate triangles, `3 * triangles == 2 * undirected_edges`) without evaluating user formulas outside `[min_bounds, max_bounds]`.
-3. **Binary `.stl` Serializer, Byte Save Dialogs, and `IsosurfaceTab`**:
-   - Add `export_mesh_to_binary_stl` in [`crates/oxidize_core/src/mesh/export.rs`](../../crates/oxidize_core/src/mesh/export.rs) emitting standard `84 + 50 * triangle_count` little-endian binary STL buffers alongside `export_mesh_to_obj_string`.
+3. **Outward Winding, Unified 3D Framework Export, and `IsosurfaceTab`**:
+   - Orient `MarchingCubes::triangulate_cube` in [`crates/domain_applied/src/applied/isosurface/marching_cubes.rs`](../../crates/domain_applied/src/applied/isosurface/marching_cubes.rs) with outward right-hand-rule facet winding (`signed_volume > 0`) aligned with $+\nabla f$, and delegate binary `.stl` serialization to `export_mesh_to_stl_binary` in [`crates/oxidize_core/src/mesh/export_stl.rs`](../../crates/oxidize_core/src/mesh/export_stl.rs).
    - Add `spawn_save_as_bytes_dialog` and `spawn_save_direct_bytes` in [`math_explorer_gui/src/web_io_bytes.rs`](../../math_explorer_gui/src/web_io_bytes.rs) bridging native `rfd` file dialogs and WebAssembly `Blob` downloads.
-   - Expose `IsosurfaceTab` (`#tab=isosurface`, `applied` feature) and `IsosurfaceTool` under [`math_explorer_gui/src/tabs/isosurface/`](../../math_explorer_gui/src/tabs/isosurface/mod.rs), reusing `MathExpressionInputBar`, `Camera3D::rotate_to_camera_space`, `Camera3D::project`, and `Plot3DViewport` with AccessKit canvas focus, polite ARIA live announcements, and `PlatformInstant` latency telemetry.
+   - Expose `IsosurfaceTab` (`#tab=isosurface`, `applied` feature) and `IsosurfaceTool` (`ExportCapabilities::plot().with_3d_solid()` + `export_mesh_3d`) under [`math_explorer_gui/src/tabs/isosurface/`](../../math_explorer_gui/src/tabs/isosurface/mod.rs), reusing `MathExpressionInputBar`, `Camera3D::rotate_to_camera_space`, `Camera3D::project`, and `Plot3DViewport` with AccessKit canvas focus, polite ARIA live announcements, and `PlatformInstant` latency telemetry.
 
 ## Consequences
 - **Positive**: TPMS lattices (Gyroid, Schwarz P, Schwarz D), algebraic surfaces, and CSG signed-distance equations evaluate with `0` per-voxel heap allocations and extract into closed 2-manifold `.stl` and `.obj` solids directly in desktop and WebAssembly builds.

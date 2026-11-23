@@ -94,7 +94,7 @@ use math_explorer::applied::isosurface::{
     analyze_mesh_manifold, extract_isosurface, sample_watertight_grid, IsosurfaceMode,
     WatertightGridConfig,
 };
-use math_explorer::mesh::export_mesh_to_binary_stl;
+use math_explorer::mesh::export_mesh_to_stl_binary;
 
 let config = WatertightGridConfig::cubic(
     std::f64::consts::PI,
@@ -112,7 +112,7 @@ let mesh = extract_isosurface(&grid, 0.0).expect("Valid isosurface mesh");
 let stats = analyze_mesh_manifold(&mesh);
 assert!(stats.is_watertight_two_manifold());
 
-let stl_bytes = export_mesh_to_binary_stl(&mesh).expect("Valid binary STL");
+let stl_bytes = export_mesh_to_stl_binary(&mesh).expect("Valid binary STL");
 assert_eq!(stl_bytes.len(), 84 + 50 * stats.triangle_count);
 ```
 
@@ -120,4 +120,4 @@ assert_eq!(stl_bytes.len(), 84 + 50 * stats.triangle_count);
 
 ## 3. Ecosystem Integration
 
-Algorithms from `domain_applied` feed interactive simulation calculators in `math_explorer_gui`—including the `Pharmacokinetics (ADME)` multi-dose regimen planner, survival analysis, and trial sample size tools in `ClinicalTrialsTab`, as well as the `Volumetric Isosurfaces` (`IsosurfaceTab` / `IsosurfaceTool`) workbench for implicit TPMS lattices and watertight `.stl`/`.obj` export—enabling visual scenario exploration for clinical biostatisticians, pharmacometricians, battery engineers, CAD fabrication workflows, and data scientists.
+Algorithms from `domain_applied` feed interactive simulation calculators in `math_explorer_gui`—including the `Pharmacokinetics (ADME)` multi-dose regimen planner, survival analysis, and trial sample size tools in `ClinicalTrialsTab`, as well as the `Volumetric Isosurfaces` (`IsosurfaceTab` / `IsosurfaceTool`) workbench for implicit TPMS lattices and watertight `.stl`/`.ply`/`.obj` export—enabling visual scenario exploration for clinical biostatisticians, pharmacometricians, battery engineers, CAD fabrication workflows, and data scientists.

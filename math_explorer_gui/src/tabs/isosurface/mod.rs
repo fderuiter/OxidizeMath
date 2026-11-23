@@ -83,7 +83,7 @@ mod tests {
                 spec.id,
                 tool.stats
             );
-            let stl = oxidize_core::mesh::export_mesh_to_binary_stl(&tool.mesh).expect("stl");
+            let stl = oxidize_core::mesh::export_mesh_to_stl_binary(&tool.mesh).expect("stl");
             assert_eq!(stl.len(), 84 + 50 * tool.stats.triangle_count);
             let obj = oxidize_core::mesh::export_mesh_to_obj_string(&tool.mesh).expect("obj");
             assert!(obj.contains("f "));

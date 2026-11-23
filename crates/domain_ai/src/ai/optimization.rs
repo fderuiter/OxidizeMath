@@ -81,15 +81,38 @@ pub fn cross_entropy_softmax_prime<T: RealField + Copy>(
     z_logits: &DVector<T>,
     y_true: &DVector<T>,
 ) -> DVector<T> {
-    let y_pred = softmax(z_logits);
+    let y_pred = crate::ai::activation_kernels::softmax(z_logits);
     y_pred - y_true
 }
 
-/// Helper Softmax function for generic types.
-#[verified_engine::verified]
-fn softmax<T: RealField + Copy>(z: &DVector<T>) -> DVector<T> {
-    let max_z = z.max();
-    let exps = z.map(|v| (v - max_z).exp());
-    let sum_exps = exps.sum();
-    exps / sum_exps
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_relative_eq;
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_cross_entropy_softmax_prime_uses_guarded_softmax() {
+        let logits = DVector::from_vec(vec![0.0_f64, 0.0_f64]);
+        let target = DVector::from_vec(vec![1.0_f64, 0.0_f64]);
+        let grad = cross_entropy_softmax_prime(&logits, &target);
+        assert_relative_eq!(
+            grad[0],
+            -0.5,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
+        assert_relative_eq!(
+            grad[1],
+            0.5,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
+
+        let empty = DVector::<f64>::zeros(0);
+        assert_eq!(cross_entropy_softmax_prime(&empty, &empty).len(), 0);
+
+        let nan_logits = DVector::from_vec(vec![1.0_f64, f64::NAN]);
+        let nan_grad = cross_entropy_softmax_prime(&nan_logits, &target);
+        assert_eq!(nan_grad[0], -1.0);
+        assert_eq!(nan_grad[1], 0.0);
+    }
 }

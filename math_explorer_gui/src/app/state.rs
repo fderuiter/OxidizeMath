@@ -3,6 +3,7 @@
 use super::theme::ThemeMode;
 use super::viewport::compare_sync::ComparisonSyncConfig;
 use super::viewport::ViewportLayout;
+use super::SharedTabJson;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::cell::RefCell;
@@ -67,12 +68,13 @@ pub(super) fn has_frame_input(ctx: &egui::Context) -> bool {
 
 #[derive(Default)]
 struct TabCacheInner {
-    slots: Vec<(&'static str, u64, Option<String>)>,
-    snapshot: Option<HashMap<String, String>>,
+    slots: Vec<(&'static str, u64, Option<SharedTabJson>)>,
+    snapshot: Option<HashMap<String, SharedTabJson>>,
 }
 
-/// Interior-mutable per-tab JSON cache avoiding redundant `ExplorerTab::save_state` calls
-/// and avoiding repeated `SipHash` table construction on idle `AppState::extract` calls.
+/// Interior-mutable per-tab JSON cache avoiding redundant `ExplorerTab::save_state` calls,
+/// sharing immutable `Arc<str>` payloads via [`SharedTabJson`], and skipping repeated `SipHash`
+/// table construction on idle `AppState::extract` calls.
 #[derive(Default)]
 pub(super) struct TabStateCache {
     inner: RefCell<TabCacheInner>,
@@ -100,7 +102,7 @@ impl TabStateCache {
         tabs: &[Box<dyn ExplorerTab>],
         active_primary: usize,
         had_input: bool,
-    ) -> HashMap<String, String> {
+    ) -> HashMap<String, SharedTabJson> {
         let mut guard = self.inner.borrow_mut();
         if guard.slots.len() != tabs.len() {
             guard.slots.resize(tabs.len(), ("", 0, None));
@@ -120,7 +122,7 @@ impl TabStateCache {
                 };
             if !hit {
                 all_matched = false;
-                let fresh = tab.save_state();
+                let fresh = tab.save_state().map(SharedTabJson::from);
                 guard.slots[idx] = (name, rev, fresh);
             }
         }
@@ -236,7 +238,7 @@ pub struct AppState {
     pub show_diagnostics_panel: bool,
     #[serde(default)]
     pub theme: ThemeMode,
-    pub tab_states: HashMap<String, String>,
+    pub tab_states: HashMap<String, SharedTabJson>,
     #[serde(default)]
     pub split_layout_mode: SplitLayoutMode,
     #[serde(default = "default_secondary_tab")]
@@ -255,7 +257,7 @@ pub struct AppState {
     #[serde(default)]
     pub focused_pane: usize,
     #[serde(default)]
-    pub pane_tab_states: Vec<HashMap<String, String>>,
+    pub pane_tab_states: Vec<HashMap<String, SharedTabJson>>,
     #[serde(default)]
     pub compare_sync: ComparisonSyncConfig,
 }
