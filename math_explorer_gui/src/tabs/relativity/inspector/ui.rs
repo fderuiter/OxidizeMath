@@ -59,12 +59,7 @@ impl ChristoffelInspectorTool {
         egui::ComboBox::from_label("Manifold")
             .selected_text(self.state.manifold.label())
             .show_ui(ui, |ui| {
-                for m in [
-                    InspectorManifold::Schwarzschild4D,
-                    InspectorManifold::KerrEquatorial4D,
-                    InspectorManifold::MorrisThorne3D,
-                    InspectorManifold::TwoSphere2D,
-                ] {
+                for m in InspectorManifold::ALL {
                     if ui
                         .selectable_value(&mut self.state.manifold, m, m.label())
                         .changed()
@@ -74,6 +69,7 @@ impl ChristoffelInspectorTool {
                 }
             });
 
+        changed |= self.draw_inspector_sandbox_controls(ui);
         changed |= ui
             .add(egui::Slider::new(&mut self.state.scale_radius, 0.5..=5.0).text("Scale R"))
             .changed();
@@ -83,15 +79,20 @@ impl ChristoffelInspectorTool {
                 .changed();
         }
         if self.state.manifold != InspectorManifold::TwoSphere2D {
-            let r_range = match self.state.manifold {
-                InspectorManifold::MorrisThorne3D => -10.0..=10.0,
-                _ => (1.15 * self.state.scale_radius)..=16.0,
+            let r_range = if self.state.manifold.is_wormhole() {
+                -10.0..=10.0
+            } else if self.state.manifold == InspectorManifold::CustomRadialLapse4D {
+                let min_r =
+                    (1.12 * self.sandbox.estimate_lapse_horizon(self.state.scale_radius)).max(0.5);
+                min_r..=16.0
+            } else {
+                (1.15 * self.state.scale_radius)..=16.0
             };
             changed |= ui
                 .add(egui::Slider::new(&mut self.state.radial_coord, r_range).text("Radial r/l"))
                 .changed();
         }
-        if self.state.manifold != InspectorManifold::MorrisThorne3D {
+        if !self.state.manifold.is_wormhole() {
             changed |= ui
                 .add(egui::Slider::new(&mut self.state.theta, 0.15..=2.99).text("Angle theta"))
                 .changed();
@@ -100,7 +101,7 @@ impl ChristoffelInspectorTool {
     }
 
     fn draw_inspector_central_panel(
-        &self,
+        &mut self,
         parent_ui: &mut egui::Ui,
         eval: Option<&ChristoffelEvaluation>,
     ) {
@@ -138,6 +139,7 @@ impl ChristoffelInspectorTool {
                             .radius(4.5_f32)
                             .color(palette.accent),
                     );
+                    self.callouts.render_on_plot(plot_ui);
                 });
             response.response.accessible_theory_hover(self);
         });
@@ -151,16 +153,22 @@ impl ChristoffelInspectorTool {
     ) {
         let coords = self.state.manifold.coord_labels();
         let mu = self.state.selected_mu.min(ev.dim - 1);
+        let is_custom = self.state.manifold.is_custom();
+        let mode_tag = if is_custom {
+            "Custom CentralDiff"
+        } else {
+            "Analytical"
+        };
         ui.horizontal_wrapped(|ui| {
             ui.strong(format!(
-                "Slice Gamma^{}_(alpha beta) (Analytical)",
+                "Slice Gamma^{}_(alpha beta) ({mode_tag})",
                 coords[mu]
             ));
             ui.separator();
             ui.colored_label(
                 palette.success,
                 format!(
-                    "Max |Analytical - CentralDiff| across all indices: {:.3e}",
+                    "Max |Reference - CentralDiff| across all indices: {:.3e}",
                     ev.max_abs_diff
                 ),
             );
@@ -182,8 +190,12 @@ impl ChristoffelInspectorTool {
                     ui.strong(row_label);
                     let mut row_err = 0.0_f64;
                     for b in 0..ev.dim {
-                        let val = ev.analytical[mu][a][b];
-                        let diff = (val - ev.numerical[mu][a][b]).abs();
+                        let val = if is_custom {
+                            ev.numerical[mu][a][b]
+                        } else {
+                            ev.analytical[mu][a][b]
+                        };
+                        let diff = (ev.analytical[mu][a][b] - ev.numerical[mu][a][b]).abs();
                         row_err = row_err.max(diff);
                         let color = if val.abs() > 1e-9 {
                             palette.info
@@ -206,6 +218,8 @@ impl ChristoffelInspectorTool {
             InspectorManifold::KerrEquatorial4D => self.kerr_profiles(rs, n),
             InspectorManifold::MorrisThorne3D => Self::wormhole_profiles(rs, n),
             InspectorManifold::TwoSphere2D => Self::sphere_profiles(rs, n),
+            InspectorManifold::CustomRadialLapse4D => self.custom_lapse_profiles(rs, n),
+            InspectorManifold::CustomWormhole3D => self.custom_wormhole_profiles(rs, n),
         }
     }
 
