@@ -130,10 +130,10 @@ fn test_snapshot_serde_roundtrip_and_compact_defaults() {
     };
     rich.hidden_items.insert(OrderedId(Id::new("hidden_b")));
     rich.hidden_items.insert(OrderedId(Id::new("hidden_a")));
-    rich.imported_datasets.push(ImportedDataset::new(
-        "Empirical",
-        vec![[1.0, 12.0], [10.0, 120.0]],
-    ));
+    let mut overlay_ds = ImportedDataset::new("Empirical", vec![[1.0, 12.0], [10.0, 120.0]]);
+    overlay_ds.show_points = false;
+    overlay_ds.show_lines = true;
+    rich.imported_datasets.push(overlay_ds);
     rich.callouts
         .push(SavedCallout::new([10.0, 120.0], "Peak", [24.0, -18.0]));
 
@@ -144,6 +144,19 @@ fn test_snapshot_serde_roundtrip_and_compact_defaults() {
         .sanitize_and_validate()
         .expect("validate restored snapshot");
     assert_eq!(restored, rich);
+    assert!(!restored.imported_datasets[0].show_points);
+    assert!(restored.imported_datasets[0].show_lines);
+
+    let hash_of = |snap: &PlotOverlaySnapshot| {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        snap.hash_state(&mut h);
+        std::hash::Hasher::finish(&h)
+    };
+    let mut toggled = restored.clone();
+    toggled.imported_datasets[0].show_points = true;
+    assert_ne!(hash_of(&restored), hash_of(&toggled));
+    toggled.imported_datasets[0].show_lines = false;
+    assert_ne!(hash_of(&restored), hash_of(&toggled));
 }
 
 #[test]

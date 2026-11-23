@@ -84,6 +84,7 @@ pub mod traits;
 
 pub use fields::Fp;
 pub use group::{CyclicElement, Permutation, Zn};
+pub use linear_algebra::LinearAlgebraError;
 pub use polynomial::Polynomial;
 pub use traits::{EuclideanDomain, Field, Group, Monoid, Ring, Semigroup};
 

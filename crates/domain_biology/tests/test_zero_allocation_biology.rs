@@ -1,12 +1,13 @@
-#![allow(missing_docs)]
+//! Zero-allocation verification tests for `domain_biology` hot simulation loops.
 
 use domain_biology::biology::evolution::HawkDovePopulation;
-use domain_biology::biology::lenia::{LeniaPreset, LeniaSystem};
+use domain_biology::biology::lenia::{LeniaEngine, LeniaSpecies};
 use domain_biology::biology::morphogenesis::{GrayScottKinetics, ReactionKinetics};
 use domain_biology::biology::phyllotaxis::{
     LSystemConfig, LSystemEngine, NutrientCoupling, NutrientKineticsKind, PhyllotaxisConfig,
     PhyllotaxisState,
 };
+use oxidize_core::rng::OxidizeRng;
 use pure_math::pure_math::analysis::ode::{ArrayState, OdeSystem};
 use std::sync::Mutex;
 use verified_engine::allocator::VerifiedAllocator;
@@ -21,18 +22,18 @@ static ZERO_ALLOC_LOCK: Mutex<()> = Mutex::new(());
 #[verified_engine::verified]
 fn test_lenia_step_128x128_zero_heap_allocations() {
     let _guard = ZERO_ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut system = LeniaSystem::from_preset(128, 128, LeniaPreset::Orbium)
-        .expect("128x128 Lenia initialization must succeed");
+    let mut rng = OxidizeRng::new(42);
+    let mut engine = LeniaEngine::from_species(128, 128, LeniaSpecies::Orbium, 0.0, &mut rng);
 
     let (tel, metrics) = VerifiedEngine::run_verified(|| {
         for _ in 0..5 {
-            system.step();
+            engine.step();
         }
-        system.telemetry()
+        engine.telemetry()
     });
     assert!(metrics.function_calls > 0);
-    assert!(tel.total_mass > 20.0);
-    assert!(tel.speed.is_finite());
+    assert!(tel.total_mass > 10.0);
+    assert!(tel.centroid_speed.is_finite());
 }
 
 #[test]

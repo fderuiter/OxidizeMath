@@ -12,10 +12,10 @@ The `domain_biology` crate formalizes living systems across hierarchical scales 
 - **`kinetics`**: Biochemical saturation models including `MichaelisMenten` ($n = 1$) and cooperative sigmoidal `HillKinetics` ($n > 0$) unified under `KineticsModel`.
 - **`reaction_diffusion`**: Generic $N$-species reaction-diffusion engine (`ReactionDiffusionSystem`, `ChemicalState`, `ReactionModel`, `DiffusionModel`).
 - **`morphogenesis`**: Two-species activator-inhibitor Turing pattern solvers (`TuringSystem`, `FusedEulerSolver`) with `SchnakenbergKinetics` and `GrayScottKinetics`.
-- **`lenia`**: Spectral continuous cellular automata (`LeniaSystem`) using preplanned transposed 2D FFT circular convolution (`rustfft` + `num-complex`), `Orbium` and `Hydrogeminium` presets, and zero-allocation toroidal velocity and rotational symmetry telemetry.
+- **`lenia`**: Spectral 2D Lenia continuous cellular automata (`LeniaEngine`, concentric-ring `KernelShells`, Gaussian growth curves, and `Orbium` / `Geminium` / `Hydrogeminium` / `Scutium` solitons).
 - **`phyllotaxis`**: Vogel golden-angle primordia packing (`PhyllotaxisState`), consecutive Fibonacci parastichy spiral detection (`detect_parastichy_spirals`), and bounded iterative L-system 2D turtle morphogenesis (`LSystemEngine`) coupled to `MichaelisMenten` and `HillKinetics`.
 - **`evolution`**: Replicator ordinary differential equations and Evolutionarily Stable Strategy (ESS) dynamics (`HawkDovePopulation`, `PayoffMatrix2x2`).
-- **`diffusion`**: Cache-tiled 1D and 2D finite-difference Laplacian operators (`FiniteDifference1D`, `FiniteDifference2D`) with periodic and zero-flux boundaries.
+- **`diffusion`**: Cache-tiled 1D, 2D, and 3D finite-difference Laplacian operators (`FiniteDifference1D`, `FiniteDifference2D`, `FiniteDifference3D`) with periodic and zero-flux boundaries.
 
 ---
 
@@ -47,13 +47,15 @@ assert!(spiked, "Neuron should depolarize and fire an action potential");
 
 ```rust
 # use domain_biology::__doctest_facade as math_explorer;
-use math_explorer::biology::lenia::{LeniaPreset, LeniaSystem};
+use math_explorer::biology::lenia::{LeniaEngine, LeniaSpecies};
 use math_explorer::biology::phyllotaxis::{
     is_consecutive_fibonacci_pair, NutrientCoupling, PhyllotaxisConfig, PhyllotaxisState,
 };
+use math_explorer::rng::OxidizeRng;
 
 // 1. Evolve an Orbium continuous cellular automaton soliton via 2D FFT convolution
-let mut lenia = LeniaSystem::from_preset(64, 64, LeniaPreset::Orbium).unwrap();
+let mut rng = OxidizeRng::new(42);
+let mut lenia = LeniaEngine::from_species(64, 64, LeniaSpecies::Orbium, 0.0, &mut rng);
 lenia.step();
 assert!(lenia.telemetry().total_mass > 10.0);
 

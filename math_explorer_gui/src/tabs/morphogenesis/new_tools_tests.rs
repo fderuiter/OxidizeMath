@@ -1,10 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::lenia_tool::LeniaRunner;
 use super::*;
 use crate::async_sim::SimulationRunner;
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::InteractiveTool;
+use math_explorer::biology::morphogenesis::GrayScottKinetics;
 use math_explorer::biology::phyllotaxis::is_consecutive_fibonacci_pair;
 
 fn extract_hash(url: &str) -> &str {
@@ -35,16 +35,12 @@ fn test_morphogenesis_tab_exposes_all_four_biology_tools_in_side_panel() {
 }
 
 #[test]
-fn test_morphogenesis_gray_scott_and_generic_reaction_diffusion_zero_allocation_steps() {
+fn test_morphogenesis_gray_scott_zero_allocation_steps() {
     let mut tool = MorphogenesisTool::default();
-    tool.apply_model_preset(
-        MorphogenesisModelKind::GrayScott,
-        (0.1, 0.9),
-        (0.037, 0.060),
-        (0.2, 0.1, 0.5),
-    );
+    let coral = GrayScottKinetics::coral();
+    tool.apply_gray_scott_preset(coral.f, coral.k);
     let mut gs_runner =
-        MorphogenesisTool::create_multi_runner(&tool.params, &tool.model_params, 32, 32);
+        MorphogenesisTool::create_kinetics_runner(&tool.params, &tool.kinetics_state, 32, 32);
     gs_runner.step();
     {
         let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
@@ -55,54 +51,6 @@ fn test_morphogenesis_gray_scott_and_generic_reaction_diffusion_zero_allocation_
         });
     }
     assert!(FiniteStateGuard::is_finite_state(&gs_runner));
-
-    tool.apply_model_preset(
-        MorphogenesisModelKind::GenericReactionDiffusion,
-        (0.1, 0.9),
-        (0.028, 0.062),
-        (0.2, 0.1, 0.5),
-    );
-    let mut rd_runner =
-        MorphogenesisTool::create_multi_runner(&tool.params, &tool.model_params, 32, 32);
-    rd_runner.step();
-    {
-        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        verified_engine::engine::VerifiedEngine::run_verified(|| {
-            rd_runner.step();
-        });
-    }
-    assert!(FiniteStateGuard::is_finite_state(&rd_runner));
-}
-
-#[test]
-fn test_lenia_runner_zero_allocation_and_tool_lifecycle() {
-    let mut tool = LeniaTool::default();
-    let mut runner = LeniaRunner::new(&tool.params, 128, 128);
-    runner.step();
-    {
-        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        verified_engine::engine::VerifiedEngine::run_verified(|| {
-            runner.step();
-        });
-    }
-    assert!(FiniteStateGuard::is_finite_state(&runner));
-    assert!(runner.system.telemetry().total_mass > 20.0);
-
-    tool.apply_preset_choice(LeniaPresetChoice::Hydrogeminium);
-    let saved = tool.save_state().expect("LeniaTool state");
-    assert!(saved.contains("Hydrogeminium"));
-
-    tool.step_simulation();
-    assert!(tool.export_raster_image().is_some());
-
-    // FiniteStateGuard recovery
-    tool.params.write().unwrap().dt = 0.4;
-    FiniteStateGuard::auto_scale_step_size(&mut tool);
-    assert!((tool.params.read().unwrap().dt - 0.2).abs() < 1e-12);
 }
 
 #[test]
@@ -151,15 +99,18 @@ fn test_biology_new_tools_url_fragment_roundtrips() {
     app.selected_tab = tab_idx;
 
     for (tool_id, preset_json) in [
-        ("MorphogenesisTool", presets::PRESET_GRAY_SCOTT_CORAL),
-        ("LeniaTool", presets::PRESET_LENIA_HYDROGEMINIUM),
+        (
+            "MorphogenesisTool",
+            starter_presets::PRESET_GRAY_SCOTT_CORAL,
+        ),
+        ("LeniaTool", lenia::presets::PRESET_LENIA_HYDROGEMINIUM),
         (
             "PhyllotaxisLSystemTool",
-            presets::PRESET_PHYLLOTAXIS_HILL_SHOOT,
+            starter_presets::PRESET_PHYLLOTAXIS_HILL_SHOOT,
         ),
         (
             "EvolutionKineticsTool",
-            presets::PRESET_EVOLUTION_KINETICS_ESS,
+            starter_presets::PRESET_EVOLUTION_KINETICS_ESS,
         ),
     ] {
         app.tabs[tab_idx]

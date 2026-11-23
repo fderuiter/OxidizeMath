@@ -109,30 +109,29 @@ impl ReactionModel for SchnakenbergKinetics {
     }
 }
 
-/// Gray-Scott autocatalytic reaction kinetics.
+/// Gray-Scott autocatalytic reaction kinetics ($U + 2V \to 3V$).
 ///
-/// Models open-flow cubic autocatalysis capable of generating self-replicating spots
-/// (mitosis), labyrinthine coral stripes, and solitons.
+/// Generates self-replicating spot mitosis, labyrinthine coral, and soliton wave patterns.
 ///
 /// ## Equations
 ///
-/// $$ \frac{du}{dt} = -u v^2 + f (1 - u) $$
-/// $$ \frac{dv}{dt} = u v^2 - (f + k) v $$
+/// $$ \frac{du}{dt} = -u v^2 + f(1 - u) $$
+/// $$ \frac{dv}{dt} = u v^2 - (f + k)v $$
 ///
 /// Where:
 /// - $f$: Dimensionless feed rate replenishing substrate $u$.
-/// - $k$: Dimensionless kill/removal rate draining catalyst $v$.
+/// - $k$: Dimensionless kill rate removing autocatalyst $v$.
 #[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
-    description = "Gray-Scott cubic autocatalytic kinetics producing mitosis spots, coral labyrinths, and solitons.",
-    citation = "Gray, P., & Scott, S. K. (1984). Autocatalytic reactions in the isothermal, continuous stirred tank reactor. Chemical Engineering Science, 39(6), 1087-1097."
+    description = "Gray-Scott autocatalytic reaction kinetics generating spot mitosis and coral morphologies.",
+    citation = "Pearson, J. E. (1993). Complex patterns in a simple system. Science, 261(5118), 189-192."
 )]
 pub struct GrayScottKinetics {
-    /// Dimensionless feed rate ($f$) replenishing species $u$.
-    #[theory(min = 0.005, max = 0.12, step = 0.001)]
+    /// Feed rate ($f$) replenishing substrate $u$.
+    #[theory(min = 0.0, max = 0.1, step = 0.001)]
     pub f: f64,
-    /// Dimensionless kill/drain rate ($k$) removing species $v$.
-    #[theory(min = 0.03, max = 0.08, step = 0.001)]
+    /// Kill rate ($k$) draining autocatalyst $v$.
+    #[theory(min = 0.0, max = 0.1, step = 0.001)]
     pub k: f64,
 }
 
@@ -142,12 +141,30 @@ impl GrayScottKinetics {
     pub fn new(f: f64, k: f64) -> Self {
         Self { f, k }
     }
+
+    /// Canonical Pearson (1993) spot-division (`Mitosis`) regime (`f = 0.0367`, `k = 0.0649`).
+    #[verified_engine::verified]
+    pub fn mitosis() -> Self {
+        Self {
+            f: 0.0367,
+            k: 0.0649,
+        }
+    }
+
+    /// Canonical Pearson (1993) dendritic branching (`Coral`) regime (`f = 0.0545`, `k = 0.0620`).
+    #[verified_engine::verified]
+    pub fn coral() -> Self {
+        Self {
+            f: 0.0545,
+            k: 0.0620,
+        }
+    }
 }
 
 impl Default for GrayScottKinetics {
     #[verified_engine::verified]
     fn default() -> Self {
-        Self { f: 0.037, k: 0.060 }
+        Self::mitosis()
     }
 }
 
@@ -188,7 +205,6 @@ impl ReactionModel for GrayScottKinetics {
         let v_vec = state.species(1);
         let n = state.grid_size();
         let (rates_u, rates_v) = rates.grid.as_mut_slice().split_at_mut(n);
-
         for i in 0..n {
             let inp = [u_vec[i], v_vec[i]];
             let out = <Self as ReactionKinetics<2>>::reaction(self, inp);

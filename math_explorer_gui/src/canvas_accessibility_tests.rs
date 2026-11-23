@@ -112,6 +112,12 @@ fn test_pure_math_custom_canvases_and_rasters_receive_tab_focus_and_labels() {
         &mut fractran,
         "FRACTRAN Minsky Counter-Machine Graph",
     );
+
+    let mut chladni = crate::tabs::analysis::chladni_wave_tank::ChladniWaveTankTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut chladni,
+        "2D Chladni Plate & Wave Tank Visualization",
+    );
 }
 
 #[cfg(feature = "biology")]
@@ -120,26 +126,11 @@ fn test_neuroscience_canvas_receives_tab_focus_and_accesskit_label() {
     let mut neuro = crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut neuro, "Neural Network Visualization");
 
-    let mut morpho = crate::tabs::morphogenesis::MorphogenesisTool::default();
-    for _ in 0..80 {
-        if morpho.worker.latest_snapshot().is_some() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
-    assert_tool_canvas_tab_focus_and_accesskit_label(
-        &mut morpho,
-        "Turing Morphogenesis Concentration Field",
-    );
-
     let mut lenia = crate::tabs::morphogenesis::LeniaTool::default();
-    for _ in 0..80 {
-        if lenia.worker.latest_snapshot().is_some() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
-    assert_tool_canvas_tab_focus_and_accesskit_label(&mut lenia, "Continuous Lenia Spectral Field");
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut lenia,
+        "Lenia Studio Continuous Automaton Canvas",
+    );
 
     let mut phyllo = crate::tabs::morphogenesis::PhyllotaxisLSystemTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(

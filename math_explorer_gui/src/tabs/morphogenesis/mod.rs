@@ -21,22 +21,17 @@ pub mod atlas;
 pub mod evolution_kinetics_tool;
 /// UI rendering for [`evolution_kinetics_tool::EvolutionKineticsTool`].
 pub mod evolution_kinetics_ui;
-/// Grid initialization, concentration colormapping, and recovery guard helpers.
-pub mod init;
-/// Background simulation runner for [`lenia_tool::LeniaTool`].
-pub mod lenia_runner;
-/// Spectral continuous cellular automaton (`LeniaSystem`) tool.
-pub mod lenia_tool;
-/// UI rendering for [`lenia_tool::LeniaTool`].
-pub mod lenia_ui;
+/// Continuous 2D FFT Lenia Studio tool and canvas.
+pub mod lenia;
 /// Vogel golden-angle phyllotaxis and nutrient-coupled L-system tool.
 pub mod phyllotaxis_tool;
 /// UI rendering for [`phyllotaxis_tool::PhyllotaxisLSystemTool`].
 pub mod phyllotaxis_ui;
-/// Starter presets, PRNG helper, and scientific metadata wrappers.
+/// Reaction-diffusion presets, PRNG helper, and scientific metadata wrappers.
 pub mod presets;
 /// Multi-model reaction-diffusion simulation runner.
 pub mod runner;
+mod seeding;
 /// Starter gallery preset payloads and registrations for biology tools.
 pub mod starter_presets;
 /// Multi-model Turing morphogenesis tool.
@@ -51,15 +46,15 @@ pub use atlas::{
 #[cfg(test)]
 pub use evolution_kinetics_tool::EvolutionKineticsTool;
 #[cfg(test)]
-pub use lenia_tool::{LeniaPresetChoice, LeniaTool};
+pub use lenia::LeniaTool;
 #[cfg(test)]
 pub use phyllotaxis_tool::PhyllotaxisLSystemTool;
-pub use presets::MorphogenesisModelKind;
 #[cfg(test)]
 pub use presets::MorphogenesisTheory;
-#[cfg(test)]
-pub use runner::MorphogenesisRunner;
+pub use presets::SimpleRng;
 pub use runner::MorphogenesisSharedParams;
+#[cfg(test)]
+pub use runner::{MorphogenesisKineticsRunner, MorphogenesisRunner};
 pub use tool::{MorphogenesisTool, MorphogenesisToolState};
 
 /// Legacy flat `MorphoState` schema saved by pre-framework `.mws` workspaces.
@@ -82,7 +77,7 @@ pub struct LegacyMorphoState {
     pub pending_initial_start: bool,
 }
 
-/// Biology tab hosting Turing morphogenesis, spectral Lenia, phyllotaxis L-systems, and evolution/kinetics tools.
+/// Biology tab hosting Turing morphogenesis, Lenia Studio, phyllotaxis L-systems, and evolution/kinetics tools.
 pub struct MorphogenesisTab {
     /// Underlying simulation framework managing tool selection, exports, presets, theory portal, and state guard.
     pub framework: crate::framework::SimulationFramework,
@@ -92,13 +87,10 @@ pub struct MorphogenesisTab {
 impl Default for MorphogenesisTab {
     fn default() -> Self {
         let mut framework = crate::framework::SimulationFramework::new("biology");
-        if let Some(idx) = framework
+        framework.selected_tool_index = framework
             .available_tools
             .iter()
-            .position(|m| m.id == "MorphogenesisTool")
-        {
-            framework.selected_tool_index = Some(idx);
-        }
+            .position(|m| m.id == "MorphogenesisTool");
         let tool = MorphogenesisTool::default();
         let params = Arc::clone(&tool.params);
         let name = crate::framework::InteractiveTool::name(&tool).to_string();
@@ -141,16 +133,17 @@ impl MorphogenesisTab {
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         width: usize,
         height: usize,
-    ) -> MorphogenesisRunner {
+    ) -> MorphogenesisKineticsRunner {
         MorphogenesisTool::create_runner(params, width, height)
     }
 
-    /// Exports active simulation parameters into [`MorphogenesisPresetConfig`].
+    /// Exports active [`MorphogenesisTool`] simulation parameters into [`MorphogenesisPresetConfig`].
     pub fn export_config(&self) -> MorphogenesisPresetConfig {
         if let Some(json) = self
             .framework
             .active_tool
             .as_ref()
+            .filter(|t| t.name() == "Turing Morphogenesis")
             .and_then(|t| t.save_state())
         {
             if let Ok(s) = serde_json::from_str::<MorphogenesisToolState>(&json) {
@@ -177,8 +170,11 @@ impl MorphogenesisTab {
         }
     }
 
-    /// Applies [`MorphogenesisPresetConfig`] to the active [`MorphogenesisTool`].
+    /// Applies [`MorphogenesisPresetConfig`] to [`MorphogenesisTool`].
     pub fn apply_config(&mut self, config: MorphogenesisPresetConfig) -> Result<(), String> {
+        if self.framework.active_tool_id() != Some("MorphogenesisTool") {
+            let _ = self.framework.select_tool_by_name("MorphogenesisTool");
+        }
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
@@ -189,6 +185,12 @@ impl MorphogenesisTab {
             .as_ref()
             .and_then(|s| s.state)
             .unwrap_or(SimWorkerState::Ready);
+        let kinetics_mode = existing
+            .as_ref()
+            .map(|c| c.kinetics_mode)
+            .unwrap_or_default();
+        let f = existing.as_ref().map_or(0.0367, |c| c.f);
+        let k = existing.as_ref().map_or(0.0649, |c| c.k);
         let atlas_visible = existing.as_ref().is_some_and(|s| s.atlas_visible);
         let atlas_axes = existing
             .as_ref()
@@ -207,12 +209,9 @@ impl MorphogenesisTab {
             dt: config.dt,
             width: config.width,
             height: config.height,
-            model: existing
-                .as_ref()
-                .map(|s| s.model)
-                .unwrap_or(MorphogenesisModelKind::Schnakenberg),
-            f: existing.as_ref().map(|s| s.f).unwrap_or(0.037),
-            k: existing.as_ref().map(|s| s.k).unwrap_or(0.060),
+            kinetics_mode,
+            f,
+            k,
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
@@ -221,8 +220,18 @@ impl MorphogenesisTab {
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;
+        self.sync_shared_params_from_config(&config);
         self.sync_framework_after_direct_tool_mutation();
         Ok(())
+    }
+
+    fn sync_shared_params_from_config(&mut self, cfg: &MorphogenesisPresetConfig) {
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.a = cfg.a;
+        p.b = cfg.b;
+        p.d_u = cfg.d_u;
+        p.d_v = cfg.d_v;
+        p.dt = cfg.dt;
     }
 
     /// Serializes active simulation parameters to a formatted preset envelope JSON string.
@@ -259,6 +268,9 @@ impl MorphogenesisTab {
         let Ok(legacy) = serde_json::from_str::<LegacyMorphoState>(state) else {
             return false;
         };
+        if self.framework.active_tool_id() != Some("MorphogenesisTool") {
+            let _ = self.framework.select_tool_by_name("MorphogenesisTool");
+        }
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return true;
         };
@@ -275,6 +287,8 @@ impl MorphogenesisTab {
         current_state.pending_initial_start = legacy.pending_initial_start;
         if let Ok(updated_json) = serde_json::to_string(&current_state) {
             if tool.try_load_state(&updated_json).is_ok() {
+                let cfg = self.export_config();
+                self.sync_shared_params_from_config(&cfg);
                 self.framework.show_starter_gallery = false;
                 self.sync_framework_after_direct_tool_mutation();
             }
@@ -381,13 +395,10 @@ impl ExplorerTab for MorphogenesisTab {
     ) -> Result<(), String> {
         self.framework
             .import_url_preset_json(tool_id, preset_json)?;
-        let cfg = self.export_config();
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = cfg.a;
-        p.b = cfg.b;
-        p.d_u = cfg.d_u;
-        p.d_v = cfg.d_v;
-        p.dt = cfg.dt;
+        if self.framework.active_tool_id() == Some("MorphogenesisTool") {
+            let cfg = self.export_config();
+            self.sync_shared_params_from_config(&cfg);
+        }
         Ok(())
     }
 }

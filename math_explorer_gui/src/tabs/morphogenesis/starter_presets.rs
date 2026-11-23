@@ -4,59 +4,21 @@
 pub const PRESET_GRAY_SCOTT_CORAL: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Gray-Scott Coral Morphogenesis",
+    "title": "Turing Morphogenesis - Gray-Scott Coral",
     "domain": "biology",
     "timestamp": "2026-11-21T00:00:00Z"
   },
   "config": {
     "a": 0.1,
     "b": 0.9,
-    "d_u": 0.2,
-    "d_v": 0.1,
-    "dt": 0.5,
+    "d_u": 0.16,
+    "d_v": 0.08,
+    "dt": 1.0,
     "width": 100,
     "height": 100,
-    "model": "GrayScott",
-    "f": 0.037,
-    "k": 0.06
-  }
-}"#;
-
-/// Starter preset JSON envelope for Lenia `Orbium` glider.
-pub const PRESET_LENIA_ORBIUM: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Continuous Lenia - Orbium Glider",
-    "domain": "biology",
-    "timestamp": "2026-11-21T00:00:00Z"
-  },
-  "config": {
-    "mu": 0.15,
-    "sigma": 0.015,
-    "dt": 0.1,
-    "kernel_radius": 13,
-    "preset": "Orbium",
-    "width": 128,
-    "height": 128
-  }
-}"#;
-
-/// Starter preset JSON envelope for Lenia `Hydrogeminium` self-dividing organism.
-pub const PRESET_LENIA_HYDROGEMINIUM: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Continuous Lenia - Hydrogeminium",
-    "domain": "biology",
-    "timestamp": "2026-11-21T00:00:00Z"
-  },
-  "config": {
-    "mu": 0.26,
-    "sigma": 0.036,
-    "dt": 0.1,
-    "kernel_radius": 18,
-    "preset": "Hydrogeminium",
-    "width": 128,
-    "height": 128
+    "kinetics_mode": "GrayScott",
+    "f": 0.0545,
+    "k": 0.062
   }
 }"#;
 
@@ -129,32 +91,6 @@ pub const PRESET_EVOLUTION_KINETICS_ESS: &str = r#"{
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
-        id: "turing_spots",
-        title: "Turing Spots",
-        description: "∂u/∂t = D_u∇²u + a - u + u²v: Activator-inhibitor reaction-diffusion generating spot morphology.",
-        category: "Reaction-Diffusion",
-        icon: "🐆",
-        domain: "biology",
-        tool_name: Some("MorphogenesisTool"),
-        preset_generator: || crate::starter_gallery::PRESET_TURING_SPOTS,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "turing_stripes",
-        title: "Turing Stripes",
-        description: "∂v/∂t = D_v∇²v + b - u²v: Differential diffusion instability yielding labyrinthine stripe patterns.",
-        category: "Morphogenesis",
-        icon: "🦓",
-        domain: "biology",
-        tool_name: Some("MorphogenesisTool"),
-        preset_generator: || crate::starter_gallery::PRESET_TURING_STRIPES,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
         id: "gray_scott_coral",
         title: "Gray-Scott Coral",
         description: "∂u/∂t = D_u∇²u - uv² + f(1-u): Cubic autocatalysis forming self-replicating coral labyrinths.",
@@ -163,32 +99,6 @@ inventory::submit! {
         domain: "biology",
         tool_name: Some("MorphogenesisTool"),
         preset_generator: || PRESET_GRAY_SCOTT_CORAL,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "lenia_orbium",
-        title: "Lenia Orbium Glider",
-        description: "U = F⁻¹(F(K)·F(A)): Spectral continuous cellular automaton glider translating across a periodic torus.",
-        category: "Artificial Life",
-        icon: "🦠",
-        domain: "biology",
-        tool_name: Some("LeniaTool"),
-        preset_generator: || PRESET_LENIA_ORBIUM,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "lenia_hydrogeminium",
-        title: "Lenia Hydrogeminium",
-        description: "Multi-ring concentric bump kernel lifeform exhibiting oscillatory elongation and fission.",
-        category: "Artificial Life",
-        icon: "🫧",
-        domain: "biology",
-        tool_name: Some("LeniaTool"),
-        preset_generator: || PRESET_LENIA_HYDROGEMINIUM,
     }
 }
 

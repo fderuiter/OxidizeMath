@@ -1,4 +1,9 @@
-use super::{FractranError, FractranPreset, MAX_SMOOTH_PRIME};
+//! Smooth-prime factorization, fraction parsing, and Minsky transition helpers.
+
+use super::fractran_programs::{
+    FractranError, MAX_SMOOTH_PRIME, MULTIPLIER_PAIRS, PRIMEGAME_PAIRS,
+};
+use super::fractran_vm::{FractranCompiledVm, FractranPreset, MinskyTransition};
 use crate::math_types::Rational;
 use dashu::base::Sign;
 use dashu::integer::{IBig, UBig};
@@ -14,37 +19,24 @@ pub(super) struct CompiledTables {
     pub(super) denom_exponents: Vec<u32>,
 }
 
+const MINSKY_FIBONACCI_PAIRS: [(i128, i128); 9] = [
+    (119, 26),
+    (13, 17),
+    (19, 13),
+    (506, 57),
+    (19, 23),
+    (1, 19),
+    (3, 7),
+    (3, 11),
+    (13, 5),
+];
+
 pub(super) fn preset_pairs(preset: FractranPreset) -> &'static [(i128, i128)] {
     match preset {
-        FractranPreset::PrimeGame => &[
-            (17, 91),
-            (78, 85),
-            (19, 51),
-            (23, 38),
-            (29, 33),
-            (77, 29),
-            (95, 23),
-            (77, 19),
-            (1, 17),
-            (11, 13),
-            (13, 11),
-            (15, 2),
-            (1, 7),
-            (55, 1),
-        ],
-        FractranPreset::Mult => &[(455, 33), (11, 13), (1, 11), (3, 7), (11, 2), (1, 3)],
+        FractranPreset::PrimeGame => &PRIMEGAME_PAIRS,
+        FractranPreset::Mult => &MULTIPLIER_PAIRS,
         FractranPreset::Add => &[(2, 3)],
-        FractranPreset::Fibonacci => &[
-            (119, 26),
-            (13, 17),
-            (19, 13),
-            (506, 57),
-            (19, 23),
-            (1, 19),
-            (3, 7),
-            (3, 11),
-            (13, 5),
-        ],
+        FractranPreset::Fibonacci => &MINSKY_FIBONACCI_PAIRS,
     }
 }
 
@@ -198,9 +190,9 @@ pub(super) fn compile_exponent_tables(
 }
 
 pub(super) fn extract_minsky_transitions(
-    vm: &super::FractranCompiledVm,
+    vm: &FractranCompiledVm,
     state_primes: &[u64],
-) -> Vec<super::MinskyTransition> {
+) -> Vec<MinskyTransition> {
     let mut out = Vec::with_capacity(vm.num_rules());
     for rule_index in 0..vm.num_rules() {
         let Some((num, den)) = vm.rule_exponents(rule_index) else {
@@ -225,7 +217,7 @@ pub(super) fn extract_minsky_transitions(
                 }
             }
         }
-        out.push(super::MinskyTransition {
+        out.push(MinskyTransition {
             rule_index,
             from_state,
             to_state,
