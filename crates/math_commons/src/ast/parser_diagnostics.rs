@@ -1,6 +1,27 @@
 // [cite:math_commons]
 use super::parser::ParseError;
 
+pub(super) fn format_found_token(found: &str) -> String {
+    if found == "<EOF>" || found == "end of expression" {
+        "end of expression".to_string()
+    } else {
+        format!("'{found}'")
+    }
+}
+
+pub(super) fn format_user_message_for_input(err: &ParseError, input: &str) -> String {
+    if matches!(err, ParseError::UnexpectedEof) {
+        let trimmed_chars = input.trim().chars().count();
+        if trimmed_chars > 0 {
+            return format!(
+                "Unexpected end of expression at character {}",
+                trimmed_chars + 1
+            );
+        }
+    }
+    err.user_message()
+}
+
 impl diagnostics::Diagnostic for ParseError {
     fn severity(&self) -> diagnostics::Severity {
         diagnostics::Severity::Error
@@ -26,6 +47,9 @@ impl diagnostics::Diagnostic for ParseError {
             }
             Self::RecursionLimitExceeded(max_depth) => {
                 map.insert("max_depth".to_string(), max_depth.to_string());
+            }
+            Self::NodeLimitExceeded(max_nodes) => {
+                map.insert("max_nodes".to_string(), max_nodes.to_string());
             }
             Self::UnknownFunction { name, span } => {
                 map.insert("function".to_string(), name.clone());

@@ -208,14 +208,14 @@ impl OdeSolverTool {
             changed = true;
         }
 
-        let min_dt = (self.total_time.max(0.1) / crate::presets::MAX_ODE_STEPS as f64).max(1e-6);
+        let min_dt = self.resolve_ui_min_dt(&mut changed);
         ui.horizontal(|ui| {
             ui.label("dt (Step Size):");
             if ui
                 .add(
                     egui::DragValue::new(&mut self.dt)
                         .speed(0.01)
-                        .range(min_dt..=1.0),
+                        .range(min_dt..=min_dt.max(1.0)),
                 )
                 .changed()
             {
@@ -391,16 +391,18 @@ impl OdeSolverTool {
 
         let current_preset = self.preset;
         let current_method = self.method;
-        let current_dt = self.dt;
+        let sens_dt = self.sensitivity_effective_dt();
         let current_total_time = self.total_time;
         let custom_spec = self.build_custom_ode_spec();
-        let baseline_hint = self.reusable_baseline_final_y(custom_spec.as_ref(), &param_refs);
+        let baseline_hint = ((sens_dt - self.dt).abs() <= f64::EPSILON)
+            .then(|| self.reusable_baseline_final_y(custom_spec.as_ref(), &param_refs))
+            .flatten();
         let custom_ctx = (current_preset == OdePreset::Custom)
             .then_some(super::systems::CustomOdeContext(custom_spec.as_ref()));
         let context = (
             current_preset as u8,
             current_method as u8,
-            canonical_f64_bits(current_dt),
+            canonical_f64_bits(sens_dt),
             canonical_f64_bits(current_total_time),
             custom_ctx,
         );
@@ -413,7 +415,7 @@ impl OdeSolverTool {
                 eval_ode_final_state(
                     current_preset,
                     current_method,
-                    current_dt,
+                    sens_dt,
                     current_total_time,
                     p_map,
                     custom_spec.as_ref(),

@@ -370,7 +370,9 @@ impl ComplexMappingTool {
             function: self.function,
             grid_min_bits: self.grid_min.to_bits(),
             grid_max_bits: self.grid_max.to_bits(),
-            grid_density: self.grid_density,
+            grid_density: self
+                .grid_density
+                .clamp(2, self.max_interactive_grid_density()),
             math_fingerprint: mh.finish(),
         }
     }
@@ -413,28 +415,25 @@ impl ComplexMappingTool {
     }
 
     fn populate_cache(&self, cache: &mut ConformalGridCache, key: ConformalCacheKey) {
+        let density = key.grid_density;
         cache.z_vertical.clear();
         cache.z_horizontal.clear();
         cache.w_vertical.clear();
         cache.w_horizontal.clear();
-        cache
-            .z_vertical
-            .reserve(self.grid_density, self.grid_density * 2);
-        cache
-            .z_horizontal
-            .reserve(self.grid_density, self.grid_density * 2);
+        cache.z_vertical.reserve(density, density * 2);
+        cache.z_horizontal.reserve(density, density * 2);
         cache
             .w_vertical
-            .reserve(self.grid_density, self.grid_density * CONTOUR_RESOLUTION);
+            .reserve(density, density * CONTOUR_RESOLUTION);
         cache
             .w_horizontal
-            .reserve(self.grid_density, self.grid_density * CONTOUR_RESOLUTION);
+            .reserve(density, density * CONTOUR_RESOLUTION);
 
         let span = self.grid_max - self.grid_min;
-        let step = span / (self.grid_density as f64 - 1.0);
+        let step = span / (density as f64 - 1.0);
         let denom = (CONTOUR_RESOLUTION - 1) as f64;
 
-        for i in 0..self.grid_density {
+        for i in 0..density {
             let x = self.grid_min + (i as f64) * step;
             cache
                 .z_vertical
@@ -445,7 +444,7 @@ impl ComplexMappingTool {
                     self.eval_z(Complex64::new(x, self.grid_min + span * (j as f64) / denom))
                 });
         }
-        for i in 0..self.grid_density {
+        for i in 0..density {
             let y = self.grid_min + (i as f64) * step;
             cache
                 .z_horizontal

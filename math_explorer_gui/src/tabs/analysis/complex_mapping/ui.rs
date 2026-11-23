@@ -112,7 +112,7 @@ impl ComplexMappingTool {
         );
 
         ui.add_space(10.0);
-        let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
+        let max_grid = self.max_interactive_grid_density();
         self.grid_density = self.grid_density.clamp(2, max_grid);
         ui.add(egui::Slider::new(&mut self.grid_density, 2..=max_grid).text("Grid Density:"));
     }

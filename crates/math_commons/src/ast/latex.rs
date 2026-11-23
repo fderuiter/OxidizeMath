@@ -4,6 +4,15 @@
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use std::fmt::Write;
 
+/// Maximum `Expr` nodes expanded during LaTeX serialization (matches `MAX_AST_NODES`).
+const MAX_LATEX_EVAL_NODES: usize = 256;
+
+/// Soft byte threshold above which further subtree expansions emit `\dots`.
+const MAX_LATEX_EXPAND_BYTES: usize = 3_584;
+
+/// Hard UTF-8 byte ceiling on strings returned by [`Expr::to_latex`].
+pub(crate) const MAX_LATEX_OUTPUT_BYTES: usize = 4_096;
+
 enum LatexFrame<'a> {
     Eval { expr: &'a Expr, parent_prec: u8 },
     Literal(&'static str),
@@ -22,15 +31,37 @@ impl Expr {
             expr: self,
             parent_prec,
         }];
+        let mut eval_nodes = 0usize;
         while let Some(frame) = stack.pop() {
             match frame {
-                LatexFrame::Literal(lit) => out.push_str(lit),
+                LatexFrame::Literal(lit) => push_bounded_str(&mut out, lit),
                 LatexFrame::Eval { expr, parent_prec } => {
-                    eval_latex_frame(expr, parent_prec, &mut stack, &mut out);
+                    if eval_nodes >= MAX_LATEX_EVAL_NODES || out.len() >= MAX_LATEX_EXPAND_BYTES {
+                        push_bounded_str(&mut out, r"\dots");
+                    } else {
+                        eval_nodes += 1;
+                        eval_latex_frame(expr, parent_prec, &mut stack, &mut out);
+                    }
                 }
             }
         }
         out
+    }
+}
+
+fn push_bounded_str(out: &mut String, text: &str) {
+    let remaining = MAX_LATEX_OUTPUT_BYTES.saturating_sub(out.len());
+    if remaining == 0 || text.is_empty() {
+        return;
+    }
+    if text.len() <= remaining {
+        out.push_str(text);
+    } else {
+        let mut end = remaining;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        out.push_str(&text[..end]);
     }
 }
 
@@ -56,22 +87,34 @@ fn eval_latex_frame<'a>(
 }
 
 fn write_number(out: &mut String, n: f64) {
+    let mut buf = String::with_capacity(24);
     if n.fract() == 0.0 && n.abs() < 1e12 {
-        write!(out, "{}", n as i64).expect("writing to String cannot fail");
+        write!(buf, "{}", n as i64).expect("writing to String cannot fail");
     } else {
-        write!(out, "{n}").expect("writing to String cannot fail");
+        write!(buf, "{n}").expect("writing to String cannot fail");
     }
+    push_bounded_str(out, &buf);
 }
 
 fn write_variable(out: &mut String, name: &str) {
     if name.eq_ignore_ascii_case("pi") {
-        out.push_str(r"\pi");
+        push_bounded_str(out, r"\pi");
     } else if name.eq_ignore_ascii_case("tau") {
-        out.push_str(r"\tau");
-    } else if name.contains('_') {
-        out.push_str(&name.replace('_', r"\_"));
+        push_bounded_str(out, r"\tau");
     } else {
-        out.push_str(name);
+        for ch in name.chars() {
+            if out.len() >= MAX_LATEX_EXPAND_BYTES {
+                push_bounded_str(out, r"\dots");
+                break;
+            }
+            if ch == '_' {
+                push_bounded_str(out, r"\_");
+            } else if out.len() + ch.len_utf8() <= MAX_LATEX_OUTPUT_BYTES {
+                out.push(ch);
+            } else {
+                break;
+            }
+        }
     }
 }
 
@@ -93,13 +136,13 @@ fn push_binary_frames<'a>(
 
     let wrap_parens = prec < parent_prec && op != BinaryOp::Div;
     if wrap_parens {
-        out.push_str(r"\left(");
+        push_bounded_str(out, r"\left(");
         stack.push(LatexFrame::Literal(r"\right)"));
     }
     if !suffix.is_empty() {
         stack.push(LatexFrame::Literal(suffix));
     }
-    out.push_str(prefix);
+    push_bounded_str(out, prefix);
     stack.push(LatexFrame::Eval {
         expr: right,
         parent_prec: right_prec,
@@ -118,8 +161,8 @@ fn push_unary_frames<'a>(
     out: &mut String,
 ) {
     match op {
-        UnaryOp::Pos => out.push('+'),
-        UnaryOp::Neg => out.push('-'),
+        UnaryOp::Pos => push_bounded_str(out, "+"),
+        UnaryOp::Neg => push_bounded_str(out, "-"),
     }
     stack.push(LatexFrame::Eval {
         expr,
@@ -135,7 +178,7 @@ fn push_function_frames<'a>(
 ) {
     match func {
         Func::Sqrt if !args.is_empty() => {
-            out.push_str(r"\sqrt{");
+            push_bounded_str(out, r"\sqrt{");
             stack.push(LatexFrame::Literal("}"));
             stack.push(LatexFrame::Eval {
                 expr: &args[0],
@@ -143,7 +186,7 @@ fn push_function_frames<'a>(
             });
         }
         Func::Abs if !args.is_empty() => {
-            out.push_str(r"\left|");
+            push_bounded_str(out, r"\left|");
             stack.push(LatexFrame::Literal(r"\right|"));
             stack.push(LatexFrame::Eval {
                 expr: &args[0],
@@ -151,10 +194,14 @@ fn push_function_frames<'a>(
             });
         }
         _ => {
-            out.push_str(latex_func_name(func));
-            out.push_str(r"\left(");
+            push_bounded_str(out, latex_func_name(func));
+            push_bounded_str(out, r"\left(");
             stack.push(LatexFrame::Literal(r"\right)"));
-            for (idx, arg) in args.iter().enumerate().rev() {
+            let capped_len = args.len().min(MAX_LATEX_EVAL_NODES);
+            if args.len() > capped_len {
+                stack.push(LatexFrame::Literal(r", \dots"));
+            }
+            for (idx, arg) in args[..capped_len].iter().enumerate().rev() {
                 stack.push(LatexFrame::Eval {
                     expr: arg,
                     parent_prec: 0,

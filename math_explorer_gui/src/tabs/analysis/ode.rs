@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 mod annotations;
+mod budget;
 mod canvas;
 pub mod comparison;
 mod persistence;
@@ -61,7 +62,7 @@ pub struct OdeSolverTool {
     pub(crate) active_baseline_hash: Option<u64>,
 }
 
-fn default_ode_math_input() -> MathExpressionInputBar {
+pub(super) fn default_ode_math_input() -> MathExpressionInputBar {
     MathExpressionInputBar::new(
         "y'",
         "-k * y * sin(t)",
@@ -353,6 +354,7 @@ impl OdeSolverTool {
 
     pub fn recalculate(&mut self) {
         self.sync_custom_params();
+        self.clamp_dt_to_work_budget();
         self.bump_revision();
         self.time_series.clear();
         self.y_series.clear();
@@ -450,6 +452,9 @@ inventory::submit! {
         build: || Box::new(OdeSolverTool::default()),
     }
 }
+
+#[cfg(test)]
+mod budget_tests;
 
 #[cfg(test)]
 mod comparison_tests;

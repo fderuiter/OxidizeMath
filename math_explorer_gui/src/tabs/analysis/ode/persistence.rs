@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::budget::validate_deserialized_ode_state;
 use super::OdeSolverTool;
 use crate::framework::{CalloutManager, TraceSnapshotManager};
 use crate::presets::OdePreset;
@@ -89,26 +90,26 @@ struct OdeStateRef<'a> {
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct OdeState {
+pub(super) struct OdeState {
     #[serde(default)]
-    preset: Option<OdePreset>,
-    dt: f64,
-    total_time: f64,
-    param_k: f64,
-    param_r: f64,
-    param_cap_k: f64,
-    ic_y0: f64,
-    ic_v0: f64,
+    pub(super) preset: Option<OdePreset>,
+    pub(super) dt: f64,
+    pub(super) total_time: f64,
+    pub(super) param_k: f64,
+    pub(super) param_r: f64,
+    pub(super) param_cap_k: f64,
+    pub(super) ic_y0: f64,
+    pub(super) ic_v0: f64,
     #[serde(default)]
-    custom_expr: String,
+    pub(super) custom_expr: String,
     #[serde(default)]
-    custom_coupled: bool,
+    pub(super) custom_coupled: bool,
     #[serde(default)]
-    coupled_exprs: Option<[String; 2]>,
+    pub(super) coupled_exprs: Option<[String; 2]>,
     #[serde(default)]
-    custom_params: BTreeMap<String, f64>,
+    pub(super) custom_params: BTreeMap<String, f64>,
     #[serde(default)]
-    coupled_params: BTreeMap<String, f64>,
+    pub(super) coupled_params: BTreeMap<String, f64>,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
     #[serde(default)]
@@ -470,28 +471,4 @@ impl OdeSolverTool {
         }
         datasets
     }
-}
-
-fn validate_deserialized_ode_state(s: &OdeState) -> Result<(), String> {
-    if !s.dt.is_finite()
-        || s.dt <= 0.0
-        || !s.total_time.is_finite()
-        || s.total_time <= 0.0
-        || !s.param_k.is_finite()
-        || !s.param_r.is_finite()
-        || !s.param_cap_k.is_finite()
-        || !s.ic_y0.is_finite()
-        || !s.ic_v0.is_finite()
-        || !s.custom_params.values().all(|v| v.is_finite())
-        || !s.coupled_params.values().all(|v| v.is_finite())
-    {
-        return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
-    }
-    if crate::presets::checked_ode_step_count(s.dt, s.total_time).is_none() {
-        return Err(format!(
-            "ODE step count (total_time / dt) exceeds maximum allowed limit ({})",
-            crate::presets::MAX_ODE_STEPS
-        ));
-    }
-    Ok(())
 }

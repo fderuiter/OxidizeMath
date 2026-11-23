@@ -116,9 +116,24 @@ impl diagnostics::Diagnostic for LexError {
     }
 }
 
+/// Maximum UTF-8 input length accepted by the AST tokenizer (mirrors `MAX_LATEX_INPUT_BYTES`).
+pub(crate) const MAX_AST_INPUT_BYTES: usize = 2_048;
+
+/// Maximum non-EOF token count accepted by the AST tokenizer.
+pub(crate) const MAX_AST_TOKENS: usize = 1_024;
+
 /// Tokenizes a mathematical expression string into a vector of tokens.
 pub fn tokenize(input: &str) -> Result<Vec<Token>, LexError> {
-    let mut tokens = Vec::new();
+    if input.len() > MAX_AST_INPUT_BYTES {
+        let char_idx = input.chars().take(MAX_AST_INPUT_BYTES).count();
+        return Err(LexError {
+            start: char_idx,
+            end: input.len(),
+            message: format!("Expression exceeds maximum length of {MAX_AST_INPUT_BYTES} bytes"),
+        });
+    }
+
+    let mut tokens = Vec::with_capacity(input.len().min(64));
     let bytes = input.as_bytes();
     let len = bytes.len();
     let mut i = 0;
@@ -131,24 +146,15 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, LexError> {
         }
 
         if let Some(kind) = match_single_char(b) {
-            tokens.push(Token {
-                kind,
-                span: Span::new(i, i + 1),
-            });
+            push_bounded_token(&mut tokens, kind, Span::new(i, i + 1))?;
             i += 1;
         } else if b.is_ascii_digit() || b == b'.' {
             let (val, next_i) = parse_number(input, i)?;
-            tokens.push(Token {
-                kind: TokenKind::Number(val),
-                span: Span::new(i, next_i),
-            });
+            push_bounded_token(&mut tokens, TokenKind::Number(val), Span::new(i, next_i))?;
             i = next_i;
         } else if b.is_ascii_alphabetic() || b == b'_' {
             let (ident, next_i) = parse_ident(input, i);
-            tokens.push(Token {
-                kind: TokenKind::Ident(ident),
-                span: Span::new(i, next_i),
-            });
+            push_bounded_token(&mut tokens, TokenKind::Ident(ident), Span::new(i, next_i))?;
             i = next_i;
         } else {
             return Err(LexError {
@@ -167,6 +173,22 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, LexError> {
         span: Span::new(len, len),
     });
     Ok(tokens)
+}
+
+fn push_bounded_token(
+    tokens: &mut Vec<Token>,
+    kind: TokenKind,
+    span: Span,
+) -> Result<(), LexError> {
+    if tokens.len() >= MAX_AST_TOKENS {
+        return Err(LexError {
+            start: span.start,
+            end: span.end,
+            message: format!("Expression exceeds maximum limit of {MAX_AST_TOKENS} tokens"),
+        });
+    }
+    tokens.push(Token { kind, span });
+    Ok(())
 }
 
 fn match_single_char(b: u8) -> Option<TokenKind> {

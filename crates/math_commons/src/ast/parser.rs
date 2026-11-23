@@ -3,9 +3,13 @@
 
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use super::lexer::{LexError, Span, Token, TokenKind, tokenize};
+use super::parser_diagnostics::{format_found_token, format_user_message_for_input};
 
 /// Maximum allowed recursion nesting depth to prevent stack overflow.
 pub const MAX_PARSE_DEPTH: usize = 64;
+
+/// Maximum allowed total `Expr` AST nodes per parsed formula (mirrors `MAX_MATH_BOX_NODES`).
+pub(crate) const MAX_AST_NODES: usize = 256;
 
 /// Error encountered during expression parsing.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -32,6 +36,10 @@ pub enum ParseError {
     /// Expression nesting depth exceeded safe threshold.
     #[error("Expression is nested too deeply (maximum depth {0})")]
     RecursionLimitExceeded(usize),
+
+    /// Expression total AST node count exceeded safe threshold.
+    #[error("Expression is too complex (maximum {0} AST nodes)")]
+    NodeLimitExceeded(usize),
 
     /// Empty expression string provided.
     #[error("Expression cannot be empty")]
@@ -66,14 +74,6 @@ pub enum ParseError {
     },
 }
 
-fn format_found_token(found: &str) -> String {
-    if found == "<EOF>" || found == "end of expression" {
-        "end of expression".to_string()
-    } else {
-        format!("'{found}'")
-    }
-}
-
 impl ParseError {
     /// Formats this parse error in plain language using 1-indexed character positions
     /// without exposing internal `Span` structs or `<EOF>` markers.
@@ -86,16 +86,7 @@ impl ParseError {
     /// incomplete expressions also report a 1-indexed character position.
     #[must_use]
     pub fn user_message_for_input(&self, input: &str) -> String {
-        if matches!(self, Self::UnexpectedEof) {
-            let trimmed_chars = input.trim().chars().count();
-            if trimmed_chars > 0 {
-                return format!(
-                    "Unexpected end of expression at character {}",
-                    trimmed_chars + 1
-                );
-            }
-        }
-        self.user_message()
+        format_user_message_for_input(self, input)
     }
 }
 
@@ -141,6 +132,7 @@ struct Parser {
     tokens: Vec<Token>,
     pos: usize,
     in_abs: bool,
+    remaining_nodes: usize,
 }
 
 impl Parser {
@@ -149,7 +141,21 @@ impl Parser {
             tokens,
             pos: 0,
             in_abs: false,
+            remaining_nodes: MAX_AST_NODES,
         }
+    }
+
+    fn consume_node(&mut self) -> Result<(), ParseError> {
+        if self.remaining_nodes == 0 {
+            return Err(ParseError::NodeLimitExceeded(MAX_AST_NODES));
+        }
+        self.remaining_nodes -= 1;
+        Ok(())
+    }
+
+    fn alloc_leaf(&mut self, expr: Expr) -> Result<(Expr, usize), ParseError> {
+        self.consume_node()?;
+        Ok((expr, 0))
     }
 
     fn peek(&self) -> &Token {
@@ -224,7 +230,7 @@ impl Parser {
                 }
                 self.advance(); // consume operator
                 let (rhs, rhs_height) = self.parse_expr(r_bp, depth + 1)?;
-                (lhs, lhs_height) = wrap_binary(op, lhs, lhs_height, rhs, rhs_height)?;
+                (lhs, lhs_height) = self.wrap_binary(op, lhs, lhs_height, rhs, rhs_height)?;
                 continue;
             }
 
@@ -236,7 +242,8 @@ impl Parser {
                     break;
                 }
                 let (rhs, rhs_height) = self.parse_expr(r_bp, depth + 1)?;
-                (lhs, lhs_height) = wrap_binary(BinaryOp::Mul, lhs, lhs_height, rhs, rhs_height)?;
+                (lhs, lhs_height) =
+                    self.wrap_binary(BinaryOp::Mul, lhs, lhs_height, rhs, rhs_height)?;
                 continue;
             }
 
@@ -249,7 +256,7 @@ impl Parser {
     fn parse_prefix(&mut self, depth: usize) -> Result<(Expr, usize), ParseError> {
         let tok = self.advance().clone();
         match tok.kind {
-            TokenKind::Number(n) => Ok((Expr::Number(n), 0)),
+            TokenKind::Number(n) => self.alloc_leaf(Expr::Number(n)),
             TokenKind::Ident(name) => self.parse_ident_or_func(name, tok.span, depth),
             TokenKind::LParen => self.parse_grouped_parens(depth),
             TokenKind::Pipe => self.parse_abs(depth),
@@ -295,11 +302,7 @@ impl Parser {
             });
         }
         self.advance(); // consume '|'
-        let next_height = inner_height + 1;
-        if next_height > MAX_PARSE_DEPTH {
-            return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
-        }
-        Ok((Expr::function(Func::Abs, vec![inner]), next_height))
+        self.wrap_function(Func::Abs, vec![inner], inner_height)
     }
 
     fn parse_unary(&mut self, op: UnaryOp, depth: usize) -> Result<(Expr, usize), ParseError> {
@@ -308,6 +311,7 @@ impl Parser {
         if next_height > MAX_PARSE_DEPTH {
             return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
         }
+        self.consume_node()?;
         Ok((Expr::unary(op, expr), next_height))
     }
 
@@ -321,7 +325,7 @@ impl Parser {
             if self.peek().kind == TokenKind::LParen {
                 return Err(ParseError::UnknownFunction { name, span });
             }
-            return Ok((Expr::Variable(name), 0));
+            return self.alloc_leaf(Expr::Variable(name));
         };
 
         if self.peek().kind == TokenKind::LParen {
@@ -350,11 +354,7 @@ impl Parser {
         depth: usize,
     ) -> Result<(Expr, usize), ParseError> {
         let (arg, arg_height) = self.parse_expr(7, depth + 1)?;
-        let next_height = arg_height + 1;
-        if next_height > MAX_PARSE_DEPTH {
-            return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
-        }
-        Ok((Expr::function(func, vec![arg]), next_height))
+        self.wrap_function(func, vec![arg], arg_height)
     }
 
     fn parse_unary_func_power(
@@ -379,7 +379,7 @@ impl Parser {
                 span: self.peek().span,
             });
         };
-        wrap_binary(BinaryOp::Pow, call_expr, call_height, exponent, exp_height)
+        self.wrap_binary(BinaryOp::Pow, call_expr, call_height, exponent, exp_height)
     }
 
     fn parse_parenthesized_func(
@@ -410,11 +410,7 @@ impl Parser {
                 span,
             });
         }
-        let next_height = max_arg_height + 1;
-        if next_height > MAX_PARSE_DEPTH {
-            return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
-        }
-        Ok((Expr::function(func, args), next_height))
+        self.wrap_function(func, args, max_arg_height)
     }
 
     fn parse_func_args(&mut self, depth: usize) -> Result<(Vec<Expr>, usize), ParseError> {
@@ -453,18 +449,34 @@ impl Parser {
             _ => false,
         }
     }
-}
 
-fn wrap_binary(
-    op: BinaryOp,
-    lhs: Expr,
-    lhs_height: usize,
-    rhs: Expr,
-    rhs_height: usize,
-) -> Result<(Expr, usize), ParseError> {
-    let next_height = lhs_height.max(rhs_height) + 1;
-    if next_height > MAX_PARSE_DEPTH {
-        return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
+    fn wrap_function(
+        &mut self,
+        func: Func,
+        args: Vec<Expr>,
+        max_arg_height: usize,
+    ) -> Result<(Expr, usize), ParseError> {
+        let next_height = max_arg_height + 1;
+        if next_height > MAX_PARSE_DEPTH {
+            return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
+        }
+        self.consume_node()?;
+        Ok((Expr::function(func, args), next_height))
     }
-    Ok((Expr::binary(op, lhs, rhs), next_height))
+
+    fn wrap_binary(
+        &mut self,
+        op: BinaryOp,
+        lhs: Expr,
+        lhs_height: usize,
+        rhs: Expr,
+        rhs_height: usize,
+    ) -> Result<(Expr, usize), ParseError> {
+        let next_height = lhs_height.max(rhs_height) + 1;
+        if next_height > MAX_PARSE_DEPTH {
+            return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
+        }
+        self.consume_node()?;
+        Ok((Expr::binary(op, lhs, rhs), next_height))
+    }
 }

@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use num_complex::Complex64;
@@ -18,6 +19,27 @@ pub(super) const COMPLEX_MIN_SPAN: f64 = 0.1;
 const EXP_SIN_GUARD_LIMIT: f64 = 50.0;
 const NAN_COMPLEX: Complex64 = Complex64::new(f64::NAN, f64::NAN);
 const DEFAULT_CUSTOM_EXPR: &str = "z^3 - 1/z";
+
+/// Maximum `grid_points * ast_nodes` work budget (`2 * grid_density * CONTOUR_RESOLUTION * ast_nodes`).
+pub(crate) const MAX_COMPLEX_MAPPING_WORK_BUDGET: usize = 400_000;
+
+fn default_complex_math_input() -> MathExpressionInputBar {
+    MathExpressionInputBar::new(
+        "w",
+        DEFAULT_CUSTOM_EXPR,
+        vec![
+            ("w = z + a^2 / z (Parameterized Joukowsky)", "z + a^2 / z"),
+            ("w = z^3 - 1/z", "z^3 - 1/z"),
+            ("w = z^2", "z^2"),
+            ("w = exp(z)", "exp(z)"),
+            ("w = sin(z)", "sin(z)"),
+            ("w = 1/z", "1/z"),
+        ],
+    )
+    .with_axes(&["z"])
+    .with_complex_mode(true)
+    .with_allowed_vars(&["z", "a"])
+}
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) enum MappingFunction {
@@ -123,21 +145,7 @@ impl Default for ComplexMappingTool {
             grid_max: 2.0,
             grid_density: 10,
             inspection_point: [1.0, 1.0],
-            math_input: MathExpressionInputBar::new(
-                "w",
-                DEFAULT_CUSTOM_EXPR,
-                vec![
-                    ("w = z + a^2 / z (Parameterized Joukowsky)", "z + a^2 / z"),
-                    ("w = z^3 - 1/z", "z^3 - 1/z"),
-                    ("w = z^2", "z^2"),
-                    ("w = exp(z)", "exp(z)"),
-                    ("w = sin(z)", "sin(z)"),
-                    ("w = 1/z", "1/z"),
-                ],
-            )
-            .with_axes(&["z"])
-            .with_complex_mode(true)
-            .with_allowed_vars(&["z", "a"]),
+            math_input: default_complex_math_input(),
             high_contrast: false,
             cache: cache::ConformalGridCache::default(),
         }
@@ -145,6 +153,28 @@ impl Default for ComplexMappingTool {
 }
 
 impl ComplexMappingTool {
+    #[must_use]
+    pub(crate) fn custom_ast_node_count(&self) -> usize {
+        if self.function != MappingFunction::Custom {
+            return 1;
+        }
+        self.math_input
+            .active_compiled()
+            .map_or(1, |c| c.instructions().len().max(1))
+    }
+
+    #[must_use]
+    pub(crate) fn max_interactive_grid_density(&self) -> usize {
+        let max_cap = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
+        if self.function != MappingFunction::Custom {
+            return max_cap;
+        }
+        let per_line_cost = (2 * ui::CONTOUR_RESOLUTION)
+            .saturating_mul(self.custom_ast_node_count())
+            .max(1);
+        (MAX_COMPLEX_MAPPING_WORK_BUDGET / per_line_cost).clamp(2, max_cap)
+    }
+
     pub(crate) fn eval_z(&self, z: Complex64) -> Complex64 {
         if !z.re.is_finite() || !z.im.is_finite() {
             return NAN_COMPLEX;
@@ -262,29 +292,15 @@ impl InteractiveTool for ComplexMappingTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: ComplexMappingState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid complex mapping state: {e}"))?;
-        if !s.grid_min.is_finite()
-            || !s.grid_max.is_finite()
-            || !(COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&s.grid_min)
-            || !(COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&s.grid_max)
-            || s.grid_min >= s.grid_max
-            || !(2..=math_commons::registry::MAX_GRID_SIZE).contains(&s.grid_density)
-            || !s
-                .inspection_point
-                .iter()
-                .all(|v| v.is_finite() && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(v))
-        {
-            return Err("Complex mapping bounds or density out of valid range".into());
-        }
+        validate_complex_mapping_state(&s)?;
         self.function = s.function;
         self.grid_min = s.grid_min;
         self.grid_max = s.grid_max;
-        self.grid_density = s
-            .grid_density
-            .min(crate::presets::MAX_INTERACTIVE_GRID_SIZE);
         self.inspection_point = s.inspection_point;
         self.math_input
             .set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_CUSTOM_EXPR));
         self.math_input.set_params_map(&s.custom_params);
+        self.grid_density = s.grid_density.clamp(2, self.max_interactive_grid_density());
         Ok(())
     }
 
@@ -434,5 +450,40 @@ inventory::submit! {
 }
 
 #[cfg(test)]
+#[path = "complex_mapping/budget_tests.rs"]
+mod budget_tests;
+
+#[cfg(test)]
 #[path = "complex_mapping/tests.rs"]
 mod tests;
+
+fn validate_complex_mapping_state(s: &ComplexMappingState) -> Result<(), String> {
+    if !s.grid_min.is_finite()
+        || !s.grid_max.is_finite()
+        || !(COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&s.grid_min)
+        || !(COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&s.grid_max)
+        || s.grid_min >= s.grid_max
+        || !(2..=math_commons::registry::MAX_GRID_SIZE).contains(&s.grid_density)
+        || !s
+            .inspection_point
+            .iter()
+            .all(|v| v.is_finite() && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(v))
+        || s.custom_params.len() > MAX_SYNTHESIZED_PARAMS
+        || !s.custom_params.values().all(|v| v.is_finite())
+    {
+        return Err("Complex mapping bounds, density, or parameters out of valid range".into());
+    }
+    if s.custom_expr.is_some() || s.function == MappingFunction::Custom {
+        let mut probe = default_complex_math_input();
+        probe.set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_CUSTOM_EXPR));
+        if !probe.is_valid() {
+            let reason = probe
+                .error_message()
+                .unwrap_or_else(|| "invalid custom complex mapping expression".to_string());
+            return Err(format!(
+                "Invalid custom complex mapping expression: {reason}"
+            ));
+        }
+    }
+    Ok(())
+}
