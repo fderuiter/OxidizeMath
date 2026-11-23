@@ -1,5 +1,9 @@
 # ADR 0008: Finite State Guard and Interactive Solver Divergence Banner
 
+## Status
+
+Accepted
+
 ## Context
 In numerical integration loops across interactive tools (`AttractorPlotter` in `attractors.rs` and `OdeSolverTool` in `ode.rs`), divergent parameter configurations or initial conditions previously allowed non-finite float values (`NaN` or `Inf`) to enter state trajectory histories. This resulted in broken visualizations and UI unresponsiveness.
 

@@ -9,17 +9,20 @@ mod export_figure;
 mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
+mod export_shader;
+#[cfg(test)]
+mod export_shader_tests;
 pub mod export_types;
 mod export_ui;
 #[cfg(test)]
 mod export_ui_tests;
+pub mod fit_bridge;
 pub mod math_input;
 #[cfg(test)]
 mod metadata_label_tests;
 mod overlay_sync;
 mod pane_scope;
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod perf_guard_tests;
 mod persistence;
 pub mod playback;
@@ -27,7 +30,6 @@ pub mod playback;
 mod playback_tests;
 pub mod recovery;
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod recovery_tests;
 pub mod side_panel;
 pub mod state_bounds;
@@ -35,7 +37,6 @@ pub mod state_bounds;
 mod state_bounds_tests;
 pub mod state_guard;
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod state_guard_tests;
 pub mod trace_overlay;
 mod ui;
@@ -46,7 +47,9 @@ pub use clamp::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
-pub use export_types::*;
+pub(crate) use export_types::{ActionBarExportStatus, ExportFormat, ExportRequest, ExportTarget};
+pub use export_types::{ExportCapabilities, ExportStatusSeverity, ShaderDialect};
+pub use fit_bridge::ensure_custom_fit_bridge;
 pub use math_input::*;
 pub use pane_scope::{
     is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id,
@@ -260,6 +263,11 @@ pub trait InteractiveTool {
         egui_plot::get_last_plot_datasets()
     }
 
+    /// Optional hook to export 3D world-coordinate `(X, Y, Z)` datasets.
+    fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        egui_plot::get_last_plot_datasets_3d()
+    }
+
     /// Optional hook to extract offscreen drawable plot primitives (`Bar`, `Arrow`, `BoxElem`, `Polyline`, `Points`).
     fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
         egui_plot::get_last_plot_primitives()
@@ -273,6 +281,14 @@ pub trait InteractiveTool {
     /// Optional hook to provide custom figure export options.
     fn export_figure_options(&self) -> Option<egui_plot::export::ExportOptions> {
         None
+    }
+
+    /// Optional hook to emit a standalone GLSL fragment shader for the requested [`ShaderDialect`].
+    fn export_glsl_shader(&self, _dialect: ShaderDialect) -> Result<String, String> {
+        Err(format!(
+            "GLSL shader export is not supported for {}",
+            self.name()
+        ))
     }
 
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
@@ -357,6 +373,8 @@ pub struct SimulationFramework {
     pub baseline_tool_state: Option<String>,
     /// Last validated finite plot datasets.
     pub current_valid_plot_datasets: Vec<(String, Vec<[f64; 2]>)>,
+    /// Last validated finite 3D world-coordinate plot datasets.
+    pub current_valid_plot_datasets_3d: Vec<(String, Vec<[f64; 3]>)>,
     /// Whether divergence has been detected in the active tool.
     pub is_diverged: bool,
     /// Diagnostic report for divergence.
@@ -404,6 +422,7 @@ impl SimulationFramework {
             last_valid_snapshot: None,
             baseline_tool_state: None,
             current_valid_plot_datasets: Vec::new(),
+            current_valid_plot_datasets_3d: Vec::new(),
             is_diverged: false,
             diagnostic_report: None,
             step_counter: 0,
@@ -422,5 +441,6 @@ impl SimulationFramework {
 }
 
 pub use crate::camera::{
-    Camera3D, Plot3DViewport, CAMERA_3D_HELPER_TEXT, CAMERA_3D_ZOOM_MAX, CAMERA_3D_ZOOM_MIN,
+    Camera3D, Plot3DViewport, ProjectionMode, Scene3DBuilder, CAMERA_3D_HELPER_TEXT,
+    CAMERA_3D_MAX_PAN, CAMERA_3D_PERSPECTIVE_DISTANCE, CAMERA_3D_ZOOM_MAX, CAMERA_3D_ZOOM_MIN,
 };

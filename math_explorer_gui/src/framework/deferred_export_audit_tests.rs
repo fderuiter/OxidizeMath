@@ -65,15 +65,55 @@ fn verify_single_figure_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
     );
 }
 
+fn verify_shader_capability(
+    meta_id: &str,
+    tool: &dyn InteractiveTool,
+    caps: ExportCapabilities,
+) -> bool {
+    if !caps.shader {
+        assert!(
+            !caps.shader_disabled_reason.is_empty(),
+            "{meta_id} disables shader export without an explanatory reason"
+        );
+        return false;
+    }
+    assert!(
+        caps.shader_disabled_reason.is_empty(),
+        "{meta_id} advertises shader export but has non-empty disabled reason"
+    );
+    let webgl2 = tool
+        .export_glsl_shader(ShaderDialect::WebGl2Es300)
+        .unwrap_or_else(|e| panic!("WebGL2 shader failed for {meta_id}: {e}"));
+    assert!(
+        webgl2.starts_with("#version 300 es") && webgl2.contains("void main()"),
+        "Invalid WebGL2 shader header/entry for {meta_id}"
+    );
+    let shadertoy = tool
+        .export_glsl_shader(ShaderDialect::Shadertoy)
+        .unwrap_or_else(|e| panic!("Shadertoy shader failed for {meta_id}: {e}"));
+    assert!(
+        !shadertoy.contains("#version") && shadertoy.contains("void mainImage("),
+        "Invalid Shadertoy entry for {meta_id}"
+    );
+    true
+}
+
 #[test]
 fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     let mut plot_tool_count = 0usize;
     let mut raster_tool_count = 0usize;
     let mut unsupported_tool_count = 0usize;
+    let mut shader_tool_count = 0usize;
+    let mut non_shader_tool_count = 0usize;
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         let tool = (meta.build)();
         let caps = tool.export_capabilities();
+        if verify_shader_capability(meta.id, tool.as_ref(), caps) {
+            shader_tool_count += 1;
+        } else {
+            non_shader_tool_count += 1;
+        }
 
         if !caps.figure {
             unsupported_tool_count += 1;
@@ -96,10 +136,19 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     }
 
     let expected_raster = 7 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
-    assert_eq!(plot_tool_count, 32, "Expected 32 Plot dataset+figure tools");
+    let expected_non_shader = 57 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
+    assert_eq!(plot_tool_count, 37, "Expected 37 Plot dataset+figure tools");
     assert_eq!(
         raster_tool_count, expected_raster,
         "Unexpected raster figure tool count"
     );
     assert_eq!(unsupported_tool_count, 16, "Expected 16 non-export tools");
+    assert_eq!(
+        shader_tool_count, 3,
+        "Expected 3 analytical GLSL shader tools"
+    );
+    assert_eq!(
+        non_shader_tool_count, expected_non_shader,
+        "Unexpected non-shader tool count"
+    );
 }

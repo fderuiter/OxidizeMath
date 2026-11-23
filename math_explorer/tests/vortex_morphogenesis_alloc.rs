@@ -1,12 +1,13 @@
 //! Global `VerifiedAllocator` and frame-budget verification for `CoupledVortexMorphogenesis`.
 #![cfg(all(feature = "physics", feature = "biology"))]
+#![cfg_attr(not(target_arch = "wasm32"), allow(clippy::disallowed_methods))]
 
 use math_explorer::verified_engine::allocator::VerifiedAllocator;
 use math_explorer::verified_engine::engine::VerifiedEngine;
 use math_explorer::vortex_morphogenesis::{
     CoupledVortexMorphogenesis, VortexMorphogenesisConfig, VortexRegimePreset,
 };
-#[cfg(not(debug_assertions))]
+#[cfg(all(not(debug_assertions), not(target_arch = "wasm32")))]
 use std::time::Instant;
 
 #[global_allocator]
@@ -33,16 +34,16 @@ fn test_coupled_100x50_and_100x100_zero_allocations_with_global_allocator() {
     assert!(metrics_50.arithmetic_ops > 0 && metrics_50.memory_loads > 0);
     assert!(engine_50.is_finite());
 
-    #[cfg(not(debug_assertions))]
+    #[cfg(all(not(debug_assertions), not(target_arch = "wasm32")))]
     let start = Instant::now();
     let (_, metrics_100) = VerifiedEngine::run_verified(|| {
         engine_100.step();
     });
-    #[cfg(not(debug_assertions))]
+    #[cfg(all(not(debug_assertions), not(target_arch = "wasm32")))]
     let elapsed = start.elapsed();
     assert!(metrics_100.arithmetic_ops > 0 && metrics_100.memory_loads > 0);
     assert!(engine_100.is_finite());
-    #[cfg(not(debug_assertions))]
+    #[cfg(all(not(debug_assertions), not(target_arch = "wasm32")))]
     assert!(
         elapsed.as_millis() < 25,
         "Single coupled 100x100 release step took {:?}",
