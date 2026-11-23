@@ -183,3 +183,44 @@ fn test_algorithm_visualizer_exposes_start_node_selector_in_side_panel() {
         "Side panel must render Start Node ComboBox selector"
     );
 }
+
+#[test]
+fn test_4x4_grid_highlights_15_predecessor_tree_edges_and_0_false_edges() {
+    let mut tool = AlgorithmVisualizerTool::default();
+    assert_eq!(tool.edges.len(), 24);
+    for alg in [Algorithm::Dijkstra, Algorithm::Bfs, Algorithm::Dfs] {
+        tool.set_algorithm(alg);
+        assert_eq!(tool.total_steps(), 16);
+        tool.set_animation_step(16);
+        assert_eq!(
+            tool.highlighted_tree_edge_count(),
+            15,
+            "Expected 15 spanning predecessor edges on 4x4 grid"
+        );
+        assert_eq!(
+            tool.highlighted_non_tree_edge_count(),
+            0,
+            "Expected 0 falsely highlighted non-tree edges on 4x4 grid"
+        );
+    }
+}
+
+#[test]
+fn test_stepped_max_flow_min_cut_and_kruskal_mst_modes() {
+    let mut tool = AlgorithmVisualizerTool::default();
+    tool.set_algorithm(Algorithm::MaxFlowMinCut);
+    let total_flow_steps = tool.total_steps();
+    assert!(total_flow_steps >= 2);
+    tool.set_animation_step(total_flow_steps);
+    let flow = tool.flow_visualization().expect("flow data populated");
+    assert!(flow.max_flow > 0.0);
+    assert!((flow.max_flow - flow.min_cut_capacity).abs() < 1e-9);
+    let dot = tool.to_styled_dot_string().expect("styled dot");
+    assert!(dot.contains("CUT") && dot.contains("penwidth="));
+
+    tool.set_algorithm(Algorithm::MinimumSpanningTree);
+    assert_eq!(tool.total_steps(), 24);
+    tool.set_animation_step(24);
+    assert_eq!(tool.highlighted_tree_edge_count(), 15);
+    assert_eq!(tool.highlighted_non_tree_edge_count(), 0);
+}

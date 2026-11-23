@@ -331,6 +331,7 @@ pub type Result<T> = std::result::Result<T, MarkovError>;
 pub use hmm::{
     BaumWelchConfig, BaumWelchReport, BaumWelchWorkspace, HiddenMarkovModel, ViterbiWorkspace,
 };
+pub use math_commons::stochastic::SolverWorkspace;
 pub use num_traits::ToPrimitive;
 pub use parrondo::{
     ParrondoEnsemble, ParrondoGame, ParrondoParams, ParrondoPhaseGridConfig, ParrondoPhasePoint,

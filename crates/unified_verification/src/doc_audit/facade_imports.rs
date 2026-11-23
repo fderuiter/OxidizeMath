@@ -2,7 +2,7 @@ use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DOMAIN_CRATES: &[&str] = &[
+pub(super) const DOMAIN_CRATES: &[&str] = &[
     "pure_math",
     "domain_ai",
     "domain_applied",
@@ -68,14 +68,14 @@ fn collect_active_guide_paths(workspace_root: &Path) -> Vec<PathBuf> {
     guides
 }
 
-struct FacadeImportPatterns {
-    doc_re: Regex,
-    forbidden_re: Regex,
-    bypass_re: Regex,
+pub(super) struct FacadeImportPatterns {
+    pub(super) doc_re: Regex,
+    pub(super) forbidden_re: Regex,
+    pub(super) bypass_re: Regex,
 }
 
 impl FacadeImportPatterns {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             doc_re: Regex::new(r"^\s*(?://!|///)\s?(.*)$").expect("Valid regex"),
             forbidden_re: Regex::new(r"(?:^|[^:\w])(domain_[a-z0-9_]+|pure_math)::")
@@ -88,7 +88,7 @@ impl FacadeImportPatterns {
     }
 }
 
-fn check_markdown_facade_imports_with_regex(
+pub(super) fn check_markdown_facade_imports_with_regex(
     path: &Path,
     content: &str,
     forbidden_re: &Regex,
@@ -137,7 +137,7 @@ pub fn check_markdown_facade_imports(path: &Path, content: &str) -> Vec<String> 
     check_markdown_facade_imports_with_regex(path, content, &forbidden_re)
 }
 
-fn check_rustdoc_facade_imports_with_regexes(
+pub(super) fn check_rustdoc_facade_imports_with_regexes(
     path: &Path,
     content: &str,
     doc_re: &Regex,
@@ -196,7 +196,7 @@ pub fn check_rustdoc_facade_imports(path: &Path, content: &str) -> Vec<String> {
     )
 }
 
-fn check_example_facade_imports_with_regex(
+pub(super) fn check_example_facade_imports_with_regex(
     path: &Path,
     content: &str,
     bypass_re: &Regex,
