@@ -281,6 +281,30 @@ fn audit_crate_with_patterns(
     report
 }
 
+/// Prints sorted registered `[[example]]` target names from `math_explorer/Cargo.toml` (one per line).
+pub fn list_registered_examples_cli() -> bool {
+    let workspace_root = crate::manifest_cache::workspace_root_dir();
+    let model = match manifest_model::WorkspaceManifestModel::load(&workspace_root) {
+        Ok(m) => m,
+        Err(err) => {
+            eprintln!("{err}");
+            return false;
+        }
+    };
+    let Some(pkg) = model.packages_by_name.get("math_explorer") else {
+        eprintln!("Workspace manifest model is missing `math_explorer` package.");
+        return false;
+    };
+    if pkg.examples.is_empty() {
+        eprintln!("`math_explorer/Cargo.toml` declares zero `[[example]]` targets.");
+        return false;
+    }
+    for name in pkg.examples.keys() {
+        println!("{name}");
+    }
+    true
+}
+
 /// Main entrypoint to audit all discovered workspace crates.
 pub fn run_doc_audit(args: &[String]) -> bool {
     let (workspace_root, members) = crate::manifest_cache::discover_workspace();
@@ -291,6 +315,17 @@ pub fn run_doc_audit(args: &[String]) -> bool {
 pub fn run_doc_audit_for_members(members: &[String], args: &[String]) -> bool {
     let workspace_root = crate::manifest_cache::workspace_root_dir();
     run_doc_audit_in_base(&workspace_root, members, args)
+}
+
+fn count_registered_examples(workspace_root: &Path) -> usize {
+    manifest_model::WorkspaceManifestModel::load(workspace_root)
+        .ok()
+        .and_then(|m| {
+            m.packages_by_name
+                .get("math_explorer")
+                .map(|p| p.examples.len())
+        })
+        .unwrap_or(0)
 }
 
 fn run_doc_audit_in_base(workspace_root: &Path, members: &[String], args: &[String]) -> bool {
@@ -339,14 +374,19 @@ fn run_doc_audit_in_base(workspace_root: &Path, members: &[String], args: &[Stri
         workspace_root,
     ));
 
-    print_doc_audit_summary(&report, members.len())
+    let example_count = count_registered_examples(workspace_root);
+    print_doc_audit_summary(&report, members.len(), example_count)
 }
 
-fn print_doc_audit_summary(report: &AuditReport, member_count: usize) -> bool {
+fn print_doc_audit_summary(
+    report: &AuditReport,
+    member_count: usize,
+    example_count: usize,
+) -> bool {
     if report.is_success() {
         println!(
-            "[OK] All {} workspace crates passed documentation verification.",
-            member_count
+            "[OK] All {} workspace crates and {}/{} registered math_explorer examples passed documentation verification.",
+            member_count, example_count, example_count
         );
         true
     } else {

@@ -239,6 +239,50 @@ pub fn verify_browser_tools_or_exit(workspace_root: &Path) {
     }
 }
 
+/// Configures `core.hooksPath = .githooks` and ensures `.githooks/pre-commit` is executable.
+pub(crate) fn configure_git_hooks_in_dir(repo_dir: &Path) {
+    println!("\n--- Configuring Git Hooks ---");
+    let status = Command::new("git")
+        .current_dir(repo_dir)
+        .args(["config", "core.hooksPath", ".githooks"])
+        .status();
+    if !matches!(status, Ok(s) if s.success()) {
+        eprintln!("Command failed!");
+        exit(1);
+    }
+
+    let hook_path = repo_dir.join(".githooks/pre-commit");
+    if hook_path.exists() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(metadata) = fs::metadata(&hook_path) {
+                let mut perms = metadata.permissions();
+                if perms.mode() & 0o111 == 0 {
+                    perms.set_mode(0o755);
+                    if let Err(e) = fs::set_permissions(&hook_path, perms) {
+                        eprintln!(
+                            "Warning: Failed to set executable permissions on {}: {}",
+                            hook_path.display(),
+                            e
+                        );
+                    } else {
+                        println!("Pre-commit hook permissions set to executable (0755).");
+                    }
+                } else {
+                    println!("Pre-commit hook executable permissions verified.");
+                }
+            }
+        }
+        println!("Git core.hooksPath configured to .githooks");
+    } else {
+        eprintln!(
+            "Warning: Expected hook script not found at {}.",
+            hook_path.display()
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
