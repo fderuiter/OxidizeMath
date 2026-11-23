@@ -54,7 +54,7 @@ const FRACTAL_RESERVED_IDENTS: &[&str] = &[
 ];
 
 impl FractalViewer {
-    fn compile_fractal_step_glsl(&self) -> Result<(bool, String, String), String> {
+    fn compile_step_glsl(&self) -> Result<(bool, String, String), String> {
         if !self.mode.is_custom() {
             return Ok((
                 false,
@@ -71,9 +71,8 @@ impl FractalViewer {
         let compiled = self.math_input.compiled().ok_or_else(invalid_err)?;
         let param_names = compiled.param_names();
         let param_vals = self.math_input.param_slice();
-
         let mut allowed_vars = Vec::with_capacity(2 + param_names.len());
-        allowed_vars.extend_from_slice(&["z", "c"]);
+        allowed_vars.extend(["z", "c"]);
         let mut param_decls = String::new();
         for (idx, name) in param_names.iter().enumerate() {
             if FRACTAL_RESERVED_IDENTS.contains(&name.as_str()) {
@@ -96,7 +95,7 @@ impl FractalViewer {
         if !self.has_finite_parameters() {
             return Err("Fractal parameters are non-finite or out of bounds".to_string());
         }
-        let (needs_complex_helpers, param_decls, step_glsl) = self.compile_fractal_step_glsl()?;
+        let (needs_helpers, param_decls, step_glsl) = self.compile_step_glsl()?;
         let cx = format_glsl_float(self.center.re.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
         let cy = format_glsl_float(self.center.im.clamp(COORD_MIN, COORD_MAX))
@@ -112,7 +111,7 @@ impl FractalViewer {
             .clamp(10, math_commons::registry::MAX_ITERATIONS as u32);
         let is_julia = self.mode.uses_julia_c();
 
-        let mut out = String::with_capacity(4096);
+        let mut out = String::with_capacity(3072);
         write_dialect_header(&mut out, dialect, self.mode);
         writeln!(out, "const vec2 CENTER = vec2({cx}, {cy});").unwrap();
         writeln!(out, "const float ZOOM = {zoom};").unwrap();
@@ -120,7 +119,7 @@ impl FractalViewer {
         writeln!(out, "const bool IS_JULIA = {is_julia};").unwrap();
         writeln!(out, "const vec2 JULIA_C = vec2({jx}, {jy});").unwrap();
         writeln!(out, "const bool HIGH_CONTRAST = {};\n", self.high_contrast).unwrap();
-        if needs_complex_helpers {
+        if needs_helpers {
             out.push_str(GLSL_COMPLEX_HELPERS);
             out.push('\n');
         }
