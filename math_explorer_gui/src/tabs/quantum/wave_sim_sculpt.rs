@@ -4,8 +4,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::wave_sim::presets::{
-    barrier_interval_for_preset, clamp_potential_sample, evaluate_potential_grid, GRID_POINTS,
-    GRID_X_MAX, GRID_X_MIN, POTENTIAL_DISPLAY_SCALE, V0_MAX,
+    barrier_interval_for_preset, clamp_potential_sample, evaluate_potential_grid, DEFAULT_DT,
+    GRID_POINTS, GRID_X_MAX, GRID_X_MIN, POTENTIAL_DISPLAY_SCALE, V0_MAX,
 };
 use super::wave_sim::{WaveRunner, WaveSimulatorTool};
 use crate::async_sim::SimCommand;
@@ -252,7 +252,10 @@ impl WaveRunner {
                 self.entered_barrier = false;
                 self.wall_arrived = false;
                 self.latched_transmission = None;
+                self.prev_mode_phases = [0.0; 8];
                 self.update_observables_in_place();
+                let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
+                self.refresh_sonification(dt);
             }
             _ => {}
         }

@@ -129,6 +129,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ui.heading(M::name());
             ui.separator();
             self.draw_status_and_transport(ui, &ctx);
+            if let Some(tool_id) = M::sonification_tool_id() {
+                let worker_state = self.controller.state();
+                if matches!(worker_state, SimWorkerState::Faulted) {
+                    crate::audio::notify_solver_diverged();
+                }
+                let frame = self
+                    .stepped_snapshot
+                    .as_ref()
+                    .or_else(|| self.controller.latest_snapshot())
+                    .map_or_else(crate::audio::SonificationFrame::silent, |s| s.sonification);
+                let is_idle = !matches!(
+                    worker_state,
+                    SimWorkerState::Running | SimWorkerState::Stepping
+                ) && self.stepped_snapshot.is_none();
+                ui.separator();
+                crate::audio::render_sonification_panel(ui, tool_id, &frame, is_idle);
+            }
             ui.separator();
             ui.label("Simulation Constants");
             if ui

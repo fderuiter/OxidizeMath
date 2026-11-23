@@ -28,7 +28,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(super) dirty: bool,
-    stepped_snapshot: Option<StateSnapshot>,
+    pub(super) stepped_snapshot: Option<StateSnapshot>,
     cached_theory_desc: String,
     cached_phonetic: String,
     cached_citation: String,

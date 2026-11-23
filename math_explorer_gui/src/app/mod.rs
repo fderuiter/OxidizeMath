@@ -270,6 +270,13 @@ impl eframe::App for MathExplorerApp {
 
         crate::accessibility::ensure_plot_live_bridge();
         crate::accessibility::sync_context_live_messages(ctx, true);
+        if ctx.input(|i| {
+            i.events
+                .iter()
+                .any(|e| matches!(e, egui::Event::WindowFocused(false)))
+        }) {
+            crate::audio::notify_window_blurred();
+        }
 
         self.flush_stale_pane_focus(ctx);
         let mut session_mgr = std::mem::take(&mut self.session_manager);
@@ -445,6 +452,7 @@ impl eframe::App for MathExplorerApp {
         };
 
         self.prune_inactive_pane_slots(active_layout.pane_count());
+        domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
         self.sync_workspace_history_bridge(ctx);
 
         if active_layout != ViewportLayout::Single {

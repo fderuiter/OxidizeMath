@@ -140,6 +140,7 @@ impl SimulationRunner for MorphogenesisRunner<FiniteDifference2D> {
                 u_data: u_vec,
                 mask_roles: Vec::new(),
             })),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 
@@ -266,6 +267,7 @@ impl SimulationRunner for MorphogenesisRunner<MaskedFiniteDifference2D> {
                 u_data: u_vec,
                 mask_roles,
             })),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

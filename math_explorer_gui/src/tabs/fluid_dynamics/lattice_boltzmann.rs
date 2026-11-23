@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use super::lattice_boltzmann_sculpt::{
     apply_lbm_custom_action, apply_stroke_to_lbm, draw_lbm_brush_panel, export_solver_rle,
     inspect_solver_solid_and_core, record_stroke_in_rle, reset_solver_preserving_obstacles,
@@ -38,7 +40,6 @@ pub struct LbmSnapshotMetrics {
     pub max_vorticity: f64,
 }
 
-#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct LbmUnified {
     pub(crate) solver: LatticeBoltzmannD2Q9<BgkCollision>,
     pub(crate) vorticity_buf: Vec<f64>,
@@ -277,6 +278,7 @@ impl UnifiedModel for LbmUnified {
                 self.step_count as f64,
             ],
             structured_data: Some(Box::new(metrics)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 
