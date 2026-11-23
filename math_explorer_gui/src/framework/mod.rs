@@ -9,6 +9,7 @@ mod challenge_hud_tests;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod counterfactual;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
@@ -79,6 +80,7 @@ pub use brush_codec::*;
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
+pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
@@ -370,30 +372,22 @@ pub trait InteractiveTool {
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
 
+    /// Optional hook returning the active counterfactual divergence snapshot for `SimulationFramework`.
+    fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
+        None
+    }
+
+    /// Optional hook applying a `CounterfactualBranchEngine` action (`Fork`, `Swap`, `Clear`, `SetPerturbation`).
+    fn apply_counterfactual_action(&mut self, _action: BranchControlAction) -> bool {
+        false
+    }
+
     /// Optional hook to sample multi-frame animation datasets for GIF export.
     fn sample_animation_frames(
         &mut self,
         num_frames: usize,
     ) -> Vec<egui_plot::export::DatasetFrame> {
-        let count = num_frames.max(1);
-        let mut frames = Vec::with_capacity(count);
-
-        for _ in 0..count {
-            self.step_simulation();
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames.push(ds);
-            }
-        }
-
-        if frames.is_empty() {
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames = egui_plot::export::sample_progressive_frames(&ds, count);
-            }
-        }
-
-        frames
+        audio_sync::sample_tool_animation_frames(self, num_frames)
     }
 
     /// Optional hook emitting a zero-allocation [`crate::audio::SonificationFrame`] for live Web Audio and `.wav` export.
@@ -469,6 +463,8 @@ pub struct SimulationFramework {
     pub diagnostic_report: Option<DiagnosticReport>,
     /// Simulation frame / step counter.
     pub step_counter: usize,
+    /// Counterfactual shadow twin engine state synchronized with the active tool.
+    pub branch_engine: CounterfactualBranchEngine,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
     /// Default-muted live Web Audio and gain-limiter controller.

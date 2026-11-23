@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    AttractorMode, AttractorPlotter, SolverExecutionState, DEFAULT_FIXED_CALLOUT_OFFSETS,
-    DEFAULT_FLOW_EXPRS,
+    AttractorForkDescriptor, AttractorMode, AttractorPlotter, SolverExecutionState,
+    DEFAULT_FIXED_CALLOUT_OFFSETS, DEFAULT_FLOW_EXPRS,
 };
 use crate::framework::Camera3D;
 use eframe::egui;
@@ -43,6 +43,8 @@ struct AttractorSaveState {
     custom_exprs: Option<[String; 3]>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fork: Option<AttractorForkDescriptor>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     atlas_visible: bool,
     #[serde(skip_serializing_if = "super::atlas::is_default_attractor_atlas_axes")]
@@ -84,12 +86,25 @@ struct AttractorState {
     #[serde(default)]
     custom_params: BTreeMap<String, f64>,
     #[serde(default)]
+    fork: Option<AttractorForkDescriptor>,
+    #[serde(default)]
     atlas_visible: bool,
     #[serde(default = "super::atlas::default_attractor_atlas_axes")]
     atlas_axes: [String; 2],
 }
 
 impl AttractorPlotter {
+    pub fn reset_parameters(&mut self) {
+        self.system.sigma = 10.0;
+        self.system.rho = 28.0;
+        self.system.beta = 8.0 / 3.0;
+        self.flow_bank = super::default_flow_bank();
+        self.dt = 0.01;
+        self.tube_radius = super::export::DEFAULT_TUBE_RADIUS;
+        self.fixed_callout_offsets = DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from);
+        self.reset();
+    }
+
     pub(super) fn compute_state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -113,26 +128,39 @@ impl AttractorPlotter {
         self.atlas.is_visible().hash(&mut h);
         self.atlas.axis_keys().hash(&mut h);
         for offset in &self.fixed_callout_offsets {
-            let x_bits = if offset.x == 0.0 {
+            let xb = if offset.x == 0.0 {
                 0
             } else {
                 offset.x.to_bits()
             };
-            let y_bits = if offset.y == 0.0 {
+            let yb = if offset.y == 0.0 {
                 0
             } else {
                 offset.y.to_bits()
             };
-            x_bits.hash(&mut h);
-            y_bits.hash(&mut h);
+            (xb, yb).hash(&mut h);
         }
         self.camera.hash_state(&mut h);
         self.audio_settings.gain.to_bits().hash(&mut h);
         self.audio_settings.pitch_scale.to_bits().hash(&mut h);
+        if let Some(ref twin) = self.twin {
+            (
+                true,
+                twin.fork_step,
+                twin.delta_x.to_bits(),
+                twin.system_a.sigma.to_bits(),
+                twin.system_a.rho.to_bits(),
+                twin.system_a.beta.to_bits(),
+            )
+                .hash(&mut h);
+        } else {
+            false.hash(&mut h);
+        }
         h.finish().max(1)
     }
 
     pub(super) fn serialize_state(&self) -> Option<String> {
+        let fork = self.twin.as_ref().map(|t| t.to_descriptor(self.step_count));
         let expr_vec = self.flow_bank.expressions();
         let nondefault_exprs = expr_vec
             .iter()
@@ -166,6 +194,7 @@ impl AttractorPlotter {
             mode: self.mode,
             custom_exprs,
             custom_params,
+            fork,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
         })
@@ -208,6 +237,9 @@ impl AttractorPlotter {
             SolverExecutionState::Ready
         });
         self.execution_state = execution_state;
+        if let Some(fork_desc) = s.fork {
+            self.apply_fork_descriptor(fork_desc)?;
+        }
         if let SolverExecutionState::Diverged {
             invalid_vec,
             diverged_at_step,
@@ -264,4 +296,27 @@ fn validate_attractor_state(s: &AttractorState) -> Result<[[f32; 2]; 2], String>
         return Err("AttractorPlotter fixed_callout_offsets must be finite".to_string());
     }
     Ok(offsets)
+}
+
+inventory::submit! {
+    crate::framework::ToolMetadata {
+        id: "AttractorPlotter",
+        display_name: "Attractor Plotter",
+        domain: "chaos",
+        tags: &["lorenz", "attractor", "chaos"],
+        build: || Box::new(AttractorPlotter::default()),
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "lorenz_butterfly_perturbation",
+        title: "Lorenz Butterfly Perturbation",
+        description: "Counterfactual shadow twin forked at t_k = 1.50 with δx = 1e-5 diverging onto opposite butterfly lobes.",
+        category: "Counterfactual Chaos",
+        icon: "⑂",
+        domain: "chaos",
+        tool_name: Some("AttractorPlotter"),
+        preset_generator: || crate::starter_gallery::PRESET_LORENZ_BUTTERFLY_PERTURBATION,
+    }
 }

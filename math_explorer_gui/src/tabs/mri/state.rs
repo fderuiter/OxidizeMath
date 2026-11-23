@@ -12,6 +12,7 @@ use super::tool::{MriTool, MriToolState};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::ChallengeEvaluation;
 use nalgebra::Vector3;
+use std::collections::VecDeque;
 
 impl MriTool {
     /// Evaluates the active rotating-frame RF pulse sequence and populates plot buffers & callouts.
@@ -69,6 +70,10 @@ impl MriTool {
 
     pub(super) fn serialize_mri_state(&self) -> Option<String> {
         let pulse = (!self.pulse_config.mode.is_continuous()).then_some(self.pulse_config);
+        let fork = self
+            .twin
+            .as_ref()
+            .map(|t| t.to_descriptor(self.current_step_index()));
         serde_json::to_string(&MriToolState {
             t1: self.simulator.t1,
             t2: self.simulator.t2,
@@ -79,6 +84,7 @@ impl MriTool {
             state: Some(self.worker.state()),
             paused: None,
             audio: self.audio_settings,
+            fork,
             pulse,
         })
         .ok()
@@ -105,6 +111,11 @@ impl MriTool {
             p.time_scale = self.time_scale;
         }
         self.pulse_workspace.playhead_playing = false;
+        if let Some(desc) = parsed.fork {
+            self.apply_mri_fork_descriptor(desc)?;
+        } else {
+            let _ = self.clear_fork();
+        }
         if !self.pulse_config.mode.is_continuous() {
             let _ = self.worker.send_command(SimCommand::Pause);
             self.recompute_pulse_sequence();
@@ -211,48 +222,53 @@ impl MriTool {
     }
 
     pub(super) fn collect_mri_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        if !self.history.is_empty() {
-            let mx: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.x]).collect();
-            let my: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.y]).collect();
-            let mz: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.z]).collect();
-            return vec![
-                ("Mx (Transverse)".to_string(), mx),
-                ("My (Transverse)".to_string(), my),
-                ("Mz (Longitudinal)".to_string(), mz),
-            ];
-        }
-        if let Some(snap) = self.worker.latest_snapshot() {
-            if let Some(data) = snap
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<MriSnapshot>())
-            {
-                if !data.history.is_empty() {
-                    let mx = data.history.iter().map(|(t, m)| [*t, m.x]).collect();
-                    let my = data.history.iter().map(|(t, m)| [*t, m.y]).collect();
-                    let mz = data.history.iter().map(|(t, m)| [*t, m.z]).collect();
-                    return vec![
-                        ("Mx (Transverse)".to_string(), mx),
-                        ("My (Transverse)".to_string(), my),
-                        ("Mz (Longitudinal)".to_string(), mz),
-                    ];
-                }
+        let map_xyz = |hist: &VecDeque<(f64, Vector3<f64>)>, labels: [&str; 3]| {
+            vec![
+                (
+                    labels[0].to_string(),
+                    hist.iter().map(|(t, m)| [*t, m.x]).collect(),
+                ),
+                (
+                    labels[1].to_string(),
+                    hist.iter().map(|(t, m)| [*t, m.y]).collect(),
+                ),
+                (
+                    labels[2].to_string(),
+                    hist.iter().map(|(t, m)| [*t, m.z]).collect(),
+                ),
+            ]
+        };
+        let std_labels = ["Mx (Transverse)", "My (Transverse)", "Mz (Longitudinal)"];
+        if let Some(ref twin) = self.twin {
+            if !self.history.is_empty() {
+                let mut out = map_xyz(
+                    &self.history,
+                    ["Mx (Branch B)", "My (Branch B)", "Mz (Branch B)"],
+                );
+                out.extend(map_xyz(
+                    &twin.history_a,
+                    ["Mx (Branch A)", "My (Branch A)", "Mz (Branch A)"],
+                ));
+                return out;
             }
+        }
+        if !self.history.is_empty() {
+            return map_xyz(&self.history, std_labels);
+        }
+        if let Some(data) = self
+            .worker
+            .latest_snapshot()
+            .and_then(|s| s.structured_data.as_ref())
+            .and_then(|d| d.downcast_ref::<MriSnapshot>())
+            .filter(|d| !d.history.is_empty())
+        {
+            return map_xyz(&data.history, std_labels);
         }
         let m = self.simulator.magnetization;
         vec![
-            (
-                "Mx (Transverse)".to_string(),
-                vec![[self.current_time, m.x]],
-            ),
-            (
-                "My (Transverse)".to_string(),
-                vec![[self.current_time, m.y]],
-            ),
-            (
-                "Mz (Longitudinal)".to_string(),
-                vec![[self.current_time, m.z]],
-            ),
+            (std_labels[0].to_string(), vec![[self.current_time, m.x]]),
+            (std_labels[1].to_string(), vec![[self.current_time, m.y]]),
+            (std_labels[2].to_string(), vec![[self.current_time, m.z]]),
         ]
     }
 }
