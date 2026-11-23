@@ -6,6 +6,7 @@ use nalgebra::DMatrix;
 
 /// A single Encoder layer, containing self-attention and a feed-forward network,
 /// with residual connections and layer normalization.
+#[derive(Debug, Clone, PartialEq)]
 pub struct EncoderLayer<
     A: AttentionMechanism = MultiHeadAttention,
     F: FeedForwardNetwork = FeedForward,
@@ -79,6 +80,7 @@ impl<A: AttentionMechanism, F: FeedForwardNetwork, N: NormalizationLayer> Encode
 }
 
 /// The full Encoder, composed of a stack of identical EncoderLayers.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Encoder<
     A: AttentionMechanism = MultiHeadAttention,
     F: FeedForwardNetwork = FeedForward,

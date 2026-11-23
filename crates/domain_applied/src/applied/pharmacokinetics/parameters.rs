@@ -100,7 +100,7 @@ impl PKParameters {
 }
 
 /// Builder for `PKParameters`.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct PKParametersBuilder {
     f: Option<f64>,
     d: Option<f64>,

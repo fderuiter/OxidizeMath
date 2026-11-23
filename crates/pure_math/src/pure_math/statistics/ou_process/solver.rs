@@ -48,11 +48,20 @@ impl TimeStep {
 ///
 /// Kloeden, P. E., & Platen, E. (1992). *Numerical Solution of Stochastic Differential Equations*.
 /// Springer-Verlag.
+#[derive(Debug, Clone, Copy)]
 pub struct EulerMaruyama {
     params: OuParams,
     dt: TimeStep,
     normal: Normal<f64>,
     diffusion_factor: f64,
+}
+
+impl PartialEq for EulerMaruyama {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params
+            && self.dt == other.dt
+            && self.diffusion_factor == other.diffusion_factor
+    }
 }
 
 impl EulerMaruyama {

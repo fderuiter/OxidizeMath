@@ -18,7 +18,7 @@ pub trait DegradationModel {
     fn cycles_to_capacity(&self, target: Capacity, d: DepthOfDischarge) -> Cycles;
 }
 
-#[derive(Debug, Clone, Copy, Theory)]
+#[derive(Debug, Clone, Copy, Theory, PartialEq)]
 #[theory(
     description = "Empirical power-law model characterizing the cycle life of lithium-ion batteries as a function of depth of discharge.",
     citation = "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)"

@@ -5,7 +5,7 @@ use pure_math::pure_math::analysis::evolution::DoubleBufferedState;
 ///
 /// Holds the distribution functions and macroscopic variables.
 /// This struct is purely a data holder and does not implement the solver logic.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LatticeState<const Q: usize> {
     pub(crate) width: usize,
     pub(crate) height: usize,

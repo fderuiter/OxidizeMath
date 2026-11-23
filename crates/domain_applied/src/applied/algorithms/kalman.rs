@@ -4,7 +4,7 @@
 //! This module allows for state estimation of linear systems with arbitrary state and measurement dimensions.
 use nalgebra::{DMatrix, DVector, RealField};
 use thiserror::Error;
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Clone)]
 #[allow(missing_docs)]
 pub enum KalmanError {
     #[error("Failed to invert innovation covariance matrix (singular)")]
@@ -112,7 +112,7 @@ impl<T: RealField + Copy, M: KalmanModel<T>> KalmanSystem<T> for M {
 ///
 /// Uses the **Strategy Pattern** via the `KalmanSystem` trait to decouple the estimation algorithm
 /// from the specific system dynamics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KalmanFilter<T: RealField + Copy, M: KalmanSystem<T>> {
     /// State vector estimate ($\hat{x}$).
     pub state: DVector<T>,
@@ -126,6 +126,7 @@ pub struct KalmanFilter<T: RealField + Copy, M: KalmanSystem<T>> {
 /// Builder for `KalmanFilter`.
 ///
 /// Ensures valid initialization by enforcing dimension checks between state and covariance.
+#[derive(Debug, Clone, PartialEq)]
 pub struct KalmanFilterBuilder<T: RealField + Copy, M: KalmanSystem<T>> {
     state: Option<DVector<T>>,
     covariance: Option<DMatrix<T>>,

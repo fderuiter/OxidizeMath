@@ -69,7 +69,7 @@ pub use types::StateType;
 /// let absorption_probs = chain.absorption_probabilities().unwrap();
 /// println!("Absorption probabilities: {:?}", absorption_probs);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MarkovChain<T: RealField + Copy + ToPrimitive> {
     /// The transition matrix P.
     transition_matrix: DMatrix<T>,

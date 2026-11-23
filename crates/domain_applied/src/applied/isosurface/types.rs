@@ -3,7 +3,7 @@ pub use oxidize_core::mesh::{Mesh, Point3D};
 /// A 3D grid of scalar values, used as input for isosurface extraction.
 ///
 /// The grid data is stored in a flat vector, indexed by `z * width * height + y * width + x`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VoxelGrid {
     /// Number of voxels along the X axis.
     width: usize,
@@ -20,7 +20,7 @@ pub struct VoxelGrid {
     origin: Point3D,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum VoxelGridError {
     #[allow(missing_docs)]
@@ -47,6 +47,7 @@ impl std::fmt::Display for VoxelGridError {
 impl std::error::Error for VoxelGridError {}
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VoxelGridBuilder {
     width: Option<usize>,
     height: Option<usize>,

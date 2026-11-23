@@ -17,6 +17,7 @@ These commands run automated checks in git hooks or CI.
 | `check-file-lengths` | Verifies file-length constraints. | Active |
 | `check-markdown-links` | Check all internal relative markdown documentation links | Active |
 | `check-profiles` | Verifies Cargo `[profile.release]` `overflow-checks = true` and rejects member overrides. | Active |
+| `check-public-debug` | Verifies `Debug` coverage across all reachable public structs and enums in the eight mathematical crates. | Active |
 | `check-staged-duplicates` | Checks for duplicated patterns in git staging (non-blocking legacy helper). | Active |
 | `check-vulnerabilities` | Scans workspace dependencies for known vulnerabilities. | Active |
 | `lint-all` | Runs the full PR verification suite (formatting, single-pass batched static & AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift, traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, markdown links, and OSV vulnerabilities). | Active |

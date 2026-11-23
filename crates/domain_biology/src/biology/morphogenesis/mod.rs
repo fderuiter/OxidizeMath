@@ -86,6 +86,7 @@ pub use state::TuringState;
 /// * `K`: The reaction kinetics strategy.
 /// * `D`: The spatial diffusion strategy.
 /// * `S`: The numerical solver strategy.
+#[derive(Debug, Clone)]
 pub struct TuringSystem<
     const N: usize = 2,
     K: ReactionKinetics<N> = SchnakenbergKinetics,
@@ -106,6 +107,22 @@ pub struct TuringSystem<
     pub diffusion: D,
     /// Numerical solver strategy
     pub solver: S,
+}
+
+impl<
+    const N: usize,
+    K: ReactionKinetics<N> + PartialEq,
+    D: SpatialDiffusion<N> + PartialEq,
+    S: TuringSolverStrategy<N> + PartialEq,
+> PartialEq for TuringSystem<N, K, D, S>
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.state == other.state
+            && self.diffusion_coeffs == other.diffusion_coeffs
+            && self.kinetics == other.kinetics
+            && self.diffusion == other.diffusion
+            && self.solver == other.solver
+    }
 }
 
 use math_commons::math_kernel::types::{Dimension, StepSize};

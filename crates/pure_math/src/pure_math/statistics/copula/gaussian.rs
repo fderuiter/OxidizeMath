@@ -35,6 +35,7 @@ use statrs::distribution::MultivariateNormal;
 ///
 /// let joint_prob = copula.cdf(&[u1, u2]).unwrap();
 /// ```
+#[derive(Debug, Clone, PartialEq)]
 pub struct GaussianCopula {
     correlation: CorrelationMatrix,
 }

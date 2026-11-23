@@ -90,7 +90,7 @@ pub use state::ChemicalState;
 pub use traits::{DiffusionModel, ReactionModel};
 
 /// Errors related to Reaction-Diffusion systems.
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, thiserror::Error, PartialEq, Clone)]
 pub enum ReactionDiffusionError {
     #[allow(missing_docs)]
     #[error("Mathematical error: {0}")]

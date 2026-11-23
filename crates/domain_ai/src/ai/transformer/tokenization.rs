@@ -10,6 +10,7 @@ pub trait Tokenizer {
 }
 
 /// A basic whitespace and punctuation tokenizer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WordTokenizer;
 
 impl Tokenizer for WordTokenizer {
@@ -40,6 +41,7 @@ impl Tokenizer for WordTokenizer {
 }
 
 /// A naive character-level tokenizer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CharTokenizer;
 
 impl Tokenizer for CharTokenizer {
@@ -55,6 +57,7 @@ impl Tokenizer for CharTokenizer {
 /// An Embedding Matrix generator for visualization purposes.
 /// In a real system, this would be a learnable parameter matrix `[vocab_size, d_model]`.
 /// Here, we use a deterministic hash to generate a pseudo-embedding for any token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PseudoEmbedding {
     #[allow(missing_docs)]
     pub d_model: usize,

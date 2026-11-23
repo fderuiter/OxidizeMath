@@ -13,7 +13,7 @@ use iteration::{IterationStrategy, LoopSplittingIteration};
 use math_commons::math_kernel::types::{Dimension, StepSize};
 
 /// A 2D Finite Difference implementation using a 5-point stencil.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FiniteDifference2D {
     #[allow(missing_docs)]
     pub geometry: Cartesian2D,

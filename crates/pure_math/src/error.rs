@@ -5,7 +5,7 @@ use thiserror::Error;
 #[allow(missing_docs)]
 pub type Result<T> = math_commons::error::MathResult<T>;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum NumberTheoryError {
     #[error("Failed to parse integer from string: {0}")]

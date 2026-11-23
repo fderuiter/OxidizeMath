@@ -147,4 +147,14 @@ impl VectorOperations for ChemicalState {
             *dst = *src + *oth * scale;
         }
     }
+
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        std::mem::replace(
+            self,
+            ChemicalState {
+                grid: DMatrix::zeros(0, 0),
+            },
+        )
+    }
 }

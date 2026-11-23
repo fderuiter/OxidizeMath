@@ -3,7 +3,7 @@
 //! Functions to calculate the sample win ratio, confidence interval, and significance test.
 
 /// Represents the number of pairs in each category for win-loss analysis.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WinLossCounts {
     /// Na: The patient in the treatment group dies first (a loss).
     pub n_a: u32,

@@ -22,6 +22,7 @@ pub trait ConvexSet {
 ///
 /// A hyper-rectangle is always convex and compact (closed and bounded), making it
 /// a valid domain for standard fixed-point theorems.
+#[derive(Debug, Clone, PartialEq)]
 pub struct BoxSet {
     #[allow(missing_docs)]
     pub min_bounds: DVector<f64>,
@@ -116,6 +117,14 @@ pub struct BestResponseCorrespondence {
     pub mapping: Box<dyn Fn(&DVector<f64>) -> DVector<f64>>,
     /// Tolerance for checking set membership (handling floating point inaccuracies).
     pub tolerance: f64,
+}
+
+impl std::fmt::Debug for BestResponseCorrespondence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BestResponseCorrespondence")
+            .field("tolerance", &self.tolerance)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Correspondence for BestResponseCorrespondence {

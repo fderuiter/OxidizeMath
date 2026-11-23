@@ -8,7 +8,7 @@ pub trait CrystalSystem {
 }
 
 /// Simple Cubic (SC) crystal system.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SimpleCubic;
 
 impl CrystalSystem for SimpleCubic {
@@ -28,7 +28,7 @@ impl CrystalSystem for SimpleCubic {
 }
 
 /// Body-Centered Cubic (BCC) crystal system.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BodyCenteredCubic;
 
 impl CrystalSystem for BodyCenteredCubic {
@@ -51,7 +51,7 @@ impl CrystalSystem for BodyCenteredCubic {
 }
 
 /// Face-Centered Cubic (FCC) crystal system.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FaceCenteredCubic;
 
 impl CrystalSystem for FaceCenteredCubic {
@@ -76,7 +76,7 @@ impl CrystalSystem for FaceCenteredCubic {
 }
 
 /// Represents a unit cell with lattice vectors and atomic positions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UnitCell {
     /// The three lattice vectors defining the unit cell.
     pub lattice_vectors: [Vector3<f64>; 3],

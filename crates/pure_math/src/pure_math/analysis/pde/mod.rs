@@ -14,6 +14,7 @@ pub enum PdeClassification {
 
 /// Represents the coefficients of a general 2nd order linear PDE:
 /// $A u_{xx} + B u_{xy} + C u_{yy} + D u_x + E u_y + F u = G$
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SecondOrderLinearPde2D {
     #[allow(missing_docs)]
     pub a: f64,
@@ -56,6 +57,12 @@ pub struct DirichletBoundary {
     pub function: Box<dyn Fn(f64, f64) -> f64>,
 }
 
+impl std::fmt::Debug for DirichletBoundary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DirichletBoundary").finish_non_exhaustive()
+    }
+}
+
 impl BoundaryCondition for DirichletBoundary {
     #[verified_engine::verified]
     fn evaluate_boundary(&self, x: f64, y: f64) -> f64 {
@@ -67,6 +74,12 @@ impl BoundaryCondition for DirichletBoundary {
 pub struct NeumannBoundary {
     #[allow(missing_docs)]
     pub function: Box<dyn Fn(f64, f64) -> f64>,
+}
+
+impl std::fmt::Debug for NeumannBoundary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NeumannBoundary").finish_non_exhaustive()
+    }
 }
 
 impl BoundaryCondition for NeumannBoundary {

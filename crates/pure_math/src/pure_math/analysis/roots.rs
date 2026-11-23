@@ -91,7 +91,7 @@ pub trait RootFinder {
 ///     Ok(())
 /// }
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bisection {
     /// Maximum number of iterations before giving up.
     pub max_iterations: usize,
@@ -212,7 +212,7 @@ impl RootFinder for Bisection {
 ///     Ok(())
 /// }
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NewtonRaphson {
     /// Maximum number of iterations.
     pub max_iterations: usize,

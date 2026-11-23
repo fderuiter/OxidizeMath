@@ -5,6 +5,7 @@ use petgraph::graph::{Graph as PetgraphGraph, NodeIndex};
 
 /// A wrapper around petgraph::Graph to represent an undirected graph.
 /// The nodes (N) and edges (E) are generic.
+#[derive(Debug, Clone)]
 pub struct Graph<N, E> {
     #[allow(missing_docs)]
     pub graph: PetgraphGraph<N, E, Undirected>,

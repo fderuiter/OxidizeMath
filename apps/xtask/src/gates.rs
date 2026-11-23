@@ -248,6 +248,11 @@ pub fn check_api_drift() {
     run_verification("check-api-drift");
 }
 
+pub fn check_public_debug() {
+    println!("=== Check Public Debug Coverage ===");
+    run_verification("check-public-debug");
+}
+
 pub fn check_profiles() {
     println!("=== Check Cargo Profiles ===");
     run_verification("check-profiles");

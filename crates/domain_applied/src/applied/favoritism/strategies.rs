@@ -20,6 +20,15 @@ pub struct ScoringContext<'a, I: Integrator + ?Sized> {
     pub safe_t: f64,
 }
 
+impl<I: Integrator + ?Sized> std::fmt::Debug for ScoringContext<'_, I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScoringContext")
+            .field("safe_x0", &self.safe_x0)
+            .field("safe_t", &self.safe_t)
+            .finish_non_exhaustive()
+    }
+}
+
 impl<'a, I: Integrator + ?Sized> ScoringContext<'a, I> {
     #[allow(missing_docs)]
     #[verified_engine::verified]
@@ -49,6 +58,18 @@ pub struct UnifiedFavoritismModel<I: Integrator + ?Sized> {
     pub numerator_strategies: Vec<Box<dyn ScoringStrategy<I>>>,
     #[allow(missing_docs)]
     pub denominator_strategies: Vec<Box<dyn ScoringStrategy<I>>>,
+}
+
+impl<I: Integrator + ?Sized> std::fmt::Debug for UnifiedFavoritismModel<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UnifiedFavoritismModel")
+            .field("numerator_strategy_count", &self.numerator_strategies.len())
+            .field(
+                "denominator_strategy_count",
+                &self.denominator_strategies.len(),
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 impl<I: Integrator + ?Sized> Default for UnifiedFavoritismModel<I> {
@@ -105,6 +126,7 @@ pub trait ScoringStrategy<I: Integrator + ?Sized> {
 
 // --- Numerator Strategies ---
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(missing_docs)]
 pub struct ProximityStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for ProximityStrategy {
@@ -116,6 +138,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for ProximityStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(missing_docs)]
 pub struct EmotionalSupportStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for EmotionalSupportStrategy {
@@ -132,6 +155,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for EmotionalSupportStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(missing_docs)]
 pub struct GiftStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for GiftStrategy {
@@ -145,6 +169,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for GiftStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(missing_docs)]
 pub struct ComplimentStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for ComplimentStrategy {
@@ -157,6 +182,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for ComplimentStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(missing_docs)]
 pub struct ContactFrequencyStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for ContactFrequencyStrategy {
@@ -166,6 +192,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for ContactFrequencyStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(missing_docs)]
 pub struct PersonalityStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for PersonalityStrategy {
@@ -178,6 +205,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for PersonalityStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(missing_docs)]
 pub struct SocialMultiplierStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for SocialMultiplierStrategy {
@@ -199,6 +227,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for SocialMultiplierStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(missing_docs)]
 pub struct DecayStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for DecayStrategy {
@@ -208,6 +237,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for DecayStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(missing_docs)]
 pub struct StochasticStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for StochasticStrategy {
@@ -224,6 +254,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for StochasticStrategy {
 
 // --- Denominator Strategies ---
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(missing_docs)]
 pub struct SiblingCompetitionStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for SiblingCompetitionStrategy {

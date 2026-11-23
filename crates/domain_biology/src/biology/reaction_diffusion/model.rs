@@ -10,7 +10,7 @@ use super::{ChemicalState, DiffusionModel, ReactionDiffusionError, ReactionModel
 /// and coefficients), separating them from the mutable simulation state.
 ///
 /// It implements `OdeSystem` to calculate the time derivative ($dC/dt$) given a state.
-#[derive(Theory)]
+#[derive(Debug, Clone, PartialEq, Theory)]
 #[theory(
     description = "Turing patterns arise from reaction-diffusion systems where local auto-activation is coupled with long-range inhibition, leading to spontaneous symmetry breaking and the formation of stable spatial patterns.",
     citation = "The Chemical Basis of Morphogenesis (Turing, 1952)"
@@ -28,20 +28,19 @@ impl<R: ReactionModel, D: DiffusionModel> OdeSystem<ChemicalState>
     for ReactionDiffusionModel<R, D>
 {
     #[verified_engine::verified]
-    fn derivative(&self, _t: f64, state: &ChemicalState) -> ChemicalState {
+    fn derivative(&self, t: f64, state: &ChemicalState) -> ChemicalState {
         let mut out = ChemicalState::new(state.num_species(), state.grid_size());
-        self.derivative_in_place(_t, state, &mut out);
+        self.derivative_in_place(t, state, &mut out);
         out
     }
 
     #[verified_engine::verified]
-    fn derivative_in_place(&self, _t: f64, state: &ChemicalState, out: &mut ChemicalState) {
+    fn derivative_in_place(&self, t: f64, state: &ChemicalState, out: &mut ChemicalState) {
         // Compute Diffusion
         self.diffusion.apply(state, out, &self.diffusion_coeffs);
 
         // Add Reaction
-        // Optimized: Use batch processing to allow vectorization and avoid gather/scatter
-        self.reaction.add_reaction_batch(state, out);
+        self.reaction.add_reaction_batch_at(t, state, out);
     }
 }
 
@@ -49,6 +48,7 @@ impl<R: ReactionModel, D: DiffusionModel> OdeSystem<ChemicalState>
 ///
 /// This struct manages the simulation state and the integration strategy.
 /// By default, it uses the Forward Euler method, but can be configured with other solvers.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReactionDiffusionSystem<
     R: ReactionModel,
     D: DiffusionModel,
@@ -60,12 +60,13 @@ pub struct ReactionDiffusionSystem<
     pub state: ChemicalState,
     #[allow(missing_docs)]
     pub solver: S,
+    time: f64,
 }
 
 /// Builder for `ReactionDiffusionSystem`.
 ///
 /// Ensures that parameters are physically valid before creating the system.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReactionDiffusionSystemBuilder<R, D, S> {
     num_species: Option<usize>,
     grid_size: Option<usize>,
@@ -205,6 +206,7 @@ impl<R: ReactionModel, D: DiffusionModel>
             },
             state,
             solver,
+            time: 0.0,
         })
     }
 }
@@ -261,6 +263,7 @@ impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
             },
             state: ChemicalState::new(num_species, grid_size),
             solver,
+            time: 0.0,
         })
     }
 }
@@ -276,12 +279,30 @@ impl<R: ReactionModel, D: DiffusionModel> ReactionDiffusionSystem<R, D, Euler<Ch
 impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
     ReactionDiffusionSystem<R, D, S>
 {
+    /// Returns the elapsed simulation time `t`.
+    #[verified_engine::verified]
+    pub fn time(&self) -> f64 {
+        self.time
+    }
+
+    /// Sets the current simulation time `t`.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, time: f64) {
+        self.time = time;
+    }
+
+    /// Advances the system at explicit simulation time `t` by `dt` without mutating [`Self::time`].
+    #[verified_engine::verified]
+    pub fn step_at(&mut self, t: f64, dt: f64) {
+        self.solver.step(&self.model, t, &mut self.state, dt);
+    }
+
     /// Advances the system by a time step `dt` using the configured solver.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
-        // The solver manages the integration logic.
-        // We pass 0.0 as the current time since most RD systems are autonomous (time-invariant).
-        self.solver.step(&self.model, 0.0, &mut self.state, dt);
+        let t = self.time;
+        self.solver.step(&self.model, t, &mut self.state, dt);
+        self.time += dt;
     }
 
     /// Accessor for the reaction model.
@@ -294,5 +315,66 @@ impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
     #[verified_engine::verified]
     pub fn diffusion(&self) -> &D {
         &self.model.diffusion
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pure_math::pure_math::analysis::ode::RungeKutta4;
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    struct TimeForcedReaction;
+
+    impl ReactionModel for TimeForcedReaction {
+        fn reaction(&self, _u: &[f64], out: &mut [f64]) {
+            out.fill(0.0);
+        }
+
+        fn reaction_at(&self, t: f64, _u: &[f64], out: &mut [f64]) {
+            for val in out.iter_mut() {
+                *val = 2.0 * t;
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    struct ZeroDiffusion;
+
+    impl DiffusionModel for ZeroDiffusion {
+        fn apply(&self, _state: &ChemicalState, out: &mut ChemicalState, _coeffs: &[f64]) {
+            for s in 0..out.num_species() {
+                out.species_mut(s).fill(0.0);
+            }
+        }
+    }
+
+    #[test]
+    fn test_reaction_diffusion_non_autonomous_time_and_derives() {
+        let state_template = ChemicalState::new(2, 4);
+        let mut sys = ReactionDiffusionSystem::builder()
+            .num_species(2)
+            .grid_size(4)
+            .reaction(TimeForcedReaction)
+            .diffusion(ZeroDiffusion)
+            .diffusion_coeffs(vec![0.0, 0.0])
+            .solver(RungeKutta4::new(&state_template))
+            .build_with_solver()
+            .unwrap();
+
+        assert_eq!(sys, sys.clone());
+        assert!(!format!("{sys:?}").is_empty());
+
+        for _ in 0..10 {
+            sys.step(0.1);
+        }
+
+        assert!((sys.time() - 1.0).abs() < 1e-12);
+        for &c in sys.state.species(0) {
+            assert!((c - 1.0).abs() < 1e-12);
+        }
+        for &c in sys.state.species(1) {
+            assert!((c - 1.0).abs() < 1e-12);
+        }
     }
 }

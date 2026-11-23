@@ -6,6 +6,7 @@ use num_complex::Complex;
 
 /// Fröhlich Vertex for electron-phonon interaction.
 /// Describes the coupling of electrons to longitudinal optical (LO) phonons in polar crystals.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FrohlichVertex {
     /// Fröhlich coupling constant (dimensionless).
     pub alpha: f64,

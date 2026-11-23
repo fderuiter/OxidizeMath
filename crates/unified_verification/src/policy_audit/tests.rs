@@ -439,3 +439,30 @@ fn test_standalone_policy_audit_rejects_missing_lints_from_root_and_subdir() {
     assert!(run_policy_audit(&["crates/good"]));
     assert!(!run_policy_audit(&["crates/good", "crates/bad"]));
 }
+
+#[test]
+fn test_policy_audit_rejects_missing_public_debug_in_mathematical_crate() {
+    let dir = TempTestDir::new("policy_audit_public_debug");
+    let member_path = write_member_crate(
+        &dir,
+        "crates/pure_math",
+        "pub struct UndebuggableConfig {\n    pub dt: f64,\n}\n",
+    );
+    let whitelist_file = dir.join("verification_whitelist.toml");
+    fs::write(&whitelist_file, "").unwrap();
+
+    assert!(!run_policy_audit_with_whitelist(
+        &[member_path.as_str()],
+        &whitelist_file,
+    ));
+
+    fs::write(
+        dir.join("crates/pure_math/src/lib.rs"),
+        "#[derive(Debug)]\npub struct UndebuggableConfig {\n    pub dt: f64,\n}\n",
+    )
+    .unwrap();
+    assert!(run_policy_audit_with_whitelist(
+        &[member_path.as_str()],
+        &whitelist_file,
+    ));
+}

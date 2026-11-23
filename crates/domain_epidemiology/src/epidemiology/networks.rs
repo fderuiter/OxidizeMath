@@ -31,6 +31,7 @@ pub enum NodeState {
 }
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NetworkEpidemicModel {
     num_nodes: usize,
     states: Vec<NodeState>,
@@ -40,7 +41,7 @@ pub struct NetworkEpidemicModel {
     gamma: f64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum NetworkModelError {
     #[allow(missing_docs)]
@@ -71,6 +72,7 @@ impl std::fmt::Display for NetworkModelError {
 impl std::error::Error for NetworkModelError {}
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NetworkEpidemicModelBuilder {
     num_nodes: Option<usize>,
     beta: Option<f64>,

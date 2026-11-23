@@ -269,6 +269,11 @@ fn audit_single_member(
     if !audit_member_sources(&ctx, &mut dep_visitor, &mut visited_md, cache) {
         success = false;
     }
+    if crate::api_drift::public_debug::is_mathematical_crate_member(member, package_name)
+        && !crate::api_drift::public_debug::check_member_public_debug_with_cache(&member_dir, cache)
+    {
+        success = false;
+    }
 
     if doctests::is_markdown_tests_crate(member, package_name) {
         doctests::audit_workspace_markdown_files(&member_dir, &mut visited_md, &mut dep_visitor);

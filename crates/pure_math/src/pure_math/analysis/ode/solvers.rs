@@ -61,7 +61,7 @@ fn rk4_kernel<State, S>(
 /// # Parse, Don't Validate
 /// This solver requires an example state at construction to pre-allocate buffers,
 /// ensuring that invalid (uninitialized) states are unrepresentable during simulation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Euler<State> {
     buffer: State,
 }
@@ -101,7 +101,7 @@ impl<State: VectorOperations> Solver<State> for Euler<State> {
 /// # Parse, Don't Validate
 /// This solver requires an example state during initialization to pre-allocate buffers.
 /// This requirement guarantees that uninitialized states cannot occur during simulation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Heun<State> {
     k: State,
     tmp: State,
@@ -157,7 +157,7 @@ impl<State: VectorOperations> Solver<State> for Heun<State> {
 /// # Parse, Don't Validate
 /// This solver requires an example state at construction to pre-allocate buffers,
 /// ensuring that invalid (uninitialized) states are unrepresentable during simulation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RungeKutta4<State> {
     k: State,
     tmp: State,

@@ -3,7 +3,7 @@
 use std::fmt;
 
 /// Errors that can occur during clinical trial analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ClinicalTrialError {
     /// Sample size is too small for the requested test.
     #[allow(missing_docs)]
@@ -42,7 +42,7 @@ impl std::error::Error for ClinicalTrialError {}
 /// |---|---|---|
 /// | Treatment | a | b |
 /// | Control | c | d |
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ContingencyTable {
     /// Treatment Group: Event count (a).
     pub treatment_event: u32,
@@ -93,7 +93,7 @@ impl ContingencyTable {
 /// A wrapper for continuous data from a study group.
 ///
 /// Calculates and caches summary statistics to avoid re-computation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GroupData {
     data: Vec<f64>,
 }

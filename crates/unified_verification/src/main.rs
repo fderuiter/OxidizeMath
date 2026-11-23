@@ -90,6 +90,7 @@ fn main() {
         "verify-suite" => verify_suite(&args[2..]),
         "regenerate-baseline" => api_drift::regenerate_baseline(),
         "check-api-drift" => exit_if_failed(api_drift::check_api_drift()),
+        "check-public-debug" => exit_if_failed(api_drift::public_debug::run_public_debug_check()),
         "check-duplicates" => exit_if_failed(ast_visitor::run_clone_detector()),
         "check-profiles" => run_check_profiles_cli(),
         "check-staged-duplicates" => check_staged_duplicates(),

@@ -4,7 +4,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign};
 
 /// A wrapper around `Vec<f64>` that implements `VectorOperations`.
 /// Use this when you need a heap-allocated state vector.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct VecState(pub Vec<f64>);
 
 impl Add for VecState {
@@ -79,6 +79,11 @@ impl VectorOperations for VecState {
         for ((dst, src), oth) in self.0.iter_mut().zip(source.0.iter()).zip(other.0.iter()) {
             *dst = *src + *oth * scale;
         }
+    }
+
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        std::mem::replace(self, VecState(Vec::new()))
     }
 }
 
@@ -219,5 +224,10 @@ impl VectorOperations for DVector<f64> {
         {
             *dst = *src + *oth * scale;
         }
+    }
+
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        std::mem::replace(self, DVector::zeros(0))
     }
 }

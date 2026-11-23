@@ -16,6 +16,7 @@
 /// let expected = (3.0_f64 / 10.0).sqrt();
 /// assert!((val - expected).abs() < 1e-6);
 /// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ClebschGordan {
     #[allow(missing_docs)]
     pub tj1: i32,

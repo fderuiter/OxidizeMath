@@ -35,6 +35,7 @@ pub fn leaky_relu(x: &mut DMatrix<f32>, alpha: f32) {
 }
 
 /// A single layer for the Encoder or Decoder, consisting of a convolution and activation.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConvLayer {
     /// The convolution kernel matrix.
     pub kernel: DMatrix<f32>,
@@ -108,6 +109,7 @@ impl ConvLayer {
 }
 
 /// The encoder component of the autoencoder.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Encoder {
     /// The stack of convolutional layers.
     pub layers: [ConvLayer; 3],
@@ -150,6 +152,7 @@ impl Encoder {
 }
 
 /// The decoder component of the autoencoder.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Decoder {
     /// The stack of convolutional layers.
     pub layers: [ConvLayer; 3],
@@ -191,6 +194,7 @@ impl Decoder {
 }
 
 /// The autoencoder model for the CERA framework.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Autoencoder {
     /// The encoder component.
     pub encoder: Encoder,

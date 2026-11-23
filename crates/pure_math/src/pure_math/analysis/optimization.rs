@@ -23,6 +23,7 @@ impl From<EvolutionError> for OptimizationError {
 }
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct L1RegularizedLeastSquares {
     lambda: f64,
 }
@@ -65,6 +66,7 @@ pub trait Optimizer<T: RealField + Copy, Key = u64> {
 }
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SGD<T> {
     #[allow(missing_docs)]
     pub learning_rate: T,
@@ -154,6 +156,7 @@ impl<T: RealField + Copy, Key> Optimizer<T, Key> for SGD<T> {
 }
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AdamState<T> {
     #[allow(missing_docs)]
     pub m: DMatrix<T>,
@@ -194,6 +197,7 @@ impl<T: RealField + Copy> AdamState2D<T> {
 }
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Adam<T, Key>
 where
     Key: Eq + std::hash::Hash,

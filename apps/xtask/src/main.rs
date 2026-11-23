@@ -42,6 +42,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-file-lengths" => gates::check_file_lengths(),
         "check-duplicates" => gates::check_duplicates(),
         "check-api-drift" => gates::check_api_drift(),
+        "check-public-debug" => gates::check_public_debug(),
         "check-profiles" => gates::check_profiles(),
         "check-staged-duplicates" => gates::check_staged_duplicates(),
         "check-markdown-links" => check_markdown_links(),
@@ -72,6 +73,9 @@ fn print_help() {
         "  check-markdown-links     - Check all internal relative markdown documentation links"
     );
     println!("  check-profiles           - Verify Cargo release profile invariants");
+    println!(
+        "  check-public-debug       - Verify Debug trait coverage across public structs and enums"
+    );
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
     println!(

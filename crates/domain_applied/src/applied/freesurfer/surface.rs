@@ -2,6 +2,7 @@ use nalgebra::DVector;
 
 /// Represents a 3D surface mesh.
 /// For this example, it's a collection of vertices.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Surface {
     /// A vector of vertices, where each vertex is a `[x, y, z]` array of f64.
     pub vertices: Vec<[f64; 3]>,

@@ -20,6 +20,7 @@ pub trait ExplorationStrategy<S, A>: Send {
 
 /// Epsilon-Greedy Exploration Strategy.
 /// Selects a random action with probability epsilon, and the best action with probability 1-epsilon.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EpsilonGreedy {
     epsilon: UnitInterval,
 }

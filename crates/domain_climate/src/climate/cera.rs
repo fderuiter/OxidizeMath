@@ -9,7 +9,7 @@ pub use crate::climate::config::CeraConfig;
 use verified_engine::Theory;
 
 /// The main CERA model.
-#[derive(Theory)]
+#[derive(Theory, Debug, Clone, PartialEq)]
 #[theory(
     description = "CERA is a Climate-Emulation and Response Architecture that combines autoencoders with a predictive downstream model to map local atmospheric states to global cloud properties under varying climate forcing.",
     citation = "Climate-Emulation and Response Architecture (CERA) paper"

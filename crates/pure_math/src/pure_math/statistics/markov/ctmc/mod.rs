@@ -50,7 +50,7 @@ use num_traits::ToPrimitive;
 ///     println!("Steady state: {:?}", pi);
 /// }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ContinuousMarkovChain<T: RealField + Copy + ToPrimitive> {
     /// The generator matrix G.
     generator: DMatrix<T>,

@@ -39,6 +39,7 @@ pub trait ProbabilityTransform {
 /// Standard normal (Gaussian) transformation.
 ///
 /// Uses Φ(x) where Φ is the CDF of N(0,1).
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NormalTransform {
     normal: Normal,
 }

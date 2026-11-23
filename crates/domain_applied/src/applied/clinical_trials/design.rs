@@ -13,7 +13,7 @@ pub enum Group {
 }
 
 /// Represents a patient with an ID and a stratum identifier (e.g., "Male-Young").
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Patient {
     #[allow(missing_docs)]
     pub id: String,
@@ -38,6 +38,7 @@ pub trait AllocationStrategy {
 /// Simple Randomization Strategy.
 ///
 /// Each patient is assigned to Treatment or Control with equal probability (0.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SimpleRandomizer;
 
 impl AllocationStrategy for SimpleRandomizer {
@@ -62,6 +63,7 @@ impl AllocationStrategy for SimpleRandomizer {
 /// Block Randomization Strategy.
 ///
 /// Ensures balanced allocation within blocks of a fixed size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BlockRandomizer {
     block_size: usize,
 }
@@ -144,6 +146,7 @@ impl AllocationStrategy for BlockRandomizer {
 /// Stratified Randomization Strategy.
 ///
 /// Uses an underlying strategy (usually Block Randomization) within each stratum.
+#[derive(Debug, Clone, PartialEq)]
 pub struct StratifiedRandomizer<S: AllocationStrategy> {
     strategy: S,
 }

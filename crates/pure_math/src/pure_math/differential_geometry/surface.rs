@@ -140,6 +140,7 @@ impl<T: ParametricSurface> SurfaceAnalysis for T {
 }
 
 /// A Sphere of radius R.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Sphere {
     #[allow(missing_docs)]
     pub radius: f64,
@@ -162,6 +163,7 @@ impl ParametricSurface for Sphere {
 }
 
 /// A Torus with major radius R and minor radius r.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Torus {
     #[allow(missing_docs)]
     pub major_radius: f64,
@@ -182,6 +184,7 @@ impl ParametricSurface for Torus {
 
 /// A Klein Bottle immersion (Figure-8 parametrization) in R^3.
 /// This self-intersects since a true Klein bottle cannot be embedded in R^3 without intersection.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct KleinBottle {
     #[allow(missing_docs)]
     pub radius: f64,
@@ -219,7 +222,7 @@ fn pack_surface_params(params: &[f64]) -> ([f64; MAX_SURFACE_PARAMS], usize) {
 }
 
 /// Heightfield surface $r(x, y) = (x, y, f(x, y))$ backed by zero-allocation [`CompiledExpr`] bytecode.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CompiledHeightfieldSurface {
     compiled: CompiledExpr,
     params: [f64; MAX_SURFACE_PARAMS],
@@ -254,7 +257,7 @@ impl ParametricSurface for CompiledHeightfieldSurface {
 }
 
 /// Parametric 3D surface $r(u, v) = (x(u, v), y(u, v), z(u, v))$ backed by [`CompiledExpr`] triples.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CompiledParametricSurface {
     x_expr: CompiledExpr,
     y_expr: CompiledExpr,

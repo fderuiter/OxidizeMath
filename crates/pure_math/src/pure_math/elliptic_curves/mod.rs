@@ -105,7 +105,7 @@ pub fn psi(n: u64) -> u64 {
 }
 
 /// Represents the lower bounds on p-adic valuations from Theorem 1.1.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Default)]
 pub struct Theorem11Bounds {
     #[allow(missing_docs)]
     pub v2_bound: Option<u64>,
@@ -188,7 +188,7 @@ pub fn theorem_1_1_bounds(n: u64, i: u64, j: u64) -> Result<Theorem11Bounds, Ell
 }
 
 /// Represents the lower bounds on p-adic valuations from Theorem 1.2.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Default)]
 pub struct Theorem12Bounds {
     #[allow(missing_docs)]
     pub v2_bound: Option<u64>,

@@ -10,6 +10,7 @@ use pure_math::pure_math::analysis::optimization::{ModelOptimizer as Optimizer, 
 use pure_math::pure_math::analysis::optimization::Trainable;
 
 /// A trainer for the CERA model.
+#[derive(Debug, PartialEq)]
 pub struct CeraTrainer<
     'a,
     A: AutoencoderModel + Trainable<f32>,

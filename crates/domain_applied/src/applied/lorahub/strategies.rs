@@ -20,6 +20,7 @@ pub trait ObjectiveStrategy {
 }
 
 /// The standard linear combination strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LinearCombinationStrategy;
 
 impl CombinationStrategy for LinearCombinationStrategy {
@@ -71,6 +72,7 @@ impl CombinationStrategy for LinearCombinationStrategy {
 }
 
 /// L1 Regularization strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct L1RegularizationStrategy {
     #[allow(missing_docs)]
     pub alpha: f64,

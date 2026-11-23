@@ -32,7 +32,7 @@ const EMPTY_FACE: u32 = u32::MAX;
 /// ws.set_column_faces(3, &[3, 4, 5]).unwrap();
 /// assert_eq!(ws.reduce(), 3);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Z2BoundaryWorkspace {
     num_rows: usize,
     num_cols: usize,

@@ -9,7 +9,7 @@ use crate::error::PharmacokineticsError;
 /// A model for a drug composed of two enantiomers (e.g., d- and l-amphetamine).
 ///
 /// Constructed via [`EnantiomerModel::new`] to ensure valid parameter states.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EnantiomerModel {
     d_model: BatemanModel,
     l_model: BatemanModel,

@@ -55,7 +55,7 @@ use verified_engine::Theory;
 /// let states = hmm.viterbi(&observations).unwrap();
 /// println!("Most likely states: {:?}", states);
 /// ```
-#[derive(Debug, Clone, Theory)]
+#[derive(Debug, Clone, Theory, PartialEq)]
 #[theory(
     description = "A Hidden Markov Model (HMM) is a statistical Markov model in which the system being modeled is assumed to be a Markov process with unobservable (hidden) states.",
     citation = "A tutorial on hidden Markov models and selected applications in speech recognition (Rabiner, 1989)"

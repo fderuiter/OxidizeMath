@@ -10,7 +10,7 @@ use pure_math::pure_math::analysis::integration::{ClenshawCurtis, Integrator};
 ///
 /// Encapsulates the scalar parameters required for the integration and probability
 /// calculations, avoiding functions with excessive arguments.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ProbabilityWinRatioContext {
     /// The survival probability of the control group at time c, S0(c).
     pub s0_at_c: f64,

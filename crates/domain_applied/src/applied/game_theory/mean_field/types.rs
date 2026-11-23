@@ -15,7 +15,7 @@ pub struct Density(pub f64);
 /// - `viscosity` ($\nu$): Diffusion parameter representing noise/randomness in agent motion.
 /// - `time_horizon` ($T$): Duration of the game.
 /// - `dt`, `dx`: Discretization steps.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub struct MFGConfig {
     #[allow(missing_docs)]
     pub viscosity: f64, // nu
@@ -37,35 +37,45 @@ pub struct MFGConfig {
 
 // Type states
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WithoutViscosity;
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct WithViscosity(f64);
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WithoutTimeHorizon;
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct WithTimeHorizon(f64);
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WithoutGridPoints;
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WithGridPoints(NonZeroUsize);
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WithoutTimeSteps;
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WithTimeSteps(NonZeroUsize);
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WithoutSpaceBounds;
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct WithSpaceBounds {
     min: f64,
     max: f64,
 }
 
 /// Type-State Builder for `MFGConfig`.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MFGConfigBuilder<V, T, G, TS, S> {
     viscosity: V,
     time_horizon: T,
@@ -234,5 +244,36 @@ impl
             space_min,
             space_max,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mfg_builder_type_states_derives_and_unwrap_err() {
+        let b0 = MFGConfigBuilder::default();
+        assert_eq!(b0, MFGConfigBuilder::new());
+        let def_without: WithoutViscosity = Default::default();
+        assert_eq!(WithoutViscosity, def_without);
+        assert!(!format!("{b0:?}").is_empty());
+
+        let bad = b0.space_bounds(2.0, 1.0).unwrap_err();
+        assert!(!format!("{bad:?}").is_empty());
+
+        let nx = NonZeroUsize::new(11).unwrap();
+        let nt = NonZeroUsize::new(20).unwrap();
+        let ready = b0
+            .viscosity(0.1)
+            .time_horizon(1.0)
+            .grid_points(nx)
+            .time_steps(nt)
+            .space_bounds(0.0, 1.0)
+            .unwrap();
+        assert_eq!(ready, ready);
+        let cfg = ready.build().unwrap();
+        assert_eq!(cfg, cfg);
+        assert!(!format!("{cfg:?}").is_empty());
     }
 }

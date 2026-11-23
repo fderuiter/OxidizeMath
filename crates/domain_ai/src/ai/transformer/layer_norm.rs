@@ -2,6 +2,7 @@ use crate::ai::transformer::traits::NormalizationLayer;
 use nalgebra::{DMatrix, RowDVector};
 
 /// Layer Normalization.
+#[derive(Debug, Clone, PartialEq)]
 pub struct LayerNorm {
     /// Small constant for numerical stability.
     epsilon: f64,

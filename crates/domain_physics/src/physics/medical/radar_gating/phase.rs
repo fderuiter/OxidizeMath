@@ -8,7 +8,7 @@ use num_complex::Complex;
 use std::f64::consts::PI;
 
 /// Handles phase extraction and unwrapping to track displacement over time.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PhaseUnwrapper {
     /// The phase from the previous time step ($\phi[n-1]$).
     last_phase: f64,

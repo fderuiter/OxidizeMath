@@ -30,6 +30,7 @@ use std::sync::Arc;
 /// ws.reconstruct_normalized_2d_into(&k_space, &mut image);
 /// assert!((image[(8, 8)].re - 1.0).abs() < 1e-12);
 /// ```
+#[derive(Clone)]
 pub struct Fft2dWorkspace {
     rows: usize,
     cols: usize,
@@ -39,6 +40,16 @@ pub struct Fft2dWorkspace {
     inv_col_fft: Option<Arc<dyn Fft<f64>>>,
     scratch: Vec<Complex<f64>>,
     transposed: DMatrix<Complex<f64>>,
+}
+
+impl std::fmt::Debug for Fft2dWorkspace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Fft2dWorkspace")
+            .field("rows", &self.rows)
+            .field("cols", &self.cols)
+            .field("scratch_len", &self.scratch.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Fft2dWorkspace {

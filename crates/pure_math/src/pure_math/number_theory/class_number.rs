@@ -4,7 +4,7 @@
 //! This module provides functions for calculating the class number of imaginary quadratic orders.
 
 /// Represents a primitive, positive-definite binary quadratic form ax^2 + bxy + cy^2.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct BQF {
     #[allow(missing_docs)]
     pub a: i64,

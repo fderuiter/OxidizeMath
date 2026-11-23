@@ -13,7 +13,7 @@
 use nalgebra::{DMatrix, DVector, Point3};
 
 /// A fitted bi-quadratic surface.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BiQuadraticSurface {
     /// Coefficients $[c_0, c_1, c_2, c_3, c_4, c_5]$.
     pub coefficients: DVector<f64>,

@@ -21,6 +21,7 @@ pub trait RiemannSurface {
 
 /// Riemann surface for the n-th root function $f(z) = z^{1/n}$.
 /// Has $n$ sheets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NthRootSurface {
     #[allow(missing_docs)]
     pub n: usize,
@@ -60,6 +61,7 @@ impl RiemannSurface for NthRootSurface {
 
 /// Riemann surface for the complex logarithm $f(z) = \log(z)$.
 /// Has infinitely many sheets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LogSurface;
 
 impl RiemannSurface for LogSurface {

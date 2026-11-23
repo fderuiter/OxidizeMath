@@ -1,4 +1,5 @@
 #[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DyadicRational {
     #[allow(missing_docs)]
     pub m: i64,

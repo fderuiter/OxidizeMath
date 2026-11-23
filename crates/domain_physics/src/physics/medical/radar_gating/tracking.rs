@@ -11,7 +11,7 @@ use nalgebra::{DMatrix, DVector};
 
 /// Constant Velocity (CV) Model.
 /// State: [Position, Velocity]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConstantVelocityModel {
     #[allow(missing_docs)]
     pub process_noise_var: f64,
@@ -60,7 +60,7 @@ impl KalmanModel<f64> for ConstantVelocityModel {
 /// A wrapper around the generic Kalman Filter for 1D position and velocity tracking.
 ///
 /// This maintains the original API of the radar gating module while using the unified core algorithm.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TrackingFilter {
     inner: KalmanFilter<f64, ConstantVelocityModel>,
 }

@@ -2,7 +2,7 @@ use super::stats::{SortingResult, SortingStats};
 use super::strategy::Sorter;
 
 /// Strategy implementation for Bubble Sort.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct BubbleSorter;
 
 impl<T: Ord + Clone> Sorter<T> for BubbleSorter {
@@ -52,7 +52,7 @@ pub fn bubble_sort<T: Ord + Clone>(data: &[T]) -> SortingResult<T> {
 }
 
 /// Strategy implementation for Insertion Sort.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct InsertionSorter;
 
 impl<T: Ord + Clone> Sorter<T> for InsertionSorter {

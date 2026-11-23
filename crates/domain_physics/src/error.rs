@@ -47,7 +47,7 @@ pub enum StandardModelError {
     InvalidFlavors { nf: f64 },
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Clone)]
 #[allow(missing_docs)]
 pub enum SolidStateError {
     /// The iterative solver failed to converge within the maximum number of iterations.
@@ -63,7 +63,7 @@ pub enum SolidStateError {
     ComputationError(String),
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Clone)]
 #[allow(missing_docs)]
 pub enum DoseFluenceError {
     #[error("Radius cannot be zero (singularity at r=0)")]

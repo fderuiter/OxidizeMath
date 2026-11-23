@@ -47,7 +47,7 @@ impl Point2D {
 }
 
 /// A collection of points in 2D space bounded to [`MAX_TDA_POINTS`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PointCloud {
     #[allow(missing_docs)]
     pub points: Vec<Point2D>,

@@ -58,7 +58,7 @@ impl OdeSystem<SIRState> for SIRDynamics {
 /// $$dR/dt = \gamma I$$
 ///
 /// Use `SIRModel::builder()` or `SIRModel::new()` to construct.
-#[derive(Debug, Clone, Theory)]
+#[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
     description = "The SIR model is an epidemiological model that computes the theoretical number of people infected with a contagious illness in a closed population over time.",
     citation = "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)"
@@ -69,6 +69,7 @@ pub struct SIRModel<S: Solver<SIRState> = RungeKutta4<SIRState>> {
     pub dynamics: SIRDynamics,
     /// The numerical solver strategy.
     solver: S,
+    time: f64,
 }
 
 impl<S: Solver<SIRState>> TimeStepper<SIRState> for SIRModel<S> {
@@ -83,15 +84,40 @@ impl<S: Solver<SIRState>> TimeStepper<SIRState> for SIRModel<S> {
     }
 
     #[verified_engine::verified]
+    fn current_time(&self) -> f64 {
+        self.time
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.time += dt;
+    }
+
+    fn step_with_at<OtherS: Solver<SIRState>>(&mut self, solver: &mut OtherS, t: f64, dt: f64) {
+        solver.step(&self.dynamics, t, &mut self.state, dt);
+    }
+
+    #[verified_engine::verified]
+    fn step_at(&mut self, t: f64, dt: f64) {
+        self.solver.step(&self.dynamics, t, &mut self.state, dt);
+    }
+
+    #[verified_engine::verified]
     fn step(&mut self, dt: f64) {
-        // Delegate stepping to the injected solver strategy.
-        // pass &self.dynamics to avoid partial borrow of self.
-        self.solver.step(&self.dynamics, 0.0, &mut self.state, dt);
+        let t = self.time;
+        self.solver.step(&self.dynamics, t, &mut self.state, dt);
+        self.time += dt;
+    }
+
+    fn step_with<OtherS: Solver<SIRState>>(&mut self, solver: &mut OtherS, dt: f64) {
+        let t = self.time;
+        solver.step(&self.dynamics, t, &mut self.state, dt);
+        self.time += dt;
     }
 }
 
 /// Builder for SIRModel to ensure valid parameter configuration.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct SIRModelBuilder {
     n: Option<f64>,
     i0: Option<f64>,
@@ -159,6 +185,7 @@ impl SIRModelBuilder {
             state,
             dynamics: SIRDynamics { n, beta, gamma },
             solver: RungeKutta4::new(&state),
+            time: 0.0,
         })
     }
 }
@@ -183,10 +210,30 @@ impl SIRModel<RungeKutta4<SIRState>> {
 }
 
 impl<S: Solver<SIRState>> SIRModel<S> {
+    /// Returns the elapsed simulation time `t`.
+    #[verified_engine::verified]
+    pub fn time(&self) -> f64 {
+        self.time
+    }
+
+    /// Sets the current simulation time `t`.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, time: f64) {
+        self.time = time;
+    }
+
+    /// Advances the state at explicit simulation time `t` by `dt` without mutating [`Self::time`].
+    #[verified_engine::verified]
+    pub fn step_at(&mut self, t: f64, dt: f64) {
+        self.solver.step(&self.dynamics, t, &mut self.state, dt);
+    }
+
     /// Advances the state by dt using the configured solver.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
-        <Self as TimeStepper<SIRState>>::step(self, dt);
+        let t = self.time;
+        self.solver.step(&self.dynamics, t, &mut self.state, dt);
+        self.time += dt;
     }
 
     /// Advances the state by dt using a provided solver strategy (temporarily ignoring the internal solver).
@@ -194,12 +241,13 @@ impl<S: Solver<SIRState>> SIRModel<S> {
         <Self as TimeStepper<SIRState>>::step_with(self, solver, dt);
     }
 
-    /// Replaces the current solver with a new one.
+    /// Replaces the current solver with a new one while preserving elapsed simulation time.
     pub fn with_solver<NewS: Solver<SIRState>>(self, new_solver: NewS) -> SIRModel<NewS> {
         SIRModel {
             state: self.state,
             dynamics: self.dynamics,
             solver: new_solver,
+            time: self.time,
         }
     }
 
@@ -372,5 +420,41 @@ mod tests {
 
         // Just check it ran
         assert!(model_euler.state().s <= n);
+    }
+
+    #[derive(Debug, Clone, PartialEq, Default)]
+    struct TimeSpySolver {
+        seen_times: Vec<f64>,
+    }
+
+    impl Solver<SIRState> for TimeSpySolver {
+        fn step<Sys: OdeSystem<SIRState> + ?Sized>(
+            &mut self,
+            system: &Sys,
+            t: f64,
+            state: &mut SIRState,
+            dt: f64,
+        ) {
+            self.seen_times.push(t);
+            let mut deriv = *state;
+            system.derivative_in_place(t, state, &mut deriv);
+            state.s += dt * deriv.s;
+            state.i += dt * deriv.i;
+            state.r += dt * deriv.r;
+        }
+    }
+
+    #[test]
+    fn test_sir_advances_elapsed_time_and_derives() {
+        let base = SIRModel::new(1000.0, 10.0, 0.5, 0.1).unwrap();
+        assert_eq!(base, base);
+        assert!(!format!("{base:?}").is_empty());
+
+        let mut spied = base.with_solver(TimeSpySolver::default());
+        spied.step(0.25);
+        spied.step(0.25);
+        spied.step(0.5);
+        assert_eq!(spied.solver.seen_times, vec![0.0, 0.25, 0.5]);
+        assert!((spied.time() - 1.0).abs() < 1e-12);
     }
 }

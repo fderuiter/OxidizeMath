@@ -88,6 +88,7 @@ where
 use super::ode::traits::{OdeSystem, Solver, VectorOperations};
 
 /// A unified wrapper that turns any OdeSystem and Solver pair into an EvolutionEngine.
+#[derive(Debug, Clone, PartialEq)]
 pub struct SystemEvolver<Sys, Sol> {
     #[allow(missing_docs)]
     pub system: Sys,

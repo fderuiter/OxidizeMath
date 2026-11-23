@@ -9,7 +9,7 @@ pub const MAX_FILTRATION_TRIANGLES: usize = 100_000;
 
 /// A simplicial complex is a collection of simplices with the property
 /// that every face of a simplex in the complex is also in the complex.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SimplicialComplex {
     /// All simplices in the complex, organized by dimension.
     /// `simplices[d]` contains all `d`-dimensional simplices.

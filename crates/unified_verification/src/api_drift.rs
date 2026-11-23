@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use traversal::traverse_crate_root_with_cache;
 
 mod facade;
+pub(crate) mod public_debug;
 mod traversal;
 mod visitor;
 
@@ -198,11 +199,26 @@ pub fn check_api_drift_with_cache(cache: &mut AstCache) -> bool {
             println!("  - {v}");
         }
     }
+    let debug_violations = {
+        let (checked, violations) =
+            public_debug::check_workspace_public_debug_with_cache(root, cache);
+        if violations.is_empty() {
+            println!(
+                "Public Debug coverage check passed ({checked} public structs/enums verified)."
+            );
+        } else {
+            println!("Public Debug coverage check failed:");
+            for v in &violations {
+                println!("  - {v}");
+            }
+        }
+        violations
+    };
     let baseline_content =
         fs::read_to_string(root.join(BASELINE_REL_PATH)).unwrap_or_else(|_| "{}".to_string());
     let baseline_apis: BTreeMap<String, Vec<ApiItem>> =
         serde_json::from_str(&baseline_content).unwrap_or_default();
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let drift_ok = check_api_drift_against(&current_apis, &baseline_apis, &today);
-    drift_ok && facade_violations.is_empty()
+    drift_ok && facade_violations.is_empty() && debug_violations.is_empty()
 }

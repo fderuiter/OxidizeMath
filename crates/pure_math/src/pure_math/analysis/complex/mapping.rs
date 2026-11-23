@@ -27,6 +27,7 @@ where
 /// Maps the upper half plane to a polygon.
 ///
 /// $$ \frac{dw}{dz} = A \prod (z - x_j)^{-k_j} $$
+#[derive(Debug, Clone, PartialEq)]
 pub struct SchwarzChristoffel {
     /// Points on the real axis corresponding to polygon vertices.
     pub prevertices: Vec<f64>,

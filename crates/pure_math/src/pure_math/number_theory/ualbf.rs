@@ -1,7 +1,7 @@
 // [cite:ualbf_quasiperfect]
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum NumberTheoryError {
     #[error("Parse error: {0}")]
@@ -10,6 +10,7 @@ pub enum NumberTheoryError {
 }
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UalbfSearchResult {
     #[allow(missing_docs)]
     pub message: String,
@@ -41,4 +42,27 @@ pub fn ualbf_search(
         rejected_by_lattice: 0,
         candidates_checked: 0,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_failure_result() -> Result<UalbfSearchResult, NumberTheoryError> {
+        Err(NumberTheoryError::ParseError("bad bound".to_string()))
+    }
+
+    #[test]
+    fn test_ualbf_search_derives_and_unwrap_err() {
+        let res1 = ualbf_search(10, 4, "1.5", "2.0").unwrap();
+        let res2 = ualbf_search(10, 4, "1.5", "2.0").unwrap();
+        assert_eq!(res1, res2);
+        assert_eq!(UalbfSearchResult::default().valid_components, 0);
+        assert!(!format!("{res1:?}").is_empty());
+
+        assert_eq!(
+            parse_failure_result().unwrap_err(),
+            NumberTheoryError::ParseError("bad bound".to_string())
+        );
+    }
 }

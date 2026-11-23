@@ -18,12 +18,12 @@ pub trait ParticleStatistics {
 
 /// Fermions follow Fermi-Dirac statistics and Pauli Exclusion Principle.
 /// {c_i, c_j^\dagger} = \delta_{ij}
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Fermion;
 
 /// Bosons follow Bose-Einstein statistics.
 /// [a_i, a_j^\dagger] = \delta_{ij}
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Boson;
 
 /// Type of Quantum Operator.

@@ -2,6 +2,7 @@ use crate::error::HighEnergyError;
 use math_commons::constants::{C, G};
 
 /// Struct representing a Schwarzschild Black Hole.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SchwarzschildBlackHole {
     #[allow(missing_docs)]
     pub mass: f64,

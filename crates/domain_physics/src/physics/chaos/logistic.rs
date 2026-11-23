@@ -16,6 +16,7 @@ pub const ATTRACTOR_POINTS: usize = 50;
 ///
 /// The map is defined by the recurrence relation:
 /// $x_{n+1} = r x_n (1 - x_n)$
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LogisticMap {
     /// The growth rate parameter $r$.
     /// - For $r < 3$, the population eventually settles into a stable value.

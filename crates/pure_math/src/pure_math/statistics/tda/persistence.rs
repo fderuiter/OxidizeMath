@@ -150,7 +150,7 @@ impl RipsPersistenceResult {
 }
 
 /// A persistence barcode is a collection of persistence intervals.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PersistenceBarcode {
     /// All persistence intervals in the barcode.
     pub intervals: Vec<PersistenceInterval>,

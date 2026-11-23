@@ -12,7 +12,7 @@ use std::collections::HashMap;
 ///
 /// The probability of finding the system in a particular state is related to the
 /// square of the absolute value of the vector's components (Born Rule).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct QuantumState {
     /// The complex vector representing the state |\psi\rangle.
     pub vector: DVector<Complex<f64>>,
@@ -152,7 +152,7 @@ impl QuantumState {
 ///
 /// In quantum mechanics, physical observables are represented by linear operators.
 /// Hermitian operators correspond to measurable quantities.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct QuantumOperator {
     /// The complex matrix representing the operator \hat{A}.
     pub matrix: DMatrix<Complex<f64>>,

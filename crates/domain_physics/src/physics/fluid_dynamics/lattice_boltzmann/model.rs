@@ -27,7 +27,7 @@ pub trait Lattice2D<const Q: usize>: Copy + Clone + Send + Sync + 'static {
 /// D2Q9 Lattice Model.
 ///
 /// Standard 9-velocity lattice for 2D fluid simulation.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct D2Q9;
 
 impl Lattice2D<9> for D2Q9 {
@@ -90,7 +90,7 @@ pub trait CollisionModel<const Q: usize, L: Lattice2D<Q>> {
 }
 
 /// BGK Collision Model.
-#[derive(Debug, Clone, Copy, Theory)]
+#[derive(Debug, Clone, Copy, Theory, PartialEq)]
 #[theory(
     description = "Bhatnagar-Gross-Krook (BGK) collision operator for single relaxation time.",
     citation = "Bhatnagar, P. L., Gross, E. P., & Krook, M. (1954)."
@@ -141,7 +141,7 @@ impl<const Q: usize, L: Lattice2D<Q>> CollisionModel<Q, L> for BgkCollision {
 /// assert_eq!(ux, 0.0);
 /// assert_eq!(uy, 0.0);
 /// ```
-#[derive(Theory)]
+#[derive(Theory, Debug, Clone, PartialEq)]
 #[theory(
     description = "The Lattice Boltzmann Method (LBM) is a discrete computational fluid dynamics approach that simulates Newtonian fluid flows by modeling the microscopic behavior of fictitious fluid particles on a regular grid. It approximates the Navier-Stokes equations and the material derivative D/Dt.",
     phonetic = "The Lattice Boltzmann Method is a discrete computational fluid dynamics approach that simulates Newtonian fluid flows by modeling the microscopic behavior of fictitious fluid particles on a regular grid. It approximates the Navier-Stokes equations and the Material derivative with respect to time.",

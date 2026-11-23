@@ -51,6 +51,7 @@ struct CubeData {
 /// Marching Cubes algorithm implementation.
 ///
 /// Converts a scalar field (voxel grid) into a polygonal mesh.
+#[derive(Debug, Clone, PartialEq)]
 pub struct MarchingCubes<'a, G: GradientEstimator> {
     grid: &'a VoxelGrid,
     estimator: G,

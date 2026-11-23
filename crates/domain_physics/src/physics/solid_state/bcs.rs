@@ -21,7 +21,7 @@ pub trait GapEquation {
 
 // --- Solver ---
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub struct BcsGapSolver {
     #[allow(missing_docs)]
@@ -101,6 +101,7 @@ impl BcsGapSolver {
 // --- Models ---
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct IsotropicBCSModel {
     #[allow(missing_docs)]
     pub energies: Vec<ElectronVolts>,
