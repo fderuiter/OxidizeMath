@@ -188,6 +188,24 @@ impl MorphogenesisTool {
         if ui.button("Stripes").clicked() {
             self.apply_named_preset(0.14, 0.86, 1.0, 50.0, 0.02);
         }
+        if let Some(snapshot) = self.worker.latest_snapshot() {
+            let slice_opt = snapshot.structured_data.as_ref().and_then(|d| {
+                d.downcast_ref::<MorphogenesisSnapshotData>()
+                    .map(|s| s.u_b.as_slice())
+                    .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+            });
+            if let Some(u_data) = slice_opt {
+                let splat_count =
+                    crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
+                        u_data,
+                        snapshot.width,
+                        snapshot.height,
+                    )
+                    .gaussians
+                    .len();
+                ui.small(format!("Extruded 3D Gaussian splats: {splat_count}"));
+            }
+        }
         ui.separator();
         let _ = self.atlas.show_toggle_button(ui);
     }
