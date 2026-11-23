@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headless Chromium runner for wasm32-unknown-unknown unit and browser tests using Playwright."""
+"""Hybrid headless Chromium and Node.js runner for wasm32-unknown-unknown test binaries."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ INDEX_HTML = """<!DOCTYPE html>
     <meta charset="utf-8">
     <meta name="color-scheme" content="dark">
     <meta name="theme-color" content="#121214">
-    <title>OxidizeMath WASM Unit Test Runner</title>
+    <title>OxidizeMath WASM Browser Test Runner</title>
 </head>
 <body>
     <div id="loading_indicator" role="status" aria-live="polite" aria-busy="true">Loading...</div>
@@ -78,12 +78,27 @@ function appendLine(value) {
     }
 }
 
+function patchMemoryFlags(memory, patchEntries) {
+    if (!memory || !(memory.buffer instanceof ArrayBuffer) || !Array.isArray(patchEntries)) {
+        return;
+    }
+    const view = new Uint8Array(memory.buffer);
+    for (const [offset, flagByte] of patchEntries) {
+        if (offset >= 0 && offset < view.length && (view[offset] === 0 || view[offset] === 1)) {
+            view[offset] = flagByte;
+        }
+    }
+}
+
 globalThis.__wbg_test_invoke = (fn) => fn();
 globalThis.__wbgtest_og_console_log = (line) => rawConsoleLog(line);
 globalThis.__wbg_test_output_writeln = (value) => appendLine(value);
 
 async function runWbgAndOptionalUnit(cfg) {
     const bindings = await import("./wasm_test_bin.js");
+    if (typeof bindings.WasmBindgenTestContext !== "function") {
+        throw new Error("wasm_test_bin.js does not export WasmBindgenTestContext");
+    }
     const wasm = await bindings.default();
     if (typeof bindings.__wbgtest_console_log === "function") {
         console.log = (...args) => bindings.__wbgtest_console_log(args);
@@ -120,46 +135,18 @@ async function runWbgAndOptionalUnit(cfg) {
         if (typeof wasm.main !== "function") {
             throw new Error("Expected exported main(argc, argv) function in unit test target");
         }
+        patchMemoryFlags(wasm.memory, cfg.unit_ignore_patches);
         const rc = wasm.main(0, 0);
         unitPassed = rc === 0;
         appendLine(
-            `running ${cfg.unit_test_count} unit tests in ${cfg.binary_label}\\n` +
+            `running ${cfg.unit_test_count} unit tests in ${cfg.binary_label} (Chromium)\\n` +
             `test result: ${unitPassed ? "ok" : "FAILED"}. ` +
-            `${unitPassed ? cfg.unit_test_count : 0} passed; ${unitPassed ? 0 : 1} failed`
+            `${unitPassed ? cfg.unit_test_count : 0} passed; ${unitPassed ? 0 : 1} failed; ` +
+            `${cfg.filtered_out_unit} filtered out`
         );
     }
 
     return wbgPassed && unitPassed;
-}
-
-async function runRawUnit(cfg) {
-    const resp = await fetch("./raw_unit_test.wasm");
-    if (!resp.ok) {
-        throw new Error("Failed to fetch raw_unit_test.wasm: HTTP " + resp.status);
-    }
-    const bytes = await resp.arrayBuffer();
-    const mod = await WebAssembly.compile(bytes);
-    const importObj = {};
-    for (const imp of WebAssembly.Module.imports(mod)) {
-        if (!importObj[imp.module]) {
-            importObj[imp.module] = {};
-        }
-        if (imp.kind === "function") {
-            importObj[imp.module][imp.name] = () => 0;
-        }
-    }
-    const instance = await WebAssembly.instantiate(mod, importObj);
-    if (typeof instance.exports.main !== "function") {
-        throw new Error("Raw WASM unit binary does not export main(argc, argv)");
-    }
-    const rc = instance.exports.main(0, 0);
-    const passed = rc === 0;
-    appendLine(
-        `running ${cfg.unit_test_count} unit tests in ${cfg.binary_label}\\n` +
-        `test result: ${passed ? "ok" : "FAILED"}. ` +
-        `${passed ? cfg.unit_test_count : 0} passed; ${passed ? 0 : 1} failed`
-    );
-    return passed;
 }
 
 async function runSuite() {
@@ -169,9 +156,7 @@ async function runSuite() {
             throw new Error("Failed to load runner_config.json: HTTP " + cfgResp.status);
         }
         const cfg = await cfgResp.json();
-        const passed = cfg.mode === "raw_unit"
-            ? await runRawUnit(cfg)
-            : await runWbgAndOptionalUnit(cfg);
+        const passed = await runWbgAndOptionalUnit(cfg);
         outputEl.setAttribute("data-test-status", passed ? "ok" : "failed");
     } catch (err) {
         const detail = err && err.stack ? err.stack : String(err);
@@ -183,6 +168,53 @@ async function runSuite() {
 runSuite();
 """
 
+NODE_LIBTEST_SCRIPT = """const fs = require("node:fs");
+
+async function main() {
+    const wasmPath = process.argv[1];
+    const patchesJson = process.argv[2] || "[]";
+    const patches = JSON.parse(patchesJson);
+    const bytes = fs.readFileSync(wasmPath);
+    const mod = await WebAssembly.compile(bytes);
+    const imports = {};
+    for (const imp of WebAssembly.Module.imports(mod)) {
+        if (!imports[imp.module]) {
+            imports[imp.module] = {};
+        }
+        if (imp.kind === "function") {
+            const fullName = `${imp.module}.${imp.name}`;
+            imports[imp.module][imp.name] = () => {
+                throw new Error(
+                    `Unexpected call to inert wasm-bindgen intrinsic ${fullName} during pure-Rust Node.js libtest run`
+                );
+            };
+        }
+    }
+    const instance = await WebAssembly.instantiate(mod, imports);
+    if (typeof instance.exports.main !== "function") {
+        throw new Error(`WASM binary ${wasmPath} does not export main(argc, argv)`);
+    }
+    if (instance.exports.memory && Array.isArray(patches) && patches.length > 0) {
+        const view = new Uint8Array(instance.exports.memory.buffer);
+        for (const [offset, flagByte] of patches) {
+            if (offset >= 0 && offset < view.length && (view[offset] === 0 || view[offset] === 1)) {
+                view[offset] = flagByte;
+            }
+        }
+    }
+    const rc = instance.exports.main(0, 0);
+    if (rc !== 0) {
+        process.exit(1);
+    }
+}
+
+main().catch((err) => {
+    const detail = err && err.stack ? err.stack : String(err);
+    process.stderr.write(`Node.js WASM libtest failure: ${detail}\\n`);
+    process.exit(1);
+});
+"""
+
 
 @dataclass(frozen=True)
 class DiscoveredTest:
@@ -190,15 +222,19 @@ class DiscoveredTest:
     crate_qualified_name: str
     export_name: str | None
     ignored: bool = False
+    ignore_flag_offset: int | None = None
 
 
 @dataclass(frozen=True)
 class WasmBinarySummary:
     crate_name: str
     has_wbindgen_imports: bool
+    has_wbg_test_context: bool
     has_main_export: bool
     wbgt_tests: list[DiscoveredTest]
     unit_tests: list[DiscoveredTest]
+    non_inert_imports: tuple[str, ...] = ()
+    inert_wbindgen_intrinsics: tuple[str, ...] = ()
 
 
 @dataclass
@@ -213,6 +249,9 @@ class TestRunnerOptions:
     quiet: bool = False
     nocapture: bool = False
     output_format: str = "pretty"
+    color: str | None = None
+    logfile: str | None = None
+    unstable_flags: list[str] = field(default_factory=list)
     show_help: bool = False
 
 
@@ -250,6 +289,27 @@ class WasmTestRequestHandler(http.server.SimpleHTTPRequestHandler):
         return
 
 
+def _is_inert_wbindgen_intrinsic(mod_name: str, field_name: str) -> bool:
+    """Returns True only for dead rlib compiler intrinsics emitted by wasm-bindgen when unused."""
+    if mod_name == "__wbindgen_externref_xform__":
+        return field_name in (
+            "__wbindgen_externref_statics_end",
+            "__wbindgen_externref_table_grow",
+            "__wbindgen_externref_table_set_null",
+        )
+    if mod_name == "__wbindgen_placeholder__":
+        return (
+            field_name
+            in (
+                "__wbindgen_describe",
+                "__wbindgen_object_drop_ref",
+            )
+            or field_name.startswith("__wbg___wbindgen_jspi_spawn_poll_")
+            or field_name.startswith("__wbg___wbindgen_throw_")
+        )
+    return False
+
+
 def parse_cargo_test_args(extra_args: list[str]) -> TestRunnerOptions:
     opts = TestRunnerOptions()
     idx = 0
@@ -271,7 +331,7 @@ def parse_cargo_test_args(extra_args: list[str]) -> TestRunnerOptions:
         elif arg == "--ignored":
             opts.only_ignored = True
             opts.include_ignored = True
-        elif arg == "--include-ignored":
+        elif arg in ("--include-ignored",):
             opts.include_ignored = True
         elif arg in ("-q", "--quiet"):
             opts.quiet = True
@@ -293,6 +353,8 @@ def parse_cargo_test_args(extra_args: list[str]) -> TestRunnerOptions:
             opts.test_threads = _parse_positive_int(arg, extra_args[idx])
         elif arg.startswith("--test-threads="):
             opts.test_threads = _parse_positive_int("--test-threads", arg.split("=", 1)[1])
+        elif arg.startswith("-t") and len(arg) > 2:
+            opts.test_threads = _parse_positive_int("-t", arg[2:])
         elif arg == "--format":
             if idx + 1 >= len(extra_args):
                 raise ValueError("Argument to option '--format' missing")
@@ -300,13 +362,32 @@ def parse_cargo_test_args(extra_args: list[str]) -> TestRunnerOptions:
             opts.output_format = extra_args[idx]
         elif arg.startswith("--format="):
             opts.output_format = arg.split("=", 1)[1]
-        elif arg in ("--color", "--logfile", "--shuffle-seed", "-Z"):
+        elif arg == "--color":
             if idx + 1 >= len(extra_args):
-                raise ValueError(f"Argument to option '{arg}' missing")
+                raise ValueError("Argument to option '--color' missing")
             idx += 1
-        elif arg.startswith(("--color=", "--logfile=", "--shuffle-seed=")) or (
-            arg.startswith("-Z") and len(arg) > 2
-        ):
+            opts.color = extra_args[idx]
+        elif arg.startswith("--color="):
+            opts.color = arg.split("=", 1)[1]
+        elif arg == "--logfile":
+            if idx + 1 >= len(extra_args):
+                raise ValueError("Argument to option '--logfile' missing")
+            idx += 1
+            opts.logfile = extra_args[idx]
+        elif arg.startswith("--logfile="):
+            opts.logfile = arg.split("=", 1)[1]
+        elif arg == "-Z":
+            if idx + 1 >= len(extra_args):
+                raise ValueError("Argument to option '-Z' missing")
+            idx += 1
+            opts.unstable_flags.append(extra_args[idx])
+        elif arg.startswith("-Z") and len(arg) > 2:
+            opts.unstable_flags.append(arg[2:])
+        elif arg == "--shuffle-seed":
+            if idx + 1 >= len(extra_args):
+                raise ValueError("Argument to option '--shuffle-seed' missing")
+            idx += 1
+        elif arg.startswith("--shuffle-seed="):
             pass
         elif arg.startswith("-"):
             raise ValueError(f"Unrecognized option: '{arg}'")
@@ -403,9 +484,9 @@ def _extract_libtest_descriptors(
 
     seen: set[str] = set()
     discovered: list[DiscoveredTest] = []
-    for _base, seg in active_segments:
+    for base, seg in active_segments:
         limit = len(seg) - 48
-        for pos in range(0, max(0, limit + 1), 4):
+        for pos in range((-base) % 4, max(0, limit + 1), 4):
             (
                 name_ptr,
                 name_len,
@@ -446,7 +527,8 @@ def _extract_libtest_descriptors(
             if name_str in seen:
                 continue
             seen.add(name_str)
-            ignored = msg_ptr != 0 or ((flags >> 8) & 0xFF) == 1
+            ignore_byte = (flags >> 8) & 0xFF
+            ignored = msg_ptr != 0 or ignore_byte == 1
             crate_qual = (
                 name_str
                 if name_str.startswith(f"{crate_name}::")
@@ -458,6 +540,7 @@ def _extract_libtest_descriptors(
                     crate_qualified_name=crate_qual,
                     export_name=None,
                     ignored=ignored,
+                    ignore_flag_offset=base + pos + 45,
                 )
             )
     return discovered
@@ -470,7 +553,11 @@ def inspect_wasm_binary(wasm_path: Path) -> WasmBinarySummary:
 
     crate_name = _infer_crate_name(wasm_path)
     has_wbindgen_imports = False
+    has_wbg_ctx_new = False
+    has_wbg_ctx_run = False
     has_main_export = False
+    non_inert_imports: list[str] = []
+    inert_intrinsics: list[str] = []
     wbgt_tests: list[DiscoveredTest] = []
     active_segments: list[tuple[int, bytes]] = []
 
@@ -486,8 +573,15 @@ def inspect_wasm_binary(wasm_path: Path) -> WasmBinarySummary:
             for _ in range(count):
                 mod_name, p = _read_wasm_string(data, p)
                 field_name, p = _read_wasm_string(data, p)
-                if mod_name.startswith("__wbindgen") or field_name.startswith("__wbindgen"):
+                if mod_name.startswith("__wbindgen") or field_name.startswith(
+                    ("__wbindgen", "__wbg_")
+                ):
                     has_wbindgen_imports = True
+                qual_import = f"{mod_name}.{field_name}"
+                if _is_inert_wbindgen_intrinsic(mod_name, field_name):
+                    inert_intrinsics.append(qual_import)
+                else:
+                    non_inert_imports.append(qual_import)
                 kind = data[p]
                 p += 1
                 if kind == 0x00:
@@ -513,8 +607,20 @@ def inspect_wasm_binary(wasm_path: Path) -> WasmBinarySummary:
                     continue
                 if exp_name == "main":
                     has_main_export = True
+                elif exp_name == "__wbg_wasmbindgentestcontext_new" or exp_name.startswith(
+                    "wasmbindgentestcontext_new"
+                ):
+                    has_wbg_ctx_new = True
+                elif exp_name == "__wbg_wasmbindgentestcontext_run" or exp_name.startswith(
+                    "wasmbindgentestcontext_run"
+                ):
+                    has_wbg_ctx_run = True
                 elif exp_name.startswith("__wbgt_"):
-                    raw_path = exp_name[len("__wbgt__") :] if exp_name.startswith("__wbgt__") else exp_name[len("__wbgt_") :]
+                    raw_path = (
+                        exp_name[len("__wbgt__") :]
+                        if exp_name.startswith("__wbgt__")
+                        else exp_name[len("__wbgt_") :]
+                    )
                     canonical = raw_path
                     if canonical.startswith(f"{crate_name}::"):
                         canonical = canonical[len(crate_name) + 2 :]
@@ -554,13 +660,18 @@ def inspect_wasm_binary(wasm_path: Path) -> WasmBinarySummary:
 
         idx = section_end
 
-    unit_tests = _extract_libtest_descriptors(active_segments, crate_name) if has_main_export else []
+    unit_tests = (
+        _extract_libtest_descriptors(active_segments, crate_name) if has_main_export else []
+    )
     return WasmBinarySummary(
         crate_name=crate_name,
         has_wbindgen_imports=has_wbindgen_imports,
+        has_wbg_test_context=has_wbg_ctx_new and has_wbg_ctx_run,
         has_main_export=has_main_export,
         wbgt_tests=wbgt_tests,
         unit_tests=unit_tests,
+        non_inert_imports=tuple(non_inert_imports),
+        inert_wbindgen_intrinsics=tuple(inert_intrinsics),
     )
 
 
@@ -575,12 +686,59 @@ def filter_tests(tests: list[DiscoveredTest], opts: TestRunnerOptions) -> list[D
     for test in tests:
         if opts.only_ignored and test.export_name is None and not test.ignored:
             continue
+        if not opts.include_ignored and test.export_name is None and test.ignored:
+            continue
         if any(_pattern_matches(test, skip, opts.exact) for skip in opts.skips):
             continue
-        if opts.filters and not any(_pattern_matches(test, flt, opts.exact) for flt in opts.filters):
+        if opts.filters and not any(
+            _pattern_matches(test, flt, opts.exact) for flt in opts.filters
+        ):
             continue
         selected.append(test)
     return selected
+
+
+def _build_unit_ignore_patches(
+    unit_pool: list[DiscoveredTest],
+    selected_unit: list[DiscoveredTest],
+) -> list[tuple[int, int]]:
+    selected_names = {t.canonical_name for t in selected_unit}
+    patches: list[tuple[int, int]] = []
+    for test in unit_pool:
+        if test.ignore_flag_offset is None:
+            continue
+        if test.canonical_name not in selected_names:
+            patches.append((test.ignore_flag_offset, 1))
+        elif test.ignored:
+            patches.append((test.ignore_flag_offset, 0))
+    return patches
+
+
+def validate_execution_contract(wasm_path: Path, summary: WasmBinarySummary) -> str | None:
+    """Validates that the binary qualifies for either Chromium WasmBindgenTestContext or pure-Rust Node.js libtest."""
+    if summary.wbgt_tests:
+        if not summary.has_wbg_test_context:
+            return (
+                f"Error: WASM binary {wasm_path.name} exports #[wasm_bindgen_test] symbols "
+                "without WasmBindgenTestContext harness exports (__wbg_wasmbindgentestcontext_new/run)."
+            )
+        return None
+
+    if summary.has_wbg_test_context or summary.non_inert_imports:
+        preview = ", ".join(summary.non_inert_imports[:5]) or "WasmBindgenTestContext"
+        return (
+            f"Error: WASM binary {wasm_path.name} imports wasm-bindgen or host bindings "
+            f"({preview}) without WasmBindgenTestContext and runnable #[wasm_bindgen_test] functions; "
+            "failing closed instead of silently passing."
+        )
+
+    if not summary.has_main_export:
+        return (
+            f"Error: WASM binary {wasm_path.name} exports neither WasmBindgenTestContext "
+            "nor libtest main(argc, argv)."
+        )
+
+    return None
 
 
 def raise_nofile_limit() -> None:
@@ -601,10 +759,13 @@ def print_runner_help() -> None:
         "  --list                 List all discovered tests in libtest format\n"
         "  --exact                Exactly match filter and skip names\n"
         "  --skip <PATTERN>       Skip tests whose names match PATTERN (repeatable)\n"
-        "  --test-threads <N>     Compatibility flag for Cargo test thread count\n"
+        "  -t, --test-threads <N> Compatibility flag for Cargo test thread count\n"
         "  --ignored              Run only ignored tests\n"
         "  --include-ignored      Run both ignored and non-ignored tests\n"
         "  --format <FMT>         Configure output format (pretty|terse|json)\n"
+        "  --color <WHEN>         Compatibility flag for color output\n"
+        "  --logfile <PATH>       Compatibility flag for libtest logfile\n"
+        "  -Z <FLAG>              Compatibility flag for nightly libtest options\n"
         "  -q, --quiet            Display minimal output\n"
         "  --nocapture            Compatibility flag for uncaptured console output"
     )
@@ -612,7 +773,6 @@ def print_runner_help() -> None:
 
 def _active_test_pools(
     summary: WasmBinarySummary,
-    opts: TestRunnerOptions,
 ) -> tuple[list[DiscoveredTest], list[DiscoveredTest]]:
     """Selects which test pools apply for the binary (`wbgt_tests` and/or `unit_tests`)."""
     if summary.wbgt_tests:
@@ -622,6 +782,48 @@ def _active_test_pools(
         unit_pool = summary.unit_tests if include_unit_pool else []
         return summary.wbgt_tests, unit_pool
     return [], summary.unit_tests
+
+
+def _run_node_libtest_suite(
+    wasm_path: Path,
+    unit_pool: list[DiscoveredTest],
+    selected_unit: list[DiscoveredTest],
+    opts: TestRunnerOptions,
+) -> int:
+    node_bin = shutil.which("node")
+    if not node_bin:
+        print(
+            "Error: 'node' (Node.js) not found on PATH; required to run pure-Rust wasm32 libtest binaries.",
+            file=sys.stderr,
+        )
+        return 2
+
+    patches = _build_unit_ignore_patches(unit_pool, selected_unit)
+    proc = subprocess.run(
+        [node_bin, "-e", NODE_LIBTEST_SCRIPT, "--", str(wasm_path), json.dumps(patches)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.stdout.strip() and not opts.quiet:
+        print(proc.stdout.rstrip())
+    if proc.returncode != 0:
+        if proc.stderr.strip():
+            sys.stderr.write(proc.stderr)
+        if not opts.quiet:
+            print(
+                f"running {len(selected_unit)} unit tests in {wasm_path.name} (Node.js)\n"
+                f"test result: FAILED. 0 passed; 1 failed; {len(unit_pool) - len(selected_unit)} filtered out"
+            )
+        return 1
+
+    if not opts.quiet:
+        filtered_out = len(unit_pool) - len(selected_unit)
+        print(
+            f"running {len(selected_unit)} unit tests in {wasm_path.name} (Node.js)\n"
+            f"test result: ok. {len(selected_unit)} passed; 0 failed; {filtered_out} filtered out"
+        )
+    return 0
 
 
 def _launch_chromium_suite(out_dir: Path) -> tuple[str | None, str, list[str], list[str]]:
@@ -691,6 +893,95 @@ def _launch_chromium_suite(out_dir: Path) -> tuple[str | None, str, list[str], l
     return status, rendered_output, csp_errors, page_errors
 
 
+def _run_chromium_wbg_suite(
+    wasm_path: Path,
+    wbgt_pool: list[DiscoveredTest],
+    selected_wbgt: list[DiscoveredTest],
+    unit_pool: list[DiscoveredTest],
+    selected_unit: list[DiscoveredTest],
+    opts: TestRunnerOptions,
+) -> int:
+    wasm_bindgen_bin = shutil.which("wasm-bindgen")
+    if not wasm_bindgen_bin:
+        print(
+            "Error: 'wasm-bindgen' CLI not found on PATH. Install wasm-bindgen-cli.",
+            file=sys.stderr,
+        )
+        return 2
+
+    mimetypes.add_type("application/wasm", ".wasm")
+    mimetypes.add_type("text/javascript", ".js")
+    mimetypes.add_type("application/json", ".json")
+
+    with tempfile.TemporaryDirectory(prefix="oxidize_wasm_tests_") as tmp_dir:
+        out_dir = Path(tmp_dir)
+        proc = subprocess.run(
+            [
+                wasm_bindgen_bin,
+                str(wasm_path),
+                "--out-dir",
+                str(out_dir),
+                "--out-name",
+                "wasm_test_bin",
+                "--target",
+                "web",
+                "--no-typescript",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            sys.stderr.write(proc.stderr)
+            return proc.returncode
+
+        js_wrapper = out_dir / "wasm_test_bin.js"
+        js_text = js_wrapper.read_text(encoding="utf-8")
+        if "class WasmBindgenTestContext" not in js_text:
+            print(
+                f"Error: wasm-bindgen output for {wasm_path.name} does not define WasmBindgenTestContext.",
+                file=sys.stderr,
+            )
+            return 1
+
+        js_text = js_text.replace(
+            "wasm.__wbindgen_start();",
+            'if (typeof wasm.__wbindgen_init_externref_table === "function") { wasm.__wbindgen_init_externref_table(); }',
+        )
+        js_wrapper.write_text(js_text, encoding="utf-8")
+
+        runner_cfg = {
+            "run_wbg": bool(selected_wbgt),
+            "selected_wbgt_exports": [t.export_name for t in selected_wbgt if t.export_name],
+            "filtered_out_wbgt": len(wbgt_pool) - len(selected_wbgt),
+            "include_ignored": opts.include_ignored,
+            "run_unit": bool(selected_unit),
+            "unit_test_count": len(selected_unit),
+            "filtered_out_unit": len(unit_pool) - len(selected_unit),
+            "unit_ignore_patches": _build_unit_ignore_patches(unit_pool, selected_unit),
+            "binary_label": wasm_path.name,
+        }
+        (out_dir / "runner_config.json").write_text(json.dumps(runner_cfg), encoding="utf-8")
+        (out_dir / "index.html").write_text(INDEX_HTML, encoding="utf-8")
+        (out_dir / "runner.js").write_text(RUNNER_JS, encoding="utf-8")
+
+        status, rendered_output, csp_errors, page_errors = _launch_chromium_suite(out_dir)
+
+        if rendered_output.strip() and not opts.quiet:
+            print(rendered_output)
+
+        if csp_errors:
+            for err in csp_errors:
+                print(f"CSP violation during WASM unit tests: {err}", file=sys.stderr)
+            return 1
+        if page_errors:
+            for err in page_errors:
+                print(f"Uncaught page error during WASM unit tests: {err}", file=sys.stderr)
+            return 1
+
+        return 0 if status == "ok" else 1
+
+
 def main() -> int:
     raise_nofile_limit()
     if len(sys.argv) < 2:
@@ -717,7 +1008,7 @@ def main() -> int:
         return 0
 
     summary = inspect_wasm_binary(wasm_path)
-    wbgt_pool, unit_pool = _active_test_pools(summary, opts)
+    wbgt_pool, unit_pool = _active_test_pools(summary)
     selected_wbgt = filter_tests(wbgt_pool, opts)
     selected_unit = filter_tests(unit_pool, opts)
     all_selected = [*selected_wbgt, *selected_unit]
@@ -732,7 +1023,7 @@ def main() -> int:
             print(f"{len(all_selected)} tests, 0 benchmarks")
         return 0
 
-    if (opts.filters or opts.skips) and not all_selected:
+    if (opts.filters or opts.skips) and not all_selected and total_pool_count > 0:
         print(
             f"error: 0 tests matched filter {opts.filters!r} (skip={opts.skips!r}, exact={opts.exact}) "
             f"in {wasm_path.name} ({total_pool_count} available tests)",
@@ -740,88 +1031,32 @@ def main() -> int:
         )
         return 1
 
-    if not all_selected:
+    contract_err = validate_execution_contract(wasm_path, summary)
+    if contract_err is not None:
+        print(contract_err, file=sys.stderr)
+        return 1
+
+    if summary.wbgt_tests:
+        if not all_selected:
+            if not opts.quiet:
+                print(
+                    f"\nrunning 0 tests in {wasm_path.name}\n"
+                    f"test result: ok. 0 passed; 0 failed; {total_pool_count} filtered out\n"
+                )
+            return 0
+        return _run_chromium_wbg_suite(
+            wasm_path, wbgt_pool, selected_wbgt, unit_pool, selected_unit, opts
+        )
+
+    if not all_selected and total_pool_count > 0:
         if not opts.quiet:
-            print(f"\nrunning 0 tests in {wasm_path.name}\ntest result: ok. 0 passed; 0 failed\n")
+            print(
+                f"running 0 unit tests in {wasm_path.name} (Node.js)\n"
+                f"test result: ok. 0 passed; 0 failed; {total_pool_count} filtered out"
+            )
         return 0
 
-    mimetypes.add_type("application/wasm", ".wasm")
-    mimetypes.add_type("text/javascript", ".js")
-    mimetypes.add_type("application/json", ".json")
-
-    with tempfile.TemporaryDirectory(prefix="oxidize_wasm_tests_") as tmp_dir:
-        out_dir = Path(tmp_dir)
-        use_wbindgen = bool(selected_wbgt) or summary.has_wbindgen_imports
-
-        if use_wbindgen:
-            wasm_bindgen_bin = shutil.which("wasm-bindgen")
-            if not wasm_bindgen_bin:
-                print(
-                    "Error: 'wasm-bindgen' CLI not found on PATH. Install wasm-bindgen-cli.",
-                    file=sys.stderr,
-                )
-                return 2
-            proc = subprocess.run(
-                [
-                    wasm_bindgen_bin,
-                    str(wasm_path),
-                    "--out-dir",
-                    str(out_dir),
-                    "--out-name",
-                    "wasm_test_bin",
-                    "--target",
-                    "web",
-                    "--no-typescript",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if proc.returncode != 0:
-                sys.stderr.write(proc.stderr)
-                return proc.returncode
-
-            js_wrapper = out_dir / "wasm_test_bin.js"
-            js_text = js_wrapper.read_text(encoding="utf-8")
-            js_text = js_text.replace(
-                "wasm.__wbindgen_start();",
-                'if (typeof wasm.__wbindgen_init_externref_table === "function") { wasm.__wbindgen_init_externref_table(); }',
-            )
-            js_wrapper.write_text(js_text, encoding="utf-8")
-            mode = "wbg_and_unit"
-        else:
-            shutil.copyfile(wasm_path, out_dir / "raw_unit_test.wasm")
-            mode = "raw_unit"
-
-        runner_cfg = {
-            "mode": mode,
-            "run_wbg": bool(selected_wbgt),
-            "selected_wbgt_exports": [t.export_name for t in selected_wbgt if t.export_name],
-            "filtered_out_wbgt": len(wbgt_pool) - len(selected_wbgt),
-            "include_ignored": opts.include_ignored,
-            "run_unit": bool(selected_unit),
-            "unit_test_count": len(selected_unit),
-            "binary_label": wasm_path.name,
-        }
-        (out_dir / "runner_config.json").write_text(json.dumps(runner_cfg), encoding="utf-8")
-        (out_dir / "index.html").write_text(INDEX_HTML, encoding="utf-8")
-        (out_dir / "runner.js").write_text(RUNNER_JS, encoding="utf-8")
-
-        status, rendered_output, csp_errors, page_errors = _launch_chromium_suite(out_dir)
-
-        if rendered_output.strip() and not opts.quiet:
-            print(rendered_output)
-
-        if csp_errors:
-            for err in csp_errors:
-                print(f"CSP violation during WASM unit tests: {err}", file=sys.stderr)
-            return 1
-        if page_errors:
-            for err in page_errors:
-                print(f"Uncaught page error during WASM unit tests: {err}", file=sys.stderr)
-            return 1
-
-        return 0 if status == "ok" else 1
+    return _run_node_libtest_suite(wasm_path, unit_pool, selected_unit, opts)
 
 
 if __name__ == "__main__":

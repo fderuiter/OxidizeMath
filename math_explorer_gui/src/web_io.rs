@@ -399,7 +399,7 @@ mod tests {
     }
 
     #[cfg(target_arch = "wasm32")]
-    #[test]
+    #[wasm_bindgen_test::wasm_bindgen_test]
     fn test_spawn_save_direct_file_wasm_typecheck_and_channel_delivery() {
         let config = DirectSaveConfig {
             fallback_filename: "workspace.mws",

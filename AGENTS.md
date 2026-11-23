@@ -99,10 +99,8 @@ BASE_SHA="$(git merge-base HEAD origin/main)" HEAD_SHA="HEAD" cargo run -p unifi
 cargo run -p unified_verification --release -- verify-suite
 cargo run -p xtask -- verify-suite
 
-# Native unit/integration tests and WebAssembly target checks
+# Native unit and integration tests
 cargo test --workspace --lib --tests --all-features
-cargo check --workspace --target wasm32-unknown-unknown --all-features
-cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
 
 ### Workflow `run` Script Expression & Reusable Caller Policy
@@ -134,23 +132,21 @@ cargo run -p xtask -- test-features core-only
 
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
-In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed traceability JSON metadata and pre-compress assets), enforces the 3 MB compressed bundle budget, executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, generates `SHA256SUMS`, and uploads `wasm_web_dist` on `refs/heads/main` before `deploy-pages` stages and verifies all 28 `compiled_papers` PDFs, refreshes `SHA256SUMS`, and publishes the GitHub Pages artifact.
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` lints workspace targets and tests with `cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings`, compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed traceability JSON metadata and pre-compress assets), enforces the 3 MB compressed bundle budget, executes the hybrid `wasm32` test gate (browser `#[wasm_bindgen_test]` suites for `oxidize_core`, `egui_plot`, and `math_explorer_gui` in headless Chromium under `PRODUCTION_CSP`, plus `--lib` `libtest` suites for all 12 pure-Rust `crates/*` libraries and `math_explorer` in Node.js) and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, generates `SHA256SUMS`, and uploads `wasm_web_dist` on `refs/heads/main` before `deploy-pages` stages and verifies all 28 `compiled_papers` PDFs, refreshes `SHA256SUMS`, and publishes the GitHub Pages artifact.
 
 ```bash
-# 1. Install the WebAssembly Rust target, Trunk, wasm-bindgen-cli, compression utilities, and Playwright Chromium (Ubuntu / Debian)
+# 1. Install the WebAssembly Rust target, Node.js, Trunk, wasm-bindgen-cli, compression utilities, and Playwright Chromium (Ubuntu / Debian)
 rustup target add wasm32-unknown-unknown
 sudo apt-get update
-sudo apt-get install -y brotli
+sudo apt-get install -y nodejs brotli
 cargo binstall --no-confirm trunk wasm-bindgen-cli@0.2.130
 python3 -m pip install --user playwright
 python3 -m playwright install --with-deps chromium
 
-# 2. Type-check and lint workspace crates and tests for WebAssembly
-cargo check --workspace --target wasm32-unknown-unknown --all-features --verbose
-cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
+# 2. Lint workspace crates and tests for WebAssembly
 cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
-# 3. Run wasm32 browser unit tests, build math_explorer_gui/dist, verify the 3 MB budget, and run Playwright Chromium CSP & fault-injection smoke checks
+# 3. Run hybrid wasm32 tests (Chromium #[wasm_bindgen_test] suites for oxidize_core, egui_plot, and math_explorer_gui + Node.js libtest suites for all 12 pure-Rust crates/* libraries and math_explorer), build math_explorer_gui/dist, verify the 3 MB budget, and run Playwright Chromium CSP & fault-injection smoke checks
 cargo run -p xtask -- test-wasm
 
 # 4. Generate and verify the Pages SHA256SUMS manifest

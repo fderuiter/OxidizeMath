@@ -177,7 +177,7 @@ fn probe_playwright_chromium() -> Result<String, String> {
     run_stdout_probe(resolve_python_bin(), &["-c", script])
 }
 
-/// Probes `wasm-bindgen`, `trunk`, `brotli`, and Playwright Chromium for `workspace_root`.
+/// Probes `node`, `wasm-bindgen`, `trunk`, `brotli`, and Playwright Chromium for `workspace_root`.
 #[must_use]
 pub fn collect_browser_tool_probes(workspace_root: &Path) -> Vec<ToolProbeResult> {
     let expected_wb = fs::read_to_string(workspace_root.join("Cargo.toml"))
@@ -186,6 +186,11 @@ pub fn collect_browser_tool_probes(workspace_root: &Path) -> Vec<ToolProbeResult
         .unwrap_or_else(|| DEFAULT_EXPECTED_WASM_BINDGEN_VERSION.to_string());
 
     vec![
+        check_presence_probe(
+            "node",
+            run_stdout_probe("node", &["--version"]),
+            "sudo apt-get install -y nodejs  (macOS: brew install node; Windows: winget install OpenJS.NodeJS.LTS)",
+        ),
         check_wasm_bindgen_version(
             run_stdout_probe("wasm-bindgen", &["--version"]),
             &expected_wb,
@@ -255,9 +260,10 @@ mod tests {
             "r = importlib.util.module_from_spec(spec)\n",
             "sys.modules['r'] = r\n",
             "spec.loader.exec_module(r)\n",
-            "opts = r.parse_cargo_test_args(['--list', '--exact', '--skip', 'vfs::b', '--test-threads', '1', '-t', '2', '--no-capture', '--ignored', 'vfs::a', 'math::c'])\n",
+            "opts = r.parse_cargo_test_args(['--list', '--exact', '--skip', 'vfs::b', '--test-threads', '1', '-t', '2', '--format', 'terse', '--color', 'never', '--logfile', '/tmp/t.log', '-Z', 'unstable-options', '--no-capture', '--ignored', 'vfs::a', 'math::c'])\n",
             "assert opts.list_only and opts.exact and opts.only_ignored and opts.include_ignored\n",
-            "assert opts.test_threads == 2 and opts.skips == ['vfs::b']\n",
+            "assert opts.test_threads == 2 and opts.skips == ['vfs::b'] and opts.output_format == 'terse'\n",
+            "assert opts.color == 'never' and opts.logfile == '/tmp/t.log' and opts.unstable_flags == ['unstable-options']\n",
             "assert opts.filters == ['vfs::a', 'math::c']\n",
             "pool = [\n",
             "    r.DiscoveredTest('vfs::a', 'oxidize_core::vfs::a', '__wbgt_vfs::a', False),\n",
@@ -278,6 +284,12 @@ mod tests {
             "    assert 'mod::alpha: test' in ls.stdout\n",
             "    miss = subprocess.run([sys.executable, '-B', '-c', no_pw, sys.argv[1], str(w), 'unmatched_filter'], capture_output=True, text=True)\n",
             "    assert miss.returncode != 0\n",
+            "    missing_ctx = subprocess.run([sys.executable, '-B', '-c', no_pw, sys.argv[1], str(w)], capture_output=True, text=True)\n",
+            "    assert missing_ctx.returncode != 0\n",
+            "    bad_wbg = pathlib.Path(d) / 'badwbg-0123456789abcdef.wasm'\n",
+            "    bad_wbg.write_bytes(b'\\x00asm\\x01\\x00\\x00\\x00\\x01\\x04\\x01\\x60\\x00\\x00\\x02\\x29\\x01\\x18__wbindgen_placeholder__\\x0c__wbg_window\\x00\\x00')\n",
+            "    fc = subprocess.run([sys.executable, '-B', '-c', no_pw, sys.argv[1], str(bad_wbg)], capture_output=True, text=True)\n",
+            "    assert fc.returncode != 0 and 'failing closed' in fc.stderr\n",
             "    st, _, _, _ = r._launch_chromium_suite(pathlib.Path(d))\n",
             "    assert st is None\n",
         );

@@ -317,25 +317,12 @@ fn parse_test_wasm_args(args: &[String], caller_cwd: &Path) -> (bool, Option<Pat
 }
 
 pub fn test_wasm(args: &[String]) {
-    println!("=== Running WebAssembly Unit Tests & Headless Chromium Smoke Suite ===");
+    println!("=== Running Hybrid WebAssembly Suites (Chromium + Node.js) & Smoke Suite ===");
     let caller_cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let (skip_build, screenshot_dir) = parse_test_wasm_args(args, &caller_cwd);
     let ws_root = resolve_workspace_root();
 
-    let wasm_crates = workspace_wasm::discover_wasm_crates(&ws_root).unwrap_or_else(|err| {
-        eprintln!("Failed to discover wasm32 workspace crates: {err}");
-        exit(1);
-    });
-    let invocations = workspace_wasm::build_wasm_cargo_test_invocations(&wasm_crates);
-    for (step_idx, cargo_args) in invocations.iter().enumerate() {
-        println!(
-            "\n--- Step 1{}: WASM Workspace Crate Tests ({} crates discovered) ---",
-            (b'a' + step_idx as u8) as char,
-            wasm_crates.len()
-        );
-        let arg_refs: Vec<&str> = cargo_args.iter().map(String::as_str).collect();
-        run_cmd_in_path("cargo", &arg_refs, &ws_root);
-    }
+    crate::wasm_gate::run_hybrid_wasm_suites(&ws_root);
 
     if !skip_build {
         println!("\n--- Step 2: Build Release Web Bundle & Verify Budget ---");

@@ -225,11 +225,18 @@ fn audit_member_sources(
 
             if ctx.check_clippy_bypasses {
                 let mut clippy_visitor =
-                    lint_policy::ClippyBypassVisitor::new(file_path, ctx.max_fn_lines);
+                    lint_policy::ClippyBypassVisitor::new(file_path.clone(), ctx.max_fn_lines);
                 clippy_visitor.visit_file(ast);
                 if clippy_visitor.has_unauthorized {
                     success = false;
                 }
+            }
+
+            for fn_name in crate::wasm_coverage::find_orphaned_wasm_unit_tests_ast(&path, ast) {
+                println!(
+                    "[!] Orphaned wasm32 #[test] in {file_path} (`{fn_name}`): use #[wasm_bindgen_test] instead"
+                );
+                success = false;
             }
         }
     }

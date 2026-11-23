@@ -1,4 +1,5 @@
-//! Pure-`std` workspace root resolution and `wasm32-unknown-unknown` crate discovery.
+//! Pure-`std` workspace root resolution, `wasm32-unknown-unknown` crate discovery,
+//! and Cargo `--message-format=json` test artifact extraction.
 //!
 //! Shared between `oxidize_core::workspace` and `xtask` so `apps/xtask` remains free
 //! of external crate dependencies while dynamically discovering every WebAssembly-compatible
@@ -11,6 +12,9 @@ use std::path::{Path, PathBuf};
 pub const HOST_ONLY_WORKSPACE_PACKAGES: &[&str] =
     &["xtask", "unified_verification", "markdown_tests"];
 
+/// Workspace packages whose `wasm32-unknown-unknown` suites require `wasm-bindgen-test` in Chromium.
+pub const BROWSER_WASM_PACKAGES: &[&str] = &["oxidize_core", "egui_plot", "math_explorer_gui"];
+
 /// Target selection flag kind for testing a workspace crate on `wasm32-unknown-unknown`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WasmTestTargetKind {
@@ -18,6 +22,15 @@ pub enum WasmTestTargetKind {
     Lib,
     /// Binary target exercised via `cargo test --bins`.
     Bin,
+}
+
+/// Runtime environment used to execute a workspace crate's `wasm32-unknown-unknown` test binary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WasmExecutionRuntime {
+    /// Headless Chromium via `wasm-bindgen --target web` under `PRODUCTION_CSP`.
+    BrowserChromium,
+    /// Pure-Rust `libtest` (`exports.main(0, 0)`) instantiated directly in Node.js (`node`).
+    NodeJs,
 }
 
 /// Metadata describing a `wasm32-unknown-unknown`-compatible workspace crate.
@@ -29,6 +42,18 @@ pub struct WasmCrateSpec {
     pub package_name: String,
     /// Whether the crate exposes a library or binary target for `wasm32` testing.
     pub target_kind: WasmTestTargetKind,
+}
+
+impl WasmCrateSpec {
+    /// Returns the execution runtime (`BrowserChromium` vs `NodeJs`) for this crate.
+    #[must_use]
+    pub fn execution_runtime(&self) -> WasmExecutionRuntime {
+        if BROWSER_WASM_PACKAGES.contains(&self.package_name.as_str()) {
+            WasmExecutionRuntime::BrowserChromium
+        } else {
+            WasmExecutionRuntime::NodeJs
+        }
+    }
 }
 
 /// Walks `start` and its ancestors to find the directory whose `Cargo.toml` defines `[workspace]`.
@@ -220,10 +245,10 @@ pub fn discover_wasm_crates(workspace_root: &Path) -> Result<Vec<WasmCrateSpec>,
     Ok(specs)
 }
 
-/// Constructs Cargo CLI argument vectors (`cargo test --target wasm32-unknown-unknown ...`)
-/// covering all discovered library and binary crates.
-#[must_use]
-pub fn build_wasm_cargo_test_invocations(crates: &[WasmCrateSpec]) -> Vec<Vec<String>> {
+pub(crate) fn build_cargo_test_group_invocations(
+    crates: &[&WasmCrateSpec],
+    no_run_json: bool,
+) -> Vec<Vec<String>> {
     let mut invocations = Vec::new();
     let lib_pkgs: Vec<&str> = crates
         .iter()
@@ -241,6 +266,10 @@ pub fn build_wasm_cargo_test_invocations(crates: &[WasmCrateSpec]) -> Vec<Vec<St
             args.push(pkg.to_string());
         }
         args.push("--lib".to_string());
+        if no_run_json {
+            args.push("--no-run".to_string());
+            args.push("--message-format=json".to_string());
+        }
         invocations.push(args);
     }
 
@@ -248,14 +277,157 @@ pub fn build_wasm_cargo_test_invocations(crates: &[WasmCrateSpec]) -> Vec<Vec<St
         .iter()
         .filter(|c| c.target_kind == WasmTestTargetKind::Bin)
     {
-        invocations.push(vec![
+        let mut args = vec![
             "test".to_string(),
             "--target".to_string(),
             "wasm32-unknown-unknown".to_string(),
             "-p".to_string(),
             bin_crate.package_name.clone(),
             "--bins".to_string(),
-        ]);
+        ];
+        if no_run_json {
+            args.push("--no-run".to_string());
+            args.push("--message-format=json".to_string());
+        }
+        invocations.push(args);
     }
     invocations
+}
+
+/// Constructs Cargo `--no-run --message-format=json` argument vectors for a specific `runtime`.
+#[must_use]
+pub fn build_wasm_no_run_json_invocations(
+    crates: &[WasmCrateSpec],
+    runtime: WasmExecutionRuntime,
+) -> Vec<Vec<String>> {
+    let filtered: Vec<&WasmCrateSpec> = crates
+        .iter()
+        .filter(|c| c.execution_runtime() == runtime)
+        .collect();
+    build_cargo_test_group_invocations(&filtered, true)
+}
+
+fn decode_json_string_at(line: &str, start_quote: usize) -> Option<(String, usize)> {
+    let bytes = line.as_bytes();
+    if bytes.get(start_quote) != Some(&b'"') {
+        return None;
+    }
+    let mut out = String::new();
+    let mut chars = line[start_quote + 1..].char_indices();
+    while let Some((rel_idx, ch)) = chars.next() {
+        if ch == '"' {
+            return Some((out, start_quote + 1 + rel_idx + 1));
+        }
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+        let (_, esc) = chars.next()?;
+        match esc {
+            '"' | '\\' | '/' => out.push(esc),
+            'b' => out.push('\u{0008}'),
+            'f' => out.push('\u{000C}'),
+            'n' => out.push('\n'),
+            'r' => out.push('\r'),
+            't' => out.push('\t'),
+            'u' => {
+                let mut hex = String::with_capacity(4);
+                for _ in 0..4 {
+                    hex.push(chars.next()?.1);
+                }
+                let code = u32::from_str_radix(&hex, 16).ok()?;
+                out.push(char::from_u32(code)?);
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn extract_top_level_json_string_field(line: &str, target_key: &str) -> Option<String> {
+    let bytes = line.as_bytes();
+    let mut depth = 0usize;
+    let mut idx = 0usize;
+    while idx < bytes.len() {
+        match bytes[idx] {
+            b'{' | b'[' => {
+                depth += 1;
+                idx += 1;
+            }
+            b'}' | b']' => {
+                depth = depth.saturating_sub(1);
+                idx += 1;
+            }
+            b'"' => {
+                let (decoded, next_idx) = decode_json_string_at(line, idx)?;
+                idx = next_idx;
+                if depth == 1 && decoded == target_key {
+                    while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+                        idx += 1;
+                    }
+                    if bytes.get(idx) == Some(&b':') {
+                        idx += 1;
+                        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+                            idx += 1;
+                        }
+                        if bytes.get(idx) == Some(&b'"') {
+                            let (val, _) = decode_json_string_at(line, idx)?;
+                            return Some(val);
+                        }
+                        return None;
+                    }
+                }
+            }
+            _ => idx += 1,
+        }
+    }
+    None
+}
+
+fn line_has_test_profile_true(line: &str) -> bool {
+    let Some(prof_pos) = line.find("\"profile\"") else {
+        return false;
+    };
+    let tail = &line[prof_pos..];
+    let Some(open) = tail.find('{') else {
+        return false;
+    };
+    let Some(close) = tail[open..].find('}') else {
+        return false;
+    };
+    let profile_obj = &tail[open..=open + close];
+    let compact: String = profile_obj
+        .chars()
+        .filter(|c| !c.is_ascii_whitespace())
+        .collect();
+    compact.contains("\"test\":true")
+}
+
+/// Extracts compiled `.wasm` test executable paths from `cargo test --no-run --message-format=json` stdout.
+pub fn extract_wasm_test_executables_from_cargo_json(stdout: &str) -> Result<Vec<PathBuf>, String> {
+    let mut artifacts = Vec::new();
+    for raw_line in stdout.lines() {
+        let line = raw_line.trim();
+        if !line.starts_with('{') {
+            continue;
+        }
+        let Some(reason) = extract_top_level_json_string_field(line, "reason") else {
+            continue;
+        };
+        if reason != "compiler-artifact" || !line_has_test_profile_true(line) {
+            continue;
+        }
+        if let Some(exe) = extract_top_level_json_string_field(line, "executable")
+            && exe.ends_with(".wasm")
+        {
+            let path = PathBuf::from(exe);
+            if !artifacts.contains(&path) {
+                artifacts.push(path);
+            }
+        }
+    }
+    if artifacts.is_empty() {
+        return Err("No wasm32 test executable artifacts found in Cargo JSON output".to_string());
+    }
+    Ok(artifacts)
 }
