@@ -1295,6 +1295,7 @@ dependencies = [
  "serde",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-bindgen-test",
  "web-sys",
 ]
 
@@ -3404,6 +3405,7 @@ dependencies = [
  "rand_distr",
  "rustfft",
  "serde",
+ "serde_json",
  "statrs",
  "thiserror 2.0.21",
  "verified_engine",

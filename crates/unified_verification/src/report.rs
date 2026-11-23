@@ -21,7 +21,7 @@ pub fn get_llvm_cov_output() -> std::process::Output {
 }
 
 pub fn collect_rs_files() -> Vec<std::path::PathBuf> {
-    crate::utils::collect_rs_files_filtered(&[Path::new(".")], &["target", ".git", "egui_plot"])
+    crate::utils::collect_rs_files_filtered(&[Path::new(".")], &["target", ".git"])
 }
 
 pub fn parse_coverage(cov_json: &serde_json::Value) -> (f64, f64) {
@@ -340,16 +340,29 @@ mod tests {
         let _lock = crate::DIR_LOCK.lock().unwrap();
         let files = collect_rs_files();
         assert!(!files.is_empty());
+        let mut saw_egui_plot = false;
         for f in &files {
             assert!(f.extension().and_then(|s| s.to_str()) == Some("rs"));
             let p_str = crate::whitelist::lossy_slash_path(f);
             assert!(!p_str.contains("/target/"));
-            assert!(!p_str.contains("/egui_plot/"));
+            if p_str.contains("egui_plot/src/file_io.rs") {
+                saw_egui_plot = true;
+            }
+        }
+        if Path::new("egui_plot/src/file_io.rs").is_file() {
+            assert!(
+                saw_egui_plot,
+                "collect_rs_files must include egui_plot sources for WASM coverage"
+            );
         }
 
-        let unverified = check_unverified_modules(&["crates/pure_math".to_string()]);
-        // pure_math has theory_verification! so it should not be unverified
-        assert!(!unverified.iter().any(|u| u.contains("crates/pure_math")));
+        let unverified =
+            check_unverified_modules(&["egui_plot".to_string(), "crates/pure_math".to_string()]);
+        assert!(
+            !unverified
+                .iter()
+                .any(|u| u.contains("egui_plot") || u.contains("crates/pure_math"))
+        );
     }
 
     fn empty_file_metrics() -> FileMetrics {

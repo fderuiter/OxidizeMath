@@ -1861,3 +1861,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "export_wasm_tests.rs"]
+mod wasm_tests;

@@ -2,6 +2,7 @@
 //!
 //! This example measures the performance of the `update_frequencies` method,
 //! which is expected to be called in a tight loop.
+#![cfg_attr(not(target_arch = "wasm32"), allow(clippy::disallowed_methods))]
 
 use math_explorer::biology::evolution::HawkDovePopulation;
 use math_explorer::primitives::UnitInterval;

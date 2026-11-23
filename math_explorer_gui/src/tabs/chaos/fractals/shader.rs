@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{FractalMode, FractalViewer, COORD_MAX, COORD_MIN, ZOOM_MAX, ZOOM_MIN};
+use super::{COORD_MAX, COORD_MIN, FractalMode, FractalViewer, ZOOM_MAX, ZOOM_MIN};
 use crate::framework::{InteractiveTool, ShaderDialect};
-use math_commons::ast::{format_glsl_float, GLSL_COMPLEX_HELPERS};
+use math_commons::ast::{GLSL_COMPLEX_HELPERS, format_glsl_float};
 use math_commons::math_kernel::glsl_colormap::{
     glsl_cyclic_cosine_palette_fn, glsl_ensure_dark_canvas_contrast_fn,
 };
@@ -15,7 +15,6 @@ const FRACTAL_RESERVED_IDENTS: &[&str] = &[
     "JULIA_C",
     "MAX_ITER",
     "ZOOM",
-    "c",
     "cabs",
     "cacos",
     "carg",
@@ -44,12 +43,14 @@ const FRACTAL_RESERVED_IDENTS: &[&str] = &[
     "ensure_dark_canvas_contrast",
     "fragColor",
     "iResolution",
+    "linear_channel_to_srgb",
+    "relative_luminance_srgb",
     "render_fractal",
+    "srgb_channel_to_linear",
     "step_fractal",
     "u_mouse",
     "u_resolution",
     "u_time",
-    "z",
 ];
 
 impl FractalViewer {
@@ -67,10 +68,9 @@ impl FractalViewer {
                 .unwrap_or_else(|| "Custom fractal expression is invalid".to_string())
         };
         let expr = self.math_input.expr().ok_or_else(invalid_err)?;
-        let compiled = self.math_input.active_compiled().ok_or_else(invalid_err)?;
+        let compiled = self.math_input.compiled().ok_or_else(invalid_err)?;
         let param_names = compiled.param_names();
         let param_vals = self.math_input.param_slice();
-
         let mut allowed_vars = Vec::with_capacity(2 + param_names.len());
         allowed_vars.extend(["z", "c"]);
         let mut param_decls = String::new();
@@ -95,13 +95,13 @@ impl FractalViewer {
         if !self.has_finite_parameters() {
             return Err("Fractal parameters are non-finite or out of bounds".to_string());
         }
-        let (needs_complex_helpers, param_decls, step_expr) = self.compile_step_glsl()?;
+        let (needs_helpers, param_decls, step_glsl) = self.compile_step_glsl()?;
         let cx = format_glsl_float(self.center.re.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
         let cy = format_glsl_float(self.center.im.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
-        let zoom =
-            format_glsl_float(self.zoom.clamp(ZOOM_MIN, ZOOM_MAX)).map_err(|e| e.to_string())?;
+        let zoom = format_glsl_float(self.zoom.clamp(ZOOM_MIN, ZOOM_MAX))
+            .map_err(|e| e.to_string())?;
         let jx = format_glsl_float(self.julia_c.re.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
         let jy = format_glsl_float(self.julia_c.im.clamp(COORD_MIN, COORD_MAX))
@@ -111,7 +111,7 @@ impl FractalViewer {
             .clamp(10, math_commons::registry::MAX_ITERATIONS as u32);
         let is_julia = self.mode.uses_julia_c();
 
-        let mut out = String::with_capacity(3584);
+        let mut out = String::with_capacity(3072);
         write_dialect_header(&mut out, dialect, self.mode);
         writeln!(out, "const vec2 CENTER = vec2({cx}, {cy});").unwrap();
         writeln!(out, "const float ZOOM = {zoom};").unwrap();
@@ -119,7 +119,7 @@ impl FractalViewer {
         writeln!(out, "const bool IS_JULIA = {is_julia};").unwrap();
         writeln!(out, "const vec2 JULIA_C = vec2({jx}, {jy});").unwrap();
         writeln!(out, "const bool HIGH_CONTRAST = {};\n", self.high_contrast).unwrap();
-        if needs_complex_helpers {
+        if needs_helpers {
             out.push_str(GLSL_COMPLEX_HELPERS);
             out.push('\n');
         }
@@ -128,7 +128,7 @@ impl FractalViewer {
         out.push_str(glsl_ensure_dark_canvas_contrast_fn());
         writeln!(
             out,
-            "\nvec2 step_fractal(vec2 z, vec2 c) {{\n{param_decls}    return {step_expr};\n}}\n"
+            "\nvec2 step_fractal(vec2 z, vec2 c) {{\n{param_decls}    return {step_glsl};\n}}\n"
         )
         .unwrap();
         out.push_str(FRACTAL_KERNEL_GLSL);
