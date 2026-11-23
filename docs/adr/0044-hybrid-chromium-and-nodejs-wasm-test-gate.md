@@ -1,4 +1,4 @@
-# ADR 0043: Hybrid Headless Chromium and Node.js WebAssembly Test Gate
+# ADR 0044: Hybrid Headless Chromium and Node.js WebAssembly Test Gate
 
 ## Status
 

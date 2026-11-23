@@ -16,7 +16,7 @@ All Markdown files in the repository (outside excluded build directories such as
 ```text
 Markdown verification gates:
 - cargo run -p unified_verification --release -- check-docs
-- RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+- RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 - cargo test --doc --workspace --all-features
 - cargo run -p xtask -- check-markdown-links
 ```
@@ -83,7 +83,7 @@ cargo run -p unified_verification --release -- test-policy-audit
 
 # Verify crate documentation and workspace rustdoc builds
 cargo run -p unified_verification --release -- check-docs
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 cargo test --doc --workspace --all-features
 
 # Validate relative Markdown links, file lengths (500-line ceiling), entropy/secrets, and traceability
