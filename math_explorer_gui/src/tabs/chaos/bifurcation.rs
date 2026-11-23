@@ -252,11 +252,6 @@ impl BifurcationDiagram {
         })
         .ok()
     }
-
-    #[cfg(test)]
-    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
 }
 
 impl TheoryDescribable for BifurcationDiagram {
