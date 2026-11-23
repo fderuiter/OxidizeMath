@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for spatial evolutionary game replicator dynamics on weighted graphs.
 use approx::assert_relative_eq;
 use domain_applied::applied::game_theory::evolutionary::{
     GraphReplicatorSystem, ReplicatorDynamics,

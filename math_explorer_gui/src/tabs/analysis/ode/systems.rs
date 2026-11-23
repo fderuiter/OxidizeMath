@@ -169,7 +169,7 @@ impl CustomOdeSpec {
             params[idx] = match name.as_str() {
                 "k" => param_k,
                 "r" => param_r,
-                "cap_k" => param_cap_k,
+                "cap_k" | "K" => param_cap_k,
                 _ => bar_slice.get(idx).copied().unwrap_or(1.0),
             };
         }

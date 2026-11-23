@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for CSR Ising spin systems on signed graphs.
 use approx::assert_relative_eq;
 use domain_physics::physics::stat_mech::KB;
 use domain_physics::physics::stat_mech::graph_ising::GraphSpinSystem;

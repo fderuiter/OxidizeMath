@@ -1,4 +1,4 @@
-//! Symbolic AST bytecode payoff matrix evaluation and starter card for [`super::ReplicatorDynamicsTool`].
+//! Symbolic AST bytecode payoff matrix evaluation for [`super::ReplicatorDynamicsTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -7,38 +7,9 @@ use crate::framework::math_input::{
     MathExpressionInputBar, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS,
 };
 use math_commons::ast::{CompiledExpr, Expr};
-use std::collections::{BTreeMap, BTreeSet};
-
-pub(super) const HAWK_DOVE_FORMULAS: &[&[&str]] = &[&["(v - c) / 2", "v"], &["0", "v / 2"]];
-pub(super) const RPS_FORMULAS: &[&[&str]] =
-    &[&["0", "-s", "s"], &["s", "0", "-s"], &["-s", "s", "0"]];
-
-const PRESET_SYMBOLIC_HAWK_DOVE: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Symbolic Hawk-Dove Cost-Benefit",
-    "domain": "game_theory",
-    "timestamp": "2026-05-01T00:00:00Z"
-  },
-  "config": {
-    "payoff_matrix": [[-1.0, 2.0], [0.0, 1.0]],
-    "initial_population": [0.1, 0.9],
-    "time_horizon": 20.0,
-    "dt": 0.05,
-    "strategy_names": ["Hawk", "Dove"],
-    "symbolic_payoffs": [["(v - c) / 2", "v"], ["0", "v / 2"]],
-    "symbolic_params": {"c": 4.0, "v": 2.0}
-  }
-}"#;
+use std::collections::BTreeSet;
 
 pub(super) type SymbolicGrid = (Vec<Vec<MathExpressionInputBar>>, Vec<Vec<Expr>>);
-
-pub(super) fn default_hawk_dove_params() -> BTreeMap<String, f64> {
-    let mut map = BTreeMap::new();
-    map.insert("c".to_string(), 4.0);
-    map.insert("v".to_string(), 2.0);
-    map
-}
 
 pub(super) fn build_static_symbolic_grid(formulas: &[&[&str]]) -> SymbolicGrid {
     let mut bars = Vec::with_capacity(formulas.len());
@@ -155,25 +126,5 @@ impl ReplicatorDynamicsTool {
             }
         }
         self.recompute_spatial_trajectory();
-    }
-
-    pub(crate) fn load_preset_symbolic_hawk_dove(&mut self) {
-        self.load_preset_hawk_dove();
-        self.symbolic_mode = true;
-        self.sync_and_eval_symbolic_payoffs();
-        self.run_simulation();
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "replicator_symbolic_hawk_dove",
-        title: "Symbolic Hawk-Dove Cost-Benefit",
-        description: "A = [[(v-c)/2, v], [0, v/2]]: Symbolic evolutionary payoff matrix with live resource (v) and injury cost (c) sliders.",
-        category: "Game Theory",
-        icon: "🧬",
-        domain: "game_theory",
-        tool_name: Some("ReplicatorDynamicsTool"),
-        preset_generator: || PRESET_SYMBOLIC_HAWK_DOVE,
     }
 }

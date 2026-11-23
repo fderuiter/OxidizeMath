@@ -106,6 +106,49 @@ fn test_symbolic_payoffs_couple_with_spatial_workspace_graph_and_roundtrip() {
     restored.try_load_state(&saved).expect("try_load_state");
     assert!(restored.symbolic_mode);
     assert!(!restored.spatial.follow_workspace_graph);
-    assert_eq!(restored.spatial.trajectory.len(), tool.spatial.trajectory.len());
+    assert_eq!(
+        restored.spatial.trajectory.len(),
+        tool.spatial.trajectory.len()
+    );
     assert_eq!(restored.save_state().as_deref(), Some(saved.as_str()));
+}
+
+#[test]
+fn test_prisoners_dilemma_mean_fitness_decline_and_stag_hunt() {
+    let mut tool = ReplicatorDynamicsTool::default();
+    tool.load_preset_symbolic_hawk_dove();
+    assert!(tool.symbolic_mode);
+
+    tool.load_preset_prisoners_dilemma();
+    assert!(!tool.symbolic_mode);
+    assert_eq!(tool.symbolic_bars.len(), 2);
+    let obs = tool.observables();
+    let init_fit = obs
+        .iter()
+        .find(|(k, _)| *k == "initial_mean_fitness")
+        .unwrap()
+        .1;
+    let final_fit = obs
+        .iter()
+        .find(|(k, _)| *k == "final_mean_fitness")
+        .unwrap()
+        .1;
+    let x1_final = obs.iter().find(|(k, _)| *k == "x1_final").unwrap().1;
+    assert!(init_fit > 2.8 && final_fit < 1.05 && x1_final > 0.99);
+
+    tool.load_preset_stag_hunt();
+    let low_final = tool
+        .observables()
+        .into_iter()
+        .find(|(k, _)| *k == "x0_final")
+        .unwrap()
+        .1;
+    assert!(low_final < 0.05);
+
+    tool.load_preset_spiral_rps();
+    assert!(!tool.symbolic_mode);
+    assert_eq!(tool.symbolic_bars.len(), 3);
+    tool.symbolic_mode = true;
+    tool.sync_and_eval_symbolic_payoffs();
+    assert!(tool.symbolic_error.is_none());
 }
