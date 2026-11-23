@@ -15,7 +15,7 @@ use crate::framework::{
     BrushMode, BrushStroke, InteractionContext, SpatialBrushKit,
 };
 use eframe::egui;
-use math_explorer::physics::quantum::{construct_1d_hamiltonian_into, gaussian_wavepacket};
+use math_explorer::physics::quantum::gaussian_wavepacket;
 
 /// Default `SpatialBrushKit` configured for 1D potential barrier/well/step sculpting on `[-5, 5]`.
 #[must_use]
@@ -215,7 +215,9 @@ impl WaveRunner {
             self.x_left = xl;
             self.x_right = xr;
         }
-        construct_1d_hamiltonian_into(&self.potential, dx, 1.0, 1.0, &mut self.hamiltonian);
+        self.hamiltonian
+            .update_from_potential(&self.potential, dx, 1.0, 1.0);
+        self.propagator.invalidate();
         self.cached_dt = None;
         self.update_observables_in_place();
     }
