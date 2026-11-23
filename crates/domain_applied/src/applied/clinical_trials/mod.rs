@@ -92,6 +92,7 @@ theory_verification!(
         ALPHA = 0.05;
     },
     test = {
+        use approx::assert_relative_eq;
         // Just verify it compiles and runs.
         assert_relative_eq!(
             ALPHA,

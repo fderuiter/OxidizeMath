@@ -24,7 +24,7 @@ Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 002
 ```text
 Updated GUI inventory totals:
 - InteractiveTools: 57 (35 plot + 7 raster + 15 non-export)
-- StarterPresetMetadata cards: 61
+- StarterPresetMetadata cards: 68
 ```
 
 ## Consequences
