@@ -410,7 +410,7 @@ fn test_newly_added_four_digit_adr_rejected_while_legacy_edits_pass() {
     let base = git_in_test(&dir, &["rev-parse", "HEAD"]);
     git_in_test(&dir, &["checkout", "-b", "feature/freeze-legacy"]);
 
-    // Adding a new 4-digit ADR (even unused 0041 or unfrozen 0048) fails staged, range, and HEAD
+    // Adding a new 4-digit ADR (even unused 0041 or unfrozen 0047) fails staged, range, and HEAD
     stage_file(&dir, "docs/adr/0041-new-legacy.md", VALID_ADR_1);
     assert!(!verify_records_in_dir_opts(&dir, None, None, true));
     let bad_41 = commit_file(&dir, "docs/adr/0041-new-legacy.md", VALID_ADR_1, "add 0041");
@@ -418,7 +418,7 @@ fn test_newly_added_four_digit_adr_rejected_while_legacy_edits_pass() {
     assert!(!verify_records_in_dir(&dir, None, None));
 
     git_in_test(&dir, &["reset", "--hard", &base]);
-    stage_file(&dir, "docs/adr/0048-unfrozen.md", VALID_ADR_1);
+    stage_file(&dir, "docs/adr/0047-unfrozen.md", VALID_ADR_1);
     assert!(!verify_records_in_dir_opts(&dir, None, None, true));
 
     // Modifying an existing frozen legacy ADR remains valid

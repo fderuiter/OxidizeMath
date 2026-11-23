@@ -51,7 +51,14 @@ inventory::submit! {
         id: "PharmacokineticRegimenTool",
         display_name: "Pharmacokinetic Regimen",
         domain: "medical",
-        tags: &["pharmacokinetics", "adme", "regimen", "therapeutic-window", "dosing"],
+        tags: &[
+            "pharmacokinetics",
+            "adme",
+            "regimen",
+            "therapeutic window",
+            "dosing",
+            "bateman",
+        ],
         build: || Box::new(PharmacokineticRegimenTool::default()),
     }
 }
