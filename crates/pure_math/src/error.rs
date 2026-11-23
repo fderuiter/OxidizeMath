@@ -394,6 +394,7 @@ pub use crate::pure_math::{
         stochastic::StochasticError, transforms::TransformError,
     },
     elliptic_curves::EllipticCurveError,
+    graph_theory::graph_io::TopologyCodecError,
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };

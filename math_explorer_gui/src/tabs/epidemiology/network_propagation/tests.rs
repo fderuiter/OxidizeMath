@@ -339,3 +339,49 @@ fn test_hub_vaccination_and_bridge_cut_presets_collapse_outbreak_metrics() {
     let after_bridge = compute_network_analytics(&bridge_tool.model);
     assert!(after_bridge.effective_r0 < before_bridge.effective_r0);
 }
+
+#[test]
+fn test_contact_network_import_containment_zero_alloc_and_export() {
+    use math_explorer::pure_math::graph_theory::graph_io::TopologyFormat;
+
+    let mut tool = NetworkPropagationTool::default();
+    let dot = "graph ContactRing {\n  0 -- 1;\n  1 -- 2;\n  2 -- 3;\n  3 -- 4;\n  4 -- 0;\n  1 -- 3;\n}\n";
+    tool.import_contact_topology("ring.dot", dot)
+        .expect("DOT contact network imports cleanly");
+    assert_eq!(tool.model.num_nodes(), 5);
+    assert_eq!(tool.model.edges().len(), 6);
+    assert!(tool.has_finite_parameters());
+    assert_eq!(tool.toggle_node_vaccination(2), Ok(true));
+    assert_eq!(tool.toggle_edge_quarantine(0), Ok(true));
+
+    let compact_url_json = tool.save_state().expect("compact URL state");
+    assert!(compact_url_json.len() < 256);
+
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let _ = compute_network_analytics(&tool.model);
+        tool.model.step_with_rng(&mut tool.rng);
+    });
+    drop(_guard);
+
+    let doc = tool.export_topology_document().unwrap().unwrap();
+    assert_eq!(doc.nodes.len(), 5);
+    assert_eq!(doc.edges.len(), 6);
+    let graphml = doc.serialize(TopologyFormat::GraphMl).unwrap();
+    let csv = doc.serialize(TopologyFormat::Csv).unwrap();
+    assert!(graphml.contains("Vaccinated") && graphml.contains("quarantined"));
+
+    let mut tool_gml = NetworkPropagationTool::default();
+    tool_gml
+        .import_contact_topology("ring.graphml", &graphml)
+        .expect("GraphML contact network imports");
+    assert_eq!(tool_gml.model.num_nodes(), 5);
+
+    let mut tool_csv = NetworkPropagationTool::default();
+    tool_csv
+        .import_contact_topology("ring.csv", &csv)
+        .expect("CSV contact network imports");
+    assert_eq!(tool_csv.model.num_nodes(), 5);
+}

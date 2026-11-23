@@ -13,6 +13,8 @@ impl NetworkPropagationTool {
 
         self.render_transport_controls(ui);
         ui.separator();
+        self.render_topology_import_controls(ui);
+        ui.separator();
         self.render_network_sliders(ui);
         ui.separator();
         self.render_containment_controls(ui);
@@ -51,11 +53,12 @@ impl NetworkPropagationTool {
     }
 
     fn render_network_sliders(&mut self, ui: &mut egui::Ui) {
-        let mut num_nodes = self.model.num_nodes();
+        let mut num_nodes = self.model.num_nodes().clamp(10, 200);
         if ui
             .add(egui::Slider::new(&mut num_nodes, 10..=200).text("Nodes"))
             .changed()
         {
+            self.topology_ui.custom = None;
             let _ = self.model.set_num_nodes(num_nodes);
             self.vaccinated_nodes.clear();
             self.quarantined_edges.clear();

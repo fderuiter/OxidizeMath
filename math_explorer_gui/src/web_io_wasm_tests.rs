@@ -120,3 +120,52 @@ fn wasm_download_browser_file_binary_stl_and_ply_blobs() {
     download_browser_file("gaussian_splatting_mesh.ply", &splat_bytes)
         .expect("3DGS PLY Blob download should succeed in browser");
 }
+
+#[cfg(feature = "pure_math")]
+#[wasm_bindgen_test]
+fn wasm_topology_mime_inference_and_deferred_file_and_clipboard_exports() {
+    use crate::framework::{ExportFormat, ExportStatusSeverity, SimulationFramework};
+    use crate::tabs::graph_theory::network_metrics::NetworkMetricsTool;
+
+    assert_eq!(infer_mime_type("network.dot"), "text/vnd.graphviz");
+    assert_eq!(infer_mime_type("network.gv"), "text/vnd.graphviz");
+    assert_eq!(
+        infer_mime_type("network.graphml"),
+        "application/graphml+xml"
+    );
+    assert_eq!(infer_mime_type("network.tex"), "application/x-tex");
+
+    let mut fw = SimulationFramework::new("__wasm_topology__");
+    fw.active_tool = Some(Box::new(NetworkMetricsTool::default()));
+    let ctx = eframe::egui::Context::default();
+
+    for fmt in [
+        ExportFormat::TopologyDot,
+        ExportFormat::TopologyGraphMl,
+        ExportFormat::TopologyTikz,
+        ExportFormat::TopologySvg,
+        ExportFormat::TopologyCsv,
+    ] {
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            fw.queue_export(fmt);
+            fw.show(ctx, "wasm_topology_file");
+        });
+        assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+        assert!(fw
+            .export_queue
+            .last_exported_content
+            .as_deref()
+            .is_some_and(|s| !s.is_empty()));
+    }
+
+    let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+        fw.queue_topology_clipboard_export(ExportFormat::TopologyTikz);
+        fw.show(ctx, "wasm_topology_clipboard");
+    });
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    assert!(fw
+        .export_queue
+        .last_clipboard_content
+        .as_deref()
+        .is_some_and(|s| s.contains("\\begin{tikzpicture}")));
+}

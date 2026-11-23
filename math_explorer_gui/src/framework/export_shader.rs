@@ -91,9 +91,14 @@ pub(crate) fn compile_complex_bar_glsl(
 }
 
 impl ExportFormat {
-    const fn clipboard_item_noun(self) -> &'static str {
+    pub(super) const fn clipboard_item_noun(self) -> &'static str {
         match self {
             Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
+            Self::TopologyDot
+            | Self::TopologyGraphMl
+            | Self::TopologyTikz
+            | Self::TopologySvg
+            | Self::TopologyCsv => "topology",
             _ => "dataset",
         }
     }

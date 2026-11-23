@@ -26,8 +26,10 @@ impl ShaderDialect {
 
 const DEFAULT_SHADER_DISABLED_REASON: &str =
     "GLSL shader export is unavailable: this tool does not expose a closed-form analytical 2D fragment field.";
+const DEFAULT_TOPOLOGY_DISABLED_REASON: &str =
+    "Topology export is unavailable: this tool does not expose a discrete graph, network, or state-transition diagram.";
 
-/// Declares dataset, figure, 3D mesh/splat, and analytical GLSL shader export capabilities for an [`super::InteractiveTool`].
+/// Declares dataset, figure, 3D mesh/splat, analytical GLSL shader, and graph topology export capabilities for an [`super::InteractiveTool`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExportCapabilities {
     /// Whether tabular dataset exports (`CSV`, `JSON`) are supported.
@@ -42,6 +44,8 @@ pub struct ExportCapabilities {
     pub obj: bool,
     /// Whether standalone GLSL fragment shader exports (`WebGL2`, `Shadertoy`) are supported.
     pub shader: bool,
+    /// Whether discrete graph topology exports (`.dot`, `.graphml`, `TikZ`, `.svg`, `.csv`) are supported.
+    pub topology: bool,
     /// Explanatory hover text shown when `CSV` / `JSON` buttons are disabled.
     pub dataset_disabled_reason: &'static str,
     /// Explanatory hover text shown when `PNG` / `SVG` / `GIF` buttons are disabled.
@@ -54,6 +58,8 @@ pub struct ExportCapabilities {
     pub obj_disabled_reason: &'static str,
     /// Explanatory reason surfaced when GLSL shader export is unavailable.
     pub shader_disabled_reason: &'static str,
+    /// Explanatory reason surfaced when graph topology export is unavailable.
+    pub topology_disabled_reason: &'static str,
 }
 
 impl Default for ExportCapabilities {
@@ -80,12 +86,14 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            topology: false,
             dataset_disabled_reason: "",
             figure_disabled_reason: "",
             stl_disabled_reason: DEFAULT_STL_DISABLED,
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            topology_disabled_reason: DEFAULT_TOPOLOGY_DISABLED_REASON,
         }
     }
 
@@ -99,12 +107,14 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            topology: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool renders a 2D raster field rather than tabular (X, Y) series.",
             figure_disabled_reason: "",
             stl_disabled_reason: DEFAULT_STL_DISABLED,
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            topology_disabled_reason: DEFAULT_TOPOLOGY_DISABLED_REASON,
         }
     }
 
@@ -118,13 +128,36 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            topology: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool does not produce tabular plot series.",
             figure_disabled_reason: "Figure export is unavailable: this tool does not render an offscreen plot or raster field.",
             stl_disabled_reason: DEFAULT_STL_DISABLED,
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            topology_disabled_reason: DEFAULT_TOPOLOGY_DISABLED_REASON,
         }
+    }
+
+    /// Capability profile for network, graph, and circuit workbenches that export discrete topologies rather than 1D `(X, Y)` plot series.
+    #[must_use]
+    pub const fn topology_only() -> Self {
+        let mut caps = Self::none();
+        caps.topology = true;
+        caps.topology_disabled_reason = "";
+        caps.dataset_disabled_reason =
+            "Plot CSV and JSON series are unavailable: use Topology CSV, DOT, or GraphML to export this network.";
+        caps.figure_disabled_reason =
+            "Plot PNG figure export is unavailable: use Topology SVG or LaTeX TikZ to export this network diagram.";
+        caps
+    }
+
+    /// Enables `.dot`, `.graphml`, `TikZ`, `.svg`, and `.csv` topology exports alongside existing capabilities.
+    #[must_use]
+    pub const fn with_topology(mut self) -> Self {
+        self.topology = true;
+        self.topology_disabled_reason = "";
+        self
     }
 
     /// Enables watertight `.stl`, `.ply`, and `.obj` 3D solid mesh exports alongside existing capabilities.

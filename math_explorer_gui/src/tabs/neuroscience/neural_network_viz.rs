@@ -5,6 +5,8 @@ use egui::Color32;
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 use std::f32::consts::TAU;
 
+mod topology_export;
+
 pub struct NeuralNetworkVizTool {
     neurons: Vec<HodgkinHuxleyNeuron>,
     positions: Vec<[f32; 2]>,
@@ -164,8 +166,7 @@ impl NeuralNetworkVizTool {
                     } else {
                         palette.error
                     };
-                    let color =
-                        Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
+                    let color = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
                     painter.line_segment([p2, p1], (1.0 + weight.abs() as f32, color));
                 }
             }
@@ -176,10 +177,8 @@ impl NeuralNetworkVizTool {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Network Visualization");
 
-            let (response, painter) = ui.allocate_painter(
-                ui.available_size(),
-                egui::Sense::focusable_noninteractive(),
-            );
+            let (response, painter) =
+                ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
             let label = "Neural Network Visualization: Showing interconnected neurons";
             let _ = response.clone().accessible_hover_text(label);
             let summary = format!("{} interconnected neurons", self.neurons.len());
@@ -242,7 +241,15 @@ impl InteractiveTool for NeuralNetworkVizTool {
         "Neural Network Viz"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::topology_only()
+    }
+    #[cfg(feature = "pure_math")]
+    fn export_topology_document(
+        &self,
+    ) -> Option<
+        Result<math_explorer::pure_math::graph_theory::graph_io::GraphTopologyDocument, String>,
+    > {
+        Some(Ok(self.build_neural_topology()))
     }
     fn domain(&self) -> &'static str {
         "neuroscience"

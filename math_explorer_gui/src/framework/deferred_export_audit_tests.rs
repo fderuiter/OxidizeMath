@@ -106,60 +106,73 @@ fn verify_shader_capability(
     true
 }
 
-#[test]
-fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
-    let mut plot_tool_count = 0usize;
-    let mut raster_tool_count = 0usize;
-    let mut unsupported_tool_count = 0usize;
-    let mut solid_3d_count = 0usize;
-    let mut splat_3d_count = 0usize;
-    let mut shader_tool_count = 0usize;
-    let mut non_shader_tool_count = 0usize;
+#[derive(Default)]
+struct AuditCounts {
+    plot: usize,
+    raster: usize,
+    unsupported: usize,
+    solid_3d: usize,
+    splat_3d: usize,
+    shader: usize,
+    non_shader: usize,
+    topology: usize,
+    non_topology: usize,
+}
 
-    for meta in inventory::iter::<crate::framework::ToolMetadata> {
-        let tool = (meta.build)();
+impl AuditCounts {
+    fn record_tool(&mut self, meta_id: &str, tool: Box<dyn InteractiveTool>) {
         let caps = tool.export_capabilities();
         if caps.stl && caps.ply && caps.obj {
-            solid_3d_count += 1;
+            self.solid_3d += 1;
         } else if caps.ply {
-            splat_3d_count += 1;
+            self.splat_3d += 1;
         }
-        if verify_shader_capability(meta.id, tool.as_ref(), caps) {
-            shader_tool_count += 1;
+        if verify_shader_capability(meta_id, tool.as_ref(), caps) {
+            self.shader += 1;
         } else {
-            non_shader_tool_count += 1;
+            self.non_shader += 1;
         }
-
+        if verify_topology_capability(meta_id, tool.as_ref(), caps) {
+            self.topology += 1;
+        } else {
+            self.non_topology += 1;
+        }
         if !caps.figure {
-            unsupported_tool_count += 1;
-            assert!(
-                !caps.dataset,
-                "{} should disable dataset export when figure is unsupported",
-                meta.id
-            );
+            if !caps.topology {
+                self.unsupported += 1;
+            }
+            assert!(!caps.dataset, "{meta_id} must disable dataset export");
             assert!(!caps.dataset_disabled_reason.is_empty());
             assert!(!caps.figure_disabled_reason.is_empty());
-            continue;
+            return;
         }
-
         if caps.dataset {
-            plot_tool_count += 1;
+            self.plot += 1;
         } else {
-            raster_tool_count += 1;
+            self.raster += 1;
         }
-        verify_single_figure_tool(meta.id, tool);
+        verify_single_figure_tool(meta_id, tool);
     }
+}
 
-    assert_eq!(plot_tool_count, 52, "Expected 52 Plot dataset+figure tools");
-    assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
-    assert_eq!(unsupported_tool_count, 16, "Expected 16 non-figure tools");
-    assert_eq!(solid_3d_count, 5, "Expected 5 solid 3D geometric tools");
-    assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
+#[test]
+fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
+    let mut counts = AuditCounts::default();
+    for meta in inventory::iter::<crate::framework::ToolMetadata> {
+        counts.record_tool(meta.id, (meta.build)());
+    }
+    assert_eq!(counts.plot, 52, "Expected 52 Plot dataset+figure tools");
+    assert_eq!(counts.raster, 7, "Expected 7 raster figure tools");
     assert_eq!(
-        shader_tool_count, 3,
-        "Expected 3 analytical GLSL shader tools"
+        counts.unsupported, 11,
+        "Expected 11 non-figure, non-topology tools"
     );
-    assert_eq!(non_shader_tool_count, 72, "Expected 72 non-shader tools");
+    assert_eq!(counts.topology, 7, "Expected 7 graph topology tools");
+    assert_eq!(counts.non_topology, 68, "Expected 68 non-topology tools");
+    assert_eq!(counts.solid_3d, 5, "Expected 5 solid 3D geometric tools");
+    assert_eq!(counts.splat_3d, 1, "Expected 1 3DGS splat PLY tool");
+    assert_eq!(counts.shader, 3, "Expected 3 analytical GLSL shader tools");
+    assert_eq!(counts.non_shader, 72, "Expected 72 non-shader tools");
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
@@ -268,4 +281,105 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         .as_deref()
         .expect("3DGS PLY bytes recorded");
     assert!(splat_ply.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
+}
+
+fn verify_topology_capability(
+    meta_id: &str,
+    tool: &dyn InteractiveTool,
+    caps: ExportCapabilities,
+) -> bool {
+    if !caps.topology {
+        assert!(
+            !caps.topology_disabled_reason.is_empty(),
+            "{meta_id} disables topology export without an explanatory reason"
+        );
+        return false;
+    }
+    assert!(
+        caps.topology_disabled_reason.is_empty(),
+        "{meta_id} advertises topology export but has non-empty disabled reason"
+    );
+    let doc = tool
+        .export_topology_document()
+        .unwrap_or_else(|| panic!("{meta_id} must implement export_topology_document"))
+        .unwrap_or_else(|e| panic!("{meta_id} topology generation failed: {e}"));
+    assert!(!doc.name.is_empty(), "{meta_id} emitted unnamed topology");
+    true
+}
+
+fn verify_single_topology_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
+    let mut fw = SimulationFramework::new("__audit_topology__");
+    fw.active_tool = Some(tool);
+    for (fmt, marker) in [
+        (ExportFormat::TopologyDot, "graph "),
+        (ExportFormat::TopologyGraphMl, "<graphml"),
+        (ExportFormat::TopologyTikz, "\\begin{tikzpicture}"),
+        (ExportFormat::TopologySvg, "<svg"),
+        (ExportFormat::TopologyCsv, "source,target,weight"),
+    ] {
+        clear_test_announcements();
+        run_deferred_export_frame(&mut fw, fmt, false);
+        assert_eq!(
+            fw.export_status_severity,
+            ExportStatusSeverity::Success,
+            "{meta_id} failed {fmt:?}: {:?}",
+            fw.export_status_message
+        );
+        let text = fw
+            .export_queue
+            .last_exported_content
+            .as_deref()
+            .unwrap_or_else(|| panic!("{meta_id} missing content for {fmt:?}"));
+        assert!(
+            text.contains(marker),
+            "{meta_id} {fmt:?} missing {marker:?}: {text}"
+        );
+        assert!(all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg.contains("saved successfully") && prio == "polite"));
+    }
+
+    let ctx = egui::Context::default();
+    clear_test_announcements();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        fw.queue_topology_clipboard_export(ExportFormat::TopologyDot);
+        fw.show(ctx, "audit_topology_clip");
+    });
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    let clip = fw
+        .export_queue
+        .last_clipboard_content
+        .as_deref()
+        .expect("clipboard topology recorded");
+    assert!(clip.contains("graph "));
+}
+
+#[test]
+fn test_all_seven_topology_tools_deferred_exports_and_clipboard() {
+    let topology_ids = [
+        "GraphEditorTool",
+        "AlgorithmVisualizerTool",
+        "NetworkMetricsTool",
+        "NetworkPropagationTool",
+        "NeuralNetworkVizTool",
+        "FractranMachineTool",
+        "BraessNetworkParadoxTool",
+    ];
+    for id in topology_ids {
+        let meta = inventory::iter::<crate::framework::ToolMetadata>
+            .into_iter()
+            .find(|m| m.id == id)
+            .unwrap_or_else(|| panic!("Missing registered topology tool {id}"));
+        verify_single_topology_tool_exports(id, (meta.build)());
+    }
+
+    let mut editor = crate::tabs::graph_theory::graph_editor::GraphEditorTool::default();
+    editor
+        .try_load_state(
+            r#"{"node_positions":{"0":[120.0,140.0],"1":[240.0,80.0],"2":[240.0,200.0],"3":[360.0,140.0]},"edges":[[0,1,1.0],[1,3,1.0],[0,2,1.0],[2,3,1.0],[1,2,0.0]],"next_node_id":4,"congestion":{"enabled":true,"source_node":0,"sink_node":3,"total_demand":1.0,"shortcut_enabled":true}}"#,
+        )
+        .expect("valid Braess-enabled GraphEditorTool state");
+    let caps = editor.export_capabilities();
+    assert!(caps.dataset && caps.figure && caps.topology);
+    verify_single_topology_tool_exports("GraphEditorTool(Braess)", Box::new(editor));
 }

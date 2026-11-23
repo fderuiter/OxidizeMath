@@ -4,10 +4,7 @@ use crate::accessibility::AccessibleHoverText;
 use crate::framework::{InteractionContext, InteractiveTool};
 use eframe::egui;
 use eframe::egui::Pos2;
-use math_explorer::pure_math::graph_theory::{
-    graph::Graph,
-    layout::{circular_layout, force_directed_layout, grid_layout},
-};
+use math_explorer::pure_math::graph_theory::graph::Graph;
 use petgraph::graph::NodeIndex;
 use std::collections::{BTreeMap, HashMap};
 
@@ -15,6 +12,7 @@ pub mod braess;
 mod braess_host;
 mod keyboard;
 mod snapshot;
+mod topology_io;
 pub use braess::{AffineLatency, BraessCongestionConfig, BraessCongestionLab};
 #[allow(unused_imports)]
 pub use keyboard::{TRANSLATE_STEP_NORMAL, TRANSLATE_STEP_SHIFT};
@@ -62,10 +60,36 @@ impl InteractiveTool for GraphEditorTool {
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         if self.braess.config.enabled {
-            crate::framework::ExportCapabilities::plot()
+            crate::framework::ExportCapabilities::plot().with_topology()
         } else {
-            crate::framework::ExportCapabilities::none()
+            crate::framework::ExportCapabilities::topology_only()
         }
+    }
+
+    fn export_topology_document(
+        &self,
+    ) -> Option<
+        Result<math_explorer::pure_math::graph_theory::graph_io::GraphTopologyDocument, String>,
+    > {
+        Some(self.build_topology_document())
+    }
+
+    fn apply_topology_document(
+        &mut self,
+        doc: &math_explorer::pure_math::graph_theory::graph_io::GraphTopologyDocument,
+    ) -> Result<(), String> {
+        self.load_topology_document(doc)
+    }
+
+    fn reset_default_topology(&mut self) {
+        self.graph = Graph::new();
+        self.node_indices.clear();
+        self.node_positions.clear();
+        self.edges.clear();
+        self.braess.edge_latencies.clear();
+        self.selected_node = None;
+        self.next_node_id = 0;
+        self.bump_revision();
     }
 
     fn state_revision(&self) -> u64 {
@@ -113,9 +137,7 @@ impl InteractiveTool for GraphEditorTool {
         ui.separator();
         self.show_mode_instructions(ui);
         ui.separator();
-        self.show_clear_button(ui);
-        ui.separator();
-        self.show_layout_toolbar(ui);
+        self.show_clear_and_layout_controls(ui);
         ui.separator();
         ui.label(format!("Nodes: {}", self.node_positions.len()));
         ui.label(format!("Edges: {}", self.edges.len()));
@@ -382,64 +404,6 @@ impl GraphEditorTool {
         if !bridge.active {
             self.consume_toolbar_undo_redo(ui, m);
         }
-    }
-
-    fn show_clear_button(&mut self, ui: &mut egui::Ui) {
-        if ui
-            .button("🔄 Clear Graph")
-            .accessible_hover_text("Remove all nodes and edges and start with a fresh graph")
-            .clicked()
-            && (!self.node_positions.is_empty() || !self.edges.is_empty())
-        {
-            self.push_undo_snapshot();
-            self.graph = Graph::new();
-            self.node_indices.clear();
-            self.node_positions.clear();
-            self.edges.clear();
-            self.braess.edge_latencies.clear();
-            self.selected_node = None;
-            self.next_node_id = 0;
-            if self.braess.config.enabled {
-                self.recompute_braess();
-            }
-        }
-    }
-
-    fn show_layout_toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.label("Auto Layout:");
-        ui.horizontal(|ui| {
-            let bounds = (100.0, 100.0, 700.0, 500.0);
-            if ui
-                .button("⭕ Circular")
-                .accessible_hover_text("Arrange nodes in a circle")
-                .clicked()
-                && !self.node_positions.is_empty()
-            {
-                self.push_undo_snapshot();
-                let layout = circular_layout(&self.graph, bounds);
-                self.apply_layout(&layout);
-            }
-            if ui
-                .button("▦ Grid")
-                .accessible_hover_text("Arrange nodes in a grid layout")
-                .clicked()
-                && !self.node_positions.is_empty()
-            {
-                self.push_undo_snapshot();
-                let layout = grid_layout(&self.graph, bounds);
-                self.apply_layout(&layout);
-            }
-            if ui
-                .button("🧲 Force-Directed")
-                .accessible_hover_text("Arrange nodes using force-directed physics")
-                .clicked()
-                && !self.node_positions.is_empty()
-            {
-                self.push_undo_snapshot();
-                let layout = force_directed_layout(&self.graph, bounds, 100);
-                self.apply_layout(&layout);
-            }
-        });
     }
 
     fn apply_layout(&mut self, layout: &HashMap<NodeIndex, (f32, f32)>) {

@@ -9,6 +9,7 @@ use crate::pure_math::{
         stochastic::StochasticError, transforms::TransformError,
     },
     elliptic_curves::EllipticCurveError,
+    graph_theory::graph_io::TopologyCodecError,
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };
@@ -224,5 +225,17 @@ impl Diagnostic for TransformError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("TransformError", self.to_string())
+    }
+}
+
+impl Diagnostic for TopologyCodecError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("TopologyCodecError", self.to_string())
     }
 }

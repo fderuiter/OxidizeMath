@@ -1,7 +1,8 @@
 use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
     Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    OptimizationError, OuError, StochasticError, TdaError, TensorError, TopologyCodecError,
+    TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -68,6 +69,9 @@ pub enum PureMathError {
     /// Spectral transform error.
     #[error("{0}")]
     Transform(#[from] TransformError),
+    /// Graph topology codec error.
+    #[error("{0}")]
+    TopologyCodec(#[from] TopologyCodecError),
     /// Foundational mathematical kernel error.
     #[error("{0}")]
     Math(#[from] MathError),
@@ -133,6 +137,7 @@ impl PureMathError {
             Self::Stochastic(err) => err,
             Self::Tensor(err) => err,
             Self::Transform(err) => err,
+            Self::TopologyCodec(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
         }

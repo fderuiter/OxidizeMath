@@ -4,6 +4,7 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod braess;
+mod braess_topology;
 mod braess_ui;
 pub mod parrondo;
 mod parrondo_ui;

@@ -48,6 +48,7 @@ impl Error {
             Self::Tensor(err) => Some(err),
             Self::Transform(err) => Some(err),
             Self::Zip(err) => Some(err),
+            Self::TopologyCodec(err) => Some(err),
             _ => None,
         }
     }

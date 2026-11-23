@@ -1,6 +1,7 @@
 use super::{
     PickerOutcome, download_browser_file, drain_import_status, drain_imported_datasets,
-    open_browser_file_picker, request_browser_repaint, trigger_import_csv_for_plot,
+    infer_mime_type, open_browser_file_picker, request_browser_repaint,
+    trigger_import_csv_for_plot,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -199,4 +200,25 @@ async fn wasm_file_picker_cancel_and_plot_csv_import_queue() {
     let (status_msg, is_err) = drain_import_status(plot_id).expect("import status must be queued");
     assert!(!is_err);
     assert!(status_msg.contains("signal.csv"));
+}
+
+#[wasm_bindgen_test]
+fn wasm_topology_mime_inference_and_browser_download() {
+    assert_eq!(infer_mime_type("graph.dot"), "text/vnd.graphviz");
+    assert_eq!(infer_mime_type("network.gv"), "text/vnd.graphviz");
+    assert_eq!(
+        infer_mime_type("epidemic.graphml"),
+        "application/graphml+xml"
+    );
+    assert_eq!(infer_mime_type("minsky_diagram.tex"), "application/x-tex");
+
+    download_browser_file("topology.dot", b"graph G {\n  \"0\" -- \"1\";\n}\n")
+        .expect("DOT browser download should succeed");
+    download_browser_file(
+        "topology.graphml",
+        b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<graphml/>\n",
+    )
+    .expect("GraphML browser download should succeed");
+    download_browser_file("topology.tex", b"\\documentclass{standalone}\n")
+        .expect("TikZ browser download should succeed");
 }

@@ -2,6 +2,7 @@
 pub mod dijkstra;
 #[allow(missing_docs)]
 pub mod graph;
+pub mod graph_io;
 #[allow(missing_docs)]
 pub mod layout;
 #[allow(missing_docs)]

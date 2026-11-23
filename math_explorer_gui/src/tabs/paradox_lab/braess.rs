@@ -396,7 +396,15 @@ impl InteractiveTool for BraessNetworkParadoxTool {
         true
     }
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_topology()
+    }
+    #[cfg(feature = "pure_math")]
+    fn export_topology_document(
+        &self,
+    ) -> Option<
+        Result<math_explorer::pure_math::graph_theory::graph_io::GraphTopologyDocument, String>,
+    > {
+        Some(Ok(self.build_braess_topology()))
     }
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         if self.state.continuum_mfg_mode {

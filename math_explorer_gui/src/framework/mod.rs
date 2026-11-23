@@ -21,6 +21,7 @@ mod export_queue_tests;
 pub(crate) mod export_shader;
 #[cfg(test)]
 mod export_shader_tests;
+pub(crate) mod export_topology;
 pub mod export_types;
 mod export_ui;
 #[cfg(test)]
@@ -335,6 +336,32 @@ pub trait InteractiveTool {
             self.name()
         ))
     }
+
+    /// Optional cold-path hook to emit a discrete [`math_explorer::pure_math::graph_theory::graph_io::GraphTopologyDocument`].
+    #[cfg(feature = "pure_math")]
+    fn export_topology_document(
+        &self,
+    ) -> Option<
+        Result<math_explorer::pure_math::graph_theory::graph_io::GraphTopologyDocument, String>,
+    > {
+        None
+    }
+
+    /// Optional cold-path hook to ingest an imported or synchronized [`math_explorer::pure_math::graph_theory::graph_io::GraphTopologyDocument`].
+    #[cfg(feature = "pure_math")]
+    fn apply_topology_document(
+        &mut self,
+        _doc: &math_explorer::pure_math::graph_theory::graph_io::GraphTopologyDocument,
+    ) -> Result<(), String> {
+        Err(format!(
+            "Topology import is not supported for {}",
+            self.name()
+        ))
+    }
+
+    /// Optional hook to restore a tool's built-in sample topology when a shared graph is cleared.
+    #[cfg(feature = "pure_math")]
+    fn reset_default_topology(&mut self) {}
 
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}

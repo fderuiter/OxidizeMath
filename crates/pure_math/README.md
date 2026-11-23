@@ -17,7 +17,7 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 - **`analysis`**: Differential equation solvers (`OdeSystem`, explicit Runge-Kutta and zero-allocation symplectic `StormerVerlet`, `Yoshida4`, and `GaussLegendre4` steppers), 1D and zero-allocation 2D partial differential equation solvers (`pde::wave_2d::Wave2DSolver` for hyperbolic wave tanks, Kirchhoff-Love biharmonic Chladni plates, Chladni sand drift, Marching-Squares nodal contours, and pre-planned 2D FFT spectra), numerical integration, and calculus algorithms.
 - **`differential_geometry`**: Manifolds, metric tensors, and Riemannian curvature.
 - **`elliptic_curves`**: Zero-allocation short-Weierstrass curve group arithmetic ($P + Q$, $\[k\]P$, cyclic orbits) over $\mathbb{R}$ and prime fields $\mathbb{F}_p$, Frobenius traces $a_p$, Hasse-Weil verification, Breuer modular polynomial valuation bounds, and bridges to binary quadratic forms (`BQF`), Hurwitz-Kronecker class numbers, and modular $q$-series (`QSeries<i64>`).
-- **`graph_theory`**: Network graph structures, centrality metrics, and traversal algorithms.
+- **`graph_theory`**: Network graph structures (`Graph`), centrality and parameterized complexity metrics (`degeneracy`, 2-approximate `vertex_cover`, `treewidth`), traversal algorithms, and deterministic multi-format topology interchange (`graph_io::GraphTopologyDocument` supporting `.dot`, `.graphml`, standalone LaTeX `TikZ` `.tex`, vector `.svg`, and canonical `.csv`/`.tsv` roundtrips).
 - **`statistics`**: Stochastic processes (Markov chains, Ornstein-Uhlenbeck), ranking systems (Glicko-2), and Kelly criterion decision models.
 - **`special_functions`**: Classical mathematical functions (Bessel functions, Legendre polynomials).
 

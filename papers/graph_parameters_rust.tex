@@ -43,10 +43,11 @@ The module is organized as follows:
     \item \texttt{parameters/degree.rs}: Implements degree-related parameters.
     \item \texttt{parameters/modulator.rs}: Implements modulator-based parameters.
     \item \texttt{parameters/treewidth.rs}: Implements treewidth.
+    \item \texttt{graph\_io/}: Implements deterministic topology interchange via \texttt{GraphTopologyDocument}.
 \end{itemize}
 
-\subsection{Data Structures}
-We use the \texttt{petgraph} crate to provide the underlying graph data structures. Our \texttt{Graph} struct is a wrapper around \texttt{petgraph::Graph}, configured for undirected graphs.
+\subsection{Data Structures and Topology Interchange}
+We use the \texttt{petgraph} crate to provide the underlying graph data structures. Our \texttt{Graph} struct is a wrapper around \texttt{petgraph::Graph}, configured for undirected graphs. To support reproducible empirical evaluation across external solvers and publication pipelines, \texttt{GraphTopologyDocument} provides bounded, zero-dependency parsers and deterministic serializers for Graphviz \texttt{.dot}, Gephi/Cytoscape \texttt{.graphml}, canonical \texttt{.csv}/\texttt{.tsv} edge-and-node tables, vector \texttt{.svg}, and standalone compilable \LaTeX{} \texttt{TikZ} figures, preserving computed \texttt{degeneracy} and 2-approximate \texttt{vertex\_cover} annotations across roundtrips.
 
 \subsection{Algorithm Implementation}
 \paragraph{Degeneracy} We implemented a linear-time algorithm to compute the degeneracy of a graph. The algorithm iteratively removes the vertex with the smallest degree and updates the degrees of its neighbors. The degeneracy is the maximum degree of a vertex at the time of its removal.

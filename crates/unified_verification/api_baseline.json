@@ -7857,6 +7857,9 @@
       "signature": "pub use crate :: pure_math :: elliptic_curves :: EllipticCurveError"
     },
     {
+      "signature": "pub use crate :: pure_math :: graph_theory :: graph_io :: TopologyCodecError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: number_theory :: ambs :: AmbsError"
     },
     {
@@ -10079,6 +10082,150 @@
     },
     {
       "signature": "pub struct Graph < N , E >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/graph_io/csv_io.rs": [
+    {
+      "signature": "pub fn parse_csv_topology (_ : & str) -> Result < GraphTopologyDocument , TopologyCodecError >"
+    },
+    {
+      "signature": "pub fn to_csv_topology (_ : & GraphTopologyDocument) -> String"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/graph_io/dot.rs": [
+    {
+      "signature": "pub fn parse_dot_topology (_ : & str) -> Result < GraphTopologyDocument , TopologyCodecError >"
+    },
+    {
+      "signature": "pub fn to_dot_topology (_ : & GraphTopologyDocument) -> String"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/graph_io/graphml.rs": [
+    {
+      "signature": "pub fn parse_graphml_topology (_ : & str) -> Result < GraphTopologyDocument , TopologyCodecError >"
+    },
+    {
+      "signature": "pub fn to_graphml_topology (_ : & GraphTopologyDocument) -> String"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/graph_io/mod.rs": [
+    {
+      "signature": "impl GraphTopologyDocument { pub fn ensure_positions (& mut self , _ : LayoutBounds) }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn new (_ : impl Into < String > , _ : bool) -> Self }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn parse_with_filename (_ : & str , _ : & str) -> Result < Self , TopologyCodecError > }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn serialize (& self , _ : TopologyFormat) -> Result < String , TopologyCodecError > }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn to_undirected_petgraph (& self ,) -> Result < (Graph < String , f64 > , Vec < NodeIndex >) , TopologyCodecError > }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn validate (& self) -> Result < () , TopologyCodecError > }"
+    },
+    {
+      "signature": "impl TopologyEdge { pub fn new (_ : impl Into < String > , _ : impl Into < String > , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TopologyEdge { pub fn with_attribute (self , _ : impl Into < String > , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyEdge { pub fn with_color (self , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyEdge { pub fn with_label (self , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyEdge { pub fn with_style (self , _ : TopologyEdgeStyle) -> Self }"
+    },
+    {
+      "signature": "impl TopologyNode { pub fn new (_ : impl Into < String > , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyNode { pub fn with_attribute (self , _ : impl Into < String > , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyNode { pub fn with_color (self , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyNode { pub fn with_position (self , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TopologyNode { pub fn with_shape (self , _ : TopologyNodeShape) -> Self }"
+    },
+    {
+      "signature": "pub const DEFAULT_TOPOLOGY_LAYOUT_BOUNDS : LayoutBounds"
+    },
+    {
+      "signature": "pub const MAX_TOPOLOGY_EDGES : usize"
+    },
+    {
+      "signature": "pub const MAX_TOPOLOGY_IMPORT_BYTES : usize"
+    },
+    {
+      "signature": "pub const MAX_TOPOLOGY_NODES : usize"
+    },
+    {
+      "signature": "pub enum TopologyCodecError"
+    },
+    {
+      "signature": "pub enum TopologyEdgeStyle"
+    },
+    {
+      "signature": "pub enum TopologyFormat"
+    },
+    {
+      "signature": "pub enum TopologyNodeShape"
+    },
+    {
+      "signature": "pub fn strip_utf8_bom_str (_ : & str) -> & str"
+    },
+    {
+      "signature": "pub struct GraphTopologyDocument"
+    },
+    {
+      "signature": "pub struct TopologyEdge"
+    },
+    {
+      "signature": "pub struct TopologyNode"
+    },
+    {
+      "signature": "pub use csv_io :: parse_csv_topology"
+    },
+    {
+      "signature": "pub use csv_io :: to_csv_topology"
+    },
+    {
+      "signature": "pub use dot :: parse_dot_topology"
+    },
+    {
+      "signature": "pub use dot :: to_dot_topology"
+    },
+    {
+      "signature": "pub use graphml :: parse_graphml_topology"
+    },
+    {
+      "signature": "pub use graphml :: to_graphml_topology"
+    },
+    {
+      "signature": "pub use svg :: to_svg_topology"
+    },
+    {
+      "signature": "pub use tikz :: to_tikz_topology"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/graph_io/svg.rs": [
+    {
+      "signature": "pub fn to_svg_topology (_ : & GraphTopologyDocument) -> String"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/graph_io/tikz.rs": [
+    {
+      "signature": "pub fn to_tikz_topology (_ : & GraphTopologyDocument) -> String"
     }
   ],
   "crates/pure_math/src/pure_math/graph_theory/layout.rs": [
@@ -12377,6 +12524,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: TensorError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: TopologyCodecError"
     },
     {
       "signature": "pub use pure_math :: error :: TransformError"

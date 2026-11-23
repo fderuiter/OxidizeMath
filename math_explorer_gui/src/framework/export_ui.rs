@@ -148,6 +148,7 @@ impl SimulationFramework {
         }
         self.render_3d_export_action_items(ui, caps, close_on_click);
         self.render_shader_export_items(ui, caps, close_on_click);
+        self.render_topology_export_items(ui, caps, close_on_click);
     }
 
     fn render_compact_export_menu(&mut self, ui: &mut egui::Ui) -> String {

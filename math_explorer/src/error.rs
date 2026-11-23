@@ -34,7 +34,7 @@ pub use pure_math::error::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
     Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
     OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
-    TransformError, ZipError,
+    TopologyCodecError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -210,6 +210,9 @@ pub enum Error {
     /// Zero-inflated Poisson regression error.
     #[cfg(feature = "pure_math")]
     Zip(ZipError),
+    /// Graph topology codec error.
+    #[cfg(feature = "pure_math")]
+    TopologyCodec(TopologyCodecError),
 }
 
 mod conversions;

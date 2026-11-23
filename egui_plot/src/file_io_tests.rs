@@ -12,6 +12,18 @@ fn test_infer_mime_type_all_supported_extensions() {
     assert_eq!(infer_mime_type(" DOMAIN_COLOR.FRAG "), "text/plain");
     assert_eq!(infer_mime_type("potential_flow.glsl"), "text/plain");
     assert_eq!(infer_mime_type("KERNEL.GLSL"), "text/plain");
+    assert_eq!(infer_mime_type("network.dot"), "text/vnd.graphviz");
+    assert_eq!(infer_mime_type(" AUTOMATA.GV "), "text/vnd.graphviz");
+    assert_eq!(
+        infer_mime_type("contact.graphml"),
+        "application/graphml+xml"
+    );
+    assert_eq!(
+        infer_mime_type("TOPOLOGY.GRAPHML"),
+        "application/graphml+xml"
+    );
+    assert_eq!(infer_mime_type("diagram_tikz.tex"), "application/x-tex");
+    assert_eq!(infer_mime_type("LECTURE.TEX"), "application/x-tex");
     assert_eq!(infer_mime_type("chart.png"), "image/png");
     assert_eq!(infer_mime_type("chart.svg"), "image/svg+xml");
     assert_eq!(infer_mime_type("anim.gif"), "image/gif");

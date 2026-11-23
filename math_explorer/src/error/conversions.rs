@@ -102,4 +102,5 @@ impl_error_from!(@cfg "pure_math":
     TensorError => Tensor,
     TransformError => Transform,
     ZipError => Zip,
+    TopologyCodecError => TopologyCodec,
 );

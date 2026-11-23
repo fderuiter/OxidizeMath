@@ -1004,11 +1004,23 @@ def run_parallel_preload_and_sw_http_cache_check(
                 self.wfile.write(b"Not Found")
                 return
 
-            payload = target.read_bytes()
             rev = revision_state["rev"]
-            if clean_path == "/bootstrap.js" and rev > 1:
-                payload = payload + f"\n// origin-rev-{rev}\n".encode("utf-8")
-            etag = f'"{rel_name}-v{rev}-{len(payload)}"'
+            accept_enc = self.headers.get("Accept-Encoding", "")
+            content_encoding: str | None = None
+            br_candidate = Path(f"{target}.br")
+            gz_candidate = Path(f"{target}.gz")
+            if not (clean_path == "/bootstrap.js" and rev > 1):
+                if "br" in accept_enc and br_candidate.is_file():
+                    payload = br_candidate.read_bytes()
+                    content_encoding = "br"
+                elif "gzip" in accept_enc and gz_candidate.is_file():
+                    payload = gz_candidate.read_bytes()
+                    content_encoding = "gzip"
+                else:
+                    payload = target.read_bytes()
+            else:
+                payload = target.read_bytes() + f"\n// origin-rev-{rev}\n".encode("utf-8")
+            etag = f'"{rel_name}-{content_encoding or "raw"}-v{rev}-{len(payload)}"'
             content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
 
             if self.headers.get("If-None-Match") == etag:
@@ -1016,6 +1028,7 @@ def run_parallel_preload_and_sw_http_cache_check(
                     origin_hits.append((clean_path, 304))
                 self.send_response(304)
                 self.send_header("ETag", etag)
+                self.send_header("Vary", "Accept-Encoding")
                 self.send_header("Cache-Control", "public, max-age=600")
                 self.send_header("Content-Security-Policy", csp)
                 self.end_headers()
@@ -1025,6 +1038,9 @@ def run_parallel_preload_and_sw_http_cache_check(
                 origin_hits.append((clean_path, 200))
             self.send_response(200)
             self.send_header("Content-Type", content_type)
+            if content_encoding:
+                self.send_header("Content-Encoding", content_encoding)
+            self.send_header("Vary", "Accept-Encoding")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("ETag", etag)
             self.send_header("Cache-Control", "public, max-age=600")
