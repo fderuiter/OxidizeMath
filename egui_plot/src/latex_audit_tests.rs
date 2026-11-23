@@ -60,6 +60,7 @@ fn assert_no_leaked_latex_words(latex: &str) {
         "dots",
         "mathbb",
         "mathrm",
+        "mathbf",
         "operatorname",
     ] {
         assert!(
@@ -105,6 +106,8 @@ fn test_audited_theory_and_ode_equations_render_without_leaked_commands() {
         "Multi-strategy evolutionary replicator dynamics: $\\dot{x}_i = x_i \\left( (A x)_i - x^T A x \\right)$, where strategy frequency $x_i$ increases.",
         // vietoris_rips/mod.rs
         "Topological Data Analysis (TDA) via Vietoris-Rips simplicial filtration and exact $\\mathbb{Z}_2$ persistent homology: $\\sigma = [v_0, \\dots, v_k]$ enters at $\\max_{i,j} d(v_i, v_j) \\le \\epsilon$ ($\\epsilon = 0.50$, $\\beta_0 = 1$, $\\beta_1 = 1$, 24 points in $\\mathbb{R}^2$).",
+        // volumetric_studio/mod.rs
+        "3D Volumetric Field Studio (Hydrogenic 1s + 2pz) evolves hydrogenic superpositions $\\Psi(\\mathbf{r}, t) = c_1(t) R_{n_1 \\ell_1}(r) Y_{\\ell_1 m_1}(\\theta,\\phi) + c_2(t) R_{n_2 \\ell_2}(r) Y_{\\ell_2 m_2}(\\theta,\\phi)$ and 3D Schnakenberg reaction-diffusion $\\partial_t u = D_u \\nabla^2_{3D} u + a - u + u^2 v$ across a 28^3 VoxelGrid using MarchingCubes and EWA Gaussian3D splatting.",
     ];
 
     for formula in audited_formulas {
