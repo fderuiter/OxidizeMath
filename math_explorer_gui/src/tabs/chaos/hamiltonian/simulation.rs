@@ -322,7 +322,8 @@ impl HamiltonianChaosLab {
             slot.prev_deriv4.copy_from(&slot.deriv4);
             let ok = match self.solver.to_method() {
                 SymplecticMethod::ImplicitMidpoint => {
-                    self.mid4.try_step_array(&self.henon, t, &mut slot.state4, dt)
+                    self.mid4
+                        .try_step_array(&self.henon, t, &mut slot.state4, dt)
                 }
                 SymplecticMethod::StormerVerlet => {
                     self.verlet2

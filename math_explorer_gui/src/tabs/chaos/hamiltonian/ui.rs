@@ -51,7 +51,7 @@ impl HamiltonianChaosLab {
                 self.is_playing = false;
                 self.seed_default_showcase();
             }
-            None => {}
+            Some(PlaybackAction::StepBack | PlaybackAction::ScrubTo(_)) | None => {}
         }
     }
 
@@ -361,13 +361,20 @@ impl HamiltonianChaosLab {
             });
     }
 
-    fn draw_pendulum_linkage(&self, plot_ui: &mut egui_plot::PlotUi<'_>, palette: &SemanticPalette) {
+    fn draw_pendulum_linkage(
+        &self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        palette: &SemanticPalette,
+    ) {
         if let Some(lead) = self.orbits.last() {
             let (b1, b2) = self.pendulum.cartesian_positions(&lead.state4);
             plot_ui.line(
-                Line::new("Symplectic Rods", PlotPoints::from(vec![[0.0, 0.0], b1, b2]))
-                    .color(palette.success)
-                    .width(2.6_f32),
+                Line::new(
+                    "Symplectic Rods",
+                    PlotPoints::from(vec![[0.0, 0.0], b1, b2]),
+                )
+                .color(palette.success)
+                .width(2.6_f32),
             );
             plot_ui.points(
                 Points::new("Pendulum Bobs", PlotPoints::from(vec![b1, b2]))

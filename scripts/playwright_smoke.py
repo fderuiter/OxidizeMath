@@ -402,11 +402,29 @@ def run_truncated_stream_check(
     try:
         page = context.new_page()
         csp_violations: list[str] = []
+        aborted_scripts: list[str] = []
         attach_csp_observer(page, csp_violations)
+        page.on(
+            "requestfailed",
+            lambda req: aborted_scripts.append(f"{req.url}: {req.failure}")
+            if req.failure == "net::ERR_ABORTED"
+            and any(
+                req.url.split("?")[0].endswith(s)
+                for s in ("/bootstrap.js", "/initializer.js", "/math_explorer_gui.js")
+            )
+            else None,
+        )
         install_telemetry_probe(page, dist_dir)
 
         page.goto(f"{base_url}/?wasm_mode={wasm_mode}", wait_until="domcontentloaded")
-        verify_error_recovery(page, scenario, EXPECTED_FAULTS["network"])
+        try:
+            verify_error_recovery(page, scenario, EXPECTED_FAULTS["network"])
+        except AssertionError as exc:
+            if aborted_scripts:
+                raise TransientBrowserCrashError(
+                    f"[{scenario}] Startup script aborted by Chromium NetworkService: {aborted_scripts}"
+                ) from exc
+            raise
         page.wait_for_timeout(40)
 
         trace = page.evaluate("() => window.__mathExplorerSmokeTrace")
@@ -458,19 +476,33 @@ def run_compressed_progress_and_aria_check(
         csp_violations: list[str] = []
         console_errors: list[str] = []
         page_errors: list[str] = []
+        aborted_assets: list[str] = []
         attach_csp_observer(page, csp_violations)
         page.on(
             "console",
             lambda msg: console_errors.append(msg.text) if msg.type == "error" else None,
         )
         page.on("pageerror", lambda exc: page_errors.append(str(exc)))
+        page.on(
+            "requestfailed",
+            lambda req: aborted_assets.append(f"{req.url}: {req.failure}")
+            if req.failure == "net::ERR_ABORTED"
+            else None,
+        )
         install_telemetry_probe(page, dist_dir)
 
         page.goto(f"{base_url}/?wasm_mode={wasm_mode}", wait_until="domcontentloaded")
-        expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
-        expect(page.locator("#error_container")).to_be_hidden()
-        expect(page.locator("#the_canvas_id")).to_be_visible()
-        expect(page.locator("#the_canvas_id")).to_be_focused()
+        try:
+            expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+            expect(page.locator("#error_container")).to_be_hidden()
+            expect(page.locator("#the_canvas_id")).to_be_visible()
+            expect(page.locator("#the_canvas_id")).to_be_focused()
+        except AssertionError as exc:
+            if aborted_assets:
+                raise TransientBrowserCrashError(
+                    f"[{scenario}] Loopback request aborted by Chromium NetworkService: {aborted_assets}"
+                ) from exc
+            raise
 
         trace = page.evaluate("() => window.__mathExplorerSmokeTrace")
         expected_mb = round(expected_wire_bytes / 1_000_000.0, 2)
