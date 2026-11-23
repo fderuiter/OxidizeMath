@@ -1,4 +1,4 @@
-# ADR 0042: Poincaré Disk Hyperbolic Geometry Kernel and Geodesic Billiard Laboratory
+# ADR 0043: Poincaré Disk Hyperbolic Geometry Kernel and Geodesic Billiard Laboratory
 
 ## Status
 Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md) and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
@@ -19,4 +19,4 @@ Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md) and 
 
 ## Consequences
 - **Positive**: Downstream SDK consumers and `math_explorer_gui` gain exact $K = -1$ conformal geometry, Gauss-Bonnet area verification, Coxeter tilings, and chaotic twin-ray Lyapunov separation $\ln(\delta_t / \delta_0)$ with zero post-initialization heap allocations in simulation and drag hot paths.
-- **Neutral**: Expanding the `pure_math` public API updates [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json) and increments the registered `InteractiveTool` (`66`) and `StarterPresetMetadata` (`87`) inventory totals.
+- **Neutral**: Expanding the `pure_math` public API updates [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json) and increments the registered `InteractiveTool` (`69`) and `StarterPresetMetadata` (`99`) inventory totals.
