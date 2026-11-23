@@ -55,7 +55,8 @@ fn test_state_bounds_validation_and_lossless_roundtrip() {
         ..PopulationStructureState::default()
     };
     let json = serde_json::to_string(&custom).unwrap();
-    tool.try_load_state(&json).expect("valid custom state loads");
+    tool.try_load_state(&json)
+        .expect("valid custom state loads");
     assert_eq!(tool.save_state().as_deref(), Some(json.as_str()));
     assert_ne!(tool.save_state().as_deref(), Some(baseline.as_str()));
 
@@ -145,7 +146,10 @@ fn test_playback_stepping_and_high_contrast_lexis_wcag_guard() {
 
 #[test]
 fn test_csv_json_png_and_svg_exports_across_dashboard_and_lexis_modes() {
-    for mode in [PopulationViewMode::Dashboard, PopulationViewMode::LexisHeatmap] {
+    for mode in [
+        PopulationViewMode::Dashboard,
+        PopulationViewMode::LexisHeatmap,
+    ] {
         let mut tab = PopulationStructureTab::default();
         let cfg = PopulationStructureState {
             view_mode: mode,
@@ -241,4 +245,3 @@ fn test_cannibalism_visual_artifacts_screenshot_generation() {
         let _ = std::fs::remove_file(&out_path);
     }
 }
-

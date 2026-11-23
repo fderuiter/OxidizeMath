@@ -145,13 +145,9 @@ impl PopulationStructureState {
         let max_age = finite_clamp(self.max_age, def.max_age, 2.0, 20.0);
         let maturation_age =
             finite_clamp(self.maturation_age, def.maturation_age, 0.5, 10.0).min(max_age);
-        let vulnerable_age_max = finite_clamp(
-            self.vulnerable_age_max,
-            def.vulnerable_age_max,
-            0.2,
-            8.0,
-        )
-        .min(maturation_age);
+        let vulnerable_age_max =
+            finite_clamp(self.vulnerable_age_max, def.vulnerable_age_max, 0.2, 8.0)
+                .min(maturation_age);
         Self {
             age_bins: self.age_bins.clamp(MIN_AGE_BINS, MAX_AGE_BINS),
             max_age,

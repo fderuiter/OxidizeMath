@@ -24,6 +24,7 @@ theory_verification!(
         MU_C = 0.3;
     },
     test = {
+        use approx::assert_relative_eq;
         let model = CannibalismModel::new(BETA_N, BETA_C, K_N, PHI, MU_N, MU_C);
         assert_relative_eq!(
             model.beta_n,

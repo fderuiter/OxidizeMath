@@ -31,7 +31,9 @@ struct CapacityFadeState {
 }
 
 impl InteractiveTool for CapacityFadeTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Capacity Fade"
     }
@@ -113,15 +115,13 @@ impl CapacityFadeTool {
             ui.heading("Parameters");
             ui.add_space(5.0);
             ui.add(
-                egui::Slider::new(&mut self.dod, 0.0..=100.0)
-                    .text("Depth of Discharge (DoD) - %"),
+                egui::Slider::new(&mut self.dod, 0.0..=100.0).text("Depth of Discharge (DoD) - %"),
             );
             ui.small("Percentage of battery capacity used per cycle.");
             ui.add_space(10.0);
             ui.add_enabled_ui(false, |ui| {
                 ui.add(
-                    egui::Slider::new(&mut self.temperature, -20.0..=60.0)
-                        .text("Temperature (°C)"),
+                    egui::Slider::new(&mut self.temperature, -20.0..=60.0).text("Temperature (°C)"),
                 );
             })
             .response
@@ -178,7 +178,6 @@ impl CapacityFadeTool {
 
 // [cite:mmwave_radiotherapy_setup]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "CapacityFadeTool",
@@ -196,9 +195,15 @@ impl scientific_metadata::theory::TheoryDescribable for CapacityFadeTool {
             self.dod, self.temperature
         )
     }
-    fn phonetic_description(&self) -> String { "Battery capacity fade power-law degradation theory".into() }
-    fn theory_citation(&self) -> String { "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Battery capacity fade power-law degradation theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{
@@ -261,14 +266,15 @@ mod tests {
                 [dod as f64, life70]
             })
             .collect();
-        let fit = egui_plot::fit_model(
+        let fit = egui_plot::fit_model_with_axes(
             &n70_curve,
             egui_plot::FitType::PowerLaw,
             "PowerLawModel::n70",
+            false,
+            false,
             false,
         )
         .expect("power law fit");
         assert!(fit.r_squared >= 0.99);
     }
 }
-

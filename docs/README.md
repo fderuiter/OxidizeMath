@@ -28,7 +28,8 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0013: Trait-Level Executable Doc-Test Suites](adr/0013-trait-level-runnable-doctests.md)
 - [ADR 0016: Standardize Crate Documentation Suite](adr/0016-standardize-crate-documentation-suite.md)
 - [ADR 0034: Curate `math_explorer` Facade Exports and Doctests](adr/0034-curate-math-explorer-facade-exports-and-doctests.md)
-- [ADR 0035: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0035-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
+- [ADR 0035: Spatial Fermi Games and Ising Droplet Brushes](adr/0035-fermi-spatial-games-and-ising-droplet-brushes.md)
+- [ADR 0037: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab](adr/0037-age-structured-cannibalism-pde-solvers-and-explorer-tab.md)
 
 ## Contributing
 

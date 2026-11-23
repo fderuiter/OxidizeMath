@@ -1,4 +1,4 @@
-# ADR 0035: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab
+# ADR 0037: Zero-Allocation Age-Structured Cannibalism PDE Solvers and Interactive Explorer Tab
 
 ## Status
 Accepted (extends [ADR 0001](0001-dynamic-workspace-discovery.md), [ADR 0016](0016-standardize-crate-documentation-suite.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
@@ -25,4 +25,4 @@ Previously, [`crates/domain_applied/src/applied/cannibalism/`](../../crates/doma
 ## Consequences
 - **Positive**: `McKendrickSolver::step_upwind` and `JuvenileAdultSolver::step_upwind` execute with zero heap allocations (verified via `VerifiedAllocator`), preserve non-negativity unconditionally, and reproduce analytical characteristic translation, exponential mass decay, and supercritical Hopf cohort cycles.
 - **Positive**: Desktop and WebAssembly users can interactively explore Lexis cohort ridges, age pyramids, Hopf phase portraits, and lumped ODE approximations with full URL state sharing (`#tab=cannibalism`) and CSV/JSON/PNG/SVG exports.
-- **Neutral**: Expands the `math_explorer_gui` catalog to `22` tabs (`6` in `Applied Math`), `56` registered tools (`33` plot+dataset tools), and `62` starter presets.
+- **Neutral**: Expands the `math_explorer_gui` catalog to `22` tabs (`6` in `Applied Math`), `61` registered tools (`38` plot+dataset tools), and `74` starter presets.

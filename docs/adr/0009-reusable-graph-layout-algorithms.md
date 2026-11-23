@@ -1,5 +1,9 @@
 # Architecture Decision Record 0009: Reusable Pure Math Graph Layout Algorithms with Toolbar Controls
 
+## Status
+
+Accepted
+
 ## Context
 `GraphEditorTool` stored node positions manually in a `HashMap<usize, Pos2>`. It lacked automated graph layout algorithms and UI layout controls, requiring users to manually position every vertex when generating or exploring complex graph structures.
 

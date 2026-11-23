@@ -13,8 +13,8 @@ use egui_plot::{Legend, Line, Plot, Points};
 /// Renders [`PopulationStructureTool`] inside a scoped parent [`egui::Ui`].
 pub fn render_tool_inside(tool: &mut PopulationStructureTool, parent_ui: &mut egui::Ui) {
     let ctx = parent_ui.ctx().clone();
-    let is_hc =
-        crate::app::ThemeMode::from_visuals(parent_ui.visuals()) == crate::app::ThemeMode::HighContrast;
+    let is_hc = crate::app::ThemeMode::from_visuals(parent_ui.visuals())
+        == crate::app::ThemeMode::HighContrast;
     if tool.high_contrast != is_hc {
         tool.high_contrast = is_hc;
         tool.lexis_dirty = true;
@@ -40,7 +40,9 @@ pub fn render_tool_inside(tool: &mut PopulationStructureTool, parent_ui: &mut eg
 fn apply_recovery(tool: &mut PopulationStructureTool, action: RecoveryAction) {
     match action {
         RecoveryAction::AutoScaleStepSize => tool.auto_scale_step_size(),
-        RecoveryAction::ClampParameters => <PopulationStructureTool as FiniteStateGuard>::clamp_parameters(tool),
+        RecoveryAction::ClampParameters => {
+            <PopulationStructureTool as FiniteStateGuard>::clamp_parameters(tool)
+        }
         RecoveryAction::ResetParameters => tool.reset_parameters(),
     }
 }
@@ -196,10 +198,7 @@ fn render_kernel_sliders(tool: &mut PopulationStructureTool, ui: &mut egui::Ui) 
             )
             .changed();
         changed |= ui
-            .add(
-                egui::Slider::new(&mut tool.config.energy_gain, 0.0..=1.0)
-                    .text("Lifeboat Gain γ"),
-            )
+            .add(egui::Slider::new(&mut tool.config.energy_gain, 0.0..=1.0).text("Lifeboat Gain γ"))
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut tool.config.ode_phi, 0.0..=1.0).text("2D ODE Loss φ"))
@@ -327,9 +326,7 @@ fn render_age_pyramid_plot(
                 .color(palette.series_color(0))
                 .fill(0.0_f32),
         );
-        plot_ui.line(
-            Line::new("Juvenile n_J(t, a)", ja_line).color(palette.series_color(1)),
-        );
+        plot_ui.line(Line::new("Juvenile n_J(t, a)", ja_line).color(palette.series_color(1)));
     });
 }
 

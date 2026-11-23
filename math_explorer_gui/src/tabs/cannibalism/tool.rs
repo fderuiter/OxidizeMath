@@ -68,16 +68,10 @@ pub struct PopulationStructureTool {
 impl Default for PopulationStructureTool {
     fn default() -> Self {
         let config = PopulationStructureState::default();
-        let mvf_solver = McKendrickSolver::new(
-            config.age_bins,
-            config.max_age,
-            config.to_mvf_kernel(),
-        );
-        let ja_solver = JuvenileAdultSolver::new(
-            config.age_bins,
-            4.5,
-            config.to_juvenile_adult_params(),
-        );
+        let mvf_solver =
+            McKendrickSolver::new(config.age_bins, config.max_age, config.to_mvf_kernel());
+        let ja_solver =
+            JuvenileAdultSolver::new(config.age_bins, 4.5, config.to_juvenile_adult_params());
         let ode_model = build_ode_model(&config);
         let mut tool = Self {
             config,
@@ -122,8 +116,7 @@ impl PopulationStructureTool {
     /// Re-initializes all three solvers from `self.config` and runs deterministic warmup steps.
     pub fn rebuild_and_warmup(&mut self) {
         let cfg = self.config.clamped();
-        self.mvf_solver =
-            McKendrickSolver::new(cfg.age_bins, cfg.max_age, cfg.to_mvf_kernel());
+        self.mvf_solver = McKendrickSolver::new(cfg.age_bins, cfg.max_age, cfg.to_mvf_kernel());
         self.mvf_solver.set_initial_density(|a| {
             let pulse = 7.5 * (-0.5 * ((a - 1.1) / 0.42).powi(2)).exp();
             let tail = 1.2 * (-0.35 * a).exp();
@@ -133,9 +126,8 @@ impl PopulationStructureTool {
             JuvenileAdultSolver::new(cfg.age_bins, 4.5, cfg.to_juvenile_adult_params());
         let center = 0.32 * cfg.maturation_age;
         let width = (0.14 * cfg.maturation_age).max(0.08);
-        self.ja_solver.set_initial_state(4.5, |a| {
-            5.5 * (-0.5 * ((a - center) / width).powi(2)).exp()
-        });
+        self.ja_solver
+            .set_initial_state(4.5, |a| 5.5 * (-0.5 * ((a - center) / width).powi(2)).exp());
         self.ode_model = build_ode_model(&cfg);
         self.ode_state = Vector2::new(7.5, 3.2);
         self.step_index = 0;
@@ -168,11 +160,8 @@ impl PopulationStructureTool {
         if self.ode_history.len() >= HISTORY_CAP {
             self.ode_history.pop_front();
         }
-        self.ode_history.push_back([
-            self.mvf_solver.time(),
-            self.ode_state[1],
-            self.ode_state[0],
-        ]);
+        self.ode_history
+            .push_back([self.mvf_solver.time(), self.ode_state[1], self.ode_state[0]]);
         self.lexis_dirty = true;
     }
 
@@ -234,7 +223,11 @@ impl PopulationStructureTool {
     fn solvers_finite(&self) -> bool {
         self.mvf_solver.time().is_finite()
             && self.mvf_solver.density().iter().all(|v| v.is_finite())
-            && self.ja_solver.juvenile_density().iter().all(|v| v.is_finite())
+            && self
+                .ja_solver
+                .juvenile_density()
+                .iter()
+                .all(|v| v.is_finite())
             && self.ja_solver.adults().is_finite()
             && self.ode_state[0].is_finite()
             && self.ode_state[1].is_finite()

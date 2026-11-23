@@ -209,7 +209,7 @@ fn test_framework_unified_modal_gif_sampling_and_close_button() {
     let open_btn = find_ak_button_center(&out1, "Export PNG Image");
     let out_open = click_framework_button(&ctx, &mut framework, open_btn, "sim_modal_test");
     assert!(framework.show_export_modal);
-    assert!(has_ak_text(&out_open, egui_plot::MODAL_HEADER_TEXT));
+    assert!(has_ak_text(&out_open, "Offscreen High-Res Render Settings"));
     assert!(has_ak_text(&out_open, "Target Canvas Size: 640 x 480 px"));
 
     let gif_btn = find_ak_button_center(&out_open, "Save GIF");
