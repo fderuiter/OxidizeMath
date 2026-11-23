@@ -6,6 +6,7 @@ use eframe::egui;
 pub mod curvature_heatmap;
 pub mod custom_surface;
 pub mod export_utils;
+pub mod hyperbolic_geometry;
 pub mod manifold_flow;
 #[cfg(feature = "biology")]
 pub mod surface_morphogenesis;

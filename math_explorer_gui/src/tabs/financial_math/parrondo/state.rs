@@ -146,11 +146,11 @@ impl TheoryDescribable for ParrondoParadoxTool {
         use scientific_metadata::theory::ParameterConstraint;
         let c = |min, max, step| ParameterConstraint { min, max, step };
         std::collections::HashMap::from([
-            ("p_a_base".to_string(), c(0.40, 0.60, 0.002)),
+            ("p_a_base".to_string(), c(0.35, 0.65, 0.005)),
             ("p_a".to_string(), c(0.42, 0.51, 0.002)),
-            ("p_b0_base".to_string(), c(0.05, 0.45, 0.005)),
-            ("p_b1_base".to_string(), c(0.55, 0.95, 0.005)),
-            ("epsilon".to_string(), c(-0.02, 0.05, 0.001)),
+            ("p_b0_base".to_string(), c(0.03, 0.50, 0.005)),
+            ("p_b1_base".to_string(), c(0.50, 0.95, 0.005)),
+            ("epsilon".to_string(), c(-0.02, 0.045, 0.0005)),
         ])
     }
 }
@@ -158,7 +158,7 @@ impl TheoryDescribable for ParrondoParadoxTool {
 inventory::submit! {
     ToolMetadata {
         id: "ParrondoParadoxTool",
-        display_name: "Parrondo's Paradox",
+        display_name: "Parrondo's Kelly Ratchet",
         domain: "financial_math",
         tags: &["markov", "ratchet", "kelly", "paradox", "probability"],
         build: || Box::new(ParrondoParadoxTool::default()),

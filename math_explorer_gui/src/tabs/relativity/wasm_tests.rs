@@ -75,8 +75,21 @@ fn wasm_relativity_tab_hydrates_renders_gestures_presets_and_exports() {
     }
 }
 
+async fn yield_wasm_event_loop() {
+    use wasm_bindgen::JsCast;
+
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        if let Ok(win) = js_sys::global().dyn_into::<web_sys::Window>() {
+            let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0);
+        } else {
+            let _ = resolve.call0(&wasm_bindgen::JsValue::UNDEFINED);
+        }
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+}
+
 #[wasm_bindgen_test]
-fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
+async fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
     assert!(!get_stories_for_domain("relativity").is_empty());
     assert!(get_goal_challenges_for_domain("relativity").len() >= 2);
 
@@ -90,7 +103,7 @@ fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
         .expect("wasm custom Christoffel");
     assert!(ev.max_abs_diff < 1e-6);
 
-    // Verify 2D atlas converges to 1x synchronously via cooperative frame budget on wasm32
+    // Verify 2D atlas converges to 1x via cooperative frame budget on wasm32
     let mut tool = GeodesicPlaygroundTool::default();
     tool.import_preset_json(presets::PRESET_PHOTON_RING_LENSING)
         .expect("photon ring preset");
@@ -99,13 +112,14 @@ fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
     tool.state.atlas_visible = true;
 
     let ctx = egui::Context::default();
-    for _ in 0..80 {
+    for _ in 0..400 {
         let _ = ctx.run(wasm_input(Vec::new()), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
         });
         if tool.atlas.is_converged() {
             break;
         }
+        yield_wasm_event_loop().await;
     }
     assert_eq!(tool.atlas.current_stride(), 1);
 

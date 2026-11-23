@@ -32,6 +32,7 @@
 //! *   **[Differential Geometry](differential_geometry)**: Parametric manifolds, curvature, Laplace-Beltrami, and zero-allocation flat-buffer geometric flows (`MeanCurvatureFlow`, `HeatEquationSolver`).
 //! *   **[Elliptic Curves](elliptic_curves)**: Cryptography primitives and geometric arithmetic.
 //! *   **[Graph Theory](graph_theory)**: Network analysis and traversal algorithms.
+//! *   **[Hyperbolic Geometry](hyperbolic)**: Poincaré disk/half-plane models, Möbius isometries, `{p,q}` tilings, and geodesic billiards.
 //! *   **[Number Theory](number_theory)**: Primes, Partitions, and Modular Arithmetic.
 //! *   **[Statistics](statistics)**: Competitive modeling (Glicko-2), Stochastic processes (Markov), and Data Analysis.
 //! *   **[Vector Calculus](vector_calculus)**: Curvilinear differential operators, Gauss/Stokes integral theorems, and zero-allocation 3D Helmholtz-Hodge decomposition.
@@ -69,6 +70,7 @@ pub mod differential_geometry;
 pub mod elliptic_curves;
 #[allow(missing_docs)]
 pub mod graph_theory;
+pub mod hyperbolic;
 pub mod logic;
 pub mod number_theory;
 pub mod special_functions;
