@@ -5,6 +5,7 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+pub mod challenge;
 pub mod kspace_bloch_view;
 pub mod kspace_phantom;
 pub mod kspace_runner;
