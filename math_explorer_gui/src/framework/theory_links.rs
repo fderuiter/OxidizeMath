@@ -115,6 +115,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
         "solid_state" => &["stat_mech", "pure_math"],
         "ai" => &["graph_parameters_rust"],
+        "optimization" => &["lorahub", "pure_math", "advanced_linear_algebra"],
         "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
         "relativity" => &[
             "general_relativity_geodesics",

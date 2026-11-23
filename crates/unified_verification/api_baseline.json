@@ -2478,7 +2478,22 @@
   ],
   "crates/domain_applied/src/applied/game_theory/equilibrium.rs": [
     {
+      "signature": "impl BoxSet { pub fn find_projected_fixed_point < F > (& self , _ : F , _ : & DVector < f64 > , _ : f64 , _ : usize , _ : f64 ,) -> Result < DVector < f64 > , AppliedError > where F : FnMut (& DVector < f64 >) -> DVector < f64 > , }"
+    },
+    {
+      "signature": "impl BoxSet { pub fn minimize_potential < F > (& self , _ : F , _ : & DVector < f64 > , _ : & ProjectedGradientConfig ,) -> Result < ConstrainedSolution , AppliedError > where F : FnMut (& DVector < f64 > , & mut DVector < f64 >) -> f64 , }"
+    },
+    {
       "signature": "impl BoxSet { pub fn new (_ : Vec < f64 > , _ : Vec < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl BoxSet { pub fn project (& self , _ : & DVector < f64 >) -> DVector < f64 > }"
+    },
+    {
+      "signature": "impl BoxSet { pub fn project_in_place (& self , _ : & mut DVector < f64 >) }"
+    },
+    {
+      "signature": "impl BoxSet { pub fn to_box_bounds (& self) -> Result < BoxBounds , AppliedError > }"
     },
     {
       "signature": "impl BoxSet { pub fn try_new (_ : Vec < f64 > , _ : Vec < f64 >) -> Result < Self , GameTheoryError > }"
@@ -2986,6 +3001,21 @@
       "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn evaluate_objective (& self , _ : & [f64] , _ : f64 , _ : f64) -> f64 }"
     },
     {
+      "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn module_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn optimize_target_fista (& self , _ : & LoraStateDict , _ : f64 , _ : & ProximalConfig ,) -> Result < ProximalSolution , AppliedError > }"
+    },
+    {
+      "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn optimize_weights < F > (& self , _ : F , _ : & [f64] , _ : f64 , _ : & NelderMeadConfig ,) -> Result < LoraWeightSolution , AppliedError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn optimize_weights_box < F > (& self , _ : F , _ : & [f64] , _ : f64 , _ : & LbfgsBConfig ,) -> Result < LoraWeightSolution , AppliedError > where F : FnMut (& DVector < f64 > , & mut DVector < f64 >) -> f64 , }"
+    },
+    {
+      "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn optimize_weights_in_place < F > (& self , _ : F , _ : & mut DVector < f64 > , _ : f64 , _ : & NelderMeadConfig , _ : & mut NelderMeadWorkspace ,) -> Result < LoraWeightSolution , AppliedError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
       "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn with_strategies (_ : Vec < LoraStateDict > , _ : C , _ : O ,) -> Self }"
     },
     {
@@ -2993,11 +3023,17 @@
     },
     {
       "signature": "pub struct LoraEnsemble < C = LinearCombinationStrategy , O = L1RegularizationStrategy >"
+    },
+    {
+      "signature": "pub struct LoraWeightSolution"
     }
   ],
   "crates/domain_applied/src/applied/lorahub/mod.rs": [
     {
       "signature": "pub use ensemble :: LoraEnsemble"
+    },
+    {
+      "signature": "pub use ensemble :: LoraWeightSolution"
     },
     {
       "signature": "pub use types :: LoraStateDict"
@@ -7292,10 +7328,34 @@
   ],
   "crates/domain_physics/src/physics/medical/optimization.rs": [
     {
+      "signature": "impl ImrtSolverWorkspace { pub fn new (_ : usize , _ : usize , _ : f64 , _ : usize ,) -> Result < Self , PhysicsError > }"
+    },
+    {
+      "signature": "impl ImrtSolverWorkspace { pub fn set_max_beam_weight (& mut self , _ : f64) }"
+    },
+    {
       "signature": "pub fn calculate_cost (_ : & DVector < f64 > , _ : & [usize] , _ : & [usize] , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
     },
     {
+      "signature": "pub fn compute_imrt_pareto_frontier (_ : & DMatrix < f64 > , _ : & [usize] , _ : & [usize] , _ : & ImrtPlanConfig , _ : usize ,) -> Result < Vec < ImrtParetoPoint > , PhysicsError >"
+    },
+    {
+      "signature": "pub fn solve_imrt_weights (_ : & DMatrix < f64 > , _ : & [usize] , _ : & [usize] , _ : & ImrtPlanConfig , _ : & DVector < f64 > ,) -> Result < (DVector < f64 > , f64) , PhysicsError >"
+    },
+    {
+      "signature": "pub fn solve_imrt_weights_in_place (_ : & DMatrix < f64 > , _ : & [usize] , _ : & [usize] , _ : & ImrtPlanConfig , _ : & mut DVector < f64 > , _ : & mut ImrtSolverWorkspace ,) -> Result < f64 , PhysicsError >"
+    },
+    {
       "signature": "pub fn update_weights (_ : & DVector < f64 > , _ : & DVector < f64 > , _ : f64 ,) -> DVector < f64 >"
+    },
+    {
+      "signature": "pub struct ImrtParetoPoint"
+    },
+    {
+      "signature": "pub struct ImrtPlanConfig"
+    },
+    {
+      "signature": "pub struct ImrtSolverWorkspace"
     }
   ],
   "crates/domain_physics/src/physics/medical/radar_gating/clutter.rs": [
@@ -11330,7 +11390,88 @@
       "signature": "pub trait VectorOperations { fn scale_add (& mut self , _ : & Self , _ : f64) }"
     }
   ],
-  "crates/pure_math/src/pure_math/analysis/optimization.rs": [
+  "crates/pure_math/src/pure_math/analysis/optimization/augmented_lagrangian.rs": [
+    {
+      "signature": "impl AugmentedLagrangianSolver { pub fn new (_ : AugmentedLagrangianConfig) -> Self }"
+    },
+    {
+      "signature": "impl AugmentedLagrangianSolver { pub fn solve < F > (& self , _ : F , _ : & BoxBounds , _ : & DVector < f64 > , _ : usize , _ : usize ,) -> Result < AugmentedLagrangianSolution , OptimizationError > where F : FnMut (& DVector < f64 > , & mut DVector < f64 > , & mut DVector < f64 > , & mut DMatrix < f64 > , & mut DVector < f64 > , & mut DMatrix < f64 > ,) -> f64 , }"
+    },
+    {
+      "signature": "impl AugmentedLagrangianSolver { pub fn solve_in_place < F > (& self , _ : F , _ : & BoxBounds , _ : & mut DVector < f64 > , _ : & mut AugmentedLagrangianWorkspace ,) -> Result < usize , OptimizationError > where F : FnMut (& DVector < f64 > , & mut DVector < f64 > , & mut DVector < f64 > , & mut DMatrix < f64 > , & mut DVector < f64 > , & mut DMatrix < f64 > ,) -> f64 , }"
+    },
+    {
+      "signature": "impl AugmentedLagrangianWorkspace { pub fn eq_multipliers (& self) -> & DVector < f64 > }"
+    },
+    {
+      "signature": "impl AugmentedLagrangianWorkspace { pub fn ineq_multipliers (& self) -> & DVector < f64 > }"
+    },
+    {
+      "signature": "impl AugmentedLagrangianWorkspace { pub fn iterate_path_slice (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl AugmentedLagrangianWorkspace { pub fn new (_ : usize , _ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl AugmentedLagrangianWorkspace { pub fn summary (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "pub struct AugmentedLagrangianConfig"
+    },
+    {
+      "signature": "pub struct AugmentedLagrangianSolution"
+    },
+    {
+      "signature": "pub struct AugmentedLagrangianSolver"
+    },
+    {
+      "signature": "pub struct AugmentedLagrangianWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/brent.rs": [
+    {
+      "signature": "impl BrentMinimizer { pub fn new (_ : usize , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct BrentMinimizer"
+    },
+    {
+      "signature": "pub trait OneDimMinimizer"
+    },
+    {
+      "signature": "pub trait OneDimMinimizer { fn minimize < F > (& self , _ : F , _ : f64 , _ : f64) -> Result < (f64 , f64) , AnalysisError > where F : FnMut (f64) -> f64 }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/derivative_free.rs": [
+    {
+      "signature": "impl NelderMead { pub fn minimize < F > (& self , _ : F , _ : & DVector < f64 > ,) -> Result < NelderMeadSolution , OptimizationError > where F : FnMut (& DVector < f64 >) -> f64 , }"
+    },
+    {
+      "signature": "impl NelderMead { pub fn minimize_in_place < F > (& self , _ : F , _ : & mut DVector < f64 > , _ : & mut NelderMeadWorkspace ,) -> Result < (f64 , usize) , OptimizationError > where F : FnMut (& DVector < f64 >) -> f64 , }"
+    },
+    {
+      "signature": "impl NelderMead { pub fn new (_ : NelderMeadConfig) -> Self }"
+    },
+    {
+      "signature": "impl NelderMeadWorkspace { pub fn iterate_path_slice (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl NelderMeadWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct NelderMead"
+    },
+    {
+      "signature": "pub struct NelderMeadConfig"
+    },
+    {
+      "signature": "pub struct NelderMeadSolution"
+    },
+    {
+      "signature": "pub struct NelderMeadWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/first_order.rs": [
     {
       "signature": "impl < T : RealField + Copy , Key > Adam < T , Key > where Key : Eq + std :: hash :: Hash + Clone , { pub fn get_state (& mut self , _ : Key , _ : (usize , usize)) -> & mut AdamState < T > }"
     },
@@ -11344,18 +11485,6 @@
       "signature": "impl < T : RealField + Copy > SGD < T > { pub fn new (_ : T) -> Self }"
     },
     {
-      "signature": "impl L1RegularizedLeastSquares { pub fn cost (& mut self , _ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : & DVector < f64 >) -> f64 }"
-    },
-    {
-      "signature": "impl L1RegularizedLeastSquares { pub fn new (_ : f64) -> Self }"
-    },
-    {
-      "signature": "pub enum OptimizationError"
-    },
-    {
-      "signature": "pub enum ParamType"
-    },
-    {
       "signature": "pub struct Adam < T , Key > where Key : Eq + std :: hash :: Hash ,"
     },
     {
@@ -11365,10 +11494,100 @@
       "signature": "pub struct AdamState2D < T >"
     },
     {
-      "signature": "pub struct L1RegularizedLeastSquares"
+      "signature": "pub struct SGD < T >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/lbfgsb.rs": [
+    {
+      "signature": "impl LbfgsBSolver { pub fn new (_ : LbfgsBConfig) -> Self }"
     },
     {
-      "signature": "pub struct SGD < T >"
+      "signature": "impl LbfgsBSolver { pub fn solve < F > (& self , _ : F , _ : & BoxBounds , _ : & DVector < f64 > ,) -> Result < ConstrainedSolution , OptimizationError > where F : FnMut (& DVector < f64 > , & mut DVector < f64 >) -> f64 , }"
+    },
+    {
+      "signature": "impl LbfgsBSolver { pub fn solve_in_place < F > (& self , _ : F , _ : & BoxBounds , _ : & mut DVector < f64 > , _ : & mut LbfgsBWorkspace ,) -> Result < (f64 , f64 , usize) , OptimizationError > where F : FnMut (& DVector < f64 > , & mut DVector < f64 >) -> f64 , }"
+    },
+    {
+      "signature": "impl LbfgsBWorkspace { pub fn iterate_path_slice (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl LbfgsBWorkspace { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl LbfgsBWorkspace { pub fn reset_history (& mut self) }"
+    },
+    {
+      "signature": "pub struct LbfgsBConfig"
+    },
+    {
+      "signature": "pub struct LbfgsBSolver"
+    },
+    {
+      "signature": "pub struct LbfgsBWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/linear_programming.rs": [
+    {
+      "signature": "impl LinearProgram { pub fn maximize (_ : DVector < f64 > , _ : DMatrix < f64 > , _ : DVector < f64 > ,) -> Result < Self , OptimizationError > }"
+    },
+    {
+      "signature": "impl LinearProgram { pub fn minimize (_ : DVector < f64 > , _ : DMatrix < f64 > , _ : DVector < f64 > ,) -> Result < Self , OptimizationError > }"
+    },
+    {
+      "signature": "impl LinearProgram { pub fn new (_ : LpSense , _ : DVector < f64 > , _ : DMatrix < f64 > , _ : DVector < f64 > , _ : Vec < ConstraintSense > ,) -> Result < Self , OptimizationError > }"
+    },
+    {
+      "signature": "impl SimplexSolver { pub fn new (_ : usize , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SimplexSolver { pub fn solve (& self , _ : & LinearProgram) -> Result < LpSolution , OptimizationError > }"
+    },
+    {
+      "signature": "impl SimplexSolver { pub fn solve_in_place (& self , _ : & LinearProgram , _ : & mut SimplexWorkspace ,) -> Result < LpStatus , OptimizationError > }"
+    },
+    {
+      "signature": "impl SimplexWorkspace { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl SimplexWorkspace { pub fn pivot_path_slice (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl SimplexWorkspace { pub fn primal (& self) -> & DVector < f64 > }"
+    },
+    {
+      "signature": "impl SimplexWorkspace { pub fn shadow_prices (& self) -> & DVector < f64 > }"
+    },
+    {
+      "signature": "impl SimplexWorkspace { pub fn summary (& self) -> (LpStatus , f64 , usize) }"
+    },
+    {
+      "signature": "pub enum ConstraintSense"
+    },
+    {
+      "signature": "pub enum LpSense"
+    },
+    {
+      "signature": "pub enum LpStatus"
+    },
+    {
+      "signature": "pub struct LinearProgram"
+    },
+    {
+      "signature": "pub struct LpSolution"
+    },
+    {
+      "signature": "pub struct SimplexSolver"
+    },
+    {
+      "signature": "pub struct SimplexWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/mod.rs": [
+    {
+      "signature": "pub enum OptimizationError"
+    },
+    {
+      "signature": "pub enum ParamType"
     },
     {
       "signature": "pub trait ModelOptimizer < T : RealField + Copy > : Optimizer < T , (usize , ParamType) >"
@@ -11390,6 +11609,326 @@
     },
     {
       "signature": "pub trait Trainable < T : nalgebra :: RealField + Copy = f64 > { fn forward (& self , _ : & nalgebra :: DVector < T >) -> nalgebra :: DVector < T > }"
+    },
+    {
+      "signature": "pub use augmented_lagrangian :: AugmentedLagrangianConfig"
+    },
+    {
+      "signature": "pub use augmented_lagrangian :: AugmentedLagrangianSolution"
+    },
+    {
+      "signature": "pub use augmented_lagrangian :: AugmentedLagrangianSolver"
+    },
+    {
+      "signature": "pub use augmented_lagrangian :: AugmentedLagrangianWorkspace"
+    },
+    {
+      "signature": "pub use brent :: BrentMinimizer"
+    },
+    {
+      "signature": "pub use brent :: OneDimMinimizer"
+    },
+    {
+      "signature": "pub use derivative_free :: NelderMead"
+    },
+    {
+      "signature": "pub use derivative_free :: NelderMeadConfig"
+    },
+    {
+      "signature": "pub use derivative_free :: NelderMeadSolution"
+    },
+    {
+      "signature": "pub use derivative_free :: NelderMeadWorkspace"
+    },
+    {
+      "signature": "pub use first_order :: Adam"
+    },
+    {
+      "signature": "pub use first_order :: AdamState"
+    },
+    {
+      "signature": "pub use first_order :: AdamState2D"
+    },
+    {
+      "signature": "pub use first_order :: SGD"
+    },
+    {
+      "signature": "pub use lbfgsb :: LbfgsBConfig"
+    },
+    {
+      "signature": "pub use lbfgsb :: LbfgsBSolver"
+    },
+    {
+      "signature": "pub use lbfgsb :: LbfgsBWorkspace"
+    },
+    {
+      "signature": "pub use linear_programming :: ConstraintSense"
+    },
+    {
+      "signature": "pub use linear_programming :: LinearProgram"
+    },
+    {
+      "signature": "pub use linear_programming :: LpSense"
+    },
+    {
+      "signature": "pub use linear_programming :: LpSolution"
+    },
+    {
+      "signature": "pub use linear_programming :: LpStatus"
+    },
+    {
+      "signature": "pub use linear_programming :: SimplexSolver"
+    },
+    {
+      "signature": "pub use linear_programming :: SimplexWorkspace"
+    },
+    {
+      "signature": "pub use pareto :: ParetoPoint"
+    },
+    {
+      "signature": "pub use pareto :: ParetoWorkspace"
+    },
+    {
+      "signature": "pub use pareto :: dominates"
+    },
+    {
+      "signature": "pub use pareto :: epsilon_constraint_sweep"
+    },
+    {
+      "signature": "pub use pareto :: extract_pareto_frontier"
+    },
+    {
+      "signature": "pub use pareto :: weighted_sum_sweep"
+    },
+    {
+      "signature": "pub use projected_gradient :: BoxBounds"
+    },
+    {
+      "signature": "pub use projected_gradient :: ConstrainedSolution"
+    },
+    {
+      "signature": "pub use projected_gradient :: ProjectedGradientConfig"
+    },
+    {
+      "signature": "pub use projected_gradient :: ProjectedGradientSolver"
+    },
+    {
+      "signature": "pub use projected_gradient :: ProjectedGradientWorkspace"
+    },
+    {
+      "signature": "pub use proximal :: L1RegularizedLeastSquares"
+    },
+    {
+      "signature": "pub use proximal :: ProximalConfig"
+    },
+    {
+      "signature": "pub use proximal :: ProximalSolution"
+    },
+    {
+      "signature": "pub use proximal :: ProximalWorkspace"
+    },
+    {
+      "signature": "pub use proximal :: soft_threshold"
+    },
+    {
+      "signature": "pub use proximal :: soft_threshold_in_place"
+    },
+    {
+      "signature": "pub use proximal :: soft_threshold_scalar"
+    },
+    {
+      "signature": "pub use quadratic_programming :: ActiveSetQpSolver"
+    },
+    {
+      "signature": "pub use quadratic_programming :: QpSolution"
+    },
+    {
+      "signature": "pub use quadratic_programming :: QpStatus"
+    },
+    {
+      "signature": "pub use quadratic_programming :: QpWorkspace"
+    },
+    {
+      "signature": "pub use quadratic_programming :: QuadraticProgram"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/pareto.rs": [
+    {
+      "signature": "impl ParetoWorkspace { pub fn extract_indices_in_place (& mut self , _ : & DMatrix < f64 > , _ : f64) -> & [usize] }"
+    },
+    {
+      "signature": "impl ParetoWorkspace { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn dominates (_ : & [f64] , _ : & [f64] , _ : f64) -> bool"
+    },
+    {
+      "signature": "pub fn epsilon_constraint_sweep < F > (_ : F , _ : & BoxBounds , _ : & DVector < f64 > , _ : (f64 , f64) , _ : usize ,) -> Result < (Vec < ParetoPoint > , Vec < ParetoPoint >) , OptimizationError > where F : FnMut (& DVector < f64 > , & mut DVector < f64 > , & mut DVector < f64 >) -> (f64 , f64) ,"
+    },
+    {
+      "signature": "pub fn extract_pareto_frontier (_ : & [ParetoPoint] , _ : f64) -> Vec < ParetoPoint >"
+    },
+    {
+      "signature": "pub fn weighted_sum_sweep < F > (_ : F , _ : & BoxBounds , _ : & DVector < f64 > , _ : usize ,) -> Result < (Vec < ParetoPoint > , Vec < ParetoPoint >) , OptimizationError > where F : FnMut (& DVector < f64 > , & mut DVector < f64 > , & mut DVector < f64 >) -> (f64 , f64) ,"
+    },
+    {
+      "signature": "pub struct ParetoPoint"
+    },
+    {
+      "signature": "pub struct ParetoWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/projected_gradient.rs": [
+    {
+      "signature": "impl BoxBounds { pub fn dim (& self) -> usize }"
+    },
+    {
+      "signature": "impl BoxBounds { pub fn is_feasible (& self , _ : & DVector < f64 > , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl BoxBounds { pub fn new (_ : DVector < f64 > , _ : DVector < f64 >) -> Result < Self , OptimizationError > }"
+    },
+    {
+      "signature": "impl BoxBounds { pub fn project (& self , _ : & DVector < f64 >) -> DVector < f64 > }"
+    },
+    {
+      "signature": "impl BoxBounds { pub fn project_in_place (& self , _ : & mut DVector < f64 >) }"
+    },
+    {
+      "signature": "impl BoxBounds { pub fn projected_gradient_norm (& self , _ : & DVector < f64 > , _ : & DVector < f64 >) -> f64 }"
+    },
+    {
+      "signature": "impl BoxBounds { pub fn unbounded (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl BoxBounds { pub fn uniform (_ : usize , _ : f64 , _ : f64) -> Result < Self , OptimizationError > }"
+    },
+    {
+      "signature": "impl ProjectedGradientSolver { pub fn new (_ : ProjectedGradientConfig) -> Self }"
+    },
+    {
+      "signature": "impl ProjectedGradientSolver { pub fn solve < F > (& self , _ : F , _ : & BoxBounds , _ : & DVector < f64 > ,) -> Result < ConstrainedSolution , OptimizationError > where F : FnMut (& DVector < f64 > , & mut DVector < f64 >) -> f64 , }"
+    },
+    {
+      "signature": "impl ProjectedGradientSolver { pub fn solve_in_place < F > (& self , _ : F , _ : & BoxBounds , _ : & mut DVector < f64 > , _ : & mut ProjectedGradientWorkspace ,) -> Result < (f64 , f64 , usize) , OptimizationError > where F : FnMut (& DVector < f64 > , & mut DVector < f64 >) -> f64 , }"
+    },
+    {
+      "signature": "impl ProjectedGradientWorkspace { pub fn iterate_path_slice (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl ProjectedGradientWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct BoxBounds"
+    },
+    {
+      "signature": "pub struct ConstrainedSolution"
+    },
+    {
+      "signature": "pub struct ProjectedGradientConfig"
+    },
+    {
+      "signature": "pub struct ProjectedGradientSolver"
+    },
+    {
+      "signature": "pub struct ProjectedGradientWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/proximal.rs": [
+    {
+      "signature": "impl L1RegularizedLeastSquares { pub fn cost (& mut self , _ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : & DVector < f64 >) -> f64 }"
+    },
+    {
+      "signature": "impl L1RegularizedLeastSquares { pub fn evaluate_cost (& self , _ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : & DVector < f64 >) -> f64 }"
+    },
+    {
+      "signature": "impl L1RegularizedLeastSquares { pub fn lambda (& self) -> f64 }"
+    },
+    {
+      "signature": "impl L1RegularizedLeastSquares { pub fn new (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl L1RegularizedLeastSquares { pub fn solve_fista (& self , _ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : & ProximalConfig ,) -> Result < ProximalSolution , OptimizationError > }"
+    },
+    {
+      "signature": "impl L1RegularizedLeastSquares { pub fn solve_fista_in_place (& self , _ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : & mut DVector < f64 > , _ : & ProximalConfig , _ : & mut ProximalWorkspace ,) -> Result < usize , OptimizationError > }"
+    },
+    {
+      "signature": "impl L1RegularizedLeastSquares { pub fn solve_ista (& self , _ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : & ProximalConfig ,) -> Result < ProximalSolution , OptimizationError > }"
+    },
+    {
+      "signature": "impl L1RegularizedLeastSquares { pub fn solve_ista_in_place (& self , _ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : & mut DVector < f64 > , _ : & ProximalConfig , _ : & mut ProximalWorkspace ,) -> Result < usize , OptimizationError > }"
+    },
+    {
+      "signature": "impl ProximalWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn soft_threshold (_ : & DVector < f64 > , _ : f64) -> DVector < f64 >"
+    },
+    {
+      "signature": "pub fn soft_threshold_in_place (_ : & mut DVector < f64 > , _ : f64)"
+    },
+    {
+      "signature": "pub fn soft_threshold_scalar (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct L1RegularizedLeastSquares"
+    },
+    {
+      "signature": "pub struct ProximalConfig"
+    },
+    {
+      "signature": "pub struct ProximalSolution"
+    },
+    {
+      "signature": "pub struct ProximalWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/optimization/quadratic_programming.rs": [
+    {
+      "signature": "impl ActiveSetQpSolver { pub fn new (_ : usize , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ActiveSetQpSolver { pub fn solve (& self , _ : & QuadraticProgram , _ : Option < & DVector < f64 > > ,) -> Result < QpSolution , OptimizationError > }"
+    },
+    {
+      "signature": "impl ActiveSetQpSolver { pub fn solve_in_place (& self , _ : & QuadraticProgram , _ : & mut DVector < f64 > , _ : & mut QpWorkspace ,) -> Result < QpStatus , OptimizationError > }"
+    },
+    {
+      "signature": "impl QpWorkspace { pub fn eq_multipliers (& self) -> & DVector < f64 > }"
+    },
+    {
+      "signature": "impl QpWorkspace { pub fn ineq_multipliers (& self) -> & DVector < f64 > }"
+    },
+    {
+      "signature": "impl QpWorkspace { pub fn iterate_path_slice (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl QpWorkspace { pub fn new (_ : usize , _ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl QpWorkspace { pub fn summary (& self) -> (QpStatus , f64 , usize) }"
+    },
+    {
+      "signature": "impl QuadraticProgram { pub fn evaluate_objective (& self , _ : & DVector < f64 >) -> f64 }"
+    },
+    {
+      "signature": "impl QuadraticProgram { pub fn new (_ : DMatrix < f64 > , _ : DVector < f64 > , _ : DMatrix < f64 > , _ : DVector < f64 > , _ : DMatrix < f64 > , _ : DVector < f64 > ,) -> Result < Self , OptimizationError > }"
+    },
+    {
+      "signature": "pub enum QpStatus"
+    },
+    {
+      "signature": "pub struct ActiveSetQpSolver"
+    },
+    {
+      "signature": "pub struct QpSolution"
+    },
+    {
+      "signature": "pub struct QpWorkspace"
+    },
+    {
+      "signature": "pub struct QuadraticProgram"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs": [
@@ -11943,6 +12482,12 @@
     },
     {
       "signature": "pub trait RootFinder { fn find_root < F > (& self , _ : F , _ : f64 , _ : f64) -> Result < f64 , AnalysisError > where F : Fn (f64) -> f64 }"
+    },
+    {
+      "signature": "pub use super :: optimization :: BrentMinimizer"
+    },
+    {
+      "signature": "pub use super :: optimization :: OneDimMinimizer"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/stochastic.rs": [

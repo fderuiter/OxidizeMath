@@ -7,7 +7,7 @@ pub mod strategies;
 #[allow(missing_docs)]
 pub mod types;
 
-pub use ensemble::LoraEnsemble;
+pub use ensemble::{LoraEnsemble, LoraWeightSolution};
 pub use types::LoraStateDict;
 
 // [cite:lorahub]

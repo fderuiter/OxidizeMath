@@ -46,7 +46,7 @@ fn test_autoencoder_gradient_finite_difference() {
     let mut opt = SGD::new(lr);
     model.backward_update(&x, &loss_grad, &mut opt).unwrap();
 
-    let effective_lr = 0.01;
+    let effective_lr = lr;
     let analytical_grad_enc0_k = (&init_enc_k[0] - &model.encoder.layers[0].kernel) / effective_lr;
     let analytical_grad_dec2_k = (&init_dec_k[2] - &model.decoder.layers[2].kernel) / effective_lr;
 

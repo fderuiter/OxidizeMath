@@ -124,3 +124,22 @@ fn test_all_root_finders_zero_allocation_on_convergence_and_errors() {
         Err(AnalysisError::InvalidBracket { .. })
     ));
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_brent_minimizer_quartic_and_trig() -> Result<(), AnalysisError> {
+    let solver = BrentMinimizer::default();
+    let (x_q, f_q) =
+        solver.minimize(|x| (x - 2.25).powi(2) + 0.1 * (x - 2.25).powi(4), -3.0, 6.0)?;
+    assert!((x_q - 2.25).abs() < 1e-5);
+    assert!(f_q.abs() < 1e-10);
+
+    let (x_c, f_c) = solver.minimize(f64::cos, 2.0, 4.5)?;
+    assert!((x_c - std::f64::consts::PI).abs() < math_commons::registry::TOLERANCE_FAST);
+    assert!((f_c + 1.0).abs() < math_commons::registry::TOLERANCE_FAST);
+    assert!(matches!(
+        solver.minimize(|x| x * x, 5.0, 2.0),
+        Err(AnalysisError::InvalidBracket { .. })
+    ));
+    Ok(())
+}

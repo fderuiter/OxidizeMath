@@ -49,6 +49,8 @@ pub mod number_theory;
 #[cfg(feature = "physics")]
 pub mod optics_waves;
 #[cfg(feature = "applied")]
+pub mod optimization;
+#[cfg(feature = "applied")]
 pub mod paradox_lab;
 #[cfg(feature = "physics")]
 pub mod quantum;
@@ -204,6 +206,7 @@ pub trait ExplorerTab {
             | "Clinical Trials"
             | "Favoritism"
             | "Game Theory"
+            | "Optimization"
             | "Paradox Lab"
             | "Population Structure"
             | "Traceability Portal" => "Applied Math",
@@ -293,6 +296,7 @@ pub trait ExplorerTab {
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
             "Optics & Waves" => "optics_waves",
+            "Optimization" => "optimization",
             "Paradox Lab" => "paradox_lab",
             "Population Structure" => "cannibalism",
             "Quantum Mechanics" => "quantum",

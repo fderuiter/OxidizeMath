@@ -73,11 +73,8 @@ impl LossLandscapeTool {
         }
     }
 
-    pub(super) fn show_3d_arena(&mut self, ui: &mut egui::Ui, grid: &SurfaceGrid) {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let suppress_orbit = self.interaction_mode != CanvasInteractionMode::Orbit;
-        let saved_camera = self.camera;
-        let helper = match self.interaction_mode {
+    fn interaction_helper_text(mode: CanvasInteractionMode) -> &'static str {
+        match mode {
             CanvasInteractionMode::Orbit => CAMERA_3D_HELPER_TEXT,
             CanvasInteractionMode::Slingshot => {
                 "Slingshot: drag on surface to pull back and launch active particles (orbit locked)."
@@ -85,7 +82,41 @@ impl LossLandscapeTool {
             CanvasInteractionMode::SculptBrush => {
                 "Sculpt: drag to raise barriers (+A) or Alt-drag to carve wells (-A) (orbit locked)."
             }
-        };
+        }
+    }
+
+    fn draw_3d_surface_and_minima(
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        grid: &SurfaceGrid,
+        eval: super::surfaces::SurfaceEvaluator<'_>,
+        saved_camera: &crate::camera::Camera3D,
+        palette: &crate::app::SemanticPalette,
+    ) {
+        for (t, line_pts) in grid.wireframe_polylines(saved_camera) {
+            let color = lerp_color(palette.axis_z, palette.axis_x, t);
+            plot_ui.line(
+                Line::new("Surface Mesh", line_pts)
+                    .color(color)
+                    .width(1.1_f32),
+            );
+        }
+        for &[mw, mb] in eval.global_minima() {
+            let mloss = eval.evaluate(mw, mb);
+            let p2 = saved_camera.project(&grid.world_point(mw, mb, mloss, 0.03));
+            plot_ui.points(
+                Points::new("Global Minimum", vec![p2])
+                    .color(palette.success)
+                    .radius(5.5_f32)
+                    .shape(MarkerShape::Diamond),
+            );
+        }
+    }
+
+    pub(super) fn show_3d_arena(&mut self, ui: &mut egui::Ui, grid: &SurfaceGrid) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let suppress_orbit = self.interaction_mode != CanvasInteractionMode::Orbit;
+        let saved_camera = self.camera;
+        let helper = Self::interaction_helper_text(self.interaction_mode);
 
         let mut cam = self.camera;
         let plot_resp = Plot3DViewport::new("loss_landscape_3d_plot", ARENA_3D_HALF_EXTENT)
@@ -96,30 +127,30 @@ impl LossLandscapeTool {
                     d.insert_temp(pid.with("dragging_callout"), suppress_orbit);
                 });
                 let eval = self.surface_evaluator();
-                for (t, line_pts) in grid.wireframe_polylines(&saved_camera) {
-                    let color = lerp_color(palette.axis_z, palette.axis_x, t);
-                    plot_ui.line(
-                        Line::new("Surface Mesh", line_pts)
-                            .color(color)
-                            .width(1.1_f32),
-                    );
-                }
-                for &[mw, mb] in eval.global_minima() {
-                    let mloss = eval.evaluate(mw, mb);
-                    let p2 = saved_camera.project(&grid.world_point(mw, mb, mloss, 0.03));
-                    plot_ui.points(
-                        Points::new("Global Minimum", vec![p2])
-                            .color(palette.success)
-                            .radius(5.5_f32)
-                            .shape(MarkerShape::Diamond),
-                    );
-                }
+                Self::draw_3d_surface_and_minima(plot_ui, grid, eval, &saved_camera, &palette);
+                super::barriers::draw_3d_box_barrier(
+                    plot_ui,
+                    grid,
+                    eval,
+                    &saved_camera,
+                    self.domain_bounds(),
+                    &self.arena_config,
+                    &palette,
+                );
                 self.draw_3d_racers(plot_ui, grid, &saved_camera, &palette);
                 if let (Some(a), Some(c)) = (self.slingshot_anchor, self.slingshot_current) {
-                    let la = eval.evaluate(a[0], a[1]);
-                    let lc = eval.evaluate(c[0], c[1]);
-                    let pa = saved_camera.project(&grid.world_point(a[0], a[1], la, 0.05));
-                    let pc = saved_camera.project(&grid.world_point(c[0], c[1], lc, 0.05));
+                    let pa = saved_camera.project(&grid.world_point(
+                        a[0],
+                        a[1],
+                        eval.evaluate(a[0], a[1]),
+                        0.05,
+                    ));
+                    let pc = saved_camera.project(&grid.world_point(
+                        c[0],
+                        c[1],
+                        eval.evaluate(c[0], c[1]),
+                        0.05,
+                    ));
                     plot_ui.line(
                         Line::new("Slingshot Vector", vec![pa, pc])
                             .color(palette.warning)
@@ -166,6 +197,13 @@ impl LossLandscapeTool {
                             .shape(MarkerShape::Circle),
                     );
                 }
+                super::barriers::draw_2d_box_barrier(
+                    plot_ui,
+                    self.domain_bounds(),
+                    self.arena_config.box_barriers_enabled,
+                    self.arena_config.barrier_bounds,
+                    &palette,
+                );
                 self.draw_2d_racers(plot_ui, &palette);
             });
         self.handle_viewport_gesture(ui, &plot_resp.response);

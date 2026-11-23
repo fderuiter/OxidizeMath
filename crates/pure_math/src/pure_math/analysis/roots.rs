@@ -298,6 +298,8 @@ impl RootFinder for NewtonRaphson {
     }
 }
 
+pub use super::optimization::{BrentMinimizer, OneDimMinimizer};
+
 /// Bracketed Brent-Dekker root-finding solver.
 ///
 /// Combines inverse quadratic interpolation, secant steps, and guaranteed bisection fallback

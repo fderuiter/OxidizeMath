@@ -16,6 +16,7 @@ use super::imrt::{
     CHALLENGE_IMRT_OAR_LIMIT_GY, CHALLENGE_IMRT_OAR_SPARING, CHALLENGE_IMRT_PRESCRIPTION_GY,
     IMRT_BEAM_COUNT, IMRT_GRID_DIM, OAR_SPARING_4D_ANGLES_DEG, OAR_SPARING_4D_WEIGHTS,
 };
+use super::imrt_pareto::ImrtParetoController;
 use super::link_bus::{current_write_seq, drain_gating_telemetry_into, GatingTelemetry};
 use crate::framework::{
     BrushMode, CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractionContext,
@@ -56,6 +57,8 @@ pub struct DoseCalculationTool {
     pub active_challenge: Option<&'static str>,
     /// Preallocated zero-allocation 4-beam IMRT and 4D motion workspace.
     pub imrt_workspace: ImrtWorkspace,
+    /// Constrained L-BFGS-B solver and Pareto trade-off curve controller.
+    pub pareto_controller: ImrtParetoController,
     /// Automated and manual plot callouts.
     pub callout_manager: CalloutManager,
     /// Reusable spatial brush controller for PTV/OAR contour sculpting.
@@ -100,6 +103,7 @@ impl Default for DoseCalculationTool {
             oar_limit_gy: CHALLENGE_IMRT_OAR_LIMIT_GY,
             active_challenge: None,
             imrt_workspace: ImrtWorkspace::default(),
+            pareto_controller: ImrtParetoController::default(),
             callout_manager: CalloutManager::new(),
             brush_kit: SpatialBrushKit::new(BrushMode::PtvTarget, 0.95)
                 .with_radius_bounds(0.35, 3.85, 0.35)

@@ -10,8 +10,8 @@ fn test_all_21_modules_categorized_into_academic_domains() {
     let app = MathExplorerApp::default();
     assert_eq!(
         app.tabs.len(),
-        28,
-        "Expected all 28 modules to be instantiated with default features"
+        29,
+        "Expected all 29 modules to be instantiated with default features"
     );
 
     let mut domain_counts: HashMap<AcademicDomain, Vec<&'static str>> = HashMap::new();
@@ -43,8 +43,8 @@ fn test_all_21_modules_categorized_into_academic_domains() {
     );
     assert_eq!(
         domain_counts.get(&AcademicDomain::AppliedMath).map(|v| v.len()),
-        Some(7),
-        "Applied Math should have 7 modules: Battery Degradation, Clinical Trials, Favoritism, Game Theory, Paradox Lab, Population Structure, Traceability Portal"
+        Some(8),
+        "Applied Math should have 8 modules: Battery Degradation, Clinical Trials, Favoritism, Game Theory, Optimization, Paradox Lab, Population Structure, Traceability Portal"
     );
     assert_eq!(
         domain_counts.get(&AcademicDomain::Biology).map(|v| v.len()),

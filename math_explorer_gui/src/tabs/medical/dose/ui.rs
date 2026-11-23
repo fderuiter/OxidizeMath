@@ -40,6 +40,8 @@ pub fn show_tool_inside(tool: &mut DoseCalculationTool, parent_ui: &mut egui::Ui
         tool.refresh_model();
     }
 
+    tool.pareto_controller
+        .show_bottom_panel(parent_ui, tool.imrt_mode);
     egui::CentralPanel::default().show_inside(parent_ui, |ui| {
         super::canvas::render_dose_canvas(tool, ui, &ctx);
     });
@@ -66,12 +68,9 @@ fn render_side_panel_contents(tool: &mut DoseCalculationTool, ui: &mut egui::Ui)
     let mut changed = false;
     ui.heading("Dose & 4D IMRT Workbench");
     ui.add_enabled_ui(tool.active_challenge.is_none(), |ui| {
-        if ui
+        changed |= ui
             .checkbox(&mut tool.imrt_mode, "4-Beam Coplanar IMRT Mode")
-            .changed()
-        {
-            changed = true;
-        }
+            .changed();
         if tool.imrt_mode
             && ui
                 .checkbox(&mut tool.gating_4d_enabled, "4D Respiratory-Gated Delivery")
@@ -396,14 +395,10 @@ fn render_imrt_plan_controls(tool: &mut DoseCalculationTool, ui: &mut egui::Ui) 
         color,
         format!(
             "Static Cost J = {:.1} (J_base = {:.1}) | PTV = {:.1} Gy (DSC {:.2}) | OAR max = {:.1}/{:.0} Gy",
-            s.cost_j,
-            s.baseline_cost_j,
-            s.tumor_mean_gy,
-            tool.imrt_workspace.motion.static_dice,
-            s.oar_max_gy.0,
-            tool.oar_limit_gy
+            s.cost_j, s.baseline_cost_j, s.tumor_mean_gy, tool.imrt_workspace.motion.static_dice, s.oar_max_gy.0, tool.oar_limit_gy
         ),
     );
+    changed |= crate::tabs::medical::imrt_pareto::render_plan_controls(tool, ui);
     changed
 }
 
