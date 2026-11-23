@@ -257,7 +257,9 @@ fn test_no_unguarded_hardcoded_color32_regressions() {
         "Color32::KHAKI",
         "Color32::BROWN",
     ];
-    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest_dir_raw =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
+    let manifest_dir = std::path::Path::new(&manifest_dir_raw);
     let workspace_root = manifest_dir.parent().expect("workspace root");
     let mut files = Vec::new();
     collect_rs_files(&manifest_dir.join("src"), &mut files);
