@@ -121,7 +121,7 @@ impl CeraTool {
                 }
                 Err(e) => {
                     self.clear_persisted_model();
-                    self.prediction_result = Some(Err(e));
+                    self.prediction_result = Some(Err(e.to_string()));
                     return;
                 }
             }
@@ -419,7 +419,7 @@ inventory::submit! {
         id: "CeraTool",
         display_name: "CERA Model",
         domain: "climate",
-        tags: &["cera", "climate"],
+        tags: &["cera", "climate", "earth mover", "autoencoder", "alignment"],
         build: || Box::new(CeraTool::default()),
     }
 }

@@ -309,6 +309,7 @@ impl MriTool {
         self.my_points.clear();
         self.mz_points.clear();
         self.pulse_workspace.playhead_playing = false;
+        self.pulse_workspace.playhead_idx = super::pulse::MRI_PULSE_SAMPLES - 1;
         self.fault_notified = false;
         let params = Arc::clone(&self.params);
         let m0 = self.simulator.m0;
@@ -386,6 +387,7 @@ impl InteractiveTool for MriTool {
         }
         self.history
             .push_back((self.current_time, self.simulator.magnetization));
+        self.latest_sonification = self.current_sonification_frame();
         self.update_plot_buffers();
     }
 

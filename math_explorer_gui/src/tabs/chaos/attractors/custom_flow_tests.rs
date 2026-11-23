@@ -98,3 +98,23 @@ fn test_attractor_ready_and_reset_hold_paused_at_initial_coords_across_frames() 
     assert!(plotter.history.is_empty());
     assert_eq!(plotter.system.state.vec, Vector3::new(1.0, 1.0, 1.0));
 }
+
+#[test]
+fn test_custom_3d_flow_lyapunov_exponent() {
+    let mut rossler = AttractorPlotter {
+        mode: AttractorMode::Custom,
+        ..Default::default()
+    };
+    let rossler_lyap = rossler
+        .current_lyapunov_exponent()
+        .expect("custom Rössler Lyapunov computed");
+    assert!(rossler_lyap.is_finite() && rossler_lyap > 0.0);
+
+    rossler
+        .flow_bank
+        .set_expressions(&["-a * x - y", "x - a * y", "-b * z"]);
+    let sink_lyap = rossler
+        .current_lyapunov_exponent()
+        .expect("custom sink Lyapunov computed");
+    assert!(sink_lyap.is_finite() && sink_lyap < 0.0);
+}
