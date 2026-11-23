@@ -42,6 +42,25 @@ pub(crate) fn record_theory_portal_toggle(
     ctx.request_repaint();
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct UntrackedUrlDigestCache {
+    pub(super) tool_name: &'static str,
+    pub(super) checked_untracked_rev: u64,
+    pub(super) url_digest: u64,
+}
+
+#[derive(Default)]
+pub(crate) struct FrameworkRevisionCache {
+    pub(super) framework_revision: u64,
+    pub(super) untracked_tool_revision: u64,
+    pub(super) untracked_url_digest: std::cell::Cell<Option<UntrackedUrlDigestCache>>,
+    pub(super) active_tool_json:
+        std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
+    pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
+    pub(super) last_snapshot_source_datasets: Vec<(String, egui_plot::SharedPoints)>,
+    pub(super) last_plot_capture_hash: Option<(&'static str, u64)>,
+}
+
 pub(super) fn next_framework_id() -> u64 {
     static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
@@ -199,6 +218,29 @@ impl SimulationFramework {
         self.write_overlay_keys(ctx, id_source);
         self.sync_state.theory_portal = Some(self.show_theory_portal);
         self.sync_state.starter_gallery = Some(self.show_starter_gallery);
+        self.sync_counterfactual_snapshot();
+    }
+
+    /// Synchronizes `branch_engine` with the active tool's latest counterfactual divergence snapshot.
+    pub fn sync_counterfactual_snapshot(&mut self) {
+        let snap = self
+            .active_tool
+            .as_ref()
+            .and_then(|tool| tool.counterfactual_snapshot());
+        self.branch_engine.sync_snapshot(snap);
+    }
+
+    /// Dispatches a `CounterfactualBranchEngine` control action to the active tool and refreshes `branch_engine`.
+    pub fn dispatch_branch_action(&mut self, action: super::BranchControlAction) -> bool {
+        if let super::BranchControlAction::SetPerturbation(delta) = action {
+            self.branch_engine.set_effective_delta(delta);
+        }
+        let applied = self
+            .active_tool
+            .as_mut()
+            .is_some_and(|tool| tool.apply_counterfactual_action(action));
+        self.sync_counterfactual_snapshot();
+        applied
     }
 
     pub(crate) fn sync_starter_gallery_state(&mut self, ctx: &egui::Context, id_source: &str) {
@@ -284,6 +326,7 @@ impl SimulationFramework {
             is_diverged: false,
             diagnostic_report: None,
             step_counter: 0,
+            branch_engine: super::CounterfactualBranchEngine::default(),
             start_time: crate::web_io::PlatformInstant::now(),
             challenge_hud: super::ChallengeHudState::default(),
             active_challenge: None,

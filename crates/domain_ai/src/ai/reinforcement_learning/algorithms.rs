@@ -229,3 +229,8 @@ pub fn policy_gradient_step(
         .map(|g| learning_rate.value() * return_gt * g)
         .collect()
 }
+
+pub use super::rollouts::{
+    RlStepOutcome, compute_softmax_pg_delta, softmax_action_probs, step_softmax_pg_into,
+    step_tabular_q_into,
+};
