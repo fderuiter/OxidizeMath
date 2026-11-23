@@ -50,6 +50,9 @@ mod tests {
             &ctx,
         );
         exercise_interactive_tool::<crate::tabs::solid_state::ising::IsingModelTool>(&ctx);
+        exercise_interactive_tool::<
+            crate::tabs::solid_state::quasicrystal_studio::QuasicrystalStudio,
+        >(&ctx);
         exercise_interactive_tool::<crate::tabs::quantum::clebsch::ClebschGordanTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(
             &ctx,
