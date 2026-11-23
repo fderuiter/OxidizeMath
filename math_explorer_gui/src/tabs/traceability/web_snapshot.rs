@@ -5,7 +5,6 @@ use eframe::egui;
 use oxidize_core::traceability::TraceabilityReport;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-#[cfg(not(target_arch = "wasm32"))]
 use std::sync::OnceLock;
 
 /// Document-relative path to the precomputed traceability manifest in `dist/`.
@@ -92,10 +91,22 @@ pub fn load_local_certificate(base_dir: &str) -> Option<VerificationCertificate>
     parse_certificate_json(&raw).ok()
 }
 
+/// Returns the compile-time precomputed [`TraceabilityReport`] on both native and `wasm32` targets.
+pub(crate) fn embedded_traceability_report() -> Result<TraceabilityReport, String> {
+    static REPORT_CACHE: OnceLock<Result<TraceabilityReport, String>> = OnceLock::new();
+    REPORT_CACHE
+        .get_or_init(|| {
+            const MANIFEST_JSON: &str =
+                include_str!(concat!(env!("OUT_DIR"), "/traceability_manifest.json"));
+            parse_manifest_json(MANIFEST_JSON).map(|(report, _)| report)
+        })
+        .clone()
+}
+
 /// Returns the compile-time precomputed traceability report and certificate for packaged desktop runs.
 #[cfg(not(target_arch = "wasm32"))]
-pub(super) fn embedded_traceability()
--> Result<(TraceabilityReport, Option<VerificationCertificate>), String> {
+pub(super) fn embedded_traceability(
+) -> Result<(TraceabilityReport, Option<VerificationCertificate>), String> {
     static CACHE: OnceLock<Result<(TraceabilityReport, Option<VerificationCertificate>), String>> =
         OnceLock::new();
     CACHE
@@ -117,8 +128,8 @@ pub(super) fn embedded_traceability()
 
 /// Fetches `./traceability_manifest.json` via [`oxidize_core::vfs::WasmVfs`] on `wasm32`.
 #[cfg(target_arch = "wasm32")]
-pub async fn fetch_web_traceability()
--> Result<(TraceabilityReport, Option<VerificationCertificate>), String> {
+pub async fn fetch_web_traceability(
+) -> Result<(TraceabilityReport, Option<VerificationCertificate>), String> {
     use oxidize_core::vfs::{VirtualFileSystem, WasmVfs};
 
     if !is_relative_same_origin_url(MANIFEST_REL_URL) {

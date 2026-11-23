@@ -1,7 +1,7 @@
-# ADR 0041: Client-Side Symbolic WGSL/GLSL Shader Foundry, Analytical Palettes, and Smooth Escape / Domain Coloring
+# ADR 0043: Client-Side Symbolic WGSL/GLSL Shader Foundry, Analytical Palettes, and Smooth Escape / Domain Coloring
 
 ## Status
-Accepted (extends [ADR 0017](0017-native-ast-expression-parser-and-live-input.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0026](0026-bounded-ast-height-and-iterative-traversal.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), [ADR 0035](0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md), and [ADR 0035](0035-iterative-ast-glsl-transpiler-and-shader-exports.md))
+Accepted (extends [ADR 0017](0017-native-ast-expression-parser-and-live-input.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0026](0026-bounded-ast-height-and-iterative-traversal.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), [ADR 0035](0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md), [ADR 0035](0035-iterative-ast-glsl-transpiler-and-shader-exports.md), and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
 
 ## Context
 [`math_commons::ast`](../../crates/math_commons/src/ast/mod.rs) parses user-supplied real and complex expressions into bounded `Expr` syntax trees, while [`FractalViewer`](../../math_explorer_gui/src/tabs/chaos/fractals.rs) and [`ComplexMappingTool`](../../math_explorer_gui/src/tabs/analysis/complex_mapping.rs) previously evaluated only built-in formulas or discrete integer escape bands without GPU shader export:

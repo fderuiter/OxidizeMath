@@ -37,6 +37,40 @@ pub enum ShaderEmitError {
     InvalidIdentifier(String),
 }
 
+impl diagnostics::Diagnostic for ShaderEmitError {
+    fn severity(&self) -> diagnostics::Severity {
+        diagnostics::Severity::Error
+    }
+
+    fn metadata(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::from([
+            ("error_type".to_string(), "ShaderEmitError".to_string()),
+            ("description".to_string(), self.to_string()),
+        ]);
+        match self {
+            Self::RecursionLimitExceeded(max_depth) => {
+                map.insert("max_depth".to_string(), max_depth.to_string());
+            }
+            Self::WrongArgumentCount {
+                func,
+                expected,
+                found,
+            } => {
+                map.insert("function".to_string(), func.as_str().to_string());
+                map.insert("expected_args".to_string(), expected.to_string());
+                map.insert("found_args".to_string(), found.to_string());
+            }
+            Self::NonFiniteLiteral => {
+                map.insert("reason".to_string(), "non_finite_literal".to_string());
+            }
+            Self::InvalidIdentifier(ident) => {
+                map.insert("identifier".to_string(), ident.clone());
+            }
+        }
+        map
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DomainMode {
     Real,

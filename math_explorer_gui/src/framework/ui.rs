@@ -83,8 +83,15 @@ impl SimulationFramework {
 
                     ui.separator();
                     ui.heading("Citations");
-                    render_theory_summary_with_export(ui, &theory.theory_citation(), None)
+                    let citation_text = theory.theory_citation();
+                    render_theory_summary_with_export(ui, &citation_text, None)
                         .accessible_hover_text("Academic citations");
+                    super::theory_links::render_portal_links_for_framework(
+                        self,
+                        ui,
+                        tool.as_ref(),
+                        &citation_text,
+                    );
 
                     let mut entries: Vec<(String, String)> = theory
                         .available_descriptions()
@@ -425,6 +432,7 @@ impl SimulationFramework {
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
 
+        self.begin_plot_scope(&ctx);
         if !self.is_diverged {
             self.cache_valid_snapshot();
             if let Some(tool) = &mut self.active_tool {
@@ -448,6 +456,7 @@ impl SimulationFramework {
                 self.show_quick_start_cards(ui);
             });
         }
+        self.end_plot_scope(&ctx);
 
         if !interactive_input
             && crate::reflective_ui::slider::live_sweep_mutation_count(&ctx) > sweep_mut_before
