@@ -1,3 +1,4 @@
+pub mod brush_codec;
 pub mod callout_overlay;
 pub mod challenge;
 mod challenge_hud;
@@ -19,7 +20,7 @@ mod export_queue;
 pub(crate) use export_queue::deferred_export_tests;
 #[cfg(test)]
 mod export_queue_tests;
-mod export_shader;
+pub(crate) mod export_shader;
 #[cfg(test)]
 mod export_shader_tests;
 pub mod export_types;
@@ -47,6 +48,11 @@ pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
 pub mod side_panel;
+pub mod spatial_brush;
+#[cfg(all(test, feature = "physics", feature = "biology"))]
+mod spatial_brush_integration_tests;
+#[cfg(test)]
+mod spatial_brush_tests;
 pub mod state_bounds;
 #[cfg(test)]
 mod state_bounds_tests;
@@ -62,6 +68,7 @@ pub mod trace_overlay;
 mod ui;
 mod url_share;
 
+pub use brush_codec::*;
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
@@ -71,10 +78,11 @@ pub(crate) use export_queue::*;
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use math_input::*;
-#[cfg(feature = "pure_math")]
+#[cfg(any(feature = "pure_math", feature = "applied"))]
 pub(crate) use overlay_sync::record_theory_portal_toggle;
 pub use pane_scope::{
-    is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id,
+    is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id, InputMode,
+    InteractionContext,
 };
 pub use playback::*;
 pub use recovery::*;
@@ -82,6 +90,7 @@ pub use side_panel::{
     clear_pane_side_panel_records, pane_side_panel_records, PaneSidePanel, PaneSidePanelRecord,
     MAX_PANE_SIDE_PANEL_WIDTH_RATIO,
 };
+pub use spatial_brush::*;
 pub use state_bounds::*;
 pub use state_guard::*;
 pub use story_hud::*;
@@ -102,26 +111,6 @@ pub struct ToolMetadata {
 
 inventory::collect!(ToolMetadata);
 pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InputMode {
-    Mouse,
-    Touch,
-}
-
-/// Event context provided to interaction hooks.
-#[allow(missing_docs)]
-pub struct InteractionContext<'a> {
-    pub pointer_pos: Option<egui::Pos2>,
-    pub delta: egui::Vec2,
-    pub is_dragging: bool,
-    pub is_clicked: bool,
-    pub response: &'a egui::Response,
-    pub input_mode: InputMode,
-    pub multi_touch: Option<egui::MultiTouchInfo>,
-    pub keys_down: std::collections::HashSet<egui::Key>,
-    pub modifiers: egui::Modifiers,
-}
 
 pub trait InteractiveTool {
     fn name(&self) -> &'static str;
