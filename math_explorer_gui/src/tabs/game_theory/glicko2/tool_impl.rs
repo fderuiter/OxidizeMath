@@ -1,4 +1,4 @@
-//! [`InteractiveTool`], [`TheoryDescribable`], and `inventory` registrations for [`super::Glicko2TournamentTool`].
+//! [`InteractiveTool`], `TheoryDescribable`, and `inventory` registrations for [`super::Glicko2TournamentTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
