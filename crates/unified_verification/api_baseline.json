@@ -7957,6 +7957,62 @@
       "signature": "pub fn clebsch_gordan (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
     }
   ],
+  "crates/domain_physics/src/physics/quantum/crank_nicolson.rs": [
+    {
+      "signature": "impl CrankNicolson1D { pub fn configure (& mut self , _ : & [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> bool }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn dt (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn dx (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn hamiltonian (& self) -> & TridiagonalHamiltonian1D }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn invalidate (& mut self) }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn is_valid (& self) -> bool }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn new (_ : & [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn step_in_place (& mut self , _ : & mut QuantumState) -> bool }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn step_slice_in_place (& mut self , _ : & mut [Complex < f64 >]) -> bool }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn step_substeps_in_place (& mut self , _ : & mut QuantumState , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn update_dt (& mut self , _ : f64 , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn update_potential (& mut self , _ : & [f64] , _ : f64 , _ : f64 , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn workspace (& self) -> & SolverWorkspace }"
+    },
+    {
+      "signature": "impl CrankNicolson1D { pub fn workspace_mut (& mut self) -> & mut SolverWorkspace }"
+    },
+    {
+      "signature": "pub struct CrankNicolson1D"
+    }
+  ],
   "crates/domain_physics/src/physics/quantum/fourier.rs": [
     {
       "signature": "pub fn dft_operator (_ : usize) -> QuantumOperator"
@@ -7976,7 +8032,13 @@
       "signature": "pub fn construct_two_state_eigen_hamiltonian (_ : f64 , _ : f64 , _ : f64) -> QuantumOperator"
     },
     {
+      "signature": "pub fn construct_two_state_eigen_hamiltonian_into (_ : f64 , _ : f64 , _ : f64 , _ : & mut QuantumOperator ,)"
+    },
+    {
       "signature": "pub fn gaussian_wavepacket (_ : & [f64] , _ : f64 , _ : f64 , _ : f64) -> QuantumState"
+    },
+    {
+      "signature": "pub fn gaussian_wavepacket_into (_ : & [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut QuantumState ,)"
     }
   ],
   "crates/domain_physics/src/physics/quantum/hydrogenic.rs": [
@@ -8031,6 +8093,9 @@
       "signature": "pub use coupling :: clebsch_gordan"
     },
     {
+      "signature": "pub use crank_nicolson :: CrankNicolson1D"
+    },
+    {
       "signature": "pub use fourier :: dft_operator"
     },
     {
@@ -8046,7 +8111,13 @@
       "signature": "pub use hamiltonian :: construct_two_state_eigen_hamiltonian"
     },
     {
+      "signature": "pub use hamiltonian :: construct_two_state_eigen_hamiltonian_into"
+    },
+    {
       "signature": "pub use hamiltonian :: gaussian_wavepacket"
+    },
+    {
+      "signature": "pub use hamiltonian :: gaussian_wavepacket_into"
     },
     {
       "signature": "pub use hydrogenic :: HydrogenicSuperposition3D"
@@ -8079,6 +8150,9 @@
       "signature": "pub use schrodinger :: time_evolution_operator"
     },
     {
+      "signature": "pub use schrodinger :: time_evolution_operator_2x2_into"
+    },
+    {
       "signature": "pub use schrodinger :: transmission_probability"
     },
     {
@@ -8098,6 +8172,9 @@
     },
     {
       "signature": "pub use tridiagonal :: CrankNicolsonPropagator1D"
+    },
+    {
+      "signature": "pub use tridiagonal :: SolverWorkspace"
     },
     {
       "signature": "pub use tridiagonal :: TridiagonalHamiltonian1D"
@@ -8121,6 +8198,9 @@
     },
     {
       "signature": "pub fn time_evolution_operator (_ : & QuantumOperator , _ : f64 , _ : f64 ,) -> QuantumOperator"
+    },
+    {
+      "signature": "pub fn time_evolution_operator_2x2_into (_ : & QuantumOperator , _ : f64 , _ : f64 , _ : & mut QuantumOperator ,) -> bool"
     },
     {
       "signature": "pub fn transmission_probability (_ : & QuantumState , _ : usize) -> f64"
@@ -8172,6 +8252,15 @@
       "signature": "impl CrankNicolsonPropagator1D { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
+      "signature": "impl SolverWorkspace { pub fn capacity (& self) -> usize }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn ensure_capacity (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
       "signature": "impl TridiagonalHamiltonian1D { pub fn diagonal (& self) -> & [f64] }"
     },
     {
@@ -8208,7 +8297,13 @@
       "signature": "pub struct CrankNicolsonPropagator1D"
     },
     {
+      "signature": "pub struct SolverWorkspace"
+    },
+    {
       "signature": "pub struct TridiagonalHamiltonian1D"
+    },
+    {
+      "signature": "pub use crate :: physics :: quantum :: crank_nicolson :: CrankNicolson1D"
     }
   ],
   "crates/domain_physics/src/physics/quantum/types.rs": [
@@ -11709,6 +11804,23 @@
     },
     {
       "signature": "pub trait BoundaryCondition { fn evaluate_boundary (& self , _ : f64 , _ : f64) -> f64 }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/tridiagonal.rs": [
+    {
+      "signature": "pub fn apply_tridiagonal (_ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & mut [Complex < f64 >] ,) -> bool"
+    },
+    {
+      "signature": "pub fn factor_tridiagonal (_ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & mut [Complex < f64 >] , _ : & mut [Complex < f64 >] ,) -> bool"
+    },
+    {
+      "signature": "pub fn solve_tridiagonal_factored (_ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & mut [Complex < f64 >] , _ : & mut [Complex < f64 >] ,) -> bool"
+    },
+    {
+      "signature": "pub fn solve_tridiagonal_factored_in_place (_ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & mut [Complex < f64 >] , _ : & mut [Complex < f64 >] ,) -> bool"
+    },
+    {
+      "signature": "pub fn solve_tridiagonal_in_place (_ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & [Complex < f64 >] , _ : & mut [Complex < f64 >] , _ : & mut [Complex < f64 >] , _ : & mut [Complex < f64 >] , _ : & mut [Complex < f64 >] ,) -> bool"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/wave.rs": [
