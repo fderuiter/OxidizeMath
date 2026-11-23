@@ -1,4 +1,4 @@
-# ADR 0046: Pre-Allocated 2D FDTD Wave Solver, Hamiltonian Ray Caustics, and Auto-Discovered Optics Playground
+# ADR 0047: Pre-Allocated 2D FDTD Wave Solver, Hamiltonian Ray Caustics, and Auto-Discovered Optics Playground
 
 ## Status
 Accepted (extends [ADR 0008](0008-finite-state-solver-guard.md), [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
@@ -24,10 +24,7 @@ Bridging physical wave diffraction and geometric-optics caustics across desktop 
 3. **Auto-Discovered `OpticsWaveTab` Playground in `math_explorer_gui`**:
    - Add [`math_explorer_gui/src/tabs/optics_waves/`](../../math_explorer_gui/src/tabs/optics_waves/mod.rs) annotated with `// @explorer_feature = "physics"` for `build.rs` registration on `SimulationFramework`, bounded to `64..=256` grids, backed by `BackgroundWorker<OpticsWaveRunner>`, `FiniteStateGuard` recovery, `StarterPresetMetadata` cards, `#tab=optics_waves` lossless URL sharing, contrast-verified colormaps/overlays, and `Role::Image` keyboard-focusable detector controls.
 
-4. **Rustdoc Attribute Filtering in `oxidize_core::AstVisitor`**:
-   - Guard `#[verified]` and `#[embed_theory]` attribute extraction in [`ast_visitor.rs`](../../crates/oxidize_core/src/ast_visitor.rs) with `!attr.path().is_ident("doc")` so proc-macro rustdoc code blocks containing example attributes (introduced in `#1553`) do not trigger false-positive build-time traceability module bindings (`#1550`).
-
 ## Consequences
 - **Positive**: Users and downstream `math_explorer` consumers gain verified 2D scalar/metamaterial FDTD wave propagation, RK4 Hamiltonian ray caustics, and calibrated optical detector readouts on both native desktop and `wasm32` with zero hot-loop heap allocations.
 - **Positive**: `OpticsWaveTab` integrates seamlessly into `SimulationFramework` preset, raster export, URL state, and accessibility contract suites without manual edits to `app.rs`.
-- **Neutral**: Adding `OpticsWaveTab`, `OpticsWaveTool`, and three starter presets increments workspace GUI inventory contract counts to `27` tabs, `75` tools, and `108` starter presets, reflected in `api_baseline.json` and contract tests.
+- **Neutral**: Adding `OpticsWaveTab`, `OpticsWaveTool`, and three starter presets increments workspace GUI inventory contract counts to `27` tabs, `76` tools, and `111` starter presets, reflected in `api_baseline.json` and contract tests.
