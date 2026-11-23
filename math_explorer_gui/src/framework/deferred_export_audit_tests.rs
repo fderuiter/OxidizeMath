@@ -135,7 +135,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    let expected_plot_tools = if cfg!(feature = "applied") { 38 } else { 33 };
+    let expected_plot_tools = if cfg!(feature = "applied") { 39 } else { 34 };
     assert_eq!(
         plot_tool_count, expected_plot_tools,
         "Unexpected Plot dataset+figure tool count"
@@ -150,7 +150,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         shader_tool_count, 3,
         "Expected 3 analytical GLSL shader tools"
     );
-    let expected_non_shader = if cfg!(feature = "applied") { 58 } else { 49 };
+    let expected_non_shader = if cfg!(feature = "applied") { 59 } else { 50 };
     assert_eq!(
         non_shader_tool_count, expected_non_shader,
         "Unexpected non-shader tool count"

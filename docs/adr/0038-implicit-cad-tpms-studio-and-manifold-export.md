@@ -1,4 +1,4 @@
-# ADR 0037: Implicit CAD & TPMS Studio, Boundary-Sealed Marching Cubes, and Millimeter Manifold Export
+# ADR 0038: Implicit CAD & TPMS Studio, Boundary-Sealed Marching Cubes, and Millimeter Manifold Export
 
 ## Status
 Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md) and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))

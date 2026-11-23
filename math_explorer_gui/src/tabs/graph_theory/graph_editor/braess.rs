@@ -226,7 +226,7 @@ impl FrankWolfeScratch {
             }
             self.visited[u] = true;
 
-            for (e, &flow) in flows.iter().enumerate().take(self.edge_u.len()) {
+            for (e, flow) in flows.iter().copied().enumerate().take(self.edge_u.len()) {
                 if !self.edge_active[e] || skip_edge == Some(e) || self.edge_u[e] != u {
                     continue;
                 }
@@ -325,7 +325,7 @@ pub fn solve_wardrop_in_place(
 
 fn compute_fw_gap(scratch: &FrankWolfeScratch, flows: &[f64], skip_edge: Option<usize>) -> f64 {
     let mut gap = 0.0;
-    for (e, &flow) in flows.iter().enumerate() {
+    for (e, flow) in flows.iter().copied().enumerate() {
         if !scratch.edge_active[e] || skip_edge == Some(e) {
             continue;
         }
@@ -342,7 +342,7 @@ fn exact_line_search_step(
     skip_edge: Option<usize>,
 ) -> f64 {
     let mut curvature = 0.0;
-    for (e, &flow) in flows.iter().enumerate() {
+    for (e, flow) in flows.iter().copied().enumerate() {
         if !scratch.edge_active[e] || skip_edge == Some(e) {
             continue;
         }
@@ -369,15 +369,16 @@ fn summarize_equilibrium(
 ) -> WardropSummary {
     let mut total_cost = 0.0;
     let mut potential = 0.0;
-    for (e, (&f, out_lat)) in flows.iter().zip(out_latencies.iter_mut()).enumerate() {
+    for e in 0..flows.len() {
         if !scratch.edge_active[e] || skip_edge == Some(e) {
-            *out_lat = 0.0;
+            out_latencies[e] = 0.0;
             continue;
         }
+        let f = flows[e];
         let a = scratch.clamped_a[e];
         let b = scratch.clamped_b[e];
         let lat = a * f + b;
-        *out_lat = lat;
+        out_latencies[e] = lat;
         total_cost += f * lat;
         potential += 0.5 * a * f * f + b * f;
     }
