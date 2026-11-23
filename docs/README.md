@@ -32,7 +32,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0037: Glicko-2 Frozen-Period Tournament Simulator](adr/0037-glicko2-frozen-period-tournament-simulator.md)
 - [ADR 0042: Zero-Allocation 2D Chladni Plate and Wave Tank Solver](adr/0042-2d-chladni-plate-and-wave-tank-solver.md)
 - [ADR 0043: Repair Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates](adr/0043-repair-guides-and-enforce-static-doc-gates.md)
-- [ADR 0044: Hybrid Headless Chromium and Node.js WebAssembly Test Gate](adr/0044-hybrid-chromium-and-nodejs-wasm-test-gate.md)
+- [ADR 0045: Hybrid Headless Chromium and Node.js WebAssembly Test Gate](adr/0045-hybrid-chromium-and-nodejs-wasm-test-gate.md)
 
 ## Contributing
 

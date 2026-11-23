@@ -1,9 +1,52 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{FlowElement, PotentialFlowTool, SerializedFlowElement};
+use super::{
+    ElementType, PotentialFlowTool, SerializedFlowElement, FLOW_ANGLE_MAX, FLOW_ANGLE_MIN,
+    FLOW_POS_MAX, FLOW_POS_MIN, FLOW_STRENGTH_MAX, FLOW_STRENGTH_MIN, FLOW_VIEW_MAX, FLOW_VIEW_MIN,
+};
 use egui_plot::PlotPoint;
 use std::hash::{Hash as _, Hasher as _};
 use std::sync::Arc;
+
+const fn default_element_strength() -> f64 {
+    10.0
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PotentialFlowState {
+    elements: Vec<SerializedFlowElement>,
+    grid_size: usize,
+    view_range: f64,
+    #[serde(default)]
+    selected_element_type: ElementType,
+    #[serde(default = "default_element_strength")]
+    new_element_strength: f64,
+    #[serde(default)]
+    new_element_x: f64,
+    #[serde(default)]
+    new_element_y: f64,
+    #[serde(default)]
+    new_element_angle: f64,
+}
+
+impl PotentialFlowState {
+    fn is_valid(&self) -> bool {
+        (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_size)
+            && self.view_range.is_finite()
+            && (FLOW_VIEW_MIN..=FLOW_VIEW_MAX).contains(&self.view_range)
+            && self.new_element_strength.is_finite()
+            && (FLOW_STRENGTH_MIN..=FLOW_STRENGTH_MAX).contains(&self.new_element_strength)
+            && self.new_element_x.is_finite()
+            && (FLOW_POS_MIN..=FLOW_POS_MAX).contains(&self.new_element_x)
+            && self.new_element_y.is_finite()
+            && (FLOW_POS_MIN..=FLOW_POS_MAX).contains(&self.new_element_y)
+            && self.new_element_angle.is_finite()
+            && (FLOW_ANGLE_MIN..=FLOW_ANGLE_MAX).contains(&self.new_element_angle)
+            && self.elements.len() <= crate::framework::MAX_JSON_ARRAY_LEN
+            && self.elements.iter().all(SerializedFlowElement::is_valid)
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct ArrowFieldCache {
@@ -30,6 +73,43 @@ fn hash_flow_element(el: &SerializedFlowElement, h: &mut impl std::hash::Hasher)
 }
 
 impl PotentialFlowTool {
+    pub(crate) fn save_state_json(&self) -> Option<String> {
+        serde_json::to_string(&PotentialFlowState {
+            elements: self.elements.clone(),
+            grid_size: self.grid_size,
+            view_range: self.view_range,
+            selected_element_type: self.selected_element_type,
+            new_element_strength: self.new_element_strength,
+            new_element_x: self.new_element_x,
+            new_element_y: self.new_element_y,
+            new_element_angle: self.new_element_angle,
+        })
+        .ok()
+    }
+
+    pub(crate) fn load_state_json(&mut self, state: &str) -> Result<(), String> {
+        let loaded: PotentialFlowState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid PotentialFlowTool state: {e}"))?;
+        if !loaded.is_valid() {
+            return Err(
+                "PotentialFlowTool parameters must be finite and within valid grid/view bounds"
+                    .to_string(),
+            );
+        }
+        self.elements = loaded.elements;
+        self.grid_size = loaded
+            .grid_size
+            .min(crate::presets::MAX_INTERACTIVE_GRID_SIZE);
+        self.view_range = loaded.view_range;
+        self.selected_element_type = loaded.selected_element_type;
+        self.new_element_strength = loaded.new_element_strength;
+        self.new_element_x = loaded.new_element_x;
+        self.new_element_y = loaded.new_element_y;
+        self.new_element_angle = loaded.new_element_angle;
+        self.rebuild_field();
+        Ok(())
+    }
+
     pub(crate) fn field_geometry_key(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.grid_size.hash(&mut h);
@@ -50,49 +130,6 @@ impl PotentialFlowTool {
         canonical_bits(self.new_element_y).hash(&mut h);
         canonical_bits(self.new_element_angle).hash(&mut h);
         h.finish().max(1)
-    }
-
-    pub(crate) fn compute_arrow_field(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
-        if !self.view_range.is_finite()
-            || self.view_range <= 0.0
-            || !(2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_size)
-        {
-            return (Vec::new(), Vec::new());
-        }
-        let step = (2.0 * self.view_range) / (self.grid_size as f64);
-        if !step.is_finite() || step <= 0.0 {
-            return (Vec::new(), Vec::new());
-        }
-        let min = -self.view_range;
-        let cap = (self.grid_size + 1) * (self.grid_size + 1);
-        let mut origins = Vec::with_capacity(cap);
-        let mut tips = Vec::with_capacity(cap);
-
-        for ix in 0..=self.grid_size {
-            let x = min + (ix as f64) * step;
-            for iy in 0..=self.grid_size {
-                let y = min + (iy as f64) * step;
-                let v = self.field.velocity(x, y);
-                if !v.x.is_finite() || !v.y.is_finite() {
-                    continue;
-                }
-                let magnitude = v.norm();
-                if !magnitude.is_finite() || magnitude <= 1e-6 {
-                    continue;
-                }
-                let arrow_len = (magnitude * 0.1).min(step * 0.8);
-                if !arrow_len.is_finite() || arrow_len <= 0.0 {
-                    continue;
-                }
-                let direction = v / magnitude;
-                let end = [x + direction.x * arrow_len, y + direction.y * arrow_len];
-                if end[0].is_finite() && end[1].is_finite() {
-                    origins.push([x, y]);
-                    tips.push(end);
-                }
-            }
-        }
-        (origins, tips)
     }
 
     pub(crate) fn ensure_cached_arrows(&mut self) -> (Arc<Vec<PlotPoint>>, Arc<Vec<PlotPoint>>) {
