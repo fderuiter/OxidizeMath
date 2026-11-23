@@ -302,6 +302,7 @@ impl SimulationFramework {
         });
 
         self.sync_overlays_before_frame(&ctx, id_source);
+        self.poll_active_gif_export(&ctx);
         self.show_export_action_bar(ui, id_source);
         self.show_challenge_hud(ui, id_source);
         self.render_challenge_hud_panel(ui, &ctx, id_source);
