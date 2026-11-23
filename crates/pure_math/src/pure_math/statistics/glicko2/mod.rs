@@ -193,6 +193,7 @@
 #[doc(hidden)]
 pub mod core;
 pub mod rating;
+pub mod tournament;
 
 // Re-export main types
 pub use core::{
@@ -200,6 +201,11 @@ pub use core::{
     expected_outcome, g_function,
 };
 pub use rating::{increase_rd_for_inactivity, update_rating};
+pub use tournament::{
+    Pairing, PeriodMatch, SwissRoundPlan, evaluate_rating_period, evaluate_rating_period_into,
+    evaluate_sequential_period, head_to_head_win_probability, pairwise_win_matrix,
+    round_robin_schedule, simulate_period_matches, swiss_pairings,
+};
 
 // [cite:clinical_trials_statistics]
 
