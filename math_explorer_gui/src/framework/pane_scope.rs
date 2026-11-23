@@ -10,17 +10,26 @@ pub enum InputMode {
 }
 
 /// Event context provided to interaction hooks.
-#[allow(missing_docs)]
 pub struct InteractionContext<'a> {
+    /// Current pointer position in screen coordinates, if hovering or interacting.
     pub pointer_pos: Option<egui::Pos2>,
+    /// Pointer drag delta since the previous frame.
     pub delta: egui::Vec2,
+    /// Whether a drag gesture is currently active.
     pub is_dragging: bool,
+    /// Whether the target surface was clicked this frame.
     pub is_clicked: bool,
+    /// Underlying widget [`egui::Response`] for the interactive surface.
     pub response: &'a egui::Response,
+    /// Active pointer input modality (mouse or touch).
     pub input_mode: InputMode,
+    /// Multi-touch gesture state when two or more fingers are active.
     pub multi_touch: Option<egui::MultiTouchInfo>,
+    /// Keyboard keys held down during the current frame.
     pub keys_down: std::collections::HashSet<egui::Key>,
+    /// Keyboard modifier flags active during the current frame.
     pub modifiers: egui::Modifiers,
+    /// Optional interpolated spatial brush stroke emitted by `SpatialBrushKit`.
     pub brush_stroke: Option<BrushStroke>,
 }
 

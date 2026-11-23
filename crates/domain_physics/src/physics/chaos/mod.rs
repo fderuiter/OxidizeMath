@@ -230,6 +230,63 @@ mod tests {
         running_system.step(0.01);
         assert!(running_system.state.vec.x.is_finite());
     }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_logistic_lyapunov_zero_steps_and_superstable() {
+        assert_eq!(metrics::logistic_lyapunov(3.8, 0.4, 0), 0.0);
+        let superstable = metrics::logistic_lyapunov(2.0, 0.5, 64);
+        assert!(superstable.is_finite() && superstable < -20.0);
+        let escaping = metrics::logistic_lyapunov(4.5, 2.0, 100);
+        assert!(escaping.is_finite() && escaping > 0.0);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_lorenz_lyapunov_zero_distance_contraction_zero_alloc() {
+        use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4};
+
+        struct InstantCollapseSink;
+        impl OdeSystem<na::Vector3<f64>> for InstantCollapseSink {
+            fn derivative(&self, _t: f64, state: &na::Vector3<f64>) -> na::Vector3<f64> {
+                -1000.0 * (*state)
+            }
+        }
+
+        let init = na::Vector3::zeros();
+        let mut rk4 = RungeKutta4::new(&init);
+        let lambda =
+            metrics::lorenz_lyapunov(&InstantCollapseSink, &mut rk4, init, 0.002, 5, 0.1).unwrap();
+        assert!(lambda.is_finite() && lambda < 0.0);
+
+        let err = metrics::lorenz_lyapunov(&InstantCollapseSink, &mut rk4, init, 0.5, 5, 0.1);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_lorenz_theory_description_classifies_four_regimes() {
+        use scientific_metadata::theory::TheoryDescribable;
+
+        let s0 = lorenz::LorenzState::new(1.0, 1.0, 1.0);
+        let origin = lorenz::LorenzBuilder::new().rho(0.5).build(s0);
+        assert!(origin.theory_description().contains("Origin sink regime"));
+
+        let twin = lorenz::LorenzBuilder::new().rho(15.0).build(s0);
+        assert!(
+            twin.theory_description()
+                .contains("Twin-lobe equilibrium regime")
+        );
+
+        let chaotic = lorenz::LorenzBuilder::new().rho(28.0).build(s0);
+        assert!(chaotic.theory_description().contains("Chaotic regime"));
+
+        let periodic = lorenz::LorenzBuilder::new().rho(350.0).build(s0);
+        assert!(
+            periodic
+                .theory_description()
+                .contains("Periodic window regime")
+        );
+    }
 }
 
 // [cite:graph_parameters_rust]

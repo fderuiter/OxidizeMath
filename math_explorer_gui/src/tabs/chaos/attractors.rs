@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::{
     Camera3D, CoupledExpressionBank, ExportCapabilities, InteractiveTool, Scene3DBuilder,
@@ -10,6 +11,12 @@ use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSy
 use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
 use std::sync::Arc;
+
+#[path = "attractors/atlas.rs"]
+pub mod atlas;
+use atlas::ATTRACTOR_ATLAS_AXIS_PAIRS;
+#[cfg(test)]
+pub use atlas::{lorenz_hopf_threshold, AttractorCartographer};
 
 #[path = "attractors/flow.rs"]
 pub mod flow;
@@ -53,6 +60,7 @@ pub struct AttractorPlotter {
     pub(crate) dragged_callout: Option<usize>,
     pub(super) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
+    pub(crate) atlas: ParameterAtlasController,
 }
 
 impl Default for AttractorPlotter {
@@ -100,6 +108,7 @@ impl Default for AttractorPlotter {
                 false,
             ),
             invariants_cache: invariants::CachedAttractorInvariants::default(),
+            atlas: ParameterAtlasController::new(ATTRACTOR_ATLAS_AXIS_PAIRS.to_vec()),
         }
     }
 }
@@ -289,41 +298,7 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.mode as u8).hash(&mut h);
-        for bar in self.flow_bank.bars() {
-            bar.raw_text.hash(&mut h);
-        }
-        for &pv in self.flow_bank.param_slice() {
-            pv.to_bits().hash(&mut h);
-        }
-        self.system.sigma.to_bits().hash(&mut h);
-        self.system.rho.to_bits().hash(&mut h);
-        self.system.beta.to_bits().hash(&mut h);
-        self.dt.to_bits().hash(&mut h);
-        self.tube_radius.to_bits().hash(&mut h);
-        self.simulation_speed.hash(&mut h);
-        self.max_points.hash(&mut h);
-        self.is_paused().hash(&mut h);
-        self.diverged().hash(&mut h);
-        self.show_annotations.hash(&mut h);
-        for offset in &self.fixed_callout_offsets {
-            let x_bits = if offset.x == 0.0 {
-                0
-            } else {
-                offset.x.to_bits()
-            };
-            let y_bits = if offset.y == 0.0 {
-                0
-            } else {
-                offset.y.to_bits()
-            };
-            x_bits.hash(&mut h);
-            y_bits.hash(&mut h);
-        }
-        self.camera.hash_state(&mut h);
-        h.finish().max(1)
+        self.compute_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {
