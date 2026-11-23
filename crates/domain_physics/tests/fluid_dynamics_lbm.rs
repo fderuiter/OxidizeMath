@@ -87,7 +87,7 @@ fn test_lbm_velocity_propagation() {
 #[test]
 #[verified_engine::verified]
 fn test_lbm_evolution_engine_step_no_double_swap() {
-    use pure_math::pure_math::analysis::evolution::EvolutionEngine;
+    use pure_math::pure_math::analysis::evolution::DoubleBufferedEvolutionEngine;
 
     let mut direct = LatticeBoltzmannD2Q9::new(16, 8, 0.7);
     let mut engine = LatticeBoltzmannD2Q9::new(16, 8, 0.7);
@@ -101,8 +101,14 @@ fn test_lbm_evolution_engine_step_no_double_swap() {
         std::mem::swap(&mut engine.state, &mut external_state);
         engine.set_inlet(0, 0, 2, 8, 0.08, 0.0);
         std::mem::swap(&mut engine.state, &mut external_state);
-        EvolutionEngine::step(&mut engine, &mut external_state, &mut (), &mut rng, 1.0)
-            .expect("EvolutionEngine::step should succeed");
+        DoubleBufferedEvolutionEngine::step_buffered(
+            &mut engine,
+            &mut external_state,
+            &mut (),
+            &mut rng,
+            1.0,
+        )
+        .expect("DoubleBufferedEvolutionEngine::step_buffered should succeed");
     }
 
     std::mem::swap(&mut engine.state, &mut external_state);

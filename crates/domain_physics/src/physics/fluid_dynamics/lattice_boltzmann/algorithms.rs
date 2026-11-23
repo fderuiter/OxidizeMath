@@ -41,6 +41,9 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
         let eq = L::equilibrium(1.0, 0.0, 0.0);
         self.state.f.fill(eq);
         self.state.f_new.fill(eq);
+        self.state.last_drag_force = 0.0;
+        self.state.last_lift_force = 0.0;
+        self.state.has_stepped_forces = false;
     }
 
     /// Sets a rectangular region of velocity (e.g., inlet).
@@ -72,15 +75,18 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
         }
     }
 
-    /// Performs one simulation step (`Stream -> Collision -> SwapBuffers`).
+    /// Performs one simulation step (Stream -> Collision -> Buffer Swap).
     #[verified_engine::verified]
     pub fn step(&mut self) {
+        self.step_unswapped();
+        std::mem::swap(&mut self.state.f, &mut self.state.f_new);
+    }
+
+    #[verified_engine::verified]
+    fn step_unswapped(&mut self) {
         self.stream();
         self.boundary_conditions(); // Apply macroscopic BCs if any
         self.macroscopic_and_collision();
-        pure_math::pure_math::analysis::evolution::DoubleBufferedState::swap_buffers(
-            &mut self.state,
-        );
     }
 
     /// Applies a zero-gradient convective outlet on the right boundary (`x = width - 1`)
@@ -188,6 +194,8 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
         let cx = L::directions_x();
         let cy = L::directions_y();
         let opp = L::opposite_indices();
+        let mut f_drag = 0.0;
+        let mut f_lift = 0.0;
 
         // 1. Interior (Hot Path) - Loop Splitting & optimizations
         if width > 2 && height > 2 {
@@ -205,9 +213,12 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
                         let source_is_obstacle = self.state.obstacles[(prev_y, prev_x)];
 
                         if source_is_obstacle {
-                            // Bounce-back
-                            let bounce_val = self.state.f[(y, x)][opp[k]];
+                            // Bounce-back and momentum-exchange force onto solid obstacle
+                            let out_k = opp[k];
+                            let bounce_val = self.state.f[(y, x)][out_k];
                             self.state.f_new[(y, x)][k] = bounce_val;
+                            f_drag += 2.0 * bounce_val * (cx[out_k] as f64);
+                            f_lift += 2.0 * bounce_val * (cy[out_k] as f64);
                         } else {
                             // Stream
                             let stream_val = self.state.f[(prev_y, prev_x)][k];
@@ -273,6 +284,9 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
                 process_boundary_cell(x, y, &mut self.state);
             }
         }
+        self.state.last_drag_force = f_drag;
+        self.state.last_lift_force = f_lift;
+        self.state.has_stepped_forces = true;
     }
 
     /// Enforce specific boundary conditions (like driving velocity).
@@ -433,7 +447,7 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> EvolutionEngine<L
         _dt: f64,
     ) -> Result<(), EvolutionError> {
         std::mem::swap(&mut self.state, state);
-        self.step();
+        self.step_unswapped();
         std::mem::swap(&mut self.state, state);
         Ok(())
     }

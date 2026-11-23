@@ -166,7 +166,8 @@ mod tests {
 
         let v = 0.8;
         let j = dist.virtual_valuation(v);
-        assert!((j - (2.0 * v - 1.0)).abs() < math_commons::registry::TOLERANCE_STANDARD); // J(0.8) = 0.6.
+        assert!((j - (2.0 * v - 1.0)).abs() < math_commons::registry::TOLERANCE_STANDARD);
+        // J(0.8) = 0.6.
     }
 
     #[test]
