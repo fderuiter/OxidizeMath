@@ -302,6 +302,7 @@ impl AstVisitor {
             let attr_line = span_line(attr.span());
             if !attr.path().is_ident("doc") {
                 let attr_str = quote::quote!(#attr).to_string().replace(' ', "");
+
                 if attr_str.contains("verified_engine::verified")
                     || attr_str.contains("#[verified]")
                     || attr_str.starts_with("#[verified(")
@@ -309,12 +310,14 @@ impl AstVisitor {
                     is_verified = true;
                     has_semantic = true;
                 }
+
                 if attr_str.contains("embed_theory") {
                     is_verified = true;
                     has_semantic = true;
                     self.extract_embed_theory(&attr_str, attr_line);
                 }
             }
+
             let doc_text = quote::quote!(#attr).to_string();
             let extracted =
                 crate::traceability::TraceabilityEngine::<crate::vfs::DefaultVfs>::extract_citations(

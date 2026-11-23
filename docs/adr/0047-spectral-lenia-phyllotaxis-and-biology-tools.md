@@ -1,4 +1,4 @@
-# ADR 0046: Developmental Phyllotaxis, Nutrient-Coupled L-Systems, and Multi-Tool Biology Playground
+# ADR 0047: Developmental Phyllotaxis, Nutrient-Coupled L-Systems, and Multi-Tool Biology Playground
 
 ## Status
 Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0042](0042-fft-lenia-engine-and-gray-scott-kinetics.md), and [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md))
