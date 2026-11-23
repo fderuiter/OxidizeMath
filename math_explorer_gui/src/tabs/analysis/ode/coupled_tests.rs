@@ -46,6 +46,12 @@ fn test_coupled_ode_lotka_volterra_solvers_comparison_and_zero_alloc() {
 
     // Restore valid expression and verify zero heap allocations in RK4 step loop
     tool.coupled_bank.set_expression(0, "a * y - b * y * v");
+    let code_art = tool.export_code_artifact().expect("coupled code artifact");
+    assert!(code_art.validate().is_ok());
+    assert!(code_art.calibrated_latex.contains("1.1"));
+    assert!(code_art.rust_source.contains("pub fn dy_rhs("));
+    assert!(code_art.python_source.contains("solve_ivp"));
+
     let spec = tool.build_custom_ode_spec().expect("coupled spec");
     let init = VecState(vec![2.0, 1.0]);
     let mut model = OdeModel::new(init.clone(), spec, RungeKutta4::new(&init));
@@ -95,4 +101,68 @@ fn test_coupled_ode_persistence_and_url_roundtrip() {
     // CustomOdeSpec scalar fallback check
     let scalar_tool = OdeSolverTool::default();
     assert!(CustomOdeSpec::from_scalar_bar(&scalar_tool.math_input, 1.0, 1.0, 10.0).is_some());
+}
+
+#[test]
+fn test_linear_2d_and_planar_custom_code_exports_validate_and_compile() {
+    let mut lin = OdeSolverTool {
+        preset: OdePreset::LinearSystem2D,
+        matrix_a: [[-0.25, 1.0], [-1.0, -0.25]],
+        ic_y0: 1.0,
+        ic_v0: 0.0,
+        ..Default::default()
+    };
+    lin.recalculate();
+    let lin_art = lin.export_code_artifact().expect("linear 2d code artifact");
+    assert!(lin_art.validate().is_ok());
+    assert!(lin_art.calibrated_latex.contains("-0.25"));
+    assert!(lin_art.python_source.contains("x, y = float(state[0])"));
+
+    let mut planar = OdeSolverTool {
+        preset: OdePreset::PlanarCustom,
+        param_k: 1.5,
+        ic_y0: 1.2,
+        ic_v0: 0.0,
+        ..Default::default()
+    };
+    planar.recalculate();
+    let pl_art = planar
+        .export_code_artifact()
+        .expect("planar custom code artifact");
+    assert!(pl_art.validate().is_ok());
+    assert!(pl_art.calibrated_latex.contains("1.5"));
+    assert!(pl_art.rust_source.contains("pub fn dx_rhs("));
+    assert!(pl_art.python_source.contains("x, y = float(state[0])"));
+
+    #[cfg(not(target_arch = "wasm32"))]
+    compile_planar_rust_snippets(&[
+        ("lin2d", &lin_art.rust_source),
+        ("planar", &pl_art.rust_source),
+    ]);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn compile_planar_rust_snippets(items: &[(&str, &str)]) {
+    let dir = std::env::temp_dir().join(format!("oxidize_planar_rs_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    for (slug, src) in items {
+        let rs = dir.join(format!("{slug}.rs"));
+        let bin = dir.join(format!("{slug}{}", std::env::consts::EXE_SUFFIX));
+        std::fs::write(&rs, src).unwrap();
+        let out = std::process::Command::new(&rustc)
+            .args(["--edition", "2024", "-D", "warnings"])
+            .arg(&rs)
+            .arg("-o")
+            .arg(&bin)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }

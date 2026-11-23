@@ -14,6 +14,7 @@ pub mod ui;
 use crate::framework::{
     CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool, ToolStateBounds,
 };
+use crate::tabs::medical::link_bus::{publish_gating_telemetry, GatingTelemetry};
 use eframe::egui;
 use math_explorer::physics::medical::radar_gating::BeamState;
 use pipeline::RadarPipeline;
@@ -65,9 +66,22 @@ impl Default for RadarGatingTool {
 }
 
 impl RadarGatingTool {
-    /// Steps the respiratory, phase, Kalman, and gating loop with zero heap allocations.
+    /// Steps the respiratory, phase, Kalman, and gating loop with zero heap allocations
+    /// and publishes a [`GatingTelemetry`] step snapshot onto the medical link bus.
     pub fn step_gating(&mut self) -> BeamState {
-        self.pipeline.step_zero_alloc(&self.state)
+        let state = self.pipeline.step_zero_alloc(&self.state);
+        let _ = publish_gating_telemetry(self.pipeline.latest_telemetry(true));
+        state
+    }
+
+    /// Publishes the current non-step lifecycle status (`Standby`, `Armed`, `SafetyInterlock`)
+    /// onto the shared medical link bus and triggers `<= 30 ms` audio suspension on interlock.
+    pub fn publish_status_snapshot(&self, step_event: bool) -> GatingTelemetry {
+        let snap = publish_gating_telemetry(self.pipeline.latest_telemetry(step_event));
+        if snap.beam_state == BeamState::SafetyInterlock {
+            crate::audio::notify_solver_diverged();
+        }
+        snap
     }
 
     /// Resets playback, faults, and pipeline history using current parameters.
@@ -80,6 +94,7 @@ impl RadarGatingTool {
             self.pipeline.scheduled_cough_enabled = true;
         }
         self.pipeline.rebuild_all(&self.state);
+        let _ = publish_gating_telemetry(self.pipeline.latest_telemetry(false));
     }
 
     /// Injects a deterministic thoracic cough spike into the respiratory trajectory.
@@ -95,18 +110,16 @@ impl RadarGatingTool {
     /// Resets a latched `SafetyInterlock` back to `BeamState::Standby`.
     pub fn reset_interlock(&mut self) -> BeamState {
         self.interlock_notified = false;
-        self.pipeline.reset_interlock_to_standby()
+        let st = self.pipeline.reset_interlock_to_standby();
+        let _ = publish_gating_telemetry(self.pipeline.latest_telemetry(false));
+        st
     }
 
     /// Arms the LINAC gating controller from `Standby` to `BeamState::Armed`.
     pub fn arm_gating(&mut self) -> BeamState {
-        self.pipeline.arm_controller()
-    }
-
-    /// Returns the widget ID when the 2D room canvas holds keyboard focus.
-    #[cfg(test)]
-    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
+        let st = self.pipeline.arm_controller();
+        let _ = publish_gating_telemetry(self.pipeline.latest_telemetry(false));
+        st
     }
 
     /// Extracts a stack-allocated 60 GHz Doppler and MUSIC [`crate::audio::SonificationFrame`].
@@ -131,6 +144,10 @@ impl RadarGatingTool {
 impl InteractiveTool for RadarGatingTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
     }
 
     fn name(&self) -> &'static str {
@@ -278,7 +295,9 @@ impl InteractiveTool for RadarGatingTool {
     }
 
     fn step_simulation(&mut self) {
-        let _ = self.step_gating();
+        if self.step_gating() == BeamState::SafetyInterlock {
+            crate::audio::notify_solver_diverged();
+        }
     }
 }
 
