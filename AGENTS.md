@@ -32,9 +32,10 @@ Run workspace builds, fast diff-scoped pre-commit checks (`lint-staged`), and th
 cargo check --workspace
 cargo build --workspace --all-features
 
-# Run fast diff-scoped pre-commit checks on staged paths (executed automatically by .githooks/pre-commit;
-# checks staged formatting, ADR records, file lengths, entropy, policy audit, staged duplicates,
-# .github/-gated workflows, .md-gated links, and targeted host/wasm32 Clippy without OSV network calls or API drift)
+# Run fast offline snapshot-backed pre-commit checks on the staged Git index (executed automatically by
+# .githooks/pre-commit; syncs <target_dir>/lint-staged-snapshot, runs rustfmt, batch-staged profiles/ADR records/
+# lengths/docs/duplicates/traceability/entropy/policy, single .github/ workflow lint, .md or deletion/rename link
+# scans, and reverse-dependent + 17-web-crate host/wasm32 Clippy without OSV network calls or API drift)
 cargo run -p xtask -- lint-staged
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static
@@ -185,7 +186,7 @@ The `package` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) define
 
 ### Workspace Version Synchronization, Pre-Release Tags & WiX Mapping
 
-Release versioning is centralized in `[workspace.package].version` in root [Cargo.toml](Cargo.toml) per [ADR 0040](docs/adr/0040-workspace-release-version-guards-and-wix-mapping.md):
+Release versioning is centralized in `[workspace.package].version` in root [Cargo.toml](Cargo.toml) per [ADR 0041](docs/adr/0041-workspace-release-version-guards-and-wix-mapping.md):
 
 - **11 Release Crates (`version.workspace = true`)**: [math_explorer/Cargo.toml](math_explorer/Cargo.toml), [math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml), and the nine `crates/*` library/domain crates (`math_commons`, `scientific_metadata`, `pure_math`, `domain_ai`, `domain_physics`, `domain_biology`, `domain_applied`, `domain_climate`, and `domain_epidemiology`) inherit `[workspace.package].version`. [math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml) omits `version` under `[package.metadata.packager]` so `cargo-packager` inherits `[package].version` alongside `WorkspaceEnvelope` (`CARGO_PKG_VERSION`). Vendored `egui_plot/Cargo.toml` preserves `version = "0.34.1"` for `[patch.crates-io]`, and the eight internal foundation/tooling crates retain `version = "0.1.0"`.
 - **`README.md` & Manifest Guard (`check-profiles`)**: Updating `[workspace.package].version` requires updating the shields.io version badge and `math_explorer` dependency snippet in [README.md](README.md). `check-profiles` enforces SemVer and WiX numeric bounds (`major <= 255`, `minor <= 255`, `patch <= 65535`, `revision <= 65535`), rejects `+build` metadata, enforces `version.workspace = true`, and rejects duplicate `[package.metadata.packager].version` keys.

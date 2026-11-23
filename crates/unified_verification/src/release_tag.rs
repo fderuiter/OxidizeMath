@@ -450,7 +450,7 @@ pub(crate) fn run_check_release_tag_cli(args: &[String]) -> bool {
     let release_tag_env = env::var("RELEASE_TAG").ok();
     let git_ref_env = env::var("GIT_REF").ok();
     match run_check_release_tag_in_dir(
-        root,
+        &root,
         args,
         release_tag_env.as_deref(),
         git_ref_env.as_deref(),

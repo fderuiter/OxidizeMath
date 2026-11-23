@@ -334,7 +334,7 @@ fn test_cli_runner_parity_mismatch_and_rc_output_emission() {
     // Mismatched tag v0.5.0 against workspace 0.4.0 fails in pre-flight & publish-release modes
     for args in [Vec::<String>::new(), vec!["--require-tag".to_string()]] {
         let err =
-            run_check_release_tag_in_dir(root, &args, Some("v0.5.0"), Some("refs/tags/v0.5.0"))
+            run_check_release_tag_in_dir(&root, &args, Some("v0.5.0"), Some("refs/tags/v0.5.0"))
                 .unwrap_err();
         assert!(err.contains("parity mismatch"));
     }
