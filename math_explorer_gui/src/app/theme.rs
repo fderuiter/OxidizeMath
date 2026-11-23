@@ -273,13 +273,14 @@ pub(crate) fn extract_explicit_theme_from_json(json_str: &str) -> Option<ThemeMo
 pub(super) fn init_startup_theme(
     app: &mut super::MathExplorerApp,
     cc: &eframe::CreationContext<'_>,
-) {
+) -> bool {
     let detected = detect_startup_theme(cc);
     app.theme = detected;
+    let mut restored_from_storage = false;
     if let Some(storage) = cc.storage {
         if let Some(state_str) = storage.get_string(eframe::APP_KEY) {
             let explicit_theme = extract_explicit_theme_from_json(&state_str);
-            app.load_state_from_json(&state_str);
+            restored_from_storage = app.try_load_state_from_json(&state_str);
             if explicit_theme.is_none() {
                 app.theme = detected;
             }
@@ -288,6 +289,7 @@ pub(super) fn init_startup_theme(
     app.theme.apply_to_context(&cc.egui_ctx);
     sync_document_theme(app.theme);
     app.last_synced_theme = Some(app.theme);
+    restored_from_storage
 }
 
 /// Synchronizes `egui` visuals, DOM theme metadata, and immediate `eframe::Storage` persistence.
