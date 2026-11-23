@@ -194,7 +194,7 @@ impl GaussianSplattingTool {
         for (ring_pts, color) in rings.iter().take(32) {
             prims.push(ExportPrimitive::Polyline {
                 name: "Projected Covariance".to_string(),
-                points: ring_pts.to_vec(),
+                points: ring_pts.to_vec().into(),
                 color: *color,
                 stroke_width: 1.2,
                 closed: true,
@@ -218,7 +218,9 @@ impl GaussianSplattingTool {
         if self.lens.mode == SplatLensMode::Schwarzschild {
             prims.push(ExportPrimitive::Polyline {
                 name: "Einstein Ring".to_string(),
-                points: build_circle_ring(center, self.lens.einstein_radius).to_vec(),
+                points: build_circle_ring(center, self.lens.einstein_radius)
+                    .to_vec()
+                    .into(),
                 color: palette.warning,
                 stroke_width: 1.8,
                 closed: true,
@@ -226,7 +228,9 @@ impl GaussianSplattingTool {
             });
             prims.push(ExportPrimitive::Polyline {
                 name: "Photon Sphere Shadow (1.5 R_s)".to_string(),
-                points: build_circle_ring(center, telemetry.shadow_radius).to_vec(),
+                points: build_circle_ring(center, telemetry.shadow_radius)
+                    .to_vec()
+                    .into(),
                 color: palette.error,
                 stroke_width: 1.6,
                 closed: true,
@@ -236,7 +240,7 @@ impl GaussianSplattingTool {
         if let Some(r_nfw) = telemetry.nfw_critical_radius {
             prims.push(ExportPrimitive::Polyline {
                 name: "NFW Cusp Critical Curve".to_string(),
-                points: build_circle_ring(center, r_nfw).to_vec(),
+                points: build_circle_ring(center, r_nfw).to_vec().into(),
                 color: palette.accent,
                 stroke_width: 1.5,
                 closed: true,
@@ -246,7 +250,7 @@ impl GaussianSplattingTool {
         if let Some(r_burk) = telemetry.burkert_critical_radius {
             prims.push(ExportPrimitive::Polyline {
                 name: "Burkert Core Critical Curve".to_string(),
-                points: build_circle_ring(center, r_burk).to_vec(),
+                points: build_circle_ring(center, r_burk).to_vec().into(),
                 color: palette.success,
                 stroke_width: 1.5,
                 closed: true,

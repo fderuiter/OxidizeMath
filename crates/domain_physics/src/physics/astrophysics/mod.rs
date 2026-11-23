@@ -2,12 +2,15 @@
 //!
 //! Empirical dwarf-galaxy regressions from Tillaboev, Tadjibaev & Otojanova (2025)
 //! (`tillaboev2025`), radially decomposed baryonic and dark-matter (`NfwCusp`,
-//! `BurkertCore`) circular rotation curves, and zero-allocation kick-drift-kick
-//! symplectic planar disk and tidal-stream orbits.
+//! `BurkertCore`) circular rotation curves, closed-form gravitational thin-lens
+//! shear Jacobians (`lensing`, `halo_lensing`), zero-allocation kick-drift-kick
+//! symplectic planar disk and Paczyński-Wiita relativistic orbits (`orbits`,
+//! `paczynski_wiita`), and planar 3-body gravitational choreographies (`nbody`).
 
 pub mod galaxies;
 pub mod halo_lensing;
 pub mod lensing;
+pub mod nbody;
 pub mod orbits;
 pub mod paczynski_wiita;
 pub mod rotation_curves;

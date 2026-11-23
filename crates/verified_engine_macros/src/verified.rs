@@ -99,6 +99,10 @@ struct InjectorVisitor {
 }
 
 impl VisitMut for InjectorVisitor {
+    fn visit_item_mut(&mut self, _item: &mut syn::Item) {
+        // Nested items have their own scope and do not capture `__ve_active`.
+    }
+
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
         let ve_path = self.ve_path.clone();
         let mut new_stmts = Vec::new();
@@ -109,16 +113,26 @@ impl VisitMut for InjectorVisitor {
             };
             counter.visit_stmt(&stmt);
 
-            if counter.arithmetic > 0 {
-                let count = counter.arithmetic;
+            let arith = counter.arithmetic as u64;
+            let loads = counter.loads as u64;
+            if arith > 0 && loads > 0 {
                 new_stmts.push(syn::parse_quote! {
-                    #ve_path::metrics::increment_arithmetic(#count as u64);
+                    if __ve_active {
+                        #ve_path::metrics::increment_arithmetic(#arith);
+                        #ve_path::metrics::increment_memory_loads(#loads);
+                    }
                 });
-            }
-            if counter.loads > 0 {
-                let count = counter.loads;
+            } else if arith > 0 {
                 new_stmts.push(syn::parse_quote! {
-                    #ve_path::metrics::increment_memory_loads(#count as u64);
+                    if __ve_active {
+                        #ve_path::metrics::increment_arithmetic(#arith);
+                    }
+                });
+            } else if loads > 0 {
+                new_stmts.push(syn::parse_quote! {
+                    if __ve_active {
+                        #ve_path::metrics::increment_memory_loads(#loads);
+                    }
                 });
             }
 
@@ -215,17 +229,20 @@ fn verify_and_instrument_block(
     }
 
     if sig.constness.is_none() {
-        let inner_block = &*block;
-        *block = syn::parse_quote! {
-            {
-                #ve_path::metrics::increment_calls();
-                #inner_block
-            }
-        };
         let mut injector = InjectorVisitor {
             ve_path: ve_path.clone(),
         };
         injector.visit_block_mut(block);
+        let inner_block = &*block;
+        *block = syn::parse_quote! {
+            {
+                let __ve_active = #ve_path::metrics::is_verification_enabled();
+                if __ve_active {
+                    #ve_path::metrics::increment_calls();
+                }
+                #inner_block
+            }
+        };
     }
     Ok(())
 }

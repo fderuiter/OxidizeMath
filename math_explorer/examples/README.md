@@ -7,6 +7,18 @@ This directory contains runnable, copy-pasteable examples for the Math Explorer 
 Run any example using Cargo by passing its required domain feature flag:
 `cargo run --release --package math_explorer --features <domain_feature> --example <example_name>`
 
+```bash
+# Quickstart Quantum Mechanics and mmWave radiotherapy examples
+cargo run --package math_explorer --features physics --example hello_world
+cargo run --package math_explorer --features physics --example mmwave_setup
+
+# Hodgkin-Huxley neuron simulation
+cargo run --package math_explorer --features biology --example hodgkin_huxley_demo
+
+# Smoke-test all 32 registered examples in isolated sandboxes with MATH_EXPLORER_SMOKE=1
+cargo run -p xtask -- smoke-examples
+```
+
 ## Domain Catalog
 
 ### 🤖 AI (`--features ai`)

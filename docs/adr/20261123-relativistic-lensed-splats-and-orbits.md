@@ -1,4 +1,4 @@
-# ADR 0046: Zero-Allocation Fixed-Size Christoffel Symbols, Relativistic Thin-Lens Splat Jacobians, and Paczyński-Wiita Galactic Orbits
+# ADR 20261123: Zero-Allocation Fixed-Size Christoffel Symbols, Relativistic Thin-Lens Splat Jacobians, and Paczyński-Wiita Galactic Orbits
 
 ## Status
 Accepted (extends [ADR 0040](0040-galactic-dynamics-and-astrophysics-tab.md) and [ADR 0044](0044-geodesic-engine-and-relativity-tab.md))
