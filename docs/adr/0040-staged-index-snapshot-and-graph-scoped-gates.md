@@ -1,4 +1,4 @@
-# ADR 0039: Staged Git Index Snapshot Isolation and Dependency-Graph Pre-Commit Gates
+# ADR 0040: Staged Git Index Snapshot Isolation and Dependency-Graph Pre-Commit Gates
 
 ## Status
 
