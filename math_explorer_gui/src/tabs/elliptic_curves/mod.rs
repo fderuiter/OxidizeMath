@@ -1,8 +1,9 @@
-// @explorer_feature = "pure_math"
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 // [cite:modular_polynomials_review]
 // [cite:hurwitz_kronecker]
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod atlas;
@@ -22,7 +23,7 @@ mod atlas_challenge_tests;
 #[cfg(test)]
 mod tests;
 
-/// Auto-discovered Pure Math tab for short-Weierstrass elliptic curve geometry and modular invariants.
+/// Pure Math tab for short-Weierstrass elliptic curve geometry and modular invariants.
 pub struct EllipticCurvesTab {
     framework: crate::framework::SimulationFramework,
 }
@@ -81,5 +82,13 @@ impl ExplorerTab for EllipticCurvesTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "elliptic_curves",
+        order: 26,
+        build: || Box::new(EllipticCurvesTab::default()),
     }
 }

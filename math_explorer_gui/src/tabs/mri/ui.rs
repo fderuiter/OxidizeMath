@@ -274,21 +274,18 @@ impl MriTool {
                     self.pulse_workspace.playhead_idx =
                         (self.pulse_workspace.playhead_idx + 1) % MRI_PULSE_SAMPLES;
                 }
+                PlaybackAction::StepBack => {
+                    self.pulse_workspace.playhead_playing = false;
+                    self.pulse_workspace.playhead_idx =
+                        self.pulse_workspace.playhead_idx.saturating_sub(1);
+                }
+                PlaybackAction::ScrubTo(step) => {
+                    self.pulse_workspace.playhead_playing = false;
+                    self.pulse_workspace.playhead_idx = step.min(last);
+                }
                 PlaybackAction::Reset => {
                     self.pulse_workspace.playhead_playing = false;
                     self.pulse_workspace.playhead_idx = 0;
-                }
-                PlaybackAction::StepBack => {
-                    self.pulse_workspace.playhead_playing = false;
-                    self.pulse_workspace.playhead_idx = self
-                        .pulse_workspace
-                        .playhead_idx
-                        .checked_sub(1)
-                        .unwrap_or(last);
-                }
-                PlaybackAction::ScrubTo(idx) => {
-                    self.pulse_workspace.playhead_playing = false;
-                    self.pulse_workspace.playhead_idx = idx.min(last);
                 }
             }
         }

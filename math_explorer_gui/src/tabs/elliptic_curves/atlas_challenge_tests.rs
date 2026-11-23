@@ -40,7 +40,7 @@ fn assert_nine_finite_observables(obs: &[(&'static str, f64)]) {
 
 #[test]
 fn test_atlas_cartographer_zero_alloc_real_and_fp_regimes() {
-    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     let real_carto = WeierstrassRegimeCartographer::new(("real_a", "real_b"), 23, 0.05);
