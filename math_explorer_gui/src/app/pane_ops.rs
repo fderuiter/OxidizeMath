@@ -79,30 +79,6 @@ impl MathExplorerApp {
         self.dataflow_bus.swap_panes(lo, hi);
     }
 
-    /// Resolves and synchronizes the active viewport layout for the current frame.
-    pub(super) fn resolve_frame_viewport_layout(&mut self) -> ViewportLayout {
-        if self.viewport_layout != ViewportLayout::Single {
-            self.sync_layout();
-            return self.viewport_layout;
-        }
-        if self.split_layout_mode != super::SplitLayoutMode::Single {
-            let layout = match self.split_layout_mode {
-                super::SplitLayoutMode::Horizontal => ViewportLayout::SplitHorizontal,
-                super::SplitLayoutMode::Vertical => ViewportLayout::SplitVertical,
-                super::SplitLayoutMode::Single => ViewportLayout::Single,
-            };
-            self.viewport_layout = layout;
-            if !self.pane_tabs.is_empty() {
-                self.pane_tabs[0] = self.selected_tab;
-            }
-            if self.pane_tabs.len() > 1 {
-                self.pane_tabs[1] = self.secondary_tab;
-            }
-            return layout;
-        }
-        ViewportLayout::Single
-    }
-
     /// Queries the active `InteractiveTool` ID of `pane_idx` without mutating lazy secondary slots.
     pub fn pane_active_tool_id(&self, pane_idx: usize) -> Option<String> {
         if let Some(tab) = self.pane_tab(pane_idx) {
