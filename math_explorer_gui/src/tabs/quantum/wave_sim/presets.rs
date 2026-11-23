@@ -384,12 +384,3 @@ pub fn build_wave_datasets(wave_data: &WaveData) -> Vec<(String, Vec<[f64; 2]>)>
         ),
     ]
 }
-
-/// Returns `val` when finite, or `fallback` otherwise.
-pub fn finite_or(val: f64, fallback: f64) -> f64 {
-    if val.is_finite() {
-        val
-    } else {
-        fallback
-    }
-}

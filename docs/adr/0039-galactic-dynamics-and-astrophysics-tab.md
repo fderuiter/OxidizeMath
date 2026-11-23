@@ -1,4 +1,4 @@
-# ADR 0038: Dwarf-Galaxy Dark-Matter Rotation Curves, Zero-Allocation Symplectic Orbits, and Auto-Discovered `AstrophysicsTab`
+# ADR 0039: Dwarf-Galaxy Dark-Matter Rotation Curves, Zero-Allocation Symplectic Orbits, and Auto-Discovered `AstrophysicsTab`
 
 ## Status
 Accepted (extends [ADR 0005](0005-active-documentation-standard.md), [ADR 0016](0016-standardize-crate-documentation-suite.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
