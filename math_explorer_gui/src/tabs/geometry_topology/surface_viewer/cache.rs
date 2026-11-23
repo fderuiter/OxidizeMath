@@ -32,9 +32,12 @@ fn canonical_bits(val: f64) -> u64 {
 impl SurfaceViewer {
     pub(super) fn surface_geometry_key(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.surface_type as u8).hash(&mut h);
         self.u_resolution.hash(&mut h);
         self.v_resolution.hash(&mut h);
+        if self.hash_live_feed(&mut h) {
+            return h.finish().max(1);
+        }
+        (self.surface_type as u8).hash(&mut h);
         match self.surface_type {
             SurfaceType::Sphere => canonical_bits(self.sphere_radius).hash(&mut h),
             SurfaceType::Torus => {
@@ -60,7 +63,7 @@ impl SurfaceViewer {
             return key;
         }
         let surface = self.create_surface();
-        let uv_domain = self.custom_sandbox.uv_domain_for(self.surface_type);
+        let uv_domain = self.active_uv_domain();
         self.cache.positions_3d = sample_surface_positions(
             surface.as_ref(),
             uv_domain,

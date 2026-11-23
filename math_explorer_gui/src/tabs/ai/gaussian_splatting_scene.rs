@@ -2,20 +2,30 @@
 //! Scene delegation layer connecting `GaussianSplattingTool` to shared `crate::volumetric_scene`.
 // [cite:gaussian_splatting]
 
+pub use crate::volumetric_scene::lensing::{
+    build_circle_ring, LensedFrameTelemetry, SplatLensConfig, SplatLensMode,
+};
 pub use crate::volumetric_scene::presets::{
     build_preset_scene_and_gradients, VolumetricSplatPreset,
 };
 pub use crate::volumetric_scene::{
     covariance_ellipse_ring, splat_stroke_color, DensityActionCounts, ELLIPSE_POINTS,
+    MAX_DYNAMIC_SPLATS,
 };
 
 use crate::framework::{Camera3D, ProjectionMode};
+use crate::volumetric_scene::lensing::{compute_splat_beaming_weight, evaluate_lens_mode_outcome};
 use eframe::egui;
 use math_explorer::ai::gaussian_splatting::{
     optimization::{determine_density_action, DensityAction},
     projection, rendering, Gaussian2D, Gaussian3D, Scene,
 };
-use nalgebra::{Matrix2, Matrix2x3, Point2, Point3, Vector3};
+use math_explorer::constants::SOLAR_MASS;
+use math_explorer::physics::astrophysics::{
+    tangential_critical_radius_kpc, validate_christoffel_radial_connection, HaloProfile,
+};
+use math_explorer::physics::high_energy::general_relativity::SchwarzschildBlackHole;
+use nalgebra::{Matrix2, Matrix2x3, Point2, Point3, Vector2, Vector3};
 
 pub(super) type ProjectedSplatRing = (
     [[f64; 2]; ELLIPSE_POINTS],
@@ -168,6 +178,140 @@ pub(super) fn project_single_splat(
         depth: tz,
     };
     Some((splat_2d, maybe_ring))
+}
+
+pub(super) fn project_lensed_into(
+    tool: &super::GaussianSplattingTool,
+    out_splats: &mut Vec<Gaussian2D>,
+    out_rings: &mut Vec<([[f64; 2]; ELLIPSE_POINTS], egui::Color32)>,
+    out_rings_3d: &mut Vec<([Point3<f64>; ELLIPSE_POINTS], egui::Color32)>,
+    out_centers: &mut Vec<[f64; 2]>,
+) -> LensedFrameTelemetry {
+    out_rings.clear();
+    out_rings_3d.clear();
+    out_centers.clear();
+
+    let dist = tool.camera.perspective_distance();
+    let view_matrix = tool.camera.view_matrix(dist);
+    let zoom = f64::from(tool.camera.zoom);
+    let focal = dist * zoom;
+    let cam_proj = projection::SplatCameraProjection {
+        view_matrix,
+        focal: (focal, focal),
+        scale_multiplier: tool.scale,
+    };
+    let bh = SchwarzschildBlackHole::new(1.0e8 * SOLAR_MASS).expect("valid black hole");
+    let cam_forward = Vector3::new(
+        view_matrix[(2, 0)],
+        view_matrix[(2, 1)],
+        view_matrix[(2, 2)],
+    );
+    let (nfw_halo, burk_halo, sigma_crit) = tool.lens.matched_halos();
+    let lens_center = Vector2::new(tool.lens.center[0], tool.lens.center[1]);
+    let mut masked_rays = 0usize;
+    let mut max_boost = 1.0_f64;
+
+    projection::project_scene_lensed_into(
+        &tool.scene,
+        &cam_proj,
+        |_idx, g, _cam_vec, _raw_beta| {
+            let [mx, my] = tool.project_splat_point(g.mean);
+            let beta_pt = Point2::new(mx, my);
+            let rad_w = compute_splat_beaming_weight(&bh, &g.mean.coords, &cam_forward, &tool.lens);
+            max_boost = max_boost.max(rad_w);
+            evaluate_lens_mode_outcome(
+                &bh,
+                &tool.lens,
+                lens_center,
+                &nfw_halo,
+                &burk_halo,
+                sigma_crit,
+                beta_pt,
+                rad_w,
+                &mut masked_rays,
+            )
+        },
+        out_splats,
+    );
+
+    populate_tool_ellipse_rings(
+        tool,
+        dist,
+        zoom,
+        focal,
+        out_splats,
+        out_rings,
+        out_rings_3d,
+        out_centers,
+    );
+    build_lensed_telemetry(
+        &bh,
+        &tool.lens,
+        (&nfw_halo, &burk_halo, sigma_crit),
+        (out_splats.len(), masked_rays, max_boost),
+    )
+}
+
+fn build_lensed_telemetry(
+    bh: &SchwarzschildBlackHole,
+    lens: &SplatLensConfig,
+    (nfw_halo, burk_halo, sigma_crit): (&HaloProfile, &HaloProfile, f64),
+    (emitted_images, shadow_masked_rays, max_radiance_boost): (usize, usize, f64),
+) -> LensedFrameTelemetry {
+    let shadow_radius = if lens.mode == SplatLensMode::Schwarzschild {
+        1.5 * lens.viewport_rs.max(0.0)
+    } else {
+        0.0
+    };
+    let (christoffel_gamma_r00, _) =
+        validate_christoffel_radial_connection(bh, 6.0).unwrap_or((0.0, 0.0));
+    LensedFrameTelemetry {
+        emitted_images,
+        shadow_masked_rays,
+        shadow_radius,
+        nfw_critical_radius: tangential_critical_radius_kpc(None, nfw_halo, sigma_crit, 6.0),
+        burkert_critical_radius: tangential_critical_radius_kpc(None, burk_halo, sigma_crit, 6.0),
+        max_radiance_boost,
+        christoffel_gamma_r00,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn populate_tool_ellipse_rings(
+    tool: &super::GaussianSplattingTool,
+    dist: f64,
+    zoom: f64,
+    focal: f64,
+    out_splats: &[Gaussian2D],
+    out_rings: &mut Vec<([[f64; 2]; ELLIPSE_POINTS], egui::Color32)>,
+    out_rings_3d: &mut Vec<([Point3<f64>; ELLIPSE_POINTS], egui::Color32)>,
+    out_centers: &mut Vec<[f64; 2]>,
+) {
+    let ring_cap = 48.min(out_rings.capacity()).min(out_rings_3d.capacity());
+    for splat in out_splats {
+        if out_centers.len() < out_centers.capacity() {
+            out_centers.push([splat.mean.x, splat.mean.y]);
+        }
+        if out_rings.len() >= ring_cap {
+            continue;
+        }
+        let neg_two_conic = -2.0 * splat.conic;
+        if let Some(cov2d) = neg_two_conic.try_inverse() {
+            let ring_2d = covariance_ellipse_ring(splat.mean, &cov2d);
+            let proj_scale = match tool.camera.projection {
+                ProjectionMode::Parallel => zoom,
+                ProjectionMode::Perspective => focal / splat.depth.max(0.25),
+            };
+            let vz = dist - splat.depth;
+            let tx = splat.mean.x / proj_scale.max(1.0e-6);
+            let ty = splat.mean.y / proj_scale.max(1.0e-6);
+            let ring_3d =
+                lift_ring_to_world(&tool.camera, &ring_2d, splat.mean, [tx, ty, vz], proj_scale);
+            let color = splat_stroke_color(&splat.color, splat.opacity);
+            out_rings.push((ring_2d, color));
+            out_rings_3d.push((ring_3d, color));
+        }
+    }
 }
 
 pub(super) fn rasterize_splats_into(

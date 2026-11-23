@@ -261,8 +261,8 @@ pub fn compute_vorticity_into<C: CollisionModel<9, D2Q9>>(
             if solver.state.obstacles[(y, x)] {
                 continue;
             }
-            let duy_dx = 0.5 * (solver.state.uy[(y, x + 1)] - solver.state.uy[(y, x - 1)]);
-            let dux_dy = 0.5 * (solver.state.ux[(y + 1, x)] - solver.state.ux[(y - 1, x)]);
+            let duy_dx = 0.5 * (solver.get_velocity(x + 1, y).1 - solver.get_velocity(x - 1, y).1);
+            let dux_dy = 0.5 * (solver.get_velocity(x, y + 1).0 - solver.get_velocity(x, y - 1).0);
             out_vorticity[idx] = duy_dx - dux_dy;
         }
     }
