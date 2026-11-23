@@ -220,5 +220,10 @@ pub trait RegimeCartographer: Send + Sync + 'static {
 #[cfg(test)]
 mod tests;
 
-#[cfg(all(test, target_arch = "wasm32"))]
+#[cfg(all(
+    test,
+    target_arch = "wasm32",
+    feature = "biology",
+    feature = "epidemiology"
+))]
 mod wasm_tests;

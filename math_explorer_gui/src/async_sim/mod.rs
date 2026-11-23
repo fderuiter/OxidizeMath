@@ -1,8 +1,14 @@
 #[allow(missing_docs)]
 pub mod atlas;
-#[cfg(test)]
+#[cfg(all(test, feature = "ai", feature = "biology", feature = "physics"))]
 mod fault_and_seed_tests;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "biology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod runner_tests;
 #[cfg(test)]
 mod step_tests;

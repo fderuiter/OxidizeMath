@@ -13,7 +13,7 @@ use std::f64::consts::PI;
 mod cache;
 #[path = "potential_flow/shader.rs"]
 mod shader;
-#[cfg(test)]
+#[cfg(all(test, feature = "epidemiology"))]
 pub(crate) use shader::MAX_SHADER_SINGULARITIES;
 
 pub(crate) const FLOW_STRENGTH_MIN: f64 = -1_000.0;
@@ -174,7 +174,10 @@ impl InteractiveTool for PotentialFlowTool {
         crate::framework::ExportCapabilities::plot().with_shader()
     }
 
-    fn export_glsl_shader(&self, dialect: crate::framework::ShaderDialect) -> Result<String, String> {
+    fn export_glsl_shader(
+        &self,
+        dialect: crate::framework::ShaderDialect,
+    ) -> Result<String, String> {
         self.build_glsl_shader(dialect)
     }
 

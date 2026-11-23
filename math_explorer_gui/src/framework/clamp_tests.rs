@@ -17,7 +17,7 @@ fn assert_clamp_emits(
     needle: &str,
 ) {
     for _ in 0..5 {
-        let _ = federated_registry::global_registry().try_recv_all();
+        let _ = crate::telemetry::poll_app_telemetry();
         run(fw);
         if drained_telemetry_contains(needle) {
             return;
@@ -27,15 +27,12 @@ fn assert_clamp_emits(
 }
 
 fn drained_telemetry_contains(needle: &str) -> bool {
-    federated_registry::global_registry()
-        .try_recv_all()
-        .iter()
-        .any(|e| {
-            e.source == "SimulationFramework"
-                && e.metadata
-                    .get("details")
-                    .is_some_and(|d| d.contains(needle))
-        })
+    crate::telemetry::poll_app_telemetry().iter().any(|e| {
+        e.source == "SimulationFramework"
+            && e.metadata
+                .get("details")
+                .is_some_and(|d| d.contains(needle))
+    })
 }
 
 #[test]
@@ -85,6 +82,7 @@ fn test_clamp_parameters_multistep_lorenz_restores_plots_and_stabilizes() {
     }
 }
 
+#[cfg(all(feature = "climate", feature = "physics", feature = "pure_math"))]
 fn set_unstable_cera(fw: &mut SimulationFramework) {
     fw.active_tool = Some(Box::new(crate::tabs::climate::cera::CeraTool {
         in_channels: 99,
@@ -96,6 +94,7 @@ fn set_unstable_cera(fw: &mut SimulationFramework) {
     }));
 }
 
+#[cfg(all(feature = "climate", feature = "physics", feature = "pure_math"))]
 #[test]
 fn test_clamp_parameters_dispatches_domain_hooks_and_restores_datasets() {
     let mut cera_fw = SimulationFramework::new("climate");

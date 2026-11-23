@@ -4,7 +4,7 @@ use super::*;
 use crate::framework::SimulationFramework;
 use crate::tabs::morphogenesis::MorphogenesisTab;
 use crate::tabs::ExplorerTab;
-use federated_registry::{global_registry, Severity};
+use federated_registry::Severity;
 
 fn inject_unknown_config_field(preset_json: &str) -> String {
     let mut val: serde_json::Value = serde_json::from_str(preset_json).expect("valid preset json");
@@ -56,7 +56,7 @@ fn test_all_57_starter_cards_launch_and_sync_framework_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 67);
+    assert_eq!(presets.len(), 71);
 
     for preset in presets {
         let json = preset.generate_preset();
@@ -178,7 +178,7 @@ fn test_failed_card_launch_surfaces_toast_and_preset_serialization_telemetry() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let _ = global_registry().try_recv_all();
+    let _ = crate::telemetry::poll_app_telemetry();
 
     let mut framework = SimulationFramework::new("analysis");
     let bad_ode_json = inject_unknown_config_field(PRESET_HARMONIC_OSCILLATOR);
@@ -194,7 +194,7 @@ fn test_failed_card_launch_surfaces_toast_and_preset_serialization_telemetry() {
         .as_deref()
         .is_some_and(|m| m.contains("Broken Harmonic")));
 
-    let events = global_registry().try_recv_all();
+    let events = crate::telemetry::poll_app_telemetry();
     assert!(
         events.iter().any(|e| {
             e.source == "PresetSerialization"
@@ -218,7 +218,7 @@ fn test_failed_card_launch_surfaces_toast_and_preset_serialization_telemetry() {
         .toast_error
         .as_deref()
         .is_some_and(|m| m.contains("Broken Spots")));
-    let morph_events = global_registry().try_recv_all();
+    let morph_events = crate::telemetry::poll_app_telemetry();
     assert!(morph_events.iter().any(|e| {
         e.source == "PresetSerialization"
             && e.severity == Severity::Warning

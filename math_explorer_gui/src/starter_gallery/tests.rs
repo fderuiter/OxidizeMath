@@ -2,6 +2,7 @@
 
 use super::*;
 
+#[cfg(all(feature = "biology", feature = "physics"))]
 #[test]
 fn test_starter_cards_presence_and_metadata() {
     let analysis_cards = get_starter_cards_for_domain("analysis", &[]);
@@ -30,6 +31,7 @@ fn test_starter_cards_presence_and_metadata() {
         .any(|c| c.title == "Crisis & Proximity Showdown"));
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_preset_json_validity() {
     use crate::presets::{deserialize_preset_envelope, MorphogenesisPresetConfig};
@@ -53,12 +55,24 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 56, "Expected 56 registered tools");
+    #[cfg(all(
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics"
+    ))]
+    assert_eq!(tools.len(), 60, "Expected 60 registered tools");
 
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 67, "Expected 67 registered starter presets");
+    #[cfg(all(
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics"
+    ))]
+    assert_eq!(presets.len(), 71, "Expected 71 registered starter presets");
 
     for tool in &tools {
         let matching: Vec<_> = presets
@@ -95,7 +109,12 @@ fn test_starter_cards_for_all_registered_domains() {
     for tool in inventory::iter::<ToolMetadata> {
         domains.insert(tool.domain);
     }
+    #[cfg(feature = "biology")]
     domains.insert("biology");
+
+    if domains.is_empty() {
+        return;
+    }
 
     for &domain in &domains {
         let cards = get_starter_cards_for_domain(domain, &[]);
@@ -125,6 +144,12 @@ fn test_starter_cards_for_all_registered_domains() {
     }
 }
 
+#[cfg(all(
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 fn perturb_first_number(val: &mut serde_json::Value) -> bool {
     match val {
         serde_json::Value::Number(num) => {
@@ -160,6 +185,12 @@ fn perturb_first_number(val: &mut serde_json::Value) -> bool {
     }
 }
 
+#[cfg(all(
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetMetadata) {
     let payload = preset.generate_preset();
     let mut target_tool = (tool_meta.build)();
@@ -210,6 +241,12 @@ fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetM
     );
 }
 
+#[cfg(all(
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 #[test]
 fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
@@ -218,8 +255,8 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
         .collect();
     assert_eq!(
         presets.len(),
-        67,
-        "Expected 67 StarterPresetMetadata entries"
+        71,
+        "Expected 71 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -235,13 +272,19 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
     }
 }
 
+#[cfg(all(
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 #[test]
 fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(tools.len(), 56, "Expected 56 InteractiveTool registrations");
+    assert_eq!(tools.len(), 60, "Expected 60 InteractiveTool registrations");
 
     for tool_meta in tools {
         let default_tool = (tool_meta.build)();
@@ -295,6 +338,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     }
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_unified_sim_tool_rejects_unknown_empty_and_non_finite_parameters() {
     let lbm_meta = inventory::iter::<ToolMetadata>
@@ -315,6 +359,7 @@ fn test_unified_sim_tool_rejects_unknown_empty_and_non_finite_parameters() {
     assert!(tool.try_load_state(r#"{"viscosity": 0.04}"#).is_ok());
 }
 
+#[cfg(feature = "pure_math")]
 fn assert_overlay_launch_buttons_clamped(cards: &[StarterCard], size: egui::Vec2) {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
@@ -356,6 +401,7 @@ fn assert_overlay_launch_buttons_clamped(cards: &[StarterCard], size: egui::Vec2
     }
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_starter_cards_sorted_and_overlay_buttons_clamped_within_viewport() {
     let cards = get_starter_cards_for_domain("analysis", &[]);

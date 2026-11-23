@@ -8,13 +8,27 @@ pub mod async_sim;
 pub mod camera;
 #[cfg(test)]
 mod camera_3d_optout_tests;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(
+        feature = "ai",
+        feature = "biology",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    )
+))]
 mod canvas_accessibility_tests;
 #[allow(missing_docs)]
 pub mod command_palette;
 #[allow(missing_docs)]
 pub mod framework;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod framework_tests;
 #[cfg(test)]
 mod interactive_tools_tests;

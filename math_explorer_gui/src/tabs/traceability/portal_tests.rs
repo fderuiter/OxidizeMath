@@ -32,31 +32,32 @@ fn render_tab_text_hit(tab: &mut TraceabilityTab, needle: &str) -> bool {
 #[test]
 fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    let _cwd_guard = super::workspace_root_tests::CwdRestoreGuard::capture();
+    super::workspace_root_tests::warm_default_scan_cache();
 
-    std::env::set_current_dir("/").expect("set_current_dir to /");
-    assert_eq!(TraceabilityTab::canonical_workspace_root(), None);
+    with_mock_current_dir(std::path::Path::new("/"), || {
+        assert_eq!(TraceabilityTab::canonical_workspace_root(), None);
 
-    let mut tab = TraceabilityTab::default();
-    assert_eq!(tab.state, TraceabilityScanState::Idle);
-    assert!(!tab.has_initial_scan);
+        let mut tab = TraceabilityTab::default();
+        assert_eq!(tab.state, TraceabilityScanState::Idle);
+        assert!(!tab.has_initial_scan);
 
-    assert!(render_tab_text_hit(
-        &mut tab,
-        "Theory-to-Code Traceability Portal"
-    ));
-    super::wait_for_scan_completion(&mut tab);
-    assert_eq!(tab.state, TraceabilityScanState::Ready);
-    assert_eq!(tab.papers.len(), 28);
-    assert!(tab.orphaned_papers.is_empty());
-    assert!(tab.certificate.as_ref().is_some_and(|c| c.passed));
-    assert!(render_tab_text_hit(&mut tab, "100% Parity Achieved"));
-    assert!(render_tab_text_hit(&mut tab, "Total Papers: 28"));
-    assert!(render_tab_text_hit(
-        &mut tab,
-        "Verification Certificate: Passed"
-    ));
-    assert!(tab.online_document_url("cera_framework.tex").is_some());
+        assert!(render_tab_text_hit(
+            &mut tab,
+            "Theory-to-Code Traceability Portal"
+        ));
+        super::wait_for_scan_completion(&mut tab);
+        assert_eq!(tab.state, TraceabilityScanState::Ready);
+        assert_eq!(tab.papers.len(), 28);
+        assert!(tab.orphaned_papers.is_empty());
+        assert!(tab.certificate.as_ref().is_some_and(|c| c.passed));
+        assert!(render_tab_text_hit(&mut tab, "100% Parity Achieved"));
+        assert!(render_tab_text_hit(&mut tab, "Total Papers: 28"));
+        assert!(render_tab_text_hit(
+            &mut tab,
+            "Verification Certificate: Passed"
+        ));
+        assert!(tab.online_document_url("cera_framework.tex").is_some());
+    });
 }
 
 #[test]
@@ -84,7 +85,7 @@ fn test_zero_paper_live_scan_transitions_to_failed_instead_of_vacuous_parity() {
 #[test]
 fn test_external_clone_picker_scans_live_while_load_state_stays_sandboxed() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    let _cwd_guard = super::workspace_root_tests::CwdRestoreGuard::capture();
+    super::workspace_root_tests::warm_default_scan_cache();
 
     let pid = std::process::id();
     let clone_dir = std::env::temp_dir().join(format!("oxidize_external_clone_{pid}"));
@@ -122,19 +123,19 @@ fn test_external_clone_picker_scans_live_while_load_state_stays_sandboxed() {
         "Untrusted load_state must reject external clone outside workspace"
     );
 
-    std::env::set_current_dir("/").expect("set_current_dir to /");
-    tab.select_directory(&clone_dir);
-    assert!(tab.repo_path.is_some());
-    assert!(tab.state.is_scanning());
+    with_mock_current_dir(std::path::Path::new("/"), || {
+        tab.select_directory(&clone_dir);
+        assert!(tab.repo_path.is_some());
+        assert!(tab.state.is_scanning());
 
-    super::wait_for_scan_completion(&mut tab);
-    assert_eq!(tab.state, TraceabilityScanState::Ready);
-    assert_eq!(tab.papers.len(), 1);
-    assert!(tab.papers.contains_key("external_manuscript.tex"));
-    assert!(tab.orphaned_papers.is_empty());
-    assert!(tab.online_document_url("external_manuscript.tex").is_some());
+        super::wait_for_scan_completion(&mut tab);
+        assert_eq!(tab.state, TraceabilityScanState::Ready);
+        assert_eq!(tab.papers.len(), 1);
+        assert!(tab.papers.contains_key("external_manuscript.tex"));
+        assert!(tab.orphaned_papers.is_empty());
+        assert!(tab.online_document_url("external_manuscript.tex").is_some());
+    });
 
-    drop(_cwd_guard);
     let _ = std::fs::remove_dir_all(&clone_dir);
 }
 
@@ -163,10 +164,9 @@ fn test_invalid_external_folders_show_inline_error_feedback() {
         tab.select_directory(candidate);
         assert!(tab.state.is_failed());
         assert_eq!(tab.repo_path, None);
-        assert!(
-            tab.error_message()
-                .is_some_and(|msg| msg.contains(expected_fragment))
-        );
+        assert!(tab
+            .error_message()
+            .is_some_and(|msg| msg.contains(expected_fragment)));
         assert!(render_tab_text_hit(&mut tab, expected_fragment));
     }
 
@@ -185,16 +185,12 @@ fn test_invalid_external_folders_show_inline_error_feedback() {
 fn test_ci_pages_workflow_verifies_all_28_paper_pdfs_and_sw_shell_scope() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
-    let ci_yaml = std::fs::read_to_string(
-        ws_root.join(".github").join("workflows").join("ci.yml"),
-    )
-    .expect("read ci.yml");
+    let ci_yaml = std::fs::read_to_string(ws_root.join(".github").join("workflows").join("ci.yml"))
+        .expect("read ci.yml");
 
     assert!(ci_yaml.contains("name: wasm_web_dist"));
     assert!(ci_yaml.contains("name: compiled_papers"));
-    assert!(
-        ci_yaml.contains("needs: [pre-flight, build-and-test, compile-papers, feature-matrix]")
-    );
+    assert!(ci_yaml.contains("needs: [pre-flight, build-and-test, compile-papers, feature-matrix]"));
     assert!(ci_yaml.contains("pages_dist/${stem}.pdf"));
     assert!(ci_yaml.contains("pages_dist/papers/${stem}.pdf"));
 

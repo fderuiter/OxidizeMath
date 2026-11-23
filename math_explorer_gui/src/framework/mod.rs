@@ -1,6 +1,6 @@
 pub mod callout_overlay;
 pub mod clamp;
-#[cfg(test)]
+#[cfg(all(test, feature = "physics"))]
 mod clamp_tests;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
@@ -10,7 +10,12 @@ mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
 mod export_shader;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod export_shader_tests;
 pub mod export_types;
 mod export_ui;
@@ -18,25 +23,41 @@ mod export_ui;
 mod export_ui_tests;
 pub mod fit_bridge;
 pub mod math_input;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "applied",
+    feature = "biology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod metadata_label_tests;
 mod overlay_sync;
 mod pane_scope;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "pure_math"
+))]
 mod perf_guard_tests;
 mod persistence;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;
 pub mod recovery;
-#[cfg(test)]
+#[cfg(all(test, feature = "biology", feature = "climate", feature = "physics"))]
 mod recovery_tests;
 pub mod side_panel;
 pub mod state_bounds;
-#[cfg(test)]
+#[cfg(all(test, feature = "climate", feature = "physics", feature = "pure_math"))]
 mod state_bounds_tests;
 pub mod state_guard;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod state_guard_tests;
 pub mod trace_overlay;
 mod ui;

@@ -1,8 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::*;
-use eframe::egui;
-use eframe::App;
+use eframe::{egui, App};
 
 fn shortcut_mods() -> egui::Modifiers {
     if cfg!(target_os = "macos") {
@@ -49,39 +48,29 @@ fn step_events(
     ctx.run(raw_input, |c| app.update(c, frame))
 }
 
+#[cfg(feature = "pure_math")]
 fn click_point(
     ctx: &egui::Context,
     app: &mut MathExplorerApp,
     frame: &mut eframe::Frame,
-    center: egui::Pos2,
+    pos: egui::Pos2,
 ) -> egui::FullOutput {
+    let btn = |pressed| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
     let _ = step_events(
         ctx,
         app,
         frame,
-        vec![
-            egui::Event::PointerMoved(center),
-            egui::Event::PointerButton {
-                pos: center,
-                button: egui::PointerButton::Primary,
-                pressed: true,
-                modifiers: egui::Modifiers::NONE,
-            },
-        ],
+        vec![egui::Event::PointerMoved(pos), btn(true)],
     );
-    step_events(
-        ctx,
-        app,
-        frame,
-        vec![egui::Event::PointerButton {
-            pos: center,
-            button: egui::PointerButton::Primary,
-            pressed: false,
-            modifiers: egui::Modifiers::NONE,
-        }],
-    )
+    step_events(ctx, app, frame, vec![btn(false)])
 }
 
+#[cfg(feature = "pure_math")]
 fn click_accesskit_button_by_label(
     ctx: &egui::Context,
     app: &mut MathExplorerApp,
@@ -318,8 +307,15 @@ fn test_single_layout_ctrl_z_and_ctrl_y_across_all_explorer_tabs_and_strip_short
     let mut frame = eframe::Frame::_new_kittest();
     let mods = shortcut_mods();
 
-    #[cfg(all(feature = "pure_math", feature = "physics"))]
-    assert_eq!(app.tabs.len(), 21);
+    if cfg!(all(
+        not(target_arch = "wasm32"),
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics"
+    )) {
+        assert_eq!(app.tabs.len(), 21);
+    }
 
     app.set_layout(ViewportLayout::Single);
     let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());

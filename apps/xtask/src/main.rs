@@ -159,6 +159,16 @@ fn setup(args: &[String]) {
     println!("=== Setup Complete ===");
 }
 
+fn run_feature_test_pair(extra_args: &[&str]) {
+    let mut core_args = vec!["test", "-p", "math_explorer"];
+    core_args.extend_from_slice(extra_args);
+    run_cmd("cargo", &core_args);
+
+    let mut gui_args = vec!["test", "-p", "math_explorer_gui", "--bins"];
+    gui_args.extend_from_slice(extra_args);
+    run_cmd("cargo", &gui_args);
+}
+
 fn test_features(args: &[String]) {
     if args.is_empty() {
         let features = [
@@ -171,46 +181,22 @@ fn test_features(args: &[String]) {
             "physics",
         ];
         println!("=== Running core-only (no features) ===");
-        run_cmd(
-            "cargo",
-            &["test", "-p", "math_explorer", "--no-default-features"],
-        );
+        run_feature_test_pair(&["--no-default-features"]);
         for f in &features {
             println!("=== Running tests for feature: {} ===", f);
-            run_cmd(
-                "cargo",
-                &[
-                    "test",
-                    "-p",
-                    "math_explorer",
-                    "--no-default-features",
-                    "--features",
-                    f,
-                ],
-            );
+            run_feature_test_pair(&["--no-default-features", "--features", f]);
         }
         println!("=== Running all features ===");
-        run_cmd("cargo", &["test", "-p", "math_explorer", "--all-features"]);
+        run_feature_test_pair(&["--all-features"]);
         println!("All feature combinations passed successfully!");
     } else {
         let feature = &args[0];
         if feature == "core-only" || feature.is_empty() {
-            run_cmd(
-                "cargo",
-                &["test", "-p", "math_explorer", "--no-default-features"],
-            );
+            run_feature_test_pair(&["--no-default-features"]);
+        } else if feature == "all" || feature == "--all-features" {
+            run_feature_test_pair(&["--all-features"]);
         } else {
-            run_cmd(
-                "cargo",
-                &[
-                    "test",
-                    "-p",
-                    "math_explorer",
-                    "--no-default-features",
-                    "--features",
-                    feature,
-                ],
-            );
+            run_feature_test_pair(&["--no-default-features", "--features", feature]);
         }
     }
 }

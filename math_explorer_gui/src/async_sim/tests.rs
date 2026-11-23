@@ -350,6 +350,7 @@ fn test_state_display_and_helpers() {
     assert!(SimWorkerState::Terminated.is_terminated());
 }
 
+#[cfg(all(feature = "biology", feature = "physics"))]
 #[test]
 fn test_domain_simulation_tools_initialization() {
     use crate::async_sim::unified::UnifiedSimTool;
@@ -367,6 +368,7 @@ fn test_domain_simulation_tools_initialization() {
     assert_eq!(wave_tool.state(), SimWorkerState::Ready);
 }
 
+#[cfg(all(feature = "biology", feature = "physics"))]
 #[test]
 fn test_unified_model_observable_hook_and_voltage_derivatives() {
     use crate::async_sim::unified::UnifiedModel;
@@ -420,6 +422,7 @@ fn test_unified_model_observable_hook_and_voltage_derivatives() {
     );
 }
 
+#[cfg(all(feature = "biology", feature = "physics"))]
 #[test]
 fn test_unified_sim_tool_panel_gating() {
     use crate::async_sim::unified::UnifiedSimTool;

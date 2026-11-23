@@ -81,7 +81,7 @@ impl ViewportLayout {
 }
 
 /// Computes pane bounding rectangles within the available container area using default equal split.
-#[cfg(test)]
+#[cfg(all(test, feature = "epidemiology", feature = "pure_math"))]
 pub fn calculate_pane_rects(layout: ViewportLayout, total_rect: egui::Rect) -> Vec<egui::Rect> {
     match layout {
         ViewportLayout::Single => vec![total_rect],

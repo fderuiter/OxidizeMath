@@ -4,7 +4,7 @@
 use super::*;
 use eframe::egui;
 use eframe::App;
-use egui_plot::commands::{CommandMetadata, CommandRegistryData, CommandTrigger};
+use egui_plot::commands::{CommandMetadata, CommandRegistryData};
 
 fn run_frame_with_rect(
     ctx: &egui::Context,
@@ -33,6 +33,7 @@ fn get_registered_commands(ctx: &egui::Context) -> Vec<CommandMetadata> {
     })
 }
 
+#[cfg(feature = "pure_math")]
 fn find_tab_index(app: &MathExplorerApp, tab_name: &str) -> usize {
     app.tabs
         .iter()
@@ -44,6 +45,7 @@ fn has_cmd(cmds: &[CommandMetadata], context: &str, name: &str) -> bool {
     cmds.iter().any(|c| c.context == context && c.name == name)
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_global_and_session_shortcuts_survive_framework_tab_with_descriptions() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
@@ -68,7 +70,7 @@ fn test_global_and_session_shortcuts_survive_framework_tab_with_descriptions() {
     let question_registered = cmds.iter().any(|c| {
         c.context == "Global"
             && c.name == "Keyboard Shortcuts"
-            && c.trigger == CommandTrigger::Key(egui::Key::Questionmark)
+            && c.trigger == egui_plot::commands::CommandTrigger::Key(egui::Key::Questionmark)
     });
     assert!(question_registered);
 
@@ -85,6 +87,7 @@ fn test_global_and_session_shortcuts_survive_framework_tab_with_descriptions() {
     }
 }
 
+#[cfg(feature = "applied")]
 #[test]
 fn test_plot_shortcuts_appear_unfocused_in_framework_and_standalone_tabs() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
@@ -149,6 +152,7 @@ fn test_plot_shortcuts_appear_unfocused_in_framework_and_standalone_tabs() {
     assert!(has_cmd(&standalone_cmds, "Plot Legend", "Isolate Plot"));
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_camera_3d_shortcuts_appear_unfocused_and_movement_stays_focus_gated() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
@@ -206,6 +210,7 @@ fn test_camera_3d_shortcuts_appear_unfocused_and_movement_stays_focus_gated() {
     ));
 }
 
+#[cfg(feature = "applied")]
 #[test]
 fn test_graph_editor_shortcuts_and_frame_reset_on_tab_switch() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
@@ -233,6 +238,7 @@ fn test_graph_editor_shortcuts_and_frame_reset_on_tab_switch() {
     assert!(has_cmd(&fav_cmds, "Global", "Keyboard Shortcuts"));
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_multi_pane_merges_and_deduplicates_pane_shortcuts() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();

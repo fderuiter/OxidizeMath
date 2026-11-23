@@ -3,17 +3,17 @@ use crate::app::{MathExplorerApp, SplitLayoutMode, ViewportLayout};
 use eframe::egui;
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 
-#[cfg(any(feature = "pure_math", test))]
+#[cfg(feature = "pure_math")]
 const WORKSPACE_HISTORY_BRIDGE_ID: &str = "WORKSPACE_HISTORY_BRIDGE";
 
-#[cfg(any(feature = "pure_math", test))]
+#[cfg(feature = "pure_math")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PendingHistoryAction {
     Undo,
     Redo,
 }
 
-#[cfg(any(feature = "pure_math", test))]
+#[cfg(feature = "pure_math")]
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WorkspaceHistoryBridge {
     pub(crate) active: bool,
@@ -22,7 +22,7 @@ pub(crate) struct WorkspaceHistoryBridge {
     pub(crate) pending: Option<PendingHistoryAction>,
 }
 
-#[cfg(any(feature = "pure_math", test))]
+#[cfg(feature = "pure_math")]
 pub(crate) fn read_workspace_history_bridge(ctx: &egui::Context) -> WorkspaceHistoryBridge {
     ctx.data(|d| {
         d.get_temp::<WorkspaceHistoryBridge>(egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID))
@@ -30,12 +30,12 @@ pub(crate) fn read_workspace_history_bridge(ctx: &egui::Context) -> WorkspaceHis
     })
 }
 
-#[cfg(any(feature = "pure_math", test))]
+#[cfg(feature = "pure_math")]
 pub(crate) fn is_workspace_history_active(ctx: &egui::Context) -> bool {
     read_workspace_history_bridge(ctx).active
 }
 
-#[cfg(any(feature = "pure_math", test))]
+#[cfg(feature = "pure_math")]
 pub(crate) fn request_workspace_undo(ctx: &egui::Context) {
     ctx.data_mut(|d| {
         let id = egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID);
@@ -45,7 +45,7 @@ pub(crate) fn request_workspace_undo(ctx: &egui::Context) {
     });
 }
 
-#[cfg(any(feature = "pure_math", test))]
+#[cfg(feature = "pure_math")]
 pub(crate) fn request_workspace_redo(ctx: &egui::Context) {
     ctx.data_mut(|d| {
         let id = egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID);
@@ -98,7 +98,7 @@ impl MathExplorerApp {
         self.session_manager.can_redo()
     }
 
-    #[cfg(any(feature = "pure_math", test))]
+    #[cfg(feature = "pure_math")]
     pub(crate) fn sync_workspace_history_bridge(&self, ctx: &egui::Context) {
         let bridge = WorkspaceHistoryBridge {
             active: true,
@@ -109,10 +109,10 @@ impl MathExplorerApp {
         ctx.data_mut(|d| d.insert_temp(egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID), bridge));
     }
 
-    #[cfg(not(any(feature = "pure_math", test)))]
+    #[cfg(not(feature = "pure_math"))]
     pub(crate) fn sync_workspace_history_bridge(&self, _ctx: &egui::Context) {}
 
-    #[cfg(any(feature = "pure_math", test))]
+    #[cfg(feature = "pure_math")]
     pub(crate) fn drain_workspace_history_bridge(&mut self, ctx: &egui::Context) {
         let pending = ctx.data_mut(|d| {
             let id = egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID);
@@ -128,7 +128,7 @@ impl MathExplorerApp {
         }
     }
 
-    #[cfg(not(any(feature = "pure_math", test)))]
+    #[cfg(not(feature = "pure_math"))]
     pub(crate) fn drain_workspace_history_bridge(&mut self, _ctx: &egui::Context) {}
 
     pub(super) fn wants_non_canvas_keyboard_input(&self, ctx: &egui::Context) -> bool {

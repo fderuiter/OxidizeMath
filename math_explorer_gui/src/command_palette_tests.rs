@@ -191,6 +191,7 @@ fn test_query_change_resets_selection() {
     );
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_search_input_widget_info_label_descriptor() {
     let ctx = egui::Context::default();
@@ -295,6 +296,7 @@ fn test_query_empty_state_and_clear_back_to_unfiltered_announcements() {
     );
 }
 
+#[cfg(all(feature = "climate", feature = "physics", feature = "pure_math"))]
 #[test]
 fn test_palette_tool_indexing_and_fuzzy_match() {
     let tabs = mock_tabs();
@@ -351,6 +353,7 @@ fn test_palette_tool_indexing_and_fuzzy_match() {
     }
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_palette_keyboard_tool_selection() {
     let ctx = egui::Context::default();
@@ -383,6 +386,7 @@ fn test_palette_keyboard_tool_selection() {
     assert!(!palette.is_open);
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_palette_score_ranking_tabs_vs_tools() {
     let tabs = mock_tabs();
@@ -404,6 +408,7 @@ fn test_palette_score_ranking_tabs_vs_tools() {
     }
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_palette_domain_fallback_safely_defaults_to_zero() {
     // Create tabs without matching domains
@@ -429,6 +434,7 @@ fn test_palette_domain_fallback_safely_defaults_to_zero() {
     }
 }
 
+#[cfg(feature = "applied")]
 #[test]
 fn test_palette_domain_title_formatting_and_dual_key_search() {
     assert_eq!(format_domain_title("clinical_trials"), "Clinical Trials");

@@ -20,7 +20,7 @@ fn test_bifurcation_recompute_and_borrowed_slice() {
 
 #[test]
 fn test_bifurcation_animated_slider_sweep() {
-    use crate::reflective_ui::AnimatedSliderState;
+    use crate::reflective_ui::slider::AnimatedSliderState;
     let mut tool = BifurcationDiagram::default();
     let ctx = egui::Context::default();
     let initial_r_min = tool.r_min;
@@ -74,7 +74,10 @@ fn test_bifurcation_custom_1d_map_zero_alloc_and_state_roundtrip() {
     tool.math_input.set_params_map(&pmap);
     tool.recompute();
     assert!(!tool.points.is_empty());
-    assert!(tool.points.iter().all(|pt| pt.x.is_finite() && pt.y.is_finite()));
+    assert!(tool
+        .points
+        .iter()
+        .all(|pt| pt.x.is_finite() && pt.y.is_finite()));
 
     // Verify transient syntax error keeps last valid cascade points
     let prev_len = tool.points.len();

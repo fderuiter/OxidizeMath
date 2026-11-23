@@ -213,6 +213,7 @@ fn test_select_primary_tab_preserves_focused_secondary_pane() {
     assert_eq!(app.focused_pane, 1);
 }
 
+#[cfg(feature = "applied")]
 #[test]
 fn test_pre_render_swap_panes_does_not_leak_stale_catalog_state() {
     let mut app = MathExplorerApp::default();

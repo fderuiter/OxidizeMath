@@ -13,7 +13,7 @@ mod tests;
 #[path = "wave_sim/ui.rs"]
 mod ui;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "biology"))]
 pub use presets::wave_parameter_label;
 pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
@@ -100,7 +100,7 @@ impl WaveSimulatorTool {
     }
 
     /// Current worker lifecycle state.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "biology"))]
     #[must_use]
     pub fn state(&self) -> SimWorkerState {
         self.worker.state()

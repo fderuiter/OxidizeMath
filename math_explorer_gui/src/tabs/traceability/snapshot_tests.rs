@@ -4,7 +4,10 @@ use super::*;
 
 #[test]
 fn test_web_manifest_relative_urls_and_tex_fallback_links() {
-    assert_eq!(web_snapshot::MANIFEST_REL_URL, "./traceability_manifest.json");
+    assert_eq!(
+        web_snapshot::MANIFEST_REL_URL,
+        "./traceability_manifest.json"
+    );
     assert!(web_snapshot::is_relative_same_origin_url(
         web_snapshot::MANIFEST_REL_URL
     ));
@@ -58,16 +61,16 @@ fn test_invalid_manifest_payload_errors_and_bare_report_deserializes() {
         scanned_files: 42,
         ..Default::default()
     };
-    report.paper_coverage.insert(
-        "essay.tex".to_string(),
-        vec!["math_commons".to_string()],
-    );
+    report
+        .paper_coverage
+        .insert("essay.tex".to_string(), vec!["math_commons".to_string()]);
     let raw = serde_json::to_string(&report).expect("serialize TraceabilityReport");
     let (parsed, cert) = web_snapshot::parse_manifest_json(&raw).expect("parse bare report");
     assert_eq!(parsed, report);
     assert!(cert.is_none());
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_app_startup_does_not_scan_when_traceability_tab_unopened() {
     use eframe::App;
@@ -97,10 +100,8 @@ fn test_app_startup_does_not_scan_when_traceability_tab_unopened() {
 #[test]
 fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    let _cwd_guard = super::workspace_root_tests::CwdRestoreGuard::capture();
     let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
-    let ws_norm = oxidize_core::path_utils::normalize_path(&ws_root);
-    std::env::set_current_dir(&ws_norm).expect("chdir workspace root");
+    let vfs = RootedVfs::new(&ws_root).expect("RootedVfs for workspace root");
 
     let embedded_json = include_str!(concat!(env!("OUT_DIR"), "/traceability_manifest.json"));
     let direct_report: oxidize_core::traceability::TraceabilityReport =
@@ -109,20 +110,18 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
         web_snapshot::parse_manifest_json(embedded_json).expect("valid manifest JSON");
     assert_eq!(direct_report.paper_coverage, manifest_report.paper_coverage);
 
-    let live_report = futures::executor::block_on(execute_workspace_scan(
-        oxidize_core::vfs::DefaultVfs,
-        String::new(),
-    ))
-    .expect("live workspace scan");
-
-    drop(_cwd_guard);
+    let live_report = futures::executor::block_on(execute_workspace_scan(vfs, String::new()))
+        .expect("live workspace scan");
 
     let tex_paper_count = manifest_report
         .paper_coverage
         .keys()
         .filter(|k| k.ends_with(".tex"))
         .count();
-    assert_eq!(tex_paper_count, 28, "Manifest must cover all 28 .tex papers");
+    assert_eq!(
+        tex_paper_count, 28,
+        "Manifest must cover all 28 .tex papers"
+    );
     assert!(manifest_report.orphaned_papers.is_empty());
     assert!(manifest_report.unlinked_code.is_empty());
     assert!(manifest_report.invalid_links.is_empty());

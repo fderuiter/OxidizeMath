@@ -52,6 +52,12 @@ We provide a native eframe/egui application to explore simulations (Physics, Bio
 cargo run --release --package math_explorer_gui
 ```
 
+For faster incremental rebuilds during local development while retaining smooth simulation frame rates, use the `dev-fast` profile:
+
+```bash
+cargo run --profile dev-fast --package math_explorer_gui
+```
+
 #### Current Capabilities
 *   **Physics / MRI:** Bloch Simulator with real-time control over $T_1$, $T_2$, $\vec{B}$-field, and magnetization vectors.
 *   **Physics / Fluid Dynamics:** Potential Flow visualization, Turbulence/Reynolds Number analysis, and interactive Lattice Boltzmann (LBM) flow simulation.

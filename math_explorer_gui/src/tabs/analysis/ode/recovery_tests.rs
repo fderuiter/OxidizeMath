@@ -245,7 +245,7 @@ fn test_ode_divergence_and_recovery_telemetry() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut found_div_event = None;
     for _ in 0..5 {
-        let _ = federated_registry::global_registry().try_recv_all();
+        let _ = crate::telemetry::poll_app_telemetry();
         let mut tool = OdeSolverTool {
             param_k: 1e300,
             ic_y0: 1e300,
@@ -253,7 +253,7 @@ fn test_ode_divergence_and_recovery_telemetry() {
         };
         tool.recalculate();
 
-        let events = federated_registry::global_registry().try_recv_all();
+        let events = crate::telemetry::poll_app_telemetry();
         if let Some(ev) = events.into_iter().find(|e| {
             e.source == "OdeSolverTool"
                 && e.severity == federated_registry::Severity::Error
@@ -283,7 +283,7 @@ fn test_ode_divergence_and_recovery_telemetry() {
             "Auto-scale Step Size (dt)",
             "Halved step size",
         );
-        let recovery_events = federated_registry::global_registry().try_recv_all();
+        let recovery_events = crate::telemetry::poll_app_telemetry();
         if recovery_events.iter().any(|e| {
             e.source == "OdeSolverTool"
                 && e.severity == federated_registry::Severity::Info

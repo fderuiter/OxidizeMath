@@ -174,6 +174,7 @@ fn test_cross_platform_share_url_origin_desktop_and_web() {
     );
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_tick_url_sync_defers_during_active_animated_slider_sweeps() {
     let ctx = eframe::egui::Context::default();
@@ -216,6 +217,7 @@ fn test_tick_url_sync_defers_during_active_animated_slider_sweeps() {
         .is_some_and(|frag| frag.starts_with("#tab=")));
 }
 
+#[cfg(all(feature = "physics", feature = "pure_math"))]
 #[test]
 fn test_shared_url_clamps_high_res_surface_and_flow_grids_to_interactive_caps() {
     let curv_json = crate::presets::serialize_compact_preset_envelope(

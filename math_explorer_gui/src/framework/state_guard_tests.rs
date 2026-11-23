@@ -423,8 +423,7 @@ fn test_apply_preset_json_malformed_surfaces_toast_and_telemetry_warning() {
             .clone()
             .expect("toast_error must be populated on malformed preset JSON");
         assert_eq!(toast, err_msg);
-        if let Some(ev) = federated_registry::global_registry()
-            .try_recv_all()
+        if let Some(ev) = crate::telemetry::poll_app_telemetry()
             .into_iter()
             .rev()
             .find(|ev| ev.source == "PresetSerialization" && ev.message == toast)

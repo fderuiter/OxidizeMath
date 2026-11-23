@@ -4,19 +4,82 @@ use super::*;
 use crate::framework::{InteractiveTool, TraceSeries};
 use crate::tabs::analysis::ode::OdeSolverTool;
 use crate::tabs::epidemiology::sir::SirTool;
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 use crate::web_io::PlatformInstant;
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 use eframe::App;
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 use std::sync::Arc;
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 type TabCounter = (String, Arc<AtomicUsize>, Arc<AtomicU64>);
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 struct CountingTab {
     inner: Box<dyn ExplorerTab>,
     save_calls: Arc<AtomicUsize>,
     extra_rev: Arc<AtomicU64>,
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 impl ExplorerTab for CountingTab {
     fn name(&self) -> &'static str {
         self.inner.name()
@@ -106,6 +169,15 @@ fn build_heavy_sir_framework_json() -> String {
     fw.save_state().unwrap()
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 fn instrument_app_with_heavy_hidden_tabs() -> (MathExplorerApp, Vec<TabCounter>) {
     let mut app = MathExplorerApp::default();
     assert_eq!(app.tabs.len(), 21);
@@ -154,6 +226,15 @@ fn instrument_app_with_heavy_hidden_tabs() -> (MathExplorerApp, Vec<TabCounter>)
     (app, counters)
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[test]
 fn test_idle_21_tab_extraction_under_half_ms_with_zero_save_state_calls() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
@@ -203,6 +284,15 @@ fn test_idle_21_tab_extraction_under_half_ms_with_zero_save_state_calls() {
     );
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[test]
 fn test_drag_editing_skips_extraction_and_commits_once_on_pointer_release() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();

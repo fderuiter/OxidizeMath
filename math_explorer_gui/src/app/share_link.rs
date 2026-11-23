@@ -190,7 +190,7 @@ impl MathExplorerApp {
     }
 
     /// Returns the most recently flushed `#tab=...` fragment in tests.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "pure_math"))]
     #[must_use]
     pub(crate) fn url_sync_last_fragment_for_test(&self) -> Option<&str> {
         self.url_sync.last_synced_fragment()

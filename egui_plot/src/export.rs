@@ -808,17 +808,41 @@ fn color_image_to_rgba_bytes(image: &egui::ColorImage) -> Vec<u8> {
     rgba
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(test, not(target_arch = "wasm32")))]
+type MockClipboardImage = (usize, usize, Vec<u8>);
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+std::thread_local! {
+    static MOCK_CLIPBOARD_TEXT: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    static MOCK_CLIPBOARD_IMAGE: std::cell::RefCell<Option<MockClipboardImage>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+fn take_mock_clipboard_text() -> Option<String> {
+    MOCK_CLIPBOARD_TEXT.with(|slot| slot.borrow_mut().take())
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+fn take_mock_clipboard_image() -> Option<MockClipboardImage> {
+    MOCK_CLIPBOARD_IMAGE.with(|slot| slot.borrow_mut().take())
+}
+
+#[cfg(all(not(test), not(target_arch = "wasm32")))]
+fn is_automated_test_env() -> bool {
+    std::env::var_os("CI").is_some() || std::env::var_os("RUST_TEST_THREADS").is_some()
+}
+
+#[cfg(all(not(test), not(target_arch = "wasm32")))]
 static NATIVE_CLIPBOARD: std::sync::Mutex<Option<arboard::Clipboard>> = std::sync::Mutex::new(None);
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(test), not(target_arch = "wasm32")))]
 fn should_retry_native_clipboard() -> bool {
     cfg!(any(target_os = "macos", target_os = "windows"))
         || std::env::var_os("DISPLAY").is_some()
         || std::env::var_os("WAYLAND_DISPLAY").is_some()
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(test), not(target_arch = "wasm32")))]
 fn with_native_clipboard<F>(mut op: F) -> Result<(), String>
 where
     F: FnMut(&mut arboard::Clipboard) -> Result<(), arboard::Error>,
@@ -863,8 +887,20 @@ where
 
 /// Copy an `egui::ColorImage` to the system clipboard.
 pub fn copy_image_to_clipboard(image: &egui::ColorImage) -> Result<(), String> {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(test, not(target_arch = "wasm32")))]
     {
+        let rgba = color_image_to_rgba_bytes(image);
+        let entry = (image.width(), image.height(), rgba);
+        MOCK_CLIPBOARD_IMAGE.with(|slot| *slot.borrow_mut() = Some(entry));
+        Ok(())
+    }
+
+    #[cfg(all(not(test), not(target_arch = "wasm32")))]
+    {
+        if is_automated_test_env() {
+            let _ = image;
+            return Ok(());
+        }
         let rgba = color_image_to_rgba_bytes(image);
         let width = image.width();
         let height = image.height();
@@ -982,8 +1018,18 @@ where
 
 /// Copy UTF-8 text (such as serialized CSV or JSON datasets) to the system clipboard.
 pub fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(test, not(target_arch = "wasm32")))]
     {
+        MOCK_CLIPBOARD_TEXT.with(|slot| *slot.borrow_mut() = Some(text.to_owned()));
+        Ok(())
+    }
+
+    #[cfg(all(not(test), not(target_arch = "wasm32")))]
+    {
+        if is_automated_test_env() {
+            let _ = text;
+            return Ok(());
+        }
         with_native_clipboard(|clipboard| clipboard.set_text(text.to_owned()))
     }
 
@@ -1548,19 +1594,30 @@ mod tests {
     #[test]
     fn test_copy_image_to_clipboard_callback_invoked() {
         let img = egui::ColorImage::new([10, 10], vec![egui::Color32::RED; 100]);
-        let callback_called = std::sync::Arc::new(std::sync::Mutex::new(false));
-        let flag = callback_called.clone();
-        let _ = copy_image_to_clipboard_with_callback(&img, move |_res| {
-            *flag.lock().unwrap() = true;
+        let callback_res = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let flag = callback_res.clone();
+        let res = copy_image_to_clipboard_with_callback(&img, move |cb_res| {
+            *flag.lock().unwrap() = Some(cb_res);
         });
         #[cfg(not(target_arch = "wasm32"))]
-        assert!(*callback_called.lock().unwrap());
+        {
+            assert!(res.is_ok());
+            assert_eq!(*callback_res.lock().unwrap(), Some(Ok(())));
+            assert_eq!(
+                take_mock_clipboard_image(),
+                Some((10, 10, color_image_to_rgba_bytes(&img)))
+            );
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = (res, callback_res);
     }
 
     #[test]
     fn test_copy_image_to_clipboard_pipeline_consistency() {
         let img = egui::ColorImage::new([2, 2], vec![egui::Color32::BLUE; 4]);
         let res_direct = copy_image_to_clipboard(&img);
+        #[cfg(not(target_arch = "wasm32"))]
+        let direct_mock = take_mock_clipboard_image();
         let callback_res = std::sync::Arc::new(std::sync::Mutex::new(None));
         let res_slot = callback_res.clone();
         let res_cb = copy_image_to_clipboard_with_callback(&img, move |r| {
@@ -1568,26 +1625,40 @@ mod tests {
         });
         assert_eq!(res_direct.is_ok(), res_cb.is_ok());
         #[cfg(not(target_arch = "wasm32"))]
-        assert!(callback_res.lock().unwrap().is_some());
+        {
+            let expected = Some((2, 2, color_image_to_rgba_bytes(&img)));
+            assert!(res_direct.is_ok());
+            assert_eq!(*callback_res.lock().unwrap(), Some(Ok(())));
+            assert_eq!(direct_mock, expected);
+            assert_eq!(take_mock_clipboard_image(), expected);
+        }
     }
 
     #[test]
     fn test_copy_text_to_clipboard_callback_invoked() {
         let datasets = vec![("Series 1".to_string(), vec![[0.0, 1.0], [2.0, 3.0]])];
         let csv = format_csv(&datasets);
-        let callback_called = std::sync::Arc::new(std::sync::Mutex::new(false));
-        let flag = callback_called.clone();
-        let _ = copy_text_to_clipboard_with_callback(&csv, move |_res| {
-            *flag.lock().unwrap() = true;
+        let callback_res = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let flag = callback_res.clone();
+        let res = copy_text_to_clipboard_with_callback(&csv, move |cb_res| {
+            *flag.lock().unwrap() = Some(cb_res);
         });
         #[cfg(not(target_arch = "wasm32"))]
-        assert!(*callback_called.lock().unwrap());
+        {
+            assert!(res.is_ok());
+            assert_eq!(*callback_res.lock().unwrap(), Some(Ok(())));
+            assert_eq!(take_mock_clipboard_text(), Some(csv));
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = (res, callback_res);
     }
 
     #[test]
     fn test_copy_text_to_clipboard_pipeline_consistency() {
         let text = "Dataset,X,Y\nTrajectory,0.5,1.25\n";
         let res_direct = copy_text_to_clipboard(text);
+        #[cfg(not(target_arch = "wasm32"))]
+        let direct_mock = take_mock_clipboard_text();
         let callback_res = std::sync::Arc::new(std::sync::Mutex::new(None));
         let res_slot = callback_res.clone();
         let res_cb = copy_text_to_clipboard_with_callback(text, move |r| {
@@ -1595,28 +1666,48 @@ mod tests {
         });
         assert_eq!(res_direct.is_ok(), res_cb.is_ok());
         #[cfg(not(target_arch = "wasm32"))]
-        assert!(callback_res.lock().unwrap().is_some());
+        {
+            assert!(res_direct.is_ok());
+            assert_eq!(*callback_res.lock().unwrap(), Some(Ok(())));
+            assert_eq!(direct_mock.as_deref(), Some(text));
+            assert_eq!(take_mock_clipboard_text().as_deref(), Some(text));
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn test_concurrent_clipboard_image_and_text_copies_thread_safe() {
-        let baseline_ok = copy_text_to_clipboard("probe").is_ok();
+        assert!(copy_text_to_clipboard("probe").is_ok());
+        assert_eq!(take_mock_clipboard_text().as_deref(), Some("probe"));
         let img = egui::ColorImage::new([4, 4], vec![egui::Color32::GREEN; 16]);
+        let expected_rgba = color_image_to_rgba_bytes(&img);
         std::thread::scope(|scope| {
             for worker in 0..8 {
                 let img_ref = &img;
+                let expected_img = expected_rgba.clone();
                 scope.spawn(move || {
                     for iter in 0..6 {
                         let payload = format!("Dataset,X,Y\nWorker{worker},{iter},1.0\n");
-                        let text_res = copy_text_to_clipboard(&payload);
-                        let text_cb = copy_text_to_clipboard_with_callback(&payload, |_| {});
-                        let img_res = copy_image_to_clipboard(img_ref);
-                        let img_cb = copy_image_to_clipboard_with_callback(img_ref, |_| {});
-                        assert_eq!(text_res.is_ok(), baseline_ok);
-                        assert_eq!(text_cb.is_ok(), baseline_ok);
-                        assert_eq!(img_res.is_ok(), baseline_ok);
-                        assert_eq!(img_cb.is_ok(), baseline_ok);
+                        assert!(copy_text_to_clipboard(&payload).is_ok());
+                        assert_eq!(
+                            take_mock_clipboard_text().as_deref(),
+                            Some(payload.as_str())
+                        );
+                        assert!(copy_text_to_clipboard_with_callback(&payload, |_| {}).is_ok());
+                        assert_eq!(
+                            take_mock_clipboard_text().as_deref(),
+                            Some(payload.as_str())
+                        );
+                        assert!(copy_image_to_clipboard(img_ref).is_ok());
+                        assert_eq!(
+                            take_mock_clipboard_image(),
+                            Some((4, 4, expected_img.clone()))
+                        );
+                        assert!(copy_image_to_clipboard_with_callback(img_ref, |_| {}).is_ok());
+                        assert_eq!(
+                            take_mock_clipboard_image(),
+                            Some((4, 4, expected_img.clone()))
+                        );
                     }
                 });
             }

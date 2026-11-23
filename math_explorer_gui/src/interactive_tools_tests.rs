@@ -1,57 +1,81 @@
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "pure_math")]
+    fn verify_interactive_tool<T: crate::framework::InteractiveTool + Default>(
+        ctx: &eframe::egui::Context,
+    ) {
+        let mut tool = T::default();
+        let _ = tool.name();
+        let _ = tool.theory();
+        let _ = tool.export_datasets();
+        let _ = tool.export_figure_options();
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+            tool.show(ctx);
+        });
+    }
+
+    #[cfg(feature = "pure_math")]
     #[test]
     fn test_additional_interactive_tools() {
-        use crate::framework::InteractiveTool;
         let ctx = eframe::egui::Context::default();
-
-        macro_rules! check_tool {
-            ($tool_ty:path) => {
-                let mut tool = <$tool_ty>::default();
-                let _ = tool.name();
-                let _ = tool.theory();
-                let _ = tool.export_datasets();
-                let _ = tool.export_figure_options();
-                let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
-                    tool.show(ctx);
-                });
+        macro_rules! check_tools {
+            ($($tool_ty:ty),+ $(,)?) => {
+                $(verify_interactive_tool::<$tool_ty>(&ctx);)+
             };
         }
 
-        check_tool!(crate::tabs::ai::q_table_inspector::QTableInspectorTool);
-        check_tool!(crate::tabs::ai::attention_maps::AttentionMapsTool);
-        check_tool!(crate::tabs::ai::tokenization::TokenizationTool);
-        check_tool!(crate::tabs::financial_math::bet_size::BetSizeCalculatorTool);
-        check_tool!(crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool);
-        check_tool!(crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool);
-        check_tool!(crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool);
-        check_tool!(crate::tabs::solid_state::band_structure::BandStructureTool);
-        check_tool!(crate::tabs::solid_state::ising::IsingModelTool);
-        check_tool!(crate::tabs::quantum::clebsch::ClebschGordanTool);
-        check_tool!(crate::tabs::graph_theory::network_metrics::NetworkMetricsTool);
-        check_tool!(crate::tabs::clinical_trials::survival::SurvivalAnalysisTool);
-        check_tool!(crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool);
-        check_tool!(crate::tabs::clinical_trials::randomization::RandomizationTool);
-        check_tool!(crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool);
-        check_tool!(crate::tabs::climate::cera::CeraTool);
-        check_tool!(crate::tabs::climate::co2_projections::Co2ProjectionsTool);
-        check_tool!(crate::tabs::climate::temperature::TemperatureAnomaliesTool);
-        check_tool!(crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool);
-        check_tool!(crate::tabs::fluid_dynamics::turbulence::TurbulenceTool);
-        check_tool!(crate::tabs::ai::activation_functions::ActivationFunctionsTool);
-        check_tool!(crate::tabs::ai::gaussian_splatting::GaussianSplattingTool);
-        check_tool!(crate::tabs::ai::training_monitor::TrainingMonitorTool);
-        check_tool!(crate::tabs::ai::loss_landscape::LossLandscapeTool);
-        check_tool!(crate::tabs::ai::grid_world::GridWorldTool);
-        check_tool!(crate::tabs::medical::beam_profiling::BeamProfilingTool);
-        check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
-        check_tool!(crate::tabs::medical::radar_gating::RadarGatingTool);
-        check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
-        check_tool!(crate::tabs::number_theory::ualbf_widget::UalbfWidget);
-        check_tool!(crate::tabs::number_theory::partitions_widget::PartitionsWidget);
-        check_tool!(crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget);
-        check_tool!(crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool);
-        check_tool!(crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool);
+        check_tools!(
+            crate::tabs::financial_math::bet_size::BetSizeCalculatorTool,
+            crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool,
+            crate::tabs::graph_theory::network_metrics::NetworkMetricsTool,
+            crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool,
+            crate::tabs::number_theory::ualbf_widget::UalbfWidget,
+            crate::tabs::number_theory::partitions_widget::PartitionsWidget,
+            crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget,
+        );
+        #[cfg(feature = "applied")]
+        check_tools!(
+            crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool,
+            crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool,
+            crate::tabs::clinical_trials::survival::SurvivalAnalysisTool,
+            crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool,
+            crate::tabs::clinical_trials::randomization::RandomizationTool,
+        );
+        #[cfg(feature = "ai")]
+        check_tools!(
+            crate::tabs::ai::q_table_inspector::QTableInspectorTool,
+            crate::tabs::ai::attention_maps::AttentionMapsTool,
+            crate::tabs::ai::tokenization::TokenizationTool,
+            crate::tabs::ai::activation_functions::ActivationFunctionsTool,
+            crate::tabs::ai::gaussian_splatting::GaussianSplattingTool,
+            crate::tabs::ai::training_monitor::TrainingMonitorTool,
+            crate::tabs::ai::loss_landscape::LossLandscapeTool,
+            crate::tabs::ai::grid_world::GridWorldTool,
+        );
+        #[cfg(feature = "biology")]
+        check_tools!(
+            crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool,
+            crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool,
+        );
+        #[cfg(feature = "climate")]
+        check_tools!(
+            crate::tabs::climate::cera::CeraTool,
+            crate::tabs::climate::co2_projections::Co2ProjectionsTool,
+            crate::tabs::climate::temperature::TemperatureAnomaliesTool,
+        );
+        #[cfg(feature = "epidemiology")]
+        check_tools!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
+        #[cfg(feature = "physics")]
+        check_tools!(
+            crate::tabs::solid_state::band_structure::BandStructureTool,
+            crate::tabs::solid_state::ising::IsingModelTool,
+            crate::tabs::quantum::clebsch::ClebschGordanTool,
+            crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool,
+            crate::tabs::fluid_dynamics::turbulence::TurbulenceTool,
+            crate::tabs::medical::beam_profiling::BeamProfilingTool,
+            crate::tabs::medical::dose::DoseCalculationTool,
+            crate::tabs::medical::radar_gating::RadarGatingTool,
+        );
     }
 
     #[test]
@@ -103,11 +127,24 @@ mod tests {
             count += 1;
         }
 
+        #[cfg(all(
+            feature = "biology",
+            feature = "climate",
+            feature = "epidemiology",
+            feature = "physics"
+        ))]
         assert!(
             count >= 40,
             "Expected at least 40 registered tools, got {}",
             count
         );
+        #[cfg(not(all(
+            feature = "biology",
+            feature = "climate",
+            feature = "epidemiology",
+            feature = "physics"
+        )))]
+        let _ = count;
     }
 
     #[test]
@@ -155,6 +192,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "physics")]
     #[test]
     fn test_theory_context_portal_citation_registration() {
         use crate::framework::SimulationFramework;
@@ -193,6 +231,12 @@ mod tests {
         );
     }
 
+    #[cfg(all(
+        feature = "pure_math",
+        feature = "applied",
+        feature = "physics",
+        any(feature = "climate", feature = "epidemiology")
+    ))]
     fn assert_tool_roundtrip(tool: &mut dyn crate::framework::InteractiveTool, custom_json: &str) {
         let default_saved = tool.save_state().expect("default save_state");
         tool.load_state(custom_json);
@@ -213,6 +257,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "applied", not(target_arch = "wasm32")))]
     fn assert_tab_roundtrip(tab: &mut dyn crate::tabs::ExplorerTab, custom_json: &str) {
         let default_saved = tab.save_state().expect("default save_state");
         tab.load_state(custom_json);

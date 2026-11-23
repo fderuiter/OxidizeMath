@@ -23,7 +23,7 @@ pub enum SplitLayoutMode {
 
 impl SplitLayoutMode {
     /// Returns the human-readable display label for the layout mode.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "epidemiology", feature = "pure_math"))]
     pub fn label(&self) -> &'static str {
         match self {
             Self::Single => "Single View",

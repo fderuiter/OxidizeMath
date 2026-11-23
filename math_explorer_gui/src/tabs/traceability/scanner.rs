@@ -46,14 +46,45 @@ pub(super) fn join_relative_segments(base: &Path, rel: &str) -> PathBuf {
     out
 }
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+std::thread_local! {
+    static MOCK_CURRENT_DIR: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+struct MockCurrentDirGuard(Option<PathBuf>);
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+impl Drop for MockCurrentDirGuard {
+    fn drop(&mut self) {
+        let prev = self.0.take();
+        MOCK_CURRENT_DIR.with(|slot| *slot.borrow_mut() = prev);
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(super) fn with_mock_current_dir<R>(dir: &Path, f: impl FnOnce() -> R) -> R {
+    let prev = MOCK_CURRENT_DIR.with(|slot| slot.borrow_mut().replace(dir.to_path_buf()));
+    let _guard = MockCurrentDirGuard(prev);
+    f()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_effective_cwd() -> Option<PathBuf> {
+    #[cfg(test)]
+    if let Some(mock_dir) = MOCK_CURRENT_DIR.with(|slot| slot.borrow().clone()) {
+        return mock_dir.canonicalize().ok();
+    }
+    std::env::current_dir().ok()?.canonicalize().ok()
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) fn canonical_workspace_root() -> Option<PathBuf> {
-    let cwd = std::env::current_dir().ok()?.canonicalize().ok()?;
+    let cwd = resolve_effective_cwd()?;
     cwd.ancestors()
         .take(64)
         .find(|dir| {
-            std::fs::read_to_string(dir.join("Cargo.toml"))
-                .is_ok_and(|m| has_workspace_header(&m))
+            std::fs::read_to_string(dir.join("Cargo.toml")).is_ok_and(|m| has_workspace_header(&m))
         })
         .map(Path::to_path_buf)
 }
@@ -109,13 +140,21 @@ pub(super) fn validate_picked_repo_path(path: &Path) -> Result<String, String> {
     if trimmed.is_empty() || has_traversal_sequence(trimmed) {
         return Err("Selected directory path is empty or contains traversal segments.".to_string());
     }
-    let meta = std::fs::symlink_metadata(path)
-        .map_err(|err| format!("Selected path cannot be accessed ({}): {}", path.display(), err))?;
+    let meta = std::fs::symlink_metadata(path).map_err(|err| {
+        format!(
+            "Selected path cannot be accessed ({}): {}",
+            path.display(),
+            err
+        )
+    })?;
     if meta.file_type().is_symlink() {
         return Err("Selected codebase path must not be a symbolic link.".to_string());
     }
     if !meta.is_dir() {
-        return Err(format!("Selected path is not a directory: {}", path.display()));
+        return Err(format!(
+            "Selected path is not a directory: {}",
+            path.display()
+        ));
     }
     let canonical = path
         .canonicalize()
@@ -161,14 +200,14 @@ pub(super) fn revalidate_repo_path(raw: &str, _user_picked: bool) -> Option<Stri
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-struct RootedVfs {
+pub(super) struct RootedVfs {
     root: PathBuf,
     fallback_registry: Option<PathBuf>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl RootedVfs {
-    fn new(root: &Path) -> Result<Self, std::io::Error> {
+    pub(super) fn new(root: &Path) -> Result<Self, std::io::Error> {
         let canonical = root.canonicalize()?;
         let fallback_registry = canonical_workspace_root()
             .filter(|ws| canonical.starts_with(ws) && canonical != *ws)
@@ -215,7 +254,9 @@ impl VirtualFileSystem for RootedVfs {
             match self.resolve_confined(&path) {
                 Ok(resolved) => std::fs::read_to_string(resolved),
                 Err(err) => {
-                    let clean = path.trim_start_matches("./").trim_start_matches(['/', '\\']);
+                    let clean = path
+                        .trim_start_matches("./")
+                        .trim_start_matches(['/', '\\']);
                     if clean == "traceability.toml"
                         && matches!(err.kind(), std::io::ErrorKind::NotFound)
                     {

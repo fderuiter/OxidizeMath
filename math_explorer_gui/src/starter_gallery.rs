@@ -2,7 +2,7 @@
 //! for simulation tabs and instant preset model execution.
 
 use crate::framework::ToolMetadata;
-#[cfg(test)]
+#[cfg(all(test, feature = "pure_math"))]
 use eframe::egui;
 
 /// Pre-configured starter simulation template card.
@@ -390,6 +390,12 @@ pub(crate) use root_host::{
 #[path = "starter_gallery/tests.rs"]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 #[path = "starter_gallery/contract_tests.rs"]
 mod contract_tests;

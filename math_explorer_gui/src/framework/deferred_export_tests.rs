@@ -1,3 +1,4 @@
+#![cfg(all(feature = "ai", feature = "biology", feature = "physics"))]
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;

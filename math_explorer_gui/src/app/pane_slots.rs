@@ -424,7 +424,7 @@ impl MathExplorerApp {
     }
 
     /// Returns the number of currently instantiated secondary pane tab instances (for test verification).
-    #[cfg(test)]
+    #[cfg(all(test, feature = "epidemiology", feature = "pure_math"))]
     pub fn active_secondary_slot_count(&self) -> usize {
         self.pane_slots
             .slots

@@ -16,35 +16,46 @@ pub(crate) mod viewport;
 
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 mod tests_adaptive_chrome;
-#[cfg(test)]
+#[cfg(all(test, feature = "climate", feature = "physics", feature = "pure_math"))]
 mod tests_command_palette;
 #[cfg(test)]
 mod tests_diagnostics;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 mod tests_domain_bar;
-#[cfg(test)]
+#[cfg(all(test, feature = "ai", feature = "pure_math"))]
 mod tests_focus_routing;
-#[cfg(test)]
+#[cfg(all(test, feature = "epidemiology", feature = "pure_math"))]
 mod tests_multi_pane;
-#[cfg(test)]
+#[cfg(all(test, feature = "epidemiology", feature = "pure_math"))]
 mod tests_multi_pane_a11y;
-#[cfg(test)]
+#[cfg(all(test, feature = "epidemiology"))]
 mod tests_multi_pane_plot_live;
-#[cfg(test)]
+#[cfg(all(test, feature = "epidemiology", feature = "pure_math"))]
 mod tests_pane_clone_sync;
-#[cfg(test)]
+#[cfg(all(test, feature = "epidemiology", feature = "pure_math"))]
 mod tests_pane_isolation;
-#[cfg(test)]
+#[cfg(all(test, feature = "biology", feature = "climate", feature = "physics"))]
 mod tests_secondary_menus;
 #[cfg(test)]
 mod tests_session_lifecycle;
 #[cfg(test)]
 mod tests_shortcuts;
-#[cfg(test)]
+#[cfg(all(test, feature = "epidemiology", feature = "pure_math"))]
 mod tests_split_view;
-#[cfg(test)]
+#[cfg(all(test, feature = "epidemiology", feature = "pure_math"))]
 mod tests_tab_cache_perf;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;

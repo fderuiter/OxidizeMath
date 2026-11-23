@@ -1,8 +1,11 @@
 #[cfg(test)]
 mod tests {
     use crate::framework::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
+    #[cfg(feature = "pure_math")]
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
     #[test]
     fn test_export_queue_deduplication_on_rapid_clicks() {
@@ -10,11 +13,8 @@ mod tests {
         assert!(queue.is_empty());
         assert_eq!(queue.len(), 0);
 
-        // First click succeeds
         assert!(queue.push(ExportFormat::Csv));
         assert_eq!(queue.len(), 1);
-
-        // Rapid repeated clicks in the same frame should be ignored
         assert!(!queue.push(ExportFormat::Csv));
         assert!(!queue.push(ExportFormat::Csv));
         assert_eq!(queue.len(), 1);
@@ -25,14 +25,10 @@ mod tests {
                 target: ExportTarget::File,
             }]
         );
-
-        // A different format can still be queued
         assert!(queue.push(ExportFormat::Json));
         assert_eq!(queue.len(), 2);
         assert!(!queue.push(ExportFormat::Json));
         assert_eq!(queue.len(), 2);
-
-        // Draining clears the queue and yields queued requests
         let drained = queue.drain_requests();
         assert_eq!(
             drained,
@@ -50,6 +46,7 @@ mod tests {
         assert!(queue.is_empty());
     }
 
+    #[cfg(feature = "pure_math")]
     #[test]
     fn test_export_csv_end_of_frame_dispatch_non_empty() {
         let temp_dir =
@@ -60,17 +57,11 @@ mod tests {
         framework.export_queue.destination_dir = Some(temp_dir.clone());
 
         let ctx = eframe::egui::Context::default();
-
-        // Queue export request
         framework.queue_export(ExportFormat::Csv);
         assert_eq!(framework.export_queue.len(), 1);
-
-        // Run framework frame loop
         let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
             framework.show(ctx, "test_csv");
         });
-
-        // Queue should be cleared after end-of-frame dispatch
         assert!(framework.export_queue.is_empty());
 
         // Verify CSV file creation
@@ -101,6 +92,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
+    #[cfg(feature = "pure_math")]
     #[test]
     fn test_export_json_end_of_frame_dispatch_valid_json() {
         let temp_dir =
@@ -111,17 +103,11 @@ mod tests {
         framework.export_queue.destination_dir = Some(temp_dir.clone());
 
         let ctx = eframe::egui::Context::default();
-
-        // Queue export request
         framework.queue_export(ExportFormat::Json);
         assert_eq!(framework.export_queue.len(), 1);
-
-        // Run framework frame loop
         let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
             framework.show(ctx, "test_json");
         });
-
-        // Queue should be cleared
         assert!(framework.export_queue.is_empty());
 
         // Verify JSON file creation
@@ -154,6 +140,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
+    #[cfg(feature = "pure_math")]
     #[test]
     fn test_exported_coordinates_match_click_frame_visual_parameters() {
         let mut framework = SimulationFramework::new("analysis");
@@ -199,6 +186,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "pure_math")]
     #[test]
     fn test_rapid_repeated_clicks_produce_single_write() {
         let write_count = Arc::new(AtomicUsize::new(0));
@@ -236,6 +224,7 @@ mod tests {
         assert!(framework.export_queue.is_empty());
     }
 
+    #[cfg(feature = "pure_math")]
     #[test]
     fn test_export_action_bar_button_simulation() {
         let temp_dir =
@@ -275,6 +264,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
+    #[cfg(feature = "pure_math")]
     #[test]
     fn test_deferred_dispatch_captures_frame_data_where_immediate_fails() {
         // Reproduce the problem statement:
@@ -356,6 +346,7 @@ mod tests {
         assert!(queue.is_empty());
     }
 
+    #[cfg(feature = "pure_math")]
     #[test]
     fn test_clipboard_end_of_frame_dispatch_accuracy_without_disk_writes() {
         let temp_dir = std::env::temp_dir().join(format!(
@@ -469,6 +460,7 @@ mod tests {
         assert!(framework.export_queue.last_clipboard_content.is_none());
     }
 
+    #[cfg(feature = "pure_math")]
     #[test]
     fn test_clipboard_unavailable_and_confirmation_timeout() {
         let mut fw_err = SimulationFramework::new("analysis");

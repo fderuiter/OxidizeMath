@@ -1,3 +1,9 @@
+#![cfg(all(
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
@@ -135,12 +141,12 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 33, "Expected 33 Plot dataset+figure tools");
+    assert_eq!(plot_tool_count, 37, "Expected 37 Plot dataset+figure tools");
     assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
     assert_eq!(unsupported_tool_count, 16, "Expected 16 non-export tools");
     assert_eq!(
         shader_tool_count, 3,
         "Expected 3 analytical GLSL shader tools"
     );
-    assert_eq!(non_shader_tool_count, 52, "Expected 52 non-shader tools");
+    assert_eq!(non_shader_tool_count, 57, "Expected 57 non-shader tools");
 }

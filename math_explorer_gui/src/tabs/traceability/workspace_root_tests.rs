@@ -3,33 +3,9 @@
 use super::*;
 use std::path::{Path, PathBuf};
 
-pub(super) struct CwdRestoreGuard {
-    raw_cwd: PathBuf,
-    canonical_cwd: PathBuf,
-}
-
-impl CwdRestoreGuard {
-    pub(super) fn capture() -> Self {
-        let raw_cwd = std::env::current_dir().expect("current_dir");
-        let canonical_cwd = raw_cwd.canonicalize().expect("canonicalize current_dir");
-        // Ensure DEFAULT_SCAN_CACHE is initialized while still inside the workspace.
-        let mut warm_tab = TraceabilityTab::default();
-        warm_tab.refresh();
-        Self {
-            raw_cwd,
-            canonical_cwd,
-        }
-    }
-
-    pub(super) fn original(&self) -> &Path {
-        &self.canonical_cwd
-    }
-}
-
-impl Drop for CwdRestoreGuard {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.raw_cwd);
-    }
+pub(super) fn warm_default_scan_cache() {
+    let mut warm_tab = TraceabilityTab::default();
+    warm_tab.refresh();
 }
 
 pub(super) fn create_non_workspace_canary_dirs() -> (PathBuf, PathBuf, PathBuf) {
@@ -159,7 +135,7 @@ fn test_has_workspace_header_strips_comments_and_matches_tables() {
 #[test]
 fn test_spoofed_cargo_toml_comments_outside_workspace_fail_closed() {
     let _mutex = crate::reflective_ui::tests::lock_test_mutex();
-    let _cwd_guard = CwdRestoreGuard::capture();
+    warm_default_scan_cache();
 
     let pid = std::process::id();
     let spoof_root = std::env::temp_dir().join(format!("oxidize_spoof_ws_{pid}"));
@@ -172,15 +148,16 @@ fn test_spoofed_cargo_toml_comments_outside_workspace_fail_closed() {
     .unwrap();
     std::fs::write(sub_dir.join("papers").join("spoof_canary.tex"), "x").unwrap();
 
-    std::env::set_current_dir(&spoof_root).expect("set_current_dir to spoof_root");
-    assert_eq!(TraceabilityTab::canonical_workspace_root(), None);
+    with_mock_current_dir(&spoof_root, || {
+        assert_eq!(TraceabilityTab::canonical_workspace_root(), None);
 
-    let mut app = crate::app::MathExplorerApp::default();
-    let mws = build_mws_envelope(&sub_dir.to_string_lossy());
-    app.load_state_from_json(&mws);
-    assert_mws_session_rejected(&mut app, &sub_dir, "spoof_canary.tex");
+        let mut app = crate::app::MathExplorerApp::default();
+        let mws = build_mws_envelope(&sub_dir.to_string_lossy());
+        app.load_state_from_json(&mws);
+        assert_mws_session_rejected(&mut app, &sub_dir, "spoof_canary.tex");
+    });
 
-    drop(_cwd_guard);
+    assert!(TraceabilityTab::canonical_workspace_root().is_some());
     let _ = std::fs::remove_dir_all(&spoof_root);
 }
 

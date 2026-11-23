@@ -1,8 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{
-    grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD,
-};
+use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
 use super::MorphogenesisTool;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};

@@ -103,13 +103,15 @@ impl MathExplorerApp {
 
 #[cfg(test)]
 mod tests {
-    use crate::app::session::SessionLifecycleState;
-    use crate::app::{MathExplorerApp, ThemeMode, ViewportLayout};
+    use crate::app::MathExplorerApp;
     use eframe::egui;
-    use std::path::PathBuf;
 
+    #[cfg(feature = "pure_math")]
     #[test]
     fn test_capture_and_restore_recovery_snapshot_preserves_multi_pane_and_undo_history() {
+        use crate::app::session::SessionLifecycleState;
+        use crate::app::{ThemeMode, ViewportLayout};
+        use std::path::PathBuf;
         let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -174,8 +176,6 @@ mod tests {
 
     #[test]
     fn test_fresh_app_rebuilds_clean_context_state_and_texture_handles() {
-        use crate::framework::InteractiveTool;
-
         let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -189,6 +189,8 @@ mod tests {
             .unwrap_or(0);
         old_app.select_tab(&old_ctx, solid_state_idx);
         let snapshot = old_app.capture_recovery_snapshot();
+        assert_eq!(snapshot.recovery_filename(), "math-explorer-recovery.mws");
+        assert!(snapshot.envelope_json.contains("\"schema_version\""));
 
         let restored_ctx = egui::Context::default();
         let mut restored_app = MathExplorerApp::default();
@@ -197,6 +199,7 @@ mod tests {
 
         #[cfg(feature = "physics")]
         {
+            use crate::framework::InteractiveTool;
             let mut old_ising = crate::tabs::solid_state::ising::IsingModelTool::default();
             let old_out = old_ctx.run(egui::RawInput::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
