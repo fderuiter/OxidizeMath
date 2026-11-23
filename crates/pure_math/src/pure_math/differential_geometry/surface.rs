@@ -1,5 +1,9 @@
 // [cite:modular_polynomials_review]
+use math_commons::ast::CompiledExpr;
 use nalgebra::{Matrix2, Point3, Vector3};
+
+/// Maximum inline parameter slots stored on compiled [`ParametricSurface`] evaluators.
+pub const MAX_SURFACE_PARAMS: usize = 6;
 
 /// Represents a parametric surface $r(u, v)$ in $\mathbb{R}^3$.
 pub trait ParametricSurface {
@@ -145,6 +149,24 @@ pub enum ParametricSurfaceKind {
     Torus,
     /// Figure-8 Klein bottle immersion in $\mathbb{R}^3$.
     KleinBottle,
+    /// Monge heightfield surface $z = f(x, y)$ compiled to stack bytecode.
+    CustomHeightfield,
+    /// Parametric 3D immersion $r(u, v) = (x(u, v), y(u, v), z(u, v))$ compiled to stack bytecode.
+    CustomParametric,
+}
+
+impl ParametricSurfaceKind {
+    /// Returns the default $(u, v)$ parameter domain `((u_min, u_max), (v_min, v_max))` for this surface family.
+    #[must_use]
+    pub const fn uv_domain(self) -> ((f64, f64), (f64, f64)) {
+        match self {
+            Self::CustomHeightfield => ((-2.0, 2.0), (-2.0, 2.0)),
+            Self::Sphere | Self::Torus | Self::KleinBottle | Self::CustomParametric => (
+                (0.0, 2.0 * std::f64::consts::PI),
+                (0.0, 2.0 * std::f64::consts::PI),
+            ),
+        }
+    }
 }
 
 /// Canonical differential-geometry surface curvature measure selector.
@@ -223,5 +245,156 @@ impl ParametricSurface for KleinBottle {
             * u.sin();
         let z = r / 2.0 * v.sin() * (u / 2.0).cos() + r / 2.0 * v.cos() * (u / 2.0).sin();
         Point3::new(x, y, z)
+    }
+}
+
+#[inline]
+fn sanitize_surface_coord(val: f64) -> f64 {
+    if val.is_finite() {
+        val.clamp(-50.0, 50.0)
+    } else {
+        0.0
+    }
+}
+
+fn pack_surface_params(params: &[f64]) -> ([f64; MAX_SURFACE_PARAMS], usize) {
+    let mut inline = [0.0; MAX_SURFACE_PARAMS];
+    let len = params.len().min(MAX_SURFACE_PARAMS);
+    inline[..len].copy_from_slice(&params[..len]);
+    (inline, len)
+}
+
+/// Heightfield surface $r(x, y) = (x, y, f(x, y))$ backed by zero-allocation [`CompiledExpr`] bytecode.
+#[derive(Debug, Clone)]
+pub struct CompiledHeightfieldSurface {
+    compiled: CompiledExpr,
+    params: [f64; MAX_SURFACE_PARAMS],
+    param_len: usize,
+}
+
+impl CompiledHeightfieldSurface {
+    /// Constructs a heightfield surface from a [`CompiledExpr`] compiled over axes `["x", "y"]`.
+    #[must_use]
+    pub fn new(compiled: CompiledExpr, params: &[f64]) -> Self {
+        let (packed, param_len) = pack_surface_params(params);
+        Self {
+            compiled,
+            params: packed,
+            param_len,
+        }
+    }
+
+    /// Returns a reference to the underlying compiled height expression.
+    #[must_use]
+    pub const fn compiled(&self) -> &CompiledExpr {
+        &self.compiled
+    }
+}
+
+impl ParametricSurface for CompiledHeightfieldSurface {
+    #[verified_engine::verified]
+    fn position(&self, u: f64, v: f64) -> Point3<f64> {
+        let z = self.compiled.eval_2d(u, v, &self.params[..self.param_len]);
+        Point3::new(u, v, sanitize_surface_coord(z))
+    }
+}
+
+/// Parametric 3D surface $r(u, v) = (x(u, v), y(u, v), z(u, v))$ backed by [`CompiledExpr`] triples.
+#[derive(Debug, Clone)]
+pub struct CompiledParametricSurface {
+    x_expr: CompiledExpr,
+    y_expr: CompiledExpr,
+    z_expr: CompiledExpr,
+    params: [f64; MAX_SURFACE_PARAMS],
+    param_len: usize,
+}
+
+impl CompiledParametricSurface {
+    /// Constructs a parametric surface from three [`CompiledExpr`] formulas compiled over `["u", "v"]`.
+    #[must_use]
+    pub fn new(
+        x_expr: CompiledExpr,
+        y_expr: CompiledExpr,
+        z_expr: CompiledExpr,
+        params: &[f64],
+    ) -> Self {
+        let (packed, param_len) = pack_surface_params(params);
+        Self {
+            x_expr,
+            y_expr,
+            z_expr,
+            params: packed,
+            param_len,
+        }
+    }
+}
+
+impl ParametricSurface for CompiledParametricSurface {
+    #[verified_engine::verified]
+    fn position(&self, u: f64, v: f64) -> Point3<f64> {
+        let p = &self.params[..self.param_len];
+        let x = sanitize_surface_coord(self.x_expr.eval_2d(u, v, p));
+        let y = sanitize_surface_coord(self.y_expr.eval_2d(u, v, p));
+        let z = sanitize_surface_coord(self.z_expr.eval_2d(u, v, p));
+        Point3::new(x, y, z)
+    }
+}
+
+#[cfg(test)]
+mod compiled_surface_tests {
+    use super::*;
+    use math_commons::ast::parse;
+
+    #[test]
+    fn test_compiled_heightfield_saddle_negative_gaussian_curvature() {
+        let expr = parse("a * (x^2 - y^2)").expect("parse saddle");
+        let compiled = CompiledExpr::compile_with_vars(&expr, &["x", "y"]).expect("compile saddle");
+        let surface = CompiledHeightfieldSurface::new(compiled, &[0.5]);
+
+        let pos = surface.position(2.0, 1.0);
+        assert!((pos.z - 1.5).abs() < 1e-12);
+
+        // At origin (0, 0), z = a(x^2 - y^2) has K = -4 a^2 = -1.0 for a = 0.5
+        let k_origin = surface.gaussian_curvature(0.0, 0.0);
+        assert!((k_origin - -1.0).abs() < 1e-5, "got K = {k_origin}");
+    }
+
+    #[test]
+    fn test_compiled_parametric_triple_torus_parity() {
+        let shared = ["r_maj", "r_min"];
+        let cx = CompiledExpr::compile_with_vars_and_params(
+            &parse("(r_maj + r_min * cos(v)) * cos(u)").unwrap(),
+            &["u", "v"],
+            &shared,
+        )
+        .unwrap();
+        let cy = CompiledExpr::compile_with_vars_and_params(
+            &parse("(r_maj + r_min * cos(v)) * sin(u)").unwrap(),
+            &["u", "v"],
+            &shared,
+        )
+        .unwrap();
+        let cz = CompiledExpr::compile_with_vars_and_params(
+            &parse("r_min * sin(v)").unwrap(),
+            &["u", "v"],
+            &shared,
+        )
+        .unwrap();
+
+        let compiled_torus = CompiledParametricSurface::new(cx, cy, cz, &[2.0, 0.6]);
+        let analytic_torus = Torus {
+            major_radius: 2.0,
+            minor_radius: 0.6,
+        };
+
+        let p_comp = compiled_torus.position(0.7, 1.1);
+        let p_ana = analytic_torus.position(0.7, 1.1);
+        assert!((p_comp - p_ana).norm() < 1e-12);
+        assert!(
+            (compiled_torus.gaussian_curvature(0.7, 1.1)
+                - analytic_torus.gaussian_curvature(0.7, 1.1))
+            .abs()
+                < 1e-6
+        );
     }
 }

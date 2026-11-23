@@ -36,6 +36,15 @@ pub enum ParseError {
     /// Empty expression string provided.
     #[error("Expression cannot be empty")]
     EmptyExpression,
+
+    /// Unknown function identifier invoked with parentheses.
+    #[error("At character {}: unknown function '{name}'", span.start + 1)]
+    UnknownFunction {
+        /// Identifier name called as a function.
+        name: String,
+        /// Source character span of the identifier.
+        span: Span,
+    },
 }
 
 fn format_found_token(found: &str) -> String {
@@ -217,7 +226,7 @@ impl Parser {
         let tok = self.advance().clone();
         match tok.kind {
             TokenKind::Number(n) => Ok((Expr::Number(n), 0)),
-            TokenKind::Ident(name) => self.parse_ident_or_func(name, depth),
+            TokenKind::Ident(name) => self.parse_ident_or_func(name, tok.span, depth),
             TokenKind::LParen => {
                 let (inner, inner_height) = self.parse_expr(0, depth + 1)?;
                 if self.peek().kind != TokenKind::RParen {
@@ -253,24 +262,35 @@ impl Parser {
     fn parse_ident_or_func(
         &mut self,
         name: String,
+        span: Span,
         depth: usize,
     ) -> Result<(Expr, usize), ParseError> {
-        if let Some(func) = Func::from_name(&name) {
+        let Some(func) = Func::from_name(&name) else {
             if self.peek().kind == TokenKind::LParen {
-                return self.parse_parenthesized_func(func, depth);
+                return Err(ParseError::UnknownFunction { name, span });
             }
-            // Support function without parens e.g. "sin x" if followed by atom
-            if self.can_start_atom() {
-                let (arg, arg_height) = self.parse_expr(7, depth + 1)?;
-                let next_height = arg_height + 1;
-                if next_height > MAX_PARSE_DEPTH {
-                    return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
-                }
-                return Ok((Expr::function(func, vec![arg]), next_height));
-            }
+            return Ok((Expr::Variable(name), 0));
+        };
+
+        if self.peek().kind == TokenKind::LParen {
+            return self.parse_parenthesized_func(func, depth);
         }
 
-        Ok((Expr::Variable(name), 0))
+        // Support unary function without parens e.g. "sin x" if followed by atom
+        if func.arity() == 1 && self.can_start_atom() {
+            let (arg, arg_height) = self.parse_expr(7, depth + 1)?;
+            let next_height = arg_height + 1;
+            if next_height > MAX_PARSE_DEPTH {
+                return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
+            }
+            return Ok((Expr::function(func, vec![arg]), next_height));
+        }
+
+        Err(ParseError::UnexpectedToken {
+            expected: "opening parenthesis '(' for function arguments".into(),
+            found: self.peek().kind.to_string(),
+            span: self.peek().span,
+        })
     }
 
     fn parse_parenthesized_func(

@@ -13,6 +13,7 @@ use crate::{
 };
 
 pub use self::interp::{interpolate_threshold_crossings, interpolate_y_at_x};
+pub use self::intersect::MAX_PAIRWISE_INTERSECTION_SERIES;
 
 /// Maximum number of visible critical points returned per plot frame.
 pub const MAX_CRITICAL_POINTS: usize = 256;
@@ -102,12 +103,27 @@ pub(crate) struct RefLineEntry {
     pub(crate) value: f64,
 }
 
+thread_local! {
+    static DETECT_CRITICAL_POINTS_CALL_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[doc(hidden)]
+pub fn detect_critical_points_call_count() -> usize {
+    DETECT_CRITICAL_POINTS_CALL_COUNT.with(std::cell::Cell::get)
+}
+
+#[doc(hidden)]
+pub fn reset_detect_critical_points_call_count() {
+    DETECT_CRITICAL_POINTS_CALL_COUNT.with(|c| c.set(0));
+}
+
 /// Extract bounded roots, y-intercepts, local extrema, and pairwise intersections
 /// across visible `Line`, `HLine`, and `VLine` items, capped at [`MAX_CRITICAL_POINTS`].
 pub fn detect_critical_points(
     items: &[Box<dyn PlotItem + '_>],
     transform: &PlotTransform,
 ) -> Vec<CriticalPoint> {
+    DETECT_CRITICAL_POINTS_CALL_COUNT.with(|c| c.set(c.get() + 1));
     let bounds = *transform.bounds();
     if !bounds.is_finite() {
         return Vec::new();
@@ -171,39 +187,42 @@ fn collect_single_line_pois(
     transform: &PlotTransform,
     out: &mut Vec<CriticalPoint>,
 ) {
-    if point_y_in_bounds(0.0, bounds) && (!transform.log_axis().y) {
-        for x_root in interp::interpolate_threshold_crossings(line.points, 0.0) {
-            push_if_visible(
-                out,
-                CriticalPoint {
-                    kind: CriticalPointKind::Root,
-                    point: [x_root, 0.0],
-                    primary_series: line.name.clone(),
-                    secondary_series: None,
-                    item_id: line.id,
-                },
-                bounds,
-                transform,
-            );
-        }
+    let want_roots = point_y_in_bounds(0.0, bounds) && (!transform.log_axis().y);
+    let want_y_ints = point_x_in_bounds(0.0, bounds) && (!transform.log_axis().x);
+    let interp::SingleLineScan {
+        roots,
+        y_ints,
+        extrema,
+    } = interp::scan_single_line_all(line.points, want_roots, want_y_ints);
+    for x_root in roots {
+        push_if_visible(
+            out,
+            CriticalPoint {
+                kind: CriticalPointKind::Root,
+                point: [x_root, 0.0],
+                primary_series: line.name.clone(),
+                secondary_series: None,
+                item_id: line.id,
+            },
+            bounds,
+            transform,
+        );
     }
-    if point_x_in_bounds(0.0, bounds) && (!transform.log_axis().x) {
-        for y_int in interp::interpolate_y_at_x(line.points, 0.0) {
-            push_if_visible(
-                out,
-                CriticalPoint {
-                    kind: CriticalPointKind::YIntercept,
-                    point: [0.0, y_int],
-                    primary_series: line.name.clone(),
-                    secondary_series: None,
-                    item_id: line.id,
-                },
-                bounds,
-                transform,
-            );
-        }
+    for y_int in y_ints {
+        push_if_visible(
+            out,
+            CriticalPoint {
+                kind: CriticalPointKind::YIntercept,
+                point: [0.0, y_int],
+                primary_series: line.name.clone(),
+                secondary_series: None,
+                item_id: line.id,
+            },
+            bounds,
+            transform,
+        );
     }
-    for (pt, is_max) in interp::detect_local_extrema(line.points) {
+    for (pt, is_max) in extrema {
         push_if_visible(
             out,
             CriticalPoint {
