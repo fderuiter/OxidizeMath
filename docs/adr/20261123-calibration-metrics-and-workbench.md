@@ -1,4 +1,4 @@
-# ADR 0047: Probabilistic Calibration Metrics, Post-Hoc Recalibrators, and Interactive Workbench
+# ADR 20261123: Probabilistic Calibration Metrics, Post-Hoc Recalibrators, and Interactive Workbench
 
 ## Status
 
