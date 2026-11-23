@@ -11,6 +11,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | Command | Operational Role | Status |
 |---|---|---|
 | `check-api-drift` | Validates public API surface against `api_baseline.json`. | Active |
+| `check-benches` | Builds and runs all workspace benchmark targets in test mode (`cargo test --workspace --benches --all-features`). | Active |
 | `check-cargo-docs` | Verifies workspace documentation builds with `--all-features` and zero warnings. | Active |
 | `check-docs` | Runs crate documentation audit across all workspace crates. | Active |
 | `check-duplicates` | Runs AST-level code clone detector across first-party crates. | Active |
@@ -24,7 +25,8 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `lint-all` | Runs the full PR verification suite (formatting, single-pass batched static & AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift, traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, markdown links, and OSV vulnerabilities). | Active |
 | `lint-staged` | Syncs the staged Git index into `<target_dir>/lint-staged-snapshot` and runs offline pre-commit gates (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged` (staged ADR verification, profiles, file lengths, docs, AST clones, traceability, entropy, policy audit), single `.github/` workflow linting, `.md` or deletion/rename link scans, and reverse-dependent + 17-web-crate host/`wasm32` Clippy with root config escalation. | Active |
 | `lint-workflows` | Validates GitHub Actions workflow definitions and permissions. | Active |
-| `test-features` | Exercises isolated Cargo domain feature flags (`pure_math`, `physics`, `core-only`, etc.). | Active |
+| `smoke-examples` | Discovers every `[[example]]` target in `math_explorer/Cargo.toml` via `unified_verification list-examples`, builds all examples once, and runs each binary in an isolated temporary directory with `MATH_EXPLORER_SMOKE=1` and bounded timeout enforcement. | Active |
+| `test-features` | Exercises isolated Cargo domain feature flags (`pure_math`, `physics`, `core-only`, etc.), running unit/integration tests, doctests, and `--benches` per feature leg. | Active |
 | `test-policy-audit` | Audits workspace crates for unauthorized lint/dead-code/`missing_docs` bypasses, orphaned `#[cfg(target_arch = "wasm32")]` `#[test]` items, and unused dependencies. | Active |
 | `test-wasm` | Builds `wasm32-unknown-unknown` test artifacts with `--no-run --message-format=json` (anchored to the workspace root), runs browser `#[wasm_bindgen_test]` suites (`oxidize_core`, `egui_plot`, and `math_explorer_gui`) in headless Chromium under `PRODUCTION_CSP` and `--lib` `libtest` suites for all 12 pure-Rust `crates/*` libraries plus `math_explorer` in Node.js (`node`), builds `math_explorer_gui/dist` (unless `--skip-build` is passed), verifies the 3 MB bundle budget, and runs headless Chromium CSP & fault-injection smoke checks (`--screenshot-dir <dir>` supported). | Active |
 | `traceability` | Verifies academic paper citation bindings and `#[verified]` coverage. | Active |
