@@ -53,7 +53,6 @@ const IGNORED_TRACEABILITY_MEMBERS: &[&str] = &[
     "crates/verified_engine",
     "crates/verified_engine_macros",
     "apps/xtask",
-    "crates/math_commons",
     "egui_plot",
 ];
 
