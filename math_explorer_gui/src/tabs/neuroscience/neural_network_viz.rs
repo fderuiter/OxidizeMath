@@ -143,19 +143,6 @@ impl NeuralNetworkVizTool {
         self.sonification = crate::audio::mappings::neural_ring_frame(&after, &before, 0.0);
     }
 
-    fn sync_kuramoto_from_weight_matrix(&mut self, spread: f64) {
-        let n = self.neurons.len();
-        let mut edges = Vec::new();
-        for (dst, row) in self.weights.iter().enumerate().take(n) {
-            for (src, &w) in row.iter().enumerate().take(n) {
-                if src != dst && w > 0.0 {
-                    edges.push((src, dst, w));
-                }
-            }
-        }
-        self.kuramoto.reconfigure_topology(n, &edges, true, spread);
-    }
-
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "nn_viz_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
@@ -173,6 +160,7 @@ impl NeuralNetworkVizTool {
                     PlaybackAction::Play => self.is_running = true,
                     PlaybackAction::Pause => self.is_running = false,
                     PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset(),
                 }
                 self.bump_revision();
@@ -220,12 +208,13 @@ impl NeuralNetworkVizTool {
                 if weight != 0.0 {
                     let p1 = center + egui::vec2(self.positions[j][0], self.positions[j][1]);
                     let p2 = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
-                    let color = if weight > 0.0 {
+                    let base = if weight > 0.0 {
                         palette.success
                     } else {
                         palette.error
                     };
-                    painter.line_segment([p1, p2], (weight.abs().min(3.5) as f32, color));
+                    let color = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
+                    painter.line_segment([p2, p1], ((1.0 + weight.abs()).min(4.0) as f32, color));
                 }
             }
         }
@@ -413,7 +402,16 @@ inventory::submit! {
         id: "NeuralNetworkVizTool",
         display_name: "Neural Network Viz",
         domain: "neuroscience",
-        tags: &["kuramoto", "synchronization", "hodgkin-huxley"],
+        tags: &[
+            "synapse",
+            "coupled neurons",
+            "connectome",
+            "membrane",
+            "spiking",
+            "kuramoto",
+            "synchronization",
+            "hodgkin-huxley",
+        ],
         build: || Box::new(NeuralNetworkVizTool::default()),
     }
 }

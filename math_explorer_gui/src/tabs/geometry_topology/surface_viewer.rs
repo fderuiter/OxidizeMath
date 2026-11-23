@@ -86,7 +86,7 @@ pub struct SurfaceViewer {
     v_resolution: usize,
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
-    pub(super) custom_sandbox: CustomSurfaceSandbox,
+    pub(crate) custom_sandbox: CustomSurfaceSandbox,
     live_feed: field_surface::LiveSurfaceFeedState,
     cache: cache::SurfaceGeometryCache,
 }
@@ -312,7 +312,7 @@ inventory::submit! {
         id: "SurfaceViewer",
         display_name: "Surface Viewer",
         domain: "geometry_topology",
-        tags: &[],
+        tags: &["manifold", "torus", "klein bottle", "sphere", "parametric", "3d"],
         build: || Box::new(SurfaceViewer::default()),
     }
 }

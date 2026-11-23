@@ -74,13 +74,14 @@ impl AttractorPlotter {
                 .map(|v| Point3D::new(v.x, v.y, v.z))
                 .collect();
             if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
-                let handoff = crate::tabs::geometry_topology::vietoris_rips::handoff::ChaosLandmarkHandoff {
-                    points: landmarks,
-                    sigma: self.system.sigma,
-                    rho: self.system.rho,
-                    beta: self.system.beta,
-                    dt: self.dt,
-                };
+                let handoff =
+                    crate::tabs::geometry_topology::vietoris_rips::handoff::ChaosLandmarkHandoff {
+                        points: landmarks,
+                        sigma: self.system.sigma,
+                        rho: self.system.rho,
+                        beta: self.system.beta,
+                        dt: self.dt,
+                    };
                 let rev = cfg_hash.wrapping_add((step_bucket as u64).wrapping_mul(0x9E37_79B9));
                 self.bus_cache.payload = Some(handoff.to_bus_payload(rev.max(1)));
                 self.bus_cache.key = Some(key);

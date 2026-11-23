@@ -24,6 +24,19 @@ fn phase_to_color(phase: f64, palette: &SemanticPalette) -> Color32 {
 }
 
 impl NeuralNetworkVizTool {
+    pub(super) fn sync_kuramoto_from_weight_matrix(&mut self, spread: f64) {
+        let n = self.neurons.len();
+        let mut edges = Vec::new();
+        for (dst, row) in self.weights.iter().enumerate().take(n) {
+            for (src, &w) in row.iter().enumerate().take(n) {
+                if src != dst && w > 0.0 {
+                    edges.push((src, dst, w));
+                }
+            }
+        }
+        self.kuramoto.reconfigure_topology(n, &edges, true, spread);
+    }
+
     /// Polls `PaneDataflowBus` and resizes neural/Kuramoto buffers only when `revision` advances.
     pub(super) fn poll_upstream_graph(&mut self, ctx: &egui::Context) {
         let Some(payload) = poll_pane_graph(ctx) else {
@@ -45,7 +58,8 @@ impl NeuralNetworkVizTool {
         }
         self.positions = payload.normalized_positions(n, 110.0);
         if self.neurons.len() != n {
-            self.neurons.resize_with(n, || HodgkinHuxleyNeuron::new(-65.0));
+            self.neurons
+                .resize_with(n, || HodgkinHuxleyNeuron::new(-65.0));
             self.scratch_inputs.resize(n, 0.0);
             self.external_input.resize(n, 0.0);
             if self.external_input.iter().all(|&v| v == 0.0) {
@@ -94,7 +108,11 @@ impl NeuralNetworkVizTool {
                 NeuralDynamicsMode::HodgkinHuxley,
                 "Hodgkin-Huxley",
             );
-            ui.radio_value(&mut self.mode, NeuralDynamicsMode::Kuramoto, "Kuramoto r(t)");
+            ui.radio_value(
+                &mut self.mode,
+                NeuralDynamicsMode::Kuramoto,
+                "Kuramoto r(t)",
+            );
         });
         if self.mode != prev_mode {
             self.bump_revision();
@@ -103,6 +121,10 @@ impl NeuralNetworkVizTool {
             return;
         }
         ui.separator();
+        self.draw_kuramoto_sliders(ui, &palette);
+    }
+
+    fn draw_kuramoto_sliders(&mut self, ui: &mut egui::Ui, palette: &SemanticPalette) {
         let mut coupling = self.kuramoto.coupling();
         if ui
             .add(egui::Slider::new(&mut coupling, 0.0..=15.0).text("Coupling K"))
@@ -121,7 +143,11 @@ impl NeuralNetworkVizTool {
         }
         let (r, psi) = self.kuramoto.order_parameter();
         ui.colored_label(
-            if r >= 0.7 { palette.success } else { palette.info },
+            if r >= 0.7 {
+                palette.success
+            } else {
+                palette.info
+            },
             format!("Order Parameter r(t) = {r:.3}  (ψ = {psi:.2} rad)"),
         );
         if ui
@@ -146,10 +172,7 @@ impl NeuralNetworkVizTool {
         let label = "Neural Network Visualization: Kuramoto coupled phase-oscillator network";
         let _ = response.clone().accessible_hover_text(label);
         let (r, psi) = self.kuramoto.order_parameter();
-        let summary = format!(
-            "{} oscillators, r(t) = {r:.3}",
-            self.kuramoto.num_nodes()
-        );
+        let summary = format!("{} oscillators, r(t) = {r:.3}", self.kuramoto.num_nodes());
         crate::accessibility::register_canvas_accessibility(
             ui,
             &response,

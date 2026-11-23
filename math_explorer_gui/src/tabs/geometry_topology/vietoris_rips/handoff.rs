@@ -30,9 +30,7 @@ impl ChaosLandmarkHandoff {
     /// Converts this handoff into a sanitized [`LandmarkCloud3DPayload`] for [`crate::app::dataflow_bus::PaneDataflowBus`].
     pub fn to_bus_payload(&self, revision: u64) -> LandmarkCloud3DPayload {
         let raw: Vec<[f64; 3]> = self.points.iter().map(|p| [p.x, p.y, p.z]).collect();
-        LandmarkCloud3DPayload::sanitized(
-            revision, raw, self.sigma, self.rho, self.beta, self.dt,
-        )
+        LandmarkCloud3DPayload::sanitized(revision, raw, self.sigma, self.rho, self.beta, self.dt)
     }
 
     /// Reconstructs a [`ChaosLandmarkHandoff`] from an upstream [`LandmarkCloud3DPayload`].

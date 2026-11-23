@@ -22,7 +22,9 @@ impl VietorisRipsTool {
             return;
         }
         if let Some(bus_landmarks) = poll_pane_landmarks(ctx) {
-            if self.chaos.live_stream_seq != bus_landmarks.revision && !bus_landmarks.points.is_empty() {
+            if self.chaos.live_stream_seq != bus_landmarks.revision
+                && !bus_landmarks.points.is_empty()
+            {
                 self.chaos.live_stream_seq = bus_landmarks.revision;
                 if !self.mode.is_3d() {
                     self.mode = VrSourceMode::Lorenz3D;
@@ -37,14 +39,17 @@ impl VietorisRipsTool {
         if let Some(bus_field) = poll_pane_scalar_field(ctx) {
             if self.chaos.live_stream_seq != bus_field.revision {
                 self.chaos.live_stream_seq = bus_field.revision;
-                if let Ok(pts) = landmarks_from_scalar_field(&bus_field, self.chaos.landmark_count) {
+                if let Ok(pts) = landmarks_from_scalar_field(&bus_field, self.chaos.landmark_count)
+                {
                     let next_r = if self.mode.is_3d() { self.radius } else { 4.5 };
                     let _ = self.load_validated_3d_points(pts, next_r);
                 }
             }
             return;
         }
-        if matches!(self.mode, VrSourceMode::Lorenz3D | VrSourceMode::Takens3D) && self.chaos.playing {
+        if matches!(self.mode, VrSourceMode::Lorenz3D | VrSourceMode::Takens3D)
+            && self.chaos.playing
+        {
             self.chaos.advance_live_steps(4);
             let _ = self.rebuild_chaos_landmarks();
             ctx.request_repaint();

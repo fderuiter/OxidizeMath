@@ -229,13 +229,12 @@ fn paint_torus_backdrop(
         );
         idx += step;
     }
+    let mid_y = vp.p_f * 0.5_f32;
     painter.line_segment(
-        [
-            vp.to_screen(0.0_f32, vp.p_f * 0.5_f32),
-            vp.to_screen(vp.p_f, vp.p_f * 0.5_f32),
-        ],
+        [vp.to_screen(0.0_f32, mid_y), vp.to_screen(vp.p_f, mid_y)],
         Stroke::new(0.8_f32, palette.muted_text.gamma_multiply(0.35_f32)),
     );
+    let text_color = ui.visuals().text_color();
     painter.text(
         Pos2::new(
             response.rect.left() + 10.0_f32,
@@ -247,9 +246,9 @@ fn paint_torus_backdrop(
             model.p, model.a, model.b
         ),
         egui::FontId::proportional(13.0_f32),
-        ui.visuals().text_color(),
+        text_color,
     );
-    paint_infinity_badge(painter, vp, model, palette, ui.visuals().text_color());
+    paint_infinity_badge(painter, vp, model, palette, text_color);
 }
 
 fn paint_infinity_badge(
@@ -357,12 +356,12 @@ fn paint_curve_elements(
     if let Some(step) = model.chord {
         paint_reflection_and_sum(painter, vp, &step, palette, text_color);
     }
-    for (pt, label, col, rad) in [
+    for (pt, label, color, radius) in [
         (model.point_p, "P", palette.accent, 6.2_f32),
         (model.point_q, "Q", palette.series[1], 5.6_f32),
         (model.scalar_kp, "[k]P", palette.series[4], 5.2_f32),
     ] {
-        paint_labeled_point(painter, vp, pt, label, col, text_color, rad);
+        paint_labeled_point(painter, vp, pt, label, color, text_color, radius);
     }
 }
 
