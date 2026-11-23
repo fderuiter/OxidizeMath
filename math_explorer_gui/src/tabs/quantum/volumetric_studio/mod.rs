@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-//! `VolumetricFieldStudioTool`: unified 3D hydrogenic quantum & 3D Turing morphogenesis studio
-//! rendering `MarchingCubes` nodal meshes and `Gaussian3D` EWA radiance clouds on `Plot3DViewport`.
+//! `VolumetricFieldStudioTool`: unified 3D implicit CAD, signed AST fields, hydrogenic quantum,
+//! and 3D Turing studio rendering `MarchingCubes` watertight solids and `Gaussian3D` radiance clouds.
 // [cite:quantum_mechanics]
 // [cite:isosurface_extraction]
 // [cite:gaussian_splatting]
@@ -8,6 +8,7 @@
 
 pub mod ast_field;
 pub mod engine;
+pub mod implicit;
 pub mod presets;
 mod render;
 pub mod state;
@@ -19,25 +20,26 @@ use crate::web_io::PlatformInstant;
 use ast_field::CustomAstFieldController;
 use eframe::egui;
 use engine::VolumetricEngine;
+use implicit::ImplicitFormulaUi;
+use oxidize_core::mesh::Mesh;
 use scientific_metadata::theory::TheoryDescribable;
-use state::VolumetricStudioConfig;
+use state::{FieldSourceMode, VolumetricStudioConfig};
 use std::hash::{Hash, Hasher};
-use std::sync::mpsc::Receiver;
 
-/// Interactive 3D volumetric field studio uniting quantum eigenstates, 3D Turing PDEs,
-/// custom 3D implicit AST surfaces, `MarchingCubes` nodal meshes, and `Gaussian3D` splatting.
+/// Interactive 3D volumetric field and implicit CAD studio uniting $f(x, y, z) = c$ solids,
+/// signed 3D AST formulas, quantum eigenstates, 3D Turing PDEs, watertight `.stl`/`.ply`/`.obj`
+/// export, and `Gaussian3D` splats.
 pub struct VolumetricFieldStudioTool {
     /// Validated serializable studio configuration.
     pub config: VolumetricStudioConfig,
-    /// Pre-allocated zero-allocation 3D PDE, AST, isosurface, and splatting workspace.
+    /// Pre-allocated zero-allocation 3D PDE, implicit, AST, isosurface, and splatting workspace.
     pub engine: VolumetricEngine,
     /// Formula bar & synthesized `ParameterSliderBank` for `FieldSourceMode::CustomImplicitAst`.
     pub ast_controller: CustomAstFieldController,
+    pub(super) implicit_ui: ImplicitFormulaUi,
     pub(super) splat_texture: Option<egui::TextureHandle>,
     pub(super) splat_dirty: bool,
     pub(super) last_step_tick: PlatformInstant,
-    pub(super) obj_save_rx: Option<Receiver<Result<String, String>>>,
-    pub(super) export_status: Option<(String, bool)>,
 }
 
 impl Default for VolumetricFieldStudioTool {
@@ -46,15 +48,15 @@ impl Default for VolumetricFieldStudioTool {
         let engine = VolumetricEngine::new(&config);
         let mut ast_controller = CustomAstFieldController::default();
         ast_controller.load_from_config(&config.custom_expr, &config.custom_params);
+        let implicit_ui = ImplicitFormulaUi::new(&config);
         Self {
             config,
             engine,
             ast_controller,
+            implicit_ui,
             splat_texture: None,
             splat_dirty: true,
             last_step_tick: PlatformInstant::now(),
-            obj_save_rx: None,
-            export_status: None,
         }
     }
 }
@@ -74,10 +76,12 @@ impl VolumetricFieldStudioTool {
     /// Re-extracts `MarchingCubes`, `Gaussian3D`, and slice contours, using a `20^3` preview grid
     /// when `drag_preview` is active in `CustomImplicitAst` mode and full `grid_resolution^3` on release.
     pub fn refresh_with_drag_preview(&mut self, drag_preview: bool) {
-        if let Some(compiled) = self.ast_controller.bar.active_compiled() {
-            self.engine
-                .ast_kernel
-                .sync_from_bar(compiled, self.ast_controller.bar.param_slice());
+        if self.config.source == FieldSourceMode::CustomImplicitAst {
+            if let Some(compiled) = self.ast_controller.bar.active_compiled() {
+                self.engine
+                    .ast_kernel
+                    .sync_from_bar(compiled, self.ast_controller.bar.param_slice());
+            }
         }
         self.engine
             .sync_structural_config_with_preview(&self.config, drag_preview);
@@ -119,8 +123,18 @@ impl VolumetricFieldStudioTool {
     }
 
     /// Exports the active `MarchingCubes` nodal surface to a Wavefront `.obj` string.
+    #[cfg(test)]
     pub fn export_obj_string(&self) -> Result<String, String> {
         self.engine.export_obj_string(&self.config)
+    }
+
+    fn sync_ui_controllers_from_config(&mut self) {
+        self.ast_controller
+            .load_from_config(&self.config.custom_expr, &self.config.custom_params);
+        self.implicit_ui.sync_from_config(&self.config);
+        self.engine
+            .ast_kernel
+            .sync_from_config_expr(&self.config.custom_expr, &self.config.custom_params);
     }
 }
 
@@ -141,8 +155,7 @@ impl FiniteStateGuard for VolumetricFieldStudioTool {
 
     fn reset_parameters(&mut self) {
         self.config = VolumetricStudioConfig::default();
-        self.ast_controller
-            .load_from_config(&self.config.custom_expr, &self.config.custom_params);
+        self.sync_ui_controllers_from_config();
         self.engine.reset_simulation(&self.config);
         self.splat_dirty = true;
     }
@@ -162,7 +175,11 @@ impl InteractiveTool for VolumetricFieldStudioTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<Mesh, String>> {
+        Some(self.engine.export_solid_mesh_3d(&self.config))
     }
 
     fn state_bounds(&self) -> ToolStateBounds {
@@ -176,25 +193,29 @@ impl InteractiveTool for VolumetricFieldStudioTool {
         self.config.grid_resolution.hash(&mut h);
         (self.config.n1, self.config.l1, self.config.m1).hash(&mut h);
         (self.config.n2, self.config.l2, self.config.m2).hash(&mut h);
-        self.config.superposition_mix.to_bits().hash(&mut h);
-        self.config.relative_phase.to_bits().hash(&mut h);
-        self.config.quantum_dt.to_bits().hash(&mut h);
+        hash_f64_slice(
+            &mut h,
+            &[
+                self.config.superposition_mix,
+                self.config.relative_phase,
+                self.config.quantum_dt,
+                self.config.iso_threshold,
+                self.config.splat_scale,
+                self.config.turing_a,
+                self.config.turing_b,
+                self.config.turing_du,
+                self.config.turing_dv,
+                self.config.turing_dt,
+                self.config.implicit_level,
+                self.config.wall_thickness,
+                self.config.export_size_mm,
+                self.config.cut_offset,
+            ],
+        );
         self.config.observable.hash(&mut h);
-        self.config.iso_threshold.to_bits().hash(&mut h);
-        self.config.splat_scale.to_bits().hash(&mut h);
-        self.config.turing_a.to_bits().hash(&mut h);
-        self.config.turing_b.to_bits().hash(&mut h);
-        self.config.turing_du.to_bits().hash(&mut h);
-        self.config.turing_dv.to_bits().hash(&mut h);
-        self.config.turing_dt.to_bits().hash(&mut h);
-        self.config.custom_expr.hash(&mut h);
-        for (k, v) in &self.config.custom_params {
-            k.hash(&mut h);
-            v.to_bits().hash(&mut h);
-        }
+        hash_formula_maps_and_bounds(&mut h, &self.config);
         self.config.cut_enabled.hash(&mut h);
         self.config.cut_axis.hash(&mut h);
-        self.config.cut_offset.to_bits().hash(&mut h);
         self.config.probe_brush_enabled.hash(&mut h);
         self.config.running.hash(&mut h);
         self.config.camera.hash_state(&mut h);
@@ -215,26 +236,18 @@ impl InteractiveTool for VolumetricFieldStudioTool {
             .map_err(|e| format!("Invalid VolumetricFieldStudioTool state: {e}"))?;
         parsed.validate()?;
         self.config = parsed;
-        self.ast_controller
-            .load_from_config(&self.config.custom_expr, &self.config.custom_params);
+        self.sync_ui_controllers_from_config();
         self.engine.diverged = false;
         self.engine.diagnostic_report = None;
-        self.engine
-            .ast_kernel
-            .sync_from_config_expr(&self.config.custom_expr, &self.config.custom_params);
         self.refresh_zero_alloc();
         Ok(())
     }
 
     fn clamp_parameters(&mut self) -> bool {
         self.config.clamp_in_place();
-        self.ast_controller
-            .load_from_config(&self.config.custom_expr, &self.config.custom_params);
+        self.sync_ui_controllers_from_config();
         self.engine.diverged = false;
         self.engine.diagnostic_report = None;
-        self.engine
-            .ast_kernel
-            .sync_from_config_expr(&self.config.custom_expr, &self.config.custom_params);
         self.refresh_zero_alloc();
         true
     }
@@ -301,7 +314,35 @@ impl TheoryDescribable for VolumetricFieldStudioTool {
             "splat_scale".into(),
             "Multiplier applied to gradient-aligned 3D Gaussian covariance axes prior to EWA projection.".into(),
         );
+        map.insert(
+            "implicit_expr".into(),
+            "Implicit 3D equation f(x, y, z) = c closed via half-space (f <= c) or thickened wall (|f - c| <= w/2) into watertight STL/PLY/OBJ solids.".into(),
+        );
         map
+    }
+}
+
+fn hash_f64_slice<H: Hasher>(h: &mut H, vals: &[f64]) {
+    for &v in vals {
+        v.to_bits().hash(h);
+    }
+}
+
+fn hash_formula_maps_and_bounds<H: Hasher>(h: &mut H, cfg: &VolumetricStudioConfig) {
+    cfg.custom_expr.hash(h);
+    for (k, v) in &cfg.custom_params {
+        k.hash(h);
+        v.to_bits().hash(h);
+    }
+    cfg.implicit_expr.hash(h);
+    cfg.implicit_closure.hash(h);
+    for (k, v) in &cfg.implicit_params {
+        k.hash(h);
+        v.to_bits().hash(h);
+    }
+    for bounds in [cfg.x_bounds, cfg.y_bounds, cfg.z_bounds] {
+        bounds[0].to_bits().hash(h);
+        bounds[1].to_bits().hash(h);
     }
 }
 
@@ -310,7 +351,22 @@ inventory::submit! {
         id: "VolumetricFieldStudioTool",
         display_name: "Volumetric Field Studio",
         domain: "quantum",
-        tags: &["volumetric", "3d", "orbital", "marching-cubes", "gaussian-splatting", "turing", "isosurface"],
+        tags: &[
+            "volumetric",
+            "3d",
+            "orbital",
+            "marching-cubes",
+            "gaussian-splatting",
+            "turing",
+            "isosurface",
+            "implicit",
+            "cad",
+            "stl",
+            "gyroid",
+            "tpms",
+            "schwarz-p",
+            "csg",
+        ],
         build: || Box::new(VolumetricFieldStudioTool::default()),
     }
 }

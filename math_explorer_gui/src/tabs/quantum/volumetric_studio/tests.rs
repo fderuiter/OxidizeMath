@@ -1,14 +1,25 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
-//! Unit, zero-allocation (`VerifiedAllocator`), cutting-plane, `.obj` export, and contract tests.
+//! Unit, zero-allocation (`VerifiedAllocator`), cutting-plane, `.obj`/`.stl` export, and contract tests.
+
+#[path = "tests_ast.rs"]
+mod tests_ast;
 
 use super::presets::{
-    PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3DZ2_CONE_JSON, PRESET_3D_TURING_GYROID_JSON,
+    PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3DZ2_CONE_JSON, PRESET_3D_IMPLICIT_GYROID_AST_JSON,
+    PRESET_3D_TURING_GYROID_JSON, PRESET_CSG_BOOLEAN_SOLID_JSON, PRESET_GYROID_TPMS_JSON,
+    PRESET_SCHWARZ_P_SHELL_JSON,
 };
-use super::state::{FieldSourceMode, SliceAxis, VolumetricRenderMode, VolumetricStudioConfig};
+use super::state::{
+    FieldSourceMode, ImplicitClosureMode, SliceAxis, VolumetricRenderMode, VolumetricStudioConfig,
+};
 use super::VolumetricFieldStudioTool;
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::InteractiveTool;
+use crate::tabs::geometry_topology::export_utils::{
+    count_open_and_nonmanifold_edges, signed_volume,
+};
 use eframe::egui;
+use oxidize_core::mesh::export_mesh_to_stl_binary;
 
 #[test]
 fn test_zero_alloc_hot_path_quantum_and_turing_under_verified_allocator() {
@@ -175,6 +186,10 @@ fn test_state_bounds_validation_starter_presets_and_finite_state_guard() {
         PRESET_1S_2PZ_DIPOLE_JSON,
         PRESET_3DZ2_CONE_JSON,
         PRESET_3D_TURING_GYROID_JSON,
+        PRESET_GYROID_TPMS_JSON,
+        PRESET_SCHWARZ_P_SHELL_JSON,
+        PRESET_CSG_BOOLEAN_SOLID_JSON,
+        PRESET_3D_IMPLICIT_GYROID_AST_JSON,
     ] {
         tool.import_preset_json(preset)
             .expect("starter preset must load cleanly");
@@ -200,149 +215,117 @@ fn test_state_bounds_validation_starter_presets_and_finite_state_guard() {
 }
 
 #[test]
-fn test_custom_implicit_ast_zero_alloc_48_cubed_and_20_cubed_drag_preview() {
-    use super::ast_field::{DEFAULT_CUSTOM_3D_EXPR, GYROID_3D_EXPR, ORBITAL_4F_XYZ_EXPR};
-
+fn test_zero_alloc_custom_implicit_refresh_and_step_under_verified_allocator() {
     let mut tool = VolumetricFieldStudioTool::default();
-    tool.config.source = FieldSourceMode::CustomImplicitAst;
+    tool.import_preset_json(PRESET_GYROID_TPMS_JSON)
+        .expect("gyroid preset loads");
+    tool.config.grid_resolution = 24;
     tool.config.render_mode = VolumetricRenderMode::HybridShellAndCloud;
-    tool.config.grid_resolution = 48;
-    tool.config.iso_threshold = 0.045;
     tool.config.cut_enabled = true;
-    tool.config.cut_axis = SliceAxis::Z;
-    tool.config.cut_offset = 0.2;
+    tool.config.cut_axis = SliceAxis::Y;
+    tool.config.cut_offset = 0.15;
+    tool.refresh_zero_alloc();
 
-    for formula in [DEFAULT_CUSTOM_3D_EXPR, ORBITAL_4F_XYZ_EXPR, GYROID_3D_EXPR] {
-        tool.set_custom_expression(formula)
-            .expect("template 3D AST must compile");
-        assert!(!tool.engine.pos_mesh.vertices.is_empty());
-    }
-    tool.config.iso_threshold = 0.25;
-    tool.set_custom_param_zero_alloc(0, 2.4, true);
-    assert_eq!(tool.engine.voxel_grid.width(), 20);
-    tool.set_custom_param_zero_alloc(0, 2.4, false);
-    assert_eq!(tool.engine.voxel_grid.width(), 48);
+    let _alloc_lock = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    verified_engine::engine::VerifiedEngine::run_verified(|| {
+        tool.config.implicit_level = 0.12;
+        tool.config.wall_thickness = 0.62;
+        tool.config.cut_offset = -0.10;
+        tool.refresh_zero_alloc();
+        tool.step_zero_alloc();
+    });
 
-    {
-        let _alloc_lock = crate::VERIFIED_ALLOC_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        verified_engine::engine::VerifiedEngine::run_verified(|| {
-            tool.set_custom_param_zero_alloc(0, 2.75, true);
-            tool.set_custom_param_zero_alloc(0, 2.75, false);
-        });
-    }
-
-    assert_eq!(tool.engine.voxel_grid.width(), 48);
     assert!(!tool.engine.pos_mesh.vertices.is_empty());
-    assert!(!tool.engine.neg_mesh.vertices.is_empty());
-    assert!(!tool.engine.splat_ws.projected_splats.is_empty());
     assert!(!tool.engine.slice_contours.is_empty());
-    let obj = tool.export_obj_string().expect("AST isosurface OBJ export");
-    assert!(obj.starts_with("o oxidize_mesh\n") && obj.contains("\nf "));
-
-    #[cfg(not(target_arch = "wasm32"))]
-    save_gyroid_preview_png(&tool.engine, "/tmp/volumetric_3d_gyroid_ast.png");
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-fn save_gyroid_preview_png(engine: &super::engine::VolumetricEngine, path: &str) {
-    let side = 384usize;
-    let mut rgba = vec![16u8; side * side * 4];
-    for px in rgba.as_chunks_mut::<4>().0 {
-        *px = [14, 18, 28, 255];
+pub(super) fn assert_watertight_outward_solid_and_stl(
+    tool: &VolumetricFieldStudioTool,
+    expected_span_mm: f32,
+    label: &str,
+) {
+    let caps = tool.export_capabilities();
+    assert!(caps.stl && caps.ply && caps.obj);
+    let mesh = tool
+        .export_mesh_3d()
+        .expect("solid 3D capability")
+        .unwrap_or_else(|e| panic!("{label} export_mesh_3d failed: {e}"));
+    assert!(!mesh.indices.is_empty(), "{label} mesh empty");
+    assert_eq!(
+        mesh.normals.iter().filter(|n| !n.is_finite()).count(),
+        0,
+        "{label} emitted NaN/Inf normals"
+    );
+    assert_eq!(
+        count_open_and_nonmanifold_edges(&mesh),
+        (0, 0),
+        "{label} must have (0, 0) open/non-manifold edges"
+    );
+    assert!(
+        signed_volume(&mesh) > 0.0,
+        "{label} must have positive outward signed_volume"
+    );
+    let stl = export_mesh_to_stl_binary(&mesh).expect("binary STL serialization");
+    assert_eq!(stl.len(), 84 + 50 * (mesh.indices.len() / 3));
+    assert!(std::str::from_utf8(&stl[..80])
+        .unwrap_or("")
+        .contains("UNITS=mm"));
+    let max_span = compute_mesh_max_span(&mesh);
+    assert!(
+        (max_span - expected_span_mm).abs() <= 0.01,
+        "{label} max span {max_span} mm differed from {expected_span_mm} mm"
+    );
+}
+
+fn compute_mesh_max_span(mesh: &oxidize_core::mesh::Mesh) -> f32 {
+    let mut min_v = [f32::INFINITY; 3];
+    let mut max_v = [f32::NEG_INFINITY; 3];
+    for v in &mesh.vertices {
+        min_v[0] = min_v[0].min(v.x);
+        min_v[1] = min_v[1].min(v.y);
+        min_v[2] = min_v[2].min(v.z);
+        max_v[0] = max_v[0].max(v.x);
+        max_v[1] = max_v[1].max(v.y);
+        max_v[2] = max_v[2].max(v.z);
     }
-    let map_xy = |x: f64, y: f64| -> (isize, isize) {
-        let sx = ((x + 3.1) / 6.2 * (side as f64 - 1.0)).round() as isize;
-        let sy = ((3.1 - y) / 6.2 * (side as f64 - 1.0)).round() as isize;
-        (sx, sy)
-    };
-    for facet in &engine.projected_facets {
-        let p0 = map_xy(facet.pts[0].x, facet.pts[0].y);
-        let p1 = map_xy(facet.pts[1].x, facet.pts[1].y);
-        let p2 = map_xy(facet.pts[2].x, facet.pts[2].y);
-        let min_x = p0.0.min(p1.0).min(p2.0).clamp(0, side as isize - 1);
-        let max_x = p0.0.max(p1.0).max(p2.0).clamp(0, side as isize - 1);
-        let min_y = p0.1.min(p1.1).min(p2.1).clamp(0, side as isize - 1);
-        let max_y = p0.1.max(p1.1).max(p2.1).clamp(0, side as isize - 1);
-        let edge = |a: (isize, isize), b: (isize, isize), c: (isize, isize)| {
-            (c.0 - a.0) * (b.1 - a.1) - (c.1 - a.1) * (b.0 - a.0)
-        };
-        let area = edge(p0, p1, p2);
-        if area == 0 {
-            continue;
-        }
-        let [r, g, b, _] = facet.fill.to_srgba_unmultiplied();
-        for py in min_y..=max_y {
-            for px in min_x..=max_x {
-                let w0 = edge(p1, p2, (px, py));
-                let w1 = edge(p2, p0, (px, py));
-                let w2 = edge(p0, p1, (px, py));
-                if (area > 0 && w0 >= 0 && w1 >= 0 && w2 >= 0)
-                    || (area < 0 && w0 <= 0 && w1 <= 0 && w2 <= 0)
-                {
-                    let idx = (py as usize * side + px as usize) * 4;
-                    rgba[idx..idx + 4].copy_from_slice(&[r, g, b, 255]);
-                }
-            }
-        }
-    }
-    if let Ok(file) = std::fs::File::create(path) {
-        let mut enc = png::Encoder::new(std::io::BufWriter::new(file), side as u32, side as u32);
-        enc.set_color(png::ColorType::Rgba);
-        enc.set_depth(png::BitDepth::Eight);
-        if let Ok(mut writer) = enc.write_header() {
-            let _ = writer.write_image_data(&rgba);
-        }
-    }
+    (max_v[0] - min_v[0])
+        .max(max_v[1] - min_v[1])
+        .max(max_v[2] - min_v[2])
 }
 
 #[test]
-fn test_singular_3d_ast_sanitization_and_custom_state_url_roundtrip() {
+fn test_watertight_manifold_topology_and_mm_stl_across_implicit_orbital_and_turing() {
     let mut tool = VolumetricFieldStudioTool::default();
-    tool.config.source = FieldSourceMode::CustomImplicitAst;
-    tool.config.grid_resolution = 21;
-    tool.set_custom_expression("1 / (x^2 + y^2 + z^2)")
-        .expect("singular 3D AST compiles cleanly");
-    assert!(!FiniteStateGuard::diverged(&tool));
-    assert!(FiniteStateGuard::is_finite_state(&tool));
-    assert_eq!(tool.engine.voxel_grid.get(10, 10, 10), 0.0);
+    let cases = [
+        ("Gyroid TPMS", PRESET_GYROID_TPMS_JSON, 60.0_f32),
+        ("Schwarz-P Shell", PRESET_SCHWARZ_P_SHELL_JSON, 50.0_f32),
+        ("CSG Cube-Sphere", PRESET_CSG_BOOLEAN_SOLID_JSON, 45.0_f32),
+        ("3dz2 Orbital", PRESET_3DZ2_CONE_JSON, 85.0_f32),
+        ("Cut-Plane Turing", PRESET_3D_TURING_GYROID_JSON, 120.0_f32),
+        (
+            "Schoen Gyroid AST",
+            PRESET_3D_IMPLICIT_GYROID_AST_JSON,
+            55.0_f32,
+        ),
+    ];
+    for (label, preset, span_mm) in cases {
+        tool.import_preset_json(preset).expect("valid preset");
+        tool.config.grid_resolution = 26;
+        tool.config.export_size_mm = f64::from(span_mm);
+        tool.refresh_zero_alloc();
+        assert_watertight_outward_solid_and_stl(&tool, span_mm, label);
+    }
 
-    assert!(tool
-        .set_custom_expression("a + b + c + d + f + g + h + x")
-        .is_err());
-
-    tool.set_custom_expression("x * y * z * exp(-a * sqrt(x^2 + y^2 + z^2))")
-        .expect("4f_xyz compiles");
-    let saved = tool.save_state().expect("serialize custom AST state");
-    crate::url_state::URL_JSON_BOUNDS
-        .validate_json(&saved)
-        .expect("fits URL_JSON_BOUNDS");
-
-    let mut fw = crate::framework::SimulationFramework::new("quantum");
-    assert!(fw.select_tool_by_name("VolumetricFieldStudioTool"));
-    fw.active_tool
-        .as_mut()
-        .unwrap()
-        .try_load_state(&saved)
-        .expect("restore custom AST state");
-    let share_url = fw.encode_share_url().expect("encode share URL");
-    let fragment = format!("#{}", share_url.split_once('#').unwrap().1);
-    let params = crate::url_state::parse_share_location(&fragment, "")
-        .unwrap()
-        .unwrap();
-    let mut restored_fw = crate::framework::SimulationFramework::new("quantum");
-    restored_fw
-        .import_url_preset_json(params.tool.as_deref(), params.state_json.as_deref())
-        .expect("import shared URL preset");
-    assert_eq!(
-        restored_fw.active_tool.as_ref().unwrap().save_state(),
-        Some(saved)
-    );
-
-    let oversized = VolumetricStudioConfig {
-        custom_expr: "x+".repeat(300),
-        ..Default::default()
-    };
-    assert!(oversized.validate().is_err());
+    tool.config.source = FieldSourceMode::CustomImplicit;
+    tool.config.implicit_expr =
+        "exp(-0.35 * (x^2 + y^2 + z^2)) - clamp(0.5 + 0.15 * z, 0.2, 0.8) = 0".into();
+    tool.config.implicit_closure = ImplicitClosureMode::HalfSpaceSolid;
+    tool.config.cut_enabled = true;
+    tool.config.cut_axis = SliceAxis::X;
+    tool.config.cut_offset = 0.05;
+    tool.config.export_size_mm = 32.5;
+    tool.refresh_zero_alloc();
+    assert_watertight_outward_solid_and_stl(&tool, 32.5, "Cut Clamped-Gaussian Implicit");
 }

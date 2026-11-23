@@ -3,6 +3,8 @@
 
 #[path = "wave_sim/atlas.rs"]
 pub mod atlas;
+#[path = "wave_sim/challenge.rs"]
+pub mod challenge;
 #[path = "wave_sim/challenges.rs"]
 pub mod challenges;
 #[path = "wave_sim/persistence.rs"]
@@ -27,7 +29,7 @@ use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::RecoveryAction;
 use crate::framework::{
-    ChallengeEvaluation, ExportCapabilities, InteractionContext, InteractiveTool,
+    CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractionContext, InteractiveTool,
     MathExpressionInputBar, SpatialBrushKit,
 };
 use challenges::{ActiveWaveChallenge, PreWallLatchCache};
@@ -64,6 +66,7 @@ pub struct WaveSimulatorTool {
     pub(crate) atlas: ParameterAtlasController,
     pub(crate) active_challenge: Option<ActiveWaveChallenge>,
     pub(crate) latch_cache: PreWallLatchCache,
+    pub(crate) callout_manager: CalloutManager,
     pub(crate) revision: u64,
 }
 
@@ -122,6 +125,7 @@ impl WaveSimulatorTool {
             atlas: Self::new_atlas_controller(),
             active_challenge: None,
             latch_cache: PreWallLatchCache::default(),
+            callout_manager: CalloutManager::new(),
             revision: 1,
         }
     }
@@ -135,18 +139,6 @@ impl WaveSimulatorTool {
 
     pub(crate) fn bump_revision(&mut self) {
         self.revision = self.revision.wrapping_add(1).max(1);
-    }
-
-    /// Returns the most recent stepped or worker [`WaveData`] snapshot, if available.
-    #[must_use]
-    pub(crate) fn current_wave_data(&self) -> Option<&WaveData> {
-        if let Some(ref stepped) = self.export_data {
-            return Some(stepped);
-        }
-        self.worker
-            .latest_snapshot()
-            .and_then(|s| s.structured_data.as_ref())
-            .and_then(|d| d.downcast_ref::<WaveData>())
     }
 
     /// Synchronizes shared worker config, clears stateful export caches, and resets or respawns `WaveRunner`.
@@ -190,9 +182,10 @@ impl WaveSimulatorTool {
         self.steps_per_frame = DEFAULT_STEPS_PER_FRAME;
         self.sparse_potential.clear();
         self.math_input.set_expression(DEFAULT_CUSTOM_EXPR);
-        if let Some(expr) = self.math_input.expr() {
-            self.last_valid_expr = expr.clone();
+        if self.math_input.expr().is_some() {
+            self.last_valid_expr = self.math_input.expr().unwrap().clone();
         }
+        self.enforce_challenge_locks();
         self.sync_config_and_reset(ctx);
     }
 
@@ -236,10 +229,13 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
-        self.apply_ui_brush_context(ctx);
+        if !self.is_challenge_locked() {
+            self.apply_ui_brush_context(ctx);
+        }
     }
 
     fn step_simulation(&mut self) {
+        while self.worker.update().is_some() {}
         let shared = Arc::clone(&self.shared_config);
         let runner = self
             .export_runner
@@ -251,15 +247,7 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        if let Some(ref stepped) = self.export_data {
-            return build_wave_datasets(stepped);
-        }
-        if let Some(wave_data) = self
-            .worker
-            .latest_snapshot()
-            .and_then(|s| s.structured_data.as_ref())
-            .and_then(|d| d.downcast_ref::<WaveData>())
-        {
+        if let Some(wave_data) = self.active_wave_data() {
             return build_wave_datasets(wave_data);
         }
         egui_plot::get_last_plot_datasets()
@@ -292,7 +280,6 @@ impl InteractiveTool for WaveSimulatorTool {
 
     fn clamp_parameters(&mut self) -> bool {
         self.clamp_wave_parameters();
-        self.enforce_active_challenge_locks();
         true
     }
 
@@ -309,59 +296,26 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn observables(&self) -> Vec<(&'static str, f64)> {
-        let e0 = 0.5 * self.k0 * self.k0;
-        let steady_t = atlas::compute_inline_steady_transmission(
-            self.preset,
-            self.k0,
-            self.v0,
-            self.width,
-            math_commons::ast::CompiledExpr::compile_with_vars(
-                &self.last_valid_expr,
-                &["x", "v0", "width"],
-            )
-            .ok()
-            .as_ref(),
-            &{
-                let mut arr = [None; presets::GRID_POINTS];
-                for &(idx, val) in &self.sparse_potential {
-                    let s = usize::from(idx);
-                    if s < presets::GRID_POINTS && val.is_finite() {
-                        arr[s] = Some(val);
-                    }
-                }
-                arr
-            },
-        );
-        let (trans, refl, bar, latched) =
-            self.current_wave_data()
-                .map_or((0.0, 1.0, 0.0, steady_t), |d| {
-                    (
-                        d.transmission,
-                        d.reflection,
-                        d.barrier_prob,
-                        d.latched_transmission.unwrap_or(d.transmission),
-                    )
-                });
-        vec![
-            ("kinetic_energy", e0),
-            ("v0", self.v0),
-            ("width", self.width),
-            ("subbarrier_margin", self.v0 - e0),
-            ("transmission", trans),
-            ("reflection", refl),
-            ("barrier_prob", bar),
-            ("latched_transmission", latched),
-            ("steady_transmission", steady_t),
-        ]
+        self.collect_wave_observables()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let mut has_update = false;
+        let mut clear_export = false;
         if let Some(snapshot) = self.worker.update() {
+            let snap_time = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<WaveData>())
+                .map(|wd| wd.time);
+            clear_export = match (snap_time, self.export_data.as_ref()) {
+                (Some(st), Some(ed)) => st > ed.time,
+                _ => true,
+            };
             self.latest_sonification = snapshot.sonification;
             has_update = true;
         }
-        if has_update {
+        if clear_export {
             self.export_runner = None;
             self.export_data = None;
         }

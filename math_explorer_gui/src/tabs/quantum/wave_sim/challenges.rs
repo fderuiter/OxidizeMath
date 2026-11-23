@@ -1,13 +1,17 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 //! Unsolved inverse `ChallengeMetadata` cards (`quantum_subbarrier_50_split` and
-//! `quantum_double_barrier_resonance`), `#challenge=` state clamping, and scoring
-//! for [`super::WaveSimulatorTool`].
+//! `quantum_double_barrier_resonance`), `#challenge=` state clamping, scoring, and
+//! named observables for [`super::WaveSimulatorTool`].
 // [cite:quantum_mechanics]
 
 use super::atlas::compute_inline_steady_transmission;
+use super::challenge::{
+    clamp_json_f64, score_latched_transmission, CHALLENGE_QUANTUM_BARRIER_50_SPLIT,
+};
 use super::presets::{
-    default_compiled_expr, WavePotentialPreset, DEFAULT_CUSTOM_EXPR, DEFAULT_DT, DEFAULT_SIGMA,
-    DEFAULT_STEPS_PER_FRAME, DEFAULT_X0, GRID_POINTS,
+    default_compiled_expr, WavePotentialPreset, DEFAULT_CUSTOM_EXPR, DEFAULT_DT, DEFAULT_K0,
+    DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_X0, DT_MAX, DT_RECOVERY_MIN, GRID_POINTS,
+    K0_MAX, K0_MIN, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN,
 };
 use super::runner::{WaveRunner, WaveSimConfig};
 use super::WaveSimulatorTool;
@@ -40,8 +44,10 @@ const DOUBLE_BARRIER_BASELINE_K0: f64 = 4.2;
 pub const DOUBLE_BARRIER_PASS_MIN_T: f64 = 0.95;
 
 /// Active inverse challenge mode attached to [`WaveSimulatorTool`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ActiveWaveChallenge {
+    /// Tune `(V0, width)` with locked `k0 = 5.0` so stepped `latched_transmission` hits `0.50 ± 0.02`.
+    Barrier50Split,
     /// Tune `(k0, V0, width)` in the sub-barrier regime `E0 < V0` so `latched_transmission` hits `0.50 ± 0.03`.
     Subbarrier50Split,
     /// Tune `k0` in the sub-barrier regime `E0 < V0` on a locked `DoubleBarrier` (`V0 = 28, w = 0.8`) to hit resonance.
@@ -53,6 +59,7 @@ impl ActiveWaveChallenge {
     #[must_use]
     pub const fn id(self) -> &'static str {
         match self {
+            Self::Barrier50Split => CHALLENGE_QUANTUM_BARRIER_50_SPLIT,
             Self::Subbarrier50Split => CHALLENGE_SUBBARRIER_50_SPLIT,
             Self::DoubleBarrierResonance => CHALLENGE_DOUBLE_BARRIER_RESONANCE,
         }
@@ -62,6 +69,7 @@ impl ActiveWaveChallenge {
     #[must_use]
     pub fn from_id(id: &str) -> Option<Self> {
         match id {
+            CHALLENGE_QUANTUM_BARRIER_50_SPLIT => Some(Self::Barrier50Split),
             CHALLENGE_SUBBARRIER_50_SPLIT => Some(Self::Subbarrier50Split),
             CHALLENGE_DOUBLE_BARRIER_RESONANCE => Some(Self::DoubleBarrierResonance),
             _ => None,
@@ -147,21 +155,6 @@ fn generate_subbarrier_50_baseline() -> String {
     .to_string()
 }
 
-fn clamp_subbarrier_50_state(raw_json: &str) -> Result<String, String> {
-    let mut val: serde_json::Value = serde_json::from_str(raw_json)
-        .map_err(|e| format!("Invalid WaveSimulator challenge JSON: {e}"))?;
-    let obj = val
-        .as_object_mut()
-        .ok_or_else(|| "WaveSimulator challenge state must be a JSON object".to_string())?;
-    obj.remove("potential_type");
-    obj.remove("sparse_potential");
-    obj.insert("preset".into(), serde_json::json!("RectangularBarrier"));
-    obj.insert("x0".into(), serde_json::json!(DEFAULT_X0));
-    obj.insert("sigma".into(), serde_json::json!(DEFAULT_SIGMA));
-    obj.insert("custom_expr".into(), serde_json::json!(DEFAULT_CUSTOM_EXPR));
-    serde_json::to_string(&val).map_err(|e| e.to_string())
-}
-
 fn generate_double_barrier_baseline() -> String {
     serde_json::json!({
         "preset": "DoubleBarrier",
@@ -179,7 +172,11 @@ fn generate_double_barrier_baseline() -> String {
     .to_string()
 }
 
-fn clamp_double_barrier_state(raw_json: &str) -> Result<String, String> {
+fn sanitize_challenge_object(
+    raw_json: &str,
+    preset_name: &str,
+    locked_v0_width: Option<(f64, f64)>,
+) -> Result<String, String> {
     let mut val: serde_json::Value = serde_json::from_str(raw_json)
         .map_err(|e| format!("Invalid WaveSimulator challenge JSON: {e}"))?;
     let obj = val
@@ -187,20 +184,54 @@ fn clamp_double_barrier_state(raw_json: &str) -> Result<String, String> {
         .ok_or_else(|| "WaveSimulator challenge state must be a JSON object".to_string())?;
     obj.remove("potential_type");
     obj.remove("sparse_potential");
-    obj.insert("preset".into(), serde_json::json!("DoubleBarrier"));
+    obj.insert("preset".into(), serde_json::json!(preset_name));
     obj.insert("x0".into(), serde_json::json!(DEFAULT_X0));
     obj.insert("sigma".into(), serde_json::json!(DEFAULT_SIGMA));
-    obj.insert("v0".into(), serde_json::json!(DOUBLE_BARRIER_LOCKED_V0));
-    obj.insert(
-        "width".into(),
-        serde_json::json!(DOUBLE_BARRIER_LOCKED_WIDTH),
-    );
     obj.insert("custom_expr".into(), serde_json::json!(DEFAULT_CUSTOM_EXPR));
+    clamp_json_f64(obj, "k0", K0_MIN, K0_MAX, SUBBARRIER_BASELINE_K0);
+    clamp_json_f64(obj, "dt", DT_RECOVERY_MIN, DT_MAX, DEFAULT_DT);
+    if let Some((lv0, lw)) = locked_v0_width {
+        obj.insert("v0".into(), serde_json::json!(lv0));
+        obj.insert("width".into(), serde_json::json!(lw));
+    } else {
+        clamp_json_f64(obj, "v0", V0_MIN, V0_MAX, SUBBARRIER_BASELINE_V0);
+        clamp_json_f64(
+            obj,
+            "width",
+            WIDTH_MIN,
+            WIDTH_MAX,
+            SUBBARRIER_BASELINE_WIDTH,
+        );
+    }
     serde_json::to_string(&val).map_err(|e| e.to_string())
 }
 
+fn clamp_subbarrier_50_state(raw_json: &str) -> Result<String, String> {
+    sanitize_challenge_object(raw_json, "RectangularBarrier", None)
+}
+
+fn clamp_double_barrier_state(raw_json: &str) -> Result<String, String> {
+    sanitize_challenge_object(
+        raw_json,
+        "DoubleBarrier",
+        Some((DOUBLE_BARRIER_LOCKED_V0, DOUBLE_BARRIER_LOCKED_WIDTH)),
+    )
+}
+
 impl WaveSimulatorTool {
-    /// Whether the active challenge locks `v0` and `width`.
+    /// Returns `true` when any active inverse challenge locks preset, initial packet center/width, and sculpting.
+    #[must_use]
+    pub(crate) fn is_challenge_locked(&self) -> bool {
+        self.active_challenge.is_some()
+    }
+
+    /// Returns `true` when the active challenge locks incident wave number `k0`.
+    #[must_use]
+    pub(crate) fn locks_k0(&self) -> bool {
+        self.active_challenge == Some(ActiveWaveChallenge::Barrier50Split)
+    }
+
+    /// Returns `true` when the active challenge locks barrier `v0` and `width`.
     #[must_use]
     pub(crate) fn locks_barrier_geometry(&self) -> bool {
         self.active_challenge == Some(ActiveWaveChallenge::DoubleBarrierResonance)
@@ -218,12 +249,13 @@ impl WaveSimulatorTool {
         let mode = ActiveWaveChallenge::from_id(id)
             .ok_or_else(|| format!("Unsupported WaveSimulator challenge '{id}'"))?;
         self.active_challenge = Some(mode);
-        self.enforce_active_challenge_locks();
+        self.enforce_challenge_locks();
         self.sync_config_and_reset(None);
         Ok(())
     }
 
-    pub(crate) fn enforce_active_challenge_locks(&mut self) {
+    /// Restores locked boundary parameters for whichever inverse challenge is currently active.
+    pub(crate) fn enforce_challenge_locks(&mut self) {
         let Some(mode) = self.active_challenge else {
             return;
         };
@@ -231,6 +263,10 @@ impl WaveSimulatorTool {
         self.sigma = DEFAULT_SIGMA;
         self.sparse_potential.clear();
         match mode {
+            ActiveWaveChallenge::Barrier50Split => {
+                self.preset = WavePotentialPreset::RectangularBarrier;
+                self.k0 = DEFAULT_K0;
+            }
             ActiveWaveChallenge::Subbarrier50Split => {
                 self.preset = WavePotentialPreset::RectangularBarrier;
             }
@@ -246,6 +282,10 @@ impl WaveSimulatorTool {
     #[must_use]
     pub(crate) fn evaluate_wave_challenge(&self) -> Option<ChallengeEvaluation> {
         match self.active_challenge? {
+            ActiveWaveChallenge::Barrier50Split => {
+                let latched = self.active_wave_data().and_then(|d| d.latched_transmission);
+                Some(score_latched_transmission(latched, self.v0, self.width))
+            }
             ActiveWaveChallenge::Subbarrier50Split => Some(self.eval_subbarrier_50_split()),
             ActiveWaveChallenge::DoubleBarrierResonance => {
                 Some(self.eval_double_barrier_resonance())
@@ -256,9 +296,7 @@ impl WaveSimulatorTool {
     fn eval_subbarrier_50_split(&self) -> ChallengeEvaluation {
         let e0 = 0.5 * self.k0 * self.k0;
         let subbarrier_ok = e0 < self.v0;
-        let live_latched = self
-            .current_wave_data()
-            .and_then(|d| d.latched_transmission);
+        let live_latched = self.active_wave_data().and_then(|d| d.latched_transmission);
         let latched_t = live_latched.unwrap_or_else(|| {
             self.latch_cache.eval_latched_transmission(
                 self.preset,
@@ -334,6 +372,53 @@ impl WaveSimulatorTool {
             ),
         )
     }
+
+    /// Collects finite named observables for `GoalChallengeMetadata` AST predicates and telemetry.
+    #[must_use]
+    pub(crate) fn collect_wave_observables(&self) -> Vec<(&'static str, f64)> {
+        let e0 = 0.5 * self.k0 * self.k0;
+        let mut overrides = [None; GRID_POINTS];
+        for &(idx, val) in &self.sparse_potential {
+            let s = usize::from(idx);
+            if s < GRID_POINTS && val.is_finite() {
+                overrides[s] = Some(val);
+            }
+        }
+        let compiled = math_commons::ast::CompiledExpr::compile_with_vars(
+            &self.last_valid_expr,
+            &["x", "v0", "width"],
+        )
+        .ok();
+        let steady_t = compute_inline_steady_transmission(
+            self.preset,
+            self.k0,
+            self.v0,
+            self.width,
+            compiled.as_ref(),
+            &overrides,
+        );
+        let (trans, refl, bar, latched) =
+            self.active_wave_data()
+                .map_or((0.0, 1.0, 0.0, steady_t), |d| {
+                    (
+                        d.transmission,
+                        d.reflection,
+                        d.barrier_prob,
+                        d.latched_transmission.unwrap_or(d.transmission),
+                    )
+                });
+        vec![
+            ("kinetic_energy", e0),
+            ("v0", self.v0),
+            ("width", self.width),
+            ("subbarrier_margin", self.v0 - e0),
+            ("transmission", trans),
+            ("reflection", refl),
+            ("barrier_prob", bar),
+            ("latched_transmission", latched),
+            ("steady_transmission", steady_t),
+        ]
+    }
 }
 
 inventory::submit! {
@@ -345,8 +430,8 @@ inventory::submit! {
         icon: "🎯",
         domain: "quantum",
         tool_name: "WaveSimulator",
-        locked_inputs: "RectangularBarrier profile, x0 = -2.5, σ = 0.5, no sculpted overrides",
-        tunable_budget: "Incident k0 ∈ [0, 12], Barrier Height V0 ∈ [0, 50], Barrier Width w ∈ [0.1, 2.5]",
+        locked_inputs: "RectangularBarrier profile, x0 = -2.0, σ = 0.5, no sculpted overrides",
+        tunable_budget: "Incident k0 ∈ [1, 10], Barrier Height V0 ∈ [0, 40], Barrier Width w ∈ [0.1, 2.0]",
         target_summary: "E0 < V0 and pre-wall latched_transmission ∈ [0.47, 0.53]",
         baseline_state_generator: generate_subbarrier_50_baseline,
         clamp_locked_state: clamp_subbarrier_50_state,
@@ -362,8 +447,8 @@ inventory::submit! {
         icon: "🌊",
         domain: "quantum",
         tool_name: "WaveSimulator",
-        locked_inputs: "DoubleBarrier profile, V0 = 28.0, width = 0.8, x0 = -2.5, σ = 0.5",
-        tunable_budget: "Incident Wave Number k0 ∈ [0, 12] (click-to-teleport on 2D Parameter Atlas)",
+        locked_inputs: "DoubleBarrier profile, V0 = 28.0, width = 0.8, x0 = -2.0, σ = 0.5",
+        tunable_budget: "Incident Wave Number k0 ∈ [1, 10] (click-to-teleport on 2D Parameter Atlas)",
         target_summary: "E0 < V0 and lattice steady_transmission ≥ 0.95",
         baseline_state_generator: generate_double_barrier_baseline,
         clamp_locked_state: clamp_double_barrier_state,

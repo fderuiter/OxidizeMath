@@ -158,16 +158,7 @@ pub struct WaveCartographer {
 }
 
 impl WaveCartographer {
-    /// Constructs a new [`WaveCartographer`] snapshot from the active [`WaveSimulatorTool`] configuration.
-    #[must_use]
-    pub fn new(
-        axis_keys: (&'static str, &'static str),
-        preset: WavePotentialPreset,
-        fixed_v0: f64,
-        fixed_width: f64,
-        custom_expr: &Expr,
-        sparse_potential: &[(u16, f64)],
-    ) -> Self {
+    fn build_axis_pair(y_is_width: bool) -> AtlasAxisPair {
         let params = wave_parameter_constraints();
         let x = AtlasAxisSpec::from_theory(
             &params,
@@ -179,30 +170,36 @@ impl WaveCartographer {
                 step: 0.1,
             },
         );
-        let y_is_width = axis_keys.1 == "width";
-        let y = if y_is_width {
-            AtlasAxisSpec::from_theory(
-                &params,
-                "width",
-                "Barrier Width w",
-                ParameterConstraint {
-                    min: WIDTH_MIN,
-                    max: WIDTH_MAX,
-                    step: 0.05,
-                },
-            )
+        let (y_key, y_lbl, y_min, y_max, y_step) = if y_is_width {
+            ("width", "Barrier Width w", WIDTH_MIN, WIDTH_MAX, 0.05)
         } else {
-            AtlasAxisSpec::from_theory(
-                &params,
-                "v0",
-                "Barrier Height V0",
-                ParameterConstraint {
-                    min: V0_MIN,
-                    max: V0_MAX,
-                    step: 0.1,
-                },
-            )
+            ("v0", "Barrier Height V0", V0_MIN, V0_MAX, 0.1)
         };
+        let y = AtlasAxisSpec::from_theory(
+            &params,
+            y_key,
+            y_lbl,
+            ParameterConstraint {
+                min: y_min,
+                max: y_max,
+                step: y_step,
+            },
+        );
+        AtlasAxisPair { x, y }
+    }
+
+    /// Constructs a new [`WaveCartographer`] snapshot from the active [`WaveSimulatorTool`] configuration.
+    #[must_use]
+    pub fn new(
+        axis_keys: (&'static str, &'static str),
+        preset: WavePotentialPreset,
+        fixed_v0: f64,
+        fixed_width: f64,
+        custom_expr: &Expr,
+        sparse_potential: &[(u16, f64)],
+    ) -> Self {
+        let y_is_width = axis_keys.1 == "width";
+        let axes = Self::build_axis_pair(y_is_width);
         let custom_compiled =
             CompiledExpr::compile_with_vars(custom_expr, &["x", "v0", "width"]).ok();
         let mut sparse_overrides = [None; GRID_POINTS];
@@ -213,7 +210,7 @@ impl WaveCartographer {
             }
         }
         Self {
-            axes: AtlasAxisPair { x, y },
+            axes,
             y_is_width,
             preset,
             fixed_v0,
@@ -372,7 +369,7 @@ impl WaveSimulatorTool {
 
     /// Applies an [`AtlasTeleportEvent`] while respecting any locked inverse-challenge inputs.
     pub fn apply_atlas_teleport(&mut self, evt: AtlasTeleportEvent, ctx: Option<&egui::Context>) {
-        if evt.x_key == "k0" {
+        if evt.x_key == "k0" && !self.locks_k0() {
             self.k0 = evt.x_val.clamp(K0_MIN, K0_MAX);
         }
         let lock_barrier = self.locks_barrier_geometry();

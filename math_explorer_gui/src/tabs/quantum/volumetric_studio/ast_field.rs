@@ -4,7 +4,7 @@
 // [cite:isosurface_extraction]
 // [cite:quantum_mechanics]
 
-use super::state::STUDIO_VIEWPORT_EXTENT;
+use super::state::{clamp_finite, VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT};
 use crate::framework::math_input::{MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
 use eframe::egui;
 use math_commons::ast::{parse_equation, CompiledExpr};
@@ -63,6 +63,42 @@ pub fn validate_custom_3d_formula(raw_expr: &str) -> Result<CompiledExpr, String
         ));
     }
     Ok(compiled)
+}
+
+/// Validates `custom_expr` and `custom_params` on [`VolumetricStudioConfig`].
+pub fn validate_custom_ast_config(cfg: &VolumetricStudioConfig) -> Result<(), String> {
+    validate_custom_3d_formula(&cfg.custom_expr)?;
+    if cfg.custom_params.len() > MAX_SYNTHESIZED_PARAMS {
+        return Err(format!(
+            "custom_params count {} exceeds {MAX_SYNTHESIZED_PARAMS}",
+            cfg.custom_params.len()
+        ));
+    }
+    for (name, &val) in &cfg.custom_params {
+        if name.is_empty() || name.len() > 32 {
+            return Err(format!("Invalid custom_params key '{name}'"));
+        }
+        if !val.is_finite() || !(-1.0e4..=1.0e4).contains(&val) {
+            return Err(format!("custom_params['{name}']={val} out of finite range"));
+        }
+    }
+    Ok(())
+}
+
+/// Clamps `custom_expr` and `custom_params` on [`VolumetricStudioConfig`] in place.
+pub fn clamp_custom_ast_config_in_place(cfg: &mut VolumetricStudioConfig) {
+    if cfg.custom_expr.len() > MAX_CUSTOM_3D_EXPR_BYTES
+        || validate_custom_3d_formula(&cfg.custom_expr).is_err()
+    {
+        cfg.custom_expr = DEFAULT_CUSTOM_3D_EXPR.to_string();
+    }
+    let mut cleaned = BTreeMap::new();
+    for (k, &v) in cfg.custom_params.iter().take(MAX_SYNTHESIZED_PARAMS) {
+        if !k.is_empty() && k.len() <= 32 {
+            cleaned.insert(k.clone(), clamp_finite(v, -1.0e4, 1.0e4, 1.0));
+        }
+    }
+    cfg.custom_params = cleaned;
 }
 
 /// Sanitizes a single 3D AST evaluation sample to a finite `f32` in `[-500.0, 500.0]`.
