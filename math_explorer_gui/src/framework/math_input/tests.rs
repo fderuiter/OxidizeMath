@@ -207,3 +207,59 @@ fn test_cached_expr_persists_across_incomplete_keystrokes() {
     assert_eq!(bar.cached_expr(), bar.expr());
     assert_ne!(bar.cached_expr(), Some(&valid_ast));
 }
+
+#[test]
+fn test_coupled_expression_bank_shared_params_transient_edits_and_zero_alloc() {
+    let mut bank = CoupledExpressionBank::new(
+        &["t", "y", "v"],
+        &[("y'", "a * y - b * y * v"), ("v'", "d * y * v - g * v")],
+    )
+    .with_initial_params(&[("a", 1.5), ("b", 1.0), ("d", 0.75), ("g", 1.25)]);
+
+    assert!(bank.is_valid());
+    assert_eq!(bank.param_names(), &["a", "b", "d", "g"]);
+    assert_eq!(bank.param_slice(), &[1.5, 1.0, 0.75, 1.25]);
+
+    let eval_pair = |b: &CoupledExpressionBank| -> (f64, f64) {
+        let c = b.active_compiled();
+        let p = b.param_slice();
+        (
+            c[0].eval_3d(0.0, 2.0, 3.0, p),
+            c[1].eval_3d(0.0, 2.0, 3.0, p),
+        )
+    };
+
+    let baseline = eval_pair(&bank);
+    assert!((baseline.0 - (1.5 * 2.0 - 1.0 * 2.0 * 3.0)).abs() < 1e-12);
+    assert!((baseline.1 - (0.75 * 2.0 * 3.0 - 1.25 * 3.0)).abs() < 1e-12);
+
+    // Transient syntax edit on second equation preserves last valid bytecode and shared sliders
+    bank.set_expression(1, "d * y * v -");
+    assert!(!bank.is_valid());
+    assert_eq!(eval_pair(&bank), baseline);
+
+    // Restoring valid equation and exceeding 6 union parameters retains valid bytecode
+    bank.set_expressions(&["p1 * y + p2 + p3 + p4", "p5 * v + p6 + p7"]);
+    assert!(!bank.is_valid());
+    assert!(bank.bank_error().unwrap().contains("maximum 6"));
+    assert_eq!(eval_pair(&bank), baseline);
+
+    // Zero heap allocations under VerifiedAllocator during inner-loop evaluation
+    bank.set_expressions(&["a * y - b * y * v", "d * y * v - g * v"]);
+    assert!(bank.is_valid());
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let compiled = bank.active_compiled();
+    let params = bank.param_slice();
+    let (acc, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let mut sum = 0.0;
+        for step in 0..64 {
+            let y = 1.0 + f64::from(step) * 0.01;
+            let v = 0.5 + f64::from(step) * 0.02;
+            sum += compiled[0].eval_3d(0.0, y, v, params) + compiled[1].eval_3d(0.0, y, v, params);
+        }
+        sum
+    });
+    assert!(acc.is_finite());
+}

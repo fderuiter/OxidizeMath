@@ -5,6 +5,7 @@ use super::phase_plane::{
     MAX_SEEDED_ORBITS,
 };
 use super::poincare_map::DEFAULT_MATRIX_A;
+use super::systems::default_coupled_ode_bank;
 use super::OdeSolverTool;
 use crate::framework::recovery::{
     render_recovery_banner, DiagnosticReport, FiniteStateGuard, RecoveryAction,
@@ -41,7 +42,7 @@ impl OdeSolverTool {
         self.recalculate();
     }
 
-    /// Clamps unstable or non-finite parameters, planar matrix/orbits, and step settings.
+    /// Clamps unstable or non-finite parameters, custom slider maps, planar matrix/orbits, and step settings.
     pub fn clamp_instability_parameters(&mut self) {
         clamp_ode_parameters(
             self.preset,
@@ -51,6 +52,26 @@ impl OdeSolverTool {
             &mut self.ic_y0,
             &mut self.ic_v0,
         );
+        let mut scalar_map = self.math_input.params_map();
+        for val in scalar_map.values_mut() {
+            *val = if val.is_finite() {
+                val.clamp(-10.0, 10.0)
+            } else {
+                1.0
+            };
+        }
+        self.math_input.set_params_map(&scalar_map);
+
+        let mut coupled_map = self.coupled_bank.params_map();
+        for val in coupled_map.values_mut() {
+            *val = if val.is_finite() {
+                val.clamp(-10.0, 10.0)
+            } else {
+                1.0
+            };
+        }
+        self.coupled_bank.set_params_map(&coupled_map);
+
         clamp_planar_state(
             &mut self.matrix_a,
             &mut self.quiver_density,
@@ -90,6 +111,11 @@ impl OdeSolverTool {
                 self.planar_x_input.set_expression(DEFAULT_PLANAR_X_EXPR);
                 self.planar_y_input.set_expression(DEFAULT_PLANAR_Y_EXPR);
             }
+            OdePreset::Custom if self.custom_coupled => {
+                self.ic_y0 = 1.0;
+                self.ic_v0 = 0.0;
+                self.coupled_bank = default_coupled_ode_bank();
+            }
             OdePreset::Custom => {
                 self.param_k = 1.0;
                 self.ic_y0 = 1.0;
@@ -107,7 +133,18 @@ impl OdeSolverTool {
 /// Checks whether an [`OdeSolverTool`] is in a completely finite numerical state.
 pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
     let params_finite = match tool.preset {
-        OdePreset::Exponential | OdePreset::Custom => tool.param_k.is_finite(),
+        OdePreset::Exponential => tool.param_k.is_finite(),
+        OdePreset::Custom if tool.custom_coupled => {
+            tool.ic_v0.is_finite()
+                && tool
+                    .coupled_bank
+                    .param_slice()
+                    .iter()
+                    .all(|v| v.is_finite())
+        }
+        OdePreset::Custom => {
+            tool.param_k.is_finite() && tool.math_input.param_slice().iter().all(|v| v.is_finite())
+        }
         OdePreset::HarmonicOscillator => tool.param_k.is_finite() && tool.ic_v0.is_finite(),
         OdePreset::LogisticGrowth => tool.param_r.is_finite() && tool.param_cap_k.is_finite(),
         OdePreset::LinearSystem2D => {

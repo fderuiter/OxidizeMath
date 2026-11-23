@@ -1,6 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-//! ODE model definitions and zero-per-step-allocation evaluation helpers.
+//! ODE model definitions and planar AST evaluation helpers.
+
+pub use super::custom_spec::{default_coupled_ode_bank, CustomOdeSpec};
 
 use super::OdeSolverTool;
 use crate::presets::OdePreset;
@@ -9,79 +11,8 @@ use math_explorer::pure_math::analysis::ode::{
     ArrayState, Euler, Heun, IntegrationMethod, OdeSystem, RungeKutta4, Solver,
 };
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
-pub(super) struct AstContext<'a>(pub(super) Option<&'a Expr>);
-
-impl Hash for AstContext<'_> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        let Some(root) = self.0 else {
-            0_u8.hash(state);
-            return;
-        };
-        1_u8.hash(state);
-        let mut stack: [Option<&Expr>; 64] = [None; 64];
-        stack[0] = Some(root);
-        let mut top = 1_usize;
-        for _ in 0..256 {
-            if top == 0 {
-                break;
-            }
-            top -= 1;
-            if let Some(node) = stack[top] {
-                push_and_hash_expr_node(node, &mut stack, &mut top, state);
-            }
-        }
-    }
-}
-
-fn push_and_hash_expr_node<'a, H: Hasher>(
-    node: &'a Expr,
-    stack: &mut [Option<&'a Expr>; 64],
-    top: &mut usize,
-    state: &mut H,
-) {
-    match node {
-        Expr::Number(n) => {
-            1_u8.hash(state);
-            crate::sensitivity::canonical_f64_bits(*n).hash(state);
-        }
-        Expr::Variable(v) => {
-            2_u8.hash(state);
-            v.hash(state);
-        }
-        Expr::Binary { op, left, right } => {
-            3_u8.hash(state);
-            op.hash(state);
-            if *top + 2 <= stack.len() {
-                stack[*top] = Some(right);
-                stack[*top + 1] = Some(left);
-                *top += 2;
-            }
-        }
-        Expr::Unary { op, expr } => {
-            4_u8.hash(state);
-            op.hash(state);
-            if *top < stack.len() {
-                stack[*top] = Some(expr);
-                *top += 1;
-            }
-        }
-        Expr::Function { func, args } => {
-            5_u8.hash(state);
-            func.hash(state);
-            args.len().hash(state);
-            for arg in args.iter().rev() {
-                if *top < stack.len() {
-                    stack[*top] = Some(arg);
-                    *top += 1;
-                }
-            }
-        }
-    }
-}
-
-/// Builds the parameter lookup map shared across scalar and planar AST ODE evaluations.
+/// Builds the parameter lookup map shared across planar AST ODE evaluations.
 #[must_use]
 pub fn build_ode_param_map(param_k: f64, param_r: f64, param_cap_k: f64) -> HashMap<String, f64> {
     let mut p_map = HashMap::with_capacity(4);
@@ -117,6 +48,14 @@ impl OdeSolverTool {
                         fx.eval_planar(t, x, y, params),
                         fy.eval_planar(t, x, y, params),
                     ],
+                    _ => [f64::NAN, f64::NAN],
+                }
+            }
+            OdePreset::Custom if self.custom_coupled => {
+                let compiled = self.coupled_bank.active_compiled();
+                let p = self.coupled_bank.param_slice();
+                match (compiled.first(), compiled.get(1)) {
+                    (Some(dy), Some(dv)) => [dy.eval_3d(t, x, y, p), dv.eval_3d(t, x, y, p)],
                     _ => [f64::NAN, f64::NAN],
                 }
             }
@@ -192,21 +131,6 @@ impl OdeSystem<ArrayState<2>> for Linear2DOde {
 }
 
 #[derive(Clone, Debug)]
-pub struct DynamicAstOde<'a> {
-    pub expr: &'a Expr,
-    pub params: HashMap<String, f64>,
-}
-
-impl OdeSystem<ArrayState<1>> for DynamicAstOde<'_> {
-    fn derivative(&self, t: f64, state: &ArrayState<1>) -> ArrayState<1> {
-        ArrayState([self.expr.eval_2d(t, state.0[0], &self.params)])
-    }
-    fn derivative_in_place(&self, t: f64, state: &ArrayState<1>, out: &mut ArrayState<1>) {
-        out.0[0] = self.expr.eval_2d(t, state.0[0], &self.params);
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct PlanarAstOde<'a> {
     pub x_expr: &'a Expr,
     pub y_expr: &'a Expr,
@@ -235,7 +159,7 @@ pub fn eval_ode_final_state(
     dt: f64,
     total_time: f64,
     p_map: &HashMap<String, f64>,
-    custom_expr: Option<&Expr>,
+    custom_spec: Option<&CustomOdeSpec>,
 ) -> f64 {
     let spec = super::comparison::OdeSimSpec {
         preset,
@@ -248,7 +172,7 @@ pub fn eval_ode_final_state(
         ic_y0: p_map.get("y0").copied().unwrap_or(1.0),
         ic_v0: p_map.get("v0").copied().unwrap_or(0.0),
         matrix_a: super::poincare_map::DEFAULT_MATRIX_A,
-        custom_expr,
+        custom_spec,
         planar_x_expr: None,
         planar_y_expr: None,
     };
@@ -298,19 +222,27 @@ pub fn eval_ode_final_state_planar(
             step_final(ArrayState([y0, v0]), &dyn_sys, spec, steps)
         }
         OdePreset::PlanarCustom => eval_planar_custom_final([y0, v0], cap_k, spec, p_map, steps),
-        OdePreset::Custom => match spec.custom_expr {
-            Some(expr) => {
-                let mut params = p_map.clone();
-                params.insert("K".to_string(), cap_k);
-                step_final(
-                    ArrayState([y0]),
-                    &DynamicAstOde { expr, params },
-                    spec,
-                    steps,
-                )
-            }
-            None => f64::NAN,
-        },
+        OdePreset::Custom => eval_custom_spec_final([y0, v0], cap_k, spec, p_map, steps),
+    }
+}
+
+fn eval_custom_spec_final(
+    ic: [f64; 2],
+    cap_k: f64,
+    spec: &super::comparison::OdeSimSpec<'_>,
+    p_map: &HashMap<String, f64>,
+    steps: usize,
+) -> f64 {
+    let Some(cspec) = spec.custom_spec else {
+        return f64::NAN;
+    };
+    let mut overrides = p_map.clone();
+    overrides.insert("K".to_string(), cap_k);
+    let dynamics = cspec.with_param_overrides(&overrides);
+    if dynamics.is_coupled() {
+        step_final(ArrayState(ic), &dynamics, spec, steps)
+    } else {
+        step_final(ArrayState([ic[0]]), &dynamics, spec, steps)
     }
 }
 
@@ -362,114 +294,4 @@ fn step_final<const N: usize, D: OdeSystem<ArrayState<N>>>(
         }
     }
     state.0[0]
-}
-
-impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
-    fn theory_description(&self) -> String {
-        match self.preset {
-            OdePreset::Exponential => "First-order linear ordinary differential equation describing exponential growth or decay proportional to current quantity.".into(),
-            OdePreset::HarmonicOscillator => "Second-order ordinary differential equation modeling simple harmonic motion under a Hooke's law restoring force.".into(),
-            OdePreset::LogisticGrowth => "Nonlinear ordinary differential equation modeling density-dependent population growth with an environmental carrying capacity.".into(),
-            OdePreset::LinearSystem2D => "Planar 2x2 linear dynamical system classified on the Poincaré trace-determinant bifurcation diagram.".into(),
-            OdePreset::PlanarCustom => "Coupled 2D planar ordinary differential equations: x' = f(t, x, y), y' = g(t, x, y).".into(),
-            OdePreset::Custom => "Custom user-defined ordinary differential equation: y' = f(t, y)".into(),
-        }
-    }
-    fn phonetic_description(&self) -> String {
-        "Ordinary differential equations theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        match self.preset {
-            OdePreset::Exponential
-            | OdePreset::LinearSystem2D
-            | OdePreset::PlanarCustom
-            | OdePreset::Custom => {
-                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
-            }
-            OdePreset::HarmonicOscillator => {
-                "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into()
-            }
-            OdePreset::LogisticGrowth => {
-                "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into()
-            }
-        }
-    }
-    fn theory_latex_equation(&self) -> Option<String> {
-        let eq = match self.preset {
-            OdePreset::Exponential => r"\frac{dy}{dt} = k y",
-            OdePreset::HarmonicOscillator => r"\frac{d^2 y}{dt^2} = -k y",
-            OdePreset::LogisticGrowth => r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
-            OdePreset::LinearSystem2D => r"\dot{\mathbf{x}} = A \mathbf{x}",
-            OdePreset::PlanarCustom | OdePreset::Custom => return None,
-        };
-        Some(eq.into())
-    }
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        HashMap::from([
-            (
-                "Exponential".into(),
-                "First-order linear ODE representing exponential growth or decay".into(),
-            ),
-            (
-                "Harmonic Oscillator".into(),
-                "Second-order linear ODE representing simple harmonic motion".into(),
-            ),
-            (
-                "Logistic Growth".into(),
-                "Nonlinear first-order ODE modeling population growth with carrying capacity"
-                    .into(),
-            ),
-            (
-                "Linear 2D".into(),
-                "Planar 2x2 linear system with Poincaré stability regimes".into(),
-            ),
-            (
-                "Planar Custom".into(),
-                "Coupled 2D user-defined ODE phase-plane system".into(),
-            ),
-            (
-                "Custom".into(),
-                "Custom user-defined ordinary differential equation".into(),
-            ),
-        ])
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "harmonic_oscillator",
-        title: "Harmonic Oscillator",
-        description: "y'' = -k·y: Second-order differential equation modeling undamped periodic spring motion.",
-        category: "Differential Equations",
-        icon: "〰️",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_HARMONIC_OSCILLATOR,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "logistic_growth",
-        title: "Logistic Growth",
-        description: "y' = r·y·(1 - y/K): Non-linear growth constrained by carrying capacity K.",
-        category: "Population Dynamics",
-        icon: "📈",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_LOGISTIC_GROWTH,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "exponential_decay",
-        title: "Exponential Decay",
-        description: "y' = k·y: First-order differential decay process with constant half-life.",
-        category: "Calculus",
-        icon: "📉",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_EXPONENTIAL_DECAY,
-    }
 }

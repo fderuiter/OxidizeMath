@@ -96,7 +96,7 @@ impl OdeSolverTool {
     /// Returns `true` when 2D phase-portrait rendering is enabled and supported by the active preset.
     #[must_use]
     pub fn is_phase_plane_active(&self) -> bool {
-        self.phase_plane_mode && self.preset.is_2d()
+        self.phase_plane_mode && self.has_second_state()
     }
 
     /// Computes a deterministic symmetric domain half-width enclosing active and seeded initial states.
@@ -137,7 +137,7 @@ impl OdeSolverTool {
 
     pub(super) fn recalculate_seeded_orbits(&mut self) {
         self.seeded_trajectories.clear();
-        if !self.preset.is_2d() || self.seeded_ic.is_empty() {
+        if !self.has_second_state() || self.seeded_ic.is_empty() {
             return;
         }
         let orbit_count = (1 + self.seeded_ic.len()).min(1 + MAX_SEEDED_ORBITS);
@@ -146,7 +146,7 @@ impl OdeSolverTool {
             .dt
             .max((self.total_time / max_steps_each as f64).max(1e-6));
 
-        let custom_expr = self.math_input.cached_expr();
+        let custom_spec = self.build_custom_ode_spec();
         let px_expr = self.planar_x_input.cached_expr();
         let py_expr = self.planar_y_input.cached_expr();
 
@@ -162,7 +162,7 @@ impl OdeSolverTool {
                 ic_y0: sx,
                 ic_v0: sy,
                 matrix_a: self.matrix_a,
-                custom_expr,
+                custom_spec: custom_spec.as_ref(),
                 planar_x_expr: px_expr,
                 planar_y_expr: py_expr,
             });
@@ -308,7 +308,7 @@ impl OdeSolverTool {
         palette: &crate::app::SemanticPalette,
         phase_h: f32,
     ) -> Option<[f64; 2]> {
-        let (_, _, px_lbl, py_lbl) = self.preset.state_labels();
+        let (_, _, px_lbl, py_lbl) = self.active_state_labels();
         let (origins, tips) = if self.show_quiver {
             self.compute_quiver_arrows()
         } else {
@@ -399,7 +399,7 @@ impl OdeSolverTool {
         palette: &crate::app::SemanticPalette,
         height: f32,
     ) {
-        let (t1_lbl, t2_lbl, _, _) = self.preset.state_labels();
+        let (t1_lbl, t2_lbl, _, _) = self.active_state_labels();
         ui.columns(2, |cols| {
             draw_timeline_plot(
                 &mut cols[0],
