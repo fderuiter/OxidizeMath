@@ -4,6 +4,11 @@ allowlist = [
     "egui_plot",
 ]
 
+[doc_verification.approved_ignore_fences]
+# Binary-only math_explorer_gui crate:: and egui widget snippets that cannot link into library doctests
+"docs/architecture/interactive_tool_walkthrough.md" = 6
+"math_explorer_gui/README.md" = 1
+
 [entropy_guard]
 scan_paths = [
     "crates",

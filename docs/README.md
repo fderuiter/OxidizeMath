@@ -6,7 +6,7 @@ Welcome to the OxidizeMath documentation directory.
 
 The [Architecture Guide Suite](architecture/README.md) provides centralized blueprints, diagrams, and developer walkthroughs:
 
-- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 18 crates.
+- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 20 crates.
 - **[CERA Framework Guide](architecture/cera_framework.md)**: Climate-invariant Encoding through Representation Alignment and climate modeling pipelines.
 - **[Zero-Allocation Runtime Guide](architecture/zero_allocation_runtime.md)**: NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and verified engine execution rules.
 - **[Interactive Tool Walkthrough](architecture/interactive_tool_walkthrough.md)**: Step-by-step developer guide to implement interactive simulations with `InteractiveTool`.
@@ -36,6 +36,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](adr/0045-spatial-brush-kit-and-field-sculpting.md)
 - [ADR 0045: Short-Weierstrass Elliptic Curves and Modular GUI Tab](adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md)
 - [ADR 0046: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0046-symplectic-hamiltonian-solvers-and-poincare-lab.md)
+- [ADR 0047: Modularize Setup and Enforce Static Documentation Gates](adr/0047-modularize-setup-and-enforce-doc-gates.md)
 
 ## Contributing
 

@@ -5,13 +5,16 @@ mod papers;
 mod setup;
 mod staged;
 
-use gates::{resolve_workspace_root, run_cmd, run_cmd_in_path};
+use gates::{resolve_workspace_root, run_cmd};
 use markdown_links::check_markdown_links;
 use std::env;
-#[cfg(any(unix, test))]
+#[cfg(test)]
 use std::fs;
+#[cfg(test)]
 use std::path::Path;
-use std::process::{Command, exit};
+#[cfg(test)]
+use std::process::Command;
+use std::process::exit;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -98,69 +101,17 @@ fn print_help() {
     println!("  verify-suite             - Run high-integrity verified suite\n");
     println!("Legacy Utility Tasks:");
     println!("  regenerate-baseline      - Regenerate public API baseline");
-    println!("  setup                    - Run setup script and configure git hooks");
+    println!(
+        "  setup                    - Configure .githooks and check workspace (--hooks-only, --check-only, --web)"
+    );
 }
 
-pub(crate) fn configure_git_hooks_in_dir(repo_dir: &Path) {
-    println!("\n--- Configuring Git Hooks ---");
-    let status = Command::new("git")
-        .current_dir(repo_dir)
-        .args(["config", "core.hooksPath", ".githooks"])
-        .status();
-    if !matches!(status, Ok(s) if s.success()) {
-        eprintln!("Command failed!");
-        exit(1);
-    }
-
-    let hook_path = repo_dir.join(".githooks/pre-commit");
-    if hook_path.exists() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Ok(metadata) = fs::metadata(&hook_path) {
-                let mut perms = metadata.permissions();
-                if perms.mode() & 0o111 == 0 {
-                    perms.set_mode(0o755);
-                    if let Err(e) = fs::set_permissions(&hook_path, perms) {
-                        eprintln!(
-                            "Warning: Failed to set executable permissions on {}: {}",
-                            hook_path.display(),
-                            e
-                        );
-                    } else {
-                        println!("Pre-commit hook permissions set to executable (0755).");
-                    }
-                } else {
-                    println!("Pre-commit hook executable permissions verified.");
-                }
-            }
-        }
-        println!("Git core.hooksPath configured to .githooks");
-    } else {
-        eprintln!(
-            "Warning: Expected hook script not found at {}.",
-            hook_path.display()
-        );
-    }
-}
+#[cfg(test)]
+pub(crate) use setup::configure_git_hooks_in_dir;
 
 fn setup(args: &[String]) {
-    println!("=== Math Explorer Setup Script ===");
-    let check_only = args.iter().any(|a| a == "--check-only");
     let ws_root = resolve_workspace_root();
-    run_cmd_in_path(
-        "rustup",
-        &["target", "add", "wasm32-unknown-unknown"],
-        &ws_root,
-    );
-    setup::verify_browser_tools_or_exit(&ws_root);
-    if !check_only {
-        run_cmd_in_path("cargo", &["build"], &ws_root);
-        run_cmd_in_path("cargo", &["test"], &ws_root);
-    }
-
-    configure_git_hooks_in_dir(&ws_root);
-    println!("=== Setup Complete ===");
+    setup::run_setup(args, &ws_root);
 }
 
 fn test_features(args: &[String]) {
@@ -352,6 +303,9 @@ mod tests {
             "verify-records",
             "verify-suite",
             "regenerate-baseline",
+            "--hooks-only",
+            "--check-only",
+            "--web",
         ] {
             assert!(help.contains(cmd), "Missing help entry for {cmd}");
         }

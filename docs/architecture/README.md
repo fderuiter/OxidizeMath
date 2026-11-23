@@ -4,11 +4,11 @@ This directory contains the core architecture documentation for the OxidizeMath 
 
 ## Table of Contents
 
-- [System Overview & Crate Topology](system_overview.md): High-level system layers, crate dependency topology, and workspace catalog across all 18 crates.
+- [System Overview & Crate Topology](system_overview.md): High-level system layers, crate dependency topology, and workspace catalog across all 20 crates.
 - [CERA Framework Guide](cera_framework.md): Climate-invariant Encoding through Representation Alignment, latent space alignment, and the climate modeling pipeline.
 - [Zero-Allocation Runtime Guide](zero_allocation_runtime.md): NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and `VerifiedEngine` runtime checks.
 - [Interactive Tool Walkthrough](interactive_tool_walkthrough.md): Step-by-step developer guide to implement interactive simulations, accessibility hooks, and dual-backend Web Audio sonification using `InteractiveTool`.
-- [Architectural Decision Records](../adr/0001-dynamic-workspace-discovery.md): Historical architecture records and design decisions (through [ADR 0040](../adr/0040-dual-backend-web-audio-sonification.md)).
+- [Architectural Decision Records](../adr/0001-dynamic-workspace-discovery.md): Historical architecture records and design decisions (through [ADR 0047](../adr/0047-modularize-setup-and-enforce-doc-gates.md)).
 
 ## Guiding Principles
 

@@ -29,30 +29,40 @@ include!(concat!(env!("OUT_DIR"), "/generated_tabs.rs"));
 /// # Example
 ///
 /// ```rust,no_run
-/// // @explorer_feature = "pure_math"
-/// // @explorer_order = 1
+/// // @explorer_feature = "physics"
+/// // @explorer_order = 10
 ///
-/// use math_explorer_gui::tabs::ExplorerTab;
+/// use crate::framework::SimulationFramework;
+/// use crate::tabs::ExplorerTab;
 /// use eframe::egui;
 ///
-/// #[derive(Default)]
-/// pub struct MyTab {
-///     counter: i32,
+/// pub struct MyDomainTab {
+///     framework: SimulationFramework,
 /// }
 ///
-/// impl ExplorerTab for MyTab {
+/// impl Default for MyDomainTab {
+///     fn default() -> Self {
+///         Self {
+///             framework: SimulationFramework::new("physics"),
+///         }
+///     }
+/// }
+///
+/// impl ExplorerTab for MyDomainTab {
 ///     fn name(&self) -> &'static str {
-///         "My Tab"
+///         "Physics"
 ///     }
 ///
 ///     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-///         egui::CentralPanel::default().show_inside(ui, |ui| {
-///             ui.heading("My Tab");
-///             if ui.button("Increment").clicked() {
-///                 self.counter += 1;
-///             }
-///             ui.label(format!("Count: {}", self.counter));
-///         });
+///         self.framework.show_inside(ui, "physics");
+///     }
+///
+///     fn framework(&self) -> Option<&SimulationFramework> {
+///         Some(&self.framework)
+///     }
+///
+///     fn framework_mut(&mut self) -> Option<&mut SimulationFramework> {
+///         Some(&mut self.framework)
 ///     }
 /// }
 /// ```

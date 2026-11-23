@@ -219,16 +219,23 @@ pub fn audit_paper_and_gate_instructions(
                 );
             }
         }
-        let xtask_main = workspace_root.join("apps/xtask/src/main.rs");
-        if let Ok(content) = fs::read_to_string(&xtask_main) {
-            let prod_content = content.split("#[cfg(test)]").next().unwrap_or(&content);
-            scan_forbidden_pattern(
-                &xtask_main,
-                prod_content,
-                &tectonic_re,
-                "Stale `Tectonic` help text (paper compiler uses TeXLive `pdflatex` and `bibtex`)",
-                &mut violations,
-            );
+        if let Ok(entries) = fs::read_dir(workspace_root.join("apps/xtask/src")) {
+            let mut xtask_files: Vec<_> = entries.flatten().map(|e| e.path()).collect();
+            xtask_files.sort();
+            for xtask_rs in xtask_files {
+                if xtask_rs.extension().and_then(|s| s.to_str()) == Some("rs")
+                    && let Ok(content) = fs::read_to_string(&xtask_rs)
+                {
+                    let prod_content = content.split("#[cfg(test)]").next().unwrap_or(&content);
+                    scan_forbidden_pattern(
+                        &xtask_rs,
+                        prod_content,
+                        &tectonic_re,
+                        "Stale `Tectonic` help text (paper compiler uses TeXLive `pdflatex` and `bibtex`)",
+                        &mut violations,
+                    );
+                }
+            }
         }
     }
 
