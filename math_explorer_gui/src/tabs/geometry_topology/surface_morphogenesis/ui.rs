@@ -70,6 +70,7 @@ impl SurfaceMorphogenesisTool {
                     self.reseed_counter = self.reseed_counter.wrapping_add(1);
                     self.reseed_active_engine(0.0);
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
             }
         }
         if let Some(eng) = self.engine.as_ref() {

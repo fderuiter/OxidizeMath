@@ -1,4 +1,4 @@
-# ADR 0046: Zero-Allocation Laplace-Beltrami Surface Morphogenesis and Mean-Curvature Buckling
+# ADR 20261123: Zero-Allocation Laplace-Beltrami Surface Morphogenesis and Mean-Curvature Buckling
 
 ## Status
 

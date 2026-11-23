@@ -150,15 +150,15 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    let expected_plot = if cfg!(feature = "biology") { 52 } else { 51 };
+    let expected_plot = if cfg!(feature = "biology") { 56 } else { 55 };
     let expected_solid = if cfg!(feature = "biology") { 6 } else { 5 };
-    let expected_non_shader = if cfg!(feature = "biology") { 72 } else { 71 };
+    let expected_non_shader = if cfg!(feature = "biology") { 75 } else { 74 };
     assert_eq!(
         plot_tool_count, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"
     );
     assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
-    assert_eq!(unsupported_tool_count, 16, "Expected 16 non-figure tools");
+    assert_eq!(unsupported_tool_count, 15, "Expected 15 non-figure tools");
     assert_eq!(
         solid_3d_count, expected_solid,
         "Expected {expected_solid} solid 3D geometric tools"

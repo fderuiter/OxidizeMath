@@ -326,18 +326,36 @@ impl InteractiveTool for SurfaceMorphogenesisTool {
         Some(self.build_buckled_colored_mesh_3d())
     }
 
-    fn state_revision(&self) -> u64 {
+    fn url_state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.geometry_fingerprint().hash(&mut h);
         (self.kinetics_kind as u8).hash(&mut h);
         (self.overlay_mode as u8).hash(&mut h);
+        canonical_bits(self.sphere_radius).hash(&mut h);
+        canonical_bits(self.torus_major_radius).hash(&mut h);
+        canonical_bits(self.torus_minor_radius).hash(&mut h);
+        canonical_bits(self.klein_radius).hash(&mut h);
         canonical_bits(self.wall_thickness).hash(&mut h);
+        self.u_resolution.hash(&mut h);
+        self.v_resolution.hash(&mut h);
+        canonical_bits(self.schnak_a).hash(&mut h);
+        canonical_bits(self.schnak_b).hash(&mut h);
+        canonical_bits(self.gs_feed).hash(&mut h);
+        canonical_bits(self.gs_kill).hash(&mut h);
         canonical_bits(self.d_u).hash(&mut h);
         canonical_bits(self.d_v).hash(&mut h);
         canonical_bits(self.buckling_gain).hash(&mut h);
         canonical_bits(self.curvature_tension).hash(&mut h);
+        canonical_bits(self.restoring_tether).hash(&mut h);
         canonical_bits(self.dt).hash(&mut h);
+        self.steps_per_frame.hash(&mut h);
         self.camera.hash_state(&mut h);
+        h.finish().max(1)
+    }
+
+    fn state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.url_state_revision().hash(&mut h);
         if let Some(eng) = self.engine.as_ref() {
             eng.step_count.hash(&mut h);
         }
