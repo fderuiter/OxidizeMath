@@ -3998,6 +3998,50 @@
       "signature": "pub struct FiniteDifference3D"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/laplace_beltrami/mod.rs": [
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn area_elements (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn clamp_dt (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn dimensions (& self) -> (usize , usize) }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn from_surface < S : ParametricSurface + ? Sized > (_ : & S , _ : SurfaceTopology , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize , _ : usize ,) -> Self }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn gaussian_curvature (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn grid_size (& self) -> usize }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn max_stable_dt (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn metric_anisotropy (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn min_area_element (& self) -> f64 }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn parameter_bounds (& self) -> ((f64 , f64) , (f64 , f64)) }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn seam_forward_map (& self) -> & [usize] }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn surface_integral (& self , _ : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn topology (& self) -> SurfaceTopology }"
+    },
+    {
+      "signature": "pub struct LaplaceBeltramiDiffusion2D"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/mod.rs": [
     {
       "signature": "pub trait SpatialDiffusion < const N : usize >"
@@ -4031,6 +4075,9 @@
     },
     {
       "signature": "pub use fd3d :: FiniteDifference3D"
+    },
+    {
+      "signature": "pub use laplace_beltrami :: LaplaceBeltramiDiffusion2D"
     }
   ],
   "crates/domain_biology/src/biology/evolution.rs": [
@@ -11886,12 +11933,74 @@
       "signature": "pub use fourier :: TransformError"
     }
   ],
+  "crates/pure_math/src/pure_math/differential_geometry/buckled_flow.rs": [
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn buckling_normals (& self) -> & [Vector3 < f64 >] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn dimensions (& self) -> (usize , usize) }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn displacements (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn from_parametric < S : ParametricSurface + ? Sized > (_ : & S , _ : SurfaceTopology , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize , _ : usize ,) -> Self }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn max_stable_dt (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn mean_curvatures (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn min_area_element (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn points (& self) -> & [Point3 < f64 >] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn reference_points (& self) -> & [Point3 < f64 >] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn reset_to_reference (& mut self) }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn restore_points (& mut self , _ : & [Point3 < f64 >]) -> bool }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn seam_forward_map (& self) -> & [usize] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn step_buckled (& mut self , _ : & [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> bool }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn topology (& self) -> SurfaceTopology }"
+    },
+    {
+      "signature": "impl SurfaceTopology { pub fn grid_spacings (self , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize , _ : usize ,) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl SurfaceTopology { pub fn uv_at (self , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize , _ : usize , _ : usize , _ : usize ,) -> (f64 , f64) }"
+    },
+    {
+      "signature": "pub enum SurfaceTopology"
+    },
+    {
+      "signature": "pub fn detect_twisted_seam_map < S : ParametricSurface + ? Sized > (_ : & S , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize ,) -> (Vec < usize > , Vec < usize >)"
+    },
+    {
+      "signature": "pub struct BuckledSurfaceFlow"
+    }
+  ],
   "crates/pure_math/src/pure_math/differential_geometry/heat_equation.rs": [
     {
       "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn new (_ : & 'a S , _ : f64 , _ : (f64 , f64) , _ : (f64 , f64) , _ : (usize , usize) , _ : impl Fn (f64 , f64) -> f64 ,) -> Self }"
     },
     {
       "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn with_topology (self , _ : SurfaceTopology) -> Self }"
     },
     {
       "signature": "pub struct HeatEquationSolver < 'a , S : ParametricSurface >"
@@ -11915,6 +12024,12 @@
     },
     {
       "signature": "pub struct MeanCurvatureFlow"
+    },
+    {
+      "signature": "pub use super :: buckled_flow :: BuckledSurfaceFlow"
+    },
+    {
+      "signature": "pub use super :: buckled_flow :: SurfaceTopology"
     }
   ],
   "crates/pure_math/src/pure_math/differential_geometry/operators.rs": [
