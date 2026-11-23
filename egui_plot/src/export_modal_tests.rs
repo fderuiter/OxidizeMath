@@ -360,3 +360,12 @@ fn test_export_modal_warning_and_status_colors_meet_wcag_aa() {
         assert!(wcag_contrast(ok_c, bg) >= 4.5, "status contrast < 4.5");
     }
 }
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen_test::wasm_bindgen_test]
+fn wasm_export_modal_uses_async_clipboard_initial_status() {
+    assert_eq!(
+        INITIAL_CLIPBOARD_STATUS,
+        "Copying plot image to clipboard..."
+    );
+}

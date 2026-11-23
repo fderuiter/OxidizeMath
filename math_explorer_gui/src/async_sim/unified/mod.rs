@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod atlas;
 mod canvas;
 mod controls;
 mod persistence;
@@ -7,7 +8,8 @@ pub mod tool;
 pub use tool::*;
 
 use crate::async_sim::{
-    CheckpointParams, SimCommand, SimulationRunner, StateSnapshot, TimeTravelCheckpoint,
+    CheckpointParams, RegimeCartographer, SimCommand, SimulationRunner, StateSnapshot,
+    TimeTravelCheckpoint,
 };
 use crate::framework::MAX_SYNTHESIZED_PARAMS;
 use math_commons::ast::CompiledExpr;
@@ -203,6 +205,25 @@ pub trait UnifiedModel:
         if let Some(map) = params.as_named_map() {
             self.step(map);
         }
+    }
+
+    /// Optional `(x_key, y_key)` parameter pairs exposed in a 2D [`crate::async_sim::ParameterAtlasController`].
+    fn atlas_axis_pairs() -> &'static [(&'static str, &'static str)]
+    where
+        Self: Sized,
+    {
+        &[]
+    }
+
+    /// Constructs a zero-allocation [`RegimeCartographer`] for `axis_keys` when supported.
+    fn build_atlas_cartographer(
+        _params: &HashMap<String, f64>,
+        _axis_keys: (&'static str, &'static str),
+    ) -> Option<Arc<dyn RegimeCartographer>>
+    where
+        Self: Sized,
+    {
+        None
     }
 }
 

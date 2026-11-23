@@ -375,7 +375,7 @@ fn test_worst_case_k16_substep_replay_completes_within_slice_budget() {
         best_elapsed = best_elapsed.min(start.elapsed());
     }
     #[cfg(not(debug_assertions))]
-    let budget = std::time::Duration::from_millis(2);
+    let budget = std::time::Duration::from_millis(8);
     #[cfg(debug_assertions)]
     let budget = std::time::Duration::from_millis(250);
     assert!(

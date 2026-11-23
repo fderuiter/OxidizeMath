@@ -119,8 +119,10 @@ fn test_hodgkin_huxley_vs_non_opted_in_unified_and_morphogenesis_k16() {
         "Non-opted-in UnifiedModel must have timeline_metadata() == None"
     );
 
-    let mut morpho = MorphogenesisTool::default();
-    morpho.pending_initial_start = false;
+    let mut morpho = MorphogenesisTool {
+        pending_initial_start: false,
+        ..Default::default()
+    };
     {
         let mut p = morpho.params.write().unwrap();
         p.d_v = 50.0;
@@ -144,8 +146,10 @@ fn test_hodgkin_huxley_vs_non_opted_in_unified_and_morphogenesis_k16() {
 
 #[test]
 fn test_preset_save_state_and_ctrl_z_remain_parameter_only_after_scrubbing() {
-    let mut morpho = MorphogenesisTool::default();
-    morpho.pending_initial_start = false;
+    let mut morpho = MorphogenesisTool {
+        pending_initial_start: false,
+        ..Default::default()
+    };
     {
         let mut p = morpho.params.write().unwrap();
         p.d_v = 50.0;

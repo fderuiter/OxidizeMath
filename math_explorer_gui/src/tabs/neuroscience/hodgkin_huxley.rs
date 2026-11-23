@@ -1,7 +1,15 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+#[path = "hodgkin_huxley_atlas.rs"]
+mod atlas;
+
+#[cfg(test)]
+pub use atlas::HodgkinHuxleyRegime;
+pub use atlas::{HodgkinHuxleyCartographer, HH_ATLAS_AXIS_PAIRS};
+
+use crate::async_sim::atlas::RegimeCartographer;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
-use crate::async_sim::{
-    CheckpointParams, CheckpointPayload, StateSnapshot, TimeTravelCheckpoint,
-};
+use crate::async_sim::{CheckpointParams, CheckpointPayload, StateSnapshot, TimeTravelCheckpoint};
 use math_explorer::biology::neuroscience::{
     HodgkinHuxleyModel, HodgkinHuxleyParameters, HodgkinHuxleyState,
 };
@@ -13,6 +21,7 @@ use std::sync::Arc;
 
 const HH_MAX_HISTORY: usize = 10_000;
 
+#[allow(missing_docs)]
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct HodgkinHuxleyUnified {
     state: HodgkinHuxleyState,
@@ -214,9 +223,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         let g_k = *params.get("g_k").unwrap_or(&36.0);
         let g_l = *params.get("g_l").unwrap_or(&0.3);
         let i_ext = *params.get("i_ext").unwrap_or(&10.0);
-        Some(CheckpointParams::scalars(&[
-            g_na, g_k, g_l, i_ext, self.dt,
-        ]))
+        Some(CheckpointParams::scalars(&[g_na, g_k, g_l, i_ext, self.dt]))
     }
 
     fn capture_checkpoint(&self, params: &HashMap<String, f64>) -> Option<TimeTravelCheckpoint> {
@@ -291,6 +298,19 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             self.step(map);
         }
     }
+
+    fn atlas_axis_pairs() -> &'static [(&'static str, &'static str)] {
+        HH_ATLAS_AXIS_PAIRS
+    }
+
+    fn build_atlas_cartographer(
+        params: &HashMap<String, f64>,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<Arc<dyn RegimeCartographer>> {
+        Some(Arc::new(HodgkinHuxleyCartographer::from_params(
+            params, axis_keys,
+        )))
+    }
 }
 
 inventory::submit! {
@@ -305,35 +325,23 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for HodgkinHuxleyUnified {
     fn theory_description(&self) -> String {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
-            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
-            0.0,
-        )
-        .theory_description()
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).theory_description()
     }
 
     fn phonetic_description(&self) -> String {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
-            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
-            0.0,
-        )
-        .phonetic_description()
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).phonetic_description()
     }
 
     fn theory_citation(&self) -> String {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
-            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
-            0.0,
-        )
-        .theory_citation()
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).theory_citation()
     }
 
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
-            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
-            0.0,
-        )
-        .available_descriptions()
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).available_descriptions()
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        Self::parameters()
     }
 }
 

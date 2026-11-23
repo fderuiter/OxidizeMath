@@ -1,3 +1,5 @@
+#[allow(missing_docs)]
+pub mod atlas;
 #[cfg(test)]
 mod checkpoint_tests;
 #[cfg(test)]
@@ -10,6 +12,11 @@ mod runner_tests;
 mod step_tests;
 #[cfg(test)]
 mod tests;
+pub use atlas::{
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasPassMeta, AtlasRenderRequest, AtlasRunner,
+    AtlasTeleportEvent, ParameterAtlasController, RegimeCartographer, ATLAS_SLICE_BUDGET,
+    ATLAS_STRIDES, DEFAULT_ATLAS_SIDE, MAX_ATLAS_SIDE,
+};
 #[allow(missing_docs)]
 pub mod ui;
 #[allow(missing_docs)]

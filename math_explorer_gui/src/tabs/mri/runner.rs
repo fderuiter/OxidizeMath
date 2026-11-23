@@ -278,7 +278,11 @@ impl SimulationRunner for MriRunner {
     }
 
     fn running_substeps_per_tick(&self) -> usize {
-        let time_scale = self.params.read().unwrap_or_else(|e| e.into_inner()).time_scale;
+        let time_scale = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .time_scale;
         if time_scale.is_finite() && time_scale > 0.0 {
             (time_scale.ceil().min(MAX_MRI_STEPS_PER_FRAME as f64) as usize).max(1)
         } else {

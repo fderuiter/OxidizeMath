@@ -1,8 +1,10 @@
 //! Unified accessible playback transport widget for continuous and episodic simulations.
 
+#[path = "playback_helpers.rs"]
+mod helpers;
+
 use crate::accessibility::{announce_status, AccessibleHoverText};
 use crate::async_sim::{SimWorkerState, TimelineMetadata};
-use crate::framework::InputMode;
 use eframe::egui;
 
 /// Discrete user action emitted by [`PlaybackTransport`].
@@ -134,7 +136,7 @@ impl<'a> PlaybackTransport<'a> {
     /// Renders the transport bar (and timeline scrubber if opted in) and returns any triggered [`PlaybackAction`].
     pub fn show(self, ui: &mut egui::Ui) -> Option<PlaybackAction> {
         let base_id = ui.make_persistent_id(self.id_salt);
-        let min_size = button_min_size(ui.ctx());
+        let min_size = helpers::button_min_size(ui.ctx());
         let ui_enabled = ui.is_enabled();
         let mut action = self.render_button_row(ui, base_id, min_size, ui_enabled);
 
@@ -146,15 +148,28 @@ impl<'a> PlaybackTransport<'a> {
             }
         }
 
+        let mut should_announce = true;
         if ui_enabled {
-            self.register_shortcut_metadata(ui.ctx());
-            if action.is_none() {
-                action = self.check_keyboard_shortcuts(ui);
-            }
+            helpers::register_shortcut_metadata(
+                ui.ctx(),
+                self.can_toggle,
+                self.can_step,
+                self.can_step_back(),
+            );
+            let (resolved, announce) = self.resolve_transport_action(ui, base_id, action);
+            action = resolved;
+            should_announce = announce;
+        } else if let Some(triggered) = action {
+            should_announce = crate::app::viewport::compare_sync::emit_playback_broadcast(
+                ui.ctx(),
+                base_id,
+                triggered,
+                None,
+            );
         }
 
         if let Some(triggered) = action {
-            self.announce_action(ui.ctx(), base_id, ui_enabled, triggered);
+            self.announce_action(ui.ctx(), base_id, ui_enabled, triggered, should_announce);
             ui.ctx().request_repaint();
         }
 
@@ -181,7 +196,7 @@ impl<'a> PlaybackTransport<'a> {
                 "Step {} simulation backward one step (Comma)",
                 self.tool_name
             );
-            if render_action_button(
+            if helpers::render_action_button(
                 ui,
                 base_id.with("step_back_button_info"),
                 self.step_back_label,
@@ -196,7 +211,7 @@ impl<'a> PlaybackTransport<'a> {
                 "Step {} simulation forward one step (Period)",
                 self.tool_name
             );
-            if render_action_button(
+            if helpers::render_action_button(
                 ui,
                 base_id.with("step_button_info"),
                 self.step_label,
@@ -208,7 +223,7 @@ impl<'a> PlaybackTransport<'a> {
                 action = Some(PlaybackAction::Step);
             }
             let reset_a11y = format!("Reset {} simulation", self.tool_name);
-            if render_action_button(
+            if helpers::render_action_button(
                 ui,
                 base_id.with("reset_button_info"),
                 self.reset_label,
@@ -263,46 +278,56 @@ impl<'a> PlaybackTransport<'a> {
         (changed && step_val != meta.current_step).then_some(PlaybackAction::ScrubTo(step_val))
     }
 
-    fn register_shortcut_metadata(&self, ctx: &egui::Context) {
-        use egui_plot::commands::{CommandRegistryData, CommandTrigger};
-        if self.can_toggle {
-            CommandRegistryData::register(
-                ctx,
-                "Play / Pause",
-                "Toggle simulation playback or pause",
-                CommandTrigger::Key(egui::Key::Space),
-                true,
-                "Simulation Playback",
-            );
+    fn is_action_applicable(&self, action: PlaybackAction) -> bool {
+        match action {
+            PlaybackAction::Play => self.can_toggle && !self.is_playing,
+            PlaybackAction::Pause => self.can_toggle && self.is_playing,
+            PlaybackAction::Step => self.can_step,
+            PlaybackAction::StepBack => self.can_step_back(),
+            PlaybackAction::ScrubTo(_) => {
+                self.can_toggle && self.timeline.is_some_and(|m| m.max_step > m.min_step)
+            }
+            PlaybackAction::Reset => self.can_reset,
         }
-        if self.can_step {
-            CommandRegistryData::register(
-                ctx,
-                "Step Forward",
-                "Advance paused simulation by one deterministic step",
-                CommandTrigger::Key(egui::Key::Period),
-                true,
-                "Simulation Playback",
-            );
+    }
+
+    fn resolve_transport_action(
+        &self,
+        ui: &egui::Ui,
+        base_id: egui::Id,
+        clicked_action: Option<PlaybackAction>,
+    ) -> (Option<PlaybackAction>, bool) {
+        use crate::app::viewport::compare_sync::{
+            claim_pending_sync_key, emit_playback_broadcast, poll_playback_broadcast,
+        };
+        let ctx = ui.ctx();
+        if let Some((bcast_action, announce)) = poll_playback_broadcast(ctx, base_id) {
+            if self.is_action_applicable(bcast_action) {
+                return (Some(bcast_action), announce);
+            }
         }
-        if self.can_step_back() {
-            CommandRegistryData::register(
-                ctx,
-                "Step Back",
-                "Rewind paused simulation by one deterministic step",
-                CommandTrigger::Key(egui::Key::Comma),
-                true,
-                "Simulation Playback",
-            );
-            CommandRegistryData::register(
-                ctx,
-                "Previous Keyframe",
-                "Jump backward to the previous checkpoint keyframe",
-                CommandTrigger::Key(egui::Key::OpenBracket),
-                true,
-                "Simulation Playback",
-            );
+        if let Some(clicked) = clicked_action {
+            let announce = emit_playback_broadcast(ctx, base_id, clicked, None);
+            return (Some(clicked), announce);
         }
+        if let Some((sync_key_action, key)) =
+            claim_pending_sync_key(ctx, self.can_toggle, self.is_playing, self.can_step)
+        {
+            let announce = emit_playback_broadcast(ctx, base_id, sync_key_action, Some(key));
+            return (Some(sync_key_action), announce);
+        }
+        if let Some(local_key_action) = self.check_keyboard_shortcuts(ui) {
+            let key = match local_key_action {
+                PlaybackAction::Play | PlaybackAction::Pause => Some(egui::Key::Space),
+                PlaybackAction::Step => Some(egui::Key::Period),
+                PlaybackAction::StepBack => Some(egui::Key::Comma),
+                PlaybackAction::ScrubTo(_) => Some(egui::Key::OpenBracket),
+                PlaybackAction::Reset => None,
+            };
+            let announce = emit_playback_broadcast(ctx, base_id, local_key_action, key);
+            return (Some(local_key_action), announce);
+        }
+        (None, false)
     }
 
     fn render_toggle_button(
@@ -371,43 +396,29 @@ impl<'a> PlaybackTransport<'a> {
         None
     }
 
-    fn format_announcement(&self, action: PlaybackAction) -> String {
-        match action {
-            PlaybackAction::Play => format!("Playing {} simulation", self.tool_name),
-            PlaybackAction::Pause => format!("Paused {} simulation", self.tool_name),
-            PlaybackAction::Step if self.is_in_thread => {
-                format!("Stepped {} simulation — step completed", self.tool_name)
-            }
-            PlaybackAction::Step => format!("Stepping {} simulation", self.tool_name),
-            PlaybackAction::StepBack => {
-                let target = self
-                    .timeline
-                    .map_or(0, |m| m.current_step.saturating_sub(1).max(m.min_step));
-                format!(
-                    "Stepping {} simulation backward to step {}",
-                    self.tool_name, target
-                )
-            }
-            PlaybackAction::ScrubTo(step) => {
-                format!("Scrubbed {} simulation to step {}", self.tool_name, step)
-            }
-            PlaybackAction::Reset => format!("Reset {} simulation", self.tool_name),
-        }
-    }
-
     fn announce_action(
         &self,
         ctx: &egui::Context,
         base_id: egui::Id,
         ui_enabled: bool,
         action: PlaybackAction,
+        should_announce: bool,
     ) {
-        let announcement = self.format_announcement(action);
-        announce_status(&announcement);
-        ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("aria_live_message"), announcement);
-            d.insert_temp(egui::Id::new("aria_live_dispatched"), true);
-            if matches!(action, PlaybackAction::Play | PlaybackAction::Pause) {
+        if should_announce {
+            let announcement = helpers::format_announcement(
+                self.tool_name,
+                self.is_in_thread,
+                self.timeline,
+                action,
+            );
+            announce_status(&announcement);
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("aria_live_message"), announcement);
+                d.insert_temp(egui::Id::new("aria_live_dispatched"), true);
+            });
+        }
+        if matches!(action, PlaybackAction::Play | PlaybackAction::Pause) {
+            ctx.data_mut(|d| {
                 let next_playing = matches!(action, PlaybackAction::Play);
                 let next_label = if next_playing {
                     format!("Pause {} simulation (Space)", self.tool_name)
@@ -423,44 +434,7 @@ impl<'a> PlaybackTransport<'a> {
                         next_label,
                     ),
                 );
-            }
-        });
-    }
-}
-
-fn render_action_button(
-    ui: &mut egui::Ui,
-    info_id: egui::Id,
-    label: &str,
-    a11y_label: &str,
-    enabled: bool,
-    min_size: egui::Vec2,
-) -> bool {
-    let info = egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, a11y_label);
-    let resp = ui.add_enabled(enabled, egui::Button::new(label).min_size(min_size));
-    resp.widget_info({
-        let info = info.clone();
-        move || info.clone()
-    });
-    ui.ctx().data_mut(|d| {
-        d.insert_temp(info_id, info);
-    });
-    resp.accessible_hover_text(a11y_label).clicked()
-}
-
-fn button_min_size(ctx: &egui::Context) -> egui::Vec2 {
-    let is_touch = ctx.data(|d| {
-        let mode = d
-            .get_temp::<InputMode>(egui::Id::new("INPUT_MODE"))
-            .unwrap_or(InputMode::Mouse);
-        let touch_flag = d
-            .get_temp::<bool>(egui::Id::new("INPUT_MODE_TOUCH"))
-            .unwrap_or(false);
-        mode == InputMode::Touch || touch_flag
-    });
-    if is_touch {
-        egui::vec2(44.0, 44.0)
-    } else {
-        egui::Vec2::ZERO
+            });
+        }
     }
 }

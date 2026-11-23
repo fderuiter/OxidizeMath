@@ -8,6 +8,10 @@ fn test_infer_mime_type_all_supported_extensions() {
     assert_eq!(infer_mime_type("data.csv"), "text/csv");
     assert_eq!(infer_mime_type("table.tsv"), "text/tab-separated-values");
     assert_eq!(infer_mime_type("notes.txt"), "text/plain");
+    assert_eq!(infer_mime_type("mandelbrot_webgl2.frag"), "text/plain");
+    assert_eq!(infer_mime_type(" DOMAIN_COLOR.FRAG "), "text/plain");
+    assert_eq!(infer_mime_type("potential_flow.glsl"), "text/plain");
+    assert_eq!(infer_mime_type("KERNEL.GLSL"), "text/plain");
     assert_eq!(infer_mime_type("chart.png"), "image/png");
     assert_eq!(infer_mime_type("chart.svg"), "image/svg+xml");
     assert_eq!(infer_mime_type("anim.gif"), "image/gif");
@@ -19,6 +23,14 @@ fn test_sanitize_download_filename_paths_and_edge_cases() {
     assert_eq!(
         sanitize_download_filename("/var/tmp/sir_data.csv", "fallback.csv"),
         "sir_data.csv"
+    );
+    assert_eq!(
+        sanitize_download_filename("/tmp/shaders/fractal_webgl2.frag", "shader.frag"),
+        "fractal_webgl2.frag"
+    );
+    assert_eq!(
+        sanitize_download_filename("C:\\shaders\\conformal\0\r\n.glsl", "shader.glsl"),
+        "conformal.glsl"
     );
     assert_eq!(
         sanitize_download_filename("C:\\fakepath\\sir_data.csv", "fallback.csv"),

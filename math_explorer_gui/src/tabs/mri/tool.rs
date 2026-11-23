@@ -281,8 +281,14 @@ impl InteractiveTool for MriTool {
         }
         let m = self.simulator.magnetization;
         vec![
-            ("Mx (Transverse)".to_string(), vec![[self.current_time, m.x]]),
-            ("My (Transverse)".to_string(), vec![[self.current_time, m.y]]),
+            (
+                "Mx (Transverse)".to_string(),
+                vec![[self.current_time, m.x]],
+            ),
+            (
+                "My (Transverse)".to_string(),
+                vec![[self.current_time, m.y]],
+            ),
             (
                 "Mz (Longitudinal)".to_string(),
                 vec![[self.current_time, m.z]],
