@@ -100,11 +100,41 @@ impl MorphogenesisTool {
         let mut changed = false;
         let cfl_exceeded = {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            changed |= ui.add(egui::Slider::new(&mut p.a, ca.min..=ca.max).step_by(ca.step).text("a")).changed();
-            changed |= ui.add(egui::Slider::new(&mut p.b, cb.min..=cb.max).step_by(cb.step).text("b")).changed();
-            changed |= ui.add(egui::Slider::new(&mut p.d_u, cdu.min..=cdu.max).step_by(cdu.step).text("D_u")).changed();
-            changed |= ui.add(egui::Slider::new(&mut p.d_v, cdv.min..=cdv.max).step_by(cdv.step).text("D_v")).changed();
-            changed |= ui.add(egui::Slider::new(&mut p.dt, cdt.min..=cdt.max).logarithmic(true).text("dt")).changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut p.a, ca.min..=ca.max)
+                        .step_by(ca.step)
+                        .text("a"),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut p.b, cb.min..=cb.max)
+                        .step_by(cb.step)
+                        .text("b"),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut p.d_u, cdu.min..=cdu.max)
+                        .step_by(cdu.step)
+                        .text("D_u"),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut p.d_v, cdv.min..=cdv.max)
+                        .step_by(cdv.step)
+                        .text("D_v"),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut p.dt, cdt.min..=cdt.max)
+                        .logarithmic(true)
+                        .text("dt"),
+                )
+                .changed();
             4.0 * p.d_u.max(p.d_v) * p.dt >= 1.0
         };
         if changed {
@@ -123,6 +153,23 @@ impl MorphogenesisTool {
         }
         if ui.button("Stripes").clicked() {
             self.apply_named_preset(0.14, 0.86, 1.0, 50.0, 0.02);
+        }
+        if let Some(snapshot) = self.worker.latest_snapshot() {
+            if let Some(u_data) = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<Vec<f64>>())
+            {
+                let splat_count =
+                    crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
+                        u_data,
+                        snapshot.width,
+                        snapshot.height,
+                    )
+                    .gaussians
+                    .len();
+                ui.small(format!("Extruded 3D Gaussian splats: {splat_count}"));
+            }
         }
         ui.separator();
         let _ = self.atlas.show_toggle_button(ui);
@@ -239,37 +286,34 @@ impl MorphogenesisTool {
             if ui.available_width() >= 620.0 {
                 ui.columns(2, |cols| {
                     self.draw_turing_field_plot(&mut cols[0]);
-                    teleport = self.atlas.show_panel(
-                        &mut cols[1],
-                        "morphogenesis",
-                        ax,
-                        ay,
-                        sig,
-                        |keys| {
-                            std::sync::Arc::new(super::atlas::MorphogenesisCartographer::new(
-                                &theory_params,
-                                keys,
-                                cartographer_params.0,
-                                cartographer_params.1,
-                                cartographer_params.2,
-                                cartographer_params.3,
-                                cartographer_params.4,
-                            ))
-                        },
-                    );
+                    teleport =
+                        self.atlas
+                            .show_panel(&mut cols[1], "morphogenesis", ax, ay, sig, |keys| {
+                                std::sync::Arc::new(super::atlas::MorphogenesisCartographer::new(
+                                    &theory_params,
+                                    keys,
+                                    cartographer_params.0,
+                                    cartographer_params.1,
+                                    cartographer_params.2,
+                                    cartographer_params.3,
+                                    cartographer_params.4,
+                                ))
+                            });
                 });
             } else {
-                teleport = self.atlas.show_panel(ui, "morphogenesis", ax, ay, sig, |keys| {
-                    std::sync::Arc::new(super::atlas::MorphogenesisCartographer::new(
-                        &theory_params,
-                        keys,
-                        cartographer_params.0,
-                        cartographer_params.1,
-                        cartographer_params.2,
-                        cartographer_params.3,
-                        cartographer_params.4,
-                    ))
-                });
+                teleport = self
+                    .atlas
+                    .show_panel(ui, "morphogenesis", ax, ay, sig, |keys| {
+                        std::sync::Arc::new(super::atlas::MorphogenesisCartographer::new(
+                            &theory_params,
+                            keys,
+                            cartographer_params.0,
+                            cartographer_params.1,
+                            cartographer_params.2,
+                            cartographer_params.3,
+                            cartographer_params.4,
+                        ))
+                    });
                 ui.separator();
                 self.draw_turing_field_plot(ui);
             }
@@ -317,15 +361,15 @@ impl MorphogenesisTool {
         let num_pixels = width * height;
         let mut pixels = Vec::with_capacity(num_pixels);
 
-        let (min, max) = data
-            .iter()
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), &val| {
-                if val.is_finite() {
-                    (min.min(val), max.max(val))
-                } else {
-                    (min, max)
-                }
-            });
+        let (min, max) =
+            data.iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), &val| {
+                    if val.is_finite() {
+                        (min.min(val), max.max(val))
+                    } else {
+                        (min, max)
+                    }
+                });
 
         let (min, max) = if min.is_finite() && max.is_finite() && max >= min {
             (min, max)
