@@ -2,22 +2,38 @@
 //!
 //! Empirical dwarf-galaxy regressions from Tillaboev, Tadjibaev & Otojanova (2025)
 //! (`tillaboev2025`), radially decomposed baryonic and dark-matter (`NfwCusp`,
-//! `BurkertCore`) circular rotation curves, zero-allocation kick-drift-kick
-//! symplectic planar disk and tidal-stream orbits, and planar 3-body gravitational
-//! choreographies (`nbody`).
+//! `BurkertCore`) circular rotation curves, closed-form gravitational thin-lens
+//! shear Jacobians (`lensing`, `halo_lensing`), zero-allocation kick-drift-kick
+//! symplectic planar disk and Paczyński-Wiita relativistic orbits (`orbits`,
+//! `paczynski_wiita`), and planar 3-body gravitational choreographies (`nbody`).
 
 pub mod galaxies;
+pub mod halo_lensing;
+pub mod lensing;
 pub mod nbody;
 pub mod orbits;
+pub mod paczynski_wiita;
 pub mod rotation_curves;
 
 pub use galaxies::{
     GalaxyModel, GeneralIrregular, Magnitude, Mpc, Redshift, SolarMassLog, TypeCode10,
     TypeCode95To99,
 };
+pub use lensing::{
+    EINSTEIN_SEPARATION_REL_FLOOR, JACOBIAN_EIGEN_FLOOR, SchwarzschildDualImages,
+    SchwarzschildLensImage, ThinLensSample, axisymmetric_lens_jacobian, clamp_einstein_separation,
+    halo_lens_deflection_and_jacobian, halo_thin_lens_sample, sample_halo_lensing_into,
+    schwarzschild_deflection_angle, schwarzschild_thin_lens_images, tangential_critical_radius_kpc,
+};
 pub use orbits::{
     GalacticDiskSystem, KPC_PER_MYR_PER_KMS, OrbitParticleKind, OrbitPopulationConfig,
     OrbitalInvariants, OrbitalState, SECONDS_PER_MYR, planar_acceleration,
+};
+pub use paczynski_wiita::{
+    CentralBlackHoleConfig, HORIZON_CLEARANCE_FACTOR, MAX_RELATIVISTIC_BETA,
+    RelativisticBeamingSample, evaluate_relativistic_beaming, is_captured_at_isco,
+    paczynski_wiita_acceleration_kpc, paczynski_wiita_circular_speed_kms,
+    paczynski_wiita_potential_kpc, validate_christoffel_radial_connection,
 };
 pub use rotation_curves::{
     BaryonicDiskConfig, DwarfMorphology, G_KPC_KMS2_PER_SOLAR_MASS, HaloProfile, METERS_PER_KPC,

@@ -1,6 +1,8 @@
 // [cite:modular_polynomials_review]
 // [cite:hurwitz_kronecker]
 
+use super::atlas::WeierstrassRegimeCartographer;
+use super::handoff::{render_handoff_buttons, EllipticHandoffTarget, EllipticTorusHandoff};
 use super::modular_invariants_tool::{
     snap_prime_u64, ModularInvariantsTool, ModularPlotMode, ModularQSeriesKind,
 };
@@ -8,7 +10,10 @@ use crate::accessibility::AccessibleHoverText;
 use crate::framework::scoped_panel_id;
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, Points};
-use math_explorer::pure_math::elliptic_curves::{psi, MAX_LATTICE_PRIME};
+use math_explorer::pure_math::elliptic_curves::{
+    hurwitz_trace_sum, psi, AffinePointFp, FpSingularCubic, RealSingularCubic, MAX_LATTICE_PRIME,
+};
+use std::sync::Arc;
 
 pub(crate) fn render_controls(tool: &mut ModularInvariantsTool, ui: &mut egui::Ui) {
     let mut changed = false;
@@ -23,6 +28,21 @@ pub(crate) fn render_controls(tool: &mut ModularInvariantsTool, ui: &mut egui::U
             .radio_value(&mut tool.state.view_mode, mode, mode.label())
             .changed();
     }
+    ui.separator();
+    let _ = tool.atlas.show_toggle_button(ui);
+    render_handoff_buttons(
+        ui,
+        EllipticHandoffTarget::ModularInvariants,
+        EllipticTorusHandoff {
+            target: EllipticHandoffTarget::ModularInvariants,
+            p: tool.state.inspect_prime as i64,
+            a: tool.state.coeff_a,
+            b: tool.state.coeff_b,
+            point_p: AffinePointFp::Infinity,
+            point_q: AffinePointFp::Infinity,
+            scalar_k: 1,
+        },
+    );
     ui.separator();
     changed |= render_parameter_sliders(tool, ui);
     if changed {
@@ -48,14 +68,19 @@ fn render_parameter_sliders(tool: &mut ModularInvariantsTool, ui: &mut egui::Ui)
                 .text("Max Prime Sweep"),
         )
         .changed();
-    let mut p_cand = tool.state.inspect_prime;
-    if ui
-        .add(egui::Slider::new(&mut p_cand, 5..=MAX_LATTICE_PRIME as u64).text("Inspected Prime p"))
-        .changed()
-    {
-        tool.state.inspect_prime = snap_prime_u64(p_cand);
-        changed = true;
-    }
+    ui.add_enabled_ui(tool.active_challenge.is_none(), |ui| {
+        let mut p_cand = tool.state.inspect_prime;
+        if ui
+            .add(
+                egui::Slider::new(&mut p_cand, 5..=MAX_LATTICE_PRIME as u64)
+                    .text("Inspected Prime p"),
+            )
+            .changed()
+        {
+            tool.state.inspect_prime = snap_prime_u64(p_cand);
+            changed = true;
+        }
+    });
     changed |= ui
         .add(egui::Slider::new(&mut tool.state.level_n, 2..=30).text("Modular Level N"))
         .changed();
@@ -80,15 +105,19 @@ fn render_parameter_sliders(tool: &mut ModularInvariantsTool, ui: &mut egui::Ui)
 }
 
 fn render_invariant_readouts(tool: &ModularInvariantsTool, ui: &mut egui::Ui) {
-    if 4 * tool.state.coeff_a.pow(3) + 27 * tool.state.coeff_b.pow(2) == 0 {
-        let err_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
+    let err_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).error;
+    if let Some(cubic) =
+        RealSingularCubic::classify(tool.state.coeff_a as f64, tool.state.coeff_b as f64)
+    {
         ui.colored_label(
             err_color,
-            "Singular over Q: 4a³ + 27b² = 0 (adjust a or b).",
+            format!(
+                "Singular over Q/R: {} at ({:.2}, 0) — sweeps & Hurwitz sums active.",
+                cubic.kind.label(),
+                cubic.singular_x
+            ),
         );
-        return;
-    }
-    if let Some(j_re) = tool.real_j {
+    } else if let Some(j_re) = tool.real_j {
         ui.label(format!("Real j-invariant j(E): {j_re:.3}"));
     }
     if let Some(frob) = &tool.frobenius_summary {
@@ -103,7 +132,27 @@ fn render_invariant_readouts(tool: &ModularInvariantsTool, ui: &mut egui::Ui) {
         if let Some(bqf) = &frob.principal_form {
             ui.label(format!("Principal BQF: ({}, {}, {})", bqf.a, bqf.b, bqf.c));
         }
+    } else if let Ok(Some(sing)) = FpSingularCubic::classify(
+        tool.state.coeff_a,
+        tool.state.coeff_b,
+        tool.state.inspect_prime as i64,
+    ) {
+        ui.colored_label(
+            err_color,
+            format!(
+                "F_{}: Singular {} at ({}, 0), #E_ns = {}",
+                sing.p,
+                sing.kind.label(),
+                sing.singular_x,
+                sing.smooth_group_order()
+            ),
+        );
     }
+    let (h_sum, h_exp, _) = hurwitz_trace_sum(tool.state.inspect_prime);
+    ui.label(format!(
+        "Hurwitz ∑ H(t² - {}) = {:.3}  (law = {:.3})",
+        tool.state.inspect_prime, h_sum, h_exp
+    ));
     if let Some(val) = &tool.valuation_summary {
         ui.label(format!(
             "Φ_{} (ψ = {}): j mod p = {}, Thm 1.1 v₂ ≥ {:?}, v₃ ≥ {:?}; Thm 1.2 v₇ ≥ {:?}",
@@ -114,6 +163,29 @@ fn render_invariant_readouts(tool: &ModularInvariantsTool, ui: &mut egui::Ui) {
             val.theorem_1_1.v3_bound,
             val.theorem_1_2.v7_bound
         ));
+    }
+}
+
+pub(crate) fn render_modular_atlas_split(tool: &mut ModularInvariantsTool, ui: &mut egui::Ui) {
+    if !tool.atlas.is_visible() {
+        return;
+    }
+    let (xk, _) = tool.atlas.axis_keys();
+    let p = tool.state.inspect_prime as i64;
+    let sig = if xk == "mod_a" { p as u64 } else { 0_u64 };
+    let (ax, ay) = (tool.state.coeff_a as f64, tool.state.coeff_b as f64);
+    let atlas_h = (ui.available_height() * 0.44_f32).clamp(180.0_f32, 300.0_f32);
+    let mut teleport = None;
+    ui.allocate_ui(egui::vec2(ui.available_width(), atlas_h), |atlas_ui| {
+        teleport = tool
+            .atlas
+            .show_panel(atlas_ui, "modular_inv", ax, ay, sig, move |keys| {
+                Arc::new(WeierstrassRegimeCartographer::new(keys, p, 1.0))
+            });
+    });
+    ui.separator();
+    if let Some(ev) = teleport {
+        tool.apply_atlas_teleport(ev);
     }
 }
 

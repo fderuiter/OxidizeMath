@@ -3,9 +3,13 @@
 //! emitters/sinks, microfluidic serpentine mazes, and zero-allocation `step_fused`.
 
 use domain_biology::biology::diffusion::{FiniteDifference2D, ReactionCellRole};
-use domain_biology::biology::morphogenesis::{DiffusionCoeff, SchnakenbergKinetics, TuringSystem};
+use domain_biology::biology::morphogenesis::{
+    DiffusionCoeff, GrayScottKinetics, SchnakenbergKinetics, StandardSolverAdapter, TuringState,
+    TuringSystem,
+};
 use domain_biology::biology::reaction_diffusion::{ChemicalState, DiffusionModel};
 use math_commons::math_kernel::types::{Dimension, StepSize, flatten_2d_index};
+use pure_math::pure_math::analysis::ode::Euler;
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
 
@@ -89,9 +93,11 @@ fn test_emitters_sinks_microfluidic_maze_and_zero_allocation_turing_step() {
 
     // Warm up once, then verify 0 dynamic allocations inside VerifiedEngine::run_verified
     system.step(0.01);
+    system.state.pin_cell_mask(&system.diffusion.mask);
     let ((), metrics) = VerifiedEngine::run_verified(|| {
         for _ in 0..20 {
             system.step(0.01);
+            system.state.pin_cell_mask(&system.diffusion.mask);
         }
     });
     assert!(
@@ -115,4 +121,46 @@ fn test_emitters_sinks_microfluidic_maze_and_zero_allocation_turing_step() {
     assert!((system.u()[emit_u_idx] - system.diffusion.mask.emitter_u_level).abs() < 1e-12);
     assert_eq!(system.u()[sink_idx], 0.0);
     assert_eq!(system.v()[sink_idx], 0.0);
+}
+
+#[test]
+fn test_pin_cell_mask_persists_after_turing_dynamics_standard_solver_updates() {
+    let w = 20;
+    let h = 20;
+    let mut diffusion =
+        FiniteDifference2D::new(Dimension(w), Dimension(h), StepSize(1.0), StepSize(1.0))
+            .with_mask();
+    diffusion.mask.set(4, 4, ReactionCellRole::EmitterU);
+    diffusion.mask.set(8, 4, ReactionCellRole::EmitterV);
+    diffusion.mask.set(12, 12, ReactionCellRole::Sink);
+    diffusion.mask.set(10, 6, ReactionCellRole::ZeroFluxWall);
+
+    let mut system = TuringSystem::new_with_solver(
+        Dimension(w * h),
+        [DiffusionCoeff(0.16), DiffusionCoeff(0.08)],
+        GrayScottKinetics::mitosis(),
+        diffusion,
+        StandardSolverAdapter::new(Euler::new(&TuringState::<2>::new(w * h))),
+    );
+    for i in 0..(w * h) {
+        system.u_mut()[i] = 1.0;
+        system.v_mut()[i] = 0.25;
+    }
+    system.diffusion.mask.pin_turing_state(&mut system.state);
+
+    for _ in 0..15 {
+        system.step(0.5);
+        // Without post-step pinning, StandardSolverAdapter<Euler> advances unconstrained reaction terms
+        // on Emitter/Sink/ZeroFluxWall cells; pin_cell_mask restores exact role invariants.
+        system.state.pin_cell_mask(&system.diffusion.mask);
+    }
+
+    let eu = flatten_2d_index(4, 4, w);
+    let ev = flatten_2d_index(8, 4, w);
+    let sk = flatten_2d_index(12, 12, w);
+    let wl = flatten_2d_index(10, 6, w);
+    assert!((system.u()[eu] - system.diffusion.mask.emitter_u_level).abs() < 1e-12);
+    assert!((system.v()[ev] - system.diffusion.mask.emitter_v_level).abs() < 1e-12);
+    assert_eq!((system.u()[sk], system.v()[sk]), (0.0, 0.0));
+    assert_eq!((system.u()[wl], system.v()[wl]), (0.0, 0.0));
 }

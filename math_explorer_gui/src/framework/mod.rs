@@ -1,5 +1,8 @@
 pub mod atlas_host;
 pub mod brush_codec;
+pub mod brush_dispatch;
+#[cfg(all(test, feature = "physics", feature = "biology"))]
+mod brush_dispatch_tests;
 pub mod callout_overlay;
 pub mod challenge;
 mod challenge_hud;
@@ -76,6 +79,7 @@ mod ui;
 mod url_share;
 
 pub use brush_codec::*;
+pub use brush_dispatch::{PlotBrushController, PlotBrushFrame};
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
@@ -144,22 +148,13 @@ pub trait InteractiveTool {
     ///
     /// # Accessibility Requirements for Custom `show_inside` Overrides
     ///
-    /// The default implementation allocates its central canvas with [`egui::Sense::click_and_drag`]
-    /// (which includes [`egui::Sense::FOCUSABLE`]) and dispatches [`Self::on_keyboard`] when
-    /// `response.has_focus()` is true. When overriding `show_inside` directly:
-    ///
-    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`] (or
-    ///   [`egui::Sense::click`] / [`egui::Sense::click_and_drag`] for interactive canvases) instead
-    ///   of `Sense::hover()` so `Tab` traversal reaches the visualization.
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))`
-    ///   instead of raw `ui.image(texture)` calls so `AccessKit` exposes `Role::Image` and non-empty
-    ///   alternative text.
-    /// - Populate `AccessKit` metadata (`Role`, non-empty `label`, and dynamic `value` summary) via
-    ///   `ctx.accesskit_node_builder(response.id, ...)` (or
-    ///   `crate::accessibility::register_canvas_accessibility`) and draw a high-contrast focus ring
-    ///   when `response.has_focus()`.
-    /// - If the canvas consumes arrow keys, call `Memory::set_focus_lock_filter` with
-    ///   `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
+    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`],
+    ///   or [`egui::Sense::click_and_drag`] instead of `Sense::hover()` so `Tab` traversal reaches the visualization.
+    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` so `AccessKit`
+    ///   exposes `Role::Image` and non-empty alternative text.
+    /// - Populate `AccessKit` metadata via `crate::accessibility::register_canvas_accessibility` and draw a
+    ///   high-contrast focus ring when `response.has_focus()`.
+    /// - When consuming arrow keys, set `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
     ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
@@ -193,6 +188,11 @@ pub trait InteractiveTool {
     /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
     fn url_state_revision(&self) -> u64 {
         self.state_revision()
+    }
+
+    /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        None
     }
 
     /// Direct numeric parameter finiteness hook without JSON serialization.
@@ -421,14 +421,12 @@ pub trait InteractiveTool {
         frames
     }
 
-    /// Returns a type-erased reference for test inspection of concrete tool state.
-    #[cfg(test)]
+    /// Returns a type-erased reference for concrete tool state inspection.
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         None
     }
 
-    /// Returns a mutable type-erased reference for test manipulation of concrete tool state.
-    #[cfg(test)]
+    /// Returns a mutable type-erased reference for concrete tool state updates (e.g. cross-tab handoffs).
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
     }
