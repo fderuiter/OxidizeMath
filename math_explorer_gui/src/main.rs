@@ -29,6 +29,8 @@ mod main_wasm_tests;
 mod markup_tests;
 #[cfg(test)]
 mod modal_accessibility_tests;
+#[cfg(all(test, feature = "pure_math", feature = "applied"))]
+mod paradox_atlas_and_challenge_tests;
 pub mod plot3d_viewport;
 #[cfg(test)]
 mod plot_chrome_tests;

@@ -22,6 +22,7 @@ impl BraessNetworkParadoxTool {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.render_metrics_banner(ui);
             ui.add_space(4.0);
+            self.render_braess_atlas_panel(ui);
             self.render_wheatstone_diagram(ui);
             ui.add_space(4.0);
             self.render_active_plot(ui);
@@ -29,16 +30,18 @@ impl BraessNetworkParadoxTool {
     }
 
     fn render_controls(&mut self, ui: &mut egui::Ui) {
+        let _ = self.atlas.show_toggle_button(ui);
         let mut changed = self.render_toggle_and_network_sliders(ui);
-        if ui
-            .button(format!(
-                "Apply Optimal Pigou Toll (τ* = {:.2})",
-                self.metrics.optimal_toll
-            ))
-            .accessible_hover_text(
-                "Set shortcut toll to marginal externality restoring Pigou social optimum",
-            )
-            .clicked()
+        if !crate::framework::is_challenge_mode_active(ui)
+            && ui
+                .button(format!(
+                    "Compare Pigou Toll Preset (τ* = {:.2})",
+                    self.metrics.optimal_toll
+                ))
+                .accessible_hover_text(
+                    "Compare selfish equilibrium against marginal-externality Pigou toll preset",
+                )
+                .clicked()
         {
             self.state.shortcut_toll = self.metrics.optimal_toll;
             changed = true;
@@ -254,7 +257,7 @@ impl BraessNetworkParadoxTool {
         );
     }
 
-    fn render_active_plot(&self, ui: &mut egui::Ui) {
+    fn render_active_plot(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         if self.state.continuum_mfg_mode {
             self.render_mfg_plot(ui, &palette);
@@ -263,14 +266,22 @@ impl BraessNetworkParadoxTool {
         }
     }
 
-    fn render_mfg_plot(&self, ui: &mut egui::Ui, palette: &SemanticPalette) {
+    fn render_mfg_plot(&mut self, ui: &mut egui::Ui, palette: &SemanticPalette) {
+        let Self {
+            mfg_u0,
+            mfg_m0,
+            mfg_m_mid,
+            mfg_m_final,
+            callouts,
+            ..
+        } = self;
         Plot::new(ui.id().with("braess_mfg_plot"))
             .legend(Legend::default())
             .x_axis_label("Corridor Position x")
             .y_axis_label("HJB Value u(x,t) / Fokker-Planck Crowd Density m(x,t)")
             .show(ui, |plot_ui| {
                 plot_ui.line(
-                    Line::new("HJB Value u(x, 0)", PlotPoints::from(self.mfg_u0.clone()))
+                    Line::new("HJB Value u(x, 0)", PlotPoints::from(mfg_u0.clone()))
                         .color(palette.accent)
                         .style(LineStyle::Dashed { length: 7.0_f32 })
                         .width(2.0_f32),
@@ -278,19 +289,19 @@ impl BraessNetworkParadoxTool {
                 for (name, pts, color, w) in [
                     (
                         "Initial Density m(x, 0)",
-                        &self.mfg_m0,
+                        mfg_m0,
                         palette.series[0],
                         1.8_f32,
                     ),
                     (
                         "Midpoint Density m(x, T/2)",
-                        &self.mfg_m_mid,
+                        mfg_m_mid,
                         palette.series[1],
                         2.2_f32,
                     ),
                     (
                         "Terminal Density m(x, T)",
-                        &self.mfg_m_final,
+                        mfg_m_final,
                         palette.success,
                         2.4_f32,
                     ),
@@ -301,24 +312,33 @@ impl BraessNetworkParadoxTool {
                             .width(w),
                     );
                 }
+                callouts.render_on_plot(plot_ui);
             });
     }
 
-    fn render_latency_plot(&self, ui: &mut egui::Ui, palette: &SemanticPalette) {
+    fn render_latency_plot(&mut self, ui: &mut egui::Ui, palette: &SemanticPalette) {
+        let demand = self.state.demand;
+        let Self {
+            curve_wardrop,
+            curve_closed,
+            curve_pigou,
+            callouts,
+            ..
+        } = self;
         Plot::new(ui.id().with("braess_latency_plot"))
             .legend(Legend::default())
             .x_axis_label("Commuter Demand D")
             .y_axis_label("Average Commuter Travel Time L(D)")
             .show(ui, |plot_ui| {
                 plot_ui.vline(
-                    VLine::new("Active Demand D", self.state.demand)
+                    VLine::new("Active Demand D", demand)
                         .color(palette.accent)
                         .style(LineStyle::Dashed { length: 6.0_f32 }),
                 );
                 plot_ui.line(
                     Line::new(
                         "Wardrop Selfish Latency",
-                        PlotPoints::from(self.curve_wardrop.clone()),
+                        PlotPoints::from(curve_wardrop.clone()),
                     )
                     .color(palette.error)
                     .width(2.5_f32),
@@ -326,7 +346,7 @@ impl BraessNetworkParadoxTool {
                 plot_ui.line(
                     Line::new(
                         "Closed-Shortcut Latency",
-                        PlotPoints::from(self.curve_closed.clone()),
+                        PlotPoints::from(curve_closed.clone()),
                     )
                     .color(palette.series[0])
                     .style(LineStyle::Dashed { length: 8.0_f32 })
@@ -335,11 +355,12 @@ impl BraessNetworkParadoxTool {
                 plot_ui.line(
                     Line::new(
                         "Pigou Social Optimum",
-                        PlotPoints::from(self.curve_pigou.clone()),
+                        PlotPoints::from(curve_pigou.clone()),
                     )
                     .color(palette.success)
                     .width(2.2_f32),
                 );
+                callouts.render_on_plot(plot_ui);
             });
     }
 }
@@ -356,6 +377,37 @@ impl scientific_metadata::theory::TheoryDescribable for BraessNetworkParadoxTool
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
+    }
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use scientific_metadata::theory::ParameterConstraint;
+        std::collections::HashMap::from([
+            (
+                "demand".to_string(),
+                ParameterConstraint {
+                    min: 0.2,
+                    max: 2.0,
+                    step: 0.02,
+                },
+            ),
+            (
+                "shortcut_cost".to_string(),
+                ParameterConstraint {
+                    min: 0.0,
+                    max: 1.5,
+                    step: 0.02,
+                },
+            ),
+            (
+                "shortcut_toll".to_string(),
+                ParameterConstraint {
+                    min: 0.0,
+                    max: 1.5,
+                    step: 0.02,
+                },
+            ),
+        ])
     }
 }
 

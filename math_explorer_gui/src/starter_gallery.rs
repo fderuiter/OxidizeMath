@@ -445,6 +445,8 @@ pub fn get_starter_cards_for_domain(
 
 #[path = "starter_gallery/challenges.rs"]
 pub mod challenges;
+#[path = "starter_gallery/paradox_packs.rs"]
+mod paradox_packs;
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
 #[path = "starter_gallery/stories.rs"]

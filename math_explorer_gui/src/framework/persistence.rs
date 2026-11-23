@@ -341,8 +341,7 @@ impl SimulationFramework {
             .and_then(|name| {
                 let trimmed = name.trim();
                 self.available_tools.iter().position(|m| {
-                    m.id.eq_ignore_ascii_case(trimmed)
-                        || m.display_name.eq_ignore_ascii_case(trimmed)
+                    super::url_share::tool_matches_domain_query(&self.domain, m, trimmed, false)
                 })
             })
             .or(state.selected_tool_index);
@@ -367,11 +366,12 @@ impl SimulationFramework {
         self.is_diverged = false;
         self.diagnostic_report = None;
         if let Some(tool) = &mut self.active_tool {
-            if let Some(saved) = self
-                .saved_tool_states
-                .get(tool.name())
-                .or_else(|| self.saved_tool_states.get(meta.id))
-            {
+            if let Some(saved) = super::url_share::lookup_saved_tool_state(
+                &self.saved_tool_states,
+                &self.domain,
+                meta,
+                tool.name(),
+            ) {
                 tool.load_state(saved);
             }
             if !tool.has_finite_parameters() {
@@ -424,11 +424,12 @@ impl SimulationFramework {
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();
         let factory_baseline_state = new_tool.save_state();
-        if let Some(state) = self
-            .saved_tool_states
-            .get(new_tool.name())
-            .or_else(|| self.saved_tool_states.get(meta.id))
-        {
+        if let Some(state) = super::url_share::lookup_saved_tool_state(
+            &self.saved_tool_states,
+            &self.domain,
+            meta,
+            new_tool.name(),
+        ) {
             new_tool.load_state(state);
         }
         self.is_diverged = false;
@@ -466,11 +467,7 @@ impl SimulationFramework {
     pub fn select_tool_by_name(&mut self, name: &str) -> bool {
         let name_trimmed = name.trim();
         if let Some(index) = self.available_tools.iter().position(|t| {
-            t.id.eq_ignore_ascii_case(name_trimmed)
-                || t.display_name.eq_ignore_ascii_case(name_trimmed)
-                || t.tags
-                    .iter()
-                    .any(|tag| tag.eq_ignore_ascii_case(name_trimmed))
+            super::url_share::tool_matches_domain_query(&self.domain, t, name_trimmed, true)
         }) {
             self.select_tool(index);
             true

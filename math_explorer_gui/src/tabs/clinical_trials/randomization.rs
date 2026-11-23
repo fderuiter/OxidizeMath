@@ -247,6 +247,14 @@ impl InteractiveTool for RandomizationTool {
             });
         });
     }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.simpson_lab.observables()
+    }
+
+    fn sync_callouts(&mut self, specs: &[crate::framework::CalloutSpec]) {
+        self.simpson_lab.set_hud_callouts(specs);
+    }
 }
 
 // [cite:clinical_trials_statistics]
@@ -294,6 +302,12 @@ impl scientific_metadata::theory::TheoryDescribable for RandomizationTool {
             "Within-stratum block randomization preventing Simpson's paradox reversals".into(),
         );
         map
+    }
+
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        super::simpson_atlas::simpson_theory_parameters()
     }
 }
 

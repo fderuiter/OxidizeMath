@@ -1,15 +1,17 @@
 //! Parrondo's Paradox interactive Markov ratchet laboratory for `FinancialMathTab`.
 
+pub mod atlas;
 mod plots;
 mod state;
 #[cfg(test)]
 mod tests;
 mod ui;
 
+use crate::async_sim::atlas::ParameterAtlasController;
 use state::ParrondoToolState;
 pub use state::{KellyEdgeBadge, ParrondoViewMode};
 
-use crate::framework::{ExportCapabilities, InteractiveTool};
+use crate::framework::{CalloutManager, CalloutSpec, ExportCapabilities, InteractiveTool};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use egui_plot::PlotPoint;
@@ -76,11 +78,20 @@ pub struct ParrondoParadoxTool {
     pub(super) schedule_error: Option<String>,
     pub(super) error_msg: Option<String>,
     pub(super) last_compute_ms: f64,
+    /// Progressive 2D parameter regime atlas controller.
+    pub atlas: ParameterAtlasController,
+    /// Plot callout overlay manager synchronized with stories, challenges, and atlas teleports.
+    pub callouts: CalloutManager,
 }
 
 impl Default for ParrondoParadoxTool {
     fn default() -> Self {
         let canonical = ParrondoParams::canonical();
+        let mut atlas = ParameterAtlasController::new(vec![
+            ("p_a_base", "epsilon"),
+            ("p_b0_base", "p_b1_base"),
+        ]);
+        atlas.set_visible(true);
         let mut tool = Self {
             p_a_base: canonical.p_a_base(),
             p_b0_base: canonical.p_b0_base(),
@@ -126,6 +137,8 @@ impl Default for ParrondoParadoxTool {
             schedule_error: None,
             error_msg: None,
             last_compute_ms: 0.0,
+            atlas,
+            callouts: CalloutManager::new(),
         };
         tool.recompute_all();
         tool
@@ -334,7 +347,7 @@ fn fill_plot_points(dst: &mut Vec<PlotPoint>, values: &[f64]) {
 
 impl InteractiveTool for ParrondoParadoxTool {
     fn name(&self) -> &'static str {
-        "Parrondo's Paradox"
+        "Parrondo's Kelly Ratchet"
     }
 
     fn domain(&self) -> &'static str {
@@ -447,6 +460,22 @@ impl InteractiveTool for ParrondoParadoxTool {
     fn step_simulation(&mut self) {
         self.seed = self.seed.wrapping_add(1);
         self.recompute_ensembles_only();
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        let Some(ref r) = self.report else {
+            return Vec::new();
+        };
+        vec![
+            ("gain_a", r.gain_a),
+            ("gain_b", r.gain_b),
+            ("gain_mix", r.gain_mix),
+            ("gain_schedule", r.gain_schedule),
+        ]
+    }
+
+    fn sync_callouts(&mut self, specs: &[CalloutSpec]) {
+        self.callouts.sync_specs(specs);
     }
 
     #[cfg(test)]
