@@ -71,12 +71,9 @@ impl RiemannIntegrationTool {
         if self.quadrature_method == QuadratureMethod::ClenshawCurtis
             && ui
                 .add(
-                    egui::Slider::new(
-                        &mut self.cc_tolerance,
-                        MIN_CC_TOLERANCE..=MAX_CC_TOLERANCE,
-                    )
-                    .logarithmic(true)
-                    .text("Target Tolerance (eps)"),
+                    egui::Slider::new(&mut self.cc_tolerance, MIN_CC_TOLERANCE..=MAX_CC_TOLERANCE)
+                        .logarithmic(true)
+                        .text("Target Tolerance (eps)"),
                 )
                 .changed()
         {

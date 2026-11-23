@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test lorahub.
 use domain_applied::applied::lorahub::{LoraEnsemble, LoraStateDict};
 use nalgebra::DMatrix;
 
