@@ -6,7 +6,10 @@ use eframe::egui;
 use math_explorer::pure_math::analysis::pde::wave_2d::SpectralMode2D;
 
 use super::{ChladniWaveTankTool, GRID_SIZE};
-use crate::audio::mappings::wave_plate::{chladni_wave_tank_frame, MAX_CHLADNI_MODES};
+use crate::audio::mappings::{
+    chladni_plate_frame,
+    wave_plate::{chladni_wave_tank_frame, MAX_CHLADNI_MODES},
+};
 use crate::audio::{render_sonification_panel, SonificationFrame};
 
 pub(crate) const SONIFICATION_TOOL_ID: &str = "chladni_wave_tank";
@@ -96,15 +99,37 @@ impl ChladniWaveTankTool {
             super::ClampLayout::QuadSymmetry | super::ClampLayout::EdgeMidpoints => 4,
         };
         let total_pins = preset_pins + self.state.custom_clamps.len();
-        let domain_len = base_len / (1.0 + 0.035 * (total_pins as f64)).sqrt();
-        let params = self.pde_params();
-        self.audio.latest_frame = chladni_wave_tank_frame(
-            &self.audio.top_modes[..self.audio.mode_count],
-            &params,
-            domain_len,
-            &self.detector_buf,
-            self.audio.pending_impulse,
+        let pin_scale = 1.0 + 0.035 * (total_pins as f64);
+        let domain_len = base_len / pin_scale.sqrt();
+        let mut frame = chladni_plate_frame(
+            &self.modal_peaks[..self.active_peak_count],
+            self.latest_probe,
+            self.state.medium,
+            self.state.driver_frequency,
+            self.state.wave_speed,
+            self.state.plate_stiffness * pin_scale * pin_scale,
+            self.state.pickup_x,
         );
+        let impulse = self.audio.pending_impulse.clamp(0.0, 1.0);
+        if frame.is_audible() {
+            if impulse > 0.0 {
+                let n = usize::from(frame.active_voices).max(1);
+                for (slot, voice) in frame.voices.iter_mut().take(n).enumerate() {
+                    let strike = (impulse * (1.0 - 0.14 * (slot as f32))).clamp(0.0, 1.0);
+                    voice.transient_impulse = voice.transient_impulse.max(strike);
+                }
+            }
+            self.audio.latest_frame = frame;
+        } else {
+            let params = self.pde_params();
+            self.audio.latest_frame = chladni_wave_tank_frame(
+                &self.audio.top_modes[..self.audio.mode_count],
+                &params,
+                domain_len,
+                &self.detector_buf,
+                impulse,
+            );
+        }
     }
 
     pub(super) fn draw_sonification_section(&mut self, ui: &mut egui::Ui) {

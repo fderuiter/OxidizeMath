@@ -23,8 +23,8 @@ pub fn academic_domain_for_slug(domain_slug: &str) -> AcademicDomain {
         | "geometry_topology"
         | "graph_theory"
         | "number_theory" => AcademicDomain::PureMath,
-        "astrophysics" | "chaos" | "fluid_dynamics" | "medical" | "mri" | "quantum"
-        | "relativity" | "solid_state" => AcademicDomain::Physics,
+        "astrophysics" | "chaos" | "fluid_dynamics" | "medical" | "mri" | "optics_waves"
+        | "quantum" | "relativity" | "solid_state" => AcademicDomain::Physics,
         "battery_degradation"
         | "cannibalism"
         | "clinical_trials"
@@ -65,6 +65,7 @@ pub fn module_title_for_slug(domain_slug: &str) -> &'static str {
         "mri" => "MRI Physics",
         "neuroscience" => "Neuroscience",
         "number_theory" => "Number Theory",
+        "optics_waves" => "Optics & Waves",
         "paradox_lab" => "Paradox Lab",
         "quantum" => "Quantum Mechanics",
         "relativity" => "General Relativity",

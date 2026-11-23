@@ -7,6 +7,8 @@ mod cards;
 mod challenge_ui;
 #[path = "starter_gallery/challenges.rs"]
 pub mod challenges;
+#[path = "starter_gallery/counterfactual_presets.rs"]
+mod counterfactual_presets;
 #[path = "starter_gallery/filter.rs"]
 mod filter;
 #[path = "starter_gallery/filter_ui.rs"]
@@ -27,6 +29,7 @@ pub use challenges::{
     get_challenge_cards_for_domain, ChallengeCard, ChallengeMetadata, GallerySelection,
     StarterGalleryTab,
 };
+pub use counterfactual_presets::*;
 pub use filter::{
     academic_domain_for_slug, module_title_for_slug, score_challenge_card, score_starter_card,
     tool_tags_for_card, StarterGalleryFilterState,

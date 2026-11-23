@@ -64,8 +64,48 @@ fn test_stl_binary_size_and_ascii_round_trip() {
     let stl_bin = export_mesh_to_stl_binary(&sphere).expect("binary STL");
     assert_eq!(stl_bin.len(), 84 + 50 * face_count);
     assert!(!stl_bin[..5].eq_ignore_ascii_case(b"solid"));
+    assert!(
+        stl_bin[..80]
+            .windows(b"UNITS=mm".len())
+            .any(|w| w == b"UNITS=mm"),
+        "Binary STL 80-byte header must declare UNITS=mm"
+    );
     let stored_faces = u32::from_le_bytes(stl_bin[80..84].try_into().unwrap()) as usize;
     assert_eq!(stored_faces, face_count);
+
+    for target_mm in [5.0_f32, 42.5_f32, 250.0_f32] {
+        let scaled_bin =
+            export_mesh_to_stl_binary_scaled(&sphere, target_mm).expect("scaled binary STL");
+        assert_eq!(scaled_bin.len(), 84 + 50 * face_count);
+        let mut min_x = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        let mut min_z = f32::INFINITY;
+        let mut max_z = f32::NEG_INFINITY;
+        for f in 0..face_count {
+            let base = 84 + f * 50;
+            for v_idx in 0..3 {
+                let off = base + 12 + v_idx * 12;
+                let vx = f32::from_le_bytes(scaled_bin[off..off + 4].try_into().unwrap());
+                let vy = f32::from_le_bytes(scaled_bin[off + 4..off + 8].try_into().unwrap());
+                let vz = f32::from_le_bytes(scaled_bin[off + 8..off + 12].try_into().unwrap());
+                min_x = min_x.min(vx);
+                max_x = max_x.max(vx);
+                min_y = min_y.min(vy);
+                max_y = max_y.max(vy);
+                min_z = min_z.min(vz);
+                max_z = max_z.max(vz);
+            }
+        }
+        let span = (max_x - min_x).max(max_y - min_y).max(max_z - min_z);
+        assert!(
+            (span - target_mm).abs() <= 0.01,
+            "Expected STL span {target_mm} mm within 0.01 mm, got {span}"
+        );
+    }
+    assert!(export_mesh_to_stl_binary_scaled(&sphere, 2.0).is_err());
+    assert!(export_mesh_to_stl_binary_scaled(&sphere, 300.0).is_err());
 
     for f in 0..face_count {
         let base = 84 + f * 50;
