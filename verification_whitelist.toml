@@ -107,7 +107,13 @@ allowlist = [
     "docs/adr/0034-curate-math-explorer-facade-exports-and-doctests.md",
     "docs/adr/0034-harden-verification-macros-and-facade-reexports.md",
     "docs/adr/0034-scoped-pre-commit-and-single-parse-ast-verification.md",
+    "docs/adr/0036-coupled-formula-banks-and-custom-regression-callbacks.md",
+    "docs/adr/0036-delete-dead-theory-accessors-and-description-macro.md",
+    "docs/adr/0036-delete-simulation-model-traits-and-physics-adapters.md",
+    "docs/adr/0036-harden-ast-and-doctest-policy-audits.md",
 ]
 
-
-
+[[unused_dependencies]]
+crate = "crates/oxidize_core"
+dependency = "getrandom"
+reason = "Activates the getrandom js backend feature on wasm32-unknown-unknown for rand without direct Rust imports"

@@ -1,5 +1,6 @@
 //! Curve fitting and nonlinear regression analysis for discrete 2D plot datasets.
 
+mod custom;
 mod lm;
 mod nonlinear;
 mod poly;
@@ -7,7 +8,9 @@ mod seeds;
 #[cfg(test)]
 mod tests;
 
-use std::fmt;
+pub use custom::{
+    CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, fit_custom_evaluator,
+};
 
 thread_local! {
     static FIT_MODEL_WITH_AXES_CALL_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -29,7 +32,10 @@ pub fn reset_fit_model_with_axes_call_count() {
 /// Maximum Levenberg-Marquardt iterations per nonlinear fit.
 pub const MAX_LM_ITERATIONS: usize = 50;
 
-/// Supported preset curve fitting models.
+/// Maximum number of free parameters supported by Levenberg-Marquardt nonlinear regression.
+pub const MAX_FIT_PARAMS: usize = 6;
+
+/// Supported curve fitting models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FitType {
     /// Linear regression ($y = a x + b$)
@@ -46,6 +52,8 @@ pub enum FitType {
     Logistic,
     /// Four-parameter sinusoidal model ($y = a \sin(b x + c) + d$)
     Sinusoidal,
+    /// Callback-compiled custom formula ($1 \le k \le 6$ parameters)
+    Custom,
 }
 
 impl FitType {
@@ -62,28 +70,6 @@ impl FitType {
         Self::Sinusoidal,
     ];
 
-    /// Returns the polynomial degree when applicable (`0` for non-polynomial models).
-    #[must_use]
-    pub const fn degree(self) -> usize {
-        match self {
-            Self::Linear => 1,
-            Self::Polynomial(deg) => {
-                if deg < 1 {
-                    1
-                } else if deg > 4 {
-                    4
-                } else {
-                    deg
-                }
-            }
-            Self::Exponential
-            | Self::PowerLaw
-            | Self::Logarithmic
-            | Self::Logistic
-            | Self::Sinusoidal => 0,
-        }
-    }
-
     /// User-friendly menu label for the fit type.
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -99,6 +85,7 @@ impl FitType {
             Self::Logarithmic => "Logarithmic (a·ln(x)+b)",
             Self::Logistic => "Logistic (L/(1+a·exp(-kx)))",
             Self::Sinusoidal => "Sinusoidal (a·sin(bx+c)+d)",
+            Self::Custom => "Custom Formula f(x)",
         }
     }
 
@@ -116,6 +103,7 @@ impl FitType {
             Self::Logarithmic => "Log",
             Self::Logistic => "Logistic",
             Self::Sinusoidal => "Sinusoidal",
+            Self::Custom => "Custom",
         }
     }
 
@@ -123,12 +111,6 @@ impl FitType {
     #[must_use]
     pub const fn supports_log_mode(self) -> bool {
         matches!(self, Self::Exponential | Self::PowerLaw)
-    }
-}
-
-impl fmt::Display for FitType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.label())
     }
 }
 
@@ -157,6 +139,8 @@ pub struct FitResult {
     pub log_y: bool,
     /// Whether transformed linearized fitting (Desmos Log Mode) was used.
     pub log_mode: bool,
+    /// Optional compiled callback evaluator when `fit_type == FitType::Custom`.
+    pub custom_evaluator: Option<CustomEvaluatorHandle>,
     pub(crate) poly_centered: Option<(f64, f64, Vec<f64>)>,
 }
 
@@ -184,54 +168,12 @@ impl FitResult {
             | FitType::Sinusoidal => {
                 nonlinear::eval_nonlinear_model(self.fit_type, &self.coefficients, x)
             }
+            FitType::Custom => self
+                .custom_evaluator
+                .as_ref()
+                .and_then(|h| h.0.eval(x, &self.coefficients))
+                .unwrap_or(f64::NAN),
         }
-    }
-}
-
-/// Computes least-squares linear or polynomial regression for a set of data points.
-#[must_use]
-pub fn fit_dataset(
-    points: &[[f64; 2]],
-    target_degree: usize,
-    dataset_name: &str,
-) -> Option<FitResult> {
-    fit_dataset_scaled(points, target_degree, dataset_name, false, false)
-}
-
-/// Computes least-squares polynomial regression in linear, semilog, or log-log coordinates.
-#[must_use]
-pub fn fit_dataset_scaled(
-    points: &[[f64; 2]],
-    target_degree: usize,
-    dataset_name: &str,
-    log_x: bool,
-    log_y: bool,
-) -> Option<FitResult> {
-    poly::fit_polynomial_scaled(points, target_degree, dataset_name, log_x, log_y)
-}
-
-/// Fits any preset [`FitType`] (linear, polynomial, or nonlinear) to `points`.
-///
-/// When `log_mode` is `true` on `Exponential` or `PowerLaw`, parameters are estimated via
-/// logarithmic linear least squares matching Desmos Log Mode; otherwise untransformed
-/// nonlinear least squares is solved via damped Levenberg-Marquardt.
-#[must_use]
-pub fn fit_model(
-    points: &[[f64; 2]],
-    fit_type: FitType,
-    dataset_name: &str,
-    log_mode: bool,
-) -> Option<FitResult> {
-    match fit_type {
-        FitType::Linear => poly::fit_polynomial_scaled(points, 1, dataset_name, false, false),
-        FitType::Polynomial(deg) => {
-            poly::fit_polynomial_scaled(points, deg.clamp(1, 4), dataset_name, false, false)
-        }
-        FitType::Exponential
-        | FitType::PowerLaw
-        | FitType::Logarithmic
-        | FitType::Logistic
-        | FitType::Sinusoidal => nonlinear::fit_nonlinear(points, fit_type, dataset_name, log_mode),
     }
 }
 
@@ -251,6 +193,7 @@ pub fn fit_model_with_axes(
         FitType::Polynomial(deg) => {
             poly::fit_polynomial_scaled(points, deg.clamp(1, 4), dataset_name, log_x, log_y)
         }
+        FitType::Custom => None,
         _ => nonlinear::fit_nonlinear(points, fit_type, dataset_name, log_mode),
     }
 }
