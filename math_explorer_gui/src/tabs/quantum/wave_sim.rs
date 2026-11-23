@@ -1,401 +1,344 @@
 // [cite:quantum_mechanics]
-use super::wave_sim_sculpt::{
-    build_base_potential, detect_barrier_split_index, draw_wave_brush_controls,
-    evaluate_formula_potential, record_wave_stroke_sparse, render_wave_central_panel,
-};
-use crate::async_sim::unified::{
-    CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool,
-};
-use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+#[path = "wave_sim/persistence.rs"]
+mod persistence;
+#[path = "wave_sim/presets.rs"]
+pub mod presets;
+#[path = "wave_sim/runner.rs"]
+pub mod runner;
+#[cfg(test)]
+#[path = "wave_sim/tests.rs"]
+mod tests;
+#[path = "wave_sim/ui.rs"]
+mod ui;
+
+#[cfg(test)]
+pub use presets::wave_parameter_label;
+pub use presets::{wave_parameter_constraints, WavePotentialPreset};
+pub use runner::{WaveData, WaveRunner, WaveSimConfig};
+
+use super::wave_sim_sculpt::default_wave_brush_kit;
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
+use crate::framework::recovery::RecoveryAction;
 use crate::framework::{
-    apply_sparse_potential, encode_sparse_potential, BrushMode, BrushStroke, SpatialBrushKit,
+    ExportCapabilities, InteractionContext, InteractiveTool, MathExpressionInputBar,
+    SpatialBrushKit,
 };
 use eframe::egui;
-use math_explorer::physics::quantum::{
-    construct_1d_hamiltonian, construct_1d_hamiltonian_into, evolve_state_in_place,
-    gaussian_wavepacket, state_norm_squared, time_evolution_operator, transmission_probability,
-    QuantumOperator, QuantumState,
+use math_commons::ast::Expr;
+use presets::{
+    build_wave_datasets, custom_formula_presets, default_compiled_expr, DEFAULT_CUSTOM_EXPR,
+    DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH,
+    DEFAULT_X0, DT_RECOVERY_MIN,
 };
-use nalgebra::{DMatrix, DVector};
-use num_complex::Complex;
-use scientific_metadata::theory::ParameterConstraint;
-use std::any::Any;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-pub(crate) const WAVE_N_POINTS: usize = 200;
-pub(crate) const WAVE_X_MIN: f64 = -5.0;
-pub(crate) const WAVE_X_MAX: f64 = 5.0;
-
-const DEFAULT_CUSTOM_POTENTIAL: &str = "a * exp(-x^2)";
-
-pub struct WaveData {
-    pub time: f64,
-    pub x_axis: Vec<f64>,
-    pub prob_density: Vec<f64>,
-    pub potential: Vec<f64>,
-    pub transmission_prob: f64,
-    pub norm_sq: f64,
-    pub barrier_split_x: f64,
+/// Dedicated 1D Schrödinger wavepacket tunneling sandbox backed by [`BackgroundWorker<WaveRunner>`].
+pub struct WaveSimulatorTool {
+    pub(crate) preset: WavePotentialPreset,
+    pub(crate) x0: f64,
+    pub(crate) k0: f64,
+    pub(crate) sigma: f64,
+    pub(crate) v0: f64,
+    pub(crate) width: f64,
+    pub(crate) dt: f64,
+    pub(crate) steps_per_frame: usize,
+    pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) last_valid_expr: Expr,
+    pub(crate) brush_kit: SpatialBrushKit,
+    pub(crate) sparse_potential: Vec<(u16, f64)>,
+    pub(crate) shared_config: Arc<RwLock<WaveSimConfig>>,
+    pub(crate) worker: BackgroundWorker<WaveRunner>,
+    pub(crate) export_runner: Option<WaveRunner>,
+    pub(crate) export_data: Option<WaveData>,
+    pub(crate) revision: u64,
 }
 
-pub struct WaveUnified {
-    pub(crate) psi: QuantumState,
-    pub(crate) hamiltonian: QuantumOperator,
-    pub(crate) propagator: QuantumOperator,
-    pub(crate) cached_dt: Option<f64>,
-    pub(crate) scratch: DVector<Complex<f64>>,
-    pub(crate) potential: DVector<f64>,
-    pub(crate) base_potential: Vec<f64>,
-    pub(crate) x_axis: Vec<f64>,
-    pub(crate) time: f64,
-    pub(crate) n_points: usize,
-    pub(crate) x_min: f64,
-    pub(crate) x_max: f64,
-    last_formula: Option<CompiledFormulaPayload>,
-    pub(crate) diverged: bool,
-    pub(crate) diagnostic_report: Option<DiagnosticReport>,
-    pub(crate) step_count: usize,
-}
-
-impl FiniteStateGuard for WaveUnified {
-    fn is_finite_state(&self) -> bool {
-        if self.diverged {
-            return false;
-        }
-        self.psi
-            .vector
-            .iter()
-            .all(|c| c.re.is_finite() && c.im.is_finite())
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.diagnostic_report.as_ref()
-    }
-
-    fn diverged(&self) -> bool {
-        self.diverged || !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn reset_parameters(&mut self) {
-        self.diverged = false;
-        self.diagnostic_report = None;
-        self.step_count = 0;
+impl Default for WaveSimulatorTool {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-impl UnifiedModel for WaveUnified {
-    fn domain() -> &'static str {
-        "quantum"
-    }
-
-    fn new(params: &HashMap<String, f64>) -> Self {
-        let potential_type = *params.get("potential_type").unwrap_or(&0.0);
-        let mut sim = Self {
-            psi: QuantumState::new(DVector::from_element(
-                WAVE_N_POINTS,
-                Complex::new(0.0, 0.0),
-            )),
-            hamiltonian: QuantumOperator::new(DMatrix::zeros(WAVE_N_POINTS, WAVE_N_POINTS)),
-            propagator: QuantumOperator::new(DMatrix::zeros(WAVE_N_POINTS, WAVE_N_POINTS)),
-            cached_dt: None,
-            scratch: DVector::from_element(WAVE_N_POINTS, Complex::new(0.0, 0.0)),
-            potential: DVector::zeros(WAVE_N_POINTS),
-            base_potential: vec![0.0; WAVE_N_POINTS],
-            x_axis: Vec::new(),
-            time: 0.0,
-            n_points: WAVE_N_POINTS,
-            x_min: WAVE_X_MIN,
-            x_max: WAVE_X_MAX,
-            last_formula: None,
-            diverged: false,
-            diagnostic_report: None,
-            step_count: 0,
+impl WaveSimulatorTool {
+    /// Creates a new `WaveSimulatorTool` initialized to the Infinite Potential Well baseline.
+    #[must_use]
+    pub fn new() -> Self {
+        let math_input =
+            MathExpressionInputBar::new("V(x)", DEFAULT_CUSTOM_EXPR, custom_formula_presets());
+        let last_valid_expr = math_input
+            .expr()
+            .cloned()
+            .unwrap_or_else(default_compiled_expr);
+        let initial_cfg = WaveSimConfig {
+            preset: WavePotentialPreset::InfiniteWell,
+            x0: DEFAULT_X0,
+            k0: DEFAULT_K0,
+            sigma: DEFAULT_SIGMA,
+            v0: DEFAULT_V0,
+            width: DEFAULT_WIDTH,
+            dt: DEFAULT_DT,
+            steps_per_frame: DEFAULT_STEPS_PER_FRAME,
+            custom_expr: last_valid_expr.clone(),
+            sparse_potential: Vec::new(),
         };
-        sim.init_system(potential_type);
-        sim
-    }
-
-    fn step(&mut self, params: &HashMap<String, f64>) {
-        if self.diverged {
-            return;
-        }
-        let dt = *params.get("dt").unwrap_or(&0.05);
-        if !dt.is_finite() || dt <= 0.0 {
-            self.diverged = true;
-            self.diagnostic_report = Some(DiagnosticReport::new(
-                self.time,
-                self.step_count,
-                "dt",
-                format!("Invalid non-finite time step dt: {dt}"),
-            ));
-            return;
-        }
-        self.refresh_propagator(dt);
-        self.step_count += 1;
-        evolve_state_in_place(&mut self.psi, &self.propagator, &mut self.scratch);
-        self.time += dt;
-
-        if !self
-            .psi
-            .vector
-            .iter()
-            .all(|c| c.re.is_finite() && c.im.is_finite())
-        {
-            self.diverged = true;
-            self.diagnostic_report = Some(DiagnosticReport::new(
-                self.time,
-                self.step_count,
-                "psi",
-                "Non-finite wave packet amplitude detected during time evolution.",
-            ));
-            return;
-        }
-
-        self.psi.normalize_in_place();
-
-        if !self
-            .psi
-            .vector
-            .iter()
-            .all(|c| c.re.is_finite() && c.im.is_finite())
-        {
-            self.diverged = true;
-            self.diagnostic_report = Some(DiagnosticReport::new(
-                self.time,
-                self.step_count,
-                "psi_norm",
-                "Wave function normalization diverged: non-finite norm encountered.",
-            ));
+        let shared_config = Arc::new(RwLock::new(initial_cfg));
+        let worker = BackgroundWorker::new(WaveRunner::new(Arc::clone(&shared_config)));
+        Self {
+            preset: WavePotentialPreset::InfiniteWell,
+            x0: DEFAULT_X0,
+            k0: DEFAULT_K0,
+            sigma: DEFAULT_SIGMA,
+            v0: DEFAULT_V0,
+            width: DEFAULT_WIDTH,
+            dt: DEFAULT_DT,
+            steps_per_frame: DEFAULT_STEPS_PER_FRAME,
+            math_input,
+            last_valid_expr,
+            brush_kit: default_wave_brush_kit(),
+            sparse_potential: Vec::new(),
+            shared_config,
+            worker,
+            export_runner: None,
+            export_data: None,
+            revision: 1,
         }
     }
 
-    fn get_snapshot(&self) -> StateSnapshot {
-        let prob_density = self.psi.probability_density();
-        let safe_prob: Vec<f64> = prob_density
-            .iter()
-            .map(|&p| if p.is_finite() { p } else { 0.0 })
-            .collect();
-        let safe_potential: Vec<f64> = self
-            .potential
-            .iter()
-            .map(|&v| if v.is_finite() { v } else { 0.0 })
-            .collect();
-        let split_idx = detect_barrier_split_index(&safe_potential, &self.base_potential);
-        let split_x = self.x_axis.get(split_idx).copied().unwrap_or(0.0);
-        let trans = transmission_probability(&self.psi, split_idx);
-        let norm_sq = state_norm_squared(&self.psi);
+    /// Current worker lifecycle state.
+    #[cfg(test)]
+    #[must_use]
+    pub fn state(&self) -> SimWorkerState {
+        self.worker.state()
+    }
 
-        let structured_data = Box::new(WaveData {
-            time: self.time,
-            x_axis: self.x_axis.clone(),
-            prob_density: safe_prob,
-            potential: safe_potential,
-            transmission_prob: trans,
-            norm_sq,
-            barrier_split_x: split_x,
-        }) as Box<dyn Any + Send>;
+    pub(crate) fn bump_revision(&mut self) {
+        self.revision = self.revision.wrapping_add(1).max(1);
+    }
 
-        StateSnapshot {
-            width: 0,
-            height: 0,
-            pixels: Arc::new(RwLock::new(Vec::new())),
-            custom_data: Vec::new(),
-            structured_data: Some(structured_data),
+    /// Configures the playable 50% sub-barrier tunneling split challenge (`E0 = 12.5`, `V0 = 11.35`, `w = 0.5`).
+    pub fn apply_tunneling_split_challenge(&mut self, ctx: Option<&egui::Context>) {
+        self.preset = WavePotentialPreset::RectangularBarrier;
+        self.x0 = DEFAULT_X0;
+        self.k0 = DEFAULT_K0;
+        self.sigma = DEFAULT_SIGMA;
+        self.v0 = DEFAULT_V0;
+        self.width = DEFAULT_WIDTH;
+        self.dt = DEFAULT_DT;
+        self.sparse_potential.clear();
+        self.sync_config_and_reset(ctx);
+    }
+
+    /// Synchronizes shared worker config, clears stateful export caches, and resets or respawns `WaveRunner`.
+    pub fn sync_config_and_reset(&mut self, ctx: Option<&egui::Context>) {
+        self.bump_revision();
+        self.export_runner = None;
+        self.export_data = None;
+        let next_cfg = WaveSimConfig {
+            preset: self.preset,
+            x0: self.x0,
+            k0: self.k0,
+            sigma: self.sigma,
+            v0: self.v0,
+            width: self.width,
+            dt: self.dt,
+            steps_per_frame: self.steps_per_frame,
+            custom_expr: self.last_valid_expr.clone(),
+            sparse_potential: self.sparse_potential.clone(),
+        };
+        if let Ok(mut guard) = self.shared_config.write() {
+            *guard = next_cfg;
+        }
+        let shared = Arc::clone(&self.shared_config);
+        self.worker.reset_or_respawn(|| WaveRunner::new(shared));
+        let _ = self
+            .worker
+            .send_command(SimCommand::SetSpeed(self.steps_per_frame));
+        if let Some(c) = ctx {
+            c.request_repaint();
         }
     }
 
-    fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
-        self.handle_wave_command(cmd, params);
+    pub(crate) fn reset_to_defaults(&mut self, ctx: Option<&egui::Context>) {
+        self.preset = WavePotentialPreset::InfiniteWell;
+        self.x0 = DEFAULT_X0;
+        self.k0 = DEFAULT_K0;
+        self.sigma = DEFAULT_SIGMA;
+        self.v0 = DEFAULT_V0;
+        self.width = DEFAULT_WIDTH;
+        self.dt = DEFAULT_DT;
+        self.steps_per_frame = DEFAULT_STEPS_PER_FRAME;
+        self.sparse_potential.clear();
+        self.math_input.set_expression(DEFAULT_CUSTOM_EXPR);
+        if let Some(expr) = self.math_input.expr() {
+            self.last_valid_expr = expr.clone();
+        }
+        self.sync_config_and_reset(ctx);
     }
 
-    fn custom_actions() -> Vec<&'static str> {
-        vec!["Clear Potential Edits"]
-    }
-
-    fn supports_spatial_brush() -> bool {
-        true
-    }
-
-    fn default_brush_kit() -> SpatialBrushKit {
-        SpatialBrushKit::new(BrushMode::PotentialBarrier, 0.25)
-            .with_radius_bounds(0.10, 1.20, 0.05)
-            .with_cursor_step(0.20, 0.30)
-    }
-
-    fn draw_brush_controls(
-        ui: &mut egui::Ui,
-        brush_kit: &mut SpatialBrushKit,
-        params: &Arc<RwLock<HashMap<String, f64>>>,
-        sculpt_state: &Arc<RwLock<SculptStatePayload>>,
-        snapshot: Option<&StateSnapshot>,
-    ) -> Vec<SimCommand> {
-        draw_wave_brush_controls(ui, brush_kit, params, sculpt_state, snapshot)
-    }
-
-    fn record_ui_brush_stroke(
-        stroke: &BrushStroke,
-        params: &HashMap<String, f64>,
-        formula: Option<&CompiledFormulaPayload>,
-        sculpt_state: &mut SculptStatePayload,
-    ) {
-        record_wave_stroke_sparse(stroke, params, formula, sculpt_state);
-    }
-
-    fn apply_sculpt_payload(&mut self, payload: &SculptStatePayload, params: &HashMap<String, f64>) {
-        self.potential.as_mut_slice().copy_from_slice(&self.base_potential);
-        if !payload.sparse_potential.is_empty()
-            && apply_sparse_potential(self.potential.as_mut_slice(), &payload.sparse_potential)
-                .is_ok()
-        {
-            let dt = *params.get("dt").unwrap_or(&0.05);
-            self.rebuild_operators(dt);
+    pub(crate) fn handle_recovery_action(&mut self, action: RecoveryAction, ctx: &egui::Context) {
+        match action {
+            RecoveryAction::AutoScaleStepSize => {
+                self.dt = if self.dt.is_finite() && self.dt > 0.0 {
+                    (self.dt * 0.5).max(DT_RECOVERY_MIN)
+                } else {
+                    DEFAULT_DT
+                };
+                self.sync_config_and_reset(Some(ctx));
+            }
+            RecoveryAction::ClampParameters => {
+                self.clamp_wave_parameters();
+                ctx.request_repaint();
+            }
+            RecoveryAction::ResetParameters => {
+                self.reset_to_defaults(Some(ctx));
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
         }
     }
+}
 
-    fn export_sculpt_payload(&self, _params: &HashMap<String, f64>) -> SculptStatePayload {
-        SculptStatePayload {
-            rle_mask: Vec::new(),
-            sparse_potential: encode_sparse_potential(
-                &self.base_potential,
-                self.potential.as_slice(),
-                1e-6,
-            ),
-        }
-    }
-
-    fn parameters() -> HashMap<String, ParameterConstraint> {
-        let mut map = HashMap::new();
-        map.insert(
-            "potential_type".to_string(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 1.0,
-                step: 1.0,
-            },
-        );
-        map.insert(
-            "dt".to_string(),
-            ParameterConstraint {
-                min: 0.001,
-                max: 0.1,
-                step: 0.005,
-            },
-        );
-        map
-    }
-
-    fn parameter_label(name: &str) -> String {
-        match name {
-            "potential_type" => "Potential Profile".to_string(),
-            "dt" => "Time Step (Δt)".to_string(),
-            other => other.to_string(),
-        }
-    }
-
-    fn parameter_choices(name: &str) -> &'static [(&'static str, f64)] {
-        match name {
-            "potential_type" => &[
-                ("Infinite Potential Well", 0.0),
-                ("Harmonic Oscillator", 1.0),
-            ],
-            _ => &[],
-        }
-    }
-
-    fn formula_spec() -> Option<UnifiedFormulaSpec> {
-        Some(UnifiedFormulaSpec {
-            lhs_label: "V(x)",
-            default_expr: DEFAULT_CUSTOM_POTENTIAL,
-            axes: &["x"],
-            presets: &[
-                ("Gaussian Barrier", "a * exp(-x^2)"),
-                ("Double Well", "0.08 * x^4 - a * x^2 + 3.0"),
-                ("Periodic Lattice", "a * cos(2 * x)^2"),
-                ("Tilted Harmonic", "0.3 * x^2 + a * x"),
-            ],
-            param_range: -8.0..=12.0,
-            param_default: 4.0,
-        })
-    }
-
-    fn apply_compiled_formula(
-        &mut self,
-        formula: Option<&CompiledFormulaPayload>,
-        params: &HashMap<String, f64>,
-    ) {
-        self.last_formula = formula.cloned();
-        if self.x_axis.len() < 2 {
-            return;
-        }
-        let potential_type = *params.get("potential_type").unwrap_or(&0.0);
-        self.base_potential = self.compute_active_base_potential(potential_type);
-        self.potential
-            .as_mut_slice()
-            .copy_from_slice(&self.base_potential);
-        let dt = *params.get("dt").unwrap_or(&0.05);
-        self.rebuild_operators(dt);
-    }
-
-    fn name() -> &'static str {
+impl InteractiveTool for WaveSimulatorTool {
+    fn name(&self) -> &'static str {
         "Wave Simulator"
     }
 
-    fn custom_central_panel(ui: &mut egui::Ui, snapshot_opt: Option<&StateSnapshot>) -> bool {
-        let mut kit = Self::default_brush_kit();
-        render_wave_central_panel(ui, snapshot_opt, &mut kit).0
+    fn domain(&self) -> &'static str {
+        "quantum"
     }
 
-    fn custom_central_panel_with_brush(
-        ui: &mut egui::Ui,
-        snapshot: Option<&StateSnapshot>,
-        brush_kit: &mut SpatialBrushKit,
-    ) -> (bool, Vec<BrushStroke>) {
-        render_wave_central_panel(ui, snapshot, brush_kit)
+    fn theory(&self) -> &dyn TheoryDescribable {
+        self
+    }
+
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot()
+    }
+
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        self.apply_ui_brush_context(ctx);
+    }
+
+    fn step_simulation(&mut self) {
+        let shared = Arc::clone(&self.shared_config);
+        let runner = self
+            .export_runner
+            .get_or_insert_with(|| WaveRunner::new(shared));
+        for _ in 0..self.steps_per_frame.max(1) {
+            runner.step_with_dt(self.dt);
+        }
+        self.export_data = Some(runner.build_wave_data());
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        if let Some(ref stepped) = self.export_data {
+            return build_wave_datasets(stepped);
+        }
+        if let Some(wave_data) = self
+            .worker
+            .latest_snapshot()
+            .and_then(|s| s.structured_data.as_ref())
+            .and_then(|d| d.downcast_ref::<WaveData>())
+        {
+            return build_wave_datasets(wave_data);
+        }
+        egui_plot::get_last_plot_datasets()
+    }
+
+    fn state_revision(&self) -> u64 {
+        self.compute_state_revision()
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.parameters_are_valid()
+    }
+
+    fn save_state(&self) -> Option<String> {
+        self.serialize_state()
+    }
+
+    fn save_recovery_state(&self) -> Option<String> {
+        self.serialize_state()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.deserialize_state(state)
+    }
+
+    fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
+        self.deserialize_state(state)
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        self.clamp_wave_parameters();
+        true
+    }
+
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let has_update = self.worker.update().is_some();
+        if has_update {
+            self.export_runner = None;
+            self.export_data = None;
+        }
+        self.draw_left_panel(ui);
+        self.draw_central_panel(ui);
+        if has_update
+            || matches!(
+                self.worker.state(),
+                SimWorkerState::Running | SimWorkerState::Stepping
+            )
+        {
+            ui.ctx().request_repaint();
+        }
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
-impl WaveUnified {
-    pub(crate) fn dx(&self) -> f64 {
-        (self.x_max - self.x_min) / (self.n_points.max(2) as f64 - 1.0)
+impl TheoryDescribable for WaveSimulatorTool {
+    fn theory_description(&self) -> String {
+        "Time-dependent 1D Schrödinger wavepacket evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ with unitary propagation, custom AST barriers, live potential sculpting, and Born tunneling integrals.".to_string()
     }
 
-    pub(crate) fn refresh_propagator(&mut self, dt: f64) {
-        if self.cached_dt != Some(dt) {
-            self.propagator = time_evolution_operator(&self.hamiltonian, dt, 1.0);
-            self.cached_dt = Some(dt);
-        }
+    fn phonetic_description(&self) -> String {
+        "Time-dependent one-dimensional Schrodinger wavepacket tunneling simulation".to_string()
     }
 
-    fn compute_active_base_potential(&self, potential_type: f64) -> Vec<f64> {
-        if let Some(ref payload) = self.last_formula {
-            evaluate_formula_potential(payload, &self.x_axis)
-        } else {
-            build_base_potential(potential_type, &self.x_axis)
-        }
+    fn theory_citation(&self) -> String {
+        "Schrödinger, E. (1926). An Undulatory Theory of the Mechanics of Atoms and Molecules. Physical Review, 28(6), 1049-1070; Griffiths, D. J., & Schroeter, D. F. (2018). Introduction to Quantum Mechanics (3rd ed.). Cambridge University Press.".to_string()
     }
 
-    /// Rebuilds the 1D finite-difference Hamiltonian in place and invalidates the cached propagator $U(\Delta t)$.
-    pub(crate) fn rebuild_operators(&mut self, _dt: f64) {
-        construct_1d_hamiltonian_into(&self.potential, self.dx(), 1.0, 1.0, &mut self.hamiltonian);
-        self.cached_dt = None;
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        HashMap::from([
+            (
+                "Potential Profile".to_string(),
+                "Selects built-in confining wells, tunneling barriers, or a custom V(x) AST equation.".to_string(),
+            ),
+            (
+                "Barrier Height (V0)".to_string(),
+                "Sets the potential barrier height V0 relative to incident kinetic energy E0 = k0²/2.".to_string(),
+            ),
+            (
+                "Time Step (Δt)".to_string(),
+                "Integration time step Δt controlling unitary matrix-exponential wavepacket propagation.".to_string(),
+            ),
+        ])
     }
 
-    pub(crate) fn init_system(&mut self, potential_type: f64) {
-        let dx = self.dx();
-        self.x_axis = (0..self.n_points)
-            .map(|i| self.x_min + i as f64 * dx)
-            .collect();
-        self.base_potential = self.compute_active_base_potential(potential_type);
-        self.potential = DVector::from_vec(self.base_potential.clone());
-
-        self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
-        self.propagator = QuantumOperator::new(DMatrix::zeros(self.n_points, self.n_points));
-        self.cached_dt = None;
-        self.scratch = DVector::from_element(self.n_points, Complex::new(0.0, 0.0));
-        self.psi = gaussian_wavepacket(&self.x_axis, -2.0, 5.0, 0.5);
-        self.time = 0.0;
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        wave_parameter_constraints()
     }
 }
 
@@ -404,32 +347,8 @@ inventory::submit! {
         id: "WaveSimulator",
         display_name: "Wave Simulator",
         domain: "quantum",
-        tags: &[],
-        build: || Box::new(UnifiedSimTool::<WaveUnified>::new()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for WaveUnified {
-    fn theory_description(&self) -> String {
-        "Time-dependent 1D Schrödinger wave packet evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ for infinite well, harmonic oscillator, custom $V(x)$, and sculpted resonant-tunneling potentials.".to_string()
-    }
-    fn phonetic_description(&self) -> String {
-        "Time-dependent one-dimensional Schrodinger wave packet simulation".to_string()
-    }
-    fn theory_citation(&self) -> String {
-        "Schrödinger, E. (1926). An Undulatory Theory of the Mechanics of Atoms and Molecules. Physical Review, 28(6), 1049-1070; Griffiths, D. J., & Schroeter, D. F. (2018). Introduction to Quantum Mechanics (3rd ed.). Cambridge University Press.".to_string()
-    }
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert(
-            "potential_type".to_string(),
-            "Selects baseline potential profile V(x) (infinite square well, harmonic oscillator, custom compiled V(x), or sculpted resonant barriers).".to_string(),
-        );
-        map.insert(
-            "dt".to_string(),
-            "Integration time step Δt controlling unitary wave-packet propagation per tick.".to_string(),
-        );
-        map
+        tags: &["tunneling", "schrodinger", "wavepacket", "sculpt"],
+        build: || Box::new(WaveSimulatorTool::new()),
     }
 }
 
@@ -450,7 +369,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "wave_sim_starter",
         title: "Schrödinger Wave Packet",
-        description: "iℏ·∂ψ/∂t = -ℏ²/(2m)∇²ψ + V·ψ: 1D Gaussian wave packet evolution in infinite-well and harmonic oscillator potentials.",
+        description: "iℏ·∂ψ/∂t = -ℏ²/(2m)∇²ψ + V·ψ: 1D Gaussian wave packet evolution in infinite-well, harmonic, and tunneling barrier potentials.",
         category: "Wave Mechanics",
         icon: "🌊",
         domain: "quantum",
@@ -458,7 +377,3 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
-
-#[cfg(test)]
-#[path = "wave_sim/tests.rs"]
-mod tests;

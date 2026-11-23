@@ -5,7 +5,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
-use crate::async_sim::SimCommand;
+use crate::async_sim::{SimCommand, SimulationRunner};
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{
     BrushMode, BrushStroke, InteractionContext, InteractiveTool, SimulationFramework,
@@ -18,7 +18,7 @@ use crate::tabs::fluid_dynamics::lattice_boltzmann_sculpt::{
 };
 use crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool;
 use crate::tabs::morphogenesis::MorphogenesisTool;
-use crate::tabs::quantum::wave_sim::{WaveData, WaveUnified};
+use crate::tabs::quantum::wave_sim::{WaveData, WaveRunner, WaveSimConfig, WaveSimulatorTool};
 use crate::url_state::{encode_share_fragment, parse_share_location, MAX_DECODED_URL_STATE_BYTES};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
@@ -68,6 +68,13 @@ fn wait_for_unified_snapshot<M: UnifiedModel>(tool: &mut UnifiedSimTool<M>) {
 }
 
 fn wait_for_morpho_snapshot(tool: &mut MorphogenesisTool) {
+    poll_until(WORKER_POLL_TIMEOUT, || {
+        let _ = tool.worker.update();
+        tool.worker.latest_snapshot().is_some()
+    });
+}
+
+fn wait_for_wave_snapshot(tool: &mut WaveSimulatorTool) {
     poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = tool.worker.update();
         tool.worker.latest_snapshot().is_some()
@@ -217,8 +224,8 @@ fn test_morphogenesis_on_brush_y_alignment_maze_and_url_roundtrip() {
 
 #[test]
 fn test_wave_on_brush_unitarity_and_url_roundtrip() {
-    let mut wave = UnifiedSimTool::<WaveUnified>::new();
-    wait_for_unified_snapshot(&mut wave);
+    let mut wave = WaveSimulatorTool::new();
+    wait_for_wave_snapshot(&mut wave);
 
     send_brush_stroke(
         &mut wave,
@@ -228,16 +235,16 @@ fn test_wave_on_brush_unitarity_and_url_roundtrip() {
         &mut wave,
         make_stroke([0.2, 2.0], [0.5, 2.0], 0.2, BrushMode::PotentialBarrier),
     );
-    let _ = wave.controller.send_command(SimCommand::Step(25));
+    let _ = wave.worker.send_command(SimCommand::Step(25));
     poll_until(WORKER_POLL_TIMEOUT, || {
-        let _ = wave.controller.update();
-        wave.controller
+        let _ = wave.worker.update();
+        wave.worker
             .latest_snapshot()
             .and_then(|s| s.structured_data.as_ref()?.downcast_ref::<WaveData>())
             .is_some_and(|w| w.time > 0.0 && w.potential.iter().any(|&v| v > 4.0))
     });
 
-    let snap = wave.controller.latest_snapshot().expect("Wave snapshot");
+    let snap = wave.worker.latest_snapshot().expect("Wave snapshot");
     let wdata = snap
         .structured_data
         .as_ref()
@@ -253,7 +260,7 @@ fn test_wave_on_brush_unitarity_and_url_roundtrip() {
     let wave_dec = parse_share_location(&wave_frag, "")
         .expect("parse Wave share URL")
         .expect("ShareUrlParams");
-    let mut wave_restored = UnifiedSimTool::<WaveUnified>::new();
+    let mut wave_restored = WaveSimulatorTool::new();
     wave_restored
         .try_load_state(wave_dec.state_json.as_deref().unwrap())
         .expect("restore Wave state");
@@ -320,29 +327,21 @@ fn test_lbm_live_aoa_rotation_and_discrete_apply_brush() {
     );
     assert!((lbm.latest_aero.lift_coeff - lift_zero).abs() > 1e-3);
 
-    let mut wave_params = std::collections::HashMap::new();
-    wave_params.insert("potential_type".to_string(), 0.0);
-    wave_params.insert("dt".to_string(), 0.02);
-    let mut wave = WaveUnified::new(&wave_params);
-    wave.process_command(
-        SimCommand::ApplyBrush {
-            cx: 100,
-            cy: 0,
-            r: 3,
-            is_obstacle: true,
-        },
-        &wave_params,
-    );
+    let cfg = std::sync::Arc::new(std::sync::RwLock::new(WaveSimConfig::default()));
+    let mut wave = WaveRunner::new(cfg);
+    wave.process_command(SimCommand::ApplyBrush {
+        cx: 100,
+        cy: 0,
+        r: 3,
+        is_obstacle: true,
+    });
     assert!((wave.potential[100] - 16.0).abs() < 1e-9);
-    wave.process_command(
-        SimCommand::ApplyBrush {
-            cx: 100,
-            cy: 0,
-            r: 3,
-            is_obstacle: false,
-        },
-        &wave_params,
-    );
+    wave.process_command(SimCommand::ApplyBrush {
+        cx: 100,
+        cy: 0,
+        r: 3,
+        is_obstacle: false,
+    });
     assert!(wave.potential[100].abs() < 1e-9);
 }
 
