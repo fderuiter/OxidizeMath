@@ -58,14 +58,7 @@ pub(super) fn render_default_tool_inside<T: InteractiveTool + ?Sized>(
                     d.get_temp::<bool>(egui::Id::new("SHOW_THEORY_PORTAL"))
                         .unwrap_or(false)
                 });
-                ctx.data_mut(|d| {
-                    d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
-                    if let Some(inst_key) =
-                        d.get_temp::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"))
-                    {
-                        d.insert_temp(inst_key, next);
-                    }
-                });
+                super::overlay_sync::record_theory_portal_toggle(ctx, help_btn.id, next);
             }
         });
         ui.separator();

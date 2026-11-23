@@ -71,7 +71,7 @@ impl TableView3D<'_> {
             );
             emit_plot_live_message(ctx, msg, false);
         }
-        if ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)))
+        if super::consume_copy_event(ctx)
             && let Some(tsv) = self.selected_row_tsv()
         {
             copy_to_clipboard(ctx, self.plot_id, self.state, "selected row (TSV)", tsv);
@@ -314,12 +314,6 @@ pub fn show_data_table_modal_3d(
         series: &series,
         state,
     };
-    if !series.is_empty() {
-        let idx = view.state.selected_series.min(series.len() - 1);
-        let rows = series[idx].points.len();
-        view.clamp(rows);
-        view.handle_keys(ctx, rows);
-    }
     let max_w = (ctx.content_rect().width() - 48.0).clamp(360.0, 740.0);
     ModalLifecycle::new(plot_id.with("data_table_modal"))
         .title(window_title)
@@ -327,6 +321,14 @@ pub fn show_data_table_modal_3d(
         .max_width(max_w)
         .max_height(460.0)
         .show(ctx, open, |ui, frame_ctx| {
+            if !series.is_empty() {
+                let idx = view.state.selected_series.min(series.len() - 1);
+                let rows = series[idx].points.len();
+                view.clamp(rows);
+                if frame_ctx.is_top_modal {
+                    view.handle_keys(ui.ctx(), rows);
+                }
+            }
             if view.render_body(ui) {
                 frame_ctx.close();
             }

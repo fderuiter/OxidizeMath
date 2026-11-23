@@ -184,17 +184,18 @@ impl MathExplorerApp {
             return;
         };
         let keep = self.viewport_layout.pane_count();
-        let in_kept_pane = ctx.read_response(fid).is_some_and(|resp| {
-            ctx.data(|d| {
-                d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS"))
-                    .is_none_or(|rects| {
-                        rects
-                            .iter()
-                            .take(keep)
-                            .any(|r| r.contains(resp.rect.center()))
-                    })
-            })
-        });
+        let in_kept_pane =
+            super::viewport::focus::inspect_widget_response(ctx, fid).is_some_and(|resp| {
+                ctx.data(|d| {
+                    d.get_temp::<Vec<egui::Rect>>(egui::Id::new("LAST_PANE_RECTS"))
+                        .is_none_or(|rects| {
+                            rects
+                                .iter()
+                                .take(keep)
+                                .any(|r| r.contains(resp.rect.center()))
+                        })
+                })
+            });
         if !in_kept_pane {
             ctx.memory_mut(|m| m.surrender_focus(fid));
         }
@@ -389,9 +390,10 @@ impl MathExplorerApp {
         if super::viewport::sash::is_any_sash_id(fid) {
             return;
         }
-        let inside_target = ctx.read_response(fid).is_some_and(|resp| {
-            super::viewport::focus::response_belongs_to_pane(&resp, target_pane_rect)
-        });
+        let inside_target =
+            super::viewport::focus::inspect_widget_response(ctx, fid).is_some_and(|resp| {
+                super::viewport::focus::response_belongs_to_pane(&resp, target_pane_rect)
+            });
         if !inside_target {
             ctx.memory_mut(|m| m.surrender_focus(fid));
         }
@@ -406,21 +408,33 @@ impl MathExplorerApp {
             return;
         }
         self.select_tab(ctx, selection.tab_index);
-        let Some(tool_name) = &selection.tool_name else {
-            return;
-        };
-        if let Some(tab) = self.focused_pane_tab_mut() {
-            tab.select_tool_by_name(tool_name);
-            let display_label = inventory::iter::<crate::framework::ToolMetadata>
-                .into_iter()
-                .find(|m| {
-                    m.id.eq_ignore_ascii_case(tool_name)
-                        || m.display_name.eq_ignore_ascii_case(tool_name)
-                })
-                .map_or(tool_name.as_str(), |m| m.display_name);
-            let msg = format!("Switched to tool {} in tab {}", display_label, tab.name());
-            crate::accessibility::announce_live_status(ctx, msg);
+        if let Some(tool_name) = &selection.tool_name {
+            if let Some(tab) = self.focused_pane_tab_mut() {
+                tab.select_tool_by_name(tool_name);
+                let display_label = inventory::iter::<crate::framework::ToolMetadata>
+                    .into_iter()
+                    .find(|m| {
+                        m.id.eq_ignore_ascii_case(tool_name)
+                            || m.display_name.eq_ignore_ascii_case(tool_name)
+                    })
+                    .map_or(tool_name.as_str(), |m| m.display_name);
+                let msg = format!("Switched to tool {} in tab {}", display_label, tab.name());
+                crate::accessibility::announce_live_status(ctx, msg);
+            }
         }
+        let target_pane = self.active_focused_pane();
+        self.focus_pane(target_pane);
+        ctx.data_mut(|d| {
+            d.insert_temp(
+                egui::Id::new(super::viewport::focus::PENDING_PANE_FOCUS_KEY),
+                target_pane,
+            );
+            d.insert_temp(
+                egui::Id::new(super::viewport::focus::ACTIVE_FOCUSED_PANE_KEY),
+                target_pane,
+            );
+        });
+        ctx.request_repaint();
     }
 
     /// Returns the number of currently instantiated secondary pane tab instances (for test verification).

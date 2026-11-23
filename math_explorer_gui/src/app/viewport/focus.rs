@@ -135,7 +135,7 @@ pub(crate) fn register_and_handle_pane_focus_shortcuts(
     let modal_blocked = app.command_palette.is_open
         || app.show_help_menu
         || egui::Popup::is_any_open(ctx)
-        || ctx.memory(|m| m.top_modal_layer().is_some());
+        || egui_plot::active_top_modal_layer(ctx).is_some();
     if modal_blocked {
         return;
     }
@@ -166,7 +166,7 @@ pub(super) fn sync_focused_pane_from_widget_focus(
         || app.command_palette.is_open
         || app.show_help_menu
         || egui::Popup::is_any_open(ctx)
-        || ctx.memory(|m| m.top_modal_layer().is_some());
+        || egui_plot::active_top_modal_layer(ctx).is_some();
 
     let Some(fid) = ctx.memory(|m| m.focused()) else {
         return modal_or_popup;
@@ -174,7 +174,7 @@ pub(super) fn sync_focused_pane_from_widget_focus(
     if super::sash::is_any_sash_id(fid) {
         return true;
     }
-    let Some(resp) = ctx.read_response(fid) else {
+    let Some(resp) = inspect_widget_response(ctx, fid) else {
         return modal_or_popup;
     };
     if resp.layer_id.order != egui::Order::Background {
@@ -207,10 +207,31 @@ pub(super) fn begin_pending_pane_focus(ctx: &egui::Context, should_focus_this_pa
 }
 
 /// Clears any unconsumed `FocusDirection::Next` after rendering a target pane so focus cannot leak.
-pub(super) fn finish_pending_pane_focus(ctx: &egui::Context, should_focus_this_pane: bool) {
-    if should_focus_this_pane {
-        ctx.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
+pub(super) fn finish_pending_pane_focus(
+    ctx: &egui::Context,
+    should_focus_this_pane: bool,
+    pane_idx: usize,
+) {
+    if !should_focus_this_pane {
+        return;
     }
+    ctx.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
+    let blocked_by_closing_modal =
+        ctx.memory(|m| m.focused().is_none() && m.top_modal_layer().is_some());
+    if blocked_by_closing_modal && ctx.current_pass_index() == 0 {
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new(PENDING_PANE_FOCUS_KEY), pane_idx));
+        ctx.request_discard("apply pending pane focus after modal close");
+    }
+}
+
+/// Reads a widget's [`egui::Response`] without letting `egui`'s click-elsewhere check surrender its focus.
+pub(crate) fn inspect_widget_response(ctx: &egui::Context, id: egui::Id) -> Option<egui::Response> {
+    let had_focus = ctx.memory(|m| m.has_focus(id));
+    let resp = ctx.read_response(id);
+    if had_focus && !ctx.memory(|m| m.has_focus(id)) {
+        ctx.memory_mut(|m| m.request_focus(id));
+    }
+    resp
 }
 
 pub(crate) fn response_belongs_to_pane(resp: &egui::Response, pane_rect: egui::Rect) -> bool {
@@ -228,7 +249,7 @@ fn surrender_widget_focus_outside_rect(ctx: &egui::Context, target_rect: egui::R
     if super::sash::is_any_sash_id(fid) {
         return;
     }
-    let inside = ctx.read_response(fid).is_some_and(|r| {
+    let inside = inspect_widget_response(ctx, fid).is_some_and(|r| {
         r.layer_id.order != egui::Order::Background || response_belongs_to_pane(&r, target_rect)
     });
     if !inside {
@@ -285,18 +306,6 @@ pub(super) fn record_resolved_pane_focus(ctx: &egui::Context, focused_idx: usize
     });
 }
 
-fn is_pane_scoped_event(ev: &egui::Event) -> bool {
-    matches!(
-        ev,
-        egui::Event::Key { .. }
-            | egui::Event::Text(_)
-            | egui::Event::Ime(_)
-            | egui::Event::Copy
-            | egui::Event::Cut
-            | egui::Event::Paste(_)
-    )
-}
-
 /// Runs `f` while temporarily masking keyboard, text, IME, and clipboard events when `pane_idx` is inactive.
 pub(super) fn with_pane_scoped_input<R>(
     ctx: &egui::Context,
@@ -312,32 +321,5 @@ pub(super) fn with_pane_scoped_input<R>(
             .unwrap_or(0);
         !shell_focused && pane_idx == active_pane
     });
-    if allow_input {
-        return f();
-    }
-
-    let (stashed_events, stashed_keys) = ctx.input_mut(|i| {
-        let mut kept = Vec::with_capacity(i.events.len());
-        let mut stashed = Vec::new();
-        for ev in i.events.drain(..) {
-            if is_pane_scoped_event(&ev) {
-                stashed.push(ev);
-            } else {
-                kept.push(ev);
-            }
-        }
-        i.events = kept;
-        let keys = std::mem::take(&mut i.keys_down);
-        (stashed, keys)
-    });
-
-    let out = f();
-
-    if !stashed_events.is_empty() || !stashed_keys.is_empty() {
-        ctx.input_mut(|i| {
-            i.events.extend(stashed_events);
-            i.keys_down.extend(stashed_keys);
-        });
-    }
-    out
+    egui_plot::with_masked_pane_input(ctx, allow_input, f)
 }

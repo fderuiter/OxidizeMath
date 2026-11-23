@@ -206,15 +206,17 @@ impl MathExplorerApp {
         } else {
             egui::Modifiers::CTRL | egui::Modifiers::SHIFT
         };
-        let shortcut_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
+        let allowed = !self.has_active_modal_or_popup(ctx);
+        let shortcut_triggered = super::global_shortcuts::register_and_check_shortcut_if_allowed(
             ctx,
-            "Copy Share Link",
-            "Copy a shareable simulation URL for the active view",
-            egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::L),
-            true,
-            "Global",
+            super::global_shortcuts::DesktopShortcutSpec {
+                name: "Copy Share Link",
+                description: "Copy a shareable simulation URL for the active view",
+                trigger: egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::L),
+                context_name: "Global",
+            },
             None,
-            None,
+            allowed,
         );
         if shortcut_triggered {
             self.copy_current_share_link(ctx);

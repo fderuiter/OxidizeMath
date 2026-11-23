@@ -12,7 +12,8 @@ use crate::{
         set_accesskit_bounds, status_message_label,
     },
     data_table::{
-        COL_W, DataTableState, HDR_H, IDX_W, MAX_H, ROW_H, RowCells, copy_to_clipboard,
+        COL_W, DataTableState, HDR_H, IDX_W, MAX_H, ROW_H, RowCells, consume_copy_event,
+        copy_to_clipboard,
         format::{format_pois_csv, format_pois_tsv, format_table_value},
     },
     emit_plot_live_message,
@@ -68,7 +69,7 @@ pub(crate) fn handle_poi_keys(
         let msg = format_poi_row_summary(state.selected_poi_row, pois.len(), poi);
         emit_plot_live_message(ctx, msg, false);
     }
-    if ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)))
+    if consume_copy_event(ctx)
         && let Some(poi) = pois.get(state.selected_poi_row)
     {
         let single = format_pois_tsv(std::slice::from_ref(poi));

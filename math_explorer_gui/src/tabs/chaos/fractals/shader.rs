@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{COORD_MAX, COORD_MIN, FractalMode, FractalViewer, ZOOM_MAX, ZOOM_MIN};
+use super::{FractalMode, FractalViewer, COORD_MAX, COORD_MIN, ZOOM_MAX, ZOOM_MIN};
 use crate::framework::{InteractiveTool, ShaderDialect};
 use math_commons::ast::format_glsl_float;
 use math_commons::math_kernel::glsl_colormap::{
@@ -17,8 +17,8 @@ impl FractalViewer {
             .map_err(|e| e.to_string())?;
         let cy = format_glsl_float(self.center.im.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
-        let zoom = format_glsl_float(self.zoom.clamp(ZOOM_MIN, ZOOM_MAX))
-            .map_err(|e| e.to_string())?;
+        let zoom =
+            format_glsl_float(self.zoom.clamp(ZOOM_MIN, ZOOM_MAX)).map_err(|e| e.to_string())?;
         let jx = format_glsl_float(self.julia_c.re.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
         let jy = format_glsl_float(self.julia_c.im.clamp(COORD_MIN, COORD_MAX))
@@ -26,7 +26,7 @@ impl FractalViewer {
         let max_iter = self
             .max_iter
             .clamp(10, math_commons::registry::MAX_ITERATIONS as u32);
-        let is_julia = self.mode == FractalMode::Julia;
+        let is_julia = matches!(self.mode, FractalMode::Julia | FractalMode::CustomJulia);
 
         let mut out = String::with_capacity(2560);
         write_dialect_header(&mut out, dialect, self.mode);
@@ -54,6 +54,8 @@ fn write_dialect_header(out: &mut String, dialect: ShaderDialect, mode: FractalM
     let family = match mode {
         FractalMode::Mandelbrot => "Mandelbrot",
         FractalMode::Julia => "Julia",
+        FractalMode::CustomMandelbrot => "Custom Mandelbrot",
+        FractalMode::CustomJulia => "Custom Julia",
     };
     writeln!(
         out,

@@ -6,6 +6,8 @@ pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_figure;
+mod export_modal_host;
+mod export_persistence;
 mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
@@ -50,6 +52,8 @@ pub(crate) use export_queue::*;
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use math_input::*;
+#[cfg(feature = "pure_math")]
+pub(crate) use overlay_sync::record_theory_portal_toggle;
 pub use pane_scope::{
     is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id,
 };

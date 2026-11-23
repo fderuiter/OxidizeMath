@@ -214,45 +214,58 @@ impl CommandPalette {
         matched.into_iter().map(|(item, _, _)| item).collect()
     }
 
+    fn handle_navigation_and_enter(
+        &mut self,
+        ctx: &egui::Context,
+        filtered_items: &[PaletteItem],
+    ) -> Option<PaletteSelection> {
+        if filtered_items.is_empty() {
+            return None;
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) {
+            self.selected_index = (self.selected_index + 1) % filtered_items.len();
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) {
+            self.selected_index = self
+                .selected_index
+                .checked_sub(1)
+                .unwrap_or(filtered_items.len() - 1);
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
+            return filtered_items
+                .get(self.selected_index)
+                .map(PaletteItem::to_selection);
+        }
+        None
+    }
+
     /// Processes keyboard shortcuts (Arrow Up/Down, Enter, Escape) for navigating and selecting items.
     pub fn handle_keyboard_inputs(
         &mut self,
         ctx: &egui::Context,
         filtered_items: &[PaletteItem],
     ) -> (Option<PaletteSelection>, bool) {
-        let mut selected_item = None;
-        let mut esc_pressed = false;
-
-        if !filtered_items.is_empty() {
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) {
-                self.selected_index = (self.selected_index + 1) % filtered_items.len();
-            }
-
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) {
-                self.selected_index = self
-                    .selected_index
-                    .checked_sub(1)
-                    .unwrap_or(filtered_items.len() - 1);
-            }
-
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
-                if let Some(item) = filtered_items.get(self.selected_index) {
-                    selected_item = Some(item.to_selection());
-                }
-            }
-        }
-
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-            esc_pressed = true;
-        }
-
+        let selected_item = self.handle_navigation_and_enter(ctx, filtered_items);
+        let esc_pressed =
+            ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         (selected_item, esc_pressed)
     }
 
-    /// Renders search header and text field with auto-focus and accessible WidgetInfo label.
-    fn render_header_and_search(&mut self, ui: &mut egui::Ui, prev_query: &str) {
+    /// Renders search header, keyboard-accessible Close button, and text field with auto-focus.
+    fn render_header_and_search(
+        &mut self,
+        ui: &mut egui::Ui,
+        prev_query: &str,
+        lifecycle_just_opened: bool,
+    ) -> bool {
+        let mut close_clicked = false;
         ui.horizontal(|ui| {
             ui.heading("🔍 Command Palette");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Close").clicked() {
+                    close_clicked = true;
+                }
+            });
         });
         ui.separator();
 
@@ -279,13 +292,11 @@ impl CommandPalette {
             d.insert_temp(egui::Id::new(SEARCH_WIDGET_INFO_ID), search_info);
         });
 
-        if self.just_opened {
-            if self.prior_focus.is_none() {
-                self.prior_focus = ui.ctx().memory(|m| m.focused());
-            }
+        if lifecycle_just_opened {
             text_edit_response.request_focus();
             self.just_opened = false;
         }
+        close_clicked
     }
 
     /// Renders vertical scrollable list of filtered simulation domain tabs and tools.
@@ -356,7 +367,9 @@ impl CommandPalette {
         ctx: &egui::Context,
         tabs: &[Box<dyn crate::tabs::ExplorerTab>],
     ) -> Option<PaletteSelection> {
+        let modal_id = egui::Id::new("command_palette_modal");
         if !self.is_open {
+            let _ = crate::ModalLifecycle::new(modal_id).show(ctx, &mut self.is_open, |_, _| {});
             if let Some(prev_id) = self.prior_focus.take() {
                 ctx.memory_mut(|m| m.request_focus(prev_id));
             }
@@ -366,41 +379,44 @@ impl CommandPalette {
         let prev_query = self.last_query.clone();
         let mut filtered_items = self.filter_items(tabs);
         let mut query_changed = self.sync_selection_with_results(filtered_items.len());
+        let mut selected_item = None;
+        let mut open = self.is_open;
 
-        let (mut selected_item, esc_pressed) = self.handle_keyboard_inputs(ctx, &filtered_items);
-        let modal = egui::Modal::new(egui::Id::new("command_palette_modal"))
-            .backdrop_color(egui::Color32::from_black_alpha(150));
-
-        let modal_res = modal.show(ctx, |ui| {
-            ui.set_width(550.0);
-            ui.set_max_height(400.0);
-            ui.vertical(|ui| {
-                self.render_header_and_search(ui, &prev_query);
-                if self.query != self.last_query {
-                    filtered_items = self.filter_items(tabs);
-                    query_changed |= self.sync_selection_with_results(filtered_items.len());
+        crate::ModalLifecycle::new(modal_id)
+            .backdrop_color(egui::Color32::from_black_alpha(150))
+            .default_width(550.0)
+            .max_width(550.0)
+            .max_height(400.0)
+            .show(ctx, &mut open, |ui, frame_ctx| {
+                if frame_ctx.is_top_modal {
+                    selected_item = self.handle_navigation_and_enter(ui.ctx(), &filtered_items);
                 }
-                ui.add_space(8.0);
-                if let Some(clicked) = self.render_results_list(ui, &filtered_items) {
-                    selected_item = Some(clicked);
+                ui.set_width(550.0);
+                let mut close_clicked = false;
+                ui.vertical(|ui| {
+                    close_clicked =
+                        self.render_header_and_search(ui, &prev_query, frame_ctx.just_opened);
+                    if self.query != self.last_query {
+                        filtered_items = self.filter_items(tabs);
+                        query_changed |= self.sync_selection_with_results(filtered_items.len());
+                    }
+                    ui.add_space(8.0);
+                    if let Some(clicked) = self.render_results_list(ui, &filtered_items) {
+                        selected_item = Some(clicked);
+                    }
+                    ui.add_space(4.0);
+                    self.render_footer(ui);
+                });
+                if close_clicked || selected_item.is_some() {
+                    frame_ctx.close();
                 }
-                ui.add_space(4.0);
-                self.render_footer(ui);
             });
-        });
 
-        if esc_pressed || modal_res.should_close() {
-            let prior_focus = self.prior_focus.take();
+        if !open {
+            self.prior_focus = None;
             self.close();
-            if let Some(prev_id) = prior_focus {
-                ctx.memory_mut(|m| m.request_focus(prev_id));
-            }
-            announce_palette_status(ctx, "Command palette closed");
-        } else if selected_item.is_some() {
-            let prior_focus = self.prior_focus.take();
-            self.close();
-            if let Some(prev_id) = prior_focus {
-                ctx.memory_mut(|m| m.request_focus(prev_id));
+            if selected_item.is_none() {
+                announce_palette_status(ctx, "Command palette closed");
             }
         } else if query_changed {
             announce_palette_status(ctx, format_search_count_status(filtered_items.len()));

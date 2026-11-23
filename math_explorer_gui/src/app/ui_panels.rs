@@ -179,7 +179,6 @@ pub fn render_help_window(ctx: &egui::Context, show_help_menu: &mut bool) {
 
 /// Renders the top menu bar in the UI.
 #[cfg(any(not(target_os = "macos"), test))]
-#[allow(clippy::too_many_lines)]
 pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
     let modifiers = if cfg!(target_os = "macos") {
         egui::Modifiers::MAC_CMD
@@ -187,15 +186,17 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
         egui::Modifiers::CTRL
     };
 
-    let quit_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
+    let quit_allowed = !app.has_active_modal_or_popup(ctx);
+    let quit_triggered = super::global_shortcuts::register_and_check_shortcut_if_allowed(
         ctx,
-        "Quit",
-        "Quit the application",
-        egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::Q),
-        true,
-        "Global",
+        super::global_shortcuts::DesktopShortcutSpec {
+            name: "Quit",
+            description: "Quit the application",
+            trigger: egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::Q),
+            context_name: "Global",
+        },
         Some(ui),
-        None,
+        quit_allowed,
     );
 
     if quit_triggered {
@@ -203,170 +204,172 @@ pub fn render_main_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut
     }
 
     egui::MenuBar::new().ui(ui, |ui| {
-        let cmd_str = if cfg!(target_os = "macos") {
-            "Cmd+"
+        let (cmd_str, shift_cmd_str) = if cfg!(target_os = "macos") {
+            ("Cmd+", "Cmd+Shift+")
         } else {
-            "Ctrl+"
+            ("Ctrl+", "Ctrl+Shift+")
         };
-        let shift_cmd_str = if cfg!(target_os = "macos") {
-            "Cmd+Shift+"
-        } else {
-            "Ctrl+Shift+"
-        };
-
-        ui.menu_button("File", |ui| {
-            if ui
-                .add(
-                    egui::Button::new("Open Workspace Session...")
-                        .shortcut_text(format!("{}O", cmd_str)),
-                )
-                .clicked()
-            {
-                app.session_manager.trigger_open();
-                ui.close();
-            }
-            if ui
-                .add(
-                    egui::Button::new("Save Workspace Session")
-                        .shortcut_text(format!("{}S", cmd_str)),
-                )
-                .clicked()
-            {
-                app.clear_active_pane_caches();
-                let state = app.get_app_state();
-                let env_json = app.session_manager.create_envelope(state);
-                app.session_manager.trigger_save(env_json);
-                ui.close();
-            }
-            if ui
-                .add(
-                    egui::Button::new("Save Workspace Session As...")
-                        .shortcut_text(format!("{}S", shift_cmd_str)),
-                )
-                .clicked()
-            {
-                app.clear_active_pane_caches();
-                let state = app.get_app_state();
-                let env_json = app.session_manager.create_envelope(state);
-                app.session_manager.trigger_save_as(env_json);
-                ui.close();
-            }
-            ui.separator();
-            super::share_link::render_file_share_menu_item(app, ctx, ui);
-            ui.separator();
-            if ui
-                .add(egui::Button::new("Quit").shortcut_text(format!("{}Q", cmd_str)))
-                .clicked()
-            {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
-        });
-
-        ui.menu_button("Edit", |ui| {
-            let undo_btn = egui::Button::new("Undo").shortcut_text(format!("{}Z", cmd_str));
-            if ui.add_enabled(app.can_undo(), undo_btn).clicked() {
-                app.undo();
-                ui.close();
-            }
-
-            let redo_shortcut = if cfg!(target_os = "macos") {
-                format!("{}Z", shift_cmd_str)
-            } else {
-                format!("{}Y", cmd_str)
-            };
-            let redo_btn = egui::Button::new("Redo").shortcut_text(redo_shortcut);
-            if ui.add_enabled(app.can_redo(), redo_btn).clicked() {
-                app.redo();
-                ui.close();
-            }
-        });
-
-        ui.menu_button("View", |ui| {
-            let cmd_shortcut = if cfg!(target_os = "macos") {
-                "Cmd+K"
-            } else {
-                "Ctrl+K"
-            };
-            if ui
-                .add(egui::Button::new("🔍 Command Palette...").shortcut_text(cmd_shortcut))
-                .clicked()
-            {
-                app.command_palette.toggle();
-                let status_msg = if app.command_palette.is_open {
-                    "Command palette opened"
-                } else {
-                    "Command palette closed"
-                };
-                crate::accessibility::announce_live_status(ctx, status_msg);
-                ui.close();
-            }
-            ui.separator();
-            viewport_menus::render_viewport_layout_submenu(app, ctx, ui);
-            viewport_menus::render_focus_pane_submenu(app, ctx, ui);
-
-            if app.viewport_layout != crate::app::ViewportLayout::Single {
-                viewport_menus::render_pane_assignments_submenu(app, ctx, ui);
-            }
-
-            ui.separator();
-            ui.menu_button("Primary Module", |ui| {
-                let selected = app.selected_tab;
-                if let Some(tab_idx) =
-                    crate::app::domain_bar::render_domain_module_submenus(ui, &app.tabs, selected)
-                {
-                    crate::app::domain_bar::select_primary_tab(app, ctx, tab_idx);
-                    ui.close();
-                }
-            });
-            ui.separator();
-            if ui
-                .checkbox(
-                    &mut app.show_diagnostics_panel,
-                    "Issues & Diagnostics Panel",
-                )
-                .clicked()
-            {
-                ui.close();
-            }
-        });
-
-        ui.menu_button("Appearance", |ui| {
-            if ui
-                .radio_value(&mut app.theme, ThemeMode::Dark, ThemeMode::Dark.name())
-                .clicked()
-            {
-                app.theme.apply_to_context(ctx);
-                ui.close();
-            }
-            if ui
-                .radio_value(&mut app.theme, ThemeMode::Light, ThemeMode::Light.name())
-                .clicked()
-            {
-                app.theme.apply_to_context(ctx);
-                ui.close();
-            }
-            if ui
-                .radio_value(
-                    &mut app.theme,
-                    ThemeMode::HighContrast,
-                    ThemeMode::HighContrast.name(),
-                )
-                .clicked()
-            {
-                app.theme.apply_to_context(ctx);
-                ui.close();
-            }
-        });
-
-        ui.menu_button("Help", |ui| {
-            if ui
-                .checkbox(&mut app.show_help_menu, "Keyboard Shortcuts")
-                .clicked()
-            {
-                ui.close();
-            }
-        });
+        render_file_menu(app, ctx, ui, cmd_str, shift_cmd_str);
+        render_edit_menu(app, ui, cmd_str, shift_cmd_str);
+        render_view_menu(app, ctx, ui);
+        render_appearance_and_help_menus(app, ctx, ui);
     });
 
     app.session_manager.render_toast(ui);
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn render_file_menu(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+    cmd_str: &str,
+    shift_cmd_str: &str,
+) {
+    ui.menu_button("File", |ui| {
+        if ui
+            .add(
+                egui::Button::new("Open Workspace Session...")
+                    .shortcut_text(format!("{}O", cmd_str)),
+            )
+            .clicked()
+        {
+            app.session_manager.trigger_open();
+            ui.close();
+        }
+        if ui
+            .add(egui::Button::new("Save Workspace Session").shortcut_text(format!("{}S", cmd_str)))
+            .clicked()
+        {
+            app.clear_active_pane_caches();
+            let state = app.get_app_state();
+            let env_json = app.session_manager.create_envelope(state);
+            app.session_manager.trigger_save(env_json);
+            ui.close();
+        }
+        if ui
+            .add(
+                egui::Button::new("Save Workspace Session As...")
+                    .shortcut_text(format!("{}S", shift_cmd_str)),
+            )
+            .clicked()
+        {
+            app.clear_active_pane_caches();
+            let state = app.get_app_state();
+            let env_json = app.session_manager.create_envelope(state);
+            app.session_manager.trigger_save_as(env_json);
+            ui.close();
+        }
+        ui.separator();
+        super::share_link::render_file_share_menu_item(app, ctx, ui);
+        ui.separator();
+        if ui
+            .add(egui::Button::new("Quit").shortcut_text(format!("{}Q", cmd_str)))
+            .clicked()
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    });
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn render_edit_menu(
+    app: &mut MathExplorerApp,
+    ui: &mut egui::Ui,
+    cmd_str: &str,
+    shift_cmd_str: &str,
+) {
+    ui.menu_button("Edit", |ui| {
+        let undo_btn = egui::Button::new("Undo").shortcut_text(format!("{}Z", cmd_str));
+        if ui.add_enabled(app.can_undo(), undo_btn).clicked() {
+            app.undo();
+            ui.close();
+        }
+
+        let redo_shortcut = if cfg!(target_os = "macos") {
+            format!("{}Z", shift_cmd_str)
+        } else {
+            format!("{}Y", cmd_str)
+        };
+        let redo_btn = egui::Button::new("Redo").shortcut_text(redo_shortcut);
+        if ui.add_enabled(app.can_redo(), redo_btn).clicked() {
+            app.redo();
+            ui.close();
+        }
+    });
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn render_view_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
+    ui.menu_button("View", |ui| {
+        let cmd_shortcut = if cfg!(target_os = "macos") {
+            "Cmd+K"
+        } else {
+            "Ctrl+K"
+        };
+        if ui
+            .add(egui::Button::new("🔍 Command Palette...").shortcut_text(cmd_shortcut))
+            .clicked()
+        {
+            app.command_palette.toggle();
+            let status_msg = if app.command_palette.is_open {
+                "Command palette opened"
+            } else {
+                "Command palette closed"
+            };
+            crate::accessibility::announce_live_status(ctx, status_msg);
+            ui.close();
+        }
+        ui.separator();
+        viewport_menus::render_viewport_layout_submenu(app, ctx, ui);
+        viewport_menus::render_focus_pane_submenu(app, ctx, ui);
+        if app.viewport_layout != crate::app::ViewportLayout::Single {
+            viewport_menus::render_pane_assignments_submenu(app, ctx, ui);
+        }
+        ui.separator();
+        ui.menu_button("Primary Module", |ui| {
+            let selected = app.selected_tab;
+            if let Some(tab_idx) =
+                crate::app::domain_bar::render_domain_module_submenus(ui, &app.tabs, selected)
+            {
+                crate::app::domain_bar::select_primary_tab(app, ctx, tab_idx);
+                ui.close();
+            }
+        });
+        ui.separator();
+        if ui
+            .checkbox(
+                &mut app.show_diagnostics_panel,
+                "Issues & Diagnostics Panel",
+            )
+            .clicked()
+        {
+            ui.close();
+        }
+    });
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn render_appearance_and_help_menus(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+) {
+    ui.menu_button("Appearance", |ui| {
+        for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::HighContrast] {
+            if ui.radio_value(&mut app.theme, mode, mode.name()).clicked() {
+                app.theme.apply_to_context(ctx);
+                ui.close();
+            }
+        }
+    });
+
+    ui.menu_button("Help", |ui| {
+        if ui
+            .checkbox(&mut app.show_help_menu, "Keyboard Shortcuts")
+            .clicked()
+        {
+            ui.close();
+        }
+    });
 }

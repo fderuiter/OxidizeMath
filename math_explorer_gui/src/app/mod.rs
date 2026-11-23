@@ -1,4 +1,5 @@
 pub mod domain_bar;
+pub(crate) mod global_shortcuts;
 #[cfg(target_os = "macos")]
 mod macos_menu;
 #[cfg(target_os = "macos")]
@@ -251,11 +252,7 @@ impl MathExplorerApp {
         sm.execute_redo(self);
         self.session_manager = sm;
     }
-}
-
-impl eframe::App for MathExplorerApp {
-    #[allow(clippy::too_many_lines)]
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn begin_update_frame(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         crate::reflective_ui::slider::reset_frame_sweep_flags(ctx);
         ctx.data_mut(|d| {
             d.insert_temp(
@@ -265,7 +262,6 @@ impl eframe::App for MathExplorerApp {
         });
 
         theme::sync_frame_theme(self, ctx, frame);
-
         crate::accessibility::ensure_plot_live_bridge();
         crate::accessibility::sync_context_live_messages(ctx, true);
 
@@ -275,128 +271,9 @@ impl eframe::App for MathExplorerApp {
         session_mgr.poll(self, ctx);
         self.session_manager = session_mgr;
         theme::sync_frame_theme(self, ctx, frame);
+    }
 
-        viewport::focus::register_and_handle_pane_focus_shortcuts(self, ctx);
-
-        // Global Keyboard Shortcut Listener for Cheatsheet Modal
-        let modifiers = if cfg!(target_os = "macos") {
-            egui::Modifiers::MAC_CMD
-        } else {
-            egui::Modifiers::CTRL
-        };
-
-        let palette_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
-            ctx,
-            "Command Palette",
-            "Open command palette to quickly switch simulation tabs",
-            egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::K),
-            true,
-            "Global",
-            None,
-            None,
-        );
-
-        if palette_triggered {
-            self.command_palette.toggle();
-            let status_msg = if self.command_palette.is_open {
-                "Command palette opened"
-            } else {
-                "Command palette closed"
-            };
-            crate::accessibility::announce_live_status(ctx, status_msg);
-        }
-
-        let slash_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
-            ctx,
-            "Keyboard Shortcuts",
-            "Toggle keyboard shortcuts modal",
-            egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::Slash),
-            true,
-            "Global",
-            None,
-            None,
-        );
-
-        egui_plot::commands::CommandRegistryData::register(
-            ctx,
-            "Keyboard Shortcuts",
-            "Toggle keyboard shortcuts modal",
-            egui_plot::commands::CommandTrigger::Key(egui::Key::Questionmark),
-            true,
-            "Global",
-        );
-
-        let question_triggered = !ctx.wants_keyboard_input()
-            && ctx.input_mut(|i| {
-                i.consume_key(egui::Modifiers::NONE, egui::Key::Questionmark)
-                    || i.consume_key(egui::Modifiers::SHIFT, egui::Key::Questionmark)
-            });
-
-        if slash_triggered || question_triggered {
-            self.show_help_menu = !self.show_help_menu;
-            let status_msg = if self.show_help_menu {
-                "Keyboard shortcuts opened"
-            } else {
-                "Keyboard shortcuts closed"
-            };
-            crate::accessibility::announce_live_status(ctx, status_msg);
-        }
-
-        let shift_modifiers = modifiers | egui::Modifiers::SHIFT;
-        let toggle_diagnostics_triggered =
-            egui_plot::commands::CommandRegistryData::register_and_check(
-                ctx,
-                "Toggle Issues & Diagnostics",
-                "Toggle visibility of the Issues & Diagnostics panel",
-                egui_plot::commands::CommandTrigger::Shortcut(shift_modifiers, egui::Key::D),
-                true,
-                "Global",
-                None,
-                None,
-            );
-
-        if toggle_diagnostics_triggered {
-            self.show_diagnostics_panel = !self.show_diagnostics_panel;
-            let status_msg = if self.show_diagnostics_panel {
-                "Issues & Diagnostics panel opened"
-            } else {
-                "Issues & Diagnostics panel closed"
-            };
-            crate::accessibility::announce_live_status(ctx, status_msg);
-        }
-
-        self.poll_share_shortcut_and_clipboard(ctx);
-        self.poll_duplicate_pane_shortcut(ctx);
-
-        // Fetch new events
-        let new_events = crate::telemetry::poll_app_telemetry();
-        let mut has_error_or_fatal = false;
-        for event in &new_events {
-            if matches!(event.severity, Severity::Error | Severity::Fatal) {
-                has_error_or_fatal = true;
-                crate::accessibility::announce_status_with_priority(
-                    &format!("{}: {}", event.severity, event.message),
-                    "assertive",
-                );
-            }
-        }
-        if has_error_or_fatal {
-            self.show_diagnostics_panel = true;
-        }
-        self.diagnostic_events.extend(new_events);
-
-        // Issues & Diagnostics Panel
-        if self.show_diagnostics_panel {
-            ui_panels::render_issues_panel(
-                ctx,
-                &mut self.diagnostic_events,
-                &mut self.show_errors,
-                &mut self.show_warnings,
-                &mut self.show_info,
-                &mut self.show_diagnostics_panel,
-            );
-        }
-
+    fn render_top_chrome_and_viewports(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         #[cfg(target_os = "macos")]
         macos_menu::handle_macos_menu_events(self, ctx);
 
@@ -407,41 +284,18 @@ impl eframe::App for MathExplorerApp {
             });
         }
 
-        // Render Menu Bar (Native fallback for non-macOS or inside the app)
         #[cfg(not(target_os = "macos"))]
         egui::TopBottomPanel::top("main_menu").show(ctx, |ui| {
             ui_panels::render_main_menu(self, ctx, ui);
         });
 
-        // Render Persistent Categorized Domain Switcher Bar
         egui::TopBottomPanel::top("domain_switcher_bar")
             .exact_height(34.0)
             .show(ctx, |ui| {
                 domain_bar::render_domain_switcher_bar(self, ctx, ui);
             });
 
-        // Render Active Tab(s) or Multi-Pane Viewports
-        let active_layout = if self.viewport_layout != ViewportLayout::Single {
-            self.sync_layout();
-            self.viewport_layout
-        } else if self.split_layout_mode != SplitLayoutMode::Single {
-            let layout = match self.split_layout_mode {
-                SplitLayoutMode::Horizontal => ViewportLayout::SplitHorizontal,
-                SplitLayoutMode::Vertical => ViewportLayout::SplitVertical,
-                SplitLayoutMode::Single => ViewportLayout::Single,
-            };
-            self.viewport_layout = layout;
-            if !self.pane_tabs.is_empty() {
-                self.pane_tabs[0] = self.selected_tab;
-            }
-            if self.pane_tabs.len() > 1 {
-                self.pane_tabs[1] = self.secondary_tab;
-            }
-            layout
-        } else {
-            ViewportLayout::Single
-        };
-
+        let active_layout = self.resolve_active_viewport_layout();
         self.prune_inactive_pane_slots(active_layout.pane_count());
         self.sync_workspace_history_bridge(ctx);
 
@@ -451,10 +305,17 @@ impl eframe::App for MathExplorerApp {
             viewport::render_single_pane_viewport(self, ctx, frame);
         }
         self.drain_workspace_history_bridge(ctx);
+    }
+}
+
+impl eframe::App for MathExplorerApp {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.begin_update_frame(ctx, frame);
+        self.register_and_handle_global_shortcuts(ctx);
+        self.poll_and_render_diagnostics(ctx);
+        self.render_top_chrome_and_viewports(ctx, frame);
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
-
-        // Render Command Palette Overlay
         self.apply_command_palette_selection(ctx);
         crate::accessibility::sync_context_live_messages(ctx, false);
 

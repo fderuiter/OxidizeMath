@@ -234,16 +234,18 @@ impl MathExplorerApp {
         };
         let mods = base_mod | egui::Modifiers::SHIFT;
         let shortcut = egui_plot::commands::CommandTrigger::Shortcut(mods, egui::Key::Num2);
-        let triggered = egui_plot::commands::CommandRegistryData::register_and_check(
+        let allowed = !self.has_active_modal_or_popup(ctx);
+        let triggered = super::global_shortcuts::register_and_check_shortcut_if_allowed(
             ctx,
-            "Duplicate Focused Pane",
-            "Split or clone the focused simulation pane and its parameters into a comparison pane",
-            shortcut,
-            true,
-            "Viewport",
+            super::global_shortcuts::DesktopShortcutSpec {
+                name: "Duplicate Focused Pane",
+                description: "Split or clone the focused simulation pane and its parameters into a comparison pane",
+                trigger: shortcut,
+                context_name: "Viewport",
+            },
             None,
-            None,
-        ) || consume_physical_shift_num2(ctx, mods);
+            allowed,
+        ) || (allowed && consume_physical_shift_num2(ctx, mods));
         if triggered {
             let _ = self.duplicate_focused_pane(Some(ctx));
         }
