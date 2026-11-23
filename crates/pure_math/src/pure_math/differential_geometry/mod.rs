@@ -1,3 +1,4 @@
+pub mod buckled_flow;
 #[allow(missing_docs)]
 pub mod heat_equation;
 /// Intrinsic hyperbolic geometry on the Poincaré and Beltrami-Klein disks via $\mathrm{SU}(1,1)$.

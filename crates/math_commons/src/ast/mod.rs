@@ -1,5 +1,6 @@
 //! Native Abstract Syntax Tree (AST) expression parser and dynamic evaluator.
 
+pub mod codegen;
 pub mod compiled;
 pub mod eval;
 pub mod expr;
@@ -13,6 +14,8 @@ mod parser_diagnostics;
 #[cfg(test)]
 mod arity_tests;
 #[cfg(test)]
+mod codegen_tests;
+#[cfg(test)]
 mod compiled_tests;
 #[cfg(test)]
 mod glsl_sim_test_eval;
@@ -23,6 +26,7 @@ mod planar_tests;
 #[cfg(test)]
 mod tests;
 
+pub use codegen::{format_latex_scalar, format_python_float, format_rust_f64};
 pub use compiled::{CompiledExpr, Instruction};
 pub use eval::{EvalError, MAX_EVAL_DEPTH};
 pub use expr::{BinaryOp, Expr, Func, UnaryOp, is_universal_constant};
