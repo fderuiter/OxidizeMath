@@ -147,6 +147,22 @@ impl QuantumState {
         self.vector.map(|c| c.norm_sqr())
     }
 
+    /// Writes the Born probability density $P_i = |\psi_i|^2$ into `out` without heap allocations.
+    ///
+    /// # Panics
+    /// Panics if `out.len() != self.vector.len()`.
+    #[verified_engine::verified]
+    pub fn probability_density_in_place(&self, out: &mut [f64]) {
+        assert_eq!(
+            out.len(),
+            self.vector.len(),
+            "Output slice length must match quantum state vector length"
+        );
+        for (dst, amp) in out.iter_mut().zip(self.vector.as_slice().iter()) {
+            *dst = amp.norm_sqr();
+        }
+    }
+
     /// Projects the complex state vector onto the first `M` discrete orthonormal
     /// standing-wave spatial eigenmodes `<phi_m | psi>` without heap allocation,
     /// preserving complex amplitudes and phases prior to Born-rule norm collapse.
