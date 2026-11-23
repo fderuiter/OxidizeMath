@@ -1,4 +1,4 @@
-# ADR 0037: Zero-Allocation 2D FFT Lenia Engine and Promoted Gray-Scott Kinetics
+# ADR 0038: Zero-Allocation 2D FFT Lenia Engine and Promoted Gray-Scott Kinetics
 
 ## Status
 Accepted

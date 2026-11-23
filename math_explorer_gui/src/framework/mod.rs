@@ -6,7 +6,6 @@ pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_figure;
-mod export_format;
 mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
@@ -47,7 +46,6 @@ pub use callout_overlay::*;
 pub use clamp::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
-pub(crate) use export_format::*;
 pub(crate) use export_queue::*;
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
