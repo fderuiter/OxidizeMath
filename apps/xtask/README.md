@@ -11,7 +11,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | Command | Operational Role | Status |
 |---|---|---|
 | `check-api-drift` | Validates public API surface against `api_baseline.json`. | Active |
-| `check-cargo-docs` | Verifies workspace documentation builds without warnings. | Active |
+| `check-cargo-docs` | Verifies workspace documentation builds with `--all-features` and zero warnings. | Active |
 | `check-docs` | Runs crate documentation audit across all workspace crates. | Active |
 | `check-duplicates` | Runs AST-level code clone detector across first-party crates. | Active |
 | `check-entropy` | Scans codebase for high entropy strings and unseeded RNG usage. | Active |
@@ -20,7 +20,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `check-profiles` | Verifies Cargo `[profile.release]` `overflow-checks = true` and rejects member overrides. | Active |
 | `check-staged-duplicates` | Checks for duplicated patterns in git staging (non-blocking helper). | Active |
 | `check-vulnerabilities` | Scans workspace dependencies for known OSV vulnerabilities. | Active |
-| `compile-papers` | Compiles all 28 academic papers with multi-pass `pdflatex` and `bibtex`, emits archive and GitHub Pages HTML catalogs (`index.html` and `pages-index.html`), and packages `papers-bundle.tar.gz` with `SHA256SUMS`. | Active |
+| `compile-papers` | Compiles all 28 academic papers with multi-pass TeXLive `pdflatex` and `bibtex`, emits archive and GitHub Pages HTML catalogs (`index.html` and `pages-index.html`), and packages `papers-bundle.tar.gz` with `SHA256SUMS`. | Active |
 | `lint-all` | Runs the full PR verification suite (formatting, single-pass batched static & AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift, traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, markdown links, and OSV vulnerabilities). | Active |
 | `lint-staged` | Syncs the staged Git index into `<target_dir>/lint-staged-snapshot` and runs offline pre-commit gates (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged` (staged ADR verification, profiles, file lengths, docs, AST clones, traceability, entropy, policy audit), single `.github/` workflow linting, `.md` or deletion/rename link scans, and reverse-dependent + 17-web-crate host/`wasm32` Clippy with root config escalation. | Active |
 | `lint-workflows` | Validates GitHub Actions workflow definitions and permissions. | Active |

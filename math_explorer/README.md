@@ -33,7 +33,7 @@ The `math_explorer` crate serves as the primary library entrypoint for downstrea
 
 ### Installation & Feature Selection
 
-Add `math_explorer` to your `Cargo.toml` and enable the domain features required by your application:
+Add `math_explorer` to your `Cargo.toml` and enable the domain features required by your application (`default = []` keeps the core minimal):
 
 ```toml
 [dependencies]
@@ -159,4 +159,10 @@ fn main() {
 
 ## 3. Ecosystem Integration
 
-Please refer to [CONTRIBUTING.md](../CONTRIBUTING.md) in the project root for contributor standards and facade export hygiene rules. Run `cargo test -p math_explorer --all-features` to execute the facade integration and doctest suites.
+Please refer to [CONTRIBUTING.md](../CONTRIBUTING.md) in the project root for contributor standards and facade export hygiene rules.
+
+To run the comprehensive test suite across all domain modules:
+
+```bash
+cargo test -p math_explorer --all-features
+```
