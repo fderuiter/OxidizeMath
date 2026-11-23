@@ -13,7 +13,7 @@
 \maketitle
 
 \begin{abstract}
-This paper introduces an open-source Rust library for the computational exploration of algorithmic information theory and universal register machines, drawing on "Algorithmic Information Bounds for Distances and Orthogonal Projections" by Cholak et al.\ alongside Conway's FRACTRAN universal arithmetic language. We present the design of the library, which includes modules for geometric primitives, Kolmogorov complexity approximations, the core Combinatorial Lemma, and a zero-allocation prime-exponent FRACTRAN virtual machine with Minsky counter-machine decoding. We demonstrate the library's utility through numerical experiments on Hausdorff dimension bounds and prime-generating counter automata.
+This paper introduces an open-source Rust library for the computational exploration of algorithmic and probabilistic information theory alongside universal register machines, drawing on "Algorithmic Information Bounds for Distances and Orthogonal Projections" by Cholak et al.\ together with Conway's FRACTRAN universal arithmetic language and classical Shannon-Blahut-Arimoto channel coding theory. We present the design of the library, which includes modules for geometric primitives, Kolmogorov complexity approximations, the core Combinatorial Lemma, a zero-allocation prime-exponent FRACTRAN virtual machine with Minsky counter-machine decoding, and preallocated discrete Shannon entropy, divergence, and channel capacity solvers. We demonstrate the library's utility through numerical experiments on Hausdorff dimension bounds, prime-generating counter automata, and discrete memoryless channel capacities.
 \end{abstract}
 
 \section{Introduction}
@@ -29,7 +29,7 @@ This paper introduces an open-source Rust library for the computational explorat
 
 \section{Implementation Design}
 
-The core of our computational framework is a Rust library exposed through the \texttt{math\_explorer} crate. The library is designed to be modular and extensible, with a clear separation of concerns that reflects the underlying computability and geometric measure concepts. The main modules are \texttt{geometry}, \texttt{kolmogorov}, \texttt{combinatorics}, and \texttt{fractran}.
+The core of our computational framework is a Rust library exposed through the \texttt{math\_explorer} crate. The library is designed to be modular and extensible, with a clear separation of concerns that reflects the underlying computability, probabilistic information, and geometric measure concepts. The main modules are \texttt{geometry}, \texttt{kolmogorov}, \texttt{combinatorics}, \texttt{fractran}, and \texttt{shannon}.
 
 \subsection{The \texttt{geometry} Module}
 
@@ -69,6 +69,20 @@ The \texttt{fractran} module implements John Horton Conway's FRACTRAN universal 
     \item \texttt{FractranProgram} and \texttt{FractranCompiledVm}: \texttt{FractranProgram} validates strictly positive \texttt{Rational} rules over smooth prime factors and compiles their numerators and denominators into flat \texttt{u32} exponent matrices. \texttt{FractranCompiledVm::step\_registers} finds the first rule satisfying $\mathbf{e} \ge \nu_{\mathbf{p}}(B_j)$ and updates $\mathbf{e} \leftarrow (\mathbf{e} - \nu_{\mathbf{p}}(B_j)) + \nu_{\mathbf{p}}(A_j)$ in place using checked \texttt{u32} arithmetic with zero dynamic heap allocations.
     \item \texttt{FractranState} and Minsky Counter Machines: Partitioning the prime basis into indicator control-state primes and unbounded data-register primes decodes any FRACTRAN configuration into an explicit Minsky counter-machine state and extracts directed guard/increment transitions.
     \item \texttt{FractranPreset}: Built-in canonical programs include Conway's 14-fraction universal prime generator \texttt{PRIMEGAME} (emitting pure powers of two $2^2, 2^3, 2^5, 2^7, 2^{11}, \dots$), \texttt{MULT}, \texttt{ADD}, and \texttt{FIBONACCI}.
+\end{itemize}
+
+\subsection{The \texttt{shannon} Module}
+
+To bridge individual-object Kolmogorov bounds $K(x)$ with ensemble-average coding limits, the \texttt{shannon} module provides deterministic, zero-allocation \texttt{f64} primitives (in base-$2$ bits) verified under \texttt{VerifiedAllocator}.
+
+\begin{itemize}
+    \item \texttt{categorical\_entropy} and \texttt{renyi\_entropy}: Evaluates discrete Shannon entropy $H(P) = -\sum_{i} p_i \log_2 p_i$ (with $0 \log_2 0 = 0$) and order-$\alpha$ R\'enyi entropy
+    \begin{equation}
+        H_{\alpha}(P) = \frac{1}{1 - \alpha} \log_2 \sum_{i} p_i^{\alpha}, \qquad \alpha \in [0, \infty],
+    \end{equation}
+    covering Hartley support entropy ($\alpha = 0$), the continuous Shannon limit ($\alpha \to 1$), collision entropy ($\alpha = 2$), and min-entropy $H_{\infty}(P) = -\log_2 \max_i p_i$ via log-sum-exp rescaling.
+    \item \texttt{kl\_divergence}, \texttt{jensen\_shannon\_divergence}, and \texttt{joint\_mutual\_information}: Computes Kullback--Leibler relative entropy $D_{\mathrm{KL}}(P \parallel Q) = \sum_i p_i \log_2(p_i / q_i)$ with explicit absolute-continuity checking, single-pass bounded Jensen--Shannon divergence $\mathrm{JSD}(P \parallel Q) = \frac{1}{2} D_{\mathrm{KL}}(P \parallel M) + \frac{1}{2} D_{\mathrm{KL}}(Q \parallel M) \in [0, 1]$ where $M = \frac{1}{2}(P + Q)$, and joint mutual information $I(X; Y) = \sum_{x, y} P(x, y) \log_2 \frac{P(x, y)}{P_X(x) P_Y(y)}$ using preallocated marginal buffers in \texttt{JointMiWorkspace}.
+    \item Closed-Form and Blahut--Arimoto Channel Capacities: Provides exact capacities for the binary symmetric channel $C_{\mathrm{BSC}}(p) = 1 - h_2(p)$, binary erasure channel $C_{\mathrm{BEC}}(\epsilon) = 1 - \epsilon$, and additive white Gaussian noise channel $C_{\mathrm{AWGN}}(\mathrm{SNR}) = \frac{1}{2}\log_2(1 + \mathrm{SNR})$ (alongside bandlimited $B \log_2(1 + \mathrm{SNR})$). For general discrete memoryless channels $W(y \mid x)$, \texttt{blahut\_arimoto\_capacity} iterates within \texttt{BlahutArimotoWorkspace} using log-stabilized updates $r_x^{(t+1)} \propto r_x^{(t)} 2^{d_x^{(t)}}$ with $d_x^{(t)} = D_{\mathrm{KL}}(W(\cdot \mid x) \parallel q^{(t)})$, bracketing $C$ between $I_L^{(t)} = \sum_x r_x^{(t)} d_x^{(t)}$ and the minimax dual bound $I_U^{(t)} = \max_x d_x^{(t)}$ without heap allocation.
 \end{itemize}
 
 This modular design allows for future extensions and provides a solid foundation for the numerical experiments and interactive visualizations presented in the next section.

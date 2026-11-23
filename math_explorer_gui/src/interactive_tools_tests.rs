@@ -50,6 +50,11 @@ mod tests {
         check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
         check_tool!(crate::tabs::chaos::hamiltonian::HamiltonianChaosLab);
         check_tool!(crate::tabs::algorithmic_information::state::FractranMachineTool);
+        check_tool!(crate::tabs::algorithmic_information::shannon::ShannonChannelTool);
+        check_tool!(crate::tabs::game_theory::nash_shapley::NashShapleyTool);
+        check_tool!(crate::tabs::game_theory::decision_bandit::DecisionBanditTool);
+        check_tool!(crate::tabs::game_theory::auction::OptimalAuctionTool);
+        check_tool!(crate::tabs::game_theory::mean_field::MeanFieldGameTool);
         check_tool!(crate::tabs::number_theory::fractran_machine::FractranMachineTool);
         check_tool!(crate::tabs::number_theory::ualbf_widget::UalbfWidget);
         check_tool!(crate::tabs::number_theory::partitions_widget::PartitionsWidget);

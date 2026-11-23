@@ -38,6 +38,54 @@ pub enum GameTheoryError {
     /// Invalid parameter value (e.g. frequency outside [0, 1]).
     #[allow(missing_docs)]
     InvalidParameter { name: String, value: f64 },
+    /// Strategy space or player set cannot be empty.
+    EmptyStrategies,
+    /// Slice or matrix dimensions do not match expected sizes.
+    DimensionMismatch {
+        /// Expected number of elements.
+        expected: usize,
+        /// Actual number of elements.
+        actual: usize,
+    },
+    /// Non-finite or out-of-domain payoff or probability entry.
+    InvalidPayoff {
+        /// Offending row or player index.
+        row: usize,
+        /// Offending column or coalition index.
+        col: usize,
+        /// Offending numeric value.
+        value: f64,
+    },
+    /// Bimatrix game exceeds the `8x8` dimension cap for support enumeration.
+    SupportEnumerationCapExceeded {
+        /// Provided row count.
+        rows: usize,
+        /// Provided column count.
+        cols: usize,
+        /// Maximum supported dimension (`8`).
+        max_dim: usize,
+    },
+    /// Cooperative game exceeds the `16`-player bitmask cap.
+    CoalitionCapExceeded {
+        /// Provided player count.
+        players: usize,
+        /// Maximum supported player count (`16`).
+        max_players: usize,
+    },
+    /// Preallocated workspace or output slice is too small.
+    WorkspaceTooSmall {
+        /// Minimum required capacity.
+        required: usize,
+        /// Provided capacity.
+        actual: usize,
+    },
+    /// Complementary or Simplex pivoting exceeded the maximum iteration guard.
+    PivotLimitExceeded {
+        /// Maximum pivots attempted before aborting.
+        max_pivots: usize,
+    },
+    /// Solver found no feasible equilibrium.
+    NoEquilibriumFound,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -176,7 +224,49 @@ impl From<math_commons::error::MathError> for IsosurfaceError {
 impl std::fmt::Display for GameTheoryError {
     #[verified_engine::verified]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            Self::NonSquarePayoffMatrix { rows, cols } => {
+                write!(f, "payoff matrix must be square (got {rows}x{cols})")
+            }
+            Self::InvalidParameter { name, value } => {
+                write!(f, "invalid game theory parameter {name}: {value}")
+            }
+            Self::EmptyStrategies => write!(f, "strategy set or player count cannot be empty"),
+            Self::DimensionMismatch { expected, actual } => {
+                write!(f, "dimension mismatch (expected {expected}, got {actual})")
+            }
+            Self::InvalidPayoff { row, col, value } => {
+                write!(
+                    f,
+                    "invalid payoff or probability at ({row}, {col}): {value}"
+                )
+            }
+            Self::SupportEnumerationCapExceeded {
+                rows,
+                cols,
+                max_dim,
+            } => write!(
+                f,
+                "bimatrix size {rows}x{cols} exceeds support enumeration cap {max_dim}x{max_dim}"
+            ),
+            Self::CoalitionCapExceeded {
+                players,
+                max_players,
+            } => write!(
+                f,
+                "coalition player count {players} exceeds bitmask cap of {max_players}"
+            ),
+            Self::WorkspaceTooSmall { required, actual } => {
+                write!(
+                    f,
+                    "game theory workspace too small (required {required}, got {actual})"
+                )
+            }
+            Self::PivotLimitExceeded { max_pivots } => {
+                write!(f, "pivot limit exceeded after {max_pivots} pivots")
+            }
+            Self::NoEquilibriumFound => write!(f, "no equilibrium found"),
+        }
     }
 }
 
@@ -213,7 +303,7 @@ mod umbrella;
 
 pub use crate::applied::{
     algorithms::kalman::KalmanError, clinical_trials::types::ClinicalTrialError,
-    isosurface::types::VoxelGridError,
+    decision_theory::DecisionTheoryError, isosurface::types::VoxelGridError,
 };
 pub use umbrella::AppliedError;
 

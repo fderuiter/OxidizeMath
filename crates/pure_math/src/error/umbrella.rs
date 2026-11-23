@@ -1,7 +1,8 @@
 use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
     Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    OptimizationError, OuError, ShannonError, StochasticError, TdaError, TensorError,
+    TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -53,6 +54,9 @@ pub enum PureMathError {
     /// Prime-exponent FRACTRAN register machine error.
     #[error("{0}")]
     Fractran(#[from] FractranError),
+    /// Discrete Shannon entropy, divergence, or channel capacity error.
+    #[error("{0}")]
+    Shannon(#[from] ShannonError),
     /// Numerical linear algebra error.
     #[error("{0}")]
     LinearAlgebra(#[from] LinearAlgebraError),
@@ -128,6 +132,7 @@ impl PureMathError {
             Self::EllipticCurve(err) => err,
             Self::Evolution(err) => err,
             Self::Fractran(err) => err,
+            Self::Shannon(err) => err,
             Self::LinearAlgebra(err) => err,
             Self::Optimization(err) => err,
             Self::Stochastic(err) => err,

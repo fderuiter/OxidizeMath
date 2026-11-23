@@ -99,3 +99,39 @@ fn test_prisoners_dilemma_mean_fitness_decline_and_stag_hunt() {
     tool.sync_and_eval_symbolic_payoffs();
     assert!(tool.symbolic_error.is_none());
 }
+
+#[test]
+fn test_resize_strategies_bounds_preservation_and_preset_roundtrip() {
+    let mut tool = ReplicatorDynamicsTool::default();
+    assert_eq!(tool.strategy_count(), 2);
+
+    // Clamps below 2 to 2
+    tool.resize_strategies(1);
+    assert_eq!(tool.strategy_count(), 2);
+
+    // Expand up to 8 and clamp above 8
+    tool.resize_strategies(12);
+    assert_eq!(tool.strategy_count(), 8);
+    assert_eq!(tool.strategy_names.len(), 8);
+    assert_eq!(tool.initial_population.len(), 8);
+    assert_eq!(tool.symbolic_bars.len(), 8);
+    assert!((tool.initial_population.sum() - 1.0).abs() < 1e-9);
+    // Original 2x2 Hawk-Dove top-left block is preserved
+    assert!((tool.payoff_matrix[(0, 0)] - -1.0).abs() < 1e-12);
+    assert!((tool.payoff_matrix[(0, 1)] - 2.0).abs() < 1e-12);
+
+    // Export & re-import 8x8 state via ReplicatorPresetConfig validation
+    let saved_8 = tool.save_state().expect("8x8 save_state");
+    let mut restored = ReplicatorDynamicsTool::default();
+    restored
+        .try_load_state(&saved_8)
+        .expect("8x8 try_load_state");
+    assert_eq!(restored.strategy_count(), 8);
+
+    // Shrink to 4 strategies in symbolic mode
+    tool.symbolic_mode = true;
+    tool.sync_and_eval_symbolic_payoffs();
+    tool.resize_strategies(4);
+    assert_eq!(tool.strategy_count(), 4);
+    assert!(tool.symbolic_error.is_none());
+}

@@ -9,8 +9,9 @@ pub use domain_ai::error::AIError;
 
 #[cfg(feature = "applied")]
 pub use domain_applied::error::{
-    AppliedError, BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError,
-    IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
+    AppliedError, BatteryError, ClinicalTrialError, DecisionTheoryError, EngineeringError,
+    GameTheoryError, IsosurfaceError, KalmanError, LoraError, PharmacokineticsError,
+    VoxelGridError,
 };
 
 #[cfg(feature = "biology")]
@@ -33,8 +34,8 @@ pub use domain_physics::error::{
 pub use pure_math::error::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
     Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
-    TransformError, ZipError,
+    OptimizationError, OuError, PureMathError, ShannonError, StochasticError, TdaError,
+    TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -74,6 +75,9 @@ pub enum Error {
     /// Clinical trial design or analysis error.
     #[cfg(feature = "applied")]
     ClinicalTrial(ClinicalTrialError),
+    /// Sequential decision theory or bandit error.
+    #[cfg(feature = "applied")]
+    DecisionTheory(DecisionTheoryError),
     /// Engineering calculation error.
     #[cfg(feature = "applied")]
     Engineering(EngineeringError),
@@ -174,6 +178,9 @@ pub enum Error {
     /// Prime-exponent FRACTRAN register machine error.
     #[cfg(feature = "pure_math")]
     Fractran(FractranError),
+    /// Discrete Shannon entropy, divergence, or channel capacity error.
+    #[cfg(feature = "pure_math")]
+    Shannon(ShannonError),
     /// Glicko-2 rating error.
     #[cfg(feature = "pure_math")]
     Glicko2(Glicko2Error),

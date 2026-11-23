@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::framework::math_input::{
     MathExpressionInputBar, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS,
 };
@@ -11,12 +13,17 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[path = "replicator/presets.rs"]
 mod presets;
+#[path = "replicator/resize.rs"]
+mod resize;
 #[path = "replicator/ui.rs"]
 mod ui;
 
 #[cfg(test)]
 #[path = "replicator/tests.rs"]
 mod tests;
+
+pub const MIN_REPLICATOR_STRATEGIES: usize = 2;
+pub const MAX_REPLICATOR_STRATEGIES: usize = 8;
 
 pub struct ReplicatorDynamicsTool {
     payoff_matrix: DMatrix<f64>,

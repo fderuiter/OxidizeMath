@@ -1,6 +1,6 @@
 use super::{
-    BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError, IsosurfaceError,
-    KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
+    BatteryError, ClinicalTrialError, DecisionTheoryError, EngineeringError, GameTheoryError,
+    IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -23,6 +23,9 @@ pub enum AppliedError {
     /// Clinical trial design or analysis error.
     #[error("{0}")]
     ClinicalTrial(#[from] ClinicalTrialError),
+    /// Sequential decision theory or bandit error.
+    #[error("{0}")]
+    DecisionTheory(#[from] DecisionTheoryError),
     /// Engineering calculation error.
     #[error("{0}")]
     Engineering(#[from] EngineeringError),
@@ -131,6 +134,7 @@ impl AppliedError {
         match self {
             Self::Battery(err) => err,
             Self::ClinicalTrial(err) => err,
+            Self::DecisionTheory(err) => err,
             Self::Engineering(err) => err,
             Self::GameTheory(err) => err,
             Self::Isosurface(err) => err,

@@ -18,7 +18,8 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
 - **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
 - **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.
-- **`game_theory`**: Mean Field Games, evolutionary matrix dynamics, and mechanism design.
+- **`game_theory`**: Normal-form matrix/bimatrix solvers (`iterated_dominance`, zero-sum Simplex minimax, `8x8` support enumeration, lexicographically perturbed Lemke-Howson), bitmask cooperative Shapley values (`cooperative`), Mean Field Games (`mean_field`), evolutionary matrix dynamics (`evolutionary`), and Myerson/VCG mechanism design (`mechanism_design`).
+- **`decision_theory`**: Arena-indexed finite decision trees with backward induction, `CARA`/`CRRA` certainty equivalents, `EVPI`/`EVSI` value-of-information solvers, and deterministic `OxidizeRng`-seeded `UCB1` and Thompson sampling bandits.
 - **`lorahub` & `grpo`**: Machine learning parameter merging and group relative policy optimization.
 - **`cannibalism` & `favoritism`**: Specialized population dynamics models and socio-mathematical scoring functions.
 

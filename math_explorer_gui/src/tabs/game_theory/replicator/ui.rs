@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::ReplicatorDynamicsTool;
+use super::{ReplicatorDynamicsTool, MAX_REPLICATOR_STRATEGIES, MIN_REPLICATOR_STRATEGIES};
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
@@ -133,6 +133,45 @@ impl ReplicatorDynamicsTool {
         });
     }
 
+    fn show_strategy_count_controls(&mut self, ui: &mut egui::Ui) {
+        let current_n = self.strategy_count();
+        let mut target_n = current_n;
+        ui.horizontal(|ui| {
+            ui.label("Strategies:");
+            if ui
+                .add_enabled(
+                    current_n > MIN_REPLICATOR_STRATEGIES,
+                    egui::Button::new("−"),
+                )
+                .accessible_hover_text("Remove last strategy (minimum 2)")
+                .clicked()
+            {
+                target_n = current_n.saturating_sub(1);
+            }
+            let drag = ui.add(
+                egui::DragValue::new(&mut target_n)
+                    .range(MIN_REPLICATOR_STRATEGIES..=MAX_REPLICATOR_STRATEGIES)
+                    .speed(0.1),
+            );
+            if drag.changed() {
+                target_n = target_n.clamp(MIN_REPLICATOR_STRATEGIES, MAX_REPLICATOR_STRATEGIES);
+            }
+            if ui
+                .add_enabled(
+                    current_n < MAX_REPLICATOR_STRATEGIES,
+                    egui::Button::new("+"),
+                )
+                .accessible_hover_text("Add strategy up to 8")
+                .clicked()
+            {
+                target_n = (current_n + 1).min(MAX_REPLICATOR_STRATEGIES);
+            }
+        });
+        if target_n != current_n {
+            self.resize_strategies(target_n);
+        }
+    }
+
     pub(super) fn show_settings_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading("Settings");
         ui.separator();
@@ -140,6 +179,7 @@ impl ReplicatorDynamicsTool {
 
         ui.separator();
         ui.heading("Payoff Matrix");
+        self.show_strategy_count_controls(ui);
         if ui
             .checkbox(&mut self.symbolic_mode, "Symbolic Formula Payoffs")
             .accessible_hover_text(

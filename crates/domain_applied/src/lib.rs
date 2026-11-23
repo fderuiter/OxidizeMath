@@ -8,15 +8,17 @@ pub mod error;
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{
-            AppliedError, BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError,
-            IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
+            AppliedError, BatteryError, ClinicalTrialError, DecisionTheoryError, EngineeringError,
+            GameTheoryError, IsosurfaceError, KalmanError, LoraError, PharmacokineticsError,
+            VoxelGridError,
         };
         pub use ::pure_math::__doctest_facade::error::*;
     }
     pub mod prelude {
         pub use crate::error::{
-            AppliedError, BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError,
-            IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
+            AppliedError, BatteryError, ClinicalTrialError, DecisionTheoryError, EngineeringError,
+            GameTheoryError, IsosurfaceError, KalmanError, LoraError, PharmacokineticsError,
+            VoxelGridError,
         };
         pub use ::pure_math::__doctest_facade::prelude::*;
     }
