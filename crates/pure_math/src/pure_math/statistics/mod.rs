@@ -114,6 +114,10 @@ pub mod market_pricing;
 pub mod markov;
 pub mod match_models;
 pub mod ou_process;
+/// Homogeneous and inhomogeneous Poisson arrival processes.
+pub mod poisson;
+/// Markovian birth-death queueing models ($M/M/1$ and $M/M/c$ Erlang-C).
+pub mod queueing;
 pub mod regression;
 pub mod ruin;
 pub mod tda;

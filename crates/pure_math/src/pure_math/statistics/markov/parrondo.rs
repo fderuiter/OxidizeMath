@@ -384,15 +384,15 @@ pub fn build_schedule_matrix(
     Ok(product)
 }
 
-/// Computes the stationary distribution via lazy damping $\tfrac{1}{2}(I + P)$ and [`MarkovChain`].
+/// Computes the stationary distribution via [`MarkovChain::stationary_distribution`] QR nullspace solve.
 #[verified_engine::verified]
 pub fn lazy_stationary_distribution(transition: &DMatrix<f64>) -> Result<DVector<f64>> {
     let m = transition.nrows();
-    let lazy = (DMatrix::identity(m, m) + transition) * 0.5;
-    MarkovChain::new(lazy, vec![StateType::Transient; m])?
+    MarkovChain::new(transition.clone(), vec![StateType::Transient; m])?
         .stationary_distribution()
         .ok_or_else(|| MarkovError::SingularMatrix {
-            context: "Lazy-damped MarkovChain stationary_distribution did not converge".to_string(),
+            context: "MarkovChain QR stationary_distribution requires a unique closed class"
+                .to_string(),
         })
 }
 

@@ -29,10 +29,12 @@ pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
         "mri" => Cow::Borrowed("MRI Physics"),
         "neuroscience" => Cow::Borrowed("Neuroscience"),
         "number_theory" => Cow::Borrowed("Number Theory"),
+        "optics_waves" => Cow::Borrowed("Optics & Waves"),
         "paradox_lab" => Cow::Borrowed("Paradox Lab"),
         "quantum" => Cow::Borrowed("Quantum Mechanics"),
         "relativity" => Cow::Borrowed("General Relativity"),
         "solid_state" => Cow::Borrowed("Solid State Physics"),
+        "stochastic_processes" => Cow::Borrowed("Stochastic Processes"),
         "traceability" => Cow::Borrowed("Traceability Portal"),
         other => Cow::Owned(title_case_identifier(other)),
     }
