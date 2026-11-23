@@ -7,6 +7,8 @@ use std::collections::BTreeMap;
 
 #[path = "complex_mapping/cache.rs"]
 mod cache;
+#[path = "complex_mapping/contour_batch.rs"]
+mod contour_batch;
 #[path = "complex_mapping/shader.rs"]
 mod shader;
 #[path = "complex_mapping/ui.rs"]
@@ -112,7 +114,7 @@ pub struct ComplexMappingTool {
     pub(crate) inspection_point: [f64; 2],
     pub(crate) math_input: MathExpressionInputBar,
     pub(crate) high_contrast: bool,
-    pub(crate) cache: cache::ContourGridCache,
+    pub(crate) cache: cache::ConformalGridCache,
 }
 
 impl Default for ComplexMappingTool {
@@ -138,7 +140,7 @@ impl Default for ComplexMappingTool {
             .with_axes(&["z"])
             .with_complex_mode(true),
             high_contrast: false,
-            cache: cache::ContourGridCache::default(),
+            cache: cache::ConformalGridCache::default(),
         }
     }
 }
@@ -205,6 +207,17 @@ impl InteractiveTool for ComplexMappingTool {
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::plot().with_shader()
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+
+    fn sample_animation_frames(
+        &mut self,
+        _num_frames: usize,
+    ) -> Vec<egui_plot::export::DatasetFrame> {
+        Vec::new()
     }
 
     fn export_glsl_shader(&self, dialect: crate::framework::ShaderDialect) -> Result<String, String> {
@@ -290,7 +303,7 @@ impl InteractiveTool for ComplexMappingTool {
             == crate::app::ThemeMode::HighContrast;
         self.draw_controls(parent_ui);
         let palette = crate::app::SemanticPalette::from_visuals(parent_ui.visuals());
-        let grid_ok = self.ensure_cached_contours(&palette);
+        let grid_ok = self.ensure_cached_contours();
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Conformal Mapping Visualization");
             ui.columns(2, |columns| {

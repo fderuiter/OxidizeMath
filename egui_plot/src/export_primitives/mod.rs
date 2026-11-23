@@ -150,6 +150,19 @@ pub enum DeferredPlotPrimitive {
         /// Disjoint colored polyline segments in plot space.
         segments: Arc<Vec<crate::ColoredSegment>>,
     },
+    /// Zero-copy batch of range-sliced disjoint polylines into a flat shared point buffer.
+    SlicedPolylineBatch {
+        /// Series name.
+        name: String,
+        /// Flat shared plot-space points.
+        points: Arc<Vec<crate::PlotPoint>>,
+        /// Contiguous `[start..end]` slice ranges for each disjoint polyline.
+        ranges: Arc<Vec<std::ops::Range<usize>>>,
+        /// Stroke color.
+        color: egui::Color32,
+        /// Stroke width in UI points.
+        stroke_width: f32,
+    },
     /// Zero-copy shared scatter marker series.
     Points {
         /// Series name.
@@ -216,35 +229,9 @@ impl DeferredPlotPrimitive {
                     });
                 }
             }
-            Self::PolylineBatch {
-                name,
-                segments,
-                color,
-                stroke_width,
-            } => {
-                for seg in segments.iter().filter(|seg| !seg.is_empty()) {
-                    out.push(ExportPrimitive::Polyline {
-                        name: name.clone(),
-                        points: seg.iter().map(|p| [p.x, p.y]).collect(),
-                        color: *color,
-                        stroke_width: *stroke_width,
-                        closed: false,
-                        fill: None,
-                    });
-                }
-            }
-            Self::ColoredPolylineBatch { name, segments } => {
-                for seg in segments.iter().filter(|seg| !seg.points.is_empty()) {
-                    out.push(ExportPrimitive::Polyline {
-                        name: name.clone(),
-                        points: seg.points.iter().map(|p| [p.x, p.y]).collect(),
-                        color: seg.color,
-                        stroke_width: seg.width,
-                        closed: false,
-                        fill: None,
-                    });
-                }
-            }
+            Self::PolylineBatch { .. }
+            | Self::ColoredPolylineBatch { .. }
+            | Self::SlicedPolylineBatch { .. } => self.materialize_batch_into(out),
             Self::Points {
                 name,
                 points,
@@ -299,6 +286,62 @@ impl DeferredPlotPrimitive {
                 }
             }
             Self::Eager(items) => out.extend(items.iter().cloned()),
+        }
+    }
+
+    fn materialize_batch_into(&self, out: &mut Vec<ExportPrimitive>) {
+        match self {
+            Self::PolylineBatch {
+                name,
+                segments,
+                color,
+                stroke_width,
+            } => {
+                for seg in segments.iter().filter(|seg| !seg.is_empty()) {
+                    out.push(ExportPrimitive::Polyline {
+                        name: name.clone(),
+                        points: seg.iter().map(|p| [p.x, p.y]).collect(),
+                        color: *color,
+                        stroke_width: *stroke_width,
+                        closed: false,
+                        fill: None,
+                    });
+                }
+            }
+            Self::ColoredPolylineBatch { name, segments } => {
+                for seg in segments.iter().filter(|seg| !seg.points.is_empty()) {
+                    out.push(ExportPrimitive::Polyline {
+                        name: name.clone(),
+                        points: seg.points.iter().map(|p| [p.x, p.y]).collect(),
+                        color: seg.color,
+                        stroke_width: seg.width,
+                        closed: false,
+                        fill: None,
+                    });
+                }
+            }
+            Self::SlicedPolylineBatch {
+                name,
+                points,
+                ranges,
+                color,
+                stroke_width,
+            } => {
+                let slice_src = points.as_slice();
+                for range in ranges.iter() {
+                    if let Some(seg) = slice_src.get(range.clone()).filter(|s| s.len() >= 2) {
+                        out.push(ExportPrimitive::Polyline {
+                            name: name.clone(),
+                            points: seg.iter().map(|p| [p.x, p.y]).collect(),
+                            color: *color,
+                            stroke_width: *stroke_width,
+                            closed: false,
+                            fill: None,
+                        });
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }

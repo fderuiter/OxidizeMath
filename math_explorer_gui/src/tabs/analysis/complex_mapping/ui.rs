@@ -1,14 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::cache::ContourBatch;
 use super::*;
 use crate::framework::{bounded_drag_value, enforce_ordered_drag_range};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{Plot, PlotPoint};
 use num_complex::Complex64;
 
 pub(super) const CONTOUR_RESOLUTION: usize = 161;
 
+#[cfg(test)]
 pub(super) fn split_contour_segments<F: Fn(usize) -> Complex64>(
     resolution: usize,
     grid_span: f64,
@@ -149,23 +151,30 @@ impl ComplexMappingTool {
         grid_ok: bool,
     ) {
         ui.label("z-plane (Input)");
+        let z_marker = [PlotPoint::new(
+            self.inspection_point[0],
+            self.inspection_point[1],
+        )];
+        let has_z_marker = self.inspection_point.iter().all(|v| v.is_finite());
+        let generation = self.cache.generation;
         Plot::new("z_plane_plot")
             .view_aspect(1.0)
             .x_axis_label("Re(z)")
             .y_axis_label("Im(z)")
             .show(ui, |plot_ui| {
                 if grid_ok {
-                    let (z_batch, z_bounds) = &self.cache.z_batch;
-                    if !z_batch.is_empty() {
-                        plot_ui.line(
-                            Line::from_colored_segments("z-grid", std::sync::Arc::clone(z_batch))
-                                .with_bounds(*z_bounds),
-                        );
+                    if let Some(batch) = ContourBatch::from_pair(
+                        "z-grid",
+                        ("Re(z) grid", &self.cache.z_vertical, palette.series_color(0)),
+                        ("Im(z) grid", &self.cache.z_horizontal, palette.series_color(1)),
+                        generation,
+                    ) {
+                        plot_ui.add(batch);
                     }
                 }
-                if self.inspection_point.iter().all(|v| v.is_finite()) {
+                if has_z_marker {
                     plot_ui.points(
-                        egui_plot::Points::new("", PlotPoints::new(vec![self.inspection_point]))
+                        egui_plot::Points::new("", z_marker.as_slice())
                             .color(palette.error)
                             .radius(5.0_f32),
                     );
@@ -180,33 +189,104 @@ impl ComplexMappingTool {
         grid_ok: bool,
     ) {
         ui.label("w-plane (Output)");
+        let w0 = self
+            .inspection_point
+            .iter()
+            .all(|v| v.is_finite())
+            .then_some(self.cache.cached_w0);
+        let has_w_marker = w0.is_some_and(|w| w.re.is_finite() && w.im.is_finite());
+        let w_marker = [w0.map_or(PlotPoint::new(0.0, 0.0), |w| PlotPoint::new(w.re, w.im))];
+        let generation = self.cache.generation;
         Plot::new("w_plane_plot")
             .view_aspect(1.0)
             .x_axis_label("Re(w)")
             .y_axis_label("Im(w)")
             .show(ui, |plot_ui| {
                 if grid_ok {
-                    let (w_batch, w_bounds) = &self.cache.w_batch;
-                    if !w_batch.is_empty() {
-                        plot_ui.line(
-                            Line::from_colored_segments(
-                                "w-contours",
-                                std::sync::Arc::clone(w_batch),
-                            )
-                            .with_bounds(*w_bounds),
-                        );
+                    if let Some(batch) = ContourBatch::from_pair(
+                        "w-contours",
+                        ("u-contours", &self.cache.w_vertical, palette.series_color(0)),
+                        ("v-contours", &self.cache.w_horizontal, palette.series_color(1)),
+                        generation,
+                    ) {
+                        plot_ui.add(batch);
                     }
                 }
-                if self.inspection_point.iter().all(|v| v.is_finite()) {
-                    let w0 = self.cache.cached_w0;
-                    if w0.re.is_finite() && w0.im.is_finite() {
-                        plot_ui.points(
-                            egui_plot::Points::new("", PlotPoints::new(vec![[w0.re, w0.im]]))
-                                .color(palette.error)
-                                .radius(5.0_f32),
-                        );
-                    }
+                if has_w_marker {
+                    plot_ui.points(
+                        egui_plot::Points::new("", w_marker.as_slice())
+                            .color(palette.error)
+                            .radius(5.0_f32),
+                    );
                 }
             });
+    }
+
+    pub(super) fn build_export_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        let theme = if self.high_contrast {
+            crate::app::ThemeMode::HighContrast
+        } else {
+            crate::app::ThemeMode::Dark
+        };
+        let palette = crate::app::SemanticPalette::for_theme(theme);
+        let mut cold_cache = super::cache::ConformalGridCache::default();
+        let mut out = Vec::new();
+        if let Some(cache) = self.resolve_export_cache(&mut cold_cache) {
+            let total = cache.z_vertical.ranges.len()
+                + cache.z_horizontal.ranges.len()
+                + cache.w_vertical.ranges.len()
+                + cache.w_horizontal.ranges.len()
+                + 2;
+            out.reserve(total);
+            let (c0, c1) = (palette.series_color(0), palette.series_color(1));
+            append_family_polylines("Re(z) grid", &cache.z_vertical, c0, &mut out);
+            append_family_polylines("Im(z) grid", &cache.z_horizontal, c1, &mut out);
+            append_family_polylines("u-contours", &cache.w_vertical, c0, &mut out);
+            append_family_polylines("v-contours", &cache.w_horizontal, c1, &mut out);
+        }
+        if self.inspection_point.iter().all(|v| v.is_finite()) {
+            out.push(egui_plot::ExportPrimitive::Points {
+                name: "z".to_owned(),
+                points: vec![self.inspection_point],
+                color: palette.error,
+                radius: 5.0,
+            });
+            let w0 = self.eval_z(Complex64::new(
+                self.inspection_point[0],
+                self.inspection_point[1],
+            ));
+            if w0.re.is_finite() && w0.im.is_finite() {
+                out.push(egui_plot::ExportPrimitive::Points {
+                    name: "w = f(z)".to_owned(),
+                    points: vec![[w0.re, w0.im]],
+                    color: palette.error,
+                    radius: 5.0,
+                });
+            }
+        }
+        out
+    }
+}
+
+fn append_family_polylines(
+    name: &str,
+    family: &super::cache::ContourFamily,
+    color: egui::Color32,
+    out: &mut Vec<egui_plot::ExportPrimitive>,
+) {
+    let pts = family.points.as_slice();
+    for range in family.ranges.iter() {
+        if let Some(slice) = pts.get(range.clone()) {
+            if slice.len() >= 2 {
+                out.push(egui_plot::ExportPrimitive::Polyline {
+                    name: name.to_owned(),
+                    points: slice.iter().map(|p| [p.x, p.y]).collect(),
+                    color,
+                    stroke_width: 1.5,
+                    closed: false,
+                    fill: None,
+                });
+            }
+        }
     }
 }

@@ -31,6 +31,8 @@ mod main_wasm_tests;
 mod markup_tests;
 #[cfg(test)]
 mod modal_accessibility_tests;
+#[cfg(test)]
+mod plot_chrome_tests;
 pub mod presets;
 mod reflective_ui;
 #[allow(missing_docs)]
