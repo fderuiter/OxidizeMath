@@ -1,11 +1,10 @@
-//! Callback-driven custom nonlinear regression up to 6 free parameters without external AST crates.
+//! Callback-driven custom nonlinear regression up to 6 free parameters backed by `math_commons::fit`.
 
 use std::sync::Arc;
 
-use crate::fit::{
-    FitResult, FitType, MAX_FIT_PARAMS,
-    lm::{levenberg_marquardt_numeric, sum_squared_errors_with},
-};
+use math_commons::fit::{MAX_FIT_PARAMS, levenberg_marquardt_numeric, sum_squared_errors_numeric};
+
+use crate::fit::{FitResult, FitType};
 
 /// Compiled custom 1D regression model $y = f(x; \theta)$ supplied by an external callback.
 pub trait CustomFitEvaluator: Send + Sync + std::fmt::Debug {
@@ -50,7 +49,7 @@ pub type CustomFitCallback =
     Arc<dyn Fn(&str) -> Result<Arc<dyn CustomFitEvaluator>, String> + Send + Sync>;
 
 /// Fits a pre-compiled [`CustomFitEvaluator`] (up to [`MAX_FIT_PARAMS`] parameters) to `points`
-/// using damped 6-parameter Levenberg-Marquardt.
+/// using damped 6-parameter Levenberg-Marquardt from `math_commons::fit`.
 pub fn fit_custom_evaluator(
     points: &[[f64; 2]],
     evaluator: Arc<dyn CustomFitEvaluator>,
@@ -90,7 +89,7 @@ pub fn fit_custom_evaluator(
         log_y: false,
         log_mode: false,
         custom_evaluator: Some(CustomEvaluatorHandle(evaluator)),
-        poly_centered: None,
+        curve_fit: None,
     })
 }
 
@@ -100,26 +99,27 @@ fn solve_custom_parameters(
     initial_seeds: &[f64],
     k: usize,
 ) -> Result<Vec<f64>, String> {
+    let eval_fn = |x: f64, p: &[f64]| evaluator.eval(x, p);
     if k == 0 {
-        let eval_fn = |x: f64, p: &[f64]| evaluator.eval(x, p);
-        if sum_squared_errors_with(valid, &[], &eval_fn).is_none() {
+        if sum_squared_errors_numeric(valid, &[], eval_fn).is_none() {
             return Err("Custom formula produced non-finite values on dataset".to_owned());
         }
         return Ok(Vec::new());
     }
 
     let candidates = build_candidate_seeds(valid, initial_seeds, k);
-    let eval_fn = |x: f64, p: &[f64]| evaluator.eval(x, p);
     let mut best: Option<(f64, Vec<f64>)> = None;
 
     for seed in candidates {
-        if let Some(fitted) = levenberg_marquardt_numeric(valid, &seed, &eval_fn)
-            && let Some(sse) = sum_squared_errors_with(valid, &fitted, &eval_fn)
-            && best.as_ref().is_none_or(|(best_sse, _)| sse < *best_sse)
-        {
-            best = Some((sse, fitted));
-            if sse <= 1e-20 {
-                break;
+        if let Ok(fitted_arr) = levenberg_marquardt_numeric(valid, &seed, eval_fn) {
+            let fitted = fitted_arr[..k].to_vec();
+            if let Some(sse) = sum_squared_errors_numeric(valid, &fitted, eval_fn)
+                && best.as_ref().is_none_or(|(best_sse, _)| sse < *best_sse)
+            {
+                best = Some((sse, fitted));
+                if sse <= 1e-20 {
+                    break;
+                }
             }
         }
     }

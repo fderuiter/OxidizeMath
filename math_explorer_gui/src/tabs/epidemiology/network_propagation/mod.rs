@@ -345,36 +345,32 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.show_ui(ui);
-        });
-    }
-
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        if crate::app::workspace_bus::with_linked_bus(|bus| {
-            self.ingest_topology_channel(&bus.topology);
-        })
-        .is_none()
-        {
-            self.on_bus_unlinked();
-        }
-        if self.is_running {
-            self.model.step_with_rng(&mut self.rng);
-            #[cfg(test)]
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            if crate::app::workspace_bus::with_linked_bus(|bus| {
+                self.ingest_topology_channel(&bus.topology);
+            })
+            .is_none()
             {
-                self.sim_steps = self.sim_steps.saturating_add(1);
+                self.on_bus_unlinked();
             }
-            ui.ctx().request_repaint();
-        }
+            if self.is_running {
+                self.model.step_with_rng(&mut self.rng);
+                #[cfg(test)]
+                {
+                    self.sim_steps = self.sim_steps.saturating_add(1);
+                }
+                ui.ctx().request_repaint();
+            }
 
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.set_max_width(290.0);
-                self.draw_controls_column(ui);
-            });
-            ui.separator();
-            ui.vertical(|ui| {
-                self.draw_graph_column(ui);
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_max_width(290.0);
+                    self.draw_controls_column(ui);
+                });
+                ui.separator();
+                ui.vertical(|ui| {
+                    self.draw_graph_column(ui);
+                });
             });
         });
     }
