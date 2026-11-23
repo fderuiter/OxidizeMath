@@ -162,22 +162,27 @@ impl ComplexMappingTool {
             ));
         });
 
+        let custom_invalid =
+            self.function == MappingFunction::Custom && !self.math_input.is_valid();
         let z0 = Complex64::new(self.inspection_point[0], self.inspection_point[1]);
         let w0 = self.eval_z(z0);
+        let w_finite = !custom_invalid && w0.re.is_finite() && w0.im.is_finite();
         let scale_factor = conformal_scale_factor(|z| self.deriv_z(z), z0);
-        let safe_scale = if scale_factor.is_finite() {
-            scale_factor
-        } else {
-            0.0
-        };
 
-        let w_text = if w0.re.is_finite() && w0.im.is_finite() {
+        let w_text = if custom_invalid {
+            "Undefined".to_string()
+        } else if w_finite {
             format!("{:.3} + {:.3}i", w0.re, w0.im)
         } else {
             "Pole / Undefined".to_string()
         };
+        let scale_text = if w_finite && scale_factor.is_finite() {
+            format!("{:.3}", scale_factor)
+        } else {
+            "Undefined".to_string()
+        };
         render_copyable_metric(ui, "w = f(z)", &w_text);
-        render_copyable_metric(ui, "Scale factor |f'(z)|", &format!("{:.3}", safe_scale));
+        render_copyable_metric(ui, "Scale factor |f'(z)|", &scale_text);
     }
 
     fn draw_shader_preview(&mut self, ui: &mut egui::Ui) {

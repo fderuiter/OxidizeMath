@@ -9,9 +9,12 @@ mod glsl_helpers;
 pub mod latex;
 pub mod lexer;
 pub mod parser;
+mod parser_diagnostics;
 pub mod shader;
 pub mod shader_preludes;
 
+#[cfg(test)]
+mod arity_tests;
 #[cfg(test)]
 mod compiled_tests;
 #[cfg(test)]

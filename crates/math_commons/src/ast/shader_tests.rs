@@ -145,7 +145,10 @@ fn test_multi_arg_and_piecewise_func_shader_lowering() {
         assert_eq!(ast.to_wgsl_complex().unwrap(), complex_expected);
     }
 
-    let bad_clamp = parse("clamp(x, 0)").expect("parse 2-arg clamp");
+    let bad_clamp = Expr::function(
+        Func::Clamp,
+        vec![Expr::Variable("x".to_string()), Expr::Number(0.0)],
+    );
     assert_eq!(
         bad_clamp.to_wgsl(),
         Err(ShaderEmitError::WrongArgumentCount {
@@ -185,7 +188,7 @@ fn test_bounded_iterative_worklist_rejects_deep_ast_without_stack_overflow() {
 
 #[test]
 fn test_shader_emitter_rejects_bad_arity_nonfinite_and_injected_identifiers() {
-    let zero_args = parse("sin()").expect("parse zero args");
+    let zero_args = Expr::function(Func::Sin, vec![]);
     assert_eq!(
         zero_args.to_wgsl(),
         Err(ShaderEmitError::WrongArgumentCount {
