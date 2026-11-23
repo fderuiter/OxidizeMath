@@ -1,4 +1,14 @@
+use crate::framework::BrushStroke;
 use std::sync::Arc;
+
+/// Persisted spatial sculpt payload synchronized between `UnifiedSimTool` and worker models.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SculptStatePayload {
+    /// RLE `[value, run_len]` pairs for 2D raster obstacle/cell masks.
+    pub rle_mask: Vec<[u32; 2]>,
+    /// Sparse `(index, value)` deltas for 1D potentials.
+    pub sparse_potential: Vec<(u16, f64)>,
+}
 
 #[allow(missing_docs)]
 pub enum SimCommand {
@@ -32,6 +42,10 @@ pub enum SimCommand {
         /// Tool-specific brush mode index.
         mode: u8,
     },
+    /// Applies a continuous interpolated [`BrushStroke`] in plot/grid coordinates.
+    ApplyBrushStroke(BrushStroke),
+    /// Synchronizes a compact [`SculptStatePayload`] onto the worker simulation model.
+    SyncSculptState(SculptStatePayload),
     #[allow(missing_docs)]
     ClearObstacles,
     #[allow(missing_docs)]
@@ -50,6 +64,8 @@ impl SimCommand {
             Self::TrainEpisodes(_) => "TrainEpisodes",
             Self::ApplyBrush { .. } => "ApplyBrush",
             Self::ApplyBrushCells { .. } => "ApplyBrushCells",
+            Self::ApplyBrushStroke(_) => "ApplyBrushStroke",
+            Self::SyncSculptState(_) => "SyncSculptState",
             Self::ClearObstacles => "ClearObstacles",
             Self::Custom(_) => "Custom",
         }

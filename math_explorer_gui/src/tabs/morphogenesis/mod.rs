@@ -20,6 +20,9 @@ pub mod brush;
 pub mod lenia;
 pub mod presets;
 pub mod runner;
+#[cfg(test)]
+mod runner_legacy;
+pub mod sculpt;
 mod seeding;
 pub mod tool;
 pub mod ui;
@@ -35,7 +38,9 @@ pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 pub use runner::MorphogenesisSharedParams;
 #[cfg(test)]
-pub use runner::{MorphogenesisKineticsRunner, MorphogenesisRunner};
+pub use runner::MorphogenesisKineticsRunner;
+#[cfg(test)]
+pub use runner_legacy::MorphogenesisRunner;
 pub use tool::{MorphogenesisTool, MorphogenesisToolState};
 
 /// Legacy flat `MorphoState` schema saved by pre-framework `.mws` workspaces.
@@ -174,9 +179,15 @@ impl MorphogenesisTab {
         let f = existing.as_ref().map_or(0.0367, |c| c.f);
         let k = existing.as_ref().map_or(0.0649, |c| c.k);
         let atlas_visible = existing.as_ref().is_some_and(|s| s.atlas_visible);
-        let atlas_axes = existing
-            .map(|s| s.atlas_axes)
-            .unwrap_or_else(atlas::default_morpho_atlas_axes);
+        let (existing_mask, existing_kinetics_mask, atlas_axes) = match existing {
+            Some(s) => {
+                let same_dims = s.width == config.width && s.height == config.height;
+                let keep_mask = if same_dims { s.mask_rle } else { Vec::new() };
+                let keep_kin = if same_dims { s.kinetics_mask_rle } else { None };
+                (keep_mask, keep_kin, s.atlas_axes)
+            }
+            None => (Vec::new(), None, atlas::default_morpho_atlas_axes()),
+        };
         let target_state = if current_state == SimWorkerState::Running {
             SimWorkerState::Running
         } else {
@@ -196,7 +207,8 @@ impl MorphogenesisTab {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
-            mask_rle: None,
+            mask_rle: existing_mask,
+            kinetics_mask_rle: existing_kinetics_mask,
             atlas_visible,
             atlas_axes,
         };

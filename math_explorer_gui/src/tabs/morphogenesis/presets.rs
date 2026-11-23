@@ -2,6 +2,7 @@
 
 use super::tool::MorphogenesisTool;
 use crate::async_sim::SimWorkerState;
+use crate::framework::decode_rle_mask;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisKineticsMode;
 use math_explorer::biology::morphogenesis::{GrayScottKinetics, SchnakenbergKinetics};
@@ -79,6 +80,10 @@ impl FiniteStateGuard for MorphogenesisTool {
             p.mask_rle = None;
         }
         self.mask_cells.fill(0);
+        self.mask_rle
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         self.theory.mode = MorphogenesisKineticsMode::Schnakenberg;
         self.reset_system();
     }
@@ -167,9 +172,12 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Optional RLE-encoded `ReactionCellRole` mask (`[role, run_len]` pairs).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mask_rle: Vec<[u32; 2]>,
     /// Optional RLE-encoded spatial `(a, b)` reaction mask (`0`=base, `1`=stripe, `2`=spot).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mask_rle: Option<String>,
+    pub kinetics_mask_rle: Option<String>,
     /// Persisted visibility of the progressive 2D parameter atlas (never raster pixels).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub atlas_visible: bool,
@@ -222,7 +230,10 @@ impl MorphogenesisToolState {
                 self.width, self.height
             ));
         }
-        if let Some(ref rle) = self.mask_rle {
+        if !self.mask_rle.is_empty() {
+            decode_rle_mask(&self.mask_rle, self.width * self.height)?;
+        }
+        if let Some(ref rle) = self.kinetics_mask_rle {
             let _ = crate::framework::decode_u8_grid(rle, self.width, self.height, 2)?;
         }
         let valid_axes = super::atlas::MORPHO_ATLAS_AXIS_PAIRS
@@ -434,7 +445,7 @@ fn generate_hybrid_turing_mask_preset() -> &'static str {
                     "dt": 0.005,
                     "width": 100,
                     "height": 100,
-                    "mask_rle": rle
+                    "kinetics_mask_rle": rle
                 }
             })
             .to_string()

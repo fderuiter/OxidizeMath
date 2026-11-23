@@ -1,5 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::runner::MorphoSnapshotData;
+use super::sculpt::{build_maze_rle, draw_morpho_sculpt_controls, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
 use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::{
@@ -7,10 +9,14 @@ use crate::async_sim::ui::{
 };
 use crate::async_sim::SimCommand;
 use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
-use crate::framework::{PlaybackAction, PlaybackTransport, RasterBrushCanvas};
+use crate::framework::{
+    BrushMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
+    RasterBrushCanvas,
+};
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui;
 use eframe::egui::ColorImage;
+use egui_plot::{Plot, PlotImage, PlotPoint};
 use math_explorer::biology::morphogenesis::GrayScottKinetics;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 
@@ -37,18 +43,21 @@ impl MorphogenesisTool {
             crate::app::ThemeMode::from_visuals(&ctx.style().visuals)
                 == crate::app::ThemeMode::HighContrast
         });
-        if let Some(u_data) = snapshot
+        if let Some(mdata) = snapshot
             .structured_data
             .as_ref()
-            .and_then(|d| d.downcast_ref::<Vec<f64>>())
-            .filter(|u| u.len() == num_pixels)
+            .and_then(|d| d.downcast_ref::<MorphoSnapshotData>())
+            .filter(|m| m.u_data.len() == num_pixels)
         {
-            let recolored = Self::plot_concentration_with_contrast(
-                u_data,
+            let mut recolored = Self::plot_concentration_with_contrast(
+                &mdata.u_data,
                 snapshot.width,
                 snapshot.height,
                 high_contrast,
             );
+            if !mdata.mask_roles.is_empty() {
+                overlay_cell_mask_colors(&mut recolored, &mdata.mask_roles, high_contrast);
+            }
             self.pixels.copy_from_slice(&recolored.pixels);
         } else if snapshot_pixels.len() == num_pixels {
             self.pixels.copy_from_slice(&snapshot_pixels);
@@ -222,11 +231,11 @@ impl MorphogenesisTool {
             }
         });
         if let Some(snapshot) = self.worker.latest_snapshot() {
-            if let Some(u_data) = snapshot
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<Vec<f64>>())
-            {
+            if let Some(u_data) = snapshot.structured_data.as_ref().and_then(|d| {
+                d.downcast_ref::<MorphoSnapshotData>()
+                    .map(|m| m.u_data.as_slice())
+                    .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+            }) {
                 let splat_count =
                     crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
                         u_data,
@@ -264,6 +273,30 @@ impl MorphogenesisTool {
             }
             ctx.request_repaint();
             ui.separator();
+        }
+    }
+
+    fn handle_sculpt_preset_action(&mut self, cmd: &str, ctx: &egui::Context) {
+        match cmd {
+            "stamp_maze" => {
+                *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
+                    build_maze_rle(self.width, self.height);
+                let _ = self
+                    .worker
+                    .send_command(SimCommand::Custom("stamp_maze".to_string()));
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+            "clear_mask" => {
+                self.mask_rle
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clear();
+                let _ = self.worker.send_command(SimCommand::ClearObstacles);
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+            _ => {}
         }
     }
 
@@ -305,33 +338,73 @@ impl MorphogenesisTool {
                 }
             }
 
+            if let Some(cmd) = draw_morpho_sculpt_controls(
+                ui,
+                &mut self.brush_kit,
+                &mut self.sculpt_microfluidic_layer,
+            ) {
+                self.handle_sculpt_preset_action(cmd, &ctx);
+            }
             self.draw_presets(ui);
             self.draw_brush_section(ui, &ctx);
         });
     }
 
     fn draw_turing_field_canvas(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if let Some(texture) = &self.texture {
-            let tex = texture.clone();
-            let masked = self.mask_cells.iter().filter(|&&c| c != 0).count();
-            let summary = format!("{}x{} grid, {masked} masked cells", self.width, self.height);
-            let (resp, stroke) = RasterBrushCanvas::new(
-                "morphogenesis_canvas",
-                self.width,
-                self.height,
-                "Turing Morphogenesis reaction-diffusion canvas",
-            )
-            .value_summary(&summary)
-            .show_texture(ui, &tex, &mut self.brush_state);
-            let _ = resp.accessible_theory_hover(&self.theory);
-            if let Some(stroke) = stroke {
-                self.apply_brush_stroke(stroke, Some(ctx));
-            }
-        } else {
+        let Some(tex) = self.texture.clone() else {
             render_empty_plot_guidance(
                 ui,
                 "Reaction-diffusion grid ready — click ▶ Play or ⏭ Step to evolve Turing patterns.",
             );
+            return;
+        };
+        if !self.brush_kit.is_sculpting() {
+            let (w, h) = (self.width as f32, self.height as f32);
+            let mut strokes = Vec::new();
+            let plot_resp = Plot::new("morphogenesis_plot")
+                .data_aspect(1.0)
+                .view_aspect(1.0)
+                .show_grid(false)
+                .show_axes([false, false])
+                .allow_drag(true)
+                .allow_zoom(true)
+                .show(ui, |plot_ui| {
+                    plot_ui.image(PlotImage::new(
+                        "morphogenesis_image",
+                        tex.id(),
+                        PlotPoint::new(f64::from(w) / 2.0, f64::from(h) / 2.0),
+                        [w, h],
+                    ));
+                    strokes = self.brush_kit.sample_plot(
+                        plot_ui,
+                        [0.5, 0.5],
+                        [f64::from(w) - 0.5, f64::from(h) - 0.5],
+                        Some(BrushMode::Erase),
+                    );
+                });
+            for stroke in strokes {
+                let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
+                self.on_brush(&ic);
+            }
+            return;
+        }
+        let masked = self.mask_cells.iter().filter(|&&c| c != 0).count();
+        let summary = format!("{}x{} grid, {masked} masked cells", self.width, self.height);
+        let (resp, stroke) = RasterBrushCanvas::new(
+            "morphogenesis_canvas",
+            self.width,
+            self.height,
+            "Turing Morphogenesis reaction-diffusion canvas",
+        )
+        .value_summary(&summary)
+        .show_texture(ui, &tex, &mut self.brush_state);
+        let _ = resp.accessible_theory_hover(&self.theory);
+        if let Some(stroke) = stroke {
+            if self.sculpt_microfluidic_layer {
+                self.apply_microfluidic_raster_stroke(stroke, Some(ctx));
+            } else {
+                self.apply_brush_stroke(stroke, Some(ctx));
+            }
         }
     }
 

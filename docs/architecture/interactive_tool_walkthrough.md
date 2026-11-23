@@ -375,6 +375,8 @@ Interactive tools can map live mathematical invariants to real-time audio and `.
 ## Related References
 
 - Interactive tool trait definition: [`math_explorer_gui/src/framework/mod.rs`](../../math_explorer_gui/src/framework/mod.rs)
+- Spatial brush kit & field sculpting: [`math_explorer_gui/src/framework/spatial_brush.rs`](../../math_explorer_gui/src/framework/spatial_brush.rs) and [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](../adr/0045-spatial-brush-kit-and-field-sculpting.md)
+- Raster brush canvas & RLE spatial masks: [`math_explorer_gui/src/framework/raster_brush/mod.rs`](../../math_explorer_gui/src/framework/raster_brush/mod.rs) and [ADR 0046: Shared `RasterBrushCanvas`, Pre-Allocation RLE `base64url` Spatial Masks, and Live 2D Field Sculpting](../adr/0046-raster-brush-canvas-and-spatial-masks.md)
 - Dual-backend sonification architecture: [ADR 0040](../adr/0040-dual-backend-web-audio-sonification.md)
 - Example tool implementation (CERA): [`math_explorer_gui/src/tabs/climate/cera.rs`](../../math_explorer_gui/src/tabs/climate/cera.rs)
 - Example tool implementation (Radiation Dose): [`math_explorer_gui/src/tabs/medical/dose.rs`](../../math_explorer_gui/src/tabs/medical/dose.rs)

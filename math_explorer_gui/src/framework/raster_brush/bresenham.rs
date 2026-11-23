@@ -79,39 +79,4 @@ pub fn cell_screen_rect(
     Rect::from_min_size(min, Vec2::new(cell_w, cell_h))
 }
 
-/// Interpolates a gapless integer Bresenham line segment from `(x0, y0)` to `(x1, y1)`.
-///
-/// Bounded by `|x1 - x0| + |y1 - y0| + 1` iterations (NASA Power of 10 Rule 2).
-#[must_use]
-pub fn bresenham_line(x0: i32, y0: i32, x1: i32, y1: i32) -> Vec<(i32, i32)> {
-    let dx = (x1 - x0).abs();
-    let dy_abs = (y1 - y0).abs();
-    let sx = if x0 < x1 { 1 } else { -1 };
-    let sy = if y0 < y1 { 1 } else { -1 };
-    let dy = -dy_abs;
-    let mut err = dx + dy;
-    let mut x = x0;
-    let mut y = y0;
-
-    let max_steps = (dx as usize)
-        .saturating_add(dy_abs as usize)
-        .saturating_add(1);
-    let mut points = Vec::with_capacity(max_steps);
-
-    for _ in 0..max_steps {
-        points.push((x, y));
-        if x == x1 && y == y1 {
-            break;
-        }
-        let e2 = 2 * err;
-        if e2 >= dy {
-            err += dy;
-            x += sx;
-        }
-        if e2 <= dx {
-            err += dx;
-            y += sy;
-        }
-    }
-    points
-}
+pub use crate::framework::brush_codec::bresenham_line;

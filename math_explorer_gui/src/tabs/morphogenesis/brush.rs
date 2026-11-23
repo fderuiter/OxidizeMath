@@ -8,7 +8,7 @@ use crate::framework::{
 };
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui;
-use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::diffusion::SpatialDiffusion;
 use math_explorer::biology::morphogenesis::{
     ReactionKinetics, SpatialSchnakenbergKinetics, TuringSystem,
 };
@@ -174,8 +174,8 @@ pub fn apply_mask_rle_to_kinetics<K: MorphoSpatialKinetics>(
 }
 
 /// Applies a [`MorphoBrushMode`] cell batch directly to `TuringSystem` slices and kinetic masks.
-pub fn apply_morpho_cells_to_system<K: MorphoSpatialKinetics>(
-    system: &mut TuringSystem<2, K, FiniteDifference2D>,
+pub fn apply_morpho_cells_to_system<K: MorphoSpatialKinetics, D: SpatialDiffusion<2>>(
+    system: &mut TuringSystem<2, K, D>,
     width: usize,
     height: usize,
     cells: &[(usize, usize)],
@@ -225,14 +225,15 @@ pub fn apply_morpho_cells_to_system<K: MorphoSpatialKinetics>(
 }
 
 /// Dispatches `clear_mask`, `ApplyBrushCells`, and `ApplyBrush` worker commands onto `system`.
-pub(crate) fn apply_brush_sim_command<K: MorphoSpatialKinetics>(
-    system: &mut TuringSystem<2, K, FiniteDifference2D>,
+#[cfg(test)]
+pub(crate) fn apply_brush_sim_command<K: MorphoSpatialKinetics, D: SpatialDiffusion<2>>(
+    system: &mut TuringSystem<2, K, D>,
     width: usize,
     height: usize,
     cmd: &SimCommand,
 ) {
     match cmd {
-        SimCommand::Custom(s) if s == "clear_mask" => {
+        SimCommand::Custom(s) if s == "clear_mask" || s == "clear_kinetics_mask" => {
             system.kinetics.clear_spatial_mask();
         }
         SimCommand::ApplyBrushCells { cells, mode } => {
@@ -321,7 +322,7 @@ impl MorphogenesisTool {
             .mask_rle = None;
         let _ = self
             .worker
-            .send_command(SimCommand::Custom("clear_mask".to_string()));
+            .send_command(SimCommand::Custom("clear_kinetics_mask".to_string()));
         self.step_runner = None;
         self.dirty = true;
         if let Some(c) = ctx {
@@ -332,6 +333,7 @@ impl MorphogenesisTool {
     pub(crate) fn draw_brush_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.separator();
         ui.label("Chemical & Mask Brush");
+        let prev_mode = self.brush_mode;
         egui::ComboBox::from_id_salt("morpho_brush_mode")
             .selected_text(self.brush_mode.label())
             .show_ui(ui, |ui| {
@@ -339,6 +341,9 @@ impl MorphogenesisTool {
                     ui.selectable_value(&mut self.brush_mode, mode, mode.label());
                 }
             });
+        if self.brush_mode != prev_mode {
+            self.sculpt_microfluidic_layer = false;
+        }
         draw_brush_palette_controls(ui, "morphogenesis", &mut self.brush_state, 12);
         if ui.button("Clear Spatial Mask").clicked() {
             self.clear_spatial_mask(Some(ctx));

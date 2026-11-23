@@ -11,9 +11,9 @@ mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
-pub use bresenham::{
-    bresenham_line, cell_screen_rect, compute_aspect_locked_rect, map_pointer_to_cell,
-};
+#[cfg(test)]
+use bresenham::bresenham_line;
+pub use bresenham::{cell_screen_rect, compute_aspect_locked_rect, map_pointer_to_cell};
 pub use canvas::RasterBrushCanvas;
 pub use rle::{
     decode_bool_grid, decode_u8_grid, encode_bool_grid, encode_u8_grid, MAX_RLE_CELLS,
