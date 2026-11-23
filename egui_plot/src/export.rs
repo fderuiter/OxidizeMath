@@ -98,6 +98,11 @@ impl Default for ExportOptions {
     }
 }
 
+#[cfg(feature = "serde")]
+const fn default_show_points() -> bool {
+    true
+}
+
 /// An empirical or external dataset imported into egui_plot.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -108,220 +113,31 @@ pub struct ImportedDataset {
     pub points: Vec<[f64; 2]>,
     /// Whether the dataset is currently visible in the plot overlay.
     pub visible: bool,
+    /// Whether scatter marker points are rendered for this overlay series.
+    #[cfg_attr(feature = "serde", serde(default = "default_show_points"))]
+    pub show_points: bool,
+    /// Whether connected polyline segments are rendered for this overlay series.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub show_lines: bool,
 }
 
 impl ImportedDataset {
-    /// Create a new imported dataset with default visibility (true).
+    /// Create a new imported dataset with default visibility (`true`), points (`true`), and lines (`false`).
     pub fn new(name: impl Into<String>, points: Vec<[f64; 2]>) -> Self {
         Self {
             name: name.into(),
             points,
             visible: true,
+            show_points: true,
+            show_lines: false,
         }
     }
 }
 
-/// Parse a single delimited text line into tokens, respecting RFC 4180 quoted strings.
-pub fn split_line(line: &str, delimiter: char) -> Vec<String> {
-    let chars: Vec<char> = line.chars().collect();
-    let len = chars.len();
-    if len == 0 {
-        return vec![String::new()];
-    }
-
-    let mut tokens = Vec::new();
-    let mut i = 0;
-
-    while i < len {
-        // Skip leading whitespace before token if delimiter is not whitespace
-        while i < len && chars[i] != delimiter && chars[i].is_whitespace() {
-            i += 1;
-        }
-
-        if i < len && chars[i] == '"' {
-            // Quoted token
-            i += 1; // skip opening quote
-            let mut token = String::new();
-            while i < len {
-                if chars[i] == '"' {
-                    if i + 1 < len && chars[i + 1] == '"' {
-                        token.push('"');
-                        i += 2;
-                    } else {
-                        // closing quote
-                        i += 1;
-                        break;
-                    }
-                } else {
-                    token.push(chars[i]);
-                    i += 1;
-                }
-            }
-            // Skip any whitespace after closing quote up to delimiter
-            while i < len && chars[i] != delimiter && chars[i].is_whitespace() {
-                i += 1;
-            }
-            tokens.push(token);
-            if i < len && chars[i] == delimiter {
-                i += 1;
-                if i == len {
-                    tokens.push(String::new());
-                    break;
-                }
-            }
-        } else {
-            // Unquoted token
-            let mut token = String::new();
-            while i < len && chars[i] != delimiter {
-                token.push(chars[i]);
-                i += 1;
-            }
-            tokens.push(token.trim().to_string());
-            if i < len && chars[i] == delimiter {
-                i += 1;
-                if i == len {
-                    tokens.push(String::new());
-                    break;
-                }
-            }
-        }
-    }
-
-    tokens
-}
-
-/// Parse tabular dataset text (CSV, TSV, semicolon-separated) into imported datasets.
-/// Auto-detects delimiters and headers, converts rows into numerical `[f64; 2]` pairs,
-/// and skips invalid rows or non-numeric values.
-pub fn parse_csv(content: &str) -> Vec<ImportedDataset> {
-    let lines: Vec<&str> = strip_utf8_bom(content)
-        .lines()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty() && !s.starts_with('#'))
-        .collect();
-
-    if lines.is_empty() {
-        return Vec::new();
-    }
-
-    let first_line = lines[0];
-
-    let delimiter = if first_line.contains('\t') {
-        '\t'
-    } else if first_line.contains(';') {
-        ';'
-    } else {
-        ','
-    };
-
-    let first_tokens = split_line(first_line, delimiter);
-    let is_num = |s: &str| s.parse::<f64>().is_ok();
-
-    let (headers, data_start_index) = if first_tokens.iter().any(|t| !is_num(t)) {
-        (first_tokens.clone(), 1)
-    } else {
-        (Vec::new(), 0)
-    };
-
-    let is_standard_export = if headers.len() == 3 {
-        let h0 = headers[0].to_lowercase();
-        let h1 = headers[1].to_lowercase();
-        let h2 = headers[2].to_lowercase();
-        h0.contains("dataset") || h0.contains("name") || (h1 == "x" && h2 == "y")
-    } else {
-        false
-    };
-
-    let mut datasets_map: std::collections::BTreeMap<String, Vec<[f64; 2]>> =
-        std::collections::BTreeMap::new();
-
-    if is_standard_export {
-        for line in &lines[data_start_index..] {
-            let tokens = split_line(line, delimiter);
-            if tokens.len() >= 3
-                && let (Ok(x), Ok(y)) = (tokens[1].parse::<f64>(), tokens[2].parse::<f64>())
-                && x.is_finite()
-                && y.is_finite()
-            {
-                datasets_map
-                    .entry(tokens[0].clone())
-                    .or_default()
-                    .push([x, y]);
-            }
-        }
-    } else if headers.len() > 2 {
-        let mut series_names = Vec::new();
-        for h in &headers[1..] {
-            series_names.push(if h.is_empty() {
-                "Imported Dataset".to_string()
-            } else {
-                h.clone()
-            });
-        }
-
-        for line in &lines[data_start_index..] {
-            let tokens = split_line(line, delimiter);
-            if tokens.len() >= 2
-                && let Ok(x) = tokens[0].parse::<f64>()
-            {
-                for (i, y_str) in tokens[1..].iter().enumerate() {
-                    if i < series_names.len()
-                        && let Ok(y) = y_str.parse::<f64>()
-                        && x.is_finite()
-                        && y.is_finite()
-                    {
-                        datasets_map
-                            .entry(series_names[i].clone())
-                            .or_default()
-                            .push([x, y]);
-                    }
-                }
-            }
-        }
-    } else {
-        let default_name = if headers.len() >= 2 && !headers[1].is_empty() {
-            let h1 = headers[1].trim();
-            if h1.eq_ignore_ascii_case("y") {
-                "Imported Dataset".to_string()
-            } else {
-                h1.to_string()
-            }
-        } else {
-            "Imported Dataset".to_string()
-        };
-
-        for line in &lines[data_start_index..] {
-            let tokens = split_line(line, delimiter);
-            if tokens.len() >= 2 {
-                if tokens.len() >= 3 && !is_num(&tokens[0]) {
-                    if let (Ok(x), Ok(y)) = (tokens[1].parse::<f64>(), tokens[2].parse::<f64>())
-                        && x.is_finite()
-                        && y.is_finite()
-                    {
-                        datasets_map
-                            .entry(tokens[0].clone())
-                            .or_default()
-                            .push([x, y]);
-                    }
-                } else if let (Ok(x), Ok(y)) = (tokens[0].parse::<f64>(), tokens[1].parse::<f64>())
-                    && x.is_finite()
-                    && y.is_finite()
-                {
-                    datasets_map
-                        .entry(default_name.clone())
-                        .or_default()
-                        .push([x, y]);
-                }
-            }
-        }
-    }
-
-    datasets_map
-        .into_iter()
-        .filter(|(_, pts)| !pts.is_empty())
-        .map(|(name, points)| ImportedDataset::new(name, points))
-        .collect()
-}
+pub use crate::csv_import::{
+    CsvImportError, CsvImportOutcome, MAX_CSV_IMPORT_BYTES, MAX_CSV_IMPORT_ROWS,
+    MAX_CSV_IMPORT_SERIES, parse_csv, parse_csv_bounded, split_line, unescape_formula_label,
+};
 
 pub use crate::file_io::{
     drain_import_status, drain_imported_datasets, infer_mime_type, sanitize_download_filename,
@@ -1062,6 +878,120 @@ where
     Ok(())
 }
 
+#[cfg(test)]
+static TEST_CLIPBOARD_READ_OVERRIDE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+#[cfg(test)]
+pub(crate) fn set_test_clipboard_read_override(text: Option<String>) {
+    *TEST_CLIPBOARD_READ_OVERRIDE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner()) = text;
+}
+
+/// Read UTF-8 text from the system clipboard, enforcing [`MAX_CSV_IMPORT_BYTES`] and invoking `on_complete`.
+pub fn read_text_from_clipboard_with_callback<F>(on_complete: F) -> Result<(), String>
+where
+    F: FnOnce(Result<String, String>) + 'static,
+{
+    #[cfg(test)]
+    if let Some(mock_text) = TEST_CLIPBOARD_READ_OVERRIDE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone()
+    {
+        if mock_text.len() > MAX_CSV_IMPORT_BYTES {
+            let err = format!(
+                "Clipboard payload ({:.2} MiB) exceeds maximum allowed size of 2.0 MiB.",
+                mock_text.len() as f64 / (1024.0 * 1024.0)
+            );
+            on_complete(Err(err.clone()));
+            return Err(err);
+        }
+        on_complete(Ok(mock_text));
+        return Ok(());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut out_text = String::new();
+        let res = with_native_clipboard(|clipboard| {
+            out_text = clipboard.get_text()?;
+            Ok(())
+        });
+        match res {
+            Ok(()) if out_text.len() > MAX_CSV_IMPORT_BYTES => {
+                let err = format!(
+                    "Clipboard payload ({:.2} MiB) exceeds maximum allowed size of 2.0 MiB.",
+                    out_text.len() as f64 / (1024.0 * 1024.0)
+                );
+                on_complete(Err(err.clone()));
+                Err(err)
+            }
+            Ok(()) => {
+                on_complete(Ok(out_text));
+                Ok(())
+            }
+            Err(err) => {
+                let msg = format!("Clipboard read failed: {err}");
+                on_complete(Err(msg.clone()));
+                Err(msg)
+            }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        read_text_from_clipboard_wasm(on_complete)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn read_text_from_clipboard_wasm<F>(on_complete: F) -> Result<(), String>
+where
+    F: FnOnce(Result<String, String>) + 'static,
+{
+    let window = web_sys::window().ok_or_else(|| {
+        "Clipboard API unavailable (no window object). Please press Ctrl+V or use Import CSV."
+            .to_string()
+    })?;
+    if !window.is_secure_context() {
+        return Err(
+            "Clipboard API unavailable in insecure context. Please press Ctrl+V or use Import CSV."
+                .to_string(),
+        );
+    }
+    let clipboard = window.navigator().clipboard();
+    if clipboard.is_undefined() || clipboard.is_null() {
+        return Err(
+            "Clipboard API is not supported in this browser. Please press Ctrl+V or use Import CSV."
+                .to_string(),
+        );
+    }
+    let promise = clipboard.read_text();
+    wasm_bindgen_futures::spawn_local(async move {
+        let res = match wasm_bindgen_futures::JsFuture::from(promise).await {
+            Ok(js_val) => match js_val.as_string() {
+                Some(s) if s.len() > MAX_CSV_IMPORT_BYTES => Err(format!(
+                    "Clipboard payload ({:.2} MiB) exceeds maximum allowed size of 2.0 MiB.",
+                    s.len() as f64 / (1024.0 * 1024.0)
+                )),
+                Some(s) => Ok(s),
+                None => Err("Clipboard content did not decode as UTF-8 text.".to_string()),
+            },
+            Err(e) => {
+                let reason = e
+                    .as_string()
+                    .unwrap_or_else(|| "Permission denied or clipboard unavailable".to_string());
+                Err(format!(
+                    "Clipboard read failed: {reason}. Press Ctrl+V or use Import CSV."
+                ))
+            }
+        };
+        on_complete(res);
+    });
+    Ok(())
+}
+
 /// Convert an `egui::ColorImage` into PNG encoded bytes.
 pub fn color32_image_to_png(image: &egui::ColorImage) -> Result<Vec<u8>, String> {
     let width = image.width() as u32;
@@ -1200,7 +1130,7 @@ mod tests {
             .unwrap();
         assert_eq!(series_b.points, vec![[1.0, 2.0]]);
 
-        let series_formula = datasets.iter().find(|d| d.name == "'=SUM(A1)").unwrap();
+        let series_formula = datasets.iter().find(|d| d.name == "=SUM(A1)").unwrap();
         assert_eq!(series_formula.points, vec![[2.0, 3.0]]);
     }
 

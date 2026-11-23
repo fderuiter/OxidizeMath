@@ -4,11 +4,8 @@ use super::MorphogenesisTool;
 use crate::async_sim::SimulationRunner;
 use crate::framework::{compute_matrix_stride, ExportCell, ExportTable};
 
-pub(super) fn build_morphogenesis_tables(tool: &MorphogenesisTool) -> Vec<ExportTable> {
-    let width = tool.width.max(1);
-    let height = tool.height.max(1);
-    let u_grid: Vec<f64> = tool
-        .worker
+fn sample_morphogenesis_grid(tool: &MorphogenesisTool, width: usize, height: usize) -> Vec<f64> {
+    tool.worker
         .latest_snapshot()
         .and_then(|snap| {
             snap.structured_data
@@ -18,12 +15,23 @@ pub(super) fn build_morphogenesis_tables(tool: &MorphogenesisTool) -> Vec<Export
                 .cloned()
         })
         .unwrap_or_else(|| {
-            let runner = MorphogenesisTool::create_runner(&tool.params, width, height);
+            let runner = MorphogenesisTool::create_kinetics_runner(
+                &tool.params,
+                &tool.kinetics_state,
+                width,
+                height,
+            );
             let snap = runner.get_snapshot();
             snap.structured_data
                 .and_then(|d| d.downcast::<Vec<f64>>().ok())
                 .map_or_else(Vec::new, |b| *b)
-        });
+        })
+}
+
+pub(super) fn build_morphogenesis_tables(tool: &MorphogenesisTool) -> Vec<ExportTable> {
+    let width = tool.width.max(1);
+    let height = tool.height.max(1);
+    let u_grid = sample_morphogenesis_grid(tool, width, height);
 
     let (r_stride, c_stride) = compute_matrix_stride(height, width);
     let mut rows = Vec::new();
@@ -42,6 +50,13 @@ pub(super) fn build_morphogenesis_tables(tool: &MorphogenesisTool) -> Vec<Export
         let p = tool.params.read().unwrap_or_else(|e| e.into_inner());
         (p.a, p.b, p.d_u, p.d_v, p.dt)
     };
+    let (f, k) = {
+        let ks = tool
+            .kinetics_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        (ks.f, ks.k)
+    };
     vec![
         ExportTable::new(
             "Activator Concentration",
@@ -53,6 +68,8 @@ pub(super) fn build_morphogenesis_tables(tool: &MorphogenesisTool) -> Vec<Export
             vec![
                 "a".into(),
                 "b".into(),
+                "f".into(),
+                "k".into(),
                 "d_u".into(),
                 "d_v".into(),
                 "dt".into(),
@@ -60,6 +77,8 @@ pub(super) fn build_morphogenesis_tables(tool: &MorphogenesisTool) -> Vec<Export
             vec![vec![
                 ExportCell::Float(a),
                 ExportCell::Float(b),
+                ExportCell::Float(f),
+                ExportCell::Float(k),
                 ExportCell::Float(d_u),
                 ExportCell::Float(d_v),
                 ExportCell::Float(dt),

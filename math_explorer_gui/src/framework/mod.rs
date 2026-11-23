@@ -50,6 +50,9 @@ mod state_bounds_tests;
 pub mod state_guard;
 #[cfg(test)]
 mod state_guard_tests;
+pub(crate) mod theory_links;
+#[cfg(test)]
+mod theory_links_tests;
 pub mod trace_overlay;
 mod ui;
 mod url_share;
@@ -412,24 +415,14 @@ pub struct SimulationFramework {
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
     pub(crate) export_queue: ExportQueue,
-
-    /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
-    /// Baseline parameters snapshot on tool load.
     pub baseline_tool_state: Option<String>,
-    /// Last validated finite plot datasets.
     pub current_valid_plot_datasets: Vec<(String, Vec<[f64; 2]>)>,
-    /// Last validated finite 3D world-coordinate plot datasets.
     pub current_valid_plot_datasets_3d: Vec<(String, Vec<[f64; 3]>)>,
-    /// Whether divergence has been detected in the active tool.
     pub is_diverged: bool,
-    /// Diagnostic report for divergence.
     pub diagnostic_report: Option<DiagnosticReport>,
-    /// Simulation frame / step counter.
     pub step_counter: usize,
-    /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
-    /// Active inverse challenge contract displayed in the Challenge HUD, if any.
     pub active_challenge: Option<&'static ChallengeMetadata>,
     pub(super) challenge_was_passed: bool,
     pub(super) instance_id: u64,

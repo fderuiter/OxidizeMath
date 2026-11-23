@@ -1,13 +1,5 @@
 // [cite:ualbf_quasiperfect]
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-#[allow(missing_docs)]
-pub enum NumberTheoryError {
-    #[error("Parse error: {0}")]
-    #[allow(missing_docs)]
-    ParseError(String),
-}
+pub use crate::error::NumberTheoryError;
 
 #[allow(missing_docs)]
 pub struct UalbfSearchResult {

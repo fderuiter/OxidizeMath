@@ -184,7 +184,7 @@ impl InteractiveTool for VolumetricFieldStudioTool {
 impl TheoryDescribable for VolumetricFieldStudioTool {
     fn theory_description(&self) -> String {
         format!(
-            "3D Volumetric Field Studio ({}) evolves hydrogenic superpositions $\\Psi(\\mathbf{{r}}, t) = c_1(t) R_{{n_1 \\ell_1}}(r) Y_{{\\ell_1 m_1}}(\\theta,\\phi) + c_2(t) R_{{n_2 \\ell_2}}(r) Y_{{\\ell_2 m_2}}(\\theta,\\phi)$ and 3D Schnakenberg reaction-diffusion $\\partial_t u = D_u \\nabla^2_{{3D}} u + a - u + u^2 v$ across a {}^3 VoxelGrid using MarchingCubes and EWA Gaussian3D splatting.",
+            "3D Volumetric Field Studio ({}) evolves hydrogenic superpositions $\\Psi(\\mathbf{{r}}, t) = c_1(t) R_{{n_1 \\ell_1}}(r) Y_{{\\ell_1 m_1}}(\\theta,\\phi) + c_2(t) R_{{n_2 \\ell_2}}(r) Y_{{\\ell_2 m_2}}(\\theta,\\phi)$ and 3D Schnakenberg reaction-diffusion $\\partial_t u = D_u \\nabla^2_{{3D}} u + a - u + u^2 v$ across a ${}^3$ VoxelGrid using MarchingCubes and EWA Gaussian3D splatting.",
             self.config.source.label(),
             self.config.grid_resolution
         )
