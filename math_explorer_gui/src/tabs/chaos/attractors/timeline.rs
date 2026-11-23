@@ -4,12 +4,56 @@
 
 use super::flow::AttractorMode;
 use super::{AttractorPlotter, AttractorRunner, SolverExecutionState};
+use crate::async_sim::ui::WorkerFaultAction;
 use crate::async_sim::{CheckpointParams, CheckpointPayload, SimCommand, TimeTravelCheckpoint};
 use crate::framework::PlaybackAction;
 use eframe::egui;
 use nalgebra::Vector3;
 
 impl AttractorPlotter {
+    pub(super) fn apply_fault_action(&mut self, action: WorkerFaultAction, ctx: &egui::Context) {
+        use crate::framework::recovery::RecoveryAction;
+        match action {
+            WorkerFaultAction::Reset => self.reset(),
+            WorkerFaultAction::Recovery(RecoveryAction::AutoScaleStepSize) => {
+                self.dt = if self.dt.is_finite() {
+                    (self.dt * 0.5).max(0.001)
+                } else {
+                    0.005
+                };
+                self.reset();
+            }
+            WorkerFaultAction::Recovery(RecoveryAction::ClampParameters) => {
+                self.system.sigma = if self.system.sigma.is_finite() {
+                    self.system.sigma.clamp(0.0, 50.0)
+                } else {
+                    10.0
+                };
+                self.system.rho = if self.system.rho.is_finite() {
+                    self.system.rho.clamp(0.0, 100.0)
+                } else {
+                    28.0
+                };
+                self.system.beta = if self.system.beta.is_finite() {
+                    self.system.beta.clamp(0.0, 10.0)
+                } else {
+                    8.0 / 3.0
+                };
+                self.dt = if self.dt.is_finite() {
+                    self.dt.clamp(0.001, 0.05)
+                } else {
+                    0.01
+                };
+                self.reset();
+            }
+            WorkerFaultAction::ResetParameters
+            | WorkerFaultAction::Recovery(RecoveryAction::ResetParameters) => {
+                self.reset_parameters();
+            }
+        }
+        ctx.request_repaint();
+    }
+
     pub(super) fn handle_transport_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
         match action {
             PlaybackAction::Play => {

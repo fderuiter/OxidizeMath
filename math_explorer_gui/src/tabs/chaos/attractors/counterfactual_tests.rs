@@ -5,6 +5,7 @@ use crate::async_sim::SimulationRunner;
 use crate::framework::{
     BranchControlAction, ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework,
 };
+#[cfg(feature = "epidemiology")]
 use crate::tabs::epidemiology::sir::{SirTool, SirTwinStepper};
 
 fn run_framework_export(fw: &mut SimulationFramework, domain: &str, format: ExportFormat) {
@@ -108,6 +109,7 @@ fn test_attractor_swap_clear_reset_zero_alloc_and_twin_exports() {
         .is_none());
 }
 
+#[cfg(feature = "epidemiology")]
 #[test]
 fn test_attractor_and_sir_zero_allocation_verified_twin_step() {
     let plotter = AttractorPlotter::default();
@@ -142,6 +144,7 @@ fn test_attractor_and_sir_zero_allocation_verified_twin_step() {
     });
 }
 
+#[cfg(feature = "epidemiology")]
 #[test]
 fn test_sir_1000_step_parity_and_lockdown_timing_delta_ipeak() {
     let mut sir_parity = SirTool::default();
@@ -200,6 +203,7 @@ fn test_sir_1000_step_parity_and_lockdown_timing_delta_ipeak() {
     );
 }
 
+#[cfg(feature = "epidemiology")]
 #[test]
 fn test_sir_swap_clear_reset_and_exports() {
     let mut fw = SimulationFramework::new("epidemiology");
@@ -242,6 +246,7 @@ fn test_sir_swap_clear_reset_and_exports() {
         .is_none());
 }
 
+#[cfg(feature = "epidemiology")]
 #[test]
 fn test_sir_day20_vs_day35_lockdown_exact_delta_ipeak() {
     let run_lockdown = |fork_day: f64| -> (f64, f64, f64) {

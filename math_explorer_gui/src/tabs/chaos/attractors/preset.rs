@@ -43,6 +43,10 @@ struct AttractorSaveState {
     custom_params: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fork: Option<AttractorForkDescriptor>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    atlas_visible: bool,
+    #[serde(skip_serializing_if = "super::atlas::is_default_attractor_atlas_axes")]
+    atlas_axes: [String; 2],
 }
 
 #[derive(serde::Deserialize)]
@@ -79,9 +83,65 @@ struct AttractorState {
     custom_params: BTreeMap<String, f64>,
     #[serde(default)]
     fork: Option<AttractorForkDescriptor>,
+    #[serde(default)]
+    atlas_visible: bool,
+    #[serde(default = "super::atlas::default_attractor_atlas_axes")]
+    atlas_axes: [String; 2],
 }
 
 impl AttractorPlotter {
+    pub(super) fn compute_state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (self.mode as u8).hash(&mut h);
+        for bar in self.flow_bank.bars() {
+            bar.raw_text.hash(&mut h);
+        }
+        for &pv in self.flow_bank.param_slice() {
+            pv.to_bits().hash(&mut h);
+        }
+        self.system.sigma.to_bits().hash(&mut h);
+        self.system.rho.to_bits().hash(&mut h);
+        self.system.beta.to_bits().hash(&mut h);
+        self.dt.to_bits().hash(&mut h);
+        self.tube_radius.to_bits().hash(&mut h);
+        self.simulation_speed.hash(&mut h);
+        self.max_points.hash(&mut h);
+        self.is_paused().hash(&mut h);
+        self.diverged().hash(&mut h);
+        self.show_annotations.hash(&mut h);
+        self.atlas.is_visible().hash(&mut h);
+        self.atlas.axis_keys().hash(&mut h);
+        for offset in &self.fixed_callout_offsets {
+            let xb = if offset.x == 0.0 {
+                0
+            } else {
+                offset.x.to_bits()
+            };
+            let yb = if offset.y == 0.0 {
+                0
+            } else {
+                offset.y.to_bits()
+            };
+            (xb, yb).hash(&mut h);
+        }
+        self.camera.hash_state(&mut h);
+        if let Some(ref twin) = self.twin {
+            (
+                true,
+                twin.fork_step,
+                twin.delta_x.to_bits(),
+                twin.system_a.sigma.to_bits(),
+                twin.system_a.rho.to_bits(),
+                twin.system_a.beta.to_bits(),
+            )
+                .hash(&mut h);
+        } else {
+            false.hash(&mut h);
+        }
+        h.finish().max(1)
+    }
+
     pub(super) fn serialize_state(&self) -> Option<String> {
         let fork = self.twin.as_ref().map(|t| t.to_descriptor(self.step_count));
         let expr_vec = self.flow_bank.expressions();
@@ -101,6 +161,7 @@ impl AttractorPlotter {
         } else {
             BTreeMap::new()
         };
+        let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&AttractorSaveState {
             sigma: self.system.sigma,
             rho: self.system.rho,
@@ -116,6 +177,8 @@ impl AttractorPlotter {
             custom_exprs,
             custom_params,
             fork,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
     }
@@ -145,6 +208,8 @@ impl AttractorPlotter {
         self.fixed_callout_offsets = offsets.map(egui::Vec2::from);
         self.camera.apply_pose(camera);
         self.dragged_callout = None;
+        self.atlas.set_visible(s.atlas_visible);
+        let _ = self.atlas.set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1]);
         self.reset();
         let _ = self.worker.update();
         let execution_state = s.execution_state.unwrap_or(if s.paused == Some(true) {

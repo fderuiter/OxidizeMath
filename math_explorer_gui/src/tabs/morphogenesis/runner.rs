@@ -9,9 +9,7 @@ use super::counterfactual::{
 #[cfg(test)]
 pub use super::legacy_runner::MorphogenesisRunner;
 pub(crate) use super::runner_twin::apply_uniform_noise;
-use super::sculpt::{
-    apply_sculpt_sim_command, enforce_system_mask, overlay_cell_mask_colors,
-};
+use super::sculpt::{apply_sculpt_sim_command, enforce_system_mask, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
 use crate::app::ThemeMode;
 use crate::async_sim::{

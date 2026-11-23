@@ -5,7 +5,7 @@ use egui_plot::{Line, Plot, PlotPoint, PlotPoints};
 use math_explorer::epidemiology::compartmental::SIRModel;
 use std::sync::Arc;
 
-use super::{SirTool, SIR_STEP_DT};
+use super::{SirForkDescriptor, SirTool, SIR_STEP_DT};
 use crate::app::SemanticPalette;
 use crate::framework::{
     branch_a_ghost_line, branch_b_solid_line, fork_marker_callout, fork_marker_vline,
@@ -13,7 +13,70 @@ use crate::framework::{
 };
 use crate::reflective_ui::render_copyable_metric;
 
+pub(super) fn validate_sir_fork_descriptor(
+    f: &SirForkDescriptor,
+    max_steps: usize,
+) -> Result<(), String> {
+    if f.fork_step == 0
+        || f.fork_step > max_steps
+        || ![
+            f.baseline_n,
+            f.baseline_i0,
+            f.baseline_beta,
+            f.baseline_gamma,
+            f.delta_x,
+        ]
+        .iter()
+        .all(|v| v.is_finite())
+        || !(100.0..=100_000.0).contains(&f.baseline_n)
+        || !(1.0..=f.baseline_n).contains(&f.baseline_i0)
+        || !(0.0..=5.0).contains(&f.baseline_beta)
+        || !(0.0..=1.0).contains(&f.baseline_gamma)
+    {
+        return Err("SIR fork descriptor out of bounds".into());
+    }
+    Ok(())
+}
+
 impl SirTool {
+    pub(super) fn collect_sir_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut datasets = Vec::new();
+        if !self.s_points.is_empty() {
+            let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+            if self.cf.fork.is_some() {
+                datasets.push((
+                    "Susceptible (Branch B)".to_string(),
+                    to_pairs(&self.s_points),
+                ));
+                datasets.push(("Infected (Branch B)".to_string(), to_pairs(&self.i_points)));
+                datasets.push(("Recovered (Branch B)".to_string(), to_pairs(&self.r_points)));
+                datasets.push((
+                    "Susceptible (Branch A)".to_string(),
+                    to_pairs(&self.cf.s_points_a),
+                ));
+                datasets.push((
+                    "Infected (Branch A)".to_string(),
+                    to_pairs(&self.cf.i_points_a),
+                ));
+                datasets.push((
+                    "Recovered (Branch A)".to_string(),
+                    to_pairs(&self.cf.r_points_a),
+                ));
+            } else {
+                datasets.push(("Susceptible".to_string(), to_pairs(&self.s_points)));
+                datasets.push(("Infected".to_string(), to_pairs(&self.i_points)));
+                datasets.push(("Recovered".to_string(), to_pairs(&self.r_points)));
+            }
+        }
+        datasets.extend(self.snapshot_manager.export_datasets());
+        for (name, pts) in egui_plot::get_last_plot_datasets() {
+            if !datasets.iter().any(|(existing, _)| existing == &name) {
+                datasets.push((name, pts));
+            }
+        }
+        datasets
+    }
+
     pub(super) fn current_series_key(&self) -> (usize, usize, usize, usize, usize, usize) {
         (
             self.s_points.as_ptr() as usize,
