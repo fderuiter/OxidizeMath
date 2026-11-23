@@ -1,3 +1,4 @@
+pub mod atlas_host;
 pub mod brush_codec;
 pub mod calibration;
 pub mod callout_overlay;
@@ -31,6 +32,7 @@ mod export_ui;
 #[cfg(test)]
 mod export_ui_tests;
 pub mod fit_bridge;
+mod history_ui;
 pub mod math_input;
 #[cfg(test)]
 mod metadata_label_tests;
@@ -86,11 +88,14 @@ pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
+pub use history_ui::render_workspace_history_buttons;
 pub use math_input::*;
 pub use pane_scope::{
-    is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id, InputMode,
+    is_button_activation_focused, is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed,
+    is_text_edit_focused, record_focused_widget_type_from_output, scoped_panel_id, InputMode,
     InteractionContext,
 };
+pub(crate) use persistence::framework_json_semantically_eq;
 pub use playback::*;
 pub use recovery::*;
 pub use side_panel::{
@@ -104,22 +109,11 @@ pub use story_hud::*;
 pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
-use eframe::egui;
-pub(super) use overlay_sync::{
-    FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache,
-};
-use scientific_metadata::theory::TheoryDescribable;
-
-pub struct ToolMetadata {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub domain: &'static str,
-    pub tags: &'static [&'static str],
-    pub build: fn() -> Box<dyn InteractiveTool>,
-}
-
-inventory::collect!(ToolMetadata);
 pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
+use eframe::egui;
+pub(super) use overlay_sync::UntrackedUrlDigestCache;
+pub use overlay_sync::{SimulationFramework, ToolMetadata};
+use scientific_metadata::theory::TheoryDescribable;
 
 pub trait InteractiveTool {
     fn name(&self) -> &'static str;
@@ -191,11 +185,6 @@ pub trait InteractiveTool {
         self.state_revision()
     }
 
-    /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        None
-    }
-
     /// Direct numeric parameter finiteness hook without JSON serialization.
     fn has_finite_parameters(&self) -> bool {
         true
@@ -255,6 +244,32 @@ pub trait InteractiveTool {
 
     /// Synchronizes declarative guided story or challenge callout pins onto the tool's plot.
     fn sync_callouts(&mut self, _callouts: &[CalloutSpec]) {}
+
+    /// Candidate `(x_key, y_key)` parameter pairs for the framework-hosted 2D parameter atlas.
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        &[]
+    }
+
+    /// Current `(x_val, y_val)` coordinates of the tool on the selected `axis_keys` plane.
+    fn active_atlas_coords(&self, _axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        (0.0, 0.0)
+    }
+
+    /// Hashable signature of non-axis context parameters that invalidate cached atlas slices.
+    fn atlas_context_signature(&self, _axis_keys: (&'static str, &'static str)) -> u64 {
+        self.state_revision()
+    }
+
+    /// Builds a zero-allocation [`crate::async_sim::atlas::RegimeCartographer`] for `axis_keys`.
+    fn build_atlas_cartographer(
+        &self,
+        _axis_keys: (&'static str, &'static str),
+    ) -> Option<std::sync::Arc<dyn crate::async_sim::atlas::RegimeCartographer>> {
+        None
+    }
+
+    /// Applies an interactive click or keyboard teleport event from the framework-hosted 2D atlas.
+    fn apply_atlas_teleport(&mut self, _ev: crate::async_sim::atlas::AtlasTeleportEvent) {}
 
     /// Optional hook to serialize tool-specific parameters into a String (e.g. JSON).
     fn save_state(&self) -> Option<String> {
@@ -429,60 +444,6 @@ pub trait InteractiveTool {
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
     }
-}
-
-#[allow(missing_docs)]
-pub struct SimulationFramework {
-    pub available_tools: Vec<&'static ToolMetadata>,
-    pub active_tool: Option<Box<dyn InteractiveTool>>,
-    pub selected_tool_index: Option<usize>,
-    pub input_mode: InputMode,
-    pub show_theory_portal: bool,
-    pub show_sensitivity_panel: bool,
-    pub show_starter_gallery: bool,
-    pub saved_tool_states: std::collections::HashMap<String, String>,
-    pub saved_plot_states: plot_persistence::SavedPlotStatesMap,
-    pub(super) plot_sync_generation: u64,
-    pub search_query: String,
-    last_announced_count: Option<usize>,
-    last_announced_query: String,
-    pub show_export_modal: bool,
-    pub export_options: egui_plot::export::ExportOptions,
-    pub export_bg_dark: bool,
-    pub export_gif_fps: u32,
-    pub export_gif_frames: u32,
-    pub export_status_message: Option<String>,
-    pub export_status_severity: ExportStatusSeverity,
-    pub domain: String,
-    pub preset_dialog: crate::presets::PresetDialogState,
-    pub(crate) export_queue: ExportQueue,
-
-    /// Cached state snapshot before divergence for step-back rollback.
-    pub last_valid_snapshot: Option<StateSnapshot>,
-    /// Baseline parameters snapshot on tool load.
-    pub baseline_tool_state: Option<String>,
-    /// Last validated finite plot datasets.
-    pub current_valid_plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
-    /// Last validated finite 3D world-coordinate plot datasets.
-    pub current_valid_plot_datasets_3d: Vec<(String, Vec<[f64; 3]>)>,
-    /// Whether divergence has been detected in the active tool.
-    pub is_diverged: bool,
-    /// Diagnostic report for divergence.
-    pub diagnostic_report: Option<DiagnosticReport>,
-    /// Simulation frame / step counter.
-    pub step_counter: usize,
-    /// Start time of current active session.
-    pub start_time: crate::web_io::PlatformInstant,
-    /// Declarative guided story and AST challenge HUD state.
-    pub challenge_hud: ChallengeHudState,
-    /// Active inverse challenge contract displayed in the Challenge HUD, if any.
-    pub active_challenge: Option<&'static ChallengeMetadata>,
-    pub(super) challenge_was_passed: bool,
-    pub cross_tool_bus: CrossToolBus,
-    pub cooperative_sensitivity: CooperativeSensitivityState,
-    pub(super) instance_id: u64,
-    pub(super) sync_state: FrameworkSyncState,
-    pub(super) rev_cache: FrameworkRevisionCache,
 }
 
 pub use crate::camera::{

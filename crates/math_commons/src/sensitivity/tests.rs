@@ -114,3 +114,32 @@ fn seeded_splitmix64_monte_carlo_welford_and_quantiles_are_deterministic() {
     assert!((sum_a.mean - 16.0).abs() < 0.6);
     assert!(sum_a.std_dev > 0.8 && sum_a.std_dev < 2.6);
 }
+
+#[test]
+fn defer_for_gesture_and_compute_with_baseline_hint() {
+    let mut engine = SensitivityEngine::new();
+    let params = [("a", 2.0_f64), ("b", 3.0_f64), ("c", 4.0_f64)];
+    engine.compute(&params, |m| m["a"] + 2.0 * m["b"] + 3.0 * m["c"]);
+    assert!(engine.has_pending_work());
+    engine.defer_for_gesture();
+    assert!(!engine.has_pending_work());
+
+    let released = [("a", 5.0_f64), ("b", 3.0_f64)];
+    let mut calls = 0_usize;
+    engine.compute_with_baseline(&released, &1_u8, Some(11.0), |m| {
+        calls += 1;
+        m["a"] + 2.0 * m["b"]
+    });
+    assert_eq!(calls, 4);
+    assert_eq!(engine.baseline_output, 11.0);
+    assert!(engine.is_converged());
+    assert!(!engine.has_pending_work());
+
+    calls = 0;
+    engine.compute_with_baseline(&released, &2_u8, Some(f64::NAN), |m| {
+        calls += 1;
+        m["a"] + 2.0 * m["b"]
+    });
+    assert_eq!(calls, 5);
+    assert!((engine.baseline_output - 11.0).abs() < 1e-12);
+}

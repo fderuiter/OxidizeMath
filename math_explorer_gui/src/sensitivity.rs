@@ -15,6 +15,13 @@ pub use math_commons::sensitivity::{
     DEFAULT_MONTE_CARLO_SEED, HIGH_SENSITIVITY_THRESHOLD, MAX_SENSITIVITY_BATCH_EVALS,
 };
 
+/// Returns `true` when parameters are mid-gesture (pointer held down or local `AnimatedSlider` sweep active),
+/// matching continuous-edit coalescing in `WorkspaceSessionManager` while scoping sweeps to the current pass/pane.
+#[must_use]
+pub fn is_transient_parameter_gesture(ctx: &egui::Context, sweep_active: bool) -> bool {
+    sweep_active || ctx.input(|i| i.pointer.any_down())
+}
+
 /// Renders the collapsible Sensitivity & Perturbation analysis panel in the UI sidebar.
 pub fn render_sensitivity_panel_ui(ui: &mut egui::Ui, engine: &SensitivityEngine, id_source: &str) {
     render_labeled_sensitivity_panel_ui(ui, engine, id_source, "Baseline Metric");

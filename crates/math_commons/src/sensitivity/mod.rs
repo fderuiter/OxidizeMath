@@ -9,8 +9,11 @@
 //! once parameter schemas and sample capacities are initialized, and bound per-frame GUI
 //! batches to at most [`MAX_SENSITIVITY_BATCH_EVALS`] (`8`) model evaluations.
 
+mod finite_diff;
 mod monte_carlo;
 mod tornado;
+
+use finite_diff::{update_metric_from_map, update_metric_from_slice};
 
 pub use monte_carlo::{
     DEFAULT_MONTE_CARLO_SAMPLES, DEFAULT_MONTE_CARLO_SEED, MonteCarloSummary, ParameterUncertainty,
@@ -121,6 +124,7 @@ pub struct SensitivityEngine {
     pub(crate) param_scratch: Vec<f64>,
     pub(crate) baseline_ready: bool,
     pub(crate) fd_started: bool,
+    pub(crate) gesture_deferred: bool,
 
     // Wide-range tornado sweep state
     pub(crate) tornado_intervals: Vec<TornadoInterval>,
@@ -179,12 +183,20 @@ impl SensitivityEngine {
         self.mc_state.is_converged()
     }
 
+    /// Defers finite-difference and uncertainty perturbations during an active drag or animated
+    /// sweep gesture, retaining settled `metrics` and suppressing repaint requests until release.
+    pub fn defer_for_gesture(&mut self) -> &Vec<SensitivityMetric> {
+        self.gesture_deferred = true;
+        &self.metrics
+    }
+
     /// Returns `true` when any initiated sensitivity, tornado, or Monte Carlo batch still has remaining steps.
     #[must_use]
     pub fn has_pending_work(&self) -> bool {
-        (self.fd_started && self.evaluated_count < self.cached_params.len())
-            || (self.tornado_bounds_hash.is_some() && !self.is_tornado_converged())
-            || (self.mc_state.is_active() && !self.is_monte_carlo_converged())
+        !self.gesture_deferred
+            && ((self.fd_started && self.evaluated_count < self.cached_params.len())
+                || (self.tornado_bounds_hash.is_some() && !self.is_tornado_converged())
+                || (self.mc_state.is_active() && !self.is_monte_carlo_converged()))
     }
 
     pub(crate) fn schema_matches<K: AsRef<str>>(&self, params: &[(K, f64)]) -> bool {
@@ -214,6 +226,7 @@ impl SensitivityEngine {
         self.batch_offset = 0;
         self.baseline_ready = false;
         self.fd_started = false;
+        self.gesture_deferred = false;
         self.tornado_bounds_hash = None;
         self.tornado_evaluated = 0;
         self.tornado_offset = 0;
@@ -296,6 +309,23 @@ impl SensitivityEngine {
         &mut self,
         params: &[(K, f64)],
         context: &C,
+        eval_fn: F,
+    ) -> &Vec<SensitivityMetric>
+    where
+        K: AsRef<str>,
+        C: Hash,
+        F: FnMut(&HashMap<String, f64>) -> f64,
+    {
+        self.compute_with_baseline(params, context, None, eval_fn)
+    }
+
+    /// Evaluates normalized sensitivity indices memoized by canonical parameter bits and `context`,
+    /// reusing `baseline_output_hint` on cache misses when finite instead of invoking `eval_fn` for the baseline.
+    pub fn compute_with_baseline<K, C, F>(
+        &mut self,
+        params: &[(K, f64)],
+        context: &C,
+        baseline_output_hint: Option<f64>,
         mut eval_fn: F,
     ) -> &Vec<SensitivityMetric>
     where
@@ -303,6 +333,7 @@ impl SensitivityEngine {
         C: Hash,
         F: FnMut(&HashMap<String, f64>) -> f64,
     {
+        self.gesture_deferred = false;
         if params.is_empty() {
             self.reset_empty();
             self.fd_started = true;
@@ -317,7 +348,9 @@ impl SensitivityEngine {
         }
         self.fd_started = true;
         if !self.baseline_ready {
-            self.baseline_output = eval_fn(&self.baseline_map);
+            self.baseline_output = baseline_output_hint
+                .filter(|v| v.is_finite())
+                .unwrap_or_else(|| eval_fn(&self.baseline_map));
             self.baseline_ready = true;
         }
         if self.evaluated_count >= params.len() {
@@ -354,6 +387,7 @@ impl SensitivityEngine {
         K: AsRef<str>,
         F: FnMut(&[f64]) -> f64,
     {
+        self.gesture_deferred = false;
         if params.is_empty() {
             self.reset_empty();
             self.fd_started = true;
@@ -394,84 +428,6 @@ impl SensitivityEngine {
         self.evaluated_count += batch_count;
         &self.metrics
     }
-}
-
-fn perturbation_delta(p_val: f64) -> f64 {
-    if p_val.abs() > 1e-12 {
-        0.01 * p_val.abs()
-    } else {
-        0.01
-    }
-}
-
-fn finalize_metric_fields(
-    metric: &mut SensitivityMetric,
-    p_val: f64,
-    y0: f64,
-    delta: f64,
-    y_plus: f64,
-    y_minus: f64,
-) {
-    let dy_dp = if delta > 0.0 {
-        (y_plus - y_minus) / (2.0 * delta)
-    } else {
-        0.0
-    };
-    let elasticity = if y0.abs() > 1e-12 && p_val.abs() > 1e-12 {
-        (dy_dp * p_val / y0).abs()
-    } else if y0.abs() > 1e-12 {
-        (dy_dp / y0).abs()
-    } else {
-        dy_dp.abs()
-    };
-    let dy_dp_clean = if dy_dp.is_finite() { dy_dp } else { 0.0 };
-    let elasticity_clean = if elasticity.is_finite() {
-        elasticity
-    } else {
-        0.0
-    };
-    metric.baseline_value = p_val;
-    metric.partial_derivative = dy_dp_clean;
-    metric.elasticity = elasticity_clean;
-    metric.is_high_sensitivity = elasticity_clean > HIGH_SENSITIVITY_THRESHOLD;
-}
-
-fn update_metric_from_map<F>(
-    metric: &mut SensitivityMetric,
-    name: &str,
-    p_val: f64,
-    baseline_map: &mut HashMap<String, f64>,
-    y0: f64,
-    eval_fn: &mut F,
-) where
-    F: FnMut(&HashMap<String, f64>) -> f64,
-{
-    let delta = perturbation_delta(p_val);
-    set_map_value(baseline_map, name, p_val + delta);
-    let y_plus = eval_fn(baseline_map);
-    set_map_value(baseline_map, name, p_val - delta);
-    let y_minus = eval_fn(baseline_map);
-    set_map_value(baseline_map, name, p_val);
-    finalize_metric_fields(metric, p_val, y0, delta, y_plus, y_minus);
-}
-
-fn update_metric_from_slice<F>(
-    metric: &mut SensitivityMetric,
-    idx: usize,
-    p_val: f64,
-    scratch: &mut [f64],
-    y0: f64,
-    eval_fn: &mut F,
-) where
-    F: FnMut(&[f64]) -> f64,
-{
-    let delta = perturbation_delta(p_val);
-    scratch[idx] = p_val + delta;
-    let y_plus = eval_fn(scratch);
-    scratch[idx] = p_val - delta;
-    let y_minus = eval_fn(scratch);
-    scratch[idx] = p_val;
-    finalize_metric_fields(metric, p_val, y0, delta, y_plus, y_minus);
 }
 
 #[cfg(test)]

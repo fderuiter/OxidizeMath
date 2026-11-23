@@ -319,6 +319,7 @@ impl SensitivityEngine {
         K: AsRef<str>,
         F: FnMut(&HashMap<String, f64>) -> f64,
     {
+        self.gesture_deferred = false;
         if params.is_empty() {
             self.reset_empty();
             return None;
@@ -368,6 +369,7 @@ impl SensitivityEngine {
         K: AsRef<str>,
         F: FnMut(&[f64]) -> f64,
     {
+        self.gesture_deferred = false;
         if params.is_empty() {
             self.reset_empty();
             return None;

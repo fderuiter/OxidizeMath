@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub mod atlas;
 pub mod challenge;
 pub mod export;
 pub mod hooks;
@@ -16,8 +17,10 @@ mod tests;
 #[cfg(test)]
 mod ui_tests;
 
+pub use atlas::{PharmacokineticsCartographer, PK_ATLAS_AXIS_PAIRS};
 pub use persistence::STARTER_PRESET_JSON;
 
+use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::framework::{
     CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool, ToolStateBounds,
     TraceSnapshotManager,
@@ -396,6 +399,30 @@ impl InteractiveTool for PharmacokineticsTool {
         ui::show_pharmacokinetics_inside(self, ui);
     }
 
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        PK_ATLAS_AXIS_PAIRS
+    }
+
+    fn active_atlas_coords(&self, axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        self.pk_atlas_coords(axis_keys)
+    }
+
+    fn atlas_context_signature(&self, axis_keys: (&'static str, &'static str)) -> u64 {
+        self.pk_atlas_signature(axis_keys)
+    }
+
+    fn build_atlas_cartographer(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<std::sync::Arc<dyn RegimeCartographer>> {
+        PharmacokineticsCartographer::new(self, axis_keys)
+            .map(|c| std::sync::Arc::new(c) as std::sync::Arc<dyn RegimeCartographer>)
+    }
+
+    fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
+        self.apply_pk_atlas_teleport(ev);
+    }
+
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
@@ -404,41 +431,6 @@ impl InteractiveTool for PharmacokineticsTool {
     #[cfg(test)]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for PharmacokineticsTool {
-    fn theory_description(&self) -> String {
-        format!(
-            "One-compartment oral ADME Bateman kinetics $C(t) = \\frac{{F D k_a}}{{V_d (k_a - k_e)}}(e^{{-k_e t}} - e^{{-k_a t}})$ with multi-dose linear superposition $C_{{\\Sigma}}(t) = \\sum_{{i}} C(t - t_i)$, biphasic two-pulse release $f_1 C(t) + f_2 C(t - t_{{\\text{{lag}}}})$, and chiral isomer mixtures ($F = {:.2}$, $D = {:.1}$ mg, $k_a = {:.3}\\text{{ h}}^{{-1}}$, $k_e = {:.3}\\text{{ h}}^{{-1}}$, $V_d = {:.1}$ L).",
-            self.bioavailability, self.dose_mg, self.effective_ka, self.ke, self.volume_l
-        )
-    }
-
-    fn phonetic_description(&self) -> String {
-        "One-compartment Bateman pharmacokinetics and multi-dose ADME superposition theory".into()
-    }
-
-    fn theory_citation(&self) -> String {
-        "Clinical Pharmacokinetics and Pharmacodynamics: Concepts and Applications (Rowland & Tozer, 2011); Über eine Erweiterung der Theorie des radioaktiven Zerfalls (Bateman, 1910)".into()
-    }
-
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert(
-            "Bateman Function".into(),
-            "First-order extravascular absorption and mono-exponential elimination model".into(),
-        );
-        map.insert(
-            "Linear Superposition".into(),
-            "Multi-dose accumulation across maintenance, loading, and missed-dose schedules".into(),
-        );
-        map.insert(
-            "Two-Pulse & Chiral ADME".into(),
-            "Biphasic extended-release pulses and stereoselective d/l-enantiomer plasma curves"
-                .into(),
-        );
-        map
     }
 }
 

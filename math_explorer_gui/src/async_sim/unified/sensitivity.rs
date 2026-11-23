@@ -9,6 +9,17 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     /// Advances one cooperative batch (`<= 8` model evaluations) of local finite-difference
     /// sensitivity, wide-range Tornado bounds, or `SplitMix64`-seeded Monte Carlo propagation.
     pub fn step_cooperative_sensitivity(&mut self) -> Option<&'static str> {
+        self.step_cooperative_sensitivity_with_defer(false)
+    }
+
+    pub(super) fn step_cooperative_sensitivity_with_defer(
+        &mut self,
+        defer_gesture: bool,
+    ) -> Option<&'static str> {
+        if defer_gesture && self.uncertainty.cached_label.is_some() {
+            self.sensitivity_engine.defer_for_gesture();
+            return self.uncertainty.cached_label;
+        }
         const STACK_CAP: usize = 16;
         let mut stack_pairs: [(&str, f64); STACK_CAP] = [("", 0.0); STACK_CAP];
         let mut heap_pairs: Vec<(&str, f64)> = Vec::new();
@@ -91,8 +102,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
-    pub(super) fn draw_observable_sensitivity(&mut self, ui: &mut egui::Ui) {
-        let Some(metric_label) = self.step_cooperative_sensitivity() else {
+    pub(super) fn draw_observable_sensitivity(&mut self, ui: &mut egui::Ui, defer_gesture: bool) {
+        let Some(metric_label) = self.step_cooperative_sensitivity_with_defer(defer_gesture) else {
             return;
         };
         ui.separator();
@@ -110,7 +121,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     .accessible_hover_text("Explicit u64 SplitMix64 PRNG seed");
             }
         });
-        if self.uncertainty.enabled
+        if !defer_gesture
+            && self.uncertainty.enabled
             && (!self.sensitivity_engine.is_tornado_converged()
                 || !self.sensitivity_engine.is_monte_carlo_converged())
         {

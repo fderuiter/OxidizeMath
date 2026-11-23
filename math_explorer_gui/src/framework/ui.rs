@@ -366,13 +366,13 @@ impl SimulationFramework {
         });
 
         self.sync_overlays_before_frame(&ctx, id_source);
-
         self.show_export_action_bar(ui, id_source);
         self.show_challenge_hud(ui, id_source);
         self.render_challenge_hud_panel(ui, &ctx, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
         self.show_cooperative_sensitivity_panel(ui, id_source);
+        self.show_framework_atlas_panel(ui, id_source);
 
         let _ = self.deliver_tool_bus_inbox(Some(&ctx));
         self.begin_plot_scope(&ctx);

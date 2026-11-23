@@ -219,6 +219,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ui.separator();
         ui.label("Model Parameters");
 
+        let sweeps_before = crate::reflective_ui::slider::current_pass_active_sweep_count(ctx);
         let mut reset_needed = self.draw_presets_and_actions(ui, ctx);
         let ext_cmds = if let Some(ext) = &mut self.ui_extension {
             ext.draw_side_panel_controls(ui, self.controller.latest_snapshot())
@@ -234,9 +235,13 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let (formula_reset, formula_changed) = self.draw_custom_formula_controls(ui, ctx);
         reset_needed |= formula_reset;
         slider_changed |= formula_changed;
+        let sweep_active =
+            crate::reflective_ui::slider::current_pass_active_sweep_count(ctx) > sweeps_before;
         self.draw_spatial_brush_section(ui, ctx);
         self.draw_atlas_toggle_if_supported(ui);
-        self.draw_observable_sensitivity(ui);
+        let defer_sensitivity =
+            crate::sensitivity::is_transient_parameter_gesture(ctx, sweep_active);
+        self.draw_observable_sensitivity(ui, defer_sensitivity);
         if reset_needed {
             self.reset_simulation(Some(ctx));
         } else if slider_changed {
