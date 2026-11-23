@@ -11,6 +11,16 @@ mod challenge_hud_tests;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod code_export;
+pub mod code_export_modal;
+#[cfg(all(
+    test,
+    feature = "pure_math",
+    feature = "physics",
+    feature = "applied",
+    feature = "epidemiology"
+))]
+mod code_export_tests;
 pub mod counterfactual;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
@@ -56,15 +66,6 @@ mod plot_persistence_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
-#[cfg(all(
-    test,
-    target_arch = "wasm32",
-    feature = "pure_math",
-    feature = "biology",
-    feature = "physics",
-    feature = "ai"
-))]
-mod scalar_export_wasm_tests;
 #[cfg(test)]
 mod shared_points_perf_tests;
 pub mod side_panel;
@@ -93,6 +94,8 @@ pub use brush_dispatch::{PlotBrushController, PlotBrushFrame};
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
+pub use code_export::*;
+pub use code_export_modal::CodeExportTab;
 pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
@@ -278,18 +281,12 @@ pub trait InteractiveTool {
 
     /// Fallibly deserializes and restores tool-specific parameters from a JSON state string.
     fn try_load_state(&mut self, _state: &str) -> Result<(), String> {
-        Err(format!(
-            "Preset state deserialization not supported for {}",
-            self.name()
-        ))
+        export_persistence::unsupported_state_err(self.name())
     }
 
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, state: &str) {
-        if self.state_bounds().validate_json(state).is_err() {
-            return;
-        }
-        let _ = self.try_load_state(state);
+        export_persistence::load_validated_state(self, state);
     }
 
     /// Optional hook to clamp unstable parameters to safe bounds, returning true if handled.
@@ -327,9 +324,14 @@ pub trait InteractiveTool {
         export_persistence::import_tool_preset_json(self, json_str)
     }
 
-    /// Declares which dataset and figure export formats this tool supports.
+    /// Declares which dataset, figure, and code export formats this tool supports.
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
+    }
+
+    /// Optional cold-path hook returning calibrated LaTeX, Rust, and Python code artifacts.
+    fn export_code_artifact(&self) -> Option<CodeArtifact> {
+        None
     }
 
     /// Optional hook to export tool datasets.
@@ -420,7 +422,7 @@ pub trait InteractiveTool {
         &mut self,
         num_frames: usize,
     ) -> Vec<egui_plot::export::DatasetFrame> {
-        export_figure::sample_default_animation_frames(self, num_frames)
+        export_figure::sample_tool_animation_frames(self, num_frames)
     }
 
     /// Returns a type-erased reference for concrete tool state inspection.
@@ -449,6 +451,8 @@ pub struct SimulationFramework {
     pub(super) last_announced_count: Option<usize>,
     pub(super) last_announced_query: String,
     pub show_export_modal: bool,
+    pub show_code_export_modal: bool,
+    pub code_export_tab: CodeExportTab,
     pub export_options: egui_plot::export::ExportOptions,
     pub export_bg_dark: bool,
     pub export_gif_fps: u32,

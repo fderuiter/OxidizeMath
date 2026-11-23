@@ -12,11 +12,12 @@ use math_explorer::physics::medical::dose::kernel::{DoseKernel, ExponentialKerne
 /// aligned top-down (`y = 0` at top row) with [`DoseCalculationTool`]'s viewport image.
 pub(super) fn build_dose_scalar_field(tool: &DoseCalculationTool) -> ScalarField2D {
     if tool.imrt_mode {
+        let dose_slice = super::dose::canvas::active_imrt_dose_slice(tool);
         let mut values = vec![0.0_f64; IMRT_GRID_DIM * IMRT_GRID_DIM];
         for y in 0..IMRT_GRID_DIM {
             let img_y = IMRT_GRID_DIM - 1 - y;
             for x in 0..IMRT_GRID_DIM {
-                let dose = tool.imrt_workspace.dose_vec[flatten_2d_index(x, y, IMRT_GRID_DIM)];
+                let dose = dose_slice[flatten_2d_index(x, y, IMRT_GRID_DIM)];
                 values[flatten_2d_index(x, img_y, IMRT_GRID_DIM)] =
                     if dose.is_finite() { dose } else { 0.0 };
             }

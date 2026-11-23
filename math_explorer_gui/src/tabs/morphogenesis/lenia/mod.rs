@@ -3,27 +3,35 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod atlas;
+mod atlas_bridge;
 mod canvas;
+pub mod challenge;
 pub mod presets;
+pub mod sandbox;
 mod ui;
 
+#[cfg(test)]
+mod atlas_sandbox_tests;
 #[cfg(test)]
 mod tests;
 
 #[cfg(test)]
 pub use atlas::{LeniaCartographer, LeniaRegime, LENIA_ATLAS_AXIS_PAIRS};
 pub use presets::{LeniaBrushMode, LeniaSpeciesPreset, LeniaTheory, LeniaToolState};
+#[cfg(test)]
+pub use sandbox::compute_potential_distribution;
 
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
+use crate::framework::{
+    CalloutManager, CalloutSpec, ChallengeEvaluation, ExportCapabilities, InteractiveTool,
+    MathExpressionInputBar, ToolStateBounds,
+};
 use eframe::egui;
 use eframe::egui::ColorImage;
-use math_explorer::biology::lenia::{
-    GrowthParams, KernelShells, LeniaEngine, LeniaTelemetry, MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS,
-    MIN_KERNEL_RADIUS,
-};
+use math_explorer::biology::lenia::{GrowthParams, KernelShells, LeniaEngine, LeniaTelemetry};
 use math_explorer::rng::OxidizeRng;
 use presets::default_brush_radius;
+use sandbox::{build_growth_sandbox, build_kernel_sandbox};
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
@@ -58,6 +66,15 @@ pub struct LeniaTool {
     pub brush_mode: LeniaBrushMode,
     /// Whether continuous simulation playback is running.
     pub playing: bool,
+    /// 1D formula sandbox for custom growth mapping `G(u)`.
+    pub growth_bar: MathExpressionInputBar,
+    /// 1D formula sandbox for custom radial kernel `K(r)`.
+    pub kernel_bar: MathExpressionInputBar,
+    /// Whether `kernel_bar` overrides concentric bump shells.
+    pub use_custom_kernel: bool,
+    /// Declarative and user-placed inspector plot callout annotations.
+    pub callouts: CalloutManager,
+    pub(crate) active_challenge: Option<&'static str>,
     pub(crate) cursor: [usize; 2],
     pub(crate) rng: OxidizeRng,
     pub(crate) texture: Option<egui::TextureHandle>,
@@ -94,6 +111,11 @@ impl Default for LeniaTool {
             brush_radius: default_brush_radius(),
             brush_mode: LeniaBrushMode::Deposit,
             playing: false,
+            growth_bar: build_growth_sandbox(genome.growth.mu, genome.growth.sigma),
+            kernel_bar: build_kernel_sandbox(),
+            use_custom_kernel: false,
+            callouts: CalloutManager::new(),
+            active_challenge: None,
             cursor: [grid_size / 2, grid_size / 2],
             rng,
             engine,
@@ -122,6 +144,9 @@ impl LeniaTool {
 
     /// Loads a canonical [`LeniaSpeciesPreset`] genome and reseeds the periodic grid via `OxidizeRng`.
     pub fn apply_species_preset(&mut self, species: LeniaSpeciesPreset) {
+        if self.is_kernel_locked_by_challenge() {
+            return;
+        }
         self.species = species;
         let genome = species.to_domain().genome();
         self.radius = genome.shells.radius();
@@ -129,6 +154,7 @@ impl LeniaTool {
         self.mu = genome.growth.mu;
         self.sigma = genome.growth.sigma;
         self.dt = genome.dt;
+        self.push_mu_sigma_to_growth_bar();
         self.diagnostic = None;
         self.reseed_current_genome();
     }
@@ -149,6 +175,9 @@ impl LeniaTool {
         self.engine
             .seed_species(self.species.to_domain(), self.perturbation, &mut self.rng);
         self.sync_engine_parameters();
+        if self.is_kernel_locked_by_challenge() {
+            self.apply_orbium_tail_cut();
+        }
         self.history.clear();
         self.record_telemetry_sample();
         self.refresh_pixels_in_place();
@@ -159,51 +188,11 @@ impl LeniaTool {
         if !self.parameters_within_safe_bounds() {
             return;
         }
+        self.push_mu_sigma_to_growth_bar();
         let shells = KernelShells::new(self.radius, &self.ring_weights);
         let growth = GrowthParams::new(self.mu, self.sigma);
         self.engine.update_parameters(shells, growth, self.dt);
-    }
-
-    pub(crate) fn parameters_within_safe_bounds(&self) -> bool {
-        self.radius.is_finite()
-            && (MIN_KERNEL_RADIUS..=MAX_KERNEL_RADIUS).contains(&self.radius)
-            && self.mu.is_finite()
-            && (0.01..=0.60).contains(&self.mu)
-            && self.sigma.is_finite()
-            && (0.002..=0.15).contains(&self.sigma)
-            && self.dt.is_finite()
-            && (0.005..=0.50).contains(&self.dt)
-            && !self.ring_weights.is_empty()
-            && self.ring_weights.len() <= MAX_KERNEL_RINGS
-            && self
-                .ring_weights
-                .iter()
-                .all(|w| w.is_finite() && (0.0..=1.0).contains(w))
-            && self.ring_weights.iter().copied().sum::<f64>() > 1e-6
-    }
-
-    pub(crate) fn check_and_latch_instability(&mut self) -> bool {
-        if !self.parameters_within_safe_bounds() {
-            self.playing = false;
-            self.diagnostic = Some(DiagnosticReport::new(
-                self.engine.telemetry().time,
-                self.engine.telemetry().step_count as usize,
-                "parameters",
-                "Unstable Lenia step size or growth parameters detected; simulation halted by FiniteStateGuard.",
-            ));
-            return false;
-        }
-        if !self.engine.state().iter().all(|v| v.is_finite()) {
-            self.playing = false;
-            self.diagnostic = Some(DiagnosticReport::new(
-                self.engine.telemetry().time,
-                self.engine.telemetry().step_count as usize,
-                "state",
-                "Non-finite activation detected in Lenia field; simulation halted by FiniteStateGuard.",
-            ));
-            return false;
-        }
-        true
+        self.sync_sandboxes_to_engine();
     }
 
     /// Executes a single timed spectral Lenia step using [`crate::web_io::PlatformInstant`].
@@ -240,6 +229,7 @@ impl LeniaTool {
     }
 
     fn current_state_snapshot(&self) -> LeniaToolState {
+        let sb = self.serialize_sandbox_fields();
         LeniaToolState {
             radius: self.radius,
             mu: self.mu,
@@ -253,52 +243,11 @@ impl LeniaTool {
             brush_radius: self.brush_radius,
             brush_mode: self.brush_mode,
             playing: self.playing,
+            growth_expr: sb.growth_expr,
+            growth_params: sb.growth_params,
+            kernel_expr: sb.kernel_expr,
+            kernel_params: sb.kernel_params,
         }
-    }
-}
-
-impl FiniteStateGuard for LeniaTool {
-    fn is_finite_state(&self) -> bool {
-        self.diagnostic.is_none()
-            && self.parameters_within_safe_bounds()
-            && self.engine.state().iter().all(|v| v.is_finite())
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.diagnostic.as_ref()
-    }
-
-    fn diverged(&self) -> bool {
-        !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn auto_scale_step_size(&mut self) {
-        let base_dt = if self.dt.is_finite() && self.dt > 0.0 {
-            self.dt * 0.5
-        } else {
-            0.05
-        };
-        self.dt = base_dt.clamp(0.005, 0.25);
-        FiniteStateGuard::clamp_parameters(self);
-    }
-
-    fn clamp_parameters(&mut self) {
-        let clamp_or = |v: f64, lo, hi, def| if v.is_finite() { v.clamp(lo, hi) } else { def };
-        self.radius = clamp_or(self.radius, MIN_KERNEL_RADIUS, MAX_KERNEL_RADIUS, 13.0);
-        self.mu = clamp_or(self.mu, 0.01, 0.60, 0.15);
-        self.sigma = clamp_or(self.sigma.abs(), 0.002, 0.15, 0.015);
-        self.dt = clamp_or(self.dt, 0.005, 0.50, 0.1);
-        self.sanitize_rings_and_field();
-        self.diagnostic = None;
-        self.sync_engine_parameters();
-        self.refresh_pixels_in_place();
-    }
-
-    fn reset_parameters(&mut self) {
-        self.playing = false;
-        self.perturbation = 0.0;
-        self.brush_radius = default_brush_radius();
-        self.apply_species_preset(LeniaSpeciesPreset::Orbium);
     }
 }
 
@@ -366,6 +315,26 @@ impl InteractiveTool for LeniaTool {
         FiniteStateGuard::is_finite_state(self)
     }
 
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.collect_observables()
+    }
+
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.sync_declarative_callouts(callouts);
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_active_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.evaluate_active_challenge()
+    }
+
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true
@@ -393,15 +362,8 @@ impl InteractiveTool for LeniaTool {
         &self,
         axis_keys: (&'static str, &'static str),
     ) -> Option<std::sync::Arc<dyn crate::async_sim::atlas::RegimeCartographer>> {
-        let theory = self.theory.theory_parameters();
-        Some(std::sync::Arc::new(atlas::LeniaCartographer::new(
-            &theory,
-            axis_keys,
-            self.species,
-            self.radius,
-            &self.ring_weights,
-            GrowthParams::new(self.mu, self.sigma),
-            self.dt,
+        Some(std::sync::Arc::new(atlas::LeniaCartographer::from_tool(
+            self, axis_keys,
         )))
     }
 
@@ -430,6 +392,9 @@ impl InteractiveTool for LeniaTool {
         self.brush_radius.to_bits().hash(&mut h);
         self.brush_mode.hash(&mut h);
         self.playing.hash(&mut h);
+        self.use_custom_kernel.hash(&mut h);
+        self.growth_bar.state_fingerprint().hash(&mut h);
+        self.kernel_bar.state_fingerprint().hash(&mut h);
         h.finish().max(1)
     }
 
@@ -442,18 +407,33 @@ impl InteractiveTool for LeniaTool {
         let parsed: LeniaToolState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Lenia state: {e}"))?;
         parsed.validate()?;
-        self.radius = parsed.radius;
+        let locked = self.is_kernel_locked_by_challenge();
+        self.radius = if locked { 13.0 } else { parsed.radius };
         self.mu = parsed.mu;
         self.sigma = parsed.sigma;
         self.dt = parsed.dt;
-        self.ring_weights = parsed.ring_weights;
-        self.grid_size = parsed.grid_size;
-        self.species = parsed.species;
-        self.rng_seed = parsed.rng_seed;
-        self.perturbation = parsed.perturbation;
+        self.ring_weights = if locked {
+            vec![1.0]
+        } else {
+            parsed.ring_weights
+        };
+        self.grid_size = if locked { 64 } else { parsed.grid_size };
+        self.species = if locked {
+            LeniaSpeciesPreset::Orbium
+        } else {
+            parsed.species
+        };
+        self.rng_seed = if locked { 42 } else { parsed.rng_seed };
+        self.perturbation = if locked { 0.0 } else { parsed.perturbation };
         self.brush_radius = parsed.brush_radius;
         self.brush_mode = parsed.brush_mode;
         self.playing = parsed.playing;
+        self.restore_sandbox_fields(
+            parsed.growth_expr.as_deref(),
+            &parsed.growth_params,
+            parsed.kernel_expr.as_deref(),
+            &parsed.kernel_params,
+        );
         self.diagnostic = None;
         self.reseed_current_genome();
         Ok(())
