@@ -1199,36 +1199,41 @@ mod tests {
         assert!(!in_budget_job.text.contains("\u{0305}\u{0305}"));
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn run_with_small_stack<F: FnOnce() + Send + 'static>(f: F) {
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(f)
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn run_with_small_stack<F: FnOnce()>(f: F) {
+        f();
+    }
+
     #[test]
     fn test_deep_group_recursion_bounded_on_small_stack() {
         let deep = format!("{}x{}", "{".repeat(2500), "}".repeat(2500));
-        std::thread::Builder::new()
-            .stack_size(512 * 1024)
-            .spawn(move || {
-                let job = parse_latex_with_font(&deep, FontId::proportional(14.0), Color32::WHITE);
-                assert!(job.text.chars().count() <= MAX_FALLBACK_CHARS);
-            })
-            .unwrap()
-            .join()
-            .unwrap();
+        run_with_small_stack(move || {
+            let job = parse_latex_with_font(&deep, FontId::proportional(14.0), Color32::WHITE);
+            assert!(job.text.chars().count() <= MAX_FALLBACK_CHARS);
+        });
 
         let deep_under_input_cap = format!("{}x{}", "{".repeat(900), "}".repeat(900));
         assert!(deep_under_input_cap.len() <= MAX_LATEX_INPUT_BYTES);
-        std::thread::Builder::new()
-            .stack_size(512 * 1024)
-            .spawn(move || {
-                assert!(
-                    parse_latex_to_box(
-                        &deep_under_input_cap,
-                        &FontId::proportional(14.0),
-                        Color32::WHITE,
-                    )
-                    .is_err()
-                );
-            })
-            .unwrap()
-            .join()
-            .unwrap();
+        run_with_small_stack(move || {
+            assert!(
+                parse_latex_to_box(
+                    &deep_under_input_cap,
+                    &FontId::proportional(14.0),
+                    Color32::WHITE,
+                )
+                .is_err()
+            );
+        });
     }
 
     #[test]

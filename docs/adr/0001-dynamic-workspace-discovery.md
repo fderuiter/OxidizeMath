@@ -1,5 +1,9 @@
 # Architecture Decision Record: Dynamic Workspace Discovery for Traceability
 
+## Status
+
+Accepted
+
 ## Context
 Previously, the `traceability_cli` tool relied on a hardcoded list of directories to scan for mathematical implementations and requirements (e.g., `math_explorer/src`, `crates/domain_ai/src`, etc.). As the project scales and new crates are added, maintaining this hardcoded list has become error-prone and tedious.
 

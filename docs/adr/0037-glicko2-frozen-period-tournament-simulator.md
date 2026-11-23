@@ -1,4 +1,4 @@
-# ADR 0035: Validated Glicko-2 `serde` Primitives, Frozen-Period Tournament Kernels, and Client-Side Tournament Simulator
+# ADR 0037: Validated Glicko-2 `serde` Primitives, Frozen-Period Tournament Kernels, and Client-Side Tournament Simulator
 
 ## Status
 Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
