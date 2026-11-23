@@ -24,7 +24,7 @@ fn top_level_beat_frequency(b: f64, r: f64, c: f64, t: f64) -> f64 {
 
 #[test]
 fn test_math_explorer_reexports_verified_theory_and_top_level_embed_theory() {
-    let mut model = ExplorerFacadeModel {
+    let model = ExplorerFacadeModel {
         mode_index: -2,
         coupling: 1.25,
     };
@@ -32,9 +32,14 @@ fn test_math_explorer_reexports_verified_theory_and_top_level_embed_theory() {
         model.theory_description(),
         "Top-level math_explorer facade model"
     );
-    assert_eq!(model.get_parameter("mode_index"), Some(-2.0));
-    model.set_parameter("mode_index", 2.0);
-    assert_eq!(model.mode_index, 2);
+    let params = model.theory_parameters();
+    assert_eq!(params.len(), 2);
+    assert_relative_eq!(params["mode_index"].min, -4.0);
+    assert_relative_eq!(params["mode_index"].max, 4.0);
+    assert_relative_eq!(params["mode_index"].step, 2.0);
+    assert_relative_eq!(params["coupling"].min, 0.0);
+    assert_relative_eq!(params["coupling"].max, 10.0);
+    assert_relative_eq!(params["coupling"].step, 0.25);
 
     let (freq, metrics) =
         VerifiedEngine::run_verified(|| top_level_beat_frequency(4.0, 3.0, 2.0, 1.0));
@@ -296,7 +301,7 @@ pub fn facade_range(b: f64, r: f64, c: f64, t: f64) -> f64 {
 
 pub fn check_model() -> Option<f64> {
     let m = FacadeOnlyModel { steps: 15 };
-    m.get_parameter("steps")
+    m.theory_parameters().get("steps").map(|c| c.max)
 }
 "#;
 
