@@ -86,7 +86,9 @@ fn test_ode_multi_solver_comparison_mode_overlays() {
     let exported = tool.export_datasets();
     assert!(exported.iter().any(|(name, _)| name.contains("Euler")));
     assert!(exported.iter().any(|(name, _)| name.contains("Heun")));
-    assert!(exported.iter().any(|(name, _)| name.contains("Runge-Kutta 4")));
+    assert!(exported
+        .iter()
+        .any(|(name, _)| name.contains("Runge-Kutta 4")));
 
     // State persistence roundtrip preserves comparison mode and active method
     tool.set_method(IntegrationMethod::Heun);
