@@ -83,13 +83,6 @@ impl ExplorerTab for OpticsWaveTab {
         self.framework.load_state(state);
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework
-            .active_tool
-            .as_ref()
-            .and_then(|t| t.focused_canvas_id())
-    }
-
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
     }

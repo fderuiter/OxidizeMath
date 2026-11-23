@@ -299,7 +299,6 @@ impl OpticsWaveTool {
                 &alt_label,
                 Some(&value_summary),
             );
-            self.canvas_id = response.has_focus().then_some(response.id);
             self.handle_canvas_interaction(ui, &response);
             self.paint_overlays(ui, response.rect);
             paint_canvas_focus_ring(ui, &response);

@@ -84,6 +84,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
         "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
+        "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
         "CorticalMorphometryTool" => &["freesurfer"],
         _ => &[],
     };
@@ -111,6 +112,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "financial_math" => &["clinical_trials_statistics"],
         "neuroscience" => &["biology", "graph_parameters_rust"],
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
+        "solid_state" => &["stat_mech", "pure_math"],
         "ai" => &["graph_parameters_rust"],
         "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
         "relativity" => &[

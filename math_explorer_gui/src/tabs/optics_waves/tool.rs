@@ -28,7 +28,6 @@ pub struct OpticsWaveTool {
     pub(crate) step_runner: Option<OpticsWaveRunner>,
     pub(crate) pending_initial_start: bool,
     pub(crate) last_high_contrast: Option<bool>,
-    pub(crate) canvas_id: Option<egui::Id>,
     pub(crate) theory: OpticsWaveTheory,
 }
 
@@ -51,7 +50,6 @@ impl Default for OpticsWaveTool {
             step_runner: None,
             pending_initial_start: true,
             last_high_contrast: None,
-            canvas_id: None,
             theory: OpticsWaveTheory,
         }
     }
@@ -311,10 +309,6 @@ impl InteractiveTool for OpticsWaveTool {
         ) {
             ctx.request_repaint();
         }
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.canvas_id
     }
 
     fn state_revision(&self) -> u64 {
