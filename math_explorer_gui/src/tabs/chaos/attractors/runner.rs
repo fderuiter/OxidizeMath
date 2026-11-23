@@ -7,7 +7,12 @@ use crate::async_sim::{
     TimeTravelCheckpoint,
 };
 use crate::framework::recovery::DiagnosticReport;
+use crate::tabs::geometry_topology::vietoris_rips::{
+    handoff::{publish_live_attractor_landmarks, ChaosLandmarkHandoff},
+    MAX_CHAOS_LANDMARKS,
+};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
+use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
 use nalgebra::Vector3;
 use oxidize_core::rng::OxidizeRng;
 use std::collections::VecDeque;
@@ -152,6 +157,23 @@ impl AttractorRunner {
         self.history.push_back(vec);
         true
     }
+
+    fn publish_live_landmarks(&self, dt: f64) {
+        let pts: Vec<Point3D> = self
+            .history
+            .iter()
+            .map(|v| Point3D::new(v.x, v.y, v.z))
+            .collect();
+        if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
+            publish_live_attractor_landmarks(ChaosLandmarkHandoff {
+                points: landmarks,
+                sigma: self.system.sigma,
+                rho: self.system.rho,
+                beta: self.system.beta,
+                dt,
+            });
+        }
+    }
 }
 
 impl SimulationRunner for AttractorRunner {
@@ -204,6 +226,9 @@ impl SimulationRunner for AttractorRunner {
             if !self.advance_tick(dt, max_points, mode, custom_flow.as_deref()) {
                 break;
             }
+        }
+        if self.history.len() >= 16 && self.step_count % 15 < simulation_speed {
+            self.publish_live_landmarks(dt);
         }
     }
 
@@ -403,6 +428,11 @@ impl SimulationRunner for AttractorRunner {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
-        let _ = self.advance_tick(dt, max_points, mode, custom_flow.as_deref());
+        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref())
+            && self.history.len() >= 16
+            && self.step_count.is_multiple_of(15)
+        {
+            self.publish_live_landmarks(dt);
+        }
     }
 }

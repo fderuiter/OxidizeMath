@@ -197,3 +197,30 @@ fn test_preset_save_state_and_ctrl_z_remain_parameter_only_after_scrubbing() {
         "Ctrl+Z must never trigger playback step-back or scrub"
     );
 }
+
+#[test]
+fn test_attractor_running_checkpoint_substeps_stream_live_tda_landmarks() {
+    use crate::tabs::geometry_topology::vietoris_rips::handoff::poll_live_attractor_landmarks;
+
+    let baseline_seq = poll_live_attractor_landmarks(0).map_or(0, |(seq, _)| seq);
+    let mut attractor = AttractorPlotter::default();
+    attractor.worker.send_command(SimCommand::Start).unwrap();
+
+    let mut streamed = None;
+    for _ in 0..400 {
+        let _ = attractor.worker.update();
+        if let Some(hit) = poll_live_attractor_landmarks(baseline_seq) {
+            streamed = Some(hit);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let (_, handoff) = streamed.expect("Checkpointed AttractorRunner must stream live landmarks");
+    assert!(handoff.points.len() >= 16);
+
+    attractor
+        .worker
+        .send_command(SimCommand::SeekStep(10))
+        .unwrap();
+    wait_for_step(attractor.worker.controller_mut(), 10);
+}
