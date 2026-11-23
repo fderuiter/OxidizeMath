@@ -52,6 +52,8 @@ fn check_root_profile(
     }
 }
 
+const FORBIDDEN_MEMBER_PROFILES: &[&str] = &["release", "dev", "test"];
+
 fn check_member_manifest(member: &str, auto_fix: bool, manifest_cache: &mut ManifestCache) -> bool {
     let path = crate::policy_audit::lint_policy::resolve_member_dir(member).join("Cargo.toml");
     let (content, parsed) = match manifest_cache.get_or_load(&path) {
@@ -63,28 +65,35 @@ fn check_member_manifest(member: &str, auto_fix: bool, manifest_cache: &mut Mani
     };
 
     let mut passed = manifest_cache.check_manifest_lints_once(member, &path, &parsed);
+    let mut updated_content: Option<String> = None;
 
-    let has_profile_release = parsed
-        .get("profile")
-        .and_then(|p| p.get("release"))
-        .is_some();
-
-    if has_profile_release {
+    for profile_name in FORBIDDEN_MEMBER_PROFILES {
+        let has_profile = parsed
+            .get("profile")
+            .and_then(|p| p.get(*profile_name))
+            .is_some();
+        if !has_profile {
+            continue;
+        }
         if auto_fix {
             println!(
-                "[+] Auto-fixing: Removing redundant [profile.release] from {}",
+                "[+] Auto-fixing: Removing redundant [profile.{profile_name}] from {}",
                 path.display()
             );
-            let new_content = remove_profile_release(&content);
-            fs::write(&path, new_content).unwrap();
-            manifest_cache.invalidate(&path);
+            let base = updated_content.as_deref().unwrap_or(&content);
+            updated_content = Some(remove_profile_section(base, profile_name));
         } else {
             eprintln!(
-                "[!] Profile mismatch in {}: redundant [profile.release] found. Configuration must be consolidated in workspace root.",
+                "[!] Profile mismatch in {}: redundant [profile.{profile_name}] found. Configuration must be consolidated in workspace root.",
                 path.display()
             );
             passed = false;
         }
+    }
+
+    if let Some(new_content) = updated_content {
+        fs::write(&path, new_content).unwrap();
+        manifest_cache.invalidate(&path);
     }
 
     passed
@@ -112,19 +121,29 @@ pub(crate) fn check_profiles_with_cache(
     passed
 }
 
-fn remove_profile_release(content: &str) -> String {
+fn is_matching_profile_header(trimmed: &str, profile_name: &str) -> bool {
+    let Some(rest) = trimmed.strip_prefix("[profile.") else {
+        return false;
+    };
+    let Some(after_name) = rest.strip_prefix(profile_name) else {
+        return false;
+    };
+    after_name.starts_with(']') || after_name.starts_with('.')
+}
+
+fn remove_profile_section(content: &str, profile_name: &str) -> String {
     let mut out = String::new();
-    let mut in_profile_release = false;
+    let mut in_target_profile = false;
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("[profile.release]") {
-            in_profile_release = true;
+        if is_matching_profile_header(trimmed, profile_name) {
+            in_target_profile = true;
             continue;
         }
-        if in_profile_release && trimmed.starts_with('[') {
-            in_profile_release = false;
+        if in_target_profile && trimmed.starts_with('[') {
+            in_target_profile = false;
         }
-        if !in_profile_release {
+        if !in_target_profile {
             out.push_str(line);
             out.push('\n');
         }
@@ -269,5 +288,88 @@ mod tests {
         assert!(!cache.contains(Path::new("Cargo.toml")));
         assert!(!cache.contains(Path::new("crates/m1/Cargo.toml")));
         assert!(check_profiles_with_cache(&["crates/m1"], false, &mut cache));
+    }
+
+    #[test]
+    fn test_member_dev_and_test_shadowing_rejected_and_autofixed() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
+        let temp_dir = TempTestDir::new("unified_verification_profile_dev_test");
+        let _cwd_guard = CurrentDirGuard(env::current_dir().unwrap());
+        env::set_current_dir(&*temp_dir).unwrap();
+
+        fs::write(
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/m_dev\", \"crates/m_test\"]\n[profile.release]\noverflow-checks = true\n",
+        )
+        .unwrap();
+        fs::create_dir_all("crates/m_dev").unwrap();
+        fs::create_dir_all("crates/m_test").unwrap();
+
+        fs::write(
+            "crates/m_dev/Cargo.toml",
+            "[package]\nname = \"m_dev\"\nversion = \"0.1.0\"\n\n[lints]\nworkspace = true\n\n[profile.dev]\nopt-level = 1\n\n[profile.dev.package.\"*\"]\nopt-level = 3\n",
+        )
+        .unwrap();
+        fs::write(
+            "crates/m_test/Cargo.toml",
+            "[package]\nname = \"m_test\"\nversion = \"0.1.0\"\n\n[lints]\nworkspace = true\n\n[profile.test]\nopt-level = 1\n",
+        )
+        .unwrap();
+
+        assert!(
+            !check_profiles(&["crates/m_dev"], false),
+            "check_profiles must reject member [profile.dev] override"
+        );
+        assert!(
+            !check_profiles(&["crates/m_test"], false),
+            "check_profiles must reject member [profile.test] override"
+        );
+
+        let mut cache = ManifestCache::new();
+        assert!(check_profiles_with_cache(
+            &["crates/m_dev", "crates/m_test"],
+            true,
+            &mut cache
+        ));
+        assert!(check_profiles_with_cache(
+            &["crates/m_dev", "crates/m_test"],
+            false,
+            &mut cache
+        ));
+    }
+
+    #[test]
+    fn test_workspace_root_dev_and_test_profiles_configured() {
+        let root_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml");
+        let raw = fs::read_to_string(&root_path).expect("read workspace Cargo.toml");
+        let parsed: Value = toml::from_str(&raw).expect("parse workspace Cargo.toml");
+        let profile = parsed.get("profile").expect("root [profile] table");
+
+        for name in ["dev", "test"] {
+            let section = profile
+                .get(name)
+                .unwrap_or_else(|| panic!("[profile.{name}]"));
+            assert_eq!(
+                section.get("opt-level").and_then(Value::as_integer),
+                Some(0)
+            );
+            assert_eq!(
+                section.get("debug").and_then(Value::as_str),
+                Some("line-tables-only")
+            );
+            let star = section
+                .get("package")
+                .and_then(|p| p.get("*"))
+                .unwrap_or_else(|| panic!("[profile.{name}.package.\"*\"]"));
+            assert_eq!(star.get("opt-level").and_then(Value::as_integer), Some(2));
+            assert_eq!(star.get("debug").and_then(Value::as_bool), Some(false));
+        }
+
+        let release = profile.get("release").expect("[profile.release]");
+        assert_eq!(
+            release.get("overflow-checks").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(release.get("lto").and_then(Value::as_bool), Some(true));
     }
 }
