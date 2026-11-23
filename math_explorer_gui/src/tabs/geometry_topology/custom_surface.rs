@@ -25,7 +25,7 @@ pub const CUSTOM_DOMAIN_MIN_SPAN: f64 = 0.05;
 pub const DEFAULT_HF_BOUNDS: [f64; 2] = [-2.0, 2.0];
 pub const DEFAULT_PARAM_BOUNDS: [f64; 2] = [0.0, 2.0 * PI];
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SurfaceType {
     Sphere,
     Torus,

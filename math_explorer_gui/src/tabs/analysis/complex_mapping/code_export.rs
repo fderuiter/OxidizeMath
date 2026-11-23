@@ -249,15 +249,12 @@ fn step_complex_frame<'a>(
             if let Some(lit) = complex_symbol_literal(v) {
                 out.push_str(lit);
             } else {
-                let val = params
-                    .get(v)
-                    .copied()
-                    .or_else(|| {
-                        params
-                            .iter()
-                            .find(|(k, _)| k.eq_ignore_ascii_case(v))
-                            .map(|(_, &val)| val)
-                    })?;
+                let val = params.get(v).copied().or_else(|| {
+                    params
+                        .iter()
+                        .find(|(k, _)| k.eq_ignore_ascii_case(v))
+                        .map(|(_, &val)| val)
+                })?;
                 out.push_str(&format!("Complex::real({})", format_rust_f64(val).ok()?));
             }
         }

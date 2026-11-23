@@ -34,7 +34,9 @@ struct CapacityFadeState {
 }
 
 impl InteractiveTool for CapacityFadeTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Capacity Fade"
     }
@@ -143,15 +145,13 @@ impl CapacityFadeTool {
             ui.heading("Parameters");
             ui.add_space(5.0);
             ui.add(
-                egui::Slider::new(&mut self.dod, 0.0..=100.0)
-                    .text("Depth of Discharge (DoD) - %"),
+                egui::Slider::new(&mut self.dod, 0.0..=100.0).text("Depth of Discharge (DoD) - %"),
             );
             ui.small("Percentage of battery capacity used per cycle.");
             ui.add_space(10.0);
             ui.add_enabled_ui(false, |ui| {
                 ui.add(
-                    egui::Slider::new(&mut self.temperature, -20.0..=60.0)
-                        .text("Temperature (°C)"),
+                    egui::Slider::new(&mut self.temperature, -20.0..=60.0).text("Temperature (°C)"),
                 );
             })
             .response
@@ -210,7 +210,9 @@ impl CapacityFadeTool {
             return None;
         }
         let model = PowerLawModel::standard();
-        let n70 = DepthOfDischarge::new(self.dod).ok().map(|d| model.n70(d).as_f64())?;
+        let n70 = DepthOfDischarge::new(self.dod)
+            .ok()
+            .map(|d| model.n70(d).as_f64())?;
         let dod_tex = format_latex_scalar(self.dod).ok()?;
         let n70_tex = format_latex_scalar(n70).ok()?;
         let cyc_tex = format_latex_scalar(self.cycles_to_simulate).ok()?;
@@ -283,7 +285,6 @@ impl CapacityFadeTool {
 
 // [cite:mmwave_radiotherapy_setup]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "CapacityFadeTool",
@@ -301,9 +302,15 @@ impl scientific_metadata::theory::TheoryDescribable for CapacityFadeTool {
             self.dod, self.temperature
         )
     }
-    fn phonetic_description(&self) -> String { "Battery capacity fade power-law degradation theory".into() }
-    fn theory_citation(&self) -> String { "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Battery capacity fade power-law degradation theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{
@@ -378,4 +385,3 @@ mod tests {
         assert!(fit.r_squared >= 0.99);
     }
 }
-

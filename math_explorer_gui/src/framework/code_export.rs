@@ -139,7 +139,7 @@ impl SimulationFramework {
         let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
             writer(&content)
         } else {
-            self.write_system_text_clipboard(label, &content, ctx)
+            self.write_system_text_clipboard(label, "", &content, ctx)
         };
         match res {
             Ok(()) => {

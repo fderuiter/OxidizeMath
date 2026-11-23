@@ -38,10 +38,27 @@ struct CoupledOdeExportSpec<'a> {
 impl OdeSolverTool {
     pub(super) fn active_param_map(&self) -> HashMap<String, f64> {
         let mut params: HashMap<String, f64> = self.math_input.params_map().into_iter().collect();
-        params.insert("k".to_string(), self.param_k);
-        params.insert("r".to_string(), self.param_r);
-        params.insert("cap_k".to_string(), self.param_cap_k);
-        params.insert("K".to_string(), self.param_cap_k);
+        if self.preset != OdePreset::Custom
+            || self.param_k.to_bits() != self.synced_legacy_params[0].to_bits()
+            || !params.contains_key("k")
+        {
+            params.insert("k".to_string(), self.param_k);
+        }
+        if self.preset != OdePreset::Custom
+            || self.param_r.to_bits() != self.synced_legacy_params[1].to_bits()
+            || !params.contains_key("r")
+        {
+            params.insert("r".to_string(), self.param_r);
+        }
+        if self.preset != OdePreset::Custom
+            || self.param_cap_k.to_bits() != self.synced_legacy_params[2].to_bits()
+            || !params.contains_key("cap_k")
+        {
+            params.insert("cap_k".to_string(), self.param_cap_k);
+        }
+        if self.preset != OdePreset::Custom || !params.contains_key("K") {
+            params.insert("K".to_string(), self.param_cap_k);
+        }
         params
     }
 

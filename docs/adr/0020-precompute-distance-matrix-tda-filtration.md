@@ -1,5 +1,9 @@
 # ADR 0020: Precomputed Distance Matrix for TDA Filtration
 
+## Status
+
+Accepted
+
 ## Context
 In `crates/pure_math/src/pure_math/statistics/tda/persistence.rs`, `compute_persistence` evaluates persistent homology across a sequence of filtration radius steps. Previously, each iteration invoked `vietoris_rips_complex(&cloud, radius)`, which called `cloud.distance_matrix()` inside `crates/pure_math/src/pure_math/statistics/tda/complex.rs`. For a point cloud with $N$ points and a filtration of $K$ steps, this caused $O(K \cdot N^2)$ redundant Euclidean distance recalculations and allocated $K$ identical distance matrices on the heap.
 

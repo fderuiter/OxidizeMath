@@ -28,6 +28,7 @@ mod modal_lifecycle;
 mod plot_ui;
 pub mod poi;
 mod poi_interaction;
+pub mod sidecar_3d;
 mod transform;
 
 use std::{cmp::Ordering, ops::RangeInclusive, sync::Arc};
@@ -47,9 +48,9 @@ pub use crate::{
         AspectRatioOption, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
         color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard,
         copy_image_to_clipboard_with_callback, copy_text_to_clipboard,
-        copy_text_to_clipboard_with_callback, export_csv, export_custom_gif, export_custom_image,
-        export_custom_png, export_custom_svg, export_json, parse_csv, save_file_dialog,
-        trigger_import_csv_for_plot,
+        copy_text_to_clipboard_with_callback, export_csv, export_csv_3d, export_custom_gif,
+        export_custom_image, export_custom_png, export_custom_svg, export_json, export_json_3d,
+        parse_csv, save_file_dialog, trigger_import_csv_for_plot,
     },
     export_modal::{
         CallbackExportSource, ExportDataSource, ExportModalAction, ExportModalBindings,
@@ -78,6 +79,10 @@ pub use crate::{
     modal_lifecycle::{ModalFrameContext, ModalLifecycle},
     plot_ui::PlotUi,
     poi::{CriticalPoint, CriticalPointKind, MAX_CRITICAL_POINTS, detect_critical_points},
+    sidecar_3d::{
+        Plot3DSeries, Plot3DSeriesSidecar, append_last_plot_datasets_3d,
+        clear_last_plot_datasets_3d, format_world_coord, get_last_plot_datasets_3d,
+    },
     transform::{PlotBounds, PlotTransform},
 };
 
@@ -182,10 +187,64 @@ struct PlotFrameCursors {
 #[derive(Default, Clone)]
 struct CursorLinkGroups(HashMap<Id, Vec<PlotFrameCursors>>);
 
+/// Workspace-wide ambient synchronization flags for multi-pane 2D comparison plots.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AmbientPlotLinkConfig {
+    /// Synchronizes X and Y coordinate bounds across matching interactive 2D plots.
+    pub link_axes: bool,
+    /// Synchronizes hover crosshair cursors across matching interactive 2D plots.
+    pub link_cursors: bool,
+}
+
+#[derive(Default, Clone, Copy)]
+struct AmbientPlotLinkState {
+    config: AmbientPlotLinkConfig,
+    axis_epoch: u64,
+}
+
+/// Publishes or clears the ambient multi-pane plot synchronization configuration on `ctx`.
+pub fn set_ambient_plot_link_config(ctx: &egui::Context, config: AmbientPlotLinkConfig) {
+    ctx.data_mut(|d| {
+        let state: &mut AmbientPlotLinkState =
+            d.get_temp_mut_or_default(Id::new("AMBIENT_PLOT_LINK_STATE"));
+        if config.link_axes && !state.config.link_axes {
+            state.axis_epoch = state.axis_epoch.wrapping_add(1);
+        }
+        state.config = config;
+    });
+}
+
+/// Reads the current ambient multi-pane plot synchronization configuration from `ctx`.
+#[must_use]
+pub fn ambient_plot_link_config(ctx: &egui::Context) -> AmbientPlotLinkConfig {
+    ctx.data(|d| {
+        d.get_temp::<AmbientPlotLinkState>(Id::new("AMBIENT_PLOT_LINK_STATE"))
+            .unwrap_or_default()
+            .config
+    })
+}
+
+#[derive(PartialEq, Clone)]
+struct PlotFrameAutoBounds {
+    id: Id,
+    bounds: PlotBounds,
+}
+
 #[derive(Clone)]
 struct LinkedBounds {
     bounds: PlotBounds,
     auto_bounds: Vec2b,
+    auto_frames: Vec<PlotFrameAutoBounds>,
+}
+
+impl Default for LinkedBounds {
+    fn default() -> Self {
+        Self {
+            bounds: PlotBounds::NOTHING,
+            auto_bounds: Vec2b::new(true, true),
+            auto_frames: Vec::new(),
+        }
+    }
 }
 
 #[derive(Default, Clone)]
@@ -1067,8 +1126,8 @@ impl<'a> Plot<'a> {
             show_axes,
             show_grid,
             grid_spacing,
-            linked_axes,
-            linked_cursors,
+            mut linked_axes,
+            mut linked_cursors,
 
             clamp_grid,
             grid_spacers,
@@ -1077,6 +1136,18 @@ impl<'a> Plot<'a> {
             show_zoom_buttons: _,
             allow_2d_analysis,
         } = self;
+
+        resolve_ambient_plot_links(
+            ui.ctx(),
+            id_source,
+            show_axes,
+            allow_drag,
+            allow_zoom,
+            allow_scroll,
+            allow_boxed_zoom,
+            &mut linked_axes,
+            &mut linked_cursors,
+        );
 
         // Disable interaction if ui is disabled.
         let allow_zoom = allow_zoom.and(ui.is_enabled());
@@ -1225,6 +1296,7 @@ impl<'a> Plot<'a> {
             response,
             bounds_modifications: Vec::new(),
             plot_id,
+            sidecar_3d: None,
         };
 
         // Render persisted imported datasets as overlay items
@@ -1242,6 +1314,7 @@ impl<'a> Plot<'a> {
 
         // Drain any remaining canvas callouts not consumed by a custom CalloutManager
         let newly_added_callouts = drain_pending_callouts(plot_id);
+        let allow_2d_analysis = allow_2d_analysis && plot_ui.sidecar_3d.is_none();
         if allow_2d_analysis {
             if !newly_added_callouts.is_empty() {
                 mem.callouts
@@ -1259,10 +1332,11 @@ impl<'a> Plot<'a> {
             mut response,
             last_plot_transform,
             bounds_modifications,
+            sidecar_3d,
             ..
         } = plot_ui;
 
-        let persisted_point_tooltip = if allow_2d_analysis {
+        let persisted_point_tooltip = if allow_2d_analysis || sidecar_3d.is_some() {
             a11y::preprocess_point_tooltip_frame(
                 &response,
                 response.hovered() || response.has_focus(),
@@ -1345,7 +1419,8 @@ impl<'a> Plot<'a> {
         if let Some((id, axes)) = linked_axes.as_ref() {
             ui.data_mut(|data| {
                 let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
-                if let Some(linked_bounds) = link_groups.0.get(id) {
+                if let Some(linked_bounds) = link_groups.0.get(id).filter(|lb| lb.bounds.is_valid())
+                {
                     if axes.x {
                         bounds.set_x(&linked_bounds.bounds);
                         mem.auto_bounds.x = linked_bounds.auto_bounds.x;
@@ -1419,6 +1494,25 @@ impl<'a> Plot<'a> {
             margin_fraction,
             log_axes,
         );
+        let linked_union_auto = linked_axes.as_ref().map(|(link_id, link_axes)| {
+            let local_auto = compute_auto_content_bounds(
+                bounds,
+                &min_auto_bounds,
+                default_auto_bounds,
+                &items,
+                margin_fraction,
+                log_axes,
+            );
+            sync_linked_auto_bounds_envelope(
+                ui,
+                *link_id,
+                *link_axes,
+                plot_id,
+                local_auto,
+                mem.auto_bounds,
+                &mut bounds,
+            )
+        });
 
         let effective_center_axis =
             Vec2b::new(center_axis.x && !mem.log_x, center_axis.y && !mem.log_y);
@@ -1683,7 +1777,7 @@ impl<'a> Plot<'a> {
             item.initialize(mem.transform.bounds().range_x());
         }
 
-        let auto_content_bounds = compute_auto_content_bounds(
+        let mut auto_content_bounds = compute_auto_content_bounds(
             *bounds,
             &min_auto_bounds,
             default_auto_bounds,
@@ -1691,6 +1785,14 @@ impl<'a> Plot<'a> {
             margin_fraction,
             log_axes,
         );
+        if let (Some((_, link_axes)), Some(union_auto)) = (&linked_axes, linked_union_auto) {
+            if link_axes.x && union_auto.is_valid_x() {
+                auto_content_bounds.set_x(&union_auto);
+            }
+            if link_axes.y && union_auto.is_valid_y() {
+                auto_content_bounds.set_y(&union_auto);
+            }
+        }
 
         let mut access_state = Self::load_frame_access_state(ui, plot_id, &mem);
         if !allow_2d_analysis {
@@ -1698,6 +1800,11 @@ impl<'a> Plot<'a> {
             access_state.show_edit_callout_modal = false;
             access_state.focused_poi = None;
         }
+        let export_datasets_3d: Vec<(String, Vec<[f64; 3]>)> = sidecar_3d
+            .as_ref()
+            .map_or_else(Vec::new, Plot3DSeriesSidecar::export_datasets_3d);
+        append_last_plot_datasets_3d(&export_datasets_3d);
+
         let base_items_hash = hash_plot_items(&items);
         let active_fit = if allow_2d_analysis
             && access_state.fit_model.is_some()
@@ -1789,13 +1896,25 @@ impl<'a> Plot<'a> {
             default_auto_bounds,
         };
         Self::register_and_handle_viewport_keys(ui, &response, &mut mem, &viewport_key_cfg);
-        register_plot_dataset_commands_from_items(ui.ctx(), &items, access_state.focused_item);
+        register_plot_dataset_commands_from_items(
+            ui.ctx(),
+            &items,
+            sidecar_3d.as_ref(),
+            access_state.focused_item,
+        );
         if !critical_points.is_empty() {
             commands::CommandRegistryData::register_poi_navigation(ui.ctx());
         }
-        let lazy_accessible_datasets: Option<BaseDatasetList> = (response.has_focus()
-            || access_state.show_table)
-            .then(|| collect_accessible_datasets(&items));
+        let lazy_accessible_datasets: Option<BaseDatasetList> =
+            (response.has_focus() || access_state.show_table).then(|| {
+                if let Some(ref sidecar) = sidecar_3d {
+                    let ds = sidecar.accessible_datasets_2d();
+                    if !ds.is_empty() {
+                        return ds;
+                    }
+                }
+                collect_accessible_datasets(&items)
+            });
         if response.has_focus() {
             if allow_2d_analysis {
                 poi_interaction::handle_focused_plot_poi_keys(
@@ -1805,7 +1924,7 @@ impl<'a> Plot<'a> {
                 );
             }
             if let Some(ref ds) = lazy_accessible_datasets {
-                handle_focused_plot_dataset_keys(ui, ds, &mut access_state);
+                handle_focused_plot_dataset_keys(ui, ds, sidecar_3d.as_ref(), &mut access_state);
             }
         } else if access_state
             .focused_poi
@@ -1814,9 +1933,9 @@ impl<'a> Plot<'a> {
             access_state.focused_poi = None;
         }
         let focused_point = if response.has_focus() && access_state.focused_poi.is_none() {
-            lazy_accessible_datasets
-                .as_ref()
-                .and_then(|ds| resolve_focused_plot_point(&items, ds, &mut access_state))
+            lazy_accessible_datasets.as_ref().and_then(|ds| {
+                resolve_focused_plot_point(&items, ds, sidecar_3d.as_ref(), &mut access_state)
+            })
         } else {
             None
         };
@@ -1845,6 +1964,7 @@ impl<'a> Plot<'a> {
                 .then_some(access_state.focused_poi)
                 .flatten(),
             persisted_tooltip: persisted_point_tooltip,
+            sidecar_3d: sidecar_3d.as_ref(),
             critical_points: Arc::clone(&critical_points),
         };
 
@@ -1887,28 +2007,36 @@ impl<'a> Plot<'a> {
 
         if let Some((id, _)) = linked_cursors.as_ref() {
             // Push the frame we just drew to the list of frames
-            ui.data_mut(|data| {
+            let had_peers_with_new_cursor = ui.data_mut(|data| {
                 let frames: &mut CursorLinkGroups = data.get_temp_mut_or_default(Id::NULL);
                 let cursors = frames.0.entry(*id).or_default();
+                let had_peers = !cursors.is_empty() && !plot_cursors.is_empty();
                 cursors.push(PlotFrameCursors {
                     id: plot_id,
                     cursors: plot_cursors,
                 });
+                had_peers
             });
+            if had_peers_with_new_cursor {
+                ui.ctx().request_repaint();
+            }
         }
 
         if let Some((id, _)) = linked_axes.as_ref() {
-            // Save the linked bounds.
-            ui.data_mut(|data| {
+            // Save the linked bounds while preserving per-plot auto-bounds envelopes.
+            let changed = ui.data_mut(|data| {
                 let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
-                link_groups.0.insert(
-                    *id,
-                    LinkedBounds {
-                        bounds: *mem.transform.bounds(),
-                        auto_bounds: mem.auto_bounds,
-                    },
-                );
+                let entry = link_groups.0.entry(*id).or_default();
+                let new_bounds = *mem.transform.bounds();
+                let needs_sync = entry.auto_frames.len() > 1
+                    && (entry.bounds != new_bounds || entry.auto_bounds != mem.auto_bounds);
+                entry.bounds = new_bounds;
+                entry.auto_bounds = mem.auto_bounds;
+                needs_sync
             });
+            if changed {
+                ui.ctx().request_repaint();
+            }
         }
 
         let transform = mem.transform;
@@ -1944,8 +2072,12 @@ impl<'a> Plot<'a> {
         }
 
         let focus_response = &response;
-        let series_count = items.len();
-        let has_any_export_points = items.iter().any(|it| it.has_any_points());
+        let series_count = sidecar_3d
+            .as_ref()
+            .filter(|s| !s.series().is_empty())
+            .map_or_else(|| items.len(), |s| s.series().len());
+        let has_any_export_points =
+            !export_datasets_3d.is_empty() || items.iter().any(|it| it.has_any_points());
         let has_table_content = has_any_export_points || !critical_points.is_empty();
         let plot_a11y_label = match title.as_deref() {
             Some(t) => format!("Interactive Plot ({t}), {series_count} series"),
@@ -1970,18 +2102,32 @@ impl<'a> Plot<'a> {
                     access_state.export_modal.open = true;
                 }
                 if ui.button("Export CSV").clicked() {
-                    let export_datasets = collect_export_datasets(&items);
-                    export::export_csv(&export_datasets);
+                    if !export_datasets_3d.is_empty() {
+                        export::export_csv_3d(&export_datasets_3d);
+                    } else {
+                        let export_datasets = collect_export_datasets(&items);
+                        export::export_csv(&export_datasets);
+                    }
                 }
                 if ui.button("Export JSON").clicked() {
-                    let export_datasets = collect_export_datasets(&items);
-                    export::export_json(&export_datasets);
+                    if !export_datasets_3d.is_empty() {
+                        export::export_json_3d(&export_datasets_3d);
+                    } else {
+                        let export_datasets = collect_export_datasets(&items);
+                        export::export_json(&export_datasets);
+                    }
                 }
-                if ui
-                    .add_enabled(has_table_content, egui::Button::new("Table View"))
-                    .on_disabled_hover_text("No tabular data points available for this plot")
-                    .clicked()
-                {
+                let mut table_btn = a11y::focusable_action_button(
+                    ui,
+                    has_table_content,
+                    egui::Button::new("Table View"),
+                    Some("Table View"),
+                );
+                if !has_table_content {
+                    table_btn = table_btn
+                        .accessible_tooltip("No tabular data points available for this plot");
+                }
+                if has_table_content && table_btn.clicked() {
                     access_state.show_table = !access_state.show_table;
                 }
                 if ui.button("🔧 Settings").clicked() {
@@ -2071,25 +2217,36 @@ impl<'a> Plot<'a> {
 
         {
             let table_window_title = format_modal_title("Data Table", title.as_deref());
-            let table_datasets_storage;
-            let table_datasets: &[(String, Vec<[f64; 2]>, Color32)] =
-                if let Some(ref ds) = lazy_accessible_datasets {
-                    ds.as_slice()
-                } else if access_state.show_table {
-                    table_datasets_storage = collect_accessible_datasets(&items);
-                    table_datasets_storage.as_slice()
-                } else {
-                    &[]
-                };
-            data_table::show_data_table_modal_with_pois(
-                ui.ctx(),
-                plot_id,
-                &table_window_title,
-                &mut access_state.show_table,
-                &mut access_state.data_table,
-                table_datasets,
-                &critical_points,
-            );
+            if let Some(ref sidecar) = sidecar_3d {
+                data_table::show_data_table_modal_3d(
+                    ui.ctx(),
+                    plot_id,
+                    &table_window_title,
+                    &mut access_state.show_table,
+                    &mut access_state.data_table,
+                    sidecar.series(),
+                );
+            } else {
+                let table_datasets_storage;
+                let table_datasets: &[(String, Vec<[f64; 2]>, Color32)] =
+                    if let Some(ref ds) = lazy_accessible_datasets {
+                        ds.as_slice()
+                    } else if access_state.show_table {
+                        table_datasets_storage = collect_accessible_datasets(&items);
+                        table_datasets_storage.as_slice()
+                    } else {
+                        &[]
+                    };
+                data_table::show_data_table_modal_with_pois(
+                    ui.ctx(),
+                    plot_id,
+                    &table_window_title,
+                    &mut access_state.show_table,
+                    &mut access_state.data_table,
+                    table_datasets,
+                    &critical_points,
+                );
+            }
         }
 
         {
@@ -2547,20 +2704,34 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {
-                let export_datasets = collect_export_datasets(&items);
-                export::export_csv(&export_datasets);
+                if !export_datasets_3d.is_empty() {
+                    export::export_csv_3d(&export_datasets_3d);
+                } else {
+                    let export_datasets = collect_export_datasets(&items);
+                    export::export_csv(&export_datasets);
+                }
                 ui.close();
             }
             if ui.button("Export JSON").clicked() {
-                let export_datasets = collect_export_datasets(&items);
-                export::export_json(&export_datasets);
+                if !export_datasets_3d.is_empty() {
+                    export::export_json_3d(&export_datasets_3d);
+                } else {
+                    let export_datasets = collect_export_datasets(&items);
+                    export::export_json(&export_datasets);
+                }
                 ui.close();
             }
-            if ui
-                .add_enabled(has_table_content, egui::Button::new("Table View"))
-                .on_disabled_hover_text("No tabular data points available for this plot")
-                .clicked()
-            {
+            let mut table_btn = a11y::focusable_action_button(
+                ui,
+                has_table_content,
+                egui::Button::new("Table View"),
+                Some("Table View"),
+            );
+            if !has_table_content {
+                table_btn =
+                    table_btn.accessible_tooltip("No tabular data points available for this plot");
+            }
+            if has_table_content && table_btn.clicked() {
                 access_state.show_table = !access_state.show_table;
                 ui.close();
             }
@@ -2586,8 +2757,25 @@ impl<'a> Plot<'a> {
 
         let mut deferred_datasets = Vec::with_capacity(items.len());
         let mut deferred_primitives = Vec::with_capacity(items.len());
-        for item in &mut items {
-            item.append_deferred_export(&mut deferred_datasets, &mut deferred_primitives);
+        if let Some(ref sidecar) = sidecar_3d
+            && !sidecar.series().is_empty()
+        {
+            for s in sidecar.series() {
+                if !s.projected.is_empty() {
+                    deferred_datasets.push(DeferredDatasetEntry::Owned {
+                        name: s.name.clone(),
+                        points: s.projected.clone(),
+                    });
+                }
+            }
+            let mut ignored_datasets = Vec::new();
+            for item in &mut items {
+                item.append_deferred_export(&mut ignored_datasets, &mut deferred_primitives);
+            }
+        } else {
+            for item in &mut items {
+                item.append_deferred_export(&mut deferred_datasets, &mut deferred_primitives);
+            }
         }
         append_deferred_plot_datasets(deferred_datasets, items_hash);
         export_primitives::append_deferred_plot_primitives(deferred_primitives);
@@ -2747,6 +2935,7 @@ struct FocusedPlotPoint {
     item_id: Id,
     series_name: String,
     point: PlotPoint,
+    world_point: Option<[f64; 3]>,
     color: Color32,
 }
 
@@ -2846,13 +3035,9 @@ fn apply_aspect_and_sync_linked(
     if let Some((id, _)) = linked_axes {
         ui.data_mut(|data| {
             let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
-            link_groups.0.insert(
-                *id,
-                LinkedBounds {
-                    bounds: *mem.transform.bounds(),
-                    auto_bounds: mem.auto_bounds,
-                },
-            );
+            let entry = link_groups.0.entry(*id).or_default();
+            entry.bounds = *mem.transform.bounds();
+            entry.auto_bounds = mem.auto_bounds;
         });
     }
     ui.ctx().request_repaint();
@@ -3129,10 +3314,12 @@ fn collect_export_datasets(items: &[Box<dyn PlotItem + '_>]) -> Vec<(String, Vec
 fn register_plot_dataset_commands_from_items(
     ctx: &egui::Context,
     items: &[Box<dyn PlotItem + '_>],
+    sidecar_3d: Option<&Plot3DSeriesSidecar>,
     focused_item: usize,
 ) {
     use crate::commands::{CommandRegistryData, CommandTrigger};
-    if items.is_empty() {
+    let has_series = sidecar_3d.filter(|s| !s.series().is_empty()).is_some() || !items.is_empty();
+    if !has_series {
         return;
     }
     CommandRegistryData::register(
@@ -3151,11 +3338,19 @@ fn register_plot_dataset_commands_from_items(
         false,
         "Plot Accessibility",
     );
-    if items
-        .get(focused_item)
-        .or_else(|| items.first())
-        .is_some_and(|it| it.has_any_points())
-    {
+    let focused_has_points = if let Some(sidecar) = sidecar_3d.filter(|s| !s.series().is_empty()) {
+        sidecar
+            .series()
+            .get(focused_item)
+            .or_else(|| sidecar.series().first())
+            .is_some_and(|s| !s.projected.is_empty())
+    } else {
+        items
+            .get(focused_item)
+            .or_else(|| items.first())
+            .is_some_and(|it| it.has_any_points())
+    };
+    if focused_has_points {
         CommandRegistryData::register(
             ctx,
             "Next Point",
@@ -3178,6 +3373,7 @@ fn register_plot_dataset_commands_from_items(
 fn handle_focused_plot_dataset_keys(
     ui: &Ui,
     accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    sidecar_3d: Option<&Plot3DSeriesSidecar>,
     access_state: &mut AccessState,
 ) {
     use crate::commands::{CommandRegistryData, CommandTrigger};
@@ -3226,16 +3422,33 @@ fn handle_focused_plot_dataset_keys(
     {
         changed |= step_focused_point_index(ui, pts.len(), &mut access_state.focused_point);
     }
-    if changed
-        && let Some((name, pts, _)) = accessible_datasets.get(access_state.focused_item)
-        && let Some(p) = pts.get(access_state.focused_point)
-    {
+    if changed {
         access_state.focused_poi = None;
-        emit_plot_live_message(
-            ui.ctx(),
-            format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]),
-            false,
-        );
+        if let Some(world) = sidecar_3d
+            .and_then(|s| s.series().get(access_state.focused_item))
+            .and_then(|s| {
+                s.world
+                    .get(access_state.focused_point)
+                    .map(|w| (&s.name, *w))
+            })
+        {
+            emit_plot_live_message(
+                ui.ctx(),
+                format!(
+                    "Dataset {}, Point X: {:.4}, Y: {:.4}, Z: {:.4}",
+                    world.0, world.1[0], world.1[1], world.1[2]
+                ),
+                false,
+            );
+        } else if let Some((name, pts, _)) = accessible_datasets.get(access_state.focused_item)
+            && let Some(p) = pts.get(access_state.focused_point)
+        {
+            emit_plot_live_message(
+                ui.ctx(),
+                format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]),
+                false,
+            );
+        }
     }
 }
 
@@ -3276,6 +3489,7 @@ fn step_focused_point_index(ui: &Ui, num_pts: usize, focused_point: &mut usize) 
 fn resolve_focused_plot_point<'a>(
     items: &[Box<dyn PlotItem + 'a>],
     accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    sidecar_3d: Option<&Plot3DSeriesSidecar>,
     access_state: &mut AccessState,
 ) -> Option<FocusedPlotPoint> {
     if accessible_datasets.is_empty() {
@@ -3297,6 +3511,9 @@ fn resolve_focused_plot_point<'a>(
         access_state.focused_point = pts.len().saturating_sub(1);
     }
     let pt = *pts.get(access_state.focused_point)?;
+    let world_point = sidecar_3d
+        .and_then(|s| s.series().get(access_state.focused_item))
+        .and_then(|s| s.world.get(access_state.focused_point).copied());
     let item_id = items
         .get(access_state.focused_item)
         .map_or_else(|| Id::new(name.as_str()), |it| it.id());
@@ -3304,6 +3521,7 @@ fn resolve_focused_plot_point<'a>(
         item_id,
         series_name: name.clone(),
         point: PlotPoint::new(pt[0], pt[1]),
+        world_point,
         color: *color,
     })
 }
@@ -3670,6 +3888,73 @@ fn apply_plot_bounds_with_scale(
     }
 }
 
+fn resolve_ambient_plot_links(
+    ctx: &egui::Context,
+    id_source: Id,
+    show_axes: Vec2b,
+    allow_drag: Vec2b,
+    allow_zoom: Vec2b,
+    allow_scroll: Vec2b,
+    allow_boxed_zoom: bool,
+    linked_axes: &mut Option<(Id, Vec2b)>,
+    linked_cursors: &mut Option<(Id, Vec2b)>,
+) {
+    let is_interactive_2d = (show_axes.x || show_axes.y)
+        && (allow_drag.any() || allow_zoom.any() || allow_scroll.any() || allow_boxed_zoom);
+    if !is_interactive_2d {
+        return;
+    }
+    let state = ctx.data(|d| {
+        d.get_temp::<AmbientPlotLinkState>(Id::new("AMBIENT_PLOT_LINK_STATE"))
+            .unwrap_or_default()
+    });
+    let axes_mask = Vec2b::new(show_axes.x, show_axes.y);
+    if state.config.link_axes && linked_axes.is_none() {
+        *linked_axes = Some((
+            id_source.with(("ambient_axis_link", state.axis_epoch)),
+            axes_mask,
+        ));
+    }
+    if state.config.link_cursors && linked_cursors.is_none() {
+        *linked_cursors = Some((id_source.with("ambient_cursor_link"), axes_mask));
+    }
+}
+
+fn sync_linked_auto_bounds_envelope(
+    ui: &mut Ui,
+    link_id: Id,
+    link_axes: Vec2b,
+    plot_id: Id,
+    local_auto: PlotBounds,
+    auto_bounds: Vec2b,
+    bounds: &mut PlotBounds,
+) -> PlotBounds {
+    let union_auto = ui.data_mut(|data| {
+        let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
+        let entry = link_groups.0.entry(link_id).or_default();
+        if let Some(idx) = entry.auto_frames.iter().position(|f| f.id == plot_id) {
+            entry.auto_frames.drain(0..=idx);
+        }
+        entry.auto_frames.push(PlotFrameAutoBounds {
+            id: plot_id,
+            bounds: local_auto,
+        });
+        let mut merged = PlotBounds::NOTHING;
+        for frame in &entry.auto_frames {
+            merged.merge_x(&frame.bounds);
+            merged.merge_y(&frame.bounds);
+        }
+        merged
+    });
+    if auto_bounds.x && link_axes.x && union_auto.is_valid_x() {
+        bounds.set_x(&union_auto);
+    }
+    if auto_bounds.y && link_axes.y && union_auto.is_valid_y() {
+        bounds.set_y(&union_auto);
+    }
+    union_auto
+}
+
 fn compute_auto_content_bounds(
     current_bounds: PlotBounds,
     min_auto_bounds: &PlotBounds,
@@ -3756,6 +4041,7 @@ struct PreparedPlot<'a, 'b> {
     focused_point: Option<FocusedPlotPoint>,
     focused_poi: Option<usize>,
     persisted_tooltip: Option<a11y::PointTooltipState>,
+    sidecar_3d: Option<&'a Plot3DSeriesSidecar>,
     critical_points: Arc<[poi::CriticalPoint]>,
 }
 
@@ -3798,39 +4084,39 @@ impl<'b> PreparedPlot<'_, 'b> {
         }
 
         let hover_pos = response.hover_pos();
-        let (cursors, hovered_item_id, hovered_point, hovered_poi_idx) = if !self.allow_2d_analysis
-        {
-            if let Some(target) = self.focused_point.as_ref() {
+        let (cursors, hovered_item_id, hovered_point, hovered_poi_idx) =
+            if !self.allow_2d_analysis && self.sidecar_3d.is_none() {
+                if let Some(target) = self.focused_point.as_ref() {
+                    let (c, id, pt) = self.render_focused_point(ui, target, &mut shapes);
+                    (c, id, pt, None)
+                } else {
+                    (Vec::new(), None, None, None)
+                }
+            } else if let Some(state) = self.persisted_tooltip.as_ref() {
+                let (c, id, pt) = self.render_persisted_tooltip(state);
+                (c, id, pt, None)
+            } else if let Some(pointer) = hover_pos {
+                self.hover(ui, pointer, &mut shapes)
+            } else if let Some(poi_idx) = self.focused_poi
+                && let Some(poi) = self.critical_points.get(poi_idx)
+            {
+                let (c, pt) = poi_interaction::render_active_poi(
+                    ui,
+                    self.plot_area_response,
+                    transform,
+                    self.show_x,
+                    self.show_y,
+                    poi,
+                    true,
+                    &mut shapes,
+                );
+                (c, Some(poi.item_id), Some(pt), None)
+            } else if let Some(target) = self.focused_point.as_ref() {
                 let (c, id, pt) = self.render_focused_point(ui, target, &mut shapes);
                 (c, id, pt, None)
             } else {
                 (Vec::new(), None, None, None)
-            }
-        } else if let Some(state) = self.persisted_tooltip.as_ref() {
-            let (c, id, pt) = self.render_persisted_tooltip(state);
-            (c, id, pt, None)
-        } else if let Some(pointer) = hover_pos {
-            self.hover(ui, pointer, &mut shapes)
-        } else if let Some(poi_idx) = self.focused_poi
-            && let Some(poi) = self.critical_points.get(poi_idx)
-        {
-            let (c, pt) = poi_interaction::render_active_poi(
-                ui,
-                self.plot_area_response,
-                transform,
-                self.show_x,
-                self.show_y,
-                poi,
-                true,
-                &mut shapes,
-            );
-            (c, Some(poi.item_id), Some(pt), None)
-        } else if let Some(target) = self.focused_point.as_ref() {
-            let (c, id, pt) = self.render_focused_point(ui, target, &mut shapes);
-            (c, id, pt, None)
-        } else {
-            (Vec::new(), None, None, None)
-        };
+            };
 
         self.append_cursor_lines(ui, &cursors, &mut shapes);
 
@@ -3857,19 +4143,25 @@ impl<'b> PreparedPlot<'_, 'b> {
         state: &a11y::PointTooltipState,
     ) -> (Vec<Cursor>, Option<Id>, Option<PlotPoint>) {
         let mut cursors = Vec::new();
-        if self.show_x {
-            cursors.push(Cursor::Vertical { x: state.point[0] });
-        }
-        if self.show_y {
-            cursors.push(Cursor::Horizontal { y: state.point[1] });
+        if !state.suppress_rulers && self.sidecar_3d.is_none() {
+            if self.show_x {
+                cursors.push(Cursor::Vertical { x: state.point[0] });
+            }
+            if self.show_y {
+                cursors.push(Cursor::Horizontal { y: state.point[1] });
+            }
         }
         a11y::show_snapped_point_tooltip(
             self.plot_area_response,
-            state.anchor_pos,
-            state.point,
-            &state.title,
-            &state.body_lines,
-            false,
+            a11y::SnappedTooltipArgs {
+                anchor_pos: state.anchor_pos,
+                point: state.point,
+                world_point: state.world_point,
+                suppress_rulers: state.suppress_rulers || self.sidecar_3d.is_some(),
+                title: &state.title,
+                body_lines: &state.body_lines,
+                announce_on_open: false,
+            },
         );
         (
             cursors,
@@ -3884,7 +4176,7 @@ impl<'b> PreparedPlot<'_, 'b> {
         target: &FocusedPlotPoint,
         shapes: &mut Vec<Shape>,
     ) -> (Vec<Cursor>, Option<Id>, Option<PlotPoint>) {
-        if !self.show_x && !self.show_y {
+        if !self.show_x && !self.show_y && self.sidecar_3d.is_none() {
             return (Vec::new(), Some(target.item_id), Some(target.point));
         }
         let screen_pos = self.transform.position_from_point(&target.point);
@@ -3902,6 +4194,8 @@ impl<'b> PreparedPlot<'_, 'b> {
             transform: &self.transform,
             show_x: self.show_x,
             show_y: self.show_y,
+            sidecar_3d: self.sidecar_3d,
+            world_point: target.world_point,
         };
         let mut cursors = Vec::new();
         items::rulers_and_tooltip_at_value(
@@ -4102,7 +4396,7 @@ impl<'b> PreparedPlot<'_, 'b> {
         pointer: Pos2,
         shapes: &mut Vec<Shape>,
     ) -> (Vec<Cursor>, Option<Id>, Option<PlotPoint>, Option<usize>) {
-        if !self.show_x && !self.show_y {
+        if !self.show_x && !self.show_y && self.sidecar_3d.is_none() {
             return (Vec::new(), None, None, None);
         }
         let snap_distance = self
@@ -4135,6 +4429,8 @@ impl<'b> PreparedPlot<'_, 'b> {
             transform: &self.transform,
             show_x: self.show_x,
             show_y: self.show_y,
+            sidecar_3d: self.sidecar_3d,
+            world_point: None,
         };
         let mut cursors = Vec::new();
         let (hovered_id, hovered_point) =
@@ -4160,7 +4456,9 @@ impl<'b> PreparedPlot<'_, 'b> {
             .filter(|entry| entry.allow_hover())
             .filter_map(|entry| {
                 let item = &**entry;
-                if let Some((pt, dist_sq)) = item.closest_continuous_point(pointer, &self.transform)
+                if self.sidecar_3d.is_none()
+                    && let Some((pt, dist_sq)) =
+                        item.closest_continuous_point(pointer, &self.transform)
                 {
                     Some((dist_sq, HoverHit::Continuous(item, pt)))
                 } else {
@@ -4196,15 +4494,17 @@ impl<'b> PreparedPlot<'_, 'b> {
                 (Some(item.id()), pt)
             }
             None => {
-                let value = self.transform.value_from_position(pointer);
-                items::rulers_and_tooltip_at_value(
-                    self.plot_area_response,
-                    value,
-                    "",
-                    plot,
-                    cursors,
-                    &self.label_formatter,
-                );
+                if self.sidecar_3d.is_none() {
+                    let value = self.transform.value_from_position(pointer);
+                    items::rulers_and_tooltip_at_value(
+                        self.plot_area_response,
+                        value,
+                        "",
+                        plot,
+                        cursors,
+                        &self.label_formatter,
+                    );
+                }
                 (None, None)
             }
         }
@@ -4220,7 +4520,12 @@ impl<'b> PreparedPlot<'_, 'b> {
 /// ```
 fn next_power(value: f64, base: f64) -> f64 {
     debug_assert_ne!(value, 0.0, "Bad input"); // can be negative (typical for Y axis)
-    base.powi(value.abs().log(base).ceil() as i32)
+    let abs_value = value.abs();
+    let mut exp = abs_value.log(base).ceil() as i32;
+    if base.powi(exp) <= abs_value {
+        exp += 1;
+    }
+    base.powi(exp)
 }
 
 #[test]
@@ -4472,6 +4777,7 @@ pub fn clear_last_plot_datasets() {
         guard.0.clear();
         guard.1 = 0;
     });
+    clear_last_plot_datasets_3d();
     clear_last_plot_primitives();
 }
 
@@ -6156,5 +6462,7 @@ impl Default for AccessState {
     }
 }
 
+#[cfg(test)]
+mod ambient_link_tests;
 #[cfg(test)]
 mod modal_lifecycle_tests;

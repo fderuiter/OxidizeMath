@@ -1,7 +1,8 @@
-# ADR 0035: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
+# ADR 0037: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
 
-- **Status:** Accepted (extends [ADR 0017](0017-native-ast-expression-parser-and-live-input.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0026](0026-bounded-ast-height-and-iterative-traversal.md))
-- **Date:** 2026-11-22
+## Status
+
+Accepted (2026-11-22; extends [ADR 0017](0017-native-ast-expression-parser-and-live-input.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0026](0026-bounded-ast-height-and-iterative-traversal.md))
 
 ## Context
 
@@ -21,7 +22,7 @@ At the same time, any code generation pipeline had to obey three architectural c
 
 2. **`CodeArtifact`, `InteractiveTool`, and Deferred `ExportFormat` Extensions (`math_explorer_gui/src/framework/` & `egui_plot/src/file_io.rs`):**
    - Introduce `CodeArtifact` (`symbolic_latex`, `calibrated_latex`, `rust_source`, `python_source`) in `math_explorer_gui/src/framework/code_export.rs` and default `fn export_code_artifact(&self) -> Option<CodeArtifact> { None }` on `InteractiveTool`.
-   - Extend `ExportCapabilities` with `code: bool` and `code_disabled_reason: &'static str` (`ExportCapabilities::plot_with_code()`), add `ExportFormat::{Tex, Rust, Python}` (`stem_suffix = "model"`) in `export_queue.rs`, and register `.tex` (`application/x-tex;charset=utf-8`), `.rs` (`text/x-rust;charset=utf-8`), and `.py` (`text/x-python;charset=utf-8`) in `egui_plot::file_io::infer_mime_type`.
+   - Extend `ExportCapabilities` with `code: bool` and `code_disabled_reason: &'static str` (`ExportCapabilities::plot_with_code()`), add `ExportFormat::{Tex, Rust, Python}` (`stem_suffix = "model"`) in `export_queue.rs`, and register `.tex` (`text/x-tex`), `.rs` (`text/x-rust`), and `.py` (`text/x-python`) in `egui_plot::file_io::infer_mime_type`.
 
 3. **Accessible `Code & LaTeX` Modal Drawer and Inline Formula Actions:**
    - Implement `CodeExportModalState` (`math_explorer_gui/src/framework/code_export_modal.rs`) atop `egui_plot::ModalLifecycle` (`Escape` close, focus restoration, `LaTeX` / `Rust` / `Python` tabs, symbolic vs. calibrated LaTeX toggle, read-only monospace code viewer, and `Copy` / `Download` triggers routed through `TwinSlotLiveRegion`).

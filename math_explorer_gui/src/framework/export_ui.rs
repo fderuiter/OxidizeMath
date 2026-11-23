@@ -1,4 +1,4 @@
-use super::code_export_modal::{export_action_button, wrapped_colored_label};
+pub(super) use super::code_export_modal::{export_action_button, wrapped_colored_label};
 use super::*;
 use eframe::egui;
 
@@ -210,6 +210,7 @@ impl SimulationFramework {
         if export_action_button(ui, caps.code, "Code & LaTeX", code_tip, close_on_click) {
             self.open_code_export_modal();
         }
+        self.render_shader_export_items(ui, caps, close_on_click);
     }
 
     fn render_compact_export_menu(&mut self, ui: &mut egui::Ui) -> String {
