@@ -53,17 +53,17 @@ classDiagram
     class ExplorerTab {
         <<interface>>
         +name() String
-        +show(ctx, frame)
+        +show_inside(ui, frame)
     }
 
     class MriTab {
         -simulator: BlochSimulator
-        +show()
+        +show_inside(ui, frame)
     }
 
     class MorphogenesisTab {
         -system: TuringSystem
-        +show()
+        +show_inside(ui, frame)
     }
 
     MathExplorerApp o-- ExplorerTab
@@ -73,8 +73,8 @@ classDiagram
 
 ### Key Components
 
-*   **`MathExplorerApp`**: The root component implementing `eframe::App`. It renders the top navigation bar and delegates the main content area to the active tab.
-*   **`ExplorerTab`**: The trait that all visualization modules must implement. It provides a standard interface for the app to interact with different simulations.
+*   **`MathExplorerApp`**: The root component implementing `eframe::App`. It renders the top navigation bar and delegates each viewport pane's scoped `egui::Ui` to the active tab via `ExplorerTab::show_inside`.
+*   **`ExplorerTab`**: The trait that all visualization modules must implement. It provides a standard interface for the app to interact with different simulations inside single-pane and multi-pane layouts.
 *   **`math_explorer` Dependency**: All heavy mathematical logic (physics, biology, etc.) resides in the core `math_explorer` crate. The GUI crate should focus **only** on visualization and input handling.
 
 ##  Contributing
@@ -111,8 +111,11 @@ impl ExplorerTab for FluidDynamicsTab {
 }
 ```
 
-### 2. Automatic Build-Time Discovery (`build.rs`)
-Do **not** manually register your tab inside `src/tabs/mod.rs` or edit application startup files (`src/app/mod.rs`). During compilation, [`math_explorer_gui/build.rs`](build.rs) automatically scans `src/tabs/` (and workspace path dependencies) for `impl ExplorerTab for <Struct>` definitions and generates `$OUT_DIR/generated_tabs.rs` (`instantiate_tabs()` and `instantiate_tab()`), which [`src/tabs/mod.rs`](src/tabs/mod.rs) includes automatically.
+### 2. Automated Plugin Discovery (`build.rs`)
+Do **not** manually edit `src/tabs/mod.rs` or `src/app/mod.rs` to register your new tab. At compile time, [`build.rs`](build.rs) automatically scans `src/tabs/` (and workspace path dependencies) for `impl ExplorerTab for <Struct>` definitions (requiring `Default`) and generates `$OUT_DIR/generated_tabs.rs` (`instantiate_tabs()` and `instantiate_tab()`), which [`src/tabs/mod.rs`](src/tabs/mod.rs) includes automatically:
+
+*   `// @explorer_feature = "physics"`: Optional header comment gating the module behind a Cargo feature.
+*   `// @explorer_order = 10`: Optional header comment controlling navigation bar sort order (lower numbers appear first).
 
 ### 3. Adding Interactive Tools Within a Domain Tab
 Most multi-tool domain tabs wrap `SimulationFramework::new("<domain>")` and discover individual tools via `inventory::submit!`. To add a new simulation tool (implementing `InteractiveTool` and `TheoryDescribable`) inside an existing domain folder (`src/tabs/<domain>/<tool>.rs`), declare `pub mod <tool>;` in `src/tabs/<domain>/mod.rs` and follow the step-by-step [Interactive Tool Walkthrough](../docs/architecture/interactive_tool_walkthrough.md).
@@ -120,5 +123,5 @@ Most multi-tool domain tabs wrap `SimulationFramework::new("<domain>")` and disc
 ### Design Principles
 
 1.  **Separation of Concerns**: Keep simulation logic in `math_explorer`. If you need a new simulation model, add it to the core library first, then visualize it here.
-2.  **Immediate Mode**: `egui` is an immediate mode GUI. This means the `show()` function is called every frame. Avoid heavy computations directly in `show()`. Use a separate thread or perform small updates per frame.
+2.  **Immediate Mode**: `egui` is an immediate mode GUI. This means the `show_inside()` function is called every frame. Avoid heavy computations directly in `show_inside()`. Use a separate thread or perform small updates per frame.
 3.  **No Heavy Dependencies**: We try to keep the GUI crate lightweight. Avoid adding heavy dependencies like `rand` if a simple internal implementation or a dependency from `math_explorer` suffices.

@@ -1,4 +1,4 @@
-# ADR 0039: Repair Consumer & Contributor Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates
+# ADR 0041: Repair Consumer & Contributor Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates
 
 ## Status
 Accepted (extends [ADR 0005](0005-active-documentation-standard.md), [ADR 0016](0016-standardize-crate-documentation-suite.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
@@ -15,7 +15,7 @@ Following [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), 
    - Keep `default = []` in [`math_explorer/Cargo.toml`](../../math_explorer/Cargo.toml) untouched, add explicit `--features` and `-p` flags to all documented Cargo CLI commands and consumer `[dependencies]` blocks, remove the orphaned `check_statrs.rs` file, catalog all `32` registered examples under their matching domain headings in [`math_explorer/examples/README.md`](../../math_explorer/examples/README.md), and align paper compilation documentation with TeXLive `pdflatex` and `bibtex`.
    - Update [`docs/architecture/interactive_tool_walkthrough.md`](../../docs/architecture/interactive_tool_walkthrough.md) and [`math_explorer_gui/README.md`](../../math_explorer_gui/README.md) to match [`TheoryDescribable`](../../crates/scientific_metadata/src/theory.rs), GIF-only `InteractiveTool::step_simulation`, and `build.rs` automatic `ExplorerTab` discovery.
 2. **Enable Full-Feature Workspace Rustdoc Gates**:
-   - Pass `--all-features` to `cargo doc --workspace --no-deps --all-features` (with `RUSTDOCFLAGS="-D warnings"`) in [`apps/xtask/src/gates.rs`](../../apps/xtask/src/gates.rs) and [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) so generated docs render all `7` domain modules and all `26` error enums in `math_explorer`.
+   - Pass `--all-features` to `cargo doc --workspace --no-deps --all-features` (with `RUSTDOCFLAGS="-D warnings"`) in [`apps/xtask/src/gates.rs`](../../apps/xtask/src/gates.rs) and [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) so generated docs render all `7` domain modules and all `27` error enums in `math_explorer`.
 3. **Enforce Static Manifest, Catalog, CLI, TOML, and Trait Audits in `unified_verification`**:
    - Extend [`crates/unified_verification/src/doc_audit`](../../crates/unified_verification/src/doc_audit.rs) (without adding external dependencies) and wire staged documentation triggers into [`crates/unified_verification/src/batch.rs`](../../crates/unified_verification/src/batch.rs) to statically validate Markdown Cargo CLI targets/features, consumer `math_explorer` TOML feature declarations, `math_explorer/examples` manifest-to-catalog parity, TeXLive vs `Tectonic` alignment, GUI tab auto-discovery guidance, and `syn`-parsed `TheoryDescribable`, `InteractiveTool`, and `ExplorerTab` method signatures across Markdown fences (including `rust,ignore`).
 

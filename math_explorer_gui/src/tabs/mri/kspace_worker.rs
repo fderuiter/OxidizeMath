@@ -268,6 +268,7 @@ impl SimulationRunner for MriKSpaceRunner {
             pixels: Arc::new(std::sync::RwLock::new(recon_rgba)),
             custom_data: vec![self.current_time],
             structured_data: Some(Box::new(structured)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

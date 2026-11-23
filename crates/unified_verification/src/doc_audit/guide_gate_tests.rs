@@ -186,6 +186,13 @@ impl InteractiveTool for DemoTool {
     fn step_simulation(&mut self, dt: f64) {}
 }
 ```
+
+```rust,ignore
+impl ExplorerTab for DemoTab {
+    fn name(&self) -> &'static str { \"Demo\" }
+    fn show(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {}
+}
+```
 Running at 60 FPS (`dt = 0.016`).
 ";
     let violations =
@@ -196,6 +203,16 @@ Running at 60 FPS (`dt = 0.016`).
         violations
             .iter()
             .any(|v| v.contains("theory_description` signature mismatch"))
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("`impl ExplorerTab` defines non-existent trait method `show`"))
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("`impl ExplorerTab` omits required trait method `show_inside`"))
     );
     assert!(violations.iter().any(|v| v.contains("src/app.rs")));
     assert!(violations.iter().any(|v| v.contains("src/tabs/mod.rs")));
