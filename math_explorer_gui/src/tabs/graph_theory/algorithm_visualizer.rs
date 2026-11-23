@@ -206,58 +206,6 @@ impl AlgorithmVisualizerTool {
         }
     }
 
-    fn render_animation_buttons(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            if ui
-                .button("↻ Reset")
-                .accessible_hover_text("Restart the algorithm visualization")
-                .clicked()
-            {
-                self.animation_step = 0;
-                self.is_playing = false;
-                self.step_timer = 0.0;
-            }
-            let (label, hover) = if self.is_playing {
-                ("⏸ Pause", "Pause the algorithm visualization")
-            } else {
-                (
-                    "▶ Play",
-                    "Start or resume continuous algorithm visualization",
-                )
-            };
-            if ui.button(label).accessible_hover_text(hover).clicked() {
-                if self.is_playing {
-                    self.is_playing = false;
-                } else {
-                    if self.animation_step >= self.visit_order.len() {
-                        self.animation_step = 0;
-                    }
-                    self.is_playing = true;
-                }
-                self.step_timer = 0.0;
-            }
-            let can_step = self.animation_step < self.visit_order.len();
-            if ui
-                .add_enabled(can_step, eframe::egui::Button::new("▶ Step"))
-                .accessible_hover_text("Advance visualization by one step")
-                .clicked()
-            {
-                self.animation_step += 1;
-                self.is_playing = false;
-                self.step_timer = 0.0;
-            }
-            if ui
-                .add_enabled(can_step, eframe::egui::Button::new("⏹ Finish"))
-                .accessible_hover_text("Skip to the end of the visualization")
-                .clicked()
-            {
-                self.animation_step = self.visit_order.len();
-                self.is_playing = false;
-                self.step_timer = 0.0;
-            }
-        });
-    }
-
     fn render_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id =
             crate::framework::scoped_panel_id(parent_ui, "algorithm_visualizer_controls");
@@ -270,27 +218,69 @@ impl AlgorithmVisualizerTool {
             ui.separator();
 
             if !self.visit_order.is_empty() {
-                ui.label(format!(
-                    "Animation Step: {} / {}",
-                    self.animation_step,
-                    self.visit_order.len()
-                ));
-                self.render_animation_buttons(ui);
-                let slider =
-                    egui::Slider::new(&mut self.animation_step, 0..=self.visit_order.len())
-                        .text("Step");
-                if ui.add(slider).changed() {
-                    self.step_timer = 0.0;
-                }
-                ui.add(
-                    egui::Slider::new(&mut self.playback_speed, 0.5..=5.0)
-                        .text("Speed")
-                        .suffix("x"),
-                );
+                self.render_playback_controls(ui);
             }
             ui.separator();
             ui.label("Click a node or use Arrow keys + Enter on the canvas to set the start node.");
         });
+    }
+
+    fn stop_at_step(&mut self, step: usize) {
+        self.animation_step = step;
+        self.is_playing = false;
+        self.step_timer = 0.0;
+    }
+
+    fn render_playback_controls(&mut self, ui: &mut egui::Ui) {
+        let total = self.visit_order.len();
+        ui.label(format!("Animation Step: {} / {total}", self.animation_step));
+        ui.horizontal(|ui| {
+            if ui
+                .button("↻ Reset")
+                .accessible_hover_text("Restart the algorithm visualization")
+                .clicked()
+            {
+                self.stop_at_step(0);
+            }
+            let (label, hover) = if self.is_playing {
+                ("⏸ Pause", "Pause the algorithm visualization")
+            } else {
+                ("▶ Play", "Start or resume continuous visualization")
+            };
+            if ui.button(label).accessible_hover_text(hover).clicked() {
+                if !self.is_playing && self.animation_step >= total {
+                    self.animation_step = 0;
+                }
+                self.is_playing = !self.is_playing;
+                self.step_timer = 0.0;
+            }
+            let can_step = self.animation_step < total;
+            if ui
+                .add_enabled(can_step, eframe::egui::Button::new("▶ Step"))
+                .accessible_hover_text("Advance visualization by one step")
+                .clicked()
+            {
+                self.stop_at_step(self.animation_step + 1);
+            }
+            if ui
+                .add_enabled(can_step, eframe::egui::Button::new("⏹ Finish"))
+                .accessible_hover_text("Skip to the end of the visualization")
+                .clicked()
+            {
+                self.stop_at_step(total);
+            }
+        });
+        if ui
+            .add(egui::Slider::new(&mut self.animation_step, 0..=total).text("Step"))
+            .changed()
+        {
+            self.step_timer = 0.0;
+        }
+        ui.add(
+            egui::Slider::new(&mut self.playback_speed, 0.5..=5.0)
+                .text("Speed")
+                .suffix("x"),
+        );
     }
 
     fn render_start_node_selector(&mut self, ui: &mut egui::Ui) {

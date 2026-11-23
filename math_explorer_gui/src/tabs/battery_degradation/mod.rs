@@ -1,4 +1,5 @@
 // @explorer_feature = "applied"
+// @explorer_order = 33
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 

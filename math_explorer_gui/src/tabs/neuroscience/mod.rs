@@ -1,4 +1,5 @@
 // @explorer_feature = "biology"
+// @explorer_order = 41
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 

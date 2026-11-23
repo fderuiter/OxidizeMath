@@ -203,30 +203,30 @@ impl GridWorldTool {
             ui.separator();
             self.draw_playback_buttons(ui);
             ui.separator();
-            ui.heading("RL Hyperparameters");
-            let mut hp_changed = ui
-                .add(
-                    egui::Slider::new(&mut self.learning_rate, 0.01..=1.0)
-                        .text("Learning Rate (α)"),
-                )
-                .changed();
-            hp_changed |= ui
-                .add(
-                    egui::Slider::new(&mut self.discount_factor, 0.0..=1.0)
-                        .text("Discount Factor (γ)"),
-                )
-                .changed();
-            hp_changed |= ui
-                .add(
-                    egui::Slider::new(&mut self.exploration_rate, 0.0..=1.0)
-                        .text("Exploration Rate (ε)"),
-                )
-                .changed();
-            if hp_changed {
-                self.sync_agent_hyperparameters();
-            }
-            ui.add(egui::Slider::new(&mut self.playback_speed, 1.0..=20.0).text("Speed (Hz)"));
+            self.draw_hyperparameter_sliders(ui);
         });
+    }
+
+    fn draw_hyperparameter_sliders(&mut self, ui: &mut egui::Ui) {
+        ui.heading("RL Hyperparameters");
+        let mut hp_changed = ui
+            .add(egui::Slider::new(&mut self.learning_rate, 0.01..=1.0).text("Learning Rate (α)"))
+            .changed();
+        hp_changed |= ui
+            .add(
+                egui::Slider::new(&mut self.discount_factor, 0.0..=1.0).text("Discount Factor (γ)"),
+            )
+            .changed();
+        hp_changed |= ui
+            .add(
+                egui::Slider::new(&mut self.exploration_rate, 0.0..=1.0)
+                    .text("Exploration Rate (ε)"),
+            )
+            .changed();
+        if hp_changed {
+            self.sync_agent_hyperparameters();
+        }
+        ui.add(egui::Slider::new(&mut self.playback_speed, 1.0..=20.0).text("Speed (Hz)"));
     }
 
     fn draw_central_canvas(&self, parent_ui: &mut egui::Ui, input_mode: InputMode) {
@@ -417,7 +417,7 @@ inventory::submit! {
         id: "GridWorldTool",
         display_name: "Grid World (RL)",
         domain: "ai",
-        tags: &[],
+        tags: &["reinforcement learning", "q-learning", "bellman", "mdp", "policy", "epsilon-greedy"],
         build: || Box::new(GridWorldTool::default()),
     }
 }
@@ -446,7 +446,7 @@ impl scientific_metadata::theory::TheoryDescribable for GridWorldTool {
 }
 
 #[cfg(test)]
-#[path = "grid_world/tests.rs"]
+#[path = "grid_world_tests.rs"]
 mod tests;
 
 const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Grid World RL","domain":"ai","timestamp":"2026-11-16T00:00:00Z"},"config":{"width":5,"height":5,"gamma":0.95,"playback_speed":8.0,"is_playing":false}}"#;

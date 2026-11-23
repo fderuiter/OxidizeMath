@@ -12,6 +12,8 @@ pub mod analysis;
 pub mod astrophysics;
 #[cfg(feature = "applied")]
 pub mod battery_degradation;
+#[cfg(feature = "applied")]
+pub mod cannibalism;
 #[cfg(feature = "physics")]
 pub mod chaos;
 #[cfg(feature = "climate")]
@@ -142,6 +144,7 @@ pub trait ExplorerTab {
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
+            | "Elliptic Curves"
             | "Number Theory" => "Pure Math",
 
             "Astrophysics"
@@ -158,6 +161,7 @@ pub trait ExplorerTab {
             | "Favoritism"
             | "Game Theory"
             | "Paradox Lab"
+            | "Population Structure"
             | "Traceability Portal" => "Applied Math",
 
             "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
@@ -227,9 +231,11 @@ pub trait ExplorerTab {
             "Analysis & Calculus" => "analysis",
             "Astrophysics" => "astrophysics",
             "Battery Degradation" => "battery_degradation",
+            "Population Structure" => "cannibalism",
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
             "Clinical Trials" => "clinical_trials",
+            "Elliptic Curves" => "elliptic_curves",
             "Epidemiology" => "epidemiology",
             "Favoritism" => "favoritism",
             "Financial Math" => "financial_math",
@@ -254,11 +260,6 @@ pub trait ExplorerTab {
     /// Active `InteractiveTool` identifier for `#tool=<id>` share links (`None` for single-view tabs).
     fn active_tool_id(&self) -> Option<&'static str> {
         self.framework().and_then(|fw| fw.active_tool_id())
-    }
-
-    /// Active inverse `ChallengeMetadata` identifier for `#challenge=<id>` share links.
-    fn active_challenge_id(&self) -> Option<&'static str> {
-        self.framework().and_then(|fw| fw.active_challenge_id())
     }
 
     /// Deterministic parameter-only revision token for 300 ms debounced URL sync.

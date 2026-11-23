@@ -280,7 +280,7 @@ inventory::submit! {
         id: "ClebschGordanTool",
         display_name: "Clebsch-Gordan",
         domain: "quantum",
-        tags: &[],
+        tags: &["angular momentum", "spin coupling", "wigner", "su2", "bra-ket"],
         build: || Box::new(ClebschGordanTool::default()),
     }
 }
