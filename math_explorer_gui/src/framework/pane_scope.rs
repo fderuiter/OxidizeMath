@@ -3,12 +3,12 @@
 use super::{AccessibleHoverText, BrushMode, BrushStroke, InteractiveTool, PaneSidePanel};
 use eframe::egui;
 
-/// Pointer input modality driving canvas interaction events.
+/// Active pointer or touch input modality for an interactive simulation pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {
     /// Desktop mouse or trackpad pointer input.
     Mouse,
-    /// Single- or multi-touch gesture input.
+    /// Direct single- or multi-touch gesture input.
     Touch,
 }
 
@@ -18,21 +18,21 @@ pub struct InteractionContext<'a> {
     pub pointer_pos: Option<egui::Pos2>,
     /// Pointer drag delta since the previous frame.
     pub delta: egui::Vec2,
-    /// Whether the pointer is actively dragging the canvas.
+    /// Whether the pointer is actively dragging on the canvas.
     pub is_dragging: bool,
-    /// Whether the canvas was clicked on this frame.
+    /// Whether the canvas was clicked during this frame.
     pub is_clicked: bool,
     /// Underlying `egui` widget response for the canvas region.
     pub response: &'a egui::Response,
-    /// Active pointer modality (`Mouse` or `Touch`).
+    /// Active pointer or touch input mode (`Mouse` or `Touch`).
     pub input_mode: InputMode,
-    /// Active multi-touch pinch/pan gesture metadata, if any.
+    /// Active multi-touch gesture state, when present.
     pub multi_touch: Option<egui::MultiTouchInfo>,
-    /// Keyboard keys held down during this frame.
+    /// Set of keyboard keys currently held down during this frame.
     pub keys_down: std::collections::HashSet<egui::Key>,
-    /// Active keyboard modifier keys (`Shift`, `Ctrl`, `Alt`, `Cmd`).
+    /// Active keyboard modifiers (`Ctrl`, `Shift`, `Alt`, `Cmd`).
     pub modifiers: egui::Modifiers,
-    /// Optional spatial [`BrushStroke`] payload for [`InteractiveTool::on_brush`].
+    /// Optional spatial [`BrushStroke`] synthesized from pointer drag events for [`InteractiveTool::on_brush`].
     pub brush_stroke: Option<BrushStroke>,
 }
 
