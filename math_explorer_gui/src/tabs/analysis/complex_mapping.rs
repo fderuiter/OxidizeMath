@@ -114,7 +114,7 @@ pub struct ComplexMappingTool {
     pub(crate) inspection_point: [f64; 2],
     pub(crate) math_input: MathExpressionInputBar,
     pub(crate) high_contrast: bool,
-    pub(crate) cache: cache::ContourGridCache,
+    pub(crate) cache: cache::ConformalGridCache,
 }
 
 impl Default for ComplexMappingTool {
@@ -140,7 +140,7 @@ impl Default for ComplexMappingTool {
             .with_axes(&["z"])
             .with_complex_mode(true),
             high_contrast: false,
-            cache: cache::ContourGridCache::default(),
+            cache: cache::ConformalGridCache::default(),
         }
     }
 }
@@ -211,6 +211,17 @@ impl InteractiveTool for ComplexMappingTool {
 
     fn export_code_artifact(&self) -> Option<crate::framework::CodeArtifact> {
         self.build_code_artifact()
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+
+    fn sample_animation_frames(
+        &mut self,
+        _num_frames: usize,
+    ) -> Vec<egui_plot::export::DatasetFrame> {
+        Vec::new()
     }
 
     fn export_glsl_shader(

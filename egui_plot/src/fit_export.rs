@@ -135,12 +135,16 @@ impl FitResult {
     /// Formats the fitted model as a standalone zero-dependency Rust 2024 source file.
     pub fn to_rust_fn(&self) -> Result<String, String> {
         self.validate_exportable()?;
-        let sample_x =
-            if self.log_x || matches!(self.fit_type, FitType::PowerLaw | FitType::Logarithmic) {
-                "2.0_f64"
-            } else {
-                "1.0_f64"
-            };
+        let exp_shift = (self.fit_type == FitType::Exponential)
+            .then(|| self.coefficients.get(2).copied().unwrap_or(0.0))
+            .filter(|&x0| x0 != 0.0);
+        let sample_x = if let Some(x0) = exp_shift {
+            format_rs_f64(x0)
+        } else if self.log_x || matches!(self.fit_type, FitType::PowerLaw | FitType::Logarithmic) {
+            "2.0_f64".to_string()
+        } else {
+            "1.0_f64".to_string()
+        };
         let body = match self.fit_type {
             ft if is_polynomial_fit(ft) => format_poly_rust_body(self),
             FitType::Custom => self
@@ -166,12 +170,16 @@ impl FitResult {
     /// Formats the fitted model as a runnable `numpy` Python evaluator script.
     pub fn to_python_fn(&self) -> Result<String, String> {
         self.validate_exportable()?;
-        let sample_x =
-            if self.log_x || matches!(self.fit_type, FitType::PowerLaw | FitType::Logarithmic) {
-                "2.0"
-            } else {
-                "1.0"
-            };
+        let exp_shift = (self.fit_type == FitType::Exponential)
+            .then(|| self.coefficients.get(2).copied().unwrap_or(0.0))
+            .filter(|&x0| x0 != 0.0);
+        let sample_x = if let Some(x0) = exp_shift {
+            format_py_f64(x0)
+        } else if self.log_x || matches!(self.fit_type, FitType::PowerLaw | FitType::Logarithmic) {
+            "2.0".to_string()
+        } else {
+            "1.0".to_string()
+        };
         let body = match self.fit_type {
             ft if is_polynomial_fit(ft) => format_poly_python_body(self),
             FitType::Custom => self
@@ -286,8 +294,16 @@ fn format_poly_python_body(fit: &FitResult) -> String {
 fn format_nonlinear_latex(fit_type: FitType, c: &[f64]) -> String {
     match fit_type {
         FitType::Exponential => {
+            let x0 = c.get(2).copied().unwrap_or(0.0);
+            let x_term = if x0 == 0.0 {
+                "x".to_string()
+            } else if x0 > 0.0 {
+                format!(r"\left(x - {}\right)", format_tex_num(x0))
+            } else {
+                format!(r"\left(x + {}\right)", format_tex_num(-x0))
+            };
             format!(
-                r"{} \cdot \exp\left({} \cdot x\right)",
+                r"{} \cdot \exp\left({} \cdot {x_term}\right)",
                 format_tex_num(c[0]),
                 format_tex_num(c[1])
             )
@@ -329,11 +345,18 @@ fn format_nonlinear_latex(fit_type: FitType, c: &[f64]) -> String {
 
 fn format_nonlinear_rust_body(fit_type: FitType, c: &[f64]) -> String {
     match fit_type {
-        FitType::Exponential => format!(
-            "    if !x.is_finite() {{\n        return f64::NAN;\n    }}\n    ({}) * (({}) * x).exp()",
-            format_rs_f64(c[0]),
-            format_rs_f64(c[1])
-        ),
+        FitType::Exponential => {
+            let x0 = c.get(2).copied().unwrap_or(0.0);
+            let arg_expr = if x0 == 0.0 {
+                format!("({}) * x", format_rs_f64(c[1]))
+            } else {
+                format!("({}) * (x - ({}))", format_rs_f64(c[1]), format_rs_f64(x0))
+            };
+            format!(
+                "    if !x.is_finite() {{\n        return f64::NAN;\n    }}\n    let arg = {arg_expr};\n    if arg < -745.0_f64 {{\n        0.0_f64\n    }} else if arg > 709.0_f64 {{\n        f64::NAN\n    }} else {{\n        ({}) * arg.exp()\n    }}",
+                format_rs_f64(c[0])
+            )
+        }
         FitType::PowerLaw => format!(
             "    if !x.is_finite() || x <= 0.0_f64 {{\n        return f64::NAN;\n    }}\n    ({}) * x.powf({})",
             format_rs_f64(c[0]),
@@ -367,11 +390,22 @@ fn format_nonlinear_rust_body(fit_type: FitType, c: &[f64]) -> String {
 
 fn format_nonlinear_python_body(fit_type: FitType, c: &[f64]) -> String {
     match fit_type {
-        FitType::Exponential => format!(
-            "    if not np.isfinite(x):\n        return float(\"nan\")\n    return float(({}) * np.exp(({}) * float(x)))",
-            format_py_f64(c[0]),
-            format_py_f64(c[1])
-        ),
+        FitType::Exponential => {
+            let x0 = c.get(2).copied().unwrap_or(0.0);
+            let arg_expr = if x0 == 0.0 {
+                format!("({}) * float(x)", format_py_f64(c[1]))
+            } else {
+                format!(
+                    "({}) * (float(x) - ({}))",
+                    format_py_f64(c[1]),
+                    format_py_f64(x0)
+                )
+            };
+            format!(
+                "    if not np.isfinite(x):\n        return float(\"nan\")\n    arg = {arg_expr}\n    if arg < -745.0:\n        return 0.0\n    if arg > 709.0:\n        return float(\"nan\")\n    return float(({}) * np.exp(arg))",
+                format_py_f64(c[0])
+            )
+        }
         FitType::PowerLaw => format!(
             "    if not np.isfinite(x) or x <= 0.0:\n        return float(\"nan\")\n    return float(({}) * (float(x) ** ({})))",
             format_py_f64(c[0]),
@@ -873,5 +907,25 @@ mod tests {
             verify_fit_rust_parity(&fit, &xs);
             verify_fit_python_parity(&fit, &xs);
         }
+
+        let shifted_pts: Vec<[f64; 2]> = (0..6)
+            .map(|i| {
+                let x = 2020.0 + f64::from(i);
+                [x, 3.5 * (0.4 * (x - 2020.0)).exp()]
+            })
+            .collect();
+        let shifted_fit = fit_model_with_axes(
+            &shifted_pts,
+            FitType::Exponential,
+            "ShiftedExp",
+            false,
+            false,
+            false,
+        )
+        .expect("shifted exponential fit");
+        assert!(shifted_fit.to_latex().unwrap().contains("2020"));
+        let shifted_xs = [2020.0_f64, 2022.5, 2024.5];
+        verify_fit_rust_parity(&shifted_fit, &shifted_xs);
+        verify_fit_python_parity(&shifted_fit, &shifted_xs);
     }
 }

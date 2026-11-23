@@ -1,4 +1,4 @@
-# ADR 0043: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
+# ADR 0044: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
 
 ## Status
 
@@ -30,7 +30,7 @@ At the same time, any code generation pipeline had to obey three architectural c
 
 4. **Six Flagship Tool Templates and `FitResult` Analytical Codegen:**
    - Implement calibrated standalone Rust 2024 and `numpy`/`scipy` templates across `OdeSolverTool` (RK4 / `solve_ivp`), `ComplexMappingTool` (`Complex` arithmetic / `numpy` grid mapping), `RiemannIntegrationTool` (Riemann & Simpson quadrature / `scipy.integrate.quad`), `BeamProfilingTool` (Beer-Lambert attenuation), `CapacityFadeTool` (Arrhenius SEI + cyclic fade), and `SirTool` (RK4 compartmental epidemic dynamics).
-   - Add `FitResult::to_latex`, `FitResult::to_rust_fn`, and `FitResult::to_python_fn` (`egui_plot/src/fit_export.rs`) supporting linear ($y(x)$), semilog ($10^{f(x)}$), and log-log ($10^{f(\log_{10} x)}$) coordinate regressions, alongside inline copy and `.tex`/`.rs`/`.py` save buttons in `egui_plot`'s fit badge overlay.
+   - Add `FitResult::to_latex`, `FitResult::to_rust_fn`, and `FitResult::to_python_fn` (`egui_plot/src/fit_export.rs`) supporting linear ($y(x)$), semilog ($10^{f(x)}$), log-log ($10^{f(\log_{10} x)}$), and nonlinear (including domain-shifted exponential $a \exp(b(x - x_0))$) coordinate regressions, alongside inline copy and `.tex`/`.rs`/`.py` save buttons in `egui_plot`'s fit badge overlay.
 
 ## Verification Commands
 
