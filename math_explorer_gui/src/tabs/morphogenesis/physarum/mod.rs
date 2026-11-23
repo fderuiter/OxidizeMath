@@ -15,9 +15,10 @@ pub use presets::{PhysarumBrushMode, PhysarumPreset, PhysarumTheory, PhysarumToo
 use crate::framework::recovery::DiagnosticReport;
 use eframe::egui;
 use math_explorer::biology::physarum::{
-    MAX_PHYSARUM_AGENTS, MAX_PHYSARUM_GRID, MAX_PHYSARUM_TERMINALS, MIN_PHYSARUM_AGENTS,
-    MIN_PHYSARUM_GRID, MIN_PHYSARUM_TERMINALS, PhysarumEngine, PhysarumNetworkBenchmark,
-    PhysarumParams, PhysarumTerminal, asymmetric_maze_corridors, extract_physarum_benchmark,
+    asymmetric_maze_corridors, extract_physarum_benchmark, PhysarumEngine,
+    PhysarumNetworkBenchmark, PhysarumParams, PhysarumTerminal, MAX_PHYSARUM_AGENTS,
+    MAX_PHYSARUM_GRID, MAX_PHYSARUM_TERMINALS, MIN_PHYSARUM_AGENTS, MIN_PHYSARUM_GRID,
+    MIN_PHYSARUM_TERMINALS,
 };
 use math_explorer::rng::OxidizeRng;
 use presets::default_brush_radius;

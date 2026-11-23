@@ -3,7 +3,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::presets::{MAX_SAVED_OBSTACLE_STROKES, default_brush_radius};
+use super::presets::{default_brush_radius, MAX_SAVED_OBSTACLE_STROKES};
 use super::{PhysarumPreset, PhysarumTool, PhysarumToolState};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
@@ -187,6 +187,12 @@ impl InteractiveTool for PhysarumTool {
             v.to_bits().hash(&mut h);
         }
         self.obstacle_strokes.len().hash(&mut h);
+        for &[u, v, r, b] in &self.obstacle_strokes {
+            u.to_bits().hash(&mut h);
+            v.to_bits().hash(&mut h);
+            r.to_bits().hash(&mut h);
+            b.to_bits().hash(&mut h);
+        }
         self.rng_seed.hash(&mut h);
         self.brush_radius.to_bits().hash(&mut h);
         self.brush_mode.hash(&mut h);

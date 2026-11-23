@@ -1,13 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::presets::{
-    PRESET_PHYSARUM_MAZE, PRESET_PHYSARUM_STEINER, PRESET_PHYSARUM_TOKYO_RAIL,
-};
+use super::presets::{PRESET_PHYSARUM_MAZE, PRESET_PHYSARUM_STEINER, PRESET_PHYSARUM_TOKYO_RAIL};
 use super::*;
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework};
-use crate::tabs::ExplorerTab;
 use crate::tabs::morphogenesis::MorphogenesisTab;
+use crate::tabs::ExplorerTab;
 use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
 #[cfg(not(target_arch = "wasm32"))]
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -133,7 +131,10 @@ fn test_physarum_mouse_city_wall_sever_brushes_and_keyboard_accessibility() {
     ];
     let _ = ctx.run(screen_input(key_events), |ctx| tool.show(ctx));
     assert!(!tool.obstacle_strokes.is_empty());
-    if let Some(cid) = tool.focused_canvas_id().or_else(|| ctx.memory(|m| m.focused())) {
+    if let Some(cid) = tool
+        .focused_canvas_id()
+        .or_else(|| ctx.memory(|m| m.focused()))
+    {
         ctx.memory_mut(|m| m.request_focus(cid));
     }
 
@@ -239,10 +240,9 @@ fn test_physarum_compact_url_share_roundtrip_and_bounds_rejection() {
     let fragment = &share_url[hash_idx..];
 
     let mut app = crate::app::MathExplorerApp::default();
-    assert!(
-        app.apply_share_location_strings(fragment, "", None)
-            .unwrap()
-    );
+    assert!(app
+        .apply_share_location_strings(fragment, "", None)
+        .unwrap());
     let bio_idx = app
         .tabs
         .iter()
@@ -257,6 +257,13 @@ fn test_physarum_compact_url_share_roundtrip_and_bounds_rejection() {
 
     // Reject out-of-bounds grid_size and agent_count
     let mut tool = PhysarumTool::default();
+    for idx in 0..=super::presets::MAX_SAVED_OBSTACLE_STROKES {
+        tool.apply_wall_stroke(8 + idx * 3, 12 + idx * 2, true);
+    }
+    let rev_at_cap = tool.url_state_revision();
+    tool.apply_wall_stroke(96, 96, false);
+    assert_ne!(tool.url_state_revision(), rev_at_cap);
+
     let bad_grid = tool
         .save_state()
         .unwrap()
@@ -331,7 +338,15 @@ fn save_annotated_tool_png(tool: &PhysarumTool, scale: usize, out_path: &str) {
         draw_line_rgba(&mut rgba, sw, sh, p0, p1, scale, [132, 140, 152, 220]);
     }
     for edge in &tool.latest_benchmark.edges {
-        draw_line_rgba(&mut rgba, sw, sh, edge.p0, edge.p1, scale, [74, 214, 122, 255]);
+        draw_line_rgba(
+            &mut rgba,
+            sw,
+            sh,
+            edge.p0,
+            edge.p1,
+            scale,
+            [74, 214, 122, 255],
+        );
     }
     for &junc in &tool.latest_benchmark.steiner_junctions {
         draw_disc_rgba(&mut rgba, sw, sh, junc, scale, 6, [245, 194, 66, 255]);

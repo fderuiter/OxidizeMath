@@ -228,7 +228,8 @@ impl PhysarumTool {
             .text("Agents N")
             .id_salt("phys_agents"),
         );
-        self.agent_count = (agents_f.round() as usize).clamp(MIN_PHYSARUM_AGENTS, MAX_PHYSARUM_AGENTS);
+        self.agent_count =
+            (agents_f.round() as usize).clamp(MIN_PHYSARUM_AGENTS, MAX_PHYSARUM_AGENTS);
         if self.agent_count != prev_agents {
             self.engine.set_agent_count(self.agent_count);
         }

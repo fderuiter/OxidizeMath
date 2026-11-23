@@ -167,7 +167,11 @@ impl PhysarumTool {
         for term in self.engine.terminals() {
             let center = map_pt([term.x, term.y]);
             painter.circle_filled(center, 4.2_f32, palette.accent);
-            painter.circle_stroke(center, 5.2_f32, egui::Stroke::new(1.4_f32, palette.node_stroke));
+            painter.circle_stroke(
+                center,
+                5.2_f32,
+                egui::Stroke::new(1.4_f32, palette.node_stroke),
+            );
         }
     }
 

@@ -4,8 +4,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use math_explorer::biology::physarum::{
-    MAX_PHYSARUM_AGENTS, MAX_PHYSARUM_GRID, MAX_PHYSARUM_TERMINALS, MIN_PHYSARUM_AGENTS,
-    MIN_PHYSARUM_GRID, MIN_PHYSARUM_TERMINALS, PhysarumParams, PhysarumPresetKind,
+    PhysarumParams, PhysarumPresetKind, MAX_PHYSARUM_AGENTS, MAX_PHYSARUM_GRID,
+    MAX_PHYSARUM_TERMINALS, MIN_PHYSARUM_AGENTS, MIN_PHYSARUM_GRID, MIN_PHYSARUM_TERMINALS,
 };
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
@@ -165,11 +165,8 @@ pub enum PhysarumPreset {
 
 impl PhysarumPreset {
     /// Ordered list of all Physarum spatial presets.
-    pub const ALL: [PhysarumPreset; 3] = [
-        Self::SteinerTriangle,
-        Self::AsymmetricMaze,
-        Self::TokyoRail,
-    ];
+    pub const ALL: [PhysarumPreset; 3] =
+        [Self::SteinerTriangle, Self::AsymmetricMaze, Self::TokyoRail];
 
     /// Maps to the `domain_biology` [`PhysarumPresetKind`].
     pub const fn to_domain(self) -> PhysarumPresetKind {
