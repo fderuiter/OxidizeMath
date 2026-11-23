@@ -44,6 +44,7 @@ impl PotentialFlowTool {
                 PlaybackAction::Play => self.is_playing = true,
                 PlaybackAction::Pause => self.is_playing = false,
                 PlaybackAction::Step => self.advance_dye_step(),
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.is_playing = false;
                     self.reseed_dye_streaks();
