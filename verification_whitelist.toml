@@ -127,6 +127,7 @@ allowlist = [
     "docs/adr/0036-delete-simulation-model-traits-and-physics-adapters.md",
     "docs/adr/0036-harden-ast-and-doctest-policy-audits.md",
     "docs/adr/0036-scoped-ode-sandboxes-and-extended-ast-grammar.md",
+    "docs/adr/0037-ast-arity-scope-validation-and-scaled-latex.md",
     "docs/adr/0037-consolidate-medical-physics-kernels.md",
     "docs/adr/0037-consolidate-optimizer-softmax-and-attention-kernels.md",
     "docs/adr/0037-glicko2-frozen-period-tournament-simulator.md",
