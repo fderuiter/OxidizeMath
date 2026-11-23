@@ -1,4 +1,4 @@
-# ADR 0038: Shared `RasterBrushCanvas`, Pre-Allocation RLE `base64url` Spatial Masks, and Live 2D Field Sculpting
+# ADR 0039: Shared `RasterBrushCanvas`, Pre-Allocation RLE `base64url` Spatial Masks, and Live 2D Field Sculpting
 
 ## Status
 Accepted (extends [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), and [ADR 0033](0033-wasm32-browser-tests-and-playwright-ci-smoke-gate.md))

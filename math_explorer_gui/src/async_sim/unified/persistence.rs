@@ -73,6 +73,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 if let Ok(encoded) = encode_bool_grid(grid_w, grid_h, mask) {
                     *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = Some(encoded);
                 }
+                if let Some(ext) = &mut self.ui_extension {
+                    let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+                    ext.on_obstacle_mask_loaded(Some(mask.as_slice()), &p);
+                }
             }
         }
         if self
@@ -141,6 +145,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 val.to_bits().hash(&mut h);
             }
         }
+        if let Some(ext) = &self.ui_extension {
+            ext.state_revision_salt().hash(&mut h);
+        }
         if let Some(atlas) = &self.atlas {
             atlas.is_visible().hash(&mut h);
             atlas.axis_keys().hash(&mut h);
@@ -165,6 +172,13 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        if self.active_challenge_id().is_some() || obstacles_rle.is_none() {
+            if let Some(ext) = &self.ui_extension {
+                if let Some(custom) = ext.save_extra_state(&params) {
+                    return Some(custom);
+                }
+            }
+        }
         let formula_ext =
             M::formula_spec()
                 .zip(self.formula_bar.as_ref())
@@ -210,8 +224,15 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             })
             .ok();
         }
+        Self::serialize_flat_state_map(&params, obstacles_rle)
+    }
+
+    fn serialize_flat_state_map(
+        params: &HashMap<String, f64>,
+        obstacles_rle: Option<String>,
+    ) -> Option<String> {
         let mut map: BTreeMap<&str, serde_json::Value> = BTreeMap::new();
-        for (k, v) in params.iter() {
+        for (k, v) in params {
             let num = serde_json::Number::from_f64(*v)?;
             map.insert(k.as_str(), serde_json::Value::Number(num));
         }
@@ -222,17 +243,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 
     fn apply_parsed_obstacle_rle(&mut self, parsed_rle: Option<(String, Vec<bool>)>) {
+        let p_snap = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         match parsed_rle {
             Some((rle_str, decoded_mask)) => {
+                if let Some(ext) = &mut self.ui_extension {
+                    ext.on_obstacle_mask_loaded(Some(decoded_mask.as_slice()), &p_snap);
+                }
                 *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = Some(rle_str);
                 self.local_obstacles = Some(decoded_mask);
             }
             None => {
-                let p_snap = self
-                    .params
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone();
+                if let Some(ext) = &mut self.ui_extension {
+                    ext.on_obstacle_mask_loaded(None, &p_snap);
+                }
                 *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
                 self.local_obstacles = M::default_obstacle_mask(&p_snap);
             }
@@ -273,8 +300,40 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Ok((numeric_params, parsed_rle))
     }
 
+    fn try_load_extension_state(&mut self, state: &str) -> Option<Result<(), String>> {
+        if self.active_challenge_id().is_none()
+            && serde_json::from_str::<serde_json::Value>(state)
+                .ok()
+                .is_some_and(|v| {
+                    v.as_object().is_some_and(|m| {
+                        m.contains_key(OBSTACLES_RLE_KEY) || m.contains_key("params")
+                    })
+                })
+        {
+            return None;
+        }
+        let ext = self.ui_extension.as_mut()?;
+        let mut next_params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let res = ext.try_load_extra_state(state, &mut next_params)?;
+        Some(res.map(|cmds| {
+            *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
+            self.local_obstacles = M::default_obstacle_mask(&next_params);
+            *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
+            self.texture = None;
+            self.reset_simulation(None);
+            self.dispatch_extension_commands(cmds, None);
+        }))
+    }
+
     pub(super) fn deserialize_tool_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
+        if let Some(res) = self.try_load_extension_state(state) {
+            return res;
+        }
         if let Ok(ext) = serde_json::from_str::<UnifiedExtendedState>(state) {
             return self.apply_extended_state(ext);
         }
