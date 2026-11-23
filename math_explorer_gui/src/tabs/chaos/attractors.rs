@@ -27,6 +27,11 @@ mod runner;
 mod serde_vec3;
 pub use runner::*;
 
+#[path = "attractors/theory.rs"]
+mod theory;
+#[path = "attractors/timeline.rs"]
+mod timeline;
+
 #[path = "attractors/ui.rs"]
 mod ui;
 

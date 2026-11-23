@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::runner::MorphogenesisKineticsAdapter;
-use super::SimpleRng;
+use super::runner_twin::clone_turing_system;
 use crate::app::ThemeMode;
 use crate::framework::{
     field_difference_norms, sanitize_perturbation_delta, DivergenceSnapshot,
@@ -13,8 +13,9 @@ use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui::{Color32, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_explorer::biology::diffusion::{MaskedFiniteDifference2D, SpatialDiffusion};
-use math_explorer::biology::morphogenesis::{DiffusionCoeff, TuringSystem};
-use math_explorer::math_kernel::types::Dimension;
+use math_explorer::biology::morphogenesis::TuringSystem;
+use oxidize_core::rng::OxidizeRng;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
 /// Spatial heatmap visualization mode when a counterfactual Turing fork is active.
@@ -110,12 +111,12 @@ impl MorphogenesisForkDescriptor {
     }
 }
 
-/// Structured worker payload carrying `u_B`, optional baseline `u_A`, mask roles, and twin metrics.
+/// Structured worker payload carrying active species `u_data`, optional baseline `u_A`, mask roles, and twin metrics.
 #[derive(Clone, Debug)]
 pub struct MorphogenesisSnapshotData {
-    /// Active `Branch B` activator field `u_B`.
-    pub u_b: Vec<f64>,
-    /// Unperturbed `Branch A` activator field `u_A` when forked.
+    /// Active `Branch B` species field (`u` in Schnakenberg, `v` in Gray-Scott).
+    pub u_data: Vec<f64>,
+    /// Unperturbed `Branch A` species field `u_A` when forked.
     pub u_a: Option<Vec<f64>>,
     /// Optional row-major `ReactionCellRole` byte grid when any cell is non-`Free`.
     pub mask_roles: Vec<u8>,
@@ -153,7 +154,7 @@ pub struct MorphogenesisTwinState {
     /// Frozen baseline `TuringSystem` (`Branch A`) with pre-allocated double buffers and cell mask.
     pub system_a: TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D>,
     /// Cloned baseline PRNG state at `t_k`.
-    pub rng_a: SimpleRng,
+    pub rng_a: OxidizeRng,
     /// Step index `k > 0` where the fork was anchored.
     pub fork_step: usize,
     /// Number of lockstep steps taken since `fork_step`.
@@ -168,24 +169,6 @@ pub struct MorphogenesisTwinState {
     pub tracker: SeparationTracker,
 }
 
-/// Clones a 2D masked `TuringSystem` (pre-allocating `state`, `next_state`, and `CellMask2D`).
-pub fn clone_turing_system(
-    src: &TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D>,
-    width: usize,
-    height: usize,
-) -> TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D> {
-    let mut dst = TuringSystem::new_with_kinetics(
-        Dimension(width * height),
-        DiffusionCoeff(src.diffusion_coeffs[0]),
-        DiffusionCoeff(src.diffusion_coeffs[1]),
-        src.kinetics,
-        src.diffusion.clone(),
-    );
-    dst.u_mut().copy_from_slice(src.u());
-    dst.v_mut().copy_from_slice(src.v());
-    dst
-}
-
 impl MorphogenesisTwinState {
     /// Clones `(fork_step, system_b, rng_b)` into `Branch A` and perturbs `system_b` by `delta_u`.
     pub fn fork_from(
@@ -194,21 +177,23 @@ impl MorphogenesisTwinState {
         width: usize,
         height: usize,
         system_b: &mut TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D>,
-        rng_b: &mut SimpleRng,
+        rng_b: &mut OxidizeRng,
         delta_u: f64,
     ) -> Self {
         let clean_delta = sanitize_perturbation_delta(delta_u);
         let system_a = clone_turing_system(system_b, width, height);
-        let rng_a = *rng_b;
+        let rng_a = rng_b.clone();
 
         if clean_delta > 0.0 {
+            const INV_2_POW_53: f64 = 1.0 / ((1u64 << 53) as f64);
+            let mut fork_rng = OxidizeRng::new(0x5457_494E_464F_524B ^ (fork_step as u64));
             let field_b = active_morphogen_slice_mut(system_b);
             let center = field_b.len() / 2;
             for (idx, cell) in field_b.iter_mut().enumerate() {
                 let jitter = if idx == center {
                     1.0
                 } else {
-                    rng_b.range(-1.0, 1.0)
+                    2.0 * (((fork_rng.next_u64() >> 11) as f64) * INV_2_POW_53) - 1.0
                 };
                 *cell += clean_delta * jitter;
             }
@@ -241,7 +226,7 @@ impl MorphogenesisTwinState {
     pub fn clone_with_dims(&self, width: usize, height: usize) -> Self {
         Self {
             system_a: clone_turing_system(&self.system_a, width, height),
-            rng_a: self.rng_a,
+            rng_a: self.rng_a.clone(),
             fork_step: self.fork_step,
             post_fork_steps: self.post_fork_steps,
             delta_u: self.delta_u,
@@ -253,8 +238,17 @@ impl MorphogenesisTwinState {
 
     /// Steps frozen baseline `Branch A` by `dt` with zero heap allocations.
     #[inline]
-    pub fn step_branch_a(&mut self, dt: f64) {
+    pub fn step_branch_a(&mut self, dt: f64, width: usize, height: usize, noise_amp: f64) {
         self.system_a.step(dt);
+        super::runner::apply_uniform_noise(
+            &mut self.system_a,
+            width * height,
+            &mut self.rng_a,
+            noise_amp,
+        );
+        if self.system_a.diffusion.mask.has_active_cells() {
+            super::sculpt::enforce_system_mask(&mut self.system_a, width, height);
+        }
     }
 
     /// Updates spatial `L2` and `L_∞` norms after a lockstep tick with zero heap allocations.

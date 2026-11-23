@@ -397,7 +397,7 @@ impl MorphogenesisTool {
             .and_then(|snap| {
                 snap.structured_data.as_ref().and_then(|d| {
                     d.downcast_ref::<super::counterfactual::MorphogenesisSnapshotData>()
-                        .map(|data| data.u_b.as_slice())
+                        .map(|data| data.u_data.as_slice())
                         .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
                 })
             })

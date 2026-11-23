@@ -408,6 +408,7 @@ impl SirTool {
                         self.cf.is_playing = false;
                         self.step_lockstep(1);
                     }
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset_playback_and_fork(),
                 }
             }

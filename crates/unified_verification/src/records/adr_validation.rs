@@ -1,30 +1,129 @@
 use super::DiffSource;
-use super::git_range::{commit_oid, git_stdout, inspect_staged_index};
+use super::git_range::{commit_oid, git_stdout, inspect_staged_index, newly_added_files};
 use crate::whitelist::{VerificationWhitelist, WHITELIST_FILE_NAME, load_whitelist_strict};
-use regex::Regex;
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
 
 const ADR_DIR_REL: &str = "docs/adr";
+const MIN_ADR_YEAR: u32 = 1970;
+const MAX_ADR_YEAR: u32 = 9999;
+const MAX_LEGACY_ADR_NUMBER: u16 = 46;
 
-fn adr_filename_regex() -> Regex {
-    Regex::new(r"^(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$").expect("valid ADR filename regex")
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum AdrFilename {
+    Dated { date: String, slug: String },
+    Legacy { prefix: String, slug: String },
 }
 
-pub(crate) fn extract_adr_id(rel_path: &str) -> Option<String> {
-    let normalized = rel_path.replace('\\', "/");
-    let filename = normalized.strip_prefix("docs/adr/")?;
-    if filename.contains('/') {
-        return None;
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum AdrFilenameError {
+    InvalidFormat,
+    InvalidCalendarDate(String),
+    UnfrozenLegacyPrefix { prefix: String, slug: String },
+}
+
+fn is_valid_adr_slug(slug: &str) -> bool {
+    !slug.is_empty()
+        && slug.split('-').all(|seg| {
+            !seg.is_empty()
+                && seg
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        })
+}
+
+fn is_leap_year(year: u32) -> bool {
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
+}
+
+pub(crate) fn is_valid_yyyymmdd(date_str: &str) -> bool {
+    if date_str.len() != 8 || !date_str.bytes().all(|b| b.is_ascii_digit()) {
+        return false;
     }
-    let caps = adr_filename_regex().captures(filename)?;
-    Some(caps[1].to_string())
+    let Ok(year) = date_str[0..4].parse::<u32>() else {
+        return false;
+    };
+    let Ok(month) = date_str[4..6].parse::<u32>() else {
+        return false;
+    };
+    let Ok(day) = date_str[6..8].parse::<u32>() else {
+        return false;
+    };
+    if !(MIN_ADR_YEAR..=MAX_ADR_YEAR).contains(&year) {
+        return false;
+    }
+    let max_day = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap_year(year) => 29,
+        2 => 28,
+        _ => return false,
+    };
+    (1..=max_day).contains(&day)
+}
+
+fn parse_adr_rel_path(rel_path: &str) -> Result<AdrFilename, AdrFilenameError> {
+    let normalized = rel_path.replace('\\', "/");
+    let Some(filename) = normalized.strip_prefix("docs/adr/") else {
+        return Err(AdrFilenameError::InvalidFormat);
+    };
+    if filename.contains('/') {
+        return Err(AdrFilenameError::InvalidFormat);
+    }
+    let Some(stem) = filename.strip_suffix(".md") else {
+        return Err(AdrFilenameError::InvalidFormat);
+    };
+    let Some((prefix, slug)) = stem.split_once('-') else {
+        return Err(AdrFilenameError::InvalidFormat);
+    };
+    if !is_valid_adr_slug(slug) {
+        return Err(AdrFilenameError::InvalidFormat);
+    }
+
+    if prefix.len() == 8 && prefix.bytes().all(|b| b.is_ascii_digit()) {
+        if is_valid_yyyymmdd(prefix) {
+            return Ok(AdrFilename::Dated {
+                date: prefix.to_string(),
+                slug: slug.to_string(),
+            });
+        }
+        return Err(AdrFilenameError::InvalidCalendarDate(prefix.to_string()));
+    }
+
+    if prefix.len() == 4
+        && prefix.bytes().all(|b| b.is_ascii_digit())
+        && let Ok(num) = prefix.parse::<u16>()
+    {
+        if (1..=MAX_LEGACY_ADR_NUMBER).contains(&num) {
+            return Ok(AdrFilename::Legacy {
+                prefix: prefix.to_string(),
+                slug: slug.to_string(),
+            });
+        }
+        return Err(AdrFilenameError::UnfrozenLegacyPrefix {
+            prefix: prefix.to_string(),
+            slug: slug.to_string(),
+        });
+    }
+
+    Err(AdrFilenameError::InvalidFormat)
 }
 
 pub(crate) fn is_valid_adr_rel_path(rel_path: &str) -> bool {
-    extract_adr_id(rel_path).is_some()
+    parse_adr_rel_path(rel_path).is_ok()
+}
+
+fn extract_four_digit_adr_slug(rel_path: &str) -> Option<&str> {
+    let filename = rel_path.strip_prefix("docs/adr/")?;
+    if filename.contains('/') {
+        return None;
+    }
+    let stem = filename.strip_suffix(".md")?;
+    let (prefix, slug) = stem.split_once('-')?;
+    (prefix.len() == 4 && prefix.bytes().all(|b| b.is_ascii_digit()) && !slug.is_empty())
+        .then_some(slug)
 }
 
 fn normalize_allowlist_entry(entry: &str) -> String {
@@ -232,36 +331,36 @@ pub(crate) fn check_markdown_headings(content: &str) -> (bool, bool) {
     (has_title, has_status)
 }
 
-fn collect_adr_violations(
-    adrs: &BTreeMap<String, String>,
+fn check_heading_violations(rel_path: &str, content: &str, violations: &mut Vec<String>) {
+    let (has_title, has_status) = check_markdown_headings(content);
+    if !has_title {
+        violations.push(format!(
+            "{rel_path}: Missing top-level '# <Title>' heading outside code fences"
+        ));
+    }
+    if !has_status {
+        violations.push(format!(
+            "{rel_path}: Missing required '## Status' heading outside code fences"
+        ));
+    }
+}
+
+fn append_collision_violations(
+    by_dated_slug: BTreeMap<String, Vec<String>>,
+    by_legacy_prefix: BTreeMap<String, Vec<String>>,
     allowlist: &HashSet<String>,
-) -> Vec<String> {
-    let mut violations = Vec::new();
-    let mut by_prefix: BTreeMap<String, Vec<String>> = BTreeMap::new();
-
-    for (rel_path, content) in adrs {
-        let Some(prefix) = extract_adr_id(rel_path) else {
+    violations: &mut Vec<String>,
+) {
+    for (slug, paths) in by_dated_slug {
+        if paths.len() > 1 {
             violations.push(format!(
-                "{rel_path}: ADR filename must match docs/adr/NNNN-slug.md"
-            ));
-            continue;
-        };
-        by_prefix.entry(prefix).or_default().push(rel_path.clone());
-
-        let (has_title, has_status) = check_markdown_headings(content);
-        if !has_title {
-            violations.push(format!(
-                "{rel_path}: Missing top-level '# <Title>' heading outside code fences"
-            ));
-        }
-        if !has_status {
-            violations.push(format!(
-                "{rel_path}: Missing required '## Status' heading outside code fences"
+                "Duplicate ADR slug '{slug}' across [{}]; each dated ADR must use a unique <slug>",
+                paths.join(", ")
             ));
         }
     }
 
-    for (prefix, paths) in by_prefix {
+    for (prefix, paths) in by_legacy_prefix {
         if paths.len() > 1 {
             let unauthorized: Vec<&str> = paths
                 .iter()
@@ -277,8 +376,92 @@ fn collect_adr_violations(
             }
         }
     }
+}
 
+fn collect_adr_violations(
+    adrs: &BTreeMap<String, String>,
+    allowlist: &HashSet<String>,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    let mut by_legacy_prefix: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut by_dated_slug: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+    for (rel_path, content) in adrs {
+        match parse_adr_rel_path(rel_path) {
+            Ok(AdrFilename::Dated { slug, .. }) => {
+                by_dated_slug
+                    .entry(slug)
+                    .or_default()
+                    .push(rel_path.clone());
+            }
+            Ok(AdrFilename::Legacy { prefix, .. }) => {
+                by_legacy_prefix
+                    .entry(prefix)
+                    .or_default()
+                    .push(rel_path.clone());
+            }
+            Err(AdrFilenameError::InvalidCalendarDate(date)) => {
+                violations.push(format!(
+                    "{rel_path}: Invalid calendar date '{date}' in ADR filename; expected valid docs/adr/YYYYMMDD-slug.md"
+                ));
+                continue;
+            }
+            Err(AdrFilenameError::UnfrozenLegacyPrefix { prefix, .. })
+                if allowlist.contains(rel_path) =>
+            {
+                by_legacy_prefix
+                    .entry(prefix)
+                    .or_default()
+                    .push(rel_path.clone());
+            }
+            Err(AdrFilenameError::UnfrozenLegacyPrefix { prefix, slug }) => {
+                violations.push(format!(
+                    "{rel_path}: Legacy 4-digit ADR prefix '{prefix}' is frozen (0001..={MAX_LEGACY_ADR_NUMBER:04}); rename to docs/adr/YYYYMMDD-{slug}.md"
+                ));
+                continue;
+            }
+            Err(AdrFilenameError::InvalidFormat) => {
+                violations.push(format!(
+                    "{rel_path}: ADR filename must match docs/adr/YYYYMMDD-slug.md (or frozen legacy docs/adr/NNNN-slug.md)"
+                ));
+                continue;
+            }
+        }
+        check_heading_violations(rel_path, content, &mut violations);
+    }
+
+    append_collision_violations(by_dated_slug, by_legacy_prefix, allowlist, &mut violations);
     violations
+}
+
+pub(crate) fn validate_no_new_legacy_adrs(repo_dir: &Path, source: &DiffSource) -> bool {
+    let allowlist = match load_adr_allowlist(repo_dir, source) {
+        Ok(list) => list,
+        Err(err) => {
+            eprintln!("ADR verification failed: {err}");
+            return false;
+        }
+    };
+    let added = newly_added_files(repo_dir, source);
+    let mut violations = Vec::new();
+    for rel_path in added {
+        if allowlist.contains(&rel_path) {
+            continue;
+        }
+        if let Some(slug) = extract_four_digit_adr_slug(&rel_path) {
+            violations.push(format!(
+                "{rel_path}: Newly added 4-digit ADR filenames (NNNN-slug.md) are rejected because legacy prefixes are frozen; rename to docs/adr/YYYYMMDD-{slug}.md"
+            ));
+        }
+    }
+    if !violations.is_empty() {
+        println!("ADR structural/numbering verification failed:");
+        for v in &violations {
+            println!("  - {v}");
+        }
+        return false;
+    }
+    true
 }
 
 pub(crate) fn validate_repository_adrs(repo_dir: &Path, source: &DiffSource) -> bool {

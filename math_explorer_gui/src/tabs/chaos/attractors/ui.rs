@@ -6,10 +6,10 @@ use crate::async_sim::ui::{
     render_custom_fault_banner, render_empty_plot_guidance, render_worker_fault_banner,
     WorkerFaultAction,
 };
-use crate::async_sim::{SimCommand, SimWorkerState};
+use crate::async_sim::SimWorkerState;
 use crate::framework::{
     fork_marker_callout, render_divergence_strip, CounterfactualTransport, InteractiveTool,
-    PlaybackAction, PlaybackTransport, Plot3DViewport,
+    PlaybackTransport, Plot3DViewport,
 };
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
 use egui_plot::{Callout, PlotPoint};
@@ -177,10 +177,11 @@ impl AttractorPlotter {
             "Attractor Plotter",
             transport_state,
         )
+        .timeline(self.worker.timeline_metadata())
         .can_reset(true)
         .show(ui)
         {
-            self.handle_playback_action(action, ctx);
+            self.handle_transport_action(action, ctx);
         }
 
         let can_fork = self.step_count > 0 && !self.diverged() && !worker_faulted;
@@ -228,26 +229,6 @@ impl AttractorPlotter {
                     self.on_slider_changed();
                 }
             });
-    }
-
-    fn handle_playback_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
-        match action {
-            PlaybackAction::Play => {
-                let _ = self.try_resume();
-            }
-            PlaybackAction::Pause => {
-                self.execution_state = SolverExecutionState::Paused;
-                let _ = self.worker.send_command(SimCommand::Pause);
-            }
-            PlaybackAction::Step => {
-                self.execution_state = SolverExecutionState::Paused;
-                let _ = self.worker.send_command(SimCommand::Step(1));
-            }
-            PlaybackAction::Reset => {
-                self.reset();
-                ctx.request_repaint();
-            }
-        }
     }
 
     fn apply_fault_action(&mut self, action: WorkerFaultAction, ctx: &egui::Context) {

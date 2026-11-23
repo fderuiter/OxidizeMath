@@ -1,9 +1,7 @@
-//! Metadata, theory description, and starter presets for [`super::SirTool`].
-
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{SirTool, MAX_SIR_DURATION, MIN_SIR_DURATION};
-use scientific_metadata::theory::ParameterConstraint;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 
 inventory::submit! {
@@ -16,7 +14,7 @@ inventory::submit! {
     }
 }
 
-impl scientific_metadata::theory::TheoryDescribable for SirTool {
+impl TheoryDescribable for SirTool {
     fn theory_description(&self) -> String {
         let r0 = self.beta / self.gamma;
         format!(

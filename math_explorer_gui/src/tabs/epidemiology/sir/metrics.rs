@@ -14,6 +14,49 @@ use crate::framework::{
 use crate::reflective_ui::render_copyable_metric;
 
 impl SirTool {
+    pub(super) fn current_series_key(&self) -> (usize, usize, usize, usize, usize, usize) {
+        (
+            self.s_points.as_ptr() as usize,
+            self.s_points.len(),
+            self.i_points.as_ptr() as usize,
+            self.i_points.len(),
+            self.r_points.as_ptr() as usize,
+            self.r_points.len(),
+        )
+    }
+
+    pub(crate) fn sync_series_cache(&mut self) {
+        let key = self.current_series_key();
+        if self.series_key != key {
+            self.series_finite = self
+                .s_points
+                .iter()
+                .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .i_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .r_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite());
+            self.cached_peak = compute_epidemic_peak(&self.i_points);
+            let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
+            self.display_s = crate::framework::decimate_plot_points_minmax(&self.s_points, cap);
+            self.display_i = crate::framework::decimate_plot_points_minmax(&self.i_points, cap);
+            self.display_r = crate::framework::decimate_plot_points_minmax(&self.r_points, cap);
+            self.series_key = key;
+        }
+    }
+
+    pub(super) fn epidemic_peak(&self) -> Option<(f64, f64)> {
+        if self.series_key == self.current_series_key() {
+            self.cached_peak
+        } else {
+            compute_epidemic_peak(&self.i_points)
+        }
+    }
+
     pub(super) fn evaluate_sensitivity(&mut self, ui: &mut egui::Ui) {
         let params = [
             ("N", self.n),
@@ -81,7 +124,7 @@ pub(super) fn render_epidemic_metrics(ui: &mut egui::Ui, tool: &SirTool) {
     };
     ui.horizontal_wrapped(|ui| {
         render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{r0:.2}"));
-        if let Some((peak_day, peak_infected)) = compute_epidemic_peak(&tool.i_points) {
+        if let Some((peak_day, peak_infected)) = tool.epidemic_peak() {
             render_copyable_metric(ui, "Peak Infected", &format!("{peak_infected:.1}"));
             render_copyable_metric(ui, "Peak Day", &format!("Day {peak_day:.2}"));
         }

@@ -9,6 +9,7 @@ use crate::framework::{
 };
 use crate::tabs::mri::MriTool;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 fn run_framework_export(fw: &mut SimulationFramework, domain: &str, format: ExportFormat) {
     let ctx = egui::Context::default();
@@ -121,7 +122,7 @@ fn test_morphogenesis_1000_step_zero_perturbation_parity_and_zero_alloc() {
         theme_mode: ThemeMode::Dark,
         heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
     }));
-    let mut runner = MorphogenesisRunner::new_seeded(&params, 24, 24);
+    let mut runner = MorphogenesisKineticsRunner::new_seeded(&params, 24, 24);
     for _ in 0..10 {
         runner.step();
     }
@@ -231,7 +232,7 @@ fn test_morphogenesis_sculpted_maze_twin_parity_and_zero_alloc() {
         theme_mode: ThemeMode::Dark,
         heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
     }));
-    let mut runner = MorphogenesisRunner::new_seeded(&params, 32, 32);
+    let mut runner = MorphogenesisKineticsRunner::new_seeded(&params, 32, 32);
     runner.process_command(crate::async_sim::SimCommand::Custom("stamp_maze".into()));
     assert!(runner.system.diffusion.mask.has_active_cells());
     for _ in 0..8 {

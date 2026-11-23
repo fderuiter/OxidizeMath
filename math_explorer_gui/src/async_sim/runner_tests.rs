@@ -2,10 +2,31 @@ use super::*;
 
 #[test]
 fn test_morphogenesis_runner_offload() {
-    use crate::tabs::morphogenesis::{MorphogenesisRunner, MorphogenesisSharedParams};
+    use crate::tabs::morphogenesis::{
+        MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTool,
+    };
+    use math_explorer::biology::diffusion::FiniteDifference2D;
+    use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 
     let width = 20;
     let height = 20;
+    let kinetics = SchnakenbergKinetics { a: 0.1, b: 0.9 };
+    let diffusion = FiniteDifference2D::new(
+        math_explorer::math_kernel::types::Dimension(width),
+        math_explorer::math_kernel::types::Dimension(height),
+        math_explorer::math_kernel::types::StepSize(1.0),
+        math_explorer::math_kernel::types::StepSize(1.0),
+    );
+
+    let mut system = TuringSystem::new_with_kinetics(
+        math_explorer::math_kernel::types::Dimension(width * height),
+        math_explorer::biology::morphogenesis::DiffusionCoeff(1.0),
+        math_explorer::biology::morphogenesis::DiffusionCoeff(100.0),
+        kinetics,
+        diffusion,
+    );
+    MorphogenesisTool::initialize_system(&mut system, width, height);
+
     let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
         a: 0.1,
         b: 0.9,
@@ -17,7 +38,15 @@ fn test_morphogenesis_runner_offload() {
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
     }));
 
-    let mut runner = MorphogenesisRunner::new_seeded(&params, width, height);
+    let mut runner = MorphogenesisRunner {
+        system,
+        params: Arc::clone(&params),
+        width,
+        height,
+        step_count: 0,
+        rng: oxidize_core::rng::OxidizeRng::default(),
+        noise_amplitude: 0.0,
+    };
 
     let snap_before = runner.get_snapshot();
     assert_eq!(snap_before.width, 20);
@@ -28,10 +57,7 @@ fn test_morphogenesis_runner_offload() {
     runner.step();
 
     // Verify parameter change takes effect immediately
-    {
-        let mut p = params.write().unwrap();
-        p.a = 0.2;
-    }
+    params.write().unwrap().a = 0.2;
     runner.step();
 
     let snap_after = runner.get_snapshot();
@@ -192,6 +218,8 @@ fn test_mri_runner_offload() {
         history: VecDeque::new(),
         max_history: 1000,
         twin: None,
+        step_count: 0,
+        rng: oxidize_core::rng::OxidizeRng::default(),
     };
 
     assert_eq!(runner.current_time, 0.0);
@@ -256,6 +284,8 @@ fn test_physics_and_chaos_runners_step_once() {
         history: VecDeque::new(),
         max_history: 100,
         twin: None,
+        step_count: 0,
+        rng: oxidize_core::rng::OxidizeRng::default(),
     };
     mri.step_once();
     assert!((mri.current_time - 0.001).abs() < 1e-12);

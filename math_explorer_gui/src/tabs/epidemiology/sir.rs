@@ -2,6 +2,7 @@
 
 #[path = "sir/atlas.rs"]
 pub mod atlas;
+mod metadata;
 mod metrics;
 
 use crate::async_sim::atlas::ParameterAtlasController;
@@ -17,8 +18,6 @@ use std::hash::{Hash, Hasher};
 
 #[path = "sir/counterfactual.rs"]
 pub mod counterfactual;
-#[path = "sir/presets.rs"]
-mod presets;
 pub use counterfactual::*;
 
 pub(super) const MIN_SIR_DURATION: f64 = 10.0;
@@ -34,23 +33,12 @@ struct SirStateRef<'a> {
     duration: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     fork: Option<SirForkDescriptor>,
-    #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
-    snapshot_manager: &'a TraceSnapshotManager,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot_manager: Option<&'a TraceSnapshotManager>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     atlas_visible: bool,
     #[serde(skip_serializing_if = "is_default_sir_atlas_axes")]
     atlas_axes: [String; 2],
-}
-
-#[derive(serde::Serialize)]
-struct SirRecoveryState {
-    n: f64,
-    i0: f64,
-    beta: f64,
-    gamma: f64,
-    duration: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    fork: Option<SirForkDescriptor>,
 }
 
 #[derive(serde::Deserialize)]
@@ -94,6 +82,9 @@ pub struct SirTool {
     pub(super) last_param_summary: String,
     revision: u64,
     pub cf: SirCounterfactualState,
+    series_key: (usize, usize, usize, usize, usize, usize),
+    series_finite: bool,
+    cached_peak: Option<(f64, f64)>,
 }
 
 impl Default for SirTool {
@@ -116,6 +107,9 @@ impl Default for SirTool {
             last_param_summary: String::new(),
             revision: 1,
             cf: SirCounterfactualState::default(),
+            series_key: (0, 0, 0, 0, 0, 0),
+            series_finite: true,
+            cached_peak: None,
         };
         tool.recalculate();
         tool
@@ -187,6 +181,7 @@ impl SirTool {
         self.display_s = std::sync::Arc::new(Vec::new());
         self.display_i = std::sync::Arc::new(Vec::new());
         self.display_r = std::sync::Arc::new(Vec::new());
+        self.series_key = (0, 0, 0, 0, 0, 0);
         self.last_param_summary = self.param_summary();
 
         if !self.duration.is_finite() || self.duration <= 0.0 {
@@ -196,6 +191,7 @@ impl SirTool {
         let end_step = self.effective_end_step();
         if let Some(desc) = self.cf.fork {
             self.recalculate_forked(desc, end_step);
+            self.sync_series_cache();
             return;
         }
         self.cf.reset_branch_a_points();
@@ -226,8 +222,8 @@ impl SirTool {
                 self.r_points.push(PlotPoint::new(t, state.r));
                 model.step(dt);
             }
-            self.refresh_display_polylines();
         }
+        self.sync_series_cache();
     }
 
     fn load_sir_state(&mut self, state: &str, preserve_snapshots: bool) -> Result<(), String> {
@@ -288,6 +284,43 @@ impl SirTool {
         self.recalculate();
         Ok(())
     }
+
+    fn hash_shared_parameters(&self, h: &mut impl Hasher) {
+        for val in [self.n, self.i0, self.beta, self.gamma, self.duration] {
+            val.to_bits().hash(h);
+        }
+        if let Some(ref f) = self.cf.fork {
+            true.hash(h);
+            f.fork_step.hash(h);
+            f.baseline_n.to_bits().hash(h);
+            f.baseline_i0.to_bits().hash(h);
+            f.baseline_beta.to_bits().hash(h);
+            f.baseline_gamma.to_bits().hash(h);
+            f.delta_x.to_bits().hash(h);
+        } else {
+            false.hash(h);
+        }
+        self.atlas.is_visible().hash(h);
+        self.atlas.axis_keys().hash(h);
+    }
+
+    fn serialize_sir_state(&self, include_snapshots: bool) -> Option<String> {
+        let (xk, yk) = self.atlas.axis_keys();
+        let snapshot_manager = (include_snapshots && !self.snapshot_manager.is_empty())
+            .then_some(&self.snapshot_manager);
+        serde_json::to_string(&SirStateRef {
+            n: self.n,
+            i0: self.i0,
+            beta: self.beta,
+            gamma: self.gamma,
+            duration: self.duration,
+            fork: self.cf.fork,
+            snapshot_manager,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
+        })
+        .ok()
+    }
 }
 
 impl InteractiveTool for SirTool {
@@ -304,45 +337,42 @@ impl InteractiveTool for SirTool {
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.revision.hash(&mut h);
-        self.n.to_bits().hash(&mut h);
-        self.i0.to_bits().hash(&mut h);
-        self.beta.to_bits().hash(&mut h);
-        self.gamma.to_bits().hash(&mut h);
-        self.duration.to_bits().hash(&mut h);
+        self.hash_shared_parameters(&mut h);
         self.snapshot_manager.len().hash(&mut h);
         self.snapshot_manager.history_len().hash(&mut h);
-        if let Some(ref f) = self.cf.fork {
-            true.hash(&mut h);
-            f.fork_step.hash(&mut h);
-            f.baseline_beta.to_bits().hash(&mut h);
-            f.baseline_gamma.to_bits().hash(&mut h);
-            f.delta_x.to_bits().hash(&mut h);
-        } else {
-            false.hash(&mut h);
-        }
-        self.atlas.is_visible().hash(&mut h);
-        self.atlas.axis_keys().hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn url_state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.hash_shared_parameters(&mut h);
         h.finish().max(1)
     }
 
     fn has_finite_parameters(&self) -> bool {
-        [self.n, self.i0, self.beta, self.gamma, self.duration]
+        let scalars_ok = [self.n, self.i0, self.beta, self.gamma, self.duration]
             .into_iter()
             .all(f64::is_finite)
             && self.n > 0.0
-            && self.duration > 0.0
-            && self
-                .s_points
+            && self.duration > 0.0;
+        if !scalars_ok {
+            return false;
+        }
+        if self.series_key == self.current_series_key() {
+            self.series_finite
+        } else {
+            self.s_points
                 .iter()
                 .all(|p| p.x.is_finite() && p.y.is_finite())
-            && self
-                .i_points
-                .iter()
-                .all(|p| p.x.is_finite() && p.y.is_finite())
-            && self
-                .r_points
-                .iter()
-                .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .i_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .r_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite())
+        }
     }
 
     fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
@@ -399,31 +429,11 @@ impl InteractiveTool for SirTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let (xk, yk) = self.atlas.axis_keys();
-        serde_json::to_string(&SirStateRef {
-            n: self.n,
-            i0: self.i0,
-            beta: self.beta,
-            gamma: self.gamma,
-            duration: self.duration,
-            fork: self.cf.fork,
-            snapshot_manager: &self.snapshot_manager,
-            atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
-        })
-        .ok()
+        self.serialize_sir_state(true)
     }
 
     fn save_recovery_state(&self) -> Option<String> {
-        serde_json::to_string(&SirRecoveryState {
-            n: self.n,
-            i0: self.i0,
-            beta: self.beta,
-            gamma: self.gamma,
-            duration: self.duration,
-            fork: self.cf.fork,
-        })
-        .ok()
+        self.serialize_sir_state(false)
     }
 
     fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
@@ -446,6 +456,7 @@ impl InteractiveTool for SirTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
+            self.sync_series_cache();
             ui.vertical(|ui| {
                 ui.heading("Parameters");
                 if self.render_parameter_controls(ui) {

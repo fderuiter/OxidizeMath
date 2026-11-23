@@ -128,6 +128,9 @@ pub struct MriTool {
     pub pulse_config: RfPulseConfig,
     /// Preallocated zero-allocation workspace for pulse sequences.
     pub pulse_workspace: MriPulseWorkspace,
+    /// Latest stack-allocated sonification frame for Web Audio and `.wav` export.
+    pub latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) fault_notified: bool,
     /// Active inverse challenge identifier, if any.
     pub active_challenge: Option<&'static str>,
     theory: MriBlochTheory,
@@ -163,6 +166,13 @@ impl Default for MriTool {
             initial_m,
         );
 
+        let latest_sonification = crate::audio::mappings::mri_bloch_frame(
+            initial_m,
+            m0,
+            Vector3::new(0.0, 0.0, DEFAULT_MRI_BZ),
+            0.0,
+        );
+
         Self {
             simulator,
             solver,
@@ -180,6 +190,8 @@ impl Default for MriTool {
             callout_manager,
             pulse_config,
             pulse_workspace: MriPulseWorkspace::default(),
+            latest_sonification,
+            fault_notified: false,
             active_challenge: None,
             theory: MriBlochTheory,
         }
@@ -237,6 +249,8 @@ impl MriTool {
         if self.active_challenge.is_none() {
             self.pulse_config = RfPulseConfig::default();
         }
+        self.pulse_workspace.playhead_playing = false;
+        self.fault_notified = false;
         let params = Arc::clone(&self.params);
         let m0 = self.simulator.m0;
         self.worker
@@ -254,6 +268,7 @@ impl MriTool {
                 initial_m,
             );
         }
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     pub(super) fn apply_worker_state(&mut self, target_state: SimWorkerState) {

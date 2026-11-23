@@ -8,10 +8,11 @@ use super::counterfactual::{
 };
 use super::sculpt::overlay_cell_mask_colors;
 use super::MorphogenesisTool;
+use crate::accessibility::{announce_status, AccessibleHoverText};
 use crate::app::ThemeMode;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimulationRunner};
 use crate::framework::BranchControlAction;
-use eframe::egui::ColorImage;
+use eframe::egui::{self, ColorImage};
 
 impl MorphogenesisTool {
     /// Returns `true` when a counterfactual shadow twin is currently active.
@@ -130,11 +131,11 @@ impl MorphogenesisTool {
         else {
             return;
         };
-        if data.step_count > self.local_runner.step_count
-            && data.u_b.len() == self.width * self.height
+        if data.step_count != self.local_runner.step_count
+            && data.u_data.len() == self.width * self.height
         {
             self.local_runner.step_count = data.step_count;
-            active_morphogen_slice_mut(&mut self.local_runner.system).copy_from_slice(&data.u_b);
+            active_morphogen_slice_mut(&mut self.local_runner.system).copy_from_slice(&data.u_data);
             if data.mask_roles.is_empty() {
                 self.local_runner.system.diffusion.mask.clear();
             } else {
@@ -149,7 +150,7 @@ impl MorphogenesisTool {
                 if ua.len() == self.width * self.height {
                     active_morphogen_slice_mut(&mut twin.system_a).copy_from_slice(ua);
                     let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
-                    twin.observe_lockstep(data.step_count, dt, &data.u_b);
+                    twin.observe_lockstep(data.step_count, dt, &data.u_data);
                 }
             }
             if let Some(ref div) = data.divergence {
@@ -252,7 +253,7 @@ impl MorphogenesisTool {
                 .filter(|d| d.step_count >= self.local_runner.step_count)
             {
                 let mut img = render_morphogenesis_heatmap(
-                    &data.u_b,
+                    &data.u_data,
                     data.u_a.as_deref(),
                     self.width,
                     self.height,
@@ -345,5 +346,26 @@ impl MorphogenesisTool {
             }
         }
         Ok(())
+    }
+
+    pub(super) fn draw_heatmap_mode_selector(&mut self, ui: &mut egui::Ui) {
+        if !self.is_forked() {
+            return;
+        }
+        ui.separator();
+        ui.label("Shadow Twin Heatmap:");
+        let active_mode = self.heatmap_mode();
+        ui.horizontal_wrapped(|ui| {
+            for mode in MorphogenesisHeatmapMode::ALL {
+                if ui
+                    .selectable_label(active_mode == mode, mode.label())
+                    .accessible_hover_text("Switch counterfactual Turing spatial heatmap mode")
+                    .clicked()
+                {
+                    self.set_heatmap_mode(mode);
+                    announce_status(&format!("Heatmap mode set to {}", mode.label()));
+                }
+            }
+        });
     }
 }

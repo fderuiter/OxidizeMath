@@ -7,8 +7,15 @@ use super::counterfactual::{
 };
 use super::runner::MriRunner;
 use super::tool::MriTool;
+use crate::accessibility::{announce_status, AccessibleHoverText};
+use crate::app::SemanticPalette;
 use crate::async_sim::SimCommand;
-use crate::framework::BranchControlAction;
+use crate::framework::{
+    branch_a_ghost_line, branch_b_solid_line, fork_marker_callout, fork_marker_vline,
+    BranchControlAction,
+};
+use eframe::egui;
+use egui_plot::{Line, PlotPoint};
 use math_explorer::physics::mri::bloch::BlochSimulator;
 use math_explorer::pure_math::analysis::ode::RungeKutta4;
 use nalgebra::Vector3;
@@ -220,6 +227,8 @@ impl MriTool {
             history,
             max_history: self.max_history,
             twin: self.twin.clone(),
+            step_count: self.current_step_index(),
+            rng: oxidize_core::rng::OxidizeRng::new(0x4D52_495F_424C_4F43),
         };
         self.worker = crate::async_sim::BackgroundWorker::new(runner);
     }
@@ -253,5 +262,66 @@ impl MriTool {
     #[cfg(test)]
     pub fn retry(&mut self) {
         self.restart_worker();
+    }
+
+    pub(super) fn render_refocus_pulse_button(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let can_pulse = self.current_step_index() > 0 || self.twin.is_some();
+        let resp = ui
+            .add_enabled(can_pulse, egui::Button::new("🧲 180° Refocusing Pulse"))
+            .accessible_hover_text(
+                "Apply a 180° RF spin-echo refocusing pulse to Branch B at the current decay step",
+            )
+            .on_disabled_hover_text(
+                "Step or Play past t = 0 to apply a mid-decay 180° refocusing pulse",
+            );
+        if resp.clicked() && self.apply_refocus_pulse_180() {
+            announce_status("Applied 180 degree spin-echo refocusing pulse on Branch B");
+            ctx.request_repaint();
+        }
+    }
+}
+
+pub(super) fn render_mri_plot_curves<'a>(
+    twin: Option<&MriTwinState>,
+    mx_points: &'a [PlotPoint],
+    my_points: &'a [PlotPoint],
+    mz_points: &'a [PlotPoint],
+    plot_ui: &mut egui_plot::PlotUi<'a>,
+    palette: &SemanticPalette,
+) {
+    let to_vec = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+    if let Some(twin) = twin {
+        let mxa: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.x]).collect();
+        let mya: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.y]).collect();
+        let mza: Vec<[f64; 2]> = twin.history_a.iter().map(|(t, m)| [*t, m.z]).collect();
+        plot_ui.line(branch_a_ghost_line("Mx (Branch A)", mxa, palette.axis_x));
+        plot_ui.line(branch_a_ghost_line("My (Branch A)", mya, palette.axis_y));
+        plot_ui.line(branch_a_ghost_line("Mz (Branch A)", mza, palette.axis_z));
+        plot_ui.line(branch_b_solid_line(
+            "Mx (Branch B)",
+            to_vec(mx_points),
+            palette.axis_x,
+        ));
+        plot_ui.line(branch_b_solid_line(
+            "My (Branch B)",
+            to_vec(my_points),
+            palette.axis_y,
+        ));
+        plot_ui.line(branch_b_solid_line(
+            "Mz (Branch B)",
+            to_vec(mz_points),
+            palette.axis_z,
+        ));
+        let fork_t = twin.tracker.fork_time();
+        plot_ui.vline(fork_marker_vline(palette, fork_t));
+        plot_ui.callout(fork_marker_callout(
+            [fork_t, twin.fork_m.x],
+            fork_t,
+            palette,
+        ));
+    } else {
+        plot_ui.line(Line::new("Mx (Transverse)", mx_points).color(palette.axis_x));
+        plot_ui.line(Line::new("My (Transverse)", my_points).color(palette.axis_y));
+        plot_ui.line(Line::new("Mz (Longitudinal)", mz_points).color(palette.axis_z));
     }
 }

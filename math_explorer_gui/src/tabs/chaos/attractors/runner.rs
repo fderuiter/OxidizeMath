@@ -2,7 +2,9 @@
 
 use super::flow::{AttractorMode, CompiledFlowJob};
 use super::serde_vec3;
-use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::async_sim::{
+    CheckpointParams, SimCommand, SimulationRunner, StateSnapshot, TimeTravelCheckpoint,
+};
 use crate::framework::recovery::DiagnosticReport;
 use crate::tabs::geometry_topology::vietoris_rips::{
     handoff::{publish_live_attractor_landmarks, ChaosLandmarkHandoff},
@@ -11,6 +13,7 @@ use crate::tabs::geometry_topology::vietoris_rips::{
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
 use nalgebra::Vector3;
+use oxidize_core::rng::OxidizeRng;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -59,6 +62,7 @@ pub struct AttractorRunner {
     pub step_count: usize,
     pub execution_state: SolverExecutionState,
     pub twin: Option<super::AttractorTwinState>,
+    pub rng: OxidizeRng,
 }
 
 impl AttractorRunner {
@@ -79,6 +83,7 @@ impl AttractorRunner {
             step_count: 0,
             execution_state: SolverExecutionState::Ready,
             twin: None,
+            rng: OxidizeRng::new(0x4C4F_5245_4E5A_3139),
         }
     }
 
@@ -119,7 +124,7 @@ impl AttractorRunner {
         true
     }
 
-    fn advance_tick(
+    pub(super) fn advance_tick(
         &mut self,
         dt: f64,
         max_points: usize,
@@ -178,6 +183,23 @@ impl AttractorRunner {
         }
         true
     }
+
+    fn publish_live_landmarks(&self, dt: f64) {
+        let pts: Vec<Point3D> = self
+            .history
+            .iter()
+            .map(|v| Point3D::new(v.x, v.y, v.z))
+            .collect();
+        if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
+            publish_live_attractor_landmarks(ChaosLandmarkHandoff {
+                points: landmarks,
+                sigma: self.system.sigma,
+                rho: self.system.rho,
+                beta: self.system.beta,
+                dt,
+            });
+        }
+    }
 }
 
 impl SimulationRunner for AttractorRunner {
@@ -207,6 +229,7 @@ impl SimulationRunner for AttractorRunner {
                 self.step_count = 0;
                 self.twin = None;
                 self.execution_state = SolverExecutionState::Ready;
+                self.rng = OxidizeRng::new(0x4C4F_5245_4E5A_3139);
             }
             SimCommand::SetSpeed(speed) => {
                 self.params
@@ -273,20 +296,7 @@ impl SimulationRunner for AttractorRunner {
             }
         }
         if self.history.len() >= 16 && self.step_count % 15 < simulation_speed {
-            let pts: Vec<Point3D> = self
-                .history
-                .iter()
-                .map(|v| Point3D::new(v.x, v.y, v.z))
-                .collect();
-            if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
-                publish_live_attractor_landmarks(ChaosLandmarkHandoff {
-                    points: landmarks,
-                    sigma: self.system.sigma,
-                    rho: self.system.rho,
-                    beta: self.system.beta,
-                    dt,
-                });
-            }
+            self.publish_live_landmarks(dt);
         }
     }
 
@@ -373,6 +383,57 @@ impl SimulationRunner for AttractorRunner {
             ))
         } else {
             None
+        }
+    }
+    fn checkpoint_stride(&self) -> Option<usize> {
+        Some(1)
+    }
+
+    fn current_step(&self) -> usize {
+        self.step_count
+    }
+
+    fn capture_active_params(&self) -> Option<CheckpointParams> {
+        self.capture_active_checkpoint_params()
+    }
+
+    fn capture_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
+        self.capture_time_travel_checkpoint()
+    }
+
+    fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
+        self.restore_time_travel_checkpoint(checkpoint);
+    }
+
+    fn rebuild_history(&mut self, front: &[TimeTravelCheckpoint], back: &[TimeTravelCheckpoint]) {
+        self.rebuild_time_travel_history(front, back);
+    }
+
+    fn replay_step(&mut self, params: &CheckpointParams) {
+        self.replay_time_travel_step(params);
+    }
+
+    fn running_substeps_per_tick(&self) -> usize {
+        self.params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .simulation_speed
+            .clamp(1, MAX_SIMULATION_SPEED)
+    }
+
+    fn step_running_substep(&mut self) {
+        if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            return;
+        }
+        let (dt, _, max_points, mode, custom_flow) = self.sync_params();
+        if self.execution_state == SolverExecutionState::Ready {
+            self.execution_state = SolverExecutionState::Running;
+        }
+        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), true)
+            && self.history.len() >= 16
+            && self.step_count.is_multiple_of(15)
+        {
+            self.publish_live_landmarks(dt);
         }
     }
 }

@@ -5,7 +5,6 @@ use super::counterfactual::{
 };
 use super::sculpt::{draw_morpho_sculpt_controls, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
-use crate::accessibility::{announce_status, AccessibleHoverText};
 use crate::app::ThemeMode;
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
@@ -36,11 +35,11 @@ impl MorphogenesisTool {
                 .as_ref()
                 .and_then(|d| d.downcast_ref::<MorphogenesisSnapshotData>())
                 .filter(|d| {
-                    d.u_b.len() == num_pixels && d.step_count >= self.local_runner.step_count
+                    d.u_data.len() == num_pixels && d.step_count >= self.local_runner.step_count
                 })
             {
                 let mut img = render_morphogenesis_heatmap(
-                    &data.u_b,
+                    &data.u_data,
                     data.u_a.as_deref(),
                     self.width,
                     self.height,
@@ -205,27 +204,6 @@ impl MorphogenesisTool {
         }
     }
 
-    fn draw_heatmap_mode_selector(&mut self, ui: &mut egui::Ui) {
-        if !self.is_forked() {
-            return;
-        }
-        ui.separator();
-        ui.label("Shadow Twin Heatmap:");
-        let active_mode = self.heatmap_mode();
-        ui.horizontal_wrapped(|ui| {
-            for mode in MorphogenesisHeatmapMode::ALL {
-                if ui
-                    .selectable_label(active_mode == mode, mode.label())
-                    .accessible_hover_text("Switch counterfactual Turing spatial heatmap mode")
-                    .clicked()
-                {
-                    self.set_heatmap_mode(mode);
-                    announce_status(&format!("Heatmap mode set to {}", mode.label()));
-                }
-            }
-        });
-    }
-
     fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
         let mode = self
             .kinetics_state
@@ -274,7 +252,7 @@ impl MorphogenesisTool {
         if let Some(snapshot) = self.worker.latest_snapshot() {
             if let Some(u_data) = snapshot.structured_data.as_ref().and_then(|d| {
                 d.downcast_ref::<MorphogenesisSnapshotData>()
-                    .map(|s| s.u_b.as_slice())
+                    .map(|s| s.u_data.as_slice())
                     .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
             }) {
                 let splat_count =
@@ -317,7 +295,17 @@ impl MorphogenesisTool {
         }
     }
 
-    fn handle_playback_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
+    fn draw_playback_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let Some(action) = PlaybackTransport::from_worker_state(
+            "morphogenesis_transport",
+            "Morphogenesis",
+            self.worker.state(),
+        )
+        .timeline(self.worker.timeline_metadata())
+        .can_reset(true)
+        .show(ui) else {
+            return;
+        };
         match action {
             PlaybackAction::Play => {
                 let _ = self.worker.send_command(SimCommand::Start);
@@ -330,6 +318,16 @@ impl MorphogenesisTool {
                 self.sync_branch_engine_from_local();
                 let _ = self.worker.send_command(SimCommand::Step(1));
                 self.dirty = true;
+            }
+            PlaybackAction::StepBack => {
+                let _ = self.local_runner.clear_fork();
+                self.branch_engine.clear();
+                let _ = self.worker.send_command(SimCommand::StepBack(1));
+            }
+            PlaybackAction::ScrubTo(step) => {
+                let _ = self.local_runner.clear_fork();
+                self.branch_engine.clear();
+                let _ = self.worker.send_command(SimCommand::SeekStep(step));
             }
             PlaybackAction::Reset => {
                 self.reset();
@@ -350,20 +348,15 @@ impl MorphogenesisTool {
             ui.separator();
             self.draw_parameter_sliders(ui);
             ui.separator();
+            self.draw_playback_transport(ui, &ctx);
 
-            if let Some(action) = PlaybackTransport::from_worker_state(
-                "morphogenesis_transport",
-                "Morphogenesis",
-                self.worker.state(),
-            )
-            .can_reset(true)
-            .show(ui)
-            {
-                self.handle_playback_action(action, &ctx);
-            }
-
-            let can_fork =
-                self.local_runner.step_count > 0 && FiniteStateGuard::is_finite_state(self);
+            let current_step = self
+                .worker
+                .timeline_metadata()
+                .map_or(self.local_runner.step_count, |m| {
+                    m.current_step.max(self.local_runner.step_count)
+                });
+            let can_fork = current_step > 0 && FiniteStateGuard::is_finite_state(self);
             let is_forked = self.is_forked();
             if let Some(cf_action) =
                 CounterfactualTransport::new(&mut self.branch_engine, can_fork, is_forked).show(ui)
