@@ -18,6 +18,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     .clone();
                 model.apply_compiled_formula(payload.as_ref(), &params);
             }
+            if M::supports_spatial_brush() {
+                let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+                if !sculpt.is_empty() {
+                    model.apply_sculpt_payload(&sculpt, &params);
+                }
+            }
             for _ in 0..self.steps_per_frame.max(1) {
                 model.step(&params);
             }
@@ -27,6 +33,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
     pub(super) fn compute_unified_state_revision(&self) -> u64 {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
         let mut h = std::collections::hash_map::DefaultHasher::new();
         for (key, _) in &self.param_metadata {
             key.hash(&mut h);
@@ -34,6 +41,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 val.to_bits().hash(&mut h);
             }
         }
+        sculpt.hash_into(&mut h);
         if M::supports_sonification() {
             self.audio_settings.gain.to_bits().hash(&mut h);
             self.audio_settings.pitch_scale.to_bits().hash(&mut h);
@@ -93,6 +101,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 .unwrap_or_else(|e| e.into_inner())
                 .clone();
             model.apply_compiled_formula(payload.as_ref(), &params);
+        }
+        if M::supports_spatial_brush() {
+            let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+            if !sculpt.is_empty() {
+                model.apply_sculpt_payload(&sculpt, &params);
+            }
         }
         let sub_steps = self.steps_per_frame.clamp(1, 20);
         let mut out = Vec::with_capacity(count);

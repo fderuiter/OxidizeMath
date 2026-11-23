@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::sculpt::{validate_rle_mask_entries, validate_sparse_potential_entries};
 use super::{CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
 use crate::framework::{InteractiveTool, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
 use std::collections::{BTreeMap, HashMap};
@@ -20,6 +21,10 @@ struct UnifiedExtendedState {
         skip_serializing_if = "crate::audio::AcousticSettings::is_default"
     )]
     audio: crate::audio::AcousticSettings,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    rle_mask: Vec<[u32; 2]>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    sparse_potential: Vec<(u16, f64)>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     atlas_visible: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -100,19 +105,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         if formula_ext.is_some() || atlas_ext.is_some() {
             return self.serialize_extended_state(&params, formula_ext, atlas_ext);
         }
-        let mut sorted: BTreeMap<String, f64> =
-            params.iter().map(|(k, &v)| (k.clone(), v)).collect();
-        if M::supports_sonification() && !self.audio_settings.is_default() {
-            sorted.insert(
-                "audio_gain".to_string(),
-                f64::from(self.audio_settings.gain),
-            );
-            sorted.insert(
-                "audio_pitch_scale".to_string(),
-                f64::from(self.audio_settings.pitch_scale),
-            );
-        }
-        serde_json::to_string(&sorted).ok()
+        drop(params);
+        self.serialize_unified_state()
     }
 
     fn serialize_extended_state(
@@ -121,6 +115,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         formula_ext: Option<(bool, String, BTreeMap<String, f64>)>,
         atlas_ext: Option<(bool, [String; 2])>,
     ) -> Option<String> {
+        let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
         let sorted_params = params.iter().map(|(k, &v)| (k.clone(), v)).collect();
         let (custom_formula_enabled, custom_expr, custom_params) = match formula_ext {
             Some((en, expr, cp)) => (en, Some(expr), cp),
@@ -141,6 +136,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             custom_expr,
             custom_params,
             audio,
+            rle_mask: sculpt.rle_mask.clone(),
+            sparse_potential: sculpt.sparse_potential.clone(),
             atlas_visible,
             atlas_axes,
         })
@@ -171,22 +168,29 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         if let Ok(ext) = serde_json::from_str::<UnifiedExtendedState>(state) {
             return self.apply_extended_state(ext);
         }
+        self.deserialize_unified_state(state)
+    }
 
-        let mut params: HashMap<String, f64> = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
-        let next_audio = self.extract_audio_from_map(&mut params)?;
-        self.validate_param_map(&params)?;
-        self.apply_parsed_atlas_state(None)?;
-        {
-            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (key, value) in params {
-                guard.insert(key, value);
+    fn validate_sculpt_for_extended_state(
+        &self,
+        rle_mask: &[[u32; 2]],
+        sparse_potential: &[(u16, f64)],
+    ) -> Result<(), String> {
+        if !rle_mask.is_empty() {
+            if !(M::supports_spatial_brush() && M::is_raster_model()) {
+                return Err(format!("{} does not support rle_mask state", M::name()));
             }
+            validate_rle_mask_entries(rle_mask)?;
         }
-        self.audio_settings = next_audio;
-        self.reset_formula_bar_to_default();
-        self.texture = None;
-        self.reset_simulation(None);
+        if !sparse_potential.is_empty() {
+            if !(M::supports_spatial_brush() && !M::is_raster_model()) {
+                return Err(format!(
+                    "{} does not support sparse_potential state",
+                    M::name()
+                ));
+            }
+            validate_sparse_potential_entries(sparse_potential, M::name())?;
+        }
         Ok(())
     }
 
@@ -208,8 +212,13 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             &ext.custom_params,
             ext.custom_formula_enabled,
         );
+        {
+            let mut s_guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
+            s_guard.rle_mask = ext.rle_mask;
+            s_guard.sparse_potential = ext.sparse_potential;
+        }
         self.texture = None;
-        self.reset_simulation(None);
+        self.respawn_preserving_sculpt(None);
         Ok(())
     }
 
@@ -235,7 +244,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 M::name()
             ));
         }
-        Ok(())
+        self.validate_sculpt_for_extended_state(&ext.rle_mask, &ext.sparse_potential)
     }
 
     fn apply_extended_formula(
@@ -276,7 +285,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Ok(next_audio)
     }
 
-    fn reset_formula_bar_to_default(&mut self) {
+    pub(super) fn reset_formula_bar_to_default(&mut self) {
         self.custom_formula_enabled = false;
         if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_mut()) {
             bar.set_expression(spec.default_expr);
@@ -285,7 +294,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
-    fn extract_audio_from_map(
+    pub(super) fn extract_audio_from_map(
         &self,
         params: &mut HashMap<String, f64>,
     ) -> Result<crate::audio::AcousticSettings, String> {

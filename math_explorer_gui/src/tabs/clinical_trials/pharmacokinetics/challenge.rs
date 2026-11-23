@@ -3,9 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::model::project_plot_y;
-use super::{
-    AbsorptionMode, EntityMode, PharmacokineticsTool, ReleaseMode, MAX_DOSES,
-};
+use super::{AbsorptionMode, EntityMode, PharmacokineticsTool, ReleaseMode, MAX_DOSES};
 use crate::framework::{CalloutManager, ChallengeEvaluation, ChallengeMetadata, InteractiveTool};
 use math_explorer::applied::pharmacokinetics::{
     half_life, solve_ka, t_max, BatemanModel, PKParameters, PharmacokineticModel,
@@ -284,8 +282,8 @@ impl PharmacokineticsTool {
             } else {
                 12.0
             };
-            self.n_doses = ((PK_HORIZON_HOURS / self.interval_hours).floor() as usize + 1)
-                .clamp(1, MAX_DOSES);
+            self.n_doses =
+                ((PK_HORIZON_HOURS / self.interval_hours).floor() as usize + 1).clamp(1, MAX_DOSES);
         }
     }
 

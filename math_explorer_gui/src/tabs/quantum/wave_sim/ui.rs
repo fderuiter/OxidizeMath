@@ -2,9 +2,9 @@
 
 use super::persistence::truncate_utf8_bytes;
 use super::presets::{
-    wave_parameter_label, WavePotentialPreset, DT_MAX, DT_MIN, K0_MAX, K0_MIN,
-    MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME, POTENTIAL_DISPLAY_SCALE, SIGMA_MAX, SIGMA_MIN,
-    V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN, X0_MAX, X0_MIN,
+    wave_parameter_label, WavePotentialPreset, DT_MAX, DT_MIN, GRID_X_MAX, GRID_X_MIN, K0_MAX,
+    K0_MIN, MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME, POTENTIAL_DISPLAY_SCALE, SIGMA_MAX,
+    SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN, X0_MAX, X0_MIN,
 };
 use super::runner::WaveData;
 use super::WaveSimulatorTool;
@@ -13,7 +13,9 @@ use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::{SimCommand, SimWorkerState, StateSnapshot};
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    BrushMode, BrushStroke, PlaybackAction, PlaybackTransport, SpatialBrushKit,
+};
 use eframe::egui;
 use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
 
@@ -32,6 +34,8 @@ impl WaveSimulatorTool {
                     self.draw_preset_and_sandbox(ui, &ctx);
                     ui.separator();
                     self.draw_wavepacket_and_barrier_sliders(ui, &ctx);
+                    ui.separator();
+                    self.draw_sculpt_controls(ui, &ctx);
                     ui.separator();
                     let is_paused = !matches!(
                         self.worker.state(),
@@ -124,6 +128,7 @@ impl WaveSimulatorTool {
                         .selectable_value(&mut self.preset, candidate, candidate.label())
                         .changed()
                     {
+                        self.sparse_potential.clear();
                         reset_needed = true;
                     }
                 }
@@ -286,19 +291,25 @@ impl WaveSimulatorTool {
             None => "Pending transit...".to_string(),
         };
         crate::reflective_ui::render_copyable_metric(ui, "Latched Scatter T", &scatter_text);
+        ui.small(format!("Unitary Norm ||ψ||²: {:.6}", wave_data.norm_sq));
     }
 
-    pub(super) fn draw_central_panel(&self, parent_ui: &mut egui::Ui) {
+    pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui) {
+        let ctx = parent_ui.ctx().clone();
+        let mut pending_strokes = Vec::new();
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            let Some(wave_data) = self.latest_wave_data() else {
+            let Some(wave_data) = self.latest_wave_data().cloned() else {
                 render_empty_plot_guidance(
                     ui,
                     "Wavepacket ready — click ▶ Play in the side panel to evolve ψ(x, t).",
                 );
                 return;
             };
-            render_wave_plot(ui, wave_data);
+            pending_strokes = render_wave_plot(ui, &wave_data, &mut self.brush_kit);
         });
+        for stroke in pending_strokes {
+            self.apply_ui_brush_stroke(stroke, Some(&ctx));
+        }
     }
 
     pub(super) fn latest_wave_data(&self) -> Option<&WaveData> {
@@ -326,12 +337,13 @@ fn draw_bounded_slider(
     resp.changed()
 }
 
-fn render_wave_plot(ui: &mut egui::Ui, wave_data: &WaveData) {
-    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-    let psi_color = palette.series_color(0);
-    let potential_color = palette.series_color(1);
-    let energy_color = palette.series_color(2);
-
+fn draw_wave_plot_header(
+    ui: &mut egui::Ui,
+    wave_data: &WaveData,
+    psi_color: egui::Color32,
+    potential_color: egui::Color32,
+    energy_color: egui::Color32,
+) {
     ui.horizontal_wrapped(|ui| {
         ui.label(format!("Time: {:.3}", wave_data.time));
         ui.separator();
@@ -342,6 +354,18 @@ fn render_wave_plot(ui: &mut egui::Ui, wave_data: &WaveData) {
             format!("┅ E0 = {:.2} (scaled)", wave_data.kinetic_energy),
         );
     });
+}
+
+fn render_wave_plot(
+    ui: &mut egui::Ui,
+    wave_data: &WaveData,
+    brush_kit: &mut SpatialBrushKit,
+) -> Vec<BrushStroke> {
+    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+    let psi_color = palette.series_color(0);
+    let potential_color = palette.series_color(1);
+    let energy_color = palette.series_color(2);
+    draw_wave_plot_header(ui, wave_data, psi_color, potential_color, energy_color);
 
     let len = wave_data
         .x_axis
@@ -358,12 +382,16 @@ fn render_wave_plot(ui: &mut egui::Ui, wave_data: &WaveData) {
     let x_start = wave_data.x_axis.first().copied().unwrap_or(-5.0);
     let x_end = wave_data.x_axis.last().copied().unwrap_or(5.0);
     let e0_scaled = wave_data.kinetic_energy * POTENTIAL_DISPLAY_SCALE;
+    let allow_pan = !brush_kit.is_sculpting();
+    let mut strokes = Vec::new();
 
     Plot::new("quantum_plot")
         .legend(Legend::default())
         .x_axis_label("Position (x)")
         .y_axis_label("Probability Density |ψ|² / Scaled Energy")
         .view_aspect(2.0)
+        .allow_drag(allow_pan)
+        .allow_zoom(allow_pan)
         .show(ui, |plot_ui| {
             plot_ui.line(
                 Line::new("Probability |ψ(x, t)|²", PlotPoints::new(psi_points))
@@ -386,5 +414,12 @@ fn render_wave_plot(ui: &mut egui::Ui, wave_data: &WaveData) {
                 .style(LineStyle::Dashed { length: 6.0_f32 })
                 .color(energy_color),
             );
+            strokes = brush_kit.sample_plot(
+                plot_ui,
+                [GRID_X_MIN, -0.5],
+                [GRID_X_MAX, 2.5],
+                Some(BrushMode::Erase),
+            );
         });
+    strokes
 }
