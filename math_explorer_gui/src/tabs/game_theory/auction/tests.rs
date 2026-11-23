@@ -1,9 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::AuctionCartographer;
-use super::challenge::{
-    CHALLENGE_FIRST_PRICE_SHADING, CHALLENGE_MYERSON_WELFARE_RESERVE,
-};
+use super::challenge::{CHALLENGE_FIRST_PRICE_SHADING, CHALLENGE_MYERSON_WELFARE_RESERVE};
 use super::math::{
     AuctionDistEval, AuctionDistributionKind, AuctionEvalInputs, AuctionEvalWorkspace,
     AuctionRuleMode,
@@ -95,16 +93,19 @@ fn test_snapshot_manager_branching_and_state_roundtrip() {
     let mut tool = MyersonAuctionTool::default();
     assert!(tool.save_state().expect("default serializes").len() <= 4096);
     let series = tool.current_trace_series();
-    assert!(tool.snapshot_manager.add_snapshot(
-        "Branch 1",
-        tool.param_summary(),
-        series,
-    ));
+    assert!(tool
+        .snapshot_manager
+        .add_snapshot("Branch 1", tool.param_summary(), series,));
     tool.n_bidders = 5;
     tool.record_history_and_recalculate();
     assert_eq!(tool.snapshot_manager.len(), 1);
     assert_eq!(tool.snapshot_manager.history_len(), 1);
-    assert!(tool.save_recovery_state().expect("recovery serializes").len() <= 4096);
+    assert!(
+        tool.save_recovery_state()
+            .expect("recovery serializes")
+            .len()
+            <= 4096
+    );
 
     let json = tool.save_state().expect("serializes");
     assert!(tool.state_bounds().validate_json(&json).is_ok());
@@ -122,14 +123,8 @@ fn test_auction_cartographer_and_workspace_zero_allocations() {
 
     let tool = MyersonAuctionTool::default();
     let theory = tool.theory_parameters();
-    let dist = AuctionDistEval::from_params(
-        AuctionDistributionKind::Uniform,
-        0.0,
-        100.0,
-        0.1,
-        2.0,
-        2.0,
-    );
+    let dist =
+        AuctionDistEval::from_params(AuctionDistributionKind::Uniform, 0.0, 100.0, 0.1, 2.0, 2.0);
     let cartographer = AuctionCartographer::new(
         &theory,
         ("reserve_price", "n_bidders"),
@@ -167,14 +162,8 @@ fn test_auction_cartographer_and_workspace_zero_allocations() {
 fn test_auction_high_contrast_wcag_and_parameter_clamping() {
     let tool = MyersonAuctionTool::default();
     let theory = tool.theory_parameters();
-    let dist = AuctionDistEval::from_params(
-        AuctionDistributionKind::Uniform,
-        0.0,
-        100.0,
-        0.1,
-        2.0,
-        2.0,
-    );
+    let dist =
+        AuctionDistEval::from_params(AuctionDistributionKind::Uniform, 0.0, 100.0, 0.1, 2.0, 2.0);
     let cartographer = AuctionCartographer::new(
         &theory,
         ("reserve_price", "n_bidders"),
@@ -187,7 +176,11 @@ fn test_auction_high_contrast_wcag_and_parameter_clamping() {
         let hc = cartographer.color_for_cell(cell, true);
         let srgb_lum = |u: u8| {
             let x = f64::from(u) / 255.0;
-            if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) }
+            if x <= 0.04045 {
+                x / 12.92
+            } else {
+                ((x + 0.055) / 1.055).powf(2.4)
+            }
         };
         let lum = 0.2126 * srgb_lum(hc.r()) + 0.7152 * srgb_lum(hc.g()) + 0.0722 * srgb_lum(hc.b());
         assert!(

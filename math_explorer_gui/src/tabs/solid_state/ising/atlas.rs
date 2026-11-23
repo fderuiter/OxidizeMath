@@ -104,7 +104,9 @@ impl IsingAtlasRegime {
             match self {
                 Self::DisorderedOrDefectorFreeze => "PD Defector Freeze (2R + 2S < T + 3P)",
                 Self::CriticalOrBistable => "Stag-Hunt Coordination (T ≤ R, S < P)",
-                Self::FerroOrSpatialReciprocity => "PD Spatial Reciprocity Wedge (2R + 2S ≥ T + 3P)",
+                Self::FerroOrSpatialReciprocity => {
+                    "PD Spatial Reciprocity Wedge (2R + 2S ≥ T + 3P)"
+                }
                 Self::AntiferroOrCoexistence => "Harmony / Snowdrift Coexistence (S ≥ P)",
             }
         } else {
@@ -237,7 +239,8 @@ fn eval_spatial_dilemma_cell(
     if temptation <= reward && sucker >= punishment {
         // Harmony game: cooperation strictly dominates in both 2D and 0D
         let advantage = ((reward - temptation) + (sucker - punishment)).max(0.0);
-        let x_sp = (1.0 / (1.0 + (-2.0 * advantage / temp).clamp(-40.0, 40.0).exp())).clamp(0.5, 1.0);
+        let x_sp =
+            (1.0 / (1.0 + (-2.0 * advantage / temp).clamp(-40.0, 40.0).exp())).clamp(0.5, 1.0);
         return (IsingAtlasRegime::AntiferroOrCoexistence, x_sp, 1.0);
     }
     if temptation > reward && sucker >= punishment {
@@ -269,7 +272,8 @@ fn eval_spatial_dilemma_cell(
         let x_sp = ((0.22 + 0.72 * strength) * thermal_damp).clamp(0.05, 0.96);
         (IsingAtlasRegime::FerroOrSpatialReciprocity, x_sp, 0.0)
     } else {
-        let leak = (0.04 * (cluster_margin / temp.max(0.04)).clamp(-40.0, 0.0).exp()).clamp(0.0, 0.04);
+        let leak =
+            (0.04 * (cluster_margin / temp.max(0.04)).clamp(-40.0, 0.0).exp()).clamp(0.0, 0.04);
         (IsingAtlasRegime::DisorderedOrDefectorFreeze, leak, 0.0)
     }
 }
@@ -406,8 +410,14 @@ impl RegimeCartographer for IsingCartographer {
         }
         if self.axes.y.key == "j_coupling" {
             let x_min = self.axes.x.constraint.min;
-            let tc_neg = self.axes.x.clamp(onsager_critical_temp(self.axes.y.constraint.min));
-            let tc_pos = self.axes.x.clamp(onsager_critical_temp(self.axes.y.constraint.max));
+            let tc_neg = self
+                .axes
+                .x
+                .clamp(onsager_critical_temp(self.axes.y.constraint.min));
+            let tc_pos = self
+                .axes
+                .x
+                .clamp(onsager_critical_temp(self.axes.y.constraint.max));
             Some((
                 "Onsager Tc(J) = 2|J|/ln(1+√2)",
                 vec![
@@ -436,7 +446,10 @@ impl RegimeCartographer for IsingCartographer {
         let (y_min, y_max) = (self.axes.y.constraint.min, self.axes.y.constraint.max);
         let mut out = Vec::with_capacity(2);
         if (y_min..=y_max).contains(&self.punishment) {
-            out.push(("S = P", vec![[x_min, self.punishment], [x_max, self.punishment]]));
+            out.push((
+                "S = P",
+                vec![[x_min, self.punishment], [x_max, self.punishment]],
+            ));
         }
         let offset = 3.0 * self.punishment - 2.0 * self.reward;
         let t_lo = x_min.max(2.0 * y_min - offset);

@@ -242,7 +242,8 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn clamp_parameters(&mut self) -> bool {
-        let fin = |v: f64, lo: f64, hi: f64, d: f64| if v.is_finite() { v.clamp(lo, hi) } else { d };
+        let fin =
+            |v: f64, lo: f64, hi: f64, d: f64| if v.is_finite() { v.clamp(lo, hi) } else { d };
         self.temperature = fin(self.temperature, 1e-3, 10.0, 2.269);
         self.j_coupling = fin(self.j_coupling, -2.0, 2.0, 1.0);
         self.h_field = fin(self.h_field, -2.0, 2.0, 0.0);

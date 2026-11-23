@@ -103,7 +103,8 @@ impl MyersonAuctionTool {
                 let prob_shortfall = (TARGET_MIN_TRADE_PROB - s.trade_probability).max(0.0);
                 let passed = rev_shortfall == 0.0 && prob_shortfall == 0.0;
                 let residual = rev_shortfall + 100.0 * prob_shortfall;
-                let score = (100.0 - 8.0 * rev_shortfall - 350.0 * prob_shortfall).clamp(0.0, 100.0);
+                let score =
+                    (100.0 - 8.0 * rev_shortfall - 350.0 * prob_shortfall).clamp(0.0, 100.0);
                 Some(ChallengeEvaluation::new(
                     score,
                     passed,
@@ -177,7 +178,10 @@ impl MyersonAuctionTool {
                 self.callout_manager.set_auto_callout(
                     "myerson_r_star",
                     [s.optimal_reserve, s.optimal_revenue],
-                    format!("Opt Rev {:.2} @ r*={:.2}", s.optimal_revenue, s.optimal_reserve),
+                    format!(
+                        "Opt Rev {:.2} @ r*={:.2}",
+                        s.optimal_revenue, s.optimal_reserve
+                    ),
                     [18.0, -22.0],
                 );
                 self.callout_manager.set_auto_callout(

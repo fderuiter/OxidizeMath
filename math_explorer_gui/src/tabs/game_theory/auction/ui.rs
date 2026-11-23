@@ -174,10 +174,7 @@ impl MyersonAuctionTool {
                 .changed();
         });
         changed |= ui
-            .add(
-                egui::Slider::new(&mut self.candidate_bid, 0.0..=v_max)
-                    .text("Candidate Bid b(v)"),
-            )
+            .add(egui::Slider::new(&mut self.candidate_bid, 0.0..=v_max).text("Candidate Bid b(v)"))
             .changed();
         ui.horizontal_wrapped(|ui| {
             let eq_lbl = format!("Snap to b*(v) = {:.2}", self.summary.equilibrium_bid);
@@ -201,13 +198,15 @@ impl MyersonAuctionTool {
         changed
     }
 
-    fn render_equilibrium_readouts(&self, ui: &mut egui::Ui) {
+    fn render_equilibrium_badge(&self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         let s = &self.summary;
         let (eq_col, eq_txt) = if s.is_equilibrium_fixed_point {
             (
                 palette.success,
-                format!("✓ Bayes-Nash Fixed Point Verified (|b - b*| ≤ {SHADING_FIXED_POINT_TOL:.2})"),
+                format!(
+                    "✓ Bayes-Nash Fixed Point Verified (|b - b*| ≤ {SHADING_FIXED_POINT_TOL:.2})"
+                ),
             )
         } else {
             (
@@ -220,17 +219,27 @@ impl MyersonAuctionTool {
             )
         };
         ui.colored_label(eq_col, eq_txt);
+    }
 
+    fn render_equilibrium_readouts(&self, ui: &mut egui::Ui) {
+        self.render_equilibrium_badge(ui);
+        let s = &self.summary;
         let eff_pct = if s.efficient_welfare > 1e-9 {
             100.0 * (s.social_welfare / s.efficient_welfare).clamp(0.0, 1.0)
         } else {
             100.0
         };
         let rows = [
-            ("Myerson Optimal Reserve r*", format!("{:.4}", s.optimal_reserve)),
+            (
+                "Myerson Optimal Reserve r*",
+                format!("{:.4}", s.optimal_reserve),
+            ),
             (
                 "Expected Seller Revenue R(r)",
-                format!("{:.4} (Optimal: {:.4})", s.expected_revenue, s.optimal_revenue),
+                format!(
+                    "{:.4} (Optimal: {:.4})",
+                    s.expected_revenue, s.optimal_revenue
+                ),
             ),
             (
                 "Monte Carlo Optimal Revenue",
@@ -298,7 +307,11 @@ impl MyersonAuctionTool {
             });
     }
 
-    fn draw_active_view_curves(&self, plot_ui: &mut egui_plot::PlotUi<'_>, palette: &SemanticPalette) {
+    fn draw_active_view_curves(
+        &self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        palette: &SemanticPalette,
+    ) {
         match self.plot_view {
             AuctionPlotView::VirtualValuation => self.draw_jv_view(plot_ui, palette),
             AuctionPlotView::BidFunctions => self.draw_bid_shading_view(plot_ui, palette),
@@ -318,9 +331,12 @@ impl MyersonAuctionTool {
             );
         }
         plot_ui.line(
-            Line::new("Virtual Valuation J(v)", PlotPoints::from(self.jv_points.clone()))
-                .color(palette.series_color(0))
-                .width(2.4_f32),
+            Line::new(
+                "Virtual Valuation J(v)",
+                PlotPoints::from(self.jv_points.clone()),
+            )
+            .color(palette.series_color(0))
+            .width(2.4_f32),
         );
         plot_ui.hline(HLine::new("Zero Threshold J = 0", 0.0).color(palette.warning));
         plot_ui.vline(
@@ -331,7 +347,11 @@ impl MyersonAuctionTool {
         plot_ui.vline(VLine::new("Active Reserve r", self.reserve_price).color(palette.info));
     }
 
-    fn draw_bid_shading_view(&self, plot_ui: &mut egui_plot::PlotUi<'_>, palette: &SemanticPalette) {
+    fn draw_bid_shading_view(
+        &self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        palette: &SemanticPalette,
+    ) {
         plot_ui.line(
             Line::new(
                 "Second-Price Truthful b(v) = v",
@@ -356,9 +376,12 @@ impl MyersonAuctionTool {
             palette.error
         };
         plot_ui.points(
-            Points::new("Candidate Bid (v, b)", vec![[self.focal_valuation, self.candidate_bid]])
-                .radius(5.5_f32)
-                .color(pt_col),
+            Points::new(
+                "Candidate Bid (v, b)",
+                vec![[self.focal_valuation, self.candidate_bid]],
+            )
+            .radius(5.5_f32)
+            .color(pt_col),
         );
     }
 

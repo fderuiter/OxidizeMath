@@ -64,7 +64,13 @@ impl IsingChallengeWorkspace {
             .reset_uniform_with_seed(-1, ISING_NUCLEATION_SEED);
         for s in seeds.iter().take(MAX_DROPLET_SEEDS) {
             let r = s.r.clamp(0, 12);
-            apply_circular_droplet(&mut self.lattice, s.cx, s.cy, r, if s.spin >= 0 { 1 } else { -1 });
+            apply_circular_droplet(
+                &mut self.lattice,
+                s.cx,
+                s.cy,
+                r,
+                if s.spin >= 0 { 1 } else { -1 },
+            );
         }
         let total = (self.lattice.width() * self.lattice.height()).max(1);
         let init_m = self.lattice.magnetization();
@@ -74,8 +80,7 @@ impl IsingChallengeWorkspace {
         self.lattice
             .evolve(NUCLEATION_VERIFY_TRIALS, t_phys, 1.0, 0.35);
         let final_m = self.lattice.magnetization();
-        let final_plus_fraction =
-            (((final_m as f64 / total as f64) + 1.0) * 0.5).clamp(0.0, 1.0);
+        let final_plus_fraction = (((final_m as f64 / total as f64) + 1.0) * 0.5).clamp(0.0, 1.0);
 
         let target_frac = 0.06;
         let within_budget = (1..=NUCLEATION_MAX_SEED_SITES).contains(&initial_plus_sites);
@@ -105,7 +110,13 @@ impl IsingChallengeWorkspace {
             .reset_uniform_with_seed(-1, FERMI_NUCLEATION_SEED);
         for s in seeds.iter().take(MAX_DROPLET_SEEDS) {
             let r = s.r.clamp(0, 12);
-            apply_circular_droplet(&mut self.lattice, s.cx, s.cy, r, if s.spin >= 0 { 1 } else { -1 });
+            apply_circular_droplet(
+                &mut self.lattice,
+                s.cx,
+                s.cy,
+                r,
+                if s.spin >= 0 { 1 } else { -1 },
+            );
         }
         let total = (self.lattice.width() * self.lattice.height()).max(1);
         let init_m = self.lattice.magnetization();
@@ -118,8 +129,7 @@ impl IsingChallengeWorkspace {
             0.0,
         );
         let final_m = self.lattice.magnetization();
-        let final_plus_fraction =
-            (((final_m as f64 / total as f64) + 1.0) * 0.5).clamp(0.0, 1.0);
+        let final_plus_fraction = (((final_m as f64 / total as f64) + 1.0) * 0.5).clamp(0.0, 1.0);
 
         let target_frac = 0.08;
         let within_budget = (1..=NUCLEATION_MAX_SEED_SITES).contains(&initial_plus_sites);
@@ -220,7 +230,9 @@ impl IsingModelTool {
                 self.refresh_challenge_workspace();
                 Ok(())
             }
-            Some(other) => Err(format!("Unsupported challenge '{other}' for IsingModelTool")),
+            Some(other) => Err(format!(
+                "Unsupported challenge '{other}' for IsingModelTool"
+            )),
         }
     }
 
@@ -229,7 +241,9 @@ impl IsingModelTool {
         match self.active_challenge {
             Some(CHALLENGE_ISING_DROPLET_NUCLEATION) => {
                 let shortfall = (0.06 - s.final_plus_fraction).max(0.0);
-                let budget_over = s.initial_plus_sites.saturating_sub(NUCLEATION_MAX_SEED_SITES);
+                let budget_over = s
+                    .initial_plus_sites
+                    .saturating_sub(NUCLEATION_MAX_SEED_SITES);
                 Some(ChallengeEvaluation::new(
                     s.score,
                     s.passed,
@@ -245,7 +259,9 @@ impl IsingModelTool {
             }
             Some(CHALLENGE_FERMI_PD_NUCLEATION) => {
                 let shortfall = (0.08 - s.final_plus_fraction).max(0.0);
-                let budget_over = s.initial_plus_sites.saturating_sub(NUCLEATION_MAX_SEED_SITES);
+                let budget_over = s
+                    .initial_plus_sites
+                    .saturating_sub(NUCLEATION_MAX_SEED_SITES);
                 Some(ChallengeEvaluation::new(
                     s.score,
                     s.passed,

@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub use super::presets::{AuctionDistributionKind, AuctionPlotView, AuctionRuleMode};
 use math_explorer::applied::game_theory::equilibrium::{is_fixed_point, ScalarBestResponse};
 use math_explorer::applied::game_theory::mechanism_design::distribution::{Beta, Exp, Uniform};
 use math_explorer::applied::game_theory::mechanism_design::{
@@ -9,7 +10,6 @@ use math_explorer::applied::game_theory::mechanism_design::{
 };
 use nalgebra::DVector;
 use oxidize_core::rng::OxidizeRng;
-pub use super::presets::{AuctionDistributionKind, AuctionPlotView, AuctionRuleMode};
 
 /// 16-point Gauss-Legendre abscissas on `[-1.0, 1.0]`.
 const GL16_NODES: [f64; 16] = [
@@ -400,7 +400,9 @@ impl AuctionEvalWorkspace {
         let (candidate_utility, equilibrium_utility) = match inp.rule {
             AuctionRuleMode::SecondPrice => {
                 let eq_u = (inp.focal_v - inp.reserve).max(0.0)
-                    * dist.cdf(inp.focal_v).powi((inp.n_bidders.max(1) - 1) as i32);
+                    * dist
+                        .cdf(inp.focal_v)
+                        .powi((inp.n_bidders.max(1) - 1) as i32);
                 (eq_u, eq_u)
             }
             AuctionRuleMode::FirstPrice => (

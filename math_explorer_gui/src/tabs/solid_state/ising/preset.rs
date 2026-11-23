@@ -100,7 +100,10 @@ pub(crate) struct IsingState {
     pub(crate) defector_sea: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) droplet_seeds: Vec<super::DropletSeed>,
-    #[serde(default, skip_serializing_if = "super::atlas::IsingAtlasPersisted::is_default")]
+    #[serde(
+        default,
+        skip_serializing_if = "super::atlas::IsingAtlasPersisted::is_default"
+    )]
     pub(crate) atlas: super::atlas::IsingAtlasPersisted,
     #[serde(default)]
     pub(crate) state: Option<crate::async_sim::SimWorkerState>,

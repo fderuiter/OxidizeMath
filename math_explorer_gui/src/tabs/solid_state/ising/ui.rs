@@ -11,8 +11,8 @@ use crate::async_sim::SimCommand;
 use crate::framework::{
     InputMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
 };
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
-use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
 
 impl IsingModelTool {
     fn draw_mode_and_preset_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -83,8 +83,10 @@ impl IsingModelTool {
         ui.add_enabled_ui(!locked, |ui| {
             if ui
                 .add(
-                    egui::Slider::new(&mut self.temperature, 0.1..=10.0)
-                        .text("Temperature (T) - K (relative)"),
+                    AnimatedSlider::new(&mut self.temperature, 0.1..=10.0)
+                        .hard_bounds(0.1..=10.0)
+                        .text("Temperature (T) - K (relative)")
+                        .id_salt("ising_temperature"),
                 )
                 .changed()
             {
@@ -97,8 +99,10 @@ impl IsingModelTool {
 
             if ui
                 .add(
-                    egui::Slider::new(&mut self.j_coupling, -2.0..=2.0)
-                        .text("Coupling Constant (J)"),
+                    AnimatedSlider::new(&mut self.j_coupling, -2.0..=2.0)
+                        .hard_bounds(-2.0..=2.0)
+                        .text("Coupling Constant (J)")
+                        .id_salt("ising_j_coupling"),
                 )
                 .changed()
             {
@@ -109,7 +113,10 @@ impl IsingModelTool {
 
             if ui
                 .add(
-                    egui::Slider::new(&mut self.h_field, -2.0..=2.0).text("External Field (h)"),
+                    AnimatedSlider::new(&mut self.h_field, -2.0..=2.0)
+                        .hard_bounds(-2.0..=2.0)
+                        .text("External Field (h)")
+                        .id_salt("ising_h_field"),
                 )
                 .changed()
             {
@@ -210,7 +217,11 @@ impl IsingModelTool {
     }
 
     fn draw_brush_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let max_r = if self.active_challenge.is_some() { 10 } else { 25 };
+        let max_r = if self.active_challenge.is_some() {
+            10
+        } else {
+            25
+        };
         ui.label("Droplet Brush:");
         ui.add(egui::Slider::new(&mut self.brush_radius, 0..=max_r).text("Radius (r)"));
         ui.horizontal(|ui| {
@@ -410,42 +421,6 @@ impl IsingModelTool {
             ui.colored_label(ising_spin_color(-1, &palette), "■ -1 (D / ↓)");
             ui.small("Click/drag to paint droplets (Shift/Right-click: invert)");
         });
-    }
-
-    fn draw_replicator_overlay_plot(&self, ui: &mut egui::Ui, height: f32) {
-        ui.strong(format!(
-            "Spatial Reciprocity (100×100 Fermi) vs 0D Replicator ODE — {}",
-            self.game_preset.label()
-        ));
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let spatial_pts: PlotPoints = self
-            .spatial_history
-            .iter()
-            .copied()
-            .collect::<Vec<[f64; 2]>>()
-            .into();
-        let ode_pts: PlotPoints = self.replicator_curve.clone().into();
-
-        Plot::new("ising_fermi_replicator_overlay")
-            .height(height.max(140.0))
-            .legend(Legend::default())
-            .include_y(0.0)
-            .include_y(1.0)
-            .x_axis_label("Monte Carlo Sweeps / Replicator Time t")
-            .y_axis_label("Cooperator Fraction x_C")
-            .show(ui, |plot_ui| {
-                plot_ui.line(
-                    Line::new("2D Spatial Lattice (100×100 Fermi)", spatial_pts)
-                        .color(palette.axis_x)
-                        .width(2.5_f32),
-                );
-                plot_ui.line(
-                    Line::new("0D Replicator Dynamics (Well-Mixed ODE)", ode_pts)
-                        .color(palette.axis_z)
-                        .style(LineStyle::Dashed { length: 7.0_f32 })
-                        .width(2.0_f32),
-                );
-            });
     }
 
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {

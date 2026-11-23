@@ -112,14 +112,8 @@ fn test_absorbed_fermi_lattice_auto_reseeds_on_preset_and_atlas_teleport() {
 fn test_ising_cartographer_pd_freeze_fraction_and_contours() {
     let tool = IsingModelTool::default();
     let theory = tool.theory_parameters();
-    let game_cart = IsingCartographer::new(
-        &theory,
-        ("T", "S"),
-        0.08,
-        1.0,
-        0.0,
-        [1.0, -0.1, 1.25, 0.0],
-    );
+    let game_cart =
+        IsingCartographer::new(&theory, ("T", "S"), 0.08, 1.0, 0.0, [1.0, -0.1, 1.25, 0.0]);
 
     assert_eq!(game_cart.overlay_contour().unwrap().0, "T = R");
     let extra = game_cart.extra_overlay_contours();
@@ -151,14 +145,8 @@ fn test_ising_cartographer_pd_freeze_fraction_and_contours() {
 fn test_ising_cartographer_zero_alloc_and_128x128_convergence() {
     let tool = IsingModelTool::default();
     let theory = tool.theory_parameters();
-    let game_cart = IsingCartographer::new(
-        &theory,
-        ("T", "S"),
-        0.08,
-        1.0,
-        0.0,
-        [1.0, -0.1, 1.25, 0.0],
-    );
+    let game_cart =
+        IsingCartographer::new(&theory, ("T", "S"), 0.08, 1.0, 0.0, [1.0, -0.1, 1.25, 0.0]);
     let ferro_cart = IsingCartographer::new(
         &theory,
         ("temperature", "j_coupling"),
@@ -226,7 +214,11 @@ fn test_ising_th_atlas_128x128_high_contrast_and_parameter_clamping() {
         let hc = th_cart.color_for_cell(th_cart.evaluate_cell(p1, p2), true);
         let lin = |u: u8| {
             let x = f64::from(u) / 255.0;
-            if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) }
+            if x <= 0.04045 {
+                x / 12.92
+            } else {
+                ((x + 0.055) / 1.055).powf(2.4)
+            }
         };
         let lum = 0.2126 * lin(hc.r()) + 0.7152 * lin(hc.g()) + 0.0722 * lin(hc.b());
         assert!((lum + 0.05) / 0.05 >= 3.0);

@@ -1,4 +1,3 @@
-// @explorer_feature = "applied"
 //! Interactive Myerson Optimal Auction & Bayes-Nash Bid Shading Laboratory.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
@@ -245,7 +244,8 @@ impl MyersonAuctionTool {
                 .expected_revenue_and_welfare(v_grid, self.n_bidders);
             self.revenue_curve.push([v_grid, rev]);
             self.welfare_curve.push([v_grid, wel]);
-            self.deadweight_curve.push([v_grid, (eff_wel - wel).max(0.0)]);
+            self.deadweight_curve
+                .push([v_grid, (eff_wel - wel).max(0.0)]);
         }
         self.exclusion_polygon.push([r_star, 0.0]);
     }
@@ -311,7 +311,8 @@ impl InteractiveTool for MyersonAuctionTool {
     }
 
     fn clamp_parameters(&mut self) -> bool {
-        let fin = |v: f64, lo: f64, hi: f64, d: f64| if v.is_finite() { v.clamp(lo, hi) } else { d };
+        let fin =
+            |v: f64, lo: f64, hi: f64, d: f64| if v.is_finite() { v.clamp(lo, hi) } else { d };
         self.uniform_min = fin(self.uniform_min, 0.0, 499.0, 0.0);
         self.uniform_max = fin(self.uniform_max, self.uniform_min + 1.0, 500.0, 100.0);
         self.exp_rate = fin(self.exp_rate, 0.05, 5.0, 0.1);
