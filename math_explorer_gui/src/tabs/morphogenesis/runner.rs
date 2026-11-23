@@ -209,7 +209,12 @@ impl SimulationRunner for MorphogenesisRunner {
         let amp = self.noise_amplitude;
         if let Some(dt) = self.sync_system_params() {
             self.system.step(dt);
-            apply_uniform_noise(&mut self.system, self.width * self.height, &mut self.rng, amp);
+            apply_uniform_noise(
+                &mut self.system,
+                self.width * self.height,
+                &mut self.rng,
+                amp,
+            );
             self.step_count += 1;
         }
     }
@@ -272,19 +277,20 @@ impl MorphogenesisKineticsRunner {
         }
     }
 
+    fn read_kinetics(&self) -> MorphogenesisKineticsState {
+        *self
+            .kinetics_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
     fn sync_system_params(&mut self) -> Option<f64> {
         let (a, b, d_u, d_v, dt) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.dt)
         };
-        let (mode, f, k) = {
-            let ks = self
-                .kinetics_state
-                .read()
-                .unwrap_or_else(|e| e.into_inner());
-            (ks.mode, ks.f, ks.k)
-        };
-        self.apply_explicit_params(mode, a, b, f, k, d_u, d_v, dt)
+        let ks = self.read_kinetics();
+        self.apply_explicit_params(ks.mode, a, b, ks.f, ks.k, d_u, d_v, dt)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -330,6 +336,15 @@ impl MorphogenesisKineticsRunner {
             }
         }
         (dt.is_finite() && dt > 0.0).then_some(dt)
+    }
+
+    fn apply_scalar_params(&mut self, p: &[f64]) -> Option<f64> {
+        if p.len() < 9 {
+            return None;
+        }
+        self.noise_amplitude = p[8];
+        let mode = Self::scalar_to_mode(p[0]);
+        self.apply_explicit_params(mode, p[1], p[2], p[3], p[4], p[5], p[6], p[7])
     }
 
     fn advance_grid_step(&mut self, dt: f64, noise_amp: f64) {
@@ -391,12 +406,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .high_contrast;
-        let mode = self
-            .kinetics_state
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .mode;
-        let field_vec = match mode {
+        let field_vec = match self.system.kinetics.mode {
             MorphogenesisKineticsMode::Schnakenberg => self.system.u().to_vec(),
             MorphogenesisKineticsMode::GrayScott => self.system.v().to_vec(),
         };
@@ -404,7 +414,11 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
     }
 
     fn get_steps_per_frame(&self) -> usize {
-        match self.system.kinetics.mode {
+        1
+    }
+
+    fn running_substeps_per_tick(&self) -> usize {
+        match self.read_kinetics().mode {
             MorphogenesisKineticsMode::Schnakenberg => 1,
             MorphogenesisKineticsMode::GrayScott => 4,
         }
@@ -420,10 +434,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
 
     fn capture_active_params(&self) -> Option<CheckpointParams> {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let ks = self
-            .kinetics_state
-            .read()
-            .unwrap_or_else(|e| e.into_inner());
+        let ks = self.read_kinetics();
         Some(CheckpointParams::scalars(&[
             Self::mode_to_scalar(ks.mode),
             p.a,
@@ -470,28 +481,18 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             }
         }
         if let Some(p) = checkpoint.params.as_scalars() {
-            if p.len() >= 9 {
-                let mode = Self::scalar_to_mode(p[0]);
-                let _ = self.apply_explicit_params(mode, p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
-                self.noise_amplitude = p[8];
-            }
+            let _ = self.apply_scalar_params(p);
         }
         self.step_count = checkpoint.step;
         self.rng = checkpoint.rng.clone();
     }
 
     fn replay_step(&mut self, params: &CheckpointParams) {
-        let Some(p) = params.as_scalars() else {
-            return;
-        };
-        if p.len() < 9 {
-            return;
-        }
-        let mode = Self::scalar_to_mode(p[0]);
-        self.noise_amplitude = p[8];
-        if let Some(dt) = self.apply_explicit_params(mode, p[1], p[2], p[3], p[4], p[5], p[6], p[7])
+        if let Some(dt) = params
+            .as_scalars()
+            .and_then(|p| self.apply_scalar_params(p))
         {
-            self.advance_grid_step(dt, p[8]);
+            self.advance_grid_step(dt, self.noise_amplitude);
         }
     }
 }

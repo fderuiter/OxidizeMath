@@ -1,10 +1,12 @@
 use super::*;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimRunner};
+use crate::presets::MorphogenesisKineticsMode;
 use crate::tabs::chaos::attractors::{
     default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
 };
+use crate::tabs::morphogenesis::runner::MorphogenesisKineticsState;
 use crate::tabs::morphogenesis::{
-    MorphogenesisKineticsRunner, MorphogenesisSharedParams, MorphogenesisTab,
+    MorphogenesisKineticsRunner, MorphogenesisSharedParams, MorphogenesisTab, MorphogenesisTool,
 };
 use crate::tabs::mri::{MriRunner, MriSharedParams};
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
@@ -33,6 +35,30 @@ fn make_morpho_runner(
     let mut runner = MorphogenesisTab::create_runner(&params, width, height);
     runner.noise_amplitude = noise_amplitude;
     (runner, params)
+}
+
+fn make_gray_scott_runner(
+    width: usize,
+    height: usize,
+) -> (
+    MorphogenesisKineticsRunner,
+    Arc<RwLock<MorphogenesisKineticsState>>,
+) {
+    let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
+        a: 0.14,
+        b: 0.86,
+        d_u: 0.16,
+        d_v: 0.08,
+        dt: 1.0,
+        high_contrast: false,
+    }));
+    let ks = Arc::new(RwLock::new(MorphogenesisKineticsState {
+        mode: MorphogenesisKineticsMode::GrayScott,
+        f: 0.0367,
+        k: 0.0649,
+    }));
+    let runner = MorphogenesisTool::create_kinetics_runner(&params, &ks, width, height);
+    (runner, ks)
 }
 
 fn step_with_ring<R: SimulationRunner>(runner: &mut R, ring: &mut CheckpointRing, steps: usize) {
@@ -385,4 +411,51 @@ fn test_worst_case_k16_substep_replay_completes_within_slice_budget() {
         best_elapsed <= budget,
         "Expected 15-substep 100x100 replay <= {budget:?}, got {best_elapsed:?}"
     );
+}
+
+#[test]
+fn test_morphogenesis_gray_scott_k16_replay_substeps_and_zero_alloc() {
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (mut runner, ks) = make_gray_scott_runner(20, 20);
+    assert_eq!(runner.get_steps_per_frame(), 1);
+    assert_eq!(runner.running_substeps_per_tick(), 4);
+
+    let mut ring = CheckpointRing::new(16);
+    ring.reset_and_seed(&runner);
+    step_with_ring(&mut runner, &mut ring, 21);
+    {
+        let mut state = ks.write().unwrap();
+        state.f = 0.055;
+        state.k = 0.062;
+    }
+    step_with_ring(&mut runner, &mut ring, 15);
+
+    let (mut direct_27, direct_ks) = make_gray_scott_runner(20, 20);
+    for _ in 0..21 {
+        direct_27.step_once();
+    }
+    {
+        let mut state = direct_ks.write().unwrap();
+        state.f = 0.055;
+        state.k = 0.062;
+    }
+    for _ in 0..6 {
+        direct_27.step_once();
+    }
+
+    let (sought, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        ring.seek_to_step(&mut runner, 27)
+    });
+    assert_eq!(sought, 27);
+    assert_slice_bits_eq(runner.system.u(), direct_27.system.u(), "GrayScott u(27)");
+    assert_slice_bits_eq(runner.system.v(), direct_27.system.v(), "GrayScott v(27)");
+    let snap = runner.get_snapshot();
+    let v_snap = snap
+        .structured_data
+        .as_deref()
+        .and_then(|any| any.downcast_ref::<Vec<f64>>())
+        .expect("structured_data must hold Gray-Scott v field");
+    assert_slice_bits_eq(v_snap, direct_27.system.v(), "GrayScott snapshot v(27)");
 }
