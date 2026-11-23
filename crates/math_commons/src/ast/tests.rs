@@ -161,7 +161,10 @@ fn test_eval_division_power_and_arity_edge_cases() {
     assert!((parse("z^3").unwrap().eval_complex_z(z) - z.powf(3.0)).norm() < 1e-12);
     assert!((parse("z^i").unwrap().eval_complex_z(z) - z.powc(Complex64::i())).norm() < 1e-12);
 
-    let (zero_args, two_args) = (parse("sin()").unwrap(), parse("cos(1, 2)").unwrap());
+    let (zero_args, two_args) = (
+        Expr::function(Func::Sin, vec![]),
+        Expr::function(Func::Cos, vec![Expr::Number(1.0), Expr::Number(2.0)]),
+    );
     assert_eq!(
         zero_args.eval(&rvars),
         Err(EvalError::WrongArgumentCount {

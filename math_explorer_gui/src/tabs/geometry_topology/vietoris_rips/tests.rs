@@ -11,8 +11,8 @@ use super::presets::{ShapePreset, DEFAULT_PRESET_POINTS};
 use super::*;
 use crate::framework::{InteractiveTool, SimulationFramework};
 use crate::url_state::{UrlStateSignature, UrlSyncController, MAX_DECODED_URL_STATE_BYTES};
-use egui_plot::export::ExportOptions;
-use egui_plot::export_primitives::{decode_png_rgba, export_primitives_png, export_primitives_svg};
+use egui_plot::export::{ExportOptions, color32_image_to_png};
+use egui_plot::export_primitives::{export_primitives_svg, render_primitives_image};
 use egui_plot::PlotPoints;
 use std::f64::consts::{E, PI};
 
@@ -223,9 +223,14 @@ fn test_interval_csv_json_exports_and_svg_png_figure_primitives() {
         let opts = ExportOptions::default();
         let svg = export_primitives_svg(&prims, &opts).unwrap();
         assert!(svg.contains("<svg") && svg.len() > 250);
-        let png = export_primitives_png(&prims, &opts).unwrap();
-        let (w, h, pixels) = decode_png_rgba(&png).unwrap();
-        assert!(w > 0 && h > 0 && pixels.len() == w * h);
+        let img = render_primitives_image(&prims, &opts).unwrap();
+        let png = color32_image_to_png(&img).unwrap();
+        let decoder = png::Decoder::new(std::io::Cursor::new(&png));
+        let mut reader = decoder.read_info().unwrap();
+        let mut buf = vec![0_u8; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut buf).unwrap();
+        let (w, h) = (info.width as usize, info.height as usize);
+        assert!(w > 0 && h > 0 && info.buffer_size() == w * h * 4);
     }
 }
 

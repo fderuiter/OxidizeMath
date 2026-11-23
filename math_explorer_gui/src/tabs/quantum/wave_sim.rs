@@ -62,7 +62,8 @@ impl WaveSimulatorTool {
     #[must_use]
     pub fn new() -> Self {
         let math_input =
-            MathExpressionInputBar::new("V(x)", DEFAULT_CUSTOM_EXPR, custom_formula_presets());
+            MathExpressionInputBar::new("V(x)", DEFAULT_CUSTOM_EXPR, custom_formula_presets())
+                .with_allowed_vars(&["x", "v0", "width"]);
         let last_valid_expr = math_input
             .expr()
             .cloned()

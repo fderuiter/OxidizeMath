@@ -10,6 +10,8 @@ pub mod lexer;
 pub mod parser;
 
 #[cfg(test)]
+mod arity_tests;
+#[cfg(test)]
 mod compiled_tests;
 #[cfg(test)]
 mod glsl_sim_test_eval;

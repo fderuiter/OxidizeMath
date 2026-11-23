@@ -126,3 +126,51 @@ fn test_complex_mapping_clamps_grid_density_and_caches_contours_across_probe_mov
     let _ = ctx.run(egui::RawInput::default(), |c| live.show(c));
     assert_eq!(live.cache.eval_count, 1);
 }
+
+fn collect_rendered_texts(shapes: &[egui::epaint::Shape], out: &mut Vec<String>) {
+    for shape in shapes {
+        match shape {
+            egui::epaint::Shape::Text(t) => out.push(t.galley.job.text.clone()),
+            egui::epaint::Shape::Vec(inner) => collect_rendered_texts(inner, out),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn test_custom_complex_mapping_unbound_c_renders_scope_error_and_undefined_metrics() {
+    let mut tool = ComplexMappingTool {
+        function: MappingFunction::Custom,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("z^2 + c");
+    assert!(!tool.math_input.is_valid());
+    let err = tool.math_input.error_message().expect("scope error for c");
+    assert!(err.contains("Unknown variable 'c'") && err.contains("z, a"));
+
+    let w_probe = tool.eval_z(Complex64::new(1.0, 1.0));
+    assert!(w_probe.re.is_nan() && w_probe.im.is_nan());
+
+    let ctx = egui::Context::default();
+    let out = ctx.run(egui::RawInput::default(), |c| tool.show(c));
+    assert!(
+        tool.cache.w_vertical.0.is_empty() && tool.cache.w_horizontal.0.is_empty(),
+        "Invalid custom expression must omit mapped w-plane contours"
+    );
+
+    let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+    let mut texts = Vec::new();
+    collect_rendered_texts(&shapes, &mut texts);
+    assert!(
+        texts.iter().any(|t| t.contains("Syntax Error:") && t.contains("Unknown variable 'c'")),
+        "Expected inline scope error in {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains("Undefined")),
+        "Expected Undefined readout in {texts:?}"
+    );
+    assert!(
+        !texts.iter().any(|t| t.contains("1000000.000")),
+        "Must never render clamped 1000000.000 readout in {texts:?}"
+    );
+}
