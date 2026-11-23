@@ -444,7 +444,15 @@ inventory::submit! {
         id: "FractalViewer",
         display_name: "Fractal Viewer",
         domain: "chaos",
-        tags: &["mandelbrot", "julia", "fractal", "orbit"],
+        tags: &[
+            "mandelbrot",
+            "julia",
+            "escape time",
+            "complex dynamics",
+            "self-similarity",
+            "critical orbit",
+            "fractal",
+        ],
         build: || Box::new(FractalViewer::default()),
     }
 }

@@ -416,7 +416,16 @@ inventory::submit! {
         id: "BifurcationDiagram",
         display_name: "Bifurcation Diagram",
         domain: "chaos",
-        tags: &["logistic", "lyapunov", "cobweb", "bifurcation"],
+        tags: &[
+            "logistic map",
+            "period doubling",
+            "feigenbaum",
+            "orbit diagram",
+            "lyapunov",
+            "cobweb",
+            "bifurcation",
+            "chaos",
+        ],
         build: || Box::new(BifurcationDiagram::default()),
     }
 }
