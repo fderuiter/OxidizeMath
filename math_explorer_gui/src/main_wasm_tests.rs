@@ -237,3 +237,73 @@ fn wasm_webgl_context_lost_prevents_default_and_reveals_recovery_overlay() {
     canvas.remove();
     overlay.remove();
 }
+
+#[cfg(feature = "biology")]
+#[wasm_bindgen_test]
+fn wasm_lenia_studio_stepping_exports_and_url_roundtrip() {
+    use crate::framework::{ExportFormat, ExportStatusSeverity, SimulationFramework};
+    use crate::tabs::morphogenesis::lenia::presets::PRESET_LENIA_HYDROGEMINIUM;
+
+    let ctx = eframe::egui::Context::default();
+    let mut framework = SimulationFramework::new("biology");
+    framework.export_options.width = 160;
+    framework.export_options.height = 120;
+    framework.export_gif_frames = 3;
+    assert!(framework.select_tool_by_name("LeniaTool"));
+    let fast_preset = PRESET_LENIA_HYDROGEMINIUM.replace("\"grid_size\": 128", "\"grid_size\": 32");
+    framework
+        .apply_starter_card(
+            "Lenia Hydrogeminium Swimmer",
+            Some("LeniaTool"),
+            Some(&fast_preset),
+        )
+        .expect("Hydrogeminium preset must load in WASM");
+
+    for fmt in [
+        ExportFormat::Png,
+        ExportFormat::Gif,
+        ExportFormat::Csv,
+        ExportFormat::Json,
+    ] {
+        let raw = eframe::egui::RawInput {
+            screen_rect: Some(eframe::egui::Rect::from_min_size(
+                eframe::egui::Pos2::ZERO,
+                eframe::egui::vec2(1024.0, 768.0),
+            )),
+            ..Default::default()
+        };
+        let _ = ctx.run(raw, |ctx| {
+            framework.show_export_modal = true;
+            framework.queue_export(fmt);
+            framework.show(ctx, "biology");
+        });
+        assert_eq!(
+            framework.export_status_severity,
+            ExportStatusSeverity::Success
+        );
+    }
+
+    framework
+        .apply_starter_card(
+            "Lenia Hydrogeminium Swimmer",
+            Some("LeniaTool"),
+            Some(PRESET_LENIA_HYDROGEMINIUM),
+        )
+        .expect("Full 128x128 Hydrogeminium preset");
+
+    let share_url = framework.encode_share_url().expect("WASM share URL");
+    let hash_pos = share_url.find('#').expect("fragment delimiter");
+    let fragment = &share_url[hash_pos..];
+    assert!(fragment.len() < 4096);
+
+    let mut restored = crate::app::MathExplorerApp::default();
+    assert!(restored
+        .apply_share_location_strings(fragment, "", None)
+        .expect("WASM URL decode"));
+    let bio_idx = restored
+        .tabs
+        .iter()
+        .position(|t| t.name() == "Morphogenesis")
+        .unwrap();
+    assert_eq!(restored.tabs[bio_idx].active_tool_id(), Some("LeniaTool"));
+}
