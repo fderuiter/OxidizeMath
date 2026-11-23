@@ -7,7 +7,6 @@ use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::chaos::fractals::{escape_time_julia, escape_time_mandelbrot};
 use num_complex::Complex;
-use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -59,45 +58,6 @@ impl FractalMode {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct FractalState {
-    pub(super) center_re: f64,
-    pub(super) center_im: f64,
-    pub(super) zoom: f64,
-    pub(super) max_iter: u32,
-    pub(super) mode: FractalMode,
-    pub(super) julia_re: f64,
-    pub(super) julia_im: f64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) custom_expr: Option<String>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub(super) custom_params: BTreeMap<String, f64>,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub(super) atlas_visible: bool,
-    #[serde(
-        default = "super::atlas::default_fractal_atlas_axes",
-        skip_serializing_if = "super::atlas::is_default_fractal_atlas_axes"
-    )]
-    pub(super) atlas_axes: [String; 2],
-}
-
-impl FractalState {
-    pub(super) fn validate(&self) -> Result<(), String> {
-        let coords_valid = [self.center_re, self.center_im, self.julia_re, self.julia_im]
-            .iter()
-            .all(|v| v.is_finite() && (COORD_MIN..=COORD_MAX).contains(v));
-        let zoom_valid = self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom);
-        let iter_valid =
-            (10..=math_commons::registry::MAX_ITERATIONS as u32).contains(&self.max_iter);
-        let params_valid = self.custom_params.values().all(|v| v.is_finite());
-        if !coords_valid || !zoom_valid || !iter_valid || !params_valid {
-            return Err("Fractal view parameters out of bounds".into());
-        }
-        Ok(())
-    }
-}
-
 /// Immutable parameter bundle describing a single progressive fractal render request.
 #[derive(Clone, Copy, Debug)]
 pub struct FractalRenderRequest {
@@ -113,7 +73,7 @@ pub struct FractalRenderRequest {
     pub zoom: f64,
     /// Escape-time iteration ceiling.
     pub max_iter: u32,
-    /// Mandelbrot or Julia mode.
+    /// Mandelbrot, Julia, or custom escape fractal mode.
     pub mode: FractalMode,
     /// Complex constant $c$ for Julia mode.
     pub julia_c: Complex<f64>,
@@ -224,8 +184,7 @@ fn eval_pixel_color(
     map_iter_to_color32(iter, req.max_iter, req.high_contrast)
 }
 
-/// Synchronously renders a full-resolution fractal image (used for small seed previews and exports).
-#[cfg(test)]
+/// Synchronously renders a full-resolution fractal image (used for seed previews, insets, and exports).
 #[must_use]
 pub fn render_fractal_color_image(req: &FractalRenderRequest) -> egui::ColorImage {
     render_fractal_color_image_with_formula(req, None)

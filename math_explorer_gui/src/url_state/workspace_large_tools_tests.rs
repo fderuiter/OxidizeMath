@@ -150,6 +150,31 @@ fn build_large_neural_network_viz_state() -> String {
     .to_string()
 }
 
+fn assert_ws_fragment_restores_tool_state(
+    frag: &str,
+    tab_idx: usize,
+    tool_id: &str,
+    expected_saved: &Option<String>,
+) {
+    let mut restored = MathExplorerApp::default();
+    assert!(restored
+        .apply_share_location_strings(frag, "", None)
+        .unwrap());
+    assert_eq!(restored.viewport_layout, ViewportLayout::Single);
+    assert_eq!(restored.selected_tab, tab_idx);
+    let actual_saved = restored.tabs[tab_idx]
+        .framework()
+        .unwrap()
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .save_state();
+    assert_eq!(
+        &actual_saved, expected_saved,
+        "{tool_id} lossless #ws roundtrip"
+    );
+}
+
 fn assert_large_tool_ws_roundtrip(ctx: &egui::Context, slug: &str, tool_id: &str, raw_state: &str) {
     let mut app = MathExplorerApp::default();
     let tab_idx = app
@@ -199,23 +224,7 @@ fn assert_large_tool_ws_roundtrip(ctx: &egui::Context, slug: &str, tool_id: &str
     assert!(pane_frag.starts_with("#ws=") && pane_frag.len() <= MAX_URL_FRAGMENT_BYTES);
 
     for frag in [&global_frag, &pane_frag] {
-        let mut restored = MathExplorerApp::default();
-        assert!(restored
-            .apply_share_location_strings(frag, "", None)
-            .unwrap());
-        assert_eq!(restored.viewport_layout, ViewportLayout::Single);
-        assert_eq!(restored.selected_tab, tab_idx);
-        let actual_saved = restored.tabs[tab_idx]
-            .framework()
-            .unwrap()
-            .active_tool
-            .as_ref()
-            .unwrap()
-            .save_state();
-        assert_eq!(
-            actual_saved, expected_saved,
-            "{tool_id} lossless #ws roundtrip"
-        );
+        assert_ws_fragment_restores_tool_state(frag, tab_idx, tool_id, &expected_saved);
     }
 }
 

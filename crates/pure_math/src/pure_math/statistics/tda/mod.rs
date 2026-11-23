@@ -260,6 +260,7 @@
 pub mod boundary;
 pub mod complex;
 pub mod core;
+mod filtration;
 pub mod homology;
 pub mod persistence;
 pub mod space3d;
