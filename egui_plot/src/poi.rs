@@ -1,6 +1,7 @@
 //! Critical points (Points of Interest) detection for 2D plot polylines and reference lines.
 
 pub(crate) mod intersect;
+mod plateau;
 #[cfg(test)]
 mod tests;
 
@@ -277,7 +278,11 @@ fn collect_single_line_pois(
         roots,
         y_intercepts,
         extrema,
-    } = scan_line_pois(&line.points, want_roots, want_y_ints);
+    } = if let Some(compacted) = plateau::compact_long_plateaus(line.points, want_y_ints) {
+        scan_line_pois(compacted.as_slice(), want_roots, want_y_ints)
+    } else {
+        scan_line_pois(&line.points, want_roots, want_y_ints)
+    };
     for x_root in roots {
         push_if_visible(
             out,

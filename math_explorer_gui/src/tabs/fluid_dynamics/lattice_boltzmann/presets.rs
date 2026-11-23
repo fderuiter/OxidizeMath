@@ -5,14 +5,16 @@
 
 use super::super::lbm_fairing::FairingStamp;
 use super::state::{
-    bluff_plate_obstacle_grid, count_solid_cells, encode_obstacle_mask, enforce_area_budget,
-    streamlined_airfoil_obstacle_grid, LbmToolState, LbmViewMode, AREA_BUDGET_MAX, AREA_BUDGET_MIN,
-    DEFAULT_AREA_BUDGET, INFLOW_SPEED_MAX, INFLOW_SPEED_MIN, LBM_CELL_COUNT, LBM_HEIGHT,
-    LBM_INLET_GUARD_COLS, LBM_WIDTH, VISCOSITY_MAX, VISCOSITY_MIN,
+    bluff_plate_obstacle_grid, count_solid_cells, cylinder_obstacle_grid, encode_obstacle_mask,
+    enforce_area_budget, streamlined_airfoil_obstacle_grid, LbmToolState, LbmViewMode,
+    AREA_BUDGET_MAX, AREA_BUDGET_MIN, DEFAULT_AREA_BUDGET, INFLOW_SPEED_MAX, INFLOW_SPEED_MIN,
+    LBM_CELL_COUNT, LBM_HEIGHT, LBM_INLET_GUARD_COLS, LBM_WIDTH, VISCOSITY_MAX, VISCOSITY_MIN,
 };
 use super::LatticeBoltzmannTool;
+use crate::accessibility::AccessibleHoverText;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::InteractiveTool;
+use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     stamp_naca4_airfoil, stamp_venturi_nozzle, BgkCollision, LatticeBoltzmannD2Q9, Naca4Airfoil,
@@ -78,13 +80,80 @@ impl LatticeBoltzmannTool {
         self.enforce_challenge_invariants_and_score();
         self.mask_generation = self.mask_generation.wrapping_add(1);
         {
-            let mut cfg = self.shared_config.write().unwrap_or_else(|e| e.into_inner());
+            let mut cfg = self
+                .shared_config
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             cfg.viscosity = self.viscosity;
             cfg.inflow_speed = self.inflow_speed;
             cfg.obstacles.clone_from(&self.obstacles);
             cfg.mask_generation = self.mask_generation;
         }
         self.reset_flow_field();
+    }
+
+    pub(super) fn draw_profile_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.label("Tunnel Profiles:");
+        ui.horizontal_wrapped(|ui| {
+            let mut applied = false;
+            for (id, label, hover) in [
+                (
+                    0_u8,
+                    "● Cylinder",
+                    "Load circular cylinder vortex-street benchmark",
+                ),
+                (
+                    1,
+                    "▮ Bluff Plate",
+                    "Load high-drag flat bluff plate obstacle",
+                ),
+                (
+                    2,
+                    "➤ Min-Drag Airfoil",
+                    "Load streamlined airfoil benchmark",
+                ),
+                (
+                    3,
+                    "✈ NACA 2412",
+                    "Stamp cambered NACA 2412 airfoil at 8° AoA",
+                ),
+                (4, "⏳ Venturi", "Stamp converging-diverging Venturi nozzle"),
+                (
+                    7,
+                    "✕ Clear",
+                    "Remove all solid obstacles from the wind tunnel",
+                ),
+            ] {
+                if ui.button(label).accessible_hover_text(hover).clicked() {
+                    self.apply_profile_button_id(id);
+                    applied = true;
+                }
+            }
+            for stamp in [FairingStamp::TeardropFairing, FairingStamp::SymmetricWedge] {
+                if ui
+                    .button(format!("♦ {}", stamp.label()))
+                    .accessible_hover_text("Stamp fairing geometry around protected R_core = 4")
+                    .clicked()
+                {
+                    self.apply_fairing_stamp(stamp);
+                    applied = true;
+                }
+            }
+            if applied {
+                ctx.request_repaint();
+            }
+        });
+    }
+
+    fn apply_profile_button_id(&mut self, id: u8) {
+        match id {
+            0 => self.apply_obstacle_preset(cylinder_obstacle_grid()),
+            1 => self.apply_obstacle_preset(bluff_plate_obstacle_grid()),
+            2 => self.apply_obstacle_preset(streamlined_airfoil_obstacle_grid()),
+            3 => self.apply_naca_2412_preset(8.0),
+            4 => self.apply_venturi_preset(),
+            _ => self.apply_obstacle_preset(vec![false; LBM_CELL_COUNT]),
+        }
     }
 }
 
@@ -206,6 +275,27 @@ fn min_drag_challenge_preset_json() -> &'static str {
             },
         )
     })
+}
+
+inventory::submit! {
+    crate::framework::ToolMetadata {
+        id: "LatticeBoltzmannTool",
+        display_name: "Lattice Boltzmann Wind Tunnel",
+        domain: "fluid_dynamics",
+        tags: &[
+            "lbm",
+            "d2q9",
+            "bgk",
+            "vortex street",
+            "navier-stokes",
+            "fluid",
+            "cfd",
+            "aerodynamics",
+            "drag",
+            "vorticity",
+        ],
+        build: || Box::new(LatticeBoltzmannTool::default()),
+    }
 }
 
 inventory::submit! {

@@ -421,10 +421,6 @@ fn test_newly_added_four_digit_adr_rejected_while_legacy_edits_pass() {
     stage_file(&dir, "docs/adr/0047-unfrozen.md", VALID_ADR_1);
     assert!(!verify_records_in_dir_opts(&dir, None, None, true));
 
-    git_in_test(&dir, &["reset", "--hard", &base]);
-    stage_file(&dir, "docs/adr/0048-unfrozen.md", VALID_ADR_1);
-    assert!(!verify_records_in_dir_opts(&dir, None, None, true));
-
     // Modifying an existing frozen legacy ADR remains valid
     git_in_test(&dir, &["reset", "--hard", &base]);
     let edited_legacy = commit_file(

@@ -5,15 +5,14 @@
 
 use super::runner::render_lbm_color_image;
 use super::state::{
-    bluff_plate_obstacle_grid, cylinder_obstacle_grid, screen_pos_to_cell,
-    streamlined_airfoil_obstacle_grid, LbmBrushMode, LbmTelemetry, LbmViewMode, AREA_BUDGET_MAX,
-    AREA_BUDGET_MIN, BRUSH_RADIUS_MAX, BRUSH_RADIUS_MIN, INFLOW_SPEED_MAX, INFLOW_SPEED_MIN,
-    LBM_CELL_COUNT, LBM_HEIGHT, LBM_INLET_GUARD_COLS, LBM_WIDTH, STEPS_PER_FRAME_MAX,
-    STEPS_PER_FRAME_MIN, VISCOSITY_MAX, VISCOSITY_MIN,
+    screen_pos_to_cell, LbmBrushMode, LbmTelemetry, LbmViewMode, AREA_BUDGET_MAX, AREA_BUDGET_MIN,
+    BRUSH_RADIUS_MAX, BRUSH_RADIUS_MIN, INFLOW_SPEED_MAX, INFLOW_SPEED_MIN, LBM_HEIGHT,
+    LBM_INLET_GUARD_COLS, LBM_WIDTH, STEPS_PER_FRAME_MAX, STEPS_PER_FRAME_MIN, VISCOSITY_MAX,
+    VISCOSITY_MIN,
 };
 use super::LatticeBoltzmannTool;
 use crate::accessibility::{
-    lock_canvas_arrow_keys, paint_canvas_focus_ring, AccessibleHoverText, AccessibleTheoryHover,
+    lock_canvas_arrow_keys, paint_canvas_focus_ring, AccessibleTheoryHover,
 };
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{SimCommand, StateSnapshot};
@@ -196,52 +195,6 @@ impl LatticeBoltzmannTool {
         ui.small("Left-drag sculpts/jets • Right-drag erases • Inlet x < 2 protected");
     }
 
-    fn draw_profile_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        fn preset_btn(ui: &mut egui::Ui, label: &str, hover: &str) -> bool {
-            ui.button(label).accessible_hover_text(hover).clicked()
-        }
-        ui.label("Tunnel Profiles:");
-        ui.horizontal_wrapped(|ui| {
-            if preset_btn(ui, "● Cylinder", "Load circular cylinder vortex-street benchmark") {
-                self.apply_obstacle_preset(cylinder_obstacle_grid());
-                ctx.request_repaint();
-            }
-            if preset_btn(ui, "▮ Bluff Plate", "Load high-drag flat bluff plate obstacle") {
-                self.apply_obstacle_preset(bluff_plate_obstacle_grid());
-                ctx.request_repaint();
-            }
-            if preset_btn(ui, "➤ Min-Drag Airfoil", "Load streamlined airfoil benchmark") {
-                self.apply_obstacle_preset(streamlined_airfoil_obstacle_grid());
-                ctx.request_repaint();
-            }
-            if preset_btn(ui, "✈ NACA 2412", "Stamp cambered NACA 2412 airfoil at 8° AoA") {
-                self.apply_naca_2412_preset(8.0);
-                ctx.request_repaint();
-            }
-            if preset_btn(ui, "⏳ Venturi", "Stamp converging-diverging Venturi nozzle") {
-                self.apply_venturi_preset();
-                ctx.request_repaint();
-            }
-            for stamp in [
-                super::super::lbm_fairing::FairingStamp::TeardropFairing,
-                super::super::lbm_fairing::FairingStamp::SymmetricWedge,
-            ] {
-                if preset_btn(
-                    ui,
-                    &format!("♦ {}", stamp.label()),
-                    "Stamp fairing geometry around protected R_core = 4",
-                ) {
-                    self.apply_fairing_stamp(stamp);
-                    ctx.request_repaint();
-                }
-            }
-            if preset_btn(ui, "✕ Clear", "Remove all solid obstacles from the wind tunnel") {
-                self.apply_obstacle_preset(vec![false; LBM_CELL_COUNT]);
-                ctx.request_repaint();
-            }
-        });
-    }
-
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let avail = ui.available_size();
@@ -385,11 +338,9 @@ impl LatticeBoltzmannTool {
             self.area_budget
         );
         let text_color = ui.visuals().text_color();
-        let galley = ui.painter().layout_no_wrap(
-            badge_text,
-            egui::FontId::monospace(11.5),
-            text_color,
-        );
+        let galley =
+            ui.painter()
+                .layout_no_wrap(badge_text, egui::FontId::monospace(11.5), text_color);
         let pad = egui::vec2(8.0, 4.0);
         let badge_rect = egui::Rect::from_min_size(
             egui::pos2(

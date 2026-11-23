@@ -185,7 +185,8 @@ impl LbmRunner {
     fn sync_from_shared_config(&mut self) -> (f64, f64, usize) {
         let (visc, u0, spf, gen, maybe_mask) = {
             let cfg = self.config.read().unwrap_or_else(|e| e.into_inner());
-            let mask = (cfg.mask_generation != self.applied_mask_gen).then(|| cfg.obstacles.clone());
+            let mask =
+                (cfg.mask_generation != self.applied_mask_gen).then(|| cfg.obstacles.clone());
             (
                 cfg.viscosity,
                 cfg.inflow_speed,

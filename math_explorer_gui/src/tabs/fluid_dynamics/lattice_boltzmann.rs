@@ -127,7 +127,10 @@ impl Default for LatticeBoltzmannTool {
 
 impl LatticeBoltzmannTool {
     pub(crate) fn push_shared_config(&mut self) {
-        let mut cfg = self.shared_config.write().unwrap_or_else(|e| e.into_inner());
+        let mut cfg = self
+            .shared_config
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         cfg.viscosity = self.viscosity;
         cfg.inflow_speed = self.inflow_speed;
         cfg.steps_per_frame = self.steps_per_frame;
@@ -158,7 +161,9 @@ impl LatticeBoltzmannTool {
         mask.copy_from_slice(&self.obstacles[..LBM_CELL_COUNT]);
         restore_inlet_and_core_mask(&mut mask);
         self.obstacles.copy_from_slice(&mask);
-        let evaluator = self.challenge_evaluator.get_or_insert_with(Default::default);
+        let evaluator = self
+            .challenge_evaluator
+            .get_or_insert_with(Default::default);
         evaluator.evaluate_mask_in_place(&mask, CHALLENGE_LBM_VISCOSITY);
     }
 
@@ -184,7 +189,8 @@ impl LatticeBoltzmannTool {
                     SpatialBrushKit::plot_to_grid_y_up(stroke.start, LBM_WIDTH, LBM_HEIGHT);
                 let (x1, y1) =
                     SpatialBrushKit::plot_to_grid_y_up(stroke.end, LBM_WIDTH, LBM_HEIGHT);
-                let radius = (stroke.radius.round() as i32).clamp(BRUSH_RADIUS_MIN, BRUSH_RADIUS_MAX);
+                let radius =
+                    (stroke.radius.round() as i32).clamp(BRUSH_RADIUS_MIN, BRUSH_RADIUS_MAX);
                 let paint_solid = stroke.mode == BrushMode::Solid;
                 for (cx, cy) in bresenham_line(x0, y0, x1, y1) {
                     if cx >= 0 && cy >= 0 {
@@ -215,7 +221,10 @@ impl LatticeBoltzmannTool {
     pub(super) fn sync_obstacles_to_worker(&mut self) {
         self.mask_generation = self.mask_generation.wrapping_add(1);
         {
-            let mut cfg = self.shared_config.write().unwrap_or_else(|e| e.into_inner());
+            let mut cfg = self
+                .shared_config
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             cfg.viscosity = self.viscosity;
             cfg.inflow_speed = self.inflow_speed;
             cfg.obstacles.clone_from(&self.obstacles);
@@ -419,7 +428,10 @@ impl InteractiveTool for LatticeBoltzmannTool {
         self.enforce_challenge_invariants_and_score();
         self.mask_generation = self.mask_generation.wrapping_add(1);
         {
-            let mut cfg = self.shared_config.write().unwrap_or_else(|e| e.into_inner());
+            let mut cfg = self
+                .shared_config
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             cfg.viscosity = self.viscosity;
             cfg.inflow_speed = self.inflow_speed;
             cfg.steps_per_frame = self.steps_per_frame;
@@ -475,15 +487,5 @@ impl InteractiveTool for LatticeBoltzmannTool {
         self.sync_from_worker(&ctx);
         self.draw_side_panel(parent_ui, &ctx);
         self.draw_central_panel(parent_ui, &ctx);
-    }
-}
-
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "LatticeBoltzmannTool",
-        display_name: "Lattice Boltzmann Wind Tunnel",
-        domain: "fluid_dynamics",
-        tags: &["cfd", "aerodynamics", "drag", "vorticity"],
-        build: || Box::new(LatticeBoltzmannTool::default()),
     }
 }

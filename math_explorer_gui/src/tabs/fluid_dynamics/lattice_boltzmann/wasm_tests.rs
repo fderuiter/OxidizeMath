@@ -18,11 +18,13 @@ fn wasm_lbm_wind_tunnel_sculpt_mask_url_roundtrip_and_drag_telemetry() {
     tool.sculpt_at_cell(42, 24, true);
     assert!(count_solid_cells(&tool.obstacles) <= 180);
 
-    let preset = tool
-        .export_preset_json()
-        .expect("preset export on wasm32");
-    let frag = encode_share_fragment("fluid_dynamics", Some("LatticeBoltzmannTool"), Some(&preset))
-        .expect("URL share fragment on wasm32");
+    let preset = tool.export_preset_json().expect("preset export on wasm32");
+    let frag = encode_share_fragment(
+        "fluid_dynamics",
+        Some("LatticeBoltzmannTool"),
+        Some(&preset),
+    )
+    .expect("URL share fragment on wasm32");
     let parsed = parse_share_location(&frag, "")
         .expect("parse share location")
         .expect("params");

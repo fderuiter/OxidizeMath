@@ -19,7 +19,12 @@ use math_commons::math_kernel::types::flatten_2d_index;
 fn test_floor_brush_hits_all_four_subcell_quadrants_and_clamps_bounds() {
     let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(100.0, 50.0));
     // Target lattice cell (gx = 30, gy = 25), rendered at screen row py = 49 - 25 = 24 ([24.0, 25.0)).
-    for (sx, sy) in [(30.05, 24.05), (30.95, 24.05), (30.05, 24.95), (30.95, 24.95)] {
+    for (sx, sy) in [
+        (30.05, 24.05),
+        (30.95, 24.05),
+        (30.05, 24.95),
+        (30.95, 24.95),
+    ] {
         let mapped = screen_pos_to_cell(egui::pos2(sx, sy), rect);
         assert_eq!(
             mapped,
@@ -99,8 +104,12 @@ fn test_url_share_link_roundtrip_stays_within_bounds_and_legacy_presets_load() {
     assert!(preset_json.len() <= MAX_DECODED_URL_STATE_BYTES);
     validate_url_preset_json(&preset_json).expect("URL JSON bounds must pass");
 
-    let fragment = encode_share_fragment("fluid_dynamics", Some("LatticeBoltzmannTool"), Some(&preset_json))
-        .expect("encode_share_fragment must fit within 8 KiB");
+    let fragment = encode_share_fragment(
+        "fluid_dynamics",
+        Some("LatticeBoltzmannTool"),
+        Some(&preset_json),
+    )
+    .expect("encode_share_fragment must fit within 8 KiB");
     assert!(fragment.len() <= MAX_URL_FRAGMENT_BYTES);
 
     let parsed = parse_share_location(&fragment, "")
@@ -142,9 +151,14 @@ fn test_aerodynamics_zero_guards_and_streamlined_beats_bluff_plate_drag() {
         airfoil_solver.set_inlet(0, 0, LBM_INLET_GUARD_COLS, LBM_HEIGHT, u0, 0.0);
         airfoil_solver.step();
         if step > 100 {
-            bluff_cd_sum +=
-                compute_aerodynamics(bluff_solver.net_obstacle_force(), u0, visc, &bluff_mask, step)
-                    .cd;
+            bluff_cd_sum += compute_aerodynamics(
+                bluff_solver.net_obstacle_force(),
+                u0,
+                visc,
+                &bluff_mask,
+                step,
+            )
+            .cd;
             airfoil_cd_sum += compute_aerodynamics(
                 airfoil_solver.net_obstacle_force(),
                 u0,
@@ -240,9 +254,11 @@ fn test_export_wind_tunnel_verification_previews() {
         airfoil.set_inlet(0, 0, LBM_INLET_GUARD_COLS, LBM_HEIGHT, u0, uy_seed);
         airfoil.step();
         if step >= 60 && step % 4 == 0 {
-            let b_cd = compute_aerodynamics(bluff.net_obstacle_force(), u0, visc, &bluff_mask, step).cd;
+            let b_cd =
+                compute_aerodynamics(bluff.net_obstacle_force(), u0, visc, &bluff_mask, step).cd;
             let a_cd =
-                compute_aerodynamics(airfoil.net_obstacle_force(), u0, visc, &airfoil_mask, step).cd;
+                compute_aerodynamics(airfoil.net_obstacle_force(), u0, visc, &airfoil_mask, step)
+                    .cd;
             bluff_series.push([step as f64, b_cd]);
             airfoil_series.push([step as f64, a_cd]);
         }
@@ -287,7 +303,10 @@ fn test_lbm_fairing_challenge_lifecycle_and_tampered_url_clamping() {
         .as_ref()
         .and_then(|t| t.evaluate_challenge())
         .expect("challenge evaluation present");
-    assert!(!base_eval.passed, "Bluff cylinder baseline must start unsolved");
+    assert!(
+        !base_eval.passed,
+        "Bluff cylinder baseline must start unsolved"
+    );
 
     {
         let tool = fw
@@ -312,7 +331,8 @@ fn test_lbm_fairing_challenge_lifecycle_and_tampered_url_clamping() {
     let share_url = fw.encode_share_url().expect("challenge share URL");
     let frag = &share_url[share_url.find('#').unwrap()..];
     let mut params = parse_share_location(frag, "").unwrap().unwrap();
-    let mut env: serde_json::Value = serde_json::from_str(params.state_json.as_ref().unwrap()).unwrap();
+    let mut env: serde_json::Value =
+        serde_json::from_str(params.state_json.as_ref().unwrap()).unwrap();
     env["config"]["viscosity"] = serde_json::json!(0.25);
     env["config"]["inflow_speed"] = serde_json::json!(0.17);
     params.state_json = Some(env.to_string());
