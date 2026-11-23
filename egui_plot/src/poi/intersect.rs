@@ -1,7 +1,8 @@
 //! Pairwise curve-curve and curve-reference-line intersection UI adapters delegating to `math_commons::poi`.
 
+use math_commons::series::PointSeries;
+
 use crate::{
-    items::PlotPoint,
     poi::{
         CriticalPoint, CriticalPointKind, LineSeriesRef, MAX_CRITICAL_POINTS, RefLineEntry,
         interpolate_threshold_crossings, interpolate_y_at_x, intersect_polylines_into,
@@ -20,7 +21,7 @@ pub(crate) fn collect_reference_intersections(
 ) {
     for line in lines {
         for hline in hlines {
-            for x in interpolate_threshold_crossings(line.points, hline.value) {
+            for x in interpolate_threshold_crossings(&line.points, hline.value) {
                 push_if_visible(
                     out,
                     CriticalPoint {
@@ -36,7 +37,7 @@ pub(crate) fn collect_reference_intersections(
             }
         }
         for vline in vlines {
-            for y in interpolate_y_at_x(line.points, vline.value) {
+            for y in interpolate_y_at_x(&line.points, vline.value) {
                 push_if_visible(
                     out,
                     CriticalPoint {
@@ -82,21 +83,26 @@ struct SeriesBoundsSummary {
     visible: bool,
 }
 
-fn summarize_series_bounds(pts: &[PlotPoint], bounds: &PlotBounds) -> SeriesBoundsSummary {
+fn summarize_series_bounds<P: PointSeries + ?Sized>(
+    pts: &P,
+    bounds: &PlotBounds,
+) -> SeriesBoundsSummary {
+    let n = pts.len();
     let mut min_x = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_y = f64::NEG_INFINITY;
     let mut finite_count = 0_usize;
-    for &pt in pts {
-        if !pt.x.is_finite() || !pt.y.is_finite() {
+    for idx in 0..n {
+        let [x, y] = pts.point_at(idx);
+        if !x.is_finite() || !y.is_finite() {
             continue;
         }
         finite_count += 1;
-        min_x = min_x.min(pt.x);
-        max_x = max_x.max(pt.x);
-        min_y = min_y.min(pt.y);
-        max_y = max_y.max(pt.y);
+        min_x = min_x.min(x);
+        max_x = max_x.max(x);
+        min_y = min_y.min(y);
+        max_y = max_y.max(y);
     }
     let tol_x = (bounds.width().abs() * 1e-9).max(1e-12);
     let tol_y = (bounds.height().abs() * 1e-9).max(1e-12);
@@ -125,7 +131,7 @@ pub(crate) fn collect_pairwise_line_intersections(
     }
     let summaries: Vec<SeriesBoundsSummary> = lines
         .iter()
-        .map(|line| summarize_series_bounds(line.points, bounds))
+        .map(|line| summarize_series_bounds(&line.points, bounds))
         .collect();
     let mut stack_hits = [[0.0_f64; 2]; MAX_CRITICAL_POINTS];
     let x_bounds = [bounds.min[0], bounds.max[0]];
@@ -149,7 +155,7 @@ pub(crate) fn collect_pairwise_line_intersections(
             }
             let a = &lines[i];
             let b = &lines[j];
-            let count = intersect_polylines_into(a.points, b.points, x_bounds, &mut stack_hits);
+            let count = intersect_polylines_into(&a.points, &b.points, x_bounds, &mut stack_hits);
             for &pt in &stack_hits[..count] {
                 push_if_visible(
                     out,

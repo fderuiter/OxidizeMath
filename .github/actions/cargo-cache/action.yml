@@ -13,6 +13,12 @@ inputs:
     description: Explicit Rust target triple; defaults to the active rustc host triple.
     required: false
     default: ""
+  manifest-files:
+    description: Cargo manifest file paths or glob patterns hashed into the target cache key.
+    required: false
+    default: |
+      Cargo.toml
+      **/Cargo.toml
   extra-files:
     description: Optional file paths or glob patterns hashed into the target cache key.
     required: false
@@ -30,8 +36,11 @@ runs:
       shell: bash
       env:
         INPUT_TARGET: ${{ inputs.target }}
+        INPUT_MANIFEST_FILES: ${{ inputs.manifest-files }}
         INPUT_EXTRA_FILES: ${{ inputs.extra-files }}
-        LOCK_AND_CONFIG_HASH: ${{ hashFiles('Cargo.lock', '**/Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.cargo/config.toml', 'math_explorer_gui/Trunk.toml') }}
+        LOCK_AND_CONFIG_HASH: ${{ hashFiles('Cargo.lock', '**/Cargo.lock', '.cargo/config.toml') }}
+        MANIFEST_FILES_HASH: ${{ inputs.manifest-files != '' && hashFiles(inputs.manifest-files) || '' }}
+        TRUNK_CONFIG_HASH: ${{ inputs.target == 'wasm32-unknown-unknown' && hashFiles('math_explorer_gui/Trunk.toml') || '' }}
         EXTRA_FILES_HASH: ${{ inputs.extra-files != '' && hashFiles(inputs.extra-files) || '' }}
       run: |
         set -euo pipefail
@@ -66,13 +75,23 @@ runs:
           exit 1
         fi
 
+        if [ -z "${MANIFEST_FILES_HASH:-}" ]; then
+          echo "Error: manifest-files pattern matched no files: ${INPUT_MANIFEST_FILES:-<empty>}" >&2
+          exit 1
+        fi
+
+        if [ "$resolved_target" = "wasm32-unknown-unknown" ] && [ -z "${TRUNK_CONFIG_HASH:-}" ]; then
+          echo "Error: Failed to hash math_explorer_gui/Trunk.toml for wasm32-unknown-unknown target" >&2
+          exit 1
+        fi
+
         if [ -n "${INPUT_EXTRA_FILES:-}" ] && [ -z "${EXTRA_FILES_HASH:-}" ]; then
           echo "Error: extra-files pattern matched no files: ${INPUT_EXTRA_FILES}" >&2
           exit 1
         fi
 
         compiler_hash="$(printf '%s\ntarget=%s\n' "$rustc_info" "$resolved_target" | sha256_hex)"
-        manifest_hash="$(printf '%s:%s\n' "$LOCK_AND_CONFIG_HASH" "${EXTRA_FILES_HASH:-}" | sha256_hex)"
+        manifest_hash="$(printf '%s:%s:%s:%s\n' "$LOCK_AND_CONFIG_HASH" "$MANIFEST_FILES_HASH" "${TRUNK_CONFIG_HASH:-}" "${EXTRA_FILES_HASH:-}" | sha256_hex)"
 
         {
           printf 'target=%s\n' "$resolved_target"
@@ -133,6 +152,7 @@ runs:
         key: ${{ runner.os }}-cargo-target-${{ inputs.scope }}-${{ inputs.profile }}-${{ steps.cache-meta.outputs.target }}-${{ steps.cache-meta.outputs.compiler-hash }}-${{ steps.cache-meta.outputs.manifest-hash }}
         restore-keys: |
           ${{ runner.os }}-cargo-target-${{ inputs.scope }}-${{ inputs.profile }}-${{ steps.cache-meta.outputs.target }}-${{ steps.cache-meta.outputs.compiler-hash }}-
+          ${{ runner.os }}-cargo-target-${{ inputs.scope }}-${{ inputs.profile }}-${{ steps.cache-meta.outputs.target }}-
 
     - name: Restore Cargo target directory
       if: inputs.restore-only == 'true'
@@ -163,3 +183,4 @@ runs:
         key: ${{ runner.os }}-cargo-target-${{ inputs.scope }}-${{ inputs.profile }}-${{ steps.cache-meta.outputs.target }}-${{ steps.cache-meta.outputs.compiler-hash }}-${{ steps.cache-meta.outputs.manifest-hash }}
         restore-keys: |
           ${{ runner.os }}-cargo-target-${{ inputs.scope }}-${{ inputs.profile }}-${{ steps.cache-meta.outputs.target }}-${{ steps.cache-meta.outputs.compiler-hash }}-
+          ${{ runner.os }}-cargo-target-${{ inputs.scope }}-${{ inputs.profile }}-${{ steps.cache-meta.outputs.target }}-

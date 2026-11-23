@@ -218,6 +218,12 @@ impl QuasicrystalStudio {
                 PlaybackAction::Play => self.state.is_playing = true,
                 PlaybackAction::Pause => self.state.is_playing = false,
                 PlaybackAction::Step => self.step_simulation(),
+                PlaybackAction::StepBack => {
+                    let (s, c) = self.state.phason_drift_angle_deg.to_radians().sin_cos();
+                    let step = -0.04 * self.state.phason_drift_speed;
+                    self.step_phason_zero_alloc([step * c, step * s]);
+                }
+                PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.state.is_playing = false;
                     self.state.phason_x = 0.0;

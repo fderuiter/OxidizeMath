@@ -1,4 +1,4 @@
-# ADR 0047: 2D Cut-and-Project Quasicrystal and Reciprocal Bragg Studio
+# ADR 20261123: 2D Cut-and-Project Quasicrystal and Reciprocal Bragg Studio
 
 ## Status
 

@@ -1006,12 +1006,13 @@ def run_parallel_preload_and_sw_http_cache_check(
 
             content_encoding: str | None = None
             accept_enc = self.headers.get("Accept-Encoding", "")
-            br_target = target.with_name(target.name + ".br")
-            gz_target = target.with_name(target.name + ".gz")
-            if clean_path.endswith(".wasm") and "br" in accept_enc and br_target.is_file():
+            br_target = Path(f"{target}.br")
+            gz_target = Path(f"{target}.gz")
+            is_wasm = clean_path.endswith(".wasm")
+            if is_wasm and "br" in accept_enc and br_target.is_file():
                 payload = br_target.read_bytes()
                 content_encoding = "br"
-            elif clean_path.endswith(".wasm") and "gzip" in accept_enc and gz_target.is_file():
+            elif is_wasm and "gzip" in accept_enc and gz_target.is_file():
                 payload = gz_target.read_bytes()
                 content_encoding = "gzip"
             else:
@@ -1028,8 +1029,9 @@ def run_parallel_preload_and_sw_http_cache_check(
                     origin_hits.append((clean_path, 304))
                 self.send_response(304)
                 self.send_header("ETag", etag)
-                self.send_header("Vary", "Accept-Encoding")
                 self.send_header("Cache-Control", "public, max-age=600")
+                if is_wasm:
+                    self.send_header("Vary", "Accept-Encoding")
                 self.send_header("Content-Security-Policy", csp)
                 self.end_headers()
                 return
@@ -1040,6 +1042,7 @@ def run_parallel_preload_and_sw_http_cache_check(
             self.send_header("Content-Type", content_type)
             if content_encoding:
                 self.send_header("Content-Encoding", content_encoding)
+            if is_wasm:
                 self.send_header("Vary", "Accept-Encoding")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("ETag", etag)
