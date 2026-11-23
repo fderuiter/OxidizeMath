@@ -277,12 +277,14 @@ impl ExcitableSheet2D {
 
     #[verified_engine::verified]
     fn apply_probes_fast(&mut self, dt: f64) {
-        let u_slice = self.system.u_mut();
-        for i in 0..u_slice.len() {
-            if self.clamp_mask[i] != 0 {
-                u_slice[i] = self.clamp_voltage[i];
-            } else if self.stimulus[i] != 0.0 {
-                u_slice[i] += dt * self.stimulus[i];
+        let clamp_mask = &self.clamp_mask;
+        let clamp_voltage = &self.clamp_voltage;
+        let stimulus = &self.stimulus;
+        for (i, u_val) in self.system.u_mut().iter_mut().enumerate() {
+            if clamp_mask[i] != 0 {
+                *u_val = clamp_voltage[i];
+            } else if stimulus[i] != 0.0 {
+                *u_val += dt * stimulus[i];
             }
         }
     }
