@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::super::bankroll_ensemble::BankrollLabMode;
-use super::state::BankrollWagerModel;
+use super::state::{is_default_stake_multiplier, BankrollWagerModel};
 use super::BankrollGrowthTool;
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
@@ -60,6 +60,15 @@ impl BankrollGrowthTool {
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.num_bets, 10..=1000).text("Number of Bets"))
+            .changed();
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut self.stake_multiplier, 0.0..=3.0)
+                    .text("Stake Multiplier (× f*)"),
+            )
+            .accessible_hover_text(
+                "Multiple of Kelly optimal stake f*. Above 2.0f*, expected log-growth turns negative.",
+            )
             .changed();
         changed
     }
@@ -155,11 +164,18 @@ impl BankrollGrowthTool {
                 self.reset_defaults();
                 *changed = false;
             }
-            ui.label(format!("(Seed #{})", self.seed_counter));
+            ui.small(format!(
+                "(Seed #{}) f* = {:.3} | Active f = {:.3} | EV = {:+.3} | Log-Growth g = {:+.4}",
+                self.seed_counter,
+                self.kelly_f_star,
+                self.active_fraction,
+                self.unit_expected_value,
+                self.active_growth_rate
+            ));
         });
     }
 
-    fn render_kelly_plot(&self, ui: &mut egui::Ui, palette: &SemanticPalette) {
+    fn render_kelly_plot(&mut self, ui: &mut egui::Ui, palette: &SemanticPalette) {
         if let Some(ref err) = self.error_msg {
             ui.colored_label(palette.error, err);
             return;
@@ -188,6 +204,15 @@ impl BankrollGrowthTool {
                     )
                     .color(palette.series_color(1)),
                 );
+                if !is_default_stake_multiplier(&self.stake_multiplier) {
+                    let label = format!("Active Stake ({:.2}× f*)", self.stake_multiplier);
+                    plot_ui.line(
+                        Line::new(label, &self.active_stake_points[..])
+                            .color(palette.series_color(0))
+                            .width(2.2_f32),
+                    );
+                }
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 }

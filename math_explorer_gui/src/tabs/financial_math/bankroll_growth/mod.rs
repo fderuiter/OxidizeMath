@@ -12,6 +12,7 @@ pub use state::BankrollWagerModel;
 use state::{
     BankrollState, DEFAULT_DRAWDOWN_ALPHA, DEFAULT_DRAWDOWN_BETA, DEFAULT_HALF_LOSS_PROBABILITY,
     DEFAULT_HALF_WIN_PROBABILITY, DEFAULT_PUSH_PROBABILITY, DEFAULT_SLATE_SIZE,
+    DEFAULT_STAKE_MULTIPLIER,
 };
 
 #[cfg(test)]
@@ -20,7 +21,7 @@ use math_explorer::pure_math::statistics::kelly::BankrollFraction;
 use simulation::settle_bet;
 
 use super::bankroll_ensemble::{BankrollEnsembleLab, BankrollLabMode, MAX_CUSTOM_FRACTION};
-use crate::framework::InteractiveTool;
+use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::kelly::{
@@ -33,6 +34,7 @@ pub struct BankrollGrowthTool {
     pub(super) probability: f64,
     pub(super) odds: f64,
     pub(super) num_bets: usize,
+    pub(super) stake_multiplier: f64,
     pub(super) seed_counter: u64,
     pub(super) mode: BankrollLabMode,
     pub(super) wager_model: BankrollWagerModel,
@@ -49,6 +51,12 @@ pub struct BankrollGrowthTool {
     pub(super) half_kelly_points: Vec<PlotPoint>,
     pub(super) quarter_kelly_points: Vec<PlotPoint>,
     pub(super) risk_constrained_points: Vec<PlotPoint>,
+    pub(super) active_stake_points: Vec<PlotPoint>,
+    pub(super) kelly_f_star: f64,
+    pub(super) active_fraction: f64,
+    pub(super) active_growth_rate: f64,
+    pub(super) unit_expected_value: f64,
+    pub(super) callout_manager: CalloutManager,
     pub(super) error_msg: Option<String>,
 }
 
@@ -59,6 +67,7 @@ impl Default for BankrollGrowthTool {
             probability: 0.55,
             odds: 2.0,
             num_bets: 100,
+            stake_multiplier: DEFAULT_STAKE_MULTIPLIER,
             seed_counter: 0,
             mode: BankrollLabMode::KellyStrategies,
             wager_model: BankrollWagerModel::BinaryOrPush,
@@ -74,6 +83,12 @@ impl Default for BankrollGrowthTool {
             half_kelly_points: Vec::with_capacity(1001),
             quarter_kelly_points: Vec::with_capacity(1001),
             risk_constrained_points: Vec::with_capacity(1001),
+            active_stake_points: Vec::with_capacity(1001),
+            kelly_f_star: 0.0,
+            active_fraction: 0.0,
+            active_growth_rate: 0.0,
+            unit_expected_value: 0.0,
+            callout_manager: CalloutManager::new(),
             error_msg: None,
         };
         tool.recalculate();
@@ -88,6 +103,7 @@ impl BankrollGrowthTool {
         self.probability = 0.55;
         self.odds = 2.0;
         self.num_bets = 100;
+        self.stake_multiplier = DEFAULT_STAKE_MULTIPLIER;
         self.seed_counter = 0;
         self.mode = BankrollLabMode::KellyStrategies;
         self.wager_model = BankrollWagerModel::BinaryOrPush;
@@ -112,6 +128,8 @@ impl BankrollGrowthTool {
         self.probability = s.probability;
         self.odds = s.odds;
         self.num_bets = s.num_bets;
+        self.stake_multiplier = s.stake_multiplier;
+        self.seed_counter = 0;
         self.mode = s.mode;
         self.wager_model = s.wager_model;
         self.push_probability = s.push_probability;
@@ -139,12 +157,35 @@ impl InteractiveTool for BankrollGrowthTool {
         "financial_math"
     }
 
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        if self.error_msg.is_some() {
+            return Vec::new();
+        }
+        let final_w = self
+            .active_stake_points
+            .last()
+            .map_or(self.initial_bankroll, |pt| pt.y);
+        vec![
+            ("kelly_fraction", self.kelly_f_star),
+            ("stake_multiplier", self.stake_multiplier),
+            ("stake_fraction", self.active_fraction),
+            ("expected_growth_rate", self.active_growth_rate),
+            ("expected_value", self.unit_expected_value),
+            ("final_bankroll", final_w),
+        ]
+    }
+
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.callout_manager.sync_specs(callouts);
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&BankrollState {
             initial_bankroll: self.initial_bankroll,
             probability: self.probability,
             odds: self.odds,
             num_bets: self.num_bets,
+            stake_multiplier: self.stake_multiplier,
             mode: self.mode,
             custom_fraction: self.ensemble_lab.custom_fraction,
             hypothesis: self.ensemble_lab.hypothesis,

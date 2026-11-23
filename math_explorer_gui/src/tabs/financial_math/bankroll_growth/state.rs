@@ -35,6 +35,7 @@ impl BankrollWagerModel {
     }
 }
 
+pub(super) const DEFAULT_STAKE_MULTIPLIER: f64 = 1.0;
 pub(super) const DEFAULT_PUSH_PROBABILITY: f64 = 0.0;
 pub(super) const DEFAULT_HALF_WIN_PROBABILITY: f64 = 0.12;
 pub(super) const DEFAULT_HALF_LOSS_PROBABILITY: f64 = 0.0;
@@ -42,6 +43,9 @@ pub(super) const DEFAULT_SLATE_SIZE: usize = 5;
 pub(super) const DEFAULT_DRAWDOWN_ALPHA: f64 = 0.70;
 pub(super) const DEFAULT_DRAWDOWN_BETA: f64 = 0.10;
 
+const fn default_stake_multiplier() -> f64 {
+    DEFAULT_STAKE_MULTIPLIER
+}
 const fn default_custom_fraction() -> f64 {
     DEFAULT_CUSTOM_FRACTION
 }
@@ -66,6 +70,9 @@ const fn default_beta() -> f64 {
 
 fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-12
+}
+pub(super) fn is_default_stake_multiplier(val: &f64) -> bool {
+    approx_eq(*val, DEFAULT_STAKE_MULTIPLIER)
 }
 fn is_default_mode(mode: &BankrollLabMode) -> bool {
     *mode == BankrollLabMode::KellyStrategies
@@ -102,6 +109,11 @@ pub(super) struct BankrollState {
     pub probability: f64,
     pub odds: f64,
     pub num_bets: usize,
+    #[serde(
+        default = "default_stake_multiplier",
+        skip_serializing_if = "is_default_stake_multiplier"
+    )]
+    pub stake_multiplier: f64,
     #[serde(default, skip_serializing_if = "is_default_mode")]
     pub mode: BankrollLabMode,
     #[serde(
@@ -145,6 +157,7 @@ impl BankrollState {
             self.initial_bankroll,
             self.probability,
             self.odds,
+            self.stake_multiplier,
             self.custom_fraction,
             self.push_probability,
             self.half_win_probability,
@@ -157,6 +170,7 @@ impl BankrollState {
             || !(0.01..=0.99).contains(&self.probability)
             || !(0.1..=10.0).contains(&self.odds)
             || !(10..=1000).contains(&self.num_bets)
+            || !(0.0..=3.0).contains(&self.stake_multiplier)
             || !(0.0..=MAX_CUSTOM_FRACTION).contains(&self.custom_fraction)
             || !(0.0..=0.80).contains(&self.push_probability)
             || !(0.0..=0.60).contains(&self.half_win_probability)

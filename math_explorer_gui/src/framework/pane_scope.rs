@@ -1,7 +1,59 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{AccessibleHoverText, InputMode, InteractionContext, InteractiveTool, PaneSidePanel};
+use super::{AccessibleHoverText, BrushMode, BrushStroke, InteractiveTool, PaneSidePanel};
 use eframe::egui;
+
+/// Active pointer/touch input modality for an interactive simulation pane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputMode {
+    /// Desktop mouse/trackpad pointer input.
+    Mouse,
+    /// Direct multi-touch gesture input.
+    Touch,
+}
+
+/// Event context provided to interaction hooks.
+pub struct InteractionContext<'a> {
+    /// Current pointer position in screen coordinates, if hovering or interacting.
+    pub pointer_pos: Option<egui::Pos2>,
+    /// Pointer drag delta since the previous frame.
+    pub delta: egui::Vec2,
+    /// Whether the pointer is actively dragging on the canvas.
+    pub is_dragging: bool,
+    /// Whether the canvas was clicked during this frame.
+    pub is_clicked: bool,
+    /// Underlying `egui` widget response for the canvas region.
+    pub response: &'a egui::Response,
+    /// Active pointer or touch input mode.
+    pub input_mode: InputMode,
+    /// Active multi-touch gesture state, when present.
+    pub multi_touch: Option<egui::MultiTouchInfo>,
+    /// Set of keyboard keys currently held down.
+    pub keys_down: std::collections::HashSet<egui::Key>,
+    /// Active keyboard modifiers (`Ctrl`, `Shift`, `Alt`, `Cmd`).
+    pub modifiers: egui::Modifiers,
+    /// Optional spatial brush stroke synthesized from pointer drag events.
+    pub brush_stroke: Option<BrushStroke>,
+}
+
+impl<'a> InteractionContext<'a> {
+    /// Builds an [`InteractionContext`] carrying an interpolated [`BrushStroke`] for [`InteractiveTool::on_brush`].
+    #[must_use]
+    pub fn from_brush_stroke(response: &'a egui::Response, stroke: BrushStroke) -> Self {
+        Self {
+            pointer_pos: response.interact_pointer_pos(),
+            delta: response.drag_delta(),
+            is_dragging: response.dragged(),
+            is_clicked: response.clicked(),
+            response,
+            input_mode: InputMode::Mouse,
+            multi_touch: None,
+            keys_down: std::collections::HashSet::new(),
+            modifiers: egui::Modifiers::NONE,
+            brush_stroke: Some(stroke),
+        }
+    }
+}
 
 /// Computes a pane-salted panel [`egui::Id`] from the enclosing `ui` hierarchy.
 #[inline]
@@ -75,6 +127,26 @@ pub(super) fn render_default_tool_inside<T: InteractiveTool + ?Sized>(
     render_default_tool_canvas(tool, ui);
 }
 
+fn build_default_brush_stroke(
+    pointer_pos: Option<egui::Pos2>,
+    delta: egui::Vec2,
+    is_dragging: bool,
+    secondary_down: bool,
+) -> Option<BrushStroke> {
+    let pos = pointer_pos.filter(|_| is_dragging)?;
+    Some(BrushStroke {
+        start: [f64::from(pos.x - delta.x), f64::from(pos.y - delta.y)],
+        end: [f64::from(pos.x), f64::from(pos.y)],
+        radius: 2.0,
+        mode: if secondary_down {
+            BrushMode::Erase
+        } else {
+            BrushMode::Solid
+        },
+        drag_vector: [f64::from(delta.x), f64::from(delta.y)],
+    })
+}
+
 fn render_default_tool_canvas<T: InteractiveTool + ?Sized>(tool: &mut T, ui: &mut egui::Ui) {
     egui::CentralPanel::default().show_inside(ui, |ui| {
         let (response, painter) =
@@ -84,19 +156,28 @@ fn render_default_tool_canvas<T: InteractiveTool + ?Sized>(tool: &mut T, ui: &mu
             d.get_temp(egui::Id::new("INPUT_MODE"))
                 .unwrap_or(InputMode::Mouse)
         });
-        let keys_down = ui.input(|i| i.keys_down.clone());
-        let modifiers = ui.input(|i| i.modifiers);
+        let (keys_down, modifiers, secondary_down) =
+            ui.input(|i| (i.keys_down.clone(), i.modifiers, i.pointer.secondary_down()));
+        let pointer_pos = response.interact_pointer_pos();
+        let delta = response.drag_delta();
+        let is_dragging = response.dragged();
 
         let interaction_ctx = InteractionContext {
-            pointer_pos: response.interact_pointer_pos(),
-            delta: response.drag_delta(),
-            is_dragging: response.dragged(),
+            pointer_pos,
+            delta,
+            is_dragging,
             is_clicked: response.clicked(),
             response: &response,
             input_mode,
             multi_touch,
             keys_down,
             modifiers,
+            brush_stroke: build_default_brush_stroke(
+                pointer_pos,
+                delta,
+                is_dragging,
+                secondary_down,
+            ),
         };
 
         if interaction_ctx.response.has_focus() {
