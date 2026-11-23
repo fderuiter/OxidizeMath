@@ -9198,7 +9198,7 @@
       "signature": "pub enum MathError"
     },
     {
-      "signature": "pub type MathResult < T > = std :: result :: Result < T , MathError >"
+      "signature": "pub type MathResult < T > = core :: result :: Result < T , MathError >"
     },
     {
       "signature": "pub use crate :: ast :: EvalError"
@@ -9587,6 +9587,18 @@
   "crates/math_commons/src/primitives.rs": [
     {
       "signature": "impl UnitInterval { pub fn complement (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn bounded_exp (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn bounded_ln (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn bounded_powf (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn bounded_sqrt (_ : f64) -> f64"
     }
   ],
   "crates/math_commons/src/registry.rs": [
@@ -9645,6 +9657,88 @@
     },
     {
       "signature": "pub trait Sample2D { fn sample_y (& self) -> f64 }"
+    }
+  ],
+  "crates/math_commons/src/stochastic/mod.rs": [
+    {
+      "signature": "impl SolverWorkspace { pub fn analyze_scc (& mut self , _ : & [f64] , _ : usize) -> Option < SccSummary > }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn calibrate_ou (& self , _ : & [f64] , _ : f64) -> Option < OuCalibration > }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn ensure_sample_capacity (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn ensure_state_capacity (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn operator_staging_mut (& mut self , _ : usize) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn sample_capacity (& self) -> usize }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn solve_ctmc_steady_state (& mut self , _ : & [f64] , _ : usize , _ : & mut [f64] ,) -> bool }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn solve_dtmc_stationary (& mut self , _ : & [f64] , _ : usize , _ : & mut [f64] ,) -> bool }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn solve_staged_ctmc_steady_state (& mut self , _ : usize , _ : & mut [f64] ,) -> bool }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn solve_staged_ctmc_steady_state_slice (& mut self , _ : usize) -> Option < & [f64] > }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn solve_staged_dtmc_stationary (& mut self , _ : usize , _ : & mut [f64]) -> bool }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn solve_staged_dtmc_stationary_slice (& mut self , _ : usize) -> Option < & [f64] > }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn state_capacity (& self) -> usize }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn summarize_samples (& mut self , _ : & [f64] , _ : Option < f64 > ,) -> Option < SampleSummary > }"
+    },
+    {
+      "signature": "impl SolverWorkspace { pub fn unique_sink_members (& self , _ : usize) -> & [usize] }"
+    },
+    {
+      "signature": "pub fn ctmc_steady_state (_ : & [f64] , _ : usize) -> Option < Vec < f64 > >"
+    },
+    {
+      "signature": "pub fn dtmc_stationary_distribution (_ : & [f64] , _ : usize) -> Option < Vec < f64 > >"
+    },
+    {
+      "signature": "pub struct SccSummary"
+    },
+    {
+      "signature": "pub struct SolverWorkspace"
+    },
+    {
+      "signature": "pub use ou :: OuCalibration"
+    },
+    {
+      "signature": "pub use ou :: SampleSummary"
+    },
+    {
+      "signature": "pub use ou :: calibrate_ou"
+    }
+  ],
+  "crates/math_commons/src/stochastic/ou.rs": [
+    {
+      "signature": "pub fn calibrate_ou (_ : & [f64] , _ : f64) -> Option < OuCalibration >"
+    },
+    {
+      "signature": "pub struct OuCalibration"
+    },
+    {
+      "signature": "pub struct SampleSummary"
     }
   ],
   "crates/math_commons/src/wigner/mod.rs": [
@@ -10336,6 +10430,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use math_commons :: series }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_commons :: stochastic }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use math_commons :: wigner }"
@@ -14393,6 +14490,9 @@
       "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state (& self) -> Option < DVector < T > > }"
     },
     {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state_with_workspace (& self , _ : & mut math_commons :: stochastic :: SolverWorkspace , _ : & mut DVector < T > ,) -> bool }"
+    },
+    {
       "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn transition_probabilities (& self , _ : T) -> Result < DMatrix < T > > }"
     },
     {
@@ -14438,9 +14538,6 @@
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn state_types (& self) -> & [StateType] }"
-    },
-    {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn stationary_distribution (& self) -> Option < DVector < T > > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn transition_matrix (& self) -> & DMatrix < T > }"
@@ -14617,6 +14714,9 @@
       "signature": "pub use hmm :: ViterbiWorkspace"
     },
     {
+      "signature": "pub use math_commons :: stochastic :: SolverWorkspace"
+    },
+    {
       "signature": "pub use num_traits :: ToPrimitive"
     },
     {
@@ -14731,9 +14831,6 @@
     },
     {
       "signature": "pub fn detailed_balance_violation (_ : & DMatrix < f64 > , _ : & DVector < f64 >) -> f64"
-    },
-    {
-      "signature": "pub fn lazy_stationary_distribution (_ : & DMatrix < f64 >) -> Result < DVector < f64 > >"
     },
     {
       "signature": "pub fn solve_parrondo_ratchet (_ : & ParrondoParams , _ : & ParrondoSchedule ,) -> Result < ParrondoReport >"
@@ -15231,6 +15328,9 @@
       "signature": "pub fn estimate_ou_params (_ : & [f64] , _ : f64) -> Result < OuParams , OuError >"
     },
     {
+      "signature": "pub fn summarize_terminal_values_with_workspace (_ : & mut math_commons :: stochastic :: SolverWorkspace , _ : & [f64] , _ : Option < f64 > ,) -> Option < PerformanceStats >"
+    },
+    {
       "signature": "pub struct OuAnalyzer"
     },
     {
@@ -15269,6 +15369,9 @@
     },
     {
       "signature": "pub use analysis :: estimate_ou_params"
+    },
+    {
+      "signature": "pub use analysis :: summarize_terminal_values_with_workspace"
     },
     {
       "signature": "pub use core :: LongTermMean"
@@ -16784,6 +16887,9 @@
     },
     {
       "signature": "pub use math_commons :: series"
+    },
+    {
+      "signature": "pub use math_commons :: stochastic"
     },
     {
       "signature": "pub use math_commons :: wigner"

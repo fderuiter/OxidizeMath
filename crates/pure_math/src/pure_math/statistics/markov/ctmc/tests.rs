@@ -196,3 +196,44 @@ fn test_ctmc_serde_roundtrip_and_invalid_generator_rejection() {
     let nan_err = ContinuousMarkovChain::<f64>::deserialize(de).unwrap_err();
     assert!(nan_err.to_string().contains("Invalid generator matrix"));
 }
+
+#[test]
+fn test_slow_ctmc_steady_state_multi_sink_rejection_and_zero_alloc() {
+    use math_commons::stochastic::SolverWorkspace;
+    use verified_engine::engine::VerifiedEngine;
+
+    let slow_gen = DMatrix::from_row_slice(2, 2, &[-1e-7, 1e-7, 3e-7, -3e-7]);
+    let slow_chain = ContinuousMarkovChain::new(slow_gen.clone()).unwrap();
+    let pi = slow_chain
+        .steady_state()
+        .expect("slow irreducible 2-state CTMC must have unique steady state");
+    assert_relative_eq!(pi[0], 0.75, epsilon = 1e-12);
+    assert_relative_eq!(pi[1], 0.25, epsilon = 1e-12);
+
+    let scale_rel_res = (slow_gen.transpose() * &pi).norm() / 3e-7;
+    assert!(
+        scale_rel_res < 1e-12,
+        "expected scale-relative residual < 1e-12, got {scale_rel_res:e}"
+    );
+
+    let mut ws = SolverWorkspace::new(2, 0);
+    let mut out = DVector::zeros(2);
+    VerifiedEngine::run_verified(|| {
+        assert!(slow_chain.steady_state_with_workspace(&mut ws, &mut out));
+    });
+    assert_relative_eq!(out[0], 0.75, epsilon = 1e-12);
+    assert_relative_eq!(out[1], 0.25, epsilon = 1e-12);
+
+    // Multi-absorbing CTMC: states 0 and 2 absorbing, state 1 splits between them -> None.
+    let multi_abs = DMatrix::from_row_slice(
+        3,
+        3,
+        &[
+            0.0, 0.0, 0.0, //
+            1.5, -3.0, 1.5, //
+            0.0, 0.0, 0.0, //
+        ],
+    );
+    let multi_chain = ContinuousMarkovChain::new(multi_abs).unwrap();
+    assert!(multi_chain.steady_state().is_none());
+}
