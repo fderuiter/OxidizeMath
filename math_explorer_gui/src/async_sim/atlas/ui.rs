@@ -133,7 +133,7 @@ impl ParameterAtlasController {
         axes: &AtlasAxisPair,
         palette: &crate::app::SemanticPalette,
         tex_id: Option<egui::TextureId>,
-        contour: Option<(&'static str, Vec<[f64; 2]>)>,
+        contours: Vec<(&'static str, Vec<[f64; 2]>)>,
         clamped: [f64; 2],
         kb_cursor: Option<[f64; 2]>,
     ) -> Option<[f64; 2]> {
@@ -145,13 +145,16 @@ impl ParameterAtlasController {
                 [axes.x.span() as f32, axes.y.span() as f32],
             ));
         }
-        if let Some((contour_label, pts)) = contour {
-            plot_ui.line(
-                Line::new(contour_label, PlotPoints::from(pts))
-                    .color(palette.warning)
-                    .width(2.0_f32)
-                    .style(LineStyle::Dashed { length: 6.0 }),
-            );
+        let contour_colors = [palette.warning, palette.info, palette.success];
+        for (idx, (contour_label, pts)) in contours.into_iter().enumerate() {
+            if pts.iter().all(|p| p[0].is_finite() && p[1].is_finite()) && pts.len() >= 2 {
+                plot_ui.line(
+                    Line::new(contour_label, PlotPoints::from(pts))
+                        .color(contour_colors[idx % contour_colors.len()])
+                        .width(2.0_f32)
+                        .style(LineStyle::Dashed { length: 6.0_f32 }),
+                );
+            }
         }
         plot_ui.hline(
             HLine::new("Active Y", clamped[1])
@@ -193,7 +196,11 @@ impl ParameterAtlasController {
         let axes = cartographer.axes();
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let tex_id = self.texture.as_ref().map(egui::TextureHandle::id);
-        let contour = cartographer.overlay_contour();
+        let mut contours = Vec::new();
+        if let Some(primary) = cartographer.overlay_contour() {
+            contours.push(primary);
+        }
+        contours.extend(cartographer.extra_overlay_contours());
         let kb_cursor = self.keyboard_cursor;
         let mut hover_coord: Option<[f64; 2]> = None;
 
@@ -212,7 +219,7 @@ impl ParameterAtlasController {
             .include_y(axes.y.constraint.max)
             .show(ui, |plot_ui| {
                 hover_coord = Self::draw_atlas_plot_items(
-                    plot_ui, &axes, &palette, tex_id, contour, clamped, kb_cursor,
+                    plot_ui, &axes, &palette, tex_id, contours, clamped, kb_cursor,
                 );
             });
 

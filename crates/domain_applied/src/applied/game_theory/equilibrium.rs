@@ -150,9 +150,73 @@ impl Correspondence for BestResponseCorrespondence {
     }
 }
 
+/// Stack-allocated 1D best-response correspondence $\phi: \mathbb{R} \to 2^{\mathbb{R}}$
+/// evaluating scalar fixed points without dynamic heap allocations.
+///
+/// # Examples
+///
+/// ```
+/// # use domain_applied::__doctest_facade as math_explorer;
+/// use math_explorer::applied::game_theory::equilibrium::{ScalarBestResponse, is_fixed_point};
+/// use math_explorer::nalgebra::DVector;
+///
+/// // Symmetric 2-bidder first-price shading on Uniform(0, 100) with reserve r = 50 at v = 100
+/// let best_response = ScalarBestResponse::new(|_b| 62.5, 0.5);
+/// let eq_bid = DVector::from_vec(vec![62.5]);
+/// let truthful_bid = DVector::from_vec(vec![100.0]);
+/// assert!(is_fixed_point(&best_response, &eq_bid));
+/// assert!(!is_fixed_point(&best_response, &truthful_bid));
+/// ```
+pub struct ScalarBestResponse<F> {
+    /// Scalar best-response mapping $b^*(b)$ returning the optimal response on $\mathbb{R}$.
+    pub mapping: F,
+    /// Non-negative tolerance $\varepsilon \ge 0$ for set-membership $|y - b^*(x)| \le \varepsilon$.
+    pub tolerance: f64,
+}
+
+impl<F: Fn(f64) -> f64> ScalarBestResponse<F> {
+    /// Creates a new stack-allocated [`ScalarBestResponse`] with `tolerance` clamped to $\ge 0$.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn new(mapping: F, tolerance: f64) -> Self {
+        Self {
+            mapping,
+            tolerance: if tolerance.is_finite() {
+                tolerance.max(0.0)
+            } else {
+                0.0
+            },
+        }
+    }
+
+    /// Evaluates whether `target` lies within `tolerance` of `(self.mapping)(source)` on the stack.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn is_scalar_in_image(&self, source: f64, target: f64) -> bool {
+        if !source.is_finite() || !target.is_finite() {
+            return false;
+        }
+        let expected = (self.mapping)(source);
+        expected.is_finite() && (target - expected).abs() <= self.tolerance
+    }
+}
+
+impl<F: Fn(f64) -> f64> Correspondence for ScalarBestResponse<F> {
+    #[verified_engine::verified]
+    fn is_in_image(&self, source: &DVector<f64>, target: &DVector<f64>) -> bool {
+        if source.len() != 1 || target.len() != 1 {
+            return false;
+        }
+        self.is_scalar_in_image(source[0], target[0])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use verified_engine::engine::VerifiedEngine;
+
+    static VERIFIED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     #[verified_engine::verified]
@@ -179,5 +243,27 @@ mod tests {
 
         // x=1 => f(1)=0.5. 1 is NOT in {y | |y-0.5| < eps}. False.
         assert!(!is_fixed_point(&correspondence, &point_one));
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_scalar_best_response_zero_alloc_fixed_point() {
+        let eq_bid = DVector::from_vec(vec![62.5]);
+        let shaded_off = DVector::from_vec(vec![100.0]);
+        let wrong_dim = DVector::from_vec(vec![62.5, 62.5]);
+
+        let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let ((ok_eq, ok_off, ok_dim), metrics) = VerifiedEngine::run_verified(|| {
+            let br = ScalarBestResponse::new(|b| 0.5 * b + 31.25, 1e-6);
+            (
+                is_fixed_point(&br, &eq_bid),
+                is_fixed_point(&br, &shaded_off),
+                is_fixed_point(&br, &wrong_dim),
+            )
+        });
+        assert!(ok_eq);
+        assert!(!ok_off);
+        assert!(!ok_dim);
+        assert!(metrics.function_calls >= 3);
     }
 }
