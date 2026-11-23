@@ -62,7 +62,9 @@
 
 pub mod combinatorics;
 pub mod fractran;
+mod fractran_factor;
 pub mod fractran_programs;
+mod fractran_vm;
 pub mod geometry;
 pub mod kolmogorov;
 

@@ -13,7 +13,7 @@ fn test_algorithmic_info_tab_domain_slug_and_tool_selection() {
     assert_eq!(tab.name(), "Algorithmic Information");
     assert_eq!(tab.academic_domain(), "Pure Math");
     assert_eq!(tab.url_slug(), "algorithmic_information");
-    assert_eq!(tab.active_tool_id(), Some("FractranMachineTool"));
+    assert_eq!(tab.active_tool_id(), Some("AlgorithmicFractranTool"));
     assert!(tab.select_tool_by_name("FRACTRAN Virtual Machine"));
 }
 

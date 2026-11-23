@@ -1,8 +1,10 @@
-//! Canonical FRACTRAN programs and error types for [`super::fractran::FractranProgram`].
+//! Canonical FRACTRAN constants, stack-inline rules, and unified error types.
 
 use crate::math_types::Rational;
 use dashu::base::Sign;
 use dashu::integer::UBig;
+use diagnostics::{Diagnostic, Severity};
+use std::collections::HashMap;
 use std::fmt;
 
 /// First 64 prime numbers ($p_0 = 2$ through $p_{63} = 311$) indexing zero-allocation registers.
@@ -16,11 +18,14 @@ pub const FIRST_64_PRIMES: [u64; 64] = [
 /// Maximum number of prime registers supported by the stack-allocated FRACTRAN VM.
 pub const MAX_FRACTRAN_PRIMES: usize = 64;
 
-/// Largest prime factor ($p_{63} = 311$) supported by the zero-allocation register file.
+/// Largest prime factor ($p_{63} = 311$) supported by the stack-allocated 64-prime register file.
 pub const MAX_FRACTRAN_PRIME: u64 = 311;
 
-/// Maximum exponent allowed in any single prime register to prevent arithmetic overflow.
+/// Maximum exponent allowed in any single stack-inline prime register.
 pub const MAX_REGISTER_EXPONENT: u32 = 1_000_000;
+
+/// Upper bound on smooth prime factors accepted during dynamic VM table compilation.
+pub const MAX_SMOOTH_PRIME: u64 = 10_000;
 
 /// Conway's 14-fraction `PRIMEGAME` $(n_0 = 2 \implies 2^2, 2^3, 2^5, 2^7, 2^{11}, \dots)$.
 pub(super) const PRIMEGAME_PAIRS: [(i128, i128); 14] = [
@@ -60,9 +65,9 @@ pub(super) const FIBONACCI_PAIRS: [(i128, i128); 9] = [
     (11, 5),
 ];
 
-/// Descriptive validation and execution errors for the zero-allocation FRACTRAN VM.
+/// Typed validation and execution errors for FRACTRAN compilation and stepping.
 ///
-/// Kept `Copy` (zero heap fields) so even error paths inside `VerifiedAllocator` never allocate.
+/// Kept `Copy` (zero heap fields) so error paths inside `VerifiedAllocator` never allocate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FractranError {
     /// Program contains zero fraction rules.
@@ -82,6 +87,11 @@ pub enum FractranError {
         /// Zero-based index of the offending fraction rule.
         rule_index: usize,
     },
+    /// A fraction rule at `rule_index` is zero or negative.
+    NonPositiveFraction {
+        /// Zero-based index of the invalid rule.
+        rule_index: usize,
+    },
     /// Rule or initial integer contains a prime factor exceeding [`MAX_FRACTRAN_PRIME`] (`311`).
     UnsupportedPrimeFactor {
         /// Zero-based index of the offending fraction rule (`usize::MAX` for initial integer).
@@ -89,8 +99,29 @@ pub enum FractranError {
         /// Smallest unsupported prime factor $> 311$.
         factor: u64,
     },
-    /// Initial integer is zero or invalid for FRACTRAN encoding.
+    /// Prime factorization encountered a factor exceeding `max_prime` or overflowing `u32` exponents.
+    UnsmoothFactor {
+        /// Maximum supported smooth prime factor.
+        max_prime: u64,
+    },
+    /// Textual fraction list contained malformed `numerator/denominator` syntax.
+    InvalidFractionSyntax,
+    /// Initial integer is zero or invalid for stack-register FRACTRAN encoding.
     InvalidInitialValue,
+    /// Initial machine integer must be strictly positive (`>= 1`).
+    InitialValueZero,
+    /// Initial integer contains a prime factor absent from the compiled VM basis.
+    UnrepresentedPrime {
+        /// Prime factor missing from the VM basis.
+        prime: u64,
+    },
+    /// Register slice length did not match the compiled VM prime basis length.
+    BasisLengthMismatch {
+        /// Expected register count (`vm.primes().len()`).
+        expected: usize,
+        /// Provided register slice length.
+        actual: usize,
+    },
     /// Register exponent exceeded [`MAX_REGISTER_EXPONENT`] (`1_000_000`) or `u32::MAX`.
     ExponentOverflow {
         /// Prime base whose register overflowed.
@@ -98,73 +129,114 @@ pub enum FractranError {
         /// Attempted new exponent value.
         attempted: u64,
     },
-    /// Custom fraction text could not be parsed at the given token index.
-    InvalidFractionSyntax {
-        /// Zero-based token index in the input string.
-        token_index: usize,
+    /// Stepping `rule_index` would overflow `u32::MAX` in the register for `prime`.
+    RegisterOverflow {
+        /// Zero-based index of the firing rule.
+        rule_index: usize,
+        /// Prime register that reached `u32::MAX`.
+        prime: u64,
     },
+}
+
+fn fmt_rule_error(err: FractranError, f: &mut fmt::Formatter<'_>) -> Option<fmt::Result> {
+    match err {
+        FractranError::EmptyProgram => Some(write!(
+            f,
+            "FRACTRAN program must contain at least one fraction"
+        )),
+        FractranError::ZeroNumerator { rule_index } => Some(write!(
+            f,
+            "Fraction rule #{} has a zero numerator; rules must be strictly positive",
+            rule_index + 1
+        )),
+        FractranError::ZeroDenominator { rule_index } => Some(write!(
+            f,
+            "Fraction rule #{} has a zero denominator; division by zero is undefined",
+            rule_index + 1
+        )),
+        FractranError::NegativeFraction { rule_index } => Some(write!(
+            f,
+            "Fraction rule #{} is negative; FRACTRAN rules must be strictly positive",
+            rule_index + 1
+        )),
+        FractranError::NonPositiveFraction { rule_index } => Some(write!(
+            f,
+            "FRACTRAN rule {} must be strictly positive (> 0)",
+            rule_index + 1
+        )),
+        FractranError::UnsupportedPrimeFactor { rule_index, factor } => {
+            if rule_index == usize::MAX {
+                Some(write!(
+                    f,
+                    "Initial state contains prime factor {factor} exceeding maximum supported prime {MAX_FRACTRAN_PRIME}"
+                ))
+            } else {
+                Some(write!(
+                    f,
+                    "Fraction rule #{} contains prime factor {factor} exceeding maximum supported prime {MAX_FRACTRAN_PRIME}",
+                    rule_index + 1
+                ))
+            }
+        }
+        FractranError::UnsmoothFactor { max_prime } => Some(write!(
+            f,
+            "number contains a prime factor exceeding smooth prime limit ({max_prime})"
+        )),
+        _ => None,
+    }
 }
 
 impl fmt::Display for FractranError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(res) = fmt_rule_error(*self, f) {
+            return res;
+        }
         match *self {
-            Self::EmptyProgram => write!(f, "FRACTRAN program must contain at least one fraction"),
-            Self::ZeroNumerator { rule_index } => {
+            Self::InvalidFractionSyntax => {
+                write!(f, "invalid fraction syntax; expected positive N/D ratios")
+            }
+            Self::InvalidInitialValue | Self::InitialValueZero => {
+                write!(f, "initial FRACTRAN integer must be at least 1")
+            }
+            Self::UnrepresentedPrime { prime } => {
+                write!(f, "prime factor {prime} is not present in the VM basis")
+            }
+            Self::BasisLengthMismatch { expected, actual } => {
                 write!(
                     f,
-                    "Fraction rule #{} has a zero numerator; rules must be strictly positive",
-                    rule_index + 1
+                    "register slice length mismatch: expected {expected}, got {actual}"
                 )
             }
-            Self::ZeroDenominator { rule_index } => {
-                write!(
-                    f,
-                    "Fraction rule #{} has a zero denominator; division by zero is undefined",
-                    rule_index + 1
-                )
-            }
-            Self::NegativeFraction { rule_index } => {
-                write!(
-                    f,
-                    "Fraction rule #{} is negative; FRACTRAN rules must be strictly positive",
-                    rule_index + 1
-                )
-            }
-            Self::UnsupportedPrimeFactor { rule_index, factor } => {
-                if rule_index == usize::MAX {
-                    write!(
-                        f,
-                        "Initial state contains prime factor {factor} exceeding maximum supported prime {MAX_FRACTRAN_PRIME}"
-                    )
-                } else {
-                    write!(
-                        f,
-                        "Fraction rule #{} contains prime factor {factor} exceeding maximum supported prime {MAX_FRACTRAN_PRIME}",
-                        rule_index + 1
-                    )
-                }
-            }
-            Self::InvalidInitialValue => {
-                write!(f, "Initial FRACTRAN state must be a positive integer >= 1")
-            }
-            Self::ExponentOverflow { prime, attempted } => {
-                write!(
-                    f,
-                    "Register exponent for prime {prime} reached {attempted}, exceeding cap {MAX_REGISTER_EXPONENT}"
-                )
-            }
-            Self::InvalidFractionSyntax { token_index } => {
-                write!(
-                    f,
-                    "Malformed fraction token #{} (expected 'num/den' or positive integer)",
-                    token_index + 1
-                )
-            }
+            Self::ExponentOverflow { prime, attempted } => write!(
+                f,
+                "Register exponent for prime {prime} reached {attempted}, exceeding cap {MAX_REGISTER_EXPONENT}"
+            ),
+            Self::RegisterOverflow { rule_index, prime } => write!(
+                f,
+                "register exponent overflow on prime {prime} at rule {}",
+                rule_index + 1
+            ),
+            _ => unreachable!(),
         }
     }
 }
 
 impl std::error::Error for FractranError {}
+
+impl Diagnostic for FractranError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        map.insert("error_type".to_string(), "FractranError".to_string());
+        map.insert("description".to_string(), self.to_string());
+        map
+    }
+}
 
 /// Cycle parameters discovered by Floyd's tortoise-and-hare algorithm.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

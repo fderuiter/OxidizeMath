@@ -1,7 +1,7 @@
-# ADR 0038: Zero-Allocation Prime-Exponent FRACTRAN VM, Kolmogorov Bounds, and Auto-Discovered `AlgorithmicInfoTab`
+# ADR 0039: Zero-Allocation Prime-Exponent FRACTRAN VM, Kolmogorov Bounds, and Auto-Discovered `AlgorithmicInfoTab`
 
 ## Status
-Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md) and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
+Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0038](0038-prime-exponent-fractran-vm-and-minsky-gui.md))
 
 ## Context
 [`crates/pure_math/src/pure_math/algorithmic_information`](../../crates/pure_math/src/pure_math/algorithmic_information/mod.rs) previously left three foundational components from [`papers/algorithmic_information_rust.tex`](../../papers/algorithmic_information_rust.tex) incomplete:

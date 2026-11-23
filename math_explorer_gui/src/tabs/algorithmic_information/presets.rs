@@ -78,7 +78,7 @@ pub const PRESET_FRACTRAN_ADDER: &str = r#"{
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        id: "FractranMachineTool",
+        id: "AlgorithmicFractranTool",
         display_name: "FRACTRAN Virtual Machine",
         domain: "algorithmic_information",
         tags: &["fractran", "kolmogorov", "minsky", "primes", "bdm", "lz76"],
@@ -94,7 +94,7 @@ inventory::submit! {
         category: "Algorithmic Information",
         icon: "🔢",
         domain: "algorithmic_information",
-        tool_name: Some("FractranMachineTool"),
+        tool_name: Some("AlgorithmicFractranTool"),
         preset_generator: || PRESET_FRACTRAN_PRIMEGAME,
     }
 }
@@ -107,7 +107,7 @@ inventory::submit! {
         category: "Algorithmic Information",
         icon: "🐚",
         domain: "algorithmic_information",
-        tool_name: Some("FractranMachineTool"),
+        tool_name: Some("AlgorithmicFractranTool"),
         preset_generator: || PRESET_FRACTRAN_FIBONACCI,
     }
 }
@@ -120,7 +120,7 @@ inventory::submit! {
         category: "Algorithmic Information",
         icon: "✖",
         domain: "algorithmic_information",
-        tool_name: Some("FractranMachineTool"),
+        tool_name: Some("AlgorithmicFractranTool"),
         preset_generator: || PRESET_FRACTRAN_MULTIPLIER,
     }
 }
@@ -133,7 +133,7 @@ inventory::submit! {
         category: "Algorithmic Information",
         icon: "➕",
         domain: "algorithmic_information",
-        tool_name: Some("FractranMachineTool"),
+        tool_name: Some("AlgorithmicFractranTool"),
         preset_generator: || PRESET_FRACTRAN_ADDER,
     }
 }
