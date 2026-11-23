@@ -410,6 +410,33 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
     pub fn clear_obstacles(&mut self) {
         self.state.obstacles.fill(false);
     }
+
+    /// Copies live horizontal and vertical velocities into preallocated row-major slices (`flatten_2d_index`)
+    /// with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn copy_velocity_row_major(&self, out_ux: &mut [f64], out_uy: &mut [f64]) {
+        self.state.copy_velocity_row_major(out_ux, out_uy);
+    }
+
+    /// Copies the live solid obstacle mask into a preallocated row-major slice (`flatten_2d_index`)
+    /// with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn copy_obstacles_row_major(&self, out_obstacles: &mut [bool]) {
+        self.state.copy_obstacles_row_major(out_obstacles);
+    }
+
+    /// Copies live horizontal velocity, vertical velocity, and solid obstacle masks into preallocated
+    /// row-major slices (`flatten_2d_index`) with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn copy_velocity_and_obstacles_row_major(
+        &self,
+        out_ux: &mut [f64],
+        out_uy: &mut [f64],
+        out_obstacles: &mut [bool],
+    ) {
+        self.state
+            .copy_velocity_and_obstacles_row_major(out_ux, out_uy, out_obstacles);
+    }
 }
 
 use pure_math::pure_math::analysis::evolution::{EvolutionEngine, EvolutionError};

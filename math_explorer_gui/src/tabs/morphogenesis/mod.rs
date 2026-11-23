@@ -15,6 +15,7 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod advective;
 pub mod atlas;
 pub mod lenia;
 pub mod presets;

@@ -1,3 +1,4 @@
+pub mod advective_handoff;
 pub mod brush_codec;
 pub mod callout_overlay;
 pub mod challenge;
@@ -25,6 +26,7 @@ pub mod export_types;
 mod export_ui;
 #[cfg(test)]
 mod export_ui_tests;
+pub mod fairing_mask;
 pub mod fit_bridge;
 pub mod math_input;
 #[cfg(test)]
@@ -65,6 +67,7 @@ pub mod trace_overlay;
 mod ui;
 mod url_share;
 
+pub use advective_handoff::*;
 pub use brush_codec::*;
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
@@ -73,6 +76,7 @@ pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
+pub use fairing_mask::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use math_input::*;
 pub use pane_scope::{

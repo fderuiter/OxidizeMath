@@ -1,3 +1,4 @@
+use math_commons::math_kernel::types::flatten_2d_index;
 use nalgebra::DMatrix;
 use pure_math::pure_math::analysis::evolution::DoubleBufferedState;
 
@@ -104,5 +105,82 @@ impl<const Q: usize> LatticeState<Q> {
     #[verified_engine::verified]
     pub fn obstacles(&self) -> &[bool] {
         self.obstacles.as_slice()
+    }
+
+    /// Copies macroscopic `(ux, uy)` fields from column-major [`DMatrix`] storage into
+    /// preallocated row-major slices (`flatten_2d_index(x, y, width)`) with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn copy_velocity_row_major(&self, out_ux: &mut [f64], out_uy: &mut [f64]) {
+        let total = self.width * self.height;
+        assert_eq!(
+            out_ux.len(),
+            total,
+            "Row-major ux buffer length must equal width * height"
+        );
+        assert_eq!(
+            out_uy.len(),
+            total,
+            "Row-major uy buffer length must equal width * height"
+        );
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let row_idx = flatten_2d_index(x, y, self.width);
+                out_ux[row_idx] = self.ux[(y, x)];
+                out_uy[row_idx] = self.uy[(y, x)];
+            }
+        }
+    }
+
+    /// Copies the solid obstacle mask from column-major [`DMatrix`] storage into a
+    /// preallocated row-major slice (`flatten_2d_index(x, y, width)`) with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn copy_obstacles_row_major(&self, out_obstacles: &mut [bool]) {
+        let total = self.width * self.height;
+        assert_eq!(
+            out_obstacles.len(),
+            total,
+            "Row-major obstacle buffer length must equal width * height"
+        );
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let row_idx = flatten_2d_index(x, y, self.width);
+                out_obstacles[row_idx] = self.obstacles[(y, x)];
+            }
+        }
+    }
+
+    /// Copies macroscopic `(ux, uy)` velocities and solid obstacle flags into preallocated
+    /// row-major slices in a single pass with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn copy_velocity_and_obstacles_row_major(
+        &self,
+        out_ux: &mut [f64],
+        out_uy: &mut [f64],
+        out_obstacles: &mut [bool],
+    ) {
+        let total = self.width * self.height;
+        assert_eq!(
+            out_ux.len(),
+            total,
+            "Row-major ux buffer length must equal width * height"
+        );
+        assert_eq!(
+            out_uy.len(),
+            total,
+            "Row-major uy buffer length must equal width * height"
+        );
+        assert_eq!(
+            out_obstacles.len(),
+            total,
+            "Row-major obstacle buffer length must equal width * height"
+        );
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let row_idx = flatten_2d_index(x, y, self.width);
+                out_ux[row_idx] = self.ux[(y, x)];
+                out_uy[row_idx] = self.uy[(y, x)];
+                out_obstacles[row_idx] = self.obstacles[(y, x)];
+            }
+        }
     }
 }

@@ -166,7 +166,7 @@ pub enum WorkerStatusEvent {
 }
 
 impl WorkerStatusEvent {
-    #[allow(missing_docs)]
+    /// Maps a worker status event onto its corresponding [`SimWorkerState`].
     pub fn to_state(&self) -> SimWorkerState {
         match self {
             Self::Ready | Self::Paused => SimWorkerState::Ready,
@@ -190,13 +190,17 @@ impl From<WorkerStatusEvent> for SimWorkerState {
     }
 }
 
-#[allow(missing_docs)]
+/// Error returned when dispatching a command to a background simulation worker.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimCommandError {
+    /// The command is invalid for the worker's current lifecycle state.
     InvalidTransition {
+        /// Current state of the worker when the command was rejected.
         current_state: SimWorkerState,
+        /// Static label of the rejected command.
         command: &'static str,
     },
+    /// The worker command channel has been closed.
     ChannelDisconnected,
 }
 

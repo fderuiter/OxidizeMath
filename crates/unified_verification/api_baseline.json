@@ -2677,6 +2677,47 @@
       "signature": "pub struct FiniteDifference1D"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/fd2d/advective.rs": [
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn clear_flow_and_obstacles (& mut self) }"
+    },
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn grid_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn max_stable_dt (& self , _ : & [f64] , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn new (_ : FiniteDifference2D , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn obstacles (& self) -> & [bool] }"
+    },
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn set_cell_flow (& mut self , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : bool) }"
+    },
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn set_velocity_and_obstacles (& mut self , _ : & [f64] , _ : & [f64] , _ : & [bool]) }"
+    },
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn velocity_and_obstacles_mut (& mut self) -> (& mut [f64] , & mut [f64] , & mut [bool]) }"
+    },
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn velocity_x (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn velocity_y (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl AdvectiveFiniteDifference2D { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct AdvectiveFiniteDifference2D"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/fd2d/boundary.rs": [
     {
       "signature": "pub struct NeumannBoundary"
@@ -2777,10 +2818,16 @@
       "signature": "impl FiniteDifference2D { pub fn new (_ : Dimension , _ : Dimension , _ : StepSize , _ : StepSize) -> Self }"
     },
     {
+      "signature": "impl FiniteDifference2D { pub fn with_advection (self , _ : f64) -> AdvectiveFiniteDifference2D }"
+    },
+    {
       "signature": "impl FiniteDifference2D { pub fn with_mask (self) -> MaskedFiniteDifference2D }"
     },
     {
       "signature": "pub struct FiniteDifference2D"
+    },
+    {
+      "signature": "pub use advective :: AdvectiveFiniteDifference2D"
     },
     {
       "signature": "pub use mask :: CellMask2D"
@@ -2824,6 +2871,9 @@
     },
     {
       "signature": "pub use fd1d :: FiniteDifference1D"
+    },
+    {
+      "signature": "pub use fd2d :: AdvectiveFiniteDifference2D"
     },
     {
       "signature": "pub use fd2d :: CellMask2D"
@@ -3072,6 +3122,38 @@
     },
     {
       "signature": "pub use reaction_diffusion :: ReactionDiffusionError"
+    }
+  ],
+  "crates/domain_biology/src/biology/morphogenesis/advective.rs": [
+    {
+      "signature": "impl < K : ReactionKinetics < 2 > > TuringSystem < 2 , K , AdvectiveFiniteDifference2D , FusedEulerSolver > { pub fn new_advective_2d (_ : (Dimension , Dimension) , _ : DiffusionCoeff , _ : DiffusionCoeff , _ : (StepSize , StepSize) , _ : f64 , _ : K ,) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , AdvectiveFiniteDifference2D , S > { pub fn max_cfl_dt (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , AdvectiveFiniteDifference2D , S > { pub fn obstacles (& self) -> & [bool] }"
+    },
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , AdvectiveFiniteDifference2D , S > { pub fn peclet (& self) -> f64 }"
+    },
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , AdvectiveFiniteDifference2D , S > { pub fn pin_solid_species (& mut self , _ : [f64 ; N]) }"
+    },
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , AdvectiveFiniteDifference2D , S > { pub fn set_peclet (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , AdvectiveFiniteDifference2D , S > { pub fn set_velocity_and_obstacles (& mut self , _ : & [f64] , _ : & [f64] , _ : & [bool]) }"
+    },
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , AdvectiveFiniteDifference2D , S > { pub fn velocity_and_obstacles_mut (& mut self) -> (& mut [f64] , & mut [f64] , & mut [bool]) }"
+    },
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , AdvectiveFiniteDifference2D , S > { pub fn velocity_x (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , AdvectiveFiniteDifference2D , S > { pub fn velocity_y (& self) -> & [f64] }"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/mod.rs": [
@@ -4847,6 +4929,15 @@
       "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn clear_obstacles (& mut self) }"
     },
     {
+      "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn copy_obstacles_row_major (& self , _ : & mut [bool]) }"
+    },
+    {
+      "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn copy_velocity_and_obstacles_row_major (& self , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [bool] ,) }"
+    },
+    {
+      "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn copy_velocity_row_major (& self , _ : & mut [f64] , _ : & mut [f64]) }"
+    },
+    {
       "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn get_density (& self , _ : usize , _ : usize) -> f64 }"
     },
     {
@@ -4947,6 +5038,15 @@
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/state.rs": [
+    {
+      "signature": "impl < const Q : usize > LatticeState < Q > { pub fn copy_obstacles_row_major (& self , _ : & mut [bool]) }"
+    },
+    {
+      "signature": "impl < const Q : usize > LatticeState < Q > { pub fn copy_velocity_and_obstacles_row_major (& self , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [bool] ,) }"
+    },
+    {
+      "signature": "impl < const Q : usize > LatticeState < Q > { pub fn copy_velocity_row_major (& self , _ : & mut [f64] , _ : & mut [f64]) }"
+    },
     {
       "signature": "impl < const Q : usize > LatticeState < Q > { pub fn density (& self) -> & [f64] }"
     },
@@ -8978,16 +9078,28 @@
       "signature": "impl StencilOperators { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
     },
     {
+      "signature": "impl StencilOperators { pub fn upwind_divergence_2d (& self , _ : f64 , _ : [f64 ; 4] , _ : [f64 ; 4]) -> f64 }"
+    },
+    {
       "signature": "impl StencilOperators { pub fn upwind_flux (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn upwind_flux_2d (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn upwind_flux_y (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
     },
     {
       "signature": "pub struct FusedStencilStepper"
     },
     {
-      "signature": "pub struct StencilNeighbors3D < const N : usize >"
+      "signature": "pub struct StencilOperators"
     },
     {
-      "signature": "pub struct StencilOperators"
+      "signature": "pub use fused_stepper_masked :: StencilNeighbors2D"
+    },
+    {
+      "signature": "pub use fused_stepper_masked :: StencilNeighbors3D"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/greens.rs": [
