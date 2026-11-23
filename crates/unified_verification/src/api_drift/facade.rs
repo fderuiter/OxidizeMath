@@ -7,10 +7,15 @@ use syn::visit::Visit;
 
 #[path = "facade_errors.rs"]
 mod facade_errors;
+#[path = "facade_signatures.rs"]
+mod facade_signatures;
 
 #[cfg(test)]
 use facade_errors::DOMAIN_INNER_MODS;
 use facade_errors::check_crate_error_reexports;
+#[cfg(test)]
+use facade_signatures::parse_signature_ast_counted;
+use facade_signatures::{ParsedSignatureMap, build_parsed_signatures_counted};
 
 const FACADE_REACHABLE_PREFIXES: &[&str] = &[
     "math_explorer/src/",
@@ -87,76 +92,6 @@ fn is_facade_reachable_file(rel_path: &str) -> bool {
         .any(|prefix| rel_path.starts_with(prefix))
 }
 
-fn peel_inline_mod_wrappers(mut sig: &str) -> &str {
-    loop {
-        let trimmed = sig.trim();
-        let Some(rest) = trimmed.strip_prefix("pub mod ") else {
-            return trimmed;
-        };
-        let Some(open_idx) = rest.find('{') else {
-            return trimmed;
-        };
-        let mod_ident = rest[..open_idx].trim();
-        if mod_ident.is_empty()
-            || !mod_ident
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_')
-            || !rest.ends_with('}')
-        {
-            return trimmed;
-        }
-        sig = rest[open_idx + 1..rest.len() - 1].trim();
-    }
-}
-
-fn has_verbatim_item(file: &syn::File) -> bool {
-    file.items.is_empty()
-        || file.items.iter().any(|item| match item {
-            syn::Item::Verbatim(_) => true,
-            syn::Item::Impl(imp) => imp
-                .items
-                .iter()
-                .any(|it| matches!(it, syn::ImplItem::Verbatim(_))),
-            syn::Item::Trait(tr) => tr
-                .items
-                .iter()
-                .any(|it| matches!(it, syn::TraitItem::Verbatim(_))),
-            _ => false,
-        })
-}
-
-fn parse_signature_ast(raw_sig: &str) -> Option<syn::File> {
-    let s = peel_inline_mod_wrappers(raw_sig);
-    if let Some(without_close) = s.strip_suffix('}') {
-        let trimmed_inner = without_close.trim_end();
-        for candidate in [
-            format!("{trimmed_inner}; }}"),
-            format!("{trimmed_inner} = todo!(); }}"),
-            format!("{trimmed_inner} {{}} }}"),
-            s.to_string(),
-        ] {
-            if let Ok(f) = syn::parse_file(&candidate)
-                && !has_verbatim_item(&f)
-            {
-                return Some(f);
-            }
-        }
-    }
-    for candidate in [
-        format!("{s};"),
-        format!("{s} = todo!();"),
-        format!("{s} {{}}"),
-        format!("{s} {{ __f: () }}"),
-    ] {
-        if let Ok(f) = syn::parse_file(&candidate)
-            && !has_verbatim_item(&f)
-        {
-            return Some(f);
-        }
-    }
-    None
-}
-
 fn parse_exported_idents_in_file(path: &Path, cache: &mut AstCache) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let Some(ast) = cache.get_or_load_fs(path).and_then(|e| e.ast.as_ref()) else {
@@ -215,7 +150,10 @@ fn check_root_facade_modules(
     }
 }
 
-fn collect_exported_type_names(apis: &BTreeMap<String, Vec<ApiItem>>) -> BTreeSet<String> {
+fn collect_exported_type_names(
+    apis: &BTreeMap<String, Vec<ApiItem>>,
+    parsed_sigs: &ParsedSignatureMap<'_>,
+) -> BTreeSet<String> {
     let mut exported: BTreeSet<String> = STD_AND_REEXPORTED_TYPES
         .iter()
         .map(|s| (*s).to_string())
@@ -229,16 +167,15 @@ fn collect_exported_type_names(apis: &BTreeMap<String, Vec<ApiItem>>) -> BTreeSe
             if api.signature.starts_with("pub mod __doctest_facade") {
                 continue;
             }
-            record_defined_or_reexported_ident(&api.signature, &mut exported);
+            if let Some(Some(file)) = parsed_sigs.get(api.signature.as_str()) {
+                record_defined_or_reexported_ident(file, &mut exported);
+            }
         }
     }
     exported
 }
 
-fn record_defined_or_reexported_ident(sig: &str, exported: &mut BTreeSet<String>) {
-    let Some(file) = parse_signature_ast(sig) else {
-        return;
-    };
+fn record_defined_or_reexported_ident(file: &syn::File, exported: &mut BTreeSet<String>) {
     for item in &file.items {
         match item {
             syn::Item::Struct(s) => {
@@ -386,15 +323,15 @@ impl<'ast> Visit<'ast> for SignatureTypeCollector {
     }
 }
 
-fn collect_unexported_signature_types(sig: &str, exported: &BTreeSet<String>) -> Vec<String> {
-    let Some(file) = parse_signature_ast(sig) else {
-        return Vec::new();
-    };
+fn collect_unexported_signature_types(
+    file: &syn::File,
+    exported: &BTreeSet<String>,
+) -> Vec<String> {
     if file.items.iter().any(|it| matches!(it, syn::Item::Use(_))) {
         return Vec::new();
     }
     let mut collector = SignatureTypeCollector::default();
-    collector.visit_file(&file);
+    collector.visit_file(file);
     collector
         .referenced
         .into_iter()
@@ -420,11 +357,12 @@ pub(crate) fn check_facade_completeness_in_dir_with_cache(
         return Vec::new();
     }
 
+    let (parsed_sigs, _) = build_parsed_signatures_counted(apis);
     let mut violations = Vec::new();
     check_root_facade_modules(workspace_root, cache, &mut violations);
-    check_crate_error_reexports(workspace_root, apis, cache, &mut violations);
+    check_crate_error_reexports(workspace_root, apis, &parsed_sigs, cache, &mut violations);
 
-    let exported = collect_exported_type_names(apis);
+    let exported = collect_exported_type_names(apis, &parsed_sigs);
     for (path, items) in apis {
         if !is_facade_reachable_file(path) {
             continue;
@@ -433,7 +371,10 @@ pub(crate) fn check_facade_completeness_in_dir_with_cache(
             if item.signature.starts_with("pub mod __doctest_facade") {
                 continue;
             }
-            for missing in collect_unexported_signature_types(&item.signature, &exported) {
+            let Some(Some(file)) = parsed_sigs.get(item.signature.as_str()) else {
+                continue;
+            };
+            for missing in collect_unexported_signature_types(file, &exported) {
                 violations.push(format!(
                     "Un-reexported public signature type `{missing}` in `{path}`: `{}`",
                     item.signature
