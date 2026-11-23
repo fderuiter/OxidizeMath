@@ -11,10 +11,15 @@
 //!   radial coordinates $(ct, l, \varphi)$ with isometric 3D embedding diagrams.
 
 pub mod kerr;
+pub mod lensing;
 pub mod schwarzschild;
 pub mod wormhole;
 
 pub use kerr::KerrEquatorialMetric;
+pub use lensing::{
+    DEFAULT_DEFLECTION_BINS, DeflectionSample, DeflectionTable, EINSTEIN_RING_IMPACT_FACTOR,
+    LensedRayHit, LensingMetricSpec,
+};
 pub use schwarzschild::{
     GeodesicKind, SchwarzschildBlackHole, combined_clock_rate, effective_potential,
     flamm_paraboloid_z, photon_sphere_radius,

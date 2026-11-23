@@ -259,3 +259,94 @@ fn test_weak_field_light_deflection_matches_2_rs_over_b() {
     let expected = 2.0 * rs / b;
     assert_relative_eq!(delta_phi, expected, max_relative = 0.04);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_kerr_clock_dilation_ergosphere_and_effective_potential() {
+    let rs = 2.0;
+    let bh = SchwarzschildBlackHole::from_schwarzschild_radius(rs).unwrap();
+    let kerr_zero = KerrEquatorialMetric::new(rs, 0.0).unwrap();
+    for r in [2.6, 4.0, 9.0] {
+        assert_relative_eq!(
+            kerr_zero.clock_dilation(r, 0.0).unwrap(),
+            bh.gravitational_time_dilation(r).unwrap(),
+            epsilon = 1e-12
+        );
+        assert_relative_eq!(
+            kerr_zero
+                .effective_potential(r, 1.0, 4.5, GeodesicKind::Timelike)
+                .unwrap(),
+            bh.effective_potential(r, 4.5, GeodesicKind::Timelike)
+                .unwrap(),
+            epsilon = 1e-12
+        );
+    }
+
+    let kerr = KerrEquatorialMetric::new(rs, 0.85).unwrap();
+    let r_inside_ergo = 0.5 * (kerr.outer_horizon_radius() + kerr.ergosphere_radius());
+    assert!(
+        kerr.clock_dilation(r_inside_ergo, 0.0).is_err(),
+        "static observer inside ergosphere must be spacelike"
+    );
+    let zamo_rate = kerr.zamo_clock_dilation(r_inside_ergo).unwrap();
+    assert!(zamo_rate > 0.0 && zamo_rate < 1.0);
+    assert!(kerr.photon_orbit_radius(true) < 1.5 * rs);
+    assert!(kerr.photon_orbit_radius(false) > 1.5 * rs);
+    assert!(
+        kerr.critical_impact_parameter(true).abs() < kerr.critical_impact_parameter(false).abs()
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_deflection_table_einstein_ring_kerr_shadow_wormhole_and_zero_alloc() {
+    let rs = 2.0;
+    let b_crit = EINSTEIN_RING_IMPACT_FACTOR * rs;
+    let schw_table = DeflectionTable::build(
+        LensingMetricSpec::Schwarzschild {
+            schwarzschild_radius: rs,
+        },
+        24.0,
+        14.0,
+        129,
+    )
+    .unwrap();
+    assert!(schw_table.sample_impact(0.95 * b_crit).captured);
+    let grazing = schw_table.sample_impact(1.06 * b_crit);
+    assert!(!grazing.captured && grazing.bending_angle > 1.0);
+
+    let kerr_table = DeflectionTable::build(
+        LensingMetricSpec::KerrEquatorial {
+            schwarzschild_radius: rs,
+            spin_a: 0.8,
+        },
+        24.0,
+        14.0,
+        129,
+    )
+    .unwrap();
+    let (b_neg, b_pos) = kerr_table.critical_impact_bounds();
+    assert!(b_pos.abs() < b_neg.abs());
+
+    let wh_table = DeflectionTable::build(
+        LensingMetricSpec::MorrisThorne { throat_radius: 2.0 },
+        18.0,
+        10.0,
+        129,
+    )
+    .unwrap();
+    assert_eq!(wh_table.sample_impact(0.8).sheet_sign, -1);
+    assert_eq!(wh_table.sample_impact(3.5).sheet_sign, 1);
+
+    enable_verification();
+    lock_allocations();
+    let mut ring_acc = 0.0;
+    for step in 0..1_000 {
+        let u = -0.95 + 1.9 * (f64::from(step) / 999.0);
+        let hit = kerr_table.map_image_uv(u, 0.25 * u, 12.0);
+        ring_acc += hit.ring_boost + hit.source_u.abs();
+    }
+    unlock_allocations();
+    disable_verification();
+    assert!(ring_acc > 0.1);
+}

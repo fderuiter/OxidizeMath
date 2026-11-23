@@ -9,6 +9,8 @@ pub mod mri;
 pub mod neuroscience;
 pub mod number_theory;
 pub mod quantum_chaos;
+#[cfg(feature = "physics")]
+pub mod relativity_astrophysics;
 #[cfg(feature = "pure_math")]
 pub mod wave_plate;
 
@@ -24,5 +26,9 @@ pub use number_theory::{
     ulam_spiral_frame, EllipticTorsionSample, UlamPolySample,
 };
 pub use quantum_chaos::{attractor_frame, bifurcation_frame, quantum_wavepacket_frame};
+#[cfg(feature = "physics")]
+pub use relativity_astrophysics::{
+    galactic_orbits_frame, geodesic_bundle_frame, GeodesicVoiceSample,
+};
 #[cfg(feature = "pure_math")]
 pub use wave_plate::chladni_wave_tank_frame;

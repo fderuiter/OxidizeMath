@@ -45,6 +45,9 @@ pub const SECONDS_PER_MYR: f64 = 3.155_76e13;
 /// Conversion factor from $\text{km/s}$ to $\text{kpc/Myr}$ ($\approx 1.022712 \times 10^{-3}$).
 pub const KPC_PER_MYR_PER_KMS: f64 = (1_000.0 * SECONDS_PER_MYR) / METERS_PER_KPC;
 
+/// Pre-allocated ring-buffer capacity for custom canvas-launched [`OrbitParticleKind::SlingshotProbe`] tracers.
+pub const SLINGSHOT_RING_CAPACITY: usize = 8;
+
 /// Kinematic family of an orbiting test particle in the galactic midplane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum OrbitParticleKind {
@@ -53,6 +56,8 @@ pub enum OrbitParticleKind {
     DiskTracer,
     /// Eccentric satellite remnant tracing rosetta precession and tidal streaming.
     TidalStream,
+    /// User-launched satellite tracer injected via canvas slingshot or keyboard reticle.
+    SlingshotProbe,
 }
 
 /// Planar phase-space state $(x, y, v_x, v_y)$ of a massless tracer particle.
@@ -114,14 +119,20 @@ pub struct GalacticDiskSystem {
     pub baryons: BaryonicDiskConfig,
     /// Active dark-matter halo profile.
     pub halo: HaloProfile,
-    particles: Vec<OrbitalState>,
-    trail_ring: Vec<[f64; 2]>,
-    trail_capacity: usize,
-    trail_head: usize,
-    trail_len: usize,
-    elapsed_myr: f64,
-    initial_energy: f64,
-    initial_lz: f64,
+    pub(super) particles: Vec<OrbitalState>,
+    pub(super) trail_ring: Vec<[f64; 2]>,
+    pub(super) trail_capacity: usize,
+    pub(super) trail_head: usize,
+    pub(super) trail_len: usize,
+    pub(super) elapsed_myr: f64,
+    pub(super) initial_energy: f64,
+    pub(super) initial_lz: f64,
+    #[serde(default)]
+    pub(super) base_count: usize,
+    #[serde(default)]
+    pub(super) active_count: usize,
+    #[serde(default)]
+    pub(super) slingshot_cursor: usize,
 }
 
 /// Computes planar central acceleration $(a_x, a_y)$ in $(\text{km/s})^2/\text{kpc}$ with softened core $r \ge 10^{-3}\,\text{kpc}$.
@@ -200,22 +211,35 @@ impl GalacticDiskSystem {
         let disk_tracers = population.disk_tracers;
         let tidal_tracers = population.tidal_tracers;
         let tidal_tangential_ratio = population.tidal_tangential_ratio;
-        let total = disk_tracers.saturating_add(tidal_tracers).max(1);
+        let base_total = disk_tracers.saturating_add(tidal_tracers).max(1);
+        let total_alloc = base_total.saturating_add(SLINGSHOT_RING_CAPACITY);
         let cap = population.trail_capacity.max(2);
         let mut sys = Self {
             baryons,
             halo,
-            particles: vec![OrbitalState::default(); total],
-            trail_ring: vec![[0.0, 0.0]; total.saturating_mul(cap)],
+            particles: vec![OrbitalState::default(); total_alloc],
+            trail_ring: vec![[0.0, 0.0]; total_alloc.saturating_mul(cap)],
             trail_capacity: cap,
             trail_head: 0,
             trail_len: 0,
             elapsed_myr: 0.0,
             initial_energy: 0.0,
             initial_lz: 0.0,
+            base_count: base_total,
+            active_count: base_total,
+            slingshot_cursor: 0,
         };
         sys.reseed_orbits(disk_tracers.max(1), tidal_tracers, tidal_tangential_ratio);
         sys
+    }
+
+    #[verified_engine::verified]
+    pub(super) fn effective_active_len(&self) -> usize {
+        if self.active_count == 0 {
+            self.particles.len()
+        } else {
+            self.active_count.min(self.particles.len())
+        }
     }
 
     /// Reseeds initial tracer positions and velocities in place without reallocating when particle count matches.
@@ -226,15 +250,23 @@ impl GalacticDiskSystem {
         tidal_tracers: usize,
         tidal_tangential_ratio: f64,
     ) {
-        let n_particles = self.particles.len();
-        let disk_n = disk_tracers.min(n_particles);
+        let max_base = if self.base_count == 0 {
+            self.particles.len()
+        } else {
+            self.base_count.min(self.particles.len())
+        };
+        let disk_n = disk_tracers.min(max_base);
+        let tidal_n = tidal_tracers.min(max_base.saturating_sub(disk_n));
         let tang_ratio = if tidal_tangential_ratio.is_finite() {
             tidal_tangential_ratio.clamp(0.15, 1.35)
         } else {
             0.65
         };
+        self.base_count = (disk_n + tidal_n).max(1).min(self.particles.len());
+        self.active_count = self.base_count;
+        self.slingshot_cursor = 0;
         self.seed_disk_tracers(disk_n);
-        self.seed_tidal_tracers(disk_n, tidal_tracers, tang_ratio);
+        self.seed_tidal_tracers(disk_n, tidal_n, tang_ratio);
         self.trail_head = 0;
         self.trail_len = 0;
         self.elapsed_myr = 0.0;
@@ -303,8 +335,9 @@ impl GalacticDiskSystem {
         }
         let slot = self.trail_head;
         let cap = self.trail_capacity;
+        let active_n = self.effective_active_len();
         let mut i = 0;
-        while i < self.particles.len() {
+        while i < active_n {
             let base = i.saturating_mul(cap);
             let idx = base.saturating_add(slot);
             if idx < self.trail_ring.len() {
@@ -326,8 +359,9 @@ impl GalacticDiskSystem {
         }
         let clamped_dt = dt_myr.clamp(-25.0, 25.0);
         let ds = clamped_dt * KPC_PER_MYR_PER_KMS;
+        let active_n = self.effective_active_len();
         let mut i = 0;
-        while i < self.particles.len() {
+        while i < active_n {
             step_single_particle_kdk(&mut self.particles[i], ds, &self.baryons, &self.halo);
             i += 1;
         }
@@ -358,7 +392,7 @@ impl GalacticDiskSystem {
     #[must_use]
     #[verified_engine::verified]
     pub fn particles(&self) -> &[OrbitalState] {
-        &self.particles
+        &self.particles[..self.effective_active_len()]
     }
 
     /// Elapsed simulation time in Megayears (Myr).
@@ -378,7 +412,10 @@ impl GalacticDiskSystem {
     /// Copies the chronological `[x_kpc, y_kpc]` trail of particle `particle_idx` into `out`, returning the number of points written.
     #[verified_engine::verified]
     pub fn copy_particle_trail(&self, particle_idx: usize, out: &mut [[f64; 2]]) -> usize {
-        if particle_idx >= self.particles.len() || self.trail_len == 0 || self.trail_capacity == 0 {
+        if particle_idx >= self.effective_active_len()
+            || self.trail_len == 0
+            || self.trail_capacity == 0
+        {
             return 0;
         }
         let count = self.trail_len.min(out.len());
@@ -405,7 +442,7 @@ impl GalacticDiskSystem {
     #[must_use]
     #[verified_engine::verified]
     pub fn particle_invariants(&self, index: usize) -> Option<OrbitalInvariants> {
-        let p = self.particles.get(index)?;
+        let p = self.particles().get(index)?;
         let r = (p.x_kpc * p.x_kpc + p.y_kpc * p.y_kpc).sqrt();
         let v_sq = p.vx_kms * p.vx_kms + p.vy_kms * p.vy_kms;
         let phi = total_gravitational_potential(r, &self.baryons, &self.halo);
@@ -422,8 +459,9 @@ impl GalacticDiskSystem {
     #[verified_engine::verified]
     pub fn total_energy(&self) -> f64 {
         let mut sum = 0.0;
+        let active_n = self.effective_active_len();
         let mut i = 0;
-        while i < self.particles.len() {
+        while i < active_n {
             if let Some(inv) = self.particle_invariants(i) {
                 sum += inv.specific_energy_kms2;
             }
@@ -437,28 +475,13 @@ impl GalacticDiskSystem {
     #[verified_engine::verified]
     pub fn total_angular_momentum(&self) -> f64 {
         let mut sum = 0.0;
+        let active = self.particles();
         let mut i = 0;
-        while i < self.particles.len() {
-            let p = &self.particles[i];
+        while i < active.len() {
+            let p = &active[i];
             sum += p.x_kpc * p.vy_kms - p.y_kpc * p.vx_kms;
             i += 1;
         }
         sum
-    }
-
-    /// Dimensionless relative drift $|\Delta E| / \max(|E_0|, 10^{-12})$ from the initial ensemble energy.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn relative_energy_drift(&self) -> f64 {
-        let current = self.total_energy();
-        (current - self.initial_energy).abs() / self.initial_energy.abs().max(1.0e-12)
-    }
-
-    /// Dimensionless relative drift $|\Delta L_z| / \max(|L_{z,0}|, 10^{-12})$ from the initial ensemble angular momentum.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn relative_angular_momentum_drift(&self) -> f64 {
-        let current = self.total_angular_momentum();
-        (current - self.initial_lz).abs() / self.initial_lz.abs().max(1.0e-12)
     }
 }

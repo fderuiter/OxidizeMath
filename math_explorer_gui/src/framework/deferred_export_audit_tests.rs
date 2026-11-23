@@ -156,10 +156,10 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     assert_eq!(solid_3d_count, 5, "Expected 5 solid 3D geometric tools");
     assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
-        shader_tool_count, 3,
-        "Expected 3 analytical GLSL shader tools"
+        shader_tool_count, 5,
+        "Expected 5 analytical GLSL shader tools"
     );
-    assert_eq!(non_shader_tool_count, 75, "Expected 75 non-shader tools");
+    assert_eq!(non_shader_tool_count, 73, "Expected 73 non-shader tools");
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {

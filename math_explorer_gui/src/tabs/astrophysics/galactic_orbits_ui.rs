@@ -2,12 +2,15 @@
 
 use super::galactic_orbits_tool::{GalacticOrbitSimulator, TRAIL_CAPACITY};
 use super::HaloKindChoice;
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::audio::render_sonification_panel;
+use crate::framework::{
+    BrushInteractionMode, BrushMode, BrushStroke, PlaybackAction, PlaybackTransport,
+};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, LineStyle, MarkerShape, Plot, PlotPoints, Points};
 use math_explorer::physics::astrophysics::{
-    decompose_rotation_curve, DwarfMorphology, OrbitParticleKind,
+    decompose_rotation_curve, DwarfMorphology, OrbitParticleKind, SLINGSHOT_RING_CAPACITY,
 };
 
 impl GalacticOrbitSimulator {
@@ -22,7 +25,10 @@ impl GalacticOrbitSimulator {
         {
             match action {
                 PlaybackAction::Play => self.cfg.is_playing = true,
-                PlaybackAction::Pause => self.cfg.is_playing = false,
+                PlaybackAction::Pause => {
+                    self.cfg.is_playing = false;
+                    crate::audio::notify_playback_paused();
+                }
                 PlaybackAction::Step => {
                     self.cfg.is_playing = false;
                     self.advance_burst();
@@ -30,6 +36,7 @@ impl GalacticOrbitSimulator {
                 PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.cfg.is_playing = false;
+                    crate::audio::notify_playback_reset();
                     self.rebuild_system(0);
                 }
             }
@@ -58,9 +65,13 @@ impl GalacticOrbitSimulator {
             "Angular Momentum Drift |ΔLz/Lz0|",
             &format!("{:.2e}", self.system.relative_angular_momentum_drift()),
         );
+        let audio_frame = self.build_audio_frame();
+        render_sonification_panel(ui, "galactic_orbits", &audio_frame, !self.cfg.is_playing);
     }
 
     pub(super) fn render_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        self.render_slingshot_brush_controls(ui);
+        ui.separator();
         let mut rebuild = self.render_potential_controls(ui);
         ui.separator();
         ui.heading("Symplectic Leapfrog");
@@ -89,6 +100,49 @@ impl GalacticOrbitSimulator {
             )
             .changed();
         rebuild
+    }
+
+    fn render_slingshot_brush_controls(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Canvas Slingshot");
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(
+                &mut self.brush_kit.interaction_mode,
+                BrushInteractionMode::Pan,
+                "✋ Pan / Zoom",
+            );
+            if ui
+                .selectable_value(
+                    &mut self.brush_kit.interaction_mode,
+                    BrushInteractionMode::Sculpt,
+                    "🎯 Slingshot Launch",
+                )
+                .clicked()
+            {
+                if let Some(pid) = self.last_plot_id {
+                    ui.ctx().memory_mut(|m| m.request_focus(pid));
+                }
+            }
+        });
+        if self.brush_kit.is_sculpting() {
+            ui.add(
+                egui::Slider::new(&mut self.launch_speed_factor, 0.2..=2.2)
+                    .text("Reticle Speed / v_circ"),
+            );
+            ui.horizontal_wrapped(|ui| {
+                if ui.button("🚀 Launch at Reticle").clicked() {
+                    let [cx, cy] = self.brush_kit.cursor_pos;
+                    self.launch_probe_at_cursor(cx, cy);
+                }
+                if ui.button("🧹 Clear Probes").clicked() {
+                    self.rebuild_system(0);
+                }
+            });
+            ui.small(format!(
+                "Drag velocity vector on plot or steer with Arrow keys + Space/Enter ({}/{} probes).",
+                self.system.slingshot_probe_count(),
+                SLINGSHOT_RING_CAPACITY
+            ));
+        }
     }
 
     fn render_potential_controls(&mut self, ui: &mut egui::Ui) -> bool {
@@ -148,19 +202,18 @@ impl GalacticOrbitSimulator {
         rebuild
     }
 
-    pub(super) fn render_orbit_plot(&self, ui: &mut egui::Ui) {
+    pub(super) fn render_orbit_plot(&mut self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let (mut disk_pts, mut stream_pts) = (Vec::new(), Vec::new());
-        for p in self.system.particles() {
-            match p.kind {
-                OrbitParticleKind::DiskTracer => disk_pts.push([p.x_kpc, p.y_kpc]),
-                OrbitParticleKind::TidalStream => stream_pts.push([p.x_kpc, p.y_kpc]),
-            }
-        }
+        let pts = partition_orbit_points(self.system.particles());
         let scale_ring = self.scale_ring_points(64);
-        Plot::new("galactic_orbits_midplane_plot")
+        let domain_r = self.plot_domain_extent();
+        let sculpting = self.brush_kit.is_sculpting();
+        let primary_down = ui.ctx().input(|i| i.pointer.primary_down());
+
+        let resp = Plot::new("galactic_orbits_midplane_plot")
             .data_aspect(1.0)
             .view_aspect(1.35)
+            .allow_drag(!sculpting)
             .x_axis_label("Galactocentric x (kpc)")
             .y_axis_label("Galactocentric y (kpc)")
             .legend(egui_plot::Legend::default())
@@ -170,41 +223,164 @@ impl GalacticOrbitSimulator {
                         .color(palette.info)
                         .style(LineStyle::Dashed { length: 6.0 }),
                 );
-                let mut trail_buf = [[0.0_f64; 2]; TRAIL_CAPACITY];
-                for (idx, p) in self.system.particles().iter().enumerate() {
-                    if idx % 2 != 0 && p.kind == OrbitParticleKind::DiskTracer {
-                        continue;
-                    }
-                    let n = self.system.copy_particle_trail(idx, &mut trail_buf);
-                    if n >= 2 {
-                        let col = if p.kind == OrbitParticleKind::DiskTracer {
-                            palette.axis_z
-                        } else {
-                            palette.axis_x
-                        };
-                        plot_ui.line(
-                            Line::new("", PlotPoints::new(trail_buf[..n].to_vec()))
-                                .color(col)
-                                .width(1.2_f32),
-                        );
-                    }
-                }
+                self.draw_orbit_trails(plot_ui, &palette);
                 plot_ui.points(
-                    Points::new("Disk Tracer Stars", PlotPoints::new(disk_pts))
+                    Points::new("Disk Tracer Stars", PlotPoints::new(pts.disk))
                         .color(palette.accent)
                         .radius(4.0_f32)
                         .shape(MarkerShape::Circle),
                 );
-                if !stream_pts.is_empty() {
+                if !pts.stream.is_empty() {
                     plot_ui.points(
-                        Points::new("Tidal Stream Stars", PlotPoints::new(stream_pts))
+                        Points::new("Tidal Stream Stars", PlotPoints::new(pts.stream))
                             .color(palette.axis_x)
                             .radius(4.5_f32)
                             .shape(MarkerShape::Diamond),
                     );
                 }
+                if !pts.probe.is_empty() {
+                    plot_ui.points(
+                        Points::new("Slingshot Probes", PlotPoints::new(pts.probe))
+                            .color(palette.warning)
+                            .radius(6.0_f32)
+                            .shape(MarkerShape::Asterisk),
+                    );
+                }
+                let strokes = self.brush_kit.sample_plot(
+                    plot_ui,
+                    [-domain_r, -domain_r],
+                    [domain_r, domain_r],
+                    Some(BrushMode::Erase),
+                );
+                self.process_plot_slingshot_strokes(plot_ui, &strokes, primary_down, &palette);
             });
+        self.last_plot_id = Some(resp.response.id);
+        if resp.response.clicked() {
+            resp.response.request_focus();
+        }
     }
+
+    fn draw_orbit_trails(
+        &self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        palette: &crate::app::SemanticPalette,
+    ) {
+        let mut trail_buf = [[0.0_f64; 2]; TRAIL_CAPACITY];
+        for (idx, p) in self.system.particles().iter().enumerate() {
+            if idx % 2 != 0 && p.kind == OrbitParticleKind::DiskTracer {
+                continue;
+            }
+            let n = self.system.copy_particle_trail(idx, &mut trail_buf);
+            if n >= 2 {
+                let (col, width) = match p.kind {
+                    OrbitParticleKind::DiskTracer => (palette.axis_z, 1.2_f32),
+                    OrbitParticleKind::TidalStream => (palette.axis_x, 1.3_f32),
+                    OrbitParticleKind::SlingshotProbe => (palette.warning, 2.1_f32),
+                };
+                plot_ui.line(
+                    Line::new("", PlotPoints::new(trail_buf[..n].to_vec()))
+                        .color(col)
+                        .width(width),
+                );
+            }
+        }
+    }
+
+    fn process_plot_slingshot_strokes(
+        &mut self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        strokes: &[BrushStroke],
+        primary_down: bool,
+        palette: &crate::app::SemanticPalette,
+    ) {
+        for stroke in strokes {
+            self.apply_brush_slingshot_stroke(stroke, primary_down);
+        }
+        if !primary_down {
+            if let (Some(anchor), Some(tip)) =
+                (self.slingshot_anchor.take(), self.slingshot_tip.take())
+            {
+                let dx = tip[0] - anchor[0];
+                let dy = tip[1] - anchor[1];
+                if dx.hypot(dy) < 0.08 {
+                    self.launch_probe_at_cursor(anchor[0], anchor[1]);
+                } else {
+                    let v_scale = self.velocity_drag_scale_kms_per_kpc();
+                    self.launch_slingshot_probe(anchor[0], anchor[1], dx * v_scale, dy * v_scale);
+                }
+            }
+        } else if let (Some(anchor), Some(tip)) = (self.slingshot_anchor, self.slingshot_tip) {
+            plot_ui.line(
+                Line::new("Slingshot Vector", PlotPoints::new(vec![anchor, tip]))
+                    .color(palette.warning)
+                    .width(2.2_f32),
+            );
+        }
+    }
+
+    pub(super) fn apply_brush_slingshot_stroke(
+        &mut self,
+        stroke: &BrushStroke,
+        primary_down: bool,
+    ) {
+        if stroke.mode == BrushMode::Erase {
+            self.rebuild_system(0);
+            return;
+        }
+        if primary_down {
+            if self.slingshot_anchor.is_none() {
+                self.slingshot_anchor = Some(stroke.start);
+            }
+            self.slingshot_tip = Some(stroke.end);
+            return;
+        }
+        let dx = stroke.end[0] - stroke.start[0];
+        let dy = stroke.end[1] - stroke.start[1];
+        if dx.hypot(dy) > 1e-4 {
+            let v_scale = self.velocity_drag_scale_kms_per_kpc();
+            self.launch_slingshot_probe(
+                stroke.start[0],
+                stroke.start[1],
+                dx * v_scale,
+                dy * v_scale,
+            );
+        } else {
+            self.launch_speed_factor = (0.35 + 0.85 * stroke.radius).clamp(0.2, 2.2);
+            self.launch_probe_at_cursor(stroke.end[0], stroke.end[1]);
+        }
+    }
+
+    fn velocity_drag_scale_kms_per_kpc(&self) -> f64 {
+        let outer_v = decompose_rotation_curve(
+            4.0 * self.cfg.disk_scale_kpc,
+            &self.system.baryons,
+            &self.system.halo,
+        )
+        .v_circ_kms
+        .max(20.0);
+        outer_v / self.cfg.disk_scale_kpc.max(0.35)
+    }
+}
+
+#[derive(Default)]
+struct OrbitPointSets {
+    disk: Vec<[f64; 2]>,
+    stream: Vec<[f64; 2]>,
+    probe: Vec<[f64; 2]>,
+}
+
+fn partition_orbit_points(
+    particles: &[math_explorer::physics::astrophysics::OrbitalState],
+) -> OrbitPointSets {
+    let mut sets = OrbitPointSets::default();
+    for p in particles {
+        match p.kind {
+            OrbitParticleKind::DiskTracer => sets.disk.push([p.x_kpc, p.y_kpc]),
+            OrbitParticleKind::TidalStream => sets.stream.push([p.x_kpc, p.y_kpc]),
+            OrbitParticleKind::SlingshotProbe => sets.probe.push([p.x_kpc, p.y_kpc]),
+        }
+    }
+    sets
 }
 
 // [cite:dwarf_galaxy_empirical_dependencies]

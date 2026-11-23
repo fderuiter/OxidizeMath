@@ -95,11 +95,15 @@ pub mod statistics;
 // Re-export constants to match original API
 pub use math_commons::constants::{C, G, SIGMA_T, SOLAR_MASS};
 
-// Re-export SchwarzschildBlackHole and relativistic geodesic types/helpers
+// Re-export SchwarzschildBlackHole, lensing deflection tables, and relativistic helpers
 pub use general_relativity::{
-    GeodesicKind, KerrEquatorialMetric, MorrisThorneWormhole, SchwarzschildBlackHole,
-    combined_clock_rate, effective_potential, flamm_paraboloid_z, photon_sphere_radius,
+    DEFAULT_DEFLECTION_BINS, DeflectionSample, DeflectionTable, EINSTEIN_RING_IMPACT_FACTOR,
+    GeodesicKind, KerrEquatorialMetric, LensedRayHit, LensingMetricSpec, MorrisThorneWormhole,
+    SchwarzschildBlackHole, combined_clock_rate, effective_potential, flamm_paraboloid_z,
+    photon_sphere_radius,
 };
+pub use observer::FourVector;
+pub use radiation::{inverse_compton_spectral_index, synchrotron_power};
 
 // Re-export Error type
 
@@ -111,10 +115,14 @@ use pure_math::theory_verification;
 theory_verification!(
     module = "high_energy",
     constants = {
-        DUMMY = 1.0;
+        EINSTEIN_IMPACT_RATIO_SQ = 6.75;
     },
     test = {
         use approx::assert_relative_eq;
-        assert_relative_eq!(DUMMY, 1.0, epsilon = math_commons::registry::TOLERANCE_FAST);
+        assert_relative_eq!(
+            EINSTEIN_RING_IMPACT_FACTOR * EINSTEIN_RING_IMPACT_FACTOR,
+            EINSTEIN_IMPACT_RATIO_SQ,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
     }
 );

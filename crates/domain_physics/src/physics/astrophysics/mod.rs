@@ -9,6 +9,7 @@
 pub mod galaxies;
 pub mod nbody;
 pub mod orbits;
+mod orbits_slingshot;
 pub mod rotation_curves;
 
 pub use galaxies::{
@@ -17,7 +18,7 @@ pub use galaxies::{
 };
 pub use orbits::{
     GalacticDiskSystem, KPC_PER_MYR_PER_KMS, OrbitParticleKind, OrbitPopulationConfig,
-    OrbitalInvariants, OrbitalState, SECONDS_PER_MYR, planar_acceleration,
+    OrbitalInvariants, OrbitalState, SECONDS_PER_MYR, SLINGSHOT_RING_CAPACITY, planar_acceleration,
 };
 pub use rotation_curves::{
     BaryonicDiskConfig, DwarfMorphology, G_KPC_KMS2_PER_SOLAR_MASS, HaloProfile, METERS_PER_KPC,
