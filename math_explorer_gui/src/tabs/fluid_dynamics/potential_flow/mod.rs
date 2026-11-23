@@ -120,6 +120,7 @@ pub struct PotentialFlowTool {
     pub(crate) new_element_x: f64,
     pub(crate) new_element_y: f64,
     pub(crate) new_element_angle: f64,
+    pub(crate) brush_kit: crate::framework::SpatialBrushKit,
     pub(crate) high_contrast: bool,
     pub(crate) show_vectors: bool,
     pub(crate) show_streamlines: bool,
@@ -173,6 +174,7 @@ impl Default for PotentialFlowTool {
             new_element_x: 0.0,
             new_element_y: 0.0,
             new_element_angle: 0.0,
+            brush_kit: Self::default_flow_brush_kit(),
             high_contrast: false,
             show_vectors: true,
             show_streamlines: true,
@@ -231,6 +233,13 @@ impl InteractiveTool for PotentialFlowTool {
 
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         self.last_canvas_id
+            .or_else(|| self.brush_kit.focused_plot_id())
+    }
+
+    fn on_brush(&mut self, ctx: &crate::framework::InteractionContext) {
+        if let Some(ref stroke) = ctx.brush_stroke {
+            self.apply_flow_brush_stroke(stroke);
+        }
     }
 
     fn has_finite_parameters(&self) -> bool {

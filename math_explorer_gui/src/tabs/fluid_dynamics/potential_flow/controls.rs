@@ -23,6 +23,7 @@ impl PotentialFlowTool {
                 self.draw_element_inspector(ui);
                 ui.separator();
                 self.draw_add_element_controls(ui);
+                self.draw_brush_toolbar(ui);
                 ui.separator();
                 self.draw_layer_and_grid_controls(ui);
                 ui.separator();

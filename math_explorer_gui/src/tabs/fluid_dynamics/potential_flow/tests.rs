@@ -260,3 +260,37 @@ fn test_cylinder_streamlines_stagnation_and_kutta_lift_observables() {
         .1;
     assert_eq!(sup_stag, 1.0, "supercritical spin detaches a single exterior saddle");
 }
+
+#[test]
+fn test_spatial_brush_sculpt_mode_keyboard_stamp_and_erase() {
+    let ctx = egui::Context::default();
+    let mut tool = PotentialFlowTool::default();
+    tool.brush_kit.interaction_mode = crate::framework::BrushInteractionMode::Sculpt;
+    tool.brush_kit.mode = crate::framework::BrushMode::FlowVortex;
+    tool.brush_kit.radius = 1.0;
+    let initial_len = tool.elements.len();
+
+    let _ = ctx.run(raw_screen(Vec::new()), |c| tool.show(c));
+    let canvas_id = tool.focused_canvas_id().expect("canvas id recorded");
+    ctx.memory_mut(|m| m.request_focus(canvas_id));
+    let _ = ctx.run(raw_screen(Vec::new()), |c| tool.show(c));
+
+    for _ in 0..3 {
+        let _ = ctx.run(raw_screen(key_press_events(egui::Key::ArrowRight)), |c| {
+            tool.show(c)
+        });
+    }
+    let _ = ctx.run(raw_screen(key_press_events(egui::Key::Space)), |c| {
+        tool.show(c)
+    });
+    assert_eq!(tool.elements.len(), initial_len + 1);
+    let stamped = tool.elements.last().unwrap();
+    assert_eq!(stamped.element_type, ElementType::Vortex);
+    assert!((stamped.x - 3.0).abs() < 1e-6);
+
+    tool.brush_kit.mode = crate::framework::BrushMode::Erase;
+    let _ = ctx.run(raw_screen(key_press_events(egui::Key::Enter)), |c| {
+        tool.show(c)
+    });
+    assert_eq!(tool.elements.len(), initial_len);
+}

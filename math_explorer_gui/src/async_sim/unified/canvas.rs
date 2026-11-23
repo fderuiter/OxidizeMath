@@ -3,10 +3,42 @@
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::async_sim::SimCommand;
+use crate::framework::{BrushMode, InteractionContext, InteractiveTool};
 use eframe::egui::{self, ColorImage, TextureOptions};
 use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points};
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
+    fn sample_legacy_image_brush(&mut self, ctx: &egui::Context, plot_ui: &egui_plot::PlotUi) {
+        if !plot_ui.response().hovered()
+            || !ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
+        {
+            return;
+        }
+        let Some(pos) = plot_ui.pointer_coordinate() else {
+            return;
+        };
+        let grid_x = pos.x.round() as i32;
+        let grid_y = pos.y.round() as i32;
+        let is_obs = ctx.input(|i| i.pointer.primary_down());
+        let allowed = self
+            .ui_extension
+            .as_mut()
+            .is_none_or(|ext| ext.on_brush(grid_x, grid_y, 2, is_obs));
+        if allowed
+            && self
+                .controller
+                .send_command(SimCommand::ApplyBrush {
+                    cx: grid_x,
+                    cy: grid_y,
+                    r: 2,
+                    is_obstacle: is_obs,
+                })
+                .is_ok()
+        {
+            ctx.request_repaint();
+        }
+    }
+
     fn draw_image_plot(
         &mut self,
         ui: &mut egui::Ui,
@@ -15,57 +47,46 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     ) {
         let width = texture.size()[0] as f32;
         let height = texture.size()[1] as f32;
-
+        let allow_pan = !M::supports_spatial_brush() || !self.brush_kit.is_sculpting();
+        let mut strokes = Vec::new();
         let visuals = ui.visuals().clone();
         let mut ext_cmds = Vec::new();
-        Plot::new(format!("{}_plot_img", M::name()))
+
+        let plot_resp = Plot::new(format!("{}_plot_img", M::name()))
             .data_aspect(1.0)
             .view_aspect(1.0)
             .show_grid(false)
             .show_axes([false, false])
-            .allow_drag(false)
-            .allow_zoom(false)
-            .allow_scroll(false)
+            .allow_drag(allow_pan)
+            .allow_zoom(allow_pan)
+            .allow_scroll(allow_pan)
             .show(ui, |plot_ui| {
                 plot_ui.image(PlotImage::new(
                     format!("{}_image", M::name()),
                     texture.id(),
-                    PlotPoint::new(width as f64 / 2.0, height as f64 / 2.0),
+                    PlotPoint::new(f64::from(width) / 2.0, f64::from(height) / 2.0),
                     [width, height],
                 ));
-
                 if let Some(ext) = &mut self.ui_extension {
                     ext_cmds = ext.handle_canvas_overlay(ctx, &visuals, plot_ui);
                 }
-
-                if plot_ui.response().hovered()
-                    && ctx.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
-                {
-                    if let Some(pos) = plot_ui.pointer_coordinate() {
-                        let grid_x = pos.x.round() as i32;
-                        let grid_y = pos.y.round() as i32;
-                        let is_obs = ctx.input(|i| i.pointer.primary_down());
-                        let allowed = self
-                            .ui_extension
-                            .as_mut()
-                            .is_none_or(|ext| ext.on_brush(grid_x, grid_y, 2, is_obs));
-                        if allowed
-                            && self
-                                .controller
-                                .send_command(SimCommand::ApplyBrush {
-                                    cx: grid_x,
-                                    cy: grid_y,
-                                    r: 2,
-                                    is_obstacle: is_obs,
-                                })
-                                .is_ok()
-                        {
-                            ctx.request_repaint();
-                        }
-                    }
+                if M::supports_spatial_brush() {
+                    strokes = self.brush_kit.sample_plot(
+                        plot_ui,
+                        [0.5, 0.5],
+                        [f64::from(width) - 0.5, f64::from(height) - 0.5],
+                        Some(BrushMode::Erase),
+                    );
+                } else {
+                    self.sample_legacy_image_brush(ctx, plot_ui);
                 }
                 self.callout_manager.render_on_plot(plot_ui);
             });
+
+        for stroke in strokes {
+            let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
+            self.on_brush(&ic);
+        }
         self.dispatch_extension_commands(ext_cmds, Some(ctx));
     }
 
@@ -168,7 +189,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(super) fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            if M::custom_central_panel(ui, self.controller.latest_snapshot()) {
+            let (handled, strokes) = M::custom_central_panel_with_brush(
+                ui,
+                self.controller.latest_snapshot(),
+                &mut self.brush_kit,
+            );
+            if handled {
+                if !strokes.is_empty() {
+                    let resp = ui.interact(
+                        ui.min_rect(),
+                        ui.id().with("unified_custom_brush"),
+                        egui::Sense::hover(),
+                    );
+                    for stroke in strokes {
+                        let ic = InteractionContext::from_brush_stroke(&resp, stroke);
+                        self.on_brush(&ic);
+                    }
+                }
                 return;
             }
             if !self.is_atlas_visible() {

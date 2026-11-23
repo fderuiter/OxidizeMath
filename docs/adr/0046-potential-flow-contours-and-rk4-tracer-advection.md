@@ -1,7 +1,7 @@
-# ADR 0045: Potential Flow Iso-$\psi$ Contours, Stagnation Detection, and `RungeKutta4` Dye Tracer Coupling
+# ADR 0046: Potential Flow Iso-$\psi$ Contours, Stagnation Detection, and `RungeKutta4` Dye Tracer Coupling
 
 ## Status
-Accepted (extends [ADR 0016](0016-ode-multi-solver-comparative-overlays.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), and [ADR 0035](0035-iterative-ast-glsl-transpiler-and-shader-exports.md))
+Accepted (extends [ADR 0016](0016-ode-multi-solver-comparative-overlays.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), [ADR 0035](0035-iterative-ast-glsl-transpiler-and-shader-exports.md), and [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md))
 
 ## Context
 [`PotentialFlowField`](../../crates/domain_physics/src/physics/fluid_dynamics/potential_flow.rs) implemented analytic `velocity`, `stream_function`, and `potential` methods across `UniformFlow`, `Source`, `Vortex`, and `Doublet`, while [`FluidParticleSystem`](../../crates/domain_physics/src/physics/fluid_dynamics/solver.rs) implemented `OdeSystem<FlowState>` and `TimeStepper<FlowState>` over [`Euler`](../../crates/domain_physics/src/physics/fluid_dynamics/conservation.rs). However, `math_explorer_gui` rendered only coarse velocity `Arrows` and required sidebar spinbox coordinate entry, leaving `stream_function` and `FluidParticleSystem` uncoupled from interactive potential-flow exploration. Naive grid contouring across `Source` singularities also produces spurious contour bundles across `atan2` branch cuts and inside `TOLERANCE_HIGH` singularity cores.
