@@ -11,7 +11,7 @@ pub enum ChaosError {
     #[error("Invalid chaos simulation parameter: {0}")]
     InvalidParameter(String),
     /// Wrapped centralized mathematical error.
-    #[error(transparent)]
+    #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
 }
 
@@ -63,7 +63,7 @@ pub enum StandardModelError {
     #[allow(missing_docs)]
     UnstableHiggsPotential { lambda: f64 },
     /// Wrapped centralized mathematical error.
-    #[error(transparent)]
+    #[error("{0}")]
     #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
@@ -99,7 +99,7 @@ pub enum SolidStateError {
     BosonOccupationOverflow { max: u8 },
 
     /// Wrapped centralized mathematical error.
-    #[error(transparent)]
+    #[error("{0}")]
     #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
@@ -124,7 +124,7 @@ pub enum DoseFluenceError {
     #[error("Zero predictor variance in linear calibration; cannot fit line")]
     ZeroCalibrationVariance,
     /// Wrapped centralized mathematical error.
-    #[error(transparent)]
+    #[error("{0}")]
     #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
@@ -208,7 +208,7 @@ pub enum HighEnergyError {
     #[allow(missing_docs)]
     InvalidStatisticsParams { reason: String },
     /// Wrapped centralized mathematical error.
-    #[error(transparent)]
+    #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
 }
 
@@ -228,7 +228,7 @@ pub enum FluidError {
     #[allow(missing_docs)]
     GridDimensionsOverflow { width: usize, height: usize },
     /// Wrapped centralized mathematical error.
-    #[error(transparent)]
+    #[error("{0}")]
     #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
@@ -252,7 +252,7 @@ pub enum StatMechError {
         reason: String,
     },
     /// Wrapped centralized mathematical error.
-    #[error(transparent)]
+    #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
 }
 
@@ -395,3 +395,10 @@ impl Diagnostic for StatMechError {
         map
     }
 }
+mod umbrella;
+
+pub use crate::physics::{medical::radar_gating::GatingError, nuclear::types::NuclearError};
+pub use umbrella::PhysicsError;
+
+#[cfg(test)]
+mod tests;

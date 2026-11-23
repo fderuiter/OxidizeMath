@@ -1,5 +1,3 @@
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
 use thiserror::Error;
 
 #[allow(missing_docs)]
@@ -301,120 +299,21 @@ pub enum Glicko2Error {
     DimensionMismatch { expected: usize, actual: usize },
 }
 
-impl Diagnostic for NumberTheoryError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "NumberTheoryError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
+mod submodule_diagnostics;
+mod umbrella;
 
-impl Diagnostic for KellyError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "KellyError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
+pub use crate::pure_math::{
+    algebra::linear_algebra::numerical::LinearAlgebraError,
+    algorithmic_information::FractranError,
+    analysis::{
+        evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
+        stochastic::StochasticError, transforms::TransformError,
+    },
+    elliptic_curves::EllipticCurveError,
+    number_theory::ambs::AmbsError,
+    tensor::types::TensorError,
+};
+pub use umbrella::PureMathError;
 
-impl Diagnostic for MarkovError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
-        }
-        map.insert("error_type".to_string(), "MarkovError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for OuError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "OuError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for ZipError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "ZipError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for TdaError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "TdaError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for CopulaError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
-        }
-        map.insert("error_type".to_string(), "CopulaError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
-
-impl Diagnostic for Glicko2Error {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-    #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "Glicko2Error".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
-    }
-}
+#[cfg(test)]
+mod tests;

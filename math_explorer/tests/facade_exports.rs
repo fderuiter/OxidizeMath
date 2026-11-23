@@ -1,36 +1,25 @@
 #![allow(missing_docs)]
 
-#[test]
-fn core_only_facade_exports_work_without_domain_features() {
-    use math_explorer::ast::{Complex64, parse};
-    use math_explorer::constants::C;
-    use math_explorer::diagnostics::{Diagnostic, Severity};
-    use math_explorer::error::{MathError, MathResult};
-    use math_explorer::math_kernel::types::Dimension;
-    use math_explorer::prelude::{
-        Diagnostic as PreludeDiagnostic, MathError as PreludeMathError, NonNegativeFloat,
-        PositiveFloat, Severity as PreludeSeverity, UnitInterval,
+#[cfg(all(
+    feature = "pure_math",
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics"
+))]
+#[path = "facade_exports/umbrella_checks.rs"]
+mod umbrella_checks;
+
+fn assert_core_error_and_prelude_exports() {
+    use math_explorer::diagnostics::{Diagnostic, DiagnosticBus, Severity};
+    use math_explorer::error::{
+        Error, EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult,
+        ParseError, Result,
     };
-    use math_explorer::primitives::PositiveFloat as DirectPositiveFloat;
-    use math_explorer::registry::TOLERANCE_STANDARD;
-    use math_explorer::wigner::ClebschGordan;
-
-    let pos = PositiveFloat::new(1.5).expect("valid positive float");
-    let direct_pos = DirectPositiveFloat::new(1.5).expect("valid direct positive float");
-    assert_eq!(pos, direct_pos);
-
-    let non_neg = NonNegativeFloat::new(0.0).expect("valid non-negative float");
-    assert_eq!(non_neg.value(), 0.0);
-
-    let unit = UnitInterval::new(0.25).expect("valid unit interval");
-    assert_eq!(unit.value(), 0.25);
-
-    let expr = parse("x + 1").expect("valid AST expression");
-    assert!(!format!("{expr:?}").is_empty());
-    let z = Complex64::new(1.0, -1.0);
-    assert_eq!(z.re, 1.0);
-    assert_eq!(C, 299_792_458.0);
-    assert_eq!(TOLERANCE_STANDARD, 1e-9);
+    use math_explorer::math_kernel::types::Dimension;
+    use math_explorer::prelude as p;
 
     let err = MathError::DimensionMismatch {
         expected: Dimension(3),
@@ -39,8 +28,49 @@ fn core_only_facade_exports_work_without_domain_features() {
     let res: MathResult<f64> = Err(err.clone());
     assert!(res.is_err());
     assert_eq!(Diagnostic::severity(&err), Severity::Error);
-    assert_eq!(PreludeDiagnostic::severity(&err), PreludeSeverity::Error);
-    let _same_err: PreludeMathError = err;
+    assert_eq!(p::Diagnostic::severity(&err), p::Severity::Error);
+
+    let bus = DiagnosticBus::new();
+    let facade_res: Result<()> = Err(EvalError::UnknownVariable("x".to_string()).into());
+    let lex = LexError {
+        start: 0,
+        end: 1,
+        message: "bad".to_string(),
+    };
+    let prelude_res: p::Result<()> = Err(p::Error::from(lex.clone()));
+    assert!(facade_res.is_err() && prelude_res.is_err());
+    bus.emit_diagnostic(&p::MathCommonsError::from(p::ParseError::UnexpectedEof));
+    let (_e, _g, _l): (p::EvalError, p::GlslError, p::LexError) = (
+        EvalError::UnknownVariable("x".into()),
+        GlslError::DepthLimitExceeded(64),
+        lex,
+    );
+    let (_u, _m): (MathCommonsError, p::MathError) = (p::MathCommonsError::from(err.clone()), err);
+    let _err_ty: Error = ParseError::UnexpectedEof.into();
+    let _fit_ty: Error = FitError::SingularMatrix.into();
+}
+
+#[test]
+fn core_only_facade_exports_work_without_domain_features() {
+    use math_explorer::ast::{Complex64, parse};
+    use math_explorer::constants::C;
+    use math_explorer::prelude::{NonNegativeFloat, PositiveFloat, UnitInterval};
+    use math_explorer::primitives::PositiveFloat as DirectPositiveFloat;
+    use math_explorer::registry::TOLERANCE_STANDARD;
+    use math_explorer::wigner::ClebschGordan;
+
+    let pos = PositiveFloat::new(1.5).expect("valid positive float");
+    let direct_pos = DirectPositiveFloat::new(1.5).expect("valid direct positive float");
+    assert_eq!(pos, direct_pos);
+    assert_eq!(NonNegativeFloat::new(0.0).unwrap().value(), 0.0);
+    assert_eq!(UnitInterval::new(0.25).unwrap().value(), 0.25);
+
+    let expr = parse("x + 1").expect("valid AST expression");
+    assert!(!format!("{expr:?}").is_empty());
+    assert_eq!(Complex64::new(1.0, -1.0).re, 1.0);
+    assert_eq!(C, 299_792_458.0);
+    assert_eq!(TOLERANCE_STANDARD, 1e-9);
+    assert_core_error_and_prelude_exports();
 
     let cg = ClebschGordan {
         tj1: 3,
@@ -98,13 +128,40 @@ fn default_headless_curve_fitting_and_poi_solvers_work_without_gui_deps() {
 }
 
 #[cfg(feature = "pure_math")]
-#[test]
-fn pure_math_facade_exports_containers_third_party_types_and_eight_errors() {
+fn assert_pure_math_eighteen_errors() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
-    use math_explorer::error::{
-        CopulaError, Glicko2Error, KellyError, MarkovError, NumberTheoryError, OuError, TdaError,
-        ZipError,
-    };
+    use math_explorer::error as e;
+    use math_explorer::prelude::PureMathError as PreludePureMathError;
+    use math_explorer::pure_math::error as inner_error;
+
+    let umbrella: PreludePureMathError = e::AmbsError::ModuloError.into();
+    let _facade: e::Error = e::PureMathError::from(e::LinearAlgebraError::DimensionMismatch).into();
+    let severities = [
+        e::NumberTheoryError::ModuloError.severity(),
+        e::KellyError::InvalidOdds { value: 0.5 }.severity(),
+        e::MarkovError::InvalidProbability { value: -0.1 }.severity(),
+        e::OuError::InvalidTimeStep { value: 0.0 }.severity(),
+        e::ZipError::InvalidCount { value: -1.0 }.severity(),
+        e::TdaError::EmptyPointCloud.severity(),
+        e::CopulaError::NotSymmetric.severity(),
+        e::Glicko2Error::EmptyMatchResults.severity(),
+        e::AnalysisError::ConvergenceError(0.0).severity(),
+        e::EllipticCurveError::InvalidDegree.severity(),
+        e::EvolutionError::InvalidState.severity(),
+        e::FractranError::InvalidFractionSyntax.severity(),
+        e::OptimizationError::ConversionError.severity(),
+        e::StochasticError::InvalidReactionIndex(1).severity(),
+        e::TensorError::IndexOutOfBounds.severity(),
+        e::TransformError::InvalidDimension.severity(),
+        inner_error::NumberTheoryError::ModuloError.severity(),
+        umbrella.severity(),
+    ];
+    assert!(severities.iter().all(|s| *s == Severity::Error));
+}
+
+#[cfg(feature = "pure_math")]
+#[test]
+fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors() {
     use math_explorer::math_types::{Float, IBig, Integer, Rational};
     use math_explorer::mesh::{Mesh, Point3D};
     use math_explorer::nalgebra::{DMatrix, DVector};
@@ -113,53 +170,34 @@ fn pure_math_facade_exports_containers_third_party_types_and_eight_errors() {
     use math_explorer::prelude::{
         DMatrix as PreludeMatrix, Integer as PreludeInteger, Mesh as PreludeMesh, OxidizeRng,
     };
-    use math_explorer::pure_math::error as inner_error;
     use math_explorer::pure_math::statistics::markov::ToPrimitive;
     use math_explorer::rand::RngCore;
 
-    let n = Integer::from(42);
-    let n2 = PreludeInteger::from(IBig::from(42));
-    assert_eq!(n, n2);
+    assert_eq!(Integer::from(42), PreludeInteger::from(IBig::from(42)));
     assert_eq!(42_i64.to_usize(), Some(42));
-    let f = Float::with_val(53, 2.5);
-    let r = Rational::from((3, 4));
-    assert_eq!(f.round(), 3.0);
-    assert_eq!(r.numer() / r.denom(), 0.75);
+    assert_eq!(Float::with_val(53, 2.5).round(), 3.0);
+    assert_eq!(
+        Rational::from((3, 4)).numer() / Rational::from((3, 4)).denom(),
+        0.75
+    );
 
     let mut mesh = Mesh::default();
     mesh.vertices.push(Point3D::new(0.0, 1.0, 2.0));
     let prelude_mesh: PreludeMesh = mesh;
     assert_eq!(prelude_mesh.vertices.len(), 1);
-
-    let mut rng = OxidizeRng::new(7);
-    let _sample = RngCore::next_u32(&mut rng);
+    let _sample = RngCore::next_u32(&mut OxidizeRng::new(7));
 
     let mat = DMatrix::<f64>::identity(2, 2);
-    let vec = DVector::<f64>::from_element(2, 3.0);
-    let prod: DVector<f64> = &mat * vec;
+    let prod: DVector<f64> = &mat * DVector::<f64>::from_element(2, 3.0);
     assert_eq!(prod[0], 3.0);
     let _pmat: PreludeMatrix<f64> = mat;
+    assert_eq!(Complex::new(2.0_f64, 3.0_f64).im, 3.0);
 
-    let c = Complex::new(2.0_f64, 3.0_f64);
-    assert_eq!(c.im, 3.0);
     let mut g: Graph<&str, f64> = Graph::new();
-    let a = g.add_node("a");
-    let b = g.add_node("b");
+    let (a, b) = (g.add_node("a"), g.add_node("b"));
     g.add_edge(a, b, 1.0);
     assert_eq!(g.node_count(), 2);
-
-    let severities = [
-        NumberTheoryError::ModuloError.severity(),
-        KellyError::InvalidOdds { value: 0.5 }.severity(),
-        MarkovError::InvalidProbability { value: -0.1 }.severity(),
-        OuError::InvalidTimeStep { value: 0.0 }.severity(),
-        ZipError::InvalidCount { value: -1.0 }.severity(),
-        TdaError::EmptyPointCloud.severity(),
-        CopulaError::NotSymmetric.severity(),
-        Glicko2Error::EmptyMatchResults.severity(),
-        inner_error::TdaError::EmptyPointCloud.severity(),
-    ];
-    assert!(severities.iter().all(|s| *s == Severity::Error));
+    assert_pure_math_eighteen_errors();
 }
 
 #[cfg(feature = "ai")]
@@ -170,7 +208,7 @@ fn ai_facade_exports_adam_and_ai_error_without_internal_crate_imports() {
         Adam, GenericAdam, GenericOptimizer, ParamType, mean_squared_error,
     };
     use math_explorer::diagnostics::{Diagnostic, Severity};
-    use math_explorer::prelude::{AIError, DMatrix, DVector, PositiveFloat};
+    use math_explorer::prelude::{AIError, DMatrix, DVector, Error, PositiveFloat};
 
     let lr = PositiveFloat::new(0.01).expect("valid learning rate");
     let mut opt: Adam<f64> = Adam::new(lr.value()).expect("valid Adam");
@@ -193,11 +231,12 @@ fn ai_facade_exports_adam_and_ai_error_without_internal_crate_imports() {
     };
     assert_eq!(e1.severity(), Severity::Error);
     assert_eq!(e2.severity(), Severity::Error);
+    let _facade: Error = e1.into();
 }
 
 #[cfg(feature = "applied")]
 #[test]
-fn applied_facade_exports_six_errors_and_submodule_reexports() {
+fn applied_facade_exports_all_nine_errors_and_umbrella() {
     use math_explorer::applied::battery_degradation::{
         BatteryError as SubBatteryError, Capacity, Cycles, DepthOfDischarge, PowerLawModel,
     };
@@ -205,8 +244,8 @@ fn applied_facade_exports_six_errors_and_submodule_reexports() {
     use math_explorer::applied::game_theory::mechanism_design::{ContinuousCDF, Distribution};
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
-        BatteryError, EngineeringError, GameTheoryError, IsosurfaceError, LoraError,
-        PharmacokineticsError,
+        AppliedError, BatteryError, ClinicalTrialError, EngineeringError, Error, GameTheoryError,
+        IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
     };
 
     let model = PowerLawModel::standard();
@@ -225,8 +264,11 @@ fn applied_facade_exports_six_errors_and_submodule_reexports() {
     assert!((dist.cdf(0.5) - 0.5).abs() < 1e-12);
     assert!((dist.mean().unwrap() - 0.5).abs() < 1e-12);
 
+    let umbrella = AppliedError::from(VoxelGridError::InvalidDimensions);
+    let _facade: Error = umbrella.into();
     let severities = [
         BatteryError::InvalidCapacity(1.5).severity(),
+        ClinicalTrialError::ZeroTotalCount.severity(),
         EngineeringError::InvalidParameter {
             name: "bits".to_string(),
             value: 0.0,
@@ -234,8 +276,10 @@ fn applied_facade_exports_six_errors_and_submodule_reexports() {
         .severity(),
         GameTheoryError::NonSquarePayoffMatrix { rows: 2, cols: 3 }.severity(),
         IsosurfaceError::InvalidGrid("too small".to_string()).severity(),
+        KalmanError::MatrixInversionError.severity(),
         LoraError::EmptyEnsemble.severity(),
         PharmacokineticsError::InvalidParameter("v".to_string()).severity(),
+        VoxelGridError::DataSizeMismatch.severity(),
         inner_error::LoraError::EmptyWeights.severity(),
     ];
     assert!(severities.iter().all(|s| *s == Severity::Error));
@@ -243,15 +287,22 @@ fn applied_facade_exports_six_errors_and_submodule_reexports() {
 
 #[cfg(feature = "biology")]
 #[test]
-fn biology_facade_exports_hodgkin_huxley_error() {
+fn biology_facade_exports_all_three_errors_and_umbrella() {
     use math_explorer::biology::error::HodgkinHuxleyError as InnerHhError;
     use math_explorer::diagnostics::{Diagnostic, Severity};
-    use math_explorer::error::HodgkinHuxleyError;
+    use math_explorer::error::{
+        BiologyError, Error, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
+    };
 
     let e1 = HodgkinHuxleyError::InvalidGatingVariable(1.5);
     let e2 = InnerHhError::InvalidConductance(-0.2);
+    let e3 = KineticsError::NegativeSubstrateConcentration;
+    let e4 = ReactionDiffusionError::ZeroGridSize;
     assert_eq!(e1.severity(), Severity::Error);
     assert_eq!(e2.severity(), Severity::Error);
+    assert_eq!(e3.severity(), Severity::Error);
+    assert_eq!(e4.severity(), Severity::Error);
+    let _facade: Error = BiologyError::from(e3).into();
 }
 
 #[cfg(feature = "climate")]
@@ -260,7 +311,7 @@ fn climate_facade_exports_error_module_and_cera_types() {
     use math_explorer::climate::cera::{Cera, CeraConfig};
     use math_explorer::climate::error::ClimateError as InnerClimateError;
     use math_explorer::diagnostics::{Diagnostic, Severity};
-    use math_explorer::error::{ClimateError, MathError};
+    use math_explorer::error::{ClimateError, Error, MathError};
 
     let cfg = CeraConfig {
         learning_rate: 1e-3,
@@ -286,38 +337,47 @@ fn climate_facade_exports_error_module_and_cera_types() {
         max: 1.0,
     });
     assert_eq!(converted.severity(), Severity::Error);
+    let _facade: Error = err.into();
 }
 
 #[cfg(feature = "epidemiology")]
 #[test]
-fn epidemiology_facade_exports_epidemiology_error() {
+fn epidemiology_facade_exports_both_errors_and_umbrella() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::epidemiology::error::EpidemiologyError as InnerEpiError;
-    use math_explorer::error::EpidemiologyError;
+    use math_explorer::error::{
+        EpidemiologyDomainError, EpidemiologyError, Error, NetworkModelError,
+    };
 
     let e1 = EpidemiologyError::SingularTransitionMatrix;
     let e2 = InnerEpiError::MissingParameter {
         name: "beta".to_string(),
     };
+    let e3 = NetworkModelError::InvalidParameters;
     assert_eq!(e1.severity(), Severity::Error);
     assert_eq!(e2.severity(), Severity::Error);
+    assert_eq!(e3.severity(), Severity::Error);
+    let _facade: Error = EpidemiologyDomainError::from(e3).into();
 }
 
 #[cfg(feature = "physics")]
 #[test]
-fn physics_facade_exports_all_eight_physics_errors() {
+fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
-        ChaosError, DoseFluenceError, FluidError, HighEnergyError, RadarError, SolidStateError,
-        StandardModelError, StatMechError,
+        ChaosError, DoseFluenceError, Error, FluidError, GatingError, HighEnergyError,
+        NuclearError, PhysicsError, RadarError, SolidStateError, StandardModelError, StatMechError,
     };
     use math_explorer::physics::error as inner_error;
 
+    let _facade: Error = PhysicsError::from(NuclearError::VolumeZero).into();
     let severities = [
         ChaosError::InvalidParameter("dt".to_string()).severity(),
         DoseFluenceError::Singularity.severity(),
         FluidError::InvalidDensity { value: 0.0 }.severity(),
+        GatingError::NotInterlocked.severity(),
         HighEnergyError::InvalidMomentum.severity(),
+        NuclearError::InvalidVelocity.severity(),
         RadarError::InvalidConfiguration("antennas".to_string()).severity(),
         SolidStateError::InvalidParameter("gap".to_string()).severity(),
         StandardModelError::LandauPole { scale: 1e12 }.severity(),
@@ -337,56 +397,7 @@ fn physics_facade_exports_all_eight_physics_errors() {
     feature = "physics"
 ))]
 #[test]
-fn all_twenty_eight_crate_error_enums_constructible_from_math_explorer_error() {
-    use math_explorer::diagnostics::{Diagnostic, Severity};
-    use math_explorer::error::{
-        AIError, BatteryError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
-        EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error,
-        HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarkovError,
-        MathError, NumberTheoryError, OuError, PharmacokineticsError, RadarError, SolidStateError,
-        StandardModelError, StatMechError, TdaError, ZipError,
-    };
-
-    let all_28_severities = [
-        MathError::ConversionError {
-            reason: "bad".to_string(),
-        }
-        .severity(),
-        FitError::SingularMatrix.severity(),
-        NumberTheoryError::ConversionError.severity(),
-        KellyError::InvalidBankroll { value: -1.0 }.severity(),
-        MarkovError::InvalidState {
-            reason: "s".to_string(),
-        }
-        .severity(),
-        OuError::InvalidVolatility { value: -0.1 }.severity(),
-        ZipError::InvalidRate { value: 0.0 }.severity(),
-        TdaError::EmptyPointCloud.severity(),
-        CopulaError::NotPositiveDefinite.severity(),
-        Glicko2Error::EmptyMatchResults.severity(),
-        AIError::OptimizationDivergence.severity(),
-        BatteryError::NegativeCycles(-5.0).severity(),
-        ClimateError::ZeroLevels.severity(),
-        EngineeringError::InvalidParameter {
-            name: "n".to_string(),
-            value: 0.0,
-        }
-        .severity(),
-        GameTheoryError::NonSquarePayoffMatrix { rows: 1, cols: 2 }.severity(),
-        IsosurfaceError::InvalidGrid("small".to_string()).severity(),
-        LoraError::KeyMismatch.severity(),
-        PharmacokineticsError::InvalidParameter("k".to_string()).severity(),
-        HodgkinHuxleyError::InvalidConductance(-1.0).severity(),
-        EpidemiologyError::SingularTransitionMatrix.severity(),
-        ChaosError::InvalidParameter("sigma".to_string()).severity(),
-        DoseFluenceError::Singularity.severity(),
-        FluidError::InvalidViscosity { value: -0.1 }.severity(),
-        HighEnergyError::InvalidMomentum.severity(),
-        RadarError::InvalidConfiguration("cfg".to_string()).severity(),
-        SolidStateError::ComputationError("err".to_string()).severity(),
-        StandardModelError::InvalidFlavors { nf: -1.0 }.severity(),
-        StatMechError::InvalidTemperature(-5.0).severity(),
-    ];
-    assert_eq!(all_28_severities.len(), 28);
-    assert!(all_28_severities.iter().all(|s| *s == Severity::Error));
+fn all_fifty_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
+    umbrella_checks::verify_prelude_error_reexports();
+    umbrella_checks::verify_bus_capture_and_zero_alloc_facade_result();
 }

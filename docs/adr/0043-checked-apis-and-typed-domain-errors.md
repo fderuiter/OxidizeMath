@@ -1,7 +1,7 @@
-# ADR 0042: Checked Companion APIs, Typed Domain Errors, and Human-Readable Diagnostics
+# ADR 0043: Checked Companion APIs, Typed Domain Errors, and Human-Readable Diagnostics
 
 ## Status
-Accepted (extends [ADR 0027](0027-enforce-workspace-clippy-lints.md) and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
+Accepted (extends [ADR 0027](0027-enforce-workspace-clippy-lints.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
 
 ## Context
 [`math_explorer`](../../math_explorer/src/lib.rs) exposes a unified scientific computing SDK across `math_commons`, `pure_math`, and six `domain_*` crates. Four error-handling inconsistencies undermined downstream programmatic error recovery, NASA Power of 10 zero-allocation guarantees, and diagnostic readability:
@@ -12,7 +12,7 @@ Accepted (extends [ADR 0027](0027-enforce-workspace-clippy-lints.md) and [ADR 00
 
 ## Decision
 1. **Introduce `ClimateError` and Complete Typed Domain Error Coverage**:
-   - Add [`crates/domain_climate/src/error.rs`](../../crates/domain_climate/src/error.rs) defining `ClimateError` with `thiserror::Error`, `diagnostics::Diagnostic`, and `#[from] MathError`, and re-export it from [`crates/domain_climate/src/climate/mod.rs`](../../crates/domain_climate/src/climate/mod.rs), [`math_explorer/src/error.rs`](../../math_explorer/src/error.rs), and [`math_explorer/src/prelude.rs`](../../math_explorer/src/prelude.rs) (`28` public facade error enums total alongside `FitError`).
+   - Add [`crates/domain_climate/src/error.rs`](../../crates/domain_climate/src/error.rs) defining `ClimateError` with `thiserror::Error`, `diagnostics::Diagnostic`, and `#[from] MathError`, re-export it from [`crates/domain_climate/src/climate/mod.rs`](../../crates/domain_climate/src/climate/mod.rs), [`math_explorer/src/error.rs`](../../math_explorer/src/error.rs), and [`math_explorer/src/prelude.rs`](../../math_explorer/src/prelude.rs), and wire `Error::Climate(ClimateError)` into [`math_explorer::error::Error`](../../math_explorer/src/error.rs) (`50` leaf errors + `6` crate umbrellas).
    - Add stack-allocated `OutOfBounds`, `StrictlyOutOfBounds`, and `InvalidPermutation` variants to [`MathError`](../../crates/math_commons/src/error.rs) and migrate all `27` `UnitInterval`, `PositiveFloat`, and `NonNegativeFloat` `Result` signatures in [`crates/math_commons/src/primitives.rs`](../../crates/math_commons/src/primitives.rs) off `String`.
    - Migrate all remaining untyped `String`, `&'static str`, and `()` `Result` signatures across `pure_math`, `domain_ai`, `domain_applied`, `domain_climate`, `domain_epidemiology`, `domain_physics`, `oxidize_core`, and `egui_plot` to stack-allocated typed enum variants (`NumberTheoryError`, `AIError`, `EngineeringError`, `GameTheoryError`, `ClimateError`, `EpidemiologyError`, `DoseFluenceError`, `FluidError`, `RadarError`, `SolidStateError`, `StandardModelError`, `StatMechError`, `WorkspaceError`, and `LatexParseError`), eliminating every `#[allow(clippy::result_unit_err)]` suppression in the repository.
 2. **Provide `checked_*` and `try_*` Companion Entrypoints**:

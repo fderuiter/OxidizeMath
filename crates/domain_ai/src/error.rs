@@ -69,7 +69,7 @@ pub enum AIError {
         actual: (usize, usize),
     },
 
-    #[error(transparent)]
+    #[error("{0}")]
     #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
@@ -104,5 +104,22 @@ impl Diagnostic for AIError {
                 map
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error as StdError;
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_ai_error_math_preserves_source() {
+        let err = AIError::from(math_commons::error::MathError::DimensionMismatch {
+            expected: math_commons::math_kernel::types::Dimension(2),
+            actual: math_commons::math_kernel::types::Dimension(3),
+        });
+        assert!(err.source().is_some());
+        assert_eq!(err.severity(), Severity::Error);
     }
 }

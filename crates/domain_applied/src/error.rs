@@ -57,7 +57,7 @@ pub enum GameTheoryError {
         max: f64,
     },
     /// Wrapped centralized mathematical error.
-    #[error(transparent)]
+    #[error("{0}")]
     #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
@@ -84,7 +84,7 @@ pub enum EngineeringError {
         actual: usize,
     },
     /// Wrapped centralized mathematical error.
-    #[error(transparent)]
+    #[error("{0}")]
     #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
@@ -116,7 +116,7 @@ pub enum IsosurfaceError {
     #[error("Invalid isosurface grid: {0}")]
     InvalidGrid(String),
     /// Wrapped centralized mathematical error.
-    #[error(transparent)]
+    #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
 }
 
@@ -224,3 +224,14 @@ impl Diagnostic for IsosurfaceError {
         map
     }
 }
+mod submodule_diagnostics;
+mod umbrella;
+
+pub use crate::applied::{
+    algorithms::kalman::KalmanError, clinical_trials::types::ClinicalTrialError,
+    isosurface::types::VoxelGridError,
+};
+pub use umbrella::AppliedError;
+
+#[cfg(test)]
+mod tests;

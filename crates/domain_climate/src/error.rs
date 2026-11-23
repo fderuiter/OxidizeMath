@@ -56,7 +56,7 @@ pub enum ClimateError {
     },
 
     /// Shared mathematical error forwarded from `math_commons`.
-    #[error(transparent)]
+    #[error("{0}")]
     Math(#[from] MathError),
 }
 
