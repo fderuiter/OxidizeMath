@@ -64,7 +64,10 @@ impl MathExplorerApp {
             "Global",
         );
 
-        let question_triggered = !ctx.wants_keyboard_input()
+        let question_triggered = !crate::framework::is_text_edit_focused(ctx)
+            && !self.command_palette.is_open
+            && !self.show_starter_gallery
+            && !egui::Popup::is_any_open(ctx)
             && ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::NONE, egui::Key::Questionmark)
                     || i.consume_key(egui::Modifiers::SHIFT, egui::Key::Questionmark)

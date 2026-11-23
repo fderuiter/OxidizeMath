@@ -42,7 +42,6 @@ pub struct GraphEditorTool {
     hovered_edge: Option<usize>,
     undo_stack: Vec<GraphSnapshot>,
     redo_stack: Vec<GraphSnapshot>,
-    canvas_id: Option<egui::Id>,
     pub(crate) revision: u64,
     last_published_local_rev: Option<u64>,
     /// Hosted Braess's paradox congestion routing laboratory.
@@ -85,10 +84,6 @@ impl InteractiveTool for GraphEditorTool {
         self.serialize_borrowed_state()
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.canvas_id
-    }
-
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
@@ -123,7 +118,6 @@ impl InteractiveTool for GraphEditorTool {
 
         ui.separator();
         self.show_undo_redo_toolbar(ui);
-        ui.separator();
         self.show_mode_instructions(ui);
         ui.separator();
         self.show_clear_button(ui);

@@ -251,3 +251,43 @@ fn test_kuramoto_streams_coherence_to_bus_and_mws_plus_url_roundtrip() {
     assert_eq!(url_restored.pane_bus_links, [true, true, false, false]);
     assert_eq!(url_restored.workspace_bus.topology.positions().len(), 6);
 }
+
+#[test]
+fn test_bus_links_undo_redo_and_epi_challenge_lock_precedence() {
+    use crate::tabs::epidemiology::network_propagation::challenge::CHALLENGE_EPI_HUB_VACCINATION;
+
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    run_frame(&ctx, &mut app);
+    let unlinked_state = app.get_app_state();
+
+    app.set_pane_bus_linked(0, true);
+    app.set_pane_bus_linked(1, true);
+    run_frame(&ctx, &mut app);
+    assert!(!app.get_app_state().semantically_eq(&unlinked_state));
+
+    app.undo();
+    assert_eq!(app.pane_bus_links, [false, false, false, false]);
+    app.redo();
+    assert_eq!(app.pane_bus_links, [true, true, false, false]);
+
+    let mut epi = NetworkPropagationTool::default();
+    let mut ch = crate::app::workspace_bus::GraphTopologyChannel::default();
+    ch.publish(
+        &[[0.0, 0.0], [-1.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+        &[(0, 1, 1.0), (0, 2, 1.0), (0, 3, 1.0)],
+    );
+    epi.ingest_topology_channel(&ch);
+    assert_eq!(epi.unmitigated_cumulative_infections(), 1);
+    epi.apply_challenge(Some(CHALLENGE_EPI_HUB_VACCINATION))
+        .unwrap();
+    ch.publish(&[[0.0, 0.0], [1.0, 0.0]], &[(0, 1, 1.0)]);
+    epi.ingest_topology_channel(&ch);
+    assert_eq!(
+        epi.active_challenge_id(),
+        Some(CHALLENGE_EPI_HUB_VACCINATION)
+    );
+    assert!(epi.evaluate_challenge().is_some());
+}

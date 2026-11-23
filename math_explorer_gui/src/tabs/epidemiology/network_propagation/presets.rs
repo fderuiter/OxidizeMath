@@ -26,20 +26,20 @@ const fn is_false(value: &bool) -> bool {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct NetPropState {
-    pub(super) num_nodes: usize,
-    pub(super) beta: f64,
-    pub(super) gamma: f64,
+pub(crate) struct NetPropState {
+    pub(crate) num_nodes: usize,
+    pub(crate) beta: f64,
+    pub(crate) gamma: f64,
     #[serde(default = "default_seed", skip_serializing_if = "is_default_seed")]
-    pub(super) seed: u64,
+    pub(crate) seed: u64,
     #[serde(default = "default_budget", skip_serializing_if = "is_default_budget")]
-    pub(super) budget: usize,
+    pub(crate) budget: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(super) vaccinated_nodes: Vec<usize>,
+    pub(crate) vaccinated_nodes: Vec<usize>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(super) quarantined_edges: Vec<usize>,
+    pub(crate) quarantined_edges: Vec<usize>,
     #[serde(default, skip_serializing_if = "is_false")]
-    pub(super) is_running: bool,
+    pub(crate) is_running: bool,
 }
 
 fn validate_unique_indices(items: &[usize], label: &str) -> Result<Vec<usize>, String> {

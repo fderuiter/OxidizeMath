@@ -36,6 +36,9 @@ impl NetworkPropagationTool {
     }
 
     pub(crate) fn ingest_topology_channel(&mut self, channel: &GraphTopologyChannel) {
+        if self.is_challenge_locked() {
+            return;
+        }
         let rev = channel.revision();
         if rev == 0 || self.synced_bus_revision == Some(rev) {
             return;
@@ -62,21 +65,55 @@ impl NetworkPropagationTool {
                 })
                 .collect()
         } else {
+            self.rng = oxidize_core::rng::OxidizeRng::new(self.seed);
             initial_seeded_states(n)
         };
         if let Ok(mut built) = NetworkEpidemicModel::builder()
             .num_nodes(n)
             .parameters(self.model.beta(), self.model.gamma())
             .states(states)
-            .positions(positions)
-            .adjacency(adjacency)
+            .positions(positions.clone())
+            .adjacency(adjacency.clone())
             .build()
         {
+            self.sync_bus_baseline_twin(n, positions, adjacency);
             self.reconcile_bus_interventions(&mut built);
             self.model = built;
             self.using_bus_topology = true;
             self.clamp_focus_indices();
             self.bump_revision();
+        }
+    }
+
+    fn sync_bus_baseline_twin(
+        &mut self,
+        n: usize,
+        positions: Vec<[f32; 2]>,
+        adjacency: Vec<Vec<usize>>,
+    ) {
+        let base_states = if self.using_bus_topology {
+            (0..n)
+                .map(|i| {
+                    self.baseline_model
+                        .states()
+                        .get(i)
+                        .copied()
+                        .unwrap_or(NodeState::Susceptible)
+                })
+                .collect()
+        } else {
+            self.baseline_rng = oxidize_core::rng::OxidizeRng::new(self.seed);
+            initial_seeded_states(n)
+        };
+        if let Ok(base_built) = NetworkEpidemicModel::builder()
+            .num_nodes(n)
+            .parameters(self.model.beta(), self.model.gamma())
+            .states(base_states)
+            .positions(positions)
+            .adjacency(adjacency)
+            .build()
+        {
+            self.baseline_model = base_built;
         }
     }
 
@@ -98,6 +135,7 @@ impl NetworkPropagationTool {
 
     pub(super) fn reset_bus_topology_states(&mut self) {
         self.rng = oxidize_core::rng::OxidizeRng::new(self.seed);
+        self.baseline_rng = oxidize_core::rng::OxidizeRng::new(self.seed);
         let edges = self.model.edges().to_vec();
         for &[u, v] in &edges {
             let _ = self.model.set_edge_quarantined(u, v, false);
@@ -106,6 +144,9 @@ impl NetworkPropagationTool {
         self.quarantined_edges.clear();
         let n = self.model.num_nodes();
         *self.model.states_mut() = initial_seeded_states(n);
+        if self.baseline_model.num_nodes() == n {
+            *self.baseline_model.states_mut() = initial_seeded_states(n);
+        }
         self.is_running = false;
         self.clamp_focus_indices();
         #[cfg(test)]
