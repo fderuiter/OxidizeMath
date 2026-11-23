@@ -7,7 +7,7 @@ use crate::framework::shader_foundry::{
 use crate::framework::MAX_SYNTHESIZED_PARAMS;
 use math_commons::ast::{parse, parse_equation, CompiledExpr, Expr};
 use math_commons::math_kernel::colormap::ShaderPalette;
-use scientific_metadata::theory::TheoryDescribable;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
@@ -49,6 +49,13 @@ pub(super) struct FractalState {
     pub(super) custom_expr: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(super) custom_params: BTreeMap<String, f64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(super) atlas_visible: bool,
+    #[serde(
+        default = "super::atlas::default_fractal_atlas_axes",
+        skip_serializing_if = "super::atlas::is_default_fractal_atlas_axes"
+    )]
+    pub(super) atlas_axes: [String; 2],
 }
 
 impl FractalState {
@@ -113,6 +120,7 @@ impl FractalViewer {
         } else {
             BTreeMap::new()
         };
+        let (xk, yk) = self.atlas.axis_keys();
         FractalState {
             center_re: self.center.re,
             center_im: self.center.im,
@@ -125,6 +133,8 @@ impl FractalViewer {
             palette: self.palette.as_slug().to_string(),
             custom_expr,
             custom_params,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         }
     }
 
@@ -243,5 +253,9 @@ impl TheoryDescribable for FractalViewer {
         let mut map = HashMap::new();
         map.insert("default".to_string(), "Fractal viewer".to_string());
         map
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        self.build_theory_parameters()
     }
 }

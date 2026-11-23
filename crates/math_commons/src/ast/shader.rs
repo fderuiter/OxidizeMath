@@ -18,7 +18,7 @@ pub enum ShaderEmitError {
     RecursionLimitExceeded(usize),
 
     /// Built-in function node was given the wrong number of arguments.
-    #[error("Function '{func:?}' expected {expected} arguments, found {found}")]
+    #[error("Function '{}' expected {expected} arguments, found {found}", func.as_str())]
     WrongArgumentCount {
         /// Function identifier.
         func: Func,

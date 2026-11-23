@@ -4,7 +4,7 @@ use super::analysis::{format_path_line, invalid_link_key};
 use super::{AstCache, TraceabilityEngine, TraceabilityReport};
 use crate::vfs::VirtualFileSystem;
 use std::future::Future;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
 
 struct LocalFsVfs;
@@ -57,35 +57,7 @@ pub(super) const IGNORED_TRACEABILITY_MEMBERS: &[&str] = &[
     "egui_plot",
 ];
 
-fn scan_src_dir(src_path: PathBuf, strip_root: Option<&Path>, code_dirs: &mut Vec<String>) {
-    let mut stack = vec![src_path];
-
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        let mut has_rs_files = false;
-        for entry in entries.flatten() {
-            let Ok(file_type) = entry.file_type() else {
-                continue;
-            };
-            if file_type.is_dir() {
-                stack.push(entry.path());
-            } else if file_type.is_file() && entry.path().extension().is_some_and(|ext| ext == "rs")
-            {
-                has_rs_files = true;
-            }
-        }
-        if has_rs_files {
-            let rel_dir = strip_root
-                .and_then(|root| dir.strip_prefix(root).ok())
-                .unwrap_or(dir.as_path());
-            code_dirs.push(crate::path_utils::normalize_path(rel_dir));
-        }
-    }
-}
-
-/// Discovers active workspace source directories subject to traceability verification.
+/// Discovers active workspace module roots subject to traceability verification.
 pub fn discover_workspace_code_dirs() -> Vec<String> {
     let (is_root, members) = crate::workspace::get_workspace_members();
     let mut code_dirs = Vec::new();
@@ -108,7 +80,11 @@ pub fn discover_workspace_code_dirs() -> Vec<String> {
         };
 
         if src_path.is_dir() {
-            scan_src_dir(src_path, resolved_root.as_deref(), &mut code_dirs);
+            let rel_dir = resolved_root
+                .as_deref()
+                .and_then(|root| src_path.strip_prefix(root).ok())
+                .unwrap_or(src_path.as_path());
+            code_dirs.push(crate::path_utils::normalize_path(rel_dir));
         }
     }
     code_dirs

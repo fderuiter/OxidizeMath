@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::shader_foundry::{emit_fractal_shader, ShaderPreviewState};
 use crate::framework::{InteractiveTool, MathExpressionInputBar, ShaderExportFormat};
@@ -9,6 +10,12 @@ use num_complex::Complex;
 use scientific_metadata::theory::TheoryDescribable;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
+
+#[path = "fractals/atlas.rs"]
+pub mod atlas;
+#[cfg(test)]
+pub use atlas::FractalCartographer;
+use atlas::FRACTAL_ATLAS_AXIS_PAIRS;
 
 #[path = "fractals/formula.rs"]
 pub mod formula;
@@ -32,10 +39,15 @@ mod ui;
 pub struct FractalViewer {
     pub(crate) center: Complex<f64>,
     pub(crate) zoom: f64,
+    pub(crate) c_plane_view: (Complex<f64>, f64),
+    pub(crate) z_plane_view: (Complex<f64>, f64),
+    pub(crate) hover_c: Option<Complex<f64>>,
     pub(crate) max_iter: u32,
     pub(crate) mode: FractalMode,
     pub(crate) julia_c: Complex<f64>,
     pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) quadratic_job: CompiledFractalJob,
+    pub(crate) atlas: ParameterAtlasController,
     pub(crate) high_contrast: bool,
     pub(crate) smooth_coloring: bool,
     pub(crate) palette: ShaderPalette,
@@ -62,6 +74,7 @@ impl Default for FractalViewer {
         let mode = FractalMode::Mandelbrot;
         let julia_c = Complex::new(-0.4, 0.6);
         let math_input = default_fractal_input_bar();
+        let quadratic_job = CompiledFractalJob::quadratic();
         let initial_formula = Some(Arc::new(CompiledFractalJob::from_bar(&math_input)));
         let initial_style = FractalColorStyle::default();
         let initial_req = FractalRenderRequest {
@@ -88,10 +101,15 @@ impl Default for FractalViewer {
         Self {
             center,
             zoom,
+            c_plane_view: (center, zoom),
+            z_plane_view: (Complex::new(0.0, 0.0), 1.0),
+            hover_c: None,
             max_iter,
             mode,
             julia_c,
             math_input,
+            quadratic_job,
+            atlas: ParameterAtlasController::new(FRACTAL_ATLAS_AXIS_PAIRS.to_vec()),
             high_contrast: false,
             smooth_coloring: initial_style.smooth_coloring,
             palette: initial_style.palette,
@@ -178,6 +196,7 @@ impl InteractiveTool for FractalViewer {
 
     fn step_simulation(&mut self) {
         self.zoom = (self.zoom * 1.06).clamp(ZOOM_MIN, ZOOM_MAX);
+        self.sync_active_plane_view();
         self.mark_dirty();
     }
 
@@ -215,9 +234,12 @@ impl InteractiveTool for FractalViewer {
         self.julia_c = Complex::new(s.julia_re, s.julia_im);
         self.smooth_coloring = s.smooth_coloring;
         self.palette = palette;
+        self.sync_active_plane_view();
         self.math_input
             .set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_FRACTAL_EXPR));
         self.math_input.set_params_map(&s.custom_params);
+        self.atlas.set_visible(s.atlas_visible);
+        let _ = self.atlas.set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1]);
         self.mark_dirty();
         Ok(())
     }
