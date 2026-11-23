@@ -2,6 +2,10 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub use super::challenge::FastCvKalman;
+use super::challenge::{
+    should_trigger_scheduled_cough, step_physical_beam_delay, GEOGRAPHIC_MISS_CEILING_MM,
+};
 use super::spectra::{build_fmcw_config, compute_range_spectra, SpectralSnapshot};
 use super::state::RadarGatingState;
 use crate::tabs::medical::link_bus::GatingTelemetry;
@@ -22,79 +26,12 @@ use std::f64::consts::PI;
 
 /// Fixed time-series ring length preallocated at startup for zero-allocation stepping.
 pub const HISTORY_LEN: usize = 200;
+/// Preallocated physical beam-delay ring capacity (`24 * 25 ms = 600 ms` max latency).
+pub const BEAM_DELAY_RING_LEN: usize = 24;
 /// Slow-time control-loop step duration in seconds (`40 Hz` gating rate).
 pub const SIM_DT: f64 = 0.025;
 /// Coherent slow-time chirp substeps per control frame to prevent 60 GHz phase aliasing on coughs.
 const CHIRP_SUBSTEPS: usize = 8;
-
-/// Stack-resident 2-state Constant-Velocity Kalman filter matching `TrackingFilter` algebra.
-#[derive(Debug, Clone, Copy)]
-pub struct FastCvKalman {
-    /// State vector `[amplitude_m, velocity_m_s]`.
-    pub state: [f64; 2],
-    /// State error covariance `[[p00, p01], [p10, p11]]`.
-    pub cov: [[f64; 2]; 2],
-    /// Discretization interval in seconds.
-    pub dt: f64,
-    /// Process noise variance $Q$.
-    pub process_var: f64,
-    /// Measurement noise variance $R$.
-    pub meas_var: f64,
-}
-
-impl FastCvKalman {
-    /// Initializes stack state directly from a verified `TrackingFilter` instance.
-    pub fn from_tracking_filter(
-        tf: &TrackingFilter,
-        dt: f64,
-        process_var: f64,
-        meas_var: f64,
-    ) -> Self {
-        let p = tf.covariance();
-        Self {
-            state: [tf.amplitude(), tf.velocity()],
-            cov: [[p[(0, 0)], p[(0, 1)]], [p[(1, 0)], p[(1, 1)]]],
-            dt,
-            process_var,
-            meas_var,
-        }
-    }
-
-    /// Executes the exact `ConstantVelocityModel` predict step on stack scalars.
-    pub fn predict(&mut self) {
-        let dt = self.dt;
-        self.state[0] += dt * self.state[1];
-        let p00 = self.cov[0][0];
-        let p01 = self.cov[0][1];
-        let p10 = self.cov[1][0];
-        let p11 = self.cov[1][1];
-        self.cov[0][0] = p00 + dt * (p10 + p01) + dt * dt * p11 + self.process_var;
-        self.cov[0][1] = p01 + dt * p11;
-        self.cov[1][0] = p10 + dt * p11;
-        self.cov[1][1] = p11 + self.process_var;
-    }
-
-    /// Executes the exact scalar position measurement update (`H = [1, 0]`) on stack scalars.
-    pub fn update(&mut self, z_m: f64) {
-        let s = self.cov[0][0] + self.meas_var;
-        if !s.is_finite() || s.abs() <= 1.0e-18 {
-            return;
-        }
-        let y = z_m - self.state[0];
-        let k0 = self.cov[0][0] / s;
-        let k1 = self.cov[1][0] / s;
-        self.state[0] += k0 * y;
-        self.state[1] += k1 * y;
-        let p00 = self.cov[0][0];
-        let p01 = self.cov[0][1];
-        let p10 = self.cov[1][0];
-        let p11 = self.cov[1][1];
-        self.cov[0][0] = (1.0 - k0) * p00;
-        self.cov[0][1] = (1.0 - k0) * p01;
-        self.cov[1][0] = p10 - k1 * p00;
-        self.cov[1][1] = p11 - k1 * p01;
-    }
-}
 
 /// Preallocated simulation engine holding spectral snapshots and zero-allocation time-series buffers.
 pub struct RadarPipeline {
@@ -128,6 +65,20 @@ pub struct RadarPipeline {
     pub total_frames: u64,
     /// Total frames spent in `BeamState::BeamActive`.
     pub active_frames: u64,
+    /// Total frames where the delayed physical LINAC beam actively delivered dose.
+    pub physical_active_frames: u64,
+    /// Frames where delayed physical beam was ON while `z_true > -1.20 mm`.
+    pub geographic_miss_frames: u64,
+    /// Whether periodic `+10 mm` challenge cough transients are enabled.
+    pub scheduled_cough_enabled: bool,
+    /// Fixed 24-slot delay ring buffer modeling `system_latency_ms` physical beam lag.
+    pub beam_delay_ring: [bool; BEAM_DELAY_RING_LEN],
+    /// Write cursor into `beam_delay_ring`.
+    pub beam_delay_cursor: usize,
+    /// Preallocated ground-truth respiratory + cough chest trace (`[t_s, z_true_mm]`).
+    pub true_trace_mm: Vec<[f64; 2]>,
+    /// Preallocated delayed physical beam-on window trace (`[t_s, 0_or_1]`).
+    pub physical_beam_trace: Vec<[f64; 2]>,
     /// Preallocated unwrapped + surface-smoothed displacement trace (`[t_s, disp_mm]`).
     pub measured_trace_mm: Vec<[f64; 2]>,
     /// Preallocated latency-compensated Kalman prediction trace (`[t_s, pred_mm]`).
@@ -186,6 +137,13 @@ impl RadarPipeline {
             nan_fault_active: false,
             total_frames: 0,
             active_frames: 0,
+            physical_active_frames: 0,
+            geographic_miss_frames: 0,
+            scheduled_cough_enabled: false,
+            beam_delay_ring: [false; BEAM_DELAY_RING_LEN],
+            beam_delay_cursor: 0,
+            true_trace_mm: vec![[0.0, 0.0]; HISTORY_LEN],
+            physical_beam_trace: vec![[0.0, 0.0]; HISTORY_LEN],
             measured_trace_mm: vec![[0.0, 0.0]; HISTORY_LEN],
             kalman_trace_mm: vec![[0.0, 0.0]; HISTORY_LEN],
             duty_cycle_trace_pct: vec![[0.0, 0.0]; HISTORY_LEN],
@@ -230,6 +188,10 @@ impl RadarPipeline {
         self.nan_fault_active = false;
         self.total_frames = 0;
         self.active_frames = 0;
+        self.physical_active_frames = 0;
+        self.geographic_miss_frames = 0;
+        self.beam_delay_ring = [false; BEAM_DELAY_RING_LEN];
+        self.beam_delay_cursor = 0;
 
         self.warm_clutter_capacity(state);
         self.phase_unwrapper = PhaseUnwrapper::new(self.wavelength_m);
@@ -277,7 +239,7 @@ impl RadarPipeline {
         let warm_steps = (state.clutter_window + 8) * CHIRP_SUBSTEPS;
         let dt_sub = SIM_DT / CHIRP_SUBSTEPS as f64;
         for idx in 0..warm_steps {
-            let t = idx as f64 * dt_sub;
+            let t = -((warm_steps - idx) as f64) * dt_sub;
             let z = respiratory_displacement_m(t, state, 0.0);
             let _ = self.sample_slow_time_iq(z, state);
         }
@@ -302,8 +264,13 @@ impl RadarPipeline {
         let mut unwrapped_m = 0.0;
         let mut z_true = 0.0;
         for _ in 0..CHIRP_SUBSTEPS {
+            let prev_t = self.sim_time_s;
             self.sim_time_s += dt_sub;
-            if self.cough_timer_s > 0.0 {
+            if self.scheduled_cough_enabled
+                && should_trigger_scheduled_cough(prev_t, self.sim_time_s, state.breath_period_s)
+            {
+                self.cough_timer_s = 0.45;
+            } else if self.cough_timer_s > 0.0 {
                 self.cough_timer_s = (self.cough_timer_s - dt_sub).max(0.0);
             }
             z_true = respiratory_displacement_m(self.sim_time_s, state, self.cough_timer_s);
@@ -353,35 +320,66 @@ impl RadarPipeline {
         state: &RadarGatingState,
         beam_state: BeamState,
     ) {
+        let latency_ms = state.system_latency_ms;
         self.total_frames = self.total_frames.saturating_add(1);
-        if beam_state == BeamState::BeamActive {
+        let cmd_active = beam_state == BeamState::BeamActive;
+        if cmd_active {
             self.active_frames = self.active_frames.saturating_add(1);
         }
-        let duty_pct = self.duty_cycle_percent();
-        let pred_mm = (pos_m + vel_m_s * (state.system_latency_ms * 1.0e-3)) * 1.0e3;
-        let meas_mm = measured_m * 1.0e3;
+        let physical_active = step_physical_beam_delay(
+            &mut self.beam_delay_ring,
+            &mut self.beam_delay_cursor,
+            latency_ms,
+            cmd_active,
+        );
+        if physical_active {
+            self.physical_active_frames = self.physical_active_frames.saturating_add(1);
+        }
         let true_mm = true_m * 1.0e3;
-        let t = self.sim_time_s;
+        if physical_active && true_mm > GEOGRAPHIC_MISS_CEILING_MM {
+            self.geographic_miss_frames = self.geographic_miss_frames.saturating_add(1);
+        }
+        let pred_mm = (pos_m + vel_m_s * (latency_ms * 1.0e-3)) * 1.0e3;
+        let meas_mm = measured_m * 1.0e3;
+        self.push_trace_rings(
+            self.sim_time_s,
+            true_mm,
+            meas_mm,
+            pred_mm,
+            physical_active,
+            beam_state,
+        );
+        self.update_evaluation_metrics(true_mm, meas_mm, pos_m * 1.0e3, pred_mm, state);
+    }
 
+    fn push_trace_rings(
+        &mut self,
+        t: f64,
+        true_mm: f64,
+        meas_mm: f64,
+        pred_mm: f64,
+        physical_active: bool,
+        beam_state: BeamState,
+    ) {
+        let duty_pct = self.duty_cycle_percent();
+        let flag = |b: bool| [t, f64::from(u8::from(b))];
+        push_ring(&mut self.true_trace_mm, [t, true_mm]);
+        push_ring(&mut self.physical_beam_trace, flag(physical_active));
         push_ring(&mut self.measured_trace_mm, [t, meas_mm]);
         push_ring(&mut self.kalman_trace_mm, [t, pred_mm]);
         push_ring(&mut self.duty_cycle_trace_pct, [t, duty_pct]);
         push_ring(
             &mut self.beam_active_trace,
-            [t, f64::from(u8::from(beam_state == BeamState::BeamActive))],
+            flag(beam_state == BeamState::BeamActive),
         );
         push_ring(
             &mut self.beam_hold_trace,
-            [t, f64::from(u8::from(beam_state == BeamState::BeamHold))],
+            flag(beam_state == BeamState::BeamHold),
         );
         push_ring(
             &mut self.interlock_trace,
-            [
-                t,
-                f64::from(u8::from(beam_state == BeamState::SafetyInterlock)),
-            ],
+            flag(beam_state == BeamState::SafetyInterlock),
         );
-        self.update_evaluation_metrics(true_mm, meas_mm, pos_m * 1.0e3, pred_mm, state);
     }
 
     fn update_evaluation_metrics(
@@ -425,11 +423,12 @@ impl RadarPipeline {
 
     /// Current cumulative LINAC beam-on duty cycle in `[0.0, 100.0]` percent.
     pub fn duty_cycle_percent(&self) -> f64 {
-        if self.total_frames == 0 {
-            0.0
-        } else {
-            100.0 * (self.active_frames as f64) / (self.total_frames as f64)
-        }
+        ratio_pct(self.active_frames, self.total_frames)
+    }
+
+    /// Cumulative delayed physical LINAC beam-on duty cycle in `[0.0, 100.0]` percent.
+    pub fn physical_duty_cycle_percent(&self) -> f64 {
+        ratio_pct(self.physical_active_frames, self.total_frames)
     }
 
     /// Injects a deterministic `+10 mm` cough impulse lasting `0.45 s`.
@@ -474,6 +473,14 @@ fn respiratory_displacement_m(t_s: f64, state: &RadarGatingState, cough_timer_s:
         0.0
     };
     base + cough
+}
+
+fn ratio_pct(active: u64, total: u64) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        100.0 * (active as f64) / (total as f64)
+    }
 }
 
 fn rng_unit_f64(rng: &mut OxidizeRng) -> f64 {

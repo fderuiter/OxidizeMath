@@ -165,7 +165,11 @@ fn render_4d_gating_panel(tool: &mut DoseCalculationTool, ui: &mut egui::Ui) -> 
     let mut changed = false;
     ui.label(RichText::new("4D Respiratory Delivery & LINAC").strong());
 
+    let canvas_focused = tool
+        .focused_canvas_id()
+        .is_some_and(|id| ui.ctx().memory(|m| m.has_focus(id)));
     match PlaybackTransport::in_thread("dose_4d_transport", "4D IMRT Delivery", tool.playing_4d)
+        .allow_space_shortcut(!canvas_focused)
         .show(ui)
     {
         Some(PlaybackAction::Play) => tool.playing_4d = true,
