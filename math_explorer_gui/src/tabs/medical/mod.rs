@@ -6,6 +6,7 @@ pub mod beam_profiling;
 pub mod bioelectric_leads;
 pub mod bioelectric_presets;
 pub mod dose;
+pub mod imrt;
 pub mod radar_gating;
 
 pub struct MedicalTab {
