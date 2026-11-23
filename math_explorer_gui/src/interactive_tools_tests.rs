@@ -35,6 +35,7 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::financial_math::market_execution::MarketExecutionTool,
         >(&ctx);
+        exercise_interactive_tool::<crate::tabs::game_theory::auction::MyersonAuctionTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool>(
             &ctx,
@@ -78,6 +79,9 @@ mod tests {
         exercise_interactive_tool::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(
             ctx,
         );
+        exercise_interactive_tool::<
+            crate::tabs::geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool,
+        >(ctx);
         exercise_interactive_tool::<crate::tabs::climate::cera::CeraTool>(ctx);
         exercise_interactive_tool::<crate::tabs::climate::co2_projections::Co2ProjectionsTool>(ctx);
         exercise_interactive_tool::<crate::tabs::climate::temperature::TemperatureAnomaliesTool>(
@@ -468,8 +472,10 @@ mod tests {
     #[test]
     fn test_traceability_tab_state_roundtrip() {
         let _guard = crate::reflective_ui::tests::lock_test_mutex();
+        let manifest_dir_raw =
+            std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
         let valid_repo_dir = oxidize_core::path_utils::normalize_path(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            std::path::Path::new(&manifest_dir_raw)
                 .canonicalize()
                 .expect("canonical manifest dir"),
         );
