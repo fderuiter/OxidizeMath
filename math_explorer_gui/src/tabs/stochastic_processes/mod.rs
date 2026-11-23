@@ -1,10 +1,10 @@
-// @explorer_feature = "pure_math"
-// @explorer_order = 27
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 // Dedicated `Stochastic Processes` tab (`Pure Math`) hosting three interactive
 // `SimulationFramework` workbenches for DTMCs & transition tensors, CTMCs & M/M/c queues,
 // and HMMs & Ornstein-Uhlenbeck calibration.
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 /// Continuous-time Markov chains, Poisson thinning, and $M/M/c$ birth-death queueing workbench.
@@ -19,7 +19,7 @@ mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
-/// Top-level `Pure Math` tab auto-discovered by `math_explorer_gui/build.rs`.
+/// Top-level `Pure Math` tab registered via [`TabDescriptor`] inventory.
 pub struct StochasticProcessesTab {
     framework: crate::framework::SimulationFramework,
 }
@@ -75,6 +75,14 @@ impl ExplorerTab for StochasticProcessesTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "stochastic_processes",
+        order: 27,
+        build: || Box::new(StochasticProcessesTab::default()),
     }
 }
 

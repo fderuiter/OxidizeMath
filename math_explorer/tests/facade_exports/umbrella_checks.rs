@@ -67,6 +67,8 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::NumberTheoryError::ConversionError, bus),
         check_leaf(error::OptimizationError::ConversionError, bus),
         check_leaf(error::OuError::InvalidVolatility { value: -0.1 }, bus),
+        check_leaf(error::PoissonError::InvalidRate { rate: -1.0 }, bus),
+        check_leaf(error::QueueingError::InvalidServerCount { servers: 0 }, bus),
         check_leaf(error::StochasticError::InvalidReactionIndex(2), bus),
         check_leaf(error::TdaError::EmptyPointCloud, bus),
         check_leaf(error::TensorError::SingularMetric, bus),
@@ -105,6 +107,7 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::HodgkinHuxleyError::InvalidConductance(-1.0), bus),
         check_leaf(error::KineticsError::InvalidParameters, bus),
         check_leaf(error::ReactionDiffusionError::ZeroSpecies, bus),
+        check_leaf(error::ClimateError::ZeroLevels, bus),
         check_leaf(error::EpidemiologyError::SingularTransitionMatrix, bus),
         check_leaf(error::NetworkModelError::InvalidNodeCount, bus),
         check_leaf(
@@ -168,6 +171,7 @@ pub fn verify_six_umbrellas_and_fifteen_wrappers(bus: &DiagnosticBus) {
         error::ReactionDiffusionError::from(sample_math())
             .source()
             .is_some(),
+        error::ClimateError::from(sample_math()).source().is_some(),
         error::EpidemiologyError::from(sample_math())
             .source()
             .is_some(),
@@ -178,7 +182,7 @@ pub fn verify_six_umbrellas_and_fifteen_wrappers(bus: &DiagnosticBus) {
             .is_some(),
         error::StatMechError::from(sample_math()).source().is_some(),
     ];
-    assert_eq!(wrapper_sources_present.len(), 15);
+    assert_eq!(wrapper_sources_present.len(), 16);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
 }
 
@@ -192,11 +196,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 49);
-    assert_eq!(*events.lock().unwrap(), 49);
+    assert_eq!(converted.len(), 52);
+    assert_eq!(*events.lock().unwrap(), 52);
 
     verify_six_umbrellas_and_fifteen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 55);
+    assert_eq!(*events.lock().unwrap(), 58);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -260,6 +264,7 @@ pub fn verify_prelude_error_reexports() {
         p::MathError,
         p::ParseError,
         p::AIError,
+        p::ClimateError,
         p::HodgkinHuxleyError,
         p::KineticsError,
         p::ReactionDiffusionError,
@@ -280,6 +285,8 @@ pub fn verify_prelude_error_reexports() {
         p::NumberTheoryError,
         p::OptimizationError,
         p::OuError,
+        p::PoissonError,
+        p::QueueingError,
         p::StochasticError,
         p::TdaError,
         p::TensorError,

@@ -26,7 +26,7 @@ Previously, discrete- and continuous-time stochastic models in [`crates/pure_mat
    - Added [`exact_solver.rs`](../../crates/pure_math/src/pure_math/statistics/ou_process/exact_solver.rs) (`ExactOuSolver`) and updated `estimate_ou_params` in [`analysis.rs`](../../crates/pure_math/src/pure_math/statistics/ou_process/analysis.rs) with exact discrete AR(1) innovation variance scaling and stationary $\sqrt{2\hat{\theta}\operatorname{Var}(X)}$ fallback.
 
 3. **Dedicated `StochasticProcessesTab` in `math_explorer_gui`:**
-   - Added [`math_explorer_gui/src/tabs/stochastic_processes/mod.rs`](../../math_explorer_gui/src/tabs/stochastic_processes/mod.rs) (`// @explorer_feature = "pure_math"`, `#tab=stochastic_processes`) hosting `DtmcTensorWorkbenchTool`, `CtmcQueueWorkbenchTool`, and `HmmOuWorkbenchTool` with six starter presets, `ToolStateBounds` URL hydration, AccessKit canvas landmarks, and `ExportCapabilities::plot()` exports.
+   - Added [`math_explorer_gui/src/tabs/stochastic_processes/mod.rs`](../../math_explorer_gui/src/tabs/stochastic_processes/mod.rs) (`#[cfg(feature = "pure_math")]`, registered via `TabDescriptor` inventory at `order: 27`, `#tab=stochastic_processes`) hosting `DtmcTensorWorkbenchTool`, `CtmcQueueWorkbenchTool`, and `HmmOuWorkbenchTool` with six starter presets, `ToolStateBounds` URL hydration, AccessKit canvas landmarks, and `ExportCapabilities::plot()` exports.
 
 ## Consequences
 
