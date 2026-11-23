@@ -115,10 +115,18 @@ impl MorphogenesisTool {
             ui.horizontal_wrapped(|ui| {
                 ui.label("Boundary:");
                 boundary_changed |= ui
-                    .selectable_value(&mut ks.boundary, MorphogenesisBoundaryMode::Neumann, "Neumann")
+                    .selectable_value(
+                        &mut ks.boundary,
+                        MorphogenesisBoundaryMode::Neumann,
+                        "Neumann",
+                    )
                     .changed();
                 boundary_changed |= ui
-                    .selectable_value(&mut ks.boundary, MorphogenesisBoundaryMode::Periodic, "Periodic")
+                    .selectable_value(
+                        &mut ks.boundary,
+                        MorphogenesisBoundaryMode::Periodic,
+                        "Periodic",
+                    )
                     .changed();
             });
         }

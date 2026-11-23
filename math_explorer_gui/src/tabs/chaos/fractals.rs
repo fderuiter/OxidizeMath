@@ -1,13 +1,20 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use num_complex::Complex;
-use scientific_metadata::theory::TheoryDescribable;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
+
+#[path = "fractals/atlas.rs"]
+pub mod atlas;
+#[cfg(test)]
+pub use atlas::FractalCartographer;
+use atlas::FRACTAL_ATLAS_AXIS_PAIRS;
 
 #[path = "fractals/export.rs"]
 mod export;
@@ -31,10 +38,15 @@ mod ui;
 pub struct FractalViewer {
     pub(crate) center: Complex<f64>,
     pub(crate) zoom: f64,
+    pub(crate) c_plane_view: (Complex<f64>, f64),
+    pub(crate) z_plane_view: (Complex<f64>, f64),
+    pub(crate) hover_c: Option<Complex<f64>>,
     pub(crate) max_iter: u32,
     pub(crate) mode: FractalMode,
     pub(crate) julia_c: Complex<f64>,
     pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) quadratic_job: CompiledFractalJob,
+    pub(crate) atlas: ParameterAtlasController,
     pub(crate) high_contrast: bool,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) dirty: bool,
@@ -56,6 +68,7 @@ impl Default for FractalViewer {
         let mode = FractalMode::Mandelbrot;
         let julia_c = Complex::new(-0.4, 0.6);
         let math_input = default_fractal_input_bar();
+        let quadratic_job = CompiledFractalJob::quadratic();
         let initial_formula = Some(Arc::new(CompiledFractalJob::from_bar(&math_input)));
         let initial_req = FractalRenderRequest {
             generation: 0,
@@ -79,10 +92,15 @@ impl Default for FractalViewer {
         Self {
             center,
             zoom,
+            c_plane_view: (center, zoom),
+            z_plane_view: (Complex::new(0.0, 0.0), 1.0),
+            hover_c: None,
             max_iter,
             mode,
             julia_c,
             math_input,
+            quadratic_job,
+            atlas: ParameterAtlasController::new(FRACTAL_ATLAS_AXIS_PAIRS.to_vec()),
             high_contrast: false,
             texture: None,
             dirty: true,
@@ -135,6 +153,10 @@ impl TheoryDescribable for FractalViewer {
         let mut map = HashMap::new();
         map.insert("default".to_string(), "Fractal viewer".to_string());
         map
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        self.build_theory_parameters()
     }
 }
 
@@ -203,6 +225,7 @@ impl InteractiveTool for FractalViewer {
 
     fn step_simulation(&mut self) {
         self.zoom = (self.zoom * 1.06).clamp(ZOOM_MIN, ZOOM_MAX);
+        self.sync_active_plane_view();
         self.dirty = true;
     }
 
@@ -217,6 +240,8 @@ impl InteractiveTool for FractalViewer {
             julia_im: self.julia_c.im,
             custom_expr: None,
             custom_params: self.math_input.params_map(),
+            atlas_visible: false,
+            atlas_axes: atlas::default_fractal_atlas_axes(),
         }
         .validate()
         .is_ok()
@@ -231,6 +256,7 @@ impl InteractiveTool for FractalViewer {
         } else {
             BTreeMap::new()
         };
+        let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&FractalState {
             center_re: self.center.re,
             center_im: self.center.im,
@@ -241,6 +267,8 @@ impl InteractiveTool for FractalViewer {
             julia_im: self.julia_c.im,
             custom_expr,
             custom_params,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
     }
@@ -254,9 +282,12 @@ impl InteractiveTool for FractalViewer {
         self.max_iter = s.max_iter;
         self.mode = s.mode;
         self.julia_c = Complex::new(s.julia_re, s.julia_im);
+        self.sync_active_plane_view();
         self.math_input
             .set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_FRACTAL_EXPR));
         self.math_input.set_params_map(&s.custom_params);
+        self.atlas.set_visible(s.atlas_visible);
+        let _ = self.atlas.set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1]);
         self.dirty = true;
         Ok(())
     }
@@ -400,7 +431,7 @@ inventory::submit! {
         id: "FractalViewer",
         display_name: "Fractal Viewer",
         domain: "chaos",
-        tags: &[],
+        tags: &["mandelbrot", "julia", "escape time", "complex dynamics", "self-similarity", "fractal"],
         build: || Box::new(FractalViewer::default()),
     }
 }

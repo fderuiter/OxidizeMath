@@ -51,7 +51,8 @@ impl DoseCalculationTool {
             let img_y = IMRT_GRID_DIM - 1 - y;
             for x in 0..IMRT_GRID_DIM {
                 let d = self.imrt_workspace.dose_vec[flatten_2d_index(x, y, IMRT_GRID_DIM)];
-                src[flatten_2d_index(x, img_y, IMRT_GRID_DIM)] = if d.is_finite() { d } else { 0.0 };
+                src[flatten_2d_index(x, img_y, IMRT_GRID_DIM)] =
+                    if d.is_finite() { d } else { 0.0 };
             }
         }
         let values = if width == IMRT_GRID_DIM && height == IMRT_GRID_DIM {

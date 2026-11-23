@@ -30,7 +30,6 @@ mod export_ui_modal;
 #[cfg(test)]
 mod export_ui_tests;
 pub mod fit_bridge;
-mod init;
 pub mod math_input;
 #[cfg(test)]
 mod metadata_label_tests;
@@ -102,8 +101,7 @@ pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
-use init::{FrameworkRevisionCache, UntrackedUrlDigestCache};
-use overlay_sync::FrameworkSyncState;
+use overlay_sync::{FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache};
 use scientific_metadata::theory::TheoryDescribable;
 
 pub struct ToolMetadata {

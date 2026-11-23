@@ -6,10 +6,10 @@ use crate::tabs::chaos::attractors::{
     default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
 };
 use crate::tabs::morphogenesis::presets::MorphogenesisBoundaryMode;
-use crate::tabs::morphogenesis::runner::{MorphoSnapshotData, MorphogenesisKineticsState};
-use crate::tabs::morphogenesis::{
-    MorphogenesisKineticsRunner, MorphogenesisSharedParams, MorphogenesisTool,
+use crate::tabs::morphogenesis::runner::{
+    MorphoSnapshotData, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
 };
+use crate::tabs::morphogenesis::{MorphogenesisSharedParams, MorphogenesisTool};
 use crate::tabs::mri::{MriRunner, MriSharedParams};
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 use nalgebra::Vector3;

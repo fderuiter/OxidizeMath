@@ -10,8 +10,7 @@ use crate::framework::{
     decode_rle_mask, encode_rle_mask, rasterize_disk_stroke, BrushInteractionMode, BrushMode,
     BrushStroke, SpatialBrushKit,
 };
-use eframe::egui::{self, Color32};
-use math_commons::math_kernel::colormap::heatmap_color;
+use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     inject_velocity_jet, stamp_naca4_airfoil, stamp_venturi_nozzle, BgkCollision,
@@ -171,15 +170,9 @@ pub(crate) fn record_stroke_in_rle(
     let r = (stroke.radius.round() as i32).clamp(0, 16);
     let val = u8::from(stroke.mode == BrushMode::Solid);
 
-    rasterize_disk_stroke(
-        (x0, y0),
-        (x1, y1),
-        r,
-        (LBM_WIDTH, LBM_HEIGHT),
-        |gx, gy| {
-            mask[flatten_2d_index(gx, gy, LBM_WIDTH)] = val;
-        },
-    );
+    rasterize_disk_stroke((x0, y0), (x1, y1), r, (LBM_WIDTH, LBM_HEIGHT), |gx, gy| {
+        mask[flatten_2d_index(gx, gy, LBM_WIDTH)] = val;
+    });
     sculpt_state.rle_mask = encode_rle_mask(&mask);
 }
 
@@ -248,6 +241,26 @@ pub(crate) fn rotate_airfoil_in_place(
         }
     }
     solver.set_inlet(0, 0, 2, h, u_in, 0.0);
+}
+
+pub(crate) fn sync_lbm_parameters(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    stamped_airfoil: &mut Option<(u16, f64)>,
+    display_vorticity: &mut bool,
+    params: &HashMap<String, f64>,
+) {
+    let viscosity = *params.get("viscosity").unwrap_or(&0.02);
+    if viscosity.is_finite() && viscosity > 0.0 {
+        solver.collision_model.tau = 3.0 * viscosity + 0.5;
+    }
+    if let Some((code, prev_aoa)) = *stamped_airfoil {
+        let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+        if aoa.is_finite() && (aoa - prev_aoa).abs() > 1e-6 {
+            rotate_airfoil_in_place(solver, code, prev_aoa, aoa);
+            *stamped_airfoil = Some((code, aoa));
+        }
+    }
+    *display_vorticity = *params.get("field_view").unwrap_or(&0.0) >= 0.5;
 }
 
 fn sync_live_aoa_slider(
@@ -407,6 +420,37 @@ fn parse_naca_action(action: &str, params: &HashMap<String, f64>) -> (u16, f64) 
     (code, aoa)
 }
 
+pub(crate) fn apply_lbm_sculpt_payload(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    active_profile_param: &mut f64,
+    stamped_airfoil: &mut Option<(u16, f64)>,
+    payload: &SculptStatePayload,
+    params: &HashMap<String, f64>,
+) -> bool {
+    if payload.rle_mask.is_empty() {
+        return false;
+    }
+    let w = solver.width();
+    let h = solver.height();
+    let Ok(bytes) = crate::framework::decode_rle_mask(&payload.rle_mask, w * h) else {
+        return false;
+    };
+    for y in 0..h {
+        for x in 0..w {
+            solver.set_obstacle(
+                x,
+                y,
+                bytes[math_commons::math_kernel::types::flatten_2d_index(x, y, w)] != 0,
+            );
+        }
+    }
+    let profile = *params.get("naca_profile").unwrap_or(&0.0);
+    let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+    *active_profile_param = profile;
+    *stamped_airfoil = (profile >= 1.0).then_some((profile.round() as u16, aoa));
+    true
+}
+
 pub(crate) fn apply_lbm_custom_action(
     solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
     stamped_airfoil: &mut Option<(u16, f64)>,
@@ -450,44 +494,4 @@ pub(crate) fn apply_lbm_custom_action(
         return true;
     }
     false
-}
-
-pub(crate) fn render_lbm_snapshot_buffers(
-    solver: &LatticeBoltzmannD2Q9<BgkCollision>,
-    vorticity_buf: &[f64],
-    display_vorticity: bool,
-) -> (Vec<Color32>, Vec<f64>, f64) {
-    let width = solver.width();
-    let height = solver.height();
-    let mut pixels = vec![Color32::BLACK; width * height];
-    let mut scalar_values = vec![0.0_f64; width * height];
-    let mut max_vort = 0.0_f64;
-
-    for y in 0..height {
-        let solver_y = height - 1 - y;
-        for x in 0..width {
-            let pixel_idx = flatten_2d_index(x, y, width);
-            let solver_idx = flatten_2d_index(x, solver_y, width);
-            if solver.is_obstacle(x, solver_y) {
-                pixels[pixel_idx] = Color32::from_gray(50);
-                scalar_values[pixel_idx] = -0.01;
-            } else {
-                let omega = vorticity_buf[solver_idx];
-                let safe_w = if omega.is_finite() { omega } else { 0.0 };
-                max_vort = max_vort.max(safe_w.abs());
-                let norm = if display_vorticity {
-                    scalar_values[pixel_idx] = safe_w;
-                    (0.5 + safe_w * 12.0).clamp(0.0, 1.0)
-                } else {
-                    let v = solver.get_velocity_magnitude(x, solver_y);
-                    let safe_v = if v.is_finite() { v } else { 0.0 };
-                    scalar_values[pixel_idx] = safe_v;
-                    (safe_v * 1000.0 / 255.0).clamp(0.0, 1.0)
-                };
-                let rgb = heatmap_color(norm);
-                pixels[pixel_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
-            }
-        }
-    }
-    (pixels, scalar_values, max_vort)
 }

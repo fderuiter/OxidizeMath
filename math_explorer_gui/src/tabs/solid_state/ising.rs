@@ -379,7 +379,7 @@ inventory::submit! {
         id: "IsingModelTool",
         display_name: "Ising Model",
         domain: "solid_state",
-        tags: &[],
+        tags: &["ferromagnetism", "metropolis", "monte carlo", "curie", "phase transition"],
         build: || Box::new(IsingModelTool::default()),
     }
 }
