@@ -33,6 +33,8 @@ fn test_morphogenesis_runner_offload() {
         kinetics: crate::tabs::morphogenesis::MorphogenesisKinetics::Schnakenberg,
         gray_scott: math_explorer::biology::morphogenesis::GrayScottKinetics::default(),
         params: Arc::clone(&params),
+        kinetics_state: None,
+        last_synced_ks: crate::tabs::morphogenesis::MorphogenesisKineticsState::default(),
         width,
         height,
         step_count: 0,

@@ -4,14 +4,17 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::cartographer::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
+use super::gray_scott_atlas::{is_gray_scott_pattern_viable, is_gray_scott_v_washed_out};
 use super::sculpt::overlay_cell_mask_colors;
 pub use super::sculpt::MorphoDiffusion;
 pub use super::state::MorphoSnapshotData;
 use super::state::{
     apply_chemical_brush, apply_uniform_noise, ensure_nucleated_for_kinetics,
-    initialize_for_kinetics, initialize_schnakenberg_system, plot_concentration_with_contrast,
-    MorphogenesisKinetics, DEFAULT_GRAY_SCOTT_F, DEFAULT_GRAY_SCOTT_K,
+    initialize_for_kinetics, initialize_gray_scott_system, initialize_schnakenberg_system,
+    plot_concentration_with_contrast, MorphogenesisKinetics,
 };
+use super::teleport::reconcile_kinetics_state;
+pub use super::teleport::{MorphogenesisKineticsState, MorphogenesisSharedParams};
 use crate::async_sim::{
     CheckpointParams, CheckpointPayload, SimCommand, SimulationRunner, StateSnapshot,
     TimeTravelCheckpoint,
@@ -33,54 +36,14 @@ pub const MAX_CFL_SUBSTEPS: usize = 32;
 /// Default PRNG seed for deterministic morphogenesis perturbation streams.
 pub const DEFAULT_MORPHOGENESIS_SEED: u64 = 0x4D4F_5250_484F_3244;
 
-/// Thread-safe parameter block shared between [`super::MorphogenesisTool`] and [`MorphogenesisRunner`].
-#[derive(Clone, Debug)]
-pub struct MorphogenesisSharedParams {
-    /// Active reaction kinetics family (`Schnakenberg` or `GrayScott`).
-    pub kinetics: MorphogenesisKinetics,
-    /// Schnakenberg activator production rate `a`.
-    pub a: f64,
-    /// Schnakenberg inhibitor production rate `b`.
-    pub b: f64,
-    /// Gray-Scott dimensionless substrate feed rate `F`.
-    pub f: f64,
-    /// Gray-Scott dimensionless autocatalyst kill rate `k`.
-    pub k: f64,
-    /// Species `u` diffusion coefficient `D_u`.
-    pub d_u: f64,
-    /// Species `v` diffusion coefficient `D_v`.
-    pub d_v: f64,
-    /// Target integration step `dt` (substepped within CFL bound when `auto_dt` is `true`).
-    pub dt: f64,
-    /// Enables automatic 2D CFL time-step clamping (`dt <= 0.8 * dx^2 / (4 * max(D_u, D_v))`).
-    pub auto_dt: bool,
-    /// Whether high-contrast accessible colormap tokens are active.
-    pub high_contrast: bool,
-}
-
-impl Default for MorphogenesisSharedParams {
-    fn default() -> Self {
-        Self {
-            kinetics: MorphogenesisKinetics::Schnakenberg,
-            a: 0.1,
-            b: 0.9,
-            f: DEFAULT_GRAY_SCOTT_F,
-            k: DEFAULT_GRAY_SCOTT_K,
-            d_u: 1.0,
-            d_v: 100.0,
-            dt: 0.05,
-            auto_dt: true,
-            high_contrast: false,
-        }
-    }
-}
-
 /// Zero-allocation dual-kinetics simulation runner with `K = 16` time-travel checkpointing.
 pub struct MorphogenesisRunner<D: SpatialDiffusion<2> = MaskedFiniteDifference2D> {
     pub(crate) system: TuringSystem<2, SchnakenbergKinetics, D>,
     pub(crate) kinetics: MorphogenesisKinetics,
     pub(crate) gray_scott: GrayScottKinetics,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+    pub(crate) kinetics_state: Option<Arc<std::sync::RwLock<MorphogenesisKineticsState>>>,
+    pub(crate) last_synced_ks: MorphogenesisKineticsState,
     pub(crate) width: usize,
     pub(crate) height: usize,
     pub(crate) step_count: usize,
@@ -150,11 +113,10 @@ impl<D: MorphoDiffusion> MorphogenesisRunner<D> {
     }
 
     fn sync_system_params(&mut self) -> Option<(f64, bool)> {
-        let p = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
+        let mut p = *self.params.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(ks_arc) = &self.kinetics_state {
+            reconcile_kinetics_state(&self.params, ks_arc, &mut self.last_synced_ks, &mut p);
+        }
         self.apply_shared_params(&p)
     }
 
@@ -176,20 +138,33 @@ impl<D: MorphoDiffusion> MorphogenesisRunner<D> {
             self.kinetics = p.kinetics;
             initialize_for_kinetics(&mut self.system, self.kinetics, self.width, self.height);
             self.enforce_mask_concentrations();
-        } else if self.kinetics == MorphogenesisKinetics::Schnakenberg
-            && p.dt.is_finite()
-            && p.dt > 0.0
-        {
+        } else if p.dt.is_finite() && p.dt > 0.0 {
             let eff_dt = if p.auto_dt {
                 FusedEulerSolver::cfl_substeps_2d(p.dt, 1.0, p.d_u, p.d_v, MAX_CFL_SUBSTEPS).1
             } else {
                 p.dt
             };
-            if is_pattern_forming_regime(p.a, p.b, p.d_u, p.d_v, eff_dt) {
-                let var_u = grid_u_variance(self.system.u());
-                if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
-                    initialize_schnakenberg_system(&mut self.system, self.width, self.height);
-                    self.enforce_mask_concentrations();
+            match self.kinetics {
+                MorphogenesisKinetics::Schnakenberg => {
+                    if is_pattern_forming_regime(p.a, p.b, p.d_u, p.d_v, eff_dt) {
+                        let var_u = grid_u_variance(self.system.u());
+                        if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
+                            initialize_schnakenberg_system(
+                                &mut self.system,
+                                self.width,
+                                self.height,
+                            );
+                            self.enforce_mask_concentrations();
+                        }
+                    }
+                }
+                MorphogenesisKinetics::GrayScott => {
+                    if is_gray_scott_pattern_viable(p.f, p.k, p.d_u, p.d_v, eff_dt)
+                        && is_gray_scott_v_washed_out(self.system.v())
+                    {
+                        initialize_gray_scott_system(&mut self.system, self.width, self.height);
+                        self.enforce_mask_concentrations();
+                    }
                 }
             }
         }

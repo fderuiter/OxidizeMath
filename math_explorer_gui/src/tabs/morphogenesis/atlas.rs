@@ -29,9 +29,9 @@ pub enum SchnakenbergRegime {
     UniformStable,
 }
 
-/// Bifurcation and pattern-forming classification for Gray-Scott `(F, k)` parameters.
+/// Bifurcation and pattern-forming classification for Gray-Scott `(F, k)` parameters on the sidebar minimap.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GrayScottRegime {
+pub enum GrayScottMinimapRegime {
     /// Turing or Hopf pattern-forming instability inside the saddle-node fold `F >= 4(F + k)^2`.
     BifurcationUnstable,
     /// Subcritical excitable pulse/mitosis/soliton band adjacent to the fold curve.
@@ -93,7 +93,7 @@ pub fn gray_scott_hopf_f(k: f64) -> Option<f64> {
 
 /// Classifies Gray-Scott `(f, k)` parameters relative to the fold `F = 4(F + k)^2` and Hopf curve.
 #[must_use]
-pub fn classify_gray_scott(f: f64, k: f64, d_u: f64, d_v: f64) -> GrayScottRegime {
+pub fn classify_gray_scott(f: f64, k: f64, d_u: f64, d_v: f64) -> GrayScottMinimapRegime {
     if !f.is_finite()
         || !k.is_finite()
         || !d_u.is_finite()
@@ -103,7 +103,7 @@ pub fn classify_gray_scott(f: f64, k: f64, d_u: f64, d_v: f64) -> GrayScottRegim
         || d_u <= 0.0
         || d_v <= 0.0
     {
-        return GrayScottRegime::UniformStable;
+        return GrayScottMinimapRegime::UniformStable;
     }
     let sum = f + k;
     let fold_rhs = 4.0 * sum * sum;
@@ -116,16 +116,16 @@ pub fn classify_gray_scott(f: f64, k: f64, d_u: f64, d_v: f64) -> GrayScottRegim
         let trace = f_u + g_v;
         let turing = det > 0.0 && (d_v * f_u + d_u * g_v) > 2.0 * (d_u * d_v * det).sqrt();
         if trace >= 0.0 || turing {
-            return GrayScottRegime::BifurcationUnstable;
+            return GrayScottMinimapRegime::BifurcationUnstable;
         }
-        return GrayScottRegime::UniformStable;
+        return GrayScottMinimapRegime::UniformStable;
     }
     if let Some(k_fold) = gray_scott_fold_k(f) {
         if (0.018..=0.0625).contains(&f) && k > k_fold && k <= k_fold + 0.0065 {
-            return GrayScottRegime::SubcriticalPattern;
+            return GrayScottMinimapRegime::SubcriticalPattern;
         }
     }
-    GrayScottRegime::UniformStable
+    GrayScottMinimapRegime::UniformStable
 }
 
 /// Cached texture state for the 2D stability atlas minimap.
@@ -213,13 +213,13 @@ fn regime_color(
             SchnakenbergRegime::UniformStable => palette.surface_fill,
         },
         MorphogenesisKinetics::GrayScott => match classify_gray_scott(x, y, d_u, d_v) {
-            GrayScottRegime::BifurcationUnstable => {
+            GrayScottMinimapRegime::BifurcationUnstable => {
                 blend_surface(palette.surface_fill, palette.info, weight)
             }
-            GrayScottRegime::SubcriticalPattern => {
+            GrayScottMinimapRegime::SubcriticalPattern => {
                 blend_surface(palette.surface_fill, palette.warning, weight)
             }
-            GrayScottRegime::UniformStable => palette.surface_fill,
+            GrayScottMinimapRegime::UniformStable => palette.surface_fill,
         },
     }
 }

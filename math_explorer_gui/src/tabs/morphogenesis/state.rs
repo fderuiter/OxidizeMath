@@ -148,7 +148,7 @@ impl MorphogenesisToolState {
             ("f", self.f, 0.0, 0.2),
             ("k", self.k, 0.0, 0.2),
             ("d_u", self.d_u, 0.01, 5.0),
-            ("d_v", self.d_v, 0.01, 200.0),
+            ("d_v", self.d_v, 0.005, 200.0),
             ("dt", self.dt, 1e-5, 2.0),
         ];
         for (name, val, min, max) in checks {
@@ -169,6 +169,7 @@ impl MorphogenesisToolState {
         }
         let valid_axes = super::cartographer::MORPHO_ATLAS_AXIS_PAIRS
             .iter()
+            .chain(super::gray_scott_atlas::GRAY_SCOTT_ATLAS_AXIS_PAIRS.iter())
             .any(|&(xk, yk)| xk == self.atlas_axes[0] && yk == self.atlas_axes[1]);
         if !valid_axes {
             return Err(format!(

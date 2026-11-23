@@ -2,8 +2,6 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{classify_gray_scott, GrayScottRegime};
-use super::state::{MorphogenesisKinetics, DEFAULT_GRAY_SCOTT_F, DEFAULT_GRAY_SCOTT_K};
 use crate::async_sim::atlas::{
     atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
 };
@@ -16,8 +14,7 @@ use std::collections::HashMap;
 pub const WASHOUT_VARIANCE_THRESHOLD: f64 = 1e-8;
 
 /// Supported `(x, y)` parameter axis pairs for [`MorphogenesisCartographer`].
-pub const MORPHO_ATLAS_AXIS_PAIRS: &[(&str, &str)] =
-    &[("a", "b"), ("f", "k"), ("d_v", "dt"), ("d_u", "d_v")];
+pub const MORPHO_ATLAS_AXIS_PAIRS: &[(&str, &str)] = &[("a", "b"), ("d_v", "dt"), ("d_u", "d_v")];
 
 /// Discrete reaction-diffusion regimes on the 2D 5-point stencil.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,7 +96,12 @@ pub fn grid_u_variance(u: &[f64]) -> f64 {
 }
 
 #[inline]
-fn mode_growth_and_euler_amp(jac: [f64; 4], diff: [f64; 2], dt: f64, mu: f64) -> (f64, f64, bool) {
+pub(super) fn mode_growth_and_euler_amp(
+    jac: [f64; 4],
+    diff: [f64; 2],
+    dt: f64,
+    mu: f64,
+) -> (f64, f64, bool) {
     let [fu, fv, gu, gv] = jac;
     let [d_u, d_v] = diff;
     let tr = (fu - mu * d_u) + (gv - mu * d_v);
@@ -198,41 +200,6 @@ pub fn classify_schnakenberg_regime(a: f64, b: f64, d_u: f64, d_v: f64, dt: f64)
     }
 }
 
-fn classify_gray_scott_cell(f: f64, k: f64, d_u: f64, d_v: f64, dt: f64) -> AtlasCell {
-    if !valid_positive_diffusion_and_dt(f, k, d_u, d_v, dt) {
-        return AtlasCell {
-            regime: MorphogenesisRegime::EulerCflUnstable as u8,
-            primary: f64::INFINITY,
-            secondary: 8.0,
-        };
-    }
-    let amp = (1.0 - 8.0 * d_u.max(d_v) * dt).abs();
-    if amp > 1.0 {
-        return AtlasCell {
-            regime: MorphogenesisRegime::EulerCflUnstable as u8,
-            primary: amp,
-            secondary: 8.0,
-        };
-    }
-    match classify_gray_scott(f, k, d_u, d_v) {
-        GrayScottRegime::BifurcationUnstable => AtlasCell {
-            regime: MorphogenesisRegime::BulkHopfOscillation as u8,
-            primary: (f - 4.0 * (f + k).powi(2)).max(0.05),
-            secondary: 1.0,
-        },
-        GrayScottRegime::SubcriticalPattern => AtlasCell {
-            regime: MorphogenesisRegime::TuringPattern as u8,
-            primary: 0.15,
-            secondary: 2.0,
-        },
-        GrayScottRegime::UniformStable => AtlasCell {
-            regime: MorphogenesisRegime::StableWashout as u8,
-            primary: -(f + k),
-            secondary: 0.0,
-        },
-    }
-}
-
 /// Returns `true` when `(a, b, d_u, d_v, dt)` lies in a CFL-safe pattern-forming or oscillatory regime.
 #[inline]
 #[must_use]
@@ -250,13 +217,11 @@ fn morpho_axis_spec(
     let (label, min, max, step) = match key {
         "a" => ("Activator Rate (a)", 0.0, 1.0, 0.01),
         "b" => ("Inhibitor Rate (b)", 0.0, 2.0, 0.01),
-        "f" => ("Feed Rate (F)", 0.005, 0.085, 0.001),
-        "k" => ("Kill Rate (k)", 0.030, 0.070, 0.001),
         "d_u" => ("Activator Diffusion (D_u)", 0.1, 5.0, 0.05),
         "d_v" => ("Inhibitor Diffusion (D_v)", 10.0, 200.0, 1.0),
         _ => ("Time Step (dt)", 1e-4, 0.1, 5e-4),
     };
-    let resolved_key = if matches!(key, "a" | "b" | "f" | "k" | "d_u" | "d_v" | "dt") {
+    let resolved_key = if matches!(key, "a" | "b" | "d_u" | "d_v" | "dt") {
         key
     } else {
         "dt"
@@ -269,15 +234,12 @@ fn morpho_axis_spec(
     )
 }
 
-/// Zero-allocation 2D cartographer for Schnakenberg and Gray-Scott reaction-diffusion morphogenesis.
+/// Zero-allocation 2D cartographer for Schnakenberg reaction-diffusion morphogenesis.
 #[derive(Clone, Debug)]
 pub struct MorphogenesisCartographer {
     axes: AtlasAxisPair,
-    kinetics: MorphogenesisKinetics,
     base_a: f64,
     base_b: f64,
-    base_f: f64,
-    base_k: f64,
     base_du: f64,
     base_dv: f64,
     base_dt: f64,
@@ -301,11 +263,8 @@ impl MorphogenesisCartographer {
                 x: morpho_axis_spec(theory_params, axis_keys.0),
                 y: morpho_axis_spec(theory_params, axis_keys.1),
             },
-            kinetics: MorphogenesisKinetics::Schnakenberg,
             base_a: a,
             base_b: b,
-            base_f: DEFAULT_GRAY_SCOTT_F,
-            base_k: DEFAULT_GRAY_SCOTT_K,
             base_du: d_u,
             base_dv: d_v,
             base_dt: dt,
@@ -313,32 +272,21 @@ impl MorphogenesisCartographer {
         }
     }
 
-    /// Attaches active [`MorphogenesisKinetics`], Gray-Scott `(f, k)`, and `auto_dt` context.
+    /// Enables CFL-substepped effective `dt` evaluation when `auto_dt` is active in the UI.
     #[must_use]
-    pub const fn with_kinetics(
-        mut self,
-        kinetics: MorphogenesisKinetics,
-        f: f64,
-        k: f64,
-        auto_dt: bool,
-    ) -> Self {
-        self.kinetics = kinetics;
-        self.base_f = f;
-        self.base_k = k;
+    pub const fn with_auto_dt(mut self, auto_dt: bool) -> Self {
         self.auto_dt = auto_dt;
         self
     }
 
     #[inline]
-    fn resolve_params(&self, p1: f64, p2: f64) -> (f64, f64, f64, f64, f64, f64, f64) {
-        let (mut a, mut b, mut f, mut k) = (self.base_a, self.base_b, self.base_f, self.base_k);
+    fn resolve_params(&self, p1: f64, p2: f64) -> (f64, f64, f64, f64, f64) {
+        let (mut a, mut b) = (self.base_a, self.base_b);
         let (mut du, mut dv, mut dt) = (self.base_du, self.base_dv, self.base_dt);
         for (key, val) in [(self.axes.x.key, p1), (self.axes.y.key, p2)] {
             match key {
                 "a" => a = val,
                 "b" => b = val,
-                "f" => f = val,
-                "k" => k = val,
                 "d_u" => du = val,
                 "d_v" => dv = val,
                 "dt" => dt = val,
@@ -350,7 +298,7 @@ impl MorphogenesisCartographer {
                 FusedEulerSolver::cfl_substeps_2d(dt, 1.0, du, dv, super::runner::MAX_CFL_SUBSTEPS)
                     .1;
         }
-        (a, b, f, k, du, dv, dt)
+        (a, b, du, dv, dt)
     }
 }
 
@@ -360,17 +308,8 @@ impl RegimeCartographer for MorphogenesisCartographer {
     }
 
     fn evaluate_cell(&self, p1: f64, p2: f64) -> AtlasCell {
-        let (a, b, f, k, du, dv, dt) = self.resolve_params(p1, p2);
-        let use_gs = self.axes.x.key == "f"
-            || self.axes.y.key == "k"
-            || (self.kinetics == MorphogenesisKinetics::GrayScott
-                && self.axes.x.key != "a"
-                && self.axes.y.key != "b");
-        if use_gs {
-            classify_gray_scott_cell(f, k, du, dv, dt)
-        } else {
-            classify_schnakenberg_regime(a, b, du, dv, dt)
-        }
+        let (a, b, du, dv, dt) = self.resolve_params(p1, p2);
+        classify_schnakenberg_regime(a, b, du, dv, dt)
     }
 
     fn color_for_cell(&self, cell: AtlasCell, high_contrast: bool) -> egui::Color32 {

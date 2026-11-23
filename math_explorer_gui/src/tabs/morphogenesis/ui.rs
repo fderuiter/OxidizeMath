@@ -4,7 +4,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::draw_regime_atlas;
-use super::cartographer::MorphogenesisCartographer;
 use super::runner::{MorphoSnapshotData, MAX_CFL_SUBSTEPS};
 use super::sculpt::{build_maze_rle, draw_morpho_sculpt_controls, overlay_cell_mask_colors};
 #[cfg(test)]
@@ -27,7 +26,6 @@ use math_explorer::biology::diffusion::SpatialDiffusion;
 use math_explorer::biology::morphogenesis::FusedEulerSolver;
 #[cfg(test)]
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
-use scientific_metadata::theory::TheoryDescribable;
 
 impl MorphogenesisTool {
     fn sync_texture_from_snapshot(&mut self, ctx: &egui::Context) {
@@ -156,6 +154,7 @@ impl MorphogenesisTool {
     fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
         let mut changed = false;
         let mut cfl_exceeded = false;
+        let mut gs_sync = None;
         {
             let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
             match params.kinetics {
@@ -186,6 +185,7 @@ impl MorphogenesisTool {
                     changed |= ui
                         .add(egui::Slider::new(&mut params.d_v, 0.02..=0.5).text("D_v"))
                         .changed();
+                    gs_sync = Some((params.f, params.k));
                 }
             }
             ui.checkbox(&mut params.auto_dt, "Auto CFL Time Step");
@@ -206,6 +206,15 @@ impl MorphogenesisTool {
                 ui.small(format!("2D CFL bound: {max_dt:.4}"));
                 cfl_exceeded = 4.0 * params.d_u.max(params.d_v) * params.dt >= 1.0;
             }
+        }
+        if let Some((f, k)) = gs_sync {
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            ks.mode = MorphogenesisKinetics::GrayScott;
+            ks.f = f;
+            ks.k = k;
         }
         if changed {
             let _ = self.reseed_if_washed_out_entering_pattern();
@@ -415,46 +424,27 @@ impl MorphogenesisTool {
                 self.draw_field_plot(ui);
                 return;
             }
+            let (current_mode, _, _) = self.effective_kinetics_triplet();
+            self.sync_atlas_options_for_mode(current_mode);
             let (ax, ay) = self.active_axis_values();
             let sig = self.non_axis_context_sig();
-            let p_snap = self
-                .params
-                .read()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone();
-            let theory_params = self.theory.theory_parameters();
-            let build = |keys: (&'static str, &'static str)| {
-                std::sync::Arc::new(
-                    MorphogenesisCartographer::new(
-                        &theory_params,
-                        keys,
-                        p_snap.a,
-                        p_snap.b,
-                        p_snap.d_u,
-                        p_snap.d_v,
-                        p_snap.dt,
-                    )
-                    .with_kinetics(
-                        p_snap.kinetics,
-                        p_snap.f,
-                        p_snap.k,
-                        p_snap.auto_dt,
-                    ),
-                ) as std::sync::Arc<dyn crate::async_sim::atlas::RegimeCartographer>
-            };
-
+            let cart = self.build_active_morpho_cartographer(self.atlas.axis_keys());
             let mut teleport = None;
             if ui.available_width() >= 620.0 {
                 ui.columns(2, |cols| {
                     self.draw_field_plot(&mut cols[0]);
                     teleport =
                         self.atlas
-                            .show_panel(&mut cols[1], "morphogenesis", ax, ay, sig, build);
+                            .show_panel(&mut cols[1], "morphogenesis", ax, ay, sig, |_| {
+                                std::sync::Arc::clone(&cart)
+                            });
                 });
             } else {
                 teleport = self
                     .atlas
-                    .show_panel(ui, "morphogenesis", ax, ay, sig, build);
+                    .show_panel(ui, "morphogenesis", ax, ay, sig, |_| {
+                        std::sync::Arc::clone(&cart)
+                    });
                 ui.separator();
                 self.draw_field_plot(ui);
             }

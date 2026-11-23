@@ -249,6 +249,8 @@ fn test_morphogenesis_divergence_and_recovery() {
         kinetics: crate::tabs::morphogenesis::MorphogenesisKinetics::Schnakenberg,
         gray_scott: math_explorer::biology::morphogenesis::GrayScottKinetics::default(),
         params,
+        kinetics_state: None,
+        last_synced_ks: crate::tabs::morphogenesis::MorphogenesisKineticsState::default(),
         width,
         height,
         step_count: 0,

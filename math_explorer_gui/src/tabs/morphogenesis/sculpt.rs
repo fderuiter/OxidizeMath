@@ -3,7 +3,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::runner::{MorphogenesisRunner, MorphogenesisSharedParams};
+use super::runner::{MorphogenesisKineticsState, MorphogenesisRunner, MorphogenesisSharedParams};
 use super::state::{initialize_for_kinetics, MorphogenesisKinetics};
 use crate::async_sim::{BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState};
 use crate::framework::{
@@ -284,7 +284,62 @@ impl super::MorphogenesisTool {
         width: usize,
         height: usize,
     ) -> MorphogenesisRunner {
-        let p = params.read().unwrap_or_else(|e| e.into_inner()).clone();
+        Self::build_masked_runner(params, None, mask_rle, width, height)
+    }
+
+    pub(crate) fn create_kinetics_runner(
+        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+        width: usize,
+        height: usize,
+    ) -> MorphogenesisRunner {
+        Self::build_masked_runner(params, Some(kinetics_state), mask_rle, width, height)
+    }
+
+    fn build_masked_runner(
+        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        kinetics_state: Option<&Arc<std::sync::RwLock<MorphogenesisKineticsState>>>,
+        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+        width: usize,
+        height: usize,
+    ) -> MorphogenesisRunner {
+        let mut p = *params.read().unwrap_or_else(|e| e.into_inner());
+        let synced_ks = if let Some(ks_arc) = kinetics_state {
+            let ks = *ks_arc.read().unwrap_or_else(|e| e.into_inner());
+            let default_ks = MorphogenesisKineticsState::default();
+            if ks != default_ks
+                && p.kinetics == default_ks.mode
+                && p.f.to_bits() == default_ks.f.to_bits()
+                && p.k.to_bits() == default_ks.k.to_bits()
+            {
+                p.kinetics = ks.mode;
+                p.f = ks.f;
+                p.k = ks.k;
+                if let Ok(mut wg) = params.try_write() {
+                    wg.kinetics = ks.mode;
+                    wg.f = ks.f;
+                    wg.k = ks.k;
+                }
+                ks
+            } else {
+                let next_ks = MorphogenesisKineticsState {
+                    mode: p.kinetics,
+                    f: p.f,
+                    k: p.k,
+                };
+                if let Ok(mut wg) = ks_arc.try_write() {
+                    *wg = next_ks;
+                }
+                next_ks
+            }
+        } else {
+            MorphogenesisKineticsState {
+                mode: p.kinetics,
+                f: p.f,
+                k: p.k,
+            }
+        };
         let kinetics = SchnakenbergKinetics { a: p.a, b: p.b };
         let gray_scott = GrayScottKinetics::new(p.f, p.k);
         let diffusion = FiniteDifference2D::new(
@@ -313,6 +368,8 @@ impl super::MorphogenesisTool {
             kinetics: p.kinetics,
             gray_scott,
             params: Arc::clone(params),
+            kinetics_state: kinetics_state.map(Arc::clone),
+            last_synced_ks: synced_ks,
             width,
             height,
             step_count: 0,
@@ -334,8 +391,13 @@ impl super::MorphogenesisTool {
         if next_w != self.width || next_h != self.height {
             self.width = next_w;
             self.height = next_h;
-            let runner =
-                Self::create_masked_runner(&self.params, &self.mask_rle, self.width, self.height);
+            let runner = Self::create_kinetics_runner(
+                &self.params,
+                &self.kinetics_state,
+                &self.mask_rle,
+                self.width,
+                self.height,
+            );
             self.worker = BackgroundWorker::new(runner);
             self.stepped_pixels = None;
             self.step_runner = None;

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod atlas;
 pub mod cartographer;
+pub mod gray_scott_atlas;
 pub mod lenia;
 pub mod presets;
 pub mod runner;
@@ -21,12 +22,19 @@ pub use cartographer::{
     classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
 };
 #[cfg(test)]
+pub use gray_scott_atlas::{
+    classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
+};
+#[cfg(test)]
 pub use lenia::LeniaTool;
 #[cfg(test)]
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
-pub use runner::{MorphogenesisKineticsRunner, MorphogenesisRunner, MorphogenesisSharedParams};
+pub use runner::{
+    MorphogenesisKineticsRunner, MorphogenesisKineticsState, MorphogenesisRunner,
+    MorphogenesisSharedParams,
+};
 #[cfg(test)]
 pub use state::MorphogenesisKinetics;
 pub use state::MorphogenesisToolState;

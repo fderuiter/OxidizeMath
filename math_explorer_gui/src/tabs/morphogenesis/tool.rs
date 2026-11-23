@@ -5,7 +5,7 @@
 use super::atlas::AtlasCache;
 use super::cartographer::MORPHO_ATLAS_AXIS_PAIRS;
 use super::presets::MorphogenesisTheory;
-use super::runner::{MorphogenesisRunner, MorphogenesisSharedParams};
+use super::runner::{MorphogenesisKineticsState, MorphogenesisRunner, MorphogenesisSharedParams};
 use super::sculpt::default_morpho_brush_kit;
 use super::state::{MorphogenesisKinetics, MorphogenesisToolState};
 use crate::async_sim::atlas::ParameterAtlasController;
@@ -24,6 +24,7 @@ pub struct MorphogenesisTool {
     /// Progressive 2D parameter regime atlas controller.
     pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+    pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
     pub(crate) mask_rle: Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
     pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) reagent_brush: bool,
@@ -46,8 +47,11 @@ impl Default for MorphogenesisTool {
         let width = 100;
         let height = 100;
         let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams::default()));
+        let kinetics_state =
+            Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
         let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
-        let runner = Self::create_masked_runner(&params, &mask_rle, width, height);
+        let runner =
+            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
         let worker = BackgroundWorker::new(runner);
         let theory = MorphogenesisTheory::new(Arc::clone(&params));
 
@@ -55,6 +59,7 @@ impl Default for MorphogenesisTool {
             worker,
             atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
+            kinetics_state,
             mask_rle,
             brush_kit: default_morpho_brush_kit(),
             reagent_brush: false,
@@ -88,8 +93,13 @@ impl MorphogenesisTool {
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
-        let runner =
-            Self::create_masked_runner(&self.params, &self.mask_rle, self.width, self.height);
+        let runner = Self::create_kinetics_runner(
+            &self.params,
+            &self.kinetics_state,
+            &self.mask_rle,
+            self.width,
+            self.height,
+        );
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
         self.step_runner = None;
@@ -106,11 +116,12 @@ impl MorphogenesisTool {
     /// Resets the worker in place or respawns a disconnected worker in `Ready` state.
     pub fn reset(&mut self) {
         let params = Arc::clone(&self.params);
+        let ks = Arc::clone(&self.kinetics_state);
         let mask = Arc::clone(&self.mask_rle);
         let width = self.width;
         let height = self.height;
         self.worker
-            .reset_or_respawn(|| Self::create_masked_runner(&params, &mask, width, height));
+            .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_initial_start = false;
@@ -130,6 +141,7 @@ impl MorphogenesisTool {
     pub(crate) fn switch_kinetics(&mut self, next: MorphogenesisKinetics) {
         let was_running = self.worker.is_running();
         let was_pending = self.pending_initial_start;
+        self.theory.mode = next;
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.kinetics = next;
@@ -148,17 +160,11 @@ impl MorphogenesisTool {
                 }
             }
         }
-        if self.atlas.is_visible() {
-            match (next, self.atlas.axis_keys()) {
-                (MorphogenesisKinetics::GrayScott, ("a", "b")) => {
-                    let _ = self.atlas.set_axis_keys("f", "k");
-                }
-                (MorphogenesisKinetics::Schnakenberg, ("f", "k")) => {
-                    let _ = self.atlas.set_axis_keys("a", "b");
-                }
-                _ => {}
-            }
-        }
+        self.kinetics_state
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .mode = next;
+        self.sync_atlas_options_for_mode(next);
         scientific_metadata::citation_registry::CitationRegistry::register(
             self.name().to_string(),
             self.theory.theory_citation(),
@@ -185,6 +191,14 @@ impl MorphogenesisTool {
                     p.k = y.clamp(0.0, 0.2);
                 }
             }
+        }
+        if kinetics == MorphogenesisKinetics::GrayScott {
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            ks.f = x.clamp(0.0, 0.2);
+            ks.k = y.clamp(0.0, 0.2);
         }
         let _ = self
             .worker
@@ -241,7 +255,13 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn step_simulation(&mut self) {
         let runner = self.step_runner.get_or_insert_with(|| {
-            Self::create_masked_runner(&self.params, &self.mask_rle, self.width, self.height)
+            Self::create_kinetics_runner(
+                &self.params,
+                &self.kinetics_state,
+                &self.mask_rle,
+                self.width,
+                self.height,
+            )
         });
         for _ in 0..5 {
             runner.step();
@@ -255,10 +275,6 @@ impl InteractiveTool for MorphogenesisTool {
         if let Some(stroke) = ctx.brush_stroke {
             self.dispatch_brush_stroke(stroke, Some(&ctx.response.ctx));
         }
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_kit.focused_plot_id()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -299,13 +315,14 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
+        let (mode, f, k) = self.effective_kinetics_triplet();
         {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            p.kinetics.hash(&mut h);
+            mode.hash(&mut h);
             p.a.to_bits().hash(&mut h);
             p.b.to_bits().hash(&mut h);
-            p.f.to_bits().hash(&mut h);
-            p.k.to_bits().hash(&mut h);
+            f.to_bits().hash(&mut h);
+            k.to_bits().hash(&mut h);
             p.d_u.to_bits().hash(&mut h);
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
@@ -325,23 +342,25 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let p = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
+        let (kinetics_mode, f, k) = self.effective_kinetics_triplet();
+        let p = *self.params.read().unwrap_or_else(|e| e.into_inner());
         let mask_rle = self
             .mask_rle
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let (xk, yk) = self.atlas.axis_keys();
+        let atlas_axes = if self.atlas.has_default_persisted_state() {
+            super::cartographer::default_morpho_atlas_axes()
+        } else {
+            let (xk, yk) = self.atlas.axis_keys();
+            [xk.to_string(), yk.to_string()]
+        };
         serde_json::to_string(&MorphogenesisToolState {
-            kinetics_mode: p.kinetics,
+            kinetics_mode,
             a: p.a,
             b: p.b,
-            f: p.f,
-            k: p.k,
+            f,
+            k,
             d_u: p.d_u,
             d_v: p.d_v,
             dt: p.dt,
@@ -353,7 +372,7 @@ impl InteractiveTool for MorphogenesisTool {
             pending_initial_start: self.pending_initial_start,
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
+            atlas_axes,
         })
         .ok()
     }
@@ -363,10 +382,26 @@ impl InteractiveTool for MorphogenesisTool {
         let parsed: MorphogenesisToolState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
-        self.atlas
-            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.sync_atlas_options_for_mode(parsed.kinetics_mode);
+        let use_mode_default = parsed.kinetics_mode
+            == crate::presets::MorphogenesisKineticsMode::GrayScott
+            && super::cartographer::is_default_morpho_atlas_axes(&parsed.atlas_axes);
+        if !use_mode_default {
+            self.atlas
+                .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        }
         self.atlas.set_visible(parsed.atlas_visible);
         let (target_state, next_pending) = parsed.resolve_target_state(self.pending_initial_start);
+        self.theory.mode = parsed.kinetics_mode;
+        {
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            ks.mode = parsed.kinetics_mode;
+            ks.f = parsed.f;
+            ks.k = parsed.k;
+        }
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.kinetics = parsed.kinetics_mode;
@@ -410,11 +445,12 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn has_finite_parameters(&self) -> bool {
+        let (_, f, k) = self.effective_kinetics_triplet();
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         p.a.is_finite()
             && p.b.is_finite()
-            && p.f.is_finite()
-            && p.k.is_finite()
+            && f.is_finite()
+            && k.is_finite()
             && p.d_u.is_finite()
             && p.d_v.is_finite()
             && p.dt.is_finite()

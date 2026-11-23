@@ -5,7 +5,7 @@
 
 use super::atlas::{
     build_atlas_image, classify_gray_scott, classify_schnakenberg, gray_scott_fold_k,
-    gray_scott_hopf_f, GrayScottRegime, SchnakenbergRegime,
+    gray_scott_hopf_f, GrayScottMinimapRegime, SchnakenbergRegime,
 };
 use super::presets::{
     PRESET_GRAY_SCOTT_CORAL, PRESET_GRAY_SCOTT_MITOSIS, PRESET_GRAY_SCOTT_SOLITONS,
@@ -106,19 +106,19 @@ fn test_analytical_schnakenberg_and_gray_scott_atlas_curves() {
 
     assert_eq!(
         classify_gray_scott(0.0367, 0.0649, 0.2, 0.1),
-        GrayScottRegime::SubcriticalPattern
+        GrayScottMinimapRegime::SubcriticalPattern
     );
     assert_eq!(
         classify_gray_scott(0.0545, 0.062, 0.2, 0.1),
-        GrayScottRegime::BifurcationUnstable
+        GrayScottMinimapRegime::BifurcationUnstable
     );
     assert_eq!(
         classify_gray_scott(0.030, 0.060, 0.2, 0.1),
-        GrayScottRegime::SubcriticalPattern
+        GrayScottMinimapRegime::SubcriticalPattern
     );
     assert_eq!(
         classify_gray_scott(0.020, 0.069, 0.2, 0.1),
-        GrayScottRegime::UniformStable
+        GrayScottMinimapRegime::UniformStable
     );
 
     let schnak_img = build_atlas_image(MorphogenesisKinetics::Schnakenberg, 1.0, 100.0, false);
@@ -155,7 +155,7 @@ fn test_atlas_unstable_samples_yield_nonzero_variance_after_500_cfl_steps() {
     for (f, k) in [(0.0367, 0.0649), (0.0545, 0.062), (0.030, 0.060)] {
         assert_ne!(
             classify_gray_scott(f, k, 0.2, 0.1),
-            GrayScottRegime::UniformStable
+            GrayScottMinimapRegime::UniformStable
         );
         let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
             kinetics: MorphogenesisKinetics::GrayScott,

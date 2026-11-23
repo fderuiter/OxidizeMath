@@ -19,14 +19,28 @@ pub use crate::volumetric_scene::presets::SimpleRng;
 /// Dynamic [`TheoryDescribable`] adapter reflecting the active [`MorphogenesisKinetics`] model.
 #[derive(Clone, Debug)]
 pub struct MorphogenesisTheory {
-    params: Arc<RwLock<MorphogenesisSharedParams>>,
+    /// Active kinetics mode when unbound, kept synchronized by [`MorphogenesisTool`].
+    pub mode: MorphogenesisKinetics,
+    params: Option<Arc<RwLock<MorphogenesisSharedParams>>>,
 }
 
 impl MorphogenesisTheory {
     /// Binds theory metadata to shared runtime parameters.
     #[must_use]
     pub fn new(params: Arc<RwLock<MorphogenesisSharedParams>>) -> Self {
-        Self { params }
+        let mode = params.read().unwrap_or_else(|e| e.into_inner()).kinetics;
+        Self {
+            mode,
+            params: Some(params),
+        }
+    }
+
+    /// Returns a standalone theory descriptor pinned to `mode`.
+    #[must_use]
+    pub fn with_mode(mut self, mode: MorphogenesisKinetics) -> Self {
+        self.mode = mode;
+        self.params = None;
+        self
     }
 
     fn snapshot(
@@ -36,18 +50,28 @@ impl MorphogenesisTheory {
         SchnakenbergKinetics,
         GrayScottKinetics,
     ) {
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(params) = &self.params {
+            let p = params.read().unwrap_or_else(|e| e.into_inner());
+            return (
+                p.kinetics,
+                SchnakenbergKinetics { a: p.a, b: p.b },
+                GrayScottKinetics { f: p.f, k: p.k },
+            );
+        }
         (
-            p.kinetics,
-            SchnakenbergKinetics { a: p.a, b: p.b },
-            GrayScottKinetics { f: p.f, k: p.k },
+            self.mode,
+            SchnakenbergKinetics::new(0.1, 0.9),
+            GrayScottKinetics::mitosis(),
         )
     }
 }
 
 impl Default for MorphogenesisTheory {
     fn default() -> Self {
-        Self::new(Arc::new(RwLock::new(MorphogenesisSharedParams::default())))
+        Self {
+            mode: MorphogenesisKinetics::Schnakenberg,
+            params: None,
+        }
     }
 }
 
@@ -120,64 +144,85 @@ impl TheoryDescribable for MorphogenesisTheory {
         &self,
     ) -> HashMap<String, scientific_metadata::theory::ParameterConstraint> {
         use scientific_metadata::theory::ParameterConstraint;
-        HashMap::from([
-            (
-                "a".to_string(),
-                ParameterConstraint {
+        let (mode, schnak, gs) = self.snapshot();
+        match mode {
+            MorphogenesisKinetics::Schnakenberg => {
+                let mut map = schnak.theory_parameters();
+                map.entry("a".to_string()).or_insert(ParameterConstraint {
                     min: 0.0,
                     max: 1.0,
                     step: 0.01,
-                },
-            ),
-            (
-                "b".to_string(),
-                ParameterConstraint {
+                });
+                map.entry("b".to_string()).or_insert(ParameterConstraint {
                     min: 0.0,
                     max: 2.0,
                     step: 0.01,
-                },
-            ),
-            (
-                "f".to_string(),
-                ParameterConstraint {
+                });
+                map.insert(
+                    "d_u".to_string(),
+                    ParameterConstraint {
+                        min: 0.1,
+                        max: 5.0,
+                        step: 0.05,
+                    },
+                );
+                map.insert(
+                    "d_v".to_string(),
+                    ParameterConstraint {
+                        min: 10.0,
+                        max: 200.0,
+                        step: 1.0,
+                    },
+                );
+                map.insert(
+                    "dt".to_string(),
+                    ParameterConstraint {
+                        min: 1e-4,
+                        max: 0.1,
+                        step: 5e-4,
+                    },
+                );
+                map
+            }
+            MorphogenesisKinetics::GrayScott => {
+                let mut map = gs.theory_parameters();
+                map.entry("f".to_string()).or_insert(ParameterConstraint {
                     min: 0.005,
-                    max: 0.085,
+                    max: 0.10,
                     step: 0.001,
-                },
-            ),
-            (
-                "k".to_string(),
-                ParameterConstraint {
-                    min: 0.030,
-                    max: 0.070,
+                });
+                map.entry("k".to_string()).or_insert(ParameterConstraint {
+                    min: 0.01,
+                    max: 0.09,
                     step: 0.001,
-                },
-            ),
-            (
-                "d_u".to_string(),
-                ParameterConstraint {
-                    min: 0.1,
-                    max: 5.0,
-                    step: 0.05,
-                },
-            ),
-            (
-                "d_v".to_string(),
-                ParameterConstraint {
-                    min: 10.0,
-                    max: 200.0,
-                    step: 1.0,
-                },
-            ),
-            (
-                "dt".to_string(),
-                ParameterConstraint {
-                    min: 1e-4,
-                    max: 0.1,
-                    step: 5e-4,
-                },
-            ),
-        ])
+                });
+                map.insert(
+                    "d_u".to_string(),
+                    ParameterConstraint {
+                        min: 0.02,
+                        max: 0.50,
+                        step: 0.005,
+                    },
+                );
+                map.insert(
+                    "d_v".to_string(),
+                    ParameterConstraint {
+                        min: 0.01,
+                        max: 0.25,
+                        step: 0.005,
+                    },
+                );
+                map.insert(
+                    "dt".to_string(),
+                    ParameterConstraint {
+                        min: 0.05,
+                        max: 1.60,
+                        step: 0.01,
+                    },
+                );
+                map
+            }
+        }
     }
 
     fn theory_latex_equation(&self) -> Option<String> {
@@ -376,6 +421,19 @@ impl MorphogenesisTool {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let (xk, yk) = self.atlas.axis_keys();
+        let allowed_pairs = match kinetics {
+            MorphogenesisKinetics::Schnakenberg => super::cartographer::MORPHO_ATLAS_AXIS_PAIRS,
+            MorphogenesisKinetics::GrayScott => {
+                super::gray_scott_atlas::GRAY_SCOTT_ATLAS_AXIS_PAIRS
+            }
+        };
+        let atlas_axes = if self.atlas.has_default_persisted_state()
+            || !allowed_pairs.iter().any(|&(ax, ay)| ax == xk && ay == yk)
+        {
+            super::cartographer::default_morpho_atlas_axes()
+        } else {
+            [xk.to_string(), yk.to_string()]
+        };
         let preset_state = MorphogenesisToolState {
             kinetics_mode: kinetics,
             a,
@@ -393,7 +451,7 @@ impl MorphogenesisTool {
             pending_initial_start,
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
+            atlas_axes,
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);
