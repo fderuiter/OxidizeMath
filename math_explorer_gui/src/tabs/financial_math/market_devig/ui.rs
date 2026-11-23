@@ -375,10 +375,10 @@ fn render_outcome_table(
                 ui.strong(col);
             }
             ui.end_row();
-            for i in 0..arrays.n {
+            for (i, odd) in odds.iter().enumerate().take(arrays.n) {
                 ui.label(format!("#{}", i + 1));
-                ui.label(format!("{:.2}", odds[i].value()));
-                ui.label(format!("{:.2}%", odds[i].implied_probability() * 100.0));
+                ui.label(format!("{:.2}", odd.value()));
+                ui.label(format!("{:.2}%", odd.implied_probability() * 100.0));
                 ui.label(format!("{:.2}%", arrays.mult[i] * 100.0));
                 let raw_pct = arrays.add_raw[i] * 100.0;
                 if raw_pct <= 0.0 {
@@ -410,9 +410,9 @@ fn render_probability_chart(
     let mut mult_bars = Vec::with_capacity(arrays.n);
     let mut power_bars = Vec::with_capacity(arrays.n);
     let mut shin_bars = Vec::with_capacity(arrays.n);
-    for i in 0..arrays.n {
+    for (i, odd) in odds.iter().enumerate().take(arrays.n) {
         let x = (i + 1) as f64;
-        implied_bars.push(Bar::new(x - 0.24, odds[i].implied_probability() * 100.0).width(0.15));
+        implied_bars.push(Bar::new(x - 0.24, odd.implied_probability() * 100.0).width(0.15));
         mult_bars.push(Bar::new(x - 0.08, arrays.mult[i] * 100.0).width(0.15));
         power_bars.push(Bar::new(x + 0.08, arrays.power[i] * 100.0).width(0.15));
         shin_bars.push(Bar::new(x + 0.24, arrays.shin[i] * 100.0).width(0.15));

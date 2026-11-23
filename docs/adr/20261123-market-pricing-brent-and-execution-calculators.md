@@ -1,7 +1,7 @@
-# ADR 0047: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators
+# ADR 20261123: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators
 
 ## Status
-Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md), and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
+Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md), and [ADR 20261123](20261123-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
 
 ## Context
 `pure_math::statistics::kelly` previously assumed callers already knew true win probabilities `UnitInterval`, while `pure_math::analysis::roots` (`Bisection` and `NewtonRaphson`) formatted `String` error messages inside `AnalysisError::InvalidParameters(String)`—triggering heap allocations under `VerifiedEngine::run_verified`—and lacked a superlinear derivative-free bracketed solver (`Brent`). As a result, users could not remove bookmaker overround ("vig") under favorite-longshot bias (`Power` and `Shin`), detect negative probabilities when `Additive` vig removal breaches the probability simplex on longshots, or size cross-book arbitrage, subset Dutching, spread/total middles, and live/futures hedges in `FinancialMathTab`.
@@ -19,4 +19,4 @@ Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctes
 
 ## Consequences
 - **Positive**: `Bisection`, `NewtonRaphson`, `Brent`, and every `market_pricing` routine execute with zero heap allocations inside `VerifiedEngine::run_verified` while matching analytical devigging, `+EV`, arbitrage, Dutching, middle, and hedge benchmarks within `1e-9`.
-- **Neutral**: Workspace contract suites now track 28 crate error enums (50 leaf errors), 77 registered `InteractiveTool` implementations (54 plot-exportable tools), and 112 `StarterPresetMetadata` cards.
+- **Neutral**: Workspace contract suites now track 28 crate error enums (50 leaf errors), 78 registered `InteractiveTool` implementations (56 plot-exportable tools), and 113 `StarterPresetMetadata` cards.
