@@ -1,4 +1,4 @@
-# ADR 0037: Unified Watertight 3D STL, Colored PLY, and 3DGS PLY Exports
+# ADR 0038: Unified Watertight 3D STL, Colored PLY, and 3DGS PLY Exports
 
 ## Status
 Accepted

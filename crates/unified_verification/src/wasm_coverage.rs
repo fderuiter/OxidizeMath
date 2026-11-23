@@ -73,13 +73,24 @@ fn attrs_define_wasm_only_prod_path(attrs: &[Attribute]) -> bool {
     })
 }
 
-fn attrs_have_wasm_bindgen_test(attrs: &[Attribute]) -> bool {
-    attrs.iter().any(|attr| {
-        attr.path()
+fn meta_has_wasm_bindgen_test(meta: &Meta) -> bool {
+    match meta {
+        Meta::Path(path) => path
             .segments
             .last()
-            .is_some_and(|seg| seg.ident == "wasm_bindgen_test")
-    })
+            .is_some_and(|seg| seg.ident == "wasm_bindgen_test"),
+        Meta::List(list) if list.path.is_ident("cfg_attr") => parse_nested_metas(list)
+            .into_iter()
+            .skip(1)
+            .any(|nested| meta_has_wasm_bindgen_test(&nested)),
+        _ => false,
+    }
+}
+
+fn attrs_have_wasm_bindgen_test(attrs: &[Attribute]) -> bool {
+    attrs
+        .iter()
+        .any(|attr| meta_has_wasm_bindgen_test(&attr.meta))
 }
 
 fn extract_path_attr(attrs: &[Attribute]) -> Option<String> {
@@ -324,4 +335,28 @@ pub fn count_file_wasm_coverage(filepath: &Path, content: &str) -> (usize, usize
         0
     };
     (summary.wasm_paths, covered)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_egui_plot_wasm_paths_are_counted_and_covered() {
+        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        for rel in [
+            "egui_plot/src/file_io.rs",
+            "egui_plot/src/export.rs",
+            "egui_plot/src/export_modal.rs",
+        ] {
+            let path = ws_root.join(rel);
+            let src = fs::read_to_string(&path).expect("egui_plot source must be readable");
+            let (paths, covered) = count_file_wasm_coverage(&path, &src);
+            assert!(paths > 0, "expected wasm32 paths in {rel}");
+            assert_eq!(
+                covered, paths,
+                "expected all wasm32 paths in {rel} to be covered by #[wasm_bindgen_test]"
+            );
+        }
+    }
 }
