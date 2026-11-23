@@ -367,10 +367,6 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         }
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_kit.focused_plot_id()
-    }
-
     fn state_revision(&self) -> u64 {
         self.compute_state_revision()
     }

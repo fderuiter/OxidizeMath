@@ -1,13 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::{
-    default_compiled_expr, WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA,
-    DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_X_MAX, GRID_X_MIN,
-    POTENTIAL_DISPLAY_SCALE,
+    default_compiled_expr, wave_parameter_constraints, WavePotentialPreset, DEFAULT_DT, DEFAULT_K0,
+    DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_X_MAX,
+    GRID_X_MIN, POTENTIAL_DISPLAY_SCALE,
 };
+use super::WaveSimulatorTool;
 use math_commons::ast::Expr;
 use math_explorer::physics::quantum::QuantumState;
 use nalgebra::DVector;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use std::collections::HashMap;
 
 /// Shared parameter bundle synchronized between [`super::WaveSimulatorTool`] and [`super::WaveRunner`].
 #[derive(Clone, Debug)]
@@ -359,5 +362,40 @@ inventory::submit! {
         domain: "quantum",
         tool_name: Some("WaveSimulator"),
         preset_generator: || RESONANT_DOUBLE_WELL_PRESET_JSON,
+    }
+}
+
+impl TheoryDescribable for WaveSimulatorTool {
+    fn theory_description(&self) -> String {
+        "Time-dependent 1D Schrödinger wavepacket evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ with unitary propagation, freehand Bresenham potential sculpting, custom AST barriers, and Born tunneling integrals.".to_string()
+    }
+
+    fn phonetic_description(&self) -> String {
+        "Time-dependent one-dimensional Schrodinger wavepacket tunneling and potential sculpting simulation".to_string()
+    }
+
+    fn theory_citation(&self) -> String {
+        "Schrödinger, E. (1926). An Undulatory Theory of the Mechanics of Atoms and Molecules. Physical Review, 28(6), 1049-1070; Griffiths, D. J., & Schroeter, D. F. (2018). Introduction to Quantum Mechanics (3rd ed.). Cambridge University Press.".to_string()
+    }
+
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        HashMap::from([
+            (
+                "Potential Profile".to_string(),
+                "Selects built-in confining wells, tunneling barriers, or a custom V(x) AST equation.".to_string(),
+            ),
+            (
+                "Barrier Height (V0)".to_string(),
+                "Sets the potential barrier height V0 relative to incident kinetic energy E0 = k0²/2.".to_string(),
+            ),
+            (
+                "Time Step (Δt)".to_string(),
+                "Integration time step Δt controlling unitary matrix-exponential wavepacket propagation.".to_string(),
+            ),
+        ])
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        wave_parameter_constraints()
     }
 }

@@ -9,7 +9,10 @@ use super::presets::{
 };
 use super::runner::WaveData;
 use super::WaveSimulatorTool;
-use crate::accessibility::AccessibleHoverText;
+use crate::accessibility::{
+    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility, AccessibleHoverText,
+};
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{PlaybackAction, PlaybackTransport};
@@ -32,7 +35,10 @@ impl WaveSimulatorTool {
                     ui.separator();
                     self.draw_wavepacket_and_barrier_sliders(ui, &ctx);
                     ui.separator();
-                    self.draw_sculpt_controls(ui, &ctx);
+                    let locked = self.is_challenge_locked();
+                    ui.add_enabled_ui(!locked, |ui| {
+                        self.draw_sculpt_controls(ui, &ctx);
+                    });
                     ui.separator();
                     let is_paused = !matches!(
                         self.worker.state(),
@@ -118,72 +124,89 @@ impl WaveSimulatorTool {
 
     fn draw_preset_and_sandbox(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let mut reset_needed = false;
-        let combo_resp = egui::ComboBox::from_label(wave_parameter_label("preset"))
-            .selected_text(self.preset.label())
-            .show_ui(ui, |ui| {
-                for candidate in WavePotentialPreset::ALL {
-                    if ui
-                        .selectable_value(&mut self.preset, candidate, candidate.label())
-                        .changed()
-                    {
-                        self.custom_potential = None;
-                        self.sparse_potential.clear();
-                        reset_needed = true;
+        let locked = self.is_challenge_locked();
+        ui.add_enabled_ui(!locked, |ui| {
+            let combo_resp = egui::ComboBox::from_label(wave_parameter_label("preset"))
+                .selected_text(self.preset.label())
+                .show_ui(ui, |ui| {
+                    for candidate in WavePotentialPreset::ALL {
+                        if ui
+                            .selectable_value(&mut self.preset, candidate, candidate.label())
+                            .changed()
+                        {
+                            self.custom_potential = None;
+                            self.sparse_potential.clear();
+                            reset_needed = true;
+                        }
                     }
-                }
-            });
-        let _ = combo_resp.response.accessible_hover_text(
-            "Choose a built-in quantum potential profile or author a custom V(x) formula.",
-        );
-
-        ui.add_space(4.0);
-        let mut launched_challenge = false;
-        let mut clear_sculpt = false;
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("🎯 50% Tunneling Split")
-                .accessible_hover_text(
-                    "Configure a sub-barrier wavepacket (E0 = 12.5, V0 = 11.35, width = 0.5) that splits 50/50 across a rectangular barrier.",
-                )
-                .clicked()
-            {
-                launched_challenge = true;
-            }
-            if ui
-                .add_enabled(
-                    self.custom_potential.is_some() || !self.sparse_potential.is_empty(),
-                    egui::Button::new("Clear Sculpted V(x)"),
-                )
-                .accessible_hover_text(
-                    "Erase freehand potential strokes and restore the selected preset or AST formula.",
-                )
-                .clicked()
-            {
-                clear_sculpt = true;
-            }
+                });
+            let _ = combo_resp.response.accessible_hover_text(
+                "Choose a built-in quantum potential profile or author a custom V(x) formula.",
+            );
         });
-        if launched_challenge {
-            self.apply_tunneling_split_challenge(Some(ctx));
-            let _ = self.worker.send_command(SimCommand::Start);
-            return;
-        }
-        if clear_sculpt {
-            self.clear_custom_potential(Some(ctx));
+
+        ui.add_space(4.0);
+        if self.draw_sandbox_quick_actions(ui, ctx, locked) {
             return;
         }
 
         ui.add_space(4.0);
-        if self.draw_formula_or_custom_input(ui) || reset_needed {
+        if self.draw_formula_or_custom_input(ui, locked) || reset_needed {
             self.sync_config_and_reset(Some(ctx));
         }
     }
 
-    fn draw_formula_or_custom_input(&mut self, ui: &mut egui::Ui) -> bool {
+    fn draw_sandbox_quick_actions(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        locked: bool,
+    ) -> bool {
+        let mut launched_challenge = false;
+        let mut clear_sculpt = false;
+        ui.add_enabled_ui(!locked, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .button("🎯 50% Tunneling Split")
+                    .accessible_hover_text(
+                        "Configure a sub-barrier wavepacket (E0 = 12.5, V0 = 11.35, width = 0.5) that splits 50/50 across a rectangular barrier.",
+                    )
+                    .clicked()
+                {
+                    launched_challenge = true;
+                }
+                if ui
+                    .add_enabled(
+                        self.custom_potential.is_some() || !self.sparse_potential.is_empty(),
+                        egui::Button::new("Clear Sculpted V(x)"),
+                    )
+                    .accessible_hover_text(
+                        "Erase freehand potential strokes and restore the selected preset or AST formula.",
+                    )
+                    .clicked()
+                {
+                    clear_sculpt = true;
+                }
+            });
+        });
+        if launched_challenge {
+            self.apply_tunneling_split_challenge(Some(ctx));
+            let _ = self.worker.send_command(SimCommand::Start);
+            return true;
+        }
+        if clear_sculpt {
+            self.clear_custom_potential(Some(ctx));
+            return true;
+        }
+        false
+    }
+
+    fn draw_formula_or_custom_input(&mut self, ui: &mut egui::Ui, locked: bool) -> bool {
         if let Some((latex_eq, plain_eq)) = self.preset.formula_display() {
             crate::reflective_ui::render_formula_with_export(ui, latex_eq, Some(plain_eq));
             return false;
         }
-        if self.math_input.ui(ui) {
+        if !locked && self.math_input.ui(ui) {
             if self.math_input.raw_text.len() > MAX_CUSTOM_EXPR_BYTES {
                 let bounded = truncate_utf8_bytes(&self.math_input.raw_text, MAX_CUSTOM_EXPR_BYTES)
                     .to_string();
@@ -204,31 +227,34 @@ impl WaveSimulatorTool {
         ui.label("Wavepacket & Barrier Controls");
         let mut packet_changed = false;
         let mut barrier_changed = false;
+        let locked = self.is_challenge_locked();
 
-        packet_changed |= draw_bounded_slider(
-            ui,
-            &mut self.x0,
-            X0_MIN..=X0_MAX,
-            0.05,
-            wave_parameter_label("x0"),
-            "Initial center x0 of the normalized Gaussian wavepacket.",
-        );
-        packet_changed |= draw_bounded_slider(
-            ui,
-            &mut self.k0,
-            K0_MIN..=K0_MAX,
-            0.1,
-            wave_parameter_label("k0"),
-            "Initial wave number k0 setting kinetic energy E0 = k0² / 2.",
-        );
-        packet_changed |= draw_bounded_slider(
-            ui,
-            &mut self.sigma,
-            SIGMA_MIN..=SIGMA_MAX,
-            0.05,
-            wave_parameter_label("sigma"),
-            "Spatial spread σ of the initial Gaussian wavepacket.",
-        );
+        ui.add_enabled_ui(!locked, |ui| {
+            packet_changed |= draw_bounded_slider(
+                ui,
+                &mut self.x0,
+                X0_MIN..=X0_MAX,
+                0.05,
+                wave_parameter_label("x0"),
+                "Initial center x0 of the normalized Gaussian wavepacket.",
+            );
+            packet_changed |= draw_bounded_slider(
+                ui,
+                &mut self.k0,
+                K0_MIN..=K0_MAX,
+                0.1,
+                wave_parameter_label("k0"),
+                "Initial wave number k0 setting kinetic energy E0 = k0² / 2.",
+            );
+            packet_changed |= draw_bounded_slider(
+                ui,
+                &mut self.sigma,
+                SIGMA_MIN..=SIGMA_MAX,
+                0.05,
+                wave_parameter_label("sigma"),
+                "Spatial spread σ of the initial Gaussian wavepacket.",
+            );
+        });
 
         if self.preset.uses_barrier_controls() {
             barrier_changed |= draw_bounded_slider(
@@ -291,7 +317,7 @@ impl WaveSimulatorTool {
 
     fn draw_tunneling_readouts(&self, ui: &mut egui::Ui) {
         ui.label("Born Tunneling Observables");
-        let Some(wave_data) = self.latest_wave_data() else {
+        let Some(wave_data) = self.active_wave_data() else {
             ui.small("Awaiting initial wavepacket snapshot...");
             return;
         };
@@ -344,11 +370,13 @@ impl WaveSimulatorTool {
         render_wave_central_panel(self, parent_ui);
     }
 
-    pub(super) fn latest_wave_data(&self) -> Option<&WaveData> {
-        self.worker
-            .latest_snapshot()
-            .and_then(|snap: &StateSnapshot| snap.structured_data.as_ref())
-            .and_then(|any_data| any_data.downcast_ref::<WaveData>())
+    pub(crate) fn active_wave_data(&self) -> Option<&WaveData> {
+        self.export_data.as_ref().or_else(|| {
+            self.worker
+                .latest_snapshot()
+                .and_then(|snap: &StateSnapshot| snap.structured_data.as_ref())
+                .and_then(|any_data| any_data.downcast_ref::<WaveData>())
+        })
     }
 }
 
@@ -360,6 +388,7 @@ fn draw_bounded_slider(
     label: &str,
     hover_desc: &str,
 ) -> bool {
+    let prev = *value;
     let slider = AnimatedSlider::new(value, range.clone())
         .hard_bounds(range)
         .step_by(step)
@@ -368,5 +397,66 @@ fn draw_bounded_slider(
     let resp = ui.add(slider);
     let changed = resp.changed();
     let resp = resp.accessible_hover_text(hover_desc);
-    changed || resp.changed()
+    (changed || resp.changed()) && (*value - prev).abs() > 1.0e-9
+}
+
+pub(super) fn draw_hud_badges(ui: &mut egui::Ui, frame: &WaveData) {
+    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+    ui.horizontal_wrapped(|ui| {
+        ui.label(format!("Time: {:.3}", frame.time));
+        ui.separator();
+        ui.colored_label(palette.series_color(0), "━ |ψ(x, t)|²");
+        ui.colored_label(
+            palette.series_color(1),
+            "━ V(x) (drag sculpt, right-drag erase)",
+        );
+        ui.colored_label(
+            palette.series_color(2),
+            format!("┅ E0 = {:.2} (scaled)", frame.kinetic_energy),
+        );
+        ui.separator();
+        ui.colored_label(
+            palette.success,
+            format!("T(t): {:.1}%", frame.transmission * 100.0),
+        );
+        ui.colored_label(
+            palette.info,
+            format!("R(t): {:.1}%", frame.reflection * 100.0),
+        );
+    });
+}
+
+pub(super) fn attach_canvas_accessibility(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    frame: &WaveData,
+    reticle_idx: usize,
+    pending_announcement: Option<String>,
+) {
+    let rx = frame.x_axis.get(reticle_idx).copied().unwrap_or(0.0);
+    let rv = frame.potential.get(reticle_idx).copied().unwrap_or(0.0);
+    let summary = format!(
+        "Reticle x = {rx:.2}, V(x) = {rv:.1}, P_T = {:.1}%, P_R = {:.1}%",
+        frame.p_transmitted * 100.0,
+        frame.p_reflected * 100.0
+    );
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(egui::Id::new("quantum_plot_response_id"), response.id));
+    lock_canvas_arrow_keys(ui, response);
+    paint_canvas_focus_ring(ui, response);
+    register_canvas_accessibility(
+        ui,
+        response,
+        egui::accesskit::Role::GraphicsDocument,
+        "Quantum Potential Sculpting Canvas",
+        Some(&summary),
+    );
+    if let Some(msg) = pending_announcement {
+        announce_live_status(ui.ctx(), msg);
+    } else if response.gained_focus() {
+        announce_live_status(
+            ui.ctx(),
+            format!("Quantum Potential Sculpting Canvas — {summary}."),
+        );
+    }
 }

@@ -18,7 +18,12 @@ pub mod framework;
 mod framework_tests;
 #[cfg(test)]
 mod interactive_tools_tests;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "applied",
+    feature = "physics",
+    feature = "epidemiology"
+))]
 mod inverse_challenges_tests;
 #[cfg(all(test, feature = "physics", feature = "applied"))]
 mod inverse_solvers_tests;

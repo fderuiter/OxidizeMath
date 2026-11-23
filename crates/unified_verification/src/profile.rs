@@ -165,6 +165,8 @@ fn ensure_root_overflow_checks(
     }
 }
 
+const FORBIDDEN_MEMBER_PROFILES: &[&str] = &["release", "dev", "test"];
+
 fn check_readme_version_sync(
     root_manifest: &Path,
     workspace_members: &[&str],
@@ -316,6 +318,48 @@ fn check_member_version_and_packager(
     check_fallback_explicit_version(path, explicit_ver, ctx, packager_ok)
 }
 
+fn check_forbidden_member_profiles(
+    path: &Path,
+    content: &str,
+    parsed: &Value,
+    auto_fix: bool,
+    manifest_cache: &mut ManifestCache,
+) -> bool {
+    let mut passed = true;
+    let mut updated_content: Option<String> = None;
+
+    for profile_name in FORBIDDEN_MEMBER_PROFILES {
+        let has_profile = parsed
+            .get("profile")
+            .and_then(|p| p.get(*profile_name))
+            .is_some();
+        if !has_profile {
+            continue;
+        }
+        if auto_fix {
+            println!(
+                "[+] Auto-fixing: Removing redundant [profile.{profile_name}] from {}",
+                path.display()
+            );
+            let base = updated_content.as_deref().unwrap_or(content);
+            updated_content = Some(remove_profile_section(base, profile_name));
+        } else {
+            eprintln!(
+                "[!] Profile mismatch in {}: redundant [profile.{profile_name}] found. Configuration must be consolidated in workspace root.",
+                path.display()
+            );
+            passed = false;
+        }
+    }
+
+    if let Some(new_content) = updated_content {
+        fs::write(path, new_content).unwrap();
+        manifest_cache.invalidate(path);
+    }
+
+    passed
+}
+
 fn check_member_manifest(
     member: &str,
     auto_fix: bool,
@@ -335,27 +379,8 @@ fn check_member_manifest(
     if !check_member_version_and_packager(member, &path, &parsed, ctx) {
         passed = false;
     }
-
-    if parsed
-        .get("profile")
-        .and_then(|p| p.get("release"))
-        .is_some()
-    {
-        if auto_fix {
-            println!(
-                "[+] Auto-fixing: Removing redundant [profile.release] from {}",
-                path.display()
-            );
-            let new_content = remove_profile_release(&content);
-            fs::write(&path, new_content).unwrap();
-            manifest_cache.invalidate(&path);
-        } else {
-            eprintln!(
-                "[!] Profile mismatch in {}: redundant [profile.release] found. Configuration must be consolidated in workspace root.",
-                path.display()
-            );
-            passed = false;
-        }
+    if !check_forbidden_member_profiles(&path, &content, &parsed, auto_fix, manifest_cache) {
+        passed = false;
     }
 
     passed
@@ -390,19 +415,29 @@ pub(crate) fn check_profiles_with_cache(
     passed
 }
 
-fn remove_profile_release(content: &str) -> String {
+fn is_matching_profile_header(trimmed: &str, profile_name: &str) -> bool {
+    let Some(rest) = trimmed.strip_prefix("[profile.") else {
+        return false;
+    };
+    let Some(after_name) = rest.strip_prefix(profile_name) else {
+        return false;
+    };
+    after_name.starts_with(']') || after_name.starts_with('.')
+}
+
+fn remove_profile_section(content: &str, profile_name: &str) -> String {
     let mut out = String::new();
-    let mut in_profile_release = false;
+    let mut in_target_profile = false;
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("[profile.release]") {
-            in_profile_release = true;
+        if is_matching_profile_header(trimmed, profile_name) {
+            in_target_profile = true;
             continue;
         }
-        if in_profile_release && trimmed.starts_with('[') {
-            in_profile_release = false;
+        if in_target_profile && trimmed.starts_with('[') {
+            in_target_profile = false;
         }
-        if !in_profile_release {
+        if !in_target_profile {
             out.push_str(line);
             out.push('\n');
         }

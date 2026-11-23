@@ -4,11 +4,8 @@
 use super::super::wave_sim_sculpt::consume_reticle_key_deltas;
 use super::presets::{GRID_X_MAX, GRID_X_MIN, POTENTIAL_DISPLAY_SCALE};
 use super::runner::WaveData;
+use super::ui::{attach_canvas_accessibility, draw_hud_badges};
 use super::WaveSimulatorTool;
-use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility,
-};
 use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::framework::{BrushMode, BrushStroke};
 use eframe::egui;
@@ -66,32 +63,6 @@ fn marker_point(
     c: egui::Color32,
 ) -> Points<'_> {
     Points::new(name, vec![xy]).radius(r).shape(shape).color(c)
-}
-
-fn draw_hud_badges(ui: &mut egui::Ui, frame: &WaveData) {
-    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-    ui.horizontal_wrapped(|ui| {
-        ui.label(format!("Time: {:.3}", frame.time));
-        ui.separator();
-        ui.colored_label(palette.series_color(0), "━ |ψ(x, t)|²");
-        ui.colored_label(
-            palette.series_color(1),
-            "━ V(x) (drag sculpt, right-drag erase)",
-        );
-        ui.colored_label(
-            palette.series_color(2),
-            format!("┅ E0 = {:.2} (scaled)", frame.kinetic_energy),
-        );
-        ui.separator();
-        ui.colored_label(
-            palette.success,
-            format!("T(t): {:.1}%", frame.transmission * 100.0),
-        );
-        ui.colored_label(
-            palette.info,
-            format!("R(t): {:.1}%", frame.reflection * 100.0),
-        );
-    });
 }
 
 fn draw_wave_curves(
@@ -399,50 +370,56 @@ fn handle_reticle_keyboard(
     ))
 }
 
-fn attach_canvas_accessibility(
-    ui: &egui::Ui,
-    response: &egui::Response,
+fn render_wave_plot_contents(
+    plot_ui: &mut egui_plot::PlotUi<'_>,
+    egui_ctx: &egui::Context,
+    tool: &mut WaveSimulatorTool,
     frame: &WaveData,
-    reticle_idx: usize,
-    pending_announcement: Option<String>,
-) {
-    let rx = frame.x_axis.get(reticle_idx).copied().unwrap_or(0.0);
-    let rv = frame.potential.get(reticle_idx).copied().unwrap_or(0.0);
-    let summary = format!(
-        "Reticle x = {rx:.2}, V(x) = {rv:.1}, P_T = {:.1}%, P_R = {:.1}%",
-        frame.p_transmitted * 100.0,
-        frame.p_reflected * 100.0
-    );
-    ui.ctx()
-        .data_mut(|d| d.insert_temp(egui::Id::new("quantum_plot_response_id"), response.id));
-    lock_canvas_arrow_keys(ui, response);
-    paint_canvas_focus_ring(ui, response);
-    register_canvas_accessibility(
-        ui,
-        response,
-        egui::accesskit::Role::GraphicsDocument,
-        "Quantum Potential Sculpting Canvas",
-        Some(&summary),
-    );
-    if let Some(msg) = pending_announcement {
-        announce_live_status(ui.ctx(), msg);
-    } else if response.gained_focus() {
-        announce_live_status(
-            ui.ctx(),
-            format!("Quantum Potential Sculpting Canvas — {summary}."),
+    state: &mut QuantumCanvasState,
+    palette: &crate::app::SemanticPalette,
+    allow_pan: bool,
+    locked: bool,
+) -> Option<String> {
+    let focused = plot_ui.response().has_focus();
+    let pending_announcement = if focused && !locked {
+        handle_reticle_keyboard(egui_ctx, tool, frame, state)
+    } else {
+        None
+    };
+    if !allow_pan && !locked {
+        handle_pointer_interactions(plot_ui, egui_ctx, tool, frame, state);
+    } else {
+        state.drag = ActiveCanvasDrag::None;
+    }
+    draw_wave_curves(plot_ui, frame, palette);
+    let b = plot_ui.plot_bounds();
+    if b.width() > 0.0 && b.height() > 0.0 {
+        tool.callout_manager.render_on_plot(plot_ui);
+    }
+    if !locked {
+        draw_emitter_and_reticle_overlays(
+            plot_ui,
+            frame,
+            (tool.x0, tool.k0, tool.sigma),
+            state.reticle_idx,
+            focused,
+            palette,
         );
     }
+    pending_announcement
 }
 
 pub(super) fn render_wave_central_panel(tool: &mut WaveSimulatorTool, parent_ui: &mut egui::Ui) {
+    let locked = tool.is_challenge_locked();
     egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-        let Some(frame) = tool.latest_wave_data().cloned() else {
+        let Some(frame) = tool.active_wave_data().cloned() else {
             render_empty_plot_guidance(
                 ui,
                 "Wavepacket ready — click ▶ Play in the side panel to evolve ψ(x, t).",
             );
             return;
         };
+        tool.sync_wave_callouts(&frame);
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         draw_hud_badges(ui, &frame);
         let state_id = ui.make_persistent_id("quantum_plot_canvas_state");
@@ -451,7 +428,7 @@ pub(super) fn render_wave_central_panel(tool: &mut WaveSimulatorTool, parent_ui:
             .data_mut(|d| d.get_temp::<QuantumCanvasState>(state_id))
             .unwrap_or_default();
         let egui_ctx = ui.ctx().clone();
-        let allow_pan = !tool.brush_kit.is_sculpting();
+        let allow_pan = locked || !tool.brush_kit.is_sculpting();
         let mut pending_announcement = None;
 
         let plot_resp = Plot::new("quantum_plot")
@@ -463,24 +440,8 @@ pub(super) fn render_wave_central_panel(tool: &mut WaveSimulatorTool, parent_ui:
             .allow_zoom(allow_pan)
             .allow_boxed_zoom(false)
             .show(ui, |plot_ui| {
-                let focused = plot_ui.response().has_focus();
-                if focused {
-                    pending_announcement =
-                        handle_reticle_keyboard(&egui_ctx, tool, &frame, &mut state);
-                }
-                if !allow_pan {
-                    handle_pointer_interactions(plot_ui, &egui_ctx, tool, &frame, &mut state);
-                } else {
-                    state.drag = ActiveCanvasDrag::None;
-                }
-                draw_wave_curves(plot_ui, &frame, &palette);
-                draw_emitter_and_reticle_overlays(
-                    plot_ui,
-                    &frame,
-                    (tool.x0, tool.k0, tool.sigma),
-                    state.reticle_idx,
-                    focused,
-                    &palette,
+                pending_announcement = render_wave_plot_contents(
+                    plot_ui, &egui_ctx, tool, &frame, &mut state, &palette, allow_pan, locked,
                 );
             });
         ui.ctx().data_mut(|d| d.insert_temp(state_id, state));

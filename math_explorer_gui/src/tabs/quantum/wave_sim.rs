@@ -3,6 +3,8 @@
 
 #[path = "wave_sim/canvas.rs"]
 mod canvas;
+#[path = "wave_sim/challenge.rs"]
+pub mod challenge;
 #[path = "wave_sim/observables.rs"]
 mod observables;
 #[path = "wave_sim/persistence.rs"]
@@ -29,8 +31,8 @@ use super::wave_sim_sculpt::default_wave_brush_kit;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::RecoveryAction;
 use crate::framework::{
-    ExportCapabilities, InteractionContext, InteractiveTool, MathExpressionInputBar,
-    SpatialBrushKit,
+    CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractionContext, InteractiveTool,
+    MathExpressionInputBar, SpatialBrushKit,
 };
 use crate::url_state::quantize_url_centi;
 use eframe::egui;
@@ -46,8 +48,7 @@ use presets::{
     DEFAULT_CUSTOM_EXPR, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME,
     DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, DT_RECOVERY_MIN, GRID_POINTS,
 };
-use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
-use std::collections::HashMap;
+use scientific_metadata::theory::TheoryDescribable;
 use std::sync::{Arc, RwLock};
 
 /// Dedicated 1D Schrödinger wavepacket tunneling and potential sculpting sandbox.
@@ -70,6 +71,8 @@ pub struct WaveSimulatorTool {
     pub(crate) export_runner: Option<WaveRunner>,
     pub(crate) export_data: Option<WaveData>,
     pub(crate) latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) active_challenge: Option<&'static str>,
+    pub(crate) callout_manager: CalloutManager,
     pub(crate) revision: u64,
 }
 
@@ -127,6 +130,8 @@ impl WaveSimulatorTool {
             export_runner: None,
             export_data: None,
             latest_sonification,
+            active_challenge: None,
+            callout_manager: CalloutManager::new(),
             revision: 1,
         }
     }
@@ -233,21 +238,6 @@ impl WaveSimulatorTool {
             c.request_repaint();
         }
     }
-
-    /// Configures the playable 50% sub-barrier tunneling split challenge (`E0 = 12.5`, `V0 = 11.35`, `w = 0.5`).
-    pub fn apply_tunneling_split_challenge(&mut self, ctx: Option<&egui::Context>) {
-        self.preset = WavePotentialPreset::RectangularBarrier;
-        self.x0 = DEFAULT_X0;
-        self.k0 = DEFAULT_K0;
-        self.sigma = DEFAULT_SIGMA;
-        self.v0 = DEFAULT_V0;
-        self.width = DEFAULT_WIDTH;
-        self.dt = DEFAULT_DT;
-        self.custom_potential = None;
-        self.sparse_potential.clear();
-        self.sync_config_and_reset(ctx);
-    }
-
     /// Synchronizes shared worker config, clears stateful export caches, and resets or respawns `WaveRunner`.
     pub fn sync_config_and_reset(&mut self, ctx: Option<&egui::Context>) {
         self.bump_revision();
@@ -291,9 +281,10 @@ impl WaveSimulatorTool {
         self.custom_potential = None;
         self.sparse_potential.clear();
         self.math_input.set_expression(DEFAULT_CUSTOM_EXPR);
-        if let Some(expr) = self.math_input.expr() {
-            self.last_valid_expr = expr.clone();
+        if self.math_input.expr().is_some() {
+            self.last_valid_expr = self.math_input.expr().unwrap().clone();
         }
+        self.enforce_challenge_locks();
         self.sync_config_and_reset(ctx);
     }
 
@@ -337,10 +328,13 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
-        self.apply_ui_brush_context(ctx);
+        if !self.is_challenge_locked() {
+            self.apply_ui_brush_context(ctx);
+        }
     }
 
     fn step_simulation(&mut self) {
+        while self.worker.update().is_some() {}
         let shared = Arc::clone(&self.shared_config);
         let runner = self
             .export_runner
@@ -396,13 +390,35 @@ impl InteractiveTool for WaveSimulatorTool {
         true
     }
 
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.set_wave_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.eval_wave_challenge()
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let mut has_update = false;
+        let mut clear_export = false;
         if let Some(snapshot) = self.worker.update() {
+            let snap_time = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<WaveData>())
+                .map(|wd| wd.time);
+            clear_export = match (snap_time, self.export_data.as_ref()) {
+                (Some(st), Some(ed)) => st > ed.time,
+                _ => true,
+            };
             self.latest_sonification = snapshot.sonification;
             has_update = true;
         }
-        if has_update {
+        if clear_export {
             self.export_runner = None;
             self.export_data = None;
         }
@@ -430,41 +446,6 @@ impl InteractiveTool for WaveSimulatorTool {
     #[cfg(test)]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
-    }
-}
-
-impl TheoryDescribable for WaveSimulatorTool {
-    fn theory_description(&self) -> String {
-        "Time-dependent 1D Schrödinger wavepacket evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ with unitary propagation, freehand Bresenham potential sculpting, custom AST barriers, and Born tunneling integrals.".to_string()
-    }
-
-    fn phonetic_description(&self) -> String {
-        "Time-dependent one-dimensional Schrodinger wavepacket tunneling and potential sculpting simulation".to_string()
-    }
-
-    fn theory_citation(&self) -> String {
-        "Schrödinger, E. (1926). An Undulatory Theory of the Mechanics of Atoms and Molecules. Physical Review, 28(6), 1049-1070; Griffiths, D. J., & Schroeter, D. F. (2018). Introduction to Quantum Mechanics (3rd ed.). Cambridge University Press.".to_string()
-    }
-
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        HashMap::from([
-            (
-                "Potential Profile".to_string(),
-                "Selects built-in confining wells, tunneling barriers, or a custom V(x) AST equation.".to_string(),
-            ),
-            (
-                "Barrier Height (V0)".to_string(),
-                "Sets the potential barrier height V0 relative to incident kinetic energy E0 = k0²/2.".to_string(),
-            ),
-            (
-                "Time Step (Δt)".to_string(),
-                "Integration time step Δt controlling unitary matrix-exponential wavepacket propagation.".to_string(),
-            ),
-        ])
-    }
-
-    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        wave_parameter_constraints()
     }
 }
 
