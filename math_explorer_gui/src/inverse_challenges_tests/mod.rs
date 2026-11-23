@@ -49,6 +49,8 @@ const REQUIRED_CHALLENGE_IDS: &[&str] = &[
     "imrt_oar_sparing",
     "radar_cough_zero_miss",
     "quantum_barrier_50_split",
+    "quantum_fabry_perot_resonance",
+    "chladni_antinodal_resonance",
     "epidemiology_hub_vaccination",
     "epidemiology_bridge_quarantine",
     "astrophysics_mystery_halo_fit",
@@ -67,7 +69,7 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .into_iter()
         .map(ChallengeMetadata::to_card)
         .collect();
-    let expected_min = if cfg!(feature = "biology") { 20 } else { 19 };
+    let expected_min = if cfg!(feature = "biology") { 22 } else { 21 };
     assert!(
         cards.len() >= expected_min,
         "Expected at least {expected_min} registered ChallengeMetadata entries, got {}",
@@ -103,7 +105,8 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
 }
 
 fn assert_domain_challenge_counts() {
-    assert_eq!(get_challenge_cards_for_domain("quantum").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("quantum").len(), 2);
+    assert_eq!(get_challenge_cards_for_domain("analysis").len(), 1);
     assert_eq!(get_challenge_cards_for_domain("mri").len(), 3);
     assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 2);
     assert_eq!(get_challenge_cards_for_domain("financial_math").len(), 2);
