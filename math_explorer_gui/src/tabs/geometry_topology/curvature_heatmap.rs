@@ -1,16 +1,20 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 #[path = "curvature_heatmap/cache.rs"]
 mod cache;
+#[path = "curvature_heatmap/presets.rs"]
+mod presets;
+#[path = "curvature_heatmap_ui.rs"]
+mod ui;
 
 use super::custom_surface::CustomSurfaceSandbox;
-use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport};
+use crate::framework::{Camera3D, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
-use egui_plot::Line;
 use math_commons::primitives::PositiveFloat;
 use math_explorer::pure_math::differential_geometry::surface::{
     CurvatureKind, ParametricSurfaceKind,
 };
 use std::collections::BTreeMap;
-
 #[derive(serde::Serialize)]
 struct CurvatureHeatmapSaveState {
     surface_type: ParametricSurfaceKind,
@@ -65,6 +69,7 @@ struct CurvatureHeatmapState {
     v_bounds: Option<[f64; 2]>,
 }
 
+/// Interactive 3D parametric manifold Gaussian and mean curvature heatmap viewer.
 pub struct CurvatureHeatmap {
     surface_type: ParametricSurfaceKind,
     curvature_type: CurvatureKind,
@@ -74,13 +79,15 @@ pub struct CurvatureHeatmap {
     klein_radius: f64,
     u_resolution: usize,
     v_resolution: usize,
-    camera: Camera3D,
-    custom_sandbox: CustomSurfaceSandbox,
+    pub(crate) camera: Camera3D,
+    pub(crate) scene_builder: Scene3DBuilder,
+    pub(super) custom_sandbox: CustomSurfaceSandbox,
     cache: cache::CurvatureGeometryCache,
 }
 
 impl Default for CurvatureHeatmap {
     fn default() -> Self {
+        let camera = Camera3D::new(0.5, 0.5, 1.0);
         Self {
             surface_type: ParametricSurfaceKind::Torus,
             curvature_type: CurvatureKind::Gaussian,
@@ -90,7 +97,8 @@ impl Default for CurvatureHeatmap {
             klein_radius: 2.0,
             u_resolution: 30,
             v_resolution: 30,
-            camera: Camera3D::new(0.5, 0.5, 1.0),
+            camera,
+            scene_builder: Scene3DBuilder::new(camera),
             custom_sandbox: CustomSurfaceSandbox::default(),
             cache: cache::CurvatureGeometryCache::default(),
         }
@@ -98,97 +106,9 @@ impl Default for CurvatureHeatmap {
 }
 
 impl CurvatureHeatmap {
-    fn draw_side_controls(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "curvature_heatmap_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Curvature Heatmap");
-            ui.separator();
-
-            ui.label("Select Surface:");
-            ui.horizontal_wrapped(|ui| {
-                ui.radio_value(
-                    &mut self.surface_type,
-                    ParametricSurfaceKind::Sphere,
-                    "Sphere",
-                );
-                ui.radio_value(
-                    &mut self.surface_type,
-                    ParametricSurfaceKind::Torus,
-                    "Torus",
-                );
-                ui.radio_value(
-                    &mut self.surface_type,
-                    ParametricSurfaceKind::KleinBottle,
-                    "Klein Bottle",
-                );
-                ui.radio_value(
-                    &mut self.surface_type,
-                    ParametricSurfaceKind::CustomHeightfield,
-                    "Custom z=f(x,y)",
-                );
-                ui.radio_value(
-                    &mut self.surface_type,
-                    ParametricSurfaceKind::CustomParametric,
-                    "Custom r(u,v)",
-                );
-            });
-
-            ui.separator();
-            ui.label("Select Curvature Type:");
-            ui.horizontal(|ui| {
-                ui.radio_value(
-                    &mut self.curvature_type,
-                    CurvatureKind::Gaussian,
-                    "Gaussian",
-                );
-                ui.radio_value(&mut self.curvature_type, CurvatureKind::Mean, "Mean");
-            });
-
-            ui.separator();
-            self.draw_surface_parameters(ui);
-
-            egui::CollapsingHeader::new("View")
-                .default_open(true)
-                .show(ui, |ui| self.camera.ui(ui));
-
-            ui.collapsing("Resolution", |ui| {
-                let max_res = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION;
-                self.u_resolution = self.u_resolution.clamp(10, max_res);
-                self.v_resolution = self.v_resolution.clamp(10, max_res);
-                ui.add(egui::Slider::new(&mut self.u_resolution, 10..=max_res).text("Grid Size U"));
-                ui.add(egui::Slider::new(&mut self.v_resolution, 10..=max_res).text("Grid Size V"));
-            });
-        });
-    }
-
-    fn draw_surface_parameters(&mut self, ui: &mut egui::Ui) {
-        egui::CollapsingHeader::new("Parameters")
-            .default_open(matches!(
-                self.surface_type,
-                ParametricSurfaceKind::CustomHeightfield | ParametricSurfaceKind::CustomParametric
-            ))
-            .show(ui, |ui| match self.surface_type {
-                ParametricSurfaceKind::Sphere => {
-                    ui.add(egui::Slider::new(&mut self.sphere_radius, 0.1..=5.0).text("Radius"));
-                }
-                ParametricSurfaceKind::Torus => {
-                    ui.add(
-                        egui::Slider::new(&mut self.torus_major_radius, 1.0..=5.0)
-                            .text("Major Radius (R)"),
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut self.torus_minor_radius, 0.1..=2.0)
-                            .text("Minor Radius (r)"),
-                    );
-                }
-                ParametricSurfaceKind::KleinBottle => {
-                    ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
-                }
-                ParametricSurfaceKind::CustomHeightfield
-                | ParametricSurfaceKind::CustomParametric => {
-                    self.custom_sandbox.ui_for_type(ui, self.surface_type);
-                }
-            });
+    /// Populates `self.scene_builder` with cached world `Point3<f64>` curvature-colored grid segments.
+    pub fn populate_scene(&mut self, series_color: egui::Color32) {
+        self.populate_cached_scene(series_color);
     }
 }
 
@@ -209,7 +129,7 @@ impl InteractiveTool for CurvatureHeatmap {
         use std::hash::{Hash as _, Hasher as _};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.curvature_geometry_key().hash(&mut h);
-        self.camera_pose_bits().hash(&mut h);
+        self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
 
@@ -252,6 +172,7 @@ impl InteractiveTool for CurvatureHeatmap {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let loaded: CurvatureHeatmapState =
             serde_json::from_str(state).map_err(|e| format!("Invalid curvature state: {e}"))?;
         let (sphere_radius, torus_major_radius, torus_minor_radius, klein_radius) =
@@ -292,6 +213,11 @@ impl InteractiveTool for CurvatureHeatmap {
         Ok(())
     }
 
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.draw_side_panel(ui);
+        self.draw_viewport(ui);
+    }
+
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
@@ -300,27 +226,6 @@ impl InteractiveTool for CurvatureHeatmap {
     #[cfg(test)]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
-    }
-
-    fn show_inside(&mut self, ui: &mut egui::Ui) {
-        self.draw_side_controls(ui);
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            let batches = self.ensure_projected_batches().to_vec();
-            Plot3DViewport::new("curvature_plot", 4.0)
-                .helper_text("Drag canvas or use WASD to orbit, scroll or Q/E to zoom, double-click or press R to reset view. Blue = Low Curvature, Red = High Curvature.")
-                .show(ui, &mut self.camera, |plot_ui| {
-                    for batch in batches {
-                        plot_ui.line(
-                            Line::from_segments(
-                                format!("curvature_bin_{}", batch.bin),
-                                batch.segments,
-                            )
-                            .with_bounds(batch.bounds)
-                            .color(batch.color),
-                        );
-                    }
-                });
-        });
     }
 }
 
@@ -406,9 +311,6 @@ impl scientific_metadata::theory::TheoryDescribable for CurvatureHeatmap {
         map
     }
 }
-
-#[path = "curvature_heatmap/presets.rs"]
-mod presets;
 
 #[cfg(test)]
 #[path = "curvature_heatmap/tests.rs"]

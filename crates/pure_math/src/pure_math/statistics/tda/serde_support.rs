@@ -1,4 +1,4 @@
-use super::{PersistenceInterval, Point2D, PointCloud, Simplex, SimplicialComplex};
+use super::{NdPointCloud, PersistenceInterval, Point2D, PointCloud, Simplex, SimplicialComplex};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 impl Serialize for PointCloud {
@@ -28,6 +28,36 @@ impl<'de> Deserialize<'de> for PointCloud {
         }
         let raw = PointCloudRaw::deserialize(deserializer)?;
         PointCloud::new(raw.points).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for NdPointCloud {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[derive(Serialize)]
+        struct NdPointCloudRef<'a> {
+            points: &'a [Vec<f64>],
+        }
+        NdPointCloudRef {
+            points: self.points(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for NdPointCloud {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct NdPointCloudRaw {
+            points: Vec<Vec<f64>>,
+        }
+        let raw = NdPointCloudRaw::deserialize(deserializer)?;
+        NdPointCloud::new(raw.points).map_err(serde::de::Error::custom)
     }
 }
 
@@ -174,5 +204,17 @@ mod tests {
         let cloud_json = serde_json::to_string(&cloud).unwrap();
         let cloud_restored: PointCloud = serde_json::from_str(&cloud_json).unwrap();
         assert_eq!(cloud_restored.size(), 1);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_nd_point_cloud_serde_validation() {
+        use super::super::NdPointCloud;
+
+        let cloud = NdPointCloud::new(vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0]]).unwrap();
+        let json = serde_json::to_string(&cloud).unwrap();
+        let restored: NdPointCloud = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored, cloud);
+        assert!(serde_json::from_str::<NdPointCloud>(r#"{"points":[[1.0],[1.0,2.0]]}"#).is_err());
     }
 }

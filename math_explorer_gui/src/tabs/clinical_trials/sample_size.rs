@@ -119,10 +119,8 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         let result = match s.mode {
             CalculationMode::Means => calculate_sample_size_means(alpha, power, delta, sigma)
                 .map_err(|e| e.to_string())?,
-            CalculationMode::Proportions => {
-                calculate_sample_size_proportions(alpha, power, p1, p2)
-                    .map_err(|e| e.to_string())?
-            }
+            CalculationMode::Proportions => calculate_sample_size_proportions(alpha, power, p1, p2)
+                .map_err(|e| e.to_string())?,
         };
         self.mode = s.mode;
         self.alpha = alpha;

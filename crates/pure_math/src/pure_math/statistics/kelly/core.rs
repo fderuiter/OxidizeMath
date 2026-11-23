@@ -60,6 +60,30 @@ impl Odds {
         self.0 - 1.0
     }
 
+    /// Creates decimal odds from net profit multiplier `b` (`decimal = 1.0 + b`).
+    ///
+    /// Net odds represent profit won per unit staked (must be finite and `> 0.0`):
+    /// - Even money (`+100`): `b = 1.0` -> decimal odds `2.0`
+    /// - `5:2` payoff: `b = 2.5` -> decimal odds `3.5`
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::kelly::Odds;
+    ///
+    /// let even_money = Odds::from_net_odds(1.0).unwrap();
+    /// assert_eq!(even_money.value(), 2.0);
+    /// assert_eq!(even_money.net_profit_multiplier(), 1.0);
+    /// ```
+    #[verified_engine::verified]
+    pub fn from_net_odds(b: f64) -> Result<Self, KellyError> {
+        if !b.is_finite() || b <= 0.0 {
+            return Err(KellyError::InvalidOdds { value: b });
+        }
+        Self::new(1.0 + b)
+    }
+
     /// Creates odds from American format.
     ///
     /// American odds use positive numbers for underdogs and negative for favorites:
@@ -306,5 +330,26 @@ mod tests {
     fn test_bankroll_fraction_boundaries() {
         assert!(BankrollFraction::new(0.0).is_ok());
         assert!(BankrollFraction::new(1.0).is_ok());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_odds_from_net_odds() {
+        let even = Odds::from_net_odds(1.0).unwrap();
+        assert!((even.value() - 2.0).abs() < math_commons::registry::TOLERANCE_HIGH);
+        assert!(
+            (even.net_profit_multiplier() - 1.0).abs() < math_commons::registry::TOLERANCE_HIGH
+        );
+
+        let sub_even = Odds::from_net_odds(0.5).unwrap();
+        assert!((sub_even.value() - 1.5).abs() < math_commons::registry::TOLERANCE_HIGH);
+        assert!(
+            (sub_even.net_profit_multiplier() - 0.5).abs() < math_commons::registry::TOLERANCE_HIGH
+        );
+
+        assert!(Odds::from_net_odds(0.0).is_err());
+        assert!(Odds::from_net_odds(-0.5).is_err());
+        assert!(Odds::from_net_odds(f64::NAN).is_err());
+        assert!(Odds::from_net_odds(f64::INFINITY).is_err());
     }
 }

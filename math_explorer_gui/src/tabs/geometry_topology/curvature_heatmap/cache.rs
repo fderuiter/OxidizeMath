@@ -2,26 +2,16 @@
 
 use super::CurvatureHeatmap;
 use eframe::egui;
-use egui_plot::{PlotBounds, PlotPoint};
+use egui_plot::LineStyle;
 use math_commons::math_kernel::colormap::mapped_gradient;
-use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::differential_geometry::surface::{
     CurvatureKind, KleinBottle, ParametricSurface, ParametricSurfaceKind, Sphere, SurfaceAnalysis,
     Torus,
 };
 use nalgebra::Point3;
 use std::hash::{Hash as _, Hasher as _};
-use std::sync::Arc;
 
 pub(super) const CURVATURE_COLOR_BINS: usize = 64;
-
-#[derive(Clone)]
-pub(super) struct CurvatureColorBatch {
-    pub(super) bin: usize,
-    pub(super) color: egui::Color32,
-    pub(super) segments: Arc<Vec<Vec<PlotPoint>>>,
-    pub(super) bounds: PlotBounds,
-}
 
 #[derive(Default)]
 pub(super) struct CurvatureGeometryCache {
@@ -32,8 +22,7 @@ pub(super) struct CurvatureGeometryCache {
     curvatures: Vec<f64>,
     min_k: f64,
     max_k: f64,
-    proj_key: Option<(u64, [u32; 3])>,
-    batches: Vec<CurvatureColorBatch>,
+    proj_key: Option<(u64, u64, [u8; 4])>,
     pub(super) curvature_eval_count: usize,
     pub(super) projection_count: usize,
 }
@@ -67,14 +56,6 @@ impl CurvatureHeatmap {
             }
         }
         h.finish().max(1)
-    }
-
-    pub(super) fn camera_pose_bits(&self) -> [u32; 3] {
-        [
-            self.camera.pitch.to_bits(),
-            self.camera.yaw.to_bits(),
-            self.camera.zoom.to_bits(),
-        ]
     }
 
     fn evaluate_surface_curvature(&mut self) {
@@ -135,7 +116,7 @@ impl CurvatureHeatmap {
         self.cache.curvature_eval_count += 1;
     }
 
-    pub(super) fn ensure_projected_batches(&mut self) -> &[CurvatureColorBatch] {
+    pub(super) fn populate_cached_scene(&mut self, series_color: egui::Color32) {
         let surf_key = self.curvature_geometry_key();
         if self.cache.surface_key != Some(surf_key)
             || self.cache.u_res != self.u_resolution
@@ -144,21 +125,68 @@ impl CurvatureHeatmap {
             self.evaluate_surface_curvature();
             self.cache.surface_key = Some(surf_key);
         }
-        let proj_key = (surf_key, self.camera_pose_bits());
+        let proj_key = (
+            surf_key,
+            self.camera.pose_fingerprint(),
+            series_color.to_array(),
+        );
         if self.cache.proj_key != Some(proj_key) {
-            self.cache.batches = build_batched_curvature_lines(
-                &self.cache.positions_3d,
-                &self.cache.curvatures,
-                self.cache.u_res,
-                self.cache.v_res,
-                self.cache.min_k,
-                self.cache.max_k,
-                &self.camera,
-            );
+            self.rebuild_curvature_scene(series_color);
             self.cache.proj_key = Some(proj_key);
             self.cache.projection_count += 1;
         }
-        &self.cache.batches
+    }
+
+    fn rebuild_curvature_scene(&mut self, series_color: egui::Color32) {
+        let lut = build_curvature_palette(self.cache.min_k, self.cache.max_k);
+        let min_k = self.cache.min_k;
+        let max_k = self.cache.max_k;
+        let u_res = self.cache.u_res;
+        let v_res = self.cache.v_res;
+        let cols = v_res + 1;
+
+        self.scene_builder.begin(self.camera);
+        for i in 0..u_res {
+            for j in 0..v_res {
+                let idx = i * cols + j;
+                let p1 = self.cache.positions_3d[idx];
+                let p2 = self.cache.positions_3d[idx + 1];
+                let p3 = self.cache.positions_3d[idx + cols];
+                let c1 = self.cache.curvatures[idx];
+                let col_v = lut[quantize_curvature_bin(
+                    0.5 * (c1 + self.cache.curvatures[idx + 1]),
+                    min_k,
+                    max_k,
+                )];
+                let col_u = lut[quantize_curvature_bin(
+                    0.5 * (c1 + self.cache.curvatures[idx + cols]),
+                    min_k,
+                    max_k,
+                )];
+                self.scene_builder.add_styled_segment(
+                    "Curvature Surface",
+                    [p1, p2],
+                    egui::Stroke::new(1.25_f32, col_v),
+                    LineStyle::Solid,
+                    true,
+                    false,
+                );
+                self.scene_builder.add_styled_segment(
+                    "Curvature Surface",
+                    [p1, p3],
+                    egui::Stroke::new(1.25_f32, col_u),
+                    LineStyle::Solid,
+                    true,
+                    false,
+                );
+            }
+        }
+        self.scene_builder.record_series(
+            "Curvature Surface",
+            &self.cache.positions_3d,
+            series_color,
+        );
+        self.scene_builder.ensure_sorted();
     }
 }
 
@@ -212,123 +240,11 @@ fn quantize_curvature_bin(value: f64, min_k: f64, max_k: f64) -> usize {
     ((t * (CURVATURE_COLOR_BINS - 1) as f64).round() as usize).min(CURVATURE_COLOR_BINS - 1)
 }
 
-fn push_edge_to_run(
-    edge: Option<(PlotPoint, PlotPoint, usize)>,
-    active_bin: &mut Option<usize>,
-    run: &mut Vec<PlotPoint>,
-    buckets: &mut [Vec<Vec<PlotPoint>>],
-) {
-    match edge {
-        Some((p1, p2, bin)) => {
-            if *active_bin == Some(bin) {
-                run.push(p2);
-            } else {
-                if let Some(prev) = active_bin.take() {
-                    if run.len() >= 2 {
-                        buckets[prev].push(std::mem::take(run));
-                    }
-                }
-                run.clear();
-                run.push(p1);
-                run.push(p2);
-                *active_bin = Some(bin);
-            }
-        }
-        None => {
-            if let Some(prev) = active_bin.take() {
-                if run.len() >= 2 {
-                    buckets[prev].push(std::mem::take(run));
-                }
-            }
-            run.clear();
-        }
-    }
-}
-
-fn build_batched_curvature_lines(
-    positions: &[Point3<f64>],
-    curvatures: &[f64],
-    u_res: usize,
-    v_res: usize,
-    min_k: f64,
-    max_k: f64,
-    camera: &crate::framework::Camera3D,
-) -> Vec<CurvatureColorBatch> {
-    let cols = v_res + 1;
-    let pts_2d: Vec<Option<PlotPoint>> = positions
-        .iter()
-        .map(|p| {
-            let p2 = camera.project(&[p.x, p.y, p.z]);
-            (p2[0].is_finite() && p2[1].is_finite()).then(|| PlotPoint::new(p2[0], p2[1]))
-        })
-        .collect();
-
-    let mut buckets: Vec<Vec<Vec<PlotPoint>>> = vec![Vec::new(); CURVATURE_COLOR_BINS];
-    let mut run = Vec::new();
-    let mut active_bin = None;
-
-    for i in 0..=u_res {
-        for j in 0..v_res {
-            let idx0 = flatten_2d_index(j, i, cols);
-            let idx1 = idx0 + 1;
-            let edge = pts_2d[idx0].zip(pts_2d[idx1]).map(|(p1, p2)| {
-                let bin = quantize_curvature_bin(
-                    0.5 * (curvatures[idx0] + curvatures[idx1]),
-                    min_k,
-                    max_k,
-                );
-                (p1, p2, bin)
-            });
-            push_edge_to_run(edge, &mut active_bin, &mut run, &mut buckets);
-        }
-        push_edge_to_run(None, &mut active_bin, &mut run, &mut buckets);
-    }
-
-    for j in 0..=v_res {
-        for i in 0..u_res {
-            let idx0 = flatten_2d_index(j, i, cols);
-            let idx1 = flatten_2d_index(j, i + 1, cols);
-            let edge = pts_2d[idx0].zip(pts_2d[idx1]).map(|(p1, p2)| {
-                let bin = quantize_curvature_bin(
-                    0.5 * (curvatures[idx0] + curvatures[idx1]),
-                    min_k,
-                    max_k,
-                );
-                (p1, p2, bin)
-            });
-            push_edge_to_run(edge, &mut active_bin, &mut run, &mut buckets);
-        }
-        push_edge_to_run(None, &mut active_bin, &mut run, &mut buckets);
-    }
-
-    finalize_color_batches(buckets, min_k, max_k)
-}
-
-fn finalize_color_batches(
-    buckets: Vec<Vec<Vec<PlotPoint>>>,
-    min_k: f64,
-    max_k: f64,
-) -> Vec<CurvatureColorBatch> {
-    let mut out = Vec::new();
+fn build_curvature_palette(min_k: f64, max_k: f64) -> [egui::Color32; CURVATURE_COLOR_BINS] {
     let max_idx = (CURVATURE_COLOR_BINS - 1) as f64;
-    for (bin, segs) in buckets.into_iter().enumerate() {
-        if segs.is_empty() {
-            continue;
-        }
-        let mut bounds = PlotBounds::NOTHING;
-        for seg in &segs {
-            for pt in seg {
-                bounds.extend_with(pt);
-            }
-        }
-        let sample_val = min_k + (max_k - min_k) * (bin as f64 / max_idx);
-        let rgb = mapped_gradient(sample_val, min_k, max_k);
-        out.push(CurvatureColorBatch {
-            bin,
-            color: egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]),
-            segments: Arc::new(segs),
-            bounds,
-        });
-    }
-    out
+    std::array::from_fn(|bin| {
+        let sample = min_k + (max_k - min_k) * (bin as f64 / max_idx);
+        let rgb = mapped_gradient(sample, min_k, max_k);
+        egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
+    })
 }

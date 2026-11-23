@@ -1,9 +1,23 @@
 use crate::markdown_links::check_markdown_links;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[path = "../../../crates/oxidize_core/src/workspace_wasm.rs"]
+pub mod workspace_wasm;
+
 static VERIFICATION_BUILT: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn resolve_workspace_root() -> PathBuf {
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| workspace_wasm::find_workspace_root(&cwd))
+        .or_else(|| workspace_wasm::find_workspace_root(Path::new(env!("CARGO_MANIFEST_DIR"))))
+        .unwrap_or_else(|| {
+            eprintln!("Error: Unable to locate workspace root Cargo.toml");
+            exit(1);
+        })
+}
 
 pub const HOST_CLIPPY_ARGS: &[&str] = &[
     "clippy",
@@ -27,25 +41,6 @@ pub const WASM_CLIPPY_ARGS: &[&str] = &[
     "--",
     "-D",
     "warnings",
-];
-
-pub const WASM_OXIDIZE_CORE_TEST_ARGS: &[&str] = &[
-    "test",
-    "--target",
-    "wasm32-unknown-unknown",
-    "-p",
-    "oxidize_core",
-    "--lib",
-];
-
-pub const WASM_GUI_TEST_ARGS: &[&str] = &[
-    "test",
-    "--target",
-    "wasm32-unknown-unknown",
-    "-p",
-    "math_explorer_gui",
-    "--bin",
-    "math_explorer_gui",
 ];
 
 pub fn run_cmd(cmd: &str, args: &[&str]) {
@@ -104,8 +99,9 @@ pub fn run_verification(subcmd: &str) {
     run_verification_with_args(subcmd, &[]);
 }
 
-fn git_trim_stdout(args: &[&str]) -> Option<String> {
+fn git_trim_stdout_in_dir(repo_dir: &Path, args: &[&str]) -> Option<String> {
     Command::new("git")
+        .current_dir(repo_dir)
         .args(args)
         .output()
         .ok()
@@ -114,16 +110,40 @@ fn git_trim_stdout(args: &[&str]) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+pub(crate) fn branch_records_base_sha_in_dir(
+    repo_dir: &Path,
+    raw_base_sha: Option<&str>,
+) -> Option<String> {
+    let has_explicit_base = raw_base_sha
+        .map(|s| s.trim().trim_matches('"').trim())
+        .is_some_and(|s| !s.is_empty() && !s.chars().all(|c| c == '0'));
+    if has_explicit_base {
+        return None;
+    }
+
+    let head = git_trim_stdout_in_dir(
+        repo_dir,
+        &["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+    )?;
+    for candidate in ["origin/main", "main"] {
+        let verify_spec = format!("{candidate}^{{commit}}");
+        if git_trim_stdout_in_dir(
+            repo_dir,
+            &["rev-parse", "--verify", "--quiet", &verify_spec],
+        )
+        .is_some()
+            && let Some(merge_base) =
+                git_trim_stdout_in_dir(repo_dir, &["merge-base", "HEAD", candidate])
+        {
+            return (merge_base != head).then_some(merge_base);
+        }
+    }
+    None
+}
+
 fn branch_records_base_sha() -> Option<String> {
-    if std::env::var_os("BASE_SHA").is_some() {
-        return None;
-    }
-    if git_trim_stdout(&["diff", "--cached", "--name-only"]).is_some() {
-        return None;
-    }
-    let head = git_trim_stdout(&["rev-parse", "HEAD"])?;
-    let merge_base = git_trim_stdout(&["merge-base", "HEAD", "main"])?;
-    (merge_base != head).then_some(merge_base)
+    let raw_base = std::env::var("BASE_SHA").ok();
+    branch_records_base_sha_in_dir(Path::new("."), raw_base.as_deref())
 }
 
 fn run_clippy_lints() {
@@ -257,123 +277,8 @@ pub fn regenerate_baseline() {
     run_verification("regenerate-baseline");
 }
 
-pub(crate) fn assert_no_serde_in_normal_deps(features: Option<&str>) {
-    for banned in ["serde", "serde_derive"] {
-        let mut args = vec![
-            "tree",
-            "-p",
-            "math_explorer",
-            "-e",
-            "normal",
-            "--no-default-features",
-        ];
-        if let Some(f) = features.filter(|s| !s.is_empty()) {
-            args.extend_from_slice(&["--features", f]);
-        }
-        args.extend_from_slice(&["-i", banned]);
-        let out = Command::new("cargo")
-            .args(&args)
-            .output()
-            .expect("failed to execute cargo tree");
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        if !out.status.success() || !stdout.trim().is_empty() {
-            eprintln!(
-                "Unexpected `{banned}` normal dependency in `cargo {}`:\n{stdout}",
-                args.join(" ")
-            );
-            exit(1);
-        }
-    }
-}
-
-fn test_single_feature(feature: &str) {
-    if feature == "core-only" || feature.is_empty() {
-        assert_no_serde_in_normal_deps(None);
-        run_cmd(
-            "cargo",
-            &["test", "-p", "math_explorer", "--no-default-features"],
-        );
-        run_cmd(
-            "cargo",
-            &[
-                "test",
-                "-p",
-                "math_explorer",
-                "--no-default-features",
-                "--features",
-                "serde",
-            ],
-        );
-        return;
-    }
-    if feature.split(',').any(|f| f.trim() == "serde") {
-        run_cmd(
-            "cargo",
-            &[
-                "test",
-                "-p",
-                "math_explorer",
-                "--no-default-features",
-                "--features",
-                feature,
-            ],
-        );
-        return;
-    }
-    assert_no_serde_in_normal_deps(Some(feature));
-    run_cmd(
-        "cargo",
-        &[
-            "test",
-            "-p",
-            "math_explorer",
-            "--no-default-features",
-            "--features",
-            feature,
-        ],
-    );
-    let with_serde = format!("{feature},serde");
-    run_cmd(
-        "cargo",
-        &[
-            "test",
-            "-p",
-            "math_explorer",
-            "--no-default-features",
-            "--features",
-            &with_serde,
-        ],
-    );
-}
-
-pub fn test_features(args: &[String]) {
-    if let Some(feature) = args.first() {
-        test_single_feature(feature);
-        return;
-    }
-    let domains = [
-        "pure_math",
-        "applied",
-        "ai",
-        "biology",
-        "climate",
-        "epidemiology",
-        "physics",
-    ];
-    println!("=== Running core-only (without and with serde) ===");
-    test_single_feature("core-only");
-    assert_no_serde_in_normal_deps(Some(&domains.join(",")));
-    for f in &domains {
-        println!("=== Running tests for feature: {f} (without and with serde) ===");
-        test_single_feature(f);
-    }
-    println!("=== Running all features ===");
-    run_cmd("cargo", &["test", "-p", "math_explorer", "--all-features"]);
-    println!("All feature combinations passed successfully!");
-}
-
-fn run_cmd_in_dir(cmd: &str, args: &[&str], dir: &str) {
-    println!("Running (in {dir}): {cmd} {}", args.join(" "));
+pub(crate) fn run_cmd_in_path(cmd: &str, args: &[&str], dir: &Path) {
+    println!("Running (in {}): {cmd} {}", dir.display(), args.join(" "));
     let status = Command::new(cmd).args(args).current_dir(dir).status();
     match status {
         Ok(s) if s.success() => (),
@@ -384,16 +289,21 @@ fn run_cmd_in_dir(cmd: &str, args: &[&str], dir: &str) {
     }
 }
 
-pub fn test_wasm(args: &[String]) {
-    println!("=== Running WebAssembly Unit Tests & Headless Chromium Smoke Suite ===");
+fn parse_test_wasm_args(args: &[String], caller_cwd: &Path) -> (bool, Option<PathBuf>) {
     let mut skip_build = false;
-    let mut screenshot_dir: Option<&str> = None;
+    let mut screenshot_dir: Option<PathBuf> = None;
     let mut idx = 0;
     while idx < args.len() {
         match args[idx].as_str() {
             "--skip-build" => skip_build = true,
             "--screenshot-dir" if idx + 1 < args.len() => {
-                screenshot_dir = Some(args[idx + 1].as_str());
+                let raw = Path::new(&args[idx + 1]);
+                let resolved = if raw.is_absolute() {
+                    raw.to_path_buf()
+                } else {
+                    caller_cwd.join(raw)
+                };
+                screenshot_dir = Some(resolved);
                 idx += 1;
             }
             other => {
@@ -403,39 +313,130 @@ pub fn test_wasm(args: &[String]) {
         }
         idx += 1;
     }
+    (skip_build, screenshot_dir)
+}
 
-    let runner_script = std::fs::canonicalize("scripts/wasm_test_runner.py")
-        .unwrap_or_else(|_| PathBuf::from("scripts/wasm_test_runner.py"));
-    let runner_val = format!("python3 {}", runner_script.display());
-    let runner_env = [(
-        "CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER",
-        runner_val.as_str(),
-    )];
-    println!("\n--- Step 1a: WASM Unit Tests (oxidize_core) ---");
-    run_cmd_with_env("cargo", WASM_OXIDIZE_CORE_TEST_ARGS, &runner_env);
+pub fn test_wasm(args: &[String]) {
+    println!("=== Running WebAssembly Unit Tests & Headless Chromium Smoke Suite ===");
+    let caller_cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let (skip_build, screenshot_dir) = parse_test_wasm_args(args, &caller_cwd);
+    let ws_root = resolve_workspace_root();
 
-    println!("\n--- Step 1b: WASM Unit Tests (math_explorer_gui) ---");
-    run_cmd_with_env("cargo", WASM_GUI_TEST_ARGS, &runner_env);
+    let wasm_crates = workspace_wasm::discover_wasm_crates(&ws_root).unwrap_or_else(|err| {
+        eprintln!("Failed to discover wasm32 workspace crates: {err}");
+        exit(1);
+    });
+    let invocations = workspace_wasm::build_wasm_cargo_test_invocations(&wasm_crates);
+    for (step_idx, cargo_args) in invocations.iter().enumerate() {
+        println!(
+            "\n--- Step 1{}: WASM Workspace Crate Tests ({} crates discovered) ---",
+            (b'a' + step_idx as u8) as char,
+            wasm_crates.len()
+        );
+        let arg_refs: Vec<&str> = cargo_args.iter().map(String::as_str).collect();
+        run_cmd_in_path("cargo", &arg_refs, &ws_root);
+    }
 
     if !skip_build {
         println!("\n--- Step 2: Build Release Web Bundle & Verify Budget ---");
-        run_cmd_in_dir("trunk", &["build", "--release"], "math_explorer_gui");
-        run_cmd(
+        run_cmd_in_path(
+            "trunk",
+            &["build", "--release"],
+            &ws_root.join("math_explorer_gui"),
+        );
+        run_cmd_in_path(
             "bash",
             &["scripts/verify_wasm_budget.sh", "math_explorer_gui/dist"],
+            &ws_root,
         );
     }
 
     println!("\n--- Step 3: Headless Chromium CSP & Fault-Injection Smoke Checks ---");
+    let screenshot_str = screenshot_dir.map(|p| p.to_string_lossy().into_owned());
     let mut smoke_args = vec![
         "scripts/playwright_smoke.py",
         "--dist",
         "math_explorer_gui/dist",
         "--verify-regression-detection",
     ];
-    if let Some(dir) = screenshot_dir {
+    if let Some(dir) = screenshot_str.as_deref() {
         smoke_args.push("--screenshot-dir");
         smoke_args.push(dir);
     }
-    run_cmd("python3", &smoke_args);
+    run_cmd_in_path(crate::setup::resolve_python_bin(), &smoke_args, &ws_root);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::sync::atomic::AtomicUsize;
+
+    static GATE_REPO_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git {:?} failed", args);
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    fn init_gate_repo() -> PathBuf {
+        let id = GATE_REPO_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir =
+            std::env::temp_dir().join(format!("xtask_gates_test_{}_{}", std::process::id(), id));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init"]);
+        git(&dir, &["branch", "-M", "main"]);
+        git(&dir, &["config", "user.email", "test@example.com"]);
+        git(&dir, &["config", "user.name", "Test"]);
+        fs::write(dir.join("README.md"), "init\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-m", "init"]);
+        dir
+    }
+
+    #[test]
+    fn test_branch_records_base_sha_handles_staged_files_and_origin_main() {
+        let dir = init_gate_repo();
+        let base = git(&dir, &["rev-parse", "HEAD"]);
+        assert_eq!(branch_records_base_sha_in_dir(&dir, None), None);
+
+        // Set refs/remotes/origin/main to base, then commit directly on local main
+        git(&dir, &["update-ref", "refs/remotes/origin/main", &base]);
+        fs::write(dir.join("crates_touch.txt"), "branch edit\n").unwrap();
+        git(&dir, &["add", "crates_touch.txt"]);
+        git(
+            &dir,
+            &["commit", "-m", "commit on local main ahead of origin/main"],
+        );
+
+        // Prefer origin/main over local main when local main == HEAD
+        assert_eq!(
+            branch_records_base_sha_in_dir(&dir, None),
+            Some(base.clone())
+        );
+
+        // Staged files must NOT clear branch_records_base_sha
+        fs::write(dir.join("staged_note.txt"), "staged\n").unwrap();
+        git(&dir, &["add", "staged_note.txt"]);
+        assert_eq!(
+            branch_records_base_sha_in_dir(&dir, None),
+            Some(base.clone())
+        );
+
+        // Zero BASE_SHA still computes merge-base; explicit non-zero BASE_SHA defers to caller
+        let zero40 = "0".repeat(40);
+        assert_eq!(
+            branch_records_base_sha_in_dir(&dir, Some(&zero40)),
+            Some(base)
+        );
+        assert_eq!(branch_records_base_sha_in_dir(&dir, Some("deadbeef")), None);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

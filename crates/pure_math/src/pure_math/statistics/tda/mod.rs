@@ -67,13 +67,14 @@
 //!
 //! #### Computing β₁ (Cycles/Holes)
 //!
-//! For a 2D simplicial complex, we use the relationship:
+//! For a 2D simplicial complex over $\mathbb{Z}_2$, we reduce the boundary matrix $\partial_2$:
 //!
 //! ```text
-//! β₁ = (# edges) - (# vertices) + β₀ - (# filled triangles)
+//! β₁ = (# edges) - (# vertices) + β₀ - rank_Z2(∂₂)
 //! ```
 //!
-//! This counts cycles that aren't filled by triangles.
+//! This retains genuine 1-cycles even near higher-order cliques such as $K_4$ where raw
+//! triangle counts exceed boundary rank.
 //!
 //! ### Persistence
 //!
@@ -255,6 +256,7 @@
 //! - Carlsson, G. (2009). *Topology and data*. Bulletin of the American
 //!   Mathematical Society, 46(2), 255-308.
 
+pub mod boundary;
 pub mod complex;
 pub mod core;
 pub mod homology;
@@ -263,9 +265,17 @@ pub mod persistence;
 mod serde_support;
 
 // Re-export main types and functions
-pub use complex::{SimplicialComplex, vietoris_rips_complex};
-pub use core::{Point2D, PointCloud, Simplex};
+pub use boundary::{Z2BoundaryWorkspace, rank_z2_boundary};
+pub use complex::{
+    MAX_FILTRATION_TRIANGLES, SimplicialComplex, vietoris_rips_complex, vietoris_rips_complex_nd,
+    vietoris_rips_from_distance_matrix,
+};
+pub use core::{MAX_TDA_DIMENSION, MAX_TDA_POINTS, NdPointCloud, Point2D, PointCloud, Simplex};
 pub use homology::{betti_number_0, betti_number_1, betti_numbers};
-pub use persistence::{PersistenceBarcode, PersistenceInterval, compute_persistence};
+pub use persistence::{
+    PersistenceBarcode, PersistenceInterval, RipsInterval, RipsPersistenceResult,
+    compute_persistence, compute_rips_persistence, compute_rips_persistence_from_distances,
+    compute_rips_persistence_nd,
+};
 
 // [cite:clinical_trials_statistics]

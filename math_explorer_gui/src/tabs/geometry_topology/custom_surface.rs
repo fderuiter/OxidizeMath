@@ -24,6 +24,7 @@ pub const CUSTOM_DOMAIN_MAX_BOUND: f64 = 50.0;
 pub const CUSTOM_DOMAIN_MIN_SPAN: f64 = 0.05;
 pub const DEFAULT_HF_BOUNDS: [f64; 2] = [-2.0, 2.0];
 pub const DEFAULT_PARAM_BOUNDS: [f64; 2] = [0.0, 2.0 * PI];
+
 pub struct CustomSurfaceSandbox {
     pub heightfield_bar: MathExpressionInputBar,
     pub param_x_bar: MathExpressionInputBar,

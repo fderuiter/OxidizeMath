@@ -1,4 +1,7 @@
-use super::{ContinuousMarkovChain, HiddenMarkovModel, TimeIndex, TransitionTensor};
+use super::{
+    ContinuousMarkovChain, HiddenMarkovModel, ParrondoParams, ParrondoSchedule, TimeIndex,
+    TransitionTensor,
+};
 use nalgebra::{DMatrix, DVector, RealField};
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -142,6 +145,50 @@ where
     }
 }
 
+impl<'de> Deserialize<'de> for ParrondoParams {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct ParrondoParamsRaw {
+            modulus: usize,
+            p_a_base: f64,
+            p_b0_base: f64,
+            p_b1_base: f64,
+            epsilon: f64,
+        }
+        let raw = ParrondoParamsRaw::deserialize(deserializer)?;
+        ParrondoParams::new(
+            raw.modulus,
+            raw.p_a_base,
+            raw.p_b0_base,
+            raw.p_b1_base,
+            raw.epsilon,
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for ParrondoSchedule {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.as_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for ParrondoSchedule {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        ParrondoSchedule::parse(&raw).map_err(serde::de::Error::custom)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{
@@ -192,5 +239,26 @@ mod tests {
         let tensor_json = serde_json::to_string(&tensor).unwrap();
         let tensor_restored: TransitionTensor<f64> = serde_json::from_str(&tensor_json).unwrap();
         assert_eq!(tensor_restored.num_time_slices(), 1);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_parrondo_serde_roundtrip_and_validation() {
+        use super::super::{ParrondoParams, ParrondoSchedule};
+
+        let params = ParrondoParams::canonical();
+        let json = serde_json::to_string(&params).unwrap();
+        let restored: ParrondoParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored, params);
+        let bad_params =
+            r#"{"modulus":4,"p_a_base":0.5,"p_b0_base":0.1,"p_b1_base":0.75,"epsilon":0.005}"#;
+        assert!(serde_json::from_str::<ParrondoParams>(bad_params).is_err());
+
+        let sched = ParrondoSchedule::parse("ABBB").unwrap();
+        let sched_json = serde_json::to_string(&sched).unwrap();
+        assert_eq!(sched_json, r#""ABBB""#);
+        let sched_restored: ParrondoSchedule = serde_json::from_str(&sched_json).unwrap();
+        assert_eq!(sched_restored, sched);
+        assert!(serde_json::from_str::<ParrondoSchedule>(r#""ABC""#).is_err());
     }
 }

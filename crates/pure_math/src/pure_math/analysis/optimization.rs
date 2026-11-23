@@ -3,7 +3,7 @@
 //! Provides structures and traits for mathematical optimization problems.
 
 use super::evolution::{EvolutionEngine, EvolutionError};
-use nalgebra::{DMatrix, DVector, RealField};
+use nalgebra::{DMatrix, DVector, RealField, Vector2};
 use rand::RngCore;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -111,6 +111,25 @@ impl<T: RealField + Copy> EvolutionEngine<DVector<T>, DVector<T>> for SGD<T> {
     }
 }
 
+impl<T: RealField + Copy> EvolutionEngine<Vector2<T>, Vector2<T>> for SGD<T> {
+    #[verified_engine::verified]
+    fn step<R: RngCore + ?Sized>(
+        &mut self,
+        state: &mut Vector2<T>,
+        aux: &mut Vector2<T>,
+        _rng: &mut R,
+        dt: f64,
+    ) -> Result<(), EvolutionError> {
+        let lr = if dt > 0.0 {
+            T::from_f64(dt).unwrap_or(self.learning_rate)
+        } else {
+            self.learning_rate
+        };
+        *state -= *aux * lr;
+        Ok(())
+    }
+}
+
 impl<T: RealField + Copy, Key> Optimizer<T, Key> for SGD<T> {
     #[verified_engine::verified]
     fn update_vector(
@@ -159,36 +178,44 @@ pub struct AdamState<T> {
 }
 
 #[cfg(feature = "serde")]
-mod serde_adam_states {
-    use super::AdamState;
-    use nalgebra::Scalar;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-    use std::collections::HashMap;
-    use std::hash::Hash;
+#[path = "optimization_serde.rs"]
+mod serde_adam_states;
 
-    pub(super) fn serialize<S, K, T>(
-        map: &HashMap<K, AdamState<T>>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-        K: Serialize,
-        T: Scalar + Serialize,
-    {
-        let entries: Vec<(&K, &AdamState<T>)> = map.iter().collect();
-        entries.serialize(serializer)
+/// Zero-allocation stack moment accumulators for 2D `Adam` parameter updates.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound(
+        serialize = "T: nalgebra::Scalar + serde::Serialize",
+        deserialize = "T: nalgebra::Scalar + serde::Deserialize<'de>"
+    ))
+)]
+pub struct AdamState2D<T> {
+    /// First moment (exponentially decaying gradient mean).
+    pub m: Vector2<T>,
+    /// Second raw moment (exponentially decaying uncentered gradient variance).
+    pub v: Vector2<T>,
+    /// 1-indexed optimization step counter.
+    pub t: i32,
+}
+
+impl<T: RealField + Copy> Default for AdamState2D<T> {
+    #[verified_engine::verified]
+    fn default() -> Self {
+        Self::new()
     }
+}
 
-    pub(super) fn deserialize<'de, D, K, T>(
-        deserializer: D,
-    ) -> Result<HashMap<K, AdamState<T>>, D::Error>
-    where
-        D: Deserializer<'de>,
-        K: Deserialize<'de> + Eq + Hash,
-        T: Scalar + Deserialize<'de>,
-    {
-        let entries = Vec::<(K, AdamState<T>)>::deserialize(deserializer)?;
-        Ok(entries.into_iter().collect())
+impl<T: RealField + Copy> AdamState2D<T> {
+    /// Creates a zeroed 2D Adam moment accumulator on the stack.
+    #[verified_engine::verified]
+    pub fn new() -> Self {
+        Self {
+            m: Vector2::zeros(),
+            v: Vector2::zeros(),
+            t: 0,
+        }
     }
 }
 
@@ -330,6 +357,39 @@ impl<T: RealField + Copy, Key: Eq + std::hash::Hash>
     }
 }
 
+impl<T: RealField + Copy, Key: Eq + std::hash::Hash>
+    EvolutionEngine<Vector2<T>, (Vector2<T>, &mut AdamState2D<T>)> for Adam<T, Key>
+{
+    #[verified_engine::verified]
+    fn step<R: RngCore + ?Sized>(
+        &mut self,
+        state: &mut Vector2<T>,
+        aux: &mut (Vector2<T>, &mut AdamState2D<T>),
+        _rng: &mut R,
+        dt: f64,
+    ) -> Result<(), EvolutionError> {
+        let grad = aux.0;
+        let adam_state = &mut *aux.1;
+        let lr = if dt > 0.0 {
+            T::from_f64(dt).unwrap_or(self.learning_rate)
+        } else {
+            self.learning_rate
+        };
+        let one = T::one();
+        adam_state.t += 1;
+        let t_val = T::from_i32(adam_state.t).ok_or(EvolutionError::ConversionError)?;
+        adam_state.m = adam_state.m * self.beta1 + grad * (one - self.beta1);
+        let grad_sq = Vector2::new(grad.x * grad.x, grad.y * grad.y);
+        adam_state.v = adam_state.v * self.beta2 + grad_sq * (one - self.beta2);
+        let m_hat = adam_state.m / (one - self.beta1.powf(t_val));
+        let v_hat = adam_state.v / (one - self.beta2.powf(t_val));
+        let dx = m_hat.x / (v_hat.x.sqrt() + self.epsilon);
+        let dy = m_hat.y / (v_hat.y.sqrt() + self.epsilon);
+        *state -= Vector2::new(dx, dy) * lr;
+        Ok(())
+    }
+}
+
 impl<T: RealField + Copy, Key> Optimizer<T, Key> for Adam<T, Key>
 where
     Key: Eq + std::hash::Hash + Clone,
@@ -426,36 +486,5 @@ pub trait Trainable<T: nalgebra::RealField + Copy = f64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_adam_optimizer_respects_configured_learning_rate() {
-        let mut low_lr = Adam::<f64, usize>::new(0.001).expect("low adam");
-        let mut high_lr = Adam::<f64, usize>::new(0.05).expect("high adam");
-
-        let mut p_low = DMatrix::from_element(2, 2, 1.0_f64);
-        let mut p_high = DMatrix::from_element(2, 2, 1.0_f64);
-        let grad = DMatrix::from_element(2, 2, 0.5_f64);
-
-        low_lr.update_matrix(0, &mut p_low, &grad).expect("low lr");
-        high_lr
-            .update_matrix(0, &mut p_high, &grad)
-            .expect("high lr");
-
-        let delta_low = (1.0 - p_low[(0, 0)]).abs();
-        let delta_high = (1.0 - p_high[(0, 0)]).abs();
-        assert!((delta_high / delta_low - 50.0).abs() < 1e-6);
-
-        let mut v_low = DVector::from_element(2, 1.0);
-        let mut v_high = DVector::from_element(2, 1.0);
-        let v_grad = DVector::from_element(2, 0.5);
-        low_lr
-            .update_vector(1, &mut v_low, &v_grad)
-            .expect("low vec");
-        high_lr
-            .update_vector(1, &mut v_high, &v_grad)
-            .expect("high vec");
-        assert!(((1.0 - v_high[0]).abs() / (1.0 - v_low[0]).abs() - 50.0).abs() < 1e-6);
-    }
-}
+#[path = "optimization_tests.rs"]
+mod tests;
