@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub mod atlas;
+#[cfg(test)]
+mod legacy_runner;
 pub mod lenia;
 pub mod presets;
 pub mod runner;

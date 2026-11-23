@@ -134,7 +134,7 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
 fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    let expected_tools = 75 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
+    let expected_tools = 76 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
     assert_eq!(
         tools.len(),
         expected_tools,
@@ -198,7 +198,7 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = 108
+    let expected_presets = 109
         + if cfg!(all(feature = "physics", feature = "biology")) {
             4
         } else {
@@ -272,11 +272,19 @@ fn build_invalid_share_url_cases() -> Vec<String> {
     let traversal_trace_b64 = encode_base64url(
         br#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"traceability","timestamp":"0"},"config":{"repo_path":"../../etc/passwd"}}"#,
     );
+    let non_finite_b64 = encode_base64url(
+        br#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"chaos","timestamp":"0"},"config":{"x":1e309}}"#,
+    );
+    let oversized_decoded_b64 = encode_base64url(
+        format!(r#"{{"pad":"{}"}}"#, "x".repeat(MAX_DECODED_URL_STATE_BYTES)).as_bytes(),
+    );
     vec![
         "#tab=chaos&tool=AttractorPlotter&state=***invalid_base64***".to_string(),
         format!("#tab=chaos&tool=AttractorPlotter&state={unknown_field_b64}"),
         format!("#tab=chaos&tool=AttractorPlotter&state={wrong_domain_b64}"),
         format!("#tab=chaos&tool=AttractorPlotter&state={wrong_schema_b64}"),
+        format!("#tab=chaos&tool=AttractorPlotter&state={non_finite_b64}"),
+        format!("#tab=chaos&tool=AttractorPlotter&state={oversized_decoded_b64}"),
         format!("#tab=morphogenesis&state={bad_morpho_b64}"),
         format!("#tab=chaos&tool=FractalViewer&state={bad_fractal_b64}"),
         format!("#tab=traceability&state={traversal_trace_b64}"),

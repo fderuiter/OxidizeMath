@@ -32,6 +32,10 @@ impl MriKSpaceRunner {
                 let spike_amp = 0.35 * ((self.size * self.size) as f64);
                 self.kspace_spikes[(cy as usize) * self.size + (cx as usize)] =
                     Complex::new(spike_amp, 0.0);
+                if tip_live_spins {
+                    self.rf_spike_pending
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                }
             }
             return;
         }
@@ -114,6 +118,17 @@ impl MriKSpaceRunner {
                 cfg.selected_voxel,
             ),
             _ => {}
+        }
+    }
+
+    fn snapshot_sonification(&self, sel_voxel: [usize; 2]) -> crate::audio::SonificationFrame {
+        let rf_spike = self
+            .rf_spike_pending
+            .swap(false, std::sync::atomic::Ordering::Relaxed);
+        if self.is_finite_state() {
+            crate::audio::mappings::mri_kspace_frame(&self.build_audio_input(sel_voxel, rf_spike))
+        } else {
+            crate::audio::SonificationFrame::silent()
         }
     }
 }
@@ -268,7 +283,7 @@ impl SimulationRunner for MriKSpaceRunner {
             pixels: Arc::new(std::sync::RwLock::new(recon_rgba)),
             custom_data: vec![self.current_time],
             structured_data: Some(Box::new(structured)),
-            sonification: crate::audio::SonificationFrame::silent(),
+            sonification: self.snapshot_sonification(sel_voxel),
         }
     }
 

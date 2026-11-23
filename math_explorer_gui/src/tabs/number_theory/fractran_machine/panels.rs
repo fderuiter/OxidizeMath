@@ -140,6 +140,7 @@ impl FractranMachineTool {
                             self.stop_reason = MachineStopReason::Paused;
                         }
                     }
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset_machine(),
                 }
             }

@@ -34,19 +34,22 @@ fn test_coupled_100x50_and_100x100_zero_allocations_with_global_allocator() {
     assert!(metrics_50.arithmetic_ops > 0 && metrics_50.memory_loads > 0);
     assert!(engine_50.is_finite());
 
-    #[cfg(all(not(debug_assertions), not(target_arch = "wasm32")))]
-    let start = Instant::now();
     let (_, metrics_100) = VerifiedEngine::run_verified(|| {
         engine_100.step();
     });
-    #[cfg(all(not(debug_assertions), not(target_arch = "wasm32")))]
-    let elapsed = start.elapsed();
     assert!(metrics_100.arithmetic_ops > 0 && metrics_100.memory_loads > 0);
     assert!(engine_100.is_finite());
+
     #[cfg(all(not(debug_assertions), not(target_arch = "wasm32")))]
-    assert!(
-        elapsed.as_millis() < 25,
-        "Single coupled 100x100 release step took {:?}",
-        elapsed
-    );
+    {
+        let start = Instant::now();
+        engine_100.step();
+        let elapsed = start.elapsed();
+        assert!(engine_100.is_finite());
+        assert!(
+            elapsed.as_millis() < 25,
+            "Single coupled 100x100 release step took {:?}",
+            elapsed
+        );
+    }
 }

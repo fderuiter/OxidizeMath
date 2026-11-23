@@ -95,6 +95,7 @@ impl VortexMorphogenesisTool {
                 self.bump_revision();
             }
             PlaybackAction::Step => self.step_single_tick(),
+            PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
             PlaybackAction::Reset => self.reset_active_regime(),
         }
     }
