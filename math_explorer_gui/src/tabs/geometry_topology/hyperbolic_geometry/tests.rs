@@ -171,7 +171,7 @@ fn test_accesskit_canvas_focus_ring_and_arrow_key_panning_without_tab_trap() {
         ((canvas_bounds.y0 + canvas_bounds.y1) * 0.5) as f32,
     );
     click_tool_at(&ctx, &mut tool, click_pos, &raw);
-    assert!(tool.focused_canvas_id().is_some());
+    assert!(ctx.memory(|m| m.focused().is_some()));
 
     let before_b = tool.state.disk_isometry.b();
     let _ = ctx.run(

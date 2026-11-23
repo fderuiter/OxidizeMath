@@ -33,6 +33,7 @@ pub struct PlaybackTransport<'a> {
     is_playing: bool,
     is_in_thread: bool,
     can_toggle: bool,
+    allow_space_shortcut: bool,
     can_step: bool,
     can_reset: bool,
     timeline: Option<TimelineMetadata>,
@@ -60,6 +61,7 @@ impl<'a> PlaybackTransport<'a> {
             is_playing,
             is_in_thread: false,
             can_toggle,
+            allow_space_shortcut: true,
             can_step,
             can_reset,
             timeline: None,
@@ -80,6 +82,7 @@ impl<'a> PlaybackTransport<'a> {
             is_playing,
             is_in_thread: true,
             can_toggle: true,
+            allow_space_shortcut: true,
             can_step: !is_playing,
             can_reset: true,
             timeline: None,
@@ -123,6 +126,13 @@ impl<'a> PlaybackTransport<'a> {
     #[must_use]
     pub fn can_reset(mut self, enabled: bool) -> Self {
         self.can_reset = enabled;
+        self
+    }
+
+    /// Controls whether the `Space` shortcut toggles playback (e.g. `false` when a focused canvas consumes `Space`).
+    #[must_use]
+    pub fn allow_space_shortcut(mut self, allow: bool) -> Self {
+        self.allow_space_shortcut = allow;
         self
     }
 
@@ -314,9 +324,12 @@ impl<'a> PlaybackTransport<'a> {
             let announce = emit_playback_broadcast(ctx, base_id, dispatched, None);
             return (Some(dispatched), announce);
         }
-        if let Some((sync_key_action, key)) =
-            claim_pending_sync_key(ctx, self.can_toggle, self.is_playing, self.can_step)
-        {
+        if let Some((sync_key_action, key)) = claim_pending_sync_key(
+            ctx,
+            self.can_toggle && self.allow_space_shortcut,
+            self.is_playing,
+            self.can_step,
+        ) {
             let announce = emit_playback_broadcast(ctx, base_id, sync_key_action, Some(key));
             return (Some(sync_key_action), announce);
         }
@@ -385,6 +398,7 @@ impl<'a> PlaybackTransport<'a> {
             return None;
         }
         if self.can_toggle
+            && self.allow_space_shortcut
             && super::is_pane_activation_shortcut_allowed(ui)
             && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Space))
         {

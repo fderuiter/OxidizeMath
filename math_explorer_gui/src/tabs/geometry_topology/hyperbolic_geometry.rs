@@ -194,7 +194,6 @@ pub struct HyperbolicGeometryTool {
     pub(super) edge_hit_scratch: Vec<u8>,
     pub(super) sep_series_scratch: Vec<[f64; 2]>,
     pub(super) last_frame_instant: Option<PlatformInstant>,
-    pub(super) focused_canvas: Option<egui::Id>,
     pub(super) drag_disk_last: Option<DiskPoint>,
     pub(super) drag_hp_last: Option<HalfPlanePoint>,
     pub(super) revision: u64,
@@ -228,7 +227,6 @@ impl Default for HyperbolicGeometryTool {
             edge_hit_scratch: vec![0u8; MAX_BILLIARD_SEGMENTS],
             sep_series_scratch: vec![[0.0; 2]; MAX_BILLIARD_SEGMENTS],
             last_frame_instant: None,
-            focused_canvas: None,
             drag_disk_last: None,
             drag_hp_last: None,
             revision: 1,
@@ -333,10 +331,6 @@ impl InteractiveTool for HyperbolicGeometryTool {
 
     fn state_revision(&self) -> u64 {
         self.revision
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {

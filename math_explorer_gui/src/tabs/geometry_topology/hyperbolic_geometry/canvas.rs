@@ -53,7 +53,6 @@ impl HyperbolicGeometryTool {
         }
         lock_canvas_arrow_keys(ui, &response);
         if response.has_focus() {
-            self.focused_canvas = Some(response.id);
             self.handle_disk_keyboard_pan(ui);
         }
         self.handle_disk_pointer_drag(&response, rect);

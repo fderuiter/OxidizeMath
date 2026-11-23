@@ -23,7 +23,6 @@ impl HyperbolicGeometryTool {
         }
         lock_canvas_arrow_keys(ui, &response);
         if response.has_focus() {
-            self.focused_canvas = Some(response.id);
             self.handle_half_plane_keyboard_pan(ui);
         }
         self.handle_half_plane_pointer_drag(&response, rect);
