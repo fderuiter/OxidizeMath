@@ -40,6 +40,13 @@ pub(super) struct FractalState {
     pub(super) custom_expr: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(super) custom_params: BTreeMap<String, f64>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(super) atlas_visible: bool,
+    #[serde(
+        default = "super::atlas::default_fractal_atlas_axes",
+        skip_serializing_if = "super::atlas::is_default_fractal_atlas_axes"
+    )]
+    pub(super) atlas_axes: [String; 2],
 }
 
 impl FractalState {
@@ -81,79 +88,48 @@ impl FractalState {
 }
 
 impl FractalViewer {
-    /// Saves the active viewport and switches `FractalMode` while preserving per-mode viewports.
+    /// Saves the active plane viewport and switches `FractalMode` while preserving `(c, z)` plane viewports.
     pub fn switch_mode(&mut self, next_mode: FractalMode) {
         if self.mode == next_mode {
             return;
         }
-        self.sync_active_viewport();
+        self.sync_active_plane_view();
         self.mode = next_mode;
-        match next_mode {
-            FractalMode::Mandelbrot => {
-                self.center = self.mandelbrot_center;
-                self.zoom = self.mandelbrot_zoom;
-            }
-            FractalMode::Julia => {
-                self.center = self.julia_center;
-                self.zoom = self.julia_zoom;
-            }
-            FractalMode::CustomMandelbrot => {
-                self.center = self.custom_mandelbrot_center;
-                self.zoom = self.custom_mandelbrot_zoom;
-            }
-            FractalMode::CustomJulia => {
-                self.center = self.custom_julia_center;
-                self.zoom = self.custom_julia_zoom;
-            }
-        }
+        let (next_center, next_zoom) = if next_mode.uses_julia_c() {
+            self.z_plane_view
+        } else {
+            self.c_plane_view
+        };
+        self.center = next_center;
+        self.zoom = next_zoom.clamp(ZOOM_MIN, ZOOM_MAX);
         self.dirty = true;
     }
 
-    pub(crate) fn sync_active_viewport(&mut self) {
-        match self.mode {
-            FractalMode::Mandelbrot => {
-                self.mandelbrot_center = self.center;
-                self.mandelbrot_zoom = self.zoom;
-            }
-            FractalMode::Julia => {
-                self.julia_center = self.center;
-                self.julia_zoom = self.zoom;
-            }
-            FractalMode::CustomMandelbrot => {
-                self.custom_mandelbrot_center = self.center;
-                self.custom_mandelbrot_zoom = self.zoom;
-            }
-            FractalMode::CustomJulia => {
-                self.custom_julia_center = self.center;
-                self.custom_julia_zoom = self.zoom;
-            }
+    pub(crate) fn sync_active_plane_view(&mut self) {
+        if self.mode.uses_julia_c() {
+            self.z_plane_view = (self.center, self.zoom);
+        } else {
+            self.c_plane_view = (self.center, self.zoom);
         }
     }
 
     pub(super) fn build_state(&self, include_custom_expr: bool) -> FractalState {
-        let m_non_default = (self.mandelbrot_center.re - DEFAULT_MANDELBROT_CENTER.re).abs()
-            > 1e-12
-            || (self.mandelbrot_center.im - DEFAULT_MANDELBROT_CENTER.im).abs() > 1e-12
-            || (self.mandelbrot_zoom - 1.0).abs() > 1e-12;
-        let j_non_default = (self.julia_center.re - DEFAULT_JULIA_CENTER.re).abs() > 1e-12
-            || (self.julia_center.im - DEFAULT_JULIA_CENTER.im).abs() > 1e-12
-            || (self.julia_zoom - 1.0).abs() > 1e-12;
+        let (c_center, c_zoom) = self.c_plane_view;
+        let (z_center, z_zoom) = self.z_plane_view;
+        let m_non_default = (c_center.re - DEFAULT_MANDELBROT_CENTER.re).abs() > 1e-12
+            || (c_center.im - DEFAULT_MANDELBROT_CENTER.im).abs() > 1e-12
+            || (c_zoom - 1.0).abs() > 1e-12;
+        let j_non_default = (z_center.re - DEFAULT_JULIA_CENTER.re).abs() > 1e-12
+            || (z_center.im - DEFAULT_JULIA_CENTER.im).abs() > 1e-12
+            || (z_zoom - 1.0).abs() > 1e-12;
 
-        let (m_re, m_im, m_z) = if self.mode != FractalMode::Mandelbrot && m_non_default {
-            (
-                Some(self.mandelbrot_center.re),
-                Some(self.mandelbrot_center.im),
-                Some(self.mandelbrot_zoom),
-            )
+        let (m_re, m_im, m_z) = if self.mode.uses_julia_c() && m_non_default {
+            (Some(c_center.re), Some(c_center.im), Some(c_zoom))
         } else {
             (None, None, None)
         };
-        let (j_re, j_im, j_z) = if self.mode != FractalMode::Julia && j_non_default {
-            (
-                Some(self.julia_center.re),
-                Some(self.julia_center.im),
-                Some(self.julia_zoom),
-            )
+        let (j_re, j_im, j_z) = if !self.mode.uses_julia_c() && j_non_default {
+            (Some(z_center.re), Some(z_center.im), Some(z_zoom))
         } else {
             (None, None, None)
         };
@@ -166,6 +142,7 @@ impl FractalViewer {
         } else {
             BTreeMap::new()
         };
+        let (xk, yk) = self.atlas.axis_keys();
 
         FractalState {
             center_re: self.center.re,
@@ -184,6 +161,8 @@ impl FractalViewer {
             julia_zoom: j_z,
             custom_expr,
             custom_params,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         }
     }
 }

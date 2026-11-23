@@ -257,6 +257,7 @@ impl BifurcationDiagram {
         {
             self.selected_r = self.selected_r.clamp(self.r_min, self.r_max);
         }
+        self.probe_r = self.selected_r;
         if self.map_mode.is_custom() {
             self.recompute_custom_compiled();
         } else {
@@ -265,6 +266,7 @@ impl BifurcationDiagram {
             self.recompute_default_sweep();
             self.recompute_coupled_views();
         }
+        self.sync_live_orbit_state();
     }
 
     pub(crate) fn recompute_coupled_views(&mut self) {
@@ -290,6 +292,14 @@ impl BifurcationDiagram {
         } else {
             self.recompute_default_coupled();
         }
+        self.sync_live_orbit_state();
+    }
+
+    fn sync_live_orbit_state(&mut self) {
+        self.probe_r = self.selected_r;
+        self.orbit_x = self.x0;
+        self.orbit_step_count = 0;
+        self.cobweb_points.clone_from(&self.cobweb_transient);
     }
 
     fn recompute_default_coupled(&mut self) {

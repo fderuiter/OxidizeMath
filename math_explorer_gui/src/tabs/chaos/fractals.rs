@@ -1,13 +1,20 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use num_complex::Complex;
-use scientific_metadata::theory::TheoryDescribable;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
+
+#[path = "fractals/atlas.rs"]
+pub mod atlas;
+#[cfg(test)]
+pub use atlas::FractalCartographer;
+use atlas::FRACTAL_ATLAS_AXIS_PAIRS;
 
 #[path = "fractals/formula.rs"]
 pub mod formula;
@@ -42,20 +49,16 @@ pub const DEFAULT_JULIA_CENTER: Complex<f64> = Complex::new(0.0, 0.0);
 pub struct FractalViewer {
     pub(crate) center: Complex<f64>,
     pub(crate) zoom: f64,
-    pub(crate) mandelbrot_center: Complex<f64>,
-    pub(crate) mandelbrot_zoom: f64,
-    pub(crate) julia_center: Complex<f64>,
-    pub(crate) julia_zoom: f64,
-    pub(crate) custom_mandelbrot_center: Complex<f64>,
-    pub(crate) custom_mandelbrot_zoom: f64,
-    pub(crate) custom_julia_center: Complex<f64>,
-    pub(crate) custom_julia_zoom: f64,
+    pub(crate) c_plane_view: (Complex<f64>, f64),
+    pub(crate) z_plane_view: (Complex<f64>, f64),
     pub(crate) max_iter: u32,
     pub(crate) mode: FractalMode,
     pub(crate) julia_c: Complex<f64>,
     /// Whether `julia_c` is pinned against Mandelbrot pointer hover updates.
     pub c_pinned: bool,
     pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) quadratic_job: CompiledFractalJob,
+    pub(crate) atlas: ParameterAtlasController,
     pub(crate) high_contrast: bool,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) julia_inset_texture: Option<egui::TextureHandle>,
@@ -104,6 +107,7 @@ impl Default for FractalViewer {
         let mode = FractalMode::Mandelbrot;
         let julia_c = Complex::new(-0.4, 0.6);
         let math_input = default_fractal_input_bar();
+        let quadratic_job = CompiledFractalJob::quadratic();
         let initial_req = FractalRenderRequest {
             generation: 0,
             width: INITIAL_PREVIEW_SIZE.0,
@@ -128,19 +132,15 @@ impl Default for FractalViewer {
         Self {
             center,
             zoom,
-            mandelbrot_center: DEFAULT_MANDELBROT_CENTER,
-            mandelbrot_zoom: 1.0,
-            julia_center: DEFAULT_JULIA_CENTER,
-            julia_zoom: 1.0,
-            custom_mandelbrot_center: DEFAULT_JULIA_CENTER,
-            custom_mandelbrot_zoom: 1.0,
-            custom_julia_center: DEFAULT_JULIA_CENTER,
-            custom_julia_zoom: 1.0,
+            c_plane_view: (DEFAULT_MANDELBROT_CENTER, zoom),
+            z_plane_view: (DEFAULT_JULIA_CENTER, 1.0),
             max_iter,
             mode,
             julia_c,
             c_pinned: false,
             math_input,
+            quadratic_job,
+            atlas: ParameterAtlasController::new(FRACTAL_ATLAS_AXIS_PAIRS.to_vec()),
             high_contrast: false,
             texture: None,
             julia_inset_texture: None,
@@ -197,6 +197,10 @@ impl TheoryDescribable for FractalViewer {
         let mut map = HashMap::new();
         map.insert("default".to_string(), "Fractal viewer".to_string());
         map
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        self.build_theory_parameters()
     }
 }
 
@@ -262,7 +266,7 @@ impl InteractiveTool for FractalViewer {
 
     fn step_simulation(&mut self) {
         self.zoom = (self.zoom * 1.06).clamp(ZOOM_MIN, ZOOM_MAX);
-        self.sync_active_viewport();
+        self.sync_active_plane_view();
         self.dirty = true;
     }
 
@@ -284,22 +288,28 @@ impl InteractiveTool for FractalViewer {
         self.mode = s.mode;
         self.julia_c = Complex::new(s.julia_re, s.julia_im);
         self.c_pinned = s.c_pinned;
-        self.mandelbrot_center = Complex::new(
-            s.mandelbrot_center_re
-                .unwrap_or(DEFAULT_MANDELBROT_CENTER.re),
-            s.mandelbrot_center_im
-                .unwrap_or(DEFAULT_MANDELBROT_CENTER.im),
+        self.c_plane_view = (
+            Complex::new(
+                s.mandelbrot_center_re
+                    .unwrap_or(DEFAULT_MANDELBROT_CENTER.re),
+                s.mandelbrot_center_im
+                    .unwrap_or(DEFAULT_MANDELBROT_CENTER.im),
+            ),
+            s.mandelbrot_zoom.unwrap_or(1.0),
         );
-        self.mandelbrot_zoom = s.mandelbrot_zoom.unwrap_or(1.0);
-        self.julia_center = Complex::new(
-            s.julia_center_re.unwrap_or(DEFAULT_JULIA_CENTER.re),
-            s.julia_center_im.unwrap_or(DEFAULT_JULIA_CENTER.im),
+        self.z_plane_view = (
+            Complex::new(
+                s.julia_center_re.unwrap_or(DEFAULT_JULIA_CENTER.re),
+                s.julia_center_im.unwrap_or(DEFAULT_JULIA_CENTER.im),
+            ),
+            s.julia_zoom.unwrap_or(1.0),
         );
-        self.julia_zoom = s.julia_zoom.unwrap_or(1.0);
-        self.sync_active_viewport();
+        self.sync_active_plane_view();
         self.math_input
             .set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_FRACTAL_EXPR));
         self.math_input.set_params_map(&s.custom_params);
+        self.atlas.set_visible(s.atlas_visible);
+        let _ = self.atlas.set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1]);
         self.dirty = true;
         Ok(())
     }

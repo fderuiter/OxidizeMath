@@ -1,9 +1,8 @@
-// @explorer_feature = "physics"
-// @explorer_order = 17
-// Interactive General Relativity tab exposing 3D geodesic integration, Flamm/wormhole
-// embeddings, radial effective potentials, twin clocks, and Christoffel tensor inspection.
+//! Interactive General Relativity tab exposing 3D geodesic integration, Flamm/wormhole
+//! embeddings, radial effective potentials, twin clocks, and Christoffel tensor inspection.
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod inspector;
@@ -60,6 +59,14 @@ impl ExplorerTab for RelativityTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "relativity",
+        order: 17,
+        build: || Box::new(RelativityTab::default()),
     }
 }
 

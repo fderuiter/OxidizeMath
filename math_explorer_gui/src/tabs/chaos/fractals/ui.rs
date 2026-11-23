@@ -17,6 +17,7 @@ impl FractalViewer {
             ui.heading("Settings");
             ui.separator();
             self.draw_mode_selector(ui);
+            let _ = self.atlas.show_toggle_button(ui);
 
             if self.mode.is_custom() {
                 ui.separator();
@@ -56,10 +57,10 @@ impl FractalViewer {
             (FractalMode::CustomMandelbrot, "Custom (c-plane)"),
             (FractalMode::CustomJulia, "Custom (Julia)"),
         ];
-        let mut selected = self.mode;
+        let current = self.mode;
         ui.horizontal_wrapped(|ui| {
             for (mode, label) in options {
-                if ui.radio_value(&mut selected, mode, label).clicked() {
+                if ui.selectable_label(current == mode, label).clicked() {
                     self.switch_mode(mode);
                 }
             }
@@ -73,7 +74,7 @@ impl FractalViewer {
             .logarithmic(true)
             .text("Zoom");
         if ui.add(zoom_slider).changed() {
-            self.sync_active_viewport();
+            self.sync_active_plane_view();
             self.dirty = true;
         }
 
@@ -89,7 +90,7 @@ impl FractalViewer {
         let im_drag =
             bounded_drag_value(&mut self.center.im, COORD_MIN..=COORD_MAX, speed).prefix("Im: ");
         if ui.add(re_drag).changed() | ui.add(im_drag).changed() {
-            self.sync_active_viewport();
+            self.sync_active_plane_view();
             self.dirty = true;
         }
 
@@ -110,7 +111,7 @@ impl FractalViewer {
                 }
             };
             self.zoom = 1.0;
-            self.sync_active_viewport();
+            self.sync_active_plane_view();
             self.dirty = true;
         }
         ui.label("Navigation:");
@@ -129,7 +130,7 @@ impl FractalViewer {
         let dy = f64::from(delta.y) / view_h * scale_y;
         self.center.re = (self.center.re + dx).clamp(COORD_MIN, COORD_MAX);
         self.center.im = (self.center.im + dy).clamp(COORD_MIN, COORD_MAX);
-        self.sync_active_viewport();
+        self.sync_active_plane_view();
         self.dirty = true;
     }
 
@@ -145,7 +146,7 @@ impl FractalViewer {
             if touch.zoom_delta != 1.0 && touch.zoom_delta.is_finite() {
                 let dampened = (1.0 + (touch.zoom_delta - 1.0) * 0.5).max(0.01);
                 self.zoom = (self.zoom * f64::from(dampened)).clamp(ZOOM_MIN, ZOOM_MAX);
-                self.sync_active_viewport();
+                self.sync_active_plane_view();
                 self.dirty = true;
             }
             self.pan_by_pixels(touch.translation_delta, view_w, view_h);
@@ -158,20 +159,23 @@ impl FractalViewer {
             if scroll_delta != 0.0 && scroll_delta.is_finite() {
                 let zoom_factor = if scroll_delta > 0.0 { 1.1 } else { 0.9 };
                 self.zoom = (self.zoom * zoom_factor).clamp(ZOOM_MIN, ZOOM_MAX);
-                self.sync_active_viewport();
+                self.sync_active_plane_view();
                 self.dirty = true;
             }
         }
     }
 
     fn handle_mandelbrot_pointer(&mut self, ui: &egui::Ui, response: &egui::Response) -> bool {
-        if self.mode != FractalMode::Mandelbrot {
+        if self.mode.uses_julia_c() {
             return false;
         }
         let rect = response.rect;
-        if response.clicked() {
+        if response.clicked() && !response.dragged() {
             response.request_focus();
-            if let Some(pos) = response.interact_pointer_pos() {
+            if let Some(pos) = response
+                .interact_pointer_pos()
+                .or_else(|| response.hover_pos())
+            {
                 let current_px = complex_to_screen(self.julia_c, rect, self.center, self.zoom);
                 if self.c_pinned && current_px.distance(pos) <= 5.0 {
                     self.c_pinned = false;
@@ -246,6 +250,57 @@ impl FractalViewer {
         c_changed || enter
     }
 
+    fn draw_fractal_canvas(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        max_texture_side: usize,
+    ) {
+        let available_size = ui.available_size();
+        let raw_w = available_size.x.max(0.0) as usize;
+        let raw_h = available_size.y.max(0.0) as usize;
+        if raw_w == 0 || raw_h == 0 {
+            return;
+        }
+        let (render_w, render_h) = clamp_fractal_dimensions(raw_w, raw_h, max_texture_side);
+        if self.texture.is_none() {
+            let fallback = egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
+            self.texture =
+                Some(ctx.load_texture("fractal_texture", fallback, egui::TextureOptions::LINEAR));
+        }
+        if let Some(texture) = self.texture.clone() {
+            let alt_label = self.theory_description();
+            let response = ui
+                .add(
+                    egui::Image::new(&texture)
+                        .maintain_aspect_ratio(false)
+                        .fit_to_exact_size(available_size)
+                        .alt_text(alt_label.clone())
+                        .sense(egui::Sense::click_and_drag()),
+                )
+                .accessible_theory_hover(self);
+
+            self.handle_canvas_navigation(
+                ui,
+                &response,
+                f64::from(response.rect.width()),
+                f64::from(response.rect.height()),
+            );
+            let mut announce = self.handle_mandelbrot_pointer(ui, &response);
+            announce |= self.handle_focused_canvas_keys(ui, &response);
+            self.draw_mandelbrot_overlays(ui, ctx, response.rect);
+
+            ui.painter().rect_stroke(
+                response.rect,
+                0.0,
+                ui.visuals().widgets.noninteractive.bg_stroke,
+                egui::StrokeKind::Inside,
+            );
+            self.finalize_canvas_a11y(ui, ctx, &response, &alt_label, announce);
+        }
+        self.dispatch_render_request(render_w, render_h, ctx);
+    }
+
     pub(super) fn draw_central_panel(
         &mut self,
         parent_ui: &mut egui::Ui,
@@ -254,52 +309,20 @@ impl FractalViewer {
     ) {
         self.focused_canvas = None;
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            let available_size = ui.available_size();
-            let raw_w = available_size.x.max(0.0) as usize;
-            let raw_h = available_size.y.max(0.0) as usize;
-            if raw_w == 0 || raw_h == 0 {
-                return;
+            if self.atlas.is_visible() {
+                if ui.available_width() >= 620.0 {
+                    ui.columns(2, |cols| {
+                        self.draw_fractal_canvas(&mut cols[0], ctx, max_texture_side);
+                        self.render_fractal_atlas_panel(&mut cols[1]);
+                    });
+                } else {
+                    self.render_fractal_atlas_panel(ui);
+                    ui.separator();
+                    self.draw_fractal_canvas(ui, ctx, max_texture_side);
+                }
+            } else {
+                self.draw_fractal_canvas(ui, ctx, max_texture_side);
             }
-            let (render_w, render_h) = clamp_fractal_dimensions(raw_w, raw_h, max_texture_side);
-            if self.texture.is_none() {
-                let fallback = egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
-                self.texture = Some(ctx.load_texture(
-                    "fractal_texture",
-                    fallback,
-                    egui::TextureOptions::LINEAR,
-                ));
-            }
-            if let Some(texture) = self.texture.clone() {
-                let alt_label = self.theory_description();
-                let response = ui
-                    .add(
-                        egui::Image::new(&texture)
-                            .maintain_aspect_ratio(false)
-                            .fit_to_exact_size(available_size)
-                            .alt_text(alt_label.clone())
-                            .sense(egui::Sense::click_and_drag()),
-                    )
-                    .accessible_theory_hover(self);
-
-                self.handle_canvas_navigation(
-                    ui,
-                    &response,
-                    f64::from(response.rect.width()),
-                    f64::from(response.rect.height()),
-                );
-                let mut announce = self.handle_mandelbrot_pointer(ui, &response);
-                announce |= self.handle_focused_canvas_keys(ui, &response);
-                self.draw_mandelbrot_overlays(ui, ctx, response.rect);
-
-                ui.painter().rect_stroke(
-                    response.rect,
-                    0.0,
-                    ui.visuals().widgets.noninteractive.bg_stroke,
-                    egui::StrokeKind::Inside,
-                );
-                self.finalize_canvas_a11y(ui, ctx, &response, &alt_label, announce);
-            }
-            self.dispatch_render_request(render_w, render_h, ctx);
         });
     }
 

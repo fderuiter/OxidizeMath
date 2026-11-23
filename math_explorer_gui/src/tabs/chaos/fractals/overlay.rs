@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    render_fractal_color_image, FractalMode, FractalRenderRequest, FractalViewer, COORD_MAX,
-    COORD_MIN, ZOOM_MAX, ZOOM_MIN,
+    render_fractal_color_image, CompiledFractalJob, FractalMode, FractalRenderRequest,
+    FractalViewer, COORD_MAX, COORD_MIN, ZOOM_MAX, ZOOM_MIN,
 };
 use crate::app::SemanticPalette;
 use eframe::egui;
@@ -153,7 +153,7 @@ impl FractalViewer {
         ctx: &egui::Context,
         canvas_rect: egui::Rect,
     ) {
-        if self.mode != FractalMode::Mandelbrot {
+        if self.mode.uses_julia_c() {
             return;
         }
         self.refresh_julia_inset(ctx);
@@ -162,7 +162,9 @@ impl FractalViewer {
 
         self.paint_critical_orbit(&painter, canvas_rect, &palette);
         self.paint_c_crosshair(&painter, canvas_rect, &palette);
-        self.paint_julia_inset(&painter, canvas_rect, &palette);
+        if self.mode == FractalMode::Mandelbrot {
+            self.paint_julia_inset(&painter, canvas_rect, &palette);
+        }
     }
 
     fn paint_critical_orbit(
@@ -171,7 +173,22 @@ impl FractalViewer {
         rect: egui::Rect,
         palette: &SemanticPalette,
     ) {
-        let orbit = compute_critical_orbit(self.julia_c, CRITICAL_ORBIT_STEPS);
+        let orbit = if self.mode == FractalMode::CustomMandelbrot {
+            let mut raw = [Complex::new(0.0, 0.0); CRITICAL_ORBIT_STEPS];
+            let guard = self
+                .shared_formula
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            let count = if let Some(job) = guard.as_deref() {
+                job.trace_critical_orbit(self.julia_c, &mut raw)
+            } else {
+                CompiledFractalJob::from_bar(&self.math_input)
+                    .trace_critical_orbit(self.julia_c, &mut raw)
+            };
+            raw[..count].to_vec()
+        } else {
+            compute_critical_orbit(self.julia_c, CRITICAL_ORBIT_STEPS)
+        };
         let screen_pts: Vec<egui::Pos2> = orbit
             .iter()
             .map(|&z| complex_to_screen(z, rect, self.center, self.zoom))
