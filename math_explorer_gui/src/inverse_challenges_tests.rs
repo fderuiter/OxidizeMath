@@ -42,8 +42,8 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .map(ChallengeMetadata::to_card)
         .collect();
     assert!(
-        cards.len() >= 11,
-        "Expected at least 11 registered ChallengeMetadata entries, got {}",
+        cards.len() >= 15,
+        "Expected at least 15 registered ChallengeMetadata entries, got {}",
         cards.len()
     );
     for required_id in [

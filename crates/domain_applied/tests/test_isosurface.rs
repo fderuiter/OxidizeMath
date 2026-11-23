@@ -2,7 +2,8 @@
 #[cfg(test)]
 mod tests {
     use domain_applied::applied::isosurface::{
-        CutPlaneCap, Mesh, Point3D, VoxelGrid, extract_capped_isosurface, extract_isosurface,
+        CutPlaneCap, Mesh, Point3D, SolidClosureConfig, VoxelGrid, extract_capped_isosurface,
+        extract_isosurface, extract_solid_isosurface,
     };
     use std::collections::HashMap;
     use verified_engine::allocator::VerifiedAllocator;
@@ -10,6 +11,20 @@ mod tests {
 
     #[global_allocator]
     static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
+
+    fn compute_signed_volume(mesh: &Mesh) -> f64 {
+        let (triangles, remainder) = mesh.indices.as_chunks::<3>();
+        assert!(remainder.is_empty());
+        let mut sum = 0.0_f64;
+        for &[i0, i1, i2] in triangles {
+            let (a, b, c) = (mesh.vertices[i0], mesh.vertices[i1], mesh.vertices[i2]);
+            let (ax, ay, az) = (f64::from(a.x), f64::from(a.y), f64::from(a.z));
+            let (bx, by, bz) = (f64::from(b.x), f64::from(b.y), f64::from(b.z));
+            let (cx, cy, cz) = (f64::from(c.x), f64::from(c.y), f64::from(c.z));
+            sum += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
+        }
+        sum / 6.0
+    }
 
     fn assert_closed_manifold(mesh: &Mesh) {
         assert!(
@@ -206,6 +221,15 @@ mod tests {
             count_sign_changing_lattice_edges(&grid, 0.0)
         );
 
+        let solid_sphere =
+            extract_solid_isosurface(&grid, 0.0, SolidClosureConfig::sublevel()).unwrap();
+        assert_closed_manifold(&solid_sphere);
+        assert!(solid_sphere.normals.iter().all(|n| n.is_finite()));
+        assert!(
+            compute_signed_volume(&solid_sphere) > 0.0,
+            "8x6x7 clipped sphere solid must have positive signed volume"
+        );
+
         // Minimal 2x2x3 grid where y loop runs once per z slice (tests Z-row reset across z > 0)
         let slim_grid = VoxelGrid::builder()
             .dimensions(2, 2, 3)
@@ -285,18 +309,6 @@ mod tests {
         assert!(mesh.indices.is_empty());
     }
 
-    fn mesh_signed_volume(mesh: &Mesh) -> f64 {
-        let mut vol6 = 0.0_f64;
-        for &[i0, i1, i2] in mesh.indices.as_chunks::<3>().0 {
-            let (a, b, c) = (mesh.vertices[i0], mesh.vertices[i1], mesh.vertices[i2]);
-            let (ax, ay, az) = (f64::from(a.x), f64::from(a.y), f64::from(a.z));
-            let (bx, by, bz) = (f64::from(b.x), f64::from(b.y), f64::from(b.z));
-            let (cx, cy, cz) = (f64::from(c.x), f64::from(c.y), f64::from(c.z));
-            vol6 += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
-        }
-        vol6 / 6.0
-    }
-
     #[test]
     #[verified_engine::verified]
     fn test_capped_gyroid_and_cut_plane_are_outward_watertight_manifolds() {
@@ -326,7 +338,7 @@ mod tests {
         let uncut = extract_capped_isosurface(&grid, 0.0, true, None).unwrap();
         assert_closed_manifold(&uncut);
         assert!(uncut.normals.iter().all(|n| n.is_finite()));
-        assert!(mesh_signed_volume(&uncut) > 0.0);
+        assert!(compute_signed_volume(&uncut) > 0.0);
 
         let cut = extract_capped_isosurface(
             &grid,
@@ -341,7 +353,7 @@ mod tests {
         assert_closed_manifold(&cut);
         assert!(cut.normals.iter().all(|n| n.is_finite()));
         assert!(cut.vertices.iter().all(|v| v.z <= 0.35 + 1.0e-5));
-        assert!(mesh_signed_volume(&cut) > 0.0);
-        assert!(mesh_signed_volume(&cut) < mesh_signed_volume(&uncut));
+        assert!(compute_signed_volume(&cut) > 0.0);
+        assert!(compute_signed_volume(&cut) < compute_signed_volume(&uncut));
     }
 }
