@@ -6,8 +6,14 @@ use math_explorer::nalgebra::{Matrix2, Point2, Vector3};
 use std::time::Instant;
 
 fn main() {
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let (num_gaussians, width, height, frames) = if smoke {
+        (16, 16, 16, 2)
+    } else {
+        (100, 100, 100, 100)
+    };
     let mut gaussians = Vec::new();
-    let num_gaussians = 100;
 
     // Create gaussians
     // We use identity covariance for simplicity as it's invertible.
@@ -21,15 +27,11 @@ fn main() {
         });
     }
 
-    let width = 100;
-    let height = 100;
-
     let start = Instant::now();
 
     let mut black_hole = Vector3::zeros();
 
-    // 100 iterations of the frame
-    for _ in 0..100 {
+    for _ in 0..frames {
         for y in 0..height {
             for x in 0..width {
                 let p = Point2::new(x as f64 / 10.0, y as f64 / 10.0);

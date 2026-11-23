@@ -7709,6 +7709,9 @@
       "signature": "impl AstCache { pub fn parse_calls (& self) -> usize }"
     },
     {
+      "signature": "impl AstCache { pub fn preload_sources < P : AsRef < Path > > (& mut self , _ : & [P]) }"
+    },
+    {
       "signature": "pub struct AstCache"
     },
     {
@@ -9417,6 +9420,9 @@
       "signature": "pub use spectral :: SpectralAnalyzer2D"
     },
     {
+      "signature": "pub use spectral :: SpectralMode2D"
+    },
+    {
       "signature": "pub use spectral :: SpectralPeak2D"
     }
   ],
@@ -9524,6 +9530,9 @@
       "signature": "impl SpectralAnalyzer2D { pub fn dominant_peak (& self) -> SpectralPeak2D }"
     },
     {
+      "signature": "impl SpectralAnalyzer2D { pub fn extract_top_modes (& self , _ : & mut [SpectralMode2D]) -> usize }"
+    },
+    {
       "signature": "impl SpectralAnalyzer2D { pub fn height (& self) -> usize }"
     },
     {
@@ -9540,6 +9549,9 @@
     },
     {
       "signature": "pub struct SpectralAnalyzer2D"
+    },
+    {
+      "signature": "pub struct SpectralMode2D"
     },
     {
       "signature": "pub struct SpectralPeak2D"

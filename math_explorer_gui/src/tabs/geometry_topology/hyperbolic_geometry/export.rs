@@ -93,7 +93,7 @@ impl HyperbolicGeometryTool {
         let mut prims = Vec::new();
         prims.push(ExportPrimitive::Polyline {
             name: "Poincare Disk Boundary".to_string(),
-            points: unit_circle_points(128),
+            points: unit_circle_points(128).into(),
             color: palette.accent,
             stroke_width: 2.0,
             closed: true,
@@ -120,7 +120,7 @@ impl HyperbolicGeometryTool {
             let (fill, stroke) = export_tile_colors(tile.depth, idx, palette);
             prims.push(ExportPrimitive::Polyline {
                 name: format!("Tile {idx}"),
-                points: sample_polygon_disk_points(tile),
+                points: sample_polygon_disk_points(tile).into(),
                 color: stroke,
                 stroke_width: 1.15,
                 closed: true,
@@ -134,7 +134,7 @@ impl HyperbolicGeometryTool {
                 horo.sample_into(&mut pts);
                 prims.push(ExportPrimitive::Polyline {
                     name: "Tangent Horocycle".to_string(),
-                    points: pts,
+                    points: pts.into(),
                     color: palette.warning,
                     stroke_width: 1.8,
                     closed: true,
@@ -161,7 +161,7 @@ impl HyperbolicGeometryTool {
         }
         prims.push(ExportPrimitive::Polyline {
             name: "Billiard Table".to_string(),
-            points: table_pts,
+            points: table_pts.into(),
             color: palette.info,
             stroke_width: 2.2,
             closed: true,
@@ -173,7 +173,7 @@ impl HyperbolicGeometryTool {
         if n_p > 0 {
             prims.push(ExportPrimitive::Polyline {
                 name: "Primary Geodesic Ray".to_string(),
-                points: sample_segments_polyline(&p_segs[..n_p.min(320)], iso),
+                points: sample_segments_polyline(&p_segs[..n_p.min(320)], iso).into(),
                 color: palette.series_color(2),
                 stroke_width: 1.6,
                 closed: false,
@@ -185,7 +185,7 @@ impl HyperbolicGeometryTool {
         if n_t > 0 {
             prims.push(ExportPrimitive::Polyline {
                 name: "Perturbed Twin Ray".to_string(),
-                points: sample_segments_polyline(&t_segs[..n_t.min(320)], iso),
+                points: sample_segments_polyline(&t_segs[..n_t.min(320)], iso).into(),
                 color: palette.series_color(1),
                 stroke_width: 1.4,
                 closed: false,
