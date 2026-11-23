@@ -378,8 +378,8 @@ fn render_wave_plot_contents(
     state: &mut QuantumCanvasState,
     palette: &crate::app::SemanticPalette,
     allow_pan: bool,
-    locked: bool,
 ) -> Option<String> {
+    let locked = tool.is_challenge_locked();
     let focused = plot_ui.response().has_focus();
     let pending_announcement = if focused && !locked {
         handle_reticle_keyboard(egui_ctx, tool, frame, state)
@@ -441,7 +441,7 @@ pub(super) fn render_wave_central_panel(tool: &mut WaveSimulatorTool, parent_ui:
             .allow_boxed_zoom(false)
             .show(ui, |plot_ui| {
                 pending_announcement = render_wave_plot_contents(
-                    plot_ui, &egui_ctx, tool, &frame, &mut state, &palette, allow_pan, locked,
+                    plot_ui, &egui_ctx, tool, &frame, &mut state, &palette, allow_pan,
                 );
             });
         ui.ctx().data_mut(|d| d.insert_temp(state_id, state));

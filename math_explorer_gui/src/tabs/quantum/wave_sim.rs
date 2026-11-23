@@ -22,9 +22,9 @@ mod ui;
 #[path = "wave_sim/wasm_tests.rs"]
 mod wasm_tests;
 
+pub use presets::WavePotentialPreset;
 #[cfg(test)]
-pub use presets::wave_parameter_label;
-pub use presets::{wave_parameter_constraints, WavePotentialPreset};
+pub use presets::{wave_parameter_constraints, wave_parameter_label};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
 
 use super::wave_sim_sculpt::default_wave_brush_kit;

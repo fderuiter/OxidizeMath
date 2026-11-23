@@ -169,12 +169,39 @@ fn draw_cutting_plane_frame(
     cfg: &VolumetricStudioConfig,
     color: egui::Color32,
 ) {
-    let e = STUDIO_VIEWPORT_EXTENT;
-    let c = cfg.cut_offset.clamp(-1.0, 1.0) * e;
+    let [ex, ey, ez] = cfg.viewport_half_extents();
+    let t = cfg.cut_offset.clamp(-1.0, 1.0);
     let corners_3d = match cfg.cut_axis {
-        SliceAxis::X => [[c, -e, -e], [c, e, -e], [c, e, e], [c, -e, e], [c, -e, -e]],
-        SliceAxis::Y => [[-e, c, -e], [e, c, -e], [e, c, e], [-e, c, e], [-e, c, -e]],
-        SliceAxis::Z => [[-e, -e, c], [e, -e, c], [e, e, c], [-e, e, c], [-e, -e, c]],
+        SliceAxis::X => {
+            let c = t * ex;
+            [
+                [c, -ey, -ez],
+                [c, ey, -ez],
+                [c, ey, ez],
+                [c, -ey, ez],
+                [c, -ey, -ez],
+            ]
+        }
+        SliceAxis::Y => {
+            let c = t * ey;
+            [
+                [-ex, c, -ez],
+                [ex, c, -ez],
+                [ex, c, ez],
+                [-ex, c, ez],
+                [-ex, c, -ez],
+            ]
+        }
+        SliceAxis::Z => {
+            let c = t * ez;
+            [
+                [-ex, -ey, c],
+                [ex, -ey, c],
+                [ex, ey, c],
+                [-ex, ey, c],
+                [-ex, -ey, c],
+            ]
+        }
     };
     let projected: Vec<[f64; 2]> = corners_3d.iter().map(|p| camera.project(p)).collect();
     plot_ui.line(
@@ -213,10 +240,11 @@ pub(super) fn unproject_click_to_world(
                 .clamp(-STUDIO_VIEWPORT_EXTENT, STUDIO_VIEWPORT_EXTENT);
         }
     }
+    let ext = cfg.viewport_half_extents();
     let w = world_at_depth(cam_z);
     [
-        w[0].clamp(-STUDIO_VIEWPORT_EXTENT, STUDIO_VIEWPORT_EXTENT),
-        w[1].clamp(-STUDIO_VIEWPORT_EXTENT, STUDIO_VIEWPORT_EXTENT),
-        w[2].clamp(-STUDIO_VIEWPORT_EXTENT, STUDIO_VIEWPORT_EXTENT),
+        w[0].clamp(-ext[0], ext[0]),
+        w[1].clamp(-ext[1], ext[1]),
+        w[2].clamp(-ext[2], ext[2]),
     ]
 }
