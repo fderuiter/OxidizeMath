@@ -138,8 +138,8 @@ impl ReplicatorDynamicsTool {
     }
 
     pub(super) fn render_spatial_controls(&mut self, ui: &mut egui::Ui) {
-        let rev_opt = (self.spatial.applied_bus_revision > 0)
-            .then_some(self.spatial.applied_bus_revision);
+        let rev_opt =
+            (self.spatial.applied_bus_revision > 0).then_some(self.spatial.applied_bus_revision);
         if render_follow_workspace_toggle(
             ui,
             &mut self.spatial.follow_workspace_graph,

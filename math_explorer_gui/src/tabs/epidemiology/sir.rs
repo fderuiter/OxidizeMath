@@ -7,6 +7,7 @@ mod metrics;
 
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::framework::{InteractiveTool, TraceSeries, TraceSnapshotManager};
+use crate::reflective_ui::AnimatedSlider;
 use atlas::{default_sir_atlas_axes, is_default_sir_atlas_axes, SIR_ATLAS_AXIS_PAIRS};
 #[cfg(test)]
 pub use atlas::{SirCartographer, SirRegime};
@@ -18,6 +19,7 @@ use std::hash::{Hash, Hasher};
 
 const MIN_SIR_DURATION: f64 = 10.0;
 const MAX_SIR_DURATION: f64 = 365.0;
+const MAX_SIR_HARD_DURATION: f64 = 10_000.0;
 const MAX_SIR_STEPS: usize = 100_000;
 
 fn default_true() -> bool {
@@ -129,15 +131,17 @@ impl SirTool {
         )
     }
 
-    fn record_history_and_recalculate(&mut self) {
-        let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-        let series = vec![
-            TraceSeries::new("Susceptible", to_pairs(&self.s_points)),
-            TraceSeries::new("Infected", to_pairs(&self.i_points)),
-            TraceSeries::new("Recovered", to_pairs(&self.r_points)),
-        ];
-        self.snapshot_manager
-            .push_history_run(&self.last_param_summary, series);
+    fn record_history_and_recalculate(&mut self, sweep_active: bool) {
+        if !sweep_active {
+            let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+            let series = vec![
+                TraceSeries::new("Susceptible", to_pairs(&self.s_points)),
+                TraceSeries::new("Infected", to_pairs(&self.i_points)),
+                TraceSeries::new("Recovered", to_pairs(&self.r_points)),
+            ];
+            self.snapshot_manager
+                .push_history_run(&self.last_param_summary, series);
+        }
         self.recalculate();
     }
 
@@ -156,23 +160,47 @@ impl SirTool {
 
         let mut changed = false;
         changed |= ui
-            .add(egui::Slider::new(&mut self.n, cn.min..=cn.max).text("Population (N)"))
+            .add(
+                AnimatedSlider::new(&mut self.n, cn.min..=cn.max)
+                    .hard_bounds(cn.min..=cn.max)
+                    .text("Population (N)")
+                    .id_salt("sir_population_n"),
+            )
             .changed();
-        let i0_max = (self.n * 0.5).max(1.0);
-        self.i0 = self.i0.min(i0_max);
-        changed |= ui
-            .add(egui::Slider::new(&mut self.i0, 1.0..=i0_max).text("Initial Infected (I0)"))
-            .changed();
+        let max_i0_soft = (self.n * 0.5).max(1.0);
+        let max_i0_hard = self.n.max(1.0);
+        self.i0 = self.i0.clamp(1.0, max_i0_hard);
         changed |= ui
             .add(
-                egui::Slider::new(&mut self.beta, cb.min..=cb.max).text("Transmission Rate (beta)"),
+                AnimatedSlider::new(&mut self.i0, 1.0..=max_i0_soft)
+                    .hard_bounds(1.0..=max_i0_hard)
+                    .text("Initial Infected (I0)")
+                    .id_salt("sir_initial_i0"),
             )
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.gamma, cg.min..=cg.max).text("Recovery Rate (gamma)"))
+            .add(
+                AnimatedSlider::new(&mut self.beta, cb.min..=cb.max)
+                    .hard_bounds(cb.min..=cb.max)
+                    .text("Transmission Rate (beta)")
+                    .id_salt("sir_beta"),
+            )
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.duration, cd.min..=cd.max).text("Duration (days)"))
+            .add(
+                AnimatedSlider::new(&mut self.gamma, cg.min..=cg.max)
+                    .hard_bounds(cg.min..=cg.max)
+                    .text("Recovery Rate (gamma)")
+                    .id_salt("sir_gamma"),
+            )
+            .changed();
+        changed |= ui
+            .add(
+                AnimatedSlider::new(&mut self.duration, cd.min..=cd.max)
+                    .hard_bounds(cd.min..=MAX_SIR_HARD_DURATION)
+                    .text("Duration (days)")
+                    .id_salt("sir_duration"),
+            )
             .changed();
         changed
     }
@@ -383,8 +411,12 @@ impl InteractiveTool for SirTool {
             self.sync_series_cache();
             ui.vertical(|ui| {
                 ui.heading("Parameters");
-                if self.render_parameter_controls(ui) {
-                    self.record_history_and_recalculate();
+                let sweeps_before = crate::reflective_ui::slider::live_active_sweep_count(ui.ctx());
+                let changed = self.render_parameter_controls(ui);
+                let sweep_active =
+                    crate::reflective_ui::slider::live_active_sweep_count(ui.ctx()) > sweeps_before;
+                if changed {
+                    self.record_history_and_recalculate(sweep_active);
                 }
                 metrics::render_epidemic_metrics(ui, self);
                 self.render_sir_readouts_and_atlas(ui);

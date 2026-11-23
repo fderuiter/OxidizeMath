@@ -31,7 +31,9 @@ pub(super) fn build_static_symbolic_grid(formulas: &[&[&str]]) -> SymbolicGrid {
     (bars, exprs)
 }
 
-pub(super) fn build_dynamic_symbolic_grid(formulas: &[Vec<String>]) -> Result<SymbolicGrid, String> {
+pub(super) fn build_dynamic_symbolic_grid(
+    formulas: &[Vec<String>],
+) -> Result<SymbolicGrid, String> {
     let mut bars = Vec::with_capacity(formulas.len());
     let mut exprs = Vec::with_capacity(formulas.len());
     for (i, row) in formulas.iter().enumerate() {

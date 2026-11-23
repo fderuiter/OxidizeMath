@@ -86,7 +86,7 @@ pub struct CurvatureHeatmap {
     v_resolution: usize,
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
-    pub(super) custom_sandbox: CustomSurfaceSandbox,
+    pub(crate) custom_sandbox: CustomSurfaceSandbox,
     cache: cache::CurvatureGeometryCache,
 }
 
