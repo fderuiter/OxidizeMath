@@ -1,9 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{UnifiedModel, UnifiedSimRunner};
+use super::persistence::build_formula_bar;
+use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimRunner};
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
-use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    InteractiveTool, MathExpressionInputBar, PlaybackAction, PlaybackTransport,
+};
 use eframe::egui::{self, ColorImage};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
@@ -13,6 +16,10 @@ use std::sync::{Arc, RwLock};
 pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) controller: BackgroundWorker<UnifiedSimRunner<M>>,
     pub(crate) params: Arc<RwLock<HashMap<String, f64>>>,
+    pub(crate) shared_formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+    pub(crate) formula_bar: Option<MathExpressionInputBar>,
+    pub(crate) custom_formula_enabled: bool,
+    pub(super) formula_revision: u64,
     pub(super) param_metadata: Vec<(String, ParameterConstraint)>,
     steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
@@ -54,9 +61,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         let local_obstacles = M::default_obstacle_mask(&initial_params);
         let obstacle_rle = Arc::new(RwLock::new(None));
+        let formula_bar = M::formula_spec().as_ref().map(build_formula_bar);
         let params = Arc::new(RwLock::new(initial_params.clone()));
-        let runner = UnifiedSimRunner::<M>::with_obstacle_mask(
+        let shared_formula = Arc::new(RwLock::new(None));
+        let runner = UnifiedSimRunner::<M>::with_shared_state(
             Arc::clone(&params),
+            Arc::clone(&shared_formula),
             Arc::clone(&obstacle_rle),
         );
         let controller = BackgroundWorker::new(runner);
@@ -70,6 +80,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Self {
             controller,
             params,
+            shared_formula,
+            formula_bar,
+            custom_formula_enabled: false,
+            formula_revision: 1,
             param_metadata,
             steps_per_frame: 5,
             texture: None,
@@ -97,9 +111,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(crate) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
         self.stepped_snapshot = None;
         let params = Arc::clone(&self.params);
+        let formula = Arc::clone(&self.shared_formula);
         let obstacle_rle = Arc::clone(&self.obstacle_rle);
-        self.controller
-            .reset_or_respawn(|| UnifiedSimRunner::<M>::with_obstacle_mask(params, obstacle_rle));
+        self.controller.reset_or_respawn(|| {
+            UnifiedSimRunner::<M>::with_shared_state(params, formula, obstacle_rle)
+        });
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
@@ -153,6 +169,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     p.insert(name.clone(), d);
                 }
                 drop(p);
+                if let Some(spec) = M::formula_spec() {
+                    self.custom_formula_enabled = false;
+                    self.formula_bar = Some(build_formula_bar(&spec));
+                    self.publish_formula_update();
+                }
                 self.reset_simulation(ctx);
                 let _ = self.controller.send_command(SimCommand::Start);
             }
@@ -278,6 +299,14 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
             if let Some(ref rle) = *self.obstacle_rle.read().unwrap_or_else(|e| e.into_inner()) {
                 model.apply_obstacle_rle(rle);
             }
+            if self.custom_formula_enabled {
+                let payload = self
+                    .shared_formula
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                model.apply_compiled_formula(payload.as_ref(), &params);
+            }
             for _ in 0..self.steps_per_frame.max(1) {
                 model.step(&params);
             }
@@ -295,7 +324,12 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
 
     fn has_finite_parameters(&self) -> bool {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let formula_ok = self
+            .formula_bar
+            .as_ref()
+            .is_none_or(|b| b.param_slice().iter().all(|v| v.is_finite()));
         params.values().all(|v| v.is_finite())
+            && formula_ok
             && !matches!(
                 self.controller.state(),
                 crate::async_sim::SimWorkerState::Faulted

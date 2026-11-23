@@ -7,9 +7,42 @@ pub mod tool;
 pub use tool::*;
 
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
+use crate::framework::MAX_SYNTHESIZED_PARAMS;
+use math_commons::ast::CompiledExpr;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
+use std::ops::RangeInclusive;
 use std::sync::{Arc, RwLock};
+
+/// Specification for an opt-in custom formula input bar on a [`UnifiedModel`].
+#[derive(Clone, Debug)]
+pub struct UnifiedFormulaSpec {
+    /// Left-hand side equation label (e.g. `"V(x)"`).
+    pub lhs_label: &'static str,
+    /// Initial default expression string.
+    pub default_expr: &'static str,
+    /// Coordinate axis variable names bound to leading bytecode slots (e.g. `&["x"]`).
+    pub axes: &'static [&'static str],
+    /// Curated `(display_name, expression)` presets.
+    pub presets: &'static [(&'static str, &'static str)],
+    /// Slider range bounds for auto-synthesized free parameters.
+    pub param_range: RangeInclusive<f64>,
+    /// Default value assigned to newly discovered free parameters.
+    pub param_default: f64,
+}
+
+/// `Arc`-shared compiled formula payload streamed to [`UnifiedSimRunner`] without worker-side parsing.
+#[derive(Clone, Debug)]
+pub struct CompiledFormulaPayload {
+    /// Monotonic revision incremented on formula or parameter slider edits.
+    pub revision: u64,
+    /// Compiled postfix AST bytecode.
+    pub compiled: Arc<CompiledExpr>,
+    /// Stack-allocated parameter values aligned with `compiled`.
+    pub params: [f64; MAX_SYNTHESIZED_PARAMS],
+    /// Number of active parameter slots in `params`.
+    pub param_len: usize,
+}
 
 #[allow(missing_docs)]
 pub trait UnifiedModel:
@@ -61,6 +94,22 @@ pub trait UnifiedModel:
         Self: Sized,
     {
         &[]
+    }
+
+    /// Opt-in custom mathematical expression input bar specification.
+    fn formula_spec() -> Option<UnifiedFormulaSpec>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
+    /// Applies an updated [`CompiledFormulaPayload`] (or `None` when disabled) to rebuild model operators.
+    fn apply_compiled_formula(
+        &mut self,
+        _formula: Option<&CompiledFormulaPayload>,
+        _params: &HashMap<String, f64>,
+    ) {
     }
 
     /// The name of the tool.
@@ -151,6 +200,8 @@ pub trait UnifiedModel:
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,
+    formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+    applied_formula_rev: Option<u64>,
     obstacle_rle: Arc<RwLock<Option<String>>>,
     steps_per_frame: usize,
 }
@@ -158,12 +209,17 @@ pub struct UnifiedSimRunner<M: UnifiedModel> {
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
     #[allow(missing_docs)]
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
-        Self::with_obstacle_mask(params, Arc::new(RwLock::new(None)))
+        Self::with_shared_state(
+            params,
+            Arc::new(RwLock::new(None)),
+            Arc::new(RwLock::new(None)),
+        )
     }
 
-    #[allow(missing_docs)]
-    pub fn with_obstacle_mask(
+    /// Creates a runner sharing `params`, an optional [`CompiledFormulaPayload`] slot, and an optional RLE obstacle mask.
+    pub fn with_shared_state(
         params: Arc<RwLock<HashMap<String, f64>>>,
+        formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
         obstacle_rle: Arc<RwLock<Option<String>>>,
     ) -> Self {
         let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
@@ -171,11 +227,29 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
         if let Some(ref rle) = *obstacle_rle.read().unwrap_or_else(|e| e.into_inner()) {
             model.apply_obstacle_rle(rle);
         }
-        Self {
+        let mut runner = Self {
             model,
             params,
+            formula,
+            applied_formula_rev: None,
             obstacle_rle,
             steps_per_frame: 5,
+        };
+        runner.sync_formula(&initial_params);
+        runner
+    }
+
+    fn sync_formula(&mut self, current_params: &HashMap<String, f64>) {
+        let payload_opt = self
+            .formula
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let next_rev = payload_opt.as_ref().map(|p| p.revision);
+        if next_rev != self.applied_formula_rev {
+            self.model
+                .apply_compiled_formula(payload_opt.as_ref(), current_params);
+            self.applied_formula_rev = next_rev;
         }
     }
 }
@@ -196,6 +270,8 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
                     rebuilt.apply_obstacle_rle(rle);
                 }
                 self.model = rebuilt;
+                self.applied_formula_rev = None;
+                self.sync_formula(&current_params);
             }
             _ => self.model.process_command(cmd, &current_params),
         }
@@ -207,6 +283,7 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        self.sync_formula(&current_params);
         self.model.step(&current_params);
     }
 

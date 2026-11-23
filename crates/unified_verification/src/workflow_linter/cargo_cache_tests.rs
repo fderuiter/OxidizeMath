@@ -2,18 +2,10 @@ use super::*;
 #[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashSet;
 
-fn repo_root_dir() -> PathBuf {
-    if Path::new(".github/actions/cargo-cache/action.yml").exists() {
-        PathBuf::from(".")
-    } else {
-        PathBuf::from("../..")
-    }
-}
-
 #[test]
 fn test_cargo_cache_action_pins_v4_node20_and_hashes_cargo_toml() {
     let _lock = crate::DIR_LOCK.lock().unwrap();
-    let root = repo_root_dir();
+    let root = crate::manifest_cache::workspace_root_dir();
     let action_path = root.join(".github/actions/cargo-cache/action.yml");
     let content =
         fs::read_to_string(&action_path).expect("cargo-cache action.yml should be readable");

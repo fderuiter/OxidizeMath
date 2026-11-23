@@ -2,6 +2,7 @@ pub mod callout_overlay;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_figure;
@@ -12,6 +13,7 @@ pub mod export_types;
 mod export_ui;
 #[cfg(test)]
 mod export_ui_tests;
+pub mod fit_bridge;
 pub mod math_input;
 #[cfg(test)]
 mod metadata_label_tests;
@@ -43,9 +45,11 @@ mod url_share;
 
 pub use callout_overlay::*;
 pub use clamp::*;
+pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
+pub use fit_bridge::ensure_custom_fit_bridge;
 pub use math_input::*;
 pub use pane_scope::{
     is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id,
@@ -324,6 +328,8 @@ pub(super) struct FrameworkRevisionCache {
     pub(super) active_tool_json:
         std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
     pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
+    pub(super) last_plot_capture_hash: Option<(&'static str, u64)>,
+    pub(super) last_snapshot_plot_sig: Option<u64>,
 }
 
 #[allow(missing_docs)]

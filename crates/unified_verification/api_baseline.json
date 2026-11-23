@@ -3953,12 +3953,6 @@
       "signature": "impl LorenzBuilder { pub fn build (self , state : LorenzState) -> LorenzSystem }"
     },
     {
-      "signature": "impl LorenzBuilder { pub fn dt (mut self , val : f64) -> Self }"
-    },
-    {
-      "signature": "impl LorenzBuilder { pub fn integration_method (mut self , val : pure_math :: pure_math :: analysis :: ode :: IntegrationMethod ,) -> Self }"
-    },
-    {
       "signature": "impl LorenzBuilder { pub fn new () -> Self }"
     },
     {
@@ -3981,9 +3975,6 @@
     },
     {
       "signature": "pub struct LorenzBuilder"
-    },
-    {
-      "signature": "pub struct LorenzConfig"
     },
     {
       "signature": "pub struct LorenzState"
@@ -4079,9 +4070,6 @@
     },
     {
       "signature": "impl LatticeBoltzmannD2Q9 < BgkCollision > { pub fn new (width : usize , height : usize , tau : f64) -> Self }"
-    },
-    {
-      "signature": "pub struct LbmConfig"
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/mod.rs": [
@@ -4831,13 +4819,7 @@
       "signature": "impl BlochSimulator { pub fn set_relaxation (& mut self , t1 : f64 , t2 : f64) }"
     },
     {
-      "signature": "pub struct BlochConfig"
-    },
-    {
       "signature": "pub struct BlochSimulator"
-    },
-    {
-      "signature": "pub struct BlochState"
     }
   ],
   "crates/domain_physics/src/physics/mri/mod.rs": [
@@ -5896,47 +5878,6 @@
     },
     {
       "signature": "pub struct IterationPattern"
-    }
-  ],
-  "crates/oxidize_core/src/lib.rs": [
-    {
-      "signature": "pub mod prelude"
-    },
-    {
-      "signature": "pub mod prelude { pub use crate :: ModelConfig }"
-    },
-    {
-      "signature": "pub mod prelude { pub use crate :: ModelState }"
-    },
-    {
-      "signature": "pub mod prelude { pub use crate :: SimulationModel }"
-    },
-    {
-      "signature": "pub trait ModelConfig : Clone + Serialize + Deserialize < 'static >"
-    },
-    {
-      "signature": "pub trait ModelState : Clone"
-    },
-    {
-      "signature": "pub trait SimulationModel : Sized"
-    },
-    {
-      "signature": "pub trait SimulationModel { fn get_state (& self) -> Self :: State }"
-    },
-    {
-      "signature": "pub trait SimulationModel { fn initialize < R : rand :: RngCore > (config : Self :: Config , provider : R) -> Result < Self , Self :: Error > }"
-    },
-    {
-      "signature": "pub trait SimulationModel { fn step (& mut self) -> Result < () , Self :: Error > }"
-    },
-    {
-      "signature": "pub trait SimulationModel { type Config : ModelConfig }"
-    },
-    {
-      "signature": "pub trait SimulationModel { type Error : std :: error :: Error + Send + Sync + 'static }"
-    },
-    {
-      "signature": "pub trait SimulationModel { type State : ModelState }"
     }
   ],
   "crates/oxidize_core/src/mesh/export.rs": [
@@ -8702,13 +8643,7 @@
       "signature": "pub trait TheoryDescribable { fn available_descriptions (& self) -> HashMap < String , String > }"
     },
     {
-      "signature": "pub trait TheoryDescribable { fn get_parameter (& self , _name : & str) -> Option < f64 > }"
-    },
-    {
       "signature": "pub trait TheoryDescribable { fn phonetic_description (& self) -> String }"
-    },
-    {
-      "signature": "pub trait TheoryDescribable { fn set_parameter (& mut self , _name : & str , _value : f64) }"
     },
     {
       "signature": "pub trait TheoryDescribable { fn theory_citation (& self) -> String }"
@@ -8721,9 +8656,6 @@
     },
     {
       "signature": "pub trait TheoryDescribable { fn theory_parameters (& self) -> HashMap < String , ParameterConstraint > }"
-    },
-    {
-      "signature": "pub use crate :: theory_description"
     }
   ],
   "crates/verified_engine/src/allocator.rs": [
