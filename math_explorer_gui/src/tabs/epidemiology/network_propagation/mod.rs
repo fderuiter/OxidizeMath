@@ -3,6 +3,7 @@
 mod analytics;
 mod canvas;
 mod controls;
+mod dataflow;
 mod presets;
 #[cfg(test)]
 mod tests;
@@ -85,6 +86,8 @@ pub struct NetworkPropagationTool {
     pub(super) canvas_id: Option<egui::Id>,
     pub(super) is_running: bool,
     pub(super) revision: u64,
+    pub(super) last_upstream_graph_rev: u64,
+    pub(super) upstream_linked: bool,
     #[cfg(test)]
     pub(super) sim_steps: u64,
 }
@@ -106,6 +109,8 @@ impl Default for NetworkPropagationTool {
             canvas_id: None,
             is_running: false,
             revision: 1,
+            last_upstream_graph_rev: 0,
+            upstream_linked: false,
             #[cfg(test)]
             sim_steps: 0,
         }
@@ -416,6 +421,7 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.poll_upstream_graph(ui.ctx());
         egui::CentralPanel::default().show_inside(ui, |ui| {
             if self.is_running {
                 self.model.step_with_rng(&mut self.rng);

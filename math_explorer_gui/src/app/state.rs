@@ -123,6 +123,7 @@ pub(crate) struct AppStateFingerprint {
     pane_tabs: [usize; 4],
     primary_revisions_hash: u64,
     secondary_revisions_hash: u64,
+    pipeline_links_hash: u64,
     pub(crate) all_revisions_tracked: bool,
 }
 
@@ -142,22 +143,7 @@ impl AppStateFingerprint {
         let (secondary_hash, secondary_tracked) = app.secondary_slots_revision_hash();
         all_tracked &= secondary_tracked;
 
-        let mut pane_tabs = [0_usize; 4];
-        for (i, slot) in pane_tabs.iter_mut().enumerate() {
-            *slot = app.pane_tabs.get(i).copied().unwrap_or(i);
-        }
-        pane_tabs[0] = app.selected_tab;
-        if app.viewport_layout != ViewportLayout::QuadGrid {
-            pane_tabs[1] = app.secondary_tab;
-        }
-
-        let flags = u8::from(app.show_info)
-            | (u8::from(app.show_warnings) << 1)
-            | (u8::from(app.show_errors) << 2)
-            | (u8::from(app.show_diagnostics_panel) << 3)
-            | (u8::from(app.compare_sync.link_axes) << 4)
-            | (u8::from(app.compare_sync.link_cursors) << 5)
-            | (u8::from(app.compare_sync.sync_playback) << 6);
+        let (pane_tabs, flags, pipeline_links_hash) = Self::capture_layout_metadata(app);
 
         Self {
             selected_tab: app.selected_tab,
@@ -188,8 +174,30 @@ impl AppStateFingerprint {
             pane_tabs,
             primary_revisions_hash: primary_hasher.finish(),
             secondary_revisions_hash: secondary_hash,
+            pipeline_links_hash,
             all_revisions_tracked: all_tracked,
         }
+    }
+
+    fn capture_layout_metadata(app: &super::MathExplorerApp) -> ([usize; 4], u8, u64) {
+        let mut pane_tabs = [0_usize; 4];
+        for (i, slot) in pane_tabs.iter_mut().enumerate() {
+            *slot = app.pane_tabs.get(i).copied().unwrap_or(i);
+        }
+        pane_tabs[0] = app.selected_tab;
+        if app.viewport_layout != ViewportLayout::QuadGrid {
+            pane_tabs[1] = app.secondary_tab;
+        }
+        let flags = u8::from(app.show_info)
+            | (u8::from(app.show_warnings) << 1)
+            | (u8::from(app.show_errors) << 2)
+            | (u8::from(app.show_diagnostics_panel) << 3)
+            | (u8::from(app.compare_sync.link_axes) << 4)
+            | (u8::from(app.compare_sync.link_cursors) << 5)
+            | (u8::from(app.compare_sync.sync_playback) << 6);
+        let mut pipe_hasher = std::collections::hash_map::DefaultHasher::new();
+        app.pipeline_dag.links().hash(&mut pipe_hasher);
+        (pane_tabs, flags, pipe_hasher.finish())
     }
 }
 
@@ -226,6 +234,8 @@ pub struct AppState {
     pub pane_tab_states: Vec<HashMap<String, SharedTabJson>>,
     #[serde(default)]
     pub compare_sync: ComparisonSyncConfig,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pipeline_links: Vec<super::dataflow_bus::PaneLink>,
 }
 
 impl Default for AppState {
@@ -249,6 +259,7 @@ impl Default for AppState {
             focused_pane: 0,
             pane_tab_states: Vec::new(),
             compare_sync: ComparisonSyncConfig::default(),
+            pipeline_links: Vec::new(),
         }
     }
 }
@@ -304,6 +315,11 @@ impl AppState {
             focused_pane: app.active_focused_pane(),
             pane_tab_states: app.extract_pane_tab_states(),
             compare_sync: app.compare_sync,
+            pipeline_links: if viewport_layout == ViewportLayout::Single {
+                Vec::new()
+            } else {
+                app.pipeline_dag.links().to_vec()
+            },
         }
     }
 
@@ -365,6 +381,17 @@ impl AppState {
         app.tab_state_cache.clear();
         Self::apply_pane_indices_and_focus(&self, app);
         app.restore_pane_tab_states(self.pane_tab_states, &self.tab_states);
+        let active_panes = app.viewport_layout.pane_count();
+        if active_panes <= 1
+            || self.pipeline_links.is_empty()
+            || app
+                .pipeline_dag
+                .restore_links(&self.pipeline_links, active_panes)
+                .is_err()
+        {
+            app.pipeline_dag.clear();
+        }
+        app.prune_incompatible_pipeline_links();
     }
 
     fn apply_pane_indices_and_focus(&self, app: &mut super::MathExplorerApp) {

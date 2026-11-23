@@ -1,3 +1,4 @@
+pub mod dataflow_bus;
 pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
@@ -21,6 +22,16 @@ mod tests;
 mod tests_adaptive_chrome;
 #[cfg(test)]
 mod tests_command_palette;
+#[cfg(test)]
+mod tests_dataflow_bus;
+#[cfg(all(
+    test,
+    feature = "pure_math",
+    feature = "epidemiology",
+    feature = "biology",
+    feature = "physics"
+))]
+mod tests_dataflow_pipelines;
 #[cfg(test)]
 mod tests_diagnostics;
 #[cfg(test)]
@@ -50,6 +61,7 @@ mod tests_tab_cache_perf;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
+pub use dataflow_bus::{DataflowStreamKind, PaneDataflowBus, PanePipelineDag};
 #[allow(unused_imports)]
 pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
@@ -98,6 +110,8 @@ pub struct MathExplorerApp {
     last_frame_had_input: bool,
     pending_focus_prune: bool,
     pub compare_sync: ComparisonSyncConfig,
+    pub dataflow_bus: PaneDataflowBus,
+    pub pipeline_dag: PanePipelineDag,
     pub(super) url_sync: crate::url_state::UrlSyncController,
 }
 
@@ -135,6 +149,8 @@ impl Default for MathExplorerApp {
             last_frame_had_input: false,
             pending_focus_prune: false,
             compare_sync: ComparisonSyncConfig::default(),
+            dataflow_bus: PaneDataflowBus::default(),
+            pipeline_dag: PanePipelineDag::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
         }
     }
@@ -429,34 +445,14 @@ impl eframe::App for MathExplorerApp {
                 domain_bar::render_domain_switcher_bar(self, ctx, ui);
             });
 
-        // Render Active Tab(s) or Multi-Pane Viewports
-        let active_layout = if self.viewport_layout != ViewportLayout::Single {
-            self.sync_layout();
-            self.viewport_layout
-        } else if self.split_layout_mode != SplitLayoutMode::Single {
-            let layout = match self.split_layout_mode {
-                SplitLayoutMode::Horizontal => ViewportLayout::SplitHorizontal,
-                SplitLayoutMode::Vertical => ViewportLayout::SplitVertical,
-                SplitLayoutMode::Single => ViewportLayout::Single,
-            };
-            self.viewport_layout = layout;
-            if !self.pane_tabs.is_empty() {
-                self.pane_tabs[0] = self.selected_tab;
-            }
-            if self.pane_tabs.len() > 1 {
-                self.pane_tabs[1] = self.secondary_tab;
-            }
-            layout
-        } else {
-            ViewportLayout::Single
-        };
-
+        let active_layout = self.resolve_frame_viewport_layout();
         self.prune_inactive_pane_slots(active_layout.pane_count());
         domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
         self.sync_workspace_history_bridge(ctx);
 
         if active_layout != ViewportLayout::Single {
             viewport::render_multi_pane_manager(self, ctx, frame);
+            self.prune_incompatible_pipeline_links();
         } else {
             viewport::render_single_pane_viewport(self, ctx, frame);
         }

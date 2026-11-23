@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 
 pub mod braess;
 mod braess_host;
+mod dataflow;
 mod keyboard;
 mod snapshot;
 pub use braess::{AffineLatency, BraessCongestionConfig, BraessCongestionLab};
@@ -183,6 +184,7 @@ impl InteractiveTool for GraphEditorTool {
             self.braess
                 .draw_canvas_banner(painter, response.rect, &palette);
         }
+        self.publish_dataflow_topology(ui.ctx());
     }
 }
 

@@ -42,9 +42,11 @@ pub struct ShareUrlParams {
     pub challenge: Option<String>,
     /// Optional 0-based guided story step index (`&step=<idx>`).
     pub step: Option<usize>,
+    /// Optional validated multi-pane dataflow pipeline specification (`&pipe=<base64url>`).
+    pub pipeline: Option<super::pipeline::ValidatedPipelineUrl>,
 }
 
-fn percent_encode_component(raw: &str) -> String {
+pub(super) fn percent_encode_component(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     for &b in raw.as_bytes() {
         if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
@@ -217,6 +219,7 @@ struct RawParamAccum {
     preset: Option<String>,
     challenge: Option<String>,
     step_raw: Option<String>,
+    pipe_b64: Option<String>,
 }
 
 impl RawParamAccum {
@@ -227,6 +230,7 @@ impl RawParamAccum {
             && self.preset.is_none()
             && self.challenge.is_none()
             && self.step_raw.is_none()
+            && self.pipe_b64.is_none()
     }
 }
 
@@ -247,6 +251,7 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
             "preset" => set_unique_param(&mut acc.preset, v_raw, "preset")?,
             "challenge" => set_unique_param(&mut acc.challenge, v_raw, "challenge")?,
             "step" => set_unique_param(&mut acc.step_raw, v_raw, "step")?,
+            "pipe" => set_unique_param(&mut acc.pipe_b64, v_raw, "pipe")?,
             _ if strict_keys => {
                 return Err(format!("Unknown URL fragment parameter '{k_raw}'"));
             }
@@ -370,7 +375,7 @@ fn clamp_decoded_url_grid_state(
     }
 }
 
-fn decode_optional_state_json(
+pub(super) fn decode_optional_state_json(
     tab: &str,
     tool: Option<&str>,
     state_b64: Option<String>,
@@ -414,6 +419,7 @@ fn build_validated_share_params(acc: RawParamAccum) -> Result<Option<ShareUrlPar
     }
     let step_val = parse_optional_step(acc.step_raw, preset_val.is_some())?;
     let state_json = decode_optional_state_json(&tab_val, tool_val.as_deref(), acc.state_b64)?;
+    let pipeline = super::pipeline::decode_optional_pipeline(acc.pipe_b64)?;
     Ok(Some(ShareUrlParams {
         tab: tab_val,
         tool: tool_val,
@@ -421,6 +427,7 @@ fn build_validated_share_params(acc: RawParamAccum) -> Result<Option<ShareUrlPar
         preset: preset_val,
         challenge: challenge_val,
         step: step_val,
+        pipeline,
     }))
 }
 

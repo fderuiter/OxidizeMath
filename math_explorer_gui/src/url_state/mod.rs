@@ -7,6 +7,7 @@
 mod base64url;
 mod browser;
 mod codec;
+pub mod pipeline;
 mod sync;
 
 #[cfg(all(

@@ -51,15 +51,23 @@ impl NetworkPropagationTool {
     }
 
     fn render_network_sliders(&mut self, ui: &mut egui::Ui) {
-        let mut num_nodes = self.model.num_nodes();
-        if ui
-            .add(egui::Slider::new(&mut num_nodes, 10..=200).text("Nodes"))
-            .changed()
-        {
-            let _ = self.model.set_num_nodes(num_nodes);
-            self.vaccinated_nodes.clear();
-            self.quarantined_edges.clear();
-            self.rebuild_seeded_graph();
+        if self.upstream_linked {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            ui.colored_label(
+                palette.accent,
+                format!("⚡ Upstream Graph ({} nodes)", self.model.num_nodes()),
+            );
+        } else {
+            let mut num_nodes = self.model.num_nodes();
+            if ui
+                .add(egui::Slider::new(&mut num_nodes, 10..=200).text("Nodes"))
+                .changed()
+            {
+                let _ = self.model.set_num_nodes(num_nodes);
+                self.vaccinated_nodes.clear();
+                self.quarantined_edges.clear();
+                self.rebuild_seeded_graph();
+            }
         }
 
         let mut beta = self.model.beta();

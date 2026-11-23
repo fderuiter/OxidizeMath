@@ -42,6 +42,7 @@ pub struct MorphogenesisTool {
     pub(crate) pending_initial_start: bool,
     pub(crate) last_high_contrast: Option<bool>,
     pub(crate) theory: MorphogenesisTheory,
+    pub(crate) field_stream: super::dataflow::MorphoFieldStreamState,
 }
 
 impl Default for MorphogenesisTool {
@@ -80,6 +81,7 @@ impl Default for MorphogenesisTool {
             pending_initial_start: true,
             last_high_contrast: None,
             theory: MorphogenesisTheory::default(),
+            field_stream: super::dataflow::MorphoFieldStreamState::default(),
         }
     }
 }
@@ -161,6 +163,7 @@ impl MorphogenesisTool {
         self.step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
+        self.invalidate_scalar_field_cache();
     }
 
     #[cfg(test)]
@@ -183,6 +186,7 @@ impl MorphogenesisTool {
         self.step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
+        self.invalidate_scalar_field_cache();
     }
 
     pub(crate) fn reset_system(&mut self) {
@@ -250,6 +254,7 @@ impl InteractiveTool for MorphogenesisTool {
             runner.step();
         }
         let snap = runner.get_snapshot();
+        self.field_stream.record_snapshot(&snap);
         let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
         self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
     }
@@ -279,9 +284,11 @@ impl InteractiveTool for MorphogenesisTool {
         if std::mem::take(&mut self.pending_initial_start) && self.worker.state().is_ready() {
             let _ = self.worker.send_command(SimCommand::Start);
         }
-        if self.worker.update().is_some() {
+        if let Some(snap) = self.worker.update() {
+            self.field_stream.record_snapshot(snap);
             self.dirty = true;
         }
+        self.publish_bus_scalar_field(&ctx);
         self.draw_controls(ui);
         self.draw_canvas(ui);
         if matches!(
