@@ -1,4 +1,5 @@
 // @explorer_feature = "physics"
+// @explorer_order = 16
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use math_explorer::physics::astrophysics::HaloProfile;
