@@ -1,4 +1,5 @@
 // @explorer_feature = "biology"
+// @explorer_order = 40
 use crate::async_sim::SimWorkerState;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
@@ -68,15 +69,6 @@ impl Default for MorphogenesisTab {
 }
 
 impl MorphogenesisTab {
-    #[cfg(test)]
-    pub(crate) fn create_runner(
-        params: &std::sync::Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
-        width: usize,
-        height: usize,
-    ) -> MorphogenesisKineticsRunner {
-        MorphogenesisTool::create_runner(params, width, height)
-    }
-
     fn try_load_legacy_state(&mut self, state: &str) -> bool {
         let Ok(legacy) = serde_json::from_str::<LegacyMorphoState>(state) else {
             return false;

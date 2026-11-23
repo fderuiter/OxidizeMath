@@ -406,14 +406,6 @@ fn collect_adr_violations(
                 ));
                 continue;
             }
-            Err(AdrFilenameError::UnfrozenLegacyPrefix { prefix, .. })
-                if allowlist.contains(rel_path) =>
-            {
-                by_legacy_prefix
-                    .entry(prefix)
-                    .or_default()
-                    .push(rel_path.clone());
-            }
             Err(AdrFilenameError::UnfrozenLegacyPrefix { prefix, slug }) => {
                 violations.push(format!(
                     "{rel_path}: Legacy 4-digit ADR prefix '{prefix}' is frozen (0001..={MAX_LEGACY_ADR_NUMBER:04}); rename to docs/adr/YYYYMMDD-{slug}.md"
@@ -435,19 +427,9 @@ fn collect_adr_violations(
 }
 
 pub(crate) fn validate_no_new_legacy_adrs(repo_dir: &Path, source: &DiffSource) -> bool {
-    let allowlist = match load_adr_allowlist(repo_dir, source) {
-        Ok(list) => list,
-        Err(err) => {
-            eprintln!("ADR verification failed: {err}");
-            return false;
-        }
-    };
     let added = newly_added_files(repo_dir, source);
     let mut violations = Vec::new();
     for rel_path in added {
-        if allowlist.contains(&rel_path) {
-            continue;
-        }
         if let Some(slug) = extract_four_digit_adr_slug(&rel_path) {
             violations.push(format!(
                 "{rel_path}: Newly added 4-digit ADR filenames (NNNN-slug.md) are rejected because legacy prefixes are frozen; rename to docs/adr/YYYYMMDD-{slug}.md"

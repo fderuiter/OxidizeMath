@@ -109,7 +109,7 @@ inventory::submit! {
         id: "BeamProfilingTool",
         display_name: "Beam Profiling",
         domain: "medical",
-        tags: &[],
+        tags: &["terma", "depth dose", "attenuation", "fluence", "radiotherapy"],
         build: || Box::new(BeamProfilingTool::default()),
     }
 }

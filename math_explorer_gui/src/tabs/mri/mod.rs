@@ -1,4 +1,5 @@
 // @explorer_feature = "physics"
+// @explorer_order = 11
 use crate::async_sim::SimWorkerState;
 use crate::tabs::ExplorerTab;
 use eframe::egui;

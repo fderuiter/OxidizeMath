@@ -5,10 +5,10 @@ use crate::presets::MorphogenesisKineticsMode;
 use crate::tabs::chaos::attractors::{
     default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
 };
-use crate::tabs::morphogenesis::runner::{MorphoSnapshotData, MorphogenesisKineticsState};
-use crate::tabs::morphogenesis::{
-    MorphogenesisKineticsRunner, MorphogenesisSharedParams, MorphogenesisTab, MorphogenesisTool,
+use crate::tabs::morphogenesis::runner::{
+    MorphoSnapshotData, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
 };
+use crate::tabs::morphogenesis::{MorphogenesisSharedParams, MorphogenesisTool};
 use crate::tabs::mri::{MriRunner, MriSharedParams};
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 use nalgebra::Vector3;
@@ -36,7 +36,7 @@ fn make_morpho_runner(
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
     }));
-    let mut runner = MorphogenesisTab::create_runner(&params, width, height);
+    let mut runner = MorphogenesisTool::create_runner(&params, width, height);
     runner.noise_amplitude = noise_amplitude;
     (runner, params)
 }
