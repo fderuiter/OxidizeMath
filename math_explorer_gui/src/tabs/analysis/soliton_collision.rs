@@ -121,6 +121,7 @@ pub struct SolitonCollisionTool {
     pub(crate) steps_per_frame: usize,
     pub(crate) last_substeps: usize,
     pub(crate) last_step_ms: f64,
+    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) state_rev: u64,
 }
 
@@ -146,6 +147,7 @@ impl Default for SolitonCollisionTool {
             steps_per_frame: 2,
             last_substeps: 1,
             last_step_ms: 0.0,
+            focused_canvas: None,
             state_rev: 1,
         };
         tool.reseed_from_state();
@@ -310,6 +312,10 @@ impl InteractiveTool for SolitonCollisionTool {
         self.state_rev
     }
 
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds {
             max_bytes: 8_192,
@@ -366,12 +372,10 @@ impl InteractiveTool for SolitonCollisionTool {
         self.refresh_diagnostics();
     }
 
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
 
-    #[cfg(test)]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }

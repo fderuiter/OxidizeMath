@@ -42,6 +42,7 @@ impl SuperfluidVortexTool {
             .min(ui.available_height() - 36.0)
             .clamp(180.0, 540.0);
         let (response, painter) = ui.allocate_painter(Vec2::splat(side), Sense::click_and_drag());
+        self.focused_canvas = response.has_focus().then_some(response.id);
         let rect = response.rect;
 
         let summary = format!(
