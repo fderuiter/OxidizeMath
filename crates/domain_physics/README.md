@@ -10,7 +10,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 
 ### Module Structure
 
-- **`chaos`**: Deterministic chaotic systems, including conservative Hamiltonian models (`DoublePendulum`, `HenonHeiles`), cubic-Hermite `PoincareSection` detectors, the Lorenz attractor, and Lyapunov exponent analyzers.
+- **`chaos`**: Deterministic chaotic systems, including conservative Hamiltonian models (`DoublePendulum`, `HenonHeiles`), cubic-Hermite `PoincareSection` detectors, the Lorenz and Rössler attractors, and Lyapunov/FTLE analyzers.
 - **`quantum`**: Quantum state evolution, Clebsch-Gordan coupling coefficients, and Schrödinger wave equation solvers.
 - **`astrophysics`**: Tillaboev (2025) irregular dwarf-galaxy scaling regressions (`GalaxyModel`), baryonic vs. NFW/Burkert dark-matter rotation curves (`decompose_rotation_curve`), zero-allocation symplectic leapfrog disk & tidal-stream orbits (`GalacticDiskSystem`), and planar 3-body gravitational choreographies (`FigureEightThreeBody`).
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.

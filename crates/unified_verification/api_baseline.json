@@ -6538,7 +6538,64 @@
       "signature": "impl DoublePendulum { pub fn seed_on_poincare_section (& self , _ : f64 , _ : f64 , _ : f64 ,) -> Option < ArrayState < 4 > > }"
     },
     {
+      "signature": "impl DoublePendulumBuilder { pub fn build (self , _ : DoublePendulumState) -> DoublePendulumSystem }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn g (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn l1 (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn l2 (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn m1 (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn m2 (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumBuilder { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumState { pub fn components (& self) -> (f64 , f64 , f64 , f64) }"
+    },
+    {
+      "signature": "impl DoublePendulumState { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumState { pub fn phase_point_3d (& self) -> Vector3 < f64 > }"
+    },
+    {
+      "signature": "impl DoublePendulumSystem { pub fn bob_positions (& self) -> ([f64 ; 2] , [f64 ; 2]) }"
+    },
+    {
+      "signature": "impl DoublePendulumSystem { pub fn default_chaotic (_ : DoublePendulumState) -> Self }"
+    },
+    {
+      "signature": "impl DoublePendulumSystem { pub fn model (& self) -> DoublePendulum }"
+    },
+    {
+      "signature": "impl DoublePendulumSystem { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl DoublePendulumSystem { pub fn step_with < S : Solver < ArrayState < 4 > > > (& mut self , _ : & mut S , _ : f64) }"
+    },
+    {
+      "signature": "impl DoublePendulumSystem { pub fn total_energy (& self) -> f64 }"
+    },
+    {
       "signature": "pub struct DoublePendulum"
+    },
+    {
+      "signature": "pub struct DoublePendulumBuilder"
+    },
+    {
+      "signature": "pub struct DoublePendulumState"
+    },
+    {
+      "signature": "pub struct DoublePendulumSystem"
     }
   ],
   "crates/domain_physics/src/physics/chaos/fractals.rs": [
@@ -6629,10 +6686,48 @@
   ],
   "crates/domain_physics/src/physics/chaos/metrics.rs": [
     {
+      "signature": "pub fn double_pendulum_lyapunov < S , Sol > (_ : & S , _ : & mut Sol , _ : ArrayState < 4 > , _ : f64 , _ : usize , _ : f64 ,) -> Result < f64 , ChaosError > where S : OdeSystem < ArrayState < 4 > > + ? Sized , Sol : Solver < ArrayState < 4 > > ,"
+    },
+    {
+      "signature": "pub fn finite_time_lyapunov (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
       "signature": "pub fn logistic_lyapunov (_ : f64 , _ : f64 , _ : usize) -> f64"
     },
     {
       "signature": "pub fn lorenz_lyapunov < S , Sol > (_ : & S , _ : & mut Sol , _ : Vector3 < f64 > , _ : f64 , _ : usize , _ : f64 ,) -> Result < f64 , ChaosError > where S : OdeSystem < Vector3 < f64 > > + ? Sized , Sol : Solver < Vector3 < f64 > > ,"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/mod.rs": [
+    {
+      "signature": "pub use double_pendulum :: DoublePendulum"
+    },
+    {
+      "signature": "pub use double_pendulum :: DoublePendulumBuilder"
+    },
+    {
+      "signature": "pub use double_pendulum :: DoublePendulumState"
+    },
+    {
+      "signature": "pub use double_pendulum :: DoublePendulumSystem"
+    },
+    {
+      "signature": "pub use lorenz :: LorenzBuilder"
+    },
+    {
+      "signature": "pub use lorenz :: LorenzState"
+    },
+    {
+      "signature": "pub use lorenz :: LorenzSystem"
+    },
+    {
+      "signature": "pub use rossler :: RosslerBuilder"
+    },
+    {
+      "signature": "pub use rossler :: RosslerState"
+    },
+    {
+      "signature": "pub use rossler :: RosslerSystem"
     }
   ],
   "crates/domain_physics/src/physics/chaos/poincare.rs": [
@@ -6656,6 +6751,44 @@
     },
     {
       "signature": "pub struct PoincareSection < const N : usize >"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/rossler.rs": [
+    {
+      "signature": "impl RosslerBuilder { pub fn a (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl RosslerBuilder { pub fn b (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl RosslerBuilder { pub fn build (self , _ : RosslerState) -> RosslerSystem }"
+    },
+    {
+      "signature": "impl RosslerBuilder { pub fn c (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl RosslerBuilder { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl RosslerState { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl RosslerSystem { pub fn default_chaotic (_ : RosslerState) -> Self }"
+    },
+    {
+      "signature": "impl RosslerSystem { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl RosslerSystem { pub fn step_with < S : Solver < Vector3 < f64 > > > (& mut self , _ : & mut S , _ : f64) }"
+    },
+    {
+      "signature": "pub struct RosslerBuilder"
+    },
+    {
+      "signature": "pub struct RosslerState"
+    },
+    {
+      "signature": "pub struct RosslerSystem"
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/analysis.rs": [

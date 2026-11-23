@@ -1,14 +1,18 @@
-//! Canonical Hamiltonian Double Pendulum (`ArrayState<4>`).
+//! Canonical Hamiltonian Double Pendulum (`ArrayState<4>`) and Stateful Trajectory Stepper.
 //!
 //! Models two point masses $(m_1, m_2)$ connected by massless rigid rods $(l_1, l_2)$
 //! in a uniform gravitational field $g$ using canonical phase-space coordinates
 //! $(\theta_1, \theta_2, p_1, p_2)$. Because the $2 \times 2$ mass matrix depends on
 //! $\Delta\theta = \theta_1 - \theta_2$, the Hamiltonian is **non-separable** and showcases
-//! implicit symplectic integrators such as [`GaussLegendre4`](pure_math::pure_math::analysis::ode::GaussLegendre4).
+//! implicit symplectic integrators such as [`GaussLegendre4`](pure_math::pure_math::analysis::ode::GaussLegendre4)
+//! alongside pre-allocated [`DoublePendulumSystem`] twin-trajectory stepping.
 
 // [cite:chaos_theory]
 
-use pure_math::pure_math::analysis::ode::{ArrayState, HamiltonianSystem, OdeSystem};
+use nalgebra::Vector3;
+use pure_math::pure_math::analysis::ode::{
+    ArrayState, HamiltonianSystem, OdeSystem, RungeKutta4, Solver, TimeStepper,
+};
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
@@ -206,62 +210,264 @@ impl TheoryDescribable for DoublePendulum {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use pure_math::pure_math::analysis::ode::{GaussLegendre4, RungeKutta4, Solver};
+/// Represents the 4D canonical phase-space state $[\theta_1, \theta_2, p_1, p_2]$ of a planar double pendulum.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DoublePendulumState {
+    /// Stack-allocated canonical state vector $[\theta_1, \theta_2, p_1, p_2]$.
+    pub state: ArrayState<4>,
+}
 
-    #[test]
+impl DoublePendulumState {
+    /// Constructs a new state from joint angles $(\theta_1, \theta_2)$ and canonical momenta $(p_1, p_2)$.
+    #[must_use]
     #[verified_engine::verified]
-    fn test_double_pendulum_gauss_legendre4_beats_rk4_over_10000_steps() {
-        let pendulum = DoublePendulum::default();
-        let initial = DoublePendulum::default_chaotic_state();
-        let e0 = pendulum.hamiltonian(&initial);
-        let dt = 0.02;
-
-        let mut s_gl4 = initial;
-        let mut s_rk4 = initial;
-        let mut gl4 = GaussLegendre4::new(&initial);
-        let mut rk4 = RungeKutta4::new(&initial);
-
-        let mut max_gl4_pct = 0.0_f64;
-        for step in 0..10_000 {
-            let t = step as f64 * dt;
-            gl4.step(&pendulum, t, &mut s_gl4, dt);
-            rk4.step(&pendulum, t, &mut s_rk4, dt);
-            let step_gl4_pct = pendulum.relative_energy_error(&s_gl4, e0) * 100.0;
-            if step_gl4_pct > max_gl4_pct {
-                max_gl4_pct = step_gl4_pct;
-            }
+    pub fn new(theta1: f64, theta2: f64, p1: f64, p2: f64) -> Self {
+        Self {
+            state: ArrayState([theta1, theta2, p1, p2]),
         }
-
-        let rel_gl4_pct = pendulum.relative_energy_error(&s_gl4, e0) * 100.0;
-        let rel_rk4_pct = pendulum.relative_energy_error(&s_rk4, e0) * 100.0;
-
-        assert!(
-            max_gl4_pct < 0.001 && rel_gl4_pct < 0.001,
-            "GaussLegendre4 peak ({max_gl4_pct:.6}%) and final ({rel_gl4_pct:.6}%) error must stay < 0.001%"
-        );
-        assert!(
-            rel_rk4_pct > 3.0,
-            "RungeKutta4 expected secular energy loss (>3%), got {rel_rk4_pct:.4}%"
-        );
     }
 
-    #[test]
+    /// Returns $(\theta_1, \theta_2, p_1, p_2)$.
+    #[must_use]
     #[verified_engine::verified]
-    fn test_double_pendulum_poincare_seed_energy_shell() {
-        let pendulum = DoublePendulum::default();
-        let target_energy = 15.0;
-        let seeded = pendulum
-            .seed_on_poincare_section(target_energy, 0.35, 0.8)
-            .expect("valid state inside energy shell");
-        assert!(
-            (pendulum.hamiltonian(&seeded) - target_energy).abs() < 1e-12,
-            "Seeded state must lie on exact energy shell"
-        );
-        let (dth1, _) = pendulum.angular_velocities(&seeded);
-        assert!(dth1 >= 0.0, "Positive crossing requires dtheta1 >= 0");
-        assert!(pendulum.seed_on_poincare_section(1.0, 2.8, 10.0).is_none());
+    pub fn components(&self) -> (f64, f64, f64, f64) {
+        let [t1, t2, p1, p2] = self.state.0;
+        (t1, t2, p1, p2)
+    }
+
+    /// Returns 3D phase-space coordinates $(\theta_1, \theta_2, p_1)$ for trajectory plotting.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn phase_point_3d(&self) -> Vector3<f64> {
+        let [t1, t2, p1, _] = self.state.0;
+        Vector3::new(t1, t2, p1)
     }
 }
+
+/// Builder for configuring a [`DoublePendulumSystem`] with pre-allocated RK4 buffers.
+#[derive(Debug, Clone)]
+pub struct DoublePendulumBuilder {
+    m1: f64,
+    m2: f64,
+    l1: f64,
+    l2: f64,
+    g: f64,
+}
+
+impl Default for DoublePendulumBuilder {
+    #[verified_engine::verified]
+    fn default() -> Self {
+        let p = DoublePendulum::default();
+        Self {
+            m1: p.m1,
+            m2: p.m2,
+            l1: p.l1,
+            l2: p.l2,
+            g: p.g,
+        }
+    }
+}
+
+impl DoublePendulumBuilder {
+    /// Creates a new builder with unit masses and rod lengths $(m_1=m_2=1, l_1=l_2=1, g=9.81)$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets upper bob mass $m_1$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn m1(mut self, val: f64) -> Self {
+        self.m1 = val;
+        self
+    }
+
+    /// Sets lower bob mass $m_2$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn m2(mut self, val: f64) -> Self {
+        self.m2 = val;
+        self
+    }
+
+    /// Sets upper rod length $l_1$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn l1(mut self, val: f64) -> Self {
+        self.l1 = val;
+        self
+    }
+
+    /// Sets lower rod length $l_2$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn l2(mut self, val: f64) -> Self {
+        self.l2 = val;
+        self
+    }
+
+    /// Sets gravitational acceleration $g$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn g(mut self, val: f64) -> Self {
+        self.g = val;
+        self
+    }
+
+    /// Builds a [`DoublePendulumSystem`] with pre-allocated `RungeKutta4<ArrayState<4>>` scratch buffers.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn build(self, state: DoublePendulumState) -> DoublePendulumSystem {
+        let solver = RungeKutta4::new(&state.state);
+        DoublePendulumSystem {
+            m1: self.m1,
+            m2: self.m2,
+            l1: self.l1,
+            l2: self.l2,
+            g: self.g,
+            state,
+            solver,
+        }
+    }
+}
+
+/// Stateful planar double-pendulum trajectory stepper delegating canonical dynamics to [`DoublePendulum`].
+///
+/// # Example
+///
+/// ```rust
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::chaos::double_pendulum::{
+///     DoublePendulumBuilder, DoublePendulumState,
+/// };
+///
+/// let initial = DoublePendulumState::new(2.2, 2.2, 0.0, 0.0);
+/// let mut pendulum = DoublePendulumBuilder::new().build(initial);
+/// let e0 = pendulum.total_energy();
+/// pendulum.step(0.005);
+/// assert!((pendulum.total_energy() - e0).abs() < 1e-5);
+/// ```
+#[derive(Debug, Clone)]
+pub struct DoublePendulumSystem {
+    /// Upper bob mass $m_1$.
+    pub m1: f64,
+    /// Lower bob mass $m_2$.
+    pub m2: f64,
+    /// Upper rod length $l_1$.
+    pub l1: f64,
+    /// Lower rod length $l_2$.
+    pub l2: f64,
+    /// Gravitational acceleration $g$.
+    pub g: f64,
+    /// Current 4D canonical state $[\theta_1, \theta_2, p_1, p_2]$.
+    pub state: DoublePendulumState,
+    solver: RungeKutta4<ArrayState<4>>,
+}
+
+impl DoublePendulumSystem {
+    /// Creates a chaotic double-pendulum stepper with unit masses and lengths.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn default_chaotic(initial_state: DoublePendulumState) -> Self {
+        DoublePendulumBuilder::new().build(initial_state)
+    }
+
+    /// Returns the underlying stateless canonical [`DoublePendulum`] Hamiltonian model.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn model(&self) -> DoublePendulum {
+        DoublePendulum::new(self.m1, self.m2, self.l1, self.l2, self.g)
+    }
+
+    /// Advances the pendulum by `dt` in-place using the pre-allocated RK4 buffer.
+    #[verified_engine::verified]
+    pub fn step(&mut self, dt: f64) {
+        let model = self.model();
+        self.solver.step(&model, 0.0, &mut self.state.state, dt);
+    }
+
+    /// Advances the pendulum by `dt` using a caller-supplied ODE solver.
+    #[verified_engine::verified]
+    pub fn step_with<S: Solver<ArrayState<4>>>(&mut self, solver: &mut S, dt: f64) {
+        let model = self.model();
+        solver.step(&model, 0.0, &mut self.state.state, dt);
+    }
+
+    /// Computes Cartesian $(x, y)$ positions of both bobs relative to the pivot $(0, 0)$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn bob_positions(&self) -> ([f64; 2], [f64; 2]) {
+        self.model().cartesian_positions(&self.state.state)
+    }
+
+    /// Evaluates the canonical Hamiltonian energy $H(\theta_1, \theta_2, p_1, p_2)$ of the current state.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn total_energy(&self) -> f64 {
+        self.model().hamiltonian(&self.state.state)
+    }
+}
+
+impl OdeSystem<ArrayState<4>> for DoublePendulumSystem {
+    #[verified_engine::verified]
+    fn derivative(&self, t: f64, state: &ArrayState<4>) -> ArrayState<4> {
+        self.model().derivative(t, state)
+    }
+
+    #[verified_engine::verified]
+    fn derivative_in_place(&self, t: f64, state: &ArrayState<4>, out: &mut ArrayState<4>) {
+        self.model().derivative_in_place(t, state, out);
+    }
+}
+
+impl HamiltonianSystem<ArrayState<4>> for DoublePendulumSystem {
+    #[verified_engine::verified]
+    fn hamiltonian(&self, state: &ArrayState<4>) -> f64 {
+        self.model().hamiltonian(state)
+    }
+}
+
+impl TimeStepper<ArrayState<4>> for DoublePendulumSystem {
+    #[verified_engine::verified]
+    fn get_state(&self) -> &ArrayState<4> {
+        &self.state.state
+    }
+
+    #[verified_engine::verified]
+    fn get_state_mut(&mut self) -> &mut ArrayState<4> {
+        &mut self.state.state
+    }
+
+    #[verified_engine::verified]
+    fn step(&mut self, dt: f64) {
+        let model = self.model();
+        self.solver.step(&model, 0.0, &mut self.state.state, dt);
+    }
+}
+
+impl TheoryDescribable for DoublePendulumSystem {
+    fn theory_description(&self) -> String {
+        let (t1, t2, p1, p2) = self.state.components();
+        format!(
+            "Planar double pendulum: theta1={:.2}, theta2={:.2}, p1={:.2}, p2={:.2}",
+            t1, t2, p1, p2
+        )
+    }
+
+    fn phonetic_description(&self) -> String {
+        self.theory_description()
+    }
+
+    fn theory_citation(&self) -> String {
+        self.model().theory_citation()
+    }
+
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        self.model().available_descriptions()
+    }
+}
+
+#[cfg(test)]
+mod tests;

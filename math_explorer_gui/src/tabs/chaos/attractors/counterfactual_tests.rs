@@ -113,17 +113,8 @@ fn test_attractor_swap_clear_reset_zero_alloc_and_twin_exports() {
 #[test]
 fn test_attractor_and_sir_zero_allocation_verified_twin_step() {
     let plotter = AttractorPlotter::default();
-    let mut runner = AttractorRunner {
-        system: math_explorer::physics::chaos::lorenz::LorenzBuilder::new().build(
-            math_explorer::physics::chaos::lorenz::LorenzState::new(1.0, 1.0, 1.0),
-        ),
-        params: std::sync::Arc::clone(&plotter.params),
-        history: std::collections::VecDeque::with_capacity(ATTRACTOR_RING_CAPACITY),
-        step_count: 0,
-        execution_state: SolverExecutionState::Running,
-        twin: None,
-        rng: oxidize_core::rng::OxidizeRng::default(),
-    };
+    let mut runner = AttractorRunner::from_params(std::sync::Arc::clone(&plotter.params));
+    runner.execution_state = SolverExecutionState::Running;
     runner.step_once();
     runner.process_command(crate::async_sim::SimCommand::Custom("fork:0.00001".into()));
     assert!(runner.has_counterfactual_twin());

@@ -27,6 +27,7 @@ impl AttractorPlotter {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         (self.mode as u8).hash(&mut h);
+        self.system_kind.hash(&mut h);
         self.system.sigma.to_bits().hash(&mut h);
         self.system.rho.to_bits().hash(&mut h);
         self.system.beta.to_bits().hash(&mut h);

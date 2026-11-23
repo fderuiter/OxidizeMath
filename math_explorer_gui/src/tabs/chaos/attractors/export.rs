@@ -138,7 +138,25 @@ impl AttractorPlotter {
                 ("Branch A (Baseline)".to_string(), points_a),
             ]
         } else {
-            vec![("Trajectory".to_string(), points_b)]
+            let mut datasets = vec![("Trajectory".to_string(), points_b)];
+            if self.shadow_enabled && self.is_finite_state() {
+                let mut sh_pts: Vec<[f64; 2]> = self
+                    .shadow_history
+                    .iter()
+                    .map(|p| self.project(*p))
+                    .collect();
+                if sh_pts.is_empty() {
+                    if let Some(curr) = self.timeline.current() {
+                        sh_pts.push(self.project(curr.shadow_vec3()));
+                    }
+                }
+                datasets.push(("Shadow Trajectory".to_string(), sh_pts));
+                datasets.push((
+                    "Log10 Divergence".to_string(),
+                    self.build_log10_divergence_series(),
+                ));
+            }
+            datasets
         }
     }
 
@@ -160,7 +178,22 @@ impl AttractorPlotter {
                 ("Branch A (Baseline)".to_string(), points_a),
             ]
         } else {
-            vec![("Trajectory".to_string(), points_b)]
+            let mut datasets = vec![("Trajectory".to_string(), points_b)];
+            if self.shadow_enabled && self.is_finite_state() {
+                let mut sh_pts: Vec<[f64; 3]> = self
+                    .shadow_history
+                    .iter()
+                    .map(|p| [p.x, p.y, p.z])
+                    .collect();
+                if sh_pts.is_empty() {
+                    if let Some(curr) = self.timeline.current() {
+                        let s = curr.shadow_vec3();
+                        sh_pts.push([s.x, s.y, s.z]);
+                    }
+                }
+                datasets.push(("Shadow Trajectory".to_string(), sh_pts));
+            }
+            datasets
         }
     }
 }

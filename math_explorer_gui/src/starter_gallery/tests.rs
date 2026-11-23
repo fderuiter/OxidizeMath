@@ -15,6 +15,16 @@ fn test_starter_cards_presence_and_metadata() {
 
     let chaos_cards = get_starter_cards_for_domain("chaos", &[]);
     assert!(chaos_cards.iter().any(|c| c.title == "3D Attractor"));
+    assert!(chaos_cards
+        .iter()
+        .any(|c| c.title == "Butterfly Effect Twins"));
+    assert!(chaos_cards.iter().any(|c| c.title == "Rössler Spiral Fold"));
+    assert!(chaos_cards
+        .iter()
+        .any(|c| c.title == "Chaotic Double Pendulum"));
+    assert!(chaos_cards
+        .iter()
+        .any(|c| c.title == "Lorenz Butterfly Perturbation"));
 
     let bio_cards = get_starter_cards_for_domain("biology", &[]);
     assert!(bio_cards.iter().any(|c| c.title == "Turing Spots"));
@@ -72,8 +82,8 @@ fn test_all_registered_tools_have_starter_presets() {
         .collect();
     assert_eq!(
         presets.len(),
-        157,
-        "Expected 157 registered starter presets"
+        160,
+        "Expected 160 registered starter presets"
     );
 
     for tool in &tools {
@@ -234,8 +244,8 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
         .collect();
     assert_eq!(
         presets.len(),
-        157,
-        "Expected 157 StarterPresetMetadata entries"
+        160,
+        "Expected 160 StarterPresetMetadata entries"
     );
 
     for preset in presets {

@@ -5,7 +5,6 @@
 use super::{
     AttractorMode, AttractorPlotter, AttractorRunner, CompiledFlowJob, SolverExecutionState,
 };
-use crate::app::SemanticPalette;
 use crate::async_sim::SimCommand;
 use crate::framework::{
     l2_distance_3d, sanitize_perturbation_delta, DivergenceSnapshot, Scene3DBuilder,
@@ -310,10 +309,19 @@ impl AttractorPlotter {
             self.system.step(self.dt);
         }
         self.step_count += 1;
+        let v = self.system.state.vec;
         if self.history.len() >= cap {
             self.history.pop_front();
         }
-        self.history.push_back(self.system.state.vec);
+        self.history.push_back(v);
+        let p4 = [v.x, v.y, v.z, 0.0];
+        self.timeline.push(super::TwinFrame::from_states(
+            self.step_count,
+            self.step_count as f64 * self.dt,
+            p4,
+            p4,
+            false,
+        ));
     }
 
     /// Deterministically reconstructs a forked twin state from a compact preset/URL descriptor.
@@ -334,6 +342,15 @@ impl AttractorPlotter {
             .beta(desc.baseline_beta)
             .build(LorenzState::new(1.0, 1.0, 1.0));
         self.history.clear();
+        self.shadow_history.clear();
+        self.timeline.clear();
+        self.timeline.push(super::TwinFrame::from_states(
+            0,
+            0.0,
+            [1.0, 1.0, 1.0, 0.0],
+            [1.0, 1.0, 1.0, 0.0],
+            false,
+        ));
         self.step_count = 0;
 
         for _ in 0..desc.fork_step {
@@ -371,21 +388,12 @@ impl AttractorPlotter {
         let mut runner = AttractorRunner::from_params(params);
         runner.system = self.system.clone();
         runner.history = self.history.clone();
+        runner.shadow_history = self.shadow_history.clone();
+        runner.timeline = self.timeline.clone();
         runner.step_count = self.step_count;
         runner.execution_state = self.execution_state;
         runner.twin = self.twin.clone();
         self.worker = crate::async_sim::BackgroundWorker::new(runner);
-    }
-
-    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
-    #[cfg(test)]
-    pub fn populate_scene(&mut self, series_color: egui::Color32) {
-        self.populate_scene_colors(series_color, egui::Color32::GRAY, series_color);
-    }
-
-    /// Populates `self.scene_builder` using theme-aware semantic colors for active and shadow branches.
-    pub(super) fn populate_scene_with_palette(&mut self, palette: &SemanticPalette) {
-        self.populate_scene_colors(palette.series_color(0), palette.muted_text, palette.accent);
     }
 
     fn push_trajectory_series(
@@ -402,7 +410,7 @@ impl AttractorPlotter {
         }
     }
 
-    fn populate_twin_scene(
+    pub(super) fn populate_counterfactual_scene(
         &mut self,
         series_color: egui::Color32,
         muted_color: egui::Color32,
@@ -427,6 +435,9 @@ impl AttractorPlotter {
             egui::Stroke::new(1.5_f32, muted_color),
             LineStyle::dashed_loose(),
         );
+        self.trajectory_scratch.clear();
+        self.trajectory_scratch
+            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
         if self.trajectory_scratch.is_empty() && self.is_finite_state() {
             let vb = self.system.state.vec;
             self.trajectory_scratch.push(Point3::new(vb.x, vb.y, vb.z));
@@ -447,43 +458,5 @@ impl AttractorPlotter {
             MarkerShape::Circle,
             false,
         );
-    }
-
-    fn populate_scene_colors(
-        &mut self,
-        series_color: egui::Color32,
-        muted_color: egui::Color32,
-        accent_color: egui::Color32,
-    ) {
-        let origin_offset = match self.mode {
-            AttractorMode::Lorenz => Point3::new(0.0, 0.0, 25.0),
-            AttractorMode::Custom => Point3::origin(),
-        };
-        self.scene_builder.begin(self.camera);
-        self.scene_builder.set_origin_offset(origin_offset);
-        self.trajectory_scratch.clear();
-        self.trajectory_scratch
-            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
-        if self.twin.is_some() {
-            self.populate_twin_scene(series_color, muted_color, accent_color);
-        } else if !self.trajectory_scratch.is_empty() {
-            Self::push_trajectory_series(
-                &mut self.scene_builder,
-                "Trajectory",
-                &self.trajectory_scratch,
-                egui::Stroke::new(1.5_f32, series_color),
-                LineStyle::Solid,
-            );
-        } else if self.is_finite_state() {
-            let v = self.system.state.vec;
-            self.scene_builder.add_points(
-                "Initial State",
-                &[Point3::new(v.x, v.y, v.z)],
-                4.0_f32,
-                series_color,
-                MarkerShape::Circle,
-                true,
-            );
-        }
     }
 }

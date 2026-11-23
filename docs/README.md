@@ -76,6 +76,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Root-Owned Pane Dataflow Bus and Cycle-Checked Cross-Domain Pipelines](adr/20261123-pane-dataflow-bus-and-cross-domain-pipelines.md)
 - [ADR 20261123: Variable-Dose Pharmacokinetic Regimen Superposition and Interactive Planner](adr/20261123-pharmacokinetic-regimen-superposition-and-analytics.md)
 - [ADR 20261123: Planar ODE AST Evaluation, Poincaré Stability Maps, AST Caching, and Recovery-Based URL Sharing](adr/20261123-planar-ode-ast-poincare-and-url-recovery.md)
+- [ADR 20261123: Playback Timeline Scrubbing, Ring Buffers, and Twin Chaotic Trajectories](adr/20261123-playback-timeline-scrubbing-and-chaos-twins.md)
 - [ADR 20261123: Precompiled Verification Patterns, AST Source Prefetch, and Zero-Allocation Scans](adr/20261123-precompiled-verification-patterns-and-ast-prefetch.md)
 - [ADR 20261123: `core`-Slice Thomas Solver, `CrankNicolson1D` Workspace, and Closed-Form $2\times 2$ Quantum Helpers](adr/20261123-pure-math-thomas-solver-and-closed-form-quantum-workspaces.md)
 - [ADR 20261123: Live 4D Radar-Gated IMRT Contouring Workbench](adr/20261123-radar-gated-4d-imrt-contouring-workbench.md)

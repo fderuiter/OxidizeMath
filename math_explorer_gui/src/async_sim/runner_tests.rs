@@ -301,6 +301,7 @@ fn test_physics_and_chaos_runners_step_once() {
             max_points: 500,
             mode: AttractorMode::Lorenz,
             custom_flow: None,
+            ..Default::default()
         })));
     attractor.execution_state = SolverExecutionState::Paused;
     attractor.step_once();

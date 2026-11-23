@@ -96,6 +96,10 @@ fn run_worker_rewind_or_seek<R: SimulationRunner + ?Sized>(
         let target = target_step
             .unwrap_or_else(|| r.metadata().current_step.saturating_sub(back_steps.max(1)));
         r.seek_to_step(runner, target);
+    } else if let Some(target) = target_step {
+        runner.process_command(SimCommand::SeekStep(target));
+    } else {
+        runner.process_command(SimCommand::StepBack(back_steps));
     }
     sync_worker_timeline(ring, state_tx);
     let snapshot = runner.get_snapshot();

@@ -7,8 +7,8 @@
 \usepackage{accessibility}
 \usepackage{amssymb}
 
-\title{Chaos Theory and the Lorenz System}
-\author{Jules (AI Assistant)}
+\title{Chaos Theory, Twin-Trajectory Divergence, and Lyapunov Exponents}
+\author{OxidizeMath Scientific Verification Suite}
 \date{\today}
 
 \begin{document}
@@ -16,10 +16,56 @@
 \maketitle
 
 \begin{abstract}
-This paper outlines the physics underlying the Lorenz system, which originally modeled atmospheric convection but became the seminal example of deterministic chaos.
+This paper formulates the continuous-time chaotic dynamical systems implemented in OxidizeMath---the Lorenz convection model, the R\"ossler spiral-fold attractor, and the planar Lagrangian double pendulum---together with twin-trajectory perturbation dynamics, Wolf's largest Lyapunov exponent renormalization algorithm, finite-time Lyapunov exponents (FTLE), and the Grassberger--Procaccia correlation sum.
 \end{abstract}
 
-\section{Introduction}
-The Lorenz system is a system of ordinary differential equations first studied by Edward Lorenz. It is notable for having chaotic solutions for certain parameter values and initial conditions.
+\section{Continuous-Time Strange Attractors and Hamiltonian Chaos}
+
+\subsection{Lorenz Atmospheric Convection System}
+The three-dimensional Lorenz system models Rayleigh--B\'enard convection with Prandtl number $\sigma > 0$, Rayleigh number $\rho > 0$, and geometric aspect factor $\beta > 0$:
+\begin{equation}
+\frac{dx}{dt} = \sigma(y - x), \qquad
+\frac{dy}{dt} = x(\rho - z) - y, \qquad
+\frac{dz}{dt} = xy - \beta z.
+\end{equation}
+For the canonical parameters $(\sigma, \rho, \beta) = (10, 28, 8/3)$, trajectories converge onto a bounded strange attractor surrounding the nontrivial equilibria $C_{\pm} = (\pm\sqrt{\beta(\rho - 1)}, \pm\sqrt{\beta(\rho - 1)}, \rho - 1)$.
+
+\subsection{R\"ossler Spiral-Fold System}
+The R\"ossler system generates chaotic stretching and folding through a single quadratic nonlinearity $xz$ parameterized by $(a, b, c) = (0.2, 0.2, 5.7)$:
+\begin{equation}
+\frac{dx}{dt} = -y - z, \qquad
+\frac{dy}{dt} = x + ay, \qquad
+\frac{dz}{dt} = b + z(x - c).
+\end{equation}
+
+\subsection{Planar Lagrangian Double Pendulum}
+For two point masses $(m_1, m_2)$ on rigid massless links $(l_1, l_2)$ in a uniform gravitational field $g$ with state $\mathbf{u} = (\theta_1, \theta_2, \omega_1, \omega_2)^\top$ and $\Delta = \theta_1 - \theta_2$, the Euler--Lagrange equations with denominator $D(\Delta) = 2m_1 + m_2 - m_2 \cos(2\Delta)$ yield:
+\begin{align}
+\dot{\theta}_1 &= \omega_1, \qquad \dot{\theta}_2 = \omega_2, \\
+\dot{\omega}_1 &= \frac{-g(2m_1 + m_2)\sin\theta_1 - m_2 g \sin(\theta_1 - 2\theta_2) - 2\sin\Delta\, m_2\left(\omega_2^2 l_2 + \omega_1^2 l_1 \cos\Delta\right)}{l_1 D(\Delta)}, \\
+\dot{\omega}_2 &= \frac{2\sin\Delta\left(\omega_1^2 l_1(m_1 + m_2) + g(m_1 + m_2)\cos\theta_1 + \omega_2^2 l_2 m_2 \cos\Delta\right)}{l_2 D(\Delta)}.
+\end{align}
+
+\section{Twin-Trajectory Divergence and Lyapunov Exponents}
+
+Consider a primary trajectory $\mathbf{x}(t)$ and a perturbed shadow twin $\tilde{\mathbf{x}}(t) = \mathbf{x}(t) + \delta\mathbf{x}(t)$ initialized with $\|\delta\mathbf{x}(0)\|_2 = \varepsilon \ll 1$. Prior to nonlinear saturation at the diameter of the attractor, infinitesimal phase-space separation grows exponentially at the largest Lyapunov exponent $\lambda_1$:
+\begin{equation}
+\|\delta\mathbf{x}(t)\|_2 \approx \|\delta\mathbf{x}(0)\|_2 \, e^{\lambda_1 t}, \qquad
+\log_{10}\|\delta\mathbf{x}(t)\|_2 \approx \log_{10}\|\delta\mathbf{x}(0)\|_2 + \frac{\lambda_1}{\ln 10}\, t.
+\end{equation}
+The characteristic e-folding horizon is the Lyapunov time $T_\lambda = \lambda_1^{-1}$.
+
+\subsection{Wolf Renormalization and Finite-Time Lyapunov Exponents}
+To avoid saturation when estimating $\lambda_1$ numerically over $K$ renormalization intervals of duration $\tau$, Wolf's benettin-renormalization method resets the shadow state along the evolved separation vector $\tilde{\mathbf{x}}(t_k^+) = \mathbf{x}(t_k) + d_0 \frac{\tilde{\mathbf{x}}(t_k^-) - \mathbf{x}(t_k)}{d_k}$ where $d_k = \|\tilde{\mathbf{x}}(t_k^-) - \mathbf{x}(t_k)\|_2$:
+\begin{equation}
+\lambda_1 \approx \frac{1}{K \tau} \sum_{k=1}^{K} \ln\!\left(\frac{d_k}{d_0}\right), \qquad
+\lambda_{\mathrm{FTLE}}(t_0, \Delta t) = \frac{1}{\Delta t} \ln\!\left(\frac{\|\delta\mathbf{x}(t_0 + \Delta t)\|_2}{\|\delta\mathbf{x}(t_0)\|_2}\right).
+\end{equation}
+
+\section{Grassberger--Procaccia Correlation Sum}
+Given $N$ phase-space points $\{\mathbf{x}_i\}_{i=1}^N$ and Heaviside step function $\Theta$, the correlation sum at neighborhood radius $r > 0$ estimates fractal attractor scaling $C(r) \propto r^{D_2}$:
+\begin{equation}
+C(r) = \frac{2}{N(N - 1)} \sum_{1 \le i < j \le N} \Theta\!\left(r - \|\mathbf{x}_i - \mathbf{x}_j\|_2\right).
+\end{equation}
 
 \end{document}
