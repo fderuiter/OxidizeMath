@@ -347,6 +347,7 @@ impl SimulationFramework {
             d.remove::<bool>(egui::Id::new("FRAMEWORK_CHALLENGE_ACTIVE"));
         });
         self.show_export_modal_dialog(&ctx, id_source);
+        self.show_code_export_modal_dialog(&ctx, id_source);
         self.show_starter_gallery_if_open(&ctx, id_source);
         self.sync_overlays_after_frame(&ctx, id_source);
         self.dispatch_pending_exports_with_ctx(&ctx);
