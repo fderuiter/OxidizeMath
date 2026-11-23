@@ -1,4 +1,4 @@
-# ADR 0045: Zero-Allocation Symplectic Hamiltonian Integrators, Conservative Chaos Models, and Poincaré Section Lab
+# ADR 0046: Zero-Allocation Symplectic Hamiltonian Integrators, Conservative Chaos Models, and Poincaré Section Lab
 
 ## Status
 Accepted (extends [ADR 0016](0016-ode-multi-solver-comparative-overlays.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
