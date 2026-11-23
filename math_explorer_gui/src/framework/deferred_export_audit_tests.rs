@@ -150,16 +150,28 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 51, "Expected 51 Plot dataset+figure tools");
+    let expected_plot = if cfg!(feature = "biology") { 52 } else { 51 };
+    let expected_solid = if cfg!(feature = "biology") { 6 } else { 5 };
+    let expected_non_shader = if cfg!(feature = "biology") { 72 } else { 71 };
+    assert_eq!(
+        plot_tool_count, expected_plot,
+        "Expected {expected_plot} Plot dataset+figure tools"
+    );
     assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
     assert_eq!(unsupported_tool_count, 16, "Expected 16 non-figure tools");
-    assert_eq!(solid_3d_count, 5, "Expected 5 solid 3D geometric tools");
+    assert_eq!(
+        solid_3d_count, expected_solid,
+        "Expected {expected_solid} solid 3D geometric tools"
+    );
     assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
         shader_tool_count, 3,
         "Expected 3 analytical GLSL shader tools"
     );
-    assert_eq!(non_shader_tool_count, 71, "Expected 71 non-shader tools");
+    assert_eq!(
+        non_shader_tool_count, expected_non_shader,
+        "Expected {expected_non_shader} non-shader tools"
+    );
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
@@ -228,6 +240,8 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
     let solid_ids = [
         "SurfaceViewer",
         "CurvatureHeatmap",
+        #[cfg(feature = "biology")]
+        "SurfaceMorphogenesisTool",
         "AttractorPlotter",
         "CrystalViewer",
         "SpinVisualizer",
