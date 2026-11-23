@@ -328,13 +328,18 @@ pub trait ExplorerTab {
         self.framework().and_then(|fw| fw.active_tool_id())
     }
 
+    /// Active inverse `ChallengeMetadata` identifier for `#challenge=<id>` share links.
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.framework().and_then(|fw| fw.active_challenge_id())
+    }
+
     /// Deterministic parameter-only revision token for 300 ms debounced URL sync.
     fn url_state_revision(&self) -> u64 {
         self.framework()
             .map_or_else(|| self.state_revision(), |fw| fw.url_state_revision())
     }
 
-    /// Exports active simulation parameters as a compact `PresetWrapper` JSON envelope for URL sharing.
+    /// Exports active simulation parameters as a compact `PresetWrapper` JSON envelope for URL sharing (`<= 4 KiB`).
     fn export_url_preset_json(&self) -> Result<Option<String>, String> {
         match self.framework() {
             Some(fw) => fw.export_url_preset_json(),
@@ -342,17 +347,28 @@ pub trait ExplorerTab {
         }
     }
 
-    /// Encodes a `#tab=<slug>...` URL fragment for this tab (including active story or challenge IDs when present).
-    fn encode_url_share_fragment(&self) -> Result<String, String> {
-        if let Some(fw) = self.framework() {
-            return fw.encode_share_fragment_for_tab(self.url_slug());
+    /// Exports active simulation parameters as a compact `PresetWrapper` JSON envelope for `#ws=...` workspace URL sharing (`<= 32 KiB`).
+    fn export_workspace_url_preset_json(&self) -> Result<Option<String>, String> {
+        match self.framework() {
+            Some(fw) => fw.export_workspace_url_preset_json(),
+            None => self.export_url_preset_json(),
         }
-        let preset_json = self.export_url_preset_json()?;
-        crate::url_state::encode_share_fragment(
-            self.url_slug(),
-            self.active_tool_id(),
-            preset_json.as_deref(),
-        )
+    }
+
+    /// Exports structured `ShareUrlParams` (including active story/challenge HUD state and up to 32 KiB per pane) for workspace URL sharing.
+    fn export_share_url_params(&self) -> Result<crate::url_state::ShareUrlParams, String> {
+        if let Some(fw) = self.framework() {
+            return fw.export_workspace_share_url_params(self.url_slug());
+        }
+        Ok(crate::url_state::ShareUrlParams {
+            tab: self.url_slug().to_string(),
+            tool: self.active_tool_id().map(str::to_string),
+            state_json: self.export_workspace_url_preset_json()?,
+            preset: None,
+            challenge: self.active_challenge_id().map(str::to_string),
+            step: None,
+            pipeline: None,
+        })
     }
 
     /// Validates and applies `ShareUrlParams` (supporting `&preset=`, `&challenge=`, `&step=`, and `&state=`).
@@ -396,6 +412,39 @@ pub trait ExplorerTab {
             ));
         }
         Ok(())
+    }
+
+    /// Validates and applies a `#ws=...` workspace URL pane payload (allowing up to 32,768 bytes).
+    fn import_workspace_url_preset_json(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        if let Some(fw) = self.framework_mut() {
+            return fw.import_workspace_url_preset_json(tool_id, preset_json);
+        }
+        self.import_url_preset_json(tool_id, preset_json)
+    }
+
+    /// Validates and applies `#ws=...` workspace `ShareUrlParams` (supporting stories, challenges, and up to 32,768 bytes).
+    fn import_workspace_url_share_params(
+        &mut self,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        if params.preset.is_none() && params.challenge.is_none() {
+            return self.import_workspace_url_preset_json(
+                params.tool.as_deref(),
+                params.state_json.as_deref(),
+            );
+        }
+        if let Some(fw) = self.framework_mut() {
+            return fw.import_workspace_url_share_params(params, ctx);
+        }
+        Err(format!(
+            "Tab '{}' does not support story presets or challenges",
+            self.name()
+        ))
     }
 }
 

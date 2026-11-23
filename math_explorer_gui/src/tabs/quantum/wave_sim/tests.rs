@@ -394,7 +394,10 @@ fn test_wave_simulator_animated_slider_sweeps_continuous_parameters() {
 }
 
 #[test]
-fn test_wave_runner_scales_to_max_grid_size_1000_zero_alloc() {
+fn test_wave_runner_scales_to_max_grid_size_1000_zero_alloc_latency_and_sculpt() {
+    use crate::async_sim::SimCommand;
+    use crate::web_io::PlatformInstant;
+
     let cfg = Arc::new(RwLock::new(WaveSimConfig {
         preset: WavePotentialPreset::RectangularBarrier,
         dt: 0.01,
@@ -406,15 +409,83 @@ fn test_wave_runner_scales_to_max_grid_size_1000_zero_alloc() {
     runner.init_from_config(&cfg_snap);
     assert_eq!(runner.psi.vector.len(), MAX_GRID_SIZE);
 
-    {
+    let stroke = BrushStroke {
+        start: [-0.2, 0.08],
+        end: [0.2, 0.08],
+        radius: 0.25,
+        mode: BrushMode::PotentialBarrier,
+        drag_vector: [0.4, 0.0],
+    };
+    let relaunch_cmd = SimCommand::Custom("relaunch_wavepacket".to_string());
+
+    let elapsed_ms = {
         let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
             .lock()
             .unwrap_or_else(|e| e.into_inner());
+        let t0 = PlatformInstant::now();
         verified_engine::engine::VerifiedEngine::run_verified(|| {
             runner.step_with_dt(0.01);
             runner.step_with_dt(0.015);
+            runner.process_command(SimCommand::ApplyBrushStroke(stroke));
+            runner.step_with_dt(0.012);
+            runner.process_command(relaunch_cmd);
+            runner.step_with_dt(0.01);
         });
-    }
+        t0.elapsed().as_secs_f64() * 1000.0
+    };
+    assert!(
+        elapsed_ms < 500.0,
+        "Expected < 500ms, got {elapsed_ms:.2}ms"
+    );
+    assert!(runner.is_finite_state() && (runner.psi.norm() - 1.0).abs() < 1e-11);
+
+    // Reject non-positive dt and dx cleanly via FiniteStateGuard without division by zero
+    runner.step_with_dt(0.0);
+    assert_eq!(
+        runner.diagnostic_report().map(|r| r.variable).as_deref(),
+        Some("dt")
+    );
+    runner.process_command(SimCommand::Reset);
     assert!(runner.is_finite_state());
-    assert!((runner.psi.norm() - 1.0).abs() < 1e-11);
+
+    runner.x_max = runner.x_min;
+    runner.init_from_config(&cfg_snap);
+    assert_eq!(
+        runner.diagnostic_report().map(|r| r.variable).as_deref(),
+        Some("dx")
+    );
+}
+
+#[test]
+fn test_crank_nicolson_sculpted_tunneling_png_export_artifact() {
+    let mut tool = WaveSimulatorTool::new();
+    tool.preset = WavePotentialPreset::RectangularBarrier;
+    tool.x0 = -2.2;
+    tool.k0 = 4.6;
+    tool.sigma = 0.45;
+    tool.v0 = 9.0;
+    tool.width = 0.4;
+    tool.dt = 0.015;
+    tool.steps_per_frame = 4;
+    tool.sparse_potential = (118..=126).map(|idx| (idx, 7.5)).collect();
+    tool.sync_config_and_reset(None);
+
+    for _ in 0..22 {
+        tool.step_simulation();
+    }
+    let datasets = tool.export_datasets();
+    assert!(
+        datasets.len() >= 3,
+        "expected wavefunction and potential traces"
+    );
+
+    let options = egui_plot::export::ExportOptions {
+        width: 1100,
+        height: 680,
+        ..Default::default()
+    };
+    let png_bytes = egui_plot::export::export_custom_png(&datasets, &options)
+        .expect("renders Crank-Nicolson tunneling PNG");
+    assert!(png_bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+    let _ = std::fs::write("/tmp/crank_nicolson_wave_tunneling.png", &png_bytes);
 }

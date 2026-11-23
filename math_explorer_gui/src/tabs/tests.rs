@@ -88,9 +88,10 @@ fn test_inventory_tabs_preserve_deterministic_slug_order() {
         feature = "physics"
     ))]
     {
-        let mod_rs =
-            fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/tabs/mod.rs"))
-                .expect("read src/tabs/mod.rs");
+        let manifest_dir =
+            std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
+        let mod_rs = fs::read_to_string(Path::new(&manifest_dir).join("src/tabs/mod.rs"))
+            .expect("read src/tabs/mod.rs");
         let expected_count = collect_static_mod_gates(&mod_rs).len();
         assert_eq!(
             tabs.len(),
@@ -130,6 +131,7 @@ fn test_build_script_emits_scoped_rerun_directives() {
     for expected in [
         "build.rs",
         "build_snapshot.rs",
+        "build_stage.rs",
         "src/tabs/mod.rs",
         "../traceability.toml",
         "../papers",
@@ -166,7 +168,9 @@ fn test_build_script_rerun_preserves_manifest_mtime_when_unchanged() {
     let Some(build_bin) = find_compiled_build_script_bin(out_dir) else {
         return;
     };
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest_dir_str =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
+    let manifest_dir = Path::new(&manifest_dir_str);
     let temp_root = std::env::temp_dir().join(format!(
         "math_explorer_gui_build_mtime_test_{}",
         std::process::id()
@@ -235,7 +239,8 @@ fn collect_static_mod_gates(mod_rs: &str) -> std::collections::BTreeMap<String, 
 
 #[test]
 fn test_static_tab_modules_match_filesystem_tabs_and_inventory_descriptors() {
-    let tabs_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/tabs");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
+    let tabs_dir = Path::new(&manifest_dir).join("src/tabs");
     let mod_rs = fs::read_to_string(tabs_dir.join("mod.rs")).expect("read src/tabs/mod.rs");
     let declared = collect_static_mod_gates(&mod_rs);
     let mut discovered = std::collections::BTreeSet::new();

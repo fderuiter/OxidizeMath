@@ -21,6 +21,8 @@ pub(crate) mod state_history;
 pub mod theme;
 pub(crate) mod ui_panels;
 pub(crate) mod viewport;
+mod workspace_url;
+mod workspace_url_pipeline;
 
 #[cfg(test)]
 mod tests;
@@ -88,9 +90,9 @@ pub use viewport::compare_sync::ComparisonSyncConfig;
 use crate::command_palette::CommandPalette;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
+use federated_registry::TelemetryEvent;
 #[cfg(test)]
-use federated_registry::global_registry;
-use federated_registry::{Severity, TelemetryEvent};
+use federated_registry::{Severity, global_registry};
 
 pub struct MathExplorerApp {
     pub(super) tabs: Vec<Box<dyn ExplorerTab>>,
@@ -171,8 +173,8 @@ impl Default for MathExplorerApp {
 impl MathExplorerApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
-        theme::init_startup_theme(&mut app, cc);
-        app.hydrate_from_browser_url(&cc.egui_ctx);
+        let restored = theme::init_startup_theme(&mut app, cc);
+        app.hydrate_from_browser_url(&cc.egui_ctx, restored);
 
         #[cfg(target_os = "macos")]
         macos_menu::setup_macos_menu(&app);
@@ -188,9 +190,13 @@ impl MathExplorerApp {
     /// Restores application state from an `AppState` struct.
     pub fn apply_app_state(&mut self, app_state: AppState) {
         app_state.apply(self);
+        for pane_idx in 1..self.viewport_layout.pane_count() {
+            let _ = self.pane_tab_mut(pane_idx);
+        }
     }
 
     /// Serializes the entire application state (selected tab, panel toggles, individual tab states) to JSON.
+    #[cfg(test)]
     pub fn save_state_to_json(&self) -> String {
         if self.session_manager.lifecycle_state == SessionLifecycleState::DragEditing {
             self.clear_active_pane_caches();
@@ -199,21 +205,9 @@ impl MathExplorerApp {
     }
 
     /// Deserializes and restores the application state from JSON.
+    #[cfg(test)]
     pub fn load_state_from_json(&mut self, json_str: &str) {
-        match self.session_manager.parse_envelope(json_str) {
-            Ok(app_state) => self.apply_app_state(app_state),
-            Err(err) => {
-                crate::telemetry::emit_telemetry(
-                    "MathExplorerApp",
-                    Severity::Warning,
-                    format!(
-                        "Failed to parse saved session state, resetting to defaults: {}",
-                        err
-                    ),
-                    std::collections::HashMap::new(),
-                );
-            }
-        }
+        let _ = self.try_load_state_from_json(json_str);
     }
 
     /// Selects an active tab by index, synchronizing primary pane and emitting accessibility announcements.
@@ -330,9 +324,7 @@ impl eframe::App for MathExplorerApp {
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        self.clear_active_pane_caches();
-        let json_str = self.save_state_to_json();
-        storage.set_string(eframe::APP_KEY, json_str);
+        self.save_envelope_to_storage(storage);
     }
 
     fn auto_save_interval(&self) -> std::time::Duration {

@@ -68,7 +68,7 @@ impl ChladniWaveTankTool {
                     ui.selectable_value(&mut selected, p, p.label());
                 }
             });
-        if selected != self.state.preset {
+        if selected != self.state.preset && self.active_challenge.is_none() {
             self.apply_preset(selected);
         }
 
@@ -98,7 +98,13 @@ impl ChladniWaveTankTool {
                 crate::audio::notify_playback_reset();
                 self.rebuild_domain_and_warmup(12);
             }
+            let _ = self.atlas.show_toggle_button(ui);
         });
+        if self.active_challenge.is_some() {
+            ui.small(
+                "🔒 Challenge active: Center-pinned Neumann square plate (D = 0.0004) locked.",
+            );
+        }
     }
 
     fn draw_medium_and_clamp_controls(&mut self, ui: &mut egui::Ui) {
@@ -144,13 +150,16 @@ impl ChladniWaveTankTool {
         mask_dirty |= self.draw_clamp_selector(ui);
         let param_changed = self.draw_pde_parameter_drags(ui);
         if domain_dirty {
+            self.enforce_chladni_challenge_locks();
             self.state_rev = self.state_rev.wrapping_add(1);
             self.rebuild_domain_and_warmup(8);
         } else if mask_dirty {
+            self.enforce_chladni_challenge_locks();
             self.state_rev = self.state_rev.wrapping_add(1);
             self.rebuild_masks();
             self.analysis_dirty = true;
         } else if param_changed {
+            self.enforce_chladni_challenge_locks();
             self.state_rev = self.state_rev.wrapping_add(1);
             self.analysis_dirty = true;
         }
@@ -238,11 +247,14 @@ impl ChladniWaveTankTool {
         ui.horizontal(|ui| {
             ui.label("Freq (Hz):");
             changed |= ui
-                .add(bounded_drag_value(
-                    &mut self.state.driver_frequency,
-                    FREQ_MIN..=FREQ_MAX,
-                    0.1,
-                ))
+                .add(
+                    bounded_drag_value(
+                        &mut self.state.driver_frequency,
+                        FREQ_MIN..=FREQ_MAX,
+                        0.001,
+                    )
+                    .fixed_decimals(3),
+                )
                 .changed();
             ui.label("Amp:");
             changed |= ui
@@ -259,6 +271,10 @@ impl ChladniWaveTankTool {
             &mut self.state.driver_x,
             &mut self.state.driver_y,
         );
+        if ui.small_button("🎯 Lock Mode").clicked() {
+            let ctx = ui.ctx().clone();
+            let _ = self.snap_to_nearest_eigenmode(Some(&ctx));
+        }
         changed |= draw_unit_pair_drags(
             ui,
             "Pickup (x, y):",
@@ -266,6 +282,7 @@ impl ChladniWaveTankTool {
             &mut self.state.pickup_y,
         );
         if changed {
+            self.enforce_chladni_challenge_locks();
             self.state_rev = self.state_rev.wrapping_add(1);
             self.analysis_dirty = true;
             self.solver.reset_detector();
@@ -440,6 +457,7 @@ impl ChladniWaveTankTool {
             let label = super::eigenmodes::mode_metric_label(&self.state, m, n);
             let hz = super::eigenmodes::mode_frequency_hz(&self.state, self.solver.dx(), m, n);
             render_copyable_metric(ui, &label, &format!("{hz:.4} Hz"));
+            self.draw_eigenmode_metric_cards(ui);
         }
     }
 }

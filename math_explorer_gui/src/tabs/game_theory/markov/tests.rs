@@ -114,3 +114,33 @@ fn test_url_budget_warning_and_multi_theme_rendering() {
         }
     }
 }
+
+#[test]
+fn test_slow_ctmc_steady_state_exact_and_multi_sink_none_in_workbench() {
+    let mut tool = MarkovSequenceWorkbenchTool::default();
+    tool.load_scenario(MarkovScenario::RedundantServerCtmc)
+        .unwrap();
+
+    // Slow-rate 2-state repairable CTMC (rates 1e-7 and 3e-7) must resolve exact [0.75, 0.25]
+    let slow_csv = "\u{feff}healthy,degraded\n-1e-7,1e-7\n3e-7,-3e-7\n";
+    tool.import_file_str(slow_csv).expect("slow CTMC import");
+    let pi = tool
+        .ctmc_out
+        .steady_state
+        .as_ref()
+        .expect("unique steady state on slow 2-state CTMC");
+    assert_eq!(pi.len(), 2);
+    assert!((pi[0] - 0.75).abs() < 1e-12, "pi[0] = {}", pi[0]);
+    assert!((pi[1] - 0.25).abs() < 1e-12, "pi[1] = {}", pi[1]);
+
+    // Multi-sink CTMC has non-unique steady-state subspace and must return None
+    let multi_sink_csv = "\u{feff}sink_a,sink_b\n0.0,0.0\n0.0,0.0\n";
+    tool.import_file_str(multi_sink_csv)
+        .expect("multi-sink CTMC import");
+    assert!(tool.ctmc_out.steady_state.is_none());
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        tool.show(ctx);
+    });
+}
