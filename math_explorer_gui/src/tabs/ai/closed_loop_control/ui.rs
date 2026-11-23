@@ -233,6 +233,7 @@ fn render_central_workspace(tool: &mut ClosedLoopControlTool, ui: &mut egui::Ui)
     let total_h = ui.available_height().max(390.0);
     let canvas_h = (total_h * 0.32).clamp(145.0, 215.0);
     let canvas_out = show_phase_kick_canvas(ui, &tool.state, &tool.pipeline, canvas_h);
+    tool.focused_canvas = canvas_out.focused_id;
     let mut pending_kick = canvas_out.kick_request;
 
     ui.add_space(4.0);

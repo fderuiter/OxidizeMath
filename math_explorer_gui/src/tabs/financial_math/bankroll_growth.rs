@@ -1,4 +1,4 @@
-//! Kelly Criterion Bankroll Growth and Volatility-Drag Paradox Tool.
+//! Kelly Criterion Bankroll Growth and Solvency Barrier Paradox Tool.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -14,6 +14,7 @@ use math_explorer::pure_math::statistics::kelly::{
     expected_growth_rate, expected_value, kelly_fraction, variants, BankrollFraction, Odds,
     UnitInterval,
 };
+use math_explorer::pure_math::statistics::ruin::kelly_barrier_risk;
 use oxidize_core::rng::{OxidizeRng, BASE_SEED};
 use rand::Rng;
 
@@ -66,12 +67,13 @@ pub struct BankrollGrowthTool {
     stake_multiplier: f64,
     seed_counter: u64,
     mode: BankrollLabMode,
-    /// Hosted non-ergodic ensemble and volatility-drag laboratory.
+    /// Hosted non-ergodic ensemble and drawdown barrier laboratory.
     pub ensemble_lab: BankrollEnsembleLab,
     full_kelly_points: Vec<PlotPoint>,
     half_kelly_points: Vec<PlotPoint>,
     quarter_kelly_points: Vec<PlotPoint>,
     active_stake_points: Vec<PlotPoint>,
+    tier_50pct_drawdown_bounds: Option<[f64; 3]>,
     kelly_f_star: f64,
     active_fraction: f64,
     active_growth_rate: f64,
@@ -95,6 +97,7 @@ impl Default for BankrollGrowthTool {
             half_kelly_points: Vec::with_capacity(1001),
             quarter_kelly_points: Vec::with_capacity(1001),
             active_stake_points: Vec::with_capacity(1001),
+            tier_50pct_drawdown_bounds: None,
             kelly_f_star: 0.0,
             active_fraction: 0.0,
             active_growth_rate: 0.0,
@@ -141,6 +144,7 @@ impl BankrollGrowthTool {
         self.half_kelly_points.clear();
         self.quarter_kelly_points.clear();
         self.active_stake_points.clear();
+        self.tier_50pct_drawdown_bounds = None;
         self.error_msg = None;
     }
 
@@ -173,6 +177,27 @@ impl BankrollGrowthTool {
         self.simulate_kelly_tiers(&p, &o);
     }
 
+    fn update_tier_drawdown_bounds(
+        &mut self,
+        p: &UnitInterval,
+        o: &Odds,
+        fk: &BankrollFraction,
+        hk: &BankrollFraction,
+        qk: &BankrollFraction,
+    ) {
+        if let (Ok(b_fk), Ok(b_hk), Ok(b_qk)) = (
+            kelly_barrier_risk(p, o, fk, 0.50),
+            kelly_barrier_risk(p, o, hk, 0.50),
+            kelly_barrier_risk(p, o, qk, 0.50),
+        ) {
+            self.tier_50pct_drawdown_bounds = Some([
+                b_fk.lundberg_barrier_bound,
+                b_hk.lundberg_barrier_bound,
+                b_qk.lundberg_barrier_bound,
+            ]);
+        }
+    }
+
     fn simulate_kelly_tiers(&mut self, p: &UnitInterval, o: &Odds) {
         let tiers = (
             kelly_fraction(p, o),
@@ -187,6 +212,7 @@ impl BankrollGrowthTool {
             }
         };
 
+        self.update_tier_drawdown_bounds(p, o, &fk, &hk, &qk);
         let active_f = (fk.value() * self.stake_multiplier).clamp(0.0, 0.9999);
         self.kelly_f_star = fk.value();
         self.active_fraction = active_f;
@@ -265,7 +291,7 @@ impl BankrollGrowthTool {
                 .radio_value(
                     &mut self.mode,
                     BankrollLabMode::VolatilityDrag,
-                    "Volatility-Drag Paradox Lab",
+                    "Volatility-Drag & Solvency Lab",
                 )
                 .changed();
             ui.separator();
@@ -308,6 +334,14 @@ impl BankrollGrowthTool {
             return;
         }
         ui.heading("Bankroll Simulation");
+        if let Some([fk_b, hk_b, qk_b]) = self.tier_50pct_drawdown_bounds {
+            ui.label(format!(
+                "Asymptotic 50%-Drawdown Barrier Bound (W ≤ 0.5 W₀): Full Kelly {:.1}% | Half Kelly {:.1}% | Quarter Kelly {:.2}%",
+                fk_b * 100.0,
+                hk_b * 100.0,
+                qk_b * 100.0
+            ));
+        }
         Plot::new("bankroll_growth_plot")
             .view_aspect(2.0)
             .legend(Legend::default())
@@ -352,6 +386,8 @@ impl InteractiveTool for BankrollGrowthTool {
             && self.probability.is_finite()
             && self.odds.is_finite()
             && self.stake_multiplier.is_finite()
+            && self.ensemble_lab.custom_fraction.is_finite()
+            && self.ensemble_lab.barrier_floor_ratio.is_finite()
     }
 
     fn observables(&self) -> Vec<(&'static str, f64)> {
