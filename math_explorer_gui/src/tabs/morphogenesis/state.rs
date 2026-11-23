@@ -147,10 +147,21 @@ impl Default for MorphogenesisToolState {
     }
 }
 
+fn check_bounded_params(checks: &[(&str, f64, f64, f64)]) -> Result<(), String> {
+    for &(name, val, min, max) in checks {
+        if !val.is_finite() || val < min || val > max {
+            return Err(format!(
+                "Morphogenesis parameter '{name}' = {val} must be finite within [{min}, {max}]"
+            ));
+        }
+    }
+    Ok(())
+}
+
 impl MorphogenesisToolState {
     /// Validates finiteness, mode-specific domain bounds, RLE mask bounds, and atlas axis keys.
     pub fn validate(&self) -> Result<(), String> {
-        let base_checks = [
+        check_bounded_params(&[
             ("a", self.a, 0.0, 1.0),
             ("b", self.b, 0.0, 2.0),
             ("f", self.f, 0.0, 0.12),
@@ -158,14 +169,7 @@ impl MorphogenesisToolState {
             ("inlet_velocity", self.inlet_velocity, 0.0, 2.0),
             ("viscosity", self.viscosity, 0.003, 0.5),
             ("circulation", self.circulation, -25.0, 25.0),
-        ];
-        for (name, val, min, max) in base_checks {
-            if !val.is_finite() || val < min || val > max {
-                return Err(format!(
-                    "Morphogenesis parameter '{name}' = {val} must be finite within [{min}, {max}]"
-                ));
-            }
-        }
+        ])?;
         let transport_checks = match self.kinetics_mode {
             MorphogenesisKineticsMode::Schnakenberg => [
                 ("d_u", self.d_u, 0.1, 5.0),
@@ -178,13 +182,7 @@ impl MorphogenesisToolState {
                 ("dt", self.dt, 1e-4, 2.0),
             ],
         };
-        for (name, val, min, max) in transport_checks {
-            if !val.is_finite() || val < min || val > max {
-                return Err(format!(
-                    "Morphogenesis parameter '{name}' = {val} must be finite within [{min}, {max}]"
-                ));
-            }
-        }
+        check_bounded_params(&transport_checks)?;
         if !(1..=25).contains(&self.brush_radius) {
             return Err(format!(
                 "Morphogenesis brush_radius = {} must be within 1..=25",
