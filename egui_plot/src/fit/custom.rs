@@ -156,7 +156,7 @@ fn compute_custom_metrics(
     valid: &[[f64; 2]],
     evaluator: &dyn CustomFitEvaluator,
     coeffs: &[f64],
-) -> (f64, f64, Vec<[f64; 2]>) {
+) -> (f64, f64, crate::SharedPoints) {
     let y_mean = valid.iter().map(|p| p[1]).sum::<f64>() / (valid.len() as f64);
     let (mut ss_tot, mut ss_res) = (0.0, 0.0);
     let mut residuals = Vec::with_capacity(valid.len());
@@ -180,5 +180,5 @@ fn compute_custom_metrics(
     } else {
         (ss_res / residuals.len() as f64).sqrt()
     };
-    (r2, rmse, residuals)
+    (r2, rmse, crate::SharedPoints::from(residuals))
 }

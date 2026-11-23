@@ -115,6 +115,12 @@ pub struct MriPulseWorkspace {
     pub times: [f64; MRI_PULSE_SAMPLES],
     /// Ensemble-averaged magnetization vectors across the sequence horizon.
     pub trajectory: [Vector3<f64>; MRI_PULSE_SAMPLES],
+    /// Normalized sub-voxel phase dispersion `[0.0, 1.0]` across the sequence horizon.
+    pub dispersion: [f64; MRI_PULSE_SAMPLES],
+    /// Active sample index (`0..MRI_PULSE_SAMPLES`) for UI playhead scrubbing/playback.
+    pub playhead_idx: usize,
+    /// Whether the UI pulse sequence playhead is actively advancing.
+    pub playhead_playing: bool,
     isochromats: [Vector3<f64>; HAHN_ISOCHROMAT_COUNT],
     sim: BlochSimulator,
     rk4: RungeKutta4<Vector3<f64>>,
@@ -126,6 +132,9 @@ impl Default for MriPulseWorkspace {
         Self {
             times: [0.0; MRI_PULSE_SAMPLES],
             trajectory: [m_eq; MRI_PULSE_SAMPLES],
+            dispersion: [0.0; MRI_PULSE_SAMPLES],
+            playhead_idx: MRI_PULSE_SAMPLES - 1,
+            playhead_playing: false,
             isochromats: [m_eq; HAHN_ISOCHROMAT_COUNT],
             sim: BlochSimulator::new(m_eq, 1.0),
             rk4: RungeKutta4::new(&m_eq),
@@ -134,6 +143,12 @@ impl Default for MriPulseWorkspace {
 }
 
 impl MriPulseWorkspace {
+    /// Returns `(time_s, magnetization, dispersion)` at the clamped playhead index.
+    #[must_use]
+    pub fn playhead_sample(&self) -> (f64, Vector3<f64>, f64) {
+        let idx = self.playhead_idx.min(MRI_PULSE_SAMPLES - 1);
+        (self.times[idx], self.trajectory[idx], self.dispersion[idx])
+    }
     /// Evaluates a single rotating-frame RF inversion pulse starting from $M(0) = (0, 0, M_0)$
     /// with zero dynamic heap allocations.
     pub fn evaluate_inversion(
@@ -158,12 +173,14 @@ impl MriPulseWorkspace {
         let mut m = Vector3::new(0.0, 0.0, m0);
         self.times[0] = 0.0;
         self.trajectory[0] = m;
+        self.dispersion[0] = 0.0;
 
         for idx in 1..=steps {
             let t_prev = ((idx - 1) as f64) * dt;
             self.rk4.step(&self.sim, t_prev, &mut m, dt);
             self.times[idx] = (idx as f64) * dt;
             self.trajectory[idx] = m;
+            self.dispersion[idx] = 0.0;
         }
         m
     }
@@ -194,12 +211,14 @@ impl MriPulseWorkspace {
         self.sim.set_relaxation(t1, t2);
         self.times[0] = 0.0;
         self.trajectory[0] = m_init;
+        self.dispersion[0] = 0.0;
 
         for idx in 1..=steps {
             let t_mid = ((idx as f64) - 0.5) * dt;
             let pulse_on = (t_mid - half_te).abs() <= half_tau;
             let active_b1 = if pulse_on { cfg.b1_amp } else { 0.0 };
             let mut sum = Vector3::zeros();
+            let mut sum_iso_xy = 0.0_f64;
             for (iso_i, m_iso) in self.isochromats.iter_mut().enumerate() {
                 let b_iso = b0
                     + std::f64::consts::TAU * ISOCHROMAT_OFFSETS_HZ[iso_i]
@@ -208,10 +227,18 @@ impl MriPulseWorkspace {
                 self.sim.set_b_field(b_eff);
                 self.rk4.step(&self.sim, t_mid - 0.5 * dt, m_iso, dt);
                 sum += *m_iso;
+                sum_iso_xy += m_iso.x.hypot(m_iso.y);
             }
             let mean_m = sum / (HAHN_ISOCHROMAT_COUNT as f64);
+            let mean_iso_xy = sum_iso_xy / (HAHN_ISOCHROMAT_COUNT as f64);
+            let net_xy = mean_m.x.hypot(mean_m.y);
             self.times[idx] = (idx as f64) * dt;
             self.trajectory[idx] = mean_m;
+            self.dispersion[idx] = if mean_iso_xy > 1e-9 {
+                (1.0 - net_xy / mean_iso_xy).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
         }
         self.trajectory[steps]
     }

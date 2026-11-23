@@ -213,35 +213,34 @@ fn test_quantum_wave_sim_cached_propagator_recovery_paths() {
 }
 
 #[cfg(feature = "biology")]
-#[test]
-fn test_morphogenesis_divergence_and_recovery() {
-    use crate::async_sim::SimulationRunner;
+fn make_test_morphogenesis_runner() -> crate::tabs::morphogenesis::MorphogenesisRunner {
     use crate::tabs::morphogenesis::{
-        MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
+        MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTool,
     };
     use math_explorer::biology::diffusion::FiniteDifference2D;
-    use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
-    use std::sync::Arc;
+    use math_explorer::biology::morphogenesis::{
+        DiffusionCoeff, SchnakenbergKinetics, TuringSystem,
+    };
+    use math_explorer::math_kernel::types::{Dimension, StepSize};
+    use std::sync::{Arc, RwLock};
 
-    let width = 20;
-    let height = 20;
+    let (width, height) = (20, 20);
     let kinetics = SchnakenbergKinetics { a: 0.1, b: 0.9 };
     let diffusion = FiniteDifference2D::new(
-        math_explorer::math_kernel::types::Dimension(width),
-        math_explorer::math_kernel::types::Dimension(height),
-        math_explorer::math_kernel::types::StepSize(1.0),
-        math_explorer::math_kernel::types::StepSize(1.0),
+        Dimension(width),
+        Dimension(height),
+        StepSize(1.0),
+        StepSize(1.0),
     );
     let mut system = TuringSystem::new_with_kinetics(
-        math_explorer::math_kernel::types::Dimension(width * height),
-        math_explorer::biology::morphogenesis::DiffusionCoeff(1.0),
-        math_explorer::biology::morphogenesis::DiffusionCoeff(100.0),
+        Dimension(width * height),
+        DiffusionCoeff(1.0),
+        DiffusionCoeff(100.0),
         kinetics,
         diffusion,
     );
-    MorphogenesisTab::initialize_system(&mut system, width, height);
-
-    let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
+    MorphogenesisTool::initialize_system(&mut system, width, height);
+    let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
         a: 0.1,
         b: 0.9,
         d_u: 1.0,
@@ -249,13 +248,24 @@ fn test_morphogenesis_divergence_and_recovery() {
         dt: 0.05,
         high_contrast: false,
     }));
-
-    let mut runner = MorphogenesisRunner {
+    MorphogenesisRunner {
         system,
         params,
         width,
         height,
-    };
+        step_count: 0,
+        rng: oxidize_core::rng::OxidizeRng::default(),
+        noise_amplitude: 0.0,
+    }
+}
+
+#[cfg(feature = "biology")]
+#[test]
+fn test_morphogenesis_divergence_and_recovery() {
+    use crate::async_sim::SimulationRunner;
+    use crate::tabs::morphogenesis::MorphogenesisTool;
+
+    let mut runner = make_test_morphogenesis_runner();
 
     assert!(FiniteStateGuard::is_finite_state(&runner));
     assert!(!runner.diverged());
@@ -270,23 +280,27 @@ fn test_morphogenesis_divergence_and_recovery() {
 
     // Verify plot_concentration sanitizes non-finite floats
     let corrupted_data = vec![f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 0.5, 1.0];
-    let image = MorphogenesisTab::plot_concentration(&corrupted_data, 5, 1);
+    let image = MorphogenesisTool::plot_concentration(&corrupted_data, 5, 1);
     assert_eq!(image.pixels.len(), 5);
 
-    // Test MorphogenesisTab recovery remedies
-    let mut tab = MorphogenesisTab::default();
-    tab.params.write().unwrap().dt = 0.05;
-    tab.auto_scale_step_size();
-    assert_eq!(tab.params.read().unwrap().dt, 0.025);
+    // Test MorphogenesisTool recovery remedies
+    let mut tool = MorphogenesisTool::default();
+    tool.params.write().unwrap().dt = 0.05;
+    tool.auto_scale_step_size();
+    assert_eq!(tool.params.read().unwrap().dt, 0.025);
 
-    tab.params.write().unwrap().a = 50.0;
-    tab.clamp_parameters();
-    assert!(tab.params.read().unwrap().a <= 1.0);
+    tool.params.write().unwrap().dt = 1e-5;
+    tool.auto_scale_step_size();
+    assert_eq!(tool.params.read().unwrap().dt, 1e-4);
 
-    tab.reset_parameters();
-    assert_eq!(tab.params.read().unwrap().a, 0.1);
-    assert_eq!(tab.params.read().unwrap().b, 0.9);
-    assert_eq!(tab.params.read().unwrap().dt, 0.05);
+    tool.params.write().unwrap().a = 50.0;
+    FiniteStateGuard::clamp_parameters(&mut tool);
+    assert!(tool.params.read().unwrap().a <= 1.0);
+
+    tool.reset_parameters();
+    assert_eq!(tool.params.read().unwrap().a, 0.1);
+    assert_eq!(tool.params.read().unwrap().b, 0.9);
+    assert_eq!(tool.params.read().unwrap().dt, 0.05);
 }
 
 #[cfg(feature = "climate")]

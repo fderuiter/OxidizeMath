@@ -88,6 +88,14 @@ pub(crate) fn cargo_invocations_for_selector(selector: &FeatureSelector) -> Vec<
     ];
     lib_test.extend(flags.iter().cloned());
 
+    let mut lib_benches = vec![
+        "test".to_string(),
+        "-p".to_string(),
+        "math_explorer".to_string(),
+        "--benches".to_string(),
+    ];
+    lib_benches.extend(flags.iter().cloned());
+
     let mut gui_check = vec![
         "check".to_string(),
         "-p".to_string(),
@@ -108,7 +116,7 @@ pub(crate) fn cargo_invocations_for_selector(selector: &FeatureSelector) -> Vec<
     gui_clippy.extend(flags);
     gui_clippy.extend(["--".to_string(), "-D".to_string(), "warnings".to_string()]);
 
-    vec![lib_test, gui_check, gui_clippy]
+    vec![lib_test, lib_benches, gui_check, gui_clippy]
 }
 
 pub(crate) fn test_features(args: &[String]) {
@@ -150,6 +158,13 @@ mod tests {
                 cmds,
                 vec![
                     strs(&["test", "-p", "math_explorer", "--no-default-features"]),
+                    strs(&[
+                        "test",
+                        "-p",
+                        "math_explorer",
+                        "--benches",
+                        "--no-default-features",
+                    ]),
                     strs(&[
                         "check",
                         "-p",
@@ -195,6 +210,15 @@ mod tests {
                     "physics",
                 ]),
                 strs(&[
+                    "test",
+                    "-p",
+                    "math_explorer",
+                    "--benches",
+                    "--no-default-features",
+                    "--features",
+                    "physics",
+                ]),
+                strs(&[
                     "check",
                     "-p",
                     "math_explorer_gui",
@@ -222,6 +246,10 @@ mod tests {
         );
     }
 
+    fn words(line: &str) -> Vec<String> {
+        line.split_whitespace().map(str::to_string).collect()
+    }
+
     #[test]
     fn test_multi_feature_tokens_and_csv_command_generation() {
         let from_tokens = parse_selectors(&strs(&["biology", "epidemiology", "biology"]));
@@ -235,45 +263,21 @@ mod tests {
 
         let cmds = cargo_invocations_for_selector(&from_tokens[0]);
         assert_eq!(
-            cmds[0],
-            strs(&[
-                "test",
-                "-p",
-                "math_explorer",
-                "--no-default-features",
-                "--features",
-                "biology,epidemiology",
-            ])
-        );
-        assert_eq!(
-            cmds[1],
-            strs(&[
-                "check",
-                "-p",
-                "math_explorer_gui",
-                "--bins",
-                "--tests",
-                "--no-default-features",
-                "--features",
-                "biology,epidemiology",
-            ])
-        );
-        assert_eq!(
-            cmds[2],
-            strs(&[
-                "clippy",
-                "--no-deps",
-                "-p",
-                "math_explorer_gui",
-                "--bins",
-                "--tests",
-                "--no-default-features",
-                "--features",
-                "biology,epidemiology",
-                "--",
-                "-D",
-                "warnings",
-            ])
+            cmds,
+            vec![
+                words(
+                    "test -p math_explorer --no-default-features --features biology,epidemiology"
+                ),
+                words(
+                    "test -p math_explorer --benches --no-default-features --features biology,epidemiology"
+                ),
+                words(
+                    "check -p math_explorer_gui --bins --tests --no-default-features --features biology,epidemiology"
+                ),
+                words(
+                    "clippy --no-deps -p math_explorer_gui --bins --tests --no-default-features --features biology,epidemiology -- -D warnings"
+                ),
+            ]
         );
     }
 
@@ -287,6 +291,7 @@ mod tests {
                 cmds,
                 vec![
                     strs(&["test", "-p", "math_explorer", "--all-features"]),
+                    strs(&["test", "-p", "math_explorer", "--benches", "--all-features"]),
                     strs(&[
                         "check",
                         "-p",

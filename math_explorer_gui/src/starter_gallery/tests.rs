@@ -19,49 +19,78 @@ fn test_starter_cards_presence_and_metadata() {
     let bio_cards = get_starter_cards_for_domain("biology", &[]);
     assert!(bio_cards.iter().any(|c| c.title == "Turing Spots"));
 
-    let mri_cards = get_starter_cards_for_domain("mri", &[]);
-    assert!(mri_cards
-        .iter()
-        .any(|c| c.title == "Off-Resonance Bloch Precession"));
+    #[cfg(feature = "physics")]
+    {
+        let mri_cards = get_starter_cards_for_domain("mri", &[]);
+        assert!(mri_cards
+            .iter()
+            .any(|c| c.title == "Off-Resonance Bloch Precession"));
+    }
 
-    let fav_cards = get_starter_cards_for_domain("favoritism", &[]);
-    assert!(fav_cards
-        .iter()
-        .any(|c| c.title == "Crisis & Proximity Showdown"));
+    #[cfg(feature = "applied")]
+    {
+        let fav_cards = get_starter_cards_for_domain("favoritism", &[]);
+        assert!(fav_cards
+            .iter()
+            .any(|c| c.title == "Crisis & Proximity Showdown"));
+    }
 }
 
+#[cfg(any(feature = "biology", feature = "pure_math"))]
 #[test]
 fn test_preset_json_validity() {
-    use crate::presets::{deserialize_preset_envelope, MorphogenesisPresetConfig};
+    #[cfg(feature = "pure_math")]
+    {
+        let ode_meta = inventory::iter::<ToolMetadata>
+            .into_iter()
+            .find(|t| t.id == "OdeSolverTool")
+            .expect("OdeSolverTool must be registered");
+        let mut ode_tool = (ode_meta.build)();
+        ode_tool
+            .import_preset_json(PRESET_HARMONIC_OSCILLATOR)
+            .unwrap();
+        ode_tool.import_preset_json(PRESET_LOGISTIC_GROWTH).unwrap();
+    }
 
-    let ode_meta = inventory::iter::<ToolMetadata>
-        .into_iter()
-        .find(|t| t.id == "OdeSolverTool")
-        .expect("OdeSolverTool must be registered");
-    let mut ode_tool = (ode_meta.build)();
-    ode_tool
-        .import_preset_json(PRESET_HARMONIC_OSCILLATOR)
-        .unwrap();
-    ode_tool.import_preset_json(PRESET_LOGISTIC_GROWTH).unwrap();
-
-    let morph_cfg: MorphogenesisPresetConfig =
-        deserialize_preset_envelope(PRESET_TURING_SPOTS, "biology", "Morphogenesis").unwrap();
-    assert_eq!(morph_cfg.width, 100);
-    assert_eq!(morph_cfg.height, 100);
+    #[cfg(feature = "biology")]
+    {
+        let morph_meta = inventory::iter::<ToolMetadata>
+            .into_iter()
+            .find(|t| t.id == "MorphogenesisTool")
+            .expect("MorphogenesisTool must be registered");
+        let mut morph_tool = (morph_meta.build)();
+        morph_tool.import_preset_json(PRESET_TURING_SPOTS).unwrap();
+        morph_tool
+            .import_preset_json(PRESET_TURING_STRIPES)
+            .unwrap();
+        let morph_state: crate::tabs::morphogenesis::MorphogenesisToolState =
+            serde_json::from_str(&morph_tool.save_state().unwrap()).unwrap();
+        assert_eq!(morph_state.width, 100);
+        assert_eq!(morph_state.height, 100);
+    }
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 75, "Expected 75 registered tools");
+    assert_eq!(tools.len(), 76, "Expected 76 registered tools");
 
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
     assert_eq!(
         presets.len(),
-        108,
-        "Expected 108 registered starter presets"
+        109,
+        "Expected 109 registered starter presets"
     );
 
     for tool in &tools {
@@ -129,6 +158,15 @@ fn test_starter_cards_for_all_registered_domains() {
     }
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 fn perturb_first_number(val: &mut serde_json::Value) -> bool {
     match val {
         serde_json::Value::Number(num) => {
@@ -164,6 +202,15 @@ fn perturb_first_number(val: &mut serde_json::Value) -> bool {
     }
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetMetadata) {
     let payload = preset.generate_preset();
     let mut target_tool = (tool_meta.build)();
@@ -214,6 +261,15 @@ fn verify_tool_preset_mutation(tool_meta: &ToolMetadata, preset: &StarterPresetM
     );
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[test]
 fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
@@ -222,8 +278,8 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
         .collect();
     assert_eq!(
         presets.len(),
-        108,
-        "Expected 108 StarterPresetMetadata entries"
+        109,
+        "Expected 109 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -239,13 +295,22 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
     }
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[test]
 fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(tools.len(), 75, "Expected 75 InteractiveTool registrations");
+    assert_eq!(tools.len(), 76, "Expected 76 InteractiveTool registrations");
 
     for tool_meta in tools {
         let default_tool = (tool_meta.build)();
@@ -299,6 +364,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     }
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_unified_sim_tool_rejects_unknown_empty_and_non_finite_parameters() {
     let lbm_meta = inventory::iter::<ToolMetadata>

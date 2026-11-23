@@ -26,6 +26,9 @@ mod tests {
         {
             check_one::<crate::tabs::financial_math::bet_size::BetSizeCalculatorTool>(ctx);
             check_one::<crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool>(ctx);
+            check_one::<crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool>(
+                ctx,
+            );
             check_one::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(ctx);
             check_one::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(ctx);
             check_one::<crate::tabs::algorithmic_information::state::FractranMachineTool>(ctx);
@@ -36,6 +39,7 @@ mod tests {
         }
         #[cfg(feature = "applied")]
         {
+            check_one::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(ctx);
             check_one::<crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool>(
                 ctx,
             );
