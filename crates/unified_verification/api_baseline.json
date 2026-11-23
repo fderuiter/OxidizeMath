@@ -1160,23 +1160,158 @@
   ],
   "crates/domain_applied/src/applied/cannibalism/death_rate.rs": [
     {
+      "signature": "impl CannibalismKernel { pub fn fertility_at (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CannibalismKernel { pub fn mortality_at (& self , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CannibalismKernel { pub fn natural_mortality_at (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CannibalismKernel { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl CannibalismKernel { pub fn ricker_saturation (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CannibalismKernel { pub fn vulnerability_at (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub fn advect_characteristic_step (_ : & [f64] , _ : & [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut [f64] ,)"
+    },
+    {
       "signature": "pub fn death_rate (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn sanitize_density (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn trapezoidal_quadrature (_ : & [f64] , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct CannibalismKernel"
     }
   ],
   "crates/domain_applied/src/applied/cannibalism/juvenile_adult_dynamics.rs": [
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn adults (& self) -> f64 }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn ages (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn da (& self) -> f64 }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn juvenile_density (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn last_energy_intake (& self) -> f64 }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn last_maturation_flux (& self) -> f64 }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn new (_ : usize , _ : f64 , _ : JuvenileAdultParams) -> Self }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn params (& self) -> & JuvenileAdultParams }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn set_initial_state < F : FnMut (f64) -> f64 > (& mut self , _ : f64 , _ : F) }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn set_params (& mut self , _ : JuvenileAdultParams) }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn step_upwind (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl JuvenileAdultSolver { pub fn total_juveniles (& self) -> f64 }"
+    },
     {
       "signature": "pub fn adult_dynamics (_ : f64 , _ : f64 , _ : f64) -> f64"
     },
     {
       "signature": "pub fn juvenile_dynamics (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct JuvenileAdultParams"
+    },
+    {
+      "signature": "pub struct JuvenileAdultSolver"
     }
   ],
   "crates/domain_applied/src/applied/cannibalism/mckendrick_von_foerster.rs": [
+    {
+      "signature": "impl McKendrickSolver { pub fn ages (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn cannibal_load (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn compute_birth_boundary (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn da (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn density (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn juvenile_population (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn kernel (& self) -> & CannibalismKernel }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn last_birth_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn last_cannibal_load (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn mortality (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn new (_ : usize , _ : f64 , _ : CannibalismKernel) -> Self }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn prey_load (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn set_density_slice (& mut self , _ : & [f64]) }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn set_initial_density < F : FnMut (f64) -> f64 > (& mut self , _ : F) }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn set_kernel (& mut self , _ : CannibalismKernel) }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn step_upwind (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn step_upwind_with_boundary (& mut self , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl McKendrickSolver { pub fn total_population (& self) -> f64 }"
+    },
     {
       "signature": "pub fn birth_rate (_ : f64) -> f64"
     },
     {
       "signature": "pub fn mckendrick_von_foerster (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct McKendrickSolver"
     }
   ],
   "crates/domain_applied/src/applied/cannibalism/mod.rs": [
@@ -1196,6 +1331,9 @@
   "crates/domain_applied/src/applied/cannibalism/two_dimensional_ode.rs": [
     {
       "signature": "impl CannibalismModel { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl CannibalismModel { pub fn step_rk4 (& self , _ : f64 , _ : & Vector2 < f64 > , _ : f64) -> Vector2 < f64 > }"
     },
     {
       "signature": "pub struct CannibalismModel"
@@ -7777,6 +7915,9 @@
       "signature": "impl AstCache { pub fn parse_calls (& self) -> usize }"
     },
     {
+      "signature": "impl AstCache { pub fn preload_sources < P : AsRef < Path > > (& mut self , _ : & [P]) }"
+    },
+    {
       "signature": "pub struct AstCache"
     },
     {
@@ -9479,6 +9620,9 @@
       "signature": "pub use spectral :: SpectralAnalyzer2D"
     },
     {
+      "signature": "pub use spectral :: SpectralMode2D"
+    },
+    {
       "signature": "pub use spectral :: SpectralPeak2D"
     }
   ],
@@ -9586,6 +9730,9 @@
       "signature": "impl SpectralAnalyzer2D { pub fn dominant_peak (& self) -> SpectralPeak2D }"
     },
     {
+      "signature": "impl SpectralAnalyzer2D { pub fn extract_top_modes (& self , _ : & mut [SpectralMode2D]) -> usize }"
+    },
+    {
       "signature": "impl SpectralAnalyzer2D { pub fn height (& self) -> usize }"
     },
     {
@@ -9602,6 +9749,9 @@
     },
     {
       "signature": "pub struct SpectralAnalyzer2D"
+    },
+    {
+      "signature": "pub struct SpectralMode2D"
     },
     {
       "signature": "pub struct SpectralPeak2D"
