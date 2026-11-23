@@ -5,6 +5,7 @@ use eframe::egui;
 pub mod attractors;
 pub mod bifurcation;
 pub mod fractals;
+pub mod hamiltonian;
 pub mod kuramoto;
 
 pub struct ChaosTab {
@@ -42,6 +43,10 @@ impl ExplorerTab for ChaosTab {
 
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.framework.focused_canvas_id()
     }
 
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {

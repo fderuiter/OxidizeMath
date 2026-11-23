@@ -48,6 +48,8 @@ mod tests {
         check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
         check_tool!(crate::tabs::medical::radar_gating::RadarGatingTool);
         check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
+        check_tool!(crate::tabs::chaos::hamiltonian::HamiltonianChaosLab);
+        check_tool!(crate::tabs::chaos::kuramoto::KuramotoOscillatorTool);
         check_tool!(crate::tabs::algorithmic_information::state::FractranMachineTool);
         check_tool!(crate::tabs::number_theory::fractran_machine::FractranMachineTool);
         check_tool!(crate::tabs::number_theory::ualbf_widget::UalbfWidget);

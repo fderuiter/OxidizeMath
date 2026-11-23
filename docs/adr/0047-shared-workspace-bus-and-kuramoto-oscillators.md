@@ -1,4 +1,4 @@
-# ADR 0046: SharedWorkspaceBus Per-Pane Graph Coupling and Zero-Allocation Kuramoto Solver
+# ADR 0047: SharedWorkspaceBus Per-Pane Graph Coupling and Zero-Allocation Kuramoto Solver
 
 ## Status
 

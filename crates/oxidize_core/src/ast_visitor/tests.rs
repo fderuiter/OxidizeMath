@@ -122,16 +122,17 @@ fn test_ast_visitor_allow_recursion_preserves_verification_counts() {
 }
 
 #[test]
-fn test_ast_visitor_ignores_embed_theory_and_verified_inside_doc_comments() {
-    let code = r#"
-        /// Example showing `#[verified]` and `embed_theory`:
-        /// ```rust
-        /// use verified_engine_macros::embed_theory;
-        /// #[embed_theory("papers/mmwave_radiotherapy_setup.tex", label = "eq:range")]
-        /// pub fn demo() {}
-        /// ```
-        pub fn proc_macro_helper() {}
-    "#;
+fn test_ast_visitor_ignores_macro_examples_in_doc_comments() {
+    let code = concat!(
+        "/// Example:\n",
+        "/// ```rust\n",
+        "/// use verified_engine_macros::embed_theory;\n",
+        "/// #[embed_theory(\"papers/mmwave_radiotherapy_setup.tex\", label = \"eq:range\")]\n",
+        "/// #[verified]\n",
+        "/// fn demo() {}\n",
+        "/// ```\n",
+        "pub fn macro_entrypoint() {}\n",
+    );
     let file = syn::parse_file(code).unwrap();
     let mut visitor = AstVisitor::default();
     visitor.visit_file(&file);

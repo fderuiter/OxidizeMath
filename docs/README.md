@@ -34,6 +34,9 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0042: Zero-Allocation 2D Chladni Plate and Wave Tank Solver](adr/0042-2d-chladni-plate-and-wave-tank-solver.md)
 - [ADR 0043: Repair Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates](adr/0043-repair-guides-and-enforce-static-doc-gates.md)
 - [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](adr/0045-spatial-brush-kit-and-field-sculpting.md)
+- [ADR 0045: Short-Weierstrass Elliptic Curves and Modular GUI Tab](adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md)
+- [ADR 0046: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0046-symplectic-hamiltonian-solvers-and-poincare-lab.md)
+- [ADR 0047: SharedWorkspaceBus Per-Pane Graph Coupling and Zero-Allocation Kuramoto Solver](adr/0047-shared-workspace-bus-and-kuramoto-oscillators.md)
 
 ## Contributing
 
