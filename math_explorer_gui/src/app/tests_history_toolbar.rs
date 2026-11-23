@@ -115,7 +115,7 @@ fn test_all_tabs_render_undo_and_redo_buttons_matching_can_undo_and_can_redo() {
     let mut app = MathExplorerApp::default();
 
     #[cfg(all(feature = "pure_math", feature = "physics"))]
-    assert_eq!(app.tabs.len(), 21);
+    assert_eq!(app.tabs.len(), 22);
 
     let out0 = run_frame(&ctx, &mut app, Vec::new());
     for tab_idx in 0..app.tabs.len() {
