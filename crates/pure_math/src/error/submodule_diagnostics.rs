@@ -10,6 +10,7 @@ use crate::pure_math::{
     },
     elliptic_curves::EllipticCurveError,
     graph_theory::GraphTheoryError,
+    hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };
@@ -285,5 +286,17 @@ impl Diagnostic for TransformError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("TransformError", self.to_string())
+    }
+}
+
+impl Diagnostic for HyperbolicError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("HyperbolicError", self.to_string())
     }
 }

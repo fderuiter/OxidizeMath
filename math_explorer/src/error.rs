@@ -35,7 +35,7 @@ pub use domain_physics::error::{
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
-    FractranError, Glicko2Error, GraphTheoryError, KellyError, LinearAlgebraError,
+    FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
     MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
     OuError, PureMathError, StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
@@ -193,6 +193,9 @@ pub enum Error {
     /// Graph theory solver or interchange error.
     #[cfg(feature = "pure_math")]
     GraphTheory(GraphTheoryError),
+    /// Hyperbolic geometry and geodesic billiard error.
+    #[cfg(feature = "pure_math")]
+    Hyperbolic(HyperbolicError),
     /// Kelly criterion error.
     #[cfg(feature = "pure_math")]
     Kelly(KellyError),

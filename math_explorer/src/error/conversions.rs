@@ -98,6 +98,7 @@ impl_error_from!(@cfg "pure_math":
     FractranError => Fractran,
     Glicko2Error => Glicko2,
     GraphTheoryError => GraphTheory,
+    HyperbolicError => Hyperbolic,
     KellyError => Kelly,
     LinearAlgebraError => LinearAlgebra,
     MarketPricingError => MarketPricing,
