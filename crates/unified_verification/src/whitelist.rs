@@ -23,6 +23,8 @@ pub(crate) struct VerificationWhitelist {
     pub workflow_linter: Option<WorkflowLinterConfig>,
     #[serde(default)]
     pub dead_code: Vec<DeadCodeEntry>,
+    #[serde(default)]
+    pub unused_dependencies: Vec<UnusedDependencyEntry>,
 }
 
 /// Configuration for `doc_audit` loaded from `[doc_verification]`.
@@ -75,6 +77,16 @@ pub struct DeadCodeEntry {
     pub(crate) identifier: Option<String>,
 }
 
+/// Authorized unused dependency entry loaded from `[[unused_dependencies]]`.
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UnusedDependencyEntry {
+    #[serde(rename = "crate")]
+    pub(crate) krate: String,
+    pub(crate) dependency: String,
+    pub(crate) reason: String,
+}
+
 /// Resolves the first existing whitelist path from an explicit slice of candidate paths.
 pub(crate) fn resolve_whitelist_path<P: AsRef<Path>>(candidates: &[P]) -> Option<PathBuf> {
     candidates
@@ -96,8 +108,20 @@ pub fn find_whitelist_path() -> Option<PathBuf> {
 fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String> {
     let content = fs::read_to_string(path)
         .map_err(|err| format!("Failed to read {}: {}", path.display(), err))?;
-    toml::from_str::<VerificationWhitelist>(&content)
-        .map_err(|err| format!("Failed to parse {}: {}", path.display(), err))
+    let parsed = toml::from_str::<VerificationWhitelist>(&content)
+        .map_err(|err| format!("Failed to parse {}: {}", path.display(), err))?;
+    for entry in &parsed.unused_dependencies {
+        if entry.krate.trim().is_empty()
+            || entry.dependency.trim().is_empty()
+            || entry.reason.trim().is_empty()
+        {
+            return Err(format!(
+                "Invalid [[unused_dependencies]] entry in {}: crate, dependency, and reason must be non-empty",
+                path.display()
+            ));
+        }
+    }
+    Ok(parsed)
 }
 
 /// Loads `verification_whitelist.toml` strictly, failing closed on read errors or invalid TOML.
@@ -201,6 +225,7 @@ mod tests {
                 "[[workflow_linter.allowed_job_permissions]]\n",
                 "workflow = \".github/workflows/ci.yml\"\njob = \"deploy\"\nwrite_scopes = [\"pages\"]\n",
                 "[[dead_code]]\nfile = \"crates/demo/src/lib.rs\"\nidentifier = \"Item\"\n",
+                "[[unused_dependencies]]\ncrate = \"crates/demo\"\ndependency = \"getrandom\"\nreason = \"wasm js feature\"\n",
             ),
         )
         .unwrap();
@@ -219,6 +244,15 @@ mod tests {
             vec!["pages".to_string()]
         );
         assert_eq!(parsed.dead_code.len(), 1);
+        assert_eq!(parsed.unused_dependencies.len(), 1);
+
+        let empty_reason = dir.join("empty_reason.toml");
+        fs::write(
+            &empty_reason,
+            "[[unused_dependencies]]\ncrate = \"crates/demo\"\ndependency = \"getrandom\"\nreason = \"   \"\n",
+        )
+        .unwrap();
+        assert!(load_whitelist_strict(Some(&empty_reason), &[] as &[&Path]).is_err());
 
         let invalid = dir.join("invalid.toml");
         fs::write(&invalid, "[broken").unwrap();

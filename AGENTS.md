@@ -10,7 +10,7 @@ All Markdown files in the repository (outside excluded build directories such as
 - Keep core engineering safety rules (such as the NASA Power of 10 standards) in [CONTRIBUTING.md](CONTRIBUTING.md) rather than duplicating them here.
 - Ensure all relative Markdown links resolve to existing files in the repository.
 - Keep every Rust source file at or below **500 lines** (`check-file-lengths`), keep functions within the **60-line** Clippy ceiling configured in `.clippy.toml`, and declare `[lints] workspace = true` in every first-party `Cargo.toml` manifest (`check-profiles` / `test-policy-audit`).
-- Do not introduce unwhitelisted `dead_code`, `unused`, or `warnings` lint suppressions (`allow`, `expect`, or `cfg_attr`), nor crate/module-level Clippy bypasses (`#![allow]` / `#![expect]` or `mod` attributes for `clippy::all`, `clippy::too_many_lines`, or `clippy::cognitive_complexity`, or item-level `clippy::all`) per [ADR 0019](docs/adr/0019-purge-dead-code-bypasses.md) and [ADR 0027](docs/adr/0027-enforce-workspace-clippy-lints.md). Gate test-only helpers with `#[cfg(test)]` or decompose large functions instead.
+- Do not introduce unwhitelisted `dead_code`, `unused`, or `warnings` lint suppressions (`allow`, `expect`, or `cfg_attr`), Clippy lint-group suppressions (`clippy::all`, `pedantic`, `nursery`, `restriction`, `complexity`, `correctness`, `suspicious`, `style`, `perf`, or `cargo`), crate/module/`impl`/`trait` complexity bypasses (`too_many_lines` or `cognitive_complexity`), `macro_rules!` Clippy suppressions, or stale `too_many_lines` attributes on functions of **60 lines or fewer** per [ADR 0019](docs/adr/0019-purge-dead-code-bypasses.md), [ADR 0027](docs/adr/0027-enforce-workspace-clippy-lints.md), and [ADR 0036](docs/adr/0036-harden-ast-and-doctest-policy-audits.md). Every dependency across `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]`, and `[target.*]` tables must be referenced in Rust AST/attributes, derive macros, or compiled `rustdoc` code blocks, or carry an explicit `[[unused_dependencies]]` entry (`crate`, `dependency`, `reason`) in [verification_whitelist.toml](verification_whitelist.toml). Gate test-only helpers with `#[cfg(test)]` or decompose large functions instead.
 - Modifying core mathematical or runtime crates (`crates/` excluding `crates/unified_verification`, or `math_explorer/`) requires creating or updating an Architectural Decision Record under `docs/adr/`.
 
 ```text
@@ -77,7 +77,7 @@ cargo run -p unified_verification --release -- lint-workflows
 # Run workflow linter unit tests directly
 cargo test -p unified_verification workflow_linter
 
-# Audit member [lints] inheritance, AST dead_code/unused/warnings/Clippy bypasses, and unused dependencies
+# Audit member [lints] inheritance, AST/macro Clippy & dead_code bypasses, and Cargo/doctest dependency usage
 cargo run -p xtask -- test-policy-audit
 cargo run -p unified_verification --release -- test-policy-audit
 
