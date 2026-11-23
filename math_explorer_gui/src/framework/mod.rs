@@ -6,7 +6,6 @@ pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_figure;
-mod export_io;
 mod export_queue;
 #[cfg(test)]
 mod export_queue_tests;
