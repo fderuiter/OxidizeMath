@@ -5,7 +5,7 @@ use crate::accessibility::{paint_canvas_focus_ring, register_canvas_accessibilit
 use crate::app::SemanticPalette;
 use eframe::egui;
 use eframe::egui::accesskit::Role;
-use egui_plot::{Bar, BarChart, Legend, Line, LineStyle, MarkerShape, Plot, PlotPoint, Points};
+use egui_plot::{Bar, BarChart, Legend, Line, LineStyle, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::markov::parrondo::{
     ParrondoPhaseGridConfig, ParrondoPhasePoint, ParrondoReport,
 };
@@ -66,13 +66,13 @@ pub(super) fn extract_phase_boundaries(
 }
 
 impl ParrondoParadoxTool {
-    pub(super) fn render_central_views(&self, ui: &mut egui::Ui) {
+    pub(super) fn render_central_views(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         if let Some(ref err) = self.error_msg {
             ui.colored_label(palette.error, err);
             return;
         }
-        let Some(ref report) = self.report else {
+        let Some(report) = self.report.clone() else {
             return;
         };
 
@@ -81,21 +81,21 @@ impl ParrondoParadoxTool {
             ParrondoViewMode::SplitOverview => {
                 let top_h = (avail_h * 0.48).max(160.0);
                 let bot_h = (avail_h - top_h - 16.0).max(150.0);
-                self.render_trajectories_card(ui, report, &palette, top_h);
+                self.render_trajectories_card(ui, &report, &palette, top_h);
                 ui.add_space(6.0);
                 ui.columns(2, |cols| {
-                    self.render_trap_occupancy_card(&mut cols[0], report, &palette, bot_h);
-                    self.render_phase_wedge_card(&mut cols[1], report, &palette, bot_h);
+                    self.render_trap_occupancy_card(&mut cols[0], &report, &palette, bot_h);
+                    self.render_phase_wedge_card(&mut cols[1], &report, &palette, bot_h);
                 });
             }
             ParrondoViewMode::WealthTrajectories => {
-                self.render_trajectories_card(ui, report, &palette, avail_h - 28.0);
+                self.render_trajectories_card(ui, &report, &palette, avail_h - 28.0);
             }
             ParrondoViewMode::TrapOccupancy => {
-                self.render_trap_occupancy_card(ui, report, &palette, avail_h - 28.0);
+                self.render_trap_occupancy_card(ui, &report, &palette, avail_h - 28.0);
             }
             ParrondoViewMode::PhaseWedge => {
-                self.render_phase_wedge_card(ui, report, &palette, avail_h - 28.0);
+                self.render_phase_wedge_card(ui, &report, &palette, avail_h - 28.0);
             }
         }
     }
@@ -274,95 +274,6 @@ impl ParrondoParadoxTool {
             .bar_chart(BarChart::new("π_sched (Exact)", bars_sched).color(palette.series_color(3)));
         plot_ui
             .bar_chart(BarChart::new("Empirical Sched", bars_emp).color(palette.series_color(4)));
-    }
-
-    fn render_phase_wedge_card(
-        &self,
-        ui: &mut egui::Ui,
-        report: &ParrondoReport,
-        palette: &SemanticPalette,
-        height: f32,
-    ) {
-        ui.strong(format!(
-            "(p_A, ε) Paradox Phase Wedge ({})",
-            self.active_schedule.as_string()
-        ));
-        let active_pa = self.p_a_base - self.epsilon;
-        let active_pt = [PlotPoint::new(active_pa, self.epsilon)];
-        let plot_resp = Plot::new("parrondo_phase_wedge_plot")
-            .height(height.max(120.0))
-            .x_axis_label("Effective Game A Win Probability p_A = p_A,0 - ε")
-            .y_axis_label("Bias Perturbation ε")
-            .legend(Legend::default())
-            .show(ui, |plot_ui| {
-                self.draw_phase_wedge_series(plot_ui, palette, &active_pt);
-            });
-        let summary = format!(
-            "Active point p_A = {:.4}, epsilon = {:.4}, paradox = {}, wedge samples = {}",
-            active_pa,
-            self.epsilon,
-            report.is_paradox(),
-            self.paradox_scatter.len()
-        );
-        register_canvas_accessibility(
-            ui,
-            &plot_resp.response,
-            Role::GraphicsDocument,
-            "Parrondo Paradox p_A versus epsilon Phase Wedge",
-            Some(&summary),
-        );
-        paint_canvas_focus_ring(ui, &plot_resp.response);
-    }
-
-    fn draw_phase_wedge_series<'a>(
-        &'a self,
-        plot_ui: &mut egui_plot::PlotUi<'a>,
-        palette: &SemanticPalette,
-        active_pt: &'a [PlotPoint; 1],
-    ) {
-        plot_ui.points(
-            Points::new("Non-Paradox Grid", &self.non_paradox_scatter[..])
-                .color(palette.series_color(5))
-                .radius(2.2_f32),
-        );
-        plot_ui.points(
-            Points::new(
-                "Paradox Wedge (A<0, B<0, Sched>0)",
-                &self.paradox_scatter[..],
-            )
-            .color(palette.success)
-            .radius(4.0_f32),
-        );
-        for (name, pts, col, width) in [
-            (
-                "E[ΔW_A] = 0",
-                &self.boundary_game_a[..],
-                palette.series_color(0),
-                1.6_f32,
-            ),
-            (
-                "E[ΔW_B] = 0",
-                &self.boundary_game_b[..],
-                palette.series_color(1),
-                1.6_f32,
-            ),
-            (
-                "E[ΔW_sched] = 0",
-                &self.boundary_schedule[..],
-                palette.series_color(3),
-                2.0_f32,
-            ),
-        ] {
-            if !pts.is_empty() {
-                plot_ui.line(Line::new(name, pts).color(col).width(width));
-            }
-        }
-        plot_ui.points(
-            Points::new("Active (p_A, ε)", &active_pt[..])
-                .color(palette.accent)
-                .shape(MarkerShape::Diamond)
-                .radius(6.5_f32),
-        );
     }
 }
 

@@ -222,7 +222,6 @@ vendored_crates = [
 "crates/domain_applied/src/applied/lorahub/strategies.rs" = 4
 "crates/domain_applied/src/applied/pharmacokinetics/bateman.rs" = 1
 "crates/domain_applied/src/applied/pharmacokinetics/mod.rs" = 6
-"crates/domain_applied/src/applied/pharmacokinetics/two_pulse.rs" = 1
 "crates/domain_applied/src/applied/win_ratio/mod.rs" = 1
 "crates/domain_applied/src/applied/win_ratio/pair_comparison.rs" = 8
 "crates/domain_applied/src/error.rs" = 14
