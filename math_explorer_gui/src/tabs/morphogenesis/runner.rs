@@ -1,6 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
 pub use super::counterfactual::MorphogenesisSnapshotData as MorphoSnapshotData;
 use super::counterfactual::{
     active_morphogen_slice, render_morphogenesis_heatmap, MorphogenesisHeatmapMode,
@@ -200,20 +199,10 @@ impl MorphogenesisKineticsRunner {
         self.system.diffusion_coeffs[0] = d_u;
         self.system.diffusion_coeffs[1] = d_v;
         if !self.has_counterfactual_twin()
-            && mode == MorphogenesisKineticsMode::Schnakenberg
-            && dt.is_finite()
-            && dt > 0.0
-            && is_pattern_forming_regime(a, b, d_u, d_v, dt)
+            && super::gray_scott_atlas::should_reseed_washed_out_system(&self.system, d_u, d_v, dt)
         {
-            let var_u = grid_u_variance(self.system.u());
-            if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
-                MorphogenesisTool::initialize_adapter_system(
-                    &mut self.system,
-                    self.width,
-                    self.height,
-                );
-                self.enforce_mask_concentrations();
-            }
+            MorphogenesisTool::initialize_adapter_system(&mut self.system, self.width, self.height);
+            self.enforce_mask_concentrations();
         }
         (dt.is_finite() && dt > 0.0).then_some(dt)
     }

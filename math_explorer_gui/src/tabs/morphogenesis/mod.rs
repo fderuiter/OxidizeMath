@@ -6,8 +6,10 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 
 pub mod atlas;
+mod atlas_bridge;
 pub mod counterfactual;
 mod counterfactual_tool;
+pub mod gray_scott_atlas;
 #[cfg(test)]
 mod legacy_runner;
 pub mod lenia;
@@ -25,6 +27,10 @@ pub use atlas::{
 };
 #[cfg(test)]
 pub use counterfactual::MorphogenesisHeatmapMode;
+#[cfg(test)]
+pub use gray_scott_atlas::{
+    classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
+};
 #[cfg(test)]
 pub use lenia::LeniaTool;
 #[cfg(test)]

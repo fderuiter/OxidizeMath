@@ -5,11 +5,13 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+pub mod challenge;
 pub mod counterfactual;
 mod counterfactual_tool;
 pub mod kspace_bloch_view;
 pub mod kspace_phantom;
 pub mod kspace_runner;
+pub mod kspace_scanner;
 pub mod kspace_tool;
 pub mod kspace_types;
 pub mod kspace_ui;
@@ -45,7 +47,7 @@ pub struct LegacyMriState {
     pub time_scale: f64,
 }
 
-/// Physics tab hosting [`tool::MriTool`] inside [`crate::framework::SimulationFramework`].
+/// Physics tab hosting [`tool::MriTool`], [`kspace_tool::MriKSpaceTool`], and [`kspace_scanner::tool::MriKSpaceScannerTool`] inside [`crate::framework::SimulationFramework`].
 pub struct MriTab {
     /// Underlying simulation framework managing exports, presets, theory portal, and state guard.
     pub framework: crate::framework::SimulationFramework,
@@ -53,9 +55,9 @@ pub struct MriTab {
 
 impl Default for MriTab {
     fn default() -> Self {
-        Self {
-            framework: crate::framework::SimulationFramework::new("mri"),
-        }
+        let mut framework = crate::framework::SimulationFramework::new("mri");
+        let _ = framework.select_tool_by_name("MriTool");
+        Self { framework }
     }
 }
 
