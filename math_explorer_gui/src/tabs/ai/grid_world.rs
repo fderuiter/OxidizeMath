@@ -1,28 +1,54 @@
+//! Interactive 2D GridWorld reinforcement learning laboratory with tactile maze sculpting,
+//! exact Bellman value-iteration overlays, policy-gradient rollouts, and TD sonification.
+
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use super::rl_sculpt::{
+    apply_rl_brush_stroke, mean_bellman_residual, new_rl_brush_kit, render_rl_sculpt_toolbar,
+    solve_bellman_with_policy, RlMazePreset, RlOverlayMode, RlSolverMode,
+};
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::{InputMode, InteractiveTool};
+use crate::audio::{mappings::rl_td_surprise_frame, render_sonification_panel, SonificationFrame};
+use crate::framework::{InputMode, InteractionContext, InteractiveTool, SpatialBrushKit};
 use eframe::egui;
 use math_commons::primitives::UnitInterval;
 use math_explorer::ai::reinforcement_learning::{
-    algorithms::TabularQAgent,
-    grid_world::{GridState, GridWorldEnv, Move},
-    q_function::TabularQFunction,
-    strategies::EpsilonGreedy,
-    MarkovDecisionProcess,
+    compute_softmax_pg_delta, step_softmax_pg_into, step_tabular_q_into, BellmanSolution,
+    DenseRlWorkspace, GridCellRole, GridState, MarkovDecisionProcess, Move, SculptedGridMdp,
 };
 
+#[path = "grid_world/canvas.rs"]
+mod canvas;
+#[path = "grid_world/preset.rs"]
+mod preset;
+#[cfg(test)]
+#[path = "grid_world/tests.rs"]
+mod tests;
+
+/// Interactive GridWorld RL tool with live maze sculpting, Bellman overlays, and sonification.
 pub struct GridWorldTool {
-    env: GridWorldEnv,
-    agent: TabularQAgent<GridState, Move>,
-    learning_rate: f64,
-    discount_factor: f64,
-    exploration_rate: f64,
-    current_state: GridState,
-    episodes: u32,
-    total_reward: f64,
-    steps: u32,
-    is_playing: bool,
-    playback_speed: f32,
-    last_tick: crate::web_io::PlatformInstant,
+    pub(super) mdp: SculptedGridMdp,
+    pub(super) workspace: DenseRlWorkspace,
+    pub(super) bellman: BellmanSolution,
+    pub(super) bellman_dirty: bool,
+    pub(super) solver_mode: RlSolverMode,
+    pub(super) overlay_mode: RlOverlayMode,
+    pub(super) maze_preset: RlMazePreset,
+    pub(super) brush_kit: SpatialBrushKit,
+    pub(super) learning_rate: f64,
+    pub(super) discount_factor: f64,
+    pub(super) exploration_rate: f64,
+    pub(super) current_state: GridState,
+    pub(super) episodes: u32,
+    pub(super) total_reward: f64,
+    pub(super) steps: u32,
+    pub(super) last_td_error: f64,
+    pub(super) last_pg_grad_norm: f64,
+    pub(super) latest_audio: SonificationFrame,
+    pub(super) is_playing: bool,
+    pub(super) playback_speed: f32,
+    pub(super) last_tick: crate::web_io::PlatformInstant,
+    pub(super) revision: u64,
 }
 
 impl Default for GridWorldTool {
@@ -30,113 +56,125 @@ impl Default for GridWorldTool {
         let learning_rate = 0.1;
         let discount_factor = 0.9;
         let exploration_rate = 0.1;
-        let env = GridWorldEnv {
-            width: 5,
-            height: 5,
-            start: GridState { x: 0, y: 0 },
-            goal: GridState { x: 4, y: 4 },
-            traps: vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }],
-            gamma: discount_factor,
-        };
-        let agent = Self::build_agent(learning_rate, discount_factor, exploration_rate);
+        let mdp = SculptedGridMdp::default_with_traps(5, 5, discount_factor);
+        let workspace = DenseRlWorkspace::new(5, 5, 100, None);
+        let bellman = solve_bellman_with_policy(&mdp, &workspace, RlSolverMode::TabularQ);
         Self {
-            current_state: env.start,
-            env,
-            agent,
+            current_state: mdp.start,
+            mdp,
+            workspace,
+            bellman,
+            bellman_dirty: false,
+            solver_mode: RlSolverMode::TabularQ,
+            overlay_mode: RlOverlayMode::EmpiricalPolicy,
+            maze_preset: RlMazePreset::BaselineTraps,
+            brush_kit: new_rl_brush_kit(),
             learning_rate,
             discount_factor,
             exploration_rate,
             episodes: 0,
             total_reward: 0.0,
             steps: 0,
+            last_td_error: 0.0,
+            last_pg_grad_norm: 0.0,
+            latest_audio: SonificationFrame::silent(),
             is_playing: false,
             playback_speed: 5.0,
             last_tick: crate::web_io::PlatformInstant::now(),
+            revision: 0,
         }
     }
 }
 
 impl GridWorldTool {
-    fn build_agent(
-        learning_rate: f64,
-        discount_factor: f64,
-        exploration_rate: f64,
-    ) -> TabularQAgent<GridState, Move> {
-        let lr = UnitInterval::new(learning_rate.clamp(0.0, 1.0)).unwrap();
-        let gamma = UnitInterval::new(discount_factor.clamp(0.0, 1.0)).unwrap();
-        let eps = UnitInterval::new(exploration_rate.clamp(0.0, 1.0)).unwrap();
-        TabularQAgent::new(lr, gamma, eps, None)
+    pub(super) fn ensure_bellman_up_to_date(&mut self) {
+        if self.bellman_dirty {
+            self.bellman = solve_bellman_with_policy(&self.mdp, &self.workspace, self.solver_mode);
+            self.bellman_dirty = false;
+        }
     }
 
-    fn sync_agent_hyperparameters(&mut self) {
-        let Ok(lr) = UnitInterval::new(self.learning_rate.clamp(0.0, 1.0)) else {
+    pub(super) fn sync_agent_hyperparameters(&mut self) {
+        self.learning_rate = self.learning_rate.clamp(0.01, 1.0);
+        self.discount_factor = self.discount_factor.clamp(0.0, 1.0);
+        self.exploration_rate = self.exploration_rate.clamp(0.0, 1.0);
+        if (self.mdp.gamma - self.discount_factor).abs() > 1e-12 {
+            self.mdp.gamma = self.discount_factor;
+            self.bellman_dirty = true;
+        }
+        self.ensure_bellman_up_to_date();
+        self.revision = self.revision.wrapping_add(1);
+    }
+
+    pub(super) fn reset_agent(&mut self) {
+        self.is_playing = false;
+        self.mdp.gamma = self.discount_factor.clamp(0.0, 1.0);
+        self.workspace
+            .resize_and_clear(self.mdp.width as usize, self.mdp.height as usize);
+        self.workspace.reset_episode(&self.mdp);
+        self.current_state = self.mdp.start;
+        self.episodes = 0;
+        self.total_reward = 0.0;
+        self.steps = 0;
+        self.last_td_error = 0.0;
+        self.last_pg_grad_norm = 0.0;
+        self.latest_audio = SonificationFrame::silent();
+        self.bellman_dirty = true;
+        self.ensure_bellman_up_to_date();
+    }
+
+    pub(super) fn reset_episode(&mut self) {
+        self.workspace.reset_episode(&self.mdp);
+        self.current_state = self.mdp.start;
+        self.episodes += 1;
+        self.total_reward = 0.0;
+        self.steps = 0;
+        self.bellman_dirty = true;
+        self.ensure_bellman_up_to_date();
+    }
+
+    pub(super) fn step_agent(&mut self) {
+        if self.mdp.is_terminal(&self.current_state) {
+            self.reset_episode();
             return;
-        };
-        let Ok(gamma) = UnitInterval::new(self.discount_factor.clamp(0.0, 1.0)) else {
+        }
+        let Ok(lr) = UnitInterval::new(self.learning_rate.clamp(0.01, 1.0)) else {
             return;
         };
         let Ok(eps) = UnitInterval::new(self.exploration_rate.clamp(0.0, 1.0)) else {
             return;
         };
-        self.env.gamma = gamma.value();
-        let q_func = std::mem::replace(&mut self.agent.q_func, TabularQFunction::new());
-        let rng = self.agent.rng.clone();
-        let mut updated =
-            TabularQAgent::new_generic(q_func, lr, gamma, Box::new(EpsilonGreedy::new(eps)), None);
-        updated.rng = rng;
-        self.agent = updated;
-    }
 
-    fn reset_agent(&mut self) {
-        self.is_playing = false;
-        self.env.gamma = self.discount_factor.clamp(0.0, 1.0);
-        self.agent = Self::build_agent(
-            self.learning_rate,
-            self.discount_factor,
-            self.exploration_rate,
+        self.workspace.current_state = self.current_state;
+        let outcome = match self.solver_mode {
+            RlSolverMode::TabularQ => step_tabular_q_into(&self.mdp, &mut self.workspace, lr, eps),
+            RlSolverMode::PolicyGradient => {
+                let s_idx = self.mdp.cell_index(self.current_state);
+                let logits = self.workspace.theta_logits[s_idx];
+                let out = step_softmax_pg_into(&self.mdp, &mut self.workspace, lr);
+                let delta = compute_softmax_pg_delta(logits, out.action, out.td_error, lr);
+                self.last_pg_grad_norm = delta.iter().map(|d| d * d).sum::<f64>().sqrt();
+                out
+            }
+        };
+
+        self.current_state = outcome.next_state;
+        self.total_reward += outcome.reward;
+        self.steps += 1;
+        self.last_td_error = outcome.td_error;
+        self.latest_audio = rl_td_surprise_frame(
+            outcome.state_value,
+            outcome.td_error,
+            outcome.reward,
+            outcome.wind_pan,
         );
-        self.reset_episode();
-        self.episodes = 0;
     }
 
-    fn step_agent(&mut self) {
-        if self.env.is_terminal(&self.current_state) {
-            self.reset_episode();
-            return;
-        }
-        let actions = self.env.actions(&self.current_state);
-        if actions.is_empty() {
-            return;
-        }
-        if let Some(action) = self.agent.select_action(&self.current_state, &actions) {
-            let next_state = self.env.step(&self.current_state, &action);
-            let reward = self.env.reward(&self.current_state, &action, &next_state);
-            let next_actions = self.env.actions(&next_state);
-            self.agent.update(
-                &self.current_state,
-                &action,
-                reward,
-                &next_state,
-                &next_actions,
-            );
-            self.current_state = next_state;
-            self.total_reward += reward;
-            self.steps += 1;
-        }
-    }
-
-    fn reset_episode(&mut self) {
-        self.current_state = self.env.start;
-        self.episodes += 1;
-        self.total_reward = 0.0;
-        self.steps = 0;
-    }
-
-    fn train_batch(&mut self) {
+    pub(super) fn train_batch(&mut self) {
         self.is_playing = false;
         for _ in 0..100 {
             for _ in 0..100 {
-                if self.env.is_terminal(&self.current_state) {
+                if self.mdp.is_terminal(&self.current_state) {
                     break;
                 }
                 self.step_agent();
@@ -145,21 +183,50 @@ impl GridWorldTool {
         }
     }
 
-    fn cell_fill(&self, state: GridState, palette: &crate::app::SemanticPalette) -> egui::Color32 {
-        if state == self.env.goal {
-            palette.success
-        } else if self.env.traps.contains(&state) {
-            palette.error
-        } else if state == self.current_state {
-            palette.accent
-        } else if state == self.env.start {
-            palette.info
-        } else {
-            palette.surface_fill
+    pub(super) fn greedy_action_for_display(&self, state: GridState) -> Option<Move> {
+        if self.mdp.is_terminal(&state) || self.mdp.cell_role(state) == GridCellRole::SolidWall {
+            return None;
+        }
+        match self.overlay_mode {
+            RlOverlayMode::BellmanVStar => self.bellman.optimal_action_at(state),
+            _ => match self.solver_mode {
+                RlSolverMode::TabularQ => self.workspace.greedy_q_action(state),
+                RlSolverMode::PolicyGradient => self.workspace.greedy_policy_action(state),
+            },
         }
     }
 
-    fn draw_playback_buttons(&mut self, ui: &mut egui::Ui) {
+    fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id = crate::framework::scoped_panel_id(parent_ui, "grid_world_controls");
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                self.draw_transport_and_solver_controls(ui);
+                ui.separator();
+                ui.heading("Maze Sculpting");
+                if render_rl_sculpt_toolbar(
+                    ui,
+                    "grid_world",
+                    &mut self.mdp,
+                    &mut self.brush_kit,
+                    &mut self.maze_preset,
+                ) {
+                    if self.mdp.cell_role(self.current_state) == GridCellRole::SolidWall {
+                        self.current_state = self.mdp.start;
+                    }
+                    self.bellman_dirty = true;
+                    self.ensure_bellman_up_to_date();
+                    self.revision = self.revision.wrapping_add(1);
+                }
+                ui.separator();
+                self.draw_hyperparameter_controls(ui);
+                ui.separator();
+                render_sonification_panel(ui, "grid_world", &self.latest_audio, !self.is_playing);
+            });
+        });
+    }
+
+    fn draw_transport_and_solver_controls(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Controls");
         ui.horizontal_wrapped(|ui| {
             if ui
                 .button("▶ Step")
@@ -169,9 +236,9 @@ impl GridWorldTool {
                 self.step_agent();
             }
             let (label, hover) = if self.is_playing {
-                ("⏸ Pause", "Pause continuous Q-learning playback")
+                ("⏸ Pause", "Pause continuous RL playback")
             } else {
-                ("▶ Play", "Start continuous Q-learning playback")
+                ("▶ Play", "Start continuous RL playback")
             };
             if ui.button(label).accessible_hover_text(hover).clicked() {
                 self.is_playing = !self.is_playing;
@@ -189,122 +256,72 @@ impl GridWorldTool {
         }
         if ui
             .button("↻ Reset Agent")
-            .accessible_hover_text("Clear the Q-table and reset the agent's knowledge")
+            .accessible_hover_text("Clear learned values and reset agent state")
             .clicked()
         {
             self.reset_agent();
         }
+        self.draw_solver_and_overlay_selectors(ui);
     }
 
-    fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "grid_world_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Controls");
-            ui.separator();
-            self.draw_playback_buttons(ui);
-            ui.separator();
-            self.draw_hyperparameter_sliders(ui);
+    fn draw_solver_and_overlay_selectors(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Solver:");
+            egui::ComboBox::from_id_salt("grid_world_solver")
+                .selected_text(self.solver_mode.label())
+                .show_ui(ui, |ui| {
+                    for mode in [RlSolverMode::TabularQ, RlSolverMode::PolicyGradient] {
+                        if ui
+                            .selectable_value(&mut self.solver_mode, mode, mode.label())
+                            .changed()
+                        {
+                            self.bellman_dirty = true;
+                            self.ensure_bellman_up_to_date();
+                            self.revision = self.revision.wrapping_add(1);
+                        }
+                    }
+                });
+        });
+        ui.horizontal(|ui| {
+            ui.label("Overlay:");
+            egui::ComboBox::from_id_salt("grid_world_overlay")
+                .selected_text(self.overlay_mode.label())
+                .show_ui(ui, |ui| {
+                    for mode in [
+                        RlOverlayMode::EmpiricalPolicy,
+                        RlOverlayMode::BellmanVStar,
+                        RlOverlayMode::PolicyValueVPi,
+                        RlOverlayMode::BellmanResidual,
+                    ] {
+                        if ui
+                            .selectable_value(&mut self.overlay_mode, mode, mode.label())
+                            .changed()
+                        {
+                            self.bellman_dirty = true;
+                            self.ensure_bellman_up_to_date();
+                            self.revision = self.revision.wrapping_add(1);
+                        }
+                    }
+                });
         });
     }
 
-    fn draw_hyperparameter_sliders(&mut self, ui: &mut egui::Ui) {
+    fn draw_hyperparameter_controls(&mut self, ui: &mut egui::Ui) {
         ui.heading("RL Hyperparameters");
         let mut hp_changed = ui
             .add(egui::Slider::new(&mut self.learning_rate, 0.01..=1.0).text("Learning Rate (α)"))
             .changed();
         hp_changed |= ui
-            .add(
-                egui::Slider::new(&mut self.discount_factor, 0.0..=1.0).text("Discount Factor (γ)"),
-            )
+            .add(egui::Slider::new(&mut self.discount_factor, 0.0..=1.0).text("Discount (γ)"))
             .changed();
         hp_changed |= ui
-            .add(
-                egui::Slider::new(&mut self.exploration_rate, 0.0..=1.0)
-                    .text("Exploration Rate (ε)"),
-            )
+            .add(egui::Slider::new(&mut self.exploration_rate, 0.0..=1.0).text("Exploration (ε)"))
             .changed();
         if hp_changed {
             self.sync_agent_hyperparameters();
         }
         ui.add(egui::Slider::new(&mut self.playback_speed, 1.0..=20.0).text("Speed (Hz)"));
     }
-
-    fn draw_central_canvas(&self, parent_ui: &mut egui::Ui, input_mode: InputMode) {
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            ui.heading("Grid World Navigation (Q-Learning)");
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.label(format!("Episode: {}", self.episodes));
-                ui.label(format!("Steps: {}", self.steps));
-                ui.label(format!("Reward: {:.2}", self.total_reward));
-            });
-            let cell_size = if input_mode == InputMode::Touch {
-                44.0
-            } else {
-                40.0
-            };
-            let grid_size = egui::vec2(
-                self.env.width as f32 * cell_size,
-                self.env.height as f32 * cell_size,
-            );
-            let (response, painter) =
-                ui.allocate_painter(grid_size, egui::Sense::focusable_noninteractive());
-            let _ = response
-                .clone()
-                .accessible_hover_text("Grid World Visualization");
-            let summary = format!(
-                "Agent at ({}, {}), Episode {}, Reward {:.2}",
-                self.current_state.x, self.current_state.y, self.episodes, self.total_reward
-            );
-            crate::accessibility::register_canvas_accessibility(
-                ui,
-                &response,
-                egui::accesskit::Role::GraphicsDocument,
-                "Grid World Visualization",
-                Some(&summary),
-            );
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            for x in 0..self.env.width {
-                for y in 0..self.env.height {
-                    let top_left =
-                        response.rect.min + egui::vec2(x as f32 * cell_size, y as f32 * cell_size);
-                    let cell_rect =
-                        egui::Rect::from_min_size(top_left, egui::vec2(cell_size, cell_size));
-                    painter.rect_filled(
-                        cell_rect,
-                        0.0,
-                        self.cell_fill(GridState { x, y }, &palette),
-                    );
-                    painter.rect_stroke(
-                        cell_rect,
-                        0.0,
-                        egui::Stroke::new(1.0_f32, palette.graph_edge),
-                        egui::StrokeKind::Middle,
-                    );
-                }
-            }
-            crate::accessibility::paint_canvas_focus_ring(ui, &response);
-        });
-    }
-}
-
-fn default_rl_rate() -> f64 {
-    0.1
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct GridWorldToolState {
-    width: i32,
-    height: i32,
-    #[serde(alias = "discount_factor")]
-    gamma: f64,
-    #[serde(default = "default_rl_rate")]
-    learning_rate: f64,
-    #[serde(default = "default_rl_rate")]
-    exploration_rate: f64,
-    playback_speed: f32,
-    is_playing: bool,
 }
 
 impl InteractiveTool for GridWorldTool {
@@ -320,76 +337,41 @@ impl InteractiveTool for GridWorldTool {
     fn domain(&self) -> &'static str {
         "ai"
     }
-
-    fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&GridWorldToolState {
-            width: self.env.width,
-            height: self.env.height,
-            gamma: self.discount_factor,
-            learning_rate: self.learning_rate,
-            exploration_rate: self.exploration_rate,
-            playback_speed: self.playback_speed,
-            is_playing: self.is_playing,
-        })
-        .ok()
+    fn state_revision(&self) -> u64 {
+        self.revision
     }
-
-    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let parsed: GridWorldToolState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid GridWorld state: {e}"))?;
-        if !(2..=20).contains(&parsed.width)
-            || !(2..=20).contains(&parsed.height)
-            || !parsed.gamma.is_finite()
-            || !(0.0..=1.0).contains(&parsed.gamma)
-            || !parsed.learning_rate.is_finite()
-            || !(0.01..=1.0).contains(&parsed.learning_rate)
-            || !parsed.exploration_rate.is_finite()
-            || !(0.0..=1.0).contains(&parsed.exploration_rate)
-            || !parsed.playback_speed.is_finite()
-            || !(1.0..=20.0).contains(&parsed.playback_speed)
-        {
-            return Err(
-                "GridWorld dimensions, RL hyperparameters, or playback_speed out of bounds".into(),
-            );
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        let Some(stroke) = ctx.brush_stroke else {
+            return;
+        };
+        if apply_rl_brush_stroke(&mut self.mdp, &stroke) {
+            if self.mdp.cell_role(self.current_state) == GridCellRole::SolidWall {
+                self.current_state = self.mdp.start;
+            }
+            self.bellman_dirty = true;
+            self.ensure_bellman_up_to_date();
+            self.revision = self.revision.wrapping_add(1);
         }
-        let lr_unit = UnitInterval::new(parsed.learning_rate)
-            .map_err(|e| format!("Invalid learning rate: {e}"))?;
-        let gamma_unit =
-            UnitInterval::new(parsed.gamma).map_err(|e| format!("Invalid discount factor: {e}"))?;
-        let eps_unit = UnitInterval::new(parsed.exploration_rate)
-            .map_err(|e| format!("Invalid exploration rate: {e}"))?;
-        let start = GridState { x: 0, y: 0 };
-        let goal = GridState {
-            x: parsed.width - 1,
-            y: parsed.height - 1,
-        };
-        let traps = vec![GridState { x: 2, y: 2 }, GridState { x: 3, y: 2 }]
-            .into_iter()
-            .filter(|t| t.x < parsed.width && t.y < parsed.height && *t != start && *t != goal)
-            .collect();
-        self.learning_rate = lr_unit.value();
-        self.discount_factor = gamma_unit.value();
-        self.exploration_rate = eps_unit.value();
-        self.env = GridWorldEnv {
-            width: parsed.width,
-            height: parsed.height,
-            start,
-            goal,
-            traps,
-            gamma: parsed.gamma,
-        };
-        self.agent = TabularQAgent::new(lr_unit, gamma_unit, eps_unit, None);
-        self.current_state = self.env.start;
-        self.episodes = 0;
-        self.total_reward = 0.0;
-        self.steps = 0;
-        self.playback_speed = parsed.playback_speed;
-        self.is_playing = parsed.is_playing;
-        self.last_tick = crate::web_io::PlatformInstant::now();
-        Ok(())
+    }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        let residual =
+            mean_bellman_residual(&self.mdp, &self.workspace, self.solver_mode, &self.bellman);
+        vec![
+            ("episodes", f64::from(self.episodes)),
+            ("total_reward", self.total_reward),
+            ("bellman_residual", residual),
+            ("wind_slip_prob", self.mdp.wind_slip_prob),
+        ]
+    }
+    fn save_state(&self) -> Option<String> {
+        self.save_preset_state()
+    }
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.try_load_preset_state(state)
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        self.ensure_bellman_up_to_date();
         let ctx = parent_ui.ctx().clone();
         if self.is_playing {
             let speed_hz = self.playback_speed.clamp(1.0, 20.0);
@@ -417,7 +399,16 @@ inventory::submit! {
         id: "GridWorldTool",
         display_name: "Grid World (RL)",
         domain: "ai",
-        tags: &["reinforcement learning", "q-learning", "bellman", "mdp", "policy", "epsilon-greedy"],
+        tags: &[
+            "reinforcement learning",
+            "rl",
+            "q-learning",
+            "bellman",
+            "mdp",
+            "policy",
+            "epsilon-greedy",
+            "sonification",
+        ],
         build: || Box::new(GridWorldTool::default()),
     }
 }
@@ -425,12 +416,16 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for GridWorldTool {
     fn theory_description(&self) -> String {
         format!(
-            "Tabular Q-Learning updates state-action values via Bellman temporal difference $Q(s,a) \\leftarrow Q(s,a) + \\alpha [R + \\gamma \\max_{{a'}} Q(s',a') - Q(s,a)]$ with $\\alpha = {:.2}$, $\\gamma = {:.2}$, and $\\epsilon = {:.2}$.",
-            self.learning_rate, self.discount_factor, self.exploration_rate
+            "Sculptable Markov Decision Process with bounce-back walls, wind slip $p = {:.2}$, Bellman optimality $V^*(s) = \\max_a \\sum_{{s'}} P(s'|s,a)[R + \\gamma V^*(s')]$, and {} ($\\alpha = {:.2}, \\gamma = {:.2}, \\epsilon = {:.2}$).",
+            self.mdp.wind_slip_prob,
+            self.solver_mode.label(),
+            self.learning_rate,
+            self.discount_factor,
+            self.exploration_rate
         )
     }
     fn phonetic_description(&self) -> String {
-        "Reinforcement Learning involves an agent that interacts with its environment to learn optimal actions, aiming to maximize a cumulative reward based on the Bellman equation.".into()
+        "Reinforcement Learning involves an agent navigating a sculptable Markov Decision Process using Bellman optimality value iteration, Q-learning, or policy gradients.".into()
     }
     fn theory_citation(&self) -> String {
         "Sutton, R. S., & Barto, A. G. (2018). Reinforcement Learning: An Introduction. MIT press."
@@ -438,28 +433,18 @@ impl scientific_metadata::theory::TheoryDescribable for GridWorldTool {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("learning_rate".into(), "The step size used to update the Q-values, controlling how much new information overrides old information.".into());
-        map.insert("discount_factor".into(), "Determines the importance of future rewards. A factor of 0 makes the agent opportunistic, while 1 makes it strive for long-term high reward.".into());
-        map.insert("exploration_rate".into(), "The probability that the agent will choose a random action instead of the best known action, facilitating exploration of the state space.".into());
+        map.insert(
+            "learning_rate".into(),
+            "Step size α updating Q-values or softmax policy preferences.".into(),
+        );
+        map.insert(
+            "discount_factor".into(),
+            "Discount factor γ weighting future cumulative rewards.".into(),
+        );
+        map.insert(
+            "exploration_rate".into(),
+            "Epsilon-greedy probability ε of sampling exploratory moves.".into(),
+        );
         map
-    }
-}
-
-#[cfg(test)]
-#[path = "grid_world_tests.rs"]
-mod tests;
-
-const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Grid World RL","domain":"ai","timestamp":"2026-11-16T00:00:00Z"},"config":{"width":5,"height":5,"gamma":0.95,"playback_speed":8.0,"is_playing":false}}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "grid_world_starter",
-        title: "Grid World RL",
-        description: "Markov Decision Process navigation with obstacle avoidance and discount reward propagation.",
-        category: "Reinforcement Learning",
-        icon: "🗺️",
-        domain: "ai",
-        tool_name: Some("GridWorldTool"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }
