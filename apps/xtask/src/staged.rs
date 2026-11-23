@@ -26,7 +26,14 @@ pub(crate) struct StagedLintPlan {
     pub wasm_clippy_args: Option<Vec<String>>,
 }
 
-fn git_staged_paths(extra_args: &[&str]) -> Vec<String> {
+fn has_merge_head() -> bool {
+    Command::new("git")
+        .args(["rev-parse", "-q", "--verify", "MERGE_HEAD"])
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+fn run_git_cached_names(extra_args: &[&str], target_ref: Option<&str>) -> Vec<String> {
     let mut args = vec![
         "-c",
         "core.quotepath=false",
@@ -35,6 +42,9 @@ fn git_staged_paths(extra_args: &[&str]) -> Vec<String> {
         "--name-only",
     ];
     args.extend_from_slice(extra_args);
+    if let Some(r) = target_ref {
+        args.push(r);
+    }
     let Ok(output) = Command::new("git").args(&args).output() else {
         return Vec::new();
     };
@@ -45,6 +55,21 @@ fn git_staged_paths(extra_args: &[&str]) -> Vec<String> {
         .lines()
         .map(|l| l.trim().replace('\\', "/"))
         .filter(|l| !l.is_empty())
+        .collect()
+}
+
+fn git_staged_paths(extra_args: &[&str]) -> Vec<String> {
+    let vs_head = run_git_cached_names(extra_args, None);
+    if !has_merge_head() {
+        return vs_head;
+    }
+    let vs_merge: std::collections::HashSet<String> =
+        run_git_cached_names(extra_args, Some("MERGE_HEAD"))
+            .into_iter()
+            .collect();
+    vs_head
+        .into_iter()
+        .filter(|p| vs_merge.contains(p))
         .collect()
 }
 
