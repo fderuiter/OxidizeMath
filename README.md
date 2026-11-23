@@ -3,7 +3,7 @@
 ![CI/CD](https://github.com/fderuiter/OxidizeMath/actions/workflows/ci.yml/badge.svg)
 ![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)
 ![License](https://img.shields.io/badge/license-AGPL-blue.svg)
-![Coverage](https://img.shields.io/badge/coverage-84.5%25-yellow)
+![Coverage](https://img.shields.io/badge/coverage-84.8%25-yellow)
 
 **Math Explorer** is a comprehensive Rust library that bridges the gap between rigorous academic theory and executable code. From simulating Quantum Mechanics to modeling Social Favoritism, this repository serves as a verifiable playground for complex algorithms.
 
@@ -59,6 +59,7 @@ cargo run --release --package math_explorer_gui
 *   **Physics / Chaos:** Attractor Plotter (Lorenz, Rossler), Bifurcation Diagrams, and Fractal Generator.
 *   **Physics / Quantum:** Schrödinger Solver, Wavefunction Evolution, and Clebsch-Gordan Calculator.
 *   **Physics / Solid State:** Crystal Lattice Viewer (FCC, BCC, SC).
+*   **Game Theory:** Evolutionary Replicator Dynamics and Bayesian Glicko-2 Tournament Simulator ($r \pm 2\,\text{RD}$ confidence bands, $\sigma$ volatility shifts, Swiss & Round-Robin pairings, and frozen-vs-sequential drift).
 
 
 ### Deep Dive: Modules

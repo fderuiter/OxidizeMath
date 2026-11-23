@@ -107,15 +107,6 @@ pub(crate) type CustomExportWriter = Arc<dyn Fn(&str, &[u8]) + Send + Sync>;
 /// Type alias for custom clipboard text writer function (useful for deterministic testing).
 pub(crate) type CustomClipboardWriter = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
-/// Formats a clipboard failure error with guidance toward disk export.
-pub(super) fn format_clipboard_error(err: &str) -> String {
-    if err.contains("Export CSV") {
-        format!("Clipboard unavailable: {err}")
-    } else {
-        format!("Clipboard unavailable ({err}). Please use Export CSV to save to disk.")
-    }
-}
-
 /// Manages pending dataset and figure export requests deferred to the end of the rendering frame.
 #[derive(Default)]
 pub(crate) struct ExportQueue {

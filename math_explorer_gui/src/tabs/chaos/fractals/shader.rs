@@ -8,9 +8,8 @@ use math_commons::math_kernel::glsl_colormap::{
 };
 use std::fmt::Write;
 
-const FRACTAL_RESERVED_GLSL_SYMBOLS: &[&str] = &[
+const FRACTAL_RESERVED_IDENTS: &[&str] = &[
     "CENTER",
-    "ESCAPE_R2",
     "HIGH_CONTRAST",
     "IS_JULIA",
     "JULIA_C",
@@ -44,58 +43,59 @@ const FRACTAL_RESERVED_GLSL_SYMBOLS: &[&str] = &[
     "ensure_dark_canvas_contrast",
     "fragColor",
     "iResolution",
+    "linear_channel_to_srgb",
+    "relative_luminance_srgb",
     "render_fractal",
-    "step_fractal_orbit",
+    "srgb_channel_to_linear",
+    "step_fractal",
     "u_mouse",
     "u_resolution",
     "u_time",
 ];
 
 impl FractalViewer {
-    fn build_orbit_step_glsl(&self) -> Result<String, String> {
+    fn compile_step_glsl(&self) -> Result<(bool, String, String), String> {
         if !self.mode.is_custom() {
-            return Ok(
-                "vec2 step_fractal_orbit(vec2 z, vec2 c) {\n    return vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;\n}\n"
-                    .to_string(),
-            );
+            return Ok((
+                false,
+                String::new(),
+                "vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c".to_string(),
+            ));
         }
-        let expr = self.math_input.expr().ok_or_else(|| {
+        let invalid_err = || {
             self.math_input
                 .error_message()
-                .unwrap_or_else(|| "Custom fractal formula is invalid".to_string())
-        })?;
-        let compiled = self
-            .math_input
-            .compiled()
-            .ok_or_else(|| "Custom fractal bytecode is unavailable".to_string())?;
+                .unwrap_or_else(|| "Custom fractal expression is invalid".to_string())
+        };
+        let expr = self.math_input.expr().ok_or_else(invalid_err)?;
+        let compiled = self.math_input.compiled().ok_or_else(invalid_err)?;
         let param_names = compiled.param_names();
         let param_vals = self.math_input.param_slice();
-        let mut scope_vars = vec!["z", "c"];
-        let mut fn_src = String::from(GLSL_COMPLEX_HELPERS);
-        fn_src.push_str("\nvec2 step_fractal_orbit(vec2 z, vec2 c) {\n");
-        for (i, param) in param_names.iter().enumerate() {
-            if FRACTAL_RESERVED_GLSL_SYMBOLS.contains(&param.as_str()) {
+        let mut allowed_vars = Vec::with_capacity(2 + param_names.len());
+        allowed_vars.extend(["z", "c"]);
+        let mut param_decls = String::new();
+        for (idx, name) in param_names.iter().enumerate() {
+            if FRACTAL_RESERVED_IDENTS.contains(&name.as_str()) {
                 return Err(format!(
-                    "Parameter '{param}' conflicts with GLSL identifier"
+                    "Parameter '{name}' collides with a reserved GLSL shader symbol"
                 ));
             }
-            let lit = format_glsl_float(param_vals.get(i).copied().unwrap_or(1.0))
-                .map_err(|e| e.to_string())?;
-            writeln!(fn_src, "    const vec2 {param} = vec2({lit}, 0.0);").unwrap();
-            scope_vars.push(param.as_str());
+            let val = param_vals.get(idx).copied().unwrap_or(1.0);
+            let lit = format_glsl_float(val).map_err(|e| e.to_string())?;
+            writeln!(param_decls, "    const vec2 {name} = vec2({lit}, 0.0);").unwrap();
+            allowed_vars.push(name.as_str());
         }
-        let rhs = expr
-            .to_glsl_complex_with_vars(&scope_vars)
+        let expr_glsl = expr
+            .to_glsl_complex_with_vars(&allowed_vars)
             .map_err(|e| e.to_string())?;
-        writeln!(fn_src, "    return {rhs};\n}}").unwrap();
-        Ok(fn_src)
+        Ok((true, param_decls, expr_glsl))
     }
 
     pub(super) fn build_glsl_shader(&self, dialect: ShaderDialect) -> Result<String, String> {
         if !self.has_finite_parameters() {
             return Err("Fractal parameters are non-finite or out of bounds".to_string());
         }
-        let step_fn = self.build_orbit_step_glsl()?;
+        let (needs_helpers, param_decls, step_glsl) = self.compile_step_glsl()?;
         let cx = format_glsl_float(self.center.re.clamp(COORD_MIN, COORD_MAX))
             .map_err(|e| e.to_string())?;
         let cy = format_glsl_float(self.center.im.clamp(COORD_MIN, COORD_MAX))
@@ -109,12 +109,7 @@ impl FractalViewer {
         let max_iter = self
             .max_iter
             .clamp(10, math_commons::registry::MAX_ITERATIONS as u32);
-        let is_julia = matches!(self.mode, FractalMode::Julia | FractalMode::CustomJulia);
-        let escape_r2 = if self.mode.is_custom() {
-            "4.0"
-        } else {
-            "256.0"
-        };
+        let is_julia = self.mode.uses_julia_c();
 
         let mut out = String::with_capacity(3072);
         write_dialect_header(&mut out, dialect, self.mode);
@@ -123,14 +118,19 @@ impl FractalViewer {
         writeln!(out, "const int MAX_ITER = {max_iter};").unwrap();
         writeln!(out, "const bool IS_JULIA = {is_julia};").unwrap();
         writeln!(out, "const vec2 JULIA_C = vec2({jx}, {jy});").unwrap();
-        writeln!(out, "const float ESCAPE_R2 = {escape_r2};").unwrap();
         writeln!(out, "const bool HIGH_CONTRAST = {};\n", self.high_contrast).unwrap();
-        out.push_str(&step_fn);
-        out.push('\n');
+        if needs_helpers {
+            out.push_str(GLSL_COMPLEX_HELPERS);
+            out.push('\n');
+        }
         out.push_str(glsl_cyclic_cosine_palette_fn());
         out.push('\n');
         out.push_str(glsl_ensure_dark_canvas_contrast_fn());
-        out.push('\n');
+        writeln!(
+            out,
+            "\nvec2 step_fractal(vec2 z, vec2 c) {{\n{param_decls}    return {step_glsl};\n}}\n"
+        )
+        .unwrap();
         out.push_str(FRACTAL_KERNEL_GLSL);
         write_dialect_entrypoint(&mut out, dialect);
         Ok(out)
@@ -184,12 +184,12 @@ const FRACTAL_KERNEL_GLSL: &str = r#"vec4 render_fractal(vec2 frag_coord, vec2 r
 
     for (int i = 0; i < MAX_ITER; ++i) {
         float r2 = dot(z, z);
-        if (r2 > ESCAPE_R2) {
+        if (r2 > 256.0) {
             escaped = true;
             iter = i;
             break;
         }
-        z = step_fractal_orbit(z, c);
+        z = step_fractal(z, c);
     }
 
     if (!escaped) {
