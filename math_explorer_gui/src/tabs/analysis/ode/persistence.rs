@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::custom_spec::default_ode_custom_params;
 use super::phase_plane::{
     DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID, MAX_QUIVER_GRID,
     MAX_SEEDED_ORBITS,
@@ -95,49 +96,8 @@ struct OdeStateRef<'a> {
     custom_params: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     coupled_params: BTreeMap<String, f64>,
-    #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
-    snapshot_manager: &'a TraceSnapshotManager,
-    callout_manager: &'a CalloutManager,
-    method: IntegrationMethod,
-    comparison_mode: bool,
-    show_annotations: bool,
-}
-
-#[derive(serde::Serialize)]
-struct OdeRecoveryStateRef<'a> {
-    preset: Option<OdePreset>,
-    dt: f64,
-    total_time: f64,
-    param_k: f64,
-    param_r: f64,
-    param_cap_k: f64,
-    ic_y0: f64,
-    ic_v0: f64,
-    custom_expr: &'a str,
-    #[serde(skip_serializing_if = "is_default_planar_x")]
-    planar_x_expr: &'a str,
-    #[serde(skip_serializing_if = "is_default_planar_y")]
-    planar_y_expr: &'a str,
-    #[serde(skip_serializing_if = "is_default_matrix_a")]
-    matrix_a: [[f64; 2]; 2],
-    #[serde(skip_serializing_if = "is_false")]
-    phase_plane_mode: bool,
-    #[serde(skip_serializing_if = "is_true")]
-    show_quiver: bool,
-    #[serde(skip_serializing_if = "is_default_quiver_density")]
-    quiver_density: usize,
-    #[serde(skip_serializing_if = "is_false")]
-    show_nullclines: bool,
-    #[serde(skip_serializing_if = "slice_is_empty")]
-    seeded_ic: &'a [[f64; 2]],
-    #[serde(skip_serializing_if = "is_false")]
-    custom_coupled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    coupled_exprs: Option<[&'a str; 2]>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    custom_params: BTreeMap<String, f64>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    coupled_params: BTreeMap<String, f64>,
+    snapshot_manager: Option<&'a TraceSnapshotManager>,
     callout_manager: &'a CalloutManager,
     method: IntegrationMethod,
     comparison_mode: bool,
@@ -255,13 +215,17 @@ impl OdeSolverTool {
         self.ic_y0.to_bits().hash(&mut hasher);
         self.ic_v0.to_bits().hash(&mut hasher);
         self.math_input.raw_text.hash(&mut hasher);
-        for &v in self.math_input.param_slice() {
-            v.to_bits().hash(&mut hasher);
+        let param_slice = self.math_input.param_slice();
+        param_slice.len().hash(&mut hasher);
+        for &val in param_slice {
+            val.to_bits().hash(&mut hasher);
         }
         self.custom_coupled.hash(&mut hasher);
         self.coupled_bank.raw_text(0).hash(&mut hasher);
         self.coupled_bank.raw_text(1).hash(&mut hasher);
-        for &v in self.coupled_bank.param_slice() {
+        let coupled_slice = self.coupled_bank.param_slice();
+        coupled_slice.len().hash(&mut hasher);
+        for &v in coupled_slice {
             v.to_bits().hash(&mut hasher);
         }
         self.planar_x_input.raw_text.hash(&mut hasher);
@@ -300,21 +264,18 @@ impl OdeSolverTool {
                 coupled_params: self.coupled_bank.params_map(),
             }
         } else {
-            let mut extra = self.math_input.params_map();
-            extra.remove("k");
-            extra.remove("r");
-            extra.remove("cap_k");
-            extra.remove("K");
             CustomSerializationMaps {
                 coupled_exprs: None,
-                custom_params: extra,
+                custom_params: self.math_input.params_map(),
                 coupled_params: BTreeMap::new(),
             }
         }
     }
 
-    pub(crate) fn serialize_full_state(&self) -> Option<String> {
+    fn serialize_ode_state(&self, include_snapshots: bool) -> Option<String> {
         let maps = self.custom_serialization_maps();
+        let snapshot_manager = (include_snapshots && !self.snapshot_manager.is_empty())
+            .then_some(&self.snapshot_manager);
         serde_json::to_string(&OdeStateRef {
             preset: Some(self.preset),
             dt: self.dt,
@@ -337,7 +298,7 @@ impl OdeSolverTool {
             coupled_exprs: maps.coupled_exprs,
             custom_params: maps.custom_params,
             coupled_params: maps.coupled_params,
-            snapshot_manager: &self.snapshot_manager,
+            snapshot_manager,
             callout_manager: &self.callout_manager,
             method: self.method,
             comparison_mode: self.comparison_mode,
@@ -346,49 +307,30 @@ impl OdeSolverTool {
         .ok()
     }
 
+    pub(crate) fn serialize_full_state(&self) -> Option<String> {
+        self.serialize_ode_state(true)
+    }
+
     pub(crate) fn serialize_recovery_state(&self) -> Option<String> {
-        let maps = self.custom_serialization_maps();
-        serde_json::to_string(&OdeRecoveryStateRef {
-            preset: Some(self.preset),
-            dt: self.dt,
-            total_time: self.total_time,
-            param_k: self.param_k,
-            param_r: self.param_r,
-            param_cap_k: self.param_cap_k,
-            ic_y0: self.ic_y0,
-            ic_v0: self.ic_v0,
-            custom_expr: &self.math_input.raw_text,
-            planar_x_expr: &self.planar_x_input.raw_text,
-            planar_y_expr: &self.planar_y_input.raw_text,
-            matrix_a: self.matrix_a,
-            phase_plane_mode: self.phase_plane_mode,
-            show_quiver: self.show_quiver,
-            quiver_density: self.quiver_density,
-            show_nullclines: self.show_nullclines,
-            seeded_ic: &self.seeded_ic,
-            custom_coupled: self.custom_coupled,
-            coupled_exprs: maps.coupled_exprs,
-            custom_params: maps.custom_params,
-            coupled_params: maps.coupled_params,
-            callout_manager: &self.callout_manager,
-            method: self.method,
-            comparison_mode: self.comparison_mode,
-            show_annotations: self.show_annotations,
-        })
-        .ok()
+        self.serialize_ode_state(false)
     }
 
     fn apply_loaded_expressions(&mut self, s: &OdeState) {
         self.custom_coupled = s.custom_coupled;
+        let mut merged_params =
+            default_ode_custom_params(self.param_k, self.param_r, self.param_cap_k);
+        for (k, &v) in &s.custom_params {
+            merged_params.insert(k.clone(), v);
+        }
         if !s.custom_expr.is_empty() {
             self.math_input.set_expression(&s.custom_expr);
         }
-        if !s.custom_params.is_empty() {
-            self.math_input.set_params_map(&s.custom_params);
-        }
+        self.math_input.set_params_map(&merged_params);
+        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
         if let Some(ref exprs) = s.coupled_exprs {
-            self.coupled_bank.load_state(exprs, &s.coupled_params);
-        } else if !s.coupled_params.is_empty() {
+            self.coupled_bank.set_expressions(exprs);
+        }
+        if !s.coupled_params.is_empty() {
             self.coupled_bank.set_params_map(&s.coupled_params);
         }
         self.planar_x_input.set_expression(&s.planar_x_expr);
@@ -403,15 +345,24 @@ impl OdeSolverTool {
         let s: OdeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {e}"))?;
         validate_loaded_state(&s)?;
+        self.apply_deserialized_ode_state(s, preserve_snapshots);
+        self.recalculate();
+        Ok(())
+    }
 
+    fn apply_deserialized_ode_state(&mut self, s: OdeState, preserve_snapshots: bool) {
         if let Some(p) = s.preset {
             self.preset = p;
         }
         self.dt = s.dt;
         self.total_time = s.total_time;
-        self.param_k = s.param_k;
-        self.param_r = s.param_r;
-        self.param_cap_k = s.param_cap_k;
+        self.param_k = s.custom_params.get("k").copied().unwrap_or(s.param_k);
+        self.param_r = s.custom_params.get("r").copied().unwrap_or(s.param_r);
+        self.param_cap_k = s
+            .custom_params
+            .get("cap_k")
+            .copied()
+            .unwrap_or(s.param_cap_k);
         self.ic_y0 = s.ic_y0;
         self.ic_v0 = s.ic_v0;
         self.apply_loaded_expressions(&s);
@@ -429,7 +380,5 @@ impl OdeSolverTool {
         self.comparison_mode = s.comparison_mode;
         self.show_annotations = s.show_annotations;
         self.pending_sweep_run = None;
-        self.recalculate();
-        Ok(())
     }
 }

@@ -3,12 +3,13 @@
 //! Zero-allocation compiled bytecode ODE specifications for scalar `y' = f(t, y)` and
 //! coupled `(y', v') = (f(t, y, v), g(t, y, v))` custom systems.
 
+use super::OdeSolverTool;
 use crate::framework::math_input::{
     CoupledExpressionBank, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS,
 };
 use math_commons::ast::CompiledExpr;
 use math_explorer::pure_math::analysis::ode::{ArrayState, OdeSystem, VecState};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Default coupled 2-state ODE bank (`y' = f(t, y, v)`, `v' = g(t, y, v)`).
 #[must_use]
@@ -72,7 +73,7 @@ impl CustomOdeSpec {
             params[idx] = match name.as_str() {
                 "k" => param_k,
                 "r" => param_r,
-                "cap_k" | "K" => param_cap_k,
+                "cap_k" => param_cap_k,
                 _ => bar_slice.get(idx).copied().unwrap_or(1.0),
             };
         }
@@ -233,5 +234,115 @@ impl OdeSystem<VecState> for CustomOdeSpec {
                 }
             }
         }
+    }
+}
+
+pub(super) fn default_ode_custom_params(k: f64, r: f64, cap_k: f64) -> BTreeMap<String, f64> {
+    BTreeMap::from([
+        ("k".to_string(), k),
+        ("r".to_string(), r),
+        ("cap_k".to_string(), cap_k),
+    ])
+}
+
+fn sync_one_legacy_param(
+    math_input: &mut MathExpressionInputBar,
+    name: &str,
+    field: &mut f64,
+    last_synced: &mut f64,
+) {
+    if !field.is_finite() {
+        *last_synced = *field;
+        return;
+    }
+    if field.to_bits() != last_synced.to_bits() {
+        math_input.set_param(name, *field);
+        *last_synced = *field;
+    } else if let Some(val) = math_input.active_param_value(name) {
+        *field = val;
+        *last_synced = val;
+    }
+}
+
+fn format_named_param_summary(names: &[String], vals: &[f64], dt: f64) -> String {
+    if names.is_empty() {
+        return format!(r"\Delta t={dt:.2}");
+    }
+    let mut parts: Vec<String> = names
+        .iter()
+        .zip(vals)
+        .map(|(name, val)| format!("{name}={val:.2}"))
+        .collect();
+    parts.push(format!(r"\Delta t={dt:.2}"));
+    parts.join(", ")
+}
+
+impl OdeSolverTool {
+    pub(crate) fn seed_default_custom_params(&mut self) {
+        self.math_input.set_params_map(&default_ode_custom_params(
+            self.param_k,
+            self.param_r,
+            self.param_cap_k,
+        ));
+        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
+    }
+
+    pub(crate) fn reset_custom_parameters(&mut self) {
+        self.param_k = 1.0;
+        self.param_r = 1.0;
+        self.param_cap_k = 10.0;
+        self.ic_y0 = 1.0;
+        self.seed_default_custom_params();
+        self.math_input.set_expression("-k * y * sin(t)");
+    }
+
+    pub(crate) fn sync_legacy_params_from_math_input(&mut self) {
+        if let Some(k) = self.math_input.active_param_value("k") {
+            self.param_k = k;
+        }
+        if let Some(r) = self.math_input.active_param_value("r") {
+            self.param_r = r;
+        }
+        if let Some(cap_k) = self.math_input.active_param_value("cap_k") {
+            self.param_cap_k = cap_k;
+        }
+        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
+    }
+
+    pub(crate) fn sync_custom_params(&mut self) {
+        sync_one_legacy_param(
+            &mut self.math_input,
+            "k",
+            &mut self.param_k,
+            &mut self.synced_legacy_params[0],
+        );
+        sync_one_legacy_param(
+            &mut self.math_input,
+            "r",
+            &mut self.param_r,
+            &mut self.synced_legacy_params[1],
+        );
+        sync_one_legacy_param(
+            &mut self.math_input,
+            "cap_k",
+            &mut self.param_cap_k,
+            &mut self.synced_legacy_params[2],
+        );
+    }
+
+    pub(crate) fn custom_param_summary(&self) -> String {
+        format_named_param_summary(
+            self.math_input.active_param_names(),
+            self.math_input.param_slice(),
+            self.dt,
+        )
+    }
+
+    pub(crate) fn coupled_param_summary(&self) -> String {
+        format_named_param_summary(
+            self.coupled_bank.param_names(),
+            self.coupled_bank.param_slice(),
+            self.dt,
+        )
     }
 }

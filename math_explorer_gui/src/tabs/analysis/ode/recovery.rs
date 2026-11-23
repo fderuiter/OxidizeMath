@@ -52,25 +52,8 @@ impl OdeSolverTool {
             &mut self.ic_y0,
             &mut self.ic_v0,
         );
-        let mut scalar_map = self.math_input.params_map();
-        for val in scalar_map.values_mut() {
-            *val = if val.is_finite() {
-                val.clamp(-10.0, 10.0)
-            } else {
-                1.0
-            };
-        }
-        self.math_input.set_params_map(&scalar_map);
-
-        let mut coupled_map = self.coupled_bank.params_map();
-        for val in coupled_map.values_mut() {
-            *val = if val.is_finite() {
-                val.clamp(-10.0, 10.0)
-            } else {
-                1.0
-            };
-        }
-        self.coupled_bank.set_params_map(&coupled_map);
+        self.math_input.clamp_active_params(-10.0..=10.0);
+        self.coupled_bank.clamp_active_params(-10.0..=10.0);
 
         clamp_planar_state(
             &mut self.matrix_a,
@@ -117,9 +100,7 @@ impl OdeSolverTool {
                 self.coupled_bank = default_coupled_ode_bank();
             }
             OdePreset::Custom => {
-                self.param_k = 1.0;
-                self.ic_y0 = 1.0;
-                self.math_input.set_expression("-k * y * sin(t)");
+                self.reset_custom_parameters();
             }
         }
         self.seeded_ic.clear();

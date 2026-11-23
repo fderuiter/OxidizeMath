@@ -95,6 +95,9 @@ impl MathExplorerApp {
     /// Exchanges runtime tab states between Pane 0 and secondary `sec_pane` (`1..=3`) after index swap.
     pub(super) fn swap_primary_and_secondary_slot_states(&mut self, sec_pane: usize) {
         self.tab_state_cache.clear();
+        if let Some(slot) = self.pane_slots.slot_mut(sec_pane) {
+            slot.initialized = true;
+        }
         let new_p0 = self.selected_tab;
         let Some(new_sec) = self.pane_tabs.get(sec_pane).copied() else {
             return;

@@ -6,11 +6,54 @@ pub use super::custom_spec::{default_coupled_ode_bank, CustomOdeSpec};
 
 use super::OdeSolverTool;
 use crate::presets::OdePreset;
-use math_commons::ast::Expr;
+use math_commons::ast::{CompiledExpr, Expr, Instruction};
 use math_explorer::pure_math::analysis::ode::{
     ArrayState, Euler, Heun, IntegrationMethod, OdeSystem, RungeKutta4, Solver,
 };
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+
+pub(super) struct CustomOdeContext<'a>(pub(super) Option<&'a CustomOdeSpec>);
+
+impl Hash for CustomOdeContext<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self.0 {
+            None => 0_u8.hash(state),
+            Some(CustomOdeSpec::Scalar { expr, .. }) => {
+                1_u8.hash(state);
+                hash_compiled_expr(expr, state);
+            }
+            Some(CustomOdeSpec::Coupled { dy, dv, .. }) => {
+                2_u8.hash(state);
+                hash_compiled_expr(dy, state);
+                hash_compiled_expr(dv, state);
+            }
+        }
+    }
+}
+
+fn hash_compiled_expr<H: Hasher>(compiled: &CompiledExpr, state: &mut H) {
+    compiled.axis_count().hash(state);
+    compiled.var_names().hash(state);
+    compiled.instructions().len().hash(state);
+    for &inst in compiled.instructions() {
+        hash_instruction(inst, state);
+    }
+}
+
+fn hash_instruction<H: Hasher>(inst: Instruction, state: &mut H) {
+    match inst {
+        Instruction::PushConst(n) => {
+            1_u8.hash(state);
+            crate::sensitivity::canonical_f64_bits(n).hash(state);
+        }
+        Instruction::PushImagUnit => 2_u8.hash(state),
+        Instruction::LoadVar(slot) => (3_u8, slot).hash(state),
+        Instruction::Unary(op) => (4_u8, op).hash(state),
+        Instruction::Binary(op) => (5_u8, op).hash(state),
+        Instruction::Call(func) => (6_u8, func).hash(state),
+    }
+}
 
 /// Builds the parameter lookup map shared across planar AST ODE evaluations.
 #[must_use]
@@ -222,13 +265,12 @@ pub fn eval_ode_final_state_planar(
             step_final(ArrayState([y0, v0]), &dyn_sys, spec, steps)
         }
         OdePreset::PlanarCustom => eval_planar_custom_final([y0, v0], cap_k, spec, p_map, steps),
-        OdePreset::Custom => eval_custom_spec_final([y0, v0], cap_k, spec, p_map, steps),
+        OdePreset::Custom => eval_custom_spec_final([y0, v0], spec, p_map, steps),
     }
 }
 
 fn eval_custom_spec_final(
     ic: [f64; 2],
-    cap_k: f64,
     spec: &super::comparison::OdeSimSpec<'_>,
     p_map: &HashMap<String, f64>,
     steps: usize,
@@ -236,9 +278,7 @@ fn eval_custom_spec_final(
     let Some(cspec) = spec.custom_spec else {
         return f64::NAN;
     };
-    let mut overrides = p_map.clone();
-    overrides.insert("K".to_string(), cap_k);
-    let dynamics = cspec.with_param_overrides(&overrides);
+    let dynamics = cspec.with_param_overrides(p_map);
     if dynamics.is_coupled() {
         step_final(ArrayState(ic), &dynamics, spec, steps)
     } else {

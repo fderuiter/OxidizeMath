@@ -70,6 +70,7 @@ pub struct OdeSolverTool {
     pub(crate) pending_sweep_run: Option<(String, Vec<TraceSeries>)>,
     pub show_annotations: bool,
     pub(crate) revision: u64,
+    pub(crate) synced_legacy_params: [f64; 3],
 }
 
 fn default_ode_math_inputs() -> (
@@ -91,8 +92,7 @@ fn default_ode_math_inputs() -> (
             ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
         ],
     )
-    .with_axes(&["t", "y"])
-    .with_inline_sliders(false);
+    .with_axes(&["t", "y"]);
     let planar_x = MathExpressionInputBar::new(
         "x'",
         DEFAULT_PLANAR_X_EXPR,
@@ -165,7 +165,9 @@ impl Default for OdeSolverTool {
             pending_sweep_run: None,
             show_annotations: true,
             revision: 1,
+            synced_legacy_params: [1.0, 1.0, 10.0],
         };
+        tool.seed_default_custom_params();
         tool.recalculate();
         tool
     }
@@ -210,18 +212,7 @@ impl OdeSolverTool {
 
     pub fn param_summary(&self) -> String {
         match self.preset {
-            OdePreset::Custom if self.custom_coupled => {
-                let mut parts: Vec<String> = self
-                    .coupled_bank
-                    .param_names()
-                    .iter()
-                    .zip(self.coupled_bank.param_slice())
-                    .map(|(n, v)| format!("{n}={v:.2}"))
-                    .collect();
-                parts.push(format!(r"\Delta t={:.2}", self.dt));
-                parts.join(", ")
-            }
-            OdePreset::Exponential | OdePreset::HarmonicOscillator | OdePreset::Custom => {
+            OdePreset::Exponential | OdePreset::HarmonicOscillator => {
                 format!(r"k={:.2}, \Delta t={:.2}", self.param_k, self.dt)
             }
             OdePreset::LogisticGrowth => format!(
@@ -236,6 +227,8 @@ impl OdeSolverTool {
                 r"k={:.2}, r={:.2}, \Delta t={:.2}",
                 self.param_k, self.param_r, self.dt
             ),
+            OdePreset::Custom if self.custom_coupled => self.coupled_param_summary(),
+            OdePreset::Custom => self.custom_param_summary(),
         }
     }
 
@@ -325,6 +318,7 @@ impl OdeSolverTool {
     }
 
     pub fn recalculate(&mut self) {
+        self.sync_custom_params();
         self.bump_revision();
         self.time_series.clear();
         self.y_series.clear();
@@ -400,6 +394,9 @@ inventory::submit! {
 mod comparison_tests;
 #[cfg(test)]
 mod coupled_tests;
+#[cfg(test)]
+mod custom_tests;
+
 #[cfg(test)]
 mod ode_tests;
 #[cfg(test)]

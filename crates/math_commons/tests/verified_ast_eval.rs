@@ -15,6 +15,7 @@ fn check_compiled_hot_loops(
     c2d: &CompiledExpr,
     c3d: &CompiledExpr,
     cz: &CompiledExpr,
+    code_ode: &CompiledExpr,
 ) {
     let params_1d = [1.5, 0.8];
     let mut acc = 0.0;
@@ -39,6 +40,20 @@ fn check_compiled_hot_loops(
         let w = cz.eval_complex_z_params(Complex64::new(re, 0.2), &[0.85]);
         assert!(w.re.is_finite() && w.im.is_finite());
     }
+
+    let dt = 0.01;
+    let ode_params = [1.2, 0.4];
+    let mut t = 0.0;
+    let mut y = -1.5;
+    for _ in 0..200 {
+        let k1 = code_ode.eval_2d(t, y, &ode_params);
+        let k2 = code_ode.eval_2d(t + 0.5 * dt, y + 0.5 * dt * k1, &ode_params);
+        let k3 = code_ode.eval_2d(t + 0.5 * dt, y + 0.5 * dt * k2, &ode_params);
+        let k4 = code_ode.eval_2d(t + dt, y + dt * k3, &ode_params);
+        y += (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+        t += dt;
+    }
+    assert!(y.is_finite());
 }
 
 fn check_real_eval(expr: &Expr, vars: &HashMap<String, f64>) {
@@ -106,10 +121,16 @@ fn check_conformal_eval_complex_z(expr: &Expr, unknown: &Expr) {
     assert!(bad.re.is_nan() && bad.im.is_nan());
 }
 
-fn build_compiled_fixtures() -> (CompiledExpr, CompiledExpr, CompiledExpr, CompiledExpr) {
+fn build_compiled_fixtures() -> (
+    CompiledExpr,
+    CompiledExpr,
+    CompiledExpr,
+    CompiledExpr,
+    CompiledExpr,
+) {
     let compiled_1d = CompiledExpr::compile_with_vars(
         &parse(
-            "clamp(a * sin(x), -b, b) + step(x) - rect(x) + min(x, 1) + max(x, -1) + atan2(x, 1)",
+            "clamp(a * sin^2(x), -b, b) + ||x| - 1| + step(x) - rect(x) + min(x, 1) + max(x, -1) + atan2(x, 1)",
         )
         .unwrap(),
         &["x"],
@@ -123,7 +144,18 @@ fn build_compiled_fixtures() -> (CompiledExpr, CompiledExpr, CompiledExpr, Compi
             .expect("compile 3d");
     let compiled_cz = CompiledExpr::compile_complex(&parse("z + a^2 / z + i").unwrap(), &["z"])
         .expect("compile complex z");
-    (compiled_1d, compiled_2d, compiled_3d, compiled_cz)
+    let compiled_ode = CompiledExpr::compile_with_vars(
+        &parse("-k * |y| * sin^2(t) + b * cos^2(t)").unwrap(),
+        &["t", "y"],
+    )
+    .expect("compile scoped ode");
+    (
+        compiled_1d,
+        compiled_2d,
+        compiled_3d,
+        compiled_cz,
+        compiled_ode,
+    )
 }
 
 #[test]
@@ -148,7 +180,8 @@ fn test_ast_evaluators_zero_allocations_with_global_allocator() {
     let conformal_expr = parse("Z^3 - 1 / z + PI * I + Tau - E").expect("parse conformal");
     let planar_dx = parse("Y - 0.1 * X").expect("parse planar dx");
     let planar_dy = parse("-k * X + 0.2 * sin(Omega * T) + 0 * PI").expect("parse planar dy");
-    let (compiled_1d, compiled_2d, compiled_3d, compiled_cz) = build_compiled_fixtures();
+    let (compiled_1d, compiled_2d, compiled_3d, compiled_cz, compiled_ode) =
+        build_compiled_fixtures();
 
     // Keep all VerifiedEngine::run_verified assertions in one test to prevent MEMORY_LOCK races.
     let ((), metrics) = VerifiedEngine::run_verified(|| {
@@ -157,7 +190,13 @@ fn test_ast_evaluators_zero_allocations_with_global_allocator() {
         check_ode_rk4_eval_planar(&planar_dx, &planar_dy, &unknown_expr, &ode_params);
         check_complex_eval(&complex_expr, &complex_vars);
         check_conformal_eval_complex_z(&conformal_expr, &unknown_expr);
-        check_compiled_hot_loops(&compiled_1d, &compiled_2d, &compiled_3d, &compiled_cz);
+        check_compiled_hot_loops(
+            &compiled_1d,
+            &compiled_2d,
+            &compiled_3d,
+            &compiled_cz,
+            &compiled_ode,
+        );
     });
 
     assert_eq!(metrics.memory_loads, 0);

@@ -108,7 +108,6 @@ pub fn simulate_ode(spec: &OdeSimSpec<'_>) -> SolverTrajectory {
         method: spec.method,
         ..Default::default()
     };
-
     let Some(num_steps) = validate_initial_state(&mut traj, spec) else {
         return traj;
     };

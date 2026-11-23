@@ -136,12 +136,16 @@ impl OdeSolverTool {
         if self.custom_coupled {
             changed |= self.coupled_bank.ui_inputs(ui, "ode_coupled_bank");
         } else if self.math_input.ui(ui) {
+            self.sync_legacy_params_from_math_input();
             changed = true;
         }
         changed
     }
 
     fn render_parameter_inputs(&mut self, ui: &mut egui::Ui) -> bool {
+        if self.preset == OdePreset::Custom && !self.custom_coupled {
+            return false;
+        }
         let mut changed = false;
         ui.add_space(10.0);
         ui.heading("Parameters");
@@ -156,7 +160,7 @@ impl OdeSolverTool {
                     .changed();
             }
             OdePreset::Custom => {
-                changed |= self.render_custom_parameter_sliders(ui);
+                changed |= self.coupled_bank.sliders_ui(ui, "ode_coupled_params");
             }
             OdePreset::HarmonicOscillator => {
                 changed |= ui
@@ -196,28 +200,6 @@ impl OdeSolverTool {
                 changed |= ui.add(sk).changed();
                 changed |= ui.add(sr).changed();
             }
-        }
-        changed
-    }
-
-    fn render_custom_parameter_sliders(&mut self, ui: &mut egui::Ui) -> bool {
-        if self.custom_coupled {
-            return self.coupled_bank.sliders_ui(ui, "ode_coupled_params");
-        }
-        let mut changed = ui
-            .add(
-                AnimatedSlider::new(&mut self.param_k, -5.0..=5.0)
-                    .text("k (Rate / Parameter)")
-                    .id_salt("ode_param_k_custom"),
-            )
-            .changed();
-        let has_extra_params = self.math_input.active_compiled().is_some_and(|c| {
-            c.param_names()
-                .iter()
-                .any(|n| !matches!(n.as_str(), "k" | "r" | "cap_k" | "K"))
-        });
-        if has_extra_params {
-            changed |= self.math_input.sliders_ui(ui, "ode_scalar_extra_params");
         }
         changed
     }
@@ -337,54 +319,85 @@ impl OdeSolverTool {
         crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "ode_tool");
     }
 
-    fn collect_sensitivity_params(&self) -> Vec<(&str, f64)> {
-        let mut out: Vec<(&str, f64)> = Vec::with_capacity(8);
+    fn push_coupled_sensitivity_params(&self, out: &mut Vec<(String, f64)>) {
+        for (name, &val) in self
+            .coupled_bank
+            .param_names()
+            .iter()
+            .zip(self.coupled_bank.param_slice())
+        {
+            out.push((name.clone(), val));
+        }
+        if !out.iter().any(|(name, _)| name == "y0") {
+            out.push(("y0".to_string(), self.ic_y0));
+        }
+        if !out.iter().any(|(name, _)| name == "v0") {
+            out.push(("v0".to_string(), self.ic_v0));
+        }
+    }
+
+    fn push_scalar_custom_sensitivity_params(&self, out: &mut Vec<(String, f64)>) {
+        if let Some(compiled) = self.math_input.active_compiled() {
+            for (name, &val) in compiled
+                .param_names()
+                .iter()
+                .zip(self.math_input.param_slice())
+            {
+                out.push((name.clone(), val));
+            }
+        }
+        if !out.iter().any(|(name, _)| name == "y0") {
+            out.push(("y0".to_string(), self.ic_y0));
+        }
+    }
+
+    fn collect_sensitivity_params(&self) -> Vec<(String, f64)> {
+        let mut out: Vec<(String, f64)> = Vec::with_capacity(8);
+        let push_pairs = |dst: &mut Vec<(String, f64)>, pairs: &[(&str, f64)]| {
+            dst.extend(pairs.iter().map(|&(k, v)| (k.to_string(), v)));
+        };
         match self.preset {
             OdePreset::Exponential => {
-                out.extend([("k", self.param_k), ("y0", self.ic_y0)]);
+                push_pairs(&mut out, &[("k", self.param_k), ("y0", self.ic_y0)]);
             }
             OdePreset::HarmonicOscillator => {
-                out.extend([("k", self.param_k), ("y0", self.ic_y0), ("v0", self.ic_v0)]);
+                push_pairs(
+                    &mut out,
+                    &[("k", self.param_k), ("y0", self.ic_y0), ("v0", self.ic_v0)],
+                );
             }
-            OdePreset::LogisticGrowth => {
-                out.extend([
+            OdePreset::LogisticGrowth => push_pairs(
+                &mut out,
+                &[
                     ("r", self.param_r),
                     ("cap_k", self.param_cap_k),
                     ("y0", self.ic_y0),
-                ]);
-            }
-            OdePreset::LinearSystem2D => {
-                out.extend([
+                ],
+            ),
+            OdePreset::LinearSystem2D => push_pairs(
+                &mut out,
+                &[
                     ("a11", self.matrix_a[0][0]),
                     ("a12", self.matrix_a[0][1]),
                     ("a21", self.matrix_a[1][0]),
                     ("a22", self.matrix_a[1][1]),
                     ("y0", self.ic_y0),
                     ("v0", self.ic_v0),
-                ]);
-            }
-            OdePreset::PlanarCustom => {
-                out.extend([
+                ],
+            ),
+            OdePreset::PlanarCustom => push_pairs(
+                &mut out,
+                &[
                     ("k", self.param_k),
                     ("r", self.param_r),
                     ("y0", self.ic_y0),
                     ("v0", self.ic_v0),
-                ]);
-            }
+                ],
+            ),
             OdePreset::Custom if self.custom_coupled => {
-                for (name, &val) in self
-                    .coupled_bank
-                    .param_names()
-                    .iter()
-                    .zip(self.coupled_bank.param_slice())
-                {
-                    out.push((name.as_str(), val));
-                }
-                out.extend([("y0", self.ic_y0), ("v0", self.ic_v0)]);
+                self.push_coupled_sensitivity_params(&mut out);
             }
-            OdePreset::Custom => {
-                out.extend([("k", self.param_k), ("y0", self.ic_y0)]);
-            }
+            OdePreset::Custom => self.push_scalar_custom_sensitivity_params(&mut out),
         }
         out
     }
@@ -392,11 +405,7 @@ impl OdeSolverTool {
     fn run_sensitivity_analysis(&mut self) {
         use crate::sensitivity::canonical_f64_bits;
 
-        let dynamic_params: Vec<(String, f64)> = self
-            .collect_sensitivity_params()
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect();
+        let dynamic_params = self.collect_sensitivity_params();
         let param_refs: Vec<(&str, f64)> = dynamic_params
             .iter()
             .map(|(k, v)| (k.as_str(), *v))
@@ -418,12 +427,8 @@ impl OdeSolverTool {
             planar_x_expr: self.planar_x_input.cached_expr(),
             planar_y_expr: self.planar_y_input.cached_expr(),
         };
-        let custom_ctx = (self.preset == OdePreset::Custom).then_some((
-            self.custom_coupled,
-            self.math_input.raw_text.as_str(),
-            self.coupled_bank.raw_text(0),
-            self.coupled_bank.raw_text(1),
-        ));
+        let custom_ctx = (self.preset == OdePreset::Custom)
+            .then_some(super::systems::CustomOdeContext(custom_spec.as_ref()));
         let planar_ctx = (self.preset == OdePreset::PlanarCustom).then_some((
             self.planar_x_input.raw_text.as_str(),
             self.planar_y_input.raw_text.as_str(),
