@@ -107,6 +107,101 @@ pub(crate) struct SingleLineScan {
     pub(crate) extrema: Vec<([f64; 2], bool)>,
 }
 
+#[cold]
+fn record_root_crossing(
+    pts: &[PlotPoint],
+    idx: usize,
+    n: usize,
+    p0: PlotPoint,
+    p1: PlotPoint,
+    roots: &mut Vec<f64>,
+) {
+    if p0.y == 0.0 {
+        roots.push(p0.x);
+    } else if (p0.y > 0.0) != (p1.y > 0.0) && p1.y != 0.0 {
+        if let Some(x) = solve_segment_crossing(pts, idx, 0.0) {
+            roots.push(x);
+        }
+    } else if idx + 2 == n && p1.y == 0.0 {
+        roots.push(p1.x);
+    }
+}
+
+#[cold]
+fn record_y_intercept(
+    pts: &[PlotPoint],
+    idx: usize,
+    n: usize,
+    p0: PlotPoint,
+    p1: PlotPoint,
+    y_ints: &mut Vec<f64>,
+) {
+    if p0.x == 0.0 {
+        y_ints.push(p0.y);
+    } else if (p0.x > 0.0) != (p1.x > 0.0) && p1.x != 0.0 {
+        if let Some(y) = eval_segment_at_x(pts, idx, 0.0) {
+            y_ints.push(y);
+        }
+    } else if idx + 2 == n && p1.x == 0.0 {
+        y_ints.push(p1.y);
+    }
+}
+
+fn fast_forward_plateau<'a>(
+    mut rem: &'a [PlotPoint],
+    y_plat: f64,
+    want_y_ints: bool,
+    p0: &mut PlotPoint,
+    last: &mut PlotPoint,
+    idx: &mut usize,
+) -> &'a [PlotPoint] {
+    let x_dir = if !want_y_ints {
+        0.0
+    } else if p0.x > 0.0 {
+        1.0
+    } else if p0.x < 0.0 {
+        -1.0
+    } else {
+        return rem;
+    };
+    while let [q0, q1, q2, q3, q4, q5, q6, q7, tail @ ..] = rem {
+        let same_y = (q0.y == y_plat)
+            & (q1.y == y_plat)
+            & (q2.y == y_plat)
+            & (q3.y == y_plat)
+            & (q4.y == y_plat)
+            & (q5.y == y_plat)
+            & (q6.y == y_plat)
+            & (q7.y == y_plat);
+        let fin_x = ((q0.x * 0.0)
+            + (q1.x * 0.0)
+            + (q2.x * 0.0)
+            + (q3.x * 0.0)
+            + (q4.x * 0.0)
+            + (q5.x * 0.0)
+            + (q6.x * 0.0)
+            + (q7.x * 0.0))
+            == 0.0;
+        let safe_x = (x_dir == 0.0)
+            | ((q0.x * x_dir > 0.0)
+                & (q1.x * x_dir > 0.0)
+                & (q2.x * x_dir > 0.0)
+                & (q3.x * x_dir > 0.0)
+                & (q4.x * x_dir > 0.0)
+                & (q5.x * x_dir > 0.0)
+                & (q6.x * x_dir > 0.0)
+                & (q7.x * x_dir > 0.0));
+        if !(same_y & fin_x & safe_x) {
+            break;
+        }
+        *last = *q7;
+        *p0 = *q7;
+        *idx += 8;
+        rem = tail;
+    }
+    rem
+}
+
 /// Fused single-pass streaming scan for $y = 0$ roots, $x = 0$ intercepts, and local extrema.
 pub(crate) fn scan_single_line_all(
     pts: &[PlotPoint],
@@ -119,41 +214,30 @@ pub(crate) fn scan_single_line_all(
         extrema: Vec::new(),
     };
     let n = pts.len();
-    if n < 2 {
+    let [first, ref rest_all @ ..] = *pts else {
+        return out;
+    };
+    if rest_all.is_empty() {
         return out;
     }
+    let mut rem = rest_all;
     let dummy = PlotPoint { x: 0.0, y: 0.0 };
-    let mut p0 = pts[0];
+    let mut p0 = first;
     let mut p0_fin = (p0.x * 0.0 + p0.y * 0.0) == 0.0;
     let (mut mode, mut prev, mut start, mut second, mut last) = (0u8, dummy, dummy, dummy, dummy);
-    let mut i = 1;
-    while i < n {
-        let idx = i - 1;
-        let p1 = pts[i];
-        i += 1;
+    let mut idx = 0usize;
+    while let [p1, rest @ ..] = rem {
+        let p1 = *p1;
+        rem = rest;
         let p1_fin = (p1.x * 0.0 + p1.y * 0.0) == 0.0;
         if p0_fin && p1_fin {
-            if want_roots && p0.y != p1.y {
-                if p0.y == 0.0 {
-                    out.roots.push(p0.x);
-                } else if (p0.y > 0.0) != (p1.y > 0.0) && p1.y != 0.0 {
-                    if let Some(x) = solve_segment_crossing(pts, idx, 0.0) {
-                        out.roots.push(x);
-                    }
-                } else if idx + 2 == n && p1.y == 0.0 {
-                    out.roots.push(p1.x);
-                }
+            let root_cand = ((p0.y <= 0.0) & (p1.y >= 0.0)) | ((p0.y >= 0.0) & (p1.y <= 0.0));
+            if want_roots && root_cand && p0.y != p1.y {
+                record_root_crossing(pts, idx, n, p0, p1, &mut out.roots);
             }
-            if want_y_ints && p0.x != p1.x {
-                if p0.x == 0.0 {
-                    out.y_ints.push(p0.y);
-                } else if (p0.x > 0.0) != (p1.x > 0.0) && p1.x != 0.0 {
-                    if let Some(y) = eval_segment_at_x(pts, idx, 0.0) {
-                        out.y_ints.push(y);
-                    }
-                } else if idx + 2 == n && p1.x == 0.0 {
-                    out.y_ints.push(p1.y);
-                }
+            let yint_cand = ((p0.x <= 0.0) & (p1.x >= 0.0)) | ((p0.x >= 0.0) & (p1.x <= 0.0));
+            if want_y_ints && yint_cand && p0.x != p1.x {
+                record_y_intercept(pts, idx, n, p0, p1, &mut out.y_ints);
             }
             if mode != 0 && p1.y == start.y {
                 if mode == 2 {
@@ -185,6 +269,10 @@ pub(crate) fn scan_single_line_all(
         }
         p0 = p1;
         p0_fin = p1_fin;
+        idx += 1;
+        if mode == 2 && matches!(rem, [_, _, _, _, _, _, _, _, ..]) {
+            rem = fast_forward_plateau(rem, start.y, want_y_ints, &mut p0, &mut last, &mut idx);
+        }
     }
     out
 }

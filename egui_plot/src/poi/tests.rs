@@ -408,3 +408,42 @@ fn static_frames_reuse_cached_pois_and_defer_export_primitive_materialization() 
         1
     );
 }
+
+#[test]
+fn plateau_fast_forward_preserves_y_intercept_and_nan_breaks() {
+    let mut pts = Vec::new();
+    pts.push([-30.0, 1.0]);
+    for ix in -29..=29 {
+        if ix == 0 {
+            continue; // straddle x = 0 inside 8-wide plateau chunk without landing on 0
+        }
+        pts.push([ix as f64, 4.0]);
+    }
+    pts.push([30.0, -2.0]);
+    for k in 31..=52 {
+        pts.push([k as f64, if k == 41 { f64::NAN } else { -5.0 }]);
+    }
+    pts.push([53.0, 0.0]);
+
+    let items: Vec<Box<dyn PlotItem>> = vec![Box::new(Line::new("PlateauEdgeCases", pts))];
+    let tf = make_transform([-35.0, -10.0], [60.0, 10.0]);
+    let pois = detect_critical_points(&items, &tf);
+
+    let y_int = pois
+        .iter()
+        .find(|p| p.kind == CriticalPointKind::YIntercept)
+        .expect("expected y-intercept across plateau straddling x = 0");
+    assert!((y_int.point[0]).abs() < 1e-9);
+    assert!((y_int.point[1] - 4.0).abs() < 1e-9);
+
+    let max_poi = pois
+        .iter()
+        .find(|p| p.kind == CriticalPointKind::LocalMax)
+        .expect("expected plateau LocalMax");
+    assert!((max_poi.point[0]).abs() < 1e-9);
+    assert!((max_poi.point[1] - 4.0).abs() < 1e-9);
+    assert!(
+        pois.iter().all(|p| p.kind != CriticalPointKind::LocalMin),
+        "NaN inside plateau must reset plateau state without emitting LocalMin"
+    );
+}
