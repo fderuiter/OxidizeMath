@@ -136,8 +136,8 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     }
 
     let expected_raster = 7 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
-    let expected_non_shader = 57 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
-    assert_eq!(plot_tool_count, 37, "Expected 37 Plot dataset+figure tools");
+    let expected_non_shader = 58 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
+    assert_eq!(plot_tool_count, 38, "Expected 38 Plot dataset+figure tools");
     assert_eq!(
         raster_tool_count, expected_raster,
         "Unexpected raster figure tool count"

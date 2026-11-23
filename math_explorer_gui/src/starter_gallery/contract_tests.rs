@@ -56,7 +56,7 @@ fn test_all_57_starter_cards_launch_and_sync_framework_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = 71
+    let expected_presets = 73
         + if cfg!(all(feature = "physics", feature = "biology")) {
             4
         } else {
