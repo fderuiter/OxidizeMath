@@ -81,7 +81,6 @@ impl PhyllotaxisLSystemTool {
         );
         paint_canvas_focus_ring(ui, response);
         lock_canvas_arrow_keys(ui, response);
-        self.focused_canvas = response.has_focus().then_some(response.id);
     }
 
     fn paint_phyllotaxis_region(

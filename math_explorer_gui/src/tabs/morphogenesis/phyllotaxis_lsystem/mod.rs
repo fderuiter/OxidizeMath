@@ -32,7 +32,6 @@ pub struct PhyllotaxisLSystemTool {
     pub(crate) vogel: VogelPhyllotaxisEngine,
     pub(crate) lsystem: LSystemEngine,
     pub(crate) selected_primordium: usize,
-    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) diagnostic: Option<DiagnosticReport>,
     revision_nonce: u64,
     theory: BotanicalTheory,
@@ -65,7 +64,6 @@ impl Default for PhyllotaxisLSystemTool {
             vogel,
             lsystem,
             selected_primordium: 0,
-            focused_canvas: None,
             diagnostic: None,
             revision_nonce: 1,
             theory: BotanicalTheory,
@@ -316,10 +314,6 @@ impl InteractiveTool for PhyllotaxisLSystemTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.render_studio(ui);
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {

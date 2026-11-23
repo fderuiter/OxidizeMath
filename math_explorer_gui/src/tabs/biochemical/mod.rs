@@ -39,13 +39,6 @@ impl ExplorerTab for BiochemicalTab {
         self.framework.show_inside(ui, "biochemical");
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework
-            .active_tool
-            .as_ref()
-            .and_then(|tool| tool.focused_canvas_id())
-    }
-
     fn state_revision(&self) -> u64 {
         self.framework.state_revision()
     }
