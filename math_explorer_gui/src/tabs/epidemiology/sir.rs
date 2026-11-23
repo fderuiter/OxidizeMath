@@ -17,6 +17,8 @@ use math_explorer::epidemiology::compartmental::SIRModel;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::hash::{Hash, Hasher};
 
+#[path = "sir_code_export.rs"]
+mod code_export;
 #[path = "sir/counterfactual.rs"]
 pub mod counterfactual;
 pub use counterfactual::*;
@@ -343,6 +345,14 @@ impl InteractiveTool for SirTool {
     }
     fn domain(&self) -> &'static str {
         "epidemiology"
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot_with_code()
+    }
+
+    fn export_code_artifact(&self) -> Option<crate::framework::CodeArtifact> {
+        self.build_code_artifact()
     }
 
     fn state_revision(&self) -> u64 {

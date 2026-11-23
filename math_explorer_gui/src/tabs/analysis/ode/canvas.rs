@@ -38,6 +38,14 @@ impl InteractiveTool for OdeSolverTool {
         FiniteStateGuard::is_finite_state(self)
     }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot_with_code()
+    }
+
+    fn export_code_artifact(&self) -> Option<crate::framework::CodeArtifact> {
+        self.build_code_artifact()
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         self.build_full_export_datasets()
     }

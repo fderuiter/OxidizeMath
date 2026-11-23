@@ -269,18 +269,9 @@ fn test_contour_batch_shapes_hover_log_split_and_nan_free_extract_points() {
     };
     assert!(tool.ensure_cached_contours());
 
-    let z_batch = cache::ContourBatch::new(
-        "Re(z) grid",
-        &tool.cache.z_vertical,
-        egui::Color32::LIGHT_BLUE,
-        tool.cache.generation,
-    );
-    let w_batch = cache::ContourBatch::new(
-        "u-contours",
-        &tool.cache.w_vertical,
-        egui::Color32::LIGHT_BLUE,
-        tool.cache.generation,
-    );
+    let (blue, g) = (egui::Color32::LIGHT_BLUE, tool.cache.generation);
+    let z_batch = cache::ContourBatch::new("Re(z) grid", &tool.cache.z_vertical, blue, g);
+    let w_batch = cache::ContourBatch::new("u-contours", &tool.cache.w_vertical, blue, g);
     assert!(z_batch
         .extract_points()
         .into_iter()

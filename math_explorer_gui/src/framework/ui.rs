@@ -343,6 +343,7 @@ impl SimulationFramework {
             d.remove::<u64>(egui::Id::new("SCOPED_ANIMATED_SLIDER_OWNER"));
         });
         self.show_export_modal_dialog(&ctx, id_source);
+        self.show_code_export_modal_dialog(&ctx, id_source);
         self.show_starter_gallery_if_open(&ctx, id_source);
         self.sync_overlays_after_frame(&ctx, id_source);
         self.dispatch_pending_exports_with_ctx(&ctx);

@@ -1,3 +1,4 @@
+pub use super::buckled_flow::{BuckledSurfaceFlow, SurfaceTopology};
 use nalgebra::{Point3, Vector3};
 
 /// A discrete surface represented by a grid of points.
