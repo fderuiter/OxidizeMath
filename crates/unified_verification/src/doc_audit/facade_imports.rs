@@ -298,6 +298,49 @@ fn is_default_rng_allowlisted(workspace_root: &Path, path: &Path, allowlist: &[S
 }
 
 /// Audits active Markdown guides, domain/core rustdoc blocks, and `math_explorer` examples/benchmarks.
+fn audit_non_domain_and_example_hygiene(
+    workspace_root: &Path,
+    patterns: &FacadeImportPatterns,
+    default_allow: &[String],
+    violations: &mut Vec<String>,
+) {
+    for extra_src in [
+        workspace_root.join("crates/oxidize_core/src"),
+        workspace_root.join("crates/math_commons/src"),
+        workspace_root.join("math_explorer/src"),
+        workspace_root.join("math_explorer_gui/src"),
+    ] {
+        let mut rs_files = Vec::new();
+        collect_files_with_ext(&extra_src, "rs", &mut rs_files);
+        for rs_path in rs_files {
+            if let Ok(content) = fs::read_to_string(&rs_path) {
+                let allow_def = is_default_rng_allowlisted(workspace_root, &rs_path, default_allow);
+                violations.extend(check_rustdoc_facade_imports_with_patterns(
+                    &rs_path, &content, patterns, false, allow_def,
+                ));
+            }
+        }
+    }
+
+    for sub in ["examples", "benches"] {
+        let mut targets = Vec::new();
+        collect_files_with_ext(
+            &workspace_root.join("math_explorer").join(sub),
+            "rs",
+            &mut targets,
+        );
+        for target_path in targets {
+            if let Ok(content) = fs::read_to_string(&target_path) {
+                violations.extend(check_example_facade_imports_with_patterns(
+                    &target_path,
+                    &content,
+                    patterns,
+                ));
+            }
+        }
+    }
+}
+
 pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
     let patterns = FacadeImportPatterns::new();
     let wl_candidate = workspace_root.join(crate::whitelist::WHITELIST_FILE_NAME);
@@ -336,42 +379,12 @@ pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
         }
     }
 
-    for extra_src in [
-        workspace_root.join("crates/oxidize_core/src"),
-        workspace_root.join("crates/math_commons/src"),
-        workspace_root.join("math_explorer/src"),
-        workspace_root.join("math_explorer_gui/src"),
-    ] {
-        let mut rs_files = Vec::new();
-        collect_files_with_ext(&extra_src, "rs", &mut rs_files);
-        for rs_path in rs_files {
-            if let Ok(content) = fs::read_to_string(&rs_path) {
-                let allow_def =
-                    is_default_rng_allowlisted(workspace_root, &rs_path, &default_allow);
-                violations.extend(check_rustdoc_facade_imports_with_patterns(
-                    &rs_path, &content, &patterns, false, allow_def,
-                ));
-            }
-        }
-    }
-
-    for sub in ["examples", "benches"] {
-        let mut targets = Vec::new();
-        collect_files_with_ext(
-            &workspace_root.join("math_explorer").join(sub),
-            "rs",
-            &mut targets,
-        );
-        for target_path in targets {
-            if let Ok(content) = fs::read_to_string(&target_path) {
-                violations.extend(check_example_facade_imports_with_patterns(
-                    &target_path,
-                    &content,
-                    &patterns,
-                ));
-            }
-        }
-    }
+    audit_non_domain_and_example_hygiene(
+        workspace_root,
+        &patterns,
+        &default_allow,
+        &mut violations,
+    );
 
     violations
 }
