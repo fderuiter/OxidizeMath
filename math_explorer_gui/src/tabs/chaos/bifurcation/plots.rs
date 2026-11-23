@@ -155,6 +155,53 @@ impl BifurcationDiagram {
         (r_changed, x0_changed, r_changed || x0_changed || enter)
     }
 
+    fn draw_lyapunov_overlay_if_enabled<'a>(
+        &'a self,
+        plot_ui: &mut egui_plot::PlotUi<'a>,
+        palette: &SemanticPalette,
+    ) {
+        if self.show_lyapunov && !self.lyapunov_points.is_empty() {
+            plot_ui.hline(
+                HLine::new("Chaos Threshold (λ = 0)", 0.0)
+                    .color(palette.graph_edge)
+                    .style(LineStyle::Dashed { length: 4.0 }),
+            );
+            plot_ui.line(
+                Line::new("Lyapunov λ(r)", &self.lyapunov_points[..])
+                    .color(palette.series_color(1))
+                    .width(1.5_f32),
+            );
+        }
+    }
+
+    fn register_bifurcation_plot_a11y(
+        &self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        should_announce: bool,
+    ) {
+        lock_canvas_arrow_keys(ui, response);
+        paint_canvas_focus_ring(ui, response);
+        let status = format!(
+            "r = {:.4} ({}), x0 = {:.3}, Lyapunov = {:.3}",
+            self.selected_r,
+            if self.r_pinned { "pinned" } else { "unpinned" },
+            self.x0,
+            self.selected_lyapunov
+        );
+        register_canvas_accessibility(
+            ui,
+            response,
+            egui::accesskit::Role::GraphicsDocument,
+            "Bifurcation Diagram Canvas",
+            Some(&status),
+        );
+        if should_announce {
+            announce_live_status(ui.ctx(), format!("Bifurcation crosshair: {status}"));
+        }
+        response.clone().accessible_theory_hover(self);
+    }
+
     fn draw_bifurcation_plot(
         &mut self,
         ui: &mut egui::Ui,
@@ -177,6 +224,7 @@ impl BifurcationDiagram {
                         .radius(1.0_f32)
                         .color(palette.series_color(0)),
                 );
+                self.draw_lyapunov_overlay_if_enabled(plot_ui, palette);
                 let style = if self.r_pinned {
                     LineStyle::Solid
                 } else {
@@ -201,26 +249,7 @@ impl BifurcationDiagram {
             })
             .response;
 
-        lock_canvas_arrow_keys(ui, &response);
-        paint_canvas_focus_ring(ui, &response);
-        let status = format!(
-            "r = {:.4} ({}), x0 = {:.3}, Lyapunov = {:.3}",
-            self.selected_r,
-            if self.r_pinned { "pinned" } else { "unpinned" },
-            self.x0,
-            self.selected_lyapunov
-        );
-        register_canvas_accessibility(
-            ui,
-            &response,
-            egui::accesskit::Role::GraphicsDocument,
-            "Bifurcation Diagram Canvas",
-            Some(&status),
-        );
-        if should_announce {
-            announce_live_status(ui.ctx(), format!("Bifurcation crosshair: {status}"));
-        }
-        response.accessible_theory_hover(self);
+        self.register_bifurcation_plot_a11y(ui, &response, should_announce);
     }
 
     fn draw_lyapunov_plot(

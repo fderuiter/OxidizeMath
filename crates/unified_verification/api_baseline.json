@@ -6462,6 +6462,137 @@
       "signature": "pub struct VelocityDecomposition"
     }
   ],
+  "crates/domain_physics/src/physics/chaos/billiards/ellipse.rs": [
+    {
+      "signature": "impl EllipticalBilliard { pub fn collide (& self , _ : & mut BilliardRay) -> Option < BilliardCollision > }"
+    },
+    {
+      "signature": "impl EllipticalBilliard { pub fn contains (& self , _ : [f64 ; 2]) -> bool }"
+    },
+    {
+      "signature": "impl EllipticalBilliard { pub fn eccentricity (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EllipticalBilliard { pub fn focal_angular_momentum_product (& self , _ : & BilliardRay) -> f64 }"
+    },
+    {
+      "signature": "impl EllipticalBilliard { pub fn focal_distance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EllipticalBilliard { pub fn foci (& self) -> [[f64 ; 2] ; 2] }"
+    },
+    {
+      "signature": "impl EllipticalBilliard { pub fn new (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl EllipticalBilliard { pub fn perimeter (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct EllipticalBilliard"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/billiards/mod.rs": [
+    {
+      "signature": "impl BilliardRay { pub fn from_angle (_ : [f64 ; 2] , _ : f64) -> Option < Self > }"
+    },
+    {
+      "signature": "impl BilliardRay { pub fn new (_ : [f64 ; 2] , _ : [f64 ; 2]) -> Option < Self > }"
+    },
+    {
+      "signature": "impl BilliardRay { pub fn speed (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BilliardTable { pub fn advance_bounces (& self , _ : & mut BilliardRay , _ : & mut [BilliardCollision]) -> usize }"
+    },
+    {
+      "signature": "impl BilliardTable { pub fn collide (& self , _ : & mut BilliardRay) -> Option < BilliardCollision > }"
+    },
+    {
+      "signature": "impl BilliardTable { pub fn contains (& self , _ : [f64 ; 2]) -> bool }"
+    },
+    {
+      "signature": "impl BilliardTable { pub fn perimeter (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BilliardTable { pub fn sample_outer_boundary (& self , _ : & mut [[f64 ; 2]]) -> usize }"
+    },
+    {
+      "signature": "impl BilliardTable { pub fn seed_ray_fan (& self , _ : [f64 ; 2] , _ : f64 , _ : f64 , _ : & mut [BilliardRay] ,) -> usize }"
+    },
+    {
+      "signature": "pub enum BilliardTable"
+    },
+    {
+      "signature": "pub struct BilliardCollision"
+    },
+    {
+      "signature": "pub struct BilliardRay"
+    },
+    {
+      "signature": "pub use ellipse :: EllipticalBilliard"
+    },
+    {
+      "signature": "pub use sinai :: SinaiBilliard"
+    },
+    {
+      "signature": "pub use tables :: CircularBilliard"
+    },
+    {
+      "signature": "pub use tables :: StadiumBilliard"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/billiards/sinai.rs": [
+    {
+      "signature": "impl SinaiBilliard { pub fn collide (& self , _ : & mut BilliardRay) -> Option < BilliardCollision > }"
+    },
+    {
+      "signature": "impl SinaiBilliard { pub fn contains (& self , _ : [f64 ; 2]) -> bool }"
+    },
+    {
+      "signature": "impl SinaiBilliard { pub fn new (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SinaiBilliard { pub fn perimeter (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct SinaiBilliard"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/billiards/tables.rs": [
+    {
+      "signature": "impl CircularBilliard { pub fn angular_momentum (& self , _ : & BilliardRay) -> f64 }"
+    },
+    {
+      "signature": "impl CircularBilliard { pub fn collide (& self , _ : & mut BilliardRay) -> Option < BilliardCollision > }"
+    },
+    {
+      "signature": "impl CircularBilliard { pub fn contains (& self , _ : [f64 ; 2]) -> bool }"
+    },
+    {
+      "signature": "impl CircularBilliard { pub fn new (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl CircularBilliard { pub fn perimeter (& self) -> f64 }"
+    },
+    {
+      "signature": "impl StadiumBilliard { pub fn collide (& self , _ : & mut BilliardRay) -> Option < BilliardCollision > }"
+    },
+    {
+      "signature": "impl StadiumBilliard { pub fn contains (& self , _ : [f64 ; 2]) -> bool }"
+    },
+    {
+      "signature": "impl StadiumBilliard { pub fn new (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl StadiumBilliard { pub fn perimeter (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct CircularBilliard"
+    },
+    {
+      "signature": "pub struct StadiumBilliard"
+    }
+  ],
   "crates/domain_physics/src/physics/chaos/double_pendulum.rs": [
     {
       "signature": "impl DoublePendulum { pub fn angular_velocities (& self , _ : & ArrayState < 4 >) -> (f64 , f64) }"
@@ -6494,6 +6625,108 @@
     },
     {
       "signature": "pub fn escape_time_mandelbrot (_ : Complex < f64 > , _ : u32) -> u32"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/hamiltonian/chirikov.rs": [
+    {
+      "signature": "impl ChirikovStandardMap { pub fn finite_time_lyapunov (& self , _ : ArrayState < 2 > , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl ChirikovStandardMap { pub fn jacobian (& self , _ : f64) -> [[f64 ; 2] ; 2] }"
+    },
+    {
+      "signature": "impl ChirikovStandardMap { pub fn jacobian_determinant (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl ChirikovStandardMap { pub fn new (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ChirikovStandardMap { pub fn seed_on_torus (_ : f64 , _ : f64) -> Option < ArrayState < 2 > > }"
+    },
+    {
+      "signature": "impl ChirikovStandardMap { pub fn step_in_place (& self , _ : & mut ArrayState < 2 >) }"
+    },
+    {
+      "signature": "impl ChirikovStandardMap { pub fn step_n_into (& self , _ : ArrayState < 2 > , _ : & mut [[f64 ; 2]]) -> usize }"
+    },
+    {
+      "signature": "pub const CRITICAL_K_GREENE : f64"
+    },
+    {
+      "signature": "pub struct ChirikovStandardMap"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/hamiltonian/fan.rs": [
+    {
+      "signature": "pub fn perturb_figure_eight_momentum (_ : f64 , _ : f64) -> ArrayState < 12 >"
+    },
+    {
+      "signature": "pub fn seed_double_pendulum_fan (_ : & DoublePendulum , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut [ArrayState < 4 >] ,) -> usize"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/hamiltonian/mod.rs": [
+    {
+      "signature": "pub use chirikov :: CRITICAL_K_GREENE"
+    },
+    {
+      "signature": "pub use chirikov :: ChirikovStandardMap"
+    },
+    {
+      "signature": "pub use crate :: physics :: astrophysics :: nbody :: FIGURE_EIGHT_PERIOD"
+    },
+    {
+      "signature": "pub use crate :: physics :: astrophysics :: nbody :: FigureEightThreeBody"
+    },
+    {
+      "signature": "pub use fan :: perturb_figure_eight_momentum"
+    },
+    {
+      "signature": "pub use fan :: seed_double_pendulum_fan"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: ArrayState"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: GaussLegendre4"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: HamiltonianSystem"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: ImplicitMidpoint"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: RungeKutta4"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: SeparableHamiltonian"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: Solver"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: StormerVerlet"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: SymplecticMethod"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: ode :: Yoshida4"
+    },
+    {
+      "signature": "pub use super :: double_pendulum :: DoublePendulum"
+    },
+    {
+      "signature": "pub use super :: henon_heiles :: HenonHeiles"
+    },
+    {
+      "signature": "pub use super :: poincare :: CrossingDirection"
+    },
+    {
+      "signature": "pub use super :: poincare :: PoincareCrossing"
+    },
+    {
+      "signature": "pub use super :: poincare :: PoincareSection"
     }
   ],
   "crates/domain_physics/src/physics/chaos/henon_heiles.rs": [
@@ -11114,6 +11347,9 @@
       "signature": "pub use symplectic :: GaussLegendre4"
     },
     {
+      "signature": "pub use symplectic :: ImplicitMidpoint"
+    },
+    {
       "signature": "pub use symplectic :: StormerVerlet"
     },
     {
@@ -11244,7 +11480,28 @@
       "signature": "impl < State : Clone > GaussLegendre4 < State > { pub fn with_max_iters (_ : & State , _ : usize) -> Self }"
     },
     {
-      "signature": "impl SymplecticMethod { pub const ALL : [Self ; 3] }"
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub const DEFAULT_MAX_ITERS : usize }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub const DEFAULT_SUBSTEPS : usize }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub const MAX_ALLOWED_ITERS : usize }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub const MAX_ALLOWED_SUBSTEPS : usize }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub fn with_config (_ : & State , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub fn with_max_iters (_ : & State , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl SymplecticMethod { pub const ALL : [Self ; 4] }"
     },
     {
       "signature": "impl SymplecticMethod { pub fn name (& self) -> & 'static str }"
@@ -11254,6 +11511,9 @@
     },
     {
       "signature": "pub struct GaussLegendre4 < State >"
+    },
+    {
+      "signature": "pub struct ImplicitMidpoint < State >"
     },
     {
       "signature": "pub struct StormerVerlet < Coord >"

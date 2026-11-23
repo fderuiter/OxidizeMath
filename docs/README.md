@@ -63,6 +63,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Zero-Allocation FreeSurfer Cortical Surface Physics, Potts MRF Segmentation, and 3D Cortical Morphometry Studio](adr/20261123-freesurfer-deformable-mrf-and-cortical-morphometry.md)
 - [ADR 20261123: Deterministic Genz Gaussian Copula and Parlay Engine](adr/20261123-genz-gaussian-copula-and-parlay-engine.md)
 - [ADR 20261123: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics](adr/20261123-glicko2-copula-ou-workbenches-and-kelly-net-odds.md)
+- [ADR 20261123: Unified Hamiltonian Chaos Kernels, Flat Euclidean Dynamical Billiards, and Bifurcation Lyapunov Overlay](adr/20261123-hamiltonian-chaos-euclidean-billiards-and-lyapunov-overlay.md)
 - [ADR 20261123: Hierarchical Umbrella Error Enums, Full Submodule Error Re-Exports, and DiagnosticBus Emission Helpers](adr/20261123-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md)
 - [ADR 20261123: Hybrid Analytical and Zero-Allocation Monte Carlo Edge Validation and Bankroll Solvency](adr/20261123-hybrid-analytical-and-monte-carlo-edge-and-ruin.md)
 - [ADR 20261123: Implicit CAD Volumetric Studio, Boundary-Capped Marching Cubes, and Millimeter STL Export](adr/20261123-implicit-cad-capped-isosurface-and-mm-stl.md)

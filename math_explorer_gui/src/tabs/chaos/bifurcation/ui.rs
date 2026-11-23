@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{BifurcationDiagram, BifurcationMapMode};
+use super::{BifurcationDiagram, BifurcationMapMode, MAX_STEPS};
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
 use crate::reflective_ui::AnimatedSlider;
@@ -42,7 +42,7 @@ impl BifurcationDiagram {
                 )
                 .changed();
             sweep_changed |= ui
-                .add(egui::Slider::new(&mut self.steps, 100..=2000).text("Resolution (steps)"))
+                .add(egui::Slider::new(&mut self.steps, 100..=MAX_STEPS).text("Resolution (steps)"))
                 .changed();
 
             if sweep_changed && !self.r_pinned {
@@ -61,6 +61,11 @@ impl BifurcationDiagram {
                 self.x0,
                 self.selected_lyapunov
             ));
+            if self.show_lyapunov {
+                if let Some(probe_lam) = self.probe_lyapunov() {
+                    ui.small(format!("Overlay probe λ(r) = {probe_lam:+.4}"));
+                }
+            }
             ui.small(format!(
                 "Live orbit step {}: x_n = {:.4}",
                 self.orbit_step_count, self.orbit_x
@@ -93,6 +98,11 @@ impl BifurcationDiagram {
             .checkbox(&mut self.r_pinned, "Pin r crosshair")
             .accessible_hover_text("Freeze selected r against pointer hover; Enter toggles on plot")
             .changed();
+        let _ = ui
+            .checkbox(&mut self.show_lyapunov, "Show Lyapunov λ(r) Overlay")
+            .accessible_hover_text(
+                "Overlay maximal Lyapunov exponent λ(r) and zero chaos threshold line on the bifurcation diagram",
+            );
         if r_changed || (pin_changed && self.r_pinned) {
             self.r_from_hover = false;
         }

@@ -4,14 +4,14 @@
 
 use super::simulation::{push_capped_ring, push_sliding_trail};
 use super::{
-    GhostComparator, HamiltonianChaosLab, OrbitSlot, MAX_DRIFT_SAMPLES, MAX_GHOST_SECTION_POINTS,
+    GhostComparator, HamiltonianChaosTool, OrbitSlot, MAX_DRIFT_SAMPLES, MAX_GHOST_SECTION_POINTS,
     MAX_TRAIL_POINTS,
 };
 use math_explorer::pure_math::analysis::ode::{
     HamiltonianSystem, OdeSystem, Solver, VectorOperations,
 };
 
-impl HamiltonianChaosLab {
+impl HamiltonianChaosTool {
     pub(super) fn init_ghost_from_slot(&mut self, slot: &OrbitSlot) {
         self.ghost = GhostComparator {
             active: true,
@@ -123,6 +123,18 @@ impl HamiltonianChaosLab {
             * 100.0;
         let pos = [self.ghost.state12.0[0], self.ghost.state12.0[1]];
         self.record_ghost_metrics(dt, lead.last_rel_err_pct, rk4_err, pos);
+    }
+
+    pub(super) fn step_ghost_chirikov(&mut self) {
+        let Some(lead) = self.orbits.last() else {
+            return;
+        };
+        if !self.ghost.active {
+            return;
+        }
+        let sym_err = lead.last_rel_err_pct;
+        let theta = lead.map_state.0[0];
+        self.record_ghost_metrics(1.0, sym_err, 0.0, [theta.cos(), theta.sin()]);
     }
 
     fn record_ghost_metrics(&mut self, dt: f64, sym_err: f64, rk4_err: f64, pos: [f64; 2]) {

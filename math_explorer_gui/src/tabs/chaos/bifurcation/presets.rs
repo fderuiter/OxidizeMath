@@ -1,5 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::{BifurcationDiagram, BifurcationMapMode};
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use std::collections::HashMap;
+
 /// Legacy starter preset JSON envelope for the Logistic Map Bifurcation Diagram.
 pub const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
@@ -56,5 +60,61 @@ inventory::submit! {
         domain: "chaos",
         tool_name: Some("BifurcationDiagram"),
         preset_generator: || STARTER_PERIOD3_WINDOW_JSON,
+    }
+}
+
+impl TheoryDescribable for BifurcationDiagram {
+    fn theory_description(&self) -> String {
+        match self.map_mode {
+            BifurcationMapMode::Logistic => format!(
+                "Logistic map bifurcation diagram and maximal Lyapunov exponent λ(r), r range: {:.2} to {:.2}, selected r: {:.3}",
+                self.r_min, self.r_max, self.selected_r
+            ),
+            BifurcationMapMode::Custom => format!(
+                "Custom 1D map bifurcation x_{{n+1}} = {} with tangent Lyapunov overlay, r range: {:.2} to {:.2}, selected r: {:.3}",
+                self.math_input.raw_text, self.r_min, self.r_max, self.selected_r
+            ),
+        }
+    }
+
+    fn phonetic_description(&self) -> String {
+        self.theory_description()
+    }
+
+    fn theory_citation(&self) -> String {
+        "May, R. M. (1976). Simple mathematical models with very complicated dynamics. Nature, 261(5560), 459-467; Feigenbaum, M. J. (1978). Quantitative universality for a class of nonlinear transformations. Journal of Statistical Physics, 19(1), 25-52.".to_string()
+    }
+
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        map.insert(
+            "default".to_string(),
+            "Logistic map bifurcation diagram and maximal Lyapunov exponent λ(r)".to_string(),
+        );
+        map
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        self.build_theory_parameters()
+    }
+}
+
+inventory::submit! {
+    crate::framework::ToolMetadata {
+        id: "BifurcationDiagram",
+        display_name: "Bifurcation Diagram",
+        domain: "chaos",
+        tags: &[
+            "bifurcation",
+            "logistic",
+            "logistic map",
+            "lyapunov",
+            "cobweb",
+            "period doubling",
+            "feigenbaum",
+            "orbit diagram",
+            "chaos",
+        ],
+        build: || Box::new(BifurcationDiagram::default()),
     }
 }

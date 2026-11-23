@@ -28,8 +28,10 @@
 //!
 //! ## Modules
 //!
+//! *   **[Billiards](billiards)**: Exact flat Euclidean ray billiards (circular, elliptical, Bunimovich stadium, Sinai) and Birkhoff maps.
 //! *   **[Double Pendulum](double_pendulum)**: Canonical non-separable Hamiltonian double pendulum.
 //! *   **[Fractals](fractals)**: Geometric structures with fractional dimension (e.g., Cantor Set).
+//! *   **[Hamiltonian Chaos](hamiltonian)**: Unified zero-allocation conservative flows, Chirikov standard map, and symplectic ensemble helpers.
 //! *   **[Hénon-Heiles](henon_heiles)**: Separable 2-DOF galactic Hamiltonian with KAM islands and chaotic seas.
 //! *   **[Logistic Map](logistic)**: Discrete-time demographic model $x_{n+1} = r x_n (1 - x_n)$.
 //! *   **[Lorenz System](lorenz)**: Continuous-time atmospheric convection model (The "Butterfly" attractor).
@@ -72,8 +74,10 @@
 //! assert!(system.state.vec.norm() < 100.0); // Simple boundedness check
 //! ```
 
+pub mod billiards;
 pub mod double_pendulum;
 pub mod fractals;
+pub mod hamiltonian;
 pub mod henon_heiles;
 pub mod logistic;
 pub mod lorenz;
@@ -295,17 +299,35 @@ mod tests {
     }
 }
 
-// [cite:graph_parameters_rust]
+// [cite:chaos_theory]
 
 use pure_math::theory_verification;
 
 theory_verification!(
     module = "chaos",
     constants = {
-        DUMMY = 1.0;
+        HENON_HEILES_ESCAPE_ENERGY = 1.0 / 6.0;
+        CHIRIKOV_CRITICAL_K = 0.971_635_406;
+        UNIT_CIRCLE_PERIMETER = core::f64::consts::TAU;
     },
     test = {
         use approx::assert_relative_eq;
-        assert_relative_eq!(DUMMY, 1.0, epsilon = math_commons::registry::TOLERANCE_FAST);
+        let hh = henon_heiles::HenonHeiles::default();
+        assert_relative_eq!(
+            hh.escape_energy(),
+            HENON_HEILES_ESCAPE_ENERGY,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
+        assert_relative_eq!(
+            hamiltonian::CRITICAL_K_GREENE,
+            CHIRIKOV_CRITICAL_K,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
+        let disk = billiards::CircularBilliard::new(1.0);
+        assert_relative_eq!(
+            disk.perimeter(),
+            UNIT_CIRCLE_PERIMETER,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
     }
 );

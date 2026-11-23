@@ -250,7 +250,8 @@ fn fill_custom_coupled(
 }
 
 impl BifurcationDiagram {
-    pub(crate) fn recompute(&mut self) {
+    /// Synchronously recomputes the bifurcation sweep, Lyapunov curve, cobweb, and orbit buffers.
+    pub fn recompute(&mut self) {
         if !self.r_pinned
             && self.r_min <= self.r_max
             && !(self.r_min..=self.r_max).contains(&self.selected_r)

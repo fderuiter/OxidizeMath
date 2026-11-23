@@ -3,11 +3,25 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    ComparatorView, HamiltonianChaosLab, HamiltonianModelKind, SymplecticSolverChoice, MAX_ORBITS,
+    ComparatorView, HamiltonianChaosTool, HamiltonianModelKind, SymplecticSolverChoice, MAX_ORBITS,
 };
 use crate::starter_gallery::StarterPresetMetadata;
+use math_explorer::physics::chaos::hamiltonian::CRITICAL_K_GREENE;
+use std::f64::consts::{PI, TAU};
 
-/// Compact parameter and seed-ensemble snapshot for [`HamiltonianChaosLab`].
+const fn default_chirikov_k() -> f64 {
+    CRITICAL_K_GREENE
+}
+
+fn is_default_chirikov_k(k: &f64) -> bool {
+    (*k - CRITICAL_K_GREENE).abs() < 1e-12
+}
+
+fn is_zero_f64(v: &f64) -> bool {
+    v.abs() < 1e-12
+}
+
+/// Compact parameter and seed-ensemble snapshot for [`HamiltonianChaosTool`].
 ///
 /// Storing canonical 2D Poincaré seeds (`<= 16` pairs) rather than full trajectory
 /// histories keeps snapshots under `600` bytes so stateless URL fragments fit
@@ -35,6 +49,15 @@ pub struct HamiltonianLabState {
     pub cursor_qp: [f64; 2],
     /// Canonical `(q, p)` Poincaré seeds (`len() <= 16`).
     pub seeds: Vec<[f64; 2]>,
+    /// Chirikov standard map kick strength $K \in [0, 5]$.
+    #[serde(
+        default = "default_chirikov_k",
+        skip_serializing_if = "is_default_chirikov_k"
+    )]
+    pub chirikov_k: f64,
+    /// Figure-8 zero-momentum perturbation $\delta p \in [-0.20, 0.20]$.
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub figure_eight_perturbation: f64,
 }
 
 const fn model_energy_limits(model: HamiltonianModelKind) -> (f64, f64) {
@@ -42,21 +65,21 @@ const fn model_energy_limits(model: HamiltonianModelKind) -> (f64, f64) {
         HamiltonianModelKind::HenonHeiles => (0.02, 0.1665),
         HamiltonianModelKind::DoublePendulum => (4.0, 52.0),
         HamiltonianModelKind::FigureEightThreeBody => (0.5, 2.5),
+        HamiltonianModelKind::ChirikovStandardMap => (0.0, 5.0),
     }
 }
 
 const fn model_cursor_limits(model: HamiltonianModelKind) -> [f64; 4] {
     match model {
         HamiltonianModelKind::HenonHeiles => [-0.62, 0.88, -0.62, 0.62],
-        HamiltonianModelKind::DoublePendulum => {
-            [-std::f64::consts::PI, std::f64::consts::PI, -8.5, 8.5]
-        }
+        HamiltonianModelKind::DoublePendulum => [-PI, PI, -8.5, 8.5],
         HamiltonianModelKind::FigureEightThreeBody => [-1.25, 1.25, -1.25, 1.25],
+        HamiltonianModelKind::ChirikovStandardMap => [0.0, TAU, 0.0, TAU],
     }
 }
 
-impl HamiltonianChaosLab {
-    /// Re-evaluates existing orbit seeds on a newly adjusted energy shell.
+impl HamiltonianChaosTool {
+    /// Re-evaluates existing orbit seeds on a newly adjusted energy shell or kick strength.
     pub fn rebuild_existing_seeds(&mut self) {
         let saved_seeds: Vec<[f64; 2]> = self.orbits.iter().map(|s| s.seed_qp).collect();
         self.clear_orbits();
@@ -81,21 +104,24 @@ impl HamiltonianChaosLab {
             is_playing: self.is_playing,
             cursor_qp: self.cursor_qp,
             seeds: self.orbits.iter().map(|s| s.seed_qp).collect(),
+            chirikov_k: self.chirikov_k,
+            figure_eight_perturbation: self.figure_eight_perturbation,
         };
         serde_json::to_string(&snapshot).ok()
     }
 
     pub(super) fn deserialize_lab_state(&mut self, raw: &str) -> Result<(), String> {
         let parsed: HamiltonianLabState = serde_json::from_str(raw)
-            .map_err(|e| format!("Invalid HamiltonianChaosLab state: {e}"))?;
+            .map_err(|e| format!("Invalid HamiltonianChaosTool state: {e}"))?;
         validate_lab_state(&parsed)?;
 
         let prev_model = self.model;
         let prev_energy = self.energy;
+        let prev_k = self.chirikov_k;
         self.model = parsed.model;
         self.energy = parsed.energy;
+        self.chirikov_k = parsed.chirikov_k;
 
-        // Pre-validate every seed on the target energy shell before committing state.
         let mut temp_lab_ok = true;
         for &qp in &parsed.seeds {
             if !self.can_seed_on_shell(parsed.model, parsed.energy, qp) {
@@ -106,6 +132,7 @@ impl HamiltonianChaosLab {
         if !temp_lab_ok {
             self.model = prev_model;
             self.energy = prev_energy;
+            self.chirikov_k = prev_k;
             return Err("One or more Poincare seeds lie outside the target energy shell".into());
         }
 
@@ -116,6 +143,8 @@ impl HamiltonianChaosLab {
         self.show_rk4_ghost = parsed.show_rk4_ghost;
         self.is_playing = parsed.is_playing;
         self.cursor_qp = parsed.cursor_qp;
+        self.figure_eight_perturbation = parsed.figure_eight_perturbation;
+        self.last_status_note = None;
 
         self.clear_orbits();
         for qp in parsed.seeds {
@@ -144,6 +173,9 @@ impl HamiltonianChaosLab {
             HamiltonianModelKind::FigureEightThreeBody => {
                 (-0.45..=0.45).contains(&qp[0]) && (-0.45..=0.45).contains(&qp[1])
             }
+            HamiltonianModelKind::ChirikovStandardMap => {
+                (0.0..=TAU).contains(&qp[0]) && (0.0..=TAU).contains(&qp[1])
+            }
         }
     }
 }
@@ -159,11 +191,23 @@ fn validate_lab_state(parsed: &HamiltonianLabState) -> Result<(), String> {
             parsed.model, parsed.energy
         ));
     }
+    if !parsed.chirikov_k.is_finite() || !(0.0..=5.0).contains(&parsed.chirikov_k) {
+        return Err(format!(
+            "chirikov_k out of [0.0, 5.0]: {}",
+            parsed.chirikov_k
+        ));
+    }
+    if !parsed.figure_eight_perturbation.is_finite()
+        || !(-0.20..=0.20).contains(&parsed.figure_eight_perturbation)
+    {
+        return Err("figure_eight_perturbation out of [-0.20, 0.20]".to_string());
+    }
     if parsed.model == HamiltonianModelKind::DoublePendulum
-        && parsed.solver != SymplecticSolverChoice::GaussLegendre4
+        && !parsed.solver.supports_nonseparable()
     {
         return Err(
-            "DoublePendulum requires GaussLegendre4 implicit symplectic solver".to_string(),
+            "DoublePendulum requires ImplicitMidpoint or GaussLegendre4 implicit symplectic solver"
+                .to_string(),
         );
     }
     if !(1..=128).contains(&parsed.steps_per_frame) {
@@ -255,6 +299,29 @@ pub const PRESET_FIGURE_EIGHT_CHOREOGRAPHY: &str = r#"{
   }
 }"#;
 
+/// Starter preset: Chirikov-Taylor Standard Map at critical golden KAM threshold $K_c \approx 0.9716$.
+pub const PRESET_CHIRIKOV_STANDARD_MAP: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Chirikov Standard Map at Critical Golden KAM Threshold",
+    "domain": "chaos",
+    "timestamp": "2026-11-23T00:00:00Z"
+  },
+  "config": {
+    "dt": 0.02,
+    "energy": 0.971635406,
+    "model": "ChirikovStandardMap",
+    "solver": "Yoshida4",
+    "comparator_view": "EnergyDrift",
+    "steps_per_frame": 64,
+    "show_rk4_ghost": false,
+    "is_playing": false,
+    "cursor_qp": [3.14159, 1.2],
+    "seeds": [[0.5, 0.6], [3.14159, 0.3], [3.14159, 1.8], [2.2, 3.1], [0.2, 4.4], [4.8, 5.5]],
+    "chirikov_k": 1.15
+  }
+}"#;
+
 inventory::submit! {
     StarterPresetMetadata {
         id: "henon_heiles_kam_islands",
@@ -263,7 +330,7 @@ inventory::submit! {
         category: "Hamiltonian Chaos",
         icon: "🪐",
         domain: "chaos",
-        tool_name: Some("HamiltonianChaosLab"),
+        tool_name: Some("HamiltonianChaosTool"),
         preset_generator: || PRESET_HENON_HEILES_KAM,
     }
 }
@@ -272,11 +339,11 @@ inventory::submit! {
     StarterPresetMetadata {
         id: "double_pendulum_symplectic_drift",
         title: "Double Pendulum Symplectic vs RK4",
-        description: "Non-separable canonical double pendulum comparing implicit Gauss-Legendre 4th order against secular RK4 drift.",
+        description: "Non-separable canonical double pendulum comparing implicit symplectic integration against secular RK4 drift.",
         category: "Hamiltonian Chaos",
         icon: "⚖️",
         domain: "chaos",
-        tool_name: Some("HamiltonianChaosLab"),
+        tool_name: Some("HamiltonianChaosTool"),
         preset_generator: || PRESET_DOUBLE_PENDULUM_DRIFT,
     }
 }
@@ -289,7 +356,20 @@ inventory::submit! {
         category: "Celestial Mechanics",
         icon: "♾️",
         domain: "chaos",
-        tool_name: Some("HamiltonianChaosLab"),
+        tool_name: Some("HamiltonianChaosTool"),
         preset_generator: || PRESET_FIGURE_EIGHT_CHOREOGRAPHY,
+    }
+}
+
+inventory::submit! {
+    StarterPresetMetadata {
+        id: "chirikov_standard_map_kam",
+        title: "Chirikov Standard Map",
+        description: "Area-preserving kicked-rotor map across KAM islands, cantori, and stochastic seas on the 2-torus.",
+        category: "Hamiltonian Chaos",
+        icon: "🌀",
+        domain: "chaos",
+        tool_name: Some("HamiltonianChaosTool"),
+        preset_generator: || PRESET_CHIRIKOV_STANDARD_MAP,
     }
 }

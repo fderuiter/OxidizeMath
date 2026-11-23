@@ -1,18 +1,18 @@
-//! Side-panel controls and synchronized Runge-Kutta 4 comparator plot for [`HamiltonianChaosLab`].
+//! Side-panel controls and synchronized Runge-Kutta 4 comparator plot for [`HamiltonianChaosTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    ComparatorView, HamiltonianChaosLab, HamiltonianModelKind, SymplecticSolverChoice, MAX_ORBITS,
+    ComparatorView, HamiltonianChaosTool, HamiltonianModelKind, SymplecticSolverChoice, MAX_ORBITS,
 };
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
 use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui_plot::{Corner, Legend, Line, LineStyle, Plot, PlotPoints, Points};
-use math_explorer::physics::astrophysics::nbody::FigureEightThreeBody;
+use math_explorer::physics::chaos::hamiltonian::FigureEightThreeBody;
 
-impl HamiltonianChaosLab {
+impl HamiltonianChaosTool {
     pub(super) fn render_side_panel(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = scoped_panel_id(parent_ui, "hamiltonian_chaos_controls");
         PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
@@ -65,6 +65,7 @@ impl HamiltonianChaosLab {
                     HamiltonianModelKind::HenonHeiles,
                     HamiltonianModelKind::DoublePendulum,
                     HamiltonianModelKind::FigureEightThreeBody,
+                    HamiltonianModelKind::ChirikovStandardMap,
                 ] {
                     ui.selectable_value(&mut self.model, candidate, candidate.label());
                 }
@@ -72,6 +73,11 @@ impl HamiltonianChaosLab {
         if self.model != prev_model {
             let chosen = self.model;
             self.switch_model(chosen);
+        }
+
+        if self.model == HamiltonianModelKind::ChirikovStandardMap {
+            ui.small("Exact discrete area-preserving symplectic map (det J = 1).");
+            return;
         }
 
         ui.add_space(4.0);
@@ -83,10 +89,11 @@ impl HamiltonianChaosLab {
                 for candidate in [
                     SymplecticSolverChoice::StormerVerlet,
                     SymplecticSolverChoice::Yoshida4,
+                    SymplecticSolverChoice::ImplicitMidpoint,
                     SymplecticSolverChoice::GaussLegendre4,
                 ] {
                     let enabled = self.model != HamiltonianModelKind::DoublePendulum
-                        || candidate == SymplecticSolverChoice::GaussLegendre4;
+                        || candidate.supports_nonseparable();
                     ui.add_enabled_ui(enabled, |ui| {
                         ui.selectable_value(&mut self.solver, candidate, candidate.label());
                     });
@@ -96,34 +103,87 @@ impl HamiltonianChaosLab {
             self.state_rev = self.state_rev.wrapping_add(1);
         }
         if self.model == HamiltonianModelKind::DoublePendulum {
-            ui.small("Non-separable H(q,p): implicit Gauss-Legendre 4th order active.");
+            ui.small("Non-separable H(q,p): Implicit Midpoint or Gauss-Legendre 4th order.");
         }
     }
 
     fn render_parameter_sliders(&mut self, ui: &mut egui::Ui) {
-        if self.model != HamiltonianModelKind::FigureEightThreeBody {
-            let (e_min, e_max, _) = self.energy_bounds();
-            if ui
-                .add(
-                    egui::Slider::new(&mut self.energy, e_min..=e_max)
-                        .text("Energy Shell E")
-                        .max_decimals(4),
-                )
-                .accessible_hover_text("Constant Hamiltonian energy shell H(q, p) = E")
-                .changed()
-            {
-                self.rebuild_existing_seeds();
+        self.render_model_control_sliders(ui);
+        self.render_stepping_and_ghost_controls(ui);
+    }
+
+    fn render_model_control_sliders(&mut self, ui: &mut egui::Ui) {
+        match self.model {
+            HamiltonianModelKind::HenonHeiles | HamiltonianModelKind::DoublePendulum => {
+                let (e_min, e_max, _) = self.energy_bounds();
+                if ui
+                    .add(
+                        egui::Slider::new(&mut self.energy, e_min..=e_max)
+                            .text("Energy Shell E")
+                            .max_decimals(4),
+                    )
+                    .accessible_hover_text("Constant Hamiltonian energy shell H(q, p) = E")
+                    .changed()
+                {
+                    self.rebuild_existing_seeds();
+                }
+            }
+            HamiltonianModelKind::ChirikovStandardMap => {
+                if ui
+                    .add(
+                        egui::Slider::new(&mut self.chirikov_k, 0.0..=5.0)
+                            .text("Kick Strength K")
+                            .max_decimals(4),
+                    )
+                    .accessible_hover_text(
+                        "Chirikov stochasticity parameter K (last KAM torus breaks at Kc ≈ 0.9716)",
+                    )
+                    .changed()
+                {
+                    self.rebuild_existing_seeds();
+                }
+            }
+            HamiltonianModelKind::FigureEightThreeBody => {
+                if ui
+                    .add(
+                        egui::Slider::new(&mut self.figure_eight_perturbation, -0.20..=0.20)
+                            .text("Momentum δp")
+                            .max_decimals(4),
+                    )
+                    .accessible_hover_text(
+                        "Zero-linear-momentum perturbation testing Figure-8 KAM stability",
+                    )
+                    .changed()
+                {
+                    self.apply_figure_eight_perturbation();
+                }
             }
         }
+    }
 
-        if ui
-            .add(
-                egui::Slider::new(&mut self.dt, 0.001..=0.05)
-                    .text("Step Δt")
-                    .max_decimals(4),
-            )
-            .accessible_hover_text("Fixed symplectic and RK4 integration time step")
-            .changed()
+    fn render_stepping_and_ghost_controls(&mut self, ui: &mut egui::Ui) {
+        if self.model == HamiltonianModelKind::DoublePendulum
+            && ui
+                .add(
+                    egui::Slider::new(&mut self.pendulum_fan_spread, 0.0005..=0.25)
+                        .text("Fan Spread Δθ₂")
+                        .max_decimals(4),
+                )
+                .accessible_hover_text("Angular spread of ensemble double-pendulum fan")
+                .changed()
+        {
+            self.state_rev = self.state_rev.wrapping_add(1);
+        }
+
+        if self.model != HamiltonianModelKind::ChirikovStandardMap
+            && ui
+                .add(
+                    egui::Slider::new(&mut self.dt, 0.001..=0.05)
+                        .text("Step Δt")
+                        .max_decimals(4),
+                )
+                .accessible_hover_text("Fixed symplectic and RK4 integration time step")
+                .changed()
         {
             self.state_rev = self.state_rev.wrapping_add(1);
         }
@@ -136,18 +196,20 @@ impl HamiltonianChaosLab {
             self.state_rev = self.state_rev.wrapping_add(1);
         }
 
-        if ui
-            .checkbox(&mut self.show_rk4_ghost, "Show Explicit RK4 Drift Twin")
-            .accessible_hover_text(
-                "Overlay synchronized non-symplectic RungeKutta4 trajectory and energy drift",
-            )
-            .changed()
+        if self.model != HamiltonianModelKind::ChirikovStandardMap
+            && ui
+                .checkbox(&mut self.show_rk4_ghost, "Show Explicit RK4 Drift Twin")
+                .accessible_hover_text(
+                    "Overlay synchronized non-symplectic RungeKutta4 trajectory and energy drift",
+                )
+                .changed()
         {
             self.state_rev = self.state_rev.wrapping_add(1);
         }
     }
 
     fn render_ensemble_actions(&mut self, ui: &mut egui::Ui) {
+        let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.horizontal_wrapped(|ui| {
             if ui
                 .button("⚡ Burst +1,000 Steps")
@@ -157,6 +219,24 @@ impl HamiltonianChaosLab {
                 .clicked()
             {
                 self.step_batch(1_000);
+            }
+            if self.model == HamiltonianModelKind::DoublePendulum
+                && ui
+                    .button("🌊 Pendulum Fan")
+                    .accessible_hover_text(
+                        "Launch an 8-orbit double-pendulum fan around the cursor on the active energy shell",
+                    )
+                    .clicked()
+            {
+                match self.seed_pendulum_fan() {
+                    Ok(n) => {
+                        self.last_status_note =
+                            Some(format!("Launched {n}-pendulum ensemble fan on E = {:.2}.", self.energy));
+                    }
+                    Err(reason) => {
+                        self.last_status_note = Some(format!("Cannot seed fan: {reason}"));
+                    }
+                }
             }
             if ui
                 .button("🌌 Seed Showcase")
@@ -174,7 +254,12 @@ impl HamiltonianChaosLab {
             }
         });
         if let Some(note) = &self.last_status_note {
-            ui.small(note);
+            let color = if note.starts_with("Cannot") {
+                palette.warning
+            } else {
+                palette.info
+            };
+            ui.colored_label(color, note);
         }
     }
 
@@ -191,15 +276,25 @@ impl HamiltonianChaosLab {
             "Sim Time: t = {:.2}  ({:.2} ms/frame)",
             self.sim_time, self.last_frame_ms
         ));
-        ui.colored_label(
-            palette.success,
-            format!("Symplectic |ΔH/H₀|: {:.6}%", self.ghost.symplectic_err_pct),
-        );
-        if self.show_rk4_ghost {
+        if self.model == HamiltonianModelKind::ChirikovStandardMap {
             ui.colored_label(
-                palette.error,
-                format!("Explicit RK4 |ΔH/H₀|: {:.4}%", self.ghost.rk4_err_pct),
+                palette.success,
+                format!(
+                    "Symplectic Area |det(J) - 1|: {:.6}%",
+                    self.ghost.symplectic_err_pct
+                ),
             );
+        } else {
+            ui.colored_label(
+                palette.success,
+                format!("Symplectic |ΔH/H₀|: {:.6}%", self.ghost.symplectic_err_pct),
+            );
+            if self.show_rk4_ghost {
+                ui.colored_label(
+                    palette.error,
+                    format!("Explicit RK4 |ΔH/H₀|: {:.4}%", self.ghost.rk4_err_pct),
+                );
+            }
         }
     }
 
@@ -253,21 +348,26 @@ impl HamiltonianChaosLab {
     }
 
     fn render_energy_drift_plot(&self, ui: &mut egui::Ui, height: f32, palette: &SemanticPalette) {
+        let sym_label = if self.model == HamiltonianModelKind::ChirikovStandardMap {
+            "Chirikov Map |det(J) - 1| (%)".to_string()
+        } else {
+            format!("{} |ΔH/H₀| (%)", self.solver.label())
+        };
         Plot::new("hamiltonian_energy_drift_plot")
             .height(height)
             .legend(Legend::default().position(Corner::LeftTop))
             .x_axis_label("Simulation Time t")
-            .y_axis_label("Relative Energy Error |ΔH / H₀| (%)")
+            .y_axis_label("Relative Conservation Error (%)")
             .show(ui, |plot_ui| {
                 plot_ui.line(
                     Line::new(
-                        format!("{} |ΔH/H₀| (%)", self.solver.label()),
+                        sym_label,
                         PlotPoints::from(self.ghost.symplectic_drift.clone()),
                     )
                     .color(palette.success)
                     .width(2.0_f32),
                 );
-                if self.show_rk4_ghost {
+                if self.show_rk4_ghost && self.model != HamiltonianModelKind::ChirikovStandardMap {
                     plot_ui.line(
                         Line::new(
                             "Explicit RungeKutta4 |ΔH/H₀| (%)",
@@ -310,7 +410,10 @@ impl HamiltonianChaosLab {
                         );
                     }
                 }
-                if self.show_rk4_ghost && !self.ghost.trail.is_empty() {
+                if self.show_rk4_ghost
+                    && self.model != HamiltonianModelKind::ChirikovStandardMap
+                    && !self.ghost.trail.is_empty()
+                {
                     plot_ui.line(
                         Line::new("RK4 Ghost Twin", PlotPoints::from(self.ghost.trail.clone()))
                             .color(palette.error)

@@ -1,12 +1,12 @@
-//! Tabular CSV/JSON dataset and vector SVG/PNG primitive assembly for [`HamiltonianChaosLab`].
+//! Tabular CSV/JSON dataset and vector SVG/PNG primitive assembly for [`HamiltonianChaosTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{HamiltonianChaosLab, HamiltonianModelKind};
+use super::{HamiltonianChaosTool, HamiltonianModelKind};
 use egui_plot::ExportPrimitive;
 use std::f64::consts::{PI, TAU};
 
-impl HamiltonianChaosLab {
+impl HamiltonianChaosTool {
     pub(crate) fn collect_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut datasets = Vec::new();
         for (idx, slot) in self.orbits.iter().enumerate() {
@@ -17,7 +17,10 @@ impl HamiltonianChaosLab {
                 ));
             }
         }
-        if self.show_rk4_ghost && !self.ghost.symplectic_drift.is_empty() {
+        if self.show_rk4_ghost
+            && self.model != HamiltonianModelKind::ChirikovStandardMap
+            && !self.ghost.symplectic_drift.is_empty()
+        {
             datasets.push((
                 "Symplectic Relative Energy Error (%)".to_string(),
                 self.ghost.symplectic_drift.clone(),
@@ -54,7 +57,10 @@ impl HamiltonianChaosLab {
                 });
             }
         }
-        if self.show_rk4_ghost && !self.ghost.section_points.is_empty() {
+        if self.show_rk4_ghost
+            && self.model != HamiltonianModelKind::ChirikovStandardMap
+            && !self.ghost.section_points.is_empty()
+        {
             prims.push(ExportPrimitive::Points {
                 name: "RungeKutta4 Ghost Drift".to_string(),
                 points: egui_plot::SharedPoints::from_slice(&self.ghost.section_points),
@@ -99,7 +105,8 @@ impl HamiltonianChaosLab {
                     }
                 }
             }
-            HamiltonianModelKind::FigureEightThreeBody => return Vec::new(),
+            HamiltonianModelKind::FigureEightThreeBody
+            | HamiltonianModelKind::ChirikovStandardMap => return Vec::new(),
         }
         lower.reverse();
         upper.extend(lower);

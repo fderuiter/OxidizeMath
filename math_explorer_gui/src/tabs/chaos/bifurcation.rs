@@ -5,8 +5,8 @@ use crate::async_sim::BackgroundWorker;
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use egui_plot::PlotPoint;
-use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
-use std::collections::{BTreeMap, HashMap};
+use scientific_metadata::theory::TheoryDescribable;
+use std::collections::BTreeMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, RwLock};
 
@@ -49,6 +49,7 @@ pub(crate) const CUSTOM_BURN_IN: usize = 200;
 pub(crate) const CUSTOM_ORBIT_SAMPLES: usize = 100;
 pub(crate) const CUSTOM_ESCAPE_GUARD: f64 = 1e6;
 pub(crate) const CUSTOM_R_BOUND: f64 = 20.0;
+pub(crate) const MAX_STEPS: usize = 2000;
 
 /// Map family evaluated by [`BifurcationDiagram`].
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -97,14 +98,20 @@ fn default_bifurcation_input_bar() -> MathExpressionInputBar {
 pub struct BifurcationDiagram {
     /// Active 1D map family (`Logistic` or `Custom` bytecode expression).
     pub map_mode: BifurcationMapMode,
-    pub(crate) r_min: f64,
-    pub(crate) r_max: f64,
-    pub(crate) steps: usize,
+    /// Lower bound of the swept control parameter `r`.
+    pub r_min: f64,
+    /// Upper bound of the swept control parameter `r`.
+    pub r_max: f64,
+    /// Number of horizontal `r` grid subdivisions across `[r_min, r_max]`.
+    pub steps: usize,
     /// Active growth rate `r` tracked by pointer hover, click pin, keyboard stepping, or audio sweep.
     pub selected_r: f64,
-    pub(crate) probe_r: f64,
+    /// Synchronized probe parameter `r` for live orbit and Lyapunov inspection.
+    pub probe_r: f64,
     /// Initial state `x_0` used for orbit, cobweb, and Lyapunov evaluation.
     pub x0: f64,
+    /// Whether the maximal Lyapunov exponent $\lambda(r)$ curve is overlaid on the main bifurcation plot.
+    pub show_lyapunov: bool,
     /// Whether `selected_r` is pinned against pointer hover updates.
     pub r_pinned: bool,
     pub(crate) r_from_hover: bool,
@@ -168,6 +175,7 @@ impl Default for BifurcationDiagram {
             selected_r,
             probe_r: selected_r,
             x0: DEFAULT_X0,
+            show_lyapunov: false,
             r_pinned: false,
             r_from_hover: false,
             orbit_x: DEFAULT_X0,
@@ -213,14 +221,39 @@ impl BifurcationDiagram {
         }
     }
 
+    /// Evaluates the maximal Lyapunov exponent $\lambda(r)$ at the active `probe_r` / `selected_r`.
+    #[must_use]
+    pub fn probe_lyapunov(&self) -> Option<f64> {
+        let active_r = if (self.probe_r - self.selected_r).abs() > 1e-12 {
+            self.probe_r
+        } else {
+            self.selected_r
+        };
+        match self.map_mode {
+            BifurcationMapMode::Logistic => {
+                let seed = if (self.x0 - 0.5).abs() < 1e-9 {
+                    DEFAULT_X0
+                } else {
+                    self.x0
+                };
+                runner::burned_logistic_lyapunov(active_r, seed, 240)
+            }
+            BifurcationMapMode::Custom => {
+                let job = CompiledMap1DJob::from_bar(&self.math_input);
+                job.lyapunov(
+                    active_r,
+                    self.x0,
+                    None,
+                    CUSTOM_BURN_IN,
+                    CUSTOM_ORBIT_SAMPLES,
+                )
+            }
+        }
+    }
+
     pub(crate) fn reset_live_orbit(&mut self) {
         self.selected_r = self.probe_r;
         self.recompute_coupled_views();
-    }
-
-    #[cfg(test)]
-    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn build_state_json(&self, include_hover_r: bool) -> Option<String> {
@@ -252,46 +285,11 @@ impl BifurcationDiagram {
             use_custom_map: false,
             custom_expr,
             custom_params,
+            show_lyapunov: self.show_lyapunov,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
-    }
-}
-
-impl TheoryDescribable for BifurcationDiagram {
-    fn theory_description(&self) -> String {
-        match self.map_mode {
-            BifurcationMapMode::Logistic => format!(
-                "Logistic map bifurcation diagram, r range: {:.2} to {:.2}, selected r: {:.3}",
-                self.r_min, self.r_max, self.selected_r
-            ),
-            BifurcationMapMode::Custom => format!(
-                "Custom 1D map bifurcation x_{{n+1}} = {}, r range: {:.2} to {:.2}, selected r: {:.3}",
-                self.math_input.raw_text, self.r_min, self.r_max, self.selected_r
-            ),
-        }
-    }
-
-    fn phonetic_description(&self) -> String {
-        self.theory_description()
-    }
-
-    fn theory_citation(&self) -> String {
-        "May, R. M. (1976). Simple mathematical models with very complicated dynamics. Nature, 261(5560), 459-467; Feigenbaum, M. J. (1978). Quantitative universality for a class of nonlinear transformations. Journal of Statistical Physics, 19(1), 25-52.".to_string()
-    }
-
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert(
-            "default".to_string(),
-            "Logistic map bifurcation diagram".to_string(),
-        );
-        map
-    }
-
-    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        self.build_theory_parameters()
     }
 }
 
@@ -306,6 +304,10 @@ impl InteractiveTool for BifurcationDiagram {
 
     fn domain(&self) -> &'static str {
         "chaos"
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
     }
 
     fn step_simulation(&mut self) {
@@ -331,7 +333,7 @@ impl InteractiveTool for BifurcationDiagram {
             && r_bounds.contains(&self.r_min)
             && r_bounds.contains(&self.r_max)
             && self.r_min < self.r_max
-            && (100..=2000).contains(&self.steps)
+            && (100..=MAX_STEPS).contains(&self.steps)
             && self.selected_r.is_finite()
             && r_bounds.contains(&self.selected_r)
             && self.x0.is_finite()
@@ -359,7 +361,7 @@ impl InteractiveTool for BifurcationDiagram {
         } else {
             4.0
         };
-        self.steps = self.steps.clamp(100, 2000);
+        self.steps = self.steps.clamp(100, MAX_STEPS);
         self.selected_r = if self.selected_r.is_finite() {
             self.selected_r.clamp(self.r_min, self.r_max)
         } else {
@@ -395,6 +397,7 @@ impl InteractiveTool for BifurcationDiagram {
             selected_r: sel_r,
             probe_r: sel_r,
             x0,
+            show_lyapunov: s.show_lyapunov,
             r_pinned: s.r_pinned,
             ..Self::default()
         };
@@ -443,27 +446,7 @@ impl InteractiveTool for BifurcationDiagram {
     }
 }
 
-// [cite:algorithmic_information_rust]
 // [cite:chaos_theory]
-
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "BifurcationDiagram",
-        display_name: "Bifurcation Diagram",
-        domain: "chaos",
-        tags: &[
-            "logistic map",
-            "period doubling",
-            "feigenbaum",
-            "orbit diagram",
-            "lyapunov",
-            "cobweb",
-            "bifurcation",
-            "chaos",
-        ],
-        build: || Box::new(BifurcationDiagram::default()),
-    }
-}
 
 #[cfg(test)]
 #[path = "bifurcation/tests.rs"]

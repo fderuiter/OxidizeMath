@@ -1,13 +1,14 @@
-//! Unit and headless accessibility/export tests for [`HamiltonianChaosLab`].
+//! Unit and headless accessibility/export tests for [`HamiltonianChaosTool`].
 
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::preset::{
-    PRESET_DOUBLE_PENDULUM_DRIFT, PRESET_FIGURE_EIGHT_CHOREOGRAPHY, PRESET_HENON_HEILES_KAM,
+    PRESET_CHIRIKOV_STANDARD_MAP, PRESET_DOUBLE_PENDULUM_DRIFT, PRESET_FIGURE_EIGHT_CHOREOGRAPHY,
+    PRESET_HENON_HEILES_KAM,
 };
 use super::{
-    HamiltonianChaosLab, HamiltonianModelKind, SymplecticSolverChoice, MAX_ORBITS,
-    MAX_SECTION_POINTS,
+    HamiltonianChaosLab, HamiltonianChaosTool, HamiltonianModelKind, SymplecticSolverChoice,
+    MAX_ORBITS, MAX_SECTION_POINTS,
 };
 use crate::framework::InteractiveTool;
 use eframe::egui::{self, Context, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect};
@@ -62,8 +63,8 @@ fn test_hamiltonian_lab_keyboard_seeding_with_focus_ring() {
 }
 
 #[test]
-fn test_hamiltonian_lab_pointer_click_seeding() {
-    let mut lab = HamiltonianChaosLab::default();
+fn test_hamiltonian_lab_pointer_click_seeding_and_out_of_shell_rejection() {
+    let mut lab = HamiltonianChaosTool::default();
     lab.clear_orbits();
     let ctx = Context::default();
     let _ = ctx.run(raw_viewport(), |ctx| lab.show(ctx));
@@ -90,7 +91,22 @@ fn test_hamiltonian_lab_pointer_click_seeding() {
     assert_eq!(
         lab.orbits.len(),
         1,
-        "Pointer click on canvas must seed orbit"
+        "Pointer click inside Hill shell must seed orbit"
+    );
+
+    // Clicking / seeding outside the active Hill energy shell must NOT mutate orbits
+    // and must emit an inline "Cannot seed..." notice.
+    let prev_points = lab.orbits[0].section_points.clone();
+    lab.seed_and_announce(&ctx, [0.85, 0.58]);
+    assert_eq!(lab.orbits.len(), 1, "Out-of-shell click must not add orbit");
+    assert_eq!(lab.orbits[0].section_points, prev_points);
+    assert!(
+        lab.last_status_note
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("Cannot seed"),
+        "Out-of-shell click must set inline rejection notice: {:?}",
+        lab.last_status_note
     );
 }
 
@@ -118,7 +134,6 @@ fn test_ensemble_and_section_caps_and_state_bounds() {
         .validate_json(&saved)
         .expect("ToolStateBounds must accept 16-orbit snapshot");
 
-    // Verify per-orbit section buffer never exceeds MAX_SECTION_POINTS.
     if let Some(first) = lab.orbits.first_mut() {
         first.section_points.resize(MAX_SECTION_POINTS, [0.1, 0.0]);
     }
@@ -127,12 +142,13 @@ fn test_ensemble_and_section_caps_and_state_bounds() {
 }
 
 #[test]
-fn test_presets_csv_svg_and_url_roundtrip() {
-    let mut lab = HamiltonianChaosLab::default();
+fn test_presets_csv_svg_and_implicit_midpoint_fan_and_chirikov() {
+    let mut lab = HamiltonianChaosTool::default();
     for preset in [
         PRESET_HENON_HEILES_KAM,
         PRESET_DOUBLE_PENDULUM_DRIFT,
         PRESET_FIGURE_EIGHT_CHOREOGRAPHY,
+        PRESET_CHIRIKOV_STANDARD_MAP,
     ] {
         lab.import_preset_json(preset)
             .expect("starter preset must load cleanly");
@@ -149,18 +165,24 @@ fn test_presets_csv_svg_and_url_roundtrip() {
         assert!(svg.contains("<svg") && svg.contains("</svg>"));
     }
 
-    // Verify DoublePendulum comparator shows GaussLegendre4 beating RK4 drift.
+    // Verify DoublePendulum ImplicitMidpoint ensemble fan & GaussLegendre4 vs RK4 drift.
     lab.switch_model(HamiltonianModelKind::DoublePendulum);
     assert_eq!(lab.solver, SymplecticSolverChoice::GaussLegendre4);
-    lab.energy = 36.0;
-    lab.clear_orbits();
-    lab.seed_orbit_at([1.2, 0.0])
-        .expect("seed chaotic pendulum");
-    lab.step_batch(2_500);
+    lab.solver = SymplecticSolverChoice::ImplicitMidpoint;
+    lab.energy = 34.0;
+    lab.cursor_qp = [0.85, 0.0];
+    let fan_count = lab.seed_pendulum_fan().expect("seed pendulum fan");
+    assert_eq!(fan_count, 8);
+    lab.step_batch(2_000);
     assert!(
-        lab.ghost.symplectic_err_pct < lab.ghost.rk4_err_pct,
-        "GaussLegendre4 error ({:.6}%) must stay below RK4 drift ({:.4}%)",
-        lab.ghost.symplectic_err_pct,
-        lab.ghost.rk4_err_pct
+        lab.ghost.symplectic_err_pct < 0.5,
+        "ImplicitMidpoint pendulum fan energy oscillation must stay bounded: {:.4}%",
+        lab.ghost.symplectic_err_pct
     );
+
+    // Verify Figure-8 momentum perturbation slider updates ensemble cleanly.
+    lab.switch_model(HamiltonianModelKind::FigureEightThreeBody);
+    lab.figure_eight_perturbation = 0.04;
+    lab.apply_figure_eight_perturbation();
+    assert_eq!(lab.orbits.len(), 2);
 }

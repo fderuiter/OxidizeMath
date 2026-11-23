@@ -1,6 +1,7 @@
-//! Symplectic Hamiltonian Chaos and Poincaré Section Lab (`HamiltonianChaosLab`).
+//! Symplectic Hamiltonian Chaos and Poincaré Section Tool (`HamiltonianChaosTool`).
 //!
-//! Combines zero-allocation symplectic integrators (`StormerVerlet`, `Yoshida4`, `GaussLegendre4`)
+//! Combines zero-allocation symplectic integrators (`StormerVerlet`, `Yoshida4`,
+//! `ImplicitMidpoint`, `GaussLegendre4`) and area-preserving maps (`ChirikovStandardMap`)
 //! with cubic-Hermite Poincaré surface-of-section detection across `HenonHeiles`,
 //! `DoublePendulum`, and planar 3-body Figure-8 choreographies, alongside a live explicit
 //! `RungeKutta4` energy-drift comparator.
@@ -11,18 +12,21 @@
 
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolMetadata};
 use eframe::egui;
-use math_explorer::physics::astrophysics::nbody::FigureEightThreeBody;
-use math_explorer::physics::chaos::{
-    double_pendulum::DoublePendulum, henon_heiles::HenonHeiles, poincare::PoincareSection,
+use math_explorer::physics::chaos::hamiltonian::{
+    ChirikovStandardMap, DoublePendulum, FigureEightThreeBody, HenonHeiles, PoincareSection,
+    CRITICAL_K_GREENE,
 };
 use math_explorer::pure_math::analysis::ode::{
-    ArrayState, GaussLegendre4, RungeKutta4, StormerVerlet, SymplecticMethod, Yoshida4,
+    ArrayState, GaussLegendre4, ImplicitMidpoint, RungeKutta4, StormerVerlet, SymplecticMethod,
+    Yoshida4,
 };
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 #[path = "hamiltonian/canvas.rs"]
 mod canvas;
+#[path = "hamiltonian/ensemble.rs"]
+mod ensemble;
 #[path = "hamiltonian/export.rs"]
 mod export;
 #[path = "hamiltonian/ghost.rs"]
@@ -56,7 +60,7 @@ pub const MAX_TRAIL_POINTS: usize = 240;
 /// Per-frame wall-clock integration budget in milliseconds (sustains 60 FPS on desktop & WASM).
 pub const FRAME_BUDGET_MS: f64 = 8.0;
 
-/// Conservative Hamiltonian benchmark system selectable in [`HamiltonianChaosLab`].
+/// Conservative Hamiltonian benchmark system selectable in [`HamiltonianChaosTool`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum HamiltonianModelKind {
     /// Separable 2-DOF Hénon-Heiles galactic potential exhibiting KAM stability islands and chaos.
@@ -65,6 +69,8 @@ pub enum HamiltonianModelKind {
     DoublePendulum,
     /// Planar 3-body gravitational Chenciner-Montgomery Figure-8 choreography (`ArrayState<12>`).
     FigureEightThreeBody,
+    /// Discrete 2D area-preserving Chirikov-Taylor standard map on $[0, 2\pi)^2$.
+    ChirikovStandardMap,
 }
 
 impl HamiltonianModelKind {
@@ -75,6 +81,7 @@ impl HamiltonianModelKind {
             Self::HenonHeiles => "Hénon-Heiles (KAM Islands)",
             Self::DoublePendulum => "Double Pendulum (Non-Separable)",
             Self::FigureEightThreeBody => "3-Body Figure-8 Choreography",
+            Self::ChirikovStandardMap => "Chirikov Standard Map (Area-Preserving)",
         }
     }
 
@@ -85,17 +92,20 @@ impl HamiltonianModelKind {
             Self::HenonHeiles => ("q₂", "p₂"),
             Self::DoublePendulum => ("θ₂ (rad)", "p₂"),
             Self::FigureEightThreeBody => ("x₁", "p_x₁"),
+            Self::ChirikovStandardMap => ("θ (rad)", "p (rad)"),
         }
     }
 }
 
-/// Serializable symplectic integrator selector for [`HamiltonianChaosLab`].
+/// Serializable symplectic integrator selector for [`HamiltonianChaosTool`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SymplecticSolverChoice {
     /// Second-order velocity Störmer-Verlet splitting.
     StormerVerlet,
     /// Fourth-order Yoshida symmetric triple-jump composition.
     Yoshida4,
+    /// Second-order 1-stage implicit midpoint symplectic Runge-Kutta.
+    ImplicitMidpoint,
     /// Fourth-order 2-stage implicit Gauss-Legendre Runge-Kutta.
     GaussLegendre4,
 }
@@ -107,6 +117,7 @@ impl SymplecticSolverChoice {
         match self {
             Self::StormerVerlet => "Störmer-Verlet (2nd Order)",
             Self::Yoshida4 => "Yoshida 4th Order",
+            Self::ImplicitMidpoint => "Implicit Midpoint (2nd Order Symplectic)",
             Self::GaussLegendre4 => "Gauss-Legendre 4th Order (Implicit)",
         }
     }
@@ -117,8 +128,15 @@ impl SymplecticSolverChoice {
         match self {
             Self::StormerVerlet => SymplecticMethod::StormerVerlet,
             Self::Yoshida4 => SymplecticMethod::Yoshida4,
+            Self::ImplicitMidpoint => SymplecticMethod::ImplicitMidpoint,
             Self::GaussLegendre4 => SymplecticMethod::GaussLegendre4,
         }
+    }
+
+    /// Returns `true` if this integrator supports non-separable Hamiltonians $H(q, p)$.
+    #[must_use]
+    pub const fn supports_nonseparable(self) -> bool {
+        matches!(self, Self::ImplicitMidpoint | Self::GaussLegendre4)
     }
 }
 
@@ -149,10 +167,11 @@ pub struct OrbitSlot {
     pub seed_qp: [f64; 2],
     /// Palette series index for consistent coloring across canvas and plots.
     pub color_index: usize,
-    /// Exact initial Hamiltonian energy $H_0$.
+    /// Exact initial Hamiltonian energy $H_0$ (or `1.0` area invariant for maps).
     pub initial_energy: f64,
     /// Latest relative symplectic energy error $|\Delta H / H_0| \times 100$.
     pub last_rel_err_pct: f64,
+    pub(crate) map_state: ArrayState<2>,
     pub(crate) state4: ArrayState<4>,
     pub(crate) prev4: ArrayState<4>,
     pub(crate) deriv4: ArrayState<4>,
@@ -198,8 +217,8 @@ pub struct GhostComparator {
     pub rk4_err_pct: f64,
 }
 
-/// Interactive Symplectic Hamiltonian Chaos & Poincaré Section Lab.
-pub struct HamiltonianChaosLab {
+/// Interactive Symplectic Hamiltonian Chaos & Poincaré Section Tool.
+pub struct HamiltonianChaosTool {
     /// Active conservative Hamiltonian model.
     pub model: HamiltonianModelKind,
     /// Selected symplectic integrator.
@@ -210,6 +229,12 @@ pub struct HamiltonianChaosLab {
     pub dt: f64,
     /// Target Hamiltonian energy shell $E$ (for 2-DOF section seeding).
     pub energy: f64,
+    /// Chirikov standard map kick strength $K \in [0, 5]$.
+    pub chirikov_k: f64,
+    /// Angular spread $\Delta \theta_2$ (rad) for double-pendulum ensemble fan launches.
+    pub pendulum_fan_spread: f64,
+    /// Zero-momentum perturbation $\delta p_x$ for the 3-body Figure-8 choreography.
+    pub figure_eight_perturbation: f64,
     /// Number of integration sub-steps executed per UI frame.
     pub steps_per_frame: usize,
     /// Whether the explicit `RungeKutta4` comparator twin is enabled.
@@ -232,19 +257,26 @@ pub struct HamiltonianChaosLab {
     pub(crate) henon: HenonHeiles,
     pub(crate) pendulum: DoublePendulum,
     pub(crate) three_body: FigureEightThreeBody,
+    pub(crate) chirikov: ChirikovStandardMap,
     pub(crate) verlet2: StormerVerlet<ArrayState<2>>,
     pub(crate) yoshida2: Yoshida4<ArrayState<2>>,
     pub(crate) verlet6: StormerVerlet<ArrayState<6>>,
     pub(crate) yoshida6: Yoshida4<ArrayState<6>>,
+    pub(crate) midpoint4: ImplicitMidpoint<ArrayState<4>>,
     pub(crate) gl4_4: GaussLegendre4<ArrayState<4>>,
     pub(crate) rk4_4: RungeKutta4<ArrayState<4>>,
+    pub(crate) midpoint12: ImplicitMidpoint<ArrayState<12>>,
     pub(crate) gl4_12: GaussLegendre4<ArrayState<12>>,
     pub(crate) rk4_12: RungeKutta4<ArrayState<12>>,
     pub(crate) poincare4: PoincareSection<4>,
     pub(crate) poincare12: PoincareSection<12>,
 }
 
-impl Default for HamiltonianChaosLab {
+/// Backwards-compatible test alias for [`HamiltonianChaosTool`].
+#[cfg(test)]
+pub type HamiltonianChaosLab = HamiltonianChaosTool;
+
+impl Default for HamiltonianChaosTool {
     fn default() -> Self {
         let z2 = ArrayState::<2>::zeros();
         let z4 = ArrayState::<4>::zeros();
@@ -256,6 +288,9 @@ impl Default for HamiltonianChaosLab {
             comparator_view: ComparatorView::EnergyDrift,
             dt: 0.015,
             energy: 0.125,
+            chirikov_k: CRITICAL_K_GREENE,
+            pendulum_fan_spread: 0.015,
+            figure_eight_perturbation: 0.0,
             steps_per_frame: 32,
             show_rk4_ghost: true,
             is_playing: false,
@@ -270,12 +305,15 @@ impl Default for HamiltonianChaosLab {
             henon: HenonHeiles::default(),
             pendulum: DoublePendulum::default(),
             three_body: FigureEightThreeBody::default(),
+            chirikov: ChirikovStandardMap::new(CRITICAL_K_GREENE),
             verlet2: StormerVerlet::new(&z2),
             yoshida2: Yoshida4::new(&z2),
             verlet6: StormerVerlet::new(&z6),
             yoshida6: Yoshida4::new(&z6),
+            midpoint4: ImplicitMidpoint::new(&z4),
             gl4_4: GaussLegendre4::new(&z4),
             rk4_4: RungeKutta4::new(&z4),
+            midpoint12: ImplicitMidpoint::new(&z12),
             gl4_12: GaussLegendre4::new(&z12),
             rk4_12: RungeKutta4::new(&z12),
             poincare4: PoincareSection::<4>::henon_heiles(),
@@ -286,8 +324,14 @@ impl Default for HamiltonianChaosLab {
     }
 }
 
-impl TheoryDescribable for HamiltonianChaosLab {
+impl TheoryDescribable for HamiltonianChaosTool {
     fn theory_description(&self) -> String {
+        if self.model == HamiltonianModelKind::ChirikovStandardMap {
+            return format!(
+                "Chirikov-Taylor area-preserving standard map ($K = {:.4}$, $\\det J = 1$) on $\\mathbb{{T}}^2$, exhibiting KAM torus breakup above Greene's critical golden threshold $K_c \\approx 0.9716$.",
+                self.chirikov_k
+            );
+        }
         format!(
             "Symplectic integration ($dp \\wedge dq$ invariant) on {} using {} ($\\Delta t = {:.4}$, $E = {:.4}$). Explicit Runge-Kutta methods violate Liouville volume preservation on curved energy shells, causing secular drift, whereas symplectic maps preserve a nearby shadow Hamiltonian.",
             self.model.label(),
@@ -307,7 +351,7 @@ impl TheoryDescribable for HamiltonianChaosLab {
     }
 
     fn theory_citation(&self) -> String {
-        "Hairer, E., Lubich, C., & Wanner, G. (2006). Geometric Numerical Integration (2nd ed.). Springer; Yoshida, H. (1990); Hénon, M., & Heiles, C. (1964); Chenciner, A., & Montgomery, R. (2000).".to_string()
+        "Hairer, E., Lubich, C., & Wanner, G. (2006). Geometric Numerical Integration (2nd ed.). Springer; Yoshida, H. (1990); Hénon, M., & Heiles, C. (1964); Chirikov, B. V. (1979); Chenciner, A., & Montgomery, R. (2000).".to_string()
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
@@ -318,20 +362,13 @@ impl TheoryDescribable for HamiltonianChaosLab {
         );
         map.insert(
             "symplectic".to_string(),
-            "Canonical structure-preserving integrators: Störmer-Verlet, 4th-order Yoshida, and 4th-order implicit Gauss-Legendre.".to_string(),
+            "Canonical structure-preserving integrators: Störmer-Verlet, 4th-order Yoshida, Implicit Midpoint, and 4th-order Gauss-Legendre.".to_string(),
         );
         map
     }
 }
 
-impl HamiltonianChaosLab {
-    #[cfg(test)]
-    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-}
-
-impl InteractiveTool for HamiltonianChaosLab {
+impl InteractiveTool for HamiltonianChaosTool {
     fn name(&self) -> &'static str {
         "Hamiltonian Chaos Lab"
     }
@@ -348,9 +385,16 @@ impl InteractiveTool for HamiltonianChaosLab {
         self.state_rev
     }
 
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     fn has_finite_parameters(&self) -> bool {
         self.dt.is_finite()
             && self.energy.is_finite()
+            && self.chirikov_k.is_finite()
+            && self.pendulum_fan_spread.is_finite()
+            && self.figure_eight_perturbation.is_finite()
             && self.cursor_qp[0].is_finite()
             && self.cursor_qp[1].is_finite()
             && self.orbits_are_finite()
@@ -407,10 +451,10 @@ impl InteractiveTool for HamiltonianChaosLab {
 
 inventory::submit! {
     ToolMetadata {
-        id: "HamiltonianChaosLab",
+        id: "HamiltonianChaosTool",
         display_name: "Hamiltonian Chaos Lab",
         domain: "chaos",
-        tags: &["hamiltonian", "symplectic", "poincare", "kam", "pendulum", "nbody"],
-        build: || Box::new(HamiltonianChaosLab::default()),
+        tags: &["hamiltonian", "symplectic", "poincare", "kam", "pendulum", "chirikov", "nbody"],
+        build: || Box::new(HamiltonianChaosTool::default()),
     }
 }

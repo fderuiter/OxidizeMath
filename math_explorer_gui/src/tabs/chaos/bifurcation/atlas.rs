@@ -95,6 +95,8 @@ pub(super) struct BifurcationState {
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub custom_params: std::collections::BTreeMap<String, f64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub show_lyapunov: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub atlas_visible: bool,
     #[serde(
         default = "default_bifurcation_atlas_axes",

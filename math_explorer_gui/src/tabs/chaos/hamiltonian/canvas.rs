@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{HamiltonianChaosLab, MAX_ORBITS};
+use super::{HamiltonianChaosTool, MAX_ORBITS};
 use crate::accessibility::{
     announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
     register_canvas_accessibility, AccessibleHoverText,
@@ -55,7 +55,7 @@ impl PhaseViewport {
     }
 }
 
-impl HamiltonianChaosLab {
+impl HamiltonianChaosTool {
     pub(super) fn render_poincare_canvas(&mut self, ui: &mut egui::Ui, desired_size: Vec2) {
         let (response, painter) = ui.allocate_painter(desired_size, egui::Sense::click_and_drag());
         let _ = response.clone().accessible_hover_text(
@@ -356,5 +356,16 @@ impl HamiltonianChaosLab {
                 235,
             ),
         );
+        if let Some(note) = &self.last_status_note {
+            if note.starts_with("Cannot") {
+                painter.text(
+                    Pos2::new(outer.right() - 10.0, outer.top() + 8.0),
+                    egui::Align2::RIGHT_TOP,
+                    note,
+                    FontId::proportional(11.0),
+                    palette.warning,
+                );
+            }
+        }
     }
 }
