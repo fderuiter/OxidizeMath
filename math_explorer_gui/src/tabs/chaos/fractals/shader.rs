@@ -26,7 +26,13 @@ impl FractalViewer {
         let max_iter = self
             .max_iter
             .clamp(10, math_commons::registry::MAX_ITERATIONS as u32);
-        let is_julia = self.mode == FractalMode::Julia;
+        if self.mode.is_custom() {
+            return Err(
+                "GLSL shader export currently supports standard Mandelbrot and Julia modes"
+                    .to_string(),
+            );
+        }
+        let is_julia = self.mode.uses_julia_c();
 
         let mut out = String::with_capacity(2560);
         write_dialect_header(&mut out, dialect, self.mode);
@@ -54,6 +60,8 @@ fn write_dialect_header(out: &mut String, dialect: ShaderDialect, mode: FractalM
     let family = match mode {
         FractalMode::Mandelbrot => "Mandelbrot",
         FractalMode::Julia => "Julia",
+        FractalMode::CustomMandelbrot => "Custom Mandelbrot",
+        FractalMode::CustomJulia => "Custom Julia",
     };
     writeln!(
         out,
