@@ -185,3 +185,4 @@ fn test_riemann_clenshaw_curtis_error_estimate_and_state_roundtrip() {
     assert!((restored.cc_tolerance - 1e-10).abs() < 1e-15);
     assert!((restored.result - 2.0).abs() < 1e-9);
 }
+

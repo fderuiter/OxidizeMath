@@ -73,9 +73,10 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "UalbfWidget" => &["ualbf_quasiperfect"],
         "EllipticCurvePlayground" => &["modular_polynomials_review"],
         "RadarGatingTool" => &["mmwave_radiotherapy_setup"],
-        "TokenizationTool" | "FactorizationTool" | "FractranMachineTool" => {
-            &["algorithmic_information_rust"]
-        }
+        "TokenizationTool"
+        | "FactorizationTool"
+        | "FractranMachineTool"
+        | "AlgorithmicFractranTool" => &["algorithmic_information_rust"],
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
         _ => &[],
@@ -91,6 +92,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         tokens.push(clean.clone());
     }
     let aliases: &[&str] = match clean.as_str() {
+        "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
         "chaos" => &["chaos_theory"],
         "game_theory" => &["graph_parameters_rust"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],

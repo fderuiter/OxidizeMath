@@ -3,8 +3,8 @@
 use super::analytics::compute_network_analytics;
 use super::{ContainmentMode, NetworkPropagationTool};
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleHoverText,
+    AccessibleHoverText, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use crate::app::SemanticPalette;
 use eframe::egui::{self, Pos2, Vec2};
@@ -89,7 +89,8 @@ impl NetworkPropagationTool {
             .color(palette.muted_text),
         );
 
-        let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click());
+        let (response, painter) =
+            ui.allocate_painter(ui.available_size(), egui::Sense::click());
         let label = "Network Propagation Visualization";
         let _ = response.clone().accessible_hover_text(label);
         let (center, scale) = Self::canvas_scale_and_center(response.rect);
@@ -126,12 +127,14 @@ impl NetworkPropagationTool {
                     node_state_label(self.model.states()[self.focused_node])
                 )
             }
-            ContainmentMode::QuarantineEdge => {
-                self.model.edges().get(self.focused_edge).map_or_else(
+            ContainmentMode::QuarantineEdge => self
+                .model
+                .edges()
+                .get(self.focused_edge)
+                .map_or_else(
                     || "No edges".to_string(),
                     |&[u, v]| format!("Edge {} ({u}-{v})", self.focused_edge),
-                )
-            }
+                ),
             ContainmentMode::VaccinateNode => "None".to_string(),
         };
         format!(
@@ -260,10 +263,7 @@ impl NetworkPropagationTool {
                     let deg = self.model.active_degree(self.focused_node);
                     announce_live_status(
                         ctx,
-                        format!(
-                            "Focused Node {} ({st}, active degree {deg})",
-                            self.focused_node
-                        ),
+                        format!("Focused Node {} ({st}, active degree {deg})", self.focused_node),
                     );
                 }
             }
@@ -278,11 +278,9 @@ impl NetworkPropagationTool {
                         [0.5 * (pu[0] + pv[0]), 0.5 * (pu[1] + pv[1])]
                     })
                     .collect();
-                if let Some(&[u, v]) =
-                    self.model
-                        .edges()
-                        .get(step_spatial_focus(&midpoints, self.focused_edge, dir))
-                {
+                if let Some(&[u, v]) = self.model.edges().get(
+                    step_spatial_focus(&midpoints, self.focused_edge, dir),
+                ) {
                     self.focused_edge = step_spatial_focus(&midpoints, self.focused_edge, dir);
                     let status = if self.model.is_edge_quarantined(u, v) {
                         "quarantined"

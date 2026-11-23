@@ -170,8 +170,8 @@ fn synthesize_mimo_snapshots(
             let t_k = k as f64 * dt;
             let p1 = omega_1 * t_k + phi_1;
             let p2 = omega_2 * t_k + phi_2;
-            let clean =
-                Complex::new(p1.cos(), p1.sin()) * amp_1 + Complex::new(p2.cos(), p2.sin()) * amp_2;
+            let clean = Complex::new(p1.cos(), p1.sin()) * amp_1
+                + Complex::new(p2.cos(), p2.sin()) * amp_2;
             let n_re = (unit_f64(&mut rng) - 0.5) * 2.0 * state.noise_sigma;
             let n_im = (unit_f64(&mut rng) - 0.5) * 2.0 * state.noise_sigma;
             chirp.push(clean + Complex::new(n_re, n_im));

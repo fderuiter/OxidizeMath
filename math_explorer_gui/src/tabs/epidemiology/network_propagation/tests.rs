@@ -137,9 +137,7 @@ fn test_seeded_interventions_url_state_roundtrip() {
     let hash = &share_url[hash_idx..];
 
     let mut dest_app = MathExplorerApp::default();
-    assert!(dest_app
-        .apply_share_location_strings(hash, "", None)
-        .unwrap());
+    assert!(dest_app.apply_share_location_strings(hash, "", None).unwrap());
     let restored = dest_app.tabs[epi_idx]
         .framework()
         .unwrap()
