@@ -140,12 +140,7 @@ impl QTableInspectorTool {
         }
     }
 
-    fn draw_side_panel(
-        &mut self,
-        parent_ui: &mut egui::Ui,
-        ctx: &egui::Context,
-        legend_size: f32,
-    ) {
+    fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context, legend_size: f32) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "q_table_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Training Controls");
@@ -185,10 +180,7 @@ impl QTableInspectorTool {
             }
 
             if ui
-                .add_enabled(
-                    state.is_ready(),
-                    egui::Button::new("▶ Train 1000 Episodes"),
-                )
+                .add_enabled(state.is_ready(), egui::Button::new("▶ Train 1000 Episodes"))
                 .accessible_hover_text("Train the agent for 1000 episodes in the background")
                 .clicked()
             {
@@ -423,7 +415,7 @@ inventory::submit! {
         id: "QTableInspectorTool",
         display_name: "Q-Table Inspector",
         domain: "ai",
-        tags: &[],
+        tags: &["q-learning", "bellman", "temporal difference", "action-value", "reinforcement learning"],
         build: || Box::new(QTableInspectorTool::default()),
     }
 }

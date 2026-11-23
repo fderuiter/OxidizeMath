@@ -9,7 +9,7 @@ inventory::submit! {
         id: "SirTool",
         display_name: "SIR Model",
         domain: "epidemiology",
-        tags: &[],
+        tags: &["sir", "seir", "kermack-mckendrick", "compartmental", "r0", "epidemic"],
         build: || Box::new(SirTool::default()),
     }
 }
@@ -98,3 +98,5 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+// [cite:graph_parameters_rust]
