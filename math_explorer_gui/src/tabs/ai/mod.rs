@@ -5,11 +5,13 @@ use eframe::egui;
 
 pub mod activation_functions;
 pub mod attention_maps;
+pub mod closed_loop_control;
 pub mod gaussian_splatting;
 pub mod grid_world;
 pub mod loss_landscape;
 pub mod q_table_inspector;
 pub mod reward_plots;
+pub mod rl_sculpt;
 pub mod tokenization;
 pub mod training_monitor;
 

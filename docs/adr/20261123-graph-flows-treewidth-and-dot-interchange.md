@@ -28,7 +28,7 @@ Accepted (extends [ADR 0009](0009-reusable-graph-layout-algorithms.md), [ADR 002
 
 ```text
 Updated GUI ExportCapabilities inventory:
-- InteractiveTools: 79 (61 plot + 7 raster + 11 non-figure)
+- InteractiveTools: 87 (68 plot + 8 raster + 11 non-figure)
 ```
 
 ## Consequences
