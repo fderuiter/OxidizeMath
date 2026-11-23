@@ -41,10 +41,16 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph among workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 20 workspace crates:
 
 ```mermaid
 graph TD
+    subgraph Developer_Tooling
+        Xtask[xtask]
+        Verify[unified_verification]
+        MdTests[markdown_tests]
+    end
+
     subgraph UI_Layer
         GUI[math_explorer_gui]
         Plot[egui_plot]
@@ -74,9 +80,13 @@ graph TD
         Diag[diagnostics]
     end
 
+    Xtask -.-> Verify
+    Verify -.-> Explorer & CoreCrate & Meta & Diag
+    MdTests -.-> Explorer & Meta & CoreCrate & Registry
+
     GUI --> Explorer
     GUI --> Plot
-    GUI --> Meta
+    GUI --> Meta & Registry & Diag
     Explorer --> AI & Phys & Bio & App & Clim & Epi
     Explorer --> Pure & Commons
 
@@ -96,11 +106,12 @@ graph TD
     style Explorer fill:#cde,stroke:#333
     style Engine fill:#fed,stroke:#333
     style Clim fill:#dfd,stroke:#333
+    style Verify fill:#eee,stroke:#333
 ```
 
 ## Workspace Crate Catalog
 
-The workspace contains the following member crates:
+The workspace contains all 20 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
