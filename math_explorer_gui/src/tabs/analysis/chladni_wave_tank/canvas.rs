@@ -58,7 +58,11 @@ impl ChladniWaveTankTool {
         );
         crate::accessibility::lock_canvas_arrow_keys(ui, &response);
 
-        self.handle_canvas_input(ui, &response, rect);
+        if self.brush_kit.is_sculpting() {
+            self.handle_sculpt_canvas_input(ui, &response, rect);
+        } else {
+            self.handle_canvas_input(ui, &response, rect);
+        }
 
         if let Some(tex) = &self.texture {
             let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
@@ -70,8 +74,9 @@ impl ChladniWaveTankTool {
             DARK_PALETTE
         };
         self.paint_canvas_overlays(&painter, rect, raster_palette);
+        self.paint_sculpt_reticle(ui, &painter, &response, rect);
         crate::accessibility::paint_canvas_focus_ring(ui, &response);
-        ui.small("Drag to steer driver • Shift+Click to pin clamp • Arrows move • Enter pulses");
+        ui.small("Sculpt / Driver / Pickup modes • Arrows move • Space stamps • Enter pulses");
     }
 
     fn handle_canvas_input(&mut self, ui: &mut egui::Ui, response: &egui::Response, rect: Rect) {
@@ -129,30 +134,35 @@ impl ChladniWaveTankTool {
         {
             return;
         }
-        if let Some(pos) = response.interact_pointer_pos() {
-            let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
-            let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
-            let shift = ctx.input(|i| i.modifiers.shift);
-            if shift
-                && response.clicked()
-                && self.state.custom_clamps.len() < sonification::MAX_CUSTOM_CLAMPS
-            {
-                self.state.custom_clamps.push([nx, ny]);
-                self.rebuild_masks();
-                self.analysis_dirty = true;
-            } else {
-                self.state.driver_x = nx;
-                self.state.driver_y = ny;
-                if response.clicked() {
-                    self.trigger_mallet_pulse(nx, ny, 0.04, 0.65, 0.85);
-                }
+        let Some(pos) = response.interact_pointer_pos() else {
+            return;
+        };
+        let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
+        let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
+        let (shift, alt) = ctx.input(|i| (i.modifiers.shift, i.modifiers.alt));
+        if self.pickup_drag_mode || alt {
+            self.state.pickup_x = nx;
+            self.state.pickup_y = ny;
+            self.analysis_dirty = true;
+        } else if shift
+            && response.clicked()
+            && self.state.custom_clamps.len() < sonification::MAX_CUSTOM_CLAMPS
+        {
+            self.state.custom_clamps.push([nx, ny]);
+            self.rebuild_masks();
+            self.analysis_dirty = true;
+        } else {
+            self.state.driver_x = nx;
+            self.state.driver_y = ny;
+            if response.clicked() {
+                self.trigger_mallet_pulse(nx, ny, 0.04, 0.65, 0.85);
             }
-            self.state_rev = self.state_rev.wrapping_add(1);
         }
+        self.state_rev = self.state_rev.wrapping_add(1);
     }
 
     fn paint_canvas_overlays(&self, painter: &egui::Painter, rect: Rect, palette: SemanticPalette) {
-        let to_screen = |nx: f64, ny: f64| -> Pos2 {
+        let to_screen = |nx: f64, ny: f64| {
             Pos2::new(
                 rect.left() + (nx as f32) * rect.width(),
                 rect.bottom() - (ny as f32) * rect.height(),
@@ -160,7 +170,7 @@ impl ChladniWaveTankTool {
         };
         let inv_grid = 1.0 / (GRID_SIZE as f64);
         let cell_to_screen =
-            |cx: f64, cy: f64| -> Pos2 { to_screen((cx + 0.5) * inv_grid, (cy + 0.5) * inv_grid) };
+            |cx: f64, cy: f64| to_screen((cx + 0.5) * inv_grid, (cy + 0.5) * inv_grid);
 
         if self.state.show_nodal_contours {
             let stroke = Stroke::new(1.35_f32, palette.node_stroke.gamma_multiply(0.88));
@@ -198,12 +208,21 @@ impl ChladniWaveTankTool {
 
         let drv_pos = to_screen(self.state.driver_x, self.state.driver_y);
         painter.circle_stroke(drv_pos, 5.0_f32, Stroke::new(1.8_f32, palette.axis_x));
+        let pkp_pos = to_screen(self.state.pickup_x, self.state.pickup_y);
+        painter.circle_stroke(pkp_pos, 4.5_f32, Stroke::new(1.8_f32, palette.axis_y));
+        painter.circle_filled(pkp_pos, 1.8_f32, palette.axis_y);
     }
 
     fn draw_secondary_analysis_plot(&mut self, ui: &mut egui::Ui) {
         match self.state.secondary_plot {
             SecondaryPlotMode::DetectorCrossSection => self.draw_detector_cross_section_plot(ui),
             SecondaryPlotMode::RadialFftSpectrum => self.draw_radial_fft_plot(ui),
+            SecondaryPlotMode::PhononDispersion => {
+                #[cfg(feature = "physics")]
+                self.draw_phonon_dispersion_plot(ui);
+                #[cfg(not(feature = "physics"))]
+                self.draw_radial_fft_plot(ui);
+            }
         }
     }
 
@@ -333,16 +352,11 @@ impl ChladniWaveTankTool {
             for (i, &[p0, p1]) in self.contours.segments().iter().take(1_500).enumerate() {
                 if p0[0].is_finite() && p0[1].is_finite() && p1[0].is_finite() && p1[1].is_finite()
                 {
+                    let name = if i == 0 { "Nodal Contours" } else { "" }.into();
+                    let seg = [[p0[0] + 0.5, p0[1] + 0.5], [p1[0] + 0.5, p1[1] + 0.5]];
                     prims.push(ExportPrimitive::Polyline {
-                        name: if i == 0 {
-                            "Nodal Contours".into()
-                        } else {
-                            String::new()
-                        },
-                        points: egui_plot::SharedPoints::from_slice(&[
-                            [p0[0] + 0.5, p0[1] + 0.5],
-                            [p1[0] + 0.5, p1[1] + 0.5],
-                        ]),
+                        name,
+                        points: egui_plot::SharedPoints::from_slice(&seg),
                         color: DARK_PALETTE.node_stroke,
                         stroke_width: 1.2,
                         closed: false,
@@ -388,18 +402,12 @@ impl ChladniWaveTankTool {
     }
 
     pub(super) fn build_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let det_series: Vec<[f64; 2]> = self
-            .detector_buf
-            .iter()
-            .enumerate()
-            .map(|(y, &v)| [y as f64, if v.is_finite() { v } else { 0.0 }])
-            .collect();
-        let fft_series: Vec<[f64; 2]> = self
-            .radial_spectrum
-            .iter()
-            .enumerate()
-            .map(|(k, &v)| [k as f64, if v.is_finite() { v } else { 0.0 }])
-            .collect();
+        let finite_pairs = |vals: &[f64]| -> Vec<[f64; 2]> {
+            vals.iter()
+                .enumerate()
+                .map(|(i, &v)| [i as f64, if v.is_finite() { v } else { 0.0 }])
+                .collect()
+        };
         let mid_y = GRID_SIZE / 2;
         let disp = self.solver.displacement();
         let wave_slice: Vec<[f64; 2]> = (0..GRID_SIZE)
@@ -408,10 +416,15 @@ impl ChladniWaveTankTool {
                 [x as f64, if v.is_finite() { v } else { 0.0 }]
             })
             .collect();
-
         vec![
-            ("detector_intensity".into(), det_series),
-            ("radial_fft_spectrum".into(), fft_series),
+            (
+                "detector_intensity".into(),
+                finite_pairs(&self.detector_buf),
+            ),
+            (
+                "radial_fft_spectrum".into(),
+                finite_pairs(&self.radial_spectrum),
+            ),
             ("centerline_wave_profile".into(), wave_slice),
         ]
     }
@@ -459,16 +472,16 @@ fn populate_field_pixels(
                     ensure_dark_canvas_contrast(heatmap_color_high_contrast(t))
                 }
             };
-            let speed_scale = solver.wave_speed_mask[src_idx];
-            if (speed_scale - 1.0).abs() > 1.0e-3 {
-                out_pixels[dst_idx] = Color32::from_rgb(
-                    rgb[0].saturating_add(18),
-                    rgb[1].saturating_add(34),
-                    rgb[2].saturating_add(52),
-                );
-            } else {
-                out_pixels[dst_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
-            }
+            let (dr, dg, db) = match solver.wave_speed_mask[src_idx] {
+                s if s > 1.02 => (44, 30, 8),
+                s if s < 0.98 => (16, 36, 56),
+                _ => (0, 0, 0),
+            };
+            out_pixels[dst_idx] = Color32::from_rgb(
+                rgb[0].saturating_add(dr),
+                rgb[1].saturating_add(dg),
+                rgb[2].saturating_add(db),
+            );
         }
     }
 }

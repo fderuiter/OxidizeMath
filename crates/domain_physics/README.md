@@ -18,7 +18,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
 - **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
 - **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, and zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`).
-- **`optics`**: Zero-allocation geometric & physical optics (`refraction`, `ray_tracing`, `caustics`, `diffraction`, `sensing`), covering Snell/Fresnel polarization, Cauchy dispersion, RK4 eikonal GRIN metamaterials (Luneburg, Maxwell fisheye, Eaton, parabolic waveguide), coffee-cup nephroid & spherical-aberration caustics, and Fraunhofer single-slit, grating, and circular Airy diffraction (complemented by full-field 2D time-domain multi-slit and refractive-lens wave tank simulation in `pure_math::analysis::pde::wave_2d`).
+- **`optics`**: Zero-allocation geometric & physical optics (`refraction`, `ray_tracing`, `caustics`, `diffraction`, `sensing`), covering Snell/Fresnel polarization, Cauchy dispersion, negative-index Veselago metamaterials, RK4 Hamiltonian & eikonal GRIN lenses (Luneburg, Maxwell fish-eye, Eaton, parabolic waveguide), coffee-cup nephroid & spherical-aberration caustics, Fraunhofer single-slit, grating, and circular Airy diffraction, and calibrated optical detector models (complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`).
 
 ---
 
