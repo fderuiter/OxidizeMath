@@ -1,8 +1,50 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{MathExplorerApp, ViewportLayout};
+use super::{MathExplorerApp, SplitLayoutMode, ViewportLayout};
 
 impl MathExplorerApp {
+    /// Swaps the primary and secondary pane active tabs and their per-pane states immediately.
+    pub fn swap_panes(&mut self) {
+        self.swap_pane_pair(0, 1);
+    }
+
+    /// Sets the assigned tab index for a specific pane.
+    pub fn set_pane_tab(&mut self, pane_idx: usize, tab_idx: usize) {
+        if pane_idx < self.pane_tabs.len() && tab_idx < self.tabs.len() {
+            self.pane_tabs[pane_idx] = tab_idx;
+            if pane_idx == 0 {
+                self.selected_tab = tab_idx;
+            } else if pane_idx == 1 {
+                self.secondary_tab = tab_idx;
+            }
+            self.on_pane_tab_assigned(pane_idx, tab_idx);
+        }
+    }
+
+    /// Sets the authoritative viewport layout preset and synchronizes legacy layout mode.
+    pub fn set_layout(&mut self, layout: ViewportLayout) {
+        self.seed_uninitialized_panes_on_initial_split(layout);
+        self.viewport_layout = layout;
+        self.sync_layout();
+        if !self.pane_tabs.is_empty() {
+            self.pane_tabs[0] = self.selected_tab;
+        }
+        if layout != ViewportLayout::Single && self.pane_tabs.len() > 1 {
+            self.pane_tabs[1] = self.secondary_tab;
+        }
+        self.prune_inactive_pane_slots(layout.pane_count());
+    }
+
+    /// Synchronizes legacy `split_layout_mode` with current `viewport_layout`.
+    pub fn sync_layout(&mut self) {
+        self.split_layout_mode = match self.viewport_layout {
+            ViewportLayout::Single => SplitLayoutMode::Single,
+            ViewportLayout::SplitHorizontal => SplitLayoutMode::Horizontal,
+            ViewportLayout::SplitVertical => SplitLayoutMode::Vertical,
+            ViewportLayout::QuadGrid => SplitLayoutMode::Single,
+        };
+    }
+
     /// Swaps the assigned simulation modules and per-pane runtime states between `pane_a` and `pane_b`.
     pub fn swap_pane_pair(&mut self, pane_a: usize, pane_b: usize) {
         if pane_a >= 4 || pane_b >= 4 || pane_a == pane_b || self.tabs.is_empty() {

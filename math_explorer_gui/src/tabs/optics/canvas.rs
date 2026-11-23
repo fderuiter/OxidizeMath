@@ -65,7 +65,6 @@ impl FourierOpticsWorkbenchTool {
             Some(&summary),
         );
         crate::accessibility::lock_canvas_arrow_keys(ui, &response);
-        self.focused_canvas = response.has_focus().then_some(response.id);
 
         self.handle_viewport_interactions(ui, &response, rect);
 
