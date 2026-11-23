@@ -3,8 +3,12 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{MathExplorerApp, ViewportLayout};
-use crate::url_state::{ShareUrlParams, UrlStateSignature, URL_SYNC_DEBOUNCE_MS};
+use super::MathExplorerApp;
+use crate::url_state::{
+    install_browser_history_listeners, is_browser_location_self_synced,
+    parse_workspace_or_share_location, read_browser_location_parts, UrlStateSignature,
+    URL_SYNC_DEBOUNCE_MS,
+};
 use eframe::egui;
 use federated_registry::Severity;
 use std::time::Duration;
@@ -12,53 +16,25 @@ use std::time::Duration;
 const APP_SHARE_CLIPBOARD_ID: &str = "app_share_clipboard_status";
 
 impl MathExplorerApp {
-    fn active_share_tab(&self) -> Option<(usize, &dyn crate::tabs::ExplorerTab)> {
-        let pane = self.active_focused_pane();
-        let tab_idx = self.focused_tab_index();
-        let tab = self
-            .pane_tab(pane)
-            .or_else(|| self.tabs.get(tab_idx).map(Box::as_ref))?;
-        Some((tab_idx, tab))
-    }
-
-    /// Captures the O(1) shareable URL signature for the active focused simulation pane.
+    /// Captures the O(1) shareable URL signature for the active single-pane or multi-pane workspace.
     #[must_use]
     pub fn current_url_signature(&self) -> UrlStateSignature {
-        if let Some((selected_tab, tab)) = self.active_share_tab() {
-            UrlStateSignature {
-                selected_tab,
-                active_tool_id: tab.active_tool_id(),
-                state_revision: tab.url_state_revision(),
-            }
-        } else {
-            UrlStateSignature {
-                selected_tab: self.selected_tab,
-                active_tool_id: None,
-                state_revision: 0,
-            }
-        }
+        self.capture_workspace_url_signature()
     }
 
-    /// Encodes the active focused simulation pane's state as a `#tab=...` URL fragment.
+    /// Encodes the active workspace (`#tab=...` for <= 4 KiB single panes, `#ws=...` for multi-pane
+    /// or larger single-pane states up to 32 KiB).
     pub fn encode_current_share_fragment(&self) -> Result<String, String> {
-        let (_, tab) = self
-            .active_share_tab()
-            .ok_or_else(|| "No active simulation tab selected".to_string())?;
-        let preset_json = tab.export_url_preset_json()?;
-        crate::url_state::encode_share_fragment(
-            tab.url_slug(),
-            tab.active_tool_id(),
-            preset_json.as_deref(),
-        )
+        self.encode_workspace_or_single_fragment()
     }
 
-    /// Encodes a full shareable web URL (`https://...#tab=...`) for the primary simulation tab.
+    /// Encodes a full shareable web URL (`https://...#tab=...` or `https://...#ws=...`) for the workspace.
     pub fn encode_current_share_url(&self) -> Result<String, String> {
         let fragment = self.encode_current_share_fragment()?;
         Ok(crate::url_state::build_share_url_from_fragment(&fragment))
     }
 
-    /// Copies a shareable web simulation link for the active primary tab to the clipboard.
+    /// Copies a shareable web URL for the active workspace to the clipboard.
     pub fn copy_current_share_link(&mut self, ctx: &egui::Context) {
         match self.encode_current_share_url() {
             Ok(url) => {
@@ -98,24 +74,56 @@ impl MathExplorerApp {
         }
     }
 
-    /// Reads `window.location.hash` / `window.location.search` on startup after `cc.storage`
-    /// restoration so shared links override the active view while preserving other cached tabs.
-    pub(super) fn hydrate_from_browser_url(&mut self, ctx: &egui::Context) {
-        if let Some((hash, search)) = crate::url_state::read_browser_location_parts() {
-            let _ = self.apply_share_location_strings(&hash, &search, Some(ctx));
+    /// Hydrates from `window.location.hash` / `window.location.search` on startup:
+    /// - Keeps the `WorkspaceEnvelope` + undo stack restored from `localStorage` when `History.state`
+    ///   proves the current URL was self-synced by this tab (across reloads and WebGL recovery).
+    /// - Pushes the restored workspace onto `undo_stack` before applying an external share URL.
+    pub(crate) fn hydrate_from_browser_url(
+        &mut self,
+        ctx: &egui::Context,
+        restored_from_storage: bool,
+    ) {
+        install_browser_history_listeners(ctx);
+        if let Some((hash, search)) = read_browser_location_parts() {
+            self.hydrate_startup_location_strings(&hash, &search, Some(ctx), restored_from_storage);
         }
     }
 
-    /// Parses and applies `hash` (with `search` query-parameter fallback) to the primary view,
-    /// returning `Ok(true)` if a shared simulation link was hydrated, `Ok(false)` if no share
-    /// parameters were present, or `Err(reason)` after safely recording warnings on invalid input.
+    pub(crate) fn hydrate_startup_location_strings(
+        &mut self,
+        hash: &str,
+        search: &str,
+        ctx: Option<&egui::Context>,
+        restored_from_storage: bool,
+    ) {
+        if restored_from_storage && is_browser_location_self_synced(hash, search) {
+            self.url_sync
+                .mark_synced(self.current_url_signature(), Some(hash.to_string()));
+            return;
+        }
+        let prev_state = restored_from_storage.then(|| self.get_app_state());
+        let parsed = match parse_workspace_or_share_location(hash, search) {
+            Ok(Some(p)) => p,
+            Ok(None) => return,
+            Err(err) => {
+                self.record_invalid_share_url(err, ctx);
+                return;
+            }
+        };
+        let _ = self.hydrate_parsed_location(parsed, ctx, prev_state);
+    }
+
+    /// Parses and applies `hash` (with `search` query-parameter fallback) to the workspace,
+    /// returning `Ok(true)` if a shared simulation/workspace link was hydrated, `Ok(false)` if no
+    /// share parameters were present, or `Err(reason)` after safely recording warnings on invalid input.
+    #[cfg(test)]
     pub fn apply_share_location_strings(
         &mut self,
         hash: &str,
         search: &str,
         ctx: Option<&egui::Context>,
     ) -> Result<bool, String> {
-        let parsed = match crate::url_state::parse_share_location(hash, search) {
+        let parsed = match parse_workspace_or_share_location(hash, search) {
             Ok(Some(params)) => params,
             Ok(None) => return Ok(false),
             Err(err) => {
@@ -123,56 +131,10 @@ impl MathExplorerApp {
                 return Err(err);
             }
         };
-        self.hydrate_parsed_share_params(parsed, hash, ctx)
+        self.hydrate_parsed_location(parsed, ctx, None)
     }
 
-    fn hydrate_parsed_share_params(
-        &mut self,
-        params: ShareUrlParams,
-        raw_hash: &str,
-        ctx: Option<&egui::Context>,
-    ) -> Result<bool, String> {
-        let Some(tab_idx) = self.tabs.iter().position(|tab| {
-            crate::url_state::matches_tab_slug(&params.tab, tab.url_slug(), tab.name())
-        }) else {
-            let err = format!("Unknown simulation tab '{}' in shared URL", params.tab);
-            self.record_invalid_share_url(err.clone(), ctx);
-            return Err(err);
-        };
-
-        if let Err(err) = self.tabs[tab_idx]
-            .import_url_preset_json(params.tool.as_deref(), params.state_json.as_deref())
-        {
-            self.record_invalid_share_url(err.clone(), ctx);
-            return Err(err);
-        }
-
-        let tab_name = self.tabs[tab_idx].name();
-        self.tab_state_cache.invalidate_tab(tab_name);
-        self.selected_tab = tab_idx;
-        self.focused_pane = 0;
-        self.set_layout(ViewportLayout::Single);
-        self.session_manager.clear_toast();
-
-        let canonical_frag = self.encode_current_share_fragment().ok();
-        #[cfg(target_arch = "wasm32")]
-        // theory_verification!
-        if raw_hash.trim_start_matches('#').trim().is_empty() {
-            if let Some(ref frag) = canonical_frag {
-                let _ = crate::url_state::replace_browser_url_fragment(frag);
-            }
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        let _ = raw_hash;
-
-        self.url_sync
-            .mark_synced(self.current_url_signature(), canonical_frag);
-        Ok(true)
-    }
-
-    fn record_invalid_share_url(&mut self, err: String, ctx: Option<&egui::Context>) {
-        self.focused_pane = 0;
-        self.set_layout(ViewportLayout::Single);
+    pub(super) fn record_invalid_share_url(&mut self, err: String, ctx: Option<&egui::Context>) {
         self.url_sync
             .suppress_initial_overwrite(self.current_url_signature());
         let warning = format!("Invalid shared simulation link ignored: {err}");
@@ -189,16 +151,17 @@ impl MathExplorerApp {
         crate::accessibility::announce_status_with_priority(&warning, "assertive");
     }
 
-    /// Returns the most recently flushed `#tab=...` fragment in tests.
+    /// Returns the most recently flushed URL fragment in tests.
     #[cfg(test)]
     #[must_use]
     pub(crate) fn url_sync_last_fragment_for_test(&self) -> Option<&str> {
         self.url_sync.last_synced_fragment()
     }
 
-    /// Registers `Ctrl+Shift+L` / `Cmd+Shift+L` in `CMD_REGISTRY` and drains clipboard callbacks
-    /// prior to rendering menus, toasts, and the Keyboard Shortcuts modal.
+    /// Drains queued `hashchange`/`popstate` navigations, registers `Ctrl+Shift+L` / `Cmd+Shift+L`
+    /// in `CMD_REGISTRY`, and drains clipboard callbacks prior to rendering menus and viewports.
     pub(crate) fn poll_share_shortcut_and_clipboard(&mut self, ctx: &egui::Context) {
+        self.drain_browser_url_navigations(ctx);
         self.poll_share_clipboard_status(ctx);
 
         let modifiers = if cfg!(target_os = "macos") {
@@ -209,7 +172,7 @@ impl MathExplorerApp {
         let shortcut_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
             ctx,
             "Copy Share Link",
-            "Copy a shareable simulation URL for the active view",
+            "Copy a shareable simulation URL for the active workspace",
             egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::L),
             true,
             "Global",
@@ -226,6 +189,8 @@ impl MathExplorerApp {
         self.poll_share_clipboard_status(ctx);
 
         let pointer_or_sweep_active = ctx.input(|i| i.pointer.any_down())
+            || self.is_dragging_divider
+            || self.dragging_quad_axes != (false, false)
             || crate::reflective_ui::slider::has_active_sweeps(ctx);
         let now = crate::web_io::PlatformInstant::now();
         self.poll_url_sync_at(ctx, pointer_or_sweep_active, now);

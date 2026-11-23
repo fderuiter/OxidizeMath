@@ -136,8 +136,8 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     assert_eq!(
         tools.len(),
-        56,
-        "Expected all 56 registered InteractiveTools"
+        60,
+        "Expected all 60 registered InteractiveTools"
     );
 
     let mut source_app = MathExplorerApp::default();
@@ -199,8 +199,8 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
         .collect();
     assert_eq!(
         presets.len(),
-        67,
-        "Expected all 67 StarterPresetMetadata entries"
+        71,
+        "Expected all 71 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -389,36 +389,12 @@ fn test_copy_share_link_populates_clipboard_and_confirmation_toast() {
     }
 }
 
-#[test]
-fn test_focused_secondary_pane_share_link_and_command_registry_registration() {
+fn assert_copy_share_link_registered_in_cmd_registry(
+    ctx: &egui::Context,
+    app: &mut MathExplorerApp,
+) {
     use eframe::App;
-
-    let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    let _ = take_last_copied_share_url();
-    let ctx = egui::Context::default();
     let mut frame = eframe::Frame::_new_kittest();
-    let mut app = MathExplorerApp::default();
-
-    let chaos_idx = app
-        .tabs
-        .iter()
-        .position(|t| t.url_slug() == "chaos")
-        .unwrap();
-    let quantum_idx = app
-        .tabs
-        .iter()
-        .position(|t| t.url_slug() == "quantum")
-        .unwrap();
-
-    app.selected_tab = chaos_idx;
-    app.set_layout(ViewportLayout::SplitHorizontal);
-    app.set_pane_tab(1, quantum_idx);
-    app.focus_pane(1);
-    assert!(app
-        .pane_tab_mut(1)
-        .unwrap()
-        .select_tool_by_name("SpinVisualizer"));
-
     let raw = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -440,13 +416,63 @@ fn test_focused_secondary_pane_share_link_and_command_registry_registration() {
             .any(|cmd| cmd.name == "Copy Share Link"),
         "Copy Share Link shortcut must be registered in CMD_REGISTRY for Keyboard Shortcuts modal"
     );
+}
+
+#[test]
+fn test_focused_secondary_pane_share_link_and_command_registry_registration() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let _ = take_last_copied_share_url();
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+
+    let chaos_idx = app
+        .tabs
+        .iter()
+        .position(|t| t.url_slug() == "chaos")
+        .unwrap();
+    let quantum_idx = app
+        .tabs
+        .iter()
+        .position(|t| t.url_slug() == "quantum")
+        .unwrap();
+    app.selected_tab = chaos_idx;
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    app.set_pane_tab(1, quantum_idx);
+    app.focus_pane(1);
+    assert!(app
+        .pane_tab_mut(1)
+        .unwrap()
+        .select_tool_by_name("SpinVisualizer"));
+
+    assert_copy_share_link_registered_in_cmd_registry(&ctx, &mut app);
 
     app.copy_current_share_link(&ctx);
-    let copied = take_last_copied_share_url().expect("Focused Pane 1 share URL copied");
+    let copied_ws = take_last_copied_share_url().expect("Global workspace share URL copied");
+    assert!(copied_ws.starts_with("https://fderuiter.github.io/OxidizeMath/#ws="));
+    let (ws_hash, _) = split_share_url(&copied_ws);
+    let mut restored = MathExplorerApp::default();
+    assert!(restored
+        .apply_share_location_strings(ws_hash, "", Some(&ctx))
+        .unwrap());
+    assert_eq!(restored.viewport_layout, ViewportLayout::SplitHorizontal);
+    assert_eq!(restored.focused_pane, 1);
+    assert_eq!(restored.pane_tabs[0], chaos_idx);
+    assert_eq!(restored.pane_tabs[1], quantum_idx);
+    assert_eq!(
+        restored.pane_tab(1).unwrap().active_tool_id(),
+        Some("SpinVisualizer")
+    );
+
+    let pane_single_url = app
+        .pane_tab(1)
+        .unwrap()
+        .framework()
+        .unwrap()
+        .encode_single_pane_share_url()
+        .expect("Pane 1 single-pane share URL must succeed");
     assert!(
-        copied.starts_with(
+        pane_single_url.starts_with(
             "https://fderuiter.github.io/OxidizeMath/#tab=quantum&tool=SpinVisualizer&state="
-        ) && !copied.contains("SplitHorizontal"),
-        "Focused secondary pane share URL must encode Pane 1 without split layout metadata: {copied}"
+        ) && !pane_single_url.contains("#ws=")
     );
 }

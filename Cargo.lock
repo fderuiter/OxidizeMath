@@ -2456,6 +2456,7 @@ dependencies = [
  "eframe",
  "egui_plot",
  "federated_registry",
+ "flate2",
  "futures",
  "inventory",
  "js-sys",

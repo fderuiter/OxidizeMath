@@ -3,12 +3,23 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::codec::CANONICAL_WEB_BASE_URL;
+use super::history_bridge::{
+    has_share_query_params, normalize_hash_fragment, record_self_synced_fragment,
+};
 use eframe::egui;
+
+#[cfg(target_arch = "wasm32")]
+const SELF_SYNC_STATE_FLAG: &str = "__oxidize_self_sync";
+#[cfg(target_arch = "wasm32")]
+const SELF_SYNC_FRAGMENT_KEY: &str = "fragment";
 
 #[cfg(test)]
 std::thread_local! {
     static LAST_COPIED_SHARE_URL: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
     static MOCK_WEB_BASE_URL: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    static LAST_REPLACED_BROWSER_FRAGMENT: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    static MOCK_SELF_SYNCED_FRAGMENT: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    static MOCK_BROWSER_LOCATION: std::cell::RefCell<Option<(String, String)>> = const { std::cell::RefCell::new(None) };
 }
 
 /// Returns and clears the most recently copied share URL in unit tests.
@@ -16,6 +27,33 @@ std::thread_local! {
 #[must_use]
 pub fn take_last_copied_share_url() -> Option<String> {
     LAST_COPIED_SHARE_URL.with(|slot| slot.borrow_mut().take())
+}
+
+/// Returns the most recent fragment written via [`replace_browser_url_fragment`] in tests.
+#[cfg(test)]
+#[must_use]
+pub fn last_replaced_browser_fragment() -> Option<String> {
+    LAST_REPLACED_BROWSER_FRAGMENT.with(|slot| slot.borrow().clone())
+}
+
+/// Temporarily overrides [`read_browser_location_parts`] with `(hash, search)` in unit tests.
+#[cfg(test)]
+pub fn with_mock_browser_location<R>(hash: &str, search: &str, f: impl FnOnce() -> R) -> R {
+    MOCK_BROWSER_LOCATION
+        .with(|slot| *slot.borrow_mut() = Some((hash.to_string(), search.to_string())));
+    let out = f();
+    MOCK_BROWSER_LOCATION.with(|slot| *slot.borrow_mut() = None);
+    out
+}
+
+/// Temporarily simulates `History.state` self-sync metadata for `fragment` in native unit tests.
+#[cfg(test)]
+pub fn with_mock_self_synced_fragment<R>(fragment: &str, f: impl FnOnce() -> R) -> R {
+    let norm = normalize_hash_fragment(fragment);
+    MOCK_SELF_SYNCED_FRAGMENT.with(|slot| *slot.borrow_mut() = Some(norm));
+    let out = f();
+    MOCK_SELF_SYNCED_FRAGMENT.with(|slot| *slot.borrow_mut() = None);
+    out
 }
 
 /// Temporarily overrides the base URL origin used by [`build_share_url_from_fragment`] in tests.
@@ -31,6 +69,10 @@ pub fn with_mock_web_base_url<R>(base_url: &str, f: impl FnOnce() -> R) -> R {
 /// returning `None` on native desktop builds.
 #[must_use]
 pub fn read_browser_location_parts() -> Option<(String, String)> {
+    #[cfg(test)]
+    if let Some(parts) = MOCK_BROWSER_LOCATION.with(|slot| slot.borrow().clone()) {
+        return Some(parts);
+    }
     #[cfg(target_arch = "wasm32")]
     // theory_verification!
     {
@@ -57,7 +99,7 @@ fn retain_non_share_query(search: &str) -> String {
         .filter(|pair| {
             !pair.is_empty() && {
                 let key = pair.split_once('=').map_or(*pair, |(k, _)| k);
-                !matches!(key, "tab" | "tool" | "state")
+                !matches!(key, "ws" | "tab" | "tool" | "state")
             }
         })
         .collect();
@@ -68,27 +110,104 @@ fn retain_non_share_query(search: &str) -> String {
     }
 }
 
-/// Updates the browser address bar in place via `History::replaceState` without pushing a history entry.
 #[cfg(target_arch = "wasm32")]
 // theory_verification!
+fn build_self_sync_history_state(hash_part: &str) -> wasm_bindgen::JsValue {
+    let state_obj = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(
+        &state_obj,
+        &wasm_bindgen::JsValue::from_str(SELF_SYNC_STATE_FLAG),
+        &wasm_bindgen::JsValue::from_str("1"),
+    );
+    let _ = js_sys::Reflect::set(
+        &state_obj,
+        &wasm_bindgen::JsValue::from_str(SELF_SYNC_FRAGMENT_KEY),
+        &wasm_bindgen::JsValue::from_str(hash_part),
+    );
+    state_obj.into()
+}
+
+/// Updates the browser address bar in place via `History::replaceState` without pushing a history
+/// entry, tagging `History.state` with self-sync metadata so reloads preserve `localStorage`.
 pub fn replace_browser_url_fragment(fragment: &str) -> Result<(), String> {
-    let window = web_sys::window().ok_or_else(|| "Browser window unavailable".to_string())?;
-    let history = window
-        .history()
-        .map_err(|_| "Browser History API unavailable".to_string())?;
-    let location = window.location();
-    let pathname = location.pathname().unwrap_or_else(|_| "/".to_string());
-    let search = location.search().unwrap_or_default();
-    let clean_query = retain_non_share_query(&search);
-    let hash_part = if fragment.starts_with('#') || fragment.is_empty() {
-        fragment.to_string()
-    } else {
-        format!("#{fragment}")
-    };
-    let next_url = format!("{pathname}{clean_query}{hash_part}");
-    history
-        .replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&next_url))
-        .map_err(|_| "History.replaceState failed".to_string())
+    let hash_part = normalize_hash_fragment(fragment);
+    record_self_synced_fragment(&hash_part);
+
+    #[cfg(test)]
+    LAST_REPLACED_BROWSER_FRAGMENT.with(|slot| *slot.borrow_mut() = Some(hash_part.clone()));
+
+    #[cfg(target_arch = "wasm32")]
+    // theory_verification!
+    {
+        let window = web_sys::window().ok_or_else(|| "Browser window unavailable".to_string())?;
+        let history = window
+            .history()
+            .map_err(|_| "Browser History API unavailable".to_string())?;
+        let location = window.location();
+        let pathname = location.pathname().unwrap_or_else(|_| "/".to_string());
+        let search = location.search().unwrap_or_default();
+        let clean_query = retain_non_share_query(&search);
+        let next_url = format!("{pathname}{clean_query}{hash_part}");
+        let state_val = build_self_sync_history_state(&hash_part);
+        history
+            .replace_state_with_url(&state_val, "", Some(&next_url))
+            .map_err(|_| "History.replaceState failed".to_string())?;
+    }
+    Ok(())
+}
+
+/// Returns `true` when `History.state` proves that `(hash, search)` was written by this tab's own
+/// `History::replaceState` synchronization rather than an external user navigation.
+#[must_use]
+pub fn is_browser_location_self_synced(hash: &str, search: &str) -> bool {
+    if has_share_query_params(search) {
+        return false;
+    }
+    let normalized = normalize_hash_fragment(hash);
+
+    #[cfg(test)]
+    if let Some(mock_frag) = MOCK_SELF_SYNCED_FRAGMENT.with(|slot| slot.borrow().clone()) {
+        return mock_frag == normalized;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    // theory_verification!
+    {
+        let Some(window) = web_sys::window() else {
+            return false;
+        };
+        let Ok(history) = window.history() else {
+            return false;
+        };
+        let Ok(state) = history.state() else {
+            return false;
+        };
+        if state.is_null() || state.is_undefined() || !state.is_object() {
+            return false;
+        }
+        let is_self = js_sys::Reflect::get(
+            &state,
+            &wasm_bindgen::JsValue::from_str(SELF_SYNC_STATE_FLAG),
+        )
+        .ok()
+        .is_some_and(|v| v.as_bool() == Some(true) || v.as_string().as_deref() == Some("1"));
+        if !is_self {
+            return false;
+        }
+        let recorded = js_sys::Reflect::get(
+            &state,
+            &wasm_bindgen::JsValue::from_str(SELF_SYNC_FRAGMENT_KEY),
+        )
+        .ok()
+        .and_then(|v| v.as_string());
+        recorded.as_deref() == Some(normalized.as_str())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = normalized;
+        false
+    }
 }
 
 /// Resolves a full shareable web URL (`https://...#tab=...`) from a `#tab=...` fragment:
@@ -164,7 +283,3 @@ pub fn copy_share_url_to_clipboard(
         }
     }
 }
-
-#[cfg(all(test, target_arch = "wasm32"))]
-#[path = "browser_wasm_tests.rs"]
-mod wasm_tests;

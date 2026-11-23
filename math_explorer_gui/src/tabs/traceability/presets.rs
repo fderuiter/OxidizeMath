@@ -117,8 +117,18 @@ impl TraceabilityTab {
     /// Validates and applies a `PresetWrapper` JSON payload to `TraceabilityTab`.
     #[allow(clippy::wrong_self_convention)]
     pub fn from_json_str(&mut self, json_str: &str) -> Result<(), String> {
+        self.from_json_str_with_max_bytes(json_str, crate::url_state::MAX_DECODED_URL_STATE_BYTES)
+    }
+
+    /// Validates and applies a `PresetWrapper` JSON payload using an explicit byte ceiling.
+    #[allow(clippy::wrong_self_convention)]
+    pub fn from_json_str_with_max_bytes(
+        &mut self,
+        json_str: &str,
+        max_bytes: usize,
+    ) -> Result<(), String> {
         let bounds = crate::framework::ToolStateBounds::new(
-            crate::url_state::MAX_DECODED_URL_STATE_BYTES,
+            max_bytes,
             crate::framework::MAX_JSON_NESTING_DEPTH,
             crate::framework::MAX_JSON_ARRAY_LEN,
         );
@@ -193,8 +203,7 @@ impl TraceabilityTab {
                     });
                 }
                 Err(err) => {
-                    ui.ctx()
-                        .data_mut(|d| d.insert_temp(toast_id, (true, err)));
+                    ui.ctx().data_mut(|d| d.insert_temp(toast_id, (true, err)));
                 }
             }
         }

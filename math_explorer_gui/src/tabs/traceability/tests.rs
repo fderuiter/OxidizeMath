@@ -90,7 +90,10 @@ fn test_traceability_failed_scan_displays_error() {
         tab.show(ctx, &mut frame);
     });
 
-    assert_eq!(tab.state, TraceabilityScanState::Failed(err_text.to_string()));
+    assert_eq!(
+        tab.state,
+        TraceabilityScanState::Failed(err_text.to_string())
+    );
     assert!(tab.state.is_failed());
     assert_eq!(tab.error_message(), Some(err_text));
 }
@@ -201,12 +204,10 @@ fn test_traceability_no_repaint_in_terminal_states() {
 
 #[test]
 fn test_traceability_failure_screenshot_generation() {
-    let sample_datasets = vec![
-        (
-            "Scan Failure Rate".to_string(),
-            vec![[0.0, 1.0], [1.0, 0.0]],
-        ),
-    ];
+    let sample_datasets = vec![(
+        "Scan Failure Rate".to_string(),
+        vec![[0.0, 1.0], [1.0, 0.0]],
+    )];
     let options = egui_plot::export::ExportOptions::default();
     if let Ok(png_data) = egui_plot::export::export_custom_png(&sample_datasets, &options) {
         let _ = std::fs::write("/tmp/traceability_failure_state.png", png_data);
@@ -231,10 +232,7 @@ fn test_traceability_online_document_links() {
         TraceabilityTab::paper_url_for_target("win_ratio.pdf", true),
         Some("./win_ratio.pdf".to_string())
     );
-    assert_eq!(
-        TraceabilityTab::paper_url("spec:transformer_v1"),
-        None
-    );
+    assert_eq!(TraceabilityTab::paper_url("spec:transformer_v1"), None);
 
     let expected_native_or_wasm = TraceabilityTab::paper_url_for_target(
         "partitions_implementation.tex",
@@ -301,7 +299,10 @@ fn test_traceability_load_state_rejects_outside_workspace_and_traversal() {
     let canary_path = oxidize_core::path_utils::normalize_path(&canary_dir);
     let payload = format!("{{\"repo_path\":\"{}\"}}", canary_path);
     tab.load_state(&payload);
-    assert_eq!(tab.repo_path, None, "Outside-workspace path must reset to None");
+    assert_eq!(
+        tab.repo_path, None,
+        "Outside-workspace path must reset to None"
+    );
     tab.refresh();
     let canary_found = tab.online_document_url("canary_audit.tex").is_some();
     assert!(
@@ -459,4 +460,3 @@ fn test_traceability_rejects_symlink_resolving_outside_workspace() {
     let _ = std::fs::remove_dir_all(&external_dir);
     let _ = std::fs::remove_dir_all(&scratch_base);
 }
-

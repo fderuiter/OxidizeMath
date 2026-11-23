@@ -225,6 +225,18 @@ pub trait ExplorerTab {
         }
         Ok(())
     }
+
+    /// Validates and applies a `#ws=...` workspace URL pane payload (allowing up to 32,768 bytes).
+    fn import_workspace_url_preset_json(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        if let Some(fw) = self.framework_mut() {
+            return fw.import_workspace_url_preset_json(tool_id, preset_json);
+        }
+        self.import_url_preset_json(tool_id, preset_json)
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]

@@ -10,7 +10,18 @@ use std::sync::mpsc::{channel, TryRecvError};
 impl WorkspaceSessionManager {
     /// Wraps the given application state inside a versioned workspace envelope and serializes it to JSON.
     pub fn create_envelope(&self, app_state: AppState) -> String {
-        let envelope = WorkspaceEnvelope {
+        let envelope = self.build_envelope_struct(app_state);
+        serde_json::to_string_pretty(&envelope).unwrap_or_default()
+    }
+
+    /// Serializes a compact `WorkspaceEnvelope` (including undo/redo stacks) for `eframe::Storage`.
+    pub fn create_compact_envelope(&self, app_state: AppState) -> String {
+        let envelope = self.build_envelope_struct(app_state);
+        serde_json::to_string(&envelope).unwrap_or_default()
+    }
+
+    fn build_envelope_struct(&self, app_state: AppState) -> WorkspaceEnvelope {
+        WorkspaceEnvelope {
             schema_version: "1.0".to_string(),
             app_version: env!("CARGO_PKG_VERSION").to_string(),
             timestamp: chrono::Utc::now().to_rfc3339(),
@@ -18,8 +29,7 @@ impl WorkspaceSessionManager {
             history_undo_stack: self.undo_stack.clone(),
             history_redo_stack: self.redo_stack.clone(),
             callout_manager: self.callout_manager.clone(),
-        };
-        serde_json::to_string_pretty(&envelope).unwrap_or_default()
+        }
     }
 
     /// Validates and parses workspace session content from a JSON string.
@@ -258,6 +268,40 @@ impl WorkspaceSessionManager {
             });
             if dismiss {
                 self.clear_toast();
+            }
+        }
+    }
+}
+
+impl MathExplorerApp {
+    /// Persists a compact `WorkspaceEnvelope` (including undo/redo stacks) to `eframe::Storage`.
+    pub(crate) fn save_envelope_to_storage(&mut self, storage: &mut dyn eframe::Storage) {
+        self.clear_active_pane_caches();
+        let envelope_json = self
+            .session_manager
+            .create_compact_envelope(self.get_app_state());
+        storage.set_string(eframe::APP_KEY, envelope_json);
+    }
+
+    /// Parses and restores either a `WorkspaceEnvelope` or legacy `AppState` JSON payload,
+    /// returning `true` when valid state was applied.
+    pub(crate) fn try_load_state_from_json(&mut self, json_str: &str) -> bool {
+        match self.session_manager.parse_envelope(json_str) {
+            Ok(app_state) => {
+                self.apply_app_state(app_state);
+                true
+            }
+            Err(err) => {
+                crate::telemetry::emit_telemetry(
+                    "MathExplorerApp",
+                    federated_registry::Severity::Warning,
+                    format!(
+                        "Failed to parse saved session state, resetting to defaults: {}",
+                        err
+                    ),
+                    std::collections::HashMap::new(),
+                );
+                false
             }
         }
     }

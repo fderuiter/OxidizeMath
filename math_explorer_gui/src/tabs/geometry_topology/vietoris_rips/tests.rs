@@ -161,6 +161,7 @@ fn test_custom_250_points_skips_url_sync_and_roundtrips_session() {
         selected_tab: 0,
         active_tool_id: Some("VietorisRipsTool"),
         state_revision: 1,
+        ..UrlStateSignature::default()
     };
     sync.mark_synced(
         sig0,
@@ -172,10 +173,7 @@ fn test_custom_250_points_skips_url_sync_and_roundtrips_session() {
     };
     let _ = sync.poll_at_millis(sig1, false, 100, 300, || unreachable!());
     let _ = sync.poll_at_millis(sig1, false, 500, 300, || fw.encode_share_url());
-    assert_eq!(
-        sync.last_synced_fragment(),
-        Some("#tab=geometry_topology&tool=VietorisRipsTool")
-    );
+    assert_eq!(sync.last_synced_fragment(), Some(""));
 
     let preset_250 = fw
         .active_tool

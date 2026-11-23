@@ -11,7 +11,10 @@ use std::sync::Arc;
 
 use crate::export::{EXPORT_PALETTE, ExportOptions, MAX_EXPORT_DIMENSION, color32_images_to_gif};
 
-pub use raster::{render_primitives_image, render_primitives_image_with_bounds, scale_color_image};
+pub use raster::{
+    decode_png_rgba, export_primitives_png, render_primitives_image,
+    render_primitives_image_with_bounds, scale_color_image,
+};
 pub use svg::{encode_base64, export_primitives_svg, export_raster_svg};
 
 /// Offscreen-drawable plot primitive extracted from [`crate::PlotItem`] instances.

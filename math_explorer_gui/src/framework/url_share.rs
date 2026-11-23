@@ -22,8 +22,8 @@ impl SimulationFramework {
         }
     }
 
-    pub(super) fn copy_active_share_link(&mut self, ctx: &egui::Context) {
-        match self.encode_share_url() {
+    pub(crate) fn copy_active_share_link(&mut self, ctx: &egui::Context) {
+        match self.encode_single_pane_share_url() {
             Ok(url) => {
                 let status_id =
                     egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
@@ -105,6 +105,23 @@ impl SimulationFramework {
         Ok(crate::url_state::build_share_url_from_fragment(&fragment))
     }
 
+    /// Encodes a single-pane share URL for this pane's action-bar button (`#tab=...` up to 4 KiB,
+    /// falling back to a single-pane `#ws=...` envelope up to 32 KiB).
+    pub fn encode_single_pane_share_url(&self) -> Result<String, String> {
+        let tab_slug = if self.domain == "biology" {
+            "morphogenesis"
+        } else {
+            self.domain.as_str()
+        };
+        let preset_json = self.export_url_preset_json()?;
+        let fragment = crate::url_state::encode_single_pane_smart_fragment(
+            tab_slug,
+            self.active_tool_id(),
+            preset_json.as_deref(),
+        )?;
+        Ok(crate::url_state::build_share_url_from_fragment(&fragment))
+    }
+
     fn resolve_url_tool_index(&self, tool_id: Option<&str>) -> Result<usize, String> {
         match tool_id {
             Some(requested) => self
@@ -137,11 +154,33 @@ impl SimulationFramework {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
+        self.import_url_preset_internal(tool_id, preset_json, false)
+    }
+
+    /// Validates and atomically applies a `#ws=...` workspace pane tool and preset JSON (up to 32 KiB).
+    pub fn import_workspace_url_preset_json(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        self.import_url_preset_internal(tool_id, preset_json, true)
+    }
+
+    fn import_url_preset_internal(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+        allow_workspace_bounds: bool,
+    ) -> Result<(), String> {
         let target_idx = self.resolve_url_tool_index(tool_id)?;
         let meta = self.available_tools[target_idx];
         let mut candidate = (meta.build)();
         if let Some(json_str) = preset_json {
-            crate::url_state::validate_url_preset_json(json_str)?;
+            if allow_workspace_bounds {
+                crate::url_state::validate_workspace_url_preset_json(json_str)?;
+            } else {
+                crate::url_state::validate_url_preset_json(json_str)?;
+            }
             candidate.import_preset_json(json_str)?;
             if !candidate.has_finite_parameters() {
                 return Err(format!(

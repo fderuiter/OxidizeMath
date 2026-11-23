@@ -95,6 +95,8 @@ impl MathExplorerApp {
         self.last_synced_theme = Some(self.theme);
 
         let canonical_frag = self.encode_current_share_fragment().ok();
+        let _ =
+            crate::url_state::replace_browser_url_fragment(canonical_frag.as_deref().unwrap_or(""));
         self.url_sync
             .mark_synced(self.current_url_signature(), canonical_frag);
         ctx.request_repaint();

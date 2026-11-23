@@ -22,9 +22,7 @@ pub struct TraceabilityTab {
     repo_path: Option<String>,
     user_picked_repo: bool,
     report_rx: Option<
-        std::sync::mpsc::Receiver<
-            Result<oxidize_core::traceability::TraceabilityReport, String>,
-        >,
+        std::sync::mpsc::Receiver<Result<oxidize_core::traceability::TraceabilityReport, String>>,
     >,
     cert_rx: Option<std::sync::mpsc::Receiver<Option<web_snapshot::VerificationCertificate>>>,
     certificate: Option<web_snapshot::VerificationCertificate>,
@@ -73,10 +71,7 @@ impl TraceabilityTab {
     }
 
     #[cfg(all(test, not(target_arch = "wasm32")))]
-    pub(crate) fn join_relative_segments(
-        base: &std::path::Path,
-        rel: &str,
-    ) -> std::path::PathBuf {
+    pub(crate) fn join_relative_segments(base: &std::path::Path, rel: &str) -> std::path::PathBuf {
         scanner::join_relative_segments(base, rel)
     }
 
@@ -333,6 +328,29 @@ impl ExplorerTab for TraceabilityTab {
         if let Some(json_str) = preset_json {
             crate::url_state::validate_url_preset_json(json_str)?;
             self.from_json_str(json_str)?;
+        }
+        Ok(())
+    }
+
+    fn import_workspace_url_preset_json(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        if let Some(req_tool) = tool_id {
+            if !crate::url_state::matches_tab_slug(req_tool, self.url_slug(), self.name()) {
+                return Err(format!(
+                    "Tab '{}' does not support sub-tool '{req_tool}'",
+                    self.name()
+                ));
+            }
+        }
+        if let Some(json_str) = preset_json {
+            crate::url_state::validate_workspace_url_preset_json(json_str)?;
+            self.from_json_str_with_max_bytes(
+                json_str,
+                crate::url_state::MAX_DECODED_WORKSPACE_URL_BYTES,
+            )?;
         }
         Ok(())
     }

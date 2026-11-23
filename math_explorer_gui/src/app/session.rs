@@ -112,6 +112,12 @@ impl WorkspaceSessionManager {
         !self.undo_stack.is_empty()
     }
 
+    #[cfg(test)]
+    #[must_use]
+    pub fn undo_depth(&self) -> usize {
+        self.undo_stack.len()
+    }
+
     /// Returns true if a redo operation can be performed.
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
@@ -135,6 +141,24 @@ impl WorkspaceSessionManager {
         if self.undo_stack.len() > self.max_history_depth {
             self.undo_stack.remove(0);
         }
+    }
+
+    /// Records `prev_state` onto `undo_stack` prior to an external URL navigation override
+    /// (including during startup `RestoringHistory`), clearing `redo_stack` and committing `new_state`.
+    pub fn record_external_url_override(&mut self, prev_state: AppState, new_state: AppState) {
+        if self.lifecycle_state == SessionLifecycleState::DragEditing {
+            if let Some(ref last_state) = self.last_committed_state {
+                if last_state != &prev_state {
+                    self.push_undo_preserving_redo(last_state.clone());
+                }
+            }
+        }
+        if prev_state != new_state {
+            self.push_undo_preserving_redo(prev_state);
+            self.redo_stack.clear();
+        }
+        self.last_committed_state = Some(new_state);
+        self.set_is_restoring(true);
     }
 
     /// Pushes an application state snapshot onto the redo stack.

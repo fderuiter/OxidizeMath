@@ -8,19 +8,59 @@ use std::time::Duration;
 /// Debounce window (`300 ms`) applied before flushing live parameter edits to `location.hash`.
 pub const URL_SYNC_DEBOUNCE_MS: u64 = 300;
 
-/// Lightweight O(1) signature of the primary view's shareable simulation state.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct UrlStateSignature {
-    /// Active primary tab index.
-    pub selected_tab: usize,
-    /// Optional active tool identifier in `SimulationFramework` tabs.
+/// Per-pane O(1) revision token included inside [`UrlStateSignature`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PaneUrlSignature {
+    /// Assigned domain tab index for this pane (`0` when pane is inactive).
+    pub tab_idx: usize,
+    /// Optional active tool identifier within `SimulationFramework` tabs.
     pub active_tool_id: Option<&'static str>,
-    /// Deterministic parameter revision counter for the active tab/tool.
+    /// Deterministic parameter revision counter for this pane's active tab/tool.
     pub state_revision: u64,
 }
 
-/// Tracks changes to [`UrlStateSignature`] and flushes encoded `#tab=...` fragments after
-/// [`URL_SYNC_DEBOUNCE_MS`] of idle pointer/parameter activity.
+/// Lightweight O(1) signature of the workspace's shareable single-pane or multi-pane state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UrlStateSignature {
+    /// Active focused/primary tab index.
+    pub selected_tab: usize,
+    /// Optional active tool identifier in the focused pane.
+    pub active_tool_id: Option<&'static str>,
+    /// Deterministic parameter revision counter for the focused pane.
+    pub state_revision: u64,
+    /// Active viewport layout (`Single`, `SplitHorizontal`, `SplitVertical`, or `QuadGrid`).
+    pub viewport_layout: crate::app::ViewportLayout,
+    /// Canonical `f32::to_bits()` of the 2-pane split ratio (`0.5` when not in 2-pane split).
+    pub split_ratio_bits: u32,
+    /// Canonical `f32::to_bits()` of `(x, y)` `QuadGrid` split ratios (`(0.5, 0.5)` otherwise).
+    pub quad_split_ratio_bits: (u32, u32),
+    /// Focused pane index (`0..viewport_layout.pane_count()`).
+    pub focused_pane: usize,
+    /// Multi-pane comparison sync toggles (`Default` when in `ViewportLayout::Single`).
+    pub compare_sync: crate::app::ComparisonSyncConfig,
+    /// Active per-pane signatures for panes `0..viewport_layout.pane_count()`.
+    pub pane_revisions: [PaneUrlSignature; 4],
+}
+
+impl Default for UrlStateSignature {
+    fn default() -> Self {
+        let half = 0.5_f32.to_bits();
+        Self {
+            selected_tab: 0,
+            active_tool_id: None,
+            state_revision: 0,
+            viewport_layout: crate::app::ViewportLayout::Single,
+            split_ratio_bits: half,
+            quad_split_ratio_bits: (half, half),
+            focused_pane: 0,
+            compare_sync: crate::app::ComparisonSyncConfig::default(),
+            pane_revisions: [PaneUrlSignature::default(); 4],
+        }
+    }
+}
+
+/// Tracks changes to [`UrlStateSignature`] and flushes encoded `#tab=...` or `#ws=...` fragments
+/// after [`URL_SYNC_DEBOUNCE_MS`] of idle pointer/parameter activity.
 #[derive(Default)]
 pub struct UrlSyncController {
     last_observed: Option<UrlStateSignature>,
@@ -43,8 +83,7 @@ impl UrlSyncController {
         }
     }
 
-    /// Suppresses automatic `replaceState` flushing until the user changes tab, tool, or parameters
-    /// (used when startup rejected an invalid URL so the user can still inspect the original URL if desired until they interact).
+    /// Suppresses automatic `replaceState` flushing until the user changes tab, tool, layout, or parameters.
     pub fn suppress_initial_overwrite(&mut self, sig: UrlStateSignature) {
         self.last_observed = Some(sig);
         self.last_flushed = Some(sig);
@@ -52,8 +91,7 @@ impl UrlSyncController {
         self.suppress_until_user_change = true;
     }
 
-    /// Returns the most recently flushed `#tab=...` fragment, if any.
-    #[cfg(test)]
+    /// Returns the most recently flushed URL fragment (`""` if cleared after budget overflow).
     #[must_use]
     pub fn last_synced_fragment(&self) -> Option<&str> {
         self.last_synced_fragment.as_deref()
@@ -123,14 +161,25 @@ impl UrlSyncController {
 
         self.dirty_since_ms = None;
         self.last_flushed = Some(sig);
-        if let Ok(fragment) = encode_fragment() {
-            if self.last_synced_fragment.as_deref() != Some(fragment.as_str()) {
-                #[cfg(target_arch = "wasm32")]
-                let _ = super::replace_browser_url_fragment(&fragment);
-                self.last_synced_fragment = Some(fragment);
+        self.flush_encoded_or_clear(encode_fragment());
+        None
+    }
+
+    fn flush_encoded_or_clear(&mut self, encoded: Result<String, String>) {
+        match encoded {
+            Ok(fragment) => {
+                if self.last_synced_fragment.as_deref() != Some(fragment.as_str()) {
+                    let _ = super::replace_browser_url_fragment(&fragment);
+                    self.last_synced_fragment = Some(fragment);
+                }
+            }
+            Err(_) => {
+                if self.last_synced_fragment.as_deref() != Some("") {
+                    let _ = super::replace_browser_url_fragment("");
+                    self.last_synced_fragment = Some(String::new());
+                }
             }
         }
-        None
     }
 }
 
