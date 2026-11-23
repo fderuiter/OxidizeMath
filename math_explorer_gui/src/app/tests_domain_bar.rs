@@ -10,8 +10,8 @@ fn test_all_21_modules_categorized_into_academic_domains() {
     let app = MathExplorerApp::default();
     assert_eq!(
         app.tabs.len(),
-        27,
-        "Expected all 27 modules to be instantiated with default features"
+        28,
+        "Expected all 28 modules to be instantiated with default features"
     );
 
     let mut domain_counts: HashMap<AcademicDomain, Vec<&'static str>> = HashMap::new();
@@ -43,8 +43,8 @@ fn test_all_21_modules_categorized_into_academic_domains() {
     );
     assert_eq!(
         domain_counts.get(&AcademicDomain::AppliedMath).map(|v| v.len()),
-        Some(7),
-        "Applied Math should have 7 modules: Battery Degradation, Clinical Trials, Favoritism, Game Theory, Paradox Lab, Sports Analytics, Traceability Portal"
+        Some(8),
+        "Applied Math should have 8 modules: Battery Degradation, Clinical Trials, Favoritism, Game Theory, Paradox Lab, Population Structure, Sports Analytics, Traceability Portal"
     );
     assert_eq!(
         domain_counts.get(&AcademicDomain::Biology).map(|v| v.len()),
@@ -157,23 +157,23 @@ fn test_command_palette_synchronizes_active_domain_and_module() {
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
 
-    // Initially at tab 0 (AI)
+    // Initially at tab 0 (Quantum Mechanics -> Physics)
     let initial_domain = AcademicDomain::from_str(app.tabs[app.selected_tab].academic_domain());
-    assert_eq!(initial_domain, Some(AcademicDomain::Ai));
+    assert_eq!(initial_domain, Some(AcademicDomain::Physics));
 
-    // Switch to Fluid Dynamics (Physics)
-    let physics_idx = app
+    // Switch to Number Theory (Pure Math)
+    let pure_math_idx = app
         .tabs
         .iter()
-        .position(|t| t.name() == "Fluid Dynamics")
-        .expect("Fluid Dynamics tab must exist");
+        .position(|t| t.name() == "Number Theory")
+        .expect("Number Theory tab must exist");
 
-    app.select_tab(&ctx, physics_idx);
+    app.select_tab(&ctx, pure_math_idx);
 
     let current_domain = AcademicDomain::from_str(app.tabs[app.selected_tab].academic_domain());
-    assert_eq!(current_domain, Some(AcademicDomain::Physics));
+    assert_eq!(current_domain, Some(AcademicDomain::PureMath));
     assert_ne!(initial_domain, current_domain);
-    assert_eq!(app.selected_tab, physics_idx);
+    assert_eq!(app.selected_tab, pure_math_idx);
 }
 
 #[test]
