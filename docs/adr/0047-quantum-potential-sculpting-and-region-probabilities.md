@@ -1,4 +1,4 @@
-# ADR 0046: 1D Quantum Potential Sculpting, Resonant Presets, and Zero-Allocation Region Probabilities
+# ADR 0047: 1D Quantum Potential Sculpting, Resonant Presets, and Zero-Allocation Region Probabilities
 
 ## Status
 Accepted (extends [ADR 0027](0027-precompute-quantum-propagators-inplace-evolution.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md))

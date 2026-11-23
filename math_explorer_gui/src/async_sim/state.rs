@@ -55,9 +55,9 @@ pub enum SimCommand {
         /// Spatial packet width $\sigma$.
         sigma: f64,
     },
-    /// Applies a continuous spatial brush stroke emitted by `SpatialBrushKit`.
+    /// Applies an interpolated spatial brush stroke to the simulation field.
     ApplyBrushStroke(BrushStroke),
-    /// Synchronizes persisted spatial sculpt state (`rle_mask` and `sparse_potential`) to the worker.
+    /// Synchronizes persisted spatial sculpt state with the worker model.
     SyncSculptState(SculptStatePayload),
     #[allow(missing_docs)]
     ClearObstacles,
