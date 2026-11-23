@@ -343,7 +343,8 @@ impl SirTool {
             TraceSeries::new("Infected", to_pairs(&self.i_points)),
             TraceSeries::new("Recovered", to_pairs(&self.r_points)),
         ];
-        self.snapshot_manager.push_history_run(&prev_summary, series);
+        self.snapshot_manager
+            .push_history_run(&prev_summary, series);
         self.recalculate();
     }
 

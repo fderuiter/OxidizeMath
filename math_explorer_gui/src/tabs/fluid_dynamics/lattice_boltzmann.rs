@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use super::lbm_fairing::{
     decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y,
     LBM_HEIGHT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0, LBM_U_IN, LBM_WIDTH,
@@ -16,7 +18,6 @@ use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct LbmUnified {
     pub(crate) solver: LatticeBoltzmannD2Q9<BgkCollision>,
     pub(crate) diverged: bool,
@@ -240,6 +241,7 @@ impl UnifiedModel for LbmUnified {
                 self.step_count as f64,
             ],
             structured_data: None,
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

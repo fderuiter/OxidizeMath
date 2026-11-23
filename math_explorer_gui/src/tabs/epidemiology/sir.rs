@@ -151,7 +151,9 @@ impl SirTool {
             .add(egui::Slider::new(&mut self.i0, 1.0..=i0_max).text("Initial Infected (I0)"))
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.beta, cb.min..=cb.max).text("Transmission Rate (beta)"))
+            .add(
+                egui::Slider::new(&mut self.beta, cb.min..=cb.max).text("Transmission Rate (beta)"),
+            )
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.gamma, cg.min..=cg.max).text("Recovery Rate (gamma)"))
@@ -388,39 +390,35 @@ impl InteractiveTool for SirTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.show_ui(ui);
-        });
-    }
-
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        ui.vertical(|ui| {
-            ui.heading("Parameters");
-            if self.render_parameter_controls(ui) {
-                self.record_history_and_recalculate();
-            }
-            metrics::render_epidemic_metrics(ui, self);
-            self.render_sir_readouts_and_atlas(ui);
-            ui.add_space(8.0);
-            let param_summary = self.param_summary();
-            let current_len = self.snapshot_manager.len();
-            let (s_pts, i_pts, r_pts) = (&self.s_points, &self.i_points, &self.r_points);
-            if self.snapshot_manager.render_ui(ui, move || {
-                let label = format!("Baseline {}", current_len + 1);
-                let to_pairs =
-                    |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-                let series = vec![
-                    TraceSeries::new("Susceptible", to_pairs(s_pts)),
-                    TraceSeries::new("Infected", to_pairs(i_pts)),
-                    TraceSeries::new("Recovered", to_pairs(r_pts)),
-                ];
-                Some((label, param_summary, series))
-            }) {
-                self.revision = self.revision.wrapping_add(1).max(1);
-            }
-            self.evaluate_sensitivity(ui);
-            ui.separator();
-            metrics::render_simulation_plot(ui, self);
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.heading("Parameters");
+                if self.render_parameter_controls(ui) {
+                    self.record_history_and_recalculate();
+                }
+                metrics::render_epidemic_metrics(ui, self);
+                self.render_sir_readouts_and_atlas(ui);
+                ui.add_space(8.0);
+                let param_summary = self.param_summary();
+                let current_len = self.snapshot_manager.len();
+                let (s_pts, i_pts, r_pts) = (&self.s_points, &self.i_points, &self.r_points);
+                if self.snapshot_manager.render_ui(ui, move || {
+                    let label = format!("Baseline {}", current_len + 1);
+                    let to_pairs =
+                        |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+                    let series = vec![
+                        TraceSeries::new("Susceptible", to_pairs(s_pts)),
+                        TraceSeries::new("Infected", to_pairs(i_pts)),
+                        TraceSeries::new("Recovered", to_pairs(r_pts)),
+                    ];
+                    Some((label, param_summary, series))
+                }) {
+                    self.revision = self.revision.wrapping_add(1).max(1);
+                }
+                self.evaluate_sensitivity(ui);
+                ui.separator();
+                metrics::render_simulation_plot(ui, self);
+            });
         });
     }
 }
@@ -458,14 +456,22 @@ impl TheoryDescribable for SirTool {
     }
 
     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        let pc = |min, max, step, d| ParameterConstraint { min, max, step, default: Some(d) };
-        let mut map = HashMap::with_capacity(5);
-        map.insert("N".to_string(), pc(100.0, 100_000.0, 100.0, 1000.0));
-        map.insert("I0".to_string(), pc(1.0, 50_000.0, 1.0, 10.0));
-        map.insert("beta".to_string(), pc(0.0, 5.0, 0.02, 0.5));
-        map.insert("gamma".to_string(), pc(0.0, 1.0, 0.01, 0.1));
-        map.insert("duration".to_string(), pc(MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0, 100.0));
-        map
+        let pc = |min, max, step, d| ParameterConstraint {
+            min,
+            max,
+            step,
+            default: Some(d),
+        };
+        [
+            ("N", pc(100.0, 100_000.0, 100.0, 1000.0)),
+            ("I0", pc(1.0, 50_000.0, 1.0, 10.0)),
+            ("beta", pc(0.0, 5.0, 0.02, 0.5)),
+            ("gamma", pc(0.0, 1.0, 0.01, 0.1)),
+            ("duration", pc(MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0, 100.0)),
+        ]
+        .into_iter()
+        .map(|(k, c)| (k.to_string(), c))
+        .collect()
     }
 }
 
