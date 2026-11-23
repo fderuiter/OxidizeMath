@@ -10,11 +10,11 @@ The core library for the **Math Explorer** project. This crate provides a collec
 
 ##  Install
 
-Add this crate to your dependencies:
+Add this crate to your dependencies and enable the domain features your project uses (`default = []` keeps the core minimal):
 
 ```toml
 [dependencies]
-math_explorer = { path = "path/to/math_explorer" }
+math_explorer = { path = "path/to/math_explorer", features = ["biology", "physics", "ai"] }
 ```
 
 ##  Usage
@@ -155,5 +155,5 @@ Please refer to [CONTRIBUTING.md](../CONTRIBUTING.md) in the project root.
 To run the comprehensive test suite for all modules:
 
 ```bash
-cargo test
+cargo test -p math_explorer --all-features
 ```
