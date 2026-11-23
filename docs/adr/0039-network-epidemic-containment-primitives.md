@@ -1,4 +1,4 @@
-# ADR 0038: Network Epidemic Containment Primitives, Active Degree Moments, and Zero-Allocation Stepping
+# ADR 0039: Network Epidemic Containment Primitives, Active Degree Moments, and Zero-Allocation Stepping
 
 ## Status
 Accepted (extends [ADR 0021](0021-zero-allocation-grpo-advantage-normalization.md), [ADR 0022](0022-unify-preset-state-serialization.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
