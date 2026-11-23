@@ -1,5 +1,9 @@
 # ADR 0013: Workspace Doc Lints and Intra-Doc Path Scoping
 
+## Status
+
+Accepted
+
 ## Context
 Automated documentation generation across workspace crates encountered broken intra-doc links and warnings under strict flags (`RUSTDOCFLAGS="-D warnings"`). Furthermore, the markdown test harness compiles workspace documentation, exposing it to markdown formatting lints such as bare URLs and broken intra-doc links.
 
