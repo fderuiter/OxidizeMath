@@ -2,6 +2,7 @@
 
 use eframe::egui;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[path = "trace_overlay/ui.rs"]
 mod ui;
@@ -61,12 +62,20 @@ mod shared_points_serde {
 }
 
 /// A single named dataset series within a trace snapshot.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TraceSeries {
     pub name: String,
     #[serde(with = "shared_points_serde")]
     pub points: TracePoints,
+    #[serde(skip)]
+    display_cache: std::sync::OnceLock<Arc<Vec<egui_plot::PlotPoint>>>,
+}
+
+impl PartialEq for TraceSeries {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.points == other.points
+    }
 }
 
 impl TraceSeries {
@@ -74,7 +83,18 @@ impl TraceSeries {
         Self {
             name: name.into(),
             points: points.into(),
+            display_cache: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Returns a min-max decimated display buffer capped at [`crate::framework::MAX_DISPLAY_POLYLINE_POINTS`].
+    pub fn display_points(&self) -> Arc<Vec<egui_plot::PlotPoint>> {
+        Arc::clone(self.display_cache.get_or_init(|| {
+            crate::framework::decimate_pairs_minmax(
+                &self.points,
+                crate::framework::MAX_DISPLAY_POLYLINE_POINTS,
+            )
+        }))
     }
 }
 

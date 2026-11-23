@@ -70,7 +70,20 @@ fn test_idle_frames_zero_series_clones_400k_borrowed_points() {
         "Snapshot {} bytes exceeded 2 MiB budget",
         snap.memory_size()
     );
-    assert_eq!(framework.current_valid_plot_datasets[0].1.len(), 400_002);
+    assert!(
+        framework.current_valid_plot_datasets[0].1.len()
+            <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS
+    );
+    assert_eq!(
+        framework
+            .active_tool
+            .as_ref()
+            .expect("active SirTool")
+            .export_datasets()[0]
+            .1
+            .len(),
+        400_002
+    );
 
     let (avg_ms, alloc_count, alloc_bytes) = crate::test_alloc::measure_coord_series_allocs(|| {
         let start = PlatformInstant::now();
@@ -123,6 +136,30 @@ fn build_three_200k_ode_comparison_tool() -> OdeSolverTool {
     tool
 }
 
+fn assert_ode_3x200k_snapshot(framework: &SimulationFramework) {
+    let snap = framework
+        .last_valid_snapshot()
+        .expect("ODE snapshot must exist");
+    assert!(snap.memory_size() <= MAX_SNAPSHOT_BYTES);
+    assert_eq!(framework.current_valid_plot_datasets.len(), 3);
+    assert!(framework
+        .current_valid_plot_datasets
+        .iter()
+        .all(|(_, pts)| pts.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS));
+    let exported = framework
+        .active_tool
+        .as_ref()
+        .expect("active OdeSolverTool")
+        .export_datasets();
+    assert_eq!(
+        exported
+            .iter()
+            .filter(|(_, pts)| pts.len() == 200_002)
+            .count(),
+        3
+    );
+}
+
 #[test]
 fn test_idle_frames_zero_series_clones_three_200k_ode_comparison_series() {
     let _guard = crate::reflective_ui::tests::TEST_MUTEX
@@ -149,18 +186,7 @@ fn test_idle_frames_zero_series_clones_three_200k_ode_comparison_series() {
         let _ = ctx.run(input.clone(), |c| framework.show(c, "ode_3x200k_bench"));
     }
 
-    let snap = framework
-        .last_valid_snapshot()
-        .expect("ODE snapshot must exist");
-    assert!(snap.memory_size() <= MAX_SNAPSHOT_BYTES);
-    assert_eq!(
-        framework
-            .current_valid_plot_datasets
-            .iter()
-            .filter(|(_, pts)| pts.len() == 200_002)
-            .count(),
-        3
-    );
+    assert_ode_3x200k_snapshot(&framework);
 
     let (avg_ms, alloc_count, alloc_bytes) = crate::test_alloc::measure_coord_series_allocs(|| {
         let start = PlatformInstant::now();

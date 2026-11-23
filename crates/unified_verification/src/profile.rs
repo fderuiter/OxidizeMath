@@ -1,22 +1,29 @@
+use crate::manifest_cache::ManifestCache;
 use std::fs;
 use std::path::Path;
 use toml::Value;
 
-fn check_root_profile(root_path: &Path, auto_fix: bool) -> bool {
-    if !root_path.exists() {
-        return true;
-    }
-
-    let root_content = fs::read_to_string(root_path).unwrap_or_default();
-    let root_parsed: Value =
-        toml::from_str(&root_content).unwrap_or_else(|_| Value::Table(Default::default()));
-
-    let root_has_overflow_checks = root_parsed
-        .get("profile")
-        .and_then(|p| p.get("release"))
-        .and_then(|r| r.get("overflow-checks"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+fn check_root_profile(
+    root_path: &Path,
+    auto_fix: bool,
+    manifest_cache: &mut ManifestCache,
+) -> bool {
+    let (root_content, root_has_overflow_checks) = match manifest_cache.get_or_load(root_path) {
+        Ok(cached) => {
+            let has_checks = cached
+                .parsed
+                .get("profile")
+                .and_then(|p| p.get("release"))
+                .and_then(|r| r.get("overflow-checks"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            (cached.content.clone(), has_checks)
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            return false;
+        }
+    };
 
     if root_has_overflow_checks {
         println!(
@@ -35,6 +42,7 @@ fn check_root_profile(root_path: &Path, auto_fix: bool) -> bool {
         }
         new_root_content.push_str("\n[profile.release]\noverflow-checks = true\n");
         fs::write(root_path, new_root_content).unwrap();
+        manifest_cache.invalidate(root_path);
         true
     } else {
         eprintln!(
@@ -44,28 +52,17 @@ fn check_root_profile(root_path: &Path, auto_fix: bool) -> bool {
     }
 }
 
-fn check_member_manifest(member: &str, auto_fix: bool) -> bool {
-    let path = Path::new(member).join("Cargo.toml");
-    if !path.exists() {
-        return true;
-    }
-
-    let content = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Failed to read {}: {}", path.display(), e);
-            return false;
-        }
-    };
-    let parsed: Value = match toml::from_str(&content) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("Failed to parse TOML for {}: {}", path.display(), e);
+fn check_member_manifest(member: &str, auto_fix: bool, manifest_cache: &mut ManifestCache) -> bool {
+    let path = crate::policy_audit::lint_policy::resolve_member_dir(member).join("Cargo.toml");
+    let (content, parsed) = match manifest_cache.get_or_load(&path) {
+        Ok(cached) => (cached.content.clone(), cached.parsed.clone()),
+        Err(err) => {
+            eprintln!("{err}");
             return false;
         }
     };
 
-    let mut passed = crate::policy_audit::lint_policy::check_manifest_lints(member, &path, &parsed);
+    let mut passed = manifest_cache.check_manifest_lints_once(member, &path, &parsed);
 
     let has_profile_release = parsed
         .get("profile")
@@ -80,6 +77,7 @@ fn check_member_manifest(member: &str, auto_fix: bool) -> bool {
             );
             let new_content = remove_profile_release(&content);
             fs::write(&path, new_content).unwrap();
+            manifest_cache.invalidate(&path);
         } else {
             eprintln!(
                 "[!] Profile mismatch in {}: redundant [profile.release] found. Configuration must be consolidated in workspace root.",
@@ -93,10 +91,20 @@ fn check_member_manifest(member: &str, auto_fix: bool) -> bool {
 }
 
 pub fn check_profiles(workspace_members: &[&str], auto_fix: bool) -> bool {
-    let mut passed = check_root_profile(Path::new("Cargo.toml"), auto_fix);
+    let mut manifest_cache = ManifestCache::new();
+    check_profiles_with_cache(workspace_members, auto_fix, &mut manifest_cache)
+}
+
+pub(crate) fn check_profiles_with_cache(
+    workspace_members: &[&str],
+    auto_fix: bool,
+    manifest_cache: &mut ManifestCache,
+) -> bool {
+    let root_manifest = crate::manifest_cache::resolve_workspace_path("Cargo.toml");
+    let mut passed = check_root_profile(&root_manifest, auto_fix, manifest_cache);
 
     for member in workspace_members {
-        if !check_member_manifest(member, auto_fix) {
+        if !check_member_manifest(member, auto_fix, manifest_cache) {
             passed = false;
         }
     }
@@ -196,5 +204,70 @@ mod tests {
         )
         .unwrap();
         assert!(check_profiles(&["member1", "egui_plot"], false));
+    }
+
+    #[test]
+    fn test_check_profiles_subdir_and_missing_manifest_fail_closed() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
+        let temp_dir = TempTestDir::new("unified_verification_profile_subdir");
+        let _cwd_guard = CurrentDirGuard(env::current_dir().unwrap());
+
+        fs::write(
+            temp_dir.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/m1\", \"crates/m2\"]\n[profile.release]\noverflow-checks = true\n",
+        )
+        .unwrap();
+        fs::create_dir_all(temp_dir.join("crates/m1")).unwrap();
+        fs::create_dir_all(temp_dir.join("crates/m2")).unwrap();
+        fs::write(
+            temp_dir.join("crates/m1/Cargo.toml"),
+            "[package]\nname = \"m1\"\nversion = \"0.1.0\"\n\n[lints]\nworkspace = true\n",
+        )
+        .unwrap();
+        fs::write(
+            temp_dir.join("crates/m2/Cargo.toml"),
+            "[package]\nname = \"m2\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        env::set_current_dir(&*temp_dir).unwrap();
+        assert!(!check_profiles(&["crates/m1", "crates/m2"], false));
+        assert!(!check_profiles(&["crates/m1", "crates/missing"], false));
+
+        env::set_current_dir(temp_dir.join("crates/m1")).unwrap();
+        assert!(!check_profiles(&["crates/m1", "crates/m2"], false));
+        assert!(!check_profiles(&["crates/m1", "crates/missing"], false));
+
+        fs::write(
+            temp_dir.join("crates/m2/Cargo.toml"),
+            "[package]\nname = \"m2\"\nversion = \"0.1.0\"\n\n[lints]\nworkspace = true\n",
+        )
+        .unwrap();
+        assert!(check_profiles(&["crates/m1", "crates/m2"], false));
+    }
+
+    #[test]
+    fn test_auto_fix_invalidates_cached_root_and_member_manifests() {
+        let _lock = crate::DIR_LOCK.lock().unwrap();
+        let temp_dir = TempTestDir::new("unified_verification_profile_autofix");
+        let _cwd_guard = CurrentDirGuard(env::current_dir().unwrap());
+        env::set_current_dir(&*temp_dir).unwrap();
+
+        fs::write("Cargo.toml", "[workspace]\nmembers = [\"crates/m1\"]\n").unwrap();
+        fs::create_dir_all("crates/m1").unwrap();
+        fs::write(
+            "crates/m1/Cargo.toml",
+            "[package]\nname = \"m1\"\nversion = \"0.1.0\"\n\n[lints]\nworkspace = true\n\n[profile.release]\noverflow-checks = false\n",
+        )
+        .unwrap();
+
+        let mut cache = ManifestCache::new();
+        assert!(cache.get_or_load(Path::new("Cargo.toml")).is_ok());
+        assert!(cache.get_or_load(Path::new("crates/m1/Cargo.toml")).is_ok());
+
+        assert!(check_profiles_with_cache(&["crates/m1"], true, &mut cache));
+        assert!(!cache.contains(Path::new("Cargo.toml")));
+        assert!(!cache.contains(Path::new("crates/m1/Cargo.toml")));
+        assert!(check_profiles_with_cache(&["crates/m1"], false, &mut cache));
     }
 }

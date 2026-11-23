@@ -134,6 +134,10 @@ impl SimulationFramework {
                 &self.current_valid_plot_datasets,
             )
         {
+            if let Some(snap) = &mut self.last_valid_snapshot {
+                snap.step_index = self.step_counter;
+                snap.timestamp = crate::web_io::PlatformInstant::now();
+            }
             return;
         }
 
@@ -149,18 +153,7 @@ impl SimulationFramework {
             saved
         };
 
-        let mut datasets = self.current_valid_plot_datasets.clone();
-        if datasets.is_empty() {
-            let exported: Vec<(String, egui_plot::SharedPoints)> = tool
-                .export_datasets()
-                .into_iter()
-                .map(|(n, pts)| (n, egui_plot::SharedPoints::from(pts)))
-                .collect();
-            if inspect_shared_datasets_for_divergence(&exported, &[]).is_ok() {
-                datasets = exported;
-            }
-        }
-
+        let datasets = self.resolve_snapshot_datasets();
         self.rev_cache.last_snapshot_source_datasets = datasets.clone();
         let mut snapshot = StateSnapshot {
             tool_state,
@@ -172,22 +165,98 @@ impl SimulationFramework {
         self.last_valid_snapshot = Some(snapshot);
     }
 
+    fn resolve_snapshot_datasets(&self) -> Vec<(String, egui_plot::SharedPoints)> {
+        if !self.current_valid_plot_datasets.is_empty() {
+            return self.current_valid_plot_datasets.clone();
+        }
+        let Some(tool) = &self.active_tool else {
+            return Vec::new();
+        };
+        let exported: Vec<(String, egui_plot::SharedPoints)> = tool
+            .export_datasets()
+            .into_iter()
+            .map(|(n, pts)| (n, egui_plot::SharedPoints::from(pts)))
+            .collect();
+        if inspect_shared_datasets_for_divergence(&exported, &[]).is_ok() {
+            exported
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn check_captured_or_tool_divergence(
+        &self,
+    ) -> Result<(bool, Vec<(String, egui_plot::SharedPoints)>), DiagnosticReport> {
+        let has_plot_datasets = match egui_plot::check_last_plot_datasets_finite_skipping(
+            &self.current_valid_plot_datasets,
+        ) {
+            Ok(present) => present,
+            Err((series_name, axis, idx, bad_val)) => {
+                return Err(DiagnosticReport::new(
+                    0.0,
+                    idx,
+                    format!("{series_name}.{axis}"),
+                    format!(
+                        "Non-finite floating-point value ({bad_val}) encountered in plot dataset '{series_name}' at point index {idx}."
+                    ),
+                ));
+            }
+        };
+        let mut tool_datasets = Vec::new();
+        if let Some(tool) = &self.active_tool {
+            if !tool.has_finite_parameters() {
+                return Err(DiagnosticReport::new(
+                    self.start_time.elapsed().as_secs_f64(),
+                    self.step_counter,
+                    "state",
+                    "Non-finite floating-point state encountered in active tool parameters.",
+                ));
+            }
+            if !has_plot_datasets && tool.state_revision() == 0 {
+                tool_datasets = tool
+                    .export_datasets()
+                    .into_iter()
+                    .map(|(n, pts)| (n, egui_plot::SharedPoints::from(pts)))
+                    .collect();
+                if !tool_datasets.is_empty() {
+                    inspect_shared_datasets_for_divergence(
+                        &tool_datasets,
+                        &self.current_valid_plot_datasets,
+                    )?;
+                }
+            }
+        }
+        Ok((has_plot_datasets, tool_datasets))
+    }
+
     fn commit_valid_runtime_datasets(
         &mut self,
-        plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
+        has_plot_datasets: bool,
         tool_datasets: Vec<(String, egui_plot::SharedPoints)>,
     ) {
         if self.is_diverged {
             return;
         }
         let active_name = self.active_tool.as_ref().map(|t| t.name());
-        if !plot_datasets.is_empty() {
-            if !shared_datasets_ptr_eq(&plot_datasets, &self.current_valid_plot_datasets) {
-                self.current_valid_plot_datasets = plot_datasets;
+        if has_plot_datasets {
+            let capture_hash = egui_plot::last_plot_capture_hash();
+            let same_capture = active_name.is_some_and(|name| {
+                self.rev_cache.last_plot_capture_hash == Some((name, capture_hash))
+            }) && !self.current_valid_plot_datasets.is_empty()
+                && self.sync_state.datasets_owner_tool == active_name;
+            if !same_capture {
+                let plot_datasets = egui_plot::get_last_plot_shared_datasets();
+                if !shared_datasets_ptr_eq(&plot_datasets, &self.current_valid_plot_datasets) {
+                    self.current_valid_plot_datasets = plot_datasets;
+                }
+                if let Some(name) = active_name {
+                    self.rev_cache.last_plot_capture_hash = Some((name, capture_hash));
+                }
             }
             self.sync_state.datasets_owner_tool = active_name;
         } else if !tool_datasets.is_empty() {
             self.current_valid_plot_datasets = tool_datasets;
+            self.rev_cache.last_plot_capture_hash = None;
             self.sync_state.datasets_owner_tool = active_name;
         }
         self.step_counter += 1;
@@ -196,41 +265,9 @@ impl SimulationFramework {
     /// Inspects active tool parameters via `has_finite_parameters` and output plot datasets for `NaN`/`Inf`.
     /// Enforces latency under 1 millisecond per frame without calling `InteractiveTool::save_state`.
     pub fn inspect_runtime_state(&mut self) -> Result<(), DiagnosticReport> {
-        let plot_datasets = egui_plot::get_last_plot_shared_datasets();
-        let mut check_result = inspect_shared_datasets_for_divergence(
-            &plot_datasets,
-            &self.current_valid_plot_datasets,
-        );
-        let mut tool_datasets = Vec::new();
-
-        if check_result.is_ok() {
-            if let Some(tool) = &self.active_tool {
-                if !tool.has_finite_parameters() {
-                    check_result = Err(DiagnosticReport::new(
-                        self.start_time.elapsed().as_secs_f64(),
-                        self.step_counter,
-                        "state",
-                        "Non-finite floating-point state encountered in active tool parameters.",
-                    ));
-                } else if plot_datasets.is_empty() && tool.state_revision() == 0 {
-                    tool_datasets = tool
-                        .export_datasets()
-                        .into_iter()
-                        .map(|(n, pts)| (n, egui_plot::SharedPoints::from(pts)))
-                        .collect();
-                    if !tool_datasets.is_empty() {
-                        check_result = inspect_shared_datasets_for_divergence(
-                            &tool_datasets,
-                            &self.current_valid_plot_datasets,
-                        );
-                    }
-                }
-            }
-        }
-
-        match check_result {
-            Ok(()) => {
-                self.commit_valid_runtime_datasets(plot_datasets, tool_datasets);
+        match self.check_captured_or_tool_divergence() {
+            Ok((has_plot_datasets, tool_datasets)) => {
+                self.commit_valid_runtime_datasets(has_plot_datasets, tool_datasets);
                 Ok(())
             }
             Err(report) => {

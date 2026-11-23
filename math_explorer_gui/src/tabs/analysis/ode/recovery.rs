@@ -196,12 +196,10 @@ pub fn render_recovery_ui(
     }
 }
 
-pub(super) fn render_recovery_ui_shared(
+pub(super) fn render_recovery_ui_in_place(
     ui: &mut egui::Ui,
     tool: &mut super::OdeSolverTool,
     changed: &mut bool,
-    plot_points_y: &mut egui_plot::SharedPoints,
-    plot_points_v: &mut egui_plot::SharedPoints,
 ) {
     if let Some(action) = render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(tool)) {
         match action {
@@ -211,8 +209,5 @@ pub(super) fn render_recovery_ui_shared(
         }
         *changed = true;
         tool.sync_series_cache();
-        let (py, pv) = tool.series_cache.shared_points();
-        *plot_points_y = py;
-        *plot_points_v = pv;
     }
 }

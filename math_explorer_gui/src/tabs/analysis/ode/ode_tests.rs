@@ -420,3 +420,49 @@ fn test_harmonic_equilibrium_root_dt_025_and_nonlinear_preset_fits() {
         .expect("logistic fit");
     assert!(logistic_fit.r_squared >= 0.99);
 }
+
+#[test]
+fn test_ode_200k_steps_decimates_display_polyline_and_preserves_full_exports() {
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::HarmonicOscillator,
+        param_k: 4.0,
+        ic_y0: 1.5,
+        ic_v0: -0.5,
+        dt: 0.0005,
+        total_time: 100.0,
+        ..Default::default()
+    };
+    tool.recalculate();
+    assert_eq!(tool.y_series.len(), 200_001);
+    assert!(tool.display_y.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS);
+    assert!(tool.display_v.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS);
+
+    let full_min = tool.y_series.iter().copied().fold(f64::INFINITY, f64::min);
+    let full_max = tool
+        .y_series
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let disp_min = tool
+        .display_y
+        .iter()
+        .map(|p| p.y)
+        .fold(f64::INFINITY, f64::min);
+    let disp_max = tool
+        .display_y
+        .iter()
+        .map(|p| p.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!((disp_min - full_min).abs() < 1e-12);
+    assert!((disp_max - full_max).abs() < 1e-12);
+
+    let ctx = egui::Context::default();
+    egui_plot::clear_last_plot_datasets();
+    let _ = ctx.run(egui::RawInput::default(), |c| tool.show(c));
+    let plot_datasets = egui_plot::get_last_plot_datasets();
+    assert!(plot_datasets[0].1.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS);
+
+    let exported = tool.export_datasets();
+    assert_eq!(exported[0].1.len(), 200_001);
+    assert_eq!(exported[1].1.len(), 200_001);
+}

@@ -21,6 +21,7 @@ pub(crate) struct CachedItemSeries {
     pub(crate) id: Id,
     pub(crate) name: String,
     pub(crate) points: SharedPoints,
+    pub(crate) source_vec_ptr: Option<usize>,
     pub(crate) color: Color32,
     pub(crate) bounds: PlotBounds,
 }
@@ -139,7 +140,7 @@ impl PlotRuntimeCache {
             && self.0.series.iter().zip(items.iter()).all(|(entry, item)| {
                 entry.id == item.id()
                     && entry.name == item.name()
-                    && item.matches_cached_shared_points(&entry.points)
+                    && item.matches_cached_series(&entry.points, entry.source_vec_ptr)
             });
         matches.then_some(self.0.series.as_slice())
     }
@@ -154,7 +155,7 @@ impl PlotRuntimeCache {
                 entry.id == item.id()
                     && entry.name == item.name()
                     && entry.color == item.color()
-                    && item.matches_cached_shared_points(&entry.points)
+                    && item.matches_cached_series(&entry.points, entry.source_vec_ptr)
             });
         if all_match {
             #[cfg(test)]
@@ -170,7 +171,7 @@ impl PlotRuntimeCache {
                 .filter(|entry| {
                     entry.id == item.id()
                         && entry.name == item.name()
-                        && item.matches_cached_shared_points(&entry.points)
+                        && item.matches_cached_series(&entry.points, entry.source_vec_ptr)
                 })
                 .map(|entry| (entry.points.clone(), entry.bounds))
                 .or_else(|| {
@@ -178,7 +179,7 @@ impl PlotRuntimeCache {
                         .find(|entry| {
                             entry.id == item.id()
                                 && entry.name == item.name()
-                                && item.matches_cached_shared_points(&entry.points)
+                                && item.matches_cached_series(&entry.points, entry.source_vec_ptr)
                         })
                         .map(|entry| (entry.points.clone(), entry.bounds))
                 });
@@ -191,6 +192,7 @@ impl PlotRuntimeCache {
                 id: item.id(),
                 name: item.name().to_owned(),
                 points,
+                source_vec_ptr: item.shared_vec_ptr(),
                 color: item.color(),
                 bounds,
             });

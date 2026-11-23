@@ -387,3 +387,120 @@ fn streaming_monotone_intersections_match_merged_knots_baseline() {
         }
     }
 }
+
+#[test]
+fn plateau_200k_series_detects_extrema_in_linear_time_under_5ms() {
+    let mut pts = Vec::with_capacity(200_000);
+    pts.push([0.0, 0.0]);
+    for i in 1..100_000 {
+        pts.push([i as f64, 5.0]);
+    }
+    pts.push([100_000.0, 2.0]);
+    for i in 100_001..199_999 {
+        pts.push([i as f64, -3.0]);
+    }
+    pts.push([199_999.0, 1.0]);
+
+    let items: Vec<Box<dyn PlotItem>> = vec![Box::new(Line::new("Plateau200k", pts))];
+    let tf = make_transform([-10.0, -10.0], [200_010.0, 10.0]);
+
+    // Warm up instruction cache once before timing
+    let _ = detect_critical_points(&items, &tf);
+    let start = std::time::Instant::now();
+    let pois = detect_critical_points(&items, &tf);
+    let elapsed = start.elapsed();
+
+    let max_poi = pois
+        .iter()
+        .find(|p| p.kind == CriticalPointKind::LocalMax)
+        .expect("expected plateau midpoint LocalMax");
+    let min_poi = pois
+        .iter()
+        .find(|p| p.kind == CriticalPointKind::LocalMin)
+        .expect("expected plateau midpoint LocalMin");
+    assert!((max_poi.point[0] - 50_000.0).abs() <= 1.0);
+    assert!((max_poi.point[1] - 5.0).abs() < 1e-9);
+    assert!((min_poi.point[0] - 149_999.5).abs() <= 1.0);
+    assert!((min_poi.point[1] + 3.0).abs() < 1e-9);
+    assert!(
+        elapsed < std::time::Duration::from_millis(5),
+        "200k plateau detect_critical_points took {elapsed:?} (>= 5ms)"
+    );
+}
+
+#[test]
+fn pairwise_intersections_skip_disjoint_y_bounds_and_series_above_cap() {
+    let tf = make_transform([0.0, -20.0], [20.0, 20.0]);
+    let upper = Line::new("Upper", vec![[0.0, 10.0], [10.0, 12.0]]);
+    let lower = Line::new("Lower", vec![[0.0, -12.0], [10.0, -10.0]]);
+    let disjoint_items: Vec<Box<dyn PlotItem>> = vec![Box::new(upper), Box::new(lower)];
+    let disjoint_pois = detect_critical_points(&disjoint_items, &tf);
+    assert!(
+        disjoint_pois
+            .iter()
+            .all(|p| p.kind != CriticalPointKind::Intersection)
+    );
+
+    // 17 crossing lines (> MAX_PAIRWISE_INTERSECTION_SERIES = 16) skip O(S^2) pairwise scan
+    let mut many_items: Vec<Box<dyn PlotItem>> = Vec::new();
+    for idx in 0..=crate::poi::MAX_PAIRWISE_INTERSECTION_SERIES {
+        let slope = (idx as f64) * 0.2 - 1.6;
+        many_items.push(Box::new(Line::new(
+            format!("S{idx}"),
+            vec![[0.0, -slope * 5.0], [10.0, slope * 5.0]],
+        )));
+    }
+    let capped_pois = detect_critical_points(&many_items, &tf);
+    assert!(
+        capped_pois
+            .iter()
+            .all(|p| p.kind != CriticalPointKind::Intersection)
+    );
+}
+
+#[test]
+fn static_frames_reuse_cached_pois_and_defer_export_primitive_materialization() {
+    let ctx = egui::Context::default();
+    let plot_id = egui::Id::new("cached_poi_and_deferred_export_test");
+    let pts = std::sync::Arc::new(vec![
+        crate::PlotPoint::new(-2.0, -1.0),
+        crate::PlotPoint::new(0.0, 2.0),
+        crate::PlotPoint::new(2.0, -1.0),
+    ]);
+
+    crate::poi::reset_detect_critical_points_call_count();
+    crate::export_primitives::reset_materialized_export_primitives_call_count();
+    for _ in 0..4 {
+        crate::clear_last_plot_datasets();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let _ = crate::Plot::new("cached_poi")
+                    .id(plot_id)
+                    .default_x_bounds(-3.0, 3.0)
+                    .default_y_bounds(-3.0, 3.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new(
+                            "ArcWave",
+                            crate::PlotPoints::from_shared(std::sync::Arc::clone(&pts)),
+                        ));
+                    });
+            });
+        });
+    }
+
+    assert!(
+        crate::poi::detect_critical_points_call_count() <= 2,
+        "expected cached POIs across static frames, got {} calls",
+        crate::poi::detect_critical_points_call_count()
+    );
+    assert_eq!(
+        crate::export_primitives::materialized_export_primitives_call_count(),
+        0
+    );
+    let prims = crate::get_last_plot_primitives();
+    assert_eq!(prims.len(), 1);
+    assert_eq!(
+        crate::export_primitives::materialized_export_primitives_call_count(),
+        1
+    );
+}

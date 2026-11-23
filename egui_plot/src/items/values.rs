@@ -300,11 +300,12 @@ pub enum Orientation {
 
 /// Represents many [`PlotPoint`]s.
 ///
-/// These can be an owned `Vec`, an `Arc`-backed [`super::SharedPoints`] buffer,
+/// These can be an owned `Vec`, an `Arc`-backed [`super::SharedPoints`] or `Vec<PlotPoint>` buffer,
 /// generated on-the-fly by a function, or borrowed from a slice.
 pub enum PlotPoints<'a> {
     Owned(Vec<PlotPoint>),
     Shared(super::SharedPoints),
+    SharedVec(std::sync::Arc<Vec<PlotPoint>>),
     Generator(ExplicitGenerator<'a>),
     Borrowed(&'a [PlotPoint]),
 }
@@ -342,6 +343,20 @@ impl From<&super::SharedPoints> for PlotPoints<'_> {
     }
 }
 
+impl From<std::sync::Arc<Vec<PlotPoint>>> for PlotPoints<'_> {
+    #[inline]
+    fn from(points: std::sync::Arc<Vec<PlotPoint>>) -> Self {
+        Self::SharedVec(points)
+    }
+}
+
+impl From<&std::sync::Arc<Vec<PlotPoint>>> for PlotPoints<'_> {
+    #[inline]
+    fn from(points: &std::sync::Arc<Vec<PlotPoint>>) -> Self {
+        Self::SharedVec(std::sync::Arc::clone(points))
+    }
+}
+
 impl<'a> From<&'a [PlotPoint]> for PlotPoints<'a> {
     #[inline]
     fn from(points: &'a [PlotPoint]) -> Self {
@@ -362,24 +377,45 @@ impl<'a> PlotPoints<'a> {
 
     /// Construct [`PlotPoints`] backed by a shared coordinate buffer without copying.
     #[inline]
-    pub fn from_shared(points: impl Into<super::SharedPoints>) -> Self {
-        Self::Shared(points.into())
+    pub fn from_shared(points: impl Into<Self>) -> Self {
+        points.into()
     }
 
     pub fn points(&self) -> &[PlotPoint] {
         match self {
             Self::Owned(points) => points.as_slice(),
+            Self::SharedVec(points) => points.as_slice(),
             Self::Shared(_) | Self::Generator(_) => &[],
             Self::Borrowed(points) => points,
         }
     }
 
-    /// Returns the underlying [`super::SharedPoints`] if backed by a shared buffer.
+    pub(crate) fn take_shared_points(&mut self) -> std::sync::Arc<Vec<PlotPoint>> {
+        match self {
+            Self::SharedVec(points) => std::sync::Arc::clone(points),
+            Self::Shared(points) => {
+                std::sync::Arc::new(points.iter().map(|&[x, y]| PlotPoint::new(x, y)).collect())
+            }
+            Self::Owned(points) => std::sync::Arc::new(std::mem::take(points)),
+            Self::Borrowed(points) => std::sync::Arc::new(points.to_vec()),
+            Self::Generator(_) => std::sync::Arc::new(Vec::new()),
+        }
+    }
+
+    /// Returns the underlying [`super::SharedPoints`] if backed by a [`super::SharedPoints`] buffer.
     #[inline]
     pub fn shared(&self) -> Option<&super::SharedPoints> {
         match self {
             Self::Shared(points) => Some(points),
-            Self::Owned(_) | Self::Generator(_) | Self::Borrowed(_) => None,
+            Self::Owned(_) | Self::SharedVec(_) | Self::Generator(_) | Self::Borrowed(_) => None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn shared_vec_ptr(&self) -> Option<usize> {
+        match self {
+            Self::SharedVec(points) => Some(std::sync::Arc::as_ptr(points) as usize),
+            Self::Owned(_) | Self::Shared(_) | Self::Generator(_) | Self::Borrowed(_) => None,
         }
     }
 
@@ -388,6 +424,7 @@ impl<'a> PlotPoints<'a> {
     pub fn len(&self) -> usize {
         match self {
             Self::Owned(points) => points.len(),
+            Self::SharedVec(points) => points.len(),
             Self::Shared(points) => points.len(),
             Self::Generator(_) => 0,
             Self::Borrowed(points) => points.len(),
@@ -399,6 +436,7 @@ impl<'a> PlotPoints<'a> {
     pub fn to_shared_points(&self) -> super::SharedPoints {
         match self {
             Self::Shared(points) => points.clone(),
+            Self::SharedVec(points) => super::SharedPoints::from_plot_points(points),
             Self::Owned(points) => super::SharedPoints::from_plot_points(points),
             Self::Borrowed(points) => super::SharedPoints::from_plot_points(points),
             Self::Generator(_) => super::SharedPoints::default(),
@@ -407,9 +445,17 @@ impl<'a> PlotPoints<'a> {
 
     /// Returns `true` when `cached` already holds identical coordinates for `self`.
     #[inline]
-    pub(crate) fn matches_cached_shared(&self, cached: &super::SharedPoints) -> bool {
+    pub(crate) fn matches_cached_shared(
+        &self,
+        cached: &super::SharedPoints,
+        cached_vec_ptr: Option<usize>,
+    ) -> bool {
         match self {
             Self::Shared(points) => points.ptr_eq(cached),
+            Self::SharedVec(points) => {
+                cached_vec_ptr == Some(std::sync::Arc::as_ptr(points) as usize)
+                    || cached.matches_plot_points(points)
+            }
             Self::Owned(points) => cached.matches_plot_points(points),
             Self::Borrowed(points) => cached.matches_plot_points(points),
             Self::Generator(_) => false,
@@ -421,6 +467,7 @@ impl<'a> PlotPoints<'a> {
     pub(super) fn geometry(&self) -> PlotGeometry<'_> {
         match self {
             Self::Owned(points) => PlotGeometry::Points(points.as_slice()),
+            Self::SharedVec(points) => PlotGeometry::Points(points.as_slice()),
             Self::Shared(points) => PlotGeometry::Shared(points.as_slice()),
             Self::Generator(_) => PlotGeometry::Points(&[]),
             Self::Borrowed(points) => PlotGeometry::Points(points),
@@ -432,6 +479,7 @@ impl<'a> PlotPoints<'a> {
     pub(crate) fn iter_plot_points(&self) -> PlotPointsIter<'_> {
         match self {
             Self::Owned(points) => PlotPointsIter::Slice(points.iter()),
+            Self::SharedVec(points) => PlotPointsIter::Slice(points.iter()),
             Self::Shared(points) => PlotPointsIter::Shared(points.iter()),
             Self::Generator(_) => PlotPointsIter::Slice([].iter()),
             Self::Borrowed(points) => PlotPointsIter::Slice(points.iter()),
@@ -513,6 +561,7 @@ impl<'a> PlotPoints<'a> {
     pub fn is_empty(&self) -> bool {
         match self {
             Self::Owned(points) => points.is_empty(),
+            Self::SharedVec(points) => points.is_empty(),
             Self::Shared(points) => points.is_empty(),
             Self::Generator(_) => false,
             Self::Borrowed(points) => points.is_empty(),
@@ -549,11 +598,26 @@ impl<'a> PlotPoints<'a> {
         (start < end).then_some(start..=end)
     }
 
+    pub(super) fn shared_ptr_id(&self) -> Option<usize> {
+        match self {
+            Self::Shared(points) => Some(points.as_slice().as_ptr() as usize),
+            Self::SharedVec(points) => Some(std::sync::Arc::as_ptr(points) as usize),
+            Self::Owned(_) | Self::Generator(_) | Self::Borrowed(_) => None,
+        }
+    }
+
     pub(super) fn bounds(&self) -> PlotBounds {
         match self {
             Self::Owned(points) => {
                 let mut bounds = PlotBounds::NOTHING;
                 for point in points {
+                    bounds.extend_with(point);
+                }
+                bounds
+            }
+            Self::SharedVec(points) => {
+                let mut bounds = PlotBounds::NOTHING;
+                for point in points.iter() {
                     bounds.extend_with(point);
                 }
                 bounds

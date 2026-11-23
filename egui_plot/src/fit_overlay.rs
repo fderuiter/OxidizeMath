@@ -5,7 +5,7 @@ use std::sync::Arc;
 use egui::{Color32, Rect, RichText, Stroke, Ui, vec2};
 
 use crate::{
-    AccessState, SharedPoints,
+    AccessState,
     a11y::{self, AccessibleTooltipExt as _},
     fit::{FitResult, FitType},
     items::{Line, LineStyle, MarkerShape, PlotItem, Points},
@@ -16,7 +16,7 @@ use crate::{
 /// Computes or reuses the memoized active regression fit (if enabled) and appends hoverable
 /// fitted curve and optional vertical residual stem series directly into `items`.
 ///
-/// When `access_state.fit_model` is `None`, skips regression fitting and curve sampling.
+/// When `access_state.fit_model` is `None` or hidden, skips regression fitting and curve sampling.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compute_and_inject_fit_items<'a>(
     ui: &Ui,
@@ -45,15 +45,19 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
         runtime_cache.clear_fit();
         return None;
     };
+    if !access_state.show_fit_overlay {
+        return None;
+    }
     let target = base_series.get(access_state.fit_dataset_idx)?;
+    let log_mode = access_state.fit_log_mode && fit_type.supports_log_mode();
     let (fit_opt, curve_pts) = runtime_cache.resolve_fit_and_curve(
         &target.points,
         &target.name,
         fit_type,
         log_x,
         log_y,
-        access_state.fit_log_mode,
-        access_state.show_fit_overlay,
+        log_mode,
+        true,
         transform,
     );
     let fit_res = fit_opt?;
@@ -63,25 +67,23 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
         target.color
     };
 
-    if access_state.show_fit_overlay {
-        let disp_name = display_dataset_name(&target.name, access_state.fit_dataset_idx);
-        if curve_pts.len() >= 2 {
-            let line_name = format!("Fit ({}): {disp_name}", fit_res.fit_type.short_label());
-            let line = Line::new(line_name, curve_pts)
-                .color(accent)
-                .width(2.5_f32)
-                .style(LineStyle::Dashed { length: 8.0 });
-            items.push(Box::new(line));
-        }
-        if access_state.show_fit_residuals && !fit_res.residuals.is_empty() {
-            let res_color = residual_stem_color(ui, accent);
-            let stems = Points::new(format!("{disp_name} Residuals"), fit_res.residuals.clone())
-                .color(res_color)
-                .radius(3.2_f32)
-                .shape(MarkerShape::Circle)
-                .stems(0.0_f32);
-            items.push(Box::new(stems));
-        }
+    let disp_name = display_dataset_name(&target.name, access_state.fit_dataset_idx);
+    if curve_pts.len() >= 2 {
+        let line_name = format!("Fit ({}): {disp_name}", fit_res.fit_type.short_label());
+        let line = Line::new(line_name, curve_pts)
+            .color(accent)
+            .width(2.5_f32)
+            .style(LineStyle::Dashed { length: 8.0 });
+        items.push(Box::new(line));
+    }
+    if access_state.show_fit_residuals && !fit_res.residuals.is_empty() {
+        let res_color = residual_stem_color(ui, accent);
+        let stems = Points::new(format!("{disp_name} Residuals"), fit_res.residuals.clone())
+            .color(res_color)
+            .radius(3.2_f32)
+            .shape(MarkerShape::Circle)
+            .stems(0.0_f32);
+        items.push(Box::new(stems));
     }
     Some((fit_res, accent))
 }
@@ -162,15 +164,15 @@ fn format_metric_compact(v: f64) -> String {
 /// Renders the shared `Fit Curve` menu items for both the top toolbar and context menu.
 pub(crate) fn render_fit_curve_menu(
     ui: &mut Ui,
-    base_datasets: &[(String, SharedPoints, Color32)],
+    base_datasets: &[CachedItemSeries],
     access_state: &mut AccessState,
     in_context_menu: bool,
 ) {
     let valid: Vec<(usize, &str, usize)> = base_datasets
         .iter()
         .enumerate()
-        .filter(|(_, (_, pts, _))| pts.len() >= 2)
-        .map(|(i, (name, pts, _))| (i, name.as_str(), pts.len()))
+        .filter(|(_, entry)| entry.points.len() >= 2)
+        .map(|(i, entry)| (i, entry.name.as_str(), entry.points.len()))
         .collect();
     if valid.is_empty() {
         let reason = "Requires a dataset with at least 2 points for curve fitting";

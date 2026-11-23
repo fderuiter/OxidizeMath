@@ -127,6 +127,9 @@ impl OdeSeriesCache {
 
 impl super::OdeSolverTool {
     pub(crate) fn sync_series_cache(&mut self) {
+        let series_matched =
+            self.series_cache
+                .matches_series(&self.time_series, &self.y_series, &self.v_series);
         if !self.series_cache.matches_all(
             &self.time_series,
             &self.y_series,
@@ -143,42 +146,19 @@ impl super::OdeSolverTool {
                 self.ic_y0,
                 self.ic_v0,
             );
+            if !series_matched {
+                let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
+                self.display_y = crate::framework::decimate_xy_series_minmax(
+                    &self.time_series,
+                    &self.y_series,
+                    cap,
+                );
+                self.display_v = crate::framework::decimate_xy_series_minmax(
+                    &self.time_series,
+                    &self.v_series,
+                    cap,
+                );
+            }
         }
-    }
-
-    pub(super) fn collect_fallback_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut datasets = Vec::new();
-        let (plot_points_y, plot_points_v) =
-            if self
-                .series_cache
-                .matches_series(&self.time_series, &self.y_series, &self.v_series)
-            {
-                let (py, pv) = self.series_cache.shared_points();
-                (py.to_vec(), pv.to_vec())
-            } else {
-                let py: Vec<[f64; 2]> = self
-                    .time_series
-                    .iter()
-                    .zip(&self.y_series)
-                    .map(|(&t, &y)| [t, y])
-                    .collect();
-                let pv: Vec<[f64; 2]> = self
-                    .time_series
-                    .iter()
-                    .zip(&self.v_series)
-                    .map(|(&t, &v)| [t, v])
-                    .collect();
-                (py, pv)
-            };
-        datasets.push(("y(t)".to_string(), plot_points_y));
-        if self.preset == crate::presets::OdePreset::HarmonicOscillator && !plot_points_v.is_empty()
-        {
-            datasets.push(("y'(t)".to_string(), plot_points_v));
-        }
-        datasets.extend(self.snapshot_manager.export_datasets());
-        if self.comparison_mode {
-            datasets.extend(self.comparison_manager.export_datasets());
-        }
-        datasets
     }
 }

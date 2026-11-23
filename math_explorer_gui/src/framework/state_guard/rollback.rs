@@ -158,6 +158,7 @@ impl SimulationFramework {
             .filter(|_| !plot_datasets.is_empty())
             .map(|t| t.name());
         self.current_valid_plot_datasets = plot_datasets;
+        self.rev_cache.last_plot_capture_hash = None;
         self.is_diverged = false;
         self.diagnostic_report = None;
     }
@@ -252,6 +253,7 @@ impl SimulationFramework {
         }
         egui_plot::clear_last_plot_datasets();
         self.current_valid_plot_datasets.clear();
+        self.rev_cache.last_plot_capture_hash = None;
         self.sync_state.datasets_owner_tool = None;
         self.is_diverged = false;
         self.diagnostic_report = None;
@@ -326,6 +328,7 @@ impl SimulationFramework {
         let datasets = crate::framework::persistence::capture_isolated_tool_datasets(tool.as_ref());
         self.sync_state.datasets_owner_tool = Some(tool.name());
         self.current_valid_plot_datasets = datasets.clone();
+        self.rev_cache.last_plot_capture_hash = None;
         self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
         self.rev_cache.last_snapshot_source_datasets = datasets.clone();
         let mut snap = StateSnapshot {

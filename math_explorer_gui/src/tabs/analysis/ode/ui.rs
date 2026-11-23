@@ -8,22 +8,18 @@ use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
 use crate::reflective_ui::{render_copyable_metric, AnimatedSlider};
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints, SharedPoints};
+use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
+use std::sync::Arc;
 
 impl OdeSolverTool {
-    pub(super) fn render_sidebar_controls(
-        &mut self,
-        ui: &mut egui::Ui,
-        plot_points_y: &SharedPoints,
-        plot_points_v: &SharedPoints,
-    ) -> bool {
+    pub(super) fn render_sidebar_controls(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         changed |= self.render_preset_selector(ui);
         changed |= self.render_parameter_inputs(ui);
         changed |= self.render_initial_condition_inputs(ui);
         changed |= self.render_solver_settings_controls(ui);
-        self.render_snapshots_and_sensitivity(ui, plot_points_y, plot_points_v);
+        self.render_snapshots_and_sensitivity(ui);
         if self.callout_manager.render_ui(ui) {
             changed = true;
         }
@@ -197,13 +193,14 @@ impl OdeSolverTool {
             changed = true;
         }
 
+        let min_dt = (self.total_time.max(0.1) / crate::presets::MAX_ODE_STEPS as f64).max(1e-6);
         ui.horizontal(|ui| {
             ui.label("dt (Step Size):");
             if ui
                 .add(
                     egui::DragValue::new(&mut self.dt)
                         .speed(0.01)
-                        .range(0.001..=1.0),
+                        .range(min_dt..=1.0),
                 )
                 .changed()
             {
@@ -238,20 +235,14 @@ impl OdeSolverTool {
         changed
     }
 
-    fn render_snapshots_and_sensitivity(
-        &mut self,
-        ui: &mut egui::Ui,
-        plot_points_y: &SharedPoints,
-        plot_points_v: &SharedPoints,
-    ) {
+    fn render_snapshots_and_sensitivity(&mut self, ui: &mut egui::Ui) {
         ui.add_space(10.0);
         let param_summary = self.param_summary();
         let is_harmonic = self.preset == OdePreset::HarmonicOscillator;
-        let py = plot_points_y.clone();
-        let pv = plot_points_v.clone();
         let current_len = self.snapshot_manager.len();
+        let (py, pv) = self.series_cache.shared_points();
 
-        if self.snapshot_manager.render_ui(ui, || {
+        if self.snapshot_manager.render_ui(ui, move || {
             let label = format!("Baseline {}", current_len + 1);
             let mut series = vec![TraceSeries::new("y(t)", py)];
             if is_harmonic && !pv.is_empty() {
@@ -348,23 +339,11 @@ impl OdeSolverTool {
         });
     }
 
-    pub(super) fn render_plot_canvas(
-        &mut self,
-        ui: &mut egui::Ui,
-        mut plot_points_y: SharedPoints,
-        mut plot_points_v: SharedPoints,
-        changed: &mut bool,
-    ) {
+    pub(super) fn render_plot_canvas(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
         ui.heading("Solution Trajectory");
 
         if FiniteStateGuard::diverged(self) {
-            recovery::render_recovery_ui_shared(
-                ui,
-                self,
-                changed,
-                &mut plot_points_y,
-                &mut plot_points_v,
-            );
+            recovery::render_recovery_ui_in_place(ui, self, changed);
         }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
@@ -376,12 +355,16 @@ impl OdeSolverTool {
             .legend(egui_plot::Legend::default())
             .show(ui, |plot_ui| {
                 if !self.comparison_mode {
-                    let line_y = Line::new("y(t)", PlotPoints::from(plot_points_y))
-                        .color(palette.series_color(0));
+                    let line_y =
+                        Line::new("y(t)", PlotPoints::from_shared(Arc::clone(&self.display_y)))
+                            .color(palette.series_color(0));
                     plot_ui.line(line_y);
-                    if self.preset == OdePreset::HarmonicOscillator && !plot_points_v.is_empty() {
-                        let line_v = Line::new("y'(t)", PlotPoints::from(plot_points_v))
-                            .color(palette.series_color(1));
+                    if self.preset == OdePreset::HarmonicOscillator && !self.display_v.is_empty() {
+                        let line_v = Line::new(
+                            "y'(t)",
+                            PlotPoints::from_shared(Arc::clone(&self.display_v)),
+                        )
+                        .color(palette.series_color(1));
                         plot_ui.line(line_v);
                     }
                 } else {
