@@ -206,6 +206,7 @@ impl SimulationFramework {
                     meta.id.eq_ignore_ascii_case(requested)
                         || meta.display_name.eq_ignore_ascii_case(requested)
                         || crate::url_state::matches_tab_slug(requested, meta.id, meta.display_name)
+                        || tool_matches_legacy_alias(&self.domain, meta, requested)
                 })
                 .ok_or_else(|| {
                     format!(
@@ -290,6 +291,64 @@ fn compute_untracked_tool_url_digest(tool: &dyn super::InteractiveTool) -> u64 {
         }
     }
     hasher.finish()
+}
+
+fn legacy_aliases_for_tool(domain: &str, tool_id: &str) -> &'static [&'static str] {
+    match (domain, tool_id) {
+        ("paradox_lab", "ParrondoJumpRatchetTool") => &[
+            "ParrondoParadoxTool",
+            "Parrondo's Paradox",
+            "parrondo_s_paradox",
+            "parrondo-s-paradox",
+            "parrondos_paradox",
+        ],
+        ("financial_math", "ParrondoParadoxTool") => &[
+            "Parrondo's Paradox",
+            "parrondo_s_paradox",
+            "parrondo-s-paradox",
+            "parrondos_paradox",
+        ],
+        _ => &[],
+    }
+}
+
+pub(super) fn tool_matches_legacy_alias(
+    domain: &str,
+    meta: &super::ToolMetadata,
+    requested: &str,
+) -> bool {
+    let trimmed = requested.trim();
+    legacy_aliases_for_tool(domain, meta.id)
+        .iter()
+        .any(|alias| alias.eq_ignore_ascii_case(trimmed))
+}
+
+pub(super) fn tool_matches_domain_query(
+    domain: &str,
+    meta: &super::ToolMetadata,
+    query: &str,
+    include_tags: bool,
+) -> bool {
+    meta.id.eq_ignore_ascii_case(query)
+        || meta.display_name.eq_ignore_ascii_case(query)
+        || tool_matches_legacy_alias(domain, meta, query)
+        || (include_tags && meta.tags.iter().any(|tag| tag.eq_ignore_ascii_case(query)))
+}
+
+pub(super) fn lookup_saved_tool_state<'a>(
+    saved: &'a std::collections::HashMap<String, String>,
+    domain: &str,
+    meta: &super::ToolMetadata,
+    runtime_name: &str,
+) -> Option<&'a String> {
+    saved
+        .get(runtime_name)
+        .or_else(|| saved.get(meta.id))
+        .or_else(|| {
+            legacy_aliases_for_tool(domain, meta.id)
+                .iter()
+                .find_map(|alias| saved.get(*alias))
+        })
 }
 
 #[path = "url_share/hydrate.rs"]

@@ -6,17 +6,25 @@
 use super::{CalloutSpec, SimulationFramework};
 use crate::starter_gallery::{GoalChallengeMetadata, PresetStoryMetadata};
 use eframe::egui;
-use math_commons::ast::{parse as parse_ast, Expr};
+use math_commons::ast::{parse as parse_ast, CompiledExpr, MAX_EVAL_DEPTH};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 #[path = "story_hud/banner.rs"]
 mod banner;
 
+/// Returns `true` when the enclosing [`SimulationFramework`] currently has an active inverse or AST goal challenge.
+#[must_use]
+pub fn is_challenge_mode_active(ui: &egui::Ui) -> bool {
+    ui.ctx()
+        .data(|d| d.get_temp::<bool>(egui::Id::new("FRAMEWORK_CHALLENGE_ACTIVE")))
+        .unwrap_or(false)
+}
+
 /// Maximum relational clauses permitted in a single compiled goal predicate.
 pub const MAX_GOAL_CLAUSES: usize = 16;
 
-/// Relational comparison operator evaluated between two `math_commons::ast::Expr` trees.
+/// Relational comparison operator evaluated between two `math_commons::ast::CompiledExpr` programs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ComparisonOp {
     /// Strict greater-than (`>`).
@@ -44,12 +52,37 @@ impl ComparisonOp {
             }
     }
 }
-
 #[derive(Clone, Debug)]
 struct CompiledGoalClause {
-    lhs: Expr,
+    lhs: CompiledExpr,
     op: ComparisonOp,
-    rhs: Expr,
+    rhs: CompiledExpr,
+}
+
+fn eval_compiled_side(
+    compiled: &CompiledExpr,
+    observables: &[(&'static str, f64)],
+) -> Result<f64, String> {
+    let vars = compiled.var_names();
+    let mut vals = [0.0_f64; MAX_EVAL_DEPTH];
+    if vars.len() > vals.len() {
+        return Err("Predicate exceeds maximum variable slots".to_string());
+    }
+    for (idx, var_name) in vars.iter().enumerate() {
+        let found = observables
+            .iter()
+            .find(|&&(obs, _)| obs == var_name)
+            .or_else(|| {
+                observables
+                    .iter()
+                    .find(|&&(obs, _)| obs.eq_ignore_ascii_case(var_name))
+            });
+        let Some(&(_, val)) = found else {
+            return Err(format!("Unknown variable '{var_name}'"));
+        };
+        vals[idx] = val;
+    }
+    Ok(compiled.eval_slice(&vals[..vars.len()]))
 }
 
 /// Conjunction of compiled AST comparison clauses evaluated against finite tool observables.
@@ -76,7 +109,7 @@ fn split_comparison_operator(clause: &str) -> (ComparisonOp, &str, &str) {
 }
 
 impl CompiledGoalPredicate {
-    /// Compiles a conjunction (`&&` or `;`) of relational AST formulas using `math_commons::ast::parse`.
+    /// Compiles a conjunction (`&&` or `;`) of relational AST formulas via `math_commons::ast::CompiledExpr`.
     pub fn compile(formula: &str) -> Result<Self, String> {
         let trimmed = formula.trim();
         let parts: Vec<&str> = trimmed
@@ -99,8 +132,10 @@ impl CompiledGoalPredicate {
             if lhs_str.is_empty() || rhs_str.is_empty() {
                 return Err(format!("Incomplete comparison in '{part}'"));
             }
-            let lhs = parse_ast(lhs_str).map_err(|e| e.user_message_for_input(lhs_str))?;
-            let rhs = parse_ast(rhs_str).map_err(|e| e.user_message_for_input(rhs_str))?;
+            let lhs_ast = parse_ast(lhs_str).map_err(|e| e.user_message_for_input(lhs_str))?;
+            let rhs_ast = parse_ast(rhs_str).map_err(|e| e.user_message_for_input(rhs_str))?;
+            let lhs = CompiledExpr::compile(&lhs_ast).map_err(|e| e.to_string())?;
+            let rhs = CompiledExpr::compile(&rhs_ast).map_err(|e| e.to_string())?;
             clauses.push(CompiledGoalClause { lhs, op, rhs });
         }
         Ok(Self {
@@ -115,22 +150,18 @@ impl CompiledGoalPredicate {
         &self.raw
     }
 
-    /// Evaluates all clauses via `Expr::eval` (bounded by `MAX_EVAL_DEPTH = 64`) over finite observables.
+    /// Evaluates all clauses via `CompiledExpr::eval_slice` (bounded by `MAX_EVAL_DEPTH = 64`) over finite observables.
     pub fn eval_observables(
         &self,
         observables: &[(&'static str, f64)],
-        scratch: &mut HashMap<String, f64>,
+        _scratch: &mut HashMap<String, f64>,
     ) -> Result<bool, String> {
         if observables.is_empty() || observables.iter().any(|(_, v)| !v.is_finite()) {
             return Ok(false);
         }
-        scratch.clear();
-        for &(name, val) in observables {
-            scratch.insert(name.to_string(), val);
-        }
         for clause in &self.clauses {
-            let lhs_val = clause.lhs.eval(scratch).map_err(|e| e.to_string())?;
-            let rhs_val = clause.rhs.eval(scratch).map_err(|e| e.to_string())?;
+            let lhs_val = eval_compiled_side(&clause.lhs, observables)?;
+            let rhs_val = eval_compiled_side(&clause.rhs, observables)?;
             if !clause.op.evaluate(lhs_val, rhs_val) {
                 return Ok(false);
             }
