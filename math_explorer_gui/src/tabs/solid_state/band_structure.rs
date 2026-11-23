@@ -413,7 +413,7 @@ inventory::submit! {
         id: "BandStructureTool",
         display_name: "Band Structure",
         domain: "solid_state",
-        tags: &["tight-binding", "brillouin-zone", "dispersion"],
+        tags: &["tight-binding", "brillouin zone", "dispersion", "bloch", "effective mass"],
         build: || Box::new(BandStructureTool::default()),
     }
 }

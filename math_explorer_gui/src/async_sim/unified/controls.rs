@@ -6,6 +6,7 @@ use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 
@@ -102,22 +103,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         if let Some(action) =
             PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
+                .timeline(self.controller.timeline_metadata())
                 .can_reset(true)
                 .show(ui)
         {
-            match action {
-                PlaybackAction::Play => {
-                    let _ = self.controller.send_command(SimCommand::Start);
-                }
-                PlaybackAction::Pause => {
-                    let _ = self.controller.send_command(SimCommand::Pause);
-                }
-                PlaybackAction::Step => {
-                    let _ = self.controller.send_command(SimCommand::Step(1));
-                }
+            let cmd = match action {
+                PlaybackAction::Play => Some(SimCommand::Start),
+                PlaybackAction::Pause => Some(SimCommand::Pause),
+                PlaybackAction::Step => Some(SimCommand::Step(1)),
+                PlaybackAction::StepBack => Some(SimCommand::StepBack(1)),
+                PlaybackAction::ScrubTo(step) => Some(SimCommand::SeekStep(step)),
                 PlaybackAction::Reset => {
                     self.reset_simulation(Some(ctx));
+                    None
                 }
+            };
+            if let Some(c) = cmd {
+                let _ = self.controller.send_command(c);
             }
         }
     }
@@ -227,40 +229,57 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             self.dispatch_extension_commands(ext_cmds, Some(ctx));
         }
 
-        let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
+        let (param_reset, mut slider_changed) = self.draw_parameter_entries(ui);
+        reset_needed |= param_reset;
+        let (formula_reset, formula_changed) = self.draw_custom_formula_controls(ui, ctx);
+        reset_needed |= formula_reset;
+        slider_changed |= formula_changed;
+        self.draw_spatial_brush_section(ui, ctx);
+        self.draw_atlas_toggle_if_supported(ui);
+        self.draw_observable_sensitivity(ui);
+        if reset_needed {
+            self.reset_simulation(Some(ctx));
+        } else if slider_changed {
+            self.refresh_paused_simulation(Some(ctx));
+        }
+    }
 
+    fn draw_parameter_entries(&self, ui: &mut egui::Ui) -> (bool, bool) {
+        let mut reset_needed = false;
+        let mut slider_changed = false;
+        let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
         for (name, constraint) in &self.param_metadata {
             let locked = self
                 .ui_extension
                 .as_ref()
                 .is_some_and(|ext| ext.is_parameter_locked(name));
             if let Some(val) = params_lock.get_mut(name) {
+                let is_choice = !M::parameter_choices(name).is_empty();
+                let desc = self.cached_descs.get(name);
+                let mut changed = false;
                 ui.add_enabled_ui(!locked, |ui| {
-                    reset_needed |= Self::draw_single_parameter(
-                        ui,
-                        name,
-                        constraint,
-                        val,
-                        self.cached_descs.get(name),
-                    );
+                    changed = Self::draw_single_parameter(ui, name, constraint, val, desc);
                 });
+                if is_choice {
+                    reset_needed |= changed;
+                } else {
+                    slider_changed |= changed;
+                }
             }
         }
-        drop(params_lock);
-        reset_needed |= self.draw_custom_formula_controls(ui, ctx);
-        self.draw_spatial_brush_section(ui, ctx);
-        self.draw_atlas_toggle_if_supported(ui);
-        self.draw_observable_sensitivity(ui);
-        if reset_needed {
-            self.reset_simulation(Some(ctx));
-        }
+        (reset_needed, slider_changed)
     }
 
-    fn draw_custom_formula_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
+    fn draw_custom_formula_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+    ) -> (bool, bool) {
         let Some(spec) = M::formula_spec() else {
-            return false;
+            return (false, false);
         };
         let mut reset_needed = false;
+        let mut formula_changed = false;
         ui.add_space(4.0);
         let toggle_label = format!("Custom {} Formula", spec.lhs_label);
         if ui
@@ -271,7 +290,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             reset_needed = true;
         }
         if self.custom_formula_enabled {
-            let mut formula_changed = false;
             if let Some(ref mut bar) = self.formula_bar {
                 ui.add_space(4.0);
                 formula_changed = bar.ui(ui);
@@ -282,7 +300,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 ctx.request_repaint();
             }
         }
-        reset_needed
+        (reset_needed, formula_changed)
     }
 
     fn draw_spatial_brush_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -340,14 +358,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
             changed
         } else {
-            let slider = egui::Slider::new(val, constraint.min..=constraint.max)
+            let slider = AnimatedSlider::new(val, constraint.min..=constraint.max)
+                .hard_bounds(constraint.min..=constraint.max)
                 .step_by(constraint.step)
-                .text(label);
+                .text(&label)
+                .id_salt(("unified_sim_param", M::name(), name));
             let resp = ui.add(slider);
-            if let Some(desc) = hover_desc {
-                let _ = resp.accessible_hover_text(desc);
-            }
-            false
+            let changed = resp.changed();
+            let resp = if let Some(desc) = hover_desc {
+                resp.accessible_hover_text(desc)
+            } else {
+                resp
+            };
+            changed || resp.changed()
         }
     }
 
@@ -425,5 +448,18 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
 
         *cached_observable_label
+    }
+
+    fn refresh_paused_simulation(&mut self, ctx: Option<&egui::Context>) {
+        if self.controller.state().is_ready() {
+            self.stepped_snapshot = None;
+            let _ = self.controller.send_command(SimCommand::Custom(
+                super::SYNC_PARAMETERS_COMMAND.to_string(),
+            ));
+            self.dirty = true;
+            if let Some(c) = ctx {
+                c.request_repaint();
+            }
+        }
     }
 }

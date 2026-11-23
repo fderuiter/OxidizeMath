@@ -2,6 +2,7 @@
 //!
 //! Implementation of Finite Fields (Integers Modulo Prime P).
 
+use crate::error::NumberTheoryError;
 use crate::pure_math::algebra::traits::{Field, Ring};
 use std::fmt;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
@@ -25,6 +26,28 @@ impl<const P: i64> Fp<P> {
         Fp {
             value: value.rem_euclid(P),
         }
+    }
+
+    /// Computes the multiplicative inverse of `self` modulo `P` without panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NumberTheoryError::ZeroModulus`] if `P <= 0`,
+    /// [`NumberTheoryError::DivisionByZeroFieldElement`] if `self` is zero, or
+    /// [`NumberTheoryError::NoModularInverse`] if `gcd(self.value, P) != 1`.
+    #[verified_engine::verified]
+    pub fn checked_inverse(&self) -> Result<Self, NumberTheoryError> {
+        if P <= 0 {
+            return Err(NumberTheoryError::ZeroModulus);
+        }
+        if self.is_zero() {
+            return Err(NumberTheoryError::DivisionByZeroFieldElement);
+        }
+        let (g, x, _) = extended_gcd(self.value, P);
+        if g != 1 {
+            return Err(NumberTheoryError::NoModularInverse);
+        }
+        Ok(Fp::new(x))
     }
 }
 
@@ -105,15 +128,13 @@ impl<const P: i64> Div for Fp<P> {
 impl<const P: i64> Field for Fp<P> {
     #[verified_engine::verified]
     fn multiplicative_inverse(&self) -> Self {
-        if self.is_zero() {
-            panic!("Division by zero in Fp");
+        match self.checked_inverse() {
+            Ok(inv) => inv,
+            Err(NumberTheoryError::DivisionByZeroFieldElement) => {
+                panic!("Division by zero in Fp")
+            }
+            Err(_) => panic!("Element has no inverse (P might not be prime)"),
         }
-        // Extended Euclidean Algorithm to find inverse
-        let (g, x, _) = extended_gcd(self.value, P);
-        if g != 1 {
-            panic!("Element has no inverse (P might not be prime)");
-        }
-        Fp::new(x)
     }
 }
 
