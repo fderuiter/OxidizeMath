@@ -2753,6 +2753,185 @@
       "signature": "pub trait KineticsModel { fn reaction_velocity (& self , _ : f64) -> Result < f64 , KineticsError > }"
     }
   ],
+  "crates/domain_biology/src/biology/lenia/engine.rs": [
+    {
+      "signature": "impl LeniaEngine { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn dt (& self) -> f64 }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn from_species (_ : usize , _ : usize , _ : LeniaSpecies , _ : f64 , _ : & mut OxidizeRng ,) -> Self }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn growth (& self) -> GrowthParams }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn kernel_hat (& self) -> & [Complex < f64 >] }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn new (_ : usize , _ : usize , _ : KernelShells , _ : GrowthParams , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn paint_disc (& mut self , _ : usize , _ : usize , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn potential (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn refresh_telemetry (& mut self) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn seed_species (& mut self , _ : LeniaSpecies , _ : f64 , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn set_dt (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn set_growth (& mut self , _ : GrowthParams) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn set_shells (& mut self , _ : KernelShells) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn shells (& self) -> & KernelShells }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn state (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn state_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn step (& mut self) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn telemetry (& self) -> LeniaTelemetry }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn update_parameters (& mut self , _ : KernelShells , _ : GrowthParams , _ : f64) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct LeniaEngine"
+    },
+    {
+      "signature": "pub struct LeniaTelemetry"
+    }
+  ],
+  "crates/domain_biology/src/biology/lenia/kernel.rs": [
+    {
+      "signature": "impl GrowthParams { pub fn evaluate (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl GrowthParams { pub fn new (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl GrowthParams { pub fn sample_curve (& self , _ : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn new (_ : f64 , _ : & [f64]) -> Self }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn radius (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn ring_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn ring_weights (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn sample_radial_profile (& self , _ : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn shell_unnormalized (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl KernelShells { pub fn write_wrapped_spatial_kernel (& self , _ : usize , _ : usize , _ : & mut [Complex < f64 >] ,) -> f64 }"
+    },
+    {
+      "signature": "pub fn growth_gaussian (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn kernel_core_bump (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct GrowthParams"
+    },
+    {
+      "signature": "pub struct KernelShells"
+    }
+  ],
+  "crates/domain_biology/src/biology/lenia/mod.rs": [
+    {
+      "signature": "pub const MAX_GRID_SIZE : usize"
+    },
+    {
+      "signature": "pub const MAX_KERNEL_RADIUS : f64"
+    },
+    {
+      "signature": "pub const MAX_KERNEL_RINGS : usize"
+    },
+    {
+      "signature": "pub const MIN_GRID_SIZE : usize"
+    },
+    {
+      "signature": "pub const MIN_KERNEL_RADIUS : f64"
+    },
+    {
+      "signature": "pub use engine :: LeniaEngine"
+    },
+    {
+      "signature": "pub use engine :: LeniaTelemetry"
+    },
+    {
+      "signature": "pub use kernel :: GrowthParams"
+    },
+    {
+      "signature": "pub use kernel :: KernelShells"
+    },
+    {
+      "signature": "pub use kernel :: growth_gaussian"
+    },
+    {
+      "signature": "pub use kernel :: kernel_core_bump"
+    },
+    {
+      "signature": "pub use presets :: LeniaGenome"
+    },
+    {
+      "signature": "pub use presets :: LeniaSpecies"
+    }
+  ],
+  "crates/domain_biology/src/biology/lenia/presets.rs": [
+    {
+      "signature": "impl LeniaSpecies { pub const ALL : [LeniaSpecies ; 4] }"
+    },
+    {
+      "signature": "impl LeniaSpecies { pub fn description (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl LeniaSpecies { pub fn display_name (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl LeniaSpecies { pub fn genome (& self) -> LeniaGenome }"
+    },
+    {
+      "signature": "pub enum LeniaSpecies"
+    },
+    {
+      "signature": "pub fn stamp_species_at (_ : & mut LeniaEngine , _ : LeniaSpecies , _ : usize , _ : usize , _ : f64 , _ : & mut OxidizeRng ,)"
+    },
+    {
+      "signature": "pub struct LeniaGenome"
+    }
+  ],
   "crates/domain_biology/src/biology/mod.rs": [
     {
       "signature": "pub use crate :: error"
@@ -2796,6 +2975,9 @@
       "signature": "pub struct TuringSystem < const N : usize = 2 , K : ReactionKinetics < N > = SchnakenbergKinetics , D : SpatialDiffusion < N > = FiniteDifference1D , S : TuringSolverStrategy < N > = FusedEulerSolver , >"
     },
     {
+      "signature": "pub use reaction :: GrayScottKinetics"
+    },
+    {
       "signature": "pub use reaction :: ReactionKinetics"
     },
     {
@@ -2819,7 +3001,19 @@
   ],
   "crates/domain_biology/src/biology/morphogenesis/reaction.rs": [
     {
+      "signature": "impl GrayScottKinetics { pub fn coral () -> Self }"
+    },
+    {
+      "signature": "impl GrayScottKinetics { pub fn mitosis () -> Self }"
+    },
+    {
+      "signature": "impl GrayScottKinetics { pub fn new (_ : f64 , _ : f64) -> Self }"
+    },
+    {
       "signature": "impl SchnakenbergKinetics { pub fn new (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct GrayScottKinetics"
     },
     {
       "signature": "pub struct SchnakenbergKinetics"
@@ -7689,43 +7883,7 @@
   ],
   "crates/pure_math/src/pure_math/algorithmic_information/fractran.rs": [
     {
-      "signature": "impl FractranCompiledVm { pub const fn num_rules (& self) -> usize }"
-    },
-    {
-      "signature": "impl FractranCompiledVm { pub fn encode_u64 (& self , _ : u64 , _ : & mut [u32]) -> Result < () , FractranError > }"
-    },
-    {
-      "signature": "impl FractranCompiledVm { pub fn encode_value (& self , _ : u64) -> Result < Vec < u32 > , FractranError > }"
-    },
-    {
-      "signature": "impl FractranCompiledVm { pub fn power_of_two_exponent (& self , _ : & [u32]) -> Option < u32 > }"
-    },
-    {
-      "signature": "impl FractranCompiledVm { pub fn primes (& self) -> & [u64] }"
-    },
-    {
-      "signature": "impl FractranCompiledVm { pub fn rule_exponents (& self , _ : usize) -> Option < (& [u32] , & [u32]) > }"
-    },
-    {
-      "signature": "impl FractranCompiledVm { pub fn step_registers (& self , _ : & mut [u32]) -> Result < Option < usize > , FractranError > }"
-    },
-    {
-      "signature": "impl FractranPreset { pub const ALL : [Self ; 4] }"
-    },
-    {
-      "signature": "impl FractranPreset { pub const fn default_initial_value (self) -> u64 }"
-    },
-    {
-      "signature": "impl FractranPreset { pub const fn label (self) -> & 'static str }"
-    },
-    {
-      "signature": "impl FractranPreset { pub fn build (self) -> (FractranProgram , FractranState , u64) }"
-    },
-    {
-      "signature": "impl FractranPreset { pub fn minsky_state (self) -> FractranState }"
-    },
-    {
-      "signature": "impl FractranPreset { pub fn program (self) -> FractranProgram }"
+      "signature": "impl FractranProgram { pub fn adder () -> Self }"
     },
     {
       "signature": "impl FractranProgram { pub fn compile (& self) -> Result < FractranCompiledVm , FractranError > }"
@@ -7737,25 +7895,114 @@
       "signature": "impl FractranProgram { pub fn compile_with_primes (& self , _ : & [u64] ,) -> Result < FractranCompiledVm , FractranError > }"
     },
     {
+      "signature": "impl FractranProgram { pub fn decode_to_integer (_ : & [u32]) -> Integer }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn detect_cycle (& self , _ : & [u32 ; MAX_FRACTRAN_PRIMES] , _ : usize ,) -> Result < FractranTrajectoryOutcome , FractranError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn encode_u64 (_ : u64) -> Result < [u32 ; MAX_FRACTRAN_PRIMES] , FractranError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn fibonacci () -> Self }"
+    },
+    {
       "signature": "impl FractranProgram { pub fn format_fractions (& self) -> String }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn is_halted (& self , _ : & [u32]) -> bool }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn matching_rule (& self , _ : & [u32]) -> Option < usize > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn multiplier () -> Self }"
     },
     {
       "signature": "impl FractranProgram { pub fn new (_ : Vec < Rational >) -> Self }"
     },
     {
+      "signature": "impl FractranProgram { pub fn parse (_ : & str) -> Result < Self , FractranError > }"
+    },
+    {
       "signature": "impl FractranProgram { pub fn parse_fractions (_ : & str) -> Result < Self , FractranError > }"
     },
     {
-      "signature": "impl FractranState { pub fn decode (& self , _ : & FractranCompiledVm , _ : & [u32]) -> MinskyDecodedState }"
+      "signature": "impl FractranProgram { pub fn power_of_two_exponent (_ : & [u32]) -> Option < u32 > }"
     },
     {
-      "signature": "impl FractranState { pub fn from_vm_heuristic (_ : & FractranCompiledVm) -> Self }"
+      "signature": "impl FractranProgram { pub fn primegame () -> Self }"
     },
     {
-      "signature": "impl FractranState { pub fn new (_ : Vec < u64 > , _ : Vec < u64 >) -> Self }"
+      "signature": "impl FractranProgram { pub fn rules (& self) -> & [FractranRule] }"
     },
     {
-      "signature": "impl FractranState { pub fn transitions (& self , _ : & FractranCompiledVm) -> Vec < MinskyTransition > }"
+      "signature": "impl FractranProgram { pub fn step_exponents (& self , _ : & mut [u32]) -> Result < Option < usize > , FractranError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn try_from_pairs (_ : & [(i128 , i128)]) -> Result < Self , FractranError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn try_new (_ : Vec < Rational >) -> Result < Self , FractranError > }"
+    },
+    {
+      "signature": "pub struct FractranProgram"
+    },
+    {
+      "signature": "pub use super :: fractran_programs :: FIRST_64_PRIMES"
+    },
+    {
+      "signature": "pub use super :: fractran_programs :: FractranCycleInfo"
+    },
+    {
+      "signature": "pub use super :: fractran_programs :: FractranError"
+    },
+    {
+      "signature": "pub use super :: fractran_programs :: FractranRule"
+    },
+    {
+      "signature": "pub use super :: fractran_programs :: FractranTrajectoryOutcome"
+    },
+    {
+      "signature": "pub use super :: fractran_programs :: MAX_FRACTRAN_PRIME"
+    },
+    {
+      "signature": "pub use super :: fractran_programs :: MAX_FRACTRAN_PRIMES"
+    },
+    {
+      "signature": "pub use super :: fractran_programs :: MAX_REGISTER_EXPONENT"
+    },
+    {
+      "signature": "pub use super :: fractran_programs :: MAX_SMOOTH_PRIME"
+    },
+    {
+      "signature": "pub use super :: fractran_vm :: FractranCompiledVm"
+    },
+    {
+      "signature": "pub use super :: fractran_vm :: FractranPreset"
+    },
+    {
+      "signature": "pub use super :: fractran_vm :: FractranState"
+    },
+    {
+      "signature": "pub use super :: fractran_vm :: MinskyDecodedState"
+    },
+    {
+      "signature": "pub use super :: fractran_vm :: MinskyTransition"
+    }
+  ],
+  "crates/pure_math/src/pure_math/algorithmic_information/fractran_programs.rs": [
+    {
+      "signature": "pub const FIRST_64_PRIMES : [u64 ; 64]"
+    },
+    {
+      "signature": "pub const MAX_FRACTRAN_PRIME : u64"
+    },
+    {
+      "signature": "pub const MAX_FRACTRAN_PRIMES : usize"
+    },
+    {
+      "signature": "pub const MAX_REGISTER_EXPONENT : u32"
     },
     {
       "signature": "pub const MAX_SMOOTH_PRIME : u64"
@@ -7764,35 +8011,98 @@
       "signature": "pub enum FractranError"
     },
     {
-      "signature": "pub enum FractranPreset"
+      "signature": "pub enum FractranTrajectoryOutcome"
     },
     {
-      "signature": "pub struct FractranCompiledVm"
+      "signature": "pub struct FractranCycleInfo"
     },
     {
-      "signature": "pub struct FractranProgram"
-    },
-    {
-      "signature": "pub struct FractranState"
-    },
-    {
-      "signature": "pub struct MinskyDecodedState"
-    },
-    {
-      "signature": "pub struct MinskyTransition"
+      "signature": "pub struct FractranRule"
     }
   ],
   "crates/pure_math/src/pure_math/algorithmic_information/geometry.rs": [
     {
+      "signature": "impl DyadicPoint2D { pub fn from_point_floor (_ : & Point2D , _ : u32) -> Self }"
+    },
+    {
+      "signature": "impl DyadicPoint2D { pub fn new (_ : DyadicRational , _ : DyadicRational) -> Self }"
+    },
+    {
+      "signature": "impl DyadicPoint2D { pub fn to_point (& self) -> Point2D }"
+    },
+    {
+      "signature": "impl DyadicRational { pub fn from_rational_floor (_ : & Rational , _ : u32) -> Self }"
+    },
+    {
       "signature": "impl DyadicRational { pub fn new (_ : i64 , _ : u32) -> Self }"
     },
     {
+      "signature": "impl DyadicRational { pub fn reduced (& self) -> Self }"
+    },
+    {
+      "signature": "impl DyadicRational { pub fn to_f64 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DyadicRational { pub fn to_rational (& self) -> Rational }"
+    },
+    {
+      "signature": "impl Line { pub fn new (_ : Point2D , _ : Point2D) -> Self }"
+    },
+    {
+      "signature": "impl Point2D { pub fn from_ints (_ : i128 , _ : i128) -> Self }"
+    },
+    {
+      "signature": "impl Point2D { pub fn new (_ : Rational , _ : Rational) -> Self }"
+    },
+    {
+      "signature": "pub fn distance (_ : & Point2D , _ : & Point2D) -> Rational"
+    },
+    {
+      "signature": "pub fn distance_squared (_ : & Point2D , _ : & Point2D) -> Rational"
+    },
+    {
+      "signature": "pub fn project_point_onto_line (_ : & Point2D , _ : & Line) -> Point2D"
+    },
+    {
+      "signature": "pub struct DyadicPoint2D"
+    },
+    {
       "signature": "pub struct DyadicRational"
+    },
+    {
+      "signature": "pub struct Line"
+    },
+    {
+      "signature": "pub struct Point2D"
     }
   ],
   "crates/pure_math/src/pure_math/algorithmic_information/kolmogorov.rs": [
     {
+      "signature": "pub fn bdm_complexity (_ : & [u8]) -> f64"
+    },
+    {
+      "signature": "pub fn exponents_to_bits (_ : & [u32]) -> Vec < u8 >"
+    },
+    {
+      "signature": "pub fn integer_to_bits (_ : & Integer) -> Vec < u8 >"
+    },
+    {
+      "signature": "pub fn k_floor_r (_ : & Point2D , _ : u32) -> f64"
+    },
+    {
       "signature": "pub fn kolmogorov_complexity (_ : & Integer) -> u64"
+    },
+    {
+      "signature": "pub fn lz76_complexity (_ : & [u8]) -> f64"
+    },
+    {
+      "signature": "pub fn lz76_phrases (_ : & [u8]) -> usize"
+    },
+    {
+      "signature": "pub fn prefix_kolmogorov_approx (_ : & Integer) -> f64"
+    },
+    {
+      "signature": "pub fn shannon_entropy_bits (_ : & [u8]) -> f64"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/complex/continuation.rs": [
@@ -8331,6 +8641,250 @@
     },
     {
       "signature": "pub struct WaveEquation1D"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d.rs": [
+    {
+      "signature": "impl Wave2DSolver { pub fn clear_wave_state (& mut self) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn displacement (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn dx (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn dy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn effective_courant (& self , _ : & Wave2DParams , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn energy_field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn inject_gaussian_pulse (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn modal_field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn new (_ : usize , _ : usize , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn new_unit_square (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn read_detector_profile (& self , _ : usize , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn reset_all (& mut self) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn reset_detector (& mut self) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn safe_substep_plan (& self , _ : & Wave2DParams , _ : f64) -> (usize , f64) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn set_stationary_displacement (& mut self , _ : & [f64]) }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn step (& mut self , _ : & Wave2DParams , _ : f64) -> usize }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn step_driven (& mut self , _ : & Wave2DParams , _ : & DriverConfig2D , _ : f64 , _ : Option < usize > ,) -> usize }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct Wave2DSolver"
+    },
+    {
+      "signature": "pub use config :: BoundaryMode2D"
+    },
+    {
+      "signature": "pub use config :: DriverConfig2D"
+    },
+    {
+      "signature": "pub use config :: MAX_BIHARMONIC_NUMBER"
+    },
+    {
+      "signature": "pub use config :: MAX_COURANT_NUMBER"
+    },
+    {
+      "signature": "pub use config :: MAX_VERLET_SUBSTEPS"
+    },
+    {
+      "signature": "pub use config :: Wave2DMedium"
+    },
+    {
+      "signature": "pub use config :: Wave2DParams"
+    },
+    {
+      "signature": "pub use config :: analytic_clamped_square_omega"
+    },
+    {
+      "signature": "pub use config :: young_double_slit_fringe_spacing"
+    },
+    {
+      "signature": "pub use masks :: apply_biconvex_lens"
+    },
+    {
+      "signature": "pub use masks :: apply_circular_drumhead_mask"
+    },
+    {
+      "signature": "pub use masks :: apply_multi_slit_barrier"
+    },
+    {
+      "signature": "pub use masks :: apply_point_clamp"
+    },
+    {
+      "signature": "pub use masks :: apply_sponge_layer"
+    },
+    {
+      "signature": "pub use particles_and_contours :: ChladniSandSystem"
+    },
+    {
+      "signature": "pub use particles_and_contours :: MarchingSquares2D"
+    },
+    {
+      "signature": "pub use spectral :: SpectralAnalyzer2D"
+    },
+    {
+      "signature": "pub use spectral :: SpectralPeak2D"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/config.rs": [
+    {
+      "signature": "pub const MAX_BIHARMONIC_NUMBER : f64"
+    },
+    {
+      "signature": "pub const MAX_COURANT_NUMBER : f64"
+    },
+    {
+      "signature": "pub const MAX_VERLET_SUBSTEPS : usize"
+    },
+    {
+      "signature": "pub enum BoundaryMode2D"
+    },
+    {
+      "signature": "pub enum Wave2DMedium"
+    },
+    {
+      "signature": "pub fn analytic_clamped_square_omega (_ : usize , _ : usize , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn young_double_slit_fringe_spacing (_ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub struct DriverConfig2D"
+    },
+    {
+      "signature": "pub struct Wave2DParams"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/masks.rs": [
+    {
+      "signature": "pub fn apply_biconvex_lens (_ : & mut [f64] , _ : usize , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,)"
+    },
+    {
+      "signature": "pub fn apply_circular_drumhead_mask (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 ,)"
+    },
+    {
+      "signature": "pub fn apply_multi_slit_barrier (_ : & mut [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : f64 ,)"
+    },
+    {
+      "signature": "pub fn apply_point_clamp (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,)"
+    },
+    {
+      "signature": "pub fn apply_sponge_layer (_ : & mut [f64] , _ : usize , _ : usize , _ : usize , _ : f64 ,)"
+    },
+    {
+      "signature": "pub fn clamped_beam_eigenfunction (_ : usize , _ : f64) -> f64"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/particles_and_contours.rs": [
+    {
+      "signature": "impl ChladniSandSystem { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn mean_normalized_energy (& self , _ : & [f64] , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn new (_ : usize , _ : u64 , _ : usize , _ : usize , _ : & [f64]) -> Self }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn positions_x (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn positions_y (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn reseed (& mut self , _ : u64 , _ : usize , _ : usize , _ : & [f64]) }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn step (& mut self , _ : & [f64] , _ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl MarchingSquares2D { pub fn extract_zero_contours (& mut self , _ : & [f64] , _ : & [f64] , _ : usize , _ : usize , _ : f64 ,) -> & [[[f64 ; 2] ; 2]] }"
+    },
+    {
+      "signature": "impl MarchingSquares2D { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl MarchingSquares2D { pub fn segments (& self) -> & [[[f64 ; 2] ; 2]] }"
+    },
+    {
+      "signature": "pub const DEFAULT_SAND_PARTICLES : usize"
+    },
+    {
+      "signature": "pub struct ChladniSandSystem"
+    },
+    {
+      "signature": "pub struct MarchingSquares2D"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/wave_2d/spectral.rs": [
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn compute_radial_profile (& self , _ : & mut [f64] , _ : & mut [usize]) }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn compute_spectrum (& mut self , _ : & [f64]) -> & [f64] }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn dominant_peak (& self) -> SpectralPeak2D }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn set_hann_window (& mut self , _ : bool) }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn spectrum (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct SpectralAnalyzer2D"
+    },
+    {
+      "signature": "pub struct SpectralPeak2D"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/roots.rs": [
