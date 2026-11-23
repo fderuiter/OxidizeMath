@@ -245,8 +245,8 @@ impl NelderMeadSimplex {
         for idx in 0..=self.dim {
             self.order[idx] = idx;
             let start = vertex_offset(idx, self.dim);
-            for c in 0..self.dim {
-                let mut val = clamp_weight(initial[c], config.weight_bound);
+            for (c, &init_val) in initial.iter().enumerate().take(self.dim) {
+                let mut val = clamp_weight(init_val, config.weight_bound);
                 if idx > 0 && (idx - 1) == c {
                     let step = if val + config.initial_step <= config.weight_bound.abs() {
                         config.initial_step

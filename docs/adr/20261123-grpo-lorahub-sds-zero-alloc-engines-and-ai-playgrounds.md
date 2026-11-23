@@ -1,4 +1,4 @@
-# ADR 0047: Zero-Allocation SDS Radiance & LoraHub Simplex Solvers, Self-Calibration Export, and Interactive AI Playgrounds
+# ADR 20261123: Zero-Allocation SDS Radiance & LoraHub Simplex Solvers, Self-Calibration Export, and Interactive AI Playgrounds
 
 ## Status
 Accepted (extends [ADR 0021](0021-zero-allocation-grpo-advantage-normalization.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0041](0041-volumetric-field-studio-zero-alloc-3d-kernels.md))

@@ -96,6 +96,16 @@ fn render_preset_asymptote_callout(
 
 /// Locates an interpolated zero crossing $y(t) = 0$ of the simulated trajectory near the horizon midpoint.
 pub(crate) fn harmonic_equilibrium_root(tool: &OdeSolverTool) -> Option<f64> {
+    if tool.series_cache.matches_all(
+        &tool.time_series,
+        &tool.y_series,
+        &tool.v_series,
+        tool.total_time,
+        tool.ic_y0,
+        tool.ic_v0,
+    ) {
+        return tool.series_cache.harmonic_root();
+    }
     if !tool.total_time.is_finite() {
         return None;
     }

@@ -29,6 +29,7 @@ impl SdsNeRfDistillationTool {
                     PlaybackAction::Play => self.is_playing = true,
                     PlaybackAction::Pause => self.is_playing = false,
                     PlaybackAction::Step => self.step_distillation_once(),
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => {
                         self.is_playing = false;
                         self.reset_distillation();

@@ -77,6 +77,14 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
                 tab.import_url_preset_json(Some("FavoritismTool"), Some(&val.to_string()))
                     .unwrap();
             }
+            "cannibalism" => {
+                let orig = tab.export_url_preset_json().unwrap().unwrap();
+                let mut val: serde_json::Value = serde_json::from_str(&orig).unwrap();
+                val["config"]["age_bins"] = serde_json::json!(96);
+                val["config"]["attack_rate"] = serde_json::json!(0.31);
+                tab.import_url_preset_json(Some("PopulationStructureTool"), Some(&val.to_string()))
+                    .unwrap();
+            }
             _ => {}
         }
     }
@@ -86,7 +94,7 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
 fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut source_app = MathExplorerApp::default();
-    assert_eq!(source_app.tabs.len(), 26, "Expected all 26 ExplorerTabs");
+    assert_eq!(source_app.tabs.len(), 27, "Expected all 27 ExplorerTabs");
 
     let mut slugs = HashSet::new();
     for tab in &source_app.tabs {
@@ -136,8 +144,8 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     assert_eq!(
         tools.len(),
-        78,
-        "Expected all 78 registered InteractiveTools"
+        80,
+        "Expected all 80 registered InteractiveTools"
     );
 
     let mut source_app = MathExplorerApp::default();
@@ -199,8 +207,8 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
         .collect();
     assert_eq!(
         presets.len(),
-        114,
-        "Expected all 114 StarterPresetMetadata entries"
+        118,
+        "Expected all 118 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -265,11 +273,19 @@ fn build_invalid_share_url_cases() -> Vec<String> {
     let traversal_trace_b64 = encode_base64url(
         br#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"traceability","timestamp":"0"},"config":{"repo_path":"../../etc/passwd"}}"#,
     );
+    let non_finite_b64 = encode_base64url(
+        br#"{"metadata":{"schema_version":"1.0","title":"Bad","domain":"chaos","timestamp":"0"},"config":{"x":1e309}}"#,
+    );
+    let oversized_decoded_b64 = encode_base64url(
+        format!(r#"{{"pad":"{}"}}"#, "x".repeat(MAX_DECODED_URL_STATE_BYTES)).as_bytes(),
+    );
     vec![
         "#tab=chaos&tool=AttractorPlotter&state=***invalid_base64***".to_string(),
         format!("#tab=chaos&tool=AttractorPlotter&state={unknown_field_b64}"),
         format!("#tab=chaos&tool=AttractorPlotter&state={wrong_domain_b64}"),
         format!("#tab=chaos&tool=AttractorPlotter&state={wrong_schema_b64}"),
+        format!("#tab=chaos&tool=AttractorPlotter&state={non_finite_b64}"),
+        format!("#tab=chaos&tool=AttractorPlotter&state={oversized_decoded_b64}"),
         format!("#tab=morphogenesis&state={bad_morpho_b64}"),
         format!("#tab=chaos&tool=FractalViewer&state={bad_fractal_b64}"),
         format!("#tab=traceability&state={traversal_trace_b64}"),
