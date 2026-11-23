@@ -171,7 +171,6 @@ pub struct ChladniWaveTankTool {
     pub(crate) last_step_ms: f64,
     pub(crate) last_substeps: usize,
     pub(crate) state_rev: u64,
-    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) analysis_dirty: bool,
 }
 
@@ -217,7 +216,6 @@ impl Default for ChladniWaveTankTool {
             last_step_ms: 0.0,
             last_substeps: 1,
             state_rev: 1,
-            focused_canvas: None,
             analysis_dirty: true,
         };
         tool.rebuild_domain_and_warmup(0);
@@ -379,10 +377,6 @@ impl InteractiveTool for ChladniWaveTankTool {
 
     fn state_revision(&self) -> u64 {
         self.state_rev
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {

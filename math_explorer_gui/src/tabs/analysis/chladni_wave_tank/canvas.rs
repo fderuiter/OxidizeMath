@@ -57,7 +57,6 @@ impl ChladniWaveTankTool {
             Some(&summary),
         );
         crate::accessibility::lock_canvas_arrow_keys(ui, &response);
-        self.focused_canvas = response.has_focus().then_some(response.id);
 
         if self.brush_kit.is_sculpting() {
             self.handle_sculpt_canvas_input(ui, &response, rect);
