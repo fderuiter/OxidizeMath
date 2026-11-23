@@ -40,11 +40,10 @@ async-recursion = "1.0"
 console_error_panic_hook = "0.1.7"
 dashu = { version = "0.4.4", features = ["num-traits_v02"] }
 eframe = "0.33.3"
-egui = "0.33"
 futures = "0.3"
 getrandom = { version = "0.2.17", features = ["js"] }
 inventory = "0.3.24"
-js-sys = "0.3.60"
+js-sys = "0.3.107"
 muda = { version = "0.19.3", default-features = false }
 nalgebra = "0.34.0"
 num-complex = "0.4.6"
@@ -68,10 +67,10 @@ thiserror = "2.0.18"
 toml = "1.1.2"
 ureq = { version = "2.9.6", features = ["json"] }
 walkdir = "2.4"
-wasm-bindgen = "0.2.100"
-wasm-bindgen-futures = "0.4.72"
-wasm-bindgen-test = "0.3"
-web-sys = { version = "0.3.60", features = ["Window", "Document", "History", "Location", "HtmlCanvasElement", "HtmlElement", "Element", "Node", "Worker", "MessageEvent", "DedicatedWorkerGlobalScope", "ErrorEvent"] }
+wasm-bindgen = "0.2.130"
+wasm-bindgen-futures = "0.4.80"
+wasm-bindgen-test = "0.3.80"
+web-sys = { version = "0.3.107", features = ["Window", "Document", "History", "Location", "HtmlCanvasElement", "HtmlElement", "Element", "Node", "Worker", "MessageEvent", "DedicatedWorkerGlobalScope", "ErrorEvent"] }
 
 
 [patch.crates-io]

@@ -285,10 +285,12 @@ impl HamiltonianChaosLab {
             slot.prev_deriv4.copy_from(&slot.deriv4);
             match self.solver.to_method() {
                 SymplecticMethod::StormerVerlet => {
-                    self.verlet2.step_separable(&self.henon, &mut slot.state4, dt);
+                    self.verlet2
+                        .step_separable(&self.henon, &mut slot.state4, dt);
                 }
                 SymplecticMethod::Yoshida4 => {
-                    self.yoshida2.step_separable(&self.henon, &mut slot.state4, dt);
+                    self.yoshida2
+                        .step_separable(&self.henon, &mut slot.state4, dt);
                 }
                 SymplecticMethod::GaussLegendre4 => {
                     self.gl4_4.step(&self.henon, t, &mut slot.state4, dt);
@@ -298,7 +300,8 @@ impl HamiltonianChaosLab {
                 slot.state4.copy_from(&slot.prev4);
                 continue;
             }
-            self.henon.derivative_in_place(t + dt, &slot.state4, &mut slot.deriv4);
+            self.henon
+                .derivative_in_place(t + dt, &slot.state4, &mut slot.deriv4);
             if let Some(hit) = self.poincare4.detect_crossing(
                 t,
                 dt,
@@ -314,8 +317,10 @@ impl HamiltonianChaosLab {
                     [hit.q_sec, hit.p_sec],
                 );
             }
-            slot.last_rel_err_pct =
-                self.henon.relative_energy_error(&slot.state4, slot.initial_energy) * 100.0;
+            slot.last_rel_err_pct = self
+                .henon
+                .relative_energy_error(&slot.state4, slot.initial_energy)
+                * 100.0;
             push_sliding_trail(
                 &mut slot.trail,
                 MAX_TRAIL_POINTS,
@@ -371,8 +376,7 @@ impl HamiltonianChaosLab {
                         .step_separable(&self.three_body, &mut slot.state12, dt);
                 }
                 SymplecticSolverChoice::GaussLegendre4 => {
-                    self.gl4_12
-                        .step(&self.three_body, t, &mut slot.state12, dt);
+                    self.gl4_12.step(&self.three_body, t, &mut slot.state12, dt);
                 }
             }
             self.three_body

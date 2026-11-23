@@ -90,10 +90,10 @@ impl HamiltonianChaosLab {
                     if t_req >= 0.0 {
                         let s2 = th2.sin();
                         let eff = self.pendulum.m1 + self.pendulum.m2 * s2 * s2;
-                        let p2_max = (2.0 * self.pendulum.m2 * self.pendulum.l2.powi(2) * t_req
-                            * eff
-                            / self.pendulum.m1)
-                            .sqrt();
+                        let p2_max =
+                            (2.0 * self.pendulum.m2 * self.pendulum.l2.powi(2) * t_req * eff
+                                / self.pendulum.m1)
+                                .sqrt();
                         upper.push([th2, p2_max]);
                         lower.push([th2, -p2_max]);
                     }

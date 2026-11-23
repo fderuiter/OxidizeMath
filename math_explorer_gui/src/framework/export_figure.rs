@@ -20,6 +20,7 @@ use super::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFrame
 fn resolve_tool_primitives_with_fallback(
     tool: &dyn InteractiveTool,
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
+    preloaded_plot_prims: Option<Vec<ExportPrimitive>>,
 ) -> Vec<ExportPrimitive> {
     let mut primitives = Vec::new();
     if let Some(raster) = valid_raster_image(tool) {
@@ -31,7 +32,7 @@ fn resolve_tool_primitives_with_fallback(
             bounds: Some([0.0, w, 0.0, h]),
         });
     }
-    let plot_prims = tool.export_plot_primitives();
+    let plot_prims = preloaded_plot_prims.unwrap_or_else(|| tool.export_plot_primitives());
     if has_drawable_primitives(&plot_prims) {
         primitives.extend(plot_prims);
     } else if primitives.is_empty() {
@@ -56,8 +57,9 @@ fn render_tool_color_image_with_fallback(
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<egui::ColorImage, String> {
-    let plot_prims = tool.export_plot_primitives();
+    let mut preloaded_prims = None;
     if let Some(raster) = valid_raster_image(tool) {
+        let plot_prims = tool.export_plot_primitives();
         if !has_drawable_primitives(&plot_prims) {
             let target_w = (options.width as f32 * options.scale).round().max(1.0) as u32;
             let mut target_h = (options.height as f32 * options.scale).round().max(1.0) as u32;
@@ -78,8 +80,10 @@ fn render_tool_color_image_with_fallback(
                 options,
             ));
         }
+        preloaded_prims = Some(plot_prims);
     }
-    let primitives = resolve_tool_primitives_with_fallback(tool, fallback_datasets);
+    let primitives =
+        resolve_tool_primitives_with_fallback(tool, fallback_datasets, preloaded_prims);
     if !has_drawable_primitives(&primitives) {
         return Err(format!(
             "{} produced no finite plot primitives or raster image to export",
@@ -103,13 +107,16 @@ fn render_tool_svg_with_fallback(
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<String, String> {
-    let plot_prims = tool.export_plot_primitives();
+    let mut preloaded_prims = None;
     if let Some(raster) = valid_raster_image(tool) {
+        let plot_prims = tool.export_plot_primitives();
         if !has_drawable_primitives(&plot_prims) {
             return export_raster_svg(&raster, options);
         }
+        preloaded_prims = Some(plot_prims);
     }
-    let primitives = resolve_tool_primitives_with_fallback(tool, fallback_datasets);
+    let primitives =
+        resolve_tool_primitives_with_fallback(tool, fallback_datasets, preloaded_prims);
     if !has_drawable_primitives(&primitives) {
         return Err(format!(
             "{} produced no finite plot primitives or raster image to export",
@@ -166,7 +173,7 @@ fn sample_and_encode_plot_gif(
     count: usize,
     fps: u32,
 ) -> Result<Vec<u8>, String> {
-    let initial_prims = resolve_tool_primitives_with_fallback(tool, fallback_datasets);
+    let initial_prims = resolve_tool_primitives_with_fallback(tool, fallback_datasets, None);
     if has_non_polyline_primitives(&initial_prims) {
         return encode_progressive_primitive_gif(&initial_prims, options, count, fps);
     }

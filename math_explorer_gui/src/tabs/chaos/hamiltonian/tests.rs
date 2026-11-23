@@ -6,8 +6,8 @@ use super::preset::{
     PRESET_DOUBLE_PENDULUM_DRIFT, PRESET_FIGURE_EIGHT_CHOREOGRAPHY, PRESET_HENON_HEILES_KAM,
 };
 use super::{
-    HamiltonianChaosLab, HamiltonianModelKind, MAX_ORBITS, MAX_SECTION_POINTS,
-    SymplecticSolverChoice,
+    HamiltonianChaosLab, HamiltonianModelKind, SymplecticSolverChoice, MAX_ORBITS,
+    MAX_SECTION_POINTS,
 };
 use crate::framework::InteractiveTool;
 use eframe::egui::{self, Context, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect};
@@ -54,7 +54,11 @@ fn test_hamiltonian_lab_keyboard_seeding_with_focus_ring() {
     assert!(lab.cursor_qp[0] > prev_cursor[0]);
 
     let _ = ctx.run(push_key_event(Key::Enter), |ctx| lab.show(ctx));
-    assert_eq!(lab.orbits.len(), 1, "Enter on focused canvas must seed orbit");
+    assert_eq!(
+        lab.orbits.len(),
+        1,
+        "Enter on focused canvas must seed orbit"
+    );
 }
 
 #[test]
@@ -83,7 +87,11 @@ fn test_hamiltonian_lab_pointer_click_seeding() {
         modifiers: Modifiers::NONE,
     });
     let _ = ctx.run(release, |ctx| lab.show(ctx));
-    assert_eq!(lab.orbits.len(), 1, "Pointer click on canvas must seed orbit");
+    assert_eq!(
+        lab.orbits.len(),
+        1,
+        "Pointer click on canvas must seed orbit"
+    );
 }
 
 #[test]
@@ -146,7 +154,8 @@ fn test_presets_csv_svg_and_url_roundtrip() {
     assert_eq!(lab.solver, SymplecticSolverChoice::GaussLegendre4);
     lab.energy = 36.0;
     lab.clear_orbits();
-    lab.seed_orbit_at([1.2, 0.0]).expect("seed chaotic pendulum");
+    lab.seed_orbit_at([1.2, 0.0])
+        .expect("seed chaotic pendulum");
     lab.step_batch(2_500);
     assert!(
         lab.ghost.symplectic_err_pct < lab.ghost.rk4_err_pct,

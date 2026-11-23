@@ -1,5 +1,9 @@
 # Architecture Decision Record 0007: Reflective UI Fallback Constraints and Telemetry
 
+## Status
+
+Accepted
+
 ## Context
 In `math_explorer_gui/src/reflective_ui.rs`, missing parameter metadata or constraints in theory definitions resulted in explicit panics (`.unwrap()` or `panic!`). This caused UI thread crashes when rendering theory parameters for unconstrained models or models with missing theory parameter definitions.
 

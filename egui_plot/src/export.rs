@@ -419,8 +419,60 @@ pub fn format_json(datasets: &[(String, Vec<[f64; 2]>)]) -> String {
     json
 }
 
-/// Export dataset points to CSV string with a custom filename and initiate download or file save dialog.
-pub fn export_csv_filename(datasets: &[(String, Vec<[f64; 2]>)], filename: &str) {
+/// Format 3D dataset world points `(X, Y, Z)` to CSV string.
+pub fn format_csv_3d(datasets: &[(String, Vec<[f64; 3]>)]) -> String {
+    let mut csv = String::from("Dataset,X,Y,Z\n");
+    for (name, pts) in datasets {
+        let escaped_name = escape_csv_field(name);
+        for p in pts {
+            csv.push_str(&format!("{escaped_name},{},{},{}\n", p[0], p[1], p[2]));
+        }
+    }
+    csv
+}
+
+/// Format 3D dataset world points `(x, y, z)` to JSON string.
+pub fn format_json_3d(datasets: &[(String, Vec<[f64; 3]>)]) -> String {
+    let mut json = String::from("[\n");
+    let mut first = true;
+    for (name, pts) in datasets {
+        let escaped_name = escape_json_string(name);
+        for p in pts {
+            if !first {
+                json.push_str(",\n");
+            }
+            first = false;
+            json.push_str(&format!(
+                "  {{\"dataset\": \"{}\", \"x\": {}, \"y\": {}, \"z\": {}}}",
+                escaped_name, p[0], p[1], p[2]
+            ));
+        }
+    }
+    json.push_str("\n]");
+    json
+}
+
+fn export_csv_3d_filename(datasets: &[(String, Vec<[f64; 3]>)], filename: &str) {
+    let csv = format_csv_3d(datasets);
+    save_file_dialog(filename, csv.as_bytes(), "CSV File", &["csv"]);
+}
+
+/// Export 3D dataset points to CSV and initiate download or file save dialog.
+pub fn export_csv_3d(datasets: &[(String, Vec<[f64; 3]>)]) {
+    export_csv_3d_filename(datasets, "export.csv");
+}
+
+fn export_json_3d_filename(datasets: &[(String, Vec<[f64; 3]>)], filename: &str) {
+    let json = format_json_3d(datasets);
+    save_file_dialog(filename, json.as_bytes(), "JSON File", &["json"]);
+}
+
+/// Export 3D dataset points to JSON and initiate download or file save dialog.
+pub fn export_json_3d(datasets: &[(String, Vec<[f64; 3]>)]) {
+    export_json_3d_filename(datasets, "export.json");
+}
+
+fn export_csv_filename(datasets: &[(String, Vec<[f64; 2]>)], filename: &str) {
     let csv = format_csv(datasets);
     save_file_dialog(filename, csv.as_bytes(), "CSV File", &["csv"]);
 }
@@ -430,8 +482,7 @@ pub fn export_csv(datasets: &[(String, Vec<[f64; 2]>)]) {
     export_csv_filename(datasets, "export.csv");
 }
 
-/// Export dataset points to JSON string with a custom filename and initiate download or file save dialog.
-pub fn export_json_filename(datasets: &[(String, Vec<[f64; 2]>)], filename: &str) {
+fn export_json_filename(datasets: &[(String, Vec<[f64; 2]>)], filename: &str) {
     let json = format_json(datasets);
     save_file_dialog(filename, json.as_bytes(), "JSON File", &["json"]);
 }
@@ -757,19 +808,74 @@ fn color_image_to_rgba_bytes(image: &egui::ColorImage) -> Vec<u8> {
     rgba
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+static NATIVE_CLIPBOARD: std::sync::Mutex<Option<arboard::Clipboard>> = std::sync::Mutex::new(None);
+
+#[cfg(not(target_arch = "wasm32"))]
+fn should_retry_native_clipboard() -> bool {
+    cfg!(any(target_os = "macos", target_os = "windows"))
+        || std::env::var_os("DISPLAY").is_some()
+        || std::env::var_os("WAYLAND_DISPLAY").is_some()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn with_native_clipboard<F>(mut op: F) -> Result<(), String>
+where
+    F: FnMut(&mut arboard::Clipboard) -> Result<(), arboard::Error>,
+{
+    let max_attempts = if should_retry_native_clipboard() {
+        3
+    } else {
+        1
+    };
+    let mut slot = NATIVE_CLIPBOARD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut last_err = None;
+    for attempt in 0..max_attempts {
+        if slot.is_none() {
+            match arboard::Clipboard::new() {
+                Ok(cb) => *slot = Some(cb),
+                Err(err) => {
+                    last_err = Some(err.to_string());
+                    if attempt + 1 < max_attempts {
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    continue;
+                }
+            }
+        }
+        if let Some(clipboard) = slot.as_mut() {
+            match op(clipboard) {
+                Ok(()) => return Ok(()),
+                Err(err) => {
+                    last_err = Some(err.to_string());
+                    *slot = None;
+                    if attempt + 1 < max_attempts {
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                }
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| "Clipboard write failed".to_string()))
+}
+
 /// Copy an `egui::ColorImage` to the system clipboard.
 pub fn copy_image_to_clipboard(image: &egui::ColorImage) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let rgba = color_image_to_rgba_bytes(image);
-        let img_data = arboard::ImageData {
-            width: image.width(),
-            height: image.height(),
-            bytes: std::borrow::Cow::Owned(rgba),
-        };
-        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-        clipboard.set_image(img_data).map_err(|e| e.to_string())?;
-        Ok(())
+        let width = image.width();
+        let height = image.height();
+        with_native_clipboard(|clipboard| {
+            let img_data = arboard::ImageData {
+                width,
+                height,
+                bytes: std::borrow::Cow::Borrowed(&rgba),
+            };
+            clipboard.set_image(img_data)
+        })
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -878,11 +984,7 @@ where
 pub fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-        clipboard
-            .set_text(text.to_owned())
-            .map_err(|e| e.to_string())?;
-        Ok(())
+        with_native_clipboard(|clipboard| clipboard.set_text(text.to_owned()))
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -977,9 +1079,6 @@ pub fn color32_image_to_png(image: &egui::ColorImage) -> Result<Vec<u8>, String>
     drop(writer);
     Ok(bytes)
 }
-
-/// Type alias representing a single exported frame's dataset series.
-pub type ExportFrame = DatasetFrame;
 
 #[cfg(test)]
 mod tests {
@@ -1499,6 +1598,31 @@ mod tests {
         assert!(callback_res.lock().unwrap().is_some());
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_concurrent_clipboard_image_and_text_copies_thread_safe() {
+        let baseline_ok = copy_text_to_clipboard("probe").is_ok();
+        let img = egui::ColorImage::new([4, 4], vec![egui::Color32::GREEN; 16]);
+        std::thread::scope(|scope| {
+            for worker in 0..8 {
+                let img_ref = &img;
+                scope.spawn(move || {
+                    for iter in 0..6 {
+                        let payload = format!("Dataset,X,Y\nWorker{worker},{iter},1.0\n");
+                        let text_res = copy_text_to_clipboard(&payload);
+                        let text_cb = copy_text_to_clipboard_with_callback(&payload, |_| {});
+                        let img_res = copy_image_to_clipboard(img_ref);
+                        let img_cb = copy_image_to_clipboard_with_callback(img_ref, |_| {});
+                        assert_eq!(text_res.is_ok(), baseline_ok);
+                        assert_eq!(text_cb.is_ok(), baseline_ok);
+                        assert_eq!(img_res.is_ok(), baseline_ok);
+                        assert_eq!(img_cb.is_ok(), baseline_ok);
+                    }
+                });
+            }
+        });
+    }
+
     #[test]
     fn test_export_custom_svg_logarithmic_spacing_and_splitting() {
         let datasets = vec![(
@@ -1563,7 +1687,15 @@ mod tests {
                 [x, 2.5 * x.powf(1.6) * wobble]
             })
             .collect();
-        let fit = crate::fit::fit_dataset_scaled(&sample_pts, 1, "PowerLaw", true, true).unwrap();
+        let fit = crate::fit::fit_model_with_axes(
+            &sample_pts,
+            crate::FitType::Linear,
+            "PowerLaw",
+            true,
+            true,
+            false,
+        )
+        .unwrap();
         let fit_pts: Vec<[f64; 2]> = (0..=100)
             .map(|i| {
                 let exp = -1.0 + (i as f64) * (4.0 / 100.0);
@@ -1729,3 +1861,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "export_wasm_tests.rs"]
+mod wasm_tests;

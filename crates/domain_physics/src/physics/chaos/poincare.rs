@@ -7,10 +7,9 @@
 // [cite:chaos_theory]
 
 use pure_math::pure_math::analysis::ode::ArrayState;
-use serde::{Deserialize, Serialize};
 
 /// Transverse directional filter for Poincaré hyperplane crossings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum CrossingDirection {
     /// Trigger when the section coordinate crosses from $\le c$ to $> c$ with positive slope.
     #[default]

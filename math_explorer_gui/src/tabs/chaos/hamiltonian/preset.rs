@@ -48,12 +48,9 @@ const fn model_energy_limits(model: HamiltonianModelKind) -> (f64, f64) {
 const fn model_cursor_limits(model: HamiltonianModelKind) -> [f64; 4] {
     match model {
         HamiltonianModelKind::HenonHeiles => [-0.62, 0.88, -0.62, 0.62],
-        HamiltonianModelKind::DoublePendulum => [
-            -std::f64::consts::PI,
-            std::f64::consts::PI,
-            -8.5,
-            8.5,
-        ],
+        HamiltonianModelKind::DoublePendulum => {
+            [-std::f64::consts::PI, std::f64::consts::PI, -8.5, 8.5]
+        }
         HamiltonianModelKind::FigureEightThreeBody => [-1.25, 1.25, -1.25, 1.25],
     }
 }
@@ -136,9 +133,10 @@ impl HamiltonianChaosLab {
             return false;
         }
         match model {
-            HamiltonianModelKind::HenonHeiles => {
-                self.henon.seed_on_poincare_section(energy, qp[0], qp[1]).is_some()
-            }
+            HamiltonianModelKind::HenonHeiles => self
+                .henon
+                .seed_on_poincare_section(energy, qp[0], qp[1])
+                .is_some(),
             HamiltonianModelKind::DoublePendulum => self
                 .pendulum
                 .seed_on_poincare_section(energy, qp[0], qp[1])

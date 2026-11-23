@@ -7,7 +7,7 @@ use super::{
 };
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
-use crate::framework::{PaneSidePanel, PlaybackAction, PlaybackTransport, scoped_panel_id};
+use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui_plot::{Corner, Legend, Line, LineStyle, Plot, PlotPoints, Points};
 use math_explorer::physics::astrophysics::nbody::FigureEightThreeBody;
@@ -187,7 +187,10 @@ impl HamiltonianChaosLab {
             MAX_ORBITS,
             total_crossings
         ));
-        ui.label(format!("Sim Time: t = {:.2}  ({:.2} ms/frame)", self.sim_time, self.last_frame_ms));
+        ui.label(format!(
+            "Sim Time: t = {:.2}  ({:.2} ms/frame)",
+            self.sim_time, self.last_frame_ms
+        ));
         ui.colored_label(
             palette.success,
             format!("Symplectic |ΔH/H₀|: {:.6}%", self.ghost.symplectic_err_pct),
@@ -249,12 +252,7 @@ impl HamiltonianChaosLab {
         }
     }
 
-    fn render_energy_drift_plot(
-        &self,
-        ui: &mut egui::Ui,
-        height: f32,
-        palette: &SemanticPalette,
-    ) {
+    fn render_energy_drift_plot(&self, ui: &mut egui::Ui, height: f32, palette: &SemanticPalette) {
         Plot::new("hamiltonian_energy_drift_plot")
             .height(height)
             .legend(Legend::default().position(Corner::LeftTop))
@@ -283,12 +281,7 @@ impl HamiltonianChaosLab {
             });
     }
 
-    fn render_configuration_plot(
-        &self,
-        ui: &mut egui::Ui,
-        height: f32,
-        palette: &SemanticPalette,
-    ) {
+    fn render_configuration_plot(&self, ui: &mut egui::Ui, height: f32, palette: &SemanticPalette) {
         Plot::new("hamiltonian_configuration_plot")
             .height(height)
             .data_aspect(1.0)
@@ -299,9 +292,12 @@ impl HamiltonianChaosLab {
                 for (idx, slot) in self.orbits.iter().enumerate() {
                     let color = palette.series_color(slot.color_index);
                     plot_ui.line(
-                        Line::new(format!("Orbit {}", idx + 1), PlotPoints::from(slot.trail.clone()))
-                            .color(color)
-                            .width(1.8_f32),
+                        Line::new(
+                            format!("Orbit {}", idx + 1),
+                            PlotPoints::from(slot.trail.clone()),
+                        )
+                        .color(color)
+                        .width(1.8_f32),
                     );
                 }
                 if self.model == HamiltonianModelKind::FigureEightThreeBody {

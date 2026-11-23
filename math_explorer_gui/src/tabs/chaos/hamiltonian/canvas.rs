@@ -4,8 +4,8 @@
 
 use super::{HamiltonianChaosLab, MAX_ORBITS};
 use crate::accessibility::{
-    AccessibleHoverText, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility,
+    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility, AccessibleHoverText,
 };
 use crate::app::SemanticPalette;
 use eframe::egui::{self, Color32, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
@@ -57,8 +57,7 @@ impl PhaseViewport {
 
 impl HamiltonianChaosLab {
     pub(super) fn render_poincare_canvas(&mut self, ui: &mut egui::Ui, desired_size: Vec2) {
-        let (response, painter) =
-            ui.allocate_painter(desired_size, egui::Sense::click_and_drag());
+        let (response, painter) = ui.allocate_painter(desired_size, egui::Sense::click_and_drag());
         let _ = response.clone().accessible_hover_text(
             "Poincare Surface of Section: click or use Arrow keys + Enter to seed symplectic orbits",
         );
@@ -163,7 +162,8 @@ impl HamiltonianChaosLab {
             );
         }
 
-        let seed_pressed = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+        let seed_pressed =
+            ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
         if seed_pressed {
             self.seed_and_announce(ctx, self.cursor_qp);
         }
@@ -217,11 +217,17 @@ impl HamiltonianChaosLab {
             let sx = vp.to_screen([q, vp.p_min]).x;
             let sy = vp.to_screen([vp.q_min, p]).y;
             painter.line_segment(
-                [Pos2::new(sx, vp.rect.top()), Pos2::new(sx, vp.rect.bottom())],
+                [
+                    Pos2::new(sx, vp.rect.top()),
+                    Pos2::new(sx, vp.rect.bottom()),
+                ],
                 grid_stroke,
             );
             painter.line_segment(
-                [Pos2::new(vp.rect.left(), sy), Pos2::new(vp.rect.right(), sy)],
+                [
+                    Pos2::new(vp.rect.left(), sy),
+                    Pos2::new(vp.rect.right(), sy),
+                ],
                 grid_stroke,
             );
         }
@@ -230,14 +236,20 @@ impl HamiltonianChaosLab {
         if (vp.q_min..=vp.q_max).contains(&0.0) {
             let x0 = vp.to_screen([0.0, 0.0]).x;
             painter.line_segment(
-                [Pos2::new(x0, vp.rect.top()), Pos2::new(x0, vp.rect.bottom())],
+                [
+                    Pos2::new(x0, vp.rect.top()),
+                    Pos2::new(x0, vp.rect.bottom()),
+                ],
                 axis_stroke,
             );
         }
         if (vp.p_min..=vp.p_max).contains(&0.0) {
             let y0 = vp.to_screen([0.0, 0.0]).y;
             painter.line_segment(
-                [Pos2::new(vp.rect.left(), y0), Pos2::new(vp.rect.right(), y0)],
+                [
+                    Pos2::new(vp.rect.left(), y0),
+                    Pos2::new(vp.rect.right(), y0),
+                ],
                 axis_stroke,
             );
         }

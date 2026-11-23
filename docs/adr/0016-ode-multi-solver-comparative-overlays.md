@@ -1,5 +1,9 @@
 # Architecture Decision Record 0016: ODE Multi-Solver Comparative Trace Overlays
 
+## Status
+
+Accepted
+
 ## Context
 Interactive numerical ODE tools in Math Explorer previously used a single hardcoded integrator (`RungeKutta4`) without comparative trace visualization. This limitation prevented stability and accuracy benchmarking across different numerical integration algorithms. Computational scientists require direct comparison between first-order (`Euler`), second-order (`Heun`), and fourth-order (`RungeKutta4`) solvers to observe truncation errors, numerical drift, and step-size stability boundaries.
 
