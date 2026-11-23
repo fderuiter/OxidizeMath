@@ -478,7 +478,7 @@ fn render_expr_export_actions(
         .clicked()
     {
         #[cfg(not(test))]
-        egui_plot::file_io::save_file_dialog(
+        egui_plot::save_file_dialog(
             "expression.tex",
             calibrated_latex.as_bytes(),
             "LaTeX Document",

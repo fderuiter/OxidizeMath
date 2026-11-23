@@ -12,19 +12,19 @@
 mod a11y;
 mod axis;
 pub mod commands;
-pub mod data_table;
+mod data_table;
 pub mod export;
 pub mod export_modal;
 pub mod export_primitives;
-pub mod file_io;
-pub mod fit;
-pub mod fit_export;
+mod file_io;
+mod fit;
+mod fit_export;
 mod fit_overlay;
 mod items;
-pub mod latex;
+mod latex;
 mod legend;
 mod memory;
-pub mod modal_lifecycle;
+mod modal_lifecycle;
 mod plot_ui;
 pub mod poi;
 mod poi_interaction;
@@ -43,14 +43,8 @@ use emath::Float as _;
 
 pub use crate::{
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
-    data_table::{
-        DataTableState, DataTableViewMode, TableSeriesRef, data_table_clipboard_status_id,
-        format_pois_csv, format_pois_tsv, format_table_value, format_tsv,
-        poll_data_table_clipboard_status, series_share_x, show_data_table_modal,
-        show_data_table_modal_with_pois,
-    },
     export::{
-        AspectRatioOption, ExportFrame, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
+        AspectRatioOption, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
         color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard,
         copy_image_to_clipboard_with_callback, copy_text_to_clipboard,
         copy_text_to_clipboard_with_callback, export_csv, export_custom_gif, export_custom_image,
@@ -59,21 +53,20 @@ pub use crate::{
     },
     export_modal::{
         CallbackExportSource, ExportDataSource, ExportModalAction, ExportModalBindings,
-        ExportModalConfig, ExportModalState, MODAL_HEADER_TEXT, calculate_target_dimensions,
-        clipboard_status_id, exceeds_max_dimension, poll_clipboard_status, show_export_modal,
+        ExportModalConfig, ExportModalState, clipboard_status_id, show_export_modal,
     },
     export_primitives::{
         ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,
-        export_primitives_png, export_primitives_svg, export_raster_gif, export_raster_png,
-        export_raster_svg, get_last_plot_primitives, render_primitives_image,
+        export_primitives_svg, export_raster_gif, export_raster_svg, get_last_plot_primitives,
+        render_primitives_image,
     },
-    fit::{FitResult, FitType, fit_dataset, fit_dataset_scaled, fit_model, fit_model_with_axes},
+    fit::{FitResult, FitType, fit_model_with_axes},
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
         LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
         PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, Text, VLine,
     },
-    latex::{MathBox, parse_latex_to_layout_job, parse_latex_with_font, render_math_label},
+    latex::{parse_latex_to_layout_job, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::{CanvasCallout, PlotMemory},
     modal_lifecycle::{ModalFrameContext, ModalLifecycle},

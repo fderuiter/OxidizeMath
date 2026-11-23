@@ -56,7 +56,7 @@ fn save_formula_tex(latex_str: &str) {
     #[cfg(test)]
     let _ = latex_str;
     #[cfg(not(test))]
-    egui_plot::file_io::save_file_dialog(
+    egui_plot::save_file_dialog(
         "formula.tex",
         latex_str.as_bytes(),
         "LaTeX Document",

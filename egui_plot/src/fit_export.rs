@@ -531,14 +531,22 @@ fn handle_fit_save(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fit::fit_dataset_scaled;
+    use crate::fit::fit_model_with_axes;
     #[cfg(not(target_arch = "wasm32"))]
     use std::process::Command;
 
     #[test]
     fn test_fit_badge_overlay_copy_and_save_actions_emit_live_region() {
         let pts = vec![[1.0, 2.0], [2.0, 5.0], [3.0, 10.0], [4.0, 17.0]];
-        let fit = fit_dataset_scaled(&pts, 2, "Sensor Curve", false, false).expect("fit");
+        let fit = fit_model_with_axes(
+            &pts,
+            FitType::Polynomial(2),
+            "Sensor Curve",
+            false,
+            false,
+            false,
+        )
+        .expect("fit");
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
 
@@ -644,7 +652,12 @@ mod tests {
             (1, false, true),
             (2, true, true),
         ] {
-            let fit = fit_dataset_scaled(&pts, deg, "Sensor Series", log_x, log_y)
+            let fit_type = if deg == 1 {
+                FitType::Linear
+            } else {
+                FitType::Polynomial(deg)
+            };
+            let fit = fit_model_with_axes(&pts, fit_type, "Sensor Series", log_x, log_y, false)
                 .expect("fit must succeed");
             let latex = fit.to_latex().expect("latex export");
             assert!(latex.contains(r"\begin{aligned}") && latex.contains("R^2 &="));
@@ -790,8 +803,8 @@ mod tests {
             FitType::Logistic,
             FitType::Sinusoidal,
         ] {
-            let fit =
-                crate::fit::fit_model(&pos_pts, ft, "Nonlinear", false).expect("nonlinear fit");
+            let fit = fit_model_with_axes(&pos_pts, ft, "Nonlinear", false, false, false)
+                .expect("nonlinear fit");
             assert!(fit.to_latex().unwrap().contains("R^2 &="));
             verify_fit_rust_parity(&fit, &xs);
             verify_fit_python_parity(&fit, &xs);
