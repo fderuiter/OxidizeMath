@@ -3,7 +3,10 @@
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use num_complex::Complex64;
+use std::collections::BTreeMap;
 
+#[path = "complex_mapping/cache.rs"]
+mod cache;
 #[path = "complex_mapping/ui.rs"]
 mod ui;
 
@@ -11,6 +14,8 @@ pub(crate) const COMPLEX_COORD_MIN: f64 = -50.0;
 pub(crate) const COMPLEX_COORD_MAX: f64 = 50.0;
 pub(super) const COMPLEX_MIN_SPAN: f64 = 0.1;
 const EXP_SIN_GUARD_LIMIT: f64 = 50.0;
+const NAN_COMPLEX: Complex64 = Complex64::new(f64::NAN, f64::NAN);
+const DEFAULT_CUSTOM_EXPR: &str = "z^3 - 1/z";
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) enum MappingFunction {
@@ -21,11 +26,19 @@ pub(crate) enum MappingFunction {
     Custom,
 }
 
-fn sanitize_complex(w: Complex64, fallback: Complex64) -> Complex64 {
+fn sanitize_complex_pole(w: Complex64) -> Complex64 {
     if w.re.is_finite() && w.im.is_finite() {
         w
     } else {
-        fallback
+        NAN_COMPLEX
+    }
+}
+
+fn sanitize_complex_deriv(w: Complex64) -> Complex64 {
+    if w.re.is_finite() && w.im.is_finite() {
+        w
+    } else {
+        Complex64::new(0.0, 0.0)
     }
 }
 
@@ -41,9 +54,8 @@ impl MappingFunction {
     }
 
     fn evaluate(&self, z: Complex64) -> Complex64 {
-        let fallback = Complex64::new(1e6, 1e6);
         if !z.re.is_finite() || !z.im.is_finite() {
-            return fallback;
+            return NAN_COMPLEX;
         }
         let raw = match self {
             MappingFunction::ZSquared => z * z,
@@ -54,21 +66,20 @@ impl MappingFunction {
                 Complex64::new(z.re, z.im.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT)).sin()
             }
             MappingFunction::Inverse => {
-                if z.norm() < 1e-6 {
-                    fallback
+                if z.norm_sqr() < 1e-12 {
+                    NAN_COMPLEX
                 } else {
                     1.0 / z
                 }
             }
-            MappingFunction::Custom => fallback,
+            MappingFunction::Custom => NAN_COMPLEX,
         };
-        sanitize_complex(raw, fallback)
+        sanitize_complex_pole(raw)
     }
 
     fn derivative(&self, z: Complex64) -> Complex64 {
-        let fallback = Complex64::new(0.0, 0.0);
         if !z.re.is_finite() || !z.im.is_finite() {
-            return fallback;
+            return Complex64::new(0.0, 0.0);
         }
         let raw = match self {
             MappingFunction::ZSquared => 2.0 * z,
@@ -79,15 +90,15 @@ impl MappingFunction {
                 Complex64::new(z.re, z.im.clamp(-EXP_SIN_GUARD_LIMIT, EXP_SIN_GUARD_LIMIT)).cos()
             }
             MappingFunction::Inverse => {
-                if z.norm() < 1e-6 {
-                    Complex64::new(1e6, 1e6)
+                if z.norm_sqr() < 1e-12 {
+                    NAN_COMPLEX
                 } else {
                     -1.0 / (z * z)
                 }
             }
-            MappingFunction::Custom => fallback,
+            MappingFunction::Custom => Complex64::new(0.0, 0.0),
         };
-        sanitize_complex(raw, fallback)
+        sanitize_complex_deriv(raw)
     }
 }
 
@@ -98,6 +109,7 @@ pub struct ComplexMappingTool {
     pub(crate) grid_density: usize,
     pub(crate) inspection_point: [f64; 2],
     pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) cache: cache::ContourGridCache,
 }
 
 impl Default for ComplexMappingTool {
@@ -110,46 +122,46 @@ impl Default for ComplexMappingTool {
             inspection_point: [1.0, 1.0],
             math_input: MathExpressionInputBar::new(
                 "w",
-                "z^3 - 1/z",
+                DEFAULT_CUSTOM_EXPR,
                 vec![
+                    ("w = z + a^2 / z (Parameterized Joukowsky)", "z + a^2 / z"),
                     ("w = z^3 - 1/z", "z^3 - 1/z"),
                     ("w = z^2", "z^2"),
                     ("w = exp(z)", "exp(z)"),
                     ("w = sin(z)", "sin(z)"),
                     ("w = 1/z", "1/z"),
-                    ("w = z + 1/z (Joukowsky)", "z + 1/z"),
                 ],
-            ),
+            )
+            .with_axes(&["z"])
+            .with_complex_mode(true),
+            cache: cache::ContourGridCache::default(),
         }
     }
 }
 
 impl ComplexMappingTool {
     pub(crate) fn eval_z(&self, z: Complex64) -> Complex64 {
-        let fallback = Complex64::new(1e6, 1e6);
         if !z.re.is_finite() || !z.im.is_finite() {
-            return fallback;
+            return NAN_COMPLEX;
         }
         match self.function {
-            MappingFunction::Custom => self
-                .math_input
-                .expr()
-                .map_or(fallback, |expr| sanitize_complex(expr.eval_complex_z(z), fallback)),
+            MappingFunction::Custom => self.math_input.active_compiled().map_or(NAN_COMPLEX, |c| {
+                sanitize_complex_pole(c.eval_complex_z_params(z, self.math_input.param_slice()))
+            }),
             _ => self.function.evaluate(z),
         }
     }
 
     pub(crate) fn deriv_z(&self, z: Complex64) -> Complex64 {
-        let fallback = Complex64::new(0.0, 0.0);
         if !z.re.is_finite() || !z.im.is_finite() {
-            return fallback;
+            return Complex64::new(0.0, 0.0);
         }
         match self.function {
             MappingFunction::Custom => {
                 let h = Complex64::new(1e-7, 0.0);
                 let f_plus = self.eval_z(z + h);
                 let f_minus = self.eval_z(z - h);
-                sanitize_complex((f_plus - f_minus) / (2.0 * h), fallback)
+                sanitize_complex_deriv((f_plus - f_minus) / (2.0 * h))
             }
             _ => self.function.derivative(z),
         }
@@ -166,6 +178,8 @@ struct ComplexMappingState {
     inspection_point: [f64; 2],
     #[serde(default, skip_serializing_if = "Option::is_none")]
     custom_expr: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    custom_params: BTreeMap<String, f64>,
 }
 
 impl InteractiveTool for ComplexMappingTool {
@@ -181,13 +195,17 @@ impl InteractiveTool for ComplexMappingTool {
         "analysis"
     }
 
+    fn state_revision(&self) -> u64 {
+        self.compute_state_revision()
+    }
+
     fn has_finite_parameters(&self) -> bool {
         self.grid_min.is_finite()
             && self.grid_max.is_finite()
             && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&self.grid_min)
             && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&self.grid_max)
             && self.grid_min < self.grid_max
-            && (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_density)
+            && (2..=crate::presets::MAX_INTERACTIVE_GRID_SIZE).contains(&self.grid_density)
             && self
                 .inspection_point
                 .iter()
@@ -195,9 +213,14 @@ impl InteractiveTool for ComplexMappingTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let custom_expr =
-            (self.function == MappingFunction::Custom || self.math_input.raw_text != "z^3 - 1/z")
-                .then(|| self.math_input.raw_text.clone());
+        let is_custom = self.function == MappingFunction::Custom;
+        let custom_expr = (is_custom || self.math_input.raw_text != DEFAULT_CUSTOM_EXPR)
+            .then(|| self.math_input.raw_text.clone());
+        let custom_params = if is_custom {
+            self.math_input.params_map()
+        } else {
+            BTreeMap::new()
+        };
         serde_json::to_string(&ComplexMappingState {
             function: self.function,
             grid_min: self.grid_min,
@@ -205,6 +228,7 @@ impl InteractiveTool for ComplexMappingTool {
             grid_density: self.grid_density,
             inspection_point: self.inspection_point,
             custom_expr,
+            custom_params,
         })
         .ok()
     }
@@ -228,10 +252,13 @@ impl InteractiveTool for ComplexMappingTool {
         self.function = s.function;
         self.grid_min = s.grid_min;
         self.grid_max = s.grid_max;
-        self.grid_density = s.grid_density;
+        self.grid_density = s
+            .grid_density
+            .min(crate::presets::MAX_INTERACTIVE_GRID_SIZE);
         self.inspection_point = s.inspection_point;
         self.math_input
-            .set_expression(s.custom_expr.as_deref().unwrap_or("z^3 - 1/z"));
+            .set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_CUSTOM_EXPR));
+        self.math_input.set_params_map(&s.custom_params);
         Ok(())
     }
 
@@ -247,12 +274,13 @@ impl InteractiveTool for ComplexMappingTool {
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         self.draw_controls(parent_ui);
+        let grid_ok = self.ensure_cached_contours();
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Conformal Mapping Visualization");
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             ui.columns(2, |columns| {
-                self.draw_z_plane(&mut columns[0], &palette);
-                self.draw_w_plane(&mut columns[1], &palette);
+                self.draw_z_plane(&mut columns[0], &palette, grid_ok);
+                self.draw_w_plane(&mut columns[1], &palette, grid_ok);
             });
         });
     }
@@ -295,7 +323,10 @@ impl scientific_metadata::theory::TheoryDescribable for ComplexMappingTool {
 
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("ZSquared".into(), "w = z^2 doubling angles at the origin".into());
+        map.insert(
+            "ZSquared".into(),
+            "w = z^2 doubling angles at the origin".into(),
+        );
         map.insert(
             "Exponential".into(),
             "w = e^z mapping vertical lines to circles".into(),
@@ -328,6 +359,26 @@ const STARTER_PRESET_JSON: &str = r#"{
   }
 }"#;
 
+const JOUKOWSKY_POLE_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Joukowsky Pole Explorer",
+    "domain": "analysis",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "function": "Custom",
+    "grid_min": -2.0,
+    "grid_max": 2.0,
+    "grid_density": 15,
+    "inspection_point": [1.2, 0.4],
+    "custom_expr": "z + a^2 / z",
+    "custom_params": {
+      "a": 0.85
+    }
+  }
+}"#;
+
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "complex_mapping_starter",
@@ -338,6 +389,19 @@ inventory::submit! {
         domain: "analysis",
         tool_name: Some("ComplexMappingTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "complex_mapping_joukowsky_pole",
+        title: "Joukowsky Pole Explorer",
+        description: "w = z + a^2/z: Parameterized Joukowsky airfoil map with pole-split contours and live slider a.",
+        category: "Complex Analysis",
+        icon: "✈️",
+        domain: "analysis",
+        tool_name: Some("ComplexMappingTool"),
+        preset_generator: || JOUKOWSKY_POLE_PRESET_JSON,
     }
 }
 

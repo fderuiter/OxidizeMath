@@ -18,12 +18,15 @@ pub mod export_modal;
 pub mod export_primitives;
 pub mod file_io;
 pub mod fit;
+mod fit_overlay;
 mod items;
 pub mod latex;
 mod legend;
 mod memory;
 pub mod modal_lifecycle;
 mod plot_ui;
+pub mod poi;
+mod poi_interaction;
 mod transform;
 
 use std::{cmp::Ordering, ops::RangeInclusive, sync::Arc};
@@ -40,8 +43,10 @@ use emath::Float as _;
 pub use crate::{
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
     data_table::{
-        DataTableState, TableSeriesRef, data_table_clipboard_status_id, format_table_value,
-        format_tsv, poll_data_table_clipboard_status, series_share_x, show_data_table_modal,
+        DataTableState, DataTableViewMode, TableSeriesRef, data_table_clipboard_status_id,
+        format_pois_csv, format_pois_tsv, format_table_value, format_tsv,
+        poll_data_table_clipboard_status, series_share_x, show_data_table_modal,
+        show_data_table_modal_with_pois,
     },
     export::{
         AspectRatioOption, ExportFrame, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
@@ -67,7 +72,7 @@ pub use crate::{
         export_rect_grid_svg, get_last_plot_primitives, render_primitives_image,
         resample_scalar_field_borderless, sanitize_texture_size,
     },
-    fit::{FitResult, FitType, fit_dataset, fit_dataset_scaled},
+    fit::{FitResult, FitType, fit_dataset, fit_dataset_scaled, fit_model, fit_model_with_axes},
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
         LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
@@ -78,7 +83,17 @@ pub use crate::{
     memory::{CanvasCallout, PlotMemory},
     modal_lifecycle::{ModalFrameContext, ModalLifecycle},
     plot_ui::PlotUi,
+    poi::{CriticalPoint, CriticalPointKind, MAX_CRITICAL_POINTS, detect_critical_points},
     transform::{PlotBounds, PlotTransform},
+};
+
+#[doc(hidden)]
+pub use self::{
+    export_primitives::{
+        materialized_export_primitives_call_count, reset_materialized_export_primitives_call_count,
+    },
+    fit::{fit_model_with_axes_call_count, reset_fit_model_with_axes_call_count},
+    poi::{detect_critical_points_call_count, reset_detect_critical_points_call_count},
 };
 
 use axis::AxisWidget;
@@ -377,6 +392,7 @@ pub struct Plot<'a> {
     sense: Sense,
     show_navigation_controls: bool,
     show_zoom_buttons: bool,
+    allow_2d_analysis: bool,
 }
 
 impl<'a> Plot<'a> {
@@ -432,6 +448,7 @@ impl<'a> Plot<'a> {
             sense: egui::Sense::click_and_drag(),
             show_navigation_controls: true,
             show_zoom_buttons: true,
+            allow_2d_analysis: true,
         }
     }
 
@@ -996,6 +1013,16 @@ impl<'a> Plot<'a> {
         self
     }
 
+    /// Enable or disable 2D analytical overlays (critical-point detection, 2D curve hover
+    /// snapping, detached 2D canvas callouts, and curve-fitting menus).
+    ///
+    /// Set to `false` when rendering projected 3D scenes onto a 2D [`Plot`]. Default: `true`.
+    #[inline]
+    pub fn allow_2d_analysis(mut self, allow: bool) -> Self {
+        self.allow_2d_analysis = allow;
+        self
+    }
+
     /// Interact with and add items to the plot and finally draw it.
     pub fn show<'b, R>(
         self,
@@ -1054,6 +1081,7 @@ impl<'a> Plot<'a> {
             sense,
             show_navigation_controls,
             show_zoom_buttons: _,
+            allow_2d_analysis,
         } = self;
 
         // Disable interaction if ui is disabled.
@@ -1220,14 +1248,17 @@ impl<'a> Plot<'a> {
 
         // Drain any remaining canvas callouts not consumed by a custom CalloutManager
         let newly_added_callouts = drain_pending_callouts(plot_id);
-        if !newly_added_callouts.is_empty() {
-            mem.callouts
-                .extend(newly_added_callouts.into_iter().map(SavedCallout::from));
-        }
-
-        // Render persisted user callouts automatically
-        for saved in &mem.callouts {
-            plot_ui.callout(saved.to_callout());
+        if allow_2d_analysis {
+            if !newly_added_callouts.is_empty() {
+                mem.callouts
+                    .extend(newly_added_callouts.into_iter().map(SavedCallout::from));
+            }
+            // Render persisted user callouts automatically
+            for saved in &mem.callouts {
+                plot_ui.callout(saved.to_callout());
+            }
+        } else {
+            mem.callouts.clear();
         }
         let PlotUi {
             mut items,
@@ -1237,10 +1268,14 @@ impl<'a> Plot<'a> {
             ..
         } = plot_ui;
 
-        let persisted_point_tooltip = a11y::preprocess_point_tooltip_frame(
-            &response,
-            response.hovered() || response.has_focus(),
-        );
+        let persisted_point_tooltip = if allow_2d_analysis {
+            a11y::preprocess_point_tooltip_frame(
+                &response,
+                response.hovered() || response.has_focus(),
+            )
+        } else {
+            None
+        };
 
         // Background
         let plot_border_stroke = if response.has_focus() {
@@ -1654,22 +1689,6 @@ impl<'a> Plot<'a> {
             item.initialize(mem.transform.bounds().range_x());
         }
 
-        // --- EXTRACT DATASETS INJECTED ---
-        let mut accessible_datasets: Vec<(String, Vec<[f64; 2]>, Color32)> = Vec::new();
-        let mut extracted_primitives: Vec<ExportPrimitive> = Vec::new();
-        for item in &items {
-            accessible_datasets.push((item.name().to_owned(), item.extract_points(), item.color()));
-            extracted_primitives.extend(item.extract_export_primitives());
-        }
-        let export_datasets: Vec<(String, Vec<[f64; 2]>)> = accessible_datasets
-            .iter()
-            .filter(|(_, p, _)| !p.is_empty())
-            .map(|(n, p, _)| (n.clone(), p.clone()))
-            .collect();
-        append_last_plot_datasets(&export_datasets);
-        append_last_plot_primitives(&extracted_primitives);
-        // --- END EXTRACT DATASETS ---
-
         let auto_content_bounds = compute_auto_content_bounds(
             *bounds,
             &min_auto_bounds,
@@ -1680,6 +1699,65 @@ impl<'a> Plot<'a> {
         );
 
         let mut access_state = Self::load_frame_access_state(ui, plot_id, &mem);
+        if !allow_2d_analysis {
+            access_state.show_add_callout_modal = false;
+            access_state.show_edit_callout_modal = false;
+            access_state.focused_poi = None;
+        }
+        let base_items_hash = hash_plot_items(&items);
+        let active_fit = if allow_2d_analysis
+            && access_state.fit_model.is_some()
+            && access_state.show_fit_overlay
+        {
+            let base_ds = Arc::clone(get_or_populate_base_datasets(
+                &items,
+                base_items_hash,
+                &mut access_state.cached_base_datasets,
+            ));
+            fit_overlay::compute_and_inject_fit_items(
+                ui,
+                &mut items,
+                &base_ds,
+                &mut access_state,
+                &mem.transform,
+                mem.log_x,
+                mem.log_y,
+            )
+        } else {
+            None
+        };
+
+        let items_hash = if active_fit.is_some() {
+            hash_plot_items(&items)
+        } else {
+            base_items_hash
+        };
+        let critical_points: Arc<[poi::CriticalPoint]> = if !allow_2d_analysis {
+            Arc::from(&[][..])
+        } else {
+            let bounds_val = *mem.transform.bounds();
+            let poi_key = PoiCacheKey {
+                items_hash,
+                bounds_bits: [
+                    bounds_val.min[0].to_bits(),
+                    bounds_val.min[1].to_bits(),
+                    bounds_val.max[0].to_bits(),
+                    bounds_val.max[1].to_bits(),
+                ],
+                log_x: mem.log_x,
+                log_y: mem.log_y,
+            };
+            if let Some((cached_key, cached_pts)) = &access_state.cached_pois
+                && *cached_key == poi_key
+            {
+                Arc::clone(cached_pts)
+            } else {
+                let detected: Arc<[poi::CriticalPoint]> =
+                    Arc::from(poi::detect_critical_points(&items, &mem.transform));
+                access_state.cached_pois = Some((poi_key, Arc::clone(&detected)));
+                detected
+            }
+        };
         if response.has_focus() {
             let arrow_pressed = ui.input(|i| {
                 !i.key_pressed(egui::Key::Tab)
@@ -1717,20 +1795,44 @@ impl<'a> Plot<'a> {
             default_auto_bounds,
         };
         Self::register_and_handle_viewport_keys(ui, &response, &mut mem, &viewport_key_cfg);
-        register_plot_dataset_commands(ui.ctx(), &accessible_datasets, access_state.focused_item);
-        if response.has_focus() {
-            handle_focused_plot_dataset_keys(ui, &accessible_datasets, &mut access_state);
+        register_plot_dataset_commands_from_items(ui.ctx(), &items, access_state.focused_item);
+        if !critical_points.is_empty() {
+            commands::CommandRegistryData::register_poi_navigation(ui.ctx());
         }
-        let focused_point = response
-            .has_focus()
-            .then(|| resolve_focused_plot_point(&items, &accessible_datasets, &mut access_state))
-            .flatten();
+        let lazy_accessible_datasets: Option<BaseDatasetList> = (response.has_focus()
+            || access_state.show_table)
+            .then(|| collect_accessible_datasets(&items));
+        if response.has_focus() {
+            if allow_2d_analysis {
+                poi_interaction::handle_focused_plot_poi_keys(
+                    ui,
+                    &critical_points,
+                    &mut access_state,
+                );
+            }
+            if let Some(ref ds) = lazy_accessible_datasets {
+                handle_focused_plot_dataset_keys(ui, ds, &mut access_state);
+            }
+        } else if access_state
+            .focused_poi
+            .is_some_and(|idx| idx >= critical_points.len())
+        {
+            access_state.focused_poi = None;
+        }
+        let focused_point = if response.has_focus() && access_state.focused_poi.is_none() {
+            lazy_accessible_datasets
+                .as_ref()
+                .and_then(|ds| resolve_focused_plot_point(&items, ds, &mut access_state))
+        } else {
+            None
+        };
 
         let prepared = PreparedPlot {
             plot_area_response: &response,
             items,
             show_x: active_show_x,
             show_y: active_show_y,
+            allow_2d_analysis,
             label_formatter,
             coordinates_formatter,
             show_grid: active_show_grid,
@@ -1745,10 +1847,19 @@ impl<'a> Plot<'a> {
             clamp_grid: active_clamp_grid,
             plot_id,
             focused_point,
+            focused_poi: (allow_2d_analysis && response.has_focus())
+                .then_some(access_state.focused_poi)
+                .flatten(),
             persisted_tooltip: persisted_point_tooltip,
+            critical_points: Arc::clone(&critical_points),
         };
 
-        let (plot_cursors, mut hovered_plot_item) = prepared.ui(ui, &response);
+        let PreparedUiOutput {
+            mut items,
+            cursors: plot_cursors,
+            mut hovered_plot_item,
+            hovered_poi_idx,
+        } = prepared.ui(ui, &response);
         if response.has_focus() {
             let focus_stroke = a11y::focus_ring_stroke(ui.visuals(), ui.visuals().extreme_bg_color);
             ui.painter()
@@ -1822,84 +1933,25 @@ impl<'a> Plot<'a> {
                 .data_mut(|d| d.insert_temp(plot_id.with("toggle_settings"), false));
         }
 
-        let valid_fit_datasets: Vec<(usize, &String, &Vec<[f64; 2]>)> = accessible_datasets
-            .iter()
-            .enumerate()
-            .filter(|(_, (_, pts, _))| pts.len() >= 2)
-            .map(|(idx, (name, pts, _))| (idx, name, pts))
-            .collect();
-
-        if let Some(&(first_valid_idx, _, _)) = valid_fit_datasets.first()
-            && (access_state.fit_dataset_idx >= accessible_datasets.len()
-                || accessible_datasets[access_state.fit_dataset_idx].1.len() < 2)
+        let has_fit_candidates =
+            allow_2d_analysis && items.iter().any(|it| item_point_count(&**it) >= 2);
+        if allow_2d_analysis
+            && access_state.show_fit_overlay
+            && let Some((ref fit_res, accent_color)) = active_fit
         {
-            access_state.fit_dataset_idx = first_valid_idx;
-        }
-
-        if access_state.show_fit_overlay
-            && let Some(deg) = access_state.fit_degree
-            && let Some((ds_name, ds_pts, ds_color)) =
-                accessible_datasets.get(access_state.fit_dataset_idx)
-            && let Some(fit_res) =
-                crate::fit::fit_dataset_scaled(ds_pts, deg, ds_name, mem.log_x, mem.log_y)
-        {
-            let bounds = mem.transform.bounds();
-            let x_min = bounds.min[0];
-            let x_max = bounds.max[0];
-            if x_max > x_min {
-                let accent_color = if *ds_color == Color32::TRANSPARENT {
-                    ui.visuals().widgets.active.bg_fill
-                } else {
-                    *ds_color
-                };
-                paint_fitted_curve_overlay(
-                    &ui.painter().with_clip_rect(plot_rect),
-                    &mem.transform,
-                    &fit_res,
-                    Stroke::new(2.5_f32, accent_color),
-                );
-
-                // Draw formula badge overlay on plot canvas
-                let badge_pos = plot_rect.min + egui::vec2(12.0_f32, 36.0_f32);
-                let badge_rect =
-                    egui::Rect::from_min_size(badge_pos, egui::vec2(220.0_f32, 65.0_f32));
-
-                ui.scope_builder(egui::UiBuilder::new().max_rect(badge_rect), |ui| {
-                    egui::Frame::window(ui.style())
-                        .fill(ui.visuals().window_fill.gamma_multiply(0.85_f32))
-                        .stroke(egui::Stroke::new(1.5_f32, accent_color))
-                        .corner_radius(6.0_f32)
-                        .inner_margin(6.0_f32)
-                        .show(ui, |ui| {
-                            ui.vertical(|ui| {
-                                let name_display = if fit_res.dataset_name.is_empty() {
-                                    format!("Dataset {}", access_state.fit_dataset_idx + 1)
-                                } else {
-                                    fit_res.dataset_name.clone()
-                                };
-                                ui.label(
-                                    egui::RichText::new(format!("Fit: {}", name_display))
-                                        .strong()
-                                        .color(accent_color),
-                                );
-                                ui.label(
-                                    egui::RichText::new(&fit_res.formula)
-                                        .monospace()
-                                        .size(13.0_f32),
-                                );
-                                ui.label(
-                                    egui::RichText::new(format!("R² = {:.4}", fit_res.r_squared))
-                                        .small()
-                                        .color(ui.visuals().text_color()),
-                                );
-                            });
-                        });
-                });
-            }
+            fit_overlay::paint_fit_formula_badge(
+                ui,
+                plot_rect,
+                fit_res,
+                access_state.fit_dataset_idx,
+                accent_color,
+            );
         }
 
         let focus_response = &response;
-        let series_count = accessible_datasets.len();
+        let series_count = items.len();
+        let has_any_export_points = items.iter().any(|it| it.has_any_points());
+        let has_table_content = has_any_export_points || !critical_points.is_empty();
         let plot_a11y_label = match title.as_deref() {
             Some(t) => format!("Interactive Plot ({t}), {series_count} series"),
             None => format!("Interactive Plot, {series_count} series"),
@@ -1923,13 +1975,15 @@ impl<'a> Plot<'a> {
                     access_state.export_modal.open = true;
                 }
                 if ui.button("Export CSV").clicked() {
+                    let export_datasets = collect_export_datasets(&items);
                     export::export_csv(&export_datasets);
                 }
                 if ui.button("Export JSON").clicked() {
+                    let export_datasets = collect_export_datasets(&items);
                     export::export_json(&export_datasets);
                 }
                 if ui
-                    .add_enabled(!export_datasets.is_empty(), egui::Button::new("Table View"))
+                    .add_enabled(has_table_content, egui::Button::new("Table View"))
                     .on_disabled_hover_text("No tabular data points available for this plot")
                     .clicked()
                 {
@@ -1939,98 +1993,46 @@ impl<'a> Plot<'a> {
                     access_state.show_settings_modal = !access_state.show_settings_modal;
                 }
 
-                ui.separator();
+                if allow_2d_analysis {
+                    ui.separator();
 
-                if valid_fit_datasets.is_empty() {
-                    let _ = a11y::focusable_action_button(
-                        ui,
-                        false,
-                        egui::Button::new("Fit Curve"),
-                        Some("Fit Curve"),
-                    )
-                    .accessible_tooltip(
-                        "Requires a dataset with at least 2 points for curve fitting",
-                    );
-                } else {
-                    ui.menu_button("Fit Curve", |ui| {
-                        if valid_fit_datasets.len() > 1 {
-                            ui.label(egui::RichText::new("Select Dataset:").small().weak());
-                            for (idx, name, pts) in &valid_fit_datasets {
-                                let label = if name.is_empty() {
-                                    format!("Dataset {}", idx + 1)
-                                } else {
-                                    name.to_string()
-                                };
-                                if ui
-                                    .selectable_label(
-                                        access_state.fit_dataset_idx == *idx,
-                                        format!("{} ({} pts)", label, pts.len()),
-                                    )
-                                    .clicked()
-                                {
-                                    access_state.fit_dataset_idx = *idx;
-                                }
+                    if !has_fit_candidates {
+                        let _ = a11y::focusable_action_button(
+                            ui,
+                            false,
+                            egui::Button::new("Fit Curve"),
+                            Some("Fit Curve"),
+                        )
+                        .accessible_tooltip(
+                            "Requires a dataset with at least 2 points for curve fitting",
+                        );
+                    } else {
+                        ui.menu_button("Fit Curve", |ui| {
+                            let base_ds = Arc::clone(get_or_populate_base_datasets(
+                                &items,
+                                base_items_hash,
+                                &mut access_state.cached_base_datasets,
+                            ));
+                            fit_overlay::render_fit_curve_menu(
+                                ui,
+                                &base_ds,
+                                &mut access_state,
+                                false,
+                            );
+                        });
+
+                        if access_state.fit_model.is_some() {
+                            let toggle_text = if access_state.show_fit_overlay {
+                                "Hide Fit"
+                            } else {
+                                "Show Fit"
+                            };
+                            if ui.button(toggle_text).clicked() {
+                                access_state.show_fit_overlay = !access_state.show_fit_overlay;
                             }
-                            ui.separator();
-                        }
-                        ui.label(egui::RichText::new("Fit Model:").small().weak());
-                        if ui
-                            .selectable_label(
-                                access_state.fit_degree == Some(1),
-                                "Linear (Degree 1)",
-                            )
-                            .clicked()
-                        {
-                            access_state.fit_degree = Some(1);
-                            access_state.show_fit_overlay = true;
-                            ui.close();
-                        }
-                        if ui
-                            .selectable_label(
-                                access_state.fit_degree == Some(2),
-                                "Polynomial (Degree 2)",
-                            )
-                            .clicked()
-                        {
-                            access_state.fit_degree = Some(2);
-                            access_state.show_fit_overlay = true;
-                            ui.close();
-                        }
-                        if ui
-                            .selectable_label(
-                                access_state.fit_degree == Some(3),
-                                "Polynomial (Degree 3)",
-                            )
-                            .clicked()
-                        {
-                            access_state.fit_degree = Some(3);
-                            access_state.show_fit_overlay = true;
-                            ui.close();
-                        }
-                        if ui
-                            .selectable_label(
-                                access_state.fit_degree == Some(4),
-                                "Polynomial (Degree 4)",
-                            )
-                            .clicked()
-                        {
-                            access_state.fit_degree = Some(4);
-                            access_state.show_fit_overlay = true;
-                            ui.close();
-                        }
-                    });
-
-                    if access_state.fit_degree.is_some() {
-                        let toggle_text = if access_state.show_fit_overlay {
-                            "Hide Fit"
-                        } else {
-                            "Show Fit"
-                        };
-                        if ui.button(toggle_text).clicked() {
-                            access_state.show_fit_overlay = !access_state.show_fit_overlay;
-                        }
-                        if ui.button("Clear Fit").clicked() {
-                            access_state.fit_degree = None;
+                            if ui.button("Clear Fit").clicked() {
+                                access_state.fit_model = None;
+                            }
                         }
                     }
                 }
@@ -2074,13 +2076,24 @@ impl<'a> Plot<'a> {
 
         {
             let table_window_title = format_modal_title("Data Table", title.as_deref());
-            data_table::show_data_table_modal(
+            let table_datasets_storage;
+            let table_datasets: &[(String, Vec<[f64; 2]>, Color32)] =
+                if let Some(ref ds) = lazy_accessible_datasets {
+                    ds.as_slice()
+                } else if access_state.show_table {
+                    table_datasets_storage = collect_accessible_datasets(&items);
+                    table_datasets_storage.as_slice()
+                } else {
+                    &[]
+                };
+            data_table::show_data_table_modal_with_pois(
                 ui.ctx(),
                 plot_id,
                 &table_window_title,
                 &mut access_state.show_table,
                 &mut access_state.data_table,
-                &accessible_datasets,
+                table_datasets,
+                &critical_points,
             );
         }
 
@@ -2096,9 +2109,10 @@ impl<'a> Plot<'a> {
                 gif_filename: "plot.gif",
             };
             let mut export_source = export_modal::CallbackExportSource {
-                datasets_fn: || export_datasets.clone(),
+                datasets_fn: || collect_export_datasets(&items),
                 sample_frames_fn: |num_frames| {
-                    export::sample_progressive_frames(&export_datasets, num_frames)
+                    let ds = collect_export_datasets(&items);
+                    export::sample_progressive_frames(&ds, num_frames)
                 },
             };
             export_modal::show_export_modal(
@@ -2401,7 +2415,8 @@ impl<'a> Plot<'a> {
         }
 
         // Callout badge interaction (clicking callout badge to edit / remove)
-        if response.clicked()
+        if allow_2d_analysis
+            && response.clicked()
             && let Some(click_pos) = response
                 .interact_pointer_pos()
                 .or_else(|| ui.ctx().input(|i| i.pointer.interact_pos()))
@@ -2433,80 +2448,100 @@ impl<'a> Plot<'a> {
                 access_state.edit_callout_text = mem.callouts[idx].label.clone();
                 access_state.edit_callout_offset = mem.callouts[idx].offset;
                 access_state.show_edit_callout_modal = true;
+            } else {
+                let snap_px =
+                    cursor_snap_distance.unwrap_or_else(|| ui.style().interaction.interact_radius);
+                let _ = poi_interaction::try_pin_clicked_poi(
+                    ui,
+                    click_pos,
+                    hovered_poi_idx,
+                    &critical_points,
+                    &transform,
+                    snap_px,
+                    &mut mem,
+                );
             }
         }
 
-        // Hover cursor over callout badges
-        if let Some(hover_pos) = response.hover_pos() {
-            for callout in &mem.callouts {
-                let galley = ui.painter().layout_no_wrap(
-                    if callout.label.is_empty() {
-                        format!("({:.2}, {:.2})", callout.point[0], callout.point[1])
-                    } else {
-                        callout.label.clone()
-                    },
-                    egui::TextStyle::Small.resolve(ui.style()),
-                    egui::Color32::WHITE,
-                );
-                let padding = egui::Vec2::new(6.0, 4.0);
-                let frame_size = galley.size() + 2.0 * padding;
-                let target_pos = transform
-                    .position_from_point(&PlotPoint::new(callout.point[0], callout.point[1]));
-                let anchor_pos = target_pos + egui::Vec2::new(callout.offset[0], callout.offset[1]);
-                let frame_rect = egui::Align2::CENTER_CENTER.anchor_size(anchor_pos, frame_size);
-                if frame_rect.expand(4.0).contains(hover_pos) {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    break;
+        // Hover cursor over callout badges or critical point markers
+        if allow_2d_analysis {
+            if hovered_poi_idx.is_some() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            } else if let Some(hover_pos) = response.hover_pos() {
+                for callout in &mem.callouts {
+                    let galley = ui.painter().layout_no_wrap(
+                        if callout.label.is_empty() {
+                            format!("({:.2}, {:.2})", callout.point[0], callout.point[1])
+                        } else {
+                            callout.label.clone()
+                        },
+                        egui::TextStyle::Small.resolve(ui.style()),
+                        egui::Color32::WHITE,
+                    );
+                    let padding = egui::Vec2::new(6.0, 4.0);
+                    let frame_size = galley.size() + 2.0 * padding;
+                    let target_pos = transform
+                        .position_from_point(&PlotPoint::new(callout.point[0], callout.point[1]));
+                    let anchor_pos =
+                        target_pos + egui::Vec2::new(callout.offset[0], callout.offset[1]);
+                    let frame_rect =
+                        egui::Align2::CENTER_CENTER.anchor_size(anchor_pos, frame_size);
+                    if frame_rect.expand(4.0).contains(hover_pos) {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        break;
+                    }
                 }
             }
         }
 
-        let response = if show_x || show_y {
+        let response = if allow_2d_analysis && (show_x || show_y) {
             response.on_hover_cursor(CursorIcon::Crosshair)
         } else {
             response
         };
 
         response.context_menu(|ui| {
-            if ui.button("Add Callout").clicked() {
-                let default_pt = access_state
-                    .last_context_plot_pos
-                    .or(mem.last_right_click_coord)
-                    .unwrap_or_else(|| {
-                        [transform.bounds().center().x, transform.bounds().center().y]
-                    });
-                access_state.new_callout_point = default_pt;
-                access_state.new_callout_text = String::new();
-                access_state.new_callout_offset = [30.0, -30.0];
-                access_state.show_add_callout_modal = true;
-                ui.close();
-            }
-
-            if !mem.callouts.is_empty() {
-                if ui.button("Clear All Callouts").clicked() {
-                    mem.callouts.clear();
+            if allow_2d_analysis {
+                if ui.button("Add Callout").clicked() {
+                    let default_pt = access_state
+                        .last_context_plot_pos
+                        .or(mem.last_right_click_coord)
+                        .unwrap_or_else(|| {
+                            [transform.bounds().center().x, transform.bounds().center().y]
+                        });
+                    access_state.new_callout_point = default_pt;
+                    access_state.new_callout_text = String::new();
+                    access_state.new_callout_offset = [30.0, -30.0];
+                    access_state.show_add_callout_modal = true;
                     ui.close();
                 }
-                ui.menu_button("Delete Callout", |ui| {
-                    let mut to_remove = None;
-                    for (i, c) in mem.callouts.iter().enumerate() {
-                        let label = if c.label.is_empty() {
-                            format!("Callout #{} ({:.2}, {:.2})", i + 1, c.point[0], c.point[1])
-                        } else {
-                            format!("{}: ({:.2}, {:.2})", c.label, c.point[0], c.point[1])
-                        };
-                        if ui.button(label).clicked() {
-                            to_remove = Some(i);
-                            ui.close();
-                        }
-                    }
-                    if let Some(i) = to_remove {
-                        mem.callouts.remove(i);
-                    }
-                });
-            }
 
-            ui.separator();
+                if !mem.callouts.is_empty() {
+                    if ui.button("Clear All Callouts").clicked() {
+                        mem.callouts.clear();
+                        ui.close();
+                    }
+                    ui.menu_button("Delete Callout", |ui| {
+                        let mut to_remove = None;
+                        for (i, c) in mem.callouts.iter().enumerate() {
+                            let label = if c.label.is_empty() {
+                                format!("Callout #{} ({:.2}, {:.2})", i + 1, c.point[0], c.point[1])
+                            } else {
+                                format!("{}: ({:.2}, {:.2})", c.label, c.point[0], c.point[1])
+                            };
+                            if ui.button(label).clicked() {
+                                to_remove = Some(i);
+                                ui.close();
+                            }
+                        }
+                        if let Some(i) = to_remove {
+                            mem.callouts.remove(i);
+                        }
+                    });
+                }
+
+                ui.separator();
+            }
 
             if ui.button("Import CSV").clicked() {
                 export::trigger_import_csv_for_plot(ui.ctx(), plot_id);
@@ -2517,15 +2552,17 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {
+                let export_datasets = collect_export_datasets(&items);
                 export::export_csv(&export_datasets);
                 ui.close();
             }
             if ui.button("Export JSON").clicked() {
+                let export_datasets = collect_export_datasets(&items);
                 export::export_json(&export_datasets);
                 ui.close();
             }
             if ui
-                .add_enabled(!export_datasets.is_empty(), egui::Button::new("Table View"))
+                .add_enabled(has_table_content, egui::Button::new("Table View"))
                 .on_disabled_hover_text("No tabular data points available for this plot")
                 .clicked()
             {
@@ -2538,79 +2575,27 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
 
-            ui.separator();
+            if allow_2d_analysis {
+                ui.separator();
 
-            ui.menu_button("Fit Curve", |ui| {
-                if valid_fit_datasets.is_empty() {
-                    let reason = "Requires a dataset with at least 2 points for curve fitting";
-                    for degree_label in [
-                        "Linear (Degree 1)",
-                        "Polynomial (Degree 2)",
-                        "Polynomial (Degree 3)",
-                        "Polynomial (Degree 4)",
-                    ] {
-                        let _ = a11y::focusable_action_button(
-                            ui,
-                            false,
-                            egui::Button::new(degree_label),
-                            Some(degree_label),
-                        )
-                        .accessible_tooltip(reason);
-                    }
-                } else {
-                    if valid_fit_datasets.len() > 1 {
-                        ui.label(egui::RichText::new("Select Dataset:").small().weak());
-                        for (idx, name, pts) in &valid_fit_datasets {
-                            let label = if name.is_empty() {
-                                format!("Dataset {}", idx + 1)
-                            } else {
-                                name.to_string()
-                            };
-                            if ui
-                                .selectable_label(
-                                    access_state.fit_dataset_idx == *idx,
-                                    format!("{} ({} pts)", label, pts.len()),
-                                )
-                                .clicked()
-                            {
-                                access_state.fit_dataset_idx = *idx;
-                            }
-                        }
-                        ui.separator();
-                    }
-
-                    ui.label(egui::RichText::new("Select Model:").small().weak());
-                    if ui.button("Linear (Degree 1)").clicked() {
-                        access_state.fit_degree = Some(1);
-                        access_state.show_fit_overlay = true;
-                        ui.close();
-                    }
-                    if ui.button("Polynomial (Degree 2)").clicked() {
-                        access_state.fit_degree = Some(2);
-                        access_state.show_fit_overlay = true;
-                        ui.close();
-                    }
-                    if ui.button("Polynomial (Degree 3)").clicked() {
-                        access_state.fit_degree = Some(3);
-                        access_state.show_fit_overlay = true;
-                        ui.close();
-                    }
-                    if ui.button("Polynomial (Degree 4)").clicked() {
-                        access_state.fit_degree = Some(4);
-                        access_state.show_fit_overlay = true;
-                        ui.close();
-                    }
-
-                    if access_state.fit_degree.is_some() {
-                        ui.separator();
-                        if ui.button("Clear Fit Overlay").clicked() {
-                            access_state.fit_degree = None;
-                            ui.close();
-                        }
-                    }
-                }
-            });
+                ui.menu_button("Fit Curve", |ui| {
+                    let base_ds = Arc::clone(get_or_populate_base_datasets(
+                        &items,
+                        base_items_hash,
+                        &mut access_state.cached_base_datasets,
+                    ));
+                    fit_overlay::render_fit_curve_menu(ui, &base_ds, &mut access_state, true);
+                });
+            }
         });
+
+        let mut deferred_datasets = Vec::with_capacity(items.len());
+        let mut deferred_primitives = Vec::with_capacity(items.len());
+        for item in &mut items {
+            item.append_deferred_export(&mut deferred_datasets, &mut deferred_primitives);
+        }
+        append_deferred_plot_datasets(deferred_datasets, items_hash);
+        export_primitives::append_deferred_plot_primitives(deferred_primitives);
 
         ui.data_mut(|d| d.insert_temp(plot_id, access_state));
         // --- END ACCESSIBILITY LOGIC ---
@@ -3088,13 +3073,71 @@ fn try_pan_focused_plot(
     true
 }
 
-fn register_plot_dataset_commands(
+fn hash_plot_items(items: &[Box<dyn PlotItem + '_>]) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = ahash::AHasher::default();
+    items.len().hash(&mut hasher);
+    for item in items {
+        item.item_content_hash().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn item_point_count(item: &dyn PlotItem) -> usize {
+    if let Some(segs) = item.line_segments() {
+        return segs.iter().map(Vec::len).sum();
+    }
+    match item.geometry() {
+        PlotGeometry::Points(pts) => pts.len(),
+        PlotGeometry::None | PlotGeometry::Rects => item.extract_points().len(),
+    }
+}
+
+type BaseDatasetList = Vec<fit_overlay::BaseDatasetTuple>;
+type BaseDatasetCache = Option<(u64, Arc<BaseDatasetList>)>;
+
+fn get_or_populate_base_datasets<'c>(
+    items: &[Box<dyn PlotItem + '_>],
+    base_items_hash: u64,
+    cache: &'c mut BaseDatasetCache,
+) -> &'c Arc<BaseDatasetList> {
+    let needs_refresh = cache
+        .as_ref()
+        .is_none_or(|(cached_hash, _)| *cached_hash != base_items_hash);
+    if needs_refresh {
+        let built: BaseDatasetList = items
+            .iter()
+            .map(|it| (it.name().to_owned(), it.extract_points(), it.color()))
+            .collect();
+        *cache = Some((base_items_hash, Arc::new(built)));
+    }
+    &cache.as_ref().expect("populated base datasets").1
+}
+
+fn collect_accessible_datasets(items: &[Box<dyn PlotItem + '_>]) -> BaseDatasetList {
+    items
+        .iter()
+        .map(|item| (item.name().to_owned(), item.extract_points(), item.color()))
+        .collect()
+}
+
+fn collect_export_datasets(items: &[Box<dyn PlotItem + '_>]) -> Vec<(String, Vec<[f64; 2]>)> {
+    items
+        .iter()
+        .filter_map(|item| {
+            let pts = item.extract_points();
+            (!pts.is_empty()).then(|| (item.name().to_owned(), pts))
+        })
+        .collect()
+}
+
+fn register_plot_dataset_commands_from_items(
     ctx: &egui::Context,
-    accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    items: &[Box<dyn PlotItem + '_>],
     focused_item: usize,
 ) {
     use crate::commands::{CommandRegistryData, CommandTrigger};
-    if accessible_datasets.is_empty() {
+    if items.is_empty() {
         return;
     }
     CommandRegistryData::register(
@@ -3113,10 +3156,10 @@ fn register_plot_dataset_commands(
         false,
         "Plot Accessibility",
     );
-    if accessible_datasets
+    if items
         .get(focused_item)
-        .or_else(|| accessible_datasets.first())
-        .is_some_and(|(_, pts, _)| !pts.is_empty())
+        .or_else(|| items.first())
+        .is_some_and(|it| it.has_any_points())
     {
         CommandRegistryData::register(
             ctx,
@@ -3192,6 +3235,7 @@ fn handle_focused_plot_dataset_keys(
         && let Some((name, pts, _)) = accessible_datasets.get(access_state.focused_item)
         && let Some(p) = pts.get(access_state.focused_point)
     {
+        access_state.focused_poi = None;
         emit_plot_live_message(
             ui.ctx(),
             format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]),
@@ -3673,45 +3717,6 @@ fn compute_auto_content_bounds(
     out
 }
 
-fn paint_fitted_curve_overlay(
-    painter: &egui::Painter,
-    transform: &PlotTransform,
-    fit_res: &FitResult,
-    stroke: Stroke,
-) {
-    let bounds = transform.bounds();
-    let x_min = bounds.min[0];
-    let x_max = bounds.max[0];
-    if !x_min.is_finite() || !x_max.is_finite() || x_max <= x_min {
-        return;
-    }
-    let sample_count = 200_usize;
-    let log_x = transform.log_axis().x && x_min > 0.0;
-    let min_log = if log_x { x_min.log10() } else { 0.0 };
-    let max_log = if log_x { x_max.log10() } else { 0.0 };
-    let mut segment: Vec<Pos2> = Vec::with_capacity(sample_count + 1);
-    for i in 0..=sample_count {
-        let t = i as f64 / (sample_count as f64);
-        let x = if log_x {
-            10.0_f64.powf(min_log + t * (max_log - min_log))
-        } else {
-            x_min + t * (x_max - x_min)
-        };
-        let pt = PlotPoint::new(x, fit_res.eval(x));
-        if transform.is_point_valid_for_scale(&pt) {
-            segment.push(transform.position_from_point(&pt));
-        } else if segment.len() >= 2 {
-            painter.extend(Shape::dashed_line(&segment, stroke, 8.0_f32, 5.0_f32));
-            segment.clear();
-        } else {
-            segment.clear();
-        }
-    }
-    if segment.len() >= 2 {
-        painter.extend(Shape::dashed_line(&segment, stroke, 8.0_f32, 5.0_f32));
-    }
-}
-
 /// Splits the grid into uniform-sized spacings (e.g. 100, 25, 1).
 ///
 /// This function should return 3 positive step sizes, designating where the lines in the grid are drawn.
@@ -3731,12 +3736,13 @@ pub fn uniform_grid_spacer<'a>(spacer: impl Fn(GridInput) -> [f64; 3] + 'a) -> G
 
 // ----------------------------------------------------------------------------
 
-struct PreparedPlot<'a> {
+struct PreparedPlot<'a, 'b> {
     /// The response of the whole plot area
     plot_area_response: &'a Response,
-    items: Vec<Box<dyn PlotItem + 'a>>,
+    items: Vec<Box<dyn PlotItem + 'b>>,
     show_x: bool,
     show_y: bool,
+    allow_2d_analysis: bool,
     label_formatter: LabelFormatter<'a>,
     coordinates_formatter: Option<(Corner, CoordinatesFormatter<'a>)>,
     // axis_formatters: [AxisFormatter; 2],
@@ -3753,11 +3759,20 @@ struct PreparedPlot<'a> {
     clamp_grid: bool,
     plot_id: Id,
     focused_point: Option<FocusedPlotPoint>,
+    focused_poi: Option<usize>,
     persisted_tooltip: Option<a11y::PointTooltipState>,
+    critical_points: Arc<[poi::CriticalPoint]>,
 }
 
-impl PreparedPlot<'_> {
-    fn ui(self, ui: &mut Ui, response: &Response) -> (Vec<Cursor>, Option<Id>) {
+struct PreparedUiOutput<'b> {
+    items: Vec<Box<dyn PlotItem + 'b>>,
+    cursors: Vec<Cursor>,
+    hovered_plot_item: Option<Id>,
+    hovered_poi_idx: Option<usize>,
+}
+
+impl<'b> PreparedPlot<'_, 'b> {
+    fn ui(mut self, ui: &mut Ui, response: &Response) -> PreparedUiOutput<'b> {
         let mut axes_shapes = Vec::new();
         if self.show_grid.x {
             self.paint_grid(ui, &mut axes_shapes, Axis::X, self.grid_spacing);
@@ -3778,18 +3793,49 @@ impl PreparedPlot<'_> {
         for item in &self.items {
             item.shapes(&plot_ui, transform, &mut shapes);
         }
+        if self.allow_2d_analysis {
+            poi_interaction::paint_critical_point_markers(
+                ui,
+                transform,
+                &self.critical_points,
+                &mut shapes,
+            );
+        }
 
         let hover_pos = response.hover_pos();
-        let (cursors, hovered_item_id, hovered_point) =
-            if let Some(state) = self.persisted_tooltip.as_ref() {
-                self.render_persisted_tooltip(state)
-            } else if let Some(pointer) = hover_pos {
-                self.hover(ui, pointer, &mut shapes)
-            } else if let Some(target) = self.focused_point.as_ref() {
-                self.render_focused_point(ui, target, &mut shapes)
+        let (cursors, hovered_item_id, hovered_point, hovered_poi_idx) = if !self.allow_2d_analysis
+        {
+            if let Some(target) = self.focused_point.as_ref() {
+                let (c, id, pt) = self.render_focused_point(ui, target, &mut shapes);
+                (c, id, pt, None)
             } else {
-                (Vec::new(), None, None)
-            };
+                (Vec::new(), None, None, None)
+            }
+        } else if let Some(state) = self.persisted_tooltip.as_ref() {
+            let (c, id, pt) = self.render_persisted_tooltip(state);
+            (c, id, pt, None)
+        } else if let Some(pointer) = hover_pos {
+            self.hover(ui, pointer, &mut shapes)
+        } else if let Some(poi_idx) = self.focused_poi
+            && let Some(poi) = self.critical_points.get(poi_idx)
+        {
+            let (c, pt) = poi_interaction::render_active_poi(
+                ui,
+                self.plot_area_response,
+                transform,
+                self.show_x,
+                self.show_y,
+                poi,
+                true,
+                &mut shapes,
+            );
+            (c, Some(poi.item_id), Some(pt), None)
+        } else if let Some(target) = self.focused_point.as_ref() {
+            let (c, id, pt) = self.render_focused_point(ui, target, &mut shapes);
+            (c, id, pt, None)
+        } else {
+            (Vec::new(), None, None, None)
+        };
 
         self.append_cursor_lines(ui, &cursors, &mut shapes);
 
@@ -3802,7 +3848,13 @@ impl PreparedPlot<'_> {
         self.paint_corner_coordinates(ui, &painter, active_coord);
         self.render_wrench_button(ui);
 
-        (cursors, hovered_item_id)
+        let items = std::mem::take(&mut self.items);
+        PreparedUiOutput {
+            items,
+            cursors,
+            hovered_plot_item: hovered_item_id,
+            hovered_poi_idx,
+        }
     }
 
     fn render_persisted_tooltip(
@@ -4054,73 +4106,113 @@ impl PreparedPlot<'_> {
         ui: &Ui,
         pointer: Pos2,
         shapes: &mut Vec<Shape>,
-    ) -> (Vec<Cursor>, Option<Id>, Option<PlotPoint>) {
-        let Self {
-            plot_area_response,
-            transform,
-            show_x,
-            show_y,
-            label_formatter,
-            items,
-            cursor_snap_distance,
-            ..
-        } = self;
-
-        if !show_x && !show_y {
-            return (Vec::new(), None, None);
+    ) -> (Vec<Cursor>, Option<Id>, Option<PlotPoint>, Option<usize>) {
+        if !self.show_x && !self.show_y {
+            return (Vec::new(), None, None, None);
         }
-
-        let snap_distance =
-            cursor_snap_distance.unwrap_or_else(|| ui.style().interaction.interact_radius);
+        let snap_distance = self
+            .cursor_snap_distance
+            .unwrap_or_else(|| ui.style().interaction.interact_radius);
         let snap_dist_sq = snap_distance.powi(2);
 
-        let candidates = items
-            .iter()
-            .filter(|entry| entry.allow_hover())
-            .filter_map(|item| {
-                let item = &**item;
-                let closest = item.find_closest(pointer, transform);
-
-                Some(item).zip(closest)
-            });
-
-        let closest = candidates
-            .min_by_key(|(_, elem)| elem.dist_sq.ord())
-            .filter(|(_, elem)| elem.dist_sq <= snap_dist_sq);
+        if let Some((poi_idx, _)) = poi_interaction::find_closest_poi(
+            &self.critical_points,
+            pointer,
+            &self.transform,
+            snap_dist_sq,
+        ) {
+            let poi = &self.critical_points[poi_idx];
+            let (cursors, pt) = poi_interaction::render_active_poi(
+                ui,
+                self.plot_area_response,
+                &self.transform,
+                self.show_x,
+                self.show_y,
+                poi,
+                false,
+                shapes,
+            );
+            return (cursors, Some(poi.item_id), Some(pt), Some(poi_idx));
+        }
 
         let plot = items::PlotConfig {
             ui,
-            transform,
-            show_x: *show_x,
-            show_y: *show_y,
+            transform: &self.transform,
+            show_x: self.show_x,
+            show_y: self.show_y,
         };
-
         let mut cursors = Vec::new();
+        let (hovered_id, hovered_point) =
+            self.hover_closest_item(pointer, snap_dist_sq, &plot, shapes, &mut cursors);
+        (cursors, hovered_id, hovered_point, None)
+    }
 
-        let (hovered_plot_item_id, hovered_point) = if let Some((item, elem)) = closest {
-            let point = item.on_hover(
-                plot_area_response,
-                elem,
-                shapes,
-                &mut cursors,
-                &plot,
-                label_formatter,
-            );
-            (Some(item.id()), point)
-        } else {
-            let value = transform.value_from_position(pointer);
-            items::rulers_and_tooltip_at_value(
-                plot_area_response,
-                value,
-                "",
-                &plot,
-                &mut cursors,
-                label_formatter,
-            );
-            (None, None)
-        };
+    fn hover_closest_item(
+        &self,
+        pointer: Pos2,
+        snap_dist_sq: f32,
+        plot: &items::PlotConfig<'_>,
+        shapes: &mut Vec<Shape>,
+        cursors: &mut Vec<Cursor>,
+    ) -> (Option<Id>, Option<PlotPoint>) {
+        enum HoverHit<'a> {
+            Continuous(&'a dyn PlotItem, PlotPoint),
+            Discrete(&'a dyn PlotItem, ClosestElem),
+        }
+        let best = self
+            .items
+            .iter()
+            .filter(|entry| entry.allow_hover())
+            .filter_map(|entry| {
+                let item = &**entry;
+                if let Some((pt, dist_sq)) = item.closest_continuous_point(pointer, &self.transform)
+                {
+                    Some((dist_sq, HoverHit::Continuous(item, pt)))
+                } else {
+                    item.find_closest(pointer, &self.transform)
+                        .map(|elem| (elem.dist_sq, HoverHit::Discrete(item, elem)))
+                }
+            })
+            .min_by_key(|(d, _)| d.ord())
+            .filter(|(d, _)| *d <= snap_dist_sq);
 
-        (cursors, hovered_plot_item_id, hovered_point)
+        match best.map(|(_, hit)| hit) {
+            Some(HoverHit::Continuous(item, value)) => {
+                let pt = items::render_snapped_hover_point(
+                    item,
+                    self.plot_area_response,
+                    value,
+                    shapes,
+                    cursors,
+                    plot,
+                    &self.label_formatter,
+                );
+                (Some(item.id()), Some(pt))
+            }
+            Some(HoverHit::Discrete(item, elem)) => {
+                let pt = item.on_hover(
+                    self.plot_area_response,
+                    elem,
+                    shapes,
+                    cursors,
+                    plot,
+                    &self.label_formatter,
+                );
+                (Some(item.id()), pt)
+            }
+            None => {
+                let value = self.transform.value_from_position(pointer);
+                items::rulers_and_tooltip_at_value(
+                    self.plot_area_response,
+                    value,
+                    "",
+                    plot,
+                    cursors,
+                    &self.label_formatter,
+                );
+                (None, None)
+            }
+        }
     }
 }
 
@@ -4267,26 +4359,207 @@ pub fn color_from_strength(ui: &Ui, strength: f32) -> Color32 {
     base_color.gamma_multiply(strength.sqrt())
 }
 
+#[doc(hidden)]
+#[derive(Clone)]
+pub enum DeferredDatasetEntry {
+    SharedPoints {
+        name: String,
+        points: Arc<Vec<PlotPoint>>,
+    },
+    SharedSegments {
+        name: String,
+        segments: Arc<Vec<Vec<PlotPoint>>>,
+    },
+    SharedArrows {
+        name: String,
+        origins: Arc<Vec<PlotPoint>>,
+        tips: Arc<Vec<PlotPoint>>,
+    },
+    Owned {
+        name: String,
+        points: Vec<[f64; 2]>,
+    },
+}
+
+impl DeferredDatasetEntry {
+    fn materialize(&self) -> (String, Vec<[f64; 2]>) {
+        match self {
+            Self::SharedPoints { name, points } => {
+                (name.clone(), points.iter().map(|p| [p.x, p.y]).collect())
+            }
+            Self::SharedSegments { name, segments } => {
+                let total: usize = segments.iter().map(Vec::len).sum();
+                let mut out = Vec::with_capacity(total);
+                for seg in segments.iter() {
+                    out.extend(seg.iter().map(|p| [p.x, p.y]));
+                }
+                (name.clone(), out)
+            }
+            Self::SharedArrows {
+                name,
+                origins,
+                tips,
+            } => {
+                let mut out = Vec::with_capacity(origins.len().min(tips.len()) * 2);
+                for (origin, tip) in origins.iter().zip(tips.iter()) {
+                    out.push([origin.x, origin.y]);
+                    out.push([tip.x, tip.y]);
+                }
+                (name.clone(), out)
+            }
+            Self::Owned { name, points } => (name.clone(), points.clone()),
+        }
+    }
+
+    fn check_finite(&self) -> Result<(), (&str, char, usize, f64)> {
+        match self {
+            Self::SharedPoints { name, points } => {
+                for (idx, pt) in points.iter().enumerate() {
+                    check_xy_finite(name.as_str(), idx, pt.x, pt.y)?;
+                }
+                Ok(())
+            }
+            Self::SharedSegments { name, segments } => {
+                let mut flat_idx = 0usize;
+                for seg in segments.iter() {
+                    for pt in seg {
+                        check_xy_finite(name.as_str(), flat_idx, pt.x, pt.y)?;
+                        flat_idx += 1;
+                    }
+                }
+                Ok(())
+            }
+            Self::SharedArrows {
+                name,
+                origins,
+                tips,
+            } => {
+                let mut flat_idx = 0usize;
+                for (origin, tip) in origins.iter().zip(tips.iter()) {
+                    for pt in [origin, tip] {
+                        check_xy_finite(name.as_str(), flat_idx, pt.x, pt.y)?;
+                        flat_idx += 1;
+                    }
+                }
+                Ok(())
+            }
+            Self::Owned { name, points } => {
+                for (idx, pt) in points.iter().enumerate() {
+                    check_xy_finite(name.as_str(), idx, pt[0], pt[1])?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+fn check_xy_finite(name: &str, idx: usize, x: f64, y: f64) -> Result<(), (&str, char, usize, f64)> {
+    if !(x > f64::NEG_INFINITY && x < f64::INFINITY && y > f64::NEG_INFINITY && y < f64::INFINITY) {
+        if !y.is_finite() {
+            Err((name, 'y', idx, y))
+        } else {
+            Err((name, 'x', idx, x))
+        }
+    } else {
+        Ok(())
+    }
+}
+
 thread_local! {
-    static LAST_PLOT_DATASETS: std::cell::RefCell<Vec<(String, Vec<[f64; 2]>)>> = const { std::cell::RefCell::new(Vec::new()) };
+    static LAST_PLOT_DATASETS: std::cell::RefCell<(Vec<DeferredDatasetEntry>, u64)> =
+        const { std::cell::RefCell::new((Vec::new(), 0)) };
 }
 
 /// Clears thread-local record of plot datasets from the current frame.
 pub fn clear_last_plot_datasets() {
-    LAST_PLOT_DATASETS.with(|d| d.borrow_mut().clear());
+    LAST_PLOT_DATASETS.with(|d| {
+        let mut guard = d.borrow_mut();
+        guard.0.clear();
+        guard.1 = 0;
+    });
     clear_last_plot_primitives();
 }
 
 /// Appends datasets captured from an `egui_plot::Plot` widget.
 pub fn append_last_plot_datasets(datasets: &[(String, Vec<[f64; 2]>)]) {
+    if datasets.is_empty() {
+        return;
+    }
     LAST_PLOT_DATASETS.with(|d| {
-        d.borrow_mut().extend(datasets.iter().cloned());
+        use std::hash::{Hash as _, Hasher as _};
+        let mut guard = d.borrow_mut();
+        let mut hasher = ahash::AHasher::default();
+        guard.1.hash(&mut hasher);
+        for (name, pts) in datasets {
+            name.hash(&mut hasher);
+            pts.len().hash(&mut hasher);
+            if let Some(first) = pts.first() {
+                first[0].to_bits().hash(&mut hasher);
+                first[1].to_bits().hash(&mut hasher);
+            }
+            if let Some(last) = pts.last() {
+                last[0].to_bits().hash(&mut hasher);
+                last[1].to_bits().hash(&mut hasher);
+            }
+            guard.0.push(DeferredDatasetEntry::Owned {
+                name: name.clone(),
+                points: pts.clone(),
+            });
+        }
+        guard.1 = hasher.finish().max(1);
     });
+}
+
+pub(crate) fn append_deferred_plot_datasets(entries: Vec<DeferredDatasetEntry>, hash_mix: u64) {
+    if entries.is_empty() {
+        return;
+    }
+    LAST_PLOT_DATASETS.with(|d| {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut guard = d.borrow_mut();
+        let mut hasher = ahash::AHasher::default();
+        guard.1.hash(&mut hasher);
+        hash_mix.hash(&mut hasher);
+        entries.len().hash(&mut hasher);
+        guard.0.extend(entries);
+        guard.1 = hasher.finish().max(1);
+    });
+}
+
+/// Returns a non-zero fingerprint when datasets were captured in the active frame (`0` if empty).
+pub fn last_plot_capture_hash() -> u64 {
+    LAST_PLOT_DATASETS.with(|d| d.borrow().1)
+}
+
+/// Checks captured plot datasets for non-finite coordinates without cloning point buffers.
+///
+/// Returns `Ok(true)` if at least one dataset was captured and all points are finite,
+/// `Ok(false)` if no datasets were captured, or `Err((series_name, axis, index, bad_value))` on `NaN`/`Inf`.
+pub fn check_last_plot_datasets_finite() -> Result<bool, (String, char, usize, f64)> {
+    LAST_PLOT_DATASETS.with(|d| {
+        let guard = d.borrow();
+        if guard.0.is_empty() {
+            return Ok(false);
+        }
+        for entry in &guard.0 {
+            if let Err((name, axis, idx, bad)) = entry.check_finite() {
+                return Err((name.to_owned(), axis, idx, bad));
+            }
+        }
+        Ok(true)
+    })
 }
 
 /// Retrieves all plot datasets captured across `egui_plot::Plot` widgets rendered in the active session.
 pub fn get_last_plot_datasets() -> Vec<(String, Vec<[f64; 2]>)> {
-    LAST_PLOT_DATASETS.with(|d| d.borrow().clone())
+    LAST_PLOT_DATASETS.with(|d| {
+        let guard = d.borrow();
+        guard
+            .0
+            .iter()
+            .map(DeferredDatasetEntry::materialize)
+            .collect()
+    })
 }
 
 static PENDING_CANVAS_CALLOUTS: std::sync::Mutex<
@@ -5801,6 +6074,14 @@ mod log_space_projection_tests {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PoiCacheKey {
+    pub(crate) items_hash: u64,
+    pub(crate) bounds_bits: [u64; 4],
+    pub(crate) log_x: bool,
+    pub(crate) log_y: bool,
+}
+
 #[derive(Clone)]
 pub(crate) struct AccessState {
     pub(crate) show_table: bool,
@@ -5808,9 +6089,15 @@ pub(crate) struct AccessState {
     pub(crate) export_modal: export_modal::ExportModalState,
     pub(crate) focused_item: usize,
     pub(crate) focused_point: usize,
-    pub(crate) fit_degree: Option<usize>,
+    pub(crate) focused_poi: Option<usize>,
+    pub(crate) fit_model: Option<FitType>,
+    pub(crate) fit_log_mode: bool,
+    pub(crate) show_fit_residuals: bool,
     pub(crate) fit_dataset_idx: usize,
     pub(crate) show_fit_overlay: bool,
+    pub(crate) cached_fit: Option<(fit_overlay::FitCacheKey, Option<FitResult>)>,
+    pub(crate) cached_pois: Option<(PoiCacheKey, Arc<[poi::CriticalPoint]>)>,
+    pub(crate) cached_base_datasets: BaseDatasetCache,
     pub(crate) show_settings_modal: bool,
     pub(crate) log_x: bool,
     pub(crate) log_y: bool,
@@ -5838,9 +6125,15 @@ impl Default for AccessState {
             export_modal: export_modal::ExportModalState::default(),
             focused_item: 0,
             focused_point: 0,
-            fit_degree: None,
+            focused_poi: None,
+            fit_model: None,
+            fit_log_mode: false,
+            show_fit_residuals: false,
             fit_dataset_idx: 0,
             show_fit_overlay: true,
+            cached_fit: None,
+            cached_pois: None,
+            cached_base_datasets: None,
             show_settings_modal: false,
             log_x: false,
             log_y: false,
