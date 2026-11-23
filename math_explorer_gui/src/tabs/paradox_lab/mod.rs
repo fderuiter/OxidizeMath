@@ -22,7 +22,6 @@ impl Default for ParadoxLabTab {
     }
 }
 
-#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub(super) fn render_tool_header(ui: &mut egui::Ui, tool_name: &str) {
     ui.horizontal(|ui| {
         ui.heading(tool_name);
@@ -75,6 +74,10 @@ impl ExplorerTab for ParadoxLabTab {
 
     fn load_state(&mut self, state: &str) {
         self.framework.load_state(state);
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.framework.focused_canvas_id()
     }
 
     fn select_tool_by_name(&mut self, name: &str) -> bool {
