@@ -5559,6 +5559,32 @@
       "signature": "pub fn is_universal_constant (name : & str) -> bool"
     }
   ],
+  "crates/math_commons/src/ast/glsl.rs": [
+    {
+      "signature": "impl Expr { pub fn to_glsl_complex (& self) -> Result < String , GlslError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_glsl_complex_with_vars (& self , allowed_vars : & [& str]) -> Result < String , GlslError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_glsl_scalar (& self) -> Result < String , GlslError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_glsl_scalar_with_vars (& self , allowed_vars : & [& str]) -> Result < String , GlslError > }"
+    },
+    {
+      "signature": "pub enum GlslError"
+    },
+    {
+      "signature": "pub fn format_glsl_float (n : f64) -> Result < String , GlslError >"
+    },
+    {
+      "signature": "pub use super :: glsl_helpers :: GLSL_COMPLEX_HELPERS"
+    },
+    {
+      "signature": "pub use super :: glsl_helpers :: GLSL_SCALAR_HELPERS"
+    }
+  ],
   "crates/math_commons/src/ast/latex.rs": [
     {
       "signature": "impl Expr { pub fn to_latex (& self) -> String }"
@@ -5614,6 +5640,18 @@
     },
     {
       "signature": "pub use expr :: is_universal_constant"
+    },
+    {
+      "signature": "pub use glsl :: GLSL_COMPLEX_HELPERS"
+    },
+    {
+      "signature": "pub use glsl :: GLSL_SCALAR_HELPERS"
+    },
+    {
+      "signature": "pub use glsl :: GlslError"
+    },
+    {
+      "signature": "pub use glsl :: format_glsl_float"
     },
     {
       "signature": "pub use lexer :: LexError"
@@ -5751,6 +5789,20 @@
     },
     {
       "signature": "pub fn mapped_gradient (value : f64 , min_val : f64 , max_val : f64) -> [u8 ; 3]"
+    }
+  ],
+  "crates/math_commons/src/math_kernel/glsl_colormap.rs": [
+    {
+      "signature": "pub const fn glsl_cyclic_cosine_palette_fn () -> & 'static str"
+    },
+    {
+      "signature": "pub const fn glsl_ensure_dark_canvas_contrast_fn () -> & 'static str"
+    },
+    {
+      "signature": "pub const fn glsl_heatmap_color_fn () -> & 'static str"
+    },
+    {
+      "signature": "pub fn glsl_colormap_library () -> String"
     }
   ],
   "crates/math_commons/src/math_kernel/types.rs": [

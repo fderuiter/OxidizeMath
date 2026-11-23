@@ -15,6 +15,10 @@ pub(crate) enum ExportFormat {
     Svg,
     /// Animated Graphics Interchange Format (`.gif`).
     Gif,
+    /// Standalone WebGL2 (`#version 300 es`) fragment shader (`.frag`).
+    GlslWebGl2,
+    /// Standalone Shadertoy (`mainImage`) fragment shader (`.frag`).
+    GlslShadertoy,
 }
 
 impl ExportFormat {
@@ -25,6 +29,25 @@ impl ExportFormat {
             Self::Png => ("png", "PNG", "PNG Image", "figure"),
             Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
             Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
+            Self::GlslWebGl2 => (
+                "frag",
+                "WebGL2 GLSL",
+                "WebGL2 GLSL Fragment Shader",
+                "webgl2",
+            ),
+            Self::GlslShadertoy => (
+                "frag",
+                "Shadertoy GLSL",
+                "Shadertoy Fragment Shader",
+                "shadertoy",
+            ),
+        }
+    }
+
+    const fn clipboard_item_noun(self) -> &'static str {
+        match self {
+            Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
+            _ => "dataset",
         }
     }
 
@@ -265,6 +288,9 @@ impl SimulationFramework {
             (ExportFormat::Png, ExportTarget::Clipboard) => self.dispatch_png_clipboard_export(ctx),
             (ExportFormat::Svg, _) => self.dispatch_svg_export(),
             (ExportFormat::Gif, _) => self.dispatch_gif_export(),
+            (ExportFormat::GlslWebGl2 | ExportFormat::GlslShadertoy, target) => {
+                self.dispatch_shader_export(req.format, target, ctx);
+            }
         }
     }
 
@@ -344,17 +370,18 @@ impl SimulationFramework {
         }
     }
 
-    fn dispatch_clipboard_text_request(
+    pub(super) fn dispatch_clipboard_text_request(
         &mut self,
         format: ExportFormat,
         content: String,
         ctx: Option<&egui::Context>,
     ) {
         let label = format.label();
+        let noun = format.clipboard_item_noun();
         let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
             writer(&content)
         } else {
-            self.write_system_text_clipboard(label, &content, ctx)
+            self.write_system_text_clipboard(label, noun, &content, ctx)
         };
         match res {
             Ok(()) => {
@@ -363,9 +390,9 @@ impl SimulationFramework {
                 let msg = if cfg!(target_arch = "wasm32")
                     && self.export_queue.custom_clipboard_writer.is_none()
                 {
-                    format!("Copying {label} dataset to clipboard...")
+                    format!("Copying {label} {noun} to clipboard...")
                 } else {
-                    format!("Copied {label} dataset to clipboard!")
+                    format!("Copied {label} {noun} to clipboard!")
                 };
                 self.set_export_status(ExportStatusSeverity::Success, msg);
             }
@@ -378,12 +405,13 @@ impl SimulationFramework {
     fn write_system_text_clipboard(
         &self,
         label: &'static str,
+        noun: &'static str,
         content: &str,
         ctx: Option<&egui::Context>,
     ) -> Result<(), String> {
         #[cfg(test)]
         {
-            let _ = (label, content, ctx);
+            let _ = (label, noun, content, ctx);
             Ok(())
         }
         #[cfg(not(test))]
@@ -395,7 +423,7 @@ impl SimulationFramework {
                     egui_ctx.data_mut(|d| {
                         let status = match cb {
                             Ok(()) => ActionBarExportStatus {
-                                message: format!("Copied {label} dataset to clipboard!"),
+                                message: format!("Copied {label} {noun} to clipboard!"),
                                 is_error: false,
                                 expires_at_time: None,
                             },
