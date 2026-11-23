@@ -21,6 +21,8 @@ use state::ComplexMappingState;
 
 #[path = "complex_mapping/cache.rs"]
 mod cache;
+#[path = "complex_mapping/shader.rs"]
+mod shader;
 #[path = "complex_mapping/ui.rs"]
 mod ui;
 
@@ -307,6 +309,13 @@ impl InteractiveTool for ComplexMappingTool {
 
     fn state_revision(&self) -> u64 {
         self.compute_state_revision()
+    }
+
+    fn export_glsl_shader(
+        &self,
+        dialect: crate::framework::ShaderDialect,
+    ) -> Result<String, String> {
+        self.build_glsl_shader(dialect)
     }
 
     fn has_finite_parameters(&self) -> bool {

@@ -48,12 +48,27 @@ enum EmitFrame<'a> {
 }
 
 impl Expr {
+    /// Lowers `self` iteratively to a real scalar (`f32` or `float`) shader expression for `target`.
+    ///
+    /// Pair with [`super::real_prelude_for`] when the expression uses division,
+    /// exponentiation, natural logarithms, or base-10 logarithms.
+    pub fn to_shader(&self, target: ShaderTarget) -> Result<String, ShaderEmitError> {
+        emit_shader_expr(self, target, DomainMode::Real)
+    }
+
+    /// Lowers `self` iteratively to a complex (`vec2<f32>` or `vec2`) shader expression for `target`.
+    ///
+    /// Pair with [`super::complex_prelude_for`] for `c_*` complex arithmetic and elementary helpers.
+    pub fn to_shader_complex(&self, target: ShaderTarget) -> Result<String, ShaderEmitError> {
+        emit_shader_expr(self, target, DomainMode::Complex)
+    }
+
     /// Lowers `self` iteratively to a real scalar (`f32`) WGSL expression string.
     ///
     /// Pair with [`super::wgsl_real_prelude`] when the expression uses division,
     /// exponentiation, natural logarithms, or base-10 logarithms.
     pub fn to_wgsl(&self) -> Result<String, ShaderEmitError> {
-        emit_shader_expr(self, ShaderTarget::Wgsl, DomainMode::Real)
+        self.to_shader(ShaderTarget::Wgsl)
     }
 
     /// Lowers `self` iteratively to a real scalar (`float`) GLSL ES 3.00 expression string.
@@ -61,21 +76,14 @@ impl Expr {
     /// Pair with [`super::glsl_real_prelude`] when the expression uses division,
     /// exponentiation, natural logarithms, or base-10 logarithms.
     pub fn to_glsl(&self) -> Result<String, ShaderEmitError> {
-        emit_shader_expr(self, ShaderTarget::Glsl, DomainMode::Real)
+        self.to_shader(ShaderTarget::Glsl)
     }
 
     /// Lowers `self` iteratively to a complex (`vec2<f32>`) WGSL expression string.
     ///
     /// Pair with [`super::wgsl_complex_prelude`] for `c_*` complex arithmetic and elementary helpers.
     pub fn to_wgsl_complex(&self) -> Result<String, ShaderEmitError> {
-        emit_shader_expr(self, ShaderTarget::Wgsl, DomainMode::Complex)
-    }
-
-    /// Lowers `self` iteratively to a complex (`vec2`) GLSL ES 3.00 expression string.
-    ///
-    /// Pair with [`super::glsl_complex_prelude`] for `c_*` complex arithmetic and elementary helpers.
-    pub fn to_glsl_complex(&self) -> Result<String, ShaderEmitError> {
-        emit_shader_expr(self, ShaderTarget::Glsl, DomainMode::Complex)
+        self.to_shader_complex(ShaderTarget::Wgsl)
     }
 }
 

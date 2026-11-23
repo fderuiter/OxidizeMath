@@ -1,7 +1,7 @@
-# ADR 0035: Client-Side Symbolic WGSL/GLSL Shader Foundry, Analytical Palettes, and Smooth Escape / Domain Coloring
+# ADR 0037: Client-Side Symbolic WGSL/GLSL Shader Foundry, Analytical Palettes, and Smooth Escape / Domain Coloring
 
 ## Status
-Accepted (extends [ADR 0017](0017-native-ast-expression-parser-and-live-input.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0026](0026-bounded-ast-height-and-iterative-traversal.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), and [ADR 0035](0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md))
+Accepted (extends [ADR 0017](0017-native-ast-expression-parser-and-live-input.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0026](0026-bounded-ast-height-and-iterative-traversal.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), [ADR 0035](0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md), and [ADR 0035](0035-iterative-ast-glsl-transpiler-and-shader-exports.md))
 
 ## Context
 [`math_commons::ast`](../../crates/math_commons/src/ast/mod.rs) parses user-supplied real and complex expressions into bounded `Expr` syntax trees, while [`FractalViewer`](../../math_explorer_gui/src/tabs/chaos/fractals.rs) and [`ComplexMappingTool`](../../math_explorer_gui/src/tabs/analysis/complex_mapping.rs) previously evaluated only built-in formulas or discrete integer escape bands without GPU shader export:
@@ -11,7 +11,7 @@ Accepted (extends [ADR 0017](0017-native-ast-expression-parser-and-live-input.md
 
 ## Decision
 1. **Iterative Worklist WGSL & GLSL Transpilers in `math_commons::ast`**:
-   - Add [`crates/math_commons/src/ast/shader.rs`](../../crates/math_commons/src/ast/shader.rs) and [`crates/math_commons/src/ast/shader_preludes.rs`](../../crates/math_commons/src/ast/shader_preludes.rs) exposing `Expr::{to_wgsl, to_glsl, to_wgsl_complex, to_glsl_complex}` using an explicit `EmitFrame` worklist capped at `MAX_EVAL_DEPTH` (`64`) with zero call-stack recursion and zero external shader dependencies (`naga`, `wgpu`, or `glslang`).
+   - Add [`crates/math_commons/src/ast/shader.rs`](../../crates/math_commons/src/ast/shader.rs) and [`crates/math_commons/src/ast/shader_preludes.rs`](../../crates/math_commons/src/ast/shader_preludes.rs) exposing `Expr::{to_shader, to_shader_complex, to_wgsl, to_glsl, to_wgsl_complex}` using an explicit `EmitFrame` worklist capped at `MAX_EVAL_DEPTH` (`64`) with zero call-stack recursion and zero external shader dependencies (`naga`, `wgpu`, or `glslang`), coexisting cleanly with `ast::glsl`.
    - Emit division-by-zero guards, safe non-integer power lowering, constants (`pi`, `e`, `tau`, complex `i`), and all 20 `Func` variants across scalar (`f32` / `float`) and complex (`vec2<f32>` / `vec2`) domains, alongside zero-allocation `Expr::eval_complex_zc` in [`crates/math_commons/src/ast/eval.rs`](../../crates/math_commons/src/ast/eval.rs).
 2. **Analytical CPU & Shader Colormaps with WCAG `3.0:1` Contrast Lifting**:
    - Add [`crates/math_commons/src/math_kernel/colormap_shader.rs`](../../crates/math_commons/src/math_kernel/colormap_shader.rs) re-exported from [`crates/math_commons/src/math_kernel/colormap.rs`](../../crates/math_commons/src/math_kernel/colormap.rs), providing `ShaderPalette`, `phase_wheel_color`, `evaluate_fractal_palette`, `domain_color_with_palette`, `wgsl_colormap_prelude`, and `glsl_colormap_prelude` with linear-light sRGB contrast lifting matching `ensure_dark_canvas_contrast` on `#000000`.

@@ -222,48 +222,7 @@ impl SimulationFramework {
         if export_action_button(ui, caps.figure, "Export PNG Image", fig_tip, close_on_click) {
             self.open_export_modal_for_active_tool();
         }
-        if caps.shader {
-            self.render_shader_export_action_items(ui, close_on_click);
-        }
-    }
-
-    fn render_shader_export_action_items(&mut self, ui: &mut egui::Ui, close_on_click: bool) {
-        if export_action_button(
-            ui,
-            true,
-            "Export WGSL",
-            "Export standalone WebGPU WGSL fragment shader",
-            close_on_click,
-        ) {
-            self.queue_export(ExportFormat::Wgsl);
-        }
-        if export_action_button(
-            ui,
-            true,
-            "Copy WGSL",
-            "Copy standalone WGSL fragment shader to clipboard",
-            close_on_click,
-        ) {
-            self.queue_shader_clipboard_export(ExportFormat::Wgsl);
-        }
-        if export_action_button(
-            ui,
-            true,
-            "Export GLSL",
-            "Export standalone GLSL ES 3.00 and Shadertoy fragment shader",
-            close_on_click,
-        ) {
-            self.queue_export(ExportFormat::Glsl);
-        }
-        if export_action_button(
-            ui,
-            true,
-            "Copy GLSL",
-            "Copy standalone GLSL fragment shader to clipboard",
-            close_on_click,
-        ) {
-            self.queue_shader_clipboard_export(ExportFormat::Glsl);
-        }
+        self.render_shader_export_items(ui, caps, close_on_click);
     }
 
     fn render_compact_export_menu(&mut self, ui: &mut egui::Ui) -> String {

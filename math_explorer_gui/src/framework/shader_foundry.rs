@@ -321,10 +321,9 @@ pub fn emit_fractal_shader(
 ) -> Result<String, String> {
     validate_complex_shader_vars(step_expr)?;
     let target = format.ast_target();
-    let expr_code = match target {
-        ShaderTarget::Wgsl => step_expr.to_wgsl_complex().map_err(|e| e.to_string())?,
-        ShaderTarget::Glsl => step_expr.to_glsl_complex().map_err(|e| e.to_string())?,
-    };
+    let expr_code = step_expr
+        .to_shader_complex(target)
+        .map_err(|e| e.to_string())?;
     let fd = format_defaults(defaults)?;
     let header = match target {
         ShaderTarget::Wgsl => wgsl_uniform_header(&fd),
@@ -353,10 +352,9 @@ pub fn emit_domain_coloring_shader(
 ) -> Result<String, String> {
     validate_complex_shader_vars(map_expr)?;
     let target = format.ast_target();
-    let expr_code = match target {
-        ShaderTarget::Wgsl => map_expr.to_wgsl_complex().map_err(|e| e.to_string())?,
-        ShaderTarget::Glsl => map_expr.to_glsl_complex().map_err(|e| e.to_string())?,
-    };
+    let expr_code = map_expr
+        .to_shader_complex(target)
+        .map_err(|e| e.to_string())?;
     let fd = format_defaults(defaults)?;
     let entry = match target {
         ShaderTarget::Wgsl => format!(

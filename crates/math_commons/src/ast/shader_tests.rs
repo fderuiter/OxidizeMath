@@ -29,7 +29,9 @@ fn test_real_wgsl_and_glsl_operator_and_constant_lowering() {
 fn test_complex_wgsl_and_glsl_lowering_and_all_14_functions() {
     let expr = parse("w = sin(z^3) - 1/z + i * pi").expect("parse complex equation");
     let wgsl = expr.to_wgsl_complex().expect("to_wgsl_complex");
-    let glsl = expr.to_glsl_complex().expect("to_glsl_complex");
+    let glsl = expr
+        .to_shader_complex(ShaderTarget::Glsl)
+        .expect("to_shader_complex(Glsl)");
 
     assert!(
         wgsl.contains("c_sin(c_pow(z, vec2<f32>(3.0, 0.0)))"),
@@ -78,7 +80,10 @@ fn test_complex_wgsl_and_glsl_lowering_and_all_14_functions() {
 
         let c_ast = parse(&format!("{fn_name}(Z)")).expect("parse complex func");
         assert_eq!(c_ast.to_wgsl_complex().unwrap(), expected_complex_fn);
-        assert_eq!(c_ast.to_glsl_complex().unwrap(), expected_complex_fn);
+        assert_eq!(
+            c_ast.to_shader_complex(ShaderTarget::Glsl).unwrap(),
+            expected_complex_fn
+        );
     }
 }
 
@@ -163,7 +168,7 @@ fn test_bounded_iterative_worklist_rejects_deep_ast_without_stack_overflow() {
         deep.to_wgsl(),
         deep.to_glsl(),
         deep.to_wgsl_complex(),
-        deep.to_glsl_complex(),
+        deep.to_shader_complex(ShaderTarget::Glsl),
     ] {
         assert_eq!(
             res,
@@ -173,7 +178,7 @@ fn test_bounded_iterative_worklist_rejects_deep_ast_without_stack_overflow() {
 
     let exact_64 = parse(&format!("{}1", "1 + ".repeat(MAX_EVAL_DEPTH))).expect("depth 64");
     assert!(exact_64.to_wgsl().is_ok());
-    assert!(exact_64.to_glsl_complex().is_ok());
+    assert!(exact_64.to_shader_complex(ShaderTarget::Glsl).is_ok());
 }
 
 #[test]
