@@ -16,13 +16,14 @@ use nalgebra::{Point3, UnitQuaternion, Vector3};
 use serde::{Deserialize, Serialize};
 
 /// Deterministic PCG-style PRNG used to seed reproducible initial perturbations across 2D/3D grids.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SimpleRng {
     state: u64,
 }
 
 impl SimpleRng {
     /// Creates a new deterministic PRNG seeded with `seed`.
-    pub fn new(seed: u64) -> Self {
+    pub const fn new(seed: u64) -> Self {
         Self { state: seed }
     }
 
