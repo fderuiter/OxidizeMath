@@ -6,7 +6,7 @@ use super::lbm_fairing::{
     apply_stroke_to_fairing_mask, decode_mask_hex, encode_fairing_mask_rle, encode_mask_hex,
     restore_inlet_and_core_mask, FairingStamp, LbmFairingEvaluator, LbmSerializedState,
     CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY, LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X,
-    LBM_CORE_Y, LBM_HEIGHT, LBM_INLET_COLS, LBM_MIN_SOLID_CELLS, LBM_WIDTH,
+    LBM_CORE_Y, LBM_HEIGHT, LBM_INLET_COLS, LBM_MIN_SOLID_CELLS, LBM_U_IN, LBM_WIDTH,
 };
 use super::lbm_presets::stamp_disk_into_fairing_mask;
 use crate::accessibility::{
@@ -17,7 +17,6 @@ use crate::async_sim::unified::UnifiedUiExtension;
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::{BrushStroke, CalloutManager, ChallengeEvaluation};
 use eframe::egui;
-use egui_plot::{Points, Polygon};
 use math_commons::math_kernel::types::flatten_2d_index;
 use std::collections::HashMap;
 
@@ -323,6 +322,7 @@ impl UnifiedUiExtension for LbmUiExtension {
             Some(CHALLENGE_LBM_FAIRING) => {
                 self.active_challenge = Some(CHALLENGE_LBM_FAIRING);
                 params.insert("viscosity".to_string(), CHALLENGE_LBM_VISCOSITY);
+                params.insert("inlet_velocity".to_string(), LBM_U_IN);
                 params.insert("naca_profile".to_string(), 0.0);
                 params.insert("angle_of_attack".to_string(), 0.0);
                 restore_inlet_and_core_mask(&mut self.mask);
@@ -354,7 +354,10 @@ impl UnifiedUiExtension for LbmUiExtension {
 
     fn is_parameter_locked(&self, param_name: &str) -> bool {
         self.active_challenge == Some(CHALLENGE_LBM_FAIRING)
-            && matches!(param_name, "viscosity" | "naca_profile" | "angle_of_attack")
+            && matches!(
+                param_name,
+                "viscosity" | "inlet_velocity" | "naca_profile" | "angle_of_attack"
+            )
     }
 
     fn on_reset(&mut self, params: &HashMap<String, f64>) {
@@ -452,27 +455,7 @@ impl UnifiedUiExtension for LbmUiExtension {
         visuals: &egui::Visuals,
         plot_ui: &mut egui_plot::PlotUi,
     ) -> Vec<SimCommand> {
-        let palette = crate::app::SemanticPalette::from_visuals(visuals);
-        let ring_pts: Vec<[f64; 2]> = (0..24)
-            .map(|k| {
-                let theta = std::f64::consts::TAU * (k as f64) / 24.0;
-                [
-                    LBM_CORE_X as f64 + 0.5 + (LBM_CORE_RADIUS as f64) * theta.cos(),
-                    LBM_CORE_Y as f64 + 0.5 + (LBM_CORE_RADIUS as f64) * theta.sin(),
-                ]
-            })
-            .collect();
-        plot_ui.polygon(
-            Polygon::new("Protected Core (R=4)", ring_pts)
-                .fill_color(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::new(1.5_f32, palette.warning)),
-        );
-        let cursor = [self.cursor_x as f64 + 0.5, self.cursor_y as f64 + 0.5];
-        plot_ui.points(
-            Points::new("Sculpt Cursor", vec![cursor])
-                .radius(5.0_f32)
-                .color(palette.accent),
-        );
+        super::lbm_atlas::paint_lbm_fairing_overlay(visuals, plot_ui, self.cursor_x, self.cursor_y);
         let resp = plot_ui.response().clone();
         self.handle_sculpt_keys_ctx(ctx, &resp)
     }

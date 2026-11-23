@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub mod atlas;
 mod canvas;
 pub mod presets;
 mod ui;
@@ -9,6 +10,8 @@ mod ui;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub use atlas::{LeniaCartographer, LeniaRegime, LENIA_ATLAS_AXIS_PAIRS};
 pub use presets::{LeniaBrushMode, LeniaSpeciesPreset, LeniaTheory, LeniaToolState};
 
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -314,35 +317,6 @@ impl FiniteStateGuard for LeniaTool {
     }
 }
 
-impl LeniaTool {
-    fn sanitize_rings_and_field(&mut self) {
-        if self.ring_weights.is_empty() {
-            self.ring_weights.push(1.0);
-        }
-        self.ring_weights.truncate(MAX_KERNEL_RINGS);
-        for w in &mut self.ring_weights {
-            *w = if w.is_finite() {
-                w.clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-        }
-        if self.ring_weights.iter().copied().sum::<f64>() <= 1e-6 {
-            self.ring_weights[0] = 1.0;
-        }
-        if !self.engine.state().iter().all(|v| v.is_finite()) {
-            for cell in self.engine.state_mut() {
-                *cell = if cell.is_finite() {
-                    cell.clamp(0.0, 1.0)
-                } else {
-                    0.0
-                };
-            }
-            self.engine.refresh_telemetry();
-        }
-    }
-}
-
 impl InteractiveTool for LeniaTool {
     fn name(&self) -> &'static str {
         "Lenia Studio"
@@ -395,6 +369,44 @@ impl InteractiveTool for LeniaTool {
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true
+    }
+
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        atlas::LENIA_ATLAS_AXIS_PAIRS
+    }
+
+    fn active_atlas_coords(&self, axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        let get = |k: &str| match k {
+            "mu" => self.mu,
+            "sigma" => self.sigma,
+            "radius" => self.radius,
+            _ => 0.0,
+        };
+        (get(axis_keys.0), get(axis_keys.1))
+    }
+
+    fn atlas_context_signature(&self, axis_keys: (&'static str, &'static str)) -> u64 {
+        self.lenia_atlas_context_sig(axis_keys)
+    }
+
+    fn build_atlas_cartographer(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<std::sync::Arc<dyn crate::async_sim::atlas::RegimeCartographer>> {
+        let theory = self.theory.theory_parameters();
+        Some(std::sync::Arc::new(atlas::LeniaCartographer::new(
+            &theory,
+            axis_keys,
+            self.species,
+            self.radius,
+            &self.ring_weights,
+            GrowthParams::new(self.mu, self.sigma),
+            self.dt,
+        )))
+    }
+
+    fn apply_atlas_teleport(&mut self, ev: crate::async_sim::atlas::AtlasTeleportEvent) {
+        self.handle_lenia_atlas_teleport(ev);
     }
 
     fn state_bounds(&self) -> ToolStateBounds {

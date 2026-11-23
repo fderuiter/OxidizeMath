@@ -6,7 +6,9 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 
 pub mod atlas;
+mod atlas_bridge;
 pub mod brush;
+pub mod gray_scott_atlas;
 pub mod kinetics;
 #[cfg(test)]
 mod legacy_runner;
@@ -21,6 +23,10 @@ pub mod ui;
 #[cfg(test)]
 pub use atlas::{
     classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+};
+#[cfg(test)]
+pub use gray_scott_atlas::{
+    classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
 };
 #[cfg(test)]
 pub use lenia::LeniaTool;

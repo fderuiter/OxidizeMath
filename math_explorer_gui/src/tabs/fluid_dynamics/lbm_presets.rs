@@ -4,7 +4,7 @@
 
 use super::lattice_boltzmann::{LbmUnified, LBM_HEIGHT, LBM_WIDTH};
 use super::lbm_fairing::{LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y, LBM_INLET_COLS};
-use crate::async_sim::unified::UnifiedSimTool;
+use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     BgkCollision, LatticeBoltzmannD2Q9,
@@ -52,6 +52,7 @@ pub(super) fn lbm_parameters() -> HashMap<String, ParameterConstraint> {
     let c = |min, max, step| ParameterConstraint { min, max, step };
     HashMap::from([
         ("viscosity".to_string(), c(0.00333, 0.5, 0.005)),
+        ("inlet_velocity".to_string(), c(0.015, 0.185, 0.005)),
         ("angle_of_attack".to_string(), c(-25.0, 25.0, 1.0)),
         ("naca_profile".to_string(), c(0.0, 4412.0, 1.0)),
         ("field_view".to_string(), c(0.0, 1.0, 1.0)),
@@ -61,6 +62,7 @@ pub(super) fn lbm_parameters() -> HashMap<String, ParameterConstraint> {
 pub(super) fn lbm_parameter_label(name: &str) -> String {
     match name {
         "viscosity" => "Kinematic Viscosity (ν)".to_string(),
+        "inlet_velocity" => "Inlet Velocity (U)".to_string(),
         "angle_of_attack" => "Angle of Attack α (°)".to_string(),
         "naca_profile" => "Obstacle / Airfoil Profile".to_string(),
         "field_view" => "Scalar Field View".to_string(),
@@ -105,6 +107,51 @@ pub(crate) fn default_lbm_obstacle_mask() -> Vec<bool> {
     mask
 }
 
+pub(crate) fn inspect_solver_solid_and_core(
+    solver: &LatticeBoltzmannD2Q9<BgkCollision>,
+) -> (usize, bool) {
+    let mut n_solid = 0_usize;
+    let mut core_intact = true;
+    for y in 0..solver.height() {
+        for x in 0..solver.width() {
+            let obs = solver.is_obstacle(x, y);
+            if obs {
+                n_solid += 1;
+            }
+            let dx = x as i32 - LBM_CORE_X;
+            let dy = y as i32 - LBM_CORE_Y;
+            if dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS && !obs {
+                core_intact = false;
+            }
+        }
+    }
+    (n_solid, core_intact)
+}
+
+pub(crate) fn apply_obstacle_rle_to_solver(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    encoded: &str,
+    inlet_velocity: f64,
+) -> bool {
+    let Ok(mask) = crate::framework::decode_bool_grid(encoded, LBM_WIDTH, LBM_HEIGHT) else {
+        return false;
+    };
+    let (w, h) = (solver.width(), solver.height());
+    if mask.len() != w * h {
+        return false;
+    }
+    solver.clear_obstacles();
+    for y in 0..h {
+        for x in 0..w {
+            if mask[flatten_2d_index(x, y, w)] {
+                solver.set_obstacle(x, y, true);
+            }
+        }
+    }
+    solver.set_inlet(0, 0, LBM_INLET_COLS, h, inlet_velocity, 0.0);
+    true
+}
+
 impl TheoryDescribable for LbmUnified {
     fn theory_description(&self) -> String {
         LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).theory_description()
@@ -120,6 +167,10 @@ impl TheoryDescribable for LbmUnified {
 
     fn available_descriptions(&self) -> HashMap<String, String> {
         LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).available_descriptions()
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        <Self as UnifiedModel>::parameters()
     }
 }
 
