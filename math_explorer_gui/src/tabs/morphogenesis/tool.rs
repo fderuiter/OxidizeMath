@@ -213,6 +213,10 @@ impl InteractiveTool for MorphogenesisTool {
         }
     }
 
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let theme_mode = ThemeMode::from_visuals(ui.visuals());
