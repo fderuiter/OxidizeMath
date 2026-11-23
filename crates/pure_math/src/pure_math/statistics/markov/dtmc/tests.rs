@@ -265,3 +265,103 @@ fn test_validation_errors() {
     let states = vec![StateType::Absorbing, StateType::Transient];
     assert!(MarkovChain::new(p, states).is_err());
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_period_two_walk_stationary_qr_nullspace() {
+    let p = DMatrix::from_row_slice(
+        3,
+        3,
+        &[
+            0.0, 1.0, 0.0, // 0 -> 1
+            0.5, 0.0, 0.5, // 1 -> 0 or 2
+            0.0, 1.0, 0.0, // 2 -> 1
+        ],
+    );
+    let states = vec![StateType::Transient; 3];
+    let chain = MarkovChain::new(p, states).unwrap();
+
+    assert!(chain.is_irreducible());
+    assert!(!chain.is_aperiodic());
+    assert_eq!(chain.period(), Some(2));
+    assert_eq!(chain.state_period(0).unwrap(), 2);
+
+    let pi = chain.stationary_distribution().unwrap();
+    assert_relative_eq!(pi[0], 0.25, epsilon = 1e-12);
+    assert_relative_eq!(pi[1], 0.5, epsilon = 1e-12);
+    assert_relative_eq!(pi[2], 0.25, epsilon = 1e-12);
+
+    // Periodic chain does not converge from a point mass initial state
+    assert!(chain.limiting_distribution_from_state(0).is_none());
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_multi_absorbing_stationary_none_and_asymmetric_limiting() {
+    // State 0 transient -> absorbs into state 1 (0.95) or state 2 (0.05)
+    // E.g. P[0,0]=0.5, P[0,1]=0.475, P[0,2]=0.025 => N = 2, B = [0.95, 0.05]
+    let p = DMatrix::from_row_slice(
+        3,
+        3,
+        &[
+            0.5, 0.475, 0.025, // State 0 (transient)
+            0.0, 1.0, 0.0, // State 1 (absorbing)
+            0.0, 0.0, 1.0, // State 2 (absorbing)
+        ],
+    );
+    let states = vec![
+        StateType::Transient,
+        StateType::Absorbing,
+        StateType::Absorbing,
+    ];
+    let chain = MarkovChain::new(p, states).unwrap();
+
+    assert_eq!(chain.closed_classes().len(), 2);
+    assert!(chain.stationary_distribution().is_none());
+
+    let e0 = DVector::from_vec(vec![1.0, 0.0, 0.0]);
+    let lim = chain.limiting_distribution(&e0).unwrap();
+    assert_relative_eq!(lim[0], 0.0, epsilon = 1e-12);
+    assert_relative_eq!(lim[1], 0.95, epsilon = 1e-12);
+    assert_relative_eq!(lim[2], 0.05, epsilon = 1e-12);
+
+    let lim_state = chain.limiting_distribution_from_state(0).unwrap();
+    assert_relative_eq!(lim_state[1], 0.95, epsilon = 1e-12);
+    assert_relative_eq!(lim_state[2], 0.05, epsilon = 1e-12);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_tarjan_scc_and_mean_hitting_times() {
+    // 3-state symmetric cycle with self-loops: P = [[0.5, 0.5, 0], [0, 0.5, 0.5], [0.5, 0, 0.5]]
+    let p = DMatrix::from_row_slice(3, 3, &[0.5, 0.5, 0.0, 0.0, 0.5, 0.5, 0.5, 0.0, 0.5]);
+    let chain = MarkovChain::new(p, vec![StateType::Transient; 3]).unwrap();
+
+    let classes = chain.communicating_classes();
+    assert_eq!(classes.len(), 1);
+    assert!(classes[0].is_closed);
+    assert_eq!(chain.period(), Some(1));
+
+    // Expected steps to state 2: from 2 is 0; from 1 is 2; from 0 is 4.
+    let h = chain.mean_hitting_times(2).unwrap();
+    assert_relative_eq!(h[0], 4.0, epsilon = 1e-12);
+    assert_relative_eq!(h[1], 2.0, epsilon = 1e-12);
+    assert_relative_eq!(h[2], 0.0, epsilon = 1e-12);
+}
+
+#[test]
+fn test_dtmc_zero_allocation_simulation_verified() {
+    let p = DMatrix::from_row_slice(2, 2, &[0.75, 0.25, 0.5, 0.5]);
+    let chain = MarkovChain::new(p, vec![StateType::Transient; 2]).unwrap();
+    let mut visits = [0_usize; 2];
+    let mut rng = oxidize_core::rng::OxidizeRng::new(42);
+
+    let (final_state, metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        chain
+            .simulate_visits_into(0, 2_000, &mut visits, &mut rng)
+            .unwrap()
+    });
+    assert!(final_state < 2);
+    assert!(metrics.function_calls > 0);
+    assert_eq!(visits[0] + visits[1], 2_000);
+}

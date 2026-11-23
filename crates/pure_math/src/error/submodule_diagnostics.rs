@@ -10,6 +10,7 @@ use crate::pure_math::{
     },
     elliptic_curves::EllipticCurveError,
     number_theory::ambs::AmbsError,
+    statistics::{poisson::PoissonError, queueing::QueueingError},
     tensor::types::TensorError,
 };
 use diagnostics::{Diagnostic, Severity};
@@ -224,5 +225,29 @@ impl Diagnostic for TransformError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("TransformError", self.to_string())
+    }
+}
+
+impl Diagnostic for PoissonError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("PoissonError", self.to_string())
+    }
+}
+
+impl Diagnostic for QueueingError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("QueueingError", self.to_string())
     }
 }

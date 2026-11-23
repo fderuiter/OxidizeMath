@@ -165,3 +165,50 @@ fn test_deterministic_simulation() {
         assert_eq!(traj1[i], traj2[i]);
     }
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_slow_rate_asymmetric_generators_steady_state() {
+    // 1e-4 asymmetric generator: rate 0->1 is 1e-4, rate 1->0 is 2e-4 => pi = [2/3, 1/3]
+    let g_slow_4 = DMatrix::from_row_slice(2, 2, &[-1e-4, 1e-4, 2e-4, -2e-4]);
+    let chain_4 = ContinuousMarkovChain::new(g_slow_4).unwrap();
+    let pi_4 = chain_4.steady_state().unwrap();
+    assert_relative_eq!(pi_4[0], 2.0 / 3.0, epsilon = 1e-12);
+    assert_relative_eq!(pi_4[1], 1.0 / 3.0, epsilon = 1e-12);
+
+    // 1e-7 asymmetric generator: rate 0->1 is 1e-7, rate 1->0 is 3e-7 => pi = [0.75, 0.25]
+    let g_slow_7 = DMatrix::from_row_slice(2, 2, &[-1e-7, 1e-7, 3e-7, -3e-7]);
+    let chain_7 = ContinuousMarkovChain::new(g_slow_7).unwrap();
+    let pi_7 = chain_7.steady_state().unwrap();
+    assert_relative_eq!(pi_7[0], 0.75, epsilon = 1e-12);
+    assert_relative_eq!(pi_7[1], 0.25, epsilon = 1e-12);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_multi_closed_class_steady_state_returns_none() {
+    // State 0 transient draining to absorbing states 1 and 2 -> 2 closed classes => None
+    let g = DMatrix::from_row_slice(3, 3, &[-3.0, 2.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+    let chain = ContinuousMarkovChain::new(g).unwrap();
+    assert_eq!(chain.closed_classes().len(), 2);
+    assert!(chain.steady_state().is_none());
+}
+
+#[test]
+fn test_ctmc_zero_allocation_gillespie_verified() {
+    let g = DMatrix::from_row_slice(2, 2, &[-1.0, 1.0, 2.0, -2.0]);
+    let chain = ContinuousMarkovChain::new(g).unwrap();
+    let mut times = [0.0_f64; 256];
+    let mut states = [0_usize; 256];
+    let mut sojourns = [0.0_f64; 2];
+    let mut rng = oxidize_core::rng::OxidizeRng::new(7);
+
+    let (events, metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        chain
+            .simulate_gillespie_into(0, 200.0, &mut times, &mut states, &mut sojourns, &mut rng)
+            .unwrap()
+    });
+    assert!(metrics.function_calls > 0);
+    assert!(events >= 1);
+    assert_relative_eq!(sojourns[0] + sojourns[1], 200.0, epsilon = 1e-10);
+}

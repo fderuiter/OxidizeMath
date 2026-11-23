@@ -21,6 +21,7 @@ pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
         "number_theory" => Cow::Borrowed("Number Theory"),
         "quantum" => Cow::Borrowed("Quantum Mechanics"),
         "solid_state" => Cow::Borrowed("Solid State Physics"),
+        "stochastic_processes" => Cow::Borrowed("Stochastic Processes"),
         other => Cow::Owned(
             other
                 .split('_')

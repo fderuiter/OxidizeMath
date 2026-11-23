@@ -7641,6 +7641,12 @@
       "signature": "pub use crate :: pure_math :: number_theory :: ambs :: AmbsError"
     },
     {
+      "signature": "pub use crate :: pure_math :: statistics :: poisson :: PoissonError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: statistics :: queueing :: QueueingError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
     },
     {
@@ -10254,12 +10260,6 @@
       "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn num_states (& self) -> usize }"
     },
     {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn simulate_trajectory < R : rand :: Rng > (& self , _ : usize , _ : T , _ : & mut R ,) -> Result < Vec < (T , usize) > > }"
-    },
-    {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state (& self) -> Option < DVector < T > > }"
-    },
-    {
       "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn transition_probabilities (& self , _ : T) -> Result < DMatrix < T > > }"
     },
     {
@@ -10267,6 +10267,33 @@
     },
     {
       "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/ctmc/simulation.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn simulate_trajectory < R : rand :: Rng > (& self , _ : usize , _ : T , _ : & mut R ,) -> Result < Vec < (T , usize) > > }"
+    },
+    {
+      "signature": "impl ContinuousMarkovChain < f64 > { pub fn simulate_gillespie_into (& self , _ : usize , _ : f64 , _ : & mut [f64] , _ : & mut [usize] , _ : & mut [f64] , _ : & mut OxidizeRng ,) -> Result < usize > }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/ctmc/steady_state.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn closed_classes (& self) -> Vec < CommunicatingClass > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn communicating_classes (& self) -> Vec < CommunicatingClass > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state (& self) -> Option < DVector < T > > }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/dtmc/hitting.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn mean_hitting_times (& self , _ : usize) -> Result < DVector < T > > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn mean_hitting_times_to_set (& self , _ : & [usize]) -> Result < DVector < T > > }"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/dtmc/mod.rs": [
@@ -10307,9 +10334,6 @@
       "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn state_types (& self) -> & [StateType] }"
     },
     {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn stationary_distribution (& self) -> Option < DVector < T > > }"
-    },
-    {
       "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn transition_matrix (& self) -> & DMatrix < T > }"
     },
     {
@@ -10319,12 +10343,70 @@
       "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
     },
     {
+      "signature": "pub use scc :: CommunicatingClass"
+    },
+    {
       "signature": "pub use types :: StateType"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/dtmc/period.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn is_aperiodic (& self) -> bool }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn period (& self) -> Option < usize > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn state_period (& self , _ : usize) -> Result < usize > }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/dtmc/scc.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn closed_classes (& self) -> Vec < CommunicatingClass > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn communicating_classes (& self) -> Vec < CommunicatingClass > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn is_irreducible (& self) -> bool }"
+    },
+    {
+      "signature": "pub struct CommunicatingClass"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/dtmc/simulation.rs": [
+    {
+      "signature": "impl MarkovChain < f64 > { pub fn simulate_visits_into (& self , _ : usize , _ : usize , _ : & mut [usize] , _ : & mut OxidizeRng ,) -> Result < usize > }"
+    },
+    {
+      "signature": "impl MarkovChain < f64 > { pub fn step_state (& self , _ : usize , _ : & mut OxidizeRng) -> usize }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/dtmc/stationary.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn limiting_distribution (& self , _ : & DVector < T >) -> Option < DVector < T > > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn limiting_distribution_from_state (& self , _ : usize) -> Option < DVector < T > > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn stationary_distribution (& self) -> Option < DVector < T > > }"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/dtmc/types.rs": [
     {
       "signature": "pub enum StateType"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn baum_welch (& mut self , _ : & [usize] , _ : usize , _ : T , _ : T ,) -> Result < BaumWelchResult < T > > }"
+    },
+    {
+      "signature": "pub struct BaumWelchResult < T : RealField + Copy >"
+    },
+    {
+      "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/forward_backward.rs": [
@@ -10333,6 +10415,9 @@
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn forward (& self , _ : & [usize]) -> Result < T > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn forward_log_likelihood (& self , _ : & [usize]) -> Result < T > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn posterior_probabilities (& self , _ : & [usize]) -> Result < DMatrix < T > > }"
@@ -10350,6 +10435,9 @@
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/mod.rs": [
+    {
+      "signature": "pub use baum_welch :: BaumWelchResult"
+    },
     {
       "signature": "pub use model :: HiddenMarkovModel"
     }
@@ -10397,6 +10485,9 @@
     },
     {
       "signature": "pub use ctmc :: ContinuousMarkovChain"
+    },
+    {
+      "signature": "pub use dtmc :: CommunicatingClass"
     },
     {
       "signature": "pub use dtmc :: MarkovChain"
@@ -10710,6 +10801,38 @@
       "signature": "pub struct OuParams"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/ou_process/exact_solver.rs": [
+    {
+      "signature": "impl ExactOuSolver { pub fn conditional_mean (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn conditional_variance (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn new (_ : OuParams , _ : TimeStep) -> Self }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn params (& self) -> OuParams }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn simulate < R : Rng > (& self , _ : f64 , _ : usize , _ : & mut R) -> Vec < f64 > }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn simulate_into (& self , _ : f64 , _ : & mut [f64] , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn simulate_paths < R : Rng > (& self , _ : f64 , _ : usize , _ : usize , _ : & mut R ,) -> Vec < Vec < f64 > > }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn step < R : Rng > (& self , _ : f64 , _ : & mut R) -> f64 }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn time_step (& self) -> TimeStep }"
+    },
+    {
+      "signature": "pub struct ExactOuSolver"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/ou_process/mod.rs": [
     {
       "signature": "pub use analysis :: MomentumType"
@@ -10730,6 +10853,9 @@
       "signature": "pub use core :: OuParams"
     },
     {
+      "signature": "pub use exact_solver :: ExactOuSolver"
+    },
+    {
       "signature": "pub use solver :: EulerMaruyama"
     },
     {
@@ -10745,6 +10871,9 @@
     },
     {
       "signature": "impl EulerMaruyama { pub fn simulate < R : Rng > (& self , _ : f64 , _ : usize , _ : & mut R) -> Vec < f64 > }"
+    },
+    {
+      "signature": "impl EulerMaruyama { pub fn simulate_into (& self , _ : f64 , _ : & mut [f64] , _ : & mut OxidizeRng) }"
     },
     {
       "signature": "impl EulerMaruyama { pub fn simulate_paths < R : Rng > (& self , _ : f64 , _ : usize , _ : usize , _ : & mut R ,) -> Vec < Vec < f64 > > }"
@@ -10766,6 +10895,145 @@
     },
     {
       "signature": "pub struct TimeStep"
+    },
+    {
+      "signature": "pub use super :: exact_solver :: ExactOuSolver"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/poisson.rs": [
+    {
+      "signature": "impl HomogeneousPoisson { pub fn mean (& self , _ : f64) -> Result < f64 , PoissonError > }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn new (_ : f64) -> Result < Self , PoissonError > }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn pmf (& self , _ : usize , _ : f64) -> Result < f64 , PoissonError > }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn sample_interarrival (& self , _ : & mut OxidizeRng) -> f64 }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn simulate_arrivals (& self , _ : f64 , _ : usize , _ : & mut OxidizeRng ,) -> Result < Vec < f64 > , PoissonError > }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn simulate_arrivals_into (& self , _ : f64 , _ : & mut [f64] , _ : & mut OxidizeRng ,) -> Result < usize , PoissonError > }"
+    },
+    {
+      "signature": "impl HomogeneousPoisson { pub fn variance (& self , _ : f64) -> Result < f64 , PoissonError > }"
+    },
+    {
+      "signature": "impl InhomogeneousPoisson { pub fn expected_count (& self , _ : f64) -> Result < f64 , PoissonError > }"
+    },
+    {
+      "signature": "impl InhomogeneousPoisson { pub fn new (_ : IntensityProfile) -> Result < Self , PoissonError > }"
+    },
+    {
+      "signature": "impl InhomogeneousPoisson { pub fn profile (& self) -> IntensityProfile }"
+    },
+    {
+      "signature": "impl InhomogeneousPoisson { pub fn simulate_arrivals (& self , _ : f64 , _ : usize , _ : & mut OxidizeRng ,) -> Result < Vec < f64 > , PoissonError > }"
+    },
+    {
+      "signature": "impl InhomogeneousPoisson { pub fn simulate_arrivals_into (& self , _ : f64 , _ : & mut [f64] , _ : & mut OxidizeRng ,) -> Result < usize , PoissonError > }"
+    },
+    {
+      "signature": "impl IntensityProfile { pub fn integrated_mean (self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl IntensityProfile { pub fn rate_at (self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl IntensityProfile { pub fn upper_bound (self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl IntensityProfile { pub fn validate (self) -> Result < Self , PoissonError > }"
+    },
+    {
+      "signature": "pub enum IntensityProfile"
+    },
+    {
+      "signature": "pub enum PoissonError"
+    },
+    {
+      "signature": "pub struct HomogeneousPoisson"
+    },
+    {
+      "signature": "pub struct InhomogeneousPoisson"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/queueing.rs": [
+    {
+      "signature": "impl Mm1Queue { pub fn arrival_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn metrics (& self) -> QueueMetrics }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn new (_ : f64 , _ : f64) -> Result < Self , QueueingError > }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn service_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn simulate_trajectory_into (& self , _ : usize , _ : f64 , _ : & mut [f64] , _ : & mut [usize] , _ : & mut OxidizeRng ,) -> usize }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn state_probability (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn to_truncated_ctmc (& self , _ : usize ,) -> Result < ContinuousMarkovChain < f64 > , QueueingError > }"
+    },
+    {
+      "signature": "impl Mm1Queue { pub fn utilization (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn arrival_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn idle_and_erlang_c (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn metrics (& self) -> QueueMetrics }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn new (_ : f64 , _ : f64 , _ : usize ,) -> Result < Self , QueueingError > }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn servers (& self) -> usize }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn service_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn simulate_trajectory_into (& self , _ : usize , _ : f64 , _ : & mut [f64] , _ : & mut [usize] , _ : & mut OxidizeRng ,) -> usize }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn state_probability (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn to_truncated_ctmc (& self , _ : usize ,) -> Result < ContinuousMarkovChain < f64 > , QueueingError > }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn traffic_intensity (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MmcQueue { pub fn utilization (& self) -> f64 }"
+    },
+    {
+      "signature": "pub enum QueueingError"
+    },
+    {
+      "signature": "pub struct Mm1Queue"
+    },
+    {
+      "signature": "pub struct MmcQueue"
+    },
+    {
+      "signature": "pub struct QueueMetrics"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/regression.rs": [
@@ -11861,7 +12129,13 @@
       "signature": "pub use pure_math :: error :: OuError"
     },
     {
+      "signature": "pub use pure_math :: error :: PoissonError"
+    },
+    {
       "signature": "pub use pure_math :: error :: PureMathError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: QueueingError"
     },
     {
       "signature": "pub use pure_math :: error :: StochasticError"

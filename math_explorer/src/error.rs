@@ -33,8 +33,8 @@ pub use domain_physics::error::{
 pub use pure_math::error::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
     Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
-    TransformError, ZipError,
+    OptimizationError, OuError, PoissonError, PureMathError, QueueingError, StochasticError,
+    TdaError, TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -195,6 +195,12 @@ pub enum Error {
     /// Ornstein-Uhlenbeck process error.
     #[cfg(feature = "pure_math")]
     Ou(OuError),
+    /// Homogeneous or inhomogeneous Poisson process error.
+    #[cfg(feature = "pure_math")]
+    Poisson(PoissonError),
+    /// Birth-death queueing model error.
+    #[cfg(feature = "pure_math")]
+    Queueing(QueueingError),
     /// Stochastic simulation error.
     #[cfg(feature = "pure_math")]
     Stochastic(StochasticError),

@@ -267,39 +267,53 @@ pub fn estimate_ou_params(observations: &[f64], dt: f64) -> Result<OuParams, OuE
             actual: observations.len(),
         });
     }
+    if !dt.is_finite() || dt <= 0.0 {
+        return Err(OuError::InvalidTimeStep { value: dt });
+    }
 
-    // Estimate mu as sample mean
-    let mu = observations.iter().sum::<f64>() / observations.len() as f64;
+    let n = observations.len();
+    let mu = observations.iter().sum::<f64>() / n as f64;
+    let variance = observations.iter().map(|&x| (x - mu).powi(2)).sum::<f64>() / (n - 1) as f64;
 
-    // Estimate sigma from sample variance
-    let variance = observations.iter().map(|&x| (x - mu).powi(2)).sum::<f64>()
-        / (observations.len() - 1) as f64;
-    let sigma = variance.sqrt();
+    let pairs = n - 1;
+    let mean_prev = observations[..pairs].iter().sum::<f64>() / pairs as f64;
+    let mean_next = observations[1..].iter().sum::<f64>() / pairs as f64;
 
-    // Estimate theta from lag-1 autocorrelation
-    let mut numerator = 0.0;
-    let mut denominator = 0.0;
-    for i in 0..observations.len() - 1 {
-        let diff_current = observations[i] - mu;
-        let diff_next = observations[i + 1] - mu;
-        numerator += diff_current * diff_next;
-        denominator += diff_current * diff_current;
+    let mut numerator = 0.0_f64;
+    let mut denominator = 0.0_f64;
+    for i in 0..pairs {
+        let dx = observations[i] - mean_prev;
+        let dy = observations[i + 1] - mean_next;
+        numerator += dx * dy;
+        denominator += dx * dx;
     }
 
     let rho1 = if denominator > math_commons::registry::TOLERANCE_HIGH {
         numerator / denominator
     } else {
-        0.5 // Default if variance is too small
+        0.5
     };
 
-    // theta ≈ -ln(ρ₁) / Δt
-    let theta = if rho1 > 0.0 && rho1 < 1.0 {
-        -rho1.ln() / dt
+    let (theta, sigma) = if rho1 > 0.0 && rho1 < 1.0 {
+        let theta_hat = -rho1.ln() / dt;
+        let dof = (pairs.saturating_sub(2)).max(1) as f64;
+        let mut sse = 0.0_f64;
+        for i in 0..pairs {
+            let resid = (observations[i + 1] - mean_next) - rho1 * (observations[i] - mean_prev);
+            sse += resid * resid;
+        }
+        let innovation_var = sse / dof;
+        let one_minus_rho_sq = (1.0 - rho1 * rho1).max(1e-15);
+        let sigma_hat = (innovation_var * (2.0 * theta_hat) / one_minus_rho_sq).sqrt();
+        (theta_hat, sigma_hat)
     } else {
-        1.0 // Default if autocorrelation is out of range
+        // Stationary method-of-moments fallback: Var(X) = sigma^2 / (2 * theta) => sigma = sqrt(2 * theta * Var(X))
+        let theta_fallback = 1.0_f64;
+        let sigma_hat = (2.0 * theta_fallback * variance.max(0.0)).sqrt();
+        (theta_fallback, sigma_hat)
     };
 
-    OuParams::from_values(mu, theta.max(0.01), sigma.max(0.01))
+    OuParams::from_values(mu, theta.max(1e-6), sigma.max(0.0))
 }
 
 #[cfg(test)]
@@ -382,5 +396,28 @@ mod tests {
         let observations = vec![0.5, 0.6];
         let result = estimate_ou_params(&observations, 1.0);
         assert!(result.is_err());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_estimate_ou_params_recovers_sigma_within_five_percent() {
+        let dt_val = 0.02;
+        let dt = TimeStep::new(dt_val).unwrap();
+        let true_sigma = 0.35;
+
+        for &theta in &[4.0_f64, 0.10_f64] {
+            let params = OuParams::from_values(1.0, theta, true_sigma).unwrap();
+            let solver = super::super::ExactOuSolver::new(params, dt);
+            let mut rng = oxidize_core::rng::OxidizeRng::new(2026);
+            let traj = solver.simulate(1.0, 8_000, &mut rng);
+
+            let est = estimate_ou_params(&traj, dt_val).unwrap();
+            let rel_err = (est.sigma.value() - true_sigma).abs() / true_sigma;
+            assert!(
+                rel_err < 0.05,
+                "theta={theta}: estimated sigma {} exceeded 5% relative error vs {true_sigma} (rel_err={rel_err})",
+                est.sigma.value()
+            );
+        }
     }
 }

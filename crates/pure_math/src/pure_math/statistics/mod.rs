@@ -101,6 +101,10 @@ pub mod glicko2;
 pub mod kelly;
 pub mod markov;
 pub mod ou_process;
+/// Homogeneous and inhomogeneous Poisson arrival processes.
+pub mod poisson;
+/// Markovian birth-death queueing models ($M/M/1$ and $M/M/c$ Erlang-C).
+pub mod queueing;
 pub mod regression;
 pub mod tda;
 pub mod zip_regression;

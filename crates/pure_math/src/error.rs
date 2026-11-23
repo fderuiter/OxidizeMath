@@ -395,6 +395,7 @@ pub use crate::pure_math::{
     },
     elliptic_curves::EllipticCurveError,
     number_theory::ambs::AmbsError,
+    statistics::{poisson::PoissonError, queueing::QueueingError},
     tensor::types::TensorError,
 };
 pub use umbrella::PureMathError;
