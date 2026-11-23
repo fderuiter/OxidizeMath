@@ -7,7 +7,7 @@ use egui_plot::PlotPoints;
 #[test]
 fn test_canonical_parrondo_tool_kelly_badges_and_gains() {
     let tool = ParrondoParadoxTool::default();
-    assert_eq!(tool.name(), "Parrondo's Paradox");
+    assert_eq!(tool.name(), "Parrondo's Kelly Ratchet");
     assert_eq!(tool.domain(), "financial_math");
     assert!(tool.error_msg.is_none());
 

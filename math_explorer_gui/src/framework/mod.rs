@@ -28,6 +28,7 @@ mod drag_bounds_and_rollback_tests;
 mod export_3d;
 mod export_dataset;
 mod export_figure;
+mod export_gif_job;
 mod export_modal_host;
 mod export_persistence;
 mod export_queue;
@@ -447,6 +448,7 @@ pub struct SimulationFramework {
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
     pub(crate) export_queue: ExportQueue,
+    gif_job: Option<export_gif_job::FrameworkGifJob>,
     /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
     /// Baseline parameters snapshot on tool load.
