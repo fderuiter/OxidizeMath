@@ -445,6 +445,7 @@ impl SimulationFramework {
             }
             let _ = self.inspect_runtime_state();
             if self.is_diverged {
+                crate::audio::notify_solver_diverged();
                 ctx.request_repaint();
             } else {
                 let _ = self.evaluate_challenge_predicates(Some(&ctx));

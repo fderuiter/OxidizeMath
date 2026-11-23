@@ -1,6 +1,7 @@
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use std::fs;
 use std::path::{Path, PathBuf};
+use syn::spanned::Spanned;
 use syn::visit::Visit;
 
 pub(crate) const DEFAULT_TOO_MANY_LINES_THRESHOLD: usize = 60;
@@ -259,10 +260,33 @@ fn next_macro_item_keyword(tokens: &[TokenTree], mut idx: usize) -> Option<Strin
     None
 }
 
+fn item_scope_label(item: &syn::Item) -> Option<String> {
+    match item {
+        syn::Item::Fn(x) => Some(format!("fn `{}`", x.sig.ident)),
+        syn::Item::Struct(x) => Some(format!("struct `{}`", x.ident)),
+        syn::Item::Enum(x) => Some(format!("enum `{}`", x.ident)),
+        syn::Item::Union(x) => Some(format!("union `{}`", x.ident)),
+        syn::Item::Type(x) => Some(format!("type `{}`", x.ident)),
+        syn::Item::Const(x) => Some(format!("const `{}`", x.ident)),
+        syn::Item::Static(x) => Some(format!("static `{}`", x.ident)),
+        syn::Item::Mod(x) => Some(format!("mod `{}`", x.ident)),
+        syn::Item::Trait(x) => Some(format!("trait `{}`", x.ident)),
+        syn::Item::TraitAlias(x) => Some(format!("trait `{}`", x.ident)),
+        syn::Item::Impl(x) => Some(
+            crate::ast_helpers::impl_base_ident(&x.self_ty)
+                .map_or_else(|| "impl block".to_string(), |id| format!("impl `{id}`")),
+        ),
+        syn::Item::Macro(x) => x.ident.as_ref().map(|id| format!("macro `{id}`")),
+        _ => None,
+    }
+}
+
 pub(crate) struct ClippyBypassVisitor {
     pub(crate) file_path: String,
     pub(crate) max_fn_lines: usize,
     pub(crate) has_unauthorized: bool,
+    pub(crate) violations: Vec<String>,
+    current_item: Option<String>,
 }
 
 impl ClippyBypassVisitor {
@@ -271,14 +295,19 @@ impl ClippyBypassVisitor {
             file_path,
             max_fn_lines,
             has_unauthorized: false,
+            violations: Vec::new(),
+            current_item: None,
         }
     }
 
-    fn report_violation(&mut self, scope: &str, lint_name: &str) {
-        println!(
-            "[!] Unauthorized Clippy bypass in {} ({scope}: clippy::{lint_name})",
-            self.file_path
+    fn report_violation(&mut self, line: usize, scope: &str, lint_name: &str) {
+        let loc = crate::ast_helpers::format_file_line(&self.file_path, line);
+        let msg = format!(
+            "[!] Unauthorized Clippy bypass at {loc} ({scope}: clippy::{lint_name})\n  Hint: Decompose functions to <= {} lines instead of suppressing Clippy groups/lints, gate test-only helpers with `#[cfg(test)]`, or consult `verification_whitelist.toml` policy rules.",
+            self.max_fn_lines
         );
+        println!("{msg}");
+        self.violations.push(msg);
         self.has_unauthorized = true;
     }
 
@@ -287,7 +316,7 @@ impl ClippyBypassVisitor {
             if matches!(attr.style, syn::AttrStyle::Outer)
                 && let Some(lint) = find_suppressed_clippy_lint(attr, SCOPE_EXTRA_BLOCKED_LINTS)
             {
-                self.report_violation(scope, lint);
+                self.report_violation(attr.span().start().line, scope, lint);
             }
         }
     }
@@ -310,7 +339,7 @@ impl ClippyBypassVisitor {
                     "stale fn `{}` ({lines} <= {} lines) attribute",
                     sig.ident, self.max_fn_lines
                 );
-                self.report_violation(&label, lint);
+                self.report_violation(attr.span().start().line, &label, lint);
             }
         }
     }
@@ -329,6 +358,7 @@ impl ClippyBypassVisitor {
                 if hash.as_char() != '#' {
                     continue;
                 }
+                let line = hash.span().start().line;
                 if i + 2 < tokens.len()
                     && matches!(&tokens[i + 1], TokenTree::Punct(p) if p.as_char() == '!')
                     && let TokenTree::Group(bracket) = &tokens[i + 2]
@@ -337,7 +367,7 @@ impl ClippyBypassVisitor {
                     if let Some(lint) =
                         find_suppressed_in_attr_tokens(bracket.stream(), INNER_BLOCKED_LINTS)
                     {
-                        self.report_violation(macro_label, lint);
+                        self.report_violation(line, macro_label, lint);
                     }
                 } else if i + 1 < tokens.len()
                     && let TokenTree::Group(bracket) = &tokens[i + 1]
@@ -351,7 +381,7 @@ impl ClippyBypassVisitor {
                         BLOCKED_CLIPPY_GROUPS
                     };
                     if let Some(lint) = find_suppressed_in_attr_tokens(bracket.stream(), blocked) {
-                        self.report_violation(macro_label, lint);
+                        self.report_violation(line, macro_label, lint);
                     }
                 }
             }
@@ -360,6 +390,12 @@ impl ClippyBypassVisitor {
 }
 
 impl<'ast> Visit<'ast> for ClippyBypassVisitor {
+    fn visit_item(&mut self, i: &'ast syn::Item) {
+        let prev = std::mem::replace(&mut self.current_item, item_scope_label(i));
+        syn::visit::visit_item(self, i);
+        self.current_item = prev;
+    }
+
     fn visit_item_mod(&mut self, i: &'ast syn::ItemMod) {
         let mod_label = format!("mod `{}` attribute", i.ident);
         self.check_outer_scope_attrs(&i.attrs, &mod_label);
@@ -367,7 +403,11 @@ impl<'ast> Visit<'ast> for ClippyBypassVisitor {
     }
 
     fn visit_item_impl(&mut self, i: &'ast syn::ItemImpl) {
-        self.check_outer_scope_attrs(&i.attrs, "impl block attribute");
+        let label = crate::ast_helpers::impl_base_ident(&i.self_ty).map_or_else(
+            || "impl block attribute".to_string(),
+            |id| format!("impl `{id}` attribute"),
+        );
+        self.check_outer_scope_attrs(&i.attrs, &label);
         syn::visit::visit_item_impl(self, i);
     }
 
@@ -383,13 +423,17 @@ impl<'ast> Visit<'ast> for ClippyBypassVisitor {
     }
 
     fn visit_impl_item_fn(&mut self, i: &'ast syn::ImplItemFn) {
+        let prev = self.current_item.replace(format!("fn `{}`", i.sig.ident));
         self.check_fn_stale_too_many_lines(&i.attrs, &i.sig, Some(&i.block));
         syn::visit::visit_impl_item_fn(self, i);
+        self.current_item = prev;
     }
 
     fn visit_trait_item_fn(&mut self, i: &'ast syn::TraitItemFn) {
+        let prev = self.current_item.replace(format!("fn `{}`", i.sig.ident));
         self.check_fn_stale_too_many_lines(&i.attrs, &i.sig, i.default.as_ref());
         syn::visit::visit_trait_item_fn(self, i);
+        self.current_item = prev;
     }
 
     fn visit_item_macro(&mut self, i: &'ast syn::ItemMacro) {
@@ -405,15 +449,24 @@ impl<'ast> Visit<'ast> for ClippyBypassVisitor {
     }
 
     fn visit_attribute(&mut self, i: &'ast syn::Attribute) {
+        let line = i.span().start().line;
         match i.style {
             syn::AttrStyle::Inner(_) => {
                 if let Some(lint) = find_suppressed_clippy_lint(i, INNER_BLOCKED_LINTS) {
-                    self.report_violation("inner `#![...]` attribute", lint);
+                    let scope = self.current_item.as_deref().map_or_else(
+                        || "inner `#![...]` attribute".to_string(),
+                        |it| format!("{it} inner `#![...]` attribute"),
+                    );
+                    self.report_violation(line, &scope, lint);
                 }
             }
             syn::AttrStyle::Outer => {
                 if let Some(lint) = find_suppressed_clippy_lint(i, BLOCKED_CLIPPY_GROUPS) {
-                    self.report_violation("item `#[...]` attribute", lint);
+                    let scope = self.current_item.as_deref().map_or_else(
+                        || "item `#[...]` attribute".to_string(),
+                        |it| format!("{it} `#[...]` attribute"),
+                    );
+                    self.report_violation(line, &scope, lint);
                 }
             }
         }

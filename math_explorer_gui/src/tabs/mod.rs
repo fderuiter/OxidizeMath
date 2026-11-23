@@ -45,8 +45,8 @@ include!(concat!(env!("OUT_DIR"), "/generated_tabs.rs"));
 ///         "My Tab"
 ///     }
 ///
-///     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-///         egui::CentralPanel::default().show(ctx, |ui| {
+///     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+///         egui::CentralPanel::default().show_inside(ui, |ui| {
 ///             ui.heading("My Tab");
 ///             if ui.button("Increment").clicked() {
 ///                 self.counter += 1;
@@ -60,21 +60,8 @@ pub trait ExplorerTab {
     /// Returns the name of the tab, displayed in the navigation bar.
     fn name(&self) -> &'static str;
 
-    /// Renders the content of the tab at the root `egui::Context` level.
-    ///
-    /// By default, this creates a frameless root `CentralPanel` and delegates to [`Self::show_inside`].
-    fn show(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
-            .show(ctx, |ui| {
-                self.show_inside(ui, frame);
-            });
-    }
-
     /// Renders the content of the tab inside a scoped parent `egui::Ui` (such as a multi-pane viewport region).
-    fn show_inside(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.show(ui.ctx(), frame);
-    }
+    fn show_inside(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame);
 
     /// Monotonic or deterministic revision token for persisted tab state (`0` if untracked).
     fn state_revision(&self) -> u64 {
