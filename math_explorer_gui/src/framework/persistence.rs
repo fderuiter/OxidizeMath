@@ -140,47 +140,87 @@ struct FrameworkStateDeserialize {
     plot_states: plot_persistence::SavedPlotStatesMap,
 }
 
+fn with_isolated_plot_capture<T>(capture: impl FnOnce() -> T) -> T {
+    let prev = egui_plot::get_last_plot_datasets();
+    let prev_3d = egui_plot::get_last_plot_datasets_3d();
+    let prev_prims = egui_plot::get_last_plot_primitives();
+    egui_plot::clear_last_plot_datasets();
+    let result = capture();
+    egui_plot::clear_last_plot_datasets();
+    if !prev.is_empty() {
+        egui_plot::append_last_plot_datasets(&prev);
+    }
+    if !prev_3d.is_empty() {
+        egui_plot::append_last_plot_datasets_3d(&prev_3d);
+    }
+    if !prev_prims.is_empty() {
+        egui_plot::append_last_plot_primitives(&prev_prims);
+    }
+    result
+}
+
 pub(super) fn capture_isolated_tool_datasets(
     tool: &dyn InteractiveTool,
 ) -> Vec<(String, Vec<[f64; 2]>)> {
-    let prev = egui_plot::get_last_plot_datasets();
-    let prev_3d = egui_plot::get_last_plot_datasets_3d();
-    let prev_prims = egui_plot::get_last_plot_primitives();
-    egui_plot::clear_last_plot_datasets();
-    let datasets = tool.export_datasets();
-    egui_plot::clear_last_plot_datasets();
-    if !prev.is_empty() {
-        egui_plot::append_last_plot_datasets(&prev);
-    }
-    if !prev_3d.is_empty() {
-        egui_plot::append_last_plot_datasets_3d(&prev_3d);
-    }
-    if !prev_prims.is_empty() {
-        egui_plot::append_last_plot_primitives(&prev_prims);
-    }
-    datasets
+    with_isolated_plot_capture(|| tool.export_datasets())
 }
 
 fn capture_isolated_tool_datasets_3d(tool: &dyn InteractiveTool) -> Vec<(String, Vec<[f64; 3]>)> {
-    let prev = egui_plot::get_last_plot_datasets();
-    let prev_3d = egui_plot::get_last_plot_datasets_3d();
-    let prev_prims = egui_plot::get_last_plot_primitives();
-    egui_plot::clear_last_plot_datasets();
-    let datasets_3d = tool.export_datasets_3d();
-    egui_plot::clear_last_plot_datasets();
-    if !prev.is_empty() {
-        egui_plot::append_last_plot_datasets(&prev);
-    }
-    if !prev_3d.is_empty() {
-        egui_plot::append_last_plot_datasets_3d(&prev_3d);
-    }
-    if !prev_prims.is_empty() {
-        egui_plot::append_last_plot_primitives(&prev_prims);
-    }
-    datasets_3d
+    with_isolated_plot_capture(|| tool.export_datasets_3d())
 }
 
 impl SimulationFramework {
+    /// Creates a new simulation framework instance populated with registered tools for `domain`.
+    pub fn new(domain: &str) -> Self {
+        let mut available_tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>
+            .into_iter()
+            .filter(|t| t.domain == domain)
+            .collect();
+        available_tools.sort_by_key(|t| (t.display_name, t.id));
+        let mut framework = Self {
+            available_tools,
+            active_tool: None,
+            selected_tool_index: None,
+            input_mode: InputMode::Mouse,
+            show_theory_portal: false,
+            show_starter_gallery: false,
+            saved_tool_states: HashMap::new(),
+            saved_plot_states: std::collections::BTreeMap::new(),
+            plot_sync_generation: 1,
+            search_query: String::new(),
+            last_announced_count: None,
+            last_announced_query: String::new(),
+            show_export_modal: false,
+            export_options: egui_plot::export::ExportOptions::default(),
+            export_bg_dark: true,
+            export_gif_fps: 15,
+            export_gif_frames: 20,
+            export_status_message: None,
+            export_status_severity: ExportStatusSeverity::Success,
+            domain: domain.to_string(),
+            preset_dialog: crate::presets::PresetDialogState::default(),
+            export_queue: ExportQueue::default(),
+            last_valid_snapshot: None,
+            baseline_tool_state: None,
+            current_valid_plot_datasets: Vec::new(),
+            current_valid_plot_datasets_3d: Vec::new(),
+            is_diverged: false,
+            diagnostic_report: None,
+            step_counter: 0,
+            start_time: crate::web_io::PlatformInstant::now(),
+            challenge_hud: ChallengeHudState::default(),
+            active_challenge: None,
+            challenge_was_passed: false,
+            instance_id: overlay_sync::next_framework_id(),
+            sync_state: FrameworkSyncState::default(),
+            rev_cache: FrameworkRevisionCache::default(),
+        };
+        if !framework.available_tools.is_empty() {
+            framework.select_tool(0);
+        }
+        framework
+    }
+
     pub(super) fn bump_framework_revision(&mut self) {
         self.rev_cache.framework_revision = self.rev_cache.framework_revision.wrapping_add(1);
         self.rev_cache.untracked_tool_revision =
@@ -389,6 +429,7 @@ impl SimulationFramework {
         }
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
+        self.clear_challenge_hud();
         self.active_challenge = None;
         self.challenge_was_passed = false;
         self.selected_tool_index = Some(index);

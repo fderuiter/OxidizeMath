@@ -1,6 +1,6 @@
-#![allow(missing_docs)]
+//! Zero-allocation and binary SDF function tests for 3D AST evaluation.
 
-use math_commons::ast::{Complex64, EvalError, Func, parse};
+use math_commons::ast::{Complex64, EvalError, Expr, Func, ParseError, Span, parse};
 use std::collections::HashMap;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
 use verified_engine::allocator::VerifiedAllocator;
@@ -40,7 +40,16 @@ fn test_binary_func_arity_latex_and_nan_propagation() {
     let expected = 1.5_f64.max((-2.0_f64).atan2(3.0));
     assert!((expr.eval(&vars).unwrap() - expected).abs() < 1e-12);
 
-    let wrong_min = parse("min(1)").expect("parse wrong arity");
+    assert_eq!(
+        parse("min(1)"),
+        Err(ParseError::WrongArgumentCount {
+            func: Func::Min,
+            expected: 2,
+            found: 1,
+            span: Span { start: 0, end: 3 },
+        })
+    );
+    let wrong_min = Expr::function(Func::Min, vec![Expr::Number(1.0)]);
     assert_eq!(
         wrong_min.eval(&vars),
         Err(EvalError::WrongArgumentCount {

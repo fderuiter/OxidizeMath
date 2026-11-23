@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for battery degradation demo.
 use math_explorer::applied::battery_degradation::{Cycles, DepthOfDischarge, PowerLawModel};
 
 fn main() {

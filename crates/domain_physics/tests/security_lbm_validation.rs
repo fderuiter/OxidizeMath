@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for security lbm validation.
 use domain_physics::physics::fluid_dynamics::lattice_boltzmann::{
     CollisionModel, Lattice2D, LatticeBoltzmann,
 };

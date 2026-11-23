@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Watertight 2-manifold, outward winding, and zero-allocation tests for padded Marching Cubes.
 
 use domain_applied::applied::isosurface::{
     IsosurfaceMode, MAX_SYNC_INTERIOR_DIM, Mesh, WatertightGridConfig, WatertightGridError,
