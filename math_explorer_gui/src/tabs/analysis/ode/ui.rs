@@ -9,18 +9,13 @@ use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 
 impl OdeSolverTool {
-    pub(super) fn render_sidebar_controls(
-        &mut self,
-        ui: &mut egui::Ui,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
-    ) -> bool {
+    pub(super) fn render_sidebar_controls(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         changed |= self.render_preset_selector(ui);
         changed |= self.render_parameter_inputs(ui);
         changed |= self.render_initial_condition_inputs(ui);
         changed |= self.render_solver_settings_controls(ui);
-        self.render_snapshots_and_sensitivity(ui, plot_points_y, plot_points_v);
+        self.render_snapshots_and_sensitivity(ui);
         if self.callout_manager.render_ui(ui) {
             changed = true;
         }
@@ -216,13 +211,14 @@ impl OdeSolverTool {
             changed = true;
         }
 
+        let min_dt = (self.total_time.max(0.1) / crate::presets::MAX_ODE_STEPS as f64).max(1e-6);
         ui.horizontal(|ui| {
             ui.label("dt (Step Size):");
             if ui
                 .add(
                     egui::DragValue::new(&mut self.dt)
                         .speed(0.01)
-                        .range(0.001..=1.0),
+                        .range(min_dt..=1.0),
                 )
                 .changed()
             {
@@ -257,24 +253,30 @@ impl OdeSolverTool {
         changed
     }
 
-    fn render_snapshots_and_sensitivity(
-        &mut self,
-        ui: &mut egui::Ui,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
-    ) {
+    fn render_snapshots_and_sensitivity(&mut self, ui: &mut egui::Ui) {
         ui.add_space(10.0);
         let param_summary = self.param_summary();
         let has_v = self.has_second_state();
         let v_label = self.second_state_label();
-        let py = plot_points_y.to_vec();
-        let pv = plot_points_v.to_vec();
         let current_len = self.snapshot_manager.len();
+        let time_series = &self.time_series;
+        let y_series = &self.y_series;
+        let v_series = &self.v_series;
 
         if self.snapshot_manager.render_ui(ui, || {
             let label = format!("Baseline {}", current_len + 1);
+            let py: Vec<[f64; 2]> = time_series
+                .iter()
+                .zip(y_series)
+                .map(|(&t, &y)| [t, y])
+                .collect();
             let mut series = vec![TraceSeries::new("y(t)", py)];
-            if has_v && !pv.is_empty() {
+            if has_v && !v_series.is_empty() {
+                let pv: Vec<[f64; 2]> = time_series
+                    .iter()
+                    .zip(v_series)
+                    .map(|(&t, &v)| [t, v])
+                    .collect();
                 series.push(TraceSeries::new(v_label, pv));
             }
             Some((label, param_summary, series))
@@ -284,11 +286,7 @@ impl OdeSolverTool {
 
         self.run_sensitivity_analysis();
 
-        crate::sensitivity::render_sensitivity_panel_ui(
-            ui,
-            &self.sensitivity_engine,
-            "ode_tool",
-        );
+        crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "ode_tool");
     }
 
     fn collect_sensitivity_params(&self) -> Vec<(&str, f64)> {

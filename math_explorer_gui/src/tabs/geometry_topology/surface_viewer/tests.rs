@@ -73,6 +73,8 @@ fn surface_viewer_custom_domain_bounds_mesh_obj_and_state_roundtrip() {
         restored.custom_sandbox.uv_domain_for(SurfaceType::CustomHeightfield),
         ((1.0, 5.0), (-3.0, 4.0))
     );
+    let (segs, _) = restored.ensure_projected_wireframe();
+    assert!(!segs.is_empty());
     assert!(
         tool.custom_sandbox
             .set_uv_bounds(SurfaceType::CustomHeightfield, [4.0, 1.0], [-1.0, 1.0])
@@ -80,3 +82,31 @@ fn surface_viewer_custom_domain_bounds_mesh_obj_and_state_roundtrip() {
     );
 }
 
+#[test]
+fn surface_viewer_clamps_high_res_state_and_reuses_cached_3d_mesh_on_orbit() {
+    let mut tool = SurfaceViewer::default();
+    let high_res = r#"{"surface_type":"Torus","sphere_radius":1.0,"torus_major_radius":2.0,"torus_minor_radius":0.5,"klein_radius":2.0,"u_resolution":1000,"v_resolution":1000,"pitch":0.5,"yaw":0.5,"zoom":1.0}"#;
+    tool.try_load_state(high_res)
+        .expect("1000x1000 state should clamp cleanly");
+    assert_eq!(
+        tool.u_resolution,
+        crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION
+    );
+    assert_eq!(
+        tool.v_resolution,
+        crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION
+    );
+
+    let mut cached_tool = SurfaceViewer::default();
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |c| cached_tool.show(c));
+    let _ = ctx.run(egui::RawInput::default(), |c| cached_tool.show(c));
+    assert_eq!(cached_tool.cache.surface_eval_count, 1);
+    assert_eq!(cached_tool.cache.projection_count, 1);
+
+    cached_tool.camera.yaw += 0.35;
+    cached_tool.camera.zoom *= 1.15;
+    let _ = ctx.run(egui::RawInput::default(), |c| cached_tool.show(c));
+    assert_eq!(cached_tool.cache.surface_eval_count, 1);
+    assert_eq!(cached_tool.cache.projection_count, 2);
+}

@@ -159,6 +159,7 @@ pub(crate) fn fit_nonlinear(
         log_y: false,
         log_mode: use_log_mode,
         custom_evaluator: None,
+        poly_centered: None,
     })
 }
 

@@ -38,6 +38,8 @@ pub struct OdeSolverTool {
     pub time_series: Vec<f64>,
     pub y_series: Vec<f64>,
     pub v_series: Vec<f64>,
+    pub(crate) display_y: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
+    pub(crate) display_v: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
     pub(crate) diverged: bool,
     pub(crate) math_input: MathExpressionInputBar,
     pub(crate) custom_coupled: bool,
@@ -72,6 +74,8 @@ impl Default for OdeSolverTool {
             time_series: Vec::new(),
             y_series: Vec::new(),
             v_series: Vec::new(),
+            display_y: std::sync::Arc::new(Vec::new()),
+            display_v: std::sync::Arc::new(Vec::new()),
             diverged: false,
             math_input: MathExpressionInputBar::new(
                 "y'",
@@ -310,32 +314,11 @@ impl OdeSolverTool {
         self.recalculate();
     }
 
-    fn build_current_trace_series(
-        &self,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
-    ) -> Vec<TraceSeries> {
-        let mut series = vec![TraceSeries::new("y(t)", plot_points_y.to_vec())];
-        if self.has_second_state() && !plot_points_v.is_empty() {
-            series.push(TraceSeries::new(
-                self.second_state_label(),
-                plot_points_v.to_vec(),
-            ));
-        }
-        series
-    }
-
-    pub(super) fn apply_sidebar_changes(
-        &mut self,
-        changed: bool,
-        sweep_active: bool,
-        plot_points_y: &[[f64; 2]],
-        plot_points_v: &[[f64; 2]],
-    ) {
+    pub(super) fn apply_sidebar_changes(&mut self, changed: bool, sweep_active: bool) {
         if sweep_active {
             if changed {
                 if self.pending_sweep_run.is_none() {
-                    let series = self.build_current_trace_series(plot_points_y, plot_points_v);
+                    let series = self.build_current_trace_series();
                     self.pending_sweep_run = Some((self.last_param_summary.clone(), series));
                 }
                 self.recalculate();
@@ -351,7 +334,7 @@ impl OdeSolverTool {
                 self.bump_revision();
             }
         } else if changed {
-            let series = self.build_current_trace_series(plot_points_y, plot_points_v);
+            let series = self.build_current_trace_series();
             self.snapshot_manager
                 .push_history_run(&self.last_param_summary, series);
             self.recalculate();
@@ -367,6 +350,11 @@ impl OdeSolverTool {
         self.diagnostic_report = None;
 
         self.recalculate_active();
+        let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
+        self.display_y =
+            crate::framework::decimate_xy_series_minmax(&self.time_series, &self.y_series, cap);
+        self.display_v =
+            crate::framework::decimate_xy_series_minmax(&self.time_series, &self.v_series, cap);
         self.recalculate_comparison();
         self.last_param_summary = self.param_summary();
         self.update_callouts();

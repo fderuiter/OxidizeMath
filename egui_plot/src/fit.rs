@@ -14,6 +14,23 @@ pub use custom::{
     CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, fit_custom_evaluator,
 };
 
+thread_local! {
+    static FIT_MODEL_WITH_AXES_CALL_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Returns the total number of [`fit_model_with_axes`] solver executions on the current thread for regression diagnostics.
+#[doc(hidden)]
+#[must_use]
+pub fn fit_model_with_axes_call_count() -> usize {
+    FIT_MODEL_WITH_AXES_CALL_COUNT.with(std::cell::Cell::get)
+}
+
+/// Resets the [`fit_model_with_axes`] solver invocation counter on the current thread to zero.
+#[doc(hidden)]
+pub fn reset_fit_model_with_axes_call_count() {
+    FIT_MODEL_WITH_AXES_CALL_COUNT.with(|c| c.set(0));
+}
+
 /// Maximum Levenberg-Marquardt iterations per nonlinear fit.
 pub const MAX_LM_ITERATIONS: usize = 50;
 
@@ -155,6 +172,7 @@ pub struct FitResult {
     pub log_mode: bool,
     /// Optional compiled callback evaluator when `fit_type == FitType::Custom`.
     pub custom_evaluator: Option<CustomEvaluatorHandle>,
+    pub(crate) poly_centered: Option<(f64, f64, Vec<f64>)>,
 }
 
 impl FitResult {
@@ -166,7 +184,13 @@ impl FitResult {
         }
         match self.fit_type {
             FitType::Linear | FitType::Polynomial(_) => {
-                poly::eval_scaled_polynomial(&self.coefficients, x, self.log_x, self.log_y)
+                if let Some((u_mean, u_scale, ref centered)) = self.poly_centered {
+                    poly::eval_centered_polynomial(
+                        u_mean, u_scale, centered, x, self.log_x, self.log_y,
+                    )
+                } else {
+                    poly::eval_scaled_polynomial(&self.coefficients, x, self.log_x, self.log_y)
+                }
             }
             FitType::Exponential
             | FitType::PowerLaw
@@ -249,6 +273,7 @@ pub fn fit_model_with_axes(
     log_y: bool,
     log_mode: bool,
 ) -> Option<FitResult> {
+    FIT_MODEL_WITH_AXES_CALL_COUNT.with(|c| c.set(c.get() + 1));
     match fit_type {
         FitType::Linear => poly::fit_polynomial_scaled(points, 1, dataset_name, log_x, log_y),
         FitType::Polynomial(deg) => {

@@ -3,6 +3,8 @@
 
 use std::sync::{Arc, RwLock};
 
+use std::hash::{Hash, Hasher};
+
 use egui::{Color32, Rect, RichText, Stroke, Ui, vec2};
 
 use crate::{
@@ -75,6 +77,39 @@ fn parse_seed_list(raw: &str) -> Result<Vec<f64>, String> {
     Ok(out)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FitCacheKey {
+    pub(crate) fit_type: FitType,
+    pub(crate) dataset_idx: usize,
+    pub(crate) log_x: bool,
+    pub(crate) log_y: bool,
+    pub(crate) log_mode: bool,
+    pub(crate) dataset_hash: u64,
+    pub(crate) custom_hash: u64,
+}
+
+fn hash_fit_dataset(name: &str, points: &[[f64; 2]]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    name.hash(&mut hasher);
+    points.len().hash(&mut hasher);
+    for pt in points {
+        pt[0].to_bits().hash(&mut hasher);
+        pt[1].to_bits().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn hash_custom_fit_config(access_state: &AccessState, fit_type: FitType) -> u64 {
+    if fit_type != FitType::Custom {
+        return 0;
+    }
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    access_state.custom_fit_formula.hash(&mut hasher);
+    access_state.custom_fit_seeds_text.hash(&mut hasher);
+    has_custom_fit_callback().hash(&mut hasher);
+    hasher.finish()
+}
+
 /// Computes the active regression fit (if enabled) and appends hoverable fitted curve and
 /// optional vertical residual stem series directly into `items` prior to dataset extraction.
 pub(crate) fn compute_and_inject_fit_items<'a>(
@@ -89,25 +124,52 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
     select_valid_dataset_index(base_datasets, access_state);
 
     let fit_type = access_state.fit_model?;
+    if !access_state.show_fit_overlay {
+        return None;
+    }
     let (ds_name, ds_pts, ds_color) = base_datasets.get(access_state.fit_dataset_idx)?;
-    let fit_res = resolve_active_fit(ds_pts, ds_name, fit_type, access_state, log_x, log_y)?;
+    let log_mode = access_state.fit_log_mode && fit_type.supports_log_mode();
+    let cache_key = FitCacheKey {
+        fit_type,
+        dataset_idx: access_state.fit_dataset_idx,
+        log_x,
+        log_y,
+        log_mode,
+        dataset_hash: hash_fit_dataset(ds_name, ds_pts),
+        custom_hash: hash_custom_fit_config(access_state, fit_type),
+    };
+    let fit_res = if let Some((ref prev_key, ref prev_res)) = access_state.cached_fit
+        && *prev_key == cache_key
+    {
+        prev_res.clone()?
+    } else {
+        let solved = resolve_active_fit(
+            ds_pts,
+            ds_name,
+            fit_type,
+            access_state,
+            log_x,
+            log_y,
+            log_mode,
+        );
+        access_state.cached_fit = Some((cache_key, solved.clone()));
+        solved?
+    };
     let accent = if *ds_color == Color32::TRANSPARENT {
         ui.visuals().widgets.active.bg_fill
     } else {
         *ds_color
     };
 
-    if access_state.show_fit_overlay {
-        inject_fit_series(
-            ui,
-            items,
-            ds_name,
-            access_state,
-            &fit_res,
-            transform,
-            accent,
-        );
-    }
+    inject_fit_series(
+        ui,
+        items,
+        ds_name,
+        access_state,
+        &fit_res,
+        transform,
+        accent,
+    );
     Some((fit_res, accent))
 }
 
@@ -133,6 +195,7 @@ fn resolve_active_fit(
     access_state: &mut AccessState,
     log_x: bool,
     log_y: bool,
+    log_mode: bool,
 ) -> Option<FitResult> {
     if fit_type == FitType::Custom {
         let seeds = match parse_seed_list(&access_state.custom_fit_seeds_text) {
@@ -159,14 +222,7 @@ fn resolve_active_fit(
         }
     } else {
         access_state.custom_fit_error = None;
-        fit_model_with_axes(
-            ds_pts,
-            fit_type,
-            ds_name,
-            log_x,
-            log_y,
-            access_state.fit_log_mode,
-        )
+        fit_model_with_axes(ds_pts, fit_type, ds_name, log_x, log_y, log_mode)
     }
 }
 

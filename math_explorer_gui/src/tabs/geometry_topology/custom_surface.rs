@@ -60,6 +60,7 @@ pub struct CustomSurfaceSandbox {
     pub hf_v_bounds: [f64; 2],
     pub param_u_bounds: [f64; 2],
     pub param_v_bounds: [f64; 2],
+    cached_heightfield_zero: CompiledExpr,
     cached_parametric: (CompiledExpr, CompiledExpr, CompiledExpr),
 }
 
@@ -88,6 +89,9 @@ impl Default for CustomSurfaceSandbox {
             .with_inline_sliders(false);
 
         let fallback = fallback_compiled_triple();
+        let zero_hf =
+            CompiledExpr::compile_with_vars(&parse("0").expect("zero parses"), &["x", "y"])
+                .expect("zero compiles");
         let mut sandbox = Self {
             heightfield_bar,
             param_x_bar,
@@ -99,6 +103,7 @@ impl Default for CustomSurfaceSandbox {
             hf_v_bounds: DEFAULT_HF_BOUNDS,
             param_u_bounds: DEFAULT_PARAM_BOUNDS,
             param_v_bounds: DEFAULT_PARAM_BOUNDS,
+            cached_heightfield_zero: zero_hf,
             cached_parametric: fallback,
         };
         sandbox.recompile_parametric_triple();
@@ -144,6 +149,35 @@ impl CustomSurfaceSandbox {
         Ok(())
     }
 
+    pub fn state_fingerprint(&self, surface_type: SurfaceType) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        match surface_type {
+            SurfaceType::CustomHeightfield => {
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                self.heightfield_bar.state_fingerprint().hash(&mut h);
+                self.hf_u_bounds[0].to_bits().hash(&mut h);
+                self.hf_u_bounds[1].to_bits().hash(&mut h);
+                self.hf_v_bounds[0].to_bits().hash(&mut h);
+                self.hf_v_bounds[1].to_bits().hash(&mut h);
+                h.finish().max(1)
+            }
+            SurfaceType::CustomParametric => {
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                self.param_x_bar.raw_text.hash(&mut h);
+                self.param_y_bar.raw_text.hash(&mut h);
+                self.param_z_bar.raw_text.hash(&mut h);
+                self.parametric_error.is_some().hash(&mut h);
+                self.param_sliders.state_fingerprint().hash(&mut h);
+                self.param_u_bounds[0].to_bits().hash(&mut h);
+                self.param_u_bounds[1].to_bits().hash(&mut h);
+                self.param_v_bounds[0].to_bits().hash(&mut h);
+                self.param_v_bounds[1].to_bits().hash(&mut h);
+                h.finish().max(1)
+            }
+            _ => 0,
+        }
+    }
+
     pub fn ui_for_type(&mut self, ui: &mut egui::Ui, surface_type: SurfaceType) {
         match surface_type {
             SurfaceType::CustomHeightfield => {
@@ -187,11 +221,8 @@ impl CustomSurfaceSandbox {
         let compiled = self
             .heightfield_bar
             .active_compiled()
-            .cloned()
-            .unwrap_or_else(|| {
-                CompiledExpr::compile_with_vars(&parse("0").expect("zero parses"), &["x", "y"])
-                    .expect("zero compiles")
-            });
+            .unwrap_or(&self.cached_heightfield_zero)
+            .clone();
         CompiledHeightfieldSurface::new(compiled, self.heightfield_bar.param_slice())
     }
 

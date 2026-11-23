@@ -90,6 +90,7 @@ pub fn fit_custom_evaluator(
         log_y: false,
         log_mode: false,
         custom_evaluator: Some(CustomEvaluatorHandle(evaluator)),
+        poly_centered: None,
     })
 }
 
