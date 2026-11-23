@@ -60,6 +60,7 @@ impl PotentialFlowTool {
 
             ui.separator();
             self.draw_active_elements_list(ui);
+            self.draw_active_element_sliders(ui);
 
             ui.separator();
             if ui
@@ -71,6 +72,8 @@ impl PotentialFlowTool {
             }
 
             ui.separator();
+            ui.checkbox(&mut self.show_streamlines, "Show Streamlines (ψ)");
+            ui.checkbox(&mut self.show_stagnation_points, "Show Stagnation Points");
             let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
             self.grid_size = self.grid_size.clamp(2, max_grid);
             ui.add(
@@ -78,7 +81,42 @@ impl PotentialFlowTool {
                     .text("Visualization - Grid Density"),
             );
             ui.add(egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"));
+            let (u_inf, gamma, lift, drag) = self.aerodynamic_summary();
+            ui.separator();
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(format!(
+                        "U∞={u_inf:.1} | Γ={gamma:.1} | L'={lift:.1} | D'={drag:.1}"
+                    ))
+                    .small(),
+                )
+                .wrap(),
+            );
         });
+    }
+
+    fn draw_active_element_sliders(&mut self, ui: &mut egui::Ui) {
+        if self.elements.is_empty() {
+            return;
+        }
+        let has_vortex = self
+            .elements
+            .iter()
+            .any(|el| el.element_type == ElementType::Vortex);
+        let mut modified = false;
+        egui::CollapsingHeader::new("Tune Element Strengths")
+            .default_open(has_vortex)
+            .show(ui, |ui| {
+                for (idx, el) in self.elements.iter_mut().enumerate() {
+                    let label = format!("#{} {}", idx + 1, el.element_type.label());
+                    modified |= ui
+                        .add(egui::Slider::new(&mut el.strength, -500.0..=500.0).text(label))
+                        .changed();
+                }
+            });
+        if modified {
+            self.rebuild_field();
+        }
     }
 
     fn draw_add_element_controls(&mut self, ui: &mut egui::Ui) {

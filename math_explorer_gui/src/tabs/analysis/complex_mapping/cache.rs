@@ -186,6 +186,7 @@ impl ComplexMappingTool {
     fn math_input_fingerprint(&self) -> u64 {
         let mut mh = std::collections::hash_map::DefaultHasher::new();
         self.math_input.raw_text.hash(&mut mh);
+        self.math_input.is_valid().hash(&mut mh);
         self.math_input.state_fingerprint().hash(&mut mh);
         mh.finish()
     }

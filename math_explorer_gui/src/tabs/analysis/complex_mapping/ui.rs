@@ -134,14 +134,24 @@ impl ComplexMappingTool {
             ));
         });
 
+        let custom_invalid =
+            self.function == MappingFunction::Custom && !self.math_input.is_valid();
         let (w0, safe_scale) = self.ensure_cached_probe();
-        let w_text = if w0.re.is_finite() && w0.im.is_finite() {
+        let w_finite = !custom_invalid && w0.re.is_finite() && w0.im.is_finite();
+        let w_text = if custom_invalid {
+            "Undefined".to_string()
+        } else if w_finite {
             format!("{:.3} + {:.3}i", w0.re, w0.im)
         } else {
             "Pole / Undefined".to_string()
         };
+        let scale_text = if w_finite && safe_scale.is_finite() {
+            format!("{:.3}", safe_scale)
+        } else {
+            "Undefined".to_string()
+        };
         render_copyable_metric(ui, "w = f(z)", &w_text);
-        render_copyable_metric(ui, "Scale factor |f'(z)|", &format!("{:.3}", safe_scale));
+        render_copyable_metric(ui, "Scale factor |f'(z)|", &scale_text);
     }
 
     pub(super) fn draw_z_plane(
@@ -189,10 +199,9 @@ impl ComplexMappingTool {
         grid_ok: bool,
     ) {
         ui.label("w-plane (Output)");
-        let w0 = self
-            .inspection_point
-            .iter()
-            .all(|v| v.is_finite())
+        let custom_invalid =
+            self.function == MappingFunction::Custom && !self.math_input.is_valid();
+        let w0 = (!custom_invalid && self.inspection_point.iter().all(|v| v.is_finite()))
             .then_some(self.cache.cached_w0);
         let has_w_marker = w0.is_some_and(|w| w.re.is_finite() && w.im.is_finite());
         let w_marker = [w0.map_or(PlotPoint::new(0.0, 0.0), |w| PlotPoint::new(w.re, w.im))];

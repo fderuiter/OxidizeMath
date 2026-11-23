@@ -29,7 +29,7 @@ fn potential_flow_clamps_high_grid_state_and_caches_static_arrow_field() {
     let ctx = egui::Context::default();
     egui_plot::clear_last_plot_datasets();
     let _ = ctx.run(headless_input_with_events(Vec::new()), |c| live_tool.show(c));
-    assert_eq!(egui_plot::get_last_plot_item_counts(), vec![1]);
+    assert_eq!(egui_plot::get_last_plot_item_counts(), vec![3]);
 
     egui_plot::reset_materialized_plot_datasets_call_count();
     let _ = ctx.run(headless_input_with_events(Vec::new()), |c| live_tool.show(c));

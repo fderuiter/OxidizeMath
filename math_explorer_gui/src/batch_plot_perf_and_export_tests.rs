@@ -25,6 +25,7 @@ fn assert_consolidated_and_lazy(
     ctx: &egui::Context,
     tool: &mut dyn InteractiveTool,
     expected_plots: usize,
+    max_items_per_plot: usize,
 ) {
     let _ = ctx.run(hd_input(), |c| tool.show(c));
     egui_plot::clear_last_plot_datasets();
@@ -40,8 +41,8 @@ fn assert_consolidated_and_lazy(
     );
     for &count in &counts {
         assert!(
-            count <= 2,
-            "{} submitted {count} plot items (expected <= 2)",
+            count <= max_items_per_plot,
+            "{} submitted {count} plot items (expected <= {max_items_per_plot})",
             tool.name()
         );
     }
@@ -57,22 +58,22 @@ fn assert_consolidated_and_lazy(
 fn all_five_tools_consolidate_to_at_most_two_plot_items_and_zero_dataset_cloning() {
     let ctx = egui::Context::default();
     let mut curv = CurvatureHeatmap::default();
-    assert_consolidated_and_lazy(&ctx, &mut curv, 1);
+    assert_consolidated_and_lazy(&ctx, &mut curv, 1, 2);
 
     let mut surf = SurfaceViewer::default();
-    assert_consolidated_and_lazy(&ctx, &mut surf, 1);
+    assert_consolidated_and_lazy(&ctx, &mut surf, 1, 2);
 
     let mut flow = PotentialFlowTool::default();
-    assert_consolidated_and_lazy(&ctx, &mut flow, 1);
+    assert_consolidated_and_lazy(&ctx, &mut flow, 1, 3);
 
     let mut conformal = ComplexMappingTool::default();
-    assert_consolidated_and_lazy(&ctx, &mut conformal, 2);
+    assert_consolidated_and_lazy(&ctx, &mut conformal, 2, 2);
 
     let mut loss = LossLandscapeTool::default();
     loss.view_mode = LandscapeViewMode::Contour2D;
-    assert_consolidated_and_lazy(&ctx, &mut loss, 1);
+    assert_consolidated_and_lazy(&ctx, &mut loss, 1, 2);
     loss.view_mode = LandscapeViewMode::View3D;
-    assert_consolidated_and_lazy(&ctx, &mut loss, 1);
+    assert_consolidated_and_lazy(&ctx, &mut loss, 1, 2);
 
     // Also verify SimulationFramework skips 2D and 3D dataset materialization on unchanged frames
     let mut fw = SimulationFramework::new("__batch_lazy_fw__");

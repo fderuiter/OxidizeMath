@@ -132,6 +132,59 @@ fn test_complex_mapping_clamps_grid_density_and_caches_contours_across_probe_mov
     assert_eq!(live.cache.probe_eval_count, 2);
 }
 
+fn collect_rendered_texts(shapes: &[egui::epaint::Shape], out: &mut Vec<String>) {
+    for shape in shapes {
+        match shape {
+            egui::epaint::Shape::Text(t) => out.push(t.galley.job.text.clone()),
+            egui::epaint::Shape::Vec(inner) => collect_rendered_texts(inner, out),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn test_custom_complex_mapping_unbound_c_renders_scope_error_and_undefined_metrics() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut tool = ComplexMappingTool {
+        function: MappingFunction::Custom,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("z^2 + c");
+    assert!(!tool.math_input.is_valid());
+    let err = tool.math_input.error_message().expect("scope error for c");
+    assert!(err.contains("Unknown variable 'c'") && err.contains("z, a"));
+
+    let w_probe = tool.eval_z(Complex64::new(1.0, 1.0));
+    assert!(w_probe.re.is_nan() && w_probe.im.is_nan());
+
+    let ctx = egui::Context::default();
+    let out = ctx.run(egui::RawInput::default(), |c| tool.show(c));
+    assert!(
+        tool.cache.w_vertical.is_empty() && tool.cache.w_horizontal.is_empty(),
+        "Invalid custom expression must omit mapped w-plane contours"
+    );
+
+    let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+    let mut texts = Vec::new();
+    collect_rendered_texts(&shapes, &mut texts);
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains("Syntax Error:") && t.contains("Unknown variable 'c'")),
+        "Expected inline scope error in {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains("Undefined")),
+        "Expected Undefined readout in {texts:?}"
+    );
+    assert!(
+        !texts.iter().any(|t| t.contains("1000000.000")),
+        "Must never render clamped 1000000.000 readout in {texts:?}"
+    );
+}
+
 fn hover_frame_input(pos: egui::Pos2) -> egui::RawInput {
     egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -195,6 +248,7 @@ fn test_conformal_cache_reuse_invalidation_and_invalid_bounds_clearing() {
     tool.math_input.set_expression("z +");
     run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
     assert_eq!(tool.cache.eval_count, 7);
+    assert!(!tool.cache.z_vertical.is_empty() && tool.cache.w_vertical.is_empty());
 
     // Invalid grid bounds clear cached contour buffers and recover cleanly once valid
     tool.grid_min = 4.0;
@@ -202,6 +256,7 @@ fn test_conformal_cache_reuse_invalidation_and_invalid_bounds_clearing() {
     run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
     assert!(tool.cache.z_vertical.is_empty() && tool.cache.w_vertical.is_empty());
 
+    tool.math_input.set_expression("z + a^2 / z");
     tool.grid_min = -2.0;
     run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
     assert_eq!(tool.cache.eval_count, 8);
