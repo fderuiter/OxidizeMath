@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::{
-    barrier_interval_for_preset, default_compiled_expr, evaluate_potential_grid, sanitize_finite,
+    barrier_interval_for_preset, default_compiled_expr, evaluate_potential_grid,
     WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME,
     DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS, GRID_X_MAX, GRID_X_MIN, SIGMA_MAX,
     SIGMA_MIN,
@@ -228,8 +228,8 @@ impl WaveRunner {
         self.cached_dt = None;
         self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
 
-        let safe_x0 = sanitize_finite(cfg.x0, DEFAULT_X0);
-        let safe_k0 = sanitize_finite(cfg.k0, DEFAULT_K0);
+        let finite_or = |v: f64, d: f64| if v.is_finite() { v } else { d };
+        let (safe_x0, safe_k0) = (finite_or(cfg.x0, DEFAULT_X0), finite_or(cfg.k0, DEFAULT_K0));
         let safe_sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {

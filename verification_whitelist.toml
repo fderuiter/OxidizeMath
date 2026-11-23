@@ -132,6 +132,8 @@ allowlist = [
     "docs/adr/0038-federated-inverse-challenges-and-hud.md",
     "docs/adr/0038-prime-exponent-fractran-vm-and-minsky-gui.md",
     "docs/adr/0038-watertight-3d-stl-and-ply-exports.md",
+    "docs/adr/0039-metric-agnostic-3d-tda-exact-z2-homology-and-chaos-mashup.md",
+    "docs/adr/0039-network-epidemic-containment-primitives.md",
 ]
 
 [[unused_dependencies]]
