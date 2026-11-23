@@ -9,7 +9,7 @@
     clippy::too_many_arguments
 )]
 
-mod a11y;
+pub mod a11y;
 mod axis;
 pub mod commands;
 pub mod csv_import;
@@ -20,6 +20,7 @@ pub mod export_primitives;
 mod file_io;
 mod fit;
 mod fit_overlay;
+mod format;
 mod items;
 mod latex;
 mod legend;
@@ -45,6 +46,7 @@ use egui::{
 use emath::Float as _;
 
 pub use crate::{
+    a11y::{contrast_ratio, focus_ring_stroke},
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
     export::{
         AspectRatioOption, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
@@ -461,7 +463,10 @@ pub struct Plot<'a> {
     sense: Sense,
     show_navigation_controls: bool,
     show_zoom_buttons: bool,
+    show_toolbar: bool,
+    show_settings_button: bool,
     allow_2d_analysis: bool,
+    scene_3d_mode: bool,
     allow_csv_import: bool,
 }
 
@@ -519,7 +524,10 @@ impl<'a> Plot<'a> {
             sense: egui::Sense::click_and_drag(),
             show_navigation_controls: true,
             show_zoom_buttons: true,
+            show_toolbar: true,
+            show_settings_button: true,
             allow_2d_analysis: true,
+            scene_3d_mode: false,
             allow_csv_import: true,
         }
     }
@@ -953,6 +961,24 @@ impl<'a> Plot<'a> {
         self
     }
 
+    /// Whether to show the collapsible plot action header bar docked above the plot canvas.
+    ///
+    /// Default: `true`.
+    #[inline]
+    pub fn show_toolbar(mut self, show: bool) -> Self {
+        self.show_toolbar = show;
+        self
+    }
+
+    /// Whether to show the floating grid and axis settings wrench button in the top-right corner.
+    ///
+    /// Default: `true`.
+    #[inline]
+    pub fn show_settings_button(mut self, show: bool) -> Self {
+        self.show_settings_button = show;
+        self
+    }
+
     /// Add this plot to an axis link group so that this plot will share the bounds with other plots in the
     /// same group. A plot cannot belong to more than one axis group.
     #[inline]
@@ -1102,6 +1128,24 @@ impl<'a> Plot<'a> {
         self
     }
 
+    /// Configure the plot as a projected 3D viewport, clearing logarithmic axis scaling and hiding
+    /// 2D axes, grids, `(x, y)` hover readouts, `Fit Curve`, 2D CSV imports, and 2D
+    /// logarithmic/grid settings while preserving figure and dataset exports.
+    #[inline]
+    pub fn scene_3d_mode(mut self, enabled: bool) -> Self {
+        self.scene_3d_mode = enabled;
+        if enabled {
+            self.allow_2d_analysis = false;
+            self.allow_csv_import = false;
+            self.show_settings_button = false;
+            self.show_x = false;
+            self.show_y = false;
+            self.show_axes = false.into();
+            self.show_grid = false.into();
+        }
+        self
+    }
+
     /// Enable or disable 2D CSV/TSV dataset overlays, toolbar `Import CSV` / `Overlays` controls,
     /// `Ctrl+Shift+I`, clipboard paste, and file drag-and-drop.
     ///
@@ -1152,7 +1196,7 @@ impl<'a> Plot<'a> {
             mut show_x,
             mut show_y,
             label_formatter,
-            coordinates_formatter,
+            mut coordinates_formatter,
             x_axes,
             y_axes,
             legend_config,
@@ -1160,8 +1204,8 @@ impl<'a> Plot<'a> {
             cursor_snap_distance,
             reset,
             show_background,
-            show_axes,
-            show_grid,
+            mut show_axes,
+            mut show_grid,
             grid_spacing,
             mut linked_axes,
             mut linked_cursors,
@@ -1171,9 +1215,23 @@ impl<'a> Plot<'a> {
             sense,
             show_navigation_controls,
             show_zoom_buttons: _,
+            show_toolbar,
+            show_settings_button,
             allow_2d_analysis,
+            scene_3d_mode,
             allow_csv_import,
         } = self;
+
+        let allow_2d_analysis = allow_2d_analysis && !scene_3d_mode;
+        let allow_csv_import = allow_csv_import && !scene_3d_mode;
+        let show_settings_button = show_settings_button && !scene_3d_mode;
+        if scene_3d_mode {
+            show_x = false;
+            show_y = false;
+            show_axes = Vec2b::FALSE;
+            show_grid = Vec2b::FALSE;
+            coordinates_formatter = None;
+        }
 
         resolve_ambient_plot_links(
             ui.ctx(),
@@ -1205,7 +1263,13 @@ impl<'a> Plot<'a> {
                     if let (Some(height), Some(aspect)) = (height, view_aspect) {
                         height * aspect
                     } else {
-                        ui.available_size_before_wrap().x
+                        let avail_w = ui.available_size_before_wrap().x;
+                        let clip_w = ui.clip_rect().max.x - pos.x;
+                        if clip_w.is_finite() && clip_w >= min_size.x {
+                            avail_w.min(clip_w)
+                        } else {
+                            avail_w
+                        }
                     }
                 })
                 .at_least(min_size.x);
@@ -1229,11 +1293,36 @@ impl<'a> Plot<'a> {
         };
 
         let plot_id = id.unwrap_or_else(|| ui.make_persistent_id(id_source));
+        let loaded_mem = if reset {
+            if let Some((name, _)) = linked_axes.as_ref() {
+                ui.data_mut(|data| {
+                    let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
+                    link_groups.0.remove(name);
+                });
+            }
+            None
+        } else {
+            PlotMemory::load(ui.ctx(), plot_id)
+        };
+        let had_existing_mem = loaded_mem.is_some();
+
+        let toolbar_collapsed = loaded_mem.as_ref().is_some_and(|m| m.toolbar_collapsed);
+        let header_h = if show_toolbar && !toolbar_collapsed && complete_rect.height() > 48.0 {
+            30.0_f32
+        } else {
+            0.0_f32
+        };
+        let header_rect =
+            Rect::from_min_size(complete_rect.min, vec2(complete_rect.width(), header_h));
+        let body_rect = Rect::from_min_max(
+            egui::pos2(complete_rect.min.x, complete_rect.min.y + header_h),
+            complete_rect.max,
+        );
 
         let ([x_axis_widgets, y_axis_widgets], plot_rect) = axis_widgets(
-            PlotMemory::load(ui.ctx(), plot_id).as_ref(), // TODO(emilk): avoid loading plot memory twice
+            loaded_mem.as_ref(),
             show_axes,
-            complete_rect,
+            body_rect,
             [&x_axes, &y_axes],
         );
 
@@ -1268,18 +1357,6 @@ impl<'a> Plot<'a> {
         // Load or initialize the memory.
         ui.ctx().check_for_id_clash(plot_id, plot_rect, "Plot");
 
-        let loaded_mem = if reset {
-            if let Some((name, _)) = linked_axes.as_ref() {
-                ui.data_mut(|data| {
-                    let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
-                    link_groups.0.remove(name);
-                });
-            }
-            None
-        } else {
-            PlotMemory::load(ui.ctx(), plot_id)
-        };
-        let had_existing_mem = loaded_mem.is_some();
         let mut mem = loaded_mem.unwrap_or_else(|| PlotMemory {
             auto_bounds: default_auto_bounds,
             hovered_legend_item: None,
@@ -1300,12 +1377,13 @@ impl<'a> Plot<'a> {
             grid_density: 8.0,
             show_x_labels: true,
             show_y_labels: true,
+            show_hover: true,
+            toolbar_collapsed: false,
             clamp_grid: false,
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
             last_right_click_coord: None,
         });
-
         let allow_bounds_persist = allow_drag.any()
             || allow_zoom.any()
             || allow_axis_zoom_drag.any()
@@ -1324,6 +1402,13 @@ impl<'a> Plot<'a> {
             },
             &mut mem,
         );
+        if scene_3d_mode {
+            mem.log_x = false;
+            mem.log_y = false;
+            mem.show_grid = Vec2b::FALSE;
+            mem.show_settings_modal = false;
+            mem.transform.clear_log_axis();
+        }
 
         // Drain any newly imported CSV datasets for this plot
         let newly_imported = export::drain_imported_datasets(plot_id);
@@ -1410,26 +1495,11 @@ impl<'a> Plot<'a> {
                 ));
         }
 
-        // --- Legend ---
-        let legend = legend_config.and_then(|config| {
-            LegendWidget::try_new(plot_id, plot_rect, config, &items, &mem.hidden_items)
-        });
         // Don't show hover cursor when hovering over legend unless Plot holds keyboard focus.
         if mem.hovered_legend_item.is_some() && !response.has_focus() {
             show_x = false;
             show_y = false;
         }
-        // Remove the deselected items.
-        items.retain(|item| !mem.hidden_items.contains(&item.id()));
-        // Highlight the hovered items.
-        if let Some(item_id) = &mem.hovered_legend_item {
-            items
-                .iter_mut()
-                .filter(|entry| &entry.id() == item_id)
-                .for_each(|entry| entry.highlight());
-        }
-        // Move highlighted items to front.
-        items.sort_by_key(|item| item.highlighted());
 
         // --- Bound computation ---
         let mut bounds = *last_plot_transform.bounds();
@@ -1538,6 +1608,7 @@ impl<'a> Plot<'a> {
             mem.auto_bounds,
             any_dynamic_modifications,
             &items,
+            &mem.hidden_items,
             margin_fraction,
             log_axes,
         );
@@ -1547,6 +1618,7 @@ impl<'a> Plot<'a> {
                 &min_auto_bounds,
                 default_auto_bounds,
                 &items,
+                &mem.hidden_items,
                 margin_fraction,
                 log_axes,
             );
@@ -1602,10 +1674,12 @@ impl<'a> Plot<'a> {
                 .unwrap_or(false)
         });
 
-        let overlay_buttons_rect = Rect::from_min_max(
-            last_plot_transform.frame().right_top() + vec2(-30.0, 6.0),
-            last_plot_transform.frame().right_top() + vec2(-6.0, 118.0),
-        );
+        let overlay_buttons_rect = right_controls_rect(
+            *last_plot_transform.frame(),
+            show_settings_button,
+            show_navigation_controls,
+        )
+        .unwrap_or(Rect::NOTHING);
         let drag_started_on_overlay = ui.input(|i| {
             i.pointer
                 .press_origin()
@@ -1763,8 +1837,8 @@ impl<'a> Plot<'a> {
 
         // Apply dynamic grid settings from PlotMemory
         let active_grid_spacing = Rangef::new(mem.grid_density, grid_spacing.max);
-        let active_show_x = show_x && mem.show_x_labels;
-        let active_show_y = show_y && mem.show_y_labels;
+        let active_show_x = show_x && mem.show_hover;
+        let active_show_y = show_y && mem.show_hover;
         let active_show_grid = Vec2b::new(
             show_grid.x && mem.show_grid.x,
             show_grid.y && mem.show_grid.y,
@@ -1829,6 +1903,7 @@ impl<'a> Plot<'a> {
             &min_auto_bounds,
             default_auto_bounds,
             &items,
+            &mem.hidden_items,
             margin_fraction,
             log_axes,
         );
@@ -1842,6 +1917,11 @@ impl<'a> Plot<'a> {
         }
 
         let mut access_state = Self::load_frame_access_state(ui, plot_id, &mem);
+        if scene_3d_mode {
+            access_state.log_x = false;
+            access_state.log_y = false;
+            access_state.show_settings_modal = false;
+        }
         if !allow_2d_analysis {
             access_state.show_add_callout_modal = false;
             access_state.show_edit_callout_modal = false;
@@ -1852,13 +1932,16 @@ impl<'a> Plot<'a> {
             .map_or_else(Vec::new, Plot3DSeriesSidecar::export_datasets_3d);
         append_last_plot_datasets_3d(&export_datasets_3d);
 
-        let base_items_hash = hash_plot_items(&items);
-        let active_fit = if allow_2d_analysis
-            && access_state.fit_model.is_some()
-            && access_state.show_fit_overlay
-        {
-            let base_ds = Arc::clone(get_or_populate_base_datasets(
+        let base_items_hash = hash_visible_plot_items(&items, &mem.hidden_items);
+        let fit_status = if !allow_2d_analysis || access_state.fit_model.is_none() {
+            access_state.last_fit_error_announced = None;
+            fit_overlay::FitOverlayStatus::Inactive
+        } else if !access_state.show_fit_overlay {
+            fit_overlay::FitOverlayStatus::Hidden
+        } else {
+            let base_ds = Arc::clone(get_or_populate_visible_base_datasets(
                 &items,
+                &mem.hidden_items,
                 base_items_hash,
                 &mut access_state.cached_base_datasets,
             ));
@@ -1871,11 +1954,24 @@ impl<'a> Plot<'a> {
                 mem.log_x,
                 mem.log_y,
             )
-        } else {
-            None
         };
 
-        let items_hash = if active_fit.is_some() {
+        let right_ctrl_rect =
+            right_controls_rect(plot_rect, show_settings_button, show_navigation_controls);
+        let legend = legend_config.and_then(|config| {
+            let safe_rect = legend_safe_rect(plot_rect, config.position, right_ctrl_rect);
+            LegendWidget::try_new(plot_id, safe_rect, config, &items, &mem.hidden_items)
+        });
+        items.retain(|item| !mem.hidden_items.contains(&item.id()));
+        if let Some(item_id) = &mem.hovered_legend_item {
+            items
+                .iter_mut()
+                .filter(|entry| &entry.id() == item_id)
+                .for_each(|entry| entry.highlight());
+        }
+        items.sort_by_key(|item| item.highlighted());
+
+        let items_hash = if fit_status.did_inject_items() || mem.hovered_legend_item.is_some() {
             hash_plot_items(&items)
         } else {
             base_items_hash
@@ -1993,6 +2089,7 @@ impl<'a> Plot<'a> {
             show_x: active_show_x,
             show_y: active_show_y,
             allow_2d_analysis,
+            scene_3d_mode,
             label_formatter,
             coordinates_formatter,
             show_grid: active_show_grid,
@@ -2013,6 +2110,8 @@ impl<'a> Plot<'a> {
             persisted_tooltip: persisted_point_tooltip,
             sidecar_3d: sidecar_3d.as_ref(),
             critical_points: Arc::clone(&critical_points),
+            show_settings_button,
+            right_controls_rect: right_ctrl_rect,
         };
 
         let PreparedUiOutput {
@@ -2042,8 +2141,12 @@ impl<'a> Plot<'a> {
                 .add(boxed_zoom_rect.1);
         }
 
+        let mut legend_placement = None;
         if let Some(mut legend) = legend {
             ui.add(&mut legend);
+            legend_placement = legend
+                .rendered_rect()
+                .map(|lrect| (legend.position(), lrect));
             mem.hidden_items = legend.hidden_items();
             mem.hovered_legend_item = legend.hovered_item();
 
@@ -2109,24 +2212,23 @@ impl<'a> Plot<'a> {
             d.get_temp::<bool>(plot_id.with("toggle_settings"))
                 .unwrap_or(false)
         }) {
-            access_state.show_settings_modal = !access_state.show_settings_modal;
+            if !scene_3d_mode {
+                access_state.show_settings_modal = !access_state.show_settings_modal;
+            }
             ui.ctx()
                 .data_mut(|d| d.insert_temp(plot_id.with("toggle_settings"), false));
         }
 
         let has_fit_candidates =
             allow_2d_analysis && items.iter().any(|it| item_point_count(&**it) >= 2);
-        if allow_2d_analysis
-            && access_state.show_fit_overlay
-            && let Some((ref fit_res, accent_color)) = active_fit
-        {
-            fit_overlay::paint_fit_formula_badge(
-                ui,
+        if allow_2d_analysis {
+            let fit_layout = fit_overlay::FitOverlayLayout {
                 plot_rect,
-                fit_res,
-                access_state.fit_dataset_idx,
-                accent_color,
-            );
+                legend_placement,
+                right_controls_rect: right_ctrl_rect,
+                dataset_idx: access_state.fit_dataset_idx,
+            };
+            fit_overlay::paint_fit_status_overlay(ui, &fit_layout, &fit_status, &mut access_state);
         }
 
         let focus_response = &response;
@@ -2158,23 +2260,27 @@ impl<'a> Plot<'a> {
                 builder.set_label(plot_a11y_label);
             });
 
-        let toolbar_cfg = plot_overlays::PlotToolbarConfig {
-            plot_id,
-            plot_rect,
-            allow_csv_import: effective_allow_csv_import,
-            allow_2d_analysis,
-            has_table_content,
-            has_fit_candidates,
-            base_items_hash,
-            items: &items,
-            export_datasets_3d: &export_datasets_3d,
-            viewport_sync: plot_overlays::OverlayViewportSync {
-                data_aspect,
-                linked_axes: &linked_axes,
-                default_auto_bounds,
-            },
-        };
-        plot_overlays::render_plot_top_toolbar(ui, &toolbar_cfg, &mut mem, &mut access_state);
+        if header_h > 0.0 {
+            let toolbar_cfg = plot_overlays::PlotToolbarConfig {
+                plot_id,
+                header_rect,
+                allow_csv_import: effective_allow_csv_import,
+                allow_2d_analysis,
+                scene_3d_mode,
+                has_table_content,
+                has_fit_candidates,
+                base_items_hash,
+                items: &items,
+                export_datasets_3d: &export_datasets_3d,
+                fit_status: &fit_status,
+                viewport_sync: plot_overlays::OverlayViewportSync {
+                    data_aspect,
+                    linked_axes: &linked_axes,
+                    default_auto_bounds,
+                },
+            };
+            plot_overlays::render_plot_top_toolbar(ui, &toolbar_cfg, &mut mem, &mut access_state);
+        }
 
         if show_navigation_controls {
             let zoom_config = FloatingZoomConfig {
@@ -2184,6 +2290,7 @@ impl<'a> Plot<'a> {
                 linked_axes: &linked_axes,
                 auto_content_bounds,
                 default_auto_bounds,
+                show_settings_button,
             };
             Self::render_floating_zoom_toolbar(ui, &mut mem, &zoom_config);
         }
@@ -2248,66 +2355,78 @@ impl<'a> Plot<'a> {
             );
         }
 
-        ModalLifecycle::new(plot_id.with("plot_settings_modal"))
-            .title(format_modal_title("Plot Settings 🔧", title.as_deref()))
-            .default_width(320.0)
-            .show(
-                ui.ctx(),
-                &mut access_state.show_settings_modal,
-                |ui, frame_ctx| {
-                    ui.label(egui::RichText::new("Grid & Axis Settings").strong());
-                    ui.separator();
+        if !scene_3d_mode {
+            ModalLifecycle::new(plot_id.with("plot_settings_modal"))
+                .title(format_modal_title("Plot Settings 🔧", title.as_deref()))
+                .default_width(320.0)
+                .show(
+                    ui.ctx(),
+                    &mut access_state.show_settings_modal,
+                    |ui, frame_ctx| {
+                        ui.label(egui::RichText::new("Grid & Axis Settings").strong());
+                        ui.separator();
 
-                    ui.label(
-                        egui::RichText::new("Axis Scale Transformations")
-                            .small()
-                            .weak(),
-                    );
-                    ui.checkbox(&mut access_state.log_x, "Logarithmic X-Axis");
-                    ui.checkbox(&mut access_state.log_y, "Logarithmic Y-Axis");
+                        ui.label(
+                            egui::RichText::new("Axis Scale Transformations")
+                                .small()
+                                .weak(),
+                        );
+                        ui.checkbox(&mut access_state.log_x, "Logarithmic X-Axis");
+                        ui.checkbox(&mut access_state.log_y, "Logarithmic Y-Axis");
 
-                    ui.separator();
-                    ui.label(egui::RichText::new("Grid Line Density").small().weak());
-                    ui.horizontal(|ui| {
-                        ui.label("Min Line Spacing (px):");
-                        ui.add(egui::Slider::new(
-                            &mut access_state.grid_density,
-                            4.0..=100.0,
-                        ));
-                    });
+                        ui.separator();
+                        ui.label(egui::RichText::new("Grid Line Density").small().weak());
+                        ui.horizontal(|ui| {
+                            ui.label("Min Line Spacing (px):");
+                            ui.add(egui::Slider::new(
+                                &mut access_state.grid_density,
+                                4.0..=100.0,
+                            ));
+                        });
 
-                    ui.separator();
-                    ui.label(
-                        egui::RichText::new("Axis Labels & Visibility")
-                            .small()
-                            .weak(),
-                    );
-                    ui.checkbox(&mut access_state.show_x_labels, "Show X-Axis Labels");
-                    ui.checkbox(&mut access_state.show_y_labels, "Show Y-Axis Labels");
-                    ui.checkbox(&mut mem.show_grid.x, "Show X Grid Lines");
-                    ui.checkbox(&mut mem.show_grid.y, "Show Y Grid Lines");
-
-                    ui.separator();
-                    ui.label(egui::RichText::new("Grid Bounds").small().weak());
-                    ui.checkbox(&mut access_state.clamp_grid, "Clamp Grid to Data Range");
-
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        if ui.button("Reset Defaults").clicked() {
-                            access_state.log_x = false;
-                            access_state.log_y = false;
-                            access_state.grid_density = 8.0;
-                            access_state.show_x_labels = true;
-                            access_state.show_y_labels = true;
-                            access_state.clamp_grid = false;
-                            mem.show_grid = Vec2b::new(true, true);
+                        ui.separator();
+                        ui.label(
+                            egui::RichText::new("Axis Labels & Visibility")
+                                .small()
+                                .weak(),
+                        );
+                        ui.checkbox(&mut access_state.show_x_labels, "Show X-Axis Labels");
+                        ui.checkbox(&mut access_state.show_y_labels, "Show Y-Axis Labels");
+                        ui.checkbox(&mut access_state.show_hover, "Show Hover Readouts");
+                        ui.checkbox(&mut mem.show_grid.x, "Show X Grid Lines");
+                        ui.checkbox(&mut mem.show_grid.y, "Show Y Grid Lines");
+                        if show_toolbar {
+                            let mut show_bar = !mem.toolbar_collapsed;
+                            if ui.checkbox(&mut show_bar, "Show Plot Toolbar").changed() {
+                                mem.toolbar_collapsed = !show_bar;
+                                ui.ctx().request_repaint();
+                            }
                         }
-                        if ui.button("Close").clicked() {
-                            frame_ctx.close();
-                        }
-                    });
-                },
-            );
+
+                        ui.separator();
+                        ui.label(egui::RichText::new("Grid Bounds").small().weak());
+                        ui.checkbox(&mut access_state.clamp_grid, "Clamp Grid to Data Range");
+
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            if ui.button("Reset Defaults").clicked() {
+                                access_state.log_x = false;
+                                access_state.log_y = false;
+                                access_state.grid_density = 8.0;
+                                access_state.show_x_labels = true;
+                                access_state.show_y_labels = true;
+                                access_state.show_hover = true;
+                                access_state.clamp_grid = false;
+                                mem.show_grid = Vec2b::new(true, true);
+                                mem.toolbar_collapsed = false;
+                            }
+                            if ui.button("Close").clicked() {
+                                frame_ctx.close();
+                            }
+                        });
+                    },
+                );
+        }
 
         {
             let mut add_confirmed = false;
@@ -2323,11 +2442,17 @@ impl<'a> Plot<'a> {
 
                         ui.horizontal(|ui| {
                             ui.label("Target Coordinates:");
-                            ui.monospace(format!(
-                                "X: {:.4}, Y: {:.4}",
+                            let x_str = format::format_readout_value(
                                 access_state.new_callout_point[0],
-                                access_state.new_callout_point[1]
-                            ));
+                                4,
+                                4,
+                            );
+                            let y_str = format::format_readout_value(
+                                access_state.new_callout_point[1],
+                                4,
+                                4,
+                            );
+                            ui.monospace(format!("X: {x_str}, Y: {y_str}"));
                         });
 
                         ui.add_space(4.0);
@@ -2386,10 +2511,11 @@ impl<'a> Plot<'a> {
 
             if add_confirmed {
                 let label = if access_state.new_callout_text.trim().is_empty() {
-                    format!(
-                        "({:.2}, {:.2})",
-                        access_state.new_callout_point[0], access_state.new_callout_point[1]
-                    )
+                    let x_str =
+                        format::format_readout_value(access_state.new_callout_point[0], 2, 4);
+                    let y_str =
+                        format::format_readout_value(access_state.new_callout_point[1], 2, 4);
+                    format!("({x_str}, {y_str})")
                 } else {
                     access_state.new_callout_text.clone()
                 };
@@ -2430,10 +2556,11 @@ impl<'a> Plot<'a> {
 
                         ui.horizontal(|ui| {
                             ui.label("Target Coordinates:");
-                            ui.monospace(format!(
-                                "X: {:.4}, Y: {:.4}",
-                                mem.callouts[idx].point[0], mem.callouts[idx].point[1]
-                            ));
+                            let x_str =
+                                format::format_readout_value(mem.callouts[idx].point[0], 4, 4);
+                            let y_str =
+                                format::format_readout_value(mem.callouts[idx].point[1], 4, 4);
+                            ui.monospace(format!("X: {x_str}, Y: {y_str}"));
                         });
 
                         ui.add_space(4.0);
@@ -2491,10 +2618,9 @@ impl<'a> Plot<'a> {
             if let Some(idx) = valid_callout_idx {
                 if update_confirmed {
                     let new_label = if access_state.edit_callout_text.trim().is_empty() {
-                        format!(
-                            "({:.2}, {:.2})",
-                            mem.callouts[idx].point[0], mem.callouts[idx].point[1]
-                        )
+                        let x_str = format::format_readout_value(mem.callouts[idx].point[0], 2, 4);
+                        let y_str = format::format_readout_value(mem.callouts[idx].point[1], 2, 4);
+                        format!("({x_str}, {y_str})")
                     } else {
                         access_state.edit_callout_text.clone()
                     };
@@ -2519,8 +2645,17 @@ impl<'a> Plot<'a> {
             ui.ctx().request_repaint();
         }
         mem.grid_density = access_state.grid_density;
-        mem.show_x_labels = access_state.show_x_labels;
-        mem.show_y_labels = access_state.show_y_labels;
+        if mem.show_x_labels != access_state.show_x_labels {
+            mem.show_x_labels = access_state.show_x_labels;
+            mem.x_axis_thickness.clear();
+            ui.ctx().request_repaint();
+        }
+        if mem.show_y_labels != access_state.show_y_labels {
+            mem.show_y_labels = access_state.show_y_labels;
+            mem.y_axis_thickness.clear();
+            ui.ctx().request_repaint();
+        }
+        mem.show_hover = access_state.show_hover;
         mem.clamp_grid = access_state.clamp_grid;
 
         // Track pointer position on secondary click (right-click) for callout placement
@@ -2550,7 +2685,9 @@ impl<'a> Plot<'a> {
             for (idx, callout) in mem.callouts.iter().enumerate().rev() {
                 let galley = ui.painter().layout_no_wrap(
                     if callout.label.is_empty() {
-                        format!("({:.2}, {:.2})", callout.point[0], callout.point[1])
+                        let x_str = format::format_readout_value(callout.point[0], 2, 4);
+                        let y_str = format::format_readout_value(callout.point[1], 2, 4);
+                        format!("({x_str}, {y_str})")
                     } else {
                         callout.label.clone()
                     },
@@ -2596,7 +2733,9 @@ impl<'a> Plot<'a> {
                 for callout in &mem.callouts {
                     let galley = ui.painter().layout_no_wrap(
                         if callout.label.is_empty() {
-                            format!("({:.2}, {:.2})", callout.point[0], callout.point[1])
+                            let x_str = format::format_readout_value(callout.point[0], 2, 4);
+                            let y_str = format::format_readout_value(callout.point[1], 2, 4);
+                            format!("({x_str}, {y_str})")
                         } else {
                             callout.label.clone()
                         },
@@ -2619,7 +2758,7 @@ impl<'a> Plot<'a> {
             }
         }
 
-        let response = if allow_2d_analysis && (show_x || show_y) {
+        let response = if allow_2d_analysis && (active_show_x || active_show_y) {
             response.on_hover_cursor(CursorIcon::Crosshair)
         } else {
             response
@@ -2726,7 +2865,19 @@ impl<'a> Plot<'a> {
                 access_state.show_table = !access_state.show_table;
                 ui.close();
             }
-            if ui.button("🔧 Plot Settings").clicked() {
+            if show_toolbar {
+                let bar_toggle_label = if mem.toolbar_collapsed {
+                    "Show Toolbar"
+                } else {
+                    "Hide Toolbar"
+                };
+                if ui.button(bar_toggle_label).clicked() {
+                    mem.toolbar_collapsed = !mem.toolbar_collapsed;
+                    ui.ctx().request_repaint();
+                    ui.close();
+                }
+            }
+            if !scene_3d_mode && ui.button("🔧 Plot Settings").clicked() {
                 access_state.show_settings_modal = true;
                 mem.show_settings_modal = true;
                 ui.close();
@@ -2741,7 +2892,13 @@ impl<'a> Plot<'a> {
                         base_items_hash,
                         &mut access_state.cached_base_datasets,
                     ));
-                    fit_overlay::render_fit_curve_menu(ui, &base_ds, &mut access_state, true);
+                    fit_overlay::render_fit_curve_menu(
+                        ui,
+                        &base_ds,
+                        &mut access_state,
+                        true,
+                        &fit_status,
+                    );
                 });
             }
         });
@@ -2785,6 +2942,7 @@ impl<'a> Plot<'a> {
                 has_data_aspect: data_aspect.is_some(),
                 allow_bounds_persist: allow_bounds_persist && sidecar_3d.is_none(),
                 allow_2d_analysis,
+                scene_3d_mode,
             },
             &mem,
             &access_state,
@@ -2821,11 +2979,15 @@ impl<'a> Plot<'a> {
                 grid_density: mem.grid_density,
                 show_x_labels: mem.show_x_labels,
                 show_y_labels: mem.show_y_labels,
+                show_hover: mem.show_hover,
                 clamp_grid: mem.clamp_grid,
                 ..Default::default()
             });
         access_state.log_x = mem.log_x;
         access_state.log_y = mem.log_y;
+        access_state.show_x_labels = mem.show_x_labels;
+        access_state.show_y_labels = mem.show_y_labels;
+        access_state.show_hover = mem.show_hover;
         access_state
     }
 
@@ -2857,6 +3019,7 @@ impl<'a> Plot<'a> {
             linked_axes: cfg.linked_axes,
             auto_content_bounds: cfg.auto_content_bounds,
             default_auto_bounds: cfg.default_auto_bounds,
+            show_settings_button: true,
         };
         if zoom_axes.any() {
             let plus = check_plot_key(ui, "Zoom In", "Zoom into the plot canvas", egui::Key::Plus);
@@ -2904,8 +3067,13 @@ impl<'a> Plot<'a> {
         }
 
         let btn_size = egui::vec2(24.0, 24.0);
+        let top_offset = if config.show_settings_button {
+            34.0
+        } else {
+            6.0
+        };
         let nav_rect = Rect::from_min_size(
-            frame.right_top() + egui::vec2(-30.0, 34.0),
+            frame.right_top() + egui::vec2(-30.0, top_offset),
             egui::vec2(24.0, 80.0),
         );
         let mut zoom_ui = ui.new_child(
@@ -2965,6 +3133,53 @@ struct FloatingZoomConfig<'a> {
     linked_axes: &'a Option<(Id, Vec2b)>,
     auto_content_bounds: PlotBounds,
     default_auto_bounds: Vec2b,
+    show_settings_button: bool,
+}
+
+fn right_controls_rect(
+    plot_rect: Rect,
+    show_settings_button: bool,
+    show_navigation_controls: bool,
+) -> Option<Rect> {
+    if plot_rect.width() < 30.0 || plot_rect.height() < 30.0 {
+        return None;
+    }
+    match (show_settings_button, show_navigation_controls) {
+        (false, false) => None,
+        (true, false) => Some(Rect::from_min_size(
+            plot_rect.right_top() + vec2(-30.0, 6.0),
+            vec2(24.0, 24.0),
+        )),
+        (false, true) => Some(Rect::from_min_size(
+            plot_rect.right_top() + vec2(-30.0, 6.0),
+            vec2(24.0, 80.0),
+        )),
+        (true, true) => Some(Rect::from_min_size(
+            plot_rect.right_top() + vec2(-30.0, 6.0),
+            vec2(24.0, 108.0),
+        )),
+    }
+}
+
+fn legend_safe_rect(plot_rect: Rect, corner: Corner, right_controls: Option<Rect>) -> Rect {
+    let mut safe = plot_rect;
+    let Some(ctrl) = right_controls else {
+        return safe;
+    };
+    let left_of_ctrl = (ctrl.min.x - 4.0).max(safe.min.x + 16.0);
+    match corner {
+        Corner::RightTop | Corner::LeftTop | Corner::LeftBottom => {
+            safe.max.x = safe.max.x.min(left_of_ctrl);
+        }
+        Corner::RightBottom => {
+            if safe.height() > ctrl.height() + 24.0 {
+                safe.min.y = safe.min.y.max(ctrl.max.y + 4.0);
+            } else {
+                safe.max.x = safe.max.x.min(left_of_ctrl);
+            }
+        }
+    }
+    safe
 }
 
 fn render_zoom_toolbar_buttons(
@@ -3272,6 +3487,25 @@ fn hash_plot_items(items: &[Box<dyn PlotItem + '_>]) -> u64 {
     hasher.finish()
 }
 
+fn hash_visible_plot_items(
+    items: &[Box<dyn PlotItem + '_>],
+    hidden_items: &ahash::HashSet<Id>,
+) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = ahash::AHasher::default();
+    let visible_count = items
+        .iter()
+        .filter(|it| !it.is_companion_visual_only() && !hidden_items.contains(&it.id()))
+        .count();
+    visible_count.hash(&mut hasher);
+    for item in items {
+        if !item.is_companion_visual_only() && !hidden_items.contains(&item.id()) {
+            item.item_content_hash().hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
 fn item_point_count(item: &dyn PlotItem) -> usize {
     if let Some(segs) = item.line_segments() {
         return segs.iter().map(Vec::len).sum();
@@ -3284,6 +3518,26 @@ fn item_point_count(item: &dyn PlotItem) -> usize {
 
 type BaseDatasetList = Vec<fit_overlay::BaseDatasetTuple>;
 type BaseDatasetCache = Option<(u64, Arc<BaseDatasetList>)>;
+
+fn get_or_populate_visible_base_datasets<'c>(
+    items: &[Box<dyn PlotItem + '_>],
+    hidden_items: &ahash::HashSet<Id>,
+    base_items_hash: u64,
+    cache: &'c mut BaseDatasetCache,
+) -> &'c Arc<BaseDatasetList> {
+    let needs_refresh = cache
+        .as_ref()
+        .is_none_or(|(cached_hash, _)| *cached_hash != base_items_hash);
+    if needs_refresh {
+        let built: BaseDatasetList = items
+            .iter()
+            .filter(|it| !it.is_companion_visual_only() && !hidden_items.contains(&it.id()))
+            .map(|it| (it.name().to_owned(), it.extract_points(), it.color()))
+            .collect();
+        *cache = Some((base_items_hash, Arc::new(built)));
+    }
+    &cache.as_ref().expect("populated base datasets").1
+}
 
 pub(crate) fn get_or_populate_base_datasets<'c>(
     items: &[Box<dyn PlotItem + '_>],
@@ -3438,31 +3692,45 @@ fn handle_focused_plot_dataset_keys(
     }
     if changed {
         access_state.focused_poi = None;
-        if let Some(world) = sidecar_3d
-            .and_then(|s| s.series().get(access_state.focused_item))
-            .and_then(|s| {
-                s.world
-                    .get(access_state.focused_point)
-                    .map(|w| (&s.name, *w))
-            })
-        {
-            emit_plot_live_message(
-                ui.ctx(),
-                format!(
-                    "Dataset {}, Point X: {:.4}, Y: {:.4}, Z: {:.4}",
-                    world.0, world.1[0], world.1[1], world.1[2]
-                ),
-                false,
-            );
-        } else if let Some((name, pts, _)) = accessible_datasets.get(access_state.focused_item)
-            && let Some(p) = pts.get(access_state.focused_point)
-        {
-            emit_plot_live_message(
-                ui.ctx(),
-                format!("Dataset {}, Point X: {:.4}, Y: {:.4}", name, p[0], p[1]),
-                false,
-            );
-        }
+        announce_focused_dataset_point(
+            ui.ctx(),
+            accessible_datasets,
+            sidecar_3d,
+            access_state.focused_item,
+            access_state.focused_point,
+        );
+    }
+}
+
+fn announce_focused_dataset_point(
+    ctx: &egui::Context,
+    accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    sidecar_3d: Option<&Plot3DSeriesSidecar>,
+    focused_item: usize,
+    focused_point: usize,
+) {
+    if let Some((name, w)) = sidecar_3d
+        .and_then(|s| s.series().get(focused_item))
+        .and_then(|s| s.world.get(focused_point).map(|w| (&s.name, *w)))
+    {
+        let x_str = format_world_coord(w[0]);
+        let y_str = format_world_coord(w[1]);
+        let z_str = format_world_coord(w[2]);
+        emit_plot_live_message(
+            ctx,
+            format!("Dataset {name}, Point X: {x_str}, Y: {y_str}, Z: {z_str}"),
+            false,
+        );
+    } else if let Some((name, pts, _)) = accessible_datasets.get(focused_item)
+        && let Some(p) = pts.get(focused_point)
+    {
+        let x_str = format::format_readout_value(p[0], 4, 4);
+        let y_str = format::format_readout_value(p[1], 4, 4);
+        emit_plot_live_message(
+            ctx,
+            format!("Dataset {name}, Point X: {x_str}, Y: {y_str}"),
+            false,
+        );
     }
 }
 
@@ -3576,17 +3844,24 @@ fn axis_widgets<'a>(
 
     // Will shrink as we add more axes.
     let mut rect_left = complete_rect;
+    let show_x_tick_labels = mem.is_none_or(|m| m.show_x_labels);
+    let show_y_tick_labels = mem.is_none_or(|m| m.show_y_labels);
 
     if show_axes.x {
         // We will fix this later, once we know how much space the y axes take up.
         let initial_x_range = complete_rect.x_range();
 
         for (i, cfg) in x_axes.iter().enumerate().rev() {
-            let mut height = cfg.min_thickness;
-            if let Some(mem) = mem {
-                // If the labels took up too much space the previous frame, give them more space now:
-                height = height.max(mem.x_axis_thickness.get(&i).copied().unwrap_or_default());
-            }
+            let mut height = if show_x_tick_labels || !cfg.label.is_empty() {
+                let mut h = cfg.min_thickness;
+                if let Some(mem) = mem {
+                    h = h.max(mem.x_axis_thickness.get(&i).copied().unwrap_or_default());
+                }
+                h
+            } else {
+                0.0
+            };
+            height = height.min((rect_left.height() - 1.0).max(0.0));
 
             let rect = match VPlacement::from(cfg.placement) {
                 VPlacement::Bottom => {
@@ -3602,7 +3877,9 @@ fn axis_widgets<'a>(
                     Rect::from_x_y_ranges(initial_x_range, top..=bottom)
                 }
             };
-            x_axis_widgets.push(AxisWidget::new(cfg.clone(), rect));
+            let mut widget = AxisWidget::new(cfg.clone(), rect);
+            widget.show_tick_labels = show_x_tick_labels;
+            x_axis_widgets.push(widget);
         }
     }
     if show_axes.y {
@@ -3610,11 +3887,16 @@ fn axis_widgets<'a>(
         let plot_y_range = rect_left.y_range();
 
         for (i, cfg) in y_axes.iter().enumerate().rev() {
-            let mut width = cfg.min_thickness;
-            if let Some(mem) = mem {
-                // If the labels took up too much space the previous frame, give them more space now:
-                width = width.max(mem.y_axis_thickness.get(&i).copied().unwrap_or_default());
-            }
+            let mut width = if show_y_tick_labels || !cfg.label.is_empty() {
+                let mut w = cfg.min_thickness;
+                if let Some(mem) = mem {
+                    w = w.max(mem.y_axis_thickness.get(&i).copied().unwrap_or_default());
+                }
+                w
+            } else {
+                0.0
+            };
+            width = width.min((rect_left.width() - 1.0).max(0.0));
 
             let rect = match HPlacement::from(cfg.placement) {
                 HPlacement::Left => {
@@ -3630,7 +3912,9 @@ fn axis_widgets<'a>(
                     Rect::from_x_y_ranges(left..=right, plot_y_range)
                 }
             };
-            y_axis_widgets.push(AxisWidget::new(cfg.clone(), rect));
+            let mut widget = AxisWidget::new(cfg.clone(), rect);
+            widget.show_tick_labels = show_y_tick_labels;
+            y_axis_widgets.push(widget);
         }
     }
 
@@ -3786,6 +4070,7 @@ fn collect_positive_axis_bounds(
     axis: usize,
     min_auto_bounds: &PlotBounds,
     items: &[Box<dyn PlotItem + '_>],
+    hidden_items: &ahash::HashSet<Id>,
 ) -> Option<(f64, f64)> {
     let mut lo = f64::INFINITY;
     let mut hi = f64::NEG_INFINITY;
@@ -3797,7 +4082,7 @@ fn collect_positive_axis_bounds(
     };
     consider(min_auto_bounds.min[axis]);
     consider(min_auto_bounds.max[axis]);
-    for item in items {
+    for item in items.iter().filter(|it| !hidden_items.contains(&it.id())) {
         match item.geometry() {
             PlotGeometry::Points(pts) => {
                 for pt in pts {
@@ -3862,6 +4147,7 @@ fn apply_plot_bounds_with_scale(
     auto_bounds: Vec2b,
     any_dynamic_modifications: bool,
     items: &[Box<dyn PlotItem + '_>],
+    hidden_items: &ahash::HashSet<Id>,
     margin_fraction: Vec2,
     log_axes: Vec2b,
 ) {
@@ -3874,7 +4160,7 @@ fn apply_plot_bounds_with_scale(
     let auto_x = auto_bounds.x && (!min_auto_bounds.is_valid_x() || default_auto_bounds.x);
     let auto_y = auto_bounds.y && (!min_auto_bounds.is_valid_y() || default_auto_bounds.y);
     if (!log_axes.x && auto_x) || (!log_axes.y && auto_y) {
-        for item in items {
+        for item in items.iter().filter(|it| !hidden_items.contains(&it.id())) {
             let item_bounds = item.bounds();
             if !log_axes.x && auto_x {
                 bounds.merge_x(&item_bounds);
@@ -3891,12 +4177,12 @@ fn apply_plot_bounds_with_scale(
         }
     }
     if log_axes.x {
-        let pos = collect_positive_axis_bounds(0, min_auto_bounds, items);
+        let pos = collect_positive_axis_bounds(0, min_auto_bounds, items, hidden_items);
         let is_auto = auto_bounds.x || (!default_auto_bounds.x && !any_dynamic_modifications);
         apply_single_log_axis_bounds(bounds, 0, is_auto, pos, margin_fraction.x as f64);
     }
     if log_axes.y {
-        let pos = collect_positive_axis_bounds(1, min_auto_bounds, items);
+        let pos = collect_positive_axis_bounds(1, min_auto_bounds, items, hidden_items);
         let is_auto = auto_bounds.y || (!default_auto_bounds.y && !any_dynamic_modifications);
         apply_single_log_axis_bounds(bounds, 1, is_auto, pos, margin_fraction.y as f64);
     }
@@ -3974,6 +4260,7 @@ fn compute_auto_content_bounds(
     min_auto_bounds: &PlotBounds,
     default_auto_bounds: Vec2b,
     items: &[Box<dyn PlotItem + '_>],
+    hidden_items: &ahash::HashSet<Id>,
     margin_fraction: Vec2,
     log_axes: Vec2b,
 ) -> PlotBounds {
@@ -3982,7 +4269,7 @@ fn compute_auto_content_bounds(
         if default_auto_bounds.x || min_auto_bounds.is_valid_x() {
             out.set_x(min_auto_bounds);
         }
-        for item in items {
+        for item in items.iter().filter(|it| !hidden_items.contains(&it.id())) {
             out.merge_x(&item.bounds());
         }
         if !out.is_valid_x() {
@@ -3990,14 +4277,14 @@ fn compute_auto_content_bounds(
         }
         out.add_relative_margin_x(margin_fraction);
     } else {
-        let pos = collect_positive_axis_bounds(0, min_auto_bounds, items);
+        let pos = collect_positive_axis_bounds(0, min_auto_bounds, items, hidden_items);
         apply_single_log_axis_bounds(&mut out, 0, true, pos, margin_fraction.x as f64);
     }
     if !log_axes.y {
         if default_auto_bounds.y || min_auto_bounds.is_valid_y() {
             out.set_y(min_auto_bounds);
         }
-        for item in items {
+        for item in items.iter().filter(|it| !hidden_items.contains(&it.id())) {
             out.merge_y(&item.bounds());
         }
         if !out.is_valid_y() {
@@ -4005,7 +4292,7 @@ fn compute_auto_content_bounds(
         }
         out.add_relative_margin_y(margin_fraction);
     } else {
-        let pos = collect_positive_axis_bounds(1, min_auto_bounds, items);
+        let pos = collect_positive_axis_bounds(1, min_auto_bounds, items, hidden_items);
         apply_single_log_axis_bounds(&mut out, 1, true, pos, margin_fraction.y as f64);
     }
     out
@@ -4037,6 +4324,7 @@ struct PreparedPlot<'a, 'b> {
     show_x: bool,
     show_y: bool,
     allow_2d_analysis: bool,
+    scene_3d_mode: bool,
     label_formatter: LabelFormatter<'a>,
     coordinates_formatter: Option<(Corner, CoordinatesFormatter<'a>)>,
     // axis_formatters: [AxisFormatter; 2],
@@ -4057,6 +4345,8 @@ struct PreparedPlot<'a, 'b> {
     persisted_tooltip: Option<a11y::PointTooltipState>,
     sidecar_3d: Option<&'a Plot3DSeriesSidecar>,
     critical_points: Arc<[poi::CriticalPoint]>,
+    show_settings_button: bool,
+    right_controls_rect: Option<Rect>,
 }
 
 struct PreparedUiOutput<'b> {
@@ -4141,7 +4431,13 @@ impl<'b> PreparedPlot<'_, 'b> {
             .map(|p| hovered_point.unwrap_or_else(|| transform.value_from_position(p)))
             .or(hovered_point);
         self.paint_corner_coordinates(ui, &painter, active_coord);
-        self.render_wrench_button(ui);
+        if !self.scene_3d_mode
+            && self.show_settings_button
+            && self.transform.frame().width() >= 30.0
+            && self.transform.frame().height() >= 30.0
+        {
+            self.render_wrench_button(ui);
+        }
 
         let items = std::mem::take(&mut self.items);
         PreparedUiOutput {
@@ -4261,7 +4557,9 @@ impl<'b> PreparedPlot<'_, 'b> {
         };
         let font_id = TextStyle::Monospace.resolve(ui.style());
         let text = formatter.format(&coordinate, self.transform.bounds());
-        let padded_frame = self.transform.frame().shrink(4.0);
+        let safe_frame =
+            legend_safe_rect(*self.transform.frame(), *corner, self.right_controls_rect);
+        let padded_frame = safe_frame.shrink(4.0);
         let (anchor, position) = match corner {
             Corner::LeftTop => (Align2::LEFT_TOP, padded_frame.left_top()),
             Corner::RightTop => (Align2::RIGHT_TOP, padded_frame.right_top()),
@@ -4956,6 +5254,8 @@ fn test_plot_memory_grid_settings_persistence() {
         grid_density: 16.0,
         show_x_labels: false,
         show_y_labels: true,
+        show_hover: true,
+        toolbar_collapsed: false,
         clamp_grid: true,
         show_grid: Vec2b::new(true, false),
         show_settings_modal: true,
@@ -5280,6 +5580,8 @@ mod callout_context_menu_tests {
             grid_density: 8.0,
             show_x_labels: true,
             show_y_labels: true,
+            show_hover: true,
+            toolbar_collapsed: false,
             clamp_grid: false,
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
@@ -5334,6 +5636,8 @@ mod callout_context_menu_tests {
             grid_density: 8.0,
             show_x_labels: true,
             show_y_labels: true,
+            show_hover: true,
+            toolbar_collapsed: false,
             clamp_grid: false,
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
@@ -6422,6 +6726,7 @@ pub(crate) struct AccessState {
     pub(crate) grid_density: f32,
     pub(crate) show_x_labels: bool,
     pub(crate) show_y_labels: bool,
+    pub(crate) show_hover: bool,
     pub(crate) clamp_grid: bool,
     pub(crate) show_add_callout_modal: bool,
     pub(crate) new_callout_point: [f64; 2],
@@ -6433,6 +6738,7 @@ pub(crate) struct AccessState {
     pub(crate) edit_callout_text: String,
     pub(crate) edit_callout_offset: [f32; 2],
     pub(crate) import_toast: Option<(String, bool)>,
+    pub(crate) last_fit_error_announced: Option<(FitType, usize, String)>,
 }
 
 impl Default for AccessState {
@@ -6461,6 +6767,7 @@ impl Default for AccessState {
             grid_density: 8.0,
             show_x_labels: true,
             show_y_labels: true,
+            show_hover: true,
             clamp_grid: false,
             show_add_callout_modal: false,
             new_callout_point: [0.0, 0.0],
@@ -6472,12 +6779,15 @@ impl Default for AccessState {
             edit_callout_text: String::new(),
             edit_callout_offset: [30.0, -30.0],
             import_toast: None,
+            last_fit_error_announced: None,
         }
     }
 }
 
 #[cfg(test)]
 mod ambient_link_tests;
+#[cfg(test)]
+mod docked_header_and_fit_tests;
 #[cfg(test)]
 mod modal_lifecycle_tests;
 #[cfg(test)]

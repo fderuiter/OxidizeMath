@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for autoencoder.
 use domain_climate::climate::autoencoder::Autoencoder;
 use nalgebra::DVector;
 use pure_math::pure_math::analysis::optimization::{SGD, Trainable};

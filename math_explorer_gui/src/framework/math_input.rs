@@ -3,12 +3,16 @@
 
 pub mod coupled;
 pub mod params;
+mod scope;
 
 #[cfg(test)]
 mod tests;
 
 pub use coupled::CoupledExpressionBank;
-pub use params::{ParameterRangeConfig, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
+pub use params::{
+    ParamSliderSpec, ParameterRangeConfig, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS,
+};
+use scope::VariableScopePolicy;
 
 use eframe::egui;
 use math_commons::ast::{parse_equation, CompiledExpr, Expr, ParseError};
@@ -50,6 +54,8 @@ pub struct MathExpressionInputBar {
     last_valid_compiled: Option<CompiledExpr>,
     /// Auto-synthesized free parameter sliders synchronized with `last_valid_compiled`.
     slider_bank: ParameterSliderBank,
+    /// Optional tool-level allowed/disallowed variable validation rules.
+    scope_policy: VariableScopePolicy,
 }
 
 impl MathExpressionInputBar {
@@ -84,6 +90,7 @@ impl MathExpressionInputBar {
             compiled_expr: None,
             last_valid_compiled: None,
             slider_bank: ParameterSliderBank::new(),
+            scope_policy: VariableScopePolicy::default(),
         };
         bar.reparse();
         bar
@@ -119,6 +126,37 @@ impl MathExpressionInputBar {
     #[must_use]
     pub fn with_param_range(mut self, range: RangeInclusive<f64>, default_value: f64) -> Self {
         self.slider_bank = self.slider_bank.with_range(range, default_value);
+        self
+    }
+
+    /// Restricts referenced identifiers to `vars` (plus configured axes and mathematical constants).
+    #[must_use]
+    pub fn with_allowed_vars(mut self, vars: &[&str]) -> Self {
+        self.scope_policy.set_allowed_vars(vars);
+        self.reparse();
+        self
+    }
+
+    /// Rejects specific foreign coordinate identifiers with plain-language guidance.
+    #[must_use]
+    pub fn with_disallowed_vars(mut self, rules: &[(&str, &str)]) -> Self {
+        self.scope_policy.set_disallowed_vars(rules);
+        self.reparse();
+        self
+    }
+
+    /// Registers display label, slider range, and default value for a named parameter.
+    #[must_use]
+    pub fn with_param_spec(
+        mut self,
+        name: &str,
+        label: &str,
+        range: RangeInclusive<f64>,
+        default_value: f64,
+    ) -> Self {
+        self.slider_bank
+            .register_param_spec(name, label, range, default_value);
+        self.reparse();
         self
     }
 
@@ -257,6 +295,17 @@ impl MathExpressionInputBar {
     }
 
     fn finish_valid_parse(&mut self, lhs: Option<String>, expr: Expr) {
+        if let Err(scope_err) = self
+            .scope_policy
+            .validate(&expr, &self.axes, self.complex_mode)
+        {
+            self.validation_error = Some(scope_err);
+            self.compiled_expr = None;
+            self.latex_cache.clear();
+            self.parsed_expr = Ok(expr);
+            return;
+        }
+
         let axis_refs: Vec<&str> = self.axes.iter().map(String::as_str).collect();
         let compile_res = if self.complex_mode {
             CompiledExpr::compile_complex(&expr, &axis_refs)

@@ -254,12 +254,15 @@ fn test_pure_math_and_geometry_sandboxes_retain_custom_bounds_across_formula_edi
     use crate::tabs::geometry_topology::surface_viewer::SurfaceViewer;
 
     let mut complex = ComplexMappingTool::default();
-    complex.math_input.set_expression("a * z^2 + c");
+    complex.math_input.set_expression("a * z^2 + 1");
+    assert!(complex.math_input.is_valid());
     complex
         .math_input
         .slider_bank_mut()
         .set_param_bounds("a", -8.0, 8.0, 0.2);
-    complex.math_input.set_expression("a * exp(z) + b");
+    complex.math_input.set_expression("z^2 + 1");
+    complex.math_input.set_expression("a * exp(z)");
+    assert!(complex.math_input.is_valid());
     assert_eq!(complex.math_input.slider_bank().param_bounds("a").max, 8.0);
 
     let mut riemann = RiemannIntegrationTool::default();
@@ -272,21 +275,12 @@ fn test_pure_math_and_geometry_sandboxes_retain_custom_bounds_across_formula_edi
     assert_eq!(riemann.math_input.slider_bank().param_bounds("a").max, 20.0);
 
     let mut surf = SurfaceViewer::default();
-    surf.custom_sandbox
-        .heightfield_bar
+    let surf_hb = &mut surf.custom_sandbox.heightfield_bar;
+    surf_hb
         .slider_bank_mut()
         .set_param_bounds("a", -10.0, 10.0, 0.25);
-    surf.custom_sandbox
-        .heightfield_bar
-        .set_expression("a * sin(x) * cos(y) + b");
-    assert_eq!(
-        surf.custom_sandbox
-            .heightfield_bar
-            .slider_bank()
-            .param_bounds("a")
-            .max,
-        10.0
-    );
+    surf_hb.set_expression("a * sin(x) * cos(y) + b");
+    assert_eq!(surf_hb.slider_bank().param_bounds("a").max, 10.0);
     surf.custom_sandbox
         .param_sliders
         .set_param_bounds("a", 0.2, 6.0, 0.1);
@@ -297,21 +291,12 @@ fn test_pure_math_and_geometry_sandboxes_retain_custom_bounds_across_formula_edi
     assert_eq!(surf.custom_sandbox.param_sliders.param_bounds("a").max, 6.0);
 
     let mut curv = CurvatureHeatmap::default();
-    curv.custom_sandbox
-        .heightfield_bar
+    let curv_hb = &mut curv.custom_sandbox.heightfield_bar;
+    curv_hb
         .slider_bank_mut()
         .set_param_bounds("a", -6.0, 6.0, 0.1);
-    curv.custom_sandbox
-        .heightfield_bar
-        .set_expression("a * (x^3 - 3 * x * y^2)");
-    assert_eq!(
-        curv.custom_sandbox
-            .heightfield_bar
-            .slider_bank()
-            .param_bounds("a")
-            .max,
-        6.0
-    );
+    curv_hb.set_expression("a * (x^3 - 3 * x * y^2)");
+    assert_eq!(curv_hb.slider_bank().param_bounds("a").max, 6.0);
 }
 
 #[cfg(all(feature = "ai", feature = "applied"))]
@@ -411,4 +396,50 @@ fn test_coupled_expression_bank_shared_params_transient_edits_and_zero_alloc() {
         sum
     });
     assert!(acc.is_finite());
+}
+
+#[test]
+fn test_math_input_rejects_arity_unknown_func_and_out_of_scope_variables() {
+    let ode_cases = [
+        ("sin()", "expected 1 argument, found 0"),
+        ("atan(y, t)", "expected 1 argument, found 2"),
+        ("sin(x)", "Unknown variable 'x'"),
+    ];
+    for (expr, expected_substr) in ode_cases {
+        let bar = MathExpressionInputBar::new("y'", expr, vec![])
+            .with_axes(&["t", "y"])
+            .with_allowed_vars(&["t", "y", "k", "r", "cap_k"]);
+        assert!(!bar.is_valid(), "expected '{expr}' to be rejected");
+        let msg = bar.error_message().expect("expected error message");
+        assert!(
+            msg.contains(expected_substr),
+            "expected '{expected_substr}' in '{msg}' for '{expr}'"
+        );
+    }
+
+    let complex_cases = [
+        ("z^2 + c", "Unknown variable 'c'"),
+        ("conj(z)", "unknown function 'conj'"),
+    ];
+    let ctx = egui::Context::default();
+    for (expr, expected_substr) in complex_cases {
+        let mut bar = MathExpressionInputBar::new("w", expr, vec![])
+            .with_axes(&["z"])
+            .with_complex_mode(true)
+            .with_allowed_vars(&["z", "a"]);
+        assert!(!bar.is_valid(), "expected '{expr}' to be rejected");
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                bar.ui(ui);
+            });
+        });
+        let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+        let mut rendered = Vec::new();
+        collect_text_colors(&shapes, &mut rendered);
+        let badge = rendered
+            .iter()
+            .find(|(text, _)| text.contains("Syntax Error:"))
+            .expect("expected inline error badge");
+        assert!(badge.0.contains(expected_substr));
+    }
 }
