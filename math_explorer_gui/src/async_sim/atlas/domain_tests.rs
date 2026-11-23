@@ -301,7 +301,10 @@ fn test_sir_atlas_teleport_updates_trajectories_and_state_bounds() {
     assert_eq!(restored.atlas.axis_keys(), ("beta", "I0"));
 }
 
-#[cfg(all(feature = "biology", feature = "epidemiology"))]
+#[cfg(any(
+    all(feature = "biology", feature = "epidemiology"),
+    feature = "physics"
+))]
 fn scan_accesskit_atlas_button(out: &eframe::egui::FullOutput) -> bool {
     let Some(ak) = &out.platform_output.accesskit_update else {
         return false;
@@ -346,5 +349,137 @@ fn test_flagship_tools_expose_atlas_toggle_in_accesskit_tree() {
             found |= scan_accesskit_atlas_button(&out);
         }
         assert!(found, "{tool_id} must expose 2D Parameter Atlas button");
+    }
+}
+
+#[cfg(feature = "physics")]
+fn tp(x_key: &'static str, x_val: f64, y_key: &'static str, y_val: f64) -> AtlasTeleportEvent {
+    AtlasTeleportEvent {
+        x_key,
+        x_val,
+        y_key,
+        y_val,
+        regime_label: "chaos",
+    }
+}
+
+#[cfg(feature = "physics")]
+#[test]
+fn test_chaos_fractal_and_bifurcation_zero_alloc_wcag() {
+    use crate::tabs::chaos::bifurcation as bif;
+    use crate::tabs::chaos::fractals as frac;
+
+    let f_th = frac::FractalViewer::default().theory_parameters();
+    let f_pair = ("julia_re", "julia_im");
+    let c0 = num_complex::Complex::new(0.0, 0.0);
+    let f_c = frac::FractalCartographer::new(
+        &f_th,
+        f_pair,
+        frac::CompiledFractalJob::quadratic(),
+        c0,
+        1.0,
+    );
+    for ((re, im), exp) in [((0.0, 0.0), 0u8), ((0.0, 1.0), 1), ((0.8, 0.6), 2)] {
+        assert_eq!(f_c.evaluate_cell(re, im).regime, exp);
+    }
+
+    let b_th = bif::BifurcationDiagram::default().theory_parameters();
+    let b_mode = bif::BifurcationMapMode::Logistic;
+    let b_c = bif::BifurcationCartographer::new(&b_th, ("r", "x0"), b_mode, None, 3.5, 0.5, 0.0);
+    for ((r, x0), exp) in [((2.5, 0.4), 0u8), ((3.9, 0.4), 2), ((3.8, 1.2), 3)] {
+        assert_eq!(b_c.evaluate_cell(r, x0).regime, exp);
+    }
+
+    let (fa, ba) = (f_c.axes(), b_c.axes());
+    let _g = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    verified_engine::engine::VerifiedEngine::run_verified(|| {
+        for i in 0..16 {
+            let (fx, fy) = fa.pixel_to_coords(i, i, 16, 16);
+            let fc = f_c.color_for_cell(f_c.evaluate_cell(fx, fy), true);
+            assert!(wcag_contrast_on_black(fc) >= 3.0);
+            let (bx, by) = ba.pixel_to_coords(i, i, 16, 16);
+            let bc = b_c.color_for_cell(b_c.evaluate_cell(bx, by), true);
+            assert!(wcag_contrast_on_black(bc) >= 3.0);
+        }
+    });
+}
+
+#[cfg(feature = "physics")]
+#[test]
+fn test_chaos_attractor_hopf_and_zero_alloc() {
+    use crate::tabs::chaos::attractors as att;
+
+    let pl = att::AttractorPlotter::default();
+    let th = pl.theory_parameters();
+    let job = att::CompiledFlowJob::from_bank(&pl.flow_bank);
+    let base = (10.0, 28.0, 8.0 / 3.0);
+    let a_c = att::AttractorCartographer::new(
+        &th,
+        ("sigma", "rho"),
+        att::AttractorMode::Lorenz,
+        job.clone(),
+        base,
+        (0.2, 0.2),
+    );
+    let c_c = att::AttractorCartographer::new(
+        &th,
+        ("param_0", "param_1"),
+        att::AttractorMode::Custom,
+        job,
+        base,
+        (0.2, 0.2),
+    );
+    assert!((att::lorenz_hopf_threshold(10.0, 8.0 / 3.0).unwrap() - 470.0 / 19.0).abs() < 1e-9);
+    assert!(a_c.overlay_contour().expect("Hopf").1.len() >= 10);
+    assert_eq!(a_c.evaluate_cell(10.0, 0.5).regime, 0);
+    assert_eq!(a_c.evaluate_cell(10.0, 28.0).regime, 2);
+    let _g = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let l_col = a_c.color_for_cell(a_c.evaluate_cell(10.0, 28.0), true);
+        let c_col = c_c.color_for_cell(c_c.evaluate_cell(0.2, 0.2), true);
+        assert!(wcag_contrast_on_black(l_col) >= 3.0 && wcag_contrast_on_black(c_col) >= 3.0);
+    });
+}
+
+#[cfg(feature = "physics")]
+#[test]
+fn test_chaos_teleport_bounds_and_a11y() {
+    use crate::tabs::chaos::{
+        attractors::AttractorPlotter, bifurcation::BifurcationDiagram, fractals::FractalViewer,
+    };
+    use eframe::egui;
+
+    let mut f = FractalViewer::default();
+    f.apply_atlas_teleport(tp("julia_re", -0.12, "julia_im", 0.75));
+    f.atlas.set_visible(true);
+    f.atlas.set_axis_keys("julia_re", "param_0").unwrap();
+    let mut b = BifurcationDiagram::default();
+    b.apply_atlas_teleport(None, tp("r", 3.85, "x0", 0.35));
+    b.atlas.set_visible(true);
+    b.atlas.set_axis_keys("r", "param_0").unwrap();
+    let mut p = AttractorPlotter::default();
+    p.apply_atlas_teleport(tp("sigma", 12.0, "rho", 32.0));
+    p.atlas.set_visible(true);
+    p.atlas.set_axis_keys("rho", "beta").unwrap();
+    assert!((f.julia_c.re + 0.12).abs() < 1e-9 && (b.probe_r - 3.85).abs() < 1e-9);
+    assert!((p.system.sigma - 12.0).abs() < 1e-9 && (p.system.rho - 32.0).abs() < 1e-9);
+
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 800.0));
+    let raw = egui::RawInput {
+        screen_rect: Some(rect),
+        ..Default::default()
+    };
+    for tool in [&mut f as &mut dyn InteractiveTool, &mut b, &mut p] {
+        let json = tool.save_state().unwrap();
+        ToolStateBounds::DEFAULT.validate_json(&json).unwrap();
+        tool.try_load_state(&json).unwrap();
+        let out = ctx.run(raw.clone(), |c| tool.show(c));
+        assert!(scan_accesskit_atlas_button(&out));
     }
 }

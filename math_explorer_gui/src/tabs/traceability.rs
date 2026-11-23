@@ -1,17 +1,16 @@
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use std::collections::HashMap;
 
-#[path = "traceability/presets.rs"]
-mod presets_impl;
-pub use presets_impl::*;
-#[path = "traceability/scanner.rs"]
+mod presets;
+pub use presets::*;
 mod scanner;
-#[path = "traceability/web_snapshot.rs"]
 mod web_snapshot;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-use scanner::{execute_workspace_scan, with_mock_current_dir, RootedVfs};
+use scanner::with_mock_current_dir;
 pub(crate) use web_snapshot::embedded_traceability_report;
 use web_snapshot::PaperStatus;
 pub use web_snapshot::{paper_tex_url, render_paper_links};
@@ -393,8 +392,15 @@ impl ExplorerTab for TraceabilityTab {
     }
 }
 
+inventory::submit! {
+    TabDescriptor {
+        id: "traceability",
+        order: 34,
+        build: || Box::new(TraceabilityTab::default()),
+    }
+}
+
 #[cfg(test)]
-#[path = "traceability/tests.rs"]
 mod tests;
 
 // [cite:essay]

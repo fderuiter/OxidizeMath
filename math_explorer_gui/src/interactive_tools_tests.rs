@@ -30,6 +30,7 @@ mod tests {
             crate::tabs::elliptic_curves::modular_invariants_tool::ModularInvariantsTool,
             crate::tabs::financial_math::bet_size::BetSizeCalculatorTool,
             crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool,
+            crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool,
             crate::tabs::graph_theory::network_metrics::NetworkMetricsTool,
             crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool,
             crate::tabs::number_theory::fractran_machine::FractranMachineTool,
@@ -46,6 +47,7 @@ mod tests {
             crate::tabs::clinical_trials::survival::SurvivalAnalysisTool,
             crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool,
             crate::tabs::clinical_trials::randomization::RandomizationTool,
+            crate::tabs::game_theory::glicko2::Glicko2TournamentTool,
         );
         #[cfg(feature = "ai")]
         check_tools!(
@@ -70,6 +72,7 @@ mod tests {
             crate::tabs::morphogenesis::lenia::LeniaTool,
             crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool,
             crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool,
+            crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool,
         );
         #[cfg(feature = "climate")]
         check_tools!(
@@ -380,6 +383,10 @@ mod tests {
         assert_tool_roundtrip(
             &mut crate::tabs::clinical_trials::survival::SurvivalAnalysisTool::default(),
             r#"{"input_text":"5.0, 1\n12.0, 0"}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool::default(),
+            r#"{"lambda1":0.16,"lambda2":0.36,"alpha":0.7,"theta":0.6,"censor_horizon":4.5,"dropout_rate":0.06,"sig_alpha":0.05,"n_min":30,"n_max":150,"n_steps":5,"replicates":80,"seed":9001,"chart_mode":"TierWaterfall"}"#,
         );
         assert_tool_roundtrip(
             &mut crate::tabs::epidemiology::network_propagation::NetworkPropagationTool::default(),

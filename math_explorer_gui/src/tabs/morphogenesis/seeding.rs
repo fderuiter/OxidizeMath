@@ -132,12 +132,12 @@ impl MorphogenesisTool {
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .clone();
-            let _ = self.worker.send_command(SimCommand::SyncSculptState(
-                SculptStatePayload {
+            let _ = self
+                .worker
+                .send_command(SimCommand::SyncSculptState(SculptStatePayload {
                     rle_mask,
                     sparse_potential: Vec::new(),
-                },
-            ));
+                }));
         }
         if target_state == SimWorkerState::Running {
             self.pending_initial_start = false;

@@ -23,6 +23,9 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+version = "0.4.0"
+
 [workspace.lints.rust]
 missing_docs = "warn"
 
@@ -34,9 +37,9 @@ cognitive_complexity = "deny"
 broken_intra_doc_links = "warn"
 
 [workspace.dependencies]
-chrono = "0.4"
 approx = "0.5.1"
-async-recursion = "1.0"
+arboard = "3.4"
+chrono = "0.4"
 console_error_panic_hook = "0.1.7"
 dashu = { version = "0.4.4", features = ["num-traits_v02"] }
 eframe = "0.33.3"
@@ -49,6 +52,7 @@ nalgebra = "0.34.0"
 num-complex = "0.4.6"
 num-traits = "0.2.19"
 petgraph = "0.6.4"
+png = "0.18"
 proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
 quadrature = "0.1.2"
 quote = "1.0.45"
@@ -61,7 +65,7 @@ rustfft = "6.2.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.150", features = ["raw_value"] }
 serde-saphyr = "2.1.1"
-statrs = "0.17.0"
+statrs = { version = "0.18.0", default-features = false, features = ["rand"] }
 syn = { version = "2.0.117", features = ["full", "fold", "visit-mut", "visit"] }
 thiserror = "2.0.18"
 toml = "1.1.2"

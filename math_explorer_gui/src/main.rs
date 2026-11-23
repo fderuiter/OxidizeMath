@@ -20,8 +20,7 @@ mod camera_3d_optout_tests;
     )
 ))]
 mod canvas_accessibility_tests;
-#[allow(missing_docs)]
-pub mod command_palette;
+mod command_palette;
 #[allow(missing_docs)]
 pub mod framework;
 #[cfg(all(
@@ -65,9 +64,12 @@ pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 use app::MathExplorerApp;
 
 #[cfg(test)]
+pub(crate) mod test_alloc;
+
+#[cfg(test)]
 #[global_allocator]
-static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
-    verified_engine::allocator::VerifiedAllocator;
+static TEST_ALLOCATOR: test_alloc::CountingVerifiedAllocator =
+    test_alloc::CountingVerifiedAllocator;
 
 #[cfg(test)]
 pub(crate) static VERIFIED_ALLOC_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());

@@ -89,7 +89,10 @@ fn test_simulation_framework_step_back_rollback_restores_parameters_and_plot() {
     )];
     egui_plot::clear_last_plot_datasets();
     egui_plot::append_last_plot_datasets(&pre_divergence_data);
-    framework.current_valid_plot_datasets = pre_divergence_data.clone();
+    framework.current_valid_plot_datasets = vec![(
+        "Trajectory".to_string(),
+        egui_plot::SharedPoints::from(pre_divergence_data[0].1.as_slice()),
+    )];
     framework.cache_valid_snapshot();
 
     let pre_state = framework.active_tool.as_ref().unwrap().save_state();
@@ -232,7 +235,10 @@ fn test_simulation_framework_performance_benchmarks() {
     );
 
     // Benchmark 2: Step-back state restoration latency (< 16 ms constraint)
-    framework.current_valid_plot_datasets = large_datasets;
+    framework.current_valid_plot_datasets = large_datasets
+        .into_iter()
+        .map(|(n, p)| (n, egui_plot::SharedPoints::from(p)))
+        .collect();
     framework.cache_valid_snapshot();
 
     // Trigger divergence
@@ -324,7 +330,10 @@ fn test_simulation_framework_reset_synchronizes_snapshot_for_step_back() {
         .unwrap()
         .load_state(&modified);
     egui_plot::append_last_plot_datasets(&[("Modified Run".to_string(), vec![[0.0, 5.0]])]);
-    framework.current_valid_plot_datasets = vec![("Modified Run".to_string(), vec![[0.0, 5.0]])];
+    framework.current_valid_plot_datasets = vec![(
+        "Modified Run".to_string(),
+        egui_plot::SharedPoints::from(vec![[0.0, 5.0]]),
+    )];
     framework.cache_valid_snapshot();
 
     let before_reset = crate::web_io::PlatformInstant::now();
@@ -405,7 +414,7 @@ fn test_starter_card_launch_updates_baseline_and_snapshot_for_reset() {
 }
 
 #[test]
-fn test_apply_preset_json_malformed_surfaces_toast_and_telemetry_warning() {
+fn test_apply_starter_card_malformed_surfaces_toast_and_telemetry_warning() {
     let mut framework = SimulationFramework::new("analysis");
     assert!(framework.preset_dialog.toast_error.is_none());
 
@@ -415,7 +424,11 @@ fn test_apply_preset_json_malformed_surfaces_toast_and_telemetry_warning() {
     let mut warning = None;
     for _ in 0..5 {
         let err_msg = framework
-            .apply_preset_json("{not valid preset json")
+            .apply_starter_card(
+                "Malformed Preset",
+                Some("OdeSolverTool"),
+                Some("{not valid preset json"),
+            )
             .expect_err("Malformed JSON must return Err");
         let toast = framework
             .preset_dialog

@@ -3,6 +3,8 @@ use eframe::egui;
 
 pub mod slider;
 pub use slider::AnimatedSlider;
+#[cfg(feature = "ai")]
+pub use slider::SweepMode;
 
 #[cfg(any(test, feature = "pure_math"))]
 fn format_metric_label(label: &str, value: &str) -> String {

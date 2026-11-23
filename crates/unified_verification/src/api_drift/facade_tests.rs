@@ -127,3 +127,62 @@ fn rejects_duplicate_error_names_across_reachable_modules() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn parses_signature_forms_on_first_filtered_suffix_and_deduplicates() {
+    let forms = [
+        "pub fn solve(x: f64) -> f64",
+        "pub const fn dim() -> usize",
+        "pub struct SolverConfig<T>",
+        "pub enum SolverError",
+        "pub union RawSlot",
+        "pub trait Integrator",
+        "pub trait Integrator { fn step(&mut self, dt: f64) }",
+        "pub trait Integrator { const ORDER: usize }",
+        "pub trait Integrator { type State }",
+        "impl Solver { pub fn new() -> Self }",
+        "impl Solver { pub const DEFAULT_STEPS: usize }",
+        "impl Integrator for Solver { type State = f64 }",
+        "pub const MAX_ITERS: usize",
+        "pub static GLOBAL_SEED: u64",
+        "pub type MatrixAlias = DMatrix<f64>",
+        "pub use crate::error::AIError",
+        "pub mod inner",
+        "pub mod nested { pub fn inner_fn(cfg: SolverConfig<f64>) -> Result<(), AIError> }",
+    ];
+    for sig in forms {
+        let mut attempts = 0;
+        let ast = parse_signature_ast_counted(sig, &mut attempts);
+        assert!(ast.is_some(), "Failed to parse signature `{sig}`");
+        assert_eq!(attempts, 1, "Expected 1 syn parse attempt for `{sig}`");
+    }
+
+    let item = |s: &str| ApiItem {
+        signature: s.into(),
+        deprecation_expires: None,
+    };
+    let mut apis = BTreeMap::new();
+    apis.insert(
+        "crates/domain_ai/src/a.rs".into(),
+        vec![
+            item("pub fn alpha() -> f64"),
+            item("pub struct SharedState"),
+            item("pub mod __doctest_facade {}"),
+        ],
+    );
+    apis.insert(
+        "crates/domain_physics/src/b.rs".into(),
+        vec![
+            item("pub fn alpha() -> f64"),
+            item("pub struct SharedState"),
+        ],
+    );
+    apis.insert(
+        "crates/unified_verification/src/ignored.rs".into(),
+        vec![item("pub fn unreachable_tool_fn()")],
+    );
+
+    let (parsed, total_attempts) = build_parsed_signatures_counted(&apis);
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(total_attempts, 2);
+}

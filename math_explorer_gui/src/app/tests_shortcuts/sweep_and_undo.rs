@@ -307,15 +307,13 @@ fn test_single_layout_ctrl_z_and_ctrl_y_across_all_explorer_tabs_and_strip_short
     let mut frame = eframe::Frame::_new_kittest();
     let mods = shortcut_mods();
 
-    if cfg!(all(
-        not(target_arch = "wasm32"),
+    #[cfg(all(
         feature = "biology",
         feature = "climate",
         feature = "epidemiology",
         feature = "physics"
-    )) {
-        assert_eq!(app.tabs.len(), 26);
-    }
+    ))]
+    assert_eq!(app.tabs.len(), 27);
 
     app.set_layout(ViewportLayout::Single);
     let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());

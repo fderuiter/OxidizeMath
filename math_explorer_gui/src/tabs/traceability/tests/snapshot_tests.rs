@@ -45,7 +45,7 @@ fn test_web_manifest_relative_urls_and_tex_fallback_links() {
     assert_eq!(web_snapshot::paper_tex_url("spec:transformer_v1"), None);
     assert_eq!(web_snapshot::paper_tex_url("registry:internal"), None);
 
-    const SW_JS: &str = include_str!("../../../sw.js");
+    const SW_JS: &str = include_str!("../../../../sw.js");
     assert!(
         !SW_JS.contains("traceability_manifest.json")
             && !SW_JS.contains("Verification_Certificate.json"),
@@ -100,8 +100,6 @@ fn test_app_startup_does_not_scan_when_traceability_tab_unopened() {
 #[test]
 fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
-    let vfs = RootedVfs::new(&ws_root).expect("RootedVfs for workspace root");
 
     let embedded_json = include_str!(concat!(env!("OUT_DIR"), "/traceability_manifest.json"));
     let direct_report: oxidize_core::traceability::TraceabilityReport =
@@ -109,9 +107,6 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
     let (manifest_report, embedded_cert) =
         web_snapshot::parse_manifest_json(embedded_json).expect("valid manifest JSON");
     assert_eq!(direct_report, manifest_report);
-
-    let live_report = futures::executor::block_on(execute_workspace_scan(vfs, String::new()))
-        .expect("live workspace scan");
 
     let tex_paper_count = manifest_report
         .paper_coverage
@@ -129,7 +124,26 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
     assert!(manifest_report.total_asserts > 0);
     assert!(manifest_report.verified_funcs > 0);
     assert!(manifest_report.verified_asserts > 0);
-    assert_eq!(manifest_report, live_report);
+
+    #[cfg(all(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "math_explorer",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
+    {
+        use super::super::scanner::{execute_workspace_scan, RootedVfs};
+
+        let ws_root = TraceabilityTab::canonical_workspace_root().expect("workspace root");
+        let vfs = RootedVfs::new(&ws_root).expect("RootedVfs for workspace root");
+        let live_report = futures::executor::block_on(execute_workspace_scan(vfs, String::new()))
+            .expect("live workspace scan");
+        assert_eq!(manifest_report, live_report);
+    }
 
     let cert = embedded_cert.expect("embedded Verification_Certificate.json");
     assert!(cert.passed);
