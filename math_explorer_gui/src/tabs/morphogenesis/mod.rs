@@ -5,8 +5,10 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 
 pub mod atlas;
+pub mod lenia;
 pub mod presets;
 pub mod runner;
+mod seeding;
 pub mod tool;
 pub mod ui;
 
@@ -14,6 +16,8 @@ pub mod ui;
 pub use atlas::{
     classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
 };
+#[cfg(test)]
+pub use lenia::LeniaTool;
 #[cfg(test)]
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
@@ -41,7 +45,7 @@ pub struct LegacyMorphoState {
     pub pending_initial_start: bool,
 }
 
-/// Biology tab hosting [`tool::MorphogenesisTool`] inside [`crate::framework::SimulationFramework`].
+/// Biology tab hosting [`MorphogenesisTool`] and [`lenia::LeniaTool`] inside [`crate::framework::SimulationFramework`].
 pub struct MorphogenesisTab {
     /// Underlying simulation framework managing exports, presets, theory portal, and state guard.
     pub framework: crate::framework::SimulationFramework,
@@ -49,9 +53,9 @@ pub struct MorphogenesisTab {
 
 impl Default for MorphogenesisTab {
     fn default() -> Self {
-        Self {
-            framework: crate::framework::SimulationFramework::new("biology"),
-        }
+        let mut framework = crate::framework::SimulationFramework::new("biology");
+        let _ = framework.select_tool_by_name("MorphogenesisTool");
+        Self { framework }
     }
 }
 
@@ -60,7 +64,9 @@ impl MorphogenesisTab {
         let Ok(legacy) = serde_json::from_str::<LegacyMorphoState>(state) else {
             return false;
         };
-        let _ = self.framework.select_tool_by_name("MorphogenesisTool");
+        if self.framework.active_tool_id() != Some("MorphogenesisTool") {
+            let _ = self.framework.select_tool_by_name("MorphogenesisTool");
+        }
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return true;
         };

@@ -5,6 +5,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use syn::visit::Visit;
 
+#[path = "facade_errors.rs"]
+mod facade_errors;
+
+#[cfg(test)]
+use facade_errors::DOMAIN_INNER_MODS;
+use facade_errors::check_crate_error_reexports;
+
 const FACADE_REACHABLE_PREFIXES: &[&str] = &[
     "math_explorer/src/",
     "crates/math_commons/src/",
@@ -18,27 +25,6 @@ const FACADE_REACHABLE_PREFIXES: &[&str] = &[
     "crates/domain_climate/src/",
     "crates/domain_epidemiology/src/",
     "crates/domain_physics/src/",
-];
-
-const ERROR_CRATE_FILES: &[&str] = &[
-    "crates/math_commons/src/error.rs",
-    "crates/pure_math/src/error.rs",
-    "crates/domain_ai/src/error.rs",
-    "crates/domain_applied/src/error.rs",
-    "crates/domain_biology/src/error.rs",
-    "crates/domain_climate/src/error.rs",
-    "crates/domain_epidemiology/src/error.rs",
-    "crates/domain_physics/src/error.rs",
-];
-
-const DOMAIN_INNER_MODS: &[&str] = &[
-    "crates/pure_math/src/pure_math/mod.rs",
-    "crates/domain_ai/src/ai/mod.rs",
-    "crates/domain_applied/src/applied/mod.rs",
-    "crates/domain_biology/src/biology/mod.rs",
-    "crates/domain_climate/src/climate/mod.rs",
-    "crates/domain_epidemiology/src/epidemiology/mod.rs",
-    "crates/domain_physics/src/physics/mod.rs",
 ];
 
 const REQUIRED_ROOT_EXPORTS: &[&str] = &[
@@ -204,39 +190,6 @@ fn parse_exported_idents_in_file(path: &Path, cache: &mut AstCache) -> BTreeSet<
         }
     }
     out
-}
-
-fn check_crate_error_reexports(
-    workspace_root: &Path,
-    cache: &mut AstCache,
-    violations: &mut Vec<String>,
-) {
-    let facade_errors =
-        parse_exported_idents_in_file(&workspace_root.join("math_explorer/src/error.rs"), cache);
-    for rel in ERROR_CRATE_FILES {
-        let path = workspace_root.join(rel);
-        let Some(ast) = cache.get_or_load_fs(&path).and_then(|e| e.ast.as_ref()) else {
-            continue;
-        };
-        for item in &ast.items {
-            if let syn::Item::Enum(e) = item
-                && matches!(e.vis, syn::Visibility::Public(_))
-                && !facade_errors.contains(&e.ident.to_string())
-            {
-                violations.push(format!(
-                    "Facade error gap: `pub enum {}` in `{rel}` is not re-exported by `math_explorer/src/error.rs`",
-                    e.ident
-                ));
-            }
-        }
-    }
-    for rel in DOMAIN_INNER_MODS {
-        if !parse_exported_idents_in_file(&workspace_root.join(rel), cache).contains("error") {
-            violations.push(format!(
-                "Facade domain error gap: `{rel}` must publicly expose `error` (`pub use crate::error;`)"
-            ));
-        }
-    }
 }
 
 fn check_root_facade_modules(
@@ -469,7 +422,7 @@ pub(crate) fn check_facade_completeness_in_dir_with_cache(
 
     let mut violations = Vec::new();
     check_root_facade_modules(workspace_root, cache, &mut violations);
-    check_crate_error_reexports(workspace_root, cache, &mut violations);
+    check_crate_error_reexports(workspace_root, apis, cache, &mut violations);
 
     let exported = collect_exported_type_names(apis);
     for (path, items) in apis {
