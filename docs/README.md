@@ -28,7 +28,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0013: Trait-Level Executable Doc-Test Suites](adr/0013-trait-level-runnable-doctests.md)
 - [ADR 0016: Standardize Crate Documentation Suite](adr/0016-standardize-crate-documentation-suite.md)
 - [ADR 0035: Spatial Fermi Games and Ising Droplet Brushes](adr/0035-fermi-spatial-games-and-ising-droplet-brushes.md)
-- [ADR 0040: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0040-symplectic-hamiltonian-solvers-and-poincare-lab.md)
+- [ADR 0041: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0041-symplectic-hamiltonian-solvers-and-poincare-lab.md)
 
 ## Contributing
 

@@ -432,6 +432,7 @@ impl SimulationFramework {
             }
             let _ = self.inspect_runtime_state();
             if self.is_diverged {
+                crate::audio::notify_solver_diverged();
                 ctx.request_repaint();
             }
         } else if let Some(tool) = &mut self.active_tool {

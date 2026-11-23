@@ -1,3 +1,4 @@
+// [cite:math_commons]
 use std::collections::HashMap;
 
 struct StrCursor<'a> {

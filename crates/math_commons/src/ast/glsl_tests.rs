@@ -1,3 +1,4 @@
+// [cite:math_commons]
 use super::glsl_sim_test_eval::{eval_glsl_complex, eval_glsl_scalar};
 use super::*;
 use num_complex::Complex64;

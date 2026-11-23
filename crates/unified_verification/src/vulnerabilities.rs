@@ -199,15 +199,7 @@ mod tests {
     impl TempLockFile {
         fn new(content: &str) -> Self {
             let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-            let filename = format!(
-                "test_cargo_{}_{}_{}.lock",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos(),
-                id
-            );
+            let filename = format!("test_cargo_{}_{}.lock", std::process::id(), id);
             let path = std::env::temp_dir().join(filename);
             fs::write(&path, content).expect("Failed to write temporary test lock file");
             Self { path }
