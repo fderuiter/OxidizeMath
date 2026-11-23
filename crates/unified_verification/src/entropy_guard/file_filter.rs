@@ -43,18 +43,58 @@ pub(super) fn classify_scan_file(path: &Path, target_extensions: &[String]) -> S
     ScanFileKind::Skip
 }
 
+pub(super) fn is_ignored_dir(entry: &walkdir::DirEntry) -> bool {
+    if entry.file_type().is_dir() {
+        let name = entry.file_name().to_string_lossy();
+        if name == "target" || name == ".git" {
+            return true;
+        }
+    }
+    false
+}
+
+pub(super) fn is_scannable_entry(entry: &walkdir::DirEntry) -> Option<bool> {
+    let is_symlink = entry.path_is_symlink();
+    if entry.file_type().is_file() || (is_symlink && entry.path().is_file()) {
+        Some(is_symlink)
+    } else {
+        None
+    }
+}
+
 pub(super) fn should_visit_file(
     path: &Path,
+    is_symlink: bool,
+    root_pair: Option<(&Path, &Path)>,
     allowlist: &[String],
     visited: &mut HashSet<PathBuf>,
 ) -> bool {
-    let path_str = path.to_string_lossy().replace('\\', "/");
+    let path_str = path.to_string_lossy();
     if path_str
-        .split('/')
+        .split(['/', '\\'])
         .any(|seg| seg == "target" || seg == ".git")
     {
         return false;
     }
-    let can = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    visited.insert(can) && !is_file_allowlisted(path, allowlist)
+    if is_file_allowlisted(path, allowlist) {
+        return false;
+    }
+    let dedup_key = if is_symlink {
+        let can = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        if is_file_allowlisted(&can, allowlist) {
+            return false;
+        }
+        can
+    } else if let Some((raw_root, can_root)) = root_pair
+        && let Ok(rel) = path.strip_prefix(raw_root)
+    {
+        if rel.as_os_str().is_empty() {
+            can_root.to_path_buf()
+        } else {
+            can_root.join(rel)
+        }
+    } else {
+        path.to_path_buf()
+    };
+    visited.insert(dedup_key)
 }

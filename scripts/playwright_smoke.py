@@ -1225,10 +1225,20 @@ def run_offline_sw_shell_recovery_check(
     try:
         page = context.new_page()
         csp_violations: list[str] = []
+        boot_failed_requests: list[str] = []
         attach_csp_observer(page, csp_violations)
+        on_boot_req_failed = lambda req: boot_failed_requests.append(
+            f"{req.method} {req.url}: {req.failure}"
+        )
+        page.on("requestfailed", on_boot_req_failed)
 
         page.goto(f"{base_url}/", wait_until="domcontentloaded")
         expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+        page.remove_listener("requestfailed", on_boot_req_failed)
+        if any("net::ERR_ABORTED" in req for req in boot_failed_requests):
+            raise TransientBrowserCrashError(
+                f"[offline_sw_shell_recovery] Loopback request aborted by Chromium NetworkService: {boot_failed_requests}"
+            )
         expect(page.locator("#the_canvas_id")).to_be_focused()
 
         page.wait_for_function(

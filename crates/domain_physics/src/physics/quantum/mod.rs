@@ -105,7 +105,7 @@ pub use schrodinger::{
     evolve_state, evolve_state_in_place, state_norm_squared, time_evolution_operator,
     transmission_probability,
 };
-pub use spin::{sigma_x, sigma_y, sigma_z};
+pub use spin::{set_spin_bloch_angles_in_place, sigma_x, sigma_y, sigma_z, spin_from_bloch_angles};
 pub use types::{QuantumOperator, QuantumState};
 
 // [cite:quantum_mechanics]

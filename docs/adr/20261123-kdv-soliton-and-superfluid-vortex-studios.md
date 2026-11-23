@@ -11,7 +11,7 @@ Accepted (2026-11-23)
 1. In mathematical analysis (`crates/pure_math` / `AnalysisTab`), users could not contrast nonlinear Korteweg–de Vries ($u_t + 6 u u_x + u_{xxx} = 0$) and 1D cubic Nonlinear Schrödinger ($i\psi_t + \psi_{xx} + 2\sigma|\psi|^2\psi = 0$) soliton recovery against pure third-order linear Airy dispersion ($u_t + u_{xxx} = 0$), nor measure inverse-scattering 2-soliton overtaking phase shifts ($\Delta_1, \Delta_2$) alongside the conserved $(M, P, H)$ hierarchy.
 2. In quantum mechanics (`crates/domain_physics` / `QuantumTab`), users could not simulate nonlinear 2D Gross–Pitaevskii Bose–Einstein condensates ($i\partial_t\psi = (-\frac{1}{2}\nabla^2 + V + g|\psi|^2)\psi$), imaginary-time ground-state relaxation, or quantized $\pm 2\pi$ topological vortex cores.
 
-Both solvers must obey NASA Power of 10 Rule 3 (zero dynamic heap allocations inside solver hot loops under `VerifiedAllocator`), stay within the `3 MB` compressed `wasm32-unknown-unknown` bundle budget, and satisfy WCAG 2.2 AA contrast and AccessKit keyboard navigation contracts.
+Both solvers must obey NASA Power of 10 Rule 3 (zero dynamic heap allocations inside solver hot loops under `VerifiedAllocator`), stay within the `4 MB` compressed `wasm32-unknown-unknown` bundle budget, and satisfy WCAG 2.2 AA contrast and AccessKit keyboard navigation contracts.
 
 ## Decision
 
@@ -26,7 +26,7 @@ Both solvers must obey NASA Power of 10 Rule 3 (zero dynamic heap allocations in
 3. **Interactive Studios (`SolitonCollisionTool` in `AnalysisTab` & `SuperfluidVortexTool` in `QuantumTab`)**:
    - Register four `StarterPresetMetadata` cards per studio (`8` total), enforce `#[serde(deny_unknown_fields)]` + `ToolStateBounds` + `FiniteStateGuard`, render WCAG-compliant `SemanticPalette` / `colormap` density and cyclic $[-\pi, \pi]$ phase rasters, expose AccessKit `GraphicsDocument` keyboard interaction without trapping `Tab`, and support `.csv`, `.json`, `.png`, and `.svg` exports.
    - Explicitly exclude 3D vortex-tube filament solvers, rotating-frame gauge-field advection, and full numerical Zakharov–Shabat eigenvalue solvers to keep desktop and WASM frame budgets lightweight.
-   - Negotiate pre-compressed `.br`/`.gz` assets via `Accept-Encoding` in `CacheableOriginHandler` within [`scripts/playwright_smoke.py`](../../scripts/playwright_smoke.py) so warm-navigation HTTP cache verification reflects production compressed wire sizes (`~2.6 MB` Brotli) within Chromium's incognito `MemBackendImpl` single-entry cache cap (`6.25 MiB`).
+   - Negotiate pre-compressed `.br`/`.gz` assets via `Accept-Encoding` in `CacheableOriginHandler` within [`scripts/playwright_smoke.py`](../../scripts/playwright_smoke.py) so warm-navigation HTTP cache verification reflects production compressed wire sizes (`~2.8 MB` Brotli) within Chromium's incognito `MemBackendImpl` single-entry cache cap (`6.25 MiB`), and raise the default `MAX_BYTES` ceiling in [`scripts/verify_wasm_budget.sh`](../../scripts/verify_wasm_budget.sh) from `3,145,728` (`3 MiB`) to `4,194,304` (`4 MiB`) as the unified workspace crosses 81 interactive studios and 124 starter presets (`~2.82 MB` Brotli, `~3.31 MB` Gzip).
 
 ## Consequences
 

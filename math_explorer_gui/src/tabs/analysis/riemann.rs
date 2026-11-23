@@ -364,7 +364,7 @@ inventory::submit! {
         id: "RiemannIntegrationTool",
         display_name: "Riemann Integration",
         domain: "analysis",
-        tags: &[],
+        tags: &["quadrature", "simpson", "trapezoidal", "midpoint", "definite integral", "calculus"],
         build: || Box::new(RiemannIntegrationTool::default()),
     }
 }
