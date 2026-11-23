@@ -415,8 +415,14 @@ fn render_trace_and_card_actions(tool: &mut PharmacokineticsTool, ui: &mut egui:
     if tool
         .snapshot_manager
         .render_ui_with_kpis(ui, &current_kpis, move || {
-            (!active_series.is_empty())
-                .then(|| (format!("Regimen {next_idx}"), summary, active_series, active_kpis))
+            (!active_series.is_empty()).then(|| {
+                (
+                    format!("Regimen {next_idx}"),
+                    summary,
+                    active_series,
+                    active_kpis,
+                )
+            })
         })
     {
         tool.revision = tool.revision.wrapping_add(1).max(1);

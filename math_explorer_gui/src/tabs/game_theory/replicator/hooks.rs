@@ -4,8 +4,7 @@
 
 use super::ReplicatorDynamicsTool;
 use crate::framework::{
-    extract_calibration_series, fit_bounded_parameters, CalibratableParamSpec,
-    SensitivityParamSpec,
+    extract_calibration_series, fit_bounded_parameters, CalibratableParamSpec, SensitivityParamSpec,
 };
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
 
@@ -54,10 +53,34 @@ impl ReplicatorDynamicsTool {
             return Vec::new();
         }
         vec![
-            SensitivityParamSpec::new("a_00", "Payoff A(1,1)", self.payoff_matrix[(0, 0)], -5.0, 10.0),
-            SensitivityParamSpec::new("a_01", "Payoff A(1,2)", self.payoff_matrix[(0, 1)], -5.0, 10.0),
-            SensitivityParamSpec::new("a_10", "Payoff A(2,1)", self.payoff_matrix[(1, 0)], -5.0, 10.0),
-            SensitivityParamSpec::new("a_11", "Payoff A(2,2)", self.payoff_matrix[(1, 1)], -5.0, 10.0),
+            SensitivityParamSpec::new(
+                "a_00",
+                "Payoff A(1,1)",
+                self.payoff_matrix[(0, 0)],
+                -5.0,
+                10.0,
+            ),
+            SensitivityParamSpec::new(
+                "a_01",
+                "Payoff A(1,2)",
+                self.payoff_matrix[(0, 1)],
+                -5.0,
+                10.0,
+            ),
+            SensitivityParamSpec::new(
+                "a_10",
+                "Payoff A(2,1)",
+                self.payoff_matrix[(1, 0)],
+                -5.0,
+                10.0,
+            ),
+            SensitivityParamSpec::new(
+                "a_11",
+                "Payoff A(2,2)",
+                self.payoff_matrix[(1, 1)],
+                -5.0,
+                10.0,
+            ),
         ]
     }
 

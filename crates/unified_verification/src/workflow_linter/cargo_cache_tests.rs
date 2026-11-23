@@ -23,33 +23,92 @@ fn test_cargo_cache_action_pins_v4_node20_and_hashes_cargo_toml() {
         .and_then(Value::as_array)
         .expect("composite action must define runs.steps");
 
-    let lock_hash_expr = steps[0]
+    assert_cargo_cache_inputs_and_env(&yaml, steps);
+    assert_cargo_cache_uses_steps(steps);
+}
+
+fn assert_cargo_cache_inputs_and_env(yaml: &Value, steps: &[Value]) {
+    let inputs = yaml
+        .get("inputs")
+        .expect("cargo-cache action.yml must define inputs");
+    assert!(
+        inputs.get("restore-only").is_some(),
+        "cargo-cache action.yml must define a restore-only input"
+    );
+    let manifest_default = inputs["manifest-files"]["default"]
+        .as_str()
+        .expect("manifest-files input must define a default");
+    let default_lines: Vec<&str> = manifest_default
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert_eq!(
+        default_lines,
+        vec!["Cargo.toml", "**/Cargo.toml"],
+        "manifest-files must default to workspace Cargo.toml globs"
+    );
+
+    let env_map = steps[0]
         .get("env")
-        .and_then(|e| e.get("LOCK_AND_CONFIG_HASH"))
-        .and_then(Value::as_str)
+        .expect("cache-meta step must define env");
+    let lock_hash_expr = env_map["LOCK_AND_CONFIG_HASH"]
+        .as_str()
         .expect("cache-meta step must bind LOCK_AND_CONFIG_HASH in env");
-    for pattern in [
-        "'Cargo.lock'",
-        "'**/Cargo.lock'",
-        "'Cargo.toml'",
-        "'**/Cargo.toml'",
-        "'.cargo/config.toml'",
-        "'math_explorer_gui/Trunk.toml'",
-    ] {
+    for pattern in ["'Cargo.lock'", "'**/Cargo.lock'", "'.cargo/config.toml'"] {
         assert!(
             lock_hash_expr.contains(pattern),
             "LOCK_AND_CONFIG_HASH must hash {pattern}, got: {lock_hash_expr}"
         );
     }
-
     assert!(
-        yaml.get("inputs")
-            .and_then(|i| i.get("restore-only"))
-            .is_some(),
-        "cargo-cache action.yml must define a restore-only input"
+        !lock_hash_expr.contains("Trunk.toml"),
+        "LOCK_AND_CONFIG_HASH must not hash Trunk.toml globally: {lock_hash_expr}"
     );
 
-    assert_cargo_cache_uses_steps(steps);
+    let manifest_expr = env_map["MANIFEST_FILES_HASH"]
+        .as_str()
+        .expect("cache-meta step must bind MANIFEST_FILES_HASH in env");
+    assert!(
+        manifest_expr.contains("hashFiles(inputs.manifest-files)"),
+        "MANIFEST_FILES_HASH must hash inputs.manifest-files, got: {manifest_expr}"
+    );
+
+    let trunk_expr = env_map["TRUNK_CONFIG_HASH"]
+        .as_str()
+        .expect("cache-meta step must bind TRUNK_CONFIG_HASH in env");
+    assert!(
+        trunk_expr.contains("inputs.target == 'wasm32-unknown-unknown'")
+            && trunk_expr.contains("hashFiles('math_explorer_gui/Trunk.toml')"),
+        "TRUNK_CONFIG_HASH must hash Trunk.toml only for wasm32-unknown-unknown, got: {trunk_expr}"
+    );
+}
+
+fn assert_target_restore_keys_fallback(step: &Value) {
+    let restore_keys = step["with"]["restore-keys"]
+        .as_str()
+        .expect("target cache step must define restore-keys");
+    let prefixes: Vec<&str> = restore_keys
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert_eq!(
+        prefixes.len(),
+        2,
+        "target cache restore-keys must include compiler-hash and compiler-agnostic fallback prefixes, got: {prefixes:?}"
+    );
+    assert!(
+        prefixes[0].ends_with("-${{ steps.cache-meta.outputs.compiler-hash }}-"),
+        "primary restore-key must end with compiler-hash prefix, got: {}",
+        prefixes[0]
+    );
+    assert!(
+        prefixes[1].ends_with("-${{ steps.cache-meta.outputs.target }}-")
+            && !prefixes[1].contains("compiler-hash"),
+        "fallback restore-key must omit compiler-hash and end with target prefix, got: {}",
+        prefixes[1]
+    );
 }
 
 fn assert_cargo_cache_uses_steps(steps: &[Value]) {
@@ -93,6 +152,7 @@ fn assert_cargo_cache_uses_steps(steps: &[Value]) {
                     "target cache path must exclude {excluded}, got: {cache_paths}"
                 );
             }
+            assert_target_restore_keys_fallback(step);
         }
     }
     assert_eq!(target_step_count, 2, "Expected two target cache steps");
@@ -139,6 +199,118 @@ fn test_ci_tool_cache_action_isolates_binaries_outside_cargo_bin() {
     );
 }
 
+fn assert_rust_toolchain_pin_parity(root: &Path, ci_yaml: &Value) {
+    let toolchain_raw = fs::read_to_string(root.join("rust-toolchain.toml"))
+        .expect("rust-toolchain.toml should be readable");
+    let toolchain_toml: toml::Value =
+        toml::from_str(&toolchain_raw).expect("rust-toolchain.toml must be valid TOML");
+    let channel = toolchain_toml["toolchain"]["channel"]
+        .as_str()
+        .expect("rust-toolchain.toml must define toolchain.channel");
+    let parts: Vec<&str> = channel.split('.').collect();
+    assert!(
+        parts.len() == 3
+            && parts
+                .iter()
+                .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())),
+        "rust-toolchain.toml channel must be an explicit MAJOR.MINOR.PATCH version, got: {channel}"
+    );
+
+    let jobs = ci_yaml["jobs"]
+        .as_object()
+        .expect("ci.yml must define jobs");
+    let mut toolchain_step_count = 0usize;
+    for (job_name, job_val) in jobs {
+        let Some(steps) = job_val.get("steps").and_then(Value::as_array) else {
+            continue;
+        };
+        for step in steps {
+            let Some(uses) = step.get("uses").and_then(Value::as_str) else {
+                continue;
+            };
+            if uses.starts_with("dtolnay/rust-toolchain@") {
+                toolchain_step_count += 1;
+                assert_eq!(
+                    uses, "dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec",
+                    "dtolnay/rust-toolchain must retain its 40-char SHA pin in job '{job_name}'"
+                );
+                assert_eq!(
+                    step["with"]["toolchain"].as_str(),
+                    Some(channel),
+                    "job '{job_name}' dtolnay/rust-toolchain must pin toolchain '{channel}'"
+                );
+            }
+        }
+    }
+    assert_eq!(
+        toolchain_step_count, 6,
+        "Expected six dtolnay/rust-toolchain steps across ci.yml Rust jobs"
+    );
+}
+
+fn find_job_cargo_cache_step<'a>(ci_yaml: &'a Value, job: &str) -> &'a Value {
+    ci_yaml["jobs"][job]["steps"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{job} must define steps"))
+        .iter()
+        .find(|s| s.get("uses").and_then(Value::as_str) == Some("./.github/actions/cargo-cache"))
+        .unwrap_or_else(|| panic!("{job} must use ./.github/actions/cargo-cache"))
+}
+
+fn assert_ci_cache_scoping_and_seeding(ci_yaml: &Value) {
+    for job in ["pre-flight", "feature-matrix", "package", "publish-release"] {
+        let cache_step = find_job_cargo_cache_step(ci_yaml, job);
+        assert!(
+            cache_step["with"].get("extra-files").is_none(),
+            "{job} cargo-cache step must not set redundant extra-files"
+        );
+    }
+
+    let papers_cache = find_job_cargo_cache_step(ci_yaml, "compile-papers");
+    assert!(
+        papers_cache["with"].get("extra-files").is_none(),
+        "compile-papers cargo-cache step must not set extra-files"
+    );
+    let papers_manifests: Vec<&str> = papers_cache["with"]["manifest-files"]
+        .as_str()
+        .expect("compile-papers must narrow manifest-files")
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert_eq!(
+        papers_manifests,
+        vec!["Cargo.toml", "apps/xtask/Cargo.toml"],
+        "compile-papers must scope manifest-files to root and xtask Cargo.toml"
+    );
+
+    let fm_cache = find_job_cargo_cache_step(ci_yaml, "feature-matrix");
+    assert_eq!(
+        fm_cache["with"]["scope"].as_str(),
+        Some("features-shared"),
+        "feature-matrix must share one features-shared scope"
+    );
+    assert_eq!(
+        fm_cache["with"]["restore-only"].as_str(),
+        Some("${{ matrix.feature != 'climate' }}"),
+        "feature-matrix must gate 7 of 8 legs with restore-only on climate writer"
+    );
+
+    let fm_steps = ci_yaml["jobs"]["feature-matrix"]["steps"]
+        .as_array()
+        .expect("feature-matrix must define steps");
+    let has_all_features_seed = fm_steps.iter().any(|s| {
+        s.get("if").and_then(Value::as_str) == Some("matrix.feature == 'climate'")
+            && s.get("run")
+                .and_then(Value::as_str)
+                .is_some_and(|r| r.contains("cargo test -p math_explorer --no-run --all-features"))
+    });
+    assert!(
+        has_all_features_seed,
+        "climate writer leg in feature-matrix must run `cargo test -p math_explorer --no-run --all-features`"
+    );
+}
+
 #[test]
 fn test_ci_workflow_shares_feature_matrix_cache_and_caches_pinned_tools() {
     let _lock = crate::DIR_LOCK.lock().unwrap();
@@ -155,24 +327,8 @@ fn test_ci_workflow_shares_feature_matrix_cache_and_caches_pinned_tools() {
         "ci.yml must set CARGO_INCREMENTAL: \"0\" globally"
     );
 
-    let fm_steps = yaml["jobs"]["feature-matrix"]["steps"]
-        .as_array()
-        .expect("feature-matrix must define steps");
-    let fm_cache = fm_steps
-        .iter()
-        .find(|s| s.get("uses").and_then(Value::as_str) == Some("./.github/actions/cargo-cache"))
-        .expect("feature-matrix must use cargo-cache");
-    assert_eq!(
-        fm_cache["with"]["scope"].as_str(),
-        Some("features-shared"),
-        "feature-matrix must share one features-shared scope"
-    );
-    assert!(
-        fm_cache["with"]["restore-only"]
-            .as_str()
-            .is_some_and(|expr| expr.contains("matrix.feature !=")),
-        "feature-matrix must gate 7 of 8 legs with restore-only"
-    );
+    assert_rust_toolchain_pin_parity(&root, &yaml);
+    assert_ci_cache_scoping_and_seeding(&yaml);
 
     for expected in [
         "tool: cargo-audit",

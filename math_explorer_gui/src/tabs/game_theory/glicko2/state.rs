@@ -167,13 +167,7 @@ impl InteractiveTool for Glicko2TournamentTool {
         let r0 = self.competitors[0].initial.rating.value();
         vec![
             SensitivityParamSpec::new("tau", "System Constant (τ)", self.tau, 0.3, 1.2),
-            SensitivityParamSpec::new(
-                "seed_rating",
-                "Top Seed Initial Rating",
-                r0,
-                1200.0,
-                2200.0,
-            ),
+            SensitivityParamSpec::new("seed_rating", "Top Seed Initial Rating", r0, 1200.0, 2200.0),
         ]
     }
 

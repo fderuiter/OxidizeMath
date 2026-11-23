@@ -19,11 +19,15 @@ fn wasm_smoke_chladni_wave_tank_presets_stepping_and_exports() {
         TankPreset::AcousticLens,
     ] {
         tool.apply_preset(preset);
+        tool.state.custom_clamps.push([0.35, 0.65]);
+        tool.rebuild_masks();
         tool.step_simulation();
         assert!(tool.has_finite_parameters());
+        assert!(tool.audio.latest_frame.is_audible());
 
         let saved = tool.save_state().expect("WASM save_state");
         tool.try_load_state(&saved).expect("WASM try_load_state");
+        assert_eq!(tool.state.custom_clamps, vec![[0.35, 0.65]]);
 
         let img = tool.export_raster_image().expect("WASM raster image");
         let png = color32_image_to_png(&img).expect("WASM PNG encode");

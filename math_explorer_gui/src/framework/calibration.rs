@@ -5,7 +5,7 @@
 use math_commons::fit::{levenberg_marquardt_numeric, sum_squared_errors_numeric, MAX_FIT_PARAMS};
 
 use super::{
-    inspect_datasets_for_divergence, persistence, ExportStatusSeverity, SimulationFramework,
+    inspect_shared_datasets_for_divergence, persistence, ExportStatusSeverity, SimulationFramework,
 };
 
 /// Bounded scalar parameter specification for nonlinear CSV curve calibration.
@@ -183,7 +183,9 @@ impl SimulationFramework {
 
         let params_finite = tool.has_finite_parameters();
         let refreshed = persistence::capture_isolated_tool_datasets(tool.as_ref());
-        let dataset_fault = inspect_datasets_for_divergence(&refreshed).err();
+        let dataset_fault =
+            inspect_shared_datasets_for_divergence(&refreshed, &self.current_valid_plot_datasets)
+                .err();
 
         let rollback_err = match outcome {
             Err(err) => Some(err),

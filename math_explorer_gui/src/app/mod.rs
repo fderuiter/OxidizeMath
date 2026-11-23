@@ -4,6 +4,7 @@ mod macos_menu;
 #[cfg(target_os = "macos")]
 mod macos_menu_view;
 pub mod palette;
+mod palette_dispatch;
 mod pane_clone;
 mod pane_ops;
 mod pane_slots;
@@ -19,6 +20,8 @@ pub(crate) mod viewport;
 mod tests;
 #[cfg(test)]
 mod tests_adaptive_chrome;
+#[cfg(test)]
+mod tests_cold_start_and_palette;
 #[cfg(test)]
 mod tests_command_palette;
 #[cfg(test)]
@@ -82,6 +85,7 @@ pub struct MathExplorerApp {
     pub(super) show_warnings: bool,
     pub(super) show_errors: bool,
     pub(super) show_help_menu: bool,
+    pub show_starter_gallery: bool,
     pub theme: ThemeMode,
     pub(super) last_synced_theme: Option<ThemeMode>,
     pub command_palette: CommandPalette,
@@ -120,6 +124,7 @@ impl Default for MathExplorerApp {
             show_warnings: true,
             show_errors: true,
             show_help_menu: false,
+            show_starter_gallery: false,
             theme: ThemeMode::Dark,
             last_synced_theme: Some(ThemeMode::Dark),
             command_palette: CommandPalette::default(),
@@ -297,7 +302,7 @@ impl eframe::App for MathExplorerApp {
         let palette_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
             ctx,
             "Command Palette",
-            "Open command palette to quickly switch simulation tabs",
+            "Open unified command palette for actions, tabs, tools, and starter presets",
             egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::K),
             true,
             "Global",
@@ -377,7 +382,6 @@ impl eframe::App for MathExplorerApp {
         self.poll_share_shortcut_and_clipboard(ctx);
         self.poll_duplicate_pane_shortcut(ctx);
 
-        // Fetch new events
         let new_events = crate::telemetry::poll_app_telemetry();
         let mut has_error_or_fatal = false;
         for event in &new_events {
@@ -394,7 +398,6 @@ impl eframe::App for MathExplorerApp {
         }
         self.diagnostic_events.extend(new_events);
 
-        // Issues & Diagnostics Panel
         if self.show_diagnostics_panel {
             ui_panels::render_issues_panel(
                 ctx,
@@ -416,20 +419,17 @@ impl eframe::App for MathExplorerApp {
             });
         }
 
-        // Render Menu Bar (Native fallback for non-macOS or inside the app)
         #[cfg(not(target_os = "macos"))]
         egui::TopBottomPanel::top("main_menu").show(ctx, |ui| {
             ui_panels::render_main_menu(self, ctx, ui);
         });
 
-        // Render Persistent Categorized Domain Switcher Bar
         egui::TopBottomPanel::top("domain_switcher_bar")
             .exact_height(34.0)
             .show(ctx, |ui| {
                 domain_bar::render_domain_switcher_bar(self, ctx, ui);
             });
 
-        // Render Active Tab(s) or Multi-Pane Viewports
         let active_layout = if self.viewport_layout != ViewportLayout::Single {
             self.sync_layout();
             self.viewport_layout
@@ -464,6 +464,7 @@ impl eframe::App for MathExplorerApp {
         self.drain_workspace_history_bridge(ctx);
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
+        self.render_global_starter_gallery(ctx);
 
         // Render Command Palette Overlay
         self.apply_command_palette_selection(ctx);

@@ -303,20 +303,35 @@ fn pane1_vr(app: &crate::app::MathExplorerApp) -> &VietorisRipsTool {
 }
 
 #[cfg(feature = "physics")]
+fn setup_chaos_and_vr_split_app(ctx: &egui::Context) -> crate::app::MathExplorerApp {
+    let mut app = crate::app::MathExplorerApp::default();
+    let chaos_idx = app
+        .tabs
+        .iter()
+        .position(|t| t.name() == "Chaos Theory")
+        .unwrap();
+    let gt_idx = app
+        .tabs
+        .iter()
+        .position(|t| t.name() == "Geometry & Topology")
+        .unwrap();
+    app.set_layout(crate::app::ViewportLayout::SplitHorizontal);
+    crate::app::domain_bar::select_primary_tab(&mut app, ctx, chaos_idx);
+    app.set_pane_tab(1, gt_idx);
+    let _ = app
+        .pane_tab_mut(1)
+        .unwrap()
+        .select_tool_by_name("VietorisRipsTool");
+    app
+}
+
+#[cfg(feature = "physics")]
 #[test]
 fn test_cross_tool_bus_routes_all_payload_variants_across_split_panes() {
-    use crate::app::ViewportLayout;
     use crate::framework::CrossToolPayload;
 
     let ctx = egui::Context::default();
-    let mut app = crate::app::MathExplorerApp::default();
-    let chaos_idx = app.tabs.iter().position(|t| t.name() == "Chaos Theory").unwrap();
-    let gt_idx = app.tabs.iter().position(|t| t.name() == "Geometry & Topology").unwrap();
-
-    app.set_layout(ViewportLayout::SplitHorizontal);
-    crate::app::domain_bar::select_primary_tab(&mut app, &ctx, chaos_idx);
-    app.set_pane_tab(1, gt_idx);
-    let _ = app.pane_tab_mut(1).unwrap().select_tool_by_name("VietorisRipsTool");
+    let mut app = setup_chaos_and_vr_split_app(&ctx);
 
     let circle_2d: Vec<[f64; 2]> = (0..16)
         .map(|i| {
@@ -358,7 +373,12 @@ fn test_cross_tool_bus_routes_all_payload_variants_across_split_panes() {
         &ctx,
         true,
         CrossToolPayload::PointCloud3D {
-            points: vec![[0.0, 0.0, 0.0], [4.0, 0.0, 0.0], [4.0, 4.0, 0.0], [0.0, 4.0, 0.0]],
+            points: vec![
+                [0.0, 0.0, 0.0],
+                [4.0, 0.0, 0.0],
+                [4.0, 4.0, 0.0],
+                [0.0, 4.0, 0.0],
+            ],
             parameters: vec![("rho".to_string(), 28.0)],
         },
     );

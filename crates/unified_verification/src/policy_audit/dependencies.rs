@@ -91,34 +91,56 @@ fn is_compiler_lint_or_cfg_attr(path: &syn::Path) -> bool {
 }
 
 pub(crate) struct DependencyVisitor {
-    pub(crate) expected_deps: HashSet<String>,
+    remaining_deps: Vec<String>,
     pub(crate) used_deps: HashSet<String>,
 }
 
 impl DependencyVisitor {
     pub(crate) fn new(expected_deps: HashSet<String>) -> Self {
+        let remaining_deps: Vec<String> = expected_deps.into_iter().collect();
+        let used_deps = HashSet::with_capacity(remaining_deps.len());
         Self {
-            expected_deps,
-            used_deps: HashSet::new(),
+            remaining_deps,
+            used_deps,
         }
     }
 
+    pub(crate) fn all_deps_matched(&self) -> bool {
+        self.remaining_deps.is_empty()
+    }
+
     pub(crate) fn check_name(&mut self, name: &str) {
-        if self.expected_deps.contains(name) {
-            self.used_deps.insert(name.to_string());
+        if let Some(idx) = self.remaining_deps.iter().position(|dep| dep == name) {
+            let matched = self.remaining_deps.swap_remove(idx);
+            self.used_deps.insert(matched);
         }
     }
 
     pub(crate) fn check_ident(&mut self, ident: &syn::Ident) {
-        self.check_name(&ident.to_string());
+        if let Some(idx) = self
+            .remaining_deps
+            .iter()
+            .position(|dep| ident == dep.as_str())
+        {
+            let matched = self.remaining_deps.swap_remove(idx);
+            self.used_deps.insert(matched);
+        }
     }
 
     pub(crate) fn scan_token_stream(&mut self, stream: TokenStream) {
+        if self.all_deps_matched() {
+            return;
+        }
         let mut streams = vec![stream];
         while let Some(current) = streams.pop() {
             for token in current {
                 match token {
-                    TokenTree::Ident(ident) => self.check_ident(&ident),
+                    TokenTree::Ident(ident) => {
+                        self.check_ident(&ident);
+                        if self.all_deps_matched() {
+                            return;
+                        }
+                    }
                     TokenTree::Group(group) => streams.push(group.stream()),
                     _ => {}
                 }
@@ -142,19 +164,28 @@ impl DependencyVisitor {
             {
                 self.check_name(mapped_crate);
             }
+            if self.all_deps_matched() {
+                return;
+            }
         }
     }
 
     fn inspect_meta(&mut self, root_meta: &syn::Meta) {
+        if self.all_deps_matched() {
+            return;
+        }
         let mut stack = vec![root_meta.clone()];
         let mut steps = 0usize;
         while let Some(meta) = stack.pop() {
-            if steps >= MAX_META_STACK_STEPS {
+            if steps >= MAX_META_STACK_STEPS || self.all_deps_matched() {
                 break;
             }
             steps += 1;
             if let Some(first) = meta.path().segments.first() {
                 self.check_ident(&first.ident);
+                if self.all_deps_matched() {
+                    break;
+                }
             }
             match meta {
                 syn::Meta::NameValue(nv) => {
@@ -182,7 +213,24 @@ impl DependencyVisitor {
 }
 
 impl<'ast> Visit<'ast> for DependencyVisitor {
+    fn visit_file(&mut self, i: &'ast syn::File) {
+        if self.all_deps_matched() {
+            return;
+        }
+        syn::visit::visit_file(self, i);
+    }
+
+    fn visit_item(&mut self, i: &'ast syn::Item) {
+        if self.all_deps_matched() {
+            return;
+        }
+        syn::visit::visit_item(self, i);
+    }
+
     fn visit_path(&mut self, i: &'ast syn::Path) {
+        if self.all_deps_matched() {
+            return;
+        }
         if let Some(segment) = i.segments.first() {
             self.check_ident(&segment.ident);
         }
@@ -190,29 +238,46 @@ impl<'ast> Visit<'ast> for DependencyVisitor {
     }
 
     fn visit_use_path(&mut self, i: &'ast syn::UsePath) {
+        if self.all_deps_matched() {
+            return;
+        }
         self.check_ident(&i.ident);
         syn::visit::visit_use_path(self, i);
     }
 
     fn visit_use_name(&mut self, i: &'ast syn::UseName) {
+        if self.all_deps_matched() {
+            return;
+        }
         self.check_ident(&i.ident);
         syn::visit::visit_use_name(self, i);
     }
 
     fn visit_macro(&mut self, i: &'ast syn::Macro) {
+        if self.all_deps_matched() {
+            return;
+        }
         if let Some(segment) = i.path.segments.first() {
             self.check_ident(&segment.ident);
         }
-        self.scan_token_stream(i.tokens.clone());
+        if !self.all_deps_matched() {
+            self.scan_token_stream(i.tokens.clone());
+        }
         syn::visit::visit_macro(self, i);
     }
 
     fn visit_item_extern_crate(&mut self, i: &'ast syn::ItemExternCrate) {
+        if self.all_deps_matched() {
+            return;
+        }
         self.check_ident(&i.ident);
         syn::visit::visit_item_extern_crate(self, i);
     }
 
     fn visit_attribute(&mut self, i: &'ast syn::Attribute) {
+        if self.all_deps_matched() {
+            return;
+        }
         self.inspect_meta(&i.meta);
         syn::visit::visit_attribute(self, i);
     }

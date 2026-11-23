@@ -1,10 +1,14 @@
 mod analysis;
+#[cfg(feature = "ast-analysis")]
 mod cache;
 mod manifest;
+#[cfg(feature = "ast-analysis")]
 mod runner;
 
+#[cfg(feature = "ast-analysis")]
 pub use cache::{AstCache, CachedRustFile};
 pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
+#[cfg(feature = "ast-analysis")]
 pub use runner::{
     check_and_print_traceability_errors, discover_workspace_code_dirs, format_traceability_errors,
     print_traceability_dashboard, run_workspace_traceability,
@@ -12,7 +16,9 @@ pub use runner::{
 };
 
 use crate::vfs::VirtualFileSystem;
-use std::collections::{BTreeMap, HashMap, HashSet};
+#[cfg(feature = "ast-analysis")]
+use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -76,16 +82,12 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     #[cfg(not(target_arch = "wasm32"))]
     #[allow(missing_docs)]
     pub fn verify_module_registered(module_name: &str) -> bool {
-        let vfs = crate::vfs::DefaultVfs;
-        let mut registry_content =
-            futures::executor::block_on(vfs.read_to_string("traceability.toml"))
-                .unwrap_or_default();
+        let mut registry_content = std::fs::read_to_string("traceability.toml").unwrap_or_default();
         if registry_content.is_empty()
             && let Some(root) = crate::workspace::find_workspace_root()
         {
-            let candidate = crate::path_utils::normalize_path(root.join("traceability.toml"));
             registry_content =
-                futures::executor::block_on(vfs.read_to_string(&candidate)).unwrap_or_default();
+                std::fs::read_to_string(root.join("traceability.toml")).unwrap_or_default();
         }
         analysis::is_module_in_registry_toml(&registry_content, module_name)
     }
@@ -105,7 +107,10 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
             .map(|(cite, _)| cite)
             .collect()
     }
+}
 
+#[cfg(feature = "ast-analysis")]
+impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     async fn scan_papers_dir(
         &self,
         papers_dir: &str,
@@ -431,37 +436,38 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         Ok(())
     }
 
-    #[allow(clippy::double_must_use)]
-    #[async_recursion::async_recursion(?Send)]
     async fn parse_module_tree(
         &self,
         file_path: &str,
         active_files: &mut HashSet<String>,
         cache: &mut AstCache,
     ) -> Result<(), std::io::Error> {
-        let norm_file_path = crate::path_utils::normalize_path(file_path);
-        if active_files.contains(&norm_file_path) {
-            return Ok(());
-        }
-        let key = AstCache::normalize_key(&norm_file_path);
-        if cache.get(&key).is_none() {
-            let content = self.vfs.read_to_string(&norm_file_path).await?;
-            cache.insert_source(key.clone(), content);
-        }
-        active_files.insert(norm_file_path.clone());
+        let mut stack = vec![crate::path_utils::normalize_path(file_path)];
+        while let Some(norm_file_path) = stack.pop() {
+            if active_files.contains(&norm_file_path) {
+                continue;
+            }
+            let key = AstCache::normalize_key(&norm_file_path);
+            if cache.get(&key).is_none() {
+                let content = self.vfs.read_to_string(&norm_file_path).await?;
+                cache.insert_source(key.clone(), content);
+            }
+            active_files.insert(norm_file_path.clone());
 
-        let submodules =
-            analysis::collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
-        let dir_path = analysis::module_child_dir(&norm_file_path);
-        for submodule in submodules {
-            let path1 = crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}.rs"));
-            let path2 =
-                crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}/mod.rs"));
+            let submodules =
+                analysis::collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
+            let dir_path = analysis::module_child_dir(&norm_file_path);
+            for submodule in submodules.into_iter().rev() {
+                let path1 =
+                    crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}.rs"));
+                let path2 =
+                    crate::path_utils::join_and_normalize(&dir_path, format!("{submodule}/mod.rs"));
 
-            if self.load_cached_optional(&path1, cache).await? {
-                self.parse_module_tree(&path1, active_files, cache).await?;
-            } else if self.load_cached_optional(&path2, cache).await? {
-                self.parse_module_tree(&path2, active_files, cache).await?;
+                if self.load_cached_optional(&path1, cache).await? {
+                    stack.push(path1);
+                } else if self.load_cached_optional(&path2, cache).await? {
+                    stack.push(path2);
+                }
             }
         }
         Ok(())

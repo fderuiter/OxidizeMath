@@ -80,7 +80,8 @@ impl PharmacokineticsTool {
                 _ => {}
             }
         }
-        let pk = PKParameters::new(self.bioavailability.clamp(0.01, 1.0), dose, ka, ke, vol).ok()?;
+        let pk =
+            PKParameters::new(self.bioavailability.clamp(0.01, 1.0), dose, ka, ke, vol).ok()?;
         let (maint_times, has_loading, _) = self.build_schedule_times();
         let last_dose_t = maint_times.last().copied().unwrap_or(0.0);
         let sup = SuperpositionModel::new(BatemanModel::new(pk), maint_times);

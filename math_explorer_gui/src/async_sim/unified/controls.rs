@@ -1,12 +1,170 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::persistence::build_formula_bar;
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::SimCommand;
+use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
+use crate::async_sim::{SimCommand, SimWorkerState};
+use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
+    pub(super) fn handle_recovery_action(
+        &mut self,
+        action: crate::framework::recovery::RecoveryAction,
+        ctx: Option<&egui::Context>,
+    ) {
+        use crate::framework::recovery::RecoveryAction;
+        match action {
+            RecoveryAction::AutoScaleStepSize => {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                if let Some(dt) = p.get_mut("dt") {
+                    *dt = (*dt * 0.5).max(1e-4);
+                } else if let Some(visc) = p.get_mut("viscosity") {
+                    *visc = (*visc * 0.5).max(0.00333);
+                }
+                drop(p);
+                self.reset_simulation(ctx);
+            }
+            RecoveryAction::ClampParameters => {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                for (name, c) in &self.param_metadata {
+                    if let Some(v) = p.get_mut(name) {
+                        *v = if !v.is_finite() {
+                            M::parameter_choices(name)
+                                .first()
+                                .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice)
+                        } else {
+                            v.clamp(c.min, c.max)
+                        };
+                    }
+                }
+                drop(p);
+                self.reset_simulation(ctx);
+            }
+            RecoveryAction::ResetParameters => {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                for (name, c) in &self.param_metadata {
+                    let d = match name.as_str() {
+                        "viscosity" => 0.02,
+                        "dt" => 0.05,
+                        "potential_type" => 0.0,
+                        _ => M::parameter_choices(name)
+                            .first()
+                            .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice),
+                    };
+                    p.insert(name.clone(), d);
+                }
+                drop(p);
+                if let Some(spec) = M::formula_spec() {
+                    self.custom_formula_enabled = false;
+                    self.formula_bar = Some(build_formula_bar(&spec));
+                    self.publish_formula_update();
+                }
+                self.reset_simulation(ctx);
+                let _ = self.controller.send_command(SimCommand::Start);
+            }
+        }
+    }
+
+    fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let state = self.controller.state();
+        if let Some(fault_action) =
+            render_worker_fault_banner(ui, state, self.controller.diagnostic_report(), true)
+        {
+            match fault_action {
+                WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters => {
+                    self.reset_simulation(Some(ctx));
+                }
+                WorkerFaultAction::Recovery(action) => {
+                    self.handle_recovery_action(action, Some(ctx));
+                }
+            }
+            ui.separator();
+        }
+
+        let state = self.controller.state();
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        ui.horizontal(|ui| {
+            ui.label("Status:");
+            let (status_text, color) = match state {
+                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
+                SimWorkerState::Ready => ("Ready", palette.success),
+                SimWorkerState::Running => ("Running", palette.info),
+                SimWorkerState::Stepping => ("Stepping", palette.warning),
+                SimWorkerState::Faulted => ("Faulted", palette.error),
+                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
+            };
+            ui.colored_label(color, status_text);
+        });
+        ui.separator();
+
+        if let Some(action) =
+            PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
+                .timeline(self.controller.timeline_metadata())
+                .can_reset(true)
+                .show(ui)
+        {
+            let cmd = match action {
+                PlaybackAction::Play => Some(SimCommand::Start),
+                PlaybackAction::Pause => Some(SimCommand::Pause),
+                PlaybackAction::Step => Some(SimCommand::Step(1)),
+                PlaybackAction::StepBack => Some(SimCommand::StepBack(1)),
+                PlaybackAction::ScrubTo(step) => Some(SimCommand::SeekStep(step)),
+                PlaybackAction::Reset => {
+                    self.reset_simulation(Some(ctx));
+                    None
+                }
+            };
+            if let Some(c) = cmd {
+                let _ = self.controller.send_command(c);
+            }
+        }
+    }
+
+    pub(super) fn draw_left_panel(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let panel_id = crate::framework::scoped_panel_id(ui, format!("{}_controls", M::name()));
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
+            ui.heading(M::name());
+            ui.separator();
+            self.draw_status_and_transport(ui, &ctx);
+            if let Some(tool_id) = M::sonification_tool_id() {
+                let worker_state = self.controller.state();
+                if matches!(worker_state, SimWorkerState::Faulted) {
+                    crate::audio::notify_solver_diverged();
+                }
+                let frame = self
+                    .stepped_snapshot
+                    .as_ref()
+                    .or_else(|| self.controller.latest_snapshot())
+                    .map_or_else(crate::audio::SonificationFrame::silent, |s| s.sonification);
+                let is_idle = !matches!(
+                    worker_state,
+                    SimWorkerState::Running | SimWorkerState::Stepping
+                ) && self.stepped_snapshot.is_none();
+                ui.separator();
+                crate::audio::render_sonification_panel(ui, tool_id, &frame, is_idle);
+            }
+            ui.separator();
+            ui.label("Simulation Constants");
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.steps_per_frame, 1..=100)
+                        .text("Speed (Steps/Frame)"),
+                )
+                .changed()
+            {
+                let _ = self
+                    .controller
+                    .send_command(SimCommand::SetSpeed(self.steps_per_frame));
+            }
+            self.draw_model_parameters(ui, &ctx);
+        });
+    }
+
     fn draw_presets_and_actions(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
         let mut reset_needed = false;
         let presets = M::presets();
@@ -38,9 +196,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                             .send_command(SimCommand::Custom(action.to_string()))
                             .is_ok()
                     {
+                        if action.contains("Clear") {
+                            self.sculpt_state
+                                .write()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .clear();
+                        }
                         if let Some(ext) = &mut self.ui_extension {
                             ext.on_custom_action(action);
                         }
+                        self.dirty = true;
                         ctx.request_repaint();
                     }
                 }
@@ -64,39 +229,57 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             self.dispatch_extension_commands(ext_cmds, Some(ctx));
         }
 
-        let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
+        let (param_reset, mut slider_changed) = self.draw_parameter_entries(ui);
+        reset_needed |= param_reset;
+        let (formula_reset, formula_changed) = self.draw_custom_formula_controls(ui, ctx);
+        reset_needed |= formula_reset;
+        slider_changed |= formula_changed;
+        self.draw_spatial_brush_section(ui, ctx);
+        self.draw_atlas_toggle_if_supported(ui);
+        self.draw_observable_sensitivity(ui);
+        if reset_needed {
+            self.reset_simulation(Some(ctx));
+        } else if slider_changed {
+            self.refresh_paused_simulation(Some(ctx));
+        }
+    }
 
+    fn draw_parameter_entries(&self, ui: &mut egui::Ui) -> (bool, bool) {
+        let mut reset_needed = false;
+        let mut slider_changed = false;
+        let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
         for (name, constraint) in &self.param_metadata {
             let locked = self
                 .ui_extension
                 .as_ref()
                 .is_some_and(|ext| ext.is_parameter_locked(name));
             if let Some(val) = params_lock.get_mut(name) {
+                let is_choice = !M::parameter_choices(name).is_empty();
+                let desc = self.cached_descs.get(name);
+                let mut changed = false;
                 ui.add_enabled_ui(!locked, |ui| {
-                    reset_needed |= Self::draw_single_parameter(
-                        ui,
-                        name,
-                        constraint,
-                        val,
-                        self.cached_descs.get(name),
-                    );
+                    changed = Self::draw_single_parameter(ui, name, constraint, val, desc);
                 });
+                if is_choice {
+                    reset_needed |= changed;
+                } else {
+                    slider_changed |= changed;
+                }
             }
         }
-        drop(params_lock);
-        reset_needed |= self.draw_custom_formula_controls(ui, ctx);
-        self.draw_atlas_toggle_if_supported(ui);
-        self.draw_observable_sensitivity(ui);
-        if reset_needed {
-            self.reset_simulation(Some(ctx));
-        }
+        (reset_needed, slider_changed)
     }
 
-    fn draw_custom_formula_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
+    fn draw_custom_formula_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+    ) -> (bool, bool) {
         let Some(spec) = M::formula_spec() else {
-            return false;
+            return (false, false);
         };
         let mut reset_needed = false;
+        let mut formula_changed = false;
         ui.add_space(4.0);
         let toggle_label = format!("Custom {} Formula", spec.lhs_label);
         if ui
@@ -107,7 +290,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             reset_needed = true;
         }
         if self.custom_formula_enabled {
-            let mut formula_changed = false;
             if let Some(ref mut bar) = self.formula_bar {
                 ui.add_space(4.0);
                 formula_changed = bar.ui(ui);
@@ -118,9 +300,28 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 ctx.request_repaint();
             }
         }
-        reset_needed
+        (reset_needed, formula_changed)
     }
 
+    fn draw_spatial_brush_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if !M::supports_spatial_brush() {
+            return;
+        }
+        ui.separator();
+        let cmds = M::draw_brush_controls(
+            ui,
+            &mut self.brush_kit,
+            &self.params,
+            &self.sculpt_state,
+            self.controller.latest_snapshot(),
+        );
+        for cmd in cmds {
+            if self.controller.send_command(cmd).is_ok() {
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+        }
+    }
     fn draw_single_parameter(
         ui: &mut egui::Ui,
         name: &str,
@@ -157,169 +358,32 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
             changed
         } else {
-            let slider = egui::Slider::new(val, constraint.min..=constraint.max)
+            let slider = AnimatedSlider::new(val, constraint.min..=constraint.max)
+                .hard_bounds(constraint.min..=constraint.max)
                 .step_by(constraint.step)
-                .text(label);
+                .text(&label)
+                .id_salt(("unified_sim_param", M::name(), name));
             let resp = ui.add(slider);
-            if let Some(desc) = hover_desc {
-                let _ = resp.accessible_hover_text(desc);
-            }
-            false
-        }
-    }
-
-    /// Advances one cooperative batch (`<= 8` model evaluations) of local finite-difference
-    /// sensitivity, wide-range Tornado bounds, or `SplitMix64`-seeded Monte Carlo propagation.
-    pub fn step_cooperative_sensitivity(&mut self) -> Option<&'static str> {
-        const STACK_CAP: usize = 16;
-        let mut stack_pairs: [(&str, f64); STACK_CAP] = [("", 0.0); STACK_CAP];
-        let mut heap_pairs: Vec<(&str, f64)> = Vec::new();
-        let param_slice: &[(&str, f64)] =
-            {
-                let current_params = self.params.read().unwrap_or_else(|e| e.into_inner());
-                if self.param_metadata.len() <= STACK_CAP {
-                    let mut len = 0;
-                    for (name, _) in &self.param_metadata {
-                        if let Some(&val) = current_params.get(name) {
-                            stack_pairs[len] = (name.as_str(), val);
-                            len += 1;
-                        }
-                    }
-                    &stack_pairs[..len]
-                } else {
-                    heap_pairs.extend(self.param_metadata.iter().filter_map(|(name, _)| {
-                        current_params.get(name).map(|&v| (name.as_str(), v))
-                    }));
-                    &heap_pairs
-                }
-            };
-
-        let is_hit = self.sensitivity_engine.matches_cache(param_slice, &());
-        if !is_hit || !self.sensitivity_engine.is_converged() {
-            return Self::update_observable_sensitivity_engine(
-                &mut self.sensitivity_engine,
-                &mut self.uncertainty.cached_label,
-                &self.cached_param_labels,
-                param_slice,
-            );
-        }
-
-        if self.uncertainty.enabled && self.uncertainty.cached_label.is_some() {
-            Self::step_unified_uncertainty_engine(
-                &mut self.sensitivity_engine,
-                &self.param_metadata,
-                param_slice,
-                self.uncertainty.seed,
-                self.uncertainty.target_samples,
-            );
-        }
-        self.uncertainty.cached_label
-    }
-
-    fn step_unified_uncertainty_engine(
-        engine: &mut crate::sensitivity::SensitivityEngine,
-        param_metadata: &[(String, ParameterConstraint)],
-        param_slice: &[(&str, f64)],
-        seed: u64,
-        target_samples: usize,
-    ) {
-        use crate::sensitivity::{
-            ParameterUncertainty, TornadoBounds, MAX_SENSITIVITY_BATCH_EVALS,
-        };
-        if !engine.is_tornado_converged() {
-            let bounds: Vec<TornadoBounds> = param_metadata
-                .iter()
-                .map(|(_, c)| TornadoBounds::new(c.min, c.max))
-                .collect();
-            engine.step_tornado(param_slice, &bounds, MAX_SENSITIVITY_BATCH_EVALS, |p_map| {
-                M::evaluate_observable(p_map).map_or(0.0, |(_, v)| v)
-            });
-        } else if !engine.is_monte_carlo_converged() {
-            let uncertainties: Vec<ParameterUncertainty> = param_metadata
-                .iter()
-                .map(|(_, c)| {
-                    let sigma = ((c.max - c.min).abs() * 0.05).max(1.0e-6);
-                    ParameterUncertainty::new(sigma, c.min, c.max)
-                })
-                .collect();
-            engine.step_monte_carlo(
-                param_slice,
-                &uncertainties,
-                seed,
-                target_samples,
-                MAX_SENSITIVITY_BATCH_EVALS,
-                |p_map| M::evaluate_observable(p_map).map_or(0.0, |(_, v)| v),
-            );
-        }
-    }
-
-    fn draw_observable_sensitivity(&mut self, ui: &mut egui::Ui) {
-        let Some(metric_label) = self.step_cooperative_sensitivity() else {
-            return;
-        };
-        ui.separator();
-        ui.horizontal_wrapped(|ui| {
-            ui.checkbox(
-                &mut self.uncertainty.enabled,
-                "Tornado & Monte Carlo Sweep",
-            )
-            .accessible_hover_text(
-                "Cooperatively step wide-range Tornado bounds and SplitMix64 Monte Carlo quantiles (<= 8 evals/frame)",
-            );
-            if self.uncertainty.enabled {
-                ui.label("Seed:");
-                ui.add(egui::DragValue::new(&mut self.uncertainty.seed).speed(1.0))
-                    .accessible_hover_text("Explicit u64 SplitMix64 PRNG seed");
-            }
-        });
-        if self.uncertainty.enabled
-            && (!self.sensitivity_engine.is_tornado_converged()
-                || !self.sensitivity_engine.is_monte_carlo_converged())
-        {
-            ui.ctx().request_repaint();
-        }
-        crate::sensitivity::render_labeled_sensitivity_panel_ui(
-            ui,
-            &self.sensitivity_engine,
-            M::name(),
-            metric_label,
-        );
-    }
-
-    fn update_observable_sensitivity_engine(
-        engine: &mut crate::sensitivity::SensitivityEngine,
-        cached_observable_label: &mut Option<&'static str>,
-        cached_param_labels: &[String],
-        param_slice: &[(&str, f64)],
-    ) -> Option<&'static str> {
-        let is_hit = engine.matches_cache(param_slice, &());
-        let was_converged = is_hit && engine.is_converged();
-        let mut observed_label = if is_hit {
-            *cached_observable_label
-        } else {
-            None
-        };
-
-        engine.compute(param_slice, |p_map| {
-            if let Some((label, val)) = M::evaluate_observable(p_map) {
-                observed_label = Some(label);
-                val
+            let changed = resp.changed();
+            let resp = if let Some(desc) = hover_desc {
+                resp.accessible_hover_text(desc)
             } else {
-                0.0
-            }
-        });
+                resp
+            };
+            changed || resp.changed()
+        }
+    }
 
-        if !was_converged {
-            *cached_observable_label = observed_label;
-            if observed_label.is_some() {
-                for (metric, label) in engine.metrics.iter_mut().zip(cached_param_labels) {
-                    if metric.param_name != *label {
-                        metric.param_name.clone_from(label);
-                    }
-                }
+    fn refresh_paused_simulation(&mut self, ctx: Option<&egui::Context>) {
+        if self.controller.state().is_ready() {
+            self.stepped_snapshot = None;
+            let _ = self.controller.send_command(SimCommand::Custom(
+                super::SYNC_PARAMETERS_COMMAND.to_string(),
+            ));
+            self.dirty = true;
+            if let Some(c) = ctx {
+                c.request_repaint();
             }
         }
-
-        *cached_observable_label
     }
 }

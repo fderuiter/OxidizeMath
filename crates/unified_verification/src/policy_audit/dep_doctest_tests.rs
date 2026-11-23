@@ -102,3 +102,35 @@ fn test_markdown_tests_audits_workspace_markdown_fences() {
         &whitelist_file
     ));
 }
+
+#[test]
+fn test_dependency_audit_skips_doctests_once_all_dependencies_matched() {
+    let dir = TempTestDir::new("policy_audit_short_circuit_doctests");
+    let whitelist_file = dir.join("verification_whitelist.toml");
+    let member = write_member_crate(
+        &dir,
+        "crates/fast_match",
+        concat!(
+            "#![doc = include_str!(\"../MISSING_DOC.md\")]\n",
+            "#[derive(Serialize)]\n",
+            "pub struct Payload {\n",
+            "    pub v: nalgebra::Vector2<f64>,\n",
+            "}\n",
+        ),
+    );
+    fs::write(
+        dir.join("crates/fast_match/Cargo.toml"),
+        concat!(
+            "[package]\nname = \"fast_match\"\nversion = \"0.1.0\"\n\n",
+            "[dependencies]\nserde = \"1.0\"\nnalgebra = \"0.34\"\n\n",
+            "[lints]\nworkspace = true\n",
+        ),
+    )
+    .unwrap();
+    // Because both `serde` and `nalgebra` match during AST traversal, doctest and
+    // `include_str!` markdown scanning is skipped rather than failing on MISSING_DOC.md.
+    assert!(run_policy_audit_with_whitelist(
+        &[member.as_str()],
+        &whitelist_file
+    ));
+}

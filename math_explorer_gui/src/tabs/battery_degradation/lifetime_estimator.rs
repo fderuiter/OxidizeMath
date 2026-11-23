@@ -117,7 +117,9 @@ impl InteractiveTool for LifetimeEstimatorTool {
         let d = DepthOfDischarge::new(dod).ok()?;
         let total_cycles = model.cycles_to_capacity(c, d).as_f64();
         let years = (total_cycles / cpd) / 365.25;
-        years.is_finite().then_some(("Estimated Lifetime (years)", years))
+        years
+            .is_finite()
+            .then_some(("Estimated Lifetime (years)", years))
     }
 
     fn save_state(&self) -> Option<String> {
@@ -248,7 +250,7 @@ inventory::submit! {
         id: "LifetimeEstimatorTool",
         display_name: "Lifetime Estimator",
         domain: "battery_degradation",
-        tags: &[],
+        tags: &["battery", "cycle life", "end-of-life", "depth of discharge", "wohler", "longevity"],
         build: || Box::new(LifetimeEstimatorTool::default()),
     }
 }
