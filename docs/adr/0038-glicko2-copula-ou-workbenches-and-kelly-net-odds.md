@@ -1,7 +1,7 @@
-# ADR 0037: Glicko-2 Tournament, Correlated Risk & OU Workbenches, and Kelly Net-Odds Semantics
+# ADR 0038: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics
 
 ## Status
-Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
+Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0037](0037-glicko2-frozen-period-tournament-simulator.md))
 
 ## Context
 [`crates/pure_math/README.md`](../../crates/pure_math/README.md) positions the statistical modeling modules in `pure_math`—specifically Glicko-2 competitive ratings, Gaussian copulas, Ornstein-Uhlenbeck mean-reverting stochastic processes, and Kelly criterion capital allocation—as reference engines for interactive `math_explorer_gui` visualizers. Three gaps prevented end-to-end competitive and quantitative risk workflows in the GUI:
@@ -17,14 +17,14 @@ Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 002
 2. **Enable Cached Growth Curves and Formula-Safe Table Exports in `BetSizeCalculatorTool`**:
    - Upgrade `BetSizeCalculatorTool` to `ExportCapabilities::plot()`, caching `expected_growth_rate` `PlotPoint` curves and Quarter (`0.25 f*`), Half (`0.50 f*`), and Full (`f*`) Kelly markers with borrowed slice rendering (`PlotPoints::Borrowed`).
    - Add formula-safe CSV (`egui_plot::export::escape_csv_field`) and Markdown Kelly sizing table copy and save-as actions via [`math_explorer_gui/src/web_io.rs`](../../math_explorer_gui/src/web_io.rs).
-3. **Add `Glicko2TournamentTool` (`GameTheoryTab`) and `CorrelatedRiskScenarioTool` (`FinancialMathTab`)**:
-   - Wire `Glicko2TournamentTool` into `GameTheoryTab` with frozen pre-period roster snapshots so match order never skews simultaneous `update_rating` calls, automatic `increase_rd_for_inactivity` updates for zero-match players, cached `r +/- 2 * RD` 95% skill-interval error bars, pairwise `expected_outcome` win-probability matrices, bounded client-side CSV match imports (`<= 64` players, `<= 1,024` matches, `<= 64 KiB`), and CSV/Markdown exports.
+3. **Unify `Glicko2TournamentTool` (`GameTheoryTab`) and Add `CorrelatedRiskScenarioTool` (`FinancialMathTab`)**:
+   - Adopt [`math_explorer_gui/src/tabs/game_theory/glicko2.rs`](../../math_explorer_gui/src/tabs/game_theory/glicko2.rs) ([ADR 0037](0037-glicko2-frozen-period-tournament-simulator.md)) as the single canonical `Glicko2TournamentTool` in `GameTheoryTab` so frozen-period `evaluate_rating_period` updates, inactivity RD growth, confidence bands, and CSV/Markdown exports are never duplicated.
    - Wire `CorrelatedRiskScenarioTool` into `FinancialMathTab` plotting bivariate `GaussianCopula::bivariate` and `sgp_joint_probability` curves across `rho` in `[-0.99, 0.99]` against naive independent `p_a * p_b`, alongside deterministic `EulerMaruyama` Monte Carlo Ornstein-Uhlenbeck paths seeded via `oxidize_core::rng::OxidizeRng::new` (`<= 200` paths, `<= 2,000` steps).
 
 ```text
 Updated GUI inventory totals:
 - InteractiveTools: 62 (40 plot + 7 raster + 15 non-export)
-- StarterPresetMetadata cards: 73
+- StarterPresetMetadata cards: 74
 ```
 
 ## Consequences

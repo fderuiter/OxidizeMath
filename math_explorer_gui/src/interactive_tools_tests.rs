@@ -24,7 +24,7 @@ mod tests {
         check_tool!(crate::tabs::financial_math::bet_size::BetSizeCalculatorTool);
         check_tool!(crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool);
         check_tool!(crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool);
-        check_tool!(crate::tabs::game_theory::glicko2_tournament::Glicko2TournamentTool);
+        check_tool!(crate::tabs::game_theory::glicko2::Glicko2TournamentTool);
         check_tool!(crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool);
         check_tool!(crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool);
         check_tool!(crate::tabs::solid_state::band_structure::BandStructureTool);
