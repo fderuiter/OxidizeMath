@@ -1,11 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{AttractorPlotter, AttractorRunner};
+use super::AttractorPlotter;
 use crate::tabs::geometry_topology::vietoris_rips::{
-    handoff::{
-        publish_live_attractor_landmarks, request_open_vietoris_rips,
-        submit_chaos_landmark_handoff, ChaosLandmarkHandoff,
-    },
+    handoff::{request_open_vietoris_rips, submit_chaos_landmark_handoff, ChaosLandmarkHandoff},
     MAX_CHAOS_LANDMARKS,
 };
 use eframe::egui;
@@ -30,7 +27,7 @@ impl AttractorPlotter {
         self.twin_cfg.sanitized().initial_state
     }
 
-    fn flow_config_hash(&self) -> u64 {
+    pub(super) fn flow_config_hash(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         (self.mode as u8).hash(&mut h);
@@ -159,7 +156,7 @@ impl AttractorPlotter {
         out
     }
 
-    fn collect_or_seed_trajectory(&self, fallback_steps: usize) -> Vec<Vector3<f64>> {
+    pub(super) fn collect_or_seed_trajectory(&self, fallback_steps: usize) -> Vec<Vector3<f64>> {
         let finite_hist: Vec<Vector3<f64>> = self
             .history
             .iter()
@@ -220,29 +217,10 @@ impl AttractorPlotter {
             beta: self.system.beta,
             dt: self.dt,
         };
-        submit_chaos_landmark_handoff(payload.clone());
         if let Some(c) = ctx {
+            submit_chaos_landmark_handoff(c, payload.clone());
             request_open_vietoris_rips(c);
         }
         Ok(payload)
-    }
-}
-
-impl AttractorRunner {
-    pub(super) fn publish_live_landmarks(&self, dt: f64) {
-        let pts: Vec<Point3D> = self
-            .history
-            .iter()
-            .map(|v| Point3D::new(v.x, v.y, v.z))
-            .collect();
-        if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
-            publish_live_attractor_landmarks(ChaosLandmarkHandoff {
-                points: landmarks,
-                sigma: self.system.sigma,
-                rho: self.system.rho,
-                beta: self.system.beta,
-                dt,
-            });
-        }
     }
 }

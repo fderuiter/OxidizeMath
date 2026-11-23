@@ -56,7 +56,11 @@ fn test_playground_state_validation_and_toroidal_secants() {
     let mut singular: serde_json::Value = serde_json::from_str(&base_json).unwrap();
     singular["mod_a"] = serde_json::json!(0);
     singular["mod_b"] = serde_json::json!(0);
-    assert!(tool.try_load_state(&singular.to_string()).is_err());
+    assert!(tool.try_load_state(&singular.to_string()).is_ok());
+
+    let mut bad_mod: serde_json::Value = serde_json::from_str(&base_json).unwrap();
+    bad_mod["mod_a"] = serde_json::json!(2000);
+    assert!(tool.try_load_state(&bad_mod.to_string()).is_err());
 
     let oversized = " ".repeat(20 * 1024);
     assert!(tool.try_load_state(&oversized).is_err());

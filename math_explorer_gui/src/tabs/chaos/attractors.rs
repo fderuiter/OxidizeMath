@@ -29,6 +29,8 @@ pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_E
 pub mod twin;
 pub use twin::{TwinConfig, TwinRunnerState};
 
+#[path = "attractors/dataflow.rs"]
+mod dataflow;
 #[path = "attractors/invariants.rs"]
 mod invariants;
 
@@ -81,6 +83,7 @@ pub struct AttractorPlotter {
     pub(super) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
     pub(crate) atlas: ParameterAtlasController,
+    pub(crate) bus_cache: dataflow::AttractorBusCache,
 }
 
 impl Default for AttractorPlotter {
@@ -136,6 +139,7 @@ impl Default for AttractorPlotter {
             ),
             invariants_cache: invariants::CachedAttractorInvariants::default(),
             atlas: ParameterAtlasController::new(ATTRACTOR_ATLAS_AXIS_PAIRS.to_vec()),
+            bus_cache: dataflow::AttractorBusCache::default(),
         }
     }
 }
@@ -239,6 +243,7 @@ impl AttractorPlotter {
         self.step_count = 0;
         self.twin = None;
         self.branch_engine.clear();
+        self.bus_cache = dataflow::AttractorBusCache::default();
         self.execution_state = SolverExecutionState::Ready;
         let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
         {
@@ -310,8 +315,7 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn step_simulation(&mut self) {
-        self.step_in_thread_simulation();
-        self.sync_local_branch_engine();
+        self.advance_step_simulation();
     }
 
     fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
@@ -413,8 +417,19 @@ impl InteractiveTool for AttractorPlotter {
             ctx.request_repaint();
         }
 
+        self.publish_bus_landmarks(&ctx);
         self.draw_side_panel(ui, &ctx);
         self.draw_central_panel(ui, &ctx);
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
