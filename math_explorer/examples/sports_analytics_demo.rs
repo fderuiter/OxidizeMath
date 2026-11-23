@@ -1,7 +1,8 @@
-//! End-to-end quantitative sports pricing, rating, parlay, and Kelly sizing pipeline.
+//! End-to-end quantitative sports pricing, rating, parlay, execution, and Kelly sizing pipeline.
 
-use math_explorer::nalgebra::DMatrix;
+use math_explorer::nalgebra::{DMatrix, DVector};
 use math_explorer::prelude::*;
+use math_explorer::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
 use math_explorer::sports_quant::*;
 
 fn stage_devig_and_clv() -> Result<UnitInterval> {
@@ -20,6 +21,14 @@ fn stage_devig_and_clv() -> Result<UnitInterval> {
         fair_home.value() * 100.0,
         clv * 100.0,
         stake.value() * 100.0
+    );
+
+    let sharp_1x2 = [Odds::new(1.35)?, Odds::new(4.80)?, Odds::new(8.50)?];
+    let cmp = compare_outcome_ev_all_methods(&sharp_1x2, 2, Odds::new(9.50)?)?;
+    println!(
+        "   3-Way Away (9.50 vs 8.50): Multiplicative EV = {:+.2}%, Shin EV = {:+.2}% (phantom edge filtered)",
+        cmp.for_method(DevigMethod::Multiplicative).ev_percent,
+        cmp.for_method(DevigMethod::Shin).ev_percent
     );
     Ok(fair_home)
 }
@@ -150,6 +159,62 @@ fn stage_ratings_and_ruin(devigged_ref: UnitInterval) -> Result<()> {
     Ok(())
 }
 
+fn stage_markov_and_execution() -> Result<()> {
+    println!("\n6. MARKOV POSSESSION EPV & CROSS-BOOK EXECUTION");
+    let states = vec![
+        StateType::Transient,
+        StateType::Transient,
+        StateType::Absorbing,
+        StateType::Absorbing,
+    ];
+    let p = DMatrix::from_row_slice(
+        4,
+        4,
+        &[
+            0.3, 0.5, 0.1, 0.1, 0.2, 0.4, 0.3, 0.1, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ],
+    );
+    let chain = MarkovChain::new(p, states)?;
+    let epv = chain.expected_possession_value(&DVector::from_vec(vec![3.0, 0.0]))?;
+
+    let pod = [
+        Odds::new(1.90)?,
+        Odds::new(3.25)?,
+        Odds::new(6.50)?,
+        Odds::new(10.0)?,
+        Odds::new(21.0)?,
+        Odds::new(101.0)?,
+    ];
+    let (mut raw, mut clamped) = ([0.0; 6], [0.0; 6]);
+    let meta = devig_additive_detailed_into(&pod, &mut raw, &mut clamped)?;
+    let (arb, _) = evaluate_two_way_arbitrage(Odds::new(2.10)?, Odds::new(1.980_392)?, 1000.0)?;
+    let mut dutch_stakes = [0.0; 3];
+    let dutch = dutch_outcomes_into(
+        &[Odds::new(3.50)?, Odds::new(4.20)?, Odds::new(6.00)?],
+        DutchingMode::FixedBudget(100.0),
+        &mut dutch_stakes,
+    )?;
+    let minus_110 = Odds::from_american(-110.0)?;
+    let mid = evaluate_middle(minus_110, minus_110, 220.0, Some(UnitInterval::new(0.09)?))?;
+    let hedge = evaluate_hedge(
+        100.0,
+        Odds::from_american(800.0)?,
+        Odds::from_american(-150.0)?,
+        HedgeMode::EqualProfit,
+    )?;
+    println!(
+        "   EPV=({:.2}, {:.2}) | 6-Way Guard={:?} | Arb +${:.2} | Dutch +${:.2} | Mid BE {:.2}% | Hedge ${:.2}",
+        epv[0],
+        epv[1],
+        meta.simplex_violation.map(|d| d.violated_count),
+        arb.guaranteed_profit,
+        dutch.profit_if_hit,
+        mid.break_even_probability * 100.0,
+        hedge.hedge_stake
+    );
+    Ok(())
+}
+
 fn main() -> Result<()> {
     println!("=== OxidizeMath Connected Sports Quant Pipeline ===\n");
     let sharp_home = stage_devig_and_clv()?;
@@ -157,6 +222,7 @@ fn main() -> Result<()> {
     stage_zip_and_copula_sgp(dc_home)?;
     stage_live_ou_momentum()?;
     stage_ratings_and_ruin(sharp_home)?;
-    println!("\nConnected pricing-to-Kelly pipeline completed without f64 unwrapping.");
+    stage_markov_and_execution()?;
+    println!("\nConnected pricing, execution, and Kelly pipeline completed cleanly.");
     Ok(())
 }

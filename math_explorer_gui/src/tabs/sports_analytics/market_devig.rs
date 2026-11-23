@@ -9,7 +9,7 @@ use crate::app::SemanticPalette;
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolMetadata};
 use eframe::egui;
 use math_explorer::sports_quant::{
-    book_overround, book_vigorish, devig_into, fair_odds, DevigMethod, Odds, UnitInterval,
+    book_vigorish, booksum, devig_unit_into, fair_odds, DevigMethod, Odds, UnitInterval,
 };
 use serde::{Deserialize, Serialize};
 
@@ -107,10 +107,10 @@ impl MarketDeviggingTool {
     pub(super) fn recompute(&mut self) {
         let (odds_arr, n) = self.active_odds_slice();
         let slice = &odds_arr[..n];
-        self.overround = book_overround(slice).unwrap_or(1.0);
+        self.overround = booksum(slice).unwrap_or(1.0);
         self.vigorish = book_vigorish(slice).map(|u| u.value()).unwrap_or(0.0);
         let mut out = [UnitInterval::new_clamped(0.5); 3];
-        if devig_into(slice, self.state.method, &mut out[..n]).is_ok() {
+        if devig_unit_into(slice, self.state.method, &mut out[..n]).is_ok() {
             self.fair_probs = out;
         }
         self.rebuild_sweep_curves();
@@ -132,17 +132,17 @@ impl MarketDeviggingTool {
             } else {
                 [home, away, draw]
             };
-            if book_overround(&arr[..n]).unwrap_or(0.0) <= 1.001 {
+            if booksum(&arr[..n]).unwrap_or(0.0) <= 1.001 {
                 continue;
             }
             let mut buf = [UnitInterval::new_clamped(0.5); 3];
-            if devig_into(&arr[..n], DevigMethod::Multiplicative, &mut buf[..n]).is_ok() {
+            if devig_unit_into(&arr[..n], DevigMethod::Multiplicative, &mut buf[..n]).is_ok() {
                 self.curve_mult.push([h_val, buf[0].value()]);
             }
-            if devig_into(&arr[..n], DevigMethod::Power, &mut buf[..n]).is_ok() {
+            if devig_unit_into(&arr[..n], DevigMethod::Power, &mut buf[..n]).is_ok() {
                 self.curve_power.push([h_val, buf[0].value()]);
             }
-            if devig_into(&arr[..n], DevigMethod::Shin, &mut buf[..n]).is_ok() {
+            if devig_unit_into(&arr[..n], DevigMethod::Shin, &mut buf[..n]).is_ok() {
                 self.curve_shin.push([h_val, buf[0].value()]);
             }
         }

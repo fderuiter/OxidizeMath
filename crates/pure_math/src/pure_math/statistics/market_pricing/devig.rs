@@ -1,187 +1,400 @@
-//! Zero-allocation bookmaker vigorish removal (Multiplicative, Additive, Power, and Shin)
-//! and Closing Line Value (CLV) pricing kernels.
+//! Multi-outcome bookmaker vig removal (`Multiplicative`, `Additive`, `Power`, and `Shin`).
 
-use crate::error::KellyError;
-use crate::pure_math::statistics::kelly::{Odds, UnitInterval};
-use serde::{Deserialize, Serialize};
+use super::MAX_MARKET_OUTCOMES;
+use super::overround::{MarketOverround, implied_probabilities_into};
+use crate::error::MarketPricingError;
+use crate::pure_math::analysis::roots::{Brent, RootFinder};
+use crate::pure_math::statistics::kelly::Odds;
+use math_commons::registry::TOLERANCE_HIGH;
 
-/// Vigorish-removal method applied to bookmaker decimal odds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Bookmaker vig-removal model used to recover true fair probabilities from quoted odds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DevigMethod {
-    /// Proportional normalization $p_i = \pi_i / \sum_j \pi_j$.
+    /// Proportional scaling (`p_i = pi_i / sum(pi)`), assuming constant margin across all odds.
     Multiplicative,
-    /// Equal-margin subtraction $p_i = \pi_i - (\sum_j \pi_j - 1) / n$.
+    /// Equal-margin subtraction (`p_i = pi_i - (sum(pi) - 1) / n`), with simplex clamping.
     Additive,
-    /// Power/logarithmic method $p_i = \pi_i^k$ solving $\sum_j \pi_j^k = 1$.
+    /// Constant-exponent calibration solving `sum(pi_i^k) = 1` via `Brent` root-finding.
     Power,
-    /// Shin (1993) insider-trading equilibrium solving $\sum_j p_j(z) = 1$.
+    /// Shin (1991, 1993) insider-trading equilibrium calibration solving `sum(p_i(z)) = 1`.
     Shin,
 }
 
-/// Computes the raw bookmaker overround $S = \sum_{i=1}^n \frac{1}{o_i}$ for an $n$-outcome market ($n \ge 2$).
-#[verified_engine::verified]
-pub fn book_overround(odds: &[Odds]) -> Result<f64, KellyError> {
-    if odds.len() < 2 {
-        return Err(KellyError::InvalidOdds {
-            value: odds.len() as f64,
-        });
-    }
-    let mut sum = 0.0;
-    for o in odds {
-        sum += o.implied_probability();
-    }
-    Ok(sum)
+/// Diagnostic emitted when raw `Additive` devigging produces non-positive probabilities on
+/// longshots, requiring clamping and renormalization onto the probability simplex.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SimplexViolationDiagnostic {
+    /// Count of outcomes whose raw additive probability was `<= 0.0`.
+    pub violated_count: usize,
+    /// Index of the outcome with the minimum (most negative) raw additive probability.
+    pub worst_outcome_index: usize,
+    /// Minimum raw additive probability before simplex clamping (e.g. `-0.014328`).
+    pub min_raw_probability: f64,
+    /// Uniform margin subtracted per outcome (`(booksum - 1.0) / outcome_count`).
+    pub margin_per_outcome: f64,
 }
 
-/// Computes the bookmaker vigorish (hold percentage) $\nu = \max(0, 1 - 1 / S)$ bounded in [`UnitInterval`].
-#[verified_engine::verified]
-pub fn book_vigorish(odds: &[Odds]) -> Result<UnitInterval, KellyError> {
-    let s = book_overround(odds)?;
-    if s <= 1.0 {
-        return Ok(UnitInterval::new_clamped(0.0));
-    }
-    Ok(UnitInterval::new_clamped(1.0 - 1.0 / s))
+/// Calibration parameter, solver telemetry, and simplex diagnostic produced by a devigging run.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DevigMetadata {
+    /// Devigging model applied.
+    pub method: DevigMethod,
+    /// Raw market booksum, overround, and turnover margin.
+    pub market: MarketOverround,
+    /// Model scalar (`1 / booksum` for Multiplicative, shift for Additive, `k` for Power, `z` for Shin).
+    pub parameter: f64,
+    /// Number of bracketed solver evaluations (`0` for closed-form solutions).
+    pub solver_iterations: usize,
+    /// Present when raw `Additive` probabilities fell `<= 0.0` on one or more longshot outcomes.
+    pub simplex_violation: Option<SimplexViolationDiagnostic>,
 }
 
-#[verified_engine::verified]
-fn validate_devig_buffers(odds: &[Odds], out_probs: &[UnitInterval]) -> Result<f64, KellyError> {
-    if odds.len() != out_probs.len() {
-        return Err(KellyError::InvalidOdds {
-            value: out_probs.len() as f64,
-        });
-    }
-    book_overround(odds)
-}
-
-/// Removes bookmaker vigorish proportionally ($p_i = \pi_i / S$) into `out_probs` without heap allocation.
-/// Returns the raw overround $S$.
+/// Removes vig proportionally (`p_i = pi_i / booksum`) into `probs_out`.
 #[verified_engine::verified]
 pub fn devig_multiplicative_into(
     odds: &[Odds],
-    out_probs: &mut [UnitInterval],
-) -> Result<f64, KellyError> {
-    let s = validate_devig_buffers(odds, out_probs)?;
-    for (dst, o) in out_probs.iter_mut().zip(odds.iter()) {
-        *dst = UnitInterval::new_clamped(o.implied_probability() / s);
+    probs_out: &mut [f64],
+) -> Result<DevigMetadata, MarketPricingError> {
+    let market = implied_probabilities_into(odds, probs_out)?;
+    let inv_sum = 1.0 / market.booksum;
+    let mut i = 0;
+    while i < probs_out.len() {
+        probs_out[i] *= inv_sum;
+        i += 1;
     }
-    Ok(s)
+    Ok(DevigMetadata {
+        method: DevigMethod::Multiplicative,
+        market,
+        parameter: inv_sum,
+        solver_iterations: 0,
+        simplex_violation: None,
+    })
 }
 
-/// Removes bookmaker vigorish via equal-margin subtraction ($p_i = \pi_i - (S - 1) / n$) into `out_probs`.
-/// Returns an error if longshot bias drives any outcome probability non-positive.
+/// Computes both raw (`pi_i - (S - 1) / n`) and simplex-clamped `Additive` probabilities,
+/// surfacing [`SimplexViolationDiagnostic`] whenever a longshot raw probability falls `<= 0.0`.
+#[verified_engine::verified]
+pub fn devig_additive_detailed_into(
+    odds: &[Odds],
+    raw_probs_out: &mut [f64],
+    clamped_probs_out: &mut [f64],
+) -> Result<DevigMetadata, MarketPricingError> {
+    if clamped_probs_out.len() != odds.len() {
+        return Err(MarketPricingError::SliceLengthMismatch {
+            expected: odds.len(),
+            actual: clamped_probs_out.len(),
+        });
+    }
+    let market = implied_probabilities_into(odds, raw_probs_out)?;
+    let shift = market.overround / (odds.len() as f64);
+    let mut violated_count = 0usize;
+    let mut worst_idx = 0usize;
+    let mut min_raw = f64::INFINITY;
+    let mut positive_sum = 0.0;
+    let mut i = 0;
+    while i < raw_probs_out.len() {
+        let raw = raw_probs_out[i] - shift;
+        raw_probs_out[i] = raw;
+        if raw < min_raw {
+            min_raw = raw;
+            worst_idx = i;
+        }
+        if raw <= 0.0 {
+            violated_count += 1;
+            clamped_probs_out[i] = 0.0;
+        } else {
+            clamped_probs_out[i] = raw;
+            positive_sum += raw;
+        }
+        i += 1;
+    }
+    normalize_slice(clamped_probs_out, positive_sum)?;
+    let simplex_violation = if violated_count > 0 {
+        Some(SimplexViolationDiagnostic {
+            violated_count,
+            worst_outcome_index: worst_idx,
+            min_raw_probability: min_raw,
+            margin_per_outcome: shift,
+        })
+    } else {
+        None
+    };
+    Ok(DevigMetadata {
+        method: DevigMethod::Additive,
+        market,
+        parameter: shift,
+        solver_iterations: 0,
+        simplex_violation,
+    })
+}
+
+/// Removes vig via `Additive` equal-margin subtraction, clamping onto the simplex if any
+/// longshot goes non-positive while surfacing [`SimplexViolationDiagnostic`] in [`DevigMetadata`].
 #[verified_engine::verified]
 pub fn devig_additive_into(
     odds: &[Odds],
-    out_probs: &mut [UnitInterval],
-) -> Result<f64, KellyError> {
-    let s = validate_devig_buffers(odds, out_probs)?;
-    let shift = (s - 1.0) / (odds.len() as f64);
-    for (dst, o) in out_probs.iter_mut().zip(odds.iter()) {
-        let p = o.implied_probability() - shift;
-        if !(0.0..=1.0).contains(&p) || p <= 0.0 {
-            return Err(KellyError::InvalidProbability { value: p });
-        }
-        *dst = UnitInterval::new_clamped(p);
+    probs_out: &mut [f64],
+) -> Result<DevigMetadata, MarketPricingError> {
+    let mut raw_buf = [0.0_f64; MAX_MARKET_OUTCOMES];
+    let n = odds.len();
+    if n > MAX_MARKET_OUTCOMES {
+        return Err(MarketPricingError::TooManyOutcomes {
+            count: n,
+            max_supported: MAX_MARKET_OUTCOMES,
+        });
     }
-    Ok(s)
+    devig_additive_detailed_into(odds, &mut raw_buf[..n], probs_out)
 }
 
 #[verified_engine::verified]
-fn power_sum(odds: &[Odds], exponent: f64) -> f64 {
-    let mut total = 0.0;
-    for o in odds {
-        total += o.implied_probability().powf(exponent);
+fn normalize_slice(probs: &mut [f64], sum: f64) -> Result<(), MarketPricingError> {
+    if !sum.is_finite() || sum <= 0.0 {
+        return Err(MarketPricingError::NonPositiveOverround { booksum: sum });
     }
-    total
+    let inv = 1.0 / sum;
+    let mut i = 0;
+    while i < probs.len() {
+        probs[i] *= inv;
+        i += 1;
+    }
+    Ok(())
 }
 
-/// Removes vigorish via the power method ($p_i = \pi_i^k$, $\sum_i \pi_i^k = 1$) using zero-allocation
-/// monotone bisection. Returns the fitted power exponent $k > 0$.
 #[verified_engine::verified]
-pub fn devig_power_into(odds: &[Odds], out_probs: &mut [UnitInterval]) -> Result<f64, KellyError> {
-    let s = validate_devig_buffers(odds, out_probs)?;
-    if (s - 1.0).abs() <= 1e-12 {
-        for (dst, o) in out_probs.iter_mut().zip(odds.iter()) {
-            *dst = o.implied_probability_unit();
-        }
-        return Ok(1.0);
+fn power_sum_residual(implied: &[f64], k: f64) -> f64 {
+    let mut sum = 0.0;
+    let mut i = 0;
+    while i < implied.len() {
+        sum += implied[i].powf(k);
+        i += 1;
     }
-    let (mut lo, mut hi) = if s > 1.0 { (1.0, 4.0) } else { (0.01, 1.0) };
-    if s > 1.0 {
-        while power_sum(odds, hi) > 1.0 && hi < 1024.0 {
-            hi *= 2.0;
+    sum - 1.0
+}
+
+#[verified_engine::verified]
+fn power_upper_bound(implied: &[f64]) -> f64 {
+    let mut max_pi = 0.0_f64;
+    let mut i = 0;
+    while i < implied.len() {
+        if implied[i] > max_pi {
+            max_pi = implied[i];
         }
+        i += 1;
+    }
+    let neg_ln_max = (-max_pi.ln()).max(1e-12);
+    let analytic = 2.0 * (implied.len() as f64).ln() / neg_ln_max;
+    analytic.max(2.0)
+}
+
+/// Removes vig via the constant-exponent `Power` method (`sum(pi_i^k) = 1`) solved with [`Brent`].
+#[verified_engine::verified]
+pub fn devig_power_into(
+    odds: &[Odds],
+    probs_out: &mut [f64],
+) -> Result<DevigMetadata, MarketPricingError> {
+    let mut implied = [0.0_f64; MAX_MARKET_OUTCOMES];
+    let n = odds.len();
+    if n > MAX_MARKET_OUTCOMES {
+        return Err(MarketPricingError::TooManyOutcomes {
+            count: n,
+            max_supported: MAX_MARKET_OUTCOMES,
+        });
+    }
+    if probs_out.len() != n {
+        return Err(MarketPricingError::SliceLengthMismatch {
+            expected: n,
+            actual: probs_out.len(),
+        });
+    }
+    let market = implied_probabilities_into(odds, &mut implied[..n])?;
+    let slice = &implied[..n];
+    let (k, evals) = if market.overround.abs() <= TOLERANCE_HIGH {
+        (1.0, 0usize)
     } else {
-        while power_sum(odds, lo) < 1.0 && lo > 1e-6 {
-            lo *= 0.5;
-        }
-    }
-    for _ in 0..64 {
-        let mid = 0.5 * (lo + hi);
-        if power_sum(odds, mid) > 1.0 {
-            lo = mid;
+        let (lo, hi) = if market.overround > 0.0 {
+            (1.0, power_upper_bound(slice))
         } else {
-            hi = mid;
-        }
+            (0.0, 1.0)
+        };
+        let count = core::cell::Cell::new(0usize);
+        let solver = Brent::new(100, 1e-12);
+        let root = solver.find_root(
+            |exp| {
+                count.set(count.get() + 1);
+                power_sum_residual(slice, exp)
+            },
+            lo,
+            hi,
+        )?;
+        (root, count.get())
+    };
+    let mut sum = 0.0;
+    let mut i = 0;
+    while i < n {
+        let p = slice[i].powf(k);
+        probs_out[i] = p;
+        sum += p;
+        i += 1;
     }
-    let k = 0.5 * (lo + hi);
-    let norm = power_sum(odds, k);
-    for (dst, o) in out_probs.iter_mut().zip(odds.iter()) {
-        *dst = UnitInterval::new_clamped(o.implied_probability().powf(k) / norm);
-    }
-    Ok(k)
+    normalize_slice(probs_out, sum)?;
+    Ok(DevigMetadata {
+        method: DevigMethod::Power,
+        market,
+        parameter: k,
+        solver_iterations: evals,
+        simplex_violation: None,
+    })
 }
 
 #[verified_engine::verified]
-fn shin_prob_single(pi: f64, overround: f64, z: f64) -> f64 {
-    let denom = 2.0 * (1.0 - z);
-    if denom <= 1e-15 {
-        return (pi * pi) / overround;
-    }
-    let disc = (z * z + 4.0 * (1.0 - z) * pi * pi / overround).max(0.0);
-    (disc.sqrt() - z) / denom
+fn shin_prob_rationalized(pi: f64, booksum: f64, z: f64) -> f64 {
+    let ratio = (pi * pi) / booksum;
+    let radicand = (z * z + 4.0 * (1.0 - z) * ratio).max(0.0);
+    (2.0 * ratio) / (radicand.sqrt() + z)
 }
 
 #[verified_engine::verified]
-fn shin_sum(odds: &[Odds], overround: f64, z: f64) -> f64 {
-    let mut total = 0.0;
-    for o in odds {
-        total += shin_prob_single(o.implied_probability(), overround, z);
+fn shin_sum_residual(implied: &[f64], booksum: f64, z: f64) -> f64 {
+    let mut sum = 0.0;
+    let mut i = 0;
+    while i < implied.len() {
+        sum += shin_prob_rationalized(implied[i], booksum, z);
+        i += 1;
     }
-    total
+    sum - 1.0
 }
 
-/// Removes vigorish via Shin's (1993) insider-trading equilibrium:
+/// Removes vig via Shin's (1991, 1993) insider-trading equilibrium model.
 ///
-/// $$p_i(z) = \frac{\sqrt{z^2 + 4(1 - z)\pi_i^2 / S} - z}{2(1 - z)}, \qquad \sum_{i=1}^n p_i(z) = 1$$
-///
-/// Writes fair probabilities into `out_probs` without heap allocation and returns the estimated
-/// insider trading proportion $z \in [0, 1)$ as a [`UnitInterval`].
+/// Uses the exact closed-form `z` for 2-way markets and solves the rationalized probability
+/// conservation equation on `[0.0, 1.0]` via [`Brent`] for `N >= 3` outcomes.
 #[verified_engine::verified]
 pub fn devig_shin_into(
     odds: &[Odds],
-    out_probs: &mut [UnitInterval],
-) -> Result<UnitInterval, KellyError> {
-    let s = validate_devig_buffers(odds, out_probs)?;
-    if s <= 1.0 {
-        devig_multiplicative_into(odds, out_probs)?;
-        return Ok(UnitInterval::new_clamped(0.0));
+    probs_out: &mut [f64],
+) -> Result<DevigMetadata, MarketPricingError> {
+    let mut implied = [0.0_f64; MAX_MARKET_OUTCOMES];
+    let n = odds.len();
+    if n > MAX_MARKET_OUTCOMES {
+        return Err(MarketPricingError::TooManyOutcomes {
+            count: n,
+            max_supported: MAX_MARKET_OUTCOMES,
+        });
     }
-    let mut lo = 0.0_f64;
-    let mut hi = 1.0 - 1e-12;
-    for _ in 0..64 {
-        let mid = 0.5 * (lo + hi);
-        if shin_sum(odds, s, mid) > 1.0 {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
+    if probs_out.len() != n {
+        return Err(MarketPricingError::SliceLengthMismatch {
+            expected: n,
+            actual: probs_out.len(),
+        });
     }
-    let z = 0.5 * (lo + hi);
-    let total = shin_sum(odds, s, z);
-    for (dst, o) in out_probs.iter_mut().zip(odds.iter()) {
-        let p = shin_prob_single(o.implied_probability(), s, z) / total;
-        *dst = UnitInterval::new_clamped(p);
+    let market = implied_probabilities_into(odds, &mut implied[..n])?;
+    if market.booksum < 1.0 - TOLERANCE_HIGH {
+        return Err(MarketPricingError::NonPositiveOverround {
+            booksum: market.booksum,
+        });
     }
-    Ok(UnitInterval::new_clamped(z))
+    let slice = &implied[..n];
+    let s = market.booksum;
+    let (z, evals) = if market.overround.abs() <= TOLERANCE_HIGH {
+        (0.0, 0usize)
+    } else if n == 2 {
+        let diff_sq = (slice[0] - slice[1]) * (slice[0] - slice[1]);
+        let z_exact = ((s - 1.0) * (s - diff_sq)) / (s * (1.0 - diff_sq));
+        (z_exact.clamp(0.0, 1.0 - 1e-15), 0usize)
+    } else {
+        let count = core::cell::Cell::new(0usize);
+        let solver = Brent::new(100, 1e-12);
+        let root = solver.find_root(
+            |z_cand| {
+                count.set(count.get() + 1);
+                shin_sum_residual(slice, s, z_cand)
+            },
+            0.0,
+            1.0,
+        )?;
+        (root, count.get())
+    };
+    let mut sum = 0.0;
+    let mut i = 0;
+    while i < n {
+        let p = shin_prob_rationalized(slice[i], s, z);
+        probs_out[i] = p;
+        sum += p;
+        i += 1;
+    }
+    normalize_slice(probs_out, sum)?;
+    Ok(DevigMetadata {
+        method: DevigMethod::Shin,
+        market,
+        parameter: z,
+        solver_iterations: evals,
+        simplex_violation: None,
+    })
 }
+
+/// Dispatches vig removal for `method` and writes calibrated fair probabilities into `probs_out`.
+#[verified_engine::verified]
+pub fn devig_into(
+    odds: &[Odds],
+    method: DevigMethod,
+    probs_out: &mut [f64],
+) -> Result<DevigMetadata, MarketPricingError> {
+    match method {
+        DevigMethod::Multiplicative => devig_multiplicative_into(odds, probs_out),
+        DevigMethod::Additive => devig_additive_into(odds, probs_out),
+        DevigMethod::Power => devig_power_into(odds, probs_out),
+        DevigMethod::Shin => devig_shin_into(odds, probs_out),
+    }
+}
+
+/// Converts fair probabilities `(0.0, 1.0)` into vig-free [`Odds`] (`1.0 / p_i`).
+#[verified_engine::verified]
+pub fn fair_odds_from_probabilities_into(
+    probs: &[f64],
+    fair_odds_out: &mut [Odds],
+) -> Result<(), MarketPricingError> {
+    if fair_odds_out.len() != probs.len() {
+        return Err(MarketPricingError::SliceLengthMismatch {
+            expected: probs.len(),
+            actual: fair_odds_out.len(),
+        });
+    }
+    let mut i = 0;
+    while i < probs.len() {
+        let p = probs[i];
+        if !p.is_finite() || p <= 0.0 || p >= 1.0 {
+            return Err(MarketPricingError::InvalidProbability { value: p });
+        }
+        let o =
+            Odds::new(1.0 / p).map_err(|_| MarketPricingError::InvalidProbability { value: p })?;
+        fair_odds_out[i] = o;
+        i += 1;
+    }
+    Ok(())
+}
+
+/// Converts fair probabilities `[0.0, 1.0]` into raw decimal odds (`f64::INFINITY` if `p == 0.0`).
+#[verified_engine::verified]
+pub fn fair_decimal_odds_into(
+    probs: &[f64],
+    decimal_odds_out: &mut [f64],
+) -> Result<(), MarketPricingError> {
+    if decimal_odds_out.len() != probs.len() {
+        return Err(MarketPricingError::SliceLengthMismatch {
+            expected: probs.len(),
+            actual: decimal_odds_out.len(),
+        });
+    }
+    let mut i = 0;
+    while i < probs.len() {
+        let p = probs[i];
+        if !p.is_finite() || !(0.0..=1.0).contains(&p) {
+            return Err(MarketPricingError::InvalidProbability { value: p });
+        }
+        decimal_odds_out[i] = if p == 0.0 { f64::INFINITY } else { 1.0 / p };
+        i += 1;
+    }
+    Ok(())
+}
+
+// [cite:sports_quantitative_modeling]

@@ -121,19 +121,18 @@
 //! # use pure_math::__doctest_facade as math_explorer;
 //! use math_explorer::pure_math::statistics::kelly::Odds;
 //!
-//! // American odds
+//! // American odds (including -100 and +100 even-money boundaries)
 //! let underdog = Odds::from_american(200.0).unwrap(); // +200
-//! println!("Decimal odds: {:.2}", underdog.value());
+//! assert!((underdog.value() - 3.0).abs() < 1e-9);
+//! assert!((underdog.to_american() - 200.0).abs() < 1e-9);
 //!
 //! let favorite = Odds::from_american(-150.0).unwrap(); // -150
-//! println!("Decimal odds: {:.2}", favorite.value());
+//! assert_eq!(favorite.to_fractional(1000), (2, 3));
 //!
-//! // Fractional odds
+//! // Fractional odds and implied probability
 //! let odds_5_to_2 = Odds::from_fractional(5.0, 2.0).unwrap();
-//! println!("Decimal odds: {:.2}", odds_5_to_2.value());
-//!
-//! // Implied probability (bookmaker's edge)
-//! println!("Implied prob: {:.1}%", odds_5_to_2.implied_probability() * 100.0);
+//! let from_prob = Odds::from_implied_probability(odds_5_to_2.implied_probability()).unwrap();
+//! assert!((from_prob.value() - odds_5_to_2.value()).abs() < 1e-9);
 //! ```
 //!
 //! ## Example: Realistic Sports Betting

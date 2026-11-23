@@ -46,7 +46,10 @@ fn test_sports_analytics_and_bet_size_deferred_csv_json_svg_png_exports() {
     {
         let meta = inventory::iter::<ToolMetadata>
             .into_iter()
-            .find(|m| m.id == tool_id)
+            .find(|m| {
+                m.id == tool_id
+                    && (m.domain == "sports_analytics" || tool_id == "BetSizeCalculatorTool")
+            })
             .unwrap_or_else(|| panic!("Missing ToolMetadata for {tool_id}"));
         let mut fw = SimulationFramework::new("__sports_audit__");
         fw.export_options.width = 320;
@@ -115,7 +118,7 @@ fn test_sports_analytics_presets_exports_and_deny_unknown_fields() {
     for tool_id in ALL_SPORTS_TOOLS {
         let meta = inventory::iter::<ToolMetadata>
             .into_iter()
-            .find(|m| m.id == tool_id)
+            .find(|m| m.id == tool_id && m.domain == "sports_analytics")
             .unwrap_or_else(|| panic!("Missing ToolMetadata for {tool_id}"));
         let mut tool = (meta.build)();
         let caps = tool.export_capabilities();

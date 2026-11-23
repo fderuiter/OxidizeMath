@@ -96,7 +96,6 @@ impl MatchHeatmapState {
 pub struct MatchScoreHeatmapTool {
     pub(super) state: MatchHeatmapState,
     revision: u64,
-    canvas_id: Option<egui::Id>,
     matrix: [f64; MATRIX_LEN],
     outcomes_1x2: MatchOutcomeProbs,
     over_prob: UnitInterval,
@@ -112,7 +111,6 @@ impl Default for MatchScoreHeatmapTool {
         let mut tool = Self {
             state: MatchHeatmapState::default(),
             revision: 1,
-            canvas_id: None,
             matrix: [0.0; MATRIX_LEN],
             outcomes_1x2: MatchOutcomeProbs {
                 home_win: neutral,
@@ -309,7 +307,6 @@ impl MatchScoreHeatmapTool {
             egui::Vec2::new(side, side),
             egui::Sense::focusable_noninteractive(),
         );
-        self.canvas_id = Some(response.id);
         let max_p = self.matrix.iter().copied().fold(1e-6_f64, f64::max);
         let cell = side / (MATRIX_DIM as f32);
         let dark = ui.visuals().dark_mode;
@@ -397,9 +394,6 @@ impl InteractiveTool for MatchScoreHeatmapTool {
     }
     fn state_revision(&self) -> u64 {
         self.revision
-    }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.canvas_id
     }
     fn has_finite_parameters(&self) -> bool {
         self.state.validate().is_ok()

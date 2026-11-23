@@ -87,6 +87,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         | "CorrelatedRiskScenarioTool"
         | "Glicko2TournamentTool"
         | "MarketDeviggingTool"
+        | "MarketExecutionTool"
         | "MatchScoreHeatmapTool"
         | "SgpCopulaTool"
         | "ZipCountPropsTool"
@@ -94,6 +95,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         | "SportsRatingsTool"
         | "ClvRuinTool" => &["sports_quantitative_modeling"],
         "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
+        "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
         "CorticalMorphometryTool" => &["freesurfer"],
         _ => &[],
     };
@@ -120,6 +122,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "financial_math" | "sports_analytics" => &["sports_quantitative_modeling"],
         "neuroscience" => &["biology", "graph_parameters_rust"],
+        "solid_state" => &["stat_mech", "pure_math"],
         "ai" => &["graph_parameters_rust"],
         "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
         "relativity" => &[

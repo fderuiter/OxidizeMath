@@ -67,9 +67,16 @@ pub use kelly::{
     kelly_drawdown_risk, kelly_fraction, unit_risk_of_ruin, variants as kelly_variants,
 };
 pub use market_pricing::{
-    DevigMethod, book_overround, book_vigorish, closing_line_edge_two_way, closing_line_value,
+    AllMethodsEvReport, ArbitrageReport, DevigMetadata, DevigMethod, DutchingMode, DutchingReport,
+    EvEvaluation, HedgeMode, HedgeReport, MAX_MARKET_OUTCOMES, MarketOverround, MarketPricingError,
+    MiddleReport, SimplexViolationDiagnostic, book_vigorish, booksum, closing_line_edge_two_way,
+    closing_line_value, compare_outcome_ev_all_methods, devig_additive_detailed_into,
     devig_additive_into, devig_into, devig_multiplicative_into, devig_power_into, devig_shin_into,
-    devig_three_way, devig_two_way, fair_odds,
+    devig_three_way, devig_two_way, devig_unit_into, dutch_outcomes_into, dutch_subset_into,
+    evaluate_arbitrage_into, evaluate_ev_from_probability, evaluate_hedge, evaluate_middle,
+    evaluate_middle_custom_stakes, evaluate_outcome_ev, evaluate_two_way_arbitrage,
+    fair_decimal_odds_into, fair_odds, fair_odds_from_probabilities_into,
+    implied_probabilities_into, is_arbitrage, market_overround, overround, turnover_margin,
 };
 pub use match_models::{
     DixonColesRho, MatchOutcomeProbs, ScoreModelKind, SharedGoalRate, asian_handicap_home_cover,
