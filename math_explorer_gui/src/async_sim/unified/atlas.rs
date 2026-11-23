@@ -3,72 +3,15 @@
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::atlas::{AtlasTeleportEvent, ParameterAtlasController};
 use crate::async_sim::SimCommand;
-use crate::framework::InteractiveTool;
 use eframe::egui;
-use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
 
-#[derive(Serialize)]
-struct UnifiedAtlasStateRef<'a> {
-    params: BTreeMap<&'a String, &'a f64>,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    atlas_visible: bool,
-    atlas_axes: [&'a str; 2],
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct UnifiedAtlasStateOwned {
-    params: HashMap<String, f64>,
-    #[serde(default)]
-    atlas_visible: bool,
-    #[serde(default)]
-    atlas_axes: Option<[String; 2]>,
-}
-
-type ParsedUnifiedAtlasCfg = Option<(bool, Option<[String; 2]>)>;
+pub(super) type ParsedUnifiedAtlasCfg = Option<(bool, Option<[String; 2]>)>;
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(super) fn create_optional_atlas() -> Option<ParameterAtlasController> {
         let pairs = M::atlas_axis_pairs();
         (!pairs.is_empty()).then(|| ParameterAtlasController::new(pairs.to_vec()))
-    }
-
-    pub(super) fn serialize_unified_state(&self) -> Option<String> {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let sorted: BTreeMap<&String, &f64> = params.iter().collect();
-        if let Some(atlas) = &self.atlas {
-            if !atlas.has_default_persisted_state() {
-                let (xk, yk) = atlas.axis_keys();
-                return serde_json::to_string(&UnifiedAtlasStateRef {
-                    params: sorted,
-                    atlas_visible: atlas.is_visible(),
-                    atlas_axes: [xk, yk],
-                })
-                .ok();
-            }
-        }
-        serde_json::to_string(&sorted).ok()
-    }
-
-    pub(super) fn parse_unified_state(
-        &self,
-        state: &str,
-    ) -> Result<(HashMap<String, f64>, ParsedUnifiedAtlasCfg), String> {
-        self.state_bounds().validate_json(state)?;
-        if let Ok(ext) = serde_json::from_str::<UnifiedAtlasStateOwned>(state) {
-            if self.atlas.is_none() && (ext.atlas_visible || ext.atlas_axes.is_some()) {
-                return Err(format!(
-                    "{} does not support 2D parameter atlas state",
-                    M::name()
-                ));
-            }
-            return Ok((ext.params, Some((ext.atlas_visible, ext.atlas_axes))));
-        }
-        let flat: HashMap<String, f64> = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
-        Ok((flat, None))
     }
 
     pub(super) fn apply_parsed_atlas_state(
