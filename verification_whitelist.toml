@@ -197,7 +197,6 @@ vendored_crates = [
 "crates/domain_applied/src/applied/battery_degradation/mod.rs" = 1
 "crates/domain_applied/src/applied/battery_degradation/model.rs" = 10
 "crates/domain_applied/src/applied/battery_degradation/types.rs" = 14
-"crates/domain_applied/src/applied/cannibalism/mod.rs" = 4
 "crates/domain_applied/src/applied/clinical_trials/analysis.rs" = 5
 "crates/domain_applied/src/applied/clinical_trials/design.rs" = 5
 "crates/domain_applied/src/applied/clinical_trials/hypothesis_testing.rs" = 9
