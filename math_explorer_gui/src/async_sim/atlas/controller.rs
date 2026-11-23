@@ -98,6 +98,20 @@ impl ParameterAtlasController {
         &self.axis_pair_options
     }
 
+    /// Replaces the supported `(x_key, y_key)` axis pairs when a multi-mode tool changes kinetics,
+    /// preserving the active pair if still valid or resetting to index `0`.
+    pub fn replace_axis_pair_options(&mut self, options: Vec<(&'static str, &'static str)>) {
+        if self.axis_pair_options == options {
+            return;
+        }
+        let prev = self.axis_keys();
+        let next_idx = options.iter().position(|&pair| pair == prev).unwrap_or(0);
+        self.axis_pair_options = options;
+        self.selected_pair_idx = next_idx;
+        self.keyboard_cursor = None;
+        self.dirty = true;
+    }
+
     /// Currently selected axis pair index.
     #[inline]
     #[must_use]

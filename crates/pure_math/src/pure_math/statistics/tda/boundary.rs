@@ -158,23 +158,32 @@ impl Z2BoundaryWorkspace {
     /// and returns $\operatorname{rank}_{\mathbb{Z}_2}(\partial)$.
     #[verified_engine::verified]
     pub fn reduce(&mut self) -> usize {
+        self.reduce_with_max_rank(self.max_pivots)
+    }
+
+    #[verified_engine::verified]
+    pub(crate) fn reduce_with_max_rank(&mut self, max_rank: usize) -> usize {
         self.row_to_slot.fill(NO_INDEX);
         self.row_to_pivot_col.fill(NO_INDEX);
         self.col_pivots.fill(NO_INDEX);
         self.work_col.fill(0);
         self.rank = 0;
 
-        if self.num_rows == 0 || self.num_cols == 0 || self.words_per_col == 0 {
+        let target_rank = max_rank.min(self.max_pivots);
+        if self.num_rows == 0 || self.num_cols == 0 || self.words_per_col == 0 || target_rank == 0 {
             return 0;
         }
 
         for col in 0..self.num_cols {
+            if self.rank >= target_rank {
+                break;
+            }
             if !self.cleared_cols[col] {
                 self.reduce_single_column(col);
             }
         }
 
-        debug_assert!(self.rank <= self.max_pivots);
+        debug_assert!(self.rank <= target_rank);
         self.rank
     }
 
@@ -287,96 +296,28 @@ pub(super) struct FilteredEdge {
     pub(super) v: u16,
 }
 
+impl FilteredEdge {
+    #[verified_engine::verified]
+    pub(super) fn cmp_filtration(&self, other: &Self) -> std::cmp::Ordering {
+        self.diameter
+            .total_cmp(&other.diameter)
+            .then_with(|| (self.u, self.v).cmp(&(other.u, other.v)))
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FilteredTriangle {
     pub(super) diameter: f64,
     pub(super) vertices: [u16; 3],
 }
 
-#[verified_engine::verified]
-pub(super) fn collect_sorted_edges(dist: &[Vec<f64>]) -> (Vec<FilteredEdge>, Vec<u32>, f64) {
-    let n = dist.len();
-    let mut edges = Vec::with_capacity(n.saturating_mul(n.saturating_sub(1)) / 2);
-    let mut max_radius = 0.0_f64;
-    for (i, row) in dist.iter().enumerate().take(n) {
-        for (j, &d) in row.iter().enumerate().take(n).skip(i + 1) {
-            if d > max_radius {
-                max_radius = d;
-            }
-            edges.push(FilteredEdge {
-                diameter: d,
-                u: i as u16,
-                v: j as u16,
-            });
-        }
+impl FilteredTriangle {
+    #[verified_engine::verified]
+    pub(super) fn cmp_filtration(&self, other: &Self) -> std::cmp::Ordering {
+        self.diameter
+            .total_cmp(&other.diameter)
+            .then_with(|| self.vertices.cmp(&other.vertices))
     }
-    edges.sort_unstable_by(|a, b| {
-        a.diameter
-            .total_cmp(&b.diameter)
-            .then_with(|| (a.u, a.v).cmp(&(b.u, b.v)))
-    });
-    let mut lookup = vec![u32::MAX; n * n];
-    for (idx, edge) in edges.iter().enumerate() {
-        let u = edge.u as usize;
-        let v = edge.v as usize;
-        let row_u = u * n;
-        let row_v = v * n;
-        lookup[row_u + v] = idx as u32;
-        lookup[row_v + u] = idx as u32;
-    }
-    (edges, lookup, max_radius)
-}
-
-#[verified_engine::verified]
-pub(super) fn collect_sorted_triangles(
-    dist: &[Vec<f64>],
-    max_triangles: usize,
-) -> (Vec<FilteredTriangle>, bool) {
-    let n = dist.len();
-    if n < 3 {
-        return (Vec::new(), false);
-    }
-    let flush_cap = max_triangles.saturating_mul(2).max(1);
-    let mut buf = Vec::with_capacity(flush_cap.min(200_000));
-    let mut truncated = false;
-    for (i, row_i) in dist.iter().enumerate().take(n) {
-        for (j, &d_ij) in row_i.iter().enumerate().take(n).skip(i + 1) {
-            let row_j = &dist[j];
-            for (k, &d_ik) in row_i.iter().enumerate().take(n).skip(j + 1) {
-                if max_triangles == 0 {
-                    return (Vec::new(), true);
-                }
-                buf.push(FilteredTriangle {
-                    diameter: d_ij.max(d_ik).max(row_j[k]),
-                    vertices: [i as u16, j as u16, k as u16],
-                });
-                if buf.len() >= flush_cap && buf.len() > max_triangles {
-                    truncated = true;
-                    buf.select_nth_unstable_by(max_triangles, |a, b| {
-                        a.diameter
-                            .total_cmp(&b.diameter)
-                            .then_with(|| a.vertices.cmp(&b.vertices))
-                    });
-                    buf.truncate(max_triangles);
-                }
-            }
-        }
-    }
-    if buf.len() > max_triangles {
-        truncated = true;
-        buf.select_nth_unstable_by(max_triangles, |a, b| {
-            a.diameter
-                .total_cmp(&b.diameter)
-                .then_with(|| a.vertices.cmp(&b.vertices))
-        });
-        buf.truncate(max_triangles);
-    }
-    buf.sort_unstable_by(|a, b| {
-        a.diameter
-            .total_cmp(&b.diameter)
-            .then_with(|| a.vertices.cmp(&b.vertices))
-    });
-    (buf, truncated)
 }
 
 #[verified_engine::verified]
@@ -416,6 +357,80 @@ pub(super) fn build_cleared_partial_1_workspace(
         }
     }
     Ok(ws)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[verified_engine::verified]
+pub(super) fn reduce_incremental_triangle(
+    e0: usize,
+    e1: usize,
+    e_max: usize,
+    edge_words: usize,
+    col_scratch: &mut [u64],
+    pivot_for_row: &mut [usize],
+    basis_words: &mut [Vec<u64>],
+    basis_rank: &mut usize,
+) {
+    if pivot_for_row[e_max] == usize::MAX {
+        let slot = *basis_rank;
+        pivot_for_row[e_max] = slot;
+        let row_words = &mut basis_words[slot][..edge_words];
+        row_words.fill(0);
+        row_words[e0 >> 6] ^= 1_u64 << (e0 & 63);
+        row_words[e1 >> 6] ^= 1_u64 << (e1 & 63);
+        row_words[e_max >> 6] ^= 1_u64 << (e_max & 63);
+        *basis_rank += 1;
+        return;
+    }
+
+    let cur_words = (e_max >> 6) + 1;
+    col_scratch[..cur_words].fill(0);
+    col_scratch[e0 >> 6] ^= 1_u64 << (e0 & 63);
+    col_scratch[e1 >> 6] ^= 1_u64 << (e1 & 63);
+    col_scratch[e_max >> 6] ^= 1_u64 << (e_max & 63);
+
+    if reduce_scratch_words(
+        cur_words,
+        edge_words,
+        *basis_rank,
+        col_scratch,
+        pivot_for_row,
+        basis_words,
+    ) {
+        *basis_rank += 1;
+    }
+}
+
+#[verified_engine::verified]
+fn reduce_scratch_words(
+    cur_words: usize,
+    edge_words: usize,
+    basis_idx: usize,
+    col_scratch: &mut [u64],
+    pivot_for_row: &mut [usize],
+    basis_words: &mut [Vec<u64>],
+) -> bool {
+    for wi in (0..cur_words).rev() {
+        while col_scratch[wi] != 0 {
+            let bit = 63 - col_scratch[wi].leading_zeros() as usize;
+            let pivot_row = (wi << 6) | bit;
+            let existing = pivot_for_row[pivot_row];
+            if existing == usize::MAX {
+                pivot_for_row[pivot_row] = basis_idx;
+                let dst = &mut basis_words[basis_idx];
+                dst[..cur_words].copy_from_slice(&col_scratch[..cur_words]);
+                if cur_words < edge_words {
+                    dst[cur_words..edge_words].fill(0);
+                }
+                return true;
+            }
+            let existing_words = &basis_words[existing];
+            for w in 0..=wi {
+                col_scratch[w] ^= existing_words[w];
+            }
+        }
+    }
+    false
 }
 
 // [cite:clinical_trials_statistics]

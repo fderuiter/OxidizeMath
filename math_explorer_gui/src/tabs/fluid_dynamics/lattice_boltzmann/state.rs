@@ -32,6 +32,9 @@ pub const INFLOW_SPEED_MIN: f64 = 0.0;
 pub const INFLOW_SPEED_MAX: f64 = 0.18;
 /// Default horizontal inflow speed in lattice units (`Ma ≈ 0.17`).
 pub const DEFAULT_INFLOW_SPEED: f64 = 0.10;
+/// Canonical horizontal inlet velocity `U` shared with legacy `#[cfg(test)]` runners.
+#[cfg(test)]
+pub const LBM_INLET_U: f64 = DEFAULT_INFLOW_SPEED;
 
 /// Minimum solver sub-steps executed per worker frame.
 pub const STEPS_PER_FRAME_MIN: usize = 1;

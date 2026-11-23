@@ -1,6 +1,6 @@
-// @explorer_feature = "epidemiology"
-// @explorer_order = 42
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod network_propagation;
@@ -49,6 +49,14 @@ impl ExplorerTab for EpidemiologyTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "epidemiology",
+        order: 42,
+        build: || Box::new(EpidemiologyTab::default()),
     }
 }
 

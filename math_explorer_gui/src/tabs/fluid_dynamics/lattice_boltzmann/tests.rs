@@ -400,3 +400,46 @@ fn test_tool_on_brush_solid_erase_velocity_jet_and_naca_venturi_stamps() {
     assert!(count_solid_cells(&tool.obstacles) > 250);
     assert!(tool.has_finite_parameters());
 }
+
+#[test]
+fn parameter_atlas_cartographer_and_teleport_respect_challenge_locks() {
+    use crate::async_sim::atlas::AtlasTeleportEvent;
+    use crate::tabs::fluid_dynamics::lbm_fairing::{
+        CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY, LBM_U_IN,
+    };
+
+    let mut tool = LatticeBoltzmannTool::default();
+    let pairs = tool.atlas_axis_pairs();
+    assert_eq!(pairs, &[("viscosity", "inlet_velocity")]);
+    assert_eq!(
+        tool.active_atlas_coords(pairs[0]),
+        (DEFAULT_VISCOSITY, DEFAULT_INFLOW_SPEED)
+    );
+
+    let carto = tool
+        .build_atlas_cartographer(pairs[0])
+        .expect("cartographer for (viscosity, inlet_velocity)");
+    let karman_cell = carto.evaluate_cell(0.015, 0.12);
+    assert_eq!(karman_cell.regime, 2);
+
+    tool.apply_atlas_teleport(AtlasTeleportEvent {
+        x_key: "viscosity",
+        x_val: 0.035,
+        y_key: "inlet_velocity",
+        y_val: 0.14,
+        regime_label: "Unsteady Kármán Vortex Street",
+    });
+    assert!((tool.viscosity - 0.035).abs() < 1e-12);
+    assert!((tool.inflow_speed - 0.14).abs() < 1e-12);
+
+    tool.apply_challenge(Some(CHALLENGE_LBM_FAIRING)).unwrap();
+    tool.apply_atlas_teleport(AtlasTeleportEvent {
+        x_key: "viscosity",
+        x_val: 0.09,
+        y_key: "inlet_velocity",
+        y_val: 0.16,
+        regime_label: "Unsteady Kármán Vortex Street",
+    });
+    assert!((tool.viscosity - CHALLENGE_LBM_VISCOSITY).abs() < 1e-12);
+    assert!((tool.inflow_speed - LBM_U_IN).abs() < 1e-12);
+}

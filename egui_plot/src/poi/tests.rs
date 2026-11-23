@@ -617,3 +617,40 @@ fn plateau_fast_forward_preserves_y_intercept_nan_and_interior_spikes() {
         "single-sample spike inside plateau must not be skipped"
     );
 }
+
+#[test]
+fn shared_plateau_200k_series_detects_extrema_under_5ms() {
+    let mut pts = Vec::with_capacity(200_000);
+    pts.push([0.0, 0.0]);
+    for i in 1..100_000 {
+        pts.push([i as f64, 5.0]);
+    }
+    pts.push([100_000.0, 2.0]);
+    for i in 100_001..199_999 {
+        pts.push([i as f64, -3.0]);
+    }
+    pts.push([199_999.0, 1.0]);
+
+    let shared = crate::SharedPoints::from(pts);
+    let items: Vec<Box<dyn PlotItem>> = vec![Box::new(Line::new(
+        "SharedPlateau200k",
+        crate::PlotPoints::from(shared),
+    ))];
+    let tf = make_transform([-10.0, -10.0], [200_010.0, 10.0]);
+
+    let _ = detect_critical_points(&items, &tf);
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
+    let start = std::time::Instant::now();
+    let pois = detect_critical_points(&items, &tf);
+    #[cfg(not(target_arch = "wasm32"))]
+    let elapsed = start.elapsed();
+
+    assert!(pois.iter().any(|p| p.kind == CriticalPointKind::LocalMax));
+    assert!(pois.iter().any(|p| p.kind == CriticalPointKind::LocalMin));
+    #[cfg(not(target_arch = "wasm32"))]
+    assert!(
+        elapsed < std::time::Duration::from_millis(5),
+        "200k shared plateau detect_critical_points took {elapsed:?} (>= 5ms)"
+    );
+}

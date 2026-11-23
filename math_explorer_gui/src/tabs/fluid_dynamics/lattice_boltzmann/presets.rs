@@ -3,7 +3,10 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::super::lbm_atlas::LbmCartographer;
 use super::super::lbm_fairing::FairingStamp;
+use super::super::lbm_fairing::{CHALLENGE_LBM_FAIRING, LBM_REF_DIAMETER};
+use super::runner::sync_solver_obstacles;
 use super::state::{
     bluff_plate_obstacle_grid, count_solid_cells, cylinder_obstacle_grid, encode_obstacle_mask,
     enforce_area_budget, streamlined_airfoil_obstacle_grid, LbmToolState, LbmViewMode,
@@ -12,6 +15,8 @@ use super::state::{
 };
 use super::LatticeBoltzmannTool;
 use crate::accessibility::AccessibleHoverText;
+use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
+use crate::async_sim::SimCommand;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::InteractiveTool;
 use eframe::egui;
@@ -21,9 +26,63 @@ use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 impl LatticeBoltzmannTool {
+    pub(super) fn build_wind_tunnel_cartographer(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<Arc<dyn RegimeCartographer>> {
+        let char_len = if self.telemetry.frontal_height > 0 {
+            self.telemetry.frontal_height as f64
+        } else {
+            LBM_REF_DIAMETER
+        };
+        LbmCartographer::with_char_length(char_len, axis_keys)
+            .map(|c| Arc::new(c) as Arc<dyn RegimeCartographer>)
+    }
+
+    pub(super) fn apply_wind_tunnel_teleport(&mut self, ev: AtlasTeleportEvent) {
+        if self.active_challenge == Some(CHALLENGE_LBM_FAIRING) {
+            return;
+        }
+        for (key, val) in [(ev.x_key, ev.x_val), (ev.y_key, ev.y_val)] {
+            if !val.is_finite() {
+                continue;
+            }
+            match key {
+                "viscosity" => self.viscosity = val.clamp(VISCOSITY_MIN, VISCOSITY_MAX),
+                "inlet_velocity" | "inflow_speed" => {
+                    self.inflow_speed = val.clamp(INFLOW_SPEED_MIN, INFLOW_SPEED_MAX);
+                }
+                _ => {}
+            }
+        }
+        self.push_shared_config();
+        self.reset_flow_field();
+        let _ = self.worker.send_command(SimCommand::Start);
+    }
+
+    pub(super) fn build_snapshot_solver(&self) -> LatticeBoltzmannD2Q9<BgkCollision> {
+        let state_clone = self
+            .shared_lattice
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let tau = 3.0 * self.viscosity.clamp(VISCOSITY_MIN, VISCOSITY_MAX) + 0.5;
+        let mut solver = LatticeBoltzmannD2Q9::new(LBM_WIDTH, LBM_HEIGHT, tau);
+        if state_clone.width() == LBM_WIDTH
+            && state_clone.height() == LBM_HEIGHT
+            && state_clone.density().iter().all(|v| v.is_finite())
+        {
+            solver.state = state_clone;
+        } else {
+            solver.set_inlet(0, 0, LBM_WIDTH, LBM_HEIGHT, self.inflow_speed.max(0.0), 0.0);
+        }
+        sync_solver_obstacles(&mut solver, &self.obstacles);
+        solver
+    }
+
     pub(crate) fn apply_fairing_stamp(&mut self, stamp: FairingStamp) {
         let mut mask = [false; LBM_CELL_COUNT];
         stamp.write_mask(&mut mask);

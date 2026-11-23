@@ -5,10 +5,12 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::lbm_atlas::LBM_ATLAS_AXIS_PAIRS;
 use super::lbm_fairing::{
     restore_inlet_and_core_mask, LbmFairingEvaluator, CHALLENGE_LBM_FAIRING,
     CHALLENGE_LBM_VISCOSITY, LBM_U_IN,
 };
+use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::{
     bresenham_line, BrushMode, BrushStroke, ChallengeEvaluation, InteractionContext,
@@ -25,7 +27,7 @@ use std::sync::{Arc, RwLock};
 #[path = "lattice_boltzmann/legacy_unified.rs"]
 mod legacy_unified;
 #[cfg(test)]
-pub use legacy_unified::{LbmSnapshotMetrics, LbmUnified, LBM_INLET_U};
+pub use legacy_unified::{LbmSnapshotMetrics, LbmUnified};
 
 #[path = "lattice_boltzmann/presets.rs"]
 mod presets;
@@ -64,7 +66,6 @@ pub struct LatticeBoltzmannTool {
     pub(crate) telemetry: LbmTelemetry,
     pub(crate) cursor_cell: (usize, usize),
     pub(crate) last_drag_cell: Option<(usize, usize)>,
-    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) dirty: bool,
     pub(crate) gif_solver: Option<LatticeBoltzmannD2Q9<BgkCollision>>,
@@ -112,7 +113,6 @@ impl Default for LatticeBoltzmannTool {
             telemetry,
             cursor_cell: (28, 25),
             last_drag_cell: None,
-            focused_canvas: None,
             texture: None,
             dirty: true,
             gif_solver: None,
@@ -266,26 +266,6 @@ impl LatticeBoltzmannTool {
         self.reset_flow_field();
     }
 
-    pub(super) fn build_snapshot_solver(&self) -> LatticeBoltzmannD2Q9<BgkCollision> {
-        let state_clone = self
-            .shared_lattice
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let tau = 3.0 * self.viscosity.clamp(VISCOSITY_MIN, VISCOSITY_MAX) + 0.5;
-        let mut solver = LatticeBoltzmannD2Q9::new(LBM_WIDTH, LBM_HEIGHT, tau);
-        if state_clone.width() == LBM_WIDTH
-            && state_clone.height() == LBM_HEIGHT
-            && state_clone.density().iter().all(|v| v.is_finite())
-        {
-            solver.state = state_clone;
-        } else {
-            solver.set_inlet(0, 0, LBM_WIDTH, LBM_HEIGHT, self.inflow_speed.max(0.0), 0.0);
-        }
-        sync_solver_obstacles(&mut solver, &self.obstacles);
-        solver
-    }
-
     fn current_tool_state(&self) -> LbmToolState {
         LbmToolState {
             viscosity: self.viscosity,
@@ -319,8 +299,27 @@ impl InteractiveTool for LatticeBoltzmannTool {
         }
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        LBM_ATLAS_AXIS_PAIRS
+    }
+
+    fn active_atlas_coords(&self, _axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        (self.viscosity, self.inflow_speed)
+    }
+
+    fn atlas_context_signature(&self, _axis_keys: (&'static str, &'static str)) -> u64 {
+        self.mask_generation
+    }
+
+    fn build_atlas_cartographer(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<Arc<dyn RegimeCartographer>> {
+        self.build_wind_tunnel_cartographer(axis_keys)
+    }
+
+    fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
+        self.apply_wind_tunnel_teleport(ev);
     }
 
     fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {

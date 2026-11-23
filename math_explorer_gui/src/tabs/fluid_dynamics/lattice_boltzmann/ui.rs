@@ -234,7 +234,6 @@ impl LatticeBoltzmannTool {
                 );
                 paint_canvas_focus_ring(ui, &response);
                 lock_canvas_arrow_keys(ui, &response);
-                self.focused_canvas = response.has_focus().then_some(response.id);
                 self.handle_canvas_sculpting(ui, ctx, &response);
                 self.paint_canvas_hud_overlay(ui, response.rect);
             }
