@@ -1,6 +1,6 @@
-// @explorer_feature = "applied"
-// @explorer_order = 31
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod pharmacokinetics;
@@ -53,6 +53,14 @@ impl ExplorerTab for ClinicalTrialsTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "clinical_trials",
+        order: 31,
+        build: || Box::new(ClinicalTrialsTab::default()),
     }
 }
 

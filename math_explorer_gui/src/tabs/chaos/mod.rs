@@ -1,6 +1,6 @@
-// @explorer_feature = "physics"
-// @explorer_order = 13
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod attractors;
@@ -55,6 +55,14 @@ impl ExplorerTab for ChaosTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "chaos",
+        order: 13,
+        build: || Box::new(ChaosTab::default()),
     }
 }
 
