@@ -66,14 +66,12 @@ fn wait_for_unified_snapshot<M: UnifiedModel>(tool: &mut UnifiedSimTool<M>) {
         tool.controller.latest_snapshot().is_some()
     });
 }
-
 fn wait_for_morpho_snapshot(tool: &mut MorphogenesisTool) {
     poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = tool.worker.update();
         tool.worker.latest_snapshot().is_some()
     });
 }
-
 fn wait_for_wave_snapshot(tool: &mut WaveSimulatorTool) {
     poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = tool.worker.update();
@@ -354,6 +352,11 @@ fn test_simulation_framework_encode_and_import_share_url_all_domains() {
             make_stroke([22.0, 15.0], [40.0, 22.0], 2.0, BrushMode::Solid),
         ),
         (
+            "fluid_dynamics",
+            "PotentialFlowTool",
+            make_stroke([-2.0, 1.5], [-2.0, 1.5], 0.4, BrushMode::FlowSink),
+        ),
+        (
             "biology",
             "MorphogenesisTool",
             make_stroke([20.0, 20.0], [65.0, 50.0], 2.0, BrushMode::ZeroFluxWall),
@@ -398,4 +401,87 @@ fn test_simulation_framework_encode_and_import_share_url_all_domains() {
             expected_state
         );
     }
+}
+
+fn export_tool_png(tool: Box<dyn InteractiveTool>, path: &str) {
+    let mut fw = SimulationFramework::new("__brush_export_test__");
+    fw.active_tool = Some(tool);
+    let ctx = egui::Context::default();
+    let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(1200.0, 800.0));
+    let raw = egui::RawInput {
+        screen_rect: Some(rect),
+        ..Default::default()
+    };
+    let _ = ctx.run(raw, |ctx| {
+        egui_plot::clear_last_plot_datasets();
+        fw.show_export_modal = true;
+        fw.queue_export(crate::framework::export_queue::ExportFormat::Png);
+        fw.show(ctx, "brush_export_fw");
+    });
+    let png = fw
+        .export_queue
+        .last_exported_bytes
+        .expect("sculpted PNG bytes");
+    let pixels =
+        crate::framework::deferred_export_tests::decode_rgba_pixels(&png).expect("valid RGBA PNG");
+    let distinct: std::collections::HashSet<[u8; 4]> = pixels.into_iter().collect();
+    assert!(distinct.len() >= 2, "expected sculpted PNG for {path}");
+    let _ = std::fs::write(path, &png);
+}
+
+#[test]
+fn test_spatial_brush_exports_sculpted_png_artifacts() {
+    let mut lbm = UnifiedSimTool::<LbmUnified>::new();
+    wait_for_unified_snapshot(&mut lbm);
+    lbm.params
+        .write()
+        .unwrap()
+        .insert("field_view".to_string(), 1.0);
+    let s1 = make_stroke([24.0, 20.0], [42.0, 28.0], 2.0, BrushMode::Solid);
+    send_brush_stroke(&mut lbm, s1);
+    let _ = lbm.controller.send_command(SimCommand::Step(40));
+    poll_until(WORKER_POLL_TIMEOUT, || lbm.controller.update().is_some());
+    export_tool_png(Box::new(lbm), "/tmp/brush_lbm_vorticity.png");
+
+    let mut morpho = MorphogenesisTool::default();
+    wait_for_morpho_snapshot(&mut morpho);
+    send_brush_stroke(
+        &mut morpho,
+        make_stroke([20.0, 25.0], [80.0, 25.0], 2.0, BrushMode::ZeroFluxWall),
+    );
+    send_brush_stroke(
+        &mut morpho,
+        make_stroke([35.0, 55.0], [65.0, 55.0], 3.0, BrushMode::EmitterU),
+    );
+    let _ = morpho.worker.send_command(SimCommand::Step(20));
+    poll_until(WORKER_POLL_TIMEOUT, || morpho.worker.update().is_some());
+    export_tool_png(Box::new(morpho), "/tmp/brush_morphogenesis_masks.png");
+    export_sculpted_wave_and_pflow_pngs();
+}
+
+fn export_sculpted_wave_and_pflow_pngs() {
+    let mut wave = WaveSimulatorTool::new();
+    wait_for_wave_snapshot(&mut wave);
+    send_brush_stroke(
+        &mut wave,
+        make_stroke([-0.5, 2.0], [-0.15, 2.0], 0.2, BrushMode::PotentialBarrier),
+    );
+    send_brush_stroke(
+        &mut wave,
+        make_stroke([0.2, -1.5], [0.6, -1.5], 0.2, BrushMode::PotentialWell),
+    );
+    let _ = wave.worker.send_command(SimCommand::Step(30));
+    poll_until(WORKER_POLL_TIMEOUT, || wave.worker.update().is_some());
+    export_tool_png(Box::new(wave), "/tmp/brush_wave_sculpt.png");
+
+    let mut pflow = PotentialFlowTool::default();
+    send_brush_stroke(
+        &mut pflow,
+        make_stroke([-2.0, 1.6], [-2.0, 1.6], 0.4, BrushMode::FlowVortex),
+    );
+    send_brush_stroke(
+        &mut pflow,
+        make_stroke([2.0, -1.4], [2.0, -1.4], 0.4, BrushMode::FlowSink),
+    );
+    export_tool_png(Box::new(pflow), "/tmp/brush_potential_flow.png");
 }
