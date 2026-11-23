@@ -1,23 +1,29 @@
-//! Gaussian copula implementation.
+//! Gaussian copula implementation with bivariate and multivariate Genz-Sobol evaluation.
 
 use super::core::{Correlation, CorrelationMatrix, Probability};
 use super::transforms::{inverse_standard_normal, standard_normal_cdf};
 use crate::error::CopulaError;
-use nalgebra::DVector;
-use statrs::distribution::MultivariateNormal;
+use crate::pure_math::analysis::integration::MultivariateIntegrator;
+use crate::pure_math::statistics::monte_carlo::{normal_cdf_fast, normal_inv_cdf_fast};
+use crate::pure_math::statistics::qmc::MAX_SOBOL_DIM;
+use nalgebra::DMatrix;
 
-/// Bivariate Gaussian copula.
+/// Default sample budget for multivariate Genz-Sobol Gaussian copula integration.
+const DEFAULT_GENZ_SOBOL_SAMPLES: usize = 2048;
+
+/// Default deterministic Cranley-Patterson seed for multivariate copula evaluation.
+const DEFAULT_GENZ_SEED: u64 = 0x4745_4E5A_534F_424F;
+
+/// Gaussian copula over arbitrary positive-definite correlation matrices.
 ///
-/// Models the joint distribution of two uniform random variables using
-/// the Gaussian copula:
+/// Models the joint cumulative distribution of $d$ uniform marginals $(u_1, \dots, u_d)$ via
 ///
 /// ```text
-/// C(u₁, u₂; ρ) = Φ_ρ(Φ⁻¹(u₁), Φ⁻¹(u₂))
+/// C(u₁, ..., u_d; Σ) = Φ_Σ(Φ⁻¹(u₁), ..., Φ⁻¹(u_d))
 /// ```
 ///
-/// where:
-/// - Φ⁻¹ is the inverse standard normal CDF
-/// - Φ_ρ is the bivariate normal CDF with correlation ρ
+/// using exact Cholesky separation of variables (Genz, 1992) integrated over randomized
+/// Joe-Kuo [`SobolSequence`](crate::pure_math::statistics::qmc::SobolSequence) points.
 ///
 /// # Example
 ///
@@ -30,60 +36,35 @@ use statrs::distribution::MultivariateNormal;
 /// let rho = Correlation::new(-0.3).unwrap();
 /// let copula = GaussianCopula::bivariate(rho).unwrap();
 ///
-/// let u1 = Probability::new(0.99).unwrap();  // Player A 99th percentile
-/// let u2 = Probability::new(0.60).unwrap();  // Team win 60% chance
+/// let u1 = Probability::new(0.99).unwrap();
+/// let u2 = Probability::new(0.60).unwrap();
 ///
 /// let joint_prob = copula.cdf(&[u1, u2]).unwrap();
+/// assert!(joint_prob.value() > 0.0 && joint_prob.value() < 1.0);
 /// ```
 pub struct GaussianCopula {
     correlation: CorrelationMatrix,
 }
 
 impl GaussianCopula {
-    /// Creates a new Gaussian copula.
-    ///
-    /// # Arguments
-    ///
-    /// * `correlation` - The correlation matrix
+    /// Creates a new Gaussian copula from a validated correlation matrix.
     #[verified_engine::verified]
     pub fn new(correlation: CorrelationMatrix) -> Self {
         Self { correlation }
     }
 
-    /// Creates a bivariate Gaussian copula.
-    ///
-    /// # Arguments
-    ///
-    /// * `rho` - The correlation between the two variables
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use pure_math::__doctest_facade as math_explorer;
-    /// use math_explorer::pure_math::statistics::copula::{GaussianCopula, Correlation};
-    ///
-    /// let rho = Correlation::new(0.5).unwrap();
-    /// let copula = GaussianCopula::bivariate(rho).unwrap();
-    /// ```
+    /// Creates a bivariate Gaussian copula with correlation `rho`.
     #[verified_engine::verified]
     pub fn bivariate(rho: Correlation) -> Result<Self, CopulaError> {
         let correlation = CorrelationMatrix::bivariate(rho)?;
         Ok(Self::new(correlation))
     }
 
-    /// Computes the copula CDF: C(u₁, ..., uₙ).
-    ///
-    /// # Arguments
-    ///
-    /// * `u` - Vector of uniform probabilities
-    ///
-    /// # Returns
-    ///
-    /// The joint cumulative probability
+    /// Computes the copula CDF $C(u_1, \dots, u_d)$.
     #[verified_engine::verified]
     pub fn cdf(&self, u: &[Probability]) -> Result<Probability, CopulaError> {
         if u.len() != self.correlation.dimension() {
-            return Err(crate::error::CopulaError::Math(
+            return Err(CopulaError::Math(
                 math_commons::error::MathError::DimensionMismatch {
                     expected: math_commons::math_kernel::types::Dimension(
                         self.correlation.dimension(),
@@ -93,138 +74,137 @@ impl GaussianCopula {
             ));
         }
 
-        // Special case for bivariate (more efficient)
         if u.len() == 2 {
             return self.bivariate_cdf(u[0], u[1]);
         }
 
-        // General multivariate case
         self.multivariate_cdf(u)
     }
 
     /// Computes the bivariate Gaussian copula CDF.
     #[verified_engine::verified]
     fn bivariate_cdf(&self, u1: Probability, u2: Probability) -> Result<Probability, CopulaError> {
-        // Transform to z-scores
+        if u1.value() == 0.0 || u2.value() == 0.0 {
+            return Probability::new(0.0);
+        }
+        if u1.value() == 1.0 {
+            return Ok(u2);
+        }
+        if u2.value() == 1.0 {
+            return Ok(u1);
+        }
         let z1 = inverse_standard_normal(u1)?;
         let z2 = inverse_standard_normal(u2)?;
-
-        // Get correlation
         let rho = self
             .correlation
             .get_correlation(0, 1)
-            .ok_or(crate::error::CopulaError::Math(
+            .ok_or(CopulaError::Math(
                 math_commons::error::MathError::NumericalError {
                     reason: "Failed to get correlation".to_string(),
                 },
             ))?;
-
-        // Compute bivariate normal CDF using the formula:
-        // Φ_ρ(z₁, z₂) = Φ(z₁)Φ(z₂) + ∫∫ φ(x,y;ρ) dx dy
-        //
-        // For implementation, we use Owen's T function or numerical integration
-        // Here we use a numerical approximation
         let prob = self.bivariate_normal_cdf(z1, z2, rho)?;
         Probability::new(prob)
     }
 
-    /// Approximates the bivariate normal CDF using Drezner & Wesolowsky (1990) method.
+    /// Evaluates the bivariate normal CDF with degenerate correlation handling.
     #[verified_engine::verified]
     fn bivariate_normal_cdf(&self, z1: f64, z2: f64, rho: f64) -> Result<f64, CopulaError> {
-        // Handle edge cases
         if !z1.is_finite() || !z2.is_finite() {
-            return Err(crate::error::CopulaError::Math(
+            return Err(CopulaError::Math(
                 math_commons::error::MathError::NumericalError {
                     reason: "Non-finite z-scores".to_string(),
                 },
             ));
         }
-
-        // If correlation is near ±1, use limiting formula
         if (rho.abs() - 1.0).abs() < math_commons::registry::TOLERANCE_HIGH {
             if rho > 0.0 {
-                // Perfect positive correlation
                 let prob1 = standard_normal_cdf(z1)?.value();
                 let prob2 = standard_normal_cdf(z2)?.value();
                 return Ok(prob1.min(prob2));
-            } else {
-                // Perfect negative correlation
-                let prob1 = standard_normal_cdf(z1)?.value();
-                let prob2 = standard_normal_cdf(-z2)?.value();
-                return Ok((prob1 + prob2 - 1.0).max(0.0));
             }
+            let prob1 = standard_normal_cdf(z1)?.value();
+            let prob2 = standard_normal_cdf(-z2)?.value();
+            return Ok((prob1 + prob2 - 1.0).max(0.0));
         }
-
-        // Use numerical integration (simple rectangular method)
-        // For better accuracy, could use statrs or specialized libraries
-        let prob = self.integrate_bivariate_normal(z1, z2, rho)?;
-        Ok(prob)
+        self.integrate_bivariate_normal(z1, z2, rho)
     }
 
-    /// Numerical integration for bivariate normal CDF.
+    /// Midpoint quadrature for bivariate normal CDF.
     #[verified_engine::verified]
     fn integrate_bivariate_normal(&self, z1: f64, z2: f64, rho: f64) -> Result<f64, CopulaError> {
-        // Use a simple grid-based integration
         let n_points = 100;
         let x_min = -10.0;
-        let x_max = z1;
         let y_min = -10.0;
-        let y_max = z2;
-
-        if x_max < x_min || y_max < y_min {
+        if z1 < x_min || z2 < y_min {
             return Ok(0.0);
         }
-
-        let dx = (x_max - x_min) / n_points as f64;
-        let dy = (y_max - y_min) / n_points as f64;
-
-        let mut sum = 0.0;
+        let dx = (z1 - x_min) / (n_points as f64);
+        let dy = (z2 - y_min) / (n_points as f64);
         let rho_sq = rho * rho;
         let denom = 2.0 * std::f64::consts::PI * (1.0 - rho_sq).sqrt();
         let factor = -1.0 / (2.0 * (1.0 - rho_sq));
 
+        let mut sum = 0.0;
         for i in 0..n_points {
-            let x = x_min + (i as f64 + 0.5) * dx;
+            let x = x_min + ((i as f64) + 0.5) * dx;
             for j in 0..n_points {
-                let y = y_min + (j as f64 + 0.5) * dy;
-
-                // Bivariate normal PDF
+                let y = y_min + ((j as f64) + 0.5) * dy;
                 let exponent = factor * (x * x - 2.0 * rho * x * y + y * y);
-                let pdf = (1.0 / denom) * exponent.exp();
-                sum += pdf * dx * dy;
+                sum += (1.0 / denom) * exponent.exp() * dx * dy;
             }
         }
-
         Ok(sum.clamp(0.0, 1.0))
     }
 
-    /// Multivariate Gaussian copula CDF (general case).
+    /// Evaluates the multivariate Gaussian copula CDF via Cholesky factorization and Genz
+    /// separation of variables over a Joe-Kuo [`SobolSequence`](crate::pure_math::statistics::qmc::SobolSequence).
     #[verified_engine::verified]
-    fn multivariate_cdf(&self, u: &[Probability]) -> Result<Probability, CopulaError> {
-        // Transform to z-scores
-        let mut z_scores = Vec::with_capacity(u.len());
-        for &ui in u {
-            z_scores.push(inverse_standard_normal(ui)?);
+    pub fn multivariate_cdf(&self, u: &[Probability]) -> Result<Probability, CopulaError> {
+        let (prob, _) =
+            self.multivariate_cdf_with_error(u, DEFAULT_GENZ_SOBOL_SAMPLES, DEFAULT_GENZ_SEED)?;
+        Ok(prob)
+    }
+
+    /// Evaluates the multivariate Gaussian copula CDF and returns `(probability, cranley_patterson_se)`.
+    #[verified_engine::verified]
+    pub fn multivariate_cdf_with_error(
+        &self,
+        u: &[Probability],
+        n_samples: usize,
+        seed: u64,
+    ) -> Result<(Probability, f64), CopulaError> {
+        let dim = self.correlation.dimension();
+        if u.len() != dim {
+            return Err(CopulaError::Math(
+                math_commons::error::MathError::DimensionMismatch {
+                    expected: math_commons::math_kernel::types::Dimension(dim),
+                    actual: math_commons::math_kernel::types::Dimension(u.len()),
+                },
+            ));
         }
 
-        // Create multivariate normal distribution
-        let mean = DVector::zeros(u.len());
-        let cov = self.correlation.matrix().clone();
+        // Verify the full correlation matrix is SPD even if marginals sit on 0/1 boundaries.
+        let full_cov = self.correlation.matrix();
+        if full_cov.clone().cholesky().is_none() {
+            return Err(CopulaError::NotPositiveDefinite);
+        }
 
-        let _mvn = MultivariateNormal::new(mean.as_slice().to_vec(), cov.as_slice().to_vec())
-            .map_err(|e| {
-                crate::error::CopulaError::Math(math_commons::error::MathError::NumericalError {
-                    reason: format!("Failed to create MVN: {}", e),
-                })
-            })?;
+        if u.iter().any(|p| p.value() == 0.0) {
+            return Ok((Probability::new(0.0)?, 0.0));
+        }
 
-        // Compute CDF by Monte Carlo or numerical integration
-        // For now, return an error as full MVN CDF is complex
-        Err(crate::error::CopulaError::Math(
-            math_commons::error::MathError::NumericalError {
-                reason: "Multivariate CDF not yet implemented; use bivariate".to_string(),
-            },
-        ))
+        // Filter out marginals equal to 1.0 (upper bound +inf) via marginal consistency.
+        let active: Vec<usize> = (0..dim).filter(|&i| u[i].value() < 1.0).collect();
+        if active.is_empty() {
+            return Ok((Probability::new(1.0)?, 0.0));
+        }
+        if active.len() == 1 {
+            return Ok((u[active[0]], 0.0));
+        }
+
+        let (chol_l, ordered_bounds) = build_ordered_cholesky(full_cov, u, &active)?;
+        integrate_genz_sobol(&chol_l, &ordered_bounds, n_samples, seed)
     }
 
     /// Returns the correlation matrix.
@@ -234,43 +214,92 @@ impl GaussianCopula {
     }
 }
 
+/// Orders active variables by ascending upper normal quantile $b_i$ and computes Cholesky factor $L$.
+#[verified_engine::verified]
+fn build_ordered_cholesky(
+    cov: &DMatrix<f64>,
+    u: &[Probability],
+    active: &[usize],
+) -> Result<(DMatrix<f64>, Vec<f64>), CopulaError> {
+    let mut pairs: Vec<(usize, f64)> = Vec::with_capacity(active.len());
+    for &idx in active {
+        pairs.push((idx, normal_inv_cdf_fast(u[idx].value())));
+    }
+    pairs.sort_unstable_by(|a, b| a.1.total_cmp(&b.1));
+
+    let m = pairs.len();
+    let mut sub_cov = DMatrix::zeros(m, m);
+    let mut bounds = Vec::with_capacity(m);
+    for (r, &(orig_r, b_val)) in pairs.iter().enumerate() {
+        bounds.push(b_val);
+        for (c, &(orig_c, _)) in pairs.iter().enumerate() {
+            sub_cov[(r, c)] = cov[(orig_r, orig_c)];
+        }
+    }
+    let chol = sub_cov.cholesky().ok_or(CopulaError::NotPositiveDefinite)?;
+    Ok((chol.l(), bounds))
+}
+
+/// Executes Genz's $(m - 1)$-dimensional separation-of-variables integrand on `MultivariateIntegrator`.
+#[verified_engine::verified]
+fn integrate_genz_sobol(
+    chol_l: &DMatrix<f64>,
+    bounds: &[f64],
+    n_samples: usize,
+    seed: u64,
+) -> Result<(Probability, f64), CopulaError> {
+    let m = bounds.len();
+    let qmc_dim = m - 1;
+    let budget = n_samples.max(32);
+    let mut integrator = if qmc_dim <= MAX_SOBOL_DIM {
+        MultivariateIntegrator::new_sobol(qmc_dim, budget)
+    } else {
+        MultivariateIntegrator::new_halton(qmc_dim, budget)
+    }
+    .map_err(|e| {
+        CopulaError::Math(math_commons::error::MathError::NumericalError {
+            reason: e.to_string(),
+        })
+    })?
+    .with_seed(seed);
+
+    let e0 = normal_cdf_fast(bounds[0] / chol_l[(0, 0)]);
+    let mut y_buf = vec![0.0_f64; qmc_dim];
+    let res = integrator
+        .integrate_unit_cube(|w| {
+            let mut prod = e0;
+            let mut e_prev = e0;
+            for k in 1..m {
+                let u_star = (w[k - 1] * e_prev).clamp(1e-15, 1.0 - 1e-15);
+                y_buf[k - 1] = normal_inv_cdf_fast(u_star);
+                let mut dot = 0.0;
+                for (j, &yj) in y_buf[..k].iter().enumerate() {
+                    dot += chol_l[(k, j)] * yj;
+                }
+                let e_k = normal_cdf_fast((bounds[k] - dot) / chol_l[(k, k)]);
+                prod *= e_k;
+                e_prev = e_k;
+            }
+            prod
+        })
+        .map_err(|e| {
+            CopulaError::Math(math_commons::error::MathError::NumericalError {
+                reason: e.to_string(),
+            })
+        })?;
+
+    let clamped = res.value.clamp(0.0, 1.0);
+    Ok((Probability::new(clamped)?, res.error))
+}
+
 /// Computes the joint probability for a Same Game Parlay (SGP).
-///
-/// # Arguments
-///
-/// * `marginals` - Vector of marginal probabilities for each event
-/// * `correlation_matrix` - Correlation structure between events
-///
-/// # Returns
-///
-/// The joint probability accounting for correlations
-///
-/// # Example
-///
-/// ```
-/// # use pure_math::__doctest_facade as math_explorer;
-/// use math_explorer::pure_math::statistics::copula::{
-///     sgp_joint_probability, Probability, CorrelationMatrix, Correlation
-/// };
-///
-/// // Event A: Luka 50+ points (99th percentile)
-/// let p_a = Probability::new(0.99).unwrap();
-/// // Event B: Mavs win (60% chance)
-/// let p_b = Probability::new(0.60).unwrap();
-///
-/// // Negative correlation (hero ball hurts team)
-/// let rho = Correlation::new(-0.15).unwrap();
-/// let corr_matrix = CorrelationMatrix::bivariate(rho).unwrap();
-///
-/// let joint_prob = sgp_joint_probability(&[p_a, p_b], &corr_matrix).unwrap();
-/// ```
 #[verified_engine::verified]
 pub fn sgp_joint_probability(
     marginals: &[Probability],
     correlation_matrix: &CorrelationMatrix,
 ) -> Result<Probability, CopulaError> {
     if marginals.len() != correlation_matrix.dimension() {
-        return Err(crate::error::CopulaError::Math(
+        return Err(CopulaError::Math(
             math_commons::error::MathError::DimensionMismatch {
                 expected: math_commons::math_kernel::types::Dimension(
                     correlation_matrix.dimension(),
@@ -285,106 +314,6 @@ pub fn sgp_joint_probability(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use approx::assert_relative_eq;
+mod tests;
 
-    #[test]
-    #[verified_engine::verified]
-    fn test_gaussian_copula_creation() {
-        let rho = Correlation::new(0.5).unwrap();
-        let copula = GaussianCopula::bivariate(rho).unwrap();
-        assert_eq!(copula.correlation().dimension(), 2);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_gaussian_copula_independence() {
-        // When ρ = 0, copula should be product of marginals
-        let rho = Correlation::new(0.0).unwrap();
-        let copula = GaussianCopula::bivariate(rho).unwrap();
-
-        let u1 = Probability::new(0.7).unwrap();
-        let u2 = Probability::new(0.8).unwrap();
-
-        let joint = copula.cdf(&[u1, u2]).unwrap();
-
-        // With independence, C(u1, u2) ≈ u1 * u2
-        let expected = u1.value() * u2.value();
-        assert_relative_eq!(joint.value(), expected, epsilon = 0.05);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_gaussian_copula_positive_correlation() {
-        // Positive correlation should increase joint probability
-        let rho_indep = Correlation::new(0.0).unwrap();
-        let rho_pos = Correlation::new(0.7).unwrap();
-
-        let copula_indep = GaussianCopula::bivariate(rho_indep).unwrap();
-        let copula_pos = GaussianCopula::bivariate(rho_pos).unwrap();
-
-        let u1 = Probability::new(0.8).unwrap();
-        let u2 = Probability::new(0.8).unwrap();
-
-        let joint_indep = copula_indep.cdf(&[u1, u2]).unwrap();
-        let joint_pos = copula_pos.cdf(&[u1, u2]).unwrap();
-
-        // Positive correlation should increase joint probability
-        assert!(joint_pos.value() > joint_indep.value());
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_gaussian_copula_negative_correlation() {
-        // Negative correlation should decrease joint probability
-        let rho_indep = Correlation::new(0.0).unwrap();
-        let rho_neg = Correlation::new(-0.5).unwrap();
-
-        let copula_indep = GaussianCopula::bivariate(rho_indep).unwrap();
-        let copula_neg = GaussianCopula::bivariate(rho_neg).unwrap();
-
-        let u1 = Probability::new(0.9).unwrap();
-        let u2 = Probability::new(0.9).unwrap();
-
-        let joint_indep = copula_indep.cdf(&[u1, u2]).unwrap();
-        let joint_neg = copula_neg.cdf(&[u1, u2]).unwrap();
-
-        // Negative correlation should decrease joint probability
-        assert!(joint_neg.value() < joint_indep.value());
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_sgp_joint_probability() {
-        let p_a = Probability::new(0.99).unwrap();
-        let p_b = Probability::new(0.60).unwrap();
-
-        let rho = Correlation::new(-0.15).unwrap();
-        let corr_matrix = CorrelationMatrix::bivariate(rho).unwrap();
-
-        let joint = sgp_joint_probability(&[p_a, p_b], &corr_matrix).unwrap();
-
-        // Should be less than independent probability (0.99 * 0.60 = 0.594)
-        let independent = p_a.value() * p_b.value();
-        assert!(joint.value() < independent);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_copula_bounds() {
-        // Copula value should always be in [0, 1]
-        let rho = Correlation::new(0.3).unwrap();
-        let copula = GaussianCopula::bivariate(rho).unwrap();
-
-        for &u1_val in &[0.1, 0.5, 0.9] {
-            for &u2_val in &[0.1, 0.5, 0.9] {
-                let u1 = Probability::new(u1_val).unwrap();
-                let u2 = Probability::new(u2_val).unwrap();
-
-                let joint = copula.cdf(&[u1, u2]).unwrap();
-                assert!(joint.value() >= 0.0 && joint.value() <= 1.0);
-            }
-        }
-    }
-}
+// [cite:clinical_trials_statistics]

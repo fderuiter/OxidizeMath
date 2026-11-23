@@ -1,4 +1,7 @@
 use pure_math::pure_math::analysis::roots::{AnalysisError, Bisection, RootFinder};
+use pure_math::pure_math::statistics::monte_carlo::{
+    MonteCarloError, MonteCarloEstimate, two_sided_normal_z,
+};
 use rand::Rng;
 pub use rand::distributions::Distribution as RandDistribution;
 pub use statrs::distribution::{self, Continuous, ContinuousCDF};
@@ -124,6 +127,8 @@ pub fn simulate_optimal_revenue<D: ValuationDistribution>(
 
 /// Same as `simulate_optimal_revenue` but allows injecting a custom RNG
 /// for deterministic testing.
+///
+/// Returns `0.0` safely when `n_simulations == 0` or `n_bidders == 0`, and ignores non-finite draws.
 #[verified_engine::verified]
 pub fn simulate_optimal_revenue_with_rng<D: ValuationDistribution, R: Rng + ?Sized>(
     dist: &D,
@@ -131,14 +136,20 @@ pub fn simulate_optimal_revenue_with_rng<D: ValuationDistribution, R: Rng + ?Siz
     n_simulations: usize,
     rng: &mut R,
 ) -> f64 {
+    if n_simulations == 0 || n_bidders == 0 {
+        return 0.0;
+    }
     let mut total_revenue = 0.0;
 
     for _ in 0..n_simulations {
         let mut max_virtual_val = 0.0;
         for _ in 0..n_bidders {
             let v = dist.sample(rng);
+            if !v.is_finite() {
+                continue;
+            }
             let j = dist.virtual_valuation(v);
-            if j > max_virtual_val {
+            if j.is_finite() && j > max_virtual_val {
                 max_virtual_val = j;
             }
         }
@@ -146,6 +157,92 @@ pub fn simulate_optimal_revenue_with_rng<D: ValuationDistribution, R: Rng + ?Siz
     }
 
     total_revenue / (n_simulations as f64)
+}
+
+/// Estimates optimal auction expected revenue with calibrated standard error and 95% confidence bounds.
+#[verified_engine::verified]
+pub fn simulate_optimal_revenue_stats<D: ValuationDistribution>(
+    dist: &D,
+    n_bidders: usize,
+    n_simulations: usize,
+) -> Result<MonteCarloEstimate, MonteCarloError> {
+    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    simulate_optimal_revenue_stats_with_rng(dist, n_bidders, n_simulations, 0.95, &mut rng)
+}
+
+/// Estimates optimal auction expected revenue with custom RNG and nominal `confidence_level` in `(0, 1)`.
+///
+/// Streams Welford's online variance in $O(1)$ memory with zero dynamic heap allocations.
+#[verified_engine::verified]
+pub fn simulate_optimal_revenue_stats_with_rng<D: ValuationDistribution, R: Rng + ?Sized>(
+    dist: &D,
+    n_bidders: usize,
+    n_simulations: usize,
+    confidence_level: f64,
+    rng: &mut R,
+) -> Result<MonteCarloEstimate, MonteCarloError> {
+    if n_simulations == 0 {
+        return Err(MonteCarloError::InvalidSampleCount { samples: 0 });
+    }
+    let z = two_sided_normal_z(confidence_level)?;
+    if n_bidders == 0 {
+        return Ok(MonteCarloEstimate {
+            mean: 0.0,
+            variance: 0.0,
+            standard_error: 0.0,
+            ci_lower: 0.0,
+            ci_upper: 0.0,
+            confidence_level,
+            samples: n_simulations,
+            effective_sample_size: n_simulations as f64,
+        });
+    }
+
+    let mut mean = 0.0;
+    let mut m2 = 0.0;
+    for sim_idx in 0..n_simulations {
+        let mut max_virtual_val = 0.0;
+        for _ in 0..n_bidders {
+            let v = dist.sample(rng);
+            if !v.is_finite() {
+                return Err(MonteCarloError::NonFiniteEvaluation);
+            }
+            let j = dist.virtual_valuation(v);
+            if !j.is_finite() {
+                return Err(MonteCarloError::NonFiniteEvaluation);
+            }
+            if j > max_virtual_val {
+                max_virtual_val = j;
+            }
+        }
+        let k = (sim_idx + 1) as f64;
+        let delta = max_virtual_val - mean;
+        mean += delta / k;
+        let delta2 = max_virtual_val - mean;
+        m2 += delta * delta2;
+    }
+
+    let variance = if n_simulations > 1 {
+        m2 / ((n_simulations - 1) as f64)
+    } else {
+        0.0
+    };
+    let standard_error = if n_simulations > 1 {
+        (variance / (n_simulations as f64)).sqrt()
+    } else {
+        0.0
+    };
+    let half = z * standard_error;
+    Ok(MonteCarloEstimate {
+        mean,
+        variance,
+        standard_error,
+        ci_lower: mean - half,
+        ci_upper: mean + half,
+        confidence_level,
+        samples: n_simulations,
+        effective_sample_size: n_simulations as f64,
+    })
 }
 
 #[cfg(test)]
@@ -258,5 +355,32 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].0.as_deref(), Some("mechanism_design"));
         assert_eq!(events[0].1.as_deref(), Some("AppliedError"));
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_simulate_optimal_revenue_zero_guard_and_calibrated_stats() {
+        let dist = Uniform::new(0.0, 1.0).unwrap();
+        let mut rng = oxidize_core::rng::OxidizeRng::new(42);
+
+        assert_eq!(
+            simulate_optimal_revenue_with_rng(&dist, 2, 0, &mut rng),
+            0.0
+        );
+        assert_eq!(
+            simulate_optimal_revenue_with_rng(&dist, 0, 50, &mut rng),
+            0.0
+        );
+        assert_eq!(
+            simulate_optimal_revenue_stats_with_rng(&dist, 2, 0, 0.95, &mut rng).unwrap_err(),
+            MonteCarloError::InvalidSampleCount { samples: 0 }
+        );
+
+        // 2 bidders Uniform(0, 1): exact Myerson revenue = 5/12 ~= 0.4166667.
+        let est = simulate_optimal_revenue_stats_with_rng(&dist, 2, 4_000, 0.95, &mut rng).unwrap();
+        let exact = 5.0 / 12.0;
+        assert!((est.mean - exact).abs() < 0.02);
+        assert!(est.standard_error > 0.0);
+        assert!(est.ci_lower <= exact && exact <= est.ci_upper);
     }
 }

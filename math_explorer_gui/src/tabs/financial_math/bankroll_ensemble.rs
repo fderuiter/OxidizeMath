@@ -10,6 +10,7 @@ use crate::accessibility::AccessibleHoverText;
 use crate::framework::CalloutManager;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint};
+use math_explorer::pure_math::statistics::bootstrap::{sample_median_in_place, BootstrapWorkspace};
 use math_explorer::pure_math::statistics::kelly::{
     expected_growth_rate, expected_value, kelly_fraction, BankrollFraction, Odds, UnitInterval,
 };
@@ -20,6 +21,8 @@ use rand::Rng;
 pub const MAX_ENSEMBLE_BETS: usize = 1000;
 /// Number of Monte Carlo ensemble trajectories simulated per rerun.
 pub const ENSEMBLE_PATH_COUNT: usize = 64;
+/// Number of nonparametric bootstrap resamples for terminal median confidence bounds.
+pub const BOOTSTRAP_REPLICATES: usize = 256;
 /// Upper bound on custom wager fraction `f` so `ln(1 - f)` remains finite.
 pub const MAX_CUSTOM_FRACTION: f64 = 0.95;
 /// Default custom wager fraction demonstrating overbetting volatility drag.
@@ -60,6 +63,7 @@ pub struct BankrollEnsembleLab {
     pub empirical_median_points: Vec<PlotPoint>,
     path_wealths: Vec<f64>,
     scratch_sort: Vec<f64>,
+    bootstrap_ws: BootstrapWorkspace,
     /// Latest logarithmic growth rate $g(f)$ from `expected_growth_rate`.
     pub last_growth_rate: f64,
     /// Latest optimal Kelly fraction $f^*$ when positive edge exists.
@@ -68,6 +72,10 @@ pub struct BankrollEnsembleLab {
     pub last_expected_terminal: f64,
     /// Latest terminal median wealth $W_{\text{median}}(T)$.
     pub last_median_terminal: f64,
+    /// Lower 95% BCa bootstrap confidence bound on terminal empirical median wealth.
+    pub last_empirical_median_ci_lower: f64,
+    /// Upper 95% BCa bootstrap confidence bound on terminal empirical median wealth.
+    pub last_empirical_median_ci_upper: f64,
     /// Whether `f > 2 * f*` (or `g(f) < 0` despite positive edge), flagging ruin.
     pub is_ruin_zone: bool,
 }
@@ -90,10 +98,14 @@ impl BankrollEnsembleLab {
             empirical_median_points: Vec::with_capacity(MAX_ENSEMBLE_BETS + 1),
             path_wealths: vec![0.0; ENSEMBLE_PATH_COUNT],
             scratch_sort: Vec::with_capacity(ENSEMBLE_PATH_COUNT),
+            bootstrap_ws: BootstrapWorkspace::new(ENSEMBLE_PATH_COUNT, BOOTSTRAP_REPLICATES)
+                .expect("valid preallocated bootstrap capacity"),
             last_growth_rate: 0.0,
             last_f_star: None,
             last_expected_terminal: 0.0,
             last_median_terminal: 0.0,
+            last_empirical_median_ci_lower: 0.0,
+            last_empirical_median_ci_upper: 0.0,
             is_ruin_zone: false,
         }
     }
@@ -169,6 +181,23 @@ impl BankrollEnsembleLab {
 
         self.last_expected_terminal = self.expected_points.last().map_or(w0, |pt| pt.y);
         self.last_median_terminal = self.median_points.last().map_or(w0, |pt| pt.y);
+        self.update_terminal_median_bca(&mut rng);
+    }
+
+    fn update_terminal_median_bca(&mut self, rng: &mut OxidizeRng) {
+        if let Ok(ci) = self.bootstrap_ws.bca_ci_with_scratch(
+            &self.path_wealths,
+            BOOTSTRAP_REPLICATES,
+            0.95,
+            rng,
+            sample_median_in_place,
+        ) {
+            self.last_empirical_median_ci_lower = ci.ci_lower;
+            self.last_empirical_median_ci_upper = ci.ci_upper;
+        } else {
+            self.last_empirical_median_ci_lower = self.last_median_terminal;
+            self.last_empirical_median_ci_upper = self.last_median_terminal;
+        }
     }
 
     fn step_ensemble_median(
@@ -371,6 +400,11 @@ impl BankrollEnsembleLab {
                 med_color,
                 format!("W_median({num_bets}): {:.4}", self.last_median_terminal),
             );
+            ui.separator();
+            ui.label(format!(
+                "95% BCa CI: [{:.3}, {:.3}]",
+                self.last_empirical_median_ci_lower, self.last_empirical_median_ci_upper
+            ));
         });
     }
 

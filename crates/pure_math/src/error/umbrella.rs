@@ -1,6 +1,6 @@
 use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
-    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
+    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, MonteCarloError, NumberTheoryError,
     OptimizationError, OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
@@ -26,6 +26,9 @@ pub enum PureMathError {
     /// Markov process error.
     #[error("{0}")]
     Markov(#[from] MarkovError),
+    /// Monte Carlo, quasi-Monte Carlo, and bootstrap estimation error.
+    #[error("{0}")]
+    MonteCarlo(#[from] MonteCarloError),
     /// Number theory error.
     #[error("{0}")]
     NumberTheory(#[from] NumberTheoryError),
@@ -129,6 +132,7 @@ impl PureMathError {
             Self::Evolution(err) => err,
             Self::Fractran(err) => err,
             Self::LinearAlgebra(err) => err,
+            Self::MonteCarlo(err) => err,
             Self::Optimization(err) => err,
             Self::Stochastic(err) => err,
             Self::Tensor(err) => err,

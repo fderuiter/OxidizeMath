@@ -94,6 +94,7 @@ impl_error_from!(@cfg "pure_math":
     KellyError => Kelly,
     LinearAlgebraError => LinearAlgebra,
     MarkovError => Markov,
+    MonteCarloError => MonteCarlo,
     NumberTheoryError => NumberTheory,
     OptimizationError => Optimization,
     OuError => Ou,

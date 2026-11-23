@@ -29,6 +29,8 @@ pub use domain_epidemiology::epidemiology;
 pub use domain_physics::physics;
 
 #[cfg(feature = "pure_math")]
+pub use ::pure_math::pure_math::statistics::{bootstrap, monte_carlo, qmc};
+#[cfg(feature = "pure_math")]
 pub use ::pure_math::{math_types, pure_math};
 #[cfg(feature = "pure_math")]
 pub use nalgebra;

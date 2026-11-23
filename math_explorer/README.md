@@ -20,12 +20,12 @@ The `math_explorer` crate serves as the primary library entrypoint for downstrea
   - `verified_engine` & `scientific_metadata`: Zero-allocation runtime verification harness (`VerifiedEngine`), `#[verified]`, `#[derive(Theory)]`, and `#[embed_theory]`.
 - **Feature-Gated Domain Modules**:
   - **`ai`**: Artificial Intelligence primitives, including Transformer components (Attention, Encoder/Decoder), Reinforcement Learning, NeRF-Diffusion, and Self-Calibration loops.
-  - **`applied`**: Applied mathematical models including **Clinical Trials** (Win Ratio), **Game Theory**, **Battery Degradation**, **Pharmacokinetics**, **Favoritism**, and **Isosurface Extraction**.
+  - **`applied`**: Applied mathematical models including **Clinical Trials** (Win Ratio, Kaplan-Meier survival & bootstrap confidence bands), **Game Theory** (mechanism design revenue simulation), **Battery Degradation**, **Pharmacokinetics**, **Favoritism**, and **Isosurface Extraction**.
   - **`biology`**: Biological modeling, including **Neuroscience** (Hodgkin-Huxley) and **Morphogenesis** (Turing Reaction-Diffusion).
   - **`climate`**: Climate modeling tools featuring the **CERA** representation-alignment autoencoder framework.
   - **`epidemiology`**: Disease transmission modeling across **SIR/SEIR** compartmental ODEs, stochastic Gillespie processes, and contact networks.
   - **`physics`**: Physical simulations spanning **Quantum Mechanics**, **Fluid Dynamics**, **Solid State** (BCS Superconductivity, Ising), **Chaos Theory** (Lorenz System), and **MRI Physics**.
-  - **`pure_math`**: Foundational mathematics covering **Abstract Algebra**, **Number Theory** (Partitions, Q-Series), **Graph Theory**, **Statistics** (Glicko-2, Markov, TDA), and **Differential Geometry**.
+  - **`pure_math`**: Foundational mathematics covering **Abstract Algebra**, **Number Theory** (Partitions, Q-Series), **Graph Theory**, **Analysis** (`MultivariateIntegrator`), **Statistics** (`monte_carlo`, `qmc`, `bootstrap`, Multivariate Copulas, Glicko-2, Markov, TDA), and **Differential Geometry**.
 
 ---
 

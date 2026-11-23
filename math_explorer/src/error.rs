@@ -32,7 +32,7 @@ pub use domain_physics::error::{
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
-    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
+    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, MonteCarloError, NumberTheoryError,
     OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
     TransformError, ZipError,
 };
@@ -186,6 +186,9 @@ pub enum Error {
     /// Markov process error.
     #[cfg(feature = "pure_math")]
     Markov(MarkovError),
+    /// Monte Carlo, quasi-Monte Carlo, and bootstrap estimation error.
+    #[cfg(feature = "pure_math")]
+    MonteCarlo(MonteCarloError),
     /// Number theory error.
     #[cfg(feature = "pure_math")]
     NumberTheory(NumberTheoryError),

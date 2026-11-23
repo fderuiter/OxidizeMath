@@ -106,6 +106,9 @@ fn test_f_030_overbetting_divergence_callout_and_zero_allocation() {
             .any(|c| c.tag.as_deref() == Some("ruin_warning")),
         "Ruin warning callout must be set when f > 2 * f*"
     );
+    assert!(lab.last_empirical_median_ci_lower.is_finite());
+    assert!(lab.last_empirical_median_ci_upper.is_finite());
+    assert!(lab.last_empirical_median_ci_lower <= lab.last_empirical_median_ci_upper);
 }
 
 #[test]

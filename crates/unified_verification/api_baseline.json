@@ -1288,7 +1288,13 @@
       "signature": "pub fn kaplan_meier (_ : & [Observation]) -> Vec < TimePoint >"
     },
     {
+      "signature": "pub fn kaplan_meier_bootstrap (_ : & [Observation] , _ : usize , _ : f64 , _ : BootstrapMethod , _ : & mut OxidizeRng ,) -> Result < Vec < BootstrapSurvivalPoint > , ClinicalTrialError >"
+    },
+    {
       "signature": "pub fn try_estimate_hazard_ratio (_ : & [Observation] , _ : & [Observation] ,) -> Result < f64 , ClinicalTrialError >"
+    },
+    {
+      "signature": "pub struct BootstrapSurvivalPoint"
     },
     {
       "signature": "pub struct Observation"
@@ -1838,6 +1844,12 @@
     },
     {
       "signature": "pub fn simulate_optimal_revenue < D : ValuationDistribution > (_ : & D , _ : usize , _ : usize ,) -> f64"
+    },
+    {
+      "signature": "pub fn simulate_optimal_revenue_stats < D : ValuationDistribution > (_ : & D , _ : usize , _ : usize ,) -> Result < MonteCarloEstimate , MonteCarloError >"
+    },
+    {
+      "signature": "pub fn simulate_optimal_revenue_stats_with_rng < D : ValuationDistribution , R : Rng + ? Sized > (_ : & D , _ : usize , _ : usize , _ : f64 , _ : & mut R ,) -> Result < MonteCarloEstimate , MonteCarloError >"
     },
     {
       "signature": "pub fn simulate_optimal_revenue_with_rng < D : ValuationDistribution , R : Rng + ? Sized > (_ : & D , _ : usize , _ : usize , _ : & mut R ,) -> f64"
@@ -2618,6 +2630,9 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: bootstrap }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
     },
     {
@@ -2636,6 +2651,9 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: mesh }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: monte_carlo }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: nalgebra }"
     },
     {
@@ -2652,6 +2670,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: qmc }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rand }"
@@ -7641,6 +7662,9 @@
       "signature": "pub use crate :: pure_math :: number_theory :: ambs :: AmbsError"
     },
     {
+      "signature": "pub use crate :: pure_math :: statistics :: monte_carlo :: MonteCarloError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
     },
     {
@@ -7688,6 +7712,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: MarkovError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: MonteCarloError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: NumberTheoryError } }"
@@ -7805,6 +7832,15 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use crate :: math_types }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: pure_math :: statistics :: bootstrap }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: pure_math :: statistics :: monte_carlo }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: pure_math :: statistics :: qmc }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use crate :: pure_math }"
@@ -8498,13 +8534,49 @@
   ],
   "crates/pure_math/src/pure_math/analysis/integration.rs": [
     {
+      "signature": "impl MultivariateIntegrator { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn integrate < F > (& mut self , _ : & [f64] , _ : & [f64] , _ : F ,) -> Result < IntegrationResult , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn integrate_unit_cube < F > (& mut self , _ : F) -> Result < IntegrationResult , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn n_samples (& self) -> usize }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn new_halton (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn new_latin_hypercube (_ : usize , _ : usize ,) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn new_monte_carlo (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn new_sobol (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn with_rule (_ : MultivariateRule , _ : usize , _ : usize ,) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn with_seed (self , _ : u64) -> Self }"
+    },
+    {
       "signature": "impl Trapezoidal { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub enum MultivariateRule"
     },
     {
       "signature": "pub struct ClenshawCurtis"
     },
     {
       "signature": "pub struct IntegrationResult"
+    },
+    {
+      "signature": "pub struct MultivariateIntegrator"
     },
     {
       "signature": "pub struct Trapezoidal"
@@ -9849,6 +9921,56 @@
       "signature": "pub fn laguerre (_ : u64 , _ : f64) -> f64"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/bootstrap/mod.rs": [
+    {
+      "signature": "impl BootstrapWorkspace { pub fn bca_ci < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn bca_ci_with_scratch < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapEstimate , MonteCarloError > where F : FnMut (& [f64] , & mut [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn compare_intervals < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapComparison , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn compare_intervals_with_scratch < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapComparison , MonteCarloError > where F : FnMut (& [f64] , & mut [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn last_replicates (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn max_data_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn max_replicates (& self) -> usize }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn new (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn percentile_ci < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn percentile_ci_with_scratch < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapEstimate , MonteCarloError > where F : FnMut (& [f64] , & mut [f64]) -> f64 , }"
+    },
+    {
+      "signature": "pub enum BootstrapMethod"
+    },
+    {
+      "signature": "pub fn sample_mean (_ : & [f64]) -> f64"
+    },
+    {
+      "signature": "pub fn sample_median_in_place (_ : & [f64] , _ : & mut [f64]) -> f64"
+    },
+    {
+      "signature": "pub struct BootstrapComparison"
+    },
+    {
+      "signature": "pub struct BootstrapEstimate"
+    },
+    {
+      "signature": "pub struct BootstrapWorkspace"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/copula/core.rs": [
     {
       "signature": "impl Correlation { pub fn new (_ : f64) -> Result < Self , CopulaError > }"
@@ -9896,6 +10018,12 @@
     },
     {
       "signature": "impl GaussianCopula { pub fn correlation (& self) -> & CorrelationMatrix }"
+    },
+    {
+      "signature": "impl GaussianCopula { pub fn multivariate_cdf (& self , _ : & [Probability]) -> Result < Probability , CopulaError > }"
+    },
+    {
+      "signature": "impl GaussianCopula { pub fn multivariate_cdf_with_error (& self , _ : & [Probability] , _ : usize , _ : u64 ,) -> Result < (Probability , f64) , CopulaError > }"
     },
     {
       "signature": "impl GaussianCopula { pub fn new (_ : CorrelationMatrix) -> Self }"
@@ -10574,10 +10702,19 @@
       "signature": "impl ParrondoEnsemble { pub fn simulate_schedule (& mut self , _ : & ParrondoParams , _ : & ParrondoSchedule , _ : usize , _ : & mut OxidizeRng ,) -> f64 }"
     },
     {
+      "signature": "impl ParrondoEnsemble { pub fn stderr_trajectory (& self) -> & [f64] }"
+    },
+    {
       "signature": "impl ParrondoEnsemble { pub fn step_game (& mut self , _ : & ParrondoParams , _ : ParrondoGame , _ : & mut OxidizeRng ,) -> f64 }"
     },
     {
       "signature": "impl ParrondoEnsemble { pub fn step_mixture (& mut self , _ : & ParrondoParams , _ : & mut OxidizeRng) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn terminal_estimate (& self , _ : f64 ,) -> std :: result :: Result < MonteCarloEstimate , MonteCarloError > }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn terminal_standard_error (& self) -> f64 }"
     },
     {
       "signature": "impl ParrondoEnsemble { pub fn wealth (& self) -> & [i64] }"
@@ -10655,6 +10792,101 @@
       "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/monte_carlo/error.rs": [
+    {
+      "signature": "pub enum MonteCarloError"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/monte_carlo/mod.rs": [
+    {
+      "signature": "pub use error :: MonteCarloError"
+    },
+    {
+      "signature": "pub use stats :: MonteCarloEstimate"
+    },
+    {
+      "signature": "pub use stats :: effective_sample_size"
+    },
+    {
+      "signature": "pub use stats :: normal_cdf_fast"
+    },
+    {
+      "signature": "pub use stats :: normal_inv_cdf_fast"
+    },
+    {
+      "signature": "pub use stats :: two_sided_normal_z"
+    },
+    {
+      "signature": "pub use workspace :: MonteCarloWorkspace"
+    },
+    {
+      "signature": "pub use workspace :: SamplingMethod"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/monte_carlo/stats.rs": [
+    {
+      "signature": "impl MonteCarloEstimate { pub fn ci_half_width (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MonteCarloEstimate { pub fn from_samples (_ : & [f64] , _ : f64) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "pub fn effective_sample_size (_ : & [f64]) -> Result < f64 , MonteCarloError >"
+    },
+    {
+      "signature": "pub fn normal_cdf_fast (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn normal_inv_cdf_fast (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn two_sided_normal_z (_ : f64) -> Result < f64 , MonteCarloError >"
+    },
+    {
+      "signature": "pub struct MonteCarloEstimate"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/monte_carlo/workspace.rs": [
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_antithetic < F > (& mut self , _ : usize , _ : & mut OxidizeRng , _ : F ,) -> Result < MonteCarloEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_control_variate < F > (& mut self , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < MonteCarloEstimate , MonteCarloError > where F : FnMut (& [f64]) -> (f64 , f64) , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_iid < F > (& mut self , _ : usize , _ : & mut OxidizeRng , _ : F ,) -> Result < MonteCarloEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_importance_sampling < S > (& mut self , _ : usize , _ : & mut OxidizeRng , _ : S ,) -> Result < MonteCarloEstimate , MonteCarloError > where S : FnMut (& [f64]) -> (f64 , f64) , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_latin_hypercube < F > (& mut self , _ : usize , _ : & mut OxidizeRng , _ : F ,) -> Result < MonteCarloEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_with_method < F > (& mut self , _ : SamplingMethod , _ : usize , _ : & mut OxidizeRng , _ : F ,) -> Result < MonteCarloEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn max_samples (& self) -> usize }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn new (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn set_confidence_level (& mut self , _ : f64) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn with_confidence_level (self , _ : f64) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "pub enum SamplingMethod"
+    },
+    {
+      "signature": "pub struct MonteCarloWorkspace"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/ou_process/analysis.rs": [
     {
       "signature": "impl MomentumType { pub fn classify (_ : f64) -> Self }"
@@ -10676,6 +10908,9 @@
     },
     {
       "signature": "impl OuAnalyzer { pub fn params (& self) -> OuParams }"
+    },
+    {
+      "signature": "impl OuAnalyzer { pub fn try_monte_carlo_forecast < R : Rng > (& self , _ : f64 , _ : f64 , _ : usize , _ : Option < f64 > , _ : & mut R ,) -> Result < PerformanceStats , OuError > }"
     },
     {
       "signature": "pub enum MomentumType"
@@ -10766,6 +11001,101 @@
     },
     {
       "signature": "pub struct TimeStep"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/qmc/halton.rs": [
+    {
+      "signature": "impl HaltonSequence { pub fn apply_cranley_patterson_shift (& mut self , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn new (_ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn next_point (& mut self , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn point_at (& self , _ : u64 , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn reset_index (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn with_bases (_ : & [u64]) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "pub const FIRST_64_PRIMES : [u64 ; MAX_HALTON_DIM]"
+    },
+    {
+      "signature": "pub const MAX_HALTON_DIM : usize"
+    },
+    {
+      "signature": "pub fn radical_inverse (_ : u64 , _ : u64) -> f64"
+    },
+    {
+      "signature": "pub struct HaltonSequence"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/qmc/mod.rs": [
+    {
+      "signature": "pub use halton :: FIRST_64_PRIMES"
+    },
+    {
+      "signature": "pub use halton :: HaltonSequence"
+    },
+    {
+      "signature": "pub use halton :: MAX_HALTON_DIM"
+    },
+    {
+      "signature": "pub use halton :: radical_inverse"
+    },
+    {
+      "signature": "pub use sobol :: SobolSequence"
+    },
+    {
+      "signature": "pub use sobol_data :: MAX_SOBOL_DIM"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/qmc/sobol.rs": [
+    {
+      "signature": "impl SobolSequence { pub fn apply_cranley_patterson_shift (& mut self , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn index (& self) -> u32 }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn new (_ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn next_point (& mut self , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn point_at (& self , _ : u32 , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn reset_index (& mut self , _ : u32) }"
+    },
+    {
+      "signature": "pub struct SobolSequence"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/qmc/sobol_data.rs": [
+    {
+      "signature": "pub const MAX_SOBOL_DIM : usize"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/regression.rs": [
@@ -11852,6 +12182,9 @@
       "signature": "pub use pure_math :: error :: MarkovError"
     },
     {
+      "signature": "pub use pure_math :: error :: MonteCarloError"
+    },
+    {
       "signature": "pub use pure_math :: error :: NumberTheoryError"
     },
     {
@@ -11948,6 +12281,15 @@
     },
     {
       "signature": "pub use pure_math :: pure_math"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: bootstrap"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: monte_carlo"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: qmc"
     },
     {
       "signature": "pub use rand"

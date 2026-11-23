@@ -124,4 +124,30 @@ fn test_scan_parrondo_phase_region_identifies_wedge() {
     );
 }
 
+#[test]
+#[verified_engine::verified]
+fn test_ensemble_cross_walker_standard_errors_zero_allocation() {
+    use verified_engine::engine::VerifiedEngine;
+
+    let params = ParrondoParams::canonical();
+    let sched = ParrondoSchedule::abb();
+    let mut ens = ParrondoEnsemble::with_capacity(256, 60).unwrap();
+    let mut rng = OxidizeRng::new(909);
+
+    let (est, _) = VerifiedEngine::run_verified(|| {
+        let _ = ens.simulate_schedule(&params, &sched, 60, &mut rng);
+        ens.terminal_estimate(0.95).unwrap()
+    });
+
+    assert_eq!(ens.stderr_trajectory().len(), 61);
+    assert_eq!(ens.stderr_trajectory()[0], 0.0);
+    assert!(ens.terminal_standard_error() > 0.0);
+    assert_relative_eq!(
+        est.standard_error,
+        ens.terminal_standard_error(),
+        epsilon = 1e-12
+    );
+    assert!(est.ci_lower < est.mean && est.mean < est.ci_upper);
+}
+
 // [cite:clinical_trials_statistics]
