@@ -109,20 +109,24 @@ pub fn batch_group_advantages(rewards: &[f64]) -> Vec<f64> {
     batch_response_level_advantages(rewards)
 }
 
-/// The clipped surrogate objective for the policy update in GRPO.
+/// The clipped surrogate loss objective $L_{\mathrm{GRPO}}(\theta)$ for policy optimization in GRPO.
+///
+/// Computes the negative group-averaged clipped policy surrogate plus the $\beta$-weighted KL
+/// divergence penalty against the reference policy:
+/// $-\frac{1}{G}\sum_{i=1}^{G} \min(r_i \hat{A}_i, \mathrm{clip}(r_i, 1-\epsilon, 1+\epsilon)\hat{A}_i) + \beta D_{\mathrm{KL}}(\pi_\theta \parallel \pi_{\mathrm{ref}})$.
 ///
 /// # Arguments
 ///
 /// * `pi_thetas` - Probabilities of the sampled outputs under the current policy.
 /// * `pi_theta_olds` - Probabilities of the sampled outputs under the old policy.
 /// * `advantages` - Calculated advantages for the sampled outputs.
-/// * `epsilon` - Clipping parameter to limit the policy update step size.
-/// * `beta` - Coefficient for the KL divergence term (unused in this formula as written, but part of the general objective).
-/// * `kl_divergence` - The KL divergence term.
+/// * `epsilon` - Symmetric clipping threshold $\epsilon$ bounding policy ratio updates to $[1 - \epsilon, 1 + \epsilon]$.
+/// * `beta` - Non-negative regularization coefficient $\beta$ scaling the additive `+ beta * kl_divergence` reference-policy penalty term.
+/// * `kl_divergence` - Estimated KL divergence $D_{\mathrm{KL}}(\pi_\theta \parallel \pi_{\mathrm{ref}})$ penalty value.
 ///
 /// # Returns
 ///
-/// The calculated objective value to be maximized (or minimized if negative).
+/// The scalar GRPO loss objective value to be minimized during policy gradient updates.
 #[verified_engine::verified]
 pub fn clipped_surrogate_objective(
     pi_thetas: &[f64],

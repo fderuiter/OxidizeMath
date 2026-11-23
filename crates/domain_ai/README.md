@@ -16,8 +16,8 @@ The crate enables educational exploration, deterministic unit verification, and 
 - **`deep_learning_theory`**: Theoretical mechanics of backpropagation, loss surfaces, and universal approximation dynamics.
 - **`reinforcement_learning`**: Decision-making agents implementing Q-learning, policy gradients, and Bellman value iterations.
 - **`gaussian_splatting`**: Mathematical foundations of 3D Gaussian Splatting and differentiable rasterization.
-- **`sds`**: Score Distillation Sampling bridging 2D diffusion priors with 3D representations.
-- **`self_calibration`**: Conformal prediction and uncertainty estimation algorithms.
+- **`sds`**: Score Distillation Sampling bridging 2D diffusion priors with 3D volumetric representations.
+- **`self_calibration`**: Soft self-consistency scoring, dynamic answer-entropy temperature scaling, and KL-divergence confidence distillation.
 
 ---
 

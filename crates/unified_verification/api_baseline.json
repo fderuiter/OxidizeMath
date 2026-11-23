@@ -779,6 +779,81 @@
       "signature": "pub fn detach (_ : DMatrix < f64 >) -> DMatrix < f64 >"
     }
   ],
+  "crates/domain_ai/src/ai/sds/mod.rs": [
+    {
+      "signature": "pub use models :: AnalyticalScorePrior"
+    },
+    {
+      "signature": "pub use models :: AnalyticalVoxelNeRF"
+    },
+    {
+      "signature": "pub use models :: PromptPrototypeEncoder"
+    },
+    {
+      "signature": "pub use models :: VoxelPointSample"
+    },
+    {
+      "signature": "pub use models :: rgb_image_to_latent"
+    }
+  ],
+  "crates/domain_ai/src/ai/sds/models.rs": [
+    {
+      "signature": "impl AnalyticalVoxelNeRF { pub fn active_voxels (& self , _ : f64) -> Vec < VoxelPointSample > }"
+    },
+    {
+      "signature": "impl AnalyticalVoxelNeRF { pub fn grid_res (& self) -> usize }"
+    },
+    {
+      "signature": "impl AnalyticalVoxelNeRF { pub fn half_extent (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AnalyticalVoxelNeRF { pub fn new (_ : usize , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl AnalyticalVoxelNeRF { pub fn params (& self) -> & DMatrix < f64 > }"
+    },
+    {
+      "signature": "impl AnalyticalVoxelNeRF { pub fn set_params (& mut self , _ : DMatrix < f64 >) }"
+    },
+    {
+      "signature": "impl AnalyticalVoxelNeRF { pub fn with_ray_march_bounds (self , _ : f64 , _ : f64 , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn rgb_image_to_latent (_ : & DMatrix < Vector3 < f64 > >) -> DMatrix < f64 >"
+    },
+    {
+      "signature": "pub struct AnalyticalVoxelNeRF"
+    },
+    {
+      "signature": "pub struct VoxelPointSample"
+    },
+    {
+      "signature": "pub use crate :: ai :: sds :: priors :: AnalyticalScorePrior"
+    },
+    {
+      "signature": "pub use crate :: ai :: sds :: priors :: PromptPrototypeEncoder"
+    }
+  ],
+  "crates/domain_ai/src/ai/sds/priors.rs": [
+    {
+      "signature": "impl AnalyticalScorePrior { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl AnalyticalScorePrior { pub fn schedule (& self) -> & NoiseSchedule }"
+    },
+    {
+      "signature": "impl AnalyticalScorePrior { pub fn target_latent (& self , _ : & DMatrix < f64 >) -> DMatrix < f64 > }"
+    },
+    {
+      "signature": "impl PromptPrototypeEncoder { pub fn new () -> Self }"
+    },
+    {
+      "signature": "pub struct AnalyticalScorePrior"
+    },
+    {
+      "signature": "pub struct PromptPrototypeEncoder"
+    }
+  ],
   "crates/domain_ai/src/ai/sds/rendering.rs": [
     {
       "signature": "impl RenderContext { pub fn new () -> Self }"
@@ -866,6 +941,26 @@
       "signature": "pub trait Optimizer { fn step (& mut self , _ : & DMatrix < f64 > , _ : & DMatrix < f64 > ,) -> Result < DMatrix < f64 > , AIError > }"
     }
   ],
+  "crates/domain_ai/src/ai/self_calibration/mod.rs": [
+    {
+      "signature": "pub use scoring :: calculate_soft_self_consistency_scores"
+    },
+    {
+      "signature": "pub use temperature :: calculate_answer_entropy"
+    },
+    {
+      "signature": "pub use temperature :: map_entropy_to_temperature"
+    },
+    {
+      "signature": "pub use training :: calculate_kl_divergence_loss"
+    },
+    {
+      "signature": "pub use training :: calculate_target_distribution"
+    },
+    {
+      "signature": "pub use types :: Response"
+    }
+  ],
   "crates/domain_ai/src/ai/self_calibration/scoring.rs": [
     {
       "signature": "pub fn calculate_soft_self_consistency_scores (_ : & [Response]) -> Vec < f64 >"
@@ -882,6 +977,9 @@
   "crates/domain_ai/src/ai/self_calibration/training.rs": [
     {
       "signature": "pub fn calculate_kl_divergence_loss (_ : & [Response] , _ : & [f64] ,) -> Result < f64 , AIError >"
+    },
+    {
+      "signature": "pub fn calculate_target_distribution (_ : & [Response]) -> Vec < f64 >"
     }
   ],
   "crates/domain_ai/src/ai/self_calibration/types.rs": [
@@ -2986,6 +3084,18 @@
       "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn evaluate_objective (& self , _ : & [f64] , _ : f64 , _ : f64) -> f64 }"
     },
     {
+      "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn module_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn modules (& self) -> & [LoraStateDict] }"
+    },
+    {
+      "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn optimize_weights_in_place < F : FnMut (& [f64]) -> f64 > (& self , _ : & mut NelderMeadSimplex , _ : & [f64] , _ : & mut [f64] , _ : & NelderMeadConfig , _ : f64 , _ : & mut F ,) -> SimplexOptimizationSummary }"
+    },
+    {
+      "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn step_simplex_with_l1 < F : FnMut (& [f64]) -> f64 > (& self , _ : & mut NelderMeadSimplex , _ : & NelderMeadConfig , _ : f64 , _ : & mut F ,) -> SimplexStepOutcome }"
+    },
+    {
       "signature": "impl < C : CombinationStrategy , O : ObjectiveStrategy > LoraEnsemble < C , O > { pub fn with_strategies (_ : Vec < LoraStateDict > , _ : C , _ : O ,) -> Self }"
     },
     {
@@ -3000,7 +3110,75 @@
       "signature": "pub use ensemble :: LoraEnsemble"
     },
     {
+      "signature": "pub use simplex :: NelderMeadConfig"
+    },
+    {
+      "signature": "pub use simplex :: NelderMeadSimplex"
+    },
+    {
+      "signature": "pub use simplex :: SimplexOptimizationSummary"
+    },
+    {
+      "signature": "pub use simplex :: SimplexStepOutcome"
+    },
+    {
       "signature": "pub use types :: LoraStateDict"
+    }
+  ],
+  "crates/domain_applied/src/applied/lorahub/simplex.rs": [
+    {
+      "signature": "impl NelderMeadSimplex { pub fn best_value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn best_weights (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn centroid (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn copy_best_weights_into (& self , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn initialize_in_place < F : FnMut (& [f64]) -> f64 > (& mut self , _ : & [f64] , _ : & NelderMeadConfig , _ : & mut F ,) }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn optimize_in_place < F : FnMut (& [f64]) -> f64 > (& mut self , _ : & NelderMeadConfig , _ : & mut F ,) -> SimplexOptimizationSummary }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn step_in_place < F : FnMut (& [f64]) -> f64 > (& mut self , _ : & NelderMeadConfig , _ : & mut F ,) -> SimplexStepOutcome }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn steps_taken (& self) -> usize }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn value_spread (& self) -> f64 }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn vertex (& self , _ : usize) -> & [f64] }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn vertex_value (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl NelderMeadSimplex { pub fn worst_value (& self) -> f64 }"
+    },
+    {
+      "signature": "pub enum SimplexStepOutcome"
+    },
+    {
+      "signature": "pub struct NelderMeadConfig"
+    },
+    {
+      "signature": "pub struct NelderMeadSimplex"
+    },
+    {
+      "signature": "pub struct SimplexOptimizationSummary"
     }
   ],
   "crates/domain_applied/src/applied/lorahub/strategies.rs": [

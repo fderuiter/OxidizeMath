@@ -66,6 +66,9 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
     }
     let explicit: &[&str] = match tool_id.trim() {
         "AttentionMapsTool" => &["attention_is_all_you_need_rust"],
+        "GrpoAlignmentLabTool" => &["grpo", "self_calibration_paper"],
+        "LoraHubSimplexTool" => &["lorahub"],
+        "SdsNeRfDistillationTool" => &["gaussian_splatting", "graph_parameters_rust"],
         "CeraTool" => &["cera_framework"],
         "Co2ProjectionsTool" => &["isosurface_extraction"],
         "TurbulenceTool" => &["generative_turbulence"],
@@ -377,11 +380,13 @@ fn contains_word_subsequence(haystack: &[String], needle: &[String]) -> bool {
 
 fn extract_inline_citation_links(citation: &str) -> Vec<ExternalCitationLink> {
     let mut links = Vec::new();
-    if let Some(id) = extract_arxiv_id(citation) {
-        links.push(ExternalCitationLink {
-            label: format!("arXiv:{id}"),
-            url: format!("https://arxiv.org/abs/{id}"),
-        });
+    for (idx, _) in citation.to_ascii_lowercase().match_indices("arxiv:") {
+        if let Some(id) = extract_arxiv_id(&citation[idx..]) {
+            links.push(ExternalCitationLink {
+                label: format!("arXiv:{id}"),
+                url: format!("https://arxiv.org/abs/{id}"),
+            });
+        }
     }
     if let Some(idx) = citation.find("10.") {
         let candidate: String = citation[idx..]

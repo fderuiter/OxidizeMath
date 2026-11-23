@@ -344,3 +344,27 @@ fn test_all_registered_tools_render_clean_portal_latex_and_hyperlinks() {
     #[cfg(not(all(feature = "ai", feature = "physics", feature = "pure_math")))]
     assert!(verified_tools > 0);
 }
+
+#[test]
+fn test_resolve_ai_alignment_lorahub_and_sds_links() {
+    let grpo_links = resolve_portal_paper_links("GrpoAlignmentLabTool", "ai");
+    let grpo_names: Vec<&str> = grpo_links.iter().map(|l| l.paper_name.as_str()).collect();
+    assert!(grpo_names.contains(&"grpo.tex"));
+    assert!(grpo_names.contains(&"self_calibration_paper.tex"));
+
+    let lorahub_links = resolve_portal_paper_links("LoraHubSimplexTool", "ai");
+    assert!(lorahub_links.iter().any(|l| l.paper_name == "lorahub.tex"));
+
+    let sds_links = resolve_portal_paper_links("SdsNeRfDistillationTool", "ai");
+    assert!(!sds_links.is_empty());
+
+    let arxiv_cites = resolve_citation_reference_links(
+        "Huang et al. (2023) arXiv:2307.13269; Wang et al. (2022) arXiv:2203.11171",
+    );
+    assert!(arxiv_cites
+        .iter()
+        .any(|c| c.url == "https://arxiv.org/abs/2307.13269"));
+    assert!(arxiv_cites
+        .iter()
+        .any(|c| c.url == "https://arxiv.org/abs/2203.11171"));
+}

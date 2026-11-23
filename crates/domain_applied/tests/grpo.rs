@@ -36,6 +36,33 @@ fn test_response_level_advantage_zero_allocations() {
 
 #[test]
 #[verified_engine::verified]
+fn test_grpo_full_rollout_zero_allocations() {
+    let pi_thetas = [0.28, 0.22, 0.34, 0.16];
+    let pi_olds = [0.25, 0.25, 0.25, 0.25];
+    let solver_accs = [0.50, 0.85, 0.45, 0.10];
+    let cluster_sizes = [1_usize, 2, 1, 3];
+    let mut rewards = [0.0; 4];
+    let mut advantages = [0.0; 4];
+
+    let (loss, _metrics) = VerifiedEngine::run_verified(|| {
+        for i in 0..4 {
+            let r_unc = uncertainty_reward(solver_accs[i]);
+            let r_rep = repetition_penalty(cluster_sizes[i], 8, 0.5);
+            rewards[i] = composite_reward(r_unc, r_rep);
+        }
+        normalize_group_advantages(&rewards, &mut advantages);
+        let mut kl_sum = 0.0;
+        for &acc in &solver_accs {
+            kl_sum += kl_divergence_lower_bound(acc, 0.5);
+        }
+        let kl_mean = kl_sum * 0.25;
+        clipped_surrogate_objective(&pi_thetas, &pi_olds, &advantages, 0.2, 0.04, kl_mean)
+    });
+    assert!(loss.is_finite());
+}
+
+#[test]
+#[verified_engine::verified]
 fn test_advantage_empty_group() {
     let empty: [f64; 0] = [];
     assert_eq!(response_level_advantage(&empty, 1.0), 0.0);

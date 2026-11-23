@@ -192,7 +192,6 @@ vendored_crates = [
 "crates/domain_ai/src/ai/sds/score.rs" = 1
 "crates/domain_ai/src/ai/sds/training.rs" = 12
 "crates/domain_ai/src/ai/self_calibration/mod.rs" = 3
-"crates/domain_ai/src/ai/self_calibration/training.rs" = 1
 "crates/domain_ai/src/ai/transformer/mod.rs" = 9
 "crates/domain_ai/src/ai/transformer/tokenization.rs" = 1
 "crates/domain_ai/src/error.rs" = 5

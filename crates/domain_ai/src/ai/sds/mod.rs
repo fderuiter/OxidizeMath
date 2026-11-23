@@ -43,11 +43,18 @@
 pub mod diffusion;
 #[allow(missing_docs)]
 pub mod gradient;
+pub mod models;
+pub mod priors;
 #[allow(missing_docs)]
 pub mod rendering;
 #[allow(missing_docs)]
 pub mod score;
 #[allow(missing_docs)]
 pub mod training;
+
+pub use models::{
+    AnalyticalScorePrior, AnalyticalVoxelNeRF, PromptPrototypeEncoder, VoxelPointSample,
+    rgb_image_to_latent,
+};
 
 // [cite:graph_parameters_rust]

@@ -140,6 +140,11 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool,
         >(ctx);
+        exercise_interactive_tool::<crate::tabs::ai::grpo_alignment_lab::GrpoAlignmentLabTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::ai::lorahub_simplex::LoraHubSimplexTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::ai::sds_nerf_distillation::SdsNeRfDistillationTool>(
+            ctx,
+        );
     }
 
     #[test]
