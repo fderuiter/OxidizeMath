@@ -68,4 +68,6 @@ mod fractran_vm;
 pub mod geometry;
 pub mod kolmogorov;
 
+pub use fractran::FractranError;
+
 // [cite:algorithmic_information_rust]
