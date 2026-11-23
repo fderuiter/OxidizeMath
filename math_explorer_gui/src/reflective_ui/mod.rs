@@ -2,9 +2,9 @@ use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
 
 pub mod slider;
-pub use slider::AnimatedSlider;
 #[cfg(test)]
 pub use slider::AnimatedSliderState;
+pub use slider::{AnimatedSlider, SweepMode};
 
 #[cfg(any(feature = "pure_math", test))]
 fn format_metric_label(label: &str, value: &str) -> String {

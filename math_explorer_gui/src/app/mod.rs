@@ -4,6 +4,7 @@ mod macos_menu;
 #[cfg(target_os = "macos")]
 mod macos_menu_view;
 pub mod palette;
+mod palette_dispatch;
 mod pane_clone;
 mod pane_ops;
 mod pane_slots;
@@ -21,6 +22,8 @@ pub mod workspace_bus;
 mod tests;
 #[cfg(test)]
 mod tests_adaptive_chrome;
+#[cfg(test)]
+mod tests_cold_start_and_palette;
 #[cfg(test)]
 mod tests_command_palette;
 #[cfg(test)]
@@ -93,6 +96,7 @@ pub struct MathExplorerApp {
     pub(super) show_warnings: bool,
     pub(super) show_errors: bool,
     pub(super) show_help_menu: bool,
+    pub show_starter_gallery: bool,
     pub theme: ThemeMode,
     pub(super) last_synced_theme: Option<ThemeMode>,
     pub command_palette: CommandPalette,
@@ -135,6 +139,7 @@ impl Default for MathExplorerApp {
             show_warnings: true,
             show_errors: true,
             show_help_menu: false,
+            show_starter_gallery: false,
             theme: ThemeMode::Dark,
             last_synced_theme: Some(ThemeMode::Dark),
             command_palette: CommandPalette::default(),
@@ -393,6 +398,7 @@ impl eframe::App for MathExplorerApp {
         self.drain_workspace_history_bridge(ctx);
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
+        self.render_global_starter_gallery(ctx);
 
         // Render Command Palette Overlay
         self.apply_command_palette_selection(ctx);

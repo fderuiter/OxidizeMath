@@ -230,6 +230,8 @@ pub struct AppState {
     pub viewport_layout: ViewportLayout,
     #[serde(default)]
     pub pane_tabs: Vec<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pane_tab_names: Vec<String>,
     #[serde(default)]
     pub focused_pane: usize,
     #[serde(default)]
@@ -259,6 +261,7 @@ impl Default for AppState {
             quad_split_ratios: (0.5, 0.5),
             viewport_layout: ViewportLayout::Single,
             pane_tabs: vec![0, 1, 2, 3],
+            pane_tab_names: Vec::new(),
             focused_pane: 0,
             pane_tab_states: Vec::new(),
             pane_bus_links: Vec::new(),
@@ -283,11 +286,7 @@ impl AppState {
                 tab_states.insert(tab.name().to_string(), tab_str);
             }
         }
-        let selected_tab_name = app.tabs.get(app.selected_tab).map(|t| t.name().to_string());
-        let secondary_tab_name = app
-            .tabs
-            .get(app.secondary_tab)
-            .map(|t| t.name().to_string());
+        let tab_name = |i: usize| app.tabs.get(i).map(|t| t.name().to_string());
         let mut pane_tabs = app.pane_tabs.clone();
         if !pane_tabs.is_empty() {
             pane_tabs[0] = app.selected_tab;
@@ -295,10 +294,14 @@ impl AppState {
         if pane_tabs.len() > 1 && app.viewport_layout != ViewportLayout::QuadGrid {
             pane_tabs[1] = app.secondary_tab;
         }
+        let pane_tab_names = pane_tabs
+            .iter()
+            .map(|&i| tab_name(i).unwrap_or_default())
+            .collect();
         let (split_layout_mode, viewport_layout) = Self::resolve_extract_layouts(app);
         Self {
             selected_tab: app.selected_tab,
-            selected_tab_name,
+            selected_tab_name: tab_name(app.selected_tab),
             show_info: app.show_info,
             show_warnings: app.show_warnings,
             show_errors: app.show_errors,
@@ -307,7 +310,7 @@ impl AppState {
             tab_states,
             split_layout_mode,
             secondary_tab: app.secondary_tab,
-            secondary_tab_name,
+            secondary_tab_name: tab_name(app.secondary_tab),
             split_ratio: app.split_ratio.clamp(0.20, 0.80),
             quad_split_ratios: (
                 app.quad_split_ratios.0.clamp(0.20, 0.80),
@@ -315,6 +318,7 @@ impl AppState {
             ),
             viewport_layout,
             pane_tabs,
+            pane_tab_names,
             focused_pane: app.active_focused_pane(),
             pane_tab_states: app.extract_pane_tab_states(),
             pane_bus_links: if is_all_false_links(&app.pane_bus_links) {
@@ -393,40 +397,75 @@ impl AppState {
         app.sync_linked_panes_bus();
     }
 
+    fn resolve_saved_pane_tab(
+        &self,
+        pane_idx: usize,
+        fallback_idx: usize,
+        app: &super::MathExplorerApp,
+    ) -> usize {
+        let find_tab = |name: &str| app.tabs.iter().position(|t| t.name() == name);
+        if let Some(idx) = self
+            .pane_tab_names
+            .get(pane_idx)
+            .filter(|n| !n.is_empty())
+            .and_then(|n| find_tab(n))
+        {
+            return idx;
+        }
+        if pane_idx == 0 {
+            if let Some(idx) = self.selected_tab_name.as_deref().and_then(find_tab) {
+                return idx;
+            }
+            if self.tab_states.len() == 1 {
+                if let Some(idx) = self.tab_states.keys().next().and_then(|n| find_tab(n)) {
+                    return idx;
+                }
+            }
+        } else if pane_idx == 1 && app.viewport_layout != ViewportLayout::QuadGrid {
+            if let Some(idx) = self.secondary_tab_name.as_deref().and_then(find_tab) {
+                return idx;
+            }
+        }
+        if pane_idx >= 1 {
+            if let Some(idx) = self
+                .pane_tab_states
+                .get(pane_idx)
+                .filter(|m| m.len() == 1)
+                .and_then(|m| m.keys().next())
+                .and_then(|n| find_tab(n))
+            {
+                return idx;
+            }
+            if pane_idx == 1 {
+                if let Some(idx) = self.secondary_tab_name.as_deref().and_then(find_tab) {
+                    return idx;
+                }
+            }
+        }
+        if fallback_idx < app.tabs.len() {
+            fallback_idx
+        } else {
+            0
+        }
+    }
+
     fn apply_pane_indices_and_focus(&self, app: &mut super::MathExplorerApp) {
-        if let Some(idx) = self
-            .selected_tab_name
-            .as_deref()
-            .and_then(|n| app.tabs.iter().position(|t| t.name() == n))
-        {
-            app.selected_tab = idx;
-        } else if self.selected_tab < app.tabs.len() {
-            app.selected_tab = self.selected_tab;
-        }
+        app.selected_tab = self.resolve_saved_pane_tab(0, self.selected_tab, app);
+        app.secondary_tab = self.resolve_saved_pane_tab(1, self.secondary_tab, app);
 
-        if let Some(idx) = self
-            .secondary_tab_name
-            .as_deref()
-            .and_then(|n| app.tabs.iter().position(|t| t.name() == n))
-        {
-            app.secondary_tab = idx;
-        } else if self.secondary_tab < app.tabs.len() {
-            app.secondary_tab = self.secondary_tab;
-        }
-
-        app.pane_tabs = if self.pane_tabs.is_empty() {
+        let raw_panes = if self.pane_tabs.is_empty() {
             vec![app.selected_tab, app.secondary_tab, 2, 3]
         } else {
             self.pane_tabs.clone()
         };
+        app.pane_tabs = raw_panes
+            .into_iter()
+            .enumerate()
+            .map(|(i, raw)| self.resolve_saved_pane_tab(i, raw, app))
+            .collect();
         while app.pane_tabs.len() < 4 {
             let next_idx = app.pane_tabs.len().min(app.tabs.len().saturating_sub(1));
             app.pane_tabs.push(next_idx);
-        }
-        for idx in &mut app.pane_tabs {
-            if *idx >= app.tabs.len() {
-                *idx = 0;
-            }
         }
         if app.viewport_layout == ViewportLayout::Single {
             app.pane_tabs[0] = app.selected_tab;

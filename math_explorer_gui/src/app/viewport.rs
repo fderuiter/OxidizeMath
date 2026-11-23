@@ -307,6 +307,14 @@ fn render_multi_pane_regions(
             ctx.request_repaint();
         }
     }
+    if let Some(target_pane) = pending_focus {
+        let overwritten = crate::accessibility::with_live_region(|r| {
+            !r.slots[r.active_slot].starts_with("Focused ")
+        });
+        if overwritten {
+            focus::announce_pane_focus(app, ctx, target_pane);
+        }
+    }
 }
 
 struct FrameSashOutcome {

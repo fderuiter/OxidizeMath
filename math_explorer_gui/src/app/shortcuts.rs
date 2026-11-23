@@ -24,7 +24,7 @@ impl MathExplorerApp {
         let palette_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
             ctx,
             "Command Palette",
-            "Open command palette to quickly switch simulation tabs",
+            "Open unified command palette for actions, tabs, tools, and starter presets",
             egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::K),
             true,
             "Global",

@@ -15,6 +15,7 @@ pub struct Plot3DViewport<'a> {
     title: Option<String>,
     half_extent: f64,
     helper_text: Option<&'a str>,
+    allow_camera_drag: bool,
 }
 
 fn base_3d_plot(
@@ -57,6 +58,7 @@ impl<'a> Plot3DViewport<'a> {
             title,
             half_extent: half_extent.max(0.1),
             helper_text: Some(CAMERA_3D_HELPER_TEXT),
+            allow_camera_drag: true,
         }
     }
 
@@ -64,6 +66,13 @@ impl<'a> Plot3DViewport<'a> {
     #[must_use]
     pub fn helper_text(mut self, text: &'a str) -> Self {
         self.helper_text = Some(text);
+        self
+    }
+
+    /// Controls whether pointer drag and double-click gestures orbit, pan, or reset [`Camera3D`].
+    #[must_use]
+    pub fn allow_camera_drag(mut self, allow: bool) -> Self {
+        self.allow_camera_drag = allow;
         self
     }
 
@@ -111,7 +120,12 @@ impl<'a> Plot3DViewport<'a> {
 
         let rect_h = plot_response.response.rect.height().max(1.0_f32);
         camera.pan_units_per_px = ((2.0 * y_half) as f32) / rect_h;
-        camera.handle_interaction_with_plot(&plot_response.response, ui, captured_plot_id);
+        camera.handle_interaction_with_plot(
+            &plot_response.response,
+            ui,
+            captured_plot_id,
+            self.allow_camera_drag,
+        );
 
         if let Some(text) = self.helper_text {
             ui.label(text);

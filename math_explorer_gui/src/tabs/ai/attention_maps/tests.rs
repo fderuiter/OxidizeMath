@@ -94,7 +94,10 @@ fn test_cell_at_pos_precision_and_bounds() {
     );
 
     // Points outside rect return None
-    assert_eq!(cell_at_pos(ncols, nrows, rect, egui::pos2(50.0, 50.0)), None);
+    assert_eq!(
+        cell_at_pos(ncols, nrows, rect, egui::pos2(50.0, 50.0)),
+        None
+    );
     assert_eq!(
         cell_at_pos(ncols, nrows, rect, egui::pos2(550.0, 450.0)),
         None
@@ -109,8 +112,7 @@ fn test_cell_at_pos_precision_and_bounds() {
 fn test_theme_contrast_adaptation() {
     let dark_color = compute_attention_cell_color(0.9, ThemeContrastMode::Dark);
     let light_color = compute_attention_cell_color(0.9, ThemeContrastMode::Light);
-    let high_contrast_color =
-        compute_attention_cell_color(0.9, ThemeContrastMode::HighContrast);
+    let high_contrast_color = compute_attention_cell_color(0.9, ThemeContrastMode::HighContrast);
 
     // Different theme contrast modes produce distinct color mappings
     assert_ne!(dark_color, light_color);
