@@ -63,7 +63,7 @@ fn test_all_registered_tools_have_starter_presets() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = if cfg!(feature = "applied") { 77 } else { 65 };
+    let expected_presets = if cfg!(feature = "applied") { 81 } else { 69 };
     assert_eq!(
         presets.len(),
         expected_presets,
@@ -226,7 +226,7 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    let expected_presets = if cfg!(feature = "applied") { 77 } else { 65 };
+    let expected_presets = if cfg!(feature = "applied") { 81 } else { 69 };
     assert_eq!(
         presets.len(),
         expected_presets,
