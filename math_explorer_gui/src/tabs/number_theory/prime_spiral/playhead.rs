@@ -199,6 +199,7 @@ impl PrimeSpiralWidget {
                 }
                 PlaybackAction::Pause => self.is_playing = false,
                 PlaybackAction::Step => self.step_playhead_delta(1),
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.is_playing = false;
                     self.cursor_step = 0;

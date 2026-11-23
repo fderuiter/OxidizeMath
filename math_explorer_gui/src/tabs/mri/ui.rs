@@ -274,6 +274,7 @@ impl MriTool {
                     self.pulse_workspace.playhead_idx =
                         (self.pulse_workspace.playhead_idx + 1) % MRI_PULSE_SAMPLES;
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.pulse_workspace.playhead_playing = false;
                     self.pulse_workspace.playhead_idx = 0;
