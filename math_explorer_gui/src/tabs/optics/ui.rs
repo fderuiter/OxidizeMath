@@ -56,6 +56,41 @@ impl FourierOpticsWorkbenchTool {
         self.revision = self.revision.wrapping_add(1);
     }
 
+    fn rewind_playback_step(&mut self) {
+        match self.state.mode {
+            OpticsMode::HelmholtzDiffraction => {
+                let prev = self.state.propagation_mm - 0.4;
+                self.state.propagation_mm = if prev < 0.2 {
+                    self.state.carpet_max_mm
+                } else {
+                    prev
+                };
+            }
+            OpticsMode::GerchbergSaxtonHolography => {
+                self.state.gs_iterations = if self.state.gs_iterations <= 1 {
+                    80
+                } else {
+                    self.state.gs_iterations - 1
+                };
+            }
+        }
+        self.clamp_state_in_place();
+        self.revision = self.revision.wrapping_add(1);
+    }
+
+    fn scrub_playback_step(&mut self, step: usize) {
+        match self.state.mode {
+            OpticsMode::HelmholtzDiffraction => {
+                self.state.propagation_mm = ((step as f64) * 0.4 + 0.2).min(self.state.carpet_max_mm);
+            }
+            OpticsMode::GerchbergSaxtonHolography => {
+                self.state.gs_iterations = step.clamp(1, 100);
+            }
+        }
+        self.clamp_state_in_place();
+        self.revision = self.revision.wrapping_add(1);
+    }
+
     fn draw_side_controls(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         let panel_id = scoped_panel_id(parent_ui, "fourier_optics_side_panel");
         PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
@@ -300,6 +335,14 @@ impl FourierOpticsWorkbenchTool {
                 PlaybackAction::Step => {
                     self.state.is_playing = false;
                     self.advance_playback_step();
+                }
+                PlaybackAction::StepBack => {
+                    self.state.is_playing = false;
+                    self.rewind_playback_step();
+                }
+                PlaybackAction::ScrubTo(step) => {
+                    self.state.is_playing = false;
+                    self.scrub_playback_step(step);
                 }
                 PlaybackAction::Reset => {
                     self.state.is_playing = false;
