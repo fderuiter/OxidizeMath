@@ -27,7 +27,10 @@ impl DistributionExplorerTool {
             for fam in DistributionFamily::CONTINUOUS {
                 if ui
                     .selectable_label(self.config.family == fam, fam.label())
-                    .accessible_hover_text(format!("Select {} continuous distribution", fam.label()))
+                    .accessible_hover_text(format!(
+                        "Select {} continuous distribution",
+                        fam.label()
+                    ))
                     .clicked()
                 {
                     self.select_family(fam);
@@ -137,7 +140,10 @@ impl DistributionExplorerTool {
         ui.add_space(4.0);
         ui.group(|ui| {
             ui.label(egui::RichText::new("Seeded Parameter Recovery").strong());
-            ui.colored_label(palette.success, format!("MLE: {}", self.snapshot.mle_summary));
+            ui.colored_label(
+                palette.success,
+                format!("MLE: {}", self.snapshot.mle_summary),
+            );
             ui.colored_label(palette.info, format!("MoM: {}", self.snapshot.mom_summary));
         });
     }
@@ -173,9 +179,15 @@ impl DistributionExplorerTool {
     fn render_density_plot(&self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let title = if self.config.family.is_discrete() {
-            format!("{} — Exact PMF & Seeded Empirical Frequencies", self.config.family.label())
+            format!(
+                "{} — Exact PMF & Seeded Empirical Frequencies",
+                self.config.family.label()
+            )
         } else {
-            format!("{} — Exact PDF & Seeded Empirical Histogram", self.config.family.label())
+            format!(
+                "{} — Exact PDF & Seeded Empirical Histogram",
+                self.config.family.label()
+            )
         };
         ui.label(egui::RichText::new(title).strong());
 
@@ -190,7 +202,11 @@ impl DistributionExplorerTool {
                     .snapshot
                     .histogram_bars
                     .iter()
-                    .map(|&[cx, h, w]| Bar::new(cx, h).width(w).fill(palette.info.gamma_multiply(0.45)))
+                    .map(|&[cx, h, w]| {
+                        Bar::new(cx, h)
+                            .width(w)
+                            .fill(palette.info.gamma_multiply(0.45))
+                    })
                     .collect();
                 if !hist.is_empty() {
                     plot_ui.bar_chart(BarChart::new("Seeded Sample", hist));
@@ -200,14 +216,21 @@ impl DistributionExplorerTool {
                         .snapshot
                         .discrete_bars
                         .iter()
-                        .map(|&(k, pmf)| Bar::new(k as f64 - 0.14, pmf).width(0.34).fill(palette.accent))
+                        .map(|&(k, pmf)| {
+                            Bar::new(k as f64 - 0.14, pmf)
+                                .width(0.34)
+                                .fill(palette.accent)
+                        })
                         .collect();
                     plot_ui.bar_chart(BarChart::new("Exact PMF", exact_bars));
                 } else {
                     plot_ui.line(
-                        Line::new("Exact PDF", PlotPoints::from(self.snapshot.density_curve.clone()))
-                            .color(palette.accent)
-                            .width(2.4_f32),
+                        Line::new(
+                            "Exact PDF",
+                            PlotPoints::from(self.snapshot.density_curve.clone()),
+                        )
+                        .color(palette.accent)
+                        .width(2.4_f32),
                     );
                 }
                 plot_ui.vline(
@@ -218,7 +241,9 @@ impl DistributionExplorerTool {
 
     fn render_cdf_plot(&self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.label(egui::RichText::new("Cumulative Distribution F(x) & Inverse Quantile Q(p)").strong());
+        ui.label(
+            egui::RichText::new("Cumulative Distribution F(x) & Inverse Quantile Q(p)").strong(),
+        );
         let plot_id = crate::framework::scoped_panel_id(ui, "dist_explorer_cdf_plot");
         Plot::new(plot_id)
             .legend(Legend::default())
@@ -228,13 +253,14 @@ impl DistributionExplorerTool {
             .include_y(1.0)
             .show(ui, |plot_ui| {
                 plot_ui.line(
-                    Line::new("Exact CDF F(x)", PlotPoints::from(self.snapshot.cdf_curve.clone()))
-                        .color(palette.success)
-                        .width(2.2_f32),
+                    Line::new(
+                        "Exact CDF F(x)",
+                        PlotPoints::from(self.snapshot.cdf_curve.clone()),
+                    )
+                    .color(palette.success)
+                    .width(2.2_f32),
                 );
-                plot_ui.vline(
-                    VLine::new("Q(p)", self.snapshot.quantile_x).color(palette.warning),
-                );
+                plot_ui.vline(VLine::new("Q(p)", self.snapshot.quantile_x).color(palette.warning));
             });
     }
 
@@ -257,7 +283,7 @@ impl DistributionExplorerTool {
         if self.snapshot.density_curve.len() >= 2 {
             prims.push(ExportPrimitive::Polyline {
                 name: format!("{} Density", self.config.family.label()),
-                points: self.snapshot.density_curve.clone(),
+                points: self.snapshot.density_curve.clone().into(),
                 color: palette.accent,
                 stroke_width: 2.2,
                 closed: false,
@@ -267,7 +293,7 @@ impl DistributionExplorerTool {
         if self.snapshot.cdf_curve.len() >= 2 {
             prims.push(ExportPrimitive::Polyline {
                 name: format!("{} CDF", self.config.family.label()),
-                points: self.snapshot.cdf_curve.clone(),
+                points: self.snapshot.cdf_curve.clone().into(),
                 color: palette.success,
                 stroke_width: 2.0,
                 closed: false,

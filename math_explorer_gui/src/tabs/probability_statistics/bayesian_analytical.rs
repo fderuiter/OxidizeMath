@@ -4,8 +4,8 @@
 
 use super::bayesian_tool::{BayesianAnalyticalCache, BayesianToolConfig, ConjugateFamily};
 use math_explorer::pure_math::statistics::bayesian::{
-    BayesFactor, BetaBinomial, GammaPoisson, NormalInverseGamma, NormalNormal,
-    hpd_credible_interval,
+    hpd_credible_interval, BayesFactor, BetaBinomial, GammaPoisson, NormalInverseGamma,
+    NormalNormal,
 };
 use math_explorer::pure_math::statistics::distributions::{
     BetaDist, ContinuousDistribution, GammaDist, NormalDist, StudentTDist,
@@ -44,7 +44,7 @@ pub(crate) fn eval_log_posterior(cfg: &BayesianToolConfig, theta: f64) -> f64 {
                 .map_or(f64::NEG_INFINITY, |d| d.ln_pdf(theta))
         }
         ConjugateFamily::NormalInverseGamma => {
-            let ( _, post) = build_nig_models(cfg);
+            let (_, post) = build_nig_models(cfg);
             post.marginal_mean_dist()
                 .map_or(f64::NEG_INFINITY, |d| d.ln_pdf(theta))
         }
@@ -114,7 +114,9 @@ fn analytical_gamma_poisson(cfg: &BayesianToolConfig, level: f64) -> BayesianAna
         posterior_std: post.posterior_variance().sqrt(),
         equal_tailed: post.credible_interval(level).expect("ET CI"),
         hpd: post.hpd_interval(level).expect("HPD CI"),
-        bayes_factor: prior.bayes_factor_vs_rate(1.0, &counts).expect("Gamma BF10"),
+        bayes_factor: prior
+            .bayes_factor_vs_rate(1.0, &counts)
+            .expect("Gamma BF10"),
     }
 }
 
@@ -144,7 +146,9 @@ fn analytical_normal_normal(cfg: &BayesianToolConfig, level: f64) -> BayesianAna
         posterior_std: post.posterior_variance().sqrt(),
         equal_tailed: et,
         hpd: et,
-        bayes_factor: prior.bayes_factor_vs_point(0.0, &data).expect("Normal BF10"),
+        bayes_factor: prior
+            .bayes_factor_vs_point(0.0, &data)
+            .expect("Normal BF10"),
     }
 }
 

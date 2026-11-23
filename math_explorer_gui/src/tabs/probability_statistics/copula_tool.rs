@@ -132,10 +132,7 @@ impl CopulaDependenceTool {
         let indep: f64 = u_vec.iter().map(Probability::value).product();
         let sum_u: f64 = u_vec.iter().map(Probability::value).sum();
         let fh_low = (sum_u - (d as f64) + 1.0).max(0.0);
-        let fh_high = u_vec
-            .iter()
-            .map(Probability::value)
-            .fold(1.0_f64, f64::min);
+        let fh_high = u_vec.iter().map(Probability::value).fold(1.0_f64, f64::min);
 
         let cholesky = build_equicorrelation(d, self.config.correlation_rho);
         let (active_joint_cdf, cholesky_error) = match cholesky {
@@ -152,11 +149,18 @@ impl CopulaDependenceTool {
         };
 
         let (sweep_copula, sweep_independence, sweep_frechet_low, sweep_frechet_high) =
-            compute_rho_sweep(d, &u_vec, indep, fh_low, fh_high, self.config.seed, self.config.qmc_samples);
+            compute_rho_sweep(
+                d,
+                &u_vec,
+                indep,
+                fh_low,
+                fh_high,
+                self.config.seed,
+                self.config.qmc_samples,
+            );
         let sgp_conditional_curve =
             compute_sgp_conditional_curve(self.config.marginal_u1, self.config.correlation_rho);
-        let zip_em_summary =
-            compute_zip_em_summary(self.config.zip_zero_prob, self.config.seed);
+        let zip_em_summary = compute_zip_em_summary(self.config.zip_zero_prob, self.config.seed);
 
         self.snapshot = CopulaSnapshot {
             sweep_copula,

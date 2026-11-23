@@ -32,6 +32,37 @@ pub struct TraceabilityManifestPayload {
 }
 
 #[cfg(test)]
+mod core_tests {
+    use super::{TraceabilityManifestPayload, VerificationCertificate};
+    use crate::traceability::{TraceabilityEngine, TraceabilityReport};
+    use crate::vfs::DefaultVfs;
+
+    #[test]
+    fn manifest_payload_default_and_citation_extraction_work_without_ast_feature() {
+        let payload = TraceabilityManifestPayload {
+            report: TraceabilityReport {
+                scanned_files: 2,
+                ..TraceabilityReport::default()
+            },
+            certificate: Some(VerificationCertificate {
+                native_execution_coverage_pct: 80.0,
+                wasm_path_coverage_pct: 75.0,
+                total_assertion_density: 0.65,
+                verified_modules_density: 0.55,
+                unverified_modules_density: 0.70,
+                passed: true,
+            }),
+        };
+        assert_eq!(payload.report.scanned_files, 2);
+        assert!(payload.certificate.as_ref().is_some_and(|c| c.passed));
+
+        let sample = concat!("// [cite", ":pure_math] [cite", ":ai_01]");
+        let cites = TraceabilityEngine::<DefaultVfs>::extract_citations(sample);
+        assert_eq!(cites, vec!["pure_math", "ai_01"]);
+    }
+}
+
+#[cfg(all(test, feature = "ast-analysis"))]
 mod tests {
     use super::{TraceabilityManifestPayload, VerificationCertificate};
     use crate::traceability::{TraceabilityEngine, TraceabilityReport};

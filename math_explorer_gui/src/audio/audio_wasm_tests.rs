@@ -36,4 +36,68 @@ fn wasm_audio_controller_lifecycle_and_wav_export() {
         snapshot_ui_state().waveform_override,
         Some(WaveformPreset::Sine)
     );
+    super::set_waveform_override(None);
+}
+
+#[cfg(feature = "physics")]
+#[wasm_bindgen_test]
+fn wasm_mri_kspace_and_60ghz_radar_sonification_lifecycle() {
+    use math_explorer::physics::medical::radar_gating::BeamState;
+    use nalgebra::Vector3;
+
+    use crate::audio::mappings::{
+        medical_radar_frame, mri_bloch_frame, mri_kspace_frame, MriKSpaceAudioInput,
+        RadarDopplerAudioInput,
+    };
+
+    if !snapshot_ui_state().muted {
+        toggle_mute_from_user_gesture();
+    }
+
+    let bloch = mri_bloch_frame(
+        Vector3::new(0.8, 0.2, 0.3),
+        1.0,
+        Vector3::new(1.0e-5, 0.0, 1.5),
+        400.0,
+    );
+    submit_tool_frame("mri_bloch", bloch, false);
+    toggle_mute_from_user_gesture();
+    assert!(!snapshot_ui_state().muted);
+    assert!(snapshot_ui_state().meter.dominant_hz > 700.0);
+
+    let kspace = mri_kspace_frame(&MriKSpaceAudioInput {
+        spins: [
+            Vector3::new(0.6, 0.2, 0.1),
+            Vector3::new(0.5, 0.3, 0.1),
+            Vector3::new(0.4, 0.4, 0.1),
+        ],
+        rho: 0.9,
+        t2: 0.08,
+        delta_b0: 2.2e-7,
+        turing_uv: [1.1, 0.8],
+        current_time: 0.04,
+        echo_tau: Some(0.02),
+        k_coord_cycles_per_m: [80.0, -60.0],
+        selected_grad_phase_rad: 0.9,
+        rf_spike_triggered: true,
+    });
+    submit_tool_frame("mri_kspace", kspace, false);
+    assert!(snapshot_ui_state().meter.dominant_hz >= 20.0);
+
+    let radar = medical_radar_frame(&RadarDopplerAudioInput {
+        velocity_m_s: 0.015,
+        amplitude_m: -0.002,
+        bandwidth_ghz: 4.0,
+        coarse_peak_count: 1,
+        music_peak_count: 2,
+        primary_beam_gain: 0.95,
+        secondary_beam_gain: 0.85,
+        cough_timer_s: 0.25,
+        beam_state: BeamState::BeamActive,
+    });
+    submit_tool_frame("radar_gating", radar, false);
+    assert!(snapshot_ui_state().meter.dominant_hz >= 20.0);
+
+    notify_solver_diverged();
+    assert!(snapshot_ui_state().muted);
 }

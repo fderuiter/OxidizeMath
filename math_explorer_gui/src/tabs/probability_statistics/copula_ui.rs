@@ -14,7 +14,9 @@ impl CopulaDependenceTool {
         let mut dim = self.config.dimension;
         if ui
             .add(egui::Slider::new(&mut dim, 2..=5).text("Dimension d"))
-            .accessible_hover_text("Multivariate Gaussian copula dimension (2D exact Plackett, 3D-5D Genz QMC)")
+            .accessible_hover_text(
+                "Multivariate Gaussian copula dimension (2D exact Plackett, 3D-5D Genz QMC)",
+            )
             .changed()
         {
             self.config.dimension = dim;
@@ -23,7 +25,9 @@ impl CopulaDependenceTool {
         let mut rho = self.config.correlation_rho;
         if ui
             .add(egui::Slider::new(&mut rho, -0.48..=0.92).text("Equicorrelation rho"))
-            .accessible_hover_text("Off-diagonal correlation rho validated via Cholesky factorization")
+            .accessible_hover_text(
+                "Off-diagonal correlation rho validated via Cholesky factorization",
+            )
             .changed()
         {
             self.config.correlation_rho = rho;
@@ -64,7 +68,9 @@ impl CopulaDependenceTool {
         let mut zip_p = self.config.zip_zero_prob;
         if ui
             .add(egui::Slider::new(&mut zip_p, 0.05..=0.85).text("ZIP Zero Prob pi"))
-            .accessible_hover_text("Structural zero-inflation rate for companion EM count regression")
+            .accessible_hover_text(
+                "Structural zero-inflation rate for companion EM count regression",
+            )
             .changed()
         {
             self.config.zip_zero_prob = zip_p;
@@ -105,9 +111,15 @@ impl CopulaDependenceTool {
                 }
             }
             if let Some(joint) = s.active_joint_cdf {
-                ui.colored_label(palette.accent, format!("Copula Joint CDF C_R(u): {joint:.5}"));
+                ui.colored_label(
+                    palette.accent,
+                    format!("Copula Joint CDF C_R(u): {joint:.5}"),
+                );
             }
-            ui.label(format!("Independence prod u_i:   {:.5}", s.independence_cdf));
+            ui.label(format!(
+                "Independence prod u_i:   {:.5}",
+                s.independence_cdf
+            ));
             ui.label(format!(
                 "Fréchet Bounds [W, M]:   [{:.4}, {:.4}]",
                 s.frechet_bounds.0, s.frechet_bounds.1
@@ -163,22 +175,34 @@ impl CopulaDependenceTool {
             .include_y(0.0)
             .show(ui, |plot_ui| {
                 plot_ui.line(
-                    Line::new("Gaussian Copula C_R(u)", PlotPoints::from(self.snapshot.sweep_copula.clone()))
-                        .color(palette.accent)
-                        .width(2.5_f32),
+                    Line::new(
+                        "Gaussian Copula C_R(u)",
+                        PlotPoints::from(self.snapshot.sweep_copula.clone()),
+                    )
+                    .color(palette.accent)
+                    .width(2.5_f32),
                 );
                 plot_ui.line(
-                    Line::new("Independence prod u_i", PlotPoints::from(self.snapshot.sweep_independence.clone()))
-                        .color(palette.info)
-                        .width(1.8_f32),
+                    Line::new(
+                        "Independence prod u_i",
+                        PlotPoints::from(self.snapshot.sweep_independence.clone()),
+                    )
+                    .color(palette.info)
+                    .width(1.8_f32),
                 );
                 plot_ui.line(
-                    Line::new("Fréchet Lower Bound W(u)", PlotPoints::from(self.snapshot.sweep_frechet_low.clone()))
-                        .color(palette.warning),
+                    Line::new(
+                        "Fréchet Lower Bound W(u)",
+                        PlotPoints::from(self.snapshot.sweep_frechet_low.clone()),
+                    )
+                    .color(palette.warning),
                 );
                 plot_ui.line(
-                    Line::new("Fréchet Upper Bound M(u)", PlotPoints::from(self.snapshot.sweep_frechet_high.clone()))
-                        .color(palette.success),
+                    Line::new(
+                        "Fréchet Upper Bound M(u)",
+                        PlotPoints::from(self.snapshot.sweep_frechet_high.clone()),
+                    )
+                    .color(palette.success),
                 );
                 plot_ui.vline(
                     VLine::new("Selected rho", self.config.correlation_rho).color(palette.accent),
@@ -236,7 +260,7 @@ impl CopulaDependenceTool {
         vec![
             ExportPrimitive::Polyline {
                 name: "Gaussian Copula Joint CDF".to_string(),
-                points: self.snapshot.sweep_copula.clone(),
+                points: self.snapshot.sweep_copula.clone().into(),
                 color: palette.accent,
                 stroke_width: 2.4,
                 closed: false,
@@ -244,7 +268,7 @@ impl CopulaDependenceTool {
             },
             ExportPrimitive::Polyline {
                 name: "Conditional SGP Curve".to_string(),
-                points: self.snapshot.sgp_conditional_curve.clone(),
+                points: self.snapshot.sgp_conditional_curve.clone().into(),
                 color: palette.success,
                 stroke_width: 2.0,
                 closed: false,

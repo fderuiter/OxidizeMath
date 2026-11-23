@@ -188,8 +188,9 @@ impl BayesianInferenceTool {
         self.analytical = compute_analytical(&self.config);
         self.rng = OxidizeRng::from_seed(self.config.seed);
         let init = self.analytical.posterior_mean;
-        self.sampler = MetropolisHastings1D::new(init, self.config.proposal_scale.clamp(0.02, 2.50))
-            .expect("clamped proposal scale");
+        self.sampler =
+            MetropolisHastings1D::new(init, self.config.proposal_scale.clamp(0.02, 2.50))
+                .expect("clamped proposal scale");
         self.chain_cursor = 0;
         self.chain_len = 0;
         let warmup = self.config.warmup_draws.clamp(32, 1_024);
@@ -372,7 +373,10 @@ impl InteractiveTool for BayesianInferenceTool {
             5.0
         };
         self.config.obs_count = self.config.obs_count.clamp(1, 100);
-        self.config.steps_per_frame = self.config.steps_per_frame.clamp(1, MAX_MCMC_STEPS_PER_FRAME);
+        self.config.steps_per_frame = self
+            .config
+            .steps_per_frame
+            .clamp(1, MAX_MCMC_STEPS_PER_FRAME);
         self.config.warmup_draws = self.config.warmup_draws.clamp(32, 1_024);
         self.config.seed = self.config.seed.clamp(1, 1_000_000);
         self.rebuild_chain();

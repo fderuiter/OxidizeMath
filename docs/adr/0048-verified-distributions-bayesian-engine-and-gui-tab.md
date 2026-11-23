@@ -1,4 +1,4 @@
-# ADR 0045: Verified Probability Distributions, Conjugate & Zero-Allocation Bayesian Engine, and Probability & Statistics Tab
+# ADR 0048: Verified Probability Distributions, Conjugate & Zero-Allocation Bayesian Engine, and Probability & Statistics Tab
 
 ## Status
 

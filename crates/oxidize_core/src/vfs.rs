@@ -201,10 +201,13 @@ mod tests {
     #[test]
     fn test_default_vfs_list_dir_propagates_not_found() {
         use super::{DefaultVfs, VirtualFileSystem};
+        use std::task::{Context, Poll, Waker};
 
-        let res = futures::executor::block_on(
-            DefaultVfs.list_dir("nonexistent_oxidize_vfs_dir_987654321"),
-        );
+        let mut fut = DefaultVfs.list_dir("nonexistent_oxidize_vfs_dir_987654321");
+        let mut cx = Context::from_waker(Waker::noop());
+        let Poll::Ready(res) = fut.as_mut().poll(&mut cx) else {
+            panic!("DefaultVfs::list_dir must resolve immediately");
+        };
         assert!(res.is_err());
         assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::NotFound);
     }

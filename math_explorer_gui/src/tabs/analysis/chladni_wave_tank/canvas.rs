@@ -318,7 +318,10 @@ impl ChladniWaveTankTool {
                         } else {
                             String::new()
                         },
-                        points: vec![[p0[0] + 0.5, p0[1] + 0.5], [p1[0] + 0.5, p1[1] + 0.5]],
+                        points: egui_plot::SharedPoints::from_slice(&[
+                            [p0[0] + 0.5, p0[1] + 0.5],
+                            [p1[0] + 0.5, p1[1] + 0.5],
+                        ]),
                         color: DARK_PALETTE.node_stroke,
                         stroke_width: 1.2,
                         closed: false,
@@ -340,7 +343,7 @@ impl ChladniWaveTankTool {
             if !pts.is_empty() {
                 prims.push(ExportPrimitive::Points {
                     name: "Chladni Sand".into(),
-                    points: pts,
+                    points: pts.into(),
                     color: DARK_PALETTE.accent,
                     radius: 1.4,
                 });
@@ -350,7 +353,10 @@ impl ChladniWaveTankTool {
             let det_x = (self.state.detector_x as f64) + 0.5;
             prims.push(ExportPrimitive::Polyline {
                 name: "Detector Screen".into(),
-                points: vec![[det_x, 2.0], [det_x, (GRID_SIZE - 2) as f64]],
+                points: egui_plot::SharedPoints::from_slice(&[
+                    [det_x, 2.0],
+                    [det_x, (GRID_SIZE - 2) as f64],
+                ]),
                 color: DARK_PALETTE.success,
                 stroke_width: 1.5,
                 closed: false,

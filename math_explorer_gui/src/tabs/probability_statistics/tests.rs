@@ -127,7 +127,10 @@ fn test_copula_non_spd_equicorrelation_and_finite_state_rollback() {
         .proposal_scale = f64::NAN;
     assert!(fw.inspect_runtime_state().is_err());
     assert!(fw.rollback_step_back());
-    assert_eq!(fw.active_tool.as_ref().unwrap().save_state().unwrap(), baseline);
+    assert_eq!(
+        fw.active_tool.as_ref().unwrap().save_state().unwrap(),
+        baseline
+    );
 }
 
 // [cite:clinical_trials_statistics]

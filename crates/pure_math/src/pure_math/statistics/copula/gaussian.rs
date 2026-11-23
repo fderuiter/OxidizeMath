@@ -277,4 +277,19 @@ mod tests {
         let (res, _) = VerifiedEngine::run_verified(|| copula.cdf_with_rng(&u, &mut rng, 128));
         assert!(res.unwrap().value() > 0.0);
     }
+
+    #[test]
+    fn test_multivariate_cholesky_validation() {
+        let mat =
+            nalgebra::DMatrix::from_row_slice(3, 3, &[1.0, 0.2, 0.1, 0.2, 1.0, 0.3, 0.1, 0.3, 1.0]);
+        let corr = CorrelationMatrix::new(mat).unwrap();
+        let copula = GaussianCopula::new(corr);
+        let u = [
+            Probability::new(0.4).unwrap(),
+            Probability::new(0.5).unwrap(),
+            Probability::new(0.6).unwrap(),
+        ];
+        let p = copula.cdf(&u).unwrap().value();
+        assert!(p > 0.0 && p <= 0.4);
+    }
 }

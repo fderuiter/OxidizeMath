@@ -75,11 +75,7 @@ fn build_continuous_snapshot<D: ContinuousDistribution>(
     let x_lo = dist.quantile(0.005).unwrap_or(-4.0);
     let x_hi = dist.quantile(0.995).unwrap_or(4.0);
     let (supp_lo, supp_hi) = dist.support();
-    let lo = if supp_lo.is_finite() {
-        supp_lo
-    } else {
-        x_lo
-    };
+    let lo = if supp_lo.is_finite() { supp_lo } else { x_lo };
     let hi = if supp_hi.is_finite() {
         supp_hi
     } else {
@@ -183,18 +179,34 @@ fn build_discrete_snapshot<D: DiscreteDistribution>(
     (snap, draws)
 }
 
-fn eval_normal(mu: f64, sigma: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> DistributionSnapshot {
+fn eval_normal(
+    mu: f64,
+    sigma: f64,
+    p: f64,
+    n: usize,
+    rng: &mut OxidizeRng,
+) -> DistributionSnapshot {
     let dist = NormalDist::new(mu, sigma).expect("clamped Normal parameters");
     let (mut snap, draws) =
         build_continuous_snapshot(&dist, p, n, rng, ("Mean mu", Some("Std Dev sigma")));
-    snap.mle_summary = NormalDist::fit_mle(&draws)
-        .map_or_else(|e| e.to_string(), |d| format!("mu={:.3}, sigma={:.3}", d.mu(), d.sigma()));
-    snap.mom_summary = NormalDist::fit_mom(&draws)
-        .map_or_else(|e| e.to_string(), |d| format!("mu={:.3}, sigma={:.3}", d.mu(), d.sigma()));
+    snap.mle_summary = NormalDist::fit_mle(&draws).map_or_else(
+        |e| e.to_string(),
+        |d| format!("mu={:.3}, sigma={:.3}", d.mu(), d.sigma()),
+    );
+    snap.mom_summary = NormalDist::fit_mom(&draws).map_or_else(
+        |e| e.to_string(),
+        |d| format!("mu={:.3}, sigma={:.3}", d.mu(), d.sigma()),
+    );
     snap
 }
 
-fn eval_gamma(shape: f64, rate: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> DistributionSnapshot {
+fn eval_gamma(
+    shape: f64,
+    rate: f64,
+    p: f64,
+    n: usize,
+    rng: &mut OxidizeRng,
+) -> DistributionSnapshot {
     let dist = GammaDist::new(shape, rate).expect("clamped Gamma parameters");
     let (mut snap, draws) =
         build_continuous_snapshot(&dist, p, n, rng, ("Shape alpha", Some("Rate beta")));
@@ -224,7 +236,13 @@ fn eval_beta(a: f64, b: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> Distribu
     snap
 }
 
-fn eval_weibull(k: f64, scale: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> DistributionSnapshot {
+fn eval_weibull(
+    k: f64,
+    scale: f64,
+    p: f64,
+    n: usize,
+    rng: &mut OxidizeRng,
+) -> DistributionSnapshot {
     let dist = WeibullDist::new(k, scale).expect("clamped Weibull parameters");
     let (mut snap, draws) =
         build_continuous_snapshot(&dist, p, n, rng, ("Shape k", Some("Scale lambda")));
@@ -239,22 +257,53 @@ fn eval_weibull(k: f64, scale: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> D
     snap
 }
 
-fn eval_student_t(df: f64, scale: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> DistributionSnapshot {
+fn eval_student_t(
+    df: f64,
+    scale: f64,
+    p: f64,
+    n: usize,
+    rng: &mut OxidizeRng,
+) -> DistributionSnapshot {
     let dist = StudentTDist::new(df, 0.0, scale).expect("clamped Student-t parameters");
-    let (mut snap, draws) =
-        build_continuous_snapshot(&dist, p, n, rng, ("Degrees of Freedom nu", Some("Scale sigma")));
+    let (mut snap, draws) = build_continuous_snapshot(
+        &dist,
+        p,
+        n,
+        rng,
+        ("Degrees of Freedom nu", Some("Scale sigma")),
+    );
     snap.mle_summary = StudentTDist::fit_mle(&draws).map_or_else(
         |e| e.to_string(),
-        |d| format!("nu={:.2}, mu={:.3}, s={:.3}", d.df(), d.location(), d.scale()),
+        |d| {
+            format!(
+                "nu={:.2}, mu={:.3}, s={:.3}",
+                d.df(),
+                d.location(),
+                d.scale()
+            )
+        },
     );
     snap.mom_summary = StudentTDist::fit_mom(&draws).map_or_else(
         |e| e.to_string(),
-        |d| format!("nu={:.2}, mu={:.3}, s={:.3}", d.df(), d.location(), d.scale()),
+        |d| {
+            format!(
+                "nu={:.2}, mu={:.3}, s={:.3}",
+                d.df(),
+                d.location(),
+                d.scale()
+            )
+        },
     );
     snap
 }
 
-fn eval_lognormal(mu: f64, sigma: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> DistributionSnapshot {
+fn eval_lognormal(
+    mu: f64,
+    sigma: f64,
+    p: f64,
+    n: usize,
+    rng: &mut OxidizeRng,
+) -> DistributionSnapshot {
     let dist = LogNormalDist::new(mu, sigma).expect("clamped LogNormal parameters");
     let (mut snap, draws) =
         build_continuous_snapshot(&dist, p, n, rng, ("Log-Mean mu", Some("Log-Scale sigma")));
@@ -316,7 +365,13 @@ fn eval_poisson(lambda: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> Distribu
     snap
 }
 
-fn eval_binomial(trials: u64, prob: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> DistributionSnapshot {
+fn eval_binomial(
+    trials: u64,
+    prob: f64,
+    p: f64,
+    n: usize,
+    rng: &mut OxidizeRng,
+) -> DistributionSnapshot {
     let dist = BinomialDist::new(trials, prob).expect("clamped Binomial parameters");
     let (mut snap, draws) = build_discrete_snapshot(
         &dist,
@@ -340,8 +395,14 @@ fn eval_binomial(trials: u64, prob: f64, p: f64, n: usize, rng: &mut OxidizeRng)
 fn eval_negbin(r: f64, prob: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> DistributionSnapshot {
     let dist = NegativeBinomialDist::new(r, prob).expect("clamped NegativeBinomial");
     let k_max = dist.quantile(0.995).unwrap_or(25).max(10);
-    let (mut snap, draws) =
-        build_discrete_snapshot(&dist, k_max, p, n, rng, ("Dispersion r", Some("Success Prob p")));
+    let (mut snap, draws) = build_discrete_snapshot(
+        &dist,
+        k_max,
+        p,
+        n,
+        rng,
+        ("Dispersion r", Some("Success Prob p")),
+    );
     snap.mle_summary = NegativeBinomialDist::fit_mle(&draws).map_or_else(
         |e| e.to_string(),
         |d| format!("r={:.3}, p={:.3}", d.r(), d.p()),
@@ -367,8 +428,7 @@ fn eval_geometric(prob: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> Distribu
 
 fn eval_bernoulli(prob: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> DistributionSnapshot {
     let dist = BernoulliDist::new(prob).expect("clamped Bernoulli p");
-    let (mut snap, draws) =
-        build_discrete_snapshot(&dist, 1, p, n, rng, ("Success Prob p", None));
+    let (mut snap, draws) = build_discrete_snapshot(&dist, 1, p, n, rng, ("Success Prob p", None));
     snap.mle_summary = BernoulliDist::fit_mle(&draws)
         .map_or_else(|e| e.to_string(), |d| format!("p={:.3}", d.p()));
     snap.mom_summary = BernoulliDist::fit_mom(&draws)
@@ -393,7 +453,13 @@ fn eval_zip(rho: f64, lambda: f64, p: f64, n: usize, rng: &mut OxidizeRng) -> Di
     let counts: Vec<Count> = draws.iter().map(|&k| Count::new(k as u32)).collect();
     let mom_str = simple_zip_fit(&counts).map_or_else(
         |e| e.to_string(),
-        |est| format!("rho={:.3}, lambda={:.3}", est.rho.value(), est.lambda.value()),
+        |est| {
+            format!(
+                "rho={:.3}, lambda={:.3}",
+                est.rho.value(),
+                est.lambda.value()
+            )
+        },
     );
     snap.mle_summary = format!("Unclamped MoM/EM seed: {mom_str}");
     snap.mom_summary = mom_str;

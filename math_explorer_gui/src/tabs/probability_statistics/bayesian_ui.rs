@@ -76,6 +76,10 @@ impl BayesianInferenceTool {
                     self.is_playing = false;
                     self.rebuild_chain();
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {
+                    self.is_playing = false;
+                    self.bump_revision();
+                }
             }
         }
     }
@@ -86,7 +90,11 @@ impl BayesianInferenceTool {
             self.config.family,
             ConjugateFamily::BetaBinomial | ConjugateFamily::GammaPoisson
         );
-        let a_range = if is_positive_prior { 0.3..=12.0 } else { -4.0..=6.0 };
+        let a_range = if is_positive_prior {
+            0.3..=12.0
+        } else {
+            -4.0..=6.0
+        };
         let b_range = if self.config.family == ConjugateFamily::NormalInverseGamma {
             1.2..=10.0
         } else {
@@ -129,7 +137,10 @@ impl BayesianInferenceTool {
         } else {
             -3.0..=20.0
         };
-        let mut obs = self.config.obs_stat.clamp(*stat_range.start(), *stat_range.end());
+        let mut obs = self
+            .config
+            .obs_stat
+            .clamp(*stat_range.start(), *stat_range.end());
         if ui
             .add(egui::Slider::new(&mut obs, stat_range).text("Observed Stat"))
             .accessible_hover_text("Observed successes k, count scale, or sample mean")
@@ -281,7 +292,13 @@ impl BayesianInferenceTool {
         }
         let denom = (active.len() as f64) * width;
         (0..MCMC_HIST_BINS)
-            .map(|b| [lo + (b as f64 + 0.5) * width, (counts[b] as f64) / denom, width * 0.88])
+            .map(|b| {
+                [
+                    lo + (b as f64 + 0.5) * width,
+                    (counts[b] as f64) / denom,
+                    width * 0.88,
+                ]
+            })
             .collect()
     }
 
@@ -304,15 +321,22 @@ impl BayesianInferenceTool {
                 let bars: Vec<Bar> = self
                     .mcmc_histogram_bars()
                     .into_iter()
-                    .map(|[cx, h, w]| Bar::new(cx, h).width(w).fill(palette.info.gamma_multiply(0.42)))
+                    .map(|[cx, h, w]| {
+                        Bar::new(cx, h)
+                            .width(w)
+                            .fill(palette.info.gamma_multiply(0.42))
+                    })
                     .collect();
                 if !bars.is_empty() {
                     plot_ui.bar_chart(BarChart::new("MCMC Empirical Density", bars));
                 }
                 plot_ui.line(
-                    Line::new("Prior p(theta)", PlotPoints::from(self.analytical.prior_curve.clone()))
-                        .color(palette.warning)
-                        .width(1.8_f32),
+                    Line::new(
+                        "Prior p(theta)",
+                        PlotPoints::from(self.analytical.prior_curve.clone()),
+                    )
+                    .color(palette.warning)
+                    .width(1.8_f32),
                 );
                 plot_ui.line(
                     Line::new(
@@ -322,8 +346,12 @@ impl BayesianInferenceTool {
                     .color(palette.accent)
                     .width(2.6_f32),
                 );
-                plot_ui.vline(VLine::new("HPD Lower", self.analytical.hpd.lower).color(palette.success));
-                plot_ui.vline(VLine::new("HPD Upper", self.analytical.hpd.upper).color(palette.success));
+                plot_ui.vline(
+                    VLine::new("HPD Lower", self.analytical.hpd.lower).color(palette.success),
+                );
+                plot_ui.vline(
+                    VLine::new("HPD Upper", self.analytical.hpd.upper).color(palette.success),
+                );
             });
     }
 
@@ -337,7 +365,9 @@ impl BayesianInferenceTool {
 
     fn render_trace_plot(&self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.label(egui::RichText::new("Metropolis-Hastings Chain Trace (Pre-Allocated Buffer)").strong());
+        ui.label(
+            egui::RichText::new("Metropolis-Hastings Chain Trace (Pre-Allocated Buffer)").strong(),
+        );
         let plot_id = crate::framework::scoped_panel_id(ui, "bayesian_mcmc_trace_plot");
         Plot::new(plot_id)
             .legend(Legend::default())
@@ -345,14 +375,18 @@ impl BayesianInferenceTool {
             .y_axis_label("Parameter theta_t")
             .show(ui, |plot_ui| {
                 plot_ui.line(
-                    Line::new("MCMC Chain", PlotPoints::from(self.trace_points())).color(palette.info),
+                    Line::new("MCMC Chain", PlotPoints::from(self.trace_points()))
+                        .color(palette.info),
                 );
             });
     }
 
     pub(crate) fn build_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         vec![
-            ("Prior Density".to_string(), self.analytical.prior_curve.clone()),
+            (
+                "Prior Density".to_string(),
+                self.analytical.prior_curve.clone(),
+            ),
             (
                 "Exact Posterior Density".to_string(),
                 self.analytical.posterior_curve.clone(),
@@ -366,7 +400,7 @@ impl BayesianInferenceTool {
         vec![
             ExportPrimitive::Polyline {
                 name: "Prior Density".to_string(),
-                points: self.analytical.prior_curve.clone(),
+                points: self.analytical.prior_curve.clone().into(),
                 color: palette.warning,
                 stroke_width: 1.8,
                 closed: false,
@@ -374,7 +408,7 @@ impl BayesianInferenceTool {
             },
             ExportPrimitive::Polyline {
                 name: "Exact Posterior Density".to_string(),
-                points: self.analytical.posterior_curve.clone(),
+                points: self.analytical.posterior_curve.clone().into(),
                 color: palette.accent,
                 stroke_width: 2.4,
                 closed: false,
