@@ -30,6 +30,7 @@ fn test_animated_slider_state_toggle() {
             AnimatedSliderState {
                 playing: true,
                 direction: 1.0,
+                ..Default::default()
             },
         )
     });
@@ -65,6 +66,7 @@ fn test_animated_slider_ping_pong_reversal_and_clamping() {
             AnimatedSliderState {
                 playing: true,
                 direction: 1.0,
+                ..Default::default()
             },
         )
     });
@@ -138,6 +140,7 @@ fn test_animated_slider_focus_loss_pause() {
             AnimatedSliderState {
                 playing: true,
                 direction: 1.0,
+                ..Default::default()
             },
         )
     });
@@ -180,6 +183,7 @@ fn test_animated_slider_zero_range_no_division() {
             AnimatedSliderState {
                 playing: true,
                 direction: 1.0,
+                ..Default::default()
             },
         )
     });
@@ -210,6 +214,7 @@ fn test_animated_slider_manual_drag_pause() {
             AnimatedSliderState {
                 playing: true,
                 direction: 1.0,
+                ..Default::default()
             },
         )
     });
@@ -262,6 +267,7 @@ fn test_ode_animated_slider_sweep() {
             AnimatedSliderState {
                 playing: true,
                 direction: 1.0,
+                ..Default::default()
             },
         );
     });
@@ -366,6 +372,7 @@ fn set_state(ctx: &egui::Context, id: egui::Id, playing: bool) {
             AnimatedSliderState {
                 playing,
                 direction: 1.0,
+                ..Default::default()
             },
         )
     });

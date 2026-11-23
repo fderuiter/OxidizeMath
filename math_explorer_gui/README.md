@@ -95,10 +95,10 @@ impl ExplorerTab for FluidDynamicsTab {
 }
 ```
 
-#### 2. Automated Plugin Discovery (`build.rs`)
-Do **not** manually edit `src/tabs/mod.rs` or `src/app/mod.rs` to register your new tab. At compile time, [`build.rs`](build.rs) automatically scans `src/tabs/` (and workspace path dependencies) for `impl ExplorerTab for <Struct>` definitions (requiring `Default`) and generates `$OUT_DIR/generated_tabs.rs` (`instantiate_tabs()` and `instantiate_tab()`), which [`src/tabs/mod.rs`](src/tabs/mod.rs) includes automatically:
+#### 2. Static Module Declaration & Constructor Generation (`build.rs`)
+Declare `pub mod <tab_name>;` (paired with `#[cfg(feature = "<domain>")]` when feature-gated) inside [`src/tabs/mod.rs`](src/tabs/mod.rs) so `rustc` and `cargo fmt` traverse the module tree natively; do **not** manually edit `src/app/mod.rs` to wire constructors. At compile time, [`build.rs`](build.rs) verifies that [`src/tabs/mod.rs`](src/tabs/mod.rs) declares every local tab module, scans `src/tabs/` (and workspace path dependencies) for `impl ExplorerTab for <Struct>` definitions (requiring `Default`), and generates `$OUT_DIR/generated_tabs.rs` (`instantiate_tabs()` and `instantiate_tab()`):
 
-- `// @explorer_feature = "physics"`: Optional header comment gating the module behind a Cargo feature.
+- `// @explorer_feature = "physics"`: Optional header comment gating constructor registration behind a Cargo feature (matching `#[cfg(feature = "physics")]` on `pub mod` in [`src/tabs/mod.rs`](src/tabs/mod.rs)).
 - `// @explorer_order = 10`: Optional header comment controlling navigation bar sort order (lower numbers appear first).
 
 #### 3. Adding Interactive Tools Within a Domain Tab

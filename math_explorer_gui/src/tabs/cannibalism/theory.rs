@@ -3,40 +3,49 @@
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
-/// GUI [`TheoryDescribable`] metadata for [`super::CannibalismTool`].
+/// GUI [`TheoryDescribable`] metadata for age-structured cannibalism PDE, delay, and *Tribolium* models.
 #[derive(Default, Clone, Debug)]
 pub struct CannibalismTheory;
 
 impl TheoryDescribable for CannibalismTheory {
     fn theory_description(&self) -> String {
-        "Age-structured McKendrick-von Foerster transport PDE with nonlocal cannibalistic \
-         mortality and boundary renewal n(t, 0) = b(t). Below the Diekmann Hopf threshold \
-         cohorts relax toward the analytical equilibrium A*; above threshold, adult predation \
-         on vulnerable juveniles carves diagonal missing-generation troughs across the (t, a) \
-         Lexis plane, while Tribolium callow pupa cannibalism drives period-doubling chaos."
+        "Age-structured cannibalism couples McKendrick-von Foerster advection along characteristics \
+         with Diekmann vulnerability and Ricker/Holling saturation kernels, van den Bosch juvenile-adult \
+         maturation delay dynamics generating dwarf-and-giant Hopf cohort waves, stage-structured \
+         Tribolium callow predation period-doubling cascades, and guarded two-dimensional cannibal-normal ODEs."
             .to_string()
     }
 
     fn phonetic_description(&self) -> String {
-        "McKendrick von Foerster age structured cannibalism partial differential equation and Tribolium bifurcation lab"
+        "Age-structured McKendrick von Foerster cannibalism PDE, Hopf cohort cycles, and Tribolium bifurcation lab"
             .to_string()
     }
 
     fn theory_citation(&self) -> String {
-        "Diekmann, O., Nisbet, R. M., Gurney, W. S. C., & van den Bosch, F. (1986). Simple mathematical models for cannibalism: A critique and a new approach. Mathematical Biosciences, 78(1), 21-46; Costantino, R. F., Desharnais, R. A., Cushing, J. M., & Dennis, B. (1997). Chaotic dynamics in an insect population. Science, 275(5298), 389-391."
+        "Diekmann et al. (1986), Simple mathematical models for cannibalism, Math. Biosci. 78(1), 21-46; \
+         van den Bosch et al. (1988), Cannibalism as a Life Boat Mechanism, J. Math. Biol. 26, 619-633; \
+         Costantino et al. (1997), Chaotic dynamics in an insect population, Science 275(5298), 389-391."
             .to_string()
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
         let mut descs = HashMap::new();
         descs.insert(
-            "mckendrick_transport".to_string(),
-            "First-order hyperbolic age transport along characteristic lines da/dt = 1 with exponential survival."
+            "mckendrick_pde".to_string(),
+            "Characteristic upwind discretization of the McKendrick-von Foerster transport PDE \
+             with boundary renewal quadrature."
                 .to_string(),
         );
         descs.insert(
-            "diekmann_hopf".to_string(),
-            "Supercritical Hopf bifurcation into single-generation cohort waves driven by adult-on-juvenile predation."
+            "diekmann_saturation".to_string(),
+            "Age-specific cannibalism mortality modulated by vulnerable cohort biomass and \
+             Ricker or Holling functional response saturation."
+                .to_string(),
+        );
+        descs.insert(
+            "hopf_cohorts".to_string(),
+            "Maturation delay across juvenile age [0, alpha] interacting with adult cannibalism \
+             pressure to trigger sustained dwarf-and-giant cohort waves."
                 .to_string(),
         );
         descs.insert(
@@ -44,12 +53,17 @@ impl TheoryDescribable for CannibalismTheory {
             "Nonlinear Larva-Pupa-Adult flour beetle stage dynamics exhibiting 2-cycles, invariant loops, and chaos."
                 .to_string(),
         );
+        descs.insert(
+            "lumped_ode".to_string(),
+            "Runge-Kutta 4 integration of the guarded two-compartment cannibal and normal population ODE."
+                .to_string(),
+        );
         descs
     }
 
     fn theory_latex_equation(&self) -> Option<String> {
         Some(
-            r"\frac{\partial n}{\partial t} + \frac{\partial n}{\partial a} = -\left(\mu_0(a) + c \int_0^\infty \phi(a, a')\,n(t, a')\,da'\right) n(t, a), \quad n(t, 0) = \int_0^\infty \beta(a, N)\,n(t, a)\,da"
+            r"\frac{\partial n}{\partial t} + \frac{\partial n}{\partial a} = -\left(\nu(a) + c(t)\,\Phi(c(t))\,C(a)\right)n(t,a), \quad n(t,0)=\int_0^{a_{\max}}\beta(a,N)\,n(t,a)\,da"
                 .to_string(),
         )
     }

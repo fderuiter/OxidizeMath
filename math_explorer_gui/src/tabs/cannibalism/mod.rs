@@ -1,25 +1,34 @@
 // @explorer_feature = "applied"
+// @explorer_order = 36
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
-/// Preallocated Lexis carpet texture and plot rendering helpers for [`CannibalismTool`].
+/// Validated state schema, bounds, and starter presets for [`CannibalismTool`].
+pub mod bifurcation_state;
+/// McKendrick-von Foerster Lexis carpet and *Tribolium* bifurcation [`CannibalismTool`].
+pub mod bifurcation_tool;
+/// Rolling 2D Lexis `(t, a)` density buffer and bifurcation sweep plots for [`CannibalismTool`].
 pub mod plots;
-/// Serializable state schema, bounds validation, and starter presets for [`CannibalismTool`].
+/// Validated state schema, bounds, and federated presets for [`PopulationStructureTool`].
 pub mod state;
-/// Academic citations and equations for [`CannibalismTool`].
+/// Theoretical equations and citations for McKendrick-von Foerster, van den Bosch, and *Tribolium* models.
 pub mod theory;
-/// Interactive McKendrick-von Foerster PDE and *Tribolium* bifurcation lab.
+/// In-thread simulation runner, Lexis heatmap builder, and [`FiniteStateGuard`](crate::framework::FiniteStateGuard).
 pub mod tool;
+/// Side-panel controls and scientific plots (Lexis heatmap, age pyramid, Hopf cycles, 2D ODE).
+pub mod views;
 
-pub use tool::CannibalismTool;
+pub use bifurcation_tool::CannibalismTool;
+pub use tool::PopulationStructureTool;
 
-/// Applied mathematics tab hosting [`CannibalismTool`] inside [`crate::framework::SimulationFramework`].
-pub struct CannibalismTab {
+/// Applied mathematics tab hosting [`PopulationStructureTool`] and [`CannibalismTool`]
+/// inside [`crate::framework::SimulationFramework`].
+pub struct PopulationStructureTab {
     /// Underlying simulation framework managing exports, presets, theory portal, and state guard.
     pub framework: crate::framework::SimulationFramework,
 }
 
-impl Default for CannibalismTab {
+impl Default for PopulationStructureTab {
     fn default() -> Self {
         Self {
             framework: crate::framework::SimulationFramework::new("cannibalism"),
@@ -27,9 +36,17 @@ impl Default for CannibalismTab {
     }
 }
 
-impl ExplorerTab for CannibalismTab {
+impl ExplorerTab for PopulationStructureTab {
     fn name(&self) -> &'static str {
-        "Cannibalism"
+        "Population Structure"
+    }
+
+    fn academic_domain(&self) -> &'static str {
+        "Applied Math"
+    }
+
+    fn url_slug(&self) -> &'static str {
+        "cannibalism"
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -61,6 +78,8 @@ impl ExplorerTab for CannibalismTab {
     }
 }
 
+#[cfg(test)]
+mod bifurcation_tests;
 #[cfg(test)]
 mod tests;
 

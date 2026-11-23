@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::state::{CannibalismRegime, CannibalismToolState};
+use super::bifurcation_state::{CannibalismRegime, CannibalismToolState};
 use crate::app::SemanticPalette;
 use eframe::egui::{self, Color32, ColorImage, TextureOptions};
 use egui_plot::{HLine, Legend, Line, Plot, PlotImage, PlotPoint, Points, VLine};

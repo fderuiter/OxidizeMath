@@ -6,6 +6,18 @@ use math_commons::math_kernel::types::flatten_2d_index;
 
 use super::DriverConfig2D;
 
+/// Returns the peak relative wave-speed multiplier ($\ge 1.0$) across `wave_speed_mask`.
+#[verified_engine::verified]
+pub(super) fn max_wave_speed_scale(wave_speed_mask: &[f64]) -> f64 {
+    let mut max_scale = 1.0_f64;
+    for &s in wave_speed_mask {
+        if s.is_finite() && s > max_scale {
+            max_scale = s;
+        }
+    }
+    max_scale
+}
+
 /// Evaluates localized spot or line-source forcing acceleration at grid cell `(x, y)`.
 #[verified_engine::verified]
 pub(super) fn driver_force_at(

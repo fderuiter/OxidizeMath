@@ -1,9 +1,17 @@
-//! Integration tests for cannibalism.
+//! Integration tests for cannibalism PDE solvers, operators, and bifurcation models.
 use domain_applied::applied::cannibalism;
+use std::sync::Mutex;
+
+#[global_allocator]
+static ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
+static ALLOC_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 #[verified_engine::verified]
 fn test_mckendrick_von_foerster() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let t = 0.0;
     let a = 0.0;
     let mu = 0.1;
@@ -15,6 +23,7 @@ fn test_mckendrick_von_foerster() {
 #[test]
 #[verified_engine::verified]
 fn test_birth_rate() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let t = 0.0;
     let result = cannibalism::birth_rate(t);
     assert_eq!(result, 100.0);
@@ -23,6 +32,7 @@ fn test_birth_rate() {
 #[test]
 #[verified_engine::verified]
 fn test_death_rate() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let nu_a = 0.1;
     let c_a = 0.2;
     let k_t = 10.0;
@@ -34,6 +44,7 @@ fn test_death_rate() {
 #[test]
 #[verified_engine::verified]
 fn test_juvenile_dynamics() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let i_t = 0.1;
     let c_a = 0.2;
     let a_t = 10.0;
@@ -45,6 +56,7 @@ fn test_juvenile_dynamics() {
 #[test]
 #[verified_engine::verified]
 fn test_adult_dynamics() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let n_t_alpha = 50.0;
     let f_i_t = 0.1;
     let a_t = 10.0;
@@ -54,7 +66,77 @@ fn test_adult_dynamics() {
 
 #[test]
 #[verified_engine::verified]
+fn test_characteristic_advection_and_exponential_mass_balance() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mu_const = 0.25;
+    let kernel = cannibalism::CannibalismKernel::new(mu_const, 0.0, 0.0, 2.0, 0.05, 4.0, 0.0, 50.0);
+    let mut solver = cannibalism::McKendrickSolver::new(41, 8.0, kernel);
+    solver.set_initial_density(|a| if (1.0..=3.0).contains(&a) { 20.0 } else { 0.0 });
+    let initial_mass = solver.total_population();
+    let da = solver.da();
+
+    // Advance 8 exact characteristic steps (t = 1.6) with zero boundary birth
+    for _ in 0..8 {
+        solver.step_upwind_with_boundary(da, 0.0);
+    }
+
+    let expected_mass = initial_mass * (-mu_const * solver.time()).exp();
+    assert!((solver.total_population() - expected_mass).abs() < 1e-10);
+    // Support shifted from [1.0, 3.0] to [2.6, 4.6]: ages < 2.4 must be zero
+    assert!(solver.density()[10] == 0.0);
+    assert!(solver.density()[18] > 10.0);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_cfl_substepping_and_extinction_zero_cannibalism_guards() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let kernel = cannibalism::CannibalismKernel::new(0.1, 0.01, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0);
+    assert_eq!(kernel.ricker_saturation(0.0), 1.0);
+    assert_eq!(kernel.vulnerability_at(1.0), 0.0);
+    assert_eq!(kernel.fertility_at(5.0, 0.0), 0.0);
+
+    let mut solver = cannibalism::McKendrickSolver::new(33, 8.0, kernel);
+    // Extinction state N(t) = 0 with large dt > da (triggers CFL substepping)
+    solver.step_upwind(1.5);
+    assert_eq!(solver.total_population(), 0.0);
+    assert!(solver.density().iter().all(|v| v.is_finite() && *v == 0.0));
+
+    // Negative and NaN initial inputs are clamped to 0.0
+    solver.set_initial_density(|a| if a < 2.0 { -5.0 } else { f64::NAN });
+    solver.step_upwind(1.0);
+    assert_eq!(solver.total_population(), 0.0);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_zero_heap_allocation_during_pde_stepping() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut mvf =
+        cannibalism::McKendrickSolver::new(64, 10.0, cannibalism::CannibalismKernel::default());
+    mvf.set_initial_density(|a| 12.0 * (-0.3 * a).exp());
+
+    let mut ja = cannibalism::JuvenileAdultSolver::new(
+        64,
+        15.0,
+        cannibalism::JuvenileAdultParams::default(),
+    );
+    ja.set_initial_state(15.0, |a| 8.0 * (-0.25 * a).exp());
+
+    verified_engine::metrics::enable_verification();
+    verified_engine::allocator::lock_allocations();
+    mvf.step_upwind(0.5);
+    ja.step_upwind(0.5);
+    verified_engine::allocator::unlock_allocations();
+
+    assert!(mvf.total_population() > 0.0 && mvf.total_population().is_finite());
+    assert!(ja.adults() > 0.0 && ja.adults().is_finite());
+}
+
+#[test]
+#[verified_engine::verified]
 fn test_upwind_operators_and_non_negative_clamping() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(cannibalism::death_rate(-0.3, -0.5, 10.0, 1.0), 0.0);
     assert_eq!(cannibalism::death_rate(f64::NAN, 0.2, 5.0, 1.0), 0.0);
     assert!(cannibalism::birth_rate(std::f64::consts::PI) > 149.0);
@@ -68,7 +150,7 @@ fn test_upwind_operators_and_non_negative_clamping() {
     let mut juv = [12.0, 9.0, 6.0, 3.0];
     let mut scratch = [0.0; 4];
     let attack = [0.4, 0.3, 0.1, 0.0];
-    let params = cannibalism::JuvenileAdultParams {
+    let params = cannibalism::CoupledMaturationParams {
         birth_rate_per_adult: 18.0,
         juvenile_mortality: 0.2,
         adult_mortality: 0.25,
@@ -82,6 +164,7 @@ fn test_upwind_operators_and_non_negative_clamping() {
 
 #[test]
 fn test_diekmann_equilibrium_and_hopf_cohort_waves() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut sub_solver = cannibalism::AgeStructuredSolver::new(
         cannibalism::AgeStructuredConfig::diekmann_subcritical(),
     );
@@ -120,6 +203,7 @@ fn test_diekmann_equilibrium_and_hopf_cohort_waves() {
 
 #[test]
 fn test_tribolium_callow_two_cycles_and_pde_positivity() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let lpa = cannibalism::TriboliumLpaModel::two_cycle_preset(0.7);
     let mut state = [1.5, 0.5, 1.0];
     for _ in 0..2400 {

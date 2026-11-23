@@ -1,238 +1,247 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::state::{
-    CannibalismRegime, CannibalismToolState, PRESET_DIEKMANN_HOPF_WAVES,
-    PRESET_TRIBOLIUM_TWO_CYCLES,
-};
-use super::{CannibalismTab, CannibalismTool};
-use crate::framework::theory_links::resolve_portal_paper_links;
-use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
+use super::state::{PopulationStructureState, PopulationViewMode};
+use super::*;
+use crate::framework::{ExportFormat, ExportStatusSeverity, FiniteStateGuard, InteractiveTool};
 use crate::tabs::ExplorerTab;
-use eframe::egui::{self, CentralPanel, Frame};
+use eframe::egui;
 
-#[test]
-fn test_cannibalism_all_controls_update_state_revision_and_roundtrip() {
-    let mut tool = CannibalismTool::default();
-    let mut prev_rev = tool.state_revision();
-    assert!(prev_rev > 0);
-
-    let mutations: [fn(&mut CannibalismTool); 9] = [
-        |t| t.state.regime = CannibalismRegime::TriboliumChaos,
-        |t| t.state.beta0 = 45.0,
-        |t| t.state.c_cannibalism = 0.85,
-        |t| t.state.c_pa = 0.7,
-        |t| t.state.mu0 = 0.25,
-        |t| t.state.grid_size = 128,
-        |t| t.state.steps_per_frame = 6,
-        |t| t.state.sweep_points = 40,
-        |t| t.state.is_playing = true,
-    ];
-
-    for (idx, mutate) in mutations.into_iter().enumerate() {
-        mutate(&mut tool);
-        let next_rev = tool.state_revision();
-        assert_ne!(
-            next_rev, prev_rev,
-            "Cannibalism mutation #{idx} did not change state_revision()"
-        );
-        prev_rev = next_rev;
-    }
-
-    // Transient PDE stepping must NOT alter persisted parameter state_revision()
-    let rev_before_step = tool.state_revision();
-    tool.advance_pde_steps(5);
-    assert_eq!(tool.state_revision(), rev_before_step);
-
-    let saved = tool.save_state().expect("save_state must succeed");
-    let mut restored = CannibalismTool::default();
-    restored
-        .try_load_state(&saved)
-        .expect("try_load_state must succeed");
-    assert_eq!(restored.save_state().as_deref(), Some(saved.as_str()));
-    assert_eq!(restored.state_revision(), tool.state_revision());
-}
-
-#[test]
-fn test_cannibalism_state_rejects_unknown_fields_and_out_of_bounds_values() {
-    let mut tool = CannibalismTool::default();
-    let mut val: serde_json::Value =
-        serde_json::from_str(&tool.save_state().unwrap()).expect("valid state JSON");
-    val.as_object_mut()
-        .unwrap()
-        .insert("rogue_field".to_string(), serde_json::json!(123));
-    assert!(
-        tool.try_load_state(&val.to_string()).is_err(),
-        "deny_unknown_fields must reject extra JSON keys"
-    );
-
-    let bad = CannibalismToolState {
-        beta0: 500.0,
-        ..Default::default()
-    };
-    let bad_json = serde_json::to_string(&bad).unwrap();
-    assert!(tool.try_load_state(&bad_json).is_err());
-
-    let oversized = format!("{{\"regime\":\"DiekmannHopf\",\"pad\":\"{}\"}}", "x".repeat(70_000));
-    assert!(tool.try_load_state(&oversized).is_err());
-}
-
-#[test]
-fn test_cannibalism_starter_presets_and_theory_paper_links() {
-    let links = resolve_portal_paper_links("CannibalismTool", "cannibalism");
-    assert!(
-        links.iter().any(|l| l.paper_name == "cannibalism.tex"),
-        "CannibalismTool must link to cannibalism.tex in Theory Context Portal, got {links:?}"
-    );
-
-    let mut hopf_tool = CannibalismTool::default();
-    hopf_tool
-        .import_preset_json(PRESET_DIEKMANN_HOPF_WAVES)
-        .expect("Diekmann Hopf preset must load");
-    assert_eq!(hopf_tool.state.regime, CannibalismRegime::DiekmannHopf);
-    assert!((hopf_tool.state.beta0 - 45.0).abs() < 1e-12);
-    hopf_tool.complete_bifurcation_sweep();
-    assert!(!hopf_tool.bifurcation_points.is_empty());
-
-    let mut tri_tool = CannibalismTool::default();
-    tri_tool
-        .import_preset_json(PRESET_TRIBOLIUM_TWO_CYCLES)
-        .expect("Tribolium 2-cycles preset must load");
-    assert_eq!(tri_tool.state.regime, CannibalismRegime::TriboliumChaos);
-    assert!((tri_tool.state.c_pa - 0.7).abs() < 1e-12);
-    tri_tool.complete_bifurcation_sweep();
-    assert!(!tri_tool.bifurcation_points.is_empty());
-}
-
-#[test]
-fn test_cannibalism_deferred_sweep_and_high_contrast_lexis() {
-    let ctx = egui::Context::default();
-    let mut tool = CannibalismTool::default();
-    tool.rebuild_simulation(false);
-    assert_eq!(tool.sweep_cursor, 0);
-    assert!(tool.bifurcation_points.is_empty());
-
-    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
-    let _ = ctx.run(
-        egui::RawInput {
-            screen_rect: Some(screen_rect),
-            ..Default::default()
-        },
-        |ctx| {
-            CentralPanel::default()
-                .frame(Frame::NONE)
-                .show(ctx, |ui| tool.show_inside(ui));
-        },
-    );
-    assert!(
-        tool.sweep_cursor > 0 && tool.sweep_cursor <= tool.state.sweep_points,
-        "Idle frame should advance deferred bifurcation cursor"
-    );
-
-    let hc_img = tool.lexis.build_color_image(true);
-    assert!(hc_img.pixels.iter().all(|px| px != &egui::Color32::BLACK));
-}
-
-fn run_tab_frame(
-    ctx: &egui::Context,
-    tab: &mut CannibalismTab,
-    export: Option<ExportFormat>,
-) -> egui::FullOutput {
-    let mut frame = eframe::Frame::_new_kittest();
-    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
-    ctx.run(
-        egui::RawInput {
-            screen_rect: Some(screen_rect),
-            ..Default::default()
-        },
-        |ctx| {
-            if let Some(fmt) = export {
-                tab.framework.queue_export(fmt);
-            }
-            CentralPanel::default()
-                .frame(Frame::NONE)
-                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
-        },
-    )
-}
-
-#[test]
-fn test_cannibalism_single_tool_sidebar_and_exports() {
+fn run_headless_tab_frame(tab: &mut PopulationStructureTab) -> egui::FullOutput {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
-    let mut tab = CannibalismTab::default();
+    let raw = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::Vec2::new(1280.0, 800.0),
+        )),
+        ..Default::default()
+    };
+    ctx.run(raw, |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            tab.framework.show_inside(ui, "cannibalism");
+        });
+    })
+}
+
+#[test]
+fn test_tab_routing_slug_domain_and_headless_render() {
+    let mut tab = PopulationStructureTab::default();
+    assert_eq!(tab.name(), "Population Structure");
     assert_eq!(tab.academic_domain(), "Applied Math");
     assert_eq!(tab.url_slug(), "cannibalism");
+    assert_eq!(tab.active_tool_id(), Some("PopulationStructureTool"));
 
-    tab.framework
-        .apply_starter_card(
-            "Diekmann Hopf Cohort Waves",
-            Some("CannibalismTool"),
-            Some(PRESET_DIEKMANN_HOPF_WAVES),
-        )
-        .unwrap();
-    let out = run_tab_frame(&ctx, &mut tab, None);
-    let ak = out.platform_output.accesskit_update.as_ref().unwrap();
-    let has_redundant_tools_heading = ak
-        .nodes
-        .iter()
-        .any(|(_, n)| n.label() == Some("Tools") && n.role() == egui::accesskit::Role::Heading);
-    assert!(!has_redundant_tools_heading);
-
-    for fmt in [
-        ExportFormat::Csv,
-        ExportFormat::Json,
-        ExportFormat::Svg,
-        ExportFormat::Png,
-    ] {
-        let _ = run_tab_frame(&ctx, &mut tab, Some(fmt));
-        assert_eq!(
-            tab.framework.export_status_severity,
-            ExportStatusSeverity::Success
-        );
-    }
-    let _ = std::fs::write(
-        "/tmp/cannibalism_hopf_export.png",
-        tab.framework
-            .export_queue
-            .last_exported_bytes
-            .as_ref()
-            .expect("cannibalism PNG bytes"),
+    let out = run_headless_tab_frame(&mut tab);
+    assert!(!out.shapes.is_empty());
+    let rev_before = tab.state_revision();
+    let _ = run_headless_tab_frame(&mut tab);
+    assert_eq!(
+        tab.state_revision(),
+        rev_before,
+        "Idle headless frames must not mutate state_revision"
     );
 }
 
 #[test]
-fn test_export_tribolium_and_lexis_artifacts() {
-    let ctx = egui::Context::default();
-    let mut tab = CannibalismTab::default();
-    tab.framework
-        .apply_starter_card(
-            "Tribolium 2-Cycle Bifurcation",
-            Some("CannibalismTool"),
-            Some(PRESET_TRIBOLIUM_TWO_CYCLES),
-        )
-        .unwrap();
-    let _ = run_tab_frame(&ctx, &mut tab, None);
-    let _ = run_tab_frame(&ctx, &mut tab, Some(ExportFormat::Png));
-    let _ = std::fs::write(
-        "/tmp/cannibalism_tribolium_export.png",
-        tab.framework
-            .export_queue
-            .last_exported_bytes
-            .as_ref()
-            .expect("tribolium PNG bytes"),
+fn test_state_bounds_validation_and_lossless_roundtrip() {
+    let mut tool = PopulationStructureTool::default();
+    let baseline = tool.save_state().expect("serializes state");
+
+    let mut custom = PopulationStructureState {
+        age_bins: 128,
+        attack_rate: 0.35,
+        fecundity_rate: 25.0,
+        view_mode: PopulationViewMode::PhasePortrait,
+        ..PopulationStructureState::default()
+    };
+    let json = serde_json::to_string(&custom).unwrap();
+    tool.try_load_state(&json)
+        .expect("valid custom state loads");
+    assert_eq!(tool.save_state().as_deref(), Some(json.as_str()));
+    assert_ne!(tool.save_state().as_deref(), Some(baseline.as_str()));
+
+    custom.age_bins = 8;
+    let too_small = serde_json::to_string(&custom).unwrap();
+    assert!(tool.try_load_state(&too_small).is_err());
+
+    custom.age_bins = 1024;
+    let too_large = serde_json::to_string(&custom).unwrap();
+    assert!(tool.try_load_state(&too_large).is_err());
+
+    let huge_array = format!(r#"{{"items":[{}]}}"#, vec!["0"; 600].join(","));
+    assert!(tool.state_bounds().validate_json(&huge_array).is_err());
+}
+
+#[test]
+fn test_finite_state_guard_recovery_actions_and_clamping() {
+    let mut tool = PopulationStructureTool::default();
+    tool.config.dt = f64::NAN;
+    tool.config.age_bins = 4096;
+    tool.config.attack_rate = f64::INFINITY;
+    assert!(!tool.is_finite_state());
+    assert!(tool.diverged());
+
+    assert!(<PopulationStructureTool as InteractiveTool>::clamp_parameters(&mut tool));
+    assert_eq!(tool.config.age_bins, 512);
+    assert!(tool.is_finite_state());
+    assert!(!tool.diverged());
+
+    tool.config.dt = 0.24;
+    tool.diagnostic = Some(crate::framework::DiagnosticReport::new(
+        1.0,
+        10,
+        "density",
+        "Simulated divergence",
+    ));
+    assert!(tool.diverged());
+    tool.auto_scale_step_size();
+    assert!(!tool.diverged());
+    assert!((tool.config.dt - 0.12).abs() < 1e-12);
+
+    tool.reset_parameters();
+    assert_eq!(tool.config, PopulationStructureState::default());
+    assert!(tool.is_finite_state());
+}
+
+#[test]
+fn test_playback_stepping_and_high_contrast_lexis_wcag_guard() {
+    let mut tool = PopulationStructureTool::default();
+    let rev_before = tool.state_revision();
+    let t0 = tool.mvf_solver.time();
+    tool.step_simulation();
+    assert!(tool.mvf_solver.time() > t0);
+    assert_eq!(
+        tool.state_revision(),
+        rev_before,
+        "Stepping simulation must not dirty parameter state_revision"
     );
 
-    let mut tool = CannibalismTool::default();
-    tool.import_preset_json(PRESET_DIEKMANN_HOPF_WAVES).unwrap();
-    tool.advance_pde_steps(600);
-    for _ in 0..96 {
-        tool.advance_pde_steps(3);
+    let hc_img = tool.compute_lexis_image(true);
+    assert!(hc_img.width() > 1 && hc_img.height() >= 16);
+    let contrast_on_black = |px: egui::Color32| -> f64 {
+        let ch = |c: u8| {
+            let s = f64::from(c) / 255.0;
+            if s <= 0.03928 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let lum = 0.2126 * ch(px.r()) + 0.7152 * ch(px.g()) + 0.0722 * ch(px.b());
+        (lum + 0.05) / 0.05
+    };
+    for &px in &hc_img.pixels {
+        let ratio = contrast_on_black(px);
+        assert!(
+            ratio >= 3.0,
+            "High-contrast Lexis pixel {px:?} must meet >=3:1 contrast on #000000, got {ratio}"
+        );
     }
-    let color_img = tool.lexis.build_color_image(false);
-    let [w, h] = color_img.size;
-    let mut ppm = format!("P6\n{w} {h}\n255\n").into_bytes();
-    for px in &color_img.pixels {
-        ppm.extend_from_slice(&[px.r(), px.g(), px.b()]);
+
+    tool.lexis_columns.clear();
+    tool.lexis_columns.push_back(vec![0.0; 64]);
+    let zero_img = tool.compute_lexis_image(false);
+    assert_eq!(zero_img.pixels.len(), 64);
+}
+
+#[test]
+fn test_csv_json_png_and_svg_exports_across_dashboard_and_lexis_modes() {
+    for mode in [
+        PopulationViewMode::Dashboard,
+        PopulationViewMode::LexisHeatmap,
+    ] {
+        let mut tab = PopulationStructureTab::default();
+        let cfg = PopulationStructureState {
+            view_mode: mode,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        tab.framework
+            .active_tool
+            .as_mut()
+            .unwrap()
+            .try_load_state(&json)
+            .unwrap();
+
+        for fmt in [
+            ExportFormat::Csv,
+            ExportFormat::Json,
+            ExportFormat::Png,
+            ExportFormat::Svg,
+        ] {
+            let ctx = egui::Context::default();
+            let raw = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::Vec2::new(640.0, 480.0),
+                )),
+                ..Default::default()
+            };
+            let _ = ctx.run(raw, |ctx| {
+                tab.framework.show_export_modal = true;
+                tab.framework.queue_export(fmt);
+                tab.framework.show(ctx, "cannibalism_export_test");
+            });
+            assert_eq!(
+                tab.framework.export_status_severity,
+                ExportStatusSeverity::Success,
+                "Export {fmt:?} in mode {mode:?} failed: {:?}",
+                tab.framework.export_status_message
+            );
+        }
     }
-    let _ = std::fs::write("/tmp/cannibalism_lexis.ppm", ppm);
+}
+
+#[test]
+fn test_cannibalism_visual_artifacts_screenshot_generation() {
+    let temp_dir = std::env::temp_dir();
+    let pid = std::process::id();
+    let cases = [
+        (
+            PopulationViewMode::LexisHeatmap,
+            "cannibalism_lexis_heatmap.png",
+        ),
+        (
+            PopulationViewMode::PhasePortrait,
+            "cannibalism_hopf_phase_portrait.png",
+        ),
+        (
+            PopulationViewMode::AgePyramid,
+            "cannibalism_age_pyramid.png",
+        ),
+    ];
+    for (mode, filename) in cases {
+        let mut tab = PopulationStructureTab::default();
+        tab.framework.export_options.width = 1100;
+        tab.framework.export_options.height = 700;
+        let cfg = PopulationStructureState {
+            age_bins: 96,
+            attack_rate: 0.28,
+            fecundity_rate: 22.0,
+            view_mode: mode,
+            ..Default::default()
+        };
+        let tool = tab.framework.active_tool.as_mut().unwrap();
+        tool.try_load_state(&serde_json::to_string(&cfg).unwrap())
+            .unwrap();
+        for _ in 0..240 {
+            tool.step_simulation();
+        }
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            tab.framework.show_export_modal = true;
+            tab.framework.queue_export(ExportFormat::Png);
+            tab.framework.show(ctx, "cannibalism_screenshot_gen");
+        });
+        let bytes = tab
+            .framework
+            .export_queue
+            .last_exported_bytes
+            .as_deref()
+            .expect("PNG bytes generated");
+        assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        let out_path = temp_dir.join(format!("oxidize_{pid}_{filename}"));
+        std::fs::write(&out_path, bytes).expect("writes screenshot PNG");
+        let _ = std::fs::remove_file(&out_path);
+    }
 }

@@ -77,6 +77,14 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
                 tab.import_url_preset_json(Some("FavoritismTool"), Some(&val.to_string()))
                     .unwrap();
             }
+            "cannibalism" => {
+                let orig = tab.export_url_preset_json().unwrap().unwrap();
+                let mut val: serde_json::Value = serde_json::from_str(&orig).unwrap();
+                val["config"]["age_bins"] = serde_json::json!(96);
+                val["config"]["attack_rate"] = serde_json::json!(0.31);
+                tab.import_url_preset_json(Some("PopulationStructureTool"), Some(&val.to_string()))
+                    .unwrap();
+            }
             _ => {}
         }
     }
@@ -136,8 +144,8 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     assert_eq!(
         tools.len(),
-        77,
-        "Expected all 77 registered InteractiveTools"
+        79,
+        "Expected all 79 registered InteractiveTools"
     );
 
     let mut source_app = MathExplorerApp::default();
@@ -199,8 +207,8 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
         .collect();
     assert_eq!(
         presets.len(),
-        111,
-        "Expected all 111 StarterPresetMetadata entries"
+        115,
+        "Expected all 115 StarterPresetMetadata entries"
     );
 
     for preset in presets {

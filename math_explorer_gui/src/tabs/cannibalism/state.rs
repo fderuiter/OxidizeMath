@@ -1,267 +1,338 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use math_explorer::applied::cannibalism::{
-    AgeStructuredConfig, PredationRegime, TriboliumLpaModel,
-};
+use math_explorer::applied::cannibalism::{CannibalismKernel, JuvenileAdultParams};
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 
-/// Population cannibalism regime explored in [`super::CannibalismTool`].
+/// Minimum permitted number of age grid cells for interactive PDE grids.
+pub const MIN_AGE_BINS: usize = 16;
+
+/// Maximum permitted number of age grid cells for interactive PDE grids.
+pub const MAX_AGE_BINS: usize = 512;
+
+/// Structural JSON bounds enforced on untrusted `PopulationStructureTool` payloads.
+pub const CANNIBALISM_STATE_BOUNDS: crate::framework::ToolStateBounds =
+    crate::framework::ToolStateBounds::new(65_536, 8, MAX_AGE_BINS);
+
+/// Active scientific viewport layout inside [`super::PopulationStructureTool`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum CannibalismRegime {
-    /// Diekmann et al. (1986) adult-on-juvenile cannibalism producing Hopf cohort waves.
+pub enum PopulationViewMode {
+    /// Four-panel synchronized view showing Lexis heatmap, age pyramid, Hopf phase, and 2D ODE.
     #[default]
-    DiekmannHopf,
-    /// Costantino et al. (1997) *Tribolium* egg and callow pupa predation producing period-doubling chaos.
-    TriboliumChaos,
+    Dashboard,
+    /// Full-bleed Lexis `(a, t)` cohort density heatmap (`egui::ColorImage`).
+    LexisHeatmap,
+    /// Age-structured density distribution `n(t, a)` and juvenile cohort overlay.
+    AgePyramid,
+    /// `(J(t), A(t))` juvenile-adult Hopf limit-cycle phase portrait.
+    PhasePortrait,
+    /// Side-by-side time trajectories comparing lumped 2D ODE and age-structured PDE totals.
+    OdeComparison,
 }
 
-impl CannibalismRegime {
-    /// Human-readable regime title rendered in radio buttons and status summaries.
+impl PopulationViewMode {
+    /// Short user-facing label for selector controls.
+    #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
-            Self::DiekmannHopf => "Diekmann Hopf Cohort Waves",
-            Self::TriboliumChaos => "Tribolium Egg & Callow Chaos",
+            Self::Dashboard => "2×2 Dashboard",
+            Self::LexisHeatmap => "Lexis (a, t) Heatmap",
+            Self::AgePyramid => "Age Pyramid n(t, a)",
+            Self::PhasePortrait => "Hopf Phase (J, A)",
+            Self::OdeComparison => "2D ODE vs PDE",
         }
     }
 }
 
-/// Complete validated state schema for [`super::CannibalismTool`].
+/// Complete validated configuration schema for [`super::PopulationStructureTool`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CannibalismToolState {
-    /// Active ecological cannibalism model regime.
-    pub regime: CannibalismRegime,
-    /// Adult fecundity rate `beta0` (`5.0..=200.0`).
-    pub beta0: f64,
-    /// Adult-on-juvenile cannibalism attack rate `c` (`0.05..=3.0`).
-    pub c_cannibalism: f64,
-    /// Adult-on-pupa callow cannibalism coefficient `c_pa` (`0.0..=2.0`).
-    pub c_pa: f64,
-    /// Baseline per-capita natural mortality rate `mu0` (`0.02..=1.5`).
-    pub mu0: f64,
-    /// Number of upwind characteristic age bins (`32..=256`).
-    pub grid_size: usize,
-    /// Number of PDE characteristic steps advanced per animation frame (`1..=20`).
-    pub steps_per_frame: usize,
-    /// Number of parameter slices in the bifurcation sweep (`16..=80`).
-    pub sweep_points: usize,
-    /// Whether live cohort transport animation is actively running.
-    pub is_playing: bool,
+pub struct PopulationStructureState {
+    /// Number of uniform age nodes (`16..=512`).
+    pub age_bins: usize,
+    /// Maximum age horizon `a_max` (`2.0..=20.0`).
+    pub max_age: f64,
+    /// Juvenile maturation threshold `alpha` (`0.5..=10.0`).
+    pub maturation_age: f64,
+    /// Maximum juvenile age `a_vuln` vulnerable to cannibalism (`0.2..=8.0`).
+    pub vulnerable_age_max: f64,
+    /// Requested integration step size `dt` (`0.002..=0.5`).
+    pub dt: f64,
+    /// Baseline natural mortality `nu_0` (`0.01..=2.0`).
+    pub base_mortality: f64,
+    /// Cannibalistic attack rate (`0.0..=2.0`).
+    pub attack_rate: f64,
+    /// Ricker saturation damping `sigma` (`0.0..=5.0`).
+    pub saturation_rate: f64,
+    /// Peak adult fecundity rate `beta_0` (`0.5..=50.0`).
+    pub fecundity_rate: f64,
+    /// Lifeboat cannibalistic energy survival reduction (`0.0..=1.0`).
+    pub energy_gain: f64,
+    /// Lumped 2D ODE cannibalism loss term `phi` (`0.0..=1.0`).
+    pub ode_phi: f64,
+    /// Active scientific viewport selection.
+    pub view_mode: PopulationViewMode,
 }
 
-impl Default for CannibalismToolState {
+impl Default for PopulationStructureState {
     fn default() -> Self {
         Self {
-            regime: CannibalismRegime::DiekmannHopf,
-            beta0: 20.0,
-            c_cannibalism: 0.5,
-            c_pa: 0.35,
-            mu0: 0.4,
-            grid_size: 100,
-            steps_per_frame: 4,
-            sweep_points: 36,
-            is_playing: false,
+            age_bins: 64,
+            max_age: 8.0,
+            maturation_age: 2.0,
+            vulnerable_age_max: 1.6,
+            dt: 0.04,
+            base_mortality: 0.20,
+            attack_rate: 0.22,
+            saturation_rate: 0.25,
+            fecundity_rate: 18.0,
+            energy_gain: 0.08,
+            ode_phi: 0.12,
+            view_mode: PopulationViewMode::Dashboard,
         }
     }
 }
 
-impl CannibalismToolState {
-    /// Validates that every numeric parameter is finite and within safe domain bounds.
+fn finite_clamp(val: f64, fallback: f64, min: f64, max: f64) -> f64 {
+    if val.is_finite() {
+        val.clamp(min, max)
+    } else {
+        fallback.clamp(min, max)
+    }
+}
+
+impl PopulationStructureState {
+    /// Validates `16..=512` age-grid bounds and finite domain ranges for all parameters.
     pub fn validate(&self) -> Result<(), String> {
-        let float_checks = [
-            ("beta0", self.beta0, 5.0, 200.0),
-            ("c_cannibalism", self.c_cannibalism, 0.05, 3.0),
-            ("c_pa", self.c_pa, 0.0, 2.0),
-            ("mu0", self.mu0, 0.02, 1.5),
+        if !(MIN_AGE_BINS..=MAX_AGE_BINS).contains(&self.age_bins) {
+            return Err(format!(
+                "Parameter 'age_bins' = {} must be within [{MIN_AGE_BINS}, {MAX_AGE_BINS}]",
+                self.age_bins
+            ));
+        }
+        let checks = [
+            ("max_age", self.max_age, 2.0, 20.0),
+            ("maturation_age", self.maturation_age, 0.5, 10.0),
+            ("vulnerable_age_max", self.vulnerable_age_max, 0.2, 8.0),
+            ("dt", self.dt, 0.002, 0.5),
+            ("base_mortality", self.base_mortality, 0.01, 2.0),
+            ("attack_rate", self.attack_rate, 0.0, 2.0),
+            ("saturation_rate", self.saturation_rate, 0.0, 5.0),
+            ("fecundity_rate", self.fecundity_rate, 0.5, 50.0),
+            ("energy_gain", self.energy_gain, 0.0, 1.0),
+            ("ode_phi", self.ode_phi, 0.0, 1.0),
         ];
-        for (name, val, min, max) in float_checks {
+        for (name, val, min, max) in checks {
             if !val.is_finite() || val < min || val > max {
                 return Err(format!(
-                    "Cannibalism parameter '{name}' = {val} must be finite within [{min}, {max}]"
+                    "Parameter '{name}' = {val} must be finite within [{min}, {max}]"
                 ));
             }
         }
-        if !(32..=256).contains(&self.grid_size) {
-            return Err(format!(
-                "Age grid size {} must lie within [32, 256]",
-                self.grid_size
-            ));
+        if self.maturation_age > self.max_age {
+            return Err("maturation_age must not exceed max_age".to_string());
         }
-        if !(1..=20).contains(&self.steps_per_frame) {
-            return Err(format!(
-                "Steps per frame {} must lie within [1, 20]",
-                self.steps_per_frame
-            ));
-        }
-        if !(16..=80).contains(&self.sweep_points) {
-            return Err(format!(
-                "Bifurcation sweep points {} must lie within [16, 80]",
-                self.sweep_points
-            ));
+        if self.vulnerable_age_max > self.maturation_age {
+            return Err("vulnerable_age_max must not exceed maturation_age".to_string());
         }
         Ok(())
     }
 
-    /// Clamps any out-of-range parameters back into safe domain bounds.
-    pub fn clamp_in_place(&mut self) {
-        self.beta0 = if self.beta0.is_finite() {
-            self.beta0.clamp(5.0, 200.0)
-        } else {
-            20.0
-        };
-        self.c_cannibalism = if self.c_cannibalism.is_finite() {
-            self.c_cannibalism.clamp(0.05, 3.0)
-        } else {
-            0.5
-        };
-        self.c_pa = if self.c_pa.is_finite() {
-            self.c_pa.clamp(0.0, 2.0)
-        } else {
-            0.35
-        };
-        self.mu0 = if self.mu0.is_finite() {
-            self.mu0.clamp(0.02, 1.5)
-        } else {
-            0.4
-        };
-        self.grid_size = self.grid_size.clamp(32, 256);
-        self.steps_per_frame = self.steps_per_frame.clamp(1, 20);
-        self.sweep_points = self.sweep_points.clamp(16, 80);
-    }
-
-    /// Hashes every persisted field into `hasher` for deterministic state-revision tracking.
-    pub fn hash_into<H: Hasher>(&self, hasher: &mut H) {
-        self.regime.hash(hasher);
-        self.beta0.to_bits().hash(hasher);
-        self.c_cannibalism.to_bits().hash(hasher);
-        self.c_pa.to_bits().hash(hasher);
-        self.mu0.to_bits().hash(hasher);
-        self.grid_size.hash(hasher);
-        self.steps_per_frame.hash(hasher);
-        self.sweep_points.hash(hasher);
-        self.is_playing.hash(hasher);
-    }
-
-    /// Maps the validated GUI state onto a zero-allocation [`AgeStructuredConfig`].
-    pub fn to_pde_config(&self) -> AgeStructuredConfig {
-        match self.regime {
-            CannibalismRegime::DiekmannHopf => {
-                let (vulnerable_age, handling_time) = if self.beta0 >= 30.0 {
-                    (0.75, 0.03)
-                } else {
-                    (1.5, 0.0)
-                };
-                AgeStructuredConfig {
-                    grid_size: self.grid_size,
-                    max_age: 5.0,
-                    maturation_age: 2.0,
-                    natural_mortality: self.mu0,
-                    beta0: self.beta0,
-                    regime: PredationRegime::Diekmann {
-                        vulnerable_age,
-                        attack_rate: self.c_cannibalism,
-                        handling_time,
-                    },
-                }
-            }
-            CannibalismRegime::TriboliumChaos => {
-                let mut cfg = AgeStructuredConfig::tribolium_cycles(self.c_pa);
-                cfg.grid_size = self.grid_size;
-                cfg.beta0 = self.beta0;
-                cfg.natural_mortality = self.mu0;
-                cfg
-            }
+    /// Returns a sanitized copy with `age_bins` clamped to `16..=512` and finite rate bounds.
+    #[must_use]
+    pub fn clamped(&self) -> Self {
+        let def = Self::default();
+        let max_age = finite_clamp(self.max_age, def.max_age, 2.0, 20.0);
+        let maturation_age =
+            finite_clamp(self.maturation_age, def.maturation_age, 0.5, 10.0).min(max_age);
+        let vulnerable_age_max =
+            finite_clamp(self.vulnerable_age_max, def.vulnerable_age_max, 0.2, 8.0)
+                .min(maturation_age);
+        Self {
+            age_bins: self.age_bins.clamp(MIN_AGE_BINS, MAX_AGE_BINS),
+            max_age,
+            maturation_age,
+            vulnerable_age_max,
+            dt: finite_clamp(self.dt, def.dt, 0.002, 0.5),
+            base_mortality: finite_clamp(self.base_mortality, def.base_mortality, 0.01, 2.0),
+            attack_rate: finite_clamp(self.attack_rate, def.attack_rate, 0.0, 2.0),
+            saturation_rate: finite_clamp(self.saturation_rate, def.saturation_rate, 0.0, 5.0),
+            fecundity_rate: finite_clamp(self.fecundity_rate, def.fecundity_rate, 0.5, 50.0),
+            energy_gain: finite_clamp(self.energy_gain, def.energy_gain, 0.0, 1.0),
+            ode_phi: finite_clamp(self.ode_phi, def.ode_phi, 0.0, 1.0),
+            view_mode: self.view_mode,
         }
     }
 
-    /// Maps the validated GUI state onto a discrete [`TriboliumLpaModel`].
-    pub fn to_lpa_model(&self) -> TriboliumLpaModel {
-        TriboliumLpaModel::two_cycle_preset(self.c_pa)
+    /// Hashes persisted configuration fields into `hasher` for idle-safe revision tracking.
+    pub fn hash_into<H: Hasher>(&self, hasher: &mut H) {
+        self.age_bins.hash(hasher);
+        self.max_age.to_bits().hash(hasher);
+        self.maturation_age.to_bits().hash(hasher);
+        self.vulnerable_age_max.to_bits().hash(hasher);
+        self.dt.to_bits().hash(hasher);
+        self.base_mortality.to_bits().hash(hasher);
+        self.attack_rate.to_bits().hash(hasher);
+        self.saturation_rate.to_bits().hash(hasher);
+        self.fecundity_rate.to_bits().hash(hasher);
+        self.energy_gain.to_bits().hash(hasher);
+        self.ode_phi.to_bits().hash(hasher);
+        self.view_mode.hash(hasher);
+    }
+
+    /// Builds a domain [`CannibalismKernel`] from this state configuration.
+    #[must_use]
+    pub fn to_mvf_kernel(&self) -> CannibalismKernel {
+        CannibalismKernel::new(
+            self.base_mortality,
+            0.03,
+            self.attack_rate * 2.5,
+            self.vulnerable_age_max,
+            self.saturation_rate,
+            self.fecundity_rate * 0.45,
+            self.maturation_age,
+            55.0,
+        )
+    }
+
+    /// Builds domain [`JuvenileAdultParams`] from this state configuration.
+    #[must_use]
+    pub fn to_juvenile_adult_params(&self) -> JuvenileAdultParams {
+        JuvenileAdultParams {
+            maturation_age: self.maturation_age,
+            juvenile_mortality: self.base_mortality,
+            attack_rate: self.attack_rate,
+            vulnerability_max_age: self.vulnerable_age_max,
+            adult_mortality: (self.base_mortality * 4.5).clamp(0.2, 3.0),
+            energy_survival_gain: self.energy_gain,
+            adult_fecundity: self.fecundity_rate,
+            cannibal_fecundity_gain: 0.12,
+            adult_carrying_scale: 80.0,
+        }
     }
 }
 
-/// Starter preset 1: Supercritical Diekmann Hopf cohort waves (`beta0 = 45.0`).
-pub const PRESET_DIEKMANN_HOPF_WAVES: &str = r#"{
+const PRESET_HOPF_CYCLES: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Cannibalism",
+    "title": "Dwarf & Giant Hopf Cycles",
     "domain": "cannibalism",
-    "timestamp": "2026-11-23T00:00:00Z"
+    "timestamp": "2026-11-21T00:00:00Z"
   },
   "config": {
-    "regime": "DiekmannHopf",
-    "beta0": 45.0,
-    "c_cannibalism": 1.0,
-    "c_pa": 0.35,
-    "mu0": 0.4,
-    "grid_size": 100,
-    "steps_per_frame": 4,
-    "sweep_points": 40,
-    "is_playing": false
+    "age_bins": 80,
+    "max_age": 8.0,
+    "maturation_age": 2.0,
+    "vulnerable_age_max": 1.7,
+    "dt": 0.035,
+    "base_mortality": 0.18,
+    "attack_rate": 0.28,
+    "saturation_rate": 0.20,
+    "fecundity_rate": 22.0,
+    "energy_gain": 0.05,
+    "ode_phi": 0.14,
+    "view_mode": "Dashboard"
   }
 }"#;
 
-/// Starter preset 2: *Tribolium* flour beetle callow predation 2-cycles (`c_pa = 0.7`).
-pub const PRESET_TRIBOLIUM_TWO_CYCLES: &str = r#"{
+const PRESET_LEXIS_WAVES: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Cannibalism",
+    "title": "Lexis Cohort Ridges",
     "domain": "cannibalism",
-    "timestamp": "2026-11-23T00:00:00Z"
+    "timestamp": "2026-11-21T00:00:00Z"
   },
   "config": {
-    "regime": "TriboliumChaos",
-    "beta0": 140.0,
-    "c_cannibalism": 0.5,
-    "c_pa": 0.7,
-    "mu0": 0.2,
-    "grid_size": 80,
-    "steps_per_frame": 4,
-    "sweep_points": 44,
-    "is_playing": false
+    "age_bins": 96,
+    "max_age": 9.0,
+    "maturation_age": 2.2,
+    "vulnerable_age_max": 1.8,
+    "dt": 0.04,
+    "base_mortality": 0.16,
+    "attack_rate": 0.32,
+    "saturation_rate": 0.18,
+    "fecundity_rate": 24.0,
+    "energy_gain": 0.04,
+    "ode_phi": 0.10,
+    "view_mode": "LexisHeatmap"
+  }
+}"#;
+
+const PRESET_LIFEBOAT_REGIME: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Lifeboat Persistence Regime",
+    "domain": "cannibalism",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "age_bins": 72,
+    "max_age": 10.0,
+    "maturation_age": 2.4,
+    "vulnerable_age_max": 1.5,
+    "dt": 0.04,
+    "base_mortality": 0.28,
+    "attack_rate": 0.19,
+    "saturation_rate": 0.30,
+    "fecundity_rate": 16.0,
+    "energy_gain": 0.28,
+    "ode_phi": 0.08,
+    "view_mode": "PhasePortrait"
   }
 }"#;
 
 inventory::submit! {
     crate::framework::ToolMetadata {
-        id: "CannibalismTool",
-        display_name: "Cannibalism",
+        id: "PopulationStructureTool",
+        display_name: "Population Structure & Cannibalism",
         domain: "cannibalism",
         tags: &[
             "cannibalism",
-            "mckendrick",
             "pde",
-            "lexis",
-            "tribolium",
-            "bifurcation",
+            "mckendrick",
+            "age structure",
+            "hopf",
+            "applied math",
         ],
-        build: || Box::new(super::CannibalismTool::default()),
+        build: || Box::new(super::PopulationStructureTool::default()),
     }
 }
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
-        id: "cannibalism_diekmann_hopf",
-        title: "Diekmann Hopf Cohort Waves",
-        description: "Supercritical McKendrick-von Foerster cannibalism (beta0 = 45.0) generating diagonal missing-generation troughs on the Lexis carpet.",
+        id: "cannibalism_hopf_cycles",
+        title: "Dwarf & Giant Hopf Cycles",
+        description: "Supercritical adult-on-juvenile cannibalism triggering periodic single-cohort dominance waves.",
+        category: "Population Dynamics",
+        icon: "🐟",
+        domain: "cannibalism",
+        tool_name: Some("PopulationStructureTool"),
+        preset_generator: || PRESET_HOPF_CYCLES,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "cannibalism_lexis_waves",
+        title: "Lexis Cohort Ridges",
+        description: "Diagonal characteristic cohort ridges propagating across the (a, t) Lexis plane under Diekmann saturation.",
         category: "Population Dynamics",
         icon: "🌊",
         domain: "cannibalism",
-        tool_name: Some("CannibalismTool"),
-        preset_generator: || PRESET_DIEKMANN_HOPF_WAVES,
+        tool_name: Some("PopulationStructureTool"),
+        preset_generator: || PRESET_LEXIS_WAVES,
     }
 }
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
-        id: "cannibalism_tribolium_two_cycles",
-        title: "Tribolium 2-Cycle Bifurcation",
-        description: "Flour beetle pupa-adult callow predation (c_pa = 0.7) driving period-doubling 2-cycles across PDE and LPA dynamics.",
+        id: "cannibalism_lifeboat_regime",
+        title: "Lifeboat Persistence Regime",
+        description: "van den Bosch lifeboat energy feedback sustaining adult survival when juvenile recruitment drops.",
         category: "Population Dynamics",
-        icon: "🪲",
+        icon: "🛟",
         domain: "cannibalism",
-        tool_name: Some("CannibalismTool"),
-        preset_generator: || PRESET_TRIBOLIUM_TWO_CYCLES,
+        tool_name: Some("PopulationStructureTool"),
+        preset_generator: || PRESET_LIFEBOAT_REGIME,
     }
 }
