@@ -1,4 +1,4 @@
-# ADR 0047: Feature-Gate Core AST Tools and Unify Workspace Crates
+# ADR 20261123: Feature-Gate Core AST Tools and Unify Workspace Crates
 
 ## Status
 Accepted (extends [ADR 0003](0003-traceability-refactoring.md), [ADR 0007](0007-purge-obsolete-scripts-and-dependencies.md), and [ADR 0032](0032-precomputed-traceability-manifest-and-wasm-vfs-subpaths.md))

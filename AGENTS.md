@@ -11,7 +11,7 @@ All Markdown files in the repository (outside excluded build directories such as
 - Ensure all relative Markdown links resolve to existing files in the repository.
 - Keep every Rust source file at or below **500 lines** (`check-file-lengths`), keep functions within the **60-line** Clippy ceiling configured in `.clippy.toml`, and declare `[lints] workspace = true` in every first-party `Cargo.toml` manifest (`check-profiles` / `test-policy-audit`).
 - Do not introduce unwhitelisted `dead_code`, `unused`, or `warnings` lint suppressions (`allow`, `expect`, or `cfg_attr`), Clippy lint-group suppressions (`clippy::all`, `pedantic`, `nursery`, `restriction`, `complexity`, `correctness`, `suspicious`, `style`, `perf`, or `cargo`), crate/module/`impl`/`trait` complexity bypasses (`too_many_lines` or `cognitive_complexity`), `macro_rules!` Clippy suppressions, or stale `too_many_lines` attributes on functions of **60 lines or fewer** per [ADR 0019](docs/adr/0019-purge-dead-code-bypasses.md), [ADR 0027](docs/adr/0027-enforce-workspace-clippy-lints.md), and [ADR 0036](docs/adr/0036-harden-ast-and-doctest-policy-audits.md). Every dependency across `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]`, and `[target.*]` tables must be referenced in Rust AST/attributes, derive macros, or compiled `rustdoc` code blocks, or carry an explicit `[[unused_dependencies]]` entry (`crate`, `dependency`, `reason`) in [verification_whitelist.toml](verification_whitelist.toml). Gate test-only helpers with `#[cfg(test)]` or decompose large functions instead.
-- Modifying core mathematical or runtime crates (`crates/` excluding `crates/unified_verification`, or `math_explorer/`) requires creating or updating an Architectural Decision Record under `docs/adr/`.
+- Modifying core mathematical or runtime crates (`crates/` excluding `crates/unified_verification`, or `math_explorer/`) requires creating a dated Architectural Decision Record at `docs/adr/YYYYMMDD-slug.md` with a unique `<slug>` (or updating an existing ADR under `docs/adr/`; legacy 4-digit `NNNN-slug.md` prefixes are frozen).
 
 ```text
 Markdown verification gates:
@@ -92,7 +92,7 @@ cargo run -p unified_verification --release -- check-file-lengths
 cargo run -p unified_verification --release -- check-entropy
 cargo run -p unified_verification --release -- traceability
 
-# Verify architectural decision records (NNNN-slug.md, # and ## Status headings, unique IDs, and ACMR updates) across staged index edits or commit ranges
+# Verify architectural decision records (YYYYMMDD-slug.md with unique slugs, frozen legacy NNNN-slug.md prefixes, # and ## Status headings, and ACMR updates) across staged index edits or commit ranges
 cargo run -p unified_verification --release -- verify-records --staged
 BASE_SHA="$(git merge-base HEAD origin/main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
 
@@ -100,8 +100,10 @@ BASE_SHA="$(git merge-base HEAD origin/main)" HEAD_SHA="HEAD" cargo run -p unifi
 cargo run -p unified_verification --release -- verify-suite
 cargo run -p xtask -- verify-suite
 
-# Native unit/integration tests and WebAssembly target checks
+# Native unit/integration tests, benchmark targets, example smoke suite, and WebAssembly target checks
 cargo test --workspace --lib --tests --all-features
+cargo run -p xtask -- check-benches
+cargo run -p xtask -- smoke-examples
 cargo check --workspace --target wasm32-unknown-unknown --all-features
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```

@@ -5,10 +5,10 @@ use crate::presets::MorphogenesisKineticsMode;
 use crate::tabs::chaos::attractors::{
     default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
 };
-use crate::tabs::morphogenesis::runner::{MorphoSnapshotData, MorphogenesisKineticsState};
-use crate::tabs::morphogenesis::{
-    MorphogenesisKineticsRunner, MorphogenesisSharedParams, MorphogenesisTab, MorphogenesisTool,
+use crate::tabs::morphogenesis::runner::{
+    MorphoSnapshotData, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
 };
+use crate::tabs::morphogenesis::{MorphogenesisSharedParams, MorphogenesisTool};
 use crate::tabs::mri::{MriRunner, MriSharedParams};
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 use nalgebra::Vector3;
@@ -34,7 +34,14 @@ fn make_morpho_runner(
         dt,
         high_contrast: false,
     }));
-    let mut runner = MorphogenesisTab::create_runner(&params, width, height);
+    let ks = Arc::new(RwLock::new(MorphogenesisKineticsState {
+        mode: MorphogenesisKineticsMode::Schnakenberg,
+        f: 0.0367,
+        k: 0.0649,
+    }));
+    let mask_rle = Arc::new(RwLock::new(Vec::new()));
+    let mut runner =
+        MorphogenesisTool::create_kinetics_runner(&params, &ks, &mask_rle, width, height);
     runner.noise_amplitude = noise_amplitude;
     (runner, params)
 }
