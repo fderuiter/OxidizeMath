@@ -1,11 +1,17 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::{Camera3D, InteractiveTool, Plot3DViewport, Scene3DBuilder};
+#[path = "crystal_export.rs"]
+mod crystal_export;
+
+use crate::framework::{
+    Camera3D, ExportCapabilities, InteractiveTool, Plot3DViewport, Scene3DBuilder,
+};
 use eframe::egui;
 use egui_plot::MarkerShape;
 use math_commons::primitives::PositiveFloat;
 use math_explorer::physics::solid_state::lattice::{BravaisLattice, CrystalSystem};
 use nalgebra::Point3;
+use oxidize_core::mesh::{ColoredMesh, Mesh};
 
 /// Interactive 3D crystallographic Bravais unit-cell viewer built on `Plot3DViewport` and `Scene3DBuilder`.
 pub struct CrystalViewer {
@@ -154,6 +160,18 @@ impl InteractiveTool for CrystalViewer {
     }
     fn domain(&self) -> &'static str {
         "solid_state"
+    }
+
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_colored_mesh_3d(&self) -> Option<Result<ColoredMesh, String>> {
+        Some(self.build_crystal_colored_mesh())
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<Mesh, String>> {
+        Some(self.build_crystal_colored_mesh().map(|cm| cm.mesh))
     }
 
     fn state_revision(&self) -> u64 {
@@ -340,5 +358,25 @@ mod tests {
         let _ = ctx.run(egui::RawInput::default(), |ctx| restored.show(ctx));
         assert!(!egui_plot::get_last_plot_datasets().is_empty());
         assert!(!egui_plot::get_last_plot_datasets_3d().is_empty());
+
+        for sys in [
+            BravaisLattice::SimpleCubic,
+            BravaisLattice::BodyCenteredCubic,
+            BravaisLattice::FaceCenteredCubic,
+        ] {
+            restored.system = sys;
+            let cm = restored
+                .export_colored_mesh_3d()
+                .expect("crystal 3D hook present")
+                .expect("crystal mesh builds");
+            assert_eq!(cm.colors.len(), cm.mesh.vertices.len());
+            assert_eq!(
+                crate::tabs::geometry_topology::export_utils::count_open_and_nonmanifold_edges(
+                    &cm.mesh
+                ),
+                (0, 0)
+            );
+            assert!(crate::tabs::geometry_topology::export_utils::signed_volume(&cm.mesh) > 0.0);
+        }
     }
 }

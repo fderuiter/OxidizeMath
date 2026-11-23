@@ -99,13 +99,6 @@ impl GatingLogic {
         self.state == BeamState::BeamActive
     }
 
-    /// Backward-compatible query returning true if the beam is active.
-    #[inline]
-    #[must_use]
-    pub fn is_beam_on(&self) -> bool {
-        self.is_beam_active()
-    }
-
     /// Arms the controller from `Standby` into `Armed`.
     ///
     /// # Errors

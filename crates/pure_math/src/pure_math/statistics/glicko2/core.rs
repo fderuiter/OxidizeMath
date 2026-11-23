@@ -8,8 +8,7 @@ use std::f64::consts::PI;
 /// The rating represents a player's skill level. By convention, new players
 /// start at 1500 on the original Glicko scale.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(transparent))]
 pub struct Rating(f64);
 
 impl Rating {
@@ -80,8 +79,7 @@ impl Default for Rating {
 ///
 /// Must be positive.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(transparent))]
 pub struct RatingDeviation(f64);
 
 impl RatingDeviation {
@@ -151,8 +149,7 @@ impl Default for RatingDeviation {
 ///
 /// Must be positive. Typical values are between 0.3 and 1.2.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(transparent))]
 pub struct Volatility(f64);
 
 impl Volatility {
@@ -206,8 +203,7 @@ impl Default for Volatility {
 ///
 /// Glicko-2 paper recommends τ between 0.3 and 1.2, with 0.5 as reasonable default.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(transparent))]
 pub struct SystemConstant(f64);
 
 impl SystemConstant {
@@ -255,7 +251,11 @@ impl Default for SystemConstant {
 
 /// A Glicko-2 player with rating, rating deviation, and volatility.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct GlickoPlayer {
     /// The player's rating.
     pub rating: Rating,
@@ -439,6 +439,7 @@ mod serde_support {
             D: serde::Deserializer<'de>,
         {
             #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields)]
             struct RawMatchResult {
                 opponent: GlickoPlayer,
                 score: f64,

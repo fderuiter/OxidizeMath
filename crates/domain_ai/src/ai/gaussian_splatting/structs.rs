@@ -30,6 +30,37 @@ impl Gaussian3D {
         let m = r * s;
         m * m.transpose()
     }
+
+    /// Converts this 3D Gaussian (with an optional positive uniform `scale_multiplier`) into
+    /// a portable [`oxidize_core::mesh::GaussianSplatPly`] record for INRIA 3DGS `.ply` serialization.
+    #[verified_engine::verified]
+    pub fn to_splat_ply(&self, scale_multiplier: f64) -> oxidize_core::mesh::GaussianSplatPly {
+        let mult = if scale_multiplier.is_finite() && scale_multiplier > 0.0 {
+            scale_multiplier
+        } else {
+            1.0
+        };
+        let q = self.rotation.quaternion();
+        oxidize_core::mesh::GaussianSplatPly {
+            mean: oxidize_core::mesh::Point3D::new(
+                self.mean.x as f32,
+                self.mean.y as f32,
+                self.mean.z as f32,
+            ),
+            scale: oxidize_core::mesh::Point3D::new(
+                (self.scale.x * mult) as f32,
+                (self.scale.y * mult) as f32,
+                (self.scale.z * mult) as f32,
+            ),
+            rotation: [q.w as f32, q.i as f32, q.j as f32, q.k as f32],
+            opacity: self.opacity as f32,
+            color: [
+                self.color.x as f32,
+                self.color.y as f32,
+                self.color.z as f32,
+            ],
+        }
+    }
 }
 
 /// Represents the 2D projection of a Gaussian on the image plane.

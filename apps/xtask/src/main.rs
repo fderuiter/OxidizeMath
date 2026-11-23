@@ -421,4 +421,21 @@ mod tests {
         assert!(report.contains("0.2.130"));
         assert!(report.contains("Fix:"));
     }
+
+    #[test]
+    fn test_ci_scoped_change_path_filters() {
+        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ci_yaml = fs::read_to_string(ws_root.join(".github/workflows/ci.yml"))
+            .expect("failed to read ci.yml")
+            .replace("\r\n", "\n");
+        let root_toml =
+            fs::read_to_string(ws_root.join("Cargo.toml")).expect("failed to read Cargo.toml");
+        let (step, blocks) = crate::ci_filter_tests::extract_detect_changes_step(&ci_yaml);
+        crate::ci_filter_tests::assert_detect_changes_invariants(&ci_yaml, &step);
+        crate::ci_filter_tests::assert_workspace_members_parity(&blocks, &root_toml);
+        crate::ci_filter_tests::assert_scoped_triggers_and_skips(&blocks);
+    }
 }
+
+#[cfg(test)]
+mod ci_filter_tests;

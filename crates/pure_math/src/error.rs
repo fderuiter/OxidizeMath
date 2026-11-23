@@ -232,6 +232,18 @@ pub enum Glicko2Error {
     InvalidScore { value: f64 },
     /// Empty match results provided.
     EmptyMatchResults,
+    /// Roster index referenced by a tournament match or pairing is out of bounds.
+    #[allow(missing_docs)]
+    PlayerIndexOutOfBounds { index: usize, roster_len: usize },
+    /// A tournament match or pairing pitted a player against themselves.
+    #[allow(missing_docs)]
+    SelfMatch { player_index: usize },
+    /// Tournament schedule or pairing requires at least two players.
+    #[allow(missing_docs)]
+    InsufficientPlayers { count: usize },
+    /// Slice dimensions passed to a batch tournament routine did not match.
+    #[allow(missing_docs)]
+    DimensionMismatch { expected: usize, actual: usize },
 }
 
 impl Diagnostic for NumberTheoryError {
@@ -404,7 +416,66 @@ impl std::error::Error for CopulaError {}
 impl std::fmt::Display for Glicko2Error {
     #[verified_engine::verified]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            Self::InvalidRating { value } => {
+                write!(f, "rating must be finite (got {value})")
+            }
+            Self::InvalidRatingDeviation { value } => {
+                write!(
+                    f,
+                    "rating deviation must be positive and finite (got {value})"
+                )
+            }
+            Self::InvalidVolatility { value } => {
+                write!(f, "volatility must be positive and finite (got {value})")
+            }
+            Self::InvalidSystemConstant { value } => {
+                write!(
+                    f,
+                    "system constant tau must be in [0.3, 1.2] and finite (got {value})"
+                )
+            }
+            Self::InvalidOpponentCount { count } => {
+                write!(f, "invalid opponent count ({count})")
+            }
+            Self::VolatilityConvergenceFailed { iterations } => {
+                write!(
+                    f,
+                    "volatility iteration failed to converge after {iterations} steps"
+                )
+            }
+            Self::InvalidScore { value } => {
+                write!(
+                    f,
+                    "match score must be in [0.0, 1.0] and finite (got {value})"
+                )
+            }
+            Self::EmptyMatchResults => write!(f, "match results cannot be empty"),
+            Self::PlayerIndexOutOfBounds { index, roster_len } => {
+                write!(
+                    f,
+                    "player index {index} is out of bounds for roster of length {roster_len}"
+                )
+            }
+            Self::SelfMatch { player_index } => {
+                write!(
+                    f,
+                    "self-match is not permitted for player index {player_index}"
+                )
+            }
+            Self::InsufficientPlayers { count } => {
+                write!(
+                    f,
+                    "at least 2 players are required for tournament pairings (got {count})"
+                )
+            }
+            Self::DimensionMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "buffer length mismatch (expected {expected}, got {actual})"
+                )
+            }
+        }
     }
 }
 

@@ -265,14 +265,13 @@ impl MultiHeadAttention {
         self.d_k
     }
 
-    /// Performs the forward pass for the Multi-Head Attention layer.
-    #[verified_engine::verified]
-    pub fn forward_impl(
+    fn forward_fused(
         &self,
         q: &DMatrix<f64>,
         k: &DMatrix<f64>,
         v: &DMatrix<f64>,
         mask: Option<&DMatrix<f64>>,
+        mut weights_sink: Option<&mut Vec<DMatrix<f64>>>,
     ) -> DMatrix<f64> {
         let sequence_length = q.nrows();
         let kv_sequence_length = k.nrows();
@@ -291,16 +290,32 @@ impl MultiHeadAttention {
             let k_head = k_proj.view((0, start_col), (kv_sequence_length, self.d_k));
             let v_head = v_proj.view((0, start_col), (kv_sequence_length, self.d_k));
 
-            let (head_output, _attention_weights) =
+            let (head_output, attention_weights) =
                 scaled_dot_product_attention_view(q_head, k_head, v_head, mask);
 
             concatenated_output
                 .view_mut((0, start_col), (sequence_length, self.d_k))
                 .copy_from(&head_output);
+
+            if let Some(sink) = weights_sink.as_deref_mut() {
+                sink.push(attention_weights);
+            }
         }
 
         // 3. Final linear projection
         concatenated_output * &self.w_o
+    }
+
+    /// Performs the forward pass for the Multi-Head Attention layer.
+    #[verified_engine::verified]
+    pub fn forward_impl(
+        &self,
+        q: &DMatrix<f64>,
+        k: &DMatrix<f64>,
+        v: &DMatrix<f64>,
+        mask: Option<&DMatrix<f64>>,
+    ) -> DMatrix<f64> {
+        self.forward_fused(q, k, v, mask, None)
     }
 
     /// Performs the forward pass and returns both the output and the per-head attention weights.
@@ -312,33 +327,8 @@ impl MultiHeadAttention {
         v: &DMatrix<f64>,
         mask: Option<&DMatrix<f64>>,
     ) -> (DMatrix<f64>, Vec<DMatrix<f64>>) {
-        let sequence_length = q.nrows();
-        let kv_sequence_length = k.nrows();
-
-        let q_proj = q * &self.w_q;
-        let k_proj = k * &self.w_k;
-        let v_proj = v * &self.w_v;
-
-        let mut concatenated_output = DMatrix::zeros(sequence_length, self.d_model);
         let mut all_weights = Vec::with_capacity(self.h);
-
-        for i in 0..self.h {
-            let start_col = i * self.d_k;
-            let q_head = q_proj.view((0, start_col), (sequence_length, self.d_k));
-            let k_head = k_proj.view((0, start_col), (kv_sequence_length, self.d_k));
-            let v_head = v_proj.view((0, start_col), (kv_sequence_length, self.d_k));
-
-            let (head_output, attention_weights) =
-                scaled_dot_product_attention_view(q_head, k_head, v_head, mask);
-
-            concatenated_output
-                .view_mut((0, start_col), (sequence_length, self.d_k))
-                .copy_from(&head_output);
-
-            all_weights.push(attention_weights);
-        }
-
-        let output = concatenated_output * &self.w_o;
+        let output = self.forward_fused(q, k, v, mask, Some(&mut all_weights));
         (output, all_weights)
     }
 

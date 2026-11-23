@@ -21,6 +21,12 @@ pub struct LatticeState<const Q: usize> {
     pub(crate) uy: DMatrix<f64>,
     /// Boolean grid for obstacles (true = solid).
     pub(crate) obstacles: DMatrix<bool>,
+    /// Drag force accumulated during the most recent streaming bounce-back pass.
+    pub(crate) last_drag_force: f64,
+    /// Lift force accumulated during the most recent streaming bounce-back pass.
+    pub(crate) last_lift_force: f64,
+    /// Whether `last_drag_force` and `last_lift_force` come from a completed streaming pass.
+    pub(crate) has_stepped_forces: bool,
 }
 
 impl<const Q: usize> DoubleBufferedState for LatticeState<Q> {
@@ -49,6 +55,9 @@ impl<const Q: usize> LatticeState<Q> {
             ux: DMatrix::from_element(height, width, 0.0),
             uy: DMatrix::from_element(height, width, 0.0),
             obstacles: DMatrix::from_element(height, width, false),
+            last_drag_force: 0.0,
+            last_lift_force: 0.0,
+            has_stepped_forces: false,
         }
     }
 
@@ -109,6 +118,12 @@ struct LatticeStateWire {
     ux: DMatrix<f64>,
     uy: DMatrix<f64>,
     obstacles: DMatrix<bool>,
+    #[serde(default)]
+    last_drag_force: f64,
+    #[serde(default)]
+    last_lift_force: f64,
+    #[serde(default)]
+    has_stepped_forces: bool,
 }
 
 #[cfg(feature = "serde")]
@@ -148,6 +163,9 @@ impl<const Q: usize> serde::Serialize for LatticeState<Q> {
             ux: self.ux.clone(),
             uy: self.uy.clone(),
             obstacles: self.obstacles.clone(),
+            last_drag_force: self.last_drag_force,
+            last_lift_force: self.last_lift_force,
+            has_stepped_forces: self.has_stepped_forces,
         };
         wire.serialize(serializer)
     }
@@ -180,6 +198,9 @@ impl<'de, const Q: usize> serde::Deserialize<'de> for LatticeState<Q> {
             ux: wire.ux,
             uy: wire.uy,
             obstacles: wire.obstacles,
+            last_drag_force: wire.last_drag_force,
+            last_lift_force: wire.last_lift_force,
+            has_stepped_forces: wire.has_stepped_forces,
         })
     }
 }

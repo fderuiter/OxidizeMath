@@ -1,4 +1,4 @@
-# ADR 0037: Gate `serde` Behind Optional Cargo Features, Validated Bounded Deserialization, and GUI Shadow-Type Consolidation
+# ADR 0039: Gate `serde` Behind Optional Cargo Features, Validated Bounded Deserialization, and GUI Shadow-Type Consolidation
 
 ## Status
 Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md) and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))

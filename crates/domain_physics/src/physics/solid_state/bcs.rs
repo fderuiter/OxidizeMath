@@ -153,16 +153,6 @@ impl GapEquation for IsotropicBCSModel {
     }
 }
 
-// --- Legacy API ---
-
-#[allow(missing_docs)]
-#[verified_engine::verified]
-pub fn coherence_factors(xi_k: f64, delta: f64) -> Result<(f64, f64), String> {
-    let xi = ElectronVolts::new(xi_k);
-    let d = ElectronVolts::new(delta);
-    coherence_factors_strong(xi, d)
-}
-
 #[allow(missing_docs)]
 #[verified_engine::verified]
 pub fn coherence_factors_strong(
@@ -185,9 +175,9 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_bcs_probability_conservation() {
-        let xi = 1.5;
-        let delta = 0.2;
-        let (u, v) = coherence_factors(xi, delta).unwrap();
+        let xi = ElectronVolts::new(1.5);
+        let delta = ElectronVolts::new(0.2);
+        let (u, v) = coherence_factors_strong(xi, delta).unwrap();
         let prob = u * u + v * v;
         assert!((prob - 1.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
     }

@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::presets::{CUSTOM_RIPPLE_MANIFOLD_PRESET_JSON, STARTER_PRESET_JSON};
 use super::*;
 
 #[test]
@@ -22,6 +23,9 @@ fn surface_viewer_custom_heightfield_and_obj_export_work() {
     assert!(obj.contains("f "));
     assert!(!obj.contains("NaN"));
     assert!(tool.import_preset_json(STARTER_PRESET_JSON).is_ok());
+    assert!(
+        (tool.wall_thickness - super::super::export_utils::DEFAULT_WALL_THICKNESS).abs() < 1e-9
+    );
 }
 
 #[test]
@@ -48,6 +52,39 @@ fn surface_viewer_custom_parametric_union_parameter_cap_preserves_valid_mesh() {
         .is_some_and(|m| m.contains("maximum 6")));
     let preserved_pos = tool.custom_sandbox.build_parametric().position(0.5, 0.5);
     assert!((preserved_pos - baseline_pos).norm() < 1e-12);
+}
+
+#[test]
+fn surface_viewer_watertight_3d_exports_for_all_surface_types() {
+    let mut tool = SurfaceViewer {
+        u_resolution: 20,
+        v_resolution: 18,
+        wall_thickness: 0.20,
+        ..Default::default()
+    };
+    for (stype, expected_chi) in [
+        (ParametricSurfaceKind::Sphere, 2),
+        (ParametricSurfaceKind::Torus, 0),
+        (ParametricSurfaceKind::KleinBottle, 0),
+        (ParametricSurfaceKind::CustomHeightfield, 2),
+        (ParametricSurfaceKind::CustomParametric, 0),
+    ] {
+        tool.surface_type = stype;
+        let mesh = tool
+            .export_mesh_3d()
+            .expect("3D mesh hook present")
+            .expect("3D mesh generation succeeds");
+        assert!(mesh.normals.iter().all(|n| n.is_finite()));
+        assert_eq!(
+            super::super::export_utils::count_open_and_nonmanifold_edges(&mesh),
+            (0, 0)
+        );
+        assert_eq!(
+            super::super::export_utils::euler_characteristic(&mesh),
+            expected_chi
+        );
+        assert!(super::super::export_utils::signed_volume(&mesh) > 0.0);
+    }
 }
 
 #[test]

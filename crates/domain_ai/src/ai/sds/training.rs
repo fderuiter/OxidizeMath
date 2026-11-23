@@ -2,6 +2,19 @@ use crate::ai::sds::rendering::{NeRFModel, RayBundle};
 use crate::error::AIError;
 use math_commons::primitives::{PositiveFloat, UnitInterval};
 use nalgebra::DMatrix;
+use pure_math::pure_math::analysis::optimization::{Adam, AdamState, Optimizer as CoreOptimizer};
+use std::collections::HashMap;
+
+fn validate_param_grad_shapes(params: &DMatrix<f64>, grads: &DMatrix<f64>) -> Result<(), AIError> {
+    if params.shape() != grads.shape() {
+        return Err(math_commons::error::MathError::DimensionMismatch {
+            expected: math_commons::math_kernel::types::Dimension(params.nrows() * params.ncols()),
+            actual: math_commons::math_kernel::types::Dimension(grads.nrows() * grads.ncols()),
+        }
+        .into());
+    }
+    Ok(())
+}
 
 /// Module 5.1: Jacobian-Vector Product
 /// Input: SDS Gradient delta_SDS, Rendered Image x_render, NeRF Weights theta.
@@ -89,49 +102,56 @@ impl Optimizer for AdamOptimizer {
         params: &DMatrix<f64>,
         grads: &DMatrix<f64>,
     ) -> Result<DMatrix<f64>, AIError> {
-        if params.shape() != grads.shape() {
-            return Err(math_commons::error::MathError::DimensionMismatch {
-                expected: math_commons::math_kernel::types::Dimension(
-                    params.nrows() * params.ncols(),
-                ),
-                actual: math_commons::math_kernel::types::Dimension(grads.nrows() * grads.ncols()),
-            }
-            .into());
-        }
+        validate_param_grad_shapes(params, grads)?;
 
-        self.t += 1;
-
-        // Initialize state if needed
         if self.m.is_none() {
             self.m = Some(DMatrix::zeros(params.nrows(), params.ncols()));
             self.v = Some(DMatrix::zeros(params.nrows(), params.ncols()));
         }
 
-        let m = self.m.as_mut().ok_or(AIError::UninitializedState {
+        let m_ref = self.m.as_ref().ok_or(AIError::UninitializedState {
             name: "m".to_string(),
         })?;
-        let v = self.v.as_mut().ok_or(AIError::UninitializedState {
+        let v_ref = self.v.as_ref().ok_or(AIError::UninitializedState {
+            name: "v".to_string(),
+        })?;
+        validate_param_grad_shapes(params, m_ref)?;
+        validate_param_grad_shapes(params, v_ref)?;
+
+        let t_i32 =
+            i32::try_from(self.t).map_err(|_| math_commons::error::MathError::ConversionError {
+                reason: "Adam step counter exceeded i32::MAX".to_string(),
+            })?;
+        let m = self.m.take().ok_or(AIError::UninitializedState {
+            name: "m".to_string(),
+        })?;
+        let v = self.v.take().ok_or(AIError::UninitializedState {
             name: "v".to_string(),
         })?;
 
-        // Update biased first moment estimate: m_t = beta1 * m_{t-1} + (1 - beta1) * g_t
-        *m = &*m * self.beta1.value() + grads * (1.0 - self.beta1.value());
+        let mut states = HashMap::with_capacity(1);
+        states.insert((), AdamState { m, v, t: t_i32 });
+        let mut core_adam = Adam {
+            learning_rate: self.learning_rate.value(),
+            beta1: self.beta1.value(),
+            beta2: self.beta2.value(),
+            epsilon: self.epsilon.value(),
+            states,
+        };
 
-        // Update biased second raw moment estimate: v_t = beta2 * v_{t-1} + (1 - beta2) * g_t^2
-        // Element-wise square of gradients
-        let grads_sq = grads.map(|x| x * x);
-        *v = &*v * self.beta2.value() + grads_sq * (1.0 - self.beta2.value());
+        let mut updated = params.clone();
+        let update_res = CoreOptimizer::update_matrix(&mut core_adam, (), &mut updated, grads);
 
-        // Compute bias-corrected first moment estimate
-        let m_hat = &*m / (1.0 - self.beta1.value().powi(self.t as i32));
+        if let Some(state) = core_adam.states.remove(&()) {
+            self.m = Some(state.m);
+            self.v = Some(state.v);
+            if let Ok(next_t) = usize::try_from(state.t) {
+                self.t = next_t;
+            }
+        }
 
-        // Compute bias-corrected second raw moment estimate
-        let v_hat = &*v / (1.0 - self.beta2.value().powi(self.t as i32));
-
-        // Update parameters: theta = theta - lr * m_hat / (sqrt(v_hat) + epsilon)
-        let update_term = m_hat.component_div(&v_hat.map(|x| x.sqrt() + self.epsilon.value()));
-
-        Ok(params - update_term * self.learning_rate.value())
+        update_res.map_err(|_| AIError::OptimizationDivergence)?;
+        Ok(updated)
     }
 }
 
@@ -168,15 +188,7 @@ impl Optimizer for SgdOptimizer {
         params: &DMatrix<f64>,
         grads: &DMatrix<f64>,
     ) -> Result<DMatrix<f64>, AIError> {
-        if params.shape() != grads.shape() {
-            return Err(math_commons::error::MathError::DimensionMismatch {
-                expected: math_commons::math_kernel::types::Dimension(
-                    params.nrows() * params.ncols(),
-                ),
-                actual: math_commons::math_kernel::types::Dimension(grads.nrows() * grads.ncols()),
-            }
-            .into());
-        }
+        validate_param_grad_shapes(params, grads)?;
 
         // Initialize state if needed
         if self.velocity.is_none() {
@@ -186,6 +198,7 @@ impl Optimizer for SgdOptimizer {
         let v = self.velocity.as_mut().ok_or(AIError::UninitializedState {
             name: "velocity".to_string(),
         })?;
+        validate_param_grad_shapes(params, v)?;
 
         // Update velocity: v_{t+1} = momentum * v_t + g_t
         // Note: Some implementations use v_{t+1} = momentum * v_t - lr * g_t.

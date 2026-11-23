@@ -7,8 +7,6 @@
 //! This module uses the **Strategy Pattern** and **Strong Types** to ensure type safety and extensibility.
 //! The `GalaxyModel` trait defines the interface for calculations, implemented by specific strategies
 //! like `GeneralIrregular`, `TypeCode10`, and `TypeCode95To99`.
-//!
-//! Legacy functions are preserved for backward compatibility but are deprecated.
 
 // --- Strong Types ---
 

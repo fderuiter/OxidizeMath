@@ -49,7 +49,9 @@ impl Default for TurbulenceTool {
 use crate::framework::InteractiveTool;
 
 impl InteractiveTool for TurbulenceTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Turbulence / Reynolds Analysis"
     }
@@ -261,7 +263,6 @@ impl TurbulenceTool {
 
 // [cite:generative_turbulence]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "TurbulenceTool",
@@ -284,13 +285,26 @@ impl scientific_metadata::theory::TheoryDescribable for TurbulenceTool {
             geom_str, re
         )
     }
-    fn phonetic_description(&self) -> String { "Reynolds number and turbulence flow regime theory".into() }
-    fn theory_citation(&self) -> String { "Turbulent Flows (Pope, 2000); Boundary-Layer Theory (Schlichting & Gersten, 2016)".into() }
+    fn phonetic_description(&self) -> String {
+        "Reynolds number and turbulence flow regime theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Turbulent Flows (Pope, 2000); Boundary-Layer Theory (Schlichting & Gersten, 2016)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Laminar".into(), "Viscous forces dominate, smooth streamline flow".into());
-        map.insert("Transitional".into(), "Onset of turbulent spots and velocity fluctuations".into());
-        map.insert("Turbulent".into(), "Inertial forces dominate, chaotic eddy vortex cascades".into());
+        map.insert(
+            "Laminar".into(),
+            "Viscous forces dominate, smooth streamline flow".into(),
+        );
+        map.insert(
+            "Transitional".into(),
+            "Onset of turbulent spots and velocity fluctuations".into(),
+        );
+        map.insert(
+            "Turbulent".into(),
+            "Inertial forces dominate, chaotic eddy vortex cascades".into(),
+        );
         map
     }
 }
