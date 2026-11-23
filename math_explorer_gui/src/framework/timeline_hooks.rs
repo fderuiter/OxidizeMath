@@ -8,55 +8,37 @@ use super::{
 };
 use eframe::egui;
 
-pub(super) fn export_tool_preset_json<T: InteractiveTool + ?Sized>(
-    tool: &T,
-) -> Result<String, String> {
-    if let Some(state_str) = tool.save_state() {
-        let config: serde_json::Value =
-            serde_json::from_str(&state_str).map_err(|e| format!("Serialization error: {e}"))?;
-        crate::presets::serialize_preset_envelope(tool.name(), tool.domain(), config)
-    } else {
-        Err(format!("Preset export not supported for {}", tool.name()))
-    }
+/// Static discovery record submitted via `inventory` for each [`InteractiveTool`].
+pub struct ToolMetadata {
+    /// Canonical stable identifier for URL and preset routing.
+    pub id: &'static str,
+    /// User-facing tool title rendered in navigation and galleries.
+    pub display_name: &'static str,
+    /// Domain tab identifier owning this tool.
+    pub domain: &'static str,
+    /// Searchable domain and mathematical topic tags.
+    pub tags: &'static [&'static str],
+    /// Constructor returning a boxed default instance of the tool.
+    pub build: fn() -> Box<dyn InteractiveTool>,
 }
 
-pub(super) fn import_tool_preset_json<T: InteractiveTool + ?Sized>(
+inventory::collect!(ToolMetadata);
+
+pub(super) fn show_tool_in_central_panel<T: InteractiveTool + ?Sized>(
     tool: &mut T,
-    json_str: &str,
-) -> Result<(), String> {
-    let bounds = tool.state_bounds();
-    let config: Box<serde_json::value::RawValue> =
-        crate::presets::deserialize_preset_envelope_bounded(
-            json_str,
-            tool.domain(),
-            tool.name(),
-            bounds,
-        )?;
-    let config_str = config.get();
-    bounds.validate_json(config_str)?;
-    tool.try_load_state(config_str)
+    ctx: &egui::Context,
+) {
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE)
+        .show(ctx, |ui| {
+            tool.show_inside(ui);
+        });
 }
 
-pub(super) fn sample_tool_animation_frames<T: InteractiveTool + ?Sized>(
-    tool: &mut T,
-    num_frames: usize,
-) -> Vec<egui_plot::export::DatasetFrame> {
-    let count = num_frames.max(1);
-    let mut frames = Vec::with_capacity(count);
-    for _ in 0..count {
-        tool.step_simulation();
-        let ds = tool.export_datasets();
-        if !ds.is_empty() {
-            frames.push(ds);
-        }
+pub(super) fn load_validated_tool_state<T: InteractiveTool + ?Sized>(tool: &mut T, state: &str) {
+    if tool.state_bounds().validate_json(state).is_ok() {
+        let _ = tool.try_load_state(state);
     }
-    if frames.is_empty() {
-        let ds = tool.export_datasets();
-        if !ds.is_empty() {
-            frames = egui_plot::export::sample_progressive_frames(&ds, count);
-        }
-    }
-    frames
 }
 
 impl SimulationFramework {

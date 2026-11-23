@@ -11,6 +11,16 @@ mod challenge_hud_tests;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod code_export;
+pub mod code_export_modal;
+#[cfg(all(
+    test,
+    feature = "pure_math",
+    feature = "physics",
+    feature = "applied",
+    feature = "epidemiology"
+))]
+mod code_export_tests;
 pub mod counterfactual;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
@@ -18,6 +28,7 @@ mod drag_bounds_and_rollback_tests;
 mod export_3d;
 mod export_dataset;
 mod export_figure;
+mod export_gif_job;
 mod export_modal_host;
 mod export_persistence;
 mod export_queue;
@@ -86,6 +97,8 @@ pub use brush_dispatch::{PlotBrushController, PlotBrushFrame};
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
+pub use code_export::*;
+pub use code_export_modal::CodeExportTab;
 pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
@@ -113,25 +126,16 @@ pub use state_bounds::*;
 pub use state_guard::*;
 pub use story_hud::*;
 pub use timeline_branch::*;
+pub use timeline_hooks::ToolMetadata;
 pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
+pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
 use eframe::egui;
 pub(super) use overlay_sync::{
     FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache,
 };
 use scientific_metadata::theory::TheoryDescribable;
-
-pub struct ToolMetadata {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub domain: &'static str,
-    pub tags: &'static [&'static str],
-    pub build: fn() -> Box<dyn InteractiveTool>,
-}
-
-inventory::collect!(ToolMetadata);
-pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
 
 pub trait InteractiveTool {
     fn name(&self) -> &'static str;
@@ -141,25 +145,12 @@ pub trait InteractiveTool {
 
     /// Show the tool at the root `egui::Context` level by delegating to [`Self::show_inside`].
     fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
-            .show(ctx, |ui| {
-                self.show_inside(ui);
-            });
+        timeline_hooks::show_tool_in_central_panel(self, ctx);
     }
 
     /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
-    ///
-    /// # Accessibility Requirements for Custom `show_inside` Overrides
-    ///
-    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`],
-    ///   or [`egui::Sense::click_and_drag`] instead of `Sense::hover()` so `Tab` traversal reaches the visualization.
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` so `AccessKit`
-    ///   exposes `Role::Image` and non-empty alternative text.
-    /// - Populate `AccessKit` metadata via `crate::accessibility::register_canvas_accessibility` and draw a
-    ///   high-contrast focus ring when `response.has_focus()`.
-    /// - When consuming arrow keys, set `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
-    ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
+    /// Custom overrides must use focusable `egui::Sense`, `egui::Image::alt_text`, `register_canvas_accessibility`,
+    /// focus-ring painting, and `EventFilter { tab: false, .. }` when handling arrow keys.
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
@@ -279,10 +270,7 @@ pub trait InteractiveTool {
 
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, state: &str) {
-        if self.state_bounds().validate_json(state).is_err() {
-            return;
-        }
-        let _ = self.try_load_state(state);
+        timeline_hooks::load_validated_tool_state(self, state);
     }
 
     /// Optional hook to clamp unstable parameters to safe bounds, returning true if handled.
@@ -312,17 +300,22 @@ pub trait InteractiveTool {
 
     /// Serializes active parameter preset state to a formatted JSON string with metadata envelope.
     fn export_preset_json(&self) -> Result<String, String> {
-        timeline_hooks::export_tool_preset_json(self)
+        export_persistence::export_tool_preset_json(self)
     }
 
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        timeline_hooks::import_tool_preset_json(self, json_str)
+        export_persistence::import_tool_preset_json(self, json_str)
     }
 
-    /// Declares which dataset and figure export formats this tool supports.
+    /// Declares which dataset, figure, and code export formats this tool supports.
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
+    }
+
+    /// Optional cold-path hook returning calibrated LaTeX, Rust, and Python code artifacts.
+    fn export_code_artifact(&self) -> Option<CodeArtifact> {
+        None
     }
 
     /// Optional hook to export tool datasets.
@@ -414,7 +407,7 @@ pub trait InteractiveTool {
         &mut self,
         num_frames: usize,
     ) -> Vec<egui_plot::export::DatasetFrame> {
-        timeline_hooks::sample_tool_animation_frames(self, num_frames)
+        export_figure::sample_tool_animation_frames(self, num_frames)
     }
 
     /// Returns a type-erased reference for concrete tool state inspection.
@@ -443,6 +436,8 @@ pub struct SimulationFramework {
     pub(super) last_announced_count: Option<usize>,
     pub(super) last_announced_query: String,
     pub show_export_modal: bool,
+    pub show_code_export_modal: bool,
+    pub code_export_tab: CodeExportTab,
     pub export_options: egui_plot::export::ExportOptions,
     pub export_bg_dark: bool,
     pub export_gif_fps: u32,
@@ -452,6 +447,7 @@ pub struct SimulationFramework {
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
     pub(crate) export_queue: ExportQueue,
+    gif_job: Option<export_gif_job::FrameworkGifJob>,
     /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
     /// Baseline parameters snapshot on tool load.

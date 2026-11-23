@@ -2,7 +2,7 @@ use super::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Supported formats for deferred end-of-frame dataset, figure, and 3D exports.
+/// Supported formats for deferred end-of-frame dataset, figure, code, and 3D exports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ExportFormat {
     /// Comma-separated values dataset format (`.csv`).
@@ -15,6 +15,12 @@ pub(crate) enum ExportFormat {
     Svg,
     /// Animated Graphics Interchange Format (`.gif`).
     Gif,
+    /// Parameter-calibrated LaTeX mathematical model document (`.tex`).
+    Tex,
+    /// Standalone Rust 2024 numerical solver snippet (`.rs`).
+    Rust,
+    /// Standalone Python 3 (`numpy` / `scipy`) numerical script (`.py`).
+    Python,
     /// Binary Stereolithography watertight 3D mesh format (`.stl`).
     Stl,
     /// Polygon File Format for colored 3D meshes and 3DGS splats (`.ply`).
@@ -35,6 +41,9 @@ impl ExportFormat {
             Self::Png => ("png", "PNG", "PNG Image", "figure"),
             Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
             Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
+            Self::Tex => ("tex", "LaTeX", "LaTeX Document", "model"),
+            Self::Rust => ("rs", "Rust", "Rust Source File", "model"),
+            Self::Python => ("py", "Python", "Python Script", "model"),
             Self::Stl => ("stl", "STL", "STL 3D Mesh", "mesh"),
             Self::Ply => ("ply", "PLY", "PLY 3D Model", "mesh"),
             Self::Obj => ("obj", "OBJ", "Wavefront OBJ Mesh", "mesh"),
@@ -190,6 +199,11 @@ impl ExportQueue {
     pub(crate) fn drain_requests(&mut self) -> Vec<ExportRequest> {
         std::mem::take(&mut self.target_requests)
     }
+
+    /// Removes any queued requests matching `format`.
+    pub(crate) fn remove_format(&mut self, format: ExportFormat) {
+        self.target_requests.retain(|req| req.format != format);
+    }
 }
 
 impl SimulationFramework {
@@ -223,6 +237,9 @@ pub(super) fn materialize_shared_datasets(
 impl SimulationFramework {
     /// Queues a dataset or figure file export request for deferred end-of-frame dispatch.
     pub(crate) fn queue_export(&mut self, format: ExportFormat) {
+        if format == ExportFormat::Gif && self.gif_job.is_some() {
+            return;
+        }
         self.export_queue.push(format);
     }
 
@@ -259,7 +276,10 @@ impl SimulationFramework {
             (ExportFormat::Png, ExportTarget::File) => self.dispatch_png_export(),
             (ExportFormat::Png, ExportTarget::Clipboard) => self.dispatch_png_clipboard_export(ctx),
             (ExportFormat::Svg, _) => self.dispatch_svg_export(),
-            (ExportFormat::Gif, _) => self.dispatch_gif_export(),
+            (ExportFormat::Gif, _) => self.start_gif_export(ctx),
+            (ExportFormat::Tex | ExportFormat::Rust | ExportFormat::Python, target) => {
+                self.dispatch_code_export(req.format, target, ctx);
+            }
             (ExportFormat::Stl | ExportFormat::Ply | ExportFormat::Obj, target) => {
                 self.dispatch_3d_export(req.format, target, ctx);
             }
