@@ -153,6 +153,24 @@
   ],
   "crates/domain_ai/src/ai/gaussian_splatting/mod.rs": [
     {
+      "signature": "pub use projection :: LensedProjectionOutcome"
+    },
+    {
+      "signature": "pub use projection :: LensedSplatImageSpec"
+    },
+    {
+      "signature": "pub use projection :: SplatCameraProjection"
+    },
+    {
+      "signature": "pub use projection :: project_lensed_covariance"
+    },
+    {
+      "signature": "pub use projection :: project_scene_into"
+    },
+    {
+      "signature": "pub use projection :: project_scene_lensed_into"
+    },
+    {
       "signature": "pub use structs :: Gaussian2D"
     },
     {
@@ -178,7 +196,19 @@
       "signature": "pub fn project_covariance (_ : & Matrix3 < f64 > , _ : & Matrix4 < f64 > , _ : & SMatrix < f64 , 2 , 3 > ,) -> Matrix2 < f64 >"
     },
     {
+      "signature": "pub fn project_lensed_covariance (_ : & Matrix2 < f64 > , _ : & Matrix2 < f64 > ,) -> Matrix2 < f64 >"
+    },
+    {
       "signature": "pub fn project_scene_into (_ : & Scene , _ : & SplatCameraProjection , _ : & mut Vec < Gaussian2D > ,)"
+    },
+    {
+      "signature": "pub fn project_scene_lensed_into < F > (_ : & Scene , _ : & SplatCameraProjection , _ : F , _ : & mut Vec < Gaussian2D > ,) where F : FnMut (usize , & Gaussian3D , & Vector3 < f64 > , Point2 < f64 >) -> LensedProjectionOutcome ,"
+    },
+    {
+      "signature": "pub struct LensedProjectionOutcome"
+    },
+    {
+      "signature": "pub struct LensedSplatImageSpec"
     },
     {
       "signature": "pub struct SplatCameraProjection"
@@ -3901,6 +3931,9 @@
       "signature": "impl CellMask2D { pub fn paint_disk (& mut self , _ : i32 , _ : i32 , _ : i32 , _ : ReactionCellRole) }"
     },
     {
+      "signature": "impl CellMask2D { pub fn pin_turing_state (& self , _ : & mut crate :: biology :: morphogenesis :: TuringState < 2 >) }"
+    },
+    {
       "signature": "impl CellMask2D { pub fn roles (& self) -> & [u8] }"
     },
     {
@@ -3965,6 +3998,50 @@
       "signature": "pub struct FiniteDifference3D"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/laplace_beltrami/mod.rs": [
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn area_elements (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn clamp_dt (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn dimensions (& self) -> (usize , usize) }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn from_surface < S : ParametricSurface + ? Sized > (_ : & S , _ : SurfaceTopology , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize , _ : usize ,) -> Self }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn gaussian_curvature (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn grid_size (& self) -> usize }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn max_stable_dt (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn metric_anisotropy (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn min_area_element (& self) -> f64 }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn parameter_bounds (& self) -> ((f64 , f64) , (f64 , f64)) }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn seam_forward_map (& self) -> & [usize] }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn surface_integral (& self , _ : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "impl LaplaceBeltramiDiffusion2D { pub fn topology (& self) -> SurfaceTopology }"
+    },
+    {
+      "signature": "pub struct LaplaceBeltramiDiffusion2D"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/mod.rs": [
     {
       "signature": "pub trait SpatialDiffusion < const N : usize >"
@@ -3998,6 +4075,9 @@
     },
     {
       "signature": "pub use fd3d :: FiniteDifference3D"
+    },
+    {
+      "signature": "pub use laplace_beltrami :: LaplaceBeltramiDiffusion2D"
     }
   ],
   "crates/domain_biology/src/biology/evolution.rs": [
@@ -4048,7 +4128,19 @@
       "signature": "impl LeniaEngine { pub fn clear (& mut self) }"
     },
     {
+      "signature": "impl LeniaEngine { pub fn compute_potential_in_place (& mut self) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn custom_growth (& self) -> Option < & CompiledGrowthRule > }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn custom_kernel (& self) -> Option < & CompiledKernelRule > }"
+    },
+    {
       "signature": "impl LeniaEngine { pub fn dt (& self) -> f64 }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn evaluate_growth (& self , _ : f64) -> f64 }"
     },
     {
       "signature": "impl LeniaEngine { pub fn from_species (_ : usize , _ : usize , _ : LeniaSpecies , _ : f64 , _ : & mut OxidizeRng ,) -> Self }"
@@ -4063,6 +4155,9 @@
       "signature": "impl LeniaEngine { pub fn kernel_hat (& self) -> & [Complex < f64 >] }"
     },
     {
+      "signature": "impl LeniaEngine { pub fn max_potential (& self) -> f64 }"
+    },
+    {
       "signature": "impl LeniaEngine { pub fn new (_ : usize , _ : usize , _ : KernelShells , _ : GrowthParams , _ : f64 ,) -> Self }"
     },
     {
@@ -4075,7 +4170,19 @@
       "signature": "impl LeniaEngine { pub fn refresh_telemetry (& mut self) }"
     },
     {
+      "signature": "impl LeniaEngine { pub fn sample_growth_curve (& self , _ : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn sample_radial_kernel (& self , _ : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
       "signature": "impl LeniaEngine { pub fn seed_species (& mut self , _ : LeniaSpecies , _ : f64 , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn set_custom_growth (& mut self , _ : Option < CompiledGrowthRule >) }"
+    },
+    {
+      "signature": "impl LeniaEngine { pub fn set_custom_kernel (& mut self , _ : Option < CompiledKernelRule >) }"
     },
     {
       "signature": "impl LeniaEngine { pub fn set_dt (& mut self , _ : f64) }"
@@ -4111,10 +4218,99 @@
       "signature": "pub struct LeniaEngine"
     },
     {
-      "signature": "pub struct LeniaTelemetry"
+      "signature": "pub use super :: telemetry_math :: LeniaTelemetry"
+    }
+  ],
+  "crates/domain_biology/src/biology/lenia/fft_probe.rs": [
+    {
+      "signature": "pub const PROBE_CELLS : usize"
+    },
+    {
+      "signature": "pub const PROBE_DOWNSAMPLE : f64"
+    },
+    {
+      "signature": "pub const PROBE_SIDE : usize"
+    },
+    {
+      "signature": "pub const PROBE_STEPS : usize"
+    },
+    {
+      "signature": "pub enum LeniaProbeOutcome"
+    },
+    {
+      "signature": "pub fn evaluate_lenia_probe_32 (_ : & LeniaProbeSpec < '_ >) -> LeniaProbeSummary"
+    },
+    {
+      "signature": "pub fn evaluate_lenia_probe_32_preseeded (_ : & LeniaProbeSpec < '_ > , _ : & [f64 ; PROBE_CELLS] , _ : f64 , _ : Option < & [Complex < f64 > ; PROBE_CELLS] > ,) -> LeniaProbeSummary"
+    },
+    {
+      "signature": "pub fn fft_2d_forward_32 (_ : & mut [Complex < f64 > ; PROBE_CELLS])"
+    },
+    {
+      "signature": "pub fn fft_2d_inverse_32 (_ : & mut [Complex < f64 > ; PROBE_CELLS])"
+    },
+    {
+      "signature": "pub fn precompute_probe_kernel_hat_32 (_ : & LeniaProbeSpec < '_ > , _ : & mut [Complex < f64 > ; PROBE_CELLS] ,)"
+    },
+    {
+      "signature": "pub fn seed_probe_species_32 (_ : LeniaSpecies , _ : f64 , _ : & mut [f64 ; PROBE_CELLS] ,) -> f64"
+    },
+    {
+      "signature": "pub struct LeniaProbeSpec < 'a >"
+    },
+    {
+      "signature": "pub struct LeniaProbeSummary"
     }
   ],
   "crates/domain_biology/src/biology/lenia/kernel.rs": [
+    {
+      "signature": "impl CompiledGrowthRule { pub fn compiled (& self) -> & CompiledExpr }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn evaluate (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn evaluate_with_params (& self , _ : f64 , _ : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn new (_ : CompiledExpr , _ : & [f64]) -> Self }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn params (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn sample_curve (& self , _ : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
+      "signature": "impl CompiledGrowthRule { pub fn set_params (& mut self , _ : & [f64]) }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn compiled (& self) -> & CompiledExpr }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn new (_ : CompiledExpr , _ : & [f64]) -> Self }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn params (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn sample_radial_profile (& self , _ : usize) -> Vec < [f64 ; 2] > }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn set_params (& mut self , _ : & [f64]) }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn shell_unnormalized (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn shell_unnormalized_with_params (& self , _ : f64 , _ : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn write_wrapped_spatial_kernel (& self , _ : usize , _ : usize , _ : f64 , _ : & mut [Complex < f64 >] ,) -> f64 }"
+    },
+    {
+      "signature": "impl CompiledKernelRule { pub fn write_wrapped_spatial_kernel_with_params (& self , _ : usize , _ : usize , _ : f64 , _ : & [f64] , _ : & mut [Complex < f64 >] ,) -> f64 }"
+    },
     {
       "signature": "impl GrowthParams { pub fn evaluate (& self , _ : f64) -> f64 }"
     },
@@ -4146,10 +4342,22 @@
       "signature": "impl KernelShells { pub fn write_wrapped_spatial_kernel (& self , _ : usize , _ : usize , _ : & mut [Complex < f64 >] ,) -> f64 }"
     },
     {
+      "signature": "pub const MAX_LENIA_RULE_PARAMS : usize"
+    },
+    {
       "signature": "pub fn growth_gaussian (_ : f64 , _ : f64 , _ : f64) -> f64"
     },
     {
       "signature": "pub fn kernel_core_bump (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn write_normalized_torus_kernel < F > (_ : usize , _ : usize , _ : f64 , _ : & mut [Complex < f64 >] , _ : F ,) -> f64 where F : Fn (f64) -> f64 ,"
+    },
+    {
+      "signature": "pub struct CompiledGrowthRule"
+    },
+    {
+      "signature": "pub struct CompiledKernelRule"
     },
     {
       "signature": "pub struct GrowthParams"
@@ -4181,16 +4389,67 @@
       "signature": "pub use engine :: LeniaTelemetry"
     },
     {
+      "signature": "pub use fft_probe :: LeniaProbeOutcome"
+    },
+    {
+      "signature": "pub use fft_probe :: LeniaProbeSpec"
+    },
+    {
+      "signature": "pub use fft_probe :: LeniaProbeSummary"
+    },
+    {
+      "signature": "pub use fft_probe :: PROBE_CELLS"
+    },
+    {
+      "signature": "pub use fft_probe :: PROBE_DOWNSAMPLE"
+    },
+    {
+      "signature": "pub use fft_probe :: PROBE_SIDE"
+    },
+    {
+      "signature": "pub use fft_probe :: PROBE_STEPS"
+    },
+    {
+      "signature": "pub use fft_probe :: evaluate_lenia_probe_32"
+    },
+    {
+      "signature": "pub use fft_probe :: evaluate_lenia_probe_32_preseeded"
+    },
+    {
+      "signature": "pub use fft_probe :: fft_2d_forward_32"
+    },
+    {
+      "signature": "pub use fft_probe :: fft_2d_inverse_32"
+    },
+    {
+      "signature": "pub use fft_probe :: precompute_probe_kernel_hat_32"
+    },
+    {
+      "signature": "pub use fft_probe :: seed_probe_species_32"
+    },
+    {
+      "signature": "pub use kernel :: CompiledGrowthRule"
+    },
+    {
+      "signature": "pub use kernel :: CompiledKernelRule"
+    },
+    {
       "signature": "pub use kernel :: GrowthParams"
     },
     {
       "signature": "pub use kernel :: KernelShells"
     },
     {
+      "signature": "pub use kernel :: MAX_LENIA_RULE_PARAMS"
+    },
+    {
       "signature": "pub use kernel :: growth_gaussian"
     },
     {
       "signature": "pub use kernel :: kernel_core_bump"
+    },
+    {
+      "signature": "pub use kernel :: write_normalized_torus_kernel"
     },
     {
       "signature": "pub use presets :: LeniaGenome"
@@ -4358,6 +4617,9 @@
       "signature": "impl < const N : usize > TuringState < N > { pub fn new (_ : usize) -> Self }"
     },
     {
+      "signature": "impl TuringState < 2 > { pub fn pin_cell_mask (& mut self , _ : & crate :: biology :: diffusion :: CellMask2D) }"
+    },
+    {
       "signature": "impl TuringState < 2 > { pub fn u (& self) -> & [f64] }"
     },
     {
@@ -4399,12 +4661,62 @@
       "signature": "pub trait GatingKinetics { fn beta_n (& self , _ : f64 , _ : f64) -> f64 }"
     }
   ],
+  "crates/domain_biology/src/biology/neuroscience/kuramoto.rs": [
+    {
+      "signature": "impl KuramotoNetwork { pub fn coupling (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn frequency_spread (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn natural_frequencies (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn new (_ : usize , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn num_nodes (& self) -> usize }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn order_parameter (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn phases (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn reconfigure_topology (& mut self , _ : usize , _ : & [(usize , usize , f64)] , _ : bool , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn reset_phases (& mut self) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn set_coupling (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn set_frequency_spread (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn set_phase (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl KuramotoNetwork { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct KuramotoNetwork"
+    }
+  ],
   "crates/domain_biology/src/biology/neuroscience/mod.rs": [
     {
       "signature": "pub use kinetics :: GatingKinetics"
     },
     {
       "signature": "pub use kinetics :: StandardKinetics"
+    },
+    {
+      "signature": "pub use kuramoto :: KuramotoNetwork"
     },
     {
       "signature": "pub use model :: HodgkinHuxleyModel"
@@ -5662,6 +5974,61 @@
       "signature": "pub trait GalaxyModel { fn redshift_from_log_mass (& self , _ : SolarMassLog) -> Redshift }"
     }
   ],
+  "crates/domain_physics/src/physics/astrophysics/halo_lensing.rs": [
+    {
+      "signature": "pub fn halo_lens_deflection_and_jacobian (_ : Vector2 < f64 > , _ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 ,) -> (Vector2 < f64 > , Matrix2 < f64 > , ThinLensSample)"
+    },
+    {
+      "signature": "pub fn halo_thin_lens_sample (_ : f64 , _ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 ,) -> ThinLensSample"
+    },
+    {
+      "signature": "pub fn sample_halo_lensing_into (_ : f64 , _ : f64 , _ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 , _ : & mut [ThinLensSample] ,)"
+    },
+    {
+      "signature": "pub fn tangential_critical_radius_kpc (_ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 , _ : f64 ,) -> Option < f64 >"
+    }
+  ],
+  "crates/domain_physics/src/physics/astrophysics/lensing.rs": [
+    {
+      "signature": "pub const EINSTEIN_SEPARATION_REL_FLOOR : f64"
+    },
+    {
+      "signature": "pub const JACOBIAN_EIGEN_FLOOR : f64"
+    },
+    {
+      "signature": "pub fn axisymmetric_lens_jacobian (_ : Vector2 < f64 > , _ : f64 , _ : f64 ,) -> Matrix2 < f64 >"
+    },
+    {
+      "signature": "pub fn clamp_einstein_separation (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn schwarzschild_deflection_angle (_ : & SchwarzschildBlackHole , _ : f64 ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn schwarzschild_thin_lens_images (_ : & SchwarzschildBlackHole , _ : Vector2 < f64 > , _ : f64 , _ : f64 ,) -> Result < SchwarzschildDualImages , HighEnergyError >"
+    },
+    {
+      "signature": "pub struct SchwarzschildDualImages"
+    },
+    {
+      "signature": "pub struct SchwarzschildLensImage"
+    },
+    {
+      "signature": "pub struct ThinLensSample"
+    },
+    {
+      "signature": "pub use super :: halo_lensing :: halo_lens_deflection_and_jacobian"
+    },
+    {
+      "signature": "pub use super :: halo_lensing :: halo_thin_lens_sample"
+    },
+    {
+      "signature": "pub use super :: halo_lensing :: sample_halo_lensing_into"
+    },
+    {
+      "signature": "pub use super :: halo_lensing :: tangential_critical_radius_kpc"
+    }
+  ],
   "crates/domain_physics/src/physics/astrophysics/mod.rs": [
     {
       "signature": "pub use galaxies :: GalaxyModel"
@@ -5688,6 +6055,45 @@
       "signature": "pub use galaxies :: TypeCode95To99"
     },
     {
+      "signature": "pub use lensing :: EINSTEIN_SEPARATION_REL_FLOOR"
+    },
+    {
+      "signature": "pub use lensing :: JACOBIAN_EIGEN_FLOOR"
+    },
+    {
+      "signature": "pub use lensing :: SchwarzschildDualImages"
+    },
+    {
+      "signature": "pub use lensing :: SchwarzschildLensImage"
+    },
+    {
+      "signature": "pub use lensing :: ThinLensSample"
+    },
+    {
+      "signature": "pub use lensing :: axisymmetric_lens_jacobian"
+    },
+    {
+      "signature": "pub use lensing :: clamp_einstein_separation"
+    },
+    {
+      "signature": "pub use lensing :: halo_lens_deflection_and_jacobian"
+    },
+    {
+      "signature": "pub use lensing :: halo_thin_lens_sample"
+    },
+    {
+      "signature": "pub use lensing :: sample_halo_lensing_into"
+    },
+    {
+      "signature": "pub use lensing :: schwarzschild_deflection_angle"
+    },
+    {
+      "signature": "pub use lensing :: schwarzschild_thin_lens_images"
+    },
+    {
+      "signature": "pub use lensing :: tangential_critical_radius_kpc"
+    },
+    {
       "signature": "pub use orbits :: GalacticDiskSystem"
     },
     {
@@ -5710,6 +6116,36 @@
     },
     {
       "signature": "pub use orbits :: planar_acceleration"
+    },
+    {
+      "signature": "pub use paczynski_wiita :: CentralBlackHoleConfig"
+    },
+    {
+      "signature": "pub use paczynski_wiita :: HORIZON_CLEARANCE_FACTOR"
+    },
+    {
+      "signature": "pub use paczynski_wiita :: MAX_RELATIVISTIC_BETA"
+    },
+    {
+      "signature": "pub use paczynski_wiita :: RelativisticBeamingSample"
+    },
+    {
+      "signature": "pub use paczynski_wiita :: evaluate_relativistic_beaming"
+    },
+    {
+      "signature": "pub use paczynski_wiita :: is_captured_at_isco"
+    },
+    {
+      "signature": "pub use paczynski_wiita :: paczynski_wiita_acceleration_kpc"
+    },
+    {
+      "signature": "pub use paczynski_wiita :: paczynski_wiita_circular_speed_kms"
+    },
+    {
+      "signature": "pub use paczynski_wiita :: paczynski_wiita_potential_kpc"
+    },
+    {
+      "signature": "pub use paczynski_wiita :: validate_christoffel_radial_connection"
     },
     {
       "signature": "pub use rotation_curves :: BaryonicDiskConfig"
@@ -5794,16 +6230,7 @@
       "signature": "impl GalacticDiskSystem { pub fn from_morphology (_ : DwarfMorphology , _ : Mpc , _ : f64 , _ : f64 , _ : HaloProfile , _ : OrbitPopulationConfig ,) -> Self }"
     },
     {
-      "signature": "impl GalacticDiskSystem { pub fn particle_invariants (& self , _ : usize) -> Option < OrbitalInvariants > }"
-    },
-    {
       "signature": "impl GalacticDiskSystem { pub fn particles (& self) -> & [OrbitalState] }"
-    },
-    {
-      "signature": "impl GalacticDiskSystem { pub fn relative_angular_momentum_drift (& self) -> f64 }"
-    },
-    {
-      "signature": "impl GalacticDiskSystem { pub fn relative_energy_drift (& self) -> f64 }"
     },
     {
       "signature": "impl GalacticDiskSystem { pub fn reseed_orbits (& mut self , _ : usize , _ : usize , _ : f64 ,) }"
@@ -5816,12 +6243,6 @@
     },
     {
       "signature": "impl GalacticDiskSystem { pub fn step_n_verified (& mut self , _ : f64 , _ : usize) -> (u64 , u64) }"
-    },
-    {
-      "signature": "impl GalacticDiskSystem { pub fn total_angular_momentum (& self) -> f64 }"
-    },
-    {
-      "signature": "impl GalacticDiskSystem { pub fn total_energy (& self) -> f64 }"
     },
     {
       "signature": "impl GalacticDiskSystem { pub fn trail_len (& self) -> usize }"
@@ -5849,6 +6270,77 @@
     },
     {
       "signature": "pub struct OrbitalState"
+    }
+  ],
+  "crates/domain_physics/src/physics/astrophysics/paczynski_wiita.rs": [
+    {
+      "signature": "impl CentralBlackHoleConfig { pub fn enabled_preset () -> Self }"
+    },
+    {
+      "signature": "impl CentralBlackHoleConfig { pub fn horizon_radius_kpc (& self) -> f64 }"
+    },
+    {
+      "signature": "impl CentralBlackHoleConfig { pub fn is_default (& self) -> bool }"
+    },
+    {
+      "signature": "impl CentralBlackHoleConfig { pub fn isco_radius_kpc (& self) -> f64 }"
+    },
+    {
+      "signature": "impl CentralBlackHoleConfig { pub fn photon_sphere_radius_kpc (& self) -> f64 }"
+    },
+    {
+      "signature": "impl CentralBlackHoleConfig { pub fn to_schwarzschild_bh (& self) -> Result < SchwarzschildBlackHole , HighEnergyError > }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn captured_particle_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn particle_invariants (& self , _ : usize) -> Option < OrbitalInvariants > }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn relative_angular_momentum_drift (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn relative_energy_drift (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn set_central_black_hole (& mut self , _ : CentralBlackHoleConfig) }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn total_angular_momentum (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn total_energy (& self) -> f64 }"
+    },
+    {
+      "signature": "pub const HORIZON_CLEARANCE_FACTOR : f64"
+    },
+    {
+      "signature": "pub const MAX_RELATIVISTIC_BETA : f64"
+    },
+    {
+      "signature": "pub fn evaluate_relativistic_beaming (_ : & SchwarzschildBlackHole , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < RelativisticBeamingSample , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn is_captured_at_isco (_ : f64 , _ : f64 , _ : & CentralBlackHoleConfig) -> bool"
+    },
+    {
+      "signature": "pub fn paczynski_wiita_acceleration_kpc (_ : f64 , _ : f64 , _ : & CentralBlackHoleConfig ,) -> (f64 , f64)"
+    },
+    {
+      "signature": "pub fn paczynski_wiita_circular_speed_kms (_ : f64 , _ : & CentralBlackHoleConfig) -> f64"
+    },
+    {
+      "signature": "pub fn paczynski_wiita_potential_kpc (_ : f64 , _ : & CentralBlackHoleConfig) -> f64"
+    },
+    {
+      "signature": "pub fn validate_christoffel_radial_connection (_ : & SchwarzschildBlackHole , _ : f64 ,) -> Result < (f64 , f64) , HighEnergyError >"
+    },
+    {
+      "signature": "pub struct CentralBlackHoleConfig"
+    },
+    {
+      "signature": "pub struct RelativisticBeamingSample"
     }
   ],
   "crates/domain_physics/src/physics/astrophysics/rotation_curves.rs": [
@@ -8211,6 +8703,38 @@
       "signature": "pub use diagnostics :: Severity"
     }
   ],
+  "crates/math_commons/src/ast/codegen.rs": [
+    {
+      "signature": "impl Expr { pub fn to_latex_with_params (& self , _ : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_python_expr (& self , _ : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_python_expr_with_vars (& self , _ : & [& str] , _ : & HashMap < String , f64 > ,) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_python_ode_rhs (& self , _ : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_rust_expr (& self , _ : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_rust_expr_with_vars (& self , _ : & [& str] , _ : & HashMap < String , f64 > ,) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_rust_fn (& self , _ : & str , _ : & [& str] , _ : & HashMap < String , f64 > ,) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "pub fn format_latex_scalar (_ : f64) -> Result < String , EvalError >"
+    },
+    {
+      "signature": "pub fn format_python_float (_ : f64) -> Result < String , EvalError >"
+    },
+    {
+      "signature": "pub fn format_rust_f64 (_ : f64) -> Result < String , EvalError >"
+    }
+  ],
   "crates/math_commons/src/ast/compiled.rs": [
     {
       "signature": "impl CompiledExpr { pub const fn axis_count (& self) -> usize }"
@@ -8392,6 +8916,15 @@
     }
   ],
   "crates/math_commons/src/ast/mod.rs": [
+    {
+      "signature": "pub use codegen :: format_latex_scalar"
+    },
+    {
+      "signature": "pub use codegen :: format_python_float"
+    },
+    {
+      "signature": "pub use codegen :: format_rust_f64"
+    },
     {
       "signature": "pub use compiled :: CompiledExpr"
     },
@@ -8593,6 +9126,9 @@
     }
   ],
   "crates/math_commons/src/fit/mod.rs": [
+    {
+      "signature": "impl CurveFit { pub fn centered_polynomial (& self) -> Option < (f64 , f64 , & [f64]) > }"
+    },
     {
       "signature": "impl CurveFit { pub fn coefficients (& self) -> & [f64] }"
     },
@@ -8966,6 +9502,9 @@
   "crates/math_commons/src/series.rs": [
     {
       "signature": "pub trait PointSeries"
+    },
+    {
+      "signature": "pub trait PointSeries { fn advance_plateau_run (& self , _ : usize , _ : f64 , _ : f64 , _ : f64) -> usize }"
     },
     {
       "signature": "pub trait PointSeries { fn is_empty (& self) -> bool }"
@@ -11622,12 +12161,74 @@
       "signature": "pub use fourier :: TransformError"
     }
   ],
+  "crates/pure_math/src/pure_math/differential_geometry/buckled_flow.rs": [
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn buckling_normals (& self) -> & [Vector3 < f64 >] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn dimensions (& self) -> (usize , usize) }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn displacements (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn from_parametric < S : ParametricSurface + ? Sized > (_ : & S , _ : SurfaceTopology , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize , _ : usize ,) -> Self }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn max_stable_dt (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn mean_curvatures (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn min_area_element (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn points (& self) -> & [Point3 < f64 >] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn reference_points (& self) -> & [Point3 < f64 >] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn reset_to_reference (& mut self) }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn restore_points (& mut self , _ : & [Point3 < f64 >]) -> bool }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn seam_forward_map (& self) -> & [usize] }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn step_buckled (& mut self , _ : & [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> bool }"
+    },
+    {
+      "signature": "impl BuckledSurfaceFlow { pub fn topology (& self) -> SurfaceTopology }"
+    },
+    {
+      "signature": "impl SurfaceTopology { pub fn grid_spacings (self , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize , _ : usize ,) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl SurfaceTopology { pub fn uv_at (self , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize , _ : usize , _ : usize , _ : usize ,) -> (f64 , f64) }"
+    },
+    {
+      "signature": "pub enum SurfaceTopology"
+    },
+    {
+      "signature": "pub fn detect_twisted_seam_map < S : ParametricSurface + ? Sized > (_ : & S , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize ,) -> (Vec < usize > , Vec < usize >)"
+    },
+    {
+      "signature": "pub struct BuckledSurfaceFlow"
+    }
+  ],
   "crates/pure_math/src/pure_math/differential_geometry/heat_equation.rs": [
     {
       "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn new (_ : & 'a S , _ : f64 , _ : (f64 , f64) , _ : (f64 , f64) , _ : (usize , usize) , _ : impl Fn (f64 , f64) -> f64 ,) -> Self }"
     },
     {
       "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn with_topology (self , _ : SurfaceTopology) -> Self }"
     },
     {
       "signature": "pub struct HeatEquationSolver < 'a , S : ParametricSurface >"
@@ -11651,6 +12252,12 @@
     },
     {
       "signature": "pub struct MeanCurvatureFlow"
+    },
+    {
+      "signature": "pub use super :: buckled_flow :: BuckledSurfaceFlow"
+    },
+    {
+      "signature": "pub use super :: buckled_flow :: SurfaceTopology"
     }
   ],
   "crates/pure_math/src/pure_math/differential_geometry/operators.rs": [
@@ -11749,6 +12356,9 @@
       "signature": "pub use modular_bridge :: *"
     },
     {
+      "signature": "pub use singular :: *"
+    },
+    {
       "signature": "pub use weierstrass :: *"
     }
   ],
@@ -11797,6 +12407,80 @@
     },
     {
       "signature": "pub struct ModularValuationSummary"
+    }
+  ],
+  "crates/pure_math/src/pure_math/elliptic_curves/singular.rs": [
+    {
+      "signature": "impl FpSingularCubic { pub const fn affine_point_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub const fn projective_point_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub const fn smooth_group_order (& self) -> usize }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub fn add_smooth (& self , _ : CurvePoint < i64 > , _ : CurvePoint < i64 >) -> Option < CurvePoint < i64 > > }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub fn chord_step_fp (& self , _ : AffinePointFp , _ : AffinePointFp) -> Option < ChordStepFp > }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub fn classify (_ : i64 , _ : i64 , _ : i64) -> Result < Option < Self > , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub fn contains_affine_fp (& self , _ : AffinePointFp) -> bool }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub fn enumerate_projective_points (& self , _ : & mut [AffinePointFp] ,) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub fn is_singular_affine_fp (& self , _ : AffinePointFp) -> bool }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub fn is_singular_vertex (& self , _ : CurvePoint < i64 >) -> bool }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub fn rhs_mod_p (& self , _ : i64) -> i64 }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub fn slope_mod_p (& self , _ : CurvePoint < i64 > , _ : CurvePoint < i64 >) -> Option < i64 > }"
+    },
+    {
+      "signature": "impl FpSingularCubic { pub fn write_affine_points (& self , _ : & mut [CurvePoint < i64 >] ,) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl RealSingularCubic { pub fn add_smooth (& self , _ : CurvePoint < f64 > , _ : CurvePoint < f64 >) -> Option < CurvePoint < f64 > > }"
+    },
+    {
+      "signature": "impl RealSingularCubic { pub fn classify (_ : f64 , _ : f64) -> Option < Self > }"
+    },
+    {
+      "signature": "impl RealSingularCubic { pub fn classify_with_tol (_ : f64 , _ : f64 , _ : f64) -> Option < Self > }"
+    },
+    {
+      "signature": "impl RealSingularCubic { pub fn is_singular_vertex (& self , _ : CurvePoint < f64 >) -> bool }"
+    },
+    {
+      "signature": "impl RealSingularCubic { pub fn negate (& self , _ : CurvePoint < f64 >) -> CurvePoint < f64 > }"
+    },
+    {
+      "signature": "impl RealSingularCubic { pub fn rhs (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl RealSingularCubic { pub fn secant_or_tangent_slope (& self , _ : CurvePoint < f64 > , _ : CurvePoint < f64 >) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl SingularityKind { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum SingularityKind"
+    },
+    {
+      "signature": "pub struct FpSingularCubic"
+    },
+    {
+      "signature": "pub struct RealSingularCubic"
     }
   ],
   "crates/pure_math/src/pure_math/elliptic_curves/weierstrass.rs": [
@@ -15461,6 +16145,9 @@
   "crates/pure_math/src/pure_math/tensor/christoffel.rs": [
     {
       "signature": "pub fn christoffel_symbols (_ : & impl Metric , _ : & DVector < f64 > ,) -> Result < Vec < DMatrix < f64 > > , TensorError >"
+    },
+    {
+      "signature": "pub fn christoffel_symbols_fixed < M : StaticMetric < N > + ? Sized , const N : usize > (_ : & M , _ : & SVector < f64 , N > ,) -> Result < [SMatrix < f64 , N , N > ; N] , TensorError >"
     }
   ],
   "crates/pure_math/src/pure_math/tensor/differentiation.rs": [
@@ -15535,6 +16222,9 @@
   "crates/pure_math/src/pure_math/tensor/mod.rs": [
     {
       "signature": "pub use christoffel :: christoffel_symbols"
+    },
+    {
+      "signature": "pub use christoffel :: christoffel_symbols_fixed"
     },
     {
       "signature": "pub use geodesic :: GeodesicState"

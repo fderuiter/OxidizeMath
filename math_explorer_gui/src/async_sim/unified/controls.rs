@@ -101,10 +101,17 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         });
         ui.separator();
 
+        let canvas_sculpt_focused = M::supports_spatial_brush()
+            && self.brush_kit.is_sculpting()
+            && self
+                .brush_kit
+                .focused_plot_id()
+                .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
         if let Some(action) =
             PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
                 .timeline(self.controller.timeline_metadata())
                 .can_reset(true)
+                .allow_space_shortcut(!canvas_sculpt_focused)
                 .show(ui)
         {
             let cmd = match action {

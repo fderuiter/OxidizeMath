@@ -11,9 +11,11 @@ use thiserror::Error;
 
 pub mod modular_bridge;
 mod modular_fp;
+pub mod singular;
 pub mod weierstrass;
 
 pub use modular_bridge::*;
+pub use singular::*;
 pub use weierstrass::*;
 
 #[derive(Error, Clone, Debug, PartialEq, Eq)]
