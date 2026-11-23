@@ -87,46 +87,77 @@ impl DynamicalBilliardsTool {
 
     fn render_geometry_dimension_sliders(&mut self, ui: &mut egui::Ui) -> bool {
         match self.geometry {
-            BilliardGeometryKind::Circle => ui
-                .add(egui::Slider::new(&mut self.circle_radius, 0.4..=2.0).text("Radius R").max_decimals(3))
-                .accessible_hover_text("Circular billiard radius R")
-                .changed(),
-            BilliardGeometryKind::Ellipse => {
-                let a = ui
-                    .add(egui::Slider::new(&mut self.ellipse_a, 0.8..=2.2).text("Semi-Major a").max_decimals(3))
-                    .accessible_hover_text("Confocal ellipse semi-major axis a")
-                    .changed();
-                let max_b = self.ellipse_a;
-                let b = ui
-                    .add(egui::Slider::new(&mut self.ellipse_b, 0.4..=max_b).text("Semi-Minor b").max_decimals(3))
-                    .accessible_hover_text("Confocal ellipse semi-minor axis b ≤ a")
-                    .changed();
-                a || b
+            BilliardGeometryKind::Circle | BilliardGeometryKind::Ellipse => {
+                self.render_smooth_billiard_sliders(ui)
             }
-            BilliardGeometryKind::Stadium => {
-                let r = ui
-                    .add(egui::Slider::new(&mut self.stadium_radius, 0.3..=1.2).text("Cap Radius R").max_decimals(3))
-                    .accessible_hover_text("Bunimovich semicircle cap radius R")
-                    .changed();
-                let a = ui
-                    .add(egui::Slider::new(&mut self.stadium_half_straight, 0.05..=1.5).text("Half Straight a").max_decimals(3))
-                    .accessible_hover_text("Half-length a of flat stadium walls")
-                    .changed();
-                r || a
-            }
-            BilliardGeometryKind::Sinai => {
-                let side = ui
-                    .add(egui::Slider::new(&mut self.sinai_half_side, 0.8..=1.6).text("Half Side L").max_decimals(3))
-                    .accessible_hover_text("Sinai outer square half-side L")
-                    .changed();
-                let max_r = (self.sinai_half_side * 0.72).min(0.85);
-                let disk = ui
-                    .add(egui::Slider::new(&mut self.sinai_scatterer_radius, 0.10..=max_r).text("Scatterer R").max_decimals(3))
-                    .accessible_hover_text("Central dispersing scatterer disk radius R")
-                    .changed();
-                side || disk
+            BilliardGeometryKind::Stadium | BilliardGeometryKind::Sinai => {
+                self.render_piecewise_billiard_sliders(ui)
             }
         }
+    }
+
+    fn render_smooth_billiard_sliders(&mut self, ui: &mut egui::Ui) -> bool {
+        if self.geometry == BilliardGeometryKind::Circle {
+            return decimal_slider(
+                ui,
+                &mut self.circle_radius,
+                0.4..=2.0,
+                "Radius R",
+                "Circular billiard radius R",
+            );
+        }
+        let a = decimal_slider(
+            ui,
+            &mut self.ellipse_a,
+            0.8..=2.2,
+            "Semi-Major a",
+            "Confocal ellipse semi-major axis a",
+        );
+        let max_b = self.ellipse_a;
+        let b = decimal_slider(
+            ui,
+            &mut self.ellipse_b,
+            0.4..=max_b,
+            "Semi-Minor b",
+            "Confocal ellipse semi-minor axis b ≤ a",
+        );
+        a || b
+    }
+
+    fn render_piecewise_billiard_sliders(&mut self, ui: &mut egui::Ui) -> bool {
+        if self.geometry == BilliardGeometryKind::Stadium {
+            let r = decimal_slider(
+                ui,
+                &mut self.stadium_radius,
+                0.3..=1.2,
+                "Cap Radius R",
+                "Bunimovich semicircle cap radius R",
+            );
+            let a = decimal_slider(
+                ui,
+                &mut self.stadium_half_straight,
+                0.05..=1.5,
+                "Half Straight a",
+                "Half-length a of flat stadium walls",
+            );
+            return r || a;
+        }
+        let side = decimal_slider(
+            ui,
+            &mut self.sinai_half_side,
+            0.8..=1.6,
+            "Half Side L",
+            "Sinai outer square half-side L",
+        );
+        let max_r = (self.sinai_half_side * 0.72).min(0.85);
+        let disk = decimal_slider(
+            ui,
+            &mut self.sinai_scatterer_radius,
+            0.10..=max_r,
+            "Scatterer R",
+            "Central dispersing scatterer disk radius R",
+        );
+        side || disk
     }
 
     fn render_ray_fan_sliders(&mut self, ui: &mut egui::Ui) -> bool {
@@ -290,4 +321,16 @@ impl DynamicalBilliardsTool {
                 }
             });
     }
+}
+
+fn decimal_slider(
+    ui: &mut egui::Ui,
+    value: &mut f64,
+    range: std::ops::RangeInclusive<f64>,
+    text: &str,
+    hover: &str,
+) -> bool {
+    ui.add(egui::Slider::new(value, range).text(text).max_decimals(3))
+        .accessible_hover_text(hover)
+        .changed()
 }

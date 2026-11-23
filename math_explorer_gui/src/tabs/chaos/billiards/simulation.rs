@@ -15,12 +15,7 @@ use std::f64::consts::{PI, TAU};
 
 const WARMUP_BOUNCES_ON_FIRE: usize = 96;
 
-fn push_capped_birkhoff(
-    buf: &mut Vec<[f64; 2]>,
-    write_idx: &mut usize,
-    cap: usize,
-    pt: [f64; 2],
-) {
+fn push_capped_birkhoff(buf: &mut Vec<[f64; 2]>, write_idx: &mut usize, cap: usize, pt: [f64; 2]) {
     if !pt[0].is_finite() || !pt[1].is_finite() {
         return;
     }
@@ -228,8 +223,8 @@ impl DynamicalBilliardsTool {
             return Err("Point lies outside the valid billiard interior.");
         }
         self.launch_pos = pos;
-        let ray = BilliardRay::from_angle(pos, self.launch_angle)
-            .ok_or("Invalid ray launch angle.")?;
+        let ray =
+            BilliardRay::from_angle(pos, self.launch_angle).ok_or("Invalid ray launch angle.")?;
         if self.rays.len() >= MAX_RAYS {
             self.rays.remove(0);
             for (idx, existing) in self.rays.iter_mut().enumerate() {

@@ -50,7 +50,10 @@ pub struct HamiltonianLabState {
     /// Canonical `(q, p)` Poincaré seeds (`len() <= 16`).
     pub seeds: Vec<[f64; 2]>,
     /// Chirikov standard map kick strength $K \in [0, 5]$.
-    #[serde(default = "default_chirikov_k", skip_serializing_if = "is_default_chirikov_k")]
+    #[serde(
+        default = "default_chirikov_k",
+        skip_serializing_if = "is_default_chirikov_k"
+    )]
     pub chirikov_k: f64,
     /// Figure-8 zero-momentum perturbation $\delta p \in [-0.20, 0.20]$.
     #[serde(default, skip_serializing_if = "is_zero_f64")]
@@ -189,7 +192,10 @@ fn validate_lab_state(parsed: &HamiltonianLabState) -> Result<(), String> {
         ));
     }
     if !parsed.chirikov_k.is_finite() || !(0.0..=5.0).contains(&parsed.chirikov_k) {
-        return Err(format!("chirikov_k out of [0.0, 5.0]: {}", parsed.chirikov_k));
+        return Err(format!(
+            "chirikov_k out of [0.0, 5.0]: {}",
+            parsed.chirikov_k
+        ));
     }
     if !parsed.figure_eight_perturbation.is_finite()
         || !(-0.20..=0.20).contains(&parsed.figure_eight_perturbation)

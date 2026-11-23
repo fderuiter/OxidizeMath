@@ -175,20 +175,12 @@ impl DynamicalBilliardsTool {
     pub(super) fn launch_and_announce(&mut self, ctx: &egui::Context, xy: [f64; 2]) {
         match self.seed_single_ray_at(xy) {
             Ok(idx) => {
-                let msg = format!(
-                    "Launched ray {} from ({:.3}, {:.3})",
-                    idx + 1,
-                    xy[0],
-                    xy[1]
-                );
+                let msg = format!("Launched ray {} from ({:.3}, {:.3})", idx + 1, xy[0], xy[1]);
                 self.last_status_note = Some(msg.clone());
                 announce_live_status(ctx, msg);
             }
             Err(reason) => {
-                let msg = format!(
-                    "Cannot launch at ({:.3}, {:.3}): {reason}",
-                    xy[0], xy[1]
-                );
+                let msg = format!("Cannot launch at ({:.3}, {:.3}): {reason}", xy[0], xy[1]);
                 self.last_status_note = Some(msg.clone());
                 announce_live_status(ctx, msg);
             }
@@ -216,10 +208,7 @@ impl DynamicalBilliardsTool {
             if let Some(&first) = pts.first() {
                 pts.push(first);
             }
-            painter.add(egui::Shape::line(
-                pts,
-                Stroke::new(2.2_f32, palette.info),
-            ));
+            painter.add(egui::Shape::line(pts, Stroke::new(2.2_f32, palette.info)));
         }
 
         if self.geometry == BilliardGeometryKind::Sinai {

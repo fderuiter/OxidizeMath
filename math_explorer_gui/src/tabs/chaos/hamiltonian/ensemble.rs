@@ -4,9 +4,7 @@
 
 use super::simulation::{push_capped_ring, push_sliding_trail, WARMUP_STEPS_ON_SEED};
 use super::{HamiltonianChaosTool, HamiltonianModelKind, MAX_SECTION_POINTS, MAX_TRAIL_POINTS};
-use math_explorer::physics::chaos::hamiltonian::{
-    seed_double_pendulum_fan, ChirikovStandardMap,
-};
+use math_explorer::physics::chaos::hamiltonian::{seed_double_pendulum_fan, ChirikovStandardMap};
 use math_explorer::pure_math::analysis::ode::ArrayState;
 
 const PENDULUM_FAN_COUNT: usize = 8;

@@ -279,7 +279,10 @@ impl HamiltonianChaosTool {
         if self.model == HamiltonianModelKind::ChirikovStandardMap {
             ui.colored_label(
                 palette.success,
-                format!("Symplectic Area |det(J) - 1|: {:.6}%", self.ghost.symplectic_err_pct),
+                format!(
+                    "Symplectic Area |det(J) - 1|: {:.6}%",
+                    self.ghost.symplectic_err_pct
+                ),
             );
         } else {
             ui.colored_label(

@@ -383,8 +383,7 @@ impl HamiltonianChaosTool {
             slot.prev4.copy_from(&slot.state4);
             slot.prev_deriv4.copy_from(&slot.deriv4);
             if self.solver == SymplecticSolverChoice::ImplicitMidpoint {
-                self.midpoint4
-                    .step(&self.pendulum, t, &mut slot.state4, dt);
+                self.midpoint4.step(&self.pendulum, t, &mut slot.state4, dt);
             } else {
                 self.gl4_4.step(&self.pendulum, t, &mut slot.state4, dt);
             }
@@ -433,8 +432,7 @@ impl HamiltonianChaosTool {
                         .step(&self.three_body, t, &mut slot.state12, dt);
                 }
                 SymplecticSolverChoice::GaussLegendre4 => {
-                    self.gl4_12
-                        .step(&self.three_body, t, &mut slot.state12, dt);
+                    self.gl4_12.step(&self.three_body, t, &mut slot.state12, dt);
                 }
             }
             self.three_body

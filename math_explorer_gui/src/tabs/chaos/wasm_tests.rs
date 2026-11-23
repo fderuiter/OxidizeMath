@@ -50,9 +50,11 @@ fn wasm_chaos_hamiltonian_billiards_and_lyapunov_smoke() {
     }
 
     // 3. BifurcationDiagram: Lyapunov overlay
-    let mut bif = BifurcationDiagram::default();
-    bif.show_lyapunov = true;
-    bif.probe_r = 4.0;
+    let mut bif = BifurcationDiagram {
+        show_lyapunov: true,
+        probe_r: 4.0,
+        ..Default::default()
+    };
     bif.recompute();
     let _ = ctx.run(wasm_viewport(), |ctx| bif.show(ctx));
     assert!(bif.probe_lyapunov().unwrap_or(0.0) > 0.5);

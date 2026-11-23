@@ -46,7 +46,10 @@ fn test_billiards_canvas_keyboard_focus_and_out_of_domain_rejection() {
             break;
         }
     }
-    assert!(focused, "Euclidean Billiard Table canvas must receive Tab focus");
+    assert!(
+        focused,
+        "Euclidean Billiard Table canvas must receive Tab focus"
+    );
 
     let _ = ctx.run(push_key_event(Key::Enter), |ctx| tool.show(ctx));
     assert_eq!(tool.rays.len(), 1, "Enter must launch a billiard ray");
