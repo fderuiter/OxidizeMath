@@ -26,7 +26,7 @@ fn stochastic_pde_tab_is_auto_discovered_and_hydrates_share_urls() {
         .tabs
         .iter()
         .position(|t| t.url_slug() == "stochastic_pde")
-        .expect("StochasticPdeTab must be auto-discovered by build.rs");
+        .expect("StochasticPdeTab must be registered via inventory");
     assert_eq!(app.tabs[idx].academic_domain(), "Physics");
 
     let hydrated = app

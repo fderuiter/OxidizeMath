@@ -1,12 +1,13 @@
-// @explorer_feature = "physics"
+//! Physics tab for Stochastic Partial Differential Equations (SPDEs):
+//! 1D & 2D Edwards-Wilkinson and Kardar-Parisi-Zhang interface growth (`KpzInterfaceTool`)
+//! and 2D Allen-Cahn & Cahn-Hilliard spinodal decomposition (`SpinodalDecompositionTool`).
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 // [cite:stochastic_pde]
 // [cite:interface_growth]
 // [cite:phase_field]
-// Auto-discovered Physics tab for Stochastic Partial Differential Equations (SPDEs):
-// 1D & 2D Edwards-Wilkinson and Kardar-Parisi-Zhang interface growth (`KpzInterfaceTool`)
-// and 2D Allen-Cahn & Cahn-Hilliard spinodal decomposition (`SpinodalDecompositionTool`).
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 mod kpz_canvas;
@@ -91,5 +92,13 @@ impl ExplorerTab for StochasticPdeTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "stochastic_pde",
+        order: 18,
+        build: || Box::new(StochasticPdeTab::default()),
     }
 }

@@ -102,6 +102,7 @@ impl SpinodalDecompositionTool {
                     self.playing = false;
                     self.step_once();
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => self.reseed_spinodal_state(),
             }
         }

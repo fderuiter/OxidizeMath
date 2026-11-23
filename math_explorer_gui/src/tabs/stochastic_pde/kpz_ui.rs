@@ -98,6 +98,7 @@ impl KpzInterfaceTool {
                     self.playing = false;
                     self.step_once();
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => self.rebuild_and_seed(),
             }
         }
