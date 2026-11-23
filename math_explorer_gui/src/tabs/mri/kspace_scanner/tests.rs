@@ -52,7 +52,7 @@ fn find_accesskit_node_rect_and_id(
 fn test_sibling_registration_and_quad_panel_rendering() {
     let mut tab = MriTab::default();
     assert_eq!(tab.active_tool_id(), Some("MriTool"));
-    assert_eq!(tab.framework.available_tools.len(), 2);
+    assert_eq!(tab.framework.available_tools.len(), 3);
 
     assert!(tab.select_tool_by_name("MriKSpaceScannerTool"));
     assert_eq!(tab.active_tool_id(), Some("MriKSpaceScannerTool"));

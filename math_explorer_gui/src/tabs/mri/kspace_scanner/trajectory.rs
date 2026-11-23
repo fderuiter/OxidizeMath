@@ -118,7 +118,6 @@ fn sample_lorenz_chaotic(steps: usize, rho: f64) -> Vec<bool> {
         .sigma(10.0)
         .rho(rho.clamp(10.0, 60.0))
         .beta(8.0 / 3.0)
-        .dt(0.01)
         .build(LorenzState::new(1.0, 1.0, 20.0));
 
     // Warm up onto the strange attractor before recording k-space samples.
