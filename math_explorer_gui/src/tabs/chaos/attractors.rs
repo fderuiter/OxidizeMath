@@ -1,9 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::async_sim::{BackgroundWorker, SimCommand};
-use crate::framework::{Camera3D, CoupledExpressionBank, InteractiveTool, Scene3DBuilder};
+use crate::framework::{
+    Camera3D, CoupledExpressionBank, ExportCapabilities, InteractiveTool, Scene3DBuilder,
+};
 use eframe::egui;
-use egui_plot::{LineStyle, MarkerShape};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
@@ -30,6 +31,9 @@ mod regime_ui;
 #[path = "attractors/ui.rs"]
 mod ui;
 
+#[path = "attractors/export.rs"]
+pub mod export;
+
 pub struct AttractorPlotter {
     pub(crate) mode: AttractorMode,
     pub(crate) flow_bank: CoupledExpressionBank,
@@ -38,11 +42,12 @@ pub struct AttractorPlotter {
     pub(crate) step_count: usize,
     pub(crate) simulation_speed: usize,
     pub(crate) dt: f64,
+    pub(crate) tube_radius: f64,
     pub(crate) history: VecDeque<Vector3<f64>>,
     pub(crate) max_points: usize,
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
-    trajectory_scratch: Vec<Point3<f64>>,
+    pub(crate) trajectory_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
     pub(crate) latest_lyapunov: Option<f64>,
@@ -84,6 +89,7 @@ impl Default for AttractorPlotter {
             step_count: 0,
             simulation_speed: 5,
             dt: 0.01,
+            tube_radius: export::DEFAULT_TUBE_RADIUS,
             history: VecDeque::with_capacity(2000),
             max_points: 2000,
             camera,
@@ -127,6 +133,7 @@ impl AttractorPlotter {
             && v.z.is_finite()
             && lorenz_ok
             && self.dt.is_finite()
+            && self.tube_radius.is_finite()
             && self.flow_bank.param_slice().iter().all(|x| x.is_finite())
     }
 
@@ -230,6 +237,7 @@ impl AttractorPlotter {
         self.system.beta = 8.0 / 3.0;
         self.flow_bank = default_flow_bank();
         self.dt = 0.01;
+        self.tube_radius = export::DEFAULT_TUBE_RADIUS;
         self.reset();
     }
 
@@ -281,49 +289,6 @@ impl AttractorPlotter {
             self.latest_correlation_sum = None;
         }
     }
-
-    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
-    pub fn populate_scene(&mut self, series_color: egui::Color32) {
-        let origin_offset = match self.mode {
-            AttractorMode::Lorenz => Point3::new(0.0, 0.0, 25.0),
-            AttractorMode::Custom => Point3::origin(),
-        };
-        self.scene_builder.begin(self.camera);
-        self.scene_builder.set_origin_offset(origin_offset);
-        self.trajectory_scratch.clear();
-        self.trajectory_scratch
-            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
-        if !self.trajectory_scratch.is_empty() {
-            if self.trajectory_scratch.len() == 1 {
-                self.scene_builder.add_points(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    4.0_f32,
-                    series_color,
-                    MarkerShape::Circle,
-                    true,
-                );
-            } else {
-                self.scene_builder.add_polyline(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    egui::Stroke::new(1.5_f32, series_color),
-                    LineStyle::Solid,
-                    true,
-                );
-            }
-        } else if self.is_finite_state() {
-            let v = self.system.state.vec;
-            self.scene_builder.add_points(
-                "Initial State",
-                &[Point3::new(v.x, v.y, v.z)],
-                4.0_f32,
-                series_color,
-                MarkerShape::Circle,
-                true,
-            );
-        }
-    }
 }
 
 impl InteractiveTool for AttractorPlotter {
@@ -351,6 +316,7 @@ impl InteractiveTool for AttractorPlotter {
         self.system.rho.to_bits().hash(&mut h);
         self.system.beta.to_bits().hash(&mut h);
         self.dt.to_bits().hash(&mut h);
+        self.tube_radius.to_bits().hash(&mut h);
         self.simulation_speed.hash(&mut h);
         self.max_points.hash(&mut h);
         self.is_paused().hash(&mut h);
@@ -420,6 +386,18 @@ impl InteractiveTool for AttractorPlotter {
         self.refresh_local_metrics();
     }
 
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        Some(self.build_trajectory_mesh_3d())
+    }
+
+    fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
+        Some(self.build_trajectory_colored_mesh_3d())
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
         if points.is_empty() && self.is_finite_state() {
@@ -487,3 +465,7 @@ mod lyapunov_bridge_tests;
 #[cfg(test)]
 #[path = "attractors/custom_flow_tests.rs"]
 mod custom_flow_tests;
+
+#[cfg(test)]
+#[path = "attractors/export_tests.rs"]
+mod export_tests;

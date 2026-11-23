@@ -1,58 +1,39 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use std::sync::mpsc;
+use crate::accessibility::{all_announcements, clear_test_announcements};
+use crate::framework::{ExportFormat, ExportStatusSeverity, ExportTarget, SimulationFramework};
 
 #[test]
-fn test_surface_viewer_non_blocking_obj_export_polling_and_live_announcements() {
-    crate::accessibility::clear_test_announcements();
-    let mut viewer = SurfaceViewer::default();
-    let obj = viewer
-        .build_obj_mesh_string()
-        .expect("OBJ mesh generation should succeed");
+fn test_surface_viewer_deferred_obj_stl_ply_exports_and_live_announcements() {
+    clear_test_announcements();
+    let viewer = SurfaceViewer::default();
+    let obj = viewer.build_obj_string();
     assert!(obj.contains("\nv ") || obj.starts_with("v ") || obj.contains("\nf "));
 
-    let (tx, rx) = mpsc::channel();
-    viewer.obj_export_rx = Some(rx);
+    let mut fw = SimulationFramework::new("__surface_viewer_export__");
+    fw.active_tool = Some(Box::new(viewer));
     let ctx = egui::Context::default();
 
-    // Frame while dialog/write is still in flight does not block and keeps channel active
-    let _ = ctx.run(egui::RawInput::default(), |sub_ctx| viewer.show(sub_ctx));
-    assert!(viewer.obj_export_rx.is_some());
-    assert!(viewer.obj_export_status.is_none());
+    let _ = ctx.run(egui::RawInput::default(), |sub_ctx| {
+        fw.queue_export(ExportFormat::Obj);
+        fw.show(sub_ctx, "surface_obj_audit");
+    });
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    assert!(all_announcements().iter().any(|(msg, prio)| {
+        msg.contains("Wavefront OBJ Mesh saved successfully") && prio == "polite"
+    }));
 
-    // Deliver asynchronous save completion and verify polite ARIA announcement
-    tx.send(Ok("torus_mesh.obj".to_string()))
-        .expect("send result");
-    let _ = ctx.run(egui::RawInput::default(), |sub_ctx| viewer.show(sub_ctx));
-    assert!(viewer.obj_export_rx.is_none());
-    assert_eq!(
-        viewer.obj_export_status,
-        Some(("Saved OBJ mesh to torus_mesh.obj".to_string(), false))
-    );
-    let live_msg = ctx
-        .data(|d| d.get_temp::<String>(egui::Id::new("aria_live_message")))
-        .expect("Polite live status expected");
-    assert!(live_msg.contains("torus_mesh.obj"));
-
-    // Deliver asynchronous save failure and verify assertive ARIA alert
-    let (tx_err, rx_err) = mpsc::channel();
-    viewer.obj_export_rx = Some(rx_err);
-    tx_err
-        .send(Err("Failed to save OBJ mesh: permission denied".to_string()))
-        .expect("send error");
-    let _ = ctx.run(egui::RawInput::default(), |sub_ctx| viewer.show(sub_ctx));
-    assert_eq!(
-        viewer.obj_export_status,
-        Some((
-            "Failed to save OBJ mesh: permission denied".to_string(),
-            true
-        ))
-    );
-    let alert_msg = ctx
-        .data(|d| d.get_temp::<String>(egui::Id::new("aria_live_assertive_message")))
-        .expect("Assertive live alert expected");
-    assert!(alert_msg.contains("permission denied"));
+    clear_test_announcements();
+    let _ = ctx.run(egui::RawInput::default(), |sub_ctx| {
+        fw.export_queue
+            .push_target(ExportFormat::Obj, ExportTarget::Clipboard);
+        fw.show(sub_ctx, "surface_obj_clipboard_audit");
+    });
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Warning);
+    assert!(all_announcements()
+        .iter()
+        .any(|(_, prio)| prio == "assertive"));
 }
 
 #[test]

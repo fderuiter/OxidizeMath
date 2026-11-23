@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{AttractorPlotter, SolverExecutionState};
+use super::{AttractorMode, AttractorPlotter, SolverExecutionState};
 use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::{
     render_custom_fault_banner, render_empty_plot_guidance, render_worker_fault_banner,
@@ -9,8 +9,8 @@ use crate::async_sim::ui::{
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
-use egui_plot::{Callout, PlotPoint};
-use nalgebra::Vector3;
+use egui_plot::{Callout, LineStyle, MarkerShape, PlotPoint};
+use nalgebra::{Point3, Vector3};
 
 impl AttractorPlotter {
     pub(super) fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -80,6 +80,13 @@ impl AttractorPlotter {
                     if self.flow_bank.ui(ui) {
                         self.on_slider_changed();
                     }
+                    ui.add(
+                        egui::Slider::new(
+                            &mut self.tube_radius,
+                            super::export::MIN_TUBE_RADIUS..=super::export::MAX_TUBE_RADIUS,
+                        )
+                        .text("3D Tube Radius"),
+                    );
                 });
             return;
         }
@@ -114,6 +121,13 @@ impl AttractorPlotter {
             {
                 self.on_slider_changed();
             }
+            ui.add(
+                egui::Slider::new(
+                    &mut self.tube_radius,
+                    super::export::MIN_TUBE_RADIUS..=super::export::MAX_TUBE_RADIUS,
+                )
+                .text("3D Tube Radius"),
+            );
         });
     }
 
@@ -419,5 +433,48 @@ impl AttractorPlotter {
 
             response.accessible_theory_hover(&self.system);
         });
+    }
+
+    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
+    pub fn populate_scene(&mut self, series_color: egui::Color32) {
+        let origin_offset = match self.mode {
+            AttractorMode::Lorenz => Point3::new(0.0, 0.0, 25.0),
+            AttractorMode::Custom => Point3::origin(),
+        };
+        self.scene_builder.begin(self.camera);
+        self.scene_builder.set_origin_offset(origin_offset);
+        self.trajectory_scratch.clear();
+        self.trajectory_scratch
+            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
+        if !self.trajectory_scratch.is_empty() {
+            if self.trajectory_scratch.len() == 1 {
+                self.scene_builder.add_points(
+                    "Trajectory",
+                    &self.trajectory_scratch,
+                    4.0_f32,
+                    series_color,
+                    MarkerShape::Circle,
+                    true,
+                );
+            } else {
+                self.scene_builder.add_polyline(
+                    "Trajectory",
+                    &self.trajectory_scratch,
+                    egui::Stroke::new(1.5_f32, series_color),
+                    LineStyle::Solid,
+                    true,
+                );
+            }
+        } else if self.is_finite_state() {
+            let v = self.system.state.vec;
+            self.scene_builder.add_points(
+                "Initial State",
+                &[Point3::new(v.x, v.y, v.z)],
+                4.0_f32,
+                series_color,
+                MarkerShape::Circle,
+                true,
+            );
+        }
     }
 }
