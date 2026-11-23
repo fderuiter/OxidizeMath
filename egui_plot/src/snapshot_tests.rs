@@ -50,16 +50,23 @@ fn test_sanitize_clamps_fit_degree_and_rejects_non_finite() {
         ..Default::default()
     };
     snap.sanitize_and_validate().expect("valid after clamping");
-    assert_eq!(snap.fit_model, Some(FitType::Polynomial(4)));
+    assert_eq!(snap.fit_model, Some(FitType::Quartic));
     assert_eq!(snap.fit_degree, None);
     assert!((snap.grid_density - 100.0).abs() < f32::EPSILON);
 
     let mut zero_deg = PlotOverlaySnapshot {
-        fit_model: Some(FitType::Polynomial(0)),
+        fit_degree: Some(0),
         ..Default::default()
     };
     zero_deg.sanitize_and_validate().expect("clamps 0 to 1");
-    assert_eq!(zero_deg.fit_model, Some(FitType::Polynomial(1)));
+    assert_eq!(zero_deg.fit_model, Some(FitType::Linear));
+
+    let mut quad_deg = PlotOverlaySnapshot {
+        fit_degree: Some(2),
+        ..Default::default()
+    };
+    quad_deg.sanitize_and_validate().expect("maps degree 2");
+    assert_eq!(quad_deg.fit_model, Some(FitType::Quadratic));
 
     let mut bad_callout = PlotOverlaySnapshot::default();
     bad_callout

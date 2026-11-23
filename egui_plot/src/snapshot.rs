@@ -371,17 +371,14 @@ impl PlotOverlaySnapshot {
             self.auto_bounds = None;
         }
 
-        if let Some(FitType::Polynomial(deg)) = self.fit_model {
-            self.fit_model = Some(FitType::Polynomial(deg.clamp(1, 4)));
-        }
         if let Some(deg) = self.fit_degree.take()
             && self.fit_model.is_none()
         {
-            let clamped = deg.clamp(1, 4);
-            self.fit_model = Some(if clamped == 1 {
-                FitType::Linear
-            } else {
-                FitType::Polynomial(clamped)
+            self.fit_model = Some(match deg.clamp(1, 4) {
+                1 => FitType::Linear,
+                2 => FitType::Quadratic,
+                3 => FitType::Cubic,
+                _ => FitType::Quartic,
             });
         }
 

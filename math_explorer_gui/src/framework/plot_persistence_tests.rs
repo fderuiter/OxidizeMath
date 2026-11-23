@@ -353,7 +353,7 @@ fn test_untrusted_json_rejects_non_finite_and_clamps_fit_degree() {
     fw.load_state(&untrusted_degree);
     assert_eq!(
         fw.saved_plot_states["Mock Tool A"]["shared_canvas"].fit_model,
-        Some(FitType::Polynomial(4))
+        Some(FitType::Quartic)
     );
 
     fw.load_state(&baseline_json);

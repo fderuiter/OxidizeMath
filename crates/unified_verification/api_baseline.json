@@ -4065,22 +4065,22 @@
   ],
   "crates/domain_physics/src/physics/astrophysics/orbits.rs": [
     {
-      "signature": "impl GalacticDiskSystem { pub fn copy_particle_trail (& self , particle_idx : usize , out : & mut [[f64 ; 2]]) -> usize }"
+      "signature": "impl GalacticDiskSystem { pub fn copy_particle_trail (& self , _ : usize , _ : & mut [[f64 ; 2]]) -> usize }"
     },
     {
       "signature": "impl GalacticDiskSystem { pub fn elapsed_myr (& self) -> f64 }"
     },
     {
-      "signature": "impl GalacticDiskSystem { pub fn from_baryons (baryons : BaryonicDiskConfig , halo : HaloProfile , population : OrbitPopulationConfig ,) -> Self }"
+      "signature": "impl GalacticDiskSystem { pub fn from_baryons (_ : BaryonicDiskConfig , _ : HaloProfile , _ : OrbitPopulationConfig ,) -> Self }"
     },
     {
-      "signature": "impl GalacticDiskSystem { pub fn from_galaxy_model < M : GalaxyModel > (model : & M , distance : Mpc , gas_fraction : f64 , disk_scale_kpc : f64 , halo : HaloProfile , population : OrbitPopulationConfig ,) -> Self }"
+      "signature": "impl GalacticDiskSystem { pub fn from_galaxy_model < M : GalaxyModel > (_ : & M , _ : Mpc , _ : f64 , _ : f64 , _ : HaloProfile , _ : OrbitPopulationConfig ,) -> Self }"
     },
     {
-      "signature": "impl GalacticDiskSystem { pub fn from_morphology (morphology : DwarfMorphology , distance : Mpc , gas_fraction : f64 , disk_scale_kpc : f64 , halo : HaloProfile , population : OrbitPopulationConfig ,) -> Self }"
+      "signature": "impl GalacticDiskSystem { pub fn from_morphology (_ : DwarfMorphology , _ : Mpc , _ : f64 , _ : f64 , _ : HaloProfile , _ : OrbitPopulationConfig ,) -> Self }"
     },
     {
-      "signature": "impl GalacticDiskSystem { pub fn particle_invariants (& self , index : usize) -> Option < OrbitalInvariants > }"
+      "signature": "impl GalacticDiskSystem { pub fn particle_invariants (& self , _ : usize) -> Option < OrbitalInvariants > }"
     },
     {
       "signature": "impl GalacticDiskSystem { pub fn particles (& self) -> & [OrbitalState] }"
@@ -4092,16 +4092,16 @@
       "signature": "impl GalacticDiskSystem { pub fn relative_energy_drift (& self) -> f64 }"
     },
     {
-      "signature": "impl GalacticDiskSystem { pub fn reseed_orbits (& mut self , disk_tracers : usize , tidal_tracers : usize , tidal_tangential_ratio : f64 ,) }"
+      "signature": "impl GalacticDiskSystem { pub fn reseed_orbits (& mut self , _ : usize , _ : usize , _ : f64 ,) }"
     },
     {
-      "signature": "impl GalacticDiskSystem { pub fn step_leapfrog (& mut self , dt_myr : f64) }"
+      "signature": "impl GalacticDiskSystem { pub fn step_leapfrog (& mut self , _ : f64) }"
     },
     {
-      "signature": "impl GalacticDiskSystem { pub fn step_n_leapfrog (& mut self , dt_myr : f64 , substeps : usize) }"
+      "signature": "impl GalacticDiskSystem { pub fn step_n_leapfrog (& mut self , _ : f64 , _ : usize) }"
     },
     {
-      "signature": "impl GalacticDiskSystem { pub fn step_n_verified (& mut self , dt_myr : f64 , substeps : usize) -> (u64 , u64) }"
+      "signature": "impl GalacticDiskSystem { pub fn step_n_verified (& mut self , _ : f64 , _ : usize) -> (u64 , u64) }"
     },
     {
       "signature": "impl GalacticDiskSystem { pub fn total_angular_momentum (& self) -> f64 }"
@@ -4113,16 +4113,16 @@
       "signature": "impl GalacticDiskSystem { pub fn trail_len (& self) -> usize }"
     },
     {
-      "signature": "pub const KPC_PER_MYR_PER_KMS : f64 = (1_000.0 * SECONDS_PER_MYR) / METERS_PER_KPC"
+      "signature": "pub const KPC_PER_MYR_PER_KMS : f64"
     },
     {
-      "signature": "pub const SECONDS_PER_MYR : f64 = 3.155_76e13"
+      "signature": "pub const SECONDS_PER_MYR : f64"
     },
     {
       "signature": "pub enum OrbitParticleKind"
     },
     {
-      "signature": "pub fn planar_acceleration (x_kpc : f64 , y_kpc : f64 , baryons : & BaryonicDiskConfig , halo : & HaloProfile ,) -> (f64 , f64)"
+      "signature": "pub fn planar_acceleration (_ : f64 , _ : f64 , _ : & BaryonicDiskConfig , _ : & HaloProfile ,) -> (f64 , f64)"
     },
     {
       "signature": "pub struct GalacticDiskSystem"
@@ -4139,37 +4139,37 @@
   ],
   "crates/domain_physics/src/physics/astrophysics/rotation_curves.rs": [
     {
-      "signature": "impl DwarfMorphology { pub fn apparent_magnitude_from_distance (& self , distance : Mpc) -> Option < Magnitude > }"
+      "signature": "impl DwarfMorphology { pub fn apparent_magnitude_from_distance (& self , _ : Mpc) -> Option < Magnitude > }"
     },
     {
-      "signature": "impl DwarfMorphology { pub fn baryonic_config_from_distance (& self , distance : Mpc , gas_fraction : f64 , disk_scale_kpc : f64 ,) -> BaryonicDiskConfig }"
+      "signature": "impl DwarfMorphology { pub fn baryonic_config_from_distance (& self , _ : Mpc , _ : f64 , _ : f64 ,) -> BaryonicDiskConfig }"
     },
     {
-      "signature": "impl DwarfMorphology { pub fn baryonic_config_from_magnitude (& self , abs_mag_v : Magnitude , gas_fraction : f64 , disk_scale_kpc : f64 ,) -> BaryonicDiskConfig }"
+      "signature": "impl DwarfMorphology { pub fn baryonic_config_from_magnitude (& self , _ : Magnitude , _ : f64 , _ : f64 ,) -> BaryonicDiskConfig }"
     },
     {
       "signature": "impl DwarfMorphology { pub fn label (& self) -> & 'static str }"
     },
     {
-      "signature": "impl DwarfMorphology { pub fn log_mass_from_absolute_magnitude (& self , abs_mag_v : Magnitude) -> SolarMassLog }"
+      "signature": "impl DwarfMorphology { pub fn log_mass_from_absolute_magnitude (& self , _ : Magnitude) -> SolarMassLog }"
     },
     {
-      "signature": "impl DwarfMorphology { pub fn log_mass_from_distance (& self , distance : Mpc) -> SolarMassLog }"
+      "signature": "impl DwarfMorphology { pub fn log_mass_from_distance (& self , _ : Mpc) -> SolarMassLog }"
     },
     {
-      "signature": "impl DwarfMorphology { pub fn redshift_from_log_mass (& self , log_mass : SolarMassLog) -> Redshift }"
+      "signature": "impl DwarfMorphology { pub fn redshift_from_log_mass (& self , _ : SolarMassLog) -> Redshift }"
     },
     {
       "signature": "impl HaloProfile { pub fn label (& self) -> & 'static str }"
     },
     {
-      "signature": "pub const G_KPC_KMS2_PER_SOLAR_MASS : f64 = (math_commons :: constants :: G * math_commons :: constants :: SOLAR_MASS) / (METERS_PER_KPC * 1.0e6)"
+      "signature": "pub const G_KPC_KMS2_PER_SOLAR_MASS : f64"
     },
     {
-      "signature": "pub const METERS_PER_KPC : f64 = 3.085_677_581_491_367e19"
+      "signature": "pub const METERS_PER_KPC : f64"
     },
     {
-      "signature": "pub const MIN_GALACTOCENTRIC_RADIUS_KPC : f64 = 1.0e-3"
+      "signature": "pub const MIN_GALACTOCENTRIC_RADIUS_KPC : f64"
     },
     {
       "signature": "pub enum DwarfMorphology"
@@ -4178,22 +4178,22 @@
       "signature": "pub enum HaloProfile"
     },
     {
-      "signature": "pub fn baryons_from_absolute_magnitude < M : GalaxyModel > (model : & M , abs_magnitude_v : Magnitude , gas_fraction : f64 , disk_scale_kpc : f64 ,) -> BaryonicDiskConfig"
+      "signature": "pub fn baryons_from_absolute_magnitude < M : GalaxyModel > (_ : & M , _ : Magnitude , _ : f64 , _ : f64 ,) -> BaryonicDiskConfig"
     },
     {
-      "signature": "pub fn baryons_from_distance < M : GalaxyModel > (model : & M , distance : Mpc , gas_fraction : f64 , disk_scale_kpc : f64 ,) -> BaryonicDiskConfig"
+      "signature": "pub fn baryons_from_distance < M : GalaxyModel > (_ : & M , _ : Mpc , _ : f64 , _ : f64 ,) -> BaryonicDiskConfig"
     },
     {
-      "signature": "pub fn clamp_radius_kpc (r_kpc : f64) -> f64"
+      "signature": "pub fn clamp_radius_kpc (_ : f64) -> f64"
     },
     {
-      "signature": "pub fn decompose_rotation_curve (r_kpc : f64 , baryons : & BaryonicDiskConfig , halo : & HaloProfile ,) -> VelocityDecomposition"
+      "signature": "pub fn decompose_rotation_curve (_ : f64 , _ : & BaryonicDiskConfig , _ : & HaloProfile ,) -> VelocityDecomposition"
     },
     {
-      "signature": "pub fn sample_rotation_curve_into (r_min_kpc : f64 , r_max_kpc : f64 , baryons : & BaryonicDiskConfig , halo : & HaloProfile , out : & mut [VelocityDecomposition] ,)"
+      "signature": "pub fn sample_rotation_curve_into (_ : f64 , _ : f64 , _ : & BaryonicDiskConfig , _ : & HaloProfile , _ : & mut [VelocityDecomposition] ,)"
     },
     {
-      "signature": "pub fn total_gravitational_potential (r_kpc : f64 , baryons : & BaryonicDiskConfig , halo : & HaloProfile ,) -> f64"
+      "signature": "pub fn total_gravitational_potential (_ : f64 , _ : & BaryonicDiskConfig , _ : & HaloProfile ,) -> f64"
     },
     {
       "signature": "pub struct BaryonicDiskConfig"
@@ -6145,22 +6145,22 @@
   ],
   "crates/math_commons/src/fit/lm.rs": [
     {
-      "signature": "pub const MAX_FIT_PARAMS : usize = 6"
+      "signature": "pub const MAX_FIT_PARAMS : usize"
     },
     {
-      "signature": "pub const MAX_LM_ITERATIONS : usize = 80"
+      "signature": "pub const MAX_LM_ITERATIONS : usize"
     },
     {
-      "signature": "pub fn levenberg_marquardt < P , F > (points : & P , initial_params : & [f64] , eval_jac : F ,) -> Result < [f64 ; 4] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64 ; 4]) -> (f64 , [f64 ; 4]) ,"
+      "signature": "pub fn levenberg_marquardt < P , F > (_ : & P , _ : & [f64] , _ : F ,) -> Result < [f64 ; 4] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64 ; 4]) -> (f64 , [f64 ; 4]) ,"
     },
     {
-      "signature": "pub fn levenberg_marquardt_filtered < P , F > (points : & P , initial_params : & [f64] , domain_ok : fn (f64 , f64) -> bool , eval_jac : F ,) -> Result < [f64 ; 4] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64 ; 4]) -> (f64 , [f64 ; 4]) ,"
+      "signature": "pub fn levenberg_marquardt_filtered < P , F > (_ : & P , _ : & [f64] , _ : fn (f64 , f64) -> bool , _ : F ,) -> Result < [f64 ; 4] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64 ; 4]) -> (f64 , [f64 ; 4]) ,"
     },
     {
-      "signature": "pub fn levenberg_marquardt_numeric < P , F > (points : & P , initial_params : & [f64] , eval_fn : F ,) -> Result < [f64 ; MAX_FIT_PARAMS] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64]) -> Option < f64 > ,"
+      "signature": "pub fn levenberg_marquardt_numeric < P , F > (_ : & P , _ : & [f64] , _ : F ,) -> Result < [f64 ; MAX_FIT_PARAMS] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64]) -> Option < f64 > ,"
     },
     {
-      "signature": "pub fn sum_squared_errors_numeric < P , F > (points : & P , params : & [f64] , eval_fn : F) -> Option < f64 > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64]) -> Option < f64 > ,"
+      "signature": "pub fn sum_squared_errors_numeric < P , F > (_ : & P , _ : & [f64] , _ : F) -> Option < f64 > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64]) -> Option < f64 > ,"
     }
   ],
   "crates/math_commons/src/fit/mod.rs": [
@@ -6168,22 +6168,22 @@
       "signature": "impl CurveFit { pub fn coefficients (& self) -> & [f64] }"
     },
     {
-      "signature": "impl CurveFit { pub fn eval (& self , x : f64) -> f64 }"
+      "signature": "impl CurveFit { pub fn eval (& self , _ : f64) -> f64 }"
     },
     {
       "signature": "impl CurveFit { pub fn format_formula (& self) -> String }"
     },
     {
-      "signature": "impl CurveFit { pub fn new (fit_model : FitModel , coeffs : [f64 ; 5] , coeff_len : usize , r_squared : f64 , rmse : f64 , degree : usize , valid_points : usize , log_x : bool , log_y : bool , log_mode : bool ,) -> Self }"
+      "signature": "impl CurveFit { pub fn new (_ : FitModel , _ : [f64 ; 5] , _ : usize , _ : f64 , _ : f64 , _ : usize , _ : usize , _ : bool , _ : bool , _ : bool ,) -> Self }"
     },
     {
-      "signature": "impl CurveFit { pub fn residuals < P : PointSeries + ? Sized > (& self , points : & P) -> Vec < [f64 ; 2] > }"
+      "signature": "impl CurveFit { pub fn residuals < P : PointSeries + ? Sized > (& self , _ : & P) -> Vec < [f64 ; 2] > }"
     },
     {
-      "signature": "impl CurveFit { pub fn residuals_into < P : PointSeries + ? Sized > (& self , points : & P , out : & mut [[f64 ; 2]] ,) -> usize }"
+      "signature": "impl CurveFit { pub fn residuals_into < P : PointSeries + ? Sized > (& self , _ : & P , _ : & mut [[f64 ; 2]] ,) -> usize }"
     },
     {
-      "signature": "impl FitModel { pub const MENU_PRESETS : [Self ; 9] = [Self :: Linear , Self :: Quadratic , Self :: Cubic , Self :: Quartic , Self :: Exponential , Self :: PowerLaw , Self :: Logarithmic , Self :: Logistic , Self :: Sinusoidal ,] }"
+      "signature": "impl FitModel { pub const MENU_PRESETS : [Self ; 9] }"
     },
     {
       "signature": "impl FitModel { pub const fn degree (self) -> Option < usize > }"
@@ -6198,19 +6198,19 @@
       "signature": "impl FitModel { pub const fn supports_log_mode (self) -> bool }"
     },
     {
-      "signature": "impl FitModel { pub fn from_degree (degree : usize) -> Result < Self , FitError > }"
+      "signature": "impl FitModel { pub fn from_degree (_ : usize) -> Result < Self , FitError > }"
     },
     {
-      "signature": "pub const MAX_POLYNOMIAL_DEGREE : usize = 4"
+      "signature": "pub const MAX_POLYNOMIAL_DEGREE : usize"
     },
     {
       "signature": "pub enum FitModel"
     },
     {
-      "signature": "pub fn fit_model < P : PointSeries + ? Sized > (points : & P , model : FitModel , log_mode : bool ,) -> Result < CurveFit , FitError >"
+      "signature": "pub fn fit_model < P : PointSeries + ? Sized > (_ : & P , _ : FitModel , _ : bool ,) -> Result < CurveFit , FitError >"
     },
     {
-      "signature": "pub fn fit_model_with_axes < P : PointSeries + ? Sized > (points : & P , model : FitModel , log_mode : bool , plot_log_x : bool , plot_log_y : bool ,) -> Result < CurveFit , FitError >"
+      "signature": "pub fn fit_model_with_axes < P : PointSeries + ? Sized > (_ : & P , _ : FitModel , _ : bool , _ : bool , _ : bool ,) -> Result < CurveFit , FitError >"
     },
     {
       "signature": "pub struct CurveFit"
@@ -6281,30 +6281,30 @@
   ],
   "crates/math_commons/src/fit/nonlinear.rs": [
     {
-      "signature": "pub fn eval_nonlinear (model : FitModel , params : & [f64] , x : f64) -> f64"
+      "signature": "pub fn eval_nonlinear (_ : FitModel , _ : & [f64] , _ : f64) -> f64"
     },
     {
-      "signature": "pub fn fit_nonlinear < P : PointSeries + ? Sized > (points : & P , model : FitModel , log_mode : bool ,) -> Result < CurveFit , FitError >"
+      "signature": "pub fn fit_nonlinear < P : PointSeries + ? Sized > (_ : & P , _ : FitModel , _ : bool ,) -> Result < CurveFit , FitError >"
     },
     {
-      "signature": "pub fn format_nonlinear_formula (model : FitModel , params : & [f64]) -> String"
+      "signature": "pub fn format_nonlinear_formula (_ : FitModel , _ : & [f64]) -> String"
     }
   ],
   "crates/math_commons/src/fit/poly.rs": [
     {
-      "signature": "pub fn eval_polynomial_horner (coeffs : & [f64] , x : f64) -> f64"
+      "signature": "pub fn eval_polynomial_horner (_ : & [f64] , _ : f64) -> f64"
     },
     {
-      "signature": "pub fn fit_polynomial < P : PointSeries + ? Sized > (points : & P , degree : usize ,) -> Result < CurveFit , FitError >"
+      "signature": "pub fn fit_polynomial < P : PointSeries + ? Sized > (_ : & P , _ : usize ,) -> Result < CurveFit , FitError >"
     },
     {
-      "signature": "pub fn fit_polynomial_scaled < P : PointSeries + ? Sized > (points : & P , degree : usize , log_x : bool , log_y : bool ,) -> Result < CurveFit , FitError >"
+      "signature": "pub fn fit_polynomial_scaled < P : PointSeries + ? Sized > (_ : & P , _ : usize , _ : bool , _ : bool ,) -> Result < CurveFit , FitError >"
     },
     {
-      "signature": "pub fn format_polynomial_formula (coeffs : & [f64] , log_x : bool , log_y : bool) -> String"
+      "signature": "pub fn format_polynomial_formula (_ : & [f64] , _ : bool , _ : bool) -> String"
     },
     {
-      "signature": "pub fn solve_dense_small (mat : & mut [[f64 ; 5] ; 5] , rhs : & [f64 ; 5] , n : usize ,) -> Result < [f64 ; 5] , FitError >"
+      "signature": "pub fn solve_dense_small (_ : & mut [[f64 ; 5] ; 5] , _ : & [f64 ; 5] , _ : usize ,) -> Result < [f64 ; 5] , FitError >"
     }
   ],
   "crates/math_commons/src/fit/seeds.rs": [
@@ -6312,28 +6312,28 @@
       "signature": "impl WeightedOlsAccum { pub const fn sample_count (& self) -> usize }"
     },
     {
-      "signature": "impl WeightedOlsAccum { pub fn push (& mut self , u : f64 , v : f64 , w : f64) }"
+      "signature": "impl WeightedOlsAccum { pub fn push (& mut self , _ : f64 , _ : f64 , _ : f64) }"
     },
     {
       "signature": "impl WeightedOlsAccum { pub fn solve (& self) -> Result < (f64 , f64) , FitError > }"
     },
     {
-      "signature": "pub fn seed_exponential < P : PointSeries + ? Sized > (points : & P) -> Result < [f64 ; 2] , FitError >"
+      "signature": "pub fn seed_exponential < P : PointSeries + ? Sized > (_ : & P) -> Result < [f64 ; 2] , FitError >"
     },
     {
-      "signature": "pub fn seed_logarithmic < P : PointSeries + ? Sized > (points : & P) -> Result < [f64 ; 2] , FitError >"
+      "signature": "pub fn seed_logarithmic < P : PointSeries + ? Sized > (_ : & P) -> Result < [f64 ; 2] , FitError >"
     },
     {
-      "signature": "pub fn seed_logistic < P : PointSeries + ? Sized > (points : & P) -> Result < [f64 ; 3] , FitError >"
+      "signature": "pub fn seed_logistic < P : PointSeries + ? Sized > (_ : & P) -> Result < [f64 ; 3] , FitError >"
     },
     {
-      "signature": "pub fn seed_power_law < P : PointSeries + ? Sized > (points : & P) -> Result < [f64 ; 2] , FitError >"
+      "signature": "pub fn seed_power_law < P : PointSeries + ? Sized > (_ : & P) -> Result < [f64 ; 2] , FitError >"
     },
     {
-      "signature": "pub fn seed_sinusoidal < P : PointSeries + ? Sized > (points : & P) -> Result < [f64 ; 4] , FitError >"
+      "signature": "pub fn seed_sinusoidal < P : PointSeries + ? Sized > (_ : & P) -> Result < [f64 ; 4] , FitError >"
     },
     {
-      "signature": "pub fn weighted_ols_line (samples : & [[f64 ; 3]]) -> Result < (f64 , f64) , FitError >"
+      "signature": "pub fn weighted_ols_line (_ : & [[f64 ; 3]]) -> Result < (f64 , f64) , FitError >"
     },
     {
       "signature": "pub struct WeightedOlsAccum"
@@ -6389,19 +6389,19 @@
   ],
   "crates/math_commons/src/poi/extrema.rs": [
     {
-      "signature": "pub fn detect_local_extrema < P : PointSeries + ? Sized > (pts : & P) -> Vec < LocalExtremum >"
+      "signature": "pub fn detect_local_extrema < P : PointSeries + ? Sized > (_ : & P) -> Vec < LocalExtremum >"
     },
     {
-      "signature": "pub fn detect_local_extrema_into < P : PointSeries + ? Sized > (pts : & P , out : & mut [LocalExtremum] ,) -> usize"
+      "signature": "pub fn detect_local_extrema_into < P : PointSeries + ? Sized > (_ : & P , _ : & mut [LocalExtremum] ,) -> usize"
     },
     {
-      "signature": "pub fn parabolic_vertex (p0 : [f64 ; 2] , p1 : [f64 ; 2] , p2 : [f64 ; 2]) -> [f64 ; 2]"
+      "signature": "pub fn parabolic_vertex (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2]) -> [f64 ; 2]"
     },
     {
-      "signature": "pub fn peak_extremum < P : PointSeries + ? Sized > (pts : & P) -> Option < [f64 ; 2] >"
+      "signature": "pub fn peak_extremum < P : PointSeries + ? Sized > (_ : & P) -> Option < [f64 ; 2] >"
     },
     {
-      "signature": "pub fn scan_line_pois < P : PointSeries + ? Sized > (pts : & P , want_roots : bool , want_y_intercepts : bool ,) -> LinePoiScan"
+      "signature": "pub fn scan_line_pois < P : PointSeries + ? Sized > (_ : & P , _ : bool , _ : bool ,) -> LinePoiScan"
     },
     {
       "signature": "pub struct LinePoiScan"
@@ -6409,36 +6409,36 @@
   ],
   "crates/math_commons/src/poi/interp.rs": [
     {
-      "signature": "pub fn closest_threshold_crossing < P : PointSeries + ? Sized > (pts : & P , y_target : f64 , x_ref : f64 ,) -> Option < f64 >"
+      "signature": "pub fn closest_threshold_crossing < P : PointSeries + ? Sized > (_ : & P , _ : f64 , _ : f64 ,) -> Option < f64 >"
     },
     {
-      "signature": "pub fn interpolate_threshold_crossings < P : PointSeries + ? Sized > (pts : & P , y_target : f64 ,) -> Vec < f64 >"
+      "signature": "pub fn interpolate_threshold_crossings < P : PointSeries + ? Sized > (_ : & P , _ : f64 ,) -> Vec < f64 >"
     },
     {
-      "signature": "pub fn interpolate_y_at_x < P : PointSeries + ? Sized > (pts : & P , x_target : f64) -> Vec < f64 >"
+      "signature": "pub fn interpolate_y_at_x < P : PointSeries + ? Sized > (_ : & P , _ : f64) -> Vec < f64 >"
     },
     {
-      "signature": "pub fn threshold_crossings_into < P : PointSeries + ? Sized > (pts : & P , y_target : f64 , out : & mut [f64] ,) -> usize"
+      "signature": "pub fn threshold_crossings_into < P : PointSeries + ? Sized > (_ : & P , _ : f64 , _ : & mut [f64] ,) -> usize"
     },
     {
-      "signature": "pub fn y_at_x_into < P : PointSeries + ? Sized > (pts : & P , x_target : f64 , out : & mut [f64]) -> usize"
+      "signature": "pub fn y_at_x_into < P : PointSeries + ? Sized > (_ : & P , _ : f64 , _ : & mut [f64]) -> usize"
     }
   ],
   "crates/math_commons/src/poi/intersect.rs": [
     {
-      "signature": "pub const MAX_POLYLINE_INTERSECTIONS : usize = 256"
+      "signature": "pub const MAX_POLYLINE_INTERSECTIONS : usize"
     },
     {
-      "signature": "pub fn eval_segment_at_x (p0 : [f64 ; 2] , p1 : [f64 ; 2] , x : f64) -> f64"
+      "signature": "pub fn eval_segment_at_x (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : f64) -> f64"
     },
     {
-      "signature": "pub fn intersect_polylines < A , B > (a : & A , b : & B , x_bounds : [f64 ; 2]) -> Vec < [f64 ; 2] > where A : PointSeries + ? Sized , B : PointSeries + ? Sized ,"
+      "signature": "pub fn intersect_polylines < A , B > (_ : & A , _ : & B , _ : [f64 ; 2]) -> Vec < [f64 ; 2] > where A : PointSeries + ? Sized , B : PointSeries + ? Sized ,"
     },
     {
-      "signature": "pub fn intersect_polylines_into < A , B > (a : & A , b : & B , x_bounds : [f64 ; 2] , out : & mut [[f64 ; 2]] ,) -> usize where A : PointSeries + ? Sized , B : PointSeries + ? Sized ,"
+      "signature": "pub fn intersect_polylines_into < A , B > (_ : & A , _ : & B , _ : [f64 ; 2] , _ : & mut [[f64 ; 2]] ,) -> usize where A : PointSeries + ? Sized , B : PointSeries + ? Sized ,"
     },
     {
-      "signature": "pub fn segment_intersection_2d (a0 : [f64 ; 2] , a1 : [f64 ; 2] , b0 : [f64 ; 2] , b1 : [f64 ; 2] ,) -> Option < [f64 ; 2] >"
+      "signature": "pub fn segment_intersection_2d (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2] ,) -> Option < [f64 ; 2] >"
     }
   ],
   "crates/math_commons/src/poi/mod.rs": [
@@ -6542,13 +6542,13 @@
       "signature": "pub trait PointSeries { fn len (& self) -> usize }"
     },
     {
-      "signature": "pub trait PointSeries { fn point_at (& self , index : usize) -> [f64 ; 2] }"
+      "signature": "pub trait PointSeries { fn point_at (& self , _ : usize) -> [f64 ; 2] }"
     },
     {
-      "signature": "pub trait PointSeries { fn x_at (& self , index : usize) -> f64 }"
+      "signature": "pub trait PointSeries { fn x_at (& self , _ : usize) -> f64 }"
     },
     {
-      "signature": "pub trait PointSeries { fn y_at (& self , index : usize) -> f64 }"
+      "signature": "pub trait PointSeries { fn y_at (& self , _ : usize) -> f64 }"
     },
     {
       "signature": "pub trait Sample2D"
@@ -6887,7 +6887,7 @@
       "signature": "pub fn find_workspace_root () -> Option < PathBuf >"
     },
     {
-      "signature": "pub fn find_workspace_root_from (start : & Path) -> Option < PathBuf >"
+      "signature": "pub fn find_workspace_root_from (_ : & Path) -> Option < PathBuf >"
     },
     {
       "signature": "pub fn get_workspace_members () -> (bool , Vec < String >)"
