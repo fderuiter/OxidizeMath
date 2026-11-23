@@ -1,11 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::super::wave_sim_sculpt::detect_sculpted_interval;
 use super::observables::{compute_tunneling_from_psi, ScatterLatchState};
 use super::presets::{
     barrier_interval_for_preset, clamp_wavepacket_params, detect_barrier_index,
     evaluate_potential_grid, DEFAULT_DT, GRID_POINTS, GRID_X_MAX, GRID_X_MIN,
 };
-use super::super::wave_sim_sculpt::detect_sculpted_interval;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::apply_sparse_potential;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -142,9 +142,11 @@ impl WaveRunner {
         if !cfg.sparse_potential.is_empty() {
             let _ = apply_sparse_potential(self.potential.as_mut_slice(), &cfg.sparse_potential);
         }
-        if let Some((xl, xr)) =
-            detect_sculpted_interval(self.potential.as_slice(), &self.base_potential, &self.x_axis)
-        {
+        if let Some((xl, xr)) = detect_sculpted_interval(
+            self.potential.as_slice(),
+            &self.base_potential,
+            &self.x_axis,
+        ) {
             self.x_left = xl;
             self.x_right = xr;
         }

@@ -41,10 +41,16 @@ impl AttractorPlotter {
                     "Custom 3D Flow",
                 );
                 if self.mode != prev_mode {
+                    if self.mode == super::AttractorMode::Custom {
+                        let _ = self.atlas.set_axis_keys("param_0", "param_1");
+                    } else if self.atlas.axis_keys().0 == "param_0" {
+                        let _ = self.atlas.set_axis_keys("sigma", "rho");
+                    }
                     self.reset();
                     ctx.request_repaint();
                 }
             });
+            let _ = self.atlas.show_toggle_button(ui);
             ui.separator();
 
             self.draw_parameter_sliders(ui);
@@ -77,7 +83,12 @@ impl AttractorPlotter {
         ui.label(format!("Y: {:.2}", state.y));
         ui.label(format!("Z: {:.2}", state.z));
         if let Some(lyap) = self.current_lyapunov_exponent() {
-            ui.label(format!("Lorenz Lyapunov λ₁: {lyap:+.3}"));
+            let prefix = if self.mode == super::AttractorMode::Lorenz {
+                "Lorenz Lyapunov"
+            } else {
+                "Flow Lyapunov"
+            };
+            ui.label(format!("{prefix} λ₁: {lyap:+.3}"));
         }
         if let Some((c_eps, d2)) = self.current_correlation_invariants() {
             ui.label(format!("Correlation C(ε): {c_eps:.3} (D₂ ≈ {d2:.2})"));
@@ -439,29 +450,45 @@ impl AttractorPlotter {
         plot_ui.callout(callout_neg);
     }
 
+    fn draw_3d_viewport(&mut self, ui: &mut egui::Ui) {
+        if self.history.is_empty() && !self.diverged() {
+            render_empty_plot_guidance(
+                ui,
+                "Initial state (1, 1, 1) ready — click ▶ Play or ⏭ Step to trace the strange attractor.",
+            );
+        }
+        let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
+        self.populate_scene(series0);
+        let mut camera = self.camera;
+        let response = Plot3DViewport::new("attractor_plot", 32.0)
+            .show(ui, &mut camera, |plot_ui| {
+                self.scene_builder.finish(plot_ui);
+                self.draw_fixed_point_callouts(plot_ui);
+            })
+            .response;
+        self.camera = camera;
+        if self.mode == super::AttractorMode::Lorenz {
+            response.accessible_theory_hover(&self.system);
+        } else {
+            response.accessible_theory_hover(self);
+        }
+    }
+
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.draw_central_fault_banner(ui, ctx);
-
-            if self.history.is_empty() && !self.diverged() {
-                render_empty_plot_guidance(
-                    ui,
-                    "Initial Lorenz state (1, 1, 1) ready — click ▶ Play or ⏭ Step to trace the strange attractor.",
-                );
+            if self.atlas.is_visible() && ui.available_width() >= 620.0 {
+                ui.columns(2, |cols| {
+                    self.draw_3d_viewport(&mut cols[0]);
+                    self.render_attractor_atlas_panel(&mut cols[1]);
+                });
+            } else {
+                if self.atlas.is_visible() {
+                    self.render_attractor_atlas_panel(ui);
+                    ui.separator();
+                }
+                self.draw_3d_viewport(ui);
             }
-
-            let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
-            self.populate_scene(series0);
-            let mut camera = self.camera;
-            let response = Plot3DViewport::new("attractor_plot", 32.0)
-                .show(ui, &mut camera, |plot_ui| {
-                    self.scene_builder.finish(plot_ui);
-                    self.draw_fixed_point_callouts(plot_ui);
-                })
-                .response;
-            self.camera = camera;
-
-            response.accessible_theory_hover(&self.system);
         });
     }
 }

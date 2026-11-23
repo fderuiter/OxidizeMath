@@ -13,6 +13,7 @@ use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 
 impl WaveSimulatorTool {
@@ -359,11 +360,13 @@ fn draw_bounded_slider(
     label: &str,
     hover_desc: &str,
 ) -> bool {
-    let slider = egui::Slider::new(value, range)
+    let slider = AnimatedSlider::new(value, range.clone())
+        .hard_bounds(range)
         .step_by(step)
-        .clamping(egui::SliderClamping::Always)
-        .text(label);
+        .text(label)
+        .id_salt(("wave_sim_param", label));
     let resp = ui.add(slider);
-    let _ = resp.clone().accessible_hover_text(hover_desc);
-    resp.changed()
+    let changed = resp.changed();
+    let resp = resp.accessible_hover_text(hover_desc);
+    changed || resp.changed()
 }

@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 // [cite:quantum_mechanics]
 
+use super::super::wave_sim_sculpt::consume_reticle_key_deltas;
 use super::presets::{GRID_X_MAX, GRID_X_MIN, POTENTIAL_DISPLAY_SCALE};
 use super::runner::WaveData;
-use super::super::wave_sim_sculpt::consume_reticle_key_deltas;
 use super::WaveSimulatorTool;
 use crate::accessibility::{
     announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
@@ -274,7 +274,12 @@ fn dispatch_sculpt_drag(
         (plot_pt.y / POTENTIAL_DISPLAY_SCALE).clamp(MIN_SCULPT_POTENTIAL, MAX_SCULPT_POTENTIAL)
     };
     let mode = tool.brush_kit.mode;
-    if !erase && matches!(mode, BrushMode::PotentialWell | BrushMode::PotentialStep | BrushMode::Erase) {
+    if !erase
+        && matches!(
+            mode,
+            BrushMode::PotentialWell | BrushMode::PotentialStep | BrushMode::Erase
+        )
+    {
         let x0 = frame.x_axis.get(last_idx).copied().unwrap_or(plot_pt.x);
         let stroke = BrushStroke {
             start: [x0, plot_pt.y],
@@ -318,7 +323,11 @@ fn handle_pointer_interactions(
             plot_ui.response().request_focus();
             let idx = x_to_grid_index(plot_pt.x, frame.x_axis.len());
             state.reticle_idx = idx;
-            state.drag = ActiveCanvasDrag::Sculpt { last_idx: idx, last_v: 0.0, erase: true };
+            state.drag = ActiveCanvasDrag::Sculpt {
+                last_idx: idx,
+                last_v: 0.0,
+                erase: true,
+            };
         } else if pressed {
             plot_ui.response().request_focus();
             let emitter = (tool.x0, tool.k0, tool.sigma);
@@ -326,13 +335,23 @@ fn handle_pointer_interactions(
         }
     }
     match state.drag {
-        ActiveCanvasDrag::Sculpt { last_idx, last_v, erase } => {
+        ActiveCanvasDrag::Sculpt {
+            last_idx,
+            last_v,
+            erase,
+        } => {
             let (idx, next_v) =
                 dispatch_sculpt_drag(egui_ctx, tool, frame, plot_pt, (last_idx, last_v, erase));
             state.reticle_idx = idx;
-            state.drag = ActiveCanvasDrag::Sculpt { last_idx: idx, last_v: next_v, erase };
+            state.drag = ActiveCanvasDrag::Sculpt {
+                last_idx: idx,
+                last_v: next_v,
+                erase,
+            };
         }
-        ActiveCanvasDrag::EmitterX0 | ActiveCanvasDrag::EmitterK0 | ActiveCanvasDrag::EmitterSigma => {
+        ActiveCanvasDrag::EmitterX0
+        | ActiveCanvasDrag::EmitterK0
+        | ActiveCanvasDrag::EmitterSigma => {
             let _ = apply_emitter_drag(tool, state.drag, plot_pt.x, Some(egui_ctx));
         }
         ActiveCanvasDrag::None => {}

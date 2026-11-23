@@ -5,6 +5,7 @@ use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 
@@ -183,83 +184,82 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             self.dispatch_extension_commands(ext_cmds, Some(ctx));
         }
 
-        let (param_reset, clear_series_needed, wavepacket_tuple) = self.draw_parameter_widgets(ui);
-        reset_needed |= param_reset;
-        if clear_series_needed {
+        let edits = self.draw_parameter_entries(ui);
+        reset_needed |= edits.reset;
+        if edits.clear_series {
             self.clear_custom_series();
         }
-        reset_needed |= self.draw_custom_formula_controls(ui, ctx);
+        let (formula_reset, formula_changed) = self.draw_custom_formula_controls(ui, ctx);
+        reset_needed |= formula_reset;
+        let slider_changed = edits.slider_changed || formula_changed;
         self.draw_spatial_brush_section(ui, ctx);
         self.draw_atlas_toggle_if_supported(ui);
         self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation(Some(ctx));
-        } else if let Some((x0, k0, sigma)) = wavepacket_tuple {
+        } else if let Some((x0, k0, sigma)) = edits.wavepacket {
             if self
                 .controller
                 .send_command(SimCommand::SetWavepacket { x0, k0, sigma })
                 .is_ok()
             {
+                self.dirty = true;
                 ctx.request_repaint();
             }
+        } else if slider_changed {
+            self.refresh_paused_simulation(Some(ctx));
         }
     }
 
-    fn draw_parameter_widgets(
-        &mut self,
-        ui: &mut egui::Ui,
-    ) -> (bool, bool, Option<(f64, f64, f64)>) {
-        let mut reset_needed = false;
-        let mut clear_series_needed = false;
+    fn draw_parameter_entries(&self, ui: &mut egui::Ui) -> ParameterEdits {
+        let mut edits = ParameterEdits::default();
         let mut wavepacket_changed = false;
         let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
-
         for (name, constraint) in &self.param_metadata {
             let locked = self
                 .ui_extension
                 .as_ref()
                 .is_some_and(|ext| ext.is_parameter_locked(name));
             if let Some(val) = params_lock.get_mut(name) {
-                let mut choice_changed = false;
-                let mut slider_changed = false;
+                let is_choice = !M::parameter_choices(name).is_empty();
+                let desc = self.cached_descs.get(name);
+                let mut changed = false;
                 ui.add_enabled_ui(!locked, |ui| {
-                    let res = Self::draw_single_parameter(
-                        ui,
-                        name,
-                        constraint,
-                        val,
-                        self.cached_descs.get(name),
-                    );
-                    choice_changed = res.0;
-                    slider_changed = res.1;
+                    changed = Self::draw_single_parameter(ui, name, constraint, val, desc);
                 });
-                if choice_changed {
-                    reset_needed = true;
-                    clear_series_needed = true;
-                } else if slider_changed {
-                    if M::is_wavepacket_parameter(name) {
-                        wavepacket_changed = true;
-                    } else {
-                        reset_needed = true;
-                    }
+                if !changed {
+                    continue;
+                }
+                if is_choice {
+                    edits.reset = true;
+                    edits.clear_series = true;
+                } else if M::is_wavepacket_parameter(name) {
+                    wavepacket_changed = true;
+                } else {
+                    edits.slider_changed = true;
                 }
             }
         }
-        let wavepacket_tuple = wavepacket_changed.then(|| {
-            (
+        if wavepacket_changed {
+            edits.wavepacket = Some((
                 params_lock.get("x0").copied().unwrap_or(-2.0),
                 params_lock.get("k0").copied().unwrap_or(5.0),
                 params_lock.get("sigma").copied().unwrap_or(0.5),
-            )
-        });
-        (reset_needed, clear_series_needed, wavepacket_tuple)
+            ));
+        }
+        edits
     }
 
-    fn draw_custom_formula_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
+    fn draw_custom_formula_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+    ) -> (bool, bool) {
         let Some(spec) = M::formula_spec() else {
-            return false;
+            return (false, false);
         };
         let mut reset_needed = false;
+        let mut formula_changed = false;
         ui.add_space(4.0);
         let toggle_label = format!("Custom {} Formula", spec.lhs_label);
         if ui
@@ -271,7 +271,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             reset_needed = true;
         }
         if self.custom_formula_enabled {
-            let mut formula_changed = false;
             if let Some(ref mut bar) = self.formula_bar {
                 ui.add_space(4.0);
                 formula_changed = bar.ui(ui);
@@ -283,7 +282,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 ctx.request_repaint();
             }
         }
-        reset_needed
+        (reset_needed, formula_changed)
     }
 
     fn draw_spatial_brush_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -311,7 +310,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         constraint: &ParameterConstraint,
         val: &mut f64,
         hover_desc: Option<&String>,
-    ) -> (bool, bool) {
+    ) -> bool {
         let label = M::parameter_label(name);
         let choices = M::parameter_choices(name);
         if !choices.is_empty() {
@@ -339,17 +338,21 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             if let Some(desc) = hover_desc {
                 let _ = combo_resp.response.accessible_hover_text(desc);
             }
-            (changed, false)
+            changed
         } else {
-            let slider = egui::Slider::new(val, constraint.min..=constraint.max)
+            let slider = AnimatedSlider::new(val, constraint.min..=constraint.max)
+                .hard_bounds(constraint.min..=constraint.max)
                 .step_by(constraint.step)
-                .text(label);
+                .text(&label)
+                .id_salt(("unified_sim_param", M::name(), name));
             let resp = ui.add(slider);
-            let slider_changed = resp.changed();
-            if let Some(desc) = hover_desc {
-                let _ = resp.accessible_hover_text(desc);
-            }
-            (false, slider_changed)
+            let changed = resp.changed();
+            let resp = if let Some(desc) = hover_desc {
+                resp.accessible_hover_text(desc)
+            } else {
+                resp
+            };
+            changed || resp.changed()
         }
     }
 
@@ -428,4 +431,25 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         *cached_observable_label
     }
+
+    fn refresh_paused_simulation(&mut self, ctx: Option<&egui::Context>) {
+        if self.controller.state().is_ready() {
+            self.stepped_snapshot = None;
+            let _ = self.controller.send_command(SimCommand::Custom(
+                super::SYNC_PARAMETERS_COMMAND.to_string(),
+            ));
+            self.dirty = true;
+            if let Some(c) = ctx {
+                c.request_repaint();
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct ParameterEdits {
+    reset: bool,
+    clear_series: bool,
+    slider_changed: bool,
+    wavepacket: Option<(f64, f64, f64)>,
 }
