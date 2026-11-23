@@ -106,6 +106,42 @@ pub enum KellyError {
     #[error("Invalid bankroll: {value} (must be positive)")]
     #[allow(missing_docs)]
     InvalidBankroll { value: f64 },
+    /// Invalid stake or portfolio weight (must be finite and strictly positive).
+    #[error("Invalid stake or weight: {value} (must be finite and > 0)")]
+    InvalidStake {
+        /// The invalid stake or weight value.
+        value: f64,
+    },
+    /// Invalid drawdown floor, target barrier, or confidence level.
+    #[error("Invalid barrier configuration: floor={floor}, initial_wealth={initial_wealth}")]
+    InvalidBarrier {
+        /// The requested floor, target barrier, or confidence bound.
+        floor: f64,
+        /// Reference initial wealth or upper bound.
+        initial_wealth: f64,
+    },
+    /// Empty or insufficient bet ledger for statistical estimation.
+    #[error("Insufficient bets: required at least {required}, got {actual}")]
+    InsufficientBets {
+        /// Minimum required number of bets.
+        required: usize,
+        /// Actual number of bets provided.
+        actual: usize,
+    },
+    /// Mismatched slice lengths across probabilities, odds, stakes, or outcomes.
+    #[error("Slice length mismatch: expected {expected}, got {actual}")]
+    DimensionMismatch {
+        /// Expected slice length.
+        expected: usize,
+        /// Actual slice length provided.
+        actual: usize,
+    },
+    /// Root-finding or adjustment-coefficient solver failed to bracket or converge.
+    #[error("Solvency root solver failed to converge: {reason}")]
+    ConvergenceFailed {
+        /// Static description of the bracketing or convergence failure.
+        reason: &'static str,
+    },
 }
 
 /// Errors returned by bookmaker devigging, `+EV`, arbitrage, Dutching, middle, and hedge calculators.
@@ -427,6 +463,7 @@ pub enum Glicko2Error {
     DimensionMismatch { expected: usize, actual: usize },
 }
 
+mod sports;
 mod submodule_diagnostics;
 mod umbrella;
 
@@ -442,6 +479,7 @@ pub use crate::pure_math::{
     statistics::monte_carlo::MonteCarloError,
     tensor::types::TensorError,
 };
+pub use sports::{EloError, MatchModelError};
 pub use umbrella::PureMathError;
 
 #[cfg(test)]

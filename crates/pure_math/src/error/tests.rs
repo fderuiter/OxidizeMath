@@ -36,6 +36,7 @@ fn test_pure_math_leaf_wrappers_preserve_source_chain() {
 fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
     let cases: Vec<PureMathError> = vec![
         CopulaError::NotSymmetric.into(),
+        EloError::InvalidScale { value: 0.0 }.into(),
         Glicko2Error::EmptyMatchResults.into(),
         KellyError::InvalidOdds { value: 0.5 }.into(),
         MarketPricingError::NoArbitrage {
@@ -43,6 +44,8 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         }
         .into(),
         MarkovError::from(sample_math_err()).into(),
+        MatchModelError::InvalidGoalRate { value: -1.0 }.into(),
+        MonteCarloError::ZeroReplicates.into(),
         NumberTheoryError::ModuloError.into(),
         OuError::InvalidTimeStep { value: 0.0 }.into(),
         TdaError::EmptyPointCloud.into(),
@@ -146,4 +149,40 @@ fn test_monte_carlo_error_umbrella_and_zero_alloc() {
         umbrella.metadata().get("error_type").map(String::as_str),
         Some("MonteCarloError")
     );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_kelly_validation_and_solvency_variants_umbrella_and_diagnostics() {
+    let variants = [
+        KellyError::InvalidStake { value: -5.0 },
+        KellyError::InvalidBarrier {
+            floor: 120.0,
+            initial_wealth: 100.0,
+        },
+        KellyError::InsufficientBets {
+            required: 2,
+            actual: 0,
+        },
+        KellyError::DimensionMismatch {
+            expected: 4,
+            actual: 3,
+        },
+        KellyError::ConvergenceFailed {
+            reason: "bracket failed",
+        },
+    ];
+    let bus = DiagnosticBus::new();
+    for leaf in variants {
+        let msg = leaf.to_string();
+        let umbrella = PureMathError::from(leaf);
+        assert!(umbrella.source().is_some());
+        assert_eq!(umbrella.to_string(), msg);
+        let meta = umbrella.metadata();
+        assert_eq!(
+            meta.get("error_type").map(String::as_str),
+            Some("KellyError")
+        );
+        bus.emit_diagnostic(&umbrella);
+    }
 }

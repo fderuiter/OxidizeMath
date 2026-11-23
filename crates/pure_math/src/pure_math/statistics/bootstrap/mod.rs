@@ -48,11 +48,13 @@ pub fn sample_median_in_place(data: &[f64], scratch: &mut [f64]) -> f64 {
     }
     let buf = &mut scratch[..n];
     buf.copy_from_slice(data);
-    buf.sort_unstable_by(f64::total_cmp);
+    let mid = n / 2;
+    let (left, mid_val, _) = buf.select_nth_unstable_by(mid, f64::total_cmp);
     if n % 2 == 1 {
-        buf[n / 2]
+        *mid_val
     } else {
-        0.5 * (buf[n / 2 - 1] + buf[n / 2])
+        let max_left = left.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        0.5 * (max_left + *mid_val)
     }
 }
 
