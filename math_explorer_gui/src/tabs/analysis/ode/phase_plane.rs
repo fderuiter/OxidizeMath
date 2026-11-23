@@ -283,9 +283,7 @@ impl OdeSolverTool {
     pub(super) fn render_phase_plane_canvas(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
         ui.heading("2D Phase Portrait & Twin Timelines (Click Canvas to Seed Orbits)");
         if FiniteStateGuard::diverged(self) {
-            let mut scratch_y = Vec::new();
-            let mut scratch_v = Vec::new();
-            recovery::render_recovery_ui(ui, self, changed, &mut scratch_y, &mut scratch_v);
+            recovery::render_recovery_ui_in_place(ui, self, changed);
         }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());

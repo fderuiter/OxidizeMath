@@ -1,12 +1,16 @@
 //! Registry parsing, citation resolution, and AST analysis helpers for [`super::TraceabilityEngine`].
 
+#[cfg(feature = "ast-analysis")]
 use super::TraceabilityReport;
+#[cfg(feature = "ast-analysis")]
 use std::collections::{HashMap, HashSet};
 
+#[cfg(feature = "ast-analysis")]
 pub(super) fn invalid_link_key(file: &str, cite: &str) -> String {
     format!("{file}::{cite}")
 }
 
+#[cfg(feature = "ast-analysis")]
 pub(super) fn format_path_line(path: &str, line: usize) -> String {
     if line > 0 {
         format!("{path}:{line}")
@@ -39,16 +43,68 @@ pub(super) fn extract_citations_with_lines(content: &str) -> Vec<(String, usize)
     cites
 }
 
+fn strip_toml_comment(line: &str) -> &str {
+    let mut in_double = false;
+    let mut in_single = false;
+    let mut escaped = false;
+    for (idx, ch) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && in_double {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' && !in_single {
+            in_double = !in_double;
+        } else if ch == '\'' && !in_double {
+            in_single = !in_single;
+        } else if ch == '#' && !in_double && !in_single {
+            return &line[..idx];
+        }
+    }
+    line
+}
+
+fn is_quoted_toml_string(val: &str) -> bool {
+    let trimmed = val.trim();
+    trimmed.len() >= 2
+        && ((trimmed.starts_with('"') && trimmed.ends_with('"'))
+            || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
+}
+
+fn trim_toml_key(raw_key: &str) -> &str {
+    let trimmed = raw_key.trim();
+    if is_quoted_toml_string(trimmed) {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    }
+}
+
 pub(super) fn is_module_in_registry_toml(registry_content: &str, module_name: &str) -> bool {
-    if let Ok(value) = registry_content.parse::<toml::Table>()
-        && let Some(links) = value.get("links").and_then(|v| v.as_table())
-        && let Some(paper) = links.get(module_name)
-    {
-        return paper.as_str().is_some();
+    let mut in_links = false;
+    for raw_line in registry_content.lines() {
+        let line = strip_toml_comment(raw_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_links = line == "[links]";
+            continue;
+        }
+        if in_links
+            && let Some((raw_key, raw_val)) = line.split_once('=')
+            && trim_toml_key(raw_key) == module_name
+        {
+            return is_quoted_toml_string(raw_val);
+        }
     }
     false
 }
 
+#[cfg(feature = "ast-analysis")]
 pub(super) fn apply_registry_table(
     value: &toml::Table,
     valid_papers: &HashSet<String>,
@@ -84,6 +140,7 @@ pub(super) fn apply_registry_table(
     }
 }
 
+#[cfg(feature = "ast-analysis")]
 pub(super) fn populate_paper_semantic_status(
     valid_papers: &HashSet<String>,
     registry_links: &HashMap<String, String>,
@@ -113,6 +170,7 @@ pub(super) fn populate_paper_semantic_status(
     }
 }
 
+#[cfg(feature = "ast-analysis")]
 pub(super) fn finalize_report_orphans(report: &mut TraceabilityReport) {
     for (name, linked_code) in &mut report.paper_coverage {
         linked_code.sort();
@@ -137,6 +195,7 @@ pub(super) fn finalize_report_orphans(report: &mut TraceabilityReport) {
     report.vacuous_bypasses.dedup();
 }
 
+#[cfg(feature = "ast-analysis")]
 pub(super) fn collect_valid_citations(
     file: &str,
     citations: Vec<(String, usize)>,
@@ -160,6 +219,7 @@ pub(super) fn collect_valid_citations(
     final_citations
 }
 
+#[cfg(feature = "ast-analysis")]
 pub(super) fn fix_and_collect_citations(
     file: &str,
     content: &mut String,
@@ -200,6 +260,7 @@ pub(super) fn fix_and_collect_citations(
     (file_modified, final_citations)
 }
 
+#[cfg(feature = "ast-analysis")]
 fn find_best_autofix_key(
     file: &str,
     cite: &str,
@@ -221,6 +282,7 @@ fn find_best_autofix_key(
     best_key
 }
 
+#[cfg(feature = "ast-analysis")]
 pub(super) fn analyze_parsed_ast(
     file: &str,
     ast: Option<&syn::File>,
@@ -251,6 +313,7 @@ pub(super) fn analyze_parsed_ast(
     record_visitor_violations(file, is_module, &visitor, registered_modules, report);
 }
 
+#[cfg(feature = "ast-analysis")]
 fn record_visitor_semantic_status(
     visitor: &crate::ast_visitor::AstVisitor,
     final_citations: &[String],
@@ -276,6 +339,7 @@ fn record_visitor_semantic_status(
     }
 }
 
+#[cfg(feature = "ast-analysis")]
 fn record_visitor_violations(
     file: &str,
     is_module: bool,
@@ -323,11 +387,13 @@ fn record_visitor_violations(
     }
 }
 
+#[cfg(feature = "ast-analysis")]
 #[derive(Default)]
 struct SubmoduleCollector {
     submodules: Vec<String>,
 }
 
+#[cfg(feature = "ast-analysis")]
 impl<'ast> syn::visit::Visit<'ast> for SubmoduleCollector {
     fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
         if node.content.is_none() {
@@ -337,6 +403,7 @@ impl<'ast> syn::visit::Visit<'ast> for SubmoduleCollector {
     }
 }
 
+#[cfg(feature = "ast-analysis")]
 pub(super) fn collect_external_submodules(ast: Option<&syn::File>) -> Vec<String> {
     let Some(ast) = ast else {
         return Vec::new();
@@ -346,6 +413,7 @@ pub(super) fn collect_external_submodules(ast: Option<&syn::File>) -> Vec<String
     collector.submodules
 }
 
+#[cfg(feature = "ast-analysis")]
 pub(super) fn module_child_dir(norm_file_path: &str) -> String {
     let mut dir_parts: Vec<&str> = norm_file_path.split('/').collect();
     let is_mod_rs = norm_file_path.ends_with("mod.rs")

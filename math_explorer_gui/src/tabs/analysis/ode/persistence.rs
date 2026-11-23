@@ -25,6 +25,10 @@ fn is_true(val: &bool) -> bool {
     *val
 }
 
+fn skip_empty_snapshots(mgr: &Option<&TraceSnapshotManager>) -> bool {
+    mgr.is_none_or(TraceSnapshotManager::is_empty)
+}
+
 fn default_planar_x_expr() -> String {
     DEFAULT_PLANAR_X_EXPR.to_string()
 }
@@ -96,7 +100,7 @@ struct OdeStateRef<'a> {
     custom_params: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     coupled_params: BTreeMap<String, f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "skip_empty_snapshots")]
     snapshot_manager: Option<&'a TraceSnapshotManager>,
     callout_manager: &'a CalloutManager,
     method: IntegrationMethod,
@@ -201,51 +205,93 @@ struct CustomSerializationMaps<'a> {
     coupled_params: BTreeMap<String, f64>,
 }
 
+fn hash_callout_entry(c: &crate::framework::CalloutData, hasher: &mut impl Hasher) {
+    c.id.hash(hasher);
+    c.target_point[0].to_bits().hash(hasher);
+    c.target_point[1].to_bits().hash(hasher);
+    c.label_offset[0].to_bits().hash(hasher);
+    c.label_offset[1].to_bits().hash(hasher);
+    c.text.hash(hasher);
+    c.tag.hash(hasher);
+    c.visible.hash(hasher);
+    c.color_rgb.hash(hasher);
+}
+
 impl OdeSolverTool {
+    fn hash_planar_ode_parameters(&self, hasher: &mut impl Hasher) {
+        self.planar_x_input.raw_text.hash(hasher);
+        self.planar_y_input.raw_text.hash(hasher);
+        for val in self.matrix_a.iter().flatten() {
+            val.to_bits().hash(hasher);
+        }
+        self.phase_plane_mode.hash(hasher);
+        self.show_quiver.hash(hasher);
+        self.quiver_density.hash(hasher);
+        self.show_nullclines.hash(hasher);
+        self.seeded_ic.len().hash(hasher);
+        for &[sx, sy] in &self.seeded_ic {
+            sx.to_bits().hash(hasher);
+            sy.to_bits().hash(hasher);
+        }
+    }
+
+    fn hash_shared_ode_parameters(&self, hasher: &mut impl Hasher) {
+        (self.preset as u8).hash(hasher);
+        (self.method as u8).hash(hasher);
+        for val in [
+            self.dt,
+            self.total_time,
+            self.param_k,
+            self.param_r,
+            self.param_cap_k,
+            self.ic_y0,
+            self.ic_v0,
+        ] {
+            val.to_bits().hash(hasher);
+        }
+        self.math_input.raw_text.hash(hasher);
+        if self.preset == OdePreset::Custom {
+            self.custom_coupled.hash(hasher);
+            if self.custom_coupled {
+                self.coupled_bank.raw_text(0).hash(hasher);
+                self.coupled_bank.raw_text(1).hash(hasher);
+                self.coupled_bank.param_names().hash(hasher);
+                let coupled_slice = self.coupled_bank.param_slice();
+                coupled_slice.len().hash(hasher);
+                for &v in coupled_slice {
+                    v.to_bits().hash(hasher);
+                }
+            } else {
+                self.math_input.active_param_names().hash(hasher);
+                let param_slice = self.math_input.param_slice();
+                param_slice.len().hash(hasher);
+                for &val in param_slice {
+                    val.to_bits().hash(hasher);
+                }
+            }
+        }
+        self.hash_planar_ode_parameters(hasher);
+        self.comparison_mode.hash(hasher);
+        self.show_annotations.hash(hasher);
+        let callouts = self.callout_manager.callouts();
+        callouts.len().hash(hasher);
+        for c in callouts {
+            hash_callout_entry(c, hasher);
+        }
+    }
+
     pub(crate) fn compute_state_revision(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.revision.hash(&mut hasher);
-        (self.preset as u8).hash(&mut hasher);
-        (self.method as u8).hash(&mut hasher);
-        self.dt.to_bits().hash(&mut hasher);
-        self.total_time.to_bits().hash(&mut hasher);
-        self.param_k.to_bits().hash(&mut hasher);
-        self.param_r.to_bits().hash(&mut hasher);
-        self.param_cap_k.to_bits().hash(&mut hasher);
-        self.ic_y0.to_bits().hash(&mut hasher);
-        self.ic_v0.to_bits().hash(&mut hasher);
-        self.math_input.raw_text.hash(&mut hasher);
-        let param_slice = self.math_input.param_slice();
-        param_slice.len().hash(&mut hasher);
-        for &val in param_slice {
-            val.to_bits().hash(&mut hasher);
-        }
-        self.custom_coupled.hash(&mut hasher);
-        self.coupled_bank.raw_text(0).hash(&mut hasher);
-        self.coupled_bank.raw_text(1).hash(&mut hasher);
-        let coupled_slice = self.coupled_bank.param_slice();
-        coupled_slice.len().hash(&mut hasher);
-        for &v in coupled_slice {
-            v.to_bits().hash(&mut hasher);
-        }
-        self.planar_x_input.raw_text.hash(&mut hasher);
-        self.planar_y_input.raw_text.hash(&mut hasher);
-        for val in self.matrix_a.iter().flatten() {
-            val.to_bits().hash(&mut hasher);
-        }
-        self.phase_plane_mode.hash(&mut hasher);
-        self.show_quiver.hash(&mut hasher);
-        self.quiver_density.hash(&mut hasher);
-        self.show_nullclines.hash(&mut hasher);
-        for &[sx, sy] in &self.seeded_ic {
-            sx.to_bits().hash(&mut hasher);
-            sy.to_bits().hash(&mut hasher);
-        }
-        self.comparison_mode.hash(&mut hasher);
-        self.show_annotations.hash(&mut hasher);
+        self.hash_shared_ode_parameters(&mut hasher);
         self.snapshot_manager.len().hash(&mut hasher);
         self.snapshot_manager.history_len().hash(&mut hasher);
-        self.callout_manager.len().hash(&mut hasher);
+        hasher.finish().max(1)
+    }
+
+    pub(crate) fn compute_url_state_revision(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.hash_shared_ode_parameters(&mut hasher);
         hasher.finish().max(1)
     }
 
@@ -273,9 +319,11 @@ impl OdeSolverTool {
     }
 
     fn serialize_ode_state(&self, include_snapshots: bool) -> Option<String> {
-        let maps = self.custom_serialization_maps();
-        let snapshot_manager = (include_snapshots && !self.snapshot_manager.is_empty())
-            .then_some(&self.snapshot_manager);
+        let CustomSerializationMaps {
+            coupled_exprs,
+            custom_params,
+            coupled_params,
+        } = self.custom_serialization_maps();
         serde_json::to_string(&OdeStateRef {
             preset: Some(self.preset),
             dt: self.dt,
@@ -295,10 +343,10 @@ impl OdeSolverTool {
             show_nullclines: self.show_nullclines,
             seeded_ic: &self.seeded_ic,
             custom_coupled: self.custom_coupled,
-            coupled_exprs: maps.coupled_exprs,
-            custom_params: maps.custom_params,
-            coupled_params: maps.coupled_params,
-            snapshot_manager,
+            coupled_exprs,
+            custom_params,
+            coupled_params,
+            snapshot_manager: include_snapshots.then_some(&self.snapshot_manager),
             callout_manager: &self.callout_manager,
             method: self.method,
             comparison_mode: self.comparison_mode,

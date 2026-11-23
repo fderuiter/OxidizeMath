@@ -112,6 +112,17 @@ impl OdeSolverTool {
     }
 }
 
+fn are_seeded_orbits_finite(tool: &OdeSolverTool) -> bool {
+    tool.seeded_ic
+        .iter()
+        .all(|pt| pt[0].is_finite() && pt[1].is_finite())
+        && tool.seeded_trajectories.iter().all(|traj| {
+            traj.time_series.iter().all(|t| t.is_finite())
+                && traj.y_series.iter().all(|x| x.is_finite())
+                && traj.v_series.iter().all(|y| y.is_finite())
+        })
+}
+
 /// Checks whether an [`OdeSolverTool`] is in a completely finite numerical state.
 pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
     let params_finite = match tool.preset {
@@ -139,25 +150,25 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
             tool.param_k.is_finite() && tool.param_r.is_finite() && tool.ic_v0.is_finite()
         }
     };
-    let seeds_finite = tool
-        .seeded_ic
-        .iter()
-        .all(|pt| pt[0].is_finite() && pt[1].is_finite())
-        && tool.seeded_trajectories.iter().all(|traj| {
-            traj.time_series.iter().all(|t| t.is_finite())
-                && traj.y_series.iter().all(|x| x.is_finite())
-                && traj.v_series.iter().all(|y| y.is_finite())
-        });
-
-    !tool.diverged
-        && tool.dt.is_finite()
-        && tool.total_time.is_finite()
-        && tool.ic_y0.is_finite()
-        && params_finite
-        && seeds_finite
-        && tool.time_series.iter().all(|t| t.is_finite())
-        && tool.y_series.iter().all(|y| y.is_finite())
-        && tool.v_series.iter().all(|v| v.is_finite())
+    if tool.diverged
+        || !tool.dt.is_finite()
+        || !tool.total_time.is_finite()
+        || !tool.ic_y0.is_finite()
+        || !params_finite
+        || !are_seeded_orbits_finite(tool)
+    {
+        return false;
+    }
+    if tool
+        .series_cache
+        .matches_series(&tool.time_series, &tool.y_series, &tool.v_series)
+    {
+        tool.series_cache.is_series_finite()
+    } else {
+        tool.time_series.iter().all(|t| t.is_finite())
+            && tool.y_series.iter().all(|y| y.is_finite())
+            && tool.v_series.iter().all(|v| v.is_finite())
+    }
 }
 
 impl FiniteStateGuard for OdeSolverTool {
@@ -293,6 +304,7 @@ pub fn clamp_ode_step_settings(dt: &mut f64, total_time: &mut f64) {
 
 /// Applies a centralized [`RecoveryAction`] to [`OdeSolverTool`] via [`FiniteStateGuard`]
 /// and refreshes the active plot point buffers.
+#[cfg(test)]
 pub fn apply_recovery_action(
     tool: &mut OdeSolverTool,
     action: RecoveryAction,
@@ -319,6 +331,7 @@ pub fn apply_recovery_action(
 }
 
 /// Renders the centralized recovery banner and immediately applies recovery remedies to the tool.
+#[cfg(test)]
 pub fn render_recovery_ui(
     ui: &mut egui::Ui,
     tool: &mut super::OdeSolverTool,
@@ -328,5 +341,21 @@ pub fn render_recovery_ui(
 ) {
     if let Some(action) = render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(tool)) {
         apply_recovery_action(tool, action, changed, plot_points_y, plot_points_v);
+    }
+}
+
+pub(super) fn render_recovery_ui_in_place(
+    ui: &mut egui::Ui,
+    tool: &mut super::OdeSolverTool,
+    changed: &mut bool,
+) {
+    if let Some(action) = render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(tool)) {
+        match action {
+            RecoveryAction::AutoScaleStepSize => FiniteStateGuard::auto_scale_step_size(tool),
+            RecoveryAction::ClampParameters => FiniteStateGuard::clamp_parameters(tool),
+            RecoveryAction::ResetParameters => FiniteStateGuard::reset_parameters(tool),
+        }
+        *changed = true;
+        tool.sync_series_cache();
     }
 }

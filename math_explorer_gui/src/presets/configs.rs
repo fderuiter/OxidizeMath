@@ -97,26 +97,6 @@ pub enum MorphogenesisKineticsMode {
     GrayScott,
 }
 
-/// Configuration struct for Turing Morphogenesis simulation parameters.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct MorphogenesisPresetConfig {
-    /// Reaction kinetic parameter a.
-    pub a: f64,
-    /// Reaction kinetic parameter b.
-    pub b: f64,
-    /// Diffusion coefficient for activator (u).
-    pub d_u: f64,
-    /// Diffusion coefficient for inhibitor (v).
-    pub d_v: f64,
-    /// Simulation time step size.
-    pub dt: f64,
-    /// Grid width.
-    pub width: usize,
-    /// Grid height.
-    pub height: usize,
-}
-
 /// Configuration struct for Replicator Dynamics evolutionary game parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]
