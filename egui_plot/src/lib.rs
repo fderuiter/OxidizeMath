@@ -72,7 +72,7 @@ pub use crate::{
         LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
         PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, Text, VLine,
     },
-    latex::{parse_latex_to_layout_job, render_math_label},
+    latex::{parse_latex_to_layout_job, parse_prose_with_inline_math, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::{CanvasCallout, PlotMemory},
     modal_lifecycle::{ModalFrameContext, ModalLifecycle},

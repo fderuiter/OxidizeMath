@@ -207,8 +207,9 @@ impl SpikeAnalysisTool {
                     .show(ui, |plot_ui| {
                         if !self.isis.is_empty() {
                             let bars = self.compute_histogram(20);
-                            plot_ui
-                                .bar_chart(BarChart::new("ISI Distribution", bars).color(bar_color));
+                            plot_ui.bar_chart(
+                                BarChart::new("ISI Distribution", bars).color(bar_color),
+                            );
                         }
                     });
             });
@@ -325,7 +326,7 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for SpikeAnalysisTool {
     fn theory_description(&self) -> String {
         format!(
-            "Hodgkin-Huxley action potential kinetics and inter-spike interval (ISI) statistical distribution under injected current $I_{{ext}} = {:.1}\\,\\mu\\text{{A/cm}}^2$: $C_m \\frac{{dV}}{{dt}} = I_{{ext}} - \\bar{{g}}_{{Na}} m^3 h (V - E_{{Na}}) - \\bar{{g}}_K n^4 (V - E_K) - g_L (V - E_L)$ with detection threshold {:.1}\\,\\text{{mV}}.",
+            "Hodgkin-Huxley action potential kinetics and inter-spike interval (ISI) statistical distribution under injected current $I_{{ext}} = {:.1}\\,\\mu\\text{{A/cm}}^2$: $C_m \\frac{{dV}}{{dt}} = I_{{ext}} - \\bar{{g}}_{{Na}} m^3 h (V - E_{{Na}}) - \\bar{{g}}_K n^4 (V - E_K) - g_L (V - E_L)$ with detection threshold ${:.1}\\,\\text{{mV}}$.",
             self.input_current, self.spike_threshold
         )
     }
