@@ -302,7 +302,7 @@ impl FractranMachineTool {
                 self.refresh_dyadic_summary();
                 self.bump_revision();
                 if let Some(info) = self.live.cycle {
-                    self.is_playing = false;
+                    self.stop_live_playback_and_mute();
                     self.status_banner = Some(format!(
                         "Floyd cycle detected (start step {}, period {}) — playback paused.",
                         info.start_step, info.period
@@ -312,7 +312,7 @@ impl FractranMachineTool {
                 true
             }
             Ok(None) => {
-                self.is_playing = false;
+                self.stop_live_playback_and_mute();
                 self.next_rule_index = None;
                 self.status_banner = Some(format!(
                     "Machine halted cleanly after {} steps.",
@@ -322,7 +322,7 @@ impl FractranMachineTool {
                 false
             }
             Err(err) => {
-                self.is_playing = false;
+                self.stop_live_playback_and_mute();
                 self.validation_error = Some(err.to_string());
                 self.bump_revision();
                 false

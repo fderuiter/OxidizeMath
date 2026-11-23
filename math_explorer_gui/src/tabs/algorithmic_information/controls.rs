@@ -6,7 +6,9 @@ use super::state::{FractranMachineTool, FractranPreset, MAX_INITIAL_VALUE, MAX_S
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
-use math_explorer::pure_math::algorithmic_information::fractran::FractranProgram;
+use math_explorer::pure_math::algorithmic_information::fractran::{
+    FractranProgram, FIRST_64_PRIMES,
+};
 
 impl FractranMachineTool {
     pub(crate) fn select_preset(&mut self, preset: FractranPreset) {
@@ -211,18 +213,62 @@ impl FractranMachineTool {
         }
     }
 
+    pub(super) fn stop_live_playback_and_mute(&mut self) {
+        if std::mem::take(&mut self.is_playing) {
+            crate::audio::notify_playback_paused();
+        }
+    }
+
+    /// Returns `true` when the machine has halted, entered a Floyd cycle, or encountered a validation error.
+    #[must_use]
+    pub fn is_audio_silenced(&self) -> bool {
+        self.live.halted || self.live.cycle.is_some() || self.validation_error.is_some()
+    }
+
+    /// Extracts the current zero-allocation `just_intonation_ratio` chord and Kolmogorov timbre frame.
+    #[must_use]
+    pub fn current_sonification_frame(&self) -> crate::audio::SonificationFrame {
+        let pow2_hit = if self.live.steps > 0 {
+            FractranProgram::power_of_two_exponent(&self.live.exponents)
+        } else {
+            None
+        };
+        let (bdm_bits, lz76_bits) = self
+            .trajectory
+            .last()
+            .map_or((0.0, 0.0), |pt| (pt.bdm_bits, pt.lz76_bits));
+        crate::audio::mappings::fractran_register_frame(
+            &FIRST_64_PRIMES,
+            &self.live.exponents,
+            pow2_hit,
+            bdm_bits,
+            lz76_bits,
+            self.is_audio_silenced(),
+        )
+    }
+
     pub(crate) fn show_controls_panel(&mut self, ui: &mut egui::Ui) {
-        ui.heading("FRACTRAN Virtual Machine");
-        ui.separator();
-        self.show_preset_selector(ui);
-        ui.separator();
-        self.show_transport_controls(ui);
-        ui.separator();
-        self.show_initial_state_editor(ui);
-        ui.separator();
-        self.show_custom_fractions_editor(ui);
-        ui.separator();
-        self.show_telemetry_card(ui);
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.heading("FRACTRAN Virtual Machine");
+            ui.separator();
+            self.show_preset_selector(ui);
+            ui.separator();
+            self.show_transport_controls(ui);
+            ui.separator();
+            let frame = self.current_sonification_frame();
+            crate::audio::render_sonification_panel(
+                ui,
+                "algorithmic_fractran",
+                &frame,
+                self.is_audio_silenced(),
+            );
+            ui.separator();
+            self.show_initial_state_editor(ui);
+            ui.separator();
+            self.show_custom_fractions_editor(ui);
+            ui.separator();
+            self.show_telemetry_card(ui);
+        });
     }
 }
 

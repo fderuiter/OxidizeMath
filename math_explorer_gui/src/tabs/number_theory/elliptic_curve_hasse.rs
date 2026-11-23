@@ -312,6 +312,8 @@ impl EllipticCurvePlayground {
         ui.separator();
         self.render_parameter_sliders(ui);
         ui.separator();
+        self.render_torsion_sonification(ui);
+        ui.separator();
         self.render_algebraic_readout(ui);
     }
 

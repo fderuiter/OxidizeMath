@@ -71,6 +71,69 @@ fn test_floyd_cycle_detection_auto_pauses_live_playback() {
 }
 
 #[test]
+fn test_algorithmic_fractran_sonification_complexity_timbre_and_cycle_mute() {
+    let mut tool = FractranMachineTool::default();
+    let primegame_frame = tool.current_sonification_frame();
+    assert!(primegame_frame.is_audible());
+
+    tool.select_preset(FractranPreset::Fibonacci);
+    let _ = tool.step_once();
+    let fib_frame = tool.current_sonification_frame();
+    assert!(fib_frame.is_audible());
+
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (checked, _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let mut last = crate::audio::SonificationFrame::silent();
+        for _ in 0..200 {
+            last = tool.current_sonification_frame();
+        }
+        last
+    });
+    assert_eq!(checked, fib_frame);
+    drop(_alloc_guard);
+
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let raw = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 800.0),
+        )),
+        ..Default::default()
+    };
+    let out = ctx.run(raw, |ctx| tool.show(ctx));
+    let ak = out.platform_output.accesskit_update.unwrap();
+    assert!(ak
+        .nodes
+        .iter()
+        .any(|(_, n)| n.role() == egui::accesskit::Role::Meter));
+
+    // Floyd cycle during live playback silences frame and suspends audio controller
+    let cycle_cfg = FractranToolConfig {
+        playback_rate: 1.0,
+        steps_per_frame: MAX_STEPS_PER_FRAME,
+        warmup_steps: 0,
+        initial_value: 2,
+        preset: FractranPreset::Custom,
+        custom_fractions: "3/2, 2/3".to_string(),
+    };
+    tool.apply_config(cycle_cfg).unwrap();
+    if crate::audio::snapshot_ui_state().muted {
+        crate::audio::toggle_mute_from_user_gesture();
+    }
+    tool.is_playing = true;
+    tool.step_frame_batch();
+    assert_eq!(
+        tool.current_sonification_frame(),
+        crate::audio::SonificationFrame::silent()
+    );
+    assert!(crate::audio::snapshot_ui_state().muted);
+    crate::audio::export_current_tool_wav("algorithmic_fractran");
+}
+
+#[test]
 fn test_custom_fraction_validation_and_finite_state_guard_rollback() {
     let mut tool = FractranMachineTool::default();
     let baseline = tool.save_state().unwrap();

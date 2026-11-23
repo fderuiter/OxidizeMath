@@ -133,9 +133,14 @@ impl OfflinePcmSynthesizer {
         let mut peak = 0.0_f32;
         let mut limiter_hit = false;
         for idx in 0..frames {
-            let master_alpha = if self.muted { mute_alpha } else { param_alpha };
+            let is_silencing = self.muted || target_master <= 1e-4;
+            let master_alpha = if is_silencing {
+                mute_alpha
+            } else {
+                param_alpha
+            };
             self.smooth_master += master_alpha * (target_master - self.smooth_master);
-            if self.muted && self.smooth_master < 1e-4 {
+            if is_silencing && self.smooth_master < 1e-4 {
                 self.smooth_master = 0.0;
             }
             let (raw_l, raw_r) = self.step_stereo_frame(sr, param_alpha, &harmonics);
