@@ -44,7 +44,7 @@ impl ExportFormat {
         }
     }
 
-    pub(crate) const fn clipboard_item_noun(self) -> &'static str {
+    pub(super) const fn clipboard_item_noun(self) -> &'static str {
         match self {
             Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
             _ => "dataset",
