@@ -2,13 +2,16 @@
 // [cite:math_commons]
 
 use crate::series::PointSeries;
+use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 /// Writes sub-segment `x` coordinates where `pts` crosses `y = y_target` into `out`.
 ///
 /// Uses Fritsch-Carlson monotone cubic Hermite slopes with bracketed Newton-bisection
 /// on strictly monotone 4-point stencils and falls back to linear interpolation otherwise.
 /// Returns the number of crossings written (up to `out.len()`).
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn threshold_crossings_into<P: PointSeries + ?Sized>(
     pts: &P,
     y_target: f64,
@@ -48,7 +51,7 @@ pub(super) fn threshold_crossings_into_raw<P: PointSeries + ?Sized>(
 }
 
 /// Finds the sub-segment `y = y_target` crossing closest to `x_ref` with zero heap allocations.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn closest_threshold_crossing<P: PointSeries + ?Sized>(
     pts: &P,
     y_target: f64,
@@ -287,7 +290,7 @@ fn eval_hermite_val_deriv(
 }
 
 /// Writes interpolated `y` values where `pts` crosses vertical line `x = x_target` into `out`.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn y_at_x_into<P: PointSeries + ?Sized>(pts: &P, x_target: f64, out: &mut [f64]) -> usize {
     y_at_x_into_raw(pts, x_target, out)
 }

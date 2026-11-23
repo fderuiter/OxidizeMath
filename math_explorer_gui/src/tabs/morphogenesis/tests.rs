@@ -202,7 +202,6 @@ fn test_morphogenesis_starter_gallery_and_spots_stripes_reset_turing_system() {
         tab: "morphogenesis".to_string(),
         tool: Some("MorphogenesisTool".to_string()),
         state_json: None,
-        workspace_json: None,
         preset: Some("turing_stripes".to_string()),
         challenge: None,
         step: None,

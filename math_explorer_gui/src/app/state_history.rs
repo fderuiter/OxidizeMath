@@ -168,6 +168,7 @@ struct LiveChromeSnapshot {
     show_diagnostics_panel: bool,
     show_starter_gallery: bool,
     theme: ThemeMode,
+    viewport_layout: ViewportLayout,
     focused_pane: usize,
     primary_overlays: HashMap<String, (bool, bool)>,
     secondary_overlays: [Option<(String, bool, bool)>; MAX_SECONDARY_PANES],
@@ -200,6 +201,7 @@ impl LiveChromeSnapshot {
             show_diagnostics_panel: app.show_diagnostics_panel,
             show_starter_gallery: app.show_starter_gallery,
             theme: app.theme,
+            viewport_layout: app.viewport_layout,
             focused_pane: app.active_focused_pane(),
             primary_overlays,
             secondary_overlays,
@@ -215,7 +217,7 @@ impl LiveChromeSnapshot {
         app.theme = self.theme;
         if app.viewport_layout == ViewportLayout::Single {
             app.focused_pane = 0;
-        } else {
+        } else if self.viewport_layout != ViewportLayout::Single {
             let max_pane = app.viewport_layout.pane_count().saturating_sub(1);
             app.focused_pane = self.focused_pane.min(max_pane);
         }
@@ -261,7 +263,7 @@ impl AppState {
     /// Restores historical workspace state during `Undo` / `Redo` while preserving live UI chrome.
     pub fn apply_preserving_chrome(self, app: &mut MathExplorerApp) {
         let chrome = LiveChromeSnapshot::capture(app);
-        self.apply(app);
+        app.apply_app_state(self);
         chrome.restore(app);
     }
 }

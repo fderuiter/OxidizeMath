@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use crate::app::workspace_bus::GraphTopologyChannel;
 
 #[test]
 fn test_network_metrics_recomputes_strictly_on_revision_advance() {

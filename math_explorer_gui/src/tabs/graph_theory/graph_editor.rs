@@ -12,9 +12,11 @@ mod braess_host;
 mod bus_sync;
 mod dataflow;
 mod interaction;
+mod io_export;
 mod keyboard;
 mod snapshot;
 pub use braess::{AffineLatency, BraessCongestionConfig, BraessCongestionLab};
+pub use io_export::editor_state_json_from_shared;
 #[allow(unused_imports)]
 pub use keyboard::{TRANSLATE_STEP_NORMAL, TRANSLATE_STEP_SHIFT};
 #[allow(unused_imports)]
@@ -47,6 +49,7 @@ pub struct GraphEditorTool {
     last_published_local_rev: Option<u64>,
     /// Hosted Braess's paradox congestion routing laboratory.
     pub braess: BraessCongestionLab,
+    pub(crate) file_io: super::io_helpers::GraphFileIoState,
 }
 
 impl InteractiveTool for GraphEditorTool {
@@ -62,11 +65,15 @@ impl InteractiveTool for GraphEditorTool {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        if self.braess.config.enabled {
-            crate::framework::ExportCapabilities::plot()
-        } else {
-            crate::framework::ExportCapabilities::none()
-        }
+        crate::framework::ExportCapabilities::plot()
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_editor_plot_primitives()
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.build_editor_datasets()
     }
 
     fn sync_workspace_bus(&mut self, bus: &mut crate::app::workspace_bus::SharedWorkspaceBus) {
@@ -125,6 +132,8 @@ impl InteractiveTool for GraphEditorTool {
         ui.separator();
         ui.label(format!("Nodes: {}", self.node_positions.len()));
         ui.label(format!("Edges: {}", self.edges.len()));
+        ui.separator();
+        self.render_interchange_and_handoff_ui(ui);
         ui.separator();
 
         let action = self.braess.show_sidebar(ui, &mut self.edges);

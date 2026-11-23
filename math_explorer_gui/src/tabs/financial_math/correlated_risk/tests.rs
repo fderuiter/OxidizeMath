@@ -102,3 +102,33 @@ fn test_state_validation_enforces_ou_and_copula_bounds_and_formula_safe_csv() {
     let md = tool.export_scenario_markdown();
     assert!(md.contains("Correlated Risk Scenario"));
 }
+
+#[test]
+fn test_ou_summary_stats_match_shared_solver_workspace_across_updates() {
+    let mut tool = CorrelatedRiskScenarioTool {
+        mode: RiskAnalysisMode::OrnsteinUhlenbeck,
+        ou_mu: 0.42,
+        ou_theta: 1.6,
+        ou_sigma: 0.30,
+        ou_x0: 0.75,
+        ou_dt: 0.025,
+        ou_steps: 100,
+        ou_paths: 32,
+        seed: 2026,
+        ..Default::default()
+    };
+    tool.last_ou_key = None;
+    tool.recalculate_if_needed();
+
+    let stats = tool.ou_stats.expect("expected populated OU summary stats");
+    let mut ref_ws = math_explorer::stochastic::SolverWorkspace::new(0, 32);
+    let ref_summary = ref_ws
+        .summarize_samples(&tool.ou_finals_scratch, None)
+        .expect("expected non-empty terminal samples");
+    assert_eq!(tool.ou_finals_scratch.len(), 32);
+    assert!((stats.mean_final - ref_summary.mean).abs() < 1e-15);
+    assert!((stats.std_final - ref_summary.std_dev).abs() < 1e-15);
+    assert!((stats.p05_final - ref_summary.percentile_05).abs() < 1e-15);
+    assert!((stats.p95_final - ref_summary.percentile_95).abs() < 1e-15);
+    assert!(stats.p05_final <= stats.mean_final && stats.mean_final <= stats.p95_final);
+}

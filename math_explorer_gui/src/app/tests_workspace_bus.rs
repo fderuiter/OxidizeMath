@@ -239,7 +239,7 @@ fn test_kuramoto_streams_coherence_to_bus_and_mws_plus_url_roundtrip() {
 
     // 2. Verify share URL round-trip restores layout, pane states, and bus links.
     let share_frag = app.encode_current_share_fragment().unwrap();
-    assert!(share_frag.contains("&ws="));
+    assert!(share_frag.starts_with("#ws="));
     let mut url_restored = MathExplorerApp::default();
     assert!(url_restored
         .apply_share_location_strings(&share_frag, "", None)
