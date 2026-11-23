@@ -15,12 +15,14 @@ pub(crate) use shader::MAX_SHADER_SINGULARITIES;
 
 use crate::framework::InteractiveTool;
 use eframe::egui;
+pub(crate) use egui_plot::PlotPoint;
+#[cfg(test)]
+pub(crate) use egui_plot::PlotPoints;
 use math_explorer::nalgebra::Vector2;
 use math_explorer::physics::fluid_dynamics::potential_flow::{
     Doublet, FlowElement, PotentialFlowField, Source, UniformFlow, Vortex,
 };
-use math_explorer::physics::fluid_dynamics::solver::{PotentialTracerSystem, TracerProbeReadout};
-use math_explorer::physics::fluid_dynamics::types::FluidProperties;
+use math_explorer::physics::fluid_dynamics::solver::PotentialTracerSystem;
 use math_explorer::pure_math::analysis::ode::TimeStepper;
 use std::f64::consts::PI;
 
@@ -142,7 +144,13 @@ pub struct PotentialFlowTool {
     pub(crate) cached_handles: Vec<(DragTarget, egui::Pos2)>,
     pub(crate) last_canvas_id: Option<egui::Id>,
     pub(crate) callout_manager: crate::framework::CalloutManager,
-    pub(crate) cache: cache::ArrowFieldCache,
+    pub(crate) contour_cache: cache::ContourCache,
+    pub(crate) origins: Vec<PlotPoint>,
+    pub(crate) tips: Vec<PlotPoint>,
+    pub(crate) grid_revision: u64,
+    pub(crate) cached_revision: u64,
+    pub(crate) cached_grid_size: usize,
+    pub(crate) cached_arrow_view_bits: u64,
 }
 
 impl Default for PotentialFlowTool {
@@ -196,9 +204,16 @@ impl Default for PotentialFlowTool {
             cached_handles: Vec::new(),
             last_canvas_id: None,
             callout_manager: crate::framework::CalloutManager::new(),
-            cache: cache::ArrowFieldCache::default(),
+            contour_cache: cache::ContourCache::default(),
+            origins: Vec::new(),
+            tips: Vec::new(),
+            grid_revision: 0,
+            cached_revision: 0,
+            cached_grid_size: 0,
+            cached_arrow_view_bits: 0,
         };
         tool.rebuild_field();
+        tool.rebuild_arrows();
         tool
     }
 }
@@ -229,11 +244,6 @@ impl InteractiveTool for PotentialFlowTool {
         dialect: crate::framework::ShaderDialect,
     ) -> Result<String, String> {
         self.build_glsl_shader(dialect)
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.last_canvas_id
-            .or_else(|| self.brush_kit.focused_plot_id())
     }
 
     fn on_brush(&mut self, ctx: &crate::framework::InteractionContext) {
@@ -318,6 +328,7 @@ impl PotentialFlowTool {
             }
         }
         self.reseed_dye_streaks();
+        self.grid_revision = self.grid_revision.wrapping_add(1);
     }
 
     pub(crate) fn reseed_dye_streaks(&mut self) {
@@ -404,30 +415,6 @@ impl PotentialFlowTool {
         }
     }
 
-    pub(crate) fn active_probe_readout(&self) -> Option<TracerProbeReadout> {
-        let probe = self
-            .dye_probes
-            .get(self.selected_probe)
-            .or_else(|| self.dye_probes.first())?;
-        let freestream = self
-            .elements
-            .iter()
-            .filter(|e| e.element_type == ElementType::Uniform)
-            .fold(Vector2::zeros(), |acc, e| {
-                let rad = e.angle.to_radians();
-                acc + Vector2::new(e.strength * rad.cos(), e.strength * rad.sin())
-            })
-            .norm()
-            .max(1.0);
-        let air = FluidProperties::air();
-        let tracer = PotentialTracerSystem::new(
-            &self.field,
-            Vector2::new(probe.head[0], probe.head[1]),
-            DYE_MAX_SPEED,
-        );
-        Some(tracer.evaluate_probe(&air, freestream, 101_325.0, DYE_DT))
-    }
-
     pub(crate) fn add_element(&mut self) {
         self.stamp_element_at(self.new_element_x, self.new_element_y);
     }
@@ -462,6 +449,8 @@ impl PotentialFlowTool {
 
     pub(crate) fn clear(&mut self) {
         self.elements.clear();
+        self.origins.clear();
+        self.tips.clear();
         self.selected_element = None;
         self.focus_target = FocusTarget::Reticle;
         self.rebuild_field();

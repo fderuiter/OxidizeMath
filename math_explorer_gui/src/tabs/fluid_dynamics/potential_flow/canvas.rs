@@ -87,9 +87,9 @@ impl PotentialFlowTool {
         });
     }
 
-    fn render_canvas_plot_contents(
-        &mut self,
-        plot_ui: &mut PlotUi<'_>,
+    fn render_canvas_plot_contents<'a>(
+        &'a mut self,
+        plot_ui: &mut PlotUi<'a>,
         hit_radius: f32,
         r: f64,
         sculpting: bool,
@@ -103,7 +103,6 @@ impl PotentialFlowTool {
             }
         }
         let focused = plot_ui.response().has_focus();
-        self.draw_plot_layers(plot_ui, focused && !sculpting);
         let strokes = if sculpting {
             self.brush_kit.sample_plot(
                 plot_ui,
@@ -115,6 +114,16 @@ impl PotentialFlowTool {
             Vec::new()
         };
         self.refresh_cached_handles(plot_ui);
+        let (streamlines, stag) = self.ensure_cached_contours();
+        self.reconcile_arrows();
+        self.draw_plot_layers(
+            plot_ui,
+            focused && !sculpting,
+            (&self.origins, &self.tips),
+            streamlines,
+            stag,
+        );
+        self.callout_manager.render_on_plot(plot_ui);
         strokes
     }
 
@@ -411,9 +420,15 @@ impl PotentialFlowTool {
         format!("Stamp strength {:.1}", self.new_element_strength)
     }
 
-    fn draw_plot_layers(&mut self, plot_ui: &mut PlotUi<'_>, canvas_focused: bool) {
+    fn draw_plot_layers<'a>(
+        &self,
+        plot_ui: &mut PlotUi<'a>,
+        canvas_focused: bool,
+        arrows: (&'a [PlotPoint], &'a [PlotPoint]),
+        streamlines: Vec<std::sync::Arc<Vec<PlotPoint>>>,
+        stag: std::sync::Arc<Vec<PlotPoint>>,
+    ) {
         let palette = SemanticPalette::from_visuals(&plot_ui.ctx().style().visuals);
-        let (streamlines, stag) = self.ensure_cached_contours();
 
         if self.show_streamlines {
             let contour_color = palette.series_color(2).gamma_multiply(0.75);
@@ -431,12 +446,11 @@ impl PotentialFlowTool {
             }
         }
         if self.show_vectors {
-            let (origins, tips) = self.ensure_cached_arrows();
             plot_ui.arrows(
                 Arrows::new(
                     "Vector Field",
-                    egui_plot::PlotPoints::from_shared(origins),
-                    egui_plot::PlotPoints::from_shared(tips),
+                    egui_plot::PlotPoints::Borrowed(arrows.0),
+                    egui_plot::PlotPoints::Borrowed(arrows.1),
                 )
                 .color(palette.series_color(0)),
             );
@@ -456,6 +470,5 @@ impl PotentialFlowTool {
             );
         }
         self.draw_handle_markers(plot_ui, &palette, canvas_focused);
-        self.callout_manager.render_on_plot(plot_ui);
     }
 }

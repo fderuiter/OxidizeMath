@@ -229,14 +229,26 @@ impl PotentialFlowTool {
                 .text("Iso-ψ Levels"),
         );
         let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
-        self.grid_size = self.grid_size.clamp(2, max_grid);
-        ui.add(
-            egui::Slider::new(&mut self.grid_size, 10..=max_grid)
-                .text("Visualization - Grid Density"),
-        );
+        let clamped_grid = self.grid_size.clamp(2, max_grid);
+        if clamped_grid != self.grid_size {
+            self.grid_size = clamped_grid;
+            self.grid_revision = self.grid_revision.wrapping_add(1);
+        }
+        if ui
+            .add(
+                egui::Slider::new(&mut self.grid_size, 10..=max_grid)
+                    .text("Visualization - Grid Density"),
+            )
+            .changed()
+        {
+            self.grid_revision = self.grid_revision.wrapping_add(1);
+        }
         let range_changed = ui
             .add(egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"))
             .changed();
+        if range_changed {
+            self.grid_revision = self.grid_revision.wrapping_add(1);
+        }
         let count_changed = ui
             .add(egui::Slider::new(&mut self.dye_count, 1..=MAX_DYE_PROBES).text("Dye Probes"))
             .changed();

@@ -157,6 +157,14 @@ impl PotentialFlowTool {
                     .to_string(),
             );
         }
+        let mut origins = std::mem::take(&mut self.origins);
+        let mut tips = std::mem::take(&mut self.tips);
+        origins.clear();
+        tips.clear();
+        candidate.origins = origins;
+        candidate.tips = tips;
+        candidate.cached_revision = self.cached_revision;
+        candidate.grid_revision = self.cached_revision;
         candidate.rebuild_field();
         *self = candidate;
         Ok(())
