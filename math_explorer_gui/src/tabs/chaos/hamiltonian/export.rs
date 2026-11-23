@@ -37,7 +37,7 @@ impl HamiltonianChaosLab {
         if boundary.len() >= 3 {
             prims.push(ExportPrimitive::Polyline {
                 name: "Hill Energy Shell Boundary".to_string(),
-                points: boundary,
+                points: boundary.into(),
                 color: palette.info,
                 stroke_width: 1.5_f32,
                 closed: true,
@@ -48,7 +48,7 @@ impl HamiltonianChaosLab {
             if !slot.section_points.is_empty() {
                 prims.push(ExportPrimitive::Points {
                     name: format!("Orbit {} Section", idx + 1),
-                    points: slot.section_points.clone(),
+                    points: egui_plot::SharedPoints::from_slice(&slot.section_points),
                     color: palette.series_color(slot.color_index),
                     radius: 2.2_f32,
                 });
@@ -57,7 +57,7 @@ impl HamiltonianChaosLab {
         if self.show_rk4_ghost && !self.ghost.section_points.is_empty() {
             prims.push(ExportPrimitive::Points {
                 name: "RungeKutta4 Ghost Drift".to_string(),
-                points: self.ghost.section_points.clone(),
+                points: egui_plot::SharedPoints::from_slice(&self.ghost.section_points),
                 color: palette.error,
                 radius: 2.0_f32,
             });

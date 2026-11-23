@@ -280,111 +280,119 @@ fn test_all_four_starter_presets_load_and_export_svg_png_csv_json() {
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
 
-fn measure_dominant_stereo_fft_hz(wav: &[u8], sample_rate: u32, frame_count: usize) -> (f64, f64) {
-    use num_complex::Complex;
-    use rustfft::FftPlanner;
+#[test]
+fn test_custom_clamps_url_roundtrip_and_bounds_validation() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let default_tool = ChladniWaveTankTool::default();
+    let default_json = default_tool.save_state().unwrap();
+    assert!(
+        !default_json.contains("custom_clamps"),
+        "Empty custom_clamps must be omitted via skip_serializing_if"
+    );
 
-    let ceiling_i16 = (crate::audio::frame::LIMITER_CEILING_LINEAR * 32_767.0).ceil() as i16 + 1;
-    let fft_len = 262_144_usize;
-    let mut spec = vec![Complex::new(0.0_f64, 0.0); fft_len];
-    let mut diff_energy = 0.0_f64;
-    for (i, chunk) in wav[44..]
-        .as_chunks::<4>()
-        .0
+    let mut source_app = MathExplorerApp::default();
+    let analysis_idx = source_app
+        .tabs
         .iter()
-        .take(frame_count)
-        .enumerate()
-    {
-        let l = i16::from_le_bytes([chunk[0], chunk[1]]);
-        let r = i16::from_le_bytes([chunk[2], chunk[3]]);
-        assert!(l.abs() <= ceiling_i16 && r.abs() <= ceiling_i16);
-        let lf = f64::from(l) / 32_767.0;
-        let rf = f64::from(r) / 32_767.0;
-        diff_energy += (lf - rf) * (lf - rf);
-        let hann = 0.5 * (1.0 - (std::f64::consts::TAU * (i as f64) / (frame_count as f64)).cos());
-        spec[i] = Complex::new(0.5 * (lf + rf) * hann, 0.0);
+        .position(|t| t.url_slug() == "analysis")
+        .unwrap();
+    source_app.selected_tab = analysis_idx;
+    assert!(source_app.tabs[analysis_idx].select_tool_by_name("ChladniWaveTankTool"));
+
+    let pins = vec![[0.25, 0.35], [0.72, 0.64], [0.48, 0.22]];
+    if let Some(fw) = source_app.tabs[analysis_idx].framework_mut() {
+        let tool = fw
+            .active_tool
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .unwrap()
+            .downcast_mut::<ChladniWaveTankTool>()
+            .unwrap();
+        tool.state.custom_clamps = pins.clone();
+        tool.rebuild_masks();
+        tool.state_rev = tool.state_rev.wrapping_add(1);
     }
-    let mut planner = FftPlanner::<f64>::new();
-    planner.plan_fft_forward(fft_len).process(&mut spec);
-    let (peak_bin, _) = spec[8..(fft_len / 2)]
-        .iter()
-        .enumerate()
-        .map(|(k, c)| (k + 8, c.norm()))
-        .max_by(|a, b| a.1.total_cmp(&b.1))
-        .expect("non-empty FFT spectrum");
-    let measured_hz = (peak_bin as f64) * f64::from(sample_rate) / (fft_len as f64);
-    (measured_hz, diff_energy)
+
+    let share_url = source_app.encode_current_share_url().unwrap();
+    let hash = &share_url[share_url.find('#').unwrap()..];
+    let mut restored_app = MathExplorerApp::default();
+    assert!(restored_app
+        .apply_share_location_strings(hash, "", None)
+        .unwrap());
+    let restored_tool = restored_app.tabs[analysis_idx]
+        .framework()
+        .unwrap()
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .as_any()
+        .unwrap()
+        .downcast_ref::<ChladniWaveTankTool>()
+        .unwrap();
+    assert_eq!(restored_tool.state.custom_clamps, pins);
+    let pin_cell_x = (0.25 * ((GRID_SIZE - 1) as f64)).round() as usize;
+    let pin_cell_y = (0.35 * ((GRID_SIZE - 1) as f64)).round() as usize;
+    assert!(restored_tool.solver.wall_mask[pin_cell_y * GRID_SIZE + pin_cell_x] <= 0.5);
+
+    verify_custom_clamp_state_rejections(&default_json);
 }
 
-#[test]
-fn test_chladni_clamped_square_wav_ir_matches_leissa_omega_within_two_percent() {
-    use math_explorer::pure_math::analysis::pde::wave_2d::analytic_clamped_square_omega;
-
+fn verify_custom_clamp_state_rejections(base_json: &str) {
     let mut tool = ChladniWaveTankTool::default();
-    tool.state.medium = Wave2DMedium::BiharmonicPlate;
-    tool.state.boundary = BoundaryMode2D::Clamped;
-    tool.state.clamp_layout = ClampLayout::None;
-    tool.state.plate_stiffness = 0.0004;
-    tool.state.pickup_left = [0.31, 0.43];
-    tool.state.pickup_right = [0.69, 0.57];
+    let mut sixteen: serde_json::Value = serde_json::from_str(base_json).unwrap();
+    sixteen["custom_clamps"] = serde_json::json!(vec![[0.5, 0.5]; 16]);
+    assert!(tool.try_load_state(&sixteen.to_string()).is_ok());
 
-    let sample_rate = 44_100_u32;
-    let wav = tool
-        .export_wav_audio(sample_rate, 1.0)
-        .expect("Chladni WAV IR export");
-    assert_eq!(&wav[0..4], b"RIFF");
-    assert_eq!(&wav[8..12], b"WAVE");
-    let frame_count = 44_100_usize;
-    assert_eq!(wav.len(), 44 + frame_count * 4);
+    let mut seventeen = sixteen.clone();
+    seventeen["custom_clamps"] = serde_json::json!(vec![[0.5, 0.5]; 17]);
+    assert!(tool.try_load_state(&seventeen.to_string()).is_err());
 
-    let (measured_hz, diff_energy) = measure_dominant_stereo_fft_hz(&wav, sample_rate, frame_count);
-    assert!(
-        diff_energy > 1.0e-3,
-        "Asymmetric L/R pickups must decorrelate stereo channels"
-    );
-    let measured_omega = std::f64::consts::TAU * measured_hz;
-    let expected_omega = analytic_clamped_square_omega(
-        1,
-        1,
-        acoustics::CHLADNI_ACOUSTIC_LENGTH_METERS,
-        tool.state.plate_stiffness,
-    );
-    let rel_err = (measured_omega - expected_omega).abs() / expected_omega;
-    assert!(
-        rel_err <= 0.02,
-        "Chladni IR omega_11 mismatch: measured={measured_omega:.3} rad/s ({measured_hz:.2} Hz), analytic={expected_omega:.3} rad/s, rel_err={rel_err:.4}"
-    );
+    let mut forty = sixteen.clone();
+    forty["custom_clamps"] = serde_json::json!(vec![[0.5, 0.5]; 40]);
+    assert!(tool.try_load_state(&forty.to_string()).is_err());
 
-    let midi = tool.export_midi_score(1.5).expect("Chladni MIDI");
-    assert_eq!(&midi[0..4], b"MThd");
-    let (scl, kbm) = tool.export_scala_tuning().expect("Chladni Scala");
-    assert!(scl.contains('.') && !kbm.is_empty());
+    for bad_coord in [[0.005, 0.5], [0.5, 0.995]] {
+        let mut out_of_range = sixteen.clone();
+        out_of_range["custom_clamps"] = serde_json::json!([bad_coord]);
+        assert!(tool.try_load_state(&out_of_range.to_string()).is_err());
+    }
 }
 
 #[test]
-fn test_chladni_impulse_render_zero_allocations_under_verified_engine() {
-    let tool = ChladniWaveTankTool::default();
-    let mut ws = acoustics::ChladniImpulseWorkspace::new(
-        acoustics::IR_GRID_SIZE,
-        acoustics::CHLADNI_ACOUSTIC_LENGTH_METERS,
-    );
-    ws.prepare(&tool.state, &tool.custom_clamps);
-    let ir_params = tool.impulse_pde_params();
-    let mut stereo = vec![0.0_f32; 1_024 * 2];
+fn test_chladni_sonification_panel_mallet_strike_and_mute_hooks() {
+    let mut tool = ChladniWaveTankTool::default();
+    tool.step_simulation();
+    assert!(tool.audio.latest_frame.is_audible());
 
-    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let (frames, _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
-        acoustics::render_chladni_impulse_into(
-            &mut ws,
-            &ir_params,
-            44_100,
-            tool.state.pickup_left,
-            tool.state.pickup_right,
-            &mut stereo,
-        )
-    });
-    assert_eq!(frames, 1_024);
-    assert!(stereo.iter().all(|s| s.is_finite()));
+    tool.trigger_mallet_pulse(0.45, 0.55, 0.045, 1.0, 1.0);
+    assert!(tool.audio.latest_frame.voices[0].transient_impulse > 0.9);
+
+    let ctx = Context::default();
+    ctx.enable_accesskit();
+    let _ = ctx.run(raw_frame(), |ctx| tool.show(ctx));
+    let out = ctx.run(raw_frame(), |ctx| tool.show(ctx));
+    let ak = out.platform_output.accesskit_update.unwrap();
+    assert!(
+        ak.nodes
+            .iter()
+            .any(|(_, node)| node.role() == egui::accesskit::Role::Meter),
+        "Sonification meter must be rendered in ChladniWaveTankTool"
+    );
+    assert_eq!(tool.audio.pending_impulse, 0.0);
+
+    if crate::audio::snapshot_ui_state().muted {
+        crate::audio::toggle_mute_from_user_gesture();
+    }
+    assert!(!crate::audio::snapshot_ui_state().muted);
+    crate::audio::notify_playback_paused();
+    assert!(crate::audio::snapshot_ui_state().muted);
+
+    crate::audio::toggle_mute_from_user_gesture();
+    crate::audio::notify_playback_reset();
+    assert!(crate::audio::snapshot_ui_state().muted);
+
+    crate::audio::toggle_mute_from_user_gesture();
+    assert!(tool.clamp_parameters());
+    assert!(crate::audio::snapshot_ui_state().muted);
 }

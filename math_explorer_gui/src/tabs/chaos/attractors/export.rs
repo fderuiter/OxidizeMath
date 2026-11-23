@@ -122,44 +122,6 @@ impl AttractorPlotter {
         Ok(ColoredMesh::new(mesh, colors))
     }
 
-    pub(super) fn compute_attractor_state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.mode as u8).hash(&mut h);
-        for bar in self.flow_bank.bars() {
-            bar.raw_text.hash(&mut h);
-        }
-        for &pv in self.flow_bank.param_slice() {
-            pv.to_bits().hash(&mut h);
-        }
-        self.system.sigma.to_bits().hash(&mut h);
-        self.system.rho.to_bits().hash(&mut h);
-        self.system.beta.to_bits().hash(&mut h);
-        self.dt.to_bits().hash(&mut h);
-        self.tube_radius.to_bits().hash(&mut h);
-        self.simulation_speed.hash(&mut h);
-        self.max_points.hash(&mut h);
-        self.is_paused().hash(&mut h);
-        self.diverged().hash(&mut h);
-        self.show_annotations.hash(&mut h);
-        for offset in &self.fixed_callout_offsets {
-            let x_bits = if offset.x == 0.0 {
-                0
-            } else {
-                offset.x.to_bits()
-            };
-            let y_bits = if offset.y == 0.0 {
-                0
-            } else {
-                offset.y.to_bits()
-            };
-            x_bits.hash(&mut h);
-            y_bits.hash(&mut h);
-        }
-        self.camera.hash_state(&mut h);
-        h.finish().max(1)
-    }
-
     fn build_offline_sonification_stepper(
         &self,
     ) -> Result<impl FnMut(usize, f64) -> crate::audio::SonificationFrame, String> {
@@ -232,5 +194,47 @@ impl AttractorPlotter {
             duration_secs,
             stepper,
         ))
+    }
+
+    pub(super) fn collect_export_datasets_2d(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut points_b: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+        if points_b.is_empty() && self.is_finite_state() {
+            points_b.push(self.project(self.system.state.vec));
+        }
+        if let Some(ref twin) = self.twin {
+            let mut points_a: Vec<[f64; 2]> =
+                twin.history_a.iter().map(|p| self.project(*p)).collect();
+            if points_a.is_empty() {
+                points_a.push(self.project(twin.system_a.state.vec));
+            }
+            vec![
+                ("Branch B (Active)".to_string(), points_b),
+                ("Branch A (Baseline)".to_string(), points_a),
+            ]
+        } else {
+            vec![("Trajectory".to_string(), points_b)]
+        }
+    }
+
+    pub(super) fn collect_export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        let mut points_b: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
+        if points_b.is_empty() && self.is_finite_state() {
+            let v = self.system.state.vec;
+            points_b.push([v.x, v.y, v.z]);
+        }
+        if let Some(ref twin) = self.twin {
+            let mut points_a: Vec<[f64; 3]> =
+                twin.history_a.iter().map(|p| [p.x, p.y, p.z]).collect();
+            if points_a.is_empty() {
+                let va = twin.system_a.state.vec;
+                points_a.push([va.x, va.y, va.z]);
+            }
+            vec![
+                ("Branch B (Active)".to_string(), points_b),
+                ("Branch A (Baseline)".to_string(), points_a),
+            ]
+        } else {
+            vec![("Trajectory".to_string(), points_b)]
+        }
     }
 }

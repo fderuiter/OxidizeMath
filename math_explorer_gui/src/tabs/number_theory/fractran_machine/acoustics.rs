@@ -73,18 +73,6 @@ pub(crate) fn render_fractran_pcm_into(
 }
 
 impl FractranMachineTool {
-    pub(super) fn current_sonification_frame(&self) -> SonificationFrame {
-        let mut scratch = [(0_u64, 0_u32); MAX_VOICES];
-        let hit_pow2 = matches!(self.stop_reason, MachineStopReason::HitPowerOfTwo(_));
-        build_fractran_frame_into(
-            &self.vm,
-            &self.registers,
-            self.last_fired_rule,
-            hit_pow2,
-            &mut scratch,
-        )
-    }
-
     fn export_start_registers(&self) -> Vec<u32> {
         let any_nonzero = self.registers.iter().any(|&e| e > 0);
         if any_nonzero && self.stop_reason != MachineStopReason::Halted {

@@ -8,7 +8,7 @@ use super::pulse::{
     CHALLENGE_MRI_TE, MRI_PULSE_SAMPLES,
 };
 use super::tool::{MriTool, MriToolState};
-use crate::async_sim::SimCommand;
+use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::ChallengeEvaluation;
 use nalgebra::Vector3;
 
@@ -43,7 +43,9 @@ impl MriTool {
         }
         self.current_time = self.pulse_workspace.times[MRI_PULSE_SAMPLES - 1];
         self.simulator.magnetization = final_m;
+        self.pulse_workspace.playhead_idx = MRI_PULSE_SAMPLES - 1;
         self.update_plot_buffers();
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     pub(crate) fn enforce_challenge_locks(&mut self) {
@@ -66,6 +68,10 @@ impl MriTool {
 
     pub(super) fn serialize_mri_state(&self) -> Option<String> {
         let pulse = (!self.pulse_config.mode.is_continuous()).then_some(self.pulse_config);
+        let fork = self
+            .twin
+            .as_ref()
+            .map(|t| t.to_descriptor(self.current_step_index()));
         serde_json::to_string(&MriToolState {
             t1: self.simulator.t1,
             t2: self.simulator.t2,
@@ -75,6 +81,7 @@ impl MriTool {
             time_scale: self.time_scale,
             state: Some(self.worker.state()),
             paused: None,
+            fork,
             pulse,
         })
         .ok()
@@ -99,11 +106,18 @@ impl MriTool {
             p.b_field = self.simulator.b_field;
             p.time_scale = self.time_scale;
         }
+        self.pulse_workspace.playhead_playing = false;
+        if let Some(desc) = parsed.fork {
+            self.apply_mri_fork_descriptor(desc)?;
+        } else {
+            let _ = self.clear_fork();
+        }
         if !self.pulse_config.mode.is_continuous() {
             let _ = self.worker.send_command(SimCommand::Pause);
             self.recompute_pulse_sequence();
         } else {
             self.apply_worker_state(target_state);
+            self.latest_sonification = self.current_sonification_frame();
         }
         Ok(())
     }
@@ -143,6 +157,58 @@ impl MriTool {
                 self.simulator.t2,
             )),
             _ => None,
+        }
+    }
+
+    /// Computes the stack-allocated [`crate::audio::SonificationFrame`] for the active mode/playhead.
+    #[must_use]
+    pub fn current_sonification_frame(&self) -> crate::audio::SonificationFrame {
+        if self.worker.state() == SimWorkerState::Faulted {
+            return crate::audio::SonificationFrame::silent();
+        }
+        match self.pulse_config.mode {
+            MriPulseMode::ContinuousField => crate::audio::mappings::mri_bloch_frame(
+                self.simulator.magnetization,
+                self.simulator.m0,
+                self.simulator.b_field,
+                self.pulse_config.detuning_hz,
+            ),
+            MriPulseMode::InversionPulse => {
+                let (t_s, m_sample, disp) = self.pulse_workspace.playhead_sample();
+                crate::audio::mappings::mri_pulse_playhead_frame(
+                    MriPulseMode::InversionPulse,
+                    t_s,
+                    m_sample,
+                    disp,
+                    self.simulator.m0,
+                    self.simulator.b_field.z,
+                    &self.pulse_config,
+                )
+            }
+            MriPulseMode::HahnSpinEcho => {
+                let (t_s, _, _) = self.pulse_workspace.playhead_sample();
+                let mut frame = self.pulse_workspace.sample_sonification_frame(
+                    MriPulseMode::HahnSpinEcho,
+                    self.pulse_workspace.playhead_idx,
+                    self.simulator.b_field,
+                    self.simulator.m0,
+                );
+                let detune_shift =
+                    0.25 * (self.pulse_config.detuning_hz.clamp(-5000.0, 5000.0) as f32);
+                if detune_shift.abs() > 1e-3 {
+                    for v in &mut frame.voices[..frame.active_voices as usize] {
+                        v.freq_hz = crate::audio::frame::clamp_freq_hz(v.freq_hz + detune_shift);
+                    }
+                }
+                if crate::audio::mappings::is_rf_pulse_window(
+                    MriPulseMode::HahnSpinEcho,
+                    t_s,
+                    &self.pulse_config,
+                ) {
+                    frame.voices[0].transient_impulse = 0.85;
+                }
+                frame.sanitize()
+            }
         }
     }
 }

@@ -2,15 +2,17 @@
 
 // theory_verification!
 
-use super::worker::{advance_running_frame, drain_worker_commands, FrameTickOutcome};
-use super::{take_worker_context, SimCommand, SimWorkerState, WorkerStatusEvent};
+use super::worker::{
+    advance_running_frame, drain_worker_commands, make_worker_ring, sync_worker_timeline,
+    FrameTickOutcome,
+};
+use super::{
+    take_worker_context, SimCommand, SimWorkerState, WorkerStatusEvent, WASM_FRAME_SLICE_BUDGET,
+};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, TryRecvError};
-use std::time::Duration;
 use wasm_bindgen::JsCast;
-
-const WASM_FRAME_SLICE_BUDGET: Duration = Duration::from_millis(8);
 
 #[derive(Default)]
 struct WakeRegistry {
@@ -126,6 +128,8 @@ pub(super) async fn run_simulation_worker(handle: u32) {
 
     let mut state = SimWorkerState::Ready;
     let mut steps_per_frame = runner.get_steps_per_frame();
+    let mut ring = make_worker_ring(&*runner);
+    sync_worker_timeline(&ring, &state_tx);
     if !state_tx.mark_seeded()
         && state_tx
             .send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready)
@@ -145,6 +149,7 @@ pub(super) async fn run_simulation_worker(handle: u32) {
                 first_cmd,
                 &cmd_rx,
                 &mut *runner,
+                &mut ring,
                 &mut state,
                 &mut steps_per_frame,
                 &state_tx,
@@ -160,6 +165,7 @@ pub(super) async fn run_simulation_worker(handle: u32) {
             if matches!(
                 advance_running_frame(
                     &mut *runner,
+                    &mut ring,
                     steps_per_frame,
                     Some(WASM_FRAME_SLICE_BUDGET),
                     &mut state,

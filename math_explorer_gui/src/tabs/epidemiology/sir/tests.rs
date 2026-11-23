@@ -83,11 +83,39 @@ fn test_sir_sensitivity_converges_in_two_frames_and_invalidates_on_duration() {
     // Changing duration invalidates the 4-parameter sensitivity cache
     tool.duration = 180.0;
     tool.recalculate();
-    let out_after_duration = ctx.run(input, |ctx| tool.show(ctx));
+    let out_after_duration = ctx.run(input.clone(), |ctx| tool.show(ctx));
     assert!(!tool.sensitivity_engine.is_converged());
     assert!(out_after_duration.viewport_output[&egui::ViewportId::ROOT]
         .repaint_delay
         .is_zero());
+    let _ = ctx.run(input.clone(), |ctx| tool.show(ctx));
+    assert!(tool.sensitivity_engine.is_converged());
+
+    // Pointer-down drag defers SIR perturbations and settles on release
+    let settled_baseline = tool.sensitivity_engine.baseline_output;
+    tool.beta = 1.2;
+    tool.recalculate();
+    let mut drag_in = input.clone();
+    drag_in.events.push(egui::Event::PointerButton {
+        pos: egui::pos2(50.0, 50.0),
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let _ = ctx.run(drag_in, |ctx| tool.show(ctx));
+    assert_eq!(tool.sensitivity_engine.baseline_output, settled_baseline);
+
+    let mut release_in = input.clone();
+    release_in.events.push(egui::Event::PointerButton {
+        pos: egui::pos2(50.0, 50.0),
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let _ = ctx.run(release_in, |ctx| tool.show(ctx));
+    let _ = ctx.run(input, |ctx| tool.show(ctx));
+    assert!(tool.sensitivity_engine.is_converged());
+    assert!((tool.sensitivity_engine.baseline_output - settled_baseline).abs() > 1.0);
 }
 
 #[test]
@@ -154,6 +182,37 @@ fn test_sir_epidemic_peak_and_logistic_fit_r2() {
 }
 
 #[test]
+fn test_sir_animated_slider_sweep_recalculates_without_history_flood() {
+    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+
+    let mut tool = SirTool::default();
+    let initial_beta = tool.beta;
+    let initial_i_peak = tool.i_points.iter().map(|p| p.y).fold(0.0_f64, f64::max);
+
+    let ctx = egui::Context::default();
+    save_slider_state(
+        &ctx,
+        egui::Id::new("sir_beta"),
+        AnimatedSliderState {
+            playing: true,
+            direction: 1.0,
+            sweep_mode: SweepMode::Oscillate,
+        },
+    );
+    let _ = ctx.run(
+        egui::RawInput {
+            predicted_dt: 0.1,
+            ..Default::default()
+        },
+        |ctx| tool.show(ctx),
+    );
+    let updated_i_peak = tool.i_points.iter().map(|p| p.y).fold(0.0_f64, f64::max);
+    assert!(tool.beta > initial_beta);
+    assert_ne!(updated_i_peak, initial_i_peak);
+    assert_eq!(tool.snapshot_manager.history_len(), 0);
+}
+
+#[test]
 fn test_sir_100k_steps_decimates_display_polylines_and_preserves_peak_and_exports() {
     let mut tool = SirTool {
         duration: 10_000.0,
@@ -182,6 +241,32 @@ fn test_sir_100k_steps_decimates_display_polylines_and_preserves_peak_and_export
     assert_eq!(exported[0].1.len(), 100_001);
     assert_eq!(exported[1].1.len(), 100_001);
     assert_eq!(exported[2].1.len(), 100_001);
+}
+
+#[test]
+fn test_sir_forked_100k_steps_decimates_both_branches_and_exports_full_series() {
+    let mut tool = SirTool {
+        duration: 10_000.0,
+        ..Default::default()
+    };
+    assert!(tool.fork_at_day(10.0));
+    tool.beta = 0.2;
+    tool.recalculate();
+
+    let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
+    assert!(tool.display_s.len() <= cap && tool.cf.display_s_a.len() <= cap);
+    assert!(tool.display_i.len() <= cap && tool.cf.display_i_a.len() <= cap);
+    assert!(tool.display_r.len() <= cap && tool.cf.display_r_a.len() <= cap);
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |c| tool.show(c));
+    let plot_datasets = egui_plot::get_last_plot_datasets();
+    assert_eq!(plot_datasets.len(), 6);
+    assert!(plot_datasets.iter().all(|(_, pts)| pts.len() <= cap));
+
+    let exported = tool.export_datasets();
+    assert_eq!(exported.len(), 6);
+    assert!(exported.iter().all(|(_, pts)| pts.len() == 100_001));
 }
 
 #[test]

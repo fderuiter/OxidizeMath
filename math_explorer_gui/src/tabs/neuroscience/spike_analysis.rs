@@ -161,6 +161,7 @@ impl SpikeAnalysisTool {
                     PlaybackAction::Play => self.is_running = true,
                     PlaybackAction::Pause => self.is_running = false,
                     PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset(),
                 }
             }
@@ -431,7 +432,7 @@ inventory::submit! {
         id: "SpikeAnalysisTool",
         display_name: "Spike Train Analysis",
         domain: "neuroscience",
-        tags: &[],
+        tags: &["isi", "inter-spike interval", "firing rate", "electrophysiology"],
         build: || Box::new(SpikeAnalysisTool::default()),
     }
 }

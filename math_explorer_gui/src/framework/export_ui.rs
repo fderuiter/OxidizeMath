@@ -1,4 +1,3 @@
-use super::export_dataset::FrameworkExportSource;
 use super::*;
 use eframe::egui;
 
@@ -27,28 +26,6 @@ pub(super) fn export_action_button(
 }
 
 impl SimulationFramework {
-    pub(super) fn open_export_modal_for_active_tool(&mut self) {
-        if let Some(tool) = &self.active_tool {
-            if let Some(custom_opts) = tool.export_figure_options() {
-                self.export_bg_dark = custom_opts.background_color != egui::Color32::WHITE;
-                self.export_options = custom_opts;
-            }
-        }
-        self.show_export_modal = true;
-    }
-
-    pub(super) fn export_filenames_for_tool(tool_name: &str) -> (String, String, String) {
-        (
-            Self::build_export_filename(tool_name, ExportFormat::Png),
-            Self::build_export_filename(tool_name, ExportFormat::Svg),
-            Self::build_export_filename(tool_name, ExportFormat::Gif),
-        )
-    }
-
-    pub(super) fn export_modal_scope_id(&self, id_source: &str) -> egui::Id {
-        egui::Id::new(("framework_export", id_source, self.instance_id))
-    }
-
     pub(super) fn show_export_action_bar(&mut self, ui: &mut egui::Ui, id_source: &str) {
         if self.active_tool.is_none() {
             return;
@@ -70,6 +47,10 @@ impl SimulationFramework {
         let compact = bar_width < EXPORT_BAR_OVERFLOW_BREAKPOINT;
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
+            super::history_ui::render_workspace_history_buttons(ui);
+            if !compact {
+                ui.separator();
+            }
             let file_slug = if compact {
                 self.render_compact_export_menu(ui)
             } else {
@@ -80,6 +61,7 @@ impl SimulationFramework {
                 ui.separator();
             }
             self.render_starter_gallery_toggle(ctx, ui);
+            self.render_atlas_bar_toggle(ui);
             self.render_theory_portal_toggle(ctx, ui);
             if compact {
                 self.render_compact_preset_controls(ui, &file_slug, bar_width >= 420.0);
@@ -166,42 +148,6 @@ impl SimulationFramework {
         let (file_slug, caps) = self.active_tool_slug_and_caps();
         self.render_export_action_items(ui, caps, false);
         file_slug
-    }
-
-    fn render_starter_gallery_toggle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
-            .button("🎨 Starter Gallery")
-            .accessible_hover_text("Toggle starter template gallery overlay")
-            .clicked()
-        {
-            self.show_starter_gallery = !self.show_starter_gallery;
-            ctx.data_mut(|d| {
-                d.insert_temp(
-                    egui::Id::new("SHOW_STARTER_GALLERY"),
-                    self.show_starter_gallery,
-                )
-            });
-        }
-    }
-
-    fn render_theory_portal_toggle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
-            .button("📖 Theory")
-            .accessible_hover_text("Toggle Theory Context Portal")
-            .clicked()
-        {
-            self.show_theory_portal = !self.show_theory_portal;
-            let next = self.show_theory_portal;
-            ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
-                if let Some(inst_key) =
-                    d.get_temp::<egui::Id>(egui::Id::new("CURRENT_THEORY_PORTAL_INST_ID"))
-                {
-                    d.insert_temp(inst_key, next);
-                }
-            });
-            ctx.request_repaint();
-        }
     }
 
     fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
@@ -369,55 +315,5 @@ impl SimulationFramework {
         self.render_preset_json_buttons(ui, file_slug, false);
         self.render_reset_parameters_button(ui, false);
         self.render_preset_toasts(ui);
-    }
-
-    pub(super) fn show_export_modal_dialog(&mut self, ctx: &egui::Context, id_source: &str) {
-        let scope_id = self.export_modal_scope_id(id_source);
-        self.sync_state.last_modal_scope_id = Some(scope_id);
-
-        if let Some(msg) =
-            ctx.data_mut(|d| d.remove_temp::<String>(egui_plot::clipboard_status_id(scope_id)))
-        {
-            let sev = if msg.contains("failed") || msg.contains("unavailable") {
-                ExportStatusSeverity::Error
-            } else {
-                ExportStatusSeverity::Success
-            };
-            self.set_export_status(sev, msg);
-        }
-
-        let tool_name = self
-            .active_tool
-            .as_ref()
-            .map_or("simulation", |tool| tool.name());
-        let (png_filename, svg_filename, gif_filename) = Self::export_filenames_for_tool(tool_name);
-        let window_title = format!("Export High-Res Plot - {id_source}");
-        let config = egui_plot::export_modal::ExportModalConfig {
-            window_title: &window_title,
-            id: scope_id,
-            png_filename: &png_filename,
-            svg_filename: &svg_filename,
-            gif_filename: &gif_filename,
-        };
-        let status_color = self
-            .export_status_severity
-            .palette_color(&ctx.style().visuals);
-        let bindings = egui_plot::export_modal::ExportModalBindings {
-            open: &mut self.show_export_modal,
-            options: &mut self.export_options,
-            bg_dark: &mut self.export_bg_dark,
-            gif_fps: &mut self.export_gif_fps,
-            gif_frames: &mut self.export_gif_frames,
-            status_message: &mut self.export_status_message,
-        };
-        let mut source = FrameworkExportSource {
-            active_tool: &mut self.active_tool,
-            cached_tool_name: self.sync_state.datasets_owner_tool,
-            cached_plot_datasets: &self.current_valid_plot_datasets,
-            export_queue: &mut self.export_queue,
-            status_color,
-            ctx: ctx.clone(),
-        };
-        egui_plot::export_modal::show_export_modal(ctx, bindings, &config, &mut source);
     }
 }

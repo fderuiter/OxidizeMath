@@ -33,12 +33,23 @@ pub(crate) const fn default_pickup_right() -> [f64; 2] {
     [0.69, 0.57]
 }
 
+pub(crate) fn is_default_pickup_left(val: &[f64; 2]) -> bool {
+    let d = default_pickup_left();
+    (val[0] - d[0]).abs() < 1.0e-12 && (val[1] - d[1]).abs() < 1.0e-12
+}
+
+pub(crate) fn is_default_pickup_right(val: &[f64; 2]) -> bool {
+    let d = default_pickup_right();
+    (val[0] - d[0]).abs() < 1.0e-12 && (val[1] - d[1]).abs() < 1.0e-12
+}
+
 /// Active pointer drag target on the 2D Chladni / wave tank canvas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum CanvasDragTarget {
     #[default]
     None,
     Driver,
+    Probe,
     PickupLeft,
     PickupRight,
 }
@@ -59,9 +70,9 @@ impl ChladniImpulseWorkspace {
     }
 
     /// Resets wave buffers, rebuilds scaled masks, and injects the initial mallet/wave impulse.
-    pub(crate) fn prepare(&mut self, state: &ChladniWaveTankState, custom_clamps: &[[f64; 2]]) {
+    pub(crate) fn prepare(&mut self, state: &ChladniWaveTankState) {
         self.solver.reset_all();
-        configure_domain_masks(&mut self.solver, state, custom_clamps);
+        configure_domain_masks(&mut self.solver, state, &state.custom_clamps);
         let w = self.solver.width();
         let center_idx = flatten_2d_index(w / 2, self.solver.height() / 2, w);
         let center_free = self.solver.wall_mask[center_idx] > 0.5;
@@ -275,7 +286,7 @@ impl ChladniWaveTankTool {
     }
 
     pub(super) fn modal_frequencies_hz(&self) -> [f64; 6] {
-        let pin_lift = 1.0 + 0.04 * (self.custom_clamps.len().min(8) as f64);
+        let pin_lift = 1.0 + 0.04 * (self.state.custom_clamps.len().min(8) as f64);
         if self.state.medium == Wave2DMedium::BiharmonicPlate {
             let d = self.state.plate_stiffness.max(1.0e-5);
             let pairs = match self.state.clamp_layout {
@@ -296,36 +307,6 @@ impl ChladniWaveTankTool {
             [1.0, 1.593_3, 2.135_5, 2.295_4, 2.653_1, 2.917_3]
                 .map(|r| (base * r).clamp(24.0, 6_000.0))
         }
-    }
-
-    pub(super) fn live_sonification_frame(&self) -> SonificationFrame {
-        let e_field = self.solver.energy_field();
-        let el = sample_bilinear(e_field, GRID_SIZE, GRID_SIZE, self.state.pickup_left).max(0.0);
-        let er = sample_bilinear(e_field, GRID_SIZE, GRID_SIZE, self.state.pickup_right).max(0.0);
-        let total_e = el + er;
-        let pan = if total_e > 1.0e-9 {
-            ((er - el) / total_e).clamp(-0.85, 0.85) as f32
-        } else {
-            0.0
-        };
-        let level = (total_e.sqrt() * 2.4).clamp(0.08, 0.78) as f32;
-        let freqs = self.modal_frequencies_hz();
-
-        let mut frame = SonificationFrame::silent();
-        frame.waveform = WaveformPreset::QuantumModal;
-        frame.master_gain = level;
-        let weights = [0.42_f32, 0.25, 0.18, 0.12];
-        for (i, &w) in weights.iter().enumerate() {
-            let side = if i % 2 == 0 { -0.35 } else { 0.35 };
-            frame.voices[i] = VoiceSpec {
-                freq_hz: freqs[i] as f32,
-                gain: (level * w).clamp(0.02, 0.85),
-                pan: (pan + side).clamp(-0.95, 0.95),
-                ..VoiceSpec::silent()
-            };
-        }
-        frame.active_voices = 4;
-        frame.sanitize()
     }
 
     pub(super) fn handle_canvas_pointer(
@@ -358,7 +339,11 @@ impl ChladniWaveTankTool {
         rect: egui::Rect,
         pos: egui::Pos2,
     ) {
-        let shift = ctx.input(|i| i.modifiers.shift);
+        let (shift, alt) = ctx.input(|i| (i.modifiers.shift, i.modifiers.alt));
+        if self.pickup_drag_mode || alt {
+            self.active_drag = CanvasDragTarget::Probe;
+            return;
+        }
         let to_scr = |pt: [f64; 2]| {
             egui::Pos2::new(
                 rect.left() + (pt[0] as f32) * rect.width(),
@@ -385,18 +370,27 @@ impl ChladniWaveTankTool {
     ) {
         let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
         let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
-        if ctx.input(|i| i.modifiers.shift) && clicked && self.custom_clamps.len() < 16 {
-            self.custom_clamps.push([nx, ny]);
+        let (shift, alt) = ctx.input(|i| (i.modifiers.shift, i.modifiers.alt));
+        if self.pickup_drag_mode || alt || self.active_drag == CanvasDragTarget::Probe {
+            self.state.pickup_x = nx;
+            self.state.pickup_y = ny;
+            self.analysis_dirty = true;
+        } else if shift
+            && clicked
+            && self.state.custom_clamps.len() < super::sonification::MAX_CUSTOM_CLAMPS
+        {
+            self.state.custom_clamps.push([nx, ny]);
             self.rebuild_masks();
+            self.analysis_dirty = true;
         } else {
             match self.active_drag {
                 CanvasDragTarget::PickupLeft => self.state.pickup_left = [nx, ny],
                 CanvasDragTarget::PickupRight => self.state.pickup_right = [nx, ny],
-                CanvasDragTarget::Driver | CanvasDragTarget::None => {
+                CanvasDragTarget::Driver | CanvasDragTarget::Probe | CanvasDragTarget::None => {
                     self.state.driver_x = nx;
                     self.state.driver_y = ny;
                     if clicked {
-                        self.solver.inject_gaussian_pulse(nx, ny, 0.04, 0.65);
+                        self.trigger_mallet_pulse(nx, ny, 0.04, 0.65, 0.85);
                     }
                 }
             }
@@ -438,7 +432,7 @@ impl ChladniWaveTankTool {
         .sanitized();
         let total_frames = cfg.total_stereo_frames();
         let mut ws = ChladniImpulseWorkspace::new(IR_GRID_SIZE, CHLADNI_ACOUSTIC_LENGTH_METERS);
-        ws.prepare(&self.state, &self.custom_clamps);
+        ws.prepare(&self.state);
         let ir_params = self.impulse_pde_params();
         let mut stereo = vec![0.0_f32; total_frames * 2];
         render_chladni_impulse_into(

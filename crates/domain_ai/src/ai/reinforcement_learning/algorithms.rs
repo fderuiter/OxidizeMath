@@ -131,6 +131,40 @@ where
             .select_action(state, available_actions, &q_values, &mut self.rng)
     }
 
+    /// Selects an action using a caller-preallocated Q-value scratch slice without heap allocations.
+    ///
+    /// Evaluates `available_actions.len().min(q_scratch.len())` candidate actions in place.
+    #[verified_engine::verified]
+    pub fn select_action_into(
+        &mut self,
+        state: &S,
+        available_actions: &[A],
+        q_scratch: &mut [f64],
+    ) -> Option<A> {
+        let count = available_actions.len().min(q_scratch.len());
+        if count == 0 {
+            return None;
+        }
+        let actions = &available_actions[..count];
+        let q_values = &mut q_scratch[..count];
+        for (slot, action) in q_values.iter_mut().zip(actions.iter()) {
+            *slot = self.get_q_value(state, action);
+        }
+        self.strategy
+            .select_action(state, actions, q_values, &mut self.rng)
+    }
+
+    /// Updates the learning rate $\alpha$ and discount factor $\gamma$ in place without reallocating Q-values.
+    #[verified_engine::verified]
+    pub fn set_learning_params(
+        &mut self,
+        learning_rate: UnitInterval,
+        discount_factor: UnitInterval,
+    ) {
+        self.learning_rate = learning_rate;
+        self.discount_factor = discount_factor;
+    }
+
     /// Re-seeds the internal RNG of the agent.
     pub fn reseed(&mut self, seed: u64) {
         self.rng = oxidize_core::rng::OxidizeRng::new(seed);
@@ -195,3 +229,8 @@ pub fn policy_gradient_step(
         .map(|g| learning_rate.value() * return_gt * g)
         .collect()
 }
+
+pub use super::rollouts::{
+    RlStepOutcome, compute_softmax_pg_delta, softmax_action_probs, step_softmax_pg_into,
+    step_tabular_q_into,
+};

@@ -138,6 +138,32 @@ impl ExportCapabilities {
         }
     }
 
+    /// Capability profile for analytical calculators that export tabular `CSV` and `JSON` datasets without offscreen plot or raster figures.
+    #[cfg(test)]
+    #[must_use]
+    pub const fn dataset_only() -> Self {
+        Self {
+            dataset: true,
+            figure: false,
+            stl: false,
+            ply: false,
+            obj: false,
+            shader: false,
+            wav: false,
+            midi: false,
+            scala: false,
+            dataset_disabled_reason: "",
+            figure_disabled_reason: "Figure export is unavailable: this tool computes analytical tables rather than an offscreen plot or raster field.",
+            stl_disabled_reason: DEFAULT_STL_DISABLED,
+            ply_disabled_reason: DEFAULT_PLY_DISABLED,
+            obj_disabled_reason: DEFAULT_OBJ_DISABLED,
+            shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            wav_disabled_reason: DEFAULT_WAV_DISABLED_REASON,
+            midi_disabled_reason: DEFAULT_MIDI_DISABLED_REASON,
+            scala_disabled_reason: DEFAULT_SCALA_DISABLED_REASON,
+        }
+    }
+
     /// Capability profile for interactive calculators, text inspectors, or custom widgets without exportable series or figures.
     #[must_use]
     pub const fn none() -> Self {

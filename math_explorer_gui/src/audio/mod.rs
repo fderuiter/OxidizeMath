@@ -15,6 +15,7 @@ pub mod wav;
 pub mod web_audio;
 
 use std::cell::RefCell;
+#[cfg(not(all(test, not(target_arch = "wasm32"))))]
 use std::sync::mpsc::channel;
 
 pub use backend::{MuteReason, SonificationBackend};
@@ -24,6 +25,7 @@ pub use ui::render_sonification_panel;
 pub use wav::OfflineRenderConfig;
 
 use crate::accessibility::announce_status;
+#[cfg(not(all(test, not(target_arch = "wasm32"))))]
 use crate::web_io::{spawn_save_binary_file_dialog, SaveAsDialogConfig};
 
 const TRAJECTORY_CAPACITY: usize =
@@ -59,6 +61,8 @@ struct AudioController {
     history_head: usize,
     history_len: usize,
     latest_frame: SonificationFrame,
+    #[cfg(test)]
+    last_exported_wav: Option<(String, Vec<u8>)>,
 }
 
 impl AudioController {
@@ -76,6 +80,8 @@ impl AudioController {
             history_head: 0,
             history_len: 0,
             latest_frame: SonificationFrame::silent(),
+            #[cfg(test)]
+            last_exported_wav: None,
         }
     }
 
@@ -302,14 +308,21 @@ pub fn export_current_tool_wav(tool_id: &'static str) {
             .unwrap_or_else(SonificationFrame::silent)
     });
     let filename = format!("{tool_id}_sonification.wav");
-    let config = SaveAsDialogConfig {
-        filter_name: "WAV Audio (*.wav)",
-        extensions: &["wav"],
-        fallback_filename: "sonification.wav",
-        write_error_prefix: "Failed to write WAV audio",
-    };
-    let (tx, _rx) = channel();
-    spawn_save_binary_file_dialog(tx, config, &filename, wav_bytes);
+    #[cfg(test)]
+    AUDIO_CONTROLLER.with(|cell| {
+        cell.borrow_mut().last_exported_wav = Some((filename.clone(), wav_bytes.clone()));
+    });
+    #[cfg(not(all(test, not(target_arch = "wasm32"))))]
+    {
+        let config = SaveAsDialogConfig {
+            filter_name: "WAV Audio (*.wav)",
+            extensions: &["wav"],
+            fallback_filename: "sonification.wav",
+            write_error_prefix: "Failed to write WAV audio",
+        };
+        let (tx, _rx) = channel();
+        spawn_save_binary_file_dialog(tx, config, &filename, wav_bytes);
+    }
     announce_status(&format!(
         "Exported {filename} ({:.1}s @ {:.1} kHz stereo PCM audio).",
         cfg.duration_secs,
@@ -329,19 +342,29 @@ pub fn export_current_tool_midi(tool_id: &'static str) {
     });
     let dt_secs = 1.0 / (wav::OFFLINE_CONTROL_RATE_HZ as f64);
     let midi_bytes = midi::encode_frames_to_midi(tool_id, &frames, dt_secs);
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    let _ = midi_bytes;
     let filename = format!("{tool_id}_score.mid");
-    let config = SaveAsDialogConfig {
-        filter_name: "Standard MIDI File (*.mid)",
-        extensions: &["mid"],
-        fallback_filename: "score.mid",
-        write_error_prefix: "Failed to write MIDI score",
-    };
-    let (tx, _rx) = channel();
-    spawn_save_binary_file_dialog(tx, config, &filename, midi_bytes);
+    #[cfg(not(all(test, not(target_arch = "wasm32"))))]
+    {
+        let config = SaveAsDialogConfig {
+            filter_name: "Standard MIDI File (*.mid)",
+            extensions: &["mid"],
+            fallback_filename: "score.mid",
+            write_error_prefix: "Failed to write MIDI score",
+        };
+        let (tx, _rx) = channel();
+        spawn_save_binary_file_dialog(tx, config, &filename, midi_bytes);
+    }
     announce_status(&format!(
         "Exported {filename} ({:.1}s SMF Format 1 MIDI score).",
         cfg.duration_secs
     ));
+}
+
+#[cfg(test)]
+pub(crate) fn take_last_exported_wav() -> Option<(String, Vec<u8>)> {
+    AUDIO_CONTROLLER.with(|cell| cell.borrow_mut().last_exported_wav.take())
 }
 
 /// Suspends audio within `<= 30 ms` and announces politely when `PlaybackAction::Pause` fires.
@@ -400,7 +423,18 @@ pub fn notify_tool_switched(new_tool_id: &'static str) {
 #[cfg(test)]
 mod midi_scala_tests;
 #[cfg(test)]
+mod number_theory_tests;
+#[cfg(test)]
+mod rl_tests;
+#[cfg(test)]
+mod spin_resonance_tests;
+#[cfg(test)]
 mod tests;
+
+#[cfg(all(test, feature = "pure_math"))]
+mod acoustics_tests;
+#[cfg(all(test, feature = "physics"))]
+mod mri_radar_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 #[path = "audio_wasm_tests.rs"]

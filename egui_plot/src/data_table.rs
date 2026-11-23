@@ -38,9 +38,9 @@ pub(crate) const MAX_H: f32 = 280.0;
 pub(crate) const IDX_W: f32 = 56.0;
 pub(crate) const COL_W: f32 = 136.0;
 
-/// Active tab inside [`show_data_table_modal_with_pois`].
+/// Active tab inside [`show_data_table_modal_with_shared_pois`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum DataTableViewMode {
+pub(crate) enum DataTableViewMode {
     /// Sampled series coordinates (`X`, `Y`).
     #[default]
     SeriesData,
@@ -230,6 +230,21 @@ impl RowCells<'_> {
     }
 }
 
+pub(crate) fn consume_copy_event(ctx: &Context) -> bool {
+    ctx.input_mut(|i| {
+        let mut found = false;
+        i.events.retain(|e| {
+            if matches!(e, egui::Event::Copy) {
+                found = true;
+                false
+            } else {
+                true
+            }
+        });
+        found
+    })
+}
+
 struct TableView<'a> {
     plot_id: Id,
     series: &'a [TableSeriesRef<'a>],
@@ -317,7 +332,7 @@ impl TableView<'_> {
         {
             emit_plot_live_message(ctx, msg, false);
         }
-        if ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)))
+        if consume_copy_event(ctx)
             && let Some(tsv) = self.selected_row_tsv()
         {
             copy_to_clipboard(ctx, self.plot_id, self.state, "selected row (TSV)", tsv);
@@ -741,6 +756,7 @@ fn render_header_row(ui: &mut Ui, table_id: Id, cols: &[(String, Color32)], widt
     );
 }
 
+#[cfg(test)]
 fn collect_nonempty_series(
     datasets: &[(String, Vec<[f64; 2]>, Color32)],
 ) -> Vec<TableSeriesRef<'_>> {
@@ -756,7 +772,8 @@ fn collect_nonempty_series(
 }
 
 /// Render the Data Table modal with both `Series Data` and `Critical Points` views.
-pub fn show_data_table_modal_with_pois(
+#[cfg(test)]
+pub(crate) fn show_data_table_modal_with_pois(
     ctx: &Context,
     plot_id: Id,
     window_title: &str,
@@ -771,17 +788,63 @@ pub fn show_data_table_modal_with_pois(
         return;
     }
     let series = collect_nonempty_series(datasets);
-    let shared_x = series.len() > 1 && series_share_x(&series);
-    let allow_csv_import = data_table_allows_csv_import(ctx, plot_id);
-    preprocess_data_table_frame(
+    render_data_table_modal_series(
         ctx,
         plot_id,
+        window_title,
+        open,
         state,
         &series,
-        shared_x,
-        allow_csv_import,
         critical_points,
     );
+}
+
+/// Render the Data Table modal directly over shared coordinate buffers without cloning series vectors.
+pub(crate) fn show_data_table_modal_with_shared_pois(
+    ctx: &Context,
+    plot_id: Id,
+    window_title: &str,
+    open: &mut bool,
+    state: &mut DataTableState,
+    datasets: &[(String, crate::SharedPoints, Color32)],
+    critical_points: &[CriticalPoint],
+) {
+    poll_data_table_clipboard_status(ctx, plot_id, state);
+    if !*open {
+        let _ = ModalLifecycle::new(plot_id.with("data_table_modal")).show(ctx, open, |_, _| {});
+        return;
+    }
+    let series: Vec<_> = datasets
+        .iter()
+        .filter(|(_, p, _)| !p.is_empty())
+        .map(|(name, points, color)| TableSeriesRef {
+            name,
+            points: points.as_slice(),
+            color: *color,
+        })
+        .collect();
+    render_data_table_modal_series(
+        ctx,
+        plot_id,
+        window_title,
+        open,
+        state,
+        &series,
+        critical_points,
+    );
+}
+
+fn render_data_table_modal_series(
+    ctx: &Context,
+    plot_id: Id,
+    window_title: &str,
+    open: &mut bool,
+    state: &mut DataTableState,
+    series: &[TableSeriesRef<'_>],
+    critical_points: &[CriticalPoint],
+) {
+    let shared_x = series.len() > 1 && series_share_x(series);
+    let allow_csv_import = data_table_allows_csv_import(ctx, plot_id);
     let max_w = (ctx.content_rect().width() - 48.0).clamp(360.0, 740.0);
     ModalLifecycle::new(plot_id.with("data_table_modal"))
         .title(window_title)
@@ -789,13 +852,23 @@ pub fn show_data_table_modal_with_pois(
         .max_width(max_w)
         .max_height(480.0)
         .show(ctx, open, |ui, frame_ctx| {
+            preprocess_data_table_frame(
+                ui.ctx(),
+                plot_id,
+                state,
+                series,
+                shared_x,
+                allow_csv_import,
+                critical_points,
+                frame_ctx.is_top_modal,
+            );
             render_mode_selector(ui, state, series.len(), critical_points.len());
             ui.separator();
             let should_close = match state.view_mode {
                 DataTableViewMode::SeriesData => {
                     let mut view = TableView {
                         plot_id,
-                        series: &series,
+                        series,
                         shared_x,
                         allow_csv_import,
                         state,
@@ -821,14 +894,19 @@ fn preprocess_data_table_frame(
     shared_x: bool,
     allow_csv_import: bool,
     critical_points: &[CriticalPoint],
+    is_top_modal: bool,
 ) {
-    handle_data_table_paste_events(ctx, plot_id, state);
+    if is_top_modal {
+        handle_data_table_paste_events(ctx, plot_id, state);
+    }
     if series.is_empty() && !critical_points.is_empty() && state.status_message.is_none() {
         state.view_mode = DataTableViewMode::CriticalPoints;
     }
     if state.view_mode == DataTableViewMode::CriticalPoints {
         poi_view::clamp_poi_state(state, critical_points.len());
-        poi_view::handle_poi_keys(ctx, plot_id, state, critical_points);
+        if is_top_modal {
+            poi_view::handle_poi_keys(ctx, plot_id, state, critical_points);
+        }
     } else if !series.is_empty() {
         let mut view = TableView {
             plot_id,
@@ -844,7 +922,9 @@ fn preprocess_data_table_frame(
         };
         let rows = series[idx].points.len();
         view.clamp(rows);
-        view.handle_keys(ctx, rows);
+        if is_top_modal {
+            view.handle_keys(ctx, rows);
+        }
     }
 }
 
