@@ -211,3 +211,125 @@ fn test_builder() {
     assert_eq!(params.f(), 0.8);
     assert_eq!(params.d(), 50.0);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_loading_dose_improves_time_in_therapeutic_range() {
+    let params = PKParameters::new(1.0, 100.0, 1.2, 0.1, 20.0).unwrap();
+    let window = TherapeuticWindow::new(3.0, 8.5).unwrap();
+    let times: Vec<f64> = (0..=960).map(|i| i as f64 * 0.05).collect();
+
+    let maintenance_events = [
+        DoseEvent::ir(0.0, 100.0).unwrap(),
+        DoseEvent::ir(12.0, 100.0).unwrap(),
+        DoseEvent::ir(24.0, 100.0).unwrap(),
+        DoseEvent::ir(36.0, 100.0).unwrap(),
+    ];
+    let loading_events = [
+        DoseEvent::ir(0.0, 200.0).unwrap(),
+        DoseEvent::ir(12.0, 100.0).unwrap(),
+        DoseEvent::ir(24.0, 100.0).unwrap(),
+        DoseEvent::ir(36.0, 100.0).unwrap(),
+    ];
+
+    let maint_regimen =
+        RegimenSuperposition::new(BatemanModel::new(params), &maintenance_events).unwrap();
+    let load_regimen =
+        RegimenSuperposition::new(BatemanModel::new(params), &loading_events).unwrap();
+
+    let mut maint_conc = vec![0.0; times.len()];
+    let mut load_conc = vec![0.0; times.len()];
+    maint_regimen.sample_into(&times, &mut maint_conc).unwrap();
+    load_regimen.sample_into(&times, &mut load_conc).unwrap();
+
+    let maint_summary = summarize_exposure(&times, &maint_conc, window, 12.0, params.ke()).unwrap();
+    let load_summary = summarize_exposure(&times, &load_conc, window, 12.0, params.ke()).unwrap();
+
+    assert!((maint_summary.time_in_range_pct - 66.493236).abs() < 1e-4);
+    assert!((load_summary.time_in_range_pct - 86.888657).abs() < 1e-4);
+    assert_eq!(maint_summary.toxic_pct, 0.0);
+    assert_eq!(load_summary.toxic_pct, 0.0);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_missed_dose_catch_up_peak_and_toxic_overshoot() {
+    let params = PKParameters::new(1.0, 100.0, 1.2, 0.1, 20.0).unwrap();
+    let window = TherapeuticWindow::new(3.0, 8.5).unwrap();
+    let base = BatemanModel::new(params);
+
+    let catchup_events = [
+        DoseEvent::ir(0.0, 100.0).unwrap(),
+        DoseEvent::ir(18.0, 150.0).unwrap(),
+        DoseEvent::ir(24.0, 100.0).unwrap(),
+        DoseEvent::ir(36.0, 100.0).unwrap(),
+    ];
+    let double_events = [
+        DoseEvent::ir(0.0, 100.0).unwrap(),
+        DoseEvent::ir(18.0, 200.0).unwrap(),
+        DoseEvent::ir(24.0, 100.0).unwrap(),
+        DoseEvent::ir(36.0, 100.0).unwrap(),
+    ];
+
+    let catchup = RegimenSuperposition::new(base, &catchup_events).unwrap();
+    let double_dose = RegimenSuperposition::new(base, &double_events).unwrap();
+    let uniform = SuperpositionModel::new(base, vec![0.0, 18.0, 24.0, 36.0]);
+
+    let peak_t = 18.0 + t_max(params.ka(), params.ke());
+    let expected_catchup_peak = concentration_bateman(&params, peak_t)
+        + concentration_bateman(&params.with_dose(150.0).unwrap(), peak_t - 18.0);
+    let actual_catchup_peak = catchup.concentration(peak_t);
+    let uniform_peak = uniform.concentration(peak_t);
+
+    assert!((actual_catchup_peak - expected_catchup_peak).abs() < TOLERANCE);
+    assert!((actual_catchup_peak - 6.702799).abs() < 1e-5);
+    let rel_err = (actual_catchup_peak - uniform_peak) / actual_catchup_peak;
+    assert!((rel_err - 0.297561).abs() < 1e-4);
+
+    let times: Vec<f64> = (0..=960).map(|i| i as f64 * 0.05).collect();
+    let mut catchup_c = vec![0.0; times.len()];
+    let mut double_c = vec![0.0; times.len()];
+    catchup.sample_into(&times, &mut catchup_c).unwrap();
+    double_dose.sample_into(&times, &mut double_c).unwrap();
+
+    let catchup_summary =
+        summarize_exposure(&times, &catchup_c, window, 12.0, params.ke()).unwrap();
+    let double_summary = summarize_exposure(&times, &double_c, window, 12.0, params.ke()).unwrap();
+
+    assert_eq!(catchup_summary.toxic_pct, 0.0);
+    assert!((double_summary.toxic_pct - 8.324662).abs() < 1e-4);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_enantiomer_and_two_pulse_regimens_and_calibration() {
+    let (ka_d, ke_d) = calibrate_ka_from_half_life(3.0, 10.0, 100, TOLERANCE).unwrap();
+    assert!((t_max(ka_d, ke_d) - 3.0).abs() < TOLERANCE);
+    assert!((half_life(ke_d) - 10.0).abs() < TOLERANCE);
+
+    let d_params = get_d_amphetamine_params();
+    let l_params = get_l_amphetamine_params();
+    let chiral = EnantiomerModel::new(d_params, l_params, 0.75, 0.25).unwrap();
+    let events = [
+        DoseEvent::xr(0.0, 30.0, 4.0, 0.5, 0.5).unwrap(),
+        DoseEvent::ir(14.0, 10.0).unwrap(),
+    ];
+    let regimen = RegimenSuperposition::new(chiral, &events).unwrap();
+    let times = [0.0, 3.0, 7.0, 15.0, 20.0];
+    let mut d_buf = [0.0; 5];
+    let mut l_buf = [0.0; 5];
+    let mut tot_buf = [0.0; 5];
+    regimen
+        .sample_isomers_into(&times, &mut d_buf, &mut l_buf, &mut tot_buf)
+        .unwrap();
+    for i in 0..times.len() {
+        assert!((tot_buf[i] - regimen.concentration(times[i])).abs() < TOLERANCE);
+        assert!((d_buf[i] + l_buf[i] - tot_buf[i]).abs() < TOLERANCE);
+    }
+
+    let xr_base = TwoPulseModel::new(BatemanModel::new(d_params), 4.0, 0.5, 0.5);
+    let xr_regimen =
+        RegimenSuperposition::new(xr_base, &[DoseEvent::ir(0.0, 40.0).unwrap()]).unwrap();
+    let c_expected = xr_base.with_dose(40.0).unwrap().concentration(6.0);
+    assert!((xr_regimen.concentration(6.0) - c_expected).abs() < TOLERANCE);
+}
