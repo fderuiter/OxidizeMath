@@ -67,14 +67,15 @@
 //!
 //! #### Computing β₁ (Cycles/Holes)
 //!
-//! For a 2D simplicial complex over $\mathbb{Z}_2$, we reduce the boundary matrix $\partial_2$:
+//! Over $\mathbb{Z}_2$, we compute the exact 1st Betti number from the 2-skeleton chain complex
+//! by reducing the boundary matrix $\partial_2$:
 //!
 //! ```text
-//! β₁ = (# edges) - (# vertices) + β₀ - rank_Z2(∂₂)
+//! β₁ = dim(ker ∂₁) - rank_Z2(∂₂) = (# edges) - (# vertices) + β₀ - rank_Z2(∂₂)
 //! ```
 //!
-//! This retains genuine 1-cycles even near higher-order cliques such as $K_4$ where raw
-//! triangle counts exceed boundary rank.
+//! Gaussian column reduction mod 2 ensures linearly dependent clique triangles (such as $K_4$)
+//! never cancel independent 1-cycles elsewhere in the complex.
 //!
 //! ### Persistence
 //!
@@ -261,19 +262,26 @@ pub mod complex;
 pub mod core;
 pub mod homology;
 pub mod persistence;
+pub mod space3d;
+pub mod workspace;
 
 // Re-export main types and functions
 pub use boundary::{Z2BoundaryWorkspace, rank_z2_boundary};
 pub use complex::{
-    MAX_FILTRATION_TRIANGLES, SimplicialComplex, vietoris_rips_complex, vietoris_rips_complex_nd,
-    vietoris_rips_from_distance_matrix,
+    MAX_FILTRATION_TRIANGLES, SimplicialComplex, vietoris_rips_complex, vietoris_rips_complex_3d,
+    vietoris_rips_complex_nd, vietoris_rips_from_distance_matrix, vietoris_rips_from_distances,
 };
 pub use core::{MAX_TDA_DIMENSION, MAX_TDA_POINTS, NdPointCloud, Point2D, PointCloud, Simplex};
 pub use homology::{betti_number_0, betti_number_1, betti_numbers};
 pub use persistence::{
     PersistenceBarcode, PersistenceInterval, RipsInterval, RipsPersistenceResult,
-    compute_persistence, compute_rips_persistence, compute_rips_persistence_from_distances,
-    compute_rips_persistence_nd,
+    compute_persistence, compute_persistence_from_distances, compute_rips_persistence,
+    compute_rips_persistence_from_distances, compute_rips_persistence_nd,
 };
+pub use space3d::{
+    Point3D, PointCloud3D, farthest_point_landmarks, farthest_point_landmarks_into,
+    takens_delay_embedding_3d,
+};
+pub use workspace::{FiltrationStepSummary, TdaFiltrationWorkspace};
 
 // [cite:clinical_trials_statistics]
