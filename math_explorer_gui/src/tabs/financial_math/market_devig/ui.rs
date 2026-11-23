@@ -107,7 +107,11 @@ fn render_header_controls(tool: &mut MarketDeviggingTool, ui: &mut egui::Ui) {
         ui.radio_value(&mut tool.quote_format, QuoteFormat::American, "American");
         ui.separator();
         ui.label("Primary Devig Model:");
-        ui.radio_value(&mut tool.method, DevigMethod::Multiplicative, "Multiplicative");
+        ui.radio_value(
+            &mut tool.method,
+            DevigMethod::Multiplicative,
+            "Multiplicative",
+        );
         ui.radio_value(&mut tool.method, DevigMethod::Additive, "Additive");
         ui.radio_value(&mut tool.method, DevigMethod::Power, "Power (Brent)");
         ui.radio_value(&mut tool.method, DevigMethod::Shin, "Shin (Brent)");
@@ -171,10 +175,7 @@ struct ComputedMarketArrays {
     add_meta: DevigMetadata,
 }
 
-fn compute_all_arrays(
-    odds: &[Odds],
-    method: DevigMethod,
-) -> Result<ComputedMarketArrays, String> {
+fn compute_all_arrays(odds: &[Odds], method: DevigMethod) -> Result<ComputedMarketArrays, String> {
     let n = odds.len();
     let mut mult = [0.0; MAX_MARKET_OUTCOMES];
     let mut add_raw = [0.0; MAX_MARKET_OUTCOMES];
@@ -203,11 +204,7 @@ fn compute_all_arrays(
     })
 }
 
-fn render_devig_results(
-    tool: &MarketDeviggingTool,
-    ui: &mut egui::Ui,
-    palette: &SemanticPalette,
-) {
+fn render_devig_results(tool: &MarketDeviggingTool, ui: &mut egui::Ui, palette: &SemanticPalette) {
     let odds = match tool.build_odds_vec() {
         Ok(v) => v,
         Err(msg) => {
@@ -314,7 +311,9 @@ fn render_ev_comparison(
     } else {
         palette.error
     };
-    let (fk_amt, hk_amt, qk_amt) = active.recommended_stakes(bankroll).unwrap_or((0.0, 0.0, 0.0));
+    let (fk_amt, hk_amt, qk_amt) = active
+        .recommended_stakes(bankroll)
+        .unwrap_or((0.0, 0.0, 0.0));
     ui.horizontal_wrapped(|ui| {
         ui.colored_label(
             status_color,
@@ -345,7 +344,11 @@ fn render_ev_comparison(
             ("Shin", DevigMethod::Shin),
         ] {
             let ev = report.for_method(m).ev_percent;
-            let col = if ev > 0.0 { palette.success } else { palette.muted_text };
+            let col = if ev > 0.0 {
+                palette.success
+            } else {
+                palette.muted_text
+            };
             ui.colored_label(col, format!("{label}: {ev:+.2}%"));
         }
     });
@@ -423,8 +426,10 @@ fn render_probability_chart(
         .x_axis_label("Outcome Index")
         .y_axis_label("Probability (%)")
         .show(ui, |plot_ui| {
-            plot_ui.bar_chart(BarChart::new("Raw Implied %", implied_bars).color(palette.series[0]));
-            plot_ui.bar_chart(BarChart::new("Multiplicative %", mult_bars).color(palette.series[1]));
+            plot_ui
+                .bar_chart(BarChart::new("Raw Implied %", implied_bars).color(palette.series[0]));
+            plot_ui
+                .bar_chart(BarChart::new("Multiplicative %", mult_bars).color(palette.series[1]));
             plot_ui.bar_chart(BarChart::new("Power %", power_bars).color(palette.series[2]));
             plot_ui.bar_chart(BarChart::new("Shin %", shin_bars).color(palette.series[4]));
         });

@@ -137,10 +137,18 @@ impl InteractiveTool for MarketExecutionTool {
         self.hedge_live_odds = self.hedge_live_odds.clamp(1.01, 1000.0);
         self.hedge_target_floor = self.hedge_target_floor.clamp(-1_000_000.0, 1_000_000.0);
         for q in &mut self.arb_odds {
-            *q = if q.is_finite() { q.clamp(1.01, 1000.0) } else { 2.0 };
+            *q = if q.is_finite() {
+                q.clamp(1.01, 1000.0)
+            } else {
+                2.0
+            };
         }
         for q in &mut self.dutch_odds {
-            *q = if q.is_finite() { q.clamp(1.01, 1000.0) } else { 3.0 };
+            *q = if q.is_finite() {
+                q.clamp(1.01, 1000.0)
+            } else {
+                3.0
+            };
         }
         self.dutch_selected.resize(self.dutch_odds.len(), true);
         true

@@ -71,7 +71,10 @@ fn render_arbitrage_panel(
 ) {
     render_arbitrage_controls(tool, ui);
     let Ok(odds) = parse_odds_slice(&tool.arb_odds) else {
-        ui.colored_label(palette.error, "Enter valid decimal odds > 1.00 on all legs.");
+        ui.colored_label(
+            palette.error,
+            "Enter valid decimal odds > 1.00 on all legs.",
+        );
         return;
     };
     let mut stakes = [0.0; MAX_MARKET_OUTCOMES];
@@ -157,9 +160,7 @@ fn render_arb_bars(stakes: &[f64], profit: f64, ui: &mut egui::Ui, palette: &Sem
         .y_axis_label("Dollars ($)")
         .show(ui, |plot_ui| {
             plot_ui.bar_chart(BarChart::new("Allocated Stake ($)", bars).color(palette.series[0]));
-            plot_ui.hline(
-                HLine::new("Guaranteed Net Profit ($)", profit).color(palette.success),
-            );
+            plot_ui.hline(HLine::new("Guaranteed Net Profit ($)", profit).color(palette.success));
         });
 }
 

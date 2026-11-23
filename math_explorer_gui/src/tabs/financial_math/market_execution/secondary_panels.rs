@@ -206,9 +206,8 @@ fn render_hedge_payoff_chart(rep: &HedgeReport, ui: &mut egui::Ui, palette: &Sem
             plot_ui.line(
                 Line::new("If Original Wins ($)", &orig_win_pts[..]).color(palette.series[0]),
             );
-            plot_ui.line(
-                Line::new("If Hedge Wins ($)", &hedge_win_pts[..]).color(palette.series[1]),
-            );
+            plot_ui
+                .line(Line::new("If Hedge Wins ($)", &hedge_win_pts[..]).color(palette.series[1]));
         });
 }
 
