@@ -228,16 +228,19 @@ impl WaveRunner {
         self.cached_dt = None;
         self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
 
-        self.x0 = if cfg.x0.is_finite() { cfg.x0 } else { DEFAULT_X0 };
-        self.k0 = if cfg.k0.is_finite() { cfg.k0 } else { DEFAULT_K0 };
-        self.sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
+        let safe_x0 = if cfg.x0.is_finite() { cfg.x0 } else { DEFAULT_X0 };
+        let safe_k0 = if cfg.k0.is_finite() { cfg.k0 } else { DEFAULT_K0 };
+        let safe_sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {
             DEFAULT_SIGMA
         };
-        self.kinetic_energy = 0.5 * self.k0 * self.k0;
+        self.x0 = safe_x0;
+        self.k0 = safe_k0;
+        self.sigma = safe_sigma;
+        self.kinetic_energy = 0.5 * safe_k0 * safe_k0;
         self.steps_per_frame = cfg.steps_per_frame.max(1);
-        self.psi = gaussian_wavepacket(&self.x_axis, self.x0, self.k0, self.sigma);
+        self.psi = gaussian_wavepacket(&self.x_axis, safe_x0, safe_k0, safe_sigma);
         self.time = 0.0;
         self.entered_barrier = false;
         self.wall_arrived = false;
