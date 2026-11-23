@@ -8024,6 +8024,39 @@
     },
     {
       "signature": "pub use rating :: update_rating"
+    },
+    {
+      "signature": "pub use tournament :: Pairing"
+    },
+    {
+      "signature": "pub use tournament :: PeriodMatch"
+    },
+    {
+      "signature": "pub use tournament :: SwissRoundPlan"
+    },
+    {
+      "signature": "pub use tournament :: evaluate_rating_period"
+    },
+    {
+      "signature": "pub use tournament :: evaluate_rating_period_into"
+    },
+    {
+      "signature": "pub use tournament :: evaluate_sequential_period"
+    },
+    {
+      "signature": "pub use tournament :: head_to_head_win_probability"
+    },
+    {
+      "signature": "pub use tournament :: pairwise_win_matrix"
+    },
+    {
+      "signature": "pub use tournament :: round_robin_schedule"
+    },
+    {
+      "signature": "pub use tournament :: simulate_period_matches"
+    },
+    {
+      "signature": "pub use tournament :: swiss_pairings"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/glicko2/rating.rs": [
@@ -8032,6 +8065,50 @@
     },
     {
       "signature": "pub fn update_rating (player : & GlickoPlayer , results : & [MatchResult] , tau : & SystemConstant ,) -> Result < GlickoPlayer , Glicko2Error >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/glicko2/tournament.rs": [
+    {
+      "signature": "impl Pairing { pub fn new (player_a : usize , player_b : usize) -> Result < Self , Glicko2Error > }"
+    },
+    {
+      "signature": "impl PeriodMatch { pub fn new (player_a : usize , player_b : usize , score_a : f64) -> Result < Self , Glicko2Error > }"
+    },
+    {
+      "signature": "impl PeriodMatch { pub fn score_b (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn evaluate_rating_period (roster : & [GlickoPlayer] , matches : & [PeriodMatch] , tau : & SystemConstant ,) -> Result < Vec < GlickoPlayer > , Glicko2Error >"
+    },
+    {
+      "signature": "pub fn evaluate_rating_period_into (roster : & [GlickoPlayer] , matches : & [PeriodMatch] , tau : & SystemConstant , scratch_results : & mut [MatchResult] , out_roster : & mut [GlickoPlayer] ,) -> Result < () , Glicko2Error >"
+    },
+    {
+      "signature": "pub fn evaluate_sequential_period (roster : & [GlickoPlayer] , matches : & [PeriodMatch] , tau : & SystemConstant ,) -> Result < Vec < GlickoPlayer > , Glicko2Error >"
+    },
+    {
+      "signature": "pub fn head_to_head_win_probability (player_i : & GlickoPlayer , player_j : & GlickoPlayer) -> f64"
+    },
+    {
+      "signature": "pub fn pairwise_win_matrix (roster : & [GlickoPlayer]) -> DMatrix < f64 >"
+    },
+    {
+      "signature": "pub fn round_robin_schedule (num_players : usize) -> Result < Vec < Vec < Pairing > > , Glicko2Error >"
+    },
+    {
+      "signature": "pub fn simulate_period_matches (skill_roster : & [GlickoPlayer] , pairings : & [Pairing] , draw_probability : f64 , rng : & mut OxidizeRng ,) -> Result < Vec < PeriodMatch > , Glicko2Error >"
+    },
+    {
+      "signature": "pub fn swiss_pairings (roster : & [GlickoPlayer] , scores : & [f64] , prior_matches : & [PeriodMatch] ,) -> Result < SwissRoundPlan , Glicko2Error >"
+    },
+    {
+      "signature": "pub struct Pairing"
+    },
+    {
+      "signature": "pub struct PeriodMatch"
+    },
+    {
+      "signature": "pub struct SwissRoundPlan"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/kelly/core.rs": [

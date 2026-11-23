@@ -1,4 +1,4 @@
-# ADR 0037: Metric-Agnostic 3D Vietoris-Rips Filtration, Exact Z2 1-Homology, and Chaotic Attractor Mashup
+# ADR 0038: Metric-Agnostic 3D Vietoris-Rips Filtration, Exact Z2 1-Homology, and Chaotic Attractor Mashup
 
 ## Status
 Accepted (extends [ADR 0020](0020-precompute-distance-matrix-tda-filtration.md) and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
