@@ -31,9 +31,10 @@ pub use domain_physics::error::{
 
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
-    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, Glicko2Error,
-    KellyError, LinearAlgebraError, MarkovError, NumberTheoryError, OptimizationError, OuError,
-    PureMathError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
+    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
+    OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
+    TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -168,6 +169,9 @@ pub enum Error {
     /// Unified numerical evolution engine error.
     #[cfg(feature = "pure_math")]
     Evolution(EvolutionError),
+    /// Prime-exponent FRACTRAN register machine error.
+    #[cfg(feature = "pure_math")]
+    Fractran(FractranError),
     /// Glicko-2 rating error.
     #[cfg(feature = "pure_math")]
     Glicko2(Glicko2Error),

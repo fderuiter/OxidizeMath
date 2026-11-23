@@ -83,7 +83,7 @@ fn core_only_facade_exports_work_without_domain_features() {
 }
 
 #[cfg(feature = "pure_math")]
-fn assert_pure_math_seventeen_errors() {
+fn assert_pure_math_eighteen_errors() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error as e;
     use math_explorer::prelude::PureMathError as PreludePureMathError;
@@ -103,6 +103,7 @@ fn assert_pure_math_seventeen_errors() {
         e::AnalysisError::ConvergenceError(0.0).severity(),
         e::EllipticCurveError::InvalidDegree.severity(),
         e::EvolutionError::InvalidState.severity(),
+        e::FractranError::InvalidFractionSyntax.severity(),
         e::OptimizationError::ConversionError.severity(),
         e::StochasticError::InvalidReactionIndex(1).severity(),
         e::TensorError::IndexOutOfBounds.severity(),
@@ -115,7 +116,7 @@ fn assert_pure_math_seventeen_errors() {
 
 #[cfg(feature = "pure_math")]
 #[test]
-fn pure_math_facade_exports_containers_third_party_types_and_all_seventeen_errors() {
+fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors() {
     use math_explorer::math_types::{Float, IBig, Integer, Rational};
     use math_explorer::mesh::{Mesh, Point3D};
     use math_explorer::nalgebra::{DMatrix, DVector};
@@ -151,7 +152,7 @@ fn pure_math_facade_exports_containers_third_party_types_and_all_seventeen_error
     let (a, b) = (g.add_node("a"), g.add_node("b"));
     g.add_edge(a, b, 1.0);
     assert_eq!(g.node_count(), 2);
-    assert_pure_math_seventeen_errors();
+    assert_pure_math_eighteen_errors();
 }
 
 #[cfg(feature = "ai")]
@@ -339,7 +340,7 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     feature = "physics"
 ))]
 #[test]
-fn all_forty_six_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
+fn all_forty_eight_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
     umbrella_checks::verify_prelude_error_reexports();
     umbrella_checks::verify_bus_capture_and_zero_alloc_facade_result();
 }

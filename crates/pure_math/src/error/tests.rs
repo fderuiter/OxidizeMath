@@ -44,6 +44,7 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         AnalysisError::ConvergenceError(1.0).into(),
         EllipticCurveError::InvalidDegree.into(),
         EvolutionError::InvalidState.into(),
+        FractranError::InvalidFractionSyntax.into(),
         LinearAlgebraError::SingularMatrix.into(),
         OptimizationError::from(EvolutionError::ConversionError).into(),
         StochasticError::InvalidReactionIndex(3).into(),

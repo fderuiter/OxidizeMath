@@ -35,6 +35,7 @@ impl Error {
             Self::Copula(err) => Some(err),
             Self::EllipticCurve(err) => Some(err),
             Self::Evolution(err) => Some(err),
+            Self::Fractran(err) => Some(err),
             Self::Glicko2(err) => Some(err),
             Self::Kelly(err) => Some(err),
             Self::LinearAlgebra(err) => Some(err),

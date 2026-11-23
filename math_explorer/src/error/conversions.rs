@@ -88,6 +88,7 @@ impl_error_from!(@cfg "pure_math":
     CopulaError => Copula,
     EllipticCurveError => EllipticCurve,
     EvolutionError => Evolution,
+    FractranError => Fractran,
     Glicko2Error => Glicko2,
     KellyError => Kelly,
     LinearAlgebraError => LinearAlgebra,

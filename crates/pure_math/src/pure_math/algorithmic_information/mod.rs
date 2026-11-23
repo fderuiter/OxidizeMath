@@ -61,11 +61,12 @@
 //! *   **[FRACTRAN](fractran)**: Universal Minsky Machines and minimal space computation.
 
 pub mod combinatorics;
-#[allow(missing_docs)]
 pub mod fractran;
 #[allow(missing_docs)]
 pub mod geometry;
 #[allow(missing_docs)]
 pub mod kolmogorov;
+
+pub use fractran::FractranError;
 
 // [cite:algorithmic_information_rust]
