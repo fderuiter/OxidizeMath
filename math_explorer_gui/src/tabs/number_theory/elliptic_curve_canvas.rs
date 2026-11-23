@@ -202,7 +202,6 @@ fn paint_torus_backdrop(
     model: &TorusCanvasModel<'_>,
     palette: &SemanticPalette,
 ) {
-    let text_color = ui.visuals().text_color();
     painter.rect_filled(response.rect, 4.0_f32, ui.visuals().extreme_bg_color);
     painter.rect_stroke(
         vp.plot_rect,
@@ -210,7 +209,33 @@ fn paint_torus_backdrop(
         Stroke::new(1.2_f32, palette.graph_edge),
         egui::StrokeKind::Inside,
     );
-    paint_torus_grid(painter, vp, model.p, palette);
+    let step = match model.p {
+        ..=31 => 1,
+        32..=101 => 5,
+        102..=307 => 25,
+        _ => 100,
+    };
+    let grid_stroke = Stroke::new(0.6_f32, palette.surface_fill);
+    let mut idx = step;
+    while idx < model.p {
+        let f = idx as f32;
+        painter.line_segment(
+            [vp.to_screen(f, 0.0_f32), vp.to_screen(f, vp.p_f)],
+            grid_stroke,
+        );
+        painter.line_segment(
+            [vp.to_screen(0.0_f32, f), vp.to_screen(vp.p_f, f)],
+            grid_stroke,
+        );
+        idx += step;
+    }
+    painter.line_segment(
+        [
+            vp.to_screen(0.0_f32, vp.p_f * 0.5_f32),
+            vp.to_screen(vp.p_f, vp.p_f * 0.5_f32),
+        ],
+        Stroke::new(0.8_f32, palette.muted_text.gamma_multiply(0.35_f32)),
+    );
     painter.text(
         Pos2::new(
             response.rect.left() + 10.0_f32,
@@ -222,8 +247,18 @@ fn paint_torus_backdrop(
             model.p, model.a, model.b
         ),
         egui::FontId::proportional(13.0_f32),
-        text_color,
+        ui.visuals().text_color(),
     );
+    paint_infinity_badge(painter, vp, model, palette, ui.visuals().text_color());
+}
+
+fn paint_infinity_badge(
+    painter: &egui::Painter,
+    vp: &TorusViewport,
+    model: &TorusCanvasModel<'_>,
+    palette: &SemanticPalette,
+    text_color: Color32,
+) {
     let inf_stroke = if model.point_p.is_infinity() || model.point_q.is_infinity() {
         palette.accent
     } else {
@@ -242,33 +277,6 @@ fn paint_torus_backdrop(
         "Identity O",
         egui::FontId::proportional(11.5_f32),
         text_color,
-    );
-}
-
-fn paint_torus_grid(
-    painter: &egui::Painter,
-    vp: &TorusViewport,
-    p: i64,
-    palette: &SemanticPalette,
-) {
-    let step = match p {
-        ..=31 => 1,
-        32..=101 => 5,
-        102..=307 => 25,
-        _ => 100,
-    };
-    let grid_stroke = Stroke::new(0.6_f32, palette.surface_fill);
-    let mut idx = step;
-    while idx < p {
-        let f = idx as f32;
-        painter.line_segment([vp.to_screen(f, 0.0), vp.to_screen(f, vp.p_f)], grid_stroke);
-        painter.line_segment([vp.to_screen(0.0, f), vp.to_screen(vp.p_f, f)], grid_stroke);
-        idx += step;
-    }
-    let mid_y = vp.p_f * 0.5_f32;
-    painter.line_segment(
-        [vp.to_screen(0.0, mid_y), vp.to_screen(vp.p_f, mid_y)],
-        Stroke::new(0.8_f32, palette.muted_text.gamma_multiply(0.35_f32)),
     );
 }
 
@@ -315,10 +323,12 @@ fn paint_curve_elements(
     palette: &SemanticPalette,
     text_color: Color32,
 ) {
-    let r = match model.p {
-        ..=47 => 3.8_f32,
-        48..=199 => 2.7_f32,
-        _ => 1.9_f32,
+    let r = if model.p <= 47 {
+        3.8_f32
+    } else if model.p <= 199 {
+        2.7_f32
+    } else {
+        1.9_f32
     };
     for pt in model.points {
         if let Some((x, y)) = pt.coordinates() {
@@ -328,26 +338,31 @@ fn paint_curve_elements(
     let orbit_take = (model.scalar_k.max(0) as usize).min(model.orbit.len());
     for pt in model.orbit.iter().take(orbit_take) {
         if let Some((x, y)) = pt.coordinates() {
-            let ring = Stroke::new(1.3_f32, palette.series[4]);
-            painter.circle_stroke(vp.to_screen(x as f32, y as f32), r + 2.4_f32, ring);
+            painter.circle_stroke(
+                vp.to_screen(x as f32, y as f32),
+                r + 2.4_f32,
+                Stroke::new(1.3_f32, palette.series[4]),
+            );
         }
     }
     for &(a_pt, b_pt) in model.ray_segments {
-        let seg = [
-            vp.to_screen(a_pt[0], a_pt[1]),
-            vp.to_screen(b_pt[0], b_pt[1]),
-        ];
-        painter.line_segment(seg, Stroke::new(2.0_f32, palette.warning));
+        painter.line_segment(
+            [
+                vp.to_screen(a_pt[0], a_pt[1]),
+                vp.to_screen(b_pt[0], b_pt[1]),
+            ],
+            Stroke::new(2.0_f32, palette.warning),
+        );
     }
     if let Some(step) = model.chord {
         paint_reflection_and_sum(painter, vp, &step, palette, text_color);
     }
-    for (pt, lbl, col, rad) in [
+    for (pt, label, col, rad) in [
         (model.point_p, "P", palette.accent, 6.2_f32),
         (model.point_q, "Q", palette.series[1], 5.6_f32),
         (model.scalar_kp, "[k]P", palette.series[4], 5.2_f32),
     ] {
-        paint_labeled_point(painter, vp, pt, lbl, col, text_color, rad);
+        paint_labeled_point(painter, vp, pt, label, col, text_color, rad);
     }
 }
 

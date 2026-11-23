@@ -191,58 +191,59 @@ fn drag_usize_row(
     edited
 }
 
-fn labeled_drag_row(
+fn labeled_f64_drag(
     ui: &mut egui::Ui,
     label: &str,
-    val: &mut f64,
+    value: &mut f64,
     range: std::ops::RangeInclusive<f64>,
     speed: f64,
 ) -> bool {
     ui.horizontal(|ui| {
         ui.label(label);
-        ui.add(bounded_drag_value(val, range, speed)).changed()
+        ui.add(bounded_drag_value(value, range, speed)).changed()
     })
     .inner
 }
 
 fn render_respiratory_and_gating_controls(state: &mut RadarGatingState, ui: &mut egui::Ui) -> bool {
+    let mut changed = false;
     ui.label(RichText::new("Respiratory & Kalman Gating").strong());
-    let mut changed = labeled_drag_row(
+    changed |= labeled_f64_drag(
         ui,
         "Breath Amp (mm):",
         &mut state.breath_amplitude_mm,
         1.0..=15.0,
         0.25,
     );
-    changed |= labeled_drag_row(
+    changed |= labeled_f64_drag(
         ui,
         "Breath Period (s):",
         &mut state.breath_period_s,
         1.5..=12.0,
         0.2,
     );
-    changed |= labeled_drag_row(
+    changed |= labeled_f64_drag(
         ui,
         "Gate Threshold (mm):",
         &mut state.gating_threshold_mm,
         -12.0..=12.0,
         0.2,
     );
-    changed |= labeled_drag_row(
+    changed |= labeled_f64_drag(
         ui,
         "Hysteresis (mm):",
         &mut state.gating_hysteresis_mm,
         0.1..=5.0,
         0.1,
     );
-    changed |= labeled_drag_row(
+    changed |= labeled_f64_drag(
         ui,
         "LINAC Latency (ms):",
         &mut state.system_latency_ms,
         0.0..=250.0,
         5.0,
     );
-    changed |= labeled_drag_row(
+    changed |= labeled_f64_drag(
         ui,
         "Static Clutter:",
         &mut state.static_clutter_gain,

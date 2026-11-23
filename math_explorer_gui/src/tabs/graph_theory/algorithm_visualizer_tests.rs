@@ -178,8 +178,5 @@ fn test_algorithm_visualizer_exposes_start_node_selector_in_side_panel() {
         .nodes
         .iter()
         .any(|(_, node)| node.role() == egui::accesskit::Role::ComboBox);
-    assert!(
-        has_combo,
-        "Side panel must render Start Node ComboBox selector"
-    );
+    assert!(has_combo, "Side panel must render Start Node ComboBox selector");
 }

@@ -46,9 +46,7 @@ impl TrainingMonitorTool {
         let optimizer: Box<dyn math_explorer::ai::optimization::Optimizer<f64>> =
             match Adam::new(self.learning_rate) {
                 Ok(adam) => Box::new(adam),
-                Err(_) => Box::new(math_explorer::ai::optimization::SGD::new(
-                    self.learning_rate,
-                )),
+                Err(_) => Box::new(math_explorer::ai::optimization::SGD::new(self.learning_rate)),
             };
 
         self.training_loop = TrainingLoop::new(2, self.hidden_dim, 2, optimizer);
@@ -255,8 +253,8 @@ impl InteractiveTool for TrainingMonitorTool {
 }
 
 fn generate_spiral_data(points_per_class: usize) -> Vec<(Vector, Vector)> {
-    use rand::seq::SliceRandom;
     use rand::Rng;
+    use rand::seq::SliceRandom;
 
     let mut rng = oxidize_core::rng::OxidizeRng::default();
     let mut data = Vec::new();

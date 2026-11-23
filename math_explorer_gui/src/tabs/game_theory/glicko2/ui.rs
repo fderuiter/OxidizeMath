@@ -1,15 +1,16 @@
-//! Side-panel controls and roster editor for [`super::Glicko2TournamentTool`].
+//! Interactive `egui` and `egui_plot` panels for [`super::Glicko2TournamentTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{CompetitorEntry, Glicko2TournamentTool};
+use super::{BottomViewTab, Glicko2TournamentTool};
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
 use crate::framework::InteractiveTool;
 use crate::presets::{Glicko2PairingMode, MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS};
 use eframe::egui;
 use math_explorer::pure_math::statistics::glicko2::{
-    GlickoPlayer, Rating, RatingDeviation, Volatility,
+    head_to_head_win_probability, pairwise_win_matrix, GlickoPlayer, Rating, RatingDeviation,
+    Volatility,
 };
 
 fn io_btn(ui: &mut egui::Ui, label: &str, tip: &str) -> bool {
@@ -47,43 +48,6 @@ fn edit_initial_player(ui: &mut egui::Ui, initial: &mut GlickoPlayer) -> bool {
     false
 }
 
-fn show_roster_grid(
-    ui: &mut egui::Ui,
-    competitors: &mut [CompetitorEntry],
-) -> (Option<usize>, bool, bool) {
-    let can_remove = competitors.len() > 2;
-    let (mut remove_idx, mut rebuild, mut refresh_pairings) = (None, false, false);
-    egui::Grid::new("glicko2_roster_grid")
-        .striped(true)
-        .show(ui, |ui| {
-            for h in ["Name", "r₀", "RD₀", "σ₀", "Idle", ""] {
-                ui.strong(h);
-            }
-            ui.end_row();
-            for (idx, comp) in competitors.iter_mut().enumerate() {
-                ui.label(&comp.name);
-                rebuild |= edit_initial_player(ui, &mut comp.initial);
-                if ui
-                    .checkbox(&mut comp.inactive, "")
-                    .accessible_hover_text("Sit out upcoming periods (inflates RD)")
-                    .changed()
-                {
-                    refresh_pairings = true;
-                }
-                if can_remove
-                    && ui
-                        .small_button("✖")
-                        .accessible_hover_text("Remove competitor")
-                        .clicked()
-                {
-                    remove_idx = Some(idx);
-                }
-                ui.end_row();
-            }
-        });
-    (remove_idx, rebuild, refresh_pairings)
-}
-
 impl Glicko2TournamentTool {
     fn show_starter_scenario_buttons(&mut self, ui: &mut egui::Ui) {
         ui.label("Starter Scenarios:");
@@ -106,7 +70,8 @@ impl Glicko2TournamentTool {
         });
     }
 
-    fn show_schedule_controls(&mut self, ui: &mut egui::Ui) {
+    fn show_preset_and_schedule_controls(&mut self, ui: &mut egui::Ui) {
+        self.show_starter_scenario_buttons(ui);
         ui.separator();
         ui.heading("System & Schedule");
         let rebuild = ui
@@ -267,7 +232,36 @@ impl Glicko2TournamentTool {
             }
         });
 
-        let (remove_idx, rebuild, refresh_pairings) = show_roster_grid(ui, &mut self.competitors);
+        let can_remove = self.competitors.len() > 2;
+        let (mut remove_idx, mut rebuild, mut refresh_pairings) = (None, false, false);
+        egui::Grid::new("glicko2_roster_grid")
+            .striped(true)
+            .show(ui, |ui| {
+                for h in ["Name", "r₀", "RD₀", "σ₀", "Idle", ""] {
+                    ui.strong(h);
+                }
+                ui.end_row();
+                for (idx, comp) in self.competitors.iter_mut().enumerate() {
+                    ui.label(&comp.name);
+                    rebuild |= edit_initial_player(ui, &mut comp.initial);
+                    if ui
+                        .checkbox(&mut comp.inactive, "")
+                        .accessible_hover_text("Sit out upcoming periods (inflates RD)")
+                        .changed()
+                    {
+                        refresh_pairings = true;
+                    }
+                    if can_remove
+                        && ui
+                            .small_button("✖")
+                            .accessible_hover_text("Remove competitor")
+                            .clicked()
+                    {
+                        remove_idx = Some(idx);
+                    }
+                    ui.end_row();
+                }
+            });
         if let Some(idx) = remove_idx {
             let _ = self.remove_competitor(idx);
         } else if rebuild {
@@ -280,11 +274,166 @@ impl Glicko2TournamentTool {
 
     pub(super) fn show_side_controls(&mut self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            self.show_starter_scenario_buttons(ui);
-            self.show_schedule_controls(ui);
+            self.show_preset_and_schedule_controls(ui);
             self.show_execution_controls(ui);
             self.show_io_controls(ui);
             self.show_roster_editor(ui);
         });
+    }
+
+    pub(super) fn show_bottom_dock(&mut self, parent_ui: &mut egui::Ui) {
+        let dock_id = crate::framework::scoped_panel_id(parent_ui, "glicko2_bottom_dock");
+        egui::TopBottomPanel::bottom(dock_id)
+            .resizable(true)
+            .min_height(185.0)
+            .show_inside(parent_ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(
+                        &mut self.bottom_tab,
+                        BottomViewTab::Standings,
+                        "🏆 Standings & Drift",
+                    );
+                    ui.selectable_value(
+                        &mut self.bottom_tab,
+                        BottomViewTab::NextPairings,
+                        format!("⚔ Period {} Pairings", self.completed_periods.len() + 1),
+                    );
+                    ui.selectable_value(
+                        &mut self.bottom_tab,
+                        BottomViewTab::WinMatrixTable,
+                        "🎯 Win Matrix",
+                    );
+                });
+                ui.separator();
+                egui::ScrollArea::both().show(ui, |ui| match self.bottom_tab {
+                    BottomViewTab::Standings => self.show_standings_table(ui),
+                    BottomViewTab::NextPairings => self.show_pairings_table(ui),
+                    BottomViewTab::WinMatrixTable => self.show_win_matrix_table(ui),
+                });
+            });
+    }
+
+    fn show_standings_table(&self, ui: &mut egui::Ui) {
+        let palette = SemanticPalette::from_visuals(ui.visuals());
+        egui::Grid::new("glicko2_standings_grid")
+            .striped(true)
+            .min_col_width(56.0)
+            .show(ui, |ui| {
+                for h in [
+                    "#",
+                    "Competitor",
+                    "Rating r",
+                    "RD",
+                    "95% Band [r ± 2RD]",
+                    "σ (Vol)",
+                    "Pts",
+                    "W-D-L-B",
+                    "Seq Drift Δr",
+                ] {
+                    ui.strong(h);
+                }
+                ui.end_row();
+                for (rank_zero, idx) in self.standings_order().into_iter().enumerate() {
+                    let c = &self.competitors[idx];
+                    let (r, rd) = (c.current.rating.value(), c.current.rating_deviation.value());
+                    let drift = c.sequential.rating.value() - r;
+                    ui.label(format!("{}", rank_zero + 1));
+                    ui.colored_label(palette.series_color(idx), &c.name);
+                    ui.label(format!("{r:.1}"));
+                    ui.label(format!("{rd:.1}"));
+                    ui.label(format!("[{:.0}, {:.0}]", r - 2.0 * rd, r + 2.0 * rd));
+                    ui.label(format!("{:.4}", c.current.volatility.value()));
+                    ui.label(format!("{:.1}", c.points));
+                    ui.label(format!("{}-{}-{}-{}", c.wins, c.draws, c.losses, c.byes));
+                    ui.label(format!("{drift:+.2}"));
+                    ui.end_row();
+                }
+            });
+    }
+
+    fn show_pairings_table(&mut self, ui: &mut egui::Ui) {
+        let mut commit_clicked = false;
+        ui.horizontal(|ui| {
+            let can_commit = !self.next_pairings.is_empty() || self.next_bye_player.is_some();
+            if ui
+                .add_enabled(can_commit, egui::Button::new("✓ Commit Manual Round"))
+                .accessible_hover_text("Evaluate Period with selected manual board outcomes")
+                .clicked()
+            {
+                commit_clicked = true;
+            }
+            if let Some(bye_idx) = self.next_bye_player {
+                ui.label(format!(
+                    "Odd-Roster Bye (+1.0 pt): {}",
+                    self.competitors[bye_idx].name
+                ));
+            }
+        });
+        egui::Grid::new("glicko2_pairings_grid")
+            .striped(true)
+            .show(ui, |ui| {
+                for h in [
+                    "Board",
+                    "Player A",
+                    "Player B",
+                    "P(A Wins)",
+                    "Manual Outcome",
+                ] {
+                    ui.strong(h);
+                }
+                ui.end_row();
+                for (b_idx, row) in self.next_pairings.iter_mut().enumerate() {
+                    let (ca, cb) = (
+                        &self.competitors[row.pairing.player_a],
+                        &self.competitors[row.pairing.player_b],
+                    );
+                    let win_p = head_to_head_win_probability(&ca.current, &cb.current);
+                    ui.label(format!("#{}", b_idx + 1));
+                    ui.label(format!("{} ({:.0})", ca.name, ca.current.rating.value()));
+                    ui.label(format!("{} ({:.0})", cb.name, cb.current.rating.value()));
+                    ui.label(format!("{:.1}%", win_p * 100.0));
+                    ui.horizontal(|ui| {
+                        for (val, lbl) in [(1.0, "1-0"), (0.5, "½-½"), (0.0, "0-1")] {
+                            if ui
+                                .selectable_label((row.manual_score_a - val).abs() < 0.05, lbl)
+                                .clicked()
+                            {
+                                row.manual_score_a = val;
+                            }
+                        }
+                    });
+                    ui.end_row();
+                }
+            });
+        if commit_clicked {
+            if let Err(err) = self.commit_manual_period() {
+                self.io_state.status_message = Some((true, err));
+            }
+        }
+    }
+
+    fn show_win_matrix_table(&self, ui: &mut egui::Ui) {
+        let players: Vec<GlickoPlayer> = self.competitors.iter().map(|c| c.current).collect();
+        let matrix = pairwise_win_matrix(&players);
+        egui::Grid::new("glicko2_win_matrix_grid")
+            .striped(true)
+            .show(ui, |ui| {
+                ui.strong("Row \\ Col");
+                for c in &self.competitors {
+                    ui.strong(&c.name);
+                }
+                ui.end_row();
+                for (i, row_comp) in self.competitors.iter().enumerate() {
+                    ui.strong(&row_comp.name);
+                    for j in 0..self.competitors.len() {
+                        if i == j {
+                            ui.label("—");
+                        } else {
+                            ui.label(format!("{:.1}%", matrix[(i, j)] * 100.0));
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
     }
 }

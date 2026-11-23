@@ -325,9 +325,11 @@ impl EllipticCurvePlayground {
                 self.step_prime(-1);
             }
             let mut p_edit = self.p;
-            let range = MIN_PLAYGROUND_PRIME..=MAX_PLAYGROUND_PRIME;
             if ui
-                .add(egui::DragValue::new(&mut p_edit).range(range))
+                .add(
+                    egui::DragValue::new(&mut p_edit)
+                        .range(MIN_PLAYGROUND_PRIME..=MAX_PLAYGROUND_PRIME),
+                )
                 .accessible_hover_text("Prime modulus p in 5..=997")
                 .changed()
             {
@@ -352,9 +354,14 @@ impl EllipticCurvePlayground {
         changed |= ui
             .add(egui::Slider::new(&mut self.b, -50..=50).text("b"))
             .changed();
-        let p_range = MIN_PLAYGROUND_PRIME..=MAX_PLAYGROUND_PRIME;
         changed |= ui
-            .add(egui::Slider::new(&mut self.hasse_p_max, p_range).text("Hasse p_max"))
+            .add(
+                egui::Slider::new(
+                    &mut self.hasse_p_max,
+                    MIN_PLAYGROUND_PRIME..=MAX_PLAYGROUND_PRIME,
+                )
+                .text("Hasse p_max"),
+            )
             .changed();
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.selector, ActivePointSelector::PointP, "Point P");

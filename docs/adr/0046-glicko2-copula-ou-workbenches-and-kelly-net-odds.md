@@ -1,4 +1,4 @@
-# ADR 0044: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics
+# ADR 0046: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics
 
 ## Status
 Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0037](0037-glicko2-frozen-period-tournament-simulator.md))
@@ -13,7 +13,7 @@ Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 002
 ## Decision
 1. **Add `Odds::from_net_odds` in `pure_math` and Fix `BankrollGrowthTool` Compounding**:
    - Introduce `#[verified_engine::verified] pub fn from_net_odds(net_odds: f64) -> Result<Self, KellyError>` in [`crates/pure_math/src/pure_math/statistics/kelly/core.rs`](../../crates/pure_math/src/pure_math/statistics/kelly/core.rs), validating finite `net_odds > 0.0` and converting to decimal odds `1.0 + net_odds`.
-   - Update [`math_explorer_gui/src/tabs/financial_math/bankroll_growth.rs`](../../math_explorer_gui/src/tabs/financial_math/bankroll_growth.rs) (`Default`, `recalculate`, `try_load_state`, `TheoryDescribable`, and `STARTER_PRESET_JSON`) to validate `Odds::from_net_odds` (default `1.0` even money) and credit winning wagers with `bet_amount * o.net_profit_multiplier()`.
+   - Update [`math_explorer_gui/src/tabs/financial_math/bankroll_growth.rs`](../../math_explorer_gui/src/tabs/financial_math/bankroll_growth.rs) and [`math_explorer_gui/src/tabs/financial_math/bankroll_growth_state.rs`](../../math_explorer_gui/src/tabs/financial_math/bankroll_growth_state.rs) (`recalculate`, `load_state_json`, `TheoryDescribable`, and `STARTER_PRESET_JSON`) to validate `Odds::from_net_odds` (supporting even-money `1.0` and starter `1.5`) and credit winning wagers with `bet_amount * o.net_profit_multiplier()`.
 2. **Enable Cached Growth Curves and Formula-Safe Table Exports in `BetSizeCalculatorTool`**:
    - Upgrade `BetSizeCalculatorTool` to `ExportCapabilities::plot()`, caching `expected_growth_rate` `PlotPoint` curves and Quarter (`0.25 f*`), Half (`0.50 f*`), and Full (`f*`) Kelly markers with borrowed slice rendering (`PlotPoints::Borrowed`).
    - Add formula-safe CSV (`egui_plot::export::escape_csv_field`) and Markdown Kelly sizing table copy and save-as actions via [`math_explorer_gui/src/web_io.rs`](../../math_explorer_gui/src/web_io.rs).
@@ -23,8 +23,8 @@ Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 002
 
 ```text
 Updated GUI inventory totals:
-- InteractiveTools: 71 (49 plot + 7 raster + 15 non-figure)
-- StarterPresetMetadata cards: 100
+- InteractiveTools: 75 (53 plot + 7 raster + 15 non-figure)
+- StarterPresetMetadata cards: 106
 ```
 
 ## Consequences

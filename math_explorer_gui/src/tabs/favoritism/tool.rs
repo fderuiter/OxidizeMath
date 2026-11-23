@@ -156,8 +156,7 @@ impl FavoritismTool {
         }
         self.children.remove(index);
         if self.selected_child_index == Some(index) {
-            self.selected_child_index =
-                clamp_selected_child_index(Some(index), self.children.len());
+            self.selected_child_index = clamp_selected_child_index(Some(index), self.children.len());
         } else if let Some(selected) = self.selected_child_index {
             if index < selected {
                 self.selected_child_index = Some(selected - 1);
@@ -181,7 +180,8 @@ impl FavoritismTool {
                     .collect();
 
                 let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-                let chart = BarChart::new("Favoritism Scores", bars).color(palette.series_color(0));
+                let chart =
+                    BarChart::new("Favoritism Scores", bars).color(palette.series_color(0));
 
                 Plot::new("favoritism_plot")
                     .legend(egui_plot::Legend::default())
@@ -279,10 +279,7 @@ impl FavoritismTool {
         ui.group(|ui| {
             ui.label("Social & Crisis");
             changed |= ui
-                .checkbox(
-                    &mut inputs.social.helped_during_crisis,
-                    "Helped during Crisis",
-                )
+                .checkbox(&mut inputs.social.helped_during_crisis, "Helped during Crisis")
                 .changed();
             changed |= ui
                 .checkbox(

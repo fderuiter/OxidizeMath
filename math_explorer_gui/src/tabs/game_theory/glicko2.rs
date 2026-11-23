@@ -2,11 +2,13 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[cfg(test)]
 use crate::framework::InteractiveTool;
 use crate::presets::{
-    Glicko2PairingMode, Glicko2PeriodPreset, Glicko2TournamentPresetConfig, MAX_TOURNAMENT_PERIODS,
-    MAX_TOURNAMENT_PLAYERS,
+    Glicko2MatchPreset, Glicko2PairingMode, Glicko2PeriodPreset, Glicko2TournamentPresetConfig,
+    MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS,
 };
+#[cfg(test)]
 use eframe::egui;
 use math_explorer::pure_math::statistics::glicko2::{
     evaluate_rating_period, evaluate_sequential_period, round_robin_schedule,
@@ -18,22 +20,75 @@ use std::collections::HashSet;
 
 #[path = "glicko2/io.rs"]
 pub(crate) mod io;
-#[path = "glicko2/parser.rs"]
-mod parser;
 #[path = "glicko2/plots.rs"]
 mod plots;
-#[path = "glicko2/types.rs"]
-mod types;
+#[path = "glicko2/state.rs"]
+mod state;
 #[path = "glicko2/ui.rs"]
 mod ui;
-
-use types::record_outcomes;
-pub(crate) use types::{default_preset_config, match_preset, BottomViewTab};
-pub use types::{CompetitorEntry, Glicko2PlotMode, PeriodSnapshot, ScheduledPairingRow};
 
 #[cfg(test)]
 #[path = "glicko2/tests.rs"]
 mod tests;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Glicko2PlotMode {
+    ConfidenceBands,
+    Volatility,
+    WinMatrix,
+    SequentialDrift,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BottomViewTab {
+    Standings,
+    NextPairings,
+    WinMatrixTable,
+}
+
+#[derive(Clone, Debug)]
+pub struct CompetitorEntry {
+    pub name: String,
+    pub initial: GlickoPlayer,
+    pub current: GlickoPlayer,
+    pub sequential: GlickoPlayer,
+    pub inactive: bool,
+    pub points: f64,
+    pub wins: usize,
+    pub draws: usize,
+    pub losses: usize,
+    pub byes: usize,
+}
+
+impl CompetitorEntry {
+    fn new(name: String, initial: GlickoPlayer, inactive: bool) -> Self {
+        Self {
+            name,
+            initial,
+            current: initial,
+            sequential: initial,
+            inactive,
+            points: 0.0,
+            wins: 0,
+            draws: 0,
+            losses: 0,
+            byes: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PeriodSnapshot {
+    pub period: usize,
+    pub frozen: Vec<GlickoPlayer>,
+    pub sequential: Vec<GlickoPlayer>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ScheduledPairingRow {
+    pub pairing: Pairing,
+    pub manual_score_a: f64,
+}
 
 pub struct Glicko2TournamentTool {
     pub(crate) tau: f64,
@@ -52,6 +107,20 @@ pub struct Glicko2TournamentTool {
     pub(crate) new_player_name: String,
     pub(crate) state_rev: u64,
     pub(crate) io_state: io::TournamentIoState,
+}
+
+pub(crate) fn match_preset(player_a: usize, player_b: usize, score_a: f64) -> Glicko2MatchPreset {
+    Glicko2MatchPreset {
+        player_a,
+        player_b,
+        score_a,
+    }
+}
+
+const DEFAULT_CONFIG_JSON: &str = r#"{"tau":0.5,"draw_probability":0.15,"pairing_mode":"Swiss","target_rounds":4,"rng_seed":2026,"players":[{"name":"Carlsen","rating":1750.0,"rd":75.0,"volatility":0.06},{"name":"Nakamura","rating":1690.0,"rd":85.0,"volatility":0.06},{"name":"Gukesh","rating":1580.0,"rd":150.0,"volatility":0.07},{"name":"Praggnanandhaa","rating":1540.0,"rd":175.0,"volatility":0.08}],"periods":[{"matches":[{"player_a":0,"player_b":1,"score_a":0.5},{"player_a":2,"player_b":3,"score_a":1.0}]},{"matches":[{"player_a":2,"player_b":0,"score_a":1.0},{"player_a":1,"player_b":3,"score_a":1.0}]}]}"#;
+
+pub(crate) fn default_preset_config() -> Glicko2TournamentPresetConfig {
+    serde_json::from_str(DEFAULT_CONFIG_JSON).expect("valid embedded default Glicko-2 config")
 }
 
 impl Default for Glicko2TournamentTool {
@@ -76,6 +145,27 @@ impl Default for Glicko2TournamentTool {
         };
         let _ = tool.apply_config(default_preset_config());
         tool
+    }
+}
+
+fn record_outcomes(comps: &mut [CompetitorEntry], matches: &[PeriodMatch], bye: Option<usize>) {
+    if let Some(comp) = bye.and_then(|b| comps.get_mut(b)) {
+        comp.points += 1.0;
+        comp.byes += 1;
+    }
+    for m in matches {
+        comps[m.player_a].points += m.score_a;
+        comps[m.player_b].points += m.score_b();
+        if (m.score_a - 0.5).abs() <= 0.05 {
+            comps[m.player_a].draws += 1;
+            comps[m.player_b].draws += 1;
+        } else if m.score_a > 0.5 {
+            comps[m.player_a].wins += 1;
+            comps[m.player_b].losses += 1;
+        } else {
+            comps[m.player_a].losses += 1;
+            comps[m.player_b].wins += 1;
+        }
     }
 }
 
@@ -350,129 +440,5 @@ impl Glicko2TournamentTool {
             self.focus_player = None;
         }
         self.rebuild_trajectory()
-    }
-}
-
-impl InteractiveTool for Glicko2TournamentTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
-        self
-    }
-    fn name(&self) -> &'static str {
-        "Glicko-2 Tournament"
-    }
-    fn domain(&self) -> &'static str {
-        "game_theory"
-    }
-    fn state_revision(&self) -> u64 {
-        self.state_rev
-    }
-
-    fn has_finite_parameters(&self) -> bool {
-        self.tau.is_finite()
-            && self.draw_probability.is_finite()
-            && self.competitors.iter().all(|c| {
-                c.initial.rating.value().is_finite()
-                    && c.initial.rating_deviation.value().is_finite()
-                    && c.initial.volatility.value().is_finite()
-            })
-    }
-
-    fn clamp_parameters(&mut self) -> bool {
-        let tau = if self.tau.is_finite() {
-            self.tau.clamp(0.3, 1.2)
-        } else {
-            0.5
-        };
-        let draw = if self.draw_probability.is_finite() {
-            self.draw_probability.clamp(0.0, 1.0)
-        } else {
-            0.15
-        };
-        let changed = (tau - self.tau).abs() > f64::EPSILON
-            || (draw - self.draw_probability).abs() > f64::EPSILON;
-        (self.tau, self.draw_probability) = (tau, draw);
-        self.target_rounds = self.target_rounds.clamp(1, MAX_TOURNAMENT_PERIODS);
-        if changed {
-            let _ = self.rebuild_trajectory();
-        }
-        changed
-    }
-
-    fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&self.export_config()).ok()
-    }
-
-    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let cfg: Glicko2TournamentPresetConfig = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid Glicko2TournamentTool state: {e}"))?;
-        self.apply_config(cfg)
-    }
-
-    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
-        let ctx = parent_ui.ctx().clone();
-        self.poll_io(&ctx);
-        let side_id = crate::framework::scoped_panel_id(parent_ui, "glicko2_control_panel");
-        crate::framework::PaneSidePanel::left(side_id).show_inside(parent_ui, |ui| {
-            self.show_side_controls(ui);
-        });
-        self.show_bottom_dock(parent_ui);
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            self.show_central_plot(ui);
-        });
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for Glicko2TournamentTool {
-    fn theory_description(&self) -> String {
-        "Multi-competitor Bayesian skill estimation under Mark Glickman's Glicko-2 system: each rating period freezes pre-period ratings $(\\mu_j, \\phi_j)$, updates volatility $\\sigma'$ via Illinois root-finding, inflates deviation $\\phi^* = \\sqrt{\\phi^2 + \\sigma'^2}$, and computes posterior $(\\mu', \\phi')$ with 95% confidence interval $r \\pm 2\\,\\text{RD}$.".into()
-    }
-    fn phonetic_description(&self) -> String {
-        "Glicko two Bayesian tournament rating simulator with rating deviation confidence bands and volatility".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Parameter estimation in large dynamic paired comparison experiments (Glickman, Applied Statistics, 1999); Example of the Glicko-2 system (Glickman, 2012)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::from([(
-            "tau".to_string(),
-            "System constant constraining log-volatility change per period (0.3 to 1.2)."
-                .to_string(),
-        )])
-    }
-}
-
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "Glicko2TournamentTool",
-        display_name: "Glicko-2 Tournament",
-        domain: "game_theory",
-        tags: &["glicko2", "ratings", "swiss", "tournament", "bayesian"],
-        build: || Box::new(Glicko2TournamentTool::default()),
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "glicko2_swiss_upset",
-        title: "Swiss Upset & Volatility Spike",
-        description: "r ± 2RD & σ': Five-player Swiss tournament where an underdog prodigy triggers a volatility surge.",
-        category: "Game Theory",
-        icon: "♟️",
-        domain: "game_theory",
-        tool_name: Some("Glicko2TournamentTool"),
-        preset_generator: || crate::starter_gallery::PRESET_GLICKO2_SWISS_UPSET,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "glicko2_round_robin_drift",
-        title: "Round-Robin Frozen vs. Sequential Drift",
-        description: "Δr = r_seq - r_frozen: Quantifies order-dependent rating drift vs. canonical frozen periods.",
-        category: "Game Theory",
-        icon: "🎯",
-        domain: "game_theory",
-        tool_name: Some("Glicko2TournamentTool"),
-        preset_generator: || crate::starter_gallery::PRESET_GLICKO2_ROUND_ROBIN_DRIFT,
     }
 }
