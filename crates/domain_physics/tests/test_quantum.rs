@@ -1,8 +1,9 @@
 //! Integration tests for test quantum.
 use approx::assert_relative_eq;
 use domain_physics::physics::quantum::{
-    QuantumOperator, QuantumState, construct_1d_hamiltonian, dft_operator, evolve_state,
-    evolve_state_in_place, gaussian_wavepacket, sigma_x, sigma_y, sigma_z, time_evolution_operator,
+    CrankNicolsonPropagator1D, QuantumOperator, QuantumState, TridiagonalHamiltonian1D,
+    construct_1d_hamiltonian, dft_operator, evolve_state, evolve_state_in_place,
+    gaussian_wavepacket, sigma_x, sigma_y, sigma_z, state_norm_squared, time_evolution_operator,
 };
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
@@ -196,4 +197,95 @@ fn test_evolve_state_in_place_rejects_mismatched_scratch() {
     let propagator = time_evolution_operator(&sigma_x(), 0.1, 1.0);
     let mut bad_scratch = DVector::from_element(3, Complex::new(0.0, 0.0));
     evolve_state_in_place(&mut state, &propagator, &mut bad_scratch);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_crank_nicolson_zero_alloc_dynamic_dt_potential_update_and_probs() {
+    let n = 64;
+    let dx = 0.125;
+    let x_grid: Vec<f64> = (0..n).map(|i| -4.0 + i as f64 * dx).collect();
+    let mut potential = DVector::from_fn(n, |i, _| 0.5 * x_grid[i] * x_grid[i]);
+    let mut hamiltonian = TridiagonalHamiltonian1D::with_capacity(n);
+    hamiltonian.update_from_potential(&potential, dx, 1.0, 1.0);
+    let mut propagator = CrankNicolsonPropagator1D::with_capacity(n);
+    let mut psi = gaussian_wavepacket(&x_grid, -1.0, 3.0, 0.45);
+    let psi_init = psi.clone();
+    let mut probs = vec![0.0; n];
+
+    let ((norm_sq, prob_sum), metrics) = VerifiedEngine::run_verified(|| {
+        propagator.configure_dt(&hamiltonian, 0.005, 1.0);
+        propagator.evolve_substeps_in_place(&mut psi, 4);
+        propagator.configure_dt(&hamiltonian, 0.0025, 1.0);
+        propagator.evolve_substeps_in_place(&mut psi, 8);
+        psi.probability_density_in_place(&mut probs);
+        (state_norm_squared(&psi), probs.iter().sum::<f64>())
+    });
+    assert!(metrics.function_calls >= 5);
+    assert_relative_eq!(norm_sq, 1.0, epsilon = 1e-12);
+    assert_relative_eq!(prob_sum, 1.0, epsilon = 1e-12);
+
+    let dense_h = construct_1d_hamiltonian(&potential, dx, 1.0, 1.0);
+    let psi_exact = evolve_state(&psi_init, &dense_h, 0.04, 1.0);
+    assert!((&psi.vector - &psi_exact.vector).norm() < 2e-3);
+
+    for v in potential.iter_mut().skip(28).take(8) {
+        *v += 6.0;
+    }
+    let ((), _) = VerifiedEngine::run_verified(|| {
+        hamiltonian.update_from_potential(&potential, dx, 1.0, 1.0);
+        propagator.configure_dt(&hamiltonian, 0.005, 1.0);
+        propagator.evolve_in_place(&mut psi);
+    });
+    assert_relative_eq!(psi.norm(), 1.0, epsilon = 1e-12);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_crank_nicolson_max_grid_size_1000_zero_alloc_and_unitary() {
+    let n = math_commons::registry::MAX_GRID_SIZE;
+    assert_eq!(n, 1000);
+    let dx = 10.0 / (n as f64 - 1.0);
+    let x_grid: Vec<f64> = (0..n).map(|i| -5.0 + i as f64 * dx).collect();
+    let potential = DVector::from_fn(n, |i, _| {
+        let x = x_grid[i];
+        if x.abs() <= 0.3 { 12.0 } else { 0.2 * x * x }
+    });
+    let hamiltonian = TridiagonalHamiltonian1D::from_potential(&potential, dx, 1.0, 1.0);
+    let mut propagator = CrankNicolsonPropagator1D::with_capacity(n);
+    let mut psi = gaussian_wavepacket(&x_grid, -2.0, 5.0, 0.5);
+    let mut probs = vec![0.0; n];
+
+    let (norm_after, metrics) = VerifiedEngine::run_verified(|| {
+        propagator.configure_dt(&hamiltonian, 0.005, 1.0);
+        propagator.evolve_substeps_in_place(&mut psi, 8);
+        psi.probability_density_in_place(&mut probs);
+        state_norm_squared(&psi)
+    });
+    assert!(metrics.function_calls >= 3);
+    assert_relative_eq!(norm_after, 1.0, epsilon = 1e-11);
+    assert_relative_eq!(probs.iter().sum::<f64>(), 1.0, epsilon = 1e-11);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_symmetric_eigen_small_empty_non_finite_and_pade_fallback() {
+    let empty_op = QuantumOperator::new(DMatrix::zeros(0, 0));
+    let empty_u = time_evolution_operator(&empty_op, 0.1, 1.0);
+    assert_eq!(empty_u.matrix.nrows(), 0);
+
+    let sx = sigma_x();
+    let u_sx = time_evolution_operator(&sx, 0.37, 1.0);
+    let ref_sx = (&sx.matrix * Complex::new(0.0, -0.37)).exp();
+    assert!((u_sx.matrix - ref_sx).norm() < 1e-14);
+
+    let sy = sigma_y();
+    let u_sy = time_evolution_operator(&sy, 0.37, 1.0);
+    let ref_sy = (&sy.matrix * Complex::new(0.0, -0.37)).exp();
+    assert!((u_sy.matrix - ref_sy).norm() < 1e-14);
+
+    let nan_u = time_evolution_operator(&sx, f64::NAN, 1.0);
+    assert!(nan_u.matrix.iter().all(|c| c.re.is_nan()));
+    let inf_u = time_evolution_operator(&sx, f64::INFINITY, 1.0);
+    assert!(inf_u.matrix.iter().all(|c| c.re.is_nan()));
 }

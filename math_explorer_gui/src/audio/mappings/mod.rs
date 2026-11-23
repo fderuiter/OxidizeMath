@@ -2,6 +2,8 @@
 
 // theory_verification!
 
+#[cfg(feature = "pure_math")]
+pub mod acoustics;
 pub mod medical;
 #[cfg(feature = "physics")]
 pub mod medical_radar;
@@ -10,10 +12,13 @@ pub mod mri;
 pub mod neuroscience;
 pub mod number_theory;
 pub mod quantum_chaos;
+pub mod reinforcement_learning;
 pub mod spin_resonance;
 #[cfg(feature = "pure_math")]
 pub mod wave_plate;
 
+#[cfg(feature = "pure_math")]
+pub use acoustics::chladni_plate_frame;
 pub use medical::{imrt_delivery_frame, radar_linac_frame, LinacGatePhase};
 #[cfg(feature = "physics")]
 pub use medical_radar::{
@@ -30,6 +35,7 @@ pub use number_theory::{
     ulam_spiral_frame, EllipticTorsionSample, UlamPolySample,
 };
 pub use quantum_chaos::{attractor_frame, bifurcation_frame, quantum_wavepacket_frame};
+pub use reinforcement_learning::rl_td_surprise_frame;
 pub use spin_resonance::{
     bloch_fid_frame, hahn_echo_isochromat_frame, kspace_voxel_ensemble_frame, zeeman_bloch_frame,
 };

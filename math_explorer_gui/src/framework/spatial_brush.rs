@@ -5,10 +5,7 @@
 
 use crate::accessibility::announce_live_status;
 use eframe::egui::{self, EventFilter, Key, Modifiers, Pos2, Rect, Shape};
-use egui_plot::{
-    commands::{CommandRegistryData, CommandTrigger},
-    focus_ring_stroke, PlotPoint, PlotUi,
-};
+use egui_plot::{focus_ring_stroke, PlotPoint, PlotUi};
 
 /// Controls whether pointer/keyboard gestures pan/zoom the viewport or sculpt spatial fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -52,6 +49,18 @@ pub enum BrushMode {
     FlowVortex,
     /// Places or steers a potential-flow doublet singularity.
     FlowDoublet,
+    /// Terminal negative-reward trap hazard cell (RL GridWorld).
+    RlTrap,
+    /// Terminal positive-reward goal target cell (RL GridWorld).
+    RlGoal,
+    /// Upward stochastic wind cell (RL GridWorld).
+    WindUp,
+    /// Downward stochastic wind cell (RL GridWorld).
+    WindDown,
+    /// Leftward stochastic wind cell (RL GridWorld).
+    WindLeft,
+    /// Rightward stochastic wind cell (RL GridWorld).
+    WindRight,
     /// Paints planning target volume (`PTV`) voxels on a radiotherapy phantom.
     PtvTarget,
     /// Paints organ-at-risk (`OAR`) voxels on a radiotherapy phantom.
@@ -76,6 +85,12 @@ impl BrushMode {
             Self::FlowSource => "Source / Sink",
             Self::FlowVortex => "Vortex",
             Self::FlowDoublet => "Doublet",
+            Self::RlTrap => "Trap Hazard",
+            Self::RlGoal => "Goal Target",
+            Self::WindUp => "Wind Up",
+            Self::WindDown => "Wind Down",
+            Self::WindLeft => "Wind Left",
+            Self::WindRight => "Wind Right",
             Self::PtvTarget => "PTV Target",
             Self::OrganAtRisk => "Organ at Risk",
         }
@@ -251,33 +266,6 @@ impl SpatialBrushKit {
             self.cursor_pos[0] = self.cursor_pos[0].clamp(lo_x, hi_x);
             self.cursor_pos[1] = self.cursor_pos[1].clamp(lo_y, hi_y);
         }
-    }
-
-    fn register_shortcuts(ctx: &egui::Context) {
-        CommandRegistryData::register(
-            ctx,
-            "Arrow Keys",
-            "Move spatial brush cursor on focused canvas",
-            CommandTrigger::Key(Key::ArrowRight),
-            false,
-            "Spatial Brush",
-        );
-        CommandRegistryData::register(
-            ctx,
-            "[ / ]",
-            "Decrease or increase spatial brush radius",
-            CommandTrigger::Key(Key::OpenBracket),
-            false,
-            "Spatial Brush",
-        );
-        CommandRegistryData::register(
-            ctx,
-            "Space / Enter",
-            "Stamp spatial brush at keyboard cursor",
-            CommandTrigger::Key(Key::Space),
-            false,
-            "Spatial Brush",
-        );
     }
 
     fn consume_keyboard_input(
@@ -472,3 +460,6 @@ impl SpatialBrushKit {
         }
     }
 }
+
+#[path = "spatial_brush/rect_canvas.rs"]
+mod rect_canvas;

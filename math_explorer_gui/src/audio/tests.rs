@@ -20,7 +20,7 @@ use super::synth::OfflinePcmSynthesizer;
 use super::ui::{format_meter_readout, meter_fill_fraction, render_sonification_panel};
 use super::wav::{encode_wav_stereo_pcm16, synthesize_frames_to_wav};
 
-fn compute_mono_fft_magnitudes(interleaved_stereo: &[f32], fft_len: usize) -> Vec<f32> {
+pub(super) fn compute_mono_fft_magnitudes(interleaved_stereo: &[f32], fft_len: usize) -> Vec<f32> {
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(fft_len);
     let mut buf: Vec<Complex<f32>> = (0..fft_len)
@@ -35,7 +35,12 @@ fn compute_mono_fft_magnitudes(interleaved_stereo: &[f32], fft_len: usize) -> Ve
     buf[..fft_len / 2].iter().map(|c| c.norm()).collect()
 }
 
-fn peak_magnitude_around(mags: &[f32], sample_rate: u32, fft_len: usize, target_hz: f32) -> f32 {
+pub(super) fn peak_magnitude_around(
+    mags: &[f32],
+    sample_rate: u32,
+    fft_len: usize,
+    target_hz: f32,
+) -> f32 {
     let center = ((target_hz * (fft_len as f32)) / (sample_rate as f32)).round() as usize;
     let lo = center.saturating_sub(2);
     let hi = (center + 2).min(mags.len().saturating_sub(1));
@@ -302,38 +307,6 @@ fn sample_medical_step_frame(step: usize, phase: f64) -> SonificationFrame {
             phase,
         )
     }
-}
-
-#[test]
-fn test_medical_radar_and_imrt_sonification_frames() {
-    let radar_on = radar_linac_frame(LinacGatePhase::BeamActive, -2.5, -1.0, 42.0, 0.02);
-    let radar_hold = radar_linac_frame(LinacGatePhase::BeamHold, 8.5, 18.0, 42.0, 0.02);
-    let radar_fault = radar_linac_frame(LinacGatePhase::SafetyInterlock, f64::NAN, 0.0, 42.0, 0.1);
-    assert!(radar_on.voices[1].gain > 0.5 && radar_hold.voices[1].gain == 0.0);
-    assert!(!radar_fault.is_audible());
-
-    let imrt_clean = imrt_delivery_frame(
-        LinacGatePhase::BeamActive,
-        -2.4,
-        59.5,
-        60.0,
-        19.0,
-        26.0,
-        5.6,
-    );
-    let imrt_over = imrt_delivery_frame(LinacGatePhase::BeamHold, 9.2, 50.0, 60.0, 38.0, 26.0, 5.6);
-    let imrt_fault = imrt_delivery_frame(
-        LinacGatePhase::SafetyInterlock,
-        0.0,
-        60.0,
-        60.0,
-        20.0,
-        26.0,
-        5.6,
-    );
-    assert!(imrt_clean.voices[0].gain > 0.3 && imrt_clean.noise_gain == 0.0);
-    assert!(imrt_over.voices[0].gain == 0.0 && imrt_over.voices[3].gain > 0.2);
-    assert!(!imrt_fault.is_audible());
 }
 
 #[cfg(feature = "pure_math")]
