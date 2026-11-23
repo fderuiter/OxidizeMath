@@ -3,6 +3,25 @@
 use super::SimulationFramework;
 use eframe::egui;
 
+#[derive(Clone, Copy)]
+pub(crate) struct UntrackedUrlDigestCache {
+    pub(super) tool_name: &'static str,
+    pub(super) checked_untracked_rev: u64,
+    pub(super) url_digest: u64,
+}
+
+#[derive(Default)]
+pub(crate) struct FrameworkRevisionCache {
+    pub(super) framework_revision: u64,
+    pub(super) untracked_tool_revision: u64,
+    pub(super) untracked_url_digest: std::cell::Cell<Option<UntrackedUrlDigestCache>>,
+    pub(super) active_tool_json:
+        std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
+    pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
+    pub(super) last_snapshot_source_datasets: Vec<(String, egui_plot::SharedPoints)>,
+    pub(super) last_plot_capture_hash: Option<(&'static str, u64)>,
+}
+
 #[derive(Default, Clone, Copy)]
 pub(crate) struct FrameworkSyncState {
     pub(super) theory_portal: Option<bool>,
@@ -201,6 +220,7 @@ impl SimulationFramework {
             instance_id: next_framework_id(),
             sync_state: FrameworkSyncState::default(),
             rev_cache: super::FrameworkRevisionCache::default(),
+            atlas_host: super::atlas_host::FrameworkAtlasHost::default(),
         };
 
         if !framework.available_tools.is_empty() {

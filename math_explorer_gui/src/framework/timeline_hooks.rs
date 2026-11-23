@@ -3,10 +3,61 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    BranchDivergenceMetrics, BranchMetadata, SimulationFramework, TimelineBranchAction,
-    TimelineTransportState,
+    BranchDivergenceMetrics, BranchMetadata, InteractiveTool, SimulationFramework,
+    TimelineBranchAction, TimelineTransportState,
 };
 use eframe::egui;
+
+pub(super) fn export_tool_preset_json<T: InteractiveTool + ?Sized>(
+    tool: &T,
+) -> Result<String, String> {
+    if let Some(state_str) = tool.save_state() {
+        let config: serde_json::Value =
+            serde_json::from_str(&state_str).map_err(|e| format!("Serialization error: {e}"))?;
+        crate::presets::serialize_preset_envelope(tool.name(), tool.domain(), config)
+    } else {
+        Err(format!("Preset export not supported for {}", tool.name()))
+    }
+}
+
+pub(super) fn import_tool_preset_json<T: InteractiveTool + ?Sized>(
+    tool: &mut T,
+    json_str: &str,
+) -> Result<(), String> {
+    let bounds = tool.state_bounds();
+    let config: Box<serde_json::value::RawValue> =
+        crate::presets::deserialize_preset_envelope_bounded(
+            json_str,
+            tool.domain(),
+            tool.name(),
+            bounds,
+        )?;
+    let config_str = config.get();
+    bounds.validate_json(config_str)?;
+    tool.try_load_state(config_str)
+}
+
+pub(super) fn sample_tool_animation_frames<T: InteractiveTool + ?Sized>(
+    tool: &mut T,
+    num_frames: usize,
+) -> Vec<egui_plot::export::DatasetFrame> {
+    let count = num_frames.max(1);
+    let mut frames = Vec::with_capacity(count);
+    for _ in 0..count {
+        tool.step_simulation();
+        let ds = tool.export_datasets();
+        if !ds.is_empty() {
+            frames.push(ds);
+        }
+    }
+    if frames.is_empty() {
+        let ds = tool.export_datasets();
+        if !ds.is_empty() {
+            frames = egui_plot::export::sample_progressive_frames(&ds, count);
+        }
+    }
+    frames
+}
 
 impl SimulationFramework {
     /// Returns the active tool's timeline scrubber and shadow-branch state, if supported.

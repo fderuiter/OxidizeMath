@@ -48,6 +48,7 @@ impl Clone for LbmUnified {
             solver: self.solver.clone(),
             vorticity_buf: self.vorticity_buf.clone(),
             latest_aero: self.latest_aero,
+            inlet_velocity: self.inlet_velocity,
             stamped_airfoil: self.stamped_airfoil,
             active_profile_param: self.active_profile_param,
             challenge_core_locked: self.challenge_core_locked,
@@ -106,6 +107,7 @@ impl LbmUnified {
         if viscosity.is_finite() && viscosity > 0.0 {
             self.solver.collision_model.tau = 3.0 * viscosity + 0.5;
         }
+        self.inlet_velocity = super::lbm_atlas::resolve_inlet_velocity(params);
         self.diverged = false;
         self.diagnostic_report = None;
         self.refresh_diagnostics_pub();
