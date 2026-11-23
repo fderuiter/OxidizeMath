@@ -284,7 +284,6 @@ impl CalloutManager {
     }
 
     /// Render sidebar overlay UI controls for managing annotations.
-    #[allow(clippy::too_many_lines)]
     pub fn render_ui(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         ui.group(|ui| {

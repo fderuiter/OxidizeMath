@@ -1,7 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{AttractorPlotter, SolverExecutionState};
+use super::{AttractorMode, AttractorPlotter, SolverExecutionState, DEFAULT_FLOW_EXPRS};
 use crate::framework::Camera3D;
+use std::collections::BTreeMap;
 
 const fn default_annotations_enabled() -> bool {
     true
@@ -22,6 +23,12 @@ struct AttractorSaveState {
     execution_state: SolverExecutionState,
     show_annotations: bool,
     camera: Camera3D,
+    #[serde(skip_serializing_if = "AttractorMode::is_lorenz")]
+    mode: AttractorMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    custom_exprs: Option<[String; 3]>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    custom_params: BTreeMap<String, f64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -48,10 +55,33 @@ struct AttractorState {
     yaw: Option<f32>,
     #[serde(default)]
     zoom: Option<f32>,
+    #[serde(default)]
+    mode: AttractorMode,
+    #[serde(default)]
+    custom_exprs: Option<[String; 3]>,
+    #[serde(default)]
+    custom_params: BTreeMap<String, f64>,
 }
 
 impl AttractorPlotter {
     pub(super) fn serialize_state(&self) -> Option<String> {
+        let expr_vec = self.flow_bank.expressions();
+        let nondefault_exprs = expr_vec
+            .iter()
+            .zip(DEFAULT_FLOW_EXPRS.iter())
+            .any(|(a, b)| a != b);
+        let custom_exprs = (self.mode == AttractorMode::Custom || nondefault_exprs).then(|| {
+            [
+                expr_vec[0].clone(),
+                expr_vec[1].clone(),
+                expr_vec[2].clone(),
+            ]
+        });
+        let custom_params = if self.mode == AttractorMode::Custom {
+            self.flow_bank.params_map()
+        } else {
+            BTreeMap::new()
+        };
         serde_json::to_string(&AttractorSaveState {
             sigma: self.system.sigma,
             rho: self.system.rho,
@@ -62,6 +92,9 @@ impl AttractorPlotter {
             execution_state: self.execution_state,
             show_annotations: self.show_annotations,
             camera: self.camera,
+            mode: self.mode,
+            custom_exprs,
+            custom_params,
         })
         .ok()
     }
@@ -79,6 +112,7 @@ impl AttractorPlotter {
             || !(super::export::MIN_TUBE_RADIUS..=super::export::MAX_TUBE_RADIUS)
                 .contains(&s.tube_radius)
             || !(1..=super::MAX_SIMULATION_SPEED).contains(&s.simulation_speed)
+            || s.custom_params.values().any(|v| !v.is_finite())
         {
             return Err(format!(
                 "AttractorPlotter parameters must be finite with dt > 0 and simulation_speed in 1..={}",
@@ -93,6 +127,8 @@ impl AttractorPlotter {
             Some(Camera3D::new(0.0, 0.0, 1.0)),
         )?;
 
+        self.mode = s.mode;
+        self.apply_custom_flow_state(s.custom_exprs.as_ref(), &s.custom_params);
         self.system.sigma = s.sigma;
         self.system.rho = s.rho;
         self.system.beta = s.beta;
@@ -119,5 +155,24 @@ impl AttractorPlotter {
             self.step_count = diverged_at_step;
         }
         Ok(())
+    }
+
+    fn apply_custom_flow_state(
+        &mut self,
+        custom_exprs: Option<&[String; 3]>,
+        custom_params: &BTreeMap<String, f64>,
+    ) {
+        if let Some(exprs) = custom_exprs {
+            if !custom_params.is_empty() {
+                self.flow_bank.load_state(exprs, custom_params);
+            } else {
+                self.flow_bank.set_expressions(exprs);
+            }
+        } else {
+            self.flow_bank = super::default_flow_bank();
+            if !custom_params.is_empty() {
+                self.flow_bank.set_params_map(custom_params);
+            }
+        }
     }
 }

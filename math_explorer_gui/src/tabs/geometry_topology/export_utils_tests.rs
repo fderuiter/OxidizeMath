@@ -161,10 +161,12 @@ fn custom_heightfield_and_open_parametric_patches_extrude_watertight_solids() {
     assert_eq!(euler_characteristic(&hf_mesh), 2);
     assert!(signed_volume(&hf_mesh) > 0.0);
 
-    let cx = CompiledExpr::compile_with_vars(&parse("(1 + 0.2 * v) * cos(u)").unwrap(), &["u", "v"])
-        .unwrap();
-    let cy = CompiledExpr::compile_with_vars(&parse("(1 + 0.2 * v) * sin(u)").unwrap(), &["u", "v"])
-        .unwrap();
+    let cx =
+        CompiledExpr::compile_with_vars(&parse("(1 + 0.2 * v) * cos(u)").unwrap(), &["u", "v"])
+            .unwrap();
+    let cy =
+        CompiledExpr::compile_with_vars(&parse("(1 + 0.2 * v) * sin(u)").unwrap(), &["u", "v"])
+            .unwrap();
     let cz = CompiledExpr::compile_with_vars(&parse("0.4 * u").unwrap(), &["u", "v"]).unwrap();
     let helicoid = CompiledParametricSurface::new(cx, cy, cz, &[]);
     let open_mesh = surface_to_mesh_with_domain_and_thickness(

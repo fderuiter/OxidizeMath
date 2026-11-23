@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::AttractorPlotter;
+use super::{AttractorMode, AttractorPlotter, CompiledFlowJob};
 use math_commons::math_kernel::colormap::mapped_gradient;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
 use nalgebra::Vector3;
@@ -23,42 +23,63 @@ const DEFAULT_TUBE_RADIAL_SEGMENTS: usize = 16;
 /// Preview RK4 steps synthesized on cold export when history has not yet accumulated `< 2` points.
 const COLD_PREVIEW_STEPS: usize = 320;
 
-fn centered_point3d(p: Vector3<f64>) -> Point3D {
-    Point3D::new(p.x as f32, p.y as f32, (p.z - 25.0) as f32)
+fn centered_point3d(p: Vector3<f64>, mode: AttractorMode) -> Point3D {
+    let z_offset = match mode {
+        AttractorMode::Lorenz => 25.0,
+        AttractorMode::Custom => 0.0,
+    };
+    Point3D::new(p.x as f32, p.y as f32, (p.z - z_offset) as f32)
 }
 
 impl AttractorPlotter {
     fn collect_trajectory_points_3d(&self) -> Result<Vec<Point3D>, String> {
         if self.diverged() || !self.is_finite_state() {
             return Err(
-                "Cannot export 3D trajectory while Lorenz solver state is non-finite.".to_string(),
+                "Cannot export 3D trajectory while attractor solver state is non-finite."
+                    .to_string(),
             );
         }
+        let mode = self.mode;
         let mut pts: Vec<Point3D> = self
             .history
             .iter()
             .filter(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
             .take(MAX_EXPORT_TRAJECTORY_POINTS)
-            .map(|&v| centered_point3d(v))
+            .map(|&v| centered_point3d(v, mode))
             .collect();
 
         if pts.len() < 2 {
             pts.clear();
             let start = self.system.state.vec;
-            let mut preview = LorenzBuilder::new()
-                .sigma(self.system.sigma)
-                .rho(self.system.rho)
-                .beta(self.system.beta)
-                .build(LorenzState::new(start.x, start.y, start.z));
             let dt = self.dt.clamp(0.001, 0.05);
-            pts.push(centered_point3d(preview.state.vec));
-            for _ in 0..COLD_PREVIEW_STEPS {
-                preview.step(dt);
-                let v = preview.state.vec;
-                if !v.x.is_finite() || !v.y.is_finite() || !v.z.is_finite() {
-                    break;
+            pts.push(centered_point3d(start, mode));
+            match mode {
+                AttractorMode::Lorenz => {
+                    let mut preview = LorenzBuilder::new()
+                        .sigma(self.system.sigma)
+                        .rho(self.system.rho)
+                        .beta(self.system.beta)
+                        .build(LorenzState::new(start.x, start.y, start.z));
+                    for _ in 0..COLD_PREVIEW_STEPS {
+                        preview.step(dt);
+                        let v = preview.state.vec;
+                        if !v.x.is_finite() || !v.y.is_finite() || !v.z.is_finite() {
+                            break;
+                        }
+                        pts.push(centered_point3d(v, mode));
+                    }
                 }
-                pts.push(centered_point3d(v));
+                AttractorMode::Custom => {
+                    let job = CompiledFlowJob::from_bank(&self.flow_bank);
+                    let mut curr = start;
+                    for _ in 0..COLD_PREVIEW_STEPS {
+                        curr = job.rk4_step(curr, dt);
+                        if !curr.x.is_finite() || !curr.y.is_finite() || !curr.z.is_finite() {
+                            break;
+                        }
+                        pts.push(centered_point3d(curr, mode));
+                    }
+                }
             }
         }
         if pts.len() < 2 {

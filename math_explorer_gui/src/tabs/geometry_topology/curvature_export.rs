@@ -64,7 +64,7 @@ impl CurvatureHeatmap {
     pub(super) fn build_colored_mesh_3d(&self) -> Result<ColoredMesh, String> {
         let nu = clamp_grid_res(self.u_resolution);
         let nv = clamp_grid_res(self.v_resolution);
-        let (u_range, v_range) = self.surface_type.uv_domain();
+        let (u_range, v_range) = self.custom_sandbox.uv_domain_for(self.surface_type);
         match self.surface_type {
             SurfaceType::Sphere => self.build_surface_colored_mesh(
                 &Sphere {
@@ -150,7 +150,10 @@ impl CurvatureHeatmap {
                 curvatures.push(eval_curvature(surface, self.curvature_type, u, v));
             }
         }
-        Ok(ColoredMesh::new(mesh, map_curvatures_to_colors(&curvatures)))
+        Ok(ColoredMesh::new(
+            mesh,
+            map_curvatures_to_colors(&curvatures),
+        ))
     }
 
     fn build_periodic_colored_mesh<S: ParametricSurface>(
@@ -168,7 +171,10 @@ impl CurvatureHeatmap {
                 curvatures.push(eval_curvature(surface, self.curvature_type, u, v));
             }
         }
-        Ok(ColoredMesh::new(mesh, map_curvatures_to_colors(&curvatures)))
+        Ok(ColoredMesh::new(
+            mesh,
+            map_curvatures_to_colors(&curvatures),
+        ))
     }
 
     fn build_klein_colored_mesh<S: ParametricSurface>(

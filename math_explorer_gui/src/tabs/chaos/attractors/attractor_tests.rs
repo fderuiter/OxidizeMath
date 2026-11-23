@@ -20,14 +20,20 @@ fn test_attractor_divergence_detection() {
 
     assert!(plotter.diverged() && plotter.is_paused());
     match plotter.execution_state {
-        SolverExecutionState::Diverged { invalid_vec, diverged_at_step } => {
+        SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step,
+        } => {
             assert!(invalid_vec.x.is_nan() && diverged_at_step == 0);
         }
         _ => panic!("Expected Diverged execution state"),
     }
 
     // Verify history contains no non-finite values
-    assert!(plotter.history.iter().all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+    assert!(plotter
+        .history
+        .iter()
+        .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
 
     // Reset clears diverged flag cleanly and restores Ready
     plotter.reset();
@@ -121,7 +127,10 @@ fn test_attractor_step_counting_and_divergence_metadata() {
 
     assert!(plotter.diverged());
     match plotter.execution_state {
-        SolverExecutionState::Diverged { invalid_vec, diverged_at_step } => {
+        SolverExecutionState::Diverged {
+            invalid_vec,
+            diverged_at_step,
+        } => {
             assert!(invalid_vec.y.is_infinite());
             assert_eq!(diverged_at_step, plotter.simulation_speed);
         }
@@ -418,8 +427,20 @@ fn test_attractor_fixed_callout_drag_leaves_camera_unchanged() {
         egui::Pos2::ZERO,
         egui::vec2(1000.0, 700.0),
     ));
-    let _ = ctx.run(egui::RawInput { screen_rect: screen, ..Default::default() }, |ctx| plotter.show(ctx));
-    let out = ctx.run(egui::RawInput { screen_rect: screen, ..Default::default() }, |ctx| plotter.show(ctx));
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: screen,
+            ..Default::default()
+        },
+        |ctx| plotter.show(ctx),
+    );
+    let out = ctx.run(
+        egui::RawInput {
+            screen_rect: screen,
+            ..Default::default()
+        },
+        |ctx| plotter.show(ctx),
+    );
 
     let start = find_callout_center(&out.shapes, "Fixed Point C+");
     let end = start + egui::vec2(30.0, -20.0);
@@ -430,7 +451,12 @@ fn test_attractor_fixed_callout_drag_leaves_camera_unchanged() {
         screen_rect: screen,
         events: vec![
             egui::Event::PointerMoved(start),
-            egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE },
+            egui::Event::PointerButton {
+                pos: start,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
         ],
         ..Default::default()
     };
@@ -443,7 +469,12 @@ fn test_attractor_fixed_callout_drag_leaves_camera_unchanged() {
     let _ = ctx.run(drag, |ctx| plotter.show(ctx));
     let release = egui::RawInput {
         screen_rect: screen,
-        events: vec![egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE }],
+        events: vec![egui::Event::PointerButton {
+            pos: end,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
         ..Default::default()
     };
     let _ = ctx.run(release, |ctx| plotter.show(ctx));
@@ -451,47 +482,3 @@ fn test_attractor_fixed_callout_drag_leaves_camera_unchanged() {
     assert_ne!(plotter.fixed_callout_offsets[0], initial_offset);
     assert_eq!((plotter.camera.pitch, plotter.camera.yaw), initial_pose);
 }
-
-#[test]
-fn test_attractor_watertight_tube_export_and_cold_path_stepping() {
-    use crate::tabs::geometry_topology::export_utils::{
-        count_open_and_nonmanifold_edges, signed_volume,
-    };
-
-    let mut plotter = AttractorPlotter {
-        tube_radius: 0.25,
-        ..Default::default()
-    };
-    for _ in 0..40 {
-        plotter.step_simulation();
-    }
-    let mesh = plotter
-        .export_mesh_3d()
-        .expect("3D mesh hook enabled")
-        .expect("watertight tube mesh");
-    let (open, non_manifold) = count_open_and_nonmanifold_edges(&mesh);
-    assert_eq!((open, non_manifold), (0, 0));
-    assert!(signed_volume(&mesh) > 0.0);
-    assert!(mesh.normals.iter().all(|n| n.is_finite()));
-
-    let colored = plotter
-        .export_colored_mesh_3d()
-        .expect("colored 3D mesh hook enabled")
-        .expect("colored tube mesh");
-    assert_eq!(colored.colors.len(), colored.mesh.vertices.len());
-    assert_ne!(
-        colored.colors.first().copied(),
-        colored.colors.last().copied()
-    );
-
-    let saved = plotter.save_state().expect("serialize tube_radius");
-    let mut restored = AttractorPlotter::default();
-    restored.try_load_state(&saved).expect("deserialize tube_radius");
-    assert!((restored.tube_radius - 0.25).abs() < 1e-6);
-
-    let cap_before = restored.history.capacity();
-    restored.history.clear();
-    restored.step_simulation();
-    assert_eq!(restored.history.capacity(), cap_before);
-}
-

@@ -31,6 +31,10 @@ struct SurfaceViewerSaveState {
     parametric_exprs: Option<[String; 3]>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    u_bounds: Option<[f64; 2]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    v_bounds: Option<[f64; 2]>,
 }
 
 #[derive(serde::Deserialize)]
@@ -59,6 +63,10 @@ struct SurfaceViewerState {
     parametric_exprs: Option<[String; 3]>,
     #[serde(default)]
     custom_params: BTreeMap<String, f64>,
+    #[serde(default)]
+    u_bounds: Option<[f64; 2]>,
+    #[serde(default)]
+    v_bounds: Option<[f64; 2]>,
 }
 
 pub struct SurfaceViewer {
@@ -248,15 +256,17 @@ impl InteractiveTool for SurfaceViewer {
 
     fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
         let surface = self.create_surface();
-        let (u_range, v_range) = self.surface_type.uv_domain();
-        Some(super::export_utils::surface_to_mesh_with_domain_and_thickness(
-            surface.as_ref(),
-            u_range,
-            v_range,
-            self.u_resolution,
-            self.v_resolution,
-            self.wall_thickness,
-        ))
+        let (u_range, v_range) = self.custom_sandbox.uv_domain_for(self.surface_type);
+        Some(
+            super::export_utils::surface_to_mesh_with_domain_and_thickness(
+                surface.as_ref(),
+                u_range,
+                v_range,
+                self.u_resolution,
+                self.v_resolution,
+                self.wall_thickness,
+            ),
+        )
     }
 
     fn state_revision(&self) -> u64 {
@@ -289,6 +299,7 @@ impl InteractiveTool for SurfaceViewer {
     fn save_state(&self) -> Option<String> {
         let (custom_expr, parametric_exprs, custom_params) =
             self.custom_sandbox.export_fields(self.surface_type);
+        let (u_bounds, v_bounds) = self.custom_sandbox.export_domain_bounds(self.surface_type);
         serde_json::to_string(&SurfaceViewerSaveState {
             surface_type: self.surface_type,
             sphere_radius: self.sphere_radius,
@@ -302,6 +313,8 @@ impl InteractiveTool for SurfaceViewer {
             custom_expr,
             parametric_exprs,
             custom_params,
+            u_bounds,
+            v_bounds,
         })
         .ok()
     }
@@ -316,6 +329,11 @@ impl InteractiveTool for SurfaceViewer {
             loaded.yaw,
             loaded.zoom,
             Some(Camera3D::default()),
+        )?;
+        self.custom_sandbox.load_domain_bounds(
+            loaded.surface_type,
+            loaded.u_bounds,
+            loaded.v_bounds,
         )?;
         let cap = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION;
         self.surface_type = loaded.surface_type;

@@ -282,7 +282,11 @@ fn build_wall_shell_indices(nu: usize, nv: usize, seam_map: &[(usize, bool)]) ->
             i * nv + jj
         } else {
             let (m, same_orient) = seam_map[jj];
-            if same_orient { m } else { sheet_len + m }
+            if same_orient {
+                m
+            } else {
+                sheet_len + m
+            }
         }
     };
     let inner_at = |i: usize, j: usize| -> usize {
@@ -291,7 +295,11 @@ fn build_wall_shell_indices(nu: usize, nv: usize, seam_map: &[(usize, bool)]) ->
             sheet_len + i * nv + jj
         } else {
             let (m, same_orient) = seam_map[jj];
-            if same_orient { sheet_len + m } else { m }
+            if same_orient {
+                sheet_len + m
+            } else {
+                m
+            }
         }
     };
 
@@ -330,7 +338,7 @@ pub fn extrude_open_patch_wall_shell(
     if !wall_thickness.is_finite() {
         return Err("Wall thickness must be finite".to_string());
     }
-    let half_t = 0.5 * wall_thickness.clamp(MIN_WALL_THICKNESS, MAX_WALL_THICKNESS);
+    let thickness = wall_thickness.clamp(MIN_WALL_THICKNESS, MAX_WALL_THICKNESS);
     let nu = clamp_grid_res(u_res);
     let nv = clamp_grid_res(v_res);
     let (u_min, u_max) = u_range;
@@ -352,8 +360,8 @@ pub fn extrude_open_patch_wall_shell(
                 surface.partial_u(u, v).cross(&surface.partial_v(u, v)),
                 Vector3::new(0.0, 0.0, 1.0),
             );
-            let p_out = p.coords + n * half_t;
-            let p_in = p.coords - n * half_t;
+            let p_out = p.coords;
+            let p_in = p.coords - n * thickness;
             let k = i * stride + j;
             vertices[k] = to_p3(p_out.x, p_out.y, p_out.z);
             normals[k] = to_p3(n.x, n.y, n.z);
