@@ -5789,6 +5789,9 @@
   ],
   "crates/math_commons/src/fit/lm.rs": [
     {
+      "signature": "pub const MAX_FIT_PARAMS : usize = 6"
+    },
+    {
       "signature": "pub const MAX_LM_ITERATIONS : usize = 80"
     },
     {
@@ -5796,6 +5799,12 @@
     },
     {
       "signature": "pub fn levenberg_marquardt_filtered < P , F > (points : & P , initial_params : & [f64] , domain_ok : fn (f64 , f64) -> bool , eval_jac : F ,) -> Result < [f64 ; 4] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64 ; 4]) -> (f64 , [f64 ; 4]) ,"
+    },
+    {
+      "signature": "pub fn levenberg_marquardt_numeric < P , F > (points : & P , initial_params : & [f64] , eval_fn : F ,) -> Result < [f64 ; MAX_FIT_PARAMS] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64]) -> Option < f64 > ,"
+    },
+    {
+      "signature": "pub fn sum_squared_errors_numeric < P , F > (points : & P , params : & [f64] , eval_fn : F) -> Option < f64 > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64]) -> Option < f64 > ,"
     }
   ],
   "crates/math_commons/src/fit/mod.rs": [
@@ -5851,6 +5860,9 @@
       "signature": "pub struct CurveFit"
     },
     {
+      "signature": "pub use lm :: MAX_FIT_PARAMS"
+    },
+    {
       "signature": "pub use lm :: MAX_LM_ITERATIONS"
     },
     {
@@ -5858,6 +5870,12 @@
     },
     {
       "signature": "pub use lm :: levenberg_marquardt_filtered"
+    },
+    {
+      "signature": "pub use lm :: levenberg_marquardt_numeric"
+    },
+    {
+      "signature": "pub use lm :: sum_squared_errors_numeric"
     },
     {
       "signature": "pub use nonlinear :: eval_nonlinear"

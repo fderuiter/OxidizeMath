@@ -2,7 +2,10 @@
 //! curve-fitting and critical-point solvers under `VerifiedAllocator::lock_allocations()`.
 
 use math_commons::error::FitError;
-use math_commons::fit::{FitModel, fit_model, fit_polynomial, fit_polynomial_scaled};
+use math_commons::fit::{
+    FitModel, fit_model, fit_polynomial, fit_polynomial_scaled, levenberg_marquardt_numeric,
+    sum_squared_errors_numeric,
+};
 use math_commons::poi::{
     LocalExtremum, closest_threshold_crossing, detect_local_extrema_into, intersect_polylines_into,
     parabolic_vertex, peak_extremum, threshold_crossings_into, y_at_x_into,
@@ -91,6 +94,24 @@ fn verify_zero_alloc_fits(
     let mut res_buf = [[0.0_f64; 2]; 16];
     let n_res = s_fit.residuals_into(&paired, &mut res_buf);
     assert_eq!(n_res, 16);
+
+    let mut wave6 = [[0.0_f64; 2]; 41];
+    for (i, slot) in wave6.iter_mut().enumerate() {
+        let x = (i as f64) * 0.2;
+        let y = 0.8 + 0.25 * x + 2.1 * (-0.5 * x).exp() + 0.7 * (1.4 * x).cos();
+        *slot = [x, y];
+    }
+    let eval_fn = |x: f64, p: &[f64]| -> Option<f64> {
+        let y = p[0]
+            + p[1] * x
+            + p[2] * (-p[3] * x).clamp(-700.0, 700.0).exp()
+            + p[4] * (p[5] * x).cos();
+        y.is_finite().then_some(y)
+    };
+    let seeds = [0.5, 0.2, 1.8, 0.4, 0.5, 1.3];
+    let p6 = levenberg_marquardt_numeric(&wave6, &seeds, eval_fn).expect("6-param zero-alloc");
+    let sse6 = sum_squared_errors_numeric(&wave6, &p6, eval_fn).expect("sse6");
+    assert!(sse6 < 1e-8);
 }
 
 fn verify_zero_alloc_poi(

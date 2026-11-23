@@ -119,3 +119,31 @@ fn test_fit_error_on_invalid_domains_singular_and_non_convergence() {
         })
     );
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_six_parameter_levenberg_marquardt_numeric() {
+    let true_p = [1.2, -0.35, 2.4, 0.6, 0.9, 1.7];
+    let eval_wave = |x: f64, p: &[f64]| -> Option<f64> {
+        if p.len() < 6 {
+            return None;
+        }
+        let exp_arg = (-p[3] * x).clamp(-700.0, 700.0);
+        let y = p[0] + p[1] * x + p[2] * exp_arg.exp() + p[4] * (p[5] * x).sin();
+        y.is_finite().then_some(y)
+    };
+    let mut pts = [[0.0_f64; 2]; 61];
+    for (i, slot) in pts.iter_mut().enumerate() {
+        let x = (i as f64) * 0.15;
+        *slot = [x, eval_wave(x, &true_p).expect("finite y")];
+    }
+
+    let seeds = [1.0, -0.2, 2.0, 0.4, 0.6, 1.5];
+    let fitted = levenberg_marquardt_numeric(&pts, &seeds, eval_wave).expect("6-param numeric LM");
+    let sse = sum_squared_errors_numeric(&pts, &fitted, eval_wave).expect("finite sse");
+    assert!(sse < 1e-8, "expected SSE < 1e-8, got {sse}");
+    assert_eq!(
+        levenberg_marquardt_numeric(&pts, &[1.0; 7], eval_wave),
+        Err(FitError::UnsupportedDegree { degree: 7 })
+    );
+}

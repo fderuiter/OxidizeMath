@@ -16,7 +16,10 @@ mod tests;
 use crate::error::FitError;
 use crate::series::PointSeries;
 
-pub use lm::{MAX_LM_ITERATIONS, levenberg_marquardt, levenberg_marquardt_filtered};
+pub use lm::{
+    MAX_FIT_PARAMS, MAX_LM_ITERATIONS, levenberg_marquardt, levenberg_marquardt_filtered,
+    levenberg_marquardt_numeric, sum_squared_errors_numeric,
+};
 pub use nonlinear::{eval_nonlinear, fit_nonlinear, format_nonlinear_formula};
 pub use poly::{
     eval_polynomial_horner, fit_polynomial, fit_polynomial_scaled, format_polynomial_formula,

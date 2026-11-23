@@ -27,12 +27,9 @@ fn test_harmonic_equilibrium_root_dt_025_and_nonlinear_preset_fits() {
     );
 
     let osc_series = (&osc.time_series[..], &osc.y_series[..]);
-    let sin_fit = math_explorer::fit::fit_model(
-        &osc_series,
-        math_explorer::fit::FitModel::Sinusoidal,
-        false,
-    )
-    .expect("sinusoidal fit");
+    let sin_fit =
+        math_explorer::fit::fit_model(&osc_series, math_explorer::fit::FitModel::Sinusoidal, false)
+            .expect("sinusoidal fit");
     assert!(sin_fit.r_squared >= 0.99);
 
     let mut log_tool = OdeSolverTool {
@@ -46,12 +43,9 @@ fn test_harmonic_equilibrium_root_dt_025_and_nonlinear_preset_fits() {
     };
     log_tool.recalculate();
     let log_series = (&log_tool.time_series[..], &log_tool.y_series[..]);
-    let logistic_fit = math_explorer::fit::fit_model(
-        &log_series,
-        math_explorer::fit::FitModel::Logistic,
-        false,
-    )
-    .expect("logistic fit");
+    let logistic_fit =
+        math_explorer::fit::fit_model(&log_series, math_explorer::fit::FitModel::Logistic, false)
+            .expect("logistic fit");
     assert!(logistic_fit.r_squared >= 0.99);
 
     #[cfg(not(target_arch = "wasm32"))]

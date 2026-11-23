@@ -235,7 +235,7 @@ pub fn solve_dense_small(
     rhs: &[f64; 5],
     n: usize,
 ) -> Result<[f64; 5], FitError> {
-    solve_dense_small_raw(mat, rhs, n)
+    solve_dense_n_raw(mat, rhs, n)
 }
 
 pub(super) fn solve_dense_small_raw(
@@ -243,7 +243,15 @@ pub(super) fn solve_dense_small_raw(
     rhs: &[f64; 5],
     n: usize,
 ) -> Result<[f64; 5], FitError> {
-    if n == 0 || n > 5 {
+    solve_dense_n_raw(mat, rhs, n)
+}
+
+pub(super) fn solve_dense_n_raw<const N: usize>(
+    mat: &mut [[f64; N]; N],
+    rhs: &[f64; N],
+    n: usize,
+) -> Result<[f64; N], FitError> {
+    if n == 0 || n > N {
         return Err(FitError::SingularMatrix);
     }
     let mut b = *rhs;
@@ -261,7 +269,7 @@ pub(super) fn solve_dense_small_raw(
     back_substitute(mat, &b, n)
 }
 
-fn select_pivot_row(mat: &[[f64; 5]; 5], col: usize, n: usize) -> usize {
+fn select_pivot_row<const N: usize>(mat: &[[f64; N]; N], col: usize, n: usize) -> usize {
     let mut pivot_row = col;
     let mut pivot_val = mat[col][col].abs();
     for (row, mat_row) in mat.iter().enumerate().take(n).skip(col + 1) {
@@ -274,7 +282,12 @@ fn select_pivot_row(mat: &[[f64; 5]; 5], col: usize, n: usize) -> usize {
     pivot_row
 }
 
-fn eliminate_below(mat: &mut [[f64; 5]; 5], b: &mut [f64; 5], col: usize, n: usize) {
+fn eliminate_below<const N: usize>(
+    mat: &mut [[f64; N]; N],
+    b: &mut [f64; N],
+    col: usize,
+    n: usize,
+) {
     let diag = mat[col][col];
     for row in (col + 1)..n {
         let factor = mat[row][col] / diag;
@@ -286,8 +299,12 @@ fn eliminate_below(mat: &mut [[f64; 5]; 5], b: &mut [f64; 5], col: usize, n: usi
     }
 }
 
-fn back_substitute(mat: &[[f64; 5]; 5], b: &[f64; 5], n: usize) -> Result<[f64; 5], FitError> {
-    let mut x = [0.0_f64; 5];
+fn back_substitute<const N: usize>(
+    mat: &[[f64; N]; N],
+    b: &[f64; N],
+    n: usize,
+) -> Result<[f64; N], FitError> {
+    let mut x = [0.0_f64; N];
     let mut row = n;
     while row > 0 {
         row -= 1;
