@@ -59,8 +59,15 @@ impl NetworkPropagationTool {
         }
     }
 
-    fn render_network_sliders(&mut self, ui: &mut egui::Ui) {
-        let locked = self.is_challenge_locked();
+    fn render_node_count_control(&mut self, ui: &mut egui::Ui, locked: bool) {
+        if self.upstream_linked && !locked {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            ui.colored_label(
+                palette.accent,
+                format!("⚡ Upstream Graph ({} nodes)", self.model.num_nodes()),
+            );
+            return;
+        }
         let mut num_nodes = self.model.num_nodes();
         if ui
             .add_enabled(
@@ -74,6 +81,11 @@ impl NetworkPropagationTool {
             self.quarantined_edges.clear();
             self.rebuild_seeded_graph();
         }
+    }
+
+    fn render_network_sliders(&mut self, ui: &mut egui::Ui) {
+        let locked = self.is_challenge_locked();
+        self.render_node_count_control(ui, locked);
 
         let mut beta = self.model.beta();
         if ui

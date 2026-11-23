@@ -383,6 +383,32 @@ impl WaveSimulatorTool {
         self.sync_config_and_reset(ctx);
     }
 
+    pub(crate) fn draw_atlas_and_challenge_buttons(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+    ) {
+        use crate::accessibility::AccessibleHoverText;
+        ui.horizontal_wrapped(|ui| {
+            if self.atlas.show_toggle_button(ui) {
+                self.bump_revision();
+            }
+            if ui
+                .button("🎯 Inverse Challenges")
+                .accessible_hover_text(
+                    "Open Starter Gallery Challenges to launch inverse quantum tunneling puzzles in the Challenge HUD.",
+                )
+                .clicked()
+            {
+                ctx.data_mut(|d| {
+                    d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY"), true);
+                    d.insert_temp(egui::Id::new("SHOW_STARTER_GALLERY").with("quantum"), true);
+                });
+                ctx.request_repaint();
+            }
+        });
+    }
+
     pub(crate) fn render_wave_atlas(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let (_, y_key) = self.atlas.axis_keys();
         let active_y = if y_key == "width" {

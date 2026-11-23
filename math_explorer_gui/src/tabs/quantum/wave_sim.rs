@@ -13,6 +13,8 @@ mod persistence;
 pub mod presets;
 #[path = "wave_sim/runner.rs"]
 pub mod runner;
+#[path = "wave_sim/sculpt.rs"]
+pub mod sculpt;
 #[cfg(test)]
 #[path = "wave_sim/tests.rs"]
 mod tests;
@@ -24,7 +26,6 @@ pub use presets::wave_parameter_label;
 pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
 
-use super::wave_sim_sculpt::default_wave_brush_kit;
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::RecoveryAction;
@@ -41,6 +42,7 @@ use presets::{
     DEFAULT_X0, DT_RECOVERY_MIN,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use sculpt::default_wave_brush_kit;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -232,6 +234,10 @@ impl InteractiveTool for WaveSimulatorTool {
         if !self.is_challenge_locked() {
             self.apply_ui_brush_context(ctx);
         }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
     }
 
     fn step_simulation(&mut self) {

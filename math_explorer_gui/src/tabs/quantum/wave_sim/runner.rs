@@ -225,7 +225,7 @@ impl WaveRunner {
         );
     }
 
-    fn refresh_propagator(&mut self, dt: f64) {
+    pub(crate) fn refresh_propagator(&mut self, dt: f64) {
         if self.cached_dt != Some(dt) {
             let sub_dt = dt / (CN_SUBSTEPS as f64);
             self.propagator.configure_dt(&self.hamiltonian, sub_dt, 1.0);

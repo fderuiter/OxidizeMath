@@ -42,8 +42,8 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .map(ChallengeMetadata::to_card)
         .collect();
     assert!(
-        cards.len() >= 13,
-        "Expected at least 13 registered ChallengeMetadata entries, got {}",
+        cards.len() >= 14,
+        "Expected at least 14 registered ChallengeMetadata entries, got {}",
         cards.len()
     );
     for required_id in [
@@ -60,6 +60,7 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         "epidemiology_hub_vaccination",
         "epidemiology_bridge_quarantine",
         "astrophysics_mystery_halo_fit",
+        "hasse_weil_boundary_p23",
     ] {
         let meta = find_challenge_metadata(required_id)
             .unwrap_or_else(|| panic!("Missing ChallengeMetadata '{required_id}'"));
@@ -78,6 +79,7 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         ("medical", 2),
         ("epidemiology", 2),
         ("astrophysics", 1),
+        ("elliptic_curves", 1),
     ] {
         assert_eq!(get_challenge_cards_for_domain(dom).len(), expected, "{dom}");
     }
@@ -195,6 +197,7 @@ fn test_stateless_challenge_urls_within_size_budget() {
         ("epidemiology", "epidemiology_hub_vaccination"),
         ("epidemiology", "epidemiology_bridge_quarantine"),
         ("astrophysics", "astrophysics_mystery_halo_fit"),
+        ("elliptic_curves", "hasse_weil_boundary_p23"),
     ] {
         let bare_hash = format!("#tab={slug}&challenge={challenge_id}");
         let parsed = parse_share_location(&bare_hash, "").unwrap().unwrap();
