@@ -1,7 +1,8 @@
 use super::*;
 use crate::utils::test_utils::{CurrentDirGuard, TempTestDir};
+use std::fs;
 
-fn write_member_crate(root: &Path, member: &str, lib_source: &str) -> String {
+pub(super) fn write_member_crate(root: &Path, member: &str, lib_source: &str) -> String {
     let member_dir = root.join(member);
     let src_dir = member_dir.join("src");
     fs::create_dir_all(&src_dir).unwrap();
@@ -366,99 +367,75 @@ fn test_clippy_groups_impl_trait_macros_and_short_fn_rejected() {
 }
 
 #[test]
-fn test_unused_dependency_tables_derives_doctests_and_whitelist() {
-    let dir = TempTestDir::new("policy_audit_dep_tables");
-    let whitelist_file = dir.join("verification_whitelist.toml");
+fn test_dead_code_visitor_enforces_256_step_attr_bound() {
+    let build_nested_cfg_attr = |wrappers: usize| -> String {
+        let mut attr = "allow(dead_code)".to_string();
+        for _ in 0..wrappers {
+            attr = format!("cfg_attr(unix, {attr})");
+        }
+        format!("#[{attr}]\nfn bounded_target() {{}}\n")
+    };
 
-    for header in [
-        "[dependencies]\nunused_dep = \"0.1\"",
-        "[dev-dependencies]\nunused_dev = \"0.1\"",
-        "[build-dependencies]\nunused_build = \"0.1\"",
-        "[target.'cfg(target_arch = \"wasm32\")'.dependencies]\ngetrandom = \"0.2\"",
-    ] {
-        let member = write_member_crate(&dir, "crates/dep_case", "pub fn ok() {}\n");
-        fs::write(
-            dir.join("crates/dep_case/Cargo.toml"),
-            format!("[package]\nname = \"dep_case\"\nversion = \"0.1.0\"\n\n{header}\n\n[lints]\nworkspace = true\n"),
-        )
-        .unwrap();
-        assert!(!run_policy_audit_with_whitelist(
-            &[member.as_str()],
-            &whitelist_file
-        ));
-    }
-
-    // Derive mapping + README doctest + doc-comment fence + whitelist authorization pass
-    let valid = write_member_crate(
-        &dir,
-        "crates/rich",
-        concat!(
-            "#![doc = include_str!(\"../README.md\")]\n",
-            "/// ```rust\n/// use approx::assert_relative_eq;\n/// assert_relative_eq!(1.0, 1.0);\n/// ```\n",
-            "#[derive(Serialize, Deserialize)]\npub struct Data;\n",
-        ),
-    );
-    fs::write(
-        dir.join("crates/rich/README.md"),
-        "# Rich\n```rust\nuse thiserror::Error;\n#[derive(Debug, Error)]\npub enum E { #[error(\"x\")] X }\nlet _ = E::X;\n```\n",
-    )
-    .unwrap();
-    fs::write(
-        dir.join("crates/rich/Cargo.toml"),
-        concat!(
-            "[package]\nname = \"rich\"\nversion = \"0.1.0\"\n\n",
-            "[dependencies]\nserde = \"1.0\"\n\n",
-            "[dev-dependencies]\napprox = \"0.5\"\nthiserror = \"2.0\"\n\n",
-            "[target.'cfg(target_arch = \"wasm32\")'.dependencies]\ngetrandom = \"0.2\"\n\n",
-            "[lints]\nworkspace = true\n",
-        ),
-    )
-    .unwrap();
-    fs::write(
-        &whitelist_file,
-        "[[unused_dependencies]]\ncrate = \"crates/rich\"\ndependency = \"getrandom\"\nreason = \"wasm js backend\"\n",
-    )
-    .unwrap();
-    assert!(run_policy_audit_with_whitelist(
-        &[valid.as_str()],
-        &whitelist_file
-    ));
+    // 255 cfg_attr wrappers + 1 allow(dead_code) = 256 total stack steps -> detected
+    assert!(scan_snippet(&build_nested_cfg_attr(255), vec![]));
+    // 256 cfg_attr wrappers + 1 allow(dead_code) = 257 total stack steps -> stops at 256 bound
+    assert!(!scan_snippet(&build_nested_cfg_attr(256), vec![]));
 }
 
 #[test]
-fn test_markdown_tests_audits_workspace_markdown_fences() {
-    let dir = TempTestDir::new("policy_audit_md_tests");
-    let whitelist_file = dir.join("verification_whitelist.toml");
-    let md_member = write_member_crate(
-        &dir,
-        "crates/markdown_tests",
-        "#![doc = include_str!(\"../README.md\")]\n",
+fn test_dead_code_visitor_nested_paren_and_qself_rejection() {
+    let demo_entry = DeadCodeEntry {
+        file: "crates/sample/src/lib.rs".to_string(),
+        identifier: Some("Demo".to_string()),
+    };
+
+    let nested_paren =
+        "pub struct Demo;\n#[allow(dead_code)]\nimpl ((Demo)) {\n    fn ok() {}\n}\n";
+    assert!(scan_snippet(nested_paren, vec![]));
+    assert!(!scan_snippet(nested_paren, vec![demo_entry.clone()]));
+
+    let mut deep_ty = "Demo".to_string();
+    for _ in 0..32 {
+        deep_ty = format!("({deep_ty})");
+    }
+    let over_32_parens =
+        format!("pub struct Demo;\n#[allow(dead_code)]\nimpl {deep_ty} {{\n    fn f() {{}}\n}}\n");
+    assert!(scan_snippet(&over_32_parens, vec![demo_entry.clone()]));
+
+    let qself_impl = concat!(
+        "trait Assoc { type Demo; }\n",
+        "struct Other;\n",
+        "impl Assoc for Other { type Demo = u8; }\n",
+        "#[allow(dead_code)]\n",
+        "impl <Other as Assoc>::Demo {}\n",
     );
-    fs::write(dir.join("crates/markdown_tests/README.md"), "# MD Tests\n").unwrap();
-    fs::create_dir_all(dir.join("docs")).unwrap();
+    assert!(scan_snippet(qself_impl, vec![demo_entry]));
+}
+
+#[test]
+fn test_standalone_policy_audit_rejects_missing_lints_from_root_and_subdir() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let dir = TempTestDir::new("policy_audit_root_and_subdir");
+    let _guard = CurrentDirGuard(std::env::current_dir().unwrap());
+
     fs::write(
-        dir.join("docs/guide.md"),
-        "```rust\nuse nalgebra::Vector2;\nlet _ = Vector2::new(1.0, 2.0);\n```\n```rust,ignore\nuse eframe::App;\n```\n",
+        dir.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/good\", \"crates/bad\"]\n",
+    )
+    .unwrap();
+    write_member_crate(&dir, "crates/good", "pub fn ok() {}\n");
+    write_member_crate(&dir, "crates/bad", "pub fn bad() {}\n");
+    fs::write(
+        dir.join("crates/bad/Cargo.toml"),
+        "[package]\nname = \"bad\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
     )
     .unwrap();
 
-    fs::write(
-        dir.join("crates/markdown_tests/Cargo.toml"),
-        "[package]\nname = \"markdown_tests\"\nversion = \"0.1.0\"\n\n[dev-dependencies]\nnalgebra = \"0.34\"\neframe = \"0.33\"\n\n[lints]\nworkspace = true\n",
-    )
-    .unwrap();
-    assert!(!run_policy_audit_with_whitelist(
-        &[md_member.as_str()],
-        &whitelist_file
-    ));
+    std::env::set_current_dir(&*dir).unwrap();
+    assert!(run_policy_audit(&["crates/good"]));
+    assert!(!run_policy_audit(&["crates/good", "crates/bad"]));
 
-    fs::write(
-        dir.join("crates/markdown_tests/Cargo.toml"),
-        "[package]\nname = \"markdown_tests\"\nversion = \"0.1.0\"\n\n[dev-dependencies]\nnalgebra = \"0.34\"\n\n[lints]\nworkspace = true\n",
-    )
-    .unwrap();
-    assert!(run_policy_audit_with_whitelist(
-        &[md_member.as_str()],
-        &whitelist_file
-    ));
+    std::env::set_current_dir(dir.join("crates/good")).unwrap();
+    assert!(run_policy_audit(&["crates/good"]));
+    assert!(!run_policy_audit(&["crates/good", "crates/bad"]));
 }

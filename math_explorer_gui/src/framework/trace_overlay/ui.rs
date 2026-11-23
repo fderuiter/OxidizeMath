@@ -43,13 +43,10 @@ impl TraceSnapshotManager {
                 format!("{} - {}", snapshot.display_label(), series.name)
             };
             plot_ui.line(
-                Line::new(
-                    line_name,
-                    PlotPoints::from_iter(series.points.iter().copied()),
-                )
-                .color(color)
-                .style(LineStyle::Dashed { length: dash_len })
-                .width(width),
+                Line::new(line_name, PlotPoints::from_shared(series.display_points()))
+                    .color(color)
+                    .style(LineStyle::Dashed { length: dash_len })
+                    .width(width),
             );
         }
     }

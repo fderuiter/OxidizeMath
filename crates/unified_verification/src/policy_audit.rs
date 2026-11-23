@@ -12,7 +12,6 @@ use dependencies::{
     manifest_package_name,
 };
 use std::collections::HashSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 use syn::visit::Visit;
 
@@ -32,51 +31,10 @@ fn is_dead_code_lint_path(path: &syn::Path) -> bool {
 }
 
 fn attr_suppresses_dead_code(attr: &syn::Attribute) -> bool {
-    let mut stack = vec![attr.meta.clone()];
-    while let Some(meta) = stack.pop() {
-        let syn::Meta::List(list) = meta else {
-            continue;
-        };
-        if list.path.is_ident("allow") || list.path.is_ident("expect") {
-            let Ok(nested) = list.parse_args_with(
-                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-            ) else {
-                continue;
-            };
-            for item in nested {
-                if let syn::Meta::Path(lint_path) = item
-                    && is_dead_code_lint_path(&lint_path)
-                {
-                    return true;
-                }
-            }
-        } else if list.path.is_ident("cfg_attr") {
-            let Ok(nested) = list.parse_args_with(
-                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-            ) else {
-                continue;
-            };
-            for item in nested.into_iter().skip(1) {
-                stack.push(item);
-            }
-        }
-    }
-    false
-}
-
-fn impl_self_ident(ty: &syn::Type) -> Option<String> {
-    let mut current = ty;
-    while let syn::Type::Group(group) = current {
-        current = &group.elem;
-    }
-    if let syn::Type::Paren(paren) = current {
-        current = &paren.elem;
-    }
-    if let syn::Type::Path(type_path) = current {
-        type_path.path.segments.last().map(|s| s.ident.to_string())
-    } else {
-        None
-    }
+    crate::ast_helpers::find_suppressed_lint_in_attr(attr, |lint_path| {
+        is_dead_code_lint_path(lint_path).then_some(())
+    })
+    .is_some()
 }
 
 struct DeadCodeVisitor {
@@ -164,7 +122,7 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor {
         syn::visit::visit_item_trait_alias(self, i);
     }
     fn visit_item_impl(&mut self, i: &'ast syn::ItemImpl) {
-        let ident = impl_self_ident(&i.self_ty);
+        let ident = crate::ast_helpers::impl_base_ident(&i.self_ty);
         self.check_attrs(&i.attrs, ident.as_deref());
         syn::visit::visit_item_impl(self, i);
     }
@@ -283,22 +241,19 @@ fn audit_single_member(
     whitelist: &VerificationWhitelist,
     max_fn_lines: usize,
     cache: &mut oxidize_core::traceability::AstCache,
+    manifest_cache: &mut crate::manifest_cache::ManifestCache,
 ) -> bool {
     let member_dir = lint_policy::resolve_member_dir(member);
     let cargo_toml_path = member_dir.join("Cargo.toml");
-    let Ok(content) = fs::read_to_string(&cargo_toml_path) else {
-        eprintln!("[!] Failed to read {}", cargo_toml_path.display());
-        return false;
-    };
-    let parsed: toml::Value = match toml::from_str(&content) {
-        Ok(val) => val,
+    let parsed = match manifest_cache.get_or_load(&cargo_toml_path) {
+        Ok(cached) => cached.parsed.clone(),
         Err(err) => {
-            eprintln!("[!] Failed to parse {}: {}", cargo_toml_path.display(), err);
+            eprintln!("{err}");
             return false;
         }
     };
 
-    let mut success = lint_policy::check_manifest_lints(member, &cargo_toml_path, &parsed);
+    let mut success = manifest_cache.check_manifest_lints_once(member, &cargo_toml_path, &parsed);
     let check_clippy_bypasses = !lint_policy::is_vendored_egui_plot_exempt(member, &parsed);
     let expected_deps = collect_expected_dependencies(&parsed);
     let package_name = manifest_package_name(&parsed);
@@ -347,6 +302,15 @@ pub fn run_policy_audit_with_cache(
     members: &[&str],
     cache: &mut oxidize_core::traceability::AstCache,
 ) -> bool {
+    let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
+    run_policy_audit_with_caches(members, cache, &mut manifest_cache)
+}
+
+pub(crate) fn run_policy_audit_with_caches(
+    members: &[&str],
+    cache: &mut oxidize_core::traceability::AstCache,
+    manifest_cache: &mut crate::manifest_cache::ManifestCache,
+) -> bool {
     let candidates = if lint_policy::cwd_is_member_crate_dir() {
         WORKSPACE_WHITELIST_CANDIDATES
     } else {
@@ -354,19 +318,26 @@ pub fn run_policy_audit_with_cache(
     };
     let whitelist_path = crate::whitelist::resolve_whitelist_path(candidates)
         .unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
-    run_policy_audit_with_whitelist_and_cache(members, &whitelist_path, cache)
+    run_policy_audit_with_whitelist_and_caches(members, &whitelist_path, cache, manifest_cache)
 }
 
 #[cfg(test)]
 pub(crate) fn run_policy_audit_with_whitelist(members: &[&str], whitelist_path: &Path) -> bool {
     let mut cache = oxidize_core::traceability::AstCache::new();
-    run_policy_audit_with_whitelist_and_cache(members, whitelist_path, &mut cache)
+    let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
+    run_policy_audit_with_whitelist_and_caches(
+        members,
+        whitelist_path,
+        &mut cache,
+        &mut manifest_cache,
+    )
 }
 
-pub(crate) fn run_policy_audit_with_whitelist_and_cache(
+pub(crate) fn run_policy_audit_with_whitelist_and_caches(
     members: &[&str],
     whitelist_path: &Path,
     cache: &mut oxidize_core::traceability::AstCache,
+    manifest_cache: &mut crate::manifest_cache::ManifestCache,
 ) -> bool {
     let whitelist = match crate::whitelist::load_whitelist_strict(None, &[whitelist_path]) {
         Ok(cfg) => cfg,
@@ -383,7 +354,7 @@ pub(crate) fn run_policy_audit_with_whitelist_and_cache(
     );
 
     for member in members {
-        if !audit_single_member(member, &whitelist, max_fn_lines, cache) {
+        if !audit_single_member(member, &whitelist, max_fn_lines, cache, manifest_cache) {
             success = false;
         }
     }
@@ -391,5 +362,7 @@ pub(crate) fn run_policy_audit_with_whitelist_and_cache(
     success
 }
 
+#[cfg(test)]
+mod dep_doctest_tests;
 #[cfg(test)]
 mod tests;

@@ -35,12 +35,14 @@ const INNER_BLOCKED_LINTS: &[&str] = &[
 
 const SCOPE_EXTRA_BLOCKED_LINTS: &[&str] = &["too_many_lines", "cognitive_complexity"];
 const TOO_MANY_LINES_ONLY: &[&str] = &["too_many_lines"];
-const MAX_ATTR_STACK_STEPS: usize = 256;
 
 pub(crate) fn load_too_many_lines_threshold() -> usize {
-    let candidates = [".clippy.toml", "../../.clippy.toml"];
+    let candidates = [
+        PathBuf::from(".clippy.toml"),
+        crate::manifest_cache::resolve_workspace_path(".clippy.toml"),
+    ];
     for candidate in candidates {
-        let Ok(content) = fs::read_to_string(candidate) else {
+        let Ok(content) = fs::read_to_string(&candidate) else {
             continue;
         };
         let Ok(parsed) = toml::from_str::<toml::Value>(&content) else {
@@ -57,31 +59,17 @@ pub(crate) fn load_too_many_lines_threshold() -> usize {
     DEFAULT_TOO_MANY_LINES_THRESHOLD
 }
 
-pub(crate) fn cwd_is_workspace_root() -> bool {
-    fs::read_to_string("Cargo.toml")
-        .map(|c| c.contains("[workspace]"))
-        .unwrap_or(false)
-}
-
 pub(crate) fn cwd_is_member_crate_dir() -> bool {
-    !cwd_is_workspace_root()
+    crate::manifest_cache::workspace_root_dir() != Path::new(".")
         && Path::new("Cargo.toml").exists()
-        && fs::read_to_string("../../Cargo.toml")
-            .map(|c| c.contains("[workspace]"))
-            .unwrap_or(false)
 }
 
 pub(crate) fn resolve_member_dir(member: &str) -> PathBuf {
     let direct = PathBuf::from(member);
-    if direct.join("Cargo.toml").exists() || direct.is_absolute() || !cwd_is_member_crate_dir() {
+    if direct.is_absolute() || direct.join("Cargo.toml").exists() || !cwd_is_member_crate_dir() {
         return direct;
     }
-    let candidate = Path::new("../..").join(member);
-    if candidate.join("Cargo.toml").exists() {
-        candidate
-    } else {
-        direct
-    }
+    crate::manifest_cache::workspace_root_dir().join(member)
 }
 
 pub(crate) fn is_vendored_egui_plot(member: &str) -> bool {
@@ -163,41 +151,9 @@ pub(crate) fn find_suppressed_clippy_lint_in_meta(
     root_meta: &syn::Meta,
     names: &[&'static str],
 ) -> Option<&'static str> {
-    let mut stack = vec![root_meta.clone()];
-    let mut steps = 0usize;
-    while let Some(meta) = stack.pop() {
-        if steps >= MAX_ATTR_STACK_STEPS {
-            break;
-        }
-        steps += 1;
-        let syn::Meta::List(list) = meta else {
-            continue;
-        };
-        if list.path.is_ident("allow") || list.path.is_ident("expect") {
-            let Ok(nested) = list.parse_args_with(
-                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-            ) else {
-                continue;
-            };
-            for item in nested {
-                if let syn::Meta::Path(lint_path) = item
-                    && let Some(found) = matched_clippy_lint(&lint_path, names)
-                {
-                    return Some(found);
-                }
-            }
-        } else if list.path.is_ident("cfg_attr") {
-            let Ok(nested) = list.parse_args_with(
-                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-            ) else {
-                continue;
-            };
-            for item in nested.into_iter().skip(1) {
-                stack.push(item);
-            }
-        }
-    }
-    None
+    crate::ast_helpers::find_suppressed_lint_in_meta(root_meta, |lint_path| {
+        matched_clippy_lint(lint_path, names)
+    })
 }
 
 pub(crate) fn find_suppressed_clippy_lint(
