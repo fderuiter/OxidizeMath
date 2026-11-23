@@ -25,11 +25,11 @@ pub enum SimCommand {
         #[allow(missing_docs)]
         is_obstacle: bool,
     },
-    #[allow(missing_docs)]
+    /// Applies a batch of raster brush cell coordinates with a tool-specific brush mode.
     ApplyBrushCells {
-        #[allow(missing_docs)]
+        /// Deduplicated `(x, y)` grid coordinates stamped by the brush stroke.
         cells: Vec<(usize, usize)>,
-        #[allow(missing_docs)]
+        /// Tool-specific brush mode index.
         mode: u8,
     },
     #[allow(missing_docs)]

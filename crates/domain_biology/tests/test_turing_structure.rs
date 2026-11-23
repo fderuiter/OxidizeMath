@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test turing structure.
 #[cfg(test)]
 mod tests {
     use domain_biology::biology::morphogenesis::{

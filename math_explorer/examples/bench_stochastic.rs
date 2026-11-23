@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for bench stochastic.
 use math_explorer::epidemiology::compartmental::SIRModel;
 use math_explorer::epidemiology::stochastic::GillespieSolver;
 use math_explorer::rng::OxidizeRng;

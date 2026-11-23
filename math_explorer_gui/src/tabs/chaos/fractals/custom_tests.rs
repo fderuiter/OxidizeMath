@@ -83,7 +83,10 @@ fn test_custom_fractal_progressive_worker() {
     }
     assert_eq!(strides, vec![8, 4, 2, 1]);
     let expected = render_fractal_color_image_with_formula(&req, Some(&job));
-    assert_eq!(*runner.get_snapshot().pixels.read().unwrap(), expected.pixels);
+    assert_eq!(
+        *runner.get_snapshot().pixels.read().unwrap(),
+        expected.pixels
+    );
 }
 
 #[test]
@@ -119,4 +122,25 @@ fn test_custom_fractal_url_roundtrip() {
         .expect("custom julia glsl");
     assert!(shadertoy.contains("const bool IS_JULIA = true;"));
     assert!(shadertoy.contains("void mainImage(out vec4 fragColor, in vec2 fragCoord)"));
+}
+
+#[test]
+fn test_custom_fractal_glsl_shader_export() {
+    let mut pmap = BTreeMap::new();
+    pmap.insert("a".to_string(), 1.25);
+    let mut viewer = FractalViewer {
+        mode: FractalMode::CustomJulia,
+        julia_c: Complex::new(-0.4, 0.6),
+        ..Default::default()
+    };
+    viewer.math_input.set_expression("a * z^3 + c");
+    viewer.math_input.set_params_map(&pmap);
+
+    let glsl = viewer
+        .export_glsl_shader(crate::framework::ShaderDialect::WebGl2Es300)
+        .expect("custom Julia GLSL shader compiles");
+    assert!(glsl.contains("const bool IS_JULIA = true;"));
+    assert!(glsl.contains("const bool IS_CUSTOM = true;"));
+    assert!(glsl.contains("const vec2 a = vec2(1.25, 0.0);"));
+    assert!(glsl.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
 }
