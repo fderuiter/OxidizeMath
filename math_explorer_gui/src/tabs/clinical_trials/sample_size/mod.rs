@@ -12,12 +12,13 @@ use super::clinical_io::ClinicalIoState;
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 use eframe::egui;
 use math_explorer::applied::clinical_trials::sample_size::{
-    calculate_sample_size_means, calculate_sample_size_proportions,
+    calculate_power_means, calculate_power_proportions, calculate_sample_size_means,
+    calculate_sample_size_proportions,
 };
 
 /// Standard statistical power milestones tabulated in protocol sizing cards.
 pub const POWER_MILESTONES: [f64; 8] = [0.50, 0.60, 0.70, 0.80, 0.85, 0.90, 0.95, 0.99];
-const POWER_SWEEP_STEPS: usize = 50;
+const POWER_CURVE_STEPS: usize = 64;
 
 /// Hypothesis test family used for sample size and power curve calculation.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -48,6 +49,8 @@ pub struct ProtocolSizingRow {
     pub n_per_arm: usize,
     /// Total 1:1 two-arm enrollment `2 * N`.
     pub total_n: usize,
+    /// Exact analytical power achieved at ceiling integer `n_per_arm`.
+    pub achieved_power: f64,
 }
 
 /// Interactive two-arm sample size calculator with power-vs-`N` curve and protocol table exports.
@@ -87,7 +90,7 @@ impl Default for SampleSizeCalculatorTool {
             p1: 0.5,
             p2: 0.6,
             result: Ok(0),
-            power_curve: Vec::with_capacity(POWER_SWEEP_STEPS),
+            power_curve: Vec::with_capacity(POWER_CURVE_STEPS),
             protocol_rows: Vec::with_capacity(POWER_MILESTONES.len()),
             io_state: ClinicalIoState::default(),
         };
@@ -123,21 +126,40 @@ impl SampleSizeCalculatorTool {
         }
     }
 
-    /// Recomputes required `N`, the `[N, 1 - beta]` power curve, and protocol sizing milestones.
+    /// Evaluates exact analytical statistical power `1 - beta` at a fixed `n_per_group`.
+    #[must_use]
+    pub fn evaluate_power_at(&self, n_per_group: usize) -> Option<f64> {
+        match self.mode {
+            CalculationMode::Means => {
+                calculate_power_means(self.alpha, n_per_group, self.delta, self.sigma).ok()
+            }
+            CalculationMode::Proportions => {
+                calculate_power_proportions(self.alpha, n_per_group, self.p1, self.p2).ok()
+            }
+        }
+    }
+
+    /// Recomputes required `N`, the analytical `[N, 1 - beta]` power curve, and protocol milestones.
     pub fn recalculate(&mut self) {
         self.result = self.evaluate_at_power(self.power);
         self.power_curve.clear();
         self.protocol_rows.clear();
 
-        if self.result.is_err() {
+        let Ok(req_n) = self.result else {
             return;
-        }
+        };
 
-        for idx in 0..POWER_SWEEP_STEPS {
-            let frac = idx as f64 / (POWER_SWEEP_STEPS - 1) as f64;
-            let p = 0.50 + frac * (0.99 - 0.50);
-            if let Ok(n) = self.evaluate_at_power(p) {
-                self.power_curve.push([n as f64, p]);
+        let max_n = req_n.saturating_mul(2).clamp(66, 2_000);
+        for idx in 0..POWER_CURVE_STEPS {
+            let n = 2 + ((max_n - 2) * idx) / (POWER_CURVE_STEPS - 1);
+            let is_distinct = self
+                .power_curve
+                .last()
+                .is_none_or(|prev| (prev[0] - n as f64).abs() > 0.5);
+            if is_distinct {
+                if let Some(pwr) = self.evaluate_power_at(n) {
+                    self.power_curve.push([n as f64, pwr]);
+                }
             }
         }
 
@@ -147,6 +169,7 @@ impl SampleSizeCalculatorTool {
                     power: p,
                     n_per_arm: n,
                     total_n: n.saturating_mul(2),
+                    achieved_power: self.evaluate_power_at(n).unwrap_or(p),
                 });
             }
         }
@@ -270,12 +293,14 @@ inventory::submit! {
         domain: "clinical_trials",
         tags: &[
             "statistical power",
+            "sample-size",
             "hypothesis test",
             "effect size",
             "significance",
             "biostatistics",
             "protocol",
             "rct",
+            "clinical-trials",
         ],
         build: || Box::new(SampleSizeCalculatorTool::default()),
     }

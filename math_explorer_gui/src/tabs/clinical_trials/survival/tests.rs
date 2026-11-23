@@ -35,6 +35,7 @@ fn test_observation_cap_enforced_in_recalculate_and_load_state() {
     let mut tool = SurvivalAnalysisTool::default();
     let state_ok = serde_json::to_string(&SurvivalState {
         input_text: at_cap_input,
+        control_text: String::new(),
     })
     .unwrap();
     assert!(tool.try_load_state(&state_ok).is_ok());
@@ -47,6 +48,7 @@ fn test_observation_cap_enforced_in_recalculate_and_load_state() {
         .join("\n");
     let state_over = serde_json::to_string(&SurvivalState {
         input_text: over_cap_input.clone(),
+        control_text: String::new(),
     })
     .unwrap();
     let err = tool.try_load_state(&state_over).unwrap_err();
@@ -69,6 +71,25 @@ fn test_starter_preset_preserves_survival_probabilities() {
     assert!((tool.curve[0].survival_probability - 0.9).abs() < 1e-12);
     assert!((tool.curve[1].survival_probability - 0.8).abs() < 1e-12);
     assert!((tool.curve[2].survival_probability - 0.8).abs() < 1e-12);
+}
+
+#[test]
+fn test_two_arm_kaplan_meier_estimates_hazard_ratio() {
+    let mut tool = SurvivalAnalysisTool::default();
+    let state = serde_json::to_string(&SurvivalState {
+        input_text: "10.0, 1\n12.0, 0\n15.0, 1".to_string(),
+        control_text: "4.0, 1\n5.0, 1\n6.0, 1".to_string(),
+    })
+    .unwrap();
+    tool.try_load_state(&state).unwrap();
+    assert_eq!(tool.arms.len(), 2);
+    assert_eq!(tool.arms[0].name, "Treatment");
+    assert_eq!(tool.arms[1].name, "Control");
+    assert_eq!(tool.arms[0].observations.len(), 3);
+    assert_eq!(tool.arms[1].observations.len(), 3);
+    assert!(!tool.arms[1].curve.is_empty());
+    let hr = tool.hazard_ratio.as_ref().unwrap().as_ref().unwrap();
+    assert!(*hr < 1.0 && hr.is_finite());
 }
 
 #[test]

@@ -119,6 +119,9 @@ fn render_required_size_banner(tool: &SampleSizeCalculatorTool, ui: &mut egui::U
         Ok(n) => {
             render_copyable_metric(ui, "Required per Arm (N)", &n.to_string());
             render_copyable_metric(ui, "Total Enrollment (2N)", &(n * 2).to_string());
+            if let Some(achieved) = tool.evaluate_power_at(*n) {
+                render_copyable_metric(ui, "Achieved Power", &format!("{:.1}%", achieved * 100.0));
+            }
         }
         Err(err) => {
             ui.colored_label(palette.error, format!("⚠ Error: {err}"));
@@ -168,13 +171,13 @@ fn render_power_curve_plot(tool: &SampleSizeCalculatorTool, ui: &mut egui::Ui) {
         .legend(Legend::default())
         .x_axis_label("Sample Size per Arm (N)")
         .y_axis_label("Statistical Power (1 - β)")
-        .include_y(0.48)
+        .include_y(0.0)
         .include_y(1.0)
         .show(ui, |plot_ui| {
             if !tool.power_curve.is_empty() {
                 plot_ui.line(
                     Line::new(
-                        "Power Curve (1 - β)",
+                        "Analytical Power Curve (1 - β)",
                         PlotPoints::new(tool.power_curve.clone()),
                     )
                     .color(palette.series_color(0))
@@ -187,10 +190,11 @@ fn render_power_curve_plot(tool: &SampleSizeCalculatorTool, ui: &mut egui::Ui) {
                     .style(LineStyle::Dashed { length: 8.0 }),
             );
             if let Ok(req_n) = tool.result {
+                let op_pwr = tool.evaluate_power_at(req_n).unwrap_or(tool.power);
                 plot_ui.points(
                     Points::new(
-                        format!("Operating Point (N = {req_n}, 1-β = {:.2})", tool.power),
-                        vec![[req_n as f64, tool.power]],
+                        format!("Operating Point (N = {req_n}, 1-β = {op_pwr:.3})"),
+                        vec![[req_n as f64, op_pwr]],
                     )
                     .radius(5.5_f32)
                     .color(palette.success),
@@ -212,11 +216,13 @@ fn render_protocol_sizing_table(tool: &SampleSizeCalculatorTool, ui: &mut egui::
             ui.strong("Target Power (1 - β)");
             ui.strong("Per-Arm Sample Size (N)");
             ui.strong("Total 2-Arm Enrollment (2N)");
+            ui.strong("Achieved Power");
             ui.end_row();
             for row in &tool.protocol_rows {
                 ui.label(format!("{:.0}% ({:.2})", row.power * 100.0, row.power));
                 ui.label(row.n_per_arm.to_string());
                 ui.label(row.total_n.to_string());
+                ui.label(format!("{:.2}%", row.achieved_power * 100.0));
                 ui.end_row();
             }
         });

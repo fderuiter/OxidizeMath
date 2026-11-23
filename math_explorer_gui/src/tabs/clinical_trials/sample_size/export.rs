@@ -121,9 +121,10 @@ pub fn collect_export_datasets(tool: &SampleSizeCalculatorTool) -> Vec<(String, 
         ));
     }
     if let Ok(req_n) = tool.result {
+        let op_pwr = tool.evaluate_power_at(req_n).unwrap_or(tool.power);
         ds.push((
             "Selected Protocol Operating Point".to_string(),
-            vec![[req_n as f64, tool.power]],
+            vec![[req_n as f64, op_pwr]],
         ));
     }
     ds

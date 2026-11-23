@@ -89,6 +89,8 @@ impl PhantomEngine {
                 return [u, v];
             }
         }
+        #[cfg(not(feature = "biology"))]
+        let _ = idx;
         let r = fallback_rho.clamp(0.05, 1.0);
         [r, (1.0 - 0.5 * r).max(0.1)]
     }

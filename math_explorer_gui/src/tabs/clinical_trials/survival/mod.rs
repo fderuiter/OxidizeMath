@@ -4,6 +4,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 pub mod export;
+mod parser;
 pub mod ui;
 
 #[cfg(test)]
@@ -15,7 +16,6 @@ use eframe::egui;
 use math_explorer::applied::clinical_trials::survival_analysis::{
     kaplan_meier, try_estimate_hazard_ratio, Observation, TimePoint,
 };
-use math_explorer::applied::clinical_trials::types::SurvivalTime;
 
 /// Canonical two-arm survival cohort example (`Arm, Time, Event`) for comparative KM & HR analysis.
 pub const TWO_ARM_EXAMPLE_CSV: &str = "\
@@ -83,6 +83,8 @@ pub(crate) fn build_curve_step_points(curve: &[TimePoint]) -> Vec<[f64; 2]> {
 pub struct SurvivalAnalysisTool {
     /// Raw single-arm (`time, event`) or multi-arm (`arm, time, event`) CSV/TSV text.
     pub input_text: String,
+    /// Optional separate Control arm (`time, event`) text.
+    pub control_text: String,
     /// Flattened validated observations across all arms (capped at `MAX_ITERATIONS`).
     pub(crate) observations: Vec<Observation>,
     /// Primary arm Kaplan-Meier curve (single-arm curve or first study arm).
@@ -91,7 +93,7 @@ pub struct SurvivalAnalysisTool {
     pub arms: Vec<ArmSurvival>,
     /// Incidence-density hazard ratio `HR` between `arms[0]` and `arms[1]` when `arms.len() >= 2`.
     pub hazard_ratio: Option<Result<f64, String>>,
-    /// Parse or validation error message when `input_text` is malformed.
+    /// Parse or validation error message when `input_text` or `control_text` is malformed.
     pub(crate) error_message: Option<String>,
     /// Non-blocking file picker and `.csv`/`.md`/`.svg` download state.
     pub(crate) io_state: ClinicalIoState,
@@ -102,6 +104,7 @@ impl Default for SurvivalAnalysisTool {
         let default_text = "6.0, 1\n6.0, 1\n6.0, 1\n7.0, 1\n10.0, 1\n13.0, 1\n16.0, 1\n22.0, 1\n23.0, 1\n6.0, 0\n9.0, 0\n10.0, 0\n11.0, 0\n17.0, 0\n19.0, 0\n20.0, 0\n25.0, 0\n32.0, 0\n32.0, 0\n34.0, 0\n35.0, 0";
         let mut tool = Self {
             input_text: default_text.to_string(),
+            control_text: String::new(),
             observations: Vec::new(),
             curve: Vec::new(),
             arms: Vec::new(),
@@ -118,142 +121,24 @@ impl Default for SurvivalAnalysisTool {
 #[serde(deny_unknown_fields)]
 struct SurvivalState {
     input_text: String,
-}
-
-fn parse_event_flag(line_idx: usize, event_str: &str) -> Result<bool, String> {
-    match event_str.parse::<u8>() {
-        Ok(1) => Ok(true),
-        Ok(0) => Ok(false),
-        _ if event_str.eq_ignore_ascii_case("true") || event_str.eq_ignore_ascii_case("event") => {
-            Ok(true)
-        }
-        _ if event_str.eq_ignore_ascii_case("false")
-            || event_str.eq_ignore_ascii_case("censored") =>
-        {
-            Ok(false)
-        }
-        _ => Err(format!(
-            "Line {}: Event must be 1 (event) or 0 (censored)",
-            line_idx + 1
-        )),
-    }
-}
-
-fn is_header_line(parts: &[&str]) -> bool {
-    parts.iter().any(|raw| {
-        matches!(
-            raw.trim().to_ascii_lowercase().as_str(),
-            "time" | "survival_time" | "arm" | "group" | "cohort"
-        )
-    })
-}
-
-fn split_fields(line: &str) -> Vec<&str> {
-    if line.contains('\t') {
-        line.split('\t').collect()
-    } else {
-        line.split(',').collect()
-    }
-}
-
-fn parse_survival_row(line_idx: usize, parts: &[&str]) -> Result<(String, Observation), String> {
-    let (arm_name, time_str, event_str) = match parts.len() {
-        2 => ("Cohort".to_string(), parts[0].trim(), parts[1].trim()),
-        3 => {
-            let p0 = parts[0].trim();
-            let p1 = parts[1].trim();
-            let p2 = parts[2].trim();
-            if p1.parse::<f64>().is_ok() && parse_event_flag(line_idx, p2).is_ok() {
-                if p0.is_empty() {
-                    return Err(format!("Line {}: Arm label cannot be empty", line_idx + 1));
-                }
-                (p0.to_string(), p1, p2)
-            } else if p0.parse::<f64>().is_ok() && parse_event_flag(line_idx, p1).is_ok() {
-                if p2.is_empty() {
-                    return Err(format!("Line {}: Arm label cannot be empty", line_idx + 1));
-                }
-                (p2.to_string(), p0, p1)
-            } else {
-                return Err(format!(
-                    "Line {}: Invalid 3-column survival row (expected 'arm, time, event')",
-                    line_idx + 1
-                ));
-            }
-        }
-        _ => {
-            return Err(format!(
-                "Line {}: Expected 'time, event' or 'arm, time, event'",
-                line_idx + 1
-            ));
-        }
-    };
-
-    let time_val = time_str
-        .parse::<f64>()
-        .map_err(|_| format!("Line {}: Invalid time '{}'", line_idx + 1, time_str))?;
-    let event_occurred = parse_event_flag(line_idx, event_str)?;
-    let time = SurvivalTime::new(time_val).map_err(|e| format!("Line {}: {}", line_idx + 1, e))?;
-
-    Ok((
-        arm_name,
-        Observation {
-            time,
-            event_occurred,
-        },
-    ))
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    control_text: String,
 }
 
 impl SurvivalAnalysisTool {
     /// Recomputes single-arm or multi-arm Kaplan-Meier curves and two-arm hazard ratio.
     pub fn recalculate(&mut self) {
         self.clear_computed();
-        let cleaned = crate::web_io::strip_utf8_bom(&self.input_text);
-        let mut arm_buckets: Vec<(String, Vec<Observation>)> = Vec::new();
-        let mut saw_data_row = false;
-
-        for (line_idx, raw_line) in cleaned.lines().enumerate() {
-            let line = raw_line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
+        match parser::parse_survival_cohorts(&self.input_text, &self.control_text) {
+            Ok((all_obs, arm_buckets)) => {
+                self.observations = all_obs;
+                self.finalize_arms(arm_buckets);
             }
-            let parts = split_fields(line);
-            if !saw_data_row && is_header_line(&parts) {
-                saw_data_row = true;
-                continue;
-            }
-            saw_data_row = true;
-
-            if self.observations.len() >= math_commons::registry::MAX_ITERATIONS {
+            Err(err) => {
                 self.clear_computed();
-                self.error_message = Some(format!(
-                    "Line {}: Maximum of {} observations exceeded",
-                    line_idx + 1,
-                    math_commons::registry::MAX_ITERATIONS
-                ));
-                return;
-            }
-
-            match parse_survival_row(line_idx, &parts) {
-                Ok((arm, obs)) => {
-                    self.observations.push(obs);
-                    if let Some((_, bucket)) = arm_buckets
-                        .iter_mut()
-                        .find(|(existing, _)| existing.eq_ignore_ascii_case(&arm))
-                    {
-                        bucket.push(obs);
-                    } else {
-                        arm_buckets.push((arm, vec![obs]));
-                    }
-                }
-                Err(err) => {
-                    self.clear_computed();
-                    self.error_message = Some(err);
-                    return;
-                }
+                self.error_message = Some(err);
             }
         }
-
-        self.finalize_arms(arm_buckets);
     }
 
     fn clear_computed(&mut self) {
@@ -307,6 +192,7 @@ impl SurvivalAnalysisTool {
         }
         let summary = (candidate.arms.len(), candidate.observations.len());
         self.input_text = candidate.input_text;
+        self.control_text.clear();
         self.observations = candidate.observations;
         self.curve = candidate.curve;
         self.arms = candidate.arms;
@@ -377,6 +263,7 @@ impl InteractiveTool for SurvivalAnalysisTool {
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&SurvivalState {
             input_text: self.input_text.clone(),
+            control_text: self.control_text.clone(),
         })
         .ok()
     }
@@ -387,6 +274,7 @@ impl InteractiveTool for SurvivalAnalysisTool {
             serde_json::from_str(state).map_err(|e| format!("Invalid survival state: {e}"))?;
         let mut candidate = Self {
             input_text: s.input_text,
+            control_text: s.control_text,
             ..Self::default()
         };
         candidate.recalculate();
@@ -413,7 +301,10 @@ inventory::submit! {
         tags: &[
             "kaplan-meier",
             "censoring",
+            "hazard",
+            "hazard-ratio",
             "hazard ratio",
+            "survival",
             "time-to-event",
             "nonparametric",
             "biostatistics",

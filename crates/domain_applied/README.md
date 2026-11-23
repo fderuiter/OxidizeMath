@@ -10,16 +10,17 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 
 ### Module Structure
 
-- **`win_ratio`**: Prioritized composite endpoint and bivariate Weibull probability win ratio evaluation for clinical research:
-  - `WinRatioAnalysis` & `WinRatioStats`: Configurable hierarchical comparison engine (`HigherIsBetter`, `LowerIsBetter`, `ThresholdComparator`) across `UnmatchedPairing` and `MatchedPairing` cohorts with 95% confidence intervals and p-values (`calculate_statistics`).
+- **`win_ratio`**: Prioritized composite endpoint, right-censored U-statistic, and bivariate Weibull probability win ratio evaluation for clinical research:
+  - `WinRatioAnalysis` & `WinRatioStats`: Configurable hierarchical comparison engine (`HigherIsBetter`, `LowerIsBetter`, `ThresholdComparator`) across `UnmatchedPairing` (`evaluate_unmatched`, `evaluate_unmatched_into`) and `MatchedPairing` cohorts with 95% confidence intervals and p-values (`calculate_statistics`).
+  - `censoring` & `u_statistic`: Right-censored time-to-event outcomes (`CensoredOutcome`), Pocock/Finkelstein-Schoenfeld comparators (`RightCensoredComparator`), hierarchical tier waterfall counters (`TierCount`), and Pocock/Bebu-Lachin two-sample U-statistic variance projection (`UnmatchedWinRatioSummary`, `UnmatchedScratch`, `compute_unmatched_u_statistics`).
   - `sample_win_ratio`: Pocock et al. (2012) two-tier matched-pair `WinLossCounts` (`calculate_sample_win_ratio`, `calculate_win_proportion`, `calculate_confidence_interval`, `calculate_significance_test_statistic`).
-  - `probability_win_ratio` & `simulation`: Parametric `BivariateWeibullModel` (`SimulationParams`, `win_ratio_parameter`) and Clenshaw-Curtis numerical integration (`ProbabilityWinRatioContext`, `calculate_probability_win_ratio`) over censoring horizons $c$.
+  - `probability_win_ratio`, `simulation`, `weibull_sampler`, & `power_sweep`: Parametric `BivariateWeibullModel` (`SimulationParams`, `win_ratio_parameter`), Clenshaw-Curtis numerical integration (`ProbabilityWinRatioContext`, `calculate_probability_win_ratio`) over censoring horizons $c$, exact inverse-CDF sampling via `OxidizeRng`, and zero-allocation Monte Carlo power sweeps (`run_power_sweep_into`, `run_weibull_power_sweep`).
   - `bmi`: Anthropometric `calculate_bmi` covariate derivation ($\text{kg}/\text{m}^2$).
-- **`clinical_trials`**: Biostatistical trial design (`SimpleRandomizer`, `BlockRandomizer`, `StratifiedRandomizer`), Neyman-Pearson sample size determination (`calculate_sample_size_means`, `calculate_sample_size_proportions`), hypothesis testing (`TTestIndependent`, `ChiSquare2x2`), relative risk/odds ratio metrics (`calculate_risk_metrics`), and right-censored survival analysis (`kaplan_meier`, `try_estimate_hazard_ratio`).
+- **`clinical_trials`**: Biostatistical trial design (`SimpleRandomizer`, `BlockRandomizer`, `StratifiedRandomizer`), Neyman-Pearson sample size and analytical power curves (`calculate_sample_size_means`, `calculate_sample_size_proportions`, `calculate_power_means`, `calculate_power_proportions`), hypothesis testing (`TTestIndependent`, `ChiSquare2x2`), binary risk metrics (`calculate_risk_metrics`), and right-censored survival analysis (`kaplan_meier`, `try_estimate_hazard_ratio`).
 - **`pharmacokinetics`**: One-compartment oral ADME kinetics (`PKParameters`, `BatemanModel`, `half_life`, `t_max`, `solve_ka`), multi-dose linear superposition (`SuperpositionModel`), biphasic extended-release formulations (`TwoPulseModel`), and stereoselective chiral mixtures (`EnantiomerModel`).
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
 - **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
-- **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.
+- **`freesurfer`**: Triangulated cortical surface reconstruction (`Surface`, `MriVolume`, thin-plate `internal_energy`, Gaussian-smoothed `external_energy_volume`, `evolve_surface_deformable`), 6-connected Potts MRF Bayesian segmentation (`TissueClass`, `normalized_posteriors`, `mrf_segment_volume`), uniform-grid cortical thickness maps (`cortical_thickness`, `cortical_thickness_map`), and vertex-wise OLS GLM contrasts (`estimate_beta`, `t_statistic`).
 - **`game_theory`**: Mean Field Games, evolutionary matrix dynamics, and mechanism design.
 - **`lorahub` & `grpo`**: Machine learning parameter merging and group relative policy optimization.
 - **`cannibalism`**: Zero-allocation upwind solvers for McKendrick-von Foerster age-structured PDEs (`McKendrickSolver`), Diekmann mortality and Ricker saturation kernels (`CannibalismKernel`), van den Bosch juvenile-adult delay dynamics (`JuvenileAdultSolver`), and lumped 2D ODE models (`CannibalismModel`).
@@ -29,7 +30,53 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 
 ## 2. Developer Instructions
 
-### Evaluating Clinical Outcomes with the Win Ratio & Bivariate Weibull `PR(c)`
+### Evaluating Right-Censored Composite Outcomes with U-Statistics
+
+Analyze prioritized fatal and non-fatal time-to-event endpoints under right censoring with two-sample U-statistic inference:
+
+```rust
+# use domain_applied::__doctest_facade as math_explorer;
+use math_explorer::applied::win_ratio::pair_comparison::{
+    CensoredOutcome, RightCensoredComparator, WinRatioAnalysis,
+};
+
+// Hierarchy: [Tier 1: Fatal Event, Tier 2: Non-Fatal Hospitalization]
+let treatment = vec![
+    vec![
+        CensoredOutcome::new(5.0, false).unwrap(),
+        CensoredOutcome::new(5.0, false).unwrap(),
+    ],
+    vec![
+        CensoredOutcome::new(4.8, false).unwrap(),
+        CensoredOutcome::new(3.2, true).unwrap(),
+    ],
+];
+
+let control = vec![
+    vec![
+        CensoredOutcome::new(1.5, true).unwrap(),
+        CensoredOutcome::new(0.8, true).unwrap(),
+    ],
+    vec![
+        CensoredOutcome::new(4.5, false).unwrap(),
+        CensoredOutcome::new(1.9, true).unwrap(),
+    ],
+];
+
+let analysis = WinRatioAnalysis::new()
+    .add_strategy(Box::new(RightCensoredComparator::new()))
+    .add_strategy(Box::new(RightCensoredComparator::new()));
+
+let (summary, tiers) = analysis
+    .evaluate_unmatched(&treatment, &control, 0.05)
+    .expect("Valid unmatched U-statistic summary");
+
+assert_eq!(summary.total_pairs, 4);
+assert_eq!(tiers[0].wins + tiers[1].wins, 4);
+assert!(summary.win_ratio > 1.0);
+```
+
+### Evaluating Clinical Outcomes with Threshold Hierarchies & Bivariate Weibull `PR(c)`
 
 Analyze hierarchical composite endpoints across fatal, hospitalization, and thresholded continuous biomarker tiers alongside Clenshaw-Curtis `PR(c)` integrals:
 
@@ -139,11 +186,12 @@ assert!(solver.cannibal_load() >= 0.0);
 
 ## 3. Ecosystem Integration
 
-Algorithms from `domain_applied` feed interactive, HIPAA-safe client-side simulation workbenches in `math_explorer_gui`—enabling visual scenario exploration for clinical biostatisticians, pharmacometricians, ecologists, battery engineers, and data scientists:
+Algorithms from `domain_applied` feed interactive, HIPAA-safe client-side simulation workbenches in `math_explorer_gui`—enabling visual scenario exploration and reproducible protocol exports for clinical biostatisticians, pharmacometricians, ecologists, neuroscientists, battery engineers, and data scientists:
 
 - **`Composite Win Ratio` (`WinRatioTool` in `ClinicalTrialsTab`)**: Evaluates prioritized multi-tier `WinRatioAnalysis` (`HigherIsBetter`, `LowerIsBetter`, `ThresholdComparator`) across `UnmatchedPairing` and `MatchedPairing`, Pocock `WinLossCounts`, secondary continuous `TTestIndependent` (`GroupData`), `calculate_bmi`, and Clenshaw-Curtis `ProbabilityWinRatioContext` `BivariateWeibullModel` `PR(c)` curves with local CSV/TSV cohort import and `.md`/`.csv` report downloads.
+- **`Composite Win Ratio Stress Tester` (`WinRatioStressTesterTool` in `ClinicalTrialsTab`)**: Right-censored fatal/non-fatal U-statistic inference, hierarchical tier waterfalls, Monte Carlo bivariate Weibull Power-by-$N$ sweeps, and `.csv`/`.json` protocol exports.
 - **`Survival Curves (Kaplan-Meier)` (`SurvivalAnalysisTool` in `ClinicalTrialsTab`)**: Multi-arm CSV/TSV right-censored `kaplan_meier` estimation, `try_estimate_hazard_ratio`, `TimePoint` risk-set tables, and `.csv`/`.md`/`.svg` exports.
-- **`Sample Size Calculator` (`SampleSizeCalculatorTool` in `ClinicalTrialsTab`)**: Interactive $1 - \beta$ vs $N$ statistical power curves for `Means` and `Proportions` with `.csv`/`.md` protocol sizing cards.
+- **`Sample Size Calculator` (`SampleSizeCalculatorTool` in `ClinicalTrialsTab`)**: Interactive $1 - \beta$ vs $N$ analytical statistical power curves for `Means` and `Proportions` with `.csv`/`.md` protocol sizing cards.
 - **`Randomization` (`RandomizationTool` & `SimpsonParadoxLab` in `ClinicalTrialsTab`)**: Retained per-patient allocation schedules (`Simple`, `Block`, and `Stratified`), cumulative arm-balance plots, and `.csv`/`.json` schedule exports.
 - **`Pharmacokinetics (ADME)` (`PharmacokineticsTool` in `ClinicalTrialsTab`)**: Multi-dose immediate-release, biphasic extended-release, and chiral ADME regimen planning.
-- **`Population Structure` (`PopulationStructureTab`)**: Age-structured cannibalism PDE simulations powered by `McKendrickSolver` and `CannibalismKernel`.
+- **`3D Cortical Morphometry` (`CorticalMorphometryTool` in `NeuroscienceTab`) & `Population Structure` (`PopulationStructureTab`)**: FreeSurfer deformable cortical surface physics / Potts MRF segmentation and age-structured cannibalism PDE simulations (`McKendrickSolver`, `CannibalismKernel`).

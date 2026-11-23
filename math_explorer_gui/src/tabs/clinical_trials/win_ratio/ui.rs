@@ -1,498 +1,445 @@
-//! Interactive sidebar controls, metrics cards, and `egui_plot` canvas for `WinRatioTool`.
+//! Interactive side-panel controls and `egui_plot` views for [`super::WinRatioStressTesterTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::cohort::{
-    ComparatorKind, PairingMode, WinRatioPlotMode, MAX_HORIZON_C, MAX_PRC_SAMPLES, MAX_THRESHOLD,
-    MAX_WEIBULL_ALPHA, MAX_WEIBULL_LAMBDA, MAX_WEIBULL_THETA, MIN_HORIZON_C, MIN_PRC_SAMPLES,
-    MIN_WEIBULL_ALPHA, MIN_WEIBULL_LAMBDA, MIN_WEIBULL_THETA,
-};
-use super::{export, WinRatioTool};
-use crate::accessibility::AccessibleHoverText;
-use crate::app::SemanticPalette;
-use crate::framework::{scoped_panel_id, PaneSidePanel};
-use crate::reflective_ui::render_copyable_metric;
-use eframe::egui;
-use egui_plot::{HLine, Legend, Line, LineStyle, Plot, Points};
+use std::sync::mpsc;
 
-/// Renders the side control panel and central visualization panel for [`WinRatioTool`].
-pub(crate) fn show_win_ratio_inside(tool: &mut WinRatioTool, ui: &mut egui::Ui) {
-    tool.poll_io(ui.ctx());
-    let side_id = scoped_panel_id(ui, "win_ratio_controls_panel");
-    PaneSidePanel::left(side_id)
-        .default_width(370.0)
-        .show_inside(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                render_sidebar(tool, ui);
+use eframe::egui;
+use egui_plot::{Bar, BarChart, HLine, Legend, Line, Plot, PlotPoints, Points};
+use math_explorer::applied::clinical_trials::survival_analysis::TimePoint;
+use math_explorer::applied::win_ratio::power_sweep::{
+    MAX_ARM_SIZE, MAX_SWEEP_REPLICATES, MAX_SWEEP_STEPS,
+};
+
+use super::cohort_io::{load_and_analyze_cohort, SAMPLE_COHORT_CSV};
+use super::protocol_export::{trigger_save_protocol_csv, trigger_save_protocol_json};
+use super::{ChartMode, WinRatioStressTesterTool};
+use crate::accessibility::AccessibleHoverText;
+use crate::reflective_ui::render_copyable_metric;
+use crate::web_io::{spawn_open_file_dialog, OpenDialogConfig};
+
+const COHORT_OPEN_CONFIG: OpenDialogConfig = OpenDialogConfig {
+    filter_name: "Two-Arm Clinical Cohort (.csv, .json)",
+    extensions: &["csv", "json"],
+    accept: ".csv,.json,text/csv,application/json",
+    read_error_prefix: "Failed to read cohort file",
+};
+
+impl WinRatioStressTesterTool {
+    pub(super) fn poll_async_io(&mut self, ctx: &egui::Context) {
+        let cohort_msg = self
+            .open_cohort_rx
+            .as_ref()
+            .and_then(|rx| rx.try_recv().ok());
+        if let Some(outcome) = cohort_msg {
+            self.open_cohort_rx = None;
+            match outcome {
+                Ok((name, body)) => match self.apply_cohort_content(&name, &body) {
+                    Ok(()) => {
+                        self.status_banner =
+                            Some((format!("Loaded cohort '{name}' successfully."), false));
+                    }
+                    Err(err) => {
+                        self.status_banner = Some((format!("Cohort rejected: {err}"), true));
+                    }
+                },
+                Err(err) => self.status_banner = Some((err, true)),
+            }
+            ctx.request_repaint();
+        }
+        let save_msg = self
+            .save_protocol_rx
+            .as_ref()
+            .and_then(|rx| rx.try_recv().ok());
+        if let Some(outcome) = save_msg {
+            self.save_protocol_rx = None;
+            match outcome {
+                Ok(name) => {
+                    self.status_banner =
+                        Some((format!("Saved protocol takeaway '{name}'."), false));
+                }
+                Err(err) => self.status_banner = Some((err, true)),
+            }
+            ctx.request_repaint();
+        }
+    }
+
+    pub(super) fn apply_cohort_content(&mut self, name: &str, content: &str) -> Result<(), String> {
+        let horizon = self
+            .apply_horizon_to_cohort
+            .then_some(self.sweep_cfg.censor_horizon);
+        let loaded = load_and_analyze_cohort(name, content, self.sweep_cfg.sig_alpha, horizon)?;
+        self.uploaded_cohort = Some(loaded);
+        Ok(())
+    }
+
+    pub(super) fn render_side_controls(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Composite Stress Controls");
+        let mut sweep_dirty = self.render_weibull_controls(ui);
+        ui.add_space(4.0);
+        sweep_dirty |= self.render_censoring_and_grid_controls(ui);
+        if sweep_dirty {
+            self.recompute_parametric_sweep();
+            self.refresh_uploaded_cohort_if_needed();
+        }
+        ui.separator();
+        self.render_cohort_io_section(ui);
+        ui.separator();
+        self.render_protocol_download_section(ui);
+    }
+
+    fn render_weibull_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        ui.group(|ui| {
+            ui.strong("Bivariate Weibull Hazards");
+            changed |= ui
+                .add(egui::Slider::new(&mut self.params.lambda1, 0.02..=1.0).text("Fatal λ₁"))
+                .accessible_hover_text("Control baseline fatal hazard scale parameter λ₁")
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut self.params.lambda2, 0.02..=1.5).text("Non-Fatal λ₂"))
+                .accessible_hover_text("Control baseline non-fatal hazard scale parameter λ₂")
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut self.params.alpha, 0.20..=1.0).text("Copula α"))
+                .accessible_hover_text(
+                    "Association shape α in (0, 1]; smaller α increases correlation",
+                )
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut self.params.theta, 0.25..=1.5).text("Effect θ"))
+                .accessible_hover_text("Hazard multiplier θ (< 1 favors treatment; 1.0 = null)")
+                .changed();
+        });
+        changed
+    }
+
+    fn render_censoring_and_grid_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        ui.group(|ui| {
+            ui.strong("Censoring & Monte Carlo Sweep");
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut self.sweep_cfg.censor_horizon, 0.5..=20.0)
+                        .text("Follow-Up C"),
+                )
+                .accessible_hover_text("Administrative follow-up censoring horizon")
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut self.sweep_cfg.dropout_rate, 0.0..=0.50)
+                        .text("Dropout γ"),
+                )
+                .accessible_hover_text("Exponential random loss-to-follow-up hazard rate")
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut self.sweep_cfg.sig_alpha, 0.01..=0.10).text("Alpha α"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut self.sweep_cfg.n_min, 10..=MAX_ARM_SIZE).text("N min"))
+                .changed();
+            if self.sweep_cfg.n_max < self.sweep_cfg.n_min {
+                self.sweep_cfg.n_max = self.sweep_cfg.n_min;
+            }
+            changed |= ui
+                .add(
+                    egui::Slider::new(
+                        &mut self.sweep_cfg.n_max,
+                        self.sweep_cfg.n_min..=MAX_ARM_SIZE,
+                    )
+                    .text("N max"),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut self.sweep_cfg.n_steps, 2..=MAX_SWEEP_STEPS)
+                        .text("Grid Steps"),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut self.sweep_cfg.replicates, 20..=MAX_SWEEP_REPLICATES)
+                        .text("Replicates"),
+                )
+                .changed();
+            ui.horizontal(|ui| {
+                ui.label("Seed:");
+                changed |= ui
+                    .add(egui::DragValue::new(&mut self.seed).speed(1.0))
+                    .changed();
             });
         });
-
-    egui::CentralPanel::default().show_inside(ui, |ui| {
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            render_central_panel(tool, ui);
-        });
-    });
-}
-
-fn render_sidebar(tool: &mut WinRatioTool, ui: &mut egui::Ui) {
-    ui.heading("Composite Win Ratio Workbench");
-    let mut changed = render_cohort_section(tool, ui);
-    ui.add_space(4.0);
-    changed |= render_hierarchy_section(tool, ui);
-    ui.add_space(4.0);
-    changed |= render_ttest_and_bmi_section(tool, ui);
-    ui.add_space(4.0);
-    changed |= render_weibull_section(tool, ui);
-
-    if changed {
-        tool.recalculate();
+        changed
     }
 
-    if let Some(ref err) = tool.error_message {
-        let palette = SemanticPalette::from_visuals(ui.visuals());
-        ui.colored_label(palette.error, format!("⚠ {err}"));
-    }
-
-    ui.separator();
-    render_metrics_summary(tool, ui);
-    ui.add_space(4.0);
-    render_report_export_box(tool, ui);
-}
-
-fn render_cohort_section(tool: &mut WinRatioTool, ui: &mut egui::Ui) -> bool {
-    let mut changed = false;
-    ui.group(|ui| {
-        ui.label(egui::RichText::new("Local Patient Cohort (CSV / TSV)").strong());
+    fn render_cohort_io_section(&mut self, ui: &mut egui::Ui) {
+        ui.strong("Local Two-Arm Cohort (.csv / .json)");
         ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("📂 Import Cohort (.csv / .tsv)")
-                .accessible_hover_text("Load local patient cohort without uploading data")
-                .clicked()
-            {
-                tool.io_state.trigger_open_cohort();
+            if ui.button("Import Cohort…").clicked() {
+                let (tx, rx) = mpsc::channel();
+                self.open_cohort_rx = Some(rx);
+                spawn_open_file_dialog(tx, COHORT_OPEN_CONFIG, |path| {
+                    path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("cohort")
+                        .to_string()
+                });
             }
-            if ui
-                .button("🔄 Reset Sample")
-                .accessible_hover_text("Restore default 12-patient composite cohort")
-                .clicked()
+            if ui.button("Load Sample Cohort").clicked()
+                && self
+                    .apply_cohort_content("sample_cardio_cohort.csv", SAMPLE_COHORT_CSV)
+                    .is_ok()
             {
-                tool.cohort_text = super::cohort::DEFAULT_COHORT_CSV.to_string();
-                tool.derive_bmi_tier3 = false;
-                changed = true;
+                self.status_banner = Some((
+                    "Loaded built-in two-arm cardiovascular sample cohort.".into(),
+                    false,
+                ));
+            }
+            if self.uploaded_cohort.is_some() && ui.button("Clear Cohort").clicked() {
+                self.uploaded_cohort = None;
+                self.status_banner =
+                    Some(("Reverted to parametric simulation view.".into(), false));
             }
         });
-        ui.small("Columns: Arm, Tier1 (Fatal), Tier2 (Hosp)[, Tier3 | WeightKg, HeightM]");
-        changed |= ui
-            .checkbox(
-                &mut tool.derive_bmi_tier3,
-                "Derive Tier 3 BMI from Weight (kg) & Height (m)",
-            )
-            .accessible_hover_text("Compute Tier 3 BMI = weight_kg / height_m^2 on 5-column rows")
-            .changed();
-        let editor = egui::TextEdit::multiline(&mut tool.cohort_text)
-            .desired_width(f32::INFINITY)
-            .desired_rows(6);
-        changed |= ui.add(editor).changed();
-    });
-    changed
-}
-
-fn render_comparator_row(ui: &mut egui::Ui, label: &str, kind: &mut ComparatorKind) -> bool {
-    let mut changed = false;
-    ui.horizontal_wrapped(|ui| {
-        ui.strong(label);
-        if ui
-            .selectable_label(matches!(kind, ComparatorKind::HigherIsBetter), "Higher ↑")
-            .accessible_hover_text("Higher outcome value wins")
-            .clicked()
+        if self.uploaded_cohort.is_some()
+            && ui
+                .checkbox(
+                    &mut self.apply_horizon_to_cohort,
+                    "Apply Follow-Up Horizon C to uploaded cohort",
+                )
+                .changed()
         {
-            *kind = ComparatorKind::HigherIsBetter;
-            changed = true;
+            self.refresh_uploaded_cohort_if_needed();
         }
-        if ui
-            .selectable_label(matches!(kind, ComparatorKind::LowerIsBetter), "Lower ↓")
-            .accessible_hover_text("Lower outcome value wins")
-            .clicked()
-        {
-            *kind = ComparatorKind::LowerIsBetter;
-            changed = true;
+    }
+
+    fn render_protocol_download_section(&mut self, ui: &mut egui::Ui) {
+        ui.strong("Takeaway Protocol Tables");
+        ui.horizontal(|ui| {
+            if ui.button("Save Protocol CSV…").clicked() {
+                let (tx, rx) = mpsc::channel();
+                self.save_protocol_rx = Some(rx);
+                trigger_save_protocol_csv(tx, self.build_protocol_csv());
+            }
+            if ui.button("Save Protocol JSON…").clicked() {
+                let (tx, rx) = mpsc::channel();
+                self.save_protocol_rx = Some(rx);
+                trigger_save_protocol_json(tx, self.build_protocol_json());
+            }
+        });
+        if let Some((msg, is_err)) = &self.status_banner {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            let color = if *is_err {
+                palette.error
+            } else {
+                palette.success
+            };
+            ui.colored_label(color, msg);
         }
-        let is_thresh = matches!(kind, ComparatorKind::Threshold { .. });
-        if ui
-            .selectable_label(is_thresh, "Threshold Δ")
-            .accessible_hover_text("Higher wins only when difference exceeds threshold")
-            .clicked()
-            && !is_thresh
-        {
-            *kind = ComparatorKind::Threshold { threshold: 5.0 };
-            changed = true;
-        }
-    });
-    if let ComparatorKind::Threshold { ref mut threshold } = kind {
-        changed |= ui
-            .add(
-                egui::Slider::new(threshold, 0.0..=MAX_THRESHOLD.min(250.0))
-                    .text(format!("{label} Δ")),
-            )
-            .changed();
     }
-    changed
-}
 
-fn render_hierarchy_section(tool: &mut WinRatioTool, ui: &mut egui::Ui) -> bool {
-    let mut changed = false;
-    ui.group(|ui| {
-        ui.label(egui::RichText::new("Prioritized Hierarchy & Pairing").strong());
-        ui.horizontal_wrapped(|ui| {
-            changed |= ui
-                .radio_value(
-                    &mut tool.pairing_mode,
-                    PairingMode::Unmatched,
-                    "Unmatched (All-Pairs)",
-                )
-                .changed();
-            changed |= ui
-                .radio_value(
-                    &mut tool.pairing_mode,
-                    PairingMode::Matched,
-                    "Matched Pairs (1:1)",
-                )
-                .changed();
-        });
-        changed |= render_comparator_row(ui, "Tier 1 (Fatal):", &mut tool.tier1_kind);
-        changed |= render_comparator_row(ui, "Tier 2 (Hosp):", &mut tool.tier2_kind);
-        changed |= render_comparator_row(ui, "Tier 3 (Biomarker):", &mut tool.tier3_kind);
-    });
-    changed
-}
-
-fn render_ttest_and_bmi_section(tool: &mut WinRatioTool, ui: &mut egui::Ui) -> bool {
-    let mut changed = false;
-    ui.group(|ui| {
-        ui.label(egui::RichText::new("Secondary t-Test & BMI Covariate").strong());
-        ui.horizontal_wrapped(|ui| {
-            ui.label("t-Test Endpoint:");
-            for (idx, lbl) in [(0, "Tier 1"), (1, "Tier 2"), (2, "Tier 3")] {
-                changed |= ui
-                    .selectable_value(&mut tool.ttest_tier_index, idx, lbl)
-                    .changed();
-            }
-        });
-        changed |= ui
-            .add(egui::Slider::new(&mut tool.ttest_alpha, 0.001..=0.20).text("t-Test α"))
-            .changed();
-        ui.collapsing("BMI Covariate Calculator (kg / m²)", |ui| {
-            changed |= ui
-                .add(egui::Slider::new(&mut tool.treat_weight_kg, 30.0..=200.0).text("Treat kg"))
-                .changed();
-            changed |= ui
-                .add(egui::Slider::new(&mut tool.treat_height_m, 1.20..=2.20).text("Treat m"))
-                .changed();
-            changed |= ui
-                .add(egui::Slider::new(&mut tool.ctrl_weight_kg, 30.0..=200.0).text("Ctrl kg"))
-                .changed();
-            changed |= ui
-                .add(egui::Slider::new(&mut tool.ctrl_height_m, 1.20..=2.20).text("Ctrl m"))
-                .changed();
-        });
-    });
-    changed
-}
-
-fn render_weibull_section(tool: &mut WinRatioTool, ui: &mut egui::Ui) -> bool {
-    let mut changed = false;
-    ui.group(|ui| {
-        ui.label(egui::RichText::new("Bivariate Weibull PR(c) Integral").strong());
-        changed |= ui
-            .add(
-                egui::Slider::new(
-                    &mut tool.weibull_lambda1,
-                    MIN_WEIBULL_LAMBDA..=MAX_WEIBULL_LAMBDA,
-                )
-                .text("Fatal Scale λ₁"),
-            )
-            .changed();
-        changed |= ui
-            .add(
-                egui::Slider::new(
-                    &mut tool.weibull_lambda2,
-                    MIN_WEIBULL_LAMBDA..=MAX_WEIBULL_LAMBDA,
-                )
-                .text("Non-Fatal Scale λ₂"),
-            )
-            .changed();
-        changed |= ui
-            .add(
-                egui::Slider::new(
-                    &mut tool.weibull_alpha,
-                    MIN_WEIBULL_ALPHA..=MAX_WEIBULL_ALPHA,
-                )
-                .text("Correlation α"),
-            )
-            .changed();
-        changed |= ui
-            .add(
-                egui::Slider::new(
-                    &mut tool.weibull_theta,
-                    MIN_WEIBULL_THETA..=MAX_WEIBULL_THETA,
-                )
-                .text("Hazard Ratio θ"),
-            )
-            .changed();
-        changed |= ui
-            .add(
-                egui::Slider::new(&mut tool.horizon_c, MIN_HORIZON_C..=MAX_HORIZON_C)
-                    .text("Horizon c_max"),
-            )
-            .changed();
-        changed |= ui
-            .add(
-                egui::Slider::new(&mut tool.prc_samples, MIN_PRC_SAMPLES..=MAX_PRC_SAMPLES)
-                    .text("Grid Samples"),
-            )
-            .changed();
-    });
-    changed
-}
-
-fn render_metrics_summary(tool: &WinRatioTool, ui: &mut egui::Ui) {
-    let ev = &tool.eval;
-    ui.label(egui::RichText::new("Statistical Summary").strong());
-    render_copyable_metric(
-        ui,
-        "Wins / Losses / Ties",
-        &format!("{} / {} / {}", ev.wins, ev.losses, ev.ties),
-    );
-    if let Some(stats) = ev.stats {
-        let wr_str = if stats.win_ratio.is_finite() {
-            format!(
-                "{:.3} [{:.3}, {:.3}]",
-                stats.win_ratio, stats.ci_low, stats.ci_high
-            )
-        } else {
-            format!("∞ [{:.3}, ∞]", stats.ci_low)
-        };
-        render_copyable_metric(ui, "Win Ratio [95% CI]", &wr_str);
-        render_copyable_metric(ui, "WR P-Value", &format!("{:.4}", stats.p_value));
-    }
-    render_copyable_metric(
-        ui,
-        "Pocock 2-Tier Z",
-        &format!(
-            "{:.3} (pw = {:.3})",
-            ev.pocock.z_statistic, ev.pocock.win_proportion
-        ),
-    );
-    if let Some(ref tt) = ev.ttest_result {
-        render_copyable_metric(
-            ui,
-            "Independent t-Test",
-            &format!("t = {:.3}, p = {:.4}", tt.statistic, tt.p_value),
-        );
-    } else if let Some(ref note) = ev.ttest_note {
-        ui.small(format!("t-Test: {note}"));
-    }
-    render_copyable_metric(
-        ui,
-        "Weibull PR_W / PR(c)",
-        &format!("{:.3} / {:.3}", ev.weibull_pr_w, ev.terminal_pr_c),
-    );
-    render_copyable_metric(
-        ui,
-        "BMI (Treat / Ctrl)",
-        &format!("{:.1} / {:.1} kg/m²", ev.treat_ref_bmi, ev.ctrl_ref_bmi),
-    );
-}
-
-fn render_report_export_box(tool: &mut WinRatioTool, ui: &mut egui::Ui) {
-    ui.group(|ui| {
-        ui.label(egui::RichText::new("HIPAA-Safe Win Ratio Reports").strong());
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("📋 Copy .md Report")
-                .accessible_hover_text("Copy Markdown composite Win Ratio report to clipboard")
-                .clicked()
-            {
-                ui.ctx().copy_text(export::format_markdown_report(tool));
-                tool.io_state
-                    .record_info("Copied Markdown Win Ratio report to clipboard".into());
-            }
-            if ui
-                .button("💾 Save .md Report")
-                .accessible_hover_text("Download or save Markdown composite Win Ratio report")
-                .clicked()
-            {
-                let md = export::format_markdown_report(tool);
-                tool.io_state
-                    .trigger_save_markdown("win_ratio_report.md", md);
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("📋 Copy .csv Report")
-                .accessible_hover_text("Copy CSV Win Ratio and Weibull PR(c) table to clipboard")
-                .clicked()
-            {
-                ui.ctx().copy_text(export::format_csv_report(tool));
-                tool.io_state
-                    .record_info("Copied CSV Win Ratio report to clipboard".into());
-            }
-            if ui
-                .button("💾 Save .csv Report")
-                .accessible_hover_text("Download or save CSV Win Ratio report")
-                .clicked()
-            {
-                let csv = export::format_csv_report(tool);
-                tool.io_state.trigger_save_csv("win_ratio_report.csv", csv);
-            }
-        });
-        tool.io_state.render_status(ui);
-    });
-}
-
-fn render_central_panel(tool: &mut WinRatioTool, ui: &mut egui::Ui) {
-    let palette = SemanticPalette::from_visuals(ui.visuals());
-    ui.horizontal_wrapped(|ui| {
-        ui.heading("Composite Endpoint & Probability Win Ratio Analysis");
+    pub(super) fn render_central_view(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Composite Win Ratio Stress Tester");
+        self.render_summary_strip(ui);
         ui.separator();
-        ui.selectable_value(
-            &mut tool.plot_mode,
-            WinRatioPlotMode::WeibullPrc,
-            "Weibull PR(c) & Survival",
-        );
-        ui.selectable_value(
-            &mut tool.plot_mode,
-            WinRatioPlotMode::EmpiricalHierarchy,
-            "Hierarchy Tier Forest",
-        );
-    });
-    ui.add_space(4.0);
-
-    match tool.plot_mode {
-        WinRatioPlotMode::WeibullPrc => render_prc_plot(tool, ui, palette),
-        WinRatioPlotMode::EmpiricalHierarchy => render_hierarchy_plot(tool, ui, palette),
+        ui.horizontal(|ui| {
+            ui.label("Visualization:");
+            ui.selectable_value(
+                &mut self.chart_mode,
+                ChartMode::PowerCurve,
+                "Power-by-N Sweep",
+            );
+            ui.selectable_value(
+                &mut self.chart_mode,
+                ChartMode::TierWaterfall,
+                "Hierarchical Tier Waterfall",
+            );
+            if self.uploaded_cohort.is_some() {
+                ui.selectable_value(
+                    &mut self.chart_mode,
+                    ChartMode::CohortSurvival,
+                    "Uploaded Cohort Kaplan-Meier",
+                );
+            } else if self.chart_mode == ChartMode::CohortSurvival {
+                self.chart_mode = ChartMode::PowerCurve;
+            }
+        });
+        ui.add_space(4.0);
+        match self.chart_mode {
+            ChartMode::PowerCurve => self.render_power_sweep_plot(ui),
+            ChartMode::TierWaterfall => self.render_tier_waterfall_plot(ui),
+            ChartMode::CohortSurvival => self.render_cohort_km_plot(ui),
+        }
     }
 
-    ui.add_space(8.0);
-    render_tier_breakdown_table(tool, ui);
-}
-
-fn render_prc_plot(tool: &WinRatioTool, ui: &mut egui::Ui, palette: SemanticPalette) {
-    Plot::new("win_ratio_prc_plot")
-        .height(380.0)
-        .x_axis_label("Follow-up Censoring Horizon c")
-        .y_axis_label("Win Ratio / Survival Probability")
-        .include_y(0.0)
-        .legend(Legend::default())
-        .show(ui, |plot_ui| {
-            plot_ui.line(
-                Line::new("PR(c) (Clenshaw-Curtis)", tool.prc_points.clone())
-                    .color(palette.series_color(0))
-                    .width(2.5_f32),
+    fn render_summary_strip(&self, ui: &mut egui::Ui) {
+        let rep = self.report();
+        let (s, _) = self.active_summary_and_tiers();
+        ui.horizontal_wrapped(|ui| {
+            render_copyable_metric(
+                ui,
+                "Win Ratio [95% CI]",
+                &format!("{:.2} [{:.2}, {:.2}]", s.win_ratio, s.ci_low, s.ci_high),
             );
-            plot_ui.line(
-                Line::new("Treatment S₁(t)", tool.surv_treat_points.clone())
-                    .color(palette.series_color(1))
-                    .style(LineStyle::Dashed { length: 6.0 }),
+            render_copyable_metric(ui, "U-Stat p-value", &format!("{:.4}", s.p_value));
+            render_copyable_metric(ui, "Win Odds", &format!("{:.2}", s.win_odds));
+            render_copyable_metric(
+                ui,
+                "Net Benefit",
+                &format!("{:+.1}%", s.net_benefit * 100.0),
             );
-            plot_ui.line(
-                Line::new("Control S₀(t)", tool.surv_ctrl_points.clone())
-                    .color(palette.series_color(2))
-                    .style(LineStyle::Dotted { spacing: 5.0 }),
-            );
-            plot_ui.hline(
-                HLine::new("Uncensored PR_W = 1/θ^α", tool.eval.weibull_pr_w)
-                    .color(palette.success)
-                    .style(LineStyle::Dashed { length: 8.0 }),
-            );
-            plot_ui.hline(
-                HLine::new("Null Hypothesis (WR = 1.0)", 1.0)
-                    .color(palette.muted_text)
-                    .style(LineStyle::Dotted { spacing: 4.0 }),
+            render_copyable_metric(
+                ui,
+                "Uncensored PR_W",
+                &format!("{:.2}", rep.theoretical_uncensored_wr),
             );
         });
-}
-
-fn render_hierarchy_plot(tool: &WinRatioTool, ui: &mut egui::Ui, palette: SemanticPalette) {
-    let count = tool.eval.active_tier_count;
-    Plot::new("win_ratio_hierarchy_plot")
-        .height(380.0)
-        .x_axis_label("Cumulative Hierarchy Tier")
-        .y_axis_label("Cumulative Win Ratio (95% CI)")
-        .include_y(0.0)
-        .legend(Legend::default())
-        .show(ui, |plot_ui| {
-            let mut est_pts = Vec::with_capacity(count);
-            for k in 0..count {
-                let t = tool.eval.tiers[k];
-                let x = (k + 1) as f64;
-                let y = if t.cumulative_wr.is_finite() {
-                    t.cumulative_wr
-                } else {
-                    10.0
-                };
-                est_pts.push([x, y]);
-                let hi = t.cumulative_ci_high.min(y.max(2.0) * 2.5);
-                plot_ui.line(
-                    Line::new(
-                        format!("Tier {} 95% CI", k + 1),
-                        vec![[x, t.cumulative_ci_low], [x, hi]],
-                    )
-                    .color(palette.series_color(k + 1))
-                    .width(3.0_f32),
+        if let Some(c) = &self.uploaded_cohort {
+            ui.horizontal_wrapped(|ui| {
+                ui.strong(format!(
+                    "Cohort '{}' (n₁={}, n₂={}):",
+                    c.source_name,
+                    c.treatment.len(),
+                    c.control.len()
+                ));
+                if let Ok(hr) = c.fatal_hazard_ratio {
+                    render_copyable_metric(ui, "Fatal HR", &format!("{hr:.3}"));
+                }
+                render_copyable_metric(
+                    ui,
+                    "Risk Diff",
+                    &format!("{:+.1}%", c.risk_difference * 100.0),
                 );
-            }
-            plot_ui.line(
-                Line::new("Cumulative WR Trajectory", est_pts.clone())
-                    .color(palette.series_color(0))
-                    .width(2.2_f32),
-            );
-            plot_ui.points(
-                Points::new("Tier WR Estimate", est_pts)
-                    .radius(5.5_f32)
-                    .color(palette.series_color(0)),
-            );
-            plot_ui.hline(
-                HLine::new("Null Effect (WR = 1.0)", 1.0)
-                    .color(palette.warning)
-                    .style(LineStyle::Dashed { length: 8.0 }),
-            );
-        });
-}
-
-fn render_tier_breakdown_table(tool: &WinRatioTool, ui: &mut egui::Ui) {
-    ui.group(|ui| {
-        ui.label(egui::RichText::new("Prioritized Tier Attribution Table").strong());
-        egui::Grid::new("win_ratio_tier_table")
-            .striped(true)
-            .spacing([18.0, 6.0])
-            .show(ui, |ui| {
-                ui.strong("Hierarchy Tier");
-                ui.strong("Strategy");
-                ui.strong("Tier Wins");
-                ui.strong("Tier Losses");
-                ui.strong("Remaining Ties");
-                ui.strong("Cumulative WR");
-                ui.end_row();
-
-                let kinds = [tool.tier1_kind, tool.tier2_kind, tool.tier3_kind];
-                for (k, kind) in kinds.iter().enumerate().take(tool.eval.active_tier_count) {
-                    let t = tool.eval.tiers[k];
-                    ui.label(format!("Tier {}", t.tier_index));
-                    ui.label(kind.label());
-                    ui.label(t.tier_wins.to_string());
-                    ui.label(t.tier_losses.to_string());
-                    ui.label(t.remaining_ties.to_string());
-                    if t.cumulative_wr.is_finite() {
-                        ui.label(format!("{:.3}", t.cumulative_wr));
-                    } else {
-                        ui.label("∞");
-                    }
-                    ui.end_row();
+                if let Ok(rm) = &c.risk_metrics {
+                    render_copyable_metric(ui, "RR", &format!("{:.2}", rm.relative_risk));
+                    render_copyable_metric(ui, "OR", &format!("{:.2}", rm.odds_ratio));
                 }
             });
-    });
+        }
+    }
+
+    fn render_power_sweep_plot(&self, ui: &mut egui::Ui) {
+        let rep = self.report();
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let pwr_pts: Vec<[f64; 2]> = rep
+            .points
+            .iter()
+            .map(|p| [p.n_per_arm as f64, p.empirical_power])
+            .collect();
+        let tie_pts: Vec<[f64; 2]> = rep
+            .points
+            .iter()
+            .map(|p| [p.n_per_arm as f64, p.tie_fraction])
+            .collect();
+
+        Plot::new("win_ratio_power_sweep_plot")
+            .legend(Legend::default())
+            .x_axis_label("Subjects per Arm (N)")
+            .y_axis_label("Probability / Fraction")
+            .include_y(0.0)
+            .include_y(1.0)
+            .show(ui, |plot_ui| {
+                plot_ui.line(
+                    Line::new(
+                        "Empirical Power Pr(p < α)",
+                        PlotPoints::new(pwr_pts.clone()),
+                    )
+                    .color(palette.accent)
+                    .width(2.5_f32),
+                );
+                plot_ui.points(
+                    Points::new("Sweep Grid Points", PlotPoints::new(pwr_pts))
+                        .color(palette.accent)
+                        .radius(4.5_f32),
+                );
+                plot_ui.line(
+                    Line::new("Composite Tie Fraction", PlotPoints::new(tie_pts))
+                        .color(palette.warning)
+                        .width(2.0_f32),
+                );
+                plot_ui.hline(
+                    HLine::new("80% Target Power", 0.80)
+                        .color(palette.success)
+                        .style(egui_plot::LineStyle::dashed_dense()),
+                );
+            });
+    }
+
+    fn render_tier_waterfall_plot(&self, ui: &mut egui::Ui) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let (summary, tiers) = self.active_summary_and_tiers();
+        let denom = (summary.total_pairs.max(1)) as f64 / 100.0;
+        let win_bars = vec![
+            Bar::new(1.0, (tiers[0].wins as f64) / denom).name("Tier 1 Fatal Wins"),
+            Bar::new(2.0, (tiers[1].wins as f64) / denom).name("Tier 2 Non-Fatal Wins"),
+        ];
+        let loss_bars = vec![
+            Bar::new(1.32, (tiers[0].losses as f64) / denom).name("Tier 1 Fatal Losses"),
+            Bar::new(2.32, (tiers[1].losses as f64) / denom).name("Tier 2 Non-Fatal Losses"),
+        ];
+        let tie_bars =
+            vec![Bar::new(3.0, (tiers[1].ties_remaining as f64) / denom).name("Unresolved Ties")];
+
+        Plot::new("win_ratio_tier_waterfall_plot")
+            .legend(Legend::default())
+            .x_axis_label("Composite Priority Tier (1=Fatal, 2=Non-Fatal, 3=Unresolved Ties)")
+            .y_axis_label("Pairwise Share (%)")
+            .include_y(0.0)
+            .show(ui, |plot_ui| {
+                plot_ui.bar_chart(
+                    BarChart::new("Treatment Wins (%)", win_bars)
+                        .width(0.28)
+                        .color(palette.success),
+                );
+                plot_ui.bar_chart(
+                    BarChart::new("Treatment Losses (%)", loss_bars)
+                        .width(0.28)
+                        .color(palette.error),
+                );
+                plot_ui.bar_chart(
+                    BarChart::new("Unresolved Ties (%)", tie_bars)
+                        .width(0.32)
+                        .color(palette.warning),
+                );
+            });
+    }
+
+    fn render_cohort_km_plot(&self, ui: &mut egui::Ui) {
+        let Some(cohort) = &self.uploaded_cohort else {
+            return;
+        };
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let trt = km_step_points(&cohort.trt_km);
+        let ctrl = km_step_points(&cohort.ctrl_km);
+        Plot::new("win_ratio_uploaded_km_plot")
+            .legend(Legend::default())
+            .x_axis_label("Follow-up Time")
+            .y_axis_label("Tier-1 Event-Free Survival")
+            .include_y(0.0)
+            .include_y(1.05)
+            .show(ui, |plot_ui| {
+                plot_ui.line(
+                    Line::new("Treatment Survival", PlotPoints::new(trt))
+                        .color(palette.accent)
+                        .width(2.5_f32),
+                );
+                plot_ui.line(
+                    Line::new("Control Survival", PlotPoints::new(ctrl))
+                        .color(palette.error)
+                        .width(2.2_f32),
+                );
+            });
+    }
 }
 
-// [cite:win_ratio]
-// [cite:clinical_trials_statistics]
+pub(super) fn km_step_points(curve: &[TimePoint]) -> Vec<[f64; 2]> {
+    let mut pts = Vec::with_capacity(curve.len() * 2 + 2);
+    pts.push([0.0, 1.0]);
+    for pt in curve {
+        if let Some(last) = pts.last() {
+            pts.push([pt.time, last[1]]);
+        }
+        pts.push([pt.time, pt.survival_probability]);
+    }
+    pts
+}

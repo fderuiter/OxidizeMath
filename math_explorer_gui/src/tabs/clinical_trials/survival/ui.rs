@@ -54,14 +54,35 @@ fn render_sidebar(tool: &mut SurvivalAnalysisTool, ui: &mut egui::Ui) {
             .clicked()
         {
             tool.input_text = TWO_ARM_EXAMPLE_CSV.to_string();
+            tool.control_text.clear();
             tool.recalculate();
         }
     });
 
-    let text_edit = egui::TextEdit::multiline(&mut tool.input_text)
-        .desired_width(f32::INFINITY)
-        .desired_rows(12);
-    if ui.add(text_edit).changed() {
+    let mut changed = ui
+        .add(
+            egui::TextEdit::multiline(&mut tool.input_text)
+                .desired_width(f32::INFINITY)
+                .desired_rows(11),
+        )
+        .changed();
+
+    egui::CollapsingHeader::new("Optional Separate Control Arm (time, event)")
+        .default_open(!tool.control_text.is_empty())
+        .show(ui, |ui| {
+            changed |= ui
+                .add(
+                    egui::TextEdit::multiline(&mut tool.control_text)
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(5),
+                )
+                .changed();
+            if !tool.control_text.is_empty() && ui.button("Clear Separate Control").clicked() {
+                tool.control_text.clear();
+                changed = true;
+            }
+        });
+    if changed {
         tool.recalculate();
     }
 

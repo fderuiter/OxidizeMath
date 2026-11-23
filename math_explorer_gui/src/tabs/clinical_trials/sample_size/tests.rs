@@ -8,14 +8,18 @@ fn test_means_and_proportions_power_curves_monotone_and_exportable() {
     let mut tool = SampleSizeCalculatorTool::default();
     assert!(tool.export_capabilities().figure && tool.export_capabilities().dataset);
     assert_eq!(tool.result, Ok(63));
-    assert_eq!(tool.power_curve.len(), 50);
+    assert_eq!(tool.power_curve.len(), 64);
     assert_eq!(tool.protocol_rows.len(), POWER_MILESTONES.len());
+    let achieved_63 = tool
+        .evaluate_power_at(63)
+        .expect("analytical power at N=63");
+    assert!((0.80..0.82).contains(&achieved_63));
 
-    // Required N must increase monotonically with target statistical power
+    // Analytical power 1 - beta must increase strictly with per-arm sample size N
     for pair in tool.power_curve.windows(2) {
         assert!(
-            pair[1][0] >= pair[0][0] && pair[1][1] > pair[0][1],
-            "Power curve must be non-decreasing in N: {pair:?}"
+            pair[1][0] > pair[0][0] && pair[1][1] > pair[0][1],
+            "Analytical power curve must be strictly increasing in N: {pair:?}"
         );
     }
 

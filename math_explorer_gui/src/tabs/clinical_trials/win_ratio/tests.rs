@@ -1,271 +1,123 @@
-//! Unit, `VerifiedAllocator` zero-allocation, UI rendering, and `wasm32` browser tests for `WinRatioTool`.
-
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::*;
-use crate::framework::{InteractiveTool, ToolMetadata};
-use cohort::{ComparatorKind, PairingMode, WinRatioPlotMode};
-use math_commons::registry::{MAX_ITERATIONS, TOLERANCE_FAST};
-use math_explorer::applied::win_ratio::bmi::calculate_bmi;
+use super::cohort_io::{load_and_analyze_cohort, SAMPLE_COHORT_CSV};
+use super::{ChartMode, WinRatioStressTesterTool, STARTER_PRESET_JSON};
+use crate::framework::InteractiveTool;
+use crate::url_state::{
+    encode_share_fragment, parse_share_location, validate_url_preset_json,
+    MAX_DECODED_URL_STATE_BYTES,
+};
 
 #[test]
-fn test_composite_hierarchy_unmatched_matched_and_equal_length_guard() {
-    let mut tool = WinRatioTool::default();
-    assert!(tool.error_message.is_none());
-    assert_eq!(tool.eval.total_pairs, 36);
-    assert!(tool.eval.wins > tool.eval.losses);
-    let stats = tool.eval.stats.expect("WinRatioStats computed");
-    assert!(stats.win_ratio > 1.0);
-    assert!(stats.p_value < 0.05);
-    assert!(tool.eval.ttest_result.is_some());
+fn starter_preset_and_compact_url_state_omit_uploaded_cohort_rows() {
+    let mut tool = WinRatioStressTesterTool::default();
+    tool.apply_cohort_content("sample.csv", SAMPLE_COHORT_CSV)
+        .expect("sample cohort loads");
+    assert!(tool.uploaded_cohort.is_some());
 
-    tool.pairing_mode = PairingMode::Matched;
-    tool.recalculate();
-    assert!(tool.error_message.is_none());
-    assert_eq!(tool.eval.total_pairs, 6);
-
-    let unequal_tsv = "Arm\tSurvival\tHosp\tQoL\nTreatment\t800\t0\t75\nTreatment\t700\t1\t70\nControl\t400\t2\t55";
-    assert!(tool.import_cohort_str(unequal_tsv).is_err());
-
-    tool.pairing_mode = PairingMode::Unmatched;
-    let (nt, nc) = tool
-        .import_cohort_str(unequal_tsv)
-        .expect("TSV cohort imports");
-    assert_eq!((nt, nc), (2, 1));
-    assert_eq!(tool.eval.total_pairs, 2);
-}
-
-#[test]
-fn test_bmi_derivation_weibull_prc_convergence_and_max_iterations_cap() {
-    let bmi_csv = "\
-Arm,Survival,Hosp,WeightKg,HeightM
-Treatment,900,0,70.0,1.75
-Treatment,850,1,68.0,1.72
-Control,500,2,92.0,1.70
-Control,450,3,96.0,1.72";
-
-    let mut tool = WinRatioTool {
-        derive_bmi_tier3: true,
-        tier3_kind: ComparatorKind::LowerIsBetter,
-        horizon_c: 25.0,
-        prc_samples: 64,
-        ..WinRatioTool::default()
-    };
-    let (nt, nc) = tool
-        .import_cohort_str(bmi_csv)
-        .expect("5-col BMI CSV valid");
-    assert_eq!((nt, nc), (2, 2));
-    assert_eq!(tool.parsed_cohort.derived_bmis.len(), 4);
-    let expected_first_bmi = calculate_bmi(70.0, 1.75);
-    assert!((tool.parsed_cohort.treatment[0][2] - expected_first_bmi).abs() < TOLERANCE_FAST);
+    let saved = tool.save_state().expect("state serializes");
     assert!(
-        tool.eval
-            .ttest_result
-            .as_ref()
-            .expect("BMI t-test")
-            .statistic
-            < 0.0
+        saved.len() < 400 && saved.len() < MAX_DECODED_URL_STATE_BYTES,
+        "State JSON length {} must remain compact",
+        saved.len()
     );
+    assert!(!saved.contains("sample.csv"));
+    assert!(!saved.contains("fatal_time"));
 
-    // At large horizon c = 25.0, PR(c) converges closely to uncensored PR_W = 1 / theta^alpha
-    assert!((tool.eval.terminal_pr_c - tool.eval.weibull_pr_w).abs() < 0.05);
+    let envelope = tool.export_preset_json().expect("preset envelope exports");
+    validate_url_preset_json(&envelope).expect("preset fits within URL_JSON_BOUNDS");
+    let frag = encode_share_fragment(
+        "clinical_trials",
+        Some("WinRatioStressTesterTool"),
+        Some(&envelope),
+    )
+    .expect("URL fragment encodes");
+    let parsed = parse_share_location(&frag, "").unwrap().unwrap();
+    assert_eq!(parsed.tab, "clinical_trials");
+    assert_eq!(parsed.tool.as_deref(), Some("WinRatioStressTesterTool"));
 
-    let over_cap: String = (0..=MAX_ITERATIONS)
-        .map(|i| {
-            let arm = if i % 2 == 0 { "Treatment" } else { "Control" };
-            format!("{arm}, 500.0, 1.0, 70.0")
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(tool.import_cohort_str(&over_cap).is_err());
+    let mut restored = WinRatioStressTesterTool::default();
+    restored.import_preset_json(STARTER_PRESET_JSON).unwrap();
+    assert_eq!(restored.chart_mode, ChartMode::TierWaterfall);
+    assert_eq!(restored.seed, 4242);
 }
 
 #[test]
-fn test_zero_alloc_hot_path_and_headless_ui_and_reports() {
-    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+fn local_csv_and_json_cohort_import_computes_wr_hr_and_risk_metrics() {
+    let csv_analysis =
+        load_and_analyze_cohort("cardio.csv", SAMPLE_COHORT_CSV, 0.05, None).unwrap();
+    assert_eq!(csv_analysis.treatment.len(), 8);
+    assert_eq!(csv_analysis.control.len(), 8);
+    assert!(csv_analysis.summary.win_ratio > 1.5);
+    assert!(csv_analysis.summary.ci_low > 0.0);
+    assert!(csv_analysis.fatal_hazard_ratio.unwrap() < 1.0);
+    let rm = csv_analysis.risk_metrics.unwrap();
+    assert!(rm.relative_risk.is_finite() && rm.odds_ratio.is_finite());
 
-    let mut tool = WinRatioTool::default();
-    tool.recalculate();
+    let json_payload = r#"{
+        "treatment": [
+            {"fatal_time": 6.0, "fatal_event": 0, "nonfatal_time": 5.2, "nonfatal_event": 0},
+            {"fatal_time": 5.5, "fatal_event": 0, "nonfatal_time": 3.8, "nonfatal_event": 1},
+            {"fatal_time": 4.9, "fatal_event": 1, "nonfatal_time": 2.5, "nonfatal_event": 1}
+        ],
+        "control": [
+            {"fatal_time": 1.8, "fatal_event": 1, "nonfatal_time": 0.9, "nonfatal_event": 1},
+            {"fatal_time": 2.4, "fatal_event": 1, "nonfatal_time": 1.4, "nonfatal_event": 1},
+            {"fatal_time": 5.0, "fatal_event": 0, "nonfatal_time": 2.0, "nonfatal_event": 1}
+        ]
+    }"#;
+    let json_analysis = load_and_analyze_cohort("cardio.json", json_payload, 0.05, Some(5.0))
+        .expect("json cohort loads");
+    assert_eq!(json_analysis.summary.total_pairs, 9);
+    assert!(json_analysis.summary.win_ratio > 1.0);
+}
 
-    verified_engine::engine::VerifiedEngine::run_verified(|| {
-        tool.evaluate_hot_path();
-    });
-    assert!(!tool.prc_points.is_empty());
-
-    let md = export::format_markdown_report(&tool);
-    assert!(md.contains("# Composite Endpoint Win Ratio & Weibull PR(c) Report"));
-    assert!(md.contains("Pocock 2-Tier Counts"));
-    assert!(md.contains("Independent Two-Sample t-Test"));
-
-    let csv = export::format_csv_report(&tool);
-    assert!(csv.contains("summary,win_ratio,"));
-    assert!(csv.contains("weibull_prc,PR(c),"));
-
-    let ctx = egui::Context::default();
-    let raw = egui::RawInput {
-        screen_rect: Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::Vec2::new(1280.0, 800.0),
-        )),
-        ..Default::default()
-    };
-    for mode in [
-        WinRatioPlotMode::WeibullPrc,
-        WinRatioPlotMode::EmpiricalHierarchy,
+#[test]
+fn malformed_non_finite_negative_and_oversized_cohorts_are_rejected() {
+    for bad_csv in [
+        "",
+        "arm,fatal_time,fatal_event,nonfatal_time,nonfatal_event\ntreatment,NaN,1,2.0,0\ntreatment,3.0,0,2.0,0\ncontrol,1.0,1,0.5,1\ncontrol,2.0,1,1.0,1",
+        "arm,fatal_time,fatal_event,nonfatal_time,nonfatal_event\ntreatment,inf,1,2.0,0\ntreatment,3.0,0,2.0,0\ncontrol,1.0,1,0.5,1\ncontrol,2.0,1,1.0,1",
+        "arm,fatal_time,fatal_event,nonfatal_time,nonfatal_event\ntreatment,-1.0,1,2.0,0\ntreatment,3.0,0,2.0,0\ncontrol,1.0,1,0.5,1\ncontrol,2.0,1,1.0,1",
+        "arm,fatal_time,fatal_event,nonfatal_time,nonfatal_event\ntreatment,2.0,9,2.0,0\ntreatment,3.0,0,2.0,0\ncontrol,1.0,1,0.5,1\ncontrol,2.0,1,1.0,1",
+        "arm,fatal_time,fatal_event,nonfatal_time,nonfatal_event\ntreatment,2.0,1,1.0,1\ntreatment,3.0,0,2.0,0",
     ] {
-        tool.plot_mode = mode;
-        assert!(!tool.export_datasets().is_empty());
-        let _ = ctx.run(raw.clone(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                tool.show_inside(ui);
-            });
-        });
+        assert!(
+            load_and_analyze_cohort("bad.csv", bad_csv, 0.05, None).is_err(),
+            "Expected cohort rejection for: {bad_csv}"
+        );
     }
 
-    let meta = inventory::iter::<ToolMetadata>
-        .into_iter()
-        .find(|m| m.id == "WinRatioTool")
-        .expect("WinRatioTool registered");
-    assert_eq!(meta.display_name, "Composite Win Ratio");
+    let mut oversized = String::from("arm,fatal_time,fatal_event,nonfatal_time,nonfatal_event\n");
+    for _ in 0..501 {
+        oversized.push_str("treatment,3.0,0,2.0,1\n");
+    }
+    oversized.push_str("control,1.0,1,0.5,1\ncontrol,2.0,1,1.0,1\n");
+    assert!(load_and_analyze_cohort("oversized.csv", &oversized, 0.05, None).is_err());
 }
 
 #[test]
-fn test_clinical_trials_suite_offscreen_png_and_svg_exports() {
-    use crate::tabs::clinical_trials::{
-        randomization::{RandomizationTool, RandomizationType},
-        sample_size::SampleSizeCalculatorTool,
-        survival::{SurvivalAnalysisTool, TWO_ARM_EXAMPLE_CSV},
-    };
-    let opts = egui_plot::export::ExportOptions {
-        width: 960,
-        height: 540,
-        ..Default::default()
-    };
+fn protocol_exports_and_plot_primitives_are_non_empty_across_modes() {
+    let mut tool = WinRatioStressTesterTool::default();
+    tool.apply_cohort_content("sample.csv", SAMPLE_COHORT_CSV)
+        .unwrap();
 
-    let wr = WinRatioTool::default();
-    let wr_ds = wr.export_datasets();
-    let wr_png = egui_plot::export::export_custom_png(&wr_ds, &opts).expect("WR PNG");
-    let wr_svg = egui_plot::export::export_custom_svg(&wr_ds, &opts).expect("WR SVG");
-    let _ = std::fs::write("/tmp/win_ratio_weibull_prc.png", &wr_png);
-    let _ = std::fs::write("/tmp/win_ratio_weibull_prc.svg", &wr_svg);
-    let _ = std::fs::write(
-        "/tmp/win_ratio_report.md",
-        export::format_markdown_report(&wr),
-    );
+    let csv_out = tool.build_protocol_csv();
+    assert!(csv_out.contains("tier_waterfall") && csv_out.contains("power_by_n"));
 
-    let mut surv = SurvivalAnalysisTool::default();
-    surv.import_cohort_str(TWO_ARM_EXAMPLE_CSV)
-        .expect("2-arm KM");
-    let surv_ds = surv.export_datasets();
-    let surv_png = egui_plot::export::export_custom_png(&surv_ds, &opts).expect("KM PNG");
-    let surv_svg = egui_plot::export::export_custom_svg(&surv_ds, &opts).expect("KM SVG");
-    let _ = std::fs::write("/tmp/survival_multi_arm_km.png", &surv_png);
-    let _ = std::fs::write("/tmp/survival_multi_arm_km.svg", &surv_svg);
+    let json_out = tool.build_protocol_json();
+    let parsed: serde_json::Value = serde_json::from_str(&json_out).unwrap();
+    assert_eq!(parsed["tool"], "WinRatioStressTesterTool");
+    assert!(parsed["tier_waterfall"].as_array().unwrap().len() == 2);
+    assert!(!parsed["power_by_n"].as_array().unwrap().is_empty());
 
-    let ss = SampleSizeCalculatorTool::default();
-    let ss_ds = ss.export_datasets();
-    let ss_png = egui_plot::export::export_custom_png(&ss_ds, &opts).expect("Power PNG");
-    let ss_svg = egui_plot::export::export_custom_svg(&ss_ds, &opts).expect("Power SVG");
-    let _ = std::fs::write("/tmp/sample_size_power_curve.png", &ss_png);
-    let _ = std::fs::write("/tmp/sample_size_power_curve.svg", &ss_svg);
-
-    let mut rand_tool = RandomizationTool {
-        randomization_type: RandomizationType::Block,
-        n_subjects: 24,
-        block_size: 4,
-        ..RandomizationTool::default()
-    };
-    rand_tool.allocate_subjects();
-    let rand_ds = rand_tool.export_datasets();
-    let rand_png = egui_plot::export::export_custom_png(&rand_ds, &opts).expect("Rand PNG");
-    let rand_svg = egui_plot::export::export_custom_svg(&rand_ds, &opts).expect("Rand SVG");
-    let _ = std::fs::write("/tmp/randomization_block_balance.png", &rand_png);
-    let _ = std::fs::write("/tmp/randomization_block_balance.svg", &rand_svg);
-    assert!(
-        wr_png.len() > 1024
-            && surv_png.len() > 1024
-            && ss_png.len() > 1024
-            && rand_png.len() > 1024
-    );
-}
-
-#[cfg(target_arch = "wasm32")]
-mod wasm_browser_tests {
-    use super::*;
-    use crate::app::MathExplorerApp;
-    use crate::starter_gallery::StarterPresetMetadata;
-    use crate::url_state::MAX_URL_FRAGMENT_BYTES;
-    use wasm_bindgen_test::wasm_bindgen_test;
-
-    #[wasm_bindgen_test]
-    fn wasm_win_ratio_presets_url_roundtrip_and_report_downloads() {
-        for preset_id in [
-            "win_ratio_composite_starter",
-            "win_ratio_weibull_prc_starter",
-        ] {
-            let preset = inventory::iter::<StarterPresetMetadata>
-                .into_iter()
-                .find(|p| p.id == preset_id)
-                .expect("WinRatio starter preset registered");
-
-            let mut app = MathExplorerApp::default();
-            let tab_idx = app
-                .tabs
-                .iter()
-                .position(|t| t.url_slug() == "clinical_trials")
-                .expect("clinical_trials tab exists");
-            app.selected_tab = tab_idx;
-            app.tabs[tab_idx]
-                .framework_mut()
-                .expect("framework present")
-                .apply_starter_card(
-                    preset.title,
-                    preset.tool_name,
-                    Some(preset.generate_preset()),
-                )
-                .expect("starter card applies cleanly");
-
-            let share_url = app.encode_current_share_url().unwrap();
-            let hash_idx = share_url.find('#').unwrap();
-            let fragment = &share_url[hash_idx..];
-            assert!(fragment.contains("tool=WinRatioTool"));
-            assert!(fragment.len() <= MAX_URL_FRAGMENT_BYTES);
-
-            let mut restored = MathExplorerApp::default();
-            assert!(restored
-                .apply_share_location_strings(fragment, "", None)
-                .unwrap());
-            assert_eq!(
-                restored.tabs[tab_idx].active_tool_id(),
-                Some("WinRatioTool")
-            );
-        }
-
-        let mut tool = WinRatioTool::default();
-        let md = export::format_markdown_report(&tool);
-        tool.io_state
-            .trigger_save_markdown("win_ratio_report.md", md);
-        tool.io_state.poll_save("Win Ratio report");
-        assert!(tool
-            .io_state
-            .status_info
-            .as_deref()
-            .unwrap_or("")
-            .contains("win_ratio_report.md"));
-
-        let csv = export::format_csv_report(&tool);
-        tool.io_state.trigger_save_csv("win_ratio_report.csv", csv);
-        tool.io_state.poll_save("Win Ratio report");
-        assert!(tool
-            .io_state
-            .status_info
-            .as_deref()
-            .unwrap_or("")
-            .contains("win_ratio_report.csv"));
+    for mode in [
+        ChartMode::PowerCurve,
+        ChartMode::TierWaterfall,
+        ChartMode::CohortSurvival,
+    ] {
+        tool.chart_mode = mode;
+        assert!(!tool.export_datasets().is_empty());
+        assert!(!tool.export_plot_primitives().is_empty());
     }
 }
-
-// [cite:win_ratio]
-// [cite:clinical_trials_statistics]
