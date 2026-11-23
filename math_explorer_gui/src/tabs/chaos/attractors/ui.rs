@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::twin_state::AttractorSystemKind;
-use super::{AttractorPlotter, SolverExecutionState};
+use super::{AttractorMode, AttractorPlotter, SolverExecutionState};
 use crate::async_sim::ui::{
     render_custom_fault_banner, render_worker_fault_banner, WorkerFaultAction,
 };
@@ -15,7 +15,11 @@ impl AttractorPlotter {
         let worker_faulted = self.worker.state() == SimWorkerState::Faulted;
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "attractor_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading(self.system_kind.label());
+            let heading = match self.mode {
+                AttractorMode::Lorenz => self.system_kind.label(),
+                AttractorMode::Custom => "Custom 3D Flow",
+            };
+            ui.heading(heading);
             ui.separator();
 
             if worker_faulted && !self.diverged() {
@@ -30,7 +34,7 @@ impl AttractorPlotter {
                 }
             }
 
-            self.draw_model_and_parameter_controls(ui);
+            self.draw_model_and_parameter_controls(ui, ctx);
             self.draw_twin_initial_controls(ui, ctx);
             self.draw_simulation_and_scrubber_controls(ui, ctx, worker_faulted);
             self.draw_chaos_metrics_panel(ui);
@@ -39,7 +43,8 @@ impl AttractorPlotter {
                 .default_open(true)
                 .show(ui, |ui| self.camera.ui(ui));
 
-            if self.system_kind == AttractorSystemKind::Lorenz {
+            if self.mode == AttractorMode::Lorenz && self.system_kind == AttractorSystemKind::Lorenz
+            {
                 ui.separator();
                 ui.checkbox(&mut self.show_annotations, "Show Fixed Points");
             }
@@ -50,7 +55,11 @@ impl AttractorPlotter {
     }
 
     fn draw_live_coordinates_readout(&self, ui: &mut egui::Ui) {
-        let labels = self.system_kind.coord_labels();
+        let labels = if self.mode == AttractorMode::Custom {
+            ["x₀", "y₀", "z₀"]
+        } else {
+            self.system_kind.coord_labels()
+        };
         let state = self.system.state.vec;
         ui.label(format!(
             "Primary ({}, {}, {}): ({:.2}, {:.2}, {:.2})",
@@ -188,7 +197,9 @@ impl AttractorPlotter {
     }
 
     pub(super) fn draw_fixed_point_callouts(&mut self, plot_ui: &mut egui_plot::PlotUi<'_>) {
-        if !self.show_annotations
+        if self.mode != AttractorMode::Lorenz
+            || self.system_kind != AttractorSystemKind::Lorenz
+            || !self.show_annotations
             || self.system.rho <= 1.0
             || self.system.beta <= 0.0
             || !self.system.rho.is_finite()

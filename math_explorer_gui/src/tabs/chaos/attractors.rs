@@ -2,13 +2,21 @@
 
 use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::{
-    MathExpressionInputBar, TimelineRingBuffer, DEFAULT_TIMELINE_RING_CAPACITY,
+    CoupledExpressionBank, MathExpressionInputBar, TimelineRingBuffer,
+    DEFAULT_TIMELINE_RING_CAPACITY,
 };
 use eframe::egui;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;
+
+#[path = "attractors/flow.rs"]
+pub mod flow;
+pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
+
+#[path = "attractors/serde_vec3.rs"]
+mod serde_vec3;
 
 #[path = "attractors/runner_types.rs"]
 mod runner_types;
@@ -39,6 +47,8 @@ mod preset;
 
 /// Interactive 3D strange attractor and twin-trajectory divergence explorer.
 pub struct AttractorPlotter {
+    pub(crate) mode: AttractorMode,
+    pub(crate) flow_bank: CoupledExpressionBank,
     pub(crate) system: LorenzSystem,
     pub(crate) execution_state: SolverExecutionState,
     pub(crate) step_count: usize,
@@ -73,6 +83,8 @@ impl Default for AttractorPlotter {
         let initial = [1.0, 1.0, 1.0];
         let system =
             LorenzBuilder::new().build(LorenzState::new(initial[0], initial[1], initial[2]));
+        let flow_bank = default_flow_bank();
+        let custom_flow = Some(Arc::new(CompiledFlowJob::from_bank(&flow_bank)));
         let perturbation_bar = MathExpressionInputBar::new(
             "δx₀",
             DEFAULT_PERTURBATION_EXPR,
@@ -86,6 +98,8 @@ impl Default for AttractorPlotter {
             dt: 0.01,
             simulation_speed: 5,
             max_points: 2000,
+            mode: AttractorMode::Lorenz,
+            custom_flow,
             system_kind: AttractorSystemKind::Lorenz,
             initial_state: initial,
             shadow_enabled: true,
@@ -97,6 +111,8 @@ impl Default for AttractorPlotter {
         let worker = BackgroundWorker::new(runner);
 
         Self {
+            mode: AttractorMode::Lorenz,
+            flow_bank,
             system,
             execution_state: SolverExecutionState::Ready,
             step_count: 0,
@@ -144,17 +160,20 @@ impl AttractorPlotter {
     #[must_use]
     pub fn is_finite_state(&self) -> bool {
         let v = self.system.state.vec;
+        let lorenz_ok = self.mode != AttractorMode::Lorenz
+            || (self.system.sigma.is_finite()
+                && self.system.rho.is_finite()
+                && self.system.beta.is_finite());
         v.x.is_finite()
             && v.y.is_finite()
             && v.z.is_finite()
-            && self.system.sigma.is_finite()
-            && self.system.rho.is_finite()
-            && self.system.beta.is_finite()
+            && lorenz_ok
             && self.dt.is_finite()
             && self.dt > 0.0
             && self.epsilon.is_finite()
             && self.initial_state.iter().all(|c| c.is_finite())
             && self.extra_params.is_valid()
+            && self.flow_bank.param_slice().iter().all(|x| x.is_finite())
     }
 
     pub fn try_resume(&mut self) -> Result<(), &'static str> {
@@ -198,6 +217,7 @@ impl AttractorPlotter {
     }
 
     fn write_shared_params(&self) {
+        let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.sigma = self.system.sigma;
         p.rho = self.system.rho;
@@ -205,6 +225,8 @@ impl AttractorPlotter {
         p.dt = self.dt;
         p.simulation_speed = self.simulation_speed;
         p.max_points = self.max_points;
+        p.mode = self.mode;
+        p.custom_flow = Some(job);
         p.system_kind = self.system_kind;
         p.initial_state = self.initial_state;
         p.shadow_enabled = self.shadow_enabled;
@@ -213,13 +235,14 @@ impl AttractorPlotter {
     }
 
     pub(crate) fn ensure_lyapunov_cache(&mut self) {
-        self.metrics_cache.refresh_wolf_lyapunov(
-            self.system_kind,
-            (self.system.sigma, self.system.rho, self.system.beta),
-            &self.extra_params,
-            self.initial_state,
-            self.dt,
-        );
+        if self.metrics_cache.wolf_dirty {
+            let p = self
+                .params
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            self.metrics_cache.refresh_wolf_lyapunov(&p);
+        }
     }
 
     pub fn on_slider_changed(&mut self) {
@@ -301,8 +324,13 @@ impl AttractorPlotter {
         self.system.sigma = 10.0;
         self.system.rho = 28.0;
         self.system.beta = 8.0 / 3.0;
+        self.flow_bank = default_flow_bank();
         self.extra_params = ExtraChaosParams::default();
-        self.dt = self.system_kind.default_dt();
+        self.dt = if self.mode == AttractorMode::Custom {
+            0.01
+        } else {
+            self.system_kind.default_dt()
+        };
         self.epsilon = DEFAULT_EPSILON;
         self.perturbation_expr = DEFAULT_PERTURBATION_EXPR.to_string();
         self.perturbation_bar
@@ -349,7 +377,11 @@ impl AttractorPlotter {
 
     /// Projects 3D point to 2D screen space based on rotation and active system center.
     pub(crate) fn project(&self, p: Vector3<f64>) -> [f64; 2] {
-        let p_centered = p - self.system_kind.center_offset();
+        let center_offset = match self.mode {
+            AttractorMode::Lorenz => self.system_kind.center_offset(),
+            AttractorMode::Custom => Vector3::zeros(),
+        };
+        let p_centered = p - center_offset;
         self.camera
             .project(&[p_centered.x, p_centered.y, p_centered.z])
     }
@@ -362,3 +394,7 @@ mod attractor_tests;
 #[cfg(test)]
 #[path = "attractors/twin_tests.rs"]
 mod twin_tests;
+
+#[cfg(test)]
+#[path = "attractors/custom_flow_tests.rs"]
+mod custom_flow_tests;

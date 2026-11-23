@@ -2,8 +2,8 @@
 //! `InteractiveTool` implementation, in-thread fallback stepping, and `ToolMetadata` registration.
 
 use super::{
-    AttractorPlotter, AttractorSnapshot, AttractorSystemKind, SolverExecutionState, TwinFrame,
-    DEFAULT_EPSILON, MAX_SIMULATION_SPEED,
+    AttractorMode, AttractorPlotter, AttractorSnapshot, AttractorSystemKind, CompiledFlowJob,
+    SolverExecutionState, TwinFrame, DEFAULT_EPSILON, MAX_SIMULATION_SPEED,
 };
 use crate::async_sim::SimCommand;
 use crate::framework::{InteractiveTool, DEFAULT_TIMELINE_RING_CAPACITY};
@@ -102,12 +102,54 @@ impl AttractorPlotter {
         (pr.state.state.0, s4)
     }
 
-    fn step_local_pair(&mut self, prev: TwinFrame) -> ([f64; 4], [f64; 4]) {
+    fn step_local_pair(
+        &mut self,
+        prev: TwinFrame,
+        custom_job: Option<&CompiledFlowJob>,
+    ) -> ([f64; 4], [f64; 4]) {
+        if let Some(job) = custom_job {
+            let pv = job.rk4_step(prev.primary_vec3(), self.dt);
+            self.system.state.vec = pv;
+            let sv = if self.shadow_enabled {
+                job.rk4_step(prev.shadow_vec3(), self.dt)
+            } else {
+                pv
+            };
+            return ([pv.x, pv.y, pv.z, 0.0], [sv.x, sv.y, sv.z, 0.0]);
+        }
         match self.system_kind {
             AttractorSystemKind::Lorenz => self.step_local_lorenz(prev),
             AttractorSystemKind::Rossler => self.step_local_rossler(prev),
             AttractorSystemKind::DoublePendulum => self.step_local_pendulum(prev),
         }
+    }
+
+    fn record_local_frame(&mut self, p4: [f64; 4], s4: [f64; 4], cap: usize) -> bool {
+        self.step_count += 1;
+        if p4.iter().any(|v| !v.is_finite()) || s4.iter().any(|v| !v.is_finite()) {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: Vector3::new(p4[0], p4[1], p4[2]),
+                diverged_at_step: self.step_count,
+            };
+            return false;
+        }
+        let frame = TwinFrame::from_states(
+            self.step_count,
+            self.step_count as f64 * self.dt,
+            p4,
+            s4,
+            self.shadow_enabled,
+        );
+        self.timeline.push(frame);
+        if self.history.len() >= cap {
+            self.history.pop_front();
+        }
+        self.history.push_back(frame.primary_vec3());
+        if self.shadow_history.len() >= cap {
+            self.shadow_history.pop_front();
+        }
+        self.shadow_history.push_back(frame.shadow_vec3());
+        true
     }
 
     fn ingest_worker_snapshot(&mut self, was_paused: bool) {
@@ -134,6 +176,7 @@ impl AttractorPlotter {
             self.execution_state = data.execution_state;
         }
     }
+
     pub(crate) fn clamp_local_parameters(&mut self) {
         self.system.sigma = sanitize_scalar(self.system.sigma, 0.0, 50.0, 10.0);
         self.system.rho = sanitize_scalar(self.system.rho, 0.0, 100.0, 28.0);
@@ -167,6 +210,13 @@ impl InteractiveTool for AttractorPlotter {
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
+        (self.mode as u8).hash(&mut h);
+        for bar in self.flow_bank.bars() {
+            bar.raw_text.hash(&mut h);
+        }
+        for &pv in self.flow_bank.param_slice() {
+            pv.to_bits().hash(&mut h);
+        }
         self.system_kind.hash(&mut h);
         self.system.sigma.to_bits().hash(&mut h);
         self.system.rho.to_bits().hash(&mut h);
@@ -208,6 +258,8 @@ impl InteractiveTool for AttractorPlotter {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
+        let custom_job = (self.mode == AttractorMode::Custom)
+            .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
         let cap = self.max_points.clamp(1, DEFAULT_TIMELINE_RING_CAPACITY);
         for _ in 0..self.simulation_speed.clamp(1, MAX_SIMULATION_SPEED) {
             let current_vec = self.system.state.vec;
@@ -229,31 +281,10 @@ impl InteractiveTool for AttractorPlotter {
                 self.shadow_history.pop_back();
             }
             let prev = self.timeline.current_copied().unwrap_or_default();
-            let (p4, s4) = self.step_local_pair(prev);
-            self.step_count += 1;
-            if p4.iter().any(|v| !v.is_finite()) || s4.iter().any(|v| !v.is_finite()) {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: Vector3::new(p4[0], p4[1], p4[2]),
-                    diverged_at_step: self.step_count,
-                };
+            let (p4, s4) = self.step_local_pair(prev, custom_job.as_ref());
+            if !self.record_local_frame(p4, s4, cap) {
                 break;
             }
-            let frame = TwinFrame::from_states(
-                self.step_count,
-                self.step_count as f64 * self.dt,
-                p4,
-                s4,
-                self.shadow_enabled,
-            );
-            self.timeline.push(frame);
-            if self.history.len() >= cap {
-                self.history.pop_front();
-            }
-            self.history.push_back(frame.primary_vec3());
-            if self.shadow_history.len() >= cap {
-                self.shadow_history.pop_front();
-            }
-            self.shadow_history.push_back(frame.shadow_vec3());
         }
         self.metrics_cache.update_windowed_ftle(&self.timeline);
     }

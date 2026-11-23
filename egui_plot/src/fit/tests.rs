@@ -280,6 +280,73 @@ fn log_mode_vs_untransformed_exponential_and_10k_latency() {
     );
 }
 
+#[derive(Debug)]
+struct SixParamDampedWave {
+    names: Vec<String>,
+}
+
+impl CustomFitEvaluator for SixParamDampedWave {
+    fn param_names(&self) -> &[String] {
+        &self.names
+    }
+
+    fn eval(&self, x: f64, p: &[f64]) -> Option<f64> {
+        if p.len() < 6 {
+            return None;
+        }
+        // y = p0 + p1*x + p2*exp(-p3*x) + p4*sin(p5*x)
+        let exp_arg = (-p[3] * x).clamp(-700.0, 700.0);
+        let y = p[0] + p[1] * x + p[2] * exp_arg.exp() + p[4] * (p[5] * x).sin();
+        y.is_finite().then_some(y)
+    }
+}
+
+#[test]
+fn test_six_parameter_lm_and_custom_fit_callback_registration() {
+    use std::sync::Arc;
+
+    let true_p = [1.2, -0.35, 2.4, 0.6, 0.9, 1.7];
+    let evaluator = Arc::new(SixParamDampedWave {
+        names: ["a", "b", "c", "d", "e", "w"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+    });
+    let pts: Vec<[f64; 2]> = (0..=60)
+        .map(|i| {
+            let x = i as f64 * 0.15;
+            [x, evaluator.eval(x, &true_p).expect("finite y")]
+        })
+        .collect();
+
+    let seeds = [1.0, -0.2, 2.0, 0.4, 0.6, 1.5];
+    let res = fit_custom_evaluator(
+        &pts,
+        evaluator.clone(),
+        "a + b*x + c*exp(-d*x) + e*sin(w*x)",
+        &seeds,
+        "DampedWave6",
+    )
+    .expect("6-param LM fit must succeed");
+    assert_eq!(res.fit_type, FitType::Custom);
+    assert_eq!(res.coefficients.len(), 6);
+    assert!(res.r_squared >= 0.9999, "got R² = {}", res.r_squared);
+    assert!(res.rmse < 1e-4, "got RMSE = {}", res.rmse);
+    assert!((res.eval(1.5) - evaluator.eval(1.5, &true_p).unwrap()).abs() < 1e-3);
+
+    // Register via fit_overlay callback registry and verify overlay injection
+    crate::register_custom_fit_callback(move |_formula| Ok(evaluator.clone()));
+    assert!(crate::has_custom_fit_callback());
+    let reg_res = crate::fit_custom_with_registered_callback(
+        &pts,
+        "a + b*x + c*exp(-d*x) + e*sin(w*x)",
+        &seeds,
+        "DampedWave6",
+    )
+    .expect("registered callback fit");
+    assert!(reg_res.r_squared >= 0.9999);
+}
+
 #[test]
 fn centered_polynomial_fit_recovers_high_offset_quartic_accurately() {
     let x0 = 1_000_000.0_f64;

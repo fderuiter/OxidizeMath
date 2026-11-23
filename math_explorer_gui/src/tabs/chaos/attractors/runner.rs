@@ -1,8 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 //! Pre-allocated twin chaotic ODE background runner with `TimelineRingBuffer` scrubbing.
 
+use super::flow::{AttractorMode, CompiledFlowJob};
 use super::runner_types::{
-    AttractorSharedParams, AttractorSnapshot, SolverExecutionState, MAX_SIMULATION_SPEED,
+    build_runner_diagnostic, AttractorSharedParams, AttractorSnapshot, SolverExecutionState,
+    SyncedStepParams, MAX_SIMULATION_SPEED,
 };
 use super::twin_state::{AttractorSystemKind, TwinFrame};
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
@@ -19,11 +21,11 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 /// Zero-allocation twin chaotic ODE runner backed by pre-allocated `RungeKutta4`
-/// buffers and a `4,096`-frame [`TimelineRingBuffer`].
+/// buffers, `CompiledFlowJob` bytecode, and a `4,096`-frame [`TimelineRingBuffer`].
 pub struct AttractorRunner {
-    /// Primary Lorenz solver.
+    /// Primary Lorenz / custom-flow state solver.
     pub system: LorenzSystem,
-    /// Shadow Lorenz solver.
+    /// Shadow Lorenz / custom-flow state solver.
     pub shadow_lorenz: LorenzSystem,
     /// Primary Rössler solver.
     pub rossler_primary: RosslerSystem,
@@ -52,7 +54,7 @@ impl AttractorRunner {
     /// Constructs a pre-allocated twin runner from shared parameters.
     #[must_use]
     pub fn from_params(params: Arc<std::sync::RwLock<AttractorSharedParams>>) -> Self {
-        let p = *params.read().unwrap_or_else(|e| e.into_inner());
+        let p = params.read().unwrap_or_else(|e| e.into_inner()).clone();
         let [x0, y0, z0] = p.initial_state;
         let init_lorenz = LorenzState::new(x0, y0, z0);
         let mut runner = Self {
@@ -147,77 +149,105 @@ impl AttractorRunner {
         self.pendulum_shadow.state.state.0 = shadow;
     }
 
-    fn sync_params(&mut self) -> (AttractorSystemKind, f64, usize, usize, bool) {
-        let snapshot_p = *self.params.read().unwrap_or_else(|e| e.into_inner());
-        let speed = snapshot_p.simulation_speed.clamp(1, MAX_SIMULATION_SPEED);
-        let cap = snapshot_p
-            .max_points
-            .clamp(1, DEFAULT_TIMELINE_RING_CAPACITY);
-        self.apply_coefficients(&snapshot_p);
-        (
-            snapshot_p.system_kind,
-            snapshot_p.dt,
-            speed,
-            cap,
-            snapshot_p.shadow_enabled,
-        )
-    }
-
-    fn active_primary_vec(&self, kind: AttractorSystemKind) -> Vector3<f64> {
-        match kind {
-            AttractorSystemKind::Lorenz => self.system.state.vec,
-            AttractorSystemKind::Rossler => self.rossler_primary.state.vec,
-            AttractorSystemKind::DoublePendulum => self.pendulum_primary.state.phase_point_3d(),
+    fn sync_params(&mut self) -> SyncedStepParams {
+        let p = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        self.apply_coefficients(&p);
+        let custom_flow = (p.mode == AttractorMode::Custom)
+            .then_some(p.custom_flow)
+            .flatten();
+        SyncedStepParams {
+            mode: p.mode,
+            custom_flow,
+            kind: p.system_kind,
+            dt: p.dt,
+            speed: p.simulation_speed.clamp(1, MAX_SIMULATION_SPEED),
+            max_points: p.max_points.clamp(1, DEFAULT_TIMELINE_RING_CAPACITY),
+            shadow_enabled: p.shadow_enabled,
         }
     }
 
-    fn active_shadow_vec(&self, kind: AttractorSystemKind) -> Vector3<f64> {
-        match kind {
-            AttractorSystemKind::Lorenz => self.shadow_lorenz.state.vec,
-            AttractorSystemKind::Rossler => self.rossler_shadow.state.vec,
-            AttractorSystemKind::DoublePendulum => self.pendulum_shadow.state.phase_point_3d(),
-        }
-    }
-
-    fn parameters_finite(&self, kind: AttractorSystemKind, dt: f64) -> bool {
-        if !dt.is_finite() || dt <= 0.0 {
-            return false;
-        }
-        match kind {
-            AttractorSystemKind::Lorenz => {
-                self.system.sigma.is_finite()
-                    && self.system.rho.is_finite()
-                    && self.system.beta.is_finite()
-            }
-            AttractorSystemKind::Rossler => {
-                self.rossler_primary.a.is_finite()
-                    && self.rossler_primary.b.is_finite()
-                    && self.rossler_primary.c.is_finite()
-            }
-            AttractorSystemKind::DoublePendulum => {
-                self.pendulum_primary.m1.is_finite()
-                    && self.pendulum_primary.m2.is_finite()
-                    && self.pendulum_primary.l1.is_finite()
-                    && self.pendulum_primary.l2.is_finite()
-                    && self.pendulum_primary.g.is_finite()
+    fn active_primary_vec(&self, mode: AttractorMode, kind: AttractorSystemKind) -> Vector3<f64> {
+        match (mode, kind) {
+            (AttractorMode::Custom, _) | (_, AttractorSystemKind::Lorenz) => self.system.state.vec,
+            (_, AttractorSystemKind::Rossler) => self.rossler_primary.state.vec,
+            (_, AttractorSystemKind::DoublePendulum) => {
+                self.pendulum_primary.state.phase_point_3d()
             }
         }
     }
 
-    fn step_active_solvers(
+    fn active_shadow_vec(&self, mode: AttractorMode, kind: AttractorSystemKind) -> Vector3<f64> {
+        match (mode, kind) {
+            (AttractorMode::Custom, _) | (_, AttractorSystemKind::Lorenz) => {
+                self.shadow_lorenz.state.vec
+            }
+            (_, AttractorSystemKind::Rossler) => self.rossler_shadow.state.vec,
+            (_, AttractorSystemKind::DoublePendulum) => self.pendulum_shadow.state.phase_point_3d(),
+        }
+    }
+
+    fn parameters_finite(&self, mode: AttractorMode, kind: AttractorSystemKind, dt: f64) -> bool {
+        dt.is_finite()
+            && dt > 0.0
+            && (mode == AttractorMode::Custom
+                || match kind {
+                    AttractorSystemKind::Lorenz => {
+                        self.system.sigma.is_finite()
+                            && self.system.rho.is_finite()
+                            && self.system.beta.is_finite()
+                    }
+                    AttractorSystemKind::Rossler => {
+                        self.rossler_primary.a.is_finite()
+                            && self.rossler_primary.b.is_finite()
+                            && self.rossler_primary.c.is_finite()
+                    }
+                    AttractorSystemKind::DoublePendulum => {
+                        self.pendulum_primary.m1.is_finite()
+                            && self.pendulum_primary.m2.is_finite()
+                            && self.pendulum_primary.l1.is_finite()
+                            && self.pendulum_primary.l2.is_finite()
+                            && self.pendulum_primary.g.is_finite()
+                    }
+                })
+    }
+
+    fn step_custom_flow(
         &mut self,
-        kind: AttractorSystemKind,
+        custom_flow: Option<&CompiledFlowJob>,
         dt: f64,
         shadow_enabled: bool,
     ) -> ([f64; 4], [f64; 4]) {
-        match kind {
+        let mut pv = self.system.state.vec;
+        let mut sv = self.shadow_lorenz.state.vec;
+        if let Some(job) = custom_flow {
+            pv = job.rk4_step(pv, dt);
+            self.system.state.vec = pv;
+            if shadow_enabled {
+                sv = job.rk4_step(sv, dt);
+                self.shadow_lorenz.state.vec = sv;
+            } else {
+                sv = pv;
+            }
+        }
+        ([pv.x, pv.y, pv.z, 0.0], [sv.x, sv.y, sv.z, 0.0])
+    }
+
+    fn step_active_solvers(&mut self, sp: &SyncedStepParams) -> ([f64; 4], [f64; 4]) {
+        if sp.mode == AttractorMode::Custom {
+            return self.step_custom_flow(sp.custom_flow.as_deref(), sp.dt, sp.shadow_enabled);
+        }
+        match sp.kind {
             AttractorSystemKind::Lorenz => {
                 let mut pv = self.system.state.vec;
-                self.rk4_vec3.step(&self.system, 0.0, &mut pv, dt);
+                self.rk4_vec3.step(&self.system, 0.0, &mut pv, sp.dt);
                 self.system.state.vec = pv;
                 let mut sv = self.shadow_lorenz.state.vec;
-                if shadow_enabled {
-                    self.rk4_vec3.step(&self.shadow_lorenz, 0.0, &mut sv, dt);
+                if sp.shadow_enabled {
+                    self.rk4_vec3.step(&self.shadow_lorenz, 0.0, &mut sv, sp.dt);
                     self.shadow_lorenz.state.vec = sv;
                 } else {
                     sv = pv;
@@ -225,10 +255,10 @@ impl AttractorRunner {
                 ([pv.x, pv.y, pv.z, 0.0], [sv.x, sv.y, sv.z, 0.0])
             }
             AttractorSystemKind::Rossler => {
-                self.rossler_primary.step(dt);
+                self.rossler_primary.step(sp.dt);
                 let pv = self.rossler_primary.state.vec;
-                let sv = if shadow_enabled {
-                    self.rossler_shadow.step(dt);
+                let sv = if sp.shadow_enabled {
+                    self.rossler_shadow.step(sp.dt);
                     self.rossler_shadow.state.vec
                 } else {
                     pv
@@ -236,10 +266,10 @@ impl AttractorRunner {
                 ([pv.x, pv.y, pv.z, 0.0], [sv.x, sv.y, sv.z, 0.0])
             }
             AttractorSystemKind::DoublePendulum => {
-                self.pendulum_primary.step(dt);
+                self.pendulum_primary.step(sp.dt);
                 let p4 = self.pendulum_primary.state.state.0;
-                let s4 = if shadow_enabled {
-                    self.pendulum_shadow.step(dt);
+                let s4 = if sp.shadow_enabled {
+                    self.pendulum_shadow.step(sp.dt);
                     self.pendulum_shadow.state.state.0
                 } else {
                     p4
@@ -271,18 +301,12 @@ impl AttractorRunner {
         self.shadow_history.push_back(frame.shadow_vec3());
     }
 
-    fn advance_tick(
-        &mut self,
-        kind: AttractorSystemKind,
-        dt: f64,
-        max_points: usize,
-        shadow_enabled: bool,
-    ) -> bool {
-        let pre_vec = self.active_primary_vec(kind);
+    fn advance_tick(&mut self, sp: &SyncedStepParams) -> bool {
+        let pre_vec = self.active_primary_vec(sp.mode, sp.kind);
         if !pre_vec.x.is_finite()
             || !pre_vec.y.is_finite()
             || !pre_vec.z.is_finite()
-            || !self.parameters_finite(kind, dt)
+            || !self.parameters_finite(sp.mode, sp.kind, sp.dt)
         {
             self.execution_state = SolverExecutionState::Diverged {
                 invalid_vec: pre_vec,
@@ -292,7 +316,7 @@ impl AttractorRunner {
         }
 
         self.truncate_trails_to_cursor();
-        let (p4, s4) = self.step_active_solvers(kind, dt, shadow_enabled);
+        let (p4, s4) = self.step_active_solvers(sp);
         self.step_count += 1;
 
         if p4.iter().any(|v| !v.is_finite()) || s4.iter().any(|v| !v.is_finite()) {
@@ -305,13 +329,13 @@ impl AttractorRunner {
 
         let frame = TwinFrame::from_states(
             self.step_count,
-            self.step_count as f64 * dt,
+            self.step_count as f64 * sp.dt,
             p4,
             s4,
-            shadow_enabled,
+            sp.shadow_enabled,
         );
         self.timeline.push(frame);
-        self.push_frame_to_trails(frame, max_points);
+        self.push_frame_to_trails(frame, sp.max_points);
         true
     }
 
@@ -366,7 +390,11 @@ impl SimulationRunner for AttractorRunner {
                 }
             }
             SimCommand::Reset => {
-                let p = *self.params.read().unwrap_or_else(|e| e.into_inner());
+                let p = self
+                    .params
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
                 self.reset_from_shared(&p);
             }
             SimCommand::SetSpeed(speed) => {
@@ -383,12 +411,12 @@ impl SimulationRunner for AttractorRunner {
         if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
             return;
         }
-        let (kind, dt, speed, max_points, shadow_enabled) = self.sync_params();
+        let sp = self.sync_params();
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
-        for _ in 0..speed {
-            if !self.advance_tick(kind, dt, max_points, shadow_enabled) {
+        for _ in 0..sp.speed {
+            if !self.advance_tick(&sp) {
                 break;
             }
         }
@@ -398,39 +426,26 @@ impl SimulationRunner for AttractorRunner {
         if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
             return;
         }
-        let (kind, dt, _, max_points, shadow_enabled) = self.sync_params();
-        if self.advance_tick(kind, dt, max_points, shadow_enabled) {
+        let sp = self.sync_params();
+        if self.advance_tick(&sp) {
             self.execution_state = SolverExecutionState::Paused;
         }
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let kind = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .system_kind;
-        let current_vec = self.active_primary_vec(kind);
-        let snapshot = AttractorSnapshot {
+        let (mode, kind) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.mode, p.system_kind)
+        };
+        AttractorSnapshot {
             history: self.history.clone(),
             shadow_history: self.shadow_history.clone(),
             timeline: self.timeline.clone(),
-            current_vec,
+            current_vec: self.active_primary_vec(mode, kind),
             step_count: self.step_count,
             execution_state: self.execution_state,
-        };
-        StateSnapshot {
-            width: 0,
-            height: 0,
-            pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
-            custom_data: vec![
-                current_vec.x,
-                current_vec.y,
-                current_vec.z,
-                self.step_count as f64,
-            ],
-            structured_data: Some(Box::new(snapshot)),
         }
+        .into_state_snapshot()
     }
 
     fn get_steps_per_frame(&self) -> usize {
@@ -438,13 +453,12 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn is_finite_state(&self) -> bool {
-        let kind = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .system_kind;
-        let v = self.active_primary_vec(kind);
-        let s = self.active_shadow_vec(kind);
+        let (mode, kind) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.mode, p.system_kind)
+        };
+        let v = self.active_primary_vec(mode, kind);
+        let s = self.active_shadow_vec(mode, kind);
         !matches!(self.execution_state, SolverExecutionState::Diverged { .. })
             && v.x.is_finite()
             && v.y.is_finite()
@@ -455,30 +469,12 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
-        if let SolverExecutionState::Diverged {
-            invalid_vec,
-            diverged_at_step,
-        } = self.execution_state
-        {
-            Some(DiagnosticReport::new(
-                diverged_at_step as f64,
-                diverged_at_step,
-                "attractor_state",
-                format!(
-                    "Non-finite attractor state [{:.2}, {:.2}, {:.2}] at step {}",
-                    invalid_vec.x, invalid_vec.y, invalid_vec.z, diverged_at_step
-                ),
-            ))
-        } else if !self.is_finite_state() {
-            let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
-            Some(DiagnosticReport::new(
-                self.step_count as f64 * if dt.is_finite() { dt } else { 0.01 },
-                self.step_count,
-                "attractor_state",
-                "Non-finite chaotic trajectory coordinates detected",
-            ))
-        } else {
-            None
-        }
+        let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+        build_runner_diagnostic(
+            self.execution_state,
+            self.step_count,
+            dt,
+            self.is_finite_state(),
+        )
     }
 }

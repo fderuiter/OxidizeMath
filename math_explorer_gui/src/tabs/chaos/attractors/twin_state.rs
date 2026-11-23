@@ -1,6 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 //! Twin-trajectory model selection, symbolic AST perturbations, and Lyapunov metrics.
 
+use super::flow::AttractorMode;
+use super::runner_types::AttractorSharedParams;
 use crate::framework::{MathExpressionInputBar, TimelineRingBuffer};
 use math_explorer::physics::chaos::double_pendulum::{DoublePendulumBuilder, DoublePendulumState};
 use math_explorer::physics::chaos::fractals::correlation_dimension;
@@ -341,29 +343,32 @@ impl ChaosMetricsCache {
     }
 
     /// Recomputes Wolf $\lambda_1$ lazily when `wolf_dirty` is set.
-    pub fn refresh_wolf_lyapunov(
-        &mut self,
-        kind: AttractorSystemKind,
-        sigma_rho_beta: (f64, f64, f64),
-        extra: &ExtraChaosParams,
-        initial_state: [f64; 3],
-        dt: f64,
-    ) {
+    pub fn refresh_wolf_lyapunov(&mut self, p: &AttractorSharedParams) {
         if !self.wolf_dirty {
             return;
         }
-        let safe_dt = if dt.is_finite() && dt > 0.0 {
-            dt.clamp(0.001, 0.02)
+        let safe_dt = if p.dt.is_finite() && p.dt > 0.0 {
+            p.dt.clamp(0.001, 0.02)
         } else {
-            kind.default_dt()
+            p.system_kind.default_dt()
         };
-        self.wolf_lambda1 = match kind {
+        if p.mode == AttractorMode::Custom {
+            self.wolf_lambda1 = p
+                .custom_flow
+                .as_deref()
+                .map_or(0.0, |job| job.estimate_lyapunov(p.initial_state, safe_dt));
+            self.wolf_dirty = false;
+            return;
+        }
+        self.wolf_lambda1 = match p.system_kind {
             AttractorSystemKind::Lorenz => {
-                compute_lorenz_wolf(sigma_rho_beta, initial_state, safe_dt)
+                compute_lorenz_wolf((p.sigma, p.rho, p.beta), p.initial_state, safe_dt)
             }
-            AttractorSystemKind::Rossler => compute_rossler_wolf(extra, initial_state, safe_dt),
+            AttractorSystemKind::Rossler => {
+                compute_rossler_wolf(&p.extra, p.initial_state, safe_dt)
+            }
             AttractorSystemKind::DoublePendulum => {
-                compute_pendulum_wolf(extra, initial_state, safe_dt)
+                compute_pendulum_wolf(&p.extra, p.initial_state, safe_dt)
             }
         };
         self.wolf_dirty = false;

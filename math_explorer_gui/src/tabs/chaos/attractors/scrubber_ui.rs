@@ -1,17 +1,44 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-//! Side-panel controls for model selection, twin initial conditions, AST offsets,
-//! opt-in `PlaybackTransport` scrubbing, and live Lyapunov / fractal metrics.
+//! Side-panel controls for model selection, custom 3D vector fields, twin initial conditions,
+//! AST offsets, opt-in `PlaybackTransport` scrubbing, and live Lyapunov / fractal metrics.
 
 use super::twin_state::{AttractorSystemKind, ON_ATTRACTOR_LORENZ_STATE};
-use super::{AttractorPlotter, SolverExecutionState, MAX_SIMULATION_SPEED};
+use super::{AttractorMode, AttractorPlotter, SolverExecutionState, MAX_SIMULATION_SPEED};
 use crate::accessibility::announce_status_with_priority;
 use crate::app::SemanticPalette;
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{bounded_drag_value, PlaybackAction, PlaybackTransport};
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 
 impl AttractorPlotter {
-    pub(super) fn draw_model_and_parameter_controls(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn draw_model_and_parameter_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+    ) {
+        ui.horizontal(|ui| {
+            let prev_mode = self.mode;
+            ui.radio_value(&mut self.mode, AttractorMode::Lorenz, "Built-in");
+            ui.radio_value(&mut self.mode, AttractorMode::Custom, "Custom 3D Flow");
+            if self.mode != prev_mode {
+                self.reset();
+                ctx.request_repaint();
+            }
+        });
+        ui.separator();
+
+        if self.mode == AttractorMode::Custom {
+            egui::CollapsingHeader::new("Vector Field Equations")
+                .default_open(true)
+                .show(ui, |ui| {
+                    if self.flow_bank.ui(ui) {
+                        self.on_slider_changed();
+                    }
+                });
+            return;
+        }
+
         ui.horizontal(|ui| {
             ui.label("System:");
             let mut selected = self.system_kind;
@@ -39,13 +66,25 @@ impl AttractorPlotter {
     fn draw_lorenz_sliders(&mut self, ui: &mut egui::Ui) {
         let mut changed = false;
         changed |= ui
-            .add(egui::Slider::new(&mut self.system.sigma, 0.0..=50.0).text("Prandtl (σ)"))
+            .add(
+                AnimatedSlider::new(&mut self.system.sigma, 0.0..=50.0)
+                    .text("Prandtl Number (σ)")
+                    .id_salt("lorenz_sigma"),
+            )
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.system.rho, 0.0..=100.0).text("Rayleigh (ρ)"))
+            .add(
+                AnimatedSlider::new(&mut self.system.rho, 0.0..=100.0)
+                    .text("Rayleigh Number (ρ)")
+                    .id_salt("lorenz_rho"),
+            )
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.system.beta, 0.0..=10.0).text("Geometric (β)"))
+            .add(
+                AnimatedSlider::new(&mut self.system.beta, 0.0..=10.0)
+                    .text("Geometric Factor (β)")
+                    .id_salt("lorenz_beta"),
+            )
             .changed();
         if changed {
             self.on_slider_changed();
@@ -102,7 +141,11 @@ impl AttractorPlotter {
         egui::CollapsingHeader::new("Initial State & Chaos Twins")
             .default_open(true)
             .show(ui, |ui| {
-                let labels = self.system_kind.coord_labels();
+                let labels = if self.mode == AttractorMode::Custom {
+                    ["x₀", "y₀", "z₀"]
+                } else {
+                    self.system_kind.coord_labels()
+                };
                 let mut init_changed = false;
                 ui.horizontal_wrapped(|ui| {
                     for (&lbl, coord) in labels.iter().zip(&mut self.initial_state) {
@@ -112,7 +155,8 @@ impl AttractorPlotter {
                             .changed();
                     }
                 });
-                if self.system_kind == AttractorSystemKind::Lorenz
+                if self.mode == AttractorMode::Lorenz
+                    && self.system_kind == AttractorSystemKind::Lorenz
                     && ui.small_button("Snap to Attractor Wing").clicked()
                 {
                     self.initial_state = ON_ATTRACTOR_LORENZ_STATE;

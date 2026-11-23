@@ -21,6 +21,7 @@ fn test_lorenz_on_attractor_twin_divergence_crosses_threshold_and_flips_wings() 
         shadow_enabled: true,
         perturbation_offset: [1e-9, 0.0, 0.0],
         extra: ExtraChaosParams::default(),
+        ..Default::default()
     }));
     let mut runner = AttractorRunner::from_params(params);
     let mut crossed_at: Option<f64> = None;

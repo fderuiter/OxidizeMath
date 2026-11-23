@@ -17,6 +17,7 @@ theory_verification!(
         BETA = 0.01;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(BETA, 0.01, epsilon = math_commons::registry::TOLERANCE_FAST);
     }
 );

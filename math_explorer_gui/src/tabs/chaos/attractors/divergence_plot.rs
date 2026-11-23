@@ -69,7 +69,10 @@ impl AttractorPlotter {
         };
         let (primary_marker, shadow_marker) = self.collect_projected_twin_markers();
 
-        let half_extent = self.system_kind.viewport_half_extent();
+        let half_extent = match self.mode {
+            super::AttractorMode::Lorenz => self.system_kind.viewport_half_extent(),
+            super::AttractorMode::Custom => 18.0,
+        };
         let mut camera = self.camera;
         let response = Plot3DViewport::new("attractor_plot", half_extent)
             .show(ui, &mut camera, |plot_ui| {
@@ -99,7 +102,9 @@ impl AttractorPlotter {
                             .color(primary_color),
                     );
                 }
-                if self.system_kind == AttractorSystemKind::Lorenz {
+                if self.mode == super::AttractorMode::Lorenz
+                    && self.system_kind == AttractorSystemKind::Lorenz
+                {
                     self.draw_fixed_point_callouts(plot_ui);
                 } else {
                     self.clear_callout_drag(plot_ui);
