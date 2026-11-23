@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::state::{VrChaosConfig, VrSourceMode};
-use super::MAX_VIETORIS_RIPS_POINTS;
+use super::MAX_CHAOS_LANDMARKS;
 use crate::web_io::PlatformInstant;
 use math_explorer::pure_math::statistics::tda::{
     farthest_point_landmarks_into, takens_delay_embedding_3d, Point3D,
@@ -35,6 +35,7 @@ pub struct VrChaosState {
     scalar_trace: Vec<f64>,
     min_dist_sq: Vec<f64>,
     landmark_buf: Vec<Point3D>,
+    #[cfg(feature = "physics")]
     lyapunov_key: Option<(u64, u64, u64, u64)>,
     cached_lyapunov: Option<f64>,
     cached_correlation_sum: Option<f64>,
@@ -48,7 +49,7 @@ impl Default for VrChaosState {
             rho: 28.0,
             beta: 8.0 / 3.0,
             dt: 0.01,
-            landmark_count: MAX_VIETORIS_RIPS_POINTS,
+            landmark_count: MAX_CHAOS_LANDMARKS,
             takens_lag: 8,
             playing: false,
             live_stream_seq: 0,
@@ -57,7 +58,8 @@ impl Default for VrChaosState {
             trajectory_buf: Vec::with_capacity(TRACE_LEN),
             scalar_trace: Vec::with_capacity(TRACE_LEN),
             min_dist_sq: vec![f64::INFINITY; TRACE_LEN],
-            landmark_buf: vec![Point3D::new(0.0, 0.0, 0.0); MAX_VIETORIS_RIPS_POINTS],
+            landmark_buf: vec![Point3D::new(0.0, 0.0, 0.0); MAX_CHAOS_LANDMARKS],
+            #[cfg(feature = "physics")]
             lyapunov_key: None,
             cached_lyapunov: None,
             cached_correlation_sum: None,
@@ -87,7 +89,7 @@ impl VrChaosState {
         self.rho = cfg.rho;
         self.beta = cfg.beta;
         self.dt = cfg.dt;
-        self.landmark_count = cfg.landmark_count.clamp(4, MAX_VIETORIS_RIPS_POINTS);
+        self.landmark_count = cfg.landmark_count.clamp(4, MAX_CHAOS_LANDMARKS);
         self.takens_lag = cfg.takens_lag.clamp(1, 50);
         self.regenerate_trajectory();
     }
@@ -165,7 +167,7 @@ impl VrChaosState {
 
     /// Extracts up to `landmark_count` 3D points for either `Lorenz3D` or `Takens3D`.
     pub fn build_landmarks(&mut self, mode: VrSourceMode) -> Result<Vec<Point3D>, String> {
-        let count = self.landmark_count.clamp(4, MAX_VIETORIS_RIPS_POINTS);
+        let count = self.landmark_count.clamp(4, MAX_CHAOS_LANDMARKS);
         match mode {
             VrSourceMode::Takens3D => {
                 let lag = self.takens_lag.clamp(1, 50);

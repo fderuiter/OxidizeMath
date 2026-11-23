@@ -3,7 +3,7 @@
 use super::AttractorPlotter;
 use crate::tabs::geometry_topology::vietoris_rips::{
     handoff::{request_open_vietoris_rips, submit_chaos_landmark_handoff, ChaosLandmarkHandoff},
-    MAX_VIETORIS_RIPS_POINTS,
+    MAX_CHAOS_LANDMARKS,
 };
 use eframe::egui;
 use math_explorer::physics::chaos::fractals::correlation_dimension;
@@ -159,7 +159,7 @@ impl AttractorPlotter {
         out
     }
 
-    /// Extracts up to `MAX_VIETORIS_RIPS_POINTS` 3D landmarks and sends them to `VietorisRipsTool`.
+    /// Extracts up to `MAX_CHAOS_LANDMARKS` 3D landmarks and sends them to `VietorisRipsTool`.
     pub fn send_landmarks_to_vietoris_rips(
         &self,
         ctx: Option<&egui::Context>,
@@ -172,8 +172,8 @@ impl AttractorPlotter {
             .into_iter()
             .map(|v| Point3D::new(v.x, v.y, v.z))
             .collect();
-        let landmarks = farthest_point_landmarks(&pts, MAX_VIETORIS_RIPS_POINTS)
-            .map_err(|e| format!("{e:?}"))?;
+        let landmarks =
+            farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS).map_err(|e| format!("{e:?}"))?;
         let payload = ChaosLandmarkHandoff {
             points: landmarks,
             sigma: self.system.sigma,

@@ -1,7 +1,8 @@
 //! Homology computations and Betti numbers.
 
+use super::boundary::Z2BoundaryWorkspace;
 use super::complex::SimplicialComplex;
-use super::workspace::lowest_set_bit;
+use super::core::Simplex;
 use crate::error::TdaError;
 use std::collections::{HashMap, HashSet};
 
@@ -110,12 +111,15 @@ pub fn betti_number_0(complex: &SimplicialComplex) -> Result<usize, TdaError> {
     Ok(uf.count_components())
 }
 
-/// Computes the exact 1st Betti number `β₁ = dim H₁(K; ℤ₂)` (independent 1-cycles).
+/// Computes the 1st Betti number (number of 1-dimensional holes/cycles) over $\mathbb{Z}_2$.
 ///
-/// Uses `β₁ = dim(ker ∂₁) - rank_ℤ₂(∂₂)`, where `dim(ker ∂₁) = |E| - |V| + β₀` and
-/// `rank_ℤ₂(∂₂)` is computed by exact `ℤ₂` Gaussian column reduction on the 2-boundary
-/// matrix `∂₂`. Dependent triangles inside dense cliques (such as the 4th triangle of a
-/// `K₄` tetrahedron boundary) reduce to zero mod 2 and never cancel disjoint 1-cycles.
+/// Uses the exact rank-nullity identity on the simplicial chain complex:
+///
+/// $$\beta_1 = \dim(\ker \partial_1) - \dim(\operatorname{im} \partial_2) = (|E| - |V| + \beta_0) - \operatorname{rank}_{\mathbb{Z}_2}(\partial_2)$$
+///
+/// Unlike raw triangle subtraction, $\mathbb{Z}_2$ column reduction of $\partial_2$ accounts for
+/// linearly dependent 2-cycles (such as the fourth face of a $K_4$ clique) without erasing
+/// independent 1-cycles elsewhere in the complex.
 ///
 /// # Example
 ///
@@ -133,15 +137,19 @@ pub fn betti_number_0(complex: &SimplicialComplex) -> Result<usize, TdaError> {
 /// ];
 /// let cloud = PointCloud::new(points).unwrap();
 /// let complex = vietoris_rips_complex(&cloud, 1.1).unwrap();
-/// assert_eq!(betti_number_1(&complex).unwrap(), 1);
+/// let beta1 = betti_number_1(&complex).unwrap();
+/// assert_eq!(beta1, 1);
 /// ```
 #[verified_engine::verified]
 pub fn betti_number_1(complex: &SimplicialComplex) -> Result<usize, TdaError> {
     let v = complex.count_simplices(0);
-    let e = complex.count_simplices(1);
-    let t = complex.count_simplices(2);
+    if v == 0 {
+        return Ok(0);
+    }
 
-    if v == 0 || e == 0 {
+    let mut edges = complex.get_simplices(1);
+    let e = edges.len();
+    if e == 0 {
         return Ok(0);
     }
 
@@ -150,104 +158,49 @@ pub fn betti_number_1(complex: &SimplicialComplex) -> Result<usize, TdaError> {
     if cycles == 0 {
         return Ok(0);
     }
-    if t == 0 {
+
+    let mut triangles = complex.get_simplices(2);
+    if triangles.is_empty() {
         return Ok(cycles);
     }
 
-    let rank_d2 = rank_boundary_2_z2(complex, cycles);
-    Ok(cycles.saturating_sub(rank_d2))
-}
-
-#[verified_engine::verified]
-fn collect_sorted_edges(complex: &SimplicialComplex) -> Vec<[usize; 2]> {
-    let mut edges: Vec<[usize; 2]> = complex
-        .simplices
-        .get(1)
-        .map(|set| {
-            set.iter()
-                .filter(|s| s.vertices.len() == 2)
-                .map(|s| [s.vertices[0], s.vertices[1]])
-                .collect()
-        })
-        .unwrap_or_default();
     edges.sort_unstable();
-    edges
-}
-
-#[verified_engine::verified]
-fn collect_sorted_triangles(complex: &SimplicialComplex) -> Vec<[usize; 3]> {
-    let mut triangles: Vec<[usize; 3]> = complex
-        .simplices
-        .get(2)
-        .map(|set| {
-            set.iter()
-                .filter(|s| s.vertices.len() == 3)
-                .map(|s| [s.vertices[0], s.vertices[1], s.vertices[2]])
-                .collect()
-        })
-        .unwrap_or_default();
     triangles.sort_unstable();
-    triangles
+    let rank_partial_2 = compute_partial_2_rank(&edges, &triangles)?;
+    Ok(cycles.saturating_sub(rank_partial_2))
 }
 
 #[verified_engine::verified]
-fn reduce_column_z2(
-    rows: [usize; 3],
-    words: usize,
-    col: &mut [u64],
-    pivot_for_row: &mut [usize],
-    basis: &mut Vec<Vec<u64>>,
-) {
-    col.fill(0);
-    for r in rows {
-        col[r / 64] ^= 1u64 << (r % 64);
-    }
-    while let Some(pivot) = lowest_set_bit(col) {
-        let existing = pivot_for_row[pivot];
-        if existing == usize::MAX {
-            pivot_for_row[pivot] = basis.len();
-            let _ = words;
-            basis.push(col.to_vec());
-            return;
+fn compute_partial_2_rank(edges: &[Simplex], triangles: &[Simplex]) -> Result<usize, TdaError> {
+    let mut workspace = Z2BoundaryWorkspace::new(edges.len(), triangles.len())?;
+    for (col_idx, tri) in triangles.iter().enumerate() {
+        if tri.vertices.len() != 3 {
+            return Err(TdaError::InvalidSimplex {
+                reason: format!(
+                    "expected 2-simplex with 3 vertices, got {}",
+                    tri.vertices.len()
+                ),
+            });
         }
-        for (slot, &bword) in col.iter_mut().zip(basis[existing].iter()) {
-            *slot ^= bword;
-        }
+        let v0 = tri.vertices[0];
+        let v1 = tri.vertices[1];
+        let v2 = tri.vertices[2];
+        let f0 = find_edge_row(edges, v0, v1)?;
+        let f1 = find_edge_row(edges, v0, v2)?;
+        let f2 = find_edge_row(edges, v1, v2)?;
+        workspace.set_column_faces(col_idx, &[f0, f1, f2])?;
     }
+    Ok(workspace.reduce())
 }
 
 #[verified_engine::verified]
-fn rank_boundary_2_z2(complex: &SimplicialComplex, max_rank: usize) -> usize {
-    let edges = collect_sorted_edges(complex);
-    if edges.len() < 3 {
-        return 0;
-    }
-    let triangles = collect_sorted_triangles(complex);
-    let words = edges.len().div_ceil(64).max(1);
-    let mut pivot_for_row = vec![usize::MAX; edges.len()];
-    let mut basis: Vec<Vec<u64>> = Vec::with_capacity(triangles.len().min(max_rank));
-    let mut col = vec![0u64; words];
-
-    for [a, b, c] in triangles {
-        if basis.len() >= max_rank {
-            break;
-        }
-        let (Ok(e0), Ok(e1), Ok(e2)) = (
-            edges.binary_search(&[a, b]),
-            edges.binary_search(&[a, c]),
-            edges.binary_search(&[b, c]),
-        ) else {
-            continue;
-        };
-        reduce_column_z2(
-            [e0, e1, e2],
-            words,
-            &mut col,
-            &mut pivot_for_row,
-            &mut basis,
-        );
-    }
-    basis.len()
+fn find_edge_row(edges: &[Simplex], u: usize, v: usize) -> Result<usize, TdaError> {
+    let (a, b) = if u <= v { (u, v) } else { (v, u) };
+    edges
+        .binary_search_by(|edge| edge.vertices.as_slice().cmp(&[a, b]))
+        .map_err(|_| TdaError::InvalidSimplex {
+            reason: format!("missing boundary edge [{a}, {b}] in simplicial complex"),
+        })
 }
 
 /// Computes Betti numbers up to dimension 1 `(β₀, β₁)`.
@@ -282,3 +235,5 @@ pub fn betti_numbers(complex: &SimplicialComplex) -> Result<(usize, usize), TdaE
 #[cfg(test)]
 #[path = "homology_tests.rs"]
 mod tests;
+
+// [cite:clinical_trials_statistics]

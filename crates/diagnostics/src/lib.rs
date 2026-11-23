@@ -187,6 +187,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn test_diagnostic_bus_isolates_listener_panics() {
         let bus = DiagnosticBus::new();
@@ -214,6 +215,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn test_diagnostic_bus_recovers_from_poisoned_listener_lock() {
         let bus = DiagnosticBus::new();

@@ -41,6 +41,7 @@ fn live_stream_slot() -> &'static Mutex<LiveStreamSlot> {
 }
 
 /// Queues a one-click 3D landmark handoff for `VietorisRipsTool`.
+#[cfg(any(feature = "physics", test))]
 pub fn submit_chaos_landmark_handoff(handoff: ChaosLandmarkHandoff) {
     let mut guard = handoff_slot().lock().unwrap_or_else(|e| e.into_inner());
     *guard = Some(handoff);
@@ -53,6 +54,7 @@ pub fn take_chaos_landmark_handoff() -> Option<ChaosLandmarkHandoff> {
 }
 
 /// Publishes the latest live 3D landmarks from `AttractorRunner` for split-pane / live streaming.
+#[cfg(any(feature = "physics", test))]
 pub fn publish_live_attractor_landmarks(handoff: ChaosLandmarkHandoff) {
     let mut guard = live_stream_slot().lock().unwrap_or_else(|e| e.into_inner());
     guard.seq = guard.seq.wrapping_add(1).max(1);
@@ -72,6 +74,7 @@ pub fn poll_live_attractor_landmarks(last_seen_seq: u64) -> Option<(u64, ChaosLa
 const OPEN_VR_REQUEST_ID: &str = "OPEN_VIETORIS_RIPS_HANDOFF";
 
 /// Signals `MathExplorerApp` to focus the `Geometry & Topology` tab and select `VietorisRipsTool`.
+#[cfg(any(feature = "physics", test))]
 pub fn request_open_vietoris_rips(ctx: &egui::Context) {
     ctx.data_mut(|d| {
         d.insert_temp(egui::Id::new(OPEN_VR_REQUEST_ID), true);

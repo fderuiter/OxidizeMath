@@ -6,7 +6,7 @@ use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use crate::tabs::geometry_topology::vietoris_rips::{
     handoff::{publish_live_attractor_landmarks, ChaosLandmarkHandoff},
-    MAX_VIETORIS_RIPS_POINTS,
+    MAX_CHAOS_LANDMARKS,
 };
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
@@ -209,7 +209,7 @@ impl SimulationRunner for AttractorRunner {
                 .iter()
                 .map(|v| Point3D::new(v.x, v.y, v.z))
                 .collect();
-            if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_VIETORIS_RIPS_POINTS) {
+            if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
                 publish_live_attractor_landmarks(ChaosLandmarkHandoff {
                     points: landmarks,
                     sigma: self.system.sigma,

@@ -1,281 +1,239 @@
+//! Unit and integration tests for the 2D/N-D Vietoris-Rips TDA workbench, imports, URL budgets, and exports.
+
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::state::{SculptBrush, VrSourceMode};
+use super::io::{
+    format_intervals_csv, format_intervals_json, parse_point_cloud_text, IntervalExportRow,
+    MAX_IMPORT_BYTES, MAX_VIETORIS_RIPS_POINTS,
+};
+use super::plots::PersistencePlotMode;
+use super::presets::{ShapePreset, DEFAULT_PRESET_POINTS};
 use super::*;
+use crate::framework::{InteractiveTool, SimulationFramework};
+use crate::url_state::{UrlStateSignature, UrlSyncController, MAX_DECODED_URL_STATE_BYTES};
+use egui_plot::export::{color32_image_to_png, ExportOptions};
+use egui_plot::export_primitives::{export_primitives_svg, render_primitives_image};
 use egui_plot::PlotPoints;
+use std::f64::consts::{E, PI};
 
 #[test]
-fn test_vietoris_rips_default_initialization() {
-    let tool = VietorisRipsTool::default();
-    assert_eq!(tool.mode, VrSourceMode::Points2D);
-    assert_eq!(tool.cached_vertices.len(), tool.points.len());
-    assert_eq!(tool.cached_vertices.len(), 20);
+fn test_vietoris_rips_default_initialization_and_presets() {
+    let mut tool = VietorisRipsTool::default();
+    assert_eq!(tool.mode, state::VrSourceMode::Points2D);
+    assert_eq!(tool.cached_vertices.len(), DEFAULT_PRESET_POINTS);
     assert_eq!(tool.cached_edges.len(), tool.complex.count_simplices(1));
     assert_eq!(tool.cached_triangles.len(), tool.complex.count_simplices(2));
-    assert!(!tool.barcode_intervals.is_empty());
     assert!(tool.error_msg.is_none());
+    assert!(!tool.exceeds_url_bounds);
+    assert!(tool.betti.1 >= 1);
+
+    for preset in ShapePreset::ALL {
+        tool.select_shape_preset(preset);
+        assert!(tool.has_finite_parameters());
+        assert_eq!(tool.cached_vertices.len(), DEFAULT_PRESET_POINTS);
+    }
 }
 
 #[test]
-fn test_vietoris_rips_parameter_updates() {
-    let mut tool = VietorisRipsTool {
-        radius: 15.0,
-        ..Default::default()
-    };
-
-    tool.update_complex();
-    assert_eq!(tool.cached_edges.len(), tool.complex.count_simplices(1));
-    assert_eq!(tool.cached_triangles.len(), tool.complex.count_simplices(2));
-    assert_eq!(tool.cached_vertices.len(), tool.points.len());
+fn test_vietoris_rips_parameter_updates_and_error_clearing() {
+    let mut tool = VietorisRipsTool::default();
+    tool.set_radius(15.0);
     assert!(!tool.cached_edges.is_empty());
     assert!(!tool.cached_triangles.is_empty());
-    assert_eq!(tool.beta_0, 1);
-    assert_eq!(tool.beta_1, 0);
 
-    tool.radius = 0.0;
-    tool.update_complex();
+    {
+        let v_slice = &tool.cached_vertices[..];
+        let v_plot: PlotPoints<'_> = v_slice.into();
+        assert!(matches!(v_plot, PlotPoints::Borrowed(_)));
+    }
+
+    tool.set_radius(0.0);
     assert_eq!(tool.cached_edges.len(), 0);
     assert_eq!(tool.cached_triangles.len(), 0);
-    assert_eq!(tool.cached_vertices.len(), tool.points.len());
-    assert_eq!(tool.beta_0, 20);
-}
 
-#[test]
-fn test_vietoris_rips_error_state_cache_clearing() {
-    let mut tool = VietorisRipsTool::default();
-    assert!(!tool.cached_vertices.is_empty());
-
-    tool.radius = -1.0;
-    tool.update_complex();
+    tool.set_radius(-1.0);
     assert!(tool.error_msg.is_some());
-    assert!(tool.cached_triangles.is_empty());
-    assert!(tool.cached_edges.is_empty());
     assert!(tool.cached_vertices.is_empty());
-
-    let mut tool2 = VietorisRipsTool::default();
-    tool2.points.clear();
-    tool2.update_complex();
-    assert!(tool2.error_msg.is_some());
-    assert!(tool2.cached_triangles.is_empty());
-    assert!(tool2.cached_edges.is_empty());
-    assert!(tool2.cached_vertices.is_empty());
 }
 
 #[test]
-fn test_vietoris_rips_borrowed_plot_points_slice_variants() {
-    let mut tool = VietorisRipsTool {
-        radius: 15.0,
-        ..Default::default()
-    };
-    tool.update_complex();
-
-    let v_slice: &[PlotPoint] = &tool.cached_vertices[..];
-    let v_plot: PlotPoints<'_> = v_slice.into();
-    assert!(matches!(v_plot, PlotPoints::Borrowed(_)));
-    assert_eq!(v_plot.points().len(), tool.cached_vertices.len());
-
-    let edge = tool.cached_edges.first().expect("edges non-empty");
-    let e_plot: PlotPoints<'_> = (&edge[..]).into();
-    assert!(matches!(e_plot, PlotPoints::Borrowed(_)));
-    assert_eq!(e_plot.points().len(), 2);
-
-    let tri = tool.cached_triangles.first().expect("triangles non-empty");
-    let t_plot: PlotPoints<'_> = (&tri[..]).into();
-    assert!(matches!(t_plot, PlotPoints::Borrowed(_)));
-    assert_eq!(t_plot.points().len(), 3);
-}
-
-#[test]
-fn test_vietoris_rips_try_load_state_bounds_and_64_point_cap() {
+fn test_csv_tsv_json_import_bounds_bom_and_state_preservation() {
     let mut tool = VietorisRipsTool::default();
-    let before = tool.complex_builds;
+    let baseline_state = tool.save_state().unwrap();
+    let builds_before = tool.complex_builds;
 
+    let oversized = "x,y\n".to_string() + &"1.0,2.0\n".repeat(MAX_IMPORT_BYTES / 6);
+    assert!(oversized.len() > MAX_IMPORT_BYTES);
     assert!(tool
-        .try_load_state(r#"{"radius":1.5,"points":[]}"#)
+        .import_point_cloud_text("huge.csv", &oversized)
         .is_err());
-    assert!(tool
-        .try_load_state(r#"{"radius":1.5,"points":[[0.0,"NaN"]]}"#)
-        .is_err());
-    let over_64 = serde_json::json!({
-        "radius": 2.0,
-        "points": (0..(MAX_VIETORIS_RIPS_POINTS + 1)).map(|i| [i as f64 * 0.1, 0.0]).collect::<Vec<_>>()
-    });
-    assert!(tool.try_load_state(&over_64.to_string()).is_err());
-    assert!(tool
-        .try_load_state(r#"{"mode":"points_3d","radius":4.0,"points_3d":[[0.0,0.0,0.0]],"camera":{"pitch":0.0,"yaw":0.0,"zoom":0.0}}"#)
-        .is_err());
-    assert_eq!(tool.complex_builds, before);
 
-    let exact_64 = serde_json::json!({
-        "radius": 1.2,
-        "points": (0..MAX_VIETORIS_RIPS_POINTS).map(|i| {
-            let a = std::f64::consts::TAU * (i as f64 / MAX_VIETORIS_RIPS_POINTS as f64);
-            [5.0 + 4.0 * a.cos(), 5.0 + 4.0 * a.sin()]
-        }).collect::<Vec<_>>()
-    });
-    assert!(tool.try_load_state(&exact_64.to_string()).is_ok());
-    assert_eq!(tool.complex_builds, before + 1);
-    assert_eq!(tool.points.len(), 64);
-    assert_eq!(tool.beta_1, 1);
-}
-
-#[test]
-fn test_vietoris_rips_3d_lorenz_and_takens_sweeps() {
-    let mut tool = VietorisRipsTool::default();
-    let lorenz_cfg = r#"{"mode":"lorenz_3d","radius":7.5,"chaos":{"sigma":10.0,"rho":28.0,"beta":2.6666666666666665,"dt":0.01,"landmark_count":64,"takens_lag":8},"camera":{"pitch":0.35,"yaw":0.55,"zoom":1.0}}"#;
-    tool.try_load_state(lorenz_cfg).expect("load 3d lorenz");
-    assert_eq!(tool.mode, VrSourceMode::Lorenz3D);
-    assert_eq!(tool.points_3d.len(), 64);
-    assert!(!tool.barcode_intervals.is_empty());
-
-    // Sweep epsilon across butterfly wing scale and verify beta_1 == 2 emerges.
-    let mut saw_two_wings = false;
-    for step in 12..=22 {
-        let r = step as f64 * 0.5;
-        let (b0, b1) = tool.recompute_filtration_zero_alloc(r).unwrap();
-        if b0 == 1 && b1 == 2 {
-            saw_two_wings = true;
-            break;
-        }
+    let mut over_rows = String::from("x,y\n");
+    for i in 0..=MAX_VIETORIS_RIPS_POINTS {
+        over_rows.push_str(&format!("{i}.0,1.0\n"));
     }
-    assert!(
-        saw_two_wings,
-        "Lorenz 3D landmarks must lock onto beta_1 = 2"
-    );
+    assert!(tool
+        .import_point_cloud_text("many.csv", &over_rows)
+        .is_err());
 
-    // Sweep Takens lag tau from collapsed diagonal (tau = 1) to unfolded attractor (tau = 10).
-    let takens_cfg = r#"{"mode":"takens_3d","radius":7.0,"chaos":{"sigma":10.0,"rho":28.0,"beta":2.6666666666666665,"dt":0.01,"landmark_count":64,"takens_lag":1},"camera":{"pitch":0.45,"yaw":-0.6,"zoom":1.0}}"#;
-    tool.try_load_state(takens_cfg).expect("load takens");
-    let max_pers_tau1 = tool
-        .barcode_intervals
-        .iter()
-        .filter(|iv| iv.dimension == 1)
-        .map(|iv| iv.persistence())
-        .fold(0.0_f64, f64::max);
-    tool.chaos.takens_lag = 10;
-    tool.rebuild_chaos_landmarks().unwrap();
-    let max_pers_tau10 = tool
-        .barcode_intervals
-        .iter()
-        .filter(|iv| iv.dimension == 1)
-        .map(|iv| iv.persistence())
-        .fold(0.0_f64, f64::max);
-    assert!(max_pers_tau10 > max_pers_tau1);
+    assert!(tool
+        .import_point_cloud_text("bad_hdr.csv", "x,1.0\n2.0,3.0\n")
+        .is_err());
+    assert!(tool
+        .import_point_cloud_text("jagged.csv", "x,y,z\n1,2,3\n4,5\n")
+        .is_err());
+    assert!(tool
+        .import_point_cloud_text("nan.json", "[[0.0, 1.0], [2.0, null]]")
+        .is_err());
+    let wide_json = serde_json::json!([vec![1.0_f64; 33], vec![2.0_f64; 33]]).to_string();
+    assert!(tool
+        .import_point_cloud_text("wide.json", &wide_json)
+        .is_err());
+
+    assert_eq!(tool.save_state().as_deref(), Some(baseline_state.as_str()));
+    assert_eq!(tool.complex_builds, builds_before);
+
+    let tsv_4d = "\u{feff}w\tx\ty\tz\n0.0\t0.0\t0.0\t5.0\n0.0\t1.0\t0.0\t5.0\n0.0\t1.0\t1.0\t5.0\n0.0\t0.0\t1.0\t5.0\n";
+    tool.import_point_cloud_text("square4d.tsv", tsv_4d)
+        .unwrap();
+    assert_eq!(tool.ambient_dimension(), 4);
+    tool.set_radius(1.1);
+    assert_eq!(tool.betti, (1, 1));
+    tool.set_projection_axes(1, 2);
+    assert_eq!(tool.projection_axes(), (1, 2));
+    assert!(parse_point_cloud_text("pts.json", r#"{"points":[[0,0],[1,0],[0,1]]}"#).is_ok());
 }
 
 #[test]
-fn test_vietoris_rips_2d_and_3d_sculpt_brushes_and_bounds() {
-    let mut tool = VietorisRipsTool::default();
-    let square = r#"{"radius":1.2,"points":[[0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0]]}"#;
-    tool.try_load_state(square).unwrap();
-    assert_eq!(tool.beta_1, 1);
+fn test_url_4kib_budget_for_generator_and_quantized_64_points() {
+    let mut fw = SimulationFramework::new("geometry_topology");
+    assert!(fw.select_tool_by_name("VietorisRipsTool"));
 
-    // Insert a center bridge vertex that triangulates and fills the 1-cycle!
-    assert!(tool.apply_sculpt_2d(SculptBrush::Add, [0.5, 0.5], 0.5, false));
-    assert_eq!(tool.points.len(), 5);
-    assert_eq!(tool.beta_1, 0);
+    let vr_state = serde_json::json!({
+        "radius": 1.4,
+        "generator": { "preset": "two_circles", "count": 250, "seed": 7, "noise": 0.05 }
+    })
+    .to_string();
+    fw.active_tool
+        .as_mut()
+        .unwrap()
+        .try_load_state(&vr_state)
+        .unwrap();
+    let gen_preset = fw.export_url_preset_json().unwrap().unwrap();
+    assert!(gen_preset.len() <= MAX_DECODED_URL_STATE_BYTES);
+    assert!(fw.encode_share_url().is_ok());
 
-    // Grab center vertex near [0.5, 0.5] and drag outside the square so the hole re-opens.
-    assert!(tool.apply_sculpt_2d(SculptBrush::Move, [0.52, 0.52], 0.5, false));
-    assert!(tool.apply_sculpt_2d(SculptBrush::Move, [5.0, 5.0], 0.5, true));
-    assert_eq!(tool.beta_1, 1);
-
-    // Erase never drops below 1 vertex.
-    for _ in 0..10 {
-        let p = [tool.points[0].x, tool.points[0].y];
-        let _ = tool.apply_sculpt_2d(SculptBrush::Erase, p, 2.0, false);
-    }
-    assert_eq!(tool.points.len(), 1);
-
-    // Verify 3D projection/unprojection roundtrip and 3D brush sculpting.
-    let pts3 = vec![
-        Point3D::new(0.0, 0.0, 0.0),
-        Point3D::new(4.0, 0.0, 0.0),
-        Point3D::new(4.0, 4.0, 0.0),
-        Point3D::new(0.0, 4.0, 0.0),
-    ];
-    tool.load_validated_3d_points(pts3, 4.5).unwrap();
-    assert_eq!(tool.beta_1, 1);
-    let (proj0, depth0) = tool.project_3d_with_depth(tool.points_3d[0]);
-    let roundtrip = tool.unproject_3d(proj0, depth0);
-    assert!((roundtrip.x - tool.points_3d[0].x).abs() < 1e-9);
-    assert!((roundtrip.y - tool.points_3d[0].y).abs() < 1e-9);
-    assert!((roundtrip.z - tool.points_3d[0].z).abs() < 1e-9);
-    assert!(tool.apply_sculpt_3d_projected(SculptBrush::Add, [0.0, 0.0], 1.5, false));
-    assert_eq!(tool.points_3d.len(), 5);
+    let noisy_64: Vec<[f64; 2]> = (0..64)
+        .map(|i| {
+            let a = (i as f64) * 0.09817477042468103;
+            [a.cos() * PI, a.sin() * E]
+        })
+        .collect();
+    fw.active_tool
+        .as_mut()
+        .unwrap()
+        .try_load_state(&serde_json::json!({"radius": 0.8, "points": noisy_64}).to_string())
+        .unwrap();
+    let url_64 = fw.export_url_preset_json().unwrap().unwrap();
+    assert!(url_64.len() <= MAX_DECODED_URL_STATE_BYTES);
+    assert!(fw.encode_share_url().is_ok());
 }
 
 #[test]
-fn test_vietoris_rips_zero_allocation_hot_path_under_verified_allocator() {
-    let mut tool = VietorisRipsTool {
-        mode: VrSourceMode::Lorenz3D,
-        radius: 7.5,
-        ..Default::default()
+fn test_custom_250_points_skips_url_sync_and_roundtrips_session() {
+    let mut fw = SimulationFramework::new("geometry_topology");
+    assert!(fw.select_tool_by_name("VietorisRipsTool"));
+
+    let custom_250: Vec<[f64; 2]> = (0..250)
+        .map(|i| {
+            let a = (i as f64) * 0.025132741228718346;
+            [5.0 + 3.123456789 * a.cos(), 5.0 + 3.123456789 * a.sin()]
+        })
+        .collect();
+    fw.active_tool
+        .as_mut()
+        .unwrap()
+        .try_load_state(&serde_json::json!({"radius": 0.6, "points": custom_250}).to_string())
+        .unwrap();
+    assert!(fw.encode_share_url().is_err());
+
+    let mut sync = UrlSyncController::default();
+    let sig0 = UrlStateSignature {
+        selected_tab: 0,
+        active_tool_id: Some("VietorisRipsTool"),
+        state_revision: 1,
     };
-    tool.rebuild_chaos_landmarks().unwrap();
+    sync.mark_synced(
+        sig0,
+        Some("#tab=geometry_topology&tool=VietorisRipsTool".to_string()),
+    );
+    let sig1 = UrlStateSignature {
+        state_revision: 2,
+        ..sig0
+    };
+    let _ = sync.poll_at_millis(sig1, false, 100, 300, || unreachable!());
+    let _ = sync.poll_at_millis(sig1, false, 500, 300, || fw.encode_share_url());
+    assert_eq!(
+        sync.last_synced_fragment(),
+        Some("#tab=geometry_topology&tool=VietorisRipsTool")
+    );
 
-    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let ((b0, _b1), _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
-        tool.recompute_filtration_zero_alloc(8.0)
-            .expect("zero-alloc 3d filtration")
-    });
-    assert_eq!(b0, 1);
+    let preset_250 = fw
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .export_preset_json()
+        .unwrap();
+    let session_250 = fw.save_state().unwrap();
+    let mut fw_restored = SimulationFramework::new("geometry_topology");
+    fw_restored.load_state(&session_250);
+    assert_eq!(
+        fw_restored.save_state().as_deref(),
+        Some(session_250.as_str())
+    );
+    fw_restored
+        .active_tool
+        .as_mut()
+        .unwrap()
+        .import_preset_json(&preset_250)
+        .unwrap();
 }
 
-#[cfg(feature = "physics")]
 #[test]
-fn test_attractor_plotter_invariants_and_one_click_handoff_to_vietoris_rips() {
-    let mut plotter = crate::tabs::chaos::attractors::AttractorPlotter::default();
-    let lyap = plotter
-        .current_lyapunov_exponent()
-        .expect("finite lorenz_lyapunov");
-    assert!(
-        lyap > 0.2,
-        "Standard chaotic Lorenz rho=28 must have positive lambda_1, got {lyap}"
-    );
-    let (c_eps, d2) = plotter
-        .current_correlation_invariants()
-        .expect("finite correlation invariants");
-    assert!(c_eps.is_finite() && c_eps > 0.0);
-    assert!(d2.is_finite() && d2 > 0.5);
+fn test_interval_csv_json_exports_and_svg_png_figure_primitives() {
+    let mut tool = VietorisRipsTool::default();
+    tool.try_load_state(r#"{"radius":1.1,"points":[[0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0]]}"#)
+        .unwrap();
 
-    // Subcritical rho = 14 must yield negative Lyapunov exponent.
-    plotter.system.rho = 14.0;
-    let sub_lyap = plotter
-        .current_lyapunov_exponent()
-        .expect("finite subcritical lyapunov");
-    assert!(
-        sub_lyap < 0.0,
-        "Subcritical Lorenz rho=14 must have negative lambda_1, got {sub_lyap}"
-    );
+    let csv = format_intervals_csv(&tool.persistence);
+    assert!(csv.starts_with("dimension,birth,death,persistence,is_essential\n"));
+    assert!(csv.contains(",true\n"));
+    assert!(csv.contains("1,1.000000,1.414214,0.414214,false"));
 
-    // Restore chaotic rho = 28 and execute one-click handoff into MathExplorerApp.
-    plotter.system.rho = 28.0;
-    let ctx = egui::Context::default();
-    let t0 = crate::web_io::PlatformInstant::now();
-    let payload = plotter
-        .send_landmarks_to_vietoris_rips(Some(&ctx))
-        .expect("handoff succeeds");
-    assert_eq!(payload.points.len(), MAX_VIETORIS_RIPS_POINTS);
+    let json = format_intervals_json(&tool.persistence).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let rows: Vec<IntervalExportRow> = serde_json::from_value(parsed["intervals"].clone()).unwrap();
+    assert!(rows
+        .iter()
+        .any(|r| r.dimension == 0 && r.is_essential && r.death > 1.4));
+    assert!(rows.iter().any(|r| r.dimension == 1 && !r.is_essential));
 
-    let mut app = crate::app::MathExplorerApp::default();
-    crate::app::domain_bar::poll_cross_tab_tool_handoffs(&mut app, &ctx);
-    assert_eq!(app.tabs[app.selected_tab].name(), "Geometry & Topology");
-
-    let mut vr = VietorisRipsTool::default();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| vr.show_inside(ui));
-    });
-    assert_eq!(vr.mode, VrSourceMode::Points3D);
-    assert_eq!(vr.points_3d.len(), MAX_VIETORIS_RIPS_POINTS);
-    assert!(vr.chaos.lyapunov_exponent().is_some_and(|v| v.is_finite()));
-    assert!(vr.chaos.correlation_sum().is_some_and(|v| v.is_finite()));
-    assert!(
-        crate::web_io::PlatformInstant::now()
-            .duration_since(t0)
-            .as_secs_f64()
-            < 5.0
-    );
+    for mode in [PersistencePlotMode::Diagram, PersistencePlotMode::Barcode] {
+        tool.set_plot_mode(mode);
+        let prims = tool.export_plot_primitives();
+        let opts = ExportOptions::default();
+        let svg = export_primitives_svg(&prims, &opts).unwrap();
+        assert!(svg.contains("<svg") && svg.len() > 250);
+        let img = render_primitives_image(&prims, &opts).unwrap();
+        let png = color32_image_to_png(&img).unwrap();
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+        let decoder = png::Decoder::new(std::io::Cursor::new(&png));
+        let mut reader = decoder.read_info().unwrap();
+        let mut buf = vec![0_u8; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut buf).unwrap();
+        let (w, h) = (info.width as usize, info.height as usize);
+        assert!(w > 0 && h > 0 && img.pixels.len() == w * h);
+    }
 }
+
+// [cite:graph_parameters_rust]

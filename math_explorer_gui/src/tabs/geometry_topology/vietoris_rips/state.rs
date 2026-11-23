@@ -1,18 +1,25 @@
+//! State enums and bounded JSON/URL serialization for 2D, N-D, and 3D `VietorisRipsTool` modes.
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{VietorisRipsTool, MAX_VIETORIS_RIPS_POINTS};
-use crate::framework::{Camera3D, InteractiveTool};
-use math_explorer::pure_math::statistics::tda::{Point2D, Point3D};
+use super::plots::PersistencePlotMode;
+use super::presets::{generate_preset_points, GeneratorDescriptor};
+use super::{CloudSource, VietorisRipsTool, MAX_CHAOS_LANDMARKS, MAX_VIETORIS_RIPS_POINTS};
+use crate::framework::Camera3D;
+use math_explorer::pure_math::statistics::tda::core::{NdPointCloud, Point2D};
+use math_explorer::pure_math::statistics::tda::Point3D;
 
-/// Maximum valid filtration radius accepted by `VietorisRipsTool`.
+/// Maximum valid filtration radius in 3D chaos/sculpt modes.
 pub const MAX_VR_RADIUS: f64 = 30.0;
-/// Maximum absolute coordinate magnitude accepted for 2D/3D point clouds.
+/// Maximum absolute coordinate magnitude accepted for sculpted/serialized 3D landmarks.
 pub const MAX_VR_COORD_ABS: f64 = 200.0;
+
+const MAX_ALLOWED_RADIUS: f64 = 1_000_000.0;
 
 /// Data source mode for `VietorisRipsTool`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum VrSourceMode {
-    /// Planar 2D point cloud (legacy-compatible default).
+    /// Planar 2D or projected N-D workbench cloud (default).
     #[default]
     #[serde(rename = "points_2d")]
     Points2D,
@@ -29,7 +36,8 @@ pub enum VrSourceMode {
 
 impl VrSourceMode {
     /// Returns `true` when the active point cloud lives in 3D space.
-    pub fn is_3d(self) -> bool {
+    #[must_use]
+    pub const fn is_3d(self) -> bool {
         !matches!(self, Self::Points2D)
     }
 }
@@ -42,7 +50,7 @@ pub enum SculptBrush {
     OrbitOrPan,
     /// Drag the nearest landmark within the brush radius.
     Move,
-    /// Insert a new landmark (capped at `MAX_VIETORIS_RIPS_POINTS`).
+    /// Insert a new landmark.
     Add,
     /// Delete landmarks inside the brush radius (preserving at least 1 vertex).
     Erase,
@@ -81,9 +89,9 @@ impl VrChaosConfig {
         if !self.dt.is_finite() || !(0.001..=0.05).contains(&self.dt) {
             return Err(format!("dt out of [0.001, 0.05]: {}", self.dt));
         }
-        if !(4..=MAX_VIETORIS_RIPS_POINTS).contains(&self.landmark_count) {
+        if !(4..=MAX_CHAOS_LANDMARKS).contains(&self.landmark_count) {
             return Err(format!(
-                "landmark_count out of [4, {MAX_VIETORIS_RIPS_POINTS}]: {}",
+                "landmark_count out of [4, {MAX_CHAOS_LANDMARKS}]: {}",
                 self.landmark_count
             ));
         }
@@ -94,14 +102,25 @@ impl VrChaosConfig {
     }
 }
 
-struct BorrowedPoints2D<'a>(&'a [Point2D]);
+struct SerializedPoints2D<'a> {
+    pts: &'a [Point2D],
+    quantize: bool,
+}
 
-impl serde::Serialize for BorrowedPoints2D<'_> {
+impl serde::Serialize for SerializedPoints2D<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeSeq;
-        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
-        for pt in self.0 {
-            seq.serialize_element(&[pt.x, pt.y])?;
+        let mut seq = serializer.serialize_seq(Some(self.pts.len()))?;
+        for pt in self.pts {
+            let pair = if self.quantize {
+                [
+                    super::io::quantize_url_coord(pt.x),
+                    super::io::quantize_url_coord(pt.y),
+                ]
+            } else {
+                [pt.x, pt.y]
+            };
+            seq.serialize_element(&pair)?;
         }
         seq.end()
     }
@@ -120,10 +139,27 @@ impl serde::Serialize for BorrowedPoints3D<'_> {
     }
 }
 
+fn is_zero(val: &f64) -> bool {
+    *val == 0.0
+}
+
 #[derive(serde::Serialize)]
-struct Legacy2DStateRef<'a> {
+struct VietorisRipsSaveState2D<'a> {
     radius: f64,
-    points: BorrowedPoints2D<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    points: Option<SerializedPoints2D<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    generator: Option<&'a GeneratorDescriptor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    points_nd: Option<&'a [Vec<f64>]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    axis_x: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    axis_y: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    plot_mode: Option<PersistencePlotMode>,
+    #[serde(skip_serializing_if = "is_zero")]
+    min_persistence: f64,
 }
 
 #[derive(serde::Serialize)]
@@ -135,133 +171,250 @@ struct Extended3DStateRef<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     chaos: Option<VrChaosConfig>,
     camera: Camera3D,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    plot_mode: Option<PersistencePlotMode>,
+    #[serde(skip_serializing_if = "is_zero")]
+    min_persistence: f64,
 }
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WireState {
+struct VietorisRipsLoadState {
     #[serde(default)]
     mode: Option<VrSourceMode>,
     radius: f64,
     #[serde(default)]
     points: Option<Vec<[f64; 2]>>,
     #[serde(default)]
+    generator: Option<GeneratorDescriptor>,
+    #[serde(default)]
+    points_nd: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    axis_x: Option<usize>,
+    #[serde(default)]
+    axis_y: Option<usize>,
+    #[serde(default)]
     points_3d: Option<Vec<[f64; 3]>>,
     #[serde(default)]
     chaos: Option<VrChaosConfig>,
     #[serde(default)]
     camera: Option<Camera3D>,
+    #[serde(default)]
+    plot_mode: PersistencePlotMode,
+    #[serde(default)]
+    min_persistence: f64,
 }
 
-impl VietorisRipsTool {
-    pub(super) fn serialize_tool_state(&self) -> Option<String> {
-        match self.mode {
-            VrSourceMode::Points2D => serde_json::to_string(&Legacy2DStateRef {
-                radius: self.radius,
-                points: BorrowedPoints2D(&self.points),
+pub(super) fn serialize_tool_state(tool: &VietorisRipsTool) -> Option<String> {
+    let mode_opt = (!tool.plot_mode.is_default()).then_some(tool.plot_mode);
+    match tool.mode {
+        VrSourceMode::Points2D => serialize_2d_or_nd(tool, mode_opt),
+        VrSourceMode::Points3D => serde_json::to_string(&Extended3DStateRef {
+            mode: tool.mode,
+            radius: tool.radius,
+            points_3d: Some(BorrowedPoints3D(&tool.points_3d)),
+            chaos: None,
+            camera: tool.camera,
+            plot_mode: mode_opt,
+            min_persistence: tool.min_persistence,
+        })
+        .ok(),
+        VrSourceMode::Lorenz3D | VrSourceMode::Takens3D => {
+            serde_json::to_string(&Extended3DStateRef {
+                mode: tool.mode,
+                radius: tool.radius,
+                points_3d: None,
+                chaos: Some(tool.chaos.to_config()),
+                camera: tool.camera,
+                plot_mode: mode_opt,
+                min_persistence: tool.min_persistence,
             })
-            .ok(),
-            VrSourceMode::Points3D => serde_json::to_string(&Extended3DStateRef {
-                mode: self.mode,
-                radius: self.radius,
-                points_3d: Some(BorrowedPoints3D(&self.points_3d)),
-                chaos: None,
-                camera: self.camera,
-            })
-            .ok(),
-            VrSourceMode::Lorenz3D | VrSourceMode::Takens3D => {
-                serde_json::to_string(&Extended3DStateRef {
-                    mode: self.mode,
-                    radius: self.radius,
-                    points_3d: None,
-                    chaos: Some(self.chaos.to_config()),
-                    camera: self.camera,
-                })
-                .ok()
-            }
+            .ok()
         }
     }
+}
 
-    pub(super) fn deserialize_tool_state(&mut self, state: &str) -> Result<(), String> {
-        self.state_bounds().validate_json(state)?;
-        let wire: WireState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid Vietoris-Rips state: {e}"))?;
-        let mode = wire.mode.unwrap_or(VrSourceMode::Points2D);
-        let max_r = if mode.is_3d() { MAX_VR_RADIUS } else { 15.0 };
-        if !wire.radius.is_finite() || !(0.0..=max_r).contains(&wire.radius) {
-            return Err(format!("radius out of [0.0, {max_r:.1}]: {}", wire.radius));
-        }
-        if let Some(cam) = wire.camera {
-            if !cam.is_valid() {
-                return Err("camera parameters out of valid bounds".to_string());
-            }
-        }
-        match mode {
-            VrSourceMode::Points2D => self.apply_wire_2d(wire),
-            VrSourceMode::Points3D => self.apply_wire_3d(wire),
-            VrSourceMode::Lorenz3D | VrSourceMode::Takens3D => self.apply_wire_chaos(mode, wire),
+fn serialize_2d_or_nd(
+    tool: &VietorisRipsTool,
+    mode_opt: Option<PersistencePlotMode>,
+) -> Option<String> {
+    let state = match &tool.source {
+        CloudSource::Custom2D(pts) => VietorisRipsSaveState2D {
+            radius: tool.radius,
+            points: Some(SerializedPoints2D {
+                pts,
+                quantize: pts.len() <= super::io::MAX_URL_CUSTOM_POINTS_2D,
+            }),
+            generator: None,
+            points_nd: None,
+            axis_x: None,
+            axis_y: None,
+            plot_mode: mode_opt,
+            min_persistence: tool.min_persistence,
+        },
+        CloudSource::Generator(desc) => VietorisRipsSaveState2D {
+            radius: tool.radius,
+            points: None,
+            generator: Some(desc),
+            points_nd: None,
+            axis_x: None,
+            axis_y: None,
+            plot_mode: mode_opt,
+            min_persistence: tool.min_persistence,
+        },
+        CloudSource::CustomNd {
+            cloud,
+            axis_x,
+            axis_y,
+        } => VietorisRipsSaveState2D {
+            radius: tool.radius,
+            points: None,
+            generator: None,
+            points_nd: Some(cloud.points()),
+            axis_x: Some(*axis_x),
+            axis_y: Some(*axis_y),
+            plot_mode: mode_opt,
+            min_persistence: tool.min_persistence,
+        },
+    };
+    serde_json::to_string(&state).ok()
+}
+
+pub(super) fn deserialize_tool_state(
+    tool: &mut VietorisRipsTool,
+    state: &str,
+) -> Result<(), String> {
+    let loaded: VietorisRipsLoadState =
+        serde_json::from_str(state).map_err(|e| format!("Invalid Vietoris-Rips state: {e}"))?;
+    let mode = loaded.mode.unwrap_or(VrSourceMode::Points2D);
+    let max_r = if mode.is_3d() {
+        MAX_VR_RADIUS
+    } else {
+        MAX_ALLOWED_RADIUS
+    };
+    if !loaded.radius.is_finite() || !(0.0..=max_r).contains(&loaded.radius) {
+        return Err(format!("radius out of [0.0, {max_r}]: {}", loaded.radius));
+    }
+    if !loaded.min_persistence.is_finite()
+        || !(0.0..=MAX_ALLOWED_RADIUS).contains(&loaded.min_persistence)
+    {
+        return Err(format!(
+            "invalid min_persistence: {}",
+            loaded.min_persistence
+        ));
+    }
+    if let Some(cam) = loaded.camera {
+        if !cam.is_valid() {
+            return Err("camera parameters out of valid bounds".to_string());
         }
     }
+    let (plot_mode, min_p) = (loaded.plot_mode, loaded.min_persistence);
+    match mode {
+        VrSourceMode::Points2D => apply_loaded_2d_or_nd(tool, loaded)?,
+        VrSourceMode::Points3D => apply_loaded_3d(tool, loaded)?,
+        VrSourceMode::Lorenz3D | VrSourceMode::Takens3D => apply_loaded_chaos(tool, mode, loaded)?,
+    }
+    tool.plot_mode = plot_mode;
+    tool.min_persistence = min_p;
+    tool.refresh_url_budget_flag();
+    Ok(())
+}
 
-    fn apply_wire_2d(&mut self, wire: WireState) -> Result<(), String> {
-        let raw = wire
-            .points
-            .ok_or_else(|| "missing 'points' for 2D Vietoris-Rips state".to_string())?;
-        if !(1..=MAX_VIETORIS_RIPS_POINTS).contains(&raw.len())
-            || !raw.iter().all(|p| {
-                p[0].is_finite()
-                    && p[1].is_finite()
-                    && p[0].abs() <= MAX_VR_COORD_ABS
-                    && p[1].abs() <= MAX_VR_COORD_ABS
-            })
+fn apply_loaded_2d_or_nd(
+    tool: &mut VietorisRipsTool,
+    loaded: VietorisRipsLoadState,
+) -> Result<(), String> {
+    let sources = usize::from(loaded.points.is_some())
+        + usize::from(loaded.generator.is_some())
+        + usize::from(loaded.points_nd.is_some());
+    if sources != 1 {
+        return Err(
+            "Vietoris-Rips state must specify one of 'points', 'generator', or 'points_nd'"
+                .to_string(),
+        );
+    }
+    if let Some(raw_pts) = loaded.points {
+        if !(1..=MAX_VIETORIS_RIPS_POINTS).contains(&raw_pts.len())
+            || !raw_pts.iter().all(|p| p[0].is_finite() && p[1].is_finite())
         {
             return Err(format!(
-                "points must contain 1..={MAX_VIETORIS_RIPS_POINTS} finite bounded coordinates"
+                "points must contain 1..={MAX_VIETORIS_RIPS_POINTS} finite points"
             ));
         }
-        let pts: Vec<Point2D> = raw.into_iter().map(|[x, y]| Point2D::new(x, y)).collect();
-        self.load_validated_2d_points(pts, wire.radius)
-    }
-
-    fn apply_wire_3d(&mut self, wire: WireState) -> Result<(), String> {
-        let raw = wire
-            .points_3d
-            .ok_or_else(|| "missing 'points_3d' for 3D Vietoris-Rips state".to_string())?;
-        if !(1..=MAX_VIETORIS_RIPS_POINTS).contains(&raw.len())
-            || !raw.iter().all(|p| {
-                p.iter()
-                    .all(|c| c.is_finite() && c.abs() <= MAX_VR_COORD_ABS)
-            })
-        {
-            return Err(format!(
-                "points_3d must contain 1..={MAX_VIETORIS_RIPS_POINTS} finite bounded coordinates"
-            ));
-        }
-        let cam = wire
-            .camera
-            .unwrap_or_else(|| Camera3D::new(0.35, 0.55, 1.0));
-        let pts: Vec<Point3D> = raw
+        let quantize = raw_pts.len() <= super::io::MAX_URL_CUSTOM_POINTS_2D;
+        let pts: Vec<Point2D> = raw_pts
             .into_iter()
-            .map(|[x, y, z]| Point3D::new(x, y, z))
+            .map(|[x, y]| {
+                if quantize {
+                    Point2D::new(
+                        super::io::quantize_url_coord(x),
+                        super::io::quantize_url_coord(y),
+                    )
+                } else {
+                    Point2D::new(x, y)
+                }
+            })
             .collect();
-        self.camera.apply_pose(cam);
-        self.load_validated_3d_points(pts, wire.radius)
+        tool.rebuild_from_2d(CloudSource::Custom2D(pts), Vec::new(), loaded.radius)?;
+    } else if let Some(desc) = loaded.generator {
+        desc.validate()?;
+        let pts = generate_preset_points(&desc);
+        tool.rebuild_from_2d(CloudSource::Generator(desc), pts, loaded.radius)?;
+    } else if let Some(nd_rows) = loaded.points_nd {
+        let nd = NdPointCloud::new(nd_rows).map_err(|e| format!("{e}"))?;
+        let ax = loaded.axis_x.unwrap_or(0);
+        let ay = loaded
+            .axis_y
+            .unwrap_or(1.min(nd.dimension().saturating_sub(1)));
+        tool.rebuild_from_nd(nd, ax, ay, loaded.radius)?;
     }
+    Ok(())
+}
 
-    fn apply_wire_chaos(&mut self, mode: VrSourceMode, wire: WireState) -> Result<(), String> {
-        let cfg = wire
-            .chaos
-            .ok_or_else(|| "missing 'chaos' configuration for chaotic 3D mode".to_string())?;
-        cfg.validate()?;
-        let cam = wire
-            .camera
-            .unwrap_or_else(|| Camera3D::new(0.35, 0.55, 1.0));
-        self.camera.apply_pose(cam);
-        self.mode = mode;
-        self.radius = wire.radius;
-        self.chaos.apply_config(cfg);
-        self.chaos.playing = false;
-        self.rebuild_chaos_landmarks()?;
-        Ok(())
+fn apply_loaded_3d(
+    tool: &mut VietorisRipsTool,
+    loaded: VietorisRipsLoadState,
+) -> Result<(), String> {
+    let raw = loaded
+        .points_3d
+        .ok_or_else(|| "missing 'points_3d' for 3D Vietoris-Rips state".to_string())?;
+    if !(1..=MAX_CHAOS_LANDMARKS).contains(&raw.len())
+        || !raw.iter().all(|p| {
+            p.iter()
+                .all(|c| c.is_finite() && c.abs() <= MAX_VR_COORD_ABS)
+        })
+    {
+        return Err(format!(
+            "points_3d must contain 1..={MAX_CHAOS_LANDMARKS} finite bounded coordinates"
+        ));
     }
+    let cam = loaded
+        .camera
+        .unwrap_or_else(|| Camera3D::new(0.35, 0.55, 1.0));
+    let pts: Vec<Point3D> = raw
+        .into_iter()
+        .map(|[x, y, z]| Point3D::new(x, y, z))
+        .collect();
+    tool.camera.apply_pose(cam);
+    tool.load_validated_3d_points(pts, loaded.radius)
+}
+
+fn apply_loaded_chaos(
+    tool: &mut VietorisRipsTool,
+    mode: VrSourceMode,
+    loaded: VietorisRipsLoadState,
+) -> Result<(), String> {
+    let cfg = loaded
+        .chaos
+        .ok_or_else(|| "missing 'chaos' configuration for chaotic 3D mode".to_string())?;
+    cfg.validate()?;
+    let cam = loaded
+        .camera
+        .unwrap_or_else(|| Camera3D::new(0.35, 0.55, 1.0));
+    tool.camera.apply_pose(cam);
+    tool.mode = mode;
+    tool.radius = loaded.radius;
+    tool.chaos.apply_config(cfg);
+    tool.chaos.playing = false;
+    tool.rebuild_chaos_landmarks()
 }

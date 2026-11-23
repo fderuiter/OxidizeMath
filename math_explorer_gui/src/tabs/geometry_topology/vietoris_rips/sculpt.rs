@@ -1,11 +1,14 @@
+//! Tactile 2D and 3D landmark sculpting brushes and orthogonal camera unprojection.
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::state::{SculptBrush, VrSourceMode, MAX_VR_COORD_ABS};
-use super::{VietorisRipsTool, MAX_VIETORIS_RIPS_POINTS};
+use super::{CloudSource, VietorisRipsTool, MAX_CHAOS_LANDMARKS, MAX_VIETORIS_RIPS_POINTS};
 use math_explorer::pure_math::statistics::tda::{Point2D, Point3D};
 
 impl VietorisRipsTool {
     /// Projects a 3D world landmark into `Plot3DViewport` 2D coordinates and viewer depth.
+    #[must_use]
     pub fn project_3d_with_depth(&self, pt: Point3D) -> ([f64; 2], f64) {
         let centered = [
             pt.x - self.view_center_3d[0],
@@ -18,11 +21,13 @@ impl VietorisRipsTool {
     }
 
     /// Projects a 3D world landmark into `Plot3DViewport` 2D plot coordinates.
+    #[must_use]
     pub fn project_3d(&self, pt: Point3D) -> [f64; 2] {
         self.project_3d_with_depth(pt).0
     }
 
     /// Exact orthogonal inverse of [`Self::project_3d_with_depth`] at fixed camera-space depth.
+    #[must_use]
     pub fn unproject_3d(&self, plot_xy: [f64; 2], cam_depth: f64) -> Point3D {
         let z = (self.camera.zoom as f64).max(0.01);
         let x_cam = plot_xy[0] / z;
@@ -50,7 +55,11 @@ impl VietorisRipsTool {
         hit_radius: f64,
         continuing_drag: bool,
     ) -> bool {
-        if !plot_xy[0].is_finite() || !plot_xy[1].is_finite() || !hit_radius.is_finite() {
+        if !plot_xy[0].is_finite()
+            || !plot_xy[1].is_finite()
+            || !hit_radius.is_finite()
+            || (!self.mode.is_3d() && matches!(self.source, CloudSource::CustomNd { .. }))
+        {
             return false;
         }
         let clamped = Point2D::new(plot_xy[0].clamp(-50.0, 50.0), plot_xy[1].clamp(-50.0, 50.0));
@@ -69,9 +78,11 @@ impl VietorisRipsTool {
         }
         if let Some(idx) = self.active_drag_vertex {
             if idx < self.points.len() && self.points[idx] != target {
-                self.points[idx] = target;
-                self.update_complex();
-                return true;
+                let mut next = self.points.clone();
+                next[idx] = target;
+                return self
+                    .rebuild_from_2d(CloudSource::Custom2D(next), Vec::new(), self.radius)
+                    .is_ok();
             }
         }
         false
@@ -85,9 +96,10 @@ impl VietorisRipsTool {
         if self.nearest_2d_vertex(target, min_spacing_sq).is_some() {
             return false;
         }
-        self.points.push(target);
-        self.update_complex();
-        true
+        let mut next = self.points.clone();
+        next.push(target);
+        self.rebuild_from_2d(CloudSource::Custom2D(next), Vec::new(), self.radius)
+            .is_ok()
     }
 
     fn sculpt_erase_2d(&mut self, target: Point2D, r2: f64) -> bool {
@@ -95,10 +107,12 @@ impl VietorisRipsTool {
             return false;
         }
         if let Some(idx) = self.nearest_2d_vertex(target, r2) {
-            self.points.remove(idx);
+            let mut next = self.points.clone();
+            next.remove(idx);
             self.active_drag_vertex = None;
-            self.update_complex();
-            return true;
+            return self
+                .rebuild_from_2d(CloudSource::Custom2D(next), Vec::new(), self.radius)
+                .is_ok();
         }
         false
     }
@@ -152,12 +166,11 @@ impl VietorisRipsTool {
         self.mode = VrSourceMode::Points3D;
         self.chaos.playing = false;
         self.points_3d[idx] = updated;
-        self.update_complex();
-        true
+        self.refresh_sculpted_3d_points().is_ok()
     }
 
     fn sculpt_add_3d(&mut self, plot_xy: [f64; 2], r2: f64, continuing_drag: bool) -> bool {
-        if self.points_3d.len() >= MAX_VIETORIS_RIPS_POINTS {
+        if self.points_3d.len() >= MAX_CHAOS_LANDMARKS {
             return false;
         }
         let min_spacing_sq = if continuing_drag { r2 * 0.45 } else { 1e-6 };
@@ -172,8 +185,7 @@ impl VietorisRipsTool {
         self.mode = VrSourceMode::Points3D;
         self.chaos.playing = false;
         self.points_3d.push(inserted);
-        self.update_complex();
-        true
+        self.refresh_sculpted_3d_points().is_ok()
     }
 
     fn sculpt_erase_3d(&mut self, plot_xy: [f64; 2], r2: f64) -> bool {
@@ -185,8 +197,7 @@ impl VietorisRipsTool {
             self.chaos.playing = false;
             self.points_3d.remove(idx);
             self.active_drag_vertex = None;
-            self.update_complex();
-            return true;
+            return self.refresh_sculpted_3d_points().is_ok();
         }
         false
     }

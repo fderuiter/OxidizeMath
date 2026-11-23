@@ -391,16 +391,6 @@ fn reduce_high_pivots(
 }
 
 #[verified_engine::verified]
-pub(crate) fn lowest_set_bit(words: &[u64]) -> Option<usize> {
-    for (wi, &word) in words.iter().enumerate() {
-        if word != 0 {
-            return Some((wi << 6) | (word.trailing_zeros() as usize));
-        }
-    }
-    None
-}
-
-#[verified_engine::verified]
 fn update_births_and_deaths(
     births: &mut Vec<f64>,
     prev_betti: usize,

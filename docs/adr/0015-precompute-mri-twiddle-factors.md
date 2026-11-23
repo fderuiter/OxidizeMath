@@ -1,5 +1,9 @@
 # ADR 0015: Precomputed Twiddle Factor Lookup Tables for MRI Reconstruction
 
+## Status
+
+Accepted
+
 ## Context
 In `crates/domain_physics/src/physics/mri/reconstruction.rs`, the separable 2D Discrete Fourier Transform (`separable_transform`) previously evaluated `Complex::from_polar(1.0, phase)` inside innermost row and column loops ($O(N^3)$ complexity). For a $64 \times 64$ slice, this resulted in hundreds of thousands of trigonometric operations (`sin`/`cos`) evaluated repeatedly for identical phase angles during both `simulate_signal_2d` and `inverse_dft_2d`.
 

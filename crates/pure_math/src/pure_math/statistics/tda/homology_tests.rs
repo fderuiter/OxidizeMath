@@ -111,6 +111,23 @@ fn test_betti_number_1_four_clique_with_disjoint_four_cycle() {
     assert_eq!(betti_number_1(&complex).unwrap(), 1);
 }
 
+#[test]
+#[verified_engine::verified]
+fn test_betti_number_1_retains_cycle_near_attached_k4_clique() {
+    let mut complex = SimplicialComplex::new();
+    for &(u, v, w) in &[(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)] {
+        complex
+            .add_simplex(Simplex::new(vec![u, v, w]).unwrap())
+            .unwrap();
+    }
+    for &(u, v) in &[(3, 4), (4, 5), (5, 6), (6, 3)] {
+        complex
+            .add_simplex(Simplex::new(vec![u, v]).unwrap())
+            .unwrap();
+    }
+    assert_eq!(betti_numbers(&complex).unwrap(), (1, 1));
+}
+
 #[verified_engine::verified]
 fn lorenz_rk4_step(s: Point3D, dt: f64, sigma: f64, rho: f64, beta: f64) -> Point3D {
     let deriv = |p: Point3D| -> Point3D {

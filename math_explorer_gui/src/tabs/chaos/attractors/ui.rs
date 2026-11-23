@@ -9,7 +9,7 @@ use crate::async_sim::ui::{
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
-use egui_plot::{Callout, Line, PlotPoint, PlotPoints, Points};
+use egui_plot::{Callout, PlotPoint};
 use nalgebra::Vector3;
 
 impl AttractorPlotter {
@@ -159,7 +159,7 @@ impl AttractorPlotter {
                 .can_reset(true)
                 .show(ui)
                 {
-                    self.handle_transport_action(action, ctx);
+                    self.handle_playback_action(action, ctx);
                 }
 
                 if ui
@@ -189,7 +189,7 @@ impl AttractorPlotter {
             });
     }
 
-    fn handle_transport_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
+    fn handle_playback_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
         match action {
             PlaybackAction::Play => {
                 let _ = self.try_resume();
@@ -420,22 +420,12 @@ impl AttractorPlotter {
                 );
             }
 
-            let points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
-            let initial_pt = (points.is_empty() && self.is_finite_state())
-                .then(|| self.project(self.system.state.vec));
-
             let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
+            self.populate_scene(series0);
             let mut camera = self.camera;
             let response = Plot3DViewport::new("attractor_plot", 32.0)
                 .show(ui, &mut camera, |plot_ui| {
-                    plot_ui.line(Line::new("Trajectory", PlotPoints::new(points)).color(series0));
-                    if let Some(pt) = initial_pt {
-                        plot_ui.points(
-                            Points::new("Initial State", vec![pt])
-                                .radius(4.0_f32)
-                                .color(series0),
-                        );
-                    }
+                    self.scene_builder.finish(plot_ui);
                     self.draw_fixed_point_callouts(plot_ui);
                 })
                 .response;

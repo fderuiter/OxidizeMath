@@ -1,10 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::async_sim::{BackgroundWorker, SimCommand};
-use crate::framework::{CoupledExpressionBank, InteractiveTool};
+use crate::framework::{Camera3D, CoupledExpressionBank, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
+use egui_plot::{LineStyle, MarkerShape};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
-use nalgebra::Vector3;
+use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -34,7 +35,9 @@ pub struct AttractorPlotter {
     pub(crate) dt: f64,
     pub(crate) history: VecDeque<Vector3<f64>>,
     pub(crate) max_points: usize,
-    pub(crate) camera: crate::framework::Camera3D,
+    pub(crate) camera: Camera3D,
+    pub(crate) scene_builder: Scene3DBuilder,
+    trajectory_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
     pub show_annotations: bool,
@@ -62,6 +65,7 @@ impl Default for AttractorPlotter {
         let runner = AttractorRunner::from_params(Arc::clone(&params));
         let worker = BackgroundWorker::new(runner);
 
+        let camera = Camera3D::new(0.0, 0.0, 1.0).with_perspective_distance(75.0);
         Self {
             mode: AttractorMode::Lorenz,
             flow_bank,
@@ -72,7 +76,9 @@ impl Default for AttractorPlotter {
             dt: 0.01,
             history: VecDeque::with_capacity(2000),
             max_points: 2000,
-            camera: crate::framework::Camera3D::new(0.0, 0.0, 1.0),
+            camera,
+            scene_builder: Scene3DBuilder::new(camera),
+            trajectory_scratch: Vec::with_capacity(2000),
             params,
             worker,
             show_annotations: true,
@@ -198,7 +204,7 @@ impl AttractorPlotter {
         self.reset();
     }
 
-    /// Projects 3D point to 2D screen space based on rotation.
+    /// Projects 3D point to 2D screen space based on rotation, pan, zoom, and projection mode.
     pub(crate) fn project(&self, p: Vector3<f64>) -> [f64; 2] {
         let center_offset = match self.mode {
             AttractorMode::Lorenz => Vector3::new(0.0, 0.0, 25.0),
@@ -207,6 +213,49 @@ impl AttractorPlotter {
         let p_centered = p - center_offset;
         self.camera
             .project(&[p_centered.x, p_centered.y, p_centered.z])
+    }
+
+    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
+    pub fn populate_scene(&mut self, series_color: egui::Color32) {
+        let origin_offset = match self.mode {
+            AttractorMode::Lorenz => Point3::new(0.0, 0.0, 25.0),
+            AttractorMode::Custom => Point3::origin(),
+        };
+        self.scene_builder.begin(self.camera);
+        self.scene_builder.set_origin_offset(origin_offset);
+        self.trajectory_scratch.clear();
+        self.trajectory_scratch
+            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
+        if !self.trajectory_scratch.is_empty() {
+            if self.trajectory_scratch.len() == 1 {
+                self.scene_builder.add_points(
+                    "Trajectory",
+                    &self.trajectory_scratch,
+                    4.0_f32,
+                    series_color,
+                    MarkerShape::Circle,
+                    true,
+                );
+            } else {
+                self.scene_builder.add_polyline(
+                    "Trajectory",
+                    &self.trajectory_scratch,
+                    egui::Stroke::new(1.5_f32, series_color),
+                    LineStyle::Solid,
+                    true,
+                );
+            }
+        } else if self.is_finite_state() {
+            let v = self.system.state.vec;
+            self.scene_builder.add_points(
+                "Initial State",
+                &[Point3::new(v.x, v.y, v.z)],
+                4.0_f32,
+                series_color,
+                MarkerShape::Circle,
+                true,
+            );
+        }
     }
 }
 
@@ -240,9 +289,7 @@ impl InteractiveTool for AttractorPlotter {
         self.is_paused().hash(&mut h);
         self.diverged().hash(&mut h);
         self.show_annotations.hash(&mut h);
-        self.camera.pitch.to_bits().hash(&mut h);
-        self.camera.yaw.to_bits().hash(&mut h);
-        self.camera.zoom.to_bits().hash(&mut h);
+        self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
 
@@ -307,6 +354,15 @@ impl InteractiveTool for AttractorPlotter {
         let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
         if points.is_empty() && self.is_finite_state() {
             points.push(self.project(self.system.state.vec));
+        }
+        vec![("Trajectory".to_string(), points)]
+    }
+
+    fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        let mut points: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
+        if points.is_empty() && self.is_finite_state() {
+            let v = self.system.state.vec;
+            points.push([v.x, v.y, v.z]);
         }
         vec![("Trajectory".to_string(), points)]
     }

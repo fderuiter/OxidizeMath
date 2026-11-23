@@ -1,7 +1,10 @@
 # ADR 0034: Scoped Pre-Commit Lint Gates and Single-Parse In-Process AST Verification
 
-- **Status:** Accepted
-- **Date:** 2026-11-21
+Date: 2026-11-21
+
+## Status
+
+Accepted
 
 ## Context
 
