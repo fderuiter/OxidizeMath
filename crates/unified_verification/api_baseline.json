@@ -6634,13 +6634,97 @@
   ],
   "crates/pure_math/src/pure_math/algorithmic_information/fractran.rs": [
     {
+      "signature": "impl FractranCompiledVm { pub const fn num_rules (& self) -> usize }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn encode_u64 (& self , value : u64 , out_registers : & mut [u32]) -> Result < () , FractranError > }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn encode_value (& self , value : u64) -> Result < Vec < u32 > , FractranError > }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn power_of_two_exponent (& self , registers : & [u32]) -> Option < u32 > }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn primes (& self) -> & [u64] }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn rule_exponents (& self , rule_index : usize) -> Option < (& [u32] , & [u32]) > }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn step_registers (& self , registers : & mut [u32]) -> Result < Option < usize > , FractranError > }"
+    },
+    {
+      "signature": "impl FractranPreset { pub const ALL : [Self ; 4] = [Self :: PrimeGame , Self :: Mult , Self :: Add , Self :: Fibonacci] }"
+    },
+    {
+      "signature": "impl FractranPreset { pub const fn default_initial_value (self) -> u64 }"
+    },
+    {
+      "signature": "impl FractranPreset { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl FractranPreset { pub fn build (self) -> (FractranProgram , FractranState , u64) }"
+    },
+    {
+      "signature": "impl FractranPreset { pub fn minsky_state (self) -> FractranState }"
+    },
+    {
+      "signature": "impl FractranPreset { pub fn program (self) -> FractranProgram }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn compile (& self) -> Result < FractranCompiledVm , FractranError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn compile_for_initial (& self , initial_value : u64 ,) -> Result < (FractranCompiledVm , Vec < u32 >) , FractranError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn compile_with_primes (& self , extra_primes : & [u64] ,) -> Result < FractranCompiledVm , FractranError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn format_fractions (& self) -> String }"
+    },
+    {
       "signature": "impl FractranProgram { pub fn new (fractions : Vec < Rational >) -> Self }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn parse_fractions (input : & str) -> Result < Self , FractranError > }"
+    },
+    {
+      "signature": "impl FractranState { pub fn decode (& self , vm : & FractranCompiledVm , registers : & [u32]) -> MinskyDecodedState }"
+    },
+    {
+      "signature": "impl FractranState { pub fn from_vm_heuristic (vm : & FractranCompiledVm) -> Self }"
+    },
+    {
+      "signature": "impl FractranState { pub fn new (state_primes : Vec < u64 > , register_primes : Vec < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl FractranState { pub fn transitions (& self , vm : & FractranCompiledVm) -> Vec < MinskyTransition > }"
+    },
+    {
+      "signature": "pub const MAX_SMOOTH_PRIME : u64 = 10_000"
+    },
+    {
+      "signature": "pub enum FractranError"
+    },
+    {
+      "signature": "pub enum FractranPreset"
+    },
+    {
+      "signature": "pub struct FractranCompiledVm"
     },
     {
       "signature": "pub struct FractranProgram"
     },
     {
       "signature": "pub struct FractranState"
+    },
+    {
+      "signature": "pub struct MinskyDecodedState"
+    },
+    {
+      "signature": "pub struct MinskyTransition"
     }
   ],
   "crates/pure_math/src/pure_math/algorithmic_information/geometry.rs": [
