@@ -3,36 +3,36 @@
 use super::{AccessibleHoverText, BrushMode, BrushStroke, InteractiveTool, PaneSidePanel};
 use eframe::egui;
 
-/// Active pointer input modality for canvas interaction events.
+/// Active pointer/touch input modality for an interactive simulation pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {
-    /// Desktop mouse or trackpad pointer input.
+    /// Desktop mouse/trackpad pointer input.
     Mouse,
-    /// Touch or multi-touch gesture input.
+    /// Direct multi-touch gesture input.
     Touch,
 }
 
 /// Event context provided to interaction hooks.
 pub struct InteractionContext<'a> {
-    /// Current screen-space pointer coordinates, if hovering or interacting.
+    /// Current pointer position in screen coordinates, if hovering or interacting.
     pub pointer_pos: Option<egui::Pos2>,
     /// Pointer drag delta since the previous frame.
     pub delta: egui::Vec2,
-    /// Whether an active drag gesture is in progress.
+    /// Whether the pointer is actively dragging on the canvas.
     pub is_dragging: bool,
-    /// Whether a primary click occurred on this frame.
+    /// Whether the canvas was clicked during this frame.
     pub is_clicked: bool,
-    /// Underlying widget interaction response.
+    /// Underlying `egui` widget response for the canvas region.
     pub response: &'a egui::Response,
-    /// Active pointer modality (`Mouse` or `Touch`).
+    /// Active pointer or touch input mode.
     pub input_mode: InputMode,
-    /// Multi-touch pinch/pan metadata when two or more fingers are active.
+    /// Active multi-touch gesture state, when present.
     pub multi_touch: Option<egui::MultiTouchInfo>,
-    /// Currently pressed keyboard keys in the enclosing UI context.
+    /// Set of keyboard keys currently held down.
     pub keys_down: std::collections::HashSet<egui::Key>,
-    /// Active keyboard modifier state (`Shift`, `Ctrl`, `Alt`, `Command`).
+    /// Active keyboard modifiers (`Ctrl`, `Shift`, `Alt`, `Cmd`).
     pub modifiers: egui::Modifiers,
-    /// Optional interpolated spatial brush stroke when brush mode is active.
+    /// Optional spatial brush stroke synthesized from pointer drag events.
     pub brush_stroke: Option<BrushStroke>,
 }
 

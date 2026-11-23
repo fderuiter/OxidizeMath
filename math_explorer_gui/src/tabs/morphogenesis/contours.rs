@@ -104,7 +104,7 @@ impl MorphogenesisTool {
                 if pts.len() >= 2 {
                     primitives.push(ExportPrimitive::Polyline {
                         name: format!("Isoline u={level_val:.3}"),
-                        points: pts,
+                        points: pts.into(),
                         color,
                         stroke_width: 1.5,
                         closed: path.closed,

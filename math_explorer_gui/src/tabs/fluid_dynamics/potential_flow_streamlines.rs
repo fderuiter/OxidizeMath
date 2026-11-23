@@ -43,7 +43,7 @@ impl PotentialFlowTool {
         for (idx, (pts, closed)) in self.compute_streamline_paths().into_iter().enumerate() {
             primitives.push(ExportPrimitive::Polyline {
                 name: format!("Streamline {}", idx + 1),
-                points: pts,
+                points: pts.into(),
                 color: streamline_color,
                 stroke_width: 1.8,
                 closed,

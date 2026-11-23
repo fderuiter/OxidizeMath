@@ -1,4 +1,4 @@
-# ADR 0046: Add 2D Marching-Squares Contours, Aperiodic Tilings, Millimeter Fabrication SVG Export, and Fabrication Studio
+# ADR 20261123: Add 2D Marching-Squares Contours, Aperiodic Tilings, Millimeter Fabrication SVG Export, and Fabrication Studio
 
 ## Status
 Accepted (extends [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0040](0040-promote-zero-alloc-curve-solvers-to-math-commons.md))
