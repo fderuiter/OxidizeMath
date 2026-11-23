@@ -238,10 +238,8 @@ impl NetworkMetricsTool {
 
     fn render_metrics_canvas(&self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            let (response, painter) = ui.allocate_painter(
-                ui.available_size(),
-                egui::Sense::focusable_noninteractive(),
-            );
+            let (response, painter) =
+                ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
             let label = "Network Metrics Visualization";
             let _ = response.clone().accessible_hover_text(label);
             let summary = format!(
@@ -274,7 +272,10 @@ impl NetworkMetricsTool {
                         palette.graph_edge
                     };
                     painter.line_segment(
-                        [to_screen.transform_pos(pos_u), to_screen.transform_pos(pos_v)],
+                        [
+                            to_screen.transform_pos(pos_u),
+                            to_screen.transform_pos(pos_v),
+                        ],
                         (2.0, edge_color),
                     );
                 }
@@ -395,7 +396,7 @@ inventory::submit! {
         id: "NetworkMetricsTool",
         display_name: "Network Metrics",
         domain: "graph_theory",
-        tags: &[],
+        tags: &["centrality", "clustering", "watts-strogatz", "degree", "closeness"],
         build: || Box::new(NetworkMetricsTool::default()),
     }
 }

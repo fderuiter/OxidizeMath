@@ -135,6 +135,7 @@ impl GraphEditorTool {
 
     pub(super) fn configure_canvas_focus(&mut self, ui: &mut egui::Ui, response: &egui::Response) {
         self.canvas_id = Some(response.id);
+        self.apply_dispatched_graph_commands(ui.ctx(), response.rect);
         if response.clicked() || response.drag_started() {
             response.request_focus();
         }
@@ -150,6 +151,40 @@ impl GraphEditorTool {
                     },
                 );
             });
+        }
+    }
+
+    fn apply_dispatched_graph_commands(&mut self, ctx: &egui::Context, viewport: egui::Rect) {
+        if !CommandRegistryData::has_pending_dispatch(ctx, "Graph Editor") {
+            return;
+        }
+        if CommandRegistryData::take_dispatched(ctx, "Add Node", "Graph Editor") {
+            self.insert_node_from_keyboard(viewport);
+        } else if CommandRegistryData::take_dispatched(ctx, "Connect Edge", "Graph Editor") {
+            self.connect_selected_node_to_next();
+        } else if CommandRegistryData::take_dispatched(ctx, "Select Next Node", "Graph Editor") {
+            self.cycle_node_selection(true);
+        } else if CommandRegistryData::take_dispatched(ctx, "Select Previous Node", "Graph Editor")
+        {
+            self.cycle_node_selection(false);
+        } else if CommandRegistryData::take_dispatched(ctx, "Move Node Left", "Graph Editor") {
+            self.translate_selected_node(egui::vec2(-TRANSLATE_STEP_NORMAL, 0.0));
+        } else if CommandRegistryData::take_dispatched(ctx, "Move Node Right", "Graph Editor") {
+            self.translate_selected_node(egui::vec2(TRANSLATE_STEP_NORMAL, 0.0));
+        } else if CommandRegistryData::take_dispatched(ctx, "Move Node Up", "Graph Editor") {
+            self.translate_selected_node(egui::vec2(0.0, -TRANSLATE_STEP_NORMAL));
+        } else if CommandRegistryData::take_dispatched(ctx, "Move Node Down", "Graph Editor") {
+            self.translate_selected_node(egui::vec2(0.0, TRANSLATE_STEP_NORMAL));
+        } else if CommandRegistryData::take_dispatched(ctx, "Undo", "Graph Editor")
+            && self.can_undo()
+        {
+            self.undo();
+            announce_status("Undid graph modification");
+        } else if CommandRegistryData::take_dispatched(ctx, "Redo", "Graph Editor")
+            && self.can_redo()
+        {
+            self.redo();
+            announce_status("Redid graph modification");
         }
     }
 
@@ -316,6 +351,7 @@ impl GraphEditorTool {
         self.node_positions.insert(node_id, pos);
         self.next_node_id += 1;
         self.selected_node = Some(node_id);
+        self.bump_revision();
         announce_status(&format!(
             "Added node {node_id} at ({:.1}, {:.1})",
             pos.x, pos.y
@@ -364,6 +400,7 @@ impl GraphEditorTool {
                 *weight = updated_pos;
             }
         }
+        self.bump_revision();
         announce_status(&format!(
             "Moved node {selected_id} to ({:.1}, {:.1})",
             updated_pos.x, updated_pos.y

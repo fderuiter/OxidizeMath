@@ -73,11 +73,11 @@ impl Default for NeuralNetworkVizTool {
             positions.push([angle.cos() * radius, angle.sin() * radius]);
         }
 
-        for i in 0..num_neurons {
-            let next = (i + 1) % num_neurons;
-            let prev = (i + num_neurons - 1) % num_neurons;
-            weights[next][i] = 2.0;
-            weights[prev][i] = -1.0;
+        for (row_idx, row) in weights.iter_mut().enumerate() {
+            let src_exc = (row_idx + num_neurons - 1) % num_neurons;
+            let src_inh = (row_idx + 1) % num_neurons;
+            row[src_exc] = 2.0;
+            row[src_inh] = -1.0;
         }
         external_input[0] = 10.0;
 
@@ -422,7 +422,7 @@ inventory::submit! {
         id: "NeuralNetworkVizTool",
         display_name: "Neural Network Viz",
         domain: "neuroscience",
-        tags: &[],
+        tags: &["synapse", "coupled neurons", "connectome", "membrane", "spiking"],
         build: || Box::new(NeuralNetworkVizTool::default()),
     }
 }

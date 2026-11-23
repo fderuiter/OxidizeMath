@@ -165,6 +165,7 @@ impl GraphEditorTool {
     ) {
         self.sync_workspace_bus(ui.ctx());
         self.configure_canvas_focus(ui, response);
+        self.sync_workspace_bus(ui.ctx());
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let text_color = ui.visuals().text_color();
         let window_stroke = ui.visuals().window_stroke();

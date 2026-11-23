@@ -279,8 +279,9 @@ impl GraphReplicatorSystem {
         }
         for i in 0..self.num_nodes {
             let base = i * self.num_strategies;
-            for strat in 0..s {
-                out[strat] += self.states_flat[base + strat];
+            for (out_val, &state_val) in out[..s].iter_mut().zip(&self.states_flat[base..base + s])
+            {
+                *out_val += state_val;
             }
         }
         let inv_n = 1.0 / self.num_nodes as f64;
