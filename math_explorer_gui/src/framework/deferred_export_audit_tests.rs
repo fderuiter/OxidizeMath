@@ -233,16 +233,16 @@ fn assert_expected_capability_counts(counts: [usize; 8]) {
     let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader] = counts;
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
     let has_ai = cfg!(feature = "ai");
-    let expected_plot = 68 + usize::from(has_surface_morpho) + usize::from(has_ai);
+    let expected_plot = 73 + usize::from(has_surface_morpho) + usize::from(has_ai);
     let expected_solid = if has_surface_morpho { 8 } else { 7 };
-    let expected_non_shader = 85 + usize::from(has_surface_morpho) + usize::from(has_ai);
+    let expected_non_shader = 87 + usize::from(has_surface_morpho) + usize::from(has_ai);
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"
     );
     assert_eq!(raster, 8, "Expected 8 raster figure tools");
     assert_eq!(dataset_only, 0, "Expected 0 dataset-only registered tools");
-    assert_eq!(unsupported, 12, "Expected 12 non-figure tools");
+    assert_eq!(unsupported, 9, "Expected 9 non-figure tools");
     assert_eq!(
         solid_3d, expected_solid,
         "Expected {expected_solid} solid 3D geometric tools"
@@ -370,7 +370,7 @@ fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
 }
 
 #[test]
-fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
+fn test_all_eight_3d_tools_deferred_stl_ply_payloads_and_live_region() {
     let solid_ids = [
         "SurfaceViewer",
         "CurvatureHeatmap",
@@ -394,15 +394,28 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         .into_iter()
         .find(|m| m.id == "Gaussian Splatting")
         .expect("Gaussian Splatting registered");
-    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
-    gs_fw.active_tool = Some((gs_meta.build)());
+    verify_splat_mode_ply_and_assertive_stl_obj_warnings((gs_meta.build)());
 
-    clear_test_announcements();
-    run_deferred_export_frame(&mut gs_fw, ExportFormat::Stl, false);
-    assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
-    assert!(all_announcements()
-        .iter()
-        .any(|(_, prio)| prio == "assertive"));
+    let mut vol_splat =
+        crate::tabs::quantum::volumetric_studio::VolumetricFieldStudioTool::default();
+    vol_splat.config.render_mode =
+        crate::tabs::quantum::volumetric_studio::state::VolumetricRenderMode::GaussianRadianceCloud;
+    vol_splat.refresh_zero_alloc();
+    verify_splat_mode_ply_and_assertive_stl_obj_warnings(Box::new(vol_splat));
+}
+
+fn verify_splat_mode_ply_and_assertive_stl_obj_warnings(tool: Box<dyn InteractiveTool>) {
+    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
+    gs_fw.active_tool = Some(tool);
+
+    for blocked_fmt in [ExportFormat::Stl, ExportFormat::Obj] {
+        clear_test_announcements();
+        run_deferred_export_frame(&mut gs_fw, blocked_fmt, false);
+        assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
+        assert!(all_announcements()
+            .iter()
+            .any(|(_, prio)| prio == "assertive"));
+    }
 
     clear_test_announcements();
     let slot_before = with_live_region(|r| r.active_slot);
