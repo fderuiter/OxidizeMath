@@ -38,6 +38,7 @@ impl Error {
             Self::Evolution(err) => Some(err),
             Self::Fractran(err) => Some(err),
             Self::Glicko2(err) => Some(err),
+            Self::GraphTheory(err) => Some(err),
             Self::Hyperbolic(err) => Some(err),
             Self::Kelly(err) => Some(err),
             Self::LinearAlgebra(err) => Some(err),
