@@ -4,7 +4,7 @@ use crate::app::SemanticPalette;
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use math_explorer::epidemiology::analytics::calculate_final_size;
-use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState, heterogeneous_r0};
+use math_explorer::epidemiology::networks::{heterogeneous_r0, NetworkEpidemicModel, NodeState};
 use math_explorer::epidemiology::stochastic::probability_of_extinction;
 
 /// Live compartmental counts and residual analytical outbreak indicators.
@@ -116,11 +116,7 @@ pub(super) fn render_compartment_and_analytics_panel(
 
     ui.separator();
     ui.strong("Live Domain Analytics");
-    render_copyable_metric(
-        ui,
-        "Effective R₀",
-        &format!("{:.2}", summary.effective_r0),
-    );
+    render_copyable_metric(ui, "Effective R₀", &format!("{:.2}", summary.effective_r0));
     render_copyable_metric(
         ui,
         "Extinction Probability",

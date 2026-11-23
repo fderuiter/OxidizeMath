@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for algorithmic information.
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use dashu::integer::{IBig, UBig};

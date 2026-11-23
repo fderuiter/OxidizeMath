@@ -2,9 +2,10 @@
 //! `Logarithmic`, `Logistic`, and `Sinusoidal`).
 // [cite:math_commons]
 
+pub use super::format::format_nonlinear_formula;
 use super::lm::{levenberg_marquardt, levenberg_marquardt_filtered};
 use super::seeds::{
-    WeightedOlsAccum, seed_exponential, seed_logarithmic, seed_logistic, seed_power_law,
+    WeightedOlsAccum, seed_exponential_shifted, seed_logarithmic, seed_logistic, seed_power_law,
     seed_sinusoidal,
 };
 use super::{CurveFit, FitModel};
@@ -32,6 +33,16 @@ pub fn fit_nonlinear<P: PointSeries + ?Sized>(
     }
 }
 
+fn pack_exponential_coeffs(a_u: f64, b: f64, x0: f64) -> ([f64; 5], usize) {
+    if x0 == 0.0 || (x0.abs() <= 50.0 && (-b * x0).abs() <= 20.0) {
+        let a = a_u * (-b * x0).exp();
+        if a.is_finite() && a > 0.0 {
+            return ([a, b, 0.0, 0.0, 0.0], 2);
+        }
+    }
+    ([a_u, b, x0, 0.0, 0.0], 3)
+}
+
 fn fit_exponential<P: PointSeries + ?Sized>(
     points: &P,
     log_mode: bool,
@@ -39,18 +50,24 @@ fn fit_exponential<P: PointSeries + ?Sized>(
     if log_mode {
         return fit_exponential_log_mode(points);
     }
-    let seed = seed_exponential(points)?;
-    let refined = levenberg_marquardt(points, &seed, |x, p| {
-        let e = (p[1] * x).exp();
-        (p[0] * e, [e, p[0] * x * e, 0.0, 0.0])
+    let [a0, b0, x0] = seed_exponential_shifted(points)?;
+    let refined = levenberg_marquardt(points, &[a0, b0], |x, p| {
+        let u = x - x0;
+        let arg = (p[1] * u).clamp(-700.0, 700.0);
+        let e = arg.exp();
+        (p[0] * e, [e, p[0] * u * e, 0.0, 0.0])
     })?;
-    let coeffs = [refined[0], refined[1], 0.0, 0.0, 0.0];
-    let (r_squared, rmse, valid_n) =
-        compute_nonlinear_metrics(points, FitModel::Exponential, &coeffs[..2], finite_xy);
+    let (coeffs, coeff_len) = pack_exponential_coeffs(refined[0], refined[1], x0);
+    let (r_squared, rmse, valid_n) = compute_nonlinear_metrics(
+        points,
+        FitModel::Exponential,
+        &coeffs[..coeff_len],
+        finite_xy,
+    );
     Ok(CurveFit::new(
         FitModel::Exponential,
         coeffs,
-        2,
+        coeff_len,
         r_squared,
         rmse,
         0,
@@ -63,15 +80,12 @@ fn fit_exponential<P: PointSeries + ?Sized>(
 
 fn fit_exponential_log_mode<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitError> {
     let mut finite_n = 0usize;
-    let mut acc = WeightedOlsAccum::default();
+    let mut x_min = f64::INFINITY;
     for i in 0..points.len() {
         let p = points.point_at(i);
-        if !p[0].is_finite() || !p[1].is_finite() {
-            continue;
-        }
-        finite_n += 1;
-        if p[1] > 0.0 {
-            acc.push(p[0], p[1].ln(), 1.0);
+        if p[0].is_finite() && p[1].is_finite() {
+            finite_n += 1;
+            x_min = x_min.min(p[0]);
         }
     }
     if finite_n < 2 {
@@ -80,20 +94,31 @@ fn fit_exponential_log_mode<P: PointSeries + ?Sized>(points: &P) -> Result<Curve
             actual: finite_n,
         });
     }
+    let x0 = if x_min.is_finite() { x_min } else { 0.0 };
+    let mut acc = WeightedOlsAccum::default();
+    for i in 0..points.len() {
+        let p = points.point_at(i);
+        if p[0].is_finite() && p[1].is_finite() && p[1] > 0.0 {
+            acc.push(p[0] - x0, p[1].ln(), 1.0);
+        }
+    }
     if acc.sample_count() < 2 {
         return Err(FitError::InvalidDomain {
             reason: "exponential log-space fit requires at least 2 points with y > 0",
         });
     }
     let (ln_a, b) = acc.solve()?;
-    let a = ln_a.exp();
-    let coeffs = [a, b, 0.0, 0.0, 0.0];
-    let (r_squared, rmse, valid_n) =
-        compute_nonlinear_metrics(points, FitModel::Exponential, &coeffs[..2], finite_xy);
+    let (coeffs, coeff_len) = pack_exponential_coeffs(ln_a.exp(), b, x0);
+    let (r_squared, rmse, valid_n) = compute_nonlinear_metrics(
+        points,
+        FitModel::Exponential,
+        &coeffs[..coeff_len],
+        finite_xy,
+    );
     Ok(CurveFit::new(
         FitModel::Exponential,
         coeffs,
-        2,
+        coeff_len,
         r_squared,
         rmse,
         0,
@@ -222,14 +247,32 @@ fn fit_logistic<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitErro
     ))
 }
 
+fn min_finite_x<P: PointSeries + ?Sized>(points: &P) -> f64 {
+    let mut x_min = f64::INFINITY;
+    for i in 0..points.len() {
+        let p = points.point_at(i);
+        if p[0].is_finite() && p[1].is_finite() {
+            x_min = x_min.min(p[0]);
+        }
+    }
+    if x_min.is_finite() { x_min } else { 0.0 }
+}
+
 fn fit_sinusoidal<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitError> {
     let seed = seed_sinusoidal(points)?;
-    let refined = levenberg_marquardt(points, &seed, |x, p| {
-        let (s, c) = (p[1] * x + p[2]).sin_cos();
-        (p[0] * s + p[3], [s, p[0] * x * c, p[0] * c, 1.0])
+    let x0 = min_finite_x(points);
+    let mut phase_u = (seed[2] + seed[1] * x0).rem_euclid(std::f64::consts::TAU);
+    if phase_u > std::f64::consts::PI {
+        phase_u -= std::f64::consts::TAU;
+    }
+    let shifted_seed = [seed[0], seed[1], phase_u, seed[3]];
+    let refined = levenberg_marquardt(points, &shifted_seed, |x, p| {
+        let u = x - x0;
+        let (s, c) = (p[1] * u + p[2]).sin_cos();
+        (p[0] * s + p[3], [s, p[0] * u * c, p[0] * c, 1.0])
     })?;
     let mut amp = refined[0];
-    let mut phase = refined[2];
+    let mut phase = refined[2] - refined[1] * x0;
     if amp < 0.0 {
         amp = -amp;
         phase += std::f64::consts::PI;
@@ -320,7 +363,17 @@ pub fn eval_nonlinear(model: FitModel, params: &[f64], x: f64) -> f64 {
 #[inline]
 pub(super) fn eval_nonlinear_raw(model: FitModel, params: &[f64], x: f64) -> f64 {
     match model {
-        FitModel::Exponential if params.len() >= 2 => params[0] * (params[1] * x).exp(),
+        FitModel::Exponential if params.len() >= 2 => {
+            let x0 = params.get(2).copied().unwrap_or(0.0);
+            let arg = params[1] * (x - x0);
+            if arg < -745.0 {
+                0.0
+            } else if arg > 709.0 {
+                f64::NAN
+            } else {
+                params[0] * arg.exp()
+            }
+        }
         FitModel::PowerLaw if params.len() >= 2 => {
             if x <= 0.0 {
                 f64::NAN
@@ -343,60 +396,5 @@ pub(super) fn eval_nonlinear_raw(model: FitModel, params: &[f64], x: f64) -> f64
             params[0] * (params[1] * x + params[2]).sin() + params[3]
         }
         _ => f64::NAN,
-    }
-}
-
-fn fmt_num(val: f64) -> String {
-    let abs = val.abs();
-    if abs != 0.0 && !(1e-3..1e4).contains(&abs) {
-        format!("{val:.3e}")
-    } else {
-        format!("{val:.4}")
-    }
-}
-
-/// Formats a human-readable equation string for nonlinear [`FitModel`] presets.
-#[must_use]
-pub fn format_nonlinear_formula(model: FitModel, params: &[f64]) -> String {
-    match model {
-        FitModel::Exponential if params.len() >= 2 => {
-            format!("y = {}·exp({}·x)", fmt_num(params[0]), fmt_num(params[1]))
-        }
-        FitModel::PowerLaw if params.len() >= 2 => {
-            format!("y = {}·x^({})", fmt_num(params[0]), fmt_num(params[1]))
-        }
-        FitModel::Logarithmic if params.len() >= 2 => {
-            let sign = if params[1] >= 0.0 { "+" } else { "-" };
-            format!(
-                "y = {} {} {}·ln(x)",
-                fmt_num(params[0]),
-                sign,
-                fmt_num(params[1].abs())
-            )
-        }
-        FitModel::Logistic if params.len() >= 3 => {
-            let sign = if params[2] >= 0.0 { "-" } else { "+" };
-            format!(
-                "y = {} / (1 + exp(-{}·(x {} {})))",
-                fmt_num(params[0]),
-                fmt_num(params[1]),
-                sign,
-                fmt_num(params[2].abs())
-            )
-        }
-        FitModel::Sinusoidal if params.len() >= 4 => {
-            let c_sign = if params[2] >= 0.0 { "+" } else { "-" };
-            let d_sign = if params[3] >= 0.0 { "+" } else { "-" };
-            format!(
-                "y = {}·sin({}·x {} {}) {} {}",
-                fmt_num(params[0]),
-                fmt_num(params[1]),
-                c_sign,
-                fmt_num(params[2].abs()),
-                d_sign,
-                fmt_num(params[3].abs())
-            )
-        }
-        _ => "y = NaN".to_string(),
     }
 }

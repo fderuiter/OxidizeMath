@@ -100,7 +100,7 @@ This command builds `unified_verification` once with Cargo's development profile
    cargo clippy --workspace --all-targets --all-features -- -D warnings
    cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
    ```
-4. **Documentation**: `cargo doc --workspace --no-deps` (with warnings treated as errors)
+4. **Documentation**: `cargo doc --workspace --no-deps --all-features` (with warnings treated as errors)
 5. **Documentation Tests**: `cargo test --doc --workspace --all-features`
 6. **Markdown Links**: `cargo run -p xtask -- check-markdown-links` (validates all internal relative markdown links)
 7. **Dependency Vulnerabilities**: `cargo run -p xtask -- check-vulnerabilities` (scans dependencies against OSV advisories)

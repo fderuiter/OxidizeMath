@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test hawk dove.
 #[cfg(test)]
 mod tests {
     use domain_biology::biology::evolution::HawkDovePopulation;

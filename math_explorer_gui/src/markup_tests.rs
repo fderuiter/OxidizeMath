@@ -266,11 +266,16 @@ mod tests {
             INDEX_HTML.contains("script-src 'self' 'wasm-unsafe-eval' blob:;"),
             "Strict script-src CSP directive without unsafe-inline must be preserved"
         );
-        assert!(
-            !INDEX_HTML.contains("rel=\"preload\"")
-                && !INDEX_HTML.contains("rel=\"modulepreload\""),
-            "Source HTML must not contain unconditional preload or modulepreload hints"
-        );
+        for preload_hint in [
+            "<link rel=\"modulepreload\" href=\"initializer.js\">",
+            "<link rel=\"modulepreload\" href=\"math_explorer_gui.js\">",
+            "<link rel=\"preload\" href=\"math_explorer_gui_bg.wasm\" as=\"fetch\" type=\"application/wasm\" crossorigin>",
+        ] {
+            assert!(
+                INDEX_HTML.contains(preload_hint),
+                "index.html must declare first-wave startup preload hint: {preload_hint}"
+            );
+        }
         assert!(
             INDEX_HTML.contains("id=\"loading_indicator\""),
             "Loading indicator DOM id must be preserved"

@@ -39,6 +39,22 @@ pub fn mse_loss<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
 /// # Returns
 ///
 /// The average Earth Mover's Distance.
+///
+/// # Examples
+///
+/// ```rust
+/// # use domain_climate::__doctest_facade as math_explorer;
+/// use math_explorer::climate::loss::{cera_loss, earth_movers_distance};
+/// use math_explorer::nalgebra::DMatrix;
+///
+/// let control = DMatrix::from_row_slice(4, 1, &[1.0_f32, 2.0, 3.0, 4.0]);
+/// let warm = DMatrix::from_row_slice(4, 1, &[3.0_f32, 4.0, 5.0, 6.0]);
+/// let emd = earth_movers_distance(&control, &warm);
+/// assert!((emd - 2.0).abs() < 1e-6);
+///
+/// let total = cera_loss(0.5, 0.25, emd, 0.2, 0.1);
+/// assert!((total - (0.7 * 0.5 + 0.2 * 0.25 + 0.1 * 2.0)).abs() < 1e-6);
+/// ```
 #[verified_engine::verified]
 pub fn earth_movers_distance<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
     z1: &Matrix<f32, Dyn, Dyn, S1>,

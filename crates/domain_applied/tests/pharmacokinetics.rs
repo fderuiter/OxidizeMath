@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for pharmacokinetics.
 // math_explorer/tests/pharmacokinetics.rs
 
 // Import the module to be tested

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test win ratio strategies.
 use domain_applied::applied::win_ratio::pair_comparison::{
     ComparisonResult, HigherIsBetter, LowerIsBetter, ThresholdComparator, UnmatchedPairing,
     WinRatioAnalysis,

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for hello world.
 use math_explorer::physics::quantum::clebsch_gordan;
 use std::fmt;
 

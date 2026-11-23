@@ -1,14 +1,27 @@
-High-Integrity Diagnostic Suite
+# Diagnostics
 
-This module provides a unified diagnostic trait and centralized reporting bus
-to eliminate silent thread failures and standardize error reporting across all modules.
+High-integrity diagnostic trait, panic-isolated event bus, and thread panic telemetry hooks for the OxidizeMath ecosystem.
 
-# Developer Guide: Implementing Diagnostics
+## 1. Overview & Architecture
 
-When creating a new error type in a library module, you must implement the
-`Diagnostic` trait to ensure it integrates with the centralized reporting bus.
+The `diagnostics` crate provides a unified `Diagnostic` error contract and centralized `DiagnosticBus` reporting channel to eliminate silent worker-thread failures and standardize structured error telemetry across all workspace crates.
 
-## Example
+### Module Structure
+
+- **`Severity`**: Standardized operational severity levels (`Info`, `Warning`, `Error`, `Fatal`) with uppercase `Display` formatting.
+- **`Diagnostic`**: Trait extending `std::error::Error + Send + Sync + 'static` with structured `severity()` and key-value `metadata()` inspection.
+- **`DiagnosticEvent`**: Thread-aware diagnostic payload carrying `severity`, human-readable `message`, `metadata` map, and optional `thread_name`.
+- **`DiagnosticBus` & `ListenerFn`**: Thread-safe synchronous pub-sub bus that recovers from poisoned listener mutexes and isolates panicking subscriber callbacks via `std::panic::catch_unwind`.
+- **`global_bus` & `init_panic_hook`**: Process-wide `OnceLock<DiagnosticBus>` singleton and panic hook forwarding unhandled thread panics (with `file:line` location metadata) as `Severity::Fatal` events before invoking the default panic hook.
+
+---
+
+## 2. Developer Instructions
+
+### Implementing `Diagnostic` and Subscribing to `DiagnosticBus`
+
+When defining a domain error type, implement `Diagnostic` so structured context can be routed through local or global diagnostic buses:
+
 ```rust
 use diagnostics::{Diagnostic, DiagnosticBus, DiagnosticEvent, Severity};
 use std::collections::HashMap;
@@ -59,3 +72,9 @@ assert_eq!(observed.lock().unwrap().len(), 1);
 ```
 
 Subscribe downstream consumers with `DiagnosticBus::register_listener` and dispatch structured `DiagnosticEvent` records via `DiagnosticBus::emit` (or `diagnostics::global_bus().emit(...)` for process-wide panic and telemetry forwarding).
+
+---
+
+## 3. Ecosystem Integration
+
+`diagnostics` sits at the base of the OxidizeMath dependency graph alongside `federated_registry`. `federated_registry::global_registry()` automatically attaches a listener to `diagnostics::global_bus()`, and `math_explorer_gui` calls `diagnostics::init_panic_hook()` at startup so background simulation panics surface cleanly in UI telemetry panels.

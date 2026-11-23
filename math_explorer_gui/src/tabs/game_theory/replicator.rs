@@ -1,7 +1,7 @@
 use crate::framework::math_input::{
     MathExpressionInputBar, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS,
 };
-use crate::framework::InteractiveTool;
+use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use crate::presets::ReplicatorPresetConfig;
 use eframe::egui;
 use math_commons::ast::{CompiledExpr, Expr};
@@ -9,6 +9,8 @@ use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
 use nalgebra::{DMatrix, DVector};
 use std::collections::{BTreeMap, BTreeSet};
 
+#[path = "replicator/presets.rs"]
+mod presets;
 #[path = "replicator/ui.rs"]
 mod ui;
 
@@ -16,37 +18,18 @@ mod ui;
 #[path = "replicator/tests.rs"]
 mod tests;
 
-const HAWK_DOVE_FORMULAS: &[&[&str]] = &[&["(v - c) / 2", "v"], &["0", "v / 2"]];
-const RPS_FORMULAS: &[&[&str]] = &[&["0", "-s", "s"], &["s", "0", "-s"], &["-s", "s", "0"]];
-
-const PRESET_SYMBOLIC_HAWK_DOVE: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Symbolic Hawk-Dove Cost-Benefit",
-    "domain": "game_theory",
-    "timestamp": "2026-05-01T00:00:00Z"
-  },
-  "config": {
-    "payoff_matrix": [[-1.0, 2.0], [0.0, 1.0]],
-    "initial_population": [0.1, 0.9],
-    "time_horizon": 20.0,
-    "dt": 0.05,
-    "strategy_names": ["Hawk", "Dove"],
-    "symbolic_payoffs": [["(v - c) / 2", "v"], ["0", "v / 2"]],
-    "symbolic_params": {"c": 4.0, "v": 2.0}
-  }
-}"#;
-
 pub struct ReplicatorDynamicsTool {
     payoff_matrix: DMatrix<f64>,
     initial_population: DVector<f64>,
     trajectory: Vec<(f64, DVector<f64>)>,
+    mean_fitness_series: Vec<[f64; 2]>,
     time_horizon: f64,
     dt: f64,
     strategy_names: Vec<String>,
     playback_time: f64,
     is_playing: bool,
     playback_speed: f64,
+    callout_manager: CalloutManager,
     symbolic_mode: bool,
     symbolic_bars: Vec<Vec<MathExpressionInputBar>>,
     last_valid_exprs: Vec<Vec<Expr>>,
@@ -59,20 +42,22 @@ impl Default for ReplicatorDynamicsTool {
     fn default() -> Self {
         let payoff = DMatrix::from_row_slice(2, 2, &[-1.0, 2.0, 0.0, 1.0]);
         let init = DVector::from_vec(vec![0.1, 0.9]);
-        let (bars, exprs) = build_static_symbolic_grid(HAWK_DOVE_FORMULAS);
+        let (bars, exprs) = build_static_symbolic_grid(presets::HAWK_DOVE_FORMULAS);
         let rows = bars.len();
         let mut sliders = ParameterSliderBank::new().with_range(-5.0..=10.0, 2.0);
-        sliders.set_params_map(&default_hawk_dove_params());
+        sliders.set_params_map(&presets::default_hawk_dove_params());
         let mut tool = Self {
             payoff_matrix: payoff,
             initial_population: init,
             trajectory: Vec::new(),
+            mean_fitness_series: Vec::new(),
             time_horizon: 20.0,
             dt: 0.05,
             strategy_names: vec!["Hawk".to_string(), "Dove".to_string()],
             playback_time: 0.0,
             is_playing: false,
             playback_speed: 1.0,
+            callout_manager: CalloutManager::new(),
             symbolic_mode: false,
             symbolic_bars: bars,
             last_valid_exprs: exprs,
@@ -83,13 +68,6 @@ impl Default for ReplicatorDynamicsTool {
         tool.run_simulation();
         tool
     }
-}
-
-fn default_hawk_dove_params() -> BTreeMap<String, f64> {
-    let mut map = BTreeMap::new();
-    map.insert("c".to_string(), 4.0);
-    map.insert("v".to_string(), 2.0);
-    map
 }
 
 type SymbolicGrid = (Vec<Vec<MathExpressionInputBar>>, Vec<Vec<Expr>>);
@@ -186,6 +164,14 @@ impl ReplicatorDynamicsTool {
         if let Ok(system) = ReplicatorDynamics::new(self.payoff_matrix.clone()) {
             self.trajectory =
                 system.simulate(self.initial_population.clone(), self.time_horizon, self.dt);
+            self.mean_fitness_series = self
+                .trajectory
+                .iter()
+                .filter_map(|(t, x)| {
+                    let avg = x.dot(&(&self.payoff_matrix * x));
+                    (t.is_finite() && avg.is_finite()).then_some([*t, avg])
+                })
+                .collect();
             self.playback_time = self.playback_time.clamp(0.0, self.time_horizon);
         }
     }
@@ -248,49 +234,24 @@ impl ReplicatorDynamicsTool {
         self.playback_time = 0.0;
     }
 
-    pub(crate) fn load_preset_hawk_dove(&mut self) {
-        self.payoff_matrix = DMatrix::from_row_slice(2, 2, &[-1.0, 2.0, 0.0, 1.0]);
-        self.initial_population = DVector::from_vec(vec![0.1, 0.9]);
-        self.strategy_names = vec!["Hawk".to_string(), "Dove".to_string()];
-        self.time_horizon = 20.0;
-        self.symbolic_mode = false;
-        let (bars, exprs) = build_static_symbolic_grid(HAWK_DOVE_FORMULAS);
-        self.symbolic_bars = bars;
-        self.last_valid_exprs = exprs;
-        self.symbolic_compiled = vec![vec![None; 2]; 2];
-        self.symbolic_sliders
-            .set_params_map(&default_hawk_dove_params());
-        self.symbolic_error = None;
-        self.run_simulation();
-    }
-
-    pub(crate) fn load_preset_symbolic_hawk_dove(&mut self) {
-        self.load_preset_hawk_dove();
-        self.symbolic_mode = true;
-        self.sync_and_eval_symbolic_payoffs();
-        self.run_simulation();
-    }
-
-    pub(crate) fn load_preset_rps(&mut self) {
-        self.payoff_matrix =
-            DMatrix::from_row_slice(3, 3, &[0.0, -1.0, 1.0, 1.0, 0.0, -1.0, -1.0, 1.0, 0.0]);
-        self.initial_population = DVector::from_vec(vec![0.33, 0.33, 0.34]);
-        self.strategy_names = vec![
-            "Rock".to_string(),
-            "Paper".to_string(),
-            "Scissors".to_string(),
-        ];
-        self.time_horizon = 50.0;
-        self.symbolic_mode = false;
-        let (bars, exprs) = build_static_symbolic_grid(RPS_FORMULAS);
-        self.symbolic_bars = bars;
-        self.last_valid_exprs = exprs;
-        self.symbolic_compiled = vec![vec![None; 3]; 3];
-        let mut rps_params = BTreeMap::new();
-        rps_params.insert("s".to_string(), 1.0);
-        self.symbolic_sliders.set_params_map(&rps_params);
-        self.symbolic_error = None;
-        self.run_simulation();
+    fn compute_oscillation_span(&self) -> f64 {
+        if self.trajectory.is_empty() {
+            return 0.0;
+        }
+        let half = self.trajectory.len() / 2;
+        let mut min_x0 = f64::INFINITY;
+        let mut max_x0 = f64::NEG_INFINITY;
+        for (_, state) in &self.trajectory[half..] {
+            if let Some(&v) = state.get(0) {
+                min_x0 = min_x0.min(v);
+                max_x0 = max_x0.max(v);
+            }
+        }
+        if min_x0.is_finite() && max_x0.is_finite() {
+            (max_x0 - min_x0).max(0.0)
+        } else {
+            0.0
+        }
     }
 }
 
@@ -303,6 +264,38 @@ impl InteractiveTool for ReplicatorDynamicsTool {
     }
     fn domain(&self) -> &'static str {
         "game_theory"
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        if self.trajectory.is_empty() || self.mean_fitness_series.is_empty() {
+            return Vec::new();
+        }
+        let init_fit = self.mean_fitness_series.first().map_or(0.0, |p| p[1]);
+        let final_fit = self.mean_fitness_series.last().map_or(0.0, |p| p[1]);
+        let idx = ((self.playback_time / self.dt).round() as usize)
+            .min(self.mean_fitness_series.len().saturating_sub(1));
+        let cur_fit = self.mean_fitness_series[idx][1];
+        let first_state = &self.trajectory[0].1;
+        let last_state = &self.trajectory[self.trajectory.len() - 1].1;
+        let x0_init = first_state.get(0).copied().unwrap_or(0.0);
+        let x0_final = last_state.get(0).copied().unwrap_or(0.0);
+        let x1_init = first_state.get(1).copied().unwrap_or(0.0);
+        let x1_final = last_state.get(1).copied().unwrap_or(0.0);
+        vec![
+            ("initial_mean_fitness", init_fit),
+            ("final_mean_fitness", final_fit),
+            ("current_mean_fitness", cur_fit),
+            ("fitness_change", final_fit - init_fit),
+            ("x0_initial", x0_init),
+            ("x0_final", x0_final),
+            ("x1_initial", x1_init),
+            ("x1_final", x1_final),
+            ("oscillation_span", self.compute_oscillation_span()),
+        ]
+    }
+
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.callout_manager.sync_specs(callouts);
     }
 
     fn save_state(&self) -> Option<String> {
@@ -442,31 +435,5 @@ impl ReplicatorDynamicsTool {
         }
         self.run_simulation();
         Ok(())
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "hawk_dove",
-        title: "Hawk-Dove Dynamics",
-        description: "ẋ_i = x_i((Ax)_i - xᵀAx): Evolutionary game model of conflict and resource competition.",
-        category: "Game Theory",
-        icon: "🦅",
-        domain: "game_theory",
-        tool_name: Some("ReplicatorDynamicsTool"),
-        preset_generator: || crate::starter_gallery::PRESET_HAWK_DOVE,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "replicator_symbolic_hawk_dove",
-        title: "Symbolic Hawk-Dove Cost-Benefit",
-        description: "A = [[(v-c)/2, v], [0, v/2]]: Symbolic evolutionary payoff matrix with live resource (v) and injury cost (c) sliders.",
-        category: "Game Theory",
-        icon: "🧬",
-        domain: "game_theory",
-        tool_name: Some("ReplicatorDynamicsTool"),
-        preset_generator: || PRESET_SYMBOLIC_HAWK_DOVE,
     }
 }

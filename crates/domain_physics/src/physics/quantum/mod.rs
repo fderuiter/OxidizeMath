@@ -88,13 +88,17 @@ pub mod types;
 pub use coupling::clebsch_gordan;
 pub use fourier::{dft_operator, idft_operator};
 pub use hamiltonian::{
-    construct_1d_hamiltonian, construct_two_state_eigen_hamiltonian, gaussian_wavepacket,
+    construct_1d_hamiltonian, construct_1d_hamiltonian_into, construct_two_state_eigen_hamiltonian,
+    gaussian_wavepacket,
 };
 pub use hydrogenic::{
     HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumFieldObservable, hydrogenic_energy_au,
     hydrogenic_orbital_cartesian, hydrogenic_radial_wavefunction,
 };
-pub use schrodinger::{evolve_state, evolve_state_in_place, time_evolution_operator};
+pub use schrodinger::{
+    evolve_state, evolve_state_in_place, state_norm_squared, time_evolution_operator,
+    transmission_probability,
+};
 pub use spin::{sigma_x, sigma_y, sigma_z};
 pub use types::{QuantumOperator, QuantumState};
 

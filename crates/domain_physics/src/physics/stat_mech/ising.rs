@@ -371,11 +371,8 @@ mod tests {
     use crate::physics::stat_mech::KB;
     use domain_applied::applied::game_theory::evolutionary::ReplicatorDynamics;
     use nalgebra::{DMatrix, DVector};
-    use verified_engine::allocator::VerifiedAllocator;
     use verified_engine::engine::VerifiedEngine;
 
-    #[global_allocator]
-    static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
     static VERIFIED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn seeded_droplet(r: i32, seed: u64) -> SpinLattice {

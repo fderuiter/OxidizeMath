@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for freesurfer.
 use domain_applied::applied::freesurfer::*;
 use nalgebra::{DMatrix, DVector};
 
