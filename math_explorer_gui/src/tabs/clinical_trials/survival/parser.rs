@@ -1,4 +1,4 @@
-//! Single-arm, multi-arm CSV/TSV, and optional separate Control-arm cohort parser for [`SurvivalAnalysisTool`].
+//! Single-arm, multi-arm CSV/TSV, and optional separate Control-arm cohort parser for [`super::SurvivalAnalysisTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
