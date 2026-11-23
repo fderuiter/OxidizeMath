@@ -305,11 +305,7 @@ jobs:
 #[test]
 fn test_lint_workflows_in_dir_and_repo_whitelist() {
     let _lock = crate::DIR_LOCK.lock().unwrap();
-    let repo_workflows = if Path::new(".github/workflows").exists() {
-        PathBuf::from(".github/workflows")
-    } else {
-        PathBuf::from("../../.github/workflows")
-    };
+    let repo_workflows = crate::manifest_cache::resolve_workspace_path(".github/workflows");
     let whitelist = find_whitelist_path().expect("verification_whitelist.toml should exist");
     assert!(
         lint_workflows_in_dir(&repo_workflows, Some(&whitelist)),

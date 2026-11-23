@@ -245,39 +245,19 @@ pub fn audit_crate(crate_name: &str, crate_dir: &Path, is_allowlisted: bool) -> 
     report
 }
 
-fn resolve_doc_base_dir(is_root: bool) -> std::path::PathBuf {
-    if is_root {
-        return std::path::PathBuf::new();
-    }
-    oxidize_core::workspace::find_workspace_root().unwrap_or_else(|| {
-        if Path::new("../../Cargo.toml").exists() {
-            std::path::PathBuf::from("../..")
-        } else {
-            std::path::PathBuf::new()
-        }
-    })
-}
-
 /// Main entrypoint to audit all discovered workspace crates.
 pub fn run_doc_audit(args: &[String]) -> bool {
-    let (is_root, members) = oxidize_core::workspace::get_workspace_members();
-    if members.is_empty() {
-        println!("=== Automated Crate Documentation Verification Gate ===");
-        eprintln!("[!] No workspace members discovered.");
-        return false;
-    }
-    let base_dir = resolve_doc_base_dir(is_root);
-    run_doc_audit_in_base(&base_dir, &members, args)
+    let (workspace_root, members) = crate::manifest_cache::discover_workspace();
+    run_doc_audit_in_base(&workspace_root, &members, args)
 }
 
 /// Audits an explicit slice of `members` relative to the active workspace root.
 pub fn run_doc_audit_for_members(members: &[String], args: &[String]) -> bool {
-    let (is_root, _) = oxidize_core::workspace::get_workspace_members();
-    let base_dir = resolve_doc_base_dir(is_root);
-    run_doc_audit_in_base(&base_dir, members, args)
+    let workspace_root = crate::manifest_cache::workspace_root_dir();
+    run_doc_audit_in_base(&workspace_root, members, args)
 }
 
-fn run_doc_audit_in_base(base_dir: &Path, members: &[String], args: &[String]) -> bool {
+fn run_doc_audit_in_base(workspace_root: &Path, members: &[String], args: &[String]) -> bool {
     println!("=== Automated Crate Documentation Verification Gate ===");
 
     let staging_mode = args
@@ -296,7 +276,10 @@ fn run_doc_audit_in_base(base_dir: &Path, members: &[String], args: &[String]) -
         return false;
     }
 
-    let candidate = base_dir.join(crate::whitelist::WHITELIST_FILE_NAME);
+    let candidate = crate::manifest_cache::resolve_workspace_path_from(
+        workspace_root,
+        crate::whitelist::WHITELIST_FILE_NAME,
+    );
     let allowlist = if strict_mode {
         HashSet::new()
     } else {
@@ -307,16 +290,11 @@ fn run_doc_audit_in_base(base_dir: &Path, members: &[String], args: &[String]) -
 
     let mut report = AuditReport::new();
     for member in members {
-        let crate_dir = base_dir.join(member);
+        let crate_dir = crate::manifest_cache::resolve_workspace_path_from(workspace_root, member);
         let is_allowlisted = allowlist.contains(member) || staging_mode;
         report.extend(audit_crate(member, &crate_dir, is_allowlisted).violations);
     }
 
-    let workspace_root = if base_dir.as_os_str().is_empty() {
-        Path::new(".")
-    } else {
-        base_dir
-    };
     report.extend(facade_imports::audit_facade_import_hygiene(workspace_root));
 
     if report.is_success() {

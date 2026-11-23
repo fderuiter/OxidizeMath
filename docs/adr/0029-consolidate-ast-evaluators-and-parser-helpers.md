@@ -1,7 +1,7 @@
 # ADR 0029: Consolidate AST Evaluators and Parser Helpers
 
 ## Status
-Accepted (extends [ADR 0017](0017-native-ast-expression-parser-and-live-input.md) and [ADR 0023](0023-separate-metadata-ids-from-display-labels.md))
+Superseded by [ADR 0035](0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md) (previously Accepted, extending [ADR 0017](0017-native-ast-expression-parser-and-live-input.md) and [ADR 0023](0023-separate-metadata-ids-from-display-labels.md))
 
 ## Context
 `crates/math_commons/src/ast/` accumulated structural duplication across its evaluation and parsing submodules:

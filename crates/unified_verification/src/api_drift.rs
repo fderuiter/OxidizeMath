@@ -21,14 +21,6 @@ pub struct ApiItem {
 
 const BASELINE_REL_PATH: &str = "crates/unified_verification/api_baseline.json";
 
-fn resolve_workspace_root() -> &'static Path {
-    if !Path::new("crates").is_dir() && Path::new("../../crates").is_dir() {
-        Path::new("../..")
-    } else {
-        Path::new(".")
-    }
-}
-
 fn collect_crate_roots(workspace_root: &Path) -> Vec<PathBuf> {
     let mut roots = vec![workspace_root.join("math_explorer/src/lib.rs")];
     let crates_dir = workspace_root.join("crates");
@@ -68,11 +60,11 @@ pub fn extract_apis_in_dir_with_cache(
 }
 
 pub fn extract_apis() -> BTreeMap<String, Vec<ApiItem>> {
-    extract_apis_in_dir(resolve_workspace_root())
+    extract_apis_in_dir(&crate::manifest_cache::workspace_root_dir())
 }
 
 pub fn regenerate_baseline() {
-    let root = resolve_workspace_root();
+    let root = crate::manifest_cache::workspace_root_dir();
     let apis = extract_apis();
     let json = serde_json::to_string_pretty(&apis).unwrap();
     fs::write(root.join(BASELINE_REL_PATH), format!("{json}\n")).expect("Failed to write baseline");
@@ -196,10 +188,10 @@ pub fn check_api_drift() -> bool {
 }
 
 pub fn check_api_drift_with_cache(cache: &mut AstCache) -> bool {
-    let root = resolve_workspace_root();
-    let current_apis = extract_apis_in_dir_with_cache(root, cache);
+    let root = crate::manifest_cache::workspace_root_dir();
+    let current_apis = extract_apis_in_dir_with_cache(&root, cache);
     let facade_violations =
-        facade::check_facade_completeness_in_dir_with_cache(root, &current_apis, cache);
+        facade::check_facade_completeness_in_dir_with_cache(&root, &current_apis, cache);
     if !facade_violations.is_empty() {
         println!("Facade export completeness check failed:");
         for v in &facade_violations {

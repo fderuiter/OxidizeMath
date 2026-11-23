@@ -1,36 +1,21 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 use syn::visit::Visit;
 
 const INNER_BLOCKED_LINTS: &[&str] = &["all", "too_many_lines", "cognitive_complexity"];
 const MOD_EXTRA_BLOCKED_LINTS: &[&str] = &["too_many_lines", "cognitive_complexity"];
 const ITEM_BLOCKED_LINTS: &[&str] = &["all"];
-const MAX_ATTR_STACK_STEPS: usize = 256;
-
-pub(crate) fn cwd_is_workspace_root() -> bool {
-    fs::read_to_string("Cargo.toml")
-        .map(|c| c.contains("[workspace]"))
-        .unwrap_or(false)
-}
 
 pub(crate) fn cwd_is_member_crate_dir() -> bool {
-    !cwd_is_workspace_root()
+    crate::manifest_cache::workspace_root_dir() != Path::new(".")
         && Path::new("Cargo.toml").exists()
-        && oxidize_core::workspace::find_workspace_root().is_some()
 }
 
 pub(crate) fn resolve_member_dir(member: &str) -> PathBuf {
     let direct = PathBuf::from(member);
-    if direct.join("Cargo.toml").exists() || direct.is_absolute() || !cwd_is_member_crate_dir() {
+    if direct.is_absolute() || direct.join("Cargo.toml").exists() || !cwd_is_member_crate_dir() {
         return direct;
     }
-    if let Some(root) = oxidize_core::workspace::find_workspace_root() {
-        let candidate = root.join(member);
-        if candidate.join("Cargo.toml").exists() {
-            return candidate;
-        }
-    }
-    direct
+    crate::manifest_cache::workspace_root_dir().join(member)
 }
 
 pub(crate) fn is_vendored_egui_plot(member: &str) -> bool {
@@ -112,41 +97,9 @@ pub(crate) fn find_suppressed_clippy_lint(
     attr: &syn::Attribute,
     names: &[&'static str],
 ) -> Option<&'static str> {
-    let mut stack = vec![attr.meta.clone()];
-    let mut steps = 0usize;
-    while let Some(meta) = stack.pop() {
-        if steps >= MAX_ATTR_STACK_STEPS {
-            break;
-        }
-        steps += 1;
-        let syn::Meta::List(list) = meta else {
-            continue;
-        };
-        if list.path.is_ident("allow") || list.path.is_ident("expect") {
-            let Ok(nested) = list.parse_args_with(
-                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-            ) else {
-                continue;
-            };
-            for item in nested {
-                if let syn::Meta::Path(lint_path) = item
-                    && let Some(found) = matched_clippy_lint(&lint_path, names)
-                {
-                    return Some(found);
-                }
-            }
-        } else if list.path.is_ident("cfg_attr") {
-            let Ok(nested) = list.parse_args_with(
-                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-            ) else {
-                continue;
-            };
-            for item in nested.into_iter().skip(1) {
-                stack.push(item);
-            }
-        }
-    }
-    None
+    crate::ast_helpers::find_suppressed_lint_in_attr(attr, |lint_path| {
+        matched_clippy_lint(lint_path, names)
+    })
 }
 
 pub(crate) struct ClippyBypassVisitor {
