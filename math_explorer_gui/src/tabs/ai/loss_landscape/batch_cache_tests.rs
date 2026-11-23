@@ -118,9 +118,7 @@ fn loss_landscape_batches_items_shares_x_and_exports_numeric_loss_matrix() {
     assert!(first_row[0].trim_matches('"').starts_with("Loss (b = "));
     let parsed_w: f64 = first_row[1].parse().expect("numeric weight w");
     let parsed_loss: f64 = first_row[2].parse().expect("numeric loss value");
-    let expected_loss = tool
-        .surface_evaluator()
-        .evaluate(tool.w_min, tool.b_min);
+    let expected_loss = tool.surface_evaluator().evaluate(tool.w_min, tool.b_min);
     assert!((parsed_w - tool.w_min).abs() < 1e-6);
     assert!((parsed_loss - expected_loss).abs() < 1e-6);
 
@@ -130,15 +128,13 @@ fn loss_landscape_batches_items_shares_x_and_exports_numeric_loss_matrix() {
     verify_loss_landscape_raster_and_3d_exports(&ctx, &mut tool);
 }
 
-fn verify_loss_landscape_raster_and_3d_exports(
-    ctx: &egui::Context,
-    tool: &mut LossLandscapeTool,
-) {
+fn verify_loss_landscape_raster_and_3d_exports(ctx: &egui::Context, tool: &mut LossLandscapeTool) {
     let prims = egui_plot::get_last_plot_primitives();
     assert!(!prims.is_empty());
-    assert!(prims
-        .iter()
-        .any(|p| matches!(p, egui_plot::export_primitives::ExportPrimitive::RasterImage { .. })));
+    assert!(prims.iter().any(|p| matches!(
+        p,
+        egui_plot::export_primitives::ExportPrimitive::RasterImage { .. }
+    )));
 
     let opts = ExportOptions::default();
     let png = export_primitives_png(&prims, &opts).expect("PNG export");

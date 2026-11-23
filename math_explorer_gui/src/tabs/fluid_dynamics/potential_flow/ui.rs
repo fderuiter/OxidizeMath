@@ -171,7 +171,9 @@ impl PotentialFlowTool {
     }
 
     fn draw_active_elements_list(&mut self, ui: &mut egui::Ui) {
-        ui.label(egui::RichText::new(format!("Active Elements ({})", self.elements.len())).strong());
+        ui.label(
+            egui::RichText::new(format!("Active Elements ({})", self.elements.len())).strong(),
+        );
         if self.elements.is_empty() {
             ui.weak("No active flow elements.");
             return;

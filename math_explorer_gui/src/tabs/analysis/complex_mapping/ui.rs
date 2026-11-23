@@ -175,8 +175,16 @@ impl ComplexMappingTool {
                 if grid_ok {
                     if let Some(batch) = ContourBatch::from_pair(
                         "z-grid",
-                        ("Re(z) grid", &self.cache.z_vertical, palette.series_color(0)),
-                        ("Im(z) grid", &self.cache.z_horizontal, palette.series_color(1)),
+                        (
+                            "Re(z) grid",
+                            &self.cache.z_vertical,
+                            palette.series_color(0),
+                        ),
+                        (
+                            "Im(z) grid",
+                            &self.cache.z_horizontal,
+                            palette.series_color(1),
+                        ),
                         generation,
                     ) {
                         plot_ui.add(batch);
@@ -214,8 +222,16 @@ impl ComplexMappingTool {
                 if grid_ok {
                     if let Some(batch) = ContourBatch::from_pair(
                         "w-contours",
-                        ("u-contours", &self.cache.w_vertical, palette.series_color(0)),
-                        ("v-contours", &self.cache.w_horizontal, palette.series_color(1)),
+                        (
+                            "u-contours",
+                            &self.cache.w_vertical,
+                            palette.series_color(0),
+                        ),
+                        (
+                            "v-contours",
+                            &self.cache.w_horizontal,
+                            palette.series_color(1),
+                        ),
                         generation,
                     ) {
                         plot_ui.add(batch);

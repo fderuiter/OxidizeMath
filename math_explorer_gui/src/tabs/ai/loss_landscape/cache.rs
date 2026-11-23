@@ -331,7 +331,10 @@ fn surface_grid_to_mesh(grid: &SurfaceGrid) -> Mesh {
     let mut indices = Vec::with_capacity(rows.saturating_sub(1) * cols.saturating_sub(1) * 6);
     for r in 0..rows.saturating_sub(1) {
         for c in 0..cols.saturating_sub(1) {
-            let (i00, i01) = (flatten_2d_index(c, r, cols), flatten_2d_index(c + 1, r, cols));
+            let (i00, i01) = (
+                flatten_2d_index(c, r, cols),
+                flatten_2d_index(c + 1, r, cols),
+            );
             let (i10, i11) = (
                 flatten_2d_index(c, r + 1, cols),
                 flatten_2d_index(c + 1, r + 1, cols),

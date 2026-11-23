@@ -10,9 +10,9 @@ use eframe::egui;
 use egui_plot::{ColoredSegment, LineStyle, MarkerShape, PlotBounds, PlotPoint};
 use nalgebra::Point3;
 
-use super::canonical_bits;
 use super::super::surfaces::{lerp_color, SurfaceGrid};
 use super::super::LossLandscapeTool;
+use super::canonical_bits;
 
 impl LossLandscapeTool {
     fn arena_fingerprint(&self) -> u64 {
@@ -290,7 +290,11 @@ fn append_wireframe_to_scene(
             let wp = grid.world_point(w, b, loss, 0.0);
             line_pts.push(Point3::new(wp[0], wp[1], wp[2]));
         }
-        let color = lerp_color(palette.axis_z, palette.axis_x, h_sum / (num_cols.max(1) as f64));
+        let color = lerp_color(
+            palette.axis_z,
+            palette.axis_x,
+            h_sum / (num_cols.max(1) as f64),
+        );
         scene.add_polyline(
             "Surface Mesh",
             &line_pts,
@@ -308,7 +312,11 @@ fn append_wireframe_to_scene(
             let wp = grid.world_point(w, b, loss, 0.0);
             line_pts.push(Point3::new(wp[0], wp[1], wp[2]));
         }
-        let color = lerp_color(palette.axis_z, palette.axis_x, h_sum / (num_rows.max(1) as f64));
+        let color = lerp_color(
+            palette.axis_z,
+            palette.axis_x,
+            h_sum / (num_rows.max(1) as f64),
+        );
         scene.add_polyline(
             "Surface Mesh",
             &line_pts,

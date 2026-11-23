@@ -118,9 +118,7 @@ pub(super) fn try_load_tool_state(tool: &mut LossLandscapeTool, state: &str) -> 
     validate_target_and_arena(&p)?;
 
     (tool.w_min, tool.w_max, tool.b_min, tool.b_max) = (p.w_min, p.w_max, p.b_min, p.b_max);
-    let clamped_res = p
-        .resolution
-        .min(crate::presets::MAX_INTERACTIVE_GRID_SIZE);
+    let clamped_res = p.resolution.min(crate::presets::MAX_INTERACTIVE_GRID_SIZE);
     (tool.resolution, tool.surface, tool.view_mode) = (clamped_res, p.surface, p.view_mode);
     tool.predictor_mode = p.predictor_mode;
     tool.loss_metric = p.loss_metric;

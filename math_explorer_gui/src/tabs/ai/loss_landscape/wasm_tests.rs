@@ -106,7 +106,9 @@ fn wasm_loss_landscape_slingshot_race_and_orbit_suppression() {
 #[wasm_bindgen_test]
 fn wasm_batched_tools_headless_png_svg_obj_csv_json_exports() {
     use egui_plot::export::{format_csv, format_json, ExportOptions};
-    use egui_plot::export_primitives::{decode_png_rgba, export_primitives_png, export_primitives_svg};
+    use egui_plot::export_primitives::{
+        decode_png_rgba, export_primitives_png, export_primitives_svg,
+    };
     use egui_plot::{series_share_x, TableSeriesRef};
 
     let ctx = egui::Context::default();
@@ -119,7 +121,9 @@ fn wasm_batched_tools_headless_png_svg_obj_csv_json_exports() {
     };
     egui_plot::clear_last_plot_datasets();
     let _ = ctx.run(wasm_raw_input(Vec::new()), |c| loss.show(c));
-    assert!(egui_plot::get_last_plot_item_counts().iter().all(|&n| n <= 2));
+    assert!(egui_plot::get_last_plot_item_counts()
+        .iter()
+        .all(|&n| n <= 2));
 
     let ds = egui_plot::get_last_plot_datasets();
     let refs: Vec<TableSeriesRef<'_>> = ds
@@ -140,7 +144,10 @@ fn wasm_batched_tools_headless_png_svg_obj_csv_json_exports() {
     assert!(w > 0 && h > 0);
     let svg = export_primitives_svg(&prims, &opts).expect("WASM SVG export");
     assert!(svg.contains("<svg") && svg.contains("<image"));
-    assert!(loss.build_obj_mesh_string().expect("WASM Loss OBJ").contains("\nv "));
+    assert!(loss
+        .build_obj_mesh_string()
+        .expect("WASM Loss OBJ")
+        .contains("\nv "));
 
     let surf = crate::tabs::geometry_topology::surface_viewer::SurfaceViewer::default();
     let surf_mesh = surf

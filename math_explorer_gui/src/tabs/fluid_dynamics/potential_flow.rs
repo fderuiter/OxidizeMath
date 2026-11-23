@@ -258,9 +258,12 @@ impl InteractiveTool for PotentialFlowTool {
                         tips,
                         stagnation,
                     );
-                    strokes =
-                        self.brush_kit
-                            .sample_plot(plot_ui, [-vr, -vr], [vr, vr], Some(BrushMode::Erase));
+                    strokes = self.brush_kit.sample_plot(
+                        plot_ui,
+                        [-vr, -vr],
+                        [vr, vr],
+                        Some(BrushMode::Erase),
+                    );
                 });
             for stroke in strokes {
                 let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
@@ -359,7 +362,7 @@ inventory::submit! {
         id: "PotentialFlowTool",
         display_name: "Potential Flow",
         domain: "fluid_dynamics",
-        tags: &[],
+        tags: &["laplace", "irrotational", "incompressible", "streamlines", "vortex"],
         build: || Box::new(PotentialFlowTool::default()),
     }
 }

@@ -39,9 +39,7 @@ impl PotentialFlowTool {
                 ui.selectable_value(&mut self.brush_kit.mode, BrushMode::FlowDoublet, "Doublet");
                 ui.selectable_value(&mut self.brush_kit.mode, BrushMode::Erase, "Erase");
             });
-            ui.add(
-                egui::Slider::new(&mut self.brush_kit.radius, 0.5..=6.0).text("Capture Radius"),
-            );
+            ui.add(egui::Slider::new(&mut self.brush_kit.radius, 0.5..=6.0).text("Capture Radius"));
         }
     }
 
@@ -80,7 +78,8 @@ impl PotentialFlowTool {
             .clamp(FLOW_STRENGTH_MIN, FLOW_STRENGTH_MAX);
 
         if let Some(existing) = self.elements.iter_mut().rev().find(|el| {
-            el.element_type == target_type && (el.x - stroke.start[0]).powi(2) + (el.y - stroke.start[1]).powi(2) <= r_sq
+            el.element_type == target_type
+                && (el.x - stroke.start[0]).powi(2) + (el.y - stroke.start[1]).powi(2) <= r_sq
         }) {
             existing.x = px;
             existing.y = py;

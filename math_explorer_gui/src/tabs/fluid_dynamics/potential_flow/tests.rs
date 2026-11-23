@@ -28,16 +28,22 @@ fn potential_flow_clamps_high_grid_state_and_caches_static_arrow_field() {
     let mut live_tool = PotentialFlowTool::default();
     let ctx = egui::Context::default();
     egui_plot::clear_last_plot_datasets();
-    let _ = ctx.run(headless_input_with_events(Vec::new()), |c| live_tool.show(c));
+    let _ = ctx.run(headless_input_with_events(Vec::new()), |c| {
+        live_tool.show(c)
+    });
     assert_eq!(egui_plot::get_last_plot_item_counts(), vec![3]);
 
     egui_plot::reset_materialized_plot_datasets_call_count();
-    let _ = ctx.run(headless_input_with_events(Vec::new()), |c| live_tool.show(c));
+    let _ = ctx.run(headless_input_with_events(Vec::new()), |c| {
+        live_tool.show(c)
+    });
     assert_eq!(live_tool.cache.eval_count, 1);
     assert_eq!(egui_plot::materialized_plot_datasets_call_count(), 0);
 
     live_tool.grid_size = 24;
-    let _ = ctx.run(headless_input_with_events(Vec::new()), |c| live_tool.show(c));
+    let _ = ctx.run(headless_input_with_events(Vec::new()), |c| {
+        live_tool.show(c)
+    });
     assert_eq!(live_tool.cache.eval_count, 2);
 }
 
@@ -74,11 +80,7 @@ fn potential_flow_removes_individual_element_without_clearing_remaining_superpos
     assert!(tool.remove_element(99).is_none());
 }
 
-fn collect_button_centers(
-    shape: &egui::epaint::Shape,
-    needle: &str,
-    out: &mut Vec<egui::Pos2>,
-) {
+fn collect_button_centers(shape: &egui::epaint::Shape, needle: &str, out: &mut Vec<egui::Pos2>) {
     match shape {
         egui::epaint::Shape::Text(t) if t.galley.text() == needle => {
             out.push(t.pos + t.galley.size() * 0.5);
@@ -114,7 +116,10 @@ fn potential_flow_ui_lists_active_elements_and_exposes_accessible_delete_buttons
     ctx.enable_accesskit();
     let _ = ctx.run(headless_input_with_events(Vec::new()), |c| tool.show(c));
     let out = ctx.run(headless_input_with_events(Vec::new()), |c| tool.show(c));
-    let ak = out.platform_output.accesskit_update.expect("AccessKit tree");
+    let ak = out
+        .platform_output
+        .accesskit_update
+        .expect("AccessKit tree");
 
     let remove_buttons: Vec<(egui::accesskit::NodeId, String)> = ak
         .nodes
@@ -182,7 +187,9 @@ fn potential_flow_ui_deletes_element_via_keyboard_focus_and_enter() {
         .iter()
         .find_map(|(id, node)| {
             (node.role() == egui::accesskit::Role::Button
-                && node.label().is_some_and(|l| l.starts_with("Remove element 2:")))
+                && node
+                    .label()
+                    .is_some_and(|l| l.starts_with("Remove element 2:")))
             .then_some(*id)
         })
         .expect("remaining Vortex remove button");
