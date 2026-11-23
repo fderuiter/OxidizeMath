@@ -121,7 +121,7 @@ impl CeraTool {
                 }
                 Err(e) => {
                     self.clear_persisted_model();
-                    self.prediction_result = Some(Err(e));
+                    self.prediction_result = Some(Err(e.to_string()));
                     return;
                 }
             }

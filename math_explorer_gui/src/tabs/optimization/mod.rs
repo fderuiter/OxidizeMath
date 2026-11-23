@@ -1,7 +1,7 @@
-// @explorer_feature = "applied"
-// @explorer_order = 37
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::accessibility::AccessibleHoverText;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod constrained_tool;
@@ -97,6 +97,14 @@ impl ExplorerTab for OptimizationTab {
     }
 }
 
+inventory::submit! {
+    TabDescriptor {
+        id: "optimization",
+        order: 37,
+        build: || Box::new(OptimizationTab::default()),
+    }
+}
+
 // [cite:lorahub]
 // [cite:advanced_linear_algebra]
 
@@ -120,7 +128,7 @@ mod tests {
             .tabs
             .iter()
             .find(|t| t.url_slug() == "optimization")
-            .expect("OptimizationTab must be auto-discovered by build.rs");
+            .expect("OptimizationTab must be registered via TabDescriptor");
         assert_eq!(tab.name(), "Optimization");
         assert_eq!(tab.academic_domain(), "Applied Math");
 
