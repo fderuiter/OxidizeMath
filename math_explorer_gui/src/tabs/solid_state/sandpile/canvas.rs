@@ -287,7 +287,7 @@ impl AbelianSandpileStudio {
         if !emp.is_empty() {
             prims.push(ExportPrimitive::Points {
                 name: "Empirical Avalanche CCDF (log10)".into(),
-                points: emp,
+                points: emp.into(),
                 color: DARK_PALETTE.series_color(0),
                 radius: 2.5,
             });
@@ -298,7 +298,7 @@ impl AbelianSandpileStudio {
             if line_pts.len() >= 2 {
                 prims.push(ExportPrimitive::Polyline {
                     name: "FitModel::PowerLaw".into(),
-                    points: line_pts,
+                    points: line_pts.into(),
                     color: DARK_PALETTE.series_color(1),
                     stroke_width: 2.0,
                     closed: false,
@@ -309,7 +309,7 @@ impl AbelianSandpileStudio {
         if prims.is_empty() {
             prims.push(ExportPrimitive::Polyline {
                 name: "Critical Reference".into(),
-                points: vec![[0.0, 0.0], [1.5, -0.35]],
+                points: vec![[0.0, 0.0], [1.5, -0.35]].into(),
                 color: DARK_PALETTE.accent,
                 stroke_width: 1.8,
                 closed: false,

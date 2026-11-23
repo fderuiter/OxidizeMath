@@ -185,9 +185,9 @@ impl<const W: usize, const H: usize> Semigroup for SandpileElement<W, H> {
     #[verified_engine::verified]
     fn operate(a: &Self, b: &Self) -> Self {
         let mut sum = [[0_u32; W]; H];
-        for y in 0..H {
-            for x in 0..W {
-                sum[y][x] = a.heights[y][x] + b.heights[y][x];
+        for ((sum_row, a_row), b_row) in sum.iter_mut().zip(&a.heights).zip(&b.heights) {
+            for ((dst, &av), &bv) in sum_row.iter_mut().zip(a_row).zip(b_row) {
+                *dst = av + bv;
             }
         }
         let _ = stabilize_grid_array(&mut sum);
@@ -209,9 +209,9 @@ impl<const W: usize, const H: usize> Group for SandpileElement<W, H> {
         let mut r_stab = self.heights;
         let _ = stabilize_grid_array(&mut r_stab);
         let mut inv = [[0_u32; W]; H];
-        for y in 0..H {
-            for x in 0..W {
-                inv[y][x] = 2 * z0[y][x] - r_stab[y][x];
+        for ((inv_row, z0_row), r_row) in inv.iter_mut().zip(&z0).zip(&r_stab) {
+            for ((dst, &zv), &rv) in inv_row.iter_mut().zip(z0_row).zip(r_row) {
+                *dst = 2 * zv - rv;
             }
         }
         let _ = stabilize_grid_array(&mut inv);

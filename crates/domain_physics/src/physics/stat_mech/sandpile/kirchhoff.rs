@@ -154,22 +154,24 @@ fn bareiss_determinant_in_place(
             mat.swap(k, swap_row);
             sign = -sign;
         }
-        let pivot = mat[k][k];
-        for i in (k + 1)..n {
-            let row_k_factor = mat[i][k];
-            for j in (k + 1)..n {
-                let lhs = mat[i][j]
+        let (upper, lower) = mat[..n].split_at_mut(k + 1);
+        let pivot_row = &upper[k];
+        let pivot = pivot_row[k];
+        for row_i in lower {
+            let row_k_factor = row_i[k];
+            for (cell, &pivot_col_val) in row_i[(k + 1)..n].iter_mut().zip(&pivot_row[(k + 1)..n]) {
+                let lhs = cell
                     .checked_mul(pivot)
                     .ok_or(SandpileError::ArithmeticOverflow)?;
                 let rhs = row_k_factor
-                    .checked_mul(mat[k][j])
+                    .checked_mul(pivot_col_val)
                     .ok_or(SandpileError::ArithmeticOverflow)?;
                 let diff = lhs
                     .checked_sub(rhs)
                     .ok_or(SandpileError::ArithmeticOverflow)?;
-                mat[i][j] = diff / prev_pivot;
+                *cell = diff / prev_pivot;
             }
-            mat[i][k] = 0;
+            row_i[k] = 0;
         }
         prev_pivot = pivot;
     }
