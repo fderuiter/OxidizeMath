@@ -28,10 +28,6 @@ impl InteractiveTool for OdeSolverTool {
         self.compute_url_state_revision()
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     fn has_finite_parameters(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
     }
@@ -70,15 +66,12 @@ impl InteractiveTool for OdeSolverTool {
         let mut changed = false;
         self.sync_series_cache();
 
-        let sweeps_before = crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx());
+        let sweeps_before =
+            crate::reflective_ui::slider::current_pass_active_sweep_count(parent_ui.ctx());
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "ode_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            changed |= self.render_sidebar_controls(ui);
+            changed |= self.render_sidebar_controls(ui, sweeps_before);
         });
-        let sweep_active =
-            crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx()) > sweeps_before;
-
-        self.apply_sidebar_changes(changed, sweep_active);
         self.sync_series_cache();
 
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
@@ -98,6 +91,11 @@ impl InteractiveTool for OdeSolverTool {
 }
 
 impl OdeSolverTool {
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     pub(super) fn render_discrepancy_panel(&self, ui: &mut egui::Ui) {
         ui.add_space(10.0);
         ui.heading("Discrepancy Metrics");

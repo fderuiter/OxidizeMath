@@ -20,6 +20,7 @@ impl OdeSolverTool {
         if !x.is_finite() || !y.is_finite() {
             return;
         }
+        self.pending_sweep_run = None;
         let prev_summary = self.last_param_summary.clone();
         let prev_series = self.build_current_trace_series();
         self.snapshot_manager

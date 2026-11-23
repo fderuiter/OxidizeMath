@@ -420,6 +420,7 @@ impl OdeSolverTool {
 
     /// Teleports active ODE parameters to `ev`, pushing the prior run to `snapshot_manager`.
     pub fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
+        self.pending_sweep_run = None;
         let prev_summary = self.last_param_summary.clone();
         let prev_series = self.build_current_trace_series();
         self.snapshot_manager

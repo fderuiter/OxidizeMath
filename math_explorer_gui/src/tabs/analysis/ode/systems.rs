@@ -205,6 +205,52 @@ impl CustomOdeSpec {
         matches!(self, Self::Coupled { .. })
     }
 
+    /// Hashes compiled bytecode and active inline parameter values for baseline state verification.
+    pub(super) fn hash_with_params<H: Hasher>(&self, state: &mut H) {
+        CustomOdeContext(Some(self)).hash(state);
+        let (params, len) = match self {
+            Self::Scalar {
+                params, param_len, ..
+            }
+            | Self::Coupled {
+                params, param_len, ..
+            } => (params, *param_len),
+        };
+        len.hash(state);
+        for &val in &params[..len] {
+            crate::sensitivity::canonical_f64_bits(val).hash(state);
+        }
+    }
+
+    /// Returns `true` when `self` uses identical parameter bindings to `eval_ode_final_state` for `param_refs`.
+    #[must_use]
+    pub(super) fn matches_baseline_params(&self, param_refs: &[(&str, f64)]) -> bool {
+        let (names, params, len, coupled) = match self {
+            Self::Scalar {
+                expr,
+                params,
+                param_len,
+            } => (expr.param_names(), params, *param_len, false),
+            Self::Coupled {
+                dy,
+                params,
+                param_len,
+                ..
+            } => (dy.param_names(), params, *param_len, true),
+        };
+        names.iter().take(len).enumerate().all(|(idx, name)| {
+            name != "y0"
+                && (!coupled || name != "v0")
+                && param_refs
+                    .iter()
+                    .find(|(k, _)| *k == name.as_str())
+                    .is_some_and(|(_, val)| {
+                        crate::sensitivity::canonical_f64_bits(*val)
+                            == crate::sensitivity::canonical_f64_bits(params[idx])
+                    })
+        })
+    }
+
     /// Clones this spec while overriding named parameter slots from `p_map` (for sensitivity sweeps).
     #[must_use]
     pub fn with_param_overrides(&self, p_map: &HashMap<String, f64>) -> Self {

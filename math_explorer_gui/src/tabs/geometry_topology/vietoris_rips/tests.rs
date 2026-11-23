@@ -232,4 +232,53 @@ fn test_interval_csv_json_exports_and_svg_png_figure_primitives() {
     }
 }
 
+#[test]
+fn test_radius_slider_reuses_distance_matrix_and_point_mutation_refreshes() {
+    let mut tool = VietorisRipsTool::default();
+    let pts_20: Vec<[f64; 2]> = (0..20)
+        .map(|i| {
+            let a = (i as f64) * 2.0 * PI / 20.0;
+            [5.0 + 3.0 * a.cos(), 5.0 + 3.0 * a.sin()]
+        })
+        .collect();
+    tool.try_load_state(&serde_json::json!({"radius": 0.2, "points": pts_20}).to_string())
+        .unwrap();
+
+    let dist_after_load = tool.distance_computations;
+    let builds_after_load = tool.complex_builds;
+
+    for step in 1..=30 {
+        let r = step as f64 * 0.25;
+        tool.set_radius(r);
+        assert_eq!(tool.cached_vertices.len(), 20);
+        assert_eq!(tool.cached_edges.len(), tool.complex.count_simplices(1));
+        assert_eq!(tool.cached_triangles.len(), tool.complex.count_simplices(2));
+    }
+    assert_eq!(tool.distance_computations, dist_after_load);
+    assert_eq!(tool.complex_builds, builds_after_load + 30);
+
+    // Mutate point coordinates directly (simulating interactive sculpt/drag)
+    tool.points[0].x += 0.75;
+    tool.update_complex();
+    assert_eq!(tool.distance_computations, dist_after_load + 1);
+
+    // Subsequent radius change reuses the newly cached distance matrix
+    tool.set_radius(1.8);
+    assert_eq!(tool.distance_computations, dist_after_load + 1);
+
+    // Clearing all points handles empty state gracefully and recovers when restored
+    let saved_points = tool.points.clone();
+    tool.points.clear();
+    tool.update_complex();
+    assert!(tool.error_msg.is_some());
+    assert!(tool.distance_matrix.is_empty());
+    assert!(tool.cached_vertices.is_empty());
+
+    tool.points = saved_points;
+    tool.update_complex();
+    assert!(tool.error_msg.is_none());
+    assert_eq!(tool.distance_matrix.len(), 20);
+    assert_eq!(tool.cached_vertices.len(), 20);
+}
+
 // [cite:graph_parameters_rust]
