@@ -105,4 +105,18 @@ fn test_custom_fractal_url_roundtrip() {
     assert_eq!(restored.mode, FractalMode::CustomMandelbrot);
     assert_eq!(restored.math_input.raw_text, "a * z^3 + c");
     assert_eq!(restored.math_input.params_map(), pmap);
+
+    let webgl = restored
+        .export_glsl_shader(crate::framework::ShaderDialect::WebGl2Es300)
+        .expect("custom mandelbrot glsl");
+    assert!(webgl.contains("const bool IS_JULIA = false;"));
+    assert!(webgl.contains("const vec2 a = vec2(1.25, 0.0);"));
+    assert!(webgl.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
+
+    restored.mode = FractalMode::CustomJulia;
+    let shadertoy = restored
+        .export_glsl_shader(crate::framework::ShaderDialect::Shadertoy)
+        .expect("custom julia glsl");
+    assert!(shadertoy.contains("const bool IS_JULIA = true;"));
+    assert!(shadertoy.contains("void mainImage(out vec4 fragColor, in vec2 fragCoord)"));
 }

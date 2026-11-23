@@ -3,7 +3,8 @@
 use super::{CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
 use crate::async_sim::SimCommand;
 use crate::framework::{
-    encode_bool_grid, MathExpressionInputBar, RasterBrushStroke, MAX_SYNTHESIZED_PARAMS,
+    encode_bool_grid, InteractiveTool, MathExpressionInputBar, RasterBrushStroke,
+    MAX_SYNTHESIZED_PARAMS,
 };
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -17,13 +18,18 @@ type ParsedUnifiedState = (HashMap<String, f64>, Option<(String, Vec<bool>)>);
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct UnifiedFormulaState {
+struct UnifiedExtendedState {
     params: BTreeMap<String, f64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     custom_formula_enabled: bool,
-    custom_expr: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    custom_expr: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    atlas_visible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    atlas_axes: Option<[String; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     obstacles_rle: Option<String>,
 }
@@ -135,6 +141,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 val.to_bits().hash(&mut h);
             }
         }
+        if let Some(atlas) = &self.atlas {
+            atlas.is_visible().hash(&mut h);
+            atlas.axis_keys().hash(&mut h);
+        }
         self.custom_formula_enabled.hash(&mut h);
         if let Some(ref bar) = self.formula_bar {
             bar.raw_text.hash(&mut h);
@@ -155,29 +165,50 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_ref()) {
-            let active = self.custom_formula_enabled;
-            let customized = bar.raw_text != spec.default_expr;
-            if active || customized {
-                if params.values().any(|v| !v.is_finite()) {
-                    return None;
-                }
-                let sorted_params: BTreeMap<String, f64> =
-                    params.iter().map(|(k, &v)| (k.clone(), v)).collect();
-                let custom_params = if active {
-                    bar.params_map()
-                } else {
-                    BTreeMap::new()
-                };
-                return serde_json::to_string(&UnifiedFormulaState {
-                    params: sorted_params,
-                    custom_formula_enabled: active,
-                    custom_expr: bar.raw_text.clone(),
-                    custom_params,
-                    obstacles_rle,
-                })
-                .ok();
+        let formula_ext =
+            M::formula_spec()
+                .zip(self.formula_bar.as_ref())
+                .and_then(|(spec, bar)| {
+                    let active = self.custom_formula_enabled;
+                    let customized = bar.raw_text != spec.default_expr;
+                    (active || customized).then(|| {
+                        let cp = if active {
+                            bar.params_map()
+                        } else {
+                            BTreeMap::new()
+                        };
+                        (active, bar.raw_text.clone(), cp)
+                    })
+                });
+        let atlas_ext = self.atlas.as_ref().and_then(|atlas| {
+            (!atlas.has_default_persisted_state()).then(|| {
+                let (xk, yk) = atlas.axis_keys();
+                (atlas.is_visible(), [xk.to_string(), yk.to_string()])
+            })
+        });
+        if formula_ext.is_some() || atlas_ext.is_some() {
+            if params.values().any(|v| !v.is_finite()) {
+                return None;
             }
+            let sorted_params = params.iter().map(|(k, &v)| (k.clone(), v)).collect();
+            let (custom_formula_enabled, custom_expr, custom_params) = match formula_ext {
+                Some((en, expr, cp)) => (en, Some(expr), cp),
+                None => (false, None, BTreeMap::new()),
+            };
+            let (atlas_visible, atlas_axes) = match atlas_ext {
+                Some((vis, axes)) => (vis, Some(axes)),
+                None => (false, None),
+            };
+            return serde_json::to_string(&UnifiedExtendedState {
+                params: sorted_params,
+                custom_formula_enabled,
+                custom_expr,
+                custom_params,
+                atlas_visible,
+                atlas_axes,
+                obstacles_rle,
+            })
+            .ok();
         }
         let mut map: BTreeMap<&str, serde_json::Value> = BTreeMap::new();
         for (k, v) in params.iter() {
@@ -206,51 +237,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 self.local_obstacles = M::default_obstacle_mask(&p_snap);
             }
         }
-    }
-
-    fn deserialize_formula_state(
-        &mut self,
-        spec: &UnifiedFormulaSpec,
-        fs: UnifiedFormulaState,
-    ) -> Result<(), String> {
-        let map: HashMap<String, f64> = fs.params.into_iter().collect();
-        self.validate_param_map(&map)?;
-        if fs.custom_params.values().any(|v| !v.is_finite()) {
-            return Err(format!(
-                "Non-finite custom formula parameter in {}",
-                M::name()
-            ));
-        }
-        let parsed_rle = match fs.obstacles_rle {
-            Some(rle) if M::raster_brush_grid().is_some() => {
-                let decoded = M::validate_obstacle_rle(&rle)?;
-                Some((rle, decoded))
-            }
-            Some(_) => {
-                return Err(format!(
-                    "Unknown parameter '{OBSTACLES_RLE_KEY}' for {}",
-                    M::name()
-                ))
-            }
-            None => None,
-        };
-        {
-            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (k, v) in map {
-                guard.insert(k, v);
-            }
-        }
-        self.apply_parsed_obstacle_rle(parsed_rle);
-        let bar = self
-            .formula_bar
-            .get_or_insert_with(|| build_formula_bar(spec));
-        bar.set_expression(&fs.custom_expr);
-        bar.set_params_map(&fs.custom_params);
-        self.custom_formula_enabled = fs.custom_formula_enabled;
-        self.publish_formula_update();
-        self.texture = None;
-        self.reset_simulation(None);
-        Ok(())
     }
 
     fn parse_state_entries(
@@ -288,15 +274,15 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 
     pub(super) fn deserialize_tool_state(&mut self, state: &str) -> Result<(), String> {
-        if let Some(spec) = M::formula_spec() {
-            if let Ok(fs) = serde_json::from_str::<UnifiedFormulaState>(state) {
-                return self.deserialize_formula_state(&spec, fs);
-            }
+        self.state_bounds().validate_json(state)?;
+        if let Ok(ext) = serde_json::from_str::<UnifiedExtendedState>(state) {
+            return self.apply_extended_state(ext);
         }
         let raw_map: serde_json::Map<String, serde_json::Value> = serde_json::from_str(state)
             .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
         let (numeric_params, parsed_rle) = self.parse_state_entries(raw_map)?;
         self.validate_param_map(&numeric_params)?;
+        self.apply_parsed_atlas_state(None)?;
         {
             let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
             for (key, value) in numeric_params {
@@ -304,15 +290,90 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
         self.apply_parsed_obstacle_rle(parsed_rle);
+        self.reset_formula_bar_to_default();
+        self.texture = None;
+        self.reset_simulation(None);
+        Ok(())
+    }
+
+    fn validate_extended_state(
+        &self,
+        ext: &UnifiedExtendedState,
+    ) -> Result<ParsedUnifiedState, String> {
+        let map: HashMap<String, f64> = ext.params.iter().map(|(k, &v)| (k.clone(), v)).collect();
+        self.validate_param_map(&map)?;
+        let has_formula = ext.custom_formula_enabled
+            || ext.custom_expr.is_some()
+            || !ext.custom_params.is_empty();
+        if M::formula_spec().is_none() && has_formula {
+            return Err(format!(
+                "{} does not support custom formula state",
+                M::name()
+            ));
+        }
+        if ext.custom_params.values().any(|v| !v.is_finite()) {
+            return Err(format!(
+                "Non-finite custom formula parameter in {}",
+                M::name()
+            ));
+        }
+        if self.atlas.is_none() && (ext.atlas_visible || ext.atlas_axes.is_some()) {
+            return Err(format!(
+                "{} does not support 2D parameter atlas state",
+                M::name()
+            ));
+        }
+        let parsed_rle = match ext.obstacles_rle.as_deref() {
+            Some(rle) if M::raster_brush_grid().is_some() => {
+                let decoded = M::validate_obstacle_rle(rle)?;
+                Some((rle.to_string(), decoded))
+            }
+            Some(_) => {
+                return Err(format!(
+                    "Unknown parameter '{OBSTACLES_RLE_KEY}' for {}",
+                    M::name()
+                ));
+            }
+            None => None,
+        };
+        Ok((map, parsed_rle))
+    }
+
+    fn apply_extended_state(&mut self, ext: UnifiedExtendedState) -> Result<(), String> {
+        let (map, parsed_rle) = self.validate_extended_state(&ext)?;
+        self.apply_parsed_atlas_state(Some((ext.atlas_visible, ext.atlas_axes)))?;
+        {
+            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
+            for (k, v) in map {
+                guard.insert(k, v);
+            }
+        }
+        self.apply_parsed_obstacle_rle(parsed_rle);
+        if let Some(spec) = M::formula_spec() {
+            if let Some(expr) = ext.custom_expr {
+                let bar = self
+                    .formula_bar
+                    .get_or_insert_with(|| build_formula_bar(&spec));
+                bar.set_expression(&expr);
+                bar.set_params_map(&ext.custom_params);
+                self.custom_formula_enabled = ext.custom_formula_enabled;
+                self.publish_formula_update();
+            } else {
+                self.reset_formula_bar_to_default();
+            }
+        }
+        self.texture = None;
+        self.reset_simulation(None);
+        Ok(())
+    }
+
+    fn reset_formula_bar_to_default(&mut self) {
         self.custom_formula_enabled = false;
         if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_mut()) {
             bar.set_expression(spec.default_expr);
             bar.set_params_map(&BTreeMap::new());
             self.publish_formula_update();
         }
-        self.texture = None;
-        self.reset_simulation(None);
-        Ok(())
     }
 
     fn validate_param_map(&self, params: &HashMap<String, f64>) -> Result<(), String> {

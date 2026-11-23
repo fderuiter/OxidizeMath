@@ -35,6 +35,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) brush_state: crate::framework::RasterBrushState,
     pub(super) obstacle_rle: Arc<RwLock<Option<String>>>,
     pub(super) local_obstacles: Option<Vec<bool>>,
+    pub(crate) atlas: Option<crate::async_sim::atlas::ParameterAtlasController>,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -99,6 +100,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             brush_state: crate::framework::RasterBrushState::default(),
             obstacle_rle,
             local_obstacles,
+            atlas: Self::create_optional_atlas(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -342,6 +344,16 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.deserialize_tool_state(state)
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn clamp_parameters(&mut self) -> bool {

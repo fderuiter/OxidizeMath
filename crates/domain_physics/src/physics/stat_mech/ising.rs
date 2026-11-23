@@ -12,8 +12,31 @@
 //! - **$T > T_c$**: Paramagnetic phase (Disordered spins).
 
 use super::KB;
+use domain_applied::applied::game_theory::evolutionary::MatrixPayoff;
 use math_commons::math_kernel::types::flatten_2d_index;
 use rand::Rng;
+
+#[inline]
+#[verified_engine::verified]
+fn build_fermi_lut(r: f64, s: f64, t: f64, p: f64, inv_temp: f64) -> [[[f64; 5]; 5]; 2] {
+    let mut lut = [[[0.0_f64; 5]; 5]; 2];
+    let mut c_pay = [0.0_f64; 5];
+    let mut d_pay = [0.0_f64; 5];
+    for nc in 0..5 {
+        let (nc_f, nd_f) = (nc as f64, (4 - nc) as f64);
+        c_pay[nc] = (nc_f + 1.0) * r + nd_f * s;
+        d_pay[nc] = nc_f * t + (nd_f + 1.0) * p;
+    }
+    for nc_i in 0..5 {
+        for mc_j in 0..5 {
+            let d_to_c = ((d_pay[nc_i] - c_pay[mc_j]) * inv_temp).clamp(-500.0, 500.0);
+            let c_to_d = ((c_pay[nc_i] - d_pay[mc_j]) * inv_temp).clamp(-500.0, 500.0);
+            lut[0][nc_i][mc_j] = 1.0 / (1.0 + d_to_c.exp());
+            lut[1][nc_i][mc_j] = 1.0 / (1.0 + c_to_d.exp());
+        }
+    }
+    lut
+}
 
 /// A 2D Spin Lattice for the Ising Model.
 ///
@@ -197,24 +220,15 @@ impl SpinLattice {
     pub fn hamiltonian(&self, j_coupling: f64, h_field: f64) -> f64 {
         let mut interaction_sum = 0.0;
         let mut field_sum = 0.0;
-
         for y in 0..self.height {
             for x in 0..self.width {
                 let s = self.get(x, y);
                 field_sum += s as f64;
-
-                // Neighbors (Right and Down only to avoid double counting)
-                let right_x = (x + 1) % self.width;
-                let right_s = self.get(right_x, y);
-
-                let down_y = (y + 1) % self.height;
-                let down_s = self.get(x, down_y);
-
-                interaction_sum += (s * right_s) as f64;
-                interaction_sum += (s * down_s) as f64;
+                let right_s = self.get((x + 1) % self.width, y);
+                let down_s = self.get(x, (y + 1) % self.height);
+                interaction_sum += (s * right_s) as f64 + (s * down_s) as f64;
             }
         }
-
         -j_coupling * interaction_sum - h_field * field_sum
     }
 
@@ -307,105 +321,90 @@ impl SpinLattice {
         let count = self.width * self.height;
 
         for _ in 0..steps {
-            // Pick a random site. Using a single range is faster than two.
             let idx = self.rng.gen_range(0..count);
             if self.pinned[idx] {
                 continue;
             }
 
             let s = self.spins[idx];
-            let neighbors = &self.neighbors[idx];
-
-            let neighbor_sum = self.spins[neighbors[0]] as i32
-                + self.spins[neighbors[1]] as i32
-                + self.spins[neighbors[2]] as i32
-                + self.spins[neighbors[3]] as i32;
-
-            // Map s (-1 or 1) to 0 or 1
-            let s_idx = if s == -1 { 0 } else { 1 };
-            // Map neighbor_sum (-4..4) to 0..4
-            let sum_idx = ((neighbor_sum + 4) / 2) as usize;
-
+            let s_idx = usize::from(s > 0);
+            let sum_idx = self.neighbor_cooperators(idx);
             let prob = lut[s_idx][sum_idx];
-
-            // If prob > 1.0, it was delta_e < 0, so flip.
-            // Else compare with random.
             if prob > 1.0 || self.rng.r#gen::<f64>() < prob {
                 self.spins[idx] = -s;
+            }
+        }
+    }
+
+    #[inline]
+    #[verified_engine::verified]
+    fn neighbor_cooperators(&self, idx: usize) -> usize {
+        let n = self.neighbors[idx];
+        let sum = i32::from(self.spins[n[0]])
+            + i32::from(self.spins[n[1]])
+            + i32::from(self.spins[n[2]])
+            + i32::from(self.spins[n[3]]);
+        ((sum + 4) / 2) as usize
+    }
+
+    /// Evolves a spatial 2x2 evolutionary game on the lattice via pairwise Fermi imitation.
+    ///
+    /// Spin `+1` represents Strategy `0` (Cooperator) and spin `-1` represents Strategy `1`
+    /// (Defector), with 2x2 [`MatrixPayoff`] entries `(R, S; T, P)`. Each elementary trial picks
+    /// a random focal site $i$ and a random von Neumann neighbor $j \in \mathcal{N}(i)$,
+    /// adopting $s_j$ with probability $W = [1 + \exp((\pi_i - \pi_j) / T)]^{-1}$ using a
+    /// stack-allocated `2x5x5` lookup table and zero heap allocations.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use domain_physics::__doctest_facade as math_explorer;
+    /// use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
+    /// use math_explorer::nalgebra::DMatrix;
+    /// use math_explorer::physics::stat_mech::ising::SpinLattice;
+    ///
+    /// let payoff = MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.0, -0.1, 1.25, 0.0])).unwrap();
+    /// let mut lattice = SpinLattice::new(20, 20, Some(42));
+    /// lattice.evolve_fermi_game(4_000, 0.08, &payoff);
+    /// assert!(lattice.magnetization().abs() <= 400);
+    /// ```
+    #[verified_engine::verified]
+    pub fn evolve_fermi_game(&mut self, steps: usize, temperature: f64, payoff: &MatrixPayoff) {
+        let mat = payoff.payoff_matrix();
+        if steps == 0
+            || self.spins.is_empty()
+            || mat.nrows() != 2
+            || mat.ncols() != 2
+            || !temperature.is_finite()
+        {
+            return;
+        }
+        let (r, s, t, p) = (mat[(0, 0)], mat[(0, 1)], mat[(1, 0)], mat[(1, 1)]);
+        if !r.is_finite() || !s.is_finite() || !t.is_finite() || !p.is_finite() {
+            return;
+        }
+        let lut = build_fermi_lut(r, s, t, p, 1.0 / temperature.max(1e-3));
+        let count = self.width * self.height;
+
+        for _ in 0..steps {
+            let idx = self.rng.gen_range(0..count);
+            if self.pinned[idx] {
+                continue;
+            }
+            let s_i = self.spins[idx];
+            let j_idx = self.neighbors[idx][self.rng.gen_range(0..4)];
+            let s_j = self.spins[j_idx];
+            if s_i != s_j {
+                let nc_i = self.neighbor_cooperators(idx);
+                let mc_j = self.neighbor_cooperators(j_idx);
+                if self.rng.r#gen::<f64>() < lut[usize::from(s_i > 0)][nc_i][mc_j] {
+                    self.spins[idx] = s_j;
+                }
             }
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::physics::stat_mech::KB;
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_ising_disordered() {
-        // High temperature limit. T >> J/k_B.
-        // Magnetization should be near 0 on average.
-        // J = 1.0 Joules (normalized).
-        // T = very high. e.g. KB*T = 1000 * J.
-        // T = 1000 * J / KB.
-        let j_val = 1.0; // effectively unitless if we scale T
-        let h_val = 0.0;
-        let t_high = 100.0 * j_val / KB; // High Temp
-
-        let width = 20;
-        let height = 20;
-        let mut lattice = SpinLattice::new(width, height, None);
-
-        // Run many steps to equilibrate
-        let steps = 10_000;
-        for _ in 0..steps {
-            lattice.metropolis_step(t_high, j_val, h_val);
-        }
-
-        let m = lattice.magnetization();
-        let max_m = (width * height) as f64;
-        let avg_m_per_spin = m as f64 / max_m;
-
-        // In disordered phase, magnetization should be small (random fluctuations).
-        // It won't be exactly 0, but should be close to 0 compared to 1.
-        // <M> ~ 0.
-        assert!(
-            avg_m_per_spin.abs() < 0.3,
-            "High T Ising should be disordered (M ~ 0). Got {}",
-            avg_m_per_spin
-        );
-    }
-
-    #[test]
-    fn test_ising_pinned_spins_stay_fixed_with_zero_allocations() {
-        let j_val = 1.0;
-        let h_val = -2.0;
-        let t_high = 50.0 * j_val / KB;
-        let mut lattice = SpinLattice::new(10, 10, Some(7));
-        for x in 0..10 {
-            lattice.set(x, 0, 1);
-            lattice.set_pinned(x, 0, true);
-            lattice.set(x, 9, -1);
-            lattice.set_pinned(x, 9, true);
-        }
-
-        let (_, metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
-            lattice.evolve(20_000, t_high, j_val, h_val);
-            for _ in 0..500 {
-                lattice.metropolis_step(t_high, j_val, h_val);
-            }
-        });
-        assert!(metrics.function_calls > 0);
-        for x in 0..10 {
-            assert_eq!(lattice.get(x, 0), 1);
-            assert!(lattice.is_pinned(x, 0));
-            assert_eq!(lattice.get(x, 9), -1);
-            assert!(lattice.is_pinned(x, 9));
-        }
-
-        lattice.clear_pinned();
-        assert!(lattice.pinned().iter().all(|&p| !p));
-    }
-}
+#[path = "ising_tests.rs"]
+mod tests;

@@ -1,7 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::atlas::MORPHO_ATLAS_AXIS_PAIRS;
+pub use super::brush::MorphogenesisToolState;
 use super::presets::MorphogenesisTheory;
 use super::runner::{MorphogenesisRunner, MorphogenesisSharedParams};
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{ExportCapabilities, InteractiveTool};
@@ -11,93 +14,16 @@ use math_explorer::biology::diffusion::FiniteDifference2D;
 use math_explorer::biology::morphogenesis::SpatialSchnakenbergKinetics;
 use math_explorer::biology::morphogenesis::TuringSystem;
 use scientific_metadata::theory::TheoryDescribable;
-use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-
-fn default_grid_dim() -> usize {
-    100
-}
-
-/// Complete validated state schema for [`MorphogenesisTool`], compatible with `PRESET_TURING_*`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MorphogenesisToolState {
-    /// Schnakenberg activator production rate `a` (`0.0..=1.0`).
-    pub a: f64,
-    /// Schnakenberg inhibitor production rate `b` (`0.0..=2.0`).
-    pub b: f64,
-    /// Activator diffusion coefficient `D_u` (`0.1..=5.0`).
-    pub d_u: f64,
-    /// Inhibitor diffusion coefficient `D_v` (`10.0..=200.0`).
-    pub d_v: f64,
-    /// Integration time step `dt` (`1e-4..=0.1`).
-    pub dt: f64,
-    /// Spatial grid width (`1..=512`).
-    #[serde(default = "default_grid_dim")]
-    pub width: usize,
-    /// Spatial grid height (`1..=512`).
-    #[serde(default = "default_grid_dim")]
-    pub height: usize,
-    /// Optional worker execution state (`Running` when omitted unless `paused == Some(true)`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub state: Option<SimWorkerState>,
-    /// Legacy boolean pause flag accepted on deserialization.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub paused: Option<bool>,
-    /// Deferred start flag keeping hidden tabs idle until first rendered frame.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub pending_initial_start: bool,
-    /// Optional RLE-encoded spatial `(a, b)` reaction mask (`0`=base, `1`=stripe, `2`=spot).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mask_rle: Option<String>,
-}
-
-impl MorphogenesisToolState {
-    /// Validates finiteness and domain bounds for all reaction-diffusion parameters.
-    pub fn validate(&self) -> Result<(), String> {
-        let checks = [
-            ("a", self.a, 0.0, 1.0),
-            ("b", self.b, 0.0, 2.0),
-            ("d_u", self.d_u, 0.1, 5.0),
-            ("d_v", self.d_v, 10.0, 200.0),
-            ("dt", self.dt, 1e-4, 0.1),
-        ];
-        for (name, val, min, max) in checks {
-            if !val.is_finite() || val < min || val > max {
-                return Err(format!(
-                    "Morphogenesis parameter '{name}' = {val} must be finite within [{min}, {max}]"
-                ));
-            }
-        }
-        if self.width == 0 || self.width > 512 || self.height == 0 || self.height > 512 {
-            return Err(format!(
-                "Morphogenesis dimensions {}x{} must be within 1..=512",
-                self.width, self.height
-            ));
-        }
-        if let Some(ref rle) = self.mask_rle {
-            let _ = crate::framework::decode_u8_grid(rle, self.width, self.height, 2)?;
-        }
-        Ok(())
-    }
-
-    fn resolve_target_state(&self) -> SimWorkerState {
-        self.state.unwrap_or_else(|| {
-            if self.paused.unwrap_or(false) {
-                SimWorkerState::Ready
-            } else {
-                SimWorkerState::Running
-            }
-        })
-    }
-}
 
 /// Interactive tool for 2D Schnakenberg Turing reaction-diffusion morphogenesis.
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct MorphogenesisTool {
     /// Asynchronous simulation worker controller.
     pub worker: BackgroundWorker<MorphogenesisRunner>,
+    /// Progressive 2D parameter regime atlas controller.
+    pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) width: usize,
     pub(crate) height: usize,
@@ -133,6 +59,7 @@ impl Default for MorphogenesisTool {
 
         Self {
             worker,
+            atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
             width,
             height,
@@ -233,6 +160,7 @@ impl MorphogenesisTool {
         } else {
             SimWorkerState::Ready
         };
+        let (xk, yk) = self.atlas.axis_keys();
         let preset_state = MorphogenesisToolState {
             a,
             b,
@@ -245,6 +173,8 @@ impl MorphogenesisTool {
             paused: None,
             pending_initial_start: false,
             mask_rle: None,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);
@@ -358,6 +288,8 @@ impl InteractiveTool for MorphogenesisTool {
         self.height.hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         self.pending_initial_start.hash(&mut h);
+        self.atlas.is_visible().hash(&mut h);
+        self.atlas.axis_keys().hash(&mut h);
         h.finish().max(1)
     }
 
@@ -366,6 +298,7 @@ impl InteractiveTool for MorphogenesisTool {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.dt, p.mask_rle.clone())
         };
+        let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&MorphogenesisToolState {
             a,
             b,
@@ -378,11 +311,14 @@ impl InteractiveTool for MorphogenesisTool {
             paused: None,
             pending_initial_start: self.pending_initial_start,
             mask_rle,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let parsed: MorphogenesisToolState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
@@ -390,6 +326,9 @@ impl InteractiveTool for MorphogenesisTool {
             Some(rle) => crate::framework::decode_u8_grid(rle, parsed.width, parsed.height, 2)?,
             None => vec![0; parsed.width * parsed.height],
         };
+        self.atlas
+            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.atlas.set_visible(parsed.atlas_visible);
         let target_state = parsed.resolve_target_state();
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
@@ -424,6 +363,16 @@ impl InteractiveTool for MorphogenesisTool {
             }
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn has_finite_parameters(&self) -> bool {

@@ -4,13 +4,16 @@
 //! hidden `<input type="file">` + `FileReader` browser pickers, `Blob` + `<a download>`
 //! browser file downloads, and plot-scoped asynchronous CSV dataset import queues.
 
-use std::collections::VecDeque;
-use std::sync::{Mutex, OnceLock, PoisonError};
+#[path = "file_io_queue.rs"]
+mod file_io_queue;
 
-use crate::export::{ImportedDataset, parse_csv};
+#[cfg(test)]
+use std::sync::PoisonError;
 
-/// Maximum number of unconsumed plot CSV import payloads or status messages retained globally.
-const MAX_PENDING_PLOT_IMPORTS: usize = 64;
+pub(crate) use file_io_queue::process_plot_csv_import;
+#[cfg(test)]
+use file_io_queue::{MAX_PENDING_PLOT_IMPORTS, pending_imports_queue, pending_status_queue};
+pub use file_io_queue::{drain_import_status, drain_imported_datasets};
 
 /// Strips a leading UTF-8 byte-order mark (`U+FEFF`) if present.
 #[inline]
@@ -29,7 +32,7 @@ pub fn infer_mime_type(filename: &str) -> &'static str {
         "text/csv"
     } else if lower.ends_with(".tsv") {
         "text/tab-separated-values"
-    } else if lower.ends_with(".txt") {
+    } else if lower.ends_with(".txt") || lower.ends_with(".frag") || lower.ends_with(".glsl") {
         "text/plain"
     } else if lower.ends_with(".svg") {
         "image/svg+xml"
@@ -369,94 +372,6 @@ pub use wasm_file_io::{
     PickerOutcome, download_browser_file, open_browser_file_picker, request_browser_repaint,
 };
 
-type PendingImport = (egui::Id, Vec<ImportedDataset>);
-type PendingImportStatus = (egui::Id, String, bool);
-
-fn pending_imports_queue() -> &'static Mutex<VecDeque<PendingImport>> {
-    static QUEUE: OnceLock<Mutex<VecDeque<PendingImport>>> = OnceLock::new();
-    QUEUE.get_or_init(|| Mutex::new(VecDeque::new()))
-}
-
-fn pending_status_queue() -> &'static Mutex<VecDeque<PendingImportStatus>> {
-    static QUEUE: OnceLock<Mutex<VecDeque<PendingImportStatus>>> = OnceLock::new();
-    QUEUE.get_or_init(|| Mutex::new(VecDeque::new()))
-}
-
-fn push_bounded<T>(queue: &Mutex<VecDeque<T>>, item: T) {
-    let mut guard = queue.lock().unwrap_or_else(PoisonError::into_inner);
-    if guard.len() >= MAX_PENDING_PLOT_IMPORTS {
-        guard.pop_front();
-    }
-    guard.push_back(item);
-}
-
-/// Drains any asynchronously imported datasets queued for `plot_id` (preserving sibling plots' entries).
-#[must_use]
-pub fn drain_imported_datasets(plot_id: egui::Id) -> Vec<ImportedDataset> {
-    let mut datasets = Vec::new();
-    let mut guard = pending_imports_queue()
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    let mut remaining = VecDeque::with_capacity(guard.len());
-    for (id, ds_list) in guard.drain(..) {
-        if id == plot_id || id == egui::Id::NULL {
-            datasets.extend(ds_list);
-        } else {
-            remaining.push_back((id, ds_list));
-        }
-    }
-    *guard = remaining;
-    datasets
-}
-
-/// Drains the latest asynchronous CSV import status `(message, is_error)` for `plot_id`.
-#[must_use]
-pub fn drain_import_status(plot_id: egui::Id) -> Option<(String, bool)> {
-    let mut latest = None;
-    let mut guard = pending_status_queue()
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    let mut remaining = VecDeque::with_capacity(guard.len());
-    for (id, msg, is_error) in guard.drain(..) {
-        if id == plot_id || id == egui::Id::NULL {
-            latest = Some((msg, is_error));
-        } else {
-            remaining.push_back((id, msg, is_error));
-        }
-    }
-    *guard = remaining;
-    latest
-}
-
-pub(crate) fn process_plot_csv_import(
-    ctx: &egui::Context,
-    plot_id: egui::Id,
-    outcome: Result<(String, String), String>,
-) {
-    match outcome {
-        Ok((name, content)) => {
-            let datasets = parse_csv(&content);
-            if datasets.is_empty() {
-                let msg =
-                    format!("Invalid or empty CSV file: no numeric data points found in {name}");
-                push_bounded(pending_status_queue(), (plot_id, msg.clone(), true));
-                crate::emit_plot_live_message(ctx, msg, true);
-            } else {
-                let count = datasets.len();
-                push_bounded(pending_imports_queue(), (plot_id, datasets));
-                let msg = format!("Imported {count} dataset(s) from {name}");
-                push_bounded(pending_status_queue(), (plot_id, msg.clone(), false));
-                crate::emit_plot_live_message(ctx, msg, false);
-            }
-        }
-        Err(err) => {
-            push_bounded(pending_status_queue(), (plot_id, err.clone(), true));
-            crate::emit_plot_live_message(ctx, err, true);
-        }
-    }
-    ctx.request_repaint();
-}
-
 /// Triggers a CSV/TSV file import dialog scoped to a specific target `plot_id`.
 pub fn trigger_import_csv_for_plot(ctx: &egui::Context, plot_id: egui::Id) {
     let ctx_clone = ctx.clone();
@@ -524,3 +439,7 @@ pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _fil
 #[cfg(test)]
 #[path = "file_io_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "file_io_wasm_tests.rs"]
+mod wasm_tests;

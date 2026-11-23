@@ -314,3 +314,123 @@ fn test_ising_spin_painting_boundary_pinning_rle_and_url_roundtrip() {
     assert!(restored.params.read().unwrap().pinned_rle.is_none());
 }
 
+#[test]
+fn test_ising_runner_apply_brush_clamping_and_clear_defector_sea() {
+    let tool = IsingModelTool::default();
+    let mut runner = IsingRunner {
+        lattice: SpinLattice::new(100, 100, Some(11)),
+        params: Arc::clone(&tool.params),
+    };
+
+    runner.process_command(SimCommand::ClearObstacles);
+    assert_eq!(runner.lattice.magnetization(), -10_000);
+
+    // Out-of-bounds coordinates and negative radius are safely clamped to [0, 99]
+    runner.process_command(SimCommand::ApplyBrush {
+        cx: -50,
+        cy: 250,
+        r: 3,
+        is_obstacle: true,
+    });
+    assert_eq!(runner.lattice.get(0, 99), 1);
+    assert_eq!(runner.lattice.get(3, 99), 1);
+    assert_eq!(runner.lattice.get(0, 96), 1);
+    assert_eq!(runner.lattice.get(50, 50), -1);
+
+    // Center circular droplet r=4 paints positive (+1) spins inside disk
+    runner.process_command(SimCommand::ApplyBrush {
+        cx: 50,
+        cy: 50,
+        r: 4,
+        is_obstacle: true,
+    });
+    assert_eq!(runner.lattice.get(50, 50), 1);
+    assert_eq!(runner.lattice.get(54, 50), 1);
+    assert_eq!(runner.lattice.get(54, 54), -1);
+}
+
+#[test]
+fn test_ising_paused_brush_stroke_via_on_brush_updates_snapshot_and_ode() {
+    let ctx = egui::Context::default();
+    let mut tool = IsingModelTool::default();
+    tool.apply_game_preset(FermiGamePreset::PrisonersDilemma, &ctx);
+    tool.brush_radius = 8;
+    tool.brush_cooperator = true;
+
+    let raw = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 800.0),
+        )),
+        ..Default::default()
+    };
+    let _ = ctx.run(raw.clone(), |ctx| tool.show(ctx));
+    let canvas_rect = tool
+        .last_canvas_rect
+        .expect("FermiGame mode must render interactive lattice canvas");
+
+    assert!(tool.worker.send_command(SimCommand::ClearObstacles).is_ok());
+    let mut click_raw = raw.clone();
+    let center = canvas_rect.center();
+    click_raw.events.push(egui::Event::PointerMoved(center));
+    click_raw.events.push(egui::Event::PointerButton {
+        pos: center,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let _ = ctx.run(click_raw, |ctx| tool.show(ctx));
+
+    for _ in 0..80 {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let _ = ctx.run(raw.clone(), |ctx| tool.show(ctx));
+        if tool.cooperator_fraction() > 0.01 && tool.cooperator_fraction() < 0.10 {
+            break;
+        }
+    }
+
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
+    assert!(
+        tool.cooperator_fraction() > 0.01 && tool.cooperator_fraction() < 0.10,
+        "Paused droplet brush must update cooperator fraction on defector sea, got {:.4}",
+        tool.cooperator_fraction()
+    );
+    let ode_end = tool.replicator_curve.last().expect("0D ODE curve")[1];
+    assert!(
+        ode_end < 1e-2,
+        "Prisoner's Dilemma 0D ReplicatorDynamics curve must decay to 0, got {ode_end}"
+    );
+}
+
+#[test]
+fn test_ising_fermi_game_presets_and_state_roundtrip() {
+    let ctx = egui::Context::default();
+    let mut tool = IsingModelTool::default();
+    assert_eq!(tool.mode, IsingInteractionMode::Ferromagnetic);
+
+    for preset in [
+        FermiGamePreset::PrisonersDilemma,
+        FermiGamePreset::StagHunt,
+        FermiGamePreset::HawkDove,
+    ] {
+        tool.apply_game_preset(preset, &ctx);
+        assert_eq!(tool.mode, IsingInteractionMode::FermiGame);
+        assert_eq!(tool.game_preset, preset);
+        assert_eq!(tool.game_payoffs, preset.payoffs());
+        assert!(!tool.replicator_curve.is_empty());
+    }
+
+    tool.brush_radius = 12;
+    tool.brush_cooperator = false;
+    let saved = tool.save_state().expect("save_state");
+
+    let mut restored = IsingModelTool::default();
+    restored
+        .try_load_state(&saved)
+        .expect("FermiGame IsingState must restore cleanly");
+    assert_eq!(restored.mode, IsingInteractionMode::FermiGame);
+    assert_eq!(restored.game_preset, FermiGamePreset::HawkDove);
+    assert_eq!(restored.game_payoffs, FermiGamePreset::HawkDove.payoffs());
+    assert_eq!(restored.brush_radius, 12);
+    assert!(!restored.brush_cooperator);
+}

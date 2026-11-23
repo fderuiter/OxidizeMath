@@ -160,7 +160,7 @@ fn test_ising_runner_offload() {
         h_field: 0.0,
         steps_per_frame: 500,
         theme: crate::app::ThemeMode::Dark,
-        pinned_rle: None,
+        ..Default::default()
     }));
     let mut runner = IsingRunner {
         lattice: SpinLattice::new(20, 20, Some(42)),
@@ -261,7 +261,7 @@ fn test_physics_and_chaos_runners_step_once() {
             h_field: 0.0,
             steps_per_frame: 5000,
             theme: crate::app::ThemeMode::Dark,
-            pinned_rle: None,
+            ..Default::default()
         })),
     };
     ising.step_once();
