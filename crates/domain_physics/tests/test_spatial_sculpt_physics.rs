@@ -53,10 +53,11 @@ fn test_naca4_airfoil_stall_vorticity_and_aerodynamic_coefficients() {
 
     let mut vort_stall = vec![0.0; w * h];
     compute_vorticity_into(&lbm_stall, &mut vort_stall);
-    let max_vort = vort_stall.iter().copied().map(f64::abs).fold(0.0, f64::max);
+    let max_pos_vort = vort_stall.iter().copied().fold(0.0, f64::max);
+    let min_neg_vort = vort_stall.iter().copied().fold(0.0, f64::min);
     assert!(
-        max_vort > 1e-3,
-        "High-AoA NACA 2412 wake must shed non-trivial vorticity, got {max_vort}"
+        max_pos_vort > 1e-3 && min_neg_vort < -1e-3,
+        "High-AoA NACA 2412 wake must shed both positive ({max_pos_vort}) and negative ({min_neg_vort}) signed vorticity"
     );
 
     let aero_zero = compute_aerodynamic_coefficients(&lbm_zero_aoa, u_in, chord, 3);
@@ -113,11 +114,21 @@ fn test_venturi_nozzle_throat_acceleration_and_velocity_jet() {
     assert!((jet_ux - 0.14).abs() < 1e-2);
 }
 
+fn extreme_hill_well_potential(x_axis: &[f64]) -> DVector<f64> {
+    let mut pot = DVector::from_element(x_axis.len(), 0.0_f64);
+    for (i, &x) in x_axis.iter().enumerate() {
+        if (-0.45..=-0.10).contains(&x) {
+            pot[i] = 450.0;
+        } else if (0.25..=0.65).contains(&x) {
+            pot[i] = -420.0;
+        }
+    }
+    pot
+}
+
 #[test]
 fn test_double_barrier_quantum_sculpt_unitarity_transmission_and_zero_allocations() {
-    let n = 100;
-    let x_min = -5.0;
-    let x_max = 5.0;
+    let (n, x_min, x_max, dt) = (100, -5.0, 5.0, 0.025);
     let dx = (x_max - x_min) / (n as f64 - 1.0);
     let x_axis: Vec<f64> = (0..n).map(|i| x_min + i as f64 * dx).collect();
 
@@ -129,13 +140,10 @@ fn test_double_barrier_quantum_sculpt_unitarity_transmission_and_zero_allocation
     }
 
     let mut hamiltonian = construct_1d_hamiltonian(&potential, dx, 1.0, 1.0);
-    let dt = 0.025;
     let propagator = time_evolution_operator(&hamiltonian, dt, 1.0);
-
-    // Verify matrix unitarity ||U^H U - I||_F < 1e-6
-    let u_dag_u = propagator.matrix.adjoint() * &propagator.matrix;
-    let identity = DMatrix::<Complex<f64>>::identity(n, n);
-    let frob_err = (u_dag_u - identity).norm();
+    let frob_err = (propagator.matrix.adjoint() * &propagator.matrix
+        - DMatrix::<Complex<f64>>::identity(n, n))
+    .norm();
     assert!(
         frob_err < 1e-6,
         "Propagator U(dt) must be unitary within 1e-6, got {frob_err}"
@@ -147,22 +155,32 @@ fn test_double_barrier_quantum_sculpt_unitarity_transmission_and_zero_allocation
 
     let mut lbm = LatticeBoltzmannD2Q9::<BgkCollision>::new(48, 24, 0.62);
     lbm.set_inlet(0, 0, 48, 24, 0.07, 0.0);
-    let airfoil = Naca4Airfoil::from_code(2412, 12.0, 15.0, 12.0, 8.0);
-    stamp_naca4_airfoil(&mut lbm, &airfoil);
+    stamp_naca4_airfoil(
+        &mut lbm,
+        &Naca4Airfoil::from_code(2412, 12.0, 15.0, 12.0, 8.0),
+    );
     let mut vort = vec![0.0; 48 * 24];
 
-    let ((norm_sq, trans_prob, aero), metrics) = VerifiedEngine::run_verified(|| {
+    let extreme_pot = extreme_hill_well_potential(&x_axis);
+    let mut extreme_ham = construct_1d_hamiltonian(&extreme_pot, dx, 1.0, 1.0);
+    let extreme_prop = time_evolution_operator(&extreme_ham, dt, 1.0);
+    let mut extreme_psi = gaussian_wavepacket(&x_axis, -2.2, 4.2, 0.45);
+
+    let ((norm_sq, trans_prob, extreme_norm, aero), metrics) = VerifiedEngine::run_verified(|| {
         construct_1d_hamiltonian_into(&potential, dx, 1.0, 1.0, &mut hamiltonian);
+        construct_1d_hamiltonian_into(&extreme_pot, dx, 1.0, 1.0, &mut extreme_ham);
         for _ in 0..90 {
             evolve_state_in_place(&mut psi, &propagator, &mut scratch);
+            evolve_state_in_place(&mut extreme_psi, &extreme_prop, &mut scratch);
         }
         let norm = state_norm_squared(&psi);
+        let ext_norm = state_norm_squared(&extreme_psi);
         let trans = transmission_probability(&psi, split_idx);
 
         advance_wind_tunnel_step(&mut lbm, 0.07);
         compute_vorticity_into(&lbm, &mut vort);
         let aero_coeffs = compute_aerodynamic_coefficients(&lbm, 0.07, 12.0, 2);
-        (norm, trans, aero_coeffs)
+        (norm, trans, ext_norm, aero_coeffs)
     });
 
     assert!(
@@ -170,8 +188,8 @@ fn test_double_barrier_quantum_sculpt_unitarity_transmission_and_zero_allocation
         "VerifiedEngine::run_verified enforces 0 heap allocations and records verified calls"
     );
     assert!(
-        (norm_sq - 1.0).abs() < 1e-6,
-        "Wavefunction norm ||psi||^2 must stay unitary within 1e-6, got {norm_sq}"
+        (norm_sq - 1.0).abs() < 1e-6 && (extreme_norm - 1.0).abs() < 1e-6,
+        "Wavefunction norms ||psi||^2 must stay unitary within 1e-6 across [-500, 500] potentials ({norm_sq}, {extreme_norm})"
     );
     assert!(
         trans_prob > 1e-4 && trans_prob < 0.999,
