@@ -18,6 +18,8 @@ use std::hash::{Hash, Hasher};
 mod state;
 use state::{bind_complex_shader_params, ComplexMappingState};
 
+#[path = "complex_mapping/cache.rs"]
+mod cache;
 #[path = "complex_mapping/ui.rs"]
 mod ui;
 
@@ -128,6 +130,7 @@ pub struct ComplexMappingTool {
     pub(crate) shader_preview: ShaderPreviewState,
     pub(crate) domain_texture: Option<egui::TextureHandle>,
     pub(crate) domain_texture_key: Option<u64>,
+    pub(crate) cache: cache::ContourGridCache,
 }
 
 impl Default for ComplexMappingTool {
@@ -158,6 +161,7 @@ impl Default for ComplexMappingTool {
             shader_preview: ShaderPreviewState::default(),
             domain_texture: None,
             domain_texture_key: None,
+            cache: cache::ContourGridCache::default(),
         }
     }
 }
@@ -300,8 +304,26 @@ impl InteractiveTool for ComplexMappingTool {
         emit_domain_coloring_shader(format, &expr, &self.shader_uniform_defaults())
     }
 
+    fn state_revision(&self) -> u64 {
+        self.compute_state_revision()
+    }
+
     fn has_finite_parameters(&self) -> bool {
-        self.to_serializable_state().validate().is_ok()
+        self.grid_min.is_finite()
+            && self.grid_max.is_finite()
+            && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&self.grid_min)
+            && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(&self.grid_max)
+            && self.grid_min < self.grid_max
+            && (2..=crate::presets::MAX_INTERACTIVE_GRID_SIZE).contains(&self.grid_density)
+            && self
+                .inspection_point
+                .iter()
+                .all(|v| v.is_finite() && (COMPLEX_COORD_MIN..=COMPLEX_COORD_MAX).contains(v))
+            && self
+                .math_input
+                .param_slice()
+                .iter()
+                .all(|v| v.is_finite() && (-1.0e4..=1.0e4).contains(v))
     }
 
     fn save_state(&self) -> Option<String> {
@@ -315,7 +337,9 @@ impl InteractiveTool for ComplexMappingTool {
         self.function = s.function;
         self.grid_min = s.grid_min;
         self.grid_max = s.grid_max;
-        self.grid_density = s.grid_density;
+        self.grid_density = s
+            .grid_density
+            .min(crate::presets::MAX_INTERACTIVE_GRID_SIZE);
         self.inspection_point = s.inspection_point;
         self.domain_coloring = s.domain_coloring;
         self.palette = palette;
@@ -344,7 +368,8 @@ impl InteractiveTool for ComplexMappingTool {
         self.high_contrast = crate::app::ThemeMode::from_visuals(parent_ui.visuals())
             == crate::app::ThemeMode::HighContrast;
         self.draw_controls(parent_ui);
-        self.draw_central_canvas(parent_ui);
+        let grid_ok = self.ensure_cached_contours();
+        self.draw_central_canvas(parent_ui, grid_ok);
     }
 }
 
