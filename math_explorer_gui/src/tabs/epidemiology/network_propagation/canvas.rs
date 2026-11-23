@@ -96,7 +96,10 @@ impl NetworkPropagationTool {
 
         self.handle_canvas_pointer(ui.ctx(), &response, center, scale);
         let has_focus = response.has_focus();
-        self.canvas_id = has_focus.then_some(response.id);
+        #[cfg(test)]
+        {
+            self.canvas_id = has_focus.then_some(response.id);
+        }
         if has_focus {
             lock_canvas_arrow_keys(ui, &response);
             self.handle_canvas_keyboard(ui);

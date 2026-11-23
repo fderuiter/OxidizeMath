@@ -82,6 +82,7 @@ pub struct NetworkPropagationTool {
     pub(super) interaction_mode: ContainmentMode,
     pub(super) focused_node: usize,
     pub(super) focused_edge: usize,
+    #[cfg(test)]
     pub(super) canvas_id: Option<egui::Id>,
     pub(super) is_running: bool,
     pub(super) revision: u64,
@@ -103,6 +104,7 @@ impl Default for NetworkPropagationTool {
             interaction_mode: ContainmentMode::VaccinateNode,
             focused_node: 0,
             focused_edge: 0,
+            #[cfg(test)]
             canvas_id: None,
             is_running: false,
             revision: 1,
@@ -269,6 +271,11 @@ impl NetworkPropagationTool {
     pub(crate) fn sim_steps(&self) -> u64 {
         self.sim_steps
     }
+
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.canvas_id
+    }
 }
 
 fn validate_unique_indices(items: &[usize], label: &str) -> Result<Vec<usize>, String> {
@@ -354,9 +361,6 @@ impl InteractiveTool for NetworkPropagationTool {
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::none()
-    }
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.canvas_id
     }
     fn has_finite_parameters(&self) -> bool {
         self.model.beta().is_finite()

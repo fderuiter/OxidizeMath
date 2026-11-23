@@ -34,7 +34,6 @@ impl MriKSpaceTool {
             ui.ctx().request_repaint();
         }
 
-        self.focused_canvas = None;
         self.draw_studio_side_panel(ui);
         self.draw_studio_central_panel(ui);
     }
@@ -351,9 +350,6 @@ impl MriKSpaceTool {
             );
             lock_canvas_arrow_keys(ui, &response);
             paint_canvas_focus_ring(ui, &response);
-            if response.has_focus() {
-                self.focused_canvas = Some(response.id);
-            }
             self.handle_tile_interaction(ui, &response, kind);
             if kind != StudioCanvasKind::KSpace {
                 self.paint_voxel_crosshair(ui, response.rect);
