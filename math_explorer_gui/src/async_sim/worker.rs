@@ -136,6 +136,8 @@ fn handle_worker_custom_mutation<R: SimulationRunner + ?Sized>(
     if let Some(r) = ring.as_mut() {
         if runner.current_step() == 0 && (prev_step > 0 || r.keyframe_count() <= 1) {
             r.reset_and_seed(runner);
+        } else if runner.current_step() > 0 {
+            r.record_mutation_keyframe(runner);
         }
     }
     sync_worker_timeline(ring, state_tx);
@@ -198,7 +200,11 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
             runner.process_command(cmd);
             state_tx.send_status(WorkerStatusEvent::Running).is_ok()
         }
-        SimCommand::ApplyBrush { .. } | SimCommand::ClearObstacles | SimCommand::Custom(_) => {
+        SimCommand::ApplyBrush { .. }
+        | SimCommand::ApplyBrushStroke(_)
+        | SimCommand::SyncSculptState(_)
+        | SimCommand::ClearObstacles
+        | SimCommand::Custom(_) => {
             handle_worker_custom_mutation(cmd, runner, ring, emit_paused_snapshot, state_tx)
         }
     }

@@ -4,14 +4,18 @@ mod atlas;
 mod canvas;
 mod controls;
 mod persistence;
+pub mod sculpt;
 pub mod tool;
+pub use sculpt::UnifiedSimRunner;
 pub use tool::*;
 
 use crate::async_sim::{
-    CheckpointParams, RegimeCartographer, SimCommand, SimulationRunner, StateSnapshot,
+    CheckpointParams, RegimeCartographer, SculptStatePayload, SimCommand, StateSnapshot,
     TimeTravelCheckpoint,
 };
-use crate::framework::{CalloutManager, ChallengeEvaluation, MAX_SYNTHESIZED_PARAMS};
+use crate::framework::{
+    BrushStroke, CalloutManager, ChallengeEvaluation, SpatialBrushKit, MAX_SYNTHESIZED_PARAMS,
+};
 use eframe::egui;
 use math_commons::ast::CompiledExpr;
 use scientific_metadata::theory::ParameterConstraint;
@@ -67,6 +71,12 @@ pub trait UnifiedUiExtension: Send {
     fn on_brush(&mut self, _cx: i32, _cy: i32, _r: i32, _is_obstacle: bool) -> bool {
         true
     }
+
+    fn on_brush_stroke(&mut self, _stroke: &BrushStroke) -> bool {
+        true
+    }
+
+    fn sync_sculpt_payload(&self, _sculpt: &mut SculptStatePayload) {}
 
     fn on_custom_action(&mut self, _action: &str) {}
 
@@ -250,6 +260,61 @@ pub trait UnifiedModel:
         false
     }
 
+    /// Whether this model supports interactive [`SpatialBrushKit`] sculpting and persistence.
+    fn supports_spatial_brush() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    /// Returns the default [`SpatialBrushKit`] configuration for this model.
+    fn default_brush_kit() -> SpatialBrushKit
+    where
+        Self: Sized,
+    {
+        SpatialBrushKit::default()
+    }
+
+    /// Renders optional brush controls and live diagnostic readouts in the left side panel.
+    fn draw_brush_controls(
+        _ui: &mut eframe::egui::Ui,
+        _brush_kit: &mut SpatialBrushKit,
+        _params: &Arc<RwLock<HashMap<String, f64>>>,
+        _sculpt_state: &Arc<RwLock<SculptStatePayload>>,
+        _snapshot: Option<&StateSnapshot>,
+    ) -> Vec<SimCommand>
+    where
+        Self: Sized,
+    {
+        Vec::new()
+    }
+
+    /// Updates UI-side `sculpt_state` synchronously when a `BrushStroke` is applied so
+    /// `save_state()` immediately reflects sculpted masks/potentials.
+    fn record_ui_brush_stroke(
+        _stroke: &BrushStroke,
+        _params: &HashMap<String, f64>,
+        _formula: Option<&CompiledFormulaPayload>,
+        _sculpt_state: &mut SculptStatePayload,
+    ) where
+        Self: Sized,
+    {
+    }
+
+    /// Restores or exports sculpted state on the worker model instance.
+    fn apply_sculpt_payload(
+        &mut self,
+        _payload: &SculptStatePayload,
+        _params: &HashMap<String, f64>,
+    ) {
+    }
+
+    /// Exports current worker model sculpt state into `payload`.
+    fn export_sculpt_payload(&self, _params: &HashMap<String, f64>) -> SculptStatePayload {
+        SculptStatePayload::default()
+    }
+
     /// Allow the model to draw custom visualization in the central panel.
     /// Return true if custom rendering was performed.
     fn custom_central_panel(_ui: &mut eframe::egui::Ui, _snapshot: Option<&StateSnapshot>) -> bool
@@ -259,9 +324,20 @@ pub trait UnifiedModel:
         false
     }
 
-    /// Evaluate a fast scalar observable `(metric_label, value)` from `params`
-    /// for parameter sensitivity analysis. Returns `None` when no fast scalar
-    /// observable is available on the UI thread.
+    /// Allow the model to draw custom visualization with [`SpatialBrushKit`] sampling,
+    /// returning `(handled, emitted_strokes)`.
+    fn custom_central_panel_with_brush(
+        ui: &mut eframe::egui::Ui,
+        snapshot: Option<&StateSnapshot>,
+        _brush_kit: &mut SpatialBrushKit,
+    ) -> (bool, Vec<BrushStroke>)
+    where
+        Self: Sized,
+    {
+        (Self::custom_central_panel(ui, snapshot), Vec::new())
+    }
+
+    /// Evaluate a fast scalar observable `(metric_label, value)` from `params` for sensitivity analysis.
     fn evaluate_observable(_params: &HashMap<String, f64>) -> Option<(&'static str, f64)>
     where
         Self: Sized,
@@ -329,138 +405,5 @@ pub trait UnifiedModel:
         Self: Sized,
     {
         None
-    }
-}
-
-#[allow(missing_docs)]
-pub struct UnifiedSimRunner<M: UnifiedModel> {
-    model: M,
-    params: Arc<RwLock<HashMap<String, f64>>>,
-    formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
-    applied_formula_rev: Option<u64>,
-    steps_per_frame: usize,
-}
-
-impl<M: UnifiedModel> UnifiedSimRunner<M> {
-    #[allow(missing_docs)]
-    pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
-        Self::with_formula(params, Arc::new(RwLock::new(None)))
-    }
-
-    /// Creates a runner sharing both `params` and an optional [`CompiledFormulaPayload`] slot.
-    pub fn with_formula(
-        params: Arc<RwLock<HashMap<String, f64>>>,
-        formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
-    ) -> Self {
-        let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
-        let mut runner = Self {
-            model: M::new(&initial_params),
-            params,
-            formula,
-            applied_formula_rev: None,
-            steps_per_frame: 5,
-        };
-        runner.sync_formula(&initial_params);
-        runner
-    }
-
-    fn sync_formula_fields(
-        model: &mut M,
-        formula: &RwLock<Option<CompiledFormulaPayload>>,
-        applied_formula_rev: &mut Option<u64>,
-        current_params: &HashMap<String, f64>,
-    ) {
-        let guard = formula.read().unwrap_or_else(|e| e.into_inner());
-        let next_rev = guard.as_ref().map(|p| p.revision);
-        if next_rev != *applied_formula_rev {
-            model.apply_compiled_formula(guard.as_ref(), current_params);
-            *applied_formula_rev = next_rev;
-        }
-    }
-
-    fn sync_formula(&mut self, current_params: &HashMap<String, f64>) {
-        Self::sync_formula_fields(
-            &mut self.model,
-            &self.formula,
-            &mut self.applied_formula_rev,
-            current_params,
-        );
-    }
-}
-
-impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
-    fn process_command(&mut self, cmd: SimCommand) {
-        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
-        match cmd {
-            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
-            SimCommand::Reset => {
-                self.model.reset_model(&guard);
-                self.applied_formula_rev = None;
-                Self::sync_formula_fields(
-                    &mut self.model,
-                    &self.formula,
-                    &mut self.applied_formula_rev,
-                    &guard,
-                );
-            }
-            _ => self.model.process_command(cmd, &guard),
-        }
-    }
-
-    fn step(&mut self) {
-        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
-        Self::sync_formula_fields(
-            &mut self.model,
-            &self.formula,
-            &mut self.applied_formula_rev,
-            &guard,
-        );
-        self.model.step(&guard);
-    }
-
-    fn get_snapshot(&self) -> StateSnapshot {
-        self.model.get_snapshot()
-    }
-
-    fn get_steps_per_frame(&self) -> usize {
-        self.steps_per_frame
-    }
-
-    fn is_finite_state(&self) -> bool {
-        self.model.is_finite_state()
-    }
-
-    fn diagnostic_report(&self) -> Option<crate::framework::recovery::DiagnosticReport> {
-        self.model.diagnostic_report().cloned()
-    }
-
-    fn checkpoint_stride(&self) -> Option<usize> {
-        self.model.checkpoint_stride()
-    }
-
-    fn current_step(&self) -> usize {
-        self.model.current_step()
-    }
-
-    fn capture_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
-        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
-        self.model.capture_checkpoint(&guard)
-    }
-
-    fn capture_active_params(&self) -> Option<CheckpointParams> {
-        let guard = self.params.read().unwrap_or_else(|e| e.into_inner());
-        self.model.capture_active_params(&guard)
-    }
-
-    fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
-        self.model.restore_checkpoint(checkpoint);
-    }
-
-    fn rebuild_history(&mut self, front: &[TimeTravelCheckpoint], back: &[TimeTravelCheckpoint]) {
-        self.model.rebuild_history(front, back);
-    }
-
-    fn replay_step(&mut self, params: &CheckpointParams) {
-        self.model.replay_step(params);
     }
 }

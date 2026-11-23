@@ -388,7 +388,10 @@ impl<'a> PlaybackTransport<'a> {
                 return Some(PlaybackAction::StepBack);
             }
             if let Some(meta) = self.timeline {
-                if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::OpenBracket)) {
+                if super::is_pane_activation_shortcut_allowed(ui)
+                    && ui
+                        .input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::OpenBracket))
+                {
                     return Some(PlaybackAction::ScrubTo(meta.previous_keyframe_step()));
                 }
             }

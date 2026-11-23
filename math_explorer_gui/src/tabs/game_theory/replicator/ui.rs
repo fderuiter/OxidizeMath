@@ -4,7 +4,7 @@ use super::ReplicatorDynamicsTool;
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
-use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints, VLine};
+use egui_plot::{Bar, BarChart, Legend, Line, LineStyle, Plot, PlotPoints, VLine};
 
 impl ReplicatorDynamicsTool {
     fn show_payoff_grid(&mut self, ui: &mut egui::Ui) {
@@ -101,11 +101,34 @@ impl ReplicatorDynamicsTool {
                 self.load_preset_symbolic_hawk_dove();
             }
             if ui
+                .button("🔒 Prisoner's Dilemma")
+                .accessible_hover_text(
+                    "Load Prisoner's Dilemma where Defection lowers mean fitness",
+                )
+                .clicked()
+            {
+                self.load_preset_prisoners_dilemma();
+            }
+            if ui
+                .button("🦌 Stag Hunt")
+                .accessible_hover_text("Load Stag Hunt bistable coordination game")
+                .clicked()
+            {
+                self.load_preset_stag_hunt();
+            }
+            if ui
                 .button("✂️ RPS")
-                .accessible_hover_text("Load Rock-Paper-Scissors preset payoff matrix")
+                .accessible_hover_text("Load neutral Rock-Paper-Scissors payoff matrix")
                 .clicked()
             {
                 self.load_preset_rps();
+            }
+            if ui
+                .button("🌀 Spiral RPS")
+                .accessible_hover_text("Load damped spiral Rock-Paper-Scissors attractor")
+                .clicked()
+            {
+                self.load_preset_spiral_rps();
             }
         });
     }
@@ -166,7 +189,8 @@ impl ReplicatorDynamicsTool {
         }
     }
 
-    pub(super) fn show_trajectory_plot(&self, ui: &mut egui::Ui) {
+    pub(super) fn show_trajectory_plot(&mut self, ui: &mut egui::Ui) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let text_color = ui.visuals().text_color();
         Plot::new("replicator_plot")
             .legend(Legend::default())
@@ -188,9 +212,19 @@ impl ReplicatorDynamicsTool {
                         .get(i)
                         .cloned()
                         .unwrap_or_else(|| format!("Strategy {i}"));
-                    plot_ui.line(Line::new(name, points));
+                    plot_ui.line(Line::new(name, points).color(palette.series_color(i)));
+                }
+                if !self.mean_fitness_series.is_empty() {
+                    let fit_pts: PlotPoints = self.mean_fitness_series.iter().copied().collect();
+                    plot_ui.line(
+                        Line::new("Mean Fitness (xᵀAx)", fit_pts)
+                            .color(palette.series_color(n_strategies + 1))
+                            .style(LineStyle::Dashed { length: 8.0 })
+                            .width(2.0_f32),
+                    );
                 }
                 plot_ui.vline(VLine::new("Current Time", self.playback_time).color(text_color));
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 
@@ -271,8 +305,12 @@ impl ReplicatorDynamicsTool {
                 plot_ui.bar_chart(BarChart::new("Distribution", bars));
             });
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.strong(format!("Time: {current_time:.2}"));
+            if let Some(&[_, fit]) = self.mean_fitness_series.get(idx) {
+                ui.separator();
+                ui.label(format!("xᵀAx: {fit:.3}"));
+            }
             ui.separator();
             for (i, val) in current_state.iter().enumerate() {
                 let name = self

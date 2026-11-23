@@ -192,73 +192,50 @@ fn drag_usize_row(
 }
 
 fn render_respiratory_and_gating_controls(state: &mut RadarGatingState, ui: &mut egui::Ui) -> bool {
-    ui.label(RichText::new("Respiratory & Kalman Gating").strong());
-    let mut changed = render_respiratory_motion_controls(state, ui);
-    ui.horizontal(|ui| {
-        ui.label("Gate Threshold (mm):");
-        changed |= ui
-            .add(bounded_drag_value(
-                &mut state.gating_threshold_mm,
-                -12.0..=12.0,
-                0.2,
-            ))
-            .changed();
-    });
-    ui.horizontal(|ui| {
-        ui.label("Hysteresis (mm):");
-        changed |= ui
-            .add(bounded_drag_value(
-                &mut state.gating_hysteresis_mm,
-                0.1..=5.0,
-                0.1,
-            ))
-            .changed();
-    });
-    ui.horizontal(|ui| {
-        ui.label("LINAC Latency (ms):");
-        changed |= ui
-            .add(bounded_drag_value(
-                &mut state.system_latency_ms,
-                0.0..=250.0,
-                5.0,
-            ))
-            .changed();
-    });
-    ui.horizontal(|ui| {
-        ui.label("Static Clutter:");
-        changed |= ui
-            .add(bounded_drag_value(
-                &mut state.static_clutter_gain,
-                0.0..=3.0,
-                0.05,
-            ))
-            .changed();
-    });
-    changed
-}
-
-fn render_respiratory_motion_controls(state: &mut RadarGatingState, ui: &mut egui::Ui) -> bool {
     let mut changed = false;
-    ui.horizontal(|ui| {
-        ui.label("Breath Amp (mm):");
-        changed |= ui
-            .add(bounded_drag_value(
-                &mut state.breath_amplitude_mm,
-                1.0..=15.0,
-                0.25,
-            ))
-            .changed();
-    });
-    ui.horizontal(|ui| {
-        ui.label("Breath Period (s):");
-        changed |= ui
-            .add(bounded_drag_value(
-                &mut state.breath_period_s,
-                1.5..=12.0,
-                0.2,
-            ))
-            .changed();
-    });
+    ui.label(RichText::new("Respiratory & Kalman Gating").strong());
+    changed |= drag_f64_row(
+        ui,
+        "Breath Amp (mm):",
+        &mut state.breath_amplitude_mm,
+        1.0..=15.0,
+        0.25,
+    );
+    changed |= drag_f64_row(
+        ui,
+        "Breath Period (s):",
+        &mut state.breath_period_s,
+        1.5..=12.0,
+        0.2,
+    );
+    changed |= drag_f64_row(
+        ui,
+        "Gate Threshold (mm):",
+        &mut state.gating_threshold_mm,
+        -12.0..=12.0,
+        0.2,
+    );
+    changed |= drag_f64_row(
+        ui,
+        "Hysteresis (mm):",
+        &mut state.gating_hysteresis_mm,
+        0.1..=5.0,
+        0.1,
+    );
+    changed |= drag_f64_row(
+        ui,
+        "LINAC Latency (ms):",
+        &mut state.system_latency_ms,
+        0.0..=250.0,
+        5.0,
+    );
+    changed |= drag_f64_row(
+        ui,
+        "Static Clutter:",
+        &mut state.static_clutter_gain,
+        0.0..=3.0,
+        0.05,
+    );
     changed
 }
 

@@ -1,12 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::runner::MorphoSnapshotData;
+use super::sculpt::{build_maze_rle, draw_morpho_sculpt_controls, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::SimCommand;
 use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
-use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    BrushMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
+};
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui;
 use eframe::egui::ColorImage;
@@ -37,18 +41,21 @@ impl MorphogenesisTool {
             crate::app::ThemeMode::from_visuals(&ctx.style().visuals)
                 == crate::app::ThemeMode::HighContrast
         });
-        if let Some(u_data) = snapshot
+        if let Some(mdata) = snapshot
             .structured_data
             .as_ref()
-            .and_then(|d| d.downcast_ref::<Vec<f64>>())
-            .filter(|u| u.len() == num_pixels)
+            .and_then(|d| d.downcast_ref::<MorphoSnapshotData>())
+            .filter(|m| m.u_data.len() == num_pixels)
         {
-            let recolored = Self::plot_concentration_with_contrast(
-                u_data,
+            let mut recolored = Self::plot_concentration_with_contrast(
+                &mdata.u_data,
                 snapshot.width,
                 snapshot.height,
                 high_contrast,
             );
+            if !mdata.mask_roles.is_empty() {
+                overlay_cell_mask_colors(&mut recolored, &mdata.mask_roles, high_contrast);
+            }
             self.pixels.copy_from_slice(&recolored.pixels);
         } else if snapshot_pixels.len() == num_pixels {
             self.pixels.copy_from_slice(&snapshot_pixels);
@@ -222,11 +229,11 @@ impl MorphogenesisTool {
             }
         });
         if let Some(snapshot) = self.worker.latest_snapshot() {
-            if let Some(u_data) = snapshot
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<Vec<f64>>())
-            {
+            if let Some(u_data) = snapshot.structured_data.as_ref().and_then(|d| {
+                d.downcast_ref::<MorphoSnapshotData>()
+                    .map(|m| m.u_data.as_slice())
+                    .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+            }) {
                 let splat_count =
                     crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
                         u_data,
@@ -267,6 +274,40 @@ impl MorphogenesisTool {
         }
     }
 
+    fn draw_playback_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let Some(action) = PlaybackTransport::from_worker_state(
+            "morphogenesis_transport",
+            "Morphogenesis",
+            self.worker.state(),
+        )
+        .timeline(self.worker.timeline_metadata())
+        .can_reset(true)
+        .show(ui) else {
+            return;
+        };
+        match action {
+            PlaybackAction::Play => {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            PlaybackAction::Pause => {
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+            PlaybackAction::Step => {
+                let _ = self.worker.send_command(SimCommand::Step(1));
+            }
+            PlaybackAction::StepBack => {
+                let _ = self.worker.send_command(SimCommand::StepBack(1));
+            }
+            PlaybackAction::ScrubTo(step) => {
+                let _ = self.worker.send_command(SimCommand::SeekStep(step));
+            }
+            PlaybackAction::Reset => {
+                self.reset();
+                ctx.request_repaint();
+            }
+        }
+    }
+
     pub(crate) fn draw_controls(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(ui, "morphogenesis_controls");
@@ -279,54 +320,48 @@ impl MorphogenesisTool {
             ui.separator();
             self.draw_parameter_sliders(ui);
             ui.separator();
+            self.draw_playback_transport(ui, &ctx);
 
-            if let Some(action) = PlaybackTransport::from_worker_state(
-                "morphogenesis_transport",
-                "Morphogenesis",
-                self.worker.state(),
-            )
-            .timeline(self.worker.timeline_metadata())
-            .can_reset(true)
-            .show(ui)
-            {
-                match action {
-                    PlaybackAction::Play => {
-                        let _ = self.worker.send_command(SimCommand::Start);
-                    }
-                    PlaybackAction::Pause => {
-                        let _ = self.worker.send_command(SimCommand::Pause);
-                    }
-                    PlaybackAction::Step => {
-                        let _ = self.worker.send_command(SimCommand::Step(1));
-                    }
-                    PlaybackAction::StepBack => {
-                        let _ = self.worker.send_command(SimCommand::StepBack(1));
-                    }
-                    PlaybackAction::ScrubTo(step) => {
-                        let _ = self.worker.send_command(SimCommand::SeekStep(step));
-                    }
-                    PlaybackAction::Reset => {
-                        self.reset();
+            if let Some(cmd) = draw_morpho_sculpt_controls(ui, &mut self.brush_kit) {
+                match cmd {
+                    "stamp_maze" => {
+                        *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
+                            build_maze_rle(self.width, self.height);
+                        let _ = self
+                            .worker
+                            .send_command(SimCommand::Custom("stamp_maze".to_string()));
+                        self.dirty = true;
                         ctx.request_repaint();
                     }
+                    "clear_mask" => {
+                        self.mask_rle
+                            .write()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .clear();
+                        let _ = self.worker.send_command(SimCommand::ClearObstacles);
+                        self.dirty = true;
+                        ctx.request_repaint();
+                    }
+                    _ => {}
                 }
             }
-
             self.draw_presets(ui);
         });
     }
 
-    fn draw_turing_field_plot(&self, ui: &mut egui::Ui) {
-        if let Some(texture) = &self.texture {
+    fn draw_turing_field_plot(&mut self, ui: &mut egui::Ui) {
+        if let Some(texture) = self.texture.clone() {
             let w = self.width as f32;
             let h = self.height as f32;
-            Plot::new("morphogenesis_plot")
+            let allow_pan = !self.brush_kit.is_sculpting();
+            let mut strokes = Vec::new();
+            let plot_resp = Plot::new("morphogenesis_plot")
                 .data_aspect(1.0)
                 .view_aspect(1.0)
                 .show_grid(false)
                 .show_axes([false, false])
-                .allow_drag(true)
-                .allow_zoom(true)
+                .allow_drag(allow_pan)
+                .allow_zoom(allow_pan)
                 .show(ui, |plot_ui| {
                     plot_ui.image(PlotImage::new(
                         "morphogenesis_image",
@@ -334,7 +369,17 @@ impl MorphogenesisTool {
                         PlotPoint::new(f64::from(w) / 2.0, f64::from(h) / 2.0),
                         [w, h],
                     ));
+                    strokes = self.brush_kit.sample_plot(
+                        plot_ui,
+                        [0.5, 0.5],
+                        [f64::from(w) - 0.5, f64::from(h) - 0.5],
+                        Some(BrushMode::Erase),
+                    );
                 });
+            for stroke in strokes {
+                let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
+                self.on_brush(&ic);
+            }
         } else {
             render_empty_plot_guidance(
                 ui,

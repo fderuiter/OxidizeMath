@@ -249,15 +249,15 @@ fn paint_torus_backdrop(
         egui::FontId::proportional(13.0_f32),
         ui.visuals().text_color(),
     );
-    paint_identity_badge(ui, painter, vp, model, palette);
+    paint_infinity_badge(painter, vp, model, palette, ui.visuals().text_color());
 }
 
-fn paint_identity_badge(
-    ui: &egui::Ui,
+fn paint_infinity_badge(
     painter: &egui::Painter,
     vp: &TorusViewport,
     model: &TorusCanvasModel<'_>,
     palette: &SemanticPalette,
+    text_color: Color32,
 ) {
     let inf_stroke = if model.point_p.is_infinity() || model.point_q.is_infinity() {
         palette.accent
@@ -276,7 +276,7 @@ fn paint_identity_badge(
         egui::Align2::CENTER_CENTER,
         "Identity O",
         egui::FontId::proportional(11.5_f32),
-        ui.visuals().text_color(),
+        text_color,
     );
 }
 

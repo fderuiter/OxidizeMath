@@ -1,10 +1,11 @@
 use super::*;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimRunner};
+use crate::framework::{BrushMode, BrushStroke};
 use crate::presets::MorphogenesisKineticsMode;
 use crate::tabs::chaos::attractors::{
     default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
 };
-use crate::tabs::morphogenesis::runner::MorphogenesisKineticsState;
+use crate::tabs::morphogenesis::runner::{MorphoSnapshotData, MorphogenesisKineticsState};
 use crate::tabs::morphogenesis::{
     MorphogenesisKineticsRunner, MorphogenesisSharedParams, MorphogenesisTab, MorphogenesisTool,
 };
@@ -13,6 +14,7 @@ use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 use nalgebra::Vector3;
 use std::collections::HashMap;
 use std::sync::RwLock;
+use verified_engine::engine::VerifiedEngine;
 
 fn make_morpho_runner(
     width: usize,
@@ -57,7 +59,8 @@ fn make_gray_scott_runner(
         f: 0.0367,
         k: 0.0649,
     }));
-    let runner = MorphogenesisTool::create_kinetics_runner(&params, &ks, width, height);
+    let mask_rle = Arc::new(RwLock::new(Vec::new()));
+    let runner = MorphogenesisTool::create_kinetics_runner(&params, &ks, &mask_rle, width, height);
     (runner, ks)
 }
 
@@ -382,7 +385,7 @@ fn test_zero_allocation_substep_replay_under_verified_engine() {
     hh_ring.reset_and_seed(&hh);
     step_with_ring(&mut hh, &mut hh_ring, 10);
 
-    let (sought_step, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+    let (sought_step, _) = VerifiedEngine::run_verified(|| {
         hh_ring.seek_to_step(&mut hh, 5);
         morpho_ring.seek_to_step(&mut morpho, 31)
     });
@@ -445,9 +448,7 @@ fn test_morphogenesis_gray_scott_k16_replay_substeps_and_zero_alloc() {
         direct_27.step_once();
     }
 
-    let (sought, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
-        ring.seek_to_step(&mut runner, 27)
-    });
+    let (sought, _) = VerifiedEngine::run_verified(|| ring.seek_to_step(&mut runner, 27));
     assert_eq!(sought, 27);
     assert_slice_bits_eq(runner.system.u(), direct_27.system.u(), "GrayScott u(27)");
     assert_slice_bits_eq(runner.system.v(), direct_27.system.v(), "GrayScott v(27)");
@@ -455,7 +456,37 @@ fn test_morphogenesis_gray_scott_k16_replay_substeps_and_zero_alloc() {
     let v_snap = snap
         .structured_data
         .as_deref()
-        .and_then(|any| any.downcast_ref::<Vec<f64>>())
-        .expect("structured_data must hold Gray-Scott v field");
-    assert_slice_bits_eq(v_snap, direct_27.system.v(), "GrayScott snapshot v(27)");
+        .and_then(|any| any.downcast_ref::<MorphoSnapshotData>())
+        .expect("structured_data must hold MorphoSnapshotData");
+    assert_slice_bits_eq(&v_snap.u_data, direct_27.system.v(), "GrayScott snap v(27)");
+}
+
+#[test]
+fn test_morphogenesis_masked_sculpt_k16_replay_and_zero_alloc() {
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (mut runner, _) = make_morpho_runner(20, 20, 0.002, 50.0, 2e-4);
+    let mut ring = CheckpointRing::new(16);
+    ring.reset_and_seed(&runner);
+    step_with_ring(&mut runner, &mut ring, 10);
+    let stroke = BrushStroke {
+        mode: BrushMode::ZeroFluxWall,
+        start: [6.0, 6.0],
+        end: [12.0, 12.0],
+        radius: 2.0,
+        drag_vector: [6.0, 6.0],
+    };
+    runner.process_command(SimCommand::ApplyBrushStroke(stroke));
+    ring.record_mutation_keyframe(&runner);
+    step_with_ring(&mut runner, &mut ring, 14);
+    let roles_at_24 = runner.system.diffusion.mask.roles().to_vec();
+    let u_at_24 = runner.system.u().to_vec();
+    let (sought_before, _) = VerifiedEngine::run_verified(|| ring.seek_to_step(&mut runner, 6));
+    assert_eq!(sought_before, 6);
+    assert!(!runner.system.diffusion.mask.has_active_cells());
+    let (sought_after, _) = VerifiedEngine::run_verified(|| ring.seek_to_step(&mut runner, 24));
+    assert_eq!(sought_after, 24);
+    assert_eq!(runner.system.diffusion.mask.roles(), roles_at_24.as_slice());
+    assert_slice_bits_eq(runner.system.u(), &u_at_24, "Masked Morpho u(24)");
 }

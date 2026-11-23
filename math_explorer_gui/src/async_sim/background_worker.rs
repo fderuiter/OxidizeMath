@@ -7,7 +7,6 @@ use super::{
 
 /// Generic background worker wrapper struct that manages offloaded simulation runners
 /// and provides thread-safe channel communication between the UI and compute threads.
-#[allow(missing_docs)]
 pub struct BackgroundWorker<T: SimulationRunner> {
     controller: SimulationController,
     _marker: std::marker::PhantomData<fn() -> T>,
@@ -15,7 +14,6 @@ pub struct BackgroundWorker<T: SimulationRunner> {
 
 impl<T: SimulationRunner> BackgroundWorker<T> {
     /// Spawns a background worker executing the given simulation runner.
-    #[allow(missing_docs)]
     pub fn new(runner: T) -> Self {
         Self {
             controller: SimulationController::new(runner),
@@ -23,34 +21,33 @@ impl<T: SimulationRunner> BackgroundWorker<T> {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Returns the current lifecycle state of the background simulation worker.
     pub fn state(&self) -> SimWorkerState {
         self.controller.state()
     }
 
+    /// Overrides the cached worker state for deterministic state-machine unit tests.
     #[cfg(test)]
-    #[allow(missing_docs)]
     pub fn set_state_for_test(&mut self, state: SimWorkerState) {
         self.controller.set_state_for_test(state);
     }
 
-    #[allow(missing_docs)]
+    /// Returns `true` when the worker is actively advancing frames.
     pub fn is_running(&self) -> bool {
         self.controller.is_running()
     }
 
-    #[allow(missing_docs)]
+    /// Returns the latest scrubbable timeline bounds when checkpointing is enabled.
     pub fn timeline_metadata(&self) -> Option<TimelineMetadata> {
         self.controller.timeline_metadata()
     }
 
-    #[allow(missing_docs)]
+    /// Enqueues a [`SimCommand`] if valid for the current worker state.
     pub fn send_command(&mut self, cmd: SimCommand) -> Result<(), SimCommandError> {
         self.controller.send_command(cmd)
     }
 
     /// Resets the worker in place or respawns a fresh runner when disconnected.
-    #[allow(missing_docs)]
     pub fn reset_or_respawn<F>(&mut self, make_runner: F) -> bool
     where
         F: FnOnce() -> T,
@@ -58,27 +55,27 @@ impl<T: SimulationRunner> BackgroundWorker<T> {
         self.controller.reset_or_respawn(make_runner)
     }
 
-    #[allow(missing_docs)]
+    /// Returns the most recently received [`StateSnapshot`], if any.
     pub fn latest_snapshot(&self) -> Option<&StateSnapshot> {
         self.controller.latest_snapshot()
     }
 
-    #[allow(missing_docs)]
+    /// Polls pending worker status and snapshot updates, returning a newly arrived snapshot.
     pub fn update(&mut self) -> Option<&StateSnapshot> {
         self.controller.update()
     }
 
-    #[allow(missing_docs)]
+    /// Borrows the underlying untyped [`SimulationController`].
     pub fn controller(&self) -> &SimulationController {
         &self.controller
     }
 
-    #[allow(missing_docs)]
+    /// Mutably borrows the underlying untyped [`SimulationController`].
     pub fn controller_mut(&mut self) -> &mut SimulationController {
         &mut self.controller
     }
 
-    #[allow(missing_docs)]
+    /// Unwraps this typed handle into its inner [`SimulationController`].
     pub fn into_controller(self) -> SimulationController {
         self.controller
     }

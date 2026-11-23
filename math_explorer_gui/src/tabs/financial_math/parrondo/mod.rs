@@ -1,6 +1,5 @@
 //! Parrondo's Paradox interactive Markov ratchet laboratory for `FinancialMathTab`.
 
-mod export;
 mod plots;
 mod state;
 #[cfg(test)]

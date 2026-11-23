@@ -48,7 +48,7 @@ pub enum CheckpointPayload {
         /// Number of active scalar entries in `0..=MAX_INLINE_CHECKPOINT_SCALARS`.
         len: usize,
     },
-    /// Two-component 2D spatial concentration grid (`u`, `v`) with exact slice capacity.
+    /// Two-component 2D spatial concentration grid (`u`, `v`) with optional cell-role mask.
     DualField2D {
         /// Grid width in cells.
         width: usize,
@@ -58,6 +58,8 @@ pub enum CheckpointPayload {
         u: Box<[f64]>,
         /// Secondary concentration field `v`.
         v: Box<[f64]>,
+        /// Optional row-major `ReactionCellRole` byte mask when active cells exist.
+        mask: Option<Box<[u8]>>,
     },
 }
 
@@ -85,8 +87,10 @@ impl CheckpointPayload {
     pub fn heap_bytes(&self) -> usize {
         match self {
             Self::Scalars { .. } => 0,
-            Self::DualField2D { u, v, .. } => {
-                std::mem::size_of_val(&**u) + std::mem::size_of_val(&**v)
+            Self::DualField2D { u, v, mask, .. } => {
+                std::mem::size_of_val(&**u)
+                    + std::mem::size_of_val(&**v)
+                    + mask.as_deref().map_or(0, std::mem::size_of_val)
             }
         }
     }
@@ -329,6 +333,30 @@ impl CheckpointRing {
                 self.push_keyframe(cp);
             }
         }
+    }
+
+    /// Captures or coalesces an in-place keyframe at `runner.current_step()` after an interactive
+    /// spatial brush or custom state mutation so subsequent sub-step replay preserves the edit.
+    pub fn record_mutation_keyframe<R: SimulationRunner + ?Sized>(&mut self, runner: &R) {
+        self.prepare_forward_advance();
+        self.current_step = runner.current_step();
+        if self.current_step > self.max_reached_step {
+            self.max_reached_step = self.current_step;
+        }
+        self.record_active_params(runner);
+        let Some(cp) = runner.capture_checkpoint() else {
+            return;
+        };
+        if self
+            .keyframes
+            .back()
+            .is_some_and(|back| back.step == cp.step)
+        {
+            if let Some(removed) = self.keyframes.pop_back() {
+                self.keyframe_bytes = self.keyframe_bytes.saturating_sub(removed.byte_size());
+            }
+        }
+        self.push_keyframe(cp);
     }
 
     /// Restores the newest keyframe `<= target_step` and deterministically replays sub-steps to `target_step`
