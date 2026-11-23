@@ -11,10 +11,36 @@ use nalgebra::Vector3;
 use math_explorer::biology::morphogenesis::{ReactionKinetics, SchnakenbergKinetics};
 
 use crate::audio::frame::{
-    clamp_freq_hz, HarmonicWeights, SonificationFrame, VoiceSpec, WaveformPreset, NUM_HARMONICS,
+    clamp_freq_hz, HarmonicWeights, SonificationFrame, VoiceSpec, WaveformPreset, MAX_VOICES,
+    NUM_HARMONICS,
 };
 use crate::tabs::mri::kspace_types::ISOCHROMAT_COUNT;
 use crate::tabs::mri::pulse::{MriPulseMode, RfPulseConfig};
+
+/// Stack-only input bundle for 8-voice 2D MRI k-space sub-voxel and Turing phantom sonification.
+#[derive(Clone, Copy, Debug)]
+pub struct MriKSpaceProbeAudioInput {
+    /// Eight-isochromat sub-voxel spin ensemble at the inspected or active pocket voxel.
+    pub probe_spins: [Vector3<f64>; MAX_VOICES],
+    /// Local proton density $\rho \in [0, 1]$.
+    pub rho: f64,
+    /// Local transverse relaxation time $T_2$ in seconds.
+    pub t2: f64,
+    /// Local static field offset $\Delta B_0$ in Tesla.
+    pub delta_b0: f64,
+    /// Activator-inhibitor concentrations `[u, v]` on Turing phantoms.
+    pub turing_uv: [f64; 2],
+    /// Elapsed simulation time since excitation in seconds.
+    pub current_time: f64,
+    /// Recorded $180^\circ$ refocusing pulse time $\tau$ ($T_E = 2\tau$), if active.
+    pub echo_tau: Option<f64>,
+    /// Active 2D k-space coordinate $(k_x, k_y)$ in cycles/meter.
+    pub k_coord_cycles_per_m: [f64; 2],
+    /// Accumulated spatial readout/phase-encode gradient phase in radians.
+    pub selected_grad_phase_rad: f64,
+    /// Whether an off-resonance `KSpaceRfSpike` stroke fired since the previous frame.
+    pub rf_spike_triggered: bool,
+}
 
 /// Stack-only input bundle for 2D MRI k-space and Turing phantom sonification.
 #[derive(Clone, Copy, Debug)]
@@ -227,13 +253,93 @@ pub fn mri_kspace_frame(input: &MriKSpaceAudioInput) -> SonificationFrame {
     frame.sanitize()
 }
 
+/// Maps an 8-isochromat sub-voxel `probe_spins` ensemble, Turing `(u, v)` tissue kinetics,
+/// readout/phase-encoding gradients, and RF spikes onto all `MAX_VOICES = 8` voices.
+#[must_use]
+pub fn mri_kspace_probe_frame(input: &MriKSpaceProbeAudioInput) -> SonificationFrame {
+    if !input.rho.is_finite()
+        || input.rho <= 1e-5
+        || !input.t2.is_finite()
+        || !input.delta_b0.is_finite()
+        || !input.current_time.is_finite()
+        || !input
+            .probe_spins
+            .iter()
+            .all(|s| s.x.is_finite() && s.y.is_finite() && s.z.is_finite())
+    {
+        return SonificationFrame::silent();
+    }
+    let (net_xy, coherence, dephasing) = ensemble_coherence(&input.probe_spins);
+    let echo_boost = echo_refocus_boost(input.current_time, input.echo_tau);
+    let (harmonics, morph_bright) =
+        turing_tissue_harmonics(input.turing_uv, input.rho, input.t2, coherence);
+    let larmor_df_hz = proton::larmor_frequency(input.delta_b0) / TAU;
+    let (base_hz, k_mag, pan_bias) = probe_carrier_and_pan(input, larmor_df_hz);
+    let step_hz = (1.6 * larmor_df_hz.abs() as f32 + 12.0 * dephasing).clamp(0.0, 120.0);
+    let (grad_fm_hz, grad_fm_idx) = gradient_chirp_fm(k_mag, input.selected_grad_phase_rad);
+    let env = ((net_xy / input.rho.max(0.1)).clamp(0.0, 1.2) as f32 * (0.35 + 0.65 * coherence)
+        + 0.18 * echo_boost)
+        .clamp(0.06, 0.95);
+    let cutoff_hz = clamp_freq_hz(900.0 + 3600.0 * morph_bright * coherence.max(0.25));
+
+    let mut frame = SonificationFrame::silent();
+    frame.waveform = WaveformPreset::FourierWarm;
+    frame.custom_harmonics = Some(harmonics);
+    frame.active_voices = MAX_VOICES as u8;
+    frame.master_gain = (0.24 + 0.64 * env).clamp(0.24, 0.90);
+    for (s, spin) in input.probe_spins.iter().enumerate() {
+        let offset = (s as f32) - 3.5;
+        let iso_xy = (spin.x.hypot(spin.y) / input.rho.max(0.1)).clamp(0.0, 1.1) as f32;
+        frame.voices[s] = VoiceSpec {
+            freq_hz: clamp_freq_hz(base_hz + offset * step_hz),
+            gain: ((0.14 + 0.56 * iso_xy * (0.30 + 0.70 * coherence)) + 0.12 * echo_boost)
+                .clamp(0.06, 0.88),
+            pan: (-0.84 + 0.24 * (s as f32) + pan_bias).clamp(-0.95, 0.95),
+            fm_mod_hz: grad_fm_hz + 14.0 * dephasing,
+            fm_index: (grad_fm_idx + 1.1 * dephasing).clamp(0.05, 5.5),
+            filter_cutoff_hz: cutoff_hz,
+            transient_impulse: match (input.rf_spike_triggered, s) {
+                (true, 1) => 1.0,
+                (true, _) => 0.55,
+                (false, _) => 0.0,
+            },
+        };
+    }
+    frame.sanitize()
+}
+
 #[inline]
-fn ensemble_coherence(spins: &[Vector3<f64>; ISOCHROMAT_COUNT]) -> (f64, f32, f32) {
-    let net_m = (spins[0] + spins[1] + spins[2]) / (ISOCHROMAT_COUNT as f64);
+fn probe_carrier_and_pan(input: &MriKSpaceProbeAudioInput, larmor_df_hz: f64) -> (f32, f64, f32) {
+    let pocket_shift = (6.0 * larmor_df_hz).clamp(-600.0, 600.0) as f32;
+    let [kx, ky] = input.k_coord_cycles_per_m;
+    let grad_shift = if kx.is_finite() && ky.is_finite() {
+        (0.06 * kx + 0.04 * ky).clamp(-140.0, 140.0) as f32
+    } else {
+        0.0
+    };
+    let base_hz = clamp_freq_hz(
+        330.0 + 110.0 * (input.rho.clamp(0.0, 1.0) as f32) + pocket_shift + grad_shift,
+    );
+    let pan_bias = if input.selected_grad_phase_rad.is_finite() {
+        (input.selected_grad_phase_rad.sin() * 0.18).clamp(-0.25, 0.25) as f32
+    } else {
+        0.0
+    };
+    (base_hz, kx.hypot(ky), pan_bias)
+}
+
+#[inline]
+fn ensemble_coherence<const K: usize>(spins: &[Vector3<f64>; K]) -> (f64, f32, f32) {
+    let inv_k = 1.0 / (K.max(1) as f64);
+    let mut sum_m = Vector3::zeros();
+    let mut sum_iso_xy = 0.0_f64;
+    for s in spins {
+        sum_m += *s;
+        sum_iso_xy += s.x.hypot(s.y);
+    }
+    let net_m = sum_m * inv_k;
     let net_xy = net_m.x.hypot(net_m.y);
-    let sum_iso_xy =
-        spins[0].x.hypot(spins[0].y) + spins[1].x.hypot(spins[1].y) + spins[2].x.hypot(spins[2].y);
-    let mean_iso_xy = sum_iso_xy / (ISOCHROMAT_COUNT as f64);
+    let mean_iso_xy = sum_iso_xy * inv_k;
     let coherence = if mean_iso_xy > 1e-6 {
         (net_xy / mean_iso_xy).clamp(0.0, 1.0) as f32
     } else {
@@ -249,8 +355,10 @@ fn rotating_carrier_hz(bz_tesla: f64, detuning_hz: f64) -> f32 {
     clamp_freq_hz(660.0 + b0_shift + detune_shift)
 }
 
+/// Returns true when `t_s` falls inside the excitation or refocusing RF pulse window for `mode`.
 #[inline]
-fn is_rf_pulse_window(mode: MriPulseMode, t_s: f64, cfg: &RfPulseConfig) -> bool {
+#[must_use]
+pub fn is_rf_pulse_window(mode: MriPulseMode, t_s: f64, cfg: &RfPulseConfig) -> bool {
     match mode {
         MriPulseMode::HahnSpinEcho => {
             let half_te = 0.5 * cfg.echo_time_te.max(0.010);

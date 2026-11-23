@@ -60,6 +60,7 @@ mod tests {
         check_tool!(crate::tabs::morphogenesis::physarum::PhysarumTool);
         check_tool!(crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool);
         check_tool!(crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool);
+        check_tool!(crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool);
     }
 
     #[test]
