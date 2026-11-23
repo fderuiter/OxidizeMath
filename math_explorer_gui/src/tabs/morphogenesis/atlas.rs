@@ -1,15 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::MorphogenesisTool;
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
-    RegimeCartographer,
+    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
 };
-use crate::async_sim::{SimCommand, SimWorkerState};
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
 /// Washout variance threshold below which activator grid `u` is treated as spatially uniform.
 pub const WASHOUT_VARIANCE_THRESHOLD: f64 = 1e-8;
@@ -97,7 +93,12 @@ pub fn grid_u_variance(u: &[f64]) -> f64 {
 }
 
 #[inline]
-fn mode_growth_and_euler_amp(jac: [f64; 4], diff: [f64; 2], dt: f64, mu: f64) -> (f64, f64, bool) {
+pub(super) fn mode_growth_and_euler_amp(
+    jac: [f64; 4],
+    diff: [f64; 2],
+    dt: f64,
+    mu: f64,
+) -> (f64, f64, bool) {
     let [fu, fv, gu, gv] = jac;
     let [d_u, d_v] = diff;
     let tr = (fu - mu * d_u) + (gv - mu * d_v);
@@ -319,26 +320,16 @@ impl RegimeCartographer for MorphogenesisCartographer {
 
     fn format_hover_tooltip(&self, p1: f64, p2: f64, cell: AtlasCell) -> String {
         let reg = MorphogenesisRegime::from_u8(cell.regime);
+        let (xk, yk, lbl) = (self.axes.x.key, self.axes.y.key, reg.label());
         if reg == MorphogenesisRegime::EulerCflUnstable {
             format!(
-                "{} = {:.4}, {} = {:.4}\nRegime: {}\nEuler Amplification |G|: {:.3} (> 1.0 unstable)",
-                self.axes.x.key,
-                p1,
-                self.axes.y.key,
-                p2,
-                reg.label(),
+                "{xk} = {p1:.4}, {yk} = {p2:.4}\nRegime: {lbl}\nEuler Amplification |G|: {:.3} (> 1.0 unstable)",
                 cell.primary
             )
         } else {
             format!(
-                "{} = {:.4}, {} = {:.4}\nRegime: {}\nDominant Growth Re(λ): {:+.4} (k² = {:.3})",
-                self.axes.x.key,
-                p1,
-                self.axes.y.key,
-                p2,
-                reg.label(),
-                cell.primary,
-                cell.secondary
+                "{xk} = {p1:.4}, {yk} = {p2:.4}\nRegime: {lbl}\nDominant Growth Re(λ): {:+.4} (k² = {:.3})",
+                cell.primary, cell.secondary
             )
         }
     }
@@ -358,139 +349,5 @@ impl RegimeCartographer for MorphogenesisCartographer {
             )
         })
         .collect()
-    }
-}
-
-impl MorphogenesisTool {
-    pub(crate) fn non_axis_context_sig(&self) -> u64 {
-        let (xk, yk) = self.atlas.axis_keys();
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        for (name, val) in [
-            ("a", p.a),
-            ("b", p.b),
-            ("d_u", p.d_u),
-            ("d_v", p.d_v),
-            ("dt", p.dt),
-        ] {
-            if name != xk && name != yk {
-                name.hash(&mut h);
-                val.to_bits().hash(&mut h);
-            }
-        }
-        h.finish()
-    }
-
-    pub(crate) fn active_axis_values(&self) -> (f64, f64) {
-        let (xk, yk) = self.atlas.axis_keys();
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let get = |k: &str| match k {
-            "a" => p.a,
-            "b" => p.b,
-            "d_u" => p.d_u,
-            "d_v" => p.d_v,
-            "dt" => p.dt,
-            _ => 0.0,
-        };
-        (get(xk), get(yk))
-    }
-
-    /// Returns `true` when the latest activator concentration grid is uniform (`Var(u) < 1e-8`).
-    #[must_use]
-    pub fn is_active_grid_washed_out(&self) -> bool {
-        if let Some(sr) = &self.step_runner {
-            let v = grid_u_variance(sr.system.u());
-            return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
-        }
-        if let Some(snap) = self.worker.latest_snapshot() {
-            let u_slice = snap.structured_data.as_ref().and_then(|d| {
-                d.downcast_ref::<super::runner::MorphoSnapshotData>()
-                    .map(|m| m.u_data.as_slice())
-                    .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
-            });
-            if let Some(u_data) = u_slice {
-                let v = grid_u_variance(u_data);
-                return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
-            }
-        }
-        false
-    }
-
-    /// Re-seeds deterministic spatial noise if the active grid washed out and current parameters form patterns.
-    pub fn reseed_if_washed_out_entering_pattern(&mut self) -> bool {
-        let mode = self
-            .kinetics_state
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .mode;
-        if mode != crate::presets::MorphogenesisKineticsMode::Schnakenberg {
-            return false;
-        }
-        let (a, b, d_u, d_v, dt) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
-        };
-        if !is_pattern_forming_regime(a, b, d_u, d_v, dt) || !self.is_active_grid_washed_out() {
-            return false;
-        }
-        if let Some(sr) = &mut self.step_runner {
-            sr.system.kinetics.mode = crate::presets::MorphogenesisKineticsMode::Schnakenberg;
-            sr.system.kinetics.a = a;
-            sr.system.kinetics.b = b;
-            sr.system.diffusion_coeffs = [d_u, d_v];
-            Self::initialize_adapter_system(&mut sr.system, self.width, self.height);
-            sr.enforce_mask_concentrations();
-        }
-        let _ = self
-            .worker
-            .send_command(SimCommand::Custom("reinit".to_string()));
-        self.dirty = true;
-        true
-    }
-
-    /// Applies an [`AtlasTeleportEvent`] to live morphogenesis parameters with CFL recovery and washout re-seeding.
-    pub fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
-        let was_faulted = self.worker.state() == SimWorkerState::Faulted;
-        let switched_from_gray_scott = {
-            let mut ks = self
-                .kinetics_state
-                .write()
-                .unwrap_or_else(|e| e.into_inner());
-            let was_gs = ks.mode != crate::presets::MorphogenesisKineticsMode::Schnakenberg;
-            ks.mode = crate::presets::MorphogenesisKineticsMode::Schnakenberg;
-            was_gs
-        };
-        self.theory.mode = crate::presets::MorphogenesisKineticsMode::Schnakenberg;
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (key, val) in [(ev.x_key, ev.x_val), (ev.y_key, ev.y_val)] {
-                match key {
-                    "a" => p.a = val,
-                    "b" => p.b = val,
-                    "d_u" => p.d_u = val,
-                    "d_v" => p.d_v = val,
-                    "dt" => p.dt = val,
-                    _ => {}
-                }
-            }
-            if switched_from_gray_scott {
-                p.d_u = p.d_u.clamp(0.1, 5.0);
-                p.d_v = p.d_v.clamp(10.0, 200.0);
-                p.dt = p.dt.clamp(1e-4, 0.1);
-            }
-            if (was_faulted || switched_from_gray_scott)
-                && ev.x_key != "dt"
-                && ev.y_key != "dt"
-                && 4.0 * p.d_u.max(p.d_v) * p.dt >= 1.0
-            {
-                p.dt = (0.2 / p.d_u.max(p.d_v).max(1e-6)).clamp(1e-4, 0.1);
-            }
-        }
-        if was_faulted || switched_from_gray_scott {
-            self.reset_system();
-            return;
-        }
-        let _ = self.reseed_if_washed_out_entering_pattern();
-        self.dirty = true;
     }
 }

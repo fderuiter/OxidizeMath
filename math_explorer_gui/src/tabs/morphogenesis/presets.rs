@@ -12,7 +12,9 @@ use std::collections::HashMap;
 
 impl FiniteStateGuard for MorphogenesisTool {
     fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
+        self.worker.state() != SimWorkerState::Faulted
+            && self.worker.diagnostic_report().is_none()
+            && FiniteStateGuard::is_finite_state(&self.local_runner)
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -166,6 +168,9 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Optional counterfactual shadow twin fork descriptor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork: Option<super::counterfactual::MorphogenesisForkDescriptor>,
     /// Optional RLE-encoded `ReactionCellRole` mask (`[role, run_len]` pairs).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mask_rle: Vec<[u32; 2]>,
@@ -221,11 +226,15 @@ impl MorphogenesisToolState {
                 self.width, self.height
             ));
         }
+        if let Some(ref fork) = self.fork {
+            fork.validate()?;
+        }
         if !self.mask_rle.is_empty() {
             decode_rle_mask(&self.mask_rle, self.width * self.height)?;
         }
         let valid_axes = super::atlas::MORPHO_ATLAS_AXIS_PAIRS
             .iter()
+            .chain(super::gray_scott_atlas::GRAY_SCOTT_ATLAS_AXIS_PAIRS.iter())
             .any(|&(xk, yk)| xk == self.atlas_axes[0] && yk == self.atlas_axes[1]);
         if !valid_axes {
             return Err(format!(
@@ -314,48 +323,64 @@ impl TheoryDescribable for MorphogenesisTheory {
         &self,
     ) -> HashMap<String, scientific_metadata::theory::ParameterConstraint> {
         use scientific_metadata::theory::ParameterConstraint;
-        let mut map = HashMap::with_capacity(5);
-        map.insert(
-            "a".to_string(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 1.0,
-                step: 0.01,
-            },
-        );
-        map.insert(
-            "b".to_string(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 2.0,
-                step: 0.01,
-            },
-        );
-        map.insert(
-            "d_u".to_string(),
-            ParameterConstraint {
-                min: 0.1,
-                max: 5.0,
-                step: 0.05,
-            },
-        );
-        map.insert(
-            "d_v".to_string(),
-            ParameterConstraint {
-                min: 10.0,
-                max: 200.0,
-                step: 1.0,
-            },
-        );
-        map.insert(
-            "dt".to_string(),
-            ParameterConstraint {
-                min: 1e-4,
-                max: 0.1,
-                step: 5e-4,
-            },
-        );
-        map
+        match self.mode {
+            MorphogenesisKineticsMode::Schnakenberg => {
+                let mut map = self.schnakenberg.theory_parameters();
+                map.insert(
+                    "d_u".to_string(),
+                    ParameterConstraint {
+                        min: 0.1,
+                        max: 5.0,
+                        step: 0.05,
+                    },
+                );
+                map.insert(
+                    "d_v".to_string(),
+                    ParameterConstraint {
+                        min: 10.0,
+                        max: 200.0,
+                        step: 1.0,
+                    },
+                );
+                map.insert(
+                    "dt".to_string(),
+                    ParameterConstraint {
+                        min: 1e-4,
+                        max: 0.1,
+                        step: 5e-4,
+                    },
+                );
+                map
+            }
+            MorphogenesisKineticsMode::GrayScott => {
+                let mut map = self.gray_scott.theory_parameters();
+                map.insert(
+                    "d_u".to_string(),
+                    ParameterConstraint {
+                        min: 0.02,
+                        max: 0.50,
+                        step: 0.005,
+                    },
+                );
+                map.insert(
+                    "d_v".to_string(),
+                    ParameterConstraint {
+                        min: 0.01,
+                        max: 0.25,
+                        step: 0.005,
+                    },
+                );
+                map.insert(
+                    "dt".to_string(),
+                    ParameterConstraint {
+                        min: 0.05,
+                        max: 1.60,
+                        step: 0.01,
+                    },
+                );
+                map
+            }
+        }
     }
 
     fn theory_latex_equation(&self) -> Option<String> {
@@ -403,6 +428,19 @@ inventory::submit! {
         domain: "biology",
         tool_name: Some("MorphogenesisTool"),
         preset_generator: || crate::starter_gallery::PRESET_TURING_STRIPES,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "morphogenesis_inhibitor_fork",
+        title: "Morphogenesis Inhibitor Fork",
+        description: "Counterfactual Schnakenberg twin forked at step 60 lowering D_v from 40 to 18 with |u_B - u_A| difference heatmap.",
+        category: "Counterfactual Biology",
+        icon: "⑂",
+        domain: "biology",
+        tool_name: Some("MorphogenesisTool"),
+        preset_generator: || crate::starter_gallery::PRESET_MORPHOGENESIS_INHIBITOR_FORK,
     }
 }
 

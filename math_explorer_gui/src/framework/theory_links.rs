@@ -75,6 +75,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
             &["modular_polynomials_review", "hurwitz_kronecker"]
         }
         "RadarGatingTool" => &["mmwave_radiotherapy_setup"],
+        "OpticsWaveTool" => &["mmwave_radiotherapy_setup", "quantum_mechanics"],
         "TokenizationTool"
         | "FactorizationTool"
         | "FractranMachineTool"
@@ -86,6 +87,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         | "ChristoffelInspectorTool"
         | "BlackHoleGeodesicWorkbench"
         | "RelativisticJetBeamingLab" => &["general_relativity_geodesics"],
+        "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
         "CorticalMorphometryTool" => &["freesurfer"],
         _ => &[],
     };
@@ -100,7 +102,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         tokens.push(clean.clone());
     }
     let aliases: &[&str] = match clean.as_str() {
-        "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
+        "algorithmic_information" => &["algorithmic_information_rust", "pure_math", "algorithms"],
         "chaos" => &["chaos_theory"],
         "elliptic_curves" => &[
             "modular_polynomials_review",
@@ -112,6 +114,8 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "financial_math" => &["clinical_trials_statistics"],
         "neuroscience" => &["biology", "graph_parameters_rust"],
+        "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
+        "solid_state" => &["stat_mech", "pure_math"],
         "ai" => &["graph_parameters_rust"],
         "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
         "astrophysics" => &[
@@ -455,16 +459,12 @@ pub(crate) fn render_portal_links_for_framework(
         .selected_tool_index
         .and_then(|idx| framework.available_tools.get(idx).copied());
     let tool_id = active_meta.map_or_else(|| tool.name(), |m| m.id);
-    let domain = active_meta.map_or_else(
-        || {
-            if framework.domain.is_empty() {
-                tool.domain()
-            } else {
-                framework.domain.as_str()
-            }
-        },
-        |m| m.domain,
-    );
+    let fallback_domain = if framework.domain.is_empty() {
+        tool.domain()
+    } else {
+        framework.domain.as_str()
+    };
+    let domain = active_meta.map_or(fallback_domain, |m| m.domain);
 
     let paper_links = resolve_portal_paper_links(tool_id, domain);
     let ext_links = resolve_citation_reference_links(citation);
@@ -474,10 +474,7 @@ pub(crate) fn render_portal_links_for_framework(
 
     ui.add_space(4.0);
     for paper in &paper_links {
-        let stem = paper
-            .paper_name
-            .strip_suffix(".tex")
-            .unwrap_or(&paper.paper_name);
+        let stem = paper.paper_name.trim_end_matches(".tex");
         let pdf_label = format!("📄 View PDF ({stem}.pdf)");
         render_paper_links(
             ui,
