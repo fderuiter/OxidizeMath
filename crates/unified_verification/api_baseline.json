@@ -1727,7 +1727,28 @@
       "signature": "pub use glm :: t_statistic"
     },
     {
+      "signature": "pub use segmentation :: MAX_TISSUE_CLASSES"
+    },
+    {
+      "signature": "pub use segmentation :: TissueClass"
+    },
+    {
       "signature": "pub use segmentation :: bayesian_classification"
+    },
+    {
+      "signature": "pub use segmentation :: mrf_segment_volume"
+    },
+    {
+      "signature": "pub use segmentation :: mrf_voxel_posteriors"
+    },
+    {
+      "signature": "pub use segmentation :: normalized_posteriors"
+    },
+    {
+      "signature": "pub use segmentation :: normalized_posteriors_into"
+    },
+    {
+      "signature": "pub use surface :: MriVolume"
     },
     {
       "signature": "pub use surface :: Surface"
@@ -1736,29 +1757,92 @@
       "signature": "pub use surface :: evolve_surface"
     },
     {
+      "signature": "pub use surface :: evolve_surface_deformable"
+    },
+    {
       "signature": "pub use surface :: external_energy"
+    },
+    {
+      "signature": "pub use surface :: external_energy_volume"
     },
     {
       "signature": "pub use surface :: internal_energy"
     },
     {
       "signature": "pub use thickness :: cortical_thickness"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_map"
     }
   ],
   "crates/domain_applied/src/applied/freesurfer/segmentation.rs": [
     {
+      "signature": "impl TissueClass { pub const fn new (_ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TissueClass { pub fn gaussian_likelihood (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub const MAX_TISSUE_CLASSES : usize"
+    },
+    {
       "signature": "pub fn bayesian_classification (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn mrf_segment_volume (_ : & MriVolume , _ : & [TissueClass] , _ : f64 , _ : usize , _ : & mut [u8] ,) -> usize"
+    },
+    {
+      "signature": "pub fn mrf_voxel_posteriors (_ : f64 , _ : & [TissueClass] , _ : & [u8] , _ : f64 , _ : & mut [f64] ,) -> usize"
+    },
+    {
+      "signature": "pub fn normalized_posteriors (_ : & [f64] , _ : & [f64]) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn normalized_posteriors_into (_ : & [f64] , _ : & [f64] , _ : & mut [f64] ,) -> usize"
+    },
+    {
+      "signature": "pub struct TissueClass"
     }
   ],
   "crates/domain_applied/src/applied/freesurfer/surface.rs": [
     {
+      "signature": "impl MriVolume { pub fn new (_ : [usize ; 3] , _ : [f64 ; 3] , _ : f64 , _ : Vec < f64 > ,) -> Result < Self , & 'static str > }"
+    },
+    {
+      "signature": "impl MriVolume { pub fn sample_trilinear (& self , _ : & [f64 ; 3]) -> f64 }"
+    },
+    {
+      "signature": "impl MriVolume { pub fn smoothed_gradient (& self , _ : & [f64 ; 3] , _ : f64) -> [f64 ; 3] }"
+    },
+    {
+      "signature": "impl MriVolume { pub fn smoothed_intensity (& self , _ : & [f64 ; 3] , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl MriVolume { pub fn voxel (& self , _ : usize , _ : usize , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl Surface { pub fn from_vertices (_ : Vec < [f64 ; 3] >) -> Self }"
+    },
+    {
+      "signature": "impl Surface { pub fn new (_ : Vec < [f64 ; 3] > , _ : Vec < [usize ; 3] >) -> Self }"
+    },
+    {
       "signature": "pub fn evolve_surface (_ : & mut Surface , _ : f64 , _ : f64)"
+    },
+    {
+      "signature": "pub fn evolve_surface_deformable (_ : & mut Surface , _ : & MriVolume , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,)"
     },
     {
       "signature": "pub fn external_energy (_ : & Surface , _ : f64) -> f64"
     },
     {
+      "signature": "pub fn external_energy_volume (_ : & Surface , _ : & MriVolume , _ : f64) -> f64"
+    },
+    {
       "signature": "pub fn internal_energy (_ : & Surface , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct MriVolume"
     },
     {
       "signature": "pub struct Surface"
@@ -1767,6 +1851,9 @@
   "crates/domain_applied/src/applied/freesurfer/thickness.rs": [
     {
       "signature": "pub fn cortical_thickness (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & Surface , _ : & Surface ,) -> f64"
+    },
+    {
+      "signature": "pub fn cortical_thickness_map (_ : & Surface , _ : & Surface) -> Vec < f64 >"
     }
   ],
   "crates/domain_applied/src/applied/game_theory/equilibrium.rs": [
