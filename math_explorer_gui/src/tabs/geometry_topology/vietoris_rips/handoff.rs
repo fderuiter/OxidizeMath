@@ -1,14 +1,18 @@
+//! Context-scoped one-click landmark handoffs, `CrossToolBus` adapters, and `PaneDataflowBus` payload conversions.
+//!
+//! All cross-tool messages travel through instance-scoped [`crate::framework::CrossToolBus`]
+//! queues or `egui::Context` temporary storage without process-global singletons.
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-//! Typed landmark and parameter adapters between chaotic attractors and `VietorisRipsTool`.
-//!
-//! Contains zero process-global `static` or `OnceLock` singletons; all cross-tool messages
-//! travel through instance-scoped [`crate::framework::CrossToolBus`] queues.
-
-use super::{CloudSource, VietorisRipsTool, VrSourceMode, MAX_VIETORIS_RIPS_POINTS};
+use super::{
+    CloudSource, VietorisRipsTool, VrSourceMode, MAX_CHAOS_LANDMARKS, MAX_VIETORIS_RIPS_POINTS,
+};
+use crate::app::dataflow_bus::{LandmarkCloud3DPayload, ScalarField2DPayload};
 use crate::framework::{CrossToolEnvelope, CrossToolPayload};
+use eframe::egui;
 use math_explorer::pure_math::statistics::tda::core::Point2D;
-use math_explorer::pure_math::statistics::tda::Point3D;
+use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
 
 /// Canonical tab display name hosting [`super::VietorisRipsTool`].
 pub const VIETORIS_RIPS_TAB_NAME: &str = "Geometry & Topology";
@@ -16,9 +20,11 @@ pub const VIETORIS_RIPS_TAB_NAME: &str = "Geometry & Topology";
 /// Canonical tool identifier for [`super::VietorisRipsTool`].
 pub const VIETORIS_RIPS_TOOL_ID: &str = "VietorisRipsTool";
 
-/// Payload transferring up to `MAX_VIETORIS_RIPS_POINTS` 3D chaotic landmarks and
-/// Lorenz system parameters from `AttractorPlotter` / `AttractorRunner` to `VietorisRipsTool`.
-#[derive(Debug, Clone, PartialEq)]
+const CHAOS_HANDOFF_PAYLOAD_ID: &str = "CHAOS_LANDMARK_HANDOFF_PAYLOAD";
+
+/// Payload transferring up to `MAX_CHAOS_LANDMARKS` 3D chaotic landmarks and
+/// Lorenz system parameters from `AttractorPlotter` to `VietorisRipsTool`.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ChaosLandmarkHandoff {
     /// Subsampled 3D landmark coordinates in state space.
     pub points: Vec<Point3D>,
@@ -82,6 +88,43 @@ impl ChaosLandmarkHandoff {
             dt: lookup("dt", 0.01),
         })
     }
+
+    /// Converts this handoff into a sanitized [`LandmarkCloud3DPayload`] for [`crate::app::dataflow_bus::PaneDataflowBus`].
+    #[must_use]
+    pub fn to_bus_payload(&self, revision: u64) -> LandmarkCloud3DPayload {
+        let raw: Vec<[f64; 3]> = self.points.iter().map(|p| [p.x, p.y, p.z]).collect();
+        LandmarkCloud3DPayload::sanitized(revision, raw, self.sigma, self.rho, self.beta, self.dt)
+    }
+
+    /// Reconstructs a [`ChaosLandmarkHandoff`] from an upstream [`LandmarkCloud3DPayload`].
+    #[must_use]
+    pub fn from_bus_payload(payload: &LandmarkCloud3DPayload) -> Self {
+        let points = payload
+            .points
+            .iter()
+            .map(|&[x, y, z]| Point3D::new(x, y, z))
+            .collect();
+        Self {
+            points,
+            sigma: payload.sigma,
+            rho: payload.rho,
+            beta: payload.beta,
+            dt: payload.dt,
+        }
+    }
+}
+
+/// Queues a one-click 3D landmark handoff inside `ctx` without process-global statics.
+#[cfg(test)]
+pub fn submit_chaos_landmark_handoff(ctx: &egui::Context, handoff: ChaosLandmarkHandoff) {
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new(CHAOS_HANDOFF_PAYLOAD_ID), handoff);
+    });
+}
+
+/// Drains any pending one-click 3D landmark handoff queued in `ctx`.
+pub fn take_chaos_landmark_handoff(ctx: &egui::Context) -> Option<ChaosLandmarkHandoff> {
+    ctx.data_mut(|d| d.remove_temp::<ChaosLandmarkHandoff>(egui::Id::new(CHAOS_HANDOFF_PAYLOAD_ID)))
 }
 
 impl VietorisRipsTool {
@@ -98,6 +141,7 @@ impl VietorisRipsTool {
                 };
                 if is_live {
                     self.chaos.live_stream_seq = seq.max(1);
+                    self.chaos.cross_tool_live_frame = true;
                     self.ingest_live_stream_landmarks(h)?;
                 } else {
                     self.ingest_chaos_handoff(h)?;
@@ -171,4 +215,40 @@ impl VietorisRipsTool {
         self.bump_revision();
         Ok(true)
     }
+}
+
+/// Extracts up to `max_landmarks` 3D heightfield landmarks from an upstream 2D scalar field.
+pub fn landmarks_from_scalar_field(
+    field: &ScalarField2DPayload,
+    max_landmarks: usize,
+) -> Result<Vec<Point3D>, String> {
+    if field.width == 0 || field.height == 0 || field.values.len() < field.width * field.height {
+        return Err("Empty scalar field payload".to_string());
+    }
+    let mut v_min = f64::INFINITY;
+    let mut v_max = f64::NEG_INFINITY;
+    for &val in &field.values[..(field.width * field.height)] {
+        if val.is_finite() {
+            v_min = v_min.min(val);
+            v_max = v_max.max(val);
+        }
+    }
+    let span = (v_max - v_min).max(1e-9);
+    let mean = 0.5 * (v_min + v_max);
+    let mut candidates = Vec::with_capacity(field.width * field.height);
+    for row in 0..field.height {
+        let ny = (row as f64 / (field.height.saturating_sub(1).max(1)) as f64) * 16.0 - 8.0;
+        for col in 0..field.width {
+            let idx = math_commons::math_kernel::types::flatten_2d_index(col, row, field.width);
+            let val = field.values[idx];
+            if !val.is_finite() {
+                continue;
+            }
+            let nx = (col as f64 / (field.width.saturating_sub(1).max(1)) as f64) * 16.0 - 8.0;
+            let nz = ((val - mean) / span) * 10.0;
+            candidates.push(Point3D::new(nx, ny, nz));
+        }
+    }
+    let target = max_landmarks.clamp(4, MAX_CHAOS_LANDMARKS);
+    farthest_point_landmarks(&candidates, target).map_err(|e| format!("{e:?}"))
 }

@@ -162,7 +162,6 @@ pub(crate) fn resolve_inlet_velocity(params: &HashMap<String, f64>) -> f64 {
         .filter(|u| u.is_finite() && (0.005..=0.35).contains(u))
         .unwrap_or(LBM_INLET_U)
 }
-
 pub(super) fn evaluate_lbm_observable(
     params: &HashMap<String, f64>,
 ) -> Option<(&'static str, f64)> {
@@ -201,38 +200,4 @@ pub(super) fn evaluate_lbm_observable(
     let (f_drag, _) = probe.hydrodynamic_forces();
     let c_d = compute_drag_coefficient(f_drag, LBM_RHO_0, u_in, 5.0);
     c_d.is_finite().then_some(("Drag Coefficient (C_D)", c_d))
-}
-
-pub(super) fn paint_lbm_fairing_overlay(
-    visuals: &egui::Visuals,
-    plot_ui: &mut egui_plot::PlotUi,
-    cursor_x: i32,
-    cursor_y: i32,
-) {
-    use super::lbm_fairing::{LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y};
-    use egui_plot::{Points, Polygon};
-
-    let palette = crate::app::SemanticPalette::from_visuals(visuals);
-    let ring_pts: Vec<[f64; 2]> = (0..24)
-        .map(|k| {
-            let theta = std::f64::consts::TAU * (k as f64) / 24.0;
-            [
-                LBM_CORE_X as f64 + 0.5 + (LBM_CORE_RADIUS as f64) * theta.cos(),
-                LBM_CORE_Y as f64 + 0.5 + (LBM_CORE_RADIUS as f64) * theta.sin(),
-            ]
-        })
-        .collect();
-    plot_ui.polygon(
-        Polygon::new("Protected Core (R=4)", ring_pts)
-            .fill_color(egui::Color32::TRANSPARENT)
-            .stroke(egui::Stroke::new(1.5_f32, palette.warning)),
-    );
-    plot_ui.points(
-        Points::new(
-            "Sculpt Cursor",
-            vec![[cursor_x as f64 + 0.5, cursor_y as f64 + 0.5]],
-        )
-        .radius(5.0_f32)
-        .color(palette.accent),
-    );
 }

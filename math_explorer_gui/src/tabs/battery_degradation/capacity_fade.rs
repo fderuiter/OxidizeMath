@@ -5,6 +5,7 @@
 
 // [cite:battery_degradation]
 
+mod code_export;
 pub mod io;
 #[cfg(test)]
 mod tests;
@@ -13,7 +14,7 @@ mod ui;
 use super::capacity_fade_atlas::{CapacityFadeCartographer, CAPACITY_FADE_ATLAS_AXIS_PAIRS};
 use super::cell_card::{BatteryCellCard, BatteryDialogIo, ChemistryChoice};
 use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
-use crate::framework::InteractiveTool;
+use crate::framework::{CodeArtifact, ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use io::CalibratedLabSummary;
 use math_explorer::applied::battery_degradation::{
@@ -91,6 +92,30 @@ impl InteractiveTool for CapacityFadeTool {
     }
     fn domain(&self) -> &'static str {
         "battery_degradation"
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.dod.is_finite()
+            && self.temperature.is_finite()
+            && self.cycles_to_simulate.is_finite()
+            && self.c_rate.is_finite()
+            && self.exponent_z.is_finite()
+            && self
+                .calibrated_alpha
+                .is_none_or(|a| a.is_finite() && (1.0..=1.0e9).contains(&a))
+            && (0.0..=100.0).contains(&self.dod)
+            && (MIN_TEMPERATURE_C..=MAX_TEMPERATURE_C).contains(&self.temperature)
+            && (MIN_C_RATE..=MAX_C_RATE).contains(&self.c_rate)
+            && (MIN_EXPONENT_Z..=MAX_EXPONENT_Z).contains(&self.exponent_z)
+            && (100.0..=10_000.0).contains(&self.cycles_to_simulate)
+    }
+
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot_with_code()
+    }
+
+    fn export_code_artifact(&self) -> Option<CodeArtifact> {
+        self.build_code_artifact()
     }
 
     fn state_revision(&self) -> u64 {
@@ -191,16 +216,6 @@ impl InteractiveTool for CapacityFadeTool {
             ));
         }
         out
-    }
-
-    fn has_finite_parameters(&self) -> bool {
-        self.dod.is_finite()
-            && (0.0..=100.0).contains(&self.dod)
-            && self.temperature.is_finite()
-            && self.c_rate.is_finite()
-            && self.exponent_z.is_finite()
-            && self.cycles_to_simulate.is_finite()
-            && self.cycles_to_simulate >= 100.0
     }
 
     fn clamp_parameters(&mut self) -> bool {

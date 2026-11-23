@@ -184,7 +184,6 @@ impl AttractorRunner {
         }
         true
     }
-
     fn publish_live_landmarks(&self, dt: f64) {
         let pts: Vec<Point3D> = self
             .history

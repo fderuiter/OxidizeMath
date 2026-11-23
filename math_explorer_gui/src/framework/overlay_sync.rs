@@ -50,6 +50,10 @@ pub struct SimulationFramework {
     pub(super) last_announced_query: String,
     /// Whether the figure/dataset export modal is open.
     pub show_export_modal: bool,
+    /// Whether the unified LaTeX/Rust/Python code export modal is open.
+    pub show_code_export_modal: bool,
+    /// Active language tab in the unified code export modal.
+    pub code_export_tab: super::CodeExportTab,
     /// Active figure export options (dimensions, title, labels, legend).
     pub export_options: egui_plot::export::ExportOptions,
     /// Whether exported figures use a dark background palette.
@@ -385,15 +389,7 @@ impl SimulationFramework {
 
     /// Constructs a [`SimulationFramework`] populated with registered tools for `domain`.
     pub fn new(domain: &str) -> Self {
-        let mut available_tools: Vec<&'static super::ToolMetadata> =
-            inventory::iter::<super::ToolMetadata>
-                .into_iter()
-                .filter(|t| t.domain == domain)
-                .collect();
-
-        available_tools
-            .sort_by_key(|t| (default_tool_priority(domain, t.id), t.display_name, t.id));
-
+        let available_tools = sorted_domain_tools(domain);
         let mut framework = Self {
             available_tools,
             active_tool: None,
@@ -409,6 +405,8 @@ impl SimulationFramework {
             last_announced_count: None,
             last_announced_query: String::new(),
             show_export_modal: false,
+            show_code_export_modal: false,
+            code_export_tab: super::CodeExportTab::default(),
             export_options: egui_plot::export::ExportOptions::default(),
             export_bg_dark: true,
             export_gif_fps: 15,
@@ -437,13 +435,21 @@ impl SimulationFramework {
             rev_cache: FrameworkRevisionCache::default(),
             atlas_host: atlas_host::FrameworkAtlasHost::default(),
         };
-
         if !framework.available_tools.is_empty() {
             framework.select_tool(0);
         }
-
         framework
     }
+}
+
+fn sorted_domain_tools(domain: &str) -> Vec<&'static super::ToolMetadata> {
+    let mut available_tools: Vec<&'static super::ToolMetadata> =
+        inventory::iter::<super::ToolMetadata>
+            .into_iter()
+            .filter(|t| t.domain == domain)
+            .collect();
+    available_tools.sort_by_key(|t| (default_tool_priority(domain, t.id), t.display_name, t.id));
+    available_tools
 }
 
 fn default_tool_priority(domain: &str, id: &str) -> u8 {
