@@ -360,34 +360,43 @@ fn write_polyline_svg(
     svg.push_str(&format!(
         "  <g id=\"primitive-{idx}\" data-name=\"{escaped}\">\n"
     ));
-    let finite: Vec<(f64, f64)> = points
-        .iter()
-        .filter(|&&p| layout.is_valid_point(p))
-        .map(|&p| layout.to_pixel(p))
-        .collect();
-    if finite.len() == 1 {
-        let (px, py) = finite[0];
-        let r = (stroke_width * 0.5).max(1.5);
-        svg.push_str(&format!(
-            "    <circle cx=\"{px:.2}\" cy=\"{py:.2}\" r=\"{r:.2}\" fill=\"{hex}\" />\n"
-        ));
-    } else if finite.len() >= 2 {
-        let pts_attr: String = finite
-            .iter()
-            .map(|(x, y)| format!("{x:.2},{y:.2}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-        if closed {
-            let fc = fill.unwrap_or_else(|| stroke.linear_multiply(0.2));
-            let fhex = hex_rgb(fc);
-            let fop = fc.a() as f32 / 255.0;
+    let mut segments: Vec<Vec<(f64, f64)>> = Vec::new();
+    let mut cur: Vec<(f64, f64)> = Vec::new();
+    for &p in points {
+        if layout.is_valid_point(p) {
+            cur.push(layout.to_pixel(p));
+        } else if !cur.is_empty() {
+            segments.push(std::mem::take(&mut cur));
+        }
+    }
+    if !cur.is_empty() {
+        segments.push(cur);
+    }
+    for seg in &segments {
+        if seg.len() == 1 {
+            let (px, py) = seg[0];
+            let r = (stroke_width * 0.5).max(1.5);
             svg.push_str(&format!(
-                "    <polygon points=\"{pts_attr}\" fill=\"{fhex}\" fill-opacity=\"{fop:.3}\" stroke=\"{hex}\" stroke-width=\"{stroke_width:.2}\" stroke-linejoin=\"round\" />\n"
+                "    <circle cx=\"{px:.2}\" cy=\"{py:.2}\" r=\"{r:.2}\" fill=\"{hex}\" />\n"
             ));
-        } else {
-            svg.push_str(&format!(
-                "    <polyline points=\"{pts_attr}\" fill=\"none\" stroke=\"{hex}\" stroke-width=\"{stroke_width:.2}\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n"
-            ));
+        } else if seg.len() >= 2 {
+            let pts_attr: String = seg
+                .iter()
+                .map(|(x, y)| format!("{x:.2},{y:.2}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            if closed {
+                let fc = fill.unwrap_or_else(|| stroke.linear_multiply(0.2));
+                let fhex = hex_rgb(fc);
+                let fop = fc.a() as f32 / 255.0;
+                svg.push_str(&format!(
+                    "    <polygon points=\"{pts_attr}\" fill=\"{fhex}\" fill-opacity=\"{fop:.3}\" stroke=\"{hex}\" stroke-width=\"{stroke_width:.2}\" stroke-linejoin=\"round\" />\n"
+                ));
+            } else {
+                svg.push_str(&format!(
+                    "    <polyline points=\"{pts_attr}\" fill=\"none\" stroke=\"{hex}\" stroke-width=\"{stroke_width:.2}\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n"
+                ));
+            }
         }
     }
     svg.push_str("  </g>\n");

@@ -169,7 +169,7 @@ pub fn expected_growth_rate(
     let f = fraction.value();
 
     // Avoid log of non-positive numbers
-    if f >= 1.0 / b || f < 0.0 {
+    if f >= 1.0 || f < 0.0 || 1.0 + b * f <= 0.0 {
         return f64::NEG_INFINITY;
     }
 
@@ -443,5 +443,31 @@ mod tests {
 
         // f* = (5.0 * 0.20 - 0.80) / 5.0 = 0.04
         assert!((kelly.value() - 0.04).abs() < math_commons::registry::TOLERANCE_FAST);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_expected_growth_rate_above_reciprocal_net_odds_is_finite() {
+        // With net odds b = 2.0 (decimal 3.0), 1 / b = 0.5, yet f = 0.60 is strictly < 1.0.
+        let p = UnitInterval::new(0.60).unwrap();
+        let odds = Odds::from_net_odds(2.0).unwrap();
+        let frac = BankrollFraction::new(0.60).unwrap();
+        let g = expected_growth_rate(&p, &odds, &frac);
+        let expected = 0.60 * (1.0_f64 + 1.20).ln() + 0.40 * (0.40_f64).ln();
+        assert!(g.is_finite());
+        assert!((g - expected).abs() < math_commons::registry::TOLERANCE_HIGH);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_expected_growth_rate_volatility_drag_above_double_kelly() {
+        // p = 0.55, b = 1.0 => f* = 0.10, 2*f* = 0.20; at f = 0.30, g(0.30) < 0 while EV > 0.
+        let p = UnitInterval::new(0.55).unwrap();
+        let odds = Odds::from_net_odds(1.0).unwrap();
+        let overbet = BankrollFraction::new(0.30).unwrap();
+        let g = expected_growth_rate(&p, &odds, &overbet);
+        let w_median_200 = 100.0 * (200.0 * g).exp();
+        assert!(g < 0.0);
+        assert!((w_median_200 - 3.913748).abs() < 1e-4);
     }
 }

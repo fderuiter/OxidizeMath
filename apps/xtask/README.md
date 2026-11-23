@@ -20,13 +20,13 @@ These commands run automated checks in git hooks or CI.
 | `check-staged-duplicates` | Checks for duplicated patterns in git staging (non-blocking legacy helper). | Active |
 | `check-vulnerabilities` | Scans workspace dependencies for known vulnerabilities. | Active |
 | `lint-all` | Runs the full PR verification suite (formatting, single-pass batched static & AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift, traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, markdown links, and OSV vulnerabilities). | Active |
-| `lint-staged` | Runs fast diff-scoped pre-commit checks on staged files (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged`, conditional `.github/` workflow linting, conditional `.md` link checks, and targeted host/`wasm32` Clippy. | Active |
+| `lint-staged` | Runs fast diff-scoped pre-commit checks on staged files (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged` (including staged ADR verification, file lengths, entropy, and touched-crate policy audit), conditional `.github/` workflow linting, conditional `.md` link checks, and targeted host/`wasm32` Clippy. | Active |
 | `lint-workflows` | Validates CI workflow definitions. | Active |
 | `test-features` | Runs tests for various cargo features. | Active |
 | `test-policy-audit` | Audits workspace crates for unauthorized dead-code bypasses and unused dependencies. | Active |
 | `test-wasm` | Executes `wasm32-unknown-unknown` browser unit tests, builds `math_explorer_gui/dist` (unless `--skip-build` is passed), verifies the 3 MB bundle budget, and runs headless Chromium CSP & fault-injection smoke checks (`--screenshot-dir <dir>` supported). | Active |
 | `traceability` | Generates and checks the traceability report. | Active |
-| `verify-records` | Verifies architectural decision records (`--staged` supported). | Active |
+| `verify-records` | Verifies architectural decision records (`--staged` supported), enforcing `NNNN-slug.md` naming, `# ` and `## Status` headings, unique 4-digit IDs, and ACMR updates on core changes. | Active |
 | `verify-suite` | Runs the high-integrity verification suite. | Active |
 
 ### WebAssembly & Browser Smoke Prerequisites (`test-wasm`)

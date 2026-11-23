@@ -1,4 +1,4 @@
-# ADR 0035: Repair Consumer & Contributor Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates
+# ADR 0037: Repair Consumer & Contributor Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates
 
 ## Status
 Accepted (extends [ADR 0005](0005-active-documentation-standard.md), [ADR 0016](0016-standardize-crate-documentation-suite.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))

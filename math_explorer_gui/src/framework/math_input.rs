@@ -1,15 +1,21 @@
-//! Reusable egui mathematical expression input bar with live syntax validation and LaTeX preview.
+//! Reusable egui mathematical expression input bar with live syntax validation, LaTeX preview,
+//! coordinate scope validation, `CompiledExpr` bytecode caching, and `AnimatedSlider` synthesis.
+
+pub mod coupled;
+pub mod params;
+
+#[cfg(test)]
+mod tests;
+
+pub use coupled::CoupledExpressionBank;
+pub use params::{ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
 
 use eframe::egui;
-use math_commons::ast::{parse_equation, Expr, ParseError};
+use math_commons::ast::{parse_equation, CompiledExpr, Expr, ParseError};
+use std::collections::BTreeMap;
+use std::ops::RangeInclusive;
 
 /// Reusable input bar component for dynamic mathematical equations.
-///
-/// Features:
-/// - Real-time Pratt-parser syntax validation.
-/// - Live LaTeX preview rendering via `egui_plot::render_math_label`.
-/// - Clear inline syntax error highlighting in red.
-/// - Preset equations selection dropdown.
 #[derive(Clone, Debug)]
 pub struct MathExpressionInputBar {
     /// Raw expression string typed by the user.
@@ -28,10 +34,26 @@ pub struct MathExpressionInputBar {
     pub had_error: bool,
     /// Last announced error message to prevent duplicate announcements on static frames.
     pub last_announced_error: Option<String>,
+    /// Coordinate axis names bound to leading bytecode slots (e.g. `["x"]` or `["x", "y"]`).
+    axes: Vec<String>,
+    /// Whether coordinate scope & parameter slider synthesis are enabled.
+    scope_enabled: bool,
+    /// Whether `i` / `I` compiles as the imaginary unit (`Complex64::i()`).
+    complex_mode: bool,
+    /// Whether inline `AnimatedSlider` controls should be rendered inside [`Self::ui`].
+    render_inline_sliders: bool,
+    /// Semantic/arity/parameter-limit error message when syntax parsed but compilation failed.
+    validation_error: Option<String>,
+    /// Currently valid compiled bytecode (`None` when current text has an error).
+    compiled_expr: Option<CompiledExpr>,
+    /// Last valid compiled bytecode preserved across transient syntax edits.
+    last_valid_compiled: Option<CompiledExpr>,
+    /// Auto-synthesized free parameter sliders synchronized with `last_valid_compiled`.
+    slider_bank: ParameterSliderBank,
 }
 
 impl MathExpressionInputBar {
-    /// Creates a new mathematical expression input bar.
+    /// Creates a new mathematical expression input bar (legacy constructor compatible with ODE tools).
     #[must_use]
     pub fn new(
         default_lhs: &str,
@@ -54,76 +76,221 @@ impl MathExpressionInputBar {
             } else {
                 None
             },
+            axes: Vec::new(),
+            scope_enabled: false,
+            complex_mode: false,
+            render_inline_sliders: true,
+            validation_error: None,
+            compiled_expr: None,
+            last_valid_compiled: None,
+            slider_bank: ParameterSliderBank::new(),
         };
         bar.reparse();
         bar
     }
 
-    /// Updates the expression text and reparses the AST.
+    /// Configures coordinate axis slots (e.g., `&["x"]`, `&["x", "y"]`, `&["x", "w", "b"]`) and
+    /// activates `CompiledExpr` bytecode compilation + free parameter `AnimatedSlider` discovery.
+    #[must_use]
+    pub fn with_axes(mut self, axes: &[&str]) -> Self {
+        self.axes = axes.iter().map(|&s| s.to_string()).collect();
+        self.scope_enabled = true;
+        self.reparse();
+        self
+    }
+
+    /// Configures complex evaluation mode (`i` / `I` treated as imaginary unit rather than parameter).
+    #[must_use]
+    pub fn with_complex_mode(mut self, complex: bool) -> Self {
+        self.complex_mode = complex;
+        self.scope_enabled = true;
+        self.reparse();
+        self
+    }
+
+    /// Configures whether discovered free parameter sliders render inline inside [`Self::ui`].
+    #[must_use]
+    pub fn with_inline_sliders(mut self, inline: bool) -> Self {
+        self.render_inline_sliders = inline;
+        self
+    }
+
+    /// Configures the range and default value for synthesized parameter sliders.
+    #[must_use]
+    pub fn with_param_range(mut self, range: RangeInclusive<f64>, default_value: f64) -> Self {
+        self.slider_bank = self.slider_bank.with_range(range, default_value);
+        self
+    }
+
+    /// Updates the expression text and reparses/recompiles the AST.
     pub fn set_expression(&mut self, text: &str) {
         self.raw_text = text.to_string();
         self.reparse();
     }
 
-    /// Returns a reference to the parsed AST if valid.
+    /// Returns a reference to the parsed AST if currently valid.
     #[must_use]
     pub fn expr(&self) -> Option<&Expr> {
-        self.parsed_expr.as_ref().ok()
+        if self.validation_error.is_some() {
+            None
+        } else {
+            self.parsed_expr.as_ref().ok()
+        }
     }
 
-    /// Returns `true` if current input represents a valid mathematical expression.
+    /// Returns the currently valid compiled bytecode (`None` if current input has an error).
+    #[must_use]
+    pub const fn compiled(&self) -> Option<&CompiledExpr> {
+        self.compiled_expr.as_ref()
+    }
+
+    /// Returns the active compiled bytecode, falling back to the last valid formula during edits.
+    #[must_use]
+    pub fn active_compiled(&self) -> Option<&CompiledExpr> {
+        self.compiled_expr
+            .as_ref()
+            .or(self.last_valid_compiled.as_ref())
+    }
+
+    /// Returns the inline slice of parameter values synchronized with [`Self::active_compiled`].
+    #[must_use]
+    pub fn param_slice(&self) -> &[f64] {
+        self.slider_bank.param_slice()
+    }
+
+    /// Returns the ordered list of active free parameter names aligned with [`Self::param_slice`].
+    #[must_use]
+    pub fn active_param_names(&self) -> &[String] {
+        self.slider_bank.active_names()
+    }
+
+    /// Looks up the active parameter value assigned to `name`.
+    #[must_use]
+    pub fn active_param_value(&self, name: &str) -> Option<f64> {
+        self.slider_bank.active_value(name)
+    }
+
+    /// Updates a single parameter value in the slider bank without clearing other remembered parameters.
+    pub fn set_param(&mut self, name: &str, value: f64) {
+        self.slider_bank.set_param(name, value);
+    }
+
+    /// Clamps active free parameter values to `range`.
+    pub fn clamp_active_params(&mut self, range: RangeInclusive<f64>) {
+        self.slider_bank.clamp_active_values(range);
+    }
+
+    /// Computes a deterministic fingerprint of the active formula and free-parameter sliders.
+    #[must_use]
+    pub fn state_fingerprint(&self) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.raw_text.hash(&mut h);
+        self.complex_mode.hash(&mut h);
+        self.validation_error.is_some().hash(&mut h);
+        self.parsed_expr.is_ok().hash(&mut h);
+        self.slider_bank.state_fingerprint().hash(&mut h);
+        h.finish().max(1)
+    }
+
+    /// Exports active parameter values for JSON preset and `#state=` URL serialization.
+    #[must_use]
+    pub fn params_map(&self) -> BTreeMap<String, f64> {
+        self.slider_bank.export_active_map()
+    }
+
+    /// Restores parameter values from a deserialized map.
+    pub fn set_params_map(&mut self, map: &BTreeMap<String, f64>) {
+        self.slider_bank.set_params_map(map);
+    }
+
+    /// Returns `true` if current input represents a valid, compilable mathematical expression.
     #[must_use]
     pub fn is_valid(&self) -> bool {
-        self.parsed_expr.is_ok()
+        self.parsed_expr.is_ok() && self.validation_error.is_none()
     }
 
-    /// Returns the current syntax error message, if any.
+    /// Returns the current syntax or scope/arity error message, if any.
     #[must_use]
     pub fn error_message(&self) -> Option<String> {
+        if let Some(err) = &self.validation_error {
+            return Some(err.clone());
+        }
         self.parsed_expr
             .as_ref()
             .err()
             .map(|e| e.user_message_for_input(self.raw_text.trim()))
     }
 
-    /// Internal method to reparse raw text into AST and update LaTeX cache.
+    /// Reparses `raw_text`, compiles bytecode, validates arity/scope, and syncs parameter sliders.
     pub fn reparse(&mut self) {
         let trimmed = self.raw_text.trim();
         if trimmed.is_empty() {
             self.parsed_expr = Err(ParseError::EmptyExpression);
+            self.validation_error = None;
+            self.compiled_expr = None;
             self.latex_cache.clear();
             self.lhs_name = None;
             return;
         }
 
         match parse_equation(trimmed) {
-            Ok((lhs, expr)) => {
-                let lhs_label = lhs.as_deref().or_else(|| {
-                    if self.default_lhs.is_empty() {
-                        None
-                    } else {
-                        Some(&self.default_lhs)
-                    }
-                });
-
-                let expr_latex = expr.to_latex();
-                self.latex_cache = match lhs_label {
-                    Some(prefix) => format!("{prefix} = {expr_latex}"),
-                    None => expr_latex,
-                };
-                self.lhs_name = lhs;
-                self.parsed_expr = Ok(expr);
-            }
+            Ok((lhs, expr)) => self.finish_valid_parse(lhs, expr),
             Err(err) => {
                 self.parsed_expr = Err(err);
+                self.validation_error = None;
+                self.compiled_expr = None;
                 self.latex_cache.clear();
             }
         }
     }
 
-    /// Renders the math expression input bar UI.
+    fn finish_valid_parse(&mut self, lhs: Option<String>, expr: Expr) {
+        let axis_refs: Vec<&str> = self.axes.iter().map(String::as_str).collect();
+        let compile_res = if self.complex_mode {
+            CompiledExpr::compile_complex(&expr, &axis_refs)
+        } else {
+            CompiledExpr::compile_with_vars(&expr, &axis_refs)
+        };
+
+        match compile_res {
+            Ok(compiled) => {
+                if self.scope_enabled && compiled.param_names().len() > MAX_SYNTHESIZED_PARAMS {
+                    self.validation_error = Some(format!(
+                        "Formula defines {} free parameters (maximum {MAX_SYNTHESIZED_PARAMS})",
+                        compiled.param_names().len()
+                    ));
+                    self.compiled_expr = None;
+                    self.parsed_expr = Ok(expr);
+                    return;
+                }
+                if self.scope_enabled {
+                    self.slider_bank.sync_names(compiled.param_names());
+                }
+                update_latex_preview(
+                    &mut self.latex_cache,
+                    lhs.as_deref(),
+                    &self.default_lhs,
+                    &expr,
+                );
+                self.lhs_name = lhs;
+                self.validation_error = None;
+                self.last_valid_compiled = Some(compiled.clone());
+                self.compiled_expr = Some(compiled);
+                self.parsed_expr = Ok(expr);
+            }
+            Err(eval_err) => {
+                self.validation_error = Some(eval_err.to_string());
+                self.compiled_expr = None;
+                self.latex_cache.clear();
+                self.parsed_expr = Ok(expr);
+            }
+        }
+    }
+
+    /// Renders the math expression input bar UI and optional synthesized `AnimatedSlider`s.
     ///
-    /// Returns `true` if the expression was modified by the user or preset selection.
+    /// Returns `true` if the expression or any synthesized parameter slider changed.
     pub fn ui(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
 
@@ -141,7 +308,7 @@ impl MathExpressionInputBar {
                     let res = ui.add(
                         egui::TextEdit::singleline(&mut self.raw_text)
                             .hint_text("Enter mathematical expression...")
-                            .desired_width(ui.available_width() - 8.0),
+                            .desired_width((ui.available_width() - 8.0).max(48.0)),
                     );
                     if res.changed() {
                         self.reparse();
@@ -150,19 +317,46 @@ impl MathExpressionInputBar {
                 });
 
                 ui.add_space(4.0);
+                let err_detail = self.error_message();
                 render_status_row(
                     ui,
-                    &self.parsed_expr,
+                    err_detail.as_deref(),
                     &self.latex_cache,
                     &self.raw_text,
                     &mut self.had_error,
                     &mut self.last_announced_error,
                 );
+
+                if self.scope_enabled && self.render_inline_sliders && self.slider_bank.ui(ui) {
+                    changed = true;
+                }
             });
         });
 
         changed
     }
+
+    /// Renders only the synthesized parameter sliders under a scoped `id_salt`.
+    pub fn sliders_ui(&mut self, ui: &mut egui::Ui, id_salt: &str) -> bool {
+        if !self.scope_enabled {
+            return false;
+        }
+        ui.push_id(id_salt, |ui| self.slider_bank.ui(ui)).inner
+    }
+}
+
+fn update_latex_preview(
+    latex_cache: &mut String,
+    lhs: Option<&str>,
+    default_lhs: &str,
+    expr: &Expr,
+) {
+    let lhs_label = lhs.or((!default_lhs.is_empty()).then_some(default_lhs));
+    let expr_latex = expr.to_latex();
+    *latex_cache = match lhs_label {
+        Some(prefix) => format!("{prefix} = {expr_latex}"),
+        None => expr_latex,
+    };
 }
 
 fn render_presets(
@@ -192,190 +386,42 @@ fn render_presets(
 
 fn render_status_row(
     ui: &mut egui::Ui,
-    parsed: &Result<Expr, ParseError>,
+    err_detail: Option<&str>,
     latex: &str,
     raw: &str,
     had_error: &mut bool,
     last_announced_error: &mut Option<String>,
 ) {
-    match parsed {
-        Ok(_) => {
-            if *had_error {
-                crate::accessibility::announce_status("Mathematical expression is valid");
-                *had_error = false;
-                *last_announced_error = None;
-            }
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Preview:").weak());
-                let preview_str = if !latex.is_empty() { latex } else { raw };
-                egui_plot::render_math_label(
-                    ui,
-                    preview_str,
-                    egui::TextStyle::Body,
-                    ui.visuals().text_color(),
-                );
-            });
+    if let Some(detail) = err_detail {
+        let err_msg = format!("Syntax Error: {detail}");
+        if last_announced_error.as_deref() != Some(&err_msg) {
+            crate::accessibility::announce_status_with_priority(&err_msg, "assertive");
+            *had_error = true;
+            *last_announced_error = Some(err_msg);
         }
-        Err(err) => {
-            let detail = err.user_message_for_input(raw.trim());
-            let err_msg = format!("Syntax Error: {detail}");
-            if last_announced_error.as_deref() != Some(&err_msg) {
-                crate::accessibility::announce_status_with_priority(&err_msg, "assertive");
-                *had_error = true;
-                *last_announced_error = Some(err_msg);
-            }
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(format!("⚠️ Syntax Error: {detail}"))
-                        .color(palette.error)
-                        .small(),
-                );
-            });
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_error_and_recovery_announcements() {
-        crate::accessibility::clear_test_announcements();
-
-        let mut bar = MathExpressionInputBar::new("y'", "sin(t)", vec![]);
-        let ctx = egui::Context::default();
-
-        // Initial valid render: no announcements should be dispatched
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                bar.ui(ui);
-            });
-        });
-        assert_eq!(crate::accessibility::all_announcements().len(), 0);
-
-        // Enter invalid syntax: should trigger assertive announcement
-        bar.set_expression("1 +");
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                bar.ui(ui);
-            });
-        });
-        let announcements = crate::accessibility::all_announcements();
-        assert_eq!(announcements.len(), 1);
-        assert_eq!(announcements[0].1, "assertive");
-        assert!(announcements[0].0.starts_with("Syntax Error:"));
-
-        // Subsequent frame with unchanged error: should NOT re-announce
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                bar.ui(ui);
-            });
-        });
-        assert_eq!(crate::accessibility::all_announcements().len(), 1);
-
-        // Correct invalid expression to valid: should trigger polite validation announcement
-        bar.set_expression("1 + 2");
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                bar.ui(ui);
-            });
-        });
-        let announcements = crate::accessibility::all_announcements();
-        assert_eq!(announcements.len(), 2);
-        assert_eq!(
-            announcements[1],
-            (
-                "Mathematical expression is valid".to_string(),
-                "polite".to_string()
-            )
-        );
-
-        // Subsequent valid frames: should NOT re-announce
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                bar.ui(ui);
-            });
-        });
-        assert_eq!(crate::accessibility::all_announcements().len(), 2);
-    }
-
-    #[test]
-    fn test_plain_language_error_messages_have_no_debug_spans_or_eof() {
-        for invalid in ["1 +", "(1 + 2", "1 + @", "sin("] {
-            crate::accessibility::clear_test_announcements();
-            let mut bar = MathExpressionInputBar::new("y'", invalid, vec![]);
-            let msg = bar
-                .error_message()
-                .expect("expected syntax error message for invalid input");
-            assert!(
-                !msg.contains("Span {"),
-                "leaked raw Span struct in '{msg}' for '{invalid}'"
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(format!("⚠️ Syntax Error: {detail}"))
+                    .color(palette.error)
+                    .small(),
             );
-            assert!(
-                !msg.contains("<EOF>"),
-                "leaked <EOF> token in '{msg}' for '{invalid}'"
+        });
+    } else {
+        if *had_error {
+            crate::accessibility::announce_status("Mathematical expression is valid");
+            *had_error = false;
+            *last_announced_error = None;
+        }
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Preview:").weak());
+            let preview_str = if !latex.is_empty() { latex } else { raw };
+            egui_plot::render_math_label(
+                ui,
+                preview_str,
+                egui::TextStyle::Body,
+                ui.visuals().text_color(),
             );
-            assert!(
-                msg.contains("character ") || msg.contains("end of expression"),
-                "expected 1-indexed character position or 'end of expression' in '{msg}'"
-            );
-
-            let ctx = egui::Context::default();
-            let _ = ctx.run(Default::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    bar.ui(ui);
-                });
-            });
-            for (announced, _) in crate::accessibility::all_announcements() {
-                assert!(!announced.contains("Span {"));
-                assert!(!announced.contains("<EOF>"));
-            }
-        }
-    }
-
-    fn collect_text_colors(shapes: &[egui::epaint::Shape], out: &mut Vec<(String, egui::Color32)>) {
-        for shape in shapes {
-            match shape {
-                egui::epaint::Shape::Text(t) => {
-                    let color = t
-                        .override_text_color
-                        .or_else(|| t.galley.job.sections.first().map(|s| s.format.color))
-                        .unwrap_or(egui::Color32::TRANSPARENT);
-                    out.push((t.galley.job.text.clone(), color));
-                }
-                egui::epaint::Shape::Vec(inner) => collect_text_colors(inner, out),
-                _ => {}
-            }
-        }
-    }
-
-    #[test]
-    fn test_syntax_error_uses_semantic_palette_error_across_themes() {
-        for mode in [
-            crate::app::ThemeMode::Dark,
-            crate::app::ThemeMode::Light,
-            crate::app::ThemeMode::HighContrast,
-        ] {
-            let mut bar = MathExpressionInputBar::new("y'", "1 +", vec![]);
-            let ctx = egui::Context::default();
-            ctx.set_visuals(mode.visuals());
-            let out = ctx.run(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    bar.ui(ui);
-                });
-            });
-            let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
-            let mut rendered = Vec::new();
-            collect_text_colors(&shapes, &mut rendered);
-            let err_entry = rendered
-                .iter()
-                .find(|(text, _)| text.contains("Syntax Error:"))
-                .expect("expected rendered syntax error label");
-            assert!(!err_entry.0.contains("<EOF>") && !err_entry.0.contains("Span {"));
-            assert_eq!(err_entry.1, mode.palette().error);
-            assert!(crate::app::contrast_ratio(err_entry.1, mode.visuals().panel_fill) >= 4.5);
-        }
+        });
     }
 }
