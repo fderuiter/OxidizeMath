@@ -2722,12 +2722,74 @@
       "signature": "pub trait IterationStrategy { fn iterate < G , B , F > (& self , _ : & G , _ : & B , _ : F) where G : GeometryStrategy , B : BoundaryStrategy , F : FnMut (GridIndex , GridIndex , GridIndex , GridIndex , GridIndex) }"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/fd2d/mask.rs": [
+    {
+      "signature": "impl CellMask2D { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl CellMask2D { pub fn get (& self , _ : usize , _ : usize) -> ReactionCellRole }"
+    },
+    {
+      "signature": "impl CellMask2D { pub fn has_active_cells (& self) -> bool }"
+    },
+    {
+      "signature": "impl CellMask2D { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl CellMask2D { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl CellMask2D { pub fn paint_disk (& mut self , _ : i32 , _ : i32 , _ : i32 , _ : ReactionCellRole) }"
+    },
+    {
+      "signature": "impl CellMask2D { pub fn roles (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl CellMask2D { pub fn set (& mut self , _ : usize , _ : usize , _ : ReactionCellRole) }"
+    },
+    {
+      "signature": "impl CellMask2D { pub fn set_roles_slice (& mut self , _ : & [u8]) -> Result < () , & 'static str > }"
+    },
+    {
+      "signature": "impl CellMask2D { pub fn stamp_microfluidic_maze (& mut self) }"
+    },
+    {
+      "signature": "impl CellMask2D { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "impl MaskedFiniteDifference2D { pub fn new (_ : FiniteDifference2D) -> Self }"
+    },
+    {
+      "signature": "impl ReactionCellRole { pub fn from_u8 (_ : u8) -> Self }"
+    },
+    {
+      "signature": "pub enum ReactionCellRole"
+    },
+    {
+      "signature": "pub struct CellMask2D"
+    },
+    {
+      "signature": "pub struct MaskedFiniteDifference2D"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/fd2d/mod.rs": [
     {
       "signature": "impl FiniteDifference2D { pub fn new (_ : Dimension , _ : Dimension , _ : StepSize , _ : StepSize) -> Self }"
     },
     {
+      "signature": "impl FiniteDifference2D { pub fn with_mask (self) -> MaskedFiniteDifference2D }"
+    },
+    {
       "signature": "pub struct FiniteDifference2D"
+    },
+    {
+      "signature": "pub use mask :: CellMask2D"
+    },
+    {
+      "signature": "pub use mask :: MaskedFiniteDifference2D"
+    },
+    {
+      "signature": "pub use mask :: ReactionCellRole"
     }
   ],
   "crates/domain_biology/src/biology/diffusion/fd3d.rs": [
@@ -2764,7 +2826,16 @@
       "signature": "pub use fd1d :: FiniteDifference1D"
     },
     {
+      "signature": "pub use fd2d :: CellMask2D"
+    },
+    {
       "signature": "pub use fd2d :: FiniteDifference2D"
+    },
+    {
+      "signature": "pub use fd2d :: MaskedFiniteDifference2D"
+    },
+    {
+      "signature": "pub use fd2d :: ReactionCellRole"
     },
     {
       "signature": "pub use fd3d :: FiniteDifference3D"
@@ -4793,6 +4864,44 @@
       "signature": "pub trait MomentumEquation { fn acceleration (& self , _ : & FluidProperties , _ : & FlowState , _ : & SpatialGradients , _ : Vector3 < f64 > ,) -> Vector3 < f64 > }"
     }
   ],
+  "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/aerodynamics.rs": [
+    {
+      "signature": "impl Naca4Airfoil { pub fn contains_point (& self , _ : f64 , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl Naca4Airfoil { pub fn from_code (_ : u16 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "pub const MAX_LATTICE_JET_SPEED : f64"
+    },
+    {
+      "signature": "pub fn advance_wind_tunnel_step (_ : & mut LatticeBoltzmannD2Q9 < BgkCollision > , _ : f64)"
+    },
+    {
+      "signature": "pub fn apply_outflow_right_boundary < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > ,)"
+    },
+    {
+      "signature": "pub fn compute_aerodynamic_coefficients < C : CollisionModel < 9 , D2Q9 > > (_ : & LatticeBoltzmannD2Q9 < C > , _ : f64 , _ : f64 , _ : usize ,) -> AerodynamicCoefficients"
+    },
+    {
+      "signature": "pub fn compute_vorticity_into < C : CollisionModel < 9 , D2Q9 > > (_ : & LatticeBoltzmannD2Q9 < C > , _ : & mut [f64] ,)"
+    },
+    {
+      "signature": "pub fn inject_velocity_jet < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : i32 , _ : i32 , _ : i32 , _ : f64 , _ : f64 ,)"
+    },
+    {
+      "signature": "pub fn stamp_naca4_airfoil < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : & Naca4Airfoil ,)"
+    },
+    {
+      "signature": "pub fn stamp_venturi_nozzle < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : f64 ,)"
+    },
+    {
+      "signature": "pub struct AerodynamicCoefficients"
+    },
+    {
+      "signature": "pub struct Naca4Airfoil"
+    }
+  ],
   "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/algorithms.rs": [
     {
       "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn clear_obstacles (& mut self) }"
@@ -4846,6 +4955,9 @@
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/mod.rs": [
+    {
+      "signature": "pub use aerodynamics :: *"
+    },
     {
       "signature": "pub use forces :: compute_drag_coefficient"
     },
@@ -5969,6 +6081,9 @@
       "signature": "pub fn construct_1d_hamiltonian (_ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64 ,) -> QuantumOperator"
     },
     {
+      "signature": "pub fn construct_1d_hamiltonian_into (_ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64 , _ : & mut QuantumOperator ,)"
+    },
+    {
       "signature": "pub fn construct_two_state_eigen_hamiltonian (_ : f64 , _ : f64 , _ : f64) -> QuantumOperator"
     },
     {
@@ -6036,6 +6151,9 @@
       "signature": "pub use hamiltonian :: construct_1d_hamiltonian"
     },
     {
+      "signature": "pub use hamiltonian :: construct_1d_hamiltonian_into"
+    },
+    {
       "signature": "pub use hamiltonian :: construct_two_state_eigen_hamiltonian"
     },
     {
@@ -6066,7 +6184,13 @@
       "signature": "pub use schrodinger :: evolve_state_in_place"
     },
     {
+      "signature": "pub use schrodinger :: state_norm_squared"
+    },
+    {
       "signature": "pub use schrodinger :: time_evolution_operator"
+    },
+    {
+      "signature": "pub use schrodinger :: transmission_probability"
     },
     {
       "signature": "pub use spin :: sigma_x"
@@ -6092,7 +6216,13 @@
       "signature": "pub fn evolve_state_in_place (_ : & mut QuantumState , _ : & QuantumOperator , _ : & mut DVector < Complex < f64 > > ,)"
     },
     {
+      "signature": "pub fn state_norm_squared (_ : & QuantumState) -> f64"
+    },
+    {
       "signature": "pub fn time_evolution_operator (_ : & QuantumOperator , _ : f64 , _ : f64 ,) -> QuantumOperator"
+    },
+    {
+      "signature": "pub fn transmission_probability (_ : & QuantumState , _ : usize) -> f64"
     }
   ],
   "crates/domain_physics/src/physics/quantum/spin.rs": [
@@ -9548,31 +9678,57 @@
       "signature": "pub struct Theorem12Bounds"
     },
     {
-      "signature": "pub use weierstrass :: AffinePointFp"
+      "signature": "pub use modular_bridge :: *"
     },
     {
-      "signature": "pub use weierstrass :: ChordStepFp"
+      "signature": "pub use weierstrass :: *"
+    }
+  ],
+  "crates/pure_math/src/pure_math/elliptic_curves/modular_bridge.rs": [
+    {
+      "signature": "pub const MAX_SCALED_J_PRECISION : usize"
     },
     {
-      "signature": "pub use weierstrass :: HasseSweepEntry"
+      "signature": "pub fn analyze_frobenius_prime (_ : & PrimeWeierstrassCurve ,) -> Result < FrobeniusClassSummary , EllipticCurveError >"
     },
     {
-      "signature": "pub use weierstrass :: MAX_WEIERSTRASS_PRIME"
+      "signature": "pub fn eisenstein_e4_q_series (_ : usize) -> QSeries < i64 >"
     },
     {
-      "signature": "pub use weierstrass :: WeierstrassCurveFp"
+      "signature": "pub fn frobenius_discriminant (_ : i64 , _ : u64) -> i64"
     },
     {
-      "signature": "pub use weierstrass :: mod_inv_fp"
+      "signature": "pub fn hurwitz_trace_sum (_ : u64) -> (f64 , f64 , bool)"
     },
     {
-      "signature": "pub use weierstrass :: mod_pow_fp"
+      "signature": "pub fn j_invariant_fp < const P : i64 > (_ : & FpWeierstrassCurve < P >) -> Fp < P >"
     },
     {
-      "signature": "pub use weierstrass :: sweep_hasse_bounds"
+      "signature": "pub fn j_invariant_mod_p (_ : & PrimeWeierstrassCurve) -> i64"
     },
     {
-      "signature": "pub use weierstrass :: tonelli_shanks_fp"
+      "signature": "pub fn j_invariant_q_scaled (_ : usize) -> QSeries < i64 >"
+    },
+    {
+      "signature": "pub fn j_invariant_real (_ : & WeierstrassCurve) -> f64"
+    },
+    {
+      "signature": "pub fn modular_valuation_summary (_ : & PrimeWeierstrassCurve , _ : u64 , _ : u64 , _ : u64 ,) -> Result < ModularValuationSummary , EllipticCurveError >"
+    },
+    {
+      "signature": "pub fn principal_bqf_for_discriminant (_ : i64) -> Option < BQF >"
+    },
+    {
+      "signature": "pub fn ramanujan_delta_q_series (_ : usize) -> QSeries < i64 >"
+    },
+    {
+      "signature": "pub fn ramanujan_delta_shifted_q_series (_ : usize) -> QSeries < i64 >"
+    },
+    {
+      "signature": "pub struct FrobeniusClassSummary"
+    },
+    {
+      "signature": "pub struct ModularValuationSummary"
     }
   ],
   "crates/pure_math/src/pure_math/elliptic_curves/weierstrass.rs": [
@@ -9662,6 +9818,148 @@
     },
     {
       "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: tonelli_shanks_fp"
+    },
+    {
+      "signature": "pub use fp_curve :: FpWeierstrassCurve"
+    },
+    {
+      "signature": "pub use fp_curve :: MAX_LATTICE_PRIME"
+    },
+    {
+      "signature": "pub use fp_curve :: PrimeWeierstrassCurve"
+    },
+    {
+      "signature": "pub use fp_curve :: hasse_weil_bound"
+    },
+    {
+      "signature": "pub use real_curve :: CurvePoint"
+    },
+    {
+      "signature": "pub use real_curve :: WeierstrassCurve"
+    }
+  ],
+  "crates/pure_math/src/pure_math/elliptic_curves/weierstrass/fp_curve.rs": [
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn add (& self , _ : CurvePoint < Fp < P > > , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn discriminant (& self) -> Fp < P > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn double (& self , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn is_on_curve (& self , _ : CurvePoint < Fp < P > >) -> bool }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn negate (& self , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn new (_ : i64 , _ : i64) -> Result < Self , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn scalar_mul (& self , _ : i64 , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn write_orbit (& self , _ : CurvePoint < Fp < P > > , _ : & mut [CurvePoint < Fp < P > >] ,) -> usize }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn add (& self , _ : CurvePoint < i64 > , _ : CurvePoint < i64 >) -> CurvePoint < i64 > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn discriminant_mod_p (& self) -> i64 }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn double (& self , _ : CurvePoint < i64 >) -> CurvePoint < i64 > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn frobenius_trace (& self) -> Result < i64 , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn is_on_curve (& self , _ : CurvePoint < i64 >) -> bool }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn negate (& self , _ : CurvePoint < i64 >) -> CurvePoint < i64 > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn new (_ : i64 , _ : i64 , _ : i64) -> Result < Self , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn point_count (& self) -> Result < u64 , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn rhs_mod_p (& self , _ : i64) -> i64 }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn satisfies_hasse_weil (& self) -> Result < bool , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn scalar_mul (& self , _ : i64 , _ : CurvePoint < i64 >) -> CurvePoint < i64 > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn slope_mod_p (& self , _ : CurvePoint < i64 > , _ : CurvePoint < i64 >) -> Option < i64 > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn write_affine_points (& self , _ : & mut [CurvePoint < i64 >] ,) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn write_orbit (& self , _ : CurvePoint < i64 > , _ : & mut [CurvePoint < i64 >]) -> usize }"
+    },
+    {
+      "signature": "pub const MAX_LATTICE_PRIME : i64"
+    },
+    {
+      "signature": "pub fn hasse_weil_bound (_ : u64) -> f64"
+    },
+    {
+      "signature": "pub struct FpWeierstrassCurve < const P : i64 >"
+    },
+    {
+      "signature": "pub struct PrimeWeierstrassCurve"
+    }
+  ],
+  "crates/pure_math/src/pure_math/elliptic_curves/weierstrass/real_curve.rs": [
+    {
+      "signature": "impl < T > CurvePoint < T > { pub fn coords (& self) -> Option < (T , T) > where T : Copy , }"
+    },
+    {
+      "signature": "impl < T > CurvePoint < T > { pub fn is_infinity (& self) -> bool }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn add (& self , _ : CurvePoint < f64 > , _ : CurvePoint < f64 >) -> CurvePoint < f64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn discriminant (& self) -> f64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn double (& self , _ : CurvePoint < f64 >) -> CurvePoint < f64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn is_on_curve (& self , _ : CurvePoint < f64 > , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn negate (& self , _ : CurvePoint < f64 >) -> CurvePoint < f64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn new (_ : f64 , _ : f64) -> Result < Self , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn rhs (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn scalar_mul (& self , _ : i64 , _ : CurvePoint < f64 >) -> CurvePoint < f64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn secant_or_tangent_slope (& self , _ : CurvePoint < f64 > , _ : CurvePoint < f64 >) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn write_orbit (& self , _ : CurvePoint < f64 > , _ : & mut [CurvePoint < f64 >]) -> usize }"
+    },
+    {
+      "signature": "pub enum CurvePoint < T >"
+    },
+    {
+      "signature": "pub struct WeierstrassCurve"
     }
   ],
   "crates/pure_math/src/pure_math/graph_theory/dijkstra.rs": [

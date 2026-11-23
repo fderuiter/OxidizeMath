@@ -6,6 +6,9 @@ pub mod boundary;
 pub mod geometry;
 #[allow(missing_docs)]
 pub mod iteration;
+pub mod mask;
+
+pub use mask::{CellMask2D, MaskedFiniteDifference2D, ReactionCellRole};
 
 use boundary::NeumannBoundary;
 use geometry::{Cartesian2D, GeometryStrategy};
@@ -37,6 +40,12 @@ impl FiniteDifference2D {
             boundary: NeumannBoundary,
             iteration: LoopSplittingIteration,
         }
+    }
+
+    /// Wraps this 2D stencil operator in a [`MaskedFiniteDifference2D`] with an empty cell mask.
+    #[verified_engine::verified]
+    pub fn with_mask(self) -> MaskedFiniteDifference2D {
+        MaskedFiniteDifference2D::new(self)
     }
 }
 

@@ -1,4 +1,4 @@
-# ADR 0045: Additive Stepper Fixes, Standard Derives, and Public `Debug` Verification
+# ADR 0046: Additive Stepper Fixes, Standard Derives, and Public `Debug` Verification
 
 ## Status
 Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md) and [ADR 0036](0036-delete-simulation-model-traits-and-physics-adapters.md))
@@ -19,7 +19,7 @@ Following the removal of dead `oxidize_core::{ModelConfig, ModelState, Simulatio
    - Track elapsed time `t` (starting at `0.0`, advancing by `dt` per step, with `time()` and `set_time(t)` accessors) across `OdeModel`, `SIRModel`, `SEIRModel`, `ReactionDiffusionSystem`, `StandardSolverAdapter`, `FluidParticleSystem`, `LorenzSystem`, and `BlochSimulator`, while preserving autonomous `Euler`, `Heun`, and `RungeKutta4` arithmetic bit-for-bit.
    - Add additive `reaction_at` and `add_reaction_batch_at` default methods on `ReactionModel` (and `reaction_at` on `ReactionKinetics<N>`), forwarding `t` from `ReactionDiffusionModel::derivative_in_place` and `TuringDynamics::derivative_in_place`, and replace heap allocations in `ReactionModel::add_reaction_batch_at` with stack-allocated `[0.0_f64; 32]` buffers for `n_species <= 32`.
 3. **Workspace-Wide Standard Derives & Manual `Debug`**:
-   - Add `Debug` (plus `Clone`, `PartialEq`, `Copy`, `Eq`, and `Default` where valid) across all plain-data public structs and enums in the eight mathematical crates, using scratch-ignoring `PartialEq` implementations on double-buffered or solver-buffered simulators (`LorenzSystem`, `BlochSimulator`, `TuringSystem`, `HydrogenicSuperposition3D`).
+   - Add `Debug` (plus `Clone`, `PartialEq`, `Copy`, `Eq`, and `Default` where valid) across all plain-data public structs and enums in the eight mathematical crates (including upstream `CellMask2D`, `MaskedFiniteDifference2D`, `ModularValuationSummary`, `FrobeniusClassSummary`, and `GeodesicSystem`), using scratch-ignoring `PartialEq` implementations on double-buffered or solver-buffered simulators (`LorenzSystem`, `BlochSimulator`, `TuringSystem`, `HydrogenicSuperposition3D`).
    - Implement `std::fmt::Debug` manually using `debug_struct(...).finish_non_exhaustive()` on the 13 closure, trait-object, and FFT planner types (`TrainingLoop`, `QLearningAgent`, `ScoringContext`, `UnifiedFavoritismModel`, `BestResponseCorrespondence`, `WinRatioAnalysis`, `PotentialFlowField`, `Fft2dWorkspace`, `LeniaEngine`, `DirichletBoundary`, `NeumannBoundary`, `FastFourierTransform`, and `RiemannianMetric`).
 4. **Verification Enforcement, API Baseline & Documentation**:
    - Enforce 100% `Debug` coverage on reachable public structs and enums across the eight mathematical crates in `unified_verification` (`api_drift::public_debug`, `check-api-drift`, `test-policy-audit`, and standalone `check-public-debug` / `xtask check-public-debug`) sharing `AstCache` without extra file parses.
@@ -29,6 +29,6 @@ Following the removal of dead `oxidize_core::{ModelConfig, ModelState, Simulatio
 - **Positive**:
   - `LorenzSystem::step`, `BlochSimulator::step`, `FluidParticleSystem`, `TimeStepper::step_with`, `ReactionDiffusionSystem::step`, and `TuringSystem` execute in place with zero post-initialization heap allocations verified under `VerifiedAllocator`.
   - Non-autonomous differential equations and time-dependent reaction kinetics receive accurate elapsed simulation time `t` on every substep while autonomous trajectories remain bit-identical.
-  - All 516 reachable public structs and enums across the eight mathematical crates implement `Debug` (with `Clone` and `PartialEq` on plain-data types), enforced continuously by `unified_verification`.
+  - All 527 reachable public structs and enums across the eight mathematical crates implement `Debug` (with `Clone` and `PartialEq` on plain-data types), enforced continuously by `unified_verification`.
 - **Negative**:
   - Pre-allocating `Euler`, `Heun`, and `RungeKutta4` `Vector3<f64>` scratch buffers increases stack size of `LorenzSystem` and `BlochSimulator` by seven `Vector3<f64>` values (168 bytes), enabling zero-allocation runtime switching between integrators.
