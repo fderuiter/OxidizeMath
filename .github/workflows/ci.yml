@@ -28,11 +28,68 @@ jobs:
     outputs:
       papers_changed: ${{ steps.detect-changes.outputs.papers_changed }}
       installer_changed: ${{ steps.detect-changes.outputs.installer_changed }}
+      is_prerelease: ${{ steps.release-meta.outputs.is_prerelease }}
+      wix_version: ${{ steps.release-meta.outputs.wix_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
+
+      - name: Resolve WiX Pre-Release Metadata
+        id: release-meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ws_version="$(awk '
+            { sub(/\r$/, "") }
+            /^\[/ { in_ws_pkg = ($0 == "[workspace.package]"); next }
+            in_ws_pkg && $0 ~ /^[[:space:]]*version[[:space:]]*=/ {
+              sub(/^[[:space:]]*version[[:space:]]*=[[:space:]]*"/, "")
+              sub(/".*$/, "")
+              print
+              exit
+            }
+          ' Cargo.toml)"
+
+          if [ -z "$ws_version" ]; then
+            echo "Error: Missing [workspace.package].version in Cargo.toml" >&2
+            exit 1
+          fi
+
+          is_prerelease="false"
+          wix_version="$ws_version"
+          if [[ "$ws_version" == *"+"* ]]; then
+            wix_version=""
+          elif [[ "$ws_version" == *-* ]]; then
+            is_prerelease="true"
+            ws_core="${ws_version%%-*}"
+            ws_pre="${ws_version#*-}"
+            NUM_RE='^(0|[1-9][0-9]*)$'
+            wix_rev=""
+            if [[ "$ws_pre" == alpha.* ]] && [[ "${ws_pre#alpha.}" =~ $NUM_RE ]]; then
+              wix_rev="$((1000 + ${ws_pre#alpha.}))"
+            elif [[ "$ws_pre" == beta.* ]] && [[ "${ws_pre#beta.}" =~ $NUM_RE ]]; then
+              wix_rev="$((10000 + ${ws_pre#beta.}))"
+            elif [[ "$ws_pre" == rc.* ]] && [[ "${ws_pre#rc.}" =~ $NUM_RE ]]; then
+              wix_rev="$((20000 + ${ws_pre#rc.}))"
+            elif [[ "$ws_pre" =~ $NUM_RE ]]; then
+              wix_rev="$ws_pre"
+            fi
+            if [ -n "$wix_rev" ] && [ "$wix_rev" -le 65535 ]; then
+              wix_version="${ws_core}-${wix_rev}"
+            else
+              wix_version=""
+            fi
+          fi
+
+          echo "is_prerelease=${is_prerelease}"
+          echo "wix_version=${wix_version}"
+          {
+            printf 'is_prerelease=%s\n' "$is_prerelease"
+            printf 'wix_version=%s\n' "$wix_version"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Detect Scoped Change Paths
         id: detect-changes
@@ -115,6 +172,12 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+
+      - name: Check Release Tag Parity
+        env:
+          GIT_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: cargo run -p unified_verification -- check-release-tag
 
       - name: Check Unused Dependencies
         uses: bnjbvr/cargo-machete@cf4ad43b2ea507679a5c66685b7225ca7510eafc # main
@@ -486,7 +549,36 @@ jobs:
       - name: Build and Package
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
         shell: bash
-        run: cargo packager --release -p math_explorer_gui -f ${{ matrix.target }}
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+          IS_PRERELEASE: ${{ needs.detect-changes.outputs.is_prerelease }}
+          WIX_VERSION: ${{ needs.detect-changes.outputs.wix_version }}
+        run: |
+          set -euo pipefail
+          restore_gui_manifest() {
+            git checkout -- math_explorer_gui/Cargo.toml
+          }
+          if [ "$MATRIX_TARGET" = "wix" ] && [ "${IS_PRERELEASE:-false}" = "true" ]; then
+            WIX_VER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(0|[1-9][0-9]{0,4})$'
+            if [[ ! "${WIX_VERSION:-}" =~ $WIX_VER_RE ]]; then
+              echo "Error: Invalid mapped WiX pre-release version: ${WIX_VERSION:-<empty>}" >&2
+              exit 1
+            fi
+            trap restore_gui_manifest EXIT
+            awk -v ver="$WIX_VERSION" '
+              { sub(/\r$/, "") }
+              $0 == "[package.metadata.packager]" && !inserted {
+                print
+                printf "version = \"%s\"\n", ver
+                inserted = 1
+                next
+              }
+              { print }
+              END { if (!inserted) exit 1 }
+            ' math_explorer_gui/Cargo.toml > math_explorer_gui/Cargo.toml.wix-tmp
+            mv math_explorer_gui/Cargo.toml.wix-tmp math_explorer_gui/Cargo.toml
+          fi
+          cargo packager --release -p math_explorer_gui -f "$MATRIX_TARGET"
 
       - name: Generate SHA-256 Manifest
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
@@ -762,12 +854,34 @@ jobs:
     needs: [pre-flight, build-and-test, package, compile-papers, feature-matrix]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: release-${{ github.ref_name }}
+      cancel-in-progress: false
     permissions:
       contents: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
+
+      - name: Cache Cargo dependencies
+        uses: ./.github/actions/cargo-cache
+        with:
+          scope: preflight
+          profile: dev
+          restore-only: "true"
+
+      - name: Check Release Tag Parity
+        id: check-release-tag
+        env:
+          GIT_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: cargo run -p unified_verification -- check-release-tag --require-tag --github-output "$GITHUB_OUTPUT"
 
       - name: Download workflow artifacts
         uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
@@ -848,22 +962,55 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
+          IS_PRERELEASE: ${{ steps.check-release-tag.outputs.is_prerelease }}
         run: |
+          set -euo pipefail
+
           if [ -z "${RELEASE_TAG:-}" ]; then
             echo "Error: RELEASE_TAG must not be empty" >&2
             exit 1
           fi
 
-          SEMVER_RE='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if [[ "$RELEASE_TAG" == *"+"* ]]; then
+            echo "Error: SemVer +build metadata is not allowed in RELEASE_TAG: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          SEMVER_RE='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*)|-(0|[1-9][0-9]*))?$'
           if [[ ! "$RELEASE_TAG" =~ $SEMVER_RE ]]; then
             echo "Error: Invalid semantic version release tag: $RELEASE_TAG" >&2
             exit 1
           fi
 
-          gh release create \
-            --title "$RELEASE_TAG" \
-            --generate-notes \
-            -- \
-            "$RELEASE_TAG" \
-            release-assets/*
+          shopt -s nullglob
+          assets=(release-assets/*)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "Error: No staged assets found in release-assets/" >&2
+            exit 1
+          fi
+
+          edit_flags=(--draft=false --verify-tag)
+          if [ "${IS_PRERELEASE:-false}" = "true" ]; then
+            edit_flags+=(--prerelease)
+          else
+            edit_flags+=(--prerelease=false)
+          fi
+
+          if gh release view -- "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Existing release detected for $RELEASE_TAG; uploading assets with --clobber..."
+            gh release upload --clobber -- "$RELEASE_TAG" "${assets[@]}"
+            gh release edit "${edit_flags[@]}" -- "$RELEASE_TAG"
+          else
+            create_flags=(
+              --draft
+              --verify-tag
+              --title "$RELEASE_TAG"
+              --generate-notes
+            )
+            if [ "${IS_PRERELEASE:-false}" = "true" ]; then
+              create_flags+=(--prerelease)
+            fi
+            gh release create "${create_flags[@]}" -- "$RELEASE_TAG" "${assets[@]}"
+            gh release edit "${edit_flags[@]}" -- "$RELEASE_TAG"
+          fi
 

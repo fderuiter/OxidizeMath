@@ -168,6 +168,8 @@ pub(super) fn assert_ci_static_and_dedup_parity(ci_yaml: &str) {
     for required_cmd in [
         "cargo build -p unified_verification",
         "cargo run -p unified_verification -- batch-static",
+        "cargo run -p unified_verification -- check-release-tag",
+        "cargo run -p unified_verification -- check-release-tag --require-tag --github-output \"$GITHUB_OUTPUT\"",
         "cargo run -p unified_verification -- verify-suite --coverage-only",
         "- name: Build (Native)\n        if: runner.os != 'Linux' && matrix.target != 'wasm32-unknown-unknown'",
     ] {
@@ -229,6 +231,8 @@ fn assert_parallel_dag_invariants(ci_yaml: &str) {
     assert!(compile_papers.contains("needs.detect-changes.outputs.papers_changed == 'true'"));
     assert!(package.contains("\n    needs: detect-changes\n"));
     assert!(package.contains("needs.detect-changes.outputs.installer_changed == 'true'"));
+    assert!(package.contains("IS_PRERELEASE: ${{ needs.detect-changes.outputs.is_prerelease }}"));
+    assert!(package.contains("WIX_VERSION: ${{ needs.detect-changes.outputs.wix_version }}"));
     assert!(!ci_yaml.contains("needs.pre-flight.outputs."));
     assert!(
         deploy_pages.contains(
@@ -238,6 +242,7 @@ fn assert_parallel_dag_invariants(ci_yaml: &str) {
     assert!(publish_release.contains(
         "\n    needs: [pre-flight, build-and-test, package, compile-papers, feature-matrix]\n"
     ));
+    assert!(publish_release.contains("scope: preflight\n          profile: dev"));
 }
 
 pub(super) fn assert_detect_changes_invariants(ci_yaml: &str, step: &str) {
