@@ -36,6 +36,8 @@ pub mod game_theory;
 pub mod geometry_topology;
 #[cfg(feature = "pure_math")]
 pub mod graph_theory;
+#[cfg(feature = "pure_math")]
+pub mod linear_algebra;
 #[cfg(feature = "physics")]
 pub mod medical;
 #[cfg(feature = "biology")]
@@ -188,6 +190,7 @@ pub trait ExplorerTab {
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
+            | "Linear Algebra"
             | "Number Theory" => "Pure Math",
 
             "Astrophysics"
@@ -287,6 +290,7 @@ pub trait ExplorerTab {
             "General Relativity" => "relativity",
             "Geometry & Topology" => "geometry_topology",
             "Graph Theory" => "graph_theory",
+            "Linear Algebra" => "linear_algebra",
             "Medical Physics" => "medical",
             "Morphogenesis" => "morphogenesis",
             "MRI Physics" => "mri",

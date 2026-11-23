@@ -110,6 +110,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "game_theory" => &["graph_parameters_rust"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
+        "linear_algebra" => &["advanced_linear_algebra", "pure_math"],
         "financial_math" => &["clinical_trials_statistics"],
         "neuroscience" => &["biology", "graph_parameters_rust"],
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],

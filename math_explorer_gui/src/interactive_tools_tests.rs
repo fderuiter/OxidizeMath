@@ -120,6 +120,9 @@ mod tests {
         exercise_interactive_tool::<crate::tabs::algorithmic_information::state::FractranMachineTool>(
             ctx,
         );
+        exercise_interactive_tool::<crate::tabs::linear_algebra::state::ConditioningWorkbenchTool>(
+            ctx,
+        );
         exercise_interactive_tool::<
             crate::tabs::number_theory::fractran_machine::FractranMachineTool,
         >(ctx);
