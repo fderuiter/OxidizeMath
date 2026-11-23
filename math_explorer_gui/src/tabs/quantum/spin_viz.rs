@@ -1,8 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "spin_export.rs"]
+mod spin_export;
+
 use crate::accessibility::AccessibleTheoryHover;
 use crate::framework::{
-    Camera3D, InteractiveTool, PlaybackAction, PlaybackTransport, Plot3DViewport, Scene3DBuilder,
+    Camera3D, ExportCapabilities, InteractiveTool, PlaybackAction, PlaybackTransport,
+    Plot3DViewport, Scene3DBuilder,
 };
 use eframe::egui;
 use egui_plot::{LineStyle, MarkerShape};
@@ -225,6 +229,18 @@ impl InteractiveTool for SpinVisualizer {
         "quantum"
     }
 
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
+        Some(self.build_bloch_colored_mesh_3d())
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        Some(self.build_bloch_colored_mesh_3d().map(|cm| cm.mesh))
+    }
+
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -397,6 +413,20 @@ mod tests {
         assert!(!egui_plot::get_last_plot_datasets().is_empty());
         assert!(!egui_plot::get_last_plot_datasets_3d().is_empty());
         assert!(!egui_plot::get_last_plot_primitives().is_empty());
+
+        let cm = viz
+            .export_colored_mesh_3d()
+            .expect("Bloch 3D export hook present")
+            .expect("Bloch 3D mesh builds");
+        assert_eq!(cm.colors.len(), cm.mesh.vertices.len());
+        assert!(cm.mesh.normals.iter().all(|n| n.is_finite()));
+        assert_eq!(
+            crate::tabs::geometry_topology::export_utils::count_open_and_nonmanifold_edges(
+                &cm.mesh
+            ),
+            (0, 0)
+        );
+        assert!(crate::tabs::geometry_topology::export_utils::signed_volume(&cm.mesh) > 0.0);
     }
 }
 

@@ -1,10 +1,14 @@
 pub mod callout_overlay;
+pub mod challenge;
+mod challenge_hud;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
+mod export_3d;
+mod export_dataset;
 mod export_figure;
 mod export_queue;
 #[cfg(test)]
@@ -45,6 +49,7 @@ mod ui;
 mod url_share;
 
 pub use callout_overlay::*;
+pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
@@ -79,7 +84,7 @@ pub struct ToolMetadata {
 }
 
 inventory::collect!(ToolMetadata);
-pub use crate::starter_gallery::StarterPresetMetadata;
+pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {
@@ -228,6 +233,21 @@ pub trait InteractiveTool {
         ""
     }
 
+    /// Activates or clears an inverse challenge contract (`None` exits challenge mode).
+    fn apply_challenge(&mut self, _challenge_id: Option<&str>) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Returns the canonical ID of the active challenge on this tool, if any.
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Evaluates live `0..=100` score and pass/residual status for the active inverse challenge.
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        None
+    }
+
     /// Serializes active parameter preset state to a formatted JSON string with metadata envelope.
     fn export_preset_json(&self) -> Result<String, String> {
         if let Some(state_str) = self.save_state() {
@@ -281,6 +301,21 @@ pub trait InteractiveTool {
 
     /// Optional hook to provide custom figure export options.
     fn export_figure_options(&self) -> Option<egui_plot::export::ExportOptions> {
+        None
+    }
+
+    /// Optional cold-path hook to build a watertight 3D triangle [`oxidize_core::mesh::Mesh`] for `.stl`, `.ply`, and `.obj` exports.
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        None
+    }
+
+    /// Optional cold-path hook to build a per-vertex colored 3D [`oxidize_core::mesh::ColoredMesh`] for `.ply` exports.
+    fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
+        None
+    }
+
+    /// Optional cold-path hook to serialize an INRIA-standard 3D Gaussian Splatting binary `.ply` scene.
+    fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
         None
     }
 
@@ -384,6 +419,9 @@ pub struct SimulationFramework {
     pub step_counter: usize,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
+    /// Active inverse challenge contract displayed in the Challenge HUD, if any.
+    pub active_challenge: Option<&'static ChallengeMetadata>,
+    pub(super) challenge_was_passed: bool,
     pub(super) instance_id: u64,
     pub(super) sync_state: FrameworkSyncState,
     pub(super) rev_cache: FrameworkRevisionCache,
@@ -428,6 +466,8 @@ impl SimulationFramework {
             diagnostic_report: None,
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
+            active_challenge: None,
+            challenge_was_passed: false,
             instance_id: overlay_sync::next_framework_id(),
             sync_state: FrameworkSyncState::default(),
             rev_cache: FrameworkRevisionCache::default(),
