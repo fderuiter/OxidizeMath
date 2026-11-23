@@ -75,7 +75,7 @@ impl ExplorerTab for AlgorithmicInfoTab {
 inventory::submit! {
     TabDescriptor {
         id: "algorithmic_information",
-        order: 100,
+        order: 25,
         build: || Box::new(AlgorithmicInfoTab::default()),
     }
 }

@@ -12,6 +12,8 @@ pub mod analysis;
 pub mod astrophysics;
 #[cfg(feature = "applied")]
 pub mod battery_degradation;
+#[cfg(feature = "applied")]
+pub mod cannibalism;
 #[cfg(feature = "physics")]
 pub mod chaos;
 #[cfg(feature = "climate")]
@@ -184,6 +186,7 @@ pub trait ExplorerTab {
             | "Favoritism"
             | "Game Theory"
             | "Paradox Lab"
+            | "Population Structure"
             | "Traceability Portal" => "Applied Math",
 
             "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
@@ -271,6 +274,7 @@ pub trait ExplorerTab {
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
             "Paradox Lab" => "paradox_lab",
+            "Population Structure" => "cannibalism",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",
@@ -281,11 +285,6 @@ pub trait ExplorerTab {
     /// Active `InteractiveTool` identifier for `#tool=<id>` share links (`None` for single-view tabs).
     fn active_tool_id(&self) -> Option<&'static str> {
         self.framework().and_then(|fw| fw.active_tool_id())
-    }
-
-    /// Active inverse `ChallengeMetadata` identifier for `#challenge=<id>` share links.
-    fn active_challenge_id(&self) -> Option<&'static str> {
-        self.framework().and_then(|fw| fw.active_challenge_id())
     }
 
     /// Deterministic parameter-only revision token for 300 ms debounced URL sync.
@@ -386,10 +385,17 @@ mod tests {
         let tabs = instantiate_tabs();
         assert!(!tabs.is_empty(), "Traceability tab is always enabled");
         let slugs: Vec<&str> = tabs.iter().map(|t| t.url_slug()).collect();
-        let mut sorted = slugs.clone();
-        sorted.sort_unstable();
-        sorted.dedup();
-        assert_eq!(slugs, sorted, "Tab slugs must be unique and sorted");
+        let unique: HashSet<&str> = slugs.iter().copied().collect();
+        assert_eq!(unique.len(), tabs.len(), "Tab slugs must be unique");
+
+        let expected_slugs: Vec<&str> = super::sorted_tab_descriptors()
+            .into_iter()
+            .map(|d| d.id)
+            .collect();
+        assert_eq!(
+            slugs, expected_slugs,
+            "Instantiated tabs must follow deterministic (order, id) descriptor order"
+        );
 
         for (idx, tab) in tabs.iter().enumerate() {
             let single = instantiate_tab(idx).expect("instantiate_tab must resolve valid index");
@@ -407,7 +413,11 @@ mod tests {
             feature = "epidemiology",
             feature = "physics"
         ))]
-        assert_eq!(tabs.len(), 26, "All 26 GUI domain tabs must register");
+        {
+            assert_eq!(tabs.len(), 27, "All 27 GUI domain tabs must register");
+            assert_eq!(slugs.first().copied(), Some("quantum"));
+            assert_eq!(slugs.last().copied(), Some("ai"));
+        }
     }
 
     #[test]

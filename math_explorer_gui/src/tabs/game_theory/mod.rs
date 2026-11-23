@@ -55,7 +55,7 @@ impl ExplorerTab for GameTheoryTab {
 inventory::submit! {
     TabDescriptor {
         id: "game_theory",
-        order: 100,
+        order: 30,
         build: || Box::new(GameTheoryTab::default()),
     }
 }

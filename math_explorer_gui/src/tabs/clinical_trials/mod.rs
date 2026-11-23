@@ -58,7 +58,7 @@ impl ExplorerTab for ClinicalTrialsTab {
 inventory::submit! {
     TabDescriptor {
         id: "clinical_trials",
-        order: 100,
+        order: 31,
         build: || Box::new(ClinicalTrialsTab::default()),
     }
 }

@@ -403,7 +403,7 @@ inventory::submit! {
         id: "CeraTool",
         display_name: "CERA Model",
         domain: "climate",
-        tags: &["cera", "climate"],
+        tags: &["cera", "climate", "earth mover", "autoencoder", "alignment"],
         build: || Box::new(CeraTool::default()),
     }
 }
@@ -458,4 +458,5 @@ inventory::submit! {
 }
 
 #[cfg(test)]
+#[path = "cera_tests.rs"]
 mod tests;

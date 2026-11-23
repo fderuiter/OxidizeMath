@@ -68,7 +68,7 @@ impl ExplorerTab for NumberTheoryTab {
 inventory::submit! {
     TabDescriptor {
         id: "number_theory",
-        order: 100,
+        order: 21,
         build: || Box::new(NumberTheoryTab::default()),
     }
 }

@@ -62,7 +62,7 @@ impl ExplorerTab for AiTab {
 inventory::submit! {
     TabDescriptor {
         id: "ai",
-        order: 100,
+        order: 60,
         build: || Box::new(AiTab::default()),
     }
 }

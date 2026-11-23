@@ -81,7 +81,7 @@ impl ExplorerTab for EllipticCurvesTab {
 inventory::submit! {
     TabDescriptor {
         id: "elliptic_curves",
-        order: 100,
+        order: 26,
         build: || Box::new(EllipticCurvesTab::default()),
     }
 }

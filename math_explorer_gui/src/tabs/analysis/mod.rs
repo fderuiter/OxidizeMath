@@ -57,7 +57,7 @@ impl ExplorerTab for AnalysisTab {
 inventory::submit! {
     TabDescriptor {
         id: "analysis",
-        order: 100,
+        order: 20,
         build: || Box::new(AnalysisTab::default()),
     }
 }

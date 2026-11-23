@@ -56,7 +56,7 @@ impl ExplorerTab for ClimateTab {
 inventory::submit! {
     TabDescriptor {
         id: "climate",
-        order: 100,
+        order: 50,
         build: || Box::new(ClimateTab::default()),
     }
 }

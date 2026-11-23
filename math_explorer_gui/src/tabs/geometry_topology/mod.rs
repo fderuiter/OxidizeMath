@@ -58,7 +58,7 @@ impl ExplorerTab for GeometryTopologyTab {
 inventory::submit! {
     TabDescriptor {
         id: "geometry_topology",
-        order: 100,
+        order: 22,
         build: || Box::new(GeometryTopologyTab::default()),
     }
 }

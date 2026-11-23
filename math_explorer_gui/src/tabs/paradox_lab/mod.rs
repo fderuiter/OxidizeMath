@@ -97,7 +97,7 @@ impl ExplorerTab for ParadoxLabTab {
 inventory::submit! {
     TabDescriptor {
         id: "paradox_lab",
-        order: 100,
+        order: 35,
         build: || Box::new(ParadoxLabTab::default()),
     }
 }

@@ -60,7 +60,7 @@ impl ExplorerTab for FluidDynamicsTab {
 inventory::submit! {
     TabDescriptor {
         id: "fluid_dynamics",
-        order: 100,
+        order: 12,
         build: || Box::new(FluidDynamicsTab::default()),
     }
 }

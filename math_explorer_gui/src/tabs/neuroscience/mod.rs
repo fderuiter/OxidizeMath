@@ -56,7 +56,7 @@ impl ExplorerTab for NeuroscienceTab {
 inventory::submit! {
     TabDescriptor {
         id: "neuroscience",
-        order: 100,
+        order: 41,
         build: || Box::new(NeuroscienceTab::default()),
     }
 }

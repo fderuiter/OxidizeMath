@@ -97,7 +97,7 @@ impl ExplorerTab for FavoritismTab {
 inventory::submit! {
     TabDescriptor {
         id: "favoritism",
-        order: 100,
+        order: 32,
         build: || Box::new(FavoritismTab::default()),
     }
 }

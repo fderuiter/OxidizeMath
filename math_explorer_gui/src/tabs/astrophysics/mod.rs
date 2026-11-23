@@ -132,7 +132,7 @@ impl ExplorerTab for AstrophysicsTab {
 inventory::submit! {
     TabDescriptor {
         id: "astrophysics",
-        order: 100,
+        order: 16,
         build: || Box::new(AstrophysicsTab::default()),
     }
 }

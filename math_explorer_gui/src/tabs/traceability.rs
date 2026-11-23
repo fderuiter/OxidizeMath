@@ -395,7 +395,7 @@ impl ExplorerTab for TraceabilityTab {
 inventory::submit! {
     TabDescriptor {
         id: "traceability",
-        order: 100,
+        order: 34,
         build: || Box::new(TraceabilityTab::default()),
     }
 }

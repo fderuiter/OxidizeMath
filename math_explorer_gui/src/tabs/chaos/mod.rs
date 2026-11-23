@@ -61,7 +61,7 @@ impl ExplorerTab for ChaosTab {
 inventory::submit! {
     TabDescriptor {
         id: "chaos",
-        order: 100,
+        order: 13,
         build: || Box::new(ChaosTab::default()),
     }
 }

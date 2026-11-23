@@ -133,7 +133,7 @@ impl ExplorerTab for MriTab {
 inventory::submit! {
     TabDescriptor {
         id: "mri",
-        order: 100,
+        order: 11,
         build: || Box::new(MriTab::default()),
     }
 }

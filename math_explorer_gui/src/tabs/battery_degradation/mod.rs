@@ -55,7 +55,7 @@ impl ExplorerTab for BatteryDegradationTab {
 inventory::submit! {
     TabDescriptor {
         id: "battery_degradation",
-        order: 100,
+        order: 33,
         build: || Box::new(BatteryDegradationTab::default()),
     }
 }

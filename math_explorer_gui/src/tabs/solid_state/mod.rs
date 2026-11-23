@@ -56,7 +56,7 @@ impl ExplorerTab for SolidStateTab {
 inventory::submit! {
     TabDescriptor {
         id: "solid_state",
-        order: 100,
+        order: 14,
         build: || Box::new(SolidStateTab::default()),
     }
 }

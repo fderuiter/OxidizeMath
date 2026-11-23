@@ -58,7 +58,7 @@ impl ExplorerTab for QuantumTab {
 inventory::submit! {
     TabDescriptor {
         id: "quantum",
-        order: 100,
+        order: 10,
         build: || Box::new(QuantumTab::default()),
     }
 }

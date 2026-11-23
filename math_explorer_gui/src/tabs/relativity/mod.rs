@@ -65,7 +65,7 @@ impl ExplorerTab for RelativityTab {
 inventory::submit! {
     TabDescriptor {
         id: "relativity",
-        order: 100,
+        order: 17,
         build: || Box::new(RelativityTab::default()),
     }
 }

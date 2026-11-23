@@ -139,7 +139,7 @@ impl ExplorerTab for MorphogenesisTab {
 inventory::submit! {
     TabDescriptor {
         id: "morphogenesis",
-        order: 100,
+        order: 40,
         build: || Box::new(MorphogenesisTab::default()),
     }
 }

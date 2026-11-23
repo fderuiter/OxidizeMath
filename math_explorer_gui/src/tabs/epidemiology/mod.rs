@@ -55,7 +55,7 @@ impl ExplorerTab for EpidemiologyTab {
 inventory::submit! {
     TabDescriptor {
         id: "epidemiology",
-        order: 100,
+        order: 42,
         build: || Box::new(EpidemiologyTab::default()),
     }
 }

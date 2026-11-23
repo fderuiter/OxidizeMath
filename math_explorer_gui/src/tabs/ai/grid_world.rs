@@ -413,7 +413,7 @@ inventory::submit! {
         id: "GridWorldTool",
         display_name: "Grid World (RL)",
         domain: "ai",
-        tags: &[],
+        tags: &["reinforcement learning", "q-learning", "bellman", "mdp", "policy", "epsilon-greedy"],
         build: || Box::new(GridWorldTool::default()),
     }
 }
@@ -442,6 +442,7 @@ impl scientific_metadata::theory::TheoryDescribable for GridWorldTool {
 }
 
 #[cfg(test)]
+#[path = "grid_world_tests.rs"]
 mod tests;
 
 const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Grid World RL","domain":"ai","timestamp":"2026-11-16T00:00:00Z"},"config":{"width":5,"height":5,"gamma":0.95,"playback_speed":8.0,"is_playing":false}}"#;

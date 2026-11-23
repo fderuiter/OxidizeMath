@@ -60,7 +60,7 @@ impl ExplorerTab for GraphTheoryTab {
 inventory::submit! {
     TabDescriptor {
         id: "graph_theory",
-        order: 100,
+        order: 23,
         build: || Box::new(GraphTheoryTab::default()),
     }
 }

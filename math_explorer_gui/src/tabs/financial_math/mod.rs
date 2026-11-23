@@ -58,7 +58,7 @@ impl ExplorerTab for FinancialMathTab {
 inventory::submit! {
     TabDescriptor {
         id: "financial_math",
-        order: 100,
+        order: 24,
         build: || Box::new(FinancialMathTab::default()),
     }
 }
