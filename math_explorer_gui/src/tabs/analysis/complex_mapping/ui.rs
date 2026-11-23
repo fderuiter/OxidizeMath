@@ -8,7 +8,7 @@ use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::pure_math::analysis::complex::mapping::conformal_scale_factor;
 use num_complex::Complex64;
 
-const CONTOUR_RESOLUTION: usize = 161;
+pub(super) const CONTOUR_RESOLUTION: usize = 161;
 
 pub(super) fn split_contour_segments<F: Fn(usize) -> Complex64>(
     resolution: usize,
@@ -110,13 +110,9 @@ impl ComplexMappingTool {
         );
 
         ui.add_space(10.0);
-        ui.add(
-            egui::Slider::new(
-                &mut self.grid_density,
-                2..=math_commons::registry::MAX_GRID_SIZE,
-            )
-            .text("Grid Density:"),
-        );
+        let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
+        self.grid_density = self.grid_density.clamp(2, max_grid);
+        ui.add(egui::Slider::new(&mut self.grid_density, 2..=max_grid).text("Grid Density:"));
     }
 
     fn draw_inspection_controls(&mut self, ui: &mut egui::Ui) {
@@ -155,37 +151,33 @@ impl ComplexMappingTool {
         render_copyable_metric(ui, "Scale factor |f'(z)|", &format!("{:.3}", safe_scale));
     }
 
-    pub(super) fn draw_z_plane(&self, ui: &mut egui::Ui, palette: &crate::app::SemanticPalette) {
+    pub(super) fn draw_z_plane(
+        &self,
+        ui: &mut egui::Ui,
+        palette: &crate::app::SemanticPalette,
+        grid_ok: bool,
+    ) {
         ui.label("z-plane (Input)");
-        let grid_ok = self.grid_min.is_finite()
-            && self.grid_max.is_finite()
-            && self.grid_max > self.grid_min
-            && (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_density);
         Plot::new("z_plane_plot")
             .view_aspect(1.0)
             .x_axis_label("Re(z)")
             .y_axis_label("Im(z)")
             .show(ui, |plot_ui| {
                 if grid_ok {
-                    let step = (self.grid_max - self.grid_min) / (self.grid_density as f64 - 1.0);
-                    for i in 0..self.grid_density {
-                        let x = self.grid_min + (i as f64) * step;
+                    let (z_v, b_v) = &self.cache.z_vertical;
+                    if !z_v.is_empty() {
                         plot_ui.line(
-                            Line::new(
-                                "",
-                                PlotPoints::new(vec![[x, self.grid_min], [x, self.grid_max]]),
-                            )
-                            .color(palette.series_color(0)),
+                            Line::from_segments("Re(z) grid", std::sync::Arc::clone(z_v))
+                                .with_bounds(*b_v)
+                                .color(palette.series_color(0)),
                         );
                     }
-                    for i in 0..self.grid_density {
-                        let y = self.grid_min + (i as f64) * step;
+                    let (z_h, b_h) = &self.cache.z_horizontal;
+                    if !z_h.is_empty() {
                         plot_ui.line(
-                            Line::new(
-                                "",
-                                PlotPoints::new(vec![[self.grid_min, y], [self.grid_max, y]]),
-                            )
-                            .color(palette.series_color(1)),
+                            Line::from_segments("Im(z) grid", std::sync::Arc::clone(z_h))
+                                .with_bounds(*b_h)
+                                .color(palette.series_color(1)),
                         );
                     }
                 }
@@ -199,19 +191,35 @@ impl ComplexMappingTool {
             });
     }
 
-    pub(super) fn draw_w_plane(&self, ui: &mut egui::Ui, palette: &crate::app::SemanticPalette) {
+    pub(super) fn draw_w_plane(
+        &self,
+        ui: &mut egui::Ui,
+        palette: &crate::app::SemanticPalette,
+        grid_ok: bool,
+    ) {
         ui.label("w-plane (Output)");
-        let grid_ok = self.grid_min.is_finite()
-            && self.grid_max.is_finite()
-            && self.grid_max > self.grid_min
-            && (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_density);
         Plot::new("w_plane_plot")
             .view_aspect(1.0)
             .x_axis_label("Re(w)")
             .y_axis_label("Im(w)")
             .show(ui, |plot_ui| {
                 if grid_ok {
-                    self.draw_w_grid_contours(plot_ui, palette);
+                    let (w_v, b_v) = &self.cache.w_vertical;
+                    if !w_v.is_empty() {
+                        plot_ui.line(
+                            Line::from_segments("u-contours", std::sync::Arc::clone(w_v))
+                                .with_bounds(*b_v)
+                                .color(palette.series_color(0)),
+                        );
+                    }
+                    let (w_h, b_h) = &self.cache.w_horizontal;
+                    if !w_h.is_empty() {
+                        plot_ui.line(
+                            Line::from_segments("v-contours", std::sync::Arc::clone(w_h))
+                                .with_bounds(*b_h)
+                                .color(palette.series_color(1)),
+                        );
+                    }
                 }
                 if self.inspection_point.iter().all(|v| v.is_finite()) {
                     let w0 = self.eval_z(Complex64::new(
@@ -227,35 +235,5 @@ impl ComplexMappingTool {
                     }
                 }
             });
-    }
-
-    fn draw_w_grid_contours(
-        &self,
-        plot_ui: &mut egui_plot::PlotUi<'_>,
-        palette: &crate::app::SemanticPalette,
-    ) {
-        let span = self.grid_max - self.grid_min;
-        let step = span / (self.grid_density as f64 - 1.0);
-        let denom = (CONTOUR_RESOLUTION - 1) as f64;
-        for i in 0..self.grid_density {
-            let x = self.grid_min + (i as f64) * step;
-            let segments = split_contour_segments(CONTOUR_RESOLUTION, span, |j| {
-                let y = self.grid_min + span * (j as f64) / denom;
-                self.eval_z(Complex64::new(x, y))
-            });
-            for seg in segments {
-                plot_ui.line(Line::new("", PlotPoints::new(seg)).color(palette.series_color(0)));
-            }
-        }
-        for i in 0..self.grid_density {
-            let y = self.grid_min + (i as f64) * step;
-            let segments = split_contour_segments(CONTOUR_RESOLUTION, span, |j| {
-                let x = self.grid_min + span * (j as f64) / denom;
-                self.eval_z(Complex64::new(x, y))
-            });
-            for seg in segments {
-                plot_ui.line(Line::new("", PlotPoints::new(seg)).color(palette.series_color(1)));
-            }
-        }
     }
 }
