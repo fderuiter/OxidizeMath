@@ -48,13 +48,6 @@ impl Callout {
         self
     }
 
-    /// Alias for [`Self::offset`].
-    #[inline]
-    pub fn label_offset(mut self, offset: impl Into<Vec2>) -> Self {
-        self.label_offset = offset.into();
-        self
-    }
-
     /// Leader line stroke.
     #[inline]
     pub fn leader_stroke(mut self, stroke: impl Into<Stroke>) -> Self {

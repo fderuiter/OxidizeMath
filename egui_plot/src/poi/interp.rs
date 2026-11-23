@@ -145,78 +145,52 @@ fn record_y_intercept(
     }
 }
 
-#[inline(always)]
-fn count_flat_chunks16(chunks: &[[PlotPoint; 16]], y0: f64, x_sign: i8) -> usize {
-    let mut k = 0usize;
-    let len = chunks.len();
-    while k < len {
-        let c = &chunks[k];
-        let y03 = (c[0].y == y0) & (c[1].y == y0) & (c[2].y == y0) & (c[3].y == y0);
-        let y47 = (c[4].y == y0) & (c[5].y == y0) & (c[6].y == y0) & (c[7].y == y0);
-        let y8b = (c[8].y == y0) & (c[9].y == y0) & (c[10].y == y0) & (c[11].y == y0);
-        let ycf = (c[12].y == y0) & (c[13].y == y0) & (c[14].y == y0) & (c[15].y == y0);
-        let sx = (c[0].x + c[1].x + c[2].x + c[3].x)
-            + (c[4].x + c[5].x + c[6].x + c[7].x)
-            + (c[8].x + c[9].x + c[10].x + c[11].x)
-            + (c[12].x + c[13].x + c[14].x + c[15].x);
-        let fin_x = (-f64::INFINITY < sx) & (sx < f64::INFINITY);
-        if !(y03 & y47 & y8b & ycf & fin_x) {
-            break;
-        }
-        if x_sign > 0 {
-            let x03 = (c[0].x > 0.0) & (c[1].x > 0.0) & (c[2].x > 0.0) & (c[3].x > 0.0);
-            let x47 = (c[4].x > 0.0) & (c[5].x > 0.0) & (c[6].x > 0.0) & (c[7].x > 0.0);
-            let x8b = (c[8].x > 0.0) & (c[9].x > 0.0) & (c[10].x > 0.0) & (c[11].x > 0.0);
-            let xcf = (c[12].x > 0.0) & (c[13].x > 0.0) & (c[14].x > 0.0) & (c[15].x > 0.0);
-            if !(x03 & x47 & x8b & xcf) {
-                break;
-            }
-        } else if x_sign < 0 {
-            let x03 = (c[0].x < 0.0) & (c[1].x < 0.0) & (c[2].x < 0.0) & (c[3].x < 0.0);
-            let x47 = (c[4].x < 0.0) & (c[5].x < 0.0) & (c[6].x < 0.0) & (c[7].x < 0.0);
-            let x8b = (c[8].x < 0.0) & (c[9].x < 0.0) & (c[10].x < 0.0) & (c[11].x < 0.0);
-            let xcf = (c[12].x < 0.0) & (c[13].x < 0.0) & (c[14].x < 0.0) & (c[15].x < 0.0);
-            if !(x03 & x47 & x8b & xcf) {
-                break;
-            }
-        }
-        k += 1;
-    }
-    k
-}
-
-#[inline(always)]
-fn skip_flat_plateau(
-    pts: &[PlotPoint],
-    i: &mut usize,
-    y0: f64,
-    want_y_ints: bool,
-    p0: &mut PlotPoint,
-    last: &mut PlotPoint,
-) {
-    let x_sign = if !want_y_ints {
-        0i8
-    } else if p0.x > 0.0 {
-        1
-    } else if p0.x < 0.0 {
-        -1
-    } else {
-        return;
-    };
-    let (chunks, _) = pts[*i..].as_chunks::<16>();
-    let n_ok = count_flat_chunks16(chunks, y0, x_sign);
-    if n_ok > 0 {
-        let end_pt = chunks[n_ok - 1][15];
-        *p0 = end_pt;
-        *last = end_pt;
-        *i += n_ok * 16;
-    }
-}
-
 pub(crate) struct SingleLineScan {
     pub(crate) roots: Vec<f64>,
     pub(crate) y_ints: Vec<f64>,
     pub(crate) extrema: Vec<([f64; 2], bool)>,
+}
+
+fn skip_plateau_chunks(
+    pts: &[PlotPoint],
+    start_idx: usize,
+    y_val: f64,
+    want_y_ints: bool,
+    p0_x: f64,
+) -> Option<(usize, PlotPoint)> {
+    let (x_min, x_max) = if !want_y_ints {
+        (f64::MIN, f64::MAX)
+    } else if p0_x > 0.0 {
+        (f64::from_bits(1), f64::MAX)
+    } else if p0_x < 0.0 {
+        (f64::MIN, -f64::from_bits(1))
+    } else {
+        return None;
+    };
+    macro_rules! ok_pt {
+        ($p:expr) => {
+            ($p.y == y_val) & ($p.x >= x_min) & ($p.x <= x_max)
+        };
+    }
+    let (chunks, _) = pts[start_idx..].as_chunks::<8>();
+    let mut skipped = 0usize;
+    let mut tail = PlotPoint { x: 0.0, y: 0.0 };
+    for &[a0, a1, a2, a3, a4, a5, a6, a7] in chunks {
+        if !(ok_pt!(a0)
+            & ok_pt!(a1)
+            & ok_pt!(a2)
+            & ok_pt!(a3)
+            & ok_pt!(a4)
+            & ok_pt!(a5)
+            & ok_pt!(a6)
+            & ok_pt!(a7))
+        {
+            break;
+        }
+        skipped += 8;
+        tail = a7;
+    }
+    (skipped > 0).then_some((start_idx + skipped, tail))
 }
 
 /// Fused single-pass streaming scan for $y = 0$ roots, $x = 0$ intercepts, and local extrema.
@@ -240,11 +214,17 @@ pub(crate) fn scan_single_line_all(
     let (mut mode, mut prev, mut start, mut second, mut last) = (0u8, dummy, dummy, dummy, dummy);
     let mut i = 1;
     while i < n {
-        if mode == 2 && i + 16 <= n && pts[i + 15].y == start.y {
-            skip_flat_plateau(pts, &mut i, start.y, want_y_ints, &mut p0, &mut last);
-            if i >= n {
-                break;
+        if p0_fin
+            && (mode == 0 || mode == 2)
+            && n - i >= 8
+            && let Some((next_i, tail)) = skip_plateau_chunks(pts, i, p0.y, want_y_ints, p0.x)
+        {
+            if mode == 2 {
+                last = tail;
             }
+            p0 = tail;
+            i = next_i;
+            continue;
         }
         let idx = i - 1;
         let p1 = pts[i];

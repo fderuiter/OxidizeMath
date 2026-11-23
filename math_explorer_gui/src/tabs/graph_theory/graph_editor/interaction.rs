@@ -81,7 +81,7 @@ impl GraphEditorTool {
         match self.mode {
             EditorMode::AddNode => self.click_add_node(pos),
             EditorMode::AddEdge => self.click_add_edge(),
-            EditorMode::Remove => self.click_remove_element(),
+            EditorMode::Remove => self.click_remove(),
         }
     }
 
@@ -95,46 +95,33 @@ impl GraphEditorTool {
         }
     }
 
-    fn click_add_edge(&mut self) {
-        let Some(clicked_id) = self.hovered_node else {
-            self.selected_node = None;
-            return;
-        };
-        let Some(selected_id) = self.selected_node else {
-            self.selected_node = Some(clicked_id);
-            return;
-        };
-        if selected_id != clicked_id {
-            let edge_exists = self.edges.iter().any(|&(u, v, _)| {
-                (u == selected_id && v == clicked_id) || (v == selected_id && u == clicked_id)
-            });
-            if !edge_exists {
-                self.push_undo_snapshot();
-                let weight = 1.0;
-                self.edges.push((selected_id, clicked_id, weight));
-                if let (Some(&u_idx), Some(&v_idx)) = (
-                    self.node_indices.get(&selected_id),
-                    self.node_indices.get(&clicked_id),
-                ) {
-                    self.graph.add_edge(u_idx, v_idx, weight);
-                }
+    pub(super) fn show_mode_instructions(&mut self, ui: &mut egui::Ui) {
+        match self.mode {
+            EditorMode::AddNode => {
+                ui.label("Click empty space to add a node.");
+                ui.label("Drag nodes to move them.");
             }
-        }
-        self.selected_node = None;
-    }
-
-    fn click_remove_element(&mut self) {
-        if let Some(clicked_id) = self.hovered_node {
-            self.push_undo_snapshot();
-            self.node_positions.remove(&clicked_id);
-            self.node_indices.remove(&clicked_id);
-            self.edges
-                .retain(|&(u, v, _)| u != clicked_id && v != clicked_id);
-            self.rebuild_graph();
-        } else if let Some(edge_idx) = self.hovered_edge {
-            self.push_undo_snapshot();
-            self.edges.remove(edge_idx);
-            self.rebuild_graph();
+            EditorMode::AddEdge => {
+                ui.label("Click a node to select it, then another to add an edge.");
+                ui.horizontal(|ui| {
+                    ui.label("New edge:");
+                    ui.add(
+                        egui::DragValue::new(&mut self.braess.new_edge_a)
+                            .speed(0.1)
+                            .range(0.0..=20.0)
+                            .prefix("a="),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut self.braess.new_edge_b)
+                            .speed(0.1)
+                            .range(0.0..=20.0)
+                            .prefix("b="),
+                    );
+                });
+            }
+            EditorMode::Remove => {
+                ui.label("Click a node or an edge to remove it.");
+            }
         }
     }
 
@@ -198,8 +185,12 @@ impl GraphEditorTool {
             self.node_indices.clear();
             self.node_positions.clear();
             self.edges.clear();
+            self.braess.edge_latencies.clear();
             self.selected_node = None;
             self.next_node_id = 0;
+            if self.braess.config.enabled {
+                self.recompute_braess();
+            }
         }
     }
 

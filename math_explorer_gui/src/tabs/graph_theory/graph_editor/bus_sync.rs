@@ -4,9 +4,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::GraphEditorTool;
-use crate::app::workspace_bus::{
-    SharedWorkspaceBus, MAX_TOPOLOGY_EDGES, MAX_TOPOLOGY_NODES,
-};
+use crate::app::workspace_bus::{SharedWorkspaceBus, MAX_TOPOLOGY_EDGES, MAX_TOPOLOGY_NODES};
 use std::collections::HashMap;
 
 /// Normalized `[-1.0, 1.0]` node positions paired with dense weighted undirected edges.

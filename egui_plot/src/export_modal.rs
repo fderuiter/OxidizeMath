@@ -6,8 +6,7 @@ use crate::export::{
     export_custom_png, export_custom_svg, save_file_dialog,
 };
 
-/// Consistent section header rendered inside the export modal window.
-pub const MODAL_HEADER_TEXT: &str = "Offscreen High-Res Render Settings";
+const MODAL_HEADER_TEXT: &str = "Offscreen High-Res Render Settings";
 
 const DARK_BG_COLOR: egui::Color32 = egui::Color32::from_rgb(18, 18, 18);
 
@@ -171,8 +170,7 @@ pub fn clipboard_status_id(scope_id: egui::Id) -> egui::Id {
     scope_id.with("async_clipboard_status")
 }
 
-/// Poll and drain any pending async clipboard status message for `scope_id`.
-pub fn poll_clipboard_status(
+fn poll_clipboard_status(
     ctx: &egui::Context,
     scope_id: egui::Id,
     status_message: &mut Option<String>,
@@ -186,24 +184,8 @@ pub fn poll_clipboard_status(
     }
 }
 
-/// Calculate target output pixel `(width, height)` from base dimensions, scale, and aspect ratio.
-///
-/// # Example
-///
-/// ```
-/// use egui_plot::{AspectRatioOption, ExportOptions, calculate_target_dimensions};
-///
-/// let opts = ExportOptions {
-///     width: 1920,
-///     height: 1080,
-///     scale: 2.0,
-///     aspect_ratio: AspectRatioOption::SixteenNine,
-///     ..Default::default()
-/// };
-/// assert_eq!(calculate_target_dimensions(&opts), (3840, 2160));
-/// ```
 #[must_use]
-pub fn calculate_target_dimensions(options: &ExportOptions) -> (u32, u32) {
+fn calculate_target_dimensions(options: &ExportOptions) -> (u32, u32) {
     let base_w = f64::from(options.width.max(1));
     let base_h = f64::from(options.height.max(1));
     let scale = if options.scale.is_finite() && options.scale > 0.0 {
@@ -223,9 +205,8 @@ pub fn calculate_target_dimensions(options: &ExportOptions) -> (u32, u32) {
     (calc_w, calc_h)
 }
 
-/// Return `true` when either calculated dimension exceeds [`MAX_EXPORT_DIMENSION`].
 #[must_use]
-pub fn exceeds_max_dimension(width: u32, height: u32) -> bool {
+fn exceeds_max_dimension(width: u32, height: u32) -> bool {
     width > MAX_EXPORT_DIMENSION || height > MAX_EXPORT_DIMENSION
 }
 

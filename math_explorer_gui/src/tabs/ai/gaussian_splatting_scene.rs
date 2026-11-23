@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::framework::Camera3D;
 use eframe::egui;
 use math_explorer::ai::gaussian_splatting::{
     optimization::{determine_density_action, DensityAction},
@@ -102,17 +103,19 @@ pub struct DensityActionCounts {
 pub(super) fn build_default_scene() -> Scene {
     let gaussians = CANONICAL_SCENE
         .into_iter()
-        .map(|(pos, base_scale, axis_angle, opacity, color, _)| Gaussian3D {
-            mean: Point3::new(pos[0], pos[1], pos[2]),
-            scale: Vector3::new(base_scale[0], base_scale[1], base_scale[2]),
-            rotation: UnitQuaternion::new(Vector3::new(
-                axis_angle[0],
-                axis_angle[1],
-                axis_angle[2],
-            )),
-            opacity,
-            color: Vector3::new(color[0], color[1], color[2]),
-        })
+        .map(
+            |(pos, base_scale, axis_angle, opacity, color, _)| Gaussian3D {
+                mean: Point3::new(pos[0], pos[1], pos[2]),
+                scale: Vector3::new(base_scale[0], base_scale[1], base_scale[2]),
+                rotation: UnitQuaternion::new(Vector3::new(
+                    axis_angle[0],
+                    axis_angle[1],
+                    axis_angle[2],
+                )),
+                opacity,
+                color: Vector3::new(color[0], color[1], color[2]),
+            },
+        )
         .collect();
     Scene { gaussians }
 }
@@ -172,6 +175,34 @@ pub(super) fn covariance_ellipse_ring(
     ring
 }
 
+pub(super) fn lift_ring_to_world(
+    camera: &Camera3D,
+    ring_2d: &[[f64; 2]; ELLIPSE_POINTS],
+    mean2d: Point2<f64>,
+    cam_coords: [f64; 3],
+    proj_scale: f64,
+) -> [Point3<f64>; ELLIPSE_POINTS] {
+    let (sy, cy) = f64::from(camera.yaw).sin_cos();
+    let (sp, cp) = f64::from(camera.pitch).sin_cos();
+    let inv_scale = if proj_scale.abs() > 1e-9 {
+        1.0 / proj_scale
+    } else {
+        1.0
+    };
+    let mut ring_3d = [Point3::origin(); ELLIPSE_POINTS];
+    for (idx, &[rx, ry]) in ring_2d.iter().enumerate() {
+        let x2 = cam_coords[0] + (rx - mean2d.x) * inv_scale;
+        let y2 = cam_coords[1] + (ry - mean2d.y) * inv_scale;
+        let z2 = cam_coords[2];
+        let y1 = y2 * cp + z2 * sp;
+        let z1 = -y2 * sp + z2 * cp;
+        let x = x2 * cy + y1 * sy;
+        let y = -x2 * sy + y1 * cy;
+        ring_3d[idx] = Point3::new(x, y, z1);
+    }
+    ring_3d
+}
+
 pub(super) fn splat_stroke_color(rgb: &Vector3<f64>, opacity: f64) -> egui::Color32 {
     let a = (opacity as f32).clamp(0.12, 0.85);
     let r = (rgb.x as f32).clamp(0.0, 1.0) * a;
@@ -180,14 +211,18 @@ pub(super) fn splat_stroke_color(rgb: &Vector3<f64>, opacity: f64) -> egui::Colo
     egui::Color32::from(egui::Rgba::from_rgba_premultiplied(r, g, b, a))
 }
 
-pub(super) fn rasterize_splats_into(splats: &[Gaussian2D], pixels: &mut [egui::Color32]) {
+pub(super) fn rasterize_splats_into(
+    splats: &[Gaussian2D],
+    pan: [f64; 2],
+    pixels: &mut [egui::Color32],
+) {
     let span = 2.0 * VIEWPORT_HALF_EXTENT;
     let inv_dim = 1.0 / (SPLAT_GRID_SIZE as f64);
     let (rows, _) = pixels.as_chunks_mut::<SPLAT_GRID_SIZE>();
     for (row_idx, row_pixels) in rows.iter_mut().enumerate() {
-        let y = VIEWPORT_HALF_EXTENT - span * ((row_idx as f64 + 0.5) * inv_dim);
+        let y = pan[1] + VIEWPORT_HALF_EXTENT - span * ((row_idx as f64 + 0.5) * inv_dim);
         for (col_idx, pixel) in row_pixels.iter_mut().enumerate() {
-            let x = -VIEWPORT_HALF_EXTENT + span * ((col_idx as f64 + 0.5) * inv_dim);
+            let x = pan[0] - VIEWPORT_HALF_EXTENT + span * ((col_idx as f64 + 0.5) * inv_dim);
             let rgb = rendering::blend_gaussians(splats, &Point2::new(x, y));
             let r = (rgb.x as f32).clamp(0.0, 1.0);
             let g = (rgb.y as f32).clamp(0.0, 1.0);

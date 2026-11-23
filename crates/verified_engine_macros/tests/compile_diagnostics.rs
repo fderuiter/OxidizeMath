@@ -281,6 +281,6 @@ pub struct NonNumericModel {
 "#;
     let out = compile_snippet("mode_11_non_numeric_field", code);
     out.assert_failed_without_panic();
-    out.assert_has_error("non-primitive cast");
+    out.assert_has_error("the trait bound `String: TheoryNumeric` is not satisfied");
     out.assert_has_span(7, 15);
 }

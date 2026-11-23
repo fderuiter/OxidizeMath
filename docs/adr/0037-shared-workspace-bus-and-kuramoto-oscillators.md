@@ -1,7 +1,8 @@
-# ADR 0035: SharedWorkspaceBus Per-Pane Graph Coupling and Zero-Allocation Kuramoto Solver
+# ADR 0037: SharedWorkspaceBus Per-Pane Graph Coupling and Zero-Allocation Kuramoto Solver
 
-- **Status**: Accepted
-- **Date**: 2026-11-22
+## Status
+
+Accepted (2026-11-22) (extends [ADR 0027](0027-prune-diagnostic-bus-channel-and-dead-helpers.md))
 
 ## Context
 

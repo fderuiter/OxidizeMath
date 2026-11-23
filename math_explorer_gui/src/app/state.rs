@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::theme::ThemeMode;
+use super::viewport::compare_sync::ComparisonSyncConfig;
 use super::viewport::ViewportLayout;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
@@ -159,7 +160,10 @@ impl AppStateFingerprint {
         let flags = u8::from(app.show_info)
             | (u8::from(app.show_warnings) << 1)
             | (u8::from(app.show_errors) << 2)
-            | (u8::from(app.show_diagnostics_panel) << 3);
+            | (u8::from(app.show_diagnostics_panel) << 3)
+            | (u8::from(app.compare_sync.link_axes) << 4)
+            | (u8::from(app.compare_sync.link_cursors) << 5)
+            | (u8::from(app.compare_sync.sync_playback) << 6);
 
         Self {
             selected_tab: app.selected_tab,
@@ -234,6 +238,8 @@ pub struct AppState {
     /// Per-pane `SharedWorkspaceBus` link flags (`0..4`).
     #[serde(default, skip_serializing_if = "is_all_false_links")]
     pub pane_bus_links: Vec<bool>,
+    #[serde(default)]
+    pub compare_sync: ComparisonSyncConfig,
 }
 
 impl Default for AppState {
@@ -257,6 +263,7 @@ impl Default for AppState {
             focused_pane: 0,
             pane_tab_states: Vec::new(),
             pane_bus_links: Vec::new(),
+            compare_sync: ComparisonSyncConfig::default(),
         }
     }
 }
@@ -316,6 +323,7 @@ impl AppState {
             } else {
                 app.pane_bus_links.to_vec()
             },
+            compare_sync: app.compare_sync,
         }
     }
 
@@ -355,6 +363,7 @@ impl AppState {
             self.quad_split_ratios.1.clamp(0.20, 0.80),
         );
         app.viewport_layout = self.viewport_layout;
+        app.compare_sync = self.compare_sync;
 
         if app.viewport_layout == ViewportLayout::Single
             && app.split_layout_mode != SplitLayoutMode::Single
