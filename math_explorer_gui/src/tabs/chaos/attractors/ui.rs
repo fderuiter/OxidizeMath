@@ -183,26 +183,31 @@ impl AttractorPlotter {
                     self.handle_playback_action(action, ctx);
                 }
 
-                self.draw_simulation_sliders(ui);
+                if ui
+                    .add(
+                        egui::Slider::new(
+                            &mut self.simulation_speed,
+                            1..=super::MAX_SIMULATION_SPEED,
+                        )
+                        .text("Speed (steps/frame)"),
+                    )
+                    .changed()
+                {
+                    self.on_slider_changed();
+                }
+                if ui
+                    .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
+                    .changed()
+                {
+                    self.on_slider_changed();
+                }
+                if ui
+                    .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
+                    .changed()
+                {
+                    self.on_slider_changed();
+                }
             });
-    }
-
-    fn draw_simulation_sliders(&mut self, ui: &mut egui::Ui) {
-        let mut changed = ui
-            .add(
-                egui::Slider::new(&mut self.simulation_speed, 1..=super::MAX_SIMULATION_SPEED)
-                    .text("Speed (steps/frame)"),
-            )
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
-            .changed();
-        if changed {
-            self.on_slider_changed();
-        }
     }
 
     fn handle_playback_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {

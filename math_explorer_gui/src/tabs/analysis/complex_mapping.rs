@@ -138,7 +138,8 @@ impl Default for ComplexMappingTool {
                 ],
             )
             .with_axes(&["z"])
-            .with_complex_mode(true),
+            .with_complex_mode(true)
+            .with_allowed_vars(&["z", "a"]),
             high_contrast: false,
             cache: cache::ConformalGridCache::default(),
         }
@@ -151,7 +152,7 @@ impl ComplexMappingTool {
             return NAN_COMPLEX;
         }
         match self.function {
-            MappingFunction::Custom => self.math_input.active_compiled().map_or(NAN_COMPLEX, |c| {
+            MappingFunction::Custom => self.math_input.compiled().map_or(NAN_COMPLEX, |c| {
                 sanitize_complex_pole(c.eval_complex_z_params(z, self.math_input.param_slice()))
             }),
             _ => self.function.evaluate(z),

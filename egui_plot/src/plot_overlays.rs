@@ -31,6 +31,7 @@ pub(crate) struct PlotToolbarConfig<'a, 'b> {
     pub header_rect: Rect,
     pub allow_csv_import: bool,
     pub allow_2d_analysis: bool,
+    pub scene_3d_mode: bool,
     pub has_table_content: bool,
     pub has_fit_candidates: bool,
     pub base_items_hash: u64,
@@ -450,7 +451,7 @@ fn render_secondary_toolbar_actions(
             ui.close();
         }
     }
-    if ui.button("🔧 Settings").clicked() {
+    if !cfg.scene_3d_mode && ui.button("🔧 Settings").clicked() {
         access_state.show_settings_modal = !access_state.show_settings_modal;
         if in_overflow {
             ui.close();

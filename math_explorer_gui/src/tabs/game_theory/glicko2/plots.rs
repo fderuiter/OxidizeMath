@@ -1,4 +1,4 @@
-//! `egui_plot` chart rendering for [`super::Glicko2TournamentTool`].
+//! Central trajectory, volatility, pairwise win-matrix, and drift plots for [`super::Glicko2TournamentTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 

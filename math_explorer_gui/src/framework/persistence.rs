@@ -9,7 +9,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 impl SimulationFramework {
-    #[allow(missing_docs)]
+    /// Creates a new [`SimulationFramework`] populated with registered tools for `domain`.
     pub fn new(domain: &str) -> Self {
         let mut available_tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>
             .into_iter()
@@ -33,7 +33,7 @@ impl SimulationFramework {
             last_announced_query: String::new(),
             show_export_modal: false,
             show_code_export_modal: false,
-            code_export_tab: CodeExportTab::Latex,
+            code_export_tab: CodeExportTab::default(),
             export_options: egui_plot::export::ExportOptions::default(),
             export_bg_dark: true,
             export_gif_fps: 15,
@@ -51,6 +51,7 @@ impl SimulationFramework {
             diagnostic_report: None,
             step_counter: 0,
             start_time: crate::web_io::PlatformInstant::now(),
+            challenge_hud: ChallengeHudState::default(),
             active_challenge: None,
             challenge_was_passed: false,
             instance_id: overlay_sync::next_framework_id(),
@@ -411,6 +412,7 @@ impl SimulationFramework {
         }
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
+        self.clear_challenge_hud();
         self.active_challenge = None;
         self.challenge_was_passed = false;
         self.selected_tool_index = Some(index);

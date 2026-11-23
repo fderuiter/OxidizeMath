@@ -357,12 +357,12 @@ fn paint_curve_elements(
     if let Some(step) = model.chord {
         paint_reflection_and_sum(painter, vp, &step, palette, text_color);
     }
-    for (pt, label, color, radius) in [
+    for (pt, label, col, rad) in [
         (model.point_p, "P", palette.accent, 6.2_f32),
         (model.point_q, "Q", palette.series[1], 5.6_f32),
         (model.scalar_kp, "[k]P", palette.series[4], 5.2_f32),
     ] {
-        paint_labeled_point(painter, vp, pt, label, color, text_color, radius);
+        paint_labeled_point(painter, vp, pt, label, col, text_color, rad);
     }
 }
 
