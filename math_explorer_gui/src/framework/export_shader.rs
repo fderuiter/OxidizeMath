@@ -132,8 +132,22 @@ impl SimulationFramework {
     pub(crate) fn toggle_theory_portal_with_ctx(&mut self, ctx: &egui::Context) {
         self.show_theory_portal = !self.show_theory_portal;
         let next = self.show_theory_portal;
+        let inst_portal = egui::Id::new((
+            "SHOW_THEORY_PORTAL_INST",
+            self.domain.as_str(),
+            self.instance_id,
+        ));
+        let dom_portal = egui::Id::new("SHOW_THEORY_PORTAL").with(self.domain.as_str());
+        let owner_id = egui::Id::new("FRAMEWORK_OVERLAY_OWNER");
         ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
+            d.insert_temp(inst_portal, next);
+            let is_owner_or_unset = d
+                .get_temp::<(String, u64)>(owner_id)
+                .is_none_or(|(src, id)| src == self.domain && id == self.instance_id);
+            if is_owner_or_unset {
+                d.insert_temp(dom_portal, next);
+                d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), next);
+            }
         });
         ctx.request_repaint();
     }
