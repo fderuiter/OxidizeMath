@@ -16,7 +16,7 @@ All Markdown files in the repository (outside excluded build directories such as
 ```text
 Markdown verification gates:
 - cargo run -p unified_verification --release -- check-docs
-- RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+- RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 - cargo test --doc --workspace --all-features
 - cargo run -p xtask -- check-markdown-links
 ```
@@ -87,7 +87,7 @@ cargo run -p unified_verification --release -- test-policy-audit
 
 # Verify crate documentation and workspace rustdoc builds
 cargo run -p unified_verification --release -- check-docs
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 cargo test --doc --workspace --all-features
 
 # Validate relative Markdown links, file lengths (500-line ceiling), entropy/secrets, and traceability
@@ -182,7 +182,7 @@ The `package` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) define
 
 ### Workspace Version Synchronization, Pre-Release Tags & WiX Mapping
 
-Release versioning is centralized in `[workspace.package].version` in root [Cargo.toml](Cargo.toml) per [ADR 0043](docs/adr/0043-workspace-release-version-guards-and-wix-mapping.md):
+Release versioning is centralized in `[workspace.package].version` in root [Cargo.toml](Cargo.toml) per [ADR 0044](docs/adr/0044-workspace-release-version-guards-and-wix-mapping.md):
 
 - **11 Release Crates (`version.workspace = true`)**: [math_explorer/Cargo.toml](math_explorer/Cargo.toml), [math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml), and the nine `crates/*` library/domain crates (`math_commons`, `scientific_metadata`, `pure_math`, `domain_ai`, `domain_physics`, `domain_biology`, `domain_applied`, `domain_climate`, and `domain_epidemiology`) inherit `[workspace.package].version`. [math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml) omits `version` under `[package.metadata.packager]` so `cargo-packager` inherits `[package].version` alongside `WorkspaceEnvelope` (`CARGO_PKG_VERSION`). Vendored `egui_plot/Cargo.toml` preserves `version = "0.34.1"` for `[patch.crates-io]`, and the eight internal foundation/tooling crates retain `version = "0.1.0"`.
 - **`README.md` & Manifest Guard (`check-profiles`)**: Updating `[workspace.package].version` requires updating the shields.io version badge and `math_explorer` dependency snippet in [README.md](README.md). `check-profiles` enforces SemVer and WiX numeric bounds (`major <= 255`, `minor <= 255`, `patch <= 65535`, `revision <= 65535`), rejects `+build` metadata, enforces `version.workspace = true`, and rejects duplicate `[package.metadata.packager].version` keys.

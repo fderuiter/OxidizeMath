@@ -206,11 +206,16 @@ impl FractranMachineTool {
 
         let palette = crate::app::SemanticPalette::from_visuals(&egui::Visuals::dark());
         let count = self.visible_register_count();
-        for idx in 0..count {
+        for (idx, (&prime, &exp)) in FIRST_64_PRIMES
+            .iter()
+            .zip(self.live.exponents.iter())
+            .take(count)
+            .enumerate()
+        {
             let x = idx as f64;
-            let y = f64::from(self.live.exponents[idx]).max(0.15);
+            let y = f64::from(exp).max(0.15);
             prims.push(ExportPrimitive::Bar {
-                name: format!("p={}", FIRST_64_PRIMES[idx]),
+                name: format!("p={prime}"),
                 min: [x - 0.32, 0.0],
                 max: [x + 0.32, y],
                 fill: palette.info,

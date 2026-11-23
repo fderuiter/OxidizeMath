@@ -166,7 +166,7 @@ jobs:
       - name: Check Workspace Documentation
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --workspace --no-deps
+        run: cargo doc --workspace --no-deps --all-features
 
       - name: Run Doc Tests
         run: cargo test --doc --workspace --all-features
