@@ -130,7 +130,7 @@ pub fn evaluate_prognostic_calibration(
 
     let mut unit_risks = Vec::with_capacity(predicted_risks.len());
     for &r in predicted_risks {
-        let ui = UnitInterval::new(r).map_err(ClinicalTrialError::InvalidData)?;
+        let ui = UnitInterval::new(r).map_err(map_clinical_math_err)?;
         unit_risks.push(ui);
     }
 

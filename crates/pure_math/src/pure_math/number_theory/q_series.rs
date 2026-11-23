@@ -4,6 +4,7 @@
 //! (power series in q), which are fundamental in the theory of partitions and
 //! other areas of number theory.
 
+use crate::error::NumberTheoryError;
 use crate::pure_math::algebra::traits::EuclideanDomain;
 use std::ops::{Add, Div, Mul};
 
@@ -86,6 +87,38 @@ impl<T: EuclideanDomain> QSeries<T> {
         }
         result
     }
+
+    /// Divides `self` by `other` as truncated formal power series without panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NumberTheoryError::DivisionByZeroQSeries`] when `other` has no coefficients,
+    /// or [`NumberTheoryError::DivisionByZeroConstantTerm`] when `other`'s constant term is zero.
+    #[verified_engine::verified]
+    pub fn checked_div(&self, other: &Self) -> Result<QSeries<T>, NumberTheoryError> {
+        if other.coeffs.is_empty() {
+            return Err(NumberTheoryError::DivisionByZeroQSeries);
+        }
+        let b0 = other.get_coeff(0);
+        if b0.is_zero() {
+            return Err(NumberTheoryError::DivisionByZeroConstantTerm);
+        }
+
+        let precision = self.coeffs.len();
+        let mut new_coeffs = vec![T::zero(); precision];
+
+        for n in 0..precision {
+            let mut sum_val = T::zero();
+            for (i, coeff) in new_coeffs.iter().enumerate().take(n) {
+                sum_val += coeff.clone() * other.get_coeff(n - i);
+            }
+
+            let numerator = self.get_coeff(n) - sum_val;
+            new_coeffs[n] = numerator / b0.clone();
+        }
+
+        Ok(QSeries { coeffs: new_coeffs })
+    }
 }
 
 impl<T: EuclideanDomain> Add for &QSeries<T> {
@@ -144,37 +177,18 @@ impl<T: EuclideanDomain> Mul for &QSeries<T> {
 impl<T: EuclideanDomain> Div for &QSeries<T> {
     type Output = QSeries<T>;
 
+    /// Divides `self` by `other` as formal power series.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `other` is empty or has a zero constant term. Use [`QSeries::checked_div`]
+    /// for fallible division.
     #[verified_engine::verified]
     fn div(self, other: Self) -> QSeries<T> {
-        let len1 = self.coeffs.len();
-        let len2 = other.coeffs.len();
-        if len2 == 0 {
-            panic!("Division by zero QSeries");
+        match self.checked_div(other) {
+            Ok(series) => series,
+            Err(e) => panic!("{e}"),
         }
-        let b0 = other.get_coeff(0);
-        if b0.is_zero() {
-            panic!("Division by a QSeries with zero constant term");
-        }
-
-        let precision = len1;
-        let mut new_coeffs = vec![T::zero(); precision];
-
-        for n in 0..precision {
-            let mut sum_val = T::zero();
-            // Use iterator to avoid indexing check
-            for (i, coeff) in new_coeffs.iter().enumerate().take(n) {
-                sum_val += coeff.clone() * other.get_coeff(n - i);
-            }
-
-            let numerator = self.get_coeff(n) - sum_val;
-            if (numerator.clone() % b0.clone()) != T::zero() {
-                // This can happen in intermediate calculations.
-                // The final result should have integer coefficients.
-            }
-            new_coeffs[n] = numerator / b0.clone();
-        }
-
-        QSeries { coeffs: new_coeffs }
     }
 }
 

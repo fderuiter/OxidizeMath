@@ -1,6 +1,6 @@
-// @explorer_feature = "ai"
-// @explorer_order = 60
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod activation_functions;
@@ -57,6 +57,14 @@ impl ExplorerTab for AiTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "ai",
+        order: 60,
+        build: || Box::new(AiTab::default()),
     }
 }
 

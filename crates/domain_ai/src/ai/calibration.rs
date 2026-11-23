@@ -23,7 +23,6 @@
 //! }
 //! ```
 
-use math_commons::error::MathError;
 use math_commons::primitives::UnitInterval;
 use nalgebra::{DMatrix, DVector};
 
@@ -59,8 +58,7 @@ pub struct BinaryClassifierCalibration {
 fn dvector_to_unit_intervals(probs: &DVector<f64>) -> Result<Vec<UnitInterval>, AIError> {
     let mut out = Vec::with_capacity(probs.len());
     for &p in probs.iter() {
-        let ui = UnitInterval::new(p).map_err(|reason| MathError::NumericalError { reason })?;
-        out.push(ui);
+        out.push(UnitInterval::new(p)?);
     }
     Ok(out)
 }

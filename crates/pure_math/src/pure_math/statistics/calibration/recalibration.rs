@@ -217,7 +217,7 @@ impl PlattScaler {
             });
         }
         let p = stable_sigmoid(self.scale * logit + self.bias).clamp(0.0, 1.0);
-        UnitInterval::new(p).map_err(MathError::from)
+        UnitInterval::new(p)
     }
 
     /// Evaluates calibrated probabilities for `logits` into `out` with zero heap allocations.
@@ -312,7 +312,7 @@ where
                 beta = cand;
                 accepted = true;
                 if delta <= 1e-10 {
-                    return PositiveFloat::new(1.0 / beta).map_err(MathError::from);
+                    return PositiveFloat::new(1.0 / beta);
                 }
                 break;
             }
@@ -327,7 +327,7 @@ where
             damping = (damping * 0.5).max(1e-10);
         }
     }
-    PositiveFloat::new(1.0 / beta).map_err(MathError::from)
+    PositiveFloat::new(1.0 / beta)
 }
 
 impl TemperatureScaler {
@@ -392,7 +392,7 @@ impl TemperatureScaler {
             });
         }
         let p = stable_sigmoid(logit / self.temperature.value()).clamp(0.0, 1.0);
-        UnitInterval::new(p).map_err(MathError::from)
+        UnitInterval::new(p)
     }
 
     /// Evaluates calibrated softmax probabilities $\text{softmax}(z / T)$ into `out_probs` with zero allocations.
@@ -424,7 +424,7 @@ impl TemperatureScaler {
         }
         for (&z, dst) in logits.iter().zip(out_probs.iter_mut()) {
             let p = ((z * inv_t - max_scaled).exp() / sum).clamp(0.0, 1.0);
-            *dst = UnitInterval::new(p).map_err(MathError::from)?;
+            *dst = UnitInterval::new(p)?;
         }
         Ok(())
     }

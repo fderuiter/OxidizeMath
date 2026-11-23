@@ -168,7 +168,7 @@ pub fn predict_pava_blocks(blocks: &[PavaBlock], score: f64) -> MathResult<UnitI
             }
         }
     };
-    UnitInterval::new(prob.clamp(0.0, 1.0)).map_err(MathError::from)
+    UnitInterval::new(prob.clamp(0.0, 1.0))
 }
 
 /// Non-parametric post-hoc isotonic probability calibrator backed by `PAVA` and piecewise-linear interpolation.
