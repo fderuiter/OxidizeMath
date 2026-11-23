@@ -8,9 +8,9 @@
 
 use super::base64url;
 use super::codec::{
-    clamp_decoded_url_grid_state, encode_share_fragment_with_challenge,
-    ensure_all_json_numbers_finite, validate_challenge_id, ShareUrlParams,
-    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
+    clamp_decoded_url_grid_state, encode_share_fragment_with_hud, ensure_all_json_numbers_finite,
+    validate_url_identifier, ShareUrlParams, MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
+    MAX_URL_STORY_STEPS,
 };
 use crate::app::{ComparisonSyncConfig, ViewportLayout};
 use crate::framework::{ToolStateBounds, MAX_JSON_ARRAY_LEN, MAX_JSON_NESTING_DEPTH};
@@ -101,7 +101,11 @@ struct WirePaneShareEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tool: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    preset: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     challenge: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    step: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     state: Option<Box<RawValue>>,
 }
@@ -138,6 +142,47 @@ pub fn validate_workspace_url_preset_json(json_str: &str) -> Result<(), String> 
     ensure_all_json_numbers_finite(&parsed)
 }
 
+struct ValidatedWireHud {
+    preset: Option<String>,
+    challenge: Option<String>,
+    step: Option<usize>,
+}
+
+fn validate_wire_hud_fields(
+    raw_preset: Option<&str>,
+    raw_challenge: Option<&str>,
+    raw_step: Option<usize>,
+) -> Result<ValidatedWireHud, String> {
+    let preset = raw_preset
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| validate_url_identifier(p, "preset"))
+        .transpose()?;
+    let challenge = raw_challenge
+        .filter(|c| !c.trim().is_empty())
+        .map(|c| validate_url_identifier(c, "challenge"))
+        .transpose()?;
+    if preset.is_some() && challenge.is_some() {
+        return Err("Shared URL cannot specify both 'preset' and 'challenge'".to_string());
+    }
+    if let Some(idx) = raw_step {
+        if preset.is_none() {
+            return Err(
+                "Shared URL 'step' parameter requires a 'preset' story identifier".to_string(),
+            );
+        }
+        if idx > MAX_URL_STORY_STEPS {
+            return Err(format!(
+                "Shared URL 'step' index ({idx}) exceeds maximum ({MAX_URL_STORY_STEPS})"
+            ));
+        }
+    }
+    Ok(ValidatedWireHud {
+        preset,
+        challenge,
+        step: raw_step.filter(|&s| s > 0),
+    })
+}
+
 fn build_wire_panes(panes: &[ShareUrlParams]) -> Result<Vec<WirePaneShareEntry>, String> {
     let mut out = Vec::with_capacity(panes.len());
     for pane in panes {
@@ -151,10 +196,8 @@ fn build_wire_panes(panes: &[ShareUrlParams]) -> Result<Vec<WirePaneShareEntry>,
             .map(str::trim)
             .filter(|t| !t.is_empty())
             .map(str::to_string);
-        let challenge = match pane.challenge.as_deref().filter(|c| !c.trim().is_empty()) {
-            Some(raw_ch) => Some(validate_challenge_id(raw_ch)?),
-            None => None,
-        };
+        let hud =
+            validate_wire_hud_fields(pane.preset.as_deref(), pane.challenge.as_deref(), pane.step)?;
         let state = match pane.state_json.as_deref() {
             Some(raw_json) => {
                 let cleaned = egui_plot::export::strip_utf8_bom(raw_json);
@@ -174,7 +217,9 @@ fn build_wire_panes(panes: &[ShareUrlParams]) -> Result<Vec<WirePaneShareEntry>,
         out.push(WirePaneShareEntry {
             tab: tab.to_string(),
             tool,
-            challenge,
+            preset: hud.preset,
+            challenge: hud.challenge,
+            step: hud.step,
             state,
         });
     }
@@ -269,11 +314,34 @@ pub fn encode_single_pane_smart_fragment_with_challenge(
     challenge_id: Option<&str>,
     preset_json: Option<&str>,
 ) -> Result<String, String> {
-    let fits_legacy = preset_json.is_none_or(|j| j.len() <= MAX_DECODED_URL_STATE_BYTES);
+    encode_single_pane_smart_fragment_from_params(&ShareUrlParams {
+        tab: tab_slug.to_string(),
+        tool: tool_id.map(str::to_string),
+        state_json: preset_json.map(str::to_string),
+        preset: None,
+        challenge: challenge_id.map(str::to_string),
+        step: None,
+    })
+}
+
+/// Encodes structured single-pane [`ShareUrlParams`] as `#tab=...` when `state_json` fits in 4,096
+/// bytes, falling back to a compressed 1-pane `#ws=...` envelope up to 32,768 bytes.
+pub fn encode_single_pane_smart_fragment_from_params(
+    params: &ShareUrlParams,
+) -> Result<String, String> {
+    let fits_legacy = params
+        .state_json
+        .as_deref()
+        .is_none_or(|j| j.len() <= MAX_DECODED_URL_STATE_BYTES);
     if fits_legacy {
-        if let Ok(legacy_frag) =
-            encode_share_fragment_with_challenge(tab_slug, tool_id, challenge_id, preset_json)
-        {
+        if let Ok(legacy_frag) = encode_share_fragment_with_hud(
+            &params.tab,
+            params.tool.as_deref(),
+            params.preset.as_deref(),
+            params.challenge.as_deref(),
+            params.step,
+            params.state_json.as_deref(),
+        ) {
             return Ok(legacy_frag);
         }
     }
@@ -283,12 +351,7 @@ pub fn encode_single_pane_smart_fragment_with_challenge(
         quad_split_ratios: (0.5, 0.5),
         focused_pane: 0,
         compare_sync: ComparisonSyncConfig::default(),
-        panes: vec![ShareUrlParams {
-            tab: tab_slug.to_string(),
-            tool: tool_id.map(str::to_string),
-            challenge: challenge_id.map(str::to_string),
-            state_json: preset_json.map(str::to_string),
-        }],
+        panes: vec![params.clone()],
     };
     encode_workspace_share_fragment(&single_ws)
 }
@@ -324,10 +387,21 @@ fn decode_wire_panes(panes: Vec<WirePaneShareEntry>) -> Result<Vec<ShareUrlParam
             Some(t) => Some(t.trim().to_string()),
             None => None,
         };
-        let challenge = match entry.challenge {
-            Some(c) => Some(validate_challenge_id(&c)?),
-            None => None,
+        let preset = match entry.preset {
+            Some(ref p) if p.trim().is_empty() => {
+                return Err("Workspace URL pane contains an empty 'preset' identifier".to_string());
+            }
+            other => other,
         };
+        let challenge = match entry.challenge {
+            Some(ref c) if c.trim().is_empty() => {
+                return Err(
+                    "Workspace URL pane contains an empty 'challenge' identifier".to_string(),
+                );
+            }
+            other => other,
+        };
+        let hud = validate_wire_hud_fields(preset.as_deref(), challenge.as_deref(), entry.step)?;
         let state_json = match entry.state {
             Some(raw_val) => {
                 let raw_str = raw_val.get();
@@ -343,8 +417,10 @@ fn decode_wire_panes(panes: Vec<WirePaneShareEntry>) -> Result<Vec<ShareUrlParam
         out.push(ShareUrlParams {
             tab,
             tool,
-            challenge,
             state_json,
+            preset: hud.preset,
+            challenge: hud.challenge,
+            step: hud.step,
         });
     }
     Ok(out)

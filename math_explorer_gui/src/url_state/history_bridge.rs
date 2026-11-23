@@ -38,7 +38,10 @@ pub(super) fn has_share_query_params(search: &str) -> bool {
     let raw = search.strip_prefix('?').unwrap_or(search).trim();
     raw.split('&').filter(|s| !s.is_empty()).any(|pair| {
         let key = pair.split_once('=').map_or(pair, |(k, _)| k).trim();
-        matches!(key, "ws" | "tab" | "tool" | "challenge" | "state")
+        matches!(
+            key,
+            "ws" | "tab" | "tool" | "state" | "preset" | "challenge" | "step"
+        )
     })
 }
 

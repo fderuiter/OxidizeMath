@@ -86,6 +86,7 @@ pub trait ExplorerTab {
         match self.name() {
             "Algorithmic Information"
             | "Analysis & Calculus"
+            | "Elliptic Curves"
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
@@ -94,6 +95,7 @@ pub trait ExplorerTab {
             "Astrophysics"
             | "Chaos Theory"
             | "Fluid Dynamics"
+            | "General Relativity"
             | "Medical Physics"
             | "MRI Physics"
             | "Quantum Mechanics"
@@ -103,6 +105,7 @@ pub trait ExplorerTab {
             | "Clinical Trials"
             | "Favoritism"
             | "Game Theory"
+            | "Paradox Lab"
             | "Traceability Portal" => "Applied Math",
 
             "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
@@ -175,11 +178,13 @@ pub trait ExplorerTab {
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
             "Clinical Trials" => "clinical_trials",
+            "Elliptic Curves" => "elliptic_curves",
             "Epidemiology" => "epidemiology",
             "Favoritism" => "favoritism",
             "Financial Math" => "financial_math",
             "Fluid Dynamics" => "fluid_dynamics",
             "Game Theory" => "game_theory",
+            "General Relativity" => "relativity",
             "Geometry & Topology" => "geometry_topology",
             "Graph Theory" => "graph_theory",
             "Medical Physics" => "medical",
@@ -187,6 +192,7 @@ pub trait ExplorerTab {
             "MRI Physics" => "mri",
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
+            "Paradox Lab" => "paradox_lab",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",
@@ -216,6 +222,53 @@ pub trait ExplorerTab {
             Some(fw) => fw.export_url_preset_json(),
             None => Ok(None),
         }
+    }
+
+    /// Exports structured `ShareUrlParams` (including active story/challenge HUD state) for URL sharing.
+    fn export_share_url_params(&self) -> Result<crate::url_state::ShareUrlParams, String> {
+        if let Some(fw) = self.framework() {
+            return fw.export_share_url_params(self.url_slug());
+        }
+        Ok(crate::url_state::ShareUrlParams {
+            tab: self.url_slug().to_string(),
+            tool: self.active_tool_id().map(str::to_string),
+            state_json: self.export_url_preset_json()?,
+            preset: None,
+            challenge: self.active_challenge_id().map(str::to_string),
+            step: None,
+        })
+    }
+
+    /// Encodes a `#tab=<slug>...` URL fragment for this tab (including active story or challenge IDs when present).
+    fn encode_url_share_fragment(&self) -> Result<String, String> {
+        if let Some(fw) = self.framework() {
+            return fw.encode_share_fragment_for_tab(self.url_slug());
+        }
+        let preset_json = self.export_url_preset_json()?;
+        crate::url_state::encode_share_fragment(
+            self.url_slug(),
+            self.active_tool_id(),
+            preset_json.as_deref(),
+        )
+    }
+
+    /// Validates and applies `ShareUrlParams` (supporting `&preset=`, `&challenge=`, `&step=`, and `&state=`).
+    fn import_url_share_params(
+        &mut self,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        if params.preset.is_none() && params.challenge.is_none() {
+            return self
+                .import_url_preset_json(params.tool.as_deref(), params.state_json.as_deref());
+        }
+        if let Some(fw) = self.framework_mut() {
+            return fw.import_url_share_params(params, ctx);
+        }
+        Err(format!(
+            "Tab '{}' does not support story presets or challenges",
+            self.name()
+        ))
     }
 
     /// Validates and applies a shared URL tool identifier and `PresetWrapper` JSON payload.
@@ -254,40 +307,23 @@ pub trait ExplorerTab {
         self.import_url_preset_json(tool_id, preset_json)
     }
 
-    /// Validates and applies shared URL `tool`, `challenge`, and `state` parameters.
-    fn import_url_share_params(
-        &mut self,
-        tool_id: Option<&str>,
-        challenge_id: Option<&str>,
-        preset_json: Option<&str>,
-    ) -> Result<(), String> {
-        if challenge_id.is_none() {
-            return self.import_url_preset_json(tool_id, preset_json);
-        }
-        if let Some(fw) = self.framework_mut() {
-            return fw.import_url_share_params(tool_id, challenge_id, preset_json);
-        }
-        Err(format!(
-            "Tab '{}' does not support inverse challenges",
-            self.name()
-        ))
-    }
-
-    /// Validates and applies `#ws=...` workspace URL `tool`, `challenge`, and `state` parameters (up to 32,768 bytes).
+    /// Validates and applies `#ws=...` workspace `ShareUrlParams` (supporting stories, challenges, and up to 32,768 bytes).
     fn import_workspace_url_share_params(
         &mut self,
-        tool_id: Option<&str>,
-        challenge_id: Option<&str>,
-        preset_json: Option<&str>,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
     ) -> Result<(), String> {
-        if challenge_id.is_none() {
-            return self.import_workspace_url_preset_json(tool_id, preset_json);
+        if params.preset.is_none() && params.challenge.is_none() {
+            return self.import_workspace_url_preset_json(
+                params.tool.as_deref(),
+                params.state_json.as_deref(),
+            );
         }
         if let Some(fw) = self.framework_mut() {
-            return fw.import_workspace_url_share_params(tool_id, challenge_id, preset_json);
+            return fw.import_workspace_url_share_params(params, ctx);
         }
         Err(format!(
-            "Tab '{}' does not support inverse challenges",
+            "Tab '{}' does not support story presets or challenges",
             self.name()
         ))
     }

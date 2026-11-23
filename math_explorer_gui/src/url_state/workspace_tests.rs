@@ -32,8 +32,10 @@ fn sample_pane(tab: &str, tool: Option<&str>, x0: f64) -> ShareUrlParams {
     ShareUrlParams {
         tab: tab.to_string(),
         tool: tool.map(str::to_string),
-        challenge: None,
         state_json: Some(state_json),
+        preset: None,
+        challenge: None,
+        step: None,
     }
 }
 

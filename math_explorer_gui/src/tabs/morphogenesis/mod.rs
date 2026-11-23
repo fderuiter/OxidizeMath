@@ -19,6 +19,7 @@ pub mod atlas;
 pub mod lenia;
 pub mod presets;
 pub mod runner;
+pub mod sculpt;
 mod seeding;
 pub mod tool;
 pub mod ui;
@@ -173,9 +174,17 @@ impl MorphogenesisTab {
         let f = existing.as_ref().map_or(0.0367, |c| c.f);
         let k = existing.as_ref().map_or(0.0649, |c| c.k);
         let atlas_visible = existing.as_ref().is_some_and(|s| s.atlas_visible);
-        let atlas_axes = existing
-            .map(|s| s.atlas_axes)
-            .unwrap_or_else(atlas::default_morpho_atlas_axes);
+        let (existing_mask, atlas_axes) = match existing {
+            Some(s) => {
+                let keep_mask = if s.width == config.width && s.height == config.height {
+                    s.mask_rle
+                } else {
+                    Vec::new()
+                };
+                (keep_mask, s.atlas_axes)
+            }
+            None => (Vec::new(), atlas::default_morpho_atlas_axes()),
+        };
         let target_state = if current_state == SimWorkerState::Running {
             SimWorkerState::Running
         } else {
@@ -195,6 +204,7 @@ impl MorphogenesisTab {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            mask_rle: existing_mask,
             atlas_visible,
             atlas_axes,
         };
@@ -375,6 +385,47 @@ impl ExplorerTab for MorphogenesisTab {
     ) -> Result<(), String> {
         self.framework
             .import_url_preset_json(tool_id, preset_json)?;
+        if self.framework.active_tool_id() == Some("MorphogenesisTool") {
+            let cfg = self.export_config();
+            self.sync_shared_params_from_config(&cfg);
+        }
+        Ok(())
+    }
+
+    fn import_workspace_url_preset_json(
+        &mut self,
+        tool_id: Option<&str>,
+        preset_json: Option<&str>,
+    ) -> Result<(), String> {
+        self.framework
+            .import_workspace_url_preset_json(tool_id, preset_json)?;
+        if self.framework.active_tool_id() == Some("MorphogenesisTool") {
+            let cfg = self.export_config();
+            self.sync_shared_params_from_config(&cfg);
+        }
+        Ok(())
+    }
+
+    fn import_url_share_params(
+        &mut self,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        self.framework.import_url_share_params(params, ctx)?;
+        if self.framework.active_tool_id() == Some("MorphogenesisTool") {
+            let cfg = self.export_config();
+            self.sync_shared_params_from_config(&cfg);
+        }
+        Ok(())
+    }
+
+    fn import_workspace_url_share_params(
+        &mut self,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        self.framework
+            .import_workspace_url_share_params(params, ctx)?;
         if self.framework.active_tool_id() == Some("MorphogenesisTool") {
             let cfg = self.export_config();
             self.sync_shared_params_from_config(&cfg);

@@ -171,6 +171,28 @@ fn test_all_8_multi_pane_focus_cases_roundtrip_url_storage_and_webgl_recovery() 
     }
 }
 
+fn plain_pane(tab: &str, tool: Option<&str>) -> ShareUrlParams {
+    ShareUrlParams {
+        tab: tab.to_string(),
+        tool: tool.map(str::to_string),
+        state_json: None,
+        preset: None,
+        challenge: None,
+        step: None,
+    }
+}
+
+fn challenge_pane(tab: &str, tool: &str, challenge: &str) -> ShareUrlParams {
+    ShareUrlParams {
+        tab: tab.to_string(),
+        tool: Some(tool.to_string()),
+        state_json: None,
+        preset: None,
+        challenge: Some(challenge.to_string()),
+        step: None,
+    }
+}
+
 #[test]
 fn test_atomic_multi_pane_ws_failure_preserves_layout_focus_and_panes() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
@@ -186,30 +208,10 @@ fn test_atomic_multi_pane_ws_failure_preserves_layout_focus_and_panes() {
         focused_pane: 1,
         compare_sync: ComparisonSyncConfig::default(),
         panes: vec![
-            ShareUrlParams {
-                tab: "chaos".to_string(),
-                tool: Some("FractalViewer".to_string()),
-                challenge: None,
-                state_json: None,
-            },
-            ShareUrlParams {
-                tab: "physics".to_string(),
-                tool: None,
-                challenge: None,
-                state_json: None,
-            },
-            ShareUrlParams {
-                tab: "quantum".to_string(),
-                tool: None,
-                challenge: None,
-                state_json: None,
-            },
-            ShareUrlParams {
-                tab: "chaos".to_string(),
-                tool: Some("NonExistentFourthPaneTool".to_string()),
-                challenge: None,
-                state_json: None,
-            },
+            plain_pane("chaos", Some("FractalViewer")),
+            plain_pane("physics", None),
+            plain_pane("quantum", None),
+            plain_pane("chaos", Some("NonExistentFourthPaneTool")),
         ],
     })
     .unwrap();
@@ -316,33 +318,44 @@ fn test_external_url_navigation_records_undo_on_startup_and_hashchange_popstate(
     assert_eq!(booted.focused_pane, 1);
 }
 
+fn tamper_pk_pane_locks(pane: &mut ShareUrlParams) {
+    let mut env1: serde_json::Value =
+        serde_json::from_str(pane.state_json.as_ref().unwrap()).unwrap();
+    env1["config"]["dose_mg"] = serde_json::json!(165.0);
+    env1["config"]["mtc"] = serde_json::json!(99.0);
+    env1["config"]["ke"] = serde_json::json!(0.45);
+    pane.state_json = Some(env1.to_string());
+}
+
 #[test]
 fn test_multi_pane_workspace_url_preserves_inverse_challenge_and_clamps_locks() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut app = MathExplorerApp::default();
-    let mri_idx = find_tab_idx(&app, "mri");
-    let pk_idx = find_tab_idx(&app, "clinical_trials");
-
+    let (mri_idx, pk_idx) = (
+        find_tab_idx(&app, "mri"),
+        find_tab_idx(&app, "clinical_trials"),
+    );
     app.set_layout(ViewportLayout::SplitHorizontal);
     app.set_pane_tab(0, mri_idx);
     app.set_pane_tab(1, pk_idx);
     app.focus_pane(1);
 
+    let mri_ch = challenge_pane("mri", "MriTool", "bloch_pi_inversion");
+    let pk_ch = challenge_pane(
+        "clinical_trials",
+        "PharmacokineticsTool",
+        "pk_therapeutic_window",
+    );
     app.tabs[mri_idx]
-        .import_url_share_params(Some("MriTool"), Some("bloch_pi_inversion"), None)
+        .import_url_share_params(&mri_ch, None)
         .unwrap();
     app.pane_tab_mut(1)
         .unwrap()
-        .import_url_share_params(
-            Some("PharmacokineticsTool"),
-            Some("pk_therapeutic_window"),
-            None,
-        )
+        .import_url_share_params(&pk_ch, None)
         .unwrap();
 
     let ws_frag = app.encode_current_share_fragment().unwrap();
-    assert!(ws_frag.starts_with("#ws="));
-    let ws_token = ws_frag.strip_prefix("#ws=").unwrap();
+    let ws_token = ws_frag.strip_prefix("#ws=").expect("ws prefix");
     let mut decoded = super::decode_workspace_share_param(ws_token).unwrap();
     assert_eq!(
         decoded.panes[0].challenge.as_deref(),
@@ -353,13 +366,7 @@ fn test_multi_pane_workspace_url_preserves_inverse_challenge_and_clamps_locks() 
         Some("pk_therapeutic_window")
     );
 
-    // Tamper with locked `mtc` and `ke` fields inside secondary pane `#ws=...` envelope
-    let mut env1: serde_json::Value =
-        serde_json::from_str(decoded.panes[1].state_json.as_ref().unwrap()).unwrap();
-    env1["config"]["dose_mg"] = serde_json::json!(165.0);
-    env1["config"]["mtc"] = serde_json::json!(99.0);
-    env1["config"]["ke"] = serde_json::json!(0.45);
-    decoded.panes[1].state_json = Some(env1.to_string());
+    tamper_pk_pane_locks(&mut decoded.panes[1]);
     let tampered_ws = encode_workspace_share_fragment(&decoded).unwrap();
 
     let mut restored = MathExplorerApp::default();
@@ -383,4 +390,64 @@ fn test_multi_pane_workspace_url_preserves_inverse_challenge_and_clamps_locks() 
     assert_eq!(cfg["dose_mg"], serde_json::json!(165.0));
     assert_eq!(cfg["mtc"], serde_json::json!(12.0));
     assert_eq!(cfg["ke"], serde_json::json!(0.12));
+}
+
+#[test]
+fn test_multi_pane_workspace_url_preserves_guided_story_step_and_ast_challenge() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let mut app = MathExplorerApp::default();
+    let fluid_idx = find_tab_idx(&app, "fluid_dynamics");
+    let fin_idx = find_tab_idx(&app, "financial_math");
+
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    app.set_pane_tab(0, fluid_idx);
+    app.set_pane_tab(1, fin_idx);
+    app.focus_pane(1);
+
+    let story = crate::starter_gallery::find_story_by_id("dalembert_to_kutta_lift", None)
+        .expect("dalembert_to_kutta_lift story registered");
+    let target_step = story.steps.len().saturating_sub(1);
+    assert!(target_step > 0);
+    let goal = crate::starter_gallery::find_goal_challenge_by_id("kelly_ruin_trap", None)
+        .expect("kelly_ruin_trap AST challenge registered");
+
+    app.tabs[fluid_idx]
+        .framework_mut()
+        .unwrap()
+        .launch_story(story, target_step)
+        .unwrap();
+    app.pane_tab_mut(1)
+        .unwrap()
+        .framework_mut()
+        .unwrap()
+        .launch_challenge(goal)
+        .unwrap();
+
+    let ws_frag = app.encode_current_share_fragment().unwrap();
+    assert!(ws_frag.starts_with("#ws="));
+    let decoded = super::decode_workspace_share_param(ws_frag.strip_prefix("#ws=").unwrap())
+        .expect("ws fragment must decode");
+    assert_eq!(
+        decoded.panes[0].preset.as_deref(),
+        Some("dalembert_to_kutta_lift")
+    );
+    assert_eq!(decoded.panes[0].step, Some(target_step));
+    assert_eq!(
+        decoded.panes[1].challenge.as_deref(),
+        Some("kelly_ruin_trap")
+    );
+
+    let mut restored = MathExplorerApp::default();
+    assert!(restored
+        .apply_share_location_strings(&ws_frag, "", None)
+        .unwrap());
+    assert!(matches!(
+        restored.tabs[fluid_idx].framework().unwrap().challenge_hud.mode,
+        crate::framework::ChallengeHudMode::Story { story: s, step_index, .. }
+            if s.id == "dalembert_to_kutta_lift" && step_index == target_step
+    ));
+    assert!(matches!(
+        restored.pane_tab(1).unwrap().framework().unwrap().challenge_hud.mode,
+        crate::framework::ChallengeHudMode::Challenge { challenge: c, .. } if c.id == "kelly_ruin_trap"
+    ));
 }

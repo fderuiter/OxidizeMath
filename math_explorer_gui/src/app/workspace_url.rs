@@ -6,7 +6,7 @@
 use super::{ComparisonSyncConfig, MathExplorerApp, ViewportLayout};
 use crate::tabs::ExplorerTab;
 use crate::url_state::{
-    encode_single_pane_smart_fragment_with_challenge, encode_workspace_share_fragment,
+    encode_single_pane_smart_fragment_from_params, encode_workspace_share_fragment,
     matches_tab_slug, parse_workspace_or_share_location, replace_browser_url_fragment,
     PaneUrlSignature, ParsedShareLocation, ShareUrlParams, UrlStateSignature, WorkspaceShareParams,
 };
@@ -103,21 +103,11 @@ impl MathExplorerApp {
                 .tabs
                 .get(tab_idx)
                 .ok_or_else(|| "No active primary simulation tab selected".to_string())?;
-            return Ok(ShareUrlParams {
-                tab: tab.url_slug().to_string(),
-                tool: tab.active_tool_id().map(str::to_string),
-                challenge: tab.active_challenge_id().map(str::to_string),
-                state_json: tab.export_url_preset_json()?,
-            });
+            return tab.export_share_url_params();
         }
         let tab_idx = self.pane_tabs.get(pane_idx).copied().unwrap_or(0);
         if let Some(tab) = self.pane_tab(pane_idx) {
-            return Ok(ShareUrlParams {
-                tab: tab.url_slug().to_string(),
-                tool: tab.active_tool_id().map(str::to_string),
-                challenge: tab.active_challenge_id().map(str::to_string),
-                state_json: tab.export_url_preset_json()?,
-            });
+            return tab.export_share_url_params();
         }
         let mut temp_tab = crate::tabs::instantiate_tab(tab_idx)
             .ok_or_else(|| format!("Invalid tab index {tab_idx} in secondary pane {pane_idx}"))?;
@@ -126,24 +116,14 @@ impl MathExplorerApp {
                 temp_tab.load_state(saved);
             }
         }
-        Ok(ShareUrlParams {
-            tab: temp_tab.url_slug().to_string(),
-            tool: temp_tab.active_tool_id().map(str::to_string),
-            challenge: temp_tab.active_challenge_id().map(str::to_string),
-            state_json: temp_tab.export_url_preset_json()?,
-        })
+        temp_tab.export_share_url_params()
     }
 
     pub(super) fn encode_workspace_or_single_fragment(&self) -> Result<String, String> {
         let layout = self.viewport_layout;
         if layout == ViewportLayout::Single {
             let primary = self.export_pane_share_params(0)?;
-            return encode_single_pane_smart_fragment_with_challenge(
-                &primary.tab,
-                primary.tool.as_deref(),
-                primary.challenge.as_deref(),
-                primary.state_json.as_deref(),
-            );
+            return encode_single_pane_smart_fragment_from_params(&primary);
         }
         let pane_count = layout.pane_count();
         let mut panes = Vec::with_capacity(pane_count);
@@ -169,6 +149,7 @@ impl MathExplorerApp {
         params: &ShareUrlParams,
         allow_workspace_bounds: bool,
         preserve_primary_subtools: bool,
+        ctx: Option<&egui::Context>,
     ) -> Result<(usize, Box<dyn ExplorerTab>), String> {
         let Some(tab_idx) = self
             .tabs
@@ -192,17 +173,9 @@ impl MathExplorerApp {
             }
         }
         let res = if allow_workspace_bounds {
-            candidate.import_workspace_url_share_params(
-                params.tool.as_deref(),
-                params.challenge.as_deref(),
-                params.state_json.as_deref(),
-            )
+            candidate.import_workspace_url_share_params(params, ctx)
         } else {
-            candidate.import_url_share_params(
-                params.tool.as_deref(),
-                params.challenge.as_deref(),
-                params.state_json.as_deref(),
-            )
+            candidate.import_url_share_params(params, ctx)
         };
         res?;
         Ok((tab_idx, candidate))
@@ -230,13 +203,14 @@ impl MathExplorerApp {
         ctx: Option<&egui::Context>,
         record_undo_from: Option<super::AppState>,
     ) -> Result<bool, String> {
-        let (tab_idx, candidate) = match self.build_validated_candidate_tab(&params, false, true) {
-            Ok(pair) => pair,
-            Err(err) => {
-                self.record_invalid_share_url(err.clone(), ctx);
-                return Err(err);
-            }
-        };
+        let (tab_idx, candidate) =
+            match self.build_validated_candidate_tab(&params, false, true, ctx) {
+                Ok(pair) => pair,
+                Err(err) => {
+                    self.record_invalid_share_url(err.clone(), ctx);
+                    return Err(err);
+                }
+            };
         let tab_name = candidate.name();
         self.tab_state_cache.invalidate_tab(tab_name);
         self.tabs[tab_idx] = candidate;
@@ -269,7 +243,7 @@ impl MathExplorerApp {
         let mut candidates = Vec::with_capacity(params.panes.len());
         for (idx, pane_param) in params.panes.iter().enumerate() {
             let preserve_subtools = single_pane && idx == 0;
-            match self.build_validated_candidate_tab(pane_param, true, preserve_subtools) {
+            match self.build_validated_candidate_tab(pane_param, true, preserve_subtools, ctx) {
                 Ok(pair) => candidates.push(pair),
                 Err(err) => {
                     self.record_invalid_share_url(err.clone(), ctx);
