@@ -3,10 +3,10 @@
 // [cite:isosurface_extraction]
 // [cite:gaussian_splatting]
 
-use super::VolumetricFieldStudioTool;
 use super::state::{
-    STUDIO_VIEWPORT_EXTENT, SliceAxis, VolumetricRenderMode, VolumetricStudioConfig,
+    SliceAxis, VolumetricRenderMode, VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT,
 };
+use super::VolumetricFieldStudioTool;
 use crate::accessibility::AccessibleTheoryHover;
 use crate::camera::{Camera3D, Plot3DViewport};
 use crate::volumetric_scene::SPLAT_GRID_SIZE;
@@ -30,13 +30,14 @@ impl VolumetricFieldStudioTool {
             let mut camera = self.config.camera;
             let mut hover_plot_coord: Option<PlotPoint> = None;
 
-            let response = Plot3DViewport::new("volumetric_field_studio_plot", STUDIO_VIEWPORT_EXTENT)
-                .helper_text(VIEWPORT_HELPER)
-                .show(ui, &mut camera, |plot_ui| {
-                    hover_plot_coord = plot_ui.pointer_coordinate();
-                    self.draw_plot_contents(plot_ui, &snap_camera, tex_id, &palette);
-                })
-                .response;
+            let response =
+                Plot3DViewport::new("volumetric_field_studio_plot", STUDIO_VIEWPORT_EXTENT)
+                    .helper_text(VIEWPORT_HELPER)
+                    .show(ui, &mut camera, |plot_ui| {
+                        hover_plot_coord = plot_ui.pointer_coordinate();
+                        self.draw_plot_contents(plot_ui, &snap_camera, tex_id, &palette);
+                    })
+                    .response;
 
             let cam_changed = camera != self.config.camera;
             self.config.camera = camera;
@@ -108,9 +109,12 @@ impl VolumetricFieldStudioTool {
         if self.config.render_mode == VolumetricRenderMode::GaussianRadianceCloud {
             for (idx, (ring, color)) in self.engine.splat_ws.ellipse_rings.iter().enumerate() {
                 plot_ui.line(
-                    Line::new(format!("Splat {idx} (1.5σ)"), PlotPoints::new(ring.to_vec()))
-                        .color(*color)
-                        .width(1.1_f32),
+                    Line::new(
+                        format!("Splat {idx} (1.5σ)"),
+                        PlotPoints::new(ring.to_vec()),
+                    )
+                    .color(*color)
+                    .width(1.1_f32),
                 );
             }
         }
@@ -168,27 +172,9 @@ fn draw_cutting_plane_frame(
     let e = STUDIO_VIEWPORT_EXTENT;
     let c = cfg.cut_offset.clamp(-1.0, 1.0) * e;
     let corners_3d = match cfg.cut_axis {
-        SliceAxis::X => [
-            [c, -e, -e],
-            [c, e, -e],
-            [c, e, e],
-            [c, -e, e],
-            [c, -e, -e],
-        ],
-        SliceAxis::Y => [
-            [-e, c, -e],
-            [e, c, -e],
-            [e, c, e],
-            [-e, c, e],
-            [-e, c, -e],
-        ],
-        SliceAxis::Z => [
-            [-e, -e, c],
-            [e, -e, c],
-            [e, e, c],
-            [-e, e, c],
-            [-e, -e, c],
-        ],
+        SliceAxis::X => [[c, -e, -e], [c, e, -e], [c, e, e], [c, -e, e], [c, -e, -e]],
+        SliceAxis::Y => [[-e, c, -e], [e, c, -e], [e, c, e], [-e, c, e], [-e, c, -e]],
+        SliceAxis::Z => [[-e, -e, c], [e, -e, c], [e, e, c], [-e, e, c], [-e, -e, c]],
     };
     let projected: Vec<[f64; 2]> = corners_3d.iter().map(|p| camera.project(p)).collect();
     plot_ui.line(

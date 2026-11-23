@@ -46,6 +46,8 @@ fn wasm_volumetric_studio_quantum_and_turing_modes_step_slice_and_export_obj() {
     tool.refresh_zero_alloc();
     tool.step_zero_alloc();
 
-    let obj = tool.export_obj_string().expect("OBJ export succeeds on wasm32");
+    let obj = tool
+        .export_obj_string()
+        .expect("OBJ export succeeds on wasm32");
     assert!(obj.contains("\nv ") && obj.contains("\nvn ") && obj.contains("\nf "));
 }

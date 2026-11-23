@@ -49,7 +49,7 @@ depends = [
 default = ["math_explorer", "ai", "applied", "biology", "climate", "epidemiology", "physics", "pure_math"]
 pure_math = ["math_explorer/pure_math"]
 applied = ["math_explorer/applied", "pure_math"]
-ai = ["math_explorer/ai", "math_explorer/applied", "math_explorer/biology", "math_explorer/physics", "pure_math"]
+ai = ["math_explorer/ai", "math_explorer/biology", "math_explorer/physics", "applied", "pure_math"]
 biology = ["math_explorer/biology", "math_explorer/ai", "math_explorer/physics", "applied", "pure_math"]
 climate = ["math_explorer/climate", "ai"]
 epidemiology = ["math_explorer/epidemiology", "pure_math"]
@@ -82,7 +82,6 @@ muda = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = { workspace = true }
-getrandom = { workspace = true, features = ["js"] }
 wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 web-sys = { workspace = true, features = [
@@ -118,8 +117,6 @@ verified_engine = { path = "../crates/verified_engine" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = { workspace = true }
-
-[package.metadata.cargo-machete]
 
 [lints]
 workspace = true

@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-use approx::assert_abs_diff_eq;
 use domain_biology::biology::diffusion::FiniteDifference3D;
 use domain_biology::biology::morphogenesis::{
     DiffusionCoeff, ReactionKinetics, SchnakenbergKinetics, TuringSystem,
@@ -49,8 +48,8 @@ fn test_finite_difference_3d_neumann_mass_conservation() {
 
     let u1: f64 = sys.u().iter().sum();
     let v1: f64 = sys.v().iter().sum();
-    assert_abs_diff_eq!(u0, u1, epsilon = 1e-10);
-    assert_abs_diff_eq!(v0, v1, epsilon = 1e-10);
+    assert!((u0 - u1).abs() < 1e-10);
+    assert!((v0 - v1).abs() < 1e-10);
 }
 
 #[test]

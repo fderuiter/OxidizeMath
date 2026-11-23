@@ -305,6 +305,16 @@ pub fn rasterize_splats_into(
     viewport_half_extent: f64,
     pixels: &mut [egui::Color32],
 ) {
+    rasterize_splats_with_pan_into(splats, viewport_half_extent, [0.0, 0.0], pixels);
+}
+
+/// Rasterizes depth-sorted 2D Gaussians into `pixels` shifted by 2D viewport `pan` offsets.
+pub fn rasterize_splats_with_pan_into(
+    splats: &[Gaussian2D],
+    viewport_half_extent: f64,
+    pan: [f64; 2],
+    pixels: &mut [egui::Color32],
+) {
     let grid_dim = (pixels.len() as f64).sqrt() as usize;
     if grid_dim == 0 || grid_dim * grid_dim != pixels.len() {
         return;
@@ -312,10 +322,10 @@ pub fn rasterize_splats_into(
     let span = 2.0 * viewport_half_extent;
     let inv_dim = 1.0 / (grid_dim as f64);
     for row_idx in 0..grid_dim {
-        let y = viewport_half_extent - span * ((row_idx as f64 + 0.5) * inv_dim);
+        let y = pan[1] + viewport_half_extent - span * ((row_idx as f64 + 0.5) * inv_dim);
         let row_base = row_idx * grid_dim;
         for col_idx in 0..grid_dim {
-            let x = -viewport_half_extent + span * ((col_idx as f64 + 0.5) * inv_dim);
+            let x = pan[0] - viewport_half_extent + span * ((col_idx as f64 + 0.5) * inv_dim);
             let rgb = rendering::blend_gaussians(splats, &Point2::new(x, y));
             let r = (rgb.x as f32).clamp(0.0, 1.0);
             let g = (rgb.y as f32).clamp(0.0, 1.0);

@@ -68,6 +68,7 @@ theory_verification!(
         LEVEL = 0.0;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(LEVEL, 0.0, epsilon = math_commons::registry::TOLERANCE_FAST);
     }
 );

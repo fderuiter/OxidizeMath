@@ -3,18 +3,20 @@
 // [cite:gaussian_splatting]
 
 pub use crate::volumetric_scene::presets::{
-    VolumetricSplatPreset, build_preset_scene_and_gradients,
+    build_preset_scene_and_gradients, VolumetricSplatPreset,
 };
 pub use crate::volumetric_scene::{
-    DensityActionCounts, ELLIPSE_POINTS, OPACITY_THRESHOLD, covariance_ellipse_ring,
-    splat_stroke_color,
+    covariance_ellipse_ring, splat_stroke_color, DensityActionCounts, ELLIPSE_POINTS,
+    OPACITY_THRESHOLD,
 };
 
+use crate::framework::Camera3D;
 use eframe::egui;
 use math_explorer::ai::gaussian_splatting::{
+    optimization::{determine_density_action, DensityAction},
     Gaussian2D, Scene,
-    optimization::{DensityAction, determine_density_action},
 };
+use nalgebra::{Point2, Point3};
 
 pub(crate) const SPLAT_GRID_SIZE: usize = 96;
 pub(super) const VIEWPORT_HALF_EXTENT: f64 = 2.5;
@@ -59,69 +61,43 @@ pub(super) fn evaluate_density_counts(scale: f64) -> DensityActionCounts {
     evaluate_scene_density_counts(&scene, &grads, scale)
 }
 
-pub(super) fn rasterize_splats_into(splats: &[Gaussian2D], pixels: &mut [egui::Color32]) {
-    crate::volumetric_scene::rasterize_splats_into(splats, VIEWPORT_HALF_EXTENT, pixels);
-}
-
-pub(super) fn project_tool_scene_into(
-    scene: &Scene,
-    scale: f64,
-    camera: &crate::camera::Camera3D,
-    out_splats: &mut Vec<Gaussian2D>,
-    out_rings: &mut Vec<([[f64; 2]; ELLIPSE_POINTS], egui::Color32)>,
-    out_centers: &mut Vec<[f64; 2]>,
-) {
-    use math_explorer::ai::gaussian_splatting::{Gaussian3D, projection};
-    use nalgebra::{Matrix2, Point2, Vector3};
-
-    out_splats.clear();
-    out_rings.clear();
-    out_centers.clear();
-    let scale_factor = if scale.is_finite() {
-        scale.clamp(0.1, 10.0)
+pub(super) fn lift_ring_to_world(
+    camera: &Camera3D,
+    ring_2d: &[[f64; 2]; ELLIPSE_POINTS],
+    mean2d: Point2<f64>,
+    cam_coords: [f64; 3],
+    proj_scale: f64,
+) -> [Point3<f64>; ELLIPSE_POINTS] {
+    let (sy, cy) = f64::from(camera.yaw).sin_cos();
+    let (sp, cp) = f64::from(camera.pitch).sin_cos();
+    let inv_scale = if proj_scale.abs() > 1e-9 {
+        1.0 / proj_scale
     } else {
         1.0
     };
-    let view_matrix = camera.view_matrix(CAMERA_DISTANCE);
-    let focal = CAMERA_DISTANCE * (camera.zoom as f64);
-    let mut rings_pushed = 0usize;
-
-    for base in &scene.gaussians {
-        let scaled = Gaussian3D {
-            mean: base.mean,
-            scale: base.scale * scale_factor,
-            rotation: base.rotation,
-            opacity: base.opacity,
-            color: base.color,
-        };
-        let [tx, ty, vz] =
-            camera.rotate_to_camera_space(&[scaled.mean.x, scaled.mean.y, scaled.mean.z]);
-        let tz = (CAMERA_DISTANCE - vz).max(0.25);
-        let cam_pos = Vector3::new(tx, ty, tz);
-        let jacobian = projection::compute_jacobian(&cam_pos, focal, focal);
-        let cov3d = scaled.compute_covariance();
-        let cov2d = projection::project_covariance(&cov3d, &view_matrix, &jacobian)
-            + Matrix2::from_diagonal_element(1e-4);
-        let Some(inv_cov) = cov2d.try_inverse() else {
-            continue;
-        };
-        let mean2d = Point2::new(focal * tx / tz, focal * ty / tz);
-        if rings_pushed < 48 {
-            out_rings.push((
-                covariance_ellipse_ring(mean2d, &cov2d),
-                splat_stroke_color(&scaled.color, scaled.opacity),
-            ));
-            rings_pushed += 1;
-        }
-        out_centers.push([mean2d.x, mean2d.y]);
-        out_splats.push(Gaussian2D {
-            mean: mean2d,
-            conic: -0.5 * inv_cov,
-            opacity: scaled.opacity,
-            color: scaled.color,
-            depth: tz,
-        });
+    let mut ring_3d = [Point3::origin(); ELLIPSE_POINTS];
+    for (idx, &[rx, ry]) in ring_2d.iter().enumerate() {
+        let x2 = cam_coords[0] + (rx - mean2d.x) * inv_scale;
+        let y2 = cam_coords[1] + (ry - mean2d.y) * inv_scale;
+        let z2 = cam_coords[2];
+        let y1 = y2 * cp + z2 * sp;
+        let z1 = -y2 * sp + z2 * cp;
+        let x = x2 * cy + y1 * sy;
+        let y = -x2 * sy + y1 * cy;
+        ring_3d[idx] = Point3::new(x, y, z1);
     }
-    out_splats.sort_unstable_by(|a, b| a.depth.total_cmp(&b.depth));
+    ring_3d
 }
 
+pub(super) fn rasterize_splats_into(
+    splats: &[Gaussian2D],
+    pan: [f64; 2],
+    pixels: &mut [egui::Color32],
+) {
+    crate::volumetric_scene::rasterize_splats_with_pan_into(
+        splats,
+        VIEWPORT_HALF_EXTENT,
+        pan,
+        pixels,
+    );
+}

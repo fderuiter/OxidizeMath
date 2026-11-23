@@ -3,8 +3,8 @@
 //! and manifold Wavefront `.obj` export for [`super::VolumetricEngine`].
 // [cite:isosurface_extraction]
 
+use super::super::state::{VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT};
 use super::VolumetricEngine;
-use super::super::state::{STUDIO_VIEWPORT_EXTENT, VolumetricStudioConfig};
 use crate::camera::Camera3D;
 use crate::volumetric_scene::VolumeCutFilter;
 use eframe::egui;
@@ -12,7 +12,7 @@ use egui_plot::PlotPoint;
 use math_explorer::applied::isosurface::{
     CentralDifferenceEstimator, IsosurfaceWorkspace, MarchingCubes, VoxelGrid,
 };
-use oxidize_core::mesh::{Mesh, Point3D as CorePoint3D, export_mesh_to_obj_string};
+use oxidize_core::mesh::{export_mesh_to_obj_string, Mesh, Point3D as CorePoint3D};
 
 /// Maximum painter facets emitted per frame to keep `egui_plot::Polygon` crisp at 60 FPS.
 pub const MAX_RENDERED_FACETS: usize = 2_400;
@@ -44,7 +44,12 @@ pub fn project_meshes_into(
     if cap == 0 {
         return;
     }
-    let total_tris = (pos_mesh.indices.len() / 3) + if has_neg { neg_mesh.indices.len() / 3 } else { 0 };
+    let total_tris = (pos_mesh.indices.len() / 3)
+        + if has_neg {
+            neg_mesh.indices.len() / 3
+        } else {
+            0
+        };
     if total_tris == 0 {
         return;
     }
@@ -90,7 +95,11 @@ fn append_projected_mesh(
         let c0 = camera.rotate_to_camera_space(&[v0.x as f64, v0.y as f64, v0.z as f64]);
         let c1 = camera.rotate_to_camera_space(&[v1.x as f64, v1.y as f64, v1.z as f64]);
         let c2 = camera.rotate_to_camera_space(&[v2.x as f64, v2.y as f64, v2.z as f64]);
-        let n_raw = mesh.normals.get(i0).copied().unwrap_or(CorePoint3D::new(0.0, 0.0, 1.0));
+        let n_raw = mesh
+            .normals
+            .get(i0)
+            .copied()
+            .unwrap_or(CorePoint3D::new(0.0, 0.0, 1.0));
         let sign = if invert_normal { -1.0 } else { 1.0 };
         let nc = camera.rotate_to_camera_space(&[
             sign * (n_raw.x as f64),
@@ -135,8 +144,8 @@ pub fn extract_slice_contours_into(
     if dim < 2 || out.capacity() == 0 {
         return;
     }
-    let frac = ((c.max_coord + STUDIO_VIEWPORT_EXTENT) / (2.0 * STUDIO_VIEWPORT_EXTENT))
-        .clamp(0.0, 1.0);
+    let frac =
+        ((c.max_coord + STUDIO_VIEWPORT_EXTENT) / (2.0 * STUDIO_VIEWPORT_EXTENT)).clamp(0.0, 1.0);
     let slice_idx = ((frac * ((dim - 1) as f64)).round() as usize).min(dim - 1);
     if signed {
         trace_slice_level(grid, c.axis.min(2), slice_idx, c.max_coord, 0.0, out);
@@ -250,8 +259,11 @@ impl VolumetricEngine {
             let mut ws =
                 IsosurfaceWorkspace::new_lazy(self.voxel_grid.width(), self.voxel_grid.height());
             let mut tmp_pos = Mesh::new();
-            let _ = MarchingCubes::new(&self.voxel_grid, CentralDifferenceEstimator)
-                .extract_into(iso, &mut ws, &mut tmp_pos);
+            let _ = MarchingCubes::new(&self.voxel_grid, CentralDifferenceEstimator).extract_into(
+                iso,
+                &mut ws,
+                &mut tmp_pos,
+            );
             append_sanitized_mesh(&tmp_pos, false, cut, &mut combined);
         } else {
             append_sanitized_mesh(&self.pos_mesh, false, cut, &mut combined);
@@ -301,7 +313,8 @@ fn append_sanitized_mesh(
                 dst.vertices.push(sanitize_point(v));
                 let raw_n = src.normals.get(idx).copied().unwrap_or(face_n);
                 let signed_n = if flip_winding { -raw_n } else { raw_n };
-                dst.normals.push(sanitize_normal_with_fallback(signed_n, face_n));
+                dst.normals
+                    .push(sanitize_normal_with_fallback(signed_n, face_n));
             }
             dst.indices.push(remap[idx]);
         }
@@ -333,5 +346,37 @@ fn sanitize_normal_with_fallback(n: CorePoint3D, fallback: CorePoint3D) -> CoreP
         u
     } else {
         fallback
+    }
+}
+
+impl VolumetricEngine {
+    pub(super) fn extract_isosurfaces_zero_alloc(
+        &mut self,
+        cfg: &VolumetricStudioConfig,
+        iso: f32,
+        signed: bool,
+        cut: Option<VolumeCutFilter>,
+    ) {
+        if cfg.render_mode.uses_mesh() {
+            let mc = MarchingCubes::new(&self.voxel_grid, CentralDifferenceEstimator);
+            let _ = mc.extract_into(iso, &mut self.iso_ws, &mut self.pos_mesh);
+            if signed {
+                let _ = mc.extract_into(-iso, &mut self.iso_ws, &mut self.neg_mesh);
+            } else {
+                self.neg_mesh.clear();
+            }
+            project_meshes_into(
+                &self.pos_mesh,
+                &self.neg_mesh,
+                signed,
+                cut,
+                &cfg.camera,
+                &mut self.projected_facets,
+            );
+        } else {
+            self.pos_mesh.clear();
+            self.neg_mesh.clear();
+            self.projected_facets.clear();
+        }
     }
 }

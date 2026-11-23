@@ -138,9 +138,7 @@ impl InteractiveTool for VolumetricFieldStudioTool {
         self.config.cut_offset.to_bits().hash(&mut h);
         self.config.probe_brush_enabled.hash(&mut h);
         self.config.running.hash(&mut h);
-        self.config.camera.pitch.to_bits().hash(&mut h);
-        self.config.camera.yaw.to_bits().hash(&mut h);
-        self.config.camera.zoom.to_bits().hash(&mut h);
+        self.config.camera.hash_state(&mut h);
         h.finish()
     }
 

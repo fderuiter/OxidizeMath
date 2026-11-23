@@ -4,14 +4,14 @@
 // [cite:quantum_mechanics]
 // [cite:isosurface_extraction]
 
-use super::VolumetricFieldStudioTool;
 use super::state::{
-    FieldSourceMode, MAX_VOLUMETRIC_GRID, MIN_VOLUMETRIC_GRID, QuantumObservableChoice, SliceAxis,
-    VolumetricRenderMode,
+    FieldSourceMode, QuantumObservableChoice, SliceAxis, VolumetricRenderMode, MAX_VOLUMETRIC_GRID,
+    MIN_VOLUMETRIC_GRID,
 };
-use crate::framework::{PaneSidePanel, PlaybackAction, PlaybackTransport, scoped_panel_id};
+use super::VolumetricFieldStudioTool;
+use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
 use crate::volumetric_scene::OPACITY_THRESHOLD;
-use crate::web_io::{PlatformInstant, SaveAsDialogConfig, spawn_save_as_file_dialog};
+use crate::web_io::{spawn_save_as_file_dialog, PlatformInstant, SaveAsDialogConfig};
 use eframe::egui;
 use math_explorer::physics::quantum::OrbitalQuantumNumbers;
 use std::sync::mpsc;
@@ -27,10 +27,7 @@ const OBJ_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
 
 impl VolumetricFieldStudioTool {
     pub(super) fn poll_async_and_playback(&mut self, ctx: &egui::Context) {
-        let completed = self
-            .obj_save_rx
-            .as_ref()
-            .and_then(|rx| rx.try_recv().ok());
+        let completed = self.obj_save_rx.as_ref().and_then(|rx| rx.try_recv().ok());
         if let Some(result) = completed {
             match result {
                 Ok(msg) => self.export_status = Some((msg, false)),
@@ -135,33 +132,44 @@ impl VolumetricFieldStudioTool {
         changed
     }
 
-    fn draw_quantum_controls(&mut self, ui: &mut egui::Ui) -> bool {
+    fn draw_quick_orbital_buttons(&mut self, ui: &mut egui::Ui) -> bool {
+        type QuickOrbitalPreset = (&'static str, (u32, u32, i32), (u32, u32, i32), f64, f64);
+        const PRESETS: &[QuickOrbitalPreset] = &[
+            ("1s + 2pz", (1, 0, 0), (2, 1, 0), 0.5, 0.032),
+            ("1s + 2s", (1, 0, 0), (2, 0, 0), 0.5, 0.028),
+            ("2s Shell", (2, 0, 0), (1, 0, 0), 0.0, 0.015),
+            ("3s Shells", (3, 0, 0), (1, 0, 0), 0.0, 0.0025),
+            ("3dz² Cone", (3, 2, 0), (2, 0, 0), 0.0, 0.011),
+        ];
         let mut c = false;
         ui.label("Quick Orbital States:");
         ui.horizontal_wrapped(|ui| {
-            if ui.small_button("1s + 2pz").clicked() {
-                self.apply_orbital_quick_preset((1, 0, 0), (2, 1, 0), 0.5, 0.032);
-                c = true;
-            }
-            if ui.small_button("1s + 2s").clicked() {
-                self.apply_orbital_quick_preset((1, 0, 0), (2, 0, 0), 0.5, 0.028);
-                c = true;
-            }
-            if ui.small_button("2s Shell").clicked() {
-                self.apply_orbital_quick_preset((2, 0, 0), (1, 0, 0), 0.0, 0.015);
-                c = true;
-            }
-            if ui.small_button("3s Shells").clicked() {
-                self.apply_orbital_quick_preset((3, 0, 0), (1, 0, 0), 0.0, 0.0025);
-                c = true;
-            }
-            if ui.small_button("3dz² Cone").clicked() {
-                self.apply_orbital_quick_preset((3, 2, 0), (2, 0, 0), 0.0, 0.011);
-                c = true;
+            for &(label, s1, s2, mix, iso) in PRESETS {
+                if ui.small_button(label).clicked() {
+                    self.apply_orbital_quick_preset(s1, s2, mix, iso);
+                    c = true;
+                }
             }
         });
-        c |= draw_orbital_triple(ui, "State 1", &mut self.config.n1, &mut self.config.l1, &mut self.config.m1);
-        c |= draw_orbital_triple(ui, "State 2", &mut self.config.n2, &mut self.config.l2, &mut self.config.m2);
+        c
+    }
+
+    fn draw_quantum_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut c = self.draw_quick_orbital_buttons(ui);
+        c |= draw_orbital_triple(
+            ui,
+            "State 1",
+            &mut self.config.n1,
+            &mut self.config.l1,
+            &mut self.config.m1,
+        );
+        c |= draw_orbital_triple(
+            ui,
+            "State 2",
+            &mut self.config.n2,
+            &mut self.config.l2,
+            &mut self.config.m2,
+        );
         c |= ui
             .add(egui::Slider::new(&mut self.config.superposition_mix, 0.0..=1.0).text("Mix |c₂|²"))
             .changed();
@@ -294,7 +302,11 @@ impl VolumetricFieldStudioTool {
         }
         if let Some((msg, is_err)) = &self.export_status {
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            let color = if *is_err { palette.error } else { palette.accent };
+            let color = if *is_err {
+                palette.error
+            } else {
+                palette.accent
+            };
             ui.colored_label(color, msg);
         }
         let dc = self.engine.splat_ws.density_counts;
@@ -338,9 +350,13 @@ impl VolumetricFieldStudioTool {
                 };
                 let (tx, rx) = mpsc::channel();
                 self.obj_save_rx = Some(rx);
-                spawn_save_as_file_dialog(tx, OBJ_SAVE_CONFIG, &default_name, obj_text, |path, _| {
-                    format!("Exported Wavefront OBJ: {}", path.display())
-                });
+                spawn_save_as_file_dialog(
+                    tx,
+                    OBJ_SAVE_CONFIG,
+                    &default_name,
+                    obj_text,
+                    |path, _| format!("Exported Wavefront OBJ: {}", path.display()),
+                );
             }
             Err(err) => {
                 self.export_status = Some((err, true));
@@ -349,7 +365,13 @@ impl VolumetricFieldStudioTool {
     }
 }
 
-fn draw_orbital_triple(ui: &mut egui::Ui, label: &str, n: &mut u32, l: &mut u32, m: &mut i32) -> bool {
+fn draw_orbital_triple(
+    ui: &mut egui::Ui,
+    label: &str,
+    n: &mut u32,
+    l: &mut u32,
+    m: &mut i32,
+) -> bool {
     let prev = (*n, *l, *m);
     ui.horizontal(|ui| {
         ui.label(label);

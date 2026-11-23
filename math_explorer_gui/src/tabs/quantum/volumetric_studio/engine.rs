@@ -8,27 +8,21 @@
 pub mod mesh_ops;
 
 use super::state::{
-    FieldSourceMode, MAX_VOLUMETRIC_GRID, MIN_VOLUMETRIC_GRID, QuantumObservableChoice,
-    STUDIO_CAMERA_DISTANCE, STUDIO_VIEWPORT_EXTENT, VolumetricStudioConfig,
+    FieldSourceMode, QuantumObservableChoice, VolumetricStudioConfig, MAX_VOLUMETRIC_GRID,
+    MIN_VOLUMETRIC_GRID, STUDIO_CAMERA_DISTANCE, STUDIO_VIEWPORT_EXTENT,
 };
 use crate::framework::recovery::DiagnosticReport;
 use crate::volumetric_scene::{
-    MAX_DYNAMIC_SPLATS, VolumetricSplatWorkspace, extract_voxel_splats_into,
-    presets::seed_3d_turing_gyroid, project_and_rasterize_workspace,
+    extract_voxel_splats_into, presets::seed_3d_turing_gyroid, project_and_rasterize_workspace,
+    VolumetricSplatWorkspace, MAX_DYNAMIC_SPLATS,
 };
-use math_explorer::applied::isosurface::{
-    CentralDifferenceEstimator, IsosurfaceWorkspace, MarchingCubes, Point3D, VoxelGrid,
-};
+use math_explorer::applied::isosurface::{IsosurfaceWorkspace, Point3D, VoxelGrid};
 use math_explorer::biology::diffusion::FiniteDifference3D;
-use math_explorer::biology::morphogenesis::{
-    DiffusionCoeff, SchnakenbergKinetics, TuringSystem,
-};
-use math_explorer::math_kernel::types::{Dimension, StepSize, flatten_3d_index};
+use math_explorer::biology::morphogenesis::{DiffusionCoeff, SchnakenbergKinetics, TuringSystem};
+use math_explorer::math_kernel::types::{flatten_3d_index, Dimension, StepSize};
 use math_explorer::physics::quantum::{HydrogenicSuperposition3D, OrbitalQuantumNumbers};
 use math_explorer::pure_math::special_functions::legendre::legendre_p_associated;
-use mesh_ops::{
-    MAX_RENDERED_FACETS, ProjectedFacet, extract_slice_contours_into, project_meshes_into,
-};
+use mesh_ops::{extract_slice_contours_into, ProjectedFacet, MAX_RENDERED_FACETS};
 use oxidize_core::mesh::Mesh;
 
 const MESH_VERTEX_CAP: usize = 98_304;
@@ -132,7 +126,10 @@ impl VolumetricEngine {
             diverged: false,
             diagnostic_report: None,
             cached_q_key: quantum_key(cfg, dim),
-            cached_mix_phase: (cfg.superposition_mix.to_bits(), cfg.relative_phase.to_bits()),
+            cached_mix_phase: (
+                cfg.superposition_mix.to_bits(),
+                cfg.relative_phase.to_bits(),
+            ),
             cached_t_key: turing_key(cfg, dim),
         };
         engine.step_and_extract_zero_alloc(cfg, false);
@@ -160,10 +157,15 @@ impl VolumetricEngine {
             self.quantum
                 .set_superposition(cfg.superposition_mix, cfg.relative_phase);
             self.cached_q_key = qk;
-            self.cached_mix_phase =
-                (cfg.superposition_mix.to_bits(), cfg.relative_phase.to_bits());
+            self.cached_mix_phase = (
+                cfg.superposition_mix.to_bits(),
+                cfg.relative_phase.to_bits(),
+            );
         } else {
-            let mp = (cfg.superposition_mix.to_bits(), cfg.relative_phase.to_bits());
+            let mp = (
+                cfg.superposition_mix.to_bits(),
+                cfg.relative_phase.to_bits(),
+            );
             if self.cached_mix_phase != mp {
                 self.quantum
                     .set_superposition(cfg.superposition_mix, cfg.relative_phase);
@@ -173,7 +175,13 @@ impl VolumetricEngine {
         let tk = turing_key(cfg, dim);
         if self.cached_t_key != tk {
             self.turing = build_turing_3d(dim, cfg);
-            seed_3d_turing_gyroid(&mut self.turing, dim, cfg.turing_a, cfg.turing_b, TURING_SEED);
+            seed_3d_turing_gyroid(
+                &mut self.turing,
+                dim,
+                cfg.turing_a,
+                cfg.turing_b,
+                TURING_SEED,
+            );
             self.cached_t_key = tk;
         }
     }
@@ -209,7 +217,11 @@ impl VolumetricEngine {
     }
 
     /// Executes one hot-path PDE/quantum step + `MarchingCubes` + `Gaussian3D` projection with zero heap allocations.
-    pub fn step_and_extract_zero_alloc(&mut self, cfg: &VolumetricStudioConfig, advance_time: bool) {
+    pub fn step_and_extract_zero_alloc(
+        &mut self,
+        cfg: &VolumetricStudioConfig,
+        advance_time: bool,
+    ) {
         if self.diverged {
             return;
         }
@@ -233,29 +245,15 @@ impl VolumetricEngine {
         let signed = is_signed_field(cfg);
         let cut = cfg.active_cut_filter();
         let iso = (cfg.iso_threshold as f32).clamp(0.001, 2.0);
-        if cfg.render_mode.uses_mesh() {
-            let mc = MarchingCubes::new(&self.voxel_grid, CentralDifferenceEstimator);
-            let _ = mc.extract_into(iso, &mut self.iso_ws, &mut self.pos_mesh);
-            if signed {
-                let _ = mc.extract_into(-iso, &mut self.iso_ws, &mut self.neg_mesh);
-            } else {
-                self.neg_mesh.clear();
-            }
-            project_meshes_into(
-                &self.pos_mesh,
-                &self.neg_mesh,
+        self.extract_isosurfaces_zero_alloc(cfg, iso, signed, cut);
+        if cfg.render_mode.uses_splats() {
+            extract_voxel_splats_into(
+                &self.voxel_grid,
+                iso * 0.45,
                 signed,
                 cut,
-                &cfg.camera,
-                &mut self.projected_facets,
+                &mut self.splat_ws,
             );
-        } else {
-            self.pos_mesh.clear();
-            self.neg_mesh.clear();
-            self.projected_facets.clear();
-        }
-        if cfg.render_mode.uses_splats() {
-            extract_voxel_splats_into(&self.voxel_grid, iso * 0.45, signed, cut, &mut self.splat_ws);
             self.splat_ws.recompute_density_counts(cfg.splat_scale);
             project_and_rasterize_workspace(
                 &mut self.splat_ws,
@@ -347,14 +345,17 @@ impl VolumetricEngine {
                     cfg.relative_phase = wrapped;
                     self.quantum
                         .set_superposition(cfg.superposition_mix, cfg.relative_phase);
-                    self.cached_mix_phase =
-                        (cfg.superposition_mix.to_bits(), cfg.relative_phase.to_bits());
+                    self.cached_mix_phase = (
+                        cfg.superposition_mix.to_bits(),
+                        cfg.relative_phase.to_bits(),
+                    );
                 }
             }
             self.step_and_extract_zero_alloc(cfg, false);
         }
         let scalar_value = sample_voxel_nearest(&self.voxel_grid, clamped);
-        let r = (clamped[0] * clamped[0] + clamped[1] * clamped[1] + clamped[2] * clamped[2]).sqrt();
+        let r =
+            (clamped[0] * clamped[0] + clamped[1] * clamped[1] + clamped[2] * clamped[2]).sqrt();
         let cos_theta = if r > 1e-9 {
             (clamped[2] / r).clamp(-1.0, 1.0)
         } else {
@@ -443,7 +444,11 @@ fn inject_turing_pulse(
             .round()
             .clamp(0.0, (dim - 1) as f64) as isize
     };
-    let (cx, cy, cz) = (to_idx(world_pt[0]), to_idx(world_pt[1]), to_idx(world_pt[2]));
+    let (cx, cy, cz) = (
+        to_idx(world_pt[0]),
+        to_idx(world_pt[1]),
+        to_idx(world_pt[2]),
+    );
     let rad = (dim as isize / 7).clamp(2, 5);
     let sigma_sq = ((rad as f64) * 0.65).powi(2).max(0.5);
     for dz in -rad..=rad {

@@ -267,7 +267,9 @@ impl VolumetricStudioConfig {
         ];
         for (name, val, lo, hi) in ranges {
             if !val.is_finite() || val < lo || val > hi {
-                return Err(format!("Parameter '{name}'={val} must be finite within [{lo}, {hi}]"));
+                return Err(format!(
+                    "Parameter '{name}'={val} must be finite within [{lo}, {hi}]"
+                ));
             }
         }
         if !self.camera.is_valid() {

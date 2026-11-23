@@ -2,7 +2,7 @@
 //! Unit, zero-allocation (`VerifiedAllocator`), cutting-plane, `.obj` export, and contract tests.
 
 use super::presets::{
-    PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3D_TURING_GYROID_JSON, PRESET_3DZ2_CONE_JSON,
+    PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3DZ2_CONE_JSON, PRESET_3D_TURING_GYROID_JSON,
 };
 use super::state::{FieldSourceMode, SliceAxis, VolumetricRenderMode, VolumetricStudioConfig};
 use super::VolumetricFieldStudioTool;
@@ -57,7 +57,10 @@ fn test_cutting_plane_reveals_2s_and_3s_interior_radial_nodes_and_gyroid_channel
     tool.refresh_zero_alloc();
 
     let nodes_2s = tool.engine.count_cutting_plane_radial_nodes(&tool.config);
-    assert_eq!(nodes_2s, 1, "2s orbital must exhibit 1 interior radial node");
+    assert_eq!(
+        nodes_2s, 1,
+        "2s orbital must exhibit 1 interior radial node"
+    );
     assert!(!tool.engine.slice_contours.is_empty());
 
     tool.config.n1 = 3;
@@ -72,7 +75,10 @@ fn test_cutting_plane_reveals_2s_and_3s_interior_radial_nodes_and_gyroid_channel
     tool.config.cut_offset = 0.0;
     tool.refresh_zero_alloc();
     let nodes_3s = tool.engine.count_cutting_plane_radial_nodes(&tool.config);
-    assert_eq!(nodes_3s, 2, "3s orbital must exhibit 2 interior radial nodes");
+    assert_eq!(
+        nodes_3s, 2,
+        "3s orbital must exhibit 2 interior radial nodes"
+    );
     assert!(tool.engine.projected_facets.len() < uncut_facets);
 
     tool.import_preset_json(PRESET_3D_TURING_GYROID_JSON)
@@ -108,7 +114,10 @@ fn test_obj_export_produces_valid_wavefront_vertices_unit_normals_and_faces() {
                     .collect();
                 assert_eq!(n.len(), 3);
                 let mag = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-                assert!((mag - 1.0).abs() < 1e-3, "normal must be unit length, got {mag}");
+                assert!(
+                    (mag - 1.0).abs() < 1e-3,
+                    "normal must be unit length, got {mag}"
+                );
             } else if line.starts_with("f ") {
                 f_count += 1;
             }
@@ -152,7 +161,10 @@ fn test_viewport_render_modes_and_turing_perturbation_pulse() {
         .engine
         .apply_probe_or_pulse(&mut tool.config, [0.0, 0.0, 0.0]);
     let after = tool.engine.voxel_grid.get(mid, mid, mid);
-    assert!(after > before, "Activator pulse must elevate local concentration");
+    assert!(
+        after > before,
+        "Activator pulse must elevate local concentration"
+    );
     assert!(readout.legendre_polar.is_finite());
 }
 

@@ -7,7 +7,6 @@ pub mod spin_viz;
 pub mod volumetric_studio;
 pub mod wave_sim;
 
-
 pub struct QuantumTab {
     framework: crate::framework::SimulationFramework,
 }

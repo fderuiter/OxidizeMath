@@ -233,4 +233,3 @@ fn test_gaussian_splatting_volumetric_presets_beyond_canonical_scene() {
         assert_eq!(reloaded.scene_preset, preset);
     }
 }
-
