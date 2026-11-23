@@ -1,4 +1,4 @@
-# ADR 0044: Deterministic Genz Gaussian Copula Solvers, Cholesky PSD Validation, and Zero-Allocation Parlay Engine
+# ADR 0046: Deterministic Genz Gaussian Copula Solvers, Cholesky PSD Validation, and Zero-Allocation Parlay Engine
 
 ## Status
 Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md), and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
