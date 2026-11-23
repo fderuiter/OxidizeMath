@@ -64,6 +64,36 @@ pub enum KellyError {
     #[error("Invalid odds: {value} (must be > 1.0)")]
     #[allow(missing_docs)]
     InvalidOdds { value: f64 },
+    /// Invalid net profit multiplier (must be finite and strictly positive).
+    #[error("Invalid net odds: {value} (must be finite and > 0.0)")]
+    InvalidNetOdds {
+        /// Rejected net profit multiplier `b`.
+        value: f64,
+    },
+    /// Invalid American odds (must be finite with magnitude at least 100).
+    #[error("Invalid American odds: {value} (must be finite with |odds| >= 100.0)")]
+    InvalidAmericanOdds {
+        /// Rejected American odds input.
+        value: f64,
+    },
+    /// Invalid fractional odds (numerator and denominator must both be finite and strictly positive).
+    #[error(
+        "Invalid fractional odds: {numerator}/{denominator} (numerator and denominator must be finite and > 0.0)"
+    )]
+    InvalidFractionalOdds {
+        /// Rejected fractional profit numerator.
+        numerator: f64,
+        /// Rejected fractional stake denominator.
+        denominator: f64,
+    },
+    /// Invalid implied probability (must be finite and strictly inside `(0.0, 1.0)`).
+    #[error(
+        "Invalid implied probability: {value} (must be finite and strictly between 0.0 and 1.0)"
+    )]
+    InvalidImpliedProbability {
+        /// Rejected implied probability input.
+        value: f64,
+    },
     /// Invalid fraction (must be between 0 and 1).
     #[error("Invalid fraction: {value} (must be between 0 and 1)")]
     #[allow(missing_docs)]
@@ -76,6 +106,98 @@ pub enum KellyError {
     #[error("Invalid bankroll: {value} (must be positive)")]
     #[allow(missing_docs)]
     InvalidBankroll { value: f64 },
+}
+
+/// Errors returned by bookmaker devigging, `+EV`, arbitrage, Dutching, middle, and hedge calculators.
+#[derive(Debug, Clone, Copy, PartialEq, Error)]
+pub enum MarketPricingError {
+    /// Fewer outcomes were supplied than required by the market or calculator.
+    #[error("Insufficient outcomes: got {count}, require at least {min_required}")]
+    InsufficientOutcomes {
+        /// Supplied outcome count.
+        count: usize,
+        /// Minimum required outcome count.
+        min_required: usize,
+    },
+    /// Supplied outcome slice exceeds fixed stack capacity `MAX_MARKET_OUTCOMES`.
+    #[error("Too many outcomes: got {count}, maximum zero-allocation capacity is {max_supported}")]
+    TooManyOutcomes {
+        /// Supplied outcome count.
+        count: usize,
+        /// Maximum supported stack outcome count.
+        max_supported: usize,
+    },
+    /// Input and output slices do not have matching lengths.
+    #[error("Slice length mismatch: expected {expected}, got {actual}")]
+    SliceLengthMismatch {
+        /// Expected slice length.
+        expected: usize,
+        /// Actual slice length.
+        actual: usize,
+    },
+    /// Outcome index exceeds the market slice length.
+    #[error("Outcome index {index} is out of bounds for market of {outcome_count} outcomes")]
+    OutcomeIndexOutOfBounds {
+        /// Requested zero-based outcome index.
+        index: usize,
+        /// Total outcomes in the market slice.
+        outcome_count: usize,
+    },
+    /// Duplicate outcome index supplied in a Dutching subset selection.
+    #[error("Duplicate outcome index {index} in subset selection")]
+    DuplicateOutcomeIndex {
+        /// Repeated zero-based outcome index.
+        index: usize,
+    },
+    /// Non-finite or non-playable decimal odds (`<= 1.0`).
+    #[error("Invalid decimal odds: {value} (must be finite and > 1.0)")]
+    InvalidOdds {
+        /// Invalid decimal odds value.
+        value: f64,
+    },
+    /// Non-positive or non-finite market booksum (`sum(1 / O_i)`).
+    #[error("Market booksum must be finite and positive (got {booksum})")]
+    NonPositiveOverround {
+        /// Computed raw booksum.
+        booksum: f64,
+    },
+    /// Cross-book reciprocal odds sum is `>= 1.0`, leaving no risk-free arbitrage.
+    #[error("No arbitrage opportunity: reciprocal sum {reciprocal_sum} >= 1.0")]
+    NoArbitrage {
+        /// Combined implied probability sum `sum(1 / O_i)`.
+        reciprocal_sum: f64,
+    },
+    /// Positive target profit cannot be locked when selected reciprocal sum is `>= 1.0`.
+    #[error("Target profit is infeasible when reciprocal sum {reciprocal_sum} >= 1.0")]
+    InfeasibleTargetProfit {
+        /// Combined implied probability sum across selected contenders.
+        reciprocal_sum: f64,
+    },
+    /// Non-finite or non-positive stake, budget, or target profit parameter.
+    #[error("Stake or budget must be finite and positive (got {value})")]
+    InvalidStakeOrBudget {
+        /// Invalid stake or budget scalar.
+        value: f64,
+    },
+    /// Requested downside profit floor exceeds the equal-profit hedge ceiling.
+    #[error(
+        "Target profit floor {floor} exceeds maximum attainable guaranteed profit {max_guaranteed_profit}"
+    )]
+    UnattainableFloor {
+        /// Requested minimum profit floor.
+        floor: f64,
+        /// Maximum equalized profit attainable at current hedge odds.
+        max_guaranteed_profit: f64,
+    },
+    /// Probability value is non-finite or outside `[0.0, 1.0]`.
+    #[error("Invalid probability: {value} (must be finite and in [0.0, 1.0])")]
+    InvalidProbability {
+        /// Invalid probability scalar.
+        value: f64,
+    },
+    /// Numerical root-finding failure during `Power` or `Shin` calibration.
+    #[error("Root-finding solver failed during devigging: {0}")]
+    Solver(#[from] AnalysisError),
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -305,109 +427,7 @@ pub enum Glicko2Error {
     DimensionMismatch { expected: usize, actual: usize },
 }
 
-/// Errors returned by sports Elo rating updates, batch schedules, and line converters.
-#[derive(Debug, Clone, PartialEq, Error)]
-pub enum EloError {
-    /// Elo rating is non-finite (`NaN` or infinite).
-    #[error("Elo rating must be finite (got {value})")]
-    InvalidRating { value: f64 },
-    /// Logistic scale parameter is non-positive or non-finite.
-    #[error("Elo logistic scale must be positive and finite (got {value})")]
-    InvalidScale { value: f64 },
-    /// Elo update factor `K` is non-positive or non-finite.
-    #[error("Elo K-factor must be positive and finite (got {value})")]
-    InvalidKFactor { value: f64 },
-    /// Home-advantage rating offset is non-finite.
-    #[error("Elo home-advantage offset must be finite (got {value})")]
-    InvalidHomeAdvantage { value: f64 },
-    /// Match outcome score lies outside `[0.0, 1.0]` or is non-finite.
-    #[error("match score must be in [0.0, 1.0] and finite (got {value})")]
-    InvalidScore { value: f64 },
-    /// Seasonal mean-regression weight `theta` lies outside `[0.0, 1.0]` or is non-finite.
-    #[error("regression factor theta must be in [0.0, 1.0] and finite (got {value})")]
-    InvalidRegressionFactor { value: f64 },
-    /// Elo-points-per-goal spread conversion factor is non-positive or non-finite.
-    #[error("Elo points-per-goal scale must be positive and finite (got {value})")]
-    InvalidPointsPerElo { value: f64 },
-    /// Win probability is `0.0` or `1.0` and cannot produce finite two-way moneyline odds.
-    #[error(
-        "win probability must lie strictly in (0.0, 1.0) to quote moneyline odds (got {value})"
-    )]
-    DegenerateProbability { value: f64 },
-    /// Team roster index is out of bounds for the supplied roster slice.
-    #[error("team index {index} is out of bounds for roster of length {roster_len}")]
-    PlayerIndexOutOfBounds { index: usize, roster_len: usize },
-    /// Match schedule attempted to pair a team against itself.
-    #[error("self-match is not permitted for team index {team_index}")]
-    SelfMatch { team_index: usize },
-    /// Output or scratch slice length did not match the roster length.
-    #[error("buffer length mismatch (expected {expected}, got {actual})")]
-    DimensionMismatch { expected: usize, actual: usize },
-}
-
-/// Errors returned by 2D score grids, Poisson/Dixon-Coles models, market pricers, and MLE calibration.
-#[derive(Debug, Clone, PartialEq, Error)]
-pub enum MatchModelError {
-    /// Requested `max_goals` cutoff exceeds the stack grid ceiling.
-    #[error("max_goals {max_goals} exceeds supported grid limit {limit}")]
-    InvalidMaxGoals { max_goals: usize, limit: usize },
-    /// Expected goal rate `lambda` or `mu` is non-positive or non-finite.
-    #[error("expected goal rate must be strictly positive and finite (got {value})")]
-    InvalidGoalRate { value: f64 },
-    /// Bivariate Poisson component rate is negative or non-finite.
-    #[error("bivariate Poisson component rate must be non-negative and finite (got {value})")]
-    InvalidSharedRate { value: f64 },
-    /// Shared goal covariance lies outside `[0.0, min(lambda, mu)]` or is non-finite.
-    #[error("shared covariance {covariance} must lie in [0.0, {max_allowed}]")]
-    InvalidCovariance { covariance: f64, max_allowed: f64 },
-    /// Dixon-Coles low-score correlation `rho` violates non-negativity bounds on `tau`.
-    #[error("Dixon-Coles rho {rho} is outside feasible bounds [{min}, {max}]")]
-    InvalidCorrelation { rho: f64, min: f64, max: f64 },
-    /// Score grid total probability mass is non-positive or non-finite.
-    #[error("score grid total probability mass must be positive and finite (got {mass})")]
-    InvalidProbabilityMass { mass: f64 },
-    /// Score grid cell contains a negative or non-finite probability.
-    #[error("negative cell probability {value} at score ({home}, {away})")]
-    NegativeCellProbability {
-        home: usize,
-        away: usize,
-        value: f64,
-    },
-    /// Queried `(home, away)` score exceeds the grid's `max_goals` bound.
-    #[error("score ({home}, {away}) exceeds grid max_goals {max_goals}")]
-    ScoreOutOfBounds {
-        home: usize,
-        away: usize,
-        max_goals: usize,
-    },
-    /// Handicap or total line is non-finite, negative (for totals), or not a `0.25`-goal multiple.
-    #[error("market line {line} must be finite, valid for market, and aligned to 0.25 increments")]
-    InvalidLine { line: f64 },
-    /// Market has zero or unit active probability mass after excluding pushes.
-    #[error("market quote is degenerate with active probability {probability}")]
-    DegenerateMarket { probability: f64 },
-    /// Exponential time-decay rate `xi` is negative or non-finite.
-    #[error("time-decay parameter xi must be non-negative and finite (got {value})")]
-    InvalidDecayRate { value: f64 },
-    /// Historical match age is negative or non-finite.
-    #[error("historical match age must be non-negative and finite (got {value})")]
-    InvalidMatchAge { value: f64 },
-    /// Calibration dataset contains fewer matches than required.
-    #[error("insufficient historical matches (required at least {required}, got {actual})")]
-    InsufficientMatches { required: usize, actual: usize },
-    /// Calibration league contains fewer than two teams.
-    #[error("at least 2 teams are required for calibration (got {count})")]
-    InsufficientTeams { count: usize },
-    /// Historical match references a team index outside `0..num_teams`.
-    #[error("team index {index} is out of bounds for {num_teams} teams")]
-    TeamIndexOutOfBounds { index: usize, num_teams: usize },
-    /// Historical match pairs a team against itself.
-    #[error("self-match is not permitted for team index {team_index}")]
-    SelfMatch { team_index: usize },
-    /// Maximum likelihood optimization failed to produce finite parameters.
-    #[error("Dixon-Coles MLE failed to produce finite parameters after {iterations} iterations")]
-    CalibrationFailed { iterations: usize },
-}
+mod sports;
 mod submodule_diagnostics;
 mod umbrella;
 
@@ -422,6 +442,7 @@ pub use crate::pure_math::{
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };
+pub use sports::{EloError, MatchModelError};
 pub use umbrella::PureMathError;
 
 #[cfg(test)]

@@ -1,8 +1,8 @@
 use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
-    FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarkovError, MatchModelError,
-    NumberTheoryError, OptimizationError, OuError, StochasticError, TdaError, TensorError,
-    TransformError, ZipError,
+    FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarketPricingError, MarkovError,
+    MatchModelError, NumberTheoryError, OptimizationError, OuError, StochasticError, TdaError,
+    TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -27,6 +27,9 @@ pub enum PureMathError {
     /// Kelly criterion error.
     #[error("{0}")]
     Kelly(#[from] KellyError),
+    /// Market pricing, devigging, and cross-book execution error.
+    #[error("{0}")]
+    MarketPricing(#[from] MarketPricingError),
     /// Markov process error.
     #[error("{0}")]
     Markov(#[from] MarkovError),
@@ -126,6 +129,7 @@ impl PureMathError {
             Self::Elo(err) => err,
             Self::Glicko2(err) => err,
             Self::Kelly(err) => err,
+            Self::MarketPricing(err) => err,
             Self::Markov(err) => err,
             Self::MatchModel(err) => err,
             Self::NumberTheory(err) => err,

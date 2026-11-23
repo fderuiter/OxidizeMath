@@ -1,4 +1,4 @@
-//! Verifies that all 30 public error enums re-exported by `math_explorer::error`
+//! Verifies that all 32 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -15,9 +15,10 @@ use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
     AIError, BatteryError, ChaosError, ClimateError, CopulaError, DoseFluenceError, EloError,
     EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error,
-    HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarkovError,
-    MatchModelError, MathError, NumberTheoryError, OuError, PharmacokineticsError, RadarError,
-    SolidStateError, StandardModelError, StatMechError, TdaError, ZipError,
+    HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError,
+    MarketPricingError, MarkovError, MatchModelError, MathError, NumberTheoryError, OuError,
+    PharmacokineticsError, RadarError, SandpileError, SolidStateError, StandardModelError,
+    StatMechError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -64,6 +65,12 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         &NumberTheoryError::DivisionByZeroQSeries,
     );
     assert_readable_diagnostic("KellyError", &KellyError::InvalidBankroll { value: -1.0 });
+    assert_readable_diagnostic(
+        "MarketPricingError",
+        &MarketPricingError::NoArbitrage {
+            reciprocal_sum: 1.05,
+        },
+    );
     assert_readable_diagnostic(
         "MarkovError",
         &MarkovError::InvalidProbability { value: 1.5 },
@@ -154,6 +161,14 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         &RadarError::AntennaWeightCountMismatch {
             expected: 4,
             actual: 2,
+        },
+    );
+    assert_readable_diagnostic(
+        "SandpileError",
+        &SandpileError::InvalidDimensions {
+            width: 0,
+            height: 8,
+            max_dim: 128,
         },
     );
     assert_readable_diagnostic(

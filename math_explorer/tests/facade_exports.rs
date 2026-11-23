@@ -128,7 +128,7 @@ fn default_headless_curve_fitting_and_poi_solvers_work_without_gui_deps() {
 }
 
 #[cfg(feature = "pure_math")]
-fn assert_pure_math_eighteen_errors() {
+fn assert_pure_math_twenty_one_errors() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error as e;
     use math_explorer::prelude::PureMathError as PreludePureMathError;
@@ -139,6 +139,10 @@ fn assert_pure_math_eighteen_errors() {
     let severities = [
         e::NumberTheoryError::ModuloError.severity(),
         e::KellyError::InvalidOdds { value: 0.5 }.severity(),
+        e::MarketPricingError::NoArbitrage {
+            reciprocal_sum: 1.05,
+        }
+        .severity(),
         e::MarkovError::InvalidProbability { value: -0.1 }.severity(),
         e::OuError::InvalidTimeStep { value: 0.0 }.severity(),
         e::ZipError::InvalidCount { value: -1.0 }.severity(),
@@ -163,7 +167,7 @@ fn assert_pure_math_eighteen_errors() {
 
 #[cfg(feature = "pure_math")]
 #[test]
-fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors() {
+fn pure_math_facade_exports_containers_third_party_types_and_all_twenty_one_errors() {
     use math_explorer::math_types::{Float, IBig, Integer, Rational};
     use math_explorer::mesh::{Mesh, Point3D};
     use math_explorer::nalgebra::{DMatrix, DVector};
@@ -206,7 +210,7 @@ fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors
     )
     .expect("valid Dixon-Coles params");
     assert!(dc.default_grid().expect("valid score grid").prob(0, 0) > 0.09);
-    assert_pure_math_eighteen_errors();
+    assert_pure_math_twenty_one_errors();
 }
 
 #[cfg(feature = "ai")]
