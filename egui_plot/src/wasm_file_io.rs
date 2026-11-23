@@ -158,7 +158,19 @@ fn create_hidden_file_input(document: &Document, accept: &str) -> Result<HtmlInp
     Ok(input)
 }
 
+fn ensure_file_within_size_limit(file: &File) -> Result<(), String> {
+    let byte_size = file.size();
+    if byte_size > crate::csv_import::MAX_CSV_IMPORT_BYTES as f64 {
+        return Err(format!(
+            "Selected file ({:.2} MiB) exceeds maximum allowed size of 2.0 MiB.",
+            byte_size / (1024.0 * 1024.0)
+        ));
+    }
+    Ok(())
+}
+
 async fn read_file_text(file: File) -> Result<String, String> {
+    ensure_file_within_size_limit(&file)?;
     let reader =
         FileReader::new().map_err(|e| format!("Failed to initialize FileReader: {e:?}"))?;
     let mut onload_slot: Option<Closure<dyn FnMut(Event)>> = None;

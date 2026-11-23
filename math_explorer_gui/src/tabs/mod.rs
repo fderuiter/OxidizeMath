@@ -5,6 +5,8 @@ use eframe::egui;
 #[cfg(feature = "ai")]
 pub mod ai;
 #[cfg(feature = "pure_math")]
+pub mod algorithmic_information;
+#[cfg(feature = "pure_math")]
 pub mod analysis;
 #[cfg(feature = "physics")]
 pub mod astrophysics;
@@ -154,7 +156,8 @@ pub trait ExplorerTab {
     /// Academic domain category of the tab for top navigation bar grouping.
     fn academic_domain(&self) -> &'static str {
         match self.name() {
-            "Analysis & Calculus"
+            "Algorithmic Information"
+            | "Analysis & Calculus"
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
@@ -237,6 +240,7 @@ pub trait ExplorerTab {
     fn url_slug(&self) -> &'static str {
         match self.name() {
             "Artificial Intelligence" => "ai",
+            "Algorithmic Information" => "algorithmic_information",
             "Analysis & Calculus" => "analysis",
             "Astrophysics" => "astrophysics",
             "Battery Degradation" => "battery_degradation",
@@ -378,7 +382,7 @@ mod tests {
             feature = "epidemiology",
             feature = "physics"
         ))]
-        assert_eq!(tabs.len(), 22, "All 22 GUI domain tabs must register");
+        assert_eq!(tabs.len(), 23, "All 23 GUI domain tabs must register");
     }
 
     #[test]

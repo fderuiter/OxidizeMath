@@ -5,7 +5,6 @@ use eframe::egui;
 use oxidize_core::traceability::TraceabilityReport;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-#[cfg(not(target_arch = "wasm32"))]
 use std::sync::OnceLock;
 
 /// Document-relative path to the precomputed traceability manifest in `dist/`.
@@ -90,6 +89,18 @@ pub fn load_local_certificate(base_dir: &str) -> Option<VerificationCertificate>
     };
     let raw = std::fs::read_to_string(candidate).ok()?;
     parse_certificate_json(&raw).ok()
+}
+
+/// Returns the compile-time precomputed [`TraceabilityReport`] on both native and `wasm32` targets.
+pub(crate) fn embedded_traceability_report() -> Result<TraceabilityReport, String> {
+    static REPORT_CACHE: OnceLock<Result<TraceabilityReport, String>> = OnceLock::new();
+    REPORT_CACHE
+        .get_or_init(|| {
+            const MANIFEST_JSON: &str =
+                include_str!(concat!(env!("OUT_DIR"), "/traceability_manifest.json"));
+            parse_manifest_json(MANIFEST_JSON).map(|(report, _)| report)
+        })
+        .clone()
 }
 
 /// Returns the compile-time precomputed traceability report and certificate for packaged desktop runs.
