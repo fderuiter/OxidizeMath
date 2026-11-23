@@ -1651,7 +1651,54 @@
       "signature": "pub trait Correspondence { fn is_in_image (& self , _ : & DVector < f64 > , _ : & DVector < f64 >) -> bool }"
     }
   ],
+  "crates/domain_applied/src/applied/game_theory/evolutionary/graph_replicator.rs": [
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn base_payoff_matrix (& self) -> & DMatrix < f64 > }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn effective_payoff_matrix (& self) -> & DMatrix < f64 > }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn from_csr (_ : DMatrix < f64 > , _ : usize , _ : & [usize] , _ : GraphUpdateRule ,) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn mean_active_degree (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn new (_ : DMatrix < f64 > , _ : f64 , _ : GraphUpdateRule ,) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn set_mean_active_degree (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn update_rule (& self) -> GraphUpdateRule }"
+    },
+    {
+      "signature": "pub const MIN_REGULARIZED_GRAPH_DEGREE : f64"
+    },
+    {
+      "signature": "pub enum GraphUpdateRule"
+    },
+    {
+      "signature": "pub fn mean_active_degree_from_csr (_ : usize , _ : & [usize]) -> f64"
+    },
+    {
+      "signature": "pub struct GraphReplicatorFitness"
+    }
+  ],
   "crates/domain_applied/src/applied/game_theory/evolutionary/mod.rs": [
+    {
+      "signature": "pub use graph_replicator :: GraphReplicatorFitness"
+    },
+    {
+      "signature": "pub use graph_replicator :: GraphUpdateRule"
+    },
+    {
+      "signature": "pub use graph_replicator :: MIN_REGULARIZED_GRAPH_DEGREE"
+    },
+    {
+      "signature": "pub use graph_replicator :: mean_active_degree_from_csr"
+    },
     {
       "signature": "pub use replicator :: ReplicatorDynamics"
     },
@@ -3254,6 +3301,12 @@
       "signature": "pub use neuron :: HodgkinHuxleyNeuron"
     },
     {
+      "signature": "pub use synaptic_csr :: MAX_CSR_HH_NEURONS"
+    },
+    {
+      "signature": "pub use synaptic_csr :: step_csr_hodgkin_huxley_network"
+    },
+    {
       "signature": "pub use types :: HodgkinHuxleyParameters"
     },
     {
@@ -3334,6 +3387,14 @@
     },
     {
       "signature": "pub struct HodgkinHuxleyNeuronBuilder"
+    }
+  ],
+  "crates/domain_biology/src/biology/neuroscience/synaptic_csr.rs": [
+    {
+      "signature": "pub const MAX_CSR_HH_NEURONS : usize"
+    },
+    {
+      "signature": "pub fn step_csr_hodgkin_huxley_network (_ : & mut [HodgkinHuxleyNeuron] , _ : & [f64] , _ : & mut [f64] , _ : & [usize] , _ : & [usize] , _ : & [f64] , _ : f64 , _ : f64 , _ : f64 ,)"
     }
   ],
   "crates/domain_biology/src/biology/neuroscience/types.rs": [
@@ -4075,6 +4136,9 @@
     },
     {
       "signature": "impl NetworkEpidemicModelBuilder { pub fn build (self) -> Result < NetworkEpidemicModel , NetworkModelError > }"
+    },
+    {
+      "signature": "impl NetworkEpidemicModelBuilder { pub fn csr_adjacency (self , _ : & [usize] , _ : & [usize] ,) -> Result < Self , NetworkModelError > }"
     },
     {
       "signature": "impl NetworkEpidemicModelBuilder { pub fn new () -> Self }"
@@ -6542,6 +6606,71 @@
       "signature": "pub fn helmholtz_free_energy (_ : f64 , _ : f64) -> f64"
     }
   ],
+  "crates/domain_physics/src/physics/stat_mech/graph_ising.rs": [
+    {
+      "signature": "impl GraphSpinSystem { pub fn col_idx (& self) -> & [usize] }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn cooperator_fraction (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn csr_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn evolve (& mut self , _ : usize , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn evolve_fermi_game (& mut self , _ : usize , _ : f64 , _ : & MatrixPayoff) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn flip_spin (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn magnetization (& self) -> i64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn mean_game_payoff (& self , _ : & MatrixPayoff) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn n_nodes (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn normalized_magnetization (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn randomize (& mut self) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn row_ptr (& self) -> & [usize] }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn set_all_spins (& mut self , _ : i8) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn set_spin (& mut self , _ : usize , _ : i8) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn spins (& self) -> & [i8] }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn total_energy (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn try_from_csr (_ : usize , _ : Vec < usize > , _ : Vec < usize > , _ : Vec < f64 > , _ : Option < u64 > ,) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn weights (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub const MAX_GRAPH_SPIN_CSR_ENTRIES : usize"
+    },
+    {
+      "signature": "pub const MAX_GRAPH_SPIN_NODES : usize"
+    },
+    {
+      "signature": "pub struct GraphSpinSystem"
+    }
+  ],
   "crates/domain_physics/src/physics/stat_mech/ising.rs": [
     {
       "signature": "impl SpinLattice { pub fn evolve (& mut self , _ : usize , _ : f64 , _ : f64 , _ : f64) }"
@@ -6589,6 +6718,9 @@
   "crates/domain_physics/src/physics/stat_mech/mod.rs": [
     {
       "signature": "pub const KB : f64"
+    },
+    {
+      "signature": "pub use graph_ising :: GraphSpinSystem"
     }
   ],
   "crates/domain_physics/src/physics/stat_mech/quantum_stats.rs": [

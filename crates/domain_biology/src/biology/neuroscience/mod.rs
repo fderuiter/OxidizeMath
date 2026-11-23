@@ -3,10 +3,12 @@
 pub mod kinetics;
 pub mod model;
 pub mod neuron;
+pub mod synaptic_csr;
 pub mod types;
 
 // Re-export the public facade to maintain backward compatibility
 pub use neuron::HodgkinHuxleyNeuron;
+pub use synaptic_csr::{MAX_CSR_HH_NEURONS, step_csr_hodgkin_huxley_network};
 
 // Optionally re-export types if we want users to use the advanced API
 pub use kinetics::{GatingKinetics, StandardKinetics};

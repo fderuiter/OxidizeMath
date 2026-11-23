@@ -181,9 +181,25 @@ impl AttractorPlotter {
             beta: self.system.beta,
             dt: self.dt,
         };
-        submit_chaos_landmark_handoff(payload.clone());
         if let Some(c) = ctx {
+            submit_chaos_landmark_handoff(c, payload.clone());
             request_open_vietoris_rips(c);
+        } else if let Some(bus) = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .sim_bus
+            .clone()
+        {
+            let raw_pts = payload.points.iter().map(|p| [p.x, p.y, p.z]).collect();
+            let _ = bus.submit_vr_handoff(
+                raw_pts,
+                payload.sigma,
+                payload.rho,
+                payload.beta,
+                payload.dt,
+                false,
+            );
         }
         Ok(payload)
     }

@@ -14,10 +14,12 @@ use egui_plot::{Line, Points, Polygon};
 
 impl VietorisRipsTool {
     pub(super) fn poll_incoming_landmarks(&mut self, ctx: &egui::Context) {
-        if let Some(handoff) = take_chaos_landmark_handoff() {
+        if let Some(handoff) = take_chaos_landmark_handoff(ctx) {
             let _ = self.ingest_chaos_handoff(handoff);
         } else if self.mode == VrSourceMode::Lorenz3D && self.chaos.playing {
-            if let Some((seq, live)) = poll_live_attractor_landmarks(self.chaos.live_stream_seq) {
+            if let Some((seq, live)) =
+                poll_live_attractor_landmarks(ctx, self.chaos.live_stream_seq)
+            {
                 self.chaos.live_stream_seq = seq;
                 let _ = self.ingest_live_stream_landmarks(live);
             } else {

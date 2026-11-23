@@ -1,4 +1,4 @@
-use crate::accessibility::AccessibleHoverText;
+use crate::app::{SharedGraphTopology, SharedSimulationBus, TopologySource};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use eframe::egui::Pos2;
@@ -22,6 +22,8 @@ struct AlgorithmVisualizerState {
     selected_algorithm: Algorithm,
     start_node: Option<usize>,
     playback_speed: f32,
+    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
+    topology_source: TopologySource,
 }
 
 pub struct AlgorithmVisualizerTool {
@@ -31,7 +33,10 @@ pub struct AlgorithmVisualizerTool {
     edges: Vec<(usize, usize, f64)>,
 
     selected_algorithm: Algorithm,
+    pub topology_source: TopologySource,
+    synced_bus_revision: Option<u64>,
     start_node: Option<usize>,
+    local_start_node: Option<usize>,
     focused_node: usize,
 
     // Animation state
@@ -51,7 +56,10 @@ impl Default for AlgorithmVisualizerTool {
             node_positions: HashMap::new(),
             edges: Vec::new(),
             selected_algorithm: Algorithm::Dijkstra,
+            topology_source: TopologySource::SharedBus,
+            synced_bus_revision: None,
             start_node: None,
+            local_start_node: Some(0),
             focused_node: 0,
             animation_step: 0,
             visit_order: Vec::new(),
@@ -67,6 +75,10 @@ impl Default for AlgorithmVisualizerTool {
 
 impl AlgorithmVisualizerTool {
     fn build_sample_graph(&mut self) {
+        self.graph = Graph::new();
+        self.node_indices.clear();
+        self.node_positions.clear();
+        self.edges.clear();
         // Create a 4x4 grid graph for visualization
         let rows = 4;
         let cols = 4;
@@ -108,9 +120,86 @@ impl AlgorithmVisualizerTool {
             }
         }
 
-        // Set default start node
-        self.start_node = Some(0);
+        // Restore local start node when reverting from SharedSimulationBus
+        if self.synced_bus_revision.is_none() {
+            self.start_node = self.local_start_node;
+        }
+        if self
+            .start_node
+            .is_none_or(|id| !self.node_indices.contains_key(&id))
+        {
+            self.start_node = Some(0);
+            self.local_start_node = Some(0);
+            self.focused_node = 0;
+        } else if let Some(id) = self.start_node {
+            self.focused_node = id;
+        }
         self.run_algorithm();
+    }
+
+    /// Synchronizes this tool's graph with `SharedSimulationBus` or restores the 4x4 sample grid.
+    pub fn sync_shared_topology(&mut self, ctx: &egui::Context) {
+        match SharedSimulationBus::active_graph_for(ctx, self.topology_source) {
+            Some(snap) => {
+                if self.synced_bus_revision != Some(snap.revision) {
+                    self.apply_shared_graph(&snap);
+                    self.synced_bus_revision = Some(snap.revision);
+                }
+            }
+            None => {
+                if self.synced_bus_revision.take().is_some() {
+                    self.build_sample_graph();
+                }
+            }
+        }
+    }
+
+    fn apply_shared_graph(&mut self, snap: &SharedGraphTopology) {
+        if snap.node_count() == 0 {
+            return;
+        }
+        self.graph = Graph::new();
+        self.node_indices.clear();
+        self.node_positions.clear();
+        self.edges.clear();
+
+        let mapped = snap.map_positions_to_bounds(70.0, 70.0, 380.0, 340.0);
+        for (idx_in_snap, &orig_id) in snap.node_ids.iter().enumerate() {
+            let [x, y] = mapped[idx_in_snap];
+            let pos = Pos2::new(x, y);
+            let g_idx = self.graph.add_node(pos);
+            self.node_indices.insert(orig_id, g_idx);
+            self.node_positions.insert(orig_id, pos);
+        }
+        for &(u, v, w) in &snap.undirected_edges {
+            let u_id = snap.node_ids[u];
+            let v_id = snap.node_ids[v];
+            if let (Some(&u_idx), Some(&v_idx)) =
+                (self.node_indices.get(&u_id), self.node_indices.get(&v_id))
+            {
+                let safe_w = w.abs().max(0.01);
+                self.edges.push((u_id, v_id, safe_w));
+                self.graph.add_edge(u_idx, v_idx, safe_w);
+            }
+        }
+        if self
+            .start_node
+            .is_none_or(|id| !self.node_indices.contains_key(&id))
+        {
+            let first_id = snap.node_ids[0];
+            self.start_node = Some(first_id);
+            self.focused_node = first_id;
+        }
+        self.run_algorithm();
+    }
+
+    #[cfg(test)]
+    pub fn synced_bus_revision(&self) -> Option<u64> {
+        self.synced_bus_revision
+    }
+    #[cfg(test)]
+    pub fn active_node_count(&self) -> usize {
+        self.node_positions.len()
     }
 
     fn run_algorithm(&mut self) {
@@ -188,98 +277,15 @@ impl AlgorithmVisualizerTool {
             }
         }
     }
-
-    fn render_controls(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id =
-            crate::framework::scoped_panel_id(parent_ui, "algorithm_visualizer_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Algorithm Visualizer");
-            ui.separator();
-            ui.label("Select Algorithm:");
-            let mut changed = false;
-            if ui.radio_value(&mut self.selected_algorithm, Algorithm::Dijkstra, "Dijkstra").clicked() { changed = true; }
-            if ui.radio_value(&mut self.selected_algorithm, Algorithm::Bfs, "BFS").clicked() { changed = true; }
-            if ui.radio_value(&mut self.selected_algorithm, Algorithm::Dfs, "DFS").clicked() { changed = true; }
-            if changed { self.run_algorithm(); }
-            ui.separator();
-            self.render_start_node_selector(ui);
-            ui.separator();
-
-            if !self.visit_order.is_empty() {
-                ui.label(format!("Animation Step: {} / {}", self.animation_step, self.visit_order.len()));
-                ui.horizontal(|ui| {
-                    if ui.button("↻ Reset").accessible_hover_text("Restart the algorithm visualization").clicked() {
-                        self.animation_step = 0;
-                        self.is_playing = false;
-                        self.step_timer = 0.0;
-                    }
-                    let play_pause_label = if self.is_playing { "⏸ Pause" } else { "▶ Play" };
-                    let play_pause_hover = if self.is_playing { "Pause the algorithm visualization" } else { "Start or resume continuous algorithm visualization" };
-                    if ui.button(play_pause_label).accessible_hover_text(play_pause_hover).clicked() {
-                        if self.is_playing {
-                            self.is_playing = false;
-                            self.step_timer = 0.0;
-                        } else {
-                            if self.animation_step >= self.visit_order.len() { self.animation_step = 0; }
-                            self.is_playing = true;
-                            self.step_timer = 0.0;
-                        }
-                    }
-                    let can_step = self.animation_step < self.visit_order.len();
-                    if ui.add_enabled(can_step, eframe::egui::Button::new("▶ Step")).accessible_hover_text("Advance visualization by one step").clicked() {
-                        self.animation_step += 1;
-                        self.is_playing = false;
-                        self.step_timer = 0.0;
-                    }
-                    if ui.add_enabled(can_step, eframe::egui::Button::new("⏹ Finish")).accessible_hover_text("Skip to the end of the visualization").clicked() {
-                        self.animation_step = self.visit_order.len();
-                        self.is_playing = false;
-                        self.step_timer = 0.0;
-                    }
-                });
-
-                let slider = egui::Slider::new(&mut self.animation_step, 0..=self.visit_order.len()).text("Step");
-                if ui.add(slider).changed() { self.step_timer = 0.0; }
-                ui.add(egui::Slider::new(&mut self.playback_speed, 0.5..=5.0).text("Speed").suffix("x"));
-            }
-            ui.separator();
-            ui.label("Click a node or use Arrow keys + Enter on the canvas to set the start node.");
-        });
-    }
-
-    fn render_start_node_selector(&mut self, ui: &mut egui::Ui) {
-        let mut node_ids: Vec<usize> = self.node_positions.keys().copied().collect();
-        node_ids.sort_unstable();
-        let selected_text = self
-            .start_node
-            .map_or_else(|| "None".to_string(), |id| format!("Node {id}"));
-        ui.horizontal(|ui| {
-            ui.label("Start Node:");
-            egui::ComboBox::from_id_salt("algorithm_visualizer_start_node")
-                .selected_text(selected_text)
-                .show_ui(ui, |ui| {
-                    for id in node_ids {
-                        let is_selected = self.start_node == Some(id);
-                        if ui.selectable_label(is_selected, format!("Node {id}")).clicked() {
-                            self.start_node = Some(id);
-                            self.focused_node = id;
-                            self.run_algorithm();
-                            crate::accessibility::announce_live_status(
-                                ui.ctx(),
-                                format!("Start node set to Node {id}"),
-                            );
-                        }
-                    }
-                });
-        });
-    }
 }
 
 #[path = "algorithm_visualizer/canvas.rs"]
 mod canvas;
 
 impl InteractiveTool for AlgorithmVisualizerTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Algorithm Visualizer"
     }
@@ -287,15 +293,40 @@ impl InteractiveTool for AlgorithmVisualizerTool {
     fn domain(&self) -> &'static str {
         "graph_theory"
     }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("node_count", self.node_positions.len() as f64),
+            ("edge_count", self.edges.len() as f64),
+            ("visited_count", self.visit_order.len() as f64),
+            (
+                "synced_bus_revision",
+                self.synced_bus_revision.unwrap_or(0) as f64,
+            ),
+        ]
+    }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::none()
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&AlgorithmVisualizerState {
             selected_algorithm: self.selected_algorithm,
-            start_node: self.start_node,
+            start_node: if self.synced_bus_revision.is_some() {
+                self.local_start_node
+            } else {
+                self.start_node
+            },
             playback_speed: self.playback_speed,
+            topology_source: self.topology_source,
         })
         .ok()
     }
@@ -309,13 +340,18 @@ impl InteractiveTool for AlgorithmVisualizerTool {
                 loaded.playback_speed
             ));
         }
+        if self.synced_bus_revision.take().is_some() {
+            self.build_sample_graph();
+        }
         if let Some(id) = loaded.start_node {
             if !self.node_indices.contains_key(&id) {
                 return Err(format!("Unknown start_node id: {id}"));
             }
         }
         self.selected_algorithm = loaded.selected_algorithm;
+        self.topology_source = loaded.topology_source;
         self.start_node = loaded.start_node;
+        self.local_start_node = loaded.start_node;
         if let Some(id) = loaded.start_node {
             self.focused_node = id;
         }
@@ -326,6 +362,7 @@ impl InteractiveTool for AlgorithmVisualizerTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.sync_shared_topology(&ctx);
         self.update_animation(&ctx);
         self.render_controls(ui);
         self.render_canvas(ui);
@@ -333,7 +370,6 @@ impl InteractiveTool for AlgorithmVisualizerTool {
 }
 
 // [cite:graph_parameters_rust]
-
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -357,13 +393,26 @@ impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool 
             algo_str, self.node_positions.len(), self.edges.len()
         )
     }
-    fn phonetic_description(&self) -> String { "Graph search and shortest path algorithm theory".into() }
-    fn theory_citation(&self) -> String { "A Note on Two Problems in Connexion with Graphs (Dijkstra, 1959); Introduction to Algorithms (Cormen et al., 2022)".into() }
+    fn phonetic_description(&self) -> String {
+        "Graph search and shortest path algorithm theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "A Note on Two Problems in Connexion with Graphs (Dijkstra, 1959); Introduction to Algorithms (Cormen et al., 2022)".into()
+    }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Dijkstra".into(), "Greedy shortest path in non-negatively weighted graphs".into());
-        map.insert("BFS".into(), "Queue-based breadth traversal finding minimum hop counts".into());
-        map.insert("DFS".into(), "Stack-based depth exploration identifying connected components".into());
+        map.insert(
+            "Dijkstra".into(),
+            "Greedy shortest path in non-negatively weighted graphs".into(),
+        );
+        map.insert(
+            "BFS".into(),
+            "Queue-based breadth traversal finding minimum hop counts".into(),
+        );
+        map.insert(
+            "DFS".into(),
+            "Stack-based depth exploration identifying connected components".into(),
+        );
         map
     }
 }

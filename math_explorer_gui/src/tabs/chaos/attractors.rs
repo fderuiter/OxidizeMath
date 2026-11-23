@@ -70,10 +70,10 @@ impl Default for AttractorPlotter {
             max_points: 2000,
             mode: AttractorMode::Lorenz,
             custom_flow,
+            sim_bus: None,
         }));
         let runner = AttractorRunner::from_params(Arc::clone(&params));
         let worker = BackgroundWorker::new(runner);
-
         let camera = Camera3D::new(0.0, 0.0, 1.0).with_perspective_distance(75.0);
         Self {
             mode: AttractorMode::Lorenz,
@@ -414,6 +414,7 @@ impl InteractiveTool for AttractorPlotter {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.bind_sim_bus(&ctx);
         let current_vec = self.system.state.vec;
         if (!current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite())
             && !self.diverged()
@@ -463,7 +464,6 @@ impl InteractiveTool for AttractorPlotter {
         if self.worker.state().is_stepping() {
             ctx.request_repaint();
         }
-
         self.draw_side_panel(ui, &ctx);
         self.draw_central_panel(ui, &ctx);
     }

@@ -2,8 +2,8 @@
 
 use super::{Algorithm, AlgorithmVisualizerTool};
 use crate::accessibility::{
-    AccessibleHoverText, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility,
+    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility, AccessibleHoverText,
 };
 use eframe::egui::{self, Pos2, Vec2};
 use std::collections::HashMap;
@@ -39,6 +39,162 @@ fn next_node_in_direction(
 }
 
 impl AlgorithmVisualizerTool {
+    pub(super) fn render_controls(&mut self, parent_ui: &mut egui::Ui) {
+        let panel_id =
+            crate::framework::scoped_panel_id(parent_ui, "algorithm_visualizer_controls");
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
+            ui.heading("Algorithm Visualizer");
+            let ctx = ui.ctx().clone();
+            if crate::app::render_topology_source_bar(
+                ui,
+                "algorithm_visualizer",
+                &mut self.topology_source,
+                self.synced_bus_revision,
+                None,
+            ) {
+                self.sync_shared_topology(&ctx);
+            }
+            ui.separator();
+            ui.label("Select Algorithm:");
+            let mut changed = false;
+            if ui
+                .radio_value(
+                    &mut self.selected_algorithm,
+                    Algorithm::Dijkstra,
+                    "Dijkstra",
+                )
+                .clicked()
+            {
+                changed = true;
+            }
+            if ui
+                .radio_value(&mut self.selected_algorithm, Algorithm::Bfs, "BFS")
+                .clicked()
+            {
+                changed = true;
+            }
+            if ui
+                .radio_value(&mut self.selected_algorithm, Algorithm::Dfs, "DFS")
+                .clicked()
+            {
+                changed = true;
+            }
+            if changed {
+                self.run_algorithm();
+            }
+            ui.separator();
+            self.render_start_node_selector(ui);
+            ui.separator();
+            self.render_playback_controls(ui);
+            ui.separator();
+            ui.label("Click a node or use Arrow keys + Enter on the canvas to set the start node.");
+        });
+    }
+
+    fn render_start_node_selector(&mut self, ui: &mut egui::Ui) {
+        let mut node_ids: Vec<usize> = self.node_positions.keys().copied().collect();
+        node_ids.sort_unstable();
+        let selected_text = self
+            .start_node
+            .map_or_else(|| "None".to_string(), |id| format!("Node {id}"));
+        ui.horizontal(|ui| {
+            ui.label("Start Node:");
+            egui::ComboBox::from_id_salt("algorithm_visualizer_start_node")
+                .selected_text(selected_text)
+                .show_ui(ui, |ui| {
+                    for id in node_ids {
+                        let is_selected = self.start_node == Some(id);
+                        if ui
+                            .selectable_label(is_selected, format!("Node {id}"))
+                            .clicked()
+                        {
+                            self.start_node = Some(id);
+                            if self.synced_bus_revision.is_none() {
+                                self.local_start_node = Some(id);
+                            }
+                            self.focused_node = id;
+                            self.run_algorithm();
+                            announce_live_status(ui.ctx(), format!("Start node set to Node {id}"));
+                        }
+                    }
+                });
+        });
+    }
+
+    pub(super) fn render_playback_controls(&mut self, ui: &mut egui::Ui) {
+        if self.visit_order.is_empty() {
+            return;
+        }
+        ui.label(format!(
+            "Animation Step: {} / {}",
+            self.animation_step,
+            self.visit_order.len()
+        ));
+        self.render_playback_buttons(ui);
+        let slider =
+            egui::Slider::new(&mut self.animation_step, 0..=self.visit_order.len()).text("Step");
+        if ui.add(slider).changed() {
+            self.step_timer = 0.0;
+        }
+        ui.add(
+            egui::Slider::new(&mut self.playback_speed, 0.5..=5.0)
+                .text("Speed")
+                .suffix("x"),
+        );
+    }
+
+    fn render_playback_buttons(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if ui
+                .button("↻ Reset")
+                .accessible_hover_text("Restart the algorithm visualization")
+                .clicked()
+            {
+                self.animation_step = 0;
+                self.is_playing = false;
+                self.step_timer = 0.0;
+            }
+            let (label, hover) = if self.is_playing {
+                ("⏸ Pause", "Pause the algorithm visualization")
+            } else {
+                (
+                    "▶ Play",
+                    "Start or resume continuous algorithm visualization",
+                )
+            };
+            if ui.button(label).accessible_hover_text(hover).clicked() {
+                if self.is_playing {
+                    self.is_playing = false;
+                } else {
+                    if self.animation_step >= self.visit_order.len() {
+                        self.animation_step = 0;
+                    }
+                    self.is_playing = true;
+                }
+                self.step_timer = 0.0;
+            }
+            let can_step = self.animation_step < self.visit_order.len();
+            if ui
+                .add_enabled(can_step, egui::Button::new("▶ Step"))
+                .accessible_hover_text("Advance visualization by one step")
+                .clicked()
+            {
+                self.animation_step += 1;
+                self.is_playing = false;
+                self.step_timer = 0.0;
+            }
+            if ui
+                .add_enabled(can_step, egui::Button::new("⏹ Finish"))
+                .accessible_hover_text("Skip to the end of the visualization")
+                .clicked()
+            {
+                self.animation_step = self.visit_order.len();
+                self.is_playing = false;
+                self.step_timer = 0.0;
+            }
+        });
+    }
+
     pub(super) fn render_canvas(&mut self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let (response, painter) =
@@ -75,7 +231,13 @@ impl AlgorithmVisualizerTool {
 
             let visuals = ui.visuals().clone();
             self.draw_edges(&painter, &to_screen, &visuals);
-            self.draw_nodes(&painter, &to_screen, node_radius, &visuals, response.has_focus());
+            self.draw_nodes(
+                &painter,
+                &to_screen,
+                node_radius,
+                &visuals,
+                response.has_focus(),
+            );
         });
     }
 
@@ -99,6 +261,9 @@ impl AlgorithmVisualizerTool {
         if let Some(id) = clicked_node {
             self.focused_node = id;
             self.start_node = Some(id);
+            if self.synced_bus_revision.is_none() {
+                self.local_start_node = Some(id);
+            }
             self.run_algorithm();
             response.request_focus();
             announce_live_status(ctx, format!("Start node set to Node {id}"));
@@ -136,11 +301,11 @@ impl AlgorithmVisualizerTool {
         });
         if activate {
             self.start_node = Some(self.focused_node);
+            if self.synced_bus_revision.is_none() {
+                self.local_start_node = Some(self.focused_node);
+            }
             self.run_algorithm();
-            announce_live_status(
-                ctx,
-                format!("Start node set to Node {}", self.focused_node),
-            );
+            announce_live_status(ctx, format!("Start node set to Node {}", self.focused_node));
         }
     }
 
@@ -221,11 +386,7 @@ impl AlgorithmVisualizerTool {
                 (1.0, palette.node_stroke),
             );
             if canvas_focused && self.focused_node == id {
-                painter.circle_stroke(
-                    screen_pos,
-                    node_radius + 4.0_f32,
-                    (2.5_f32, palette.accent),
-                );
+                painter.circle_stroke(screen_pos, node_radius + 4.0_f32, (2.5_f32, palette.accent));
             }
             let label = if self.selected_algorithm == Algorithm::Dijkstra && is_visited {
                 self.distances

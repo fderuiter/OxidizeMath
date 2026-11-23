@@ -1,4 +1,7 @@
 use crate::accessibility::AccessibleHoverText;
+use crate::app::{
+    render_topology_source_bar, SharedGraphTopology, SharedSimulationBus, TopologySource,
+};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use eframe::egui::Pos2;
@@ -21,6 +24,8 @@ enum MetricType {
 #[serde(deny_unknown_fields)]
 struct NetworkMetricsState {
     selected_metric: MetricType,
+    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
+    topology_source: TopologySource,
 }
 
 pub struct NetworkMetricsTool {
@@ -30,6 +35,8 @@ pub struct NetworkMetricsTool {
     edges: Vec<(usize, usize, f64)>,
 
     selected_metric: MetricType,
+    pub topology_source: TopologySource,
+    synced_bus_revision: Option<u64>,
     metric_values: HashMap<usize, f64>,
     global_diameter: Option<usize>,
     global_clustering: Option<f64>,
@@ -43,6 +50,8 @@ impl Default for NetworkMetricsTool {
             node_positions: HashMap::new(),
             edges: Vec::new(),
             selected_metric: MetricType::DegreeCentrality,
+            topology_source: TopologySource::SharedBus,
+            synced_bus_revision: None,
             metric_values: HashMap::new(),
             global_diameter: None,
             global_clustering: None,
@@ -54,6 +63,10 @@ impl Default for NetworkMetricsTool {
 
 impl NetworkMetricsTool {
     fn build_sample_graph(&mut self) {
+        self.graph = Graph::new();
+        self.node_indices.clear();
+        self.node_positions.clear();
+        self.edges.clear();
         // Create a star-like graph to show clear centrality differences
         let center = Pos2::new(300.0, 300.0);
         let center_id = 0;
@@ -117,6 +130,67 @@ impl NetworkMetricsTool {
         self.global_diameter = Some(diameter(&self.graph));
         self.global_clustering = Some(average_clustering_coefficient(&self.graph));
     }
+
+    /// Synchronizes this tool's graph with `SharedSimulationBus` or restores the sample wheel graph.
+    pub fn sync_shared_topology(&mut self, ctx: &egui::Context) {
+        match SharedSimulationBus::active_graph_for(ctx, self.topology_source) {
+            Some(snap) => {
+                if self.synced_bus_revision != Some(snap.revision) {
+                    self.apply_shared_graph(&snap);
+                    self.synced_bus_revision = Some(snap.revision);
+                }
+            }
+            None => {
+                if self.synced_bus_revision.take().is_some() {
+                    self.build_sample_graph();
+                }
+            }
+        }
+    }
+
+    fn apply_shared_graph(&mut self, snap: &SharedGraphTopology) {
+        if snap.node_count() == 0 {
+            return;
+        }
+        self.graph = Graph::new();
+        self.node_indices.clear();
+        self.node_positions.clear();
+        self.edges.clear();
+
+        let mapped = snap.map_positions_to_bounds(70.0, 70.0, 380.0, 340.0);
+        for (idx_in_snap, &orig_id) in snap.node_ids.iter().enumerate() {
+            let [x, y] = mapped[idx_in_snap];
+            let pos = Pos2::new(x, y);
+            let g_idx = self.graph.add_node(pos);
+            self.node_indices.insert(orig_id, g_idx);
+            self.node_positions.insert(orig_id, pos);
+        }
+        for &(u, v, w) in &snap.undirected_edges {
+            let u_id = snap.node_ids[u];
+            let v_id = snap.node_ids[v];
+            if let (Some(&u_idx), Some(&v_idx)) =
+                (self.node_indices.get(&u_id), self.node_indices.get(&v_id))
+            {
+                self.edges.push((u_id, v_id, w));
+                self.graph.add_edge(u_idx, v_idx, w);
+            }
+        }
+        self.compute_metrics();
+    }
+
+    /// Returns the currently synced shared bus revision, if active.
+    #[cfg(test)]
+    #[must_use]
+    pub fn synced_bus_revision(&self) -> Option<u64> {
+        self.synced_bus_revision
+    }
+
+    /// Returns the number of nodes currently analyzed.
+    #[cfg(test)]
+    #[must_use]
+    pub fn active_node_count(&self) -> usize {
+        self.node_positions.len()
+    }
 }
 
 impl InteractiveTool for NetworkMetricsTool {
@@ -130,13 +204,34 @@ impl InteractiveTool for NetworkMetricsTool {
     fn domain(&self) -> &'static str {
         "graph_theory"
     }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("node_count", self.node_positions.len() as f64),
+            ("edge_count", self.edges.len() as f64),
+            (
+                "synced_bus_revision",
+                self.synced_bus_revision.unwrap_or(0) as f64,
+            ),
+        ]
+    }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::none()
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&NetworkMetricsState {
             selected_metric: self.selected_metric,
+            topology_source: self.topology_source,
         })
         .ok()
     }
@@ -145,15 +240,33 @@ impl InteractiveTool for NetworkMetricsTool {
         let loaded: NetworkMetricsState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid NetworkMetrics state: {e}"))?;
         self.selected_metric = loaded.selected_metric;
-        self.compute_metrics();
+        self.topology_source = loaded.topology_source;
+        if self.topology_source == TopologySource::LocalPreset
+            && self.synced_bus_revision.take().is_some()
+        {
+            self.build_sample_graph();
+        } else {
+            self.compute_metrics();
+        }
         Ok(())
     }
 
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let ctx = parent_ui.ctx().clone();
+        self.sync_shared_topology(&ctx);
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "network_metrics_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Network Metrics");
+            if render_topology_source_bar(
+                ui,
+                "network_metrics",
+                &mut self.topology_source,
+                self.synced_bus_revision,
+                None,
+            ) {
+                self.sync_shared_topology(&ctx);
+            }
             ui.separator();
 
             ui.label("Select Metric to Visualize:");
@@ -188,10 +301,8 @@ impl InteractiveTool for NetworkMetricsTool {
         });
 
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            let (response, painter) = ui.allocate_painter(
-                ui.available_size(),
-                egui::Sense::focusable_noninteractive(),
-            );
+            let (response, painter) =
+                ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
             let label = "Network Metrics Visualization";
             let _ = response.clone().accessible_hover_text(label);
             let summary = format!(
@@ -255,8 +366,11 @@ impl InteractiveTool for NetworkMetricsTool {
                 let lerp = |a: u8, b: u8| {
                     (f32::from(a) + (f32::from(b) - f32::from(a)) * t.clamp(0.0, 1.0)).round() as u8
                 };
-                let fill_color =
-                    egui::Color32::from_rgb(lerp(low.r(), high.r()), lerp(low.g(), high.g()), lerp(low.b(), high.b()));
+                let fill_color = egui::Color32::from_rgb(
+                    lerp(low.r(), high.r()),
+                    lerp(low.g(), high.g()),
+                    lerp(low.b(), high.b()),
+                );
 
                 painter.circle(screen_pos, 20.0, fill_color, (1.0, palette.node_stroke));
 

@@ -10,6 +10,7 @@ mod pane_slots;
 pub(crate) mod session;
 mod share_link;
 pub mod shared_json;
+pub mod sim_bus;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
@@ -44,6 +45,8 @@ mod tests_session_lifecycle;
 #[cfg(test)]
 mod tests_shortcuts;
 #[cfg(test)]
+mod tests_sim_bus;
+#[cfg(test)]
 mod tests_split_view;
 #[cfg(test)]
 mod tests_tab_cache_perf;
@@ -55,6 +58,12 @@ pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 pub use shared_json::SharedTabJson;
+#[allow(unused_imports)]
+pub use sim_bus::{
+    render_topology_source_bar, SharedGraphTopology, SharedPointCloud3D, SharedSimulationBus,
+    TopologySource, MAX_NEURAL_SHARED_NODES, MAX_SHARED_GRAPH_EDGES, MAX_SHARED_GRAPH_NODES,
+    MAX_SHARED_LANDMARKS,
+};
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
@@ -98,6 +107,7 @@ pub struct MathExplorerApp {
     last_frame_had_input: bool,
     pending_focus_prune: bool,
     pub compare_sync: ComparisonSyncConfig,
+    pub sim_bus: SharedSimulationBus,
     pub(super) url_sync: crate::url_state::UrlSyncController,
 }
 
@@ -135,6 +145,7 @@ impl Default for MathExplorerApp {
             last_frame_had_input: false,
             pending_focus_prune: false,
             compare_sync: ComparisonSyncConfig::default(),
+            sim_bus: SharedSimulationBus::new(),
             url_sync: crate::url_state::UrlSyncController::default(),
         }
     }
@@ -220,10 +231,7 @@ impl MathExplorerApp {
                 crate::telemetry::emit_telemetry(
                     "MathExplorerApp",
                     Severity::Warning,
-                    format!(
-                        "Failed to parse saved session state, resetting to defaults: {}",
-                        err
-                    ),
+                    format!("Failed to parse saved session state, resetting to defaults: {err}"),
                     std::collections::HashMap::new(),
                 );
             }
@@ -463,8 +471,6 @@ impl eframe::App for MathExplorerApp {
         self.drain_workspace_history_bridge(ctx);
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
-
-        // Render Command Palette Overlay
         self.apply_command_palette_selection(ctx);
         crate::accessibility::sync_context_live_messages(ctx, false);
 
@@ -486,7 +492,6 @@ impl eframe::App for MathExplorerApp {
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(5)
     }
-
     #[cfg(target_arch = "wasm32")]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)

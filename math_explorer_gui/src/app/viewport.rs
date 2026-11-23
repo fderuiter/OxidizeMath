@@ -245,6 +245,8 @@ pub(super) fn render_single_pane_viewport(
                 );
             });
             compare_sync::clear_single_pane_sync_context(ctx);
+            app.sim_bus
+                .install_in_context(ctx, app.compare_sync.link_topology);
 
             let mut pane_ui = build_pane_region_ui(ui, 0, total_rect, "Main Viewport");
             let should_focus = pending_focus == Some(0);

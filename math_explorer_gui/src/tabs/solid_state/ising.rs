@@ -9,6 +9,8 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+#[path = "ising/graph_mode.rs"]
+mod graph_mode;
 #[path = "ising/overlay.rs"]
 mod overlay;
 #[path = "ising/preset.rs"]
@@ -45,6 +47,11 @@ struct IsingState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     running: Option<bool>,
     steps_per_frame: usize,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::app::TopologySource::is_default"
+    )]
+    topology_source: crate::app::TopologySource,
 }
 
 impl IsingState {
@@ -92,6 +99,12 @@ pub struct IsingModelTool {
     stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
     last_theme: Option<crate::app::ThemeMode>,
     dirty: bool,
+    pub topology_source: crate::app::TopologySource,
+    pub(super) graph_system: Option<math_explorer::physics::stat_mech::GraphSpinSystem>,
+    pub(super) shared_topology: Option<Arc<crate::app::SharedGraphTopology>>,
+    pub(super) synced_bus_revision: Option<u64>,
+    pub(super) graph_running: bool,
+    pub(super) graph_sweeps: f64,
     params: Arc<std::sync::RwLock<IsingSharedParams>>,
     pub worker: BackgroundWorker<IsingRunner>,
 }
@@ -187,6 +200,12 @@ impl Default for IsingModelTool {
             stepped_pixels: None,
             last_theme: None,
             dirty: true,
+            topology_source: crate::app::TopologySource::SharedBus,
+            graph_system: None,
+            shared_topology: None,
+            synced_bus_revision: None,
+            graph_running: false,
+            graph_sweeps: 0.0,
             params,
             worker,
         };
@@ -205,6 +224,31 @@ impl InteractiveTool for IsingModelTool {
     }
     fn domain(&self) -> &'static str {
         "solid_state"
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("magnetization", self.magnetization),
+            ("energy", self.energy),
+            (
+                "graph_node_count",
+                self.active_graph_node_count().unwrap_or(0) as f64,
+            ),
+            (
+                "synced_bus_revision",
+                self.synced_bus_revision.unwrap_or(0) as f64,
+            ),
+        ]
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
@@ -272,6 +316,11 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn step_simulation(&mut self) {
+        if self.is_graph_mode() {
+            let trials = self.steps_per_frame.clamp(16, 2_000);
+            self.step_graph_trials(trials);
+            return;
+        }
         let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None);
         let steps = self.steps_per_frame.clamp(100, 5000);
         match self.mode {
@@ -319,6 +368,7 @@ impl InteractiveTool for IsingModelTool {
             state: Some(self.worker.state()),
             running: None,
             steps_per_frame: self.steps_per_frame,
+            topology_source: self.topology_source,
         })
         .ok()
     }
@@ -336,6 +386,14 @@ impl InteractiveTool for IsingModelTool {
         self.brush_radius = s.brush_radius;
         self.brush_cooperator = s.brush_cooperator;
         self.steps_per_frame = s.steps_per_frame;
+        self.topology_source = s.topology_source;
+        if self.topology_source == crate::app::TopologySource::LocalPreset
+            && self.synced_bus_revision.take().is_some()
+        {
+            self.graph_system = None;
+            self.shared_topology = None;
+            self.graph_running = false;
+        }
         self.sync_shared_params();
         self.recompute_replicator_curve();
 
@@ -360,13 +418,20 @@ impl InteractiveTool for IsingModelTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.sync_shared_topology(&ctx);
         let theme = crate::app::ThemeMode::from_visuals(ui.visuals());
         if self.last_theme != Some(theme) {
             self.last_theme = Some(theme);
             self.params.write().unwrap_or_else(|e| e.into_inner()).theme = theme;
             self.dirty = true;
         }
-        if let Some(snapshot) = self.worker.update() {
+        if self.is_graph_mode() {
+            if self.graph_running {
+                let trials = self.steps_per_frame.clamp(16, 4_000);
+                self.step_graph_trials(trials);
+                ctx.request_repaint();
+            }
+        } else if let Some(snapshot) = self.worker.update() {
             if snapshot.custom_data.len() >= 2 {
                 self.magnetization = snapshot.custom_data[0];
                 self.energy = snapshot.custom_data[1];

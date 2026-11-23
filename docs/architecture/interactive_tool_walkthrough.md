@@ -372,9 +372,19 @@ Interactive tools can map live mathematical invariants to real-time audio and `.
 - **Synchronous Tool Integration**: Immediate-mode tools pass their current [`SonificationFrame`](../../math_explorer_gui/src/audio/frame.rs) to [`crate::audio::render_sonification_panel`](../../math_explorer_gui/src/audio/ui.rs), which renders the user-gesture **Enable Audio** / **Mute Audio** toggle, `.wav` export button, timbre selector, and WCAG AA `Role::Meter` visual `dBFS` + `Hz` readout.
 - **Lifecycle and Autoplay Safety**: [`WebAudioNodeBackend`](../../math_explorer_gui/src/audio/web_audio.rs) (`wasm32`) never constructs or resumes an `AudioContext` until an explicit user click or keypress, enforces a `-3.0 dBFS` limiter ceiling with `15 ms` `AudioParam::set_target_at_time` smoothing, and ramps to silence within `<= 30 ms` on pause, solver divergence, WebGL context loss, or window blur. [`OfflinePcmSynthesizer`](../../math_explorer_gui/src/audio/synth.rs) mirrors the same `SonificationBackend` contract for deterministic `rustfft` tests and RIFF `.wav` export.
 
+## Shared Simulation Topology & Point-Cloud Bus
+
+Multi-pane tools that operate on graphs or 3D landmark point clouds can subscribe to the workspace-scoped [`SharedSimulationBus`](../../math_explorer_gui/src/app/sim_bus.rs) without modifying the `InteractiveTool` or `ExplorerTab` trait signatures:
+
+- **Workspace Isolation via `egui::Context`**: `MathExplorerApp` owns an `Arc`-backed `SharedSimulationBus` and installs it into `egui::Context` every frame alongside `ComparisonSyncConfig::link_topology` (`View -> Multi-Pane Sync -> Link Topology`). Never store cross-tool payloads in process-global `OnceLock` or `Mutex` statics.
+- **Copy-on-Write CSR Graph Ingestion (`SharedGraphTopology`)**: Add a `TopologySource` field (`SharedBus` default, `LocalPreset` per-pane opt-out) annotated with `#[serde(default, skip_serializing_if = "TopologySource::is_default")]` on your `#[serde(deny_unknown_fields)]` state struct so `.mws`, `.json`, and `#tab=...&state=...` URL links remain compact inside `URL_JSON_BOUNDS` (`4 KiB`) without duplicating full vertex/edge buffers.
+- **Accessible Control Bar & Clamping Badges**: Call [`crate::app::render_topology_source_bar`](../../math_explorer_gui/src/app/sim_bus.rs) in your side panel and poll `SharedSimulationBus::active_graph_for(ctx, self.topology_source)` at the top of `show_inside`. When a solver enforces a domain cap stricter than the bus ceiling (`256` nodes, `2,048` edges)—such as `NeuralNetworkVizTool` clamping coupled Hodgkin-Huxley circuits to `32` neurons—pass `Some("Clamped N -> 32 neurons")` so the status bar renders a WCAG 2.2 AA contrast pill and polite `TwinSlotLiveRegion` announcements.
+- **3D Point-Cloud Streaming (`SharedPointCloud3D`)**: Producers such as `AttractorRunner` publish `Arc<SharedPointCloud3D>` frames (`<= 128` landmarks) onto their workspace `SharedSimulationBus`, and consumers such as `VietorisRipsTool` poll newer revisions via `latest_point_cloud_3d_since`.
+
 ## Related References
 
 - Interactive tool trait definition: [`math_explorer_gui/src/framework/mod.rs`](../../math_explorer_gui/src/framework/mod.rs)
+- Shared simulation topology & point-cloud bus: [`math_explorer_gui/src/app/sim_bus.rs`](../../math_explorer_gui/src/app/sim_bus.rs) and [ADR 0047: SharedSimulationBus and Zero-Allocation CSR Kernels](../adr/0047-shared-simulation-topology-bus.md)
 - Spatial brush kit & field sculpting: [`math_explorer_gui/src/framework/spatial_brush.rs`](../../math_explorer_gui/src/framework/spatial_brush.rs) and [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](../adr/0045-spatial-brush-kit-and-field-sculpting.md)
 - Dual-backend sonification architecture: [ADR 0040](../adr/0040-dual-backend-web-audio-sonification.md)
 - Example tool implementation (CERA): [`math_explorer_gui/src/tabs/climate/cera.rs`](../../math_explorer_gui/src/tabs/climate/cera.rs)

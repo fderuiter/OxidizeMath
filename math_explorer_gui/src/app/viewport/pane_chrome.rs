@@ -40,7 +40,8 @@ fn render_header_sync_menu(
 ) {
     let any_active = app.compare_sync.link_axes
         || app.compare_sync.link_cursors
-        || app.compare_sync.sync_playback;
+        || app.compare_sync.sync_playback
+        || app.compare_sync.link_topology;
     let btn_label = match (header_width >= 480.0, any_active) {
         (true, true) => "🔗 Sync •",
         (true, false) => "🔗 Sync",

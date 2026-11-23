@@ -129,6 +129,12 @@ pub struct ReplicatorPresetConfig {
     /// Shared parameter values for symbolic payoff cells (e.g. `v`, `c` in Hawk-Dove).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub symbolic_params: std::collections::BTreeMap<String, f64>,
+    /// Per-pane topology source (`SharedBus` vs `LocalPreset`).
+    #[serde(
+        default,
+        skip_serializing_if = "crate::app::TopologySource::is_default"
+    )]
+    pub topology_source: crate::app::TopologySource,
 }
 
 impl ReplicatorPresetConfig {
@@ -141,26 +147,21 @@ impl ReplicatorPresetConfig {
         for (i, row) in self.payoff_matrix.iter().enumerate() {
             if row.len() != rows {
                 return Err(format!(
-                    "Payoff matrix must be square (row {} has length {}, expected {})",
-                    i,
-                    row.len(),
-                    rows
+                    "Payoff matrix must be square (row {i} has length {}, expected {rows})",
+                    row.len()
                 ));
             }
         }
         if self.strategy_names.len() != rows {
             return Err(format!(
-                "Strategy names count ({}) does not match payoff matrix dimensions ({}x{})",
-                self.strategy_names.len(),
-                rows,
-                rows
+                "Strategy names count ({}) does not match payoff matrix dimensions ({rows}x{rows})",
+                self.strategy_names.len()
             ));
         }
         if self.initial_population.len() != rows {
             return Err(format!(
-                "Initial population count ({}) does not match strategy count ({})",
-                self.initial_population.len(),
-                rows
+                "Initial population count ({}) does not match strategy count ({rows})",
+                self.initial_population.len()
             ));
         }
         self.validate_symbolic(rows)

@@ -157,7 +157,8 @@ impl AppStateFingerprint {
             | (u8::from(app.show_diagnostics_panel) << 3)
             | (u8::from(app.compare_sync.link_axes) << 4)
             | (u8::from(app.compare_sync.link_cursors) << 5)
-            | (u8::from(app.compare_sync.sync_playback) << 6);
+            | (u8::from(app.compare_sync.sync_playback) << 6)
+            | (u8::from(app.compare_sync.link_topology) << 7);
 
         Self {
             selected_tab: app.selected_tab,

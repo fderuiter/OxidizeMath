@@ -6,9 +6,11 @@ mod controls;
 mod presets;
 #[cfg(test)]
 mod tests;
+mod topology_sync;
 
 pub(crate) use analytics::compute_network_analytics;
 
+use crate::app::{TopologySource, MAX_SHARED_GRAPH_NODES};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
@@ -69,11 +71,16 @@ pub(super) struct NetPropState {
     pub(super) quarantined_edges: Vec<usize>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub(super) is_running: bool,
+    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
+    pub(super) topology_source: TopologySource,
 }
 
 /// Interactive stochastic network contagion and budgeted containment explorer.
 pub struct NetworkPropagationTool {
     pub(super) model: NetworkEpidemicModel,
+    pub(super) local_num_nodes: usize,
+    pub topology_source: TopologySource,
+    pub(super) synced_bus_revision: Option<u64>,
     pub(super) rng: oxidize_core::rng::OxidizeRng,
     pub(super) seed: u64,
     pub(super) budget: usize,
@@ -95,6 +102,9 @@ impl Default for NetworkPropagationTool {
         let model = NetworkEpidemicModel::new_with_rng(50, 0.05, 0.02, &mut rng);
         Self {
             model,
+            local_num_nodes: 50,
+            topology_source: TopologySource::SharedBus,
+            synced_bus_revision: None,
             rng,
             seed: DEFAULT_NETWORK_SEED,
             budget: DEFAULT_CONTAINMENT_BUDGET,
@@ -358,15 +368,20 @@ impl InteractiveTool for NetworkPropagationTool {
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         self.canvas_id
     }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.topology_observables()
+    }
     fn has_finite_parameters(&self) -> bool {
         self.model.beta().is_finite()
             && self.model.gamma().is_finite()
-            && (10..=200).contains(&self.model.num_nodes())
+            && (1..=MAX_SHARED_GRAPH_NODES).contains(&self.model.num_nodes())
+            && (10..=200).contains(&self.local_num_nodes)
     }
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.revision.hash(&mut h);
-        self.model.num_nodes().hash(&mut h);
+        self.local_num_nodes.hash(&mut h);
+        self.topology_source.hash(&mut h);
         self.model.beta().to_bits().hash(&mut h);
         self.model.gamma().to_bits().hash(&mut h);
         self.seed.hash(&mut h);
@@ -377,15 +392,25 @@ impl InteractiveTool for NetworkPropagationTool {
         h.finish().max(1)
     }
     fn save_state(&self) -> Option<String> {
+        let on_bus = self.synced_bus_revision.is_some();
         serde_json::to_string(&NetPropState {
-            num_nodes: self.model.num_nodes(),
+            num_nodes: self.local_num_nodes,
             beta: self.model.beta(),
             gamma: self.model.gamma(),
             seed: self.seed,
             budget: self.budget,
-            vaccinated_nodes: self.vaccinated_nodes.clone(),
-            quarantined_edges: self.quarantined_edges.clone(),
+            vaccinated_nodes: if on_bus {
+                Vec::new()
+            } else {
+                self.vaccinated_nodes.clone()
+            },
+            quarantined_edges: if on_bus {
+                Vec::new()
+            } else {
+                self.quarantined_edges.clone()
+            },
             is_running: self.is_running,
+            topology_source: self.topology_source,
         })
         .ok()
     }
@@ -394,12 +419,19 @@ impl InteractiveTool for NetworkPropagationTool {
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: NetPropState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid network propagation state: {e}"))?;
         let (candidate, candidate_rng, vax_sorted, edge_sorted) = build_validated_candidate(&s)?;
         self.model = candidate;
+        self.local_num_nodes = s.num_nodes;
+        self.topology_source = s.topology_source;
+        self.synced_bus_revision = None;
         self.rng = candidate_rng;
         self.seed = s.seed;
         self.budget = s.budget;
@@ -416,6 +448,8 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        self.sync_shared_topology(&ctx);
         egui::CentralPanel::default().show_inside(ui, |ui| {
             if self.is_running {
                 self.model.step_with_rng(&mut self.rng);
@@ -450,27 +484,5 @@ inventory::submit! {
         domain: "epidemiology",
         tags: &["containment", "r0", "vaccination", "quarantine"],
         build: || Box::new(NetworkPropagationTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for NetworkPropagationTool {
-    fn theory_description(&self) -> String {
-        let summary = compute_network_analytics(&self.model);
-        format!(
-            "Stochastic contact network epidemic propagation and containment: per-contact transmission $\\beta = {:.2}$, recovery $\\gamma = {:.2}$, residual heterogeneous reproduction number $R_0 = \\frac{{\\beta}}{{\\gamma}}\\frac{{\\langle k^2 \\rangle - \\langle k \\rangle}}{{\\langle k \\rangle}} = {:.2}$, and branching extinction probability $P_{{ext}} = {:.2}$ under vertex vaccination and symmetric edge quarantine.",
-            self.model.beta(),
-            self.model.gamma(),
-            summary.effective_r0,
-            summary.extinction_probability,
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Network epidemic propagation, hub vaccination, and edge quarantine theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Epidemic processes in complex networks (Pastor-Satorras et al., 2015); Networks (Newman, 2010); Vulnerability in graphs (Barefoot et al., 1987)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
     }
 }
