@@ -56,7 +56,7 @@ fn test_all_57_starter_cards_launch_and_sync_framework_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 101);
+    assert_eq!(presets.len(), 103);
 
     for preset in presets {
         let json = preset.generate_preset();
@@ -105,7 +105,7 @@ fn test_all_52_tools_export_and_import_preset_roundtrip() {
         );
         let starter = presets
             .iter()
-            .find(|p| p.tool_name == Some(meta.id))
+            .find(|p| p.tool_name == Some(meta.id) && p.domain == meta.domain)
             .expect("starter preset exists");
         tool.import_preset_json(starter.generate_preset())
             .unwrap_or_else(|e| panic!("Tool '{}' starter import failed: {}", meta.id, e));

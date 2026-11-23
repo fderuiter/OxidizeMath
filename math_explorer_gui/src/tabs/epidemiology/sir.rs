@@ -454,12 +454,11 @@ impl InteractiveTool for SirTool {
                 metrics::render_epidemic_metrics(ui, self);
                 self.render_sir_readouts_and_atlas(ui);
                 self.render_counterfactual_bar(ui);
-
+                ui.separator();
+                metrics::render_simulation_plot(ui, self);
                 ui.add_space(6.0);
                 self.render_snapshot_bar(ui);
                 self.evaluate_sensitivity(ui);
-                ui.separator();
-                metrics::render_simulation_plot(ui, self);
             });
         });
     }

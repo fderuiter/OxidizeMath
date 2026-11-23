@@ -1,4 +1,4 @@
-# Architecture Decision Record 0043: Counterfactual Shadow-Twin Branching (`CounterfactualBranchEngine`)
+# Architecture Decision Record 0044: Counterfactual Shadow-Twin Branching (`CounterfactualBranchEngine`)
 
 ## Status
 
@@ -23,7 +23,7 @@ We introduced `CounterfactualBranchEngine` in `math_explorer_gui/src/framework/c
 2. **Contrast with $t = 0$ Multi-Solver Benchmarking (ADR 0016):**
 
 ```text
-ADR 0016 (Multi-Solver Benchmarking)          ADR 0043 (Counterfactual Shadow Twins)
+ADR 0016 (Multi-Solver Benchmarking)          ADR 0044 (Counterfactual Shadow Twins)
 ------------------------------------          --------------------------------------
 Anchor:        Initial condition at t = 0     Mid-flight causal state at t_k > 0
 Fixed:         Parameters θ & state x(0)      Solver algorithm & step size Δt
