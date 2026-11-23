@@ -3,7 +3,7 @@
 use super::{AstCache, TraceabilityEngine, TraceabilityReport};
 use crate::vfs::VirtualFileSystem;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
 struct LocalFsVfs;
@@ -53,11 +53,10 @@ const IGNORED_TRACEABILITY_MEMBERS: &[&str] = &[
     "crates/verified_engine",
     "crates/verified_engine_macros",
     "apps/xtask",
-    "crates/math_commons",
     "egui_plot",
 ];
 
-fn scan_src_dir(src_path: PathBuf, is_root: bool, code_dirs: &mut Vec<String>) {
+fn scan_src_dir(src_path: PathBuf, strip_root: Option<&Path>, code_dirs: &mut Vec<String>) {
     let mut stack = vec![src_path];
 
     while let Some(dir) = stack.pop() {
@@ -77,11 +76,10 @@ fn scan_src_dir(src_path: PathBuf, is_root: bool, code_dirs: &mut Vec<String>) {
             }
         }
         if has_rs_files {
-            let mut target_dir = crate::path_utils::normalize_path(&dir);
-            if !is_root && target_dir.starts_with("../../") {
-                target_dir = target_dir.trim_start_matches("../../").to_string();
-            }
-            code_dirs.push(target_dir);
+            let rel_dir = strip_root
+                .and_then(|root| dir.strip_prefix(root).ok())
+                .unwrap_or(dir.as_path());
+            code_dirs.push(crate::path_utils::normalize_path(rel_dir));
         }
     }
 }
@@ -90,13 +88,18 @@ fn scan_src_dir(src_path: PathBuf, is_root: bool, code_dirs: &mut Vec<String>) {
 pub fn discover_workspace_code_dirs() -> Vec<String> {
     let (is_root, members) = crate::workspace::get_workspace_members();
     let mut code_dirs = Vec::new();
-    let root_prefix = if is_root { "" } else { "../../" };
+    let resolved_root = (!is_root)
+        .then(crate::workspace::find_workspace_root)
+        .flatten();
 
     for member_str in members {
         if IGNORED_TRACEABILITY_MEMBERS.contains(&member_str.as_str()) {
             continue;
         }
-        let member_path = PathBuf::from(root_prefix).join(&member_str);
+        let member_path = match &resolved_root {
+            Some(root) => root.join(&member_str),
+            None => PathBuf::from(&member_str),
+        };
         let src_path = if member_str == "math_explorer_gui" {
             member_path.join("src").join("tabs")
         } else {
@@ -104,7 +107,7 @@ pub fn discover_workspace_code_dirs() -> Vec<String> {
         };
 
         if src_path.is_dir() {
-            scan_src_dir(src_path, is_root, &mut code_dirs);
+            scan_src_dir(src_path, resolved_root.as_deref(), &mut code_dirs);
         }
     }
     code_dirs
@@ -258,11 +261,29 @@ pub fn run_workspace_traceability_with_cache(
     cache: &mut AstCache,
 ) -> Result<bool, std::io::Error> {
     let engine = TraceabilityEngine::new(LocalFsVfs);
-    let code_dirs = discover_workspace_code_dirs();
-    let all_dirs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
-    let report = futures::executor::block_on(
-        engine.scan_repository_with_cache(&all_dirs, "papers", auto_fix, cache),
-    )?;
+    let (is_root, _) = crate::workspace::get_workspace_members();
+    let ws_root = (!is_root)
+        .then(crate::workspace::find_workspace_root)
+        .flatten();
+    let raw_dirs = discover_workspace_code_dirs();
+    let resolved_dirs: Vec<String> = match &ws_root {
+        Some(root) => raw_dirs
+            .iter()
+            .map(|d| crate::path_utils::normalize_path(root.join(d)))
+            .collect(),
+        None => raw_dirs,
+    };
+    let papers_dir = match &ws_root {
+        Some(root) => crate::path_utils::normalize_path(root.join("papers")),
+        None => "papers".to_string(),
+    };
+    let all_dirs: Vec<&str> = resolved_dirs.iter().map(String::as_str).collect();
+    let report = futures::executor::block_on(engine.scan_repository_with_cache(
+        &all_dirs,
+        &papers_dir,
+        auto_fix,
+        cache,
+    ))?;
 
     println!("=== Traceability Report ===");
     println!("Summary: Scanned {} source files.", report.scanned_files);

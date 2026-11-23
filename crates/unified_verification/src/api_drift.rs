@@ -60,7 +60,7 @@ pub fn extract_apis_in_dir_with_cache(
 }
 
 pub fn extract_apis() -> BTreeMap<String, Vec<ApiItem>> {
-    extract_apis_in_dir(crate::manifest_cache::workspace_root_dir())
+    extract_apis_in_dir(&crate::manifest_cache::workspace_root_dir())
 }
 
 pub fn regenerate_baseline() {
@@ -189,9 +189,9 @@ pub fn check_api_drift() -> bool {
 
 pub fn check_api_drift_with_cache(cache: &mut AstCache) -> bool {
     let root = crate::manifest_cache::workspace_root_dir();
-    let current_apis = extract_apis_in_dir_with_cache(root, cache);
+    let current_apis = extract_apis_in_dir_with_cache(&root, cache);
     let facade_violations =
-        facade::check_facade_completeness_in_dir_with_cache(root, &current_apis, cache);
+        facade::check_facade_completeness_in_dir_with_cache(&root, &current_apis, cache);
     if !facade_violations.is_empty() {
         println!("Facade export completeness check failed:");
         for v in &facade_violations {

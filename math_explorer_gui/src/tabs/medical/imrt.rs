@@ -88,27 +88,7 @@ pub struct ImrtWorkspace {
     pub summary: ImrtSummary,
 }
 
-fn cached_imrt_baseline(tumor_indices: &[usize], organ_indices: &[usize]) -> f64 {
-    static BASE_J: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
-    *BASE_J.get_or_init(|| {
-        let mut ws = ImrtWorkspace {
-            tumor_indices: tumor_indices.to_vec(),
-            organ_indices: organ_indices.to_vec(),
-            unit_beams: Box::new([[0.0; IMRT_VOXEL_COUNT]; IMRT_BEAM_COUNT]),
-            dose_vec: DVector::zeros(IMRT_VOXEL_COUNT),
-            baseline_cost_j: 1.0,
-            summary: ImrtSummary::default(),
-        };
-        let base = ws.evaluate_in_place(
-            &BASELINE_IMRT_ANGLES_DEG,
-            &BASELINE_IMRT_WEIGHTS,
-            CHALLENGE_IMRT_BETA,
-            CHALLENGE_IMRT_PRESCRIPTION_GY,
-            CHALLENGE_IMRT_OAR_LIMIT_GY,
-        );
-        base.cost_j.max(1e-6)
-    })
-}
+static BASE_J: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
 
 impl Default for ImrtWorkspace {
     fn default() -> Self {
@@ -129,7 +109,7 @@ impl Default for ImrtWorkspace {
                 }
             }
         }
-        let baseline_cost_j = cached_imrt_baseline(&tumor_indices, &organ_indices);
+        let baseline_cost_j = BASE_J.get().copied().unwrap_or(0.0);
         Self {
             tumor_indices,
             organ_indices,
@@ -154,16 +134,14 @@ pub fn voxel_coord_cm(index: usize) -> f64 {
 }
 
 impl ImrtWorkspace {
-    /// Evaluates all 4 directional `ExponentialKernel` beams and `optimization::calculate_cost`
-    /// in place with zero dynamic heap allocations.
-    pub fn evaluate_in_place(
+    fn populate_beams_and_cost(
         &mut self,
         angles_deg: &[f64; IMRT_BEAM_COUNT],
         weights: &[f64; IMRT_BEAM_COUNT],
         beta: f64,
         prescription_gy: f64,
         oar_limit_gy: f64,
-    ) -> ImrtSummary {
+    ) -> f64 {
         let clean_beta = beta.clamp(0.01, 5.0);
         let amp = IMRT_ISOCENTER_GY_PER_WEIGHT
             * IMRT_SAD_CM
@@ -194,7 +172,7 @@ impl ImrtWorkspace {
             }
         }
 
-        let cost_j = calculate_cost(
+        calculate_cost(
             &self.dose_vec,
             &self.tumor_indices,
             &self.organ_indices,
@@ -202,7 +180,33 @@ impl ImrtWorkspace {
             oar_limit_gy,
             IMRT_COST_ALPHA,
             IMRT_COST_BETA_OAR,
-        );
+        )
+    }
+
+    /// Evaluates all 4 directional `ExponentialKernel` beams and `optimization::calculate_cost`
+    /// in place with zero dynamic heap allocations.
+    pub fn evaluate_in_place(
+        &mut self,
+        angles_deg: &[f64; IMRT_BEAM_COUNT],
+        weights: &[f64; IMRT_BEAM_COUNT],
+        beta: f64,
+        prescription_gy: f64,
+        oar_limit_gy: f64,
+    ) -> ImrtSummary {
+        if self.baseline_cost_j <= 0.0 {
+            self.baseline_cost_j = *BASE_J.get_or_init(|| {
+                self.populate_beams_and_cost(
+                    &BASELINE_IMRT_ANGLES_DEG,
+                    &BASELINE_IMRT_WEIGHTS,
+                    CHALLENGE_IMRT_BETA,
+                    CHALLENGE_IMRT_PRESCRIPTION_GY,
+                    CHALLENGE_IMRT_OAR_LIMIT_GY,
+                )
+                .max(1e-6)
+            });
+        }
+        let cost_j =
+            self.populate_beams_and_cost(angles_deg, weights, beta, prescription_gy, oar_limit_gy);
         let summary = self.summarize(cost_j, oar_limit_gy);
         self.summary = summary;
         summary
