@@ -253,7 +253,7 @@ impl MathExplorerApp {
 }
 
 fn consume_physical_shift_num2(ctx: &egui::Context, mods: egui::Modifiers) -> bool {
-    if ctx.wants_keyboard_input() {
+    if crate::framework::is_text_edit_focused(ctx) {
         return false;
     }
     ctx.input_mut(|i| {
