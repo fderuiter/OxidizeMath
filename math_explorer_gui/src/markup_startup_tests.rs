@@ -6,6 +6,8 @@ const BOOTSTRAP_JS: &str = include_str!("../bootstrap.js");
 const INITIALIZER_JS: &str = include_str!("../initializer.js");
 const SW_JS: &str = include_str!("../sw.js");
 const MAIN_RS: &str = include_str!("main.rs");
+const FINALIZE_WEB_DIST_SH: &str = include_str!("../../scripts/finalize_web_dist.sh");
+const COMPRESS_DIST_SH: &str = include_str!("../../scripts/compress_dist.sh");
 
 #[test]
 fn test_service_worker_caches_shell_only_and_returns_valid_offline_responses() {
@@ -115,6 +117,8 @@ fn test_bootstrap_dynamic_import_abort_signal_and_fallback_reload_bindings() {
     );
     for contract in [
         "const WASM_SOURCE_SIZE = 0;",
+        "const WASM_BROTLI_SIZE = 0;",
+        "const WASM_GZIP_SIZE = 0;",
         "fetchInit.signal = signal",
         "reader.cancel",
         "isBootAborted(signal)",
@@ -131,4 +135,108 @@ fn test_bootstrap_dynamic_import_abort_signal_and_fallback_reload_bindings() {
             && MAIN_RS.contains("is_error_boundary_active"),
         "src/main.rs must guard WebRunner::start and bind a fallback reload listener"
     );
+}
+
+#[test]
+fn test_finalize_web_dist_stamps_compressed_sizes_before_compressing_bootstrap() {
+    assert!(
+        COMPRESS_DIST_SH.contains("\"${@:2}\"") && COMPRESS_DIST_SH.contains("EXTS="),
+        "compress_dist.sh must accept optional extension filters for staged compression passes"
+    );
+
+    let wasm_compress_pos = FINALIZE_WEB_DIST_SH
+        .find("compress_dist.sh\" \"$STAGING_DIR\" wasm")
+        .expect("finalize_web_dist.sh must compress .wasm before stamping bootstrap.js");
+    let stamp_source_pos = FINALIZE_WEB_DIST_SH
+        .find("const WASM_SOURCE_SIZE = ")
+        .expect("finalize_web_dist.sh must stamp WASM_SOURCE_SIZE");
+    let stamp_brotli_pos = FINALIZE_WEB_DIST_SH
+        .find("const WASM_BROTLI_SIZE = ")
+        .expect("finalize_web_dist.sh must stamp WASM_BROTLI_SIZE");
+    let stamp_gzip_pos = FINALIZE_WEB_DIST_SH
+        .find("const WASM_GZIP_SIZE = ")
+        .expect("finalize_web_dist.sh must stamp WASM_GZIP_SIZE");
+    let js_compress_pos = FINALIZE_WEB_DIST_SH
+        .find("compress_dist.sh\" \"$STAGING_DIR\" js html css svg webmanifest json")
+        .expect("finalize_web_dist.sh must compress bootstrap.js after stamping sizes");
+
+    assert!(
+        wasm_compress_pos < stamp_source_pos
+            && stamp_source_pos < stamp_brotli_pos
+            && stamp_brotli_pos < stamp_gzip_pos
+            && stamp_gzip_pos < js_compress_pos,
+        "finalize_web_dist.sh must compress .wasm first, stamp all three sizes, then compress JS assets"
+    );
+}
+
+#[test]
+fn test_bootstrap_guards_wasm_stream_header_length_and_wire_byte_counters() {
+    for contract in [
+        "WASM_MAGIC_BYTES = [0x00, 0x61, 0x73, 0x6d]",
+        "evaluateStreamCompletion",
+        "resolveWireByteTotal",
+        "scaleInFlightWireProgress",
+        "reconcileCompletedWireTotal",
+        "encodedBodySize",
+        "content-encoding",
+        "content-length",
+        "WASM_BROTLI_SIZE",
+        "WASM_GZIP_SIZE",
+    ] {
+        assert!(
+            BOOTSTRAP_JS.contains(contract),
+            "bootstrap.js must enforce stream validation and wire-byte progress contract: {contract}"
+        );
+    }
+}
+
+#[test]
+fn test_initializer_paces_polite_aria_buckets_and_clears_on_failure() {
+    for contract in [
+        "POLITE_MILESTONES = [25, 50, 75]",
+        "window.setTimeout(drainNextPoliteAnnouncement",
+        "window.clearTimeout(politeTimerId)",
+        "enqueueCrossedMilestones(100)",
+        "enqueueCrossedMilestones(pct)",
+        "cancelPendingAnnouncements",
+        "clearPendingPoliteAnnouncements",
+        "signal.addEventListener('abort', clearPendingPoliteAnnouncements",
+    ] {
+        assert!(
+            INITIALIZER_JS.contains(contract),
+            "initializer.js must pace 25/50/75% polite updates and clear pending announcements: {contract}"
+        );
+    }
+    assert!(
+        BOOTSTRAP_JS.contains("hooks?.cancelPendingAnnouncements?.()"),
+        "bootstrap.js must clear pending polite announcements when startup aborts or fails"
+    );
+}
+
+#[test]
+fn test_truncation_precedes_compile_error_and_internal_error_maps_to_compile() {
+    for (name, script) in [("reload.js", RELOAD_JS), ("bootstrap.js", BOOTSTRAP_JS)] {
+        let trunc_check = script
+            .find("STREAM_TRUNCATION_PATTERN.test(")
+            .unwrap_or_else(|| panic!("{name} must test STREAM_TRUNCATION_PATTERN"));
+        let compile_err_check = script
+            .find("WebAssembly.CompileError")
+            .unwrap_or_else(|| panic!("{name} must check WebAssembly.CompileError"));
+        assert!(
+            trunc_check < compile_err_check,
+            "{name} must classify stream truncation as network before WebAssembly.CompileError"
+        );
+
+        for token in [
+            "InternalError",
+            "out of memory",
+            "too much recursion",
+            "allocation size overflow",
+        ] {
+            assert!(
+                script.contains(token),
+                "{name} must route Firefox InternalError token '{token}' to compile recovery"
+            );
+        }
+    }
 }
