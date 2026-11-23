@@ -1,7 +1,7 @@
-# ADR 0045: Coupled Chaos Parameter Atlases and Zero-Allocation Lyapunov Kernels
+# ADR 0046: Coupled Chaos Parameter Atlases and Zero-Allocation Lyapunov Kernels
 
 ## Status
-Accepted (extends [ADR 0012](0012-background-simulation-worker-offload.md) and [ADR 0021](0021-inplace-row-softmax-allocation-elimination.md))
+Accepted (extends [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0021](0021-inplace-row-softmax-allocation-elimination.md), and [ADR 0044](0044-unify-build-time-traceability-engine.md))
 
 ## Context
 Three correctness, allocation, and responsiveness gaps affected the chaos domain (`crates/domain_physics/src/physics/chaos/`, `math_explorer/`, and `math_explorer_gui/src/tabs/chaos/`):
@@ -19,7 +19,7 @@ Three correctness, allocation, and responsiveness gaps affected the chaos domain
    - Add `#[verified_engine::verified] pub fn correlation_dimension_in_place(trajectory: &mut [Vector3<f64>], epsilon: f64) -> f64` in [`crates/domain_physics/src/physics/chaos/fractals.rs`](../../crates/domain_physics/src/physics/chaos/fractals.rs) sorting caller-provided scratch slices via stack-only `sort_unstable_by`, and delegate `correlation_dimension` to it.
    - Guard `n == 0`, non-finite inputs, and zero-derivative singularities in `logistic_lyapunov`, and clamp positive sub-step `evolution_time >= time_step`, handle converged separations ($d_t \to 0$) without heap error allocations, and perform bounded tangent warmup in `lorenz_lyapunov`.
    - Replace the hardcoded `self.rho > 24.74` check in `LorenzSystem::theory_description` with bounded `lorenz_lyapunov` classification driven by a stack-allocated `RungeKutta4<Vector3<f64>>` solver.
-   - Update [`math_explorer/examples/lorenz_chaos.rs`](../../math_explorer/examples/lorenz_chaos.rs) to report `lorenz_lyapunov` alongside trajectory divergence.
+   - Update [`math_explorer/examples/lorenz_chaos.rs`](../../math_explorer/examples/lorenz_chaos.rs) to report `lorenz_lyapunov` alongside trajectory divergence, and align `TraceabilityEngine::discover_workspace_dirs` in [`crates/oxidize_core/src/traceability.rs`](../../crates/oxidize_core/src/traceability.rs) with `IGNORED_TRACEABILITY_MEMBERS`.
 2. **Progressive Coupled Parameter Atlases in `math_explorer_gui`**:
    - Preserve separate Mandelbrot and Julia `(center, zoom)` viewports in `FractalViewer`, add `linked_explorer` (`#[serde(default)]`) with a live `96x72` hover Julia inset and click/`Enter` progressive teleportation.
    - Offload `BifurcationDiagram` sweeps into `BifurcationRunner` under `BackgroundWorker` (`8ms` cooperative `PlatformInstant::now()` slices) with `logistic_lyapunov` curve overlays and click-linked `LogisticMap` cobweb and $x_n$ orbit inspectors.
