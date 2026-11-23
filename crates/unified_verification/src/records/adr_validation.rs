@@ -9,7 +9,7 @@ use walkdir::WalkDir;
 const ADR_DIR_REL: &str = "docs/adr";
 const MIN_ADR_YEAR: u32 = 1970;
 const MAX_ADR_YEAR: u32 = 9999;
-const MAX_LEGACY_ADR_NUMBER: u16 = 47;
+const MAX_LEGACY_ADR_NUMBER: u16 = 46;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum AdrFilename {
