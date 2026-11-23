@@ -121,6 +121,17 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
         "dwarf_galaxy_empirical_dependencies.tex"
     );
 
+    let volumetric_links = resolve_portal_paper_links("VolumetricFieldStudioTool", "quantum");
+    assert!(volumetric_links
+        .iter()
+        .any(|l| l.paper_name == "gaussian_splatting.tex"));
+    assert!(volumetric_links
+        .iter()
+        .any(|l| l.paper_name == "isosurface_extraction.tex"));
+    assert!(volumetric_links
+        .iter()
+        .any(|l| l.paper_name == "quantum_mechanics.tex"));
+
     let cera_ext = resolve_citation_reference_links(
         "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)",
     );
@@ -302,8 +313,8 @@ fn test_all_registered_tools_render_clean_portal_latex_and_hyperlinks() {
 
     #[cfg(all(feature = "ai", feature = "physics", feature = "pure_math"))]
     assert!(
-        verified_tools >= 60,
-        "Expected >= 60 tools, got {verified_tools}"
+        verified_tools >= 65,
+        "Expected >= 65 tools, got {verified_tools}"
     );
     #[cfg(not(all(feature = "ai", feature = "physics", feature = "pure_math")))]
     assert!(verified_tools > 0);

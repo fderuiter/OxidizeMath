@@ -77,6 +77,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
             &["algorithmic_information_rust"]
         }
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
+        "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
         _ => &[],
     };
     tokens.extend(explicit.iter().map(|s| (*s).to_string()));
