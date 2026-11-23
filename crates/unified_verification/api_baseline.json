@@ -1358,7 +1358,107 @@
       "signature": "pub fn stirling_approximation_ln_factorial (_ : u64) -> f64"
     }
   ],
+  "crates/domain_applied/src/applied/battery_degradation/calibration.rs": [
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn calibrate_from_cycles < P : PointSeries + ? Sized > (& self , _ : & P , _ : DepthOfDischarge ,) -> Result < CalibratedAgingFit , FitError > }"
+    },
+    {
+      "signature": "pub fn calibrate_electrochemical_model < P : PointSeries + ? Sized > (_ : & ElectrochemicalAgingModel , _ : & P , _ : DepthOfDischarge ,) -> Result < CalibratedAgingFit , FitError >"
+    },
+    {
+      "signature": "pub struct CalibratedAgingFit"
+    }
+  ],
+  "crates/domain_applied/src/applied/battery_degradation/duty.rs": [
+    {
+      "signature": "impl DutySegment { pub fn commute () -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn fast_charge () -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn storage (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub const DAYS_PER_YEAR : f64"
+    },
+    {
+      "signature": "pub const MAX_DUTY_SEGMENTS : usize"
+    },
+    {
+      "signature": "pub fn estimate_duty_lifetime (_ : & ElectrochemicalAgingModel , _ : & [DutySegment] , _ : Capacity ,) -> DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub fn evaluate_duty_point (_ : & ElectrochemicalAgingModel , _ : & [DutySegment] , _ : f64 ,) -> DutyPointBreakdown"
+    },
+    {
+      "signature": "pub struct DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub struct DutyPointBreakdown"
+    },
+    {
+      "signature": "pub struct DutySegment"
+    }
+  ],
   "crates/domain_applied/src/applied/battery_degradation/mod.rs": [
+    {
+      "signature": "pub use calibration :: CalibratedAgingFit"
+    },
+    {
+      "signature": "pub use calibration :: calibrate_electrochemical_model"
+    },
+    {
+      "signature": "pub use duty :: DAYS_PER_YEAR"
+    },
+    {
+      "signature": "pub use duty :: DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub use duty :: DutyPointBreakdown"
+    },
+    {
+      "signature": "pub use duty :: DutySegment"
+    },
+    {
+      "signature": "pub use duty :: MAX_DUTY_SEGMENTS"
+    },
+    {
+      "signature": "pub use duty :: estimate_duty_lifetime"
+    },
+    {
+      "signature": "pub use duty :: evaluate_duty_point"
+    },
+    {
+      "signature": "pub use model :: ChemistryPreset"
+    },
+    {
+      "signature": "pub use model :: DegradationModel"
+    },
+    {
+      "signature": "pub use model :: ElectrochemicalAgingModel"
+    },
+    {
+      "signature": "pub use model :: MAX_C_RATE"
+    },
+    {
+      "signature": "pub use model :: MAX_EXPONENT_Z"
+    },
+    {
+      "signature": "pub use model :: MAX_TEMPERATURE_C"
+    },
+    {
+      "signature": "pub use model :: MIN_C_RATE"
+    },
+    {
+      "signature": "pub use model :: MIN_EXPONENT_Z"
+    },
+    {
+      "signature": "pub use model :: MIN_TEMPERATURE_C"
+    },
     {
       "signature": "pub use model :: PowerLawModel"
     },
@@ -1377,6 +1477,84 @@
   ],
   "crates/domain_applied/src/applied/battery_degradation/model.rs": [
     {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn activation_energy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn c_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn c_rate_exponent (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn exponent_z (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn preset (& self) -> ChemistryPreset }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn sei_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn temperature_c (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn arrhenius_factor (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn c_rate_stress_factor (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn coupled_capacity (& self , _ : Cycles , _ : DepthOfDischarge , _ : f64) -> Capacity }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn cycles_to_capacity (& self , _ : Capacity , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn cycling_loss (& self , _ : Cycles , _ : DepthOfDischarge) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn from_preset (_ : ChemistryPreset) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn new (_ : ChemistryPreset , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn sei_calendar_loss (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn temperature_k (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_c_rate (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_dod_law (self , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_exponent_z (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_kinetics (self , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_sei_rate (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_temperature_c (self , _ : f64) -> Self }"
+    },
+    {
       "signature": "impl PowerLawModel { pub fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
     },
     {
@@ -1392,6 +1570,36 @@
       "signature": "impl PowerLawModel { pub fn standard () -> Self }"
     },
     {
+      "signature": "pub const CELSIUS_TO_KELVIN : f64"
+    },
+    {
+      "signature": "pub const GAS_CONSTANT_R : f64"
+    },
+    {
+      "signature": "pub const MAX_C_RATE : f64"
+    },
+    {
+      "signature": "pub const MAX_EXPONENT_Z : f64"
+    },
+    {
+      "signature": "pub const MAX_TEMPERATURE_C : f64"
+    },
+    {
+      "signature": "pub const MIN_C_RATE : f64"
+    },
+    {
+      "signature": "pub const MIN_EXPONENT_Z : f64"
+    },
+    {
+      "signature": "pub const MIN_TEMPERATURE_C : f64"
+    },
+    {
+      "signature": "pub const REFERENCE_TEMPERATURE_K : f64"
+    },
+    {
+      "signature": "pub struct ElectrochemicalAgingModel"
+    },
+    {
       "signature": "pub struct PowerLawModel"
     },
     {
@@ -1405,6 +1613,41 @@
     },
     {
       "signature": "pub trait DegradationModel { fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "pub use preset :: ChemistryPreset"
+    }
+  ],
+  "crates/domain_applied/src/applied/battery_degradation/model/preset.rs": [
+    {
+      "signature": "impl ChemistryPreset { pub const ALL : [Self ; 4] }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_activation_energy (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_alpha (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_beta (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_c_rate_exponent (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_exponent_z (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_sei_rate (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn description (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum ChemistryPreset"
     }
   ],
   "crates/domain_applied/src/applied/battery_degradation/types.rs": [
@@ -7384,6 +7627,12 @@
       "signature": "pub use spin :: spin_from_bloch_angles"
     },
     {
+      "signature": "pub use tridiagonal :: CrankNicolsonPropagator1D"
+    },
+    {
+      "signature": "pub use tridiagonal :: TridiagonalHamiltonian1D"
+    },
+    {
       "signature": "pub use types :: QuantumOperator"
     },
     {
@@ -7424,6 +7673,74 @@
       "signature": "pub fn spin_from_bloch_angles (_ : f64 , _ : f64) -> QuantumState"
     }
   ],
+  "crates/domain_physics/src/physics/quantum/tridiagonal.rs": [
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn configure_dt (& mut self , _ : & TridiagonalHamiltonian1D , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn dt (& self) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn evolve_in_place (& mut self , _ : & mut QuantumState) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn evolve_substeps_in_place (& mut self , _ : & mut QuantumState , _ : usize) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn invalidate (& mut self) }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn new (_ : & TridiagonalHamiltonian1D , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn diagonal (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn expectation_value (& self , _ : & QuantumState) -> f64 }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn from_potential (_ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn from_potential_slice (_ : & [f64] , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn new (_ : Vec < f64 > , _ : Vec < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn off_diagonal (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn update_from_potential (& mut self , _ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn update_potential_in_place (& mut self , _ : & [f64] , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct CrankNicolsonPropagator1D"
+    },
+    {
+      "signature": "pub struct TridiagonalHamiltonian1D"
+    }
+  ],
   "crates/domain_physics/src/physics/quantum/types.rs": [
     {
       "signature": "impl QuantumOperator { pub fn commutator (& self , _ : & QuantumOperator) -> QuantumOperator }"
@@ -7454,6 +7771,9 @@
     },
     {
       "signature": "impl QuantumState { pub fn probability_density (& self) -> DVector < f64 > }"
+    },
+    {
+      "signature": "impl QuantumState { pub fn probability_density_in_place (& self , _ : & mut [f64]) }"
     },
     {
       "signature": "impl QuantumState { pub fn project_spatial_modes < const M : usize > (& self) -> [Complex < f64 > ; M] }"
