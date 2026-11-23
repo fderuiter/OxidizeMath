@@ -11,7 +11,7 @@ use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use crate::framework::{TimelineRingBuffer, DEFAULT_TIMELINE_RING_CAPACITY};
 use math_explorer::physics::chaos::double_pendulum::{
-    DoublePendulum, DoublePendulumBuilder, DoublePendulumState,
+    DoublePendulumBuilder, DoublePendulumState, DoublePendulumSystem,
 };
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use math_explorer::physics::chaos::rossler::{RosslerBuilder, RosslerState, RosslerSystem};
@@ -32,9 +32,9 @@ pub struct AttractorRunner {
     /// Shadow Rössler solver.
     pub rossler_shadow: RosslerSystem,
     /// Primary double-pendulum solver.
-    pub pendulum_primary: DoublePendulum,
+    pub pendulum_primary: DoublePendulumSystem,
     /// Shadow double-pendulum solver.
-    pub pendulum_shadow: DoublePendulum,
+    pub pendulum_shadow: DoublePendulumSystem,
     rk4_vec3: RungeKutta4<Vector3<f64>>,
     /// Shared configuration synchronized from UI controls.
     pub params: Arc<std::sync::RwLock<AttractorSharedParams>>,

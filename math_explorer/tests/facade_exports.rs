@@ -358,7 +358,8 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     };
     use math_explorer::physics::chaos::{
         DoublePendulumBuilder, DoublePendulumState, RosslerBuilder, RosslerState,
-        double_pendulum::DoublePendulum, rossler::RosslerSystem,
+        double_pendulum::{DoublePendulum, DoublePendulumSystem},
+        rossler::RosslerSystem,
     };
     use math_explorer::physics::error as inner_error;
 
@@ -366,7 +367,9 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     rossler.step(0.01);
     assert!(rossler.state.vec.x.is_finite());
 
-    let mut pendulum: DoublePendulum =
+    let canonical_pendulum = DoublePendulum::default();
+    assert!(canonical_pendulum.potential_energy(0.1, -0.1).is_finite());
+    let mut pendulum: DoublePendulumSystem =
         DoublePendulumBuilder::new().build(DoublePendulumState::new(2.2, 2.2, 0.0, 0.0));
     pendulum.step(0.005);
     assert!(pendulum.total_energy().is_finite());

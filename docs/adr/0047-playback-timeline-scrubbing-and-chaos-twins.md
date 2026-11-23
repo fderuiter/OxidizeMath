@@ -1,4 +1,4 @@
-# ADR 0046: Playback Timeline Scrubbing, Ring Buffers, and Twin Chaotic Trajectories
+# ADR 0047: Playback Timeline Scrubbing, Ring Buffers, and Twin Chaotic Trajectories
 
 ## Status
 
@@ -26,7 +26,7 @@ At the same time, OxidizeMath enforces strict invariants:
 3. **Cross-Platform `SimCommand::StepBack` and `SimCommand::SeekFrame` (`async_sim/`)**:
    - Extended `SimCommand`, `SimulationController`, and `worker.rs` so both native background workers and `wasm32` frame loops transition to `SimWorkerState::Ready`, restore the requested `TimelineRingBuffer` frame on the runner, and publish an updated `StateSnapshot`.
 4. **Verified Rössler & Double Pendulum Solvers and Twin Divergence UI**:
-   - Implemented `RosslerSystem` and `DoublePendulum` (over `ArrayState<4>` with pre-allocated `RungeKutta4` scratch buffers) alongside `double_pendulum_lyapunov` and `finite_time_lyapunov` in `crates/domain_physics/src/physics/chaos/`, re-exported through `math_explorer`.
+   - Implemented `RosslerSystem` and `DoublePendulumSystem` (`DoublePendulumBuilder` / `DoublePendulumState` over `ArrayState<4>` delegating canonical dynamics to `DoublePendulum` with pre-allocated `RungeKutta4` scratch buffers) alongside `double_pendulum_lyapunov` and `finite_time_lyapunov` in `crates/domain_physics/src/physics/chaos/`, re-exported through `math_explorer`.
    - Refactored `AttractorPlotter` into focused `< 500`-line submodules (`runner_types.rs`, `runner.rs`, `twin_state.rs`, `ui.rs`, `scrubber_ui.rs`, `divergence_plot.rs`, `preset.rs`) supporting primary + shadow 3D curves, symbolic `MathExpressionInputBar` initial offsets evaluated once outside stepping loops, Wolf $\lambda_1 t / \ln(10)$ reference slope, windowed FTLE, and on-demand Grassberger-Procaccia $C(r)$.
    - Excluded ring-buffer frames from `AttractorSaveState` so serialized preset/URL JSON remains `< 400` bytes.
 

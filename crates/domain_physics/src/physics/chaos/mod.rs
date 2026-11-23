@@ -28,11 +28,13 @@
 //!
 //! ## Modules
 //!
-//! *   **[Double Pendulum](double_pendulum)**: Planar two-link Lagrangian system exhibiting Hamiltonian angle-flip chaos.
+//! *   **[Double Pendulum](double_pendulum)**: Canonical non-separable Hamiltonian double pendulum and stateful trajectory stepper.
 //! *   **[Fractals](fractals)**: Geometric structures with fractional dimension (e.g., Cantor Set).
+//! *   **[Hénon-Heiles](henon_heiles)**: Separable 2-DOF galactic Hamiltonian with KAM islands and chaotic seas.
 //! *   **[Logistic Map](logistic)**: Discrete-time demographic model $x_{n+1} = r x_n (1 - x_n)$.
 //! *   **[Lorenz System](lorenz)**: Continuous-time atmospheric convection model (The "Butterfly" attractor).
 //! *   **[Metrics](metrics)**: Tools to quantify chaos (Lyapunov Exponents, FTLE, Correlation Dimension).
+//! *   **[Poincaré Sections](poincare)**: Zero-allocation cubic-Hermite surface-of-section detector.
 //! *   **[Rössler System](rossler)**: Continuous-time spiral-stretch-and-fold strange attractor.
 //!
 //! ##  Deep Dive: The Lorenz Attractor
@@ -73,12 +75,16 @@
 
 pub mod double_pendulum;
 pub mod fractals;
+pub mod henon_heiles;
 pub mod logistic;
 pub mod lorenz;
 pub mod metrics;
+pub mod poincare;
 pub mod rossler;
 
-pub use double_pendulum::{DoublePendulum, DoublePendulumBuilder, DoublePendulumState};
+pub use double_pendulum::{
+    DoublePendulum, DoublePendulumBuilder, DoublePendulumState, DoublePendulumSystem,
+};
 pub use lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 pub use rossler::{RosslerBuilder, RosslerState, RosslerSystem};
 
