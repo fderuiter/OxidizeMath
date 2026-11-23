@@ -46,6 +46,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             );
         }
         if repainted {
+            self.clear_stepped_state();
             ctx.request_repaint();
         }
     }

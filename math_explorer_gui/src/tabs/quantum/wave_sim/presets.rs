@@ -407,11 +407,11 @@ pub struct TunnelingObservables {
     pub left_wall_prob: f64,
 }
 
-/// Integrates `QuantumState::probability_density` into reflection, barrier, and transmission sums.
+/// Integrates a slice of Born probabilities $|\psi(x_i)|^2$ into reflection, barrier, and transmission sums.
 #[must_use]
-pub fn compute_tunneling_observables(
+pub fn compute_tunneling_observables_slice(
     x_axis: &[f64],
-    prob_density: &DVector<f64>,
+    prob_density: &[f64],
     x_left: f64,
     x_right: f64,
 ) -> TunnelingObservables {

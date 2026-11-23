@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "tests"))]
+
 use crate::app::ui_panels::render_help_window;
 use crate::command_palette::CommandPalette;
 use crate::starter_gallery::{show_starter_gallery_overlay, StarterCard};
@@ -341,3 +343,13 @@ fn test_legend_checkbox_accesskit_action_click_and_keyboard() {
         .hidden_items
         .is_empty());
 }
+
+#[cfg(all(feature = "physics", feature = "biology"))]
+#[path = "modal_accessibility_tests/helpers.rs"]
+mod helpers;
+#[cfg(all(feature = "physics", feature = "biology"))]
+#[path = "modal_accessibility_tests/pane_modals.rs"]
+mod pane_modals;
+#[cfg(all(feature = "physics", feature = "biology"))]
+#[path = "modal_accessibility_tests/shortcuts_and_overlays.rs"]
+mod shortcuts_and_overlays;

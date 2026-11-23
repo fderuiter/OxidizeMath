@@ -1,27 +1,28 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::{
-    barrier_interval_for_preset, default_compiled_expr, evaluate_potential_grid,
-    WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME,
-    DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS, GRID_X_MAX, GRID_X_MIN, SIGMA_MAX,
-    SIGMA_MIN,
+    barrier_interval_for_preset, compute_tunneling_observables_slice, default_compiled_expr,
+    evaluate_potential_grid, WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA,
+    DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS, GRID_X_MAX,
+    GRID_X_MIN, SIGMA_MAX, SIGMA_MIN,
 };
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_commons::ast::Expr;
 use math_explorer::physics::quantum::{
-    construct_1d_hamiltonian, evolve_state_in_place, gaussian_wavepacket, state_norm_squared,
-    time_evolution_operator, QuantumOperator, QuantumState,
+    gaussian_wavepacket, state_norm_squared, CrankNicolsonPropagator1D, QuantumState,
+    TridiagonalHamiltonian1D,
 };
-use nalgebra::{DMatrix, DVector};
+use math_explorer::registry::MAX_GRID_SIZE;
+use nalgebra::DVector;
 use num_complex::Complex;
 use std::any::Any;
 use std::sync::{Arc, RwLock};
 
-pub use super::presets::{
-    compute_tunneling_observables, TunnelingObservables, BARRIER_TRANSIT_THRESHOLD,
-    RIGHT_WALL_GUARD_X, WALL_ARRIVAL_THRESHOLD,
-};
+/// Number of unitary Crank-Nicolson substeps executed per `WaveRunner` step.
+pub const CN_SUBSTEPS: usize = 4;
+
+pub use super::presets::{TunnelingObservables, BARRIER_TRANSIT_THRESHOLD, WALL_ARRIVAL_THRESHOLD};
 
 /// Shared parameter bundle synchronized between [`super::WaveSimulatorTool`] and [`WaveRunner`].
 #[derive(Clone, Debug)]
@@ -100,10 +101,10 @@ pub struct WaveData {
 pub struct WaveRunner {
     pub(crate) config: Arc<RwLock<WaveSimConfig>>,
     pub(crate) psi: QuantumState,
-    pub(crate) hamiltonian: QuantumOperator,
-    pub(crate) propagator: QuantumOperator,
+    pub(crate) hamiltonian: TridiagonalHamiltonian1D,
+    pub(crate) propagator: CrankNicolsonPropagator1D,
     pub(crate) cached_dt: Option<f64>,
-    pub(crate) scratch: DVector<Complex<f64>>,
+    pub(crate) prob_scratch: Vec<f64>,
     pub(crate) potential: DVector<f64>,
     pub(crate) base_potential: Vec<f64>,
     pub(crate) x_axis: Vec<f64>,
@@ -134,13 +135,14 @@ impl WaveRunner {
     #[must_use]
     pub fn new(config: Arc<RwLock<WaveSimConfig>>) -> Self {
         let cfg = config.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let max_grid = MAX_GRID_SIZE.max(GRID_POINTS);
         let mut runner = Self {
             config,
             psi: QuantumState::new(DVector::from_element(GRID_POINTS, Complex::new(0.0, 0.0))),
-            hamiltonian: QuantumOperator::new(DMatrix::zeros(GRID_POINTS, GRID_POINTS)),
-            propagator: QuantumOperator::new(DMatrix::zeros(GRID_POINTS, GRID_POINTS)),
+            hamiltonian: TridiagonalHamiltonian1D::with_capacity(max_grid),
+            propagator: CrankNicolsonPropagator1D::with_capacity(max_grid),
             cached_dt: None,
-            scratch: DVector::from_element(GRID_POINTS, Complex::new(0.0, 0.0)),
+            prob_scratch: vec![0.0; max_grid],
             potential: DVector::zeros(GRID_POINTS),
             base_potential: vec![0.0; GRID_POINTS],
             x_axis: Vec::new(),
@@ -184,10 +186,13 @@ impl WaveRunner {
             &cfg.custom_expr,
         );
         self.sync_base_and_sparse_potential(&cfg.sparse_potential);
-        self.hamiltonian = construct_1d_hamiltonian(&self.potential, dx, 1.0, 1.0);
-        self.propagator = QuantumOperator::new(DMatrix::zeros(n, n));
+        self.hamiltonian
+            .update_from_potential(&self.potential, dx, 1.0, 1.0);
+        self.propagator.invalidate();
         self.cached_dt = None;
-        self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
+        if n > self.prob_scratch.len() {
+            self.prob_scratch.resize(n, 0.0);
+        }
 
         let finite_or = |v: f64, d: f64| if v.is_finite() { v } else { d };
         (self.x0, self.k0) = (finite_or(cfg.x0, DEFAULT_X0), finite_or(cfg.k0, DEFAULT_K0));
@@ -219,36 +224,28 @@ impl WaveRunner {
 
     pub(crate) fn refresh_propagator(&mut self, dt: f64) {
         if self.cached_dt != Some(dt) {
-            self.propagator = time_evolution_operator(&self.hamiltonian, dt, 1.0);
+            let sub_dt = dt / (CN_SUBSTEPS as f64);
+            self.propagator.configure_dt(&self.hamiltonian, sub_dt, 1.0);
             self.cached_dt = Some(dt);
         }
     }
 
     /// Updates Born R/B/T integrals and pre-wall `T_scatter` latch in-place with zero heap allocations.
     pub(crate) fn update_observables_in_place(&mut self) {
-        let mut obs = TunnelingObservables::default();
-        let vec_slice = self.psi.vector.as_slice();
-        for (&x, c) in self.x_axis.iter().zip(vec_slice.iter()) {
-            let p = c.norm_sqr();
-            if !p.is_finite() {
-                continue;
-            }
-            if x < self.x_left {
-                obs.reflection += p;
-            } else if x <= self.x_right {
-                obs.barrier_prob += p;
-            } else {
-                obs.transmission += p;
-            }
-            if x > RIGHT_WALL_GUARD_X {
-                obs.right_wall_prob += p;
-            } else if x < -RIGHT_WALL_GUARD_X {
-                obs.left_wall_prob += p;
-            }
+        let n = self.psi.vector.len();
+        if n <= self.prob_scratch.len() {
+            self.psi
+                .probability_density_in_place(&mut self.prob_scratch[..n]);
+            let obs = compute_tunneling_observables_slice(
+                &self.x_axis,
+                &self.prob_scratch[..n],
+                self.x_left,
+                self.x_right,
+            );
+            let prev = self.observables;
+            self.observables = obs;
+            self.update_scatter_latch(prev, obs);
         }
-        let prev = self.observables;
-        self.observables = obs;
-        self.update_scatter_latch(prev, obs);
     }
 
     fn update_scatter_latch(&mut self, prev: TunnelingObservables, obs: TunnelingObservables) {
@@ -308,7 +305,8 @@ impl WaveRunner {
         }
         self.refresh_propagator(dt);
         self.step_count += 1;
-        evolve_state_in_place(&mut self.psi, &self.propagator, &mut self.scratch);
+        self.propagator
+            .evolve_substeps_in_place(&mut self.psi, CN_SUBSTEPS);
         self.time += dt;
 
         if !self
@@ -348,16 +346,22 @@ impl WaveRunner {
         self.refresh_sonification(dt);
     }
 
-    /// Builds a structured [`WaveData`] snapshot integrating [`QuantumState::probability_density`].
+    /// Builds a structured [`WaveData`] snapshot integrating [`QuantumState::probability_density_in_place`].
     #[must_use]
     pub fn build_wave_data(&self) -> WaveData {
-        let prob_density = self.psi.probability_density();
-        let obs =
-            compute_tunneling_observables(&self.x_axis, &prob_density, self.x_left, self.x_right);
-        let safe_prob: Vec<f64> = prob_density
-            .iter()
-            .map(|&p| if p.is_finite() { p } else { 0.0 })
-            .collect();
+        let mut safe_prob = vec![0.0; self.psi.vector.len()];
+        self.psi.probability_density_in_place(&mut safe_prob);
+        let obs = compute_tunneling_observables_slice(
+            &self.x_axis,
+            &safe_prob,
+            self.x_left,
+            self.x_right,
+        );
+        for p in &mut safe_prob {
+            if !p.is_finite() {
+                *p = 0.0;
+            }
+        }
         let safe_potential: Vec<f64> = self
             .potential
             .iter()
