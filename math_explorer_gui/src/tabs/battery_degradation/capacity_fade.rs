@@ -31,7 +31,9 @@ struct CapacityFadeState {
 }
 
 impl InteractiveTool for CapacityFadeTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Capacity Fade"
     }
@@ -184,7 +186,6 @@ impl CapacityFadeTool {
 
 // [cite:mmwave_radiotherapy_setup]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "CapacityFadeTool",
@@ -202,9 +203,15 @@ impl scientific_metadata::theory::TheoryDescribable for CapacityFadeTool {
             self.dod, self.temperature
         )
     }
-    fn phonetic_description(&self) -> String { "Battery capacity fade power-law degradation theory".into() }
-    fn theory_citation(&self) -> String { "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Battery capacity fade power-law degradation theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 const STARTER_PRESET_JSON: &str = r#"{
@@ -307,4 +314,3 @@ mod tests {
         assert!(tool.try_load_state(&saved).is_ok());
     }
 }
-

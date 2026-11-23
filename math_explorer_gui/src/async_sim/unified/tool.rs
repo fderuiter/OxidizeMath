@@ -32,6 +32,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) cached_param_labels: Vec<String>,
     pub(super) cached_observable_label: Option<&'static str>,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(crate) atlas: Option<crate::async_sim::atlas::ParameterAtlasController>,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -88,6 +89,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             cached_param_labels,
             cached_observable_label: None,
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
+            atlas: Self::create_optional_atlas(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -321,6 +323,10 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                 val.to_bits().hash(&mut h);
             }
         }
+        if let Some(atlas) = &self.atlas {
+            atlas.is_visible().hash(&mut h);
+            atlas.axis_keys().hash(&mut h);
+        }
         self.custom_formula_enabled.hash(&mut h);
         if let Some(ref bar) = self.formula_bar {
             bar.raw_text.hash(&mut h);
@@ -351,6 +357,16 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.deserialize_tool_state(state)
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn clamp_parameters(&mut self) -> bool {

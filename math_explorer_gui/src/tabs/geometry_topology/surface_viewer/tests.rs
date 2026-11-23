@@ -8,6 +8,7 @@ fn surface_viewer_viewport_and_plot_export_work() {
     let ctx = egui::Context::default();
     let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show(ctx));
     assert!(!egui_plot::get_last_plot_datasets().is_empty());
+    assert!(!egui_plot::get_last_plot_datasets_3d().is_empty());
     assert!(!egui_plot::get_last_plot_primitives().is_empty());
 }
 
@@ -136,7 +137,9 @@ fn surface_viewer_custom_domain_bounds_mesh_obj_and_state_roundtrip() {
         v_resolution: 10,
         ..Default::default()
     };
-    tool.custom_sandbox.heightfield_bar.set_expression("x + 2 * y");
+    tool.custom_sandbox
+        .heightfield_bar
+        .set_expression("x + 2 * y");
     tool.custom_sandbox
         .set_uv_bounds(SurfaceType::CustomHeightfield, [1.0, 5.0], [-3.0, 4.0])
         .expect("valid domain bounds");
@@ -149,16 +152,20 @@ fn surface_viewer_custom_domain_bounds_mesh_obj_and_state_roundtrip() {
     let mut restored = SurfaceViewer::default();
     restored.try_load_state(&saved).expect("load state");
     assert_eq!(
-        restored.custom_sandbox.uv_domain_for(SurfaceType::CustomHeightfield),
+        restored
+            .custom_sandbox
+            .uv_domain_for(SurfaceType::CustomHeightfield),
         ((1.0, 5.0), (-3.0, 4.0))
     );
-    let (segs, _) = restored.ensure_projected_wireframe();
-    assert!(!segs.is_empty());
-    assert!(
-        tool.custom_sandbox
-            .set_uv_bounds(SurfaceType::CustomHeightfield, [4.0, 1.0], [-1.0, 1.0])
-            .is_err()
-    );
+    restored.populate_scene(egui::Color32::WHITE);
+    assert!(!restored
+        .scene_builder
+        .sorted_projected_segments()
+        .is_empty());
+    assert!(tool
+        .custom_sandbox
+        .set_uv_bounds(SurfaceType::CustomHeightfield, [4.0, 1.0], [-1.0, 1.0])
+        .is_err());
 }
 
 #[test]

@@ -30,7 +30,13 @@ from playwright.sync_api import (
     sync_playwright,
 )
 
+CONTAINER_SAFE_ARGS = [
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+]
+
 WEBGL_SWIFTSHADER_ARGS = [
+    *CONTAINER_SAFE_ARGS,
     "--enable-webgl",
     "--use-gl=angle",
     "--use-angle=swiftshader",
@@ -38,6 +44,7 @@ WEBGL_SWIFTSHADER_ARGS = [
 ]
 
 WEBGL_DISABLED_ARGS = [
+    *CONTAINER_SAFE_ARGS,
     "--disable-webgl",
     "--disable-webgl2",
     "--use-gl=angle",

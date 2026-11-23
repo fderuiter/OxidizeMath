@@ -2,10 +2,44 @@
 
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint, PlotPoints};
+use math_explorer::epidemiology::compartmental::SIRModel;
 use std::sync::Arc;
 
 use super::SirTool;
 use crate::reflective_ui::render_copyable_metric;
+
+/// Evaluates peak-infection local sensitivities and renders the sensitivity panel.
+pub(super) fn evaluate_sensitivity(ui: &mut egui::Ui, tool: &mut SirTool) {
+    let params = [
+        ("N", tool.n),
+        ("I0", tool.i0),
+        ("beta", tool.beta),
+        ("gamma", tool.gamma),
+    ];
+    let duration_bits = crate::sensitivity::canonical_f64_bits(tool.duration);
+
+    tool.sensitivity_engine
+        .compute_with_context(&params, &duration_bits, |p_map| {
+            let n = p_map.get("N").copied().unwrap_or(1000.0).max(1.0);
+            let i0 = p_map.get("I0").copied().unwrap_or(10.0).clamp(0.0, n);
+            let beta = p_map.get("beta").copied().unwrap_or(0.5).max(0.0);
+            let gamma = p_map.get("gamma").copied().unwrap_or(0.1).max(0.0001);
+
+            if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
+                let dt = 0.2;
+                let mut max_i: f64 = 0.0;
+                for _ in 0..250 {
+                    max_i = max_i.max(model.state().i);
+                    model.step(dt);
+                }
+                max_i
+            } else {
+                0.0
+            }
+        });
+
+    crate::sensitivity::render_sensitivity_panel_ui(ui, &tool.sensitivity_engine, "sir_tool");
+}
 
 /// Computes interpolated `(peak_day, peak_infected)` from simulated `Infected` points.
 pub(crate) fn compute_epidemic_peak(i_points: &[PlotPoint]) -> Option<(f64, f64)> {

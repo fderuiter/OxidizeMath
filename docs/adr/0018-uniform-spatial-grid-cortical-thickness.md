@@ -1,5 +1,9 @@
 # Architecture Decision Record 0018: Uniform Spatial Grid Partitioning for Cortical Thickness
 
+## Status
+
+Accepted
+
 ## Context
 In cortical thickness estimation for neuroimaging meshes (`crates/domain_applied/src/applied/freesurfer/thickness.rs`), calculating vertex-to-surface shortest distance previously performed an exhaustive linear scan over all surface vertices. For pairwise mesh comparisons across large cortical surfaces ($V$ vertices per mesh), this led to $O(V^2)$ computational complexity. When processing high-resolution cortical reconstructions, exhaustive pairwise distance calculation incurred excessive execution latency and poor computational scaling.
 
