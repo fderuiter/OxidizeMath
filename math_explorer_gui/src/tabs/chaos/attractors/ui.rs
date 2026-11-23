@@ -65,10 +65,7 @@ impl AttractorPlotter {
             }
 
             ui.separator();
-            let state = self.system.state.vec;
-            ui.label(format!("X: {:.2}", state.x));
-            ui.label(format!("Y: {:.2}", state.y));
-            ui.label(format!("Z: {:.2}", state.z));
+            self.draw_telemetry_and_handoff(ui, ctx);
         });
     }
 

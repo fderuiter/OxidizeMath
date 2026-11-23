@@ -10,7 +10,7 @@ use crate::framework::{
 };
 use egui_plot::PlotPoint;
 use math_commons::ast::{parse, CompiledExpr};
-use math_explorer::physics::chaos::logistic::{LogisticMap, ATTRACTOR_POINTS, TRANSIENT_STEPS};
+use math_explorer::physics::chaos::logistic::{ATTRACTOR_POINTS, TRANSIENT_STEPS};
 use math_explorer::physics::chaos::metrics::logistic_lyapunov;
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
@@ -103,15 +103,19 @@ fn sample_logistic_column(
     raw_lyapunov: &mut Vec<[f64; 2]>,
 ) {
     let safe_r = r.clamp(0.0, 4.0);
-    let mut map = LogisticMap::new(safe_r, 0.5);
+    let mut x = 0.5_f64;
     for _ in 0..TRANSIENT_STEPS {
-        map.next();
+        x = safe_r * x * (1.0 - x);
     }
-    let col_start = points.len();
+    let mut seen_bins = [0_u64; 8];
     for _ in 0..ATTRACTOR_POINTS {
-        if let Some(x) = map.next().filter(|v| v.is_finite()) {
+        x = safe_r * x * (1.0 - x);
+        if x.is_finite() {
             let y = x.clamp(0.0, 1.0);
-            if !points[col_start..].iter().any(|p| (p.y - y).abs() < 2e-3) {
+            let bin = ((y * 500.0).round() as usize).min(500);
+            let mask = 1_u64 << (bin & 63);
+            if seen_bins[bin >> 6] & mask == 0 {
+                seen_bins[bin >> 6] |= mask;
                 points.push(PlotPoint::new(safe_r, y));
             }
         }

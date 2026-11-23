@@ -80,7 +80,7 @@ fn test_lorenz_regime_map_progressive_strides_and_teleport() {
     let mut runner = LorenzRegimeMapRunner::new(Arc::clone(&shared), Arc::clone(&latest));
 
     let mut strides = Vec::new();
-    for _ in 0..32 {
+    for _ in 0..128 {
         runner.step();
         let snap = runner.get_snapshot();
         let meta = snap

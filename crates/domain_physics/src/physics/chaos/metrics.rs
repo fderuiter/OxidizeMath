@@ -1,6 +1,5 @@
 //! Quantifying Chaos (Lyapunov Exponents)
 
-use super::logistic::LogisticMap;
 use crate::error::ChaosError;
 use nalgebra::Vector3;
 use pure_math::pure_math::analysis::ode::{OdeSystem, Solver, SolverExt};
@@ -23,12 +22,12 @@ pub fn logistic_lyapunov(r: f64, x0: f64, n: usize) -> f64 {
         return 0.0;
     }
 
-    let mut map = LogisticMap::new(r, x0);
+    let mut x = x0;
     let mut sum_logs = 0.0;
+    let mut prod = 1.0_f64;
     let mut valid_steps = 0_usize;
 
     for _ in 0..n {
-        let x = map.state;
         if !x.is_finite() {
             break;
         }
@@ -37,21 +36,23 @@ pub fn logistic_lyapunov(r: f64, x0: f64, n: usize) -> f64 {
         if !derivative.is_finite() {
             break;
         }
-        sum_logs += derivative.ln();
+        prod *= derivative;
+        if !(1e-100..=1e100).contains(&prod) {
+            sum_logs += prod.ln();
+            prod = 1.0;
+        }
         valid_steps += 1;
-        map.next();
+        x = r * x * (1.0 - x);
     }
 
     if valid_steps == 0 {
         0.0
     } else {
+        if prod != 1.0 {
+            sum_logs += prod.ln();
+        }
         sum_logs / valid_steps as f64
     }
-}
-
-#[verified_engine::verified]
-fn is_finite_vec3(v: &Vector3<f64>) -> bool {
-    v.x.is_finite() && v.y.is_finite() && v.z.is_finite()
 }
 
 #[verified_engine::verified]
@@ -70,7 +71,13 @@ where
     for _ in 0..steps_per_iter {
         *current_state = solver.solve(system, 0.0, current_state, time_step);
         *shadow_state = solver.solve(system, 0.0, shadow_state, time_step);
-        if !is_finite_vec3(current_state) || !is_finite_vec3(shadow_state) {
+        if !current_state.x.is_finite()
+            || !current_state.y.is_finite()
+            || !current_state.z.is_finite()
+            || !shadow_state.x.is_finite()
+            || !shadow_state.y.is_finite()
+            || !shadow_state.z.is_finite()
+        {
             return None;
         }
     }
@@ -126,7 +133,11 @@ where
             "time_step and evolution_time must be finite and positive".to_string(),
         ));
     }
-    if iterations == 0 || !is_finite_vec3(&initial_state) {
+    if iterations == 0
+        || !initial_state.x.is_finite()
+        || !initial_state.y.is_finite()
+        || !initial_state.z.is_finite()
+    {
         return Ok(0.0);
     }
 
@@ -138,7 +149,7 @@ where
     let mut shadow_state = current_state + Vector3::new(INITIAL_SHADOW_SEPARATION, 0.0, 0.0);
 
     let warmup_iters = if iterations >= 4 {
-        ((6.0 / step_duration).ceil() as usize).clamp(1, iterations)
+        ((4.0 / step_duration).ceil() as usize).clamp(1, iterations.min(12))
     } else {
         0
     };

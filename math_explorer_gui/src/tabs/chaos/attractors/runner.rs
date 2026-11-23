@@ -4,7 +4,12 @@ use super::flow::{AttractorMode, CompiledFlowJob};
 use super::serde_vec3;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
+use crate::tabs::geometry_topology::vietoris_rips::{
+    handoff::{publish_live_attractor_landmarks, ChaosLandmarkHandoff},
+    MAX_CHAOS_LANDMARKS,
+};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
+use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -199,6 +204,22 @@ impl SimulationRunner for AttractorRunner {
         for _ in 0..simulation_speed {
             if !self.advance_tick(dt, max_points, mode, custom_flow.as_deref()) {
                 break;
+            }
+        }
+        if self.history.len() >= 16 && self.step_count % 15 < simulation_speed {
+            let pts: Vec<Point3D> = self
+                .history
+                .iter()
+                .map(|v| Point3D::new(v.x, v.y, v.z))
+                .collect();
+            if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
+                publish_live_attractor_landmarks(ChaosLandmarkHandoff {
+                    points: landmarks,
+                    sigma: self.system.sigma,
+                    rho: self.system.rho,
+                    beta: self.system.beta,
+                    dt,
+                });
             }
         }
     }

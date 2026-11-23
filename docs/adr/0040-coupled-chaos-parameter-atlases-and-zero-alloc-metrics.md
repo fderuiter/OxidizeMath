@@ -1,4 +1,4 @@
-# ADR 0039: Coupled Chaos Parameter Atlases and Zero-Allocation Lyapunov Kernels
+# ADR 0040: Coupled Chaos Parameter Atlases and Zero-Allocation Lyapunov Kernels
 
 ## Status
 Accepted (extends [ADR 0012](0012-background-simulation-worker-offload.md) and [ADR 0021](0021-inplace-row-softmax-allocation-elimination.md))
