@@ -307,7 +307,7 @@ impl FabricationStudioTool {
 
     fn draw_telemetry_and_export_buttons(&mut self, ui: &mut egui::Ui) {
         self.ensure_artifact();
-        if let Some(art) = &self.cached_artifact {
+        if let Ok(art) = self.artifact_or_build() {
             let saved_pct = if art.raw_travel_mm > 1e-6 {
                 ((art.raw_travel_mm - art.active_travel_mm) / art.raw_travel_mm * 100.0).max(0.0)
             } else {
@@ -361,7 +361,7 @@ impl FabricationStudioTool {
         let travel_color = palette.warning.linear_multiply(0.65);
         let sheet_color = palette.series_color(2).linear_multiply(0.55);
 
-        let Some(art) = self.cached_artifact.clone() else {
+        let Ok(art) = self.artifact_or_build() else {
             if let Some(ref err) = self.last_error {
                 ui.colored_label(palette.error, err);
             }

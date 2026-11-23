@@ -45,8 +45,8 @@ include!(concat!(env!("OUT_DIR"), "/generated_tabs.rs"));
 ///         "My Tab"
 ///     }
 ///
-///     fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-///         egui::CentralPanel::default().show(ctx, |ui| {
+///     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+///         egui::CentralPanel::default().show_inside(ui, |ui| {
 ///             ui.heading("My Tab");
 ///             if ui.button("Increment").clicked() {
 ///                 self.counter += 1;
@@ -60,21 +60,8 @@ pub trait ExplorerTab {
     /// Returns the name of the tab, displayed in the navigation bar.
     fn name(&self) -> &'static str;
 
-    /// Renders the content of the tab at the root `egui::Context` level.
-    ///
-    /// By default, this creates a frameless root `CentralPanel` and delegates to [`Self::show_inside`].
-    fn show(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
-            .show(ctx, |ui| {
-                self.show_inside(ui, frame);
-            });
-    }
-
     /// Renders the content of the tab inside a scoped parent `egui::Ui` (such as a multi-pane viewport region).
-    fn show_inside(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.show(ui.ctx(), frame);
-    }
+    fn show_inside(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame);
 
     /// Monotonic or deterministic revision token for persisted tab state (`0` if untracked).
     fn state_revision(&self) -> u64 {
@@ -97,14 +84,17 @@ pub trait ExplorerTab {
     /// Academic domain category of the tab for top navigation bar grouping.
     fn academic_domain(&self) -> &'static str {
         match self.name() {
-            "Analysis & Calculus"
+            "Algorithmic Information"
+            | "Analysis & Calculus"
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
             | "Number Theory" => "Pure Math",
 
-            "Chaos Theory"
+            "Astrophysics"
+            | "Chaos Theory"
             | "Fluid Dynamics"
+            | "General Relativity"
             | "Medical Physics"
             | "MRI Physics"
             | "Quantum Mechanics"
@@ -114,6 +104,7 @@ pub trait ExplorerTab {
             | "Clinical Trials"
             | "Favoritism"
             | "Game Theory"
+            | "Paradox Lab"
             | "Traceability Portal" => "Applied Math",
 
             "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
@@ -155,11 +146,33 @@ pub trait ExplorerTab {
         }
     }
 
+    /// Applies either a starter card or inverse challenge selection from `StarterGallery`.
+    fn apply_starter_gallery_selection(
+        &mut self,
+        ctx: &egui::Context,
+        id_source: &str,
+        is_open: bool,
+        selected: Option<crate::starter_gallery::GallerySelection>,
+    ) {
+        match selected {
+            Some(crate::starter_gallery::GallerySelection::Starter(card)) => {
+                self.apply_starter_gallery_outcome(ctx, id_source, is_open, Some(card));
+            }
+            other => {
+                if let Some(fw) = self.framework_mut() {
+                    fw.apply_starter_gallery_selection(ctx, id_source, is_open, other);
+                }
+            }
+        }
+    }
+
     /// Canonical URL slug identifying this tab in `#tab=<slug>` share links.
     fn url_slug(&self) -> &'static str {
         match self.name() {
             "Artificial Intelligence" => "ai",
+            "Algorithmic Information" => "algorithmic_information",
             "Analysis & Calculus" => "analysis",
+            "Astrophysics" => "astrophysics",
             "Battery Degradation" => "battery_degradation",
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
@@ -169,6 +182,7 @@ pub trait ExplorerTab {
             "Financial Math" => "financial_math",
             "Fluid Dynamics" => "fluid_dynamics",
             "Game Theory" => "game_theory",
+            "General Relativity" => "relativity",
             "Geometry & Topology" => "geometry_topology",
             "Graph Theory" => "graph_theory",
             "Medical Physics" => "medical",
@@ -176,6 +190,7 @@ pub trait ExplorerTab {
             "MRI Physics" => "mri",
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
+            "Paradox Lab" => "paradox_lab",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
             "Traceability Portal" => "traceability",
@@ -186,6 +201,11 @@ pub trait ExplorerTab {
     /// Active `InteractiveTool` identifier for `#tool=<id>` share links (`None` for single-view tabs).
     fn active_tool_id(&self) -> Option<&'static str> {
         self.framework().and_then(|fw| fw.active_tool_id())
+    }
+
+    /// Active inverse `ChallengeMetadata` identifier for `#challenge=<id>` share links.
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.framework().and_then(|fw| fw.active_challenge_id())
     }
 
     /// Deterministic parameter-only revision token for 300 ms debounced URL sync.
@@ -200,6 +220,38 @@ pub trait ExplorerTab {
             Some(fw) => fw.export_url_preset_json(),
             None => Ok(None),
         }
+    }
+
+    /// Encodes a `#tab=<slug>...` URL fragment for this tab (including active story or challenge IDs when present).
+    fn encode_url_share_fragment(&self) -> Result<String, String> {
+        if let Some(fw) = self.framework() {
+            return fw.encode_share_fragment_for_tab(self.url_slug());
+        }
+        let preset_json = self.export_url_preset_json()?;
+        crate::url_state::encode_share_fragment(
+            self.url_slug(),
+            self.active_tool_id(),
+            preset_json.as_deref(),
+        )
+    }
+
+    /// Validates and applies `ShareUrlParams` (supporting `&preset=`, `&challenge=`, `&step=`, and `&state=`).
+    fn import_url_share_params(
+        &mut self,
+        params: &crate::url_state::ShareUrlParams,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
+        if params.preset.is_none() && params.challenge.is_none() {
+            return self
+                .import_url_preset_json(params.tool.as_deref(), params.state_json.as_deref());
+        }
+        if let Some(fw) = self.framework_mut() {
+            return fw.import_url_share_params(params, ctx);
+        }
+        Err(format!(
+            "Tab '{}' does not support story presets or challenges",
+            self.name()
+        ))
     }
 
     /// Validates and applies a shared URL tool identifier and `PresetWrapper` JSON payload.

@@ -166,7 +166,8 @@ mod tests {
 
         let v = 0.8;
         let j = dist.virtual_valuation(v);
-        assert!((j - (2.0 * v - 1.0)).abs() < math_commons::registry::TOLERANCE_STANDARD); // J(0.8) = 0.6.
+        assert!((j - (2.0 * v - 1.0)).abs() < math_commons::registry::TOLERANCE_STANDARD);
+        // J(0.8) = 0.6.
     }
 
     #[test]
@@ -208,5 +209,54 @@ mod tests {
         // Should return upper bound (40) as J is increasing and negative.
         let r = optimal_reserve_price(&dist, 0.0, 40.0);
         assert!((r - 40.0).abs() < 1e-4);
+    }
+
+    #[verified_engine::verified]
+    fn compose_auction_and_payoff_check<D: ValuationDistribution>(
+        dist: &D,
+        rows: usize,
+        cols: usize,
+        lower_bound: f64,
+        upper_bound: f64,
+    ) -> Result<f64, crate::error::AppliedError> {
+        if rows != cols {
+            Err(crate::error::GameTheoryError::NonSquarePayoffMatrix { rows, cols })?;
+        }
+        let solver = Bisection::default();
+        let reserve = optimal_reserve_price_with_solver(dist, lower_bound, upper_bound, &solver)?;
+        Ok(reserve)
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_mechanism_design_composes_with_applied_error_and_diagnostic_bus() {
+        use diagnostics::DiagnosticBus;
+        use std::error::Error as StdError;
+        use std::sync::{Arc, Mutex};
+
+        let dist = Uniform::new(0.0, 100.0).unwrap();
+        let ok_reserve = compose_auction_and_payoff_check(&dist, 2, 2, 0.0, 100.0).unwrap();
+        assert!((ok_reserve - 50.0).abs() < 1e-4);
+
+        let game_err = compose_auction_and_payoff_check(&dist, 2, 3, 0.0, 100.0).unwrap_err();
+        assert!(game_err.source().is_some());
+
+        let analysis_err = compose_auction_and_payoff_check(&dist, 2, 2, 60.0, 100.0).unwrap_err();
+        assert!(analysis_err.source().is_some());
+
+        let bus = DiagnosticBus::new();
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&captured);
+        bus.register_listener(move |diag| {
+            sink.lock().unwrap().push((
+                diag.metadata.get("source").cloned(),
+                diag.metadata.get("umbrella_type").cloned(),
+            ));
+        });
+        bus.emit_diagnostic_with_source("mechanism_design", &analysis_err);
+        let events = captured.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].0.as_deref(), Some("mechanism_design"));
+        assert_eq!(events[0].1.as_deref(), Some("AppliedError"));
     }
 }

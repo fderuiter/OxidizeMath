@@ -13,20 +13,22 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
+pub mod cargo_cli_checks;
+mod cargo_cli_parser;
+pub mod catalog_and_guide_checks;
 pub mod facade_imports;
+pub mod manifest_model;
+pub mod toml_dep_checks;
+pub mod trait_contracts;
 
+#[cfg(test)]
+mod guide_gate_tests;
 #[cfg(test)]
 mod tests;
 
-/// Default allowlist of legacy or application workspace crates exempt from
-/// standardized architectural headings while awaiting manual authoring.
-pub const DEFAULT_LEGACY_ALLOWLIST: &[&str] = &[
-    "crates/diagnostics",
-    "egui_plot",
-    "apps/xtask",
-    "math_explorer",
-    "math_explorer_gui",
-];
+/// Default allowlist of vendored workspace crates exempt from
+/// standardized OxidizeMath architectural headings.
+pub const DEFAULT_LEGACY_ALLOWLIST: &[&str] = &["egui_plot"];
 
 /// Minimum required lines for a standard crate README.
 pub const MIN_README_LINES: usize = 30;
@@ -245,8 +247,19 @@ pub fn audit_crate(crate_name: &str, crate_dir: &Path, is_allowlisted: bool) -> 
     report
 }
 
-/// Main entrypoint to audit all workspace crates.
+/// Main entrypoint to audit all discovered workspace crates.
 pub fn run_doc_audit(args: &[String]) -> bool {
+    let (workspace_root, members) = crate::manifest_cache::discover_workspace();
+    run_doc_audit_in_base(&workspace_root, &members, args)
+}
+
+/// Audits an explicit slice of `members` relative to the active workspace root.
+pub fn run_doc_audit_for_members(members: &[String], args: &[String]) -> bool {
+    let workspace_root = crate::manifest_cache::workspace_root_dir();
+    run_doc_audit_in_base(&workspace_root, members, args)
+}
+
+fn run_doc_audit_in_base(workspace_root: &Path, members: &[String], args: &[String]) -> bool {
     println!("=== Automated Crate Documentation Verification Gate ===");
 
     let staging_mode = args
@@ -260,8 +273,6 @@ pub fn run_doc_audit(args: &[String]) -> bool {
     if strict_mode {
         println!("Running in strict mode (all crates must satisfy full architecture headings).");
     }
-
-    let (workspace_root, members) = crate::manifest_cache::discover_workspace();
     if members.is_empty() {
         eprintln!("[!] No workspace members discovered.");
         return false;
@@ -280,21 +291,25 @@ pub fn run_doc_audit(args: &[String]) -> bool {
     };
 
     let mut report = AuditReport::new();
-
-    for member in &members {
+    for member in members {
         let crate_dir = crate::manifest_cache::resolve_workspace_path_from(workspace_root, member);
         let is_allowlisted = allowlist.contains(member) || staging_mode;
-
-        let crate_report = audit_crate(member, &crate_dir, is_allowlisted);
-        report.extend(crate_report.violations);
+        report.extend(audit_crate(member, &crate_dir, is_allowlisted).violations);
     }
 
     report.extend(facade_imports::audit_facade_import_hygiene(workspace_root));
+    report.extend(facade_imports::audit_workspace_guides_and_manifests(
+        workspace_root,
+    ));
 
+    print_doc_audit_summary(&report, members.len())
+}
+
+fn print_doc_audit_summary(report: &AuditReport, member_count: usize) -> bool {
     if report.is_success() {
         println!(
             "[OK] All {} workspace crates passed documentation verification.",
-            members.len()
+            member_count
         );
         true
     } else {

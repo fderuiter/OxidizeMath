@@ -1,9 +1,18 @@
-#![allow(missing_docs)]
-use domain_physics::physics::mri::reconstruction::{inverse_dft_2d, simulate_signal_2d};
+//! Integration tests for measure mri.
+use domain_physics::physics::mri::phantom::fill_shepp_logan_grid;
+use domain_physics::physics::mri::reconstruction::{
+    Fft2dWorkspace, fftshift_2d_into, ifftshift_2d_into, inverse_dft_2d, simulate_signal_2d,
+};
 use nalgebra::DMatrix;
 use num_complex::Complex;
 use std::f64::consts::PI;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant};
+use verified_engine::allocator::VerifiedAllocator;
+use verified_engine::engine::VerifiedEngine;
+
+#[global_allocator]
+static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
 #[verified_engine::verified]
@@ -21,16 +30,20 @@ fn measure_mri_dft_performance() {
     });
 
     println!("Running simulate_signal_2d for {}x{} matrix...", size, size);
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
     let start_sim = Instant::now();
     let signal = simulate_signal_2d(&density);
-    let duration_sim = start_sim.elapsed();
-    println!("simulate_signal_2d took: {:?}", duration_sim);
+    #[cfg(not(target_arch = "wasm32"))]
+    println!("simulate_signal_2d took: {:?}", start_sim.elapsed());
 
     println!("Running inverse_dft_2d for {}x{} matrix...", size, size);
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
     let start_inv = Instant::now();
     let reconstructed = inverse_dft_2d(&signal);
-    let duration_inv = start_inv.elapsed();
-    println!("inverse_dft_2d took: {:?}", duration_inv);
+    #[cfg(not(target_arch = "wasm32"))]
+    println!("inverse_dft_2d took: {:?}", start_inv.elapsed());
 
     // Verify basic correctness (round trip)
     // The naive implementation in mri.rs doesn't normalize by 1/(N*M).
@@ -198,17 +211,21 @@ fn test_mri_256x256_roundtrip_scaling_guard() {
         Complex::new(re, im)
     });
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
     let start = Instant::now();
     let k_space = simulate_signal_2d(&density);
     let reconstructed = inverse_dft_2d(&k_space);
-    let elapsed = start.elapsed();
-    println!("256x256 MRI FFT round-trip took: {:?}", elapsed);
-
-    assert!(
-        elapsed < Duration::from_secs(2),
-        "256x256 round-trip exceeded latency budget: {:?}",
-        elapsed
-    );
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let elapsed = start.elapsed();
+        println!("256x256 MRI FFT round-trip took: {:?}", elapsed);
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "256x256 round-trip exceeded latency budget: {:?}",
+            elapsed
+        );
+    }
 
     let scale = (size * size) as f64;
     for (orig, recon) in density.iter().zip(reconstructed.iter()) {
@@ -217,4 +234,95 @@ fn test_mri_256x256_roundtrip_scaling_guard() {
             "256x256 round-trip reconstruction error exceeded tolerance"
         );
     }
+}
+
+#[verified_engine::verified]
+fn verify_zero_alloc_workspace_grid(size: usize) {
+    let mut rho = vec![0.0; size * size];
+    let mut t1 = vec![0.0; size * size];
+    let mut t2 = vec![0.0; size * size];
+    fill_shepp_logan_grid(size, size, &mut rho, &mut t1, &mut t2);
+
+    let density = DMatrix::from_fn(size, size, |r, c| {
+        Complex::new(
+            rho[math_commons::math_kernel::types::flatten_2d_index(c, r, size)],
+            0.0,
+        )
+    });
+    let mut ws = Fft2dWorkspace::new(size, size);
+    let mut k_raw = DMatrix::zeros(size, size);
+    let mut k_shifted = DMatrix::zeros(size, size);
+    let mut k_unshifted = DMatrix::zeros(size, size);
+    let mut recon = DMatrix::zeros(size, size);
+
+    let ((), _metrics) = VerifiedEngine::run_verified(|| {
+        ws.simulate_signal_2d_into(&density, &mut k_raw);
+        fftshift_2d_into(&k_raw, &mut k_shifted);
+        ifftshift_2d_into(&k_shifted, &mut k_unshifted);
+        ws.reconstruct_normalized_2d_into(&k_unshifted, &mut recon);
+    });
+
+    assert_eq!((ws.rows(), ws.cols()), (size, size));
+    for (orig, rec) in density.iter().zip(recon.iter()) {
+        assert!(
+            (*rec - *orig).norm() < 1e-10,
+            "Zero-alloc {size}x{size} round-trip mismatch"
+        );
+    }
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_fft2d_workspace_zero_allocation_64_and_128() {
+    verify_zero_alloc_workspace_grid(64);
+    verify_zero_alloc_workspace_grid(128);
+
+    let mut ws = Fft2dWorkspace::new(0, 0);
+    let empty = DMatrix::zeros(0, 0);
+    let mut out = DMatrix::zeros(0, 0);
+    ws.simulate_signal_2d_into(&empty, &mut out);
+    ws.resize(7, 5);
+    let odd = DMatrix::from_fn(7, 5, |r, c| Complex::new((r * 5 + c) as f64, -0.5));
+    let mut shifted = DMatrix::zeros(7, 5);
+    let mut unshifted = DMatrix::zeros(7, 5);
+    fftshift_2d_into(&odd, &mut shifted);
+    ifftshift_2d_into(&shifted, &mut unshifted);
+    assert_eq!(odd, unshifted);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_mri_128x128_pass_sub_millisecond() {
+    let size = 128;
+    let total = size * size;
+    let mut bloch =
+        domain_physics::physics::mri::bloch::BlochSimulator::new(nalgebra::Vector3::zeros(), 1.0);
+    let mut rho = vec![0.0; total];
+    let mut t1 = vec![1.0; total];
+    let mut t2 = vec![0.1; total];
+    fill_shepp_logan_grid(size, size, &mut rho, &mut t1, &mut t2);
+    let exp_t1: Vec<f64> = t1.iter().map(|&v| (-0.002 / v.max(1e-4)).exp()).collect();
+    let exp_t2: Vec<f64> = t2.iter().map(|&v| (-0.002 / v.max(1e-4)).exp()).collect();
+    let delta_b0 = vec![0.0; total];
+    let mut spins = vec![[nalgebra::Vector3::new(0.0, 0.8, 0.2); 3]; total];
+    let mut trans = DMatrix::zeros(size, size);
+    let mut out_kspace = vec![Complex::new(0.0, 0.0); total];
+    let mut recon_mag = vec![0.0; total];
+    let mut ws128 = Fft2dWorkspace::new(size, size);
+
+    let ((), _metrics) = VerifiedEngine::run_verified(|| {
+        bloch.advance_isochromat_grid(&mut spins, &rho, &exp_t1, &exp_t2, &delta_b0, 0.85, 0.002);
+        for ((ens, out), mag) in spins
+            .iter()
+            .zip(trans.as_mut_slice().iter_mut())
+            .zip(recon_mag.iter_mut())
+        {
+            let mx = (ens[0].x + ens[1].x + ens[2].x) * (1.0 / 3.0);
+            let my = (ens[0].y + ens[1].y + ens[2].y) * (1.0 / 3.0);
+            *out = Complex::new(mx, my);
+            *mag = (mx * mx + my * my).sqrt();
+        }
+        ws128.forward_transposed_in_place(&mut trans, &mut out_kspace);
+    });
+    assert!(recon_mag.iter().any(|&v| v > 0.1));
 }

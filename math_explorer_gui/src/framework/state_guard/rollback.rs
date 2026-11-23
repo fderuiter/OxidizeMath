@@ -88,6 +88,7 @@ impl SimulationFramework {
         };
         let (details, used_fallback) =
             self.restore_verified_recovery_state(snapshot.tool_state.as_deref());
+        self.bump_plot_sync_generation();
         self.bump_framework_revision();
         let plots =
             if !used_fallback && inspect_datasets_for_divergence(&snapshot.plot_datasets).is_ok() {
@@ -124,6 +125,7 @@ impl SimulationFramework {
             let (_, fb) = self.restore_verified_recovery_state(snapshot.tool_state.as_deref());
             used_fallback = fb;
         }
+        self.bump_plot_sync_generation();
         self.bump_framework_revision();
         let plots =
             if !used_fallback && inspect_datasets_for_divergence(&snapshot.plot_datasets).is_ok() {
@@ -155,6 +157,7 @@ impl SimulationFramework {
         self.current_valid_plot_datasets = plot_datasets;
         self.is_diverged = false;
         self.diagnostic_report = None;
+        self.resync_active_hud_callouts();
     }
 
     /// Coordinates parameter clamping on the active tool via domain hooks or JSON bounds fallback.
@@ -247,10 +250,13 @@ impl SimulationFramework {
         }
         egui_plot::clear_last_plot_datasets();
         self.current_valid_plot_datasets.clear();
+        self.current_valid_plot_datasets_3d.clear();
         self.sync_state.datasets_owner_tool = None;
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.step_counter = 0;
+        self.reset_active_tool_manual_bounds();
+        self.on_hud_parameters_reset();
         self.refresh_saved_and_snapshot_after_reset();
         emit_recovery_telemetry(
             "SimulationFramework",
@@ -340,6 +346,7 @@ impl SimulationFramework {
         match res {
             Ok(()) => {
                 self.preset_dialog.toast_error = None;
+                self.reset_active_tool_manual_bounds();
                 self.sync_active_baseline();
                 Ok(())
             }
@@ -388,7 +395,11 @@ impl SimulationFramework {
                 self.preset_dialog.record_import_error(msg.clone());
                 return Err(msg);
             }
+            self.active_challenge = None;
+            self.challenge_was_passed = false;
+            let _ = tool.apply_challenge(None);
             self.preset_dialog.toast_error = None;
+            self.reset_active_tool_manual_bounds();
             self.sync_active_baseline();
         }
         self.show_starter_gallery = false;
@@ -420,19 +431,33 @@ impl SimulationFramework {
             new_tool.name().to_string(),
             new_tool.theory().theory_citation(),
         );
+        self.active_challenge = None;
+        self.challenge_was_passed = false;
         self.selected_tool_index = Some(idx);
         self.active_tool = Some(new_tool);
         self.preset_dialog.toast_error = None;
+        self.reset_active_tool_manual_bounds();
         self.sync_active_baseline();
         Ok(())
     }
 
     /// Rebuilds a clean target tool instance for a starter card, applies its preset JSON,
-    /// and synchronizes baseline/reset snapshots.
+    /// and synchronizes baseline/reset snapshots (activating Guided Story or Challenge HUDs when matched).
     pub fn launch_starter_card(
         &mut self,
         card: &crate::starter_gallery::StarterCard,
     ) -> Result<(), String> {
+        if let Some(story) =
+            crate::starter_gallery::find_story_by_id(card.id, Some(self.domain.as_str()))
+        {
+            return self.launch_story(story, 0);
+        }
+        if let Some(challenge) =
+            crate::starter_gallery::find_challenge_by_id(card.id, Some(self.domain.as_str()))
+        {
+            return self.launch_challenge(challenge);
+        }
+        self.clear_challenge_hud();
         self.apply_starter_card(card.title, card.tool_name, card.preset_json)
     }
 

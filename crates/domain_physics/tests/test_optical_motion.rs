@@ -1,20 +1,32 @@
-#![allow(missing_docs)]
-use domain_physics::physics::medical::optical_motion::{
-    calibration::LinearCalibrator,
-    physics::{
-        calculate_lambertian_order, calculate_photocurrent, calculate_received_power,
-        calculate_tia_output,
+//! Integration tests for test optical motion.
+use domain_physics::physics::medical::{
+    evaluation::{
+        pearson_correlation as eval_pearson_correlation,
+        root_mean_square_error as eval_root_mean_square_error, spatial_accuracy_error,
     },
-    processing::{
-        LockInAmplifier, calculate_time_delay, snr_improvement_factor, weighted_average_height,
+    optical_motion::{
+        calibration::LinearCalibrator,
+        physics::{
+            calculate_lambertian_order, calculate_photocurrent, calculate_received_power,
+            calculate_tia_output,
+        },
+        processing::{
+            LockInAmplifier, calculate_time_delay, snr_improvement_factor, weighted_average_height,
+        },
+        validation::{
+            dice_similarity_coefficient, pearson_correlation, percentage_error,
+            root_mean_square_error, time_shift_error,
+        },
     },
-    validation::{
-        dice_similarity_coefficient, pearson_correlation, percentage_error, root_mean_square_error,
-        time_shift_error,
-    },
+    radar_gating::surface::weighted_average_height as radar_weighted_average_height,
 };
 use nalgebra::Point3;
 use std::f64::consts::PI;
+use verified_engine::allocator::VerifiedAllocator;
+use verified_engine::engine::VerifiedEngine;
+
+#[global_allocator]
+static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
 #[verified_engine::verified]
@@ -166,4 +178,75 @@ fn test_calibration() {
     let calibrator = LinearCalibrator::fit(&voltages, &distances).unwrap();
     let d = calibrator.calibrate(1.5);
     assert!((d - 15.0).abs() < math_commons::registry::TOLERANCE_FAST);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_kernel_parity_truncation_and_dc_offset() {
+    let offset = 1.0e9;
+    let x_eq = [offset + 1.0, offset + 2.0, offset + 3.0, offset + 4.0];
+    let y_eq = [offset + 1.5, offset + 2.8, offset + 4.2, offset + 5.7];
+
+    let r_val = pearson_correlation(&x_eq, &y_eq);
+    let r_eval = eval_pearson_correlation(&x_eq, &y_eq).unwrap();
+    assert_eq!(r_val, r_eval);
+    assert!(r_val > 0.99);
+
+    let rmse_val = root_mean_square_error(&x_eq, &y_eq);
+    let rmse_eval = eval_root_mean_square_error(&x_eq, &y_eq).unwrap();
+    assert_eq!(rmse_val, rmse_eval);
+
+    let x_long = [
+        offset + 1.0,
+        offset + 2.0,
+        offset + 3.0,
+        offset + 4.0,
+        -999.0,
+    ];
+    assert_eq!(pearson_correlation(&x_long, &y_eq), r_eval);
+    assert_eq!(eval_pearson_correlation(&x_long, &y_eq), None);
+    assert_eq!(root_mean_square_error(&x_long, &y_eq), rmse_eval);
+    assert_eq!(eval_root_mean_square_error(&x_long, &y_eq), None);
+
+    assert_eq!(pearson_correlation(&[], &[]), 0.0);
+    assert_eq!(pearson_correlation(&[2.0], &[2.0]), 0.0);
+    assert_eq!(pearson_correlation(&[4.0, 4.0, 4.0], &[1.0, 2.0, 3.0]), 0.0);
+    assert_eq!(root_mean_square_error(&[], &[1.0, 2.0]), 0.0);
+
+    assert_eq!(percentage_error(0.0, 1.0), f64::INFINITY);
+    assert_eq!(
+        percentage_error(50.0, 45.0),
+        spatial_accuracy_error(50.0, 45.0)
+    );
+    assert!((percentage_error(1.0e-12, 0.0) - 100.0).abs() < 1.0e-12);
+    assert_eq!(spatial_accuracy_error(1.0e-12, 0.0), 0.0);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_optical_motion_kernels_zero_allocation() {
+    let vertices = [
+        Point3::new(-1.0, 0.0, 8.0),
+        Point3::new(0.0, 1.0, 10.0),
+        Point3::new(1.0, -1.0, 12.0),
+    ];
+    let x = [1.0e8 + 2.0, 1.0e8 + 4.0, 1.0e8 + 6.0, 1.0e8 + 8.0];
+    let y = [1.0e8 + 1.0, 1.0e8 + 2.0, 1.0e8 + 3.0, 1.0e8 + 4.0, 99.0];
+
+    let ((wah_opt, wah_rad, pe, rmse, corr), metrics) = VerifiedEngine::run_verified(|| {
+        let wah_opt = weighted_average_height(&vertices);
+        let wah_rad = radar_weighted_average_height(&vertices);
+        let pe = percentage_error(25.0, 20.0);
+        let rmse = root_mean_square_error(&x, &y);
+        let corr = pearson_correlation(&x, &y);
+        (wah_opt, wah_rad, pe, rmse, corr)
+    });
+
+    assert!(metrics.function_calls >= 10);
+    assert_eq!(wah_opt, wah_rad);
+    assert!((wah_opt - 10.0).abs() < math_commons::registry::TOLERANCE_FAST);
+    assert_eq!(weighted_average_height(&[]), 0.0);
+    assert!((pe - 20.0).abs() < 1.0e-12);
+    assert!(rmse > 2.0);
+    assert!((corr - 1.0).abs() < 1.0e-12);
 }

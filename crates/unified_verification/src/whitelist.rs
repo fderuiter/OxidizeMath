@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -16,15 +17,44 @@ pub const ROOT_ONLY_WHITELIST_CANDIDATES: &[&str] = &["verification_whitelist.to
 #[serde(deny_unknown_fields)]
 pub(crate) struct VerificationWhitelist {
     #[serde(default)]
+    pub adr_verification: Option<AdrVerificationConfig>,
+    #[serde(default)]
     pub doc_verification: Option<DocVerificationConfig>,
     #[serde(default)]
     pub entropy_guard: Option<EntropyGuardConfig>,
+    #[serde(default)]
+    pub missing_docs: Option<MissingDocsConfig>,
     #[serde(default)]
     pub workflow_linter: Option<WorkflowLinterConfig>,
     #[serde(default)]
     pub dead_code: Vec<DeadCodeEntry>,
     #[serde(default)]
     pub unused_dependencies: Vec<UnusedDependencyEntry>,
+}
+
+/// Configuration for `missing_docs` ratcheted caps loaded from `[missing_docs]`.
+#[derive(Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MissingDocsConfig {
+    /// Vendored workspace crates explicitly exempt from `missing_docs` AST checks (e.g., `["egui_plot"]`).
+    #[serde(default, alias = "vendored_allowlist")]
+    pub vendored_crates: Vec<String>,
+    /// Per-file maximum `#[allow(missing_docs)]` counts (`>= 1`).
+    #[serde(default, alias = "caps", alias = "max_counts")]
+    pub files: BTreeMap<String, usize>,
+}
+
+/// Configuration for `records` ADR verification loaded from `[adr_verification]`.
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AdrVerificationConfig {
+    #[serde(
+        default,
+        alias = "legacy_allowlist",
+        alias = "duplicate_allowlist",
+        alias = "legacy_duplicate_files"
+    )]
+    pub allowlist: Option<Vec<String>>,
 }
 
 /// Configuration for `doc_audit` loaded from `[doc_verification]`.
@@ -96,9 +126,31 @@ pub(crate) fn resolve_whitelist_path<P: AsRef<Path>>(candidates: &[P]) -> Option
         .map(Path::to_path_buf)
 }
 
-/// Locates `verification_whitelist.toml` relative to the current working directory.
+/// Locates `verification_whitelist.toml` relative to the current working directory or workspace root.
 pub fn find_whitelist_path() -> Option<PathBuf> {
-    resolve_whitelist_path(WORKSPACE_WHITELIST_CANDIDATES)
+    resolve_whitelist_path(WORKSPACE_WHITELIST_CANDIDATES).or_else(|| {
+        oxidize_core::workspace::find_workspace_root()
+            .map(|root| root.join(WHITELIST_FILE_NAME))
+            .filter(|candidate| candidate.exists())
+    })
+}
+
+fn validate_missing_docs_config(cfg: &MissingDocsConfig, path: &Path) -> Result<(), String> {
+    if cfg.vendored_crates.iter().any(|c| c.trim().is_empty()) {
+        return Err(format!(
+            "Invalid [missing_docs] vendored_crates in {}: entries must be non-empty",
+            path.display()
+        ));
+    }
+    for (file, &cap) in &cfg.files {
+        if file.trim().is_empty() || cap == 0 {
+            return Err(format!(
+                "Invalid [missing_docs.files] entry `{file}` in {}: path must be non-empty and cap must be >= 1",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String> {
@@ -116,6 +168,9 @@ fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String
                 path.display()
             ));
         }
+    }
+    if let Some(cfg) = &parsed.missing_docs {
+        validate_missing_docs_config(cfg, path)?;
     }
     Ok(parsed)
 }
@@ -215,9 +270,12 @@ mod tests {
         fs::write(
             &valid,
             concat!(
+                "[adr_verification]\nallowlist = [\"docs/adr/0002-portable-build-paths.md\"]\n",
                 "[doc_verification]\nallowlist = [\"crates/demo\"]\n",
                 "[entropy_guard]\nscan_targets = [\"crates\"]\n",
                 "file_extensions = [\"rs\"]\npath_exemptions = [\"allow.rs\"]\n",
+                "[missing_docs]\nvendored_crates = [\"egui_plot\"]\n",
+                "[missing_docs.files]\n\"crates/demo/src/lib.rs\" = 2\n",
                 "[[workflow_linter.allowed_job_permissions]]\n",
                 "workflow = \".github/workflows/ci.yml\"\njob = \"deploy\"\nwrite_scopes = [\"pages\"]\n",
                 "[[dead_code]]\nfile = \"crates/demo/src/lib.rs\"\nidentifier = \"Item\"\n",
@@ -227,6 +285,10 @@ mod tests {
         .unwrap();
 
         let parsed = load_whitelist_strict(Some(&valid), &[] as &[&Path]).unwrap();
+        assert_eq!(
+            parsed.adr_verification.unwrap().allowlist,
+            Some(vec!["docs/adr/0002-portable-build-paths.md".to_string()])
+        );
         assert_eq!(
             parsed.doc_verification.unwrap().allowlist,
             Some(vec!["crates/demo".to_string()])
@@ -241,6 +303,17 @@ mod tests {
         );
         assert_eq!(parsed.dead_code.len(), 1);
         assert_eq!(parsed.unused_dependencies.len(), 1);
+        let md_cfg = parsed.missing_docs.unwrap();
+        assert_eq!(md_cfg.vendored_crates, vec!["egui_plot".to_string()]);
+        assert_eq!(md_cfg.files.get("crates/demo/src/lib.rs"), Some(&2));
+
+        let zero_cap = dir.join("zero_cap.toml");
+        fs::write(
+            &zero_cap,
+            "[missing_docs.files]\n\"crates/demo/src/lib.rs\" = 0\n",
+        )
+        .unwrap();
+        assert!(load_whitelist_strict(Some(&zero_cap), &[] as &[&Path]).is_err());
 
         let empty_reason = dir.join("empty_reason.toml");
         fs::write(

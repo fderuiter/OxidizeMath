@@ -106,6 +106,18 @@ fn test_pure_math_custom_canvases_and_rasters_receive_tab_focus_and_labels() {
 
     let mut spiral = crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut spiral, "Ulam Prime Spiral");
+
+    let mut fractran = crate::tabs::number_theory::fractran_machine::FractranMachineTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut fractran,
+        "FRACTRAN Minsky Counter-Machine Graph",
+    );
+
+    let mut chladni = crate::tabs::analysis::chladni_wave_tank::ChladniWaveTankTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut chladni,
+        "2D Chladni Plate & Wave Tank Visualization",
+    );
 }
 
 #[cfg(feature = "biology")]
@@ -113,6 +125,12 @@ fn test_pure_math_custom_canvases_and_rasters_receive_tab_focus_and_labels() {
 fn test_neuroscience_canvas_receives_tab_focus_and_accesskit_label() {
     let mut neuro = crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut neuro, "Neural Network Visualization");
+
+    let mut lenia = crate::tabs::morphogenesis::LeniaTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut lenia,
+        "Lenia Studio Continuous Automaton Canvas",
+    );
 }
 
 #[cfg(feature = "epidemiology")]
@@ -141,4 +159,10 @@ fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut ising, "2D Ising Model spin lattice");
+
+    let mut radar = crate::tabs::medical::radar_gating::RadarGatingTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut radar,
+        "60 GHz MIMO Radar Room Visualization",
+    );
 }

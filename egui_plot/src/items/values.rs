@@ -29,6 +29,63 @@ impl From<[f64; 2]> for PlotPoint {
     }
 }
 
+impl math_commons::series::Sample2D for PlotPoint {
+    #[inline(always)]
+    fn sample_x(&self) -> f64 {
+        self.x
+    }
+
+    #[inline(always)]
+    fn sample_y(&self) -> f64 {
+        self.y
+    }
+
+    #[inline]
+    fn advance_flat_slice(slice: &[Self], flat_y: f64, x_min: f64, x_max: f64) -> usize {
+        let mut rem = slice;
+        let mut count = 0usize;
+        while let [p0, p1, p2, p3, p4, p5, p6, p7, rest @ ..] = rem {
+            let ok = (p0.y == flat_y)
+                & (p0.x >= x_min)
+                & (p0.x <= x_max)
+                & (p1.y == flat_y)
+                & (p1.x >= x_min)
+                & (p1.x <= x_max)
+                & (p2.y == flat_y)
+                & (p2.x >= x_min)
+                & (p2.x <= x_max)
+                & (p3.y == flat_y)
+                & (p3.x >= x_min)
+                & (p3.x <= x_max)
+                & (p4.y == flat_y)
+                & (p4.x >= x_min)
+                & (p4.x <= x_max)
+                & (p5.y == flat_y)
+                & (p5.x >= x_min)
+                & (p5.x <= x_max)
+                & (p6.y == flat_y)
+                & (p6.x >= x_min)
+                & (p6.x <= x_max)
+                & (p7.y == flat_y)
+                & (p7.x >= x_min)
+                & (p7.x <= x_max);
+            if !ok {
+                break;
+            }
+            rem = rest;
+            count += 8;
+        }
+        for p in rem {
+            if (p.y == flat_y) & (p.x >= x_min) & (p.x <= x_max) {
+                count += 1;
+            } else {
+                break;
+            }
+        }
+        count
+    }
+}
+
 impl PlotPoint {
     #[inline(always)]
     pub fn new(x: impl Into<f64>, y: impl Into<f64>) -> Self {

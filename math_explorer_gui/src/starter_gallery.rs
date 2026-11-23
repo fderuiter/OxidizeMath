@@ -262,6 +262,70 @@ pub const PRESET_HAWK_DOVE: &str = r#"{
   }
 }"#;
 
+/// JSON preset envelope for Glicko-2 Swiss Upset & Volatility Spike.
+pub const PRESET_GLICKO2_SWISS_UPSET: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Glicko-2 Tournament - Swiss Upset & Volatility Spike",
+    "domain": "game_theory",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "tau": 0.6,
+    "draw_probability": 0.15,
+    "pairing_mode": "Swiss",
+    "target_rounds": 5,
+    "rng_seed": 42,
+    "players": [
+      {"name": "GM Vega", "rating": 1820.0, "rd": 65.0, "volatility": 0.06, "inactive": false},
+      {"name": "IM Kestrel", "rating": 1710.0, "rd": 80.0, "volatility": 0.06, "inactive": false},
+      {"name": "FM Orion", "rating": 1615.0, "rd": 95.0, "volatility": 0.06, "inactive": false},
+      {"name": "CM Lyra", "rating": 1520.0, "rd": 140.0, "volatility": 0.07, "inactive": false},
+      {"name": "Nova Prodigy", "rating": 1440.0, "rd": 240.0, "volatility": 0.09, "inactive": false}
+    ],
+    "periods": [
+      {"matches": [{"player_a": 0, "player_b": 1, "score_a": 0.0}, {"player_a": 2, "player_b": 3, "score_a": 0.5}], "bye_player": 4},
+      {"matches": [{"player_a": 1, "player_b": 4, "score_a": 0.0}, {"player_a": 0, "player_b": 2, "score_a": 0.0}], "bye_player": 3},
+      {"matches": [{"player_a": 4, "player_b": 0, "score_a": 1.0}, {"player_a": 2, "player_b": 3, "score_a": 0.5}], "bye_player": 1}
+    ]
+  }
+}"#;
+
+/// JSON preset envelope for Glicko-2 Round-Robin Frozen vs. Sequential Drift.
+pub const PRESET_GLICKO2_ROUND_ROBIN_DRIFT: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Glicko-2 Tournament - Round-Robin Frozen vs. Sequential Drift",
+    "domain": "game_theory",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "tau": 0.5,
+    "draw_probability": 0.1,
+    "pairing_mode": "RoundRobin",
+    "target_rounds": 3,
+    "rng_seed": 108,
+    "players": [
+      {"name": "Alpha", "rating": 1500.0, "rd": 260.0, "volatility": 0.06, "inactive": false},
+      {"name": "Bravo", "rating": 1500.0, "rd": 260.0, "volatility": 0.06, "inactive": false},
+      {"name": "Charlie", "rating": 1500.0, "rd": 260.0, "volatility": 0.06, "inactive": false},
+      {"name": "Delta", "rating": 1500.0, "rd": 260.0, "volatility": 0.06, "inactive": false}
+    ],
+    "periods": [
+      {
+        "matches": [
+          {"player_a": 0, "player_b": 1, "score_a": 1.0},
+          {"player_a": 0, "player_b": 2, "score_a": 1.0},
+          {"player_a": 0, "player_b": 3, "score_a": 0.0},
+          {"player_a": 1, "player_b": 2, "score_a": 1.0},
+          {"player_a": 1, "player_b": 3, "score_a": 0.5},
+          {"player_a": 2, "player_b": 3, "score_a": 0.0}
+        ]
+      }
+    ]
+  }
+}"#;
+
 /// JSON preset envelope for MRI Physics Bloch Precession & Relaxation.
 pub const PRESET_MRI_BLOCH_RELAXATION: &str = r#"{
   "metadata": {
@@ -379,12 +443,25 @@ pub fn get_starter_cards_for_domain(
     cards
 }
 
+#[path = "starter_gallery/challenges.rs"]
+pub mod challenges;
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
-pub use root_host::show_starter_gallery_overlay;
+#[path = "starter_gallery/stories.rs"]
+pub mod stories;
+#[path = "starter_gallery/story_packs.rs"]
+mod story_packs;
+pub use challenges::{
+    challenge_matches_domain, find_challenge_metadata, get_challenge_cards_for_domain,
+    ChallengeCard, ChallengeMetadata, GallerySelection,
+};
 pub(crate) use root_host::{
     begin_root_starter_gallery_scope, flush_deferred_starter_galleries, try_defer_starter_gallery,
 };
+pub use root_host::{
+    show_starter_gallery_overlay, show_starter_gallery_with_challenges, StarterGalleryTab,
+};
+pub use stories::*;
 
 #[cfg(test)]
 #[path = "starter_gallery/tests.rs"]

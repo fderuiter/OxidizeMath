@@ -1,12 +1,16 @@
 //! Reusable egui mathematical expression input bar with live syntax validation, LaTeX preview,
 //! coordinate scope validation, `CompiledExpr` bytecode caching, and `AnimatedSlider` synthesis.
 
+pub mod coupled;
 pub mod params;
+mod scope;
 
 #[cfg(test)]
 mod tests;
 
-pub use params::{ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
+pub use coupled::CoupledExpressionBank;
+pub use params::{ParamSliderSpec, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
+use scope::VariableScopePolicy;
 
 use eframe::egui;
 use math_commons::ast::{parse_equation, CompiledExpr, Expr, ParseError};
@@ -48,6 +52,8 @@ pub struct MathExpressionInputBar {
     last_valid_compiled: Option<CompiledExpr>,
     /// Auto-synthesized free parameter sliders synchronized with `last_valid_compiled`.
     slider_bank: ParameterSliderBank,
+    /// Optional tool-level allowed/disallowed variable validation rules.
+    scope_policy: VariableScopePolicy,
 }
 
 impl MathExpressionInputBar {
@@ -82,6 +88,7 @@ impl MathExpressionInputBar {
             compiled_expr: None,
             last_valid_compiled: None,
             slider_bank: ParameterSliderBank::new(),
+            scope_policy: VariableScopePolicy::default(),
         };
         bar.reparse();
         bar
@@ -120,6 +127,37 @@ impl MathExpressionInputBar {
         self
     }
 
+    /// Restricts referenced identifiers to `vars` (plus configured axes and mathematical constants).
+    #[must_use]
+    pub fn with_allowed_vars(mut self, vars: &[&str]) -> Self {
+        self.scope_policy.set_allowed_vars(vars);
+        self.reparse();
+        self
+    }
+
+    /// Rejects specific foreign coordinate identifiers with plain-language guidance.
+    #[must_use]
+    pub fn with_disallowed_vars(mut self, rules: &[(&str, &str)]) -> Self {
+        self.scope_policy.set_disallowed_vars(rules);
+        self.reparse();
+        self
+    }
+
+    /// Registers display label, slider range, and default value for a named parameter.
+    #[must_use]
+    pub fn with_param_spec(
+        mut self,
+        name: &str,
+        label: &str,
+        range: RangeInclusive<f64>,
+        default_value: f64,
+    ) -> Self {
+        self.slider_bank
+            .register_param_spec(name, label, range, default_value);
+        self.reparse();
+        self
+    }
+
     /// Updates the expression text and reparses/recompiles the AST.
     pub fn set_expression(&mut self, text: &str) {
         self.raw_text = text.to_string();
@@ -154,6 +192,28 @@ impl MathExpressionInputBar {
     #[must_use]
     pub fn param_slice(&self) -> &[f64] {
         self.slider_bank.param_slice()
+    }
+
+    /// Returns the ordered list of active free parameter names aligned with [`Self::param_slice`].
+    #[must_use]
+    pub fn active_param_names(&self) -> &[String] {
+        self.slider_bank.active_names()
+    }
+
+    /// Looks up the active parameter value assigned to `name`.
+    #[must_use]
+    pub fn active_param_value(&self, name: &str) -> Option<f64> {
+        self.slider_bank.active_value(name)
+    }
+
+    /// Updates a single parameter value in the slider bank without clearing other remembered parameters.
+    pub fn set_param(&mut self, name: &str, value: f64) {
+        self.slider_bank.set_param(name, value);
+    }
+
+    /// Clamps active free parameter values to `range`.
+    pub fn clamp_active_params(&mut self, range: RangeInclusive<f64>) {
+        self.slider_bank.clamp_active_values(range);
     }
 
     /// Computes a deterministic fingerprint of the active formula and free-parameter sliders.
@@ -222,6 +282,17 @@ impl MathExpressionInputBar {
     }
 
     fn finish_valid_parse(&mut self, lhs: Option<String>, expr: Expr) {
+        if let Err(scope_err) = self
+            .scope_policy
+            .validate(&expr, &self.axes, self.complex_mode)
+        {
+            self.validation_error = Some(scope_err);
+            self.compiled_expr = None;
+            self.latex_cache.clear();
+            self.parsed_expr = Ok(expr);
+            return;
+        }
+
         let axis_refs: Vec<&str> = self.axes.iter().map(String::as_str).collect();
         let compile_res = if self.complex_mode {
             CompiledExpr::compile_complex(&expr, &axis_refs)
@@ -310,6 +381,14 @@ impl MathExpressionInputBar {
         });
 
         changed
+    }
+
+    /// Renders only the synthesized parameter sliders under a scoped `id_salt`.
+    pub fn sliders_ui(&mut self, ui: &mut egui::Ui, id_salt: &str) -> bool {
+        if !self.scope_enabled {
+            return false;
+        }
+        ui.push_id(id_salt, |ui| self.slider_bank.ui(ui)).inner
     }
 }
 

@@ -1,11 +1,15 @@
 pub mod domain_bar;
 #[cfg(target_os = "macos")]
 mod macos_menu;
+#[cfg(target_os = "macos")]
+mod macos_menu_view;
 pub mod palette;
+mod pane_clone;
 mod pane_ops;
 mod pane_slots;
 pub(crate) mod session;
 mod share_link;
+pub mod shared_json;
 mod state;
 pub mod theme;
 pub(crate) mod ui_panels;
@@ -30,6 +34,8 @@ mod tests_multi_pane_a11y;
 #[cfg(test)]
 mod tests_multi_pane_plot_live;
 #[cfg(test)]
+mod tests_pane_clone_sync;
+#[cfg(test)]
 mod tests_pane_isolation;
 #[cfg(test)]
 mod tests_secondary_menus;
@@ -48,11 +54,13 @@ mod wasm_tests;
 pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
+pub use shared_json::SharedTabJson;
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
     contrast_ratio, contrasting_text_color, relative_luminance, SemanticPalette, ThemeMode,
 };
+pub use viewport::compare_sync::ComparisonSyncConfig;
 pub use viewport::ViewportLayout;
 
 use crate::command_palette::CommandPalette;
@@ -89,6 +97,7 @@ pub struct MathExplorerApp {
     tab_state_cache: state::TabStateCache,
     last_frame_had_input: bool,
     pending_focus_prune: bool,
+    pub compare_sync: ComparisonSyncConfig,
     pub(super) url_sync: crate::url_state::UrlSyncController,
 }
 
@@ -96,6 +105,7 @@ impl Default for MathExplorerApp {
     #[allow(clippy::vec_init_then_push)]
     fn default() -> Self {
         crate::accessibility::ensure_plot_live_bridge();
+        crate::framework::ensure_custom_fit_bridge();
         let tabs: Vec<Box<dyn ExplorerTab>> = crate::tabs::instantiate_tabs();
 
         Self {
@@ -124,6 +134,7 @@ impl Default for MathExplorerApp {
             tab_state_cache: state::TabStateCache::default(),
             last_frame_had_input: false,
             pending_focus_prune: false,
+            compare_sync: ComparisonSyncConfig::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
         }
     }
@@ -161,6 +172,7 @@ impl MathExplorerApp {
 
     /// Sets the authoritative viewport layout preset and synchronizes legacy layout mode.
     pub fn set_layout(&mut self, layout: ViewportLayout) {
+        self.seed_uninitialized_panes_on_initial_split(layout);
         self.viewport_layout = layout;
         self.sync_layout();
         if !self.pane_tabs.is_empty() {
@@ -258,6 +270,13 @@ impl eframe::App for MathExplorerApp {
 
         crate::accessibility::ensure_plot_live_bridge();
         crate::accessibility::sync_context_live_messages(ctx, true);
+        if ctx.input(|i| {
+            i.events
+                .iter()
+                .any(|e| matches!(e, egui::Event::WindowFocused(false)))
+        }) {
+            crate::audio::notify_window_blurred();
+        }
 
         self.flush_stale_pane_focus(ctx);
         let mut session_mgr = std::mem::take(&mut self.session_manager);
@@ -356,6 +375,7 @@ impl eframe::App for MathExplorerApp {
         }
 
         self.poll_share_shortcut_and_clipboard(ctx);
+        self.poll_duplicate_pane_shortcut(ctx);
 
         // Fetch new events
         let new_events = crate::telemetry::poll_app_telemetry();
@@ -432,6 +452,7 @@ impl eframe::App for MathExplorerApp {
         };
 
         self.prune_inactive_pane_slots(active_layout.pane_count());
+        domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
         self.sync_workspace_history_bridge(ctx);
 
         if active_layout != ViewportLayout::Single {

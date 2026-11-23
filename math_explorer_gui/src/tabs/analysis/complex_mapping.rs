@@ -7,6 +7,8 @@ use std::collections::BTreeMap;
 
 #[path = "complex_mapping/cache.rs"]
 mod cache;
+#[path = "complex_mapping/shader.rs"]
+mod shader;
 #[path = "complex_mapping/ui.rs"]
 mod ui;
 
@@ -109,7 +111,8 @@ pub struct ComplexMappingTool {
     pub(crate) grid_density: usize,
     pub(crate) inspection_point: [f64; 2],
     pub(crate) math_input: MathExpressionInputBar,
-    pub(crate) cache: cache::ContourGridCache,
+    pub(crate) high_contrast: bool,
+    pub(crate) cache: cache::ConformalGridCache,
 }
 
 impl Default for ComplexMappingTool {
@@ -133,8 +136,10 @@ impl Default for ComplexMappingTool {
                 ],
             )
             .with_axes(&["z"])
-            .with_complex_mode(true),
-            cache: cache::ContourGridCache::default(),
+            .with_complex_mode(true)
+            .with_allowed_vars(&["z", "a"]),
+            high_contrast: false,
+            cache: cache::ConformalGridCache::default(),
         }
     }
 }
@@ -145,7 +150,7 @@ impl ComplexMappingTool {
             return NAN_COMPLEX;
         }
         match self.function {
-            MappingFunction::Custom => self.math_input.active_compiled().map_or(NAN_COMPLEX, |c| {
+            MappingFunction::Custom => self.math_input.compiled().map_or(NAN_COMPLEX, |c| {
                 sanitize_complex_pole(c.eval_complex_z_params(z, self.math_input.param_slice()))
             }),
             _ => self.function.evaluate(z),
@@ -197,6 +202,28 @@ impl InteractiveTool for ComplexMappingTool {
 
     fn state_revision(&self) -> u64 {
         self.compute_state_revision()
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot().with_shader()
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+
+    fn sample_animation_frames(
+        &mut self,
+        _num_frames: usize,
+    ) -> Vec<egui_plot::export::DatasetFrame> {
+        Vec::new()
+    }
+
+    fn export_glsl_shader(
+        &self,
+        dialect: crate::framework::ShaderDialect,
+    ) -> Result<String, String> {
+        self.build_glsl_shader(dialect)
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -273,6 +300,8 @@ impl InteractiveTool for ComplexMappingTool {
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        self.high_contrast = crate::app::ThemeMode::from_visuals(parent_ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
         self.draw_controls(parent_ui);
         let grid_ok = self.ensure_cached_contours();
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {

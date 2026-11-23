@@ -21,11 +21,12 @@ use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 use std::hash::Hasher;
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
 
 /// Client-side millimeter SVG fabrication studio for laser cutters and pen plotters.
 pub struct FabricationStudioTool {
     pub(crate) state: FabricationStudioState,
-    pub(crate) cached_artifact: Option<FabricationArtifact>,
+    pub(crate) cached_artifact: Mutex<Option<(u64, Arc<FabricationArtifact>)>>,
     pub(crate) last_error: Option<String>,
     pub(crate) dirty: bool,
     pub(crate) status_banner: Option<(String, bool)>,
@@ -34,16 +35,14 @@ pub struct FabricationStudioTool {
 
 impl Default for FabricationStudioTool {
     fn default() -> Self {
-        let mut tool = Self {
+        Self {
             state: FabricationStudioState::default(),
-            cached_artifact: None,
+            cached_artifact: Mutex::new(None),
             last_error: None,
             dirty: true,
             status_banner: None,
             save_rx: None,
-        };
-        tool.ensure_artifact();
-        tool
+        }
     }
 }
 
@@ -52,18 +51,33 @@ impl FabricationStudioTool {
         self.dirty = true;
     }
 
-    pub(crate) fn ensure_artifact(&mut self) {
-        if !self.dirty && self.cached_artifact.is_some() {
-            return;
+    pub(crate) fn artifact_or_build(&self) -> Result<Arc<FabricationArtifact>, String> {
+        let rev = self.state_revision();
+        let mut guard = self
+            .cached_artifact
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_rev, ref art)) = *guard {
+            if cached_rev == rev {
+                return Ok(Arc::clone(art));
+            }
         }
-        match build_fabrication_artifact(&self.state) {
-            Ok(artifact) => {
-                self.cached_artifact = Some(artifact);
+        let built = Arc::new(build_fabrication_artifact(&self.state)?);
+        *guard = Some((rev, Arc::clone(&built)));
+        Ok(built)
+    }
+
+    pub(crate) fn ensure_artifact(&mut self) {
+        match self.artifact_or_build() {
+            Ok(_) => {
                 self.last_error = None;
                 self.dirty = false;
             }
             Err(err) => {
-                self.cached_artifact = None;
+                *self
+                    .cached_artifact
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = None;
                 self.last_error = Some(err);
                 self.dirty = false;
             }
@@ -72,10 +86,7 @@ impl FabricationStudioTool {
 
     /// Serializes the active geometry into a millimeter-accurate layered fabrication `.svg` string.
     pub fn serialize_fabrication_svg(&self) -> Result<String, String> {
-        let artifact = match &self.cached_artifact {
-            Some(art) if !self.dirty => art.clone(),
-            _ => build_fabrication_artifact(&self.state)?,
-        };
+        let artifact = self.artifact_or_build()?;
         export_fabrication_svg(
             &artifact.cut_paths_mm,
             &artifact.score_paths_mm,
@@ -132,12 +143,15 @@ impl InteractiveTool for FabricationStudioTool {
         ExportCapabilities::plot()
     }
 
-    fn export_custom_svg(&self) -> Option<Result<String, String>> {
+    fn export_custom_svg(
+        &self,
+        _options: &egui_plot::export::ExportOptions,
+    ) -> Option<Result<String, String>> {
         Some(self.serialize_fabrication_svg())
     }
 
     fn export_plot_primitives(&self) -> Vec<ExportPrimitive> {
-        let Ok(art) = build_fabrication_artifact(&self.state) else {
+        let Ok(art) = self.artifact_or_build() else {
             return Vec::new();
         };
         let mut prims = Vec::with_capacity(art.score_paths_mm.len() + art.cut_paths_mm.len());
@@ -166,7 +180,7 @@ impl InteractiveTool for FabricationStudioTool {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let Ok(art) = build_fabrication_artifact(&self.state) else {
+        let Ok(art) = self.artifact_or_build() else {
             return Vec::new();
         };
         let h = art.bed_height_mm;
@@ -199,7 +213,6 @@ impl InteractiveTool for FabricationStudioTool {
     fn clamp_parameters(&mut self) -> bool {
         self.state.clamp_in_place();
         self.mark_dirty();
-        self.ensure_artifact();
         true
     }
 
@@ -213,7 +226,6 @@ impl InteractiveTool for FabricationStudioTool {
         parsed.validate()?;
         self.state = parsed;
         self.mark_dirty();
-        self.ensure_artifact();
         Ok(())
     }
 

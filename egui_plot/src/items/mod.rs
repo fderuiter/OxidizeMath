@@ -31,6 +31,7 @@ pub struct PlotItemBase {
     id: Id,
     highlight: bool,
     allow_hover: bool,
+    companion_visual_only: bool,
 }
 
 impl PlotItemBase {
@@ -41,6 +42,7 @@ impl PlotItemBase {
             id,
             highlight: false,
             allow_hover: true,
+            companion_visual_only: false,
         }
     }
 }
@@ -101,6 +103,8 @@ pub struct PlotConfig<'a> {
     pub transform: &'a PlotTransform,
     pub show_x: bool,
     pub show_y: bool,
+    pub sidecar_3d: Option<&'a crate::Plot3DSeriesSidecar>,
+    pub world_point: Option<[f64; 3]>,
 }
 
 /// Trait shared by things that can be drawn in the plot.
@@ -124,17 +128,23 @@ pub trait PlotItem {
         vec![]
     }
 
+    fn is_companion_visual_only(&self) -> bool {
+        self.base().companion_visual_only
+    }
+
     fn append_deferred_export(
         &mut self,
         datasets: &mut Vec<crate::DeferredDatasetEntry>,
         primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
     ) {
-        let pts = self.extract_points();
-        if !pts.is_empty() {
-            datasets.push(crate::DeferredDatasetEntry::Owned {
-                name: self.name().to_owned(),
-                points: pts,
-            });
+        if !self.is_companion_visual_only() {
+            let pts = self.extract_points();
+            if !pts.is_empty() {
+                datasets.push(crate::DeferredDatasetEntry::Owned {
+                    name: self.name().to_owned(),
+                    points: pts,
+                });
+            }
         }
         let prims = self.extract_export_primitives();
         if !prims.is_empty() {
@@ -284,13 +294,21 @@ pub trait PlotItem {
 
         // this method is only called, if the value is in the result set of find_closest()
         let value = points[elem.index];
+        let world_point = plot.world_point.or_else(|| {
+            plot.sidecar_3d
+                .and_then(|s| s.world_point(self.id(), elem.index, [value.x, value.y]))
+        });
+        let item_plot = PlotConfig {
+            world_point,
+            ..*plot
+        };
         Some(render_snapped_hover_point(
             self,
             plot_area_response,
             value,
             shapes,
             cursors,
-            plot,
+            &item_plot,
             label_formatter,
         ))
     }
@@ -628,6 +646,12 @@ pub struct Line<'a> {
 }
 
 impl<'a> Line<'a> {
+    #[inline]
+    pub(crate) fn companion_visual_only(mut self, companion: bool) -> Self {
+        self.base.companion_visual_only = companion;
+        self
+    }
+
     pub fn new(name: impl Into<String>, series: impl Into<PlotPoints<'a>>) -> Self {
         Self {
             base: PlotItemBase::new(name.into()),
@@ -2448,11 +2472,14 @@ pub(super) fn rulers_and_tooltip_at_value(
     cursors: &mut Vec<Cursor>,
     label_formatter: &LabelFormatter<'_>,
 ) {
-    if plot.show_x {
-        cursors.push(Cursor::Vertical { x: value.x });
-    }
-    if plot.show_y {
-        cursors.push(Cursor::Horizontal { y: value.y });
+    let suppress_rulers = plot.sidecar_3d.is_some() || plot.world_point.is_some();
+    if !suppress_rulers {
+        if plot.show_x {
+            cursors.push(Cursor::Vertical { x: value.x });
+        }
+        if plot.show_y {
+            cursors.push(Cursor::Horizontal { y: value.y });
+        }
     }
 
     let raw_anchor = plot.transform.position_from_point(&value);
@@ -2462,15 +2489,19 @@ pub(super) fn rulers_and_tooltip_at_value(
         !name.is_empty() && (plot_area_response.hovered() || plot_area_response.gained_focus());
     crate::a11y::show_snapped_point_tooltip(
         plot_area_response,
-        anchor_pos,
-        [value.x, value.y],
-        &title,
-        &body_lines,
-        announce,
+        crate::a11y::SnappedTooltipArgs {
+            anchor_pos,
+            point: [value.x, value.y],
+            world_point: plot.world_point,
+            suppress_rulers,
+            title: &title,
+            body_lines: &body_lines,
+            announce_on_open: announce,
+        },
     );
 }
 
-fn format_value_tooltip_content(
+pub(crate) fn format_value_tooltip_content(
     value: PlotPoint,
     name: &str,
     plot: &PlotConfig<'_>,
@@ -2479,6 +2510,24 @@ fn format_value_tooltip_content(
     if let Some(custom_label) = label_formatter {
         let formatted = custom_label(name, &value);
         return (String::new(), vec![(formatted, false)]);
+    }
+
+    if let Some([wx, wy, wz]) = plot.world_point {
+        let lines = vec![
+            (
+                format!("x = {}", crate::sidecar_3d::format_world_coord(wx)),
+                true,
+            ),
+            (
+                format!("y = {}", crate::sidecar_3d::format_world_coord(wy)),
+                true,
+            ),
+            (
+                format!("z = {}", crate::sidecar_3d::format_world_coord(wz)),
+                true,
+            ),
+        ];
+        return (name.to_owned(), lines);
     }
 
     let scale = plot.transform.dvalue_dpos();
@@ -2496,10 +2545,12 @@ fn format_value_tooltip_content(
 
     let mut lines = Vec::with_capacity(2);
     if plot.show_x {
-        lines.push((format!("x = {:.*}", x_decimals, value.x), true));
+        let x_str = crate::format::format_readout_value(value.x, x_decimals, 4);
+        lines.push((format!("x = {x_str}"), true));
     }
     if plot.show_y {
-        lines.push((format!("y = {:.*}", y_decimals, value.y), true));
+        let y_str = crate::format::format_readout_value(value.y, y_decimals, 4);
+        lines.push((format!("y = {y_str}"), true));
     }
     (name.to_owned(), lines)
 }

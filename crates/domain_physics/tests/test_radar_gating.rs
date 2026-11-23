@@ -1,14 +1,22 @@
-#![allow(missing_docs)]
+//! Integration tests for test radar gating.
 use approx::assert_relative_eq;
-use domain_physics::physics::medical::radar_gating::{
-    C,
-    gating::{BeamState, GatingError, GatingLogic},
-    geometry::{AngleFftConfig, SphericalPoint},
-    physics::FmcwConfig,
-    surface::BiQuadraticSurface,
-    tracking::{ConstantVelocityModel, TrackingFilter},
+use domain_physics::physics::medical::{
+    optical_motion::processing::weighted_average_height as optical_weighted_average_height,
+    radar_gating::{
+        C,
+        gating::{BeamState, GatingError, GatingLogic},
+        geometry::{AngleFftConfig, SphericalPoint},
+        physics::FmcwConfig,
+        surface::{BiQuadraticSurface, weighted_average_height},
+        tracking::{ConstantVelocityModel, TrackingFilter},
+    },
 };
 use nalgebra::Point3;
+use verified_engine::allocator::VerifiedAllocator;
+use verified_engine::engine::VerifiedEngine;
+
+#[global_allocator]
+static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
 #[verified_engine::verified]
@@ -119,6 +127,33 @@ fn test_surface_fitting() {
         0.1,
         epsilon = math_commons::registry::TOLERANCE_FAST
     ); // c5
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_weighted_average_height_parity_and_zero_allocation() {
+    let vertices = [
+        Point3::new(-1.0, -1.0, 1.2),
+        Point3::new(0.0, 0.0, 1.0),
+        Point3::new(1.0, 1.0, 1.4),
+        Point3::new(2.0, -1.0, 1.6),
+    ];
+
+    let ((wah_radar, wah_optical, wah_empty), metrics) = VerifiedEngine::run_verified(|| {
+        let wah_radar = weighted_average_height(&vertices);
+        let wah_optical = optical_weighted_average_height(&vertices);
+        let wah_empty = weighted_average_height(&[]);
+        (wah_radar, wah_optical, wah_empty)
+    });
+
+    assert!(metrics.function_calls >= 6);
+    assert_eq!(wah_empty, 0.0);
+    assert_eq!(wah_radar, wah_optical);
+    assert_relative_eq!(
+        wah_radar,
+        1.3,
+        epsilon = math_commons::registry::TOLERANCE_FAST
+    );
 }
 
 #[test]

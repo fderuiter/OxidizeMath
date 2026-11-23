@@ -1,6 +1,16 @@
 //! Core types for Topological Data Analysis.
 
+pub use super::space3d::{
+    Point3D, PointCloud3D, farthest_point_landmarks, farthest_point_landmarks_into,
+    takens_delay_embedding_3d,
+};
 use crate::error::TdaError;
+
+/// Maximum number of points supported in bounded Vietoris-Rips point clouds.
+pub const MAX_TDA_POINTS: usize = 250;
+
+/// Maximum ambient Euclidean dimension $\mathbb{R}^d$ supported for [`NdPointCloud`].
+pub const MAX_TDA_DIMENSION: usize = 32;
 
 /// A point in 2D space.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,7 +50,7 @@ impl Point2D {
     }
 }
 
-/// A collection of points in 2D space.
+/// A collection of points in 2D space bounded to [`MAX_TDA_POINTS`].
 #[derive(Debug, Clone)]
 pub struct PointCloud {
     #[allow(missing_docs)]
@@ -48,11 +58,12 @@ pub struct PointCloud {
 }
 
 impl PointCloud {
-    /// Creates a new point cloud.
+    /// Creates a new bounded 2D point cloud.
     ///
     /// # Errors
     ///
-    /// Returns `TdaError::EmptyPointCloud` if the given vector is empty.
+    /// Returns [`TdaError::EmptyPointCloud`] if `points` is empty, or [`TdaError::MatrixError`]
+    /// if `points.len() > MAX_TDA_POINTS` or any coordinate is non-finite.
     ///
     /// # Example
     ///
@@ -73,6 +84,19 @@ impl PointCloud {
         if points.is_empty() {
             return Err(TdaError::EmptyPointCloud);
         }
+        if points.len() > MAX_TDA_POINTS {
+            return Err(TdaError::MatrixError {
+                reason: format!(
+                    "point cloud size {} exceeds MAX_TDA_POINTS ({MAX_TDA_POINTS})",
+                    points.len()
+                ),
+            });
+        }
+        if points.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
+            return Err(TdaError::MatrixError {
+                reason: "point cloud coordinates must be finite".to_string(),
+            });
+        }
         Ok(Self { points })
     }
 
@@ -84,8 +108,8 @@ impl PointCloud {
 
     /// Computes the distance matrix between all pairs of points.
     ///
-    /// Returns a symmetric matrix where element (i, j) is the distance
-    /// between points i and j.
+    /// Returns a symmetric matrix where element `(i, j)` is the Euclidean distance
+    /// between points `i` and `j`.
     #[verified_engine::verified]
     pub fn distance_matrix(&self) -> Vec<Vec<f64>> {
         let n = self.points.len();
@@ -98,7 +122,6 @@ impl PointCloud {
             }
         }
 
-        // Mirror the matrix
         #[allow(clippy::needless_range_loop)]
         for i in 0..n {
             for j in 0..i {
@@ -108,6 +131,156 @@ impl PointCloud {
 
         dist
     }
+}
+
+/// A bounded collection of points in $\mathbb{R}^d$ ($1 \le d \le 32$, $1 \le n \le 250$).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NdPointCloud {
+    points: Vec<Vec<f64>>,
+    dimension: usize,
+}
+
+impl NdPointCloud {
+    /// Creates a validated $d$-dimensional point cloud.
+    ///
+    /// # Errors
+    ///
+    /// Returns:
+    /// - [`TdaError::EmptyPointCloud`] if `points` is empty.
+    /// - [`TdaError::InvalidDimension`] if $d = 0$, $d > 32$, or rows have inconsistent lengths.
+    /// - [`TdaError::MatrixError`] if `points.len() > 250` or any coordinate is non-finite.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::tda::NdPointCloud;
+    ///
+    /// let cloud = NdPointCloud::new(vec![
+    ///     vec![0.0, 0.0, 1.0],
+    ///     vec![3.0, 4.0, 1.0],
+    /// ]).unwrap();
+    /// assert_eq!(cloud.size(), 2);
+    /// assert_eq!(cloud.dimension(), 3);
+    /// assert!((cloud.distance_matrix()[0][1] - 5.0).abs() < 1e-12);
+    /// ```
+    #[verified_engine::verified]
+    pub fn new(points: Vec<Vec<f64>>) -> Result<Self, TdaError> {
+        if points.is_empty() {
+            return Err(TdaError::EmptyPointCloud);
+        }
+        if points.len() > MAX_TDA_POINTS {
+            return Err(TdaError::MatrixError {
+                reason: format!(
+                    "point cloud size {} exceeds MAX_TDA_POINTS ({MAX_TDA_POINTS})",
+                    points.len()
+                ),
+            });
+        }
+        let dim = points[0].len();
+        if dim == 0 || dim > MAX_TDA_DIMENSION {
+            return Err(TdaError::InvalidDimension { dimension: dim });
+        }
+        for row in &points {
+            if row.len() != dim {
+                return Err(TdaError::InvalidDimension {
+                    dimension: row.len(),
+                });
+            }
+            if row.iter().any(|v| !v.is_finite()) {
+                return Err(TdaError::MatrixError {
+                    reason: "point cloud coordinates must be finite".to_string(),
+                });
+            }
+        }
+        Ok(Self {
+            points,
+            dimension: dim,
+        })
+    }
+
+    /// Lifts a 2D [`PointCloud`] into a 2-dimensional [`NdPointCloud`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates validation errors from [`Self::new`].
+    #[verified_engine::verified]
+    pub fn from_point_cloud_2d(cloud: &PointCloud) -> Result<Self, TdaError> {
+        let rows = cloud.points.iter().map(|p| vec![p.x, p.y]).collect();
+        Self::new(rows)
+    }
+
+    /// Returns the number of points in the cloud.
+    #[verified_engine::verified]
+    pub fn size(&self) -> usize {
+        self.points.len()
+    }
+
+    /// Returns the ambient Euclidean dimension $d$.
+    #[verified_engine::verified]
+    pub fn dimension(&self) -> usize {
+        self.dimension
+    }
+
+    /// Returns the coordinate rows of the cloud.
+    #[verified_engine::verified]
+    pub fn points(&self) -> &[Vec<f64>] {
+        &self.points
+    }
+
+    /// Computes the symmetric pairwise Euclidean distance matrix in $\mathbb{R}^d$.
+    #[verified_engine::verified]
+    pub fn distance_matrix(&self) -> Vec<Vec<f64>> {
+        let n = self.points.len();
+        let mut dist = vec![vec![0.0; n]; n];
+
+        for (i, row) in dist.iter_mut().enumerate().take(n) {
+            let pi = &self.points[i];
+            for (j, val) in row.iter_mut().enumerate().take(n).skip(i + 1) {
+                *val = euclidean_slice_distance(pi, &self.points[j]);
+            }
+        }
+
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..n {
+            for j in 0..i {
+                dist[i][j] = dist[j][i];
+            }
+        }
+
+        dist
+    }
+
+    /// Projects two chosen coordinate axes `(axis_x, axis_y)` into a 2D [`PointCloud`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TdaError::InvalidDimension`] if `axis_x >= self.dimension` or `axis_y >= self.dimension`.
+    #[verified_engine::verified]
+    pub fn project_2d(&self, axis_x: usize, axis_y: usize) -> Result<PointCloud, TdaError> {
+        if axis_x >= self.dimension {
+            return Err(TdaError::InvalidDimension { dimension: axis_x });
+        }
+        if axis_y >= self.dimension {
+            return Err(TdaError::InvalidDimension { dimension: axis_y });
+        }
+        let projected = self
+            .points
+            .iter()
+            .map(|row| Point2D::new(row[axis_x], row[axis_y]))
+            .collect();
+        PointCloud::new(projected)
+    }
+}
+
+#[verified_engine::verified]
+fn euclidean_slice_distance(a: &[f64], b: &[f64]) -> f64 {
+    let mut sum_sq = 0.0_f64;
+    for (&va, &vb) in a.iter().zip(b.iter()) {
+        let diff = va - vb;
+        sum_sq += diff * diff;
+    }
+    sum_sq.sqrt()
 }
 
 /// A simplex is a generalization of a triangle to arbitrary dimensions.
@@ -247,108 +420,8 @@ impl Ord for Simplex {
     }
 }
 
+// [cite:clinical_trials_statistics]
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_point2d_distance() {
-        let p1 = Point2D::new(0.0, 0.0);
-        let p2 = Point2D::new(3.0, 4.0);
-
-        let d = p1.distance(&p2);
-        assert!((d - 5.0).abs() < math_commons::registry::TOLERANCE_FAST);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_point_cloud_empty() {
-        let result = PointCloud::new(vec![]);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_point_cloud_distance_matrix() {
-        let points = vec![
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 0.0),
-            Point2D::new(0.0, 1.0),
-        ];
-        let cloud = PointCloud::new(points).unwrap();
-        let dist = cloud.distance_matrix();
-
-        assert_eq!(dist.len(), 3);
-        assert!((dist[0][1] - 1.0).abs() < math_commons::registry::TOLERANCE_FAST);
-        assert!((dist[0][2] - 1.0).abs() < math_commons::registry::TOLERANCE_FAST);
-        assert!((dist[1][2] - 2.0_f64.sqrt()).abs() < math_commons::registry::TOLERANCE_FAST);
-
-        // Symmetry
-        assert_eq!(dist[0][1], dist[1][0]);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_simplex_vertex() {
-        let s = Simplex::new(vec![0]).unwrap();
-        assert_eq!(s.dimension(), 0);
-        assert_eq!(s.faces().unwrap().len(), 0);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_simplex_edge() {
-        let s = Simplex::new(vec![0, 1]).unwrap();
-        assert_eq!(s.dimension(), 1);
-        assert_eq!(s.faces().unwrap().len(), 2);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_simplex_triangle() {
-        let s = Simplex::new(vec![0, 1, 2]).unwrap();
-        assert_eq!(s.dimension(), 2);
-        assert_eq!(s.faces().unwrap().len(), 3);
-
-        // All faces should be edges
-        for face in s.faces().unwrap() {
-            assert_eq!(face.dimension(), 1);
-        }
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_simplex_sorted() {
-        let s1 = Simplex::new(vec![2, 0, 1]).unwrap();
-        let s2 = Simplex::new(vec![0, 1, 2]).unwrap();
-
-        // Should be equal after sorting
-        assert_eq!(s1, s2);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_simplex_duplicate_vertices() {
-        let result = Simplex::new(vec![0, 1, 1]);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_simplex_diameter() {
-        let points = vec![
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 0.0),
-            Point2D::new(0.0, 1.0),
-        ];
-        let cloud = PointCloud::new(points).unwrap();
-        let dist = cloud.distance_matrix();
-
-        let triangle = Simplex::new(vec![0, 1, 2]).unwrap();
-        let diameter = triangle.diameter(&dist);
-
-        // Maximum distance is between points 1 and 2
-        assert!((diameter - 2.0_f64.sqrt()).abs() < math_commons::registry::TOLERANCE_FAST);
-    }
-}
+#[path = "core_tests.rs"]
+mod tests;

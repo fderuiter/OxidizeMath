@@ -207,3 +207,127 @@ fn test_gaussian_splatting_state_persistence_and_legacy_presets() {
         .try_load_state(r#"{"scale":1.0,"camera":{"pitch":0.0,"yaw":0.0,"zoom":150.0}}"#)
         .is_err());
 }
+
+#[test]
+fn test_gaussian_splatting_16_9_frustum_rasterizes_beyond_2_5_and_thresholds_vary_all_actions() {
+    let ctx = egui::Context::default();
+    let mut tool = GaussianSplattingTool::default();
+    tool.camera.projection = ProjectionMode::Perspective;
+    tool.camera.pan_x = 3.2;
+
+    let widescreen = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1920.0, 1080.0),
+        )),
+        ..Default::default()
+    };
+    let _ = ctx.run(widescreen, |sub_ctx| tool.show(sub_ctx));
+
+    let (x_half, y_half) = tool.frustum_half_extents;
+    assert!(
+        x_half > 3.5 && (y_half - 2.5).abs() < 1e-6,
+        "Expected 16:9 viewport x_half > 3.5 without [-2.5, 2.5] clipping, got ({x_half}, {y_half})"
+    );
+    // Right-hand columns correspond to x > +2.5 where panned splats reside
+    let min_right_col =
+        (((2.6 + x_half) / (2.0 * x_half)) * (SPLAT_GRID_SIZE as f64)).ceil() as usize;
+    let right_lit = (0..SPLAT_GRID_SIZE)
+        .flat_map(|r| (min_right_col..SPLAT_GRID_SIZE).map(move |c| (r, c)))
+        .filter(|&(r, c)| {
+            let idx = math_commons::math_kernel::types::flatten_2d_index(c, r, SPLAT_GRID_SIZE);
+            tool.pixel_buffer[idx].a() > 16
+        })
+        .count();
+    assert!(
+        right_lit > 10,
+        "Expected unclipped radiance beyond x > 2.5 in 16:9 frustum, got {right_lit} lit pixels"
+    );
+
+    // Verify all four density counts (Split, Clone, Keep, Prune) vary across threshold sliders
+    let base = GaussianSplattingTool::compute_density_counts(1.0, 0.10, 0.05);
+    let low_grad = GaussianSplattingTool::compute_density_counts(1.0, 0.03, 0.05);
+    let high_grad = GaussianSplattingTool::compute_density_counts(1.0, 0.35, 0.05);
+    let low_opac = GaussianSplattingTool::compute_density_counts(1.0, 0.10, 0.01);
+    let high_opac = GaussianSplattingTool::compute_density_counts(1.0, 0.10, 0.85);
+
+    assert_ne!(base.split, low_grad.split);
+    assert_ne!(base.clone, high_grad.clone);
+    assert_ne!(base.keep, high_grad.keep);
+    assert_eq!(low_opac.prune, 0);
+    assert!(high_opac.prune > base.prune);
+
+    tool.grad_threshold = 0.22;
+    tool.opacity_threshold = 0.60;
+    let json = tool.save_state().expect("threshold state saves");
+    let mut roundtripped = GaussianSplattingTool::default();
+    roundtripped
+        .try_load_state(&json)
+        .expect("threshold state loads");
+    assert!((roundtripped.grad_threshold - 0.22).abs() < 1e-9);
+    assert!((roundtripped.opacity_threshold - 0.60).abs() < 1e-9);
+    assert_eq!(
+        roundtripped.cached_counts,
+        GaussianSplattingTool::compute_density_counts(1.0, 0.22, 0.60)
+    );
+}
+
+#[test]
+fn test_gaussian_splatting_volumetric_presets_beyond_canonical_scene() {
+    let mut tool = GaussianSplattingTool::default();
+    let canonical_img = tool.render_splat_image();
+
+    for preset in [
+        VolumetricSplatPreset::HydrogenDipole1s2pz,
+        VolumetricSplatPreset::HydrogenCone3dz2,
+        VolumetricSplatPreset::TuringGyroid3d,
+    ] {
+        tool.set_scene_preset(preset);
+        assert!(
+            tool.scene.gaussians.len() > 8,
+            "Volumetric preset {preset:?} should generate rich multi-splat cloud"
+        );
+        let img = tool.render_splat_image();
+        assert_ne!(img.pixels, canonical_img.pixels);
+        let ply = tool
+            .export_splat_ply_3d()
+            .expect("3DGS PLY hook present")
+            .expect("volumetric preset PLY serializes");
+        assert!(ply.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
+        let saved = tool.save_state().expect("save volumetric preset state");
+        let mut reloaded = GaussianSplattingTool::default();
+        reloaded
+            .try_load_state(&saved)
+            .expect("reload volumetric preset state");
+        assert_eq!(reloaded.scene_preset, preset);
+    }
+}
+
+#[test]
+fn test_gaussian_splatting_exports_valid_inria_3dgs_ply_binary() {
+    let tool = GaussianSplattingTool {
+        scale: 1.5,
+        ..Default::default()
+    };
+    let caps = tool.export_capabilities();
+    assert!(!caps.dataset && !caps.figure);
+    assert!(caps.ply && !caps.stl && !caps.obj);
+
+    let ply_bytes = tool
+        .export_splat_ply_3d()
+        .expect("3DGS PLY hook present")
+        .expect("3DGS PLY serializes");
+    let header_end = ply_bytes
+        .windows(b"end_header\n".len())
+        .position(|w| w == b"end_header\n")
+        .expect("end_header present")
+        + b"end_header\n".len();
+    let header = std::str::from_utf8(&ply_bytes[..header_end]).expect("ASCII PLY header");
+    assert!(header.contains("element vertex 8\n"));
+    assert!(header.contains("property float f_dc_0\n"));
+    assert!(header.contains("property float opacity\n"));
+    assert!(header.contains("property float scale_0\n"));
+    assert!(header.contains("property float rot_0\n"));
+    // 8 splats * 17 f32 properties * 4 bytes = 544 payload bytes
+    assert_eq!(ply_bytes.len() - header_end, 8 * 17 * 4);
+}

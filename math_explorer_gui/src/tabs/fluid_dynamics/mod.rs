@@ -3,10 +3,13 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod lattice_boltzmann;
+pub mod lattice_boltzmann_sculpt;
+pub mod lbm_fairing;
+pub mod lbm_fairing_ui;
 pub mod potential_flow;
+mod potential_flow_brush;
 pub mod potential_flow_streamlines;
 pub mod turbulence;
-
 
 pub struct FluidDynamicsTab {
     framework: crate::framework::SimulationFramework,

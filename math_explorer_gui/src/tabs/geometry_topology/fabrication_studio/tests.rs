@@ -75,8 +75,7 @@ fn test_nearest_neighbor_optimization_reduces_pen_lift_travel_in_studio() {
     let mut tool = FabricationStudioTool::default();
     tool.import_preset_json(PRESET_FABRICATION_TURING_COASTER)
         .unwrap();
-    tool.ensure_artifact();
-    let art = tool.cached_artifact.as_ref().expect("artifact built");
+    let art = tool.artifact_or_build().expect("artifact built");
     assert!(
         art.active_travel_mm <= art.raw_travel_mm,
         "Optimized travel ({}) must not exceed raw travel ({})",

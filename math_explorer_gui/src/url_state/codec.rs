@@ -21,6 +21,12 @@ pub const URL_JSON_BOUNDS: ToolStateBounds = ToolStateBounds::new(
     MAX_JSON_ARRAY_LEN,
 );
 
+/// Maximum character/byte length permitted for `preset` or `challenge` slug identifiers.
+pub const MAX_URL_ID_PARAM_BYTES: usize = 128;
+
+/// Maximum story step index permitted in `&step=<idx>` URL parameters.
+pub const MAX_URL_STORY_STEPS: usize = 64;
+
 /// Parsed simulation share-link parameters extracted from `location.hash` or `location.search`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShareUrlParams {
@@ -30,6 +36,12 @@ pub struct ShareUrlParams {
     pub tool: Option<String>,
     /// Optional decoded and structurally validated `PresetWrapper` JSON string.
     pub state_json: Option<String>,
+    /// Optional registered starter snapshot or guided story identifier (`&preset=<id>`).
+    pub preset: Option<String>,
+    /// Optional registered inverse or AST goal challenge identifier (`&challenge=<id>`).
+    pub challenge: Option<String>,
+    /// Optional 0-based guided story step index (`&step=<idx>`).
+    pub step: Option<usize>,
 }
 
 fn percent_encode_component(raw: &str) -> String {
@@ -108,13 +120,52 @@ pub fn encode_share_fragment(
     tool_id: Option<&str>,
     preset_json: Option<&str>,
 ) -> Result<String, String> {
+    encode_share_fragment_with_hud(tab_slug, tool_id, None, None, None, preset_json)
+}
+
+/// Encodes `tab_slug`, optional `tool_id`, optional `challenge_id`, and optional compact
+/// `preset_json` into `#tab=<slug>&tool=<id>&challenge=<id>&state=<base64url>`.
+pub fn encode_share_fragment_with_challenge(
+    tab_slug: &str,
+    tool_id: Option<&str>,
+    challenge_id: Option<&str>,
+    preset_json: Option<&str>,
+) -> Result<String, String> {
+    encode_share_fragment_with_hud(tab_slug, tool_id, None, challenge_id, None, preset_json)
+}
+
+/// Encodes a `#tab=...` URL fragment including optional `preset`, `challenge`, `step`, and `state` parameters.
+pub fn encode_share_fragment_with_hud(
+    tab_slug: &str,
+    tool_id: Option<&str>,
+    preset_id: Option<&str>,
+    challenge_id: Option<&str>,
+    step_idx: Option<usize>,
+    preset_json: Option<&str>,
+) -> Result<String, String> {
     if tab_slug.trim().is_empty() {
         return Err("Cannot encode share URL with an empty tab slug".to_string());
+    }
+    if preset_id.is_some() && challenge_id.is_some() {
+        return Err("Cannot encode both 'preset' and 'challenge' in one share URL".to_string());
     }
     let mut fragment = format!("#tab={}", percent_encode_component(tab_slug));
     if let Some(tool) = tool_id.filter(|t| !t.trim().is_empty()) {
         fragment.push_str("&tool=");
         fragment.push_str(&percent_encode_component(tool));
+    }
+    if let Some(pid) = preset_id.filter(|p| !p.trim().is_empty()) {
+        validate_url_identifier(pid, "preset")?;
+        fragment.push_str("&preset=");
+        fragment.push_str(&percent_encode_component(pid.trim()));
+        if let Some(step) = step_idx.filter(|&s| s > 0) {
+            fragment.push_str(&format!("&step={step}"));
+        }
+    }
+    if let Some(cid) = challenge_id.filter(|c| !c.trim().is_empty()) {
+        validate_url_identifier(cid, "challenge")?;
+        fragment.push_str("&challenge=");
+        fragment.push_str(&percent_encode_component(cid.trim()));
     }
     if let Some(json) = preset_json {
         validate_url_preset_json(json)?;
@@ -158,10 +209,29 @@ pub fn parse_share_location(hash: &str, search: &str) -> Result<Option<ShareUrlP
     parse_param_pairs(raw_search, false)
 }
 
+#[derive(Default)]
+struct RawParamAccum {
+    tab: Option<String>,
+    tool: Option<String>,
+    state_b64: Option<String>,
+    preset: Option<String>,
+    challenge: Option<String>,
+    step_raw: Option<String>,
+}
+
+impl RawParamAccum {
+    fn is_empty(&self) -> bool {
+        self.tab.is_none()
+            && self.tool.is_none()
+            && self.state_b64.is_none()
+            && self.preset.is_none()
+            && self.challenge.is_none()
+            && self.step_raw.is_none()
+    }
+}
+
 fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlParams>, String> {
-    let mut tab: Option<String> = None;
-    let mut tool: Option<String> = None;
-    let mut state_b64: Option<String> = None;
+    let mut acc = RawParamAccum::default();
 
     for pair in raw.split('&').filter(|s| !s.is_empty()) {
         let Some((k_raw, v_raw)) = pair.split_once('=') else {
@@ -171,9 +241,12 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
             continue;
         };
         match k_raw {
-            "tab" => set_unique_param(&mut tab, v_raw, "tab")?,
-            "tool" => set_unique_param(&mut tool, v_raw, "tool")?,
-            "state" => set_unique_param(&mut state_b64, v_raw, "state")?,
+            "tab" => set_unique_param(&mut acc.tab, v_raw, "tab")?,
+            "tool" => set_unique_param(&mut acc.tool, v_raw, "tool")?,
+            "state" => set_unique_param(&mut acc.state_b64, v_raw, "state")?,
+            "preset" => set_unique_param(&mut acc.preset, v_raw, "preset")?,
+            "challenge" => set_unique_param(&mut acc.challenge, v_raw, "challenge")?,
+            "step" => set_unique_param(&mut acc.step_raw, v_raw, "step")?,
             _ if strict_keys => {
                 return Err(format!("Unknown URL fragment parameter '{k_raw}'"));
             }
@@ -181,10 +254,10 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
         }
     }
 
-    if tab.is_none() && tool.is_none() && state_b64.is_none() {
+    if acc.is_empty() {
         return Ok(None);
     }
-    build_validated_share_params(tab, tool, state_b64)
+    build_validated_share_params(acc)
 }
 
 fn set_unique_param(slot: &mut Option<String>, raw_val: &str, name: &str) -> Result<(), String> {
@@ -193,6 +266,52 @@ fn set_unique_param(slot: &mut Option<String>, raw_val: &str, name: &str) -> Res
     }
     *slot = Some(percent_decode_component(raw_val)?);
     Ok(())
+}
+
+fn validate_url_identifier(raw: &str, label: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(format!("Shared URL contains an empty '{label}' parameter"));
+    }
+    if trimmed.len() > MAX_URL_ID_PARAM_BYTES {
+        return Err(format!(
+            "Shared URL '{label}' identifier exceeds {MAX_URL_ID_PARAM_BYTES} bytes"
+        ));
+    }
+    if !trimmed
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+    {
+        return Err(format!(
+            "Shared URL '{label}' identifier contains invalid characters"
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn parse_optional_step(
+    step_raw: Option<String>,
+    has_preset: bool,
+) -> Result<Option<usize>, String> {
+    let Some(raw) = step_raw else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("Shared URL contains an empty 'step' parameter".to_string());
+    }
+    if !has_preset {
+        return Err("Shared URL 'step' parameter requires a 'preset' story identifier".to_string());
+    }
+    let idx = trimmed
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid non-negative integer '{trimmed}' for URL 'step'"))?;
+    if idx > MAX_URL_STORY_STEPS {
+        return Err(format!(
+            "Shared URL 'step' index ({idx}) exceeds maximum ({MAX_URL_STORY_STEPS})"
+        ));
+    }
+    Ok(Some(idx))
 }
 
 fn clamp_json_u64_in_range(
@@ -251,43 +370,57 @@ fn clamp_decoded_url_grid_state(
     }
 }
 
-fn build_validated_share_params(
-    tab: Option<String>,
-    tool: Option<String>,
+fn decode_optional_state_json(
+    tab: &str,
+    tool: Option<&str>,
     state_b64: Option<String>,
-) -> Result<Option<ShareUrlParams>, String> {
-    let tab_val = tab
+) -> Result<Option<String>, String> {
+    let Some(raw_b64) = state_b64 else {
+        return Ok(None);
+    };
+    if raw_b64.trim().is_empty() {
+        return Err("Shared URL contains an empty 'state' parameter".to_string());
+    }
+    let decoded_bytes = base64url::decode(raw_b64.trim(), MAX_DECODED_URL_STATE_BYTES)?;
+    let json_str = String::from_utf8(decoded_bytes)
+        .map_err(|_| "Decoded URL state is not valid UTF-8".to_string())?;
+    validate_url_preset_json(&json_str)?;
+    Ok(Some(clamp_decoded_url_grid_state(tab, tool, &json_str)?))
+}
+
+fn build_validated_share_params(acc: RawParamAccum) -> Result<Option<ShareUrlParams>, String> {
+    let tab_val = acc
+        .tab
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
         .ok_or_else(|| "Shared URL is missing a valid 'tab' parameter".to_string())?;
-    let tool_val = match tool {
+    let tool_val = match acc.tool {
         Some(t) if t.trim().is_empty() => {
             return Err("Shared URL contains an empty 'tool' parameter".to_string());
         }
         Some(t) => Some(t.trim().to_string()),
         None => None,
     };
-    let state_json = match state_b64 {
-        Some(raw_b64) => {
-            if raw_b64.trim().is_empty() {
-                return Err("Shared URL contains an empty 'state' parameter".to_string());
-            }
-            let decoded_bytes = base64url::decode(raw_b64.trim(), MAX_DECODED_URL_STATE_BYTES)?;
-            let json_str = String::from_utf8(decoded_bytes)
-                .map_err(|_| "Decoded URL state is not valid UTF-8".to_string())?;
-            validate_url_preset_json(&json_str)?;
-            Some(clamp_decoded_url_grid_state(
-                &tab_val,
-                tool_val.as_deref(),
-                &json_str,
-            )?)
-        }
-        None => None,
-    };
+    let preset_val = acc
+        .preset
+        .map(|p| validate_url_identifier(&p, "preset"))
+        .transpose()?;
+    let challenge_val = acc
+        .challenge
+        .map(|c| validate_url_identifier(&c, "challenge"))
+        .transpose()?;
+    if preset_val.is_some() && challenge_val.is_some() {
+        return Err("Shared URL cannot specify both 'preset' and 'challenge'".to_string());
+    }
+    let step_val = parse_optional_step(acc.step_raw, preset_val.is_some())?;
+    let state_json = decode_optional_state_json(&tab_val, tool_val.as_deref(), acc.state_b64)?;
     Ok(Some(ShareUrlParams {
         tab: tab_val,
         tool: tool_val,
         state_json,
+        preset: preset_val,
+        challenge: challenge_val,
+        step: step_val,
     }))
 }
 

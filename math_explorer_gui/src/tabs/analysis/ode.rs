@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 mod annotations;
+mod canvas;
 pub mod comparison;
 mod persistence;
 pub mod recovery;
@@ -8,13 +9,16 @@ pub mod systems;
 pub mod ui;
 
 use comparison::{simulate_preset, SolverDiscrepancy};
+use systems::{default_coupled_ode_bank, CustomOdeSpec};
 
+use crate::framework::math_input::CoupledExpressionBank;
 use crate::framework::recovery::emit_divergence_telemetry;
 pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::framework::{
-    CalloutManager, InteractiveTool, MathExpressionInputBar, TraceSeries, TraceSnapshotManager,
-};
+#[cfg(test)]
+use crate::framework::InteractiveTool;
+use crate::framework::{CalloutManager, MathExpressionInputBar, TraceSeries, TraceSnapshotManager};
 use crate::presets::OdePreset;
+#[cfg(test)]
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 use recovery::{clamp_ode_parameters, clamp_ode_step_settings};
@@ -36,6 +40,8 @@ pub struct OdeSolverTool {
     pub(crate) display_v: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
     pub(crate) diverged: bool,
     pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) custom_coupled: bool,
+    pub(crate) coupled_bank: CoupledExpressionBank,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) comparison_mode: bool,
     pub(crate) discrepancy_euler_rk4: SolverDiscrepancy,
@@ -49,6 +55,37 @@ pub struct OdeSolverTool {
     pub(crate) pending_sweep_run: Option<(String, Vec<TraceSeries>)>,
     pub show_annotations: bool,
     pub(crate) revision: u64,
+    pub(crate) synced_legacy_params: [f64; 3],
+}
+
+fn default_ode_math_input() -> MathExpressionInputBar {
+    MathExpressionInputBar::new(
+        "y'",
+        "-k * y * sin(t)",
+        vec![
+            ("y' = -k*y*sin(t) (Non-linear Sine)", "-k * y * sin(t)"),
+            ("y' = k*y (Exponential)", "k * y"),
+            (
+                "y' = r*y*(1 - y/cap_k) (Logistic)",
+                "r * y * (1 - y / cap_k)",
+            ),
+            ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
+            ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
+        ],
+    )
+    .with_axes(&["t", "y"])
+    .with_disallowed_vars(&[
+        ("x", "allowed variables: t, y"),
+        ("z", "allowed variables: t, y"),
+        (
+            "v",
+            "allowed variables: t, y; enable Coupled (y', v') mode to use v",
+        ),
+    ])
+    .with_param_spec("k", "k (Rate / Parameter)", -5.0..=5.0, 1.0)
+    .with_param_spec("r", "r (Growth Rate)", 0.0..=5.0, 1.0)
+    .with_param_spec("cap_k", "K (Carrying Capacity)", 1.0..=100.0, 10.0)
+    .with_param_spec("K", "K (Carrying Capacity)", 1.0..=100.0, 10.0)
 }
 
 impl Default for OdeSolverTool {
@@ -69,20 +106,9 @@ impl Default for OdeSolverTool {
             display_y: std::sync::Arc::new(Vec::new()),
             display_v: std::sync::Arc::new(Vec::new()),
             diverged: false,
-            math_input: MathExpressionInputBar::new(
-                "y'",
-                "-k * y * sin(t)",
-                vec![
-                    ("y' = -k*y*sin(t) (Non-linear Sine)", "-k * y * sin(t)"),
-                    ("y' = k*y (Exponential)", "k * y"),
-                    (
-                        "y' = r*y*(1 - y/cap_k) (Logistic)",
-                        "r * y * (1 - y / cap_k)",
-                    ),
-                    ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
-                    ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
-                ],
-            ),
+            math_input: default_ode_math_input(),
+            custom_coupled: false,
+            coupled_bank: default_coupled_ode_bank(),
             diagnostic_report: None,
             comparison_mode: false,
             discrepancy_euler_rk4: SolverDiscrepancy::default(),
@@ -96,7 +122,9 @@ impl Default for OdeSolverTool {
             pending_sweep_run: None,
             show_annotations: true,
             revision: 1,
+            synced_legacy_params: [1.0, 1.0, 10.0],
         };
+        tool.seed_default_custom_params();
         tool.recalculate();
         tool
     }
@@ -107,15 +135,55 @@ impl OdeSolverTool {
         self.revision = self.revision.wrapping_add(1).max(1);
     }
 
+    pub(crate) const fn has_second_state(&self) -> bool {
+        matches!(self.preset, OdePreset::HarmonicOscillator)
+            || (matches!(self.preset, OdePreset::Custom) && self.custom_coupled)
+    }
+
+    pub(crate) const fn second_state_label(&self) -> &'static str {
+        if matches!(self.preset, OdePreset::HarmonicOscillator) {
+            "y'(t)"
+        } else {
+            "v(t)"
+        }
+    }
+
+    pub(crate) fn has_custom_input_error(&self) -> bool {
+        self.preset == OdePreset::Custom
+            && if self.custom_coupled {
+                !self.coupled_bank.is_valid()
+            } else {
+                !self.math_input.is_valid()
+            }
+    }
+
+    pub(crate) fn build_custom_ode_spec(&self) -> Option<CustomOdeSpec> {
+        if self.preset != OdePreset::Custom {
+            return None;
+        }
+        if self.custom_coupled {
+            CustomOdeSpec::from_coupled_bank(&self.coupled_bank)
+        } else {
+            CustomOdeSpec::from_scalar_bar(
+                &self.math_input,
+                self.param_k,
+                self.param_r,
+                self.param_cap_k,
+            )
+        }
+    }
+
     pub fn param_summary(&self) -> String {
         match self.preset {
-            OdePreset::Exponential | OdePreset::HarmonicOscillator | OdePreset::Custom => {
+            OdePreset::Exponential | OdePreset::HarmonicOscillator => {
                 format!(r"k={:.2}, \Delta t={:.2}", self.param_k, self.dt)
             }
             OdePreset::LogisticGrowth => format!(
                 r"r={:.2}, K={:.2}, \Delta t={:.2}",
                 self.param_r, self.param_cap_k, self.dt
             ),
+            OdePreset::Custom if self.custom_coupled => self.coupled_param_summary(),
+            OdePreset::Custom => self.custom_param_summary(),
         }
     }
 
@@ -165,6 +233,9 @@ impl OdeSolverTool {
             &mut self.ic_y0,
             &mut self.ic_v0,
         );
+        self.math_input.clamp_active_params(-10.0..=10.0);
+        self.coupled_bank.clamp_active_params(-10.0..=10.0);
+        self.push_clamped_legacy_params_to_bar();
         clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
         self.recalculate();
     }
@@ -233,10 +304,13 @@ impl OdeSolverTool {
                 self.param_cap_k = 10.0;
                 self.ic_y0 = 1.0;
             }
-            OdePreset::Custom => {
-                self.param_k = 1.0;
+            OdePreset::Custom if self.custom_coupled => {
                 self.ic_y0 = 1.0;
-                self.math_input.set_expression("-k * y * sin(t)");
+                self.ic_v0 = 0.0;
+                self.coupled_bank = default_coupled_ode_bank();
+            }
+            OdePreset::Custom => {
+                self.reset_custom_parameters();
             }
         }
         self.dt = 0.05;
@@ -245,7 +319,7 @@ impl OdeSolverTool {
         self.recalculate();
     }
 
-    fn apply_sidebar_changes(&mut self, changed: bool, sweep_active: bool) {
+    pub(super) fn apply_sidebar_changes(&mut self, changed: bool, sweep_active: bool) {
         if sweep_active {
             if changed {
                 if self.pending_sweep_run.is_none() {
@@ -273,6 +347,7 @@ impl OdeSolverTool {
     }
 
     pub fn recalculate(&mut self) {
+        self.sync_custom_params();
         self.bump_revision();
         self.time_series.clear();
         self.y_series.clear();
@@ -314,6 +389,8 @@ impl OdeSolverTool {
     }
 
     fn recalculate_active(&mut self) {
+        let input_has_err = self.has_custom_input_error();
+        let custom_spec = self.build_custom_ode_spec();
         let active_traj = simulate_preset(
             self.preset,
             self.method,
@@ -324,8 +401,11 @@ impl OdeSolverTool {
             self.param_cap_k,
             self.ic_y0,
             self.ic_v0,
-            self.math_input.expr(),
+            custom_spec.as_ref(),
         );
+        if input_has_err && (active_traj.diverged || active_traj.divergence_info.is_some()) {
+            return;
+        }
         self.time_series = active_traj.time_series;
         self.y_series = active_traj.y_series;
         self.v_series = active_traj.v_series;
@@ -344,75 +424,6 @@ impl OdeSolverTool {
     }
 }
 
-impl InteractiveTool for OdeSolverTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
-        self
-    }
-    fn name(&self) -> &'static str {
-        "ODE Solvers"
-    }
-    fn domain(&self) -> &'static str {
-        "analysis"
-    }
-
-    fn state_revision(&self) -> u64 {
-        self.compute_state_revision()
-    }
-
-    fn has_finite_parameters(&self) -> bool {
-        FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        self.build_full_export_datasets()
-    }
-
-    fn save_state(&self) -> Option<String> {
-        self.serialize_full_state()
-    }
-
-    fn save_recovery_state(&self) -> Option<String> {
-        self.serialize_recovery_state()
-    }
-
-    fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
-        self.state_bounds().validate_json(state)?;
-        self.deserialize_state(state, true)
-    }
-
-    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        self.deserialize_state(state, false)
-    }
-
-    fn clamp_parameters(&mut self) -> bool {
-        FiniteStateGuard::clamp_parameters(self);
-        true
-    }
-
-    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
-        let mut changed = false;
-
-        let sweeps_before = crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx());
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "ode_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            changed |= self.render_sidebar_controls(ui);
-        });
-        let sweep_active =
-            crate::reflective_ui::slider::live_active_sweep_count(parent_ui.ctx()) > sweeps_before;
-
-        self.apply_sidebar_changes(changed, sweep_active);
-
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            self.render_plot_canvas(ui, &mut changed);
-        });
-    }
-
-    #[cfg(test)]
-    fn as_any(&self) -> Option<&dyn std::any::Any> {
-        Some(self)
-    }
-}
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "OdeSolverTool",
@@ -427,6 +438,12 @@ inventory::submit! {
 mod comparison_tests;
 
 #[cfg(test)]
+mod coupled_tests;
+
+#[cfg(test)]
+mod custom_tests;
+
+#[cfg(test)]
 mod ode_tests;
 
 #[cfg(test)]
@@ -434,3 +451,6 @@ mod recovery_tests;
 
 #[cfg(test)]
 mod sensitivity_tests;
+
+#[cfg(test)]
+mod solver_poi_tests;

@@ -3,7 +3,7 @@
 //! Provides structures and traits for mathematical optimization problems.
 
 use super::evolution::{EvolutionEngine, EvolutionError};
-use nalgebra::{DMatrix, DVector, RealField};
+use nalgebra::{DMatrix, DVector, RealField, Vector2};
 use rand::RngCore;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -14,12 +14,9 @@ pub enum OptimizationError {
     #[error("Failed to convert numerical value")]
     #[allow(missing_docs)]
     ConversionError,
-}
-
-impl From<EvolutionError> for OptimizationError {
-    fn from(_: EvolutionError) -> Self {
-        OptimizationError::ConversionError
-    }
+    /// Wrapped evolution engine error preserving causal source.
+    #[error("Evolution solver error: {0}")]
+    Evolution(#[from] EvolutionError),
 }
 
 #[allow(missing_docs)]
@@ -78,6 +75,60 @@ impl<T: RealField + Copy> SGD<T> {
     }
 }
 
+fn sgd_step_slice<T: RealField + Copy>(param: &mut [T], grad: &[T], lr: T) {
+    assert_eq!(param.len(), grad.len());
+    for (p, &g) in param.iter_mut().zip(grad.iter()) {
+        *p -= g * lr;
+    }
+}
+
+#[derive(Clone, Copy)]
+struct AdamHyperparams<T> {
+    lr: T,
+    beta1: T,
+    beta2: T,
+    epsilon: T,
+}
+
+fn adam_step_slices<T: RealField + Copy>(
+    param: &mut [T],
+    grad: &[T],
+    adam_state: &mut AdamState<T>,
+    hyper: AdamHyperparams<T>,
+) -> Result<(), EvolutionError> {
+    assert_eq!(param.len(), grad.len());
+    assert_eq!(adam_state.m.as_slice().len(), param.len());
+    assert_eq!(adam_state.v.as_slice().len(), param.len());
+
+    let one = T::one();
+    let next_t = adam_state
+        .t
+        .checked_add(1)
+        .ok_or(EvolutionError::ConversionError)?;
+    let t_val = T::from_i32(next_t).ok_or(EvolutionError::ConversionError)?;
+    adam_state.t = next_t;
+
+    let one_minus_b1 = one - hyper.beta1;
+    let one_minus_b2 = one - hyper.beta2;
+    let bias_corr1 = one - hyper.beta1.powf(t_val);
+    let bias_corr2 = one - hyper.beta2.powf(t_val);
+
+    for (((p, &g), m), v) in param
+        .iter_mut()
+        .zip(grad.iter())
+        .zip(adam_state.m.as_mut_slice().iter_mut())
+        .zip(adam_state.v.as_mut_slice().iter_mut())
+    {
+        *m = *m * hyper.beta1 + g * one_minus_b1;
+        *v = *v * hyper.beta2 + (g * g) * one_minus_b2;
+        let m_hat = *m / bias_corr1;
+        let v_hat = *v / bias_corr2;
+        let update = m_hat / (v_hat.sqrt() + hyper.epsilon);
+        *p -= update * hyper.lr;
+    }
+    Ok(())
+}
+
 impl<T: RealField + Copy> EvolutionEngine<DMatrix<T>, DMatrix<T>> for SGD<T> {
     fn step<R: RngCore + ?Sized>(
         &mut self,
@@ -86,8 +137,9 @@ impl<T: RealField + Copy> EvolutionEngine<DMatrix<T>, DMatrix<T>> for SGD<T> {
         _rng: &mut R,
         dt: f64,
     ) -> Result<(), EvolutionError> {
+        assert_eq!(state.shape(), aux.shape());
         let lr = T::from_f64(dt).unwrap_or(self.learning_rate);
-        *state -= &*aux * lr;
+        sgd_step_slice(state.as_mut_slice(), aux.as_slice(), lr);
         Ok(())
     }
 }
@@ -100,8 +152,28 @@ impl<T: RealField + Copy> EvolutionEngine<DVector<T>, DVector<T>> for SGD<T> {
         _rng: &mut R,
         dt: f64,
     ) -> Result<(), EvolutionError> {
+        assert_eq!(state.len(), aux.len());
         let lr = T::from_f64(dt).unwrap_or(self.learning_rate);
-        *state -= &*aux * lr;
+        sgd_step_slice(state.as_mut_slice(), aux.as_slice(), lr);
+        Ok(())
+    }
+}
+
+impl<T: RealField + Copy> EvolutionEngine<Vector2<T>, Vector2<T>> for SGD<T> {
+    #[verified_engine::verified]
+    fn step<R: RngCore + ?Sized>(
+        &mut self,
+        state: &mut Vector2<T>,
+        aux: &mut Vector2<T>,
+        _rng: &mut R,
+        dt: f64,
+    ) -> Result<(), EvolutionError> {
+        let lr = if dt > 0.0 {
+            T::from_f64(dt).unwrap_or(self.learning_rate)
+        } else {
+            self.learning_rate
+        };
+        *state -= *aux * lr;
         Ok(())
     }
 }
@@ -114,10 +186,10 @@ impl<T: RealField + Copy, Key> Optimizer<T, Key> for SGD<T> {
         param: &mut DVector<T>,
         grad: &DVector<T>,
     ) -> Result<(), OptimizationError> {
-        let mut aux = grad.clone();
-        let mut rng = rand::rngs::mock::StepRng::new(0, 1);
-        self.step(param, &mut aux, &mut rng, 0.01)
-            .map_err(Into::into)
+        assert_eq!(param.len(), grad.len());
+        let lr = T::from_f64(0.01).unwrap_or(self.learning_rate);
+        sgd_step_slice(param.as_mut_slice(), grad.as_slice(), lr);
+        Ok(())
     }
 
     #[verified_engine::verified]
@@ -127,10 +199,10 @@ impl<T: RealField + Copy, Key> Optimizer<T, Key> for SGD<T> {
         param: &mut DMatrix<T>,
         grad: &DMatrix<T>,
     ) -> Result<(), OptimizationError> {
-        let mut aux = grad.clone();
-        let mut rng = rand::rngs::mock::StepRng::new(0, 1);
-        self.step(param, &mut aux, &mut rng, 0.01)
-            .map_err(Into::into)
+        assert_eq!(param.shape(), grad.shape());
+        let lr = T::from_f64(0.01).unwrap_or(self.learning_rate);
+        sgd_step_slice(param.as_mut_slice(), grad.as_slice(), lr);
+        Ok(())
     }
 }
 
@@ -142,6 +214,36 @@ pub struct AdamState<T> {
     pub v: DMatrix<T>,
     #[allow(missing_docs)]
     pub t: i32,
+}
+
+/// Zero-allocation stack moment accumulators for 2D `Adam` parameter updates.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AdamState2D<T> {
+    /// First moment (exponentially decaying gradient mean).
+    pub m: Vector2<T>,
+    /// Second raw moment (exponentially decaying uncentered gradient variance).
+    pub v: Vector2<T>,
+    /// 1-indexed optimization step counter.
+    pub t: i32,
+}
+
+impl<T: RealField + Copy> Default for AdamState2D<T> {
+    #[verified_engine::verified]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: RealField + Copy> AdamState2D<T> {
+    /// Creates a zeroed 2D Adam moment accumulator on the stack.
+    #[verified_engine::verified]
+    pub fn new() -> Self {
+        Self {
+            m: Vector2::zeros(),
+            v: Vector2::zeros(),
+            t: 0,
+        }
+    }
 }
 
 #[allow(missing_docs)]
@@ -188,6 +290,22 @@ where
     }
 }
 
+impl<T: RealField + Copy, Key: Eq + std::hash::Hash> Adam<T, Key> {
+    fn step_hyperparams(&self, dt: f64) -> AdamHyperparams<T> {
+        let lr = if dt > 0.0 {
+            T::from_f64(dt).unwrap_or(self.learning_rate)
+        } else {
+            self.learning_rate
+        };
+        AdamHyperparams {
+            lr,
+            beta1: self.beta1,
+            beta2: self.beta2,
+            epsilon: self.epsilon,
+        }
+    }
+}
+
 impl<T: RealField + Copy, Key: Eq + std::hash::Hash>
     EvolutionEngine<DMatrix<T>, (DMatrix<T>, &mut AdamState<T>)> for Adam<T, Key>
 {
@@ -198,32 +316,9 @@ impl<T: RealField + Copy, Key: Eq + std::hash::Hash>
         _rng: &mut R,
         dt: f64,
     ) -> Result<(), EvolutionError> {
-        let grad = &aux.0;
-        let adam_state = &mut aux.1;
-        let lr = if dt > 0.0 {
-            T::from_f64(dt).unwrap_or(self.learning_rate)
-        } else {
-            self.learning_rate
-        };
-
-        let beta1 = self.beta1;
-        let beta2 = self.beta2;
-        let epsilon = self.epsilon;
-        let one = T::one();
-
-        adam_state.t += 1;
-        let t_val = T::from_i32(adam_state.t).ok_or(EvolutionError::ConversionError)?;
-
-        adam_state.m = &adam_state.m * beta1 + grad * (one - beta1);
-        let grad_sq = grad.map(|g| g * g);
-        adam_state.v = &adam_state.v * beta2 + grad_sq * (one - beta2);
-
-        let m_hat = &adam_state.m / (one - beta1.powf(t_val));
-        let v_hat = &adam_state.v / (one - beta2.powf(t_val));
-
-        let update = m_hat.component_div(&v_hat.map(|v| v.sqrt() + epsilon));
-        *state -= update * lr;
-        Ok(())
+        assert_eq!(state.shape(), aux.0.shape());
+        let hyper = self.step_hyperparams(dt);
+        adam_step_slices(state.as_mut_slice(), aux.0.as_slice(), aux.1, hyper)
     }
 }
 
@@ -237,37 +332,41 @@ impl<T: RealField + Copy, Key: Eq + std::hash::Hash>
         _rng: &mut R,
         dt: f64,
     ) -> Result<(), EvolutionError> {
-        let grad = &aux.0;
-        let adam_state = &mut aux.1;
+        assert_eq!(state.len(), aux.0.len());
+        let hyper = self.step_hyperparams(dt);
+        adam_step_slices(state.as_mut_slice(), aux.0.as_slice(), aux.1, hyper)
+    }
+}
+
+impl<T: RealField + Copy, Key: Eq + std::hash::Hash>
+    EvolutionEngine<Vector2<T>, (Vector2<T>, &mut AdamState2D<T>)> for Adam<T, Key>
+{
+    #[verified_engine::verified]
+    fn step<R: RngCore + ?Sized>(
+        &mut self,
+        state: &mut Vector2<T>,
+        aux: &mut (Vector2<T>, &mut AdamState2D<T>),
+        _rng: &mut R,
+        dt: f64,
+    ) -> Result<(), EvolutionError> {
+        let grad = aux.0;
+        let adam_state = &mut *aux.1;
         let lr = if dt > 0.0 {
             T::from_f64(dt).unwrap_or(self.learning_rate)
         } else {
             self.learning_rate
         };
-
-        let beta1 = self.beta1;
-        let beta2 = self.beta2;
-        let epsilon = self.epsilon;
         let one = T::one();
-
-        let rows = state.len();
-        let cols = 1;
-
         adam_state.t += 1;
         let t_val = T::from_i32(adam_state.t).ok_or(EvolutionError::ConversionError)?;
-
-        let grad_mat = DMatrix::from_column_slice(rows, cols, grad.as_slice());
-
-        adam_state.m = &adam_state.m * beta1 + &grad_mat * (one - beta1);
-        let grad_sq = grad_mat.map(|g| g * g);
-        adam_state.v = &adam_state.v * beta2 + grad_sq * (one - beta2);
-
-        let m_hat = &adam_state.m / (one - beta1.powf(t_val));
-        let v_hat = &adam_state.v / (one - beta2.powf(t_val));
-
-        let update_mat = m_hat.component_div(&v_hat.map(|v| v.sqrt() + epsilon));
-        let update_vec = DVector::from_column_slice(update_mat.as_slice());
-        *state -= update_vec * lr;
+        adam_state.m = adam_state.m * self.beta1 + grad * (one - self.beta1);
+        let grad_sq = Vector2::new(grad.x * grad.x, grad.y * grad.y);
+        adam_state.v = adam_state.v * self.beta2 + grad_sq * (one - self.beta2);
+        let m_hat = adam_state.m / (one - self.beta1.powf(t_val));
+        let v_hat = adam_state.v / (one - self.beta2.powf(t_val));
+        let dx = m_hat.x / (v_hat.x.sqrt() + self.epsilon);
+        let dy = m_hat.y / (v_hat.y.sqrt() + self.epsilon);
+        *state -= Vector2::new(dx, dy) * lr;
         Ok(())
     }
 }
@@ -283,24 +382,16 @@ where
         param: &mut DMatrix<T>,
         grad: &DMatrix<T>,
     ) -> Result<(), OptimizationError> {
-        // extract state first to avoid borrow conflicts
+        assert_eq!(param.shape(), grad.shape());
         let shape = (param.nrows(), param.ncols());
-        let mut rng = rand::rngs::mock::StepRng::new(0, 1);
-
-        // This is safe because we use the internal state, keeping the interface unchanged
-        // while fulfilling the EvolutionEngine pattern.
-        // Get the state first:
-        let mut state_val = self.states.remove(&key).unwrap_or_else(|| AdamState {
+        let hyper = self.step_hyperparams(0.0);
+        let adam_state = self.states.entry(key).or_insert_with(|| AdamState {
             m: DMatrix::zeros(shape.0, shape.1),
             v: DMatrix::zeros(shape.0, shape.1),
             t: 0,
         });
-
-        let mut aux = (grad.clone(), &mut state_val);
-        EvolutionEngine::step(self, param, &mut aux, &mut rng, 0.0)?;
-
-        self.states.insert(key, state_val);
-        Ok(())
+        adam_step_slices(param.as_mut_slice(), grad.as_slice(), adam_state, hyper)
+            .map_err(Into::into)
     }
 
     #[verified_engine::verified]
@@ -310,20 +401,16 @@ where
         param: &mut DVector<T>,
         grad: &DVector<T>,
     ) -> Result<(), OptimizationError> {
+        assert_eq!(param.len(), grad.len());
         let shape = (param.len(), 1);
-        let mut rng = rand::rngs::mock::StepRng::new(0, 1);
-
-        let mut state_val = self.states.remove(&key).unwrap_or_else(|| AdamState {
+        let hyper = self.step_hyperparams(0.0);
+        let adam_state = self.states.entry(key).or_insert_with(|| AdamState {
             m: DMatrix::zeros(shape.0, shape.1),
             v: DMatrix::zeros(shape.0, shape.1),
             t: 0,
         });
-
-        let mut aux = (grad.clone(), &mut state_val);
-        EvolutionEngine::step(self, param, &mut aux, &mut rng, 0.0)?;
-
-        self.states.insert(key, state_val);
-        Ok(())
+        adam_step_slices(param.as_mut_slice(), grad.as_slice(), adam_state, hyper)
+            .map_err(Into::into)
     }
 }
 

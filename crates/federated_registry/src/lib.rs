@@ -5,18 +5,34 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 pub use diagnostics::Severity;
 
+/// Structured telemetry payload routed through a [`FederatedRegistry`].
+///
+/// # Example
+/// ```
+/// use federated_registry::{Severity, TelemetryEvent};
+/// use std::collections::HashMap;
+///
+/// let event = TelemetryEvent {
+///     source: "rk4_integrator".to_string(),
+///     severity: Severity::Info,
+///     message: "Converged within tolerance".to_string(),
+///     metadata: HashMap::from([("steps".to_string(), "128".to_string())]),
+///     thread_name: Some("worker-1".to_string()),
+/// };
+/// assert_eq!(event.source, "rk4_integrator");
+/// assert_eq!(event.severity, Severity::Info);
+/// ```
 #[derive(Debug, Clone)]
-#[allow(missing_docs)]
 pub struct TelemetryEvent {
-    #[allow(missing_docs)]
+    /// Identifier of the subsystem or simulation kernel emitting the event.
     pub source: String,
-    #[allow(missing_docs)]
+    /// Standardized diagnostic [`Severity`] level.
     pub severity: Severity,
-    #[allow(missing_docs)]
+    /// Human-readable description of the operational event.
     pub message: String,
-    #[allow(missing_docs)]
+    /// Key-value contextual metadata attached to the event.
     pub metadata: HashMap<String, String>,
-    #[allow(missing_docs)]
+    /// Optional OS or worker thread name where the event originated.
     pub thread_name: Option<String>,
 }
 
@@ -50,7 +66,7 @@ pub struct FederatedRegistry {
 }
 
 impl FederatedRegistry {
-    #[allow(missing_docs)]
+    /// Creates an isolated [`FederatedRegistry`] backed by a fresh `mpsc` channel and empty source list.
     pub fn new() -> Self {
         let (sender, receiver) = channel();
         Self {
@@ -80,7 +96,7 @@ impl FederatedRegistry {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Returns a snapshot of all unique source identifiers registered via [`FederatedRegistry::register_source`].
     pub fn known_sources(&self) -> Vec<String> {
         let sources = match self.sources.lock() {
             Ok(guard) => guard,
@@ -118,7 +134,16 @@ impl FederatedRegistry {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Drains all currently queued [`TelemetryEvent`] items without blocking, returning an empty
+    /// vector when no new events are pending.
+    ///
+    /// # Example
+    /// ```
+    /// use federated_registry::FederatedRegistry;
+    ///
+    /// let registry = FederatedRegistry::new();
+    /// assert!(registry.try_recv_all().is_empty());
+    /// ```
     pub fn try_recv_all(&self) -> Vec<TelemetryEvent> {
         let mut events = Vec::new();
         let rx = match self.receiver.lock() {
@@ -138,7 +163,10 @@ impl Default for FederatedRegistry {
     }
 }
 
-#[allow(missing_docs)]
+/// Returns the process-wide [`FederatedRegistry`] singleton bridged to [`diagnostics::global_bus`].
+///
+/// Any [`diagnostics::DiagnosticEvent`] emitted on `diagnostics::global_bus()` is automatically
+/// forwarded into this registry using `metadata["source"]` (defaulting to `"diagnostics"`).
 pub fn global_registry() -> &'static FederatedRegistry {
     static REGISTRY: OnceLock<FederatedRegistry> = OnceLock::new();
     REGISTRY.get_or_init(|| {
@@ -212,6 +240,52 @@ mod tests {
         assert_eq!(
             events[1].metadata.get("source").map(String::as_str),
             Some("domain_solver")
+        );
+    }
+
+    #[derive(Debug)]
+    struct SampleDomainError(&'static str);
+
+    impl std::fmt::Display for SampleDomainError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
+    impl std::error::Error for SampleDomainError {}
+
+    impl diagnostics::Diagnostic for SampleDomainError {
+        fn severity(&self) -> Severity {
+            Severity::Error
+        }
+
+        fn metadata(&self) -> HashMap<String, String> {
+            let mut map = HashMap::new();
+            map.insert("error_type".to_string(), "SampleDomainError".to_string());
+            map.insert("description".to_string(), self.to_string());
+            map
+        }
+    }
+
+    #[test]
+    fn test_global_registry_receives_emitted_diagnostics_directly() {
+        let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let registry = global_registry();
+        let _ = registry.try_recv_all();
+
+        let err = SampleDomainError("matrix singular");
+        diagnostics::global_bus().emit_diagnostic(&err);
+        diagnostics::global_bus().emit_diagnostic_with_source("epidemiology_solver", &err);
+
+        let events = registry.try_recv_all();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].source, "SampleDomainError");
+        assert_eq!(events[0].severity, Severity::Error);
+        assert_eq!(events[0].message, "matrix singular");
+        assert_eq!(events[1].source, "epidemiology_solver");
+        assert_eq!(
+            events[1].metadata.get("error_type").map(String::as_str),
+            Some("SampleDomainError")
         );
     }
 }

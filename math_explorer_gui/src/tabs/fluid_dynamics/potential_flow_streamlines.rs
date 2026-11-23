@@ -4,9 +4,8 @@
 
 use super::potential_flow::PotentialFlowTool;
 use eframe::egui;
-use egui_plot::{Arrows, ExportPrimitive, Line, PlotPoint, PlotPoints, PlotUi};
+use egui_plot::ExportPrimitive;
 use math_commons::contours::order_paths_nearest_neighbor;
-use std::sync::Arc;
 
 pub(crate) const fn default_show_streamlines() -> bool {
     true
@@ -35,34 +34,6 @@ impl PotentialFlowTool {
             .filter(|p| p.points.len() >= 2)
             .map(|p| (p.polyline_points(), p.closed))
             .collect()
-    }
-
-    pub(crate) fn render_plot_contents(
-        plot_ui: &mut PlotUi<'_>,
-        streamlines: &[Arc<Vec<PlotPoint>>],
-        origins: Arc<Vec<PlotPoint>>,
-        tips: Arc<Vec<PlotPoint>>,
-    ) {
-        let palette = crate::app::SemanticPalette::from_visuals(&plot_ui.ctx().style().visuals);
-        let streamline_color = palette.series_color(1);
-        for (idx, pts) in streamlines.iter().enumerate() {
-            let line = Line::new(
-                format!("Streamline {}", idx + 1),
-                PlotPoints::from_shared(Arc::clone(pts)),
-            )
-            .color(streamline_color)
-            .width(1.6_f32);
-            plot_ui.line(line);
-        }
-        let arrow_color = palette.series_color(0);
-        plot_ui.arrows(
-            Arrows::new(
-                "Vector Field",
-                PlotPoints::from_shared(origins),
-                PlotPoints::from_shared(tips),
-            )
-            .color(arrow_color),
-        );
     }
 
     pub(crate) fn build_export_primitives(&self) -> Vec<ExportPrimitive> {

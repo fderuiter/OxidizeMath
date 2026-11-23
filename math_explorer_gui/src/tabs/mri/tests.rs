@@ -4,6 +4,7 @@ use super::runner::MAX_MRI_STEPS_PER_FRAME;
 use super::*;
 use crate::async_sim::{SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
+use egui::{CentralPanel, Frame};
 use egui_plot::PlotPoint;
 use math_explorer::physics::mri::bloch::BlochSimulator;
 use math_explorer::pure_math::analysis::ode::RungeKutta4;
@@ -210,7 +211,9 @@ fn test_mri_save_load_legacy_compatibility_and_exports() {
             },
             |ctx| {
                 loaded.framework.queue_export(fmt);
-                loaded.show(ctx, &mut frame);
+                CentralPanel::default()
+                    .frame(Frame::NONE)
+                    .show(ctx, |ui| loaded.show_inside(ui, &mut frame));
             },
         );
         assert_eq!(
@@ -286,7 +289,11 @@ fn click_mri_button(ctx: &egui::Context, tab: &mut MriTab, label_substr: &str) {
             screen_rect: Some(screen_rect),
             ..Default::default()
         },
-        |ctx| tab.show(ctx, &mut frame),
+        |ctx| {
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        },
     );
     let ak = out.platform_output.accesskit_update.as_ref().unwrap();
     let bounds = ak
@@ -319,7 +326,11 @@ fn click_mri_button(ctx: &egui::Context, tab: &mut MriTab, label_substr: &str) {
             ],
             ..Default::default()
         },
-        |ctx| tab.show(ctx, &mut frame),
+        |ctx| {
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        },
     );
 }
 
@@ -372,11 +383,15 @@ fn test_mri_reset_live_region_theory_and_preset_io() {
     click_mri_button(&ctx, &mut tab, "Theory");
     assert!(tab.framework.show_theory_portal);
     let mut frame = eframe::Frame::_new_kittest();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
-    assert!(scientific_metadata::citation_registry::CitationRegistry::get(
-        "MRI Bloch Relaxation"
-    )
-    .is_some_and(|c| c.contains("Bloch, F. (1946)")));
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+    });
+    assert!(
+        scientific_metadata::citation_registry::CitationRegistry::get("MRI Bloch Relaxation")
+            .is_some_and(|c| c.contains("Bloch, F. (1946)"))
+    );
 }
 
 #[test]
@@ -405,7 +420,9 @@ fn test_mri_workspace_undo_mws_and_figure_export() {
         },
         |ctx| {
             tab.framework.queue_export(ExportFormat::Png);
-            tab.show(ctx, &mut frame);
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
         },
     );
     let _ = std::fs::write(

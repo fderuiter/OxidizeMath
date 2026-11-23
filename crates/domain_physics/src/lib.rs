@@ -14,22 +14,27 @@ pub mod prelude {
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{
-            ChaosError, DoseFluenceError, FluidError, HighEnergyError, RadarError, SolidStateError,
-            StandardModelError, StatMechError,
+            ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
+            PhysicsError, RadarError, SolidStateError, StandardModelError, StatMechError,
         };
         pub use ::domain_applied::__doctest_facade::error::*;
     }
     pub mod prelude {
         pub use crate::error::{
-            ChaosError, DoseFluenceError, FluidError, HighEnergyError, RadarError, SolidStateError,
-            StandardModelError, StatMechError,
+            ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
+            PhysicsError, RadarError, SolidStateError, StandardModelError, StatMechError,
         };
         pub use ::domain_applied::__doctest_facade::prelude::*;
     }
     pub use crate::physics;
     pub use ::domain_applied::applied;
     pub use ::pure_math::__doctest_facade::{
-        ast, constants, contours, diagnostics, math_kernel, math_types, mesh, nalgebra,
-        num_complex, petgraph, primitives, pure_math, rand, registry, rng, wigner,
+        ast, constants, contours, diagnostics, fit, math_kernel, math_types, mesh, nalgebra,
+        num_complex, petgraph, poi, primitives, pure_math, rand, registry, rng, series, wigner,
     };
 }
+
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;

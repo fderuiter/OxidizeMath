@@ -39,14 +39,24 @@
 pub mod christoffel;
 #[allow(missing_docs)]
 pub mod differentiation;
+pub mod geodesic;
 #[allow(missing_docs)]
 pub mod metric;
+pub mod static_metric;
 pub mod types;
 
 // Re-exports for convenience
 pub use christoffel::christoffel_symbols;
+pub use geodesic::{GeodesicState, GeodesicStepStatus, GeodesicSystem};
 pub use metric::{Metric, RiemannianMetric};
+pub use static_metric::{
+    StaticMetric, StaticRiemannianMetric, TwoSphereMetric, static_christoffel_symbols,
+};
 pub use types::{ContravariantVector, CovariantVector, TensorError};
 
 // [cite:graph_parameters_rust]
 // [cite:tensors]
+// [cite:general_relativity_geodesics]
+
+#[cfg(test)]
+mod tests;

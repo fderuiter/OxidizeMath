@@ -1,19 +1,29 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+#[path = "spin_export.rs"]
+mod spin_export;
+
 use crate::accessibility::AccessibleTheoryHover;
-use crate::framework::{Camera3D, InteractiveTool, PlaybackAction, PlaybackTransport, Plot3DViewport};
+use crate::framework::{
+    Camera3D, ExportCapabilities, InteractiveTool, PlaybackAction, PlaybackTransport,
+    Plot3DViewport, Scene3DBuilder,
+};
 use eframe::egui;
-use egui_plot::{Line, PlotPoint, Points};
+use egui_plot::{LineStyle, MarkerShape};
 use math_explorer::physics::quantum::{
     evolve_state_in_place, spin, time_evolution_operator, QuantumOperator, QuantumState,
 };
-use nalgebra::{DMatrix, DVector};
+use nalgebra::{DMatrix, DVector, Point3};
 use num_complex::Complex;
 
+/// Interactive quantum spin-1/2 Bloch sphere visualizer built on `Plot3DViewport` and `Scene3DBuilder`.
 pub struct SpinVisualizer {
     psi: QuantumState,
     b_field: [f64; 3],
     time: f64,
     paused: bool,
-    camera: crate::framework::Camera3D,
+    pub(crate) camera: Camera3D,
+    pub(crate) scene_builder: Scene3DBuilder,
     sx: QuantumOperator,
     sy: QuantumOperator,
     sz: QuantumOperator,
@@ -24,12 +34,14 @@ pub struct SpinVisualizer {
 
 impl Default for SpinVisualizer {
     fn default() -> Self {
+        let camera = Camera3D::new(0.5, 0.5, 1.0);
         Self {
             psi: QuantumState::spin_zero(),
             b_field: [0.0, 0.0, 1.0],
             time: 0.0,
             paused: true,
-            camera: crate::framework::Camera3D::new(0.5, 0.5, 1.0),
+            camera,
+            scene_builder: Scene3DBuilder::new(camera),
             sx: spin::sigma_x(),
             sy: spin::sigma_y(),
             sz: spin::sigma_z(),
@@ -41,11 +53,13 @@ impl Default for SpinVisualizer {
 }
 
 impl SpinVisualizer {
+    /// Resets the quantum state to $|0\rangle$ along $+Z$ and zeroes elapsed time.
     pub fn reset(&mut self) {
         self.psi = QuantumState::spin_zero();
         self.time = 0.0;
     }
 
+    /// Pauses continuous playback and advances a single $\Delta t = 0.05$ Zeeman step.
     pub fn step_once(&mut self) {
         self.paused = true;
         self.step(0.05);
@@ -72,23 +86,54 @@ impl SpinVisualizer {
         self.time += dt;
     }
 
-    fn project(&self, point: [f64; 3]) -> [f64; 2] {
-        self.camera.project(&point)
-    }
-
-    fn project_circle(&self, axis: usize) -> [PlotPoint; 61] {
-        let mut ring = [PlotPoint::new(0.0, 0.0); 61];
+    fn bloch_circle_3d(axis: usize) -> [Point3<f64>; 61] {
+        let mut ring = [Point3::origin(); 61];
         for (i, pt) in ring.iter_mut().enumerate() {
-            let theta = i as f64 * std::f64::consts::TAU / 60.0;
-            let p3 = match axis {
-                0 => [theta.cos(), theta.sin(), 0.0],
-                1 => [0.0, theta.cos(), theta.sin()],
-                _ => [theta.cos(), 0.0, theta.sin()],
+            let theta = (i as f64) * std::f64::consts::TAU / 60.0;
+            let (s, c) = theta.sin_cos();
+            *pt = match axis {
+                0 => Point3::new(c, s, 0.0),
+                1 => Point3::new(0.0, c, s),
+                _ => Point3::new(c, 0.0, s),
             };
-            let [x, y] = self.project(p3);
-            *pt = PlotPoint::new(x, y);
         }
         ring
+    }
+
+    /// Populates `self.scene_builder` with Bloch sphere rings, axes, state vector, and spin tip.
+    pub fn populate_scene(
+        &mut self,
+        ex: f64,
+        ey: f64,
+        ez: f64,
+        edge_color: egui::Color32,
+        accent_color: egui::Color32,
+        dark_mode: bool,
+    ) {
+        self.scene_builder.begin(self.camera);
+        let ring_stroke = egui::Stroke::new(1.0_f32, edge_color);
+        for axis in 0..3 {
+            let circle = Self::bloch_circle_3d(axis);
+            self.scene_builder
+                .add_polyline("", &circle, ring_stroke, LineStyle::Solid, false);
+        }
+        self.scene_builder.add_axes(1.2, dark_mode);
+        let tip = Point3::new(ex, ey, ez);
+        self.scene_builder.add_segment(
+            "State",
+            Point3::origin(),
+            tip,
+            egui::Stroke::new(3.0_f32, accent_color),
+            true,
+        );
+        self.scene_builder.add_points(
+            "Spin Tip",
+            &[tip],
+            5.0_f32,
+            accent_color,
+            MarkerShape::Circle,
+            true,
+        );
     }
 
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui, ex: f64, ey: f64, ez: f64) {
@@ -135,46 +180,16 @@ impl SpinVisualizer {
 
     fn draw_bloch_sphere(&mut self, parent_ui: &mut egui::Ui, ex: f64, ey: f64, ez: f64) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            let equator = self.project_circle(0);
-            let meridian = self.project_circle(1);
-            let meridian2 = self.project_circle(2);
-
-            let to_pt = |p: [f64; 3]| {
-                let [x, y] = self.project(p);
-                PlotPoint::new(x, y)
-            };
-            let origin = to_pt([0.0, 0.0, 0.0]);
-            let end = to_pt([ex, ey, ez]);
-            let vec_line = [origin, end];
-            let x_axis = [origin, to_pt([1.2, 0.0, 0.0])];
-            let y_axis = [origin, to_pt([0.0, 1.2, 0.0])];
-            let z_axis = [origin, to_pt([0.0, 0.0, 1.2])];
-            let tip = [end];
-
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            let dark_mode = ui.visuals().dark_mode;
+            self.populate_scene(ex, ey, ez, palette.graph_edge, palette.accent, dark_mode);
+            let mut camera = self.camera;
             let response = Plot3DViewport::new("bloch_sphere", 1.5)
-                .show(ui, &mut self.camera, |plot_ui| {
-                    plot_ui.line(Line::new("", &equator[..]).color(palette.graph_edge));
-                    plot_ui.line(Line::new("", &meridian[..]).color(palette.graph_edge));
-                    plot_ui.line(Line::new("", &meridian2[..]).color(palette.graph_edge));
-
-                    plot_ui.line(Line::new("", &x_axis[..]).color(palette.axis_x));
-                    plot_ui.line(Line::new("", &y_axis[..]).color(palette.axis_y));
-                    plot_ui.line(Line::new("", &z_axis[..]).color(palette.axis_z));
-
-                    plot_ui.line(
-                        Line::new("State", &vec_line[..])
-                            .color(palette.accent)
-                            .width(3.0_f32),
-                    );
-                    plot_ui.points(
-                        Points::new("", &tip[..])
-                            .radius(5.0_f32)
-                            .color(palette.accent),
-                    );
+                .show(ui, &mut camera, |plot_ui| {
+                    self.scene_builder.finish(plot_ui);
                 })
                 .response;
-
+            self.camera = camera;
             response.accessible_theory_hover(&self.psi);
         });
     }
@@ -213,6 +228,30 @@ impl InteractiveTool for SpinVisualizer {
         "quantum"
     }
 
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
+        Some(self.build_bloch_colored_mesh_3d())
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        Some(self.build_bloch_colored_mesh_3d().map(|cm| cm.mesh))
+    }
+
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for component in self.b_field {
+            component.to_bits().hash(&mut h);
+        }
+        self.time.to_bits().hash(&mut h);
+        self.paused.hash(&mut h);
+        self.camera.hash_state(&mut h);
+        h.finish().max(1)
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&SpinVisualizerSaveState {
             b_field: self.b_field,
@@ -223,8 +262,9 @@ impl InteractiveTool for SpinVisualizer {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded: SpinVisualizerState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid SpinVisualizer state: {e}"))?;
+        self.state_bounds().validate_json(state)?;
+        let loaded: SpinVisualizerState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid SpinVisualizer state: {e}"))?;
         if !loaded
             .b_field
             .iter()
@@ -294,6 +334,8 @@ impl scientific_metadata::theory::TheoryDescribable for SpinVisualizer {
 
 #[cfg(test)]
 mod tests {
+    #![cfg_attr(any(), verified(opt_out = "tests"))]
+
     use super::*;
 
     #[test]
@@ -341,17 +383,14 @@ mod tests {
         assert!(key_initial.is_some());
         let ptr_initial = viz.propagator.matrix.as_ptr();
 
-        // Constant b_field and dt reuse the cached propagator buffer
         viz.step(0.05);
         assert_eq!(viz.cached_key, key_initial);
         assert_eq!(viz.propagator.matrix.as_ptr(), ptr_initial);
 
-        // Changing dt rebuilds propagator
         viz.step(0.02);
         let key_dt_changed = viz.cached_key;
         assert_ne!(key_dt_changed, key_initial);
 
-        // Changing b_field rebuilds propagator and matches evolve_state trajectory
         viz.reset();
         viz.b_field = [2.0, 0.0, 0.0];
         let mut expected = QuantumState::spin_zero();
@@ -371,7 +410,22 @@ mod tests {
         let ctx = egui::Context::default();
         let _ = ctx.run(egui::RawInput::default(), |ctx| viz.show(ctx));
         assert!(!egui_plot::get_last_plot_datasets().is_empty());
+        assert!(!egui_plot::get_last_plot_datasets_3d().is_empty());
         assert!(!egui_plot::get_last_plot_primitives().is_empty());
+
+        let cm = viz
+            .export_colored_mesh_3d()
+            .expect("Bloch 3D export hook present")
+            .expect("Bloch 3D mesh builds");
+        assert_eq!(cm.colors.len(), cm.mesh.vertices.len());
+        assert!(cm.mesh.normals.iter().all(|n| n.is_finite()));
+        assert_eq!(
+            crate::tabs::geometry_topology::export_utils::count_open_and_nonmanifold_edges(
+                &cm.mesh
+            ),
+            (0, 0)
+        );
+        assert!(crate::tabs::geometry_topology::export_utils::signed_volume(&cm.mesh) > 0.0);
     }
 }
 

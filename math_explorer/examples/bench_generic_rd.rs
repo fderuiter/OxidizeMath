@@ -1,4 +1,5 @@
-#![allow(missing_docs)]
+//! Example target for bench generic rd.
+#![cfg_attr(not(target_arch = "wasm32"), allow(clippy::disallowed_methods))]
 use math_explorer::biology::diffusion::FiniteDifference1D;
 use math_explorer::biology::morphogenesis::SchnakenbergKinetics;
 use math_explorer::biology::reaction_diffusion::ReactionDiffusionSystem;

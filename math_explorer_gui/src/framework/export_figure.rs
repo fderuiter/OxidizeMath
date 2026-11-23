@@ -107,18 +107,19 @@ fn render_tool_svg_with_fallback(
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<String, String> {
-    if let Some(custom_svg) = tool.export_custom_svg() {
+    if let Some(custom_svg) = tool.export_custom_svg(options) {
         return custom_svg;
     }
-    let plot_prims = tool.export_plot_primitives();
-    if has_drawable_primitives(&plot_prims) {
-        return export_primitives_svg(&plot_prims, options);
-    }
+    let mut preloaded_prims = None;
     if let Some(raster) = valid_raster_image(tool) {
-        return export_raster_svg(&raster, options);
+        let plot_prims = tool.export_plot_primitives();
+        if !has_drawable_primitives(&plot_prims) {
+            return export_raster_svg(&raster, options);
+        }
+        preloaded_prims = Some(plot_prims);
     }
     let primitives =
-        resolve_tool_primitives_with_fallback(tool, fallback_datasets, Some(plot_prims));
+        resolve_tool_primitives_with_fallback(tool, fallback_datasets, preloaded_prims);
     if !has_drawable_primitives(&primitives) {
         return Err(format!(
             "{} produced no finite plot primitives or raster image to export",

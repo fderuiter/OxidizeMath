@@ -1,8 +1,12 @@
 //! Simplicial complex construction and management.
 
-use super::core::{PointCloud, Simplex};
+use super::core::{MAX_TDA_POINTS, NdPointCloud, PointCloud, Simplex};
+use super::space3d::PointCloud3D;
 use crate::error::TdaError;
 use std::collections::HashSet;
+
+/// Upper bound on 2-simplices (triangles) retained in a Vietoris-Rips filtration or complex.
+pub const MAX_FILTRATION_TRIANGLES: usize = 100_000;
 
 /// A simplicial complex is a collection of simplices with the property
 /// that every face of a simplex in the complex is also in the complex.
@@ -38,14 +42,11 @@ impl SimplicialComplex {
         while let Some(current) = stack.pop() {
             let dim = current.dimension();
 
-            // Ensure we have enough dimension levels
             while self.simplices.len() <= dim {
                 self.simplices.push(HashSet::new());
             }
 
-            // Add the simplex
             if self.simplices[dim].insert(current.clone()) {
-                // Recursively add all faces (push in reverse to maintain order if it matters, though HashSet doesn't care)
                 for face in current.faces()? {
                     stack.push(face);
                 }
@@ -118,28 +119,11 @@ impl Default for SimplicialComplex {
 
 /// Constructs a Vietoris-Rips complex at a given radius.
 ///
-/// The Vietoris-Rips complex at radius ε includes:
-/// - All vertices (0-simplices)
-/// - An edge between vertices i and j if d(i,j) ≤ ε
-/// - A triangle `[i, j, k]` if all pairwise distances ≤ ε
-/// - Higher-dimensional simplices similarly
-///
 /// This implementation constructs up to 2-dimensional simplices (triangles).
-///
-/// # Arguments
-///
-/// * `cloud` - The point cloud
-/// * `radius` - The radius parameter ε
-///
-/// # Returns
-///
-/// * `Result<SimplicialComplex, TdaError>` - The Vietoris-Rips complex or error
 ///
 /// # Errors
 ///
-/// Returns a [`TdaError::InvalidRadius`] if `radius` is negative or non-finite.
-/// Additionally, returns a [`TdaError::InvalidSimplex`] if creating any of the required
-/// simplices fails during the complex construction.
+/// Returns [`TdaError::InvalidRadius`] if `radius` is negative or non-finite.
 ///
 /// # Example
 ///
@@ -157,8 +141,8 @@ impl Default for SimplicialComplex {
 /// let cloud = PointCloud::new(points).unwrap();
 ///
 /// let complex = vietoris_rips_complex(&cloud, 1.5).unwrap();
-/// println!("Vertices: {}", complex.count_simplices(0));
-/// println!("Edges: {}", complex.count_simplices(1));
+/// assert_eq!(complex.count_simplices(0), 3);
+/// assert_eq!(complex.count_simplices(2), 1);
 /// ```
 #[verified_engine::verified]
 pub fn vietoris_rips_complex(
@@ -169,194 +153,200 @@ pub fn vietoris_rips_complex(
     vietoris_rips_from_distances(&dist, radius)
 }
 
-/// Builds a Vietoris-Rips simplicial complex from a precomputed distance matrix.
+/// Constructs a 2-skeleton Vietoris-Rips complex from a 3D [`PointCloud3D`].
+///
+/// # Errors
+///
+/// Returns [`TdaError::InvalidRadius`] if `radius` is negative or non-finite, or
+/// [`TdaError::MatrixError`] if `cloud` exceeds [`MAX_TDA_POINTS`].
+///
+/// # Example
+///
+/// ```
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::tda::{
+///     Point3D, PointCloud3D, vietoris_rips_complex_3d
+/// };
+///
+/// let cloud = PointCloud3D::new(vec![
+///     Point3D::new(0.0, 0.0, 0.0),
+///     Point3D::new(1.0, 0.0, 0.0),
+///     Point3D::new(0.0, 1.0, 0.0),
+/// ]).unwrap();
+/// let complex = vietoris_rips_complex_3d(&cloud, 1.5).unwrap();
+/// assert_eq!(complex.count_simplices(2), 1);
+/// ```
 #[verified_engine::verified]
-pub(crate) fn vietoris_rips_from_distances(
-    dist: &[Vec<f64>],
+pub fn vietoris_rips_complex_3d(
+    cloud: &PointCloud3D,
     radius: f64,
 ) -> Result<SimplicialComplex, TdaError> {
+    let dist = cloud.distance_matrix();
+    vietoris_rips_from_distances(&dist, radius)
+}
+
+/// Constructs a Vietoris-Rips complex up to dimension 2 from an $N$-dimensional [`NdPointCloud`],
+/// capping 2-simplices at [`MAX_FILTRATION_TRIANGLES`].
+///
+/// # Errors
+///
+/// Returns [`TdaError::InvalidRadius`] if `radius` is negative or non-finite.
+#[verified_engine::verified]
+pub fn vietoris_rips_complex_nd(
+    cloud: &NdPointCloud,
+    radius: f64,
+) -> Result<SimplicialComplex, TdaError> {
+    let dist = cloud.distance_matrix();
+    let (complex, _truncated) =
+        vietoris_rips_from_distance_matrix(&dist, radius, MAX_FILTRATION_TRIANGLES)?;
+    Ok(complex)
+}
+
+/// Builds a Vietoris-Rips complex from a precomputed pairwise distance matrix, capping
+/// 2-simplices at `max_triangles` and returning `(complex, triangles_truncated)`.
+///
+/// # Errors
+///
+/// Returns [`TdaError::InvalidRadius`] if `radius` is negative or non-finite,
+/// [`TdaError::EmptyPointCloud`] if `dist` is empty, or [`TdaError::MatrixError`] if `dist`
+/// is non-square, exceeds [`MAX_TDA_POINTS`], or contains negative or non-finite distances.
+#[verified_engine::verified]
+pub fn vietoris_rips_from_distance_matrix(
+    dist: &[Vec<f64>],
+    radius: f64,
+    max_triangles: usize,
+) -> Result<(SimplicialComplex, bool), TdaError> {
     if radius < 0.0 || !radius.is_finite() {
         return Err(TdaError::InvalidRadius { value: radius });
     }
+    validate_distance_matrix(dist)?;
 
     let n = dist.len();
     let mut complex = SimplicialComplex::new();
+    complex.simplices = vec![HashSet::with_capacity(n), HashSet::new(), HashSet::new()];
 
-    // Add all vertices (0-simplices)
     for i in 0..n {
-        complex.add_simplex(Simplex::new(vec![i])?)?;
+        complex.simplices[0].insert(Simplex { vertices: vec![i] });
     }
 
-    // Add edges (1-simplices) where distance ≤ radius
-    for (i, row) in dist.iter().enumerate().take(n) {
-        for (j, &d) in row.iter().enumerate().take(n).skip(i + 1) {
-            if d <= radius {
-                complex.add_simplex(Simplex::new(vec![i, j])?)?;
-            }
+    add_edges_within_radius(&mut complex, dist, radius);
+    let truncated = add_triangles_bounded(&mut complex, dist, radius, max_triangles);
+    if complex.simplices[2].is_empty() {
+        complex.simplices.pop();
+        if complex.simplices[1].is_empty() {
+            complex.simplices.pop();
         }
     }
 
-    // Add triangles (2-simplices) where all pairwise distances ≤ radius
+    Ok((complex, truncated))
+}
+
+/// Builds a Vietoris-Rips simplicial complex (up to 2-simplices) from any precomputed
+/// symmetric pairwise distance matrix.
+///
+/// # Errors
+///
+/// Returns [`TdaError::InvalidRadius`] if `radius` is negative or non-finite, or
+/// [`TdaError::MatrixError`] if `dist` is non-square, exceeds [`MAX_TDA_POINTS`], or contains
+/// negative/non-finite entries.
+///
+/// # Example
+///
+/// ```
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::statistics::tda::vietoris_rips_from_distances;
+///
+/// let dist = vec![
+///     vec![0.0, 1.0, 1.0],
+///     vec![1.0, 0.0, 1.0],
+///     vec![1.0, 1.0, 0.0],
+/// ];
+/// let complex = vietoris_rips_from_distances(&dist, 1.0).unwrap();
+/// assert_eq!(complex.count_simplices(2), 1);
+/// ```
+#[verified_engine::verified]
+pub fn vietoris_rips_from_distances(
+    dist: &[Vec<f64>],
+    radius: f64,
+) -> Result<SimplicialComplex, TdaError> {
+    let (complex, _truncated) =
+        vietoris_rips_from_distance_matrix(dist, radius, MAX_FILTRATION_TRIANGLES)?;
+    Ok(complex)
+}
+
+#[verified_engine::verified]
+pub(crate) fn validate_distance_matrix(dist: &[Vec<f64>]) -> Result<(), TdaError> {
+    let n = dist.len();
+    if n == 0 {
+        return Err(TdaError::EmptyPointCloud);
+    }
+    if n > MAX_TDA_POINTS {
+        return Err(TdaError::MatrixError {
+            reason: format!("distance matrix size {n} exceeds MAX_TDA_POINTS ({MAX_TDA_POINTS})"),
+        });
+    }
+    for row in dist {
+        if row.len() != n {
+            return Err(TdaError::MatrixError {
+                reason: format!("distance matrix must be {n}x{n}, got row len {}", row.len()),
+            });
+        }
+        if row.iter().any(|&d| !d.is_finite() || d < 0.0) {
+            return Err(TdaError::MatrixError {
+                reason: "distance matrix entries must be non-negative and finite".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+#[verified_engine::verified]
+fn add_edges_within_radius(complex: &mut SimplicialComplex, dist: &[Vec<f64>], radius: f64) {
+    let n = dist.len();
+    for (i, row) in dist.iter().enumerate().take(n) {
+        for (j, &d) in row.iter().enumerate().take(n).skip(i + 1) {
+            if d <= radius {
+                complex.simplices[1].insert(Simplex {
+                    vertices: vec![i, j],
+                });
+            }
+        }
+    }
+}
+
+#[verified_engine::verified]
+fn add_triangles_bounded(
+    complex: &mut SimplicialComplex,
+    dist: &[Vec<f64>],
+    radius: f64,
+    max_triangles: usize,
+) -> bool {
+    let n = dist.len();
+    let mut added = 0_usize;
     for (i, row) in dist.iter().enumerate().take(n) {
         for (j, &d_ij) in row.iter().enumerate().take(n).skip(i + 1) {
             if d_ij > radius {
                 continue;
             }
-            // Use dist[j] for row j
             let row_j = &dist[j];
             for (k, &d_ik) in row.iter().enumerate().take(n).skip(j + 1) {
-                // d_ik is distance from i to k
-                // We also need d_jk (distance from j to k)
-                let d_jk = row_j[k];
-
-                if d_ik <= radius && d_jk <= radius {
-                    complex.add_simplex(Simplex::new(vec![i, j, k])?)?;
+                if d_ik <= radius && row_j[k] <= radius {
+                    if added >= max_triangles {
+                        return true;
+                    }
+                    complex.simplices[2].insert(Simplex {
+                        vertices: vec![i, j, k],
+                    });
+                    added += 1;
                 }
             }
         }
     }
-
-    Ok(complex)
+    false
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::pure_math::statistics::tda::core::Point2D;
+#[path = "complex_tests.rs"]
+mod tests;
 
-    #[test]
-    #[verified_engine::verified]
-    fn test_simplicial_complex_add_edge() {
-        let mut complex = SimplicialComplex::new();
-        let edge = Simplex::new(vec![0, 1]).unwrap();
-        complex.add_simplex(edge).unwrap();
-
-        // Should have 2 vertices and 1 edge
-        assert_eq!(complex.count_simplices(0), 2);
-        assert_eq!(complex.count_simplices(1), 1);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_simplicial_complex_add_triangle() {
-        let mut complex = SimplicialComplex::new();
-        let triangle = Simplex::new(vec![0, 1, 2]).unwrap();
-        complex.add_simplex(triangle).unwrap();
-
-        // Should have 3 vertices, 3 edges, and 1 triangle
-        assert_eq!(complex.count_simplices(0), 3);
-        assert_eq!(complex.count_simplices(1), 3);
-        assert_eq!(complex.count_simplices(2), 1);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_simplicial_complex_contains() {
-        let mut complex = SimplicialComplex::new();
-        let edge = Simplex::new(vec![0, 1]).unwrap();
-        complex.add_simplex(edge.clone()).unwrap();
-
-        assert!(complex.contains(&edge));
-        assert!(!complex.contains(&Simplex::new(vec![1, 2]).unwrap()));
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_vietoris_rips_three_points_small_radius() {
-        // Three points forming a right triangle
-        let points = vec![
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 0.0),
-            Point2D::new(0.0, 1.0),
-        ];
-        let cloud = PointCloud::new(points).unwrap();
-
-        // Small radius: only vertices
-        let complex = vietoris_rips_complex(&cloud, 0.5).unwrap();
-        assert_eq!(complex.count_simplices(0), 3); // 3 vertices
-        assert_eq!(complex.count_simplices(1), 0); // 0 edges
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_vietoris_rips_three_points_medium_radius() {
-        let points = vec![
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 0.0),
-            Point2D::new(0.0, 1.0),
-        ];
-        let cloud = PointCloud::new(points).unwrap();
-
-        // Medium radius: vertices and 2 edges
-        let complex = vietoris_rips_complex(&cloud, 1.0).unwrap();
-        assert_eq!(complex.count_simplices(0), 3); // 3 vertices
-        assert_eq!(complex.count_simplices(1), 2); // 2 edges (sides of length 1)
-        assert_eq!(complex.count_simplices(2), 0); // 0 triangles
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_vietoris_rips_three_points_large_radius() {
-        let points = vec![
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 0.0),
-            Point2D::new(0.0, 1.0),
-        ];
-        let cloud = PointCloud::new(points).unwrap();
-
-        // Large radius: complete complex
-        let complex = vietoris_rips_complex(&cloud, 2.0).unwrap();
-        assert_eq!(complex.count_simplices(0), 3); // 3 vertices
-        assert_eq!(complex.count_simplices(1), 3); // 3 edges
-        assert_eq!(complex.count_simplices(2), 1); // 1 triangle
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_vietoris_rips_invalid_radius() {
-        let points = vec![Point2D::new(0.0, 0.0), Point2D::new(1.0, 0.0)];
-        let cloud = PointCloud::new(points).unwrap();
-
-        assert!(vietoris_rips_complex(&cloud, -1.0).is_err());
-        assert!(vietoris_rips_complex(&cloud, f64::NAN).is_err());
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_vietoris_rips_square() {
-        // Four points forming a square
-        let points = vec![
-            Point2D::new(0.0, 0.0),
-            Point2D::new(1.0, 0.0),
-            Point2D::new(1.0, 1.0),
-            Point2D::new(0.0, 1.0),
-        ];
-        let cloud = PointCloud::new(points).unwrap();
-
-        // Radius = 1.0: should have edges around the square
-        let complex = vietoris_rips_complex(&cloud, 1.0).unwrap();
-        assert_eq!(complex.count_simplices(0), 4); // 4 vertices
-        assert_eq!(complex.count_simplices(1), 4); // 4 edges (sides)
-        assert_eq!(complex.count_simplices(2), 0); // 0 triangles
-
-        // Radius = sqrt(2): should have diagonals too
-        let complex = vietoris_rips_complex(&cloud, 1.5).unwrap();
-        assert_eq!(complex.count_simplices(0), 4); // 4 vertices
-        assert_eq!(complex.count_simplices(1), 6); // 4 sides + 2 diagonals
-        assert_eq!(complex.count_simplices(2), 4); // 4 triangles
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_vietoris_rips_from_distances() {
-        let dist = vec![
-            vec![0.0, 1.0, 2.0],
-            vec![1.0, 0.0, 1.0],
-            vec![2.0, 1.0, 0.0],
-        ];
-        let complex = vietoris_rips_from_distances(&dist, 1.0).unwrap();
-        assert_eq!(complex.count_simplices(0), 3);
-        assert_eq!(complex.count_simplices(1), 2);
-        assert_eq!(complex.count_simplices(2), 0);
-    }
-}
+// [cite:clinical_trials_statistics]

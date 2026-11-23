@@ -1,7 +1,7 @@
 //! A simple example demonstrating how to assemble and run a Transformer model.
 //!
 //! To run this example:
-//! `cargo run --example transformer_simple`
+//! `cargo run --package math_explorer --features ai --example transformer_simple`
 
 use math_explorer::ai::transformer::{Decoder, Encoder, Transformer};
 use math_explorer::nalgebra::DMatrix;

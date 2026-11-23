@@ -32,18 +32,113 @@ pub(super) fn build_pane_region_ui(
     pane_ui
 }
 
+fn render_header_sync_menu(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+    header_width: f32,
+) {
+    let any_active = app.compare_sync.link_axes
+        || app.compare_sync.link_cursors
+        || app.compare_sync.sync_playback;
+    let btn_label = match (header_width >= 480.0, any_active) {
+        (true, true) => "🔗 Sync •",
+        (true, false) => "🔗 Sync",
+        (false, true) => "🔗•",
+        (false, false) => "🔗",
+    };
+    ui.menu_button(btn_label, |menu_ui| {
+        super::compare_sync::render_comparison_sync_checkboxes(app, ctx, menu_ui);
+    });
+}
+
+fn render_dual_pane_header_actions(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    header_ui: &mut egui::Ui,
+    pane_idx: usize,
+    header_width: f32,
+) {
+    header_ui.push_id(("pane_dual_ops", pane_idx), |ops_ui| {
+        if pane_idx == 0 {
+            let swap_lbl = if header_width >= 300.0 {
+                "⇄ Swap"
+            } else {
+                "⇄"
+            };
+            if ops_ui
+                .small_button(swap_lbl)
+                .on_hover_text("Swap panes")
+                .clicked()
+            {
+                app.swap_panes();
+            }
+        }
+        let dup_lbl = if header_width >= 360.0 {
+            "⧉ Duplicate"
+        } else {
+            "⧉"
+        };
+        if ops_ui
+            .small_button(dup_lbl)
+            .on_hover_text("Duplicate this pane into the other split pane")
+            .clicked()
+        {
+            let _ = app.clone_pane_interactive(ctx, pane_idx, 1 - pane_idx);
+        }
+        if pane_idx == 0 && header_width >= 420.0 {
+            render_header_sync_menu(app, ctx, ops_ui, header_width);
+        }
+    });
+    header_ui.separator();
+}
+
+fn render_quad_ops_menu(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    menu_ui: &mut egui::Ui,
+    pane_idx: usize,
+    labels: &[&str],
+) {
+    for (other_idx, &other_lbl) in labels.iter().enumerate() {
+        if other_idx != pane_idx
+            && menu_ui
+                .button(format!("⧉ Duplicate to {other_lbl}"))
+                .clicked()
+        {
+            let _ = app.clone_pane_interactive(ctx, pane_idx, other_idx);
+            menu_ui.close();
+            return;
+        }
+    }
+    menu_ui.separator();
+    for (other_idx, &other_lbl) in labels.iter().enumerate() {
+        if other_idx != pane_idx && menu_ui.button(format!("⇄ Swap with {other_lbl}")).clicked() {
+            app.swap_pane_pair(pane_idx, other_idx);
+            menu_ui.close();
+            return;
+        }
+    }
+    menu_ui.separator();
+    if menu_ui.button("↻ Rotate Panes Clockwise").clicked() {
+        app.rotate_panes_clockwise();
+        menu_ui.close();
+    } else if menu_ui.button("↺ Rotate Panes Counter-Clockwise").clicked() {
+        app.rotate_panes_counter_clockwise();
+        menu_ui.close();
+    }
+}
+
 fn render_pane_header_layout_actions(
     app: &mut MathExplorerApp,
+    ctx: &egui::Context,
     header_ui: &mut egui::Ui,
     pane_idx: usize,
     header_width: f32,
 ) {
     let pane_count = app.viewport_layout.pane_count();
-    if pane_count == 2 && pane_idx == 0 {
-        if header_ui.small_button("⇄ Swap").clicked() {
-            app.swap_panes();
-        }
-        header_ui.separator();
+    if pane_count == 2 {
+        render_dual_pane_header_actions(app, ctx, header_ui, pane_idx, header_width);
         return;
     }
     if pane_count != 4 {
@@ -52,24 +147,16 @@ fn render_pane_header_layout_actions(
     let labels = app.viewport_layout.pane_labels();
     header_ui.push_id(("pane_quad_ops", pane_idx), |ops_ui| {
         ops_ui.menu_button("⇄", |menu_ui| {
-            for (other_idx, &other_lbl) in labels.iter().enumerate() {
-                if other_idx != pane_idx
-                    && menu_ui.button(format!("⇄ Swap with {other_lbl}")).clicked()
-                {
-                    app.swap_pane_pair(pane_idx, other_idx);
-                    menu_ui.close();
-                    return;
-                }
-            }
-            menu_ui.separator();
-            if menu_ui.button("↻ Rotate Panes Clockwise").clicked() {
-                app.rotate_panes_clockwise();
-                menu_ui.close();
-            } else if menu_ui.button("↺ Rotate Panes Counter-Clockwise").clicked() {
-                app.rotate_panes_counter_clockwise();
-                menu_ui.close();
-            }
+            render_quad_ops_menu(app, ctx, menu_ui, pane_idx, labels);
         });
+        if header_width >= 360.0
+            && ops_ui
+                .small_button("⧉")
+                .on_hover_text("Duplicate this pane to next quadrant")
+                .clicked()
+        {
+            let _ = app.clone_pane_interactive(ctx, pane_idx, (pane_idx + 1) % 4);
+        }
         if pane_idx == 0 && header_width >= 320.0 {
             if ops_ui
                 .small_button("↻")
@@ -85,6 +172,9 @@ fn render_pane_header_layout_actions(
             {
                 app.rotate_panes_counter_clockwise();
             }
+        }
+        if pane_idx == 0 && header_width >= 420.0 {
+            render_header_sync_menu(app, ctx, ops_ui, header_width);
         }
     });
     header_ui.separator();
@@ -122,7 +212,7 @@ pub(super) fn render_pane_header(
     header_ui.add_space(8.0);
     header_ui.strong(label);
     header_ui.separator();
-    render_pane_header_layout_actions(app, &mut header_ui, pane_idx, header_rect.width());
+    render_pane_header_layout_actions(app, ctx, &mut header_ui, pane_idx, header_rect.width());
 
     let mut tab_to_switch = None;
     header_ui.push_id(("pane_header_selector", pane_idx), |selector_ui| {

@@ -1,3 +1,4 @@
+// [cite:math_commons]
 use super::*;
 use num_complex::Complex64;
 use std::collections::HashMap;
@@ -44,7 +45,7 @@ fn test_multi_arity_and_piecewise_functions_real_and_complex() {
 #[test]
 fn test_exact_arity_checking_in_eval_and_compile() {
     let vars = HashMap::new();
-    let bad_min = parse("min(1)").expect("parse 1-arg min");
+    let bad_min = Expr::function(Func::Min, vec![Expr::Number(1.0)]);
     assert_eq!(
         bad_min.eval(&vars),
         Err(EvalError::WrongArgumentCount {
@@ -62,7 +63,7 @@ fn test_exact_arity_checking_in_eval_and_compile() {
         })
     );
 
-    let bad_clamp = parse("clamp(1, 2)").expect("parse 2-arg clamp");
+    let bad_clamp = Expr::function(Func::Clamp, vec![Expr::Number(1.0), Expr::Number(2.0)]);
     assert_eq!(
         CompiledExpr::compile(&bad_clamp),
         Err(EvalError::WrongArgumentCount {
@@ -163,5 +164,77 @@ fn test_compiled_expr_deep_ast_respects_max_eval_depth() {
     assert_eq!(
         CompiledExpr::compile(&deep),
         Err(EvalError::RecursionLimitExceeded(MAX_EVAL_DEPTH))
+    );
+}
+
+#[test]
+fn test_pipe_absolute_value_bars_nested_adjacent_and_errors() {
+    let compiled_1d = CompiledExpr::compile_with_vars(&parse("||x| - 1|").unwrap(), &["x"])
+        .expect("compile nested abs");
+    assert!((compiled_1d.eval_1d(-2.5, &[]) - 1.5).abs() < 1e-12);
+    assert!((compiled_1d.eval_1d(0.25, &[]) - 0.75).abs() < 1e-12);
+    assert_eq!(
+        parse("||x| - 1|").unwrap().to_latex(),
+        r"\left|\left|x\right| - 1\right|"
+    );
+
+    let adj = CompiledExpr::compile_with_vars(
+        &parse("2|y| + |x||y| + |(2|y|) - 1|").unwrap(),
+        &["x", "y"],
+    )
+    .expect("compile adjacent and parenthesized abs");
+    // x = -3, y = -2 => 2*2 + 3*2 + |2*2 - 1| = 4 + 6 + 3 = 13
+    assert!((adj.eval_2d(-3.0, -2.0, &[]) - 13.0).abs() < 1e-12);
+
+    let c_abs = CompiledExpr::compile_complex(&parse("|z| + i").unwrap(), &["z"]).unwrap();
+    let w = c_abs.eval_complex_z(Complex64::new(3.0, -4.0));
+    assert!((w - Complex64::new(5.0, 1.0)).norm() < 1e-12);
+
+    let unclosed = parse("|y + 1").expect_err("unclosed pipe must fail");
+    assert!(matches!(unclosed, ParseError::UnexpectedToken { .. }));
+    assert!(unclosed.user_message().contains("'|'"));
+
+    let deep_pipes = format!("{}x{}", "|".repeat(70), "|".repeat(70));
+    assert_eq!(
+        parse(&deep_pipes),
+        Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
+    );
+}
+
+#[test]
+fn test_unary_function_exponent_desmos_notation_and_depth_bounds() {
+    let pythag = CompiledExpr::compile_with_vars(
+        &parse("sin^2(t) + cos^2(t) + 2sin^3(t) - sin^3 t").unwrap(),
+        &["t"],
+    )
+    .expect("compile trig powers");
+    for step in -8..=8 {
+        let t = f64::from(step) * 0.35;
+        let expected = 1.0 + t.sin().powi(3);
+        assert!((pythag.eval_1d(t, &[]) - expected).abs() < 1e-12);
+    }
+
+    let param_pow =
+        CompiledExpr::compile_with_vars(&parse("-k * |y| * sin^2(t)").unwrap(), &["t", "y"])
+            .expect("compile ode abs + sin^2");
+    assert_eq!(param_pow.param_names(), &["k"]);
+    let actual = param_pow.eval_2d(0.7, -2.0, &[1.5]);
+    assert!((actual - (-1.5 * 2.0 * 0.7_f64.sin().powi(2))).abs() < 1e-12);
+
+    assert!(matches!(
+        parse("sin^2"),
+        Err(ParseError::UnexpectedToken { .. })
+    ));
+    assert!(matches!(
+        parse("min^2(x, y)"),
+        Err(ParseError::UnexpectedToken { .. })
+    ));
+
+    let chain_62 = format!("{}1", "1 + ".repeat(MAX_PARSE_DEPTH - 2));
+    let chain_63 = format!("{}1", "1 + ".repeat(MAX_PARSE_DEPTH - 1));
+    assert!(parse(&format!("sin^2({chain_62})")).is_ok());
+    assert_eq!(
+        parse(&format!("sin^2({chain_63})")),
+        Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
     );
 }

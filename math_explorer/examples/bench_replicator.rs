@@ -1,4 +1,5 @@
-#![allow(missing_docs)]
+//! Example target for bench replicator.
+#![cfg_attr(not(target_arch = "wasm32"), allow(clippy::disallowed_methods))]
 use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
 use math_explorer::nalgebra::{DMatrix, DVector};
 use math_explorer::pure_math::analysis::ode::RungeKutta4;

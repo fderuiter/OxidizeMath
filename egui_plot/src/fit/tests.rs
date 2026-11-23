@@ -1,3 +1,4 @@
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 use super::*;
@@ -18,15 +19,8 @@ fn test_linear_and_polynomial_fits_exact() {
             [x, -1.5 * x * x + 2.0 * x + 4.0]
         })
         .collect();
-    let res_q = fit_model_with_axes(
-        &quad,
-        FitType::Polynomial(2),
-        "TestQuad",
-        false,
-        false,
-        false,
-    )
-    .expect("Quad fit failed");
+    let res_q = fit_model_with_axes(&quad, FitType::Quadratic, "TestQuad", false, false, false)
+        .expect("Quad fit failed");
     assert!((res_q.r_squared - 1.0).abs() < 1e-12);
 
     let quartic: Vec<[f64; 2]> = (0..=6)
@@ -35,39 +29,41 @@ fn test_linear_and_polynomial_fits_exact() {
             [x, 0.25 * x.powi(4) - x.powi(3) + 2.0]
         })
         .collect();
-    let res_4 = fit_model_with_axes(
-        &quartic,
-        FitType::Polynomial(4),
-        "Quartic",
-        false,
-        false,
-        false,
-    )
-    .expect("Quartic fit failed");
+    let res_4 = fit_model_with_axes(&quartic, FitType::Quartic, "Quartic", false, false, false)
+        .expect("Quartic fit failed");
+    assert_eq!(res_4.fit_type, FitType::Quartic);
     assert!((res_4.r_squared - 1.0).abs() < 1e-9);
+    assert_eq!(
+        math_commons::fit::fit_polynomial(&quartic, 5),
+        Err(FitError::UnsupportedDegree { degree: 5 })
+    );
 }
 
 #[test]
 fn test_edge_cases_and_nan_rejection() {
-    assert!(
+    assert!(matches!(
         fit_model_with_axes(
             &[[1.0, 2.0]],
             FitType::Linear,
             "Single",
             false,
             false,
-            false
-        )
-        .is_none()
-    );
+            false,
+        ),
+        Err(FitError::InsufficientPoints {
+            required: 2,
+            actual: 1
+        })
+    ));
     let singular = vec![
         [1.0, 2.0],
         [1.0, 5.0],
         [f64::NAN, 3.0],
         [2.0, f64::INFINITY],
     ];
-    assert!(
-        fit_model_with_axes(&singular, FitType::Linear, "Singular", false, false, false).is_none()
+    assert_eq!(
+        fit_model_with_axes(&singular, FitType::Linear, "Singular", false, false, false),
+        Err(FitError::SingularMatrix)
     );
     assert!(
         fit_model_with_axes(
@@ -76,9 +72,9 @@ fn test_edge_cases_and_nan_rejection() {
             "BadExp",
             false,
             false,
-            false
+            false,
         )
-        .is_none()
+        .is_err()
     );
     assert!(
         fit_model_with_axes(
@@ -87,9 +83,9 @@ fn test_edge_cases_and_nan_rejection() {
             "BadSin",
             false,
             false,
-            false
+            false,
         )
-        .is_none()
+        .is_err()
     );
 }
 
@@ -264,20 +260,92 @@ fn log_mode_vs_untransformed_exponential_and_10k_latency() {
             [x, 2.5 * (1.8 * x + 0.3).sin() + 1.1]
         })
         .collect();
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
     let start = Instant::now();
     let res = fit_model_with_axes(&pts_10k, FitType::Sinusoidal, "Sin10k", false, false, false)
         .expect("10k fit failed");
-    let elapsed = start.elapsed();
     assert!(res.r_squared >= 0.99);
-    #[cfg(not(debug_assertions))]
-    assert!(
-        elapsed.as_millis() < 16,
-        "release 10k sinusoidal fit exceeded 16ms frame budget: {elapsed:?}"
-    );
-    assert!(
-        elapsed.as_millis() < 150,
-        "10k sinusoidal fit took {elapsed:?}"
-    );
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let elapsed = start.elapsed();
+        #[cfg(not(debug_assertions))]
+        assert!(
+            elapsed.as_millis() < 16,
+            "release 10k sinusoidal fit exceeded 16ms frame budget: {elapsed:?}"
+        );
+        assert!(
+            elapsed.as_millis() < 150,
+            "10k sinusoidal fit took {elapsed:?}"
+        );
+    }
+}
+
+#[derive(Debug)]
+struct SixParamDampedWave {
+    names: Vec<String>,
+}
+
+impl CustomFitEvaluator for SixParamDampedWave {
+    fn param_names(&self) -> &[String] {
+        &self.names
+    }
+
+    fn eval(&self, x: f64, p: &[f64]) -> Option<f64> {
+        if p.len() < 6 {
+            return None;
+        }
+        // y = p0 + p1*x + p2*exp(-p3*x) + p4*sin(p5*x)
+        let exp_arg = (-p[3] * x).clamp(-700.0, 700.0);
+        let y = p[0] + p[1] * x + p[2] * exp_arg.exp() + p[4] * (p[5] * x).sin();
+        y.is_finite().then_some(y)
+    }
+}
+
+#[test]
+fn test_six_parameter_lm_and_custom_fit_callback_registration() {
+    use std::sync::Arc;
+
+    let true_p = [1.2, -0.35, 2.4, 0.6, 0.9, 1.7];
+    let evaluator = Arc::new(SixParamDampedWave {
+        names: ["a", "b", "c", "d", "e", "w"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+    });
+    let pts: Vec<[f64; 2]> = (0..=60)
+        .map(|i| {
+            let x = i as f64 * 0.15;
+            [x, evaluator.eval(x, &true_p).expect("finite y")]
+        })
+        .collect();
+
+    let seeds = [1.0, -0.2, 2.0, 0.4, 0.6, 1.5];
+    let res = fit_custom_evaluator(
+        &pts,
+        evaluator.clone(),
+        "a + b*x + c*exp(-d*x) + e*sin(w*x)",
+        &seeds,
+        "DampedWave6",
+    )
+    .expect("6-param LM fit must succeed");
+    assert_eq!(res.fit_type, FitType::Custom);
+    assert_eq!(res.coefficients.len(), 6);
+    assert!(res.r_squared >= 0.9999, "got R² = {}", res.r_squared);
+    assert!(res.rmse < 1e-4, "got RMSE = {}", res.rmse);
+    assert!((res.eval(1.5) - evaluator.eval(1.5, &true_p).unwrap()).abs() < 1e-3);
+
+    // Register via fit_overlay callback registry and verify overlay injection
+    crate::register_custom_fit_callback(move |_formula| Ok(evaluator.clone()));
+    assert!(crate::has_custom_fit_callback());
+    let reg_res = crate::fit_custom_with_registered_callback(
+        &pts,
+        "a + b*x + c*exp(-d*x) + e*sin(w*x)",
+        &seeds,
+        "DampedWave6",
+    )
+    .expect("registered callback fit");
+    assert!(reg_res.r_squared >= 0.9999);
 }
 
 #[test]
@@ -294,7 +362,7 @@ fn centered_polynomial_fit_recovers_high_offset_quartic_accurately() {
 
     let fit = fit_model_with_axes(
         &pts,
-        FitType::Polynomial(4),
+        FitType::Quartic,
         "ShiftedQuartic",
         false,
         false,

@@ -1,3 +1,5 @@
+#[allow(missing_docs)]
+pub mod atlas;
 #[cfg(test)]
 mod fault_and_seed_tests;
 #[cfg(test)]
@@ -6,6 +8,11 @@ mod runner_tests;
 mod step_tests;
 #[cfg(test)]
 mod tests;
+pub use atlas::{
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasPassMeta, AtlasRenderRequest, AtlasRunner,
+    AtlasTeleportEvent, ParameterAtlasController, RegimeCartographer, ATLAS_SLICE_BUDGET,
+    ATLAS_STRIDES, DEFAULT_ATLAS_SIDE, MAX_ATLAS_SIDE,
+};
 #[allow(missing_docs)]
 pub mod ui;
 #[allow(missing_docs)]
@@ -453,11 +460,13 @@ impl<T: SimulationRunner> From<BackgroundWorker<T>> for SimulationController {
 // theory_verification!
 
 #[cfg(any(target_arch = "wasm32", test))]
-pub mod registry;
-#[cfg(any(target_arch = "wasm32", test))]
-pub use registry::*;
+mod registry;
+#[cfg(target_arch = "wasm32")]
+use registry::{
+    register_worker_context, take_worker_context, unregister_worker_context, WorkerContext,
+};
 
 #[cfg(target_arch = "wasm32")]
-pub mod wasm;
+mod wasm;
 #[cfg(target_arch = "wasm32")]
-pub use wasm::*;
+use wasm::{run_simulation_worker, wake_worker};

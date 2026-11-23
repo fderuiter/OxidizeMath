@@ -1,4 +1,5 @@
 //! Lexical analyzer / tokenizer for mathematical expressions.
+// [cite:math_commons]
 
 use std::fmt;
 
@@ -44,6 +45,8 @@ pub enum TokenKind {
     Comma,
     /// Equals sign `=`.
     Equals,
+    /// Vertical bar delimiter `|` for absolute values.
+    Pipe,
     /// End-of-file marker.
     Eof,
 }
@@ -62,6 +65,7 @@ impl fmt::Display for TokenKind {
             Self::RParen => write!(f, ")"),
             Self::Comma => write!(f, ","),
             Self::Equals => write!(f, "="),
+            Self::Pipe => write!(f, "|"),
             Self::Eof => write!(f, "end of expression"),
         }
     }
@@ -94,6 +98,21 @@ impl LexError {
     pub fn user_message(&self) -> String {
         let char_pos = self.start + 1;
         format!("{} at character {char_pos}", self.message)
+    }
+}
+
+impl diagnostics::Diagnostic for LexError {
+    fn severity(&self) -> diagnostics::Severity {
+        diagnostics::Severity::Error
+    }
+
+    fn metadata(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("error_type".to_string(), "LexError".to_string());
+        map.insert("start".to_string(), self.start.to_string());
+        map.insert("end".to_string(), self.end.to_string());
+        map.insert("description".to_string(), self.to_string());
+        map
     }
 }
 
@@ -161,6 +180,7 @@ fn match_single_char(b: u8) -> Option<TokenKind> {
         b')' => Some(TokenKind::RParen),
         b',' => Some(TokenKind::Comma),
         b'=' => Some(TokenKind::Equals),
+        b'|' => Some(TokenKind::Pipe),
         _ => None,
     }
 }

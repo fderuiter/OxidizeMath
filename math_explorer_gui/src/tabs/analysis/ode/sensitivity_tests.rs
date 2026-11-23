@@ -109,6 +109,44 @@ fn test_ode_sensitivity_invalidates_on_preset_solver_dt_time_and_custom_ast() {
 }
 
 #[test]
+fn test_ode_custom_multi_parameter_sensitivity_discovery_and_perturbation() {
+    use std::collections::BTreeMap;
+
+    let ctx = egui::Context::default();
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: 1.5,
+        dt: 0.05,
+        total_time: 3.0,
+        ..Default::default()
+    };
+    tool.math_input
+        .set_expression("alpha * y - beta * |y| * sin^2(t)");
+    tool.math_input.set_params_map(&BTreeMap::from([
+        ("alpha".to_string(), 0.4),
+        ("beta".to_string(), 0.8),
+    ]));
+    tool.recalculate();
+
+    // 3 parameters (alpha, beta, y0) converge across 2 frames
+    let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
+    assert!(!tool.sensitivity_engine.is_converged());
+    let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
+    assert!(tool.sensitivity_engine.is_converged());
+
+    let names: Vec<&str> = tool
+        .sensitivity_engine
+        .metrics
+        .iter()
+        .map(|m| m.param_name.as_str())
+        .collect();
+    assert_eq!(names, vec!["alpha", "beta", "y0"]);
+    assert!(tool.sensitivity_engine.metrics[0].partial_derivative > 0.0);
+    assert!(tool.sensitivity_engine.metrics[1].partial_derivative < 0.0);
+    assert!(tool.sensitivity_engine.metrics[2].elasticity > 0.0);
+}
+
+#[test]
 fn test_ode_sensitivity_nan_initial_condition_converges_cleanly() {
     let ctx = egui::Context::default();
     let mut tool = OdeSolverTool {
@@ -127,4 +165,48 @@ fn test_ode_sensitivity_nan_initial_condition_converges_cleanly() {
     assert!(!out_idle.viewport_output[&egui::ViewportId::ROOT]
         .repaint_delay
         .is_zero());
+}
+
+#[test]
+fn test_ode_custom_logistic_preset_yields_finite_sensitivity_metrics() {
+    let ctx = egui::Context::default();
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: 2.0,
+        dt: 0.05,
+        total_time: 5.0,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("r * y * (1 - y / cap_k)");
+    tool.recalculate();
+
+    for _ in 0..3 {
+        let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
+        if tool.sensitivity_engine.is_converged() {
+            break;
+        }
+    }
+    assert!(tool.sensitivity_engine.is_converged());
+    assert!(tool.sensitivity_engine.baseline_output.is_finite());
+
+    let names: Vec<&str> = tool
+        .sensitivity_engine
+        .metrics
+        .iter()
+        .map(|m| m.param_name.as_str())
+        .collect();
+    assert_eq!(names, vec!["r", "cap_k", "y0"]);
+    for metric in &tool.sensitivity_engine.metrics {
+        assert!(
+            metric.partial_derivative.is_finite() && metric.elasticity.is_finite(),
+            "Non-finite sensitivity metric for {}: {metric:?}",
+            metric.param_name
+        );
+        assert!(
+            metric.partial_derivative > 0.0,
+            "Expected positive logistic partial derivative for {}, got {}",
+            metric.param_name,
+            metric.partial_derivative
+        );
+    }
 }

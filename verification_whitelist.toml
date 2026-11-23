@@ -1,11 +1,7 @@
 [doc_verification]
-# Workspace crates exempt from mandatory architectural headings during documentation migration
+# Only vendored third-party crates are exempt from mandatory architectural headings
 allowlist = [
-    "crates/diagnostics",
     "egui_plot",
-    "apps/xtask",
-    "math_explorer",
-    "math_explorer_gui",
 ]
 
 [entropy_guard]
@@ -16,7 +12,10 @@ scan_paths = [
     "math_explorer_gui",
     "egui_plot",
     ".github",
+    ".githooks",
     "scripts",
+    ".env",
+    "Dockerfile",
     "Cargo.toml",
     "traceability.toml",
     "verification_whitelist.toml",
@@ -38,10 +37,333 @@ job = "deploy-pages"
 allow_write = ["pages", "id-token"]
 reason = "Deploying to GitHub Pages requires pages: write and id-token: write"
 
+[adr_verification]
+# Legacy ADR filenames sharing historical 4-digit prefixes preserved to keep internal Markdown links and PR URLs intact
+allowlist = [
+    "docs/adr/0002-active-documentation-standard.md",
+    "docs/adr/0002-portable-build-paths.md",
+    "docs/adr/0004-ci-cd-fixes.md",
+    "docs/adr/0004-remove-deprecated-domain-apis.md",
+    "docs/adr/0004-remove-legacy-game-theory-wrappers.md",
+    "docs/adr/0004-unified-verification-dependency-audit.md",
+    "docs/adr/0007-ci-cd-cargo-clean-and-dependency-fixes.md",
+    "docs/adr/0007-complex-phasor-recurrence-steering-vector.md",
+    "docs/adr/0007-consolidate-workspace-discovery.md",
+    "docs/adr/0007-gaussian-opacity-optimization.md",
+    "docs/adr/0007-purge-obsolete-scripts-and-dependencies.md",
+    "docs/adr/0007-reflective-ui-fallback-constraints.md",
+    "docs/adr/0008-finite-state-guard-solver-divergence.md",
+    "docs/adr/0008-finite-state-solver-guard.md",
+    "docs/adr/0008-serde-json-preset-import-export.md",
+    "docs/adr/0008-xtask-lint-all-pre-commit.md",
+    "docs/adr/0010-animated-slider-reflective-ui.md",
+    "docs/adr/0010-theme-state-management-and-menu-toggles.md",
+    "docs/adr/0012-background-simulation-worker-offload.md",
+    "docs/adr/0012-centralized-architecture-suite.md",
+    "docs/adr/0013-consolidate-binary-operator-macros.md",
+    "docs/adr/0013-disambiguate-theory-macro-exports.md",
+    "docs/adr/0013-retire-deprecated-battery-primitives.md",
+    "docs/adr/0013-retire-legacy-bcs-gap-solver.md",
+    "docs/adr/0013-scientific-metadata-documentation-standard.md",
+    "docs/adr/0013-sparse-edge-index-marching-cubes.md",
+    "docs/adr/0013-trainable-climate-autoencoder-backpropagation.md",
+    "docs/adr/0013-trait-level-runnable-doctests.md",
+    "docs/adr/0013-workspace-doc-lints-and-path-scoping.md",
+    "docs/adr/0015-bluestein-czt-fast-convolution.md",
+    "docs/adr/0015-precompute-mri-twiddle-factors.md",
+    "docs/adr/0016-delete-unreferenced-boundary-conditions.md",
+    "docs/adr/0016-formal-beam-state-machine-guards.md",
+    "docs/adr/0016-ode-multi-solver-comparative-overlays.md",
+    "docs/adr/0016-purge-dead-code-suppressions.md",
+    "docs/adr/0016-remove-climate-dimension-fields.md",
+    "docs/adr/0016-shared-elemental-activation-kernels.md",
+    "docs/adr/0016-standardize-crate-documentation-suite.md",
+    "docs/adr/0017-conv-layer-analytical-backpropagation.md",
+    "docs/adr/0017-mathbox-formula-rendering-theory-metadata.md",
+    "docs/adr/0017-native-ast-expression-parser-and-live-input.md",
+    "docs/adr/0018-ci-coverage-gate-hardening.md",
+    "docs/adr/0018-uniform-spatial-grid-cortical-thickness.md",
+    "docs/adr/0020-precompute-distance-matrix-tda-filtration.md",
+    "docs/adr/0020-precompute-transposed-bias-kernel.md",
+    "docs/adr/0021-inplace-row-softmax-allocation-elimination.md",
+    "docs/adr/0021-precompute-stencil-reciprocals.md",
+    "docs/adr/0021-zero-allocation-grpo-advantage-normalization.md",
+    "docs/adr/0022-cleanup-verification-macros-dead-code.md",
+    "docs/adr/0022-unify-preset-state-serialization.md",
+    "docs/adr/0022-wasm-clippy-guardrails.md",
+    "docs/adr/0025-low-rank-subspace-projection-music-spectrum.md",
+    "docs/adr/0025-rolling-slice-edge-cache-marching-cubes.md",
+    "docs/adr/0027-build-rerun-directives-and-cargo-cache.md",
+    "docs/adr/0027-delete-dead-grid2d-and-triangle-types.md",
+    "docs/adr/0027-enforce-workspace-clippy-lints.md",
+    "docs/adr/0027-precompute-quantum-propagators-inplace-evolution.md",
+    "docs/adr/0027-prune-diagnostic-bus-channel-and-dead-helpers.md",
+    "docs/adr/0027-remove-unread-verification-macro-accumulators.md",
+    "docs/adr/0029-consolidate-ast-evaluators-and-parser-helpers.md",
+    "docs/adr/0029-separable-fft-mri-reconstruction.md",
+    "docs/adr/0032-high-contrast-focus-selection-and-raster-tokens.md",
+    "docs/adr/0032-precomputed-traceability-manifest-and-wasm-vfs-subpaths.md",
+    "docs/adr/0034-curate-math-explorer-facade-exports-and-doctests.md",
+    "docs/adr/0034-harden-verification-macros-and-facade-reexports.md",
+    "docs/adr/0034-scoped-pre-commit-and-single-parse-ast-verification.md",
+    "docs/adr/0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md",
+    "docs/adr/0035-fermi-spatial-games-and-ising-droplet-brushes.md",
+    "docs/adr/0035-finite-field-weierstrass-curves-and-hasse-explorer.md",
+    "docs/adr/0035-hamiltonian-langevin-momentum-dynamics-and-loss-arena.md",
+    "docs/adr/0035-harden-playwright-wasm-runner-and-workspace-gates.md",
+    "docs/adr/0035-iterative-ast-glsl-transpiler-and-shader-exports.md",
+    "docs/adr/0035-kelly-net-odds-seeded-rng-and-paradox-labs.md",
+    "docs/adr/0035-parrondo-paradox-markov-ratchet-lab.md",
+    "docs/adr/0035-pharmacokinetics-adme-gui-workbench.md",
+    "docs/adr/0035-progressive-parameter-atlas-controller.md",
+    "docs/adr/0035-z2-boundary-reduction-persistent-homology.md",
+    "docs/adr/0035-zero-allocation-2d-mri-fft-workspace.md",
+    "docs/adr/0036-coupled-formula-banks-and-custom-regression-callbacks.md",
+    "docs/adr/0036-delete-dead-theory-accessors-and-description-macro.md",
+    "docs/adr/0036-delete-simulation-model-traits-and-physics-adapters.md",
+    "docs/adr/0036-harden-ast-and-doctest-policy-audits.md",
+    "docs/adr/0036-scoped-ode-sandboxes-and-extended-ast-grammar.md",
+    "docs/adr/0037-ast-arity-scope-validation-and-scaled-latex.md",
+    "docs/adr/0037-consolidate-medical-physics-kernels.md",
+    "docs/adr/0037-consolidate-optimizer-softmax-and-attention-kernels.md",
+    "docs/adr/0037-glicko2-frozen-period-tournament-simulator.md",
+    "docs/adr/0037-remove-vfs-codegen-and-reject-wasm-list-dir.md",
+    "docs/adr/0037-retire-physics-compatibility-shims.md",
+    "docs/adr/0038-federated-inverse-challenges-and-hud.md",
+    "docs/adr/0038-prime-exponent-fractran-vm-and-minsky-gui.md",
+    "docs/adr/0038-watertight-3d-stl-and-ply-exports.md",
+    "docs/adr/0039-metric-agnostic-3d-tda-exact-z2-homology-and-chaos-mashup.md",
+    "docs/adr/0039-network-epidemic-containment-primitives.md",
+    "docs/adr/0040-ast-verification-spans-optout-scoping-and-api-normalization.md",
+    "docs/adr/0040-dual-backend-web-audio-sonification.md",
+    "docs/adr/0040-galactic-dynamics-and-astrophysics-tab.md",
+    "docs/adr/0040-promote-zero-alloc-curve-solvers-to-math-commons.md",
+    "docs/adr/0040-staged-index-snapshot-and-graph-scoped-gates.md",
+    "docs/adr/0042-2d-chladni-plate-and-wave-tank-solver.md",
+    "docs/adr/0042-fft-lenia-engine-and-gray-scott-kinetics.md",
+    "docs/adr/0042-fractran-vm-kolmogorov-and-algorithmic-info-tab.md",
+    "docs/adr/0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md",
+    "docs/adr/0043-paradox-lab-interactive-tab.md",
+    "docs/adr/0043-repair-guides-and-enforce-static-doc-gates.md",
+    "docs/adr/0044-geodesic-engine-and-relativity-tab.md",
+    "docs/adr/0044-ratchet-missing-docs-and-core-api-documentation.md",
+    "docs/adr/0044-unify-build-time-traceability-engine.md",
+    "docs/adr/0045-spatial-brush-kit-and-field-sculpting.md",
+    "docs/adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md",
+]
+
 [[unused_dependencies]]
 crate = "crates/oxidize_core"
 dependency = "getrandom"
 reason = "Activates the getrandom js backend feature on wasm32-unknown-unknown for rand without direct Rust imports"
 
+[missing_docs]
+# Only vendored crates may use crate-level #![allow(missing_docs)]
+vendored_crates = [
+    "egui_plot",
+]
 
-
+[missing_docs.files]
+# Per-file outer #[allow(missing_docs)] caps; ratchets strictly downward via test-policy-audit
+"crates/domain_ai/src/ai/deep_learning_theory/cycle.rs" = 2
+"crates/domain_ai/src/ai/deep_learning_theory/linear_algebra.rs" = 2
+"crates/domain_ai/src/ai/deep_learning_theory/mod.rs" = 5
+"crates/domain_ai/src/ai/deep_learning_theory/model.rs" = 4
+"crates/domain_ai/src/ai/gaussian_splatting/mod.rs" = 4
+"crates/domain_ai/src/ai/gaussian_splatting/optimization.rs" = 5
+"crates/domain_ai/src/ai/gaussian_splatting/structs.rs" = 8
+"crates/domain_ai/src/ai/mod.rs" = 4
+"crates/domain_ai/src/ai/optimization.rs" = 2
+"crates/domain_ai/src/ai/reinforcement_learning/algorithms.rs" = 4
+"crates/domain_ai/src/ai/reinforcement_learning/grid_world.rs" = 16
+"crates/domain_ai/src/ai/reinforcement_learning/mod.rs" = 6
+"crates/domain_ai/src/ai/reinforcement_learning/q_function.rs" = 1
+"crates/domain_ai/src/ai/reinforcement_learning/strategies.rs" = 2
+"crates/domain_ai/src/ai/reinforcement_learning/types.rs" = 2
+"crates/domain_ai/src/ai/sds/diffusion.rs" = 5
+"crates/domain_ai/src/ai/sds/mod.rs" = 5
+"crates/domain_ai/src/ai/sds/rendering.rs" = 16
+"crates/domain_ai/src/ai/sds/score.rs" = 1
+"crates/domain_ai/src/ai/sds/training.rs" = 12
+"crates/domain_ai/src/ai/self_calibration/mod.rs" = 3
+"crates/domain_ai/src/ai/self_calibration/training.rs" = 1
+"crates/domain_ai/src/ai/transformer/mod.rs" = 9
+"crates/domain_ai/src/ai/transformer/tokenization.rs" = 1
+"crates/domain_ai/src/error.rs" = 5
+"crates/domain_ai/src/lib.rs" = 3
+"crates/domain_applied/src/applied/algorithms/kalman.rs" = 4
+"crates/domain_applied/src/applied/algorithms/sorting/mod.rs" = 7
+"crates/domain_applied/src/applied/battery_degradation/mod.rs" = 1
+"crates/domain_applied/src/applied/battery_degradation/model.rs" = 10
+"crates/domain_applied/src/applied/battery_degradation/types.rs" = 14
+"crates/domain_applied/src/applied/cannibalism/mod.rs" = 4
+"crates/domain_applied/src/applied/clinical_trials/analysis.rs" = 5
+"crates/domain_applied/src/applied/clinical_trials/design.rs" = 5
+"crates/domain_applied/src/applied/clinical_trials/hypothesis_testing.rs" = 9
+"crates/domain_applied/src/applied/clinical_trials/mod.rs" = 5
+"crates/domain_applied/src/applied/clinical_trials/types.rs" = 6
+"crates/domain_applied/src/applied/engineering/mod.rs" = 2
+"crates/domain_applied/src/applied/favoritism/favorite_child.rs" = 2
+"crates/domain_applied/src/applied/favoritism/mod.rs" = 4
+"crates/domain_applied/src/applied/favoritism/strategies.rs" = 18
+"crates/domain_applied/src/applied/freesurfer/mod.rs" = 4
+"crates/domain_applied/src/applied/game_theory/equilibrium.rs" = 2
+"crates/domain_applied/src/applied/game_theory/mean_field/mod.rs" = 2
+"crates/domain_applied/src/applied/game_theory/mean_field/physics.rs" = 2
+"crates/domain_applied/src/applied/game_theory/mean_field/solver.rs" = 2
+"crates/domain_applied/src/applied/game_theory/mean_field/types.rs" = 18
+"crates/domain_applied/src/applied/grpo/mod.rs" = 3
+"crates/domain_applied/src/applied/isosurface/mod.rs" = 4
+"crates/domain_applied/src/applied/isosurface/tables.rs" = 4
+"crates/domain_applied/src/applied/isosurface/types.rs" = 20
+"crates/domain_applied/src/applied/lorahub/mod.rs" = 3
+"crates/domain_applied/src/applied/lorahub/strategies.rs" = 4
+"crates/domain_applied/src/applied/pharmacokinetics/bateman.rs" = 1
+"crates/domain_applied/src/applied/pharmacokinetics/mod.rs" = 6
+"crates/domain_applied/src/applied/pharmacokinetics/two_pulse.rs" = 1
+"crates/domain_applied/src/applied/win_ratio/mod.rs" = 1
+"crates/domain_applied/src/applied/win_ratio/pair_comparison.rs" = 8
+"crates/domain_applied/src/error.rs" = 14
+"crates/domain_applied/src/lib.rs" = 2
+"crates/domain_biology/src/biology/diffusion/fd2d/boundary.rs" = 3
+"crates/domain_biology/src/biology/diffusion/fd2d/geometry.rs" = 11
+"crates/domain_biology/src/biology/diffusion/fd2d/iteration.rs" = 3
+"crates/domain_biology/src/biology/diffusion/fd2d/mod.rs" = 7
+"crates/domain_biology/src/biology/diffusion/mod.rs" = 2
+"crates/domain_biology/src/biology/evolution.rs" = 1
+"crates/domain_biology/src/biology/kinetics.rs" = 3
+"crates/domain_biology/src/biology/morphogenesis/mod.rs" = 3
+"crates/domain_biology/src/biology/morphogenesis/solvers.rs" = 7
+"crates/domain_biology/src/biology/reaction_diffusion/mod.rs" = 7
+"crates/domain_biology/src/biology/reaction_diffusion/model.rs" = 6
+"crates/domain_biology/src/biology/reaction_diffusion/state.rs" = 1
+"crates/domain_biology/src/error.rs" = 3
+"crates/domain_biology/src/lib.rs" = 2
+"crates/domain_epidemiology/src/epidemiology/compartmental/mod.rs" = 4
+"crates/domain_epidemiology/src/epidemiology/compartmental/seir.rs" = 8
+"crates/domain_epidemiology/src/epidemiology/compartmental/sir.rs" = 6
+"crates/domain_epidemiology/src/epidemiology/mod.rs" = 5
+"crates/domain_epidemiology/src/epidemiology/networks.rs" = 16
+"crates/domain_epidemiology/src/epidemiology/networks/builder.rs" = 14
+"crates/domain_epidemiology/src/error.rs" = 3
+"crates/domain_epidemiology/src/lib.rs" = 2
+"crates/domain_physics/src/error.rs" = 32
+"crates/domain_physics/src/lib.rs" = 3
+"crates/domain_physics/src/physics/chaos/lorenz.rs" = 1
+"crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/mod.rs" = 4
+"crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/model.rs" = 6
+"crates/domain_physics/src/physics/fluid_dynamics/turbulence.rs" = 4
+"crates/domain_physics/src/physics/high_energy/mod.rs" = 5
+"crates/domain_physics/src/physics/medical/dose/kernel.rs" = 3
+"crates/domain_physics/src/physics/medical/dose/mod.rs" = 2
+"crates/domain_physics/src/physics/medical/mod.rs" = 5
+"crates/domain_physics/src/physics/medical/radar_gating/tracking.rs" = 3
+"crates/domain_physics/src/physics/mod.rs" = 2
+"crates/domain_physics/src/physics/nuclear/mod.rs" = 5
+"crates/domain_physics/src/physics/nuclear/models.rs" = 5
+"crates/domain_physics/src/physics/nuclear/types.rs" = 13
+"crates/domain_physics/src/physics/quantum/mod.rs" = 4
+"crates/domain_physics/src/physics/solid_state/interactions.rs" = 1
+"crates/domain_physics/src/physics/solid_state/mod.rs" = 2
+"crates/domain_physics/src/physics/solid_state/second_quantization.rs" = 6
+"crates/domain_physics/src/physics/solid_state/types.rs" = 9
+"crates/domain_physics/src/physics/standard_model/gauge.rs" = 3
+"crates/domain_physics/src/physics/stat_mech/mod.rs" = 3
+"crates/math_commons/src/constants.rs" = 6
+"crates/math_commons/src/error.rs" = 5
+"crates/math_commons/src/lib.rs" = 5
+"crates/math_commons/src/math_kernel/colormap.rs" = 1
+"crates/math_commons/src/math_kernel/mod.rs" = 2
+"crates/math_commons/src/primitives.rs" = 11
+"crates/math_commons/src/registry.rs" = 1
+"crates/math_commons/src/wigner/mod.rs" = 7
+"crates/oxidize_core/src/ast_visitor.rs" = 15
+"crates/oxidize_core/src/boundary.rs" = 2
+"crates/oxidize_core/src/lib.rs" = 9
+"crates/oxidize_core/src/mesh/export.rs" = 1
+"crates/oxidize_core/src/mesh/mod.rs" = 2
+"crates/oxidize_core/src/mesh/types.rs" = 13
+"crates/oxidize_core/src/traceability.rs" = 25
+"crates/oxidize_core/src/vfs.rs" = 6
+"crates/pure_math/src/error.rs" = 50
+"crates/pure_math/src/lib.rs" = 4
+"crates/pure_math/src/math_types.rs" = 32
+"crates/pure_math/src/pure_math/algebra/fields.rs" = 2
+"crates/pure_math/src/pure_math/algebra/group.rs" = 7
+"crates/pure_math/src/pure_math/algebra/linear_algebra/canonical.rs" = 3
+"crates/pure_math/src/pure_math/algebra/mod.rs" = 2
+"crates/pure_math/src/pure_math/algebra/polynomial.rs" = 3
+"crates/pure_math/src/pure_math/algebra/traits.rs" = 1
+"crates/pure_math/src/pure_math/algorithmic_information/combinatorics.rs" = 1
+"crates/pure_math/src/pure_math/analysis/complex/mapping.rs" = 1
+"crates/pure_math/src/pure_math/analysis/complex/mod.rs" = 4
+"crates/pure_math/src/pure_math/analysis/complex/surfaces.rs" = 2
+"crates/pure_math/src/pure_math/analysis/evolution.rs" = 11
+"crates/pure_math/src/pure_math/analysis/mod.rs" = 3
+"crates/pure_math/src/pure_math/analysis/ode/mod.rs" = 6
+"crates/pure_math/src/pure_math/analysis/optimization.rs" = 23
+"crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs" = 13
+"crates/pure_math/src/pure_math/analysis/pde/greens.rs" = 2
+"crates/pure_math/src/pure_math/analysis/pde/heat.rs" = 6
+"crates/pure_math/src/pure_math/analysis/pde/laplace.rs" = 4
+"crates/pure_math/src/pure_math/analysis/pde/mod.rs" = 15
+"crates/pure_math/src/pure_math/analysis/pde/wave.rs" = 6
+"crates/pure_math/src/pure_math/analysis/stochastic.rs" = 1
+"crates/pure_math/src/pure_math/analysis/transforms/fourier/mod.rs" = 1
+"crates/pure_math/src/pure_math/analysis/transforms/fourier/traits.rs" = 2
+"crates/pure_math/src/pure_math/differential_geometry/heat_equation.rs" = 7
+"crates/pure_math/src/pure_math/differential_geometry/mean_curvature_flow.rs" = 8
+"crates/pure_math/src/pure_math/differential_geometry/mod.rs" = 4
+"crates/pure_math/src/pure_math/differential_geometry/surface.rs" = 4
+"crates/pure_math/src/pure_math/elliptic_curves/mod.rs" = 12
+"crates/pure_math/src/pure_math/graph_theory/graph.rs" = 1
+"crates/pure_math/src/pure_math/graph_theory/mod.rs" = 4
+"crates/pure_math/src/pure_math/graph_theory/parameters/mod.rs" = 4
+"crates/pure_math/src/pure_math/mod.rs" = 4
+"crates/pure_math/src/pure_math/number_theory/alcf.rs" = 1
+"crates/pure_math/src/pure_math/number_theory/ambs.rs" = 18
+"crates/pure_math/src/pure_math/number_theory/class_number.rs" = 3
+"crates/pure_math/src/pure_math/number_theory/mod.rs" = 3
+"crates/pure_math/src/pure_math/number_theory/partitions.rs" = 1
+"crates/pure_math/src/pure_math/number_theory/q_series.rs" = 1
+"crates/pure_math/src/pure_math/number_theory/ualbf.rs" = 8
+"crates/pure_math/src/pure_math/special_functions/mod.rs" = 4
+"crates/pure_math/src/pure_math/statistics/markov/ctmc/mod.rs" = 1
+"crates/pure_math/src/pure_math/statistics/markov/dtmc/mod.rs" = 1
+"crates/pure_math/src/pure_math/statistics/markov/hmm/forward_backward.rs" = 1
+"crates/pure_math/src/pure_math/statistics/markov/hmm/generation.rs" = 1
+"crates/pure_math/src/pure_math/statistics/markov/hmm/mod.rs" = 4
+"crates/pure_math/src/pure_math/statistics/markov/hmm/model.rs" = 1
+"crates/pure_math/src/pure_math/statistics/markov/hmm/viterbi.rs" = 1
+"crates/pure_math/src/pure_math/statistics/markov/mod.rs" = 4
+"crates/pure_math/src/pure_math/statistics/markov/tensor.rs" = 1
+"crates/pure_math/src/pure_math/statistics/markov/validation.rs" = 1
+"crates/pure_math/src/pure_math/statistics/tda/core.rs" = 3
+"crates/pure_math/src/pure_math/tensor/metric.rs" = 1
+"crates/pure_math/src/pure_math/tensor/mod.rs" = 3
+"crates/pure_math/src/pure_math/vector_calculus/mod.rs" = 3
+"crates/pure_math/src/pure_math/vector_calculus/theorems.rs" = 2
+"crates/pure_math/src/theory_macro.rs" = 2
+"math_explorer_gui/src/accessibility.rs" = 7
+"math_explorer_gui/src/async_sim/mod.rs" = 34
+"math_explorer_gui/src/async_sim/registry.rs" = 7
+"math_explorer_gui/src/async_sim/state.rs" = 32
+"math_explorer_gui/src/async_sim/unified/mod.rs" = 2
+"math_explorer_gui/src/async_sim/unified/tool.rs" = 3
+"math_explorer_gui/src/camera/mod.rs" = 1
+"math_explorer_gui/src/framework/mod.rs" = 7
+"math_explorer_gui/src/framework/ui.rs" = 2
+"math_explorer_gui/src/main.rs" = 6
+"math_explorer_gui/src/tabs/ai/q_table_inspector/runner.rs" = 2
+"math_explorer_gui/src/tabs/ai/reward_plots.rs" = 4
+"math_explorer_gui/src/tabs/chaos/attractors/runner.rs" = 3
+"math_explorer_gui/src/tabs/epidemiology/sir.rs" = 2
+"math_explorer_gui/src/tabs/morphogenesis/runner.rs" = 2
+"math_explorer_gui/src/tabs/morphogenesis/tool.rs" = 2
+"math_explorer_gui/src/tabs/mri/runner.rs" = 3
+"math_explorer_gui/src/tabs/mri/tool.rs" = 2
+"math_explorer_gui/src/tabs/neuroscience/hodgkin_huxley.rs" = 1
+"math_explorer_gui/src/tabs/solid_state/ising.rs" = 2
+"math_explorer_gui/src/tabs/solid_state/ising/runner.rs" = 2
+"math_explorer_gui/src/tabs/traceability.rs" = 1
+"math_explorer_gui/src/tabs/traceability/presets.rs" = 2

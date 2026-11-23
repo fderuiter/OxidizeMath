@@ -175,23 +175,28 @@ impl LegendEntry {
         }
     }
 
-    fn ui(&self, ui: &mut Ui, text_style: &TextStyle) -> Response {
+    fn ui(&self, ui: &mut Ui, text_style: &TextStyle, min_row_height: f32) -> Response {
         let job = crate::latex::parse_latex_to_layout_job(
             &self.name,
             text_style.clone(),
             ui,
             ui.visuals().text_color(),
         );
+        let font_height = ui.text_style_height(text_style).max(12.0);
+        let icon_size = font_height;
+        let icon_spacing = icon_size / 5.0;
+        let max_text_width = (ui.available_width() - icon_size - icon_spacing - 4.0).max(32.0);
         let galley = egui::WidgetText::LayoutJob(std::sync::Arc::new(job)).into_galley(
             ui,
-            Some(egui::TextWrapMode::Extend),
-            f32::INFINITY,
+            Some(egui::TextWrapMode::Wrap),
+            max_text_width,
             text_style.clone(),
         );
 
-        let icon_size = galley.size().y;
-        let icon_spacing = icon_size / 5.0;
-        let desired_size = vec2(icon_size + icon_spacing, 0.0) + galley.size();
+        let desired_size = vec2(
+            (icon_size + icon_spacing + galley.size().x).max(24.0),
+            galley.size().y.max(min_row_height),
+        );
         let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
 
         response.widget_info(|| {
@@ -262,6 +267,7 @@ pub(super) struct LegendWidget {
     rect: Rect,
     entries: Vec<LegendEntry>,
     config: Legend,
+    rendered_rect: Option<Rect>,
 }
 
 impl LegendWidget {
@@ -323,6 +329,7 @@ impl LegendWidget {
             rect,
             entries,
             config,
+            rendered_rect: None,
         })
     }
 
@@ -340,6 +347,16 @@ impl LegendWidget {
             .iter()
             .find_map(|entry| entry.hovered.then_some(entry.id))
     }
+
+    /// Corner placement configured for this legend.
+    pub(crate) const fn position(&self) -> Corner {
+        self.config.position
+    }
+
+    /// Bounding rectangle occupied by the rendered legend frame, once drawn.
+    pub(crate) const fn rendered_rect(&self) -> Option<Rect> {
+        self.rendered_rect
+    }
 }
 
 impl Widget for &mut LegendWidget {
@@ -349,6 +366,7 @@ impl Widget for &mut LegendWidget {
             rect,
             entries,
             config,
+            rendered_rect,
         } = self;
         let target_plot_id = *plot_id;
 
@@ -360,16 +378,25 @@ impl Widget for &mut LegendWidget {
             Corner::LeftTop | Corner::LeftBottom => Align::LEFT,
             Corner::RightTop | Corner::RightBottom => Align::RIGHT,
         };
+        let visible_h = rect.intersect(ui.clip_rect()).height();
+        let full_targets_fit = visible_h >= (entries.len() as f32).mul_add(24.0, 16.0);
+        let (outer_pad, inner_v_pad, row_spacing, min_row_h) = if full_targets_fit {
+            (4.0, 4.0, 0.0, 24.0)
+        } else {
+            (2.0, 2.0, 1.0, 0.0)
+        };
         let layout = Layout::from_main_dir_and_cross_align(main_dir, cross_align);
         let mut legend_ui = ui.new_child(
             egui::UiBuilder::new()
-                .max_rect(rect.shrink(4.0))
+                .id_salt(("plot_legend", target_plot_id))
+                .max_rect(rect.shrink(outer_pad))
                 .layout(layout),
         );
         legend_ui
             .scope(|ui| {
+                ui.spacing_mut().item_spacing.y = row_spacing;
                 let background_frame = Frame {
-                    inner_margin: vec2(8.0, 4.0).into(),
+                    inner_margin: vec2(8.0, inner_v_pad).into(),
                     corner_radius: ui.style().visuals.window_corner_radius,
                     shadow: Shadow::NONE,
                     fill: ui.style().visuals.extreme_bg_color,
@@ -377,11 +404,18 @@ impl Widget for &mut LegendWidget {
                     ..Default::default()
                 }
                 .multiply_with_opacity(config.background_alpha);
-                background_frame
-                    .show(ui, |ui| {
-                        render_legend_frame_contents(ui, main_dir, config, entries, target_plot_id)
-                    })
-                    .inner
+                let frame_resp = background_frame.show(ui, |ui| {
+                    render_legend_frame_contents(
+                        ui,
+                        main_dir,
+                        config,
+                        entries,
+                        target_plot_id,
+                        min_row_h,
+                    )
+                });
+                *rendered_rect = Some(frame_resp.response.rect);
+                frame_resp.inner
             })
             .inner
     }
@@ -393,6 +427,7 @@ fn render_legend_frame_contents(
     config: &Legend,
     entries: &mut [LegendEntry],
     target_plot_id: Id,
+    min_row_h: f32,
 ) -> Response {
     if main_dir == Direction::TopDown
         && let Some(title) = &config.title
@@ -403,7 +438,7 @@ fn render_legend_frame_contents(
     let response_union = entries
         .iter_mut()
         .map(|entry| {
-            let response = entry.ui(ui, &config.text_style);
+            let response = entry.ui(ui, &config.text_style, min_row_h);
             let isolate_triggered = check_legend_isolate_trigger(ui, &response);
             if isolate_triggered {
                 focus_on_item = Some(entry.id);
@@ -422,12 +457,18 @@ fn render_legend_frame_contents(
     if let Some(focus_on_item) = focus_on_item {
         handle_focus_on_legend_item(ui.ctx(), &focus_on_item, entries);
     }
-    response_union.context_menu(|ui| {
-        if ui.button("Import CSV").clicked() {
-            crate::export::trigger_import_csv_for_plot(ui.ctx(), target_plot_id);
-            ui.close();
-        }
+    let allow_csv = ui.ctx().data(|d| {
+        d.get_temp::<bool>(target_plot_id.with("allow_csv_import"))
+            .unwrap_or(true)
     });
+    if allow_csv {
+        response_union.context_menu(|ui| {
+            if ui.button("Import CSV").clicked() {
+                crate::export::trigger_import_csv_for_plot(ui.ctx(), target_plot_id);
+                ui.close();
+            }
+        });
+    }
     response_union
 }
 
