@@ -9,7 +9,8 @@ use crate::framework::math_input::{
 use crate::presets::OdePreset;
 use math_commons::ast::{CompiledExpr, Instruction};
 use math_explorer::pure_math::analysis::ode::{
-    Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
+    Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeModel, OdeSystem,
+    RungeKutta4, Solver, TimeStepper, VecState,
 };
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -320,6 +321,18 @@ pub fn eval_ode_final_state(
     }
 }
 
+fn run_ode_model<D, S>(init: VecState, dyn_sys: D, solver: S, steps: usize, dt: f64) -> f64
+where
+    D: OdeSystem<VecState>,
+    S: Solver<VecState>,
+{
+    let mut model = OdeModel::new(init, dyn_sys, solver);
+    for _ in 0..steps {
+        model.step(dt);
+    }
+    model.state.0[0]
+}
+
 fn step_model<D: OdeSystem<VecState> + Clone>(
     init: VecState,
     dyn_sys: D,
@@ -329,25 +342,23 @@ fn step_model<D: OdeSystem<VecState> + Clone>(
 ) -> f64 {
     match method {
         IntegrationMethod::RungeKutta4 => {
-            let mut model = OdeModel::new(init.clone(), dyn_sys, RungeKutta4::new(&init));
-            for _ in 0..steps {
-                model.step(dt);
-            }
-            model.state.0[0]
+            run_ode_model(init.clone(), dyn_sys, RungeKutta4::new(&init), steps, dt)
         }
         IntegrationMethod::Euler => {
-            let mut model = OdeModel::new(init.clone(), dyn_sys, Euler::new(&init));
-            for _ in 0..steps {
-                model.step(dt);
-            }
-            model.state.0[0]
+            run_ode_model(init.clone(), dyn_sys, Euler::new(&init), steps, dt)
         }
         IntegrationMethod::Heun => {
-            let mut model = OdeModel::new(init.clone(), dyn_sys, Heun::new(&init));
-            for _ in 0..steps {
-                model.step(dt);
-            }
-            model.state.0[0]
+            run_ode_model(init.clone(), dyn_sys, Heun::new(&init), steps, dt)
+        }
+        IntegrationMethod::ImplicitMidpoint => run_ode_model(
+            init.clone(),
+            dyn_sys,
+            ImplicitMidpoint::new(&init),
+            steps,
+            dt,
+        ),
+        IntegrationMethod::GaussLegendre4 => {
+            run_ode_model(init.clone(), dyn_sys, GaussLegendre4::new(&init), steps, dt)
         }
     }
 }

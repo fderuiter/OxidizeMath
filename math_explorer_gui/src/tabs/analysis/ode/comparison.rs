@@ -5,7 +5,8 @@ use super::OdeSolverTool;
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
 use math_explorer::pure_math::analysis::ode::{
-    Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, Solver, TimeStepper, VecState,
+    Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeModel, OdeSystem,
+    RungeKutta4, Solver, TimeStepper, VecState,
 };
 use serde::{Deserialize, Serialize};
 
@@ -165,19 +166,24 @@ fn run_step_loop<D: OdeSystem<VecState> + Clone>(
 ) {
     match sched.method {
         IntegrationMethod::RungeKutta4 => {
-            let solver = RungeKutta4::new(&init);
-            let mut model = OdeModel::new(init, dynamics, solver);
-            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+            let mut m = OdeModel::new(init.clone(), dynamics, RungeKutta4::new(&init));
+            execute_steps(traj, &mut m, sched.dt, sched.num_steps, sched.v_label);
         }
         IntegrationMethod::Euler => {
-            let solver = Euler::new(&init);
-            let mut model = OdeModel::new(init, dynamics, solver);
-            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+            let mut m = OdeModel::new(init.clone(), dynamics, Euler::new(&init));
+            execute_steps(traj, &mut m, sched.dt, sched.num_steps, sched.v_label);
         }
         IntegrationMethod::Heun => {
-            let solver = Heun::new(&init);
-            let mut model = OdeModel::new(init, dynamics, solver);
-            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
+            let mut m = OdeModel::new(init.clone(), dynamics, Heun::new(&init));
+            execute_steps(traj, &mut m, sched.dt, sched.num_steps, sched.v_label);
+        }
+        IntegrationMethod::ImplicitMidpoint => {
+            let mut m = OdeModel::new(init.clone(), dynamics, ImplicitMidpoint::new(&init));
+            execute_steps(traj, &mut m, sched.dt, sched.num_steps, sched.v_label);
+        }
+        IntegrationMethod::GaussLegendre4 => {
+            let mut m = OdeModel::new(init.clone(), dynamics, GaussLegendre4::new(&init));
+            execute_steps(traj, &mut m, sched.dt, sched.num_steps, sched.v_label);
         }
     }
 }
@@ -270,6 +276,25 @@ fn accumulate_series_discrepancy(
 }
 
 impl OdeSolverTool {
+    fn simulate_for_method(
+        &self,
+        method: IntegrationMethod,
+        custom_spec: Option<&CustomOdeSpec>,
+    ) -> SolverTrajectory {
+        simulate_preset(
+            self.preset,
+            method,
+            self.dt,
+            self.total_time,
+            self.param_k,
+            self.param_r,
+            self.param_cap_k,
+            self.ic_y0,
+            self.ic_v0,
+            custom_spec,
+        )
+    }
+
     pub(super) fn recalculate_comparison(&mut self) {
         self.comparison_manager.clear();
         if !self.comparison_mode {
@@ -277,42 +302,9 @@ impl OdeSolverTool {
         }
 
         let custom_spec = self.build_custom_ode_spec();
-        let rk4 = simulate_preset(
-            self.preset,
-            IntegrationMethod::RungeKutta4,
-            self.dt,
-            self.total_time,
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-            self.ic_y0,
-            self.ic_v0,
-            custom_spec.as_ref(),
-        );
-        let euler = simulate_preset(
-            self.preset,
-            IntegrationMethod::Euler,
-            self.dt,
-            self.total_time,
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-            self.ic_y0,
-            self.ic_v0,
-            custom_spec.as_ref(),
-        );
-        let heun = simulate_preset(
-            self.preset,
-            IntegrationMethod::Heun,
-            self.dt,
-            self.total_time,
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-            self.ic_y0,
-            self.ic_v0,
-            custom_spec.as_ref(),
-        );
+        let rk4 = self.simulate_for_method(IntegrationMethod::RungeKutta4, custom_spec.as_ref());
+        let euler = self.simulate_for_method(IntegrationMethod::Euler, custom_spec.as_ref());
+        let heun = self.simulate_for_method(IntegrationMethod::Heun, custom_spec.as_ref());
 
         if rk4.diverged || euler.diverged || heun.diverged {
             self.diverged = true;
@@ -322,7 +314,15 @@ impl OdeSolverTool {
         self.discrepancy_heun_rk4 = compute_discrepancy(&heun, &rk4);
         self.discrepancy_euler_heun = compute_discrepancy(&euler, &heun);
 
-        self.populate_comparison_snapshots(&[rk4, euler, heun]);
+        if self.method.is_symplectic() {
+            let symp = self.simulate_for_method(self.method, custom_spec.as_ref());
+            if symp.diverged {
+                self.diverged = true;
+            }
+            self.populate_comparison_snapshots(&[rk4, euler, heun, symp]);
+        } else {
+            self.populate_comparison_snapshots(&[rk4, euler, heun]);
+        }
     }
 
     pub(super) fn populate_comparison_snapshots(&mut self, trajs: &[SolverTrajectory]) {
