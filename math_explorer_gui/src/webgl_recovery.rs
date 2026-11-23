@@ -103,6 +103,7 @@ fn handle_restore_timeout(runtime_rc: &Rc<RefCell<RecoveryRuntime>>, detail: &st
     if let Some(runner) = stale_runner {
         runner.destroy();
     }
+    crate::audio::on_webgl_context_lost();
     notify_recovery_failed(
         window.as_ref(),
         &doc,
@@ -144,6 +145,7 @@ fn arm_fallback_restore_timer(
 
 fn on_context_lost(event: &web_sys::Event, runtime_rc: &Rc<RefCell<RecoveryRuntime>>) {
     event.prevent_default();
+    crate::audio::on_webgl_context_lost();
     let window = web_sys::window();
     let Some(doc) = window.as_ref().and_then(web_sys::Window::document) else {
         return;

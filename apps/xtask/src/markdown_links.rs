@@ -3,29 +3,41 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 
 pub(crate) fn check_markdown_links() {
-    println!("=== Checking Markdown Documentation Links ===");
-    let mut md_files = Vec::new();
-    collect_md_files(Path::new("."), &mut md_files);
-    check_markdown_links_for_files(&md_files);
+    let root = if Path::new("Cargo.toml").is_file()
+        && fs::read_to_string("Cargo.toml").is_ok_and(|c| c.contains("[workspace]"))
+    {
+        PathBuf::from(".")
+    } else {
+        crate::gates::workspace_root()
+    };
+    check_markdown_links_in_dir(&root);
 }
 
-pub(crate) fn check_markdown_links_for_files(md_files: &[PathBuf]) {
+pub(crate) fn check_markdown_links_in_dir(root: &Path) {
+    println!("=== Checking Markdown Documentation Links ===");
+    let mut md_files = Vec::new();
+    collect_md_files(root, &mut md_files);
+    check_markdown_links_for_files_in_dir(root, &md_files);
+}
+
+pub(crate) fn check_markdown_links_for_files_in_dir(root: &Path, md_files: &[PathBuf]) {
     if md_files.is_empty() {
         return;
     }
 
     let mut broken = Vec::new();
     for file in md_files {
-        if let Ok(content) = fs::read_to_string(file) {
-            let parent = file.parent().unwrap_or(Path::new("."));
+        let full_file = if file.starts_with(root) {
+            file.clone()
+        } else {
+            root.join(file)
+        };
+        if let Ok(content) = fs::read_to_string(&full_file) {
+            let parent = full_file.parent().unwrap_or(root);
+            let display_path = full_file.strip_prefix(root).unwrap_or(file.as_path());
             for link in extract_md_links(&content) {
                 let target = link.split_whitespace().next().unwrap_or(&link);
-                if target.starts_with("http://")
-                    || target.starts_with("https://")
-                    || target.starts_with("mailto:")
-                    || target.starts_with('#')
-                    || target.contains("::")
-                {
+                if is_external_or_anchor_link(target) {
                     continue;
                 }
                 let path_part = target.split('#').next().unwrap_or("");
@@ -33,9 +45,9 @@ pub(crate) fn check_markdown_links_for_files(md_files: &[PathBuf]) {
                     continue;
                 }
                 let rel_dest = parent.join(path_part);
-                let root_dest = Path::new(path_part);
+                let root_dest = root.join(path_part.trim_start_matches('/'));
                 if !rel_dest.exists() && !root_dest.exists() {
-                    broken.push((file.display().to_string(), target.to_string()));
+                    broken.push((display_path.display().to_string(), target.to_string()));
                 }
             }
         }
@@ -52,6 +64,14 @@ pub(crate) fn check_markdown_links_for_files(md_files: &[PathBuf]) {
         "All markdown documentation links in {} files resolved successfully.",
         md_files.len()
     );
+}
+
+fn is_external_or_anchor_link(target: &str) -> bool {
+    target.starts_with("http://")
+        || target.starts_with("https://")
+        || target.starts_with("mailto:")
+        || target.starts_with('#')
+        || target.contains("::")
 }
 
 pub(crate) fn collect_md_files(dir: &Path, out: &mut Vec<PathBuf>) {

@@ -342,37 +342,33 @@ impl InteractiveTool for BankrollGrowthTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.show_ui(ui);
-        });
-    }
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.heading("Parameters");
+                let mut changed = self.render_parameter_sliders(ui);
+                self.render_action_bar(ui, &mut changed);
+                if changed {
+                    self.recalculate();
+                }
+                ui.separator();
 
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.heading("Parameters");
-            let mut changed = self.render_parameter_sliders(ui);
-            self.render_action_bar(ui, &mut changed);
-            if changed {
-                self.recalculate();
-            }
-            ui.separator();
-
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            match self.mode {
-                BankrollLabMode::KellyStrategies => self.render_kelly_plot(ui, &palette),
-                BankrollLabMode::VolatilityDrag => {
-                    let lab_changed = self.ensemble_lab.show_lab_ui(
-                        ui,
-                        &mut self.initial_bankroll,
-                        &mut self.probability,
-                        &mut self.odds,
-                        &mut self.num_bets,
-                    );
-                    if lab_changed {
-                        self.recalculate();
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                match self.mode {
+                    BankrollLabMode::KellyStrategies => self.render_kelly_plot(ui, &palette),
+                    BankrollLabMode::VolatilityDrag => {
+                        let lab_changed = self.ensemble_lab.show_lab_ui(
+                            ui,
+                            &mut self.initial_bankroll,
+                            &mut self.probability,
+                            &mut self.odds,
+                            &mut self.num_bets,
+                        );
+                        if lab_changed {
+                            self.recalculate();
+                        }
                     }
                 }
-            }
+            });
         });
     }
 }

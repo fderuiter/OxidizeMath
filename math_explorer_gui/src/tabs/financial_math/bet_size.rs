@@ -276,13 +276,9 @@ impl InteractiveTool for BetSizeCalculatorTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.show_ui(ui);
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            self.render_workbench_ui(ui);
         });
-    }
-
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        self.render_workbench_ui(ui);
     }
 }
 

@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use egui::{CentralPanel, Frame};
 
 mod portal_tests;
 mod snapshot_tests;
@@ -22,7 +23,9 @@ fn test_traceability_initial_state_transitions_to_scanning() {
     let ctx = egui::Context::default();
     let first_out = ctx.run(egui::RawInput::default(), |ctx| {
         let mut frame = eframe::Frame::_new_kittest();
-        tab.show(ctx, &mut frame);
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
     assert!(tab.has_initial_scan);
     assert_eq!(tab.state, TraceabilityScanState::Scanning);
@@ -62,7 +65,9 @@ fn test_traceability_successful_scan_transitions_to_ready() {
     let ctx = egui::Context::default();
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         let mut frame = eframe::Frame::_new_kittest();
-        tab.show(ctx, &mut frame);
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
 
     assert_eq!(tab.state, TraceabilityScanState::Ready);
@@ -87,7 +92,9 @@ fn test_traceability_failed_scan_displays_error() {
     let ctx = egui::Context::default();
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         let mut frame = eframe::Frame::_new_kittest();
-        tab.show(ctx, &mut frame);
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
 
     assert_eq!(
@@ -113,7 +120,9 @@ fn test_traceability_channel_disconnect_transitions_to_failed() {
     let ctx = egui::Context::default();
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         let mut frame = eframe::Frame::_new_kittest();
-        tab.show(ctx, &mut frame);
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
 
     assert!(tab.state.is_failed());
@@ -147,15 +156,18 @@ fn test_traceability_no_repaint_in_terminal_states() {
     };
 
     let ctx = egui::Context::default();
+    let mut frame = eframe::Frame::_new_kittest();
     // Warm up frame for font and layout initialization
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        let mut frame = eframe::Frame::_new_kittest();
-        tab.show(ctx, &mut frame);
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
 
     let output_failed = ctx.run(egui::RawInput::default(), |ctx| {
-        let mut frame = eframe::Frame::_new_kittest();
-        tab.show(ctx, &mut frame);
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
     let delay_failed = output_failed
         .viewport_output
@@ -166,8 +178,9 @@ fn test_traceability_no_repaint_in_terminal_states() {
 
     tab.state = TraceabilityScanState::Ready;
     let output_ready = ctx.run(egui::RawInput::default(), |ctx| {
-        let mut frame = eframe::Frame::_new_kittest();
-        tab.show(ctx, &mut frame);
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
     let delay_ready = output_ready
         .viewport_output
@@ -178,8 +191,9 @@ fn test_traceability_no_repaint_in_terminal_states() {
 
     tab.state = TraceabilityScanState::Idle;
     let output_idle = ctx.run(egui::RawInput::default(), |ctx| {
-        let mut frame = eframe::Frame::_new_kittest();
-        tab.show(ctx, &mut frame);
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
     let delay_idle = output_idle
         .viewport_output
@@ -191,8 +205,9 @@ fn test_traceability_no_repaint_in_terminal_states() {
     // Verify Scanning DOES request repaint with Duration::ZERO
     tab.state = TraceabilityScanState::Scanning;
     let output_scanning = ctx.run(egui::RawInput::default(), |ctx| {
-        let mut frame = eframe::Frame::_new_kittest();
-        tab.show(ctx, &mut frame);
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
     let delay_scanning = output_scanning
         .viewport_output
@@ -260,17 +275,21 @@ fn test_traceability_online_document_links() {
     let ctx = egui::Context::default();
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         let mut frame = eframe::Frame::_new_kittest();
-        tab.show(ctx, &mut frame);
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
     });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn wait_for_scan_completion(tab: &mut TraceabilityTab) {
     let ctx = egui::Context::default();
+    let mut frame = eframe::Frame::_new_kittest();
     for _ in 0..3000 {
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            let mut frame = eframe::Frame::_new_kittest();
-            tab.show(ctx, &mut frame);
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
         });
         if !tab.state.is_scanning() {
             return;
