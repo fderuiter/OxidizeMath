@@ -145,6 +145,7 @@ impl SimulationRunner for QTableRunner {
             pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
             custom_data: vec![f64::from(self.episodes_trained)],
             structured_data: Some(Box::new(snapshot)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

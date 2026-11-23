@@ -150,7 +150,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 41, "Expected 41 Plot dataset+figure tools");
+    assert_eq!(plot_tool_count, 43, "Expected 43 Plot dataset+figure tools");
     assert_eq!(raster_tool_count, 8, "Expected 8 raster figure tools");
     assert_eq!(unsupported_tool_count, 16, "Expected 16 non-figure tools");
     assert_eq!(solid_3d_count, 5, "Expected 5 solid 3D geometric tools");
@@ -159,7 +159,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         shader_tool_count, 3,
         "Expected 3 analytical GLSL shader tools"
     );
-    assert_eq!(non_shader_tool_count, 62, "Expected 62 non-shader tools");
+    assert_eq!(non_shader_tool_count, 64, "Expected 64 non-shader tools");
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {

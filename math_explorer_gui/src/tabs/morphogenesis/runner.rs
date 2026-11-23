@@ -171,6 +171,7 @@ impl SimulationRunner for MorphogenesisRunner {
             pixels: Arc::new(std::sync::RwLock::new(image.pixels)),
             custom_data: Vec::new(),
             structured_data: Some(Box::new(u_vec)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 
@@ -385,6 +386,7 @@ impl SimulationRunner for MorphogenesisMultiRunner {
             pixels: Arc::new(std::sync::RwLock::new(image.pixels)),
             custom_data: Vec::new(),
             structured_data: Some(Box::new(u_vec)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 
