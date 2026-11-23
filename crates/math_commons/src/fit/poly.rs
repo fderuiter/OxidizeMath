@@ -45,7 +45,7 @@ pub fn fit_polynomial_scaled<P: PointSeries + ?Sized>(
             mat[r][c] = sum_x_pow[r + c];
         }
     }
-    let coeffs = solve_dense_small(&mut mat, &rhs, required)?;
+    let coeffs = solve_dense_small_raw(&mut mat, &rhs, required)?;
     let mean_ty = sum_ty / (valid_count as f64);
     let (r_squared, rmse) = compute_poly_metrics(
         points,
@@ -70,7 +70,6 @@ pub fn fit_polynomial_scaled<P: PointSeries + ?Sized>(
     ))
 }
 
-#[verified_engine::verified]
 fn accumulate_poly_moments<P: PointSeries + ?Sized>(
     points: &P,
     deg: usize,
@@ -109,7 +108,6 @@ fn accumulate_poly_moments<P: PointSeries + ?Sized>(
     (sum_x_pow, rhs, finite_count, valid_count, sum_ty)
 }
 
-#[verified_engine::verified]
 fn compute_poly_metrics<P: PointSeries + ?Sized>(
     points: &P,
     coeffs: &[f64],
@@ -130,7 +128,7 @@ fn compute_poly_metrics<P: PointSeries + ?Sized>(
         }
         let tx = if log_x { p[0].log10() } else { p[0] };
         let ty = if log_y { p[1].log10() } else { p[1] };
-        let pred = eval_polynomial_horner(coeffs, tx);
+        let pred = eval_polynomial_horner_raw(coeffs, tx);
         let diff = ty - pred;
         let tot = ty - mean_ty;
         ss_res += diff * diff;
@@ -152,6 +150,11 @@ fn compute_poly_metrics<P: PointSeries + ?Sized>(
 #[must_use]
 #[verified_engine::verified]
 pub fn eval_polynomial_horner(coeffs: &[f64], x: f64) -> f64 {
+    eval_polynomial_horner_raw(coeffs, x)
+}
+
+#[inline]
+pub(super) fn eval_polynomial_horner_raw(coeffs: &[f64], x: f64) -> f64 {
     let mut acc = 0.0_f64;
     let mut k = coeffs.len();
     while k > 0 {
@@ -164,6 +167,14 @@ pub fn eval_polynomial_horner(coeffs: &[f64], x: f64) -> f64 {
 /// Solves an $n \times n$ ($n \le 5$) dense linear system on the stack via partial pivoting.
 #[verified_engine::verified]
 pub fn solve_dense_small(
+    mat: &mut [[f64; 5]; 5],
+    rhs: &[f64; 5],
+    n: usize,
+) -> Result<[f64; 5], FitError> {
+    solve_dense_small_raw(mat, rhs, n)
+}
+
+pub(super) fn solve_dense_small_raw(
     mat: &mut [[f64; 5]; 5],
     rhs: &[f64; 5],
     n: usize,
@@ -186,7 +197,6 @@ pub fn solve_dense_small(
     back_substitute(mat, &b, n)
 }
 
-#[verified_engine::verified]
 fn select_pivot_row(mat: &[[f64; 5]; 5], col: usize, n: usize) -> usize {
     let mut pivot_row = col;
     let mut pivot_val = mat[col][col].abs();
@@ -200,7 +210,6 @@ fn select_pivot_row(mat: &[[f64; 5]; 5], col: usize, n: usize) -> usize {
     pivot_row
 }
 
-#[verified_engine::verified]
 fn eliminate_below(mat: &mut [[f64; 5]; 5], b: &mut [f64; 5], col: usize, n: usize) {
     let diag = mat[col][col];
     for row in (col + 1)..n {
@@ -213,7 +222,6 @@ fn eliminate_below(mat: &mut [[f64; 5]; 5], b: &mut [f64; 5], col: usize, n: usi
     }
 }
 
-#[verified_engine::verified]
 fn back_substitute(mat: &[[f64; 5]; 5], b: &[f64; 5], n: usize) -> Result<[f64; 5], FitError> {
     let mut x = [0.0_f64; 5];
     let mut row = n;

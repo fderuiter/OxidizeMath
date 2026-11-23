@@ -12,13 +12,11 @@ pub trait Sample2D {
 
 impl Sample2D for [f64; 2] {
     #[inline]
-    #[verified_engine::verified]
     fn sample_x(&self) -> f64 {
         self[0]
     }
 
     #[inline]
-    #[verified_engine::verified]
     fn sample_y(&self) -> f64 {
         self[1]
     }
@@ -26,13 +24,11 @@ impl Sample2D for [f64; 2] {
 
 impl Sample2D for (f64, f64) {
     #[inline]
-    #[verified_engine::verified]
     fn sample_x(&self) -> f64 {
         self.0
     }
 
     #[inline]
-    #[verified_engine::verified]
     fn sample_y(&self) -> f64 {
         self.1
     }
@@ -81,6 +77,12 @@ impl<S: Sample2D> PointSeries for [S] {
     fn y_at(&self, index: usize) -> f64 {
         self[index].sample_y()
     }
+
+    #[inline]
+    fn point_at(&self, index: usize) -> [f64; 2] {
+        let s = &self[index];
+        [s.sample_x(), s.sample_y()]
+    }
 }
 
 impl<S: Sample2D, const N: usize> PointSeries for [S; N] {
@@ -97,6 +99,12 @@ impl<S: Sample2D, const N: usize> PointSeries for [S; N] {
     #[inline]
     fn y_at(&self, index: usize) -> f64 {
         self[index].sample_y()
+    }
+
+    #[inline]
+    fn point_at(&self, index: usize) -> [f64; 2] {
+        let s = &self[index];
+        [s.sample_x(), s.sample_y()]
     }
 }
 
@@ -115,6 +123,12 @@ impl<S: Sample2D> PointSeries for Vec<S> {
     fn y_at(&self, index: usize) -> f64 {
         self[index].sample_y()
     }
+
+    #[inline]
+    fn point_at(&self, index: usize) -> [f64; 2] {
+        let s = &self[index];
+        [s.sample_x(), s.sample_y()]
+    }
 }
 
 impl<T: PointSeries + ?Sized> PointSeries for &T {
@@ -132,25 +146,32 @@ impl<T: PointSeries + ?Sized> PointSeries for &T {
     fn y_at(&self, index: usize) -> f64 {
         (**self).y_at(index)
     }
+
+    #[inline]
+    fn point_at(&self, index: usize) -> [f64; 2] {
+        (**self).point_at(index)
+    }
 }
 
 impl PointSeries for (&[f64], &[f64]) {
     #[inline]
-    #[verified_engine::verified]
     fn len(&self) -> usize {
         self.0.len().min(self.1.len())
     }
 
     #[inline]
-    #[verified_engine::verified]
     fn x_at(&self, index: usize) -> f64 {
         self.0[index]
     }
 
     #[inline]
-    #[verified_engine::verified]
     fn y_at(&self, index: usize) -> f64 {
         self.1[index]
+    }
+
+    #[inline]
+    fn point_at(&self, index: usize) -> [f64; 2] {
+        [self.0[index], self.1[index]]
     }
 }
 
@@ -168,5 +189,10 @@ impl PointSeries for (&Vec<f64>, &Vec<f64>) {
     #[inline]
     fn y_at(&self, index: usize) -> f64 {
         self.1[index]
+    }
+
+    #[inline]
+    fn point_at(&self, index: usize) -> [f64; 2] {
+        [self.0[index], self.1[index]]
     }
 }

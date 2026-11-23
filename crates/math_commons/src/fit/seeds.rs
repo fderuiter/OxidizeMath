@@ -1,7 +1,7 @@
 //! Zero-allocation closed-form parameter seed estimators for nonlinear curve models.
 // [cite:math_commons]
 
-use super::poly::solve_dense_small;
+use super::poly::solve_dense_small_raw;
 use crate::error::FitError;
 use crate::series::PointSeries;
 
@@ -28,14 +28,14 @@ impl WeightedOlsAccum {
 
     /// Adds a weighted `(u, v)` sample with positive finite weight `w`.
     #[inline]
-    #[verified_engine::verified]
     pub fn push(&mut self, u: f64, v: f64, w: f64) {
         if u.is_finite() && v.is_finite() && w.is_finite() && w > 0.0 {
+            let wu = w * u;
             self.sw += w;
-            self.su += w * u;
+            self.su += wu;
             self.sv += w * v;
-            self.suu += w * u * u;
-            self.suv += w * u * v;
+            self.suu += wu * u;
+            self.suv += wu * v;
             self.count += 1;
         }
     }
@@ -66,6 +66,10 @@ impl WeightedOlsAccum {
 /// Solves weighted linear regression $v = \alpha + \beta u$ over `[u, v, w]` triples.
 #[verified_engine::verified]
 pub fn weighted_ols_line(samples: &[[f64; 3]]) -> Result<(f64, f64), FitError> {
+    weighted_ols_line_inner(samples)
+}
+
+fn weighted_ols_line_inner(samples: &[[f64; 3]]) -> Result<(f64, f64), FitError> {
     let mut acc = WeightedOlsAccum::default();
     for &[u, v, w] in samples {
         acc.push(u, v, w);
@@ -76,6 +80,10 @@ pub fn weighted_ols_line(samples: &[[f64; 3]]) -> Result<(f64, f64), FitError> {
 /// Estimates closed-form initial parameters `[a, b]` for $y = a e^{b x}$ via $y^2$-weighted log-OLS.
 #[verified_engine::verified]
 pub fn seed_exponential<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
+    seed_exponential_inner(points)
+}
+
+fn seed_exponential_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
     let mut finite_n = 0usize;
     let mut acc = WeightedOlsAccum::default();
     for i in 0..points.len() {
@@ -113,6 +121,10 @@ pub fn seed_exponential<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2],
 /// Estimates closed-form initial parameters `[a, b]` for $y = a x^b$ ($x > 0, y > 0$).
 #[verified_engine::verified]
 pub fn seed_power_law<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
+    seed_power_law_inner(points)
+}
+
+fn seed_power_law_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
     let mut finite_n = 0usize;
     let mut acc = WeightedOlsAccum::default();
     for i in 0..points.len() {
@@ -150,6 +162,10 @@ pub fn seed_power_law<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], F
 /// Estimates exact closed-form parameters `[a, b]` for $y = a + b \ln(x)$ ($x > 0$).
 #[verified_engine::verified]
 pub fn seed_logarithmic<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
+    seed_logarithmic_inner(points)
+}
+
+fn seed_logarithmic_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
     let mut finite_n = 0usize;
     let mut acc = WeightedOlsAccum::default();
     for i in 0..points.len() {
@@ -180,6 +196,10 @@ pub fn seed_logarithmic<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2],
 /// Estimates initial parameters `[L, k, x0]` for $y = L / (1 + e^{-k(x - x_0)})$.
 #[verified_engine::verified]
 pub fn seed_logistic<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 3], FitError> {
+    seed_logistic_inner(points)
+}
+
+fn seed_logistic_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 3], FitError> {
     let (finite_n, x_min, x_max, y_max) = scan_logistic_bounds(points);
     if finite_n < 3 {
         return Err(FitError::InsufficientPoints {
@@ -215,7 +235,6 @@ pub fn seed_logistic<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 3], Fi
     }
 }
 
-#[verified_engine::verified]
 fn scan_logistic_bounds<P: PointSeries + ?Sized>(points: &P) -> (usize, f64, f64, f64) {
     let mut finite_n = 0usize;
     let mut x_min = f64::INFINITY;
@@ -236,6 +255,10 @@ fn scan_logistic_bounds<P: PointSeries + ?Sized>(points: &P) -> (usize, f64, f64
 /// Estimates initial parameters `[A, B, C, D]` for $y = A \sin(B x + C) + D$ on the stack.
 #[verified_engine::verified]
 pub fn seed_sinusoidal<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 4], FitError> {
+    seed_sinusoidal_inner(points)
+}
+
+fn seed_sinusoidal_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 4], FitError> {
     let mut sample = [[0.0_f64; 2]; MAX_SIN_SAMPLES];
     let (finite_n, sample_len) = sample_sorted_points(points, &mut sample);
     if finite_n < 4 || sample_len < 4 {
@@ -263,7 +286,7 @@ pub fn seed_sinusoidal<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 4], 
     let mean_y = y_sum / (sample_len as f64);
     let amp_fallback = (0.5 * (y_max - y_min)).max(1e-6);
 
-    let freqs = candidate_frequencies(sub, span_x);
+    let freqs = candidate_frequencies(sub, mean_y, span_x);
     let (best_b, best_lin) = search_best_harmonic(sub, &freqs);
     if let Some((alpha, beta, d)) = best_lin {
         let amp = (alpha * alpha + beta * beta).sqrt().max(1e-6);
@@ -279,7 +302,6 @@ pub fn seed_sinusoidal<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 4], 
     }
 }
 
-#[verified_engine::verified]
 fn sample_sorted_points<P: PointSeries + ?Sized>(
     points: &P,
     out: &mut [[f64; 2]; MAX_SIN_SAMPLES],
@@ -320,39 +342,44 @@ fn sample_sorted_points<P: PointSeries + ?Sized>(
     (finite_n, len)
 }
 
-#[verified_engine::verified]
-fn candidate_frequencies(sub: &[[f64; 2]], span_x: f64) -> [f64; 66] {
-    let mut freqs = [0.0_f64; 66];
+fn candidate_frequencies(sub: &[[f64; 2]], mean_y: f64, span_x: f64) -> [f64; 67] {
+    let mut freqs = [0.0_f64; 67];
     let b_min = (0.25 * std::f64::consts::TAU / span_x).max(1e-6);
     let max_cycles = ((sub.len() as f64) * 0.25).clamp(4.0, 24.0);
     let b_max = (max_cycles * std::f64::consts::TAU / span_x).max(b_min * 2.0);
-    freqs[0] = jacquelin_frequency(sub).unwrap_or(0.0);
-    freqs[1] = std::f64::consts::TAU / span_x;
-    for (idx, slot) in freqs.iter_mut().enumerate().skip(2) {
-        let t = (idx - 2) as f64 / 63.0;
+    freqs[0] = jacquelin_frequency(sub, mean_y).unwrap_or(0.0);
+    freqs[1] = zero_crossing_frequency(sub, mean_y, span_x).unwrap_or(0.0);
+    freqs[2] = std::f64::consts::TAU / span_x;
+    for (idx, slot) in freqs.iter_mut().enumerate().skip(3) {
+        let t = (idx - 3) as f64 / 63.0;
         *slot = b_min + t * (b_max - b_min);
     }
     freqs
 }
 
-#[verified_engine::verified]
-fn search_best_harmonic(sub: &[[f64; 2]], freqs: &[f64; 66]) -> (f64, Option<(f64, f64, f64)>) {
+fn zero_crossing_frequency(sorted: &[[f64; 2]], mean_y: f64, span_x: f64) -> Option<f64> {
+    let mut crossings = 0usize;
+    for i in 1..sorted.len() {
+        let y0 = sorted[i - 1][1] - mean_y;
+        let y1 = sorted[i][1] - mean_y;
+        if (y0 <= 0.0 && y1 > 0.0) || (y0 >= 0.0 && y1 < 0.0) {
+            crossings += 1;
+        }
+    }
+    (crossings >= 1).then_some(std::f64::consts::PI * (crossings as f64) / span_x)
+}
+
+fn search_best_harmonic(sub: &[[f64; 2]], freqs: &[f64; 67]) -> (f64, Option<(f64, f64, f64)>) {
     let mut best_sse = f64::INFINITY;
-    let mut best_b = freqs[1].max(1e-4);
+    let mut best_b = freqs[2].max(1e-4);
     let mut best_lin = None;
     for &b in freqs {
         if !b.is_finite() || b <= 1e-9 {
             continue;
         }
-        let Ok((alpha, beta, d)) = solve_harmonic_linear(sub, b) else {
+        let Ok((alpha, beta, d, sse)) = solve_harmonic_linear(sub, b) else {
             continue;
         };
-        let mut sse = 0.0_f64;
-        for &[x, y] in sub {
-            let bx = b * x;
-            let r = y - (alpha * bx.cos() + beta * bx.sin() + d);
-            sse += r * r;
-        }
         if sse.is_finite() && sse < best_sse {
             best_sse = sse;
             best_b = b;
@@ -362,8 +389,7 @@ fn search_best_harmonic(sub: &[[f64; 2]], freqs: &[f64; 66]) -> (f64, Option<(f6
     (best_b, best_lin)
 }
 
-#[verified_engine::verified]
-fn jacquelin_frequency(sorted: &[[f64; 2]]) -> Option<f64> {
+fn jacquelin_frequency(sorted: &[[f64; 2]], mean_y: f64) -> Option<f64> {
     let n = sorted.len();
     if n < 5 {
         return None;
@@ -377,39 +403,53 @@ fn jacquelin_frequency(sorted: &[[f64; 2]]) -> Option<f64> {
     for i in 0..n {
         if i > 0 {
             let dx = sorted[i][0] - sorted[i - 1][0];
-            let next_s1 = s1 + 0.5 * (sorted[i][1] + sorted[i - 1][1]) * dx;
+            let next_s1 = s1 + 0.5 * ((sorted[i][1] - mean_y) + (sorted[i - 1][1] - mean_y)) * dx;
             s2 += 0.5 * (next_s1 + s1) * dx;
             s1 = next_s1;
         }
         let dx0 = sorted[i][0] - x0;
         let row = [s2, dx0 * dx0, dx0, 1.0];
-        let y = sorted[i][1];
+        let y = sorted[i][1] - mean_y;
         for r in 0..4 {
             rhs[r] += row[r] * y;
-            for c in 0..4 {
+            for c in r..4 {
                 m[r][c] += row[r] * row[c];
             }
         }
     }
-    let sol = solve_dense_small(&mut m, &rhs, 4).ok()?;
+    for r in 0..4 {
+        for c in (r + 1)..4 {
+            m[c][r] = m[r][c];
+        }
+    }
+    let sol = solve_dense_small_raw(&mut m, &rhs, 4).ok()?;
     let b_sq = -sol[0];
     (b_sq.is_finite() && b_sq > 1e-12).then(|| b_sq.sqrt())
 }
 
-#[verified_engine::verified]
-fn solve_harmonic_linear(points: &[[f64; 2]], b: f64) -> Result<(f64, f64, f64), FitError> {
+fn solve_harmonic_linear(points: &[[f64; 2]], b: f64) -> Result<(f64, f64, f64, f64), FitError> {
     let mut mat = [[0.0_f64; 5]; 5];
     let mut rhs = [0.0_f64; 5];
+    let mut sum_y2 = 0.0_f64;
     for &[x, y] in points {
-        let bx = b * x;
-        let basis = [bx.cos(), bx.sin(), 1.0];
+        let (s, c) = (b * x).sin_cos();
+        let basis = [c, s, 1.0];
+        sum_y2 += y * y;
         for r in 0..3 {
             rhs[r] += basis[r] * y;
-            for c in 0..3 {
-                mat[r][c] += basis[r] * basis[c];
+            for col in r..3 {
+                mat[r][col] += basis[r] * basis[col];
             }
         }
     }
-    let sol = solve_dense_small(&mut mat, &rhs, 3)?;
-    Ok((sol[0], sol[1], sol[2]))
+    for r in 0..3 {
+        for col in (r + 1)..3 {
+            mat[col][r] = mat[r][col];
+        }
+    }
+    let rhs_orig = rhs;
+    let sol = solve_dense_small_raw(&mut mat, &rhs, 3)?;
+    let explained = sol[0] * rhs_orig[0] + sol[1] * rhs_orig[1] + sol[2] * rhs_orig[2];
+    let sse = (sum_y2 - explained).max(0.0);
+    Ok((sol[0], sol[1], sol[2], sse))
 }

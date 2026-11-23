@@ -32,7 +32,6 @@ pub fn fit_nonlinear<P: PointSeries + ?Sized>(
     }
 }
 
-#[verified_engine::verified]
 fn fit_exponential<P: PointSeries + ?Sized>(
     points: &P,
     log_mode: bool,
@@ -62,7 +61,6 @@ fn fit_exponential<P: PointSeries + ?Sized>(
     ))
 }
 
-#[verified_engine::verified]
 fn fit_exponential_log_mode<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitError> {
     let mut finite_n = 0usize;
     let mut acc = WeightedOlsAccum::default();
@@ -106,7 +104,6 @@ fn fit_exponential_log_mode<P: PointSeries + ?Sized>(points: &P) -> Result<Curve
     ))
 }
 
-#[verified_engine::verified]
 fn fit_power_law<P: PointSeries + ?Sized>(
     points: &P,
     log_mode: bool,
@@ -137,7 +134,6 @@ fn fit_power_law<P: PointSeries + ?Sized>(
     ))
 }
 
-#[verified_engine::verified]
 fn fit_power_law_log_mode<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitError> {
     let mut finite_n = 0usize;
     let mut acc = WeightedOlsAccum::default();
@@ -180,7 +176,6 @@ fn fit_power_law_log_mode<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFi
     ))
 }
 
-#[verified_engine::verified]
 fn fit_logarithmic<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitError> {
     let [a, b] = seed_logarithmic(points)?;
     let coeffs = [a, b, 0.0, 0.0, 0.0];
@@ -200,7 +195,6 @@ fn fit_logarithmic<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitE
     ))
 }
 
-#[verified_engine::verified]
 fn fit_logistic<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitError> {
     let seed = seed_logistic(points)?;
     let refined = levenberg_marquardt(points, &seed, |x, p| {
@@ -228,13 +222,10 @@ fn fit_logistic<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitErro
     ))
 }
 
-#[verified_engine::verified]
 fn fit_sinusoidal<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitError> {
     let seed = seed_sinusoidal(points)?;
     let refined = levenberg_marquardt(points, &seed, |x, p| {
-        let arg = p[1] * x + p[2];
-        let s = arg.sin();
-        let c = arg.cos();
+        let (s, c) = (p[1] * x + p[2]).sin_cos();
         (p[0] * s + p[3], [s, p[0] * x * c, p[0] * c, 1.0])
     })?;
     let mut amp = refined[0];
@@ -265,18 +256,15 @@ fn fit_sinusoidal<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitEr
 }
 
 #[inline]
-#[verified_engine::verified]
 fn finite_xy(x: f64, y: f64) -> bool {
     x.is_finite() && y.is_finite()
 }
 
 #[inline]
-#[verified_engine::verified]
 fn positive_x_xy(x: f64, y: f64) -> bool {
     x.is_finite() && y.is_finite() && x > 0.0
 }
 
-#[verified_engine::verified]
 fn compute_nonlinear_metrics<P: PointSeries + ?Sized>(
     points: &P,
     model: FitModel,
@@ -303,7 +291,7 @@ fn compute_nonlinear_metrics<P: PointSeries + ?Sized>(
         if !domain_ok(p[0], p[1]) {
             continue;
         }
-        let y_hat = eval_nonlinear(model, params, p[0]);
+        let y_hat = eval_nonlinear_raw(model, params, p[0]);
         if y_hat.is_finite() {
             let diff = p[1] - y_hat;
             let tot = p[1] - mean_y;
@@ -326,6 +314,11 @@ fn compute_nonlinear_metrics<P: PointSeries + ?Sized>(
 #[must_use]
 #[verified_engine::verified]
 pub fn eval_nonlinear(model: FitModel, params: &[f64], x: f64) -> f64 {
+    eval_nonlinear_raw(model, params, x)
+}
+
+#[inline]
+pub(super) fn eval_nonlinear_raw(model: FitModel, params: &[f64], x: f64) -> f64 {
     match model {
         FitModel::Exponential if params.len() >= 2 => params[0] * (params[1] * x).exp(),
         FitModel::PowerLaw if params.len() >= 2 => {

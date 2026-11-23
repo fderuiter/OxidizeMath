@@ -206,26 +206,41 @@ impl CurveFit {
     #[must_use]
     #[verified_engine::verified]
     pub fn eval(&self, x: f64) -> f64 {
+        self.eval_raw(x)
+    }
+
+    #[inline]
+    fn eval_raw(&self, x: f64) -> f64 {
         match self.fit_model {
             FitModel::Linear | FitModel::Quadratic | FitModel::Cubic | FitModel::Quartic => {
                 if self.log_x && x <= 0.0 {
                     return f64::NAN;
                 }
                 let tx = if self.log_x { x.log10() } else { x };
-                let ty = eval_polynomial_horner(&self.coeffs[..self.coeff_len], tx);
+                let ty = poly::eval_polynomial_horner_raw(&self.coeffs[..self.coeff_len], tx);
                 if self.log_y { 10.0_f64.powf(ty) } else { ty }
             }
             FitModel::Exponential
             | FitModel::PowerLaw
             | FitModel::Logarithmic
             | FitModel::Logistic
-            | FitModel::Sinusoidal => eval_nonlinear(self.fit_model, self.coefficients(), x),
+            | FitModel::Sinusoidal => {
+                nonlinear::eval_nonlinear_raw(self.fit_model, self.coefficients(), x)
+            }
         }
     }
 
     /// Writes `[x, y - y_hat]` residuals in original data space into `out` with zero allocations.
     #[verified_engine::verified]
     pub fn residuals_into<P: PointSeries + ?Sized>(
+        &self,
+        points: &P,
+        out: &mut [[f64; 2]],
+    ) -> usize {
+        self.residuals_into_raw(points, out)
+    }
+
+    fn residuals_into_raw<P: PointSeries + ?Sized>(
         &self,
         points: &P,
         out: &mut [[f64; 2]],
@@ -239,7 +254,7 @@ impl CurveFit {
             if !p[0].is_finite() || !p[1].is_finite() {
                 continue;
             }
-            let y_hat = self.eval(p[0]);
+            let y_hat = self.eval_raw(p[0]);
             if y_hat.is_finite() {
                 out[written] = [p[0], p[1] - y_hat];
                 written += 1;

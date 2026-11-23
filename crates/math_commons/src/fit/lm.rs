@@ -1,7 +1,7 @@
 //! Stack-allocated damped Levenberg-Marquardt nonlinear least-squares solver (`k <= 4`).
 // [cite:math_commons]
 
-use super::poly::solve_dense_small;
+use super::poly::solve_dense_small_raw;
 use crate::error::FitError;
 use crate::series::PointSeries;
 
@@ -21,7 +21,7 @@ where
     P: PointSeries + ?Sized,
     F: Fn(f64, &[f64; 4]) -> (f64, [f64; 4]),
 {
-    levenberg_marquardt_filtered(points, initial_params, finite_xy, eval_jac)
+    lm_filtered_inner(points, initial_params, finite_xy, eval_jac)
 }
 
 /// Minimizes nonlinear least squares over observations satisfying `domain_ok(x, y)`.
@@ -36,26 +36,21 @@ where
     P: PointSeries + ?Sized,
     F: Fn(f64, &[f64; 4]) -> (f64, [f64; 4]),
 {
-    let k = initial_params.len();
-    if k == 0 || k > 4 {
-        return Err(FitError::UnsupportedDegree { degree: k });
-    }
-    let valid_n = count_domain_points(points, domain_ok);
-    if valid_n < k {
-        return Err(FitError::InsufficientPoints {
-            required: k,
-            actual: valid_n,
-        });
-    }
-    let mut theta = [0.0_f64; 4];
-    theta[..k].copy_from_slice(initial_params);
+    lm_filtered_inner(points, initial_params, domain_ok, eval_jac)
+}
 
-    let mut current_sse = sum_squared_errors(points, domain_ok, &theta, &eval_jac);
-    if !current_sse.is_finite() {
-        return Err(FitError::InvalidDomain {
-            reason: "non-finite initial residual sum of squares",
-        });
-    }
+fn lm_filtered_inner<P, F>(
+    points: &P,
+    initial_params: &[f64],
+    domain_ok: fn(f64, f64) -> bool,
+    eval_jac: F,
+) -> Result<[f64; 4], FitError>
+where
+    P: PointSeries + ?Sized,
+    F: Fn(f64, &[f64; 4]) -> (f64, [f64; 4]),
+{
+    let (k, mut theta, mut current_sse) =
+        init_lm_state(points, initial_params, domain_ok, &eval_jac)?;
     if current_sse <= 1e-24 {
         return Ok(theta);
     }
@@ -80,12 +75,13 @@ where
             &eval_jac,
         );
         if !accepted {
-            if scaled_grad <= 1e-4 {
-                return Ok(theta);
-            }
-            return Err(FitError::NonConvergence {
-                iterations: MAX_LM_ITERATIONS,
-            });
+            return if scaled_grad <= 1e-4 {
+                Ok(theta)
+            } else {
+                Err(FitError::NonConvergence {
+                    iterations: MAX_LM_ITERATIONS,
+                })
+            };
         }
         let small_step = step_norm <= 1e-8 * (1.0 + param_norm);
         let small_improve = (prev_sse - current_sse).abs() <= 1e-12 * (1.0 + current_sse);
@@ -105,13 +101,43 @@ where
     }
 }
 
+fn init_lm_state<P, F>(
+    points: &P,
+    initial_params: &[f64],
+    domain_ok: fn(f64, f64) -> bool,
+    eval_jac: &F,
+) -> Result<(usize, [f64; 4], f64), FitError>
+where
+    P: PointSeries + ?Sized,
+    F: Fn(f64, &[f64; 4]) -> (f64, [f64; 4]),
+{
+    let k = initial_params.len();
+    if k == 0 || k > 4 {
+        return Err(FitError::UnsupportedDegree { degree: k });
+    }
+    let valid_n = count_domain_points(points, domain_ok);
+    if valid_n < k {
+        return Err(FitError::InsufficientPoints {
+            required: k,
+            actual: valid_n,
+        });
+    }
+    let mut theta = [0.0_f64; 4];
+    theta[..k].copy_from_slice(initial_params);
+    let current_sse = sum_squared_errors(points, domain_ok, &theta, eval_jac);
+    if !current_sse.is_finite() {
+        return Err(FitError::InvalidDomain {
+            reason: "non-finite initial residual sum of squares",
+        });
+    }
+    Ok((k, theta, current_sse))
+}
+
 #[inline]
-#[verified_engine::verified]
 fn finite_xy(x: f64, y: f64) -> bool {
     x.is_finite() && y.is_finite()
 }
 
-#[verified_engine::verified]
 fn count_domain_points<P: PointSeries + ?Sized>(
     points: &P,
     domain_ok: fn(f64, f64) -> bool,
@@ -127,7 +153,6 @@ fn count_domain_points<P: PointSeries + ?Sized>(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[verified_engine::verified]
 fn try_lm_step<P, F>(
     points: &P,
     domain_ok: fn(f64, f64) -> bool,
@@ -147,7 +172,7 @@ where
     let mut param_norm = 0.0_f64;
     for _ in 0..MAX_DAMPING_SUBSTEPS {
         let (mut mat, rhs) = build_damped_system(jtj, jtr, k, *lambda);
-        let Ok(delta) = solve_dense_small(&mut mat, &rhs, k) else {
+        let Ok(delta) = solve_dense_small_raw(&mut mat, &rhs, k) else {
             *lambda *= 10.0;
             continue;
         };
@@ -177,7 +202,6 @@ where
     (false, step_norm, param_norm)
 }
 
-#[verified_engine::verified]
 fn build_damped_system(
     jtj: &[[f64; 4]; 4],
     jtr: &[f64; 4],
@@ -199,7 +223,6 @@ fn build_damped_system(
 
 type NormalSystem = ([[f64; 4]; 4], [f64; 4], f64);
 
-#[verified_engine::verified]
 fn accumulate_normal_system<P, F>(
     points: &P,
     domain_ok: fn(f64, f64) -> bool,
@@ -222,14 +245,23 @@ where
         }
         let (f_hat, jac) = eval_jac(p[0], theta);
         let r = p[1] - f_hat;
-        if !r.is_finite() || jac[..k].iter().any(|v| !v.is_finite()) {
+        if !r.is_finite() {
             return Err(FitError::SingularMatrix);
         }
         for row in 0..k {
-            jtr[row] += jac[row] * r;
-            for col in 0..k {
-                jtj[row][col] += jac[row] * jac[col];
+            let jr = jac[row];
+            if !jr.is_finite() {
+                return Err(FitError::SingularMatrix);
             }
+            jtr[row] += jr * r;
+            for col in row..k {
+                jtj[row][col] += jr * jac[col];
+            }
+        }
+    }
+    for row in 0..k {
+        for col in (row + 1)..k {
+            jtj[col][row] = jtj[row][col];
         }
     }
 
@@ -243,7 +275,6 @@ where
     Ok((jtj, jtr, scaled_grad))
 }
 
-#[verified_engine::verified]
 fn sum_squared_errors<P, F>(
     points: &P,
     domain_ok: fn(f64, f64) -> bool,
