@@ -148,6 +148,8 @@ allowlist = [
     "docs/adr/0044-geodesic-engine-and-relativity-tab.md",
     "docs/adr/0044-ratchet-missing-docs-and-core-api-documentation.md",
     "docs/adr/0044-unify-build-time-traceability-engine.md",
+    "docs/adr/0045-spatial-brush-kit-and-field-sculpting.md",
+    "docs/adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md",
 ]
 
 [[unused_dependencies]]
@@ -345,14 +347,15 @@ vendored_crates = [
 "math_explorer_gui/src/accessibility.rs" = 7
 "math_explorer_gui/src/async_sim/mod.rs" = 34
 "math_explorer_gui/src/async_sim/registry.rs" = 7
-"math_explorer_gui/src/async_sim/state.rs" = 32
-"math_explorer_gui/src/async_sim/unified/mod.rs" = 4
+"math_explorer_gui/src/async_sim/state.rs" = 34
+"math_explorer_gui/src/async_sim/unified/mod.rs" = 2
+"math_explorer_gui/src/async_sim/unified/sculpt.rs" = 2
 "math_explorer_gui/src/async_sim/unified/tool.rs" = 3
 "math_explorer_gui/src/camera/mod.rs" = 1
-"math_explorer_gui/src/framework/mod.rs" = 8
-"math_explorer_gui/src/framework/persistence.rs" = 1
+"math_explorer_gui/src/framework/mod.rs" = 7
+"math_explorer_gui/src/framework/pane_scope.rs" = 1
 "math_explorer_gui/src/framework/ui.rs" = 2
-"math_explorer_gui/src/main.rs" = 7
+"math_explorer_gui/src/main.rs" = 6
 "math_explorer_gui/src/tabs/ai/q_table_inspector/runner.rs" = 2
 "math_explorer_gui/src/tabs/ai/reward_plots.rs" = 4
 "math_explorer_gui/src/tabs/chaos/attractors/runner.rs" = 3

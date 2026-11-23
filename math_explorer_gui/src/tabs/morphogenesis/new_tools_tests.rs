@@ -39,8 +39,13 @@ fn test_morphogenesis_gray_scott_zero_allocation_steps() {
     let mut tool = MorphogenesisTool::default();
     let coral = GrayScottKinetics::coral();
     tool.apply_gray_scott_preset(coral.f, coral.k);
-    let mut gs_runner =
-        MorphogenesisTool::create_kinetics_runner(&tool.params, &tool.kinetics_state, 32, 32);
+    let mut gs_runner = MorphogenesisTool::create_kinetics_runner(
+        &tool.params,
+        &tool.kinetics_state,
+        &tool.mask_rle,
+        32,
+        32,
+    );
     gs_runner.step();
     {
         let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX

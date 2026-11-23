@@ -1,7 +1,7 @@
-# ADR 0045: Developmental Phyllotaxis, Nutrient-Coupled L-Systems, and Multi-Tool Biology Playground
+# ADR 0046: Developmental Phyllotaxis, Nutrient-Coupled L-Systems, and Multi-Tool Biology Playground
 
 ## Status
-Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0042](0042-fft-lenia-engine-and-gray-scott-kinetics.md))
+Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0042](0042-fft-lenia-engine-and-gray-scott-kinetics.md), and [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md))
 
 ## Context
 Following [ADR 0042](0042-fft-lenia-engine-and-gray-scott-kinetics.md), [`crates/domain_biology`](../../crates/domain_biology/README.md) implemented enzyme saturation (`MichaelisMenten`, `HillKinetics`), evolutionary replicator games (`HawkDovePopulation`), generic $N$-species reaction-diffusion (`ReactionDiffusionSystem`), two-species Schnakenberg and Gray-Scott morphogenesis, and spectral 2D `LeniaEngine`, while [`MorphogenesisTab`](../../math_explorer_gui/src/tabs/morphogenesis/mod.rs) hosted `MorphogenesisTool` and `LeniaTool`. However, botanical morphogenesis (Vogel golden-angle phyllotaxis and nutrient-coupled L-systems) and interactive GUI exploration for evolutionary replicator and enzyme saturation kinetics remained absent, and [`traceability.toml`](../../traceability.toml) mapped `biology` to a placeholder paper (`favorite_child.tex`) rather than a dedicated mathematical biology manuscript.
