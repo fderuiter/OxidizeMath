@@ -70,7 +70,7 @@ cargo run -p xtask -- check-api-drift
 cargo run -p unified_verification --release -- regenerate-baseline
 cargo run -p xtask -- regenerate-baseline
 
-# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA or ./ local action pins, and safe run expressions)
+# Lint GitHub Actions workflows (permissions, event-scoped concurrency, timeouts, 40-char SHA or ./ local action pins, and safe run expressions)
 cargo run -p unified_verification --release -- lint-workflows
 
 # Run workflow linter unit tests directly
@@ -105,9 +105,9 @@ cargo check --workspace --target wasm32-unknown-unknown --all-features
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
 
-### Workflow `run` Script Expression & Reusable Caller Policy
+### Workflow Concurrency, `run` Script Expression & Reusable Caller Policy
 
-`lint-workflows` audits `.github/workflows` (including full permission, concurrency, timeout, pinning, and `run` expression checks on local reusable workflows) and `.github/actions` manifests. It rejects `${{ github.* }}`, `${{ inputs.* }}`, and non-static or unmapped `${{ env.* }}` expressions interpolated directly inside workflow `jobs.<id>.steps[*].run` and composite action `runs.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, `${{ github.event.* }}`, or `${{ inputs.target }}`) to prevent script and argument injection. Reusable workflow caller jobs (`jobs.<id>.uses`) are exempt from `timeout-minutes` and must omit `timeout-minutes` at the caller level (configure `timeout-minutes` on concrete jobs inside the called workflow instead). Always bind `github` and `inputs` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
+`lint-workflows` audits `.github/workflows` (including full permission, concurrency, timeout, pinning, and `run` expression checks on local reusable workflows) and `.github/actions` manifests. For workflows with `on.push.branches`, root and branch-active job `concurrency` blocks must not group runs by `github.ref` or `github.ref_name` without a run-unique `github.run_id` or `github.sha` fallback, and `cancel-in-progress` must never cancel configured push branches such as `main` or `master` (scope cancellation to `pull_request` events and isolate serialized deployments like `deploy-pages` under job-level `group: pages` with `cancel-in-progress: false`). It also rejects `${{ github.* }}`, `${{ inputs.* }}`, and non-static or unmapped `${{ env.* }}` expressions interpolated directly inside workflow `jobs.<id>.steps[*].run` and composite action `runs.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, `${{ github.event.* }}`, or `${{ inputs.target }}`) to prevent script and argument injection. Reusable workflow caller jobs (`jobs.<id>.uses`) are exempt from `timeout-minutes` and must omit `timeout-minutes` at the caller level (configure `timeout-minutes` on concrete jobs inside the called workflow instead). Always bind `github` and `inputs` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
 
 ```text
 env:
