@@ -17,6 +17,10 @@ use atlas::ATTRACTOR_ATLAS_AXIS_PAIRS;
 #[cfg(test)]
 pub use atlas::{lorenz_hopf_threshold, AttractorCartographer};
 
+#[path = "attractors/counterfactual.rs"]
+mod counterfactual;
+pub use counterfactual::*;
+
 #[path = "attractors/flow.rs"]
 pub mod flow;
 pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
@@ -36,6 +40,8 @@ pub use runner::*;
 
 #[path = "attractors/theory.rs"]
 mod theory;
+#[path = "attractors/timeline.rs"]
+mod timeline;
 
 #[path = "attractors/divergence_plot.rs"]
 mod divergence_plot;
@@ -52,7 +58,7 @@ pub struct AttractorPlotter {
     pub(crate) mode: AttractorMode,
     pub(crate) flow_bank: CoupledExpressionBank,
     pub(crate) system: LorenzSystem,
-    pub(crate) twin: TwinConfig,
+    pub(crate) twin_cfg: TwinConfig,
     pub(crate) twin_state: TwinRunnerState,
     pub(crate) execution_state: SolverExecutionState,
     pub(crate) step_count: usize,
@@ -70,6 +76,8 @@ pub struct AttractorPlotter {
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
+    pub(crate) twin: Option<AttractorTwinState>,
+    pub branch_engine: crate::framework::CounterfactualBranchEngine,
     pub(super) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
     pub(crate) atlas: ParameterAtlasController,
@@ -101,14 +109,14 @@ impl Default for AttractorPlotter {
             mode: AttractorMode::Lorenz,
             flow_bank,
             system,
-            twin,
+            twin_cfg: twin,
             twin_state: TwinRunnerState::from_config(twin, 2000),
             execution_state: SolverExecutionState::Ready,
             step_count: 0,
             simulation_speed: 5,
             dt: 0.01,
             tube_radius: export::DEFAULT_TUBE_RADIUS,
-            history: VecDeque::with_capacity(2000),
+            history: VecDeque::with_capacity(ATTRACTOR_RING_CAPACITY),
             max_points: 2000,
             camera,
             scene_builder: Scene3DBuilder::new(camera),
@@ -119,6 +127,8 @@ impl Default for AttractorPlotter {
             show_annotations: true,
             fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
+            twin: None,
+            branch_engine: crate::framework::CounterfactualBranchEngine::default(),
             latest_sonification: crate::audio::mappings::attractor_frame(
                 [init.x, init.y, init.z],
                 [0.0, 26.0, -1.67],
@@ -149,7 +159,7 @@ impl AttractorPlotter {
         let v = self.system.state.vec;
         let sv = self.twin_state.shadow_vec;
         let shadow_ok =
-            !self.twin.enabled || (sv.x.is_finite() && sv.y.is_finite() && sv.z.is_finite());
+            !self.twin_cfg.enabled || (sv.x.is_finite() && sv.y.is_finite() && sv.z.is_finite());
         let lorenz_ok = self.mode != AttractorMode::Lorenz
             || (self.system.sigma.is_finite()
                 && self.system.rho.is_finite()
@@ -158,7 +168,7 @@ impl AttractorPlotter {
             && v.y.is_finite()
             && v.z.is_finite()
             && shadow_ok
-            && self.twin.is_finite()
+            && self.twin_cfg.is_finite()
             && lorenz_ok
             && self.dt.is_finite()
             && self.tube_radius.is_finite()
@@ -190,7 +200,7 @@ impl AttractorPlotter {
             p.max_points = self.max_points;
             p.mode = self.mode;
             p.custom_flow = Some(job);
-            p.twin = self.twin;
+            p.twin = self.twin_cfg;
         }
         if self.diverged() && self.is_finite_state() {
             self.execution_state = SolverExecutionState::Ready;
@@ -198,8 +208,8 @@ impl AttractorPlotter {
     }
 
     pub fn reset(&mut self) {
-        self.twin = self.twin.sanitized();
-        let init = self.twin.initial_state;
+        self.twin_cfg = self.twin_cfg.sanitized();
+        let init = self.twin_cfg.initial_state;
         let sigma = if self.system.sigma.is_finite() {
             self.system.sigma
         } else {
@@ -225,8 +235,10 @@ impl AttractorPlotter {
             .beta(beta)
             .build(LorenzState::new(init.x, init.y, init.z));
         self.history.clear();
-        self.twin_state.reset(self.twin, self.max_points);
+        self.twin_state.reset(self.twin_cfg, self.max_points);
         self.step_count = 0;
+        self.twin = None;
+        self.branch_engine.clear();
         self.execution_state = SolverExecutionState::Ready;
         let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
         {
@@ -239,7 +251,7 @@ impl AttractorPlotter {
             p.max_points = self.max_points;
             p.mode = self.mode;
             p.custom_flow = Some(job);
-            p.twin = self.twin;
+            p.twin = self.twin_cfg;
         }
         let params = Arc::clone(&self.params);
         self.worker
@@ -250,7 +262,7 @@ impl AttractorPlotter {
         self.system.sigma = 10.0;
         self.system.rho = 28.0;
         self.system.beta = 8.0 / 3.0;
-        self.twin = TwinConfig::default();
+        self.twin_cfg = TwinConfig::default();
         self.flow_bank = default_flow_bank();
         self.dt = 0.01;
         self.tube_radius = export::DEFAULT_TUBE_RADIUS;
@@ -267,39 +279,6 @@ impl AttractorPlotter {
         let p_centered = p - center_offset;
         self.camera
             .project(&[p_centered.x, p_centered.y, p_centered.z])
-    }
-
-    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
-    #[cfg(test)]
-    pub fn populate_scene(&mut self, series_color: egui::Color32) {
-        self.populate_scene_with_twin(series_color, series_color);
-    }
-
-    /// Populates `self.scene_builder` with primary and optional twin trajectories + head markers.
-    pub fn populate_scene_with_twin(
-        &mut self,
-        series_color: egui::Color32,
-        twin_color: egui::Color32,
-    ) {
-        let is_finite = self.is_finite_state();
-        let args = twin::ScenePopulateArgs {
-            mode: self.mode,
-            camera: self.camera,
-            is_finite,
-            primary_vec: self.system.state.vec,
-            history: &self.history,
-            twin_enabled: self.twin.enabled,
-            shadow_vec: self.twin_state.shadow_vec,
-            twin_history: &self.twin_state.twin_history,
-            primary_color: series_color,
-            twin_color,
-        };
-        twin::populate_attractor_scene(
-            &mut self.scene_builder,
-            &mut self.trajectory_scratch,
-            &mut self.twin_scratch,
-            args,
-        );
     }
 }
 
@@ -332,6 +311,28 @@ impl InteractiveTool for AttractorPlotter {
 
     fn step_simulation(&mut self) {
         self.step_in_thread_simulation();
+        self.sync_local_branch_engine();
+    }
+
+    fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
+        self.twin
+            .as_ref()
+            .map(|t| t.snapshot(self.step_count, self.dt))
+    }
+
+    fn apply_counterfactual_action(
+        &mut self,
+        action: crate::framework::BranchControlAction,
+    ) -> bool {
+        match action {
+            crate::framework::BranchControlAction::ForkHere => self.fork_here(),
+            crate::framework::BranchControlAction::SwapBranches => self.swap_branches(),
+            crate::framework::BranchControlAction::ClearFork => self.clear_fork(),
+            crate::framework::BranchControlAction::SetPerturbation(delta) => {
+                self.branch_engine.set_effective_delta(delta);
+                true
+            }
+        }
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
@@ -347,11 +348,11 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        self.collect_datasets_2d()
+        self.collect_export_datasets_2d()
     }
 
     fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
-        self.collect_datasets_3d()
+        self.collect_export_datasets_3d()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -383,12 +384,14 @@ impl InteractiveTool for AttractorPlotter {
                     self.twin_state.divergence_history = data.divergence_history.clone();
                     self.twin_state.enabled = data.twin_enabled;
                     self.step_count = data.step_count;
+                    self.twin = data.twin.clone();
                     if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
                         || !was_paused
                     {
                         self.execution_state = data.execution_state;
                     }
                 }
+                self.sync_local_branch_engine();
             }
         }
 
@@ -415,16 +418,6 @@ impl InteractiveTool for AttractorPlotter {
     }
 }
 
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "AttractorPlotter",
-        display_name: "Attractor Plotter",
-        domain: "chaos",
-        tags: &["lorenz", "attractor", "chaos", "butterfly", "lyapunov"],
-        build: || Box::new(AttractorPlotter::default()),
-    }
-}
-
 #[path = "attractors/preset.rs"]
 mod preset;
 pub use preset::PRESET_3D_ATTRACTOR_TWIN;
@@ -432,6 +425,10 @@ pub use preset::PRESET_3D_ATTRACTOR_TWIN;
 #[cfg(test)]
 #[path = "attractors/attractor_tests.rs"]
 mod attractor_tests;
+
+#[cfg(test)]
+#[path = "attractors/counterfactual_tests.rs"]
+mod counterfactual_tests;
 
 #[cfg(test)]
 #[path = "attractors/custom_flow_tests.rs"]

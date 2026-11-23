@@ -21,9 +21,9 @@ impl AttractorPlotter {
         egui::CollapsingHeader::new("Initial State & Twin Perturbation")
             .default_open(true)
             .show(ui, |ui| {
-                let mut x0 = self.twin.initial_state.x;
-                let mut y0 = self.twin.initial_state.y;
-                let mut z0 = self.twin.initial_state.z;
+                let mut x0 = self.twin_cfg.initial_state.x;
+                let mut y0 = self.twin_cfg.initial_state.y;
+                let mut z0 = self.twin_cfg.initial_state.z;
                 let mut changed = false;
 
                 ui.label("Initial Coordinates (x₀, y₀, z₀):");
@@ -49,14 +49,14 @@ impl AttractorPlotter {
                 });
 
                 changed |= ui
-                    .checkbox(&mut self.twin.enabled, "Perturbed Twin Trajectory")
+                    .checkbox(&mut self.twin_cfg.enabled, "Perturbed Twin Trajectory")
                     .changed();
 
                 changed |= ui
                     .add_enabled(
-                        self.twin.enabled,
+                        self.twin_cfg.enabled,
                         egui::Slider::new(
-                            &mut self.twin.epsilon,
+                            &mut self.twin_cfg.epsilon,
                             MIN_TWIN_EPSILON..=MAX_TWIN_EPSILON,
                         )
                         .logarithmic(true)
@@ -65,10 +65,10 @@ impl AttractorPlotter {
                     .changed();
 
                 if changed {
-                    self.twin.initial_state.x = x0;
-                    self.twin.initial_state.y = y0;
-                    self.twin.initial_state.z = z0;
-                    self.twin = self.twin.sanitized();
+                    self.twin_cfg.initial_state.x = x0;
+                    self.twin_cfg.initial_state.y = y0;
+                    self.twin_cfg.initial_state.z = z0;
+                    self.twin_cfg = self.twin_cfg.sanitized();
                     self.reset();
                     ctx.request_repaint();
                 }
@@ -76,7 +76,7 @@ impl AttractorPlotter {
     }
 
     pub(super) fn draw_divergence_panel(&mut self, parent_ui: &mut egui::Ui) {
-        if !self.twin.enabled {
+        if !self.twin_cfg.enabled {
             return;
         }
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "twin_divergence_panel");
@@ -116,7 +116,7 @@ impl AttractorPlotter {
             }
         });
 
-        let y0 = self.twin.epsilon.max(MIN_SEPARATION_FLOOR).log10();
+        let y0 = self.twin_cfg.epsilon.max(MIN_SEPARATION_FLOOR).log10();
         let (obs_min, obs_max) = observed_y_bounds(&self.twin_state.divergence_history, y0);
         let slope_segment = lyapunov.and_then(|lam| {
             build_lyapunov_slope_segment(y0, lam, max_timeline_t, obs_min, obs_max)

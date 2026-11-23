@@ -122,13 +122,25 @@ impl AttractorPlotter {
         Ok(ColoredMesh::new(mesh, colors))
     }
 
-    pub(super) fn collect_datasets_2d(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
-        if points.is_empty() && self.is_finite_state() {
-            points.push(self.project(self.system.state.vec));
+    pub(super) fn collect_export_datasets_2d(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut points_b: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+        if points_b.is_empty() && self.is_finite_state() {
+            points_b.push(self.project(self.system.state.vec));
         }
-        let mut out = vec![("Trajectory".to_string(), points)];
-        if self.twin.enabled {
+        let mut out = if let Some(ref twin) = self.twin {
+            let mut points_a: Vec<[f64; 2]> =
+                twin.history_a.iter().map(|p| self.project(*p)).collect();
+            if points_a.is_empty() {
+                points_a.push(self.project(twin.system_a.state.vec));
+            }
+            vec![
+                ("Branch B (Active)".to_string(), points_b),
+                ("Branch A (Baseline)".to_string(), points_a),
+            ]
+        } else {
+            vec![("Trajectory".to_string(), points_b)]
+        };
+        if self.twin_cfg.enabled {
             let mut twin_pts: Vec<[f64; 2]> = self
                 .twin_state
                 .twin_history
@@ -143,14 +155,27 @@ impl AttractorPlotter {
         out
     }
 
-    pub(super) fn collect_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
-        let mut points: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
-        if points.is_empty() && self.is_finite_state() {
+    pub(super) fn collect_export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        let mut points_b: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
+        if points_b.is_empty() && self.is_finite_state() {
             let v = self.system.state.vec;
-            points.push([v.x, v.y, v.z]);
+            points_b.push([v.x, v.y, v.z]);
         }
-        let mut out = vec![("Trajectory".to_string(), points)];
-        if self.twin.enabled {
+        let mut out = if let Some(ref twin) = self.twin {
+            let mut points_a: Vec<[f64; 3]> =
+                twin.history_a.iter().map(|p| [p.x, p.y, p.z]).collect();
+            if points_a.is_empty() {
+                let va = twin.system_a.state.vec;
+                points_a.push([va.x, va.y, va.z]);
+            }
+            vec![
+                ("Branch B (Active)".to_string(), points_b),
+                ("Branch A (Baseline)".to_string(), points_a),
+            ]
+        } else {
+            vec![("Trajectory".to_string(), points_b)]
+        };
+        if self.twin_cfg.enabled {
             let mut twin_pts: Vec<[f64; 3]> = self
                 .twin_state
                 .twin_history
@@ -173,26 +198,36 @@ impl AttractorPlotter {
         if self.execution_state == super::SolverExecutionState::Ready {
             self.execution_state = super::SolverExecutionState::Running;
         }
+        let cap = self.max_points.clamp(1, super::ATTRACTOR_RING_CAPACITY);
         let custom_job = (self.mode == AttractorMode::Custom)
             .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
         for _ in 0..self.simulation_speed.clamp(1, super::MAX_SIMULATION_SPEED) {
-            if !self.step_in_thread_substep(custom_job.as_ref()) {
+            if !self.step_in_thread_substep(cap, custom_job.as_ref()) {
                 break;
             }
         }
     }
 
-    fn step_in_thread_substep(&mut self, custom_job: Option<&CompiledFlowJob>) -> bool {
+    fn step_in_thread_substep(&mut self, cap: usize, custom_job: Option<&CompiledFlowJob>) -> bool {
         let current_vec = self.system.state.vec;
-        if !(current_vec.x.is_finite() && current_vec.y.is_finite() && current_vec.z.is_finite()) {
+        if !super::twin::is_vec_finite(current_vec) {
             self.execution_state = super::SolverExecutionState::Diverged {
                 invalid_vec: current_vec,
                 diverged_at_step: self.step_count,
             };
             return false;
         }
+        if let Some(ref mut twin) = self.twin {
+            if !twin.step_branch_a(self.dt, cap) {
+                self.execution_state = super::SolverExecutionState::Diverged {
+                    invalid_vec: twin.system_a.state.vec,
+                    diverged_at_step: self.step_count,
+                };
+                return false;
+            }
+        }
         let lorenz = [self.system.sigma, self.system.rho, self.system.beta];
-        let (vec, next_shadow) = if self.twin.enabled {
+        let (vec, next_shadow) = if self.twin_cfg.enabled {
             super::twin::step_twin_pair(
                 self.mode,
                 lorenz,
@@ -215,24 +250,24 @@ impl AttractorPlotter {
         };
         self.system.state.vec = vec;
         self.step_count += 1;
-        let shadow_ok = !self.twin.enabled
-            || (next_shadow.x.is_finite()
-                && next_shadow.y.is_finite()
-                && next_shadow.z.is_finite());
-        if !(vec.x.is_finite() && vec.y.is_finite() && vec.z.is_finite() && shadow_ok) {
+        let shadow_ok = !self.twin_cfg.enabled || super::twin::is_vec_finite(next_shadow);
+        if !(super::twin::is_vec_finite(vec) && shadow_ok) {
             self.execution_state = super::SolverExecutionState::Diverged {
                 invalid_vec: if shadow_ok { vec } else { next_shadow },
                 diverged_at_step: self.step_count,
             };
             return false;
         }
-        if self.history.len() >= self.max_points {
+        if self.history.len() >= cap {
             self.history.pop_front();
         }
         self.history.push_back(vec);
-        self.twin_state.enabled = self.twin.enabled;
+        self.twin_state.enabled = self.twin_cfg.enabled;
         self.twin_state
-            .record_step(self.step_count, self.dt, self.max_points, vec, next_shadow);
+            .record_step(self.step_count, self.dt, cap, vec, next_shadow);
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.step_count, self.dt, vec);
+        }
         true
     }
 }

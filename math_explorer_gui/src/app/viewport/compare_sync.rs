@@ -59,7 +59,7 @@ pub(crate) struct PlaybackBroadcastEvent {
 fn detect_workspace_sync_key(ctx: &egui::Context) -> Option<PendingSyncKey> {
     let shell_or_modal = crate::framework::is_text_edit_focused(ctx)
         || egui::Popup::is_any_open(ctx)
-        || ctx.memory(|m| m.top_modal_layer().is_some())
+        || egui_plot::active_top_modal_layer(ctx).is_some()
         || ctx.data(|d| {
             d.get_temp::<bool>(egui::Id::new(super::focus::SHELL_MODAL_OR_SASH_FOCUSED_KEY))
                 .unwrap_or(false)

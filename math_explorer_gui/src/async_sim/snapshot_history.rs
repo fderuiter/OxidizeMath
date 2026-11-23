@@ -64,6 +64,19 @@ impl SnapshotHistory {
         }
     }
 
+    pub(super) fn seeded(
+        max_frames: usize,
+        max_bytes: usize,
+        timeline: Option<TimelineMetadata>,
+        snapshot: Option<&StateSnapshot>,
+    ) -> Self {
+        let mut hist = Self::new(max_frames, max_bytes);
+        if let (Some(meta), Some(snap)) = (timeline, snapshot) {
+            hist.record(meta.current_step, snap);
+        }
+        hist
+    }
+
     /// Number of retained [`StateSnapshot`] frames currently in the ring.
     #[must_use]
     pub fn len(&self) -> usize {

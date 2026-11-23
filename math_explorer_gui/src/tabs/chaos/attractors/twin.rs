@@ -246,7 +246,7 @@ impl TwinRunnerState {
         let clean = cfg.sanitized();
         let shadow_vec = clean.shadow_initial_state();
         let mut divergence_history = VecDeque::with_capacity(if clean.enabled {
-            divergence_capacity(max_points).min(4096)
+            divergence_capacity(max_points.max(super::ATTRACTOR_RING_CAPACITY))
         } else {
             0
         });
@@ -255,7 +255,11 @@ impl TwinRunnerState {
         }
         Self {
             shadow_vec,
-            twin_history: VecDeque::with_capacity(if clean.enabled { max_points } else { 0 }),
+            twin_history: VecDeque::with_capacity(if clean.enabled {
+                max_points.max(super::ATTRACTOR_RING_CAPACITY)
+            } else {
+                0
+            }),
             divergence_history,
             enabled: clean.enabled,
         }

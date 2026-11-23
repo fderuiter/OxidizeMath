@@ -27,7 +27,7 @@ pub(crate) struct CachedAttractorInvariants {
 
 impl AttractorPlotter {
     fn configured_initial_vec(&self) -> Vector3<f64> {
-        self.twin.sanitized().initial_state
+        self.twin_cfg.sanitized().initial_state
     }
 
     fn flow_config_hash(&self) -> u64 {

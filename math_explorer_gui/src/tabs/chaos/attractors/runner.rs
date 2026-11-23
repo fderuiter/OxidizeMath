@@ -4,8 +4,7 @@ use super::flow::{AttractorMode, CompiledFlowJob};
 use super::serde_vec3;
 use super::twin::{is_vec_finite, step_flow_vec, TwinConfig, TwinRunnerState};
 use crate::async_sim::{
-    CheckpointParams, CheckpointPayload, SimCommand, SimulationRunner, StateSnapshot,
-    TimeTravelCheckpoint,
+    CheckpointParams, SimCommand, SimulationRunner, StateSnapshot, TimeTravelCheckpoint,
 };
 use crate::framework::recovery::DiagnosticReport;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
@@ -69,14 +68,16 @@ pub struct AttractorSnapshot {
     pub twin_enabled: bool,
     pub step_count: usize,
     pub execution_state: SolverExecutionState,
+    pub twin: Option<super::AttractorTwinState>,
 }
 
 impl AttractorSnapshot {
     /// Estimates heap bytes owned by this snapshot's `VecDeque` buffers for `SnapshotHistory`.
     #[must_use]
     pub fn estimated_heap_bytes(&self) -> usize {
+        let branch_a_cap = self.twin.as_ref().map_or(0, |t| t.history_a.capacity());
         std::mem::size_of::<Self>()
-            + (self.history.capacity() + self.twin_history.capacity())
+            + (self.history.capacity() + self.twin_history.capacity() + branch_a_cap)
                 * std::mem::size_of::<Vector3<f64>>()
             + self.divergence_history.capacity() * std::mem::size_of::<[f64; 2]>()
     }
@@ -87,9 +88,10 @@ pub struct AttractorRunner {
     pub system: LorenzSystem,
     pub params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub history: VecDeque<Vector3<f64>>,
-    pub twin: TwinRunnerState,
+    pub twin_state: TwinRunnerState,
     pub step_count: usize,
     pub execution_state: SolverExecutionState,
+    pub twin: Option<super::AttractorTwinState>,
     pub rng: OxidizeRng,
 }
 
@@ -108,10 +110,11 @@ impl AttractorRunner {
                 .beta(beta)
                 .build(LorenzState::new(init.x, init.y, init.z)),
             params,
-            history: VecDeque::with_capacity(max_points),
-            twin: TwinRunnerState::from_config(twin_cfg, max_points),
+            history: VecDeque::with_capacity(max_points.max(super::ATTRACTOR_RING_CAPACITY)),
+            twin_state: TwinRunnerState::from_config(twin_cfg, max_points),
             step_count: 0,
             execution_state: SolverExecutionState::Ready,
+            twin: None,
             rng: OxidizeRng::new(0x4C4F_5245_4E5A_3139),
         }
     }
@@ -130,7 +133,7 @@ impl AttractorRunner {
         self.system.sigma = p.sigma;
         self.system.rho = p.rho;
         self.system.beta = p.beta;
-        self.twin.enabled = p.twin.enabled;
+        self.twin_state.enabled = p.twin.enabled;
         (
             p.dt,
             p.simulation_speed.clamp(1, MAX_SIMULATION_SPEED),
@@ -147,7 +150,7 @@ impl AttractorRunner {
             || (self.system.sigma.is_finite()
                 && self.system.rho.is_finite()
                 && self.system.beta.is_finite());
-        let twin_ok = !twin_enabled || is_vec_finite(self.twin.shadow_vec);
+        let twin_ok = !twin_enabled || is_vec_finite(self.twin_state.shadow_vec);
         if is_vec_finite(current_vec) && lorenz_ok && twin_ok && dt.is_finite() {
             return true;
         }
@@ -155,22 +158,40 @@ impl AttractorRunner {
             invalid_vec: if twin_ok {
                 current_vec
             } else {
-                self.twin.shadow_vec
+                self.twin_state.shadow_vec
             },
             diverged_at_step: self.step_count,
         };
         false
     }
 
-    fn advance_tick(
+    fn step_twin_if_enabled(&mut self, dt: f64, max_points: usize, enabled: bool) -> bool {
+        if enabled {
+            if let Some(ref mut twin) = self.twin {
+                if !twin.step_branch_a(dt, max_points) {
+                    self.execution_state = SolverExecutionState::Diverged {
+                        invalid_vec: twin.system_a.state.vec,
+                        diverged_at_step: self.step_count,
+                    };
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    pub(super) fn advance_tick(
         &mut self,
         dt: f64,
         max_points: usize,
         mode: AttractorMode,
         twin_enabled: bool,
         custom_flow: Option<&CompiledFlowJob>,
+        step_twin_too: bool,
     ) -> bool {
-        if !self.check_pre_tick(dt, mode, twin_enabled) {
+        if !self.check_pre_tick(dt, mode, twin_enabled)
+            || !self.step_twin_if_enabled(dt, max_points, step_twin_too)
+        {
             return false;
         }
         let current_vec = self.system.state.vec;
@@ -190,13 +211,12 @@ impl AttractorRunner {
                 self.system.beta,
                 dt,
                 custom_flow,
-                self.twin.shadow_vec,
+                self.twin_state.shadow_vec,
             )
         } else {
-            self.twin.shadow_vec
+            self.twin_state.shadow_vec
         };
         self.step_count += 1;
-
         let vec = self.system.state.vec;
         let shadow_finite = !twin_enabled || is_vec_finite(next_shadow);
         if !is_vec_finite(vec) || !shadow_finite {
@@ -206,15 +226,39 @@ impl AttractorRunner {
             };
             return false;
         }
+        self.record_tick_history(
+            dt,
+            max_points,
+            twin_enabled,
+            step_twin_too,
+            vec,
+            next_shadow,
+        );
+        true
+    }
 
-        if self.history.len() >= max_points {
+    fn record_tick_history(
+        &mut self,
+        dt: f64,
+        max_points: usize,
+        twin_enabled: bool,
+        step_twin_too: bool,
+        vec: Vector3<f64>,
+        next_shadow: Vector3<f64>,
+    ) {
+        let cap = max_points.clamp(1, super::ATTRACTOR_RING_CAPACITY);
+        if self.history.len() >= cap {
             self.history.pop_front();
         }
         self.history.push_back(vec);
-        self.twin.enabled = twin_enabled;
-        self.twin
-            .record_step(self.step_count, dt, max_points, vec, next_shadow);
-        true
+        self.twin_state.enabled = twin_enabled;
+        self.twin_state
+            .record_step(self.step_count, dt, cap, vec, next_shadow);
+        if step_twin_too {
+            if let Some(ref mut twin) = self.twin {
+                twin.observe_lockstep(self.step_count, dt, vec);
+            }
+        }
     }
 }
 
@@ -231,30 +275,63 @@ impl SimulationRunner for AttractorRunner {
                     self.execution_state = SolverExecutionState::Paused;
                 }
             }
-            SimCommand::Reset => {
-                let (sigma, rho, beta, max_points, twin_cfg) = {
-                    let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-                    (p.sigma, p.rho, p.beta, p.max_points, p.twin.sanitized())
-                };
-                let init = twin_cfg.initial_state;
-                self.system = LorenzBuilder::new()
-                    .sigma(sigma)
-                    .rho(rho)
-                    .beta(beta)
-                    .build(LorenzState::new(init.x, init.y, init.z));
-                self.history.clear();
-                self.twin.reset(twin_cfg, max_points);
-                self.step_count = 0;
-                self.execution_state = SolverExecutionState::Ready;
-                self.rng = OxidizeRng::new(0x4C4F_5245_4E5A_3139);
-            }
+            SimCommand::Reset => self.reset_runner(),
             SimCommand::SetSpeed(speed) => {
                 self.params
                     .write()
                     .unwrap_or_else(|e| e.into_inner())
                     .simulation_speed = speed.clamp(1, MAX_SIMULATION_SPEED);
             }
+            SimCommand::Custom(ref cmd) => self.handle_custom_command(cmd),
             _ => {}
+        }
+    }
+
+    fn has_counterfactual_twin(&self) -> bool {
+        self.twin.is_some()
+    }
+
+    fn step_branch_a(&mut self) {
+        if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            return;
+        }
+        let (dt, simulation_speed, max_points, _, _, _) = self.sync_params();
+        if let Some(ref mut twin) = self.twin {
+            for _ in 0..simulation_speed {
+                if !twin.step_branch_a(dt, max_points) {
+                    self.execution_state = SolverExecutionState::Diverged {
+                        invalid_vec: twin.system_a.state.vec,
+                        diverged_at_step: self.step_count,
+                    };
+                    break;
+                }
+            }
+        }
+    }
+
+    fn step_branch_b(&mut self) {
+        if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            return;
+        }
+        let (dt, simulation_speed, max_points, mode, twin_enabled, custom_flow) =
+            self.sync_params();
+        if self.execution_state == SolverExecutionState::Ready {
+            self.execution_state = SolverExecutionState::Running;
+        }
+        for _ in 0..simulation_speed {
+            if !self.advance_tick(
+                dt,
+                max_points,
+                mode,
+                twin_enabled,
+                custom_flow.as_deref(),
+                false,
+            ) {
+                break;
+            }
+        }
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.step_count, dt, self.system.state.vec);
         }
     }
 
@@ -268,7 +345,14 @@ impl SimulationRunner for AttractorRunner {
             self.execution_state = SolverExecutionState::Running;
         }
         for _ in 0..simulation_speed {
-            if !self.advance_tick(dt, max_points, mode, twin_enabled, custom_flow.as_deref()) {
+            if !self.advance_tick(
+                dt,
+                max_points,
+                mode,
+                twin_enabled,
+                custom_flow.as_deref(),
+                true,
+            ) {
                 break;
             }
         }
@@ -282,44 +366,20 @@ impl SimulationRunner for AttractorRunner {
             return;
         }
         let (dt, _, max_points, mode, twin_enabled, custom_flow) = self.sync_params();
-        if self.advance_tick(dt, max_points, mode, twin_enabled, custom_flow.as_deref()) {
+        if self.advance_tick(
+            dt,
+            max_points,
+            mode,
+            twin_enabled,
+            custom_flow.as_deref(),
+            true,
+        ) {
             self.execution_state = SolverExecutionState::Paused;
         }
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let v = self.system.state.vec;
-        let rhs = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            super::twin::eval_flow_rhs(
-                p.mode,
-                self.system.sigma,
-                self.system.rho,
-                self.system.beta,
-                p.custom_flow.as_deref(),
-                v,
-            )
-        };
-        let diverged = matches!(self.execution_state, SolverExecutionState::Diverged { .. });
-        let sonification = crate::audio::mappings::attractor_frame([v.x, v.y, v.z], rhs, diverged);
-        let snapshot = AttractorSnapshot {
-            history: self.history.clone(),
-            current_vec: v,
-            twin_history: self.twin.twin_history.clone(),
-            shadow_vec: self.twin.shadow_vec,
-            divergence_history: self.twin.divergence_history.clone(),
-            twin_enabled: self.twin.enabled,
-            step_count: self.step_count,
-            execution_state: self.execution_state,
-        };
-        StateSnapshot {
-            width: 0,
-            height: 0,
-            pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
-            custom_data: vec![v.x, v.y, v.z, self.step_count as f64],
-            structured_data: Some(Box::new(snapshot)),
-            sonification,
-        }
+        self.build_snapshot()
     }
 
     fn get_steps_per_frame(&self) -> usize {
@@ -328,9 +388,9 @@ impl SimulationRunner for AttractorRunner {
 
     fn is_finite_state(&self) -> bool {
         let v = self.system.state.vec;
-        let sv = self.twin.shadow_vec;
+        let sv = self.twin_state.shadow_vec;
         let shadow_ok =
-            !self.twin.enabled || (sv.x.is_finite() && sv.y.is_finite() && sv.z.is_finite());
+            !self.twin_state.enabled || (sv.x.is_finite() && sv.y.is_finite() && sv.z.is_finite());
         !matches!(self.execution_state, SolverExecutionState::Diverged { .. })
             && v.x.is_finite()
             && v.y.is_finite()
@@ -339,28 +399,7 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
-        if let SolverExecutionState::Diverged {
-            invalid_vec: v,
-            diverged_at_step: s,
-        } = self.execution_state
-        {
-            let msg = format!(
-                "Non-finite attractor state [{:.2}, {:.2}, {:.2}] at step {s}",
-                v.x, v.y, v.z
-            );
-            return Some(DiagnosticReport::new(s as f64, s, "lorenz_state", msg));
-        }
-        if !self.is_finite_state() {
-            let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
-            let t = self.step_count as f64 * if dt.is_finite() { dt } else { 0.01 };
-            return Some(DiagnosticReport::new(
-                t,
-                self.step_count,
-                "lorenz_state",
-                "Non-finite attractor trajectory coordinates detected",
-            ));
-        }
-        None
+        self.build_diagnostic_report()
     }
 
     fn checkpoint_stride(&self) -> Option<usize> {
@@ -372,87 +411,23 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn capture_active_params(&self) -> Option<CheckpointParams> {
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let mode_flag = match p.mode {
-            AttractorMode::Lorenz => 0.0,
-            AttractorMode::Custom => 1.0,
-        };
-        let twin_flag = if p.twin.enabled { 1.0 } else { 0.0 };
-        Some(CheckpointParams::scalars(&[
-            p.sigma,
-            p.rho,
-            p.beta,
-            p.dt,
-            p.max_points as f64,
-            mode_flag,
-            twin_flag,
-            p.twin.epsilon,
-        ]))
+        self.capture_active_checkpoint_params()
     }
 
     fn capture_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
-        let params = self.capture_active_params()?;
-        let v = self.system.state.vec;
-        let sv = self.twin.shadow_vec;
-        let twin_flag = if self.twin.enabled { 1.0 } else { 0.0 };
-        Some(TimeTravelCheckpoint {
-            step: self.step_count,
-            rng: self.rng.clone(),
-            params,
-            state: CheckpointPayload::scalars(&[v.x, v.y, v.z, sv.x, sv.y, sv.z, twin_flag]),
-        })
+        self.capture_time_travel_checkpoint()
     }
 
     fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
-        if let Some(s) = checkpoint.state.as_scalars() {
-            if s.len() >= 3 {
-                self.system.state.vec = Vector3::new(s[0], s[1], s[2]);
-            }
-            if s.len() >= 7 {
-                self.twin.shadow_vec = Vector3::new(s[3], s[4], s[5]);
-                self.twin.enabled = s[6] > 0.5;
-            }
-        }
-        if let Some(p) = checkpoint.params.as_scalars().filter(|p| p.len() >= 3) {
-            (self.system.sigma, self.system.rho, self.system.beta) = (p[0], p[1], p[2]);
-        }
-        self.step_count = checkpoint.step;
-        self.rng = checkpoint.rng.clone();
-        self.execution_state = if checkpoint.step == 0 {
-            SolverExecutionState::Ready
-        } else {
-            SolverExecutionState::Paused
-        };
+        self.restore_time_travel_checkpoint(checkpoint);
     }
 
     fn rebuild_history(&mut self, front: &[TimeTravelCheckpoint], back: &[TimeTravelCheckpoint]) {
-        self.twin.rebuild_histories(&mut self.history, front, back);
+        self.rebuild_time_travel_history(front, back);
     }
 
     fn replay_step(&mut self, params: &CheckpointParams) {
-        let Some(p) = params.as_scalars().filter(|p| p.len() >= 5) else {
-            return;
-        };
-        (self.system.sigma, self.system.rho, self.system.beta) = (p[0], p[1], p[2]);
-        let (dt, max_points) = (p[3], (p[4] as usize).max(1));
-        let mode = if p.get(5).copied().unwrap_or(0.0) > 0.5 {
-            AttractorMode::Custom
-        } else {
-            AttractorMode::Lorenz
-        };
-        let twin_enabled = p.get(6).copied().unwrap_or(0.0) > 0.5;
-        let custom_flow = (mode == AttractorMode::Custom)
-            .then(|| {
-                self.params
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .custom_flow
-                    .clone()
-            })
-            .flatten();
-        if self.advance_tick(dt, max_points, mode, twin_enabled, custom_flow.as_deref()) {
-            self.execution_state = SolverExecutionState::Paused;
-        }
+        self.replay_time_travel_step(params);
     }
 
     fn running_substeps_per_tick(&self) -> usize {
@@ -471,8 +446,14 @@ impl SimulationRunner for AttractorRunner {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
-        if self.advance_tick(dt, max_points, mode, twin_enabled, custom_flow.as_deref())
-            && self.history.len() >= 16
+        if self.advance_tick(
+            dt,
+            max_points,
+            mode,
+            twin_enabled,
+            custom_flow.as_deref(),
+            true,
+        ) && self.history.len() >= 16
             && self.step_count.is_multiple_of(15)
         {
             self.publish_live_landmarks(dt);

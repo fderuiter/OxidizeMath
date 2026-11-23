@@ -4,10 +4,12 @@ use super::{AttractorPlotter, SolverExecutionState};
 use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::{
     render_custom_fault_banner, render_empty_plot_guidance, render_worker_fault_banner,
-    WorkerFaultAction,
 };
-use crate::async_sim::{SimCommand, SimWorkerState};
-use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
+use crate::async_sim::SimWorkerState;
+use crate::framework::{
+    fork_marker_callout, render_divergence_strip, CounterfactualTransport, InteractiveTool,
+    PlaybackTransport, Plot3DViewport,
+};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
 use egui_plot::{Callout, PlotPoint};
 use nalgebra::Vector3;
@@ -81,7 +83,7 @@ impl AttractorPlotter {
         ui.label(format!("X: {:.2}", state.x));
         ui.label(format!("Y: {:.2}", state.y));
         ui.label(format!("Z: {:.2}", state.z));
-        if self.twin.enabled {
+        if self.twin_cfg.enabled {
             let sep = (self.twin_state.shadow_vec - state).norm();
             if sep.is_finite() {
                 ui.label(format!("||Δx||: {sep:.2e}"));
@@ -169,31 +171,41 @@ impl AttractorPlotter {
         });
     }
 
-    fn handle_transport_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
-        match action {
-            PlaybackAction::Play => {
-                let _ = self.try_resume();
-            }
-            PlaybackAction::Pause => {
-                self.execution_state = SolverExecutionState::Paused;
-                let _ = self.worker.send_command(SimCommand::Pause);
-            }
-            PlaybackAction::Step => {
-                self.execution_state = SolverExecutionState::Paused;
-                let _ = self.worker.send_command(SimCommand::Step(1));
-            }
-            PlaybackAction::StepBack => {
-                self.execution_state = SolverExecutionState::Paused;
-                let _ = self.worker.send_command(SimCommand::StepBack(1));
-            }
-            PlaybackAction::ScrubTo(step) => {
-                self.execution_state = SolverExecutionState::Paused;
-                let _ = self.worker.send_command(SimCommand::SeekStep(step));
-            }
-            PlaybackAction::Reset => {
-                self.reset();
-                ctx.request_repaint();
-            }
+    fn draw_transport_and_fork_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        worker_faulted: bool,
+    ) {
+        let transport_state = if self.diverged() || worker_faulted {
+            SimWorkerState::Faulted
+        } else if self.worker.state().is_stepping() {
+            SimWorkerState::Stepping
+        } else if self.is_paused() {
+            SimWorkerState::Ready
+        } else {
+            self.worker.state()
+        };
+
+        if let Some(action) = PlaybackTransport::from_worker_state(
+            "attractor_transport",
+            "Attractor Plotter",
+            transport_state,
+        )
+        .timeline(self.worker.timeline_metadata())
+        .can_reset(true)
+        .show(ui)
+        {
+            self.handle_transport_action(action, ctx);
+        }
+
+        let can_fork = self.step_count > 0 && !self.diverged() && !worker_faulted;
+        let is_forked = self.twin.is_some();
+        if let Some(cf_action) =
+            CounterfactualTransport::new(&mut self.branch_engine, can_fork, is_forked).show(ui)
+        {
+            let _ = self.apply_counterfactual_action(cf_action);
+            ctx.request_repaint();
         }
     }
 
@@ -206,28 +218,7 @@ impl AttractorPlotter {
         egui::CollapsingHeader::new("Simulation")
             .default_open(true)
             .show(ui, |ui| {
-                let transport_state = if self.diverged() || worker_faulted {
-                    SimWorkerState::Faulted
-                } else if self.worker.state().is_stepping() {
-                    SimWorkerState::Stepping
-                } else if self.is_paused() {
-                    SimWorkerState::Ready
-                } else {
-                    self.worker.state()
-                };
-
-                if let Some(action) = PlaybackTransport::from_worker_state(
-                    "attractor_transport",
-                    "Attractor Plotter",
-                    transport_state,
-                )
-                .timeline(self.worker.timeline_metadata())
-                .can_reset(true)
-                .show(ui)
-                {
-                    self.handle_transport_action(action, ctx);
-                }
-
+                self.draw_transport_and_fork_controls(ui, ctx, worker_faulted);
                 if ui
                     .add(
                         egui::Slider::new(
@@ -253,40 +244,6 @@ impl AttractorPlotter {
                     self.on_slider_changed();
                 }
             });
-    }
-
-    fn apply_fault_action(&mut self, action: WorkerFaultAction, ctx: &egui::Context) {
-        use crate::framework::recovery::RecoveryAction;
-        match action {
-            WorkerFaultAction::Reset => self.reset(),
-            WorkerFaultAction::Recovery(RecoveryAction::AutoScaleStepSize) => {
-                self.dt = if self.dt.is_finite() {
-                    (self.dt * 0.5).max(0.001)
-                } else {
-                    0.005
-                };
-                self.reset();
-            }
-            WorkerFaultAction::Recovery(RecoveryAction::ClampParameters) => {
-                let clamp_or = |v: f64, lo: f64, hi: f64, def: f64| {
-                    if v.is_finite() {
-                        v.clamp(lo, hi)
-                    } else {
-                        def
-                    }
-                };
-                self.system.sigma = clamp_or(self.system.sigma, 0.0, 50.0, 10.0);
-                self.system.rho = clamp_or(self.system.rho, 0.0, 100.0, 28.0);
-                self.system.beta = clamp_or(self.system.beta, 0.0, 10.0, 8.0 / 3.0);
-                self.dt = clamp_or(self.dt, 0.001, 0.05, 0.01);
-                self.reset();
-            }
-            WorkerFaultAction::ResetParameters
-            | WorkerFaultAction::Recovery(RecoveryAction::ResetParameters) => {
-                self.reset_parameters();
-            }
-        }
-        ctx.request_repaint();
     }
 
     fn draw_central_fault_banner(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -448,7 +405,7 @@ impl AttractorPlotter {
 
     fn draw_3d_viewport(&mut self, ui: &mut egui::Ui) {
         if self.history.is_empty() && !self.diverged() {
-            let i = self.twin.initial_state;
+            let i = self.twin_cfg.initial_state;
             let msg = format!(
                 "Initial state ({:.2}, {:.2}, {:.2}) ready — click ▶ Play or ⏭ Step to trace the strange attractor.",
                 i.x, i.y, i.z
@@ -456,11 +413,21 @@ impl AttractorPlotter {
             render_empty_plot_guidance(ui, &msg);
         }
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        self.populate_scene_with_twin(palette.series_color(0), palette.series_color(1));
+        self.populate_scene_with_palette(&palette);
+        let fork_callout = self.twin.as_ref().map(|twin| {
+            fork_marker_callout(
+                self.project(twin.fork_point),
+                twin.tracker.fork_time(),
+                &palette,
+            )
+        });
         let mut camera = self.camera;
         let response = Plot3DViewport::new("attractor_plot", 32.0)
             .show(ui, &mut camera, |plot_ui| {
                 self.scene_builder.finish(plot_ui);
+                if let Some(callout) = fork_callout {
+                    plot_ui.callout(callout);
+                }
                 self.draw_fixed_point_callouts(plot_ui);
             })
             .response;
@@ -476,6 +443,9 @@ impl AttractorPlotter {
         self.draw_divergence_panel(parent_ui);
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.draw_central_fault_banner(ui, ctx);
+            if let Some(ref snap) = self.branch_engine.active_snapshot {
+                render_divergence_strip(ui, "Attractor Plotter", snap);
+            }
             if self.atlas.is_visible() && ui.available_width() >= 620.0 {
                 ui.columns(2, |cols| {
                     self.draw_3d_viewport(&mut cols[0]);
