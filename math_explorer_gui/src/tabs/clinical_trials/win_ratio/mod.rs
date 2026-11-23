@@ -323,7 +323,15 @@ inventory::submit! {
         id: "WinRatioStressTesterTool",
         display_name: "Composite Win Ratio Stress Tester",
         domain: "clinical_trials",
-        tags: &["win-ratio", "composite-endpoints", "censoring", "power", "u-statistics"],
+        tags: &[
+            "win-ratio",
+            "composite-endpoints",
+            "censoring",
+            "power",
+            "u-statistics",
+            "weibull",
+            "biostatistics",
+        ],
         build: || Box::new(WinRatioStressTesterTool::default()),
     }
 }
