@@ -138,7 +138,9 @@ impl WinRatioWorkbenchTool {
         ui.horizontal_wrapped(|ui| {
             if ui
                 .button("📂 Load CSV/TSV")
-                .accessible_hover_text("Load local two-arm CSV or TSV cohort without network upload")
+                .accessible_hover_text(
+                    "Load local two-arm CSV or TSV cohort without network upload",
+                )
                 .clicked()
             {
                 self.io_channels.trigger_open_cohort();
@@ -251,7 +253,10 @@ impl WinRatioWorkbenchTool {
             render_copyable_metric(
                 ui,
                 "Wins / Losses / Ties",
-                &format!("{} / {} / {}", eval.total_wins, eval.total_losses, eval.total_ties),
+                &format!(
+                    "{} / {} / {}",
+                    eval.total_wins, eval.total_losses, eval.total_ties
+                ),
             );
             render_copyable_metric(
                 ui,
@@ -317,7 +322,9 @@ impl InteractiveTool for WinRatioWorkbenchTool {
         let Some(eval) = &self.cohort_eval else {
             return Vec::new();
         };
-        let map_pts = |f: fn(&math_explorer::applied::win_ratio::pair_comparison::TierOutcomeCounts) -> usize| {
+        let map_pts = |f: fn(
+            &math_explorer::applied::win_ratio::pair_comparison::TierOutcomeCounts,
+        ) -> usize| {
             eval.tiers
                 .iter()
                 .enumerate()
@@ -390,7 +397,14 @@ inventory::submit! {
         id: "WinRatioWorkbenchTool",
         display_name: "Win Ratio Workbench",
         domain: "clinical_trials",
-        tags: &["win_ratio", "composite_endpoints", "survival", "biostatistics"],
+        tags: &[
+            "win-ratio",
+            "composite-endpoints",
+            "waterfall",
+            "matched-pairs",
+            "survival",
+            "biostatistics",
+        ],
         build: || Box::new(WinRatioWorkbenchTool::default()),
     }
 }
@@ -412,7 +426,8 @@ impl scientific_metadata::theory::TheoryDescribable for WinRatioWorkbenchTool {
         let mut map = std::collections::HashMap::new();
         map.insert(
             "CohortWaterfall".into(),
-            "All-pairs or 1:1 matched hierarchical pairwise win-loss-tie waterfall evaluation".into(),
+            "All-pairs or 1:1 matched hierarchical pairwise win-loss-tie waterfall evaluation"
+                .into(),
         );
         map.insert(
             "WeibullSimulator".into(),

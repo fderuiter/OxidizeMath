@@ -10,14 +10,20 @@ use math_explorer::applied::clinical_trials::survival_analysis::{
 };
 
 use super::survival_io::{
-    build_censor_points, build_km_step_points, format_risk_table_csv, parse_survival_cohort,
+    build_censor_points, build_km_step_points, format_risk_table_csv, parse_survival_with_control,
     ArmSurvivalSummary, SurvivalDialogIo, TWO_ARM_SAMPLE_TEXT,
 };
 
+const DEFAULT_TREATMENT_TEXT: &str = "6.0, 1\n6.0, 1\n6.0, 1\n7.0, 1\n10.0, 1\n13.0, 1\n16.0, 1\n22.0, 1\n23.0, 1\n6.0, 0\n9.0, 0\n10.0, 0\n11.0, 0\n17.0, 0\n19.0, 0\n20.0, 0\n25.0, 0\n32.0, 0\n32.0, 0\n34.0, 0\n35.0, 0";
+const DEMO_CONTROL_TEXT: &str = "1.0, 1\n1.0, 1\n2.0, 1\n2.0, 1\n3.0, 1\n4.0, 1\n4.0, 1\n5.0, 1\n5.0, 1\n8.0, 1\n8.0, 1\n8.0, 1\n8.0, 1\n11.0, 1\n11.0, 1\n12.0, 1\n12.0, 1\n15.0, 1\n17.0, 1\n22.0, 1\n23.0, 1";
+
 pub struct SurvivalAnalysisTool {
     input_text: String,
+    control_text: String,
     observations: Vec<Observation>,
+    control_observations: Vec<Observation>,
     curve: Vec<TimePoint>,
+    control_curve: Vec<TimePoint>,
     arms: Vec<ArmSurvivalSummary>,
     hazard_ratio: Option<Result<f64, String>>,
     log_rank: Option<Result<LogRankResult, String>>,
@@ -27,11 +33,13 @@ pub struct SurvivalAnalysisTool {
 
 impl Default for SurvivalAnalysisTool {
     fn default() -> Self {
-        let default_text = "6.0, 1\n6.0, 1\n6.0, 1\n7.0, 1\n10.0, 1\n13.0, 1\n16.0, 1\n22.0, 1\n23.0, 1\n6.0, 0\n9.0, 0\n10.0, 0\n11.0, 0\n17.0, 0\n19.0, 0\n20.0, 0\n25.0, 0\n32.0, 0\n32.0, 0\n34.0, 0\n35.0, 0";
         let mut tool = Self {
-            input_text: default_text.to_string(),
+            input_text: DEFAULT_TREATMENT_TEXT.to_string(),
+            control_text: String::new(),
             observations: Vec::new(),
+            control_observations: Vec::new(),
             curve: Vec::new(),
+            control_curve: Vec::new(),
             arms: Vec::new(),
             hazard_ratio: None,
             log_rank: None,
@@ -46,19 +54,24 @@ impl Default for SurvivalAnalysisTool {
 impl SurvivalAnalysisTool {
     fn recalculate(&mut self) {
         self.observations.clear();
+        self.control_observations.clear();
         self.curve.clear();
+        self.control_curve.clear();
         self.arms.clear();
         self.hazard_ratio = None;
         self.log_rank = None;
         self.error_message = None;
 
-        match parse_survival_cohort(&self.input_text) {
+        match parse_survival_with_control(&self.input_text, &self.control_text) {
             Ok(parsed) => {
-                self.observations = parsed.all_observations;
-                self.curve = parsed
-                    .arms
-                    .first()
-                    .map_or_else(Vec::new, |arm| arm.curve.clone());
+                if let Some(first) = parsed.arms.first() {
+                    self.observations = first.observations.clone();
+                    self.curve = first.curve.clone();
+                }
+                if let Some(second) = parsed.arms.get(1) {
+                    self.control_observations = second.observations.clone();
+                    self.control_curve = second.curve.clone();
+                }
                 self.arms = parsed.arms;
                 self.hazard_ratio = parsed.hazard_ratio;
                 self.log_rank = parsed.log_rank;
@@ -72,10 +85,41 @@ impl SurvivalAnalysisTool {
     fn render_input_panel(&mut self, ui: &mut egui::Ui) {
         if let Some(loaded) = self.dialog_io.poll() {
             self.input_text = loaded;
+            self.control_text.clear();
             self.recalculate();
         }
-        ui.heading("Input Data");
+        ui.heading("Survival Cohort Input");
         ui.label("Format: 'time, event' or 'time, event, arm' (CSV/TSV)");
+        self.render_io_toolbar(ui);
+        ui.add_space(4.0);
+        let mut changed = ui
+            .add(
+                egui::TextEdit::multiline(&mut self.input_text)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(10),
+            )
+            .changed();
+        ui.collapsing("Optional Separate Control Arm ('time, event')", |ui| {
+            changed |= ui
+                .add(
+                    egui::TextEdit::multiline(&mut self.control_text)
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(5),
+                )
+                .changed();
+            if ui.button("Load 2-Arm Demo Split").clicked() {
+                self.input_text = DEFAULT_TREATMENT_TEXT.to_string();
+                self.control_text = DEMO_CONTROL_TEXT.to_string();
+                changed = true;
+            }
+        });
+        if changed {
+            self.recalculate();
+        }
+        self.render_metrics_summary(ui);
+    }
+
+    fn render_io_toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             if ui
                 .button("📂 Load CSV/TSV")
@@ -90,6 +134,11 @@ impl SurvivalAnalysisTool {
                 .clicked()
             {
                 self.input_text = TWO_ARM_SAMPLE_TEXT.to_string();
+                self.control_text.clear();
+                self.recalculate();
+            }
+            if !self.control_text.is_empty() && ui.button("Single Arm").clicked() {
+                self.control_text.clear();
                 self.recalculate();
             }
             let can_export = !self.arms.is_empty() && !self.curve.is_empty();
@@ -102,14 +151,6 @@ impl SurvivalAnalysisTool {
                     .trigger_save_risk_table(format_risk_table_csv(&self.arms));
             }
         });
-        ui.add_space(4.0);
-        let text_edit = egui::TextEdit::multiline(&mut self.input_text)
-            .desired_width(f32::INFINITY)
-            .desired_rows(12);
-        if ui.add(text_edit).changed() {
-            self.recalculate();
-        }
-        self.render_metrics_summary(ui);
     }
 
     fn render_metrics_summary(&self, ui: &mut egui::Ui) {
@@ -122,7 +163,19 @@ impl SurvivalAnalysisTool {
             ui.colored_label(palette.error, err);
         }
         ui.separator();
-        render_copyable_metric(ui, "Observations", &self.observations.len().to_string());
+        let primary_label = if self.control_observations.is_empty() {
+            "Observations"
+        } else {
+            "Treatment N"
+        };
+        render_copyable_metric(ui, primary_label, &self.observations.len().to_string());
+        if !self.control_observations.is_empty() {
+            render_copyable_metric(
+                ui,
+                "Control N",
+                &self.control_observations.len().to_string(),
+            );
+        }
         render_copyable_metric(ui, "Study Arms", &self.arms.len().to_string());
         let median_text = match self.median_survival_time() {
             Some(t) => format!("{t:.2}"),
@@ -132,7 +185,7 @@ impl SurvivalAnalysisTool {
         if let Some(hr_res) = &self.hazard_ratio {
             match hr_res {
                 Ok(hr) => {
-                    let _ = render_copyable_metric(ui, "Hazard Ratio (HR)", &format!("{hr:.3}"));
+                    render_copyable_metric(ui, "Hazard Ratio (HR)", &format!("{hr:.3}"));
                 }
                 Err(e) => {
                     ui.colored_label(palette.warning, e);
@@ -158,10 +211,10 @@ impl SurvivalAnalysisTool {
         Plot::new("kaplan_meier_plot")
             .legend(Legend::default())
             .view_aspect(2.1)
-            .x_axis_label("Time")
+            .x_axis_label("Follow-up Time")
             .y_axis_label("Survival Probability")
             .include_y(0.0)
-            .include_y(1.0)
+            .include_y(1.05)
             .show(ui, |plot_ui| {
                 if self.arms.is_empty() {
                     plot_ui.line(Line::new("Empty", vec![[0.0, 1.0]]).color(palette.muted_text));
@@ -177,7 +230,8 @@ impl SurvivalAnalysisTool {
                     plot_ui.line(
                         Line::new(line_name.clone(), PlotPoints::new(step_pts))
                             .name(line_name)
-                            .color(color),
+                            .color(color)
+                            .width(2.2_f32),
                     );
                     let censor_pts = build_censor_points(&arm.curve);
                     if !censor_pts.is_empty() {
@@ -233,6 +287,8 @@ impl SurvivalAnalysisTool {
 #[serde(deny_unknown_fields)]
 struct SurvivalState {
     input_text: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    control_text: String,
 }
 
 impl InteractiveTool for SurvivalAnalysisTool {
@@ -287,6 +343,7 @@ impl InteractiveTool for SurvivalAnalysisTool {
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&SurvivalState {
             input_text: self.input_text.clone(),
+            control_text: self.control_text.clone(),
         })
         .ok()
     }
@@ -297,8 +354,11 @@ impl InteractiveTool for SurvivalAnalysisTool {
             serde_json::from_str(state).map_err(|e| format!("Invalid survival state: {e}"))?;
         let mut candidate = Self {
             input_text: s.input_text,
+            control_text: s.control_text,
             observations: Vec::new(),
+            control_observations: Vec::new(),
             curve: Vec::new(),
+            control_curve: Vec::new(),
             arms: Vec::new(),
             hazard_ratio: None,
             log_rank: None,
@@ -353,7 +413,16 @@ inventory::submit! {
         id: "SurvivalAnalysisTool",
         display_name: "Survival Curves (Kaplan-Meier)",
         domain: "clinical_trials",
-        tags: &[],
+        tags: &[
+            "kaplan-meier",
+            "censoring",
+            "hazard",
+            "hazard-ratio",
+            "survival",
+            "time-to-event",
+            "nonparametric",
+            "biostatistics",
+        ],
         build: || Box::new(SurvivalAnalysisTool::default()),
     }
 }
@@ -361,12 +430,13 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for SurvivalAnalysisTool {
     fn theory_description(&self) -> String {
         format!(
-            "Kaplan-Meier non-parametric maximum likelihood estimator of survival function $S(t) = \\prod_{{t_i \\le t}} \\left(1 - \\frac{{d_i}}{{n_i}}\\right)$ with Mantel-Haenszel two-arm log-rank test across {} observations.",
-            self.observations.len()
+            "Kaplan-Meier non-parametric maximum likelihood estimator of survival function $S(t) = \\prod_{{t_i \\le t}} \\left(1 - \\frac{{d_i}}{{n_i}}\\right)$ across {} primary and {} control observations, paired with Mantel-Haenszel log-rank testing and incidence-rate hazard ratio estimation.",
+            self.observations.len(),
+            self.control_observations.len()
         )
     }
     fn phonetic_description(&self) -> String {
-        "Kaplan-Meier non-parametric survival analysis theory".into()
+        "Kaplan-Meier non-parametric survival analysis and hazard ratio theory".into()
     }
     fn theory_citation(&self) -> String {
         "Nonparametric Estimation from Incomplete Observations (Kaplan & Meier, 1958)".into()
@@ -402,5 +472,4 @@ inventory::submit! {
 }
 
 #[cfg(test)]
-#[path = "survival_tests.rs"]
 mod tests;

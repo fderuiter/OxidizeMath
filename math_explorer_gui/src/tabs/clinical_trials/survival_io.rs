@@ -61,8 +61,6 @@ pub struct ArmSurvivalSummary {
 /// Complete single-arm or two-arm survival evaluation result.
 #[derive(Debug, Clone)]
 pub struct ParsedSurvivalCohort {
-    /// Combined observations across all arms (preserving legacy total observation count).
-    pub all_observations: Vec<Observation>,
     /// Per-arm summaries (`len == 1` for two-column inputs, `len == 2` for two-arm inputs).
     pub arms: Vec<ArmSurvivalSummary>,
     /// Incidence-density hazard ratio `HR` when two arms are present.
@@ -76,6 +74,28 @@ fn is_survival_header(first_col: &str) -> bool {
     t.eq_ignore_ascii_case("time")
         || t.eq_ignore_ascii_case("duration")
         || t.eq_ignore_ascii_case("t")
+        || t.eq_ignore_ascii_case("arm")
+        || t.eq_ignore_ascii_case("group")
+}
+
+fn canonicalize_arm_label(raw: &str) -> String {
+    let trimmed = raw.trim().trim_matches('"');
+    match trimmed.to_ascii_lowercase().as_str() {
+        "treatment" | "treated" | "trt" | "active" | "1" => "Treatment".to_string(),
+        "control" | "ctrl" | "placebo" | "0" => "Control".to_string(),
+        _ => trimmed.to_string(),
+    }
+}
+
+fn parse_prefix_arm_label(line_no: usize, raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim().trim_matches('"');
+    match trimmed.to_ascii_lowercase().as_str() {
+        "treatment" | "treated" | "trt" | "active" | "1" => Ok("Treatment".to_string()),
+        "control" | "ctrl" | "placebo" | "0" => Ok("Control".to_string()),
+        other => Err(format!(
+            "Line {line_no}: Invalid arm '{other}' (expected treatment/control)"
+        )),
+    }
 }
 
 fn parse_event_flag(line_no: usize, event_str: &str) -> Result<bool, String> {
@@ -93,27 +113,37 @@ fn parse_event_flag(line_no: usize, event_str: &str) -> Result<bool, String> {
 fn parse_survival_row(line_no: usize, line: &str) -> Result<(Observation, Option<String>), String> {
     let delimiter = if line.contains('\t') { '\t' } else { ',' };
     let parts: Vec<&str> = line.split(delimiter).collect();
-    if parts.len() != 2 && parts.len() != 3 {
-        return Err(format!(
-            "Line {line_no}: Expected 'time, event' or 'time, event, arm'"
-        ));
-    }
-    let time_str = parts[0].trim().trim_matches('"');
-    let event_str = parts[1].trim().trim_matches('"');
+    let (time_str, event_str, arm_opt) = match parts.as_slice() {
+        [t_raw, e_raw] => (
+            t_raw.trim().trim_matches('"'),
+            e_raw.trim().trim_matches('"'),
+            None,
+        ),
+        [c0, c1, c2] => {
+            let s0 = c0.trim().trim_matches('"');
+            let s1 = c1.trim().trim_matches('"');
+            let s2 = c2.trim().trim_matches('"');
+            if s0.parse::<f64>().is_ok() && parse_event_flag(line_no, s1).is_ok() {
+                if s2.is_empty() {
+                    return Err(format!("Line {line_no}: Arm label cannot be empty"));
+                }
+                (s0, s1, Some(canonicalize_arm_label(s2)))
+            } else {
+                let arm = parse_prefix_arm_label(line_no, s0)?;
+                (s1, s2, Some(arm))
+            }
+        }
+        _ => {
+            return Err(format!(
+                "Line {line_no}: Expected 'time, event', 'time, event, arm', or 'arm, time, event'"
+            ));
+        }
+    };
     let time_val = time_str
         .parse::<f64>()
         .map_err(|_| format!("Line {line_no}: Invalid time '{time_str}'"))?;
     let event_occurred = parse_event_flag(line_no, event_str)?;
     let time = SurvivalTime::new(time_val).map_err(|e| format!("Line {line_no}: {e}"))?;
-    let arm_opt = if parts.len() == 3 {
-        let arm = parts[2].trim().trim_matches('"');
-        if arm.is_empty() {
-            return Err(format!("Line {line_no}: Arm label cannot be empty"));
-        }
-        Some(arm.to_string())
-    } else {
-        None
-    };
     Ok((
         Observation {
             time,
@@ -159,8 +189,11 @@ fn order_two_arms_treatment_first(buckets: &mut [(String, Vec<Observation>)]) {
     }
 }
 
-/// Parses legacy two-column (`time, event`) or two-arm (`time, event, arm`) text/CSV/TSV.
-pub fn parse_survival_cohort(raw: &str) -> Result<ParsedSurvivalCohort, String> {
+/// Parses primary survival cohort text plus an optional separate two-column control arm block.
+pub fn parse_survival_with_control(
+    raw: &str,
+    control_raw: &str,
+) -> Result<ParsedSurvivalCohort, String> {
     let cleaned = strip_utf8_bom(raw);
     let mut all_observations = Vec::new();
     let mut arm_buckets: Vec<(String, Vec<Observation>)> = Vec::new();
@@ -169,7 +202,7 @@ pub fn parse_survival_cohort(raw: &str) -> Result<ParsedSurvivalCohort, String> 
 
     for (line_idx, raw_line) in cleaned.lines().enumerate() {
         let line = raw_line.trim();
-        if line.is_empty() {
+        if line.is_empty() || line.starts_with('#') {
             continue;
         }
         let line_no = line_idx + 1;
@@ -204,11 +237,62 @@ pub fn parse_survival_cohort(raw: &str) -> Result<ParsedSurvivalCohort, String> 
             push_into_arm_bucket(line_no, &mut arm_buckets, arm_name, obs)?;
         }
     }
+
+    let cleaned_ctrl = strip_utf8_bom(control_raw);
+    let has_ctrl_block = !cleaned_ctrl.trim().is_empty();
+    if has_ctrl_block {
+        if expected_has_arm == Some(false) && arm_buckets.is_empty() && !all_observations.is_empty()
+        {
+            arm_buckets.push(("Treatment".to_string(), all_observations.clone()));
+        }
+        parse_control_block(cleaned_ctrl, &mut all_observations, &mut arm_buckets)?;
+    }
+
     Ok(finalize_survival_cohort(
         all_observations,
         arm_buckets,
-        expected_has_arm == Some(true),
+        expected_has_arm == Some(true) || has_ctrl_block,
     ))
+}
+
+fn parse_control_block(
+    cleaned_ctrl: &str,
+    all_observations: &mut Vec<Observation>,
+    arm_buckets: &mut Vec<(String, Vec<Observation>)>,
+) -> Result<(), String> {
+    let mut saw_first = false;
+    for (line_idx, raw_line) in cleaned_ctrl.lines().enumerate() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line_no = line_idx + 1;
+        if !saw_first {
+            saw_first = true;
+            let delimiter = if line.contains('\t') { '\t' } else { ',' };
+            if let Some(first_col) = line.split(delimiter).next() {
+                if is_survival_header(first_col) {
+                    continue;
+                }
+            }
+        }
+        if all_observations.len() >= math_commons::registry::MAX_ITERATIONS {
+            return Err(format!(
+                "Control arm Line {line_no}: Maximum of {} observations exceeded",
+                math_commons::registry::MAX_ITERATIONS
+            ));
+        }
+        let (obs, arm_opt) =
+            parse_survival_row(line_no, line).map_err(|e| format!("Control arm {e}"))?;
+        if arm_opt.is_some() {
+            return Err(format!(
+                "Control arm Line {line_no}: Expected 2-column 'time, event'"
+            ));
+        }
+        all_observations.push(obs);
+        push_into_arm_bucket(line_no, arm_buckets, "Control".to_string(), obs)?;
+    }
+    Ok(())
 }
 
 fn finalize_survival_cohort(
@@ -239,7 +323,6 @@ fn finalize_survival_cohort(
             (None, None)
         };
         ParsedSurvivalCohort {
-            all_observations,
             arms,
             hazard_ratio,
             log_rank,
@@ -248,11 +331,10 @@ fn finalize_survival_cohort(
         let curve = kaplan_meier(&all_observations);
         let arms = vec![ArmSurvivalSummary {
             label: "Cohort".to_string(),
-            observations: all_observations.clone(),
+            observations: all_observations,
             curve,
         }];
         ParsedSurvivalCohort {
-            all_observations,
             arms,
             hazard_ratio: None,
             log_rank: None,
@@ -291,8 +373,7 @@ pub fn build_censor_points(curve: &[TimePoint]) -> Vec<[f64; 2]> {
 #[must_use]
 pub fn format_risk_table_csv(arms: &[ArmSurvivalSummary]) -> String {
     use std::fmt::Write;
-    let mut out =
-        String::from("arm,time,survival_probability,n_at_risk,n_events,n_censored\n");
+    let mut out = String::from("arm,time,survival_probability,n_at_risk,n_events,n_censored\n");
     for arm in arms {
         let safe_arm = arm.label.replace(',', ";");
         for pt in &arm.curve {

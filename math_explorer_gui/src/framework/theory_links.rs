@@ -80,7 +80,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         | "FractranMachineTool"
         | "AlgorithmicFractranTool"
         | "AlgorithmicComplexityTool" => &["algorithmic_information_rust"],
-        "WinRatioWorkbenchTool" => &["win_ratio"],
+        "WinRatioWorkbenchTool" | "WinRatioStressTesterTool" => &["win_ratio"],
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
         "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],

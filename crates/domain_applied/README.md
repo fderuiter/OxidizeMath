@@ -11,59 +11,83 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 ### Module Structure
 
 - **`win_ratio`**: Prioritized composite endpoint evaluation for clinical research:
-  - `WinRatioAnalysis`: Configurable hierarchical comparison engine for patient pairs, including per-tier waterfall counts (`TierOutcomeCounts`, `evaluate_tiers`, `evaluate_tiers_into`).
+  - `WinRatioAnalysis`: Configurable hierarchical comparison engine for patient pairs with matched and unmatched (`evaluate_unmatched`, `evaluate_unmatched_into`, `evaluate_tiers`, `evaluate_tiers_into`, `TierOutcomeCounts`) evaluation.
   - Comparison and pairing strategies (`HigherIsBetter`, `LowerIsBetter`, `ThresholdComparator`, `UnmatchedPairing`, `MatchedPairing`).
-  - Analytical bivariate survival simulation (`BivariateWeibullModel`, `ProbabilityWinRatioContext`, `WinLossCounts`).
-- **`clinical_trials`**: Biostatistical trial design (`SimpleRandomizer`, `BlockRandomizer`, `StratifiedRandomizer`), sample size and power determination, hypothesis testing (`TTestIndependent`, `ChiSquare2x2`, `calculate_risk_metrics`), and survival analysis (`kaplan_meier`, `try_estimate_hazard_ratio`, `log_rank_test`).
+  - `censoring`: Right-censored time-to-event outcomes (`CensoredOutcome`), Pocock/Finkelstein-Schoenfeld comparators (`RightCensoredComparator`), and hierarchical tier waterfall counters (`TierCount`).
+  - `u_statistic`: Pocock/Bebu-Lachin two-sample U-statistic variance projection (`UnmatchedWinRatioSummary`, `UnmatchedScratch`, `compute_unmatched_u_statistics`) calibrating confidence intervals and Type I error across dependent all-pairs comparisons.
+  - `probability_win_ratio`, `sample_win_ratio`, `simulation`, `weibull_sampler`, & `power_sweep`: Analytical Clenshaw-Curtis probability win ratios (`ProbabilityWinRatioContext`, `WinLossCounts`), exact two-step inverse-CDF `BivariateWeibullModel` sampling driven by `OxidizeRng`, and zero-allocation Monte Carlo power sweeps (`run_power_sweep_into`, `run_weibull_power_sweep`).
+- **`clinical_trials`**: Biostatistical trial design (`SimpleRandomizer`, `BlockRandomizer`, `StratifiedRandomizer`), analytical sample-size and power curves (`calculate_power_means`, `calculate_power_proportions`), hypothesis testing (`TTestIndependent`, `ChiSquare2x2`), binary risk metrics (`calculate_risk_metrics`), and Kaplan-Meier / log-rank / hazard-ratio survival analysis (`kaplan_meier`, `log_rank_test`, `try_estimate_hazard_ratio`).
 - **`pharmacokinetics`**: One-compartment oral ADME kinetics (`PKParameters`, `BatemanModel`, `half_life`, `t_max`, `solve_ka`), multi-dose linear superposition (`SuperpositionModel`), biphasic extended-release formulations (`TwoPulseModel`), and stereoselective chiral mixtures (`EnantiomerModel`).
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
 - **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
 - **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.
 - **`game_theory`**: Mean Field Games, evolutionary matrix dynamics, and mechanism design.
 - **`lorahub` & `grpo`**: Machine learning parameter merging and group relative policy optimization.
-- **`cannibalism` & `favoritism`**: Specialized population dynamics models and socio-mathematical scoring functions.
+- **`cannibalism`**: Zero-allocation upwind solvers for McKendrick-von Foerster age-structured PDEs (`McKendrickSolver`), Diekmann mortality and Ricker saturation kernels (`CannibalismKernel`), van den Bosch juvenile-adult delay dynamics (`JuvenileAdultSolver`), and lumped 2D ODE models (`CannibalismModel`).
+- **`favoritism`**: Socio-mathematical quadrature scoring functions (`UnifiedFavoritismModel`).
 
 ---
 
 ## 2. Developer Instructions
 
-### Evaluating Clinical Outcomes with the Win Ratio
+### Evaluating Right-Censored Composite Outcomes with U-Statistics
 
-Analyze hierarchical composite endpoints and per-tier waterfall counts using pair-wise comparison strategies:
+Analyze prioritized fatal and non-fatal time-to-event endpoints under right censoring with two-sample U-statistic inference, or evaluate multi-tier continuous/count composite waterfalls:
 
 ```rust
 # use domain_applied::__doctest_facade as math_explorer;
 use math_explorer::applied::win_ratio::pair_comparison::{
-    calculate_statistics, HigherIsBetter, LowerIsBetter, UnmatchedPairing, WinRatioAnalysis,
+    calculate_statistics, CensoredOutcome, HigherIsBetter, LowerIsBetter,
+    RightCensoredComparator, UnmatchedPairing, WinRatioAnalysis,
 };
 
-// Define patient outcomes: [Survival Days (HigherIsBetter), Hospitalizations (LowerIsBetter)]
-let treatment_patients = vec![
-    vec![900.0, 0.0],
-    vec![300.0, 1.0],
+// 1. Right-censored hierarchy: [Tier 1: Fatal Event, Tier 2: Non-Fatal Hospitalization]
+let treatment = vec![
+    vec![
+        CensoredOutcome::new(5.0, false).unwrap(),
+        CensoredOutcome::new(5.0, false).unwrap(),
+    ],
+    vec![
+        CensoredOutcome::new(4.8, false).unwrap(),
+        CensoredOutcome::new(3.2, true).unwrap(),
+    ],
+];
+let control = vec![
+    vec![
+        CensoredOutcome::new(1.5, true).unwrap(),
+        CensoredOutcome::new(0.8, true).unwrap(),
+    ],
+    vec![
+        CensoredOutcome::new(4.5, false).unwrap(),
+        CensoredOutcome::new(1.9, true).unwrap(),
+    ],
 ];
 
-let control_patients = vec![
-    vec![300.0, 4.0],
-    vec![200.0, 2.0],
-];
+let censored_analysis = WinRatioAnalysis::new()
+    .add_strategy(Box::new(RightCensoredComparator::new()))
+    .add_strategy(Box::new(RightCensoredComparator::new()));
 
-// Configure hierarchical evaluation (Survival evaluated before Hospitalizations)
-let analysis = WinRatioAnalysis::new()
+let (summary, censored_tiers) = censored_analysis
+    .evaluate_unmatched(&treatment, &control, 0.05)
+    .expect("Valid unmatched U-statistic summary");
+
+assert_eq!(summary.total_pairs, 4);
+assert_eq!(censored_tiers[0].wins + censored_tiers[1].wins, 4);
+assert!(summary.win_ratio > 1.0);
+
+// 2. Continuous/count waterfall: [Survival Days (HigherIsBetter), Hospitalizations (LowerIsBetter)]
+let trt_numeric = vec![vec![900.0, 0.0], vec![300.0, 1.0]];
+let ctrl_numeric = vec![vec![300.0, 4.0], vec![200.0, 2.0]];
+let waterfall_analysis = WinRatioAnalysis::new()
     .add_strategy(Box::new(HigherIsBetter))
     .add_strategy(Box::new(LowerIsBetter));
-
-// Perform pairwise and per-tier waterfall comparison across cohorts
-let tiers = analysis
-    .evaluate_tiers(&treatment_patients, &control_patients, &UnmatchedPairing)
+let tiers = waterfall_analysis
+    .evaluate_tiers(&trt_numeric, &ctrl_numeric, &UnmatchedPairing)
     .expect("Valid tier evaluation");
-let (wins, losses) = analysis.evaluate_pairs(&treatment_patients, &control_patients, &UnmatchedPairing);
+let (wins, losses) = waterfall_analysis.evaluate_pairs(&trt_numeric, &ctrl_numeric, &UnmatchedPairing);
 let statistics = calculate_statistics(wins, losses).expect("Valid statistics");
-
 assert_eq!(tiers[0].wins, 3);
 assert_eq!(tiers[1].wins, 1);
-assert_eq!(wins, 4);
-assert_eq!(losses, 0);
 assert!(statistics.win_ratio.is_infinite() || statistics.win_ratio > 1.0);
 ```
 
@@ -90,8 +114,26 @@ let regimen = SuperpositionModel::new(xr_pulse, vec![0.0, 12.0, 24.0]);
 assert!(regimen.concentration(26.0) > regimen.concentration(2.0));
 ```
 
+### Age-Structured Cannibalism PDE (`McKendrickSolver`)
+
+Advance the McKendrick-von Foerster equation with Diekmann mortality and Ricker prey saturation using pre-allocated upwind buffers:
+
+```rust
+# use domain_applied::__doctest_facade as math_explorer;
+use math_explorer::applied::cannibalism::{CannibalismKernel, McKendrickSolver};
+
+let kernel = CannibalismKernel::new(0.12, 0.02, 0.35, 3.5, 0.02, 4.0, 3.5, 80.0);
+let mut solver = McKendrickSolver::new(64, 10.0, kernel);
+solver.set_initial_density(|age| 15.0 * (-0.25 * age).exp());
+
+solver.step_upwind(0.2);
+
+assert!(solver.total_population() > 0.0);
+assert!(solver.cannibal_load() >= 0.0);
+```
+
 ---
 
 ## 3. Ecosystem Integration
 
-Algorithms from `domain_applied` power interactive simulation workbenches in `math_explorer_gui`—including the Win Ratio Workbench, the `Pharmacokinetics (ADME)` multi-dose regimen planner, two-arm Kaplan-Meier survival curves with log-rank testing and risk tables, seeded stratified randomization schedules and Simpson's paradox labs, and power-curve sample size calculators in `ClinicalTrialsTab`—enabling local scenario exploration for clinical biostatisticians, pharmacometricians, battery engineers, and data scientists.
+Algorithms from `domain_applied` power interactive simulation workbenches in `math_explorer_gui`—including `WinRatioWorkbenchTool`, `WinRatioStressTesterTool`, the `Pharmacokinetics (ADME)` multi-dose regimen planner, two-arm `SurvivalAnalysisTool` with log-rank testing and risk tables, seeded stratified `RandomizationTool` with Simpson's paradox labs, and power-curve `SampleSizeCalculatorTool` in `ClinicalTrialsTab`, as well as age-structured cannibalism PDE simulations in `PopulationStructureTab`—enabling local scenario exploration and reproducible protocol exports for clinical biostatisticians, pharmacometricians, ecologists, battery engineers, and data scientists.

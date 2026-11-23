@@ -1,5 +1,5 @@
 //! Cohort CSV/TSV parsing, hierarchical tier evaluation, table formatting, and local file I/O
-//! helpers for [`super::win_ratio::WinRatioWorkbenchTool`].
+//! helpers for [`super::win_ratio_workbench::WinRatioWorkbenchTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -116,7 +116,7 @@ pub enum PairingMode {
     Matched,
 }
 
-/// Active visualization mode inside [`super::win_ratio::WinRatioWorkbenchTool`].
+/// Active visualization mode inside [`super::win_ratio_workbench::WinRatioWorkbenchTool`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum WinRatioView {
     /// Empirical cohort tier waterfall `BarChart`.

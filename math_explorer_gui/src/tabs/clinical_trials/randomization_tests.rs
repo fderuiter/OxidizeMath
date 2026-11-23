@@ -6,7 +6,8 @@ use super::*;
 fn test_legacy_block_state_roundtrip_and_seeded_stratified_export() {
     let mut tool = RandomizationTool::default();
     let legacy = r#"{"randomization_type":"Block","n_subjects":24,"block_size":6}"#;
-    tool.try_load_state(legacy).expect("legacy block state loads");
+    tool.try_load_state(legacy)
+        .expect("legacy block state loads");
     assert_eq!(tool.save_state().as_deref(), Some(legacy));
     assert_eq!(tool.schedule.len(), 24);
 

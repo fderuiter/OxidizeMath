@@ -406,7 +406,7 @@ inventory::submit! {
         id: "RandomizationTool",
         display_name: "Randomization",
         domain: "clinical_trials",
-        tags: &[],
+        tags: &["permuted block", "stratified", "bernoulli", "allocation", "confounding", "rct"],
         build: || Box::new(RandomizationTool::default()),
     }
 }

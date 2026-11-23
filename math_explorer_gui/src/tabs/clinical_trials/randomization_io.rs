@@ -58,8 +58,9 @@ pub fn draw_balance_plot(schedule: &[ScheduleRow], ui: &mut egui::Ui) {
                 Line::new("Control Enrolled", PlotPoints::new(ctrl_pts))
                     .color(palette.series_color(0)),
             );
-            plot_ui
-                .line(Line::new("Imbalance (T - C)", PlotPoints::new(diff_pts)).color(palette.warning));
+            plot_ui.line(
+                Line::new("Imbalance (T - C)", PlotPoints::new(diff_pts)).color(palette.warning),
+            );
         });
 }
 

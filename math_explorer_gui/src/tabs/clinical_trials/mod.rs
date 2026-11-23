@@ -1,4 +1,5 @@
 // @explorer_feature = "applied"
+// @explorer_order = 31
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
@@ -13,6 +14,7 @@ pub mod survival_io;
 pub mod win_ratio;
 pub mod win_ratio_io;
 pub mod win_ratio_weibull;
+pub mod win_ratio_workbench;
 
 pub struct ClinicalTrialsTab {
     framework: crate::framework::SimulationFramework,

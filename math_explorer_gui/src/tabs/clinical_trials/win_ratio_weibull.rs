@@ -1,5 +1,5 @@
 //! Analytical `BivariateWeibullModel` simulator, probability win-ratio curves,
-//! and plot renderers for [`super::win_ratio::WinRatioWorkbenchTool`].
+//! and plot renderers for [`super::win_ratio_workbench::WinRatioWorkbenchTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -226,8 +226,9 @@ pub fn render_waterfall_bar_plot(
         .show(ui, |plot_ui| {
             plot_ui.bar_chart(BarChart::new("Treatment Wins", win_bars).color(palette.success));
             plot_ui.bar_chart(BarChart::new("Treatment Losses", loss_bars).color(palette.error));
-            plot_ui
-                .bar_chart(BarChart::new("Unresolved Ties", tie_bars).color(palette.series_color(0)));
+            plot_ui.bar_chart(
+                BarChart::new("Unresolved Ties", tie_bars).color(palette.series_color(0)),
+            );
         });
 }
 
@@ -248,8 +249,11 @@ pub fn render_weibull_curves_plot(
         .y_axis_label("Survival S(t) / Probability WR(t)")
         .show(ui, |plot_ui| {
             plot_ui.line(
-                Line::new("Control Fatal Survival S0(t)", PlotPoints::new(sim.s0_curve.clone()))
-                    .color(palette.series_color(1)),
+                Line::new(
+                    "Control Fatal Survival S0(t)",
+                    PlotPoints::new(sim.s0_curve.clone()),
+                )
+                .color(palette.series_color(1)),
             );
             plot_ui.line(
                 Line::new(

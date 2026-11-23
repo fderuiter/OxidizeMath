@@ -2,6 +2,11 @@ use crate::applied::clinical_trials::types::ClinicalTrialError;
 use statrs::distribution::{ContinuousCDF, Normal};
 use std::marker::PhantomData;
 
+pub use super::censoring::{CensoredOutcome, RightCensoredComparator, TierCount};
+pub use super::u_statistic::{
+    SubjectMarginals, UnmatchedScratch, UnmatchedWinRatioSummary, compute_unmatched_u_statistics,
+};
+
 /// Per-tier win, loss, and unresolved tie counts in a hierarchical Win Ratio evaluation.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct TierOutcomeCounts {
@@ -81,12 +86,7 @@ impl<T: PartialOrd> OutcomeComparator<T> for LowerIsBetter {
     }
 }
 
-/// Strategy: Higher value is better, but only if the difference exceeds a threshold.
-///
-/// If `a - b > threshold`, outcome `a` is a Win.
-/// This is useful when small differences are considered clinically negligible (ties).
-///
-/// Note: This strategy requires `T` to be `f64` (or convertible).
+/// Strategy: Higher value is better, but only if the difference exceeds a threshold (`a - b > threshold`).
 pub struct ThresholdComparator {
     #[allow(missing_docs)]
     pub threshold: f64,
@@ -291,12 +291,20 @@ impl<T> WinRatioAnalysis<T> {
         self
     }
 
-    /// Compares two subjects outcome-by-outcome using the configured strategies.
+    /// Returns the number of configured priority tiers in this analysis.
     #[verified_engine::verified]
-    pub fn compare_subjects(&self, subject1: &[T], subject2: &[T]) -> ComparisonResult {
-        // Zip the outcomes with the strategies.
-        // If there are more outcomes than strategies, the extra outcomes are ignored (or we could panic/error).
-        // If there are fewer outcomes, we stop early.
+    #[must_use]
+    pub fn num_tiers(&self) -> usize {
+        self.tier_count()
+    }
+
+    /// Compares two subjects tier-by-tier, returning both the decision and the resolving tier index.
+    #[verified_engine::verified]
+    pub fn compare_subjects_with_tier(
+        &self,
+        subject1: &[T],
+        subject2: &[T],
+    ) -> (ComparisonResult, Option<usize>) {
         let limit = self
             .strategies
             .len()
@@ -306,10 +314,16 @@ impl<T> WinRatioAnalysis<T> {
         for i in 0..limit {
             let res = self.strategies[i].compare(&subject1[i], &subject2[i]);
             if res != ComparisonResult::Tie {
-                return res;
+                return (res, Some(i));
             }
         }
-        ComparisonResult::Tie
+        (ComparisonResult::Tie, None)
+    }
+
+    /// Compares two subjects outcome-by-outcome using the configured strategies.
+    #[verified_engine::verified]
+    pub fn compare_subjects(&self, subject1: &[T], subject2: &[T]) -> ComparisonResult {
+        self.compare_subjects_with_tier(subject1, subject2).0
     }
 
     /// Compares two subjects hierarchically while recording per-tier win, loss, and tie counts.
@@ -384,21 +398,11 @@ impl<T> WinRatioAnalysis<T> {
 impl<T: PartialOrd + 'static> Default for WinRatioAnalysis<T> {
     #[verified_engine::verified]
     fn default() -> Self {
-        // Default behavior mimics the old `compare_outcomes`: HigherIsBetter for everything.
-        // However, since we don't know how many levels there are, we can't pre-populate.
-        // So the default behavior here is technically "No comparison".
-        // To truly mimic `compare_outcomes`, we need a strategy that applies to ALL levels dynamically,
-        // but our struct stores a `Vec` of strategies per level.
-        // So `Default` here is just an empty analysis.
         Self::new()
     }
 }
 
-/// Calculates the raw Win Ratio.
-///
-/// $$ WR = \frac{N_{wins}}{N_{losses}} $$
-///
-/// Returns `f64::INFINITY` if losses are zero.
+/// Calculates the raw Win Ratio `WR = N_wins / N_losses` (`f64::INFINITY` if `losses == 0`).
 #[verified_engine::verified]
 pub fn calculate_win_ratio(wins: i32, losses: i32) -> f64 {
     if losses == 0 {
@@ -421,19 +425,9 @@ pub struct WinRatioStats {
     pub p_value: f64,
 }
 
-/// Calculates 95% Confidence Intervals and P-values for the Win Ratio.
+/// Calculates 95% Confidence Intervals and P-values for the Win Ratio (`None` if total pairs is zero).
 ///
-/// Uses the normal approximation for the log-win-ratio.
-///
-/// # Returns
-///
-/// `None` if the total number of pairs is zero.
-///
-/// # Mathematical Details
-///
-/// The standard error is estimated as:
-/// $$ SE = \sqrt{\frac{p(1-p)}{N}} $$
-/// Where $p$ is the proportion of wins among untied pairs (simplified).
+/// Uses the normal approximation with standard error $SE = \sqrt{p(1-p)/N}$ where $p$ is the win proportion.
 #[verified_engine::verified]
 pub fn calculate_statistics(wins: i32, losses: i32) -> Option<WinRatioStats> {
     let total_pairs = wins + losses;

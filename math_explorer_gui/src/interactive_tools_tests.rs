@@ -35,7 +35,8 @@ mod tests {
         check_tool!(crate::tabs::clinical_trials::survival::SurvivalAnalysisTool);
         check_tool!(crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool);
         check_tool!(crate::tabs::clinical_trials::randomization::RandomizationTool);
-        check_tool!(crate::tabs::clinical_trials::win_ratio::WinRatioWorkbenchTool);
+        check_tool!(crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool);
+        check_tool!(crate::tabs::clinical_trials::win_ratio_workbench::WinRatioWorkbenchTool);
         check_tool!(crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool);
         check_tool!(crate::tabs::climate::cera::CeraTool);
         check_tool!(crate::tabs::climate::co2_projections::Co2ProjectionsTool);
@@ -316,6 +317,15 @@ mod tests {
         assert_tool_roundtrip(
             &mut crate::tabs::clinical_trials::survival::SurvivalAnalysisTool::default(),
             r#"{"input_text":"5.0, 1\n12.0, 0"}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool::default(),
+            r#"{"lambda1":0.16,"lambda2":0.36,"alpha":0.7,"theta":0.6,"censor_horizon":4.5,"dropout_rate":0.06,"sig_alpha":0.05,"n_min":30,"n_max":150,"n_steps":5,"replicates":80,"seed":9001,"chart_mode":"TierWaterfall"}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::clinical_trials::win_ratio_workbench::WinRatioWorkbenchTool::default(
+            ),
+            r#"{"cohort_text":"Treatment,120,0\nControl,80,2","pairing_mode":"Unmatched","active_view":"CohortWaterfall","tier_specs":[{"label":"Survival","kind":"HigherIsBetter","threshold":0.0},{"label":"Hosp","kind":"LowerIsBetter","threshold":0.0}],"weibull_cfg":{"lambda1":0.08,"lambda2":0.18,"alpha":1.25,"theta":0.65,"horizon_c":8.0}}"#,
         );
         assert_tool_roundtrip(
             &mut crate::tabs::epidemiology::network_propagation::NetworkPropagationTool::default(),

@@ -8,9 +8,9 @@ mod ui;
 #[path = "gaussian_splatting_export.rs"]
 mod export;
 
-use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 #[cfg(test)]
 use crate::framework::ProjectionMode;
+use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
 use math_explorer::ai::gaussian_splatting::{Gaussian2D, Scene};
 use nalgebra::Point3;

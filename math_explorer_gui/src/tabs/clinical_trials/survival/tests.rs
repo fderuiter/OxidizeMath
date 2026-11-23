@@ -33,6 +33,7 @@ fn test_observation_cap_enforced_in_recalculate_and_load_state() {
     let mut tool = SurvivalAnalysisTool::default();
     let state_ok = serde_json::to_string(&SurvivalState {
         input_text: at_cap_input,
+        control_text: String::new(),
     })
     .unwrap();
     assert!(tool.try_load_state(&state_ok).is_ok());
@@ -45,6 +46,7 @@ fn test_observation_cap_enforced_in_recalculate_and_load_state() {
         .join("\n");
     let state_over = serde_json::to_string(&SurvivalState {
         input_text: over_cap_input.clone(),
+        control_text: String::new(),
     })
     .unwrap();
     let err = tool.try_load_state(&state_over).unwrap_err();
@@ -70,10 +72,38 @@ fn test_starter_preset_preserves_survival_probabilities() {
 }
 
 #[test]
+fn test_two_arm_kaplan_meier_estimates_hazard_ratio() {
+    let mut tool = SurvivalAnalysisTool::default();
+    let state = serde_json::to_string(&SurvivalState {
+        input_text: "10.0, 1\n12.0, 0\n15.0, 1".to_string(),
+        control_text: "4.0, 1\n5.0, 1\n6.0, 1".to_string(),
+    })
+    .unwrap();
+    tool.try_load_state(&state).unwrap();
+    assert_eq!(tool.observations.len(), 3);
+    assert_eq!(tool.control_observations.len(), 3);
+    assert!(!tool.control_curve.is_empty());
+    let hr = tool.hazard_ratio.as_ref().unwrap().as_ref().unwrap();
+    assert!(*hr < 1.0 && hr.is_finite());
+
+    let inline_prefix = serde_json::to_string(&SurvivalState {
+        input_text: "Treatment, 10.0, 1\nTreatment, 14.0, 0\nControl, 4.0, 1\nControl, 5.0, 1"
+            .to_string(),
+        control_text: String::new(),
+    })
+    .unwrap();
+    tool.try_load_state(&inline_prefix).unwrap();
+    assert_eq!(tool.arms.len(), 2);
+    assert_eq!(tool.observations.len(), 2);
+    assert_eq!(tool.control_observations.len(), 2);
+}
+
+#[test]
 fn test_two_arm_tsv_bom_log_rank_hazard_ratio_and_risk_table_exports() {
     let bom_tsv = format!("\u{feff}{}", TWO_ARM_SAMPLE_TEXT.replace(',', "\t"));
     let state = serde_json::to_string(&SurvivalState {
         input_text: bom_tsv,
+        control_text: String::new(),
     })
     .unwrap();
     let mut tool = SurvivalAnalysisTool::default();
@@ -97,7 +127,9 @@ fn test_two_arm_tsv_bom_log_rank_hazard_ratio_and_risk_table_exports() {
 fn test_median_survival_and_half_probability_step_crossing() {
     let mut tool = SurvivalAnalysisTool::default();
     tool.import_preset_json(STARTER_PRESET_JSON).unwrap();
-    let median = tool.median_survival_time().expect("median survival reached");
+    let median = tool
+        .median_survival_time()
+        .expect("median survival reached");
     assert!((median - 18.0).abs() < 1e-9);
 
     let step_pts = tool.build_step_points();
