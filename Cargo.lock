@@ -1105,6 +1105,7 @@ dependencies = [
  "rand",
  "rustfft",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "verified_engine",
 ]

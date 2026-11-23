@@ -199,6 +199,19 @@ impl SEIRModel<RungeKutta4<SEIRState>> {
     }
 
     /// Constructs a new SEIRModel with the given parameters using RungeKutta4.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use domain_epidemiology::__doctest_facade as math_explorer;
+    /// use math_explorer::epidemiology::compartmental::SEIRModel;
+    ///
+    /// let mut model = SEIRModel::new(10_000.0, 10.0, 0.6, 0.2, 0.1).unwrap();
+    /// model.step(1.0);
+    /// let st = model.state();
+    /// assert!(st.e > 0.0);
+    /// assert!((st.s + st.e + st.i + st.r - 10_000.0).abs() < 1e-8);
+    /// ```
     #[verified_engine::verified]
     pub fn new(
         n: f64,

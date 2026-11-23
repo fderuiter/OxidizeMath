@@ -164,6 +164,21 @@ mod tests {
         );
         assert_eq!(unknown_meta.get("start").map(String::as_str), Some("3"));
 
+        let wrong_arity = ParseError::WrongArgumentCount {
+            func: crate::ast::Func::Atan2,
+            expected: 2,
+            found: 1,
+            span: crate::ast::Span { start: 4, end: 12 },
+        };
+        let arity_meta = wrong_arity.metadata();
+        assert_eq!(
+            arity_meta.get("function").map(String::as_str),
+            Some("atan2")
+        );
+        assert_eq!(arity_meta.get("expected").map(String::as_str), Some("2"));
+        assert_eq!(arity_meta.get("found").map(String::as_str), Some("1"));
+        assert_eq!(arity_meta.get("start").map(String::as_str), Some("4"));
+
         let variants = [
             MathCommonsError::from(MathError::DimensionMismatch {
                 expected: Dimension(2),
@@ -173,6 +188,7 @@ mod tests {
             MathCommonsError::from(lex),
             MathCommonsError::from(parse),
             MathCommonsError::from(unknown_fn),
+            MathCommonsError::from(wrong_arity),
             MathCommonsError::from(EvalError::UnknownVariable("x".to_string())),
             MathCommonsError::from(GlslError::DepthLimitExceeded(64)),
         ];

@@ -4,6 +4,14 @@
 //! `point_order`), cyclic torsion subgroup orbits, and point enumeration via Tonelli-Shanks
 //! writing into caller-supplied slices with zero dynamic heap allocations.
 
+mod fp_curve;
+mod real_curve;
+
+pub use fp_curve::{
+    FpWeierstrassCurve, MAX_LATTICE_PRIME, PrimeWeierstrassCurve, hasse_weil_bound,
+};
+pub use real_curve::{CurvePoint, WeierstrassCurve};
+
 use crate::pure_math::elliptic_curves::EllipticCurveError;
 pub use crate::pure_math::elliptic_curves::modular_fp::{
     ChordStepFp, HasseSweepEntry, mod_inv_fp, mod_pow_fp, sweep_hasse_bounds, tonelli_shanks_fp,
@@ -482,3 +490,4 @@ impl WeierstrassCurveFp {
 }
 
 // [cite:modular_polynomials_review]
+// [cite:hurwitz_kronecker]

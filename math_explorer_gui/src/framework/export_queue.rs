@@ -53,13 +53,6 @@ impl ExportFormat {
         }
     }
 
-    pub(super) const fn clipboard_item_noun(self) -> &'static str {
-        match self {
-            Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
-            _ => "dataset",
-        }
-    }
-
     /// Returns the standard file extension for this format.
     pub(crate) const fn extension(&self) -> &'static str {
         self.meta().0
@@ -268,7 +261,7 @@ impl SimulationFramework {
 
 #[cfg(test)]
 #[path = "deferred_export_tests.rs"]
-mod deferred_export_tests;
+pub(crate) mod deferred_export_tests;
 
 #[cfg(test)]
 #[path = "deferred_export_audit_tests.rs"]

@@ -1,8 +1,10 @@
 mod analysis;
 mod cache;
+mod manifest;
 mod runner;
 
 pub use cache::{AstCache, CachedRustFile};
+pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
 pub use runner::{
     check_and_print_traceability_errors, discover_workspace_code_dirs, format_traceability_errors,
     print_traceability_dashboard, run_workspace_traceability,
@@ -265,6 +267,39 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         Ok(())
     }
 
+    /// Discovers workspace code directories (`math_explorer/src`, `math_explorer_gui/src/tabs`,
+    /// and `crates/*/src`) and the `papers` directory relative to `base_dir`.
+    pub async fn discover_workspace_dirs(&self, base_dir: &str) -> (Vec<String>, String) {
+        let prefix = if base_dir.is_empty() || base_dir.ends_with('/') {
+            base_dir.to_string()
+        } else {
+            format!("{base_dir}/")
+        };
+        let mut code_dirs = vec![
+            format!("{prefix}math_explorer/src"),
+            format!("{prefix}math_explorer_gui/src/tabs"),
+        ];
+        let crate_base = format!("{prefix}crates");
+        if let Ok(mut crates) = self.vfs.list_dir(&crate_base).await {
+            crates.sort();
+            for crate_name in crates {
+                code_dirs.push(format!("{crate_base}/{crate_name}/src"));
+            }
+        }
+        (code_dirs, format!("{prefix}papers"))
+    }
+
+    /// Scans all discovered workspace code directories and `papers` under `base_dir`.
+    pub async fn scan_workspace(
+        &self,
+        base_dir: &str,
+        auto_fix: bool,
+    ) -> Result<TraceabilityReport, std::io::Error> {
+        let (code_dirs, papers_dir) = self.discover_workspace_dirs(base_dir).await;
+        let all_dirs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
+        self.scan_repository(&all_dirs, &papers_dir, auto_fix).await
+    }
+
     #[allow(missing_docs)]
     pub async fn scan_repository(
         &self,
@@ -323,92 +358,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         analysis::finalize_report_orphans(&mut report);
 
         Ok(report)
-    }
-
-    async fn process_code_files(
-        &self,
-        code_files: Vec<String>,
-        registered_modules: &HashSet<String>,
-        registry_links: &HashMap<String, String>,
-        report: &mut TraceabilityReport,
-        auto_fix: bool,
-        cache: &mut AstCache,
-    ) -> Result<(), std::io::Error> {
-        for file in code_files {
-            self.process_single_file(
-                file,
-                registered_modules,
-                registry_links,
-                report,
-                auto_fix,
-                cache,
-            )
-            .await?;
-        }
-        Ok(())
-    }
-
-    async fn process_single_file(
-        &self,
-        file: String,
-        registered_modules: &HashSet<String>,
-        registry_links: &HashMap<String, String>,
-        report: &mut TraceabilityReport,
-        auto_fix: bool,
-        cache: &mut AstCache,
-    ) -> Result<(), std::io::Error> {
-        let norm_file = crate::path_utils::normalize_path(&file);
-        let key = AstCache::normalize_key(&norm_file);
-        if cache.get(&key).is_none() {
-            let content = self.vfs.read_to_string(&norm_file).await?;
-            cache.insert_source(key.clone(), content);
-        }
-
-        report.scanned_files += 1;
-        let is_module = norm_file.ends_with("mod.rs")
-            || norm_file.contains("/tabs/")
-            || norm_file.ends_with("lib.rs");
-
-        let citations = cache
-            .get(&key)
-            .map(|entry| analysis::extract_citations_with_lines(&entry.content))
-            .unwrap_or_default();
-
-        let final_citations = if auto_fix {
-            let mut updated = cache
-                .get(&key)
-                .map(|entry| entry.content.clone())
-                .unwrap_or_default();
-            let (file_modified, resolved) = analysis::fix_and_collect_citations(
-                &norm_file,
-                &mut updated,
-                citations,
-                registered_modules,
-                registry_links,
-                report,
-                true,
-            );
-            if file_modified {
-                self.vfs
-                    .write_to_file(&norm_file, updated.as_bytes())
-                    .await?;
-                cache.insert_source(key.clone(), updated);
-            }
-            resolved
-        } else {
-            analysis::collect_valid_citations(&norm_file, citations, registered_modules, report)
-        };
-
-        let ast = cache.get(&key).and_then(|entry| entry.ast.as_ref());
-        analysis::analyze_parsed_ast(
-            &norm_file,
-            ast,
-            is_module,
-            &final_citations,
-            registered_modules,
-            report,
-        );
-        Ok(())
     }
 
     #[allow(clippy::double_must_use)]

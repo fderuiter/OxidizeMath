@@ -13,20 +13,22 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
+pub mod cargo_cli_checks;
+mod cargo_cli_parser;
+pub mod catalog_and_guide_checks;
 pub mod facade_imports;
+pub mod manifest_model;
+pub mod toml_dep_checks;
+pub mod trait_contracts;
 
+#[cfg(test)]
+mod guide_gate_tests;
 #[cfg(test)]
 mod tests;
 
-/// Default allowlist of legacy or application workspace crates exempt from
-/// standardized architectural headings while awaiting manual authoring.
-pub const DEFAULT_LEGACY_ALLOWLIST: &[&str] = &[
-    "crates/diagnostics",
-    "egui_plot",
-    "apps/xtask",
-    "math_explorer",
-    "math_explorer_gui",
-];
+/// Default allowlist of vendored workspace crates exempt from
+/// standardized OxidizeMath architectural headings.
+pub const DEFAULT_LEGACY_ALLOWLIST: &[&str] = &["egui_plot"];
 
 /// Minimum required lines for a standard crate README.
 pub const MIN_README_LINES: usize = 30;
@@ -296,11 +298,18 @@ fn run_doc_audit_in_base(workspace_root: &Path, members: &[String], args: &[Stri
     }
 
     report.extend(facade_imports::audit_facade_import_hygiene(workspace_root));
+    report.extend(facade_imports::audit_workspace_guides_and_manifests(
+        workspace_root,
+    ));
 
+    print_doc_audit_summary(&report, members.len())
+}
+
+fn print_doc_audit_summary(report: &AuditReport, member_count: usize) -> bool {
     if report.is_success() {
         println!(
             "[OK] All {} workspace crates passed documentation verification.",
-            members.len()
+            member_count
         );
         true
     } else {

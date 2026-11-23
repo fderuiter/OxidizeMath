@@ -5,8 +5,8 @@ use std::ops::Deref;
 #[doc(hidden)]
 pub use serde as __serde;
 
+/// Implements transparent [`serde::Serialize`] and validated [`serde::Deserialize`] for a bounded `f64` newtype.
 #[macro_export]
-#[allow(missing_docs)]
 macro_rules! impl_bounded_float_serde {
     ($name:ident) => {
         #[cfg(feature = "serde")]
