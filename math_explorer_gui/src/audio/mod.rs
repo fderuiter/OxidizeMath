@@ -284,6 +284,10 @@ pub fn notify_tool_switched(new_tool_id: &'static str) {
 }
 
 #[cfg(test)]
+mod number_theory_tests;
+#[cfg(test)]
+mod spin_resonance_tests;
+#[cfg(test)]
 mod tests;
 
 #[cfg(all(test, feature = "physics"))]

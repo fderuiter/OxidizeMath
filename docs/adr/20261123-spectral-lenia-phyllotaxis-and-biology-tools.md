@@ -1,10 +1,10 @@
-# ADR 0048: Developmental Phyllotaxis, Nutrient-Coupled L-Systems, and Multi-Tool Biology Playground
+# ADR 20261123: Developmental Phyllotaxis, Nutrient-Coupled L-Systems, and Multi-Tool Biology Playground
 
 ## Status
-Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0042](0042-fft-lenia-engine-and-gray-scott-kinetics.md), and [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md))
+Accepted (extends [ADR 0004](0004-unified-verification-dependency-audit.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 20261123](20261123-fft-lenia-engine-and-gray-scott-kinetics.md), and [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md))
 
 ## Context
-Following [ADR 0042](0042-fft-lenia-engine-and-gray-scott-kinetics.md), [`crates/domain_biology`](../../crates/domain_biology/README.md) implemented enzyme saturation (`MichaelisMenten`, `HillKinetics`), evolutionary replicator games (`HawkDovePopulation`), generic $N$-species reaction-diffusion (`ReactionDiffusionSystem`), two-species Schnakenberg and Gray-Scott morphogenesis, and spectral 2D `LeniaEngine`, while [`MorphogenesisTab`](../../math_explorer_gui/src/tabs/morphogenesis/mod.rs) hosted `MorphogenesisTool` and `LeniaTool`. However, botanical morphogenesis (Vogel golden-angle phyllotaxis and nutrient-coupled L-systems) and interactive GUI exploration for evolutionary replicator and enzyme saturation kinetics remained absent, and [`traceability.toml`](../../traceability.toml) mapped `biology` to a placeholder paper (`favorite_child.tex`) rather than a dedicated mathematical biology manuscript.
+Following [ADR 20261123](20261123-fft-lenia-engine-and-gray-scott-kinetics.md), [`crates/domain_biology`](../../crates/domain_biology/README.md) implemented enzyme saturation (`MichaelisMenten`, `HillKinetics`), evolutionary replicator games (`HawkDovePopulation`), generic $N$-species reaction-diffusion (`ReactionDiffusionSystem`), two-species Schnakenberg and Gray-Scott morphogenesis, and spectral 2D `LeniaEngine`, while [`MorphogenesisTab`](../../math_explorer_gui/src/tabs/morphogenesis/mod.rs) hosted `MorphogenesisTool` and `LeniaTool`. However, botanical morphogenesis (Vogel golden-angle phyllotaxis and nutrient-coupled L-systems) and interactive GUI exploration for evolutionary replicator and enzyme saturation kinetics remained absent, and [`traceability.toml`](../../traceability.toml) mapped `biology` to a placeholder paper (`favorite_child.tex`) rather than a dedicated mathematical biology manuscript.
 
 ## Decision
 1. **Developmental Phyllotaxis and Nutrient-Coupled L-Systems (`biology::phyllotaxis`)**:
@@ -16,6 +16,6 @@ Following [ADR 0042](0042-fft-lenia-engine-and-gray-scott-kinetics.md), [`crates
    - Regenerate [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json) via `unified_verification regenerate-baseline`.
 
 ## Consequences
-- **Positive**: `MorphogenesisTab` exposes a complete four-tool mathematical biology suite (`MorphogenesisTool`, `LeniaTool`, `PhyllotaxisLSystemTool`, and `EvolutionKineticsTool`) without duplicating `LeniaEngine` or `GrayScottKinetics` from [ADR 0042](0042-fft-lenia-engine-and-gray-scott-kinetics.md) and with zero heap allocations inside verified step loops.
+- **Positive**: `MorphogenesisTab` exposes a complete four-tool mathematical biology suite (`MorphogenesisTool`, `LeniaTool`, `PhyllotaxisLSystemTool`, and `EvolutionKineticsTool`) without duplicating `LeniaEngine` or `GrayScottKinetics` from [ADR 20261123](20261123-fft-lenia-engine-and-gray-scott-kinetics.md) and with zero heap allocations inside verified step loops.
 - **Positive**: Every `domain_biology` submodule (`neuroscience`, `kinetics`, `reaction_diffusion`, `morphogenesis`, `lenia`, `phyllotaxis`, `evolution`, `diffusion`) is exercised by interactive GUI visualizations, documented in [`crates/domain_biology/README.md`](../../crates/domain_biology/README.md), and linked to [`papers/morphogenesis_and_lenia.tex`](../../papers/morphogenesis_and_lenia.tex).
 - **Neutral**: Public additions in `domain_biology` require regenerating [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json).

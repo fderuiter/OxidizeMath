@@ -1,4 +1,4 @@
-# ADR 0042: Zero-Allocation 2D FFT Lenia Engine and Promoted Gray-Scott Kinetics
+# ADR 20261123: Zero-Allocation 2D FFT Lenia Engine and Promoted Gray-Scott Kinetics
 
 ## Status
 Accepted
