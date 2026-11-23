@@ -191,12 +191,14 @@ impl NetworkPropagationTool {
         let edge_hit = self.hit_test_edge(pos, center, scale);
         match (self.interaction_mode, node_hit, edge_hit) {
             (ContainmentMode::QuarantineEdge, _, Some(edge_idx))
-            | (ContainmentMode::VaccinateNode, None, Some(edge_idx)) => {
+            | (ContainmentMode::VaccinateNode, None, Some(edge_idx))
+                if self.allows_quarantine() =>
+            {
                 self.interaction_mode = ContainmentMode::QuarantineEdge;
                 self.focused_edge = edge_idx;
                 self.announce_edge_toggle(ctx, edge_idx);
             }
-            (_, Some(node_idx), _) => {
+            (_, Some(node_idx), _) if self.allows_vaccination() => {
                 self.interaction_mode = ContainmentMode::VaccinateNode;
                 self.focused_node = node_idx;
                 self.announce_node_toggle(ctx, node_idx);
@@ -208,17 +210,25 @@ impl NetworkPropagationTool {
     fn handle_canvas_keyboard(&mut self, ui: &egui::Ui) {
         let ctx = ui.ctx();
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::M)) {
-            self.interaction_mode = match self.interaction_mode {
-                ContainmentMode::VaccinateNode if !self.model.edges().is_empty() => {
+            let next_mode = match self.interaction_mode {
+                ContainmentMode::VaccinateNode
+                    if !self.model.edges().is_empty() && self.allows_quarantine() =>
+                {
                     ContainmentMode::QuarantineEdge
                 }
-                _ => ContainmentMode::VaccinateNode,
+                ContainmentMode::QuarantineEdge if self.allows_vaccination() => {
+                    ContainmentMode::VaccinateNode
+                }
+                keep => keep,
             };
-            let mode_name = match self.interaction_mode {
-                ContainmentMode::VaccinateNode => "Vaccinate Node mode",
-                ContainmentMode::QuarantineEdge => "Quarantine Edge mode",
-            };
-            announce_live_status(ctx, format!("Switched to {mode_name}"));
+            if next_mode != self.interaction_mode {
+                self.interaction_mode = next_mode;
+                let mode_name = match self.interaction_mode {
+                    ContainmentMode::VaccinateNode => "Vaccinate Node mode",
+                    ContainmentMode::QuarantineEdge => "Quarantine Edge mode",
+                };
+                announce_live_status(ctx, format!("Switched to {mode_name}"));
+            }
         }
 
         let arrow_dir = ctx.input_mut(|i| {

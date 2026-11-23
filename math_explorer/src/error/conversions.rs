@@ -100,6 +100,7 @@ impl_error_from!(@cfg "pure_math":
     KellyError => Kelly,
     KnotError => Knot,
     LinearAlgebraError => LinearAlgebra,
+    MarketPricingError => MarketPricing,
     MarkovError => Markov,
     NumberTheoryError => NumberTheory,
     OptimizationError => Optimization,
