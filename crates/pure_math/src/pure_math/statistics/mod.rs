@@ -23,6 +23,7 @@
 //!     dataset log-loss, Gaussian and ensemble `CRPS`, `ECE`/`MCE` reliability curves, `ROC`/`PR-AUC`,
 //!     and post-hoc Platt, temperature, and `PAVA` isotonic recalibrators.
 //! *   **[Kelly Criterion](kelly)**: Optimal capital allocation strategy to maximize logarithmic wealth growth.
+//! *   **[Market Pricing & Devigging](market_pricing)**: Zero-allocation bookmaker overround removal (`Multiplicative`, `Additive`, `Power`, `Shin`), `+EV` valuation, arbitrage, subset Dutching, middling, and live hedging.
 //! *   **[Copulas](copula)**: sophisticated dependency modeling (e.g., Gaussian Copula) for correlated events,
 //!     critical for pricing derivatives or "Same Game Parlays".
 //!
@@ -103,6 +104,7 @@ pub mod calibration;
 pub mod copula;
 pub mod glicko2;
 pub mod kelly;
+pub mod market_pricing;
 pub mod markov;
 pub mod ou_process;
 pub mod regression;

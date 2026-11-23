@@ -4,6 +4,7 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use math_explorer::physics::astrophysics::HaloProfile;
 
+pub mod challenge;
 pub mod galactic_orbits_tool;
 mod galactic_orbits_ui;
 pub mod rotation_curve_tool;
@@ -110,10 +111,6 @@ impl ExplorerTab for AstrophysicsTab {
 
     fn load_state(&mut self, state: &str) {
         self.framework.load_state(state);
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework.focused_canvas_id()
     }
 
     fn select_tool_by_name(&mut self, name: &str) -> bool {
