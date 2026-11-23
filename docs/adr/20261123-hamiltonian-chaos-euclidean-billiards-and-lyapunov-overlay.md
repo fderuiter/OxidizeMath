@@ -1,4 +1,4 @@
-# ADR 0047: Unified Hamiltonian Chaos Kernels, Flat Euclidean Dynamical Billiards, and Bifurcation Lyapunov Overlay
+# ADR 20261123: Unified Hamiltonian Chaos Kernels, Flat Euclidean Dynamical Billiards, and Bifurcation Lyapunov Overlay
 
 ## Status
 Accepted (extends [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 0046](0046-symplectic-hamiltonian-solvers-and-poincare-lab.md))

@@ -33,7 +33,7 @@ impl DynamicalBilliardsTool {
         if boundary.len() >= 3 {
             prims.push(ExportPrimitive::Polyline {
                 name: "Billiard Outer Boundary".to_string(),
-                points: boundary,
+                points: boundary.into(),
                 color: palette.info,
                 stroke_width: 2.0_f32,
                 closed: true,
@@ -50,7 +50,7 @@ impl DynamicalBilliardsTool {
                 .collect();
             prims.push(ExportPrimitive::Polyline {
                 name: "Sinai Central Scatterer".to_string(),
-                points: disk,
+                points: disk.into(),
                 color: palette.warning,
                 stroke_width: 1.8_f32,
                 closed: true,
@@ -61,7 +61,7 @@ impl DynamicalBilliardsTool {
             if slot.vertices.len() >= 2 {
                 prims.push(ExportPrimitive::Polyline {
                     name: format!("Ray {} Chords", idx + 1),
-                    points: slot.vertices.clone(),
+                    points: egui_plot::SharedPoints::from_slice(&slot.vertices),
                     color: palette.series_color(slot.color_index),
                     stroke_width: 1.3_f32,
                     closed: false,

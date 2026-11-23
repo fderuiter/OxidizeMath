@@ -52,7 +52,7 @@ impl DynamicalBilliardsTool {
                 self.is_playing = false;
                 self.rebuild_tables_and_fire_fan();
             }
-            None => {}
+            Some(PlaybackAction::StepBack | PlaybackAction::ScrubTo(_)) | None => {}
         }
     }
 
