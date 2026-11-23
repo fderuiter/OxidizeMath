@@ -19,9 +19,9 @@ pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{
             AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
-            FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarketPricingError,
-            MarkovError, MatchModelError, NumberTheoryError, OptimizationError, OuError,
-            PureMathError, PureMathError as Error, StochasticError, TdaError, TensorError,
+            FractranError, Glicko2Error, HyperbolicError, KellyError, LinearAlgebraError,
+            MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
+            OuError, PureMathError, PureMathError as Error, StochasticError, TdaError, TensorError,
             TransformError, ZipError,
         };
         pub use math_commons::error::{
