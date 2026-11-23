@@ -16,6 +16,8 @@ pub struct SpikeAnalysisTool {
     input_current: f64,
     spike_threshold: f64,
     simulation_speed: usize,
+    spiked_in_frame: bool,
+    sonification: crate::audio::SonificationFrame,
 }
 
 impl Default for SpikeAnalysisTool {
@@ -32,6 +34,8 @@ impl Default for SpikeAnalysisTool {
             input_current: 10.0,
             spike_threshold: 0.0,
             simulation_speed: 10,
+            spiked_in_frame: false,
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 }
@@ -142,17 +146,37 @@ impl SpikeAnalysisTool {
             }
 
             ui.separator();
-            ui.label(format!("Time: {:.2} ms", self.time));
-            ui.label(format!("Spikes Detected: {}", self.spike_times.len()));
-            if let Some(last_isi) = self.isis.back() {
-                ui.label(format!("Last ISI: {last_isi:.2} ms"));
-            }
-            if !self.isis.is_empty() {
-                let mean_isi: f64 = self.isis.iter().sum::<f64>() / self.isis.len() as f64;
-                ui.label(format!("Mean ISI: {mean_isi:.2} ms"));
-                ui.label(format!("Firing Rate: {:.2} Hz", 1000.0 / mean_isi));
-            }
+            crate::audio::render_sonification_panel(
+                ui,
+                "spike_analysis",
+                &self.sonification,
+                !self.is_running && self.time <= 0.0,
+            );
+            ui.separator();
+            self.draw_telemetry_labels(ui);
         });
+    }
+
+    fn draw_telemetry_labels(&self, ui: &mut egui::Ui) {
+        ui.label(format!("Time: {:.2} ms", self.time));
+        ui.label(format!("Spikes Detected: {}", self.spike_times.len()));
+        if let Some(last_isi) = self.isis.back() {
+            ui.label(format!("Last ISI: {last_isi:.2} ms"));
+        }
+        let rate_hz = self.mean_firing_rate_hz();
+        if rate_hz > 0.0 {
+            let mean_isi = 1000.0 / rate_hz;
+            ui.label(format!("Mean ISI: {mean_isi:.2} ms"));
+            ui.label(format!("Firing Rate: {rate_hz:.2} Hz"));
+        }
+    }
+
+    fn mean_firing_rate_hz(&self) -> f64 {
+        if self.isis.is_empty() {
+            return 0.0;
+        }
+        let mean_isi = self.isis.iter().sum::<f64>() / (self.isis.len() as f64);
+        if mean_isi > 1e-6 { 1000.0 / mean_isi } else { 0.0 }
     }
 
     fn draw_plots(&mut self, parent_ui: &mut egui::Ui) {
@@ -222,6 +246,7 @@ impl SpikeAnalysisTool {
         self.time += dt;
 
         if v >= self.spike_threshold && self.last_voltage < self.spike_threshold {
+            self.spiked_in_frame = true;
             self.record_spike(self.time);
         }
 
@@ -238,13 +263,39 @@ impl SpikeAnalysisTool {
 
     pub(crate) fn step_once(&mut self) {
         self.is_running = false;
+        self.spiked_in_frame = false;
+        let prev_v = self.last_voltage;
         self.advance_dt_tick();
+        self.refresh_sonification(prev_v);
     }
 
     fn step_simulation(&mut self) {
+        self.spiked_in_frame = false;
+        let prev_v = self.last_voltage;
         for _ in 0..self.simulation_speed {
             self.advance_dt_tick();
         }
+        self.refresh_sonification(prev_v);
+    }
+
+    fn refresh_sonification(&mut self, frame_start_v: f64) {
+        let cur_v = self.neuron.v();
+        let ref_prev = if self.spiked_in_frame {
+            self.spike_threshold - 5.0
+        } else {
+            frame_start_v
+        };
+        let ref_cur = if self.spiked_in_frame {
+            cur_v.max(self.spike_threshold + 5.0)
+        } else {
+            cur_v
+        };
+        self.sonification = crate::audio::mappings::spike_analysis_frame(
+            ref_cur,
+            ref_prev,
+            self.spike_threshold,
+            self.mean_firing_rate_hz(),
+        );
     }
 
     fn record_spike(&mut self, time: f64) {
@@ -270,6 +321,8 @@ impl SpikeAnalysisTool {
         self.isis.clear();
         self.last_voltage = -65.0;
         self.is_running = false;
+        self.spiked_in_frame = false;
+        self.sonification = crate::audio::SonificationFrame::silent();
     }
 
     fn compute_histogram(&self, num_bins: usize) -> Vec<Bar> {

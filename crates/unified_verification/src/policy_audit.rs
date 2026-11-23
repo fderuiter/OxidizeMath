@@ -3,10 +3,7 @@ pub(crate) mod doctests;
 pub(crate) mod lint_policy;
 
 pub use crate::whitelist::DeadCodeEntry;
-use crate::whitelist::{
-    PathMatchOptions, ROOT_ONLY_WHITELIST_CANDIDATES, VerificationWhitelist,
-    WORKSPACE_WHITELIST_CANDIDATES,
-};
+use crate::whitelist::{PathMatchOptions, ROOT_ONLY_WHITELIST_CANDIDATES, VerificationWhitelist};
 use dependencies::{
     DependencyVisitor, collect_expected_dependencies, is_whitelisted_unused_dep,
     manifest_package_name,
@@ -311,13 +308,13 @@ pub(crate) fn run_policy_audit_with_caches(
     cache: &mut oxidize_core::traceability::AstCache,
     manifest_cache: &mut crate::manifest_cache::ManifestCache,
 ) -> bool {
-    let candidates = if lint_policy::cwd_is_member_crate_dir() {
-        WORKSPACE_WHITELIST_CANDIDATES
+    let resolved = if lint_policy::cwd_is_member_crate_dir() {
+        crate::whitelist::find_whitelist_path()
     } else {
-        ROOT_ONLY_WHITELIST_CANDIDATES
+        crate::whitelist::resolve_whitelist_path(ROOT_ONLY_WHITELIST_CANDIDATES)
     };
-    let whitelist_path = crate::whitelist::resolve_whitelist_path(candidates)
-        .unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
+    let whitelist_path =
+        resolved.unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
     run_policy_audit_with_whitelist_and_caches(members, &whitelist_path, cache, manifest_cache)
 }
 
