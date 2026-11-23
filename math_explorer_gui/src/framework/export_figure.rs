@@ -388,3 +388,25 @@ impl SimulationFramework {
         }
     }
 }
+
+pub(super) fn sample_tool_animation_frames<T: InteractiveTool + ?Sized>(
+    tool: &mut T,
+    num_frames: usize,
+) -> Vec<egui_plot::export::DatasetFrame> {
+    let count = num_frames.max(1);
+    let mut frames = Vec::with_capacity(count);
+    for _ in 0..count {
+        tool.step_simulation();
+        let ds = tool.export_datasets();
+        if !ds.is_empty() {
+            frames.push(ds);
+        }
+    }
+    if frames.is_empty() {
+        let ds = tool.export_datasets();
+        if !ds.is_empty() {
+            frames = egui_plot::export::sample_progressive_frames(&ds, count);
+        }
+    }
+    frames
+}
