@@ -2,6 +2,7 @@
 
 #[path = "sir/atlas.rs"]
 pub mod atlas;
+mod metadata;
 mod metrics;
 
 use crate::async_sim::atlas::ParameterAtlasController;
@@ -13,7 +14,6 @@ use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::epidemiology::compartmental::SIRModel;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 const MIN_SIR_DURATION: f64 = 10.0;
@@ -37,21 +37,12 @@ struct SirStateRef<'a> {
     duration: f64,
     #[serde(skip_serializing_if = "is_true")]
     show_network_overlay: bool,
-    #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
-    snapshot_manager: &'a TraceSnapshotManager,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot_manager: Option<&'a TraceSnapshotManager>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     atlas_visible: bool,
     #[serde(skip_serializing_if = "is_default_sir_atlas_axes")]
     atlas_axes: [String; 2],
-}
-
-#[derive(serde::Serialize)]
-struct SirRecoveryState {
-    n: f64,
-    i0: f64,
-    beta: f64,
-    gamma: f64,
-    duration: f64,
 }
 
 #[derive(serde::Deserialize)]
@@ -95,6 +86,9 @@ pub struct SirTool {
     pub(super) sensitivity_engine: crate::sensitivity::SensitivityEngine,
     pub(super) last_param_summary: String,
     revision: u64,
+    series_key: (usize, usize, usize, usize, usize, usize),
+    series_finite: bool,
+    cached_peak: Option<(f64, f64)>,
 }
 
 impl Default for SirTool {
@@ -117,6 +111,9 @@ impl Default for SirTool {
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             last_param_summary: String::new(),
             revision: 1,
+            series_key: (0, 0, 0, 0, 0, 0),
+            series_finite: true,
+            cached_peak: None,
         };
         tool.recalculate();
         tool
@@ -188,6 +185,7 @@ impl SirTool {
         self.display_s = std::sync::Arc::new(Vec::new());
         self.display_i = std::sync::Arc::new(Vec::new());
         self.display_r = std::sync::Arc::new(Vec::new());
+        self.series_key = (0, 0, 0, 0, 0, 0);
         self.last_param_summary = self.param_summary();
 
         if !self.duration.is_finite() || self.duration <= 0.0 {
@@ -222,11 +220,8 @@ impl SirTool {
                 self.r_points.push(PlotPoint::new(t, state.r));
                 model.step(dt);
             }
-            let cap = crate::framework::MAX_DISPLAY_POLYLINE_POINTS;
-            self.display_s = crate::framework::decimate_plot_points_minmax(&self.s_points, cap);
-            self.display_i = crate::framework::decimate_plot_points_minmax(&self.i_points, cap);
-            self.display_r = crate::framework::decimate_plot_points_minmax(&self.r_points, cap);
         }
+        self.sync_series_cache();
     }
 
     fn load_sir_state(&mut self, state: &str, preserve_snapshots: bool) -> Result<(), String> {
@@ -252,12 +247,39 @@ impl SirTool {
         self.beta = s.beta;
         self.gamma = s.gamma;
         self.duration = s.duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION);
+        self.show_network_overlay = s.show_network_overlay;
         if !preserve_snapshots {
-            self.show_network_overlay = s.show_network_overlay;
             self.snapshot_manager = s.snapshot_manager;
         }
         self.recalculate();
         Ok(())
+    }
+
+    fn hash_shared_parameters(&self, h: &mut impl Hasher) {
+        for val in [self.n, self.i0, self.beta, self.gamma, self.duration] {
+            val.to_bits().hash(h);
+        }
+        self.show_network_overlay.hash(h);
+        self.atlas.is_visible().hash(h);
+        self.atlas.axis_keys().hash(h);
+    }
+
+    fn serialize_sir_state(&self, include_snapshots: bool) -> Option<String> {
+        let (xk, yk) = self.atlas.axis_keys();
+        let snapshot_manager = (include_snapshots && !self.snapshot_manager.is_empty())
+            .then_some(&self.snapshot_manager);
+        serde_json::to_string(&SirStateRef {
+            n: self.n,
+            i0: self.i0,
+            beta: self.beta,
+            gamma: self.gamma,
+            duration: self.duration,
+            show_network_overlay: self.show_network_overlay,
+            snapshot_manager,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
+        })
+        .ok()
     }
 }
 
@@ -275,37 +297,42 @@ impl InteractiveTool for SirTool {
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.revision.hash(&mut h);
-        self.n.to_bits().hash(&mut h);
-        self.i0.to_bits().hash(&mut h);
-        self.beta.to_bits().hash(&mut h);
-        self.gamma.to_bits().hash(&mut h);
-        self.duration.to_bits().hash(&mut h);
-        self.show_network_overlay.hash(&mut h);
+        self.hash_shared_parameters(&mut h);
         self.snapshot_manager.len().hash(&mut h);
         self.snapshot_manager.history_len().hash(&mut h);
-        self.atlas.is_visible().hash(&mut h);
-        self.atlas.axis_keys().hash(&mut h);
+        h.finish().max(1)
+    }
+
+    fn url_state_revision(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.hash_shared_parameters(&mut h);
         h.finish().max(1)
     }
 
     fn has_finite_parameters(&self) -> bool {
-        [self.n, self.i0, self.beta, self.gamma, self.duration]
+        let scalars_ok = [self.n, self.i0, self.beta, self.gamma, self.duration]
             .into_iter()
             .all(f64::is_finite)
             && self.n > 0.0
-            && self.duration > 0.0
-            && self
-                .s_points
+            && self.duration > 0.0;
+        if !scalars_ok {
+            return false;
+        }
+        if self.series_key == self.current_series_key() {
+            self.series_finite
+        } else {
+            self.s_points
                 .iter()
                 .all(|p| p.x.is_finite() && p.y.is_finite())
-            && self
-                .i_points
-                .iter()
-                .all(|p| p.x.is_finite() && p.y.is_finite())
-            && self
-                .r_points
-                .iter()
-                .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .i_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite())
+                && self
+                    .r_points
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite())
+        }
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -326,30 +353,11 @@ impl InteractiveTool for SirTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let (xk, yk) = self.atlas.axis_keys();
-        serde_json::to_string(&SirStateRef {
-            n: self.n,
-            i0: self.i0,
-            beta: self.beta,
-            gamma: self.gamma,
-            duration: self.duration,
-            show_network_overlay: self.show_network_overlay,
-            snapshot_manager: &self.snapshot_manager,
-            atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
-        })
-        .ok()
+        self.serialize_sir_state(true)
     }
 
     fn save_recovery_state(&self) -> Option<String> {
-        serde_json::to_string(&SirRecoveryState {
-            n: self.n,
-            i0: self.i0,
-            beta: self.beta,
-            gamma: self.gamma,
-            duration: self.duration,
-        })
-        .ok()
+        self.serialize_sir_state(false)
     }
 
     fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
@@ -372,6 +380,7 @@ impl InteractiveTool for SirTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
+            self.sync_series_cache();
             ui.vertical(|ui| {
                 ui.heading("Parameters");
                 if self.render_parameter_controls(ui) {
@@ -399,7 +408,7 @@ impl InteractiveTool for SirTool {
                 }) {
                     self.revision = self.revision.wrapping_add(1).max(1);
                 }
-                metrics::evaluate_sensitivity(ui, self);
+                self.evaluate_sensitivity(ui);
             });
         });
     }
@@ -407,67 +416,5 @@ impl InteractiveTool for SirTool {
 
 // [cite:graph_parameters_rust]
 
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "SirTool",
-        display_name: "SIR Model",
-        domain: "epidemiology",
-        tags: &[],
-        build: || Box::new(SirTool::default()),
-    }
-}
-
-impl TheoryDescribable for SirTool {
-    fn theory_description(&self) -> String {
-        let r0 = self.beta / self.gamma;
-        format!(
-            "Kermack-McKendrick SIR compartmental epidemic model: $\\frac{{dS}}{{dt}} = -\\frac{{\\beta S I}}{{N}}$, $\\frac{{dI}}{{dt}} = \\frac{{\\beta S I}}{{N}} - \\gamma I$, $\\frac{{dR}}{{dt}} = \\gamma I$. Transmission rate $\\beta = {:.3}$, recovery rate $\\gamma = {:.3}$, basic reproduction number $R_0 = {:.2}$.",
-            self.beta, self.gamma, r0
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Kermack-McKendrick SIR compartmental epidemic model theory".into()
-    }
-
-    fn theory_citation(&self) -> String {
-        "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into()
-    }
-
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        HashMap::new()
-    }
-
-    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        [
-            ("N", 100.0, 100_000.0, 100.0),
-            ("I0", 1.0, 50_000.0, 1.0),
-            ("beta", 0.0, 5.0, 0.02),
-            ("gamma", 0.0, 1.0, 0.01),
-            ("duration", MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0),
-        ]
-        .into_iter()
-        .map(|(k, min, max, step)| (k.to_string(), ParameterConstraint { min, max, step }))
-        .collect()
-    }
-}
-
 #[cfg(test)]
 mod tests;
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": { "schema_version": "1.0", "title": "Kermack-McKendrick SIR Model", "domain": "epidemiology", "timestamp": "2026-11-16T00:00:00Z" },
-  "config": { "n": 10000.0, "i0": 25.0, "beta": 0.3, "gamma": 0.1, "duration": 120.0 }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "sir_starter",
-        title: "Kermack-McKendrick SIR Model",
-        description: "dS/dt = -βSI/N, dI/dt = βSI/N - γI: Compartmental epidemic outbreak dynamics and herd immunity.",
-        category: "Compartmental Models",
-        icon: "🦠",
-        domain: "epidemiology",
-        tool_name: Some("SirTool"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}

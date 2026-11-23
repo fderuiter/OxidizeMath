@@ -150,6 +150,22 @@ impl WorkspaceDataBus {
     }
 }
 
+/// Validates any embedded `data_bus`, `seeded_graph`, or `frozen_graph` payloads inside a `#state=` JSON string.
+///
+/// Fast-paths without heap allocation when none of the embedded graph-bus keys appear in `json_str`.
+pub fn validate_embedded_url_bus_json(json_str: &str) -> Result<(), String> {
+    let cleaned = egui_plot::export::strip_utf8_bom(json_str);
+    if !cleaned.contains("\"data_bus\"")
+        && !cleaned.contains("\"seeded_graph\"")
+        && !cleaned.contains("\"frozen_graph\"")
+    {
+        return Ok(());
+    }
+    let parsed: serde_json::Value =
+        serde_json::from_str(cleaned).map_err(|e| format!("Invalid URL state JSON: {e}"))?;
+    validate_embedded_url_bus_fields(&parsed)
+}
+
 /// Validates any embedded `data_bus` or `seeded_graph` payloads inside a `#state=` JSON document.
 pub fn validate_embedded_url_bus_fields(parsed: &serde_json::Value) -> Result<(), String> {
     let _ = (ToolStateBounds::DEFAULT, URL_JSON_BOUNDS);
@@ -161,20 +177,21 @@ pub fn validate_embedded_url_bus_fields(parsed: &serde_json::Value) -> Result<()
             .map_err(|e| format!("Invalid URL data_bus payload: {e}"))?;
         bus.validate_url_bounds()?;
     }
-    if let Some(sg_val) = obj
-        .get("config")
-        .and_then(serde_json::Value::as_object)
-        .and_then(|cfg| cfg.get("seeded_graph"))
-        .filter(|v| !v.is_null())
-    {
-        let graph: SharedGraph = serde_json::from_value(sg_val.clone())
-            .map_err(|e| format!("Invalid URL seeded_graph payload: {e}"))?;
-        graph.validate(URL_MAX_BUS_NODES, URL_MAX_BUS_EDGES)?;
+    if let Some(cfg) = obj.get("config").and_then(serde_json::Value::as_object) {
+        for key in ["seeded_graph", "frozen_graph"] {
+            if let Some(sg_val) = cfg.get(key).filter(|v| !v.is_null()) {
+                let graph: SharedGraph = serde_json::from_value(sg_val.clone())
+                    .map_err(|e| format!("Invalid URL {key} payload: {e}"))?;
+                graph.validate(URL_MAX_BUS_NODES, URL_MAX_BUS_EDGES)?;
+            }
+        }
     }
-    if let Some(sg_root) = obj.get("seeded_graph").filter(|v| !v.is_null()) {
-        let graph: SharedGraph = serde_json::from_value(sg_root.clone())
-            .map_err(|e| format!("Invalid URL seeded_graph payload: {e}"))?;
-        graph.validate(URL_MAX_BUS_NODES, URL_MAX_BUS_EDGES)?;
+    for key in ["seeded_graph", "frozen_graph"] {
+        if let Some(sg_root) = obj.get(key).filter(|v| !v.is_null()) {
+            let graph: SharedGraph = serde_json::from_value(sg_root.clone())
+                .map_err(|e| format!("Invalid URL {key} payload: {e}"))?;
+            graph.validate(URL_MAX_BUS_NODES, URL_MAX_BUS_EDGES)?;
+        }
     }
     Ok(())
 }

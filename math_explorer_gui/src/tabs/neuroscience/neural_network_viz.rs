@@ -138,29 +138,32 @@ impl NeuralNetworkVizTool {
         self.sonification = crate::audio::mappings::neural_ring_frame(&after, &before, 0.0);
     }
 
+    fn draw_bus_coupling_controls(&mut self, ui: &mut egui::Ui) {
+        let rev_opt = (self.applied_bus_revision > 0).then_some(self.applied_bus_revision);
+        if render_follow_workspace_toggle(
+            ui,
+            &mut self.follow_workspace_graph,
+            "Neural Network Viz",
+            rev_opt,
+        ) && self.follow_workspace_graph
+        {
+            self.applied_bus_revision = 0;
+            self.sync_from_bus(ui.ctx());
+        }
+        render_node_budget_banner(
+            ui,
+            self.clamped_source_nodes,
+            MAX_HH_NEURON_BUDGET,
+            "Hodgkin-Huxley neurons",
+        );
+    }
+
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "nn_viz_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Controls");
             ui.separator();
-
-            let rev_opt = (self.applied_bus_revision > 0).then_some(self.applied_bus_revision);
-            if render_follow_workspace_toggle(
-                ui,
-                &mut self.follow_workspace_graph,
-                "Neural Network Viz",
-                rev_opt,
-            ) && self.follow_workspace_graph
-            {
-                self.applied_bus_revision = 0;
-                self.sync_from_bus(ui.ctx());
-            }
-            render_node_budget_banner(
-                ui,
-                self.clamped_source_nodes,
-                MAX_HH_NEURON_BUDGET,
-                "Hodgkin-Huxley neurons",
-            );
+            self.draw_bus_coupling_controls(ui);
             ui.separator();
 
             if let Some(action) = PlaybackTransport::in_thread(
@@ -174,6 +177,7 @@ impl NeuralNetworkVizTool {
                     PlaybackAction::Play => self.is_running = true,
                     PlaybackAction::Pause => self.is_running = false,
                     PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset(),
                 }
             }
@@ -235,10 +239,8 @@ impl NeuralNetworkVizTool {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Network Visualization");
 
-            let (response, painter) = ui.allocate_painter(
-                ui.available_size(),
-                egui::Sense::focusable_noninteractive(),
-            );
+            let (response, painter) =
+                ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
             let label = "Neural Network Visualization: Showing interconnected neurons";
             let _ = response.clone().accessible_hover_text(label);
             let summary = format!("{} interconnected neurons", self.neurons.len());
