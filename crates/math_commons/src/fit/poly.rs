@@ -282,26 +282,33 @@ fn select_pivot_row<const N: usize>(mat: &[[f64; N]; N], col: usize, n: usize) -
     pivot_row
 }
 
+pub(crate) fn symmetrize_upper<const N: usize>(mat: &mut [[f64; N]; N], n: usize) {
+    for row in 0..n {
+        let (head, tail) = mat[..n].split_at_mut(row + 1);
+        let src = &head[row][row + 1..n];
+        for (dst_row, &val) in tail.iter_mut().zip(src.iter()) {
+            dst_row[row] = val;
+        }
+    }
+}
+
 fn eliminate_below<const N: usize>(
     mat: &mut [[f64; N]; N],
     b: &mut [f64; N],
     col: usize,
     n: usize,
 ) {
-    let diag = mat[col][col];
-    let (head, tail) = mat[..n].split_at_mut(col + 1);
-    let pivot_row = &head[col];
-    let pivot_rhs = b[col];
-    for (dst_row, dst_rhs) in tail.iter_mut().zip(&mut b[(col + 1)..n]) {
-        let factor = dst_row[col] / diag;
-        dst_row[col] = 0.0;
-        for (dst_val, &pivot_val) in dst_row[(col + 1)..n]
-            .iter_mut()
-            .zip(&pivot_row[(col + 1)..n])
-        {
-            *dst_val -= factor * pivot_val;
+    let (pivot_part, below_part) = mat[..n].split_at_mut(col + 1);
+    let pivot_row = &pivot_part[col];
+    let diag = pivot_row[col];
+    let pivot_b = b[col];
+    for (mat_row, b_row) in below_part.iter_mut().zip(&mut b[col + 1..n]) {
+        let factor = mat_row[col] / diag;
+        mat_row[col] = 0.0;
+        for (dst, &piv) in mat_row[col + 1..n].iter_mut().zip(&pivot_row[col + 1..n]) {
+            *dst -= factor * piv;
         }
-        *dst_rhs -= factor * pivot_rhs;
+        *b_row -= factor * pivot_b;
     }
 }
 
@@ -327,28 +334,4 @@ fn back_substitute<const N: usize>(
     Ok(x)
 }
 
-/// Formats a human-readable polynomial or power-law formula string.
-#[must_use]
-pub fn format_polynomial_formula(coeffs: &[f64], log_x: bool, log_y: bool) -> String {
-    if log_x && log_y && coeffs.len() == 2 {
-        let a = 10.0_f64.powf(coeffs[0]);
-        return format!("y = {a:.4}·x^({:.4})", coeffs[1]);
-    }
-    let x_sym = if log_x { "log10(x)" } else { "x" };
-    let y_sym = if log_y { "log10(y)" } else { "y" };
-    let mut out = format!("{y_sym} = ");
-    for (idx, &c) in coeffs.iter().enumerate() {
-        if idx == 0 {
-            out.push_str(&format!("{c:.4}"));
-        } else {
-            let sign = if c >= 0.0 { " + " } else { " - " };
-            let abs_c = c.abs();
-            if idx == 1 {
-                out.push_str(&format!("{sign}{abs_c:.4}·{x_sym}"));
-            } else {
-                out.push_str(&format!("{sign}{abs_c:.4}·{x_sym}^{idx}"));
-            }
-        }
-    }
-    out
-}
+pub use super::format::format_polynomial_formula;

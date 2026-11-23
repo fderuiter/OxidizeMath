@@ -5,6 +5,7 @@
 //! backed by fixed stack buffers and typed [`FitError`] diagnostics.
 // [cite:math_commons]
 
+mod format;
 mod lm;
 mod nonlinear;
 mod poly;
@@ -32,17 +33,6 @@ pub use seeds::{
 
 /// Maximum polynomial regression degree supported on stack buffers without heap allocation.
 pub const MAX_POLYNOMIAL_DEGREE: usize = 4;
-
-#[inline]
-pub(super) fn mirror_upper_triangle<const M: usize>(mat: &mut [[f64; M]; M], k: usize) {
-    for row in 0..k {
-        let (upper, lower) = mat[..k].split_at_mut(row + 1);
-        let src_row = &upper[row];
-        for (offset, dst_row) in lower.iter_mut().enumerate() {
-            dst_row[row] = src_row[row + 1 + offset];
-        }
-    }
-}
 
 /// Canonical parametric regression model presets without degree clamping or hash collisions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -316,7 +306,15 @@ impl CurveFit {
     pub fn format_formula(&self) -> String {
         match self.fit_model {
             FitModel::Linear | FitModel::Quadratic | FitModel::Cubic | FitModel::Quartic => {
-                format_polynomial_formula(self.coefficients(), self.log_x, self.log_y)
+                let u_scale = self.poly_center_scale.map_or(1.0, |(u_mean, u_span, _)| {
+                    (u_mean.abs() + u_span.abs()).max(1.0)
+                });
+                format::format_polynomial_with_scale(
+                    self.coefficients(),
+                    u_scale,
+                    self.log_x,
+                    self.log_y,
+                )
             }
             FitModel::Exponential
             | FitModel::PowerLaw

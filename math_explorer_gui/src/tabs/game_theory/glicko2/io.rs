@@ -2,49 +2,17 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub(crate) use super::state::TournamentIoState;
 use super::Glicko2TournamentTool;
 use crate::framework::InteractiveTool;
 use crate::presets::{
     Glicko2MatchPreset, Glicko2PeriodPreset, Glicko2PlayerPreset, Glicko2TournamentPresetConfig,
     MAX_TOURNAMENT_PERIODS,
 };
-use crate::web_io::{
-    spawn_open_file_dialog, spawn_save_as_file_dialog, strip_utf8_bom, OpenDialogConfig,
-    SaveAsDialogConfig,
-};
-use eframe::egui;
+use crate::web_io::strip_utf8_bom;
 use math_explorer::pure_math::statistics::glicko2::head_to_head_win_probability;
 use serde::Deserialize;
 use std::collections::BTreeMap;
-use std::sync::mpsc::{channel, Receiver};
-
-const MATCH_LOG_OPEN_CONFIG: OpenDialogConfig = OpenDialogConfig {
-    filter_name: "Match Log or Preset (.csv, .json)",
-    extensions: &["csv", "json"],
-    accept: ".csv,.json,text/csv,application/json",
-    read_error_prefix: "Failed to read tournament file",
-};
-
-const CSV_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
-    filter_name: "CSV Spreadsheet (.csv)",
-    extensions: &["csv"],
-    fallback_filename: "glicko2_export.csv",
-    write_error_prefix: "Failed to write CSV export",
-};
-
-const JSON_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
-    filter_name: "JSON Document (.json)",
-    extensions: &["json"],
-    fallback_filename: "glicko2_export.json",
-    write_error_prefix: "Failed to write JSON export",
-};
-
-#[derive(Default)]
-pub(crate) struct TournamentIoState {
-    open_rx: Option<Receiver<Result<(String, String), String>>>,
-    save_rx: Option<Receiver<Result<String, String>>>,
-    pub status_message: Option<(bool, String)>,
-}
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -72,18 +40,24 @@ fn resolve_player_token(token: &str, names: &[String]) -> Result<usize, String> 
         return Ok(idx);
     }
     if let Ok(idx) = trimmed.parse::<usize>() {
-        return (idx < names.len())
-            .then_some(idx)
-            .ok_or_else(|| format!("Player index {idx} out of bounds for {} players", names.len()));
+        return (idx < names.len()).then_some(idx).ok_or_else(|| {
+            format!(
+                "Player index {idx} out of bounds for {} players",
+                names.len()
+            )
+        });
     }
     Err(format!("Unknown competitor '{trimmed}' in match log"))
 }
 
 fn resolve_selector(sel: &PlayerSelector, names: &[String]) -> Result<usize, String> {
     match sel {
-        PlayerSelector::Index(idx) => (*idx < names.len())
-            .then_some(*idx)
-            .ok_or_else(|| format!("Player index {idx} out of bounds for {} players", names.len())),
+        PlayerSelector::Index(idx) => (*idx < names.len()).then_some(*idx).ok_or_else(|| {
+            format!(
+                "Player index {idx} out of bounds for {} players",
+                names.len()
+            )
+        }),
         PlayerSelector::Name(name) => resolve_player_token(name, names),
     }
 }
@@ -95,17 +69,31 @@ fn validate_match_entry(
     row_num: usize,
 ) -> Result<Glicko2MatchPreset, String> {
     if player_a == player_b {
-        return Err(format!("Row {row_num}: invalid self-match for player index {player_a}"));
+        return Err(format!(
+            "Row {row_num}: invalid self-match for player index {player_a}"
+        ));
     }
     if !score_a.is_finite() || !(0.0..=1.0).contains(&score_a) {
-        return Err(format!("Row {row_num}: score_a must be finite in [0.0, 1.0] (got {score_a})"));
+        return Err(format!(
+            "Row {row_num}: score_a must be finite in [0.0, 1.0] (got {score_a})"
+        ));
     }
-    Ok(Glicko2MatchPreset { player_a, player_b, score_a })
+    Ok(Glicko2MatchPreset {
+        player_a,
+        player_b,
+        score_a,
+    })
 }
 
 fn is_csv_header_line(cols: &[&str]) -> bool {
-    let first = cols.first().map(|s| s.trim().trim_matches('"')).unwrap_or("");
-    matches!(first.to_ascii_lowercase().as_str(), "period" | "round" | "player_a" | "white")
+    let first = cols
+        .first()
+        .map(|s| s.trim().trim_matches('"'))
+        .unwrap_or("");
+    matches!(
+        first.to_ascii_lowercase().as_str(),
+        "period" | "round" | "player_a" | "white"
+    )
 }
 
 fn parse_csv_row<'a>(
@@ -149,8 +137,10 @@ fn parse_csv_periods(
         }
         let line_num = line_idx + 1;
         let (period_key, pa_raw, pb_raw, score_raw) = parse_csv_row(&cols, line_num, base_period)?;
-        let pa = resolve_player_token(pa_raw, names).map_err(|e| format!("Line {line_num}: {e}"))?;
-        let pb = resolve_player_token(pb_raw, names).map_err(|e| format!("Line {line_num}: {e}"))?;
+        let pa =
+            resolve_player_token(pa_raw, names).map_err(|e| format!("Line {line_num}: {e}"))?;
+        let pb =
+            resolve_player_token(pb_raw, names).map_err(|e| format!("Line {line_num}: {e}"))?;
         let score_a = score_raw
             .trim()
             .parse::<f64>()
@@ -166,7 +156,10 @@ fn parse_csv_periods(
     }
     let periods = grouped
         .into_values()
-        .map(|matches| Glicko2PeriodPreset { matches, bye_player: None })
+        .map(|matches| Glicko2PeriodPreset {
+            matches,
+            bye_player: None,
+        })
         .collect();
     Ok((periods, match_count))
 }
@@ -187,8 +180,10 @@ fn parse_json_match_array(
         if period_key == 0 {
             return Err(format!("Entry {}: period must be >= 1", idx + 1));
         }
-        let pa = resolve_selector(&rec.player_a, names).map_err(|e| format!("Entry {}: {e}", idx + 1))?;
-        let pb = resolve_selector(&rec.player_b, names).map_err(|e| format!("Entry {}: {e}", idx + 1))?;
+        let pa = resolve_selector(&rec.player_a, names)
+            .map_err(|e| format!("Entry {}: {e}", idx + 1))?;
+        let pb = resolve_selector(&rec.player_b, names)
+            .map_err(|e| format!("Entry {}: {e}", idx + 1))?;
         grouped
             .entry(period_key)
             .or_default()
@@ -196,7 +191,10 @@ fn parse_json_match_array(
     }
     let periods = grouped
         .into_values()
-        .map(|matches| Glicko2PeriodPreset { matches, bye_player: None })
+        .map(|matches| Glicko2PeriodPreset {
+            matches,
+            bye_player: None,
+        })
         .collect();
     Ok((periods, records.len()))
 }
@@ -284,7 +282,9 @@ impl Glicko2TournamentTool {
 
         let mut candidate = self.export_config();
         if candidate.periods.len() + new_periods.len() > MAX_TOURNAMENT_PERIODS {
-            return Err(format!("Import exceeds period cap ({MAX_TOURNAMENT_PERIODS})"));
+            return Err(format!(
+                "Import exceeds period cap ({MAX_TOURNAMENT_PERIODS})"
+            ));
         }
         candidate.periods.extend(new_periods);
         candidate.validate()?;
@@ -419,58 +419,5 @@ impl Glicko2TournamentTool {
             })
             .collect();
         serde_json::to_string_pretty(&rows).map_err(|e| e.to_string())
-    }
-    pub(crate) fn poll_io(&mut self, ctx: &egui::Context) {
-        if let Some(Ok(outcome)) = self.io_state.open_rx.as_ref().map(Receiver::try_recv) {
-            self.io_state.open_rx = None;
-            let status = match outcome {
-                Ok((name, raw)) => match self.import_match_log_str(&raw) {
-                    Ok(count) => (false, format!("Imported {count} match(es) from {name}")),
-                    Err(err) => (true, format!("Import rejected ({name}): {err}")),
-                },
-                Err(err) => (true, err),
-            };
-            self.io_state.status_message = Some(status);
-            ctx.request_repaint();
-        }
-        if let Some(Ok(outcome)) = self.io_state.save_rx.as_ref().map(Receiver::try_recv) {
-            self.io_state.save_rx = None;
-            self.io_state.status_message = Some(match outcome {
-                Ok(saved) => (false, format!("Exported tournament file: {saved}")),
-                Err(err) => (true, err),
-            });
-            ctx.request_repaint();
-        }
-    }
-}
-
-impl TournamentIoState {
-    pub(crate) fn trigger_import_dialog(&mut self) {
-        let (tx, rx) = channel();
-        self.open_rx = Some(rx);
-        spawn_open_file_dialog(tx, MATCH_LOG_OPEN_CONFIG, |p| {
-            p.file_name().and_then(|s| s.to_str()).unwrap_or("match_log").to_string()
-        });
-    }
-
-    pub(crate) fn trigger_save_csv(&mut self, default_filename: &str, content: String) {
-        let (tx, rx) = channel();
-        self.save_rx = Some(rx);
-        spawn_save_as_file_dialog(tx, CSV_SAVE_CONFIG, default_filename, content, |p, fb| {
-            p.file_name().and_then(|s| s.to_str()).unwrap_or(fb).to_string()
-        });
-    }
-
-    pub(crate) fn trigger_save_json(&mut self, default_filename: &str, content: Result<String, String>) {
-        match content {
-            Ok(payload) => {
-                let (tx, rx) = channel();
-                self.save_rx = Some(rx);
-                spawn_save_as_file_dialog(tx, JSON_SAVE_CONFIG, default_filename, payload, |p, fb| {
-                    p.file_name().and_then(|s| s.to_str()).unwrap_or(fb).to_string()
-                });
-            }
-            Err(err) => self.status_message = Some((true, err)),
-        }
     }
 }

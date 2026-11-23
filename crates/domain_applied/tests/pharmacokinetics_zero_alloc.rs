@@ -1,4 +1,3 @@
-#![allow(missing_docs)]
 //! Zero-allocation verification for 64-event pharmacokinetic regimen sampling and analytics.
 
 use domain_applied::applied::pharmacokinetics::{
