@@ -258,39 +258,6 @@ fn test_conformal_cache_reuse_invalidation_and_invalid_bounds_clearing() {
     assert!(!tool.cache.w_vertical.is_empty());
 }
 
-fn assert_contour_shapes(
-    z_batch: &cache::ContourBatch<'_>,
-    w_batch: &cache::ContourBatch<'_>,
-    lin_tf: &egui_plot::PlotTransform,
-    log_tf: &egui_plot::PlotTransform,
-) {
-    use egui_plot::PlotItem as _;
-
-    let ctx = egui::Context::default();
-    let _ = ctx.run(egui::RawInput::default(), |c| {
-        egui::CentralPanel::default().show(c, |ui| {
-            let mut z_shapes = Vec::new();
-            z_batch.shapes(ui, lin_tf, &mut z_shapes);
-            assert_eq!(z_shapes.len(), 5);
-            assert!(z_shapes
-                .iter()
-                .all(|s| matches!(s, egui::Shape::LineSegment { .. })));
-
-            let mut w_log_shapes = Vec::new();
-            w_batch.shapes(ui, log_tf, &mut w_log_shapes);
-            assert!(!w_log_shapes.is_empty());
-            for shape in &w_log_shapes {
-                if let egui::Shape::Path(path_shape) = shape {
-                    assert!(path_shape
-                        .points
-                        .iter()
-                        .all(|p| p.x.is_finite() && p.y.is_finite()));
-                }
-            }
-        });
-    });
-}
-
 #[test]
 fn test_contour_batch_shapes_hover_log_split_and_nan_free_extract_points() {
     use egui_plot::{PlotBounds, PlotItem as _, PlotTransform};
@@ -337,7 +304,39 @@ fn test_contour_batch_shapes_hover_log_split_and_nan_free_extract_points() {
         true,
     );
     log_tf.set_log_axis(egui::Vec2b::new(true, false));
-    assert_contour_shapes(&z_batch, &w_batch, &lin_tf, &log_tf);
+    assert_contour_batch_shapes(&z_batch, &w_batch, &lin_tf, &log_tf);
+}
+
+fn assert_contour_batch_shapes(
+    z_batch: &cache::ContourBatch<'_>,
+    w_batch: &cache::ContourBatch<'_>,
+    lin_tf: &egui_plot::PlotTransform,
+    log_tf: &egui_plot::PlotTransform,
+) {
+    use egui_plot::PlotItem as _;
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |c| {
+        egui::CentralPanel::default().show(c, |ui| {
+            let mut z_shapes = Vec::new();
+            z_batch.shapes(ui, lin_tf, &mut z_shapes);
+            assert_eq!(z_shapes.len(), 5);
+            assert!(z_shapes
+                .iter()
+                .all(|s| matches!(s, egui::Shape::LineSegment { .. })));
+
+            let mut w_log_shapes = Vec::new();
+            w_batch.shapes(ui, log_tf, &mut w_log_shapes);
+            assert!(!w_log_shapes.is_empty());
+            for shape in &w_log_shapes {
+                if let egui::Shape::Path(path_shape) = shape {
+                    assert!(path_shape
+                        .points
+                        .iter()
+                        .all(|p| p.x.is_finite() && p.y.is_finite()));
+                }
+            }
+        });
+    });
 }
 
 #[test]
