@@ -21,4 +21,4 @@ Four mathematical and interactive-state defects affected [`pure_math::statistics
 
 ## Consequences
 - **Positive**: All four odds representations convert bidirectionally with zero heap allocations under `VerifiedEngine::run_verified`, `-100.0` and `+100.0` behave symmetrically, `BetSizeCalculatorTool` keeps readouts and Kelly theory metadata synchronized without dead-zone errors, and users can export Kelly sizing tables to `CSV` and `JSON`.
-- **Neutral**: Inventory export capability audits track `47` plot tools, `7` raster tools, `1` dataset-only calculator tool, and `15` non-exportable tools across the `70` registered `InteractiveTool` implementations.
+- **Neutral**: Inventory export capability audits track `52` plot tools, `7` raster tools, `1` dataset-only calculator tool, and `15` non-exportable tools across the `75` registered `InteractiveTool` implementations.
