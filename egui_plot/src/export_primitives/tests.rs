@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::{Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, ExportOptions, Line, PlotItem};
 
 use super::{
-    ExportPrimitive, export_primitives_png, export_primitives_svg, export_raster_gif,
-    export_raster_png, export_raster_svg, render_primitives_image,
+    ExportPrimitive, export_primitives_svg, export_raster_gif, export_raster_svg,
+    render_primitives_image, scale_color_image,
 };
 
 fn count_non_bg_pixels(img: &egui::ColorImage, bg: egui::Color32) -> usize {
@@ -39,7 +39,7 @@ fn test_barchart_extract_points_and_offscreen_render() {
     let img = render_primitives_image(&prims, &opts).expect("bar raster render");
     assert!(count_non_bg_pixels(&img, opts.background_color) > 200);
 
-    let png = export_primitives_png(&prims, &opts).expect("bar png");
+    let png = crate::color32_image_to_png(&img).expect("bar png");
     assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
 
     let svg = export_primitives_svg(&prims, &opts).expect("bar svg");
@@ -142,7 +142,9 @@ fn test_mixed_line_and_bar_and_raster_exports() {
             .map(|i| egui::Color32::from_rgb((i * 15) as u8, 80, 200))
             .collect(),
     );
-    let raster_png = export_raster_png(&raster, &opts).expect("raster png");
+    let scaled_raster =
+        scale_color_image(&raster, opts.width as usize, opts.height as usize, &opts);
+    let raster_png = crate::color32_image_to_png(&scaled_raster).expect("raster png");
     assert!(raster_png.starts_with(b"\x89PNG\r\n\x1a\n"));
     let raster_svg = export_raster_svg(&raster, &opts).expect("raster svg");
     assert!(raster_svg.contains("data:image/png;base64,"));
@@ -156,7 +158,7 @@ fn test_empty_primitives_and_raster_rejected() {
     assert!(render_primitives_image(&[], &opts).is_err());
     assert!(export_primitives_svg(&[], &opts).is_err());
     let empty_img = egui::ColorImage::new([0, 0], vec![]);
-    assert!(export_raster_png(&empty_img, &opts).is_err());
+    assert!(export_raster_gif(std::slice::from_ref(&empty_img), &opts, 10).is_err());
     assert!(export_raster_svg(&empty_img, &opts).is_err());
     let empty_prim = ExportPrimitive::RasterImage {
         name: "empty".to_string(),

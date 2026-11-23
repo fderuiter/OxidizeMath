@@ -26,8 +26,8 @@ fn maybe_write_perf_screenshot(output_path: &str) {
             ..Default::default()
         };
         let prms = egui_plot::get_last_plot_primitives();
-        let png =
-            egui_plot::export_primitives::export_primitives_png(&prms, &opts).expect("render PNG");
+        let img = egui_plot::render_primitives_image(&prms, &opts).expect("render image");
+        let png = egui_plot::color32_image_to_png(&img).expect("encode PNG");
         std::fs::write(output_path, png).expect("write verification PNG");
     }
 }
