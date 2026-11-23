@@ -385,6 +385,13 @@ pub fn build_wave_datasets(wave_data: &WaveData) -> Vec<(String, Vec<[f64; 2]>)>
     ]
 }
 
+/// Threshold on interior barrier probability $B(t)$ indicating packet transit completion.
+pub const BARRIER_TRANSIT_THRESHOLD: f64 = 0.02;
+/// Right-wall proximity coordinate above which boundary reflection begins.
+pub const RIGHT_WALL_GUARD_X: f64 = 4.25;
+/// Threshold on $\sum_{x > 4.25} |\psi|^2$ before right-wall bounce freezes $T_{\text{scatter}}$.
+pub const WALL_ARRIVAL_THRESHOLD: f64 = 0.02;
+
 /// Integrated Born probabilities across reflection, barrier, transmission, and wall zones.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TunnelingObservables {
@@ -400,7 +407,7 @@ pub struct TunnelingObservables {
     pub left_wall_prob: f64,
 }
 
-/// Integrates probability density into reflection, barrier, and transmission sums.
+/// Integrates `QuantumState::probability_density` into reflection, barrier, and transmission sums.
 #[must_use]
 pub fn compute_tunneling_observables(
     x_axis: &[f64],
@@ -423,9 +430,9 @@ pub fn compute_tunneling_observables(
         } else {
             obs.transmission += p;
         }
-        if x > super::runner::RIGHT_WALL_GUARD_X {
+        if x > RIGHT_WALL_GUARD_X {
             obs.right_wall_prob += p;
-        } else if x < -super::runner::RIGHT_WALL_GUARD_X {
+        } else if x < -RIGHT_WALL_GUARD_X {
             obs.left_wall_prob += p;
         }
     }

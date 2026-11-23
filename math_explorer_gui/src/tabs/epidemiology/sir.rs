@@ -13,10 +13,11 @@ use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::epidemiology::compartmental::SIRModel;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-pub(crate) const MIN_SIR_DURATION: f64 = 10.0;
-pub(crate) const MAX_SIR_DURATION: f64 = 365.0;
+const MIN_SIR_DURATION: f64 = 10.0;
+const MAX_SIR_DURATION: f64 = 365.0;
 const MAX_SIR_STEPS: usize = 100_000;
 
 #[derive(serde::Serialize)]
@@ -385,39 +386,35 @@ impl InteractiveTool for SirTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.show_ui(ui);
-        });
-    }
-
-    fn show_ui(&mut self, ui: &mut egui::Ui) {
-        ui.vertical(|ui| {
-            ui.heading("Parameters");
-            if self.render_parameter_controls(ui) {
-                self.record_history_and_recalculate();
-            }
-            metrics::render_epidemic_metrics(ui, self);
-            self.render_sir_readouts_and_atlas(ui);
-            ui.add_space(8.0);
-            let param_summary = self.param_summary();
-            let current_len = self.snapshot_manager.len();
-            let (s_pts, i_pts, r_pts) = (&self.s_points, &self.i_points, &self.r_points);
-            if self.snapshot_manager.render_ui(ui, move || {
-                let label = format!("Baseline {}", current_len + 1);
-                let to_pairs =
-                    |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
-                let series = vec![
-                    TraceSeries::new("Susceptible", to_pairs(s_pts)),
-                    TraceSeries::new("Infected", to_pairs(i_pts)),
-                    TraceSeries::new("Recovered", to_pairs(r_pts)),
-                ];
-                Some((label, param_summary, series))
-            }) {
-                self.revision = self.revision.wrapping_add(1).max(1);
-            }
-            self.evaluate_sensitivity(ui);
-            ui.separator();
-            metrics::render_simulation_plot(ui, self);
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.heading("Parameters");
+                if self.render_parameter_controls(ui) {
+                    self.record_history_and_recalculate();
+                }
+                metrics::render_epidemic_metrics(ui, self);
+                self.render_sir_readouts_and_atlas(ui);
+                ui.add_space(8.0);
+                let param_summary = self.param_summary();
+                let current_len = self.snapshot_manager.len();
+                let (s_pts, i_pts, r_pts) = (&self.s_points, &self.i_points, &self.r_points);
+                if self.snapshot_manager.render_ui(ui, move || {
+                    let label = format!("Baseline {}", current_len + 1);
+                    let to_pairs =
+                        |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+                    let series = vec![
+                        TraceSeries::new("Susceptible", to_pairs(s_pts)),
+                        TraceSeries::new("Infected", to_pairs(i_pts)),
+                        TraceSeries::new("Recovered", to_pairs(r_pts)),
+                    ];
+                    Some((label, param_summary, series))
+                }) {
+                    self.revision = self.revision.wrapping_add(1).max(1);
+                }
+                self.evaluate_sensitivity(ui);
+                ui.separator();
+                metrics::render_simulation_plot(ui, self);
+            });
         });
     }
 }
@@ -431,6 +428,40 @@ inventory::submit! {
         domain: "epidemiology",
         tags: &[],
         build: || Box::new(SirTool::default()),
+    }
+}
+
+impl TheoryDescribable for SirTool {
+    fn theory_description(&self) -> String {
+        let r0 = self.beta / self.gamma;
+        format!(
+            "Kermack-McKendrick SIR compartmental epidemic model: $\\frac{{dS}}{{dt}} = -\\frac{{\\beta S I}}{{N}}$, $\\frac{{dI}}{{dt}} = \\frac{{\\beta S I}}{{N}} - \\gamma I$, $\\frac{{dR}}{{dt}} = \\gamma I$. Transmission rate $\\beta = {:.3}$, recovery rate $\\gamma = {:.3}$, basic reproduction number $R_0 = {:.2}$.",
+            self.beta, self.gamma, r0
+        )
+    }
+    fn phonetic_description(&self) -> String {
+        "Kermack-McKendrick SIR compartmental epidemic model theory".into()
+    }
+
+    fn theory_citation(&self) -> String {
+        "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into()
+    }
+
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        HashMap::new()
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        [
+            ("N", 100.0, 100_000.0, 100.0),
+            ("I0", 1.0, 50_000.0, 1.0),
+            ("beta", 0.0, 5.0, 0.02),
+            ("gamma", 0.0, 1.0, 0.01),
+            ("duration", MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0),
+        ]
+        .into_iter()
+        .map(|(k, min, max, step)| (k.to_string(), ParameterConstraint { min, max, step }))
+        .collect()
     }
 }
 

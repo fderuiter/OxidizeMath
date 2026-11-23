@@ -27,7 +27,11 @@ fn click_accesskit_label(ctx: &egui::Context, tab: &mut MorphogenesisTab, label_
             screen_rect: Some(screen),
             ..Default::default()
         },
-        |ctx| tab.show(ctx, &mut frame),
+        |ctx| {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        },
     );
     let ak = out.platform_output.accesskit_update.as_ref().unwrap();
     let bounds = ak
@@ -60,7 +64,11 @@ fn click_accesskit_label(ctx: &egui::Context, tab: &mut MorphogenesisTab, label_
             ],
             ..Default::default()
         },
-        |ctx| tab.show(ctx, &mut frame),
+        |ctx| {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        },
     );
 }
 
@@ -438,7 +446,11 @@ fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
 
     let mut frame = eframe::Frame::_new_kittest();
     for _ in 0..8 {
-        let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        });
         let _ = render_tool_frame(&ctx, &mut tool);
         thread::sleep(Duration::from_millis(8));
     }
@@ -452,7 +464,11 @@ fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
     tab.params.write().unwrap().auto_dt = false;
     tool.params.write().unwrap().auto_dt = false;
     for _ in 0..1200 {
-        let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        });
         let _ = render_tool_frame(&ctx, &mut tool);
         if active_morpho_tool_state(&tab).state == Some(SimWorkerState::Faulted)
             && tool.worker.state() == SimWorkerState::Faulted

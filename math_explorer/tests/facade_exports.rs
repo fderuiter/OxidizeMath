@@ -53,6 +53,50 @@ fn core_only_facade_exports_work_without_domain_features() {
     assert!((cg.value() - (0.3_f64).sqrt()).abs() < 1e-6);
 }
 
+#[test]
+fn default_headless_curve_fitting_and_poi_solvers_work_without_gui_deps() {
+    use math_explorer::diagnostics::{Diagnostic, Severity};
+    use math_explorer::error::FitError;
+    use math_explorer::fit::{FitModel, fit_model, fit_polynomial, levenberg_marquardt};
+    use math_explorer::poi::{
+        closest_threshold_crossing, detect_local_extrema, intersect_polylines, parabolic_vertex,
+    };
+    use math_explorer::prelude::{FitError as PreludeFitError, FitModel as PreludeFitModel};
+
+    let xs = [0.0, 1.0, 2.0, 3.0, 4.0];
+    let ys = [1.0, 0.0, 1.0, 4.0, 9.0];
+    let paired = (&xs[..], &ys[..]);
+
+    let quad = fit_model(&paired, PreludeFitModel::Quadratic, false).expect("quadratic fit");
+    assert_eq!(quad.fit_model, FitModel::Quadratic);
+    assert!((quad.eval(1.0)).abs() < 1e-9);
+    assert_eq!(
+        fit_polynomial(&paired, 5),
+        Err(FitError::UnsupportedDegree { degree: 5 })
+    );
+
+    let fit_err: PreludeFitError = FitError::SingularMatrix;
+    assert_eq!(fit_err.severity(), Severity::Error);
+
+    let lm = levenberg_marquardt(&paired, &[0.5, 0.5], |x, p| {
+        let d = x - p[0];
+        (d * d + p[1], [-2.0 * d, 1.0, 0.0, 0.0])
+    })
+    .expect("lm quadratic vertex");
+    assert!((lm[0] - 1.0).abs() < 1e-6);
+
+    assert_eq!(
+        parabolic_vertex([0.0, 1.0], [1.0, 0.0], [2.0, 1.0]),
+        [1.0, 0.0]
+    );
+    assert_eq!(detect_local_extrema(&paired).len(), 1);
+    assert!(closest_threshold_crossing(&paired, 2.5, 2.5).is_some());
+    assert_eq!(
+        intersect_polylines(&paired, &[[0.0, 2.0], [4.0, 2.0]], [0.0, 4.0]).len(),
+        1
+    );
+}
+
 #[cfg(feature = "pure_math")]
 #[test]
 fn pure_math_facade_exports_containers_third_party_types_and_eight_errors() {
@@ -287,21 +331,22 @@ fn physics_facade_exports_all_eight_physics_errors() {
     feature = "physics"
 ))]
 #[test]
-fn all_twenty_six_crate_error_enums_constructible_from_math_explorer_error() {
+fn all_twenty_seven_crate_error_enums_constructible_from_math_explorer_error() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
         AIError, BatteryError, ChaosError, CopulaError, DoseFluenceError, EngineeringError,
-        EpidemiologyError, FluidError, GameTheoryError, Glicko2Error, HighEnergyError,
+        EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error, HighEnergyError,
         HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarkovError, MathError,
         NumberTheoryError, OuError, PharmacokineticsError, RadarError, SolidStateError,
         StandardModelError, StatMechError, TdaError, ZipError,
     };
 
-    let all_26_severities = [
+    let all_27_severities = [
         MathError::ConversionError {
             reason: "bad".to_string(),
         }
         .severity(),
+        FitError::SingularMatrix.severity(),
         NumberTheoryError::ConversionError.severity(),
         KellyError::InvalidBankroll { value: -1.0 }.severity(),
         MarkovError::InvalidState {
@@ -335,6 +380,6 @@ fn all_twenty_six_crate_error_enums_constructible_from_math_explorer_error() {
         StandardModelError::InvalidFlavors { nf: -1.0 }.severity(),
         StatMechError::InvalidTemperature(-5.0).severity(),
     ];
-    assert_eq!(all_26_severities.len(), 26);
-    assert!(all_26_severities.iter().all(|s| *s == Severity::Error));
+    assert_eq!(all_27_severities.len(), 27);
+    assert!(all_27_severities.iter().all(|s| *s == Severity::Error));
 }

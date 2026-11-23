@@ -24,7 +24,6 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 /// Interactive tool for 2D Schnakenberg Turing and Gray-Scott reaction-diffusion morphogenesis.
-#[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct MorphogenesisTool {
     /// Asynchronous simulation worker controller.
     pub worker: BackgroundWorker<MorphogenesisRunner>,

@@ -18,12 +18,10 @@ use num_complex::Complex;
 use std::any::Any;
 use std::sync::{Arc, RwLock};
 
-/// Threshold on interior barrier probability $B(t)$ indicating packet transit completion.
-pub const BARRIER_TRANSIT_THRESHOLD: f64 = 0.02;
-/// Right-wall proximity coordinate above which boundary reflection begins.
-pub const RIGHT_WALL_GUARD_X: f64 = 4.25;
-/// Threshold on $\sum_{x > 4.25} |\psi|^2$ before right-wall bounce freezes $T_{\text{scatter}}$.
-pub const WALL_ARRIVAL_THRESHOLD: f64 = 0.02;
+pub use super::presets::{
+    compute_tunneling_observables, TunnelingObservables, BARRIER_TRANSIT_THRESHOLD,
+    RIGHT_WALL_GUARD_X, WALL_ARRIVAL_THRESHOLD,
+};
 
 /// Shared parameter bundle synchronized between [`super::WaveSimulatorTool`] and [`WaveRunner`].
 #[derive(Clone, Debug)]
@@ -63,8 +61,6 @@ impl Default for WaveSimConfig {
         }
     }
 }
-
-pub use super::presets::{compute_tunneling_observables, TunnelingObservables};
 
 /// Structured snapshot payload emitted by [`WaveRunner`] to the UI thread.
 #[derive(Clone, Debug)]
@@ -123,6 +119,8 @@ pub struct WaveRunner {
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
+    prev_mode_phases: [f64; 8],
+    sonification: crate::audio::SonificationFrame,
 }
 
 impl WaveRunner {
@@ -157,6 +155,8 @@ impl WaveRunner {
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
+            prev_mode_phases: [0.0; 8],
+            sonification: crate::audio::SonificationFrame::silent(),
         };
         runner.init_from_config(&cfg);
         runner
@@ -200,7 +200,18 @@ impl WaveRunner {
         self.entered_barrier = false;
         self.wall_arrived = false;
         self.latched_transmission = None;
+        self.prev_mode_phases = [0.0; 8];
         self.update_observables_in_place();
+        self.refresh_sonification(cfg.dt);
+    }
+
+    fn refresh_sonification(&mut self, dt: f64) {
+        let modes = self.psi.project_spatial_modes::<8>();
+        self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
+            &modes,
+            &mut self.prev_mode_phases,
+            dt.max(1.0e-4),
+        );
     }
 
     fn refresh_propagator(&mut self, dt: f64) {
@@ -327,9 +338,11 @@ impl WaveRunner {
                 "psi_norm",
                 "Wave function normalization diverged: non-finite norm encountered.",
             ));
+            self.sonification = crate::audio::SonificationFrame::silent();
             return;
         }
         self.update_observables_in_place();
+        self.refresh_sonification(dt);
     }
 
     /// Builds a structured [`WaveData`] snapshot integrating [`QuantumState::probability_density`].
@@ -425,6 +438,11 @@ impl SimulationRunner for WaveRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
+        let sonification = if self.diverged {
+            crate::audio::SonificationFrame::silent()
+        } else {
+            self.sonification
+        };
         let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
         StateSnapshot {
             width: 0,
@@ -432,6 +450,7 @@ impl SimulationRunner for WaveRunner {
             pixels: Arc::new(RwLock::new(Vec::new())),
             custom_data: Vec::new(),
             structured_data: Some(structured_data),
+            sonification,
         }
     }
 
