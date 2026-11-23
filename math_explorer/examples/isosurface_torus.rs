@@ -65,33 +65,22 @@ fn generate_torus_sdf(
     Ok(grid)
 }
 
-/// This example generates a mesh for a Torus using the Marching Cubes algorithm
-/// and exports it to a Wavefront OBJ file.
-fn main() -> math_explorer::error::Result<()> {
-    // Header
+fn print_torus_banner(dim: usize, major_radius: f32, minor_radius: f32) {
     println!();
     println!("{}🍩 Torus Generator 3000{}", Color::Magenta, Color::Reset);
     println!("{}======================={}", Color::Magenta, Color::Reset);
     println!();
-
     println!(
         "{}⚙️  Generating Torus Signed Distance Field (SDF)...{}",
         Color::Yellow,
         Color::Reset
     );
-
-    let width = 64;
-    let height = 64;
-    let depth = 64;
-    let major_radius = 2.0;
-    let minor_radius = 0.8;
-
     println!(
         "   Dimensions: {}{}x{}x{}{}",
         Color::Bold,
-        width,
-        height,
-        depth,
+        dim,
+        dim,
+        dim,
         Color::Reset
     );
     println!(
@@ -104,8 +93,19 @@ fn main() -> math_explorer::error::Result<()> {
         Color::Reset
     );
     println!();
+}
 
-    let grid = generate_torus_sdf(width, height, depth, major_radius, minor_radius)?;
+/// This example generates a mesh for a Torus using the Marching Cubes algorithm
+/// and exports it to a Wavefront OBJ file.
+fn main() -> math_explorer::error::Result<()> {
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let dim = if smoke { 24 } else { 64 };
+    let major_radius = 2.0;
+    let minor_radius = 0.8;
+    print_torus_banner(dim, major_radius, minor_radius);
+
+    let grid = generate_torus_sdf(dim, dim, dim, major_radius, minor_radius)?;
 
     println!(
         "{}⛏️  Extracting Isosurface using Marching Cubes...{}",
