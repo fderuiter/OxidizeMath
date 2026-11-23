@@ -99,7 +99,11 @@ fn rationalize_positive(target: f64, bound: u64) -> (u64, u64) {
 /// - Odds of `3.0` means winning `$2` net profit on every `$1` bet (`b = 2.0`, `2:1`)
 ///
 /// Supports bidirectional conversions across decimal, net, American, fractional,
-/// and implied-probability representations.
+/// and implied-probability representations:
+/// - Net odds (`b`): `Odds::from_net_odds()` / `Odds::net_profit_multiplier()`
+/// - American odds: `Odds::from_american()` / `Odds::to_american()`
+/// - Fractional odds: `Odds::from_fractional()` / `Odds::to_fractional()`
+/// - Implied probability: `Odds::from_implied_probability()` / `Odds::implied_probability()`
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Odds(f64);

@@ -217,20 +217,73 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 52, "Expected 52 Plot dataset+figure tools");
+    assert_eq!(plot_tool_count, 54, "Expected 54 Plot dataset+figure tools");
     assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
-    assert_eq!(dataset_only_tool_count, 1, "Expected 1 dataset-only tool");
     assert_eq!(
-        unsupported_tool_count, 15,
-        "Expected 15 non-exportable tools"
+        dataset_only_tool_count, 0,
+        "Expected 0 dataset-only registered tools"
     );
+    assert_eq!(unsupported_tool_count, 15, "Expected 15 non-figure tools");
     assert_eq!(solid_3d_count, 5, "Expected 5 solid 3D geometric tools");
     assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
         shader_tool_count, 3,
         "Expected 3 analytical GLSL shader tools"
     );
-    assert_eq!(non_shader_tool_count, 72, "Expected 72 non-shader tools");
+    assert_eq!(non_shader_tool_count, 73, "Expected 73 non-shader tools");
+}
+
+#[derive(Default)]
+struct DatasetOnlyFixtureTool;
+
+impl scientific_metadata::theory::TheoryDescribable for DatasetOnlyFixtureTool {
+    fn theory_description(&self) -> String {
+        "Dataset-only fixture".into()
+    }
+    fn phonetic_description(&self) -> String {
+        "Dataset-only fixture".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Fixture".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+
+impl InteractiveTool for DatasetOnlyFixtureTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+    fn name(&self) -> &'static str {
+        "DatasetOnlyFixture"
+    }
+    fn domain(&self) -> &'static str {
+        "financial_math"
+    }
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::dataset_only()
+    }
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        vec![("FixtureSeries".into(), vec![[0.0, 1.0], [1.0, 2.0]])]
+    }
+    fn show_inside(&mut self, _ui: &mut egui::Ui) {}
+}
+
+#[test]
+fn test_dataset_only_capability_profile_exports_csv_json_and_warns_on_png() {
+    let tool: Box<dyn InteractiveTool> = Box::new(DatasetOnlyFixtureTool);
+    let caps = tool.export_capabilities();
+    let (mut dataset_only_count, mut unsupported_count) = (0usize, 0usize);
+    verify_non_figure_tool(
+        "DatasetOnlyFixtureTool",
+        tool,
+        caps,
+        &mut dataset_only_count,
+        &mut unsupported_count,
+    );
+    assert_eq!(dataset_only_count, 1);
+    assert_eq!(unsupported_count, 0);
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {

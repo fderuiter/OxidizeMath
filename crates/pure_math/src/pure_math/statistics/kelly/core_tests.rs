@@ -121,6 +121,14 @@ fn test_odds_implied_probability_and_net_odds() {
 
     let even = Odds::from_net_odds(1.0).unwrap();
     assert!((even.value() - 2.0).abs() < math_commons::registry::TOLERANCE_HIGH);
+    assert!((even.net_profit_multiplier() - 1.0).abs() < math_commons::registry::TOLERANCE_HIGH);
+
+    let sub_even = Odds::from_net_odds(0.5).unwrap();
+    assert!((sub_even.value() - 1.5).abs() < math_commons::registry::TOLERANCE_HIGH);
+    assert!(
+        (sub_even.net_profit_multiplier() - 0.5).abs() < math_commons::registry::TOLERANCE_HIGH
+    );
+
     assert_eq!(
         Odds::from_net_odds(0.0),
         Err(KellyError::InvalidNetOdds { value: 0.0 })
@@ -129,6 +137,9 @@ fn test_odds_implied_probability_and_net_odds() {
         Odds::from_net_odds(-0.5),
         Err(KellyError::InvalidNetOdds { value: -0.5 })
     );
+    assert!(Odds::from_net_odds(f64::NAN).is_err());
+    assert!(Odds::from_net_odds(f64::INFINITY).is_err());
+    assert!(Odds::from_net_odds(f64::NEG_INFINITY).is_err());
 }
 
 #[test]
