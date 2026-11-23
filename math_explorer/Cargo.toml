@@ -58,7 +58,6 @@ serde = [
 
 [dev-dependencies]
 approx = { workspace = true }
-serde_json = { workspace = true }
 criterion = { workspace = true }
 
 [[bench]]

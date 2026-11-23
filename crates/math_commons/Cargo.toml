@@ -24,7 +24,6 @@ serde = [
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 
 [dev-dependencies]
-approx = { workspace = true }
 serde_json = { workspace = true }
 
 [lints]
