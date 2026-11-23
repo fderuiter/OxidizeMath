@@ -1,10 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{UnifiedModel, UnifiedSimRunner, UnifiedUiExtension};
+use super::persistence::build_formula_bar;
+use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimRunner, UnifiedUiExtension};
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{
-    CalloutManager, ChallengeEvaluation, InteractiveTool, PlaybackAction, PlaybackTransport,
+    CalloutManager, ChallengeEvaluation, InteractiveTool, MathExpressionInputBar, PlaybackAction,
+    PlaybackTransport,
 };
 use eframe::egui::{self, ColorImage};
 use scientific_metadata::theory::ParameterConstraint;
@@ -15,6 +17,10 @@ use std::sync::{Arc, RwLock};
 pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) controller: BackgroundWorker<UnifiedSimRunner<M>>,
     pub(crate) params: Arc<RwLock<HashMap<String, f64>>>,
+    pub(crate) shared_formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+    pub(crate) formula_bar: Option<MathExpressionInputBar>,
+    pub(crate) custom_formula_enabled: bool,
+    pub(super) formula_revision: u64,
     pub(super) param_metadata: Vec<(String, ParameterConstraint)>,
     steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
@@ -53,8 +59,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             initial_params.insert(name.clone(), default_val);
         }
 
+        let formula_bar = M::formula_spec().as_ref().map(build_formula_bar);
         let params = Arc::new(RwLock::new(initial_params.clone()));
-        let runner = UnifiedSimRunner::<M>::new(Arc::clone(&params));
+        let shared_formula = Arc::new(RwLock::new(None));
+        let runner =
+            UnifiedSimRunner::<M>::with_formula(Arc::clone(&params), Arc::clone(&shared_formula));
         let controller = BackgroundWorker::new(runner);
         let temp_model = M::new(&initial_params);
 
@@ -72,6 +81,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Self {
             controller,
             params,
+            shared_formula,
+            formula_bar,
+            custom_formula_enabled: false,
+            formula_revision: 1,
             param_metadata,
             steps_per_frame: 5,
             texture: None,
@@ -123,8 +136,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
         }
         let params = Arc::clone(&self.params);
+        let formula = Arc::clone(&self.shared_formula);
         self.controller
-            .reset_or_respawn(|| UnifiedSimRunner::<M>::new(params));
+            .reset_or_respawn(|| UnifiedSimRunner::<M>::with_formula(params, formula));
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
@@ -178,6 +192,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     p.insert(name.clone(), d);
                 }
                 drop(p);
+                if let Some(spec) = M::formula_spec() {
+                    self.custom_formula_enabled = false;
+                    self.formula_bar = Some(build_formula_bar(&spec));
+                    self.publish_formula_update();
+                }
                 self.reset_simulation(ctx);
                 let _ = self.controller.send_command(SimCommand::Start);
             }
@@ -300,6 +319,14 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     fn step_simulation(&mut self) {
         if let Ok(params) = self.params.read() {
             let mut model = M::new(&params);
+            if self.custom_formula_enabled {
+                let payload = self
+                    .shared_formula
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                model.apply_compiled_formula(payload.as_ref(), &params);
+            }
             for _ in 0..self.steps_per_frame.max(1) {
                 model.step(&params);
             }
@@ -320,12 +347,24 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         if let Some(ext) = &self.ui_extension {
             ext.state_revision_salt().hash(&mut h);
         }
+        self.custom_formula_enabled.hash(&mut h);
+        if let Some(ref bar) = self.formula_bar {
+            bar.raw_text.hash(&mut h);
+            for &pv in bar.param_slice() {
+                pv.to_bits().hash(&mut h);
+            }
+        }
         h.finish().max(1)
     }
 
     fn has_finite_parameters(&self) -> bool {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let formula_ok = self
+            .formula_bar
+            .as_ref()
+            .is_none_or(|b| b.param_slice().iter().all(|v| v.is_finite()));
         params.values().all(|v| v.is_finite())
+            && formula_ok
             && !matches!(
                 self.controller.state(),
                 crate::async_sim::SimWorkerState::Faulted
@@ -333,66 +372,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn save_state(&self) -> Option<String> {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        if let Some(ext) = &self.ui_extension {
-            if let Some(custom) = ext.save_extra_state(&params) {
-                return Some(custom);
-            }
-        }
-        let sorted: std::collections::BTreeMap<&String, &f64> = params.iter().collect();
-        serde_json::to_string(&sorted).ok()
+        self.serialize_tool_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        if let Some(ext) = &mut self.ui_extension {
-            let mut next_params = self
-                .params
-                .read()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone();
-            if let Some(res) = ext.try_load_extra_state(state, &mut next_params) {
-                let cmds = res?;
-                *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
-                self.texture = None;
-                self.reset_simulation(None);
-                self.dispatch_extension_commands(cmds, None);
-                return Ok(());
-            }
-        }
-        let params: HashMap<String, f64> = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
-        if !self.param_metadata.is_empty() && params.is_empty() {
-            return Err(format!(
-                "Empty parameter configuration for {}; expected parameters: {}",
-                M::name(),
-                self.param_metadata
-                    .iter()
-                    .map(|m| m.0.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-        for (key, value) in &params {
-            if !self.param_metadata.iter().any(|meta| &meta.0 == key) {
-                return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
-            }
-            if !value.is_finite() {
-                return Err(format!(
-                    "Non-finite value for parameter '{}' in {}",
-                    key,
-                    M::name()
-                ));
-            }
-        }
-        {
-            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (key, value) in params {
-                guard.insert(key, value);
-            }
-        }
-        self.texture = None;
-        self.reset_simulation(None);
-        Ok(())
+        self.deserialize_tool_state(state)
     }
 
     fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {

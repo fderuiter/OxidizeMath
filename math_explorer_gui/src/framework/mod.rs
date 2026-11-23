@@ -15,6 +15,7 @@ pub mod export_types;
 mod export_ui;
 #[cfg(test)]
 mod export_ui_tests;
+pub mod fit_bridge;
 pub mod math_input;
 #[cfg(test)]
 mod metadata_label_tests;
@@ -50,6 +51,7 @@ pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
+pub use fit_bridge::ensure_custom_fit_bridge;
 pub use math_input::*;
 pub use pane_scope::{
     is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id,

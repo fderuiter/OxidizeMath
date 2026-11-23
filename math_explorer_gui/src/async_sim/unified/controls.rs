@@ -83,8 +83,32 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 });
             }
         }
-
         drop(params_lock);
+
+        if let Some(spec) = M::formula_spec() {
+            ui.add_space(4.0);
+            let toggle_label = format!("Custom {} Formula", spec.lhs_label);
+            if ui
+                .checkbox(&mut self.custom_formula_enabled, toggle_label)
+                .changed()
+            {
+                self.publish_formula_update();
+                reset_needed = true;
+            }
+            if self.custom_formula_enabled {
+                let mut formula_changed = false;
+                if let Some(ref mut bar) = self.formula_bar {
+                    ui.add_space(4.0);
+                    formula_changed = bar.ui(ui);
+                }
+                if formula_changed {
+                    self.publish_formula_update();
+                    self.dirty = true;
+                    ctx.request_repaint();
+                }
+            }
+        }
+
         self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation(Some(ctx));
