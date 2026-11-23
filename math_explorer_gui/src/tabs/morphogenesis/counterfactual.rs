@@ -178,7 +178,11 @@ impl MorphogenesisTwinState {
         }
 
         let (l2_norm, linf_norm) = field_difference_norms(system_a.u(), system_b.u());
-        let safe_dt = if dt.is_finite() && dt > 0.0 { dt } else { 0.005 };
+        let safe_dt = if dt.is_finite() && dt > 0.0 {
+            dt
+        } else {
+            0.005
+        };
         let fork_time = (fork_step as f64) * safe_dt;
         Self {
             system_a,
@@ -220,14 +224,22 @@ impl MorphogenesisTwinState {
         let (l2, linf) = field_difference_norms(self.system_a.u(), u_b);
         self.l2_norm = l2;
         self.linf_norm = linf;
-        let safe_dt = if dt.is_finite() && dt > 0.0 { dt } else { 0.005 };
+        let safe_dt = if dt.is_finite() && dt > 0.0 {
+            dt
+        } else {
+            0.005
+        };
         self.tracker.observe((step_count as f64) * safe_dt, l2);
     }
 
     /// Builds a live [`DivergenceSnapshot`] reporting spatial `L2` and `L_∞` norms.
     #[must_use]
     pub fn snapshot(&self, step_count: usize, dt: f64) -> DivergenceSnapshot {
-        let safe_dt = if dt.is_finite() && dt > 0.0 { dt } else { 0.005 };
+        let safe_dt = if dt.is_finite() && dt > 0.0 {
+            dt
+        } else {
+            0.005
+        };
         DivergenceSnapshot {
             fork_step: self.fork_step,
             fork_time: self.tracker.fork_time(),
@@ -253,7 +265,10 @@ impl MorphogenesisTwinState {
 
     /// Serializes current twin metadata into a [`MorphogenesisForkDescriptor`].
     #[must_use]
-    pub fn to_descriptor(&self, heatmap_mode: MorphogenesisHeatmapMode) -> MorphogenesisForkDescriptor {
+    pub fn to_descriptor(
+        &self,
+        heatmap_mode: MorphogenesisHeatmapMode,
+    ) -> MorphogenesisForkDescriptor {
         MorphogenesisForkDescriptor {
             fork_step: self.fork_step,
             post_fork_steps: self.post_fork_steps,
@@ -272,24 +287,40 @@ fn lerp_u8(a: u8, b: u8, t: f64) -> u8 {
 }
 
 fn concentration_rgb(norm: f64, theme: ThemeMode) -> [u8; 3] {
-    let t = if norm.is_finite() { norm.clamp(0.0, 1.0) } else { 0.0 };
+    let t = if norm.is_finite() {
+        norm.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     match theme {
         ThemeMode::Dark => heatmap_color(t),
         ThemeMode::HighContrast => heatmap_color_high_contrast(t),
         ThemeMode::Light => {
             if t < 0.5 {
                 let s = t * 2.0;
-                [lerp_u8(244, 32, s), lerp_u8(247, 138, s), lerp_u8(252, 156, s)]
+                [
+                    lerp_u8(244, 32, s),
+                    lerp_u8(247, 138, s),
+                    lerp_u8(252, 156, s),
+                ]
             } else {
                 let s = (t - 0.5) * 2.0;
-                [lerp_u8(32, 18, s), lerp_u8(138, 34, s), lerp_u8(156, 108, s)]
+                [
+                    lerp_u8(32, 18, s),
+                    lerp_u8(138, 34, s),
+                    lerp_u8(156, 108, s),
+                ]
             }
         }
     }
 }
 
 fn difference_rgb(norm: f64, theme: ThemeMode) -> [u8; 3] {
-    let t = if norm.is_finite() { norm.clamp(0.0, 1.0) } else { 0.0 };
+    let t = if norm.is_finite() {
+        norm.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     match theme {
         ThemeMode::Dark => {
             if t < 0.5 {
@@ -297,13 +328,21 @@ fn difference_rgb(norm: f64, theme: ThemeMode) -> [u8; 3] {
                 [lerp_u8(16, 198, s), lerp_u8(20, 48, s), lerp_u8(32, 108, s)]
             } else {
                 let s = (t - 0.5) * 2.0;
-                [lerp_u8(198, 255, s), lerp_u8(48, 214, s), lerp_u8(108, 72, s)]
+                [
+                    lerp_u8(198, 255, s),
+                    lerp_u8(48, 214, s),
+                    lerp_u8(108, 72, s),
+                ]
             }
         }
         ThemeMode::Light => {
             if t < 0.5 {
                 let s = t * 2.0;
-                [lerp_u8(246, 217, s), lerp_u8(248, 95, s), lerp_u8(252, 14, s)]
+                [
+                    lerp_u8(246, 217, s),
+                    lerp_u8(248, 95, s),
+                    lerp_u8(252, 14, s),
+                ]
             } else {
                 let s = (t - 0.5) * 2.0;
                 [lerp_u8(217, 127, s), lerp_u8(95, 0, s), lerp_u8(14, 38, s)]
@@ -381,7 +420,11 @@ pub fn render_morphogenesis_heatmap(
                     max_diff = max_diff.max(d);
                 }
             }
-            let inv = if max_diff > 1e-12 { 1.0 / max_diff } else { 0.0 };
+            let inv = if max_diff > 1e-12 {
+                1.0 / max_diff
+            } else {
+                0.0
+            };
             for (&a, &b) in ua.iter().zip(u_b.iter()) {
                 let d = (b - a).abs();
                 let rgb = difference_rgb(if d.is_finite() { d * inv } else { 0.0 }, theme);

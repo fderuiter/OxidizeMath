@@ -14,6 +14,25 @@ use crate::framework::BranchControlAction;
 use eframe::egui::ColorImage;
 
 impl MorphogenesisTool {
+    #[cfg(test)]
+    #[allow(missing_docs)]
+    pub fn restart_worker(&mut self) {
+        self.local_runner = Self::create_runner(&self.params, self.width, self.height);
+        let runner = Self::create_runner(&self.params, self.width, self.height);
+        self.worker = BackgroundWorker::new(runner);
+        self.branch_engine.clear();
+        self.stepped_pixels = None;
+        self.step_runner = None;
+        self.pending_initial_start = false;
+        self.dirty = true;
+    }
+
+    #[cfg(test)]
+    #[allow(missing_docs)]
+    pub fn retry(&mut self) {
+        self.restart_worker();
+    }
+
     /// Returns `true` when a counterfactual shadow twin is currently active.
     #[must_use]
     pub fn is_forked(&self) -> bool {

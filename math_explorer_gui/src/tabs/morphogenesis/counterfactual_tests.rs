@@ -80,7 +80,14 @@ fn test_mri_t2_intervention_zero_alloc_and_twin_exports() {
 
     run_framework_export(&mut fw, "mri", ExportFormat::Png);
     assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
-    assert!(fw.export_queue.last_exported_bytes.as_deref().unwrap().len() > 1_000);
+    assert!(
+        fw.export_queue
+            .last_exported_bytes
+            .as_deref()
+            .unwrap()
+            .len()
+            > 1_000
+    );
 
     let tool = MriTool::default();
     let mut runner = crate::tabs::mri::MriRunner::new(
@@ -192,7 +199,14 @@ fn test_morphogenesis_twin_exports_and_finite_state_guard_rollback() {
 
     run_framework_export(&mut fw, "biology", ExportFormat::Png);
     assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
-    assert!(fw.export_queue.last_exported_bytes.as_deref().unwrap().len() > 500);
+    assert!(
+        fw.export_queue
+            .last_exported_bytes
+            .as_deref()
+            .unwrap()
+            .len()
+            > 500
+    );
 
     let pre_fault_state = fw.active_tool.as_ref().unwrap().save_state().unwrap();
     assert!(fw.dispatch_branch_action(BranchControlAction::ClearFork));

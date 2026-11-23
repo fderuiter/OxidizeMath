@@ -82,12 +82,16 @@ impl OdeSolverTool {
         if self.custom_coupled {
             changed |= self.coupled_bank.ui_inputs(ui, "ode_coupled_bank");
         } else if self.math_input.ui(ui) {
+            self.sync_legacy_params_from_math_input();
             changed = true;
         }
         changed
     }
 
     fn render_parameter_inputs(&mut self, ui: &mut egui::Ui) -> bool {
+        if self.preset == OdePreset::Custom && !self.custom_coupled {
+            return false;
+        }
         let mut changed = false;
         ui.add_space(10.0);
         ui.heading("Parameters");
@@ -102,7 +106,7 @@ impl OdeSolverTool {
                     .changed();
             }
             OdePreset::Custom => {
-                changed |= self.render_custom_parameter_sliders(ui);
+                changed |= self.coupled_bank.sliders_ui(ui, "ode_coupled_params");
             }
             OdePreset::HarmonicOscillator => {
                 changed |= ui
@@ -129,28 +133,6 @@ impl OdeSolverTool {
                     )
                     .changed();
             }
-        }
-        changed
-    }
-
-    fn render_custom_parameter_sliders(&mut self, ui: &mut egui::Ui) -> bool {
-        if self.custom_coupled {
-            return self.coupled_bank.sliders_ui(ui, "ode_coupled_params");
-        }
-        let mut changed = ui
-            .add(
-                AnimatedSlider::new(&mut self.param_k, -5.0..=5.0)
-                    .text("k (Rate / Parameter)")
-                    .id_salt("ode_param_k_custom"),
-            )
-            .changed();
-        let has_extra_params = self.math_input.active_compiled().is_some_and(|c| {
-            c.param_names()
-                .iter()
-                .any(|n| !matches!(n.as_str(), "k" | "r" | "cap_k" | "K"))
-        });
-        if has_extra_params {
-            changed |= self.math_input.sliders_ui(ui, "ode_scalar_extra_params");
         }
         changed
     }
@@ -288,22 +270,22 @@ impl OdeSolverTool {
         crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "ode_tool");
     }
 
-    fn collect_sensitivity_params(&self) -> Vec<(&str, f64)> {
-        let mut dynamic_params: Vec<(&str, f64)> = Vec::with_capacity(8);
+    fn collect_sensitivity_params(&self) -> Vec<(String, f64)> {
+        let mut dynamic_params: Vec<(String, f64)> = Vec::with_capacity(8);
         match self.preset {
             OdePreset::Exponential => {
-                dynamic_params.push(("k", self.param_k));
-                dynamic_params.push(("y0", self.ic_y0));
+                dynamic_params.push(("k".to_string(), self.param_k));
+                dynamic_params.push(("y0".to_string(), self.ic_y0));
             }
             OdePreset::HarmonicOscillator => {
-                dynamic_params.push(("k", self.param_k));
-                dynamic_params.push(("y0", self.ic_y0));
-                dynamic_params.push(("v0", self.ic_v0));
+                dynamic_params.push(("k".to_string(), self.param_k));
+                dynamic_params.push(("y0".to_string(), self.ic_y0));
+                dynamic_params.push(("v0".to_string(), self.ic_v0));
             }
             OdePreset::LogisticGrowth => {
-                dynamic_params.push(("r", self.param_r));
-                dynamic_params.push(("cap_k", self.param_cap_k));
-                dynamic_params.push(("y0", self.ic_y0));
+                dynamic_params.push(("r".to_string(), self.param_r));
+                dynamic_params.push(("cap_k".to_string(), self.param_cap_k));
+                dynamic_params.push(("y0".to_string(), self.ic_y0));
             }
             OdePreset::Custom if self.custom_coupled => {
                 for (name, &val) in self
@@ -312,14 +294,28 @@ impl OdeSolverTool {
                     .iter()
                     .zip(self.coupled_bank.param_slice())
                 {
-                    dynamic_params.push((name.as_str(), val));
+                    dynamic_params.push((name.clone(), val));
                 }
-                dynamic_params.push(("y0", self.ic_y0));
-                dynamic_params.push(("v0", self.ic_v0));
+                if !dynamic_params.iter().any(|(name, _)| name == "y0") {
+                    dynamic_params.push(("y0".to_string(), self.ic_y0));
+                }
+                if !dynamic_params.iter().any(|(name, _)| name == "v0") {
+                    dynamic_params.push(("v0".to_string(), self.ic_v0));
+                }
             }
             OdePreset::Custom => {
-                dynamic_params.push(("k", self.param_k));
-                dynamic_params.push(("y0", self.ic_y0));
+                if let Some(compiled) = self.math_input.active_compiled() {
+                    for (name, &val) in compiled
+                        .param_names()
+                        .iter()
+                        .zip(self.math_input.param_slice())
+                    {
+                        dynamic_params.push((name.clone(), val));
+                    }
+                }
+                if !dynamic_params.iter().any(|(name, _)| name == "y0") {
+                    dynamic_params.push(("y0".to_string(), self.ic_y0));
+                }
             }
         }
         dynamic_params
@@ -328,11 +324,7 @@ impl OdeSolverTool {
     fn run_sensitivity_analysis(&mut self) {
         use crate::sensitivity::canonical_f64_bits;
 
-        let dynamic_params: Vec<(String, f64)> = self
-            .collect_sensitivity_params()
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect();
+        let dynamic_params = self.collect_sensitivity_params();
         let param_refs: Vec<(&str, f64)> = dynamic_params
             .iter()
             .map(|(k, v)| (k.as_str(), *v))
@@ -343,17 +335,8 @@ impl OdeSolverTool {
         let current_dt = self.dt;
         let current_total_time = self.total_time;
         let custom_spec = self.build_custom_ode_spec();
-        let custom_ctx = (current_preset == OdePreset::Custom).then(|| {
-            if self.custom_coupled {
-                format!(
-                    "coupled:{}|{}",
-                    self.coupled_bank.raw_text(0),
-                    self.coupled_bank.raw_text(1)
-                )
-            } else {
-                format!("scalar:{}", self.math_input.raw_text)
-            }
-        });
+        let custom_ctx = (current_preset == OdePreset::Custom)
+            .then_some(super::systems::CustomOdeContext(custom_spec.as_ref()));
         let context = (
             current_preset as u8,
             current_method as u8,

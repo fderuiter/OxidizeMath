@@ -2,15 +2,70 @@
 
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoint, PlotPoints};
+use math_explorer::epidemiology::compartmental::SIRModel;
 use std::sync::Arc;
 
 use super::{SirTool, SIR_STEP_DT};
 use crate::app::SemanticPalette;
 use crate::framework::{
     branch_a_ghost_line, branch_b_solid_line, fork_marker_callout, fork_marker_vline,
-    render_divergence_strip, InteractiveTool,
+    render_divergence_strip, InteractiveTool, TraceSeries,
 };
 use crate::reflective_ui::render_copyable_metric;
+
+impl SirTool {
+    pub(super) fn evaluate_sensitivity(&mut self, ui: &mut egui::Ui) {
+        let params = [
+            ("N", self.n),
+            ("I0", self.i0),
+            ("beta", self.beta),
+            ("gamma", self.gamma),
+        ];
+        let duration_bits = crate::sensitivity::canonical_f64_bits(self.duration);
+
+        self.sensitivity_engine
+            .compute_with_context(&params, &duration_bits, |p_map| {
+                let n = p_map.get("N").copied().unwrap_or(1000.0).max(1.0);
+                let i0 = p_map.get("I0").copied().unwrap_or(10.0).clamp(0.0, n);
+                let beta = p_map.get("beta").copied().unwrap_or(0.5).max(0.0);
+                let gamma = p_map.get("gamma").copied().unwrap_or(0.1).max(0.0001);
+
+                if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
+                    let dt = 0.2;
+                    let mut max_i: f64 = 0.0;
+                    for _ in 0..250 {
+                        max_i = max_i.max(model.state().i);
+                        model.step(dt);
+                    }
+                    max_i
+                } else {
+                    0.0
+                }
+            });
+
+        crate::sensitivity::render_sensitivity_panel_ui(ui, &self.sensitivity_engine, "sir_tool");
+    }
+
+    pub(super) fn render_snapshot_bar(&mut self, ui: &mut egui::Ui) {
+        let param_summary = self.param_summary();
+        let current_len = self.snapshot_manager.len();
+        let s_points = &self.s_points;
+        let i_points = &self.i_points;
+        let r_points = &self.r_points;
+        if self.snapshot_manager.render_ui(ui, move || {
+            let label = format!("Baseline {}", current_len + 1);
+            let to_pairs = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>();
+            let series = vec![
+                TraceSeries::new("Susceptible", to_pairs(s_points)),
+                TraceSeries::new("Infected", to_pairs(i_points)),
+                TraceSeries::new("Recovered", to_pairs(r_points)),
+            ];
+            Some((label, param_summary, series))
+        }) {
+            self.revision = self.revision.wrapping_add(1).max(1);
+        }
+    }
+}
 
 /// Computes interpolated `(peak_day, peak_infected)` from simulated `Infected` points.
 pub(crate) fn compute_epidemic_peak(i_points: &[PlotPoint]) -> Option<(f64, f64)> {
@@ -60,11 +115,13 @@ pub(super) fn render_epidemic_metrics(ui: &mut egui::Ui, tool: &SirTool) {
     } else {
         f64::INFINITY
     };
-    render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{r0:.2}"));
-    if let Some((peak_day, peak_infected)) = compute_epidemic_peak(&tool.i_points) {
-        render_copyable_metric(ui, "Peak Infected", &format!("{peak_infected:.1}"));
-        render_copyable_metric(ui, "Peak Day", &format!("Day {peak_day:.2}"));
-    }
+    ui.horizontal_wrapped(|ui| {
+        render_copyable_metric(ui, "Basic Reproduction Number (R₀)", &format!("{r0:.2}"));
+        if let Some((peak_day, peak_infected)) = compute_epidemic_peak(&tool.i_points) {
+            render_copyable_metric(ui, "Peak Infected", &format!("{peak_infected:.1}"));
+            render_copyable_metric(ui, "Peak Day", &format!("Day {peak_day:.2}"));
+        }
+    });
 }
 
 /// Renders the SIR simulation plot and CSV dataset import header.

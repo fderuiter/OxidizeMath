@@ -2,7 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::SirTool;
+use super::{SirTool, MAX_SIR_DURATION, MIN_SIR_DURATION};
+use scientific_metadata::theory::ParameterConstraint;
+use std::collections::HashMap;
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -31,8 +33,53 @@ impl scientific_metadata::theory::TheoryDescribable for SirTool {
         "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into()
     }
 
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        HashMap::new()
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        let mut map = HashMap::with_capacity(5);
+        map.insert(
+            "N".to_string(),
+            ParameterConstraint {
+                min: 100.0,
+                max: 100_000.0,
+                step: 100.0,
+            },
+        );
+        map.insert(
+            "I0".to_string(),
+            ParameterConstraint {
+                min: 1.0,
+                max: 50_000.0,
+                step: 1.0,
+            },
+        );
+        map.insert(
+            "beta".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 5.0,
+                step: 0.02,
+            },
+        );
+        map.insert(
+            "gamma".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 1.0,
+                step: 0.01,
+            },
+        );
+        map.insert(
+            "duration".to_string(),
+            ParameterConstraint {
+                min: MIN_SIR_DURATION,
+                max: MAX_SIR_DURATION,
+                step: 1.0,
+            },
+        );
+        map
     }
 }
 

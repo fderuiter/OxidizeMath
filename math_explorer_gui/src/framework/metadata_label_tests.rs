@@ -4,7 +4,9 @@ use super::{SimulationFramework, ToolMetadata};
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
-use crate::tabs::quantum::wave_sim::WaveUnified;
+use crate::tabs::quantum::wave_sim::{
+    wave_parameter_constraints, wave_parameter_label, WavePotentialPreset, WaveSimulatorTool,
+};
 use crate::tabs::solid_state::crystal_viewer::CrystalSystemEnum;
 use eframe::egui;
 use scientific_metadata::theory::TheoryDescribable;
@@ -240,11 +242,11 @@ fn test_theory_citations_and_portal_have_no_raw_cite_tags_or_default_keys() {
 
 #[test]
 fn test_unified_models_expose_readable_parameter_labels_and_discrete_choices() {
-    for key in WaveUnified::parameters().keys() {
-        let label = WaveUnified::parameter_label(key);
+    for key in wave_parameter_constraints().keys() {
+        let label = wave_parameter_label(key);
         assert!(
             !label.contains('_'),
-            "WaveUnified label '{label}' has underscore"
+            "WaveSimulator label '{label}' has underscore"
         );
     }
     for key in HodgkinHuxleyUnified::parameters().keys() {
@@ -262,14 +264,21 @@ fn test_unified_models_expose_readable_parameter_labels_and_discrete_choices() {
         );
     }
 
-    let choices = WaveUnified::parameter_choices("potential_type");
-    assert_eq!(choices.len(), 2);
-    assert_eq!(choices[0], ("Infinite Potential Well", 0.0));
-    assert_eq!(choices[1], ("Harmonic Oscillator", 1.0));
+    assert_eq!(WavePotentialPreset::ALL.len(), 5);
+    assert_eq!(
+        WavePotentialPreset::ALL.map(WavePotentialPreset::label),
+        [
+            "Infinite Potential Well",
+            "Harmonic Oscillator",
+            "Rectangular Barrier",
+            "Double Barrier Resonance",
+            "Custom Formula",
+        ]
+    );
 
     let wave_ctx = egui::Context::default();
     wave_ctx.enable_accesskit();
-    let mut wave_tool = UnifiedSimTool::<WaveUnified>::new();
+    let mut wave_tool = WaveSimulatorTool::new();
     let wave_out = wave_ctx.run(compact_input(), |ctx| {
         use crate::framework::InteractiveTool;
         wave_tool.show(ctx);

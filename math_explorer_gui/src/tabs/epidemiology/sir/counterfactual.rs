@@ -316,7 +316,12 @@ impl SirTool {
         }
     }
 
-    fn trace_sir_post_fork(&mut self, twin: &mut SirTwinStepper, fork_step: usize, end_step: usize) {
+    fn trace_sir_post_fork(
+        &mut self,
+        twin: &mut SirTwinStepper,
+        fork_step: usize,
+        end_step: usize,
+    ) {
         if end_step >= fork_step {
             let sb0 = twin.model_b.state();
             if let Some(last_s) = self.s_points.last_mut() {

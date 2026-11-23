@@ -27,63 +27,12 @@ pub struct SolverDiscrepancy {
     pub rms_error: f64,
 }
 
-struct PresetSimArgs<'a> {
-    preset: OdePreset,
+#[derive(Clone, Copy)]
+struct StepSchedule {
     method: IntegrationMethod,
     dt: f64,
     num_steps: usize,
-    param_k: f64,
-    param_r: f64,
-    param_cap_k: f64,
-    ic_y0: f64,
-    ic_v0: f64,
     v_label: &'static str,
-    custom_spec: Option<&'a CustomOdeSpec>,
-}
-
-fn dispatch_preset_solver(traj: &mut SolverTrajectory, args: PresetSimArgs<'_>) {
-    match args.preset {
-        OdePreset::Exponential => run_step_loop(
-            traj,
-            VecState(vec![args.ic_y0]),
-            ExponentialOde { k: args.param_k },
-            args.method,
-            args.dt,
-            args.num_steps,
-            args.v_label,
-        ),
-        OdePreset::HarmonicOscillator => run_step_loop(
-            traj,
-            VecState(vec![args.ic_y0, args.ic_v0]),
-            HarmonicOscillatorOde { k: args.param_k },
-            args.method,
-            args.dt,
-            args.num_steps,
-            args.v_label,
-        ),
-        OdePreset::LogisticGrowth => run_step_loop(
-            traj,
-            VecState(vec![args.ic_y0]),
-            LogisticGrowthOde {
-                r: args.param_r,
-                cap_k: args.param_cap_k,
-            },
-            args.method,
-            args.dt,
-            args.num_steps,
-            args.v_label,
-        ),
-        OdePreset::Custom => run_custom_ode(
-            traj,
-            args.custom_spec,
-            args.ic_y0,
-            args.ic_v0,
-            args.method,
-            args.dt,
-            args.num_steps,
-            args.v_label,
-        ),
-    }
 }
 
 /// Simulates an ODE preset or custom compiled specification with the specified solver algorithm.
@@ -125,22 +74,34 @@ pub fn simulate_preset(
     if !reserve_trajectory_capacity(&mut traj, num_steps, has_second_state) {
         return traj;
     }
-    dispatch_preset_solver(
-        &mut traj,
-        PresetSimArgs {
-            preset,
-            method,
-            dt,
-            num_steps,
-            param_k,
-            param_r,
-            param_cap_k,
-            ic_y0,
-            ic_v0,
-            v_label,
-            custom_spec,
-        },
-    );
+    let sched = StepSchedule {
+        method,
+        dt,
+        num_steps,
+        v_label,
+    };
+    match preset {
+        OdePreset::Exponential => {
+            run_step_loop(
+                &mut traj,
+                VecState(vec![ic_y0]),
+                ExponentialOde { k: param_k },
+                sched,
+            );
+        }
+        OdePreset::HarmonicOscillator => {
+            let init = VecState(vec![ic_y0, ic_v0]);
+            run_step_loop(&mut traj, init, HarmonicOscillatorOde { k: param_k }, sched);
+        }
+        OdePreset::LogisticGrowth => {
+            let dyn_log = LogisticGrowthOde {
+                r: param_r,
+                cap_k: param_cap_k,
+            };
+            run_step_loop(&mut traj, VecState(vec![ic_y0]), dyn_log, sched);
+        }
+        OdePreset::Custom => run_custom_ode(&mut traj, custom_spec, [ic_y0, ic_v0], sched),
+    }
     traj
 }
 
@@ -180,35 +141,19 @@ fn validate_initial_state(
     Some(num_steps)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_custom_ode(
     traj: &mut SolverTrajectory,
     spec: Option<&CustomOdeSpec>,
-    ic_y0: f64,
-    ic_v0: f64,
-    method: IntegrationMethod,
-    dt: f64,
-    num_steps: usize,
-    v_label: &str,
+    ic: [f64; 2],
+    sched: StepSchedule,
 ) {
     if let Some(spec) = spec {
         let init_state = if spec.is_coupled() {
-            VecState(vec![ic_y0, ic_v0])
+            VecState(vec![ic[0], ic[1]])
         } else {
-            VecState(vec![ic_y0])
+            VecState(vec![ic[0]])
         };
-        run_step_loop(
-            traj,
-            init_state,
-            spec.clone(),
-            method,
-            dt,
-            num_steps,
-            v_label,
-        );
-    } else {
-        traj.diverged = true;
-        traj.divergence_info = Some((0.0, 0, "y(t)".to_string()));
+        run_step_loop(traj, init_state, spec.clone(), sched);
     }
 }
 
@@ -216,26 +161,23 @@ fn run_step_loop<D: OdeSystem<VecState> + Clone>(
     traj: &mut SolverTrajectory,
     init: VecState,
     dynamics: D,
-    method: IntegrationMethod,
-    dt: f64,
-    num_steps: usize,
-    v_label: &str,
+    sched: StepSchedule,
 ) {
-    match method {
+    match sched.method {
         IntegrationMethod::RungeKutta4 => {
             let solver = RungeKutta4::new(&init);
             let mut model = OdeModel::new(init, dynamics, solver);
-            execute_steps(traj, &mut model, dt, num_steps, v_label);
+            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
         }
         IntegrationMethod::Euler => {
             let solver = Euler::new(&init);
             let mut model = OdeModel::new(init, dynamics, solver);
-            execute_steps(traj, &mut model, dt, num_steps, v_label);
+            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
         }
         IntegrationMethod::Heun => {
             let solver = Heun::new(&init);
             let mut model = OdeModel::new(init, dynamics, solver);
-            execute_steps(traj, &mut model, dt, num_steps, v_label);
+            execute_steps(traj, &mut model, sched.dt, sched.num_steps, sched.v_label);
         }
     }
 }

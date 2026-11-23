@@ -6,6 +6,7 @@ use domain_physics::physics::mri::reconstruction::{
 use nalgebra::DMatrix;
 use num_complex::Complex;
 use std::f64::consts::PI;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant};
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
@@ -29,16 +30,20 @@ fn measure_mri_dft_performance() {
     });
 
     println!("Running simulate_signal_2d for {}x{} matrix...", size, size);
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
     let start_sim = Instant::now();
     let signal = simulate_signal_2d(&density);
-    let duration_sim = start_sim.elapsed();
-    println!("simulate_signal_2d took: {:?}", duration_sim);
+    #[cfg(not(target_arch = "wasm32"))]
+    println!("simulate_signal_2d took: {:?}", start_sim.elapsed());
 
     println!("Running inverse_dft_2d for {}x{} matrix...", size, size);
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
     let start_inv = Instant::now();
     let reconstructed = inverse_dft_2d(&signal);
-    let duration_inv = start_inv.elapsed();
-    println!("inverse_dft_2d took: {:?}", duration_inv);
+    #[cfg(not(target_arch = "wasm32"))]
+    println!("inverse_dft_2d took: {:?}", start_inv.elapsed());
 
     // Verify basic correctness (round trip)
     // The naive implementation in mri.rs doesn't normalize by 1/(N*M).
@@ -206,17 +211,21 @@ fn test_mri_256x256_roundtrip_scaling_guard() {
         Complex::new(re, im)
     });
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
     let start = Instant::now();
     let k_space = simulate_signal_2d(&density);
     let reconstructed = inverse_dft_2d(&k_space);
-    let elapsed = start.elapsed();
-    println!("256x256 MRI FFT round-trip took: {:?}", elapsed);
-
-    assert!(
-        elapsed < Duration::from_secs(2),
-        "256x256 round-trip exceeded latency budget: {:?}",
-        elapsed
-    );
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let elapsed = start.elapsed();
+        println!("256x256 MRI FFT round-trip took: {:?}", elapsed);
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "256x256 round-trip exceeded latency budget: {:?}",
+            elapsed
+        );
+    }
 
     let scale = (size * size) as f64;
     for (orig, recon) in density.iter().zip(reconstructed.iter()) {
