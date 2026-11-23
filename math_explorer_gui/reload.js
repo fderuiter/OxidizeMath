@@ -6,7 +6,7 @@
     const DEFAULT_WEBGL_RESTORE_TIMEOUT_MS = 8000;
     const DEFAULT_RECOVERY_FILENAME = 'math-explorer-recovery.mws';
     const STARTUP_ASSET_PATTERN =
-        /(?:^|\/)(reload\.js|bootstrap\.js|initializer\.js|math_explorer_gui\.js|math_explorer_gui_bg\.wasm|worker\.js)(?:[?#]|$)/i;
+        /(?:^|\/)(reload\.js|bootstrap\.js|initializer\.js|math_explorer_gui\.js|math_explorer_gui_bg\.wasm)(?:[?#]|$)/i;
 
     const SHELL_THEME_TOKENS = {
         dark: { colorScheme: 'dark', themeColor: '#121214' },
