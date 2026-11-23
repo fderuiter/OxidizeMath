@@ -155,7 +155,9 @@ impl SimulationFramework {
         self.active_challenge = Some(meta);
         self.selected_tool_index = Some(target_idx);
         self.active_tool = Some(candidate);
+        self.promote_legacy_plot_keys_for_active_tool();
         self.preset_dialog.toast_error = None;
+        self.reset_active_tool_manual_bounds();
         self.sync_active_baseline();
         Ok(())
     }
