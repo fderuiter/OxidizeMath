@@ -34,10 +34,10 @@ pub use domain_physics::error::{
 
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
-    AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EvolutionError,
-    FractranError, Glicko2Error, KellyError, KnotError, LinearAlgebraError, MarketPricingError,
-    MarkovError, NumberTheoryError, OptimizationError, OuError, PureMathError, StochasticError,
-    TdaError, TensorError, TransformError, ZipError,
+    AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
+    EvolutionError, FractranError, Glicko2Error, KellyError, KnotError, LinearAlgebraError,
+    MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
+    OuError, PureMathError, StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -181,6 +181,9 @@ pub enum Error {
     /// Elliptic curve error.
     #[cfg(feature = "pure_math")]
     EllipticCurve(EllipticCurveError),
+    /// Sports Elo rating error.
+    #[cfg(feature = "pure_math")]
+    Elo(EloError),
     /// Knot theory and skein invariant error.
     #[cfg(feature = "pure_math")]
     Knot(KnotError),
@@ -205,6 +208,9 @@ pub enum Error {
     /// Markov process error.
     #[cfg(feature = "pure_math")]
     Markov(MarkovError),
+    /// Calibrated 2D score-grid match model error.
+    #[cfg(feature = "pure_math")]
+    MatchModel(MatchModelError),
     /// Number theory error.
     #[cfg(feature = "pure_math")]
     NumberTheory(NumberTheoryError),
