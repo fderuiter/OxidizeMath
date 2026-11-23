@@ -133,7 +133,7 @@ cargo run -p xtask -- test-features physics
 cargo run -p xtask -- test-features core-only
 ```
 
-In CI, all eight `feature-matrix` legs share a single `features-shared` Linux `dev` cache: the `climate` leg writes the shared `target/` archive while the remaining seven legs pass `restore-only: true` (`actions/cache/restore`) to [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml).
+In CI, all eight `feature-matrix` legs share a single `features-shared` Linux `dev` cache: the `climate` leg runs `cargo test -p math_explorer --no-run --all-features` to seed all `math_explorer` domain features (including `domain_biology`, `domain_epidemiology`, and `domain_physics`) and writes the shared `target/` archive, while the remaining seven legs pass `restore-only: true` (`actions/cache/restore`) to [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml).
 
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
