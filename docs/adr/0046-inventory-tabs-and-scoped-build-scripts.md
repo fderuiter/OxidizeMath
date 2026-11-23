@@ -1,4 +1,4 @@
-# 45. Static Inventory Tab Registration and Scoped Build Scripts
+# 46. Static Inventory Tab Registration and Scoped Build Scripts
 
 Date: 2026-11-23
 
@@ -17,7 +17,7 @@ Three build-time code-generation patterns degraded local edit-compile-test feedb
 ## Decision
 
 1. **Explicit Feature-Gated Tab Modules & `inventory` Collection**:
-   - Replace `$OUT_DIR/generated_tabs.rs` and substring scraping in `math_explorer_gui/build.rs` with explicit `#[cfg(feature = "...")] pub mod <tab>;` declarations across all 25 GUI tabs in `math_explorer_gui/src/tabs/mod.rs` and static `TabDescriptor` registration via `inventory::collect!(TabDescriptor)` / `inventory::submit!`, sorted deterministically by `(order, id)` on both desktop and `wasm32`.
+   - Replace `$OUT_DIR/generated_tabs.rs` and substring scraping in `math_explorer_gui/build.rs` with explicit `#[cfg(feature = "...")] pub mod <tab>;` declarations across all 26 GUI tabs in `math_explorer_gui/src/tabs/mod.rs` and static `TabDescriptor` registration via `inventory::collect!(TabDescriptor)` / `inventory::submit!`, sorted deterministically by `(order, id)` on both desktop and `wasm32`.
    - Upgrade `oxidize_core::traceability` (`module_tree.rs`) to traverse `mod.rs` entrypoints and `#[path = "..."]` submodule attributes directly via standard Rust module resolution, removing `#[path]` workarounds from `math_explorer_gui/src/tabs/traceability.rs` and directory-fallback walks from `crates/oxidize_core/src/traceability/runner.rs`.
 2. **Feature-Scoped GUI Watchers with Content-Checked Writes**:
    - Scope `math_explorer_gui/build_snapshot.rs` (`BuildSnapshotVfs` + `TraceabilityEngine`) to active runtime and `CARGO_FEATURE_*`-enabled dependency crates plus enabled GUI tab modules, preserving full 29-paper traceability parity with `execute_workspace_scan` under `--all-features` and default features while writing `traceability_manifest.json` only when bytes change (`write_if_changed`).

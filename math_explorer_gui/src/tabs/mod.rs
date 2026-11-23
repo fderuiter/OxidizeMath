@@ -18,6 +18,8 @@ pub mod chaos;
 pub mod climate;
 #[cfg(feature = "applied")]
 pub mod clinical_trials;
+#[cfg(feature = "pure_math")]
+pub mod elliptic_curves;
 #[cfg(feature = "epidemiology")]
 pub mod epidemiology;
 #[cfg(feature = "applied")]
@@ -162,6 +164,7 @@ pub trait ExplorerTab {
         match self.name() {
             "Algorithmic Information"
             | "Analysis & Calculus"
+            | "Elliptic Curves"
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
@@ -253,6 +256,7 @@ pub trait ExplorerTab {
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
             "Clinical Trials" => "clinical_trials",
+            "Elliptic Curves" => "elliptic_curves",
             "Epidemiology" => "epidemiology",
             "Favoritism" => "favoritism",
             "Financial Math" => "financial_math",
@@ -403,7 +407,7 @@ mod tests {
             feature = "epidemiology",
             feature = "physics"
         ))]
-        assert_eq!(tabs.len(), 25, "All 25 GUI domain tabs must register");
+        assert_eq!(tabs.len(), 26, "All 26 GUI domain tabs must register");
     }
 
     #[test]
