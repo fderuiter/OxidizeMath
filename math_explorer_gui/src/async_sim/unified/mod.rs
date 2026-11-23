@@ -295,6 +295,15 @@ pub trait UnifiedModel:
         None
     }
 
+    /// Returns a stable tool identifier when this unified model emits live
+    /// [`crate::audio::SonificationFrame`]s.
+    fn sonification_tool_id() -> Option<&'static str>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
     /// Optional `(x_key, y_key)` parameter pairs exposed in a 2D [`crate::async_sim::ParameterAtlasController`].
     fn atlas_axis_pairs() -> &'static [(&'static str, &'static str)]
     where

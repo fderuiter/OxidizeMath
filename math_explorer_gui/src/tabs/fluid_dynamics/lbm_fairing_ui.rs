@@ -433,6 +433,7 @@ impl UnifiedUiExtension for LbmUiExtension {
         ui: &mut egui::Ui,
         latest_snapshot: Option<&StateSnapshot>,
     ) -> Vec<SimCommand> {
+        self.evaluator.ensure_baseline();
         let mut cmds = Vec::new();
         ui.group(|ui| {
             cmds.extend(self.draw_stamp_buttons(ui));

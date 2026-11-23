@@ -68,6 +68,8 @@ pub struct StateSnapshot {
     pub custom_data: Vec<f64>,
     #[allow(missing_docs)]
     pub structured_data: Option<Box<dyn std::any::Any + Send>>,
+    #[allow(missing_docs)]
+    pub sonification: crate::audio::SonificationFrame,
 }
 
 #[allow(missing_docs)]
