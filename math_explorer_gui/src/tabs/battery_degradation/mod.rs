@@ -3,8 +3,8 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod capacity_fade;
+pub mod capacity_fade_atlas;
 pub mod lifetime_estimator;
-
 
 pub struct BatteryDegradationTab {
     framework: crate::framework::SimulationFramework,

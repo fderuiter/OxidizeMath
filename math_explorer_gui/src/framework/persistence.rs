@@ -225,6 +225,7 @@ impl SimulationFramework {
             instance_id: overlay_sync::next_framework_id(),
             sync_state: FrameworkSyncState::default(),
             rev_cache: FrameworkRevisionCache::default(),
+            atlas_host: atlas_host::FrameworkAtlasHost::default(),
         };
         if !framework.available_tools.is_empty() {
             framework.select_tool(0);
@@ -405,6 +406,7 @@ impl SimulationFramework {
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
         self.clear_challenge_hud();
+        self.atlas_host.reset_for_tool_switch();
         self.active_challenge = None;
         self.challenge_was_passed = false;
         self.selected_tool_index = Some(index);

@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub mod atlas;
+mod atlas_bridge;
+pub mod gray_scott_atlas;
 pub mod lenia;
 pub mod presets;
 pub mod runner;
@@ -27,6 +29,10 @@ pub mod ui;
 #[cfg(test)]
 pub use atlas::{
     classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+};
+#[cfg(test)]
+pub use gray_scott_atlas::{
+    classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
 };
 #[cfg(test)]
 pub use lenia::LeniaTool;

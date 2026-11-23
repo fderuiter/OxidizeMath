@@ -60,7 +60,8 @@ impl Default for MorphogenesisTool {
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
 
         let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
-        let runner = Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
+        let runner =
+            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
         let worker = BackgroundWorker::new(runner);
 
         Self {
@@ -176,9 +177,8 @@ impl MorphogenesisTool {
         let mask = Arc::clone(&self.mask_rle);
         let width = self.width;
         let height = self.height;
-        self.worker.reset_or_respawn(|| {
-            Self::create_kinetics_runner(&params, &ks, &mask, width, height)
-        });
+        self.worker
+            .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_initial_start = false;
@@ -345,7 +345,12 @@ impl InteractiveTool for MorphogenesisTool {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let (xk, yk) = self.atlas.axis_keys();
+        let atlas_axes = if self.atlas.has_default_persisted_state() {
+            super::atlas::default_morpho_atlas_axes()
+        } else {
+            let (xk, yk) = self.atlas.axis_keys();
+            [xk.to_string(), yk.to_string()]
+        };
         serde_json::to_string(&MorphogenesisToolState {
             a,
             b,
@@ -362,7 +367,7 @@ impl InteractiveTool for MorphogenesisTool {
             pending_initial_start: self.pending_initial_start,
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
+            atlas_axes,
         })
         .ok()
     }
@@ -372,8 +377,14 @@ impl InteractiveTool for MorphogenesisTool {
         let parsed: MorphogenesisToolState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
-        self.atlas
-            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.sync_atlas_options_for_mode(parsed.kinetics_mode);
+        let use_mode_default = parsed.kinetics_mode
+            == crate::presets::MorphogenesisKineticsMode::GrayScott
+            && super::atlas::is_default_morpho_atlas_axes(&parsed.atlas_axes);
+        if !use_mode_default {
+            self.atlas
+                .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        }
         self.atlas.set_visible(parsed.atlas_visible);
         let target_state = parsed.resolve_target_state();
         self.theory.mode = parsed.kinetics_mode;
