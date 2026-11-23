@@ -5,7 +5,7 @@
 use super::ChallengeHudMode;
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{scoped_panel_id, SimulationFramework};
-use crate::starter_gallery::{ChallengeMetadata, PresetStoryMetadata};
+use crate::starter_gallery::{GoalChallengeMetadata, PresetStoryMetadata};
 use eframe::egui;
 
 enum HudBannerAction {
@@ -175,7 +175,7 @@ fn draw_story_banner(
 
 fn draw_challenge_banner(
     ui: &mut egui::Ui,
-    challenge: &'static ChallengeMetadata,
+    challenge: &'static GoalChallengeMetadata,
     flags: (bool, bool, bool, bool),
     observables: &[(&'static str, f64)],
 ) -> HudBannerAction {

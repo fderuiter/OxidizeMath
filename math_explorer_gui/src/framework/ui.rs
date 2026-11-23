@@ -301,13 +301,44 @@ impl SimulationFramework {
         &mut self,
         ctx: &egui::Context,
         id_source: &str,
-        mut is_open: bool,
+        is_open: bool,
         selected: Option<crate::starter_gallery::StarterCard>,
     ) {
-        if let Some(card) = selected {
-            let _ = self.launch_starter_card(&card);
-            is_open = false;
-            ctx.request_repaint();
+        let sel = selected.map(crate::starter_gallery::GallerySelection::Starter);
+        self.apply_starter_gallery_selection(ctx, id_source, is_open, sel);
+    }
+
+    pub(crate) fn apply_starter_gallery_selection(
+        &mut self,
+        ctx: &egui::Context,
+        id_source: &str,
+        mut is_open: bool,
+        selected: Option<crate::starter_gallery::GallerySelection>,
+    ) {
+        match selected {
+            Some(crate::starter_gallery::GallerySelection::Starter(card)) => {
+                let _ = self.launch_starter_card(&card);
+                is_open = false;
+                ctx.request_repaint();
+            }
+            Some(crate::starter_gallery::GallerySelection::Story(story)) => {
+                let _ = self.launch_story(story, 0);
+                self.flush_hud_announcements(ctx);
+                is_open = false;
+                ctx.request_repaint();
+            }
+            Some(crate::starter_gallery::GallerySelection::Challenge(ch)) => {
+                let _ = self.launch_challenge_by_id(ch.id, Some(ctx));
+                is_open = false;
+                ctx.request_repaint();
+            }
+            Some(crate::starter_gallery::GallerySelection::GoalChallenge(goal)) => {
+                let _ = self.launch_challenge(goal);
+                self.flush_hud_announcements(ctx);
+                is_open = false;
+                ctx.request_repaint();
+            }
+            None => {}
         }
         self.show_starter_gallery = is_open;
         self.sync_starter_gallery_state(ctx, id_source);
@@ -319,23 +350,26 @@ impl SimulationFramework {
         }
         let cards =
             crate::starter_gallery::get_starter_cards_for_domain(id_source, &self.available_tools);
+        let challenges = crate::starter_gallery::get_challenge_cards_for_domain(id_source);
         let modal_source = format!("{id_source}_{}", self.instance_id);
         if crate::starter_gallery::try_defer_starter_gallery(
             ctx,
             id_source,
             &modal_source,
             cards.clone(),
+            challenges.clone(),
         ) {
             return;
         }
         let mut is_open = self.show_starter_gallery;
-        let selected = crate::starter_gallery::show_starter_gallery_overlay(
+        let selected = crate::starter_gallery::show_starter_gallery_with_challenges(
             ctx,
             &modal_source,
             &cards,
+            &challenges,
             &mut is_open,
         );
-        self.apply_starter_gallery_outcome(ctx, id_source, is_open, selected);
+        self.apply_starter_gallery_selection(ctx, id_source, is_open, selected);
     }
 
     #[allow(missing_docs)]
@@ -399,6 +433,7 @@ impl SimulationFramework {
         self.sync_overlays_before_frame(&ctx, id_source);
 
         self.show_export_action_bar(ui, id_source);
+        self.show_challenge_hud(ui, id_source);
         self.render_challenge_hud_panel(ui, &ctx, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);

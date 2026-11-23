@@ -444,15 +444,24 @@ pub fn get_starter_cards_for_domain(
 }
 
 #[path = "starter_gallery/challenges.rs"]
-mod challenges;
-pub use challenges::*;
-
+pub mod challenges;
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
-pub use root_host::show_starter_gallery_overlay;
+#[path = "starter_gallery/stories.rs"]
+pub mod stories;
+#[path = "starter_gallery/story_packs.rs"]
+mod story_packs;
+pub use challenges::{
+    challenge_matches_domain, find_challenge_metadata, get_challenge_cards_for_domain,
+    ChallengeCard, ChallengeMetadata, GallerySelection,
+};
 pub(crate) use root_host::{
     begin_root_starter_gallery_scope, flush_deferred_starter_galleries, try_defer_starter_gallery,
 };
+pub use root_host::{
+    show_starter_gallery_overlay, show_starter_gallery_with_challenges, StarterGalleryTab,
+};
+pub use stories::*;
 
 #[cfg(test)]
 #[path = "starter_gallery/tests.rs"]

@@ -155,6 +155,26 @@ pub trait ExplorerTab {
         }
     }
 
+    /// Applies either a starter card or inverse challenge selection from `StarterGallery`.
+    fn apply_starter_gallery_selection(
+        &mut self,
+        ctx: &egui::Context,
+        id_source: &str,
+        is_open: bool,
+        selected: Option<crate::starter_gallery::GallerySelection>,
+    ) {
+        match selected {
+            Some(crate::starter_gallery::GallerySelection::Starter(card)) => {
+                self.apply_starter_gallery_outcome(ctx, id_source, is_open, Some(card));
+            }
+            other => {
+                if let Some(fw) = self.framework_mut() {
+                    fw.apply_starter_gallery_selection(ctx, id_source, is_open, other);
+                }
+            }
+        }
+    }
+
     /// Canonical URL slug identifying this tab in `#tab=<slug>` share links.
     fn url_slug(&self) -> &'static str {
         match self.name() {
@@ -186,6 +206,11 @@ pub trait ExplorerTab {
     /// Active `InteractiveTool` identifier for `#tool=<id>` share links (`None` for single-view tabs).
     fn active_tool_id(&self) -> Option<&'static str> {
         self.framework().and_then(|fw| fw.active_tool_id())
+    }
+
+    /// Active inverse `ChallengeMetadata` identifier for `#challenge=<id>` share links.
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.framework().and_then(|fw| fw.active_challenge_id())
     }
 
     /// Deterministic parameter-only revision token for 300 ms debounced URL sync.

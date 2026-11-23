@@ -38,7 +38,7 @@ pub struct ShareUrlParams {
     pub state_json: Option<String>,
     /// Optional registered starter snapshot or guided story identifier (`&preset=<id>`).
     pub preset: Option<String>,
-    /// Optional registered playable challenge identifier (`&challenge=<id>`).
+    /// Optional registered inverse or AST goal challenge identifier (`&challenge=<id>`).
     pub challenge: Option<String>,
     /// Optional 0-based guided story step index (`&step=<idx>`).
     pub step: Option<usize>,
@@ -121,6 +121,17 @@ pub fn encode_share_fragment(
     preset_json: Option<&str>,
 ) -> Result<String, String> {
     encode_share_fragment_with_hud(tab_slug, tool_id, None, None, None, preset_json)
+}
+
+/// Encodes `tab_slug`, optional `tool_id`, optional `challenge_id`, and optional compact
+/// `preset_json` into `#tab=<slug>&tool=<id>&challenge=<id>&state=<base64url>`.
+pub fn encode_share_fragment_with_challenge(
+    tab_slug: &str,
+    tool_id: Option<&str>,
+    challenge_id: Option<&str>,
+    preset_json: Option<&str>,
+) -> Result<String, String> {
+    encode_share_fragment_with_hud(tab_slug, tool_id, None, challenge_id, None, preset_json)
 }
 
 /// Encodes a `#tab=...` URL fragment including optional `preset`, `challenge`, `step`, and `state` parameters.

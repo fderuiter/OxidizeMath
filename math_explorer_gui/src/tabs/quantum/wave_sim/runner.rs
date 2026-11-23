@@ -228,16 +228,8 @@ impl WaveRunner {
         self.cached_dt = None;
         self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
 
-        let safe_x0 = if cfg.x0.is_finite() {
-            cfg.x0
-        } else {
-            DEFAULT_X0
-        };
-        let safe_k0 = if cfg.k0.is_finite() {
-            cfg.k0
-        } else {
-            DEFAULT_K0
-        };
+        let safe_x0 = if cfg.x0.is_finite() { cfg.x0 } else { DEFAULT_X0 };
+        let safe_k0 = if cfg.k0.is_finite() { cfg.k0 } else { DEFAULT_K0 };
         let safe_sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {
@@ -427,12 +419,13 @@ impl WaveRunner {
 
 impl FiniteStateGuard for WaveRunner {
     fn is_finite_state(&self) -> bool {
-        !self.diverged
-            && self
-                .psi
-                .vector
-                .iter()
-                .all(|c| c.re.is_finite() && c.im.is_finite())
+        if self.diverged {
+            return false;
+        }
+        self.psi
+            .vector
+            .iter()
+            .all(|c| c.re.is_finite() && c.im.is_finite())
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -464,7 +457,9 @@ impl SimulationRunner for WaveRunner {
                     .clone();
                 self.init_from_config(&cfg);
             }
-            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed.max(1),
+            SimCommand::SetSpeed(speed) => {
+                self.steps_per_frame = speed.max(1);
+            }
             _ => {}
         }
     }
