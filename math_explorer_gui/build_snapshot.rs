@@ -16,18 +16,49 @@ use std::pin::Pin;
 
 const MANIFEST_FILENAME: &str = "traceability_manifest.json";
 
+const CORE_DEP_CRATES: &[&str] = &[
+    "diagnostics",
+    "federated_registry",
+    "math_commons",
+    "oxidize_core",
+    "scientific_metadata",
+];
+
+const FEATURE_DEP_CRATES: &[(&str, &str)] = &[
+    ("CARGO_FEATURE_AI", "crates/domain_ai/src"),
+    ("CARGO_FEATURE_APPLIED", "crates/domain_applied/src"),
+    ("CARGO_FEATURE_BIOLOGY", "crates/domain_biology/src"),
+    ("CARGO_FEATURE_CLIMATE", "crates/domain_climate/src"),
+    (
+        "CARGO_FEATURE_EPIDEMIOLOGY",
+        "crates/domain_epidemiology/src",
+    ),
+    ("CARGO_FEATURE_MATH_EXPLORER", "math_explorer/src"),
+    ("CARGO_FEATURE_PHYSICS", "crates/domain_physics/src"),
+    ("CARGO_FEATURE_PURE_MATH", "crates/pure_math/src"),
+];
+
 /// Read-only build-script [`VirtualFileSystem`] adapter rooted at `..` that emits
 /// deduplicated forward-slash `cargo:rerun-if-changed` directives for existing paths.
 struct BuildSnapshotVfs {
     root: PathBuf,
     emitted: RefCell<BTreeSet<String>>,
+    enabled_features: BTreeSet<String>,
 }
 
 impl BuildSnapshotVfs {
     fn new(root: &Path) -> Self {
+        let enabled_features = env::vars_os()
+            .filter_map(|(k, _)| {
+                k.to_str()?
+                    .strip_prefix("CARGO_FEATURE_")
+                    .map(|f| f.to_ascii_lowercase())
+            })
+            .collect();
         Self {
             root: root.to_path_buf(),
             emitted: RefCell::new(BTreeSet::new()),
+            enabled_features,
         }
     }
 
@@ -55,16 +86,51 @@ impl BuildSnapshotVfs {
     }
 }
 
+fn filter_disabled_tab_mods(content: &str, enabled_features: &BTreeSet<String>) -> String {
+    let mut out = String::with_capacity(content.len());
+    let mut skip_next_mod = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(feat) = trimmed
+            .strip_prefix("#[cfg(feature = \"")
+            .and_then(|rest| rest.strip_suffix("\")]"))
+        {
+            if !enabled_features.contains(feat) {
+                skip_next_mod = true;
+                out.push('\n');
+                continue;
+            }
+        }
+        if skip_next_mod && trimmed.starts_with("pub mod ") && trimmed.ends_with(';') {
+            skip_next_mod = false;
+            out.push('\n');
+            continue;
+        }
+        skip_next_mod = false;
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 impl VirtualFileSystem for BuildSnapshotVfs {
     fn read_to_string(
         &self,
         path: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, std::io::Error>> + '_>> {
+        let clean = path
+            .trim_start_matches("./")
+            .trim_start_matches(['/', '\\'])
+            .to_string();
         let disk_path = self.resolve_path(path);
         Box::pin(async move {
             let content = fs::read_to_string(&disk_path)?;
             self.emit_if_exists(&disk_path);
-            Ok(content)
+            if clean == "math_explorer_gui/src/tabs/mod.rs" {
+                Ok(filter_disabled_tab_mods(&content, &self.enabled_features))
+            } else {
+                Ok(content)
+            }
         })
     }
 
@@ -101,6 +167,24 @@ impl VirtualFileSystem for BuildSnapshotVfs {
     }
 }
 
+fn active_code_dirs(vfs: &BuildSnapshotVfs) -> Vec<String> {
+    let mut dirs = Vec::new();
+    for crate_name in CORE_DEP_CRATES {
+        let dir = format!("crates/{crate_name}/src");
+        vfs.emit_if_exists(&vfs.resolve_path(&dir));
+        dirs.push(dir);
+    }
+    for &(feature_env, dir) in FEATURE_DEP_CRATES {
+        if env::var_os(feature_env).is_some() {
+            vfs.emit_if_exists(&vfs.resolve_path(dir));
+            dirs.push(dir.to_string());
+        }
+    }
+    dirs.push("math_explorer_gui/src/tabs".to_string());
+    dirs.sort();
+    dirs
+}
+
 /// Generates `traceability_manifest.json` into `out_dir` and Cargo's target directory.
 pub fn generate_traceability_snapshot(out_dir: &Path) {
     let ws_root = Path::new("..");
@@ -111,9 +195,12 @@ pub fn generate_traceability_snapshot(out_dir: &Path) {
     vfs.emit_if_exists(&cert_path);
     let certificate = read_optional_certificate(&cert_path);
 
+    let code_dirs = active_code_dirs(&vfs);
+    let code_dir_refs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
     let engine = TraceabilityEngine::new(vfs);
-    let report = futures::executor::block_on(engine.scan_workspace("", false))
-        .expect("Failed to execute TraceabilityEngine workspace scan in build.rs");
+    let report =
+        futures::executor::block_on(engine.scan_repository(&code_dir_refs, "papers", false))
+            .expect("Failed to execute TraceabilityEngine scan in build.rs");
 
     let payload = TraceabilityManifestPayload {
         report,
@@ -137,36 +224,34 @@ fn serialize_sorted_manifest(payload: &TraceabilityManifestPayload) -> String {
     json
 }
 
-fn write_manifest_if_changed(path: &Path, json: &str) {
-    if fs::read_to_string(path).ok().as_deref() == Some(json) {
-        return;
+fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
+    if fs::read(path).is_ok_and(|existing| existing == content.as_bytes()) {
+        return Ok(());
     }
-    let _ = fs::write(path, json);
+    fs::write(path, content)
 }
 
 fn write_manifest_outputs(out_dir: &Path, json: &str) {
-    let out_manifest = out_dir.join(MANIFEST_FILENAME);
-    if fs::read_to_string(&out_manifest).ok().as_deref() != Some(json) {
-        fs::write(&out_manifest, json).expect("Failed to write OUT_DIR/traceability_manifest.json");
-    }
+    write_if_changed(&out_dir.join(MANIFEST_FILENAME), json)
+        .expect("Failed to write OUT_DIR/traceability_manifest.json");
 
     if let Some(profile_dir) = out_dir
         .ancestors()
         .find(|p| p.file_name().and_then(|n| n.to_str()) == Some("build"))
         .and_then(Path::parent)
     {
-        write_manifest_if_changed(&profile_dir.join(MANIFEST_FILENAME), json);
+        let _ = write_if_changed(&profile_dir.join(MANIFEST_FILENAME), json);
         if let Some(parent_target) = profile_dir.parent() {
-            write_manifest_if_changed(&parent_target.join(MANIFEST_FILENAME), json);
+            let _ = write_if_changed(&parent_target.join(MANIFEST_FILENAME), json);
         }
     }
 
     if let Some(custom_target) = env::var_os("CARGO_TARGET_DIR") {
         let target_path = PathBuf::from(custom_target);
         if target_path.is_dir() {
-            write_manifest_if_changed(&target_path.join(MANIFEST_FILENAME), json);
+            let _ = write_if_changed(&target_path.join(MANIFEST_FILENAME), json);
         }
     } else if Path::new("../target").is_dir() {
-        write_manifest_if_changed(&Path::new("../target").join(MANIFEST_FILENAME), json);
+        let _ = write_if_changed(&Path::new("../target").join(MANIFEST_FILENAME), json);
     }
 }
