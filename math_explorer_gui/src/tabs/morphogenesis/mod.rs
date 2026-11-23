@@ -10,6 +10,7 @@ pub mod atlas;
 mod atlas_bridge;
 pub mod counterfactual;
 mod counterfactual_tool;
+mod dataflow;
 /// Evolutionary replicator and enzyme saturation kinetics tool.
 pub mod evolution_kinetics_tool;
 /// UI rendering for [`evolution_kinetics_tool::EvolutionKineticsTool`].
