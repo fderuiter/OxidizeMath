@@ -32,7 +32,7 @@ impl TierOutcomeCounts {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[allow(missing_docs)]
 pub enum ComparisonResult {
     #[allow(missing_docs)]
@@ -53,6 +53,7 @@ pub trait OutcomeComparator<T: ?Sized> {
 /// Strategy: Higher value is better (e.g., survival time, quality of life score).
 ///
 /// If `a > b`, outcome `a` is a Win.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct HigherIsBetter;
 
 impl<T: PartialOrd> OutcomeComparator<T> for HigherIsBetter {
@@ -71,6 +72,7 @@ impl<T: PartialOrd> OutcomeComparator<T> for HigherIsBetter {
 /// Strategy: Lower value is better (e.g., number of hospitalizations, symptom severity).
 ///
 /// If `a < b`, outcome `a` is a Win.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LowerIsBetter;
 
 impl<T: PartialOrd> OutcomeComparator<T> for LowerIsBetter {
@@ -87,6 +89,7 @@ impl<T: PartialOrd> OutcomeComparator<T> for LowerIsBetter {
 }
 
 /// Strategy: Higher value is better, but only if the difference exceeds a threshold (`a - b > threshold`).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct ThresholdComparator {
     #[allow(missing_docs)]
     pub threshold: f64,
@@ -119,6 +122,14 @@ impl OutcomeComparator<f64> for ThresholdComparator {
 pub struct WinRatioAnalysis<T> {
     strategies: Vec<Box<dyn OutcomeComparator<T>>>,
     _marker: PhantomData<T>,
+}
+
+impl<T> std::fmt::Debug for WinRatioAnalysis<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WinRatioAnalysis")
+            .field("strategy_count", &self.strategies.len())
+            .finish_non_exhaustive()
+    }
 }
 
 #[verified_engine::verified]
@@ -170,6 +181,7 @@ pub trait PairingStrategy<T> {
 }
 
 /// Unmatched Pair comparison (All-Pairs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct UnmatchedPairing;
 
 impl<T> PairingStrategy<T> for UnmatchedPairing {
@@ -216,6 +228,7 @@ impl<T> PairingStrategy<T> for UnmatchedPairing {
 }
 
 /// Matched Pair comparison.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MatchedPairing;
 
 impl<T> PairingStrategy<T> for MatchedPairing {
@@ -413,7 +426,7 @@ pub fn calculate_win_ratio(wins: i32, losses: i32) -> f64 {
 }
 
 /// Statistical results for a Win Ratio analysis.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WinRatioStats {
     /// The calculated win ratio ($N_W / N_L$).
     pub win_ratio: f64,

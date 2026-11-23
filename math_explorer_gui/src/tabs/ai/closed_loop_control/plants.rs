@@ -93,7 +93,7 @@ impl LorenzPlantTwin {
             .rho(LORENZ_RHO0)
             .beta(LORENZ_BETA)
             .build(LorenzState::new(init.x, init.y, init.z));
-        let uncontrolled = controlled.clone();
+        let uncontrolled = controlled;
         let model = LorenzKalmanModel {
             sigma: LORENZ_SIGMA,
             rho_eff: LORENZ_RHO0,
@@ -296,7 +296,7 @@ impl SeirPlantTwin {
         let mut controlled = SEIRModel::new(SEIR_POP_N, 12.0, SEIR_BETA0, SEIR_SIGMA, SEIR_GAMMA)
             .expect("valid SEIR parameters");
         set_seir_state(controlled.get_state_mut(), 35.0, 12.0);
-        let uncontrolled = controlled.clone();
+        let uncontrolled = controlled;
         let model = SeirKalmanModel {
             pop_n: SEIR_POP_N,
             beta_eff: SEIR_BETA0,

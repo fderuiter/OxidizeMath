@@ -23,7 +23,7 @@ pub(crate) fn valid_positive_scalar(value: f64) -> bool {
 }
 
 /// Preallocated complex band and Thomas-sweep scratch buffers for zero-allocation 1D Cayley stepping.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SolverWorkspace {
     lhs_off: Vec<Complex<f64>>,
     lhs_main: Vec<Complex<f64>>,
@@ -329,9 +329,18 @@ impl TridiagonalHamiltonian1D {
     }
 }
 
+impl PartialEq for TridiagonalHamiltonian1D {
+    #[verified_engine::verified]
+    fn eq(&self, other: &Self) -> bool {
+        self.n_points == other.n_points
+            && self.diagonal() == other.diagonal()
+            && self.off_diagonal() == other.off_diagonal()
+    }
+}
+
 /// Zero-allocation 1D unitary Crank-Nicolson propagator solving
 /// $(I + i\alpha\hat{H})\psi^{n+1} = (I - i\alpha\hat{H})\psi^n$ with $\alpha = \frac{\Delta t}{2\hbar}$.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CrankNicolsonPropagator1D {
     workspace: SolverWorkspace,
     n_points: usize,

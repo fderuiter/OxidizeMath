@@ -33,6 +33,7 @@ pub enum NodeState {
 }
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone)]
 pub struct NetworkEpidemicModel {
     pub(super) num_nodes: usize,
     pub(super) states: Vec<NodeState>,
@@ -44,6 +45,20 @@ pub struct NetworkEpidemicModel {
     pub(super) patient_zero: Option<usize>,
     pub(super) beta: f64,
     pub(super) gamma: f64,
+}
+
+impl PartialEq for NetworkEpidemicModel {
+    fn eq(&self, other: &Self) -> bool {
+        self.num_nodes == other.num_nodes
+            && self.states == other.states
+            && self.positions == other.positions
+            && self.adjacency == other.adjacency
+            && self.edge_quarantined == other.edge_quarantined
+            && self.edges == other.edges
+            && self.patient_zero == other.patient_zero
+            && self.beta == other.beta
+            && self.gamma == other.gamma
+    }
 }
 
 #[verified_engine::verified]

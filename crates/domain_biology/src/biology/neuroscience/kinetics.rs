@@ -68,7 +68,7 @@ pub trait GatingKinetics: Send + Sync + std::fmt::Debug {
 /// let alpha_n = kinetics.alpha_n(v_curr, v_rest);
 /// println!("Alpha n: {:.4}", alpha_n);
 /// ```
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct StandardKinetics;
 
 impl GatingKinetics for StandardKinetics {

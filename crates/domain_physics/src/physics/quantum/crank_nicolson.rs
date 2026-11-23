@@ -32,7 +32,7 @@ use num_complex::Complex;
 /// assert!(solver.step_substeps_in_place(&mut psi, 8));
 /// assert!((psi.norm() - 1.0).abs() < 1e-12);
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CrankNicolson1D {
     hamiltonian: TridiagonalHamiltonian1D,
     workspace: SolverWorkspace,

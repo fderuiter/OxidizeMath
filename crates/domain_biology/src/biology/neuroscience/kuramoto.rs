@@ -42,6 +42,19 @@ impl Default for KuramotoNetwork {
     }
 }
 
+impl PartialEq for KuramotoNetwork {
+    #[verified_engine::verified]
+    fn eq(&self, other: &Self) -> bool {
+        self.phases == other.phases
+            && self.natural_frequencies == other.natural_frequencies
+            && self.couplings == other.couplings
+            && self.coupling == other.coupling
+            && self.base_frequency == other.base_frequency
+            && self.frequency_spread == other.frequency_spread
+            && self.time == other.time
+    }
+}
+
 impl KuramotoNetwork {
     /// Creates an `N`-oscillator Kuramoto network initialized on a bidirectional ring.
     #[verified_engine::verified]

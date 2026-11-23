@@ -7,7 +7,7 @@ use math_commons::math_kernel::types::flatten_2d_index;
 use nalgebra::{Point3, Vector3};
 use std::f64::consts::PI;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct StencilNeighbors {
     pub ip: usize,
     pub im: usize,

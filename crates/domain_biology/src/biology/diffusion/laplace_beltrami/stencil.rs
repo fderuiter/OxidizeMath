@@ -8,7 +8,7 @@ use pure_math::pure_math::differential_geometry::buckled_flow::{
 };
 use pure_math::pure_math::differential_geometry::surface::{ParametricSurface, SurfaceAnalysis};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct CellStencil {
     pub idx: [usize; 8],
     pub weight: [f64; 8],

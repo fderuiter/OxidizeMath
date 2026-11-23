@@ -27,6 +27,7 @@ pub trait TuringSolverStrategy<const N: usize = 2> {
 ///
 /// This struct implements `OdeSystem` to allow standard solvers to integrate
 /// the reaction-diffusion equations.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TuringDynamics<'a, const N: usize, K, D> {
     #[allow(missing_docs)]
     pub kinetics: &'a K,
@@ -47,7 +48,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
     }
 
     #[verified_engine::verified]
-    fn derivative_in_place(&self, _t: f64, state: &TuringState<N>, out: &mut TuringState<N>) {
+    fn derivative_in_place(&self, t: f64, state: &TuringState<N>, out: &mut TuringState<N>) {
         let n = state.len();
         if n == 0 {
             return;
@@ -93,7 +94,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
             let inputs: [f64; N] = std::array::from_fn(|s| state.concentrations[s][i]);
 
             // Compute Reaction
-            let rates = self.kinetics.reaction(inputs);
+            let rates = self.kinetics.reaction_at(t, inputs);
 
             // Accumulate results
             for (s, rate) in rates.iter().enumerate().take(N) {
@@ -153,7 +154,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
 /// // dt = 0.01
 /// solver.step(&state, &mut next_state, &dynamics, 0.01);
 /// ```
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FusedEulerSolver;
 
 impl FusedEulerSolver {
@@ -209,16 +210,30 @@ impl<const N: usize> TuringSolverStrategy<N> for FusedEulerSolver {
 /// Adapts a standard ODE Solver to the TuringSolverStrategy trait.
 ///
 /// This adapter allows using any generic `Solver` (like RungeKutta4) within the TuringSystem.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StandardSolverAdapter<S> {
     #[allow(missing_docs)]
     pub solver: S,
+    time: f64,
 }
 
 impl<S> StandardSolverAdapter<S> {
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(solver: S) -> Self {
-        Self { solver }
+        Self { solver, time: 0.0 }
+    }
+
+    /// Returns the elapsed simulation time `t`.
+    #[verified_engine::verified]
+    pub fn time(&self) -> f64 {
+        self.time
+    }
+
+    /// Sets the current simulation time `t`.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, time: f64) {
+        self.time = time;
     }
 }
 
@@ -232,8 +247,10 @@ impl<const N: usize, S: Solver<TuringState<N>>> TuringSolverStrategy<N>
         dynamics: &TuringDynamics<N, K, D>,
         dt: f64,
     ) {
+        let t = self.time;
         next_state.copy_from(state);
-        self.solver.step(dynamics, 0.0, next_state, dt);
+        self.solver.step(dynamics, t, next_state, dt);
+        self.time += dt;
     }
 }
 
@@ -241,6 +258,7 @@ use pure_math::pure_math::analysis::evolution::{EvolutionEngine, EvolutionError}
 use rand::RngCore;
 
 /// A wrapper to use FusedEulerSolver within the unified EvolutionEngine interface.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FusedEulerEvolution<'a, const N: usize, K, D> {
     #[allow(missing_docs)]
     pub solver: FusedEulerSolver,
@@ -262,5 +280,53 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>>
         // aux holds the next state. To make it standard, we should copy it back to state.
         state.copy_from(aux);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::biology::diffusion::FiniteDifference1D;
+    use crate::biology::morphogenesis::{DiffusionCoeff, TuringSystem};
+    use math_commons::math_kernel::types::{Dimension, StepSize};
+    use pure_math::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    struct TimeForcedKinetics;
+
+    impl ReactionKinetics<2> for TimeForcedKinetics {
+        fn reaction(&self, _state: [f64; 2]) -> [f64; 2] {
+            [0.0, 0.0]
+        }
+
+        fn reaction_at(&self, t: f64, _state: [f64; 2]) -> [f64; 2] {
+            [2.0 * t, 3.0 * t * t]
+        }
+    }
+
+    #[test]
+    fn test_standard_solver_adapter_tracks_non_autonomous_time() {
+        let init_state = TuringState::<2>::new(4);
+        let adapter = StandardSolverAdapter::new(RungeKutta4::new(&init_state));
+        let mut sys = TuringSystem::new_with_solver(
+            Dimension(4),
+            [DiffusionCoeff(0.0), DiffusionCoeff(0.0)],
+            TimeForcedKinetics,
+            FiniteDifference1D::new(StepSize(1.0)),
+            adapter,
+        );
+        assert_eq!(sys, sys.clone());
+
+        for _ in 0..10 {
+            TimeStepper::step(&mut sys, 0.1);
+        }
+
+        assert!((sys.solver.time() - 1.0).abs() < 1e-12);
+        for &u in &sys.state.concentrations[0] {
+            assert!((u - 1.0).abs() < 1e-12);
+        }
+        for &v in &sys.state.concentrations[1] {
+            assert!((v - 1.0).abs() < 1e-12);
+        }
     }
 }

@@ -8,7 +8,7 @@ pub trait HypothesisTest<Input> {
     fn test(&self, data: Input) -> Result<TestResult, ClinicalTrialError>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub struct TestResult {
     #[allow(missing_docs)]
@@ -22,6 +22,7 @@ pub struct TestResult {
 }
 
 /// Strategy for an independent two-sample t-test (assuming equal variances).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct TTestIndependent {
     #[allow(missing_docs)]
     pub alpha: f64,
@@ -89,6 +90,7 @@ impl<'a> HypothesisTest<(&'a GroupData, &'a GroupData)> for TTestIndependent {
 }
 
 /// Strategy for a Chi-Square test for a 2x2 contingency table.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct ChiSquare2x2 {
     #[allow(missing_docs)]
     pub alpha: f64,

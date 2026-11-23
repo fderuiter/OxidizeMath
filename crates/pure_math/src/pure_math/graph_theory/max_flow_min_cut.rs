@@ -46,7 +46,7 @@ pub struct MaxFlowMinCutResult {
 }
 
 /// Preallocated CSR residual-network workspace for zero-allocation Edmonds-Karp execution.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct EdmondsKarpScratch {
     num_nodes: usize,
     num_edges: usize,

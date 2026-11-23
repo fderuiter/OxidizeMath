@@ -114,7 +114,7 @@ impl Default for OrbitPopulationConfig {
 }
 
 /// Pre-allocated galactic disk and tidal stream orbit ensemble stepped via symplectic leapfrog.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GalacticDiskSystem {
     /// Baryonic stellar + HI gas disk derived from Tillaboev (2025).
     pub baryons: BaryonicDiskConfig,

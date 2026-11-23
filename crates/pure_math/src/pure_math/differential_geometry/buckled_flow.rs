@@ -109,7 +109,7 @@ pub fn detect_twisted_seam_map<S: ParametricSurface + ?Sized>(
 }
 
 /// Pre-allocated, zero-allocation morphogen-buckled mean-curvature flow solver on a flat 2D grid.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BuckledSurfaceFlow {
     nu: usize,
     nv: usize,
@@ -127,6 +127,27 @@ pub struct BuckledSurfaceFlow {
     next_points: Vec<Point3<f64>>,
     mean_curvature: Vec<f64>,
     displacements: Vec<f64>,
+}
+
+impl PartialEq for BuckledSurfaceFlow {
+    #[verified_engine::verified]
+    fn eq(&self, other: &Self) -> bool {
+        self.nu == other.nu
+            && self.nv == other.nv
+            && self.topology == other.topology
+            && self.du == other.du
+            && self.dv == other.dv
+            && self.min_area_element == other.min_area_element
+            && self.north_meridional_g == other.north_meridional_g
+            && self.south_meridional_g == other.south_meridional_g
+            && self.seam_fwd == other.seam_fwd
+            && self.neighbors == other.neighbors
+            && self.ref_points == other.ref_points
+            && self.buckling_normals == other.buckling_normals
+            && self.points == other.points
+            && self.mean_curvature == other.mean_curvature
+            && self.displacements == other.displacements
+    }
 }
 
 impl BuckledSurfaceFlow {

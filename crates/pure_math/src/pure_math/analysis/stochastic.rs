@@ -7,7 +7,7 @@ use rand::Rng;
 use thiserror::Error;
 
 /// Errors that can occur during stochastic simulation.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum StochasticError {
     #[error("Invalid reaction index: {0}")]
     #[allow(missing_docs)]
@@ -52,6 +52,7 @@ impl Drop for AllocationLockGuard {
 /// A solver for stochastic simulation using the Gillespie Algorithm (SSA).
 ///
 /// It uses the Direct Method to simulate exact stochastic trajectories.
+#[derive(Debug, Clone, PartialEq)]
 pub struct GillespieSolver<R> {
     rng: R,
     /// Reusable buffer for propensities to avoid allocation per step.

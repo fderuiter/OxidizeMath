@@ -227,7 +227,7 @@ fn contains_duplicate_anchor(
 }
 
 /// Pre-allocated hyperbolic tiling buffer supporting zero-allocation `PSU(1,1)` transformations.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct HyperbolicTilingBuffer {
     kind: TilingKind,
     depth: usize,

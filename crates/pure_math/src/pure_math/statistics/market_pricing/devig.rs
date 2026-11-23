@@ -8,9 +8,12 @@ use crate::pure_math::statistics::kelly::Odds;
 use math_commons::registry::TOLERANCE_HIGH;
 
 /// Bookmaker vig-removal model used to recover true fair probabilities from quoted odds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum DevigMethod {
     /// Proportional scaling (`p_i = pi_i / sum(pi)`), assuming constant margin across all odds.
+    #[default]
     Multiplicative,
     /// Equal-margin subtraction (`p_i = pi_i - (sum(pi) - 1) / n`), with simplex clamping.
     Additive,

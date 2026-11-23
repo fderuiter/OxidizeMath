@@ -76,6 +76,7 @@ fn build_fermi_lut(r: f64, s: f64, t: f64, p: f64, inv_temp: f64) -> [[[f64; 5];
 /// let magnetization_ratio = (m as f64).abs() / (max_m as f64);
 /// assert!(magnetization_ratio > 0.8, "System did not magnetize! Ratio: {}", magnetization_ratio);
 /// ```
+#[derive(Debug, Clone)]
 pub struct SpinLattice {
     width: usize,
     height: usize,

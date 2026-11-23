@@ -18,6 +18,14 @@ pub struct TrainingLoop<M: Trainable<f64> = TwoLayerMLP> {
     pub optimizer: Box<dyn Optimizer<f64>>,
 }
 
+impl<M: Trainable<f64> + std::fmt::Debug> std::fmt::Debug for TrainingLoop<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrainingLoop")
+            .field("model", &self.model)
+            .finish_non_exhaustive()
+    }
+}
+
 // Deref implementation allows `network.layer1` access if `M` has those fields (like `TwoLayerMLP`).
 impl<M: Trainable<f64>> Deref for TrainingLoop<M> {
     type Target = M;

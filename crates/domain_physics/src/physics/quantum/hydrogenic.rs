@@ -132,6 +132,7 @@ pub fn hydrogenic_orbital_cartesian(
 }
 
 /// Zero-allocation 3D two-state hydrogenic superposition engine coupled to `schrodinger` and `hamiltonian`.
+#[derive(Debug, Clone)]
 pub struct HydrogenicSuperposition3D {
     orbital_a: OrbitalQuantumNumbers,
     orbital_b: OrbitalQuantumNumbers,
@@ -148,6 +149,25 @@ pub struct HydrogenicSuperposition3D {
     basis_a: Vec<f64>,
     basis_b: Vec<f64>,
     elapsed_time: f64,
+}
+
+impl PartialEq for HydrogenicSuperposition3D {
+    #[verified_engine::verified]
+    fn eq(&self, other: &Self) -> bool {
+        self.orbital_a == other.orbital_a
+            && self.orbital_b == other.orbital_b
+            && self.grid_dim == other.grid_dim
+            && self.half_extent == other.half_extent
+            && self.bohr_radius == other.bohr_radius
+            && self.dt == other.dt
+            && self.dipole_coupling == other.dipole_coupling
+            && self.state == other.state
+            && self.hamiltonian == other.hamiltonian
+            && self.propagator == other.propagator
+            && self.basis_a == other.basis_a
+            && self.basis_b == other.basis_b
+            && self.elapsed_time == other.elapsed_time
+    }
 }
 
 impl HydrogenicSuperposition3D {

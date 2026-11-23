@@ -15,9 +15,10 @@ use crate::error::PharmacokineticsError;
 pub const MAX_REGIMEN_EVENTS: usize = 64;
 
 /// Release profile applied to an individual [`DoseEvent`].
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum ReleaseFormulation {
     /// Single-pulse absorption governed directly by the underlying model.
+    #[default]
     ImmediateRelease,
     /// Biphasic extended-release formulation $C_{\text{XR}}(t) = f_1 C(t) + f_2 C(t - t_{\text{lag}})$.
     ExtendedRelease {
@@ -201,7 +202,7 @@ fn evaluate_event_model<M: PharmacokineticModel>(
 /// Pre-scales per-event models into a fixed-capacity stack array (`<= MAX_REGIMEN_EVENTS`) during
 /// [`RegimenSuperposition::new`] so concentration evaluation and slice sampling perform **zero heap
 /// allocations** inside locked `VerifiedAllocator` regions.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RegimenSuperposition<M: Copy> {
     base_model: M,
     events: [DoseEvent; MAX_REGIMEN_EVENTS],

@@ -17,6 +17,13 @@ pub struct FastFourierTransform {
     planner: FftPlanner<f64>,
 }
 
+impl std::fmt::Debug for FastFourierTransform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FastFourierTransform")
+            .finish_non_exhaustive()
+    }
+}
+
 impl FastFourierTransform {
     /// Creates a new FFT processor.
     #[verified_engine::verified]

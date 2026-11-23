@@ -27,6 +27,7 @@ pub enum Move {
 impl Action for Move {}
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GridWorldEnv {
     #[allow(missing_docs)]
     pub width: i32,

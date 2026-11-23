@@ -29,6 +29,15 @@ pub trait VectorOperations:
         self.copy_from(source);
         self.scale_add(other, scale);
     }
+
+    /// Extracts `self` for an in-place solver step while leaving a valid placeholder behind.
+    ///
+    /// Heap-backed state vectors override this with a zero-capacity replacement so
+    /// [`super::stepper::TimeStepper::step_with`] can split borrows without heap allocations.
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        self.clone()
+    }
 }
 
 /// A trait defining a system of Ordinary Differential Equations.

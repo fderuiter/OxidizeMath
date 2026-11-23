@@ -14,7 +14,7 @@ pub trait IterationStrategy {
         F: FnMut(GridIndex, GridIndex, GridIndex, GridIndex, GridIndex);
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub struct LoopSplittingIteration;
 

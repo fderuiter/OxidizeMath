@@ -166,7 +166,7 @@ impl Default for GeodesicSegment {
 }
 
 /// Zero-allocation twin-ray hyperbolic billiard laboratory tracking Lyapunov divergence $\ln(\delta_t / \delta_0)$.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TwinBilliardSystem {
     table: BilliardTable,
     primary: GeodesicRay,

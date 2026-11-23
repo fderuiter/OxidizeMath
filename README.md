@@ -105,6 +105,7 @@ classDiagram
     class OdeSystem {
         <<Trait>>
         +derivative(t, state)
+        +derivative_in_place(t, state, out)
     }
 
     class Solver {
@@ -112,9 +113,24 @@ classDiagram
         +step(system, t, state, dt)
     }
 
-    class TuringSystem {
+    class TuringSolverStrategy {
+        <<Trait>>
+        +step(dynamics, u, v, t, dt)
+    }
+
+    class TuringDynamics {
         +kinetics: ReactionKinetics
         +diffusion: SpatialDiffusion
+    }
+
+    class TuringSystem {
+        +dynamics: TuringDynamics
+        +solver: TuringSolverStrategy
+        +step(dt)
+    }
+
+    class StandardSolverAdapter {
+        +solver: Solver
         +step()
     }
 
@@ -126,11 +142,15 @@ classDiagram
         +step()
     }
 
-    OdeSystem <|-- TuringSystem
+    OdeSystem <|.. TuringDynamics
     Solver <|.. RungeKutta4
-    TuringSystem --> Solver : Uses
-    TuringSystem --> ReactionKinetics : Uses
-    TuringSystem --> SpatialDiffusion : Uses
+    TuringSolverStrategy <|.. StandardSolverAdapter
+    TuringSolverStrategy <|.. FusedEulerSolver
+    StandardSolverAdapter --> Solver : Adapts
+    TuringSystem --> TuringDynamics : Owns
+    TuringSystem --> TuringSolverStrategy : Uses
+    TuringDynamics --> ReactionKinetics : Uses
+    TuringDynamics --> SpatialDiffusion : Uses
 ```
 
 ### 3. Comprehensive Examples

@@ -43,7 +43,7 @@ impl SymplecticMethod {
 ///
 /// Pre-allocates canonical coordinate and momentum scratch buffers at construction so
 /// stepping triggers zero dynamic heap allocations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct StormerVerlet<Coord> {
     q: Coord,
     p: Coord,
@@ -118,7 +118,7 @@ const YOSHIDA_KICK_INNER: f64 = 0.5 * (YOSHIDA_W0 + YOSHIDA_W1);
 ///
 /// Composes three velocity-Verlet stages with substeps $(w_1 \Delta t, w_0 \Delta t, w_1 \Delta t)$,
 /// fusing adjacent half-kicks so each step requires only four force evaluations and zero heap allocations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Yoshida4<Coord> {
     q: Coord,
     p: Coord,
@@ -221,7 +221,7 @@ const GL4_A22: f64 = 0.25;
 /// Preserves canonical symplectic 2-forms for **arbitrary** (including non-separable)
 /// Hamiltonian systems such as the chaotic double pendulum. Solves the coupled stage
 /// equations via bounded fixed-point iteration in pre-allocated stack/state buffers.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GaussLegendre4<State> {
     k1: State,
     k2: State,

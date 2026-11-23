@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 /// Errors returned by sports Elo rating updates, batch schedules, and line converters.
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum EloError {
     /// Elo rating is non-finite (`NaN` or infinite).
     #[error("Elo rating must be finite (got {value})")]
@@ -41,7 +41,7 @@ pub enum EloError {
 }
 
 /// Errors returned by 2D score grids, Poisson/Dixon-Coles models, market pricers, and MLE calibration.
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum MatchModelError {
     /// Requested `max_goals` cutoff exceeds the stack grid ceiling.
     #[error("max_goals {max_goals} exceeds supported grid limit {limit}")]

@@ -47,6 +47,7 @@ pub struct LeniaProbeSummary {
 }
 
 /// Stack-friendly specification for a single `32x32` parameter-atlas probe evaluation.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LeniaProbeSpec<'a> {
     /// Seeded canonical species template.
     pub species: LeniaSpecies,

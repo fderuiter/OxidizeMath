@@ -142,7 +142,7 @@ pub struct PowerSweepReport {
 }
 
 /// Preallocated buffers enabling zero-allocation execution under `VerifiedAllocator`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PowerSweepWorkspace {
     /// Preallocated treatment cohort buffer (`len >= MAX_ARM_SIZE`).
     pub treatment_buf: Vec<SimulatedSubject>,

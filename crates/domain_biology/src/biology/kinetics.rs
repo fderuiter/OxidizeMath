@@ -32,7 +32,7 @@
 
 use thiserror::Error;
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Clone)]
 #[allow(missing_docs)]
 pub enum KineticsError {
     #[error("Substrate concentration cannot be negative")]

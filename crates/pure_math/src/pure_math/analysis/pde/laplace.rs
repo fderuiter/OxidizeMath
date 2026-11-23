@@ -1,5 +1,6 @@
 /// Represents the 2D Laplace Equation.
 /// $\nabla^2 u = 0$
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LaplaceEquation2D;
 
 impl LaplaceEquation2D {
@@ -33,6 +34,7 @@ impl LaplaceEquation2D {
 
 /// Solves Laplace equation on a rectangular domain with Dirichlet boundary conditions using Fourier series.
 /// Currently assumes $u(0,y)=0, u(a,y)=0, u(x,0)=0, u(x,b)=f(x)$.
+#[derive(Debug, Clone, PartialEq)]
 pub struct RectangularLaplaceSolver {
     #[allow(missing_docs)]
     pub width: f64, // a

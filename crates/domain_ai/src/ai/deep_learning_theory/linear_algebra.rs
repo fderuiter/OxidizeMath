@@ -40,7 +40,7 @@ pub fn linear_transformation(x: &Vector, w: &Matrix, b: &Vector) -> Vector {
 }
 
 /// A structure representing a dense (fully connected) layer's parameters.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DenseLayer {
     #[allow(missing_docs)]
     pub weights: Matrix,

@@ -34,7 +34,7 @@ impl SearchFrame {
 }
 
 /// Preallocated bitset workspace for zero-allocation treewidth evaluation across arbitrary `|V|`.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TreewidthScratch {
     pub(self) words_per_row: usize,
     pub(self) adj_words: Vec<u64>,

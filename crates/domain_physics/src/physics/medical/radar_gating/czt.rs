@@ -150,6 +150,7 @@ pub fn chirp_z_transform(
 }
 
 /// Helper struct to configure CZT using Spatial Parameters ("Fonzi" Step 1).
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpatialCztConfig {
     /// Start distance in meters ($A$ parameter equivalent).
     pub start_distance: f64,

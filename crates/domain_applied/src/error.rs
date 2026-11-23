@@ -3,7 +3,7 @@ use pure_math::pure_math::analysis::roots::AnalysisError;
 use std::collections::HashMap;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub enum PharmacokineticsError {
     /// An invalid parameter was provided (e.g., negative volume or rate constant).

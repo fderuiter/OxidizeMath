@@ -31,6 +31,19 @@ pub struct McKendrickSolver {
     kernel: CannibalismKernel,
 }
 
+impl PartialEq for McKendrickSolver {
+    fn eq(&self, other: &Self) -> bool {
+        self.ages == other.ages
+            && self.density == other.density
+            && self.mortality == other.mortality
+            && self.da == other.da
+            && self.time == other.time
+            && self.last_birth_rate == other.last_birth_rate
+            && self.last_cannibal_load == other.last_cannibal_load
+            && self.kernel == other.kernel
+    }
+}
+
 impl McKendrickSolver {
     /// Allocates age grid and working buffers once so `step_upwind` performs zero heap allocations.
     pub fn new(num_ages: usize, max_age: f64, kernel: CannibalismKernel) -> Self {

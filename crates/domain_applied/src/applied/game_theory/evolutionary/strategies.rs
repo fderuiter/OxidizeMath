@@ -8,7 +8,7 @@ use nalgebra::{DMatrix, DVector};
 /// $$ f(x) = Ax $$
 ///
 /// This is the most common form in classical Evolutionary Game Theory (e.g., Hawk-Dove, RPS).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MatrixPayoff {
     payoff_matrix: DMatrix<f64>,
 }

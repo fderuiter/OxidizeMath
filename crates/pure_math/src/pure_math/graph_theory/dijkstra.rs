@@ -8,6 +8,7 @@ use std::ops::Add;
 
 /// Result of Dijkstra's algorithm.
 /// Contains the shortest distance to each reachable node and the predecessor map.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DijkstraResult<W> {
     /// An upper bound on the weight of the shortest path from source s to vertex v.
     /// In the end, this is the true shortest distance.
@@ -168,5 +169,28 @@ where
     DijkstraResult {
         distances,
         predecessors,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use petgraph::graph::DiGraph;
+
+    #[test]
+    fn test_dijkstra_result_debug_and_partial_eq() {
+        let mut graph = DiGraph::<(), u32>::new();
+        let a = graph.add_node(());
+        let b = graph.add_node(());
+        let c = graph.add_node(());
+        graph.add_edge(a, b, 2);
+        graph.add_edge(b, c, 3);
+        graph.add_edge(a, c, 9);
+
+        let res1 = dijkstra(&graph, a);
+        let res2 = dijkstra(&graph, a);
+        assert_eq!(res1, res2);
+        assert_eq!(res1.distances.get(&c), Some(&5));
+        assert!(!format!("{res1:?}").is_empty());
     }
 }

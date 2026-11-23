@@ -67,13 +67,13 @@ where
 }
 
 /// Zero-copy discretized state index for fixed-capacity tabular reinforcement learning.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct DiscreteState(pub usize);
 
 impl State for DiscreteState {}
 
 /// Zero-copy discretized action index for fixed-capacity tabular reinforcement learning.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct DiscreteAction(pub usize);
 
 impl Action for DiscreteAction {}
@@ -82,7 +82,7 @@ impl Action for DiscreteAction {}
 ///
 /// Unlike [`TabularQFunction`], lookups and Bellman updates index directly into a contiguous
 /// `[[f64; ACTIONS]; STATES]` array with zero dynamic heap allocations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FixedArrayQFunction<const STATES: usize, const ACTIONS: usize> {
     table: [[f64; ACTIONS]; STATES],
 }

@@ -2,6 +2,7 @@ use std::f64::consts::PI;
 
 /// Represents the 1D Heat Equation parameters.
 /// $\frac{\partial u}{\partial t} = \kappa \frac{\partial^2 u}{\partial x^2}$
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct HeatEquation1D {
     #[allow(missing_docs)]
     pub diffusivity: f64, // \kappa
@@ -33,6 +34,7 @@ impl HeatEquation1D {
 
 /// Represents a heat distribution solution on a rod of length L with zero boundary conditions (ends at temp 0).
 /// $u(x, t) = \sum_{n=1}^\infty B_n \sin(n \pi x / L) e^{-(n \pi / L)^2 \kappa t}$
+#[derive(Debug, Clone, PartialEq)]
 pub struct HeatRodSolution {
     #[allow(missing_docs)]
     pub length: f64,

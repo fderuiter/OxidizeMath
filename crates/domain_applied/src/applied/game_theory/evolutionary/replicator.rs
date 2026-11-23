@@ -18,6 +18,7 @@ use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver};
 ///
 /// This struct uses the **Strategy Pattern** for fitness calculation, allowing
 /// for both standard Matrix Games (linear) and complex Non-Linear Games.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReplicatorDynamics<S: FitnessStrategy = MatrixPayoff> {
     /// The strategy used to compute fitness values.
     strategy: S,

@@ -71,6 +71,20 @@ pub struct JuvenileAdultSolver {
     params: JuvenileAdultParams,
 }
 
+impl PartialEq for JuvenileAdultSolver {
+    fn eq(&self, other: &Self) -> bool {
+        self.ages == other.ages
+            && self.density == other.density
+            && self.vulnerability == other.vulnerability
+            && self.adults == other.adults
+            && self.da == other.da
+            && self.time == other.time
+            && self.last_maturation_flux == other.last_maturation_flux
+            && self.last_energy_intake == other.last_energy_intake
+            && self.params == other.params
+    }
+}
+
 impl JuvenileAdultSolver {
     /// Pre-allocates juvenile age slices on $[0, \alpha]$ for zero-allocation `step_upwind` execution.
     pub fn new(num_ages: usize, initial_adults: f64, params: JuvenileAdultParams) -> Self {

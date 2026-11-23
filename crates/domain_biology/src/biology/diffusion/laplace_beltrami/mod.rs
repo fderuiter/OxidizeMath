@@ -17,7 +17,7 @@ use stencil::{CellStencil, precompute_surface_metrics};
 /// Precomputes contravariant metric flux weights, topology-aware seam/polar neighbor tables,
 /// Gaussian curvature $K$, and principal metric anisotropy at construction time so every
 /// reaction-diffusion step executes with zero heap allocations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LaplaceBeltramiDiffusion2D {
     nu: usize,
     nv: usize,

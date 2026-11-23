@@ -4,7 +4,7 @@ use crate::error::FluidError;
 use nalgebra::{Matrix3, Vector3};
 
 /// Physical properties of the fluid.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FluidProperties {
     /// Density ($\rho$) in kg/m^3.
     density: f64,
@@ -78,7 +78,7 @@ impl FluidProperties {
 }
 
 /// Builder for `FluidProperties`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct FluidPropertiesBuilder {
     density: Option<f64>,
     dynamic_viscosity: Option<f64>,

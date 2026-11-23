@@ -8,7 +8,7 @@ use rand::Rng;
 /// Performance statistics from Monte Carlo simulation.
 ///
 /// Contains summary statistics from multiple simulated trajectories.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PerformanceStats {
     /// Mean of final values across all paths.
     pub mean_final: f64,
@@ -84,6 +84,7 @@ impl MomentumType {
 /// OU process analyzer for sports analytics.
 ///
 /// Provides high-level analysis functions for betting and performance prediction.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OuAnalyzer {
     params: OuParams,
     dt: TimeStep,

@@ -4,7 +4,7 @@ use crate::error::PharmacokineticsError;
 use pure_math::pure_math::analysis::roots::NewtonRaphson;
 
 /// A model representing a single dose with first-order absorption and elimination (Bateman function).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BatemanModel {
     #[allow(missing_docs)]
     pub params: PKParameters,

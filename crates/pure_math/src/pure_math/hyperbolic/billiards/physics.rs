@@ -120,7 +120,7 @@ pub(super) fn uniform_unit_f64(rng: &mut OxidizeRng) -> f64 {
 }
 
 /// Pre-allocated fixed-capacity ring buffer (`MAX_BILLIARD_SEGMENTS`) for zero-allocation storage.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct FixedRing<T: Copy> {
     buf: Vec<T>,
     head: usize,

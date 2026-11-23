@@ -440,6 +440,25 @@ fn test_standalone_policy_audit_rejects_missing_lints_from_root_and_subdir() {
 }
 
 #[test]
+fn test_policy_audit_rejects_missing_public_debug_in_mathematical_crate() {
+    let dir = TempTestDir::new("policy_audit_public_debug");
+    let member = write_member_crate(
+        &dir,
+        "crates/pure_math",
+        "pub struct Undebuggable { pub dt: f64 }\n",
+    );
+    let wl = dir.join("verification_whitelist.toml");
+    fs::write(&wl, "").unwrap();
+    assert!(!run_policy_audit_with_whitelist(&[member.as_str()], &wl));
+    fs::write(
+        dir.join("crates/pure_math/src/lib.rs"),
+        "#[derive(Debug)]\npub struct Undebuggable { pub dt: f64 }\n",
+    )
+    .unwrap();
+    assert!(run_policy_audit_with_whitelist(&[member.as_str()], &wl));
+}
+
+#[test]
 fn test_dead_code_and_clippy_diagnostics_emit_spans_idents_and_guidance() {
     let dc_src = "pub fn ok() {\n    #[allow(dead_code)]\n    let local_buf = 1;\n}\n#[allow(dead_code)]\nfn hidden_fn() {}\n";
     let dc_ast = syn::parse_file(dc_src).unwrap();

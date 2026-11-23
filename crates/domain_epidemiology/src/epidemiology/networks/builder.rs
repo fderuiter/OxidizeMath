@@ -1,6 +1,6 @@
 use super::{NetworkEpidemicModel, NodeState, canonical_edges_from_adjacency};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum NetworkModelError {
     #[allow(missing_docs)]
@@ -42,6 +42,7 @@ impl std::fmt::Display for NetworkModelError {
 impl std::error::Error for NetworkModelError {}
 
 #[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NetworkEpidemicModelBuilder {
     num_nodes: Option<usize>,
     beta: Option<f64>,

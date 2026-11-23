@@ -84,7 +84,7 @@ fn vertex_cell_index(v: &[f64; 3], origin: &[f64; 3], cell_size: f64, m: usize) 
 ///
 /// Partitions $V$ surface vertices into an $[0, M - 1]^3$ grid ($M = \lceil V^{1/3} \rceil$) using
 /// counting-sort `cell_offsets` and `sorted_vertices` slices without heap allocation.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FlatSpatialGrid<'a> {
     origin: [f64; 3],
     cell_size: f64,
@@ -280,7 +280,7 @@ impl<'a> FlatSpatialGrid<'a> {
 
 /// Reusable CSR buffer workspace enabling zero-allocation [`FlatSpatialGrid`] indexing and
 /// full-mesh [`cortical_thickness_map_into`] evaluation inside `VerifiedAllocator`-locked frames.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ThicknessWorkspace {
     white_offsets: Vec<usize>,
     white_vertices: Vec<[f64; 3]>,

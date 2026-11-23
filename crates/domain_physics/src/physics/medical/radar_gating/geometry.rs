@@ -12,7 +12,7 @@
 use nalgebra::{Point3, Rotation3, Translation3};
 
 /// A raw detection point in spherical/sensor space.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SphericalPoint {
     /// Range (distance) in meters.
     pub range: f64,
@@ -23,7 +23,7 @@ pub struct SphericalPoint {
 }
 
 /// Configuration for the Angle-FFT processing.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AngleFftConfig {
     /// Size of the Azimuth FFT (e.g., 64).
     pub n_fft_azimuth: usize,
@@ -69,7 +69,7 @@ impl AngleFftConfig {
 }
 
 /// Represents the rigid body transformation from Sensor Frame to Patient Frame.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SensorToPatientTransform {
     /// Rotation matrix ($R_{3\times3}$).
     pub rotation: Rotation3<f64>,

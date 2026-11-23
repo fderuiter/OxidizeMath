@@ -129,6 +129,7 @@ fn validate_gating_variable(val: f64) -> Result<(), HodgkinHuxleyError> {
 /// Represents the state of a Hodgkin-Huxley neuron.
 ///
 /// Stores the membrane potential and the state of the three gating variables ($n, m, h$).
+#[derive(Debug, Clone)]
 pub struct HodgkinHuxleyNeuron {
     /// Membrane potential (mV).
     v: f64,

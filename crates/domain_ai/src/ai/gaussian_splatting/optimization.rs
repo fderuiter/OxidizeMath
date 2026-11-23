@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq)]
 #[allow(missing_docs)]
 pub enum DensityAction {
     #[allow(missing_docs)]

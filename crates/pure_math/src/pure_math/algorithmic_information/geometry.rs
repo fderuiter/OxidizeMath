@@ -23,7 +23,7 @@ const DISTANCE_DYADIC_SCALE_BITS: usize = 64;
 /// let d = DyadicRational::new(3, 2);
 /// assert!((d.to_f64() - 0.75).abs() < 1e-12);
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct DyadicRational {
     /// Signed integer numerator $m$.
     pub m: i64,

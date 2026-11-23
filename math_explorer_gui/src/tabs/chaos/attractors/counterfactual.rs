@@ -369,7 +369,7 @@ impl AttractorPlotter {
     pub(super) fn respawn_worker_with_current_state(&mut self) {
         let params = std::sync::Arc::clone(&self.params);
         let mut runner = AttractorRunner::from_params(params);
-        runner.system = self.system.clone();
+        runner.system = self.system;
         runner.history = self.history.clone();
         runner.step_count = self.step_count;
         runner.execution_state = self.execution_state;

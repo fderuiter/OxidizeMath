@@ -160,6 +160,29 @@ fn audit_member_sources_scoped(
     success
 }
 
+fn collect_required_deps(
+    member: &str,
+    package_name: Option<&str>,
+    expected_deps: &HashSet<String>,
+    whitelist_entries: &[crate::whitelist::UnusedDependencyEntry],
+) -> HashSet<String> {
+    expected_deps
+        .iter()
+        .filter(|dep| !is_whitelisted_unused_dep(member, package_name, dep, whitelist_entries))
+        .cloned()
+        .collect()
+}
+
+fn check_math_debug(
+    member: &str,
+    package_name: Option<&str>,
+    member_dir: &Path,
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> bool {
+    !crate::api_drift::public_debug::is_mathematical_crate_member(member, package_name)
+        || crate::api_drift::public_debug::check_member_public_debug_with_cache(member_dir, cache)
+}
+
 fn audit_single_member_scoped(
     member: &str,
     staged_rs_set: &HashSet<String>,
@@ -170,13 +193,12 @@ fn audit_single_member_scoped(
 ) -> bool {
     let member_dir = lint_policy::resolve_member_dir(member);
     let cargo_toml_path = member_dir.join("Cargo.toml");
-    let parsed = match manifest_cache.get_or_load(&cargo_toml_path) {
-        Ok(cached) => cached.parsed.clone(),
-        Err(err) => {
-            eprintln!("{err}");
-            return false;
-        }
+    let Ok(cached) = manifest_cache.get_or_load(&cargo_toml_path).map_err(|e| {
+        eprintln!("{e}");
+    }) else {
+        return false;
     };
+    let parsed = cached.parsed.clone();
 
     let mut success = manifest_cache.check_manifest_lints_once(member, &cargo_toml_path, &parsed);
     let check_clippy_bypasses = !lint_policy::is_vendored_egui_plot_exempt(member, &parsed);
@@ -184,13 +206,12 @@ fn audit_single_member_scoped(
         !missing_docs::is_vendored_missing_docs_exempt(member, &parsed, whitelist);
     let expected_deps = collect_expected_dependencies(&parsed);
     let package_name = manifest_package_name(&parsed);
-    let required_deps: HashSet<String> = expected_deps
-        .iter()
-        .filter(|dep| {
-            !is_whitelisted_unused_dep(member, package_name, dep, &whitelist.unused_dependencies)
-        })
-        .cloned()
-        .collect();
+    let required_deps = collect_required_deps(
+        member,
+        package_name,
+        &expected_deps,
+        &whitelist.unused_dependencies,
+    );
     let mut dep_visitor = DependencyVisitor::new(expected_deps.clone());
     let mut visited_md = HashSet::new();
 
@@ -209,6 +230,9 @@ fn audit_single_member_scoped(
         &mut visited_md,
         cache,
     ) {
+        success = false;
+    }
+    if !check_math_debug(member, package_name, &member_dir, cache) {
         success = false;
     }
 

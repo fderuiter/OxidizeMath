@@ -10,7 +10,7 @@ pub trait DoseKernel {
 /// A simplified analytical Point Spread Function (Exponential Kernel).
 ///
 /// Formula: $K(r) = \frac{A}{r^2} e^{-\beta r}$
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ExponentialKernel {
     #[allow(missing_docs)]
     pub amplitude: f64,

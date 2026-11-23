@@ -106,7 +106,7 @@ pub enum GeodesicStepStatus {
 /// let status = system.step_rk4(&mut solver, 0.0, &mut state, 0.01);
 /// assert!(matches!(status, GeodesicStepStatus::Advanced { .. }));
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GeodesicSystem<M, const N: usize> {
     metric: M,
 }

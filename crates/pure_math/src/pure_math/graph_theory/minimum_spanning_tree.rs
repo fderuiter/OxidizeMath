@@ -41,7 +41,7 @@ pub struct MstResult {
     pub steps: Vec<MstEdgeStep>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct IndexedEdge {
     u: usize,
     v: usize,
@@ -50,7 +50,7 @@ struct IndexedEdge {
 }
 
 /// Preallocated heapsort and disjoint-set workspace for zero-allocation Kruskal execution.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct KruskalScratch {
     sorted_edges: Vec<IndexedEdge>,
     parent: Vec<usize>,

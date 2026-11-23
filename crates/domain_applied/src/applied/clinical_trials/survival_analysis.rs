@@ -2,7 +2,7 @@ use super::types::{ClinicalTrialError, SurvivalTime};
 use statrs::distribution::{ChiSquared, ContinuousCDF};
 
 /// Represents a single subject's outcome in a survival analysis study.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Observation {
     /// The time at which the event occurred or the subject was censored.
     pub time: SurvivalTime,
@@ -15,7 +15,7 @@ pub struct Observation {
 /// A point on the Kaplan-Meier survival curve.
 ///
 /// Represents the state of the cohort at a specific time $t$.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TimePoint {
     /// The time $t$ at which events occurred.
     pub time: f64,

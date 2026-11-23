@@ -17,6 +17,7 @@ use std::sync::Arc;
 /// Spectral 2D Lenia simulation engine with pre-allocated `Complex<f64>` grids,
 /// transpose workspace, and `rustfft` scratch buffers so [`LeniaEngine::step`] performs
 /// zero heap allocations across both parametric and [`CompiledGrowthRule`] formulas.
+#[derive(Clone)]
 pub struct LeniaEngine {
     width: usize,
     height: usize,
@@ -43,6 +44,16 @@ pub struct LeniaEngine {
     telemetry: LeniaTelemetry,
 }
 
+impl std::fmt::Debug for LeniaEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LeniaEngine")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("dt", &self.dt)
+            .field("telemetry", &self.telemetry)
+            .finish_non_exhaustive()
+    }
+}
 impl LeniaEngine {
     /// Creates a pre-allocated 2D Lenia engine on a `width x height` periodic torus
     /// (dimensions clamped to `32..=256`) and precomputes the normalized spectrum $\hat{K}$.

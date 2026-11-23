@@ -48,7 +48,7 @@ use num_traits::ToPrimitive;
 /// // Query transition probability at t=15 (interpolated)
 /// let p_15 = tensor.transition_matrix_at(TimeIndex::new(15.0).unwrap()).unwrap();
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TransitionTensor<T: RealField + Copy + ToPrimitive> {
     /// Number of states.
     num_states: usize,

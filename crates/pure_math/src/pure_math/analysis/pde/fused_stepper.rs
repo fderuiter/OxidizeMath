@@ -184,6 +184,7 @@ impl StencilOperators {
 /// A generic Fused Stencil Stepper for performance-optimized grid updates.
 /// By evaluating operators inside the grid loop, this avoids memory bandwidth bottlenecks
 /// caused by temporary derivative buffers.
+#[derive(Debug, Clone, PartialEq)]
 pub struct FusedStencilStepper {
     #[allow(missing_docs)]
     pub ops: StencilOperators,

@@ -25,6 +25,7 @@ pub fn sample_timestep_with_rng<R: Rng + ?Sized>(max_timesteps: usize, rng: &mut
 /// Input: Timestep t.
 /// Operation: Retrieve pre-defined noise variance coefficients beta_t and calculate cumulative product alpha_bar_t.
 /// Output: Signal scale sqrt(alpha_bar_t) and Noise scale sqrt(1 - alpha_bar_t).
+#[derive(Debug, Clone, PartialEq)]
 pub struct NoiseSchedule {
     #[allow(missing_docs)]
     pub betas: Vec<f64>,

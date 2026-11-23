@@ -65,6 +65,23 @@ impl Default for AvalancheTelemetry {
     }
 }
 
+impl PartialEq for AvalancheTelemetry {
+    fn eq(&self, other: &Self) -> bool {
+        self.size_counts == other.size_counts
+            && self.size_tail == other.size_tail
+            && self.area_counts == other.area_counts
+            && self.area_tail == other.area_tail
+            && self.duration_counts == other.duration_counts
+            && self.duration_tail == other.duration_tail
+            && self.total_avalanches == other.total_avalanches
+            && self.zero_topple_drops == other.zero_topple_drops
+            && self.last_stats == other.last_stats
+            && self.wavefront_trace() == other.wavefront_trace()
+    }
+}
+
+impl Eq for AvalancheTelemetry {}
+
 impl AvalancheTelemetry {
     /// Creates an empty fixed-capacity avalanche telemetry accumulator.
     #[must_use]

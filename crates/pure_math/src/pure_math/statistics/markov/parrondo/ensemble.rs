@@ -10,7 +10,7 @@ use rand::RngCore;
 const INV_TWO_POW_53: f64 = 1.0 / 9_007_199_254_740_992.0;
 
 /// Preallocated zero-allocation Monte Carlo ensemble workspace driven by [`OxidizeRng`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParrondoEnsemble {
     wealth: Vec<i64>,
     mean_trajectory: Vec<f64>,

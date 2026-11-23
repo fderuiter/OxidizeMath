@@ -78,7 +78,7 @@ pub fn project_covariance(
 }
 
 /// Camera pose and projection parameters for zero-allocation 3D Gaussian splat projection.
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SplatCameraProjection {
     /// World-to-camera rigid view matrix $W$ (upper-left $3 \times 3$ rotation, translation in column 3).
     pub view_matrix: Matrix4<f64>,

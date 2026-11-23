@@ -61,8 +61,8 @@ impl SirTwinStepper {
         gamma_b: f64,
         delta_x: f64,
     ) -> Self {
-        let model_a = base_model.clone();
-        let mut model_b = base_model.clone();
+        let model_a = *base_model;
+        let mut model_b = *base_model;
         model_b.dynamics.n = n_b.max(1.0);
         model_b.dynamics.beta = beta_b.max(0.0);
         model_b.dynamics.gamma = gamma_b.max(0.0);

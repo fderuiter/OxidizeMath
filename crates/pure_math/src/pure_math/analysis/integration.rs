@@ -26,7 +26,7 @@ pub trait Integrator: Send + Sync {
 /// Clenshaw-Curtis Quadrature Integration.
 ///
 /// Uses the `quadrature` crate.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ClenshawCurtis;
 
 impl Integrator for ClenshawCurtis {
@@ -47,7 +47,7 @@ impl Integrator for ClenshawCurtis {
 ///
 /// A simple numerical integration method that divides the area into trapezoids.
 /// Useful for testing or when `clenshaw_curtis` overhead is undesirable and high precision isn't needed.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Trapezoidal {
     /// Number of steps (segments) to use.
     pub steps: usize,
