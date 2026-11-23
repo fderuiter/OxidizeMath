@@ -164,20 +164,14 @@ pub fn render_hasse_plot(ui: &mut egui::Ui, buffers: &HassePlotBuffers, p_max: i
         .allow_scroll(false)
         .show(ui, |plot_ui| {
             plot_ui.line(
-                Line::new(
-                    "Hasse +2*sqrt(q)",
-                    PlotPoints::Borrowed(&buffers.upper_arch),
-                )
-                .color(palette.warning)
-                .width(2.0_f32),
+                Line::new("Hasse +2*sqrt(q)", PlotPoints::Borrowed(&buffers.upper_arch))
+                    .color(palette.warning)
+                    .width(2.0_f32),
             );
             plot_ui.line(
-                Line::new(
-                    "Hasse -2*sqrt(q)",
-                    PlotPoints::Borrowed(&buffers.lower_arch),
-                )
-                .color(palette.warning)
-                .width(2.0_f32),
+                Line::new("Hasse -2*sqrt(q)", PlotPoints::Borrowed(&buffers.lower_arch))
+                    .color(palette.warning)
+                    .width(2.0_f32),
             );
             plot_ui.line(
                 Line::new(
@@ -215,24 +209,18 @@ fn plot_special_primes<'a>(
     }
     if !buffers.anomalous.is_empty() {
         plot_ui.points(
-            Points::new(
-                "Anomalous (a_q = 1)",
-                PlotPoints::Borrowed(&buffers.anomalous),
-            )
-            .color(palette.error)
-            .radius(5.0_f32)
-            .shape(MarkerShape::Square),
+            Points::new("Anomalous (a_q = 1)", PlotPoints::Borrowed(&buffers.anomalous))
+                .color(palette.error)
+                .radius(5.0_f32)
+                .shape(MarkerShape::Square),
         );
     }
     if !buffers.active_prime.is_empty() {
         plot_ui.points(
-            Points::new(
-                "Active prime p",
-                PlotPoints::Borrowed(&buffers.active_prime),
-            )
-            .color(palette.accent)
-            .radius(6.8_f32)
-            .shape(MarkerShape::Circle),
+            Points::new("Active prime p", PlotPoints::Borrowed(&buffers.active_prime))
+                .color(palette.accent)
+                .radius(6.8_f32)
+                .shape(MarkerShape::Circle),
         );
     }
 }
@@ -258,11 +246,7 @@ impl EllipticCurvePlayground {
         announce_live_status(ctx, self.status_summary.clone());
     }
 
-    pub(super) fn apply_canvas_outcome(
-        &mut self,
-        ctx: &egui::Context,
-        outcome: TorusCanvasOutcome,
-    ) {
+    pub(super) fn apply_canvas_outcome(&mut self, ctx: &egui::Context, outcome: TorusCanvasOutcome) {
         self.focused_canvas = outcome.focused_canvas_id;
         if outcome.toggle_selector {
             self.selector = match self.selector {
@@ -315,7 +299,7 @@ impl EllipticCurvePlayground {
         self.render_algebraic_readout(ui);
     }
 
-    fn render_prime_stepper(&mut self, ui: &mut egui::Ui) {
+    fn render_parameter_sliders(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui
                 .button("◀ p")
@@ -344,16 +328,8 @@ impl EllipticCurvePlayground {
                 self.step_prime(1);
             }
         });
-    }
-
-    fn render_parameter_sliders(&mut self, ui: &mut egui::Ui) {
-        self.render_prime_stepper(ui);
-        let mut changed = ui
-            .add(egui::Slider::new(&mut self.a, -50..=50).text("a"))
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.b, -50..=50).text("b"))
-            .changed();
+        let mut changed = ui.add(egui::Slider::new(&mut self.a, -50..=50).text("a")).changed();
+        changed |= ui.add(egui::Slider::new(&mut self.b, -50..=50).text("b")).changed();
         changed |= ui
             .add(
                 egui::Slider::new(

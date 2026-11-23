@@ -25,10 +25,10 @@ impl<M: PharmacokineticModel> CompiledRegimen<M> {
     #[inline]
     pub(crate) fn concentration(&self, t: f64) -> f64 {
         let base = self.maintenance.concentration(t);
-        let load =
-            self.loading
-                .as_ref()
-                .map_or(0.0, |m| if t >= 0.0 { m.concentration(t) } else { 0.0 });
+        let load = self
+            .loading
+            .as_ref()
+            .map_or(0.0, |m| if t >= 0.0 { m.concentration(t) } else { 0.0 });
         base + load
     }
 }
@@ -102,7 +102,7 @@ pub(crate) fn solve_ka_calibrated(
 }
 
 #[inline]
-fn project_plot_y(c: f64, log10_y: bool) -> f64 {
+pub(super) fn project_plot_y(c: f64, log10_y: bool) -> f64 {
     let clamped = c.max(0.0);
     if log10_y {
         clamped.max(LOG10_CONC_FLOOR).log10()
@@ -278,9 +278,7 @@ impl PharmacokineticsTool {
 
     /// Validates parameters, builds `SuperpositionModel` instances once, and reserves point buffers.
     pub(crate) fn compile_models(&mut self) {
-        let cap = self
-            .sample_points
-            .clamp(MIN_SAMPLE_POINTS, MAX_SAMPLE_POINTS);
+        let cap = self.sample_points.clamp(MIN_SAMPLE_POINTS, MAX_SAMPLE_POINTS);
         for buf in [
             &mut self.total_points,
             &mut self.d_points,
@@ -318,7 +316,9 @@ impl PharmacokineticsTool {
         )
     }
 
-    fn try_build_formulation(&self) -> Result<(f64, CompiledFormulation), PharmacokineticsError> {
+    fn try_build_formulation(
+        &self,
+    ) -> Result<(f64, CompiledFormulation), PharmacokineticsError> {
         if !(0.0..=1.0).contains(&self.f1) || !(0.0..=1.0).contains(&self.f2) {
             return Err(PharmacokineticsError::InvalidParameter(
                 "Pulse fractions f1 and f2 must be between 0.0 and 1.0".into(),
@@ -340,16 +340,16 @@ impl PharmacokineticsTool {
         let (maint_times, has_loading, _) = self.build_schedule_times();
 
         let compiled = match self.formulation() {
-            FormulationKind::SingleImmediate => {
-                CompiledFormulation::SingleImmediate(Self::build_bateman_regimen(
+            FormulationKind::SingleImmediate => CompiledFormulation::SingleImmediate(
+                Self::build_bateman_regimen(
                     base_params,
                     self.loading_dose_mg,
                     has_loading,
                     maint_times,
-                )?)
-            }
-            FormulationKind::SingleTwoPulse => {
-                CompiledFormulation::SingleTwoPulse(Self::build_two_pulse_bateman_regimen(
+                )?,
+            ),
+            FormulationKind::SingleTwoPulse => CompiledFormulation::SingleTwoPulse(
+                Self::build_two_pulse_bateman_regimen(
                     base_params,
                     self.loading_dose_mg,
                     has_loading,
@@ -357,8 +357,8 @@ impl PharmacokineticsTool {
                     self.lag_time_hours,
                     self.f1,
                     self.f2,
-                )?)
-            }
+                )?,
+            ),
             FormulationKind::ChiralImmediate => {
                 let l_params = self.build_l_isomer_params()?;
                 self.build_chiral_immediate(base_params, l_params, has_loading, maint_times)?
@@ -385,9 +385,7 @@ impl PharmacokineticsTool {
             return;
         };
 
-        let count = self
-            .sample_points
-            .clamp(MIN_SAMPLE_POINTS, MAX_SAMPLE_POINTS);
+        let count = self.sample_points.clamp(MIN_SAMPLE_POINTS, MAX_SAMPLE_POINTS);
         let dt = self.horizon_hours / ((count - 1) as f64);
         let log10_y = self.log10_y;
 

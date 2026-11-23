@@ -13,10 +13,11 @@ use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::epidemiology::compartmental::SIRModel;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-pub(super) const MIN_SIR_DURATION: f64 = 10.0;
-pub(super) const MAX_SIR_DURATION: f64 = 365.0;
+const MIN_SIR_DURATION: f64 = 10.0;
+const MAX_SIR_DURATION: f64 = 365.0;
 const MAX_SIR_STEPS: usize = 100_000;
 
 #[derive(serde::Serialize)]
@@ -152,9 +153,7 @@ impl SirTool {
             .add(egui::Slider::new(&mut self.i0, 1.0..=i0_max).text("Initial Infected (I0)"))
             .changed();
         changed |= ui
-            .add(
-                egui::Slider::new(&mut self.beta, cb.min..=cb.max).text("Transmission Rate (beta)"),
-            )
+            .add(egui::Slider::new(&mut self.beta, cb.min..=cb.max).text("Transmission Rate (beta)"))
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.gamma, cg.min..=cg.max).text("Recovery Rate (gamma)"))
@@ -431,6 +430,37 @@ inventory::submit! {
         domain: "epidemiology",
         tags: &[],
         build: || Box::new(SirTool::default()),
+    }
+}
+
+impl TheoryDescribable for SirTool {
+    fn theory_description(&self) -> String {
+        let r0 = self.beta / self.gamma;
+        format!(
+            "Kermack-McKendrick SIR compartmental epidemic model: $\\frac{{dS}}{{dt}} = -\\frac{{\\beta S I}}{{N}}$, $\\frac{{dI}}{{dt}} = \\frac{{\\beta S I}}{{N}} - \\gamma I$, $\\frac{{dR}}{{dt}} = \\gamma I$. Transmission rate $\\beta = {:.3}$, recovery rate $\\gamma = {:.3}$, basic reproduction number $R_0 = {:.2}$.",
+            self.beta, self.gamma, r0
+        )
+    }
+    fn phonetic_description(&self) -> String {
+        "Kermack-McKendrick SIR compartmental epidemic model theory".into()
+    }
+
+    fn theory_citation(&self) -> String {
+        "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into()
+    }
+
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        HashMap::new()
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        let mut map = HashMap::with_capacity(5);
+        map.insert("N".to_string(), ParameterConstraint { min: 100.0, max: 100_000.0, step: 100.0 });
+        map.insert("I0".to_string(), ParameterConstraint { min: 1.0, max: 50_000.0, step: 1.0 });
+        map.insert("beta".to_string(), ParameterConstraint { min: 0.0, max: 5.0, step: 0.02 });
+        map.insert("gamma".to_string(), ParameterConstraint { min: 0.0, max: 1.0, step: 0.01 });
+        map.insert("duration".to_string(), ParameterConstraint { min: MIN_SIR_DURATION, max: MAX_SIR_DURATION, step: 1.0 });
+        map
     }
 }
 

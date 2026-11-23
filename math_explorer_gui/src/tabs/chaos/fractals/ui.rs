@@ -25,10 +25,12 @@ impl FractalViewer {
             if self.mode.uses_julia_c() {
                 ui.separator();
                 ui.label("Julia Constant (c):");
-                let re_drag = bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.01)
-                    .prefix("Re: ");
-                let im_drag = bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.01)
-                    .prefix("Im: ");
+                let re_drag =
+                    bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.01)
+                        .prefix("Re: ");
+                let im_drag =
+                    bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.01)
+                        .prefix("Im: ");
                 if ui.add(re_drag).changed() | ui.add(im_drag).changed() {
                     self.dirty = true;
                 }
@@ -39,22 +41,10 @@ impl FractalViewer {
 
     fn draw_mode_selector(&mut self, ui: &mut egui::Ui) {
         let options = [
-            (
-                FractalMode::Mandelbrot,
-                "Mandelbrot",
-                Complex::new(-0.75, 0.0),
-            ),
+            (FractalMode::Mandelbrot, "Mandelbrot", Complex::new(-0.75, 0.0)),
             (FractalMode::Julia, "Julia", Complex::new(0.0, 0.0)),
-            (
-                FractalMode::CustomMandelbrot,
-                "Custom (c-plane)",
-                Complex::new(0.0, 0.0),
-            ),
-            (
-                FractalMode::CustomJulia,
-                "Custom (Julia)",
-                Complex::new(0.0, 0.0),
-            ),
+            (FractalMode::CustomMandelbrot, "Custom (c-plane)", Complex::new(0.0, 0.0)),
+            (FractalMode::CustomJulia, "Custom (Julia)", Complex::new(0.0, 0.0)),
         ];
         ui.horizontal_wrapped(|ui| {
             for (mode, label, default_center) in options {

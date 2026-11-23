@@ -77,9 +77,14 @@ pub(super) struct FractalState {
 
 impl FractalState {
     pub(super) fn validate(&self) -> Result<(), String> {
-        let coords_valid = [self.center_re, self.center_im, self.julia_re, self.julia_im]
-            .iter()
-            .all(|v| v.is_finite() && (COORD_MIN..=COORD_MAX).contains(v));
+        let coords_valid = [
+            self.center_re,
+            self.center_im,
+            self.julia_re,
+            self.julia_im,
+        ]
+        .iter()
+        .all(|v| v.is_finite() && (COORD_MIN..=COORD_MAX).contains(v));
         let zoom_valid = self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom);
         let iter_valid =
             (10..=math_commons::registry::MAX_ITERATIONS as u32).contains(&self.max_iter);
@@ -171,8 +176,7 @@ pub(super) fn snapshot_to_clamped_color_image(
         let src_y = (y * snapshot.height / clamped_h).min(snapshot.height - 1);
         for x in 0..clamped_w {
             let src_x = (x * snapshot.width / clamped_w).min(snapshot.width - 1);
-            out[flatten_2d_index(x, y, clamped_w)] =
-                px[flatten_2d_index(src_x, src_y, snapshot.width)];
+            out[flatten_2d_index(x, y, clamped_w)] = px[flatten_2d_index(src_x, src_y, snapshot.width)];
         }
     }
     Some(egui::ColorImage::new([clamped_w, clamped_h], out))

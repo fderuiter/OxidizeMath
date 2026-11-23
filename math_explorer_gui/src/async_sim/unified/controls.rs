@@ -51,6 +51,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                             .send_command(SimCommand::Custom(action.to_string()))
                             .is_ok()
                         {
+                            if let Some(ext) = &mut self.ui_extension {
+                                ext.on_custom_action(action);
+                            }
                             ctx.request_repaint();
                         }
                     }
@@ -66,35 +69,17 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ui.label("Model Parameters");
 
         let mut reset_needed = self.draw_presets_and_actions(ui, ctx);
-        let mut clear_series_needed = false;
-        let mut wavepacket_changed = false;
-        let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
-
-        for (name, constraint) in &self.param_metadata {
-            if let Some(val) = params_lock.get_mut(name) {
-                let (choice_changed, slider_changed) = Self::draw_single_parameter(
-                    ui,
-                    name,
-                    constraint,
-                    val,
-                    self.cached_descs.get(name),
-                );
-                if choice_changed {
-                    reset_needed = true;
-                    clear_series_needed = true;
-                } else if slider_changed && M::is_wavepacket_parameter(name) {
-                    wavepacket_changed = true;
-                }
-            }
+        let ext_cmds = if let Some(ext) = &mut self.ui_extension {
+            ext.draw_side_panel_controls(ui, self.controller.latest_snapshot())
+        } else {
+            Vec::new()
+        };
+        if !ext_cmds.is_empty() {
+            self.dispatch_extension_commands(ext_cmds, Some(ctx));
         }
-        let wavepacket_tuple = wavepacket_changed.then(|| {
-            (
-                params_lock.get("x0").copied().unwrap_or(-2.0),
-                params_lock.get("k0").copied().unwrap_or(5.0),
-                params_lock.get("sigma").copied().unwrap_or(0.5),
-            )
-        });
-        drop(params_lock);
+
+        let (param_reset, clear_series_needed, wavepacket_tuple) = self.draw_parameter_widgets(ui);
+        reset_needed |= param_reset;
         if clear_series_needed {
             self.clear_custom_series();
         }
@@ -112,6 +97,56 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 ctx.request_repaint();
             }
         }
+    }
+
+    fn draw_parameter_widgets(
+        &mut self,
+        ui: &mut egui::Ui,
+    ) -> (bool, bool, Option<(f64, f64, f64)>) {
+        let mut reset_needed = false;
+        let mut clear_series_needed = false;
+        let mut wavepacket_changed = false;
+        let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
+
+        for (name, constraint) in &self.param_metadata {
+            let locked = self
+                .ui_extension
+                .as_ref()
+                .is_some_and(|ext| ext.is_parameter_locked(name));
+            if let Some(val) = params_lock.get_mut(name) {
+                let mut choice_changed = false;
+                let mut slider_changed = false;
+                ui.add_enabled_ui(!locked, |ui| {
+                    let res = Self::draw_single_parameter(
+                        ui,
+                        name,
+                        constraint,
+                        val,
+                        self.cached_descs.get(name),
+                    );
+                    choice_changed = res.0;
+                    slider_changed = res.1;
+                });
+                if choice_changed {
+                    reset_needed = true;
+                    clear_series_needed = true;
+                } else if slider_changed {
+                    if M::is_wavepacket_parameter(name) {
+                        wavepacket_changed = true;
+                    } else {
+                        reset_needed = true;
+                    }
+                }
+            }
+        }
+        let wavepacket_tuple = wavepacket_changed.then(|| {
+            (
+                params_lock.get("x0").copied().unwrap_or(-2.0),
+                params_lock.get("k0").copied().unwrap_or(5.0),
+                params_lock.get("sigma").copied().unwrap_or(0.5),
+            )
+        });
+        (reset_needed, clear_series_needed, wavepacket_tuple)
     }
 
     fn draw_custom_formula_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {

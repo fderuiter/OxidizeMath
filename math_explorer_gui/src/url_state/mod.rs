@@ -32,9 +32,10 @@ pub use browser::{
 #[cfg(test)]
 pub use browser::{take_last_copied_share_url, with_mock_web_base_url};
 pub use codec::{
-    encode_share_fragment, matches_tab_slug, parse_share_location, quantize_bounded_url_series,
-    quantize_url_centi, validate_url_preset_json, ShareUrlParams, CANONICAL_WEB_BASE_URL,
-    CUSTOM_POTENTIAL_POINTS, MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
+    encode_share_fragment, encode_share_fragment_with_challenge, matches_tab_slug,
+    parse_share_location, quantize_bounded_url_series, quantize_url_centi,
+    validate_url_preset_json, ShareUrlParams, CANONICAL_WEB_BASE_URL, CUSTOM_POTENTIAL_POINTS,
+    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
 };
 pub use sync::{UrlStateSignature, UrlSyncController, URL_SYNC_DEBOUNCE_MS};
 

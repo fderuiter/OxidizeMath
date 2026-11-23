@@ -243,11 +243,7 @@ impl MorphogenesisTab {
 impl FiniteStateGuard for MorphogenesisTab {
     fn is_finite_state(&self) -> bool {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        p.a.is_finite()
-            && p.b.is_finite()
-            && p.d_u.is_finite()
-            && p.d_v.is_finite()
-            && p.dt.is_finite()
+        p.a.is_finite() && p.b.is_finite() && p.d_u.is_finite() && p.d_v.is_finite() && p.dt.is_finite()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -336,8 +332,7 @@ impl ExplorerTab for MorphogenesisTab {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.framework
-            .import_url_preset_json(tool_id, preset_json)?;
+        self.framework.import_url_preset_json(tool_id, preset_json)?;
         let cfg = self.export_config();
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.a = cfg.a;

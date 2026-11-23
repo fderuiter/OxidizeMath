@@ -147,7 +147,7 @@ impl PharmacokineticsTool {
         }
     }
 
-    fn validate_state_bounds(s: &PharmacokineticsState) -> Result<(), String> {
+    fn validate_state_floats(s: &PharmacokineticsState) -> Result<(), String> {
         let floats_finite = [
             s.dose_mg,
             s.bioavailability,
@@ -173,6 +173,11 @@ impl PharmacokineticsTool {
         if !floats_finite {
             return Err("Pharmacokinetics parameters must be finite".into());
         }
+        Ok(())
+    }
+
+    fn validate_state_bounds(s: &PharmacokineticsState) -> Result<(), String> {
+        Self::validate_state_floats(s)?;
         Self::validate_state_ranges(s)
     }
 
@@ -215,11 +220,18 @@ impl PharmacokineticsTool {
         self.state_bounds().validate_json(state)?;
         let mut s: PharmacokineticsState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid pharmacokinetics state: {e}"))?;
-        Self::validate_state_bounds(&s)?;
+        if self.active_challenge.is_some() {
+            Self::validate_state_floats(&s)?;
+        } else {
+            Self::validate_state_bounds(&s)?;
+        }
         s.missed_slots.sort_unstable();
         s.missed_slots.dedup();
 
-        let mut candidate = Self::default();
+        let mut candidate = Self {
+            active_challenge: self.active_challenge,
+            ..Self::default()
+        };
         if preserve_snapshots {
             candidate.snapshot_manager = self.snapshot_manager.clone();
         }
@@ -233,6 +245,16 @@ impl PharmacokineticsTool {
         }
         *self = candidate;
         Ok(())
+    }
+
+    pub(super) fn clamp_challenge_json(raw_json: &str) -> Result<String, String> {
+        let mut tool = Self {
+            active_challenge: Some(super::challenge::CHALLENGE_PK_THERAPEUTIC_WINDOW),
+            ..Self::default()
+        };
+        tool.load_pk_state(raw_json, false)?;
+        tool.serialize_full_state()
+            .ok_or_else(|| "Failed to serialize clamped PK challenge state".into())
     }
 
     pub(crate) fn compute_state_revision(&self) -> u64 {
@@ -268,6 +290,7 @@ impl PharmacokineticsTool {
         self.missed_slots.hash(&mut h);
         self.sample_points.hash(&mut h);
         self.log10_y.hash(&mut h);
+        self.active_challenge.hash(&mut h);
         self.snapshot_manager.len().hash(&mut h);
         self.snapshot_manager.history_len().hash(&mut h);
         h.finish().max(1)
@@ -312,10 +335,7 @@ impl PharmacokineticsTool {
             && self.mec >= 0.0
             && self.mtc > self.mec
             && self.metrics.is_finite()
-            && self
-                .total_points
-                .iter()
-                .all(|p| p.x.is_finite() && p.y.is_finite())
+            && self.total_points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
             && self
                 .plot_total_points
                 .iter()
@@ -338,9 +358,7 @@ impl PharmacokineticsTool {
         self.missed_slots.dedup();
         self.horizon_hours =
             sanitize_bounded(self.horizon_hours, MIN_HORIZON_H, MAX_HORIZON_H, 72.0);
-        self.sample_points = self
-            .sample_points
-            .clamp(MIN_SAMPLE_POINTS, MAX_SAMPLE_POINTS);
+        self.sample_points = self.sample_points.clamp(MIN_SAMPLE_POINTS, MAX_SAMPLE_POINTS);
         self.lag_time_hours = sanitize_bounded(self.lag_time_hours, 0.0, MAX_LAG_H, 4.0);
         self.f1 = sanitize_bounded(self.f1, 0.0, 1.0, 0.5);
         self.f2 = sanitize_bounded(self.f2, 0.0, 1.0, 0.5);
@@ -351,7 +369,9 @@ impl PharmacokineticsTool {
         self.mec = sanitize_bounded(self.mec, 0.0, MAX_MEC, 1.5);
         let min_mtc = (self.mec + 0.1).min(MAX_MTC);
         self.mtc = sanitize_bounded(self.mtc, min_mtc, MAX_MTC, (self.mec + 3.5).min(MAX_MTC));
-        if self.absorption_mode == AbsorptionMode::SolveFromTMax {
+        if self.active_challenge.is_some() {
+            self.enforce_challenge_locks();
+        } else if self.absorption_mode == AbsorptionMode::SolveFromTMax {
             self.absorption_mode = AbsorptionMode::DirectKa;
         }
         self.recalculate();

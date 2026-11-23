@@ -6,34 +6,95 @@ mod controls;
 mod persistence;
 mod state_io;
 pub mod tool;
+pub use canvas::UnifiedCanvasContext;
 pub use tool::*;
 
-use crate::async_sim::{
-    RegimeCartographer, SimCommand, SimulationController, SimulationRunner, StateSnapshot,
-};
-use crate::framework::MAX_SYNTHESIZED_PARAMS;
+use crate::async_sim::{RegimeCartographer, SimCommand, SimulationRunner, StateSnapshot};
+use crate::framework::{CalloutManager, ChallengeEvaluation, MAX_SYNTHESIZED_PARAMS};
+use eframe::egui;
 use math_commons::ast::CompiledExpr;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use std::sync::{Arc, RwLock};
 
-/// Interactive central-panel context granting `UnifiedModel` implementations access to the
-/// simulation worker controller, active snapshot, shared parameters, and custom series state.
+/// Optional UI-side extension for [`UnifiedModel`] tools supporting inverse challenges,
+/// custom raster sculpting state, keyboard canvas cursors, and automated plot callouts.
 #[allow(missing_docs)]
-pub struct UnifiedCanvasContext<'a> {
-    pub controller: &'a mut SimulationController,
-    pub stepped_snapshot: Option<&'a StateSnapshot>,
-    pub params: &'a Arc<RwLock<HashMap<String, f64>>>,
-    pub custom_series: &'a Arc<RwLock<HashMap<String, Vec<f64>>>>,
-}
+pub trait UnifiedUiExtension: Send {
+    fn save_extra_state(&self, _params: &HashMap<String, f64>) -> Option<String> {
+        None
+    }
 
-impl UnifiedCanvasContext<'_> {
-    /// Returns the active frame snapshot, preferring any stepped export snapshot.
-    #[must_use]
-    pub fn snapshot(&self) -> Option<&StateSnapshot> {
-        self.stepped_snapshot
-            .or_else(|| self.controller.latest_snapshot())
+    fn try_load_extra_state(
+        &mut self,
+        _state: &str,
+        _params: &mut HashMap<String, f64>,
+    ) -> Option<Result<Vec<SimCommand>, String>> {
+        None
+    }
+
+    fn apply_challenge(
+        &mut self,
+        challenge_id: Option<&str>,
+        _params: &mut HashMap<String, f64>,
+    ) -> Result<Vec<SimCommand>, String> {
+        if let Some(id) = challenge_id {
+            Err(format!("Challenge '{id}' is not supported by this model"))
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn evaluate_challenge(
+        &self,
+        _latest_snapshot: Option<&StateSnapshot>,
+    ) -> Option<ChallengeEvaluation> {
+        None
+    }
+
+    fn is_parameter_locked(&self, _param_name: &str) -> bool {
+        false
+    }
+
+    fn on_reset(&mut self, _params: &HashMap<String, f64>) {}
+
+    fn on_brush(&mut self, _cx: i32, _cy: i32, _r: i32, _is_obstacle: bool) -> bool {
+        true
+    }
+
+    fn on_custom_action(&mut self, _action: &str) {}
+
+    fn draw_side_panel_controls(
+        &mut self,
+        _ui: &mut egui::Ui,
+        _latest_snapshot: Option<&StateSnapshot>,
+    ) -> Vec<SimCommand> {
+        Vec::new()
+    }
+
+    fn handle_canvas_overlay(
+        &mut self,
+        _ctx: &egui::Context,
+        _visuals: &egui::Visuals,
+        _plot_ui: &mut egui_plot::PlotUi,
+    ) -> Vec<SimCommand> {
+        Vec::new()
+    }
+
+    fn sync_callouts(
+        &self,
+        _latest_snapshot: Option<&StateSnapshot>,
+        _callouts: &mut CalloutManager,
+    ) {
+    }
+
+    fn state_revision_salt(&self) -> u64 {
+        0
     }
 }
 
@@ -78,6 +139,22 @@ pub trait UnifiedModel:
     fn new(params: &HashMap<String, f64>) -> Self
     where
         Self: Sized;
+
+    /// Reset simulation state on [`SimCommand::Reset`]. Defaults to reconstructing via [`Self::new`].
+    fn reset_model(&mut self, params: &HashMap<String, f64>)
+    where
+        Self: Sized,
+    {
+        *self = Self::new(params);
+    }
+
+    /// Optional UI extension for inverse challenges, keyboard sculpting, and custom serialization.
+    fn create_ui_extension() -> Option<Box<dyn UnifiedUiExtension>>
+    where
+        Self: Sized,
+    {
+        None
+    }
 
     /// Step the simulation forward one tick.
     fn step(&mut self, params: &HashMap<String, f64>);
@@ -354,7 +431,7 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
         match cmd {
             SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
             SimCommand::Reset => {
-                self.model = M::new(&current_params);
+                self.model.reset_model(&current_params);
                 self.applied_formula_rev = None;
                 self.sync_formula(&current_params);
                 let current_series = self

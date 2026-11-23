@@ -56,6 +56,26 @@ fn collect_quantized_series<M: UnifiedModel>(
     Some(out)
 }
 
+fn serialize_flat_or_series_map(
+    params: &HashMap<String, f64>,
+    quantized_series: BTreeMap<String, Vec<f64>>,
+) -> Option<String> {
+    if quantized_series.is_empty() {
+        let sorted: BTreeMap<&String, &f64> = params.iter().collect();
+        return serde_json::to_string(&sorted).ok();
+    }
+    let mut map = serde_json::Map::new();
+    let sorted_params: BTreeMap<&String, &f64> = params.iter().collect();
+    for (k, &v) in sorted_params {
+        map.insert(k.clone(), serde_json::Value::from(v));
+    }
+    for (key, quantized) in quantized_series {
+        let json_arr = quantized.into_iter().map(serde_json::Value::from).collect();
+        map.insert(key, serde_json::Value::Array(json_arr));
+    }
+    serde_json::to_string(&map).ok()
+}
+
 fn validate_extended_series_map<M: UnifiedModel>(
     raw_series: &BTreeMap<String, Vec<f64>>,
 ) -> Result<HashMap<String, Vec<f64>>, String> {
@@ -85,6 +105,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             if let Some(val) = params.get(key) {
                 val.to_bits().hash(&mut h);
             }
+        }
+        if let Some(ext) = &self.ui_extension {
+            ext.state_revision_salt().hash(&mut h);
         }
         if let Some(atlas) = &self.atlas {
             atlas.is_visible().hash(&mut h);
@@ -127,6 +150,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
     pub(super) fn serialize_tool_state(&self) -> Option<String> {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(ext) = &self.ui_extension {
+            if let Some(custom) = ext.save_extra_state(&params) {
+                return Some(custom);
+            }
+        }
         let series = self.custom_series.read().unwrap_or_else(|e| e.into_inner());
         let quantized_series = collect_quantized_series::<M>(&series)?;
         let formula_ext =
@@ -173,21 +201,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .ok();
         }
 
-        if quantized_series.is_empty() {
-            let sorted: BTreeMap<&String, &f64> = params.iter().collect();
-            return serde_json::to_string(&sorted).ok();
-        }
-
-        let mut map = serde_json::Map::new();
-        let sorted_params: BTreeMap<&String, &f64> = params.iter().collect();
-        for (k, &v) in sorted_params {
-            map.insert(k.clone(), serde_json::Value::from(v));
-        }
-        for (key, quantized) in quantized_series {
-            let json_arr = quantized.into_iter().map(serde_json::Value::from).collect();
-            map.insert(key, serde_json::Value::Array(json_arr));
-        }
-        serde_json::to_string(&map).ok()
+        serialize_flat_or_series_map(&params, quantized_series)
     }
 
     fn validate_scalar_param_map(&self, params: &BTreeMap<String, f64>) -> Result<(), String> {
@@ -306,8 +320,27 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Ok((parsed_scalars, parsed_series))
     }
 
+    fn try_load_extension_state(&mut self, state: &str) -> Option<Result<(), String>> {
+        let ext = self.ui_extension.as_mut()?;
+        let mut next_params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let res = ext.try_load_extra_state(state, &mut next_params)?;
+        Some(res.map(|cmds| {
+            *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
+            self.texture = None;
+            self.reset_simulation(None);
+            self.dispatch_extension_commands(cmds, None);
+        }))
+    }
+
     pub(super) fn deserialize_tool_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
+        if let Some(res) = self.try_load_extension_state(state) {
+            return res;
+        }
         let raw_map: serde_json::Map<String, serde_json::Value> = serde_json::from_str(state)
             .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
         let is_extended_envelope = raw_map.contains_key("params")

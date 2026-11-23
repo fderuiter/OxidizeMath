@@ -214,10 +214,7 @@ fn test_morphogenesis_fault_halts_repaints_and_recovers() {
 #[test]
 fn test_morphogenesis_all_controls_update_state_revision_and_legacy_compatibility() {
     let mut tab = MorphogenesisTab::default();
-    assert_eq!(
-        active_morpho_tool_state(&tab).state,
-        Some(SimWorkerState::Ready)
-    );
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Ready));
     let mut prev_rev = tab.state_revision();
     assert!(prev_rev > 0);
 
@@ -239,41 +236,26 @@ fn test_morphogenesis_all_controls_update_state_revision_and_legacy_compatibilit
     let mut restored = MorphogenesisTab::default();
     restored.load_state(&saved);
     assert_eq!(restored.export_config(), tab.export_config());
-    assert_eq!(
-        active_morpho_tool_state(&restored).state,
-        Some(SimWorkerState::Ready)
-    );
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Ready));
 
     // Running state roundtrips cleanly
     let ctx = egui::Context::default();
     let mut frame = eframe::Frame::_new_kittest();
     let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
-    assert_eq!(
-        active_morpho_tool_state(&tab).state,
-        Some(SimWorkerState::Running)
-    );
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Running));
     let saved_running = tab.save_state().expect("save_state should succeed");
     restored.load_state(&saved_running);
-    assert_eq!(
-        active_morpho_tool_state(&restored).state,
-        Some(SimWorkerState::Running)
-    );
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Running));
 
     // Load legacy flat MorphoState JSON payloads
     restored.load_state(r#"{"dt":0.02,"paused":true,"show_starter_gallery":true}"#);
     assert!(!restored.framework.show_starter_gallery);
     assert_eq!(restored.params.read().unwrap().dt, 0.02);
-    assert_eq!(
-        active_morpho_tool_state(&restored).state,
-        Some(SimWorkerState::Ready)
-    );
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Ready));
 
     restored.load_state(r#"{"dt":0.08,"paused":false,"show_starter_gallery":false}"#);
     assert_eq!(restored.params.read().unwrap().dt, 0.08);
-    assert_eq!(
-        active_morpho_tool_state(&restored).state,
-        Some(SimWorkerState::Running)
-    );
+    assert_eq!(active_morpho_tool_state(&restored).state, Some(SimWorkerState::Running));
 }
 
 #[test]
@@ -323,10 +305,7 @@ fn test_morphogenesis_poisoned_lock_and_zero_allocation_step_and_png_export() {
             tab.show(ctx, &mut frame);
         },
     );
-    assert_eq!(
-        tab.framework.export_status_severity,
-        ExportStatusSeverity::Success
-    );
+    assert_eq!(tab.framework.export_status_severity, ExportStatusSeverity::Success);
     let _ = std::fs::write(
         "/tmp/morphogenesis_turing.png",
         tab.framework
@@ -457,18 +436,12 @@ fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
     let ctx = egui::Context::default();
     let mut tab = MorphogenesisTab::default();
     let mut tool = MorphogenesisTool::default();
-    assert_eq!(
-        active_morpho_tool_state(&tab).state,
-        Some(SimWorkerState::Ready)
-    );
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Ready));
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 
     // Hidden tab and tool remain idle before first render
     thread::sleep(Duration::from_millis(40));
-    assert_eq!(
-        active_morpho_tool_state(&tab).state,
-        Some(SimWorkerState::Ready)
-    );
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Ready));
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 
     // First render starts stepping; default d_v=100, dt=0.05 diverges to Faulted
@@ -484,10 +457,7 @@ fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
         thread::sleep(Duration::from_millis(10));
     }
 
-    assert_eq!(
-        active_morpho_tool_state(&tab).state,
-        Some(SimWorkerState::Faulted)
-    );
+    assert_eq!(active_morpho_tool_state(&tab).state, Some(SimWorkerState::Faulted));
     assert_eq!(tool.worker.state(), SimWorkerState::Faulted);
     assert!(tool.worker.diagnostic_report().is_some());
 }

@@ -292,9 +292,7 @@ impl InteractiveTool for MorphogenesisTool {
         }
         let snapshot = self.worker.latest_snapshot()?;
         let px = snapshot.pixels.read().unwrap_or_else(|e| e.into_inner());
-        if snapshot.width == 0
-            || snapshot.height == 0
-            || px.len() != snapshot.width * snapshot.height
+        if snapshot.width == 0 || snapshot.height == 0 || px.len() != snapshot.width * snapshot.height
         {
             return None;
         }
@@ -393,8 +391,8 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
-        let parsed: MorphogenesisToolState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
+        let parsed: MorphogenesisToolState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
         self.atlas
             .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;

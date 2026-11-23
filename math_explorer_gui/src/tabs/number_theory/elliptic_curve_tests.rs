@@ -30,13 +30,11 @@ fn test_elliptic_curve_registered_in_sidebar_palette_and_starter_gallery() {
         "ToolMetadata must register EllipticCurvePlayground"
     );
 
-    let has_starter = inventory::iter::<StarterPresetMetadata>
-        .into_iter()
-        .any(|p| {
-            p.id == "elliptic_curve_fp_starter"
-                && p.domain == "number_theory"
-                && p.tool_name == Some("EllipticCurvePlayground")
-        });
+    let has_starter = inventory::iter::<StarterPresetMetadata>.into_iter().any(|p| {
+        p.id == "elliptic_curve_fp_starter"
+            && p.domain == "number_theory"
+            && p.tool_name == Some("EllipticCurvePlayground")
+    });
     assert!(
         has_starter,
         "StarterPresetMetadata must register elliptic_curve_fp_starter"

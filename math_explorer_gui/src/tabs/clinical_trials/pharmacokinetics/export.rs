@@ -116,32 +116,12 @@ fn append_markdown_metrics(out: &mut String, tool: &PharmacokineticsTool) {
     let _ = writeln!(out, "| Metric | Value |");
     let _ = writeln!(out, "| :--- | :--- |");
     let _ = writeln!(out, "| Peak Concentration (C_max) | {:.3} mg/L |", m.c_max);
-    let _ = writeln!(
-        out,
-        "| Trough Concentration (C_min) | {:.3} mg/L |",
-        m.c_min
-    );
-    let _ = writeln!(
-        out,
-        "| Elimination Half-Life (T_1/2) | {:.2} h |",
-        m.half_life_h
-    );
-    let _ = writeln!(
-        out,
-        "| Single-Dose Peak Time (T_max) | {:.2} h |",
-        m.t_max_h
-    );
-    let _ = writeln!(
-        out,
-        "| Systemic Clearance (CL) | {:.2} L/h |",
-        m.clearance_l_h
-    );
+    let _ = writeln!(out, "| Trough Concentration (C_min) | {:.3} mg/L |", m.c_min);
+    let _ = writeln!(out, "| Elimination Half-Life (T_1/2) | {:.2} h |", m.half_life_h);
+    let _ = writeln!(out, "| Single-Dose Peak Time (T_max) | {:.2} h |", m.t_max_h);
+    let _ = writeln!(out, "| Systemic Clearance (CL) | {:.2} L/h |", m.clearance_l_h);
     let _ = writeln!(out, "| Trapezoidal AUC | {:.2} mg*h/L |", m.auc_trapezoidal);
-    let _ = writeln!(
-        out,
-        "| Accumulation Ratio (R_ac) | {:.2}x |",
-        m.accumulation_ratio
-    );
+    let _ = writeln!(out, "| Accumulation Ratio (R_ac) | {:.2}x |", m.accumulation_ratio);
     let _ = writeln!(
         out,
         "| Time in Therapeutic Window | {:.1}% |\n",
@@ -163,14 +143,7 @@ fn append_markdown_schedule(out: &mut String, tool: &PharmacokineticsTool) {
         } else {
             (tool.dose_mg, "Maintenance")
         };
-        let _ = writeln!(
-            out,
-            "| {} | {:.1} | {:.1} | {} |",
-            slot + 1,
-            time_h,
-            dose,
-            status
-        );
+        let _ = writeln!(out, "| {} | {:.1} | {:.1} | {} |", slot + 1, time_h, dose, status);
     }
 }
 

@@ -174,10 +174,7 @@ impl InteractiveTool for PotentialFlowTool {
         crate::framework::ExportCapabilities::plot().with_shader()
     }
 
-    fn export_glsl_shader(
-        &self,
-        dialect: crate::framework::ShaderDialect,
-    ) -> Result<String, String> {
+    fn export_glsl_shader(&self, dialect: crate::framework::ShaderDialect) -> Result<String, String> {
         self.build_glsl_shader(dialect)
     }
 

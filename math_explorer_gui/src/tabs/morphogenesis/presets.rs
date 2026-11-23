@@ -17,7 +17,10 @@ impl SimpleRng {
 
     /// Samples a uniform `f64` in `[0.0, 1.0]`.
     pub fn next_f64(&mut self) -> f64 {
-        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        self.state = self
+            .state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1);
         let x = self.state;
         let x = x ^ x >> 18;
         let rot = (x >> 27) as u32;
