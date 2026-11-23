@@ -2,7 +2,7 @@ use super::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Supported formats for deferred end-of-frame dataset and figure exports.
+/// Supported formats for deferred end-of-frame dataset, figure, and 3D exports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ExportFormat {
     /// Comma-separated values dataset format (`.csv`).
@@ -17,6 +17,12 @@ pub(crate) enum ExportFormat {
     Gif,
     /// 16-bit PCM Waveform Audio File Format (`.wav`).
     Wav,
+    /// Binary Stereolithography watertight 3D mesh format (`.stl`).
+    Stl,
+    /// Polygon File Format for colored 3D meshes and 3DGS splats (`.ply`).
+    Ply,
+    /// Wavefront 3D mesh format (`.obj`).
+    Obj,
     /// Standalone WebGL2 (`#version 300 es`) fragment shader (`.frag`).
     GlslWebGl2,
     /// Standalone Shadertoy (`mainImage`) fragment shader (`.frag`).
@@ -32,6 +38,9 @@ impl ExportFormat {
             Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
             Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
             Self::Wav => ("wav", "WAV", "WAV Audio", "audio"),
+            Self::Stl => ("stl", "STL", "STL 3D Mesh", "mesh"),
+            Self::Ply => ("ply", "PLY", "PLY 3D Model", "mesh"),
+            Self::Obj => ("obj", "OBJ", "Wavefront OBJ Mesh", "mesh"),
             Self::GlslWebGl2 => (
                 "frag",
                 "WebGL2 GLSL",
@@ -251,6 +260,9 @@ impl SimulationFramework {
             (ExportFormat::Svg, _) => self.dispatch_svg_export(),
             (ExportFormat::Gif, _) => self.dispatch_gif_export(),
             (ExportFormat::Wav, _) => self.dispatch_wav_export(),
+            (ExportFormat::Stl | ExportFormat::Ply | ExportFormat::Obj, target) => {
+                self.dispatch_3d_export(req.format, target, ctx);
+            }
             (ExportFormat::GlslWebGl2 | ExportFormat::GlslShadertoy, target) => {
                 self.dispatch_shader_export(req.format, target, ctx);
             }

@@ -1,6 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::SimulationFramework;
+use super::{
+    ExportQueue, ExportStatusSeverity, FrameworkRevisionCache, InputMode, SimulationFramework,
+    ToolMetadata,
+};
 use eframe::egui;
 
 #[derive(Default, Clone, Copy)]
@@ -151,5 +154,58 @@ impl SimulationFramework {
                 self.show_starter_gallery,
             );
         });
+    }
+
+    #[allow(missing_docs)]
+    pub fn new(domain: &str) -> Self {
+        let mut available_tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>
+            .into_iter()
+            .filter(|t| t.domain == domain)
+            .collect();
+
+        available_tools.sort_by_key(|t| (t.display_name, t.id));
+
+        let mut framework = Self {
+            available_tools,
+            active_tool: None,
+            selected_tool_index: None,
+            input_mode: InputMode::Mouse,
+            show_theory_portal: false,
+            show_starter_gallery: false,
+            saved_tool_states: std::collections::HashMap::new(),
+            search_query: String::new(),
+            last_announced_count: None,
+            last_announced_query: String::new(),
+            show_export_modal: false,
+            export_options: egui_plot::export::ExportOptions::default(),
+            export_bg_dark: true,
+            export_gif_fps: 15,
+            export_gif_frames: 20,
+            export_status_message: None,
+            export_status_severity: ExportStatusSeverity::Success,
+            domain: domain.to_string(),
+            preset_dialog: crate::presets::PresetDialogState::default(),
+            export_queue: ExportQueue::default(),
+            last_valid_snapshot: None,
+            baseline_tool_state: None,
+            current_valid_plot_datasets: Vec::new(),
+            current_valid_plot_datasets_3d: Vec::new(),
+            is_diverged: false,
+            diagnostic_report: None,
+            step_counter: 0,
+            start_time: crate::web_io::PlatformInstant::now(),
+            audio_controller: crate::audio::AudioEngineController::new(),
+            active_challenge: None,
+            challenge_was_passed: false,
+            instance_id: next_framework_id(),
+            sync_state: FrameworkSyncState::default(),
+            rev_cache: FrameworkRevisionCache::default(),
+        };
+
+        if !framework.available_tools.is_empty() {
+            framework.select_tool(0);
+        }
+
+        framework
     }
 }

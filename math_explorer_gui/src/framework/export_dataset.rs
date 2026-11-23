@@ -1,16 +1,77 @@
-//! Tabular 2D/3D dataset serialization and text clipboard dispatch for [`crate::framework::SimulationFramework`].
+//! Dataset (`CSV`, `JSON`) export serialization and modal source adapter for [`super::SimulationFramework`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::*;
 use eframe::egui;
 
-/// Formats a clipboard failure error with guidance toward disk export.
-fn format_clipboard_error(err: &str) -> String {
-    if err.contains("Export CSV") {
-        format!("Clipboard unavailable: {err}")
-    } else {
-        format!("Clipboard unavailable ({err}). Please use Export CSV to save to disk.")
+pub(super) struct FrameworkExportSource<'a> {
+    pub(super) active_tool: &'a mut Option<Box<dyn InteractiveTool>>,
+    pub(super) cached_tool_name: Option<&'static str>,
+    pub(super) cached_plot_datasets: &'a [(String, Vec<[f64; 2]>)],
+    pub(super) export_queue: &'a mut ExportQueue,
+    pub(super) status_color: egui::Color32,
+    pub(super) ctx: egui::Context,
+}
+
+impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
+    fn export_datasets(&mut self) -> Vec<egui_plot::export::ExportDataset> {
+        let Some(tool) = self.active_tool.as_ref() else {
+            return Vec::new();
+        };
+        let datasets = tool.export_datasets();
+        if datasets.is_empty()
+            && self.cached_tool_name == Some(tool.name())
+            && !self.cached_plot_datasets.is_empty()
+        {
+            self.cached_plot_datasets.to_vec()
+        } else {
+            datasets
+        }
+    }
+
+    fn sample_gif_frames(&mut self, num_frames: usize) -> Vec<egui_plot::export::DatasetFrame> {
+        let step_count = num_frames.max(1);
+        let Some(tool) = self.active_tool.as_mut() else {
+            return Vec::new();
+        };
+        let frames = tool.sample_animation_frames(step_count);
+        if frames.is_empty()
+            && self.cached_tool_name == Some(tool.name())
+            && !self.cached_plot_datasets.is_empty()
+        {
+            egui_plot::export::sample_progressive_frames(self.cached_plot_datasets, step_count)
+        } else {
+            frames
+        }
+    }
+
+    fn figure_capability(&self) -> (bool, &'static str) {
+        if let Some(tool) = self.active_tool.as_ref() {
+            let caps = tool.export_capabilities();
+            (caps.figure, caps.figure_disabled_reason)
+        } else {
+            let caps = ExportCapabilities::none();
+            (caps.figure, caps.figure_disabled_reason)
+        }
+    }
+
+    fn status_color(&self) -> Option<egui::Color32> {
+        Some(self.status_color)
+    }
+
+    fn intercept_action(&mut self, action: egui_plot::ExportModalAction) -> bool {
+        let (format, target) = match action {
+            egui_plot::ExportModalAction::SavePng => (ExportFormat::Png, ExportTarget::File),
+            egui_plot::ExportModalAction::SaveSvg => (ExportFormat::Svg, ExportTarget::File),
+            egui_plot::ExportModalAction::SaveGif => (ExportFormat::Gif, ExportTarget::File),
+            egui_plot::ExportModalAction::CopyClipboard => {
+                (ExportFormat::Png, ExportTarget::Clipboard)
+            }
+        };
+        self.export_queue.push_target(format, target);
+        self.ctx.request_repaint();
+        true
     }
 }
 
@@ -47,7 +108,7 @@ impl SimulationFramework {
         }
     }
 
-    fn serialize_active_dataset_export(
+    pub(super) fn serialize_active_dataset_export(
         &self,
         tool_name: &str,
         format: ExportFormat,
@@ -120,79 +181,6 @@ impl SimulationFramework {
                 );
             }
             ExportTarget::Clipboard => self.dispatch_clipboard_text_request(format, content, ctx),
-        }
-    }
-
-    pub(super) fn dispatch_clipboard_text_request(
-        &mut self,
-        format: ExportFormat,
-        content: String,
-        ctx: Option<&egui::Context>,
-    ) {
-        let label = format.label();
-        let noun = format.clipboard_item_noun();
-        let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
-            writer(&content)
-        } else {
-            self.write_system_text_clipboard(label, noun, &content, ctx)
-        };
-        match res {
-            Ok(()) => {
-                self.export_queue.last_exported_content = Some(content.clone());
-                self.export_queue.last_clipboard_content = Some(content);
-                let msg = if cfg!(target_arch = "wasm32")
-                    && self.export_queue.custom_clipboard_writer.is_none()
-                {
-                    format!("Copying {label} {noun} to clipboard...")
-                } else {
-                    format!("Copied {label} {noun} to clipboard!")
-                };
-                self.set_export_status(ExportStatusSeverity::Success, msg);
-            }
-            Err(err) => {
-                self.set_export_status(ExportStatusSeverity::Error, format_clipboard_error(&err));
-            }
-        }
-    }
-
-    fn write_system_text_clipboard(
-        &self,
-        label: &'static str,
-        noun: &'static str,
-        content: &str,
-        ctx: Option<&egui::Context>,
-    ) -> Result<(), String> {
-        #[cfg(test)]
-        {
-            let _ = (label, noun, content, ctx);
-            Ok(())
-        }
-        #[cfg(not(test))]
-        {
-            if let Some(egui_ctx) = ctx.cloned() {
-                let status_id =
-                    egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
-                egui_plot::export::copy_text_to_clipboard_with_callback(content, move |cb| {
-                    egui_ctx.data_mut(|d| {
-                        let status = match cb {
-                            Ok(()) => ActionBarExportStatus {
-                                message: format!("Copied {label} {noun} to clipboard!"),
-                                is_error: false,
-                                expires_at_time: None,
-                            },
-                            Err(err) => ActionBarExportStatus {
-                                message: format_clipboard_error(&err),
-                                is_error: true,
-                                expires_at_time: None,
-                            },
-                        };
-                        d.insert_temp(status_id, status);
-                    });
-                    egui_ctx.request_repaint();
-                })
-            } else {
-                egui_plot::export::copy_text_to_clipboard(content)
-            }
         }
     }
 }

@@ -19,6 +19,10 @@ pub mod framework;
 mod framework_tests;
 #[cfg(test)]
 mod interactive_tools_tests;
+#[cfg(test)]
+mod inverse_challenges_tests;
+#[cfg(all(test, feature = "physics", feature = "applied"))]
+mod inverse_solvers_tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod main_wasm_tests;
 #[cfg(test)]
