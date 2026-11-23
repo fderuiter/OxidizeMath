@@ -144,7 +144,7 @@ pub(crate) fn clear_gallery_filter_state(ctx: &egui::Context, modal_id: egui::Id
 pub fn card_academic_domain(domain: &str) -> AcademicDomain {
     match domain {
         "quantum" | "mri" | "fluid_dynamics" | "chaos" | "solid_state" | "medical"
-        | "astrophysics" | "relativity" => AcademicDomain::Physics,
+        | "astrophysics" | "relativity" | "optics_waves" => AcademicDomain::Physics,
         "analysis"
         | "elliptic_curves"
         | "number_theory"
@@ -374,7 +374,8 @@ pub(super) fn render_gallery_filter_bar(
     state: &mut GalleryFilterState,
     inner_w: f32,
 ) {
-    let esc_pressed = ui.input(|i| i.key_pressed(egui::Key::Escape) && i.modifiers.is_none());
+    let esc_pressed = frame_ctx.is_top_modal
+        && ui.input(|i| i.key_pressed(egui::Key::Escape) && i.modifiers.is_none());
     let prev_query_empty = state.query.is_empty();
 
     ui.horizontal(|ui| {
@@ -393,6 +394,9 @@ pub(super) fn render_gallery_filter_bar(
             if prev_query_empty {
                 frame_ctx.close();
             } else {
+                let _ = ui
+                    .ctx()
+                    .input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
                 state.query.clear();
                 resp.request_focus();
             }

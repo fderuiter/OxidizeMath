@@ -9,8 +9,13 @@
 //! ## Core Domains
 //!
 //! ###  Competitive Ranking
+//! *   **[Sports Elo](elo)**: Venue-adjusted club ratings with win-margin multipliers, seasonal mean regression,
+//!     frozen-period batch updates, and fair moneyline/spread converters.
 //! *   **[Glicko-2](glicko2)**: The gold standard for player rating systems (Chess, CS:GO).
 //!     Tracks rating volatility and deviation to handle inactive players correctly.
+//! *   **[Match Score Models](match_models)**: Bounded 2D score grids for independent Poisson,
+//!     Karlis-Ntzoufras bivariate Poisson, and calibrated Dixon-Coles models with exact 1X2, DNB,
+//!     Asian handicap, Over/Under, and BTTS pricing.
 //!
 //! ###  Stochastic Processes
 //! *   **[Markov Chains](markov)**: Discrete-Time (DTMC), Continuous-Time (CTMC), and Hidden Markov Models (HMM).
@@ -21,6 +26,10 @@
 //! ###  Risk & Decision Theory
 //! *   **[Kelly Criterion](kelly)**: Optimal capital allocation strategy to maximize logarithmic wealth growth.
 //! *   **[Market Pricing & Devigging](market_pricing)**: Zero-allocation bookmaker overround removal (`Multiplicative`, `Additive`, `Power`, `Shin`), `+EV` valuation, arbitrage, subset Dutching, middling, and live hedging.
+//! *   **[Risk of Ruin & Solvency](ruin)**: Exact Gambler's Ruin, Cramér-Lundberg adjustment coefficients,
+//!     proportional-Kelly drawdown barrier bounds, and zero-allocation Monte Carlo bankroll ensembles.
+//! *   **[Edge Validation & Calibration](validation)**: Closing Line Value (CLV), market vigorish removal,
+//!     Brier/log-loss proper scoring rules, and realized yield statistical significance.
 //! *   **[Copulas](copula)**: sophisticated dependency modeling (e.g., Gaussian Copula) for correlated events,
 //!     critical for pricing derivatives or "Same Game Parlays".
 //!
@@ -98,17 +107,21 @@
 //! ```
 
 pub mod copula;
+pub mod elo;
 pub mod glicko2;
 pub mod kelly;
 pub mod market_pricing;
 pub mod markov;
+pub mod match_models;
 pub mod ou_process;
 /// Homogeneous and inhomogeneous Poisson arrival processes.
 pub mod poisson;
 /// Markovian birth-death queueing models ($M/M/1$ and $M/M/c$ Erlang-C).
 pub mod queueing;
 pub mod regression;
+pub mod ruin;
 pub mod tda;
+pub mod validation;
 pub mod zip_regression;
 
 // [cite:clinical_trials_statistics]

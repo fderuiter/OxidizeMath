@@ -11,6 +11,7 @@ pub mod grid_world;
 pub mod loss_landscape;
 pub mod q_table_inspector;
 pub mod reward_plots;
+pub mod rl_sculpt;
 pub mod tokenization;
 pub mod training_monitor;
 

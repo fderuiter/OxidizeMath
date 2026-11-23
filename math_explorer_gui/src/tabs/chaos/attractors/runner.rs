@@ -3,8 +3,7 @@
 use super::flow::{AttractorMode, CompiledFlowJob};
 use super::serde_vec3;
 use crate::async_sim::{
-    CheckpointParams, CheckpointPayload, SimCommand, SimulationRunner, StateSnapshot,
-    TimeTravelCheckpoint,
+    CheckpointParams, SimCommand, SimulationRunner, StateSnapshot, TimeTravelCheckpoint,
 };
 use crate::framework::recovery::DiagnosticReport;
 use crate::tabs::geometry_topology::vietoris_rips::{
@@ -52,6 +51,7 @@ pub struct AttractorSnapshot {
     pub current_vec: Vector3<f64>,
     pub step_count: usize,
     pub execution_state: SolverExecutionState,
+    pub twin: Option<super::AttractorTwinState>,
 }
 
 #[allow(missing_docs)]
@@ -61,6 +61,7 @@ pub struct AttractorRunner {
     pub history: VecDeque<Vector3<f64>>,
     pub step_count: usize,
     pub execution_state: SolverExecutionState,
+    pub twin: Option<super::AttractorTwinState>,
     pub rng: OxidizeRng,
 }
 
@@ -78,9 +79,10 @@ impl AttractorRunner {
                 .beta(beta)
                 .build(LorenzState::new(1.0, 1.0, 1.0)),
             params,
-            history: VecDeque::with_capacity(max_points),
+            history: VecDeque::with_capacity(max_points.max(super::ATTRACTOR_RING_CAPACITY)),
             step_count: 0,
             execution_state: SolverExecutionState::Ready,
+            twin: None,
             rng: OxidizeRng::new(0x4C4F_5245_4E5A_3139),
         }
     }
@@ -107,12 +109,28 @@ impl AttractorRunner {
         )
     }
 
-    fn advance_tick(
+    fn step_twin_if_enabled(&mut self, dt: f64, max_points: usize, enabled: bool) -> bool {
+        if enabled {
+            if let Some(ref mut twin) = self.twin {
+                if !twin.step_branch_a(dt, max_points) {
+                    self.execution_state = SolverExecutionState::Diverged {
+                        invalid_vec: twin.system_a.state.vec,
+                        diverged_at_step: self.step_count,
+                    };
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    pub(super) fn advance_tick(
         &mut self,
         dt: f64,
         max_points: usize,
         mode: AttractorMode,
         custom_flow: Option<&CompiledFlowJob>,
+        step_twin_too: bool,
     ) -> bool {
         let current_vec = self.system.state.vec;
         let lorenz_ok = mode != AttractorMode::Lorenz
@@ -131,7 +149,9 @@ impl AttractorRunner {
             };
             return false;
         }
-
+        if !self.step_twin_if_enabled(dt, max_points, step_twin_too) {
+            return false;
+        }
         match mode {
             AttractorMode::Lorenz => self.system.step(dt),
             AttractorMode::Custom => {
@@ -151,10 +171,16 @@ impl AttractorRunner {
             return false;
         }
 
-        if self.history.len() >= max_points {
+        let cap = max_points.clamp(1, super::ATTRACTOR_RING_CAPACITY);
+        if self.history.len() >= cap {
             self.history.pop_front();
         }
         self.history.push_back(vec);
+        if step_twin_too {
+            if let Some(ref mut twin) = self.twin {
+                twin.observe_lockstep(self.step_count, dt, vec);
+            }
+        }
         true
     }
 
@@ -201,6 +227,7 @@ impl SimulationRunner for AttractorRunner {
                     .build(LorenzState::new(1.0, 1.0, 1.0));
                 self.history.clear();
                 self.step_count = 0;
+                self.twin = None;
                 self.execution_state = SolverExecutionState::Ready;
                 self.rng = OxidizeRng::new(0x4C4F_5245_4E5A_3139);
             }
@@ -210,7 +237,48 @@ impl SimulationRunner for AttractorRunner {
                     .unwrap_or_else(|e| e.into_inner())
                     .simulation_speed = speed.clamp(1, MAX_SIMULATION_SPEED);
             }
+            SimCommand::Custom(ref cmd) => self.handle_custom_command(cmd),
             _ => {}
+        }
+    }
+
+    fn has_counterfactual_twin(&self) -> bool {
+        self.twin.is_some()
+    }
+
+    fn step_branch_a(&mut self) {
+        if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            return;
+        }
+        let (dt, simulation_speed, max_points, _, _) = self.sync_params();
+        if let Some(ref mut twin) = self.twin {
+            for _ in 0..simulation_speed {
+                if !twin.step_branch_a(dt, max_points) {
+                    self.execution_state = SolverExecutionState::Diverged {
+                        invalid_vec: twin.system_a.state.vec,
+                        diverged_at_step: self.step_count,
+                    };
+                    break;
+                }
+            }
+        }
+    }
+
+    fn step_branch_b(&mut self) {
+        if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            return;
+        }
+        let (dt, simulation_speed, max_points, mode, custom_flow) = self.sync_params();
+        if self.execution_state == SolverExecutionState::Ready {
+            self.execution_state = SolverExecutionState::Running;
+        }
+        for _ in 0..simulation_speed {
+            if !self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), false) {
+                break;
+            }
+        }
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.step_count, dt, self.system.state.vec);
         }
     }
 
@@ -223,7 +291,7 @@ impl SimulationRunner for AttractorRunner {
             self.execution_state = SolverExecutionState::Running;
         }
         for _ in 0..simulation_speed {
-            if !self.advance_tick(dt, max_points, mode, custom_flow.as_deref()) {
+            if !self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), true) {
                 break;
             }
         }
@@ -237,7 +305,7 @@ impl SimulationRunner for AttractorRunner {
             return;
         }
         let (dt, _, max_points, mode, custom_flow) = self.sync_params();
-        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref()) {
+        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), true) {
             self.execution_state = SolverExecutionState::Paused;
         }
     }
@@ -266,6 +334,7 @@ impl SimulationRunner for AttractorRunner {
             current_vec: v,
             step_count: self.step_count,
             execution_state: self.execution_state,
+            twin: self.twin.clone(),
         };
         StateSnapshot {
             width: 0,
@@ -316,7 +385,6 @@ impl SimulationRunner for AttractorRunner {
             None
         }
     }
-
     fn checkpoint_stride(&self) -> Option<usize> {
         Some(1)
     }
@@ -326,104 +394,23 @@ impl SimulationRunner for AttractorRunner {
     }
 
     fn capture_active_params(&self) -> Option<CheckpointParams> {
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let mode_flag = match p.mode {
-            AttractorMode::Lorenz => 0.0,
-            AttractorMode::Custom => 1.0,
-        };
-        Some(CheckpointParams::scalars(&[
-            p.sigma,
-            p.rho,
-            p.beta,
-            p.dt,
-            p.max_points as f64,
-            mode_flag,
-        ]))
+        self.capture_active_checkpoint_params()
     }
 
     fn capture_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
-        let params = self.capture_active_params()?;
-        let v = self.system.state.vec;
-        Some(TimeTravelCheckpoint {
-            step: self.step_count,
-            rng: self.rng.clone(),
-            params,
-            state: CheckpointPayload::scalars(&[v.x, v.y, v.z]),
-        })
+        self.capture_time_travel_checkpoint()
     }
 
     fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
-        if let Some(s) = checkpoint.state.as_scalars() {
-            if s.len() >= 3 {
-                self.system.state.vec = Vector3::new(s[0], s[1], s[2]);
-            }
-        }
-        if let Some(p) = checkpoint.params.as_scalars() {
-            if p.len() >= 3 {
-                self.system.sigma = p[0];
-                self.system.rho = p[1];
-                self.system.beta = p[2];
-            }
-        }
-        self.step_count = checkpoint.step;
-        self.rng = checkpoint.rng.clone();
-        self.execution_state = if checkpoint.step == 0 {
-            SolverExecutionState::Ready
-        } else {
-            SolverExecutionState::Paused
-        };
+        self.restore_time_travel_checkpoint(checkpoint);
     }
 
     fn rebuild_history(&mut self, front: &[TimeTravelCheckpoint], back: &[TimeTravelCheckpoint]) {
-        let max_points = back
-            .last()
-            .or_else(|| front.last())
-            .and_then(|cp| cp.params.as_scalars()?.get(4).copied())
-            .map_or(2000usize, |v| (v as usize).max(1));
-        self.history.clear();
-        let total_post_zero = front.iter().chain(back).filter(|cp| cp.step >= 1).count();
-        let skip = total_post_zero.saturating_sub(max_points);
-        for cp in front
-            .iter()
-            .chain(back)
-            .filter(|cp| cp.step >= 1)
-            .skip(skip)
-        {
-            if let Some(s) = cp.state.as_scalars().filter(|s| s.len() >= 3) {
-                self.history.push_back(Vector3::new(s[0], s[1], s[2]));
-            }
-        }
+        self.rebuild_time_travel_history(front, back);
     }
 
     fn replay_step(&mut self, params: &CheckpointParams) {
-        let Some(p) = params.as_scalars() else {
-            return;
-        };
-        if p.len() < 5 {
-            return;
-        }
-        self.system.sigma = p[0];
-        self.system.rho = p[1];
-        self.system.beta = p[2];
-        let dt = p[3];
-        let max_points = (p[4] as usize).max(1);
-        let mode = if p.get(5).copied().unwrap_or(0.0) > 0.5 {
-            AttractorMode::Custom
-        } else {
-            AttractorMode::Lorenz
-        };
-        let custom_flow = (mode == AttractorMode::Custom)
-            .then(|| {
-                self.params
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .custom_flow
-                    .clone()
-            })
-            .flatten();
-        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref()) {
-            self.execution_state = SolverExecutionState::Paused;
-        }
+        self.replay_time_travel_step(params);
     }
 
     fn running_substeps_per_tick(&self) -> usize {
@@ -442,7 +429,7 @@ impl SimulationRunner for AttractorRunner {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
-        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref())
+        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), true)
             && self.history.len() >= 16
             && self.step_count.is_multiple_of(15)
         {
