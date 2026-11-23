@@ -174,6 +174,11 @@ pub trait ExplorerTab {
     /// Deserializes and restores the tab's parameter and panel state from a String.
     fn load_state(&mut self, _state: &str) {}
 
+    /// Returns the active tool's interactive canvas `Id` when focus is owned by a non-text canvas.
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.framework().and_then(|f| f.focused_canvas_id())
+    }
+
     /// Academic domain category of the tab for top navigation bar grouping.
     fn academic_domain(&self) -> &'static str {
         match self.name() {

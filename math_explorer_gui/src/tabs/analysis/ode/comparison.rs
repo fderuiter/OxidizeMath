@@ -1,12 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::systems::{CustomOdeSpec, ExponentialOde, HarmonicOscillatorOde, LogisticGrowthOde};
-use super::OdeSolverTool;
-use crate::framework::TraceSeries;
+#[cfg(test)]
+use super::poincare_map::DEFAULT_MATRIX_A;
+use super::systems::{
+    build_ode_param_map, CustomOdeSpec, ExponentialOde, HarmonicOscillatorOde, Linear2DOde,
+    LogisticGrowthOde, PlanarAstOde,
+};
 use crate::presets::OdePreset;
+use math_commons::ast::Expr;
 use math_explorer::pure_math::analysis::ode::{
-    Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeModel, OdeSystem,
-    RungeKutta4, Solver, TimeStepper, VecState,
+    ArrayState, Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeSystem,
+    RungeKutta4, Solver,
 };
 use serde::{Deserialize, Serialize};
 
@@ -28,15 +32,45 @@ pub struct SolverDiscrepancy {
     pub rms_error: f64,
 }
 
-#[derive(Clone, Copy)]
-struct StepSchedule {
-    method: IntegrationMethod,
-    dt: f64,
-    num_steps: usize,
-    v_label: &'static str,
+/// Complete specification for simulating a 1D scalar or 2D coupled/planar ODE run.
+pub struct OdeSimSpec<'a> {
+    pub preset: OdePreset,
+    pub method: IntegrationMethod,
+    pub dt: f64,
+    pub total_time: f64,
+    pub param_k: f64,
+    pub param_r: f64,
+    pub param_cap_k: f64,
+    pub ic_y0: f64,
+    pub ic_v0: f64,
+    pub matrix_a: [[f64; 2]; 2],
+    pub custom_spec: Option<&'a CustomOdeSpec>,
+    pub planar_x_expr: Option<&'a Expr>,
+    pub planar_y_expr: Option<&'a Expr>,
+}
+
+impl OdeSimSpec<'_> {
+    #[must_use]
+    pub fn has_second_state(&self) -> bool {
+        self.preset.is_2d()
+            || (self.preset == OdePreset::Custom
+                && self.custom_spec.is_some_and(CustomOdeSpec::is_coupled))
+    }
+
+    #[must_use]
+    pub fn state_labels(&self) -> (&'static str, &'static str, &'static str, &'static str) {
+        if self.preset == OdePreset::Custom
+            && self.custom_spec.is_some_and(CustomOdeSpec::is_coupled)
+        {
+            ("y(t)", "v(t)", "y", "v")
+        } else {
+            self.preset.state_labels()
+        }
+    }
 }
 
 /// Simulates an ODE preset or custom compiled specification with the specified solver algorithm.
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub fn simulate_preset(
     preset: OdePreset,
@@ -50,173 +84,326 @@ pub fn simulate_preset(
     ic_v0: f64,
     custom_spec: Option<&CustomOdeSpec>,
 ) -> SolverTrajectory {
-    let mut traj = SolverTrajectory {
+    simulate_ode(&OdeSimSpec {
+        preset,
         method,
-        ..Default::default()
-    };
-    let has_second_state = preset == OdePreset::HarmonicOscillator
-        || (preset == OdePreset::Custom && custom_spec.is_some_and(CustomOdeSpec::is_coupled));
-    let v_label = if preset == OdePreset::HarmonicOscillator {
-        "y'(t)"
-    } else {
-        "v(t)"
-    };
-    let Some(num_steps) = validate_initial_state(
-        &mut traj,
-        has_second_state,
-        v_label,
         dt,
         total_time,
+        param_k,
+        param_r,
+        param_cap_k,
         ic_y0,
         ic_v0,
-    ) else {
+        matrix_a: DEFAULT_MATRIX_A,
+        custom_spec,
+        planar_x_expr: None,
+        planar_y_expr: None,
+    })
+}
+
+/// Simulates a 1D or 2D planar/coupled [`OdeSimSpec`] using stack-allocated `ArrayState` buffers
+/// and explicit step time $t_i = i \cdot \Delta t$.
+#[must_use]
+pub fn simulate_ode(spec: &OdeSimSpec<'_>) -> SolverTrajectory {
+    let mut traj = SolverTrajectory {
+        method: spec.method,
+        ..Default::default()
+    };
+    let Some(num_steps) = validate_initial_state(&mut traj, spec) else {
         return traj;
     };
-    if !reserve_trajectory_capacity(&mut traj, num_steps, has_second_state) {
+    let Some(point_cap) = num_steps.checked_add(1) else {
+        return traj;
+    };
+    let has_v = spec.has_second_state();
+    if traj.time_series.try_reserve(point_cap).is_err()
+        || traj.y_series.try_reserve(point_cap).is_err()
+        || (has_v && traj.v_series.try_reserve(point_cap).is_err())
+    {
         return traj;
     }
-    let sched = StepSchedule {
-        method,
-        dt,
-        num_steps,
-        v_label,
-    };
-    match preset {
-        OdePreset::Exponential => {
-            run_step_loop(
-                &mut traj,
-                VecState(vec![ic_y0]),
-                ExponentialOde { k: param_k },
-                sched,
-            );
-        }
-        OdePreset::HarmonicOscillator => {
-            let init = VecState(vec![ic_y0, ic_v0]);
-            run_step_loop(&mut traj, init, HarmonicOscillatorOde { k: param_k }, sched);
-        }
-        OdePreset::LogisticGrowth => {
-            let dyn_log = LogisticGrowthOde {
-                r: param_r,
-                cap_k: param_cap_k,
-            };
-            run_step_loop(&mut traj, VecState(vec![ic_y0]), dyn_log, sched);
-        }
-        OdePreset::Custom => run_custom_ode(&mut traj, custom_spec, [ic_y0, ic_v0], sched),
-    }
+
+    dispatch_sim_preset(&mut traj, spec, num_steps);
     traj
 }
 
-fn reserve_trajectory_capacity(
-    traj: &mut SolverTrajectory,
-    num_steps: usize,
-    has_second_state: bool,
-) -> bool {
-    let Some(point_cap) = num_steps.checked_add(1) else {
-        return false;
-    };
-    traj.time_series.try_reserve(point_cap).is_ok()
-        && traj.y_series.try_reserve(point_cap).is_ok()
-        && (!has_second_state || traj.v_series.try_reserve(point_cap).is_ok())
+fn dispatch_sim_preset(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps: usize) {
+    if spec.preset.is_2d() {
+        dispatch_sim_2d(traj, spec, num_steps);
+        return;
+    }
+    let init_1d = ArrayState([spec.ic_y0]);
+    match spec.preset {
+        OdePreset::Exponential => {
+            let dyn_sys = ExponentialOde { k: spec.param_k };
+            run_loop_1d(traj, init_1d, &dyn_sys, spec.method, spec.dt, num_steps);
+        }
+        OdePreset::LogisticGrowth => {
+            let dyn_sys = LogisticGrowthOde {
+                r: spec.param_r,
+                cap_k: spec.param_cap_k,
+            };
+            run_loop_1d(traj, init_1d, &dyn_sys, spec.method, spec.dt, num_steps);
+        }
+        OdePreset::Custom => {
+            if let Some(cspec) = spec.custom_spec {
+                if cspec.is_coupled() {
+                    run_loop_2d(
+                        traj,
+                        ArrayState([spec.ic_y0, spec.ic_v0]),
+                        cspec,
+                        spec.method,
+                        spec.dt,
+                        num_steps,
+                        ("y(t)", "v(t)"),
+                    );
+                } else {
+                    run_loop_1d(traj, init_1d, cspec, spec.method, spec.dt, num_steps);
+                }
+            }
+        }
+        OdePreset::HarmonicOscillator | OdePreset::LinearSystem2D | OdePreset::PlanarCustom => {}
+    }
 }
 
-fn validate_initial_state(
-    traj: &mut SolverTrajectory,
-    has_second_state: bool,
-    v_label: &str,
-    dt: f64,
-    total_time: f64,
-    ic_y0: f64,
-    ic_v0: f64,
-) -> Option<usize> {
-    let num_steps = crate::presets::checked_ode_step_count(dt, total_time)?;
-    if !ic_y0.is_finite() {
+fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps: usize) {
+    let init_2d = ArrayState([spec.ic_y0, spec.ic_v0]);
+    match spec.preset {
+        OdePreset::HarmonicOscillator => {
+            let dyn_sys = HarmonicOscillatorOde { k: spec.param_k };
+            run_loop_2d(
+                traj,
+                init_2d,
+                &dyn_sys,
+                spec.method,
+                spec.dt,
+                num_steps,
+                ("y(t)", "y'(t)"),
+            );
+        }
+        OdePreset::LinearSystem2D => {
+            let dyn_sys = Linear2DOde {
+                matrix_a: spec.matrix_a,
+            };
+            run_loop_2d(
+                traj,
+                init_2d,
+                &dyn_sys,
+                spec.method,
+                spec.dt,
+                num_steps,
+                ("x(t)", "y(t)"),
+            );
+        }
+        OdePreset::PlanarCustom => {
+            if let (Some(x_expr), Some(y_expr)) = (spec.planar_x_expr, spec.planar_y_expr) {
+                let dyn_sys = PlanarAstOde {
+                    x_expr,
+                    y_expr,
+                    params: build_ode_param_map(spec.param_k, spec.param_r, spec.param_cap_k),
+                };
+                run_loop_2d(
+                    traj,
+                    init_2d,
+                    &dyn_sys,
+                    spec.method,
+                    spec.dt,
+                    num_steps,
+                    ("x(t)", "y(t)"),
+                );
+            }
+        }
+        OdePreset::Exponential | OdePreset::LogisticGrowth | OdePreset::Custom => {}
+    }
+}
+
+fn validate_initial_state(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>) -> Option<usize> {
+    let num_steps = crate::presets::checked_ode_step_count(spec.dt, spec.total_time)?;
+    let (v0_name, v1_name, _, _) = spec.state_labels();
+    if !spec.ic_y0.is_finite() {
         traj.diverged = true;
-        traj.divergence_info = Some((0.0, 0, "y(t)".to_string()));
+        traj.divergence_info = Some((0.0, 0, v0_name.to_string()));
         return None;
     }
-    if has_second_state && !ic_v0.is_finite() {
+    if spec.has_second_state() && !spec.ic_v0.is_finite() {
         traj.diverged = true;
-        traj.divergence_info = Some((0.0, 0, v_label.to_string()));
+        traj.divergence_info = Some((0.0, 0, v1_name.to_string()));
+        return None;
+    }
+    if spec.preset == OdePreset::LinearSystem2D
+        && !spec.matrix_a.iter().flatten().all(|v| v.is_finite())
+    {
+        traj.diverged = true;
+        traj.divergence_info = Some((0.0, 0, "A".to_string()));
         return None;
     }
     Some(num_steps)
 }
 
-fn run_custom_ode(
+fn run_loop_1d<D: OdeSystem<ArrayState<1>>>(
     traj: &mut SolverTrajectory,
-    spec: Option<&CustomOdeSpec>,
-    ic: [f64; 2],
-    sched: StepSchedule,
-) {
-    if let Some(spec) = spec {
-        let init_state = if spec.is_coupled() {
-            VecState(vec![ic[0], ic[1]])
-        } else {
-            VecState(vec![ic[0]])
-        };
-        run_step_loop(traj, init_state, spec.clone(), sched);
-    }
-}
-
-fn run_step_loop<D: OdeSystem<VecState> + Clone>(
-    traj: &mut SolverTrajectory,
-    init: VecState,
-    dynamics: D,
-    sched: StepSchedule,
-) {
-    match sched.method {
-        IntegrationMethod::RungeKutta4 => {
-            let mut m = OdeModel::new(init.clone(), dynamics, RungeKutta4::new(&init));
-            execute_steps(traj, &mut m, sched.dt, sched.num_steps, sched.v_label);
-        }
-        IntegrationMethod::Euler => {
-            let mut m = OdeModel::new(init.clone(), dynamics, Euler::new(&init));
-            execute_steps(traj, &mut m, sched.dt, sched.num_steps, sched.v_label);
-        }
-        IntegrationMethod::Heun => {
-            let mut m = OdeModel::new(init.clone(), dynamics, Heun::new(&init));
-            execute_steps(traj, &mut m, sched.dt, sched.num_steps, sched.v_label);
-        }
-        IntegrationMethod::ImplicitMidpoint => {
-            let mut m = OdeModel::new(init.clone(), dynamics, ImplicitMidpoint::new(&init));
-            execute_steps(traj, &mut m, sched.dt, sched.num_steps, sched.v_label);
-        }
-        IntegrationMethod::GaussLegendre4 => {
-            let mut m = OdeModel::new(init.clone(), dynamics, GaussLegendre4::new(&init));
-            execute_steps(traj, &mut m, sched.dt, sched.num_steps, sched.v_label);
-        }
-    }
-}
-
-fn execute_steps<D, S>(
-    traj: &mut SolverTrajectory,
-    model: &mut OdeModel<VecState, D, S>,
+    init: ArrayState<1>,
+    dynamics: &D,
+    method: IntegrationMethod,
     dt: f64,
     num_steps: usize,
-    v_label: &str,
-) where
-    D: OdeSystem<VecState>,
-    S: Solver<VecState>,
-{
-    let has_v = model.state.0.len() > 1;
+) {
+    match method {
+        IntegrationMethod::RungeKutta4 => {
+            execute_steps_1d(
+                traj,
+                init,
+                dynamics,
+                &mut RungeKutta4::new(&init),
+                dt,
+                num_steps,
+            );
+        }
+        IntegrationMethod::Euler => {
+            execute_steps_1d(traj, init, dynamics, &mut Euler::new(&init), dt, num_steps);
+        }
+        IntegrationMethod::Heun => {
+            execute_steps_1d(traj, init, dynamics, &mut Heun::new(&init), dt, num_steps);
+        }
+        IntegrationMethod::ImplicitMidpoint => {
+            execute_steps_1d(
+                traj,
+                init,
+                dynamics,
+                &mut ImplicitMidpoint::new(&init),
+                dt,
+                num_steps,
+            );
+        }
+        IntegrationMethod::GaussLegendre4 => {
+            execute_steps_1d(
+                traj,
+                init,
+                dynamics,
+                &mut GaussLegendre4::new(&init),
+                dt,
+                num_steps,
+            );
+        }
+    }
+}
+
+fn execute_steps_1d<D: OdeSystem<ArrayState<1>>, S: Solver<ArrayState<1>>>(
+    traj: &mut SolverTrajectory,
+    mut state: ArrayState<1>,
+    dynamics: &D,
+    solver: &mut S,
+    dt: f64,
+    num_steps: usize,
+) {
     for i in 0..=num_steps {
-        let y = model.get_state().0[0];
+        let t = i as f64 * dt;
+        let y = state.0[0];
         if !y.is_finite() {
             traj.diverged = true;
-            traj.divergence_info = Some((i as f64 * dt, i, "y(t)".to_string()));
+            traj.divergence_info = Some((t, i, "y(t)".to_string()));
             break;
         }
-        if has_v && !model.get_state().0[1].is_finite() {
-            traj.diverged = true;
-            traj.divergence_info = Some((i as f64 * dt, i, v_label.to_string()));
-            break;
-        }
-        traj.time_series.push(i as f64 * dt);
+        traj.time_series.push(t);
         traj.y_series.push(y);
-        if has_v {
-            traj.v_series.push(model.get_state().0[1]);
+        solver.step(dynamics, t, &mut state, dt);
+    }
+}
+
+fn run_loop_2d<D: OdeSystem<ArrayState<2>>>(
+    traj: &mut SolverTrajectory,
+    init: ArrayState<2>,
+    dynamics: &D,
+    method: IntegrationMethod,
+    dt: f64,
+    num_steps: usize,
+    names: (&str, &str),
+) {
+    match method {
+        IntegrationMethod::RungeKutta4 => {
+            execute_steps_2d(
+                traj,
+                init,
+                dynamics,
+                &mut RungeKutta4::new(&init),
+                dt,
+                num_steps,
+                names,
+            );
         }
-        model.step(dt);
+        IntegrationMethod::Euler => {
+            execute_steps_2d(
+                traj,
+                init,
+                dynamics,
+                &mut Euler::new(&init),
+                dt,
+                num_steps,
+                names,
+            );
+        }
+        IntegrationMethod::Heun => {
+            execute_steps_2d(
+                traj,
+                init,
+                dynamics,
+                &mut Heun::new(&init),
+                dt,
+                num_steps,
+                names,
+            );
+        }
+        IntegrationMethod::ImplicitMidpoint => {
+            execute_steps_2d(
+                traj,
+                init,
+                dynamics,
+                &mut ImplicitMidpoint::new(&init),
+                dt,
+                num_steps,
+                names,
+            );
+        }
+        IntegrationMethod::GaussLegendre4 => {
+            execute_steps_2d(
+                traj,
+                init,
+                dynamics,
+                &mut GaussLegendre4::new(&init),
+                dt,
+                num_steps,
+                names,
+            );
+        }
+    }
+}
+
+fn execute_steps_2d<D: OdeSystem<ArrayState<2>>, S: Solver<ArrayState<2>>>(
+    traj: &mut SolverTrajectory,
+    mut state: ArrayState<2>,
+    dynamics: &D,
+    solver: &mut S,
+    dt: f64,
+    num_steps: usize,
+    names: (&str, &str),
+) {
+    for i in 0..=num_steps {
+        let t = i as f64 * dt;
+        let [x, y] = state.0;
+        if !x.is_finite() {
+            traj.diverged = true;
+            traj.divergence_info = Some((t, i, names.0.to_string()));
+            break;
+        }
+        if !y.is_finite() {
+            traj.diverged = true;
+            traj.divergence_info = Some((t, i, names.1.to_string()));
+            break;
+        }
+        traj.time_series.push(t);
+        traj.y_series.push(x);
+        traj.v_series.push(y);
+        solver.step(dynamics, t, &mut state, dt);
     }
 }
 
@@ -272,196 +459,6 @@ fn accumulate_series_discrepancy(
             }
             *sum_sq_err += err * err;
             *count += 1;
-        }
-    }
-}
-
-struct TrajectoryView<'a> {
-    method: IntegrationMethod,
-    time_series: &'a [f64],
-    y_series: &'a [f64],
-    v_series: &'a [f64],
-    diverged: bool,
-    is_active_reused: bool,
-}
-
-fn build_view_trace_series(
-    view: &TrajectoryView<'_>,
-    has_v: bool,
-    v_label: &str,
-) -> Vec<TraceSeries> {
-    let pts_y: Vec<[f64; 2]> = view
-        .time_series
-        .iter()
-        .zip(view.y_series)
-        .map(|(&t, &y)| [t, y])
-        .collect();
-    let mut series = vec![TraceSeries::new("y(t)", pts_y)];
-    if has_v && !view.v_series.is_empty() {
-        let pts_v: Vec<[f64; 2]> = view
-            .time_series
-            .iter()
-            .zip(view.v_series)
-            .map(|(&t, &v)| [t, v])
-            .collect();
-        series.push(TraceSeries::new(v_label, pts_v));
-    }
-    series
-}
-
-struct ComparisonBundle {
-    any_diverged: bool,
-    euler_rk4: SolverDiscrepancy,
-    heun_rk4: SolverDiscrepancy,
-    euler_heun: SolverDiscrepancy,
-    snapshots: Vec<(&'static str, Vec<TraceSeries>)>,
-}
-
-impl OdeSolverTool {
-    fn simulate_if_inactive(
-        &self,
-        target: IntegrationMethod,
-        reuse_active: bool,
-        custom_spec: Option<&CustomOdeSpec>,
-    ) -> Option<SolverTrajectory> {
-        if reuse_active && self.method == target {
-            None
-        } else {
-            Some(simulate_preset(
-                self.preset,
-                target,
-                self.dt,
-                self.total_time,
-                self.param_k,
-                self.param_r,
-                self.param_cap_k,
-                self.ic_y0,
-                self.ic_v0,
-                custom_spec,
-            ))
-        }
-    }
-
-    fn trajectory_view<'a>(
-        &'a self,
-        target: IntegrationMethod,
-        simulated: &'a Option<SolverTrajectory>,
-    ) -> TrajectoryView<'a> {
-        if let Some(traj) = simulated {
-            TrajectoryView {
-                method: traj.method,
-                time_series: &traj.time_series,
-                y_series: &traj.y_series,
-                v_series: &traj.v_series,
-                diverged: traj.diverged,
-                is_active_reused: false,
-            }
-        } else {
-            TrajectoryView {
-                method: target,
-                time_series: &self.time_series,
-                y_series: &self.y_series,
-                v_series: &self.v_series,
-                diverged: self.diverged,
-                is_active_reused: true,
-            }
-        }
-    }
-
-    fn build_comparison_snapshot_series(
-        &self,
-        views: &[TrajectoryView<'_>],
-    ) -> Vec<(&'static str, Vec<TraceSeries>)> {
-        let has_v = self.has_second_state();
-        let v_label = self.second_state_label();
-        let cache_matches =
-            self.series_cache
-                .matches_series(&self.time_series, &self.y_series, &self.v_series);
-        views
-            .iter()
-            .map(|view| {
-                let series = if view.is_active_reused && cache_matches {
-                    let (py, pv) = self.series_cache.shared_points();
-                    let mut s = vec![TraceSeries::new("y(t)", py)];
-                    if has_v && !pv.is_empty() {
-                        s.push(TraceSeries::new(v_label, pv));
-                    }
-                    s
-                } else {
-                    build_view_trace_series(view, has_v, v_label)
-                };
-                (view.method.name(), series)
-            })
-            .collect()
-    }
-
-    fn collect_comparison_bundle(
-        &self,
-        reuse_active: bool,
-        custom_spec: Option<&CustomOdeSpec>,
-    ) -> ComparisonBundle {
-        let rk4_sim =
-            self.simulate_if_inactive(IntegrationMethod::RungeKutta4, reuse_active, custom_spec);
-        let euler_sim =
-            self.simulate_if_inactive(IntegrationMethod::Euler, reuse_active, custom_spec);
-        let heun_sim =
-            self.simulate_if_inactive(IntegrationMethod::Heun, reuse_active, custom_spec);
-        let symp_sim = self
-            .method
-            .is_symplectic()
-            .then(|| self.simulate_if_inactive(self.method, reuse_active, custom_spec));
-
-        let rk4 = self.trajectory_view(IntegrationMethod::RungeKutta4, &rk4_sim);
-        let euler = self.trajectory_view(IntegrationMethod::Euler, &euler_sim);
-        let heun = self.trajectory_view(IntegrationMethod::Heun, &heun_sim);
-
-        let mut any_diverged = rk4.diverged || euler.diverged || heun.diverged;
-        let euler_rk4 =
-            compute_series_discrepancy(euler.y_series, euler.v_series, rk4.y_series, rk4.v_series);
-        let heun_rk4 =
-            compute_series_discrepancy(heun.y_series, heun.v_series, rk4.y_series, rk4.v_series);
-        let euler_heun = compute_series_discrepancy(
-            euler.y_series,
-            euler.v_series,
-            heun.y_series,
-            heun.v_series,
-        );
-        let snapshots = if let Some(ref symp_opt) = symp_sim {
-            let symp = self.trajectory_view(self.method, symp_opt);
-            any_diverged |= symp.diverged;
-            self.build_comparison_snapshot_series(&[rk4, euler, heun, symp])
-        } else {
-            self.build_comparison_snapshot_series(&[rk4, euler, heun])
-        };
-
-        ComparisonBundle {
-            any_diverged,
-            euler_rk4,
-            heun_rk4,
-            euler_heun,
-            snapshots,
-        }
-    }
-
-    pub(super) fn recalculate_comparison(&mut self) {
-        self.comparison_manager.clear();
-        if !self.comparison_mode {
-            return;
-        }
-
-        let custom_spec = self.build_custom_ode_spec();
-        let reuse_active =
-            !self.has_custom_input_error() || !self.time_series.is_empty() || self.diverged;
-        let bundle = self.collect_comparison_bundle(reuse_active, custom_spec.as_ref());
-
-        if bundle.any_diverged {
-            self.diverged = true;
-        }
-        self.discrepancy_euler_rk4 = bundle.euler_rk4;
-        self.discrepancy_heun_rk4 = bundle.heun_rk4;
-        self.discrepancy_euler_heun = bundle.euler_heun;
-        for (label, series) in bundle.snapshots {
-            self.comparison_manager.add_snapshot(label, "", series);
         }
     }
 }
