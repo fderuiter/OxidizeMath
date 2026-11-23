@@ -4,20 +4,41 @@
 ![Language](https://img.shields.io/badge/language-Rust-orange.svg)
 ![Crate](https://img.shields.io/crates/v/math_explorer.svg)
 
-The core library for the **Math Explorer** project. This crate provides a collection of mathematical algorithms and models, implemented from first principles in Rust.
+Unified public facade crate re-exporting verified mathematical kernels, runtime verification primitives, and domain simulation modules.
 
 > **Note:** This is the inner library crate. For the full repository context, see the [Project Root README](../README.md).
 
-##  Install
+## 1. Overview & Architecture
 
-Add this crate to your dependencies:
+The `math_explorer` crate serves as the primary library entrypoint for downstream Rust consumers, examples, benchmarks, and the interactive GUI. It unifies foundational primitives (`diagnostics`, `math_commons`, `scientific_metadata`, `verified_engine`) with feature-gated scientific domains under a stable public namespace.
+
+### Module Structure
+
+- **Core Always-On Modules**:
+  - `error` & `prelude`: Unified `MathError`, `MathResult`, bounded numeric primitives (`PositiveFloat`, `NonNegativeFloat`, `UnitInterval`), and `Diagnostic` traits.
+  - `ast`, `constants`, `math_kernel`, `primitives`, `registry`, `wigner`: Expression parsing/compilation, physical constants, tolerances, and Clebsch-Gordan coefficients.
+  - `verified_engine` & `scientific_metadata`: Zero-allocation runtime verification harness (`VerifiedEngine`), `#[verified]`, `#[derive(Theory)]`, and `#[embed_theory]`.
+- **Feature-Gated Domain Modules**:
+  - **`ai`**: Artificial Intelligence primitives, including Transformer components (Attention, Encoder/Decoder), Reinforcement Learning, NeRF-Diffusion, and Self-Calibration loops.
+  - **`applied`**: Applied mathematical models including **Clinical Trials** (Win Ratio), **Game Theory**, **Battery Degradation**, **Pharmacokinetics**, **Favoritism**, and **Isosurface Extraction**.
+  - **`biology`**: Biological modeling, including **Neuroscience** (Hodgkin-Huxley) and **Morphogenesis** (Turing Reaction-Diffusion).
+  - **`climate`**: Climate modeling tools featuring the **CERA** representation-alignment autoencoder framework.
+  - **`epidemiology`**: Disease transmission modeling across **SIR/SEIR** compartmental ODEs, stochastic Gillespie processes, and contact networks.
+  - **`physics`**: Physical simulations spanning **Quantum Mechanics**, **Fluid Dynamics**, **Solid State** (BCS Superconductivity, Ising), **Chaos Theory** (Lorenz System), and **MRI Physics**.
+  - **`pure_math`**: Foundational mathematics covering **Abstract Algebra**, **Number Theory** (Partitions, Q-Series), **Graph Theory**, **Statistics** (Glicko-2, Markov, TDA), and **Differential Geometry**.
+
+---
+
+## 2. Developer Instructions
+
+### Installation & Feature Selection
+
+Add `math_explorer` to your `Cargo.toml` and enable the domain features required by your application:
 
 ```toml
 [dependencies]
-math_explorer = { path = "path/to/math_explorer" }
+math_explorer = { path = "path/to/math_explorer", features = ["biology", "physics", "pure_math", "ai"] }
 ```
-
-##  Usage
 
 ### Example: Computational Biology (Neuroscience)
 
@@ -76,7 +97,6 @@ fn main() {
     let mut solver = RungeKutta4::new(&initial_state.vec);
 
     // Calculate the maximal Lyapunov exponent
-    // Args: System, Solver, Initial Vec, Time Step, Iterations, Evolution Time
     let lambda = lorenz_lyapunov(&system, &mut solver, initial_state.vec, 0.01, 1000, 1.0).unwrap();
     println!("Lyapunov Exponent: {:.4}", lambda);
 }
@@ -113,24 +133,8 @@ fn main() {
 # fn main() {}
 ```
 
-##  Config
+---
 
-The library is organized into high-level domains:
+## 3. Ecosystem Integration
 
-- **`ai`**: Artificial Intelligence primitives, including Transformer components (Attention, Encoder/Decoder), NeRF-Diffusion, and Self-Calibration loops.
-- **`applied`**: Mathematical models applied to specific domains like **Clinical Trials** (Win Ratio), **Game Theory**, **Favoritism** (Satire), and **Isosurface Extraction**.
-- **`biology`**: Biological modeling, including **Neuroscience** (Hodgkin-Huxley) and **Morphogenesis**.
-- **`climate`**: Climate modeling tools, featuring the **CERA** autoencoder framework.
-- **`epidemiology`**: Disease modeling, from standard **SIR/SEIR** compartmental models to stochastic network dynamics.
-- **`physics`**: Simulations of physical systems, including **Quantum Mechanics**, **Fluid Dynamics**, **Chaos Theory** (Lorenz System), and **MRI Physics**.
-- **`pure_math`**: Foundational mathematics, covering **Algebra**, **Number Theory** (Partitions, Q-Series), **Graph Theory**, and **Differential Geometry**.
-
-##  Contributing
-
-Please refer to [CONTRIBUTING.md](../CONTRIBUTING.md) in the project root.
-
-To run the comprehensive test suite for all modules:
-
-```bash
-cargo test
-```
+Please refer to [CONTRIBUTING.md](../CONTRIBUTING.md) in the project root for contributor standards and facade export hygiene rules. Run `cargo test -p math_explorer --all-features` to execute the facade integration and doctest suites.

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for measure mri.
 use domain_physics::physics::mri::phantom::fill_shepp_logan_grid;
 use domain_physics::physics::mri::reconstruction::{
     Fft2dWorkspace, fftshift_2d_into, ifftshift_2d_into, inverse_dft_2d, simulate_signal_2d,

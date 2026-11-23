@@ -144,6 +144,9 @@ allowlist = ["crates/diagnostics"]
 [entropy_guard]
 scan_paths = ["crates"]
 
+[missing_docs.files]
+"crates/demo/src/lib.rs" = 1
+
 [[dead_code]]
 file = "crates/demo/src/lib.rs"
 identifier = "Demo"

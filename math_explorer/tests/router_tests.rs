@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for router tests.
 #[cfg(feature = "pure_math")]
 #[test]
 fn test_primality_routing() {

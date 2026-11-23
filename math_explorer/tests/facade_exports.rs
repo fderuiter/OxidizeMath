@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for facade exports.
 
 #[test]
 fn core_only_facade_exports_work_without_domain_features() {

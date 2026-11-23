@@ -18,15 +18,9 @@ pub mod facade_imports;
 #[cfg(test)]
 mod tests;
 
-/// Default allowlist of legacy or application workspace crates exempt from
-/// standardized architectural headings while awaiting manual authoring.
-pub const DEFAULT_LEGACY_ALLOWLIST: &[&str] = &[
-    "crates/diagnostics",
-    "egui_plot",
-    "apps/xtask",
-    "math_explorer",
-    "math_explorer_gui",
-];
+/// Default allowlist of vendored workspace crates exempt from
+/// standardized OxidizeMath architectural headings.
+pub const DEFAULT_LEGACY_ALLOWLIST: &[&str] = &["egui_plot"];
 
 /// Minimum required lines for a standard crate README.
 pub const MIN_README_LINES: usize = 30;

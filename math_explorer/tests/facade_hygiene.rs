@@ -1,5 +1,4 @@
 //! Integration tests verifying `math_explorer` facade guide and error hygiene.
-#![allow(missing_docs)]
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {

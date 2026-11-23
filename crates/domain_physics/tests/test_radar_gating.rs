@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test radar gating.
 use approx::assert_relative_eq;
 use domain_physics::physics::medical::radar_gating::{
     C,

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test fused attention.
 use approx::assert_relative_eq;
 use domain_ai::ai::transformer::MultiHeadAttention;
 use domain_ai::ai::transformer::attention::scaled_dot_product_attention;

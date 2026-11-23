@@ -1,10 +1,8 @@
 #![doc = include_str!("../README.md")]
 pub mod climate;
-#[allow(missing_docs)]
 pub mod error;
 
 #[doc(hidden)]
-#[allow(missing_docs)]
 pub mod __doctest_facade {
     pub use crate::climate;
     pub use ::pure_math::__doctest_facade::{

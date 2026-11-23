@@ -3,44 +3,11 @@
 ![Status](https://img.shields.io/badge/status-active-brightgreen)
 ![Framework](https://img.shields.io/badge/framework-egui-blue)
 
-The graphical front-end for the `math_explorer` library, built using `eframe` (egui framework).
+Interactive desktop and WebAssembly graphical workbench for exploring OxidizeMath simulations with `eframe` and `egui`.
 
-##  Install
+## 1. Overview & Architecture
 
-Ensure you have the Rust toolchain installed. This crate is part of the `math_explorer` workspace.
-
-```bash
-git clone https://github.com/fderuiter/OxidizeMath.git
-cd OxidizeMath
-```
-
-##  Usage
-
-### Desktop (Native)
-
-To run the interactive application natively:
-
-```bash
-cargo run --release --package math_explorer_gui
-```
-
-### Web (WASM)
-
-To compile and run the application in your browser (requires Trunk):
-
-```bash
-# 1. Install Trunk and WASM target
-cargo install trunk
-rustup target add wasm32-unknown-unknown
-
-# 2. Serve the application locally
-cd math_explorer_gui
-trunk serve
-```
-
-##  Config (Architecture)
-
-The GUI follows a modular architecture based on the `ExplorerTab` trait. The main application `MathExplorerApp` manages a list of these tabs and handles navigation.
+The `math_explorer_gui` crate provides the immediate-mode graphical frontend for `math_explorer` across native desktop targets and WebAssembly (`wasm32-unknown-unknown`). It pairs modular simulation tabs with background worker execution, WCAG-aligned semantic palettes, AccessKit screen-reader bridges, URL-shareable preset state, and scientific theory sidecars.
 
 ```mermaid
 classDiagram
@@ -73,25 +40,38 @@ classDiagram
 
 ### Key Components
 
-*   **`MathExplorerApp`**: The root component implementing `eframe::App`. It renders the top navigation bar and delegates the main content area to the active tab.
-*   **`ExplorerTab`**: The trait that all visualization modules must implement. It provides a standard interface for the app to interact with different simulations.
-*   **`math_explorer` Dependency**: All heavy mathematical logic (physics, biology, etc.) resides in the core `math_explorer` crate. The GUI crate should focus **only** on visualization and input handling.
+- **`MathExplorerApp`**: Root `eframe::App` shell managing navigation, starter gallery workflows, command palette search, accessibility announcements, and active workspace panels.
+- **`framework` & `tabs`**: Modular interactive tools implementing `InteractiveTool` / `ExplorerTab` contracts while delegating all mathematical computation to `math_explorer`.
+- **`async_sim`**: Off-thread and Web Worker simulation runners preventing frame-budget stalls during heavy PDE, FFT, or Monte Carlo sweeps.
+- **`presets` & `url_state`**: Versioned JSON preset import/export and deterministic URL state encoding.
 
-##  Contributing
+---
 
-Follow these steps to add a new visualization module (e.g., for `fluid_dynamics`).
+## 2. Developer Instructions
 
-### 1. Create the Module
-You can create a single file `src/tabs/fluid_dynamics.rs` or a directory `src/tabs/fluid_dynamics/mod.rs` for complex modules.
+### Running Desktop (Native) and Web (WASM)
 
-**Example `src/tabs/fluid_dynamics.rs`:**
+```bash
+# Run the native desktop application
+cargo run --release --package math_explorer_gui
+
+# Serve the WebAssembly application locally (requires trunk and wasm32-unknown-unknown)
+rustup target add wasm32-unknown-unknown
+cd math_explorer_gui
+trunk serve
+```
+
+### Adding a New Visualization Tab
+
+Follow the [Interactive Tool Walkthrough](../docs/architecture/interactive_tool_walkthrough.md) when adding a new simulation tool:
+
+1. **Create the Tab Module** (`src/tabs/fluid_dynamics.rs` or `src/tabs/fluid_dynamics/mod.rs`):
 
 ```text
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub struct FluidDynamicsTab {
-    // State goes here
     velocity: f64,
 }
 
@@ -115,22 +95,13 @@ impl ExplorerTab for FluidDynamicsTab {
 }
 ```
 
-### 2. Register the Module
-In `src/tabs/mod.rs`, add your module:
+2. **Register the Module & Preset Metadata**: Export the tab under `src/tabs/` and register its starter gallery preset and URL state descriptors.
+3. **Design Principles**:
+   - **Separation of Concerns**: Keep mathematical solvers and domain physics inside `math_explorer` domain crates; keep GUI code focused on visualization and interaction.
+   - **Frame-Budget Safety**: Avoid heavy synchronous PDE/FFT work in `Default::default()` or per-frame `show()` calls; offload expensive sweeps via `async_sim`.
 
-```text
-pub mod fluid_dynamics;
-```
+---
 
-### 3. Add to App
-In `src/app.rs` (or wherever the tabs are initialized, likely in `MathExplorerApp::default`), add your tab to the list:
+## 3. Ecosystem Integration
 
-```text
-Box::new(FluidDynamicsTab::default()),
-```
-
-### Design Principles
-
-1.  **Separation of Concerns**: Keep simulation logic in `math_explorer`. If you need a new simulation model, add it to the core library first, then visualize it here.
-2.  **Immediate Mode**: `egui` is an immediate mode GUI. This means the `show()` function is called every frame. Avoid heavy computations directly in `show()`. Use a separate thread or perform small updates per frame.
-3.  **No Heavy Dependencies**: We try to keep the GUI crate lightweight. Avoid adding heavy dependencies like `rand` if a simple internal implementation or a dependency from `math_explorer` suffices.
+`math_explorer_gui` consumes domain models solely through `math_explorer`, renders interactive 2D/3D plots via the workspace `egui_plot` crate, and wires runtime alerts through `diagnostics` and `federated_registry`.

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for algorithmic information.
 use pure_math::pure_math::algorithmic_information::combinatorics::*;
 use std::collections::{HashMap, HashSet};
 
