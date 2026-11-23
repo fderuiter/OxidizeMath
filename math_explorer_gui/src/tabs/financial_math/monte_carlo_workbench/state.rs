@@ -287,7 +287,17 @@ inventory::submit! {
         id: "MonteCarloWorkbenchTool",
         display_name: "Monte Carlo & Bootstrap Workbench",
         domain: "financial_math",
-        tags: &["monte_carlo", "qmc", "sobol", "bootstrap", "bca", "ess"],
+        tags: &[
+            "monte carlo",
+            "variance reduction",
+            "qmc",
+            "sobol",
+            "halton",
+            "bootstrap",
+            "bca",
+            "importance sampling",
+            "ess",
+        ],
         build: || Box::new(MonteCarloWorkbenchTool::default()),
     }
 }
