@@ -1,4 +1,4 @@
-# 0047: Unified RL Maze Sculpting, Exact Bellman Solvers, and TD Surprise Sonification
+# ADR 20261123: Unified RL Maze Sculpting, Exact Bellman Solvers, and TD Surprise Sonification
 
 ## Status
 

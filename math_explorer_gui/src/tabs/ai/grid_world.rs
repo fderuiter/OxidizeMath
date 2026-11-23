@@ -402,7 +402,16 @@ inventory::submit! {
         id: "GridWorldTool",
         display_name: "Grid World (RL)",
         domain: "ai",
-        tags: &["rl", "mdp", "bellman", "sonification"],
+        tags: &[
+            "reinforcement learning",
+            "rl",
+            "q-learning",
+            "bellman",
+            "mdp",
+            "policy",
+            "epsilon-greedy",
+            "sonification",
+        ],
         build: || Box::new(GridWorldTool::default()),
     }
 }

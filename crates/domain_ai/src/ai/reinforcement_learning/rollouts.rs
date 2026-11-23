@@ -198,9 +198,9 @@ fn flush_reinforce_episode_in_place(ws: &mut DenseRlWorkspace, gamma: f64, lr: f
         let advantage = (g_t - baseline).clamp(-25.0, 25.0);
         ws.state_values[s_idx] = baseline + critic_lr * (g_t - baseline);
         let probs = softmax_action_probs(ws.theta_logits[s_idx]);
-        for k in 0..4 {
+        for (k, &prob) in probs.iter().enumerate() {
             let indicator = if k == a_idx { 1.0 } else { 0.0 };
-            let grad = indicator - probs[k];
+            let grad = indicator - prob;
             ws.theta_logits[s_idx][k] =
                 (ws.theta_logits[s_idx][k] + lr * advantage * grad).clamp(-20.0, 20.0);
             ws.q_table[s_idx][k] = ws.state_values[s_idx] + 0.25 * ws.theta_logits[s_idx][k];

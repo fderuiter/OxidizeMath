@@ -7,16 +7,19 @@ use super::frame::{
     SonificationFrame, VoiceSpec, WaveformPreset, FLOOR_DBFS, LIMITER_CEILING_DBFS,
     LIMITER_CEILING_LINEAR,
 };
+#[cfg(feature = "pure_math")]
+use super::frame::{MAX_FREQ_HZ, MIN_FREQ_HZ};
+#[cfg(feature = "pure_math")]
+use super::mappings::chladni_wave_tank_frame;
 use super::mappings::{
     attractor_frame, bifurcation_frame, hodgkin_huxley_frame, just_intonation_ratio,
-    neural_ring_frame, prime_chord_frame, quantum_wavepacket_frame, rl_td_surprise_frame,
-    spike_analysis_frame,
+    neural_ring_frame, prime_chord_frame, quantum_wavepacket_frame, spike_analysis_frame,
 };
 use super::synth::OfflinePcmSynthesizer;
 use super::ui::{format_meter_readout, meter_fill_fraction, render_sonification_panel};
 use super::wav::{encode_wav_stereo_pcm16, synthesize_frames_to_wav};
 
-fn compute_mono_fft_magnitudes(interleaved_stereo: &[f32], fft_len: usize) -> Vec<f32> {
+pub(super) fn compute_mono_fft_magnitudes(interleaved_stereo: &[f32], fft_len: usize) -> Vec<f32> {
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(fft_len);
     let mut buf: Vec<Complex<f32>> = (0..fft_len)
@@ -31,7 +34,12 @@ fn compute_mono_fft_magnitudes(interleaved_stereo: &[f32], fft_len: usize) -> Ve
     buf[..fft_len / 2].iter().map(|c| c.norm()).collect()
 }
 
-fn peak_magnitude_around(mags: &[f32], sample_rate: u32, fft_len: usize, target_hz: f32) -> f32 {
+pub(super) fn peak_magnitude_around(
+    mags: &[f32],
+    sample_rate: u32,
+    fft_len: usize,
+    target_hz: f32,
+) -> f32 {
     let center = ((target_hz * (fft_len as f32)) / (sample_rate as f32)).round() as usize;
     let lo = center.saturating_sub(2);
     let hi = (center + 2).min(mags.len().saturating_sub(1));
@@ -47,12 +55,14 @@ fn test_zero_alloc_1000_steps_frame_extraction_and_offline_pcm_synthesis() {
     let _ = synth.set_muted_from_user_gesture(false);
     let factors: [(u64, u32); 3] = [(2, 2), (3, 1), (5, 2)];
     let mut prev_phases = [0.0_f64; 8];
+    #[cfg(feature = "pure_math")]
+    let detector_line = [0.25_f64; 32];
 
     let (max_sample, _metrics) = VerifiedEngine::run_verified(|| {
         let mut peak = 0.0_f32;
         for step in 0..1_000usize {
             let phase = (step as f64) * 0.05;
-            let frame = match step % 7 {
+            let frame = match step % 8 {
                 0 => hodgkin_huxley_frame(30.0 * phase.sin(), -10.0, 0.8, 0.4, 0.5, 10.0),
                 1 => spike_analysis_frame(25.0 * phase.cos(), -15.0, 0.0, 42.0),
                 2 => {
@@ -68,6 +78,8 @@ fn test_zero_alloc_1000_steps_frame_extraction_and_offline_pcm_synthesis() {
                 }
                 4 => attractor_frame([12.0 * phase.sin(), 8.0, 24.0], [18.0, -12.0, 9.0], false),
                 5 => bifurcation_frame(2.9 + 0.9 * ((step % 10) as f64) * 0.1),
+                #[cfg(feature = "pure_math")]
+                6 => sample_chladni_step_frame(phase, &detector_line, step % 16 == 0),
                 _ => prime_chord_frame(&factors, WaveformPreset::JustHarmonic),
             };
             synth.apply_frame(&frame);
@@ -273,69 +285,161 @@ fn test_mute_within_30ms_wav_encoding_and_accessible_ui_themes() {
         .any(|(text, prio)| prio == "polite" && text.contains("suspended cleanly")));
 }
 
-#[test]
-fn test_rl_td_surprise_zero_alloc_1000_steps() {
-    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let mut synth = OfflinePcmSynthesizer::new(44_100, 64);
-    let _ = synth.set_muted_from_user_gesture(false);
-
-    let (max_sample, _metrics) = VerifiedEngine::run_verified(|| {
-        let mut peak = 0.0_f32;
-        for step in 0..1_000usize {
-            let v = -8.0 + 16.0 * ((step % 25) as f64 / 24.0);
-            let td = ((step % 11) as f64 - 5.0) * 1.4;
-            let reward = match step % 20 {
-                0 => 10.0,
-                10 => -10.0,
-                _ => -0.1,
-            };
-            let pan = if step % 2 == 0 { -0.75 } else { 0.75 };
-            let frame = rl_td_surprise_frame(v, td, reward, pan);
-            synth.apply_frame(&frame);
-            for &s in synth.render_frames(32) {
-                peak = peak.max(s.abs());
-            }
-        }
-        peak
-    });
-    assert!(max_sample > 0.02);
-    assert!(max_sample <= LIMITER_CEILING_LINEAR + 1e-6);
-    assert!(synth.meter_reading().peak_dbfs <= LIMITER_CEILING_DBFS);
-    assert!(!rl_td_surprise_frame(f64::NAN, 0.0, 0.0, 0.0).is_audible());
+#[cfg(feature = "pure_math")]
+fn sample_chladni_step_frame(phase: f64, det: &[f64], strike: bool) -> SonificationFrame {
+    use math_explorer::pure_math::analysis::pde::wave_2d::{SpectralMode2D, Wave2DParams};
+    let modes = [
+        SpectralMode2D {
+            kx: 2,
+            ky: 1,
+            k_radial: 5.0_f64.sqrt(),
+            magnitude: 0.04,
+            phase,
+        },
+        SpectralMode2D {
+            kx: -3,
+            ky: 2,
+            k_radial: 13.0_f64.sqrt(),
+            magnitude: 0.025,
+            phase: -0.5 * phase,
+        },
+    ];
+    let params = Wave2DParams {
+        plate_stiffness: 0.0004,
+        ..Wave2DParams::default()
+    };
+    chladni_wave_tank_frame(&modes, &params, 1.0, det, if strike { 0.9 } else { 0.0 })
 }
 
+#[cfg(feature = "pure_math")]
+fn build_free_and_pinned_plate_solvers(
+    n: usize,
+    params: &math_explorer::pure_math::analysis::pde::wave_2d::Wave2DParams,
+) -> (
+    math_explorer::pure_math::analysis::pde::wave_2d::Wave2DSolver,
+    math_explorer::pure_math::analysis::pde::wave_2d::Wave2DSolver,
+) {
+    use math_explorer::pure_math::analysis::pde::wave_2d::{apply_point_clamp, Wave2DSolver};
+    let mut free_solver = Wave2DSolver::new_unit_square(n);
+    let mut pinned_solver = Wave2DSolver::new_unit_square(n);
+    for (cx, cy) in [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)] {
+        apply_point_clamp(&mut pinned_solver.wall_mask, n, n, cx, cy, 5.0);
+    }
+    let init: Vec<f64> = (0..(n * n))
+        .map(|idx| {
+            let x = (idx % n) as f64 / ((n - 1) as f64);
+            let y = (idx / n) as f64 / ((n - 1) as f64);
+            (2.0 * std::f64::consts::PI * x).sin() * (2.0 * std::f64::consts::PI * y).sin()
+                + 0.72
+                    * (4.0 * std::f64::consts::PI * x).sin()
+                    * (4.0 * std::f64::consts::PI * y).sin()
+        })
+        .collect();
+    let pinned_init: Vec<f64> = init
+        .iter()
+        .zip(pinned_solver.wall_mask.iter())
+        .map(|(&u, &w)| if w > 0.5 { u } else { 0.0 })
+        .collect();
+    free_solver.set_stationary_displacement(&init);
+    pinned_solver.set_stationary_displacement(&pinned_init);
+    for _ in 0..80 {
+        free_solver.step(params, 0.004);
+        pinned_solver.step(params, 0.004);
+    }
+    (free_solver, pinned_solver)
+}
+
+#[cfg(feature = "pure_math")]
 #[test]
-fn test_rl_td_surprise_rustfft_value_pitch_and_wind_panning() {
-    let sr = 16_384_u32;
-    let fft_len = 4_096_usize;
-    let mut synth = OfflinePcmSynthesizer::new(sr, fft_len + 1024);
+fn test_chladni_plate_clamp_pitch_shift_fringes_limiter_and_wav() {
+    use math_explorer::pure_math::analysis::pde::wave_2d::{
+        BoundaryMode2D, SpectralAnalyzer2D, SpectralMode2D, Wave2DMedium, Wave2DParams,
+    };
+
+    let n = 64_usize;
+    let params = Wave2DParams {
+        medium: Wave2DMedium::BiharmonicPlate,
+        boundary: BoundaryMode2D::Dirichlet,
+        wave_speed: 0.0,
+        plate_stiffness: 0.0016,
+        damping: 0.35,
+    };
+    let (free_solver, pinned_solver) = build_free_and_pinned_plate_solvers(n, &params);
+
+    let mut fft = SpectralAnalyzer2D::new(n, n);
+    let mut free_modes = [SpectralMode2D::default(); 6];
+    let mut pinned_modes = [SpectralMode2D::default(); 6];
+    let _ = fft.compute_spectrum(free_solver.displacement());
+    let fc = fft.extract_top_modes(&mut free_modes);
+    let _ = fft.compute_spectrum(pinned_solver.displacement());
+    let pc = fft.extract_top_modes(&mut pinned_modes);
+
+    let flat_det = [0.0_f64; 64];
+    let fringe_det: Vec<f64> = (0..64)
+        .map(|y| (std::f64::consts::PI * (y as f64) / 5.0).cos().powi(2))
+        .collect();
+    let free_frame = chladni_wave_tank_frame(&free_modes[..fc], &params, 1.0, &flat_det, 0.0);
+    let pinned_frame =
+        chladni_wave_tank_frame(&pinned_modes[..pc], &params, 0.93, &fringe_det, 1.0);
+    assert!(pinned_frame.voices[0].freq_hz > free_frame.voices[0].freq_hz);
+    assert!(pinned_frame.voices[0].fm_mod_hz > free_frame.voices[0].fm_mod_hz);
+    assert!(pinned_frame.voices[0].transient_impulse > 0.9);
+    assert!(pinned_frame.custom_harmonics.is_some());
+
+    verify_chladni_dispersion_safety_and_wav(&pinned_modes[..pc], &fringe_det, &pinned_frame);
+}
+
+#[cfg(feature = "pure_math")]
+fn verify_chladni_dispersion_safety_and_wav(
+    modes: &[math_explorer::pure_math::analysis::pde::wave_2d::SpectralMode2D],
+    det: &[f64],
+    active_frame: &SonificationFrame,
+) {
+    use math_explorer::pure_math::analysis::pde::wave_2d::{
+        BoundaryMode2D, Wave2DMedium, Wave2DParams,
+    };
+    for stiffness in [0.0, 0.05] {
+        let extreme = Wave2DParams {
+            medium: Wave2DMedium::BiharmonicPlate,
+            boundary: BoundaryMode2D::Neumann,
+            wave_speed: 0.0,
+            plate_stiffness: stiffness,
+            damping: 0.05,
+        };
+        let f = chladni_wave_tank_frame(modes, &extreme, 1.0, det, 0.0);
+        for v in &f.voices[..f.active_voices as usize] {
+            assert!((MIN_FREQ_HZ..=MAX_FREQ_HZ).contains(&v.freq_hz));
+        }
+    }
+    let slow_wave = Wave2DParams {
+        medium: Wave2DMedium::AcousticWave,
+        boundary: BoundaryMode2D::Dirichlet,
+        wave_speed: 1.0,
+        plate_stiffness: 0.0,
+        damping: 0.01,
+    };
+    let fast_wave = Wave2DParams {
+        wave_speed: 2.0,
+        ..slow_wave
+    };
+    let f_slow = chladni_wave_tank_frame(modes, &slow_wave, 1.0, det, 0.0);
+    let f_fast = chladni_wave_tank_frame(modes, &fast_wave, 1.0, det, 0.0);
+    assert!(f_fast.voices[0].freq_hz > f_slow.voices[0].freq_hz * 1.8);
+
+    assert!(!chladni_wave_tank_frame(&[], &slow_wave, 1.0, det, 0.0).is_audible());
+    let nan_params = Wave2DParams {
+        wave_speed: f64::NAN,
+        ..slow_wave
+    };
+    assert!(!chladni_wave_tank_frame(modes, &nan_params, 1.0, det, 0.0).is_audible());
+
+    let mut synth = OfflinePcmSynthesizer::new(16_384, 2048);
     let _ = synth.set_muted_from_user_gesture(false);
     synth.set_master_volume(1.0);
-
-    let low_frame = rl_td_surprise_frame(-6.0, 0.0, -0.1, -0.75);
-    synth.apply_frame(&low_frame);
-    let _ = synth.render_frames(1024);
-    let low_pcm = synth.render_frames(fft_len).to_vec();
-    let low_mags = compute_mono_fft_magnitudes(&low_pcm, fft_len);
-
-    let mut left_sq = 0.0_f32;
-    let mut right_sq = 0.0_f32;
-    for &[left, right] in low_pcm.as_chunks::<2>().0 {
-        left_sq += left * left;
-        right_sq += right * right;
-    }
-    assert!(left_sq > right_sq * 1.5, "WindLeft pan must bias left RMS");
-
-    let high_frame = rl_td_surprise_frame(8.0, 0.0, -0.1, 0.75);
-    synth.apply_frame(&high_frame);
-    let _ = synth.render_frames(1024);
-    let high_mags = compute_mono_fft_magnitudes(synth.render_frames(fft_len), fft_len);
-
-    let low_f0 = low_frame.voices[0].freq_hz;
-    let high_f0 = high_frame.voices[0].freq_hz;
-    assert!(high_f0 > low_f0 + 250.0);
-    assert!(peak_magnitude_around(&low_mags, sr, fft_len, low_f0) > 20.0);
-    assert!(peak_magnitude_around(&high_mags, sr, fft_len, high_f0) > 20.0);
+    synth.apply_frame(active_frame);
+    let pcm = synth.render_frames(2048);
+    assert!(pcm.iter().all(|s| s.abs() <= LIMITER_CEILING_LINEAR + 1e-6));
+    let wav = synthesize_frames_to_wav(&[*active_frame], 44_100, 512, 0.9);
+    assert_eq!(&wav[0..4], b"RIFF");
+    assert!(wav.len() > 2_000);
 }

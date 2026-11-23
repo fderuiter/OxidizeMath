@@ -8,7 +8,7 @@ use super::pulse::{
     CHALLENGE_MRI_TE, MRI_PULSE_SAMPLES,
 };
 use super::tool::{MriTool, MriToolState};
-use crate::async_sim::SimCommand;
+use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::ChallengeEvaluation;
 use nalgebra::Vector3;
 
@@ -43,7 +43,9 @@ impl MriTool {
         }
         self.current_time = self.pulse_workspace.times[MRI_PULSE_SAMPLES - 1];
         self.simulator.magnetization = final_m;
+        self.pulse_workspace.playhead_idx = MRI_PULSE_SAMPLES - 1;
         self.update_plot_buffers();
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     pub(crate) fn enforce_challenge_locks(&mut self) {
@@ -99,11 +101,13 @@ impl MriTool {
             p.b_field = self.simulator.b_field;
             p.time_scale = self.time_scale;
         }
+        self.pulse_workspace.playhead_playing = false;
         if !self.pulse_config.mode.is_continuous() {
             let _ = self.worker.send_command(SimCommand::Pause);
             self.recompute_pulse_sequence();
         } else {
             self.apply_worker_state(target_state);
+            self.latest_sonification = self.current_sonification_frame();
         }
         Ok(())
     }
@@ -143,6 +147,33 @@ impl MriTool {
                 self.simulator.t2,
             )),
             _ => None,
+        }
+    }
+
+    /// Computes the stack-allocated [`crate::audio::SonificationFrame`] for the active mode/playhead.
+    #[must_use]
+    pub fn current_sonification_frame(&self) -> crate::audio::SonificationFrame {
+        if self.worker.state() == SimWorkerState::Faulted {
+            return crate::audio::SonificationFrame::silent();
+        }
+        if self.pulse_config.mode.is_continuous() {
+            crate::audio::mappings::mri_bloch_frame(
+                self.simulator.magnetization,
+                self.simulator.m0,
+                self.simulator.b_field,
+                self.pulse_config.detuning_hz,
+            )
+        } else {
+            let (t_s, m_sample, disp) = self.pulse_workspace.playhead_sample();
+            crate::audio::mappings::mri_pulse_playhead_frame(
+                self.pulse_config.mode,
+                t_s,
+                m_sample,
+                disp,
+                self.simulator.m0,
+                self.simulator.b_field.z,
+                &self.pulse_config,
+            )
         }
     }
 }

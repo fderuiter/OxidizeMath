@@ -263,6 +263,7 @@ impl QTableInspectorTool {
             PlaybackAction::Step => {
                 let _ = self.worker.send_command(SimCommand::Step(1));
             }
+            PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
             PlaybackAction::Reset => {
                 self.reset();
                 ctx.request_repaint();
@@ -468,7 +469,15 @@ inventory::submit! {
         id: "QTableInspectorTool",
         display_name: "Q-Table Inspector",
         domain: "ai",
-        tags: &["rl", "bellman", "q-learning", "sonification"],
+        tags: &[
+            "q-learning",
+            "bellman",
+            "temporal difference",
+            "action-value",
+            "reinforcement learning",
+            "rl",
+            "sonification",
+        ],
         build: || Box::new(QTableInspectorTool::default()),
     }
 }
