@@ -270,9 +270,7 @@ impl ParticleArena {
         }
         #[cfg(feature = "physics")]
         {
-            self.lorenz = LorenzBuilder::new()
-                .dt(clamp_dt(cfg.dt))
-                .build(LorenzState::new(10.0, 10.0, 10.0));
+            self.lorenz = LorenzBuilder::new().build(LorenzState::new(10.0, 10.0, 10.0));
         }
 
         for racer in &mut self.racers {

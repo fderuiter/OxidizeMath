@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::arena::RacerKind;
+use super::data::{LossMetric, TargetDataMode};
 use super::presets::{PredictorMode, NONCONVEX_SINUSOIDAL_PRESET_JSON, STARTER_PRESET_JSON};
 use super::surfaces::{LandscapeSurface, SculptBump, SurfaceEvaluator, MAX_SCULPT_BUMPS};
 use super::{CanvasInteractionMode, LandscapeViewMode, LossLandscapeTool};
@@ -365,6 +366,7 @@ fn test_custom_loss_landscape_mse_and_preset_roundtrip() {
         ..Default::default()
     };
     tool.math_input.set_expression("w * x + b");
+    // At true solution w = 2, b = 1 for y = 2x + 1, MSE must be 0
     assert!((tool.evaluate_mse_at(2.0, 1.0).unwrap() - 0.0).abs() < 1e-12);
 
     tool.import_preset_json(NONCONVEX_SINUSOIDAL_PRESET_JSON)
@@ -380,4 +382,74 @@ fn test_custom_loss_landscape_mse_and_preset_roundtrip() {
     assert_eq!(tool.arena.step_count, 16);
     assert_eq!(metrics.memory_loads, 0);
     assert!(tool.import_preset_json(STARTER_PRESET_JSON).is_ok());
+}
+
+#[test]
+fn test_loss_landscape_table_targets_mse_mae_and_huber() {
+    let mut tool = LossLandscapeTool::default();
+    tool.set_target_table_text("0.0, 1.0\n1.0, 3.0\n2.0, 15.0\n3.0, 7.0");
+    assert!(tool.table_parse_error.is_none());
+
+    tool.loss_metric = LossMetric::Mse;
+    let mse = tool.evaluate_loss_at(2.0, 1.0).expect("mse");
+    assert!((mse - 25.0).abs() < 1e-12);
+
+    tool.loss_metric = LossMetric::Mae;
+    let mae = tool.evaluate_loss_at(2.0, 1.0).expect("mae");
+    assert!((mae - 2.5).abs() < 1e-12);
+
+    tool.loss_metric = LossMetric::Huber;
+    tool.huber_delta = 2.0;
+    let huber = tool.evaluate_loss_at(2.0, 1.0).expect("huber");
+    assert!((huber - 4.5).abs() < 1e-12);
+    assert!(huber < mse && huber > mae);
+
+    tool.set_target_table_text("0.0, 1.0\nbad_row");
+    assert!(tool.table_parse_error.is_some());
+    assert!((tool.evaluate_loss_at(2.0, 1.0).expect("retained") - 4.5).abs() < 1e-12);
+}
+
+#[test]
+fn test_loss_landscape_formula_targets_zero_alloc_and_roundtrip() {
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut tool = LossLandscapeTool {
+        loss_metric: LossMetric::Huber,
+        huber_delta: 2.0,
+        target_mode: TargetDataMode::Formula,
+        target_x_bounds: [-2.0, 2.0],
+        target_sample_count: 11,
+        predictor_mode: PredictorMode::Custom,
+        ..Default::default()
+    };
+    tool.target_formula_bar.set_expression("3 * x - 2");
+    tool.refresh_target_samples();
+    tool.math_input.set_expression("w * x + b");
+    tool.reset_arena();
+    assert!(tool.evaluate_loss_at(3.0, -2.0).expect("exact match") < 1e-12);
+
+    let (val, metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let mut acc = 0.0;
+        for i in 0..16 {
+            acc += tool
+                .evaluate_loss_at(2.5 + i as f64 * 0.01, -1.5)
+                .unwrap_or(0.0);
+            tool.step_simulation();
+        }
+        acc
+    });
+    assert!(val.is_finite());
+    assert_eq!(metrics.memory_loads, 0);
+
+    let json = tool.save_state().expect("save formula state");
+    assert!(json.len() < crate::url_state::MAX_DECODED_URL_STATE_BYTES);
+    let mut restored = LossLandscapeTool::default();
+    restored
+        .try_load_state(&json)
+        .expect("restore formula state");
+    assert_eq!(restored.target_mode, TargetDataMode::Formula);
+    assert_eq!(restored.loss_metric, LossMetric::Huber);
+    assert!((restored.huber_delta - 2.0).abs() < 1e-12);
+    assert!(restored.evaluate_loss_at(3.0, -2.0).expect("restored") < 1e-12);
 }

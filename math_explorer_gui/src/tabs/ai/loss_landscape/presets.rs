@@ -26,22 +26,24 @@ impl PredictorMode {
 
 impl scientific_metadata::theory::TheoryDescribable for LossLandscapeTool {
     fn theory_description(&self) -> String {
-        if self.surface == LandscapeSurface::LinearMse
-            && self.predictor_mode == PredictorMode::Custom
-        {
-            "Non-convex mean squared error loss landscape $L(w, b) = \\frac{1}{n}\\sum_{i=1}^n (f(x_i, w, b) - y_i)^2$ evaluated over compiled custom predictor bytecode and raced by 3D/2D Hamiltonian and Langevin dynamics.".into()
+        if self.surface == LandscapeSurface::LinearMse {
+            format!(
+                "Empirical risk landscape $L(w, b) = \\frac{{1}}{{n}}\\sum_{{i=1}}^n \\ell(f(x_i, w, b) - y_i)$ using {} objective over {} target dataset, raced in 3D/2D by Hamiltonian and Langevin dynamics.",
+                self.loss_metric.label(),
+                self.target_mode.label()
+            )
         } else {
             "3D and 2D non-convex optimization arena comparing first-order optimizers ($\\text{SGD}$, $\\text{Adam}$) against symplectic/conformal Hamiltonian dynamics $H(q, p) = \\frac{\\|p\\|^2}{2m} + L(q)$ and underdamped BAOAB Langevin diffusion $dp = -\\nabla L(q)\\,dt - \\gamma p\\,dt + \\sqrt{2\\gamma m k_B T}\\,dW_t$ across sculpted Gaussian potentials.".into()
         }
     }
 
     fn phonetic_description(&self) -> String {
-        "Hamiltonian and Langevin momentum optimization dynamics on 3D non-convex loss landscapes"
+        "Hamiltonian and Langevin momentum optimization dynamics on 3D MSE, MAE, and Huber loss landscapes"
             .into()
     }
 
     fn theory_citation(&self) -> String {
-        "Visualizing the Loss Landscape of Neural Nets (Li et al., 2018); Variational Perspectives on Accelerated Optimization (Wibisono, Wilson & Jordan, 2016); Molecular Dynamics (Leimkuhler & Matthews, 2015)".into()
+        "Visualizing the Loss Landscape of Neural Nets (Li et al., 2018); Huber (1964), Annals of Mathematical Statistics; Variational Perspectives on Accelerated Optimization (Wibisono, Wilson & Jordan, 2016); Molecular Dynamics (Leimkuhler & Matthews, 2015)".into()
     }
 
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
