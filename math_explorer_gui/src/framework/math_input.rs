@@ -156,6 +156,19 @@ impl MathExpressionInputBar {
         self.slider_bank.param_slice()
     }
 
+    /// Computes a deterministic fingerprint of the active formula and free-parameter sliders.
+    #[must_use]
+    pub fn state_fingerprint(&self) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.raw_text.hash(&mut h);
+        self.complex_mode.hash(&mut h);
+        self.validation_error.is_some().hash(&mut h);
+        self.parsed_expr.is_ok().hash(&mut h);
+        self.slider_bank.state_fingerprint().hash(&mut h);
+        h.finish().max(1)
+    }
+
     /// Exports active parameter values for JSON preset and `#state=` URL serialization.
     #[must_use]
     pub fn params_map(&self) -> BTreeMap<String, f64> {
