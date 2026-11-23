@@ -115,6 +115,7 @@ pub(crate) fn run_hybrid_wasm_suites(ws_root: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn test_runner_command_args_preserve_spaces_without_splitting() {
@@ -126,5 +127,59 @@ mod tests {
         assert_eq!(argv.len(), 4);
         assert_eq!(argv[2], script);
         assert_eq!(argv[3], wasm);
+    }
+
+    #[test]
+    fn test_wasm_test_and_smoke_ci_parity() {
+        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let discovered = workspace_wasm::discover_wasm_crates(&ws_root)
+            .expect("must discover wasm32 workspace crates");
+        let browser_invocations =
+            build_wasm_no_run_json_invocations(&discovered, WasmExecutionRuntime::BrowserChromium);
+        assert_eq!(browser_invocations.len(), 2);
+        assert!(browser_invocations[0].contains(&"oxidize_core".to_string()));
+        assert!(browser_invocations[0].contains(&"egui_plot".to_string()));
+        assert!(browser_invocations[0].contains(&"--lib".to_string()));
+        assert!(browser_invocations[0].contains(&"--no-run".to_string()));
+        assert!(browser_invocations[0].contains(&"--message-format=json".to_string()));
+        assert_eq!(
+            browser_invocations[1],
+            vec![
+                "test",
+                "--target",
+                "wasm32-unknown-unknown",
+                "-p",
+                "math_explorer_gui",
+                "--bins",
+                "--no-run",
+                "--message-format=json",
+            ]
+        );
+        let node_invocations =
+            build_wasm_no_run_json_invocations(&discovered, WasmExecutionRuntime::NodeJs);
+        assert_eq!(node_invocations.len(), 1);
+        assert!(node_invocations[0].contains(&"math_explorer".to_string()));
+        assert!(node_invocations[0].contains(&"math_commons".to_string()));
+        assert!(node_invocations[0].contains(&"--no-run".to_string()));
+        assert!(node_invocations[0].contains(&"--message-format=json".to_string()));
+
+        let ci_path = ws_root.join(".github/workflows/ci.yml");
+        let ci_yaml = fs::read_to_string(&ci_path)
+            .expect("failed to read ci.yml")
+            .replace("\r\n", "\n");
+        assert!(
+            !ci_yaml.contains("cargo check --workspace --target wasm32-unknown-unknown"),
+            "ci.yml must not retain duplicate wasm32 cargo check steps"
+        );
+        let build_pos = ci_yaml
+            .find("trunk build --release")
+            .expect("ci.yml must build web app with trunk");
+        let smoke_pos = ci_yaml
+            .find("cargo run -p xtask -- test-wasm --skip-build")
+            .expect("ci.yml must run xtask test-wasm gate");
+        let upload_pos = ci_yaml
+            .find("name: Upload Web Dist Artifact")
+            .expect("ci.yml must upload wasm_web_dist artifact");
+        assert!(smoke_pos > build_pos && smoke_pos < upload_pos);
     }
 }

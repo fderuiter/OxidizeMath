@@ -219,9 +219,7 @@ fn test_features(args: &[String]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gates::{
-        HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin, workspace_wasm,
-    };
+    use crate::gates::{HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin};
     use crate::markdown_links::{collect_md_files, extract_md_links};
 
     fn local_hooks_path(dir: &Path) -> Option<String> {
@@ -412,64 +410,6 @@ mod tests {
     }
 
     #[test]
-    fn test_wasm_test_and_smoke_ci_parity() {
-        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let discovered = workspace_wasm::discover_wasm_crates(&ws_root)
-            .expect("must discover wasm32 workspace crates");
-        let browser_invocations = workspace_wasm::build_wasm_no_run_json_invocations(
-            &discovered,
-            workspace_wasm::WasmExecutionRuntime::BrowserChromium,
-        );
-        assert_eq!(browser_invocations.len(), 2);
-        assert!(browser_invocations[0].contains(&"oxidize_core".to_string()));
-        assert!(browser_invocations[0].contains(&"egui_plot".to_string()));
-        assert!(browser_invocations[0].contains(&"--lib".to_string()));
-        assert!(browser_invocations[0].contains(&"--no-run".to_string()));
-        assert!(browser_invocations[0].contains(&"--message-format=json".to_string()));
-        assert_eq!(
-            browser_invocations[1],
-            vec![
-                "test",
-                "--target",
-                "wasm32-unknown-unknown",
-                "-p",
-                "math_explorer_gui",
-                "--bins",
-                "--no-run",
-                "--message-format=json",
-            ]
-        );
-        let node_invocations = workspace_wasm::build_wasm_no_run_json_invocations(
-            &discovered,
-            workspace_wasm::WasmExecutionRuntime::NodeJs,
-        );
-        assert_eq!(node_invocations.len(), 1);
-        assert!(node_invocations[0].contains(&"math_explorer".to_string()));
-        assert!(node_invocations[0].contains(&"math_commons".to_string()));
-        assert!(node_invocations[0].contains(&"--no-run".to_string()));
-        assert!(node_invocations[0].contains(&"--message-format=json".to_string()));
-
-        let ci_path = ws_root.join(".github/workflows/ci.yml");
-        let ci_yaml = fs::read_to_string(&ci_path)
-            .expect("failed to read ci.yml")
-            .replace("\r\n", "\n");
-        assert!(
-            !ci_yaml.contains("cargo check --workspace --target wasm32-unknown-unknown"),
-            "ci.yml must not retain duplicate wasm32 cargo check steps"
-        );
-        let build_pos = ci_yaml
-            .find("trunk build --release")
-            .expect("ci.yml must build web app with trunk");
-        let smoke_pos = ci_yaml
-            .find("cargo run -p xtask -- test-wasm --skip-build")
-            .expect("ci.yml must run xtask test-wasm gate");
-        let upload_pos = ci_yaml
-            .find("name: Upload Web Dist Artifact")
-            .expect("ci.yml must upload wasm_web_dist artifact");
-        assert!(smoke_pos > build_pos && smoke_pos < upload_pos);
-    }
-
-    #[test]
     fn test_setup_browser_prerequisite_checks_and_remediation() {
         let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let root_toml = fs::read_to_string(ws_root.join("Cargo.toml")).unwrap();
@@ -489,4 +429,21 @@ mod tests {
         assert!(report.contains("0.2.130"));
         assert!(report.contains("Fix:"));
     }
+
+    #[test]
+    fn test_ci_scoped_change_path_filters() {
+        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ci_yaml = fs::read_to_string(ws_root.join(".github/workflows/ci.yml"))
+            .expect("failed to read ci.yml")
+            .replace("\r\n", "\n");
+        let root_toml =
+            fs::read_to_string(ws_root.join("Cargo.toml")).expect("failed to read Cargo.toml");
+        let (step, blocks) = crate::ci_filter_tests::extract_detect_changes_step(&ci_yaml);
+        crate::ci_filter_tests::assert_detect_changes_invariants(&ci_yaml, &step);
+        crate::ci_filter_tests::assert_workspace_members_parity(&blocks, &root_toml);
+        crate::ci_filter_tests::assert_scoped_triggers_and_skips(&blocks);
+    }
 }
+
+#[cfg(test)]
+mod ci_filter_tests;

@@ -20,7 +20,7 @@ These commands run automated checks in git hooks or CI.
 | `check-staged-duplicates` | Checks for duplicated patterns in git staging (non-blocking legacy helper). | Active |
 | `check-vulnerabilities` | Scans workspace dependencies for known vulnerabilities. | Active |
 | `lint-all` | Runs the full PR verification suite (formatting, single-pass batched static & AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift, traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, markdown links, and OSV vulnerabilities). | Active |
-| `lint-staged` | Runs fast diff-scoped pre-commit checks on staged files (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged` (including staged ADR verification, file lengths, entropy, and touched-crate policy audit), conditional `.github/` workflow linting, conditional `.md` link checks, and targeted host/`wasm32` Clippy. | Active |
+| `lint-staged` | Syncs the staged Git index into `<target_dir>/lint-staged-snapshot` and runs offline pre-commit gates (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged` (staged ADR verification, profiles, file lengths, docs, AST clones, traceability, entropy, policy audit), single `.github/` workflow linting, `.md` or deletion/rename link scans, and reverse-dependent + 17-web-crate host/`wasm32` Clippy with root config escalation. | Active |
 | `lint-workflows` | Validates CI workflow definitions. | Active |
 | `test-features` | Runs tests for various cargo features. | Active |
 | `test-policy-audit` | Audits workspace crates for unauthorized dead-code bypasses, orphaned `#[cfg(target_arch = "wasm32")]` `#[test]` items, and unused dependencies. | Active |
@@ -36,7 +36,7 @@ Running `cargo run -p xtask -- test-wasm` locally requires the `wasm32-unknown-u
 ```bash
 rustup target add wasm32-unknown-unknown
 sudo apt-get install -y nodejs brotli
-cargo binstall --no-confirm trunk wasm-bindgen-cli@0.2.130
+cargo binstall --no-confirm trunk@0.22.2 wasm-bindgen-cli@0.2.130
 python3 -m pip install --user playwright
 python3 -m playwright install --with-deps chromium
 cargo run -p xtask -- test-wasm

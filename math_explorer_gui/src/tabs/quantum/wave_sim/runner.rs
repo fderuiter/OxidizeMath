@@ -18,12 +18,10 @@ use num_complex::Complex;
 use std::any::Any;
 use std::sync::{Arc, RwLock};
 
-/// Threshold on interior barrier probability $B(t)$ indicating packet transit completion.
-pub const BARRIER_TRANSIT_THRESHOLD: f64 = 0.02;
-/// Right-wall proximity coordinate above which boundary reflection begins.
-pub const RIGHT_WALL_GUARD_X: f64 = 4.25;
-/// Threshold on $\sum_{x > 4.25} |\psi|^2$ before right-wall bounce freezes $T_{\text{scatter}}$.
-pub const WALL_ARRIVAL_THRESHOLD: f64 = 0.02;
+pub use super::presets::{
+    compute_tunneling_observables, TunnelingObservables, BARRIER_TRANSIT_THRESHOLD,
+    RIGHT_WALL_GUARD_X, WALL_ARRIVAL_THRESHOLD,
+};
 
 /// Shared parameter bundle synchronized between [`super::WaveSimulatorTool`] and [`WaveRunner`].
 #[derive(Clone, Debug)]
@@ -62,53 +60,6 @@ impl Default for WaveSimConfig {
             custom_expr: default_compiled_expr(),
         }
     }
-}
-
-/// Integrated Born probabilities across reflection, barrier, transmission, and wall zones.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct TunnelingObservables {
-    /// Reflected Born probability $\sum_{x < x_{\text{left}}} |\psi(x)|^2$.
-    pub reflection: f64,
-    /// Interior barrier probability $\sum_{x_{\text{left}} \le x \le x_{\text{right}}} |\psi(x)|^2$.
-    pub barrier_prob: f64,
-    /// Transmitted Born probability $\sum_{x > x_{\text{right}}} |\psi(x)|^2$.
-    pub transmission: f64,
-    /// Right-wall arrival indicator $\sum_{x > 4.25} |\psi(x)|^2$.
-    pub right_wall_prob: f64,
-    /// Left-wall arrival indicator $\sum_{x < -4.25} |\psi(x)|^2$.
-    pub left_wall_prob: f64,
-}
-
-/// Integrates [`QuantumState::probability_density`] into reflection, barrier, and transmission sums.
-#[must_use]
-pub fn compute_tunneling_observables(
-    x_axis: &[f64],
-    prob_density: &DVector<f64>,
-    x_left: f64,
-    x_right: f64,
-) -> TunnelingObservables {
-    let mut obs = TunnelingObservables::default();
-    let len = x_axis.len().min(prob_density.len());
-    for i in 0..len {
-        let p = prob_density[i];
-        if !p.is_finite() {
-            continue;
-        }
-        let x = x_axis[i];
-        if x < x_left {
-            obs.reflection += p;
-        } else if x <= x_right {
-            obs.barrier_prob += p;
-        } else {
-            obs.transmission += p;
-        }
-        if x > RIGHT_WALL_GUARD_X {
-            obs.right_wall_prob += p;
-        } else if x < -RIGHT_WALL_GUARD_X {
-            obs.left_wall_prob += p;
-        }
-    }
-    obs
 }
 
 /// Structured snapshot payload emitted by [`WaveRunner`] to the UI thread.
@@ -168,6 +119,8 @@ pub struct WaveRunner {
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
+    prev_mode_phases: [f64; 8],
+    sonification: crate::audio::SonificationFrame,
 }
 
 impl WaveRunner {
@@ -202,6 +155,8 @@ impl WaveRunner {
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
+            prev_mode_phases: [0.0; 8],
+            sonification: crate::audio::SonificationFrame::silent(),
         };
         runner.init_from_config(&cfg);
         runner
@@ -228,30 +183,35 @@ impl WaveRunner {
         self.cached_dt = None;
         self.scratch = DVector::from_element(n, Complex::new(0.0, 0.0));
 
+        let finite_or = |v: f64, d: f64| if v.is_finite() { v } else { d };
+        let (safe_x0, safe_k0) = (finite_or(cfg.x0, DEFAULT_X0), finite_or(cfg.k0, DEFAULT_K0));
         let safe_sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {
             DEFAULT_SIGMA
         };
-        self.x0 = if cfg.x0.is_finite() {
-            cfg.x0
-        } else {
-            DEFAULT_X0
-        };
-        self.k0 = if cfg.k0.is_finite() {
-            cfg.k0
-        } else {
-            DEFAULT_K0
-        };
+        self.x0 = safe_x0;
+        self.k0 = safe_k0;
         self.sigma = safe_sigma;
-        self.kinetic_energy = 0.5 * self.k0 * self.k0;
+        self.kinetic_energy = 0.5 * safe_k0 * safe_k0;
         self.steps_per_frame = cfg.steps_per_frame.max(1);
-        self.psi = gaussian_wavepacket(&self.x_axis, self.x0, self.k0, safe_sigma);
+        self.psi = gaussian_wavepacket(&self.x_axis, safe_x0, safe_k0, safe_sigma);
         self.time = 0.0;
         self.entered_barrier = false;
         self.wall_arrived = false;
         self.latched_transmission = None;
+        self.prev_mode_phases = [0.0; 8];
         self.update_observables_in_place();
+        self.refresh_sonification(cfg.dt);
+    }
+
+    fn refresh_sonification(&mut self, dt: f64) {
+        let modes = self.psi.project_spatial_modes::<8>();
+        self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
+            &modes,
+            &mut self.prev_mode_phases,
+            dt.max(1.0e-4),
+        );
     }
 
     fn refresh_propagator(&mut self, dt: f64) {
@@ -378,9 +338,11 @@ impl WaveRunner {
                 "psi_norm",
                 "Wave function normalization diverged: non-finite norm encountered.",
             ));
+            self.sonification = crate::audio::SonificationFrame::silent();
             return;
         }
         self.update_observables_in_place();
+        self.refresh_sonification(dt);
     }
 
     /// Builds a structured [`WaveData`] snapshot integrating [`QuantumState::probability_density`].
@@ -476,6 +438,11 @@ impl SimulationRunner for WaveRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
+        let sonification = if self.diverged {
+            crate::audio::SonificationFrame::silent()
+        } else {
+            self.sonification
+        };
         let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
         StateSnapshot {
             width: 0,
@@ -483,6 +450,7 @@ impl SimulationRunner for WaveRunner {
             pixels: Arc::new(RwLock::new(Vec::new())),
             custom_data: Vec::new(),
             structured_data: Some(structured_data),
+            sonification,
         }
     }
 

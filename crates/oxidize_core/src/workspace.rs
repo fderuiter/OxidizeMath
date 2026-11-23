@@ -6,8 +6,7 @@ mod workspace_wasm;
 pub use workspace_wasm::{
     BROWSER_WASM_PACKAGES, HOST_ONLY_WORKSPACE_PACKAGES, WasmCrateSpec, WasmExecutionRuntime,
     WasmTestTargetKind, build_wasm_no_run_json_invocations, discover_wasm_crates,
-    extract_wasm_test_executables_from_cargo_json, find_workspace_root,
-    parse_workspace_members_std,
+    extract_wasm_test_executables_from_cargo_json, parse_workspace_members_std,
 };
 
 /// Constructs Cargo CLI argument vectors (`cargo test --target wasm32-unknown-unknown ...`)
@@ -19,26 +18,88 @@ pub fn build_wasm_cargo_test_invocations(crates: &[WasmCrateSpec]) -> Vec<Vec<St
 }
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+const MAX_ANCESTOR_DEPTH: usize = 32;
+const RELATIVE_ROOT_FALLBACKS: &[&str] = &["..", "../..", "../../..", "../../../.."];
+
+/// Locates the workspace root directory by walking ancestor directories from `start`.
+///
+/// Checks up to 32 ancestor directories for a `Cargo.toml` containing a `[workspace]`
+/// section with a valid `members` array.
+///
+/// # Example
+/// ```
+/// use oxidize_core::workspace::find_workspace_root_from;
+/// use std::path::Path;
+///
+/// let _ = find_workspace_root_from(Path::new("."));
+/// ```
+pub fn find_workspace_root_from(start: &Path) -> Option<PathBuf> {
+    let base = if start.is_file() {
+        start.parent()?
+    } else {
+        start
+    };
+    for ancestor in base.ancestors().take(MAX_ANCESTOR_DEPTH) {
+        if try_read_members(&ancestor.join("Cargo.toml")).is_some() {
+            return Some(ancestor.to_path_buf());
+        }
+    }
+    workspace_wasm::find_workspace_root(base)
+}
+
+/// Locates the workspace root directory relative to the current working directory.
+///
+/// Returns `Some(PathBuf::from("."))` when `./Cargo.toml` defines `[workspace]`,
+/// otherwise searches ancestor directories of `std::env::current_dir()` (falling back
+/// to bounded relative parent paths when `current_dir()` is unavailable).
+///
+/// # Example
+/// ```
+/// use oxidize_core::workspace::find_workspace_root;
+///
+/// let _ = find_workspace_root();
+/// ```
+pub fn find_workspace_root() -> Option<PathBuf> {
+    if try_read_members(Path::new("Cargo.toml")).is_some() {
+        return Some(PathBuf::from("."));
+    }
+    if let Ok(cwd) = std::env::current_dir()
+        && let Some(root) = find_workspace_root_from(&cwd)
+    {
+        return Some(root);
+    }
+    for rel in RELATIVE_ROOT_FALLBACKS {
+        let candidate = Path::new(rel);
+        if try_read_members(&candidate.join("Cargo.toml")).is_some() {
+            return Some(candidate.to_path_buf());
+        }
+    }
+    None
+}
 
 /// Discovers workspace members from `Cargo.toml` manifests.
 ///
 /// First checks `Cargo.toml` in the current directory. If it contains a `[workspace]`
 /// definition, returns `(true, members)`.
 ///
-/// Otherwise walks ancestor directories (`../Cargo.toml`, `../../Cargo.toml`, etc.)
-/// to locate the workspace root manifest and returns `(false, members)`.
+/// Otherwise searches ancestor directories via [`find_workspace_root`] (handling
+/// invocation from 1-level, 2-level, or nested crate subdirectories). If found there,
+/// returns `(false, members)`.
+///
+/// The return tuple is `(is_root, members)`, where `is_root` is `true` if the manifest
+/// was found in the current directory, and `false` if resolved via ancestor discovery.
 pub fn get_workspace_members() -> (bool, Vec<String>) {
     if let Some(members) = try_read_members(Path::new("Cargo.toml")) {
         return (true, members);
     }
-    if let Ok(cwd) = std::env::current_dir()
-        && let Some(root) = find_workspace_root(&cwd)
+    if let Some(root) = find_workspace_root()
         && let Some(members) = try_read_members(&root.join("Cargo.toml"))
     {
         return (false, members);
     }
-    get_workspace_members_from_paths(Path::new("Cargo.toml"), Path::new("../../Cargo.toml"))
+    (true, Vec::new())
 }
 
 fn try_read_members(path: &Path) -> Option<Vec<String>> {
@@ -190,9 +251,52 @@ members = ["sub_crate", "other_crate"]
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
+    fn test_find_workspace_root_from_nested_depths() {
+        let nonce = next_nonce();
+        let dir = std::env::temp_dir().join(format!(
+            "test_ws_ancestors_{}_{}",
+            std::process::id(),
+            nonce
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"gui\", \"crates/core\"]\n",
+        )
+        .unwrap();
+
+        let depth1 = dir.join("gui");
+        let depth3 = dir.join("crates/core/src");
+        fs::create_dir_all(&depth1).unwrap();
+        fs::create_dir_all(&depth3).unwrap();
+        fs::write(depth1.join("Cargo.toml"), "[package]\nname = \"gui\"\n").unwrap();
+        fs::write(
+            dir.join("crates/core/Cargo.toml"),
+            "[package]\nname = \"core\"\n",
+        )
+        .unwrap();
+
+        assert_eq!(find_workspace_root_from(&dir), Some(dir.clone()));
+        assert_eq!(find_workspace_root_from(&depth1), Some(dir.clone()));
+        assert_eq!(find_workspace_root_from(&depth3), Some(dir.clone()));
+
+        let isolated = std::env::temp_dir().join(format!(
+            "test_ws_isolated_{}_{}",
+            std::process::id(),
+            next_nonce()
+        ));
+        fs::create_dir_all(&isolated).unwrap();
+        assert_eq!(find_workspace_root_from(&isolated), None);
+
+        let _ = fs::remove_dir_all(dir);
+        let _ = fs::remove_dir_all(isolated);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
     fn test_discover_wasm_crates_covers_workspace_targets() {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let root = find_workspace_root(manifest_dir).expect("must find workspace root");
+        let root = find_workspace_root_from(manifest_dir).expect("must find workspace root");
         let crates = discover_wasm_crates(&root).expect("must discover wasm crates");
         let names: Vec<&str> = crates.iter().map(|c| c.package_name.as_str()).collect();
         for required in [
