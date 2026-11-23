@@ -71,29 +71,45 @@ pub fn regenerate_baseline() {
     println!("API baseline regenerated successfully.");
 }
 
-fn check_expired_items(path: &str, items: &[ApiItem], today: &str) -> bool {
+fn collect_expired_messages(
+    path: &str,
+    items: &[ApiItem],
+    today: &str,
+    out: &mut Vec<String>,
+) -> bool {
     let mut expired = false;
     for item in items {
         if let Some(ref date) = item.deprecation_expires
             && date.as_str() <= today
         {
-            println!(
+            out.push(format!(
                 "API Expired: {} in {} (Expired: {})",
                 item.signature, path, date
+            ));
+            out.push(
+                "  This deprecated API has passed its expiration target and must be removed."
+                    .to_string(),
             );
-            println!("  This deprecated API has passed its expiration target and must be removed.");
             expired = true;
         }
     }
     expired
 }
 
-fn compare_file_items(path: &str, items: &[ApiItem], base_items: &[ApiItem], today: &str) -> bool {
-    let mut local_changed = false;
+fn compare_file_items(
+    path: &str,
+    items: &[ApiItem],
+    base_items: &[ApiItem],
+    today: &str,
+    out: &mut Vec<String>,
+) -> bool {
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    let mut bypassed = Vec::new();
+
     for item in items {
         if !base_items.iter().any(|b| b.signature == item.signature) {
-            println!("  + {}", item.signature);
-            local_changed = true;
+            added.push(item.signature.as_str());
         }
     }
     for item in base_items {
@@ -101,18 +117,27 @@ fn compare_file_items(path: &str, items: &[ApiItem], base_items: &[ApiItem], tod
             if let Some(ref date) = item.deprecation_expires
                 && date.as_str() <= today
             {
-                println!(
-                    "  ~ {} (Deleted, bypassed drift check due to expired deprecation)",
-                    item.signature
-                );
+                bypassed.push(item.signature.as_str());
                 continue;
             }
-            println!("  - {}", item.signature);
-            local_changed = true;
+            removed.push(item.signature.as_str());
         }
     }
+
+    let local_changed = !added.is_empty() || !removed.is_empty();
     if local_changed {
-        println!("API Drift detected in {}:", path);
+        out.push(format!("API Drift detected in {path}:"));
+        for sig in added {
+            out.push(format!("  + {sig}"));
+        }
+        for sig in removed {
+            out.push(format!("  - {sig}"));
+        }
+    }
+    for sig in bypassed {
+        out.push(format!(
+            "  ~ {sig} (Deleted, bypassed drift check due to expired deprecation)"
+        ));
     }
     local_changed
 }
@@ -121,6 +146,7 @@ fn check_removed_files(
     current_apis: &BTreeMap<String, Vec<ApiItem>>,
     baseline_apis: &BTreeMap<String, Vec<ApiItem>>,
     today: &str,
+    out: &mut Vec<String>,
 ) -> bool {
     let mut changed = false;
     for (path, base_items) in baseline_apis {
@@ -132,20 +158,59 @@ fn check_removed_files(
             if let Some(ref date) = item.deprecation_expires
                 && date.as_str() <= today
             {
-                println!(
+                out.push(format!(
                     "  ~ {} in {} (File deleted, bypassed due to expired deprecation)",
                     item.signature, path
-                );
+                ));
                 continue;
             }
             all_bypassed = false;
         }
         if !all_bypassed {
-            println!("API Drift: File with public API removed: {}", path);
+            out.push(format!("API Drift: File with public API removed: {path}"));
             changed = true;
         }
     }
     changed
+}
+
+pub(crate) fn collect_api_drift_messages(
+    current_apis: &BTreeMap<String, Vec<ApiItem>>,
+    baseline_apis: &BTreeMap<String, Vec<ApiItem>>,
+    today: &str,
+) -> (bool, Vec<String>) {
+    let mut changed = false;
+    let mut out = Vec::new();
+
+    for (path, items) in current_apis {
+        if collect_expired_messages(path, items, today, &mut out) {
+            changed = true;
+        }
+        if let Some(base_items) = baseline_apis.get(path) {
+            if compare_file_items(path, items, base_items, today, &mut out) {
+                changed = true;
+            }
+        } else {
+            out.push(format!("API Drift: New file with public API: {path}"));
+            changed = true;
+        }
+    }
+
+    if check_removed_files(current_apis, baseline_apis, today, &mut out) {
+        changed = true;
+    }
+
+    if changed {
+        out.push("Public API drift detected!".to_string());
+        out.push(
+            "  Hint: If this public API change is intentional, run `cargo run -p xtask -- regenerate-baseline` to update `crates/unified_verification/api_baseline.json` and add a corresponding Architecture Decision Record in `docs/adr/` per `AGENTS.md`."
+                .to_string(),
+        );
+        return (false, out);
+    }
+
+    out.push("Public API drift check passed.".to_string());
+    (true, out)
 }
 
 pub fn check_api_drift_against(
@@ -153,33 +218,11 @@ pub fn check_api_drift_against(
     baseline_apis: &BTreeMap<String, Vec<ApiItem>>,
     today: &str,
 ) -> bool {
-    let mut changed = false;
-
-    for (path, items) in current_apis {
-        if check_expired_items(path, items, today) {
-            changed = true;
-        }
-        if let Some(base_items) = baseline_apis.get(path) {
-            if compare_file_items(path, items, base_items, today) {
-                changed = true;
-            }
-        } else {
-            println!("API Drift: New file with public API: {}", path);
-            changed = true;
-        }
+    let (passed, messages) = collect_api_drift_messages(current_apis, baseline_apis, today);
+    for line in messages {
+        println!("{line}");
     }
-
-    if check_removed_files(current_apis, baseline_apis, today) {
-        changed = true;
-    }
-
-    if changed {
-        println!("Public API drift detected! Please regenerate the baseline and write an ADR.");
-        return false;
-    }
-
-    println!("Public API drift check passed.");
-    true
+    passed
 }
 
 pub fn check_api_drift() -> bool {

@@ -169,3 +169,60 @@ fn test_scan_repository_with_cache_parses_each_file_at_most_once() {
         "Warm AstCache must reuse parsed ASTs with zero additional syn::parse_file calls"
     );
 }
+
+#[test]
+fn test_traceability_diagnostics_emit_spans_keys_densities_and_hints() {
+    let mut dirs = HashMap::new();
+    dirs.insert("papers".to_string(), vec!["essay.tex".to_string()]);
+    dirs.insert(
+        "crates/domain_ai/src".to_string(),
+        vec!["lib.rs".to_string(), "unverified.rs".to_string()],
+    );
+
+    let mut files = HashMap::new();
+    files.insert(
+        "traceability.toml".to_string(),
+        Ok("[links]\nessay = \"essay.tex\"\n".to_string()),
+    );
+    let lib_src = "mod unverified;\n// [cite:bad_cite]\n#[verified]\npub fn no_asserts() {}\ntheory_verification!(module = \"unregistered_mod\", constants = {}, test = {});\n".to_string();
+    files.insert("crates/domain_ai/src/lib.rs".to_string(), Ok(lib_src));
+    files.insert(
+        "crates/domain_ai/src/unverified.rs".to_string(),
+        Ok("\npub fn raw_helper() -> usize { 1 }\n".to_string()),
+    );
+
+    let engine = TraceabilityEngine::new(MockVfs { dirs, files });
+    let mut report = futures::executor::block_on(engine.scan_repository(
+        &["crates/domain_ai/src"],
+        "papers",
+        false,
+    ))
+    .expect("scan mock repo");
+    // Override verified_asserts to simulate sub-0.4 density while preserving per-file counts
+    report.verified_asserts = 0;
+    report.verified_funcs = 2;
+    report
+        .file_verified_counts
+        .insert("crates/domain_ai/src/lib.rs".to_string(), [0, 2]);
+
+    let legacy_minimal: TraceabilityReport =
+        toml::from_str("scanned_files = 5\ntotal_funcs = 2\n").expect("legacy deserialize");
+    assert_eq!(legacy_minimal.scanned_files, 5);
+    assert!(legacy_minimal.unlinked_module_details.is_empty());
+    assert!(legacy_minimal.invalid_link_lines.is_empty());
+    assert!(legacy_minimal.unverified_module_spans.is_empty());
+    assert!(legacy_minimal.file_verified_counts.is_empty());
+
+    let (failed, lines) = oxidize_core::traceability::format_traceability_errors(&report);
+    assert!(failed);
+    let joined = lines.join("\n");
+    assert!(joined.contains("UNLINKED module `unregistered_mod` at crates/domain_ai/src/lib.rs:5"));
+    assert!(joined.contains("INVALID citation: `bad_cite` at crates/domain_ai/src/lib.rs:2"));
+    assert!(joined.contains("crates/domain_ai/src/unverified.rs:2 (fn `raw_helper`)"));
+    assert!(
+        joined
+            .contains("crates/domain_ai/src/lib.rs: 0.00 asserts/fn (0 asserts / 2 verified fns)")
+    );
+    assert!(joined.contains("traceability.toml"));
+    assert!(joined.contains("opt_out"));
+}
