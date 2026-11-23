@@ -5,6 +5,7 @@ use crate::climate::autoencoder::{Autoencoder, AutoencoderModel};
 use crate::climate::predictor::{Predictor, PredictorModel};
 use crate::error::ClimateError;
 use nalgebra::{DMatrix, Dyn, Matrix, Storage};
+use rand::Rng;
 // Re-export CeraConfig for backward compatibility (or convenience)
 pub use crate::climate::config::CeraConfig;
 use verified_engine::Theory;
@@ -67,10 +68,20 @@ impl Cera<Autoencoder, Predictor> {
     /// ```
     #[verified_engine::verified]
     pub fn new(config: CeraConfig) -> Result<Self, ClimateError> {
-        // Validation logic delegated to new_with_models
-        let autoencoder = Autoencoder::new(config.in_channels, config.latent_channels);
+        let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
+        Self::new_with_rng(config, &mut rng)
+    }
+
+    /// Creates a new CERA model threading `rng` across all encoder, decoder, and predictor layers.
+    #[verified_engine::verified]
+    pub fn new_with_rng<R: Rng + ?Sized>(
+        config: CeraConfig,
+        rng: &mut R,
+    ) -> Result<Self, ClimateError> {
+        let autoencoder =
+            Autoencoder::new_with_rng(config.in_channels, config.latent_channels, rng);
         let predictor_input_size = config.num_levels * config.aligned_channels;
-        let predictor = Predictor::new(predictor_input_size, config.output_size);
+        let predictor = Predictor::new_with_rng(predictor_input_size, config.output_size, rng);
 
         Self::new_with_models(config, autoencoder, predictor)
     }
@@ -89,7 +100,19 @@ impl<P: PredictorModel> Cera<Autoencoder, P> {
     /// A result containing the new `Cera` instance or a [`ClimateError`].
     #[verified_engine::verified]
     pub fn new_with_predictor(config: CeraConfig, predictor: P) -> Result<Self, ClimateError> {
-        let autoencoder = Autoencoder::new(config.in_channels, config.latent_channels);
+        let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
+        Self::new_with_predictor_and_rng(config, predictor, &mut rng)
+    }
+
+    /// Creates a new CERA model with a custom predictor and caller-provided RNG for the autoencoder.
+    #[verified_engine::verified]
+    pub fn new_with_predictor_and_rng<R: Rng + ?Sized>(
+        config: CeraConfig,
+        predictor: P,
+        rng: &mut R,
+    ) -> Result<Self, ClimateError> {
+        let autoencoder =
+            Autoencoder::new_with_rng(config.in_channels, config.latent_channels, rng);
         Self::new_with_models(config, autoencoder, predictor)
     }
 }
@@ -203,12 +226,11 @@ mod tests {
 
     #[verified_engine::verified]
     fn generate_data(n_samples: usize, offset: f32) -> (DMatrix<f32>, DMatrix<f32>) {
+        let mut rng = oxidize_core::rng::OxidizeRng::new(0xCE2A_0001 ^ u64::from(offset.to_bits()));
         let inputs = DMatrix::from_fn(n_samples * TEST_NUM_LEVELS, TEST_IN_CHANNELS, |_, _| {
-            oxidize_core::rng::OxidizeRng::default().r#gen::<f32>() + offset
+            rng.r#gen::<f32>() + offset
         });
-        let targets = DMatrix::from_fn(n_samples, TEST_OUTPUT_SIZE, |_, _| {
-            oxidize_core::rng::OxidizeRng::default().r#gen()
-        });
+        let targets = DMatrix::from_fn(n_samples, TEST_OUTPUT_SIZE, |_, _| rng.r#gen::<f32>());
         (inputs, targets)
     }
 

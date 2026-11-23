@@ -28,7 +28,11 @@ scan_paths = [
 target_extensions = ["rs", "toml", "yml", "yaml", "json", "sh", "js", "html"]
 allowlist = [
     "crates/unified_verification/src/entropy_guard/tests.rs",
+    "crates/unified_verification/src/entropy_guard/tests/rng_policy.rs",
     "crates/unified_verification/api_baseline.json",
+]
+default_rng_allowlist = [
+    "crates/oxidize_core/src/rng.rs",
 ]
 
 [[workflow_linter.exceptions]]

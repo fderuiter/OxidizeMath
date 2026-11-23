@@ -22,13 +22,14 @@ fn main() {
     };
 
     // 2. Initialize Model & Trainer
-    let mut model = Cera::new(config).expect("Invalid config");
+    let mut rng = OxidizeRng::new(42);
+    let mut model = Cera::new_with_rng(config, &mut rng).expect("Invalid config");
     let mut trainer = CeraTrainer::new(&mut model);
 
     // 3. Train on synthetic data (Batch Size * Num Levels, Channels)
-    let inputs = DMatrix::<f32>::from_fn(20, 2, |_, _| OxidizeRng::default().r#gen());
-    let targets = DMatrix::<f32>::from_fn(2, 5, |_, _| OxidizeRng::default().r#gen());
-    let warm_inputs = DMatrix::<f32>::from_fn(20, 2, |_, _| OxidizeRng::default().r#gen());
+    let inputs = DMatrix::<f32>::from_fn(20, 2, |_, _| rng.r#gen());
+    let targets = DMatrix::<f32>::from_fn(2, 5, |_, _| rng.r#gen());
+    let warm_inputs = DMatrix::<f32>::from_fn(20, 2, |_, _| rng.r#gen());
 
     trainer.train(&inputs, &targets, &warm_inputs);
 }

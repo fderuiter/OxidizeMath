@@ -261,7 +261,7 @@ fn test_mri_poisoned_lock_recovery_and_plot_buffers_reuse() {
         max_history: 100,
         twin: None,
         step_count: 0,
-        rng: oxidize_core::rng::OxidizeRng::default(),
+        rng: oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED),
     };
     runner.step();
     assert!(runner.current_time > 0.0);

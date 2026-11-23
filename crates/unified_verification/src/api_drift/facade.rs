@@ -80,7 +80,7 @@ const STD_AND_REEXPORTED_TYPES: &[&str] = &[
     "MatrixViewMut", "NodeIndex", "OMatrix", "OVector", "Owned", "Point2", "Point3", "QR",
     "RealField", "Rng", "RngCore", "Rotation2", "Rotation3", "RowDVector", "RowSVector",
     "RowVector2", "RowVector3", "RowVector4", "SMatrix", "SVD", "SVector", "Scalar",
-    "SeedableRng", "SimdComplexField", "SimdRealField", "Storage", "StorageMut", "StdRng",
+    "SeedableRng", "SimdComplexField", "SimdRealField", "Storage", "StorageMut",
     "SymmetricEigen", "Translation2", "Translation3", "U1", "U2", "U3", "U4", "U6", "UnGraph",
     "Undirected", "Unit", "UnitComplex", "UnitQuaternion", "UnitVector3", "Vector2", "Vector3",
     "Vector4", "Vector6", "VectorView", "VectorViewMut", "VisitMap", "Visitable",

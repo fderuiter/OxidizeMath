@@ -50,8 +50,8 @@ where
         }
 
         if rng.r#gen::<f64>() < self.epsilon.value() {
-            // Explore: Random action
-            let index = rng.gen_range(0..available_actions.len());
+            // Explore: Random action (sample u64 so 32-bit wasm32 and 64-bit hosts draw identical RNG words)
+            let index = rng.gen_range(0_u64..(available_actions.len() as u64)) as usize;
             Some(available_actions[index].clone())
         } else {
             // Exploit: Best action

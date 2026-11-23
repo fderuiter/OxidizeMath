@@ -326,7 +326,7 @@ fn test_attractor_poisoned_lock_recovery() {
         step_count: 0,
         execution_state: SolverExecutionState::Ready,
         twin: None,
-        rng: oxidize_core::rng::OxidizeRng::default(),
+        rng: oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED),
     };
     runner.process_command(SimCommand::Reset);
     assert_eq!(runner.system.sigma, 14.0);

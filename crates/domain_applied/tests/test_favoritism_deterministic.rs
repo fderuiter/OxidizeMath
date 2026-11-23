@@ -1,31 +1,40 @@
-//! Integration tests for test favoritism deterministic.
+//! Cross-platform deterministic favoritism scoring integration tests with pinned SHA-256 digest.
+
 use domain_applied::applied::favoritism::{
     FavoritismInputs, calculate_favoritism_score_full, calculate_favoritism_score_with_rng,
 };
+use oxidize_core::rng::{OxidizeRng, TrajectoryDigest};
 use pure_math::pure_math::analysis::integration::{ClenshawCurtis, IntegrationResult, Integrator};
+
+const PINNED_FAVORITISM_DIGEST: &str =
+    "7da3fafbfe85cf925b73caf553320110b19ea7b917fd23b036200c85f1c47eca";
 
 #[test]
 #[verified_engine::verified]
 fn test_favoritism_deterministic() {
     let inputs = FavoritismInputs::default();
 
-    // Seed 1
-    let mut rng1 = oxidize_core::rng::OxidizeRng::default();
-    let score1 = calculate_favoritism_score_with_rng(&inputs, &mut rng1);
+    let run_ensemble = |seed: u64| -> (Vec<f64>, String) {
+        let mut rng = OxidizeRng::new(seed);
+        let mut digest = TrajectoryDigest::new();
+        let mut scores = Vec::with_capacity(16);
+        for _ in 0..16 {
+            let score = calculate_favoritism_score_with_rng(&inputs, &mut rng);
+            digest.update_f64(score);
+            scores.push(score);
+        }
+        (scores, digest.finish_hex())
+    };
 
-    // Seed 2 (same seed)
-    let mut rng2 = oxidize_core::rng::OxidizeRng::default();
-    let score2 = calculate_favoritism_score_with_rng(&inputs, &mut rng2);
+    let (scores1, hex1) = run_ensemble(42);
+    let (scores2, hex2) = run_ensemble(42);
+    let (scores3, hex3) = run_ensemble(999);
 
-    // Seed 3 (different seed)
-    let mut rng3 = oxidize_core::rng::OxidizeRng::new(999);
-    let score3 = calculate_favoritism_score_with_rng(&inputs, &mut rng3);
-
-    // Check consistency
-    assert_eq!(score1, score2, "Scores with same seed must be identical");
-
-    // Check variation (extremely unlikely to be identical with different seeds due to r factor)
-    assert_ne!(score1, score3, "Scores with different seeds should vary");
+    assert_eq!(scores1, scores2, "Scores with same seed must be identical");
+    assert_eq!(hex1, hex2);
+    assert_ne!(scores1, scores3, "Scores with different seeds should vary");
+    assert_ne!(hex1, hex3);
+    assert_eq!(hex1, PINNED_FAVORITISM_DIGEST);
 }
 
 struct MockIntegrator;
@@ -36,18 +45,9 @@ impl Integrator for MockIntegrator {
     where
         F: Fn(f64) -> f64,
     {
-        // Return a bogus value to prove it's being used.
-        // For example, return 0.0 regardless of function.
-        // But if we return 0.0, we might get division by zero in the score calculation.
-        // The score calculation has `denominator = if integral < EPSILON { 1.0 } else { integral }`.
-
-        // Let's return a value that is clearly different from the correct integral (which is usually > 0).
-        // The real integral is approx Time * Value.
-        // Let's return Time * Value * 2.0.
-
         let val = f((min + max) / 2.0) * (max - min);
         IntegrationResult {
-            value: val * 2.0, // Double the result
+            value: val * 2.0,
             error: 0.0,
         }
     }
@@ -57,22 +57,11 @@ impl Integrator for MockIntegrator {
 #[verified_engine::verified]
 fn test_favoritism_integrator_swap() {
     let inputs = FavoritismInputs::default();
-    let rng = oxidize_core::rng::OxidizeRng::default();
+    let rng = OxidizeRng::new(42);
 
-    // Use default Clenshaw-Curtis
     let score_cc = calculate_favoritism_score_full(&inputs, &mut rng.clone(), &ClenshawCurtis);
-
-    // Use Mock Integrator
     let score_mock = calculate_favoritism_score_full(&inputs, &mut rng.clone(), &MockIntegrator);
 
-    println!("CC Score: {}, Mock Score: {}", score_cc, score_mock);
-
-    // Since Mock doubles the integrals (numerator and denominator), the ratio might stay similar?
-    // Numerator has proximity_integral * emotional_integral (doubled * doubled = 4x).
-    // Denominator has sibling_integral (doubled = 2x).
-    // Result should be approx 2x.
-
-    // So they should be different.
     assert!(
         (score_cc - score_mock).abs() > 1.0,
         "Mock integrator should yield significantly different result"

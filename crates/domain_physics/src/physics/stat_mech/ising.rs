@@ -13,6 +13,7 @@
 
 use super::KB;
 use domain_applied::applied::game_theory::evolutionary::MatrixPayoff;
+use math_commons::math_kernel::soft_float;
 use math_commons::math_kernel::types::flatten_2d_index;
 use rand::Rng;
 
@@ -31,8 +32,8 @@ fn build_fermi_lut(r: f64, s: f64, t: f64, p: f64, inv_temp: f64) -> [[[f64; 5];
         for mc_j in 0..5 {
             let d_to_c = ((d_pay[nc_i] - c_pay[mc_j]) * inv_temp).clamp(-500.0, 500.0);
             let c_to_d = ((c_pay[nc_i] - d_pay[mc_j]) * inv_temp).clamp(-500.0, 500.0);
-            lut[0][nc_i][mc_j] = 1.0 / (1.0 + d_to_c.exp());
-            lut[1][nc_i][mc_j] = 1.0 / (1.0 + c_to_d.exp());
+            lut[0][nc_i][mc_j] = 1.0 / (1.0 + soft_float::exp(d_to_c));
+            lut[1][nc_i][mc_j] = 1.0 / (1.0 + soft_float::exp(c_to_d));
         }
     }
     lut
@@ -105,7 +106,7 @@ impl SpinLattice {
         let rng = if let Some(s) = seed {
             oxidize_core::rng::OxidizeRng::new(s)
         } else {
-            oxidize_core::rng::OxidizeRng::default()
+            oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED)
         };
         Self::new_with_rng(width, height, rng)
     }
@@ -217,8 +218,8 @@ impl SpinLattice {
     /// 3. Accept flip if Delta E < 0 OR with probability e^(-beta * Delta E).
     #[verified_engine::verified]
     pub fn metropolis_step(&mut self, temperature: f64, j_coupling: f64, h_field: f64) {
-        let x = self.rng.gen_range(0..self.width);
-        let y = self.rng.gen_range(0..self.height);
+        let x = self.rng.gen_range(0_u64..(self.width as u64)) as usize;
+        let y = self.rng.gen_range(0_u64..(self.height as u64)) as usize;
 
         let s = self.get(x, y);
 
@@ -243,7 +244,7 @@ impl SpinLattice {
             true
         } else {
             let beta = 1.0 / (KB * temperature);
-            let prob = (-beta * delta_e).exp();
+            let prob = soft_float::exp(-beta * delta_e);
             self.rng.r#gen::<f64>() < prob
         };
 
@@ -280,7 +281,7 @@ impl SpinLattice {
                 if delta_e <= 0.0 {
                     *entry = 1.1; // Always accept (value > 1.0 ensures check passes)
                 } else {
-                    *entry = (-beta * delta_e).exp();
+                    *entry = soft_float::exp(-beta * delta_e);
                 }
             }
         }
@@ -288,7 +289,7 @@ impl SpinLattice {
         let count = self.width * self.height;
 
         for _ in 0..steps {
-            let idx = self.rng.gen_range(0..count);
+            let idx = self.rng.gen_range(0_u64..(count as u64)) as usize;
             let s = self.spins[idx];
             let s_idx = usize::from(s > 0);
             let sum_idx = self.neighbor_cooperators(idx);
@@ -350,9 +351,9 @@ impl SpinLattice {
         let count = self.width * self.height;
 
         for _ in 0..steps {
-            let idx = self.rng.gen_range(0..count);
+            let idx = self.rng.gen_range(0_u64..(count as u64)) as usize;
             let s_i = self.spins[idx];
-            let j_idx = self.neighbors[idx][self.rng.gen_range(0..4)];
+            let j_idx = self.neighbors[idx][self.rng.gen_range(0_u64..4) as usize];
             let s_j = self.spins[j_idx];
             if s_i != s_j {
                 let nc_i = self.neighbor_cooperators(idx);

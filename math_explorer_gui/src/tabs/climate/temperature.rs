@@ -14,7 +14,7 @@ fn static_synthetic_temperature_series() -> &'static [[f64; 2]] {
     static SYNTHETIC: OnceLock<Vec<[f64; 2]>> = OnceLock::new();
     SYNTHETIC
         .get_or_init(|| {
-            let mut rng = oxidize_core::rng::OxidizeRng::default();
+            let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
             math_explorer::climate::dataset::get_temperature_anomalies_with_rng(&mut rng)
         })
         .as_slice()

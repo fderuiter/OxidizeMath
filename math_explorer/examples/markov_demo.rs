@@ -134,7 +134,7 @@ fn demo_birth_death() {
     let p_t = chain.transition_probabilities(1.0).unwrap();
     println!("   P(0→1, t=1) = {:.3}", p_t[(0, 1)]);
 
-    let mut rng = OxidizeRng::default();
+    let mut rng = OxidizeRng::new(42);
     let trajectory = chain.simulate_trajectory(0, 10.0, &mut rng).unwrap();
     println!("   Trajectory length: {}\n", trajectory.len());
 }

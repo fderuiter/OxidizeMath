@@ -215,10 +215,16 @@ fn test_native_bench_and_smoke_ci_parity() {
 #[test]
 fn test_wasm_test_and_smoke_ci_parity() {
     let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    workspace_wasm::verify_stochastic_deterministic_suites(&ws_root)
+        .expect("every stochastic crate must provide a pinned *_deterministic.rs suite");
     let discovered = workspace_wasm::discover_wasm_crates(&ws_root)
         .expect("must discover wasm32 workspace crates");
-    let invocations = workspace_wasm::build_wasm_cargo_test_invocations(&discovered);
-    assert_eq!(invocations.len(), 2);
+    let invocations =
+        workspace_wasm::build_wasm_cargo_test_invocations_in(Some(&ws_root), &discovered);
+    assert!(
+        invocations.len() >= 2 + workspace_wasm::STOCHASTIC_WORKSPACE_PACKAGES.len(),
+        "Expected lib, bin, and deterministic --test invocations, got {invocations:?}"
+    );
     assert!(invocations[0].contains(&"oxidize_core".to_string()));
     assert!(invocations[0].contains(&"egui_plot".to_string()));
     assert!(invocations[0].contains(&"--lib".to_string()));
@@ -233,6 +239,14 @@ fn test_wasm_test_and_smoke_ci_parity() {
             "--bins",
         ]
     );
+    for &pkg in workspace_wasm::STOCHASTIC_WORKSPACE_PACKAGES {
+        assert!(
+            invocations[2..]
+                .iter()
+                .any(|inv| inv.contains(&pkg.to_string()) && inv.contains(&"--test".to_string())),
+            "Missing wasm32 --test invocation for stochastic crate {pkg}"
+        );
+    }
     let ci_path = ws_root.join(".github/workflows/ci.yml");
     let ci_yaml = fs::read_to_string(&ci_path)
         .expect("failed to read ci.yml")

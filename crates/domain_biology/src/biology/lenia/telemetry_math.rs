@@ -1,6 +1,7 @@
 //! Private trigonometric, transpose, separable 2D FFT, spatial-moment, and periodic-brush
 //! helpers for [`super::engine::LeniaEngine`].
 
+use math_commons::math_kernel::soft_float;
 use math_commons::math_kernel::types::flatten_2d_index;
 use num_complex::Complex;
 use rustfft::Fft;
@@ -51,7 +52,7 @@ pub(super) fn advance_step_telemetry(
     let speed = if *has_prev_centroid && m.mass > 1e-6 && dt > 1e-9 {
         let dx = torus_delta(next_cx, telemetry.centroid_x, width);
         let dy = torus_delta(next_cy, telemetry.centroid_y, height);
-        dx.hypot(dy) / dt
+        soft_float::hypot(dx, dy) / dt
     } else {
         0.0
     };
@@ -104,18 +105,19 @@ pub(super) fn build_trig_tables(len: usize) -> (Vec<f64>, Vec<f64>) {
     let scale = TAU / (len as f64);
     for idx in 0..len {
         let angle = (idx as f64) * scale;
-        cosines.push(angle.cos());
-        sines.push(angle.sin());
+        let (s, c) = soft_float::sincos(angle);
+        cosines.push(c);
+        sines.push(s);
     }
     (cosines, sines)
 }
 
 #[verified_engine::verified]
 pub(super) fn circular_coord(cos_sum: f64, sin_sum: f64, period: usize) -> f64 {
-    if cos_sum.hypot(sin_sum) <= 1e-12 {
+    if soft_float::hypot(cos_sum, sin_sum) <= 1e-12 {
         return 0.5 * (period as f64);
     }
-    let angle = sin_sum.atan2(cos_sum).rem_euclid(TAU);
+    let angle = soft_float::atan2(sin_sum, cos_sum).rem_euclid(TAU);
     angle * (period as f64) / TAU
 }
 
@@ -143,10 +145,10 @@ pub(super) fn paint_periodic_disc(
     for dy in -span..=span {
         let y = (cy as isize + dy).rem_euclid(h) as usize;
         for dx in -span..=span {
-            let dist = (dx as f64).hypot(dy as f64);
+            let dist = soft_float::hypot(dx as f64, dy as f64);
             if dist <= r {
                 let x = (cx as isize + dx).rem_euclid(w) as usize;
-                let falloff = 0.5 * (1.0 + (PI * dist / r).cos());
+                let falloff = 0.5 * (1.0 + soft_float::cos(PI * dist / r));
                 let idx = flatten_2d_index(x, y, width);
                 state[idx] = (state[idx] + delta * falloff).clamp(0.0, 1.0);
             }

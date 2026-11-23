@@ -66,7 +66,8 @@ impl InteractiveTool for Co2ProjectionsTool {
             });
 
             let (historical, projected) = if self.synthetic_walk {
-                let mut rng = oxidize_core::rng::OxidizeRng::default();
+                let mut rng =
+                    oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
                 math_explorer::climate::dataset::get_co2_projections_with_rng(
                     &mut rng,
                     self.reduction_scenario,

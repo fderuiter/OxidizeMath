@@ -161,7 +161,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
         // Scaling: choose s such that ||A/2^s|| < 1
         let norm = self.matrix_norm_1(a);
         let s = if norm > 1.0 {
-            (norm.log2().ceil() as i32).max(0)
+            (math_commons::math_kernel::soft_float::log2(norm).ceil() as i32).max(0)
         } else {
             0
         };
@@ -347,8 +347,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     /// # use pure_math::__doctest_facade as math_explorer;
     /// use math_explorer::pure_math::statistics::markov::ContinuousMarkovChain;
     /// use math_explorer::nalgebra::DMatrix;
-    /// use math_explorer::rand::SeedableRng;
-    /// use math_explorer::rand::rngs::StdRng;
+    /// use math_explorer::rng::OxidizeRng;
     ///
     /// // A simple 2-state Birth-Death process
     /// let generator = DMatrix::from_row_slice(2, 2, &[
@@ -356,7 +355,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     ///      2.0, -2.0
     /// ]);
     /// let chain = ContinuousMarkovChain::new(generator).unwrap();
-    /// let mut rng = math_explorer::rng::OxidizeRng::default();
+    /// let mut rng = OxidizeRng::new(42);
     ///
     /// let trajectory = chain.simulate_trajectory(0, 10.0, &mut rng).unwrap();
     /// assert!(!trajectory.is_empty());

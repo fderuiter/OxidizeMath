@@ -4,6 +4,8 @@
 //! It includes joint survival functions, the win ratio parameter, and derived
 //! marginal and conditional survival functions and their PDFs.
 
+use math_commons::math_kernel::soft_float;
+
 pub use super::power_sweep::{
     MAX_ARM_SIZE, MAX_SWEEP_REPLICATES, MAX_SWEEP_STEPS, PowerSweepConfig, PowerSweepReport,
     PowerSweepWorkspace, SampleSizePowerPoint, run_power_sweep_into, run_weibull_power_sweep,
@@ -39,7 +41,10 @@ impl BivariateWeibullModel {
     /// Joint survival function S(t, x).
     #[verified_engine::verified]
     pub fn joint_survival(&self, t: f64, x: f64) -> f64 {
-        (-(self.lambda1 * t + self.lambda2 * x).powf(self.alpha)).exp()
+        soft_float::exp(-soft_float::powf(
+            self.lambda1 * t + self.lambda2 * x,
+            self.alpha,
+        ))
     }
 
     /// Marginal survival function for T, S(t).
@@ -54,10 +59,10 @@ impl BivariateWeibullModel {
         if t <= 0.0 {
             return 0.0;
         }
-        let l1_alpha = self.lambda1.powf(self.alpha);
+        let l1_alpha = soft_float::powf(self.lambda1, self.alpha);
         // f(t) = - dS(t)/dt = alpha * lambda1 * (lambda1 * t)^(alpha-1) * S(t)
         //      = alpha * lambda1^alpha * t^(alpha-1) * S(t)
-        self.alpha * l1_alpha * t.powf(self.alpha - 1.0) * self.marginal_survival_t(t)
+        self.alpha * l1_alpha * soft_float::powf(t, self.alpha - 1.0) * self.marginal_survival_t(t)
     }
 
     /// Conditional survival function for X given T > c, G(x|c) = S(c, x) / S(c, 0).
@@ -83,7 +88,7 @@ impl BivariateWeibullModel {
         // G(x|c) = exp( - (lambda1*c + lambda2*x)^alpha ) / S(c,0)
         // dG/dx = G * (- alpha * (lambda1*c + lambda2*x)^(alpha-1) * lambda2)
         // f = alpha * lambda2 * (term)^(alpha-1) * G
-        self.alpha * self.lambda2 * term.powf(self.alpha - 1.0) * g
+        self.alpha * self.lambda2 * soft_float::powf(term, self.alpha - 1.0) * g
     }
 }
 
@@ -149,7 +154,7 @@ pub fn joint_survival_function_treatment(t: f64, x: f64, params: &SimulationPara
 #[verified_engine::verified]
 pub fn win_ratio_parameter(params: &SimulationParams) -> f64 {
     // This depends on the specific relationship between control and treatment models defined by theta.
-    1.0 / params.theta.powf(params.alpha)
+    1.0 / soft_float::powf(params.theta, params.alpha)
 }
 
 // --- Derived Functions for T (Fatal Event) ---

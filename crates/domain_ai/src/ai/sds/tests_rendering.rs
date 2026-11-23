@@ -1,9 +1,10 @@
 use crate::ai::sds::rendering::{
-    NeRFModel, RenderContext, generate_ray_bundle, render_image, stratified_sampling,
-    volume_integration,
+    NeRFModel, RenderContext, generate_ray_bundle, render_image_with_rng,
+    stratified_sampling_with_rng, volume_integration,
 };
 use approx::assert_relative_eq;
 use nalgebra::{Matrix4, Vector3};
+use oxidize_core::rng::OxidizeRng;
 use std::f64::consts::PI;
 
 #[test]
@@ -37,8 +38,9 @@ fn test_stratified_sampling() {
     let t_far = 10.0;
     let n_samples = 10;
     let mut samples = vec![0.0; n_samples];
+    let mut rng = OxidizeRng::new(42);
 
-    stratified_sampling(t_near, t_far, n_samples, &mut samples);
+    stratified_sampling_with_rng(t_near, t_far, n_samples, &mut rng, &mut samples);
     assert_eq!(samples.len(), n_samples);
 
     for (i, sample) in samples.iter().enumerate().take(n_samples) {
@@ -85,7 +87,8 @@ fn test_render_image() {
     let model = MockNeRF;
 
     let mut ctx = RenderContext::new();
-    let image = render_image(&mut ctx, &bundle, &model, 0.1, 2.0, 5);
+    let mut rng = OxidizeRng::new(42);
+    let image = render_image_with_rng(&mut ctx, &bundle, &model, 0.1, 2.0, 5, &mut rng);
 
     assert_eq!(image.nrows(), height);
     assert_eq!(image.ncols(), width);

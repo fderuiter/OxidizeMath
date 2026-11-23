@@ -4,8 +4,10 @@
 mod workspace_wasm;
 
 pub use workspace_wasm::{
-    HOST_ONLY_WORKSPACE_PACKAGES, WasmCrateSpec, WasmTestTargetKind, WorkspaceError,
-    build_wasm_cargo_test_invocations, discover_wasm_crates, parse_workspace_members_std,
+    HOST_ONLY_WORKSPACE_PACKAGES, STOCHASTIC_WORKSPACE_PACKAGES, WasmCrateSpec, WasmTestTargetKind,
+    WorkspaceError, build_wasm_cargo_test_invocations, build_wasm_cargo_test_invocations_in,
+    discover_deterministic_tests, discover_wasm_crates, parse_workspace_members_std,
+    verify_stochastic_deterministic_suites,
 };
 
 use std::fs;
@@ -379,5 +381,59 @@ members = ["sub_crate", "other_crate"]
                 "host-only crate {excluded} must not be in wasm discovery"
             );
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_verify_stochastic_deterministic_suites_checks_coverage_and_digests() {
+        let dir = std::env::temp_dir().join(format!(
+            "test_ws_det_suites_{}_{}",
+            std::process::id(),
+            next_nonce()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let members_toml: Vec<String> = STOCHASTIC_WORKSPACE_PACKAGES
+            .iter()
+            .map(|pkg| format!("\"crates/{pkg}\""))
+            .collect();
+        fs::write(
+            dir.join("Cargo.toml"),
+            format!("[workspace]\nmembers = [{}]\n", members_toml.join(", ")),
+        )
+        .unwrap();
+
+        let dummy_digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        for &pkg in STOCHASTIC_WORKSPACE_PACKAGES {
+            let member = dir.join("crates").join(pkg);
+            fs::create_dir_all(member.join("src")).unwrap();
+            fs::create_dir_all(member.join("tests")).unwrap();
+            fs::write(
+                member.join("Cargo.toml"),
+                format!("[package]\nname = \"{pkg}\"\n"),
+            )
+            .unwrap();
+            fs::write(member.join("src/lib.rs"), "").unwrap();
+            if pkg != "domain_physics" {
+                fs::write(
+                    member.join("tests/test_sample_deterministic.rs"),
+                    format!("const D: &str = \"{dummy_digest}\";\n"),
+                )
+                .unwrap();
+            }
+        }
+
+        let err_missing = verify_stochastic_deterministic_suites(&dir).unwrap_err();
+        assert!(err_missing.contains("domain_physics"));
+
+        let phys_test = dir.join("crates/domain_physics/tests/test_phys_deterministic.rs");
+        fs::write(&phys_test, "fn no_digest_here() {}\n").unwrap();
+        let err_unpinned = verify_stochastic_deterministic_suites(&dir).unwrap_err();
+        assert!(err_unpinned.contains("missing 64-hex pinned SHA-256 digest"));
+
+        fs::write(&phys_test, format!("const D: &str = \"{dummy_digest}\";\n")).unwrap();
+        let ok = verify_stochastic_deterministic_suites(&dir).expect("all suites pinned");
+        assert_eq!(ok.len(), STOCHASTIC_WORKSPACE_PACKAGES.len());
+
+        let _ = fs::remove_dir_all(dir);
     }
 }

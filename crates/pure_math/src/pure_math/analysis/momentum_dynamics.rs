@@ -221,7 +221,7 @@ impl HamiltonianLeapfrog2D {
         let h = clamp_dt(dt);
         let gamma = clamp_damping(self.damping);
         let damp = if gamma > 0.0 {
-            (-0.5 * gamma * h).exp()
+            math_commons::math_kernel::soft_float::exp(-0.5 * gamma * h)
         } else {
             1.0
         };
@@ -291,7 +291,11 @@ impl EvolutionEngine<PhasePoint2D, Vector2<f64>> for HamiltonianLeapfrog2D {
         let m = clamp_mass(self.mass);
         let gamma = clamp_damping(self.damping);
         let h = clamp_dt(dt);
-        let damp = if gamma > 0.0 { (-gamma * h).exp() } else { 1.0 };
+        let damp = if gamma > 0.0 {
+            math_commons::math_kernel::soft_float::exp(-gamma * h)
+        } else {
+            1.0
+        };
         let p_next = state.p * damp - *aux * h;
         let q_next = state.q + p_next * (h / m);
         state.q = q_next;
@@ -371,10 +375,11 @@ impl LangevinBaoab2D {
         let v_b = Vector2::new(kinetic_deriv(p_b.x), kinetic_deriv(p_b.y));
         let q_a = state.q + v_b * (0.5 * h);
 
-        let c1 = (-gamma * h).exp();
+        let c1 = math_commons::math_kernel::soft_float::exp(-gamma * h);
         let p_o = if kbt > 0.0 && gamma > 0.0 {
             let normal = Normal::new(0.0, 1.0).map_err(|_| EvolutionError::ConversionError)?;
-            let sigma = (m * kbt * (1.0 - c1 * c1)).max(0.0).sqrt();
+            let sigma =
+                math_commons::math_kernel::soft_float::sqrt((m * kbt * (1.0 - c1 * c1)).max(0.0));
             let xi = Vector2::new(normal.sample(rng), normal.sample(rng));
             p_b * c1 + xi * sigma
         } else {

@@ -48,7 +48,7 @@
 //! // A uniform state would be stable without noise
 //! use math_explorer::rng::OxidizeRng;
 //! use math_explorer::rand::Rng;
-//! let mut rng = OxidizeRng::default();
+//! let mut rng = OxidizeRng::new(42);
 //! for i in 0..n {
 //!     system.u_mut()[i] = 1.0 + rng.gen_range(-0.1..0.1); // Add some perturbation
 //!     system.v_mut()[i] = 0.5 + rng.gen_range(-0.1..0.1);

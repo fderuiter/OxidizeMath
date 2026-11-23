@@ -9,7 +9,7 @@ use rand::Rng;
 /// * `f64` - Final position.
 #[verified_engine::verified]
 pub fn random_walk_1d(steps: usize) -> f64 {
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
     random_walk_1d_with_rng(steps, &mut rng)
 }
 
@@ -39,7 +39,7 @@ pub fn random_walk_1d_with_rng<R: Rng + ?Sized>(steps: usize, rng: &mut R) -> f6
 /// * `f64` - Estimated Diffusion Coefficient D.
 #[verified_engine::verified]
 pub fn estimate_diffusion_coefficient(num_walks: usize, time_steps: usize) -> f64 {
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
     estimate_diffusion_coefficient_with_rng(num_walks, time_steps, &mut rng)
 }
 
@@ -70,7 +70,7 @@ mod tests {
     #[verified_engine::verified]
     fn test_diffusion() {
         // For Random Walk D ~ 0.5 (since dx=1, dt=1).
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng = oxidize_core::rng::OxidizeRng::new(42);
         let d = estimate_diffusion_coefficient_with_rng(1000, 100, &mut rng);
         assert!(
             (d - 0.5).abs() < 0.1,

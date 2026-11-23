@@ -282,7 +282,7 @@ impl NetworkEpidemicModel {
     /// Creates a new network epidemic model and initializes it with a geometric graph.
     #[verified_engine::verified]
     pub fn new(num_nodes: usize, beta: f64, gamma: f64) -> Self {
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
         Self::new_with_rng(num_nodes, beta, gamma, &mut rng)
     }
 
@@ -307,9 +307,12 @@ impl NetworkEpidemicModel {
     }
 
     /// Initializes a geometric graph using the default deterministic RNG.
+    #[deprecated(
+        note = "Use `initialize_geometric_graph_with_rng` instead; this compatibility shim reseeds to `BASE_SEED` on every call."
+    )]
     #[verified_engine::verified]
     pub fn initialize_geometric_graph(&mut self) {
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
         self.initialize_geometric_graph_with_rng(&mut rng);
     }
 
@@ -345,14 +348,16 @@ impl NetworkEpidemicModel {
         let radius = 200.0;
         for i in 0..self.num_nodes {
             let angle = rng.r#gen_range(0.0..TAU);
-            let r = radius * rng.r#gen_range(0.0f32..1.0f32).sqrt();
-            self.positions[i] = [r * angle.cos(), r * angle.sin()];
+            let r = radius
+                * math_commons::math_kernel::soft_float::sqrtf(rng.r#gen_range(0.0f32..1.0f32));
+            let (sin_a, cos_a) = math_commons::math_kernel::soft_float::sincosf(angle);
+            self.positions[i] = [r * cos_a, r * sin_a];
         }
 
         self.connect_geometric_edges(60.0);
 
         if self.num_nodes > 0 {
-            let start_idx = rng.r#gen_range(0..self.num_nodes);
+            let start_idx = rng.r#gen_range(0_u64..(self.num_nodes as u64)) as usize;
             self.states[start_idx] = NodeState::Infected;
             self.scratch_states[start_idx] = NodeState::Infected;
             self.patient_zero = Some(start_idx);
@@ -360,9 +365,12 @@ impl NetworkEpidemicModel {
     }
 
     /// Steps the simulation forward using the default deterministic RNG.
+    #[deprecated(
+        note = "Use `step_with_rng` instead; `step` reseeds to `BASE_SEED` on every call."
+    )]
     #[verified_engine::verified]
     pub fn step(&mut self) {
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
         self.step_with_rng(&mut rng);
     }
 

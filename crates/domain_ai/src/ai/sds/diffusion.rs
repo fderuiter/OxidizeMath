@@ -1,3 +1,4 @@
+use math_commons::math_kernel::soft_float;
 use nalgebra::DMatrix;
 use rand::Rng;
 use rand_distr::{Distribution, Normal};
@@ -9,16 +10,17 @@ const DEFAULT_BETA_END: f64 = 0.02;
 /// Input: None.
 /// Operation: Select a random integer timestep t.
 /// Output: Timestep scalar t.
+#[deprecated(note = "Reseeds per call; pass an explicit RNG to sample_timestep_with_rng instead")]
 #[verified_engine::verified]
 pub fn sample_timestep(max_timesteps: usize) -> usize {
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
     sample_timestep_with_rng(max_timesteps, &mut rng)
 }
 
 /// Module 2.1: Time Sampling using an injected RNG.
 #[verified_engine::verified]
 pub fn sample_timestep_with_rng<R: Rng + ?Sized>(max_timesteps: usize, rng: &mut R) -> usize {
-    rng.gen_range(1..=max_timesteps)
+    rng.gen_range(1_u64..=(max_timesteps as u64)) as usize
 }
 
 /// Module 2.2: Noise Schedule Lookup
@@ -73,8 +75,8 @@ impl NoiseSchedule {
         let idx = idx.min(self.alpha_bars.len() - 1);
 
         let alpha_bar = self.alpha_bars[idx];
-        let signal_scale = alpha_bar.sqrt();
-        let noise_scale = (1.0 - alpha_bar).sqrt();
+        let signal_scale = soft_float::sqrt(alpha_bar);
+        let noise_scale = soft_float::sqrt(1.0 - alpha_bar);
 
         (signal_scale, noise_scale)
     }
@@ -95,9 +97,10 @@ pub fn inject_noise(
 }
 
 /// Helper to generate Gaussian noise matching image dimensions
+#[deprecated(note = "Reseeds per call; pass an explicit RNG to generate_noise_with_rng instead")]
 #[verified_engine::verified]
 pub fn generate_noise(rows: usize, cols: usize) -> Result<DMatrix<f64>, crate::error::AIError> {
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
     generate_noise_with_rng(rows, cols, &mut rng)
 }
 

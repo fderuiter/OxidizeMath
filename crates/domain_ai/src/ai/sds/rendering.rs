@@ -1,3 +1,4 @@
+use math_commons::math_kernel::soft_float;
 use nalgebra::{DMatrix, Matrix4, Vector3};
 use rand::Rng;
 use std::f64::consts::PI;
@@ -90,7 +91,7 @@ pub fn generate_ray_bundle(
     let mut rays = Vec::with_capacity(width * height);
     let aspect_ratio = width as f64 / height as f64;
 
-    let half_height = (fov_y / 2.0).tan();
+    let half_height = soft_float::tan(fov_y / 2.0);
     let half_width = aspect_ratio * half_height;
 
     let origin = pose.transform_point(&nalgebra::Point3::origin()).coords;
@@ -122,9 +123,12 @@ pub fn generate_ray_bundle(
 }
 
 /// Module 1.2: Stratified Sampling
+#[deprecated(
+    note = "Reseeds per call; pass an explicit RNG to stratified_sampling_with_rng instead"
+)]
 #[verified_engine::verified]
 pub fn stratified_sampling(t_near: f64, t_far: f64, n_samples: usize, out: &mut [f64]) {
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
     stratified_sampling_with_rng(t_near, t_far, n_samples, &mut rng, out)
 }
 
@@ -150,8 +154,9 @@ pub fn positional_encoding(p: f64, l: usize) -> Vec<f64> {
     let mut encoded = Vec::with_capacity(2 * l);
     for i in 0..l {
         let freq = 2.0_f64.powi(i as i32) * PI;
-        encoded.push((freq * p).sin());
-        encoded.push((freq * p).cos());
+        let (s, c) = soft_float::sincos(freq * p);
+        encoded.push(s);
+        encoded.push(c);
     }
     encoded
 }
@@ -178,7 +183,7 @@ pub fn volume_integration(
         let color = colors[i];
         let delta = deltas[i];
 
-        let alpha = 1.0 - (-sigma * delta).exp();
+        let alpha = 1.0 - soft_float::exp(-sigma * delta);
         let weight = transmittance * alpha;
         final_color += weight * color;
         transmittance *= 1.0 - alpha;
@@ -192,6 +197,7 @@ pub fn volume_integration(
 }
 
 /// Module 1.4: Volume Integration (Full Image)
+#[deprecated(note = "Reseeds per call; pass an explicit RNG to render_image_with_rng instead")]
 #[verified_engine::verified]
 pub fn render_image<M: NeRFModel + ?Sized>(
     ctx: &mut RenderContext,
@@ -201,7 +207,7 @@ pub fn render_image<M: NeRFModel + ?Sized>(
     t_far: f64,
     n_samples: usize,
 ) -> DMatrix<Vector3<f64>> {
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
     render_image_with_rng(ctx, bundle, model, t_near, t_far, n_samples, &mut rng)
 }
 

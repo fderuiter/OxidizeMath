@@ -1,4 +1,4 @@
-use super::{SecretScanner, classify_entropy_call, resolve_path};
+use super::{SecretScanner, classify_entropy_call, resolve_path, rng_policy};
 use proc_macro2::{Delimiter, Spacing, TokenStream, TokenTree};
 use std::collections::HashMap;
 
@@ -8,6 +8,7 @@ pub(super) fn scan_macro(
     mac: &syn::Macro,
     aliases: &HashMap<String, String>,
     scanner: &SecretScanner,
+    allow_default_rng: bool,
     entropy_violations: &mut Vec<(String, usize)>,
     secret_warnings: &mut Vec<(String, usize)>,
 ) {
@@ -15,6 +16,7 @@ pub(super) fn scan_macro(
         mac.tokens.clone(),
         aliases,
         scanner,
+        allow_default_rng,
         entropy_violations,
         secret_warnings,
     );
@@ -24,6 +26,7 @@ fn scan_token_stream(
     root: TokenStream,
     aliases: &HashMap<String, String>,
     scanner: &SecretScanner,
+    allow_default_rng: bool,
     entropy_violations: &mut Vec<(String, usize)>,
     secret_warnings: &mut Vec<(String, usize)>,
 ) {
@@ -38,7 +41,7 @@ fn scan_token_stream(
 
         let tokens: Vec<TokenTree> = stream.into_iter().collect();
         scan_literals_in_slice(&tokens, scanner, secret_warnings);
-        scan_calls_in_slice(&tokens, aliases, entropy_violations);
+        scan_calls_in_slice(&tokens, aliases, allow_default_rng, entropy_violations);
 
         for token in tokens.into_iter().rev() {
             if let TokenTree::Group(group) = token {
@@ -68,6 +71,7 @@ fn scan_literals_in_slice(
 fn scan_calls_in_slice(
     tokens: &[TokenTree],
     aliases: &HashMap<String, String>,
+    allow_default_rng: bool,
     entropy_violations: &mut Vec<(String, usize)>,
 ) {
     let mut idx = 0usize;
@@ -76,10 +80,16 @@ fn scan_calls_in_slice(
             idx += 1;
             continue;
         };
-        if !is_method_or_decl_prefix(tokens, idx) && is_paren_group_at(tokens, end_idx) {
+        if !is_method_or_decl_prefix(tokens, idx) {
             let resolved = resolve_path(&path, aliases);
-            if let Some(violation) = classify_entropy_call(&resolved) {
-                entropy_violations.push((violation.to_string(), line));
+            if is_paren_group_at(tokens, end_idx) {
+                if let Some(violation) = classify_entropy_call(&resolved, allow_default_rng) {
+                    entropy_violations.push((violation.to_string(), line));
+                }
+            } else if rng_policy::is_std_rng_path(&resolved) {
+                entropy_violations.push(("StdRng".to_string(), line));
+            } else if !allow_default_rng && rng_policy::is_oxidize_rng_default_path(&resolved) {
+                entropy_violations.push(("OxidizeRng::default()".to_string(), line));
             }
         }
         idx = end_idx;

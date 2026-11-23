@@ -77,6 +77,8 @@ pub struct EntropyGuardConfig {
     pub target_extensions: Option<Vec<String>>,
     #[serde(default, alias = "exemptions", alias = "path_exemptions")]
     pub allowlist: Option<Vec<String>>,
+    #[serde(default, alias = "default_rng_exemptions")]
+    pub default_rng_allowlist: Option<Vec<String>>,
 }
 
 /// Configuration for `workflow_linter` loaded from `verification_whitelist.toml`.

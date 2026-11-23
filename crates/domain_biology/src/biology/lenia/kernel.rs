@@ -3,6 +3,7 @@
 
 use super::{MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MIN_KERNEL_RADIUS};
 use math_commons::ast::CompiledExpr;
+use math_commons::math_kernel::soft_float;
 use math_commons::math_kernel::types::flatten_2d_index;
 use num_complex::Complex;
 use verified_engine::Theory;
@@ -21,7 +22,7 @@ pub fn kernel_core_bump(r: f64) -> f64 {
         return 0.0;
     }
     let denom = r * (1.0 - r);
-    (4.0 - 1.0 / denom).exp()
+    soft_float::exp(4.0 - 1.0 / denom)
 }
 
 /// Evaluates Lenia's Gaussian growth mapping $G(u; \mu, \sigma) \in [-1, 1]$:
@@ -35,7 +36,7 @@ pub fn growth_gaussian(u: f64, mu: f64, sigma: f64) -> f64 {
         0.015
     };
     let z = (u - mu) / safe_sigma;
-    2.0 * (-0.5 * z * z).exp() - 1.0
+    2.0 * soft_float::exp(-0.5 * z * z) - 1.0
 }
 
 /// Writes a periodic wrap-around spatial kernel of interaction `radius` into `out` (`width * height`)
@@ -102,7 +103,7 @@ where
             } else {
                 (x as f64) - (width as f64)
             };
-            let r_norm = dx.hypot(dy) * inv_r;
+            let r_norm = soft_float::hypot(dx, dy) * inv_r;
             let raw = radial_fn(r_norm);
             let val = if raw.is_finite() && raw > 0.0 {
                 raw.min(1e6)

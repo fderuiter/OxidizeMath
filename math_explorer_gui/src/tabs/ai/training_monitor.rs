@@ -259,7 +259,7 @@ fn generate_spiral_data(points_per_class: usize) -> Vec<(Vector, Vector)> {
     use rand::seq::SliceRandom;
     use rand::Rng;
 
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
     let mut data = Vec::new();
     let n = points_per_class;
 

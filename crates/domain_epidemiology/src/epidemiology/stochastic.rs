@@ -47,7 +47,7 @@ pub fn probability_of_extinction(r0: f64, initial_cases: f64) -> f64 {
     if r0 <= 1.0 {
         1.0
     } else {
-        (1.0 / r0).powf(initial_cases)
+        math_commons::math_kernel::soft_float::powf(1.0 / r0, initial_cases)
     }
 }
 
@@ -75,36 +75,51 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_gillespie_solver_deterministic() -> Result<(), EpidemiologyDomainError> {
-        // Seeded RNG for deterministic test
-        let rng = oxidize_core::rng::OxidizeRng::default();
-        let mut solver = GillespieSolver::new(rng);
-
+        const STEPS: usize = 25;
+        const PINNED_DIGEST: &str =
+            "7f63345f136b4408acb97177239bd33c1e57be8e3024fa4ae592c7c8cb490f0d";
         let n = 100.0;
         let i0 = 10.0;
-        // High beta, low gamma -> likely infection
         let model = SIRModel::new(n, i0, 2.0, 0.1)?;
 
-        let mut state = *model.state(); // Working copy of state
-        let initial_s = state.s;
-        let initial_i = state.i;
+        let run_trajectory =
+            |seed: u64| -> Result<(Vec<[f64; 4]>, String), EpidemiologyDomainError> {
+                let mut solver = GillespieSolver::new(oxidize_core::rng::OxidizeRng::new(seed));
+                let mut state = *model.state();
+                let mut trace = Vec::with_capacity(STEPS);
+                let mut digest = oxidize_core::rng::TrajectoryDigest::new();
+                for step_idx in 0..STEPS {
+                    let prev_s = state.s;
+                    let prev_i = state.i;
+                    let dt = solver.step(&model, &mut state)?;
+                    assert!(
+                        dt > 0.0 && dt.is_finite(),
+                        "step {step_idx} dt must be positive finite"
+                    );
+                    assert_eq!(state.s + state.i + state.r, n);
+                    if step_idx == 0 {
+                        assert!((state.s - prev_s).abs() <= 1.0);
+                        assert!((state.i - prev_i).abs() >= 1.0);
+                    }
+                    let row = [dt, state.s, state.i, state.r];
+                    digest.update_f64_slice(&row);
+                    trace.push(row);
+                }
+                Ok((trace, digest.finish_hex()))
+            };
 
-        // Take one step
-        let dt = solver.step(&model, &mut state)?;
+        let (trace_a, digest_a) = run_trajectory(0xE91D_0042)?;
+        let (trace_b, digest_b) = run_trajectory(0xE91D_0042)?;
+        let (trace_other, digest_other) = run_trajectory(0xE91D_0043)?;
+        assert_eq!(trace_a, trace_b);
+        assert_eq!(digest_a, digest_b);
+        assert_ne!(trace_a, trace_other);
+        assert_ne!(digest_a, digest_other);
+        assert_eq!(digest_a, PINNED_DIGEST);
 
-        assert!(dt > 0.0, "Time step should be positive");
-        assert!(dt.is_finite());
-
-        // Check conservation of population
-        assert_eq!(state.s + state.i + state.r, n);
-
-        // State should have changed by exactly 1 individual (integer steps)
-        let s_diff = (state.s - initial_s).abs();
-        let i_diff = (state.i - initial_i).abs();
-
-        assert!(s_diff <= 1.0);
-        assert!(i_diff >= 1.0); // I changes in both infection and recovery
-
-        let reaction_err: EpidemiologyDomainError = model.react(&mut state, 99).unwrap_err().into();
+        let mut err_state = *model.state();
+        let reaction_err: EpidemiologyDomainError =
+            model.react(&mut err_state, 99).unwrap_err().into();
         diagnostics::DiagnosticBus::new().emit_diagnostic(&reaction_err);
         assert!(std::error::Error::source(&reaction_err).is_some());
 

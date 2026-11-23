@@ -87,7 +87,10 @@ impl DenseRlWorkspace {
                 };
             }
         }
-        let rng = seed.map_or_else(OxidizeRng::default, OxidizeRng::new);
+        let rng = seed.map_or_else(
+            || OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED),
+            OxidizeRng::new,
+        );
         Self {
             width: w,
             height: h,

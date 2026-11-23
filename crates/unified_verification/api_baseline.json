@@ -5107,10 +5107,16 @@
       "signature": "impl Autoencoder { pub fn new_from_components (_ : Encoder , _ : Decoder) -> Self }"
     },
     {
+      "signature": "impl Autoencoder { pub fn new_with_rng < R : Rng + ? Sized > (_ : usize , _ : usize , _ : & mut R ,) -> Self }"
+    },
+    {
       "signature": "impl ConvLayer { pub fn backward_update < O : Optimizer < f32 > > (& mut self , _ : & DMatrix < f32 > , _ : & DMatrix < f32 > , _ : & mut O , _ : usize ,) -> Result < DMatrix < f32 > , pure_math :: pure_math :: analysis :: optimization :: OptimizationError > }"
     },
     {
       "signature": "impl ConvLayer { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl ConvLayer { pub fn new_with_rng < R : Rng + ? Sized > (_ : usize , _ : usize , _ : & mut R ,) -> Self }"
     },
     {
       "signature": "impl Decoder { pub fn forward < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > ,) -> DMatrix < f32 > }"
@@ -5122,6 +5128,9 @@
       "signature": "impl Decoder { pub fn new_from_layers (_ : [ConvLayer ; 3]) -> Self }"
     },
     {
+      "signature": "impl Decoder { pub fn new_with_rng < R : Rng + ? Sized > (_ : usize , _ : usize , _ : & mut R ,) -> Self }"
+    },
+    {
       "signature": "impl Encoder { pub fn forward < S : Storage < f32 , Dyn , Dyn > > (& self , _ : & Matrix < f32 , Dyn , Dyn , S > ,) -> DMatrix < f32 > }"
     },
     {
@@ -5129,6 +5138,9 @@
     },
     {
       "signature": "impl Encoder { pub fn new_from_layers (_ : [ConvLayer ; 3]) -> Self }"
+    },
+    {
+      "signature": "impl Encoder { pub fn new_with_rng < R : Rng + ? Sized > (_ : usize , _ : usize , _ : & mut R ,) -> Self }"
     },
     {
       "signature": "pub fn leaky_relu (_ : & mut DMatrix < f32 > , _ : f32)"
@@ -5169,7 +5181,13 @@
       "signature": "impl < P : PredictorModel > Cera < Autoencoder , P > { pub fn new_with_predictor (_ : CeraConfig , _ : P) -> Result < Self , ClimateError > }"
     },
     {
+      "signature": "impl < P : PredictorModel > Cera < Autoencoder , P > { pub fn new_with_predictor_and_rng < R : Rng + ? Sized > (_ : CeraConfig , _ : P , _ : & mut R ,) -> Result < Self , ClimateError > }"
+    },
+    {
       "signature": "impl Cera < Autoencoder , Predictor > { pub fn new (_ : CeraConfig) -> Result < Self , ClimateError > }"
+    },
+    {
+      "signature": "impl Cera < Autoencoder , Predictor > { pub fn new_with_rng < R : Rng + ? Sized > (_ : CeraConfig , _ : & mut R ,) -> Result < Self , ClimateError > }"
     },
     {
       "signature": "pub struct Cera < A : AutoencoderModel , P : PredictorModel >"
@@ -5225,6 +5243,9 @@
     },
     {
       "signature": "impl Predictor { pub fn new_from_layers (_ : [ConvLayer ; 5]) -> Self }"
+    },
+    {
+      "signature": "impl Predictor { pub fn new_with_rng < R : Rng + ? Sized > (_ : usize , _ : usize , _ : & mut R ,) -> Self }"
     },
     {
       "signature": "pub struct Predictor"
@@ -9389,6 +9410,86 @@
       "signature": "pub fn glsl_colormap_library () -> String"
     }
   ],
+  "crates/math_commons/src/math_kernel/soft_float.rs": [
+    {
+      "signature": "pub fn atan2 (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn atan2f (_ : f32 , _ : f32) -> f32"
+    },
+    {
+      "signature": "pub fn cbrt (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn cos (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn cosf (_ : f32) -> f32"
+    },
+    {
+      "signature": "pub fn exp (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn exp_m1 (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn expf (_ : f32) -> f32"
+    },
+    {
+      "signature": "pub fn hypot (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn hypotf (_ : f32 , _ : f32) -> f32"
+    },
+    {
+      "signature": "pub fn ln (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn ln_1p (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn lnf (_ : f32) -> f32"
+    },
+    {
+      "signature": "pub fn log10 (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn log2 (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn powf (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn powff (_ : f32 , _ : f32) -> f32"
+    },
+    {
+      "signature": "pub fn sin (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn sincos (_ : f64) -> (f64 , f64)"
+    },
+    {
+      "signature": "pub fn sincosf (_ : f32) -> (f32 , f32)"
+    },
+    {
+      "signature": "pub fn sinf (_ : f32) -> f32"
+    },
+    {
+      "signature": "pub fn sqrt (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn sqrtf (_ : f32) -> f32"
+    },
+    {
+      "signature": "pub fn tan (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn tanf (_ : f32) -> f32"
+    },
+    {
+      "signature": "pub fn tanh (_ : f64) -> f64"
+    }
+  ],
   "crates/math_commons/src/math_kernel/types.rs": [
     {
       "signature": "pub fn flatten_2d_index (_ : usize , _ : usize , _ : usize) -> usize"
@@ -9609,6 +9710,71 @@
       "signature": "pub trait BoundaryCondition { fn resolve (& self , _ : isize , _ : isize , _ : usize , _ : usize) -> Option < usize > }"
     }
   ],
+  "crates/oxidize_core/src/digest.rs": [
+    {
+      "signature": "impl TrajectoryDigest { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn finish_bytes (& self) -> [u8 ; 32] }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn finish_hex (& self) -> String }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn update_bool (& mut self , _ : bool) }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn update_bytes (& mut self , _ : & [u8]) }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn update_f32 (& mut self , _ : f32) }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn update_f32_slice (& mut self , _ : & [f32]) }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn update_f64 (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn update_f64_slice (& mut self , _ : & [f64]) }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn update_i32 (& mut self , _ : i32) }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn update_i64 (& mut self , _ : i64) }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn update_u32 (& mut self , _ : u32) }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn update_u64 (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl TrajectoryDigest { pub fn update_usize (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "pub const CANONICAL_F32_NAN_BITS : u32"
+    },
+    {
+      "signature": "pub const CANONICAL_F64_NAN_BITS : u64"
+    },
+    {
+      "signature": "pub fn canonical_f32_bits (_ : f32) -> u32"
+    },
+    {
+      "signature": "pub fn canonical_f64_bits (_ : f64) -> u64"
+    },
+    {
+      "signature": "pub fn digest_f32_slice (_ : & [f32]) -> String"
+    },
+    {
+      "signature": "pub fn digest_f64_slice (_ : & [f64]) -> String"
+    },
+    {
+      "signature": "pub struct TrajectoryDigest"
+    }
+  ],
   "crates/oxidize_core/src/iteration.rs": [
     {
       "signature": "impl IterationPattern { pub fn for_each_boundary < F > (_ : usize , _ : usize , _ : F) where F : FnMut (usize , usize) , }"
@@ -9798,6 +9964,27 @@
     },
     {
       "signature": "pub struct OxidizeRng"
+    },
+    {
+      "signature": "pub use crate :: digest :: CANONICAL_F32_NAN_BITS"
+    },
+    {
+      "signature": "pub use crate :: digest :: CANONICAL_F64_NAN_BITS"
+    },
+    {
+      "signature": "pub use crate :: digest :: TrajectoryDigest"
+    },
+    {
+      "signature": "pub use crate :: digest :: canonical_f32_bits"
+    },
+    {
+      "signature": "pub use crate :: digest :: canonical_f64_bits"
+    },
+    {
+      "signature": "pub use crate :: digest :: digest_f32_slice"
+    },
+    {
+      "signature": "pub use crate :: digest :: digest_f64_slice"
     }
   ],
   "crates/oxidize_core/src/traceability.rs": [
@@ -9971,6 +10158,9 @@
       "signature": "pub use workspace_wasm :: HOST_ONLY_WORKSPACE_PACKAGES"
     },
     {
+      "signature": "pub use workspace_wasm :: STOCHASTIC_WORKSPACE_PACKAGES"
+    },
+    {
       "signature": "pub use workspace_wasm :: WasmCrateSpec"
     },
     {
@@ -9983,10 +10173,19 @@
       "signature": "pub use workspace_wasm :: build_wasm_cargo_test_invocations"
     },
     {
+      "signature": "pub use workspace_wasm :: build_wasm_cargo_test_invocations_in"
+    },
+    {
+      "signature": "pub use workspace_wasm :: discover_deterministic_tests"
+    },
+    {
       "signature": "pub use workspace_wasm :: discover_wasm_crates"
     },
     {
       "signature": "pub use workspace_wasm :: parse_workspace_members_std"
+    },
+    {
+      "signature": "pub use workspace_wasm :: verify_stochastic_deterministic_suites"
     }
   ],
   "crates/pure_math/src/error.rs": [

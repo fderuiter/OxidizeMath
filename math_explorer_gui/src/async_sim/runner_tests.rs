@@ -44,7 +44,7 @@ fn test_morphogenesis_runner_offload() {
         width,
         height,
         step_count: 0,
-        rng: oxidize_core::rng::OxidizeRng::default(),
+        rng: oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED),
         noise_amplitude: 0.0,
     };
 
@@ -219,7 +219,7 @@ fn test_mri_runner_offload() {
         max_history: 1000,
         twin: None,
         step_count: 0,
-        rng: oxidize_core::rng::OxidizeRng::default(),
+        rng: oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED),
     };
 
     assert_eq!(runner.current_time, 0.0);
@@ -285,7 +285,7 @@ fn test_physics_and_chaos_runners_step_once() {
         max_history: 100,
         twin: None,
         step_count: 0,
-        rng: oxidize_core::rng::OxidizeRng::default(),
+        rng: oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED),
     };
     mri.step_once();
     assert!((mri.current_time - 0.001).abs() < 1e-12);

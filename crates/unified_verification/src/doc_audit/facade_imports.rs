@@ -72,6 +72,8 @@ struct FacadeImportPatterns {
     doc_re: Regex,
     forbidden_re: Regex,
     bypass_re: Regex,
+    std_rng_re: Regex,
+    default_rng_re: Regex,
 }
 
 impl FacadeImportPatterns {
@@ -84,14 +86,47 @@ impl FacadeImportPatterns {
                 r"(?:^|[^:\w])(domain_[a-z0-9_]+|pure_math|math_commons|oxidize_core|nalgebra|num_complex|petgraph|rand)::",
             )
             .expect("Valid regex"),
+            std_rng_re: Regex::new(r"\bStdRng\b").expect("Valid regex"),
+            default_rng_re: Regex::new(
+                r"(?:\bOxidizeRng\s*::\s*default\b|<\s*[^>\n]*\bOxidizeRng\s+as\s+[^>\n]*\bDefault\s*>\s*::\s*default\b)",
+            )
+            .expect("Valid regex"),
         }
     }
 }
 
-fn check_markdown_facade_imports_with_regex(
+fn check_rng_snippet_line(
+    path: &Path,
+    line_no: usize,
+    context_label: &str,
+    raw_line: &str,
+    patterns: &FacadeImportPatterns,
+    allow_default_rng: bool,
+    violations: &mut Vec<String>,
+) {
+    let unhidden = raw_line.strip_prefix("# ").unwrap_or(raw_line).trim();
+    if unhidden.is_empty() || unhidden == "#" || unhidden.starts_with("//") {
+        return;
+    }
+    let code_part = unhidden.split("//").next().unwrap_or(unhidden);
+    if patterns.std_rng_re.is_match(code_part) {
+        violations.push(format!(
+            "{}:{line_no}: {context_label} references forbidden `StdRng`; use `math_explorer::rng::OxidizeRng`",
+            path.display()
+        ));
+    }
+    if !allow_default_rng && patterns.default_rng_re.is_match(code_part) {
+        violations.push(format!(
+            "{}:{line_no}: {context_label} calls unallowlisted `OxidizeRng::default`; pass an explicit seed via `OxidizeRng::new` or `OxidizeRng::from_seed`",
+            path.display()
+        ));
+    }
+}
+
+fn check_markdown_facade_imports_with_patterns(
     path: &Path,
     content: &str,
-    forbidden_re: &Regex,
+    patterns: &FacadeImportPatterns,
 ) -> Vec<String> {
     let mut violations = Vec::new();
     let mut in_fence = false;
@@ -109,14 +144,23 @@ fn check_markdown_facade_imports_with_regex(
             }
             continue;
         }
-        if !in_fence || !is_rust {
+        if !in_fence || !is_rust || trimmed.starts_with("//") {
             continue;
         }
-        if trimmed.starts_with("# ") || trimmed == "#" || trimmed.starts_with("//") {
+        check_rng_snippet_line(
+            path,
+            idx + 1,
+            "Consumer guide snippet",
+            trimmed,
+            patterns,
+            false,
+            &mut violations,
+        );
+        if trimmed.starts_with("# ") || trimmed == "#" {
             continue;
         }
         let code_part = trimmed.split("//").next().unwrap_or(trimmed);
-        if let Some(caps) = forbidden_re.captures(code_part) {
+        if let Some(caps) = patterns.forbidden_re.captures(code_part) {
             violations.push(format!(
                 "{}:{}: Consumer guide snippet imports internal crate `{}` directly instead of `math_explorer::`",
                 path.display(),
@@ -129,26 +173,26 @@ fn check_markdown_facade_imports_with_regex(
 }
 
 /// Checks Markdown content for visible internal `domain_*::` or `pure_math::` imports/paths
-/// inside Rust code fences (ignoring hidden `# ` lines and comments).
+/// and forbidden `StdRng` / `OxidizeRng::default` calls inside Rust code fences.
 #[cfg(test)]
 pub fn check_markdown_facade_imports(path: &Path, content: &str) -> Vec<String> {
-    let forbidden_re =
-        Regex::new(r"(?:^|[^:\w])(domain_[a-z0-9_]+|pure_math)::").expect("Valid regex");
-    check_markdown_facade_imports_with_regex(path, content, &forbidden_re)
+    let patterns = FacadeImportPatterns::new();
+    check_markdown_facade_imports_with_patterns(path, content, &patterns)
 }
 
-fn check_rustdoc_facade_imports_with_regexes(
+fn check_rustdoc_facade_imports_with_patterns(
     path: &Path,
     content: &str,
-    doc_re: &Regex,
-    forbidden_re: &Regex,
+    patterns: &FacadeImportPatterns,
+    check_facade: bool,
+    allow_default_rng: bool,
 ) -> Vec<String> {
     let mut violations = Vec::new();
     let mut in_fence = false;
     let mut is_rust = false;
 
     for (idx, line) in content.lines().enumerate() {
-        let Some(caps) = doc_re.captures(line) else {
+        let Some(caps) = patterns.doc_re.captures(line) else {
             in_fence = false;
             is_rust = false;
             continue;
@@ -164,14 +208,23 @@ fn check_rustdoc_facade_imports_with_regexes(
             }
             continue;
         }
-        if !in_fence || !is_rust {
+        if !in_fence || !is_rust || doc_line.starts_with("//") {
             continue;
         }
-        if doc_line.starts_with("# ") || doc_line == "#" || doc_line.starts_with("//") {
+        check_rng_snippet_line(
+            path,
+            idx + 1,
+            "Rustdoc snippet",
+            doc_line,
+            patterns,
+            allow_default_rng,
+            &mut violations,
+        );
+        if !check_facade || doc_line.starts_with("# ") || doc_line == "#" {
             continue;
         }
         let code_part = doc_line.split("//").next().unwrap_or(doc_line);
-        if let Some(caps) = forbidden_re.captures(code_part) {
+        if let Some(caps) = patterns.forbidden_re.captures(code_part) {
             violations.push(format!(
                 "{}:{}: Visible rustdoc snippet imports internal crate `{}` directly instead of `math_explorer::`",
                 path.display(),
@@ -184,22 +237,17 @@ fn check_rustdoc_facade_imports_with_regexes(
 }
 
 /// Checks Rust source doc-comment fences (`///` / `//!`) for visible internal
-/// `domain_*::` or `pure_math::` imports/paths.
+/// `domain_*::` or `pure_math::` imports/paths and forbidden RNG calls.
 #[cfg(test)]
 pub fn check_rustdoc_facade_imports(path: &Path, content: &str) -> Vec<String> {
     let patterns = FacadeImportPatterns::new();
-    check_rustdoc_facade_imports_with_regexes(
-        path,
-        content,
-        &patterns.doc_re,
-        &patterns.forbidden_re,
-    )
+    check_rustdoc_facade_imports_with_patterns(path, content, &patterns, true, false)
 }
 
-fn check_example_facade_imports_with_regex(
+fn check_example_facade_imports_with_patterns(
     path: &Path,
     content: &str,
-    bypass_re: &Regex,
+    patterns: &FacadeImportPatterns,
 ) -> Vec<String> {
     let mut violations = Vec::new();
 
@@ -208,8 +256,17 @@ fn check_example_facade_imports_with_regex(
         if trimmed.starts_with("//") {
             continue;
         }
+        check_rng_snippet_line(
+            path,
+            idx + 1,
+            "Example/benchmark",
+            trimmed,
+            patterns,
+            false,
+            &mut violations,
+        );
         let code_part = trimmed.split("//").next().unwrap_or(trimmed);
-        for caps in bypass_re.captures_iter(code_part) {
+        for caps in patterns.bypass_re.captures_iter(code_part) {
             let ident_match = caps.get(1).unwrap();
             let prefix_before = &code_part[..ident_match.start()];
             if prefix_before.ends_with("math_explorer::") {
@@ -229,24 +286,34 @@ fn check_example_facade_imports_with_regex(
 /// Checks `math_explorer/examples/*.rs` and `math_explorer/benches/*.rs` for facade-bypassing imports.
 #[cfg(test)]
 pub fn check_example_facade_imports(path: &Path, content: &str) -> Vec<String> {
-    let bypass_re = Regex::new(
-        r"(?:^|[^:\w])(domain_[a-z0-9_]+|pure_math|math_commons|oxidize_core|nalgebra|num_complex|petgraph|rand)::",
-    )
-    .expect("Valid regex");
-    check_example_facade_imports_with_regex(path, content, &bypass_re)
+    let patterns = FacadeImportPatterns::new();
+    check_example_facade_imports_with_patterns(path, content, &patterns)
 }
 
-/// Audits active Markdown guides, domain rustdoc blocks, and `math_explorer` examples/benchmarks.
+fn is_default_rng_allowlisted(workspace_root: &Path, path: &Path, allowlist: &[String]) -> bool {
+    let rel = path.strip_prefix(workspace_root).unwrap_or(path);
+    let norm = rel.to_string_lossy().replace('\\', "/");
+    let norm = norm.strip_prefix("./").unwrap_or(&norm);
+    allowlist.iter().any(|entry| entry == norm)
+}
+
+/// Audits active Markdown guides, domain/core rustdoc blocks, and `math_explorer` examples/benchmarks.
 pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
     let patterns = FacadeImportPatterns::new();
+    let wl_candidate = workspace_root.join(crate::whitelist::WHITELIST_FILE_NAME);
+    let default_allow = crate::whitelist::load_whitelist_or_default(
+        wl_candidate.is_file().then_some(wl_candidate.as_path()),
+        crate::whitelist::WORKSPACE_WHITELIST_CANDIDATES,
+    )
+    .entropy_guard
+    .and_then(|cfg| cfg.default_rng_allowlist)
+    .unwrap_or_default();
     let mut violations = Vec::new();
 
     for md_path in collect_active_guide_paths(workspace_root) {
         if let Ok(content) = fs::read_to_string(&md_path) {
-            violations.extend(check_markdown_facade_imports_with_regex(
-                &md_path,
-                &content,
-                &patterns.forbidden_re,
+            violations.extend(check_markdown_facade_imports_with_patterns(
+                &md_path, &content, &patterns,
             ));
         }
     }
@@ -260,11 +327,29 @@ pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
         );
         for rs_path in rs_files {
             if let Ok(content) = fs::read_to_string(&rs_path) {
-                violations.extend(check_rustdoc_facade_imports_with_regexes(
-                    &rs_path,
-                    &content,
-                    &patterns.doc_re,
-                    &patterns.forbidden_re,
+                let allow_def =
+                    is_default_rng_allowlisted(workspace_root, &rs_path, &default_allow);
+                violations.extend(check_rustdoc_facade_imports_with_patterns(
+                    &rs_path, &content, &patterns, true, allow_def,
+                ));
+            }
+        }
+    }
+
+    for extra_src in [
+        workspace_root.join("crates/oxidize_core/src"),
+        workspace_root.join("crates/math_commons/src"),
+        workspace_root.join("math_explorer/src"),
+        workspace_root.join("math_explorer_gui/src"),
+    ] {
+        let mut rs_files = Vec::new();
+        collect_files_with_ext(&extra_src, "rs", &mut rs_files);
+        for rs_path in rs_files {
+            if let Ok(content) = fs::read_to_string(&rs_path) {
+                let allow_def =
+                    is_default_rng_allowlisted(workspace_root, &rs_path, &default_allow);
+                violations.extend(check_rustdoc_facade_imports_with_patterns(
+                    &rs_path, &content, &patterns, false, allow_def,
                 ));
             }
         }
@@ -279,10 +364,10 @@ pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
         );
         for target_path in targets {
             if let Ok(content) = fs::read_to_string(&target_path) {
-                violations.extend(check_example_facade_imports_with_regex(
+                violations.extend(check_example_facade_imports_with_patterns(
                     &target_path,
                     &content,
-                    &patterns.bypass_re,
+                    &patterns,
                 ));
             }
         }
@@ -372,71 +457,5 @@ pub fn audit_workspace_guides_and_manifests(workspace_root: &Path) -> Vec<String
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn markdown_facade_import_check_allows_hidden_shims_and_rejects_visible_internal_imports() {
-        let clean = "```toml\ndomain_applied = \"0.4\"\n```\n\n```rust\n# use domain_applied::__doctest_facade as math_explorer;\nuse math_explorer::applied::battery_degradation::PowerLawModel;\n```\n";
-        assert!(check_markdown_facade_imports(Path::new("guide.md"), clean).is_empty());
-
-        let dirty =
-            "```rust\nuse domain_applied::applied::battery_degradation::PowerLawModel;\n```\n";
-        let violations = check_markdown_facade_imports(Path::new("guide.md"), dirty);
-        assert_eq!(violations.len(), 1);
-        assert!(violations[0].contains("domain_applied"));
-
-        let rustdoc_dirty = "//! ```rust\n//! use pure_math::pure_math::number_theory;\n//! ```\n";
-        assert_eq!(
-            check_rustdoc_facade_imports(Path::new("lib.rs"), rustdoc_dirty).len(),
-            1
-        );
-        assert_eq!(
-            check_example_facade_imports(Path::new("demo.rs"), "use nalgebra::DMatrix;\n").len(),
-            1
-        );
-    }
-
-    #[test]
-    fn rustdoc_and_adr_exclusion_work_end_to_end() {
-        let dir = crate::utils::test_utils::create_temp_test_dir("facade_import_hygiene");
-        let adr_dir = dir.join("docs/adr");
-        let arch_dir = dir.join("docs/architecture");
-        let dom_src = dir.join("crates/domain_ai/src");
-        let ex_dir = dir.join("math_explorer/examples");
-        fs::create_dir_all(&adr_dir).unwrap();
-        fs::create_dir_all(&arch_dir).unwrap();
-        fs::create_dir_all(&dom_src).unwrap();
-        fs::create_dir_all(&ex_dir).unwrap();
-
-        // Historical ADR with legacy domain_ai import must be ignored
-        fs::write(
-            adr_dir.join("0001-legacy.md"),
-            "```rust\nuse domain_ai::ai::transformer::Encoder;\n```\n",
-        )
-        .unwrap();
-        // Active guide with direct domain_climate import must be flagged
-        fs::write(
-            arch_dir.join("guide.md"),
-            "```rust\nuse domain_climate::climate::cera::Cera;\n```\n",
-        )
-        .unwrap();
-        // Rustdoc with visible pure_math import must be flagged
-        fs::write(
-            dom_src.join("lib.rs"),
-            "//! ```rust\n//! use pure_math::pure_math::number_theory;\n//! ```\n",
-        )
-        .unwrap();
-        // Example bypassing math_explorer::nalgebra must be flagged
-        fs::write(
-            ex_dir.join("demo.rs"),
-            "use nalgebra::DMatrix;\nfn main() {}\n",
-        )
-        .unwrap();
-
-        let violations = audit_facade_import_hygiene(&dir);
-        assert_eq!(violations.len(), 3, "Violations: {violations:?}");
-        assert!(!violations.iter().any(|v| v.contains("0001-legacy.md")));
-        let _ = fs::remove_dir_all(&dir);
-    }
-}
+#[path = "facade_imports_tests.rs"]
+mod tests;

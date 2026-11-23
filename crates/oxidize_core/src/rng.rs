@@ -1,3 +1,7 @@
+pub use crate::digest::{
+    CANONICAL_F32_NAN_BITS, CANONICAL_F64_NAN_BITS, TrajectoryDigest, canonical_f32_bits,
+    canonical_f64_bits, digest_f32_slice, digest_f64_slice,
+};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 

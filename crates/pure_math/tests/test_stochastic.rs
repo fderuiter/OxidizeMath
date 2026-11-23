@@ -35,7 +35,7 @@ impl StochasticSystem<TestState> for TestModel {
 
 #[test]
 fn test_stochastic_step_zero_allocations_with_global_allocator() {
-    let rng = oxidize_core::rng::OxidizeRng::default();
+    let rng = oxidize_core::rng::OxidizeRng::new(42);
     let mut solver = GillespieSolver::new(rng);
     let model = TestModel;
     let mut state = TestState { x: 50 };

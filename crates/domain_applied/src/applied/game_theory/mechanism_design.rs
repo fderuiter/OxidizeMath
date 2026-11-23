@@ -122,7 +122,7 @@ pub fn simulate_optimal_revenue<D: ValuationDistribution>(
     n_bidders: usize,
     n_simulations: usize,
 ) -> f64 {
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
     simulate_optimal_revenue_with_rng(dist, n_bidders, n_simulations, &mut rng)
 }
 

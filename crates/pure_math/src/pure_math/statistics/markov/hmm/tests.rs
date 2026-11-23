@@ -147,7 +147,7 @@ mod tests {
         let emissions = DMatrix::from_row_slice(2, 2, &[0.8, 0.2, 0.3, 0.7]);
 
         let hmm = HiddenMarkovModel::new(initial, transitions, emissions).unwrap();
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng = oxidize_core::rng::OxidizeRng::new(42);
 
         let (states, observations) = hmm.generate(10, &mut rng).unwrap();
 

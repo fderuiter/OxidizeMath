@@ -244,11 +244,19 @@ fn run_clippy_lints() {
     run_cmd("cargo", WASM_CLIPPY_ARGS);
 }
 
+fn verify_deterministic_suites_in(ws_root: &Path) {
+    if let Err(err) = workspace_wasm::verify_stochastic_deterministic_suites(ws_root) {
+        eprintln!("{err}");
+        exit(1);
+    }
+}
+
 fn run_fast_preflight_gates() {
     println!("\n--- Step 1: Format Check ---");
     run_cmd("cargo", &["fmt", "--all", "--", "--check"]);
 
     println!("\n--- Step 2: Batched Static & Single-Pass AST Verification ---");
+    verify_deterministic_suites_in(&workspace_root());
     if let Some(base_sha) = branch_records_base_sha() {
         run_verification_with_env(
             "batch-static",
@@ -415,12 +423,22 @@ pub fn test_wasm(args: &[String]) {
     let caller_cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let (skip_build, screenshot_dir) = parse_test_wasm_args(args, &caller_cwd);
     let ws_root = resolve_workspace_root();
+    verify_deterministic_suites_in(&ws_root);
 
     let wasm_crates = workspace_wasm::discover_wasm_crates(&ws_root).unwrap_or_else(|err| {
         eprintln!("Failed to discover wasm32 workspace crates: {err}");
         exit(1);
     });
-    let invocations = workspace_wasm::build_wasm_cargo_test_invocations(&wasm_crates);
+    let invocations = if std::env::current_dir()
+        .ok()
+        .and_then(|cwd| workspace_wasm::find_workspace_root(&cwd))
+        .as_deref()
+        == Some(ws_root.as_path())
+    {
+        workspace_wasm::build_wasm_cargo_test_invocations(&wasm_crates)
+    } else {
+        workspace_wasm::build_wasm_cargo_test_invocations_in(Some(&ws_root), &wasm_crates)
+    };
     for (step_idx, cargo_args) in invocations.iter().enumerate() {
         println!(
             "\n--- Step 1{}: WASM Workspace Crate Tests ({} crates discovered) ---",

@@ -17,7 +17,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("merge_sort", |b| b.iter(|| merge_sort(black_box(&data))));
     group.bench_function("quick_sort", |b| b.iter(|| quick_sort(black_box(&data))));
 
-    let mut rng = OxidizeRng::default();
+    let mut rng = OxidizeRng::new(42);
     let mut radix_data = Vec::with_capacity(100_000);
     for _ in 0..100_000 {
         radix_data.push(rng.r#gen::<u32>() as u64); // avoid overflow

@@ -50,7 +50,7 @@
 //!     // 2. Design: Randomize patients
 //!     // We need 2 * n_per_group total patients
 //!     let total_patients = n_per_group * 2;
-//!     let mut rng = OxidizeRng::default();
+//!     let mut rng = OxidizeRng::new(42);
 //!     let assignments = SimpleRandomizer.assign(&mut rng, total_patients).unwrap();
 //!
 //!     // ... Conduct trial ...

@@ -3,6 +3,7 @@
 
 use super::engine::LeniaEngine;
 use super::kernel::{GrowthParams, KernelShells};
+use math_commons::math_kernel::soft_float;
 use math_commons::math_kernel::types::flatten_2d_index;
 use oxidize_core::rng::OxidizeRng;
 use rand::Rng;
@@ -147,7 +148,7 @@ fn sample_orbium_bilinear(u: f64, v: f64) -> f64 {
 
 #[verified_engine::verified]
 pub(super) fn analytic_species_density(species: LeniaSpecies, nx: f64, ny: f64) -> f64 {
-    let r = nx.hypot(ny);
+    let r = soft_float::hypot(nx, ny);
     match species {
         LeniaSpecies::Orbium => {
             let u = nx * 13.0 + 9.5;
@@ -158,7 +159,7 @@ pub(super) fn analytic_species_density(species: LeniaSpecies, nx: f64, ny: f64) 
             if r > 1.05 {
                 return 0.0;
             }
-            let ring = 0.92 * (-((r - 0.56) / 0.28).powi(2)).exp();
+            let ring = 0.92 * soft_float::exp(-((r - 0.56) / 0.28).powi(2));
             let front_bias = 0.84 + 0.16 * (nx / (r + 0.05));
             (ring * front_bias).clamp(0.0, 1.0)
         }
@@ -166,18 +167,21 @@ pub(super) fn analytic_species_density(species: LeniaSpecies, nx: f64, ny: f64) 
             if r > 1.45 {
                 return 0.0;
             }
-            let lobe_a = 0.98 * (-((nx + 0.34).hypot(ny - 0.12) / 0.58).powi(2)).exp();
-            let lobe_b = 0.94 * (-((nx - 0.38).hypot(ny + 0.16) / 0.54).powi(2)).exp();
-            let mantle = 0.72 * (-((r - 0.82) / 0.28).powi(2)).exp();
+            let lobe_a =
+                0.98 * soft_float::exp(-(soft_float::hypot(nx + 0.34, ny - 0.12) / 0.58).powi(2));
+            let lobe_b =
+                0.94 * soft_float::exp(-(soft_float::hypot(nx - 0.38, ny + 0.16) / 0.54).powi(2));
+            let mantle = 0.72 * soft_float::exp(-((r - 0.82) / 0.28).powi(2));
             (lobe_a.max(lobe_b) + 0.55 * mantle).clamp(0.0, 1.0)
         }
         LeniaSpecies::Geminium => {
             if r > 1.35 {
                 return 0.0;
             }
-            let twin_l = (-((nx + 0.36).hypot(ny - 0.06) / 0.42).powi(2)).exp();
-            let twin_r = 0.95 * (-((nx - 0.36).hypot(ny + 0.08) / 0.42).powi(2)).exp();
-            let bridge = 0.58 * (-(nx.hypot(ny - 0.16) / 0.36).powi(2)).exp();
+            let twin_l = soft_float::exp(-(soft_float::hypot(nx + 0.36, ny - 0.06) / 0.42).powi(2));
+            let twin_r =
+                0.95 * soft_float::exp(-(soft_float::hypot(nx - 0.36, ny + 0.08) / 0.42).powi(2));
+            let bridge = 0.58 * soft_float::exp(-(soft_float::hypot(nx, ny - 0.16) / 0.36).powi(2));
             (twin_l + twin_r + bridge).clamp(0.0, 1.0)
         }
     }

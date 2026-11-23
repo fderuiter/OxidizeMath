@@ -49,12 +49,10 @@ pub struct DenseLayer {
 }
 
 impl DenseLayer {
-    /// Creates a new dense layer with random initialization.
-    ///
-    /// This method uses the default thread-local RNG.
+    /// Creates a new dense layer with deterministic initialization from [`oxidize_core::rng::BASE_SEED`].
     #[verified_engine::verified]
     pub fn new(input_dim: usize, output_dim: usize) -> Self {
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
         Self::new_with_rng(input_dim, output_dim, &mut rng)
     }
 

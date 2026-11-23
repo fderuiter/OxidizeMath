@@ -77,7 +77,7 @@ fn test_simulation() {
     let generator = DMatrix::from_row_slice(2, 2, &[-1.0, 1.0, 2.0, -2.0]);
 
     let chain = ContinuousMarkovChain::new(generator).unwrap();
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = oxidize_core::rng::OxidizeRng::new(42);
 
     let trajectory = chain.simulate_trajectory(0, 10.0, &mut rng).unwrap();
 

@@ -59,7 +59,7 @@ fn bench_turing_2d_step() {
     // Initialize with some values
     use oxidize_core::rng::OxidizeRng;
     use rand::Rng;
-    let mut rng = OxidizeRng::default();
+    let mut rng = OxidizeRng::new(42);
     for i in 0..width * height {
         system.u_mut()[i] = 1.0 + rng.gen_range(-0.1..0.1);
         system.v_mut()[i] = 0.5 + rng.gen_range(-0.1..0.1);

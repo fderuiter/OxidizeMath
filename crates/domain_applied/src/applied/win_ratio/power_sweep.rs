@@ -2,6 +2,7 @@
 //! [`super::simulation::SimulationParams`].
 
 use crate::applied::clinical_trials::types::ClinicalTrialError;
+use math_commons::math_kernel::soft_float;
 use oxidize_core::rng::OxidizeRng;
 
 use super::censoring::{RightCensoredComparator, TierCount};
@@ -325,7 +326,7 @@ fn sweep_single_arm_size(
         if let Some(s) = summary_opt {
             rejections += usize::from(s.p_value < cfg.sig_alpha);
             if s.win_ratio.is_finite() && s.win_ratio > 0.0 {
-                sum_ln_wr += s.win_ratio.ln();
+                sum_ln_wr += soft_float::ln(s.win_ratio);
                 finite_cnt += 1;
             }
             last_summary = Some(s);
@@ -335,7 +336,7 @@ fn sweep_single_arm_size(
 
     let inv_rep = 1.0 / (cfg.replicates as f64);
     let mean_win_ratio = if finite_cnt > 0 {
-        (sum_ln_wr / (finite_cnt as f64)).exp()
+        soft_float::exp(sum_ln_wr / (finite_cnt as f64))
     } else {
         super::simulation::win_ratio_parameter(params)
     };

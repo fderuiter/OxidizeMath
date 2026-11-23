@@ -43,7 +43,7 @@ pub struct ConvLayer {
 }
 
 impl ConvLayer {
-    /// Creates a new convolutional layer with random initialization.
+    /// Creates a new convolutional layer with deterministic default-seed initialization.
     ///
     /// # Arguments
     ///
@@ -55,9 +55,19 @@ impl ConvLayer {
     /// A new `ConvLayer`.
     #[verified_engine::verified]
     pub fn new(in_channels: usize, out_channels: usize) -> Self {
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
+        Self::new_with_rng(in_channels, out_channels, &mut rng)
+    }
+
+    /// Creates a new convolutional layer initialized from a caller-provided RNG stream.
+    #[verified_engine::verified]
+    pub fn new_with_rng<R: Rng + ?Sized>(
+        in_channels: usize,
+        out_channels: usize,
+        rng: &mut R,
+    ) -> Self {
         let fan_sum = in_channels.saturating_add(out_channels).max(1) as f32;
-        let limit = (6.0 / fan_sum).sqrt();
+        let limit = math_commons::math_kernel::soft_float::sqrtf(6.0 / fan_sum);
         let kernel = DMatrix::from_fn(out_channels, in_channels, |_, _| {
             (rng.r#gen::<f32>() * 2.0 - 1.0) * limit
         });
@@ -114,13 +124,25 @@ pub struct Encoder {
 }
 
 impl Encoder {
-    /// Creates a new encoder with a hardcoded architecture: Input (2 channels) -> 64 -> 64 -> Latent (3 channels).
+    /// Creates a new encoder with architecture `in_channels -> 64 -> 64 -> latent_channels`,
+    /// threading one deterministic [`oxidize_core::rng::OxidizeRng`] across all three layers.
     #[verified_engine::verified]
     pub fn new(in_channels: usize, latent_channels: usize) -> Self {
+        let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
+        Self::new_with_rng(in_channels, latent_channels, &mut rng)
+    }
+
+    /// Creates a new encoder initialized by advancing a caller-provided RNG across all layers.
+    #[verified_engine::verified]
+    pub fn new_with_rng<R: Rng + ?Sized>(
+        in_channels: usize,
+        latent_channels: usize,
+        rng: &mut R,
+    ) -> Self {
         let layers = [
-            ConvLayer::new(in_channels, 64),
-            ConvLayer::new(64, 64),
-            ConvLayer::new(64, latent_channels),
+            ConvLayer::new_with_rng(in_channels, 64, rng),
+            ConvLayer::new_with_rng(64, 64, rng),
+            ConvLayer::new_with_rng(64, latent_channels, rng),
         ];
         Self::new_from_layers(layers)
     }
@@ -156,13 +178,25 @@ pub struct Decoder {
 }
 
 impl Decoder {
-    /// Creates a new decoder with architecture: Latent (3 channels) -> 64 -> 64 -> Output (2 channels).
+    /// Creates a new decoder with architecture `latent_channels -> 64 -> 64 -> out_channels`,
+    /// threading one domain-separated [`oxidize_core::rng::OxidizeRng`] across all three layers.
     #[verified_engine::verified]
     pub fn new(latent_channels: usize, out_channels: usize) -> Self {
+        let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED ^ 1);
+        Self::new_with_rng(latent_channels, out_channels, &mut rng)
+    }
+
+    /// Creates a new decoder initialized by advancing a caller-provided RNG across all layers.
+    #[verified_engine::verified]
+    pub fn new_with_rng<R: Rng + ?Sized>(
+        latent_channels: usize,
+        out_channels: usize,
+        rng: &mut R,
+    ) -> Self {
         let layers = [
-            ConvLayer::new(latent_channels, 64),
-            ConvLayer::new(64, 64),
-            ConvLayer::new(64, out_channels),
+            ConvLayer::new_with_rng(latent_channels, 64, rng),
+            ConvLayer::new_with_rng(64, 64, rng),
+            ConvLayer::new_with_rng(64, out_channels, rng),
         ];
         Self::new_from_layers(layers)
     }
@@ -199,11 +233,22 @@ pub struct Autoencoder {
 }
 
 impl Autoencoder {
-    /// Creates a new autoencoder with 2 input channels and 3 latent channels.
+    /// Creates a new autoencoder threading one [`oxidize_core::rng::OxidizeRng`] across encoder and decoder.
     #[verified_engine::verified]
     pub fn new(in_channels: usize, latent_channels: usize) -> Self {
-        let encoder = Encoder::new(in_channels, latent_channels);
-        let decoder = Decoder::new(latent_channels, in_channels);
+        let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED);
+        Self::new_with_rng(in_channels, latent_channels, &mut rng)
+    }
+
+    /// Creates a new autoencoder initialized by advancing `rng` across encoder and decoder layers.
+    #[verified_engine::verified]
+    pub fn new_with_rng<R: Rng + ?Sized>(
+        in_channels: usize,
+        latent_channels: usize,
+        rng: &mut R,
+    ) -> Self {
+        let encoder = Encoder::new_with_rng(in_channels, latent_channels, rng);
+        let decoder = Decoder::new_with_rng(latent_channels, in_channels, rng);
         Self::new_from_components(encoder, decoder)
     }
 
@@ -340,9 +385,8 @@ mod tests {
 
         let autoencoder = Autoencoder::new(in_channels, latent_channels);
 
-        let input = DMatrix::from_fn(n_samples, in_channels, |_, _| {
-            oxidize_core::rng::OxidizeRng::default().r#gen()
-        });
+        let mut rng = oxidize_core::rng::OxidizeRng::new(42);
+        let input = DMatrix::from_fn(n_samples, in_channels, |_, _| rng.r#gen());
 
         let (latent, reconstruction) = autoencoder.forward(&input);
 

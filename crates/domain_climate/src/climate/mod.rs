@@ -89,9 +89,10 @@
 //!
 //! // 3. Create dummy data (Batch size * Num Levels, Channels)
 //! // In reality, this would be your climate simulation data.
-//! let inputs = DMatrix::from_fn(20, 2, |_, _| OxidizeRng::default().r#gen());
-//! let targets = DMatrix::from_fn(2, 5, |_, _| OxidizeRng::default().r#gen());
-//! let warm_inputs = DMatrix::from_fn(20, 2, |_, _| OxidizeRng::default().r#gen()); // Different climate
+//! let mut rng = OxidizeRng::new(42);
+//! let inputs = DMatrix::from_fn(20, 2, |_, _| rng.r#gen());
+//! let targets = DMatrix::from_fn(2, 5, |_, _| rng.r#gen());
+//! let warm_inputs = DMatrix::from_fn(20, 2, |_, _| rng.r#gen()); // Different climate
 //!
 //! // 4. Train (using the mock optimizer)
 //! let mut trainer = CeraTrainer::new(&mut model);

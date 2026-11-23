@@ -29,10 +29,23 @@ pub fn try_conv1d<S: Storage<f32, Dyn, Dyn>>(
         });
     }
 
-    let kernel_t = kernel.transpose();
-    let mut output = input * &kernel_t;
-    let bias_t = bias.transpose();
-    output.row_iter_mut().for_each(|mut row| row += &bias_t);
+    let n_rows = input.nrows();
+    let in_ch = input.ncols();
+    let out_ch = kernel.nrows();
+    let mut output = DMatrix::zeros(n_rows, out_ch);
+    for o in 0..out_ch {
+        let b = bias[o];
+        let mut out_col = output.column_mut(o);
+        for k in 0..in_ch {
+            let w = kernel[(o, k)];
+            for r in 0..n_rows {
+                out_col[r] += input[(r, k)] * w;
+            }
+        }
+        for r in 0..n_rows {
+            out_col[r] += b;
+        }
+    }
     Ok(output)
 }
 
@@ -81,9 +94,23 @@ pub fn try_conv_transpose1d<S: Storage<f32, Dyn, Dyn>>(
         });
     }
 
-    let mut output = input * kernel;
-    let bias_t = bias.transpose();
-    output.row_iter_mut().for_each(|mut row| row += &bias_t);
+    let n_rows = input.nrows();
+    let in_ch = input.ncols();
+    let out_ch = kernel.ncols();
+    let mut output = DMatrix::zeros(n_rows, out_ch);
+    for o in 0..out_ch {
+        let b = bias[o];
+        let mut out_col = output.column_mut(o);
+        for k in 0..in_ch {
+            let w = kernel[(k, o)];
+            for r in 0..n_rows {
+                out_col[r] += input[(r, k)] * w;
+            }
+        }
+        for r in 0..n_rows {
+            out_col[r] += b;
+        }
+    }
     Ok(output)
 }
 

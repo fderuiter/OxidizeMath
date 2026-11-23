@@ -6,6 +6,7 @@ use super::algorithms::policy_gradient_step;
 use super::maze::{DenseRlWorkspace, GridCellRole, SculptedGridMdp, index_to_move, move_to_index};
 use super::types::MarkovDecisionProcess;
 use super::{GridState, Move};
+use math_commons::math_kernel::soft_float;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_commons::primitives::UnitInterval;
 use oxidize_core::rng::OxidizeRng;
@@ -47,7 +48,7 @@ pub fn softmax_action_probs(logits: [f64; 4]) -> [f64; 4] {
     let mut exps = [0.0_f64; 4];
     let mut sum = 0.0_f64;
     for i in 0..4 {
-        let e = (logits[i] - max_l).clamp(-60.0, 60.0).exp();
+        let e = soft_float::exp((logits[i] - max_l).clamp(-60.0, 60.0));
         exps[i] = e;
         sum += e;
     }

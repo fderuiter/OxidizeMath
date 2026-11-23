@@ -3,6 +3,7 @@
 use crate::climate::autoencoder::{ConvLayer, leaky_relu};
 use nalgebra::{DMatrix, Dyn, Matrix, Storage};
 use pure_math::pure_math::analysis::optimization::{ModelOptimizer as Optimizer, ParamType};
+use rand::Rng;
 
 /// A trait representing the predictor model interface.
 /// This allows for different predictor architectures and decouples the training loop.
@@ -35,12 +36,23 @@ impl Predictor {
     /// A new `Predictor` instance.
     #[verified_engine::verified]
     pub fn new(input_size: usize, output_size: usize) -> Self {
+        let mut rng = oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED ^ 2);
+        Self::new_with_rng(input_size, output_size, &mut rng)
+    }
+
+    /// Creates a new predictor model initialized by advancing `rng` across all five layers.
+    #[verified_engine::verified]
+    pub fn new_with_rng<R: Rng + ?Sized>(
+        input_size: usize,
+        output_size: usize,
+        rng: &mut R,
+    ) -> Self {
         let layers = [
-            ConvLayer::new(input_size, 128),
-            ConvLayer::new(128, 128),
-            ConvLayer::new(128, 128),
-            ConvLayer::new(128, 128),
-            ConvLayer::new(128, output_size), // No activation on the final layer
+            ConvLayer::new_with_rng(input_size, 128, rng),
+            ConvLayer::new_with_rng(128, 128, rng),
+            ConvLayer::new_with_rng(128, 128, rng),
+            ConvLayer::new_with_rng(128, 128, rng),
+            ConvLayer::new_with_rng(128, output_size, rng),
         ];
         Self::new_from_layers(layers)
     }
@@ -159,10 +171,12 @@ mod tests {
         let batch_size = 4;
 
         let predictor = Predictor::new(input_size, output_size);
+        assert_ne!(predictor.layers[1].kernel, predictor.layers[2].kernel);
+        assert_ne!(predictor.layers[2].kernel, predictor.layers[3].kernel);
+        assert_ne!(predictor.layers[1].kernel, predictor.layers[3].kernel);
 
-        let input = DMatrix::from_fn(batch_size, input_size, |_, _| {
-            oxidize_core::rng::OxidizeRng::default().r#gen()
-        });
+        let mut rng = oxidize_core::rng::OxidizeRng::new(42);
+        let input = DMatrix::from_fn(batch_size, input_size, |_, _| rng.r#gen());
 
         let output = predictor.forward(&input);
 

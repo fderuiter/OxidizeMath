@@ -141,14 +141,13 @@ impl OuAnalyzer {
     /// ```
     /// # use pure_math::__doctest_facade as math_explorer;
     /// use math_explorer::pure_math::statistics::ou_process::{OuAnalyzer, OuParams, TimeStep};
-    /// use math_explorer::rand::SeedableRng;
-    /// use math_explorer::rand::rngs::StdRng;
+    /// use math_explorer::rng::OxidizeRng;
     ///
     /// let params = OuParams::from_values(0.45, 1.0, 0.15).unwrap();
     /// let dt = TimeStep::new(0.01).unwrap();
     /// let analyzer = OuAnalyzer::new(params, dt);
     ///
-    /// let mut rng = math_explorer::rng::OxidizeRng::default();
+    /// let mut rng = OxidizeRng::new(42);
     /// let stats = analyzer.monte_carlo_forecast(0.50, 1.0, 10000, Some(0.48), &mut rng);
     /// ```
     #[verified_engine::verified]
@@ -294,7 +293,7 @@ pub fn estimate_ou_params(observations: &[f64], dt: f64) -> Result<OuParams, OuE
 
     // theta ≈ -ln(ρ₁) / Δt
     let theta = if rho1 > 0.0 && rho1 < 1.0 {
-        -rho1.ln() / dt
+        -math_commons::math_kernel::soft_float::ln(rho1) / dt
     } else {
         1.0 // Default if autocorrelation is out of range
     };
@@ -331,7 +330,7 @@ mod tests {
         let dt = TimeStep::new(0.01).unwrap();
         let analyzer = OuAnalyzer::new(params, dt);
 
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng = oxidize_core::rng::OxidizeRng::new(42);
         let stats = analyzer.monte_carlo_forecast(0.6, 1.0, 1000, Some(0.5), &mut rng);
 
         // Mean should be close to long-term mean
@@ -347,7 +346,7 @@ mod tests {
         let dt = TimeStep::new(0.01).unwrap();
         let analyzer = OuAnalyzer::new(params, dt);
 
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng = oxidize_core::rng::OxidizeRng::new(42);
         let prob = analyzer.comeback_probability(0.3, 0.5, 1.0, 1000, &mut rng);
 
         // Should be between 0 and 1

@@ -4,6 +4,7 @@
 pub mod ast_visitor;
 #[allow(missing_docs)]
 pub mod boundary;
+pub mod digest;
 #[allow(missing_docs)]
 pub mod iteration;
 #[allow(missing_docs)]

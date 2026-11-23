@@ -122,7 +122,7 @@ fn test_attractor_and_sir_zero_allocation_verified_twin_step() {
         step_count: 0,
         execution_state: SolverExecutionState::Running,
         twin: None,
-        rng: oxidize_core::rng::OxidizeRng::default(),
+        rng: oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED),
     };
     runner.step_once();
     runner.process_command(crate::async_sim::SimCommand::Custom("fork:0.00001".into()));

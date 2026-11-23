@@ -1,6 +1,7 @@
 //! Deterministic two-step inverse-CDF sampling for [`super::simulation::BivariateWeibullModel`].
 
 use crate::applied::clinical_trials::types::{ClinicalTrialError, SurvivalTime};
+use math_commons::math_kernel::soft_float;
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
 
@@ -51,7 +52,7 @@ fn solve_conditional_weibull_increment(w0: f64, v: f64, beta: f64) -> f64 {
     }
     let mut s = (v / (1.0 + beta / (w0 + v))).clamp(0.0, v);
     for _ in 0..MAX_NEWTON_ITERS {
-        let f_val = s + beta * (s / w0).ln_1p() - v;
+        let f_val = s + beta * soft_float::ln_1p(s / w0) - v;
         if f_val.abs() <= NEWTON_TOLERANCE {
             break;
         }
@@ -100,14 +101,14 @@ impl BivariateWeibullModel {
         self.validate()?;
         let u1 = open_unit_uniform(rng);
         let u2 = open_unit_uniform(rng);
-        let w0 = -u1.ln();
+        let w0 = -soft_float::ln(u1);
         let inv_alpha = 1.0 / self.alpha;
-        let z0 = w0.powf(inv_alpha);
+        let z0 = soft_float::powf(w0, inv_alpha);
         let t = z0 / self.lambda1;
 
-        let v = -u2.ln();
+        let v = -soft_float::ln(u2);
         let s = solve_conditional_weibull_increment(w0, v, inv_alpha - 1.0);
-        let z = (w0 + s).powf(inv_alpha);
+        let z = soft_float::powf(w0 + s, inv_alpha);
         let x = ((z - z0).max(0.0)) / self.lambda2;
         debug_assert!(t.is_finite() && t >= 0.0 && x.is_finite() && x >= 0.0);
         Ok((t, x))
@@ -137,7 +138,7 @@ impl BivariateWeibullModel {
         }
         let (raw_t, raw_x) = self.try_sample_event_times(rng)?;
         let follow_up = if dropout_rate > 0.0 {
-            horizon.min(-open_unit_uniform(rng).ln() / dropout_rate)
+            horizon.min(-soft_float::ln(open_unit_uniform(rng)) / dropout_rate)
         } else {
             horizon
         };

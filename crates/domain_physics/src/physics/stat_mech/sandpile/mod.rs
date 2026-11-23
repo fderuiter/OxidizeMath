@@ -107,7 +107,10 @@ impl SandpileGrid {
         }
         let cells = width * height;
         let ring_cap = (cells * 2).next_power_of_two().max(4);
-        let rng = seed.map_or_else(OxidizeRng::default, OxidizeRng::from_seed);
+        let rng = seed.map_or_else(
+            || OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED),
+            OxidizeRng::from_seed,
+        );
         Ok(Self {
             width,
             height,

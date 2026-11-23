@@ -122,7 +122,8 @@ pub fn get_co2_projections(reduction_scenario: f64) -> (Vec<[f64; 2]>, Vec<[f64;
 
     for year in 2024..=2100 {
         let dt_years = (year - 2024) as f64;
-        let emissions = initial_emissions_ppm_yr * (1.0 + annual_emissions_rate).powf(dt_years);
+        let emissions = initial_emissions_ppm_yr
+            * math_commons::math_kernel::soft_float::powf(1.0 + annual_emissions_rate, dt_years);
         let natural_sink = ((current_co2 - preindustrial_eq_ppm) / sink_timescale_yr).max(0.0);
         current_co2 += emissions - natural_sink;
         projected.push([year as f64, current_co2]);
@@ -210,7 +211,7 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_synthetic_climate_walks_with_rng() {
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng = oxidize_core::rng::OxidizeRng::new(42);
         let temp = get_temperature_anomalies_with_rng(&mut rng);
         let (hist, proj) = get_co2_projections_with_rng(&mut rng, 0.5);
         assert!(!temp.is_empty());

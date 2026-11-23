@@ -251,7 +251,7 @@ fn test_morphogenesis_divergence_and_recovery() {
         width,
         height,
         step_count: 0,
-        rng: oxidize_core::rng::OxidizeRng::default(),
+        rng: oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED),
         noise_amplitude: 0.0,
     };
 

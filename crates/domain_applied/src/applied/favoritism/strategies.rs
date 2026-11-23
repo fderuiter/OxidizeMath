@@ -1,4 +1,5 @@
 use super::types::FavoritismInputs;
+use math_commons::math_kernel::soft_float;
 use nalgebra::{DMatrix, DVector};
 use pure_math::pure_math::analysis::integration::Integrator;
 use rand::{Rng, RngCore};
@@ -162,7 +163,7 @@ pub struct ContactFrequencyStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for ContactFrequencyStrategy {
     #[verified_engine::verified]
     fn calculate(&self, inputs: &FavoritismInputs, _ctx: &mut ScoringContext<I>) -> f64 {
-        (1.0 + inputs.contact.f_initial).max(EPSILON).ln()
+        soft_float::ln((1.0 + inputs.contact.f_initial).max(EPSILON))
     }
 }
 
@@ -204,7 +205,7 @@ pub struct DecayStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for DecayStrategy {
     #[verified_engine::verified]
     fn calculate(&self, inputs: &FavoritismInputs, _ctx: &mut ScoringContext<I>) -> f64 {
-        (-inputs.contact.decay_constant * inputs.contact.time_since_last_contact).exp()
+        soft_float::exp(-inputs.contact.decay_constant * inputs.contact.time_since_last_contact)
     }
 }
 

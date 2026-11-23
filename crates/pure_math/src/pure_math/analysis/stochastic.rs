@@ -101,7 +101,7 @@ impl<R: Rng> GillespieSolver<R> {
         // r1 in (0, 1]
         let r1: f64 = self.rng.r#gen();
         let r1 = if r1 <= 0.0 { f64::MIN_POSITIVE } else { r1 };
-        let tau = -r1.ln() / total_rate;
+        let tau = -math_commons::math_kernel::soft_float::ln(r1) / total_rate;
 
         // 2. Determine which reaction mu occurred
         let r2: f64 = self.rng.r#gen();
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_decay_process() -> Result<(), StochasticError> {
-        let rng = oxidize_core::rng::OxidizeRng::default();
+        let rng = oxidize_core::rng::OxidizeRng::new(42);
         let mut solver = GillespieSolver::new(rng);
         let model = DecayModel { k: 0.1 };
         let mut state = DecayState { x: 100 };
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_gillespie_solver_verified_run() -> Result<(), StochasticError> {
-        let rng = oxidize_core::rng::OxidizeRng::default();
+        let rng = oxidize_core::rng::OxidizeRng::new(42);
         let mut solver = GillespieSolver::new(rng);
         let model = DecayModel { k: 0.1 };
         let mut state = DecayState { x: 100 };
@@ -243,7 +243,7 @@ mod tests {
     #[verified_engine::verified]
     fn test_gillespie_solver_with_capacity() -> Result<(), StochasticError> {
         let n_reactions = 32;
-        let rng = oxidize_core::rng::OxidizeRng::default();
+        let rng = oxidize_core::rng::OxidizeRng::new(42);
         let mut solver = GillespieSolver::with_capacity(rng, n_reactions);
         let model = MultiReactionModel {
             num_reactions: n_reactions,
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_gillespie_solver_zero_propensity() -> Result<(), StochasticError> {
-        let rng = oxidize_core::rng::OxidizeRng::default();
+        let rng = oxidize_core::rng::OxidizeRng::new(42);
         let mut solver = GillespieSolver::new(rng);
         let model = DecayModel { k: 0.1 };
         let mut state = DecayState { x: 0 };

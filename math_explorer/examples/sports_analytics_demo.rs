@@ -42,7 +42,7 @@ fn demo_ou_process() -> Result<()> {
     let ou_params = OuParams::from_values(0.45, 1.0, 0.15)?;
     let dt = TimeStep::new(0.01)?;
     let solver = EulerMaruyama::new(ou_params, dt);
-    let mut rng = OxidizeRng::default();
+    let mut rng = OxidizeRng::new(42);
     let trajectory = solver.simulate(0.60, 100, &mut rng);
     println!("   True skill: 45%, Currently: 60% (hot)");
     println!(
@@ -80,7 +80,7 @@ fn demo_copula() -> Result<()> {
     let smoke = std::env::var("MATH_EXPLORER_SMOKE")
         .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
     let trials = if smoke { 2_500 } else { 25_000 };
-    let mut rng = OxidizeRng::default();
+    let mut rng = OxidizeRng::new(42);
     let sim = simulate_correlated_parlay(&legs_3, &corr_3, trials, &mut rng)?;
     println!(
         "   3-Leg SGP: Naive={:.4}, Genz={:.4} (x{:.2}, Fair Odds={:.2}), MC={:.4} ± {:.4}",

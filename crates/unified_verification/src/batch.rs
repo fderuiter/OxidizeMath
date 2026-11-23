@@ -56,6 +56,12 @@ pub(crate) fn run_batch_ast_with_caches(
     if !crate::policy_audit::run_policy_audit_with_caches(&member_refs, cache, manifest_cache) {
         passed = false;
     }
+    if let Err(err) =
+        oxidize_core::workspace::verify_stochastic_deterministic_suites(Path::new("."))
+    {
+        eprintln!("{err}");
+        passed = false;
+    }
 
     println!(
         "Single-pass AST batch finished ({} unique Rust files parsed).",

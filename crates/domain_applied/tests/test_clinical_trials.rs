@@ -11,7 +11,7 @@ use domain_applied::applied::clinical_trials::{
 #[verified_engine::verified]
 fn test_simple_randomization() {
     let n = 100;
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = oxidize_core::rng::OxidizeRng::new(42);
     let strategy = SimpleRandomizer;
     let assignments = strategy.assign(&mut rng, n).unwrap();
     assert_eq!(assignments.len(), n);
@@ -23,7 +23,7 @@ fn test_simple_randomization() {
 fn test_block_randomization() {
     let n = 20;
     let block_size = 4;
-    let mut rng = oxidize_core::rng::OxidizeRng::default();
+    let mut rng = oxidize_core::rng::OxidizeRng::new(42);
     let strategy = BlockRandomizer::new(block_size).unwrap();
     let assignments = strategy.assign(&mut rng, n).unwrap();
     assert_eq!(assignments.len(), n);

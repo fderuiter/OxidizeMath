@@ -1,5 +1,6 @@
 //! Pocock/Bebu-Lachin two-sample U-statistic variance estimation for unmatched win ratios.
 
+use math_commons::math_kernel::soft_float;
 use statrs::distribution::{ContinuousCDF, Normal};
 
 use super::censoring::TierCount;
@@ -267,7 +268,7 @@ fn finite_log_wr_inference(
     let win_ratio = wins as f64 / losses as f64;
     let var_ln_wr =
         accumulate_log_wr_variance(n1, n2, wins as f64 / total_f, losses as f64 / total_f, m);
-    let log_wr_se = var_ln_wr.max(0.0).sqrt();
+    let log_wr_se = soft_float::sqrt(var_ln_wr.max(0.0));
     if log_wr_se == 0.0 {
         let (z, p) = if wins == losses {
             (0.0, 1.0)
@@ -278,14 +279,14 @@ fn finite_log_wr_inference(
         };
         return Some((win_ratio, win_ratio, win_ratio, 0.0, z, p));
     }
-    let ln_wr = win_ratio.ln();
+    let ln_wr = soft_float::ln(win_ratio);
     let z_crit = normal.inverse_cdf(1.0 - alpha / 2.0);
     let z = ln_wr / log_wr_se;
     let p = (2.0 * (1.0 - normal.cdf(z.abs()))).clamp(0.0, 1.0);
     Some((
         win_ratio,
-        (ln_wr - z_crit * log_wr_se).exp(),
-        (ln_wr + z_crit * log_wr_se).exp(),
+        soft_float::exp(ln_wr - z_crit * log_wr_se),
+        soft_float::exp(ln_wr + z_crit * log_wr_se),
         log_wr_se,
         z,
         p,

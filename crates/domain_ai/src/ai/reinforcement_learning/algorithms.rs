@@ -62,7 +62,7 @@ where
         let rng = if let Some(s) = seed {
             oxidize_core::rng::OxidizeRng::new(s)
         } else {
-            oxidize_core::rng::OxidizeRng::default()
+            oxidize_core::rng::OxidizeRng::from_seed(oxidize_core::rng::BASE_SEED)
         };
         Self {
             q_func,

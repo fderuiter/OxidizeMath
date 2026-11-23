@@ -3,6 +3,7 @@ use crate::utils::test_utils::{CurrentDirGuard, TempTestDir};
 use std::path::PathBuf;
 
 mod config;
+mod rng_policy;
 
 fn write_bytes_fixture(dir: &Path, name: &str, body: &[u8]) -> PathBuf {
     let path = dir.join(name);

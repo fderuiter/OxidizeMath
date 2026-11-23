@@ -64,8 +64,7 @@
 //! use math_explorer::pure_math::statistics::ou_process::{
 //!     EulerMaruyama, OuParams, TimeStep
 //! };
-//! use math_explorer::rand::SeedableRng;
-//! use math_explorer::rand::rngs::StdRng;
+//! use math_explorer::rng::OxidizeRng;
 //!
 //! // Player has 45% true shooting percentage
 //! // Currently at 60% (hot streak)
@@ -79,7 +78,7 @@
 //! let solver = EulerMaruyama::new(params, dt);
 //!
 //! // Simulate rest of game (100 possessions)
-//! let mut rng = math_explorer::rng::OxidizeRng::default();
+//! let mut rng = OxidizeRng::new(42);
 //! let trajectory = solver.simulate(0.60, 100, &mut rng);
 //!
 //! // Analyze final shooting percentage
@@ -92,15 +91,14 @@
 //! ```rust
 //! # use pure_math::__doctest_facade as math_explorer;
 //! use math_explorer::pure_math::statistics::ou_process::{OuAnalyzer, OuParams, TimeStep};
-//! use math_explorer::rand::SeedableRng;
-//! use math_explorer::rand::rngs::StdRng;
+//! use math_explorer::rng::OxidizeRng;
 //!
 //! // Team is down 10 points with high volatility
 //! let params = OuParams::from_values(0.0, 1.0, 0.3).unwrap();  // High σ
 //! let dt = TimeStep::new(0.01).unwrap();
 //! let analyzer = OuAnalyzer::new(params, dt);
 //!
-//! let mut rng = math_explorer::rng::OxidizeRng::default();
+//! let mut rng = OxidizeRng::new(42);
 //!
 //! // What's the probability of a comeback?
 //! let current_deficit = -10.0;

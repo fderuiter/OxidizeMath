@@ -10,10 +10,12 @@ use walkdir::WalkDir;
 
 mod file_filter;
 mod macro_scanner;
+mod rng_policy;
 
 use file_filter::{
     ScanFileKind, classify_scan_file, is_ignored_dir, is_scannable_entry, should_visit_file,
 };
+pub(super) use rng_policy::resolve_path;
 
 pub const DEFAULT_SCAN_PATHS: &[&str] = &[
     "crates",
@@ -162,62 +164,23 @@ struct SecurityVisitor<'a> {
     entropy_violations: Vec<(String, usize)>,
     secret_warnings: Vec<(String, usize)>,
     scanner: &'a SecretScanner,
+    allow_default_rng: bool,
 }
 
-fn flatten_use_tree(
-    tree: &syn::UseTree,
-    prefix: &mut Vec<String>,
-    mappings: &mut HashMap<String, String>,
-) {
-    match tree {
-        syn::UseTree::Path(p) => {
-            prefix.push(p.ident.to_string());
-            flatten_use_tree(&p.tree, prefix, mappings);
-            prefix.pop();
-        }
-        syn::UseTree::Name(n) => {
-            let mut full_path = prefix.clone();
-            full_path.push(n.ident.to_string());
-            mappings.insert(n.ident.to_string(), full_path.join("::"));
-        }
-        syn::UseTree::Rename(r) => {
-            let mut full_path = prefix.clone();
-            full_path.push(r.ident.to_string());
-            mappings.insert(r.rename.to_string(), full_path.join("::"));
-        }
-        syn::UseTree::Group(g) => {
-            for item in &g.items {
-                flatten_use_tree(item, prefix, mappings);
-            }
-        }
-        syn::UseTree::Glob(_) => {}
-    }
-}
-
-pub(super) fn resolve_path(p: &syn::Path, mappings: &HashMap<String, String>) -> String {
-    let mut parts = Vec::new();
-    for (i, seg) in p.segments.iter().enumerate() {
-        if i == 0 && p.leading_colon.is_none() {
-            let first = seg.ident.to_string();
-            if let Some(mapped) = mappings.get(&first) {
-                parts.push(mapped.clone());
-            } else {
-                parts.push(first);
-            }
-        } else {
-            parts.push(seg.ident.to_string());
-        }
-    }
-    parts.join("::")
-}
-
-pub(super) fn classify_entropy_call(resolved: &str) -> Option<&'static str> {
+pub(super) fn classify_entropy_call(
+    resolved: &str,
+    allow_default_rng: bool,
+) -> Option<&'static str> {
     if resolved == "thread_rng" || resolved.ends_with("::thread_rng") {
         Some("thread_rng()")
     } else if resolved == "random" || resolved.ends_with("::random") {
         Some("random()")
     } else if resolved == "SystemTime::now" || resolved.ends_with("::SystemTime::now") {
         Some("SystemTime::now()")
+    } else if rng_policy::is_std_rng_path(resolved) {
+        Some("StdRng")
+    } else if !allow_default_rng && rng_policy::is_oxidize_rng_default_path(resolved) {
+        Some("OxidizeRng::default()")
     } else {
         None
     }
@@ -264,17 +227,50 @@ fn calculate_entropy(s: &str) -> f64 {
 impl<'a, 'ast> Visit<'ast> for SecurityVisitor<'a> {
     fn visit_item_use(&mut self, i: &'ast syn::ItemUse) {
         let mut prefix = Vec::new();
-        flatten_use_tree(&i.tree, &mut prefix, &mut self.aliases);
+        rng_policy::flatten_use_tree(
+            &i.tree,
+            &mut prefix,
+            &mut self.aliases,
+            &mut self.entropy_violations,
+        );
         syn::visit::visit_item_use(self, i);
+    }
+
+    fn visit_type_path(&mut self, i: &'ast syn::TypePath) {
+        rng_policy::check_type_path(i, &self.aliases, &mut self.entropy_violations);
+        syn::visit::visit_type_path(self, i);
+    }
+
+    fn visit_expr_path(&mut self, i: &'ast syn::ExprPath) {
+        rng_policy::check_expr_path(
+            i,
+            &self.aliases,
+            self.allow_default_rng,
+            &mut self.entropy_violations,
+        );
+        syn::visit::visit_expr_path(self, i);
     }
 
     fn visit_expr_call(&mut self, i: &'ast syn::ExprCall) {
         if let syn::Expr::Path(p) = &*i.func {
-            let resolved = resolve_path(&p.path, &self.aliases);
-            if let Some(violation) = classify_entropy_call(&resolved) {
-                let line = i.func.span().start().line;
-                self.entropy_violations.push((violation.to_string(), line));
+            let line = i.func.span().start().line;
+            if !self.allow_default_rng && rng_policy::is_qself_oxidize_rng_default(p, &self.aliases)
+            {
+                self.entropy_violations
+                    .push(("OxidizeRng::default()".to_string(), line));
+            } else {
+                let resolved = resolve_path(&p.path, &self.aliases);
+                if let Some(violation) = classify_entropy_call(&resolved, self.allow_default_rng) {
+                    self.entropy_violations.push((violation.to_string(), line));
+                }
             }
+            for attr in &i.attrs {
+                self.visit_attribute(attr);
+            }
+            for arg in &i.args {
+                self.visit_expr(arg);
+            }
+            return;
         }
         syn::visit::visit_expr_call(self, i);
     }
@@ -293,6 +289,7 @@ impl<'a, 'ast> Visit<'ast> for SecurityVisitor<'a> {
             i,
             &self.aliases,
             self.scanner,
+            self.allow_default_rng,
             &mut self.entropy_violations,
             &mut self.secret_warnings,
         );
@@ -320,6 +317,7 @@ pub fn is_file_allowlisted(path: &Path, allowlist: &[String]) -> bool {
 fn scan_rust_file(
     path: &Path,
     scanner: &SecretScanner,
+    allow_default_rng: bool,
     violations: &mut Vec<String>,
     cache: &mut oxidize_core::traceability::AstCache,
 ) {
@@ -331,6 +329,7 @@ fn scan_rust_file(
         entropy_violations: Vec::new(),
         secret_warnings: Vec::new(),
         scanner,
+        allow_default_rng,
     };
     visitor.visit_file(ast);
 
@@ -389,13 +388,14 @@ pub fn scan_paths_internal(
     allowlist: &[String],
 ) -> Vec<String> {
     let mut cache = oxidize_core::traceability::AstCache::new();
-    scan_paths_internal_with_cache(scan_targets, target_extensions, allowlist, &mut cache)
+    scan_paths_internal_with_cache(scan_targets, target_extensions, allowlist, &[], &mut cache)
 }
 
 pub fn scan_paths_internal_with_cache(
     scan_targets: &[String],
     target_extensions: &[String],
     allowlist: &[String],
+    default_rng_allowlist: &[String],
     cache: &mut oxidize_core::traceability::AstCache,
 ) -> Vec<String> {
     let mut all_violations = Vec::new();
@@ -422,7 +422,15 @@ pub fn scan_paths_internal_with_cache(
             }
             match classify_scan_file(entry.path(), target_extensions) {
                 ScanFileKind::RustAst => {
-                    scan_rust_file(entry.path(), &scanner, &mut all_violations, cache);
+                    let allow_default_rng =
+                        is_file_allowlisted(entry.path(), default_rng_allowlist);
+                    scan_rust_file(
+                        entry.path(),
+                        &scanner,
+                        allow_default_rng,
+                        &mut all_violations,
+                        cache,
+                    );
                 }
                 ScanFileKind::Text => {
                     scan_text_file(entry.path(), &scanner, &mut all_violations);
@@ -476,7 +484,14 @@ pub fn check_entropy_with_cache(
         });
 
     let allowlist: Vec<String> = config.allowlist.unwrap_or_default();
-    scan_paths_internal_with_cache(&scan_targets, &target_extensions, &allowlist, cache)
+    let default_rng_allowlist: Vec<String> = config.default_rng_allowlist.unwrap_or_default();
+    scan_paths_internal_with_cache(
+        &scan_targets,
+        &target_extensions,
+        &allowlist,
+        &default_rng_allowlist,
+        cache,
+    )
 }
 
 #[cfg(test)]

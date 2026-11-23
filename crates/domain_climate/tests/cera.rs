@@ -12,12 +12,11 @@ const OUTPUT_SIZE: usize = 148;
 
 #[verified_engine::verified]
 fn generate_synthetic_data(n_samples: usize, offset: f32) -> (DMatrix<f32>, DMatrix<f32>) {
+    let mut rng = oxidize_core::rng::OxidizeRng::new(0xCE2A_0100 ^ u64::from(offset.to_bits()));
     let inputs = DMatrix::from_fn(n_samples * NUM_LEVELS, IN_CHANNELS, |_, _| {
-        oxidize_core::rng::OxidizeRng::default().r#gen::<f32>() + offset
+        rng.r#gen::<f32>() + offset
     });
-    let targets = DMatrix::from_fn(n_samples, OUTPUT_SIZE, |_, _| {
-        oxidize_core::rng::OxidizeRng::default().r#gen()
-    });
+    let targets = DMatrix::from_fn(n_samples, OUTPUT_SIZE, |_, _| rng.r#gen());
     (inputs, targets)
 }
 
