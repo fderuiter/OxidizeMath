@@ -199,6 +199,19 @@ fn test_implicit_midpoint_perturbation_lyapunov_and_nan_recovery() {
     assert!(lab.has_finite_parameters());
 }
 
+fn pump_gif_export(ctx: &Context, fw: &mut crate::framework::SimulationFramework) {
+    for _ in 0..250 {
+        if fw.active_gif_progress().is_none() {
+            break;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let _ = ctx.run(raw_viewport(), |ctx| {
+            fw.show(ctx, "hamiltonian_export_fw");
+        });
+    }
+}
+
 #[test]
 fn test_simulation_framework_exports_csv_json_png_svg_gif() {
     use crate::framework::{ExportFormat, ExportStatusSeverity, SimulationFramework};
@@ -206,6 +219,7 @@ fn test_simulation_framework_exports_csv_json_png_svg_gif() {
     let mut fw = SimulationFramework::new("__hamiltonian_export_test__");
     fw.export_options.width = 240;
     fw.export_options.height = 180;
+    fw.export_gif_frames = 5;
     fw.active_tool = Some(Box::new(HamiltonianChaosLab::default()));
 
     let ctx = Context::default();
@@ -221,6 +235,9 @@ fn test_simulation_framework_exports_csv_json_png_svg_gif() {
             fw.queue_export(fmt);
             fw.show(ctx, "hamiltonian_export_fw");
         });
+        if fmt == ExportFormat::Gif {
+            pump_gif_export(&ctx, &mut fw);
+        }
         assert_eq!(
             fw.export_status_severity,
             ExportStatusSeverity::Success,
