@@ -3,8 +3,9 @@
 use super::persistence::truncate_utf8_bytes;
 use super::presets::{
     wave_parameter_label, WavePotentialPreset, DT_MAX, DT_MIN, GRID_X_MAX, GRID_X_MIN, K0_MAX,
-    K0_MIN, MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME, POTENTIAL_DISPLAY_SCALE, SIGMA_MAX,
-    SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN, X0_MAX, X0_MIN,
+    K0_MIN, MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME, POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN,
+    POTENTIAL_DISPLAY_SCALE, SIGMA_MAX, SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN, X0_MAX,
+    X0_MIN,
 };
 use super::runner::WaveData;
 use super::WaveSimulatorTool;
@@ -14,7 +15,8 @@ use crate::async_sim::ui::{
 };
 use crate::async_sim::{SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{
-    BrushMode, BrushStroke, CalloutManager, PlaybackAction, PlaybackTransport, SpatialBrushKit,
+    BrushMode, CalloutManager, PlaybackAction, PlaybackTransport, PlotBrushController,
+    PlotBrushFrame, SpatialBrushKit,
 };
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
@@ -57,6 +59,22 @@ impl WaveSimulatorTool {
         });
     }
 
+    fn draw_worker_status_badge(ui: &mut egui::Ui, state: SimWorkerState) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        ui.horizontal(|ui| {
+            ui.label("Status:");
+            let (status_text, color) = match state {
+                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
+                SimWorkerState::Ready => ("Ready", palette.success),
+                SimWorkerState::Running => ("Running", palette.info),
+                SimWorkerState::Stepping => ("Stepping", palette.warning),
+                SimWorkerState::Faulted => ("Faulted", palette.error),
+                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
+            };
+            ui.colored_label(color, status_text);
+        });
+    }
+
     fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let state = self.worker.state();
         if let Some(fault_action) =
@@ -71,23 +89,18 @@ impl WaveSimulatorTool {
         }
 
         let state = self.worker.state();
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.horizontal(|ui| {
-            ui.label("Status:");
-            let (status_text, color) = match state {
-                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
-                SimWorkerState::Ready => ("Ready", palette.success),
-                SimWorkerState::Running => ("Running", palette.info),
-                SimWorkerState::Stepping => ("Stepping", palette.warning),
-                SimWorkerState::Faulted => ("Faulted", palette.error),
-                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
-            };
-            ui.colored_label(color, status_text);
-        });
+        Self::draw_worker_status_badge(ui, state);
 
+        let canvas_sculpt_focused = !self.is_challenge_locked()
+            && self.brush_kit.is_sculpting()
+            && self
+                .brush_kit
+                .focused_plot_id()
+                .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
         if let Some(action) =
             PlaybackTransport::from_worker_state("wave_sim_transport", "Wave Simulator", state)
                 .can_reset(true)
+                .allow_space_shortcut(!canvas_sculpt_focused)
                 .show(ui)
         {
             match action {
@@ -293,9 +306,7 @@ impl WaveSimulatorTool {
     }
 
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui) {
-        let ctx = parent_ui.ctx().clone();
         let locked = self.is_challenge_locked();
-        let mut pending_strokes = Vec::new();
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let Some(wave_data) = self.active_wave_data().cloned() else {
                 render_empty_plot_guidance(
@@ -305,19 +316,19 @@ impl WaveSimulatorTool {
                 return;
             };
             self.sync_wave_callouts(&wave_data);
-            pending_strokes = render_wave_plot(
+            let (plot_resp, frame) = render_wave_plot(
                 ui,
                 &wave_data,
                 &mut self.brush_kit,
                 &mut self.callout_manager,
                 locked,
             );
-        });
-        if !locked {
-            for stroke in pending_strokes {
-                self.apply_ui_brush_stroke(stroke, Some(&ctx));
+            if !locked {
+                if let Some(brush_frame) = frame {
+                    brush_frame.dispatch(ui, &plot_resp, self);
+                }
             }
-        }
+        });
     }
 
     pub(crate) fn active_wave_data(&self) -> Option<&WaveData> {
@@ -392,7 +403,7 @@ fn render_wave_plot(
     brush_kit: &mut SpatialBrushKit,
     callouts: &mut CalloutManager,
     locked: bool,
-) -> Vec<BrushStroke> {
+) -> (egui::Response, Option<PlotBrushFrame>) {
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
     let (psi_color, potential_color, energy_color) = (
         palette.series_color(0),
@@ -403,9 +414,13 @@ fn render_wave_plot(
     let (psi_points, v_points, [x_start, x_end]) = build_wave_plot_series(wave_data);
     let e0_scaled = wave_data.kinetic_energy * POTENTIAL_DISPLAY_SCALE;
     let allow_pan = locked || !brush_kit.is_sculpting();
-    let mut strokes = Vec::new();
+    let mut brush_frame = None;
+    let (y_min, y_max) = (
+        POTENTIAL_CLAMP_MIN * POTENTIAL_DISPLAY_SCALE,
+        POTENTIAL_CLAMP_MAX * POTENTIAL_DISPLAY_SCALE,
+    );
 
-    Plot::new("quantum_plot")
+    let plot_resp = Plot::new("quantum_plot")
         .legend(Legend::default())
         .x_axis_label("Position (x)")
         .y_axis_label("Probability Density |ψ|² / Scaled Energy")
@@ -439,13 +454,14 @@ fn render_wave_plot(
                 callouts.render_on_plot(plot_ui);
             }
             if !locked {
-                strokes = brush_kit.sample_plot(
+                brush_frame = Some(PlotBrushController::capture_plot(
+                    brush_kit,
                     plot_ui,
-                    [GRID_X_MIN, -0.5],
-                    [GRID_X_MAX, 2.5],
+                    [GRID_X_MIN, y_min],
+                    [GRID_X_MAX, y_max],
                     Some(BrushMode::Erase),
-                );
+                ));
             }
         });
-    strokes
+    (plot_resp.response, brush_frame)
 }
