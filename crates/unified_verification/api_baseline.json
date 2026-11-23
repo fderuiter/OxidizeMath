@@ -5853,6 +5853,127 @@
       "signature": "pub struct MassNumber"
     }
   ],
+  "crates/domain_physics/src/physics/optics/diffraction.rs": [
+    {
+      "signature": "impl AngularSpectrumPropagator { pub fn centered_unitary_fft2d_into (& mut self , _ : & [Complex < f64 >] , _ : bool , _ : & mut [Complex < f64 >] ,) }"
+    },
+    {
+      "signature": "impl AngularSpectrumPropagator { pub fn dx (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AngularSpectrumPropagator { pub fn dy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AngularSpectrumPropagator { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl AngularSpectrumPropagator { pub fn new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl AngularSpectrumPropagator { pub fn propagate_axial_carpet_into (& mut self , _ : & [Complex < f64 >] , _ : usize , _ : f64 , _ : f64 , _ : usize , _ : & mut [f64] ,) }"
+    },
+    {
+      "signature": "impl AngularSpectrumPropagator { pub fn propagate_into (& mut self , _ : & [Complex < f64 >] , _ : f64 , _ : & mut [Complex < f64 >] ,) }"
+    },
+    {
+      "signature": "impl AngularSpectrumPropagator { pub fn reconfigure (& mut self , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl AngularSpectrumPropagator { pub fn set_evanescent_filter (& mut self , _ : bool) }"
+    },
+    {
+      "signature": "impl AngularSpectrumPropagator { pub fn wavelength (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AngularSpectrumPropagator { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub fn field_intensity_into (_ : & [Complex < f64 >] , _ : & mut [f64])"
+    },
+    {
+      "signature": "pub fn fresnel_number (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn optical_power (_ : & [Complex < f64 >] , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn rayleigh_talbot_length (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn talbot_length (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn wrapped_phase_into (_ : & [Complex < f64 >] , _ : & mut [f64])"
+    },
+    {
+      "signature": "pub struct AngularSpectrumPropagator"
+    },
+    {
+      "signature": "pub use apertures :: *"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/holography.rs": [
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn evaluate_real_scalar_baseline (& mut self) -> HologramMetrics }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn metrics (& self) -> HologramMetrics }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : HologramRegime ,) -> Self }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn quantize_phase_u8_into (& self , _ : & mut [u8]) }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn reconfigure (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : HologramRegime) }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn regime (& self) -> HologramRegime }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn replay_field (& self) -> & [Complex < f64 >] }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn seed_random_phase (& mut self , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn set_target_amplitude (& mut self , _ : & [f64]) }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn slm_field (& self) -> & [Complex < f64 >] }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn slm_phase (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn step_iterations (& mut self , _ : usize) -> HologramMetrics }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn target_amplitude (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl GerchbergSaxtonSolver { pub fn width (& self) -> usize }"
+    },
+    {
+      "signature": "pub enum HologramRegime"
+    },
+    {
+      "signature": "pub enum HologramTargetPreset"
+    },
+    {
+      "signature": "pub fn fill_target_amplitude_into (_ : HologramTargetPreset , _ : usize , _ : usize , _ : & mut [f64] ,)"
+    },
+    {
+      "signature": "pub struct GerchbergSaxtonSolver"
+    },
+    {
+      "signature": "pub struct HologramMetrics"
+    }
+  ],
   "crates/domain_physics/src/physics/optics/sensing.rs": [
     {
       "signature": "pub fn lambertian_intensity (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"

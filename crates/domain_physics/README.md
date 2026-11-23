@@ -18,7 +18,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
 - **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
 - **`stat_mech`**: Ising spin lattices and canonical ensemble thermodynamic calculations.
-- **`optics`**: Geometric ray tracing, refractive boundary equations, and closed-form Fraunhofer wave diffraction (complemented by full-field 2D time-domain multi-slit and refractive-lens wave tank simulation in `pure_math::analysis::pde::wave_2d`).
+- **`optics`**: Zero-allocation 2D Helmholtz angular-spectrum wave diffraction (`AngularSpectrumPropagator`), complex aperture/lens/Zernike wavefront synthesis, iterative Gerchberg-Saxton SLM phase holography (`GerchbergSaxtonSolver`), and radiometric/LiDAR optical sensing (`lambertian_intensity`, `lws_range_resolution`).
 
 ---
 
