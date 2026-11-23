@@ -225,6 +225,7 @@ fn dispatch_key(tool: &mut GraphEditorTool, key: egui::Key, modifiers: egui::Mod
                     multi_touch: None,
                     keys_down,
                     modifiers,
+                    brush_stroke: None,
                 };
                 tool.on_keyboard(&interaction_ctx);
             });

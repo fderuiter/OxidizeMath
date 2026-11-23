@@ -188,7 +188,7 @@ impl ConditioningWorkbenchTool {
         if sv_pts.len() >= 2 {
             prims.push(ExportPrimitive::Polyline {
                 name: "Singular Values log10(sigma_i)".to_string(),
-                points: sv_pts,
+                points: sv_pts.into(),
                 color: palette.info,
                 stroke_width: 2.2,
                 closed: false,

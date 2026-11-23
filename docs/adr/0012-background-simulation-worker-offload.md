@@ -14,10 +14,12 @@ Long-running numerical simulations (reaction-diffusion systems) and reinforcemen
 5. Offloaded morphogenesis reaction-diffusion numerical stepping and RL training loops to background worker threads.
 6. Filtered out external tool download directories (`cargo-machete*`, `dist`, `artifacts`) from test discovery in `crates/markdown_tests/build.rs`.
 7. Gated threaded worker test harnesses on non-wasm targets and authorized dead-code lint bypasses for platform-inactive menu methods on macOS in `verification_whitelist.toml`.
+8. Added an opt-in `TimeTravelCheckpoint` contract on `SimulationRunner` and `UnifiedModel` backed by a bounded `2 MiB` (`MAX_CHECKPOINT_RING_BYTES`) periodic keyframe ring (`K = 1` for compact ODE runners, `K = 16` for 2D grid runners) and zero-allocation sub-step replay (`SimCommand::StepBack` and `SimCommand::SeekStep`) across native and WASM worker loops.
 
 ## Consequences
 - Heavy mathematical simulation and RL episode stepping run asynchronously without blocking the UI thread.
 - Thread-safe exploration strategies allow agent state migration across threads.
 - Non-blocking state queues bound memory footprint while running at 60 FPS.
+- Deterministic time-travel checkpointing enables single-step rewind (`,`), keyframe jumps (`[`), and interactive timeline scrubbing within a strict `2 MiB` per-controller memory ceiling without mutating `.mws` workspace serialization or parameter undo history.
 - Pre-flight workspace doc tests are isolated from external tool binaries and extraction artifacts.
 - Multi-target CI suites (Linux, Windows, macOS, Web/WASM) cleanly pass clippy and test compilation without dead-code or missing-thread errors.

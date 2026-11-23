@@ -403,11 +403,12 @@ impl MorphogenesisTool {
             return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
         }
         if let Some(snap) = self.worker.latest_snapshot() {
-            if let Some(u_data) = snap
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<Vec<f64>>())
-            {
+            let u_slice = snap.structured_data.as_ref().and_then(|d| {
+                d.downcast_ref::<super::runner::MorphoSnapshotData>()
+                    .map(|m| m.u_data.as_slice())
+                    .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
+            });
+            if let Some(u_data) = u_slice {
                 let v = grid_u_variance(u_data);
                 return v.is_finite() && v < WASHOUT_VARIANCE_THRESHOLD;
             }
@@ -438,6 +439,7 @@ impl MorphogenesisTool {
             sr.system.kinetics.b = b;
             sr.system.diffusion_coeffs = [d_u, d_v];
             Self::initialize_adapter_system(&mut sr.system, self.width, self.height);
+            sr.enforce_mask_concentrations();
         }
         let _ = self
             .worker
