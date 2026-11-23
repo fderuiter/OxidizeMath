@@ -52,6 +52,8 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         "pk_therapeutic_window",
         "lbm_low_drag_fairing",
         "imrt_oar_sparing",
+        "quantum_subbarrier_50_split",
+        "quantum_double_barrier_resonance",
     ] {
         let meta = find_challenge_metadata(required_id)
             .unwrap_or_else(|| panic!("Missing ChallengeMetadata '{required_id}'"));
@@ -66,6 +68,7 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
     assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 1);
     assert_eq!(get_challenge_cards_for_domain("fluid_dynamics").len(), 1);
     assert_eq!(get_challenge_cards_for_domain("medical").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("quantum").len(), 2);
 
     let ctx = egui::Context::default();
     ctx.enable_accesskit();

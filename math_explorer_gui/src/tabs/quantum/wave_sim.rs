@@ -1,6 +1,10 @@
 // [cite:quantum_mechanics]
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "wave_sim/atlas.rs"]
+pub mod atlas;
+#[path = "wave_sim/challenges.rs"]
+pub mod challenges;
 #[path = "wave_sim/persistence.rs"]
 mod persistence;
 #[path = "wave_sim/presets.rs"]
@@ -19,12 +23,14 @@ pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
 
 use super::wave_sim_sculpt::default_wave_brush_kit;
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::RecoveryAction;
 use crate::framework::{
-    ExportCapabilities, InteractionContext, InteractiveTool, MathExpressionInputBar,
-    SpatialBrushKit,
+    ChallengeEvaluation, ExportCapabilities, InteractionContext, InteractiveTool,
+    MathExpressionInputBar, SpatialBrushKit,
 };
+use challenges::{ActiveWaveChallenge, PreWallLatchCache};
 use eframe::egui;
 use math_commons::ast::Expr;
 use presets::{
@@ -55,6 +61,9 @@ pub struct WaveSimulatorTool {
     pub(crate) export_runner: Option<WaveRunner>,
     pub(crate) export_data: Option<WaveData>,
     pub(crate) latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) atlas: ParameterAtlasController,
+    pub(crate) active_challenge: Option<ActiveWaveChallenge>,
+    pub(crate) latch_cache: PreWallLatchCache,
     pub(crate) revision: u64,
 }
 
@@ -110,6 +119,9 @@ impl WaveSimulatorTool {
             export_runner: None,
             export_data: None,
             latest_sonification,
+            atlas: Self::new_atlas_controller(),
+            active_challenge: None,
+            latch_cache: PreWallLatchCache::default(),
             revision: 1,
         }
     }
@@ -125,17 +137,16 @@ impl WaveSimulatorTool {
         self.revision = self.revision.wrapping_add(1).max(1);
     }
 
-    /// Configures the playable 50% sub-barrier tunneling split challenge (`E0 = 12.5`, `V0 = 11.35`, `w = 0.5`).
-    pub fn apply_tunneling_split_challenge(&mut self, ctx: Option<&egui::Context>) {
-        self.preset = WavePotentialPreset::RectangularBarrier;
-        self.x0 = DEFAULT_X0;
-        self.k0 = DEFAULT_K0;
-        self.sigma = DEFAULT_SIGMA;
-        self.v0 = DEFAULT_V0;
-        self.width = DEFAULT_WIDTH;
-        self.dt = DEFAULT_DT;
-        self.sparse_potential.clear();
-        self.sync_config_and_reset(ctx);
+    /// Returns the most recent stepped or worker [`WaveData`] snapshot, if available.
+    #[must_use]
+    pub(crate) fn current_wave_data(&self) -> Option<&WaveData> {
+        if let Some(ref stepped) = self.export_data {
+            return Some(stepped);
+        }
+        self.worker
+            .latest_snapshot()
+            .and_then(|s| s.structured_data.as_ref())
+            .and_then(|d| d.downcast_ref::<WaveData>())
     }
 
     /// Synchronizes shared worker config, clears stateful export caches, and resets or respawns `WaveRunner`.
@@ -281,7 +292,68 @@ impl InteractiveTool for WaveSimulatorTool {
 
     fn clamp_parameters(&mut self) -> bool {
         self.clamp_wave_parameters();
+        self.enforce_active_challenge_locks();
         true
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        self.apply_wave_challenge(challenge_id)
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge.map(ActiveWaveChallenge::id)
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.evaluate_wave_challenge()
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        let e0 = 0.5 * self.k0 * self.k0;
+        let steady_t = atlas::compute_inline_steady_transmission(
+            self.preset,
+            self.k0,
+            self.v0,
+            self.width,
+            math_commons::ast::CompiledExpr::compile_with_vars(
+                &self.last_valid_expr,
+                &["x", "v0", "width"],
+            )
+            .ok()
+            .as_ref(),
+            &{
+                let mut arr = [None; presets::GRID_POINTS];
+                for &(idx, val) in &self.sparse_potential {
+                    let s = usize::from(idx);
+                    if s < presets::GRID_POINTS && val.is_finite() {
+                        arr[s] = Some(val);
+                    }
+                }
+                arr
+            },
+        );
+        let (trans, refl, bar, latched) = self.current_wave_data().map_or(
+            (0.0, 1.0, 0.0, steady_t),
+            |d| {
+                (
+                    d.transmission,
+                    d.reflection,
+                    d.barrier_prob,
+                    d.latched_transmission.unwrap_or(d.transmission),
+                )
+            },
+        );
+        vec![
+            ("kinetic_energy", e0),
+            ("v0", self.v0),
+            ("width", self.width),
+            ("subbarrier_margin", self.v0 - e0),
+            ("transmission", trans),
+            ("reflection", refl),
+            ("barrier_prob", bar),
+            ("latched_transmission", latched),
+            ("steady_transmission", steady_t),
+        ]
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {

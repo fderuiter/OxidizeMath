@@ -57,9 +57,14 @@ impl VolumetricFieldStudioTool {
             let mut dirty = self.draw_source_and_model_controls(ui);
             ui.separator();
             dirty |= self.draw_render_and_slice_controls(ui);
+            let pointer_down = ui.input(|i| i.pointer.any_down());
             if dirty {
                 self.config.clamp_in_place();
-                self.refresh_zero_alloc();
+                let drag_preview =
+                    self.config.source == FieldSourceMode::CustomImplicitAst && pointer_down;
+                self.refresh_with_drag_preview(drag_preview);
+            } else if self.engine.preview_drag_active && !pointer_down {
+                self.refresh_with_drag_preview(false);
             }
             ui.separator();
             self.draw_probe_and_export_section(ui);
@@ -124,11 +129,30 @@ impl VolumetricFieldStudioTool {
                     FieldSourceMode::TuringMorphogenesis,
                     FieldSourceMode::TuringMorphogenesis.label(),
                 );
+                ui.selectable_value(
+                    &mut self.config.source,
+                    FieldSourceMode::CustomImplicitAst,
+                    FieldSourceMode::CustomImplicitAst.label(),
+                );
             });
         changed |= self.config.source != prev_src;
         match self.config.source {
             FieldSourceMode::QuantumSuperposition => changed |= self.draw_quantum_controls(ui),
             FieldSourceMode::TuringMorphogenesis => changed |= self.draw_turing_controls(ui),
+            FieldSourceMode::CustomImplicitAst => {
+                let prev_expr = self.config.custom_expr.clone();
+                changed |= self.ast_controller.ui(
+                    ui,
+                    &mut self.config.custom_expr,
+                    &mut self.config.custom_params,
+                );
+                if self.config.custom_expr != prev_expr
+                    && self.config.custom_expr == super::ast_field::ORBITAL_4F_XYZ_EXPR
+                    && self.config.iso_threshold > 0.06
+                {
+                    self.config.iso_threshold = 0.045;
+                }
+            }
         }
         changed
     }
@@ -348,6 +372,7 @@ impl VolumetricFieldStudioTool {
                         self.config.n1, self.config.l1, self.config.m1
                     ),
                     FieldSourceMode::TuringMorphogenesis => "turing_3d_gyroid_mesh.obj".to_string(),
+                    FieldSourceMode::CustomImplicitAst => "custom_3d_implicit_mesh.obj".to_string(),
                 };
                 let (tx, rx) = mpsc::channel();
                 self.obj_save_rx = Some(rx);

@@ -287,6 +287,25 @@ impl InteractiveTool for SpinVisualizer {
         Ok(())
     }
 
+    fn step_simulation(&mut self) {
+        self.step(0.05);
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        let [bx, by, bz] = self.b_field;
+        let b_mag = (bx * bx + by * by + bz * bz).sqrt();
+        vec![
+            ("bx", bx),
+            ("by", by),
+            ("bz", bz),
+            ("b_magnitude", b_mag),
+            ("expectation_x", self.sx.expectation_value(&self.psi).re),
+            ("expectation_y", self.sy.expectation_value(&self.psi).re),
+            ("expectation_z", self.sz.expectation_value(&self.psi).re),
+            ("time", self.time),
+        ]
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         if !self.paused {
             self.step(0.05);

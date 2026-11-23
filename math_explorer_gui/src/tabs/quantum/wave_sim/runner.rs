@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::atlas::compute_lattice_steady_transmission_from_slice;
 use super::presets::{
     barrier_interval_for_preset, default_compiled_expr, evaluate_potential_grid,
     WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME,
@@ -86,6 +87,8 @@ pub struct WaveData {
     pub right_wall_prob: f64,
     /// Latched post-scattering, pre-wall transmission readout $T_{\text{scatter}}$.
     pub latched_transmission: Option<f64>,
+    /// Exact zero-allocation tight-binding lattice transmission $T_{\text{steady}}(k_0)$.
+    pub steady_transmission: f64,
     /// Left edge of the barrier integration interval.
     pub x_left: f64,
     /// Right edge of the barrier integration interval.
@@ -259,29 +262,20 @@ impl WaveRunner {
         if obs.barrier_prob >= BARRIER_TRANSIT_THRESHOLD || classical_past_barrier {
             self.entered_barrier = true;
         }
-        if self.entered_barrier
-            && !self.wall_arrived
-            && obs.barrier_prob < BARRIER_TRANSIT_THRESHOLD
-        {
-            if obs.right_wall_prob < WALL_ARRIVAL_THRESHOLD {
+        if self.entered_barrier && !self.wall_arrived {
+            if obs.barrier_prob < BARRIER_TRANSIT_THRESHOLD
+                && obs.right_wall_prob < WALL_ARRIVAL_THRESHOLD
+            {
                 self.latched_transmission = Some(obs.transmission);
             } else if self.latched_transmission.is_none()
+                && obs.right_wall_prob >= WALL_ARRIVAL_THRESHOLD
                 && prev.right_wall_prob < WALL_ARRIVAL_THRESHOLD
             {
-                let alpha_b = if prev.barrier_prob < BARRIER_TRANSIT_THRESHOLD {
-                    0.0
-                } else {
-                    let denom = (prev.barrier_prob - obs.barrier_prob).max(f64::EPSILON);
-                    ((prev.barrier_prob - BARRIER_TRANSIT_THRESHOLD) / denom).clamp(0.0, 1.0)
-                };
                 let denom_w = (obs.right_wall_prob - prev.right_wall_prob).max(f64::EPSILON);
                 let alpha_w =
                     ((WALL_ARRIVAL_THRESHOLD - prev.right_wall_prob) / denom_w).clamp(0.0, 1.0);
-                if alpha_b <= alpha_w {
-                    let t_pre =
-                        prev.transmission + alpha_w * (obs.transmission - prev.transmission);
-                    self.latched_transmission = Some(t_pre.clamp(0.0, 1.0));
-                }
+                let t_pre = prev.transmission + alpha_w * (obs.transmission - prev.transmission);
+                self.latched_transmission = Some(t_pre.clamp(0.0, 1.0));
             }
         }
         if obs.right_wall_prob >= WALL_ARRIVAL_THRESHOLD
@@ -374,11 +368,19 @@ impl WaveRunner {
             transmission: obs.transmission,
             right_wall_prob: obs.right_wall_prob,
             latched_transmission: self.latched_transmission,
+            steady_transmission: self.steady_transmission(),
             x_left: self.x_left,
             x_right: self.x_right,
             kinetic_energy: self.kinetic_energy,
             norm_sq: state_norm_squared(&self.psi),
         }
+    }
+
+    /// Computes exact steady-state lattice transmission on the active `construct_1d_hamiltonian` grid.
+    #[must_use]
+    pub fn steady_transmission(&self) -> f64 {
+        let dx = (self.x_max - self.x_min) / ((self.n_points.max(2) - 1) as f64);
+        compute_lattice_steady_transmission_from_slice(self.potential.as_slice(), dx, self.k0)
     }
 
     /// Current latched pre-wall transmission readout $T_{\text{scatter}}$, if latched.

@@ -3,10 +3,15 @@
 // [cite:quantum_mechanics]
 // [cite:isosurface_extraction]
 
+use super::ast_field::{
+    validate_custom_3d_formula, DEFAULT_CUSTOM_3D_EXPR, MAX_CUSTOM_3D_EXPR_BYTES,
+};
 use crate::camera::Camera3D;
+use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
 use crate::volumetric_scene::VolumeCutFilter;
 use math_explorer::physics::quantum::{OrbitalQuantumNumbers, QuantumFieldObservable};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Minimum interactive 3D voxel grid dimension (`16^3 = 4,096` voxels).
 pub const MIN_VOLUMETRIC_GRID: usize = 16;
@@ -17,7 +22,7 @@ pub const STUDIO_VIEWPORT_EXTENT: f64 = 2.5;
 /// Camera distance used for perspective splat covariance projection.
 pub const STUDIO_CAMERA_DISTANCE: f64 = 5.5;
 
-/// Active 3D volumetric PDE / eigenstate generator.
+/// Active 3D volumetric PDE / eigenstate / implicit AST generator.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldSourceMode {
@@ -26,6 +31,8 @@ pub enum FieldSourceMode {
     QuantumSuperposition,
     /// Two-species 3D Schnakenberg reaction-diffusion grid via `FiniteDifference3D`.
     TuringMorphogenesis,
+    /// User-authored 3D implicit scalar field $f(x, y, z)$ evaluated via `CompiledExpr::eval_3d`.
+    CustomImplicitAst,
 }
 
 impl FieldSourceMode {
@@ -34,6 +41,7 @@ impl FieldSourceMode {
         match self {
             Self::QuantumSuperposition => "3D Hydrogenic Superposition",
             Self::TuringMorphogenesis => "3D Turing Reaction-Diffusion",
+            Self::CustomImplicitAst => "Custom 3D Implicit Formula",
         }
     }
 }
@@ -133,6 +141,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_custom_3d_expr() -> String {
+    DEFAULT_CUSTOM_3D_EXPR.to_string()
+}
+
+fn is_default_custom_3d_expr(expr: &str) -> bool {
+    expr == DEFAULT_CUSTOM_3D_EXPR
+}
+
 /// Complete serializable state for `VolumetricFieldStudioTool` (`#[serde(deny_unknown_fields)]`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -178,6 +194,15 @@ pub struct VolumetricStudioConfig {
     pub turing_dv: f64,
     /// Turing integration step `dt` in `[0.001, 0.05]`.
     pub turing_dt: f64,
+    /// User-authored 3D implicit scalar field expression over `(x, y, z)` (`<= 512` bytes).
+    #[serde(
+        default = "default_custom_3d_expr",
+        skip_serializing_if = "is_default_custom_3d_expr"
+    )]
+    pub custom_expr: String,
+    /// Synthesized free-parameter values paired with `custom_expr`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub custom_params: BTreeMap<String, f64>,
     /// Enables 3D half-space cutting plane & cross-section nodal contours.
     pub cut_enabled: bool,
     /// Cutting-plane normal axis.
@@ -217,6 +242,8 @@ impl Default for VolumetricStudioConfig {
             turing_du: 1.0,
             turing_dv: 18.0,
             turing_dt: 0.008,
+            custom_expr: default_custom_3d_expr(),
+            custom_params: BTreeMap::new(),
             cut_enabled: false,
             cut_axis: SliceAxis::X,
             cut_offset: 0.0,
@@ -242,7 +269,7 @@ impl VolumetricStudioConfig {
         })
     }
 
-    /// Strictly validates all quantum numbers, PDE rates, grid bounds, and `Camera3D` pose.
+    /// Strictly validates all quantum numbers, PDE rates, custom AST bounds, and `Camera3D` pose.
     pub fn validate(&self) -> Result<(), String> {
         if !(MIN_VOLUMETRIC_GRID..=MAX_VOLUMETRIC_GRID).contains(&self.grid_resolution) {
             return Err(format!(
@@ -272,8 +299,28 @@ impl VolumetricStudioConfig {
                 ));
             }
         }
+        self.validate_custom_ast_fields()?;
         if !self.camera.is_valid() {
             return Err("Invalid Camera3D pose in VolumetricFieldStudioTool".into());
+        }
+        Ok(())
+    }
+
+    fn validate_custom_ast_fields(&self) -> Result<(), String> {
+        validate_custom_3d_formula(&self.custom_expr)?;
+        if self.custom_params.len() > MAX_SYNTHESIZED_PARAMS {
+            return Err(format!(
+                "custom_params count {} exceeds {MAX_SYNTHESIZED_PARAMS}",
+                self.custom_params.len()
+            ));
+        }
+        for (name, &val) in &self.custom_params {
+            if name.is_empty() || name.len() > 32 {
+                return Err(format!("Invalid custom_params key '{name}'"));
+            }
+            if !val.is_finite() || !(-1.0e4..=1.0e4).contains(&val) {
+                return Err(format!("custom_params['{name}']={val} out of finite range"));
+            }
         }
         Ok(())
     }
@@ -284,20 +331,12 @@ impl VolumetricStudioConfig {
             .grid_resolution
             .clamp(MIN_VOLUMETRIC_GRID, MAX_VOLUMETRIC_GRID);
         let q1 = OrbitalQuantumNumbers::clamped(self.n1, self.l1, self.m1);
-        self.n1 = q1.n;
-        self.l1 = q1.l;
-        self.m1 = q1.m;
+        (self.n1, self.l1, self.m1) = (q1.n, q1.l, q1.m);
         let q2 = OrbitalQuantumNumbers::clamped(self.n2, self.l2, self.m2);
-        self.n2 = q2.n;
-        self.l2 = q2.l;
-        self.m2 = q2.m;
+        (self.n2, self.l2, self.m2) = (q2.n, q2.l, q2.m);
         self.superposition_mix = clamp_finite(self.superposition_mix, 0.0, 1.0, 0.5);
-        self.relative_phase = clamp_finite(
-            self.relative_phase,
-            -std::f64::consts::PI,
-            std::f64::consts::PI,
-            0.0,
-        );
+        let pi = std::f64::consts::PI;
+        self.relative_phase = clamp_finite(self.relative_phase, -pi, pi, 0.0);
         self.quantum_dt = clamp_finite(self.quantum_dt, 0.005, 0.5, 0.08);
         self.iso_threshold = clamp_finite(self.iso_threshold, 0.002, 0.8, 0.032);
         self.splat_scale = clamp_finite(self.splat_scale, 0.2, 4.0, 1.0);
@@ -307,9 +346,25 @@ impl VolumetricStudioConfig {
         self.turing_dv = clamp_finite(self.turing_dv, 5.0, 60.0, 18.0);
         self.turing_dt = clamp_finite(self.turing_dt, 0.001, 0.05, 0.008);
         self.cut_offset = clamp_finite(self.cut_offset, -1.0, 1.0, 0.0);
+        self.clamp_custom_ast_in_place();
         if !self.camera.is_valid() {
             self.camera.reset();
         }
+    }
+
+    fn clamp_custom_ast_in_place(&mut self) {
+        if self.custom_expr.len() > MAX_CUSTOM_3D_EXPR_BYTES
+            || validate_custom_3d_formula(&self.custom_expr).is_err()
+        {
+            self.custom_expr = default_custom_3d_expr();
+        }
+        let mut cleaned = BTreeMap::new();
+        for (k, &v) in self.custom_params.iter().take(MAX_SYNTHESIZED_PARAMS) {
+            if !k.is_empty() && k.len() <= 32 {
+                cleaned.insert(k.clone(), clamp_finite(v, -1.0e4, 1.0e4, 1.0));
+            }
+        }
+        self.custom_params = cleaned;
     }
 }
 

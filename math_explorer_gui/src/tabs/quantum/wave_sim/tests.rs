@@ -1,5 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+#[path = "tests_atlas_challenges.rs"]
+mod tests_atlas_challenges;
+
 use super::presets::{evaluate_potential_grid, POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN};
 use super::*;
 use crate::async_sim::SimulationRunner;
@@ -195,7 +198,8 @@ fn test_ast_syntax_aria_announcement_and_singular_potential_clamping() {
 #[test]
 fn test_sample_animation_frames_monotonic_time_and_distinct_wavepackets() {
     let mut tool = WaveSimulatorTool::new();
-    tool.apply_tunneling_split_challenge(None);
+    tool.apply_challenge(Some(challenges::CHALLENGE_SUBBARRIER_50_SPLIT))
+        .expect("activate subbarrier split challenge");
 
     let frames = tool.sample_animation_frames(10);
     assert_eq!(frames.len(), 10);

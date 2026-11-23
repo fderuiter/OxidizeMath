@@ -267,6 +267,24 @@ impl InteractiveTool for ClebschGordanTool {
             }
         });
     }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        let amp = if self.result.is_finite() {
+            self.result
+        } else {
+            0.0
+        };
+        vec![
+            ("j1", self.j1),
+            ("m1", self.m1),
+            ("j2", self.j2),
+            ("m2", self.m2),
+            ("j_total", self.j),
+            ("m_total", self.m),
+            ("cg_amplitude", amp),
+            ("cg_probability", amp * amp),
+        ]
+    }
 }
 
 // [cite:quantum_mechanics]

@@ -6,6 +6,7 @@
 // [cite:gaussian_splatting]
 // [cite:favorite_child]
 
+pub mod ast_field;
 pub mod engine;
 pub mod presets;
 mod render;
@@ -15,6 +16,7 @@ mod ui;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolMetadata, ToolStateBounds};
 use crate::web_io::PlatformInstant;
+use ast_field::CustomAstFieldController;
 use eframe::egui;
 use engine::VolumetricEngine;
 use scientific_metadata::theory::TheoryDescribable;
@@ -23,12 +25,14 @@ use std::hash::{Hash, Hasher};
 use std::sync::mpsc::Receiver;
 
 /// Interactive 3D volumetric field studio uniting quantum eigenstates, 3D Turing PDEs,
-/// `MarchingCubes` nodal surfaces, `.obj` Wavefront export, and `Gaussian3D` radiance splatting.
+/// custom 3D implicit AST surfaces, `MarchingCubes` nodal meshes, and `Gaussian3D` splatting.
 pub struct VolumetricFieldStudioTool {
     /// Validated serializable studio configuration.
     pub config: VolumetricStudioConfig,
-    /// Pre-allocated zero-allocation 3D PDE, isosurface, and splatting workspace.
+    /// Pre-allocated zero-allocation 3D PDE, AST, isosurface, and splatting workspace.
     pub engine: VolumetricEngine,
+    /// Formula bar & synthesized `ParameterSliderBank` for `FieldSourceMode::CustomImplicitAst`.
+    pub ast_controller: CustomAstFieldController,
     pub(super) splat_texture: Option<egui::TextureHandle>,
     pub(super) splat_dirty: bool,
     pub(super) last_step_tick: PlatformInstant,
@@ -40,9 +44,12 @@ impl Default for VolumetricFieldStudioTool {
     fn default() -> Self {
         let config = VolumetricStudioConfig::default();
         let engine = VolumetricEngine::new(&config);
+        let mut ast_controller = CustomAstFieldController::default();
+        ast_controller.load_from_config(&config.custom_expr, &config.custom_params);
         Self {
             config,
             engine,
+            ast_controller,
             splat_texture: None,
             splat_dirty: true,
             last_step_tick: PlatformInstant::now(),
@@ -61,7 +68,52 @@ impl VolumetricFieldStudioTool {
 
     /// Re-extracts `MarchingCubes` and `Gaussian3D` outputs at the current `config` without advancing time.
     pub fn refresh_zero_alloc(&mut self) {
-        self.engine.sync_structural_config(&self.config);
+        self.refresh_with_drag_preview(false);
+    }
+
+    /// Re-extracts `MarchingCubes`, `Gaussian3D`, and slice contours, using a `20^3` preview grid
+    /// when `drag_preview` is active in `CustomImplicitAst` mode and full `grid_resolution^3` on release.
+    pub fn refresh_with_drag_preview(&mut self, drag_preview: bool) {
+        if let Some(compiled) = self.ast_controller.bar.active_compiled() {
+            self.engine
+                .ast_kernel
+                .sync_from_bar(compiled, self.ast_controller.bar.param_slice());
+        }
+        self.engine
+            .sync_structural_config_with_preview(&self.config, drag_preview);
+        self.engine.step_and_extract_zero_alloc(&self.config, false);
+        self.splat_dirty = true;
+    }
+
+    /// Compiles and applies a new 3D custom implicit AST expression.
+    #[cfg(test)]
+    pub fn set_custom_expression(&mut self, expr: &str) -> Result<(), String> {
+        ast_field::validate_custom_3d_formula(expr)?;
+        self.ast_controller.bar.set_expression(expr);
+        self.config.custom_expr = expr.to_string();
+        self.config.custom_params = self.ast_controller.bar.params_map();
+        if let Some(compiled) = self.ast_controller.bar.active_compiled() {
+            self.engine
+                .ast_kernel
+                .sync_from_bar(compiled, self.ast_controller.bar.param_slice());
+        }
+        self.refresh_with_drag_preview(false);
+        Ok(())
+    }
+
+    /// Updates a synthesized 3D AST parameter in place without heap allocations during drag previews.
+    #[cfg(test)]
+    pub fn set_custom_param_zero_alloc(&mut self, slot: usize, value: f64, drag_preview: bool) {
+        let mut buf = [0.0; crate::framework::math_input::MAX_SYNTHESIZED_PARAMS];
+        let src = self.ast_controller.bar.param_slice();
+        let len = src.len().min(buf.len());
+        buf[..len].copy_from_slice(&src[..len]);
+        if slot < len {
+            buf[slot] = value;
+        }
+        self.engine.ast_kernel.set_params_slice(&buf[..len]);
+        self.engine
+            .sync_structural_config_with_preview(&self.config, drag_preview);
         self.engine.step_and_extract_zero_alloc(&self.config, false);
         self.splat_dirty = true;
     }
@@ -89,6 +141,8 @@ impl FiniteStateGuard for VolumetricFieldStudioTool {
 
     fn reset_parameters(&mut self) {
         self.config = VolumetricStudioConfig::default();
+        self.ast_controller
+            .load_from_config(&self.config.custom_expr, &self.config.custom_params);
         self.engine.reset_simulation(&self.config);
         self.splat_dirty = true;
     }
@@ -133,6 +187,11 @@ impl InteractiveTool for VolumetricFieldStudioTool {
         self.config.turing_du.to_bits().hash(&mut h);
         self.config.turing_dv.to_bits().hash(&mut h);
         self.config.turing_dt.to_bits().hash(&mut h);
+        self.config.custom_expr.hash(&mut h);
+        for (k, v) in &self.config.custom_params {
+            k.hash(&mut h);
+            v.to_bits().hash(&mut h);
+        }
         self.config.cut_enabled.hash(&mut h);
         self.config.cut_axis.hash(&mut h);
         self.config.cut_offset.to_bits().hash(&mut h);
@@ -156,18 +215,43 @@ impl InteractiveTool for VolumetricFieldStudioTool {
             .map_err(|e| format!("Invalid VolumetricFieldStudioTool state: {e}"))?;
         parsed.validate()?;
         self.config = parsed;
+        self.ast_controller
+            .load_from_config(&self.config.custom_expr, &self.config.custom_params);
         self.engine.diverged = false;
         self.engine.diagnostic_report = None;
+        self.engine
+            .ast_kernel
+            .sync_from_config_expr(&self.config.custom_expr, &self.config.custom_params);
         self.refresh_zero_alloc();
         Ok(())
     }
 
     fn clamp_parameters(&mut self) -> bool {
         self.config.clamp_in_place();
+        self.ast_controller
+            .load_from_config(&self.config.custom_expr, &self.config.custom_params);
         self.engine.diverged = false;
         self.engine.diagnostic_report = None;
+        self.engine
+            .ast_kernel
+            .sync_from_config_expr(&self.config.custom_expr, &self.config.custom_params);
         self.refresh_zero_alloc();
         true
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        let tris = (self.engine.pos_mesh.indices.len() + self.engine.neg_mesh.indices.len()) / 3;
+        let splats = self.engine.splat_ws.scene.gaussians.len();
+        let radial_nodes = self.engine.count_cutting_plane_radial_nodes(&self.config);
+        vec![
+            ("grid_resolution", self.engine.voxel_grid.width() as f64),
+            ("iso_threshold", self.config.iso_threshold),
+            ("mesh_triangles", tris as f64),
+            ("active_splats", splats as f64),
+            ("slice_contours", self.engine.slice_contours.len() as f64),
+            ("radial_nodes", radial_nodes as f64),
+            ("superposition_mix", self.config.superposition_mix),
+        ]
     }
 
     fn step_simulation(&mut self) {
