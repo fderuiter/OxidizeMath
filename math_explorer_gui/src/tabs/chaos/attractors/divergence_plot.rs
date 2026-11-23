@@ -8,7 +8,8 @@ use crate::app::SemanticPalette;
 use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::framework::Plot3DViewport;
 use eframe::egui;
-use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints, Points, VLine};
+use egui_plot::{Legend, Line, LineStyle, MarkerShape, Plot, PlotPoints, Points, VLine};
+use nalgebra::Point3;
 
 impl AttractorPlotter {
     pub(super) fn draw_twin_central_views(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -39,35 +40,11 @@ impl AttractorPlotter {
         }
     }
 
-    fn collect_projected_twin_markers(&self) -> (Option<[f64; 2]>, Option<[f64; 2]>) {
-        let active_frame = self.timeline.current_copied();
-        let primary_marker = active_frame
-            .map(|f| self.project(f.primary_vec3()))
-            .or_else(|| {
-                self.is_finite_state()
-                    .then(|| self.project(self.system.state.vec))
-            });
-        let shadow_marker = self
-            .shadow_enabled
-            .then(|| active_frame.map(|f| self.project(f.shadow_vec3())))
-            .flatten();
-        (primary_marker, shadow_marker)
-    }
-
     fn draw_3d_twin_viewport(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         let primary_color = palette.series_color(0);
         let shadow_color = palette.series_color(1);
-        let primary_pts: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
-        let shadow_pts: Vec<[f64; 2]> = if self.shadow_enabled {
-            self.shadow_history
-                .iter()
-                .map(|p| self.project(*p))
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let (primary_marker, shadow_marker) = self.collect_projected_twin_markers();
+        self.populate_twin_scene(primary_color, shadow_color);
 
         let half_extent = match self.mode {
             super::AttractorMode::Lorenz => self.system_kind.viewport_half_extent(),
@@ -76,32 +53,7 @@ impl AttractorPlotter {
         let mut camera = self.camera;
         let response = Plot3DViewport::new("attractor_plot", half_extent)
             .show(ui, &mut camera, |plot_ui| {
-                plot_ui.line(
-                    Line::new("Trajectory", PlotPoints::new(primary_pts))
-                        .color(primary_color)
-                        .width(1.8_f32),
-                );
-                if self.shadow_enabled && !shadow_pts.is_empty() {
-                    plot_ui.line(
-                        Line::new("Shadow Trajectory", PlotPoints::new(shadow_pts))
-                            .color(shadow_color)
-                            .width(1.6_f32),
-                    );
-                }
-                if let Some(pt) = shadow_marker {
-                    plot_ui.points(
-                        Points::new("Shadow State", vec![pt])
-                            .radius(5.0_f32)
-                            .color(shadow_color),
-                    );
-                }
-                if let Some(pt) = primary_marker {
-                    plot_ui.points(
-                        Points::new("Primary State", vec![pt])
-                            .radius(4.5_f32)
-                            .color(primary_color),
-                    );
-                }
+                self.scene_builder.finish(plot_ui);
                 if self.mode == super::AttractorMode::Lorenz
                     && self.system_kind == AttractorSystemKind::Lorenz
                 {
@@ -250,5 +202,111 @@ impl AttractorPlotter {
             }
         }
         Some(best_idx)
+    }
+
+    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
+    pub fn populate_scene(&mut self, series_color: egui::Color32) {
+        let origin_offset = match self.mode {
+            super::AttractorMode::Lorenz => {
+                let c = self.system_kind.center_offset();
+                Point3::new(c.x, c.y, c.z)
+            }
+            super::AttractorMode::Custom => Point3::origin(),
+        };
+        self.scene_builder.begin(self.camera);
+        self.scene_builder.set_origin_offset(origin_offset);
+        self.add_trajectory_curve("Trajectory", true, series_color, 1.8_f32);
+    }
+
+    pub(crate) fn populate_twin_scene(
+        &mut self,
+        primary_color: egui::Color32,
+        shadow_color: egui::Color32,
+    ) {
+        self.populate_scene(primary_color);
+        if self.shadow_enabled && !self.shadow_history.is_empty() {
+            self.add_trajectory_curve("Shadow Trajectory", false, shadow_color, 1.6_f32);
+        }
+        self.add_active_twin_markers(primary_color, shadow_color);
+    }
+
+    fn add_trajectory_curve(
+        &mut self,
+        name: &str,
+        primary: bool,
+        color: egui::Color32,
+        width: f32,
+    ) {
+        self.trajectory_scratch.clear();
+        let iter = if primary {
+            self.history.iter()
+        } else {
+            self.shadow_history.iter()
+        };
+        self.trajectory_scratch
+            .extend(iter.map(|v| Point3::new(v.x, v.y, v.z)));
+        if !self.trajectory_scratch.is_empty() {
+            if self.trajectory_scratch.len() == 1 {
+                self.scene_builder.add_points(
+                    name,
+                    &self.trajectory_scratch,
+                    4.0_f32,
+                    color,
+                    MarkerShape::Circle,
+                    true,
+                );
+            } else {
+                self.scene_builder.add_polyline(
+                    name,
+                    &self.trajectory_scratch,
+                    egui::Stroke::new(width, color),
+                    LineStyle::Solid,
+                    true,
+                );
+            }
+        } else if primary && self.is_finite_state() {
+            let v = self.system.state.vec;
+            self.scene_builder.add_points(
+                "Initial State",
+                &[Point3::new(v.x, v.y, v.z)],
+                4.0_f32,
+                color,
+                MarkerShape::Circle,
+                true,
+            );
+        }
+    }
+
+    fn add_active_twin_markers(
+        &mut self,
+        primary_color: egui::Color32,
+        shadow_color: egui::Color32,
+    ) {
+        let active_frame = self.timeline.current_copied();
+        if self.shadow_enabled {
+            if let Some(sv) = active_frame.map(|f| f.shadow_vec3()) {
+                self.scene_builder.add_points(
+                    "Shadow State",
+                    &[Point3::new(sv.x, sv.y, sv.z)],
+                    5.0_f32,
+                    shadow_color,
+                    MarkerShape::Circle,
+                    false,
+                );
+            }
+        }
+        let primary_pt = active_frame
+            .map(|f| f.primary_vec3())
+            .or_else(|| self.is_finite_state().then_some(self.system.state.vec));
+        if let Some(pv) = primary_pt {
+            self.scene_builder.add_points(
+                "Primary State",
+                &[Point3::new(pv.x, pv.y, pv.z)],
+                4.5_f32,
+                primary_color,
+                MarkerShape::Circle,
+                false,
+            );
+        }
     }
 }

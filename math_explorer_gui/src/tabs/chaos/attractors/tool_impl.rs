@@ -163,7 +163,7 @@ impl AttractorPlotter {
         else {
             return;
         };
-        if ui_diverged {
+        if ui_diverged || (was_paused && data.step_count == 0 && self.step_count > 0) {
             return;
         }
         self.history = data.history;
@@ -233,9 +233,7 @@ impl InteractiveTool for AttractorPlotter {
         self.is_paused().hash(&mut h);
         self.diverged().hash(&mut h);
         self.show_annotations.hash(&mut h);
-        self.camera.pitch.to_bits().hash(&mut h);
-        self.camera.yaw.to_bits().hash(&mut h);
-        self.camera.zoom.to_bits().hash(&mut h);
+        self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
 
@@ -311,6 +309,30 @@ impl InteractiveTool for AttractorPlotter {
                 "Log10 Divergence".to_string(),
                 self.build_log10_divergence_series(),
             ));
+        }
+        datasets
+    }
+
+    fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        let mut points: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
+        if points.is_empty() && self.is_finite_state() {
+            let v = self.system.state.vec;
+            points.push([v.x, v.y, v.z]);
+        }
+        let mut datasets = vec![("Trajectory".to_string(), points)];
+        if self.shadow_enabled && self.is_finite_state() {
+            let mut sh_pts: Vec<[f64; 3]> = self
+                .shadow_history
+                .iter()
+                .map(|p| [p.x, p.y, p.z])
+                .collect();
+            if sh_pts.is_empty() {
+                if let Some(curr) = self.timeline.current() {
+                    let s = curr.shadow_vec3();
+                    sh_pts.push([s.x, s.y, s.z]);
+                }
+            }
+            datasets.push(("Shadow Trajectory".to_string(), sh_pts));
         }
         datasets
     }

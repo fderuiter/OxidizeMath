@@ -1,10 +1,20 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use crate::app::viewport::compare_sync::render_comparison_sync_checkboxes;
 use crate::app::{MathExplorerApp, ViewportLayout};
 use eframe::egui;
 
-/// Renders the `Viewport Layout` flyout submenu including dual-pane swap, pairwise swap, and 4-pane rotation.
-pub(super) fn render_viewport_layout_submenu(app: &mut MathExplorerApp, ui: &mut egui::Ui) {
+/// Renders the `Viewport Layout` flyout submenu including pane cloning, swap, rotation, and comparison sync toggles.
+pub(super) fn render_viewport_layout_submenu(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+) {
+    let dup_shortcut = if cfg!(target_os = "macos") {
+        "Cmd+Shift+2"
+    } else {
+        "Ctrl+Shift+2"
+    };
     ui.menu_button("Viewport Layout", |ui| {
         for layout in [
             ViewportLayout::Single,
@@ -22,22 +32,47 @@ pub(super) fn render_viewport_layout_submenu(app: &mut MathExplorerApp, ui: &mut
             }
         }
 
+        ui.separator();
+        if ui
+            .add(egui::Button::new("⧉ Duplicate Focused Pane").shortcut_text(dup_shortcut))
+            .clicked()
+        {
+            let _ = app.duplicate_focused_pane(Some(ctx));
+            ui.close();
+            return;
+        }
+
         if app.viewport_layout != ViewportLayout::Single {
-            ui.separator();
             if ui.button("⇄ Swap Panes").clicked() {
                 app.swap_panes();
                 ui.close();
                 return;
             }
             if app.viewport_layout == ViewportLayout::QuadGrid {
-                render_quad_swap_and_rotate_items(app, ui);
+                render_quad_swap_and_rotate_items(app, ctx, ui);
             }
+            ui.separator();
+            render_comparison_sync_checkboxes(app, ctx, ui);
         }
     });
 }
 
-fn render_quad_swap_and_rotate_items(app: &mut MathExplorerApp, ui: &mut egui::Ui) {
+fn render_quad_swap_and_rotate_items(
+    app: &mut MathExplorerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+) {
     let labels = ViewportLayout::QuadGrid.pane_labels();
+    let src_pane = app.active_focused_pane();
+    ui.menu_button("⧉ Duplicate Pane To", |clone_ui| {
+        for (dst_idx, &dst_lbl) in labels.iter().enumerate() {
+            if dst_idx != src_pane && clone_ui.button(format!("⧉ {dst_lbl}")).clicked() {
+                let _ = app.clone_pane_interactive(ctx, src_pane, dst_idx);
+                clone_ui.close();
+                return;
+            }
+        }
+    });
     ui.menu_button("⇄ Swap Pane Pair", |pair_ui| {
         for (a, b) in [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)] {
             let text = format!("{} ⇄ {}", labels[a], labels[b]);

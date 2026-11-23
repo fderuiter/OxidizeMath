@@ -2,12 +2,12 @@
 
 use crate::async_sim::{BackgroundWorker, SimCommand};
 use crate::framework::{
-    CoupledExpressionBank, MathExpressionInputBar, TimelineRingBuffer,
+    Camera3D, CoupledExpressionBank, MathExpressionInputBar, Scene3DBuilder, TimelineRingBuffer,
     DEFAULT_TIMELINE_RING_CAPACITY,
 };
 use eframe::egui;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
-use nalgebra::Vector3;
+use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -58,7 +58,9 @@ pub struct AttractorPlotter {
     pub(crate) shadow_history: VecDeque<Vector3<f64>>,
     pub(crate) timeline: TimelineRingBuffer<TwinFrame>,
     pub(crate) max_points: usize,
-    pub(crate) camera: crate::framework::Camera3D,
+    pub(crate) camera: Camera3D,
+    pub(crate) scene_builder: Scene3DBuilder,
+    pub(super) trajectory_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
     /// Whether Lorenz equilibrium callouts ($C_+$, $C_-$) are displayed.
@@ -91,25 +93,11 @@ impl Default for AttractorPlotter {
             PERTURBATION_PRESETS.to_vec(),
         );
         let offset = [DEFAULT_EPSILON, 0.0, 0.0];
-        let params = Arc::new(std::sync::RwLock::new(AttractorSharedParams {
-            sigma: system.sigma,
-            rho: system.rho,
-            beta: system.beta,
-            dt: 0.01,
-            simulation_speed: 5,
-            max_points: 2000,
-            mode: AttractorMode::Lorenz,
-            custom_flow,
-            system_kind: AttractorSystemKind::Lorenz,
-            initial_state: initial,
-            shadow_enabled: true,
-            perturbation_offset: offset,
-            extra: ExtraChaosParams::default(),
-        }));
+        let params = Self::initial_shared_params(&system, custom_flow, initial, offset);
         let runner = AttractorRunner::from_params(Arc::clone(&params));
         let timeline = runner.timeline.clone();
         let worker = BackgroundWorker::new(runner);
-
+        let camera = Camera3D::new(0.0, 0.0, 1.0).with_perspective_distance(75.0);
         Self {
             mode: AttractorMode::Lorenz,
             flow_bank,
@@ -122,7 +110,9 @@ impl Default for AttractorPlotter {
             shadow_history: VecDeque::with_capacity(2000),
             timeline,
             max_points: 2000,
-            camera: crate::framework::Camera3D::new(0.0, 0.0, 1.0),
+            camera,
+            scene_builder: Scene3DBuilder::new(camera),
+            trajectory_scratch: Vec::with_capacity(2000),
             params,
             worker,
             show_annotations: true,
@@ -144,6 +134,29 @@ impl Default for AttractorPlotter {
 }
 
 impl AttractorPlotter {
+    fn initial_shared_params(
+        system: &LorenzSystem,
+        custom_flow: Option<Arc<CompiledFlowJob>>,
+        initial: [f64; 3],
+        offset: [f64; 3],
+    ) -> Arc<std::sync::RwLock<AttractorSharedParams>> {
+        Arc::new(std::sync::RwLock::new(AttractorSharedParams {
+            sigma: system.sigma,
+            rho: system.rho,
+            beta: system.beta,
+            dt: 0.01,
+            simulation_speed: 5,
+            max_points: 2000,
+            mode: AttractorMode::Lorenz,
+            custom_flow,
+            system_kind: AttractorSystemKind::Lorenz,
+            initial_state: initial,
+            shadow_enabled: true,
+            perturbation_offset: offset,
+            extra: ExtraChaosParams::default(),
+        }))
+    }
+
     #[must_use]
     pub fn diverged(&self) -> bool {
         matches!(self.execution_state, SolverExecutionState::Diverged { .. })
@@ -375,7 +388,7 @@ impl AttractorPlotter {
         let _ = self.metrics_cache.compute_correlation_on_demand(&pts);
     }
 
-    /// Projects 3D point to 2D screen space based on rotation and active system center.
+    /// Projects 3D point to 2D screen space based on rotation, pan, zoom, and projection mode.
     pub(crate) fn project(&self, p: Vector3<f64>) -> [f64; 2] {
         let center_offset = match self.mode {
             AttractorMode::Lorenz => self.system_kind.center_offset(),
