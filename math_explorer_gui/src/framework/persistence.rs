@@ -189,7 +189,7 @@ pub(super) fn capture_isolated_tool_datasets_3d(
 }
 
 impl SimulationFramework {
-    /// Creates a [`SimulationFramework`] populated with all registered tools for `domain`.
+    /// Creates a new simulation framework discovering registered tools for `domain`.
     pub fn new(domain: &str) -> Self {
         let mut available_tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>
             .into_iter()

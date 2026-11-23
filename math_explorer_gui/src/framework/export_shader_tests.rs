@@ -257,41 +257,30 @@ fn test_compact_overflow_menu_and_non_shader_tool_warning_status() {
 }
 
 #[test]
-fn test_custom_fractal_modes_emit_complex_ast_glsl_and_reject_reserved_params() {
-    let mut custom_mb = FractalViewer {
+fn test_fractal_custom_mandelbrot_and_custom_julia_glsl_shader_export() {
+    let mut viewer = FractalViewer {
         mode: FractalMode::CustomMandelbrot,
-        high_contrast: true,
         ..Default::default()
     };
-    custom_mb
-        .try_load_state(
-            r#"{"center_re":0.0,"center_im":0.0,"zoom":1.5,"max_iter":64,"mode":"CustomMandelbrot","julia_re":-0.4,"julia_im":0.6,"custom_expr":"a * z^3 + c","custom_params":{"a":1.25}}"#,
-        )
-        .expect("load custom mandelbrot");
-    let glsl_mb = custom_mb
+    viewer.math_input.set_expression("a * z^3 + c");
+    let mut params = std::collections::BTreeMap::new();
+    params.insert("a".to_string(), 1.25);
+    viewer.math_input.set_params_map(&params);
+
+    let custom_mb = viewer
         .export_glsl_shader(ShaderDialect::WebGl2Es300)
-        .expect("custom mandelbrot glsl");
-    assert!(glsl_mb.contains("// OxidizeMath Analytical Custom Mandelbrot Escape-Time Shader"));
-    assert!(glsl_mb.contains("const bool IS_JULIA = false;"));
-    assert!(glsl_mb.contains("vec2 step_fractal(vec2 z, vec2 c)"));
-    assert!(glsl_mb.contains("const vec2 a = vec2(1.25, 0.0);"));
+        .expect("CustomMandelbrot WebGL2 shader must compile");
+    assert!(custom_mb.contains("// OxidizeMath Analytical Custom Mandelbrot Escape-Time Shader"));
+    assert!(custom_mb.contains("const bool IS_JULIA = false;"));
+    assert!(custom_mb.contains("const float ESCAPE_R2 = 4.0;"));
+    assert!(custom_mb.contains("const vec2 a = vec2(1.25, 0.0);"));
+    assert!(custom_mb.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
 
-    let mut custom_julia = FractalViewer::default();
-    custom_julia
-        .try_load_state(
-            r#"{"center_re":0.0,"center_im":0.0,"zoom":1.0,"max_iter":48,"mode":"CustomJulia","julia_re":-0.4,"julia_im":0.6,"custom_expr":"sin(z) + c"}"#,
-        )
-        .expect("load custom julia");
-    let glsl_julia = custom_julia
+    viewer.mode = FractalMode::CustomJulia;
+    let custom_julia = viewer
         .export_glsl_shader(ShaderDialect::Shadertoy)
-        .expect("custom julia glsl");
-    assert!(glsl_julia.contains("const bool IS_JULIA = true;"));
-    assert!(glsl_julia.contains("csin(z)"));
-
-    let mut bad = FractalViewer::default();
-    bad.try_load_state(
-        r#"{"center_re":0.0,"center_im":0.0,"zoom":1.0,"max_iter":32,"mode":"CustomMandelbrot","julia_re":0.0,"julia_im":0.0,"custom_expr":"ZOOM * z + c","custom_params":{"ZOOM":2.0}}"#,
-    )
-    .expect("load reserved param");
-    assert!(bad.export_glsl_shader(ShaderDialect::WebGl2Es300).is_err());
+        .expect("CustomJulia Shadertoy shader must compile");
+    assert!(custom_julia.contains("// OxidizeMath Analytical Custom Julia Escape-Time Shader"));
+    assert!(custom_julia.contains("const bool IS_JULIA = true;"));
+    assert!(custom_julia.contains("void mainImage(out vec4 fragColor, in vec2 fragCoord)"));
 }

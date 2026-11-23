@@ -41,6 +41,7 @@ fn wasm_loss_landscape_on_brush_and_32_bump_url_budget() {
                     multi_touch: None,
                     keys_down: std::collections::HashSet::new(),
                     modifiers: egui::Modifiers::NONE,
+                    brush_stroke: None,
                 };
                 tool.on_brush(&brush_ctx);
             }
