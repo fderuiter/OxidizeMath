@@ -436,7 +436,7 @@ inventory::submit! {
         id: "ChladniWaveTankTool",
         display_name: "Wave Tank & 2D Chladni Plate",
         domain: "analysis",
-        tags: &["pde", "chladni", "waves", "diffraction", "fft"],
+        tags: &["pde", "chladni", "waves", "diffraction", "fft", "sonification", "phonons"],
         build: || Box::new(ChladniWaveTankTool::default()),
     }
 }
