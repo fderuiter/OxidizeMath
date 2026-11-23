@@ -5,18 +5,21 @@
 use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_point_clamp,
-    apply_sponge_layer, BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D,
-    SpectralAnalyzer2D, SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver,
+    BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D, SpectralAnalyzer2D,
+    SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver,
 };
 
+use crate::audio::wav::{WavSampleFormat, WavSampleRate};
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 
 mod canvas;
+pub(crate) mod ir_export;
 mod presets;
 mod sonification;
 mod ui;
 
+#[cfg(test)]
+mod ir_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
@@ -135,11 +138,22 @@ pub(crate) struct ChladniWaveTankState {
     pub rng_seed: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_clamps: Vec<[f64; 2]>,
+    #[serde(default = "ir_export::default_pickup_left")]
+    pub pickup_left: [f64; 2],
+    #[serde(default = "ir_export::default_pickup_right")]
+    pub pickup_right: [f64; 2],
+    #[serde(default = "ir_export::default_ir_duration_secs")]
+    pub ir_duration_secs: f64,
+    #[serde(default)]
+    pub ir_sample_rate: WavSampleRate,
+    #[serde(default)]
+    pub ir_format: WavSampleFormat,
 }
 
 pub struct ChladniWaveTankTool {
     pub(crate) state: ChladniWaveTankState,
     pub(crate) audio: sonification::ChladniSonificationState,
+    pub(crate) ir_studio: ir_export::ChladniIrStudio,
     pub(crate) solver: Wave2DSolver,
     pub(crate) sand: ChladniSandSystem,
     pub(crate) fft: SpectralAnalyzer2D,
@@ -173,6 +187,7 @@ impl Default for ChladniWaveTankTool {
         let mut tool = Self {
             state,
             audio: sonification::ChladniSonificationState::default(),
+            ir_studio: ir_export::ChladniIrStudio::default(),
             solver,
             sand,
             fft: SpectralAnalyzer2D::new(GRID_SIZE, GRID_SIZE),
@@ -262,71 +277,7 @@ impl ChladniWaveTankTool {
     }
 
     pub(crate) fn rebuild_masks(&mut self) {
-        self.solver.wall_mask.fill(1.0);
-        self.solver.sponge_mask.fill(0.0);
-        self.solver.wave_speed_mask.fill(1.0);
-
-        if self.state.preset == TankPreset::CircularDrumhead {
-            apply_circular_drumhead_mask(&mut self.solver.wall_mask, GRID_SIZE, GRID_SIZE, 0.45);
-        }
-        if self.state.boundary == BoundaryMode2D::Sponge {
-            apply_sponge_layer(&mut self.solver.sponge_mask, GRID_SIZE, GRID_SIZE, 12, 1.8);
-        }
-        self.apply_clamp_pins();
-        if self.state.barrier_enabled {
-            apply_multi_slit_barrier(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                self.state.barrier_x,
-                2,
-                self.state.slit_count,
-                self.state.slit_width,
-                self.state.slit_separation,
-            );
-        }
-        if self.state.lens_enabled {
-            apply_biconvex_lens(
-                &mut self.solver.wave_speed_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                44,
-                self.state.lens_aperture,
-                8.0,
-                self.state.refractive_index,
-            );
-        }
-    }
-
-    fn apply_clamp_pins(&mut self) {
-        let (pins, radius): (&[(f64, f64)], f64) = match self.state.clamp_layout {
-            ClampLayout::None => (&[], 0.0),
-            ClampLayout::CenterPin => (&[(0.5, 0.5)], 2.0),
-            ClampLayout::QuadSymmetry => (&[(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)], 1.8),
-            ClampLayout::EdgeMidpoints => {
-                (&[(0.5, 0.04), (0.5, 0.96), (0.04, 0.5), (0.96, 0.5)], 2.2)
-            }
-        };
-        for &(cx, cy) in pins {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                radius,
-            );
-        }
-        for &[cx, cy] in &self.state.custom_clamps {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                1.8,
-            );
-        }
+        ir_export::configure_solver_masks(&mut self.solver, &self.state);
     }
 
     pub(crate) fn advance_physics_step(&mut self) {
@@ -475,6 +426,7 @@ impl InteractiveTool for ChladniWaveTankTool {
         } else if self.analysis_dirty {
             self.refresh_analysis_outputs();
         }
+        self.advance_cooperative_ir_slice(parent_ui.ctx());
         self.draw_controls_panel(parent_ui);
         self.draw_central_workspace(parent_ui);
     }

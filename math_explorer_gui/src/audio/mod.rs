@@ -6,9 +6,11 @@ pub mod backend;
 pub mod fourier;
 pub mod frame;
 pub mod mappings;
+pub mod studio_preview;
 pub mod synth;
 pub mod ui;
 pub mod wav;
+pub mod wavetable;
 #[cfg(target_arch = "wasm32")]
 pub mod web_audio;
 
@@ -102,6 +104,7 @@ impl AudioController {
     fn suspend_with_reason(&mut self, reason: MuteReason, always_announce: bool) {
         let was_active = !self.backend.is_muted();
         self.backend.mute_and_suspend(reason);
+        studio_preview::suspend_studio_preview(reason);
         if was_active || always_announce {
             announce_status(reason.aria_announcement());
         }
@@ -287,6 +290,8 @@ pub fn notify_tool_switched(new_tool_id: &'static str) {
 mod number_theory_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wavetable_tests;
 
 #[cfg(all(test, feature = "physics"))]
 mod mri_radar_tests;

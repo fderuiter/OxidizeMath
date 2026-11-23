@@ -9345,6 +9345,9 @@
       "signature": "impl Wave2DSolver { pub fn safe_substep_plan (& self , _ : & Wave2DParams , _ : f64) -> (usize , f64) }"
     },
     {
+      "signature": "impl Wave2DSolver { pub fn sample_displacement_bilinear (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
       "signature": "impl Wave2DSolver { pub fn set_stationary_displacement (& mut self , _ : & [f64]) }"
     },
     {

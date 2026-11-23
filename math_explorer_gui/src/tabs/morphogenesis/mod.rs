@@ -25,7 +25,7 @@ pub use lenia::LeniaTool;
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
-pub use runner::{MorphogenesisRunner, MorphogenesisSharedParams};
+pub use runner::{MorphogenesisKineticsRunner, MorphogenesisRunner, MorphogenesisSharedParams};
 pub use tool::{MorphogenesisTool, MorphogenesisToolState};
 
 /// Legacy flat `MorphoState` schema saved by pre-framework `.mws` workspaces.
@@ -63,6 +63,20 @@ impl Default for MorphogenesisTab {
 }
 
 impl MorphogenesisTab {
+    #[cfg(test)]
+    pub(crate) fn create_runner(
+        params: &std::sync::Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        width: usize,
+        height: usize,
+    ) -> MorphogenesisKineticsRunner {
+        let ks = std::sync::Arc::new(std::sync::RwLock::new(runner::MorphogenesisKineticsState {
+            mode: crate::presets::MorphogenesisKineticsMode::Schnakenberg,
+            ..Default::default()
+        }));
+        let mask_rle = std::sync::Arc::new(std::sync::RwLock::new(Vec::new()));
+        MorphogenesisTool::create_kinetics_runner(params, &ks, &mask_rle, width, height)
+    }
+
     fn try_load_legacy_state(&mut self, state: &str) -> bool {
         let Ok(legacy) = serde_json::from_str::<LegacyMorphoState>(state) else {
             return false;

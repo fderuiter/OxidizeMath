@@ -43,4 +43,14 @@ fn wasm_smoke_chladni_wave_tank_presets_stepping_and_exports() {
         let json = format_json(&datasets);
         assert!(json.starts_with('['));
     }
+
+    tool.apply_preset(TankPreset::SquareChladniPlate);
+    tool.state.pickup_left = [0.30, 0.62];
+    tool.state.pickup_right = [0.71, 0.39];
+    let ir_wav = tool.render_complete_ir_blocking(0.5);
+    let summary = crate::audio::wav::inspect_wav_riff(&ir_wav).expect("WASM IR RIFF valid");
+    assert_eq!(summary.channels, 2);
+    assert_eq!(summary.sample_rate_hz, 48_000);
+    tool.audition_strike_from_user_gesture();
+    assert!(crate::audio::studio_preview::snapshot_studio_preview().last_strike_frames > 0);
 }

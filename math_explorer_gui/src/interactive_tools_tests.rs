@@ -59,6 +59,7 @@ mod tests {
         check_tool!(crate::tabs::morphogenesis::lenia::LeniaTool);
         check_tool!(crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool);
         check_tool!(crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool);
+        check_tool!(crate::tabs::analysis::wavetable_studio::WavetableStudioTool);
     }
 
     #[test]

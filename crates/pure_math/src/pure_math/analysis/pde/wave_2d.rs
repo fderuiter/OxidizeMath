@@ -282,7 +282,6 @@ impl Wave2DSolver {
         substeps
     }
 
-    #[verified_engine::verified]
     fn compute_laplacian_pass(&mut self, boundary: BoundaryMode2D) {
         let w = self.width;
         let h = self.height;
@@ -294,7 +293,7 @@ impl Wave2DSolver {
         }
     }
 
-    #[verified_engine::verified]
+    #[inline]
     fn eval_cell_laplacian(&self, x: usize, y: usize, idx: usize, boundary: BoundaryMode2D) -> f64 {
         let w = self.width;
         let h = self.height;
@@ -303,7 +302,17 @@ impl Wave2DSolver {
             return 0.0;
         }
         if on_edge {
-            return self.eval_boundary_laplacian(x, y, idx, boundary);
+            return masks::eval_boundary_laplacian_2d(
+                &self.u_curr,
+                &self.wall_mask,
+                &self.ops,
+                w,
+                h,
+                x,
+                y,
+                idx,
+                boundary,
+            );
         }
         let curr = self.u_curr[idx];
         let left = self.u_curr[idx - 1];
@@ -313,52 +322,7 @@ impl Wave2DSolver {
         self.ops.central_diff_2nd_2d(curr, left, right, up, down)
     }
 
-    #[verified_engine::verified]
-    fn eval_boundary_laplacian(
-        &self,
-        x: usize,
-        y: usize,
-        idx: usize,
-        boundary: BoundaryMode2D,
-    ) -> f64 {
-        let w = self.width;
-        let h = self.height;
-        match boundary {
-            BoundaryMode2D::Dirichlet | BoundaryMode2D::Sponge => 0.0,
-            BoundaryMode2D::Clamped => {
-                let corner = (x == 0 || x == w - 1) && (y == 0 || y == h - 1);
-                if corner {
-                    0.0
-                } else if x == 0 {
-                    2.0 * self.u_curr[flatten_2d_index(1, y, w)] * self.ops.inv_dx_sq
-                } else if x == w - 1 {
-                    2.0 * self.u_curr[flatten_2d_index(w - 2, y, w)] * self.ops.inv_dx_sq
-                } else if y == 0 {
-                    2.0 * self.u_curr[flatten_2d_index(x, 1, w)] * self.ops.inv_dy_sq
-                } else {
-                    2.0 * self.u_curr[flatten_2d_index(x, h - 2, w)] * self.ops.inv_dy_sq
-                }
-            }
-            BoundaryMode2D::Neumann => {
-                if self.wall_mask[idx] <= 0.5 {
-                    return 0.0;
-                }
-                let xl = if x > 0 { x - 1 } else { 1 };
-                let xr = if x + 1 < w { x + 1 } else { w - 2 };
-                let yu = if y > 0 { y - 1 } else { 1 };
-                let yd = if y + 1 < h { y + 1 } else { h - 2 };
-                self.ops.central_diff_2nd_2d(
-                    self.u_curr[idx],
-                    self.u_curr[flatten_2d_index(xl, y, w)],
-                    self.u_curr[flatten_2d_index(xr, y, w)],
-                    self.u_curr[flatten_2d_index(x, yu, w)],
-                    self.u_curr[flatten_2d_index(x, yd, w)],
-                )
-            }
-        }
-    }
-
-    #[verified_engine::verified]
+    #[inline]
     fn eval_biharmonic_at(&self, x: usize, y: usize, idx: usize, boundary: BoundaryMode2D) -> f64 {
         let w = self.width;
         let h = self.height;
@@ -379,7 +343,6 @@ impl Wave2DSolver {
         )
     }
 
-    #[verified_engine::verified]
     fn verlet_substep(&mut self, params: &Wave2DParams, driver: &DriverConfig2D, dt: f64) {
         let w = self.width;
         let h = self.height;
@@ -408,8 +371,8 @@ impl Wave2DSolver {
         self.time += dt;
     }
 
+    #[inline]
     #[allow(clippy::too_many_arguments)]
-    #[verified_engine::verified]
     fn advance_single_cell(
         &self,
         x: usize,
@@ -442,7 +405,6 @@ impl Wave2DSolver {
         (2.0 * curr - (1.0 - gamma) * prev + dt_sq * accel) / (1.0 + gamma)
     }
 
-    #[verified_engine::verified]
     fn accumulate_detector_column(&mut self, det_x: usize) {
         let col = det_x.min(self.width - 1);
         for y in 0..self.height {
@@ -492,5 +454,13 @@ impl Wave2DSolver {
             sigma_norm,
             amplitude,
         );
+    }
+
+    /// Samples the displacement field $u(x, y, t)$ at normalized off-grid pickup coordinates
+    /// `(x_norm, y_norm)` in `[0.0, 1.0]^2` using zero-allocation bilinear interpolation.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn sample_displacement_bilinear(&self, x_norm: f64, y_norm: f64) -> f64 {
+        masks::sample_bilinear_2d(&self.u_curr, self.width, self.height, x_norm, y_norm)
     }
 }

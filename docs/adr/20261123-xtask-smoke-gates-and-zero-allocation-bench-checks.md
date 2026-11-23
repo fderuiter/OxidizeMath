@@ -1,4 +1,4 @@
-# ADR 0047: Add xtask Smoke Gates and Zero-Allocation Benchmark Checks
+# ADR 20261123: Add xtask Smoke Gates and Zero-Allocation Benchmark Checks
 
 ## Status
 

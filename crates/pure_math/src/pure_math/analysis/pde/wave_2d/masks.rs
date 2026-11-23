@@ -4,7 +4,89 @@
 
 use math_commons::math_kernel::types::flatten_2d_index;
 
-use super::DriverConfig2D;
+use super::{BoundaryMode2D, DriverConfig2D, StencilOperators};
+
+/// Samples a contiguous `width x height` scalar grid at normalized coordinates `(x_norm, y_norm)`
+/// in `[0.0, 1.0]^2` via zero-allocation bilinear interpolation.
+#[inline]
+pub(super) fn sample_bilinear_2d(
+    field: &[f64],
+    width: usize,
+    height: usize,
+    x_norm: f64,
+    y_norm: f64,
+) -> f64 {
+    assert_eq!(field.len(), width * height);
+    assert!(width >= 2 && height >= 2, "Grid must be at least 2x2");
+    if !x_norm.is_finite() || !y_norm.is_finite() {
+        return 0.0;
+    }
+    let gx = x_norm.clamp(0.0, 1.0) * ((width - 1) as f64);
+    let gy = y_norm.clamp(0.0, 1.0) * ((height - 1) as f64);
+    let x0 = (gx.floor() as usize).min(width - 2);
+    let y0 = (gy.floor() as usize).min(height - 2);
+    let tx = (gx - (x0 as f64)).clamp(0.0, 1.0);
+    let ty = (gy - (y0 as f64)).clamp(0.0, 1.0);
+
+    let u00 = field[flatten_2d_index(x0, y0, width)];
+    let u10 = field[flatten_2d_index(x0 + 1, y0, width)];
+    let u01 = field[flatten_2d_index(x0, y0 + 1, width)];
+    let u11 = field[flatten_2d_index(x0 + 1, y0 + 1, width)];
+
+    let top = u00 + tx * (u10 - u00);
+    let bot = u01 + tx * (u11 - u01);
+    let out = top + ty * (bot - top);
+    if out.is_finite() { out } else { 0.0 }
+}
+
+/// Evaluates perimeter boundary Laplacian stencils without heap allocation.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn eval_boundary_laplacian_2d(
+    u_curr: &[f64],
+    wall_mask: &[f64],
+    ops: &StencilOperators,
+    width: usize,
+    height: usize,
+    x: usize,
+    y: usize,
+    idx: usize,
+    boundary: BoundaryMode2D,
+) -> f64 {
+    match boundary {
+        BoundaryMode2D::Dirichlet | BoundaryMode2D::Sponge => 0.0,
+        BoundaryMode2D::Clamped => {
+            let corner = (x == 0 || x == width - 1) && (y == 0 || y == height - 1);
+            if corner {
+                0.0
+            } else if x == 0 {
+                2.0 * u_curr[flatten_2d_index(1, y, width)] * ops.inv_dx_sq
+            } else if x == width - 1 {
+                2.0 * u_curr[flatten_2d_index(width - 2, y, width)] * ops.inv_dx_sq
+            } else if y == 0 {
+                2.0 * u_curr[flatten_2d_index(x, 1, width)] * ops.inv_dy_sq
+            } else {
+                2.0 * u_curr[flatten_2d_index(x, height - 2, width)] * ops.inv_dy_sq
+            }
+        }
+        BoundaryMode2D::Neumann => {
+            if wall_mask[idx] <= 0.5 {
+                return 0.0;
+            }
+            let xl = if x > 0 { x - 1 } else { 1 };
+            let xr = if x + 1 < width { x + 1 } else { width - 2 };
+            let yu = if y > 0 { y - 1 } else { 1 };
+            let yd = if y + 1 < height { y + 1 } else { height - 2 };
+            ops.central_diff_2nd_2d(
+                u_curr[idx],
+                u_curr[flatten_2d_index(xl, y, width)],
+                u_curr[flatten_2d_index(xr, y, width)],
+                u_curr[flatten_2d_index(x, yu, width)],
+                u_curr[flatten_2d_index(x, yd, width)],
+            )
+        }
+    }
+}
 
 /// Evaluates localized spot or line-source forcing acceleration at grid cell `(x, y)`.
 #[verified_engine::verified]

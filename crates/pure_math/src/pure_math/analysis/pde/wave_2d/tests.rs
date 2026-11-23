@@ -262,3 +262,71 @@ fn test_extract_top_modes_rank_conjugate_dedup_and_phase() {
     assert!((modes[0].phase - phase1).abs() < 1.0e-9);
     assert!((modes[1].phase - phase2).abs() < 1.0e-9);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_sample_displacement_bilinear_off_grid_and_pulse_strike() {
+    let n = 32_usize;
+    let mut solver = Wave2DSolver::new_unit_square(n);
+    let mut plane = vec![0.0; n * n];
+    let denom = (n - 1) as f64;
+    for y in 0..n {
+        let yn = (y as f64) / denom;
+        for x in 0..n {
+            let xn = (x as f64) / denom;
+            plane[flatten_2d_index(x, y, n)] = 2.5 * xn - 1.75 * yn + 0.4;
+        }
+    }
+    solver.set_stationary_displacement(&plane);
+
+    for (qx, qy) in [(0.137, 0.842), (0.5, 0.5), (0.913, 0.219), (0.0, 1.0)] {
+        let expected = 2.5 * qx - 1.75 * qy + 0.4;
+        let actual = solver.sample_displacement_bilinear(qx, qy);
+        assert!(
+            (actual - expected).abs() < 1.0e-12,
+            "Bilinear readout mismatch at ({qx}, {qy}): got {actual}, expected {expected}"
+        );
+    }
+    assert_eq!(solver.sample_displacement_bilinear(f64::NAN, 0.5), 0.0);
+    assert_eq!(solver.sample_displacement_bilinear(0.5, f64::INFINITY), 0.0);
+
+    solver.clear_wave_state();
+    solver.inject_gaussian_pulse(0.5, 0.5, 0.06, 1.0);
+    let params = Wave2DParams {
+        medium: Wave2DMedium::BiharmonicPlate,
+        boundary: BoundaryMode2D::Clamped,
+        wave_speed: 0.0,
+        plate_stiffness: 1.0e-3,
+        damping: 0.02,
+    };
+    let (peak, _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let mut max_abs = 0.0_f64;
+        for _ in 0..64 {
+            solver.step(&params, 0.002);
+            let l = solver.sample_displacement_bilinear(0.33, 0.41);
+            let r = solver.sample_displacement_bilinear(0.67, 0.59);
+            max_abs = max_abs.max(l.abs()).max(r.abs());
+        }
+        max_abs
+    });
+    assert!(peak > 0.0);
+    let sym_a = solver.sample_displacement_bilinear(0.31, 0.43);
+    let sym_b = solver.sample_displacement_bilinear(0.69, 0.57);
+    assert!((sym_a - sym_b).abs() < 1.0e-11);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_clamped_plate_mode_ratios_on_40x40_grid_within_two_percent() {
+    let omega_11 = measure_clamped_mode_omega(1, 1, 40);
+    let ref_11 = analytic_clamped_square_omega(1, 1, 1.0, 1.0);
+    for (m, n) in [(1_usize, 2_usize), (2, 2), (1, 3), (2, 3)] {
+        let measured_ratio = measure_clamped_mode_omega(m, n, 40) / omega_11;
+        let leissa_ratio = analytic_clamped_square_omega(m, n, 1.0, 1.0) / ref_11;
+        let rel_err = (measured_ratio - leissa_ratio).abs() / leissa_ratio;
+        assert!(
+            rel_err < 0.02,
+            "40x40 ratio ({m},{n})/(1,1) measured={measured_ratio:.4}, leissa={leissa_ratio:.4}, rel_err={rel_err:.4}"
+        );
+    }
+}

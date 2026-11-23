@@ -47,6 +47,7 @@ pub(super) fn is_valid_state(s: &ChladniWaveTankState) -> bool {
         && s.lens_aperture.is_finite()
         && (8.0..=56.0).contains(&s.lens_aperture)
         && super::sonification::are_custom_clamps_valid(&s.custom_clamps)
+        && super::ir_export::are_ir_fields_valid(s)
 }
 
 pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
@@ -66,6 +67,7 @@ pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
     s.refractive_index = sanitize_bounded(s.refractive_index, REFRACTIVE_MIN, REFRACTIVE_MAX, 1.6);
     s.lens_aperture = sanitize_bounded(s.lens_aperture, 8.0, 56.0, 34.0);
     super::sonification::sanitize_custom_clamps(&mut s.custom_clamps);
+    super::ir_export::clamp_ir_fields(s);
 }
 
 fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
@@ -99,6 +101,11 @@ fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
         show_sand_particles: false,
         rng_seed: 0xC41A_D21E,
         custom_clamps: Vec::new(),
+        pickup_left: super::ir_export::default_pickup_left(),
+        pickup_right: super::ir_export::default_pickup_right(),
+        ir_duration_secs: super::ir_export::default_ir_duration_secs(),
+        ir_sample_rate: crate::audio::wav::WavSampleRate::Hz48000,
+        ir_format: crate::audio::wav::WavSampleFormat::Float32,
     }
 }
 

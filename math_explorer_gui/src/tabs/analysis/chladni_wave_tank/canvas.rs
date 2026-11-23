@@ -72,7 +72,7 @@ impl ChladniWaveTankTool {
         };
         self.paint_canvas_overlays(&painter, rect, raster_palette);
         crate::accessibility::paint_canvas_focus_ring(ui, &response);
-        ui.small("Drag to steer driver • Shift+Click to pin clamp • Arrows move • Enter pulses");
+        ui.small("Drag L/R mics or driver • Shift+Click pins • Arrows move • Enter pulses");
     }
 
     fn handle_canvas_input(&mut self, ui: &mut egui::Ui, response: &egui::Response, rect: Rect) {
@@ -124,10 +124,13 @@ impl ChladniWaveTankTool {
         response: &egui::Response,
         rect: Rect,
     ) {
-        if !(response.clicked() || response.dragged())
-            || rect.width() <= 1.0
-            || rect.height() <= 1.0
-        {
+        if rect.width() <= 1.0 || rect.height() <= 1.0 {
+            return;
+        }
+        if self.try_handle_pickup_drag(response, rect) {
+            return;
+        }
+        if !(response.clicked() || response.dragged()) {
             return;
         }
         if let Some(pos) = response.interact_pointer_pos() {
@@ -195,6 +198,7 @@ impl ChladniWaveTankTool {
 
         let drv_pos = to_screen(self.state.driver_x, self.state.driver_y);
         painter.circle_stroke(drv_pos, 5.0_f32, Stroke::new(1.8_f32, palette.axis_x));
+        self.paint_stereo_pickups(painter, rect, palette);
     }
 
     fn draw_secondary_analysis_plot(&self, ui: &mut egui::Ui) {
