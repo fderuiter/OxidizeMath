@@ -89,6 +89,12 @@ fn test_ai_custom_canvases_receive_tab_focus_and_accesskit_labels() {
 
     let mut grid_world = crate::tabs::ai::grid_world::GridWorldTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut grid_world, "Grid World Visualization");
+
+    let mut closed_loop = crate::tabs::ai::closed_loop_control::ClosedLoopControlTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut closed_loop,
+        "Closed-Loop Phase & Perturbation Visualization",
+    );
 }
 
 #[cfg(feature = "pure_math")]
@@ -147,6 +153,12 @@ fn test_epidemiology_canvas_receives_tab_focus_and_accesskit_label() {
 #[cfg(feature = "physics")]
 #[test]
 fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
+    let mut hamiltonian = crate::tabs::chaos::hamiltonian::HamiltonianChaosLab::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut hamiltonian,
+        "Poincare Surface of Section",
+    );
+
     let mut fractals = crate::tabs::chaos::fractals::FractalViewer::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut fractals, "Mandelbrot");
 
@@ -160,9 +172,18 @@ fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
     }
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut ising, "2D Ising Model spin lattice");
 
+    let mut optics = crate::tabs::optics_waves::OpticsWaveTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(&mut optics, "2D Wave & Caustics Playground");
+
     let mut radar = crate::tabs::medical::radar_gating::RadarGatingTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(
         &mut radar,
         "60 GHz MIMO Radar Room Visualization",
+    );
+
+    let mut sandpile = crate::tabs::solid_state::sandpile::AbelianSandpileStudio::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut sandpile,
+        "2D Abelian Sandpile Lattice & Recurrent Crystal",
     );
 }

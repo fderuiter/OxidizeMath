@@ -1,5 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::custom_spec::default_ode_custom_params;
+use super::phase_plane::{
+    DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID, MAX_QUIVER_GRID,
+    MAX_SEEDED_ORBITS,
+};
+use super::poincare_map::DEFAULT_MATRIX_A;
 use super::OdeSolverTool;
 use crate::framework::{CalloutManager, TraceSnapshotManager};
 use crate::presets::OdePreset;
@@ -7,53 +13,56 @@ use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 
-fn default_annotations_enabled() -> bool {
+fn default_true() -> bool {
     true
 }
 
-fn is_false(v: &bool) -> bool {
-    !*v
+fn is_false(val: &bool) -> bool {
+    !*val
 }
 
-fn default_ode_custom_params(k: f64, r: f64, cap_k: f64) -> BTreeMap<String, f64> {
-    BTreeMap::from([
-        ("k".to_string(), k),
-        ("r".to_string(), r),
-        ("cap_k".to_string(), cap_k),
-        ("K".to_string(), cap_k),
-    ])
+fn is_true(val: &bool) -> bool {
+    *val
 }
 
-fn sync_one_legacy_param(
-    math_input: &mut crate::framework::MathExpressionInputBar,
-    name: &str,
-    field: &mut f64,
-    last_synced: &mut f64,
-) {
-    if !field.is_finite() {
-        *last_synced = *field;
-        return;
-    }
-    if field.to_bits() != last_synced.to_bits() {
-        math_input.set_param(name, *field);
-        *last_synced = *field;
-    } else if let Some(val) = math_input.active_param_value(name) {
-        *field = val;
-        *last_synced = val;
-    }
+fn skip_empty_snapshots(mgr: &Option<&TraceSnapshotManager>) -> bool {
+    mgr.is_none_or(TraceSnapshotManager::is_empty)
 }
 
-fn format_named_param_summary(names: &[String], vals: &[f64], dt: f64) -> String {
-    if names.is_empty() {
-        return format!(r"\Delta t={dt:.2}");
-    }
-    let mut parts: Vec<String> = names
-        .iter()
-        .zip(vals)
-        .map(|(name, val)| format!("{name}={val:.2}"))
-        .collect();
-    parts.push(format!(r"\Delta t={dt:.2}"));
-    parts.join(", ")
+fn default_planar_x_expr() -> String {
+    DEFAULT_PLANAR_X_EXPR.to_string()
+}
+
+fn is_default_planar_x(val: &&str) -> bool {
+    *val == DEFAULT_PLANAR_X_EXPR
+}
+
+fn default_planar_y_expr() -> String {
+    DEFAULT_PLANAR_Y_EXPR.to_string()
+}
+
+fn is_default_planar_y(val: &&str) -> bool {
+    *val == DEFAULT_PLANAR_Y_EXPR
+}
+
+fn default_matrix_a() -> [[f64; 2]; 2] {
+    DEFAULT_MATRIX_A
+}
+
+fn is_default_matrix_a(val: &[[f64; 2]; 2]) -> bool {
+    *val == DEFAULT_MATRIX_A
+}
+
+fn default_quiver_density() -> usize {
+    DEFAULT_QUIVER_GRID
+}
+
+fn is_default_quiver_density(val: &usize) -> bool {
+    *val == DEFAULT_QUIVER_GRID
+}
+
+fn slice_is_empty(s: &&[[f64; 2]]) -> bool {
+    s.is_empty()
 }
 
 #[derive(serde::Serialize)]
@@ -67,6 +76,22 @@ struct OdeStateRef<'a> {
     ic_y0: f64,
     ic_v0: f64,
     custom_expr: &'a str,
+    #[serde(skip_serializing_if = "is_default_planar_x")]
+    planar_x_expr: &'a str,
+    #[serde(skip_serializing_if = "is_default_planar_y")]
+    planar_y_expr: &'a str,
+    #[serde(skip_serializing_if = "is_default_matrix_a")]
+    matrix_a: [[f64; 2]; 2],
+    #[serde(skip_serializing_if = "is_false")]
+    phase_plane_mode: bool,
+    #[serde(skip_serializing_if = "is_true")]
+    show_quiver: bool,
+    #[serde(skip_serializing_if = "is_default_quiver_density")]
+    quiver_density: usize,
+    #[serde(skip_serializing_if = "is_false")]
+    show_nullclines: bool,
+    #[serde(skip_serializing_if = "slice_is_empty")]
+    seeded_ic: &'a [[f64; 2]],
     #[serde(skip_serializing_if = "is_false")]
     custom_coupled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,33 +100,8 @@ struct OdeStateRef<'a> {
     custom_params: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     coupled_params: BTreeMap<String, f64>,
-    #[serde(skip_serializing_if = "TraceSnapshotManager::is_empty")]
-    snapshot_manager: &'a TraceSnapshotManager,
-    callout_manager: &'a CalloutManager,
-    method: IntegrationMethod,
-    comparison_mode: bool,
-    show_annotations: bool,
-}
-
-#[derive(serde::Serialize)]
-struct OdeRecoveryStateRef<'a> {
-    preset: Option<OdePreset>,
-    dt: f64,
-    total_time: f64,
-    param_k: f64,
-    param_r: f64,
-    param_cap_k: f64,
-    ic_y0: f64,
-    ic_v0: f64,
-    custom_expr: &'a str,
-    #[serde(skip_serializing_if = "is_false")]
-    custom_coupled: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    coupled_exprs: Option<[&'a str; 2]>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    custom_params: BTreeMap<String, f64>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    coupled_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "skip_empty_snapshots")]
+    snapshot_manager: Option<&'a TraceSnapshotManager>,
     callout_manager: &'a CalloutManager,
     method: IntegrationMethod,
     comparison_mode: bool,
@@ -122,6 +122,22 @@ struct OdeState {
     ic_v0: f64,
     #[serde(default)]
     custom_expr: String,
+    #[serde(default = "default_planar_x_expr")]
+    planar_x_expr: String,
+    #[serde(default = "default_planar_y_expr")]
+    planar_y_expr: String,
+    #[serde(default = "default_matrix_a")]
+    matrix_a: [[f64; 2]; 2],
+    #[serde(default)]
+    phase_plane_mode: bool,
+    #[serde(default = "default_true")]
+    show_quiver: bool,
+    #[serde(default = "default_quiver_density")]
+    quiver_density: usize,
+    #[serde(default)]
+    show_nullclines: bool,
+    #[serde(default)]
+    seeded_ic: Vec<[f64; 2]>,
     #[serde(default)]
     custom_coupled: bool,
     #[serde(default)]
@@ -138,131 +154,49 @@ struct OdeState {
     method: IntegrationMethod,
     #[serde(default)]
     comparison_mode: bool,
-    #[serde(default = "default_annotations_enabled")]
+    #[serde(default = "default_true")]
     show_annotations: bool,
 }
 
-impl OdeSolverTool {
-    pub(crate) fn seed_default_custom_params(&mut self) {
-        self.math_input.set_params_map(&default_ode_custom_params(
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
+fn validate_loaded_state(s: &OdeState) -> Result<(), String> {
+    if !s.dt.is_finite()
+        || s.dt <= 0.0
+        || !s.total_time.is_finite()
+        || s.total_time <= 0.0
+        || !s.param_k.is_finite()
+        || !s.param_r.is_finite()
+        || !s.param_cap_k.is_finite()
+        || !s.ic_y0.is_finite()
+        || !s.ic_v0.is_finite()
+        || !s.matrix_a.iter().flatten().all(|v| v.is_finite())
+        || !s.custom_params.values().all(|v| v.is_finite())
+        || !s.coupled_params.values().all(|v| v.is_finite())
+    {
+        return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
+    }
+    if !(2..=MAX_QUIVER_GRID).contains(&s.quiver_density) {
+        return Err(format!(
+            "Quiver grid density ({}) must be between 2 and {MAX_QUIVER_GRID}",
+            s.quiver_density
         ));
-        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
     }
-
-    pub(crate) fn reset_custom_parameters(&mut self) {
-        self.param_k = 1.0;
-        self.param_r = 1.0;
-        self.param_cap_k = 10.0;
-        self.ic_y0 = 1.0;
-        self.seed_default_custom_params();
-        self.math_input.set_expression("-k * y * sin(t)");
+    if s.seeded_ic.len() > MAX_SEEDED_ORBITS
+        || !s
+            .seeded_ic
+            .iter()
+            .all(|pt| pt[0].is_finite() && pt[1].is_finite())
+    {
+        return Err(format!(
+            "Seeded orbits must be finite and contain at most {MAX_SEEDED_ORBITS} initial states"
+        ));
     }
-
-    pub(crate) fn push_clamped_legacy_params_to_bar(&mut self) {
-        self.math_input.set_param("k", self.param_k);
-        self.math_input.set_param("r", self.param_r);
-        self.math_input.set_param("cap_k", self.param_cap_k);
-        self.math_input.set_param("K", self.param_cap_k);
-        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
+    if crate::presets::checked_ode_step_count(s.dt, s.total_time).is_none() {
+        return Err(format!(
+            "ODE step count (total_time / dt) exceeds maximum allowed limit ({})",
+            crate::presets::MAX_ODE_STEPS
+        ));
     }
-
-    pub(crate) fn sync_legacy_params_from_math_input(&mut self) {
-        if let Some(k) = self.math_input.active_param_value("k") {
-            self.param_k = k;
-        }
-        if let Some(r) = self.math_input.active_param_value("r") {
-            self.param_r = r;
-        }
-        if let Some(cap_k) = self
-            .math_input
-            .active_param_value("cap_k")
-            .or_else(|| self.math_input.active_param_value("K"))
-        {
-            self.param_cap_k = cap_k;
-        }
-        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
-    }
-
-    pub(crate) fn sync_custom_params(&mut self) {
-        sync_one_legacy_param(
-            &mut self.math_input,
-            "k",
-            &mut self.param_k,
-            &mut self.synced_legacy_params[0],
-        );
-        sync_one_legacy_param(
-            &mut self.math_input,
-            "r",
-            &mut self.param_r,
-            &mut self.synced_legacy_params[1],
-        );
-        let cap_symbol = if self.math_input.active_param_value("K").is_some()
-            && self.math_input.active_param_value("cap_k").is_none()
-        {
-            "K"
-        } else {
-            "cap_k"
-        };
-        sync_one_legacy_param(
-            &mut self.math_input,
-            cap_symbol,
-            &mut self.param_cap_k,
-            &mut self.synced_legacy_params[2],
-        );
-    }
-
-    pub(crate) fn custom_param_summary(&self) -> String {
-        format_named_param_summary(
-            self.math_input.active_param_names(),
-            self.math_input.param_slice(),
-            self.dt,
-        )
-    }
-
-    pub(crate) fn coupled_param_summary(&self) -> String {
-        format_named_param_summary(
-            self.coupled_bank.param_names(),
-            self.coupled_bank.param_slice(),
-            self.dt,
-        )
-    }
-
-    pub(crate) fn compute_state_revision(&self) -> u64 {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        self.revision.hash(&mut hasher);
-        (self.preset as u8).hash(&mut hasher);
-        (self.method as u8).hash(&mut hasher);
-        self.dt.to_bits().hash(&mut hasher);
-        self.total_time.to_bits().hash(&mut hasher);
-        self.param_k.to_bits().hash(&mut hasher);
-        self.param_r.to_bits().hash(&mut hasher);
-        self.param_cap_k.to_bits().hash(&mut hasher);
-        self.ic_y0.to_bits().hash(&mut hasher);
-        self.ic_v0.to_bits().hash(&mut hasher);
-        self.math_input.raw_text.hash(&mut hasher);
-        let param_slice = self.math_input.param_slice();
-        param_slice.len().hash(&mut hasher);
-        for &val in param_slice {
-            val.to_bits().hash(&mut hasher);
-        }
-        self.custom_coupled.hash(&mut hasher);
-        self.coupled_bank.raw_text(0).hash(&mut hasher);
-        self.coupled_bank.raw_text(1).hash(&mut hasher);
-        let coupled_slice = self.coupled_bank.param_slice();
-        coupled_slice.len().hash(&mut hasher);
-        for &v in coupled_slice {
-            v.to_bits().hash(&mut hasher);
-        }
-        self.comparison_mode.hash(&mut hasher);
-        self.show_annotations.hash(&mut hasher);
-        self.snapshot_manager.len().hash(&mut hasher);
-        self.snapshot_manager.history_len().hash(&mut hasher);
-        self.callout_manager.len().hash(&mut hasher);
-        hasher.finish().max(1)
-    }
+    Ok(())
 }
 
 struct CustomSerializationMaps<'a> {
@@ -271,7 +205,96 @@ struct CustomSerializationMaps<'a> {
     coupled_params: BTreeMap<String, f64>,
 }
 
+fn hash_callout_entry(c: &crate::framework::CalloutData, hasher: &mut impl Hasher) {
+    c.id.hash(hasher);
+    c.target_point[0].to_bits().hash(hasher);
+    c.target_point[1].to_bits().hash(hasher);
+    c.label_offset[0].to_bits().hash(hasher);
+    c.label_offset[1].to_bits().hash(hasher);
+    c.text.hash(hasher);
+    c.tag.hash(hasher);
+    c.visible.hash(hasher);
+    c.color_rgb.hash(hasher);
+}
+
 impl OdeSolverTool {
+    fn hash_planar_ode_parameters(&self, hasher: &mut impl Hasher) {
+        self.planar_x_input.raw_text.hash(hasher);
+        self.planar_y_input.raw_text.hash(hasher);
+        for val in self.matrix_a.iter().flatten() {
+            val.to_bits().hash(hasher);
+        }
+        self.phase_plane_mode.hash(hasher);
+        self.show_quiver.hash(hasher);
+        self.quiver_density.hash(hasher);
+        self.show_nullclines.hash(hasher);
+        self.seeded_ic.len().hash(hasher);
+        for &[sx, sy] in &self.seeded_ic {
+            sx.to_bits().hash(hasher);
+            sy.to_bits().hash(hasher);
+        }
+    }
+
+    fn hash_shared_ode_parameters(&self, hasher: &mut impl Hasher) {
+        (self.preset as u8).hash(hasher);
+        (self.method as u8).hash(hasher);
+        for val in [
+            self.dt,
+            self.total_time,
+            self.param_k,
+            self.param_r,
+            self.param_cap_k,
+            self.ic_y0,
+            self.ic_v0,
+        ] {
+            val.to_bits().hash(hasher);
+        }
+        self.math_input.raw_text.hash(hasher);
+        if self.preset == OdePreset::Custom {
+            self.custom_coupled.hash(hasher);
+            if self.custom_coupled {
+                self.coupled_bank.raw_text(0).hash(hasher);
+                self.coupled_bank.raw_text(1).hash(hasher);
+                self.coupled_bank.param_names().hash(hasher);
+                let coupled_slice = self.coupled_bank.param_slice();
+                coupled_slice.len().hash(hasher);
+                for &v in coupled_slice {
+                    v.to_bits().hash(hasher);
+                }
+            } else {
+                self.math_input.active_param_names().hash(hasher);
+                let param_slice = self.math_input.param_slice();
+                param_slice.len().hash(hasher);
+                for &val in param_slice {
+                    val.to_bits().hash(hasher);
+                }
+            }
+        }
+        self.hash_planar_ode_parameters(hasher);
+        self.comparison_mode.hash(hasher);
+        self.show_annotations.hash(hasher);
+        let callouts = self.callout_manager.callouts();
+        callouts.len().hash(hasher);
+        for c in callouts {
+            hash_callout_entry(c, hasher);
+        }
+    }
+
+    pub(crate) fn compute_state_revision(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.revision.hash(&mut hasher);
+        self.hash_shared_ode_parameters(&mut hasher);
+        self.snapshot_manager.len().hash(&mut hasher);
+        self.snapshot_manager.history_len().hash(&mut hasher);
+        hasher.finish().max(1)
+    }
+
+    pub(crate) fn compute_url_state_revision(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.hash_shared_ode_parameters(&mut hasher);
+        hasher.finish().max(1)
+    }
+
     fn custom_serialization_maps(&self) -> CustomSerializationMaps<'_> {
         if self.preset != OdePreset::Custom {
             return CustomSerializationMaps {
@@ -281,9 +304,8 @@ impl OdeSolverTool {
             };
         }
         if self.custom_coupled {
-            let exprs = Some([self.coupled_bank.raw_text(0), self.coupled_bank.raw_text(1)]);
             CustomSerializationMaps {
-                coupled_exprs: exprs,
+                coupled_exprs: Some([self.coupled_bank.raw_text(0), self.coupled_bank.raw_text(1)]),
                 custom_params: BTreeMap::new(),
                 coupled_params: self.coupled_bank.params_map(),
             }
@@ -296,7 +318,7 @@ impl OdeSolverTool {
         }
     }
 
-    pub(crate) fn serialize_full_state(&self) -> Option<String> {
+    fn serialize_ode_state(&self, include_snapshots: bool) -> Option<String> {
         let CustomSerializationMaps {
             coupled_exprs,
             custom_params,
@@ -312,11 +334,19 @@ impl OdeSolverTool {
             ic_y0: self.ic_y0,
             ic_v0: self.ic_v0,
             custom_expr: &self.math_input.raw_text,
+            planar_x_expr: &self.planar_x_input.raw_text,
+            planar_y_expr: &self.planar_y_input.raw_text,
+            matrix_a: self.matrix_a,
+            phase_plane_mode: self.phase_plane_mode,
+            show_quiver: self.show_quiver,
+            quiver_density: self.quiver_density,
+            show_nullclines: self.show_nullclines,
+            seeded_ic: &self.seeded_ic,
             custom_coupled: self.custom_coupled,
             coupled_exprs,
             custom_params,
             coupled_params,
-            snapshot_manager: &self.snapshot_manager,
+            snapshot_manager: include_snapshots.then_some(&self.snapshot_manager),
             callout_manager: &self.callout_manager,
             method: self.method,
             comparison_mode: self.comparison_mode,
@@ -325,32 +355,34 @@ impl OdeSolverTool {
         .ok()
     }
 
+    pub(crate) fn serialize_full_state(&self) -> Option<String> {
+        self.serialize_ode_state(true)
+    }
+
     pub(crate) fn serialize_recovery_state(&self) -> Option<String> {
-        let CustomSerializationMaps {
-            coupled_exprs,
-            custom_params,
-            coupled_params,
-        } = self.custom_serialization_maps();
-        serde_json::to_string(&OdeRecoveryStateRef {
-            preset: Some(self.preset),
-            dt: self.dt,
-            total_time: self.total_time,
-            param_k: self.param_k,
-            param_r: self.param_r,
-            param_cap_k: self.param_cap_k,
-            ic_y0: self.ic_y0,
-            ic_v0: self.ic_v0,
-            custom_expr: &self.math_input.raw_text,
-            custom_coupled: self.custom_coupled,
-            coupled_exprs,
-            custom_params,
-            coupled_params,
-            callout_manager: &self.callout_manager,
-            method: self.method,
-            comparison_mode: self.comparison_mode,
-            show_annotations: self.show_annotations,
-        })
-        .ok()
+        self.serialize_ode_state(false)
+    }
+
+    fn apply_loaded_expressions(&mut self, s: &OdeState) {
+        self.custom_coupled = s.custom_coupled;
+        let mut merged_params =
+            default_ode_custom_params(self.param_k, self.param_r, self.param_cap_k);
+        for (k, &v) in &s.custom_params {
+            merged_params.insert(k.clone(), v);
+        }
+        if !s.custom_expr.is_empty() {
+            self.math_input.set_expression(&s.custom_expr);
+        }
+        self.math_input.set_params_map(&merged_params);
+        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
+        if let Some(ref exprs) = s.coupled_exprs {
+            self.coupled_bank.set_expressions(exprs);
+        }
+        if !s.coupled_params.is_empty() {
+            self.coupled_bank.set_params_map(&s.coupled_params);
+        }
+        self.planar_x_input.set_expression(&s.planar_x_expr);
+        self.planar_y_input.set_expression(&s.planar_y_expr);
     }
 
     pub(crate) fn deserialize_state(
@@ -360,7 +392,7 @@ impl OdeSolverTool {
     ) -> Result<(), String> {
         let s: OdeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {e}"))?;
-        validate_deserialized_ode_state(&s)?;
+        validate_loaded_state(&s)?;
         self.apply_deserialized_ode_state(s, preserve_snapshots);
         self.recalculate();
         Ok(())
@@ -382,23 +414,13 @@ impl OdeSolverTool {
             .unwrap_or(s.param_cap_k);
         self.ic_y0 = s.ic_y0;
         self.ic_v0 = s.ic_v0;
-        self.custom_coupled = s.custom_coupled;
-        let mut merged_params =
-            default_ode_custom_params(self.param_k, self.param_r, self.param_cap_k);
-        for (k, &v) in &s.custom_params {
-            merged_params.insert(k.clone(), v);
-        }
-        if !s.custom_expr.is_empty() {
-            self.math_input.set_expression(&s.custom_expr);
-        }
-        self.math_input.set_params_map(&merged_params);
-        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
-        if let Some([e0, e1]) = s.coupled_exprs {
-            self.coupled_bank.set_expressions(&[e0, e1]);
-        }
-        if !s.coupled_params.is_empty() {
-            self.coupled_bank.set_params_map(&s.coupled_params);
-        }
+        self.apply_loaded_expressions(&s);
+        self.matrix_a = s.matrix_a;
+        self.phase_plane_mode = s.phase_plane_mode;
+        self.show_quiver = s.show_quiver;
+        self.quiver_density = s.quiver_density;
+        self.show_nullclines = s.show_nullclines;
+        self.seeded_ic = s.seeded_ic;
         if !preserve_snapshots {
             self.snapshot_manager = s.snapshot_manager;
         }
@@ -408,78 +430,4 @@ impl OdeSolverTool {
         self.show_annotations = s.show_annotations;
         self.pending_sweep_run = None;
     }
-
-    pub(crate) fn collect_full_xy_pairs(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
-        let mut plot_points_y = Vec::with_capacity(self.time_series.len());
-        let mut plot_points_v = if self.v_series.is_empty() {
-            Vec::new()
-        } else {
-            Vec::with_capacity(self.v_series.len())
-        };
-        for (i, &t) in self.time_series.iter().enumerate() {
-            if let Some(&y) = self.y_series.get(i) {
-                plot_points_y.push([t, y]);
-            }
-            if let Some(&v) = self.v_series.get(i) {
-                plot_points_v.push([t, v]);
-            }
-        }
-        (plot_points_y, plot_points_v)
-    }
-
-    pub(crate) fn build_current_trace_series(&self) -> Vec<crate::framework::TraceSeries> {
-        let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
-        let mut series = vec![crate::framework::TraceSeries::new("y(t)", plot_points_y)];
-        if self.has_second_state() && !plot_points_v.is_empty() {
-            series.push(crate::framework::TraceSeries::new(
-                self.second_state_label(),
-                plot_points_v,
-            ));
-        }
-        series
-    }
-
-    pub(crate) fn build_full_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut datasets = Vec::new();
-        if self.comparison_mode && !self.comparison_manager.is_empty() {
-            datasets.extend(self.comparison_manager.export_datasets());
-        } else {
-            let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
-            datasets.push(("y(t)".to_string(), plot_points_y));
-            if self.has_second_state() && !plot_points_v.is_empty() {
-                datasets.push((self.second_state_label().to_string(), plot_points_v));
-            }
-        }
-        datasets.extend(self.snapshot_manager.export_datasets());
-        for (name, pts) in egui_plot::get_last_plot_datasets() {
-            if !datasets.iter().any(|(existing, _)| existing == &name) {
-                datasets.push((name, pts));
-            }
-        }
-        datasets
-    }
-}
-
-fn validate_deserialized_ode_state(s: &OdeState) -> Result<(), String> {
-    if !s.dt.is_finite()
-        || s.dt <= 0.0
-        || !s.total_time.is_finite()
-        || s.total_time <= 0.0
-        || !s.param_k.is_finite()
-        || !s.param_r.is_finite()
-        || !s.param_cap_k.is_finite()
-        || !s.ic_y0.is_finite()
-        || !s.ic_v0.is_finite()
-        || !s.custom_params.values().all(|v| v.is_finite())
-        || !s.coupled_params.values().all(|v| v.is_finite())
-    {
-        return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
-    }
-    if crate::presets::checked_ode_step_count(s.dt, s.total_time).is_none() {
-        return Err(format!(
-            "ODE step count (total_time / dt) exceeds maximum allowed limit ({})",
-            crate::presets::MAX_ODE_STEPS
-        ));
-    }
-    Ok(())
 }

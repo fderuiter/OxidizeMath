@@ -86,10 +86,7 @@ fn test_quantum_cartographer_zero_allocation_custom_ast_and_wcag_contrast() {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         verified_engine::engine::VerifiedEngine::run_verified(|| {
-            for _ in 0..64 {
-                if atlas_runner.is_complete() {
-                    break;
-                }
+            while !atlas_runner.is_complete() {
                 atlas_runner.step();
             }
             for sy in 0..24 {

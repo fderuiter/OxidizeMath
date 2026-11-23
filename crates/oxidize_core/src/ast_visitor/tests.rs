@@ -120,3 +120,73 @@ fn test_ast_visitor_allow_recursion_preserves_verification_counts() {
     assert_eq!(visitor.verified_asserts, 2);
     assert!(!visitor.opted_out);
 }
+
+#[test]
+fn test_ast_visitor_ignores_macro_examples_in_doc_comments() {
+    let code = concat!(
+        "/// Example:\n",
+        "/// ```rust\n",
+        "/// use verified_engine_macros::embed_theory;\n",
+        "/// #[embed_theory(\"papers/mmwave_radiotherapy_setup.tex\", label = \"eq:range\")]\n",
+        "/// #[verified]\n",
+        "/// fn demo() {}\n",
+        "/// ```\n",
+        "pub fn macro_entrypoint() {}\n",
+    );
+    let file = syn::parse_file(code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&file);
+
+    assert_eq!(visitor.total_funcs, 1);
+    assert_eq!(visitor.verified_funcs, 0);
+    assert!(visitor.verified_modules.is_empty());
+}
+
+#[test]
+fn test_ast_visitor_ignores_verified_and_embed_theory_in_rustdoc_while_keeping_citations() {
+    let code = r#"
+        /// Extracts equations via `use verified_engine_macros::embed_theory;`
+        /// and `#[embed_theory("papers/essay.tex", label = "eq:one")]` or `#[verified]`.
+        pub fn macro_entrypoint() {}
+
+        /// Documented citation `[cite:essay]` still registers semantic module link.
+        #[verified]
+        pub fn cited_fn() {
+            assert!(true);
+        }
+    "#;
+    let file = syn::parse_file(code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&file);
+
+    assert_eq!(visitor.total_funcs, 2);
+    assert_eq!(visitor.verified_funcs, 1);
+    assert_eq!(visitor.semantic_integrity_funcs, 1);
+    assert_eq!(visitor.verified_modules, vec!["essay".to_string()]);
+    assert_eq!(
+        visitor.first_unverified_fn,
+        Some(("macro_entrypoint".to_string(), 4))
+    );
+}
+
+#[test]
+fn test_ast_visitor_ignores_embed_theory_and_verified_tokens_inside_doc_comments() {
+    let code = r#"
+        /// Example macro usage:
+        /// ```rust
+        /// use verified_engine_macros::embed_theory;
+        /// #[embed_theory("papers/mmwave_radiotherapy_setup.tex", label = "eq:range")]
+        /// #[verified]
+        /// pub fn example() {}
+        /// ```
+        /// [cite:win_ratio]
+        pub fn documented_macro_entrypoint() {}
+    "#;
+    let file = syn::parse_file(code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&file);
+
+    assert_eq!(visitor.total_funcs, 1);
+    assert_eq!(visitor.verified_funcs, 0);
+    assert_eq!(visitor.verified_modules, vec!["win_ratio".to_string()]);
+}

@@ -10,15 +10,15 @@ Simulation models implement standardized time-stepping interfaces and energy con
 
 ### Module Structure
 
-- **`chaos`**: Deterministic chaotic systems, including the Lorenz attractor, double pendulum, and Lyapunov exponent analyzers.
+- **`chaos`**: Deterministic chaotic systems, including conservative Hamiltonian models (`DoublePendulum`, `HenonHeiles`), cubic-Hermite `PoincareSection` detectors, the Lorenz attractor, and Lyapunov exponent analyzers.
 - **`quantum`**: Quantum state evolution, Clebsch-Gordan coupling coefficients, and Schrödinger wave equation solvers.
-- **`astrophysics`**: Tillaboev (2025) irregular dwarf-galaxy scaling regressions (`GalaxyModel`), baryonic vs. NFW/Burkert dark-matter rotation curves (`decompose_rotation_curve`), and zero-allocation symplectic leapfrog disk & tidal-stream orbits (`GalacticDiskSystem`).
+- **`astrophysics`**: Tillaboev (2025) irregular dwarf-galaxy scaling regressions (`GalaxyModel`), baryonic vs. NFW/Burkert dark-matter rotation curves (`decompose_rotation_curve`), zero-allocation symplectic leapfrog disk & tidal-stream orbits (`GalacticDiskSystem`), and planar 3-body gravitational choreographies (`FigureEightThreeBody`).
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
 - **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
-- **`stat_mech`**: Ising spin lattices and canonical ensemble thermodynamic calculations.
-- **`optics`**: Geometric ray tracing, refractive boundary equations, and closed-form Fraunhofer wave diffraction (complemented by full-field 2D time-domain multi-slit and refractive-lens wave tank simulation in `pure_math::analysis::pde::wave_2d`).
+- **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, and zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`).
+- **`optics`**: Graded-index and negative-index refractive media (`refraction`), RK4 Hamiltonian ray tracing and caustic envelope detection (`caustics`), and calibrated optical detector models (`sensing`), complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`.
 
 ---
 

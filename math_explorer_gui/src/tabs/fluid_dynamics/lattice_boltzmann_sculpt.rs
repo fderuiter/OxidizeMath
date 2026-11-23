@@ -3,7 +3,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::lattice_boltzmann::{LbmSnapshotMetrics, LBM_HEIGHT, LBM_INLET_U, LBM_WIDTH};
+use super::lattice_boltzmann::render::draw_aerodynamic_metrics;
+use super::lattice_boltzmann::{LBM_HEIGHT, LBM_INLET_U, LBM_WIDTH};
 use super::lbm_fairing::{LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y, LBM_INLET_COLS};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::{
@@ -68,27 +69,6 @@ pub(crate) fn reset_solver_preserving_obstacles(
         }
     }
     solver.set_inlet(0, 0, LBM_INLET_COLS, height, LBM_INLET_U, 0.0);
-}
-
-pub(crate) fn inspect_solver_solid_and_core(
-    solver: &LatticeBoltzmannD2Q9<BgkCollision>,
-) -> (usize, bool) {
-    let mut n_solid = 0_usize;
-    let mut core_intact = true;
-    for y in 0..solver.height() {
-        for x in 0..solver.width() {
-            let obs = solver.is_obstacle(x, y);
-            if obs {
-                n_solid += 1;
-            }
-            let dx = x as i32 - LBM_CORE_X;
-            let dy = y as i32 - LBM_CORE_Y;
-            if dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS && !obs {
-                core_intact = false;
-            }
-        }
-    }
-    (n_solid, core_intact)
 }
 
 pub(crate) fn build_default_obstacle_bytes(params: &HashMap<String, f64>) -> Vec<u8> {
@@ -170,27 +150,18 @@ pub(crate) fn record_stroke_in_rle(
     let r = (stroke.radius.round() as i32).clamp(0, 16);
     let val = u8::from(stroke.mode == BrushMode::Solid);
 
-    rasterize_disk_stroke(
-        (x0, y0),
-        (x1, y1),
-        r,
-        (LBM_WIDTH, LBM_HEIGHT),
-        |gx, gy| {
-            mask[flatten_2d_index(gx, gy, LBM_WIDTH)] = val;
-        },
-    );
+    rasterize_disk_stroke((x0, y0), (x1, y1), r, (LBM_WIDTH, LBM_HEIGHT), |gx, gy| {
+        mask[flatten_2d_index(gx, gy, LBM_WIDTH)] = val;
+    });
     sculpt_state.rle_mask = encode_rle_mask(&mask);
 }
 
 pub(crate) fn export_solver_rle(solver: &LatticeBoltzmannD2Q9<BgkCollision>) -> Vec<[u32; 2]> {
-    let w = solver.width();
-    let h = solver.height();
+    let (w, h) = (solver.width(), solver.height());
     let mut bytes = vec![0_u8; w * h];
     for y in 0..h {
         for x in 0..w {
-            if solver.is_obstacle(x, y) {
-                bytes[flatten_2d_index(x, y, w)] = 1;
-            }
+            bytes[flatten_2d_index(x, y, w)] = u8::from(solver.is_obstacle(x, y));
         }
     }
     encode_rle_mask(&bytes)
@@ -202,22 +173,10 @@ pub(crate) fn stamp_airfoil_on_solver(
     aoa_deg: f64,
 ) {
     solver.clear_obstacles();
-    let airfoil = Naca4Airfoil::from_code(
-        code,
-        26.0,
-        0.32 * solver.width() as f64,
-        0.5 * solver.height() as f64,
-        aoa_deg,
-    );
-    stamp_naca4_airfoil(solver, &airfoil);
-    solver.set_inlet(
-        0,
-        0,
-        solver.width(),
-        solver.height(),
-        super::lattice_boltzmann::LBM_INLET_U,
-        0.0,
-    );
+    let (w, h) = (solver.width(), solver.height());
+    let af = Naca4Airfoil::from_code(code, 26.0, 0.32 * w as f64, 0.5 * h as f64, aoa_deg);
+    stamp_naca4_airfoil(solver, &af);
+    solver.set_inlet(0, 0, w, h, super::lattice_boltzmann::LBM_INLET_U, 0.0);
 }
 
 pub(crate) fn rotate_airfoil_in_place(
@@ -247,6 +206,26 @@ pub(crate) fn rotate_airfoil_in_place(
         }
     }
     solver.set_inlet(0, 0, 2, h, u_in, 0.0);
+}
+
+pub(crate) fn sync_lbm_parameters(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    stamped_airfoil: &mut Option<(u16, f64)>,
+    display_vorticity: &mut bool,
+    params: &HashMap<String, f64>,
+) {
+    let viscosity = *params.get("viscosity").unwrap_or(&0.02);
+    if viscosity.is_finite() && viscosity > 0.0 {
+        solver.collision_model.tau = 3.0 * viscosity + 0.5;
+    }
+    if let Some((code, prev_aoa)) = *stamped_airfoil {
+        let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+        if aoa.is_finite() && (aoa - prev_aoa).abs() > 1e-6 {
+            rotate_airfoil_in_place(solver, code, prev_aoa, aoa);
+            *stamped_airfoil = Some((code, aoa));
+        }
+    }
+    *display_vorticity = *params.get("field_view").unwrap_or(&0.0) >= 0.5;
 }
 
 fn sync_live_aoa_slider(
@@ -283,19 +262,21 @@ pub(crate) fn draw_lbm_brush_panel(
     snapshot: Option<&StateSnapshot>,
 ) -> Vec<SimCommand> {
     let mut cmds = Vec::new();
+    let hc =
+        crate::app::ThemeMode::from_visuals(ui.visuals()) == crate::app::ThemeMode::HighContrast;
+    let hc_id = ui.id().with("lbm_last_hc");
+    if ui.ctx().data_mut(|d| d.get_temp::<bool>(hc_id)) != Some(hc) {
+        ui.ctx().data_mut(|d| d.insert_temp(hc_id, hc));
+        cmds.push(SimCommand::Custom(format!("HighContrast:{}", u8::from(hc))));
+    }
     ui.label("Wind-Tunnel Sculpting");
-
     ui.horizontal(|ui| {
-        ui.selectable_value(
-            &mut brush_kit.interaction_mode,
-            BrushInteractionMode::Sculpt,
-            "🖌 Sculpt",
-        );
-        ui.selectable_value(
-            &mut brush_kit.interaction_mode,
-            BrushInteractionMode::Pan,
-            "✋ Pan",
-        );
+        for (m, lbl) in [
+            (BrushInteractionMode::Sculpt, "🖌 Sculpt"),
+            (BrushInteractionMode::Pan, "✋ Pan"),
+        ] {
+            ui.selectable_value(&mut brush_kit.interaction_mode, m, lbl);
+        }
     });
 
     ui.horizontal(|ui| {
@@ -361,37 +342,6 @@ fn draw_lbm_stamp_buttons(
     });
 }
 
-fn draw_aerodynamic_metrics(ui: &mut egui::Ui, snapshot: Option<&StateSnapshot>) {
-    let Some(metrics) = snapshot
-        .and_then(|s| s.structured_data.as_ref())
-        .and_then(|d| d.downcast_ref::<LbmSnapshotMetrics>())
-    else {
-        return;
-    };
-    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-    ui.separator();
-    ui.label("Aerodynamic Diagnostics");
-    let ld_ratio = if metrics.drag_coeff.abs() > 1e-6 {
-        metrics.lift_coeff / metrics.drag_coeff
-    } else {
-        0.0
-    };
-    ui.colored_label(
-        palette.info,
-        format!(
-            "Lift C_L: {:+.3}   Drag C_D: {:+.3}",
-            metrics.lift_coeff, metrics.drag_coeff
-        ),
-    );
-    ui.colored_label(
-        palette.muted_text,
-        format!(
-            "L/D Ratio: {:+.2}   Max |ω_z|: {:.4}",
-            ld_ratio, metrics.max_vorticity
-        ),
-    );
-}
-
 fn parse_naca_action(action: &str, params: &HashMap<String, f64>) -> (u16, f64) {
     let mut parts = action.split(':');
     let _ = parts.next();
@@ -404,6 +354,37 @@ fn parse_naca_action(action: &str, params: &HashMap<String, f64>) -> (u16, f64) 
         .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or_else(|| *params.get("angle_of_attack").unwrap_or(&0.0));
     (code, aoa)
+}
+
+pub(crate) fn apply_lbm_sculpt_payload(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    active_profile_param: &mut f64,
+    stamped_airfoil: &mut Option<(u16, f64)>,
+    payload: &SculptStatePayload,
+    params: &HashMap<String, f64>,
+) -> bool {
+    if payload.rle_mask.is_empty() {
+        return false;
+    }
+    let w = solver.width();
+    let h = solver.height();
+    let Ok(bytes) = crate::framework::decode_rle_mask(&payload.rle_mask, w * h) else {
+        return false;
+    };
+    for y in 0..h {
+        for x in 0..w {
+            solver.set_obstacle(
+                x,
+                y,
+                bytes[math_commons::math_kernel::types::flatten_2d_index(x, y, w)] != 0,
+            );
+        }
+    }
+    let profile = *params.get("naca_profile").unwrap_or(&0.0);
+    let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
+    *active_profile_param = profile;
+    *stamped_airfoil = (profile >= 1.0).then_some((profile.round() as u16, aoa));
+    true
 }
 
 pub(crate) fn apply_lbm_custom_action(

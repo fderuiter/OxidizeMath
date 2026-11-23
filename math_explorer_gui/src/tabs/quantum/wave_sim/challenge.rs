@@ -1,22 +1,32 @@
 // [cite:quantum_mechanics]
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-//! Playable sub-barrier Fabry-Pérot resonance inverse challenge for [`super::WaveSimulatorTool`].
-
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+//! Federated inverse challenges (`quantum_barrier_50_split` and `quantum_fabry_perot_resonance`),
+//! analytical transmission evaluators, and `CalloutManager` sync for [`super::WaveSimulatorTool`].
 
 use eframe::egui;
 
 use super::atlas::QuantumTunnelingCartographer;
 use super::presets::{
-    wave_parameter_constraints, WavePotentialPreset, K0_MAX, K0_MIN, SIGMA_MAX, SIGMA_MIN, V0_MAX,
-    V0_MIN, WIDTH_MAX, WIDTH_MIN,
+    wave_parameter_constraints, WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA,
+    DEFAULT_STEPS_PER_FRAME, DEFAULT_WIDTH, DEFAULT_X0, DT_MAX, DT_RECOVERY_MIN, K0_MAX, K0_MIN,
+    MAX_STEPS_PER_FRAME, POTENTIAL_DISPLAY_SCALE, SIGMA_MAX, SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX,
+    WIDTH_MIN,
 };
+use super::runner::WaveData;
 use super::WaveSimulatorTool;
 use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::async_sim::SimCommand;
 use crate::framework::{ChallengeEvaluation, ChallengeMetadata, InteractiveTool};
+
+/// Canonical challenge ID for the 50/50 sub-barrier quantum tunneling split puzzle.
+pub const CHALLENGE_QUANTUM_BARRIER_50_SPLIT: &str = "quantum_barrier_50_split";
+/// Unsolved initial barrier height $V_0 = 15.0$ ($T_{\text{latched}} \approx 32\%$).
+pub const CHALLENGE_BASELINE_V0: f64 = 15.0;
+/// Target pre-wall transmitted probability $T = 0.50$.
+pub const TARGET_TRANSMISSION: f64 = 0.50;
+/// Allowed $\pm 2\%$ tolerance band around $T = 0.50$.
+pub const TRANSMISSION_TOLERANCE: f64 = 0.02;
 
 /// Canonical challenge identifier for sub-barrier Fabry-Pérot resonance tuning.
 pub const CHALLENGE_FABRY_PEROT_RESONANCE: &str = "quantum_fabry_perot_resonance";
@@ -34,36 +44,71 @@ pub const CHALLENGE_FP_BASELINE_K0: f64 = 3.80;
 pub const CHALLENGE_FP_TARGET_T: f64 = 0.90;
 
 impl WaveSimulatorTool {
-    pub(crate) fn enforce_wave_challenge_locks(&mut self) {
-        if self.active_challenge == Some(CHALLENGE_FABRY_PEROT_RESONANCE) {
-            self.preset = WavePotentialPreset::DoubleBarrier;
-            self.v0 = CHALLENGE_FP_V0;
-            self.width = CHALLENGE_FP_WIDTH;
-            self.x0 = CHALLENGE_FP_X0;
-            self.sparse_potential.clear();
-            self.k0 = if self.k0.is_finite() {
-                self.k0.clamp(K0_MIN, K0_MAX)
-            } else {
-                CHALLENGE_FP_BASELINE_K0
-            };
-            self.sigma = if self.sigma.is_finite() {
-                self.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
-            } else {
-                CHALLENGE_FP_SIGMA
-            };
+    /// Returns `true` when any active inverse challenge locks preset selection, `x0`, and sculpting.
+    #[must_use]
+    pub(crate) fn is_challenge_locked(&self) -> bool {
+        self.active_challenge.is_some()
+    }
+
+    /// Returns `true` when `quantum_barrier_50_split` locks incident packet `(k0, sigma)`.
+    #[must_use]
+    pub(crate) fn is_packet_momentum_locked(&self) -> bool {
+        self.active_challenge == Some(CHALLENGE_QUANTUM_BARRIER_50_SPLIT)
+    }
+
+    /// Returns `true` when `quantum_fabry_perot_resonance` locks barrier `(v0, width)`.
+    #[must_use]
+    pub(crate) fn is_barrier_shape_locked(&self) -> bool {
+        self.active_challenge == Some(CHALLENGE_FABRY_PEROT_RESONANCE)
+    }
+
+    /// Restores locked boundary parameters for whichever inverse challenge is active.
+    pub(crate) fn enforce_challenge_locks(&mut self) {
+        match self.active_challenge {
+            Some(CHALLENGE_QUANTUM_BARRIER_50_SPLIT) => {
+                self.preset = WavePotentialPreset::RectangularBarrier;
+                self.x0 = DEFAULT_X0;
+                self.k0 = DEFAULT_K0;
+                self.sigma = DEFAULT_SIGMA;
+                self.sparse_potential.clear();
+            }
+            Some(CHALLENGE_FABRY_PEROT_RESONANCE) => {
+                self.preset = WavePotentialPreset::DoubleBarrier;
+                self.v0 = CHALLENGE_FP_V0;
+                self.width = CHALLENGE_FP_WIDTH;
+                self.x0 = CHALLENGE_FP_X0;
+                self.sparse_potential.clear();
+                self.k0 = if self.k0.is_finite() {
+                    self.k0.clamp(K0_MIN, K0_MAX)
+                } else {
+                    CHALLENGE_FP_BASELINE_K0
+                };
+                self.sigma = if self.sigma.is_finite() {
+                    self.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
+                } else {
+                    CHALLENGE_FP_SIGMA
+                };
+            }
+            _ => {}
         }
     }
 
-    /// Activates or clears the `quantum_fabry_perot_resonance` inverse challenge.
+    /// Activates or clears a registered quantum challenge on [`WaveSimulatorTool`].
     pub fn set_wave_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
         match challenge_id {
             None => {
                 self.active_challenge = None;
                 Ok(())
             }
+            Some(CHALLENGE_QUANTUM_BARRIER_50_SPLIT) => {
+                self.active_challenge = Some(CHALLENGE_QUANTUM_BARRIER_50_SPLIT);
+                self.enforce_challenge_locks();
+                self.sync_config_and_reset(None);
+                Ok(())
+            }
             Some(CHALLENGE_FABRY_PEROT_RESONANCE) => {
                 self.active_challenge = Some(CHALLENGE_FABRY_PEROT_RESONANCE);
-                self.enforce_wave_challenge_locks();
+                self.enforce_challenge_locks();
                 self.sync_config_and_reset(None);
                 Ok(())
             }
@@ -73,10 +118,20 @@ impl WaveSimulatorTool {
         }
     }
 
-    /// Evaluates the active `quantum_fabry_perot_resonance` challenge.
+    /// Evaluates the currently active quantum challenge.
     #[must_use]
     pub fn eval_wave_challenge(&self) -> Option<ChallengeEvaluation> {
-        self.active_challenge?;
+        match self.active_challenge? {
+            CHALLENGE_QUANTUM_BARRIER_50_SPLIT => {
+                let latched = self.active_wave_data().and_then(|d| d.latched_transmission);
+                Some(score_latched_transmission(latched, self.v0, self.width))
+            }
+            CHALLENGE_FABRY_PEROT_RESONANCE => Some(self.eval_fabry_perot_challenge()),
+            _ => None,
+        }
+    }
+
+    fn eval_fabry_perot_challenge(&self) -> ChallengeEvaluation {
         let (t_stat, t_wp) = self.stationary_and_wavepacket_transmission();
         let e0 = 0.5 * self.k0 * self.k0;
         let sub_barrier = e0 < CHALLENGE_FP_V0 - 0.25;
@@ -91,7 +146,7 @@ impl WaveSimulatorTool {
         } else {
             1.0 + (e0 - CHALLENGE_FP_V0).max(0.0)
         };
-        Some(ChallengeEvaluation::new(
+        ChallengeEvaluation::new(
             score,
             passed,
             "1 - T(k₀)",
@@ -103,7 +158,7 @@ impl WaveSimulatorTool {
                 e0,
                 CHALLENGE_FP_V0
             ),
-        ))
+        )
     }
 
     /// Evaluates analytical stationary $T(k_0)$ and 12-point Gauss-Hermite wavepacket $\langle T \rangle_\sigma$.
@@ -135,58 +190,139 @@ impl WaveSimulatorTool {
                 _ => {}
             }
         }
-        self.enforce_wave_challenge_locks();
+        self.enforce_challenge_locks();
         self.pending_slider_reset = false;
         self.sync_config_and_reset(ctx);
         let _ = self.worker.send_command(SimCommand::Start);
     }
 
-    pub(super) fn render_wave_atlas_panel(&mut self, ui: &mut egui::Ui) {
-        if !self.atlas.is_visible() {
-            return;
-        }
-        let ctx = ui.ctx().clone();
-        let (xk, yk) = self.atlas.axis_keys();
-        let get_val = |k: &str| match k {
-            "k0" => self.k0,
-            "v0" => self.v0,
-            "width" => self.width,
-            _ => 0.0,
+    /// Synchronizes plot callouts for barrier height $V_0$, incident energy $E_0$, and transmission $T$.
+    pub(crate) fn sync_wave_callouts(&mut self, wave_data: &WaveData) {
+        let v0_scaled = self.v0 * POTENTIAL_DISPLAY_SCALE;
+        let e0_scaled = wave_data.kinetic_energy * POTENTIAL_DISPLAY_SCALE;
+        self.callout_manager.set_auto_callout(
+            "wave_barrier_v0",
+            [0.0, v0_scaled],
+            format!("V0 = {:.2}", self.v0),
+            [0.0_f32, -20.0_f32],
+        );
+        self.callout_manager.set_auto_callout(
+            "wave_incident_e0",
+            [-3.4, e0_scaled],
+            format!("E0 = {:.2}", wave_data.kinetic_energy),
+            [0.0_f32, -18.0_f32],
+        );
+        let t_label = match wave_data.latched_transmission {
+            Some(latched) => format!("Latched T = {:.1}%", latched * 100.0),
+            None => format!("Live T(t) = {:.1}%", wave_data.transmission * 100.0),
         };
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.preset as u8).hash(&mut h);
-        self.sigma.to_bits().hash(&mut h);
-        if xk != "v0" && yk != "v0" {
-            self.v0.to_bits().hash(&mut h);
-        }
-        if xk != "width" && yk != "width" {
-            self.width.to_bits().hash(&mut h);
-        }
-        if self.preset == WavePotentialPreset::Custom {
-            self.math_input.raw_text.hash(&mut h);
-        }
-        for &(idx, val) in &self.sparse_potential {
-            idx.hash(&mut h);
-            val.to_bits().hash(&mut h);
-        }
-        let params = wave_parameter_constraints();
-        let (preset, k0, v0, width, sigma) =
-            (self.preset, self.k0, self.v0, self.width, self.sigma);
-        let (expr, sparse) = (self.last_valid_expr.clone(), self.sparse_potential.clone());
-        if let Some(ev) = self.atlas.show_panel(
-            ui,
-            "wave_sim",
-            get_val(xk),
-            get_val(yk),
-            h.finish(),
-            move |keys| {
-                Arc::new(QuantumTunnelingCartographer::new(
-                    &params, keys, preset, k0, v0, width, sigma, &expr, &sparse,
-                ))
-            },
-        ) {
-            self.apply_atlas_teleport(ev, Some(&ctx));
-        }
+        self.callout_manager.set_auto_callout(
+            "wave_scatter_t",
+            [2.5, (e0_scaled + 0.28).min(2.2)],
+            t_label,
+            [0.0_f32, -18.0_f32],
+        );
+    }
+}
+
+/// Pure scorer mapping optional `latched_transmission` to a [`ChallengeEvaluation`].
+#[must_use]
+pub fn score_latched_transmission(
+    latched: Option<f64>,
+    v0: f64,
+    width: f64,
+) -> ChallengeEvaluation {
+    let Some(t_val) = latched.filter(|v| v.is_finite()) else {
+        return ChallengeEvaluation::new(
+            0.0,
+            false,
+            "|T_latched - 50%| (%)",
+            50.0,
+            format!("Awaiting barrier transit — click Play or Step (V0 = {v0:.2}, w = {width:.2})"),
+        );
+    };
+    let err = (t_val - TARGET_TRANSMISSION).abs();
+    let passed = err <= TRANSMISSION_TOLERANCE;
+    let score = if passed {
+        100.0 - (err / TRANSMISSION_TOLERANCE) * 8.0
+    } else {
+        (92.0 * (1.0 - (err - TRANSMISSION_TOLERANCE) / 0.48)).clamp(0.0, 91.9)
+    };
+    ChallengeEvaluation::new(
+        score.clamp(0.0, 100.0),
+        passed,
+        "|T_latched - 50%| (%)",
+        err * 100.0,
+        format!(
+            "Latched T = {:.1}% (need 50.0% ± 2.0%, V0 = {v0:.2}, w = {width:.2})",
+            t_val * 100.0
+        ),
+    )
+}
+
+fn generate_quantum_barrier_baseline() -> String {
+    let mut tool = WaveSimulatorTool::new();
+    tool.active_challenge = Some(CHALLENGE_QUANTUM_BARRIER_50_SPLIT);
+    tool.preset = WavePotentialPreset::RectangularBarrier;
+    tool.x0 = DEFAULT_X0;
+    tool.k0 = DEFAULT_K0;
+    tool.sigma = DEFAULT_SIGMA;
+    tool.v0 = CHALLENGE_BASELINE_V0;
+    tool.width = DEFAULT_WIDTH;
+    tool.dt = DEFAULT_DT;
+    tool.steps_per_frame = DEFAULT_STEPS_PER_FRAME;
+    tool.sparse_potential.clear();
+    tool.save_state().unwrap_or_default()
+}
+
+fn clamp_quantum_barrier_state(raw_json: &str) -> Result<String, String> {
+    let mut val: serde_json::Value = serde_json::from_str(raw_json)
+        .map_err(|e| format!("Invalid WaveSimulator challenge JSON: {e}"))?;
+    let obj = val
+        .as_object_mut()
+        .ok_or_else(|| "WaveSimulator challenge state must be a JSON object".to_string())?;
+    obj.remove("potential_type");
+    obj.remove("sparse_potential");
+    obj.insert(
+        "preset".to_string(),
+        serde_json::json!("RectangularBarrier"),
+    );
+    obj.insert("x0".to_string(), serde_json::json!(DEFAULT_X0));
+    obj.insert("k0".to_string(), serde_json::json!(DEFAULT_K0));
+    obj.insert("sigma".to_string(), serde_json::json!(DEFAULT_SIGMA));
+    clamp_json_f64(obj, "v0", V0_MIN, V0_MAX, CHALLENGE_BASELINE_V0);
+    clamp_json_f64(obj, "width", WIDTH_MIN, WIDTH_MAX, DEFAULT_WIDTH);
+    clamp_json_f64(obj, "dt", DT_RECOVERY_MIN, DT_MAX, DEFAULT_DT);
+    if let Some(spf) = obj
+        .get("steps_per_frame")
+        .and_then(serde_json::Value::as_u64)
+    {
+        let clamped = (spf as usize).clamp(1, MAX_STEPS_PER_FRAME);
+        obj.insert("steps_per_frame".to_string(), serde_json::json!(clamped));
+    }
+
+    let sanitized = serde_json::to_string(&val).map_err(|e| e.to_string())?;
+    let mut tool = WaveSimulatorTool::new();
+    tool.set_wave_challenge(Some(CHALLENGE_QUANTUM_BARRIER_50_SPLIT))?;
+    tool.try_load_state(&sanitized)?;
+    tool.save_state()
+        .ok_or_else(|| "Failed to serialize clamped WaveSimulator state".to_string())
+}
+
+fn clamp_json_f64(
+    obj: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    min: f64,
+    max: f64,
+    fallback: f64,
+) {
+    if let Some(v) = obj.get(key).and_then(serde_json::Value::as_f64) {
+        let safe = if v.is_finite() {
+            v.clamp(min, max)
+        } else {
+            fallback
+        };
+        obj.insert(key.to_string(), serde_json::json!(safe));
     }
 }
 
@@ -206,6 +342,23 @@ fn clamp_fp_challenge_state(raw_json: &str) -> Result<String, String> {
     tool.set_wave_challenge(Some(CHALLENGE_FABRY_PEROT_RESONANCE))?;
     tool.save_state()
         .ok_or_else(|| "Failed to serialize clamped WaveSimulator challenge state".to_string())
+}
+
+inventory::submit! {
+    ChallengeMetadata {
+        id: CHALLENGE_QUANTUM_BARRIER_50_SPLIT,
+        title: "50/50 Sub-Barrier Quantum Tunneling Split",
+        description: "Tune barrier height V0 and width w so a locked Gaussian wavepacket (E0 = 12.5) splits into 50% ± 2% pre-wall transmitted probability.",
+        category: "Wave Mechanics",
+        icon: "🌊",
+        domain: "quantum",
+        tool_name: "WaveSimulator",
+        locked_inputs: "RectangularBarrier, x0 = -2.0, k0 = 5.0 (E0 = 12.5), σ = 0.5, sculpting disabled",
+        tunable_budget: "V0 ∈ [0, 40], width w ∈ [0.1, 2.0], Δt ∈ [0.001, 0.1]",
+        target_summary: "Latched pre-wall transmission T_latched ∈ [48.0%, 52.0%]",
+        baseline_state_generator: generate_quantum_barrier_baseline,
+        clamp_locked_state: clamp_quantum_barrier_state,
+    }
 }
 
 inventory::submit! {

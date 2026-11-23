@@ -10,10 +10,14 @@ mod atlas_tests;
 pub mod challenge;
 #[path = "wave_sim/persistence.rs"]
 mod persistence;
+#[path = "wave_sim/plot_ui.rs"]
+mod plot_ui;
 #[path = "wave_sim/presets.rs"]
 pub mod presets;
 #[path = "wave_sim/runner.rs"]
 pub mod runner;
+#[path = "wave_sim/sculpt.rs"]
+pub mod sculpt;
 #[cfg(test)]
 #[path = "wave_sim/tests.rs"]
 mod tests;
@@ -33,13 +37,12 @@ pub use presets::wave_parameter_label;
 pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
 
-use super::wave_sim_sculpt::default_wave_brush_kit;
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::RecoveryAction;
 use crate::framework::{
-    ChallengeEvaluation, ExportCapabilities, InteractionContext, InteractiveTool,
-    MathExpressionInputBar, SpatialBrushKit,
+    CalloutManager, CalloutSpec, ChallengeEvaluation, ExportCapabilities, InteractionContext,
+    InteractiveTool, MathExpressionInputBar, SpatialBrushKit,
 };
 use eframe::egui;
 use math_commons::ast::Expr;
@@ -49,6 +52,7 @@ use presets::{
     DEFAULT_X0, DT_RECOVERY_MIN,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use sculpt::default_wave_brush_kit;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -75,6 +79,7 @@ pub struct WaveSimulatorTool {
     pub(crate) pending_slider_reset: bool,
     pub(crate) propagator_rebuilds: Arc<std::sync::atomic::AtomicUsize>,
     pub(crate) active_challenge: Option<&'static str>,
+    pub(crate) callout_manager: CalloutManager,
     pub(crate) revision: u64,
 }
 
@@ -138,6 +143,7 @@ impl WaveSimulatorTool {
             pending_slider_reset: false,
             propagator_rebuilds,
             active_challenge: None,
+            callout_manager: CalloutManager::new(),
             revision: 1,
         }
     }
@@ -159,19 +165,6 @@ impl WaveSimulatorTool {
 
     pub(crate) fn bump_revision(&mut self) {
         self.revision = self.revision.wrapping_add(1).max(1);
-    }
-
-    /// Configures the playable 50% sub-barrier tunneling split challenge (`E0 = 12.5`, `V0 = 11.35`, `w = 0.5`).
-    pub fn apply_tunneling_split_challenge(&mut self, ctx: Option<&egui::Context>) {
-        self.preset = WavePotentialPreset::RectangularBarrier;
-        self.x0 = DEFAULT_X0;
-        self.k0 = DEFAULT_K0;
-        self.sigma = DEFAULT_SIGMA;
-        self.v0 = DEFAULT_V0;
-        self.width = DEFAULT_WIDTH;
-        self.dt = DEFAULT_DT;
-        self.sparse_potential.clear();
-        self.sync_config_and_reset(ctx);
     }
 
     /// Synchronizes shared worker config, clears stateful export caches, and resets or respawns `WaveRunner`.
@@ -217,9 +210,10 @@ impl WaveSimulatorTool {
         self.steps_per_frame = DEFAULT_STEPS_PER_FRAME;
         self.sparse_potential.clear();
         self.math_input.set_expression(DEFAULT_CUSTOM_EXPR);
-        if let Some(expr) = self.math_input.expr() {
-            self.last_valid_expr = expr.clone();
+        if self.math_input.expr().is_some() {
+            self.last_valid_expr = self.math_input.expr().unwrap().clone();
         }
+        self.enforce_challenge_locks();
         self.sync_config_and_reset(ctx);
     }
 
@@ -263,7 +257,13 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
-        self.apply_ui_brush_context(ctx);
+        if !self.is_challenge_locked() {
+            self.apply_ui_brush_context(ctx);
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
     }
 
     fn step_simulation(&mut self) {
@@ -271,6 +271,7 @@ impl InteractiveTool for WaveSimulatorTool {
             self.pending_slider_reset = false;
             self.sync_config_and_reset(None);
         }
+        while self.worker.update().is_some() {}
         let shared = Arc::clone(&self.shared_config);
         let rebuilds = Arc::clone(&self.propagator_rebuilds);
         let runner = self
@@ -339,13 +340,27 @@ impl InteractiveTool for WaveSimulatorTool {
         self.eval_wave_challenge()
     }
 
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.callout_manager.sync_specs(callouts);
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let mut has_update = false;
+        let mut clear_export = false;
         if let Some(snapshot) = self.worker.update() {
+            let snap_time = snapshot
+                .structured_data
+                .as_ref()
+                .and_then(|d| d.downcast_ref::<WaveData>())
+                .map(|wd| wd.time);
+            clear_export = match (snap_time, self.export_data.as_ref()) {
+                (Some(st), Some(ed)) => st > ed.time,
+                _ => true,
+            };
             self.latest_sonification = snapshot.sonification;
             has_update = true;
         }
-        if has_update {
+        if clear_export {
             self.export_runner = None;
             self.export_data = None;
         }

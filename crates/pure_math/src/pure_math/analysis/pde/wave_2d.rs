@@ -41,9 +41,13 @@ pub mod eigenmodes;
 pub mod masks;
 /// Chladni sand particle drift and 2D Marching-Squares nodal contour extraction.
 pub mod particles_and_contours;
+/// Zero-allocation bilinear signed displacement and velocity pickup probes.
+pub mod probes;
 /// Pre-planned zero-allocation 2D FFT spectral analyzer.
 pub mod spectral;
 
+#[cfg(test)]
+mod eigenmode_tests;
 #[cfg(test)]
 mod tests;
 
@@ -61,7 +65,8 @@ pub use masks::{
     apply_sponge_layer,
 };
 pub use particles_and_contours::{ChladniSandSystem, MarchingSquares2D};
-pub use spectral::{SpectralAnalyzer2D, SpectralPeak2D};
+pub use probes::WaveProbeSample;
+pub use spectral::{SpectralAnalyzer2D, SpectralMode2D, SpectralPeak2D};
 
 /// Zero-allocation 2D Verlet PDE solver with pre-allocated mask and stencil buffers.
 #[derive(Debug, Clone)]
@@ -70,6 +75,7 @@ pub struct Wave2DSolver {
     height: usize,
     ops: StencilOperators,
     time: f64,
+    last_dt: f64,
     u_prev: Vec<f64>,
     u_curr: Vec<f64>,
     u_next: Vec<f64>,
@@ -99,6 +105,7 @@ impl Wave2DSolver {
             height,
             ops: StencilOperators::new_2d(StepSize(dx), StepSize(dy)),
             time: 0.0,
+            last_dt: 0.0,
             u_prev: vec![0.0; len],
             u_curr: vec![0.0; len],
             u_next: vec![0.0; len],
@@ -174,6 +181,7 @@ impl Wave2DSolver {
         }
         self.u_next.fill(0.0);
         self.time = 0.0;
+        self.last_dt = 0.0;
         self.stationary_start = true;
     }
     /// Clears wave displacement, energy envelope, and detector accumulators while keeping masks.
@@ -188,6 +196,7 @@ impl Wave2DSolver {
         self.detector_accum.fill(0.0);
         self.detector_samples = 0;
         self.time = 0.0;
+        self.last_dt = 0.0;
         self.stationary_start = false;
     }
     /// Resets all masks (`wall_mask = 1`, `sponge_mask = 0`, `wave_speed_mask = 1`) and clears state.
@@ -216,12 +225,7 @@ impl Wave2DSolver {
         } else {
             1.0e-4
         };
-        let mut max_speed_scale = 1.0_f64;
-        for &s in &self.wave_speed_mask {
-            if s > max_speed_scale {
-                max_speed_scale = s;
-            }
-        }
+        let max_speed_scale = masks::max_wave_speed_scale(&self.wave_speed_mask);
         let c_eff = params.wave_speed.abs() * max_speed_scale;
         let dt_wave = if c_eff > 1.0e-12 {
             MAX_COURANT_NUMBER * min_h / c_eff
@@ -230,7 +234,7 @@ impl Wave2DSolver {
         };
         let dt_plate =
             if params.medium == Wave2DMedium::BiharmonicPlate && params.plate_stiffness > 1.0e-18 {
-                let d_sqrt = params.plate_stiffness.sqrt();
+                let d_sqrt = params.plate_stiffness.sqrt() * max_speed_scale;
                 let inv_sum = self.ops.inv_dx_sq + self.ops.inv_dy_sq;
                 MAX_BIHARMONIC_NUMBER / (d_sqrt * inv_sum)
             } else {
@@ -246,12 +250,13 @@ impl Wave2DSolver {
         (substeps, dt_sub)
     }
 
-    /// Effective wave Courant number $c \Delta t_{\text{sub}} / \min(\Delta x, \Delta y)$.
+    /// Effective peak wave Courant number $c_{\max} \Delta t_{\text{sub}} / \min(\Delta x, \Delta y)$.
     #[verified_engine::verified]
     pub fn effective_courant(&self, params: &Wave2DParams, requested_dt: f64) -> f64 {
         let (_substeps, dt_sub) = self.safe_substep_plan(params, requested_dt);
         let min_h = self.dx().min(self.dy());
-        params.wave_speed.abs() * dt_sub / min_h
+        let c_eff = params.wave_speed.abs() * masks::max_wave_speed_scale(&self.wave_speed_mask);
+        c_eff * dt_sub / min_h
     }
 
     /// Advances the 2D solver without external forcing over `requested_dt`, returning executed substeps.
@@ -382,6 +387,7 @@ impl Wave2DSolver {
         std::mem::swap(&mut self.u_prev, &mut self.u_curr);
         std::mem::swap(&mut self.u_curr, &mut self.u_next);
         self.stationary_start = false;
+        self.last_dt = dt;
         self.time += dt;
     }
 
@@ -402,10 +408,13 @@ impl Wave2DSolver {
         if self.wall_mask[idx] <= 0.5 || (on_edge && params.boundary != BoundaryMode2D::Neumann) {
             return 0.0;
         }
-        let local_c = params.wave_speed * self.wave_speed_mask[idx];
+        let speed_scale = self.wave_speed_mask[idx];
+        let local_c = params.wave_speed * speed_scale;
         let mut accel = (local_c * local_c) * self.laplacian_buf[idx];
         if params.medium == Wave2DMedium::BiharmonicPlate && params.plate_stiffness > 0.0 {
-            accel -= params.plate_stiffness * self.eval_biharmonic_at(x, y, idx, params.boundary);
+            accel -= params.plate_stiffness
+                * (speed_scale * speed_scale)
+                * self.eval_biharmonic_at(x, y, idx, params.boundary);
         }
         if driver.enabled {
             accel += masks::driver_force_at(self.width, self.height, x, y, driver, osc);
@@ -426,41 +435,5 @@ impl Wave2DSolver {
             self.detector_accum[y] += val * val;
         }
         self.detector_samples += 1;
-    }
-
-    /// Writes the time-averaged intensity profile $I(y)$ along the detector screen into `out`.
-    #[verified_engine::verified]
-    pub fn read_detector_profile(&self, det_x: usize, out: &mut [f64]) {
-        masks::read_detector_profile_into(
-            &self.detector_accum,
-            self.detector_samples,
-            &self.energy_ema,
-            self.width,
-            self.height,
-            det_x,
-            out,
-        );
-    }
-
-    /// Injects a smooth 2D Gaussian displacement pulse centered at normalized `(cx_norm, cy_norm)`.
-    #[verified_engine::verified]
-    pub fn inject_gaussian_pulse(
-        &mut self,
-        cx_norm: f64,
-        cy_norm: f64,
-        sigma_norm: f64,
-        amplitude: f64,
-    ) {
-        masks::inject_gaussian_pulse_into(
-            &mut self.u_curr,
-            &mut self.u_prev,
-            &self.wall_mask,
-            self.width,
-            self.height,
-            cx_norm,
-            cy_norm,
-            sigma_norm,
-            amplitude,
-        );
     }
 }

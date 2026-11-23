@@ -46,7 +46,7 @@ pub mod static_metric;
 pub mod types;
 
 // Re-exports for convenience
-pub use christoffel::christoffel_symbols;
+pub use christoffel::{christoffel_symbols, christoffel_symbols_fixed};
 pub use geodesic::{GeodesicState, GeodesicStepStatus, GeodesicSystem};
 pub use metric::{Metric, RiemannianMetric};
 pub use static_metric::{

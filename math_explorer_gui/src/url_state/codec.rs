@@ -42,9 +42,11 @@ pub struct ShareUrlParams {
     pub challenge: Option<String>,
     /// Optional 0-based guided story step index (`&step=<idx>`).
     pub step: Option<usize>,
+    /// Optional validated multi-pane dataflow pipeline specification (`&pipe=<base64url>`).
+    pub pipeline: Option<super::pipeline::ValidatedPipelineUrl>,
 }
 
-fn percent_encode_component(raw: &str) -> String {
+pub(super) fn percent_encode_component(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     for &b in raw.as_bytes() {
         if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
@@ -82,36 +84,7 @@ fn percent_decode_component(raw: &str) -> Result<String, String> {
     String::from_utf8(out).map_err(|_| "URL parameter is not valid UTF-8".to_string())
 }
 
-fn ensure_all_json_numbers_finite(val: &serde_json::Value) -> Result<(), String> {
-    match val {
-        serde_json::Value::Number(num) => {
-            let finite = num.as_f64().is_none_or(f64::is_finite);
-            if !finite
-                || (num.as_i64().is_none() && num.as_u64().is_none() && num.as_f64().is_none())
-            {
-                return Err(
-                    "URL state contains non-finite or out-of-range numeric value".to_string(),
-                );
-            }
-            Ok(())
-        }
-        serde_json::Value::Array(items) => {
-            items.iter().try_for_each(ensure_all_json_numbers_finite)
-        }
-        serde_json::Value::Object(map) => map.values().try_for_each(ensure_all_json_numbers_finite),
-        _ => Ok(()),
-    }
-}
-
-/// Validates that `json_str` fits within the 4,096-byte URL state cap, obeys structural nesting
-/// bounds, and parses as JSON containing only finite numbers.
-pub fn validate_url_preset_json(json_str: &str) -> Result<(), String> {
-    let cleaned = egui_plot::export::strip_utf8_bom(json_str);
-    URL_JSON_BOUNDS.validate_json(cleaned)?;
-    let parsed: serde_json::Value =
-        serde_json::from_str(cleaned).map_err(|e| format!("Invalid URL state JSON: {e}"))?;
-    ensure_all_json_numbers_finite(&parsed)
-}
+pub use super::json_validator::validate_url_preset_json;
 
 /// Encodes `tab_slug`, optional `tool_id`, and optional compact `preset_json` into a
 /// `#tab=...&tool=...&state=...` URL fragment while enforcing the 4 KiB and 8 KiB caps.
@@ -217,6 +190,7 @@ struct RawParamAccum {
     preset: Option<String>,
     challenge: Option<String>,
     step_raw: Option<String>,
+    pipe_b64: Option<String>,
 }
 
 impl RawParamAccum {
@@ -227,6 +201,7 @@ impl RawParamAccum {
             && self.preset.is_none()
             && self.challenge.is_none()
             && self.step_raw.is_none()
+            && self.pipe_b64.is_none()
     }
 }
 
@@ -247,6 +222,7 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
             "preset" => set_unique_param(&mut acc.preset, v_raw, "preset")?,
             "challenge" => set_unique_param(&mut acc.challenge, v_raw, "challenge")?,
             "step" => set_unique_param(&mut acc.step_raw, v_raw, "step")?,
+            "pipe" => set_unique_param(&mut acc.pipe_b64, v_raw, "pipe")?,
             _ if strict_keys => {
                 return Err(format!("Unknown URL fragment parameter '{k_raw}'"));
             }
@@ -340,13 +316,20 @@ fn clamp_decoded_url_grid_state(
     json_str: &str,
 ) -> Result<String, String> {
     let cleaned = egui_plot::export::strip_utf8_bom(json_str);
+    let is_fluid = matches_tab_slug(tab, "fluid_dynamics", "Fluid Dynamics")
+        || tool.is_some_and(|t| matches_tab_slug(t, "PotentialFlowTool", "Potential Flow"));
+    let has_grid_key = cleaned.contains("\"u_resolution\"")
+        || cleaned.contains("\"v_resolution\"")
+        || cleaned.contains("\"grid_density\"")
+        || (is_fluid && cleaned.contains("\"grid_size\""));
+    if !has_grid_key {
+        return Ok(json_str.to_string());
+    }
     let mut root: serde_json::Value =
         serde_json::from_str(cleaned).map_err(|e| format!("Invalid URL state JSON: {e}"))?;
     let max_schema = math_commons::registry::MAX_GRID_SIZE as u64;
     let surf_cap = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION as u64;
     let grid_cap = crate::presets::MAX_INTERACTIVE_GRID_SIZE as u64;
-    let is_fluid = matches_tab_slug(tab, "fluid_dynamics", "Fluid Dynamics")
-        || tool.is_some_and(|t| matches_tab_slug(t, "PotentialFlowTool", "Potential Flow"));
 
     let target_map = if root.get("config").is_some_and(serde_json::Value::is_object) {
         root.get_mut("config")
@@ -370,7 +353,7 @@ fn clamp_decoded_url_grid_state(
     }
 }
 
-fn decode_optional_state_json(
+pub(super) fn decode_optional_state_json(
     tab: &str,
     tool: Option<&str>,
     state_b64: Option<String>,
@@ -414,6 +397,7 @@ fn build_validated_share_params(acc: RawParamAccum) -> Result<Option<ShareUrlPar
     }
     let step_val = parse_optional_step(acc.step_raw, preset_val.is_some())?;
     let state_json = decode_optional_state_json(&tab_val, tool_val.as_deref(), acc.state_b64)?;
+    let pipeline = super::pipeline::decode_optional_pipeline(acc.pipe_b64)?;
     Ok(Some(ShareUrlParams {
         tab: tab_val,
         tool: tool_val,
@@ -421,6 +405,7 @@ fn build_validated_share_params(acc: RawParamAccum) -> Result<Option<ShareUrlPar
         preset: preset_val,
         challenge: challenge_val,
         step: step_val,
+        pipeline,
     }))
 }
 

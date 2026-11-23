@@ -2,6 +2,8 @@
 
 #[path = "surface_viewer/cache.rs"]
 mod cache;
+#[path = "surface_viewer/field_surface.rs"]
+mod field_surface;
 #[path = "surface_viewer_ui.rs"]
 mod ui;
 
@@ -84,7 +86,8 @@ pub struct SurfaceViewer {
     v_resolution: usize,
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
-    pub(super) custom_sandbox: CustomSurfaceSandbox,
+    pub(crate) custom_sandbox: CustomSurfaceSandbox,
+    live_feed: field_surface::LiveSurfaceFeedState,
     cache: cache::SurfaceGeometryCache,
 }
 
@@ -103,6 +106,7 @@ impl Default for SurfaceViewer {
             camera,
             scene_builder: Scene3DBuilder::new(camera),
             custom_sandbox: CustomSurfaceSandbox::default(),
+            live_feed: field_surface::LiveSurfaceFeedState::default(),
             cache: cache::SurfaceGeometryCache::default(),
         }
     }
@@ -110,6 +114,9 @@ impl Default for SurfaceViewer {
 
 impl SurfaceViewer {
     fn create_surface(&self) -> Box<dyn ParametricSurface> {
+        if let Some(live) = self.build_live_surface() {
+            return live;
+        }
         match self.surface_type {
             SurfaceType::Sphere => Box::new(Sphere {
                 radius: self.sphere_radius,
@@ -183,7 +190,7 @@ impl InteractiveTool for SurfaceViewer {
 
     fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
         let surface = self.create_surface();
-        let (u_range, v_range) = self.custom_sandbox.uv_domain_for(self.surface_type);
+        let (u_range, v_range) = self.active_uv_domain();
         Some(
             super::export_utils::surface_to_mesh_with_domain_and_thickness(
                 surface.as_ref(),
@@ -282,6 +289,7 @@ impl InteractiveTool for SurfaceViewer {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.sync_live_dataflow(ui.ctx());
         self.draw_side_panel(ui);
         self.draw_viewport(ui);
     }
@@ -304,7 +312,7 @@ inventory::submit! {
         id: "SurfaceViewer",
         display_name: "Surface Viewer",
         domain: "geometry_topology",
-        tags: &[],
+        tags: &["manifold", "torus", "klein bottle", "sphere", "parametric", "3d"],
         build: || Box::new(SurfaceViewer::default()),
     }
 }

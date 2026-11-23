@@ -39,7 +39,9 @@ impl ChladniWaveTankTool {
             self.state.lens_enabled = false;
             self.state.line_source = false;
             self.state.driver_enabled = true;
-            self.custom_clamps.clear();
+            self.state.custom_clamps.clear();
+            self.state.sculpt_rle.clear();
+            self.sculpt_mask.fill(0);
             self.state.driver_frequency = if self.state.driver_frequency.is_finite() {
                 self.state.driver_frequency.clamp(FREQ_MIN, FREQ_MAX)
             } else {

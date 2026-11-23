@@ -15,7 +15,7 @@ use nalgebra::Vector3;
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct CachedAttractorInvariants {
-    param_key: Option<(u64, u64, u64, u64)>,
+    param_key: Option<u64>,
     lyapunov: Option<f64>,
     corr_key: Option<(u64, usize)>,
     correlation_sum: Option<f64>,
@@ -23,7 +23,7 @@ pub(crate) struct CachedAttractorInvariants {
 }
 
 impl AttractorPlotter {
-    fn flow_config_hash(&self) -> u64 {
+    pub(super) fn flow_config_hash(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         (self.mode as u8).hash(&mut h);
@@ -44,28 +44,41 @@ impl AttractorPlotter {
 
     /// Computes and caches the largest Lyapunov exponent `λ₁` via Wolf's algorithm.
     pub fn current_lyapunov_exponent(&mut self) -> Option<f64> {
-        if self.mode != super::AttractorMode::Lorenz || !self.is_finite_state() || self.diverged() {
+        if !self.is_finite_state() || self.diverged() {
             return None;
         }
-        let key = (
-            self.system.sigma.to_bits(),
-            self.system.rho.to_bits(),
-            self.system.beta.to_bits(),
-            self.dt.to_bits(),
-        );
+        let key = self.flow_config_hash();
         if self.invariants_cache.param_key != Some(key) {
             let step = self.dt.clamp(0.002, 0.02);
-            let probe = LorenzBuilder::new()
-                .sigma(self.system.sigma)
-                .rho(self.system.rho)
-                .beta(self.system.beta)
-                .build(LorenzState::new(1.0, 1.0, 1.0));
-            let init = Vector3::new(1.0, 1.0, 1.0);
+            let mut init = Vector3::new(1.0, 1.0, 1.0);
             let mut rk4 = RungeKutta4::new(&init);
-            self.invariants_cache.lyapunov =
-                lorenz_lyapunov(&probe, &mut rk4, init, step, 60, 0.25)
-                    .ok()
-                    .filter(|v| v.is_finite());
+            self.invariants_cache.lyapunov = match self.mode {
+                super::AttractorMode::Lorenz => {
+                    let probe = LorenzBuilder::new()
+                        .sigma(self.system.sigma)
+                        .rho(self.system.rho)
+                        .beta(self.system.beta)
+                        .build(LorenzState::new(1.0, 1.0, 1.0));
+                    lorenz_lyapunov(&probe, &mut rk4, init, step, 60, 0.25)
+                        .ok()
+                        .filter(|v| v.is_finite())
+                }
+                super::AttractorMode::Custom => {
+                    let job = super::CompiledFlowJob::from_bank(&self.flow_bank);
+                    for _ in 0..200 {
+                        let next = job.rk4_step(init, step);
+                        if !(next.x.is_finite() && next.y.is_finite() && next.z.is_finite())
+                            || next.norm() > 1e6
+                        {
+                            break;
+                        }
+                        init = next;
+                    }
+                    lorenz_lyapunov(&job, &mut rk4, init, step, 60, 0.25)
+                        .ok()
+                        .filter(|v| v.is_finite())
+                }
+            };
             self.invariants_cache.param_key = Some(key);
         }
         self.invariants_cache.lyapunov
@@ -121,7 +134,7 @@ impl AttractorPlotter {
         out
     }
 
-    fn collect_or_seed_trajectory(&self, fallback_steps: usize) -> Vec<Vector3<f64>> {
+    pub(super) fn collect_or_seed_trajectory(&self, fallback_steps: usize) -> Vec<Vector3<f64>> {
         let finite_hist: Vec<Vector3<f64>> = self
             .history
             .iter()
@@ -181,8 +194,8 @@ impl AttractorPlotter {
             beta: self.system.beta,
             dt: self.dt,
         };
-        submit_chaos_landmark_handoff(payload.clone());
         if let Some(c) = ctx {
+            submit_chaos_landmark_handoff(c, payload.clone());
             request_open_vietoris_rips(c);
         }
         Ok(payload)

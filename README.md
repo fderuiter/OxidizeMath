@@ -17,7 +17,8 @@
 git clone https://github.com/fderuiter/OxidizeMath.git
 cd OxidizeMath
 
-# Check prerequisites, build the core library, run tests, and automatically configure Git hooks
+# Configure Git hooks (.githooks/pre-commit), check prerequisites, and run cargo check --workspace
+# (Pass `--hooks-only` to configure hooks immediately, or `--web` to enforce WASM/Playwright browser tools)
 # Note: To compile academic papers (`cargo run -p xtask -- compile-papers`), ensure TeXLive `pdflatex` and `bibtex` are installed:
 # sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science texlive-binaries
 cargo run -p xtask -- setup
@@ -30,7 +31,7 @@ Alternatively, you can manually build the library using Cargo:
 cargo build --release --package math_explorer
 ```
 
-**Note:** `cargo run -p xtask -- setup` installs the `wasm32-unknown-unknown` target and configures Git hooks (`.githooks/pre-commit`) to run `cargo run -p xtask -- lint-staged` on staged files at commit time for fast offline feedback. Before opening or updating a pull request, run `cargo run -p xtask -- lint-all` to execute the full workspace verification suite.
+**Note:** `cargo run -p xtask -- setup` configures Git hooks (`.githooks/pre-commit`) first, adds the `wasm32-unknown-unknown` target, warns if optional browser tools are absent (use `--web` to require them or `--hooks-only` for instant hook setup), and runs `cargo check --workspace`. At commit time, `.githooks/pre-commit` runs `cargo run -p xtask -- lint-staged` on staged files for fast offline feedback. Before opening or updating a pull request, run `cargo run -p xtask -- lint-all` to execute the full workspace verification suite.
 
 ## Usage
 
@@ -81,7 +82,7 @@ graph TD
     Epi --> SIR[SIR/SEIR Models] & Net[Network Spread]
     Phys --> Quant[Quantum] & Chaos[Chaos Theory]
     Pure --> Num[Number Theory] & Geo[Diff Geometry] & Alg[Algebra]
-    GUI --> MRI[MRI Simulator]
+    GUI --> Tabs[Multi-Domain Tabs & SimulationFramework]
 
     style Root fill:#f9f,stroke:#333,stroke-width:2px
 ```
@@ -95,7 +96,7 @@ graph TD
 | ** Epidemiology** | `math_explorer::epidemiology` | **Compartmental Models** (SIR/SEIR), **Network Spread**, and **Stochastic Dynamics**. |
 | ** Physics** | `math_explorer::physics` | Quantum Mechanics (Clebsch-Gordan), Astrophysics, Chaos Theory (Lorenz System), and Fluid Dynamics. |
 | ** Pure Math** | `math_explorer::pure_math` | **FRACTRAN** (Algorithmic Info), **Statistics** (Glicko-2, Markov, TDA), **Tensors** (Christoffel Symbols), Number Theory, Graph Theory, and **Abstract Algebra**. |
-| ** GUI** | `math_explorer_gui` | Interactive **eframe/egui** application for visualizing simulations (currently MRI Physics). |
+| ** GUI** | `math_explorer_gui` | Interactive **eframe/egui** desktop and WebAssembly workbench hosting multi-domain `ExplorerTab` modules and `SimulationFramework` tools across AI, Applied Math, Biology, Climate, Epidemiology, Physics, and Pure Math. |
 
 To maintain flexibility and testability across domains, Math Explorer relies heavily on the Strategy Pattern. This allows users to swap numerical solvers, diffusion models, or reaction kinetics without changing the core system logic.
 
@@ -134,7 +135,7 @@ classDiagram
 
 ### 3. Comprehensive Examples
 
-Explore 20+ specialized, runnable examples spanning Physics, AI, Biology, and Pure Math.
+Explore 32 specialized, runnable examples spanning AI, Applied Math, Biology, Climate, Epidemiology, Physics, and Pure Math.
 
 > **See the [Examples Catalog](math_explorer/examples/README.md) for the full list of simulations and their commands.**
 
@@ -160,7 +161,7 @@ Available feature flags include: `ai`, `applied`, `biology`, `climate`, `epidemi
 
 For detailed system architecture, runtime constraints, and simulation guides, explore the [Centralized Architecture Guide Suite](docs/architecture/README.md):
 
-*   **[System Overview & Crate Topology](docs/architecture/system_overview.md):** 5-layer system design, crate dependency graphs, and catalog of all 18 crates.
+*   **[System Overview & Crate Topology](docs/architecture/system_overview.md):** 5-layer system design, crate dependency graphs, and catalog of all 20 crates.
 *   **[CERA Framework Guide](docs/architecture/cera_framework.md):** Climate-invariant encoding, representation alignment pipelines, and Earth Mover's Distance loss.
 *   **[Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md):** NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and `VerifiedEngine` runtime metrics.
 *   **[Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md):** Contributor onboarding tutorial to build and register interactive simulation tabs.

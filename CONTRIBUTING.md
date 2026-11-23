@@ -12,7 +12,7 @@ When you submit a PR, you aren't just merging code; you are merging knowledge. E
 
 Before implementing new features or making structural changes, review our centralized architecture documentation:
 
-- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 18 crates.
+- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 20 crates.
 - [CERA Framework Guide](docs/architecture/cera_framework.md): Climate-invariant encoding, representation alignment, and modeling pipelines.
 - [Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md): NASA Power of 10 Rule 3 enforcement and `VerifiedEngine` runtime rules.
 - [Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md): Step-by-step tutorial to implement and register simulation tabs.
@@ -72,7 +72,7 @@ If any scoped check fails, `.githooks/pre-commit` exits with a non-zero status a
 
 ### Automated Activation
 
-Running the workspace setup command installs the `wasm32-unknown-unknown` target, compiles the codebase, executes tests, configures `core.hooksPath` to `.githooks`, and validates executable permissions on Unix platforms:
+Running the workspace setup command configures `core.hooksPath` to `.githooks` and validates executable permissions first, then adds the `wasm32-unknown-unknown` target, warns if optional browser tools are missing (pass `--web` to enforce them or `--hooks-only` to configure hooks only), and runs `cargo check --workspace` (unless `--check-only` is passed):
 
 ```bash
 cargo run -p xtask -- setup
@@ -90,7 +90,7 @@ This command builds `unified_verification` once with Cargo's development profile
 1. **Formatting**: `cargo fmt --all -- --check`
 2. **Batched Static & Single-Pass AST Verification** (`unified_verification batch-static`):
    - **Cargo Profile & Lint Inheritance Verification** (`check-profiles`): enforces workspace `[profile.release]` `overflow-checks = true`, rejects member `[profile.release]` overrides, and requires `[lints] workspace = true` in first-party member manifests.
-   - **Architectural Decision Records** (`verify-records`): enforces `docs/adr/NNNN-slug.md` naming, `# ` and `## Status` headings outside code fences, unique 4-digit ADR prefixes (allowing legacy collisions listed under `[adr_verification]` in `verification_whitelist.toml`), and active (`--diff-filter=ACMR`) ADR updates whenever staged or branch edits modify code in `crates/` or `math_explorer/`.
+   - **Architectural Decision Records** (`verify-records`): enforces `docs/adr/YYYYMMDD-slug.md` naming with valid calendar dates and unique `<slug>` identifiers for new ADRs (rejecting newly added 4-digit `NNNN-slug.md` files while keeping legacy `NNNN-slug.md` prefixes frozen and checking historical collisions against `[adr_verification]` in `verification_whitelist.toml`), `# ` and `## Status` headings outside code fences, and active (`--diff-filter=ACMR`) ADR updates whenever staged or branch edits modify code in `crates/` or `math_explorer/`.
    - **File Length Constraints** (`check-file-lengths`): enforces the 500-line ceiling per source file.
    - **CI Workflows** (`lint-workflows`): validates GitHub Actions workflows, local reusable workflows, and `.github/actions` composite actions for read-only permissions, concurrency controls, job timeouts, commit-pinned actions, and safe `run` expressions.
    - **Crate Documentation Audit** (`check-docs`): verifies README files and entrypoint docs.
@@ -131,7 +131,7 @@ cargo run -p unified_verification --release -- verify-suite
   ```
   If this command returns nothing or an unexpected path, configure it by running:
   ```bash
-  cargo run -p xtask -- setup
+  cargo run -p xtask -- setup --hooks-only
   # or manually:
   git config core.hooksPath .githooks
   ```
@@ -229,7 +229,7 @@ Thank you for helping us fight Knowledge Rot!
 
 ## Architectural Decision Records (ADRs)
 
-Before making significant structural changes, please review our existing architectural decisions. For example, our approach to workspace design is detailed in the [Dynamic Workspace Discovery](docs/adr/0001-dynamic-workspace-discovery.md) ADR.
+Before making significant structural changes, please review our existing architectural decisions. For example, our approach to workspace design is detailed in the [Dynamic Workspace Discovery](docs/adr/0001-dynamic-workspace-discovery.md) ADR. New ADRs under `docs/adr/` must use `YYYYMMDD-slug.md` filenames with a valid calendar date, a unique lowercase kebab-case `<slug>`, and top-level `# <Title>` plus `## Status` headings; historical 4-digit `NNNN-slug.md` prefixes are frozen so existing links remain stable.
 
 ## Critical Safety & Quality Standards (The NASA Power of 10)
 

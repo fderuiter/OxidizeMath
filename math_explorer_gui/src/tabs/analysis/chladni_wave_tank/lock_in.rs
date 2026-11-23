@@ -9,16 +9,16 @@ use std::sync::Arc;
 
 use eframe::egui;
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    apply_point_clamp, evaluate_eigenmode_amplitude, populate_eigenmodes, snap_to_mode_antinode,
-    BoundaryMode2D, Eigenmode2D, Wave2DMedium,
+    evaluate_eigenmode_amplitude, populate_eigenmodes, snap_to_mode_antinode, BoundaryMode2D,
+    Eigenmode2D, Wave2DMedium,
 };
 use scientific_metadata::theory::ParameterConstraint;
 
 use super::atlas::{ChladniModalCartographer, DRUMHEAD_RADIUS_NORM, MAX_CHLADNI_MODES};
 use super::{
-    ChladniWaveTankTool, ClampLayout, TankPreset, AMP_MAX, AMP_MIN, DAMPING_MAX, DAMPING_MIN,
-    DT_MAX, DT_MIN, FREQ_MAX, FREQ_MIN, GRID_SIZE, REFRACTIVE_MAX, REFRACTIVE_MIN, SLIT_SEP_MAX,
-    SLIT_SEP_MIN, SPEED_MAX, SPEED_MIN, STIFFNESS_MAX, STIFFNESS_MIN,
+    ChladniWaveTankTool, TankPreset, AMP_MAX, AMP_MIN, DAMPING_MAX, DAMPING_MIN, DT_MAX, DT_MIN,
+    FREQ_MAX, FREQ_MIN, GRID_SIZE, REFRACTIVE_MAX, REFRACTIVE_MIN, SLIT_SEP_MAX, SLIT_SEP_MIN,
+    SPEED_MAX, SPEED_MIN, STIFFNESS_MAX, STIFFNESS_MIN,
 };
 use crate::async_sim::atlas::AtlasTeleportEvent;
 use crate::reflective_ui::render_copyable_metric;
@@ -44,40 +44,6 @@ pub(crate) fn chladni_parameter_constraints() -> HashMap<String, ParameterConstr
 }
 
 impl ChladniWaveTankTool {
-    pub(super) fn apply_clamp_pins(&mut self) {
-        let (pins, radius): (&[(f64, f64)], f64) = match self.state.clamp_layout {
-            ClampLayout::None => (&[], 0.0),
-            ClampLayout::CenterPin => (&[(0.5, 0.5)], 2.0),
-            ClampLayout::QuadSymmetry => (
-                &[(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)],
-                1.8,
-            ),
-            ClampLayout::EdgeMidpoints => {
-                (&[(0.5, 0.04), (0.5, 0.96), (0.04, 0.5), (0.96, 0.5)], 2.2)
-            }
-        };
-        for &(cx, cy) in pins {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                radius,
-            );
-        }
-        for &[cx, cy] in &self.custom_clamps {
-            apply_point_clamp(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                cx,
-                cy,
-                1.8,
-            );
-        }
-    }
-
     pub(crate) fn domain_physical_length(&self) -> f64 {
         self.solver.dx() * ((GRID_SIZE - 1) as f64)
     }

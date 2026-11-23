@@ -1,6 +1,7 @@
 //! Starter Template Gallery component providing guided empty-state cards
 //! for simulation tabs and instant preset model execution.
 
+#[cfg(test)]
 use crate::framework::ToolMetadata;
 #[cfg(test)]
 use eframe::egui;
@@ -52,6 +53,8 @@ impl PartialEq for StarterPresetMetadata {
         self.id == other.id && self.title == other.title && self.domain == other.domain
     }
 }
+
+impl Eq for StarterPresetMetadata {}
 
 impl StarterPresetMetadata {
     /// Generates the JSON preset payload.
@@ -396,55 +399,17 @@ pub const PRESET_FAVORITISM_SIBLING_RIVALRY: &str = r#"{
   }
 }"#;
 
-/// Returns curated or dynamically generated starter cards for a simulation domain.
-pub fn get_starter_cards_for_domain(
-    domain: &str,
-    available_tools: &[&'static ToolMetadata],
-) -> Vec<StarterCard> {
-    let mut cards: Vec<StarterCard> = inventory::iter::<StarterPresetMetadata>
-        .into_iter()
-        .filter(|p| {
-            p.domain == domain
-                || (domain == "biology" && p.domain == "morphogenesis")
-                || (domain == "morphogenesis" && p.domain == "biology")
-        })
-        .map(|p| StarterCard {
-            id: p.id,
-            title: p.title,
-            description: p.description,
-            category: p.category,
-            icon: p.icon,
-            domain: p.domain,
-            tool_name: p.tool_name,
-            preset_json: Some((p.preset_generator)()),
-        })
-        .collect();
-
-    // Dynamic fallback cards based on available tools in domain if no presets submitted
-    if cards.is_empty() {
-        for meta in available_tools {
-            if meta.domain == domain {
-                cards.push(StarterCard {
-                    id: meta.id,
-                    title: meta.display_name,
-                    description:
-                        "Interactive simulation tool for mathematical exploration and analysis.",
-                    category: meta.domain,
-                    icon: "🔬",
-                    domain: meta.domain,
-                    tool_name: Some(meta.id),
-                    preset_json: None,
-                });
-            }
-        }
-    }
-
-    cards.sort_by_key(|c| (c.title, c.id));
-    cards
-}
+#[path = "starter_gallery/counterfactual_presets.rs"]
+mod counterfactual_presets;
+pub use counterfactual_presets::*;
 
 #[path = "starter_gallery/challenges.rs"]
 pub mod challenges;
+#[cfg(feature = "pure_math")]
+#[path = "starter_gallery/elliptic_packs.rs"]
+mod elliptic_packs;
+#[path = "starter_gallery/filter_ui.rs"]
+pub mod filter_ui;
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
 #[path = "starter_gallery/stories.rs"]
@@ -452,11 +417,17 @@ pub mod stories;
 #[path = "starter_gallery/story_packs.rs"]
 mod story_packs;
 pub use challenges::{
-    challenge_matches_domain, find_challenge_metadata, get_challenge_cards_for_domain,
-    ChallengeCard, ChallengeMetadata, GallerySelection,
+    challenge_matches_domain, find_challenge_metadata, get_all_challenge_cards,
+    get_challenge_cards_for_domain, ChallengeCard, ChallengeMetadata, GallerySelection,
+};
+pub use filter_ui::{
+    card_academic_domain, filter_challenge_cards, filter_goal_challenges, filter_starter_cards,
+    filter_stories, get_all_starter_cards, get_all_starter_cards_with_tools,
+    get_starter_cards_for_domain,
 };
 pub(crate) use root_host::{
-    begin_root_starter_gallery_scope, flush_deferred_starter_galleries, try_defer_starter_gallery,
+    begin_root_starter_gallery_scope, flush_deferred_starter_galleries,
+    is_root_starter_gallery_scope_active, try_defer_starter_gallery,
 };
 pub use root_host::{
     show_starter_gallery_overlay, show_starter_gallery_with_challenges, StarterGalleryTab,
@@ -470,3 +441,7 @@ mod tests;
 #[cfg(test)]
 #[path = "starter_gallery/contract_tests.rs"]
 mod contract_tests;
+
+#[cfg(test)]
+#[path = "starter_gallery/search_tests.rs"]
+mod search_tests;

@@ -1,12 +1,15 @@
 // [cite:hurwitz_kronecker]
 // [cite:modular_polynomials_review]
 
-use super::chord_tangent_canvas::{CanvasViewport, REAL_VIEW_LIMIT, toroidal_secant_segments};
-use super::chord_tangent_tool::{CurveFieldMode, WeierstrassPlaygroundTool, snap_real_point};
+use super::chord_tangent_canvas::{toroidal_secant_segments, CanvasViewport, REAL_VIEW_LIMIT};
+use super::chord_tangent_tool::{snap_real_point, CurveFieldMode, WeierstrassPlaygroundTool};
+use super::singular_scene::{
+    build_real_singular_datasets, draw_fp_singular_scene, draw_real_singular_scene,
+};
 use crate::app::SemanticPalette;
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{
-    CurvePoint, PrimeWeierstrassCurve, WeierstrassCurve,
+    CurvePoint, FpSingularCubic, PrimeWeierstrassCurve, RealSingularCubic, WeierstrassCurve,
 };
 
 pub(crate) fn draw_real_scene(
@@ -26,6 +29,9 @@ pub(crate) fn draw_real_scene(
         axis_stroke,
     );
     let Ok(curve) = WeierstrassCurve::new(tool.state.real_a, tool.state.real_b) else {
+        if let Some(cubic) = RealSingularCubic::classify(tool.state.real_a, tool.state.real_b) {
+            draw_real_singular_scene(tool, &cubic, painter, vp, palette, visuals);
+        }
         return;
     };
 
@@ -138,6 +144,11 @@ pub(crate) fn draw_fp_scene(
     let Ok(curve) =
         PrimeWeierstrassCurve::new(tool.state.mod_a, tool.state.mod_b, tool.state.prime_p)
     else {
+        if let Ok(Some(sing)) =
+            FpSingularCubic::classify(tool.state.mod_a, tool.state.mod_b, tool.state.prime_p)
+        {
+            draw_fp_singular_scene(tool, &sing, painter, vp, palette, visuals);
+        }
         return;
     };
 
@@ -239,63 +250,73 @@ pub(crate) fn build_export_datasets(
     tool: &WeierstrassPlaygroundTool,
 ) -> Vec<(String, Vec<[f64; 2]>)> {
     match tool.state.field_mode {
-        CurveFieldMode::Real => {
-            let Ok(curve) = WeierstrassCurve::new(tool.state.real_a, tool.state.real_b) else {
-                return Vec::new();
-            };
-            let mut branch = Vec::new();
-            for i in 0..=160 {
-                let x = -REAL_VIEW_LIMIT + (i as f64 / 160.0) * (2.0 * REAL_VIEW_LIMIT);
-                let rhs = curve.rhs(x);
-                if rhs >= 0.0 {
-                    branch.push([x, rhs.sqrt()]);
-                }
-            }
-            let p = snap_real_point(&curve, tool.state.real_px, tool.state.real_p_upper);
-            let mut orbit_buf =
-                vec![CurvePoint::Infinity; tool.state.scalar_k.clamp(1, 64) as usize];
-            let n = curve.write_orbit(p, &mut orbit_buf);
-            let orbit: Vec<[f64; 2]> = orbit_buf[..n]
-                .iter()
-                .filter_map(|pt| pt.coords())
-                .map(|(x, y)| [x, y])
-                .collect();
-            vec![
-                ("Real Curve Upper Branch".into(), branch),
-                ("Subgroup Orbit [k]P".into(), orbit),
-            ]
-        }
-        CurveFieldMode::FiniteField => {
-            let lattice: Vec<[f64; 2]> = tool
-                .lattice_points
-                .iter()
-                .filter_map(|pt| pt.coords())
-                .map(|(x, y)| [x as f64, y as f64])
-                .collect();
-            let mut out = vec![("Affine Lattice E(F_p)".into(), lattice)];
-            if let Ok(curve) =
-                PrimeWeierstrassCurve::new(tool.state.mod_a, tool.state.mod_b, tool.state.prime_p)
-            {
-                let (p, q) = tool.current_fp_points();
-                if let (Some((x1, y1)), Some(m)) = (p.coords(), curve.slope_mod_p(p, q)) {
-                    let mut secant_pts = Vec::new();
-                    for (a, b) in toroidal_secant_segments(curve.p, x1, y1, m) {
-                        secant_pts.push(a);
-                        secant_pts.push(b);
-                    }
-                    out.push(("Toroidal Secant Wrap".into(), secant_pts));
-                }
-                let mut orbit_buf =
-                    vec![CurvePoint::Infinity; tool.state.scalar_k.clamp(1, 128) as usize];
-                let n = curve.write_orbit(p, &mut orbit_buf);
-                let orbit: Vec<[f64; 2]> = orbit_buf[..n]
-                    .iter()
-                    .filter_map(|pt| pt.coords())
-                    .map(|(x, y)| [x as f64, y as f64])
-                    .collect();
-                out.push(("Cyclic Orbit [k]P".into(), orbit));
-            }
-            out
+        CurveFieldMode::Real => build_real_export_datasets(tool),
+        CurveFieldMode::FiniteField => build_fp_export_datasets(tool),
+    }
+}
+
+fn build_real_export_datasets(tool: &WeierstrassPlaygroundTool) -> Vec<(String, Vec<[f64; 2]>)> {
+    let Ok(curve) = WeierstrassCurve::new(tool.state.real_a, tool.state.real_b) else {
+        return RealSingularCubic::classify(tool.state.real_a, tool.state.real_b)
+            .map_or_else(Vec::new, |c| build_real_singular_datasets(&c));
+    };
+    let mut branch = Vec::new();
+    for i in 0..=160 {
+        let x = -REAL_VIEW_LIMIT + (i as f64 / 160.0) * (2.0 * REAL_VIEW_LIMIT);
+        let rhs = curve.rhs(x);
+        if rhs >= 0.0 {
+            branch.push([x, rhs.sqrt()]);
         }
     }
+    let p = snap_real_point(&curve, tool.state.real_px, tool.state.real_p_upper);
+    let mut orbit_buf = vec![CurvePoint::Infinity; tool.state.scalar_k.clamp(1, 64) as usize];
+    let n = curve.write_orbit(p, &mut orbit_buf);
+    let orbit: Vec<[f64; 2]> = orbit_buf[..n]
+        .iter()
+        .filter_map(|pt| pt.coords())
+        .map(|(x, y)| [x, y])
+        .collect();
+    vec![
+        ("Real Curve Upper Branch".into(), branch),
+        ("Subgroup Orbit [k]P".into(), orbit),
+    ]
+}
+
+fn build_fp_export_datasets(tool: &WeierstrassPlaygroundTool) -> Vec<(String, Vec<[f64; 2]>)> {
+    let lattice: Vec<[f64; 2]> = tool
+        .lattice_points
+        .iter()
+        .filter_map(|pt| pt.coords())
+        .map(|(x, y)| [x as f64, y as f64])
+        .collect();
+    let mut out = vec![("Affine Lattice E(F_p)".into(), lattice)];
+    if let Ok(curve) =
+        PrimeWeierstrassCurve::new(tool.state.mod_a, tool.state.mod_b, tool.state.prime_p)
+    {
+        let (p, q) = tool.current_fp_points();
+        if let (Some((x1, y1)), Some(m)) = (p.coords(), curve.slope_mod_p(p, q)) {
+            let mut secant_pts = Vec::new();
+            for (a, b) in toroidal_secant_segments(curve.p, x1, y1, m) {
+                secant_pts.push(a);
+                secant_pts.push(b);
+            }
+            out.push(("Toroidal Secant Wrap".into(), secant_pts));
+        }
+        let mut orbit_buf = vec![CurvePoint::Infinity; tool.state.scalar_k.clamp(1, 128) as usize];
+        let n = curve.write_orbit(p, &mut orbit_buf);
+        let orbit: Vec<[f64; 2]> = orbit_buf[..n]
+            .iter()
+            .filter_map(|pt| pt.coords())
+            .map(|(x, y)| [x as f64, y as f64])
+            .collect();
+        out.push(("Cyclic Orbit [k]P".into(), orbit));
+    } else if let Ok(Some(sing)) =
+        FpSingularCubic::classify(tool.state.mod_a, tool.state.mod_b, tool.state.prime_p)
+    {
+        out.push((
+            "Singular Vertex".into(),
+            vec![[sing.singular_x as f64, 0.0]],
+        ));
+    }
+    out
 }

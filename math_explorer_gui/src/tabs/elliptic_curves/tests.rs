@@ -1,11 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::EllipticCurvesTab;
 use super::chord_tangent_canvas::toroidal_secant_segments;
 use super::chord_tangent_tool::{CurveFieldMode, WeierstrassPlaygroundTool};
-use super::modular_invariants_tool::{
-    ModularInvariantsTool, ModularPlotMode, ModularQSeriesKind,
-};
+use super::modular_invariants_tool::{ModularInvariantsTool, ModularPlotMode, ModularQSeriesKind};
+use super::EllipticCurvesTab;
 use crate::framework::InteractiveTool;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
@@ -58,7 +56,11 @@ fn test_playground_state_validation_and_toroidal_secants() {
     let mut singular: serde_json::Value = serde_json::from_str(&base_json).unwrap();
     singular["mod_a"] = serde_json::json!(0);
     singular["mod_b"] = serde_json::json!(0);
-    assert!(tool.try_load_state(&singular.to_string()).is_err());
+    assert!(tool.try_load_state(&singular.to_string()).is_ok());
+
+    let mut bad_mod: serde_json::Value = serde_json::from_str(&base_json).unwrap();
+    bad_mod["mod_a"] = serde_json::json!(2000);
+    assert!(tool.try_load_state(&bad_mod.to_string()).is_err());
 
     let oversized = " ".repeat(20 * 1024);
     assert!(tool.try_load_state(&oversized).is_err());
@@ -151,11 +153,9 @@ fn test_playground_canvas_accesskit_keyboard_and_step_simulation() {
     );
     assert_ne!(tool.state.selected_p_idx, before_idx);
     assert!(tool.focused_canvas_id().is_some());
-    assert!(
-        crate::accessibility::all_announcements()
-            .iter()
-            .any(|(msg, _)| msg.contains("Torus F_"))
-    );
+    assert!(crate::accessibility::all_announcements()
+        .iter()
+        .any(|(msg, _)| msg.contains("Torus F_")));
 
     let k_before = tool.state.scalar_k;
     tool.step_simulation();
