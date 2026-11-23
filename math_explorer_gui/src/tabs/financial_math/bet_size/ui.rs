@@ -171,7 +171,10 @@ impl BetSizeCalculatorTool {
             ui.separator();
             ui.label(format!("Fractional {num}/{den}"));
             ui.separator();
-            ui.label(format!("Implied {:.2}%", odds.implied_probability() * 100.0));
+            ui.label(format!(
+                "Implied {:.2}%",
+                odds.implied_probability() * 100.0
+            ));
             ui.separator();
             ui.label(format!("Net b = {:.3}", odds.net_profit_multiplier()));
         });

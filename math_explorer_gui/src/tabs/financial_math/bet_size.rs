@@ -327,9 +327,9 @@ impl BetSizeState {
     }
 
     fn validate(&self) -> Result<Odds, String> {
-        let imp_ok = self.implied_probability_input.is_none_or(|v| {
-            v.is_finite() && (IMPLIED_PROB_MIN..=IMPLIED_PROB_MAX).contains(&v)
-        });
+        let imp_ok = self
+            .implied_probability_input
+            .is_none_or(|v| v.is_finite() && (IMPLIED_PROB_MIN..=IMPLIED_PROB_MAX).contains(&v));
         let finite = [
             self.probability_input,
             self.decimal_odds,
@@ -350,9 +350,9 @@ impl BetSizeState {
         if !finite || !imp_ok || !in_bounds {
             return Err("Bet size parameters out of bounds".into());
         }
-        let imp = self
-            .implied_probability_input
-            .unwrap_or_else(|| (100.0 / self.decimal_odds).clamp(IMPLIED_PROB_MIN, IMPLIED_PROB_MAX));
+        let imp = self.implied_probability_input.unwrap_or_else(|| {
+            (100.0 / self.decimal_odds).clamp(IMPLIED_PROB_MIN, IMPLIED_PROB_MAX)
+        });
         resolve_odds_for(
             self.odds_format,
             self.decimal_odds,
@@ -387,27 +387,7 @@ impl InteractiveTool for BetSizeCalculatorTool {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        if self.growth_curve_points.is_empty() {
-            return Vec::new();
-        }
-        let to_vec = |pts: &[PlotPoint]| pts.iter().map(|p| [p.x, p.y]).collect();
-        let mut out = vec![
-            ("Break-Even (g = 0)".into(), to_vec(&self.zero_line_points)),
-            (
-                "Expected Growth Rate g(f)".into(),
-                to_vec(&self.growth_curve_points),
-            ),
-        ];
-        if !self.quarter_marker.is_empty() {
-            out.push(("Quarter Kelly (0.25 f*)".into(), to_vec(&self.quarter_marker)));
-        }
-        if !self.half_marker.is_empty() {
-            out.push(("Half Kelly (0.50 f*)".into(), to_vec(&self.half_marker)));
-        }
-        if !self.full_marker.is_empty() {
-            out.push(("Full Kelly (1.00 f*)".into(), to_vec(&self.full_marker)));
-        }
-        out
+        self.build_export_datasets()
     }
 
     fn save_state(&self) -> Option<String> {
