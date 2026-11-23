@@ -20,8 +20,7 @@ mod camera_3d_optout_tests;
     )
 ))]
 mod canvas_accessibility_tests;
-#[allow(missing_docs)]
-pub mod command_palette;
+mod command_palette;
 #[allow(missing_docs)]
 pub mod framework;
 #[cfg(test)]

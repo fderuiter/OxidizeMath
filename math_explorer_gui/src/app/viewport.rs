@@ -291,6 +291,14 @@ fn render_multi_pane_regions(
         render_pane_content(app, ctx, frame, &mut pane_ui, pane_idx, content_rect);
         focus::finish_pending_pane_focus(ctx, should_focus);
     }
+    if let Some(target_pane) = pending_focus {
+        let overwritten = crate::accessibility::with_live_region(|r| {
+            !r.slots[r.active_slot].starts_with("Focused ")
+        });
+        if overwritten {
+            focus::announce_pane_focus(app, ctx, target_pane);
+        }
+    }
 }
 
 struct FrameSashOutcome {
@@ -403,4 +411,29 @@ pub fn render_multi_pane_manager(
         }
     });
     crate::starter_gallery::flush_deferred_starter_galleries(app, ctx);
+}
+
+/// Synchronizes `viewport_layout` and legacy `split_layout_mode`, returning the active layout for the frame.
+pub(super) fn resolve_active_layout(app: &mut MathExplorerApp) -> ViewportLayout {
+    use crate::app::SplitLayoutMode;
+    if app.viewport_layout != ViewportLayout::Single {
+        app.sync_layout();
+        app.viewport_layout
+    } else if app.split_layout_mode != SplitLayoutMode::Single {
+        let layout = match app.split_layout_mode {
+            SplitLayoutMode::Horizontal => ViewportLayout::SplitHorizontal,
+            SplitLayoutMode::Vertical => ViewportLayout::SplitVertical,
+            SplitLayoutMode::Single => ViewportLayout::Single,
+        };
+        app.viewport_layout = layout;
+        if !app.pane_tabs.is_empty() {
+            app.pane_tabs[0] = app.selected_tab;
+        }
+        if app.pane_tabs.len() > 1 {
+            app.pane_tabs[1] = app.secondary_tab;
+        }
+        layout
+    } else {
+        ViewportLayout::Single
+    }
 }

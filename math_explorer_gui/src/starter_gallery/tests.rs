@@ -4,27 +4,33 @@ use super::*;
 
 #[test]
 fn test_starter_cards_presence_and_metadata() {
-    let analysis_cards = get_starter_cards_for_domain("analysis", &[]);
-    assert!(analysis_cards
-        .iter()
-        .any(|c| c.title == "Harmonic Oscillator"));
-    assert!(analysis_cards.iter().any(|c| c.title == "Logistic Growth"));
-
-    let fluid_cards = get_starter_cards_for_domain("fluid_dynamics", &[]);
-    assert!(fluid_cards.iter().any(|c| c.title == "Vector Field"));
-
-    let chaos_cards = get_starter_cards_for_domain("chaos", &[]);
-    assert!(chaos_cards.iter().any(|c| c.title == "3D Attractor"));
-
-    let bio_cards = get_starter_cards_for_domain("biology", &[]);
-    assert!(bio_cards.iter().any(|c| c.title == "Turing Spots"));
+    #[cfg(feature = "pure_math")]
+    {
+        let analysis_cards = get_starter_cards_for_domain("analysis", &[]);
+        assert!(analysis_cards
+            .iter()
+            .any(|c| c.title == "Harmonic Oscillator"));
+        assert!(analysis_cards.iter().any(|c| c.title == "Logistic Growth"));
+    }
 
     #[cfg(feature = "physics")]
     {
+        let fluid_cards = get_starter_cards_for_domain("fluid_dynamics", &[]);
+        assert!(fluid_cards.iter().any(|c| c.title == "Vector Field"));
+
+        let chaos_cards = get_starter_cards_for_domain("chaos", &[]);
+        assert!(chaos_cards.iter().any(|c| c.title == "3D Attractor"));
+
         let mri_cards = get_starter_cards_for_domain("mri", &[]);
         assert!(mri_cards
             .iter()
             .any(|c| c.title == "Off-Resonance Bloch Precession"));
+    }
+
+    #[cfg(feature = "biology")]
+    {
+        let bio_cards = get_starter_cards_for_domain("biology", &[]);
+        assert!(bio_cards.iter().any(|c| c.title == "Turing Spots"));
     }
 
     #[cfg(feature = "applied")]
@@ -33,6 +39,11 @@ fn test_starter_cards_presence_and_metadata() {
         assert!(fav_cards
             .iter()
             .any(|c| c.title == "Crisis & Proximity Showdown"));
+
+        let can_cards = get_starter_cards_for_domain("cannibalism", &[]);
+        assert!(can_cards
+            .iter()
+            .any(|c| c.title == "Dwarf & Giant Hopf Cycles"));
     }
 }
 
@@ -82,15 +93,15 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 76, "Expected 76 registered tools");
+    assert_eq!(tools.len(), 78, "Expected 78 registered tools");
 
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
     assert_eq!(
         presets.len(),
-        109,
-        "Expected 109 registered starter presets"
+        113,
+        "Expected 113 registered starter presets"
     );
 
     for tool in &tools {
@@ -128,6 +139,7 @@ fn test_starter_cards_for_all_registered_domains() {
     for tool in inventory::iter::<ToolMetadata> {
         domains.insert(tool.domain);
     }
+    #[cfg(feature = "biology")]
     domains.insert("biology");
 
     for &domain in &domains {
@@ -278,8 +290,8 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
         .collect();
     assert_eq!(
         presets.len(),
-        109,
-        "Expected 109 StarterPresetMetadata entries"
+        113,
+        "Expected 113 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -310,7 +322,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(tools.len(), 76, "Expected 76 InteractiveTool registrations");
+    assert_eq!(tools.len(), 78, "Expected 78 InteractiveTool registrations");
 
     for tool_meta in tools {
         let default_tool = (tool_meta.build)();
@@ -385,6 +397,7 @@ fn test_unified_sim_tool_rejects_unknown_empty_and_non_finite_parameters() {
     assert!(tool.try_load_state(r#"{"viscosity": 0.04}"#).is_ok());
 }
 
+#[cfg(feature = "pure_math")]
 fn assert_overlay_launch_buttons_clamped(cards: &[StarterCard], size: egui::Vec2) {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
@@ -426,6 +439,7 @@ fn assert_overlay_launch_buttons_clamped(cards: &[StarterCard], size: egui::Vec2
     }
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_starter_cards_sorted_and_overlay_buttons_clamped_within_viewport() {
     let cards = get_starter_cards_for_domain("analysis", &[]);

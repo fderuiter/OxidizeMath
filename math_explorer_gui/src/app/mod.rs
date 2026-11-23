@@ -4,6 +4,7 @@ mod macos_menu;
 #[cfg(target_os = "macos")]
 mod macos_menu_view;
 pub mod palette;
+mod palette_dispatch;
 mod pane_clone;
 mod pane_ops;
 mod pane_slots;
@@ -19,6 +20,8 @@ pub(crate) mod viewport;
 mod tests;
 #[cfg(test)]
 mod tests_adaptive_chrome;
+#[cfg(test)]
+mod tests_cold_start_and_palette;
 #[cfg(test)]
 mod tests_command_palette;
 #[cfg(test)]
@@ -91,6 +94,7 @@ pub struct MathExplorerApp {
     pub(super) show_warnings: bool,
     pub(super) show_errors: bool,
     pub(super) show_help_menu: bool,
+    pub show_starter_gallery: bool,
     pub theme: ThemeMode,
     pub(super) last_synced_theme: Option<ThemeMode>,
     pub command_palette: CommandPalette,
@@ -129,6 +133,7 @@ impl Default for MathExplorerApp {
             show_warnings: true,
             show_errors: true,
             show_help_menu: false,
+            show_starter_gallery: false,
             theme: ThemeMode::Dark,
             last_synced_theme: Some(ThemeMode::Dark),
             command_palette: CommandPalette::default(),
@@ -306,7 +311,7 @@ impl eframe::App for MathExplorerApp {
         let palette_triggered = egui_plot::commands::CommandRegistryData::register_and_check(
             ctx,
             "Command Palette",
-            "Open command palette to quickly switch simulation tabs",
+            "Open unified command palette for actions, tabs, tools, and starter presets",
             egui_plot::commands::CommandTrigger::Shortcut(modifiers, egui::Key::K),
             true,
             "Global",
@@ -430,27 +435,7 @@ impl eframe::App for MathExplorerApp {
                 domain_bar::render_domain_switcher_bar(self, ctx, ui);
             });
 
-        // Render Active Tab(s) or Multi-Pane Viewports
-        let active_layout = if self.viewport_layout != ViewportLayout::Single {
-            self.sync_layout();
-            self.viewport_layout
-        } else if self.split_layout_mode != SplitLayoutMode::Single {
-            let layout = match self.split_layout_mode {
-                SplitLayoutMode::Horizontal => ViewportLayout::SplitHorizontal,
-                SplitLayoutMode::Vertical => ViewportLayout::SplitVertical,
-                SplitLayoutMode::Single => ViewportLayout::Single,
-            };
-            self.viewport_layout = layout;
-            if !self.pane_tabs.is_empty() {
-                self.pane_tabs[0] = self.selected_tab;
-            }
-            if self.pane_tabs.len() > 1 {
-                self.pane_tabs[1] = self.secondary_tab;
-            }
-            layout
-        } else {
-            ViewportLayout::Single
-        };
+        let active_layout = viewport::resolve_active_layout(self);
 
         self.prune_inactive_pane_slots(active_layout.pane_count());
         domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
@@ -464,6 +449,7 @@ impl eframe::App for MathExplorerApp {
         self.drain_workspace_history_bridge(ctx);
 
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
+        self.render_global_starter_gallery(ctx);
 
         // Render Command Palette Overlay
         self.apply_command_palette_selection(ctx);
