@@ -24,6 +24,8 @@ mod main_wasm_tests;
 mod markup_tests;
 #[cfg(test)]
 mod modal_accessibility_tests;
+#[allow(missing_docs)]
+pub mod plot3d_viewport;
 pub mod presets;
 mod reflective_ui;
 #[allow(missing_docs)]

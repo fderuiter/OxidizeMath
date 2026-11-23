@@ -14,9 +14,13 @@ pub(super) const CAMERA_DISTANCE: f64 = 5.5;
 const ELLIPSE_SEGMENTS: usize = 24;
 pub(super) const ELLIPSE_POINTS: usize = ELLIPSE_SEGMENTS + 1;
 const ELLIPSE_SIGMA: f64 = 1.5;
-const GRAD_THRESHOLD: f64 = 0.10;
+pub(super) const DEFAULT_GRAD_THRESHOLD: f64 = 0.10;
+pub(super) const GRAD_THRESHOLD_MIN: f64 = 0.01;
+pub(super) const GRAD_THRESHOLD_MAX: f64 = 0.40;
 const SCALE_THRESHOLD: f64 = 0.45;
-pub(super) const OPACITY_THRESHOLD: f64 = 0.05;
+pub(super) const DEFAULT_OPACITY_THRESHOLD: f64 = 0.05;
+pub(super) const OPACITY_THRESHOLD_MIN: f64 = 0.005;
+pub(super) const OPACITY_THRESHOLD_MAX: f64 = 0.95;
 
 type SplatSpec = ([f64; 3], [f64; 3], [f64; 3], f64, [f64; 3], f64);
 
@@ -118,11 +122,25 @@ pub(super) fn build_default_scene() -> Scene {
     Scene { gaussians }
 }
 
-pub(super) fn evaluate_density_counts(scale: f64) -> DensityActionCounts {
+pub(super) fn evaluate_density_counts_with_thresholds(
+    scale: f64,
+    grad_threshold: f64,
+    opacity_threshold: f64,
+) -> DensityActionCounts {
     let safe_scale = if scale.is_finite() {
         scale.clamp(0.1, 10.0)
     } else {
         1.0
+    };
+    let safe_grad = if grad_threshold.is_finite() {
+        grad_threshold.clamp(GRAD_THRESHOLD_MIN, GRAD_THRESHOLD_MAX)
+    } else {
+        DEFAULT_GRAD_THRESHOLD
+    };
+    let safe_opacity = if opacity_threshold.is_finite() {
+        opacity_threshold.clamp(OPACITY_THRESHOLD_MIN, OPACITY_THRESHOLD_MAX)
+    } else {
+        DEFAULT_OPACITY_THRESHOLD
     };
     let mut counts = DensityActionCounts::default();
     for &(_, base_scale, _, opacity, _, grad_mag) in &CANONICAL_SCENE {
@@ -131,9 +149,9 @@ pub(super) fn evaluate_density_counts(scale: f64) -> DensityActionCounts {
             grad_mag,
             max_base * safe_scale,
             opacity,
-            GRAD_THRESHOLD,
+            safe_grad,
             SCALE_THRESHOLD,
-            OPACITY_THRESHOLD,
+            safe_opacity,
         );
         match action {
             DensityAction::Split => counts.split += 1,
@@ -211,16 +229,28 @@ pub(super) fn splat_stroke_color(rgb: &Vector3<f64>, opacity: f64) -> egui::Colo
 
 pub(super) fn rasterize_splats_into(
     splats: &[Gaussian2D],
-    pan: [f64; 2],
+    x_half: f64,
+    y_half: f64,
     pixels: &mut [egui::Color32],
 ) {
-    let span = 2.0 * VIEWPORT_HALF_EXTENT;
+    let safe_x_half = if x_half.is_finite() && x_half > 0.1 {
+        x_half
+    } else {
+        VIEWPORT_HALF_EXTENT
+    };
+    let safe_y_half = if y_half.is_finite() && y_half > 0.1 {
+        y_half
+    } else {
+        VIEWPORT_HALF_EXTENT
+    };
+    let span_x = 2.0 * safe_x_half;
+    let span_y = 2.0 * safe_y_half;
     let inv_dim = 1.0 / (SPLAT_GRID_SIZE as f64);
     let (rows, _) = pixels.as_chunks_mut::<SPLAT_GRID_SIZE>();
     for (row_idx, row_pixels) in rows.iter_mut().enumerate() {
-        let y = pan[1] + VIEWPORT_HALF_EXTENT - span * ((row_idx as f64 + 0.5) * inv_dim);
+        let y = safe_y_half - span_y * ((row_idx as f64 + 0.5) * inv_dim);
         for (col_idx, pixel) in row_pixels.iter_mut().enumerate() {
-            let x = pan[0] - VIEWPORT_HALF_EXTENT + span * ((col_idx as f64 + 0.5) * inv_dim);
+            let x = -safe_x_half + span_x * ((col_idx as f64 + 0.5) * inv_dim);
             let rgb = rendering::blend_gaussians(splats, &Point2::new(x, y));
             let r = (rgb.x as f32).clamp(0.0, 1.0);
             let g = (rgb.y as f32).clamp(0.0, 1.0);

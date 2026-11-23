@@ -445,6 +445,7 @@ pub struct Plot<'a> {
     show_navigation_controls: bool,
     show_zoom_buttons: bool,
     allow_2d_analysis: bool,
+    scene_3d_mode: bool,
 }
 
 impl<'a> Plot<'a> {
@@ -501,6 +502,7 @@ impl<'a> Plot<'a> {
             show_navigation_controls: true,
             show_zoom_buttons: true,
             allow_2d_analysis: true,
+            scene_3d_mode: false,
         }
     }
 
@@ -1075,6 +1077,22 @@ impl<'a> Plot<'a> {
         self
     }
 
+    /// Configure the plot as a projected 3D viewport, clearing logarithmic axis scaling and hiding
+    /// 2D axes, grids, `(x, y)` hover readouts, `Fit Curve`, and 2D logarithmic/grid settings
+    /// while preserving figure and dataset exports.
+    #[inline]
+    pub fn scene_3d_mode(mut self, enabled: bool) -> Self {
+        self.scene_3d_mode = enabled;
+        if enabled {
+            self.allow_2d_analysis = false;
+            self.show_x = false;
+            self.show_y = false;
+            self.show_axes = false.into();
+            self.show_grid = false.into();
+        }
+        self
+    }
+
     /// Interact with and add items to the plot and finally draw it.
     pub fn show<'b, R>(
         self,
@@ -1114,7 +1132,7 @@ impl<'a> Plot<'a> {
             mut show_x,
             mut show_y,
             label_formatter,
-            coordinates_formatter,
+            mut coordinates_formatter,
             x_axes,
             y_axes,
             legend_config,
@@ -1122,8 +1140,8 @@ impl<'a> Plot<'a> {
             cursor_snap_distance,
             reset,
             show_background,
-            show_axes,
-            show_grid,
+            mut show_axes,
+            mut show_grid,
             grid_spacing,
             mut linked_axes,
             mut linked_cursors,
@@ -1134,7 +1152,17 @@ impl<'a> Plot<'a> {
             show_navigation_controls,
             show_zoom_buttons: _,
             allow_2d_analysis,
+            scene_3d_mode,
         } = self;
+
+        let allow_2d_analysis = allow_2d_analysis && !scene_3d_mode;
+        if scene_3d_mode {
+            show_x = false;
+            show_y = false;
+            show_axes = Vec2b::FALSE;
+            show_grid = Vec2b::FALSE;
+            coordinates_formatter = None;
+        }
 
         resolve_ambient_plot_links(
             ui.ctx(),
@@ -1265,6 +1293,13 @@ impl<'a> Plot<'a> {
             show_settings_modal: false,
             last_right_click_coord: None,
         });
+        if scene_3d_mode {
+            mem.log_x = false;
+            mem.log_y = false;
+            mem.show_grid = Vec2b::FALSE;
+            mem.show_settings_modal = false;
+            mem.transform.clear_log_axis();
+        }
 
         // Drain any newly imported CSV datasets for this plot
         let newly_imported = export::drain_imported_datasets(plot_id);
@@ -1794,6 +1829,11 @@ impl<'a> Plot<'a> {
         }
 
         let mut access_state = Self::load_frame_access_state(ui, plot_id, &mem);
+        if scene_3d_mode {
+            access_state.log_x = false;
+            access_state.log_y = false;
+            access_state.show_settings_modal = false;
+        }
         if !allow_2d_analysis {
             access_state.show_add_callout_modal = false;
             access_state.show_edit_callout_modal = false;
@@ -1945,6 +1985,7 @@ impl<'a> Plot<'a> {
             show_x: active_show_x,
             show_y: active_show_y,
             allow_2d_analysis,
+            scene_3d_mode,
             label_formatter,
             coordinates_formatter,
             show_grid: active_show_grid,
@@ -2049,7 +2090,9 @@ impl<'a> Plot<'a> {
             d.get_temp::<bool>(plot_id.with("toggle_settings"))
                 .unwrap_or(false)
         }) {
-            access_state.show_settings_modal = !access_state.show_settings_modal;
+            if !scene_3d_mode {
+                access_state.show_settings_modal = !access_state.show_settings_modal;
+            }
             ui.ctx()
                 .data_mut(|d| d.insert_temp(plot_id.with("toggle_settings"), false));
         }
@@ -2128,7 +2171,7 @@ impl<'a> Plot<'a> {
                 if has_table_content && table_btn.clicked() {
                     access_state.show_table = !access_state.show_table;
                 }
-                if ui.button("🔧 Settings").clicked() {
+                if !scene_3d_mode && ui.button("🔧 Settings").clicked() {
                     access_state.show_settings_modal = !access_state.show_settings_modal;
                 }
 
@@ -2273,66 +2316,68 @@ impl<'a> Plot<'a> {
             );
         }
 
-        ModalLifecycle::new(plot_id.with("plot_settings_modal"))
-            .title(format_modal_title("Plot Settings 🔧", title.as_deref()))
-            .default_width(320.0)
-            .show(
-                ui.ctx(),
-                &mut access_state.show_settings_modal,
-                |ui, frame_ctx| {
-                    ui.label(egui::RichText::new("Grid & Axis Settings").strong());
-                    ui.separator();
+        if !scene_3d_mode {
+            ModalLifecycle::new(plot_id.with("plot_settings_modal"))
+                .title(format_modal_title("Plot Settings 🔧", title.as_deref()))
+                .default_width(320.0)
+                .show(
+                    ui.ctx(),
+                    &mut access_state.show_settings_modal,
+                    |ui, frame_ctx| {
+                        ui.label(egui::RichText::new("Grid & Axis Settings").strong());
+                        ui.separator();
 
-                    ui.label(
-                        egui::RichText::new("Axis Scale Transformations")
-                            .small()
-                            .weak(),
-                    );
-                    ui.checkbox(&mut access_state.log_x, "Logarithmic X-Axis");
-                    ui.checkbox(&mut access_state.log_y, "Logarithmic Y-Axis");
+                        ui.label(
+                            egui::RichText::new("Axis Scale Transformations")
+                                .small()
+                                .weak(),
+                        );
+                        ui.checkbox(&mut access_state.log_x, "Logarithmic X-Axis");
+                        ui.checkbox(&mut access_state.log_y, "Logarithmic Y-Axis");
 
-                    ui.separator();
-                    ui.label(egui::RichText::new("Grid Line Density").small().weak());
-                    ui.horizontal(|ui| {
-                        ui.label("Min Line Spacing (px):");
-                        ui.add(egui::Slider::new(
-                            &mut access_state.grid_density,
-                            4.0..=100.0,
-                        ));
-                    });
+                        ui.separator();
+                        ui.label(egui::RichText::new("Grid Line Density").small().weak());
+                        ui.horizontal(|ui| {
+                            ui.label("Min Line Spacing (px):");
+                            ui.add(egui::Slider::new(
+                                &mut access_state.grid_density,
+                                4.0..=100.0,
+                            ));
+                        });
 
-                    ui.separator();
-                    ui.label(
-                        egui::RichText::new("Axis Labels & Visibility")
-                            .small()
-                            .weak(),
-                    );
-                    ui.checkbox(&mut access_state.show_x_labels, "Show X-Axis Labels");
-                    ui.checkbox(&mut access_state.show_y_labels, "Show Y-Axis Labels");
-                    ui.checkbox(&mut mem.show_grid.x, "Show X Grid Lines");
-                    ui.checkbox(&mut mem.show_grid.y, "Show Y Grid Lines");
+                        ui.separator();
+                        ui.label(
+                            egui::RichText::new("Axis Labels & Visibility")
+                                .small()
+                                .weak(),
+                        );
+                        ui.checkbox(&mut access_state.show_x_labels, "Show X-Axis Labels");
+                        ui.checkbox(&mut access_state.show_y_labels, "Show Y-Axis Labels");
+                        ui.checkbox(&mut mem.show_grid.x, "Show X Grid Lines");
+                        ui.checkbox(&mut mem.show_grid.y, "Show Y Grid Lines");
 
-                    ui.separator();
-                    ui.label(egui::RichText::new("Grid Bounds").small().weak());
-                    ui.checkbox(&mut access_state.clamp_grid, "Clamp Grid to Data Range");
+                        ui.separator();
+                        ui.label(egui::RichText::new("Grid Bounds").small().weak());
+                        ui.checkbox(&mut access_state.clamp_grid, "Clamp Grid to Data Range");
 
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        if ui.button("Reset Defaults").clicked() {
-                            access_state.log_x = false;
-                            access_state.log_y = false;
-                            access_state.grid_density = 8.0;
-                            access_state.show_x_labels = true;
-                            access_state.show_y_labels = true;
-                            access_state.clamp_grid = false;
-                            mem.show_grid = Vec2b::new(true, true);
-                        }
-                        if ui.button("Close").clicked() {
-                            frame_ctx.close();
-                        }
-                    });
-                },
-            );
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            if ui.button("Reset Defaults").clicked() {
+                                access_state.log_x = false;
+                                access_state.log_y = false;
+                                access_state.grid_density = 8.0;
+                                access_state.show_x_labels = true;
+                                access_state.show_y_labels = true;
+                                access_state.clamp_grid = false;
+                                mem.show_grid = Vec2b::new(true, true);
+                            }
+                            if ui.button("Close").clicked() {
+                                frame_ctx.close();
+                            }
+                        });
+                    },
+                );
+        }
 
         {
             let mut add_confirmed = false;
@@ -2733,7 +2778,7 @@ impl<'a> Plot<'a> {
                 access_state.show_table = !access_state.show_table;
                 ui.close();
             }
-            if ui.button("🔧 Plot Settings").clicked() {
+            if !scene_3d_mode && ui.button("🔧 Plot Settings").clicked() {
                 access_state.show_settings_modal = true;
                 mem.show_settings_modal = true;
                 ui.close();
@@ -4021,6 +4066,7 @@ struct PreparedPlot<'a, 'b> {
     show_x: bool,
     show_y: bool,
     allow_2d_analysis: bool,
+    scene_3d_mode: bool,
     label_formatter: LabelFormatter<'a>,
     coordinates_formatter: Option<(Corner, CoordinatesFormatter<'a>)>,
     // axis_formatters: [AxisFormatter; 2],
@@ -4125,7 +4171,9 @@ impl<'b> PreparedPlot<'_, 'b> {
             .map(|p| hovered_point.unwrap_or_else(|| transform.value_from_position(p)))
             .or(hovered_point);
         self.paint_corner_coordinates(ui, &painter, active_coord);
-        self.render_wrench_button(ui);
+        if !self.scene_3d_mode {
+            self.render_wrench_button(ui);
+        }
 
         let items = std::mem::take(&mut self.items);
         PreparedUiOutput {
