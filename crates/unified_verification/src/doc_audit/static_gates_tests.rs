@@ -27,6 +27,11 @@ fn ignore_fence_gate_rejects_unapproved_files_cap_overflow_and_non_gui_blocks() 
     let walkthrough = root.join("docs/architecture/interactive_tool_walkthrough.md");
     let valid_gui = "```rust,ignore\nuse crate::framework::InteractiveTool;\n```\n";
     assert!(check_markdown_ignore_fences(&walkthrough, root, valid_gui, &caps).is_empty());
+    let valid_out_of_line_mod =
+        "```rust,ignore\n#[cfg(feature = \"physics\")]\npub mod fluid_dynamics;\n```\n";
+    assert!(
+        check_markdown_ignore_fences(&walkthrough, root, valid_out_of_line_mod, &caps).is_empty()
+    );
 
     let overflow_and_theory = "\
 ```rust,ignore

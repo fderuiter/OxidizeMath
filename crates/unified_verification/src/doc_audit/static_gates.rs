@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 /// Default per-file caps for binary-only `math_explorer_gui` `rust,ignore` snippets.
 pub const DEFAULT_APPROVED_IGNORE_FENCES: &[(&str, usize)] = &[
     ("docs/architecture/interactive_tool_walkthrough.md", 6),
-    ("math_explorer_gui/README.md", 1),
+    ("math_explorer_gui/README.md", 3),
 ];
 
 const GUI_CONTEXT_TOKENS: &[&str] = &["crate::", "egui", "eframe", "ui.", "ui,"];
@@ -123,6 +123,14 @@ pub fn check_markdown_ignore_fences(
     violations
 }
 
+fn is_out_of_line_mod_declaration(ast: &syn::File) -> bool {
+    !ast.items.is_empty()
+        && ast
+            .items
+            .iter()
+            .all(|item| matches!(item, syn::Item::Mod(m) if m.content.is_none()))
+}
+
 fn validate_ignore_block(
     md_path: &Path,
     fence_line: usize,
@@ -147,20 +155,23 @@ fn validate_ignore_block(
             fence_line
         ));
     }
-    let needs_gui_ctx = GUI_CONTEXT_TOKENS.iter().any(|tok| block.contains(tok));
-    if block.contains("TheoryDescribable for ") || !needs_gui_ctx {
-        violations.push(format!(
-            "{}:{}: `rust,ignore` snippet must be a compiled `rust` doctest in `markdown_tests` (does not require binary-only GUI context)",
-            md_path.display(),
-            fence_line
-        ));
-    }
-    if let Err(err) = parse_fence_ast(block) {
-        violations.push(format!(
+    match parse_fence_ast(block) {
+        Ok(ast) => {
+            let needs_gui_ctx = GUI_CONTEXT_TOKENS.iter().any(|tok| block.contains(tok))
+                || is_out_of_line_mod_declaration(&ast);
+            if block.contains("TheoryDescribable for ") || !needs_gui_ctx {
+                violations.push(format!(
+                    "{}:{}: `rust,ignore` snippet must be a compiled `rust` doctest in `markdown_tests` (does not require binary-only GUI context)",
+                    md_path.display(),
+                    fence_line
+                ));
+            }
+        }
+        Err(err) => violations.push(format!(
             "{}:{}: Invalid Rust syntax inside `{fence_tag}` fence: {err}",
             md_path.display(),
             fence_line
-        ));
+        )),
     }
 }
 

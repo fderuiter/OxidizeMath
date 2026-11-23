@@ -223,7 +223,12 @@ pub fn audit_paper_and_gate_instructions(
             let mut xtask_files: Vec<_> = entries.flatten().map(|e| e.path()).collect();
             xtask_files.sort();
             for xtask_rs in xtask_files {
-                if xtask_rs.extension().and_then(|s| s.to_str()) == Some("rs")
+                let is_test_mod = xtask_rs
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|stem| stem == "tests" || stem.ends_with("_tests"));
+                if !is_test_mod
+                    && xtask_rs.extension().and_then(|s| s.to_str()) == Some("rs")
                     && let Ok(content) = fs::read_to_string(&xtask_rs)
                 {
                     let prod_content = content.split("#[cfg(test)]").next().unwrap_or(&content);

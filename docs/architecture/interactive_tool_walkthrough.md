@@ -4,7 +4,7 @@ This document guides developers and researchers through creating a new interacti
 
 ## Overview
 
-The `math_explorer_gui` crate combines automated build-time [`ExplorerTab`](../../math_explorer_gui/src/tabs/mod.rs) discovery with a federated tool catalog backed by [`SimulationFramework`](../../math_explorer_gui/src/framework/mod.rs). Each interactive simulation implements [`TheoryDescribable`](../../crates/scientific_metadata/src/theory.rs) and [`InteractiveTool`](../../math_explorer_gui/src/framework/mod.rs), renders inside scoped multi-pane viewports via [`InteractiveTool::show_inside`](../../math_explorer_gui/src/framework/mod.rs), and registers itself at startup using [`inventory::submit!`](../../math_explorer_gui/src/framework/mod.rs).
+The `math_explorer_gui` crate combines static `inventory` [`ExplorerTab`](../../math_explorer_gui/src/tabs/mod.rs) registration (`TabDescriptor`) with a federated tool catalog backed by [`SimulationFramework`](../../math_explorer_gui/src/framework/mod.rs). Each interactive simulation implements [`TheoryDescribable`](../../crates/scientific_metadata/src/theory.rs) and [`InteractiveTool`](../../math_explorer_gui/src/framework/mod.rs), renders inside scoped multi-pane viewports via [`InteractiveTool::show_inside`](../../math_explorer_gui/src/framework/mod.rs), and registers itself at startup using [`inventory::submit!`](../../math_explorer_gui/src/framework/mod.rs).
 
 ```mermaid
 graph TD
@@ -331,7 +331,7 @@ inventory::submit! {
 }
 ```
 
-Expose your tool submodule (`pub mod <tool_name>;`) inside its enclosing domain tab directory (`math_explorer_gui/src/tabs/<domain>/mod.rs`) so the module compiles and registers with `inventory`. Do **not** manually edit `math_explorer_gui/src/tabs/mod.rs` — [`math_explorer_gui/build.rs`](../../math_explorer_gui/build.rs) automatically scans `src/tabs/` for `impl ExplorerTab for <Struct>` (supporting `// @explorer_feature = "<domain>"` and `// @explorer_order = <n>`) and generates `$OUT_DIR/generated_tabs.rs`.
+Finally, expose your submodule (`pub mod <tool_name>;`) inside its enclosing domain tab's `math_explorer_gui/src/tabs/<domain>/mod.rs` so the module compiles and registers with `inventory` (only new top-level `ExplorerTab` domains declare `pub mod <domain>;` in `math_explorer_gui/src/tabs/mod.rs` and submit a `TabDescriptor` via `inventory::submit!`).
 
 ## Event Handling Hooks
 
@@ -423,7 +423,7 @@ Interactive tools can map live mathematical invariants to real-time audio and `.
 ## Related References
 
 - Interactive tool trait definition: [`math_explorer_gui/src/framework/mod.rs`](../../math_explorer_gui/src/framework/mod.rs)
-- Build-time tab auto-discovery: [`math_explorer_gui/build.rs`](../../math_explorer_gui/build.rs)
+- Static inventory tab registration: [`math_explorer_gui/src/tabs/mod.rs`](../../math_explorer_gui/src/tabs/mod.rs) and [ADR 20261123: Static Inventory Tab Registration and Scoped Build Scripts](../adr/20261123-inventory-tabs-and-scoped-build-scripts.md)
 - Spatial brush kit & field sculpting: [`math_explorer_gui/src/framework/spatial_brush.rs`](../../math_explorer_gui/src/framework/spatial_brush.rs) and [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](../adr/0045-spatial-brush-kit-and-field-sculpting.md)
 - Dual-backend sonification architecture: [ADR 0040](../adr/0040-dual-backend-web-audio-sonification.md)
 - Example tool implementation (CERA): [`math_explorer_gui/src/tabs/climate/cera.rs`](../../math_explorer_gui/src/tabs/climate/cera.rs)

@@ -41,7 +41,7 @@ classDiagram
 ### Key Components
 
 - **`MathExplorerApp`**: Root `eframe::App` shell managing multi-domain navigation, starter gallery workflows, command palette search, accessibility announcements, and delegating each viewport pane's scoped `egui::Ui` to the active tab via `ExplorerTab::show_inside`.
-- **`ExplorerTab` & `SimulationFramework`**: Multi-domain plugin architecture combining build-time `ExplorerTab` discovery with `SimulationFramework` tool catalogs (`InteractiveTool` and `TheoryDescribable`) across AI, Applied Math, Biology, Climate, Epidemiology, Physics, and Pure Math.
+- **`ExplorerTab` & `SimulationFramework`**: Multi-domain plugin architecture combining static `inventory` `ExplorerTab` registration (`TabDescriptor`) with `SimulationFramework` tool catalogs (`InteractiveTool` and `TheoryDescribable`) across AI, Applied Math, Biology, Climate, Epidemiology, Physics, and Pure Math.
 - **`async_sim`**: Off-thread and Web Worker simulation runners preventing frame-budget stalls during heavy PDE, FFT, or Monte Carlo sweeps.
 - **`presets` & `url_state`**: Versioned JSON preset import/export and deterministic URL state encoding.
 
@@ -66,15 +66,13 @@ trunk serve
 Follow these steps to add a new domain tab or simulation tool to `math_explorer_gui` (using crate-local `crate::` paths rather than `math_explorer_gui::`).
 
 #### 1. Create the Tab Module
-Create either `src/tabs/<tab_name>.rs` or `src/tabs/<tab_name>/mod.rs` implementing `ExplorerTab` and `Default`. Multi-tool domain tabs wrap `SimulationFramework::new("<domain>")` and configure Cargo feature gating (`// @explorer_feature = "<domain>"`) and navigation ordering (`// @explorer_order = <n>`):
+Create either a single file `src/tabs/<tab_name>.rs` or a directory `src/tabs/<tab_name>/mod.rs` implementing `ExplorerTab` and `Default`. Multi-tool domain tabs wrap `SimulationFramework::new("<domain>")`:
 
 ```rust,ignore
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-// @explorer_feature = "physics"
-// @explorer_order = 10
 
 use crate::framework::SimulationFramework;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub struct FluidDynamicsTab {
@@ -108,16 +106,31 @@ impl ExplorerTab for FluidDynamicsTab {
 }
 ```
 
-#### 2. Automated Plugin Discovery (`build.rs`)
-Do **not** manually edit `src/tabs/mod.rs` to register your new tab. At compile time, [`build.rs`](build.rs) automatically scans `src/tabs/` (and workspace path dependencies) for `impl ExplorerTab for <Struct>` definitions (requiring `Default`) and generates `$OUT_DIR/generated_tabs.rs` (`instantiate_tabs()` and `instantiate_tab()`), which [`src/tabs/mod.rs`](src/tabs/mod.rs) includes automatically:
+#### 2. Register the Module
+In [`src/tabs/mod.rs`](src/tabs/mod.rs), declare your feature-gated module:
 
-- `// @explorer_feature = "physics"`: Optional header comment gating the module behind a Cargo feature.
-- `// @explorer_order = 10`: Optional header comment controlling navigation bar sort order (lower numbers appear first).
+```rust,ignore
+#[cfg(feature = "physics")]
+pub mod fluid_dynamics;
+```
 
-#### 3. Adding Interactive Tools Within a Domain Tab
-Individual simulation tools inside a domain tab (`src/tabs/<domain>/<tool>.rs`) implement `TheoryDescribable` and `InteractiveTool::show_inside` and register with `inventory::submit!`. Expose `pub mod <tool>;` in `src/tabs/<domain>/mod.rs` and follow the step-by-step [Interactive Tool Walkthrough](../docs/architecture/interactive_tool_walkthrough.md).
+#### 3. Submit to Inventory
+In `src/tabs/fluid_dynamics.rs` (or `mod.rs`), register a static [`TabDescriptor`](src/tabs/mod.rs) (lower `order` values appear earlier in the navigation bar):
 
-#### 4. Design Principles
+```rust,ignore
+inventory::submit! {
+    crate::tabs::TabDescriptor {
+        id: "fluid_dynamics",
+        order: 100,
+        build: || Box::new(FluidDynamicsTab::default()),
+    }
+}
+```
+
+#### 4. Adding Interactive Tools Within a Domain Tab
+Most multi-tool domain tabs wrap `SimulationFramework::new("<domain>")` and discover individual tools via `inventory::submit!`. To add a new simulation tool (implementing `TheoryDescribable` and `InteractiveTool::show_inside`) inside an existing domain folder (`src/tabs/<domain>/<tool>.rs`), declare `pub mod <tool>;` in `src/tabs/<domain>/mod.rs` and follow the step-by-step [Interactive Tool Walkthrough](../docs/architecture/interactive_tool_walkthrough.md).
+
+#### 5. Design Principles
 - **Separation of Concerns**: Keep mathematical solvers and domain physics inside `math_explorer`; keep GUI code focused on visualization and input handling.
 - **Immediate Mode & Frame-Budget Safety**: `show_inside()` runs every frame. Avoid heavy synchronous PDE/FFT work in `Default::default()` or `show_inside()`; offload expensive sweeps via `async_sim`.
 - **Deterministic Seeded Randomness & Dependency Reuse**: Reuse workspace crates declared in `math_explorer_gui/Cargo.toml` (including `rand` paired with explicit `oxidize_core::rng::OxidizeRng` seeds so `check-entropy` remains deterministic, `nalgebra`, and `petgraph`) rather than introducing unseeded RNG calls or duplicate dependencies.
