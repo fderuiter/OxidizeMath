@@ -29,7 +29,8 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0016: Standardize Crate Documentation Suite](adr/0016-standardize-crate-documentation-suite.md)
 - [ADR 0035: Spatial Fermi Games and Ising Droplet Brushes](adr/0035-fermi-spatial-games-and-ising-droplet-brushes.md)
 - [ADR 0037: Frozen-Period Glicko-2 Tournament Simulator](adr/0037-glicko2-frozen-period-tournament-simulator.md)
-- [ADR 0041: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics](adr/0041-glicko2-copula-ou-workbenches-and-kelly-net-odds.md)
+- [ADR 0041: Unified 3D Volumetric Field Studio and Zero-Allocation Surface/Splat Kernels](adr/0041-volumetric-field-studio-zero-alloc-3d-kernels.md)
+- [ADR 0042: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics](adr/0042-glicko2-copula-ou-workbenches-and-kelly-net-odds.md)
 
 ## Contributing
 

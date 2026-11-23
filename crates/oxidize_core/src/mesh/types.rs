@@ -110,6 +110,31 @@ pub struct Mesh {
     pub indices: Vec<usize>,
 }
 
+impl Mesh {
+    /// Creates an empty [`Mesh`] without heap allocation.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Pre-allocates vertex/normal and index buffers for zero-allocation reuse.
+    #[must_use]
+    pub fn with_capacity(vertex_capacity: usize, index_capacity: usize) -> Self {
+        Self {
+            vertices: Vec::with_capacity(vertex_capacity),
+            normals: Vec::with_capacity(vertex_capacity),
+            indices: Vec::with_capacity(index_capacity),
+        }
+    }
+
+    /// Clears vertices, normals, and triangle indices while retaining allocated capacity.
+    pub fn clear(&mut self) {
+        self.vertices.clear();
+        self.normals.clear();
+        self.indices.clear();
+    }
+}
+
 /// An 8-bit per-channel RGB color attribute for a 3D mesh vertex.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct VertexColor {
