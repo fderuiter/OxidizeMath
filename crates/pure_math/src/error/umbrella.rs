@@ -1,7 +1,8 @@
 use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
     Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    OptimizationError, OptionPricingError, OuError, StochasticError, TdaError, TensorError,
+    TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -59,6 +60,9 @@ pub enum PureMathError {
     /// Mathematical optimization error.
     #[error("{0}")]
     Optimization(#[from] OptimizationError),
+    /// Black-Scholes-Merton option pricing error.
+    #[error("{0}")]
+    OptionPricing(#[from] OptionPricingError),
     /// Stochastic simulation error.
     #[error("{0}")]
     Stochastic(#[from] StochasticError),
@@ -130,6 +134,7 @@ impl PureMathError {
             Self::Fractran(err) => err,
             Self::LinearAlgebra(err) => err,
             Self::Optimization(err) => err,
+            Self::OptionPricing(err) => err,
             Self::Stochastic(err) => err,
             Self::Tensor(err) => err,
             Self::Transform(err) => err,

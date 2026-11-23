@@ -87,10 +87,14 @@ impl Correlation {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CorrelationMatrix {
     matrix: DMatrix<f64>,
+    cholesky_l: DMatrix<f64>,
 }
 
+const MIN_CHOLESKY_PIVOT: f64 = 1e-10;
+
 impl CorrelationMatrix {
-    /// Creates a new correlation matrix with validation.
+    /// Creates a new correlation matrix with symmetry, unit-diagonal, and Cholesky
+    /// positive-definiteness validation.
     ///
     /// # Arguments
     ///
@@ -101,6 +105,14 @@ impl CorrelationMatrix {
     /// * `Result<CorrelationMatrix, CopulaError>` - The validated matrix or an error
     #[verified_engine::verified]
     pub fn new(matrix: DMatrix<f64>) -> Result<Self, CopulaError> {
+        if matrix.nrows() == 0 {
+            return Err(CopulaError::Math(
+                math_commons::error::MathError::NumericalError {
+                    reason: "Correlation matrix cannot be empty".to_string(),
+                },
+            ));
+        }
+
         // Check square
         if matrix.nrows() != matrix.ncols() {
             return Err(crate::error::CopulaError::Math(
@@ -109,6 +121,16 @@ impl CorrelationMatrix {
                     actual: math_commons::math_kernel::types::Dimension(matrix.ncols()),
                 },
             ));
+        }
+
+        // Check finite and in [-1, 1]
+        for i in 0..matrix.nrows() {
+            for j in 0..matrix.ncols() {
+                let val = matrix[(i, j)];
+                if !val.is_finite() || val.abs() > 1.0 + math_commons::registry::TOLERANCE_HIGH {
+                    return Err(CopulaError::InvalidCorrelation { value: val });
+                }
+            }
         }
 
         // Check symmetric
@@ -132,18 +154,42 @@ impl CorrelationMatrix {
             }
         }
 
-        // Check all elements in [-1, 1]
-        for i in 0..matrix.nrows() {
-            for j in 0..matrix.ncols() {
-                if matrix[(i, j)].abs() > 1.0 + math_commons::registry::TOLERANCE_HIGH {
-                    return Err(CopulaError::InvalidCorrelation {
-                        value: matrix[(i, j)],
-                    });
-                }
+        // Validate strict positive-definiteness via Cholesky factorization L * L^T
+        let mut sym = matrix.clone();
+        let n = sym.nrows();
+        for i in 0..n {
+            sym[(i, i)] = 1.0;
+            for j in (i + 1)..n {
+                let avg = 0.5 * (sym[(i, j)] + sym[(j, i)]);
+                sym[(i, j)] = avg;
+                sym[(j, i)] = avg;
+            }
+        }
+        let chol = sym.cholesky().ok_or(CopulaError::NotPositiveDefinite)?;
+        let cholesky_l = chol.l();
+        for i in 0..n {
+            let pivot = cholesky_l[(i, i)];
+            if !pivot.is_finite() || pivot <= MIN_CHOLESKY_PIVOT {
+                return Err(CopulaError::NotPositiveDefinite);
             }
         }
 
-        Ok(Self { matrix })
+        Ok(Self { matrix, cholesky_l })
+    }
+
+    /// Creates an equicorrelated `dimension x dimension` correlation matrix with off-diagonal `rho`.
+    #[verified_engine::verified]
+    pub fn equicorrelated(dimension: usize, rho: Correlation) -> Result<Self, CopulaError> {
+        if dimension == 0 {
+            return Err(CopulaError::Math(
+                math_commons::error::MathError::NumericalError {
+                    reason: "Correlation matrix dimension must be >= 1".to_string(),
+                },
+            ));
+        }
+        let r = rho.value();
+        let matrix = DMatrix::from_fn(dimension, dimension, |i, j| if i == j { 1.0 } else { r });
+        Self::new(matrix)
     }
 
     /// Creates a bivariate correlation matrix from a single correlation coefficient.
@@ -176,6 +222,12 @@ impl CorrelationMatrix {
     #[verified_engine::verified]
     pub fn matrix(&self) -> &DMatrix<f64> {
         &self.matrix
+    }
+
+    /// Returns the precomputed lower-triangular Cholesky factor `L` (`R = L * L^T`).
+    #[verified_engine::verified]
+    pub fn cholesky_factor(&self) -> &DMatrix<f64> {
+        &self.cholesky_l
     }
 
     /// Returns the dimension of the matrix.
@@ -248,6 +300,7 @@ mod tests {
         assert_eq!(matrix.get_correlation(0, 1), Some(0.6));
         assert_eq!(matrix.get_correlation(1, 0), Some(0.6));
         assert_eq!(matrix.get_correlation(0, 0), Some(1.0));
+        assert!((matrix.cholesky_factor()[(1, 1)] - 0.8).abs() < 1e-12);
     }
 
     #[test]
@@ -262,5 +315,25 @@ mod tests {
     fn test_correlation_matrix_not_symmetric() {
         let matrix = DMatrix::from_row_slice(2, 2, &[1.0, 0.3, 0.5, 1.0]);
         assert!(CorrelationMatrix::new(matrix).is_err());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_correlation_matrix_rejects_indefinite_3x3_min_eigenvalue_minus_0_8() {
+        // Symmetric 3x3 matrix with 1s on diagonal, entries in [-1, 1], and min_eigenvalue = -0.8
+        let indefinite_frustrated =
+            DMatrix::from_row_slice(3, 3, &[1.0, 0.9, -0.9, 0.9, 1.0, 0.9, -0.9, 0.9, 1.0]);
+        assert_eq!(
+            CorrelationMatrix::new(indefinite_frustrated),
+            Err(CopulaError::NotPositiveDefinite)
+        );
+
+        // Equicorrelated 3x3 with rho = -0.9 also has min_eigenvalue = 1 + 2*(-0.9) = -0.8
+        let indefinite_equicorr =
+            DMatrix::from_row_slice(3, 3, &[1.0, -0.9, -0.9, -0.9, 1.0, -0.9, -0.9, -0.9, 1.0]);
+        assert_eq!(
+            CorrelationMatrix::new(indefinite_equicorr),
+            Err(CopulaError::NotPositiveDefinite)
+        );
     }
 }

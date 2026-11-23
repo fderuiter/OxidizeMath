@@ -27,8 +27,8 @@ pub enum NumberTheoryError {
     DivisionByZeroConstantTerm,
 }
 
+/// Errors returned by single-asset and multi-asset Kelly sizing and tail-risk solvers.
 #[derive(Debug, Clone, PartialEq, Error)]
-#[allow(missing_docs)]
 pub enum KellyError {
     /// Invalid probability (must be between 0 and 1).
     #[error("Invalid probability: {value} (must be between 0 and 1)")]
@@ -50,6 +50,37 @@ pub enum KellyError {
     #[error("Invalid bankroll: {value} (must be positive)")]
     #[allow(missing_docs)]
     InvalidBankroll { value: f64 },
+    /// Dimension mismatch between asset vectors, workspaces, or covariance matrices.
+    #[error("Dimension mismatch: expected {expected}, got {actual}")]
+    DimensionMismatch {
+        /// Expected vector or flattened matrix length.
+        expected: usize,
+        /// Actual slice length provided.
+        actual: usize,
+    },
+    /// Covariance matrix is not symmetric positive-definite.
+    #[error("Covariance matrix is not positive definite")]
+    NotPositiveDefinite,
+    /// Insufficient observations or assets for portfolio estimation.
+    #[error("Insufficient data: required at least {required}, got {actual}")]
+    InsufficientData {
+        /// Minimum required asset or observation count.
+        required: usize,
+        /// Actual count provided.
+        actual: usize,
+    },
+    /// Confidence level for VaR/CVaR must lie strictly inside `(0, 1)`.
+    #[error("Invalid confidence level: {value} (must be in (0, 1))")]
+    InvalidConfidenceLevel {
+        /// Invalid confidence level supplied.
+        value: f64,
+    },
+    /// Non-finite or out-of-range portfolio / horizon parameter.
+    #[error("Invalid portfolio parameter: {reason}")]
+    InvalidParameter {
+        /// Static description of the violated parameter invariant.
+        reason: &'static str,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -395,6 +426,7 @@ pub use crate::pure_math::{
     },
     elliptic_curves::EllipticCurveError,
     number_theory::ambs::AmbsError,
+    statistics::black_scholes::OptionPricingError,
     tensor::types::TensorError,
 };
 pub use umbrella::PureMathError;

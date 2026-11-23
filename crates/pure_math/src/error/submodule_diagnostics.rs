@@ -10,6 +10,7 @@ use crate::pure_math::{
     },
     elliptic_curves::EllipticCurveError,
     number_theory::ambs::AmbsError,
+    statistics::black_scholes::OptionPricingError,
     tensor::types::TensorError,
 };
 use diagnostics::{Diagnostic, Severity};
@@ -188,6 +189,18 @@ impl Diagnostic for OptimizationError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("OptimizationError", self.to_string())
+    }
+}
+
+impl Diagnostic for OptionPricingError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("OptionPricingError", self.to_string())
     }
 }
 

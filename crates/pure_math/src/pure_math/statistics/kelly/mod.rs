@@ -198,11 +198,27 @@
 
 pub mod core;
 pub mod criterion;
+pub mod portfolio;
+pub mod tail_risk;
+
+#[cfg(test)]
+mod portfolio_tests;
 
 // Re-export main types and functions
 pub use core::{BankrollFraction, Odds, UnitInterval};
 pub use criterion::{
     expected_growth_rate, expected_value, fractional_kelly, kelly_fraction, variants,
+};
+pub use portfolio::{
+    PortfolioKellyMetrics, PortfolioKellySolution, PortfolioKellyWorkspace,
+    evaluate_portfolio_kelly_metrics, independent_kelly_into, independent_kelly_weights,
+    long_only_kelly_projected_gradient, solve_long_only_kelly_into, solve_unconstrained_kelly_into,
+    unconstrained_covariance_kelly,
+};
+pub use tail_risk::{
+    PortfolioHorizonSpec, TailRiskEstimate, TailRiskMetrics, empirical_tail_risk,
+    empirical_tail_risk_in_place, empirical_var_cvar_in_place, parametric_lognormal_tail_risk,
+    simulate_portfolio_tail_risk_into, simulated_portfolio_tail_risk,
 };
 
 // [cite:clinical_trials_statistics]

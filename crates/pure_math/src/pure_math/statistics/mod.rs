@@ -96,6 +96,7 @@
 //! }
 //! ```
 
+pub mod black_scholes;
 pub mod copula;
 pub mod glicko2;
 pub mod kelly;

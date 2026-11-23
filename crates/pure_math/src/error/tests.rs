@@ -47,6 +47,8 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         FractranError::InvalidFractionSyntax.into(),
         LinearAlgebraError::SingularMatrix.into(),
         OptimizationError::from(EvolutionError::ConversionError).into(),
+        OptionPricingError::InvalidSpot { value: -5.0 }.into(),
+        KellyError::NotPositiveDefinite.into(),
         StochasticError::InvalidReactionIndex(3).into(),
         TensorError::SingularMetric.into(),
         TransformError::EmptyInput.into(),

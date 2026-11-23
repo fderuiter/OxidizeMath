@@ -103,19 +103,26 @@ impl GaussianCopula {
     /// Computes the bivariate Gaussian copula CDF.
     #[verified_engine::verified]
     fn bivariate_cdf(&self, u1: Probability, u2: Probability) -> Result<Probability, CopulaError> {
+        if u1.value() <= 0.0 || u2.value() <= 0.0 {
+            return Probability::new(0.0);
+        }
+        if u1.value() >= 1.0 {
+            return Ok(u2);
+        }
+        if u2.value() >= 1.0 {
+            return Ok(u1);
+        }
+
         // Transform to z-scores
         let z1 = inverse_standard_normal(u1)?;
         let z2 = inverse_standard_normal(u2)?;
 
         // Get correlation
-        let rho = self
-            .correlation
-            .get_correlation(0, 1)
-            .ok_or(crate::error::CopulaError::Math(
-                math_commons::error::MathError::NumericalError {
-                    reason: "Failed to get correlation".to_string(),
-                },
-            ))?;
+        let rho = self.correlation.get_correlation(0, 1).ok_or_else(|| {
+            crate::error::CopulaError::Math(math_commons::error::MathError::NumericalError {
+                reason: "Failed to get correlation".to_string(),
+            })
+        })?;
 
         // Compute bivariate normal CDF using the formula:
         // Φ_ρ(z₁, z₂) = Φ(z₁)Φ(z₂) + ∫∫ φ(x,y;ρ) dx dy
@@ -196,32 +203,62 @@ impl GaussianCopula {
         Ok(sum.clamp(0.0, 1.0))
     }
 
-    /// Multivariate Gaussian copula CDF (general case).
+    /// Multivariate Gaussian copula CDF via seeded Genz Cholesky quasi-Monte Carlo integration.
     #[verified_engine::verified]
     fn multivariate_cdf(&self, u: &[Probability]) -> Result<Probability, CopulaError> {
-        // Transform to z-scores
-        let mut z_scores = Vec::with_capacity(u.len());
-        for &ui in u {
-            z_scores.push(inverse_standard_normal(ui)?);
-        }
+        super::qmc::multivariate_cdf_qmc(
+            &self.correlation,
+            u,
+            super::qmc::default_copula_seed(),
+            super::qmc::DEFAULT_COPULA_QMC_PAIRS,
+        )
+    }
 
-        // Validate correlation matrix positive-definiteness via Cholesky decomposition
-        let cov = self.correlation.matrix().clone();
-        if cov.cholesky().is_none() {
+    /// Evaluates the Gaussian copula CDF using an explicit `OxidizeRng` Cranley-Patterson seed
+    /// and `n_pairs` antithetic Halton QMC samples (`2 * n_pairs` total evaluations).
+    #[verified_engine::verified]
+    pub fn cdf_with_seed(
+        &self,
+        u: &[Probability],
+        seed: u64,
+        n_pairs: usize,
+    ) -> Result<Probability, CopulaError> {
+        if u.len() != self.correlation.dimension() {
             return Err(crate::error::CopulaError::Math(
-                math_commons::error::MathError::NumericalError {
-                    reason: "Correlation matrix is not positive definite".to_string(),
+                math_commons::error::MathError::DimensionMismatch {
+                    expected: math_commons::math_kernel::types::Dimension(
+                        self.correlation.dimension(),
+                    ),
+                    actual: math_commons::math_kernel::types::Dimension(u.len()),
                 },
             ));
         }
+        if u.len() == 2 {
+            return self.bivariate_cdf(u[0], u[1]);
+        }
+        super::qmc::multivariate_cdf_qmc(&self.correlation, u, seed, n_pairs)
+    }
 
-        // Compute CDF by Monte Carlo or numerical integration
-        // For now, return an error as full MVN CDF is complex
-        Err(crate::error::CopulaError::Math(
-            math_commons::error::MathError::NumericalError {
-                reason: "Multivariate CDF not yet implemented; use bivariate".to_string(),
-            },
-        ))
+    /// Evaluates the multivariate Gaussian copula CDF into a preallocated [`super::qmc::CopulaQmcWorkspace`].
+    #[verified_engine::verified]
+    pub fn cdf_with_workspace(
+        &self,
+        u: &[Probability],
+        seed: u64,
+        n_pairs: usize,
+        workspace: &mut super::qmc::CopulaQmcWorkspace,
+    ) -> Result<Probability, CopulaError> {
+        if u.len() != self.correlation.dimension() {
+            return Err(crate::error::CopulaError::Math(
+                math_commons::error::MathError::DimensionMismatch {
+                    expected: math_commons::math_kernel::types::Dimension(
+                        self.correlation.dimension(),
+                    ),
+                    actual: math_commons::math_kernel::types::Dimension(u.len()),
+                },
+            ));
+        }
+        super::qmc::multivariate_cdf_with_workspace(&self.correlation, u, seed, n_pairs, workspace)
     }
 
     /// Returns the correlation matrix.
@@ -397,10 +434,9 @@ mod tests {
             Probability::new(0.5).unwrap(),
             Probability::new(0.6).unwrap(),
         ];
-        let err = copula.cdf(&u).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("Multivariate CDF not yet implemented")
-        );
+        let joint = copula.cdf(&u).unwrap();
+        let naive = 0.4 * 0.5 * 0.6;
+        assert!(joint.value() > naive);
+        assert!(joint.value() < 0.4);
     }
 }

@@ -7,6 +7,7 @@ pub mod bankroll_growth;
 pub mod bet_size;
 pub mod correlated_risk;
 pub mod parrondo;
+pub mod portfolio_workbench;
 
 pub struct FinancialMathTab {
     framework: crate::framework::SimulationFramework,

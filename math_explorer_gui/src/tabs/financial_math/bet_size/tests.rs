@@ -27,6 +27,18 @@ fn test_bet_size_default_populates_growth_curve_and_kelly_markers() {
     let slice: &[PlotPoint] = &tool.growth_curve_points[..];
     let plot_pts: egui_plot::PlotPoints<'_> = slice.into();
     assert!(matches!(plot_pts, egui_plot::PlotPoints::Borrowed(_)));
+
+    // Verify export_datasets works directly without requiring a rendered egui frame
+    let exported = tool.export_datasets();
+    assert!(exported.len() >= 5);
+    assert_eq!(exported[0].0, "Expected Growth Rate g(f)");
+    assert!(exported[0].1.len() > 50);
+    assert!(
+        exported
+            .iter()
+            .all(|(_, pts)| !pts.is_empty()
+                && pts.iter().all(|[x, y]| x.is_finite() && y.is_finite()))
+    );
 }
 
 #[test]

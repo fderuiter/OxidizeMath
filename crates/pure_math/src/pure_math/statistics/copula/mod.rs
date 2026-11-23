@@ -98,10 +98,15 @@
 
 pub mod core;
 pub mod gaussian;
+pub mod qmc;
 pub mod transforms;
+
+#[cfg(test)]
+mod gaussian_tests;
 
 pub use core::{Correlation, CorrelationMatrix, Probability};
 pub use gaussian::{GaussianCopula, sgp_joint_probability};
+pub use qmc::{CopulaQmcWorkspace, DEFAULT_COPULA_QMC_PAIRS, MAX_INLINE_COPULA_LEGS};
 pub use transforms::{
     NormalTransform, ProbabilityTransform, inverse_standard_normal, standard_normal_cdf,
 };

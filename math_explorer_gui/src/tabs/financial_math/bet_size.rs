@@ -216,6 +216,35 @@ impl InteractiveTool for BetSizeCalculatorTool {
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut datasets = Vec::with_capacity(5);
+        if !self.growth_curve_points.is_empty() {
+            datasets.push((
+                String::from("Expected Growth Rate g(f)"),
+                self.growth_curve_points
+                    .iter()
+                    .map(|p| [p.x, p.y])
+                    .collect(),
+            ));
+            datasets.push((
+                String::from("Break-Even (g = 0)"),
+                self.zero_line_points.iter().map(|p| [p.x, p.y]).collect(),
+            ));
+        }
+        for (label, marker) in [
+            ("Quarter Kelly (0.25 f*)", &self.quarter_marker),
+            ("Half Kelly (0.50 f*)", &self.half_marker),
+            ("Full Kelly (1.00 f*)", &self.full_marker),
+        ] {
+            if !marker.is_empty() {
+                datasets.push((
+                    String::from(label),
+                    marker.iter().map(|p| [p.x, p.y]).collect(),
+                ));
+            }
+        }
+        datasets
+    }
     fn has_finite_parameters(&self) -> bool {
         [
             self.probability_input,

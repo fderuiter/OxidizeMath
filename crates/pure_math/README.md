@@ -18,7 +18,7 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 - **`differential_geometry`**: Manifolds, metric tensors, and Riemannian curvature.
 - **`elliptic_curves`**: Zero-allocation short-Weierstrass curve group arithmetic ($P + Q$, $\[k\]P$, cyclic orbits) over $\mathbb{R}$ and prime fields $\mathbb{F}_p$, Frobenius traces $a_p$, Hasse-Weil verification, Breuer modular polynomial valuation bounds, and bridges to binary quadratic forms (`BQF`), Hurwitz-Kronecker class numbers, and modular $q$-series (`QSeries<i64>`).
 - **`graph_theory`**: Network graph structures, centrality metrics, and traversal algorithms.
-- **`statistics`**: Stochastic processes (Markov chains, Ornstein-Uhlenbeck), ranking systems (Glicko-2), and Kelly criterion decision models.
+- **`statistics`**: Stochastic processes (Markov chains, Ornstein-Uhlenbeck parameter estimation and Monte Carlo forecasts), Cholesky-validated Gaussian copulas with quasi-Monte Carlo tail integration, Black-Scholes-Merton European option pricing and analytical Greeks, ranking systems (Glicko-2), and scalar/multi-asset covariance Kelly & `VaR`/`CVaR` decision models.
 - **`special_functions`**: Classical mathematical functions (Bessel functions, Legendre polynomials).
 
 ---

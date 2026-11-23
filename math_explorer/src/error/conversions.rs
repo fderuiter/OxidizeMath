@@ -96,6 +96,7 @@ impl_error_from!(@cfg "pure_math":
     MarkovError => Markov,
     NumberTheoryError => NumberTheory,
     OptimizationError => Optimization,
+    OptionPricingError => OptionPricing,
     OuError => Ou,
     StochasticError => Stochastic,
     TdaError => Tda,

@@ -42,6 +42,7 @@ impl Error {
             Self::Markov(err) => Some(err),
             Self::NumberTheory(err) => Some(err),
             Self::Optimization(err) => Some(err),
+            Self::OptionPricing(err) => Some(err),
             Self::Ou(err) => Some(err),
             Self::Stochastic(err) => Some(err),
             Self::Tda(err) => Some(err),
