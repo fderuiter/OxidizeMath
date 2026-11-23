@@ -10,7 +10,7 @@ use super::lbm_fairing::{
     LBM_U_IN,
 };
 use super::lbm_fairing_ui::LbmUiExtension;
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool, UnifiedUiExtension};
+use crate::async_sim::unified::{UnifiedModel, UnifiedUiExtension};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{decode_rle_mask, BrushMode, BrushStroke, SpatialBrushKit};
@@ -21,7 +21,7 @@ use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_drag_coefficient,
     compute_vorticity_into, AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9,
 };
-use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -99,7 +99,8 @@ impl LbmUnified {
                     && y < height
                     && (x - cx).pow(2) + (y - cy).pow(2) <= r * r
                 {
-                    self.solver.set_obstacle(x as usize, y as usize, is_obstacle);
+                    self.solver
+                        .set_obstacle(x as usize, y as usize, is_obstacle);
                 }
             }
         }
@@ -112,8 +113,17 @@ impl FiniteStateGuard for LbmUnified {
         if self.diverged {
             return false;
         }
-        self.solver.state.velocity_x().iter().all(|&v| v.is_finite())
-            && self.solver.state.velocity_y().iter().all(|&v| v.is_finite())
+        self.solver
+            .state
+            .velocity_x()
+            .iter()
+            .all(|&v| v.is_finite())
+            && self
+                .solver
+                .state
+                .velocity_y()
+                .iter()
+                .all(|&v| v.is_finite())
             && self.solver.state.density().iter().all(|&v| v.is_finite())
     }
 
@@ -375,7 +385,11 @@ impl UnifiedModel for LbmUnified {
         record_stroke_in_rle(stroke, params, sculpt_state);
     }
 
-    fn apply_sculpt_payload(&mut self, payload: &SculptStatePayload, params: &HashMap<String, f64>) {
+    fn apply_sculpt_payload(
+        &mut self,
+        payload: &SculptStatePayload,
+        params: &HashMap<String, f64>,
+    ) {
         if payload.rle_mask.is_empty() {
             return;
         }
@@ -441,55 +455,5 @@ impl UnifiedModel for LbmUnified {
     }
 }
 
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "LatticeBoltzmannTool",
-        display_name: "Lattice Boltzmann (Demo)",
-        domain: "fluid_dynamics",
-        tags: &["lbm", "d2q9", "bgk", "vortex street", "navier-stokes", "fluid"],
-        build: || Box::new(UnifiedSimTool::<LbmUnified>::new()),
-    }
-}
-
-impl TheoryDescribable for LbmUnified {
-    fn theory_description(&self) -> String {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).theory_description()
-    }
-
-    fn phonetic_description(&self) -> String {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).phonetic_description()
-    }
-
-    fn theory_citation(&self) -> String {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).theory_citation()
-    }
-
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).available_descriptions()
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "LBM Flow Simulation",
-    "domain": "fluid_dynamics",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "viscosity": 0.02
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "lattice_boltzmann_starter",
-        title: "LBM Flow Simulation",
-        description: "f_i(x + e_i·dt, t + dt) = f_i(x, t) - (f_i - f_i^eq)/τ: Mesoscopic BGK collision streaming solver.",
-        category: "Computational Fluids",
-        icon: "🌊",
-        domain: "fluid_dynamics",
-        tool_name: Some("LatticeBoltzmannTool"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}
+#[path = "lattice_boltzmann/preset.rs"]
+mod preset;
