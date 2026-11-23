@@ -112,7 +112,10 @@ impl LeniaTool {
         ui.label("Species Genomes:");
         ui.horizontal_wrapped(|ui| {
             for sp in LeniaSpeciesPreset::ALL {
-                if ui.selectable_label(self.species == sp, sp.label()).clicked() {
+                if ui
+                    .selectable_label(self.species == sp, sp.label())
+                    .clicked()
+                {
                     self.apply_species_preset(sp);
                 }
             }
@@ -261,44 +264,50 @@ impl LeniaTool {
         let g_pts = growth.sample_curve(96);
 
         ui.label("Radial Kernel K(r) & Growth Curve G(u)");
-        Plot::new(crate::framework::scoped_panel_id(ui, "lenia_kernel_growth_plot"))
-            .height(plot_h)
-            .legend(Legend::default())
-            .show(ui, |plot_ui| {
-                plot_ui.line(
-                    Line::new("Kernel K(r)", PlotPoints::from(k_pts))
-                        .color(col_k)
-                        .width(2.0_f32),
-                );
-                plot_ui.line(
-                    Line::new("Growth G(u)", PlotPoints::from(g_pts))
-                        .color(col_g)
-                        .width(2.0_f32),
-                );
-            });
+        Plot::new(crate::framework::scoped_panel_id(
+            ui,
+            "lenia_kernel_growth_plot",
+        ))
+        .height(plot_h)
+        .legend(Legend::default())
+        .show(ui, |plot_ui| {
+            plot_ui.line(
+                Line::new("Kernel K(r)", PlotPoints::from(k_pts))
+                    .color(col_k)
+                    .width(2.0_f32),
+            );
+            plot_ui.line(
+                Line::new("Growth G(u)", PlotPoints::from(g_pts))
+                    .color(col_g)
+                    .width(2.0_f32),
+            );
+        });
 
         ui.label("Live Soliton Telemetry");
         let (mass_pts, area_pts, speed_pts) = self.build_telemetry_series();
-        Plot::new(crate::framework::scoped_panel_id(ui, "lenia_telemetry_plot"))
-            .height(plot_h)
-            .legend(Legend::default())
-            .show(ui, |plot_ui| {
-                plot_ui.line(
-                    Line::new("Total Mass", PlotPoints::from(mass_pts))
-                        .color(col_k)
-                        .width(2.0_f32),
-                );
-                plot_ui.line(
-                    Line::new("Active Area", PlotPoints::from(area_pts))
-                        .color(col_g)
-                        .width(1.6_f32),
-                );
-                plot_ui.line(
-                    Line::new("Centroid Speed (×100)", PlotPoints::from(speed_pts))
-                        .color(col_v)
-                        .width(2.0_f32),
-                );
-            });
+        Plot::new(crate::framework::scoped_panel_id(
+            ui,
+            "lenia_telemetry_plot",
+        ))
+        .height(plot_h)
+        .legend(Legend::default())
+        .show(ui, |plot_ui| {
+            plot_ui.line(
+                Line::new("Total Mass", PlotPoints::from(mass_pts))
+                    .color(col_k)
+                    .width(2.0_f32),
+            );
+            plot_ui.line(
+                Line::new("Active Area", PlotPoints::from(area_pts))
+                    .color(col_g)
+                    .width(1.6_f32),
+            );
+            plot_ui.line(
+                Line::new("Centroid Speed (×100)", PlotPoints::from(speed_pts))
+                    .color(col_v)
+                    .width(2.0_f32),
+            );
+        });
     }
 }
 

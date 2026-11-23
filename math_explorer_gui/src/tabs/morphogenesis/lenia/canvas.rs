@@ -134,7 +134,11 @@ impl LeniaTool {
         }
         let w = self.engine.width();
         let h = self.engine.height();
-        let step = if ui.input(|i| i.modifiers.shift) { 4 } else { 1 };
+        let step = if ui.input(|i| i.modifiers.shift) {
+            4
+        } else {
+            1
+        };
         let mut moved = false;
 
         ui.input(|i| {

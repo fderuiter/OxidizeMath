@@ -76,12 +76,14 @@
 //! *   **Image Reconstruction** (`reconstruction`): Fast Fourier Transform (FFT) algorithms to convert frequency-domain signals back to spatial images.
 
 pub mod bloch;
+pub mod phantom;
 pub mod proton;
 pub mod reconstruction;
 pub mod scanner;
 
-// Re-export BlochSimulator to maintain API compatibility
+// Re-export BlochSimulator and Fft2dWorkspace for ergonomic access
 pub use bloch::BlochSimulator;
+pub use reconstruction::Fft2dWorkspace;
 
 #[cfg(test)]
 mod tests {
@@ -211,6 +213,7 @@ theory_verification!(
         DUMMY = 1.0;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(DUMMY, 1.0, epsilon = math_commons::registry::TOLERANCE_FAST);
     }
 );

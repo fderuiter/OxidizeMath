@@ -31,7 +31,10 @@ impl FiniteStateGuard for MorphogenesisTool {
 
     fn clamp_parameters(&mut self) {
         let mode = {
-            let mut ks = self.kinetics_state.write().unwrap_or_else(|e| e.into_inner());
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             ks.f = ks.f.clamp(0.0, 0.12);
             ks.k = ks.k.clamp(0.0, 0.12);
             ks.mode
@@ -58,7 +61,10 @@ impl FiniteStateGuard for MorphogenesisTool {
     fn reset_parameters(&mut self) {
         let gs = GrayScottKinetics::mitosis();
         {
-            let mut ks = self.kinetics_state.write().unwrap_or_else(|e| e.into_inner());
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             ks.mode = MorphogenesisKineticsMode::Schnakenberg;
             ks.f = gs.f;
             ks.k = gs.k;
@@ -159,6 +165,15 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Persisted visibility of the progressive 2D parameter atlas (never raster pixels).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub atlas_visible: bool,
+    /// Persisted `(x, y)` axis parameter keys for the 2D parameter atlas.
+    #[serde(
+        default = "super::atlas::default_morpho_atlas_axes",
+        skip_serializing_if = "super::atlas::is_default_morpho_atlas_axes"
+    )]
+    pub atlas_axes: [String; 2],
 }
 
 impl MorphogenesisToolState {
@@ -202,6 +217,15 @@ impl MorphogenesisToolState {
                 self.width, self.height
             ));
         }
+        let valid_axes = super::atlas::MORPHO_ATLAS_AXIS_PAIRS
+            .iter()
+            .any(|&(xk, yk)| xk == self.atlas_axes[0] && yk == self.atlas_axes[1]);
+        if !valid_axes {
+            return Err(format!(
+                "Invalid Morphogenesis atlas axes ('{}', '{}')",
+                self.atlas_axes[0], self.atlas_axes[1]
+            ));
+        }
         Ok(())
     }
 
@@ -229,10 +253,7 @@ impl SimpleRng {
 
     /// Samples a uniform `f64` in `[0.0, 1.0]`.
     pub fn next_f64(&mut self) -> f64 {
-        self.state = self
-            .state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1);
+        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1);
         let x = self.state;
         let x = x ^ x >> 18;
         let rot = (x >> 27) as u32;
@@ -299,7 +320,60 @@ impl TheoryDescribable for MorphogenesisTheory {
             "inhibitor_diffusion".to_string(),
             "Spatial diffusion coefficient D_v of morphogen species v.".to_string(),
         );
+        descs.insert(
+            "dt".to_string(),
+            "Explicit Forward Euler integration time step bounded by the 2D diffusion CFL limit."
+                .to_string(),
+        );
         descs
+    }
+
+    fn theory_parameters(
+        &self,
+    ) -> HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use scientific_metadata::theory::ParameterConstraint;
+        let mut map = HashMap::with_capacity(5);
+        map.insert(
+            "a".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 1.0,
+                step: 0.01,
+            },
+        );
+        map.insert(
+            "b".to_string(),
+            ParameterConstraint {
+                min: 0.0,
+                max: 2.0,
+                step: 0.01,
+            },
+        );
+        map.insert(
+            "d_u".to_string(),
+            ParameterConstraint {
+                min: 0.1,
+                max: 5.0,
+                step: 0.05,
+            },
+        );
+        map.insert(
+            "d_v".to_string(),
+            ParameterConstraint {
+                min: 10.0,
+                max: 200.0,
+                step: 1.0,
+            },
+        );
+        map.insert(
+            "dt".to_string(),
+            ParameterConstraint {
+                min: 1e-4,
+                max: 0.1,
+                step: 5e-4,
+            },
+        );
+        map
     }
 
     fn theory_latex_equation(&self) -> Option<String> {

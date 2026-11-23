@@ -15,18 +15,26 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod atlas;
 pub mod lenia;
 pub mod presets;
 pub mod runner;
+mod seeding;
 pub mod tool;
 pub mod ui;
 
 #[cfg(test)]
+pub use atlas::{
+    classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+};
+#[cfg(test)]
 pub use lenia::LeniaTool;
+#[cfg(test)]
+pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
+pub use runner::MorphogenesisSharedParams;
 #[cfg(test)]
 pub use runner::{MorphogenesisKineticsRunner, MorphogenesisRunner};
-pub use runner::MorphogenesisSharedParams;
 pub use tool::{MorphogenesisTool, MorphogenesisToolState};
 
 /// Legacy flat `MorphoState` schema saved by pre-framework `.mws` workspaces.
@@ -151,13 +159,23 @@ impl MorphogenesisTab {
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
-        let current = tool
+        let existing = tool
             .save_state()
             .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok());
-        let current_state = current
+        let current_state = existing
             .as_ref()
             .and_then(|s| s.state)
             .unwrap_or(SimWorkerState::Ready);
+        let kinetics_mode = existing
+            .as_ref()
+            .map(|c| c.kinetics_mode)
+            .unwrap_or_default();
+        let f = existing.as_ref().map_or(0.0367, |c| c.f);
+        let k = existing.as_ref().map_or(0.0649, |c| c.k);
+        let atlas_visible = existing.as_ref().is_some_and(|s| s.atlas_visible);
+        let atlas_axes = existing
+            .map(|s| s.atlas_axes)
+            .unwrap_or_else(atlas::default_morpho_atlas_axes);
         let target_state = if current_state == SimWorkerState::Running {
             SimWorkerState::Running
         } else {
@@ -171,12 +189,14 @@ impl MorphogenesisTab {
             dt: config.dt,
             width: config.width,
             height: config.height,
-            kinetics_mode: current.as_ref().map(|c| c.kinetics_mode).unwrap_or_default(),
-            f: current.as_ref().map_or(0.0367, |c| c.f),
-            k: current.as_ref().map_or(0.0649, |c| c.k),
+            kinetics_mode,
+            f,
+            k,
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            atlas_visible,
+            atlas_axes,
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;
@@ -353,7 +373,8 @@ impl ExplorerTab for MorphogenesisTab {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.framework.import_url_preset_json(tool_id, preset_json)?;
+        self.framework
+            .import_url_preset_json(tool_id, preset_json)?;
         if self.framework.active_tool_id() == Some("MorphogenesisTool") {
             let cfg = self.export_config();
             self.sync_shared_params_from_config(&cfg);

@@ -1,3 +1,4 @@
+pub(crate) mod compare_sync;
 pub(crate) mod focus;
 mod pane_chrome;
 pub(crate) mod quad_sash;
@@ -243,6 +244,7 @@ pub(super) fn render_single_pane_viewport(
                     shell_focused,
                 );
             });
+            compare_sync::clear_single_pane_sync_context(ctx);
 
             let mut pane_ui = build_pane_region_ui(ui, 0, total_rect, "Main Viewport");
             let should_focus = pending_focus == Some(0);
@@ -364,6 +366,7 @@ pub fn render_multi_pane_manager(
         });
         let pending_focus =
             focus::resolve_frame_pane_focus(app, ctx, &outcome.pane_rects, outcome.sash_focused);
+        compare_sync::publish_multi_pane_sync_context(app, ctx);
 
         render_multi_pane_regions(app, ctx, frame, ui, &outcome.pane_rects, pending_focus);
 

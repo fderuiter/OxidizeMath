@@ -1,15 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-pub use super::presets::MorphogenesisToolState;
+use super::atlas::MORPHO_ATLAS_AXIS_PAIRS;
 use super::presets::MorphogenesisTheory;
+pub use super::presets::MorphogenesisToolState;
 use super::runner::{
     MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
     MorphogenesisSharedParams,
 };
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{ExportCapabilities, InteractiveTool};
-use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui;
 use eframe::egui::ColorImage;
 use math_explorer::biology::diffusion::FiniteDifference2D;
@@ -23,6 +24,8 @@ use std::sync::Arc;
 pub struct MorphogenesisTool {
     /// Asynchronous simulation worker controller.
     pub worker: BackgroundWorker<MorphogenesisKineticsRunner>,
+    /// Progressive 2D parameter regime atlas controller.
+    pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
     pub(crate) width: usize,
@@ -49,15 +52,15 @@ impl Default for MorphogenesisTool {
             dt: 0.05,
             high_contrast: false,
         }));
-        let kinetics_state = Arc::new(std::sync::RwLock::new(
-            MorphogenesisKineticsState::default(),
-        ));
+        let kinetics_state =
+            Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
 
         let runner = Self::create_kinetics_runner(&params, &kinetics_state, width, height);
         let worker = BackgroundWorker::new(runner);
 
         Self {
             worker,
+            atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
             kinetics_state,
             width,
@@ -81,9 +84,7 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
     ) -> MorphogenesisKineticsRunner {
-        let ks = Arc::new(std::sync::RwLock::new(
-            MorphogenesisKineticsState::default(),
-        ));
+        let ks = Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
         Self::create_kinetics_runner(params, &ks, width, height)
     }
 
@@ -130,8 +131,12 @@ impl MorphogenesisTool {
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
-        let runner =
-            Self::create_kinetics_runner(&self.params, &self.kinetics_state, self.width, self.height);
+        let runner = Self::create_kinetics_runner(
+            &self.params,
+            &self.kinetics_state,
+            self.width,
+            self.height,
+        );
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
         self.step_runner = None;
@@ -162,59 +167,6 @@ impl MorphogenesisTool {
     pub(crate) fn reset_system(&mut self) {
         self.reset();
         let _ = self.worker.send_command(SimCommand::Start);
-    }
-
-    pub(crate) fn apply_named_preset(&mut self, a: f64, b: f64, d_u: f64, d_v: f64, dt: f64) {
-        let (f, k) = {
-            let ks = self.kinetics_state.read().unwrap_or_else(|e| e.into_inner());
-            (ks.f, ks.k)
-        };
-        self.apply_full_preset(MorphogenesisKineticsMode::Schnakenberg, a, b, f, k, d_u, d_v, dt);
-    }
-
-    pub(crate) fn apply_gray_scott_preset(&mut self, f: f64, k: f64) {
-        let (a, b) = {
-            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b)
-        };
-        self.apply_full_preset(MorphogenesisKineticsMode::GrayScott, a, b, f, k, 0.16, 0.08, 1.0);
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn apply_full_preset(
-        &mut self,
-        kinetics_mode: MorphogenesisKineticsMode,
-        a: f64,
-        b: f64,
-        f: f64,
-        k: f64,
-        d_u: f64,
-        d_v: f64,
-        dt: f64,
-    ) {
-        let target_state = if self.worker.is_running() {
-            SimWorkerState::Running
-        } else {
-            SimWorkerState::Ready
-        };
-        let preset_state = MorphogenesisToolState {
-            a,
-            b,
-            d_u,
-            d_v,
-            dt,
-            width: self.width,
-            height: self.height,
-            kinetics_mode,
-            f,
-            k,
-            state: Some(target_state),
-            paused: None,
-            pending_initial_start: false,
-        };
-        if let Ok(json) = serde_json::to_string(&preset_state) {
-            let _ = self.try_load_state(&json);
-        }
     }
 }
 
@@ -265,7 +217,12 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn step_simulation(&mut self) {
         let runner = self.step_runner.get_or_insert_with(|| {
-            Self::create_kinetics_runner(&self.params, &self.kinetics_state, self.width, self.height)
+            Self::create_kinetics_runner(
+                &self.params,
+                &self.kinetics_state,
+                self.width,
+                self.height,
+            )
         });
         for _ in 0..5 {
             runner.step();
@@ -310,7 +267,10 @@ impl InteractiveTool for MorphogenesisTool {
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         {
-            let ks = self.kinetics_state.read().unwrap_or_else(|e| e.into_inner());
+            let ks = self
+                .kinetics_state
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
             ks.mode.hash(&mut h);
             ks.f.to_bits().hash(&mut h);
             ks.k.to_bits().hash(&mut h);
@@ -327,18 +287,24 @@ impl InteractiveTool for MorphogenesisTool {
         self.height.hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         self.pending_initial_start.hash(&mut h);
+        self.atlas.is_visible().hash(&mut h);
+        self.atlas.axis_keys().hash(&mut h);
         h.finish().max(1)
     }
 
     fn save_state(&self) -> Option<String> {
         let (kinetics_mode, f, k) = {
-            let ks = self.kinetics_state.read().unwrap_or_else(|e| e.into_inner());
+            let ks = self
+                .kinetics_state
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
             (ks.mode, ks.f, ks.k)
         };
         let (a, b, d_u, d_v, dt) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.dt)
         };
+        let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&MorphogenesisToolState {
             a,
             b,
@@ -353,18 +319,27 @@ impl InteractiveTool for MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let parsed: MorphogenesisToolState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
+        self.state_bounds().validate_json(state)?;
+        let parsed: MorphogenesisToolState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
+        self.atlas
+            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.atlas.set_visible(parsed.atlas_visible);
         let target_state = parsed.resolve_target_state();
         self.theory.mode = parsed.kinetics_mode;
         {
-            let mut ks = self.kinetics_state.write().unwrap_or_else(|e| e.into_inner());
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             ks.mode = parsed.kinetics_mode;
             ks.f = parsed.f;
             ks.k = parsed.k;
@@ -386,8 +361,21 @@ impl InteractiveTool for MorphogenesisTool {
         Ok(())
     }
 
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
     fn has_finite_parameters(&self) -> bool {
-        let ks = self.kinetics_state.read().unwrap_or_else(|e| e.into_inner());
+        let ks = self
+            .kinetics_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         ks.f.is_finite()
             && ks.k.is_finite()
@@ -401,44 +389,6 @@ impl InteractiveTool for MorphogenesisTool {
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true
-    }
-}
-
-impl MorphogenesisTool {
-    fn apply_dimensions_and_target_state(
-        &mut self,
-        width: usize,
-        height: usize,
-        target_state: SimWorkerState,
-        pending_initial_start: bool,
-    ) {
-        if width != self.width || height != self.height {
-            self.width = width;
-            self.height = height;
-            let runner = Self::create_kinetics_runner(
-                &self.params,
-                &self.kinetics_state,
-                self.width,
-                self.height,
-            );
-            self.worker = BackgroundWorker::new(runner);
-            self.stepped_pixels = None;
-            self.step_runner = None;
-            self.dirty = true;
-        } else {
-            self.reset();
-        }
-        if target_state == SimWorkerState::Running {
-            self.pending_initial_start = false;
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-        } else {
-            self.pending_initial_start = pending_initial_start;
-            if self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Pause);
-            }
-        }
     }
 }
 

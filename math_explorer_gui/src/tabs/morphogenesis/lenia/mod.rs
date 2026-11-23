@@ -75,13 +75,8 @@ impl Default for LeniaTool {
         let species = LeniaSpeciesPreset::Orbium;
         let rng_seed = 42;
         let mut rng = OxidizeRng::new(rng_seed);
-        let engine = LeniaEngine::from_species(
-            grid_size,
-            grid_size,
-            species.to_domain(),
-            0.0,
-            &mut rng,
-        );
+        let engine =
+            LeniaEngine::from_species(grid_size, grid_size, species.to_domain(), 0.0, &mut rng);
         let genome = species.to_domain().genome();
         let mut tool = Self {
             radius: genome.shells.radius(),
@@ -321,7 +316,11 @@ impl LeniaTool {
         }
         self.ring_weights.truncate(MAX_KERNEL_RINGS);
         for w in &mut self.ring_weights {
-            *w = if w.is_finite() { w.clamp(0.0, 1.0) } else { 0.0 };
+            *w = if w.is_finite() {
+                w.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
         }
         if self.ring_weights.iter().copied().sum::<f64>() <= 1e-6 {
             self.ring_weights[0] = 1.0;

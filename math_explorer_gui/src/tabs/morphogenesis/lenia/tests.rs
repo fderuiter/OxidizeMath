@@ -37,7 +37,11 @@ fn test_lenia_species_switching_and_gray_scott_modes_in_morphogenesis_tab() {
     // Verify Gray-Scott Mitosis and Coral modes in MorphogenesisTool without breaking Spots/Stripes
     let gs_mitosis = crate::tabs::morphogenesis::presets::PRESET_GRAY_SCOTT_MITOSIS;
     tab.framework
-        .apply_starter_card("Gray-Scott Mitosis", Some("MorphogenesisTool"), Some(gs_mitosis))
+        .apply_starter_card(
+            "Gray-Scott Mitosis",
+            Some("MorphogenesisTool"),
+            Some(gs_mitosis),
+        )
         .expect("Gray-Scott Mitosis starter must apply");
     let gs_state = read_morpho_state(&tab);
     assert_eq!(gs_state.kinetics_mode, MorphogenesisKineticsMode::GrayScott);
@@ -99,7 +103,10 @@ fn test_lenia_mouse_brushing_and_keyboard_stamping() {
     let initial_mass = tool.engine.telemetry().total_mass;
 
     let out = ctx.run(screen_input(Vec::new()), |ctx| tool.show(ctx));
-    let ak = out.platform_output.accesskit_update.expect("AccessKit update");
+    let ak = out
+        .platform_output
+        .accesskit_update
+        .expect("AccessKit update");
     let canvas_bounds = ak
         .nodes
         .iter()
@@ -137,7 +144,10 @@ fn test_lenia_mouse_brushing_and_keyboard_stamping() {
     );
     assert!(tool.focused_canvas_id().is_some());
 
-    let key_events = vec![key_press(egui::Key::ArrowRight), key_press(egui::Key::Space)];
+    let key_events = vec![
+        key_press(egui::Key::ArrowRight),
+        key_press(egui::Key::Space),
+    ];
     let _ = ctx.run(screen_input(key_events), |ctx| tool.show(ctx));
     assert!(tool.engine.telemetry().total_mass > sliced_mass);
 }
@@ -162,7 +172,7 @@ fn test_lenia_finite_state_guard_divergence_and_recovery() {
 }
 
 #[test]
-fn test_lenia_exports_png_gif_csv_json_and_compact_url_share_roundtrip() {
+fn test_lenia_exports_png_gif_csv_json() {
     let ctx = egui::Context::default();
     let mut framework = SimulationFramework::new("biology");
     framework.export_options.width = 320;
@@ -171,10 +181,13 @@ fn test_lenia_exports_png_gif_csv_json_and_compact_url_share_roundtrip() {
     assert!(framework.select_tool_by_name("LeniaTool"));
     let fast_geminium = PRESET_LENIA_GEMINIUM.replace("\"grid_size\": 128", "\"grid_size\": 64");
     framework
-        .apply_starter_card("Lenia Geminium Twin", Some("LeniaTool"), Some(&fast_geminium))
+        .apply_starter_card(
+            "Lenia Geminium Twin",
+            Some("LeniaTool"),
+            Some(&fast_geminium),
+        )
         .expect("Geminium 64x64 starter");
 
-    // Verify PNG, GIF, CSV, and JSON exports through SimulationFramework
     for fmt in [
         ExportFormat::Png,
         ExportFormat::Gif,
@@ -193,12 +206,20 @@ fn test_lenia_exports_png_gif_csv_json_and_compact_url_share_roundtrip() {
             framework.export_status_message
         );
     }
+}
 
+#[test]
+fn test_lenia_compact_url_share_roundtrip() {
+    let mut framework = SimulationFramework::new("biology");
+    assert!(framework.select_tool_by_name("LeniaTool"));
     framework
-        .apply_starter_card("Lenia Geminium Twin", Some("LeniaTool"), Some(PRESET_LENIA_GEMINIUM))
+        .apply_starter_card(
+            "Lenia Geminium Twin",
+            Some("LeniaTool"),
+            Some(PRESET_LENIA_GEMINIUM),
+        )
         .expect("Geminium starter");
 
-    // Verify < 4 KiB URL genome preset round-trip
     let preset_json = framework
         .export_url_preset_json()
         .expect("URL preset export")
@@ -213,7 +234,9 @@ fn test_lenia_exports_png_gif_csv_json_and_compact_url_share_roundtrip() {
     let fragment = &share_url[hash_idx..];
 
     let mut app = crate::app::MathExplorerApp::default();
-    assert!(app.apply_share_location_strings(fragment, "", None).unwrap());
+    assert!(app
+        .apply_share_location_strings(fragment, "", None)
+        .unwrap());
     let bio_idx = app
         .tabs
         .iter()

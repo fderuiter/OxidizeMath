@@ -277,10 +277,9 @@ fn build_field_tokens(
     fields: &[&syn::Field],
     sm_path: &TokenStream,
     errors: &mut Option<syn::Error>,
-) -> (Vec<TokenStream>, Vec<TokenStream>, Vec<TokenStream>) {
+) -> (Vec<TokenStream>, Vec<TokenStream>) {
+    let mut type_checks = Vec::new();
     let mut field_params = Vec::new();
-    let mut get_params = Vec::new();
-    let mut set_params = Vec::new();
 
     for field in fields {
         let Some((min, max, step)) = parse_field_bounds(field, errors) else {
@@ -293,6 +292,9 @@ fn build_field_tokens(
         let field_ty = &field.ty;
         let ty_span = field_ty.span();
 
+        type_checks.push(quote_spanned! {ty_span=>
+            assert_theory_numeric::<#field_ty>(&self.#field_ident);
+        });
         field_params.push(quote! {
             map.insert(
                 #field_name.to_string(),
@@ -303,25 +305,47 @@ fn build_field_tokens(
                 },
             );
         });
-
-        let get_cast = quote_spanned! {ty_span=>
-            self.#field_ident as f64
-        };
-        get_params.push(quote! {
-            #field_name => Some(#get_cast),
-        });
-
-        let set_cast = quote_spanned! {ty_span=>
-            _value as #field_ty
-        };
-        set_params.push(quote! {
-            #field_name => {
-                self.#field_ident = #set_cast;
-            }
-        });
     }
 
-    (field_params, get_params, set_params)
+    (type_checks, field_params)
+}
+
+fn build_theory_parameters_body(
+    type_checks: &[TokenStream],
+    field_params: &[TokenStream],
+) -> TokenStream {
+    if field_params.is_empty() {
+        return quote! {
+            ::std::collections::HashMap::new()
+        };
+    }
+    let numeric_tys = [
+        quote!(i8),
+        quote!(i16),
+        quote!(i32),
+        quote!(i64),
+        quote!(i128),
+        quote!(isize),
+        quote!(u8),
+        quote!(u16),
+        quote!(u32),
+        quote!(u64),
+        quote!(u128),
+        quote!(usize),
+        quote!(f32),
+        quote!(f64),
+    ];
+    quote! {
+        trait TheoryNumeric {}
+        #(impl TheoryNumeric for #numeric_tys {})*
+        fn assert_theory_numeric<TheoryNumericTarget: TheoryNumeric>(
+            _: &TheoryNumericTarget,
+        ) {}
+        #(#type_checks)*
+        let mut map = ::std::collections::HashMap::new();
+        #(#field_params)*
+        map
+    }
 }
 
 pub(crate) fn derive_theory_impl_with_path(
@@ -344,7 +368,7 @@ pub(crate) fn derive_theory_impl_with_path(
         }
     };
 
-    let (field_params, get_params, set_params) = build_field_tokens(&fields, sm_path, &mut errors);
+    let (type_checks, field_params) = build_field_tokens(&fields, sm_path, &mut errors);
 
     if let Some(err) = errors {
         return err.to_compile_error();
@@ -355,6 +379,7 @@ pub(crate) fn derive_theory_impl_with_path(
     let description = &struct_meta.description;
     let phonetic = &struct_meta.phonetic;
     let citation = &struct_meta.citation;
+    let params_body = build_theory_parameters_body(&type_checks, &field_params);
 
     quote! {
         impl #impl_generics #sm_path::theory::TheoryDescribable for #name #ty_generics #where_clause {
@@ -373,23 +398,7 @@ pub(crate) fn derive_theory_impl_with_path(
                 map
             }
             fn theory_parameters(&self) -> ::std::collections::HashMap<String, #sm_path::theory::ParameterConstraint> {
-                let mut map = ::std::collections::HashMap::new();
-                #(#field_params)*
-                map
-            }
-            #[allow(clippy::unnecessary_cast)]
-            fn get_parameter(&self, _name: &str) -> Option<f64> {
-                match _name {
-                    #(#get_params)*
-                    _ => None,
-                }
-            }
-            #[allow(clippy::unnecessary_cast)]
-            fn set_parameter(&mut self, _name: &str, _value: f64) {
-                match _name {
-                    #(#set_params)*
-                    _ => {}
-                }
+                #params_body
             }
         }
     }
@@ -420,6 +429,9 @@ mod tests {
         .to_string();
         assert!(!expanded.contains("compile_error"));
         assert!(expanded.contains("TheoryDescribable"));
+        assert!(expanded.contains("TheoryNumeric"));
+        assert!(!expanded.contains("unnecessary_cast"));
+        assert!(!expanded.contains(" as "));
     }
 
     #[test]

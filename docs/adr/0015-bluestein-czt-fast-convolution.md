@@ -1,5 +1,9 @@
 # ADR 0015: Bluestein Fast Convolution Algorithm for Chirp-Z Transform
 
+## Status
+
+Accepted
+
 ## Context
 In `crates/domain_physics/src/physics/medical/radar_gating/czt.rs`, `chirp_z_transform` previously evaluated the zoom-FFT discrete spectrum using direct summation over time-domain samples and output frequency bins. For an input signal of length $N$ and output spectrum of $K$ bins, this required $O(N \cdot K)$ complex operations. When computing high-resolution zoom spectra for FMCW radar distance gating ($N \ge 128, K \ge 128$), the quadratic computational scaling created unnecessary latency.
 
