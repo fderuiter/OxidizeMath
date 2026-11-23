@@ -1,4 +1,4 @@
-# ADR 0045: SharedWorkspaceBus Per-Pane Graph Coupling and Zero-Allocation Kuramoto Solver
+# ADR 0046: SharedWorkspaceBus Per-Pane Graph Coupling and Zero-Allocation Kuramoto Solver
 
 ## Status
 
@@ -28,4 +28,4 @@ Accepted (2026-11-22) (extends [ADR 0027](0027-prune-diagnostic-bus-channel-and-
 ## Consequences
 
 - Editing nodes, hubs, or bridge edges in a linked `GraphEditorTool` pane updates `NetworkPropagationTool`, `NetworkMetricsTool`, and `KuramotoOscillatorTool` within one frame.
-- Unlinked multi-pane isolation (`tests_pane_isolation.rs`), feature-isolated builds (`--no-default-features`), zero-allocation `VerifiedAllocator` hot paths, and WASM bundle limits remain intact.
+- Unlinked multi-pane isolation (`tests_pane_isolation.rs`), feature-isolated builds (`--no-default-features`), zero-allocation `VerifiedAllocator` hot paths, `AstVisitor` non-doc attribute scoping for `#[embed_theory]`/`#[verified]` rustdoc examples, and WASM bundle limits remain intact.

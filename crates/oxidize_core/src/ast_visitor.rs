@@ -285,6 +285,18 @@ impl AstVisitor {
         }
     }
 
+    fn inspect_non_doc_attr(&mut self, attr: &syn::Attribute, attr_line: usize) -> bool {
+        let attr_str = quote::quote!(#attr).to_string().replace(' ', "");
+        let mut matched = attr_str.contains("verified_engine::verified")
+            || attr_str.contains("#[verified]")
+            || attr_str.starts_with("#[verified(");
+        if attr_str.contains("embed_theory") {
+            matched = true;
+            self.extract_embed_theory(&attr_str, attr_line);
+        }
+        matched
+    }
+
     fn process_fn_attrs(
         &mut self,
         attrs: &[syn::Attribute],
@@ -300,22 +312,10 @@ impl AstVisitor {
                 continue;
             }
             let attr_line = span_line(attr.span());
-            let attr_str = quote::quote!(#attr).to_string().replace(' ', "");
-
-            if attr_str.contains("verified_engine::verified")
-                || attr_str.contains("#[verified]")
-                || attr_str.starts_with("#[verified(")
-            {
+            if !attr.path().is_ident("doc") && self.inspect_non_doc_attr(attr, attr_line) {
                 is_verified = true;
                 has_semantic = true;
             }
-
-            if attr_str.contains("embed_theory") {
-                is_verified = true;
-                has_semantic = true;
-                self.extract_embed_theory(&attr_str, attr_line);
-            }
-
             let doc_text = quote::quote!(#attr).to_string();
             let extracted =
                 crate::traceability::TraceabilityEngine::<crate::vfs::DefaultVfs>::extract_citations(
