@@ -20,6 +20,7 @@ These commands run automated checks in git hooks or CI.
 | `check-public-debug` | Verifies `Debug` coverage across all reachable public structs and enums in the eight mathematical crates. | Active |
 | `check-staged-duplicates` | Checks for duplicated patterns in git staging (non-blocking legacy helper). | Active |
 | `check-vulnerabilities` | Scans workspace dependencies for known vulnerabilities. | Active |
+| `compile-papers` | Compiles all 28 academic papers with multi-pass `pdflatex` and `bibtex`, emits archive and GitHub Pages HTML catalogs (`index.html` and `pages-index.html`), and packages `papers-bundle.tar.gz` with `SHA256SUMS`. | Active |
 | `lint-all` | Runs the full PR verification suite (formatting, single-pass batched static & AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift, traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, markdown links, and OSV vulnerabilities). | Active |
 | `lint-staged` | Syncs the staged Git index into `<target_dir>/lint-staged-snapshot` and runs offline pre-commit gates (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged` (staged ADR verification, profiles, file lengths, docs, AST clones, traceability, entropy, policy audit), single `.github/` workflow linting, `.md` or deletion/rename link scans, and reverse-dependent + 17-web-crate host/`wasm32` Clippy with root config escalation. | Active |
 | `lint-workflows` | Validates CI workflow definitions. | Active |
@@ -48,6 +49,5 @@ These commands are used for manual repository maintenance or legacy workflows.
 
 | Command | Operational Role | Status |
 |---|---|---|
-| `compile-papers` | Compiles academic papers using Tectonic. | Legacy |
 | `regenerate-baseline` | Regenerates the public API baseline. | Legacy |
 | `setup` | Installs `wasm32-unknown-unknown`, validates `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites, builds and tests the workspace, and configures version-controlled git hooks. | Legacy |
