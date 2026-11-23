@@ -15,10 +15,10 @@ use math_explorer::math_kernel::colormap::{
 use math_explorer::math_kernel::types::flatten_2d_index;
 
 use super::{
-    CARPET_STEPS, DIFF_GRID, FourierOpticsWorkbenchTool, GS_GRID, OpticsDisplayMode, OpticsMode,
-    REAL_SCALAR_TWIN_FLOOR, WorkbenchCache,
+    FourierOpticsWorkbenchTool, OpticsDisplayMode, OpticsMode, WorkbenchCache, CARPET_STEPS,
+    DIFF_GRID, GS_GRID, REAL_SCALAR_TWIN_FLOOR,
 };
-use crate::app::{SemanticPalette, palette::DARK_PALETTE};
+use crate::app::{palette::DARK_PALETTE, SemanticPalette};
 use crate::framework::scoped_panel_id;
 
 impl FourierOpticsWorkbenchTool {
@@ -138,13 +138,14 @@ impl FourierOpticsWorkbenchTool {
             });
             if left || right || up || down {
                 ui.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
-                let step_dir = (if right || up { 1.0 } else { 0.0 })
-                    - (if left || down { 1.0 } else { 0.0 });
+                let step_dir =
+                    (if right || up { 1.0 } else { 0.0 }) - (if left || down { 1.0 } else { 0.0 });
                 if self.state.mode == OpticsMode::HelmholtzDiffraction {
                     self.state.propagation_mm =
                         (self.state.propagation_mm + step_dir * 0.5).clamp(-150.0, 150.0);
                 } else {
-                    let next = (self.state.gs_iterations as isize + step_dir as isize).clamp(1, 100);
+                    let next =
+                        (self.state.gs_iterations as isize + step_dir as isize).clamp(1, 100);
                     self.state.gs_iterations = next as usize;
                 }
                 changed = true;
@@ -190,11 +191,8 @@ impl FourierOpticsWorkbenchTool {
         let key = self.revision ^ ((u64::from(ctx.style().visuals.dark_mode)) << 62);
         if self.texture.is_none() || self.texture_key != key {
             let img = self.build_active_raster_image();
-            self.texture = Some(ctx.load_texture(
-                "fourier_optics_viewport",
-                img,
-                TextureOptions::NEAREST,
-            ));
+            self.texture =
+                Some(ctx.load_texture("fourier_optics_viewport", img, TextureOptions::NEAREST));
             self.texture_key = key;
         }
     }
@@ -214,9 +212,13 @@ impl FourierOpticsWorkbenchTool {
     fn rasterize_diffraction_layer(&self, cache: &WorkbenchCache) -> ColorImage {
         let hc = self.state.high_contrast_colormap;
         match self.state.display {
-            OpticsDisplayMode::IntensityXY => {
-                Self::rasterize_intensity(&cache.diff_intensity, DIFF_GRID, DIFF_GRID, cache.max_intensity, hc)
-            }
+            OpticsDisplayMode::IntensityXY => Self::rasterize_intensity(
+                &cache.diff_intensity,
+                DIFF_GRID,
+                DIFF_GRID,
+                cache.max_intensity,
+                hc,
+            ),
             OpticsDisplayMode::WrappedPhaseXY => {
                 Self::rasterize_phase(&cache.diff_phase, DIFF_GRID, DIFF_GRID, hc)
             }
@@ -247,7 +249,13 @@ impl FourierOpticsWorkbenchTool {
                     .iter()
                     .copied()
                     .fold(1.0e-12_f64, f64::max);
-                Self::rasterize_intensity(cache.gs_solver.target_amplitude(), GS_GRID, GS_GRID, peak, hc)
+                Self::rasterize_intensity(
+                    cache.gs_solver.target_amplitude(),
+                    GS_GRID,
+                    GS_GRID,
+                    peak,
+                    hc,
+                )
             }
             OpticsDisplayMode::SlmPhaseMask8Bit => {
                 let pixels = cache
@@ -386,8 +394,11 @@ impl FourierOpticsWorkbenchTool {
                                 .color(palette.warning),
                         );
                         plot_ui.hline(
-                            HLine::new("Measured Real-Scalar Baseline", cache.real_scalar_metrics.target_nrmse)
-                                .color(palette.series_color(2)),
+                            HLine::new(
+                                "Measured Real-Scalar Baseline",
+                                cache.real_scalar_metrics.target_nrmse,
+                            )
+                            .color(palette.series_color(2)),
                         );
                     });
             }
@@ -413,7 +424,10 @@ impl FourierOpticsWorkbenchTool {
                     phase_slice.push([x_um, cache.diff_phase[idx]]);
                 }
                 vec![
-                    ("Transverse Intensity I(x_um, 0, z)".to_string(), intensity_slice),
+                    (
+                        "Transverse Intensity I(x_um, 0, z)".to_string(),
+                        intensity_slice,
+                    ),
                     ("Wrapped Phase phi(x_um, 0, z)".to_string(), phase_slice),
                 ]
             }
@@ -424,7 +438,10 @@ impl FourierOpticsWorkbenchTool {
                     slm_hist.push([x as f64, f64::from(cache.gs_slm_u8[idx])]);
                 }
                 vec![
-                    ("GS Target NRMSE vs Iteration".to_string(), cache.gs_convergence.clone()),
+                    (
+                        "GS Target NRMSE vs Iteration".to_string(),
+                        cache.gs_convergence.clone(),
+                    ),
                     ("Central Row 8-Bit SLM Phase [0..255]".to_string(), slm_hist),
                 ]
             }

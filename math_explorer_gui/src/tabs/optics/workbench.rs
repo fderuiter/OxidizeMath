@@ -260,7 +260,10 @@ impl InteractiveTool for FourierOpticsWorkbenchTool {
             ("center_intensity", c.center_intensity),
             ("parseval_rel_error", rel_power_err),
             ("target_nrmse", c.gs_metrics.target_nrmse),
-            ("diffraction_efficiency", c.gs_metrics.diffraction_efficiency),
+            (
+                "diffraction_efficiency",
+                c.gs_metrics.diffraction_efficiency,
+            ),
             ("twin_leakage", c.gs_metrics.twin_leakage),
         ]
     }

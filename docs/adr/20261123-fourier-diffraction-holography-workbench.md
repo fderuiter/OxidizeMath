@@ -19,7 +19,7 @@ Accepted — 2026-11-23
    - Introduce [`holography.rs`](../../crates/domain_physics/src/physics/optics/holography.rs) housing `GerchbergSaxtonSolver` seeded deterministically via `oxidize_core::rng::OxidizeRng`, supporting both Fourier-lens and lensless angular-spectrum regimes plus calibrated 8-bit `[0..=255]` SLM phase quantization.
 
 2. **Lazy Interactive Workbench (`math_explorer_gui/src/tabs/optics/`)**:
-   - Register `OpticsTab` (`// @explorer_feature = "physics"`, academic domain `"Physics"`, URL slug `"optics"`) and `FourierOpticsWorkbenchTool` (`domain = "optics"`) with four Starter Gallery cards, `ToolStateBounds` validation, `SemanticPalette` / high-contrast colormaps, URL state roundtrip, and `.png`, `.svg`, `.csv`, and `.json` exports.
+   - Register `OpticsTab` (`#[cfg(feature = "physics")] pub mod optics;` and `TabDescriptor` `id: "optics"`, `order: 18`, academic domain `"Physics"`, URL slug `"optics"`) and `FourierOpticsWorkbenchTool` (`domain = "optics"`) with four Starter Gallery cards, `ToolStateBounds` validation, `SemanticPalette` / high-contrast colormaps, URL state roundtrip, and `.png`, `.svg`, `.csv`, and `.json` exports.
    - Defer FFT planning and wavefield buffer allocation inside `RefCell<Option<WorkbenchCache>>` so `Default::default()` performs zero heavy work during application startup.
 
 ## Consequences

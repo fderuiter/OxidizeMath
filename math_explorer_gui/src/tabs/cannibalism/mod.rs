@@ -1,6 +1,6 @@
-// @explorer_feature = "applied"
-// @explorer_order = 36
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 /// Validated state schema, bounds, and federated presets for age-structured cannibalism.
@@ -67,6 +67,14 @@ impl ExplorerTab for PopulationStructureTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "cannibalism",
+        order: 36,
+        build: || Box::new(PopulationStructureTab::default()),
     }
 }
 

@@ -7,19 +7,19 @@
 use math_explorer::math_kernel::types::flatten_2d_index;
 use math_explorer::num_complex::Complex;
 use math_explorer::physics::optics::diffraction::{
-    AngularSpectrumPropagator, SlitApertureConfig, apply_thin_lens_phase_into,
-    apply_zernike_aberration_into, field_intensity_into, fill_circular_pupil_into,
-    fill_opaque_disk_aperture_into, fill_ronchi_grating_into, fill_slit_aperture_into,
-    fresnel_number, optical_power, talbot_length, wrapped_phase_into,
+    apply_thin_lens_phase_into, apply_zernike_aberration_into, field_intensity_into,
+    fill_circular_pupil_into, fill_opaque_disk_aperture_into, fill_ronchi_grating_into,
+    fill_slit_aperture_into, fresnel_number, optical_power, talbot_length, wrapped_phase_into,
+    AngularSpectrumPropagator, SlitApertureConfig,
 };
 use math_explorer::physics::optics::holography::{
-    GerchbergSaxtonSolver, HologramMetrics, HologramRegime, fill_target_amplitude_into,
+    fill_target_amplitude_into, GerchbergSaxtonSolver, HologramMetrics, HologramRegime,
 };
 use oxidize_core::rng::OxidizeRng;
 
 use super::{
-    AperturePreset, CARPET_STEPS, DIFF_GRID, FourierOpticsState, FourierOpticsWorkbenchTool,
-    GS_GRID, OpticsDisplayMode, OpticsMode,
+    AperturePreset, FourierOpticsState, FourierOpticsWorkbenchTool, OpticsDisplayMode, OpticsMode,
+    CARPET_STEPS, DIFF_GRID, GS_GRID,
 };
 
 pub(crate) struct WorkbenchCache {
@@ -154,7 +154,15 @@ impl FourierOpticsWorkbenchTool {
                 );
             }
             AperturePreset::RonchiGrating => {
-                fill_ronchi_grating_into(out, DIFF_GRID, DIFF_GRID, dx, scale_m, s.duty_cycle, false);
+                fill_ronchi_grating_into(
+                    out,
+                    DIFF_GRID,
+                    DIFF_GRID,
+                    dx,
+                    scale_m,
+                    s.duty_cycle,
+                    false,
+                );
             }
             AperturePreset::ThinQuadraticLens => {
                 fill_circular_pupil_into(out, DIFF_GRID, DIFF_GRID, dx, dx, scale_m);
@@ -170,6 +178,15 @@ impl FourierOpticsWorkbenchTool {
                 );
             }
         }
+        Self::apply_configured_zernike(s, dx, scale_m, out);
+    }
+
+    fn apply_configured_zernike(
+        s: &FourierOpticsState,
+        dx: f64,
+        scale_m: f64,
+        out: &mut [Complex<f64>],
+    ) {
         if s.zernike_rms_waves.abs() > 1.0e-9 {
             let pupil_r = (0.45 * (DIFF_GRID as f64) * dx).min(scale_m.max(80.0e-6));
             apply_zernike_aberration_into(
@@ -256,7 +273,10 @@ impl FourierOpticsWorkbenchTool {
         }
         cache.gs_metrics = cache.gs_solver.metrics();
         cache.gs_solver.quantize_phase_u8_into(&mut cache.gs_slm_u8);
-        field_intensity_into(cache.gs_solver.replay_field(), &mut cache.gs_replay_intensity);
+        field_intensity_into(
+            cache.gs_solver.replay_field(),
+            &mut cache.gs_replay_intensity,
+        );
         cache.max_intensity = cache
             .gs_replay_intensity
             .iter()

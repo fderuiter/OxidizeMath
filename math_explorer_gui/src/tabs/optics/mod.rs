@@ -1,20 +1,18 @@
-// @explorer_feature = "physics"
-// @explorer_order = 18
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 // Interactive 2D Helmholtz angular-spectrum wave diffraction and Gerchberg-Saxton
 // phase-holography workbench under the Physics academic domain.
 
 // [cite:graph_parameters_rust]
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod presets;
 pub mod workbench;
 
 #[cfg(test)]
-pub use workbench::{
-    AperturePreset, FourierOpticsWorkbenchTool, OpticsDisplayMode, OpticsMode,
-};
+pub use workbench::{AperturePreset, FourierOpticsWorkbenchTool, OpticsDisplayMode, OpticsMode};
 
 /// Explorer tab exposing Fourier diffraction, Talbot self-imaging, Zernike lens aberrations,
 /// and Gerchberg-Saxton spatial light modulator phase-holography synthesis.
@@ -74,6 +72,14 @@ impl ExplorerTab for OpticsTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "optics",
+        order: 18,
+        build: || Box::new(OpticsTab::default()),
     }
 }
 

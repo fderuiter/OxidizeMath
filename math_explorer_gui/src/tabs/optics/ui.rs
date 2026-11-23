@@ -13,7 +13,7 @@ use super::{
 };
 use crate::app::SemanticPalette;
 use crate::framework::{
-    PaneSidePanel, PlaybackAction, PlaybackTransport, bounded_drag_value, scoped_panel_id,
+    bounded_drag_value, scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport,
 };
 use crate::reflective_ui::render_copyable_metric;
 use crate::web_io::PlatformInstant;
@@ -81,7 +81,8 @@ impl FourierOpticsWorkbenchTool {
     fn scrub_playback_step(&mut self, step: usize) {
         match self.state.mode {
             OpticsMode::HelmholtzDiffraction => {
-                self.state.propagation_mm = ((step as f64) * 0.4 + 0.2).min(self.state.carpet_max_mm);
+                self.state.propagation_mm =
+                    ((step as f64) * 0.4 + 0.2).min(self.state.carpet_max_mm);
             }
             OpticsMode::GerchbergSaxtonHolography => {
                 self.state.gs_iterations = step.clamp(1, 100);
@@ -212,9 +213,25 @@ impl FourierOpticsWorkbenchTool {
             AperturePreset::ThinQuadraticLens => "Pupil Radius R (um)",
         };
         changed |= ui
-            .add(egui::Slider::new(&mut self.state.feature_scale_um, 16.0..=320.0).text(scale_label))
+            .add(
+                egui::Slider::new(&mut self.state.feature_scale_um, 16.0..=320.0).text(scale_label),
+            )
             .changed();
 
+        changed |= self.draw_aperture_specific_sliders(ui);
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut self.state.carpet_max_mm, 1.0..=200.0)
+                    .text("Carpet Range z_max (mm)"),
+            )
+            .changed();
+
+        changed |= self.draw_zernike_controls(ui);
+        changed
+    }
+
+    fn draw_aperture_specific_sliders(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
         match self.state.aperture {
             AperturePreset::SingleMultiSlit => {
                 changed |= ui
@@ -229,7 +246,9 @@ impl FourierOpticsWorkbenchTool {
             }
             AperturePreset::RonchiGrating => {
                 changed |= ui
-                    .add(egui::Slider::new(&mut self.state.duty_cycle, 0.1..=0.9).text("Duty Cycle"))
+                    .add(
+                        egui::Slider::new(&mut self.state.duty_cycle, 0.1..=0.9).text("Duty Cycle"),
+                    )
                     .changed();
             }
             AperturePreset::ThinQuadraticLens => {
@@ -242,15 +261,6 @@ impl FourierOpticsWorkbenchTool {
             }
             AperturePreset::OpaqueCircularDisk => {}
         }
-
-        changed |= ui
-            .add(
-                egui::Slider::new(&mut self.state.carpet_max_mm, 1.0..=200.0)
-                    .text("Carpet Range z_max (mm)"),
-            )
-            .changed();
-
-        changed |= self.draw_zernike_controls(ui);
         changed
     }
 
@@ -367,54 +377,72 @@ impl FourierOpticsWorkbenchTool {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.strong("Physical Invariants & Telemetry");
         match self.state.mode {
-            OpticsMode::HelmholtzDiffraction => {
-                let drift = if c.power_in > 1.0e-24 {
-                    (c.power_out - c.power_in).abs() / c.power_in
-                } else {
-                    0.0
-                };
-                render_copyable_metric(ui, "Fresnel Number N_F", &format!("{:.4}", c.fresnel_nf))
-                    .on_hover_text("Dimensionless Fresnel zone count a^2 / (lambda * |z|)");
-                render_copyable_metric(ui, "Talbot Length z_T (mm)", &format!("{:.3}", c.talbot_mm))
-                    .on_hover_text("Paraxial periodic self-imaging revival length 2 d^2 / lambda");
-                render_copyable_metric(
-                    ui,
-                    "On-Axis Intensity I(0,0)",
-                    &format!("{:.4}", c.center_intensity),
-                )
-                .on_hover_text("Normalized intensity on the optical axis (exceeds 1.0 for Arago spot at N_F = 2)");
-                ui.colored_label(
-                    palette.success,
-                    format!("Parseval Power Drift: {drift:.2e}"),
-                );
-            }
+            OpticsMode::HelmholtzDiffraction => Self::draw_diffraction_telemetry(c, &palette, ui),
             OpticsMode::GerchbergSaxtonHolography => {
-                render_copyable_metric(
-                    ui,
-                    "Target Amplitude NRMSE",
-                    &format!("{:.4}", c.gs_metrics.target_nrmse),
-                )
-                .on_hover_text("Scale-normalized root-mean-square error against target amplitude (< 0.32 beats 0.707 twin floor)");
-                render_copyable_metric(
-                    ui,
-                    "Diffraction Efficiency",
-                    &format!("{:.2}%", c.gs_metrics.diffraction_efficiency * 100.0),
-                )
-                .on_hover_text("Fraction of replay optical power concentrated inside target support");
-                render_copyable_metric(
-                    ui,
-                    "Conjugate Twin Leakage",
-                    &format!("{:.2}%", c.gs_metrics.twin_leakage * 100.0),
-                )
-                .on_hover_text("Residual power leaking into centrosymmetric conjugate twin region");
-                ui.colored_label(
-                    palette.info,
-                    format!(
-                        "Real-Scalar Twin Floor: {:.3} (measured {:.3})",
-                        REAL_SCALAR_TWIN_FLOOR, c.real_scalar_metrics.target_nrmse
-                    ),
-                );
+                Self::draw_holography_telemetry(c, &palette, ui);
             }
         }
+    }
+
+    fn draw_diffraction_telemetry(
+        c: &super::sim::WorkbenchCache,
+        palette: &SemanticPalette,
+        ui: &mut egui::Ui,
+    ) {
+        let drift = if c.power_in > 1.0e-24 {
+            (c.power_out - c.power_in).abs() / c.power_in
+        } else {
+            0.0
+        };
+        render_copyable_metric(ui, "Fresnel Number N_F", &format!("{:.4}", c.fresnel_nf))
+            .on_hover_text("Dimensionless Fresnel zone count a^2 / (lambda * |z|)");
+        render_copyable_metric(ui, "Talbot Length z_T (mm)", &format!("{:.3}", c.talbot_mm))
+            .on_hover_text("Paraxial periodic self-imaging revival length 2 d^2 / lambda");
+        render_copyable_metric(
+            ui,
+            "On-Axis Intensity I(0,0)",
+            &format!("{:.4}", c.center_intensity),
+        )
+        .on_hover_text(
+            "Normalized intensity on the optical axis (exceeds 1.0 for Arago spot at N_F = 2)",
+        );
+        ui.colored_label(
+            palette.success,
+            format!("Parseval Power Drift: {drift:.2e}"),
+        );
+    }
+
+    fn draw_holography_telemetry(
+        c: &super::sim::WorkbenchCache,
+        palette: &SemanticPalette,
+        ui: &mut egui::Ui,
+    ) {
+        render_copyable_metric(
+            ui,
+            "Target Amplitude NRMSE",
+            &format!("{:.4}", c.gs_metrics.target_nrmse),
+        )
+        .on_hover_text(
+            "Scale-normalized root-mean-square error against target amplitude (< 0.32 beats 0.707 twin floor)",
+        );
+        render_copyable_metric(
+            ui,
+            "Diffraction Efficiency",
+            &format!("{:.2}%", c.gs_metrics.diffraction_efficiency * 100.0),
+        )
+        .on_hover_text("Fraction of replay optical power concentrated inside target support");
+        render_copyable_metric(
+            ui,
+            "Conjugate Twin Leakage",
+            &format!("{:.2}%", c.gs_metrics.twin_leakage * 100.0),
+        )
+        .on_hover_text("Residual power leaking into centrosymmetric conjugate twin region");
+        ui.colored_label(
+            palette.info,
+            format!(
+                "Real-Scalar Twin Floor: {:.3} (measured {:.3})",
+                REAL_SCALAR_TWIN_FLOOR, c.real_scalar_metrics.target_nrmse
+            ),
+        );
     }
 }
