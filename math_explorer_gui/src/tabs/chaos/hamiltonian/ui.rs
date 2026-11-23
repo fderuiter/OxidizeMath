@@ -48,7 +48,7 @@ impl HamiltonianChaosLab {
             Some(PlaybackAction::Pause) => self.is_playing = false,
             Some(PlaybackAction::Step) => self.step_batch(self.steps_per_frame.clamp(1, 128)),
             Some(PlaybackAction::Reset) => self.reset(),
-            None => {}
+            Some(PlaybackAction::StepBack | PlaybackAction::ScrubTo(_)) | None => {}
         }
     }
 

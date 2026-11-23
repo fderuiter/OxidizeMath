@@ -17,11 +17,58 @@ pub struct StateSnapshot {
     /// Serialized parameter-only recovery state from `tool.save_recovery_state()`.
     pub tool_state: Option<String>,
     /// Visual plot datasets captured prior to divergence.
-    pub plot_datasets: Vec<(String, Vec<[f64; 2]>)>,
+    pub plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
     /// Step or frame index when this snapshot was captured.
     pub step_index: usize,
     /// Instant when this snapshot was created.
     pub timestamp: crate::web_io::PlatformInstant,
+}
+
+pub(super) fn shared_datasets_ptr_eq(
+    a: &[(String, egui_plot::SharedPoints)],
+    b: &[(String, egui_plot::SharedPoints)],
+) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b.iter())
+            .all(|((na, pa), (nb, pb))| na == nb && pa.ptr_eq(pb))
+}
+
+fn with_isolated_plot_capture<T>(f: impl FnOnce() -> T) -> T {
+    let prev = egui_plot::get_last_plot_shared_datasets();
+    let prev_3d = egui_plot::get_last_plot_datasets_3d();
+    let prev_prims = egui_plot::get_last_plot_primitives();
+    egui_plot::clear_last_plot_datasets();
+    egui_plot::clear_last_plot_primitives();
+    let out = f();
+    egui_plot::clear_last_plot_datasets();
+    if !prev.is_empty() {
+        egui_plot::append_last_plot_shared_datasets(&prev);
+    }
+    if !prev_3d.is_empty() {
+        egui_plot::append_last_plot_datasets_3d(&prev_3d);
+    }
+    if !prev_prims.is_empty() {
+        egui_plot::append_last_plot_primitives(&prev_prims);
+    }
+    out
+}
+
+pub(super) fn capture_isolated_tool_datasets(
+    tool: &dyn super::InteractiveTool,
+) -> Vec<(String, egui_plot::SharedPoints)> {
+    with_isolated_plot_capture(|| {
+        tool.export_datasets()
+            .into_iter()
+            .map(|(name, pts)| (name, egui_plot::SharedPoints::from(pts)))
+            .collect()
+    })
+}
+
+pub(super) fn capture_isolated_tool_datasets_3d(
+    tool: &dyn super::InteractiveTool,
+) -> Vec<(String, Vec<[f64; 3]>)> {
+    with_isolated_plot_capture(|| tool.export_datasets_3d())
 }
 
 impl StateSnapshot {
@@ -37,17 +84,37 @@ impl StateSnapshot {
     }
 
     pub(super) fn enforce_memory_budget(&mut self) {
-        while self.memory_size() > MAX_SNAPSHOT_BYTES {
-            let mut pruned = false;
-            for (_, pts) in &mut self.plot_datasets {
-                if pts.len() > 100 {
-                    let keep = pts.len() / 2;
-                    pts.drain(0..pts.len() - keep);
-                    pruned = true;
+        if self.memory_size() > MAX_SNAPSHOT_BYTES {
+            let mut target_lens: Vec<usize> = self
+                .plot_datasets
+                .iter()
+                .map(|(_, pts)| pts.len())
+                .collect();
+            let state_bytes = self.tool_state.as_ref().map_or(0, String::len);
+            let name_bytes: usize = self.plot_datasets.iter().map(|(n, _)| n.len()).sum();
+            let fixed = std::mem::size_of::<Self>() + state_bytes + name_bytes;
+            while fixed
+                + target_lens
+                    .iter()
+                    .map(|len| len * std::mem::size_of::<[f64; 2]>())
+                    .sum::<usize>()
+                > MAX_SNAPSHOT_BYTES
+            {
+                let mut pruned = false;
+                for len in &mut target_lens {
+                    if *len > 100 {
+                        *len /= 2;
+                        pruned = true;
+                    }
+                }
+                if !pruned {
+                    break;
                 }
             }
-            if !pruned {
-                break;
+            for ((_, pts), keep) in self.plot_datasets.iter_mut().zip(target_lens) {
+                if keep < pts.len() {
+                    *pts = pts.tail(keep);
+                }
             }
         }
         if self.memory_size() > MAX_SNAPSHOT_BYTES {
@@ -59,29 +126,22 @@ impl StateSnapshot {
     }
 }
 
-fn plot_datasets_signature(datasets: &[(String, Vec<[f64; 2]>)]) -> u64 {
-    use std::hash::{Hash as _, Hasher as _};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    datasets.len().hash(&mut hasher);
-    for (name, pts) in datasets {
-        name.hash(&mut hasher);
-        pts.len().hash(&mut hasher);
-        (pts.as_ptr() as usize).hash(&mut hasher);
-    }
-    hasher.finish()
-}
-
-type CapturedDatasets = Vec<(String, Vec<[f64; 2]>)>;
-
 impl SimulationFramework {
     fn refresh_snapshot_datasets_only(&mut self) {
-        if let Some(snap) = &mut self.last_valid_snapshot {
-            if !self.current_valid_plot_datasets.is_empty()
-                && inspect_datasets_for_divergence(&self.current_valid_plot_datasets).is_ok()
-            {
-                snap.plot_datasets = self.current_valid_plot_datasets.clone();
-                snap.enforce_memory_budget();
-            }
+        let Some(snap) = &mut self.last_valid_snapshot else {
+            return;
+        };
+        if !self.current_valid_plot_datasets.is_empty()
+            && !shared_datasets_ptr_eq(
+                &self.rev_cache.last_snapshot_source_datasets,
+                &self.current_valid_plot_datasets,
+            )
+            && inspect_shared_datasets_for_divergence(&self.current_valid_plot_datasets, &[])
+                .is_ok()
+        {
+            self.rev_cache.last_snapshot_source_datasets = self.current_valid_plot_datasets.clone();
+            snap.plot_datasets = self.current_valid_plot_datasets.clone();
+            snap.enforce_memory_budget();
         }
     }
 
@@ -106,11 +166,12 @@ impl SimulationFramework {
                 .is_some_and(|(n, r)| n == name && r == rev)
             && self.last_valid_snapshot.is_some();
 
-        let current_sig = (!self.current_valid_plot_datasets.is_empty())
-            .then(|| plot_datasets_signature(&self.current_valid_plot_datasets));
         if reuse_cached_state
-            && current_sig.is_some()
-            && self.rev_cache.last_snapshot_plot_sig == current_sig
+            && !self.current_valid_plot_datasets.is_empty()
+            && shared_datasets_ptr_eq(
+                &self.rev_cache.last_snapshot_source_datasets,
+                &self.current_valid_plot_datasets,
+            )
         {
             if let Some(snap) = &mut self.last_valid_snapshot {
                 snap.step_index = self.step_counter;
@@ -131,15 +192,8 @@ impl SimulationFramework {
             saved
         };
 
-        let mut datasets = self.current_valid_plot_datasets.clone();
-        if datasets.is_empty() {
-            let exported = tool.export_datasets();
-            if inspect_datasets_for_divergence(&exported).is_ok() {
-                datasets = exported;
-            }
-        }
-        self.rev_cache.last_snapshot_plot_sig = current_sig;
-
+        let datasets = self.resolve_snapshot_datasets();
+        self.rev_cache.last_snapshot_source_datasets = datasets.clone();
         let mut snapshot = StateSnapshot {
             tool_state,
             plot_datasets: datasets,
@@ -150,15 +204,36 @@ impl SimulationFramework {
         self.last_valid_snapshot = Some(snapshot);
     }
 
+    fn resolve_snapshot_datasets(&self) -> Vec<(String, egui_plot::SharedPoints)> {
+        if !self.current_valid_plot_datasets.is_empty() {
+            return self.current_valid_plot_datasets.clone();
+        }
+        let Some(tool) = &self.active_tool else {
+            return Vec::new();
+        };
+        let exported: Vec<(String, egui_plot::SharedPoints)> = tool
+            .export_datasets()
+            .into_iter()
+            .map(|(n, pts)| (n, egui_plot::SharedPoints::from(pts)))
+            .collect();
+        if inspect_shared_datasets_for_divergence(&exported, &[]).is_ok() {
+            exported
+        } else {
+            Vec::new()
+        }
+    }
+
     fn check_captured_or_tool_divergence(
         &self,
-    ) -> Result<(bool, CapturedDatasets), DiagnosticReport> {
+    ) -> Result<(bool, Vec<(String, egui_plot::SharedPoints)>), DiagnosticReport> {
         if let Some(tool) = &self.active_tool {
             if let Some(report) = tool.diagnostic_report() {
                 return Err(report);
             }
         }
-        let has_plot_datasets = match egui_plot::check_last_plot_datasets_finite() {
+        let has_plot_datasets = match egui_plot::check_last_plot_datasets_finite_skipping(
+            &self.current_valid_plot_datasets,
+        ) {
             Ok(present) => present,
             Err((series_name, axis, idx, bad_val)) => {
                 return Err(DiagnosticReport::new(
@@ -182,13 +257,57 @@ impl SimulationFramework {
                 ));
             }
             if !has_plot_datasets && tool.state_revision() == 0 {
-                tool_datasets = tool.export_datasets();
+                tool_datasets = tool
+                    .export_datasets()
+                    .into_iter()
+                    .map(|(n, pts)| (n, egui_plot::SharedPoints::from(pts)))
+                    .collect();
                 if !tool_datasets.is_empty() {
-                    inspect_datasets_for_divergence(&tool_datasets)?;
+                    inspect_shared_datasets_for_divergence(
+                        &tool_datasets,
+                        &self.current_valid_plot_datasets,
+                    )?;
                 }
             }
         }
         Ok((has_plot_datasets, tool_datasets))
+    }
+
+    fn commit_valid_runtime_datasets(
+        &mut self,
+        has_plot_datasets: bool,
+        tool_datasets: Vec<(String, egui_plot::SharedPoints)>,
+    ) {
+        if self.is_diverged {
+            return;
+        }
+        let active_name = self.active_tool.as_ref().map(|t| t.name());
+        let plot_datasets_3d = egui_plot::get_last_plot_datasets_3d();
+        if !plot_datasets_3d.is_empty() {
+            self.current_valid_plot_datasets_3d = plot_datasets_3d;
+        }
+        if has_plot_datasets {
+            let capture_hash = egui_plot::last_plot_capture_hash();
+            let same_capture = active_name.is_some_and(|name| {
+                self.rev_cache.last_plot_capture_hash == Some((name, capture_hash))
+            }) && !self.current_valid_plot_datasets.is_empty()
+                && self.sync_state.datasets_owner_tool == active_name;
+            if !same_capture {
+                let plot_datasets = egui_plot::get_last_plot_shared_datasets();
+                if !shared_datasets_ptr_eq(&plot_datasets, &self.current_valid_plot_datasets) {
+                    self.current_valid_plot_datasets = plot_datasets;
+                }
+                if let Some(name) = active_name {
+                    self.rev_cache.last_plot_capture_hash = Some((name, capture_hash));
+                }
+            }
+            self.sync_state.datasets_owner_tool = active_name;
+        } else if !tool_datasets.is_empty() {
+            self.current_valid_plot_datasets = tool_datasets;
+            self.rev_cache.last_plot_capture_hash = None;
+            self.sync_state.datasets_owner_tool = active_name;
+        }
+        self.step_counter += 1;
     }
 
     /// Inspects active tool parameters via `has_finite_parameters` and output plot datasets for `NaN`/`Inf`.
@@ -198,30 +317,7 @@ impl SimulationFramework {
             Ok((has_plot_datasets, tool_datasets)) => {
                 self.is_diverged = false;
                 self.diagnostic_report = None;
-                let active_name = self.active_tool.as_ref().map(|t| t.name());
-                let plot_datasets_3d = egui_plot::get_last_plot_datasets_3d();
-                if !plot_datasets_3d.is_empty() {
-                    self.current_valid_plot_datasets_3d = plot_datasets_3d;
-                }
-                if has_plot_datasets {
-                    let capture_hash = egui_plot::last_plot_capture_hash();
-                    let same_capture = active_name.is_some_and(|name| {
-                        self.rev_cache.last_plot_capture_hash == Some((name, capture_hash))
-                    }) && !self.current_valid_plot_datasets.is_empty()
-                        && self.sync_state.datasets_owner_tool == active_name;
-                    if !same_capture {
-                        self.current_valid_plot_datasets = egui_plot::get_last_plot_datasets();
-                        if let Some(name) = active_name {
-                            self.rev_cache.last_plot_capture_hash = Some((name, capture_hash));
-                        }
-                    }
-                    self.sync_state.datasets_owner_tool = active_name;
-                } else if !tool_datasets.is_empty() {
-                    self.current_valid_plot_datasets = tool_datasets;
-                    self.rev_cache.last_plot_capture_hash = None;
-                    self.sync_state.datasets_owner_tool = active_name;
-                }
-                self.step_counter += 1;
+                self.commit_valid_runtime_datasets(has_plot_datasets, tool_datasets);
                 Ok(())
             }
             Err(report) => {

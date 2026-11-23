@@ -29,14 +29,24 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
         OdePreset::HarmonicOscillator => tool.param_k.is_finite() && tool.ic_v0.is_finite(),
         OdePreset::LogisticGrowth => tool.param_r.is_finite() && tool.param_cap_k.is_finite(),
     };
-    !tool.diverged
-        && tool.dt.is_finite()
-        && tool.total_time.is_finite()
-        && tool.ic_y0.is_finite()
-        && params_finite
-        && tool.time_series.iter().all(|t| t.is_finite())
-        && tool.y_series.iter().all(|y| y.is_finite())
-        && tool.v_series.iter().all(|v| v.is_finite())
+    if tool.diverged
+        || !tool.dt.is_finite()
+        || !tool.total_time.is_finite()
+        || !tool.ic_y0.is_finite()
+        || !params_finite
+    {
+        return false;
+    }
+    if tool
+        .series_cache
+        .matches_series(&tool.time_series, &tool.y_series, &tool.v_series)
+    {
+        tool.series_cache.is_series_finite()
+    } else {
+        tool.time_series.iter().all(|t| t.is_finite())
+            && tool.y_series.iter().all(|y| y.is_finite())
+            && tool.v_series.iter().all(|v| v.is_finite())
+    }
 }
 
 impl FiniteStateGuard for OdeSolverTool {

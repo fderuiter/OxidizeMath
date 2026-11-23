@@ -10,6 +10,9 @@ use math_explorer::pure_math::algorithmic_information::fractran::{
     FractranCompiledVm, FractranError, FractranPreset, FractranProgram, FractranState,
     MinskyTransition,
 };
+use math_explorer::pure_math::algorithmic_information::kolmogorov::{
+    bdm_complexity, exponents_to_bits, lz76_complexity,
+};
 use panels::{
     build_export_datasets, build_trace_row, draw_fraction_rules_strip, draw_register_bar_plot,
     draw_status_banner, draw_trace_inspector, TraceRow,
@@ -120,6 +123,7 @@ pub struct FractranMachineTool {
     run_until_pow2_active: bool,
     stop_reason: MachineStopReason,
     validation_error: Option<String>,
+    complexity_bounds: (f64, f64),
 }
 
 impl Default for FractranMachineTool {
@@ -156,6 +160,7 @@ impl FractranMachineTool {
             run_until_pow2_active: false,
             stop_reason: MachineStopReason::Paused,
             validation_error: None,
+            complexity_bounds: (0.0, 0.0),
         };
         tool.record_trace_row();
         tool
@@ -246,9 +251,17 @@ impl FractranMachineTool {
     }
 
     fn pause_with(&mut self, reason: MachineStopReason) -> MachineStopReason {
-        self.is_playing = false;
+        let was_playing = std::mem::take(&mut self.is_playing);
         self.run_until_pow2_active = false;
         self.stop_reason = reason;
+        if was_playing
+            && matches!(
+                reason,
+                MachineStopReason::Halted | MachineStopReason::Overflow { .. }
+            )
+        {
+            crate::audio::notify_playback_paused();
+        }
         reason
     }
 
@@ -310,6 +323,8 @@ impl FractranMachineTool {
     }
 
     fn record_trace_row(&mut self) {
+        let bits = exponents_to_bits(&self.registers);
+        self.complexity_bounds = (bdm_complexity(&bits), lz76_complexity(&bits));
         if self.trace.len() >= MAX_TRACE_ENTRIES {
             self.trace.pop_front();
         }
@@ -387,6 +402,7 @@ impl InteractiveTool for FractranMachineTool {
                 ui.heading("FRACTRAN Prime-Exponent Virtual Machine");
                 self.render_controls_header(ui);
                 self.render_transport_bar(ui);
+                self.render_sonification_bar(ui);
                 draw_status_banner(
                     ui,
                     self.step_count,

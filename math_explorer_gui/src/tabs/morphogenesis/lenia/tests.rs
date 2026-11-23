@@ -60,7 +60,7 @@ fn test_lenia_species_switching_and_gray_scott_modes_in_morphogenesis_tab() {
         spots_state.kinetics_mode,
         MorphogenesisKineticsMode::Schnakenberg
     );
-    assert_eq!(tab.export_config().a, 0.1);
+    assert_eq!(spots_state.a, 0.1);
 
     // Switch cleanly to LeniaTool and cycle Orbium, Geminium, Hydrogeminium, Scutium
     assert!(tab.select_tool_by_name("LeniaTool"));

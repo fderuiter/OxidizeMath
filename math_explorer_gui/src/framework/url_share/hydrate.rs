@@ -132,10 +132,10 @@ impl SimulationFramework {
         let target_idx =
             self.verify_requested_url_tool(params.tool.as_deref(), challenge.tool_name)?;
         let base_json = (challenge.initial_preset_generator)();
-        let initial_state = self
-            .validate_candidate_tool_preset(target_idx, base_json, None)?
-            .0
-            .save_state();
+        let (mut base_candidate, _) =
+            self.validate_candidate_tool_preset(target_idx, base_json, None)?;
+        base_candidate.sync_callouts(challenge.callouts);
+        let initial_state = base_candidate.save_url_state();
         let (candidate, factory_state) = self.validate_candidate_tool_preset(
             target_idx,
             base_json,
@@ -192,10 +192,10 @@ impl SimulationFramework {
         })?;
         let target_idx = self.verify_requested_url_tool(params.tool.as_deref(), story.tool_name)?;
         let step_json = (step.preset_generator)();
-        let step_state = self
-            .validate_candidate_tool_preset(target_idx, step_json, None)?
-            .0
-            .save_state();
+        let (mut step_candidate, _) =
+            self.validate_candidate_tool_preset(target_idx, step_json, None)?;
+        step_candidate.sync_callouts(step.callouts);
+        let step_state = step_candidate.save_url_state();
         let (candidate, factory_state) = self.validate_candidate_tool_preset(
             target_idx,
             step_json,

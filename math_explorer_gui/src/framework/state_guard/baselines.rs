@@ -40,6 +40,7 @@ impl SimulationFramework {
         egui_plot::clear_last_plot_datasets();
         self.current_valid_plot_datasets.clear();
         self.current_valid_plot_datasets_3d.clear();
+        self.rev_cache.last_plot_capture_hash = None;
         self.sync_state.datasets_owner_tool = None;
         self.is_diverged = false;
         self.diagnostic_report = None;
@@ -154,6 +155,7 @@ impl SimulationFramework {
             self.saved_tool_states.remove(tool.name());
         }
         self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
+        self.rev_cache.last_snapshot_source_datasets.clear();
         let mut snap = StateSnapshot {
             tool_state: recovery_state,
             plot_datasets: Vec::new(),
@@ -196,10 +198,14 @@ impl SimulationFramework {
             self.preset_tool_states.remove(&tool_name);
             self.saved_tool_states.remove(&tool_name);
         }
-        let datasets = crate::framework::persistence::capture_isolated_tool_datasets(tool.as_ref());
+        let datasets = super::capture_isolated_tool_datasets(tool.as_ref());
+        let datasets_3d = super::capture_isolated_tool_datasets_3d(tool.as_ref());
         self.sync_state.datasets_owner_tool = Some(tool.name());
         self.current_valid_plot_datasets = datasets.clone();
+        self.current_valid_plot_datasets_3d = datasets_3d;
+        self.rev_cache.last_plot_capture_hash = None;
         self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
+        self.rev_cache.last_snapshot_source_datasets = datasets.clone();
         let mut snap = StateSnapshot {
             tool_state: recovery,
             plot_datasets: datasets,

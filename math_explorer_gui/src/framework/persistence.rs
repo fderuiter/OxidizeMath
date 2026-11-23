@@ -150,35 +150,6 @@ struct FrameworkStateDeserialize {
     plot_states: plot_persistence::SavedPlotStatesMap,
 }
 
-fn capture_isolated_with<T>(f: impl FnOnce() -> Vec<T>) -> Vec<T> {
-    let prev = egui_plot::get_last_plot_datasets();
-    let prev_3d = egui_plot::get_last_plot_datasets_3d();
-    let prev_prims = egui_plot::get_last_plot_primitives();
-    egui_plot::clear_last_plot_datasets();
-    let out = f();
-    egui_plot::clear_last_plot_datasets();
-    if !prev.is_empty() {
-        egui_plot::append_last_plot_datasets(&prev);
-    }
-    if !prev_3d.is_empty() {
-        egui_plot::append_last_plot_datasets_3d(&prev_3d);
-    }
-    if !prev_prims.is_empty() {
-        egui_plot::append_last_plot_primitives(&prev_prims);
-    }
-    out
-}
-
-pub(super) fn capture_isolated_tool_datasets(
-    tool: &dyn InteractiveTool,
-) -> Vec<(String, Vec<[f64; 2]>)> {
-    capture_isolated_with(|| tool.export_datasets())
-}
-
-fn capture_isolated_tool_datasets_3d(tool: &dyn InteractiveTool) -> Vec<(String, Vec<[f64; 3]>)> {
-    capture_isolated_with(|| tool.export_datasets_3d())
-}
-
 impl SimulationFramework {
     /// Creates a new simulation framework discovering registered tools for `domain`.
     pub fn new(domain: &str) -> Self {
@@ -238,8 +209,10 @@ impl SimulationFramework {
         self.rev_cache.framework_revision = self.rev_cache.framework_revision.wrapping_add(1);
         self.rev_cache.untracked_tool_revision =
             self.rev_cache.untracked_tool_revision.wrapping_add(1);
+        self.rev_cache.untracked_url_digest.set(None);
         *self.rev_cache.active_tool_json.borrow_mut() = None;
         self.rev_cache.last_snapshot_rev = None;
+        self.rev_cache.last_snapshot_source_datasets.clear();
     }
 
     /// Computes a deterministic O(1) revision token for this framework's persisted state.
@@ -364,20 +337,23 @@ impl SimulationFramework {
         let Some(tool) = self.active_tool.as_ref() else {
             return;
         };
-        let datasets = capture_isolated_tool_datasets(tool.as_ref());
-        let datasets_3d = capture_isolated_tool_datasets_3d(tool.as_ref());
+        let datasets = state_guard::capture_isolated_tool_datasets(tool.as_ref());
+        let datasets_3d = state_guard::capture_isolated_tool_datasets_3d(tool.as_ref());
         let recovery = tool.save_recovery_state();
         let rev = tool.state_revision();
         self.sync_state.datasets_owner_tool = Some(tool.name());
         self.current_valid_plot_datasets = datasets.clone();
         self.current_valid_plot_datasets_3d = datasets_3d;
         self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
-        self.last_valid_snapshot = Some(StateSnapshot {
+        self.rev_cache.last_snapshot_source_datasets = datasets.clone();
+        let mut snap = StateSnapshot {
             tool_state: recovery,
             plot_datasets: datasets,
             step_index,
             timestamp: crate::web_io::PlatformInstant::now(),
-        });
+        };
+        snap.enforce_memory_budget();
+        self.last_valid_snapshot = Some(snap);
     }
 
     fn reload_existing_active_tool(&mut self, idx: usize) {

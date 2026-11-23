@@ -23,6 +23,7 @@ scan_paths = [
 target_extensions = ["rs", "toml", "yml", "yaml", "json", "sh", "js", "html"]
 allowlist = [
     "crates/unified_verification/src/entropy_guard/tests.rs",
+    "crates/unified_verification/api_baseline.json",
 ]
 
 [[workflow_linter.exceptions]]
@@ -129,7 +130,6 @@ allowlist = [
     "docs/adr/0037-glicko2-frozen-period-tournament-simulator.md",
     "docs/adr/0037-remove-vfs-codegen-and-reject-wasm-list-dir.md",
     "docs/adr/0037-retire-physics-compatibility-shims.md",
-    "docs/adr/0037-unify-trait-diagnostics-baselines-and-resets.md",
     "docs/adr/0038-federated-inverse-challenges-and-hud.md",
     "docs/adr/0038-prime-exponent-fractran-vm-and-minsky-gui.md",
     "docs/adr/0038-watertight-3d-stl-and-ply-exports.md",
@@ -346,7 +346,7 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/vector_calculus/theorems.rs" = 2
 "crates/pure_math/src/theory_macro.rs" = 2
 "math_explorer_gui/src/accessibility.rs" = 7
-"math_explorer_gui/src/async_sim/mod.rs" = 34
+"math_explorer_gui/src/async_sim/mod.rs" = 22
 "math_explorer_gui/src/async_sim/registry.rs" = 7
 "math_explorer_gui/src/async_sim/state.rs" = 32
 "math_explorer_gui/src/async_sim/unified/mod.rs" = 2
@@ -359,7 +359,6 @@ vendored_crates = [
 "math_explorer_gui/src/tabs/ai/reward_plots.rs" = 4
 "math_explorer_gui/src/tabs/chaos/attractors/runner.rs" = 3
 "math_explorer_gui/src/tabs/epidemiology/sir.rs" = 2
-"math_explorer_gui/src/tabs/morphogenesis/runner.rs" = 2
 "math_explorer_gui/src/tabs/morphogenesis/tool.rs" = 2
 "math_explorer_gui/src/tabs/mri/runner.rs" = 3
 "math_explorer_gui/src/tabs/mri/tool.rs" = 2

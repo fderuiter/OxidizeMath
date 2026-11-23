@@ -138,6 +138,34 @@ impl AttractorPlotter {
         });
     }
 
+    fn handle_transport_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
+        match action {
+            PlaybackAction::Play => {
+                let _ = self.try_resume();
+            }
+            PlaybackAction::Pause => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::Pause);
+            }
+            PlaybackAction::Step => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::Step(1));
+            }
+            PlaybackAction::StepBack => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::StepBack(1));
+            }
+            PlaybackAction::ScrubTo(step) => {
+                self.execution_state = SolverExecutionState::Paused;
+                let _ = self.worker.send_command(SimCommand::SeekStep(step));
+            }
+            PlaybackAction::Reset => {
+                self.reset();
+                ctx.request_repaint();
+            }
+        }
+    }
+
     fn draw_simulation_controls(
         &mut self,
         ui: &mut egui::Ui,
@@ -162,10 +190,11 @@ impl AttractorPlotter {
                     "Attractor Plotter",
                     transport_state,
                 )
+                .timeline(self.worker.timeline_metadata())
                 .can_reset(true)
                 .show(ui)
                 {
-                    self.handle_playback_action(action, ctx);
+                    self.handle_transport_action(action, ctx);
                 }
 
                 if ui
@@ -193,26 +222,6 @@ impl AttractorPlotter {
                     self.on_slider_changed();
                 }
             });
-    }
-
-    fn handle_playback_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {
-        match action {
-            PlaybackAction::Play => {
-                let _ = self.try_resume();
-            }
-            PlaybackAction::Pause => {
-                self.execution_state = SolverExecutionState::Paused;
-                let _ = self.worker.send_command(SimCommand::Pause);
-            }
-            PlaybackAction::Step => {
-                self.execution_state = SolverExecutionState::Paused;
-                let _ = self.worker.send_command(SimCommand::Step(1));
-            }
-            PlaybackAction::Reset => {
-                self.reset();
-                ctx.request_repaint();
-            }
-        }
     }
 
     fn clear_callout_drag(&mut self, plot_ui: &egui_plot::PlotUi<'_>) {

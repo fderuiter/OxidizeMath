@@ -34,6 +34,7 @@ impl MriKSpaceTool {
         }
 
         while let Some(snap) = self.worker.update() {
+            self.latest_sonification = snap.sonification;
             if let Some(data) = snap
                 .structured_data
                 .as_ref()
@@ -304,6 +305,7 @@ impl MriKSpaceTool {
                     PlaybackAction::Step => {
                         let _ = self.worker.send_command(SimCommand::Step(1));
                     }
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => {
                         self.reset();
                         ctx.request_repaint();

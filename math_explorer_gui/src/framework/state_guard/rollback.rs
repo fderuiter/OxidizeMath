@@ -91,12 +91,13 @@ impl SimulationFramework {
             self.restore_verified_recovery_state(snapshot.tool_state.as_deref());
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
-        let plots =
-            if !used_fallback && inspect_datasets_for_divergence(&snapshot.plot_datasets).is_ok() {
-                snapshot.plot_datasets
-            } else {
-                Vec::new()
-            };
+        let plots = if !used_fallback
+            && inspect_shared_datasets_for_divergence(&snapshot.plot_datasets, &[]).is_ok()
+        {
+            snapshot.plot_datasets
+        } else {
+            Vec::new()
+        };
         self.restore_snapshot_plots(plots);
         if used_fallback {
             self.refresh_saved_and_snapshot_after_reset();
@@ -109,21 +110,7 @@ impl SimulationFramework {
     /// Executes the Auto-Scale Step Size action: halves `dt` on the recovery snapshot or via domain hook while preserving pinned baselines.
     pub fn rollback_auto_scale_step_size(&mut self) -> bool {
         let Some(snapshot) = self.last_valid_snapshot.clone() else {
-            if let Some(tool) = &mut self.active_tool {
-                if tool.auto_scale_step_size() && tool.has_finite_parameters() {
-                    self.bump_framework_revision();
-                    let valid_plots = self.current_valid_plot_datasets.clone();
-                    self.restore_snapshot_plots(valid_plots);
-                    self.refresh_saved_and_snapshot_after_reset();
-                    emit_recovery_telemetry(
-                        "SimulationFramework",
-                        "Auto-scale Step Size (dt)",
-                        "Halved step size via domain hook",
-                    );
-                    return true;
-                }
-            }
-            return false;
+            return self.auto_scale_without_snapshot();
         };
         let scaled = snapshot
             .tool_state
@@ -152,12 +139,13 @@ impl SimulationFramework {
         }
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
-        let plots =
-            if !used_fallback && inspect_datasets_for_divergence(&snapshot.plot_datasets).is_ok() {
-                snapshot.plot_datasets
-            } else {
-                Vec::new()
-            };
+        let plots = if !used_fallback
+            && inspect_shared_datasets_for_divergence(&snapshot.plot_datasets, &[]).is_ok()
+        {
+            snapshot.plot_datasets
+        } else {
+            Vec::new()
+        };
         self.restore_snapshot_plots(plots);
         if used_fallback {
             self.refresh_saved_and_snapshot_after_reset();
@@ -171,15 +159,37 @@ impl SimulationFramework {
         true
     }
 
-    pub(super) fn restore_snapshot_plots(&mut self, plot_datasets: Vec<(String, Vec<[f64; 2]>)>) {
+    fn auto_scale_without_snapshot(&mut self) -> bool {
+        if let Some(tool) = &mut self.active_tool {
+            if tool.auto_scale_step_size() && tool.has_finite_parameters() {
+                self.bump_framework_revision();
+                let valid_plots = self.current_valid_plot_datasets.clone();
+                self.restore_snapshot_plots(valid_plots);
+                self.refresh_saved_and_snapshot_after_reset();
+                emit_recovery_telemetry(
+                    "SimulationFramework",
+                    "Auto-scale Step Size (dt)",
+                    "Halved step size via domain hook",
+                );
+                return true;
+            }
+        }
+        false
+    }
+
+    pub(super) fn restore_snapshot_plots(
+        &mut self,
+        plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
+    ) {
         egui_plot::clear_last_plot_datasets();
-        egui_plot::append_last_plot_datasets(&plot_datasets);
+        egui_plot::append_last_plot_shared_datasets(&plot_datasets);
         self.sync_state.datasets_owner_tool = self
             .active_tool
             .as_ref()
             .filter(|_| !plot_datasets.is_empty())
             .map(|t| t.name());
         self.current_valid_plot_datasets = plot_datasets;
+        self.rev_cache.last_plot_capture_hash = None;
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.resync_active_hud_callouts();
