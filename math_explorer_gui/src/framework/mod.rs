@@ -11,6 +11,16 @@ mod challenge_hud_tests;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod code_export;
+pub mod code_export_modal;
+#[cfg(all(
+    test,
+    feature = "pure_math",
+    feature = "physics",
+    feature = "applied",
+    feature = "epidemiology"
+))]
+mod code_export_tests;
 pub mod counterfactual;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
@@ -83,6 +93,8 @@ pub use brush_dispatch::{PlotBrushController, PlotBrushFrame};
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
+pub use code_export::*;
+pub use code_export_modal::CodeExportTab;
 pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
@@ -308,33 +320,22 @@ pub trait InteractiveTool {
 
     /// Serializes active parameter preset state to a formatted JSON string with metadata envelope.
     fn export_preset_json(&self) -> Result<String, String> {
-        if let Some(state_str) = self.save_state() {
-            let config: serde_json::Value = serde_json::from_str(&state_str)
-                .map_err(|e| format!("Serialization error: {e}"))?;
-            crate::presets::serialize_preset_envelope(self.name(), self.domain(), config)
-        } else {
-            Err(format!("Preset export not supported for {}", self.name()))
-        }
+        export_persistence::export_tool_preset_json(self)
     }
 
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let bounds = self.state_bounds();
-        let config: Box<serde_json::value::RawValue> =
-            crate::presets::deserialize_preset_envelope_bounded(
-                json_str,
-                self.domain(),
-                self.name(),
-                bounds,
-            )?;
-        let config_str = config.get();
-        bounds.validate_json(config_str)?;
-        self.try_load_state(config_str)
+        export_persistence::import_tool_preset_json(self, json_str)
     }
 
-    /// Declares which dataset and figure export formats this tool supports.
+    /// Declares which dataset, figure, and code export formats this tool supports.
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
+    }
+
+    /// Optional cold-path hook returning calibrated LaTeX, Rust, and Python code artifacts.
+    fn export_code_artifact(&self) -> Option<CodeArtifact> {
+        None
     }
 
     /// Optional hook to export tool datasets.
@@ -403,22 +404,7 @@ pub trait InteractiveTool {
         &mut self,
         num_frames: usize,
     ) -> Vec<egui_plot::export::DatasetFrame> {
-        let count = num_frames.max(1);
-        let mut frames = Vec::with_capacity(count);
-        for _ in 0..count {
-            self.step_simulation();
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames.push(ds);
-            }
-        }
-        if frames.is_empty() {
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames = egui_plot::export::sample_progressive_frames(&ds, count);
-            }
-        }
-        frames
+        export_figure::sample_tool_animation_frames(self, num_frames)
     }
 
     /// Returns a type-erased reference for concrete tool state inspection.
@@ -447,6 +433,8 @@ pub struct SimulationFramework {
     pub(super) last_announced_count: Option<usize>,
     pub(super) last_announced_query: String,
     pub show_export_modal: bool,
+    pub show_code_export_modal: bool,
+    pub code_export_tab: CodeExportTab,
     pub export_options: egui_plot::export::ExportOptions,
     pub export_bg_dark: bool,
     pub export_gif_fps: u32,

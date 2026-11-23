@@ -2,13 +2,17 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::challenge::GEOGRAPHIC_MISS_CEILING_MM;
+use super::pipeline::RadarPipeline;
 use super::spectra::SpectralSnapshot;
 use super::state::{RadarGatingState, ScattererPoint};
 use crate::accessibility::{
     lock_canvas_arrow_keys, paint_canvas_focus_ring, register_canvas_accessibility,
 };
 use crate::app::theme::SemanticPalette;
-use eframe::egui::{self, accesskit::Role, Key, Pos2, Rect, Sense, Stroke, Vec2};
+use crate::framework::CalloutManager;
+use eframe::egui::{self, accesskit::Role, Color32, Key, Pos2, Rect, Sense, Stroke, Vec2};
+use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints, VLine};
 
 const ROOM_HALF_WIDTH_M: f32 = 1.25;
 const ROOM_MIN_DEPTH_M: f32 = 0.0;
@@ -317,6 +321,136 @@ fn paint_canvas_legend(
         egui::FontId::proportional(11.0),
         palette.muted_text,
     );
+}
+
+fn trace_line(name: &'static str, pts: Vec<[f64; 2]>, color: Color32, width: f32) -> Line<'static> {
+    Line::new(name, PlotPoints::from(pts))
+        .color(color)
+        .width(width)
+}
+
+pub(super) fn render_spectra_plot(
+    ui: &mut egui::Ui,
+    state: &RadarGatingState,
+    pipeline: &RadarPipeline,
+    height: f32,
+) {
+    let palette = SemanticPalette::from_visuals(ui.visuals());
+    let center = 0.5 * (state.primary_target.range_m() + state.secondary_target.range_m());
+    let half_rayleigh = 0.5 * pipeline.spectra.rayleigh_limit_m;
+
+    Plot::new("radar_range_super_resolution_plot")
+        .height(height)
+        .legend(Legend::default())
+        .x_axis_label("Slant Range R (m)")
+        .y_axis_label("Normalized Power / Pseudospectrum")
+        .show(ui, |plot_ui| {
+            plot_ui.line(trace_line(
+                "Coarse FFT",
+                pipeline.spectra.coarse_fft.clone(),
+                palette.muted_text,
+                1.8,
+            ));
+            plot_ui.line(trace_line(
+                "Spatial CZT Zoom",
+                pipeline.spectra.czt_zoom.clone(),
+                palette.info,
+                2.0,
+            ));
+            plot_ui.line(trace_line(
+                "MUSIC Pseudospectrum",
+                pipeline.spectra.music_pseudospectrum.clone(),
+                palette.success,
+                2.4,
+            ));
+            plot_ui
+                .vline(VLine::new("c / 2B Lower", center - half_rayleigh).color(palette.warning));
+            plot_ui
+                .vline(VLine::new("c / 2B Upper", center + half_rayleigh).color(palette.warning));
+        });
+}
+
+pub(super) fn render_gating_timeline_plot(
+    ui: &mut egui::Ui,
+    state: &RadarGatingState,
+    pipeline: &RadarPipeline,
+    callouts: &mut CalloutManager,
+    height: f32,
+) {
+    let palette = SemanticPalette::from_visuals(ui.visuals());
+    Plot::new("radar_kalman_gating_timeline_plot")
+        .height(height)
+        .legend(Legend::default())
+        .x_axis_label("Simulation Time (s)")
+        .y_axis_label("Displacement (mm) & Gate Windows")
+        .show(ui, |plot_ui| {
+            draw_gating_timeline_traces(plot_ui, state, pipeline, &palette);
+            callouts.render_on_plot(plot_ui);
+        });
+}
+
+fn draw_gating_timeline_traces(
+    plot_ui: &mut egui_plot::PlotUi<'_>,
+    state: &RadarGatingState,
+    pipeline: &RadarPipeline,
+    palette: &SemanticPalette,
+) {
+    let (thresh, hyst) = (state.gating_threshold_mm, state.gating_hysteresis_mm);
+    plot_ui.line(
+        trace_line(
+            "Ground-Truth z_true (mm)",
+            pipeline.true_trace_mm.clone(),
+            palette.accent,
+            1.9,
+        )
+        .style(LineStyle::Dashed { length: 6.0 }),
+    );
+    for (name, pts, color, width) in [
+        (
+            "Unwrapped + Surface Chest (mm)",
+            pipeline.measured_trace_mm.clone(),
+            palette.series_color(0),
+            1.6,
+        ),
+        (
+            "Kalman Lookahead (mm)",
+            pipeline.kalman_trace_mm.clone(),
+            palette.series_color(4),
+            2.2,
+        ),
+        (
+            "Delayed Physical Beam ON",
+            scale_gate_strip(&pipeline.physical_beam_trace, 4.0, -9.0),
+            palette.success,
+            2.0,
+        ),
+        (
+            "BeamHold Window",
+            scale_gate_strip(&pipeline.beam_hold_trace, 2.5, 7.0),
+            palette.warning,
+            1.6,
+        ),
+        (
+            "SafetyInterlock",
+            scale_gate_strip(&pipeline.interlock_trace, 4.0, 10.0),
+            palette.error,
+            2.2,
+        ),
+    ] {
+        plot_ui.line(trace_line(name, pts, color, width));
+    }
+    plot_ui.hline(
+        HLine::new("Miss Ceiling (-1.20 mm)", GEOGRAPHIC_MISS_CEILING_MM).color(palette.error),
+    );
+    plot_ui.hline(HLine::new("Gate ON (T - H)", thresh - hyst).color(palette.success));
+    plot_ui.hline(HLine::new("Gate OFF (T + H)", thresh + hyst).color(palette.warning));
+}
+
+fn scale_gate_strip(trace: &[[f64; 2]], scale: f64, offset: f64) -> Vec<[f64; 2]> {
+    trace
+        .iter()
+        .map(|&[t, v]| [t, v * scale + offset])
+        .collect()
 }
 
 // [cite:mmwave_radiotherapy_setup]

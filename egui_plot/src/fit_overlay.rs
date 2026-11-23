@@ -394,6 +394,7 @@ pub(crate) fn paint_fit_status_overlay(
                     result,
                     layout.dataset_idx,
                     *accent_color,
+                    &mut access_state.import_toast,
                 );
             }
         }
@@ -466,6 +467,7 @@ fn paint_succeeded_fit_frame(
     fit_res: &FitResult,
     dataset_idx: usize,
     accent_color: Color32,
+    import_toast: &mut Option<(String, bool)>,
 ) {
     let max_frame_w = avail_rect.width().clamp(64.0, 384.0);
     let wrap_w = (max_frame_w - 16.0).max(48.0);
@@ -505,6 +507,7 @@ fn paint_succeeded_fit_frame(
                             .small()
                             .color(ui.visuals().text_color()),
                     );
+                    crate::fit_export::render_fit_overlay_actions(ui, fit_res, import_toast);
                 });
             });
     });
