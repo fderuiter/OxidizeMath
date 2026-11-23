@@ -3917,6 +3917,240 @@
       "signature": "pub trait GalaxyModel { fn redshift_from_log_mass (& self , m : SolarMassLog) -> Redshift }"
     }
   ],
+  "crates/domain_physics/src/physics/astrophysics/mod.rs": [
+    {
+      "signature": "pub use galaxies :: GalaxyModel"
+    },
+    {
+      "signature": "pub use galaxies :: GeneralIrregular"
+    },
+    {
+      "signature": "pub use galaxies :: Magnitude"
+    },
+    {
+      "signature": "pub use galaxies :: Mpc"
+    },
+    {
+      "signature": "pub use galaxies :: Redshift"
+    },
+    {
+      "signature": "pub use galaxies :: SolarMassLog"
+    },
+    {
+      "signature": "pub use galaxies :: TypeCode10"
+    },
+    {
+      "signature": "pub use galaxies :: TypeCode95To99"
+    },
+    {
+      "signature": "pub use orbits :: GalacticDiskSystem"
+    },
+    {
+      "signature": "pub use orbits :: KPC_PER_MYR_PER_KMS"
+    },
+    {
+      "signature": "pub use orbits :: OrbitParticleKind"
+    },
+    {
+      "signature": "pub use orbits :: OrbitPopulationConfig"
+    },
+    {
+      "signature": "pub use orbits :: OrbitalInvariants"
+    },
+    {
+      "signature": "pub use orbits :: OrbitalState"
+    },
+    {
+      "signature": "pub use orbits :: SECONDS_PER_MYR"
+    },
+    {
+      "signature": "pub use orbits :: planar_acceleration"
+    },
+    {
+      "signature": "pub use rotation_curves :: BaryonicDiskConfig"
+    },
+    {
+      "signature": "pub use rotation_curves :: DwarfMorphology"
+    },
+    {
+      "signature": "pub use rotation_curves :: G_KPC_KMS2_PER_SOLAR_MASS"
+    },
+    {
+      "signature": "pub use rotation_curves :: HaloProfile"
+    },
+    {
+      "signature": "pub use rotation_curves :: METERS_PER_KPC"
+    },
+    {
+      "signature": "pub use rotation_curves :: MIN_GALACTOCENTRIC_RADIUS_KPC"
+    },
+    {
+      "signature": "pub use rotation_curves :: TillaboevScalingSummary"
+    },
+    {
+      "signature": "pub use rotation_curves :: VelocityDecomposition"
+    },
+    {
+      "signature": "pub use rotation_curves :: baryons_from_absolute_magnitude"
+    },
+    {
+      "signature": "pub use rotation_curves :: baryons_from_distance"
+    },
+    {
+      "signature": "pub use rotation_curves :: clamp_radius_kpc"
+    },
+    {
+      "signature": "pub use rotation_curves :: decompose_rotation_curve"
+    },
+    {
+      "signature": "pub use rotation_curves :: sample_rotation_curve_into"
+    },
+    {
+      "signature": "pub use rotation_curves :: total_gravitational_potential"
+    }
+  ],
+  "crates/domain_physics/src/physics/astrophysics/orbits.rs": [
+    {
+      "signature": "impl GalacticDiskSystem { pub fn copy_particle_trail (& self , particle_idx : usize , out : & mut [[f64 ; 2]]) -> usize }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn elapsed_myr (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn from_baryons (baryons : BaryonicDiskConfig , halo : HaloProfile , population : OrbitPopulationConfig ,) -> Self }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn from_galaxy_model < M : GalaxyModel > (model : & M , distance : Mpc , gas_fraction : f64 , disk_scale_kpc : f64 , halo : HaloProfile , population : OrbitPopulationConfig ,) -> Self }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn from_morphology (morphology : DwarfMorphology , distance : Mpc , gas_fraction : f64 , disk_scale_kpc : f64 , halo : HaloProfile , population : OrbitPopulationConfig ,) -> Self }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn particle_invariants (& self , index : usize) -> Option < OrbitalInvariants > }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn particles (& self) -> & [OrbitalState] }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn relative_angular_momentum_drift (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn relative_energy_drift (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn reseed_orbits (& mut self , disk_tracers : usize , tidal_tracers : usize , tidal_tangential_ratio : f64 ,) }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn step_leapfrog (& mut self , dt_myr : f64) }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn step_n_leapfrog (& mut self , dt_myr : f64 , substeps : usize) }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn step_n_verified (& mut self , dt_myr : f64 , substeps : usize) -> (u64 , u64) }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn total_angular_momentum (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn total_energy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GalacticDiskSystem { pub fn trail_len (& self) -> usize }"
+    },
+    {
+      "signature": "pub const KPC_PER_MYR_PER_KMS : f64 = (1_000.0 * SECONDS_PER_MYR) / METERS_PER_KPC"
+    },
+    {
+      "signature": "pub const SECONDS_PER_MYR : f64 = 3.155_76e13"
+    },
+    {
+      "signature": "pub enum OrbitParticleKind"
+    },
+    {
+      "signature": "pub fn planar_acceleration (x_kpc : f64 , y_kpc : f64 , baryons : & BaryonicDiskConfig , halo : & HaloProfile ,) -> (f64 , f64)"
+    },
+    {
+      "signature": "pub struct GalacticDiskSystem"
+    },
+    {
+      "signature": "pub struct OrbitPopulationConfig"
+    },
+    {
+      "signature": "pub struct OrbitalInvariants"
+    },
+    {
+      "signature": "pub struct OrbitalState"
+    }
+  ],
+  "crates/domain_physics/src/physics/astrophysics/rotation_curves.rs": [
+    {
+      "signature": "impl DwarfMorphology { pub fn apparent_magnitude_from_distance (& self , distance : Mpc) -> Option < Magnitude > }"
+    },
+    {
+      "signature": "impl DwarfMorphology { pub fn baryonic_config_from_distance (& self , distance : Mpc , gas_fraction : f64 , disk_scale_kpc : f64 ,) -> BaryonicDiskConfig }"
+    },
+    {
+      "signature": "impl DwarfMorphology { pub fn baryonic_config_from_magnitude (& self , abs_mag_v : Magnitude , gas_fraction : f64 , disk_scale_kpc : f64 ,) -> BaryonicDiskConfig }"
+    },
+    {
+      "signature": "impl DwarfMorphology { pub fn label (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl DwarfMorphology { pub fn log_mass_from_absolute_magnitude (& self , abs_mag_v : Magnitude) -> SolarMassLog }"
+    },
+    {
+      "signature": "impl DwarfMorphology { pub fn log_mass_from_distance (& self , distance : Mpc) -> SolarMassLog }"
+    },
+    {
+      "signature": "impl DwarfMorphology { pub fn redshift_from_log_mass (& self , log_mass : SolarMassLog) -> Redshift }"
+    },
+    {
+      "signature": "impl HaloProfile { pub fn label (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub const G_KPC_KMS2_PER_SOLAR_MASS : f64 = (math_commons :: constants :: G * math_commons :: constants :: SOLAR_MASS) / (METERS_PER_KPC * 1.0e6)"
+    },
+    {
+      "signature": "pub const METERS_PER_KPC : f64 = 3.085_677_581_491_367e19"
+    },
+    {
+      "signature": "pub const MIN_GALACTOCENTRIC_RADIUS_KPC : f64 = 1.0e-3"
+    },
+    {
+      "signature": "pub enum DwarfMorphology"
+    },
+    {
+      "signature": "pub enum HaloProfile"
+    },
+    {
+      "signature": "pub fn baryons_from_absolute_magnitude < M : GalaxyModel > (model : & M , abs_magnitude_v : Magnitude , gas_fraction : f64 , disk_scale_kpc : f64 ,) -> BaryonicDiskConfig"
+    },
+    {
+      "signature": "pub fn baryons_from_distance < M : GalaxyModel > (model : & M , distance : Mpc , gas_fraction : f64 , disk_scale_kpc : f64 ,) -> BaryonicDiskConfig"
+    },
+    {
+      "signature": "pub fn clamp_radius_kpc (r_kpc : f64) -> f64"
+    },
+    {
+      "signature": "pub fn decompose_rotation_curve (r_kpc : f64 , baryons : & BaryonicDiskConfig , halo : & HaloProfile ,) -> VelocityDecomposition"
+    },
+    {
+      "signature": "pub fn sample_rotation_curve_into (r_min_kpc : f64 , r_max_kpc : f64 , baryons : & BaryonicDiskConfig , halo : & HaloProfile , out : & mut [VelocityDecomposition] ,)"
+    },
+    {
+      "signature": "pub fn total_gravitational_potential (r_kpc : f64 , baryons : & BaryonicDiskConfig , halo : & HaloProfile ,) -> f64"
+    },
+    {
+      "signature": "pub struct BaryonicDiskConfig"
+    },
+    {
+      "signature": "pub struct TillaboevScalingSummary"
+    },
+    {
+      "signature": "pub struct VelocityDecomposition"
+    }
+  ],
   "crates/domain_physics/src/physics/chaos/fractals.rs": [
     {
       "signature": "pub fn correlation_dimension (trajectory : & [Vector3 < f64 >] , epsilon : f64) -> f64"
