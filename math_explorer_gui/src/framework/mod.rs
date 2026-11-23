@@ -26,6 +26,7 @@ mod export_ui;
 #[cfg(test)]
 mod export_ui_tests;
 pub mod fit_bridge;
+mod history_ui;
 pub mod math_input;
 #[cfg(test)]
 mod metadata_label_tests;
@@ -78,11 +79,14 @@ pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
+pub use history_ui::render_workspace_history_buttons;
 pub use math_input::*;
 pub use pane_scope::{
-    is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, scoped_panel_id, InputMode,
+    is_button_activation_focused, is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed,
+    is_text_edit_focused, record_focused_widget_type_from_output, scoped_panel_id, InputMode,
     InteractionContext,
 };
+pub(crate) use persistence::framework_json_semantically_eq;
 pub use playback::*;
 pub use recovery::*;
 pub use side_panel::{
@@ -179,11 +183,6 @@ pub trait InteractiveTool {
     /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
     fn url_state_revision(&self) -> u64 {
         self.state_revision()
-    }
-
-    /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        None
     }
 
     /// Direct numeric parameter finiteness hook without JSON serialization.

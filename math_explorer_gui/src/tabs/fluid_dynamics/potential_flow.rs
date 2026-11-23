@@ -219,10 +219,6 @@ impl InteractiveTool for PotentialFlowTool {
         }
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_kit.focused_plot_id()
-    }
-
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
             == crate::app::ThemeMode::HighContrast;

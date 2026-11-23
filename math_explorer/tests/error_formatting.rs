@@ -1,4 +1,4 @@
-//! Verifies that all 28 public error enums re-exported by `math_explorer::error`
+//! Verifies that all 30 public error enums re-exported by `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -13,11 +13,11 @@
 
 use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
-    AIError, BatteryError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
+    AIError, BatteryError, BraidError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
     EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error,
-    HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarkovError,
-    MathError, NumberTheoryError, OuError, PharmacokineticsError, RadarError, SolidStateError,
-    StandardModelError, StatMechError, TdaError, ZipError,
+    HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, KnotError, LoraError,
+    MarkovError, MathError, NumberTheoryError, OuError, PharmacokineticsError, RadarError,
+    SandpileError, SolidStateError, StandardModelError, StatMechError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -76,6 +76,8 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         "Glicko2Error",
         &Glicko2Error::InvalidSystemConstant { value: 0.0 },
     );
+    assert_readable_diagnostic("BraidError", &BraidError::InvalidStrandCount { strands: 0 });
+    assert_readable_diagnostic("KnotError", &KnotError::EmptyCurve);
 }
 
 #[test]
@@ -149,6 +151,14 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         &RadarError::AntennaWeightCountMismatch {
             expected: 4,
             actual: 2,
+        },
+    );
+    assert_readable_diagnostic(
+        "SandpileError",
+        &SandpileError::InvalidDimensions {
+            width: 0,
+            height: 8,
+            max_dim: 128,
         },
     );
     assert_readable_diagnostic(

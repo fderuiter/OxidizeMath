@@ -11,8 +11,8 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 ### Module Structure
 
 - **`algebra`**: Abstract algebraic structures and type hierarchies:
-  - Groups, rings, finite fields (`Fp`), and infinite Artin braid groups (`BraidWord`) with word reduction, Yang-Baxter braid relations, and smooth 3D Alexander closures.
-  - Polynomial rings (`Polynomial`) and signed-exponent Laurent polynomial rings (`LaurentPolynomial<T>`) with reciprocal checks and Alexander canonical normalization.
+  - Semigroups, monoids, groups (`Group`, `AbelianGroup`, `Zn<N>`, `is_subgroup`, `generate_left_coset`), infinite Artin braid groups (`BraidWord`) with word reduction, Yang-Baxter braid relations, and smooth 3D Alexander closures, rings, and finite fields (`Fp`).
+  - Polynomial rings (`Polynomial`) over arbitrary fields and signed-exponent Laurent polynomial rings (`LaurentPolynomial<T>`) with reciprocal checks and Alexander canonical normalization.
 - **`number_theory`**: Prime number generation (`primes_up_to`), primality testing, integer partition theory, and Q-series.
 - **`analysis`**: Differential equation solvers (`OdeSystem`, explicit Runge-Kutta and zero-allocation symplectic `StormerVerlet`, `Yoshida4`, and `GaussLegendre4` steppers), 1D and zero-allocation 2D partial differential equation solvers (`pde::wave_2d::Wave2DSolver` for hyperbolic wave tanks, Kirchhoff-Love biharmonic Chladni plates, Chladni sand drift, Marching-Squares nodal contours, and pre-planned 2D FFT spectra), numerical integration, and calculus algorithms.
 - **`differential_geometry`**: Manifolds, metric tensors, and Riemannian curvature.

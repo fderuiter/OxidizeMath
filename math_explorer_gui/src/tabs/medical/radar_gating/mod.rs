@@ -89,6 +89,12 @@ impl RadarGatingTool {
         self.pipeline.arm_controller()
     }
 
+    /// Returns the widget ID when the 2D room canvas holds keyboard focus.
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     /// Extracts a stack-allocated 60 GHz Doppler and MUSIC [`crate::audio::SonificationFrame`].
     #[must_use]
     pub fn sonification_frame(&self) -> crate::audio::SonificationFrame {
@@ -129,10 +135,6 @@ impl InteractiveTool for RadarGatingTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         ui::show_tool_inside(self, ui);
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn state_bounds(&self) -> ToolStateBounds {

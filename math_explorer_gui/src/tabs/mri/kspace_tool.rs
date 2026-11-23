@@ -32,7 +32,6 @@ pub struct MriKSpaceTool {
     pub(crate) recon_tex: Option<egui::TextureHandle>,
     pub(crate) textures_dirty: bool,
     pub(crate) last_high_contrast: Option<bool>,
-    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) theory: MriKSpaceTheory,
 }
 
@@ -66,7 +65,6 @@ impl Default for MriKSpaceTool {
             recon_tex: None,
             textures_dirty: true,
             last_high_contrast: None,
-            focused_canvas: None,
             theory: MriKSpaceTheory,
         }
     }
@@ -293,10 +291,6 @@ impl InteractiveTool for MriKSpaceTool {
         if moved {
             self.sync_and_notify("sync_view");
         }
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn state_revision(&self) -> u64 {

@@ -36,6 +36,7 @@ mod tests {
         check_tool!(crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool);
         check_tool!(crate::tabs::clinical_trials::randomization::RandomizationTool);
         check_tool!(crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool);
+        check_tool!(crate::tabs::geometry_topology::knot_braid_studio::KnotBraidStudioTool);
         check_tool!(crate::tabs::climate::cera::CeraTool);
         check_tool!(crate::tabs::climate::co2_projections::Co2ProjectionsTool);
         check_tool!(crate::tabs::climate::temperature::TemperatureAnomaliesTool);
@@ -46,8 +47,10 @@ mod tests {
         check_tool!(crate::tabs::ai::training_monitor::TrainingMonitorTool);
         check_tool!(crate::tabs::ai::loss_landscape::LossLandscapeTool);
         check_tool!(crate::tabs::ai::grid_world::GridWorldTool);
+        check_tool!(crate::tabs::ai::closed_loop_control::ClosedLoopControlTool);
         check_tool!(crate::tabs::medical::beam_profiling::BeamProfilingTool);
         check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
+        check_tool!(crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool);
         check_tool!(crate::tabs::medical::radar_gating::RadarGatingTool);
         check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
         check_tool!(crate::tabs::chaos::hamiltonian::HamiltonianChaosLab);
