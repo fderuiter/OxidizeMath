@@ -163,6 +163,7 @@ impl SimulationFramework {
         self.rev_cache.last_plot_capture_hash = None;
         self.is_diverged = false;
         self.diagnostic_report = None;
+        self.sync_counterfactual_snapshot();
         self.resync_active_hud_callouts();
     }
 
@@ -263,6 +264,7 @@ impl SimulationFramework {
         self.diagnostic_report = None;
         self.step_counter = 0;
         self.reset_active_tool_manual_bounds();
+        self.sync_counterfactual_snapshot();
         self.on_hud_parameters_reset();
         self.refresh_saved_and_snapshot_after_reset();
         emit_recovery_telemetry(
@@ -311,6 +313,7 @@ impl SimulationFramework {
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.step_counter = 0;
+        self.sync_counterfactual_snapshot();
         let Some(tool) = &self.active_tool else {
             return;
         };
