@@ -6219,6 +6219,27 @@
     },
     {
       "signature": "pub fn parse_workspace_members (content : & str) -> Result < Vec < String > , String >"
+    },
+    {
+      "signature": "pub use workspace_wasm :: HOST_ONLY_WORKSPACE_PACKAGES"
+    },
+    {
+      "signature": "pub use workspace_wasm :: WasmCrateSpec"
+    },
+    {
+      "signature": "pub use workspace_wasm :: WasmTestTargetKind"
+    },
+    {
+      "signature": "pub use workspace_wasm :: build_wasm_cargo_test_invocations"
+    },
+    {
+      "signature": "pub use workspace_wasm :: discover_wasm_crates"
+    },
+    {
+      "signature": "pub use workspace_wasm :: find_workspace_root"
+    },
+    {
+      "signature": "pub use workspace_wasm :: parse_workspace_members_std"
     }
   ],
   "crates/pure_math/src/error.rs": [
@@ -6826,6 +6847,83 @@
       "signature": "pub trait Integrator { fn integrate < F > (& self , f : F , min : f64 , max : f64 , eps : f64) -> IntegrationResult where F : Fn (f64) -> f64 }"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/momentum_dynamics.rs": [
+    {
+      "signature": "impl HamiltonianLeapfrog2D { pub fn new (mass : f64 , damping : f64) -> Self }"
+    },
+    {
+      "signature": "impl HamiltonianLeapfrog2D { pub fn step_with_kinetic < G , K > (& self , state : & mut PhasePoint2D , grad_fn : & mut G , kinetic_deriv : & mut K , dt : f64 ,) -> Result < () , EvolutionError > where G : FnMut (Vector2 < f64 >) -> Vector2 < f64 > , K : FnMut (f64) -> f64 , }"
+    },
+    {
+      "signature": "impl LangevinBaoab2D { pub fn new (mass : f64 , damping : f64 , temperature : f64) -> Self }"
+    },
+    {
+      "signature": "impl LangevinBaoab2D { pub fn step_with_kinetic < R , G , K > (& self , state : & mut PhasePoint2D , grad_fn : & mut G , kinetic_deriv : & mut K , rng : & mut R , dt : f64 ,) -> Result < () , EvolutionError > where R : RngCore + ? Sized , G : FnMut (Vector2 < f64 >) -> Vector2 < f64 > , K : FnMut (f64) -> f64 , }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn at_rest (q : Vector2 < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn from_velocity (q : Vector2 < f64 > , v : Vector2 < f64 > , mass : f64) -> Self }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn is_finite (& self) -> bool }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn kinetic_energy (& self , mass : f64) -> f64 }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn new (q : Vector2 < f64 > , p : Vector2 < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl PhasePoint2D { pub fn reflect_bounds (& mut self , q_min : Vector2 < f64 > , q_max : Vector2 < f64 > , restitution : f64) }"
+    },
+    {
+      "signature": "pub const MAX_DAMPING : f64 = 20.0"
+    },
+    {
+      "signature": "pub const MAX_DT : f64 = 0.1"
+    },
+    {
+      "signature": "pub const MAX_MASS : f64 = 50.0"
+    },
+    {
+      "signature": "pub const MAX_TEMPERATURE : f64 = 50.0"
+    },
+    {
+      "signature": "pub const MIN_DAMPING : f64 = 0.0"
+    },
+    {
+      "signature": "pub const MIN_DT : f64 = 1e-4"
+    },
+    {
+      "signature": "pub const MIN_MASS : f64 = 0.05"
+    },
+    {
+      "signature": "pub const MIN_TEMPERATURE : f64 = 0.0"
+    },
+    {
+      "signature": "pub fn clamp_damping (damping : f64) -> f64"
+    },
+    {
+      "signature": "pub fn clamp_dt (dt : f64) -> f64"
+    },
+    {
+      "signature": "pub fn clamp_mass (mass : f64) -> f64"
+    },
+    {
+      "signature": "pub fn clamp_temperature (temperature : f64) -> f64"
+    },
+    {
+      "signature": "pub struct HamiltonianLeapfrog2D"
+    },
+    {
+      "signature": "pub struct LangevinBaoab2D"
+    },
+    {
+      "signature": "pub struct PhasePoint2D"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/ode/mod.rs": [
     {
       "signature": "impl IntegrationMethod { pub const ALL : [Self ; 3] = [Self :: RungeKutta4 , Self :: Euler , Self :: Heun] }"
@@ -6966,6 +7064,9 @@
       "signature": "impl < T : RealField + Copy , Key > Adam < T , Key > where Key : Eq + std :: hash :: Hash + Clone , { pub fn new (lr : T) -> Result < Self , OptimizationError > }"
     },
     {
+      "signature": "impl < T : RealField + Copy > AdamState2D < T > { pub fn new () -> Self }"
+    },
+    {
       "signature": "impl < T : RealField + Copy > SGD < T > { pub fn new (learning_rate : T) -> Self }"
     },
     {
@@ -6985,6 +7086,9 @@
     },
     {
       "signature": "pub struct AdamState < T >"
+    },
+    {
+      "signature": "pub struct AdamState2D < T >"
     },
     {
       "signature": "pub struct L1RegularizedLeastSquares"
@@ -7997,6 +8101,39 @@
     },
     {
       "signature": "pub use rating :: update_rating"
+    },
+    {
+      "signature": "pub use tournament :: Pairing"
+    },
+    {
+      "signature": "pub use tournament :: PeriodMatch"
+    },
+    {
+      "signature": "pub use tournament :: SwissRoundPlan"
+    },
+    {
+      "signature": "pub use tournament :: evaluate_rating_period"
+    },
+    {
+      "signature": "pub use tournament :: evaluate_rating_period_into"
+    },
+    {
+      "signature": "pub use tournament :: evaluate_sequential_period"
+    },
+    {
+      "signature": "pub use tournament :: head_to_head_win_probability"
+    },
+    {
+      "signature": "pub use tournament :: pairwise_win_matrix"
+    },
+    {
+      "signature": "pub use tournament :: round_robin_schedule"
+    },
+    {
+      "signature": "pub use tournament :: simulate_period_matches"
+    },
+    {
+      "signature": "pub use tournament :: swiss_pairings"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/glicko2/rating.rs": [
@@ -8005,6 +8142,50 @@
     },
     {
       "signature": "pub fn update_rating (player : & GlickoPlayer , results : & [MatchResult] , tau : & SystemConstant ,) -> Result < GlickoPlayer , Glicko2Error >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/glicko2/tournament.rs": [
+    {
+      "signature": "impl Pairing { pub fn new (player_a : usize , player_b : usize) -> Result < Self , Glicko2Error > }"
+    },
+    {
+      "signature": "impl PeriodMatch { pub fn new (player_a : usize , player_b : usize , score_a : f64) -> Result < Self , Glicko2Error > }"
+    },
+    {
+      "signature": "impl PeriodMatch { pub fn score_b (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn evaluate_rating_period (roster : & [GlickoPlayer] , matches : & [PeriodMatch] , tau : & SystemConstant ,) -> Result < Vec < GlickoPlayer > , Glicko2Error >"
+    },
+    {
+      "signature": "pub fn evaluate_rating_period_into (roster : & [GlickoPlayer] , matches : & [PeriodMatch] , tau : & SystemConstant , scratch_results : & mut [MatchResult] , out_roster : & mut [GlickoPlayer] ,) -> Result < () , Glicko2Error >"
+    },
+    {
+      "signature": "pub fn evaluate_sequential_period (roster : & [GlickoPlayer] , matches : & [PeriodMatch] , tau : & SystemConstant ,) -> Result < Vec < GlickoPlayer > , Glicko2Error >"
+    },
+    {
+      "signature": "pub fn head_to_head_win_probability (player_i : & GlickoPlayer , player_j : & GlickoPlayer) -> f64"
+    },
+    {
+      "signature": "pub fn pairwise_win_matrix (roster : & [GlickoPlayer]) -> DMatrix < f64 >"
+    },
+    {
+      "signature": "pub fn round_robin_schedule (num_players : usize) -> Result < Vec < Vec < Pairing > > , Glicko2Error >"
+    },
+    {
+      "signature": "pub fn simulate_period_matches (skill_roster : & [GlickoPlayer] , pairings : & [Pairing] , draw_probability : f64 , rng : & mut OxidizeRng ,) -> Result < Vec < PeriodMatch > , Glicko2Error >"
+    },
+    {
+      "signature": "pub fn swiss_pairings (roster : & [GlickoPlayer] , scores : & [f64] , prior_matches : & [PeriodMatch] ,) -> Result < SwissRoundPlan , Glicko2Error >"
+    },
+    {
+      "signature": "pub struct Pairing"
+    },
+    {
+      "signature": "pub struct PeriodMatch"
+    },
+    {
+      "signature": "pub struct SwissRoundPlan"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/kelly/core.rs": [

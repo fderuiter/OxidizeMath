@@ -7,11 +7,54 @@ use crate::framework::math_input::{
     CoupledExpressionBank, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS,
 };
 use crate::presets::OdePreset;
-use math_commons::ast::CompiledExpr;
+use math_commons::ast::{CompiledExpr, Instruction};
 use math_explorer::pure_math::analysis::ode::{
     Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, TimeStepper, VecState,
 };
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+
+pub(super) struct CustomOdeContext<'a>(pub(super) Option<&'a CustomOdeSpec>);
+
+impl Hash for CustomOdeContext<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self.0 {
+            None => 0_u8.hash(state),
+            Some(CustomOdeSpec::Scalar { expr, .. }) => {
+                1_u8.hash(state);
+                hash_compiled_expr(expr, state);
+            }
+            Some(CustomOdeSpec::Coupled { dy, dv, .. }) => {
+                2_u8.hash(state);
+                hash_compiled_expr(dy, state);
+                hash_compiled_expr(dv, state);
+            }
+        }
+    }
+}
+
+fn hash_compiled_expr<H: Hasher>(compiled: &CompiledExpr, state: &mut H) {
+    compiled.axis_count().hash(state);
+    compiled.var_names().hash(state);
+    compiled.instructions().len().hash(state);
+    for &inst in compiled.instructions() {
+        hash_instruction(inst, state);
+    }
+}
+
+fn hash_instruction<H: Hasher>(inst: Instruction, state: &mut H) {
+    match inst {
+        Instruction::PushConst(n) => {
+            1_u8.hash(state);
+            crate::sensitivity::canonical_f64_bits(n).hash(state);
+        }
+        Instruction::PushImagUnit => 2_u8.hash(state),
+        Instruction::LoadVar(slot) => (3_u8, slot).hash(state),
+        Instruction::Unary(op) => (4_u8, op).hash(state),
+        Instruction::Binary(op) => (5_u8, op).hash(state),
+        Instruction::Call(func) => (6_u8, func).hash(state),
+    }
+}
 
 /// Default coupled 2-state ODE bank (`y' = f(t, y, v)`, `v' = g(t, y, v)`).
 #[must_use]
@@ -126,7 +169,7 @@ impl CustomOdeSpec {
             params[idx] = match name.as_str() {
                 "k" => param_k,
                 "r" => param_r,
-                "cap_k" | "K" => param_cap_k,
+                "cap_k" => param_cap_k,
                 _ => bar_slice.get(idx).copied().unwrap_or(1.0),
             };
         }

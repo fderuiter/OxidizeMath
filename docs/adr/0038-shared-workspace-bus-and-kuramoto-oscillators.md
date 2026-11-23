@@ -1,4 +1,4 @@
-# ADR 0037: SharedWorkspaceBus Per-Pane Graph Coupling and Zero-Allocation Kuramoto Solver
+# ADR 0038: SharedWorkspaceBus Per-Pane Graph Coupling and Zero-Allocation Kuramoto Solver
 
 ## Status
 
