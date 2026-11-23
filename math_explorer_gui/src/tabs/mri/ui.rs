@@ -276,15 +276,12 @@ impl MriTool {
                 }
                 PlaybackAction::StepBack => {
                     self.pulse_workspace.playhead_playing = false;
-                    self.pulse_workspace.playhead_idx = self
-                        .pulse_workspace
-                        .playhead_idx
-                        .checked_sub(1)
-                        .unwrap_or(last);
+                    self.pulse_workspace.playhead_idx =
+                        self.pulse_workspace.playhead_idx.saturating_sub(1);
                 }
-                PlaybackAction::ScrubTo(idx) => {
+                PlaybackAction::ScrubTo(step) => {
                     self.pulse_workspace.playhead_playing = false;
-                    self.pulse_workspace.playhead_idx = idx.min(last);
+                    self.pulse_workspace.playhead_idx = step.min(last);
                 }
                 PlaybackAction::Reset => {
                     self.pulse_workspace.playhead_playing = false;
