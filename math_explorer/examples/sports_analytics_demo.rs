@@ -72,8 +72,11 @@ fn demo_copula() -> Result<()> {
         &[1.0, 0.50, 0.25, 0.50, 1.0, 0.35, 0.25, 0.35, 1.0],
     ))?;
     let priced = price_correlated_parlay(&legs_3, &corr_3)?;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let trials = if smoke { 2_500 } else { 25_000 };
     let mut rng = OxidizeRng::default();
-    let sim = simulate_correlated_parlay(&legs_3, &corr_3, 25_000, &mut rng)?;
+    let sim = simulate_correlated_parlay(&legs_3, &corr_3, trials, &mut rng)?;
     println!(
         "   3-Leg SGP: Naive={:.4}, Genz={:.4} (x{:.2}, Fair Odds={:.2}), MC={:.4} ± {:.4}",
         priced.naive_probability.value(),

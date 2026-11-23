@@ -178,8 +178,8 @@ fn evaluate_single_qmc_point(
         }
 
         let mut shift = 0.0;
-        for j in 0..i {
-            shift += prob.chol[flatten_2d_index(j, i, k)] * y_buf[j];
+        for (j, &y_val) in y_buf.iter().enumerate().take(i) {
+            shift += prob.chol[flatten_2d_index(j, i, k)] * y_val;
         }
         let diag = prob.chol[flatten_2d_index(i, i, k)];
         let ei = if diag > 0.0 {

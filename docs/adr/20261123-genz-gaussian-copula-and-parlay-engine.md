@@ -23,7 +23,7 @@ Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctes
    - Provide stack-buffered `GaussianCopula::cdf` and clone-free `sgp_joint_probability` up to `MAX_STACK_LEGS` (`16`) alongside `cdf_with_scratch` and `sgp_joint_probability_with_scratch` for arbitrary leg counts with zero heap allocations.
 4. **Zero-Allocation Antithetic Cholesky Parlay Engine and Updated Demo**:
    - Add [`parlay.rs`](../../crates/pure_math/src/pure_math/statistics/copula/parlay.rs) exposing `ParlayPricingReport` (`joint_probability`, `standard_error`, `naive_probability`, `correlation_multiplier`, `fair_decimal_odds`), `price_correlated_parlay`, `price_correlated_parlay_with_scratch`, `simulate_correlated_parlay`, and `simulate_correlated_parlay_into` seeded exclusively via `OxidizeRng`.
-   - Update [`sports_analytics_demo.rs`](../../math_explorer/examples/sports_analytics_demo.rs) to use `0.01` tail probabilities and demonstrate 3-leg SGP pricing and simulation.
+   - Update [`sports_analytics_demo.rs`](../../math_explorer/examples/sports_analytics_demo.rs) to use `0.01` tail probabilities and demonstrate 3-leg SGP pricing and simulation (scaling Monte Carlo trials under `MATH_EXPLORER_SMOKE=1`).
 
 ## Consequences
 - **Positive**: Indefinite correlation matrices are rejected at construction time with `CopulaError::NotPositiveDefinite`, copula boundary axioms hold exactly, bivariate evaluations achieve `< 1e-12` accuracy, and 3-to-10-leg SGPs achieve `< 1e-4` accuracy.
