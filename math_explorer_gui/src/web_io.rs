@@ -350,7 +350,10 @@ mod tests {
         assert_eq!(infer_mime_type("plot.svg"), "image/svg+xml");
         assert_eq!(infer_mime_type("figure.png"), "image/png");
         assert_eq!(infer_mime_type("anim.gif"), "image/gif");
-        assert_eq!(infer_mime_type("surface.obj"), "application/octet-stream");
+        assert_eq!(infer_mime_type("manifold.stl"), "model/stl");
+        assert_eq!(infer_mime_type("splats.ply"), "model/ply");
+        assert_eq!(infer_mime_type("surface.obj"), "model/obj");
+        assert_eq!(infer_mime_type("raw.bin"), "application/octet-stream");
     }
 
     #[test]

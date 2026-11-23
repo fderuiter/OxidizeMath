@@ -8,7 +8,7 @@ This directory contains the core architecture documentation for the OxidizeMath 
 - [CERA Framework Guide](cera_framework.md): Climate-invariant Encoding through Representation Alignment, latent space alignment, and the climate modeling pipeline.
 - [Zero-Allocation Runtime Guide](zero_allocation_runtime.md): NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and `VerifiedEngine` runtime checks.
 - [Interactive Tool Walkthrough](interactive_tool_walkthrough.md): Step-by-step developer guide to implement interactive simulations, accessibility hooks, and dual-backend Web Audio sonification using `InteractiveTool`.
-- [Architectural Decision Records](../adr/0001-dynamic-workspace-discovery.md): Historical architecture records and design decisions (through [ADR 0038](../adr/0038-dual-backend-web-audio-sonification.md)).
+- [Architectural Decision Records](../adr/0001-dynamic-workspace-discovery.md): Historical architecture records and design decisions (through [ADR 0039](../adr/0039-dual-backend-web-audio-sonification.md)).
 
 ## Guiding Principles
 
