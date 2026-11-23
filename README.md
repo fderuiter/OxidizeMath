@@ -3,7 +3,7 @@
 ![CI/CD](https://github.com/fderuiter/OxidizeMath/actions/workflows/ci.yml/badge.svg)
 ![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)
 ![License](https://img.shields.io/badge/license-AGPL-blue.svg)
-![Coverage](https://img.shields.io/badge/coverage-84.5%25-yellow)
+![Coverage](https://img.shields.io/badge/coverage-84.4%25-yellow)
 
 **Math Explorer** is a comprehensive Rust library that bridges the gap between rigorous academic theory and executable code. From simulating Quantum Mechanics to modeling Social Favoritism, this repository serves as a verifiable playground for complex algorithms.
 
@@ -134,7 +134,7 @@ classDiagram
 
 ### 3. Comprehensive Examples
 
-Explore 20+ specialized, runnable examples spanning Physics, AI, Biology, and Pure Math.
+Explore 32 specialized, runnable examples spanning AI, Applied Math, Biology, Climate, Epidemiology, Physics, and Pure Math.
 
 > **See the [Examples Catalog](math_explorer/examples/README.md) for the full list of simulations and their commands.**
 

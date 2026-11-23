@@ -121,6 +121,17 @@ pub fn get_challenge_cards_for_domain(domain: &str) -> Vec<ChallengeCard> {
     cards
 }
 
+/// Returns all registered [`ChallengeCard`] entries across every domain in deterministic order.
+#[must_use]
+pub fn get_all_challenge_cards() -> Vec<ChallengeCard> {
+    let mut cards: Vec<ChallengeCard> = inventory::iter::<ChallengeMetadata>
+        .into_iter()
+        .map(ChallengeMetadata::to_card)
+        .collect();
+    cards.sort_by_key(|c| (c.title, c.id));
+    cards
+}
+
 /// Looks up a registered [`ChallengeMetadata`] by canonical `id` (ASCII case-insensitive).
 #[must_use]
 pub fn find_challenge_metadata(id: &str) -> Option<&'static ChallengeMetadata> {

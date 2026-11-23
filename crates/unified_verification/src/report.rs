@@ -124,6 +124,7 @@ pub(crate) fn analyze_file_ast_into(
 }
 
 pub fn analyze_files_with_cache(rs_files: &[PathBuf], cache: &mut AstCache) -> FileMetrics {
+    cache.preload_sources(rs_files);
     let mut m = FileMetrics::default();
     for filepath in rs_files {
         let wasm_counts =

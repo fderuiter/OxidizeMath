@@ -203,19 +203,28 @@ fn subharmonic_voice(
 }
 
 fn sample_logistic_orbit(r: f64) -> ([f64; 16], f64) {
-    let mut x = 0.5_f64;
+    let mut x = 0.314_159_f64;
     for _ in 0..160 {
         x = (r * x * (1.0 - x)).clamp(0.0, 1.0);
     }
-    let mut lyap_sum = 0.0_f64;
+    let lyap_seed = x;
     let mut orbit = [x; 16];
-    for step in 0..64 {
+    for slot in &mut orbit {
         x = (r * x * (1.0 - x)).clamp(0.0, 1.0);
-        let deriv = (r * (1.0 - 2.0 * x)).abs().max(1e-9);
-        lyap_sum += deriv.ln();
-        if step >= 48 {
-            orbit[step - 48] = x;
-        }
+        *slot = x;
     }
-    (orbit, lyap_sum / 64.0)
+    #[cfg(feature = "physics")]
+    let lyapunov = math_explorer::physics::chaos::metrics::logistic_lyapunov(r, lyap_seed, 64);
+    #[cfg(not(feature = "physics"))]
+    let lyapunov = {
+        let mut s = lyap_seed;
+        let mut sum = 0.0_f64;
+        for _ in 0..64 {
+            let deriv = (r * (1.0 - 2.0 * s)).abs().max(1e-15);
+            sum += deriv.ln();
+            s = (r * s * (1.0 - s)).clamp(0.0, 1.0);
+        }
+        sum / 64.0
+    };
+    (orbit, lyapunov)
 }

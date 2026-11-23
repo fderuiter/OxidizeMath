@@ -114,6 +114,13 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         self.apply_scalar_step(new_g_na, new_g_k, new_g_l, new_i_ext, self.dt);
     }
 
+    fn sync_parameters(&mut self, params: &HashMap<String, f64>) {
+        self.params.g_na = params.get("g_na").copied().unwrap_or(120.0).max(0.0);
+        self.params.g_k = params.get("g_k").copied().unwrap_or(36.0).max(0.0);
+        self.params.g_l = params.get("g_l").copied().unwrap_or(0.3).max(0.0);
+        self.i_ext = *params.get("i_ext").unwrap_or(&10.0);
+    }
+
     fn get_snapshot(&self) -> StateSnapshot {
         let mut custom_data = Vec::with_capacity(self.history.len() * 2 + 2);
         for &[t, v] in &self.history {
@@ -351,7 +358,7 @@ inventory::submit! {
         id: "HodgkinHuxleyTool",
         display_name: "Hodgkin-Huxley Model",
         domain: "neuroscience",
-        tags: &[],
+        tags: &["action potential", "conductance", "ion channel", "membrane", "neuron"],
         build: || Box::new(UnifiedSimTool::<HodgkinHuxleyUnified>::new()),
     }
 }
