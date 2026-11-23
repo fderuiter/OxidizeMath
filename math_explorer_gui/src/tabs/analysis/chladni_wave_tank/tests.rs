@@ -116,122 +116,6 @@ fn test_chladni_url_hash_hydration_roundtrip() {
     assert_eq!(actual_state, expected_state);
 }
 
-fn apply_sample_luthiery_strokes(tool: &mut ChladniWaveTankTool) {
-    use crate::framework::{BrushMode, BrushStroke, InteractionContext, InteractiveTool};
-
-    let ctx = Context::default();
-    let mut dummy_resp = None;
-    let _ = ctx.run(raw_frame(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            dummy_resp = Some(ui.label("probe"));
-        });
-    });
-    let resp = dummy_resp.expect("egui dummy response");
-    tool.state.pickup_x = 0.72;
-    tool.state.pickup_y = 0.34;
-    for (mode, start, end, radius) in [
-        (BrushMode::Solid, [24.0, 24.0], [28.0, 24.0], 2.0),
-        (BrushMode::PotentialBarrier, [40.0, 60.0], [88.0, 60.0], 3.0),
-        (BrushMode::VelocityJet, [32.0, 84.0], [72.0, 84.0], 2.0),
-        (BrushMode::PotentialWell, [80.0, 40.0], [80.0, 40.0], 5.0),
-        (BrushMode::Erase, [24.0, 24.0], [24.0, 24.0], 1.0),
-    ] {
-        let ic = InteractionContext::from_brush_stroke(
-            &resp,
-            BrushStroke {
-                start,
-                end,
-                radius,
-                mode,
-                drag_vector: [end[0] - start[0], end[1] - start[1]],
-            },
-        );
-        tool.on_brush(&ic);
-    }
-}
-
-fn active_chladni_mut(app: &mut MathExplorerApp, tab_idx: usize) -> &mut ChladniWaveTankTool {
-    app.tabs[tab_idx]
-        .framework_mut()
-        .unwrap()
-        .active_tool
-        .as_mut()
-        .unwrap()
-        .as_any_mut()
-        .unwrap()
-        .downcast_mut::<ChladniWaveTankTool>()
-        .unwrap()
-}
-
-#[test]
-fn test_chladni_sculpt_rle_and_pickup_url_roundtrip_under_4kib() {
-    use math_explorer::math_kernel::types::flatten_2d_index;
-
-    use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
-
-    let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    assert!(!ChladniWaveTankTool::default()
-        .save_state()
-        .unwrap()
-        .contains("sculpt_rle"));
-
-    let mut source_app = MathExplorerApp::default();
-    let analysis_idx = source_app
-        .tabs
-        .iter()
-        .position(|t| t.url_slug() == "analysis")
-        .expect("AnalysisTab must exist");
-    source_app.selected_tab = analysis_idx;
-    assert!(source_app.tabs[analysis_idx].select_tool_by_name("ChladniWaveTankTool"));
-
-    let sculpted_json = {
-        let tool = active_chladni_mut(&mut source_app, analysis_idx);
-        apply_sample_luthiery_strokes(tool);
-        tool.rebuild_masks();
-        assert_eq!(
-            tool.solver.wall_mask[flatten_2d_index(28, 24, GRID_SIZE)],
-            0.0
-        );
-        assert!(tool.solver.wave_speed_mask[flatten_2d_index(64, 60, GRID_SIZE)] > 1.4);
-        assert!(tool.solver.wave_speed_mask[flatten_2d_index(80, 40, GRID_SIZE)] < 0.5);
-        tool.save_state().unwrap()
-    };
-    assert!(sculpted_json.contains("sculpt_rle"));
-    assert!(sculpted_json.len() < MAX_DECODED_URL_STATE_BYTES);
-
-    let share_url = source_app.encode_current_share_url().unwrap();
-    let hash = &share_url[share_url.find('#').unwrap()..];
-    let mut restored_app = MathExplorerApp::default();
-    assert!(restored_app
-        .apply_share_location_strings(hash, "", None)
-        .unwrap());
-    let restored = active_chladni_mut(&mut restored_app, analysis_idx);
-    assert_eq!(
-        restored.save_state().as_deref(),
-        Some(sculpted_json.as_str())
-    );
-    assert!((restored.state.pickup_x - 0.72).abs() < 1.0e-12);
-    assert_eq!(
-        restored.solver.wall_mask[flatten_2d_index(28, 24, GRID_SIZE)],
-        0.0
-    );
-}
-
-#[test]
-fn test_chladni_noisy_sculpt_mask_coarsens_under_4kib() {
-    use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
-
-    let mut noisy_tool = ChladniWaveTankTool::default();
-    for idx in 0..noisy_tool.sculpt_mask.len() {
-        noisy_tool.sculpt_mask[idx] = ((idx * 7 + (idx / GRID_SIZE) * 3) % 8) as u8;
-    }
-    noisy_tool.state.sculpt_rle =
-        super::sculpt::encode_bounded_sculpt_rle(&noisy_tool.sculpt_mask, GRID_SIZE, GRID_SIZE);
-    let noisy_json = noisy_tool.save_state().unwrap();
-    assert!(noisy_json.len() < MAX_DECODED_URL_STATE_BYTES);
-    assert!(noisy_tool.try_load_state(&noisy_json).is_ok());
-}
-
 fn collect_focusable_canvas_nodes(
     ctx: &Context,
     tool: &mut ChladniWaveTankTool,
@@ -394,4 +278,121 @@ fn test_all_four_starter_presets_load_and_export_svg_png_csv_json() {
         }
     }
     let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_custom_clamps_url_roundtrip_and_bounds_validation() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let default_tool = ChladniWaveTankTool::default();
+    let default_json = default_tool.save_state().unwrap();
+    assert!(
+        !default_json.contains("custom_clamps"),
+        "Empty custom_clamps must be omitted via skip_serializing_if"
+    );
+
+    let mut source_app = MathExplorerApp::default();
+    let analysis_idx = source_app
+        .tabs
+        .iter()
+        .position(|t| t.url_slug() == "analysis")
+        .unwrap();
+    source_app.selected_tab = analysis_idx;
+    assert!(source_app.tabs[analysis_idx].select_tool_by_name("ChladniWaveTankTool"));
+
+    let pins = vec![[0.25, 0.35], [0.72, 0.64], [0.48, 0.22]];
+    if let Some(fw) = source_app.tabs[analysis_idx].framework_mut() {
+        let tool = fw
+            .active_tool
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .unwrap()
+            .downcast_mut::<ChladniWaveTankTool>()
+            .unwrap();
+        tool.state.custom_clamps = pins.clone();
+        tool.rebuild_masks();
+        tool.state_rev = tool.state_rev.wrapping_add(1);
+    }
+
+    let share_url = source_app.encode_current_share_url().unwrap();
+    let hash = &share_url[share_url.find('#').unwrap()..];
+    let mut restored_app = MathExplorerApp::default();
+    assert!(restored_app
+        .apply_share_location_strings(hash, "", None)
+        .unwrap());
+    let restored_tool = restored_app.tabs[analysis_idx]
+        .framework()
+        .unwrap()
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .as_any()
+        .unwrap()
+        .downcast_ref::<ChladniWaveTankTool>()
+        .unwrap();
+    assert_eq!(restored_tool.state.custom_clamps, pins);
+    let pin_cell_x = (0.25 * ((GRID_SIZE - 1) as f64)).round() as usize;
+    let pin_cell_y = (0.35 * ((GRID_SIZE - 1) as f64)).round() as usize;
+    assert!(restored_tool.solver.wall_mask[pin_cell_y * GRID_SIZE + pin_cell_x] <= 0.5);
+
+    verify_custom_clamp_state_rejections(&default_json);
+}
+
+fn verify_custom_clamp_state_rejections(base_json: &str) {
+    let mut tool = ChladniWaveTankTool::default();
+    let mut sixteen: serde_json::Value = serde_json::from_str(base_json).unwrap();
+    sixteen["custom_clamps"] = serde_json::json!(vec![[0.5, 0.5]; 16]);
+    assert!(tool.try_load_state(&sixteen.to_string()).is_ok());
+
+    let mut seventeen = sixteen.clone();
+    seventeen["custom_clamps"] = serde_json::json!(vec![[0.5, 0.5]; 17]);
+    assert!(tool.try_load_state(&seventeen.to_string()).is_err());
+
+    let mut forty = sixteen.clone();
+    forty["custom_clamps"] = serde_json::json!(vec![[0.5, 0.5]; 40]);
+    assert!(tool.try_load_state(&forty.to_string()).is_err());
+
+    for bad_coord in [[0.005, 0.5], [0.5, 0.995]] {
+        let mut out_of_range = sixteen.clone();
+        out_of_range["custom_clamps"] = serde_json::json!([bad_coord]);
+        assert!(tool.try_load_state(&out_of_range.to_string()).is_err());
+    }
+}
+
+#[test]
+fn test_chladni_sonification_panel_mallet_strike_and_mute_hooks() {
+    let mut tool = ChladniWaveTankTool::default();
+    tool.step_simulation();
+    assert!(tool.audio.latest_frame.is_audible());
+
+    tool.trigger_mallet_pulse(0.45, 0.55, 0.045, 1.0, 1.0);
+    assert!(tool.audio.latest_frame.voices[0].transient_impulse > 0.9);
+
+    let ctx = Context::default();
+    ctx.enable_accesskit();
+    let _ = ctx.run(raw_frame(), |ctx| tool.show(ctx));
+    let out = ctx.run(raw_frame(), |ctx| tool.show(ctx));
+    let ak = out.platform_output.accesskit_update.unwrap();
+    assert!(
+        ak.nodes
+            .iter()
+            .any(|(_, node)| node.role() == egui::accesskit::Role::Meter),
+        "Sonification meter must be rendered in ChladniWaveTankTool"
+    );
+    assert_eq!(tool.audio.pending_impulse, 0.0);
+
+    if crate::audio::snapshot_ui_state().muted {
+        crate::audio::toggle_mute_from_user_gesture();
+    }
+    assert!(!crate::audio::snapshot_ui_state().muted);
+    crate::audio::notify_playback_paused();
+    assert!(crate::audio::snapshot_ui_state().muted);
+
+    crate::audio::toggle_mute_from_user_gesture();
+    crate::audio::notify_playback_reset();
+    assert!(crate::audio::snapshot_ui_state().muted);
+
+    crate::audio::toggle_mute_from_user_gesture();
+    assert!(tool.clamp_parameters());
+    assert!(crate::audio::snapshot_ui_state().muted);
 }

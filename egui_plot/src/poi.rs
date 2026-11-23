@@ -1,12 +1,13 @@
 //! Critical points (Points of Interest) detection for 2D plot polylines and reference lines.
 
-mod intersect;
+pub(crate) mod intersect;
 #[cfg(test)]
 mod tests;
 
 use egui::Id;
 
 use crate::{
+    SharedPoints,
     items::{PlotItem, PlotPoint},
     transform::{PlotBounds, PlotTransform},
 };
@@ -90,16 +91,64 @@ impl CriticalPoint {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum SeriesCoords<'a> {
+    PlotPoints(&'a [PlotPoint]),
+    Shared(&'a [[f64; 2]]),
+}
+
+impl math_commons::series::PointSeries for SeriesCoords<'_> {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        match self {
+            Self::PlotPoints(pts) => pts.len(),
+            Self::Shared(pts) => pts.len(),
+        }
+    }
+
+    #[inline(always)]
+    fn x_at(&self, index: usize) -> f64 {
+        match self {
+            Self::PlotPoints(pts) => pts[index].x,
+            Self::Shared(pts) => pts[index][0],
+        }
+    }
+
+    #[inline(always)]
+    fn y_at(&self, index: usize) -> f64 {
+        match self {
+            Self::PlotPoints(pts) => pts[index].y,
+            Self::Shared(pts) => pts[index][1],
+        }
+    }
+
+    #[inline(always)]
+    fn point_at(&self, index: usize) -> [f64; 2] {
+        match self {
+            Self::PlotPoints(pts) => [pts[index].x, pts[index].y],
+            Self::Shared(pts) => pts[index],
+        }
+    }
+}
+
 pub(crate) struct LineSeriesRef<'a> {
     pub(crate) id: Id,
     pub(crate) name: String,
-    pub(crate) points: &'a [PlotPoint],
+    pub(crate) points: SeriesCoords<'a>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RefLineEntry {
     pub(crate) id: Id,
     pub(crate) name: String,
     pub(crate) value: f64,
+}
+
+impl RefLineEntry {
+    #[inline]
+    pub(crate) fn matches(&self, id: Id, name: &str, value: f64) -> bool {
+        self.id == id && self.name == name && self.value.to_bits() == value.to_bits()
+    }
 }
 
 thread_local! {
@@ -128,17 +177,45 @@ pub fn detect_critical_points(
         return Vec::new();
     }
     let (lines, hlines, vlines) = collect_inspectable_items(items);
-    let mut raw = Vec::new();
+    detect_critical_points_from_refs(&lines, &hlines, &vlines, &bounds, transform)
+}
 
-    for line in &lines {
-        collect_single_line_pois(line, &bounds, transform, &mut raw);
+pub(crate) fn detect_critical_points_from_shared(
+    lines: &[(Id, String, SharedPoints)],
+    hlines: &[RefLineEntry],
+    vlines: &[RefLineEntry],
+    transform: &PlotTransform,
+) -> Vec<CriticalPoint> {
+    DETECT_CRITICAL_POINTS_CALL_COUNT.with(|c| c.set(c.get() + 1));
+    let bounds = *transform.bounds();
+    if !bounds.is_finite() {
+        return Vec::new();
     }
-    intersect::collect_reference_intersections(
-        &lines, &hlines, &vlines, &bounds, transform, &mut raw,
-    );
-    intersect::collect_pairwise_line_intersections(&lines, &bounds, transform, &mut raw);
+    let refs: Vec<LineSeriesRef<'_>> = lines
+        .iter()
+        .map(|(id, name, pts)| LineSeriesRef {
+            id: *id,
+            name: name.clone(),
+            points: SeriesCoords::Shared(pts.as_slice()),
+        })
+        .collect();
+    detect_critical_points_from_refs(&refs, hlines, vlines, &bounds, transform)
+}
 
-    finalize_critical_points(raw, &bounds)
+fn detect_critical_points_from_refs(
+    lines: &[LineSeriesRef<'_>],
+    hlines: &[RefLineEntry],
+    vlines: &[RefLineEntry],
+    bounds: &PlotBounds,
+    transform: &PlotTransform,
+) -> Vec<CriticalPoint> {
+    let mut raw = Vec::new();
+    for line in lines {
+        collect_single_line_pois(line, bounds, transform, &mut raw);
+    }
+    intersect::collect_reference_intersections(lines, hlines, vlines, bounds, transform, &mut raw);
+    intersect::collect_pairwise_line_intersections(lines, bounds, transform, &mut raw);
+    finalize_critical_points(raw, bounds)
 }
 
 fn collect_inspectable_items<'a>(
@@ -151,12 +228,20 @@ fn collect_inspectable_items<'a>(
         if !item.allow_hover() {
             continue;
         }
-        if let Some(pts) = item.line_points() {
+        if let Some(pts) = item.line_shared_points() {
             if pts.len() >= 2 {
                 lines.push(LineSeriesRef {
                     id: item.id(),
                     name: item.name().to_owned(),
-                    points: pts,
+                    points: SeriesCoords::Shared(pts.as_slice()),
+                });
+            }
+        } else if let Some(pts) = item.line_points() {
+            if pts.len() >= 2 {
+                lines.push(LineSeriesRef {
+                    id: item.id(),
+                    name: item.name().to_owned(),
+                    points: SeriesCoords::PlotPoints(pts),
                 });
             }
         } else if let Some(y) = item.hline_y() {
@@ -192,7 +277,7 @@ fn collect_single_line_pois(
         roots,
         y_intercepts,
         extrema,
-    } = scan_line_pois(line.points, want_roots, want_y_ints);
+    } = scan_line_pois(&line.points, want_roots, want_y_ints);
     for x_root in roots {
         push_if_visible(
             out,

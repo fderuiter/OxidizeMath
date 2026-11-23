@@ -110,20 +110,20 @@ impl ChladniWaveTankTool {
                 );
             }
             if pulse {
-                self.solver.inject_gaussian_pulse(
+                self.trigger_mallet_pulse(
                     self.state.driver_x,
                     self.state.driver_y,
                     0.045,
                     1.0,
+                    1.0,
                 );
-                self.refresh_analysis_outputs();
                 crate::accessibility::announce_live_status(&ctx, "Injected Gaussian wave pulse");
             }
         }
-        self.handle_driver_pointer_input(&ctx, response, rect);
+        self.handle_canvas_pointer_input(&ctx, response, rect);
     }
 
-    fn handle_driver_pointer_input(
+    fn handle_canvas_pointer_input(
         &mut self,
         ctx: &egui::Context,
         response: &egui::Response,
@@ -145,20 +145,18 @@ impl ChladniWaveTankTool {
             self.state.pickup_x = nx;
             self.state.pickup_y = ny;
             self.analysis_dirty = true;
-        } else if shift && response.clicked() {
-            let pt = [nx * (GRID_SIZE as f64), ny * (GRID_SIZE as f64)];
-            self.apply_sculpt_stroke(crate::framework::BrushStroke {
-                start: pt,
-                end: pt,
-                radius: 2.0,
-                mode: crate::framework::BrushMode::Solid,
-                drag_vector: [0.0, 0.0],
-            });
+        } else if shift
+            && response.clicked()
+            && self.state.custom_clamps.len() < sonification::MAX_CUSTOM_CLAMPS
+        {
+            self.state.custom_clamps.push([nx, ny]);
+            self.rebuild_masks();
+            self.analysis_dirty = true;
         } else {
             self.state.driver_x = nx;
             self.state.driver_y = ny;
             if response.clicked() {
-                self.solver.inject_gaussian_pulse(nx, ny, 0.04, 0.65);
+                self.trigger_mallet_pulse(nx, ny, 0.04, 0.65, 0.85);
             }
         }
         self.state_rev = self.state_rev.wrapping_add(1);
@@ -355,7 +353,10 @@ impl ChladniWaveTankTool {
                         } else {
                             String::new()
                         },
-                        points: vec![[p0[0] + 0.5, p0[1] + 0.5], [p1[0] + 0.5, p1[1] + 0.5]],
+                        points: egui_plot::SharedPoints::from_slice(&[
+                            [p0[0] + 0.5, p0[1] + 0.5],
+                            [p1[0] + 0.5, p1[1] + 0.5],
+                        ]),
                         color: DARK_PALETTE.node_stroke,
                         stroke_width: 1.2,
                         closed: false,
@@ -377,7 +378,7 @@ impl ChladniWaveTankTool {
             if !pts.is_empty() {
                 prims.push(ExportPrimitive::Points {
                     name: "Chladni Sand".into(),
-                    points: pts,
+                    points: pts.into(),
                     color: DARK_PALETTE.accent,
                     radius: 1.4,
                 });
@@ -387,7 +388,10 @@ impl ChladniWaveTankTool {
             let det_x = (self.state.detector_x as f64) + 0.5;
             prims.push(ExportPrimitive::Polyline {
                 name: "Detector Screen".into(),
-                points: vec![[det_x, 2.0], [det_x, (GRID_SIZE - 2) as f64]],
+                points: egui_plot::SharedPoints::from_slice(&[
+                    [det_x, 2.0],
+                    [det_x, (GRID_SIZE - 2) as f64],
+                ]),
                 color: DARK_PALETTE.success,
                 stroke_width: 1.5,
                 closed: false,

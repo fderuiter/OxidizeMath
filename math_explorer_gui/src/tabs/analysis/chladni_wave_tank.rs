@@ -10,7 +10,6 @@ use math_explorer::pure_math::analysis::pde::wave_2d::{
     SpectralAnalyzer2D, SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver, WaveProbeSample,
 };
 
-use crate::audio::{mappings::chladni_plate_frame, SonificationFrame};
 use crate::framework::{
     ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit, ToolStateBounds,
 };
@@ -21,6 +20,7 @@ mod metamaterial;
 mod presets;
 mod sculpt;
 mod sculpt_codec;
+mod sonification;
 mod ui;
 
 #[cfg(test)]
@@ -116,6 +116,8 @@ pub(crate) struct ChladniWaveTankState {
     pub pickup_y: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sculpt_rle: Vec<[u32; 2]>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom_clamps: Vec<[f64; 2]>,
 }
 
 pub struct ChladniWaveTankTool {
@@ -124,6 +126,7 @@ pub struct ChladniWaveTankTool {
     pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) last_brush_grid_pos: Option<[f64; 2]>,
     pub(crate) pickup_drag_mode: bool,
+    pub(crate) audio: sonification::ChladniSonificationState,
     pub(crate) solver: Wave2DSolver,
     pub(crate) sand: ChladniSandSystem,
     pub(crate) fft: SpectralAnalyzer2D,
@@ -135,7 +138,6 @@ pub struct ChladniWaveTankTool {
     pub(crate) active_peak_count: usize,
     pub(crate) dominant_peak: SpectralPeak2D,
     pub(crate) latest_probe: WaveProbeSample,
-    pub(crate) latest_audio_frame: SonificationFrame,
     #[cfg(feature = "physics")]
     pub(crate) metamaterial: metamaterial::MetamaterialWorkbench,
     pub(crate) rgba_pixels: Vec<egui::Color32>,
@@ -166,6 +168,7 @@ impl Default for ChladniWaveTankTool {
             brush_kit: sculpt::default_chladni_brush_kit(),
             last_brush_grid_pos: None,
             pickup_drag_mode: false,
+            audio: sonification::ChladniSonificationState::default(),
             solver,
             sand,
             fft: SpectralAnalyzer2D::new(GRID_SIZE, GRID_SIZE),
@@ -177,7 +180,6 @@ impl Default for ChladniWaveTankTool {
             active_peak_count: 0,
             dominant_peak: SpectralPeak2D::default(),
             latest_probe: WaveProbeSample::default(),
-            latest_audio_frame: SonificationFrame::silent(),
             #[cfg(feature = "physics")]
             metamaterial: metamaterial::MetamaterialWorkbench::default(),
             rgba_pixels: vec![egui::Color32::BLACK; GRID_SIZE * GRID_SIZE],
@@ -273,6 +275,7 @@ impl ChladniWaveTankTool {
             apply_sponge_layer(&mut self.solver.sponge_mask, GRID_SIZE, GRID_SIZE, 12, 1.8);
         }
         sculpt::apply_preset_clamp_pins(self.state.clamp_layout, &mut self.solver.wall_mask);
+        sculpt::apply_custom_clamp_pins(&self.state.custom_clamps, &mut self.solver.wall_mask);
         if self.state.barrier_enabled {
             apply_multi_slit_barrier(
                 &mut self.solver.wall_mask,
@@ -339,15 +342,7 @@ impl ChladniWaveTankTool {
         self.dominant_peak = self.modal_peaks[0];
         self.fft
             .compute_radial_profile(&mut self.radial_spectrum, &mut self.radial_counts);
-        self.latest_audio_frame = chladni_plate_frame(
-            &self.modal_peaks[..self.active_peak_count],
-            self.latest_probe,
-            self.state.medium,
-            self.state.driver_frequency,
-            self.state.wave_speed,
-            self.state.plate_stiffness,
-            self.state.pickup_x,
-        );
+        self.update_sonification_frame();
         if self.state.show_nodal_contours {
             let field = if self.state.driver_enabled && !self.state.line_source {
                 self.solver.modal_field()
@@ -407,6 +402,7 @@ impl InteractiveTool for ChladniWaveTankTool {
     fn clamp_parameters(&mut self) -> bool {
         presets::clamp_state_fields(&mut self.state);
         self.state_rev = self.state_rev.wrapping_add(1);
+        crate::audio::notify_solver_diverged();
         true
     }
 
@@ -460,7 +456,6 @@ impl InteractiveTool for ChladniWaveTankTool {
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
-        self.draw_controls_panel(parent_ui);
         if !self.paused {
             for _ in 0..self.steps_per_frame {
                 self.advance_physics_step();
@@ -470,6 +465,7 @@ impl InteractiveTool for ChladniWaveTankTool {
         } else if self.analysis_dirty {
             self.refresh_analysis_outputs();
         }
+        self.draw_controls_panel(parent_ui);
         self.draw_central_workspace(parent_ui);
     }
 }

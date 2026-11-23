@@ -61,6 +61,7 @@ pub(super) fn is_valid_state(s: &ChladniWaveTankState) -> bool {
         && s.pickup_y.is_finite()
         && (0.0..=1.0).contains(&s.pickup_y)
         && is_valid_sculpt_rle(&s.sculpt_rle)
+        && super::sonification::are_custom_clamps_valid(&s.custom_clamps)
 }
 
 pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
@@ -84,6 +85,7 @@ pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
     if !is_valid_sculpt_rle(&s.sculpt_rle) {
         s.sculpt_rle.clear();
     }
+    super::sonification::sanitize_custom_clamps(&mut s.custom_clamps);
 }
 
 fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
@@ -119,6 +121,7 @@ fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
         pickup_x: default_pickup_x(),
         pickup_y: default_pickup_y(),
         sculpt_rle: Vec::new(),
+        custom_clamps: Vec::new(),
     }
 }
 

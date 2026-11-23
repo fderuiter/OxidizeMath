@@ -183,9 +183,7 @@ impl ChladniWaveTankTool {
             ));
         }
         if pulsed {
-            self.solver
-                .inject_gaussian_pulse(self.state.driver_x, self.state.driver_y, 0.045, 1.0);
-            self.refresh_analysis_outputs();
+            self.trigger_mallet_pulse(self.state.driver_x, self.state.driver_y, 0.045, 1.0, 1.0);
             msg = Some("Injected Gaussian wave pulse".to_string());
         }
         if let Some(text) = msg {

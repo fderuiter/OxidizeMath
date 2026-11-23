@@ -244,6 +244,12 @@ pub(crate) fn apply_preset_clamp_pins(layout: ClampLayout, wall_mask: &mut [f64]
     }
 }
 
+pub(crate) fn apply_custom_clamp_pins(custom_clamps: &[[f64; 2]], wall_mask: &mut [f64]) {
+    for &[cx, cy] in custom_clamps {
+        apply_point_clamp(wall_mask, GRID_SIZE, GRID_SIZE, cx, cy, 1.8);
+    }
+}
+
 pub(crate) fn replay_sculpt_mask_on_solver(sculpt_mask: &[u8], solver: &mut Wave2DSolver) {
     let n = sculpt_mask
         .len()

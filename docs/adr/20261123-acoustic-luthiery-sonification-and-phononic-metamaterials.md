@@ -1,10 +1,10 @@
-# ADR 0047: In-Place Acoustic Luthiery Sonification, RLE Soundboard Sculpting, and Phononic Metamaterial Refraction
+# ADR 20261123: In-Place Acoustic Luthiery Sonification, RLE Soundboard Sculpting, and Phononic Metamaterial Refraction
 
 ## Status
 Accepted (extends [ADR 0040](0040-dual-backend-web-audio-sonification.md), [ADR 0042](0042-2d-chladni-plate-and-wave-tank-solver.md), and [ADR 0045](0045-spatial-brush-kit-and-field-sculpting.md))
 
 ## Context
-[`ChladniWaveTankTool`](../../math_explorer_gui/src/tabs/analysis/chladni_wave_tank.rs) and [`Wave2DSolver`](../../crates/pure_math/src/pure_math/analysis/pde/wave_2d.rs) (introduced in [ADR 0042](0042-2d-chladni-plate-and-wave-tank-solver.md)) previously computed 2D FFT spectra and analytical clamped-plate eigenfrequencies (`analytic_clamped_square_omega`) while submitting zero [`SonificationFrame`](../../math_explorer_gui/src/audio/frame.rs) audio to [`crate::audio`](../../math_explorer_gui/src/audio/mod.rs). Simultaneously, `rebuild_masks` overwrote `wall_mask` and `wave_speed_mask` with rigid preset geometry, `try_load_state` discarded custom pins with `max_array_len = 32`, and condensed-matter phonon dispersion and Bravais lattice primitives in [`crates/domain_physics/src/physics/solid_state/phonons.rs`](../../crates/domain_physics/src/physics/solid_state/phonons.rs) and [`lattice.rs`](../../crates/domain_physics/src/physics/solid_state/lattice.rs) had zero interactive 2D wave callers.
+[`ChladniWaveTankTool`](../../math_explorer_gui/src/tabs/analysis/chladni_wave_tank.rs) and [`Wave2DSolver`](../../crates/pure_math/src/pure_math/analysis/pde/wave_2d.rs) (introduced in [ADR 0042](0042-2d-chladni-plate-and-wave-tank-solver.md)) previously lacked continuous signed pickup velocity probes, flexural stiffness rib modulation, and multi-role medium sculpting: `rebuild_masks` overwrote `wave_speed_mask` with rigid preset geometry without RLE soundboard persistence, and condensed-matter phonon dispersion and Bravais lattice primitives in [`crates/domain_physics/src/physics/solid_state/phonons.rs`](../../crates/domain_physics/src/physics/solid_state/phonons.rs) and [`lattice.rs`](../../crates/domain_physics/src/physics/solid_state/lattice.rs) had zero interactive 2D wave callers.
 
 ## Decision
 1. **Zero-Allocation Signed Point-Probe Readers, Multi-Mode 2D FFT Extraction, and Flexural Rib Scaling (`pure_math`)**:

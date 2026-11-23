@@ -22,12 +22,7 @@ impl ChladniWaveTankTool {
                 ui.separator();
                 self.draw_preset_and_transport_controls(ui);
                 ui.separator();
-                crate::audio::render_sonification_panel(
-                    ui,
-                    "chladni_wave_tank",
-                    &self.latest_audio_frame,
-                    self.paused,
-                );
+                self.draw_sonification_section(ui);
                 ui.separator();
                 self.draw_sculpt_controls(ui);
                 #[cfg(feature = "physics")]
@@ -91,13 +86,13 @@ impl ChladniWaveTankTool {
                 self.refresh_analysis_outputs();
             }
             if ui.button("💥 Pulse").clicked() {
-                self.solver.inject_gaussian_pulse(
+                self.trigger_mallet_pulse(
                     self.state.driver_x,
                     self.state.driver_y,
                     0.045,
                     1.0,
+                    1.0,
                 );
-                self.refresh_analysis_outputs();
             }
             if ui.button("↺ Reset").clicked() {
                 crate::audio::notify_playback_reset();
@@ -154,8 +149,10 @@ impl ChladniWaveTankTool {
         } else if mask_dirty {
             self.state_rev = self.state_rev.wrapping_add(1);
             self.rebuild_masks();
+            self.analysis_dirty = true;
         } else if param_changed {
             self.state_rev = self.state_rev.wrapping_add(1);
+            self.analysis_dirty = true;
         }
     }
 
@@ -176,6 +173,10 @@ impl ChladniWaveTankTool {
                 }
             });
         mask_dirty |= self.state.clamp_layout != prev_clamp;
+        if !self.state.custom_clamps.is_empty() && ui.small_button("Clear Custom Pins").clicked() {
+            self.state.custom_clamps.clear();
+            mask_dirty = true;
+        }
         mask_dirty
     }
 
