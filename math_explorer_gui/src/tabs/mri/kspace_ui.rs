@@ -5,7 +5,6 @@ use super::kspace_types::{KSpaceMaskPreset, MriKSpaceSnapshot, PhantomPreset, St
 use crate::accessibility::{
     lock_canvas_arrow_keys, paint_canvas_focus_ring, register_canvas_accessibility,
 };
-use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{
     bounded_drag_value, InputMode, InteractionContext, InteractiveTool, PlaybackAction,
@@ -281,19 +280,6 @@ impl MriKSpaceTool {
         crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
             ui.heading("2D MRI Studio");
             ui.separator();
-
-            if let Some(WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters) =
-                render_worker_fault_banner(
-                    ui,
-                    self.worker.state(),
-                    self.worker.diagnostic_report(),
-                    false,
-                )
-            {
-                self.reset();
-                ctx.request_repaint();
-                ui.separator();
-            }
 
             self.draw_phantom_and_grid_controls(ui);
             self.draw_rf_and_sequence_controls(ui);

@@ -9,6 +9,7 @@
 
 // [cite:chaos_theory]
 
+use crate::framework::recovery::DiagnosticReport;
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolMetadata};
 use eframe::egui;
 use math_explorer::physics::astrophysics::nbody::FigureEightThreeBody;
@@ -353,8 +354,36 @@ impl InteractiveTool for HamiltonianChaosLab {
             && self.orbits_are_finite()
     }
 
-    fn clamp_parameters(&mut self) -> bool {
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        if !self.orbits_are_finite() {
+            let step_index = (self.sim_time / self.dt.abs().max(1e-6)).round() as usize;
+            return Some(DiagnosticReport::new(
+                self.sim_time,
+                step_index,
+                "orbit_state",
+                "Non-finite canonical phase-space coordinate detected during Hamiltonian integration.",
+            ));
+        }
+        None
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.dt = if self.dt.is_finite() {
+            (self.dt * 0.5).clamp(0.0005, 0.1)
+        } else {
+            0.015
+        };
         self.clamp_model_parameters();
+        self.rebuild_existing_seeds();
+        true
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        let had_bad_orbits = !self.orbits_are_finite();
+        self.clamp_model_parameters();
+        if had_bad_orbits {
+            self.rebuild_existing_seeds();
+        }
         true
     }
 

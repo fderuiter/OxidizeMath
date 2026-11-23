@@ -140,6 +140,16 @@ impl HamiltonianChaosLab {
         self.step_batch(WARMUP_STEPS_ON_SEED);
     }
 
+    /// Restarts dynamic trajectories at `t = 0` while preserving user parameters and seeded orbits.
+    pub fn reset(&mut self) {
+        self.is_playing = false;
+        if self.orbits.is_empty() {
+            self.seed_default_showcase();
+        } else {
+            self.rebuild_existing_seeds();
+        }
+    }
+
     /// Clears all seeded orbits and resets the `RungeKutta4` comparator.
     pub fn clear_orbits(&mut self) {
         self.orbits.clear();

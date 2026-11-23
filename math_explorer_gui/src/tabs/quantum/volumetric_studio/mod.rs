@@ -146,6 +146,22 @@ impl InteractiveTool for VolumetricFieldStudioTool {
         self.config.validate().is_ok() && !self.engine.diverged
     }
 
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.engine
+            .diverged
+            .then(|| self.engine.diagnostic_report.clone())
+            .flatten()
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.config.quantum_dt = (self.config.quantum_dt * 0.5).max(0.005);
+        self.config.turing_dt = (self.config.turing_dt * 0.5).max(0.001);
+        self.config.clamp_in_place();
+        self.engine.reset_simulation(&self.config);
+        self.refresh_zero_alloc();
+        true
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&self.config).ok()
     }
@@ -163,9 +179,14 @@ impl InteractiveTool for VolumetricFieldStudioTool {
     }
 
     fn clamp_parameters(&mut self) -> bool {
+        let was_diverged = self.engine.diverged;
         self.config.clamp_in_place();
-        self.engine.diverged = false;
-        self.engine.diagnostic_report = None;
+        if was_diverged {
+            self.engine.reset_simulation(&self.config);
+        } else {
+            self.engine.diverged = false;
+            self.engine.diagnostic_report = None;
+        }
         self.refresh_zero_alloc();
         true
     }
@@ -178,6 +199,16 @@ impl InteractiveTool for VolumetricFieldStudioTool {
         self.poll_async_and_playback(ui.ctx());
         self.draw_side_panel(ui);
         self.draw_viewport(ui);
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 

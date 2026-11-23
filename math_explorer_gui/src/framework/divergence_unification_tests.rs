@@ -8,8 +8,9 @@ use crate::tabs::analysis::ode::OdeSolverTool;
 use crate::tabs::chaos::attractors::{AttractorPlotter, SolverExecutionState};
 use crate::tabs::climate::cera::CeraTool;
 use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
-use crate::tabs::mri::MriTool;
+use crate::tabs::mri::{MriKSpaceTool, MriTool};
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+use crate::tabs::quantum::volumetric_studio::VolumetricFieldStudioTool;
 use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
 use eframe::egui;
 use nalgebra::Vector3;
@@ -408,4 +409,81 @@ fn test_import_url_preset_json_preserves_factory_and_preset_baselines() {
         fw.active_tool.as_ref().unwrap().save_state().as_deref(),
         Some(imported_state.as_str())
     );
+}
+
+fn verify_volumetric_studio_divergence(ctx: &egui::Context) {
+    let mut vol_fw = SimulationFramework::new("quantum");
+    select_matching_tool(&mut vol_fw, "VolumetricFieldStudioTool");
+    std::thread::sleep(std::time::Duration::from_millis(25));
+    {
+        let vol = vol_fw
+            .active_tool
+            .as_mut()
+            .and_then(|t| t.as_any_mut())
+            .and_then(|a| a.downcast_mut::<VolumetricFieldStudioTool>())
+            .unwrap();
+        vol.engine.diverged = true;
+        vol.engine.diagnostic_report = Some(DiagnosticReport::new(
+            0.25,
+            5,
+            "turing_3d",
+            "Non-finite concentration in 3D Schnakenberg reaction-diffusion.",
+        ));
+    }
+    let vol_out = render_frame(ctx, &mut vol_fw, "vol_div_test");
+    assert_single_banner_and_solver_report(&vol_out, &vol_fw, 0.25, 5, "turing_3d");
+    assert!(vol_fw.rollback_auto_scale_step_size());
+    let vol_rec = render_frame(ctx, &mut vol_fw, "vol_div_test");
+    assert!(!vol_fw.is_diverged() && vol_fw.diagnostic_report().is_none());
+    assert_eq!(
+        count_text_occurrences(&vol_rec, "Solver Divergence Warning"),
+        0
+    );
+}
+
+fn verify_mri_kspace_divergence(ctx: &egui::Context) {
+    let mut ks_fw = SimulationFramework::new("mri");
+    select_matching_tool(&mut ks_fw, "MriKSpaceStudio");
+    std::thread::sleep(std::time::Duration::from_millis(25));
+    {
+        let ks = ks_fw
+            .active_tool
+            .as_mut()
+            .and_then(|t| t.as_any_mut())
+            .and_then(|a| a.downcast_mut::<MriKSpaceTool>())
+            .unwrap();
+        ks.config.mask_preset = crate::tabs::mri::kspace_types::KSpaceMaskPreset::LowPass;
+        ks.sync_and_notify("sync_mask");
+        ks.config.grad_gx_integral = f64::NAN;
+        ks.params.write().unwrap().config.grad_gx_integral = f64::NAN;
+        let _ = ks.worker.send_command(SimCommand::Step(1));
+        for _ in 0..100 {
+            let _ = ks.worker.update();
+            if ks.worker.state().is_faulted() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(ks.worker.state().is_faulted());
+    }
+    let ks_out = render_frame(ctx, &mut ks_fw, "kspace_div_test");
+    assert_single_banner_and_solver_report(&ks_out, &ks_fw, 0.032, 0, "kspace_spins");
+    ks_fw.clamp_parameters();
+    let ks_rec = render_frame(ctx, &mut ks_fw, "kspace_div_test");
+    assert!(!ks_fw.is_diverged() && ks_fw.diagnostic_report().is_none());
+    assert_eq!(
+        count_text_occurrences(&ks_rec, "Solver Divergence Warning"),
+        0
+    );
+}
+
+#[test]
+fn test_volumetric_and_mri_kspace_single_banner_and_solver_diagnostics() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    egui_plot::clear_last_plot_datasets();
+    let ctx = egui::Context::default();
+    verify_volumetric_studio_divergence(&ctx);
+    verify_mri_kspace_divergence(&ctx);
 }
