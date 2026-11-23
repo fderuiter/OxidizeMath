@@ -263,6 +263,55 @@ fn audit_single_tool(meta: &crate::framework::ToolMetadata, counts: &mut AuditCo
     }
 }
 
+#[derive(Default)]
+struct DatasetOnlyFixtureTool;
+
+impl scientific_metadata::theory::TheoryDescribable for DatasetOnlyFixtureTool {
+    fn theory_description(&self) -> String {
+        "Dataset-only fixture".into()
+    }
+    fn phonetic_description(&self) -> String {
+        "Dataset-only fixture".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Fixture".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+
+impl InteractiveTool for DatasetOnlyFixtureTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+    fn name(&self) -> &'static str {
+        "DatasetOnlyFixture"
+    }
+    fn domain(&self) -> &'static str {
+        "financial_math"
+    }
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::dataset_only()
+    }
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        vec![("FixtureSeries".into(), vec![[0.0, 1.0], [1.0, 2.0]])]
+    }
+    fn show_inside(&mut self, _ui: &mut egui::Ui) {}
+}
+
+#[test]
+fn test_dataset_only_capability_profile_exports_csv_json_and_warns_on_png() {
+    let mut framework = SimulationFramework::new("__audit_dataset_only__");
+    framework.active_tool = Some(Box::new(DatasetOnlyFixtureTool));
+    verify_dataset_exports("DatasetOnlyFixtureTool", &mut framework);
+    run_deferred_export_frame(&mut framework, ExportFormat::Png, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Warning
+    );
+}
+
 #[test]
 fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     let mut counts = AuditCounts::default();
@@ -286,12 +335,12 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         feature = "pure_math"
     ))]
     {
-        assert_eq!(counts.plot_tools, 71, "Expected 71 dataset+figure tools");
-        assert_eq!(counts.dataset_only, 6, "Expected 6 dataset-only tools");
-        assert_eq!(counts.solid_3d, 5, "Expected 5 solid 3D geometric tools");
+        assert_eq!(counts.plot_tools, 79, "Expected 79 dataset+figure tools");
+        assert_eq!(counts.dataset_only, 5, "Expected 5 dataset-only tools");
+        assert_eq!(counts.solid_3d, 6, "Expected 6 solid 3D geometric tools");
         assert_eq!(counts.splat_3d, 1, "Expected 1 3DGS splat PLY tool");
         assert_eq!(counts.shader_tools, 3, "Expected 3 analytical GLSL tools");
-        assert_eq!(counts.non_shader_tools, 74, "Expected 74 non-shader tools");
+        assert_eq!(counts.non_shader_tools, 81, "Expected 81 non-shader tools");
     }
 }
 
@@ -371,6 +420,8 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         "AttractorPlotter",
         "CrystalViewer",
         "SpinVisualizer",
+        #[cfg(feature = "biology")]
+        "CorticalMorphometryTool",
     ];
     for id in solid_ids {
         let meta = inventory::iter::<crate::framework::ToolMetadata>

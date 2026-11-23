@@ -62,6 +62,10 @@ impl_error_from!(@cfg "biology":
     ReactionDiffusionError => ReactionDiffusion,
 );
 
+impl_error_from!(@cfg "climate":
+    ClimateError => Climate,
+);
+
 impl_error_from!(@cfg "epidemiology":
     EpidemiologyDomainError => EpidemiologyDomain,
     EpidemiologyError => Epidemiology,
@@ -77,6 +81,7 @@ impl_error_from!(@cfg "physics":
     HighEnergyError => HighEnergy,
     NuclearError => Nuclear,
     RadarError => Radar,
+    SandpileError => Sandpile,
     SolidStateError => SolidState,
     StandardModelError => StandardModel,
     StatMechError => StatMech,

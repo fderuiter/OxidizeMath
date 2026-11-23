@@ -118,11 +118,7 @@ impl AlgorithmVisualizerTool {
                 .iter()
                 .enumerate()
                 .map(|(rank, &node_id)| {
-                    let dist = self
-                        .distances
-                        .get(&node_id)
-                        .copied()
-                        .unwrap_or(rank as f64);
+                    let dist = self.distances.get(&node_id).copied().unwrap_or(rank as f64);
                     vec![
                         ExportCell::UInt(rank as u64),
                         ExportCell::UInt(node_id as u64),

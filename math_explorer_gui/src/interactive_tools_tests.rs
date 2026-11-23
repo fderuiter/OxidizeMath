@@ -25,6 +25,7 @@ mod tests {
         check_tool!(crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool);
         check_tool!(crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool);
         check_tool!(crate::tabs::game_theory::glicko2::Glicko2TournamentTool);
+        check_tool!(crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool);
         check_tool!(crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool);
         check_tool!(crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool);
         check_tool!(crate::tabs::solid_state::band_structure::BandStructureTool);
@@ -46,8 +47,10 @@ mod tests {
         check_tool!(crate::tabs::ai::training_monitor::TrainingMonitorTool);
         check_tool!(crate::tabs::ai::loss_landscape::LossLandscapeTool);
         check_tool!(crate::tabs::ai::grid_world::GridWorldTool);
+        check_tool!(crate::tabs::ai::closed_loop_control::ClosedLoopControlTool);
         check_tool!(crate::tabs::medical::beam_profiling::BeamProfilingTool);
         check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
+        check_tool!(crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool);
         check_tool!(crate::tabs::medical::radar_gating::RadarGatingTool);
         check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
         check_tool!(crate::tabs::chaos::hamiltonian::HamiltonianChaosLab);
@@ -59,6 +62,7 @@ mod tests {
         check_tool!(crate::tabs::morphogenesis::lenia::LeniaTool);
         check_tool!(crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool);
         check_tool!(crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool);
+        check_tool!(crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool);
     }
 
     #[test]
@@ -315,6 +319,10 @@ mod tests {
         assert_tool_roundtrip(
             &mut crate::tabs::clinical_trials::survival::SurvivalAnalysisTool::default(),
             r#"{"input_text":"5.0, 1\n12.0, 0"}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool::default(),
+            r#"{"lambda1":0.16,"lambda2":0.36,"alpha":0.7,"theta":0.6,"censor_horizon":4.5,"dropout_rate":0.06,"sig_alpha":0.05,"n_min":30,"n_max":150,"n_steps":5,"replicates":80,"seed":9001,"chart_mode":"TierWaterfall"}"#,
         );
         assert_tool_roundtrip(
             &mut crate::tabs::epidemiology::network_propagation::NetworkPropagationTool::default(),

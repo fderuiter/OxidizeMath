@@ -158,17 +158,17 @@ impl RandomizationTool {
         ui.label(format!("Total Treatment: {treatment_count}"));
         ui.label(format!("Total Control: {control_count}"));
 
-            egui::ScrollArea::vertical()
-                .max_height(300.0)
-                .show(ui, |ui| {
-                    for (i, group) in self.assignments.iter().enumerate() {
-                        let group_str = match group {
-                            Group::Treatment => "Treatment",
-                            Group::Control => "Control",
-                        };
-                        ui.label(format!("Subject {}: {group_str}", i + 1));
-                    }
-                });
+        egui::ScrollArea::vertical()
+            .max_height(300.0)
+            .show(ui, |ui| {
+                for (i, group) in self.assignments.iter().enumerate() {
+                    let group_str = match group {
+                        Group::Treatment => "Treatment",
+                        Group::Control => "Control",
+                    };
+                    ui.label(format!("Subject {}: {group_str}", i + 1));
+                }
+            });
     }
 
     fn build_export_tables(&self) -> Vec<crate::framework::ExportTable> {

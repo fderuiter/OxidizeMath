@@ -189,39 +189,30 @@ impl AlgorithmVisualizerTool {
         }
     }
 
+    fn render_algorithm_selector(&mut self, ui: &mut egui::Ui) {
+        ui.label("Select Algorithm:");
+        let mut changed = false;
+        for (alg, label) in [
+            (Algorithm::Dijkstra, "Dijkstra"),
+            (Algorithm::Bfs, "BFS"),
+            (Algorithm::Dfs, "DFS"),
+        ] {
+            changed |= ui
+                .radio_value(&mut self.selected_algorithm, alg, label)
+                .clicked();
+        }
+        if changed {
+            self.run_algorithm();
+        }
+    }
+
     fn render_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id =
             crate::framework::scoped_panel_id(parent_ui, "algorithm_visualizer_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Algorithm Visualizer");
             ui.separator();
-            ui.label("Select Algorithm:");
-            let mut changed = false;
-            if ui
-                .radio_value(
-                    &mut self.selected_algorithm,
-                    Algorithm::Dijkstra,
-                    "Dijkstra",
-                )
-                .clicked()
-            {
-                changed = true;
-            }
-            if ui
-                .radio_value(&mut self.selected_algorithm, Algorithm::Bfs, "BFS")
-                .clicked()
-            {
-                changed = true;
-            }
-            if ui
-                .radio_value(&mut self.selected_algorithm, Algorithm::Dfs, "DFS")
-                .clicked()
-            {
-                changed = true;
-            }
-            if changed {
-                self.run_algorithm();
-            }
+            self.render_algorithm_selector(ui);
             ui.separator();
             self.render_start_node_selector(ui);
             ui.separator();

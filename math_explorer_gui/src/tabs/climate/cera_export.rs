@@ -94,9 +94,7 @@ impl CeraTool {
                 let pred_rows: Vec<Vec<ExportCell>> = preds
                     .iter()
                     .enumerate()
-                    .map(|(ch, &val)| {
-                        vec![ExportCell::UInt(ch as u64), ExportCell::Float(val)]
-                    })
+                    .map(|(ch, &val)| vec![ExportCell::UInt(ch as u64), ExportCell::Float(val)])
                     .collect();
                 tables.push(ExportTable::new(
                     "Channel Predictions",

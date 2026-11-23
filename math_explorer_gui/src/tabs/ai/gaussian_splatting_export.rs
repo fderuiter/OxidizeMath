@@ -81,7 +81,8 @@ impl GaussianSplattingTool {
         let (x_half, y_half) = self.frustum_half_extents;
         let mut prims = Vec::with_capacity(rings.len() + 5);
 
-        let origin = map_viewport_to_grid(self.project_splat_point(Point3::origin()), x_half, y_half);
+        let origin =
+            map_viewport_to_grid(self.project_splat_point(Point3::origin()), x_half, y_half);
         let axes = [
             (Point3::new(1.2, 0.0, 0.0), palette.axis_x, "X"),
             (Point3::new(0.0, 1.2, 0.0), palette.axis_y, "Y"),
