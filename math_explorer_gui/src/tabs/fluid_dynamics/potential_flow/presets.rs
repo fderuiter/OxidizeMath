@@ -137,6 +137,7 @@ impl PotentialFlowTool {
             new_element_x: loaded.new_element_x,
             new_element_y: loaded.new_element_y,
             new_element_angle: loaded.new_element_angle,
+            high_contrast: self.high_contrast,
             show_vectors: loaded.show_vectors,
             show_streamlines: loaded.show_streamlines,
             show_dye: loaded.show_dye,

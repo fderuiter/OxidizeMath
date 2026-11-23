@@ -4,10 +4,14 @@ mod cache;
 mod canvas;
 mod controls;
 mod presets;
+mod shader;
 #[cfg(test)]
 mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
+
+#[cfg(test)]
+pub(crate) use shader::MAX_SHADER_SINGULARITIES;
 
 use crate::framework::InteractiveTool;
 use eframe::egui;
@@ -116,6 +120,7 @@ pub struct PotentialFlowTool {
     pub(crate) new_element_x: f64,
     pub(crate) new_element_y: f64,
     pub(crate) new_element_angle: f64,
+    pub(crate) high_contrast: bool,
     pub(crate) show_vectors: bool,
     pub(crate) show_streamlines: bool,
     pub(crate) show_dye: bool,
@@ -167,6 +172,7 @@ impl Default for PotentialFlowTool {
             new_element_x: 0.0,
             new_element_y: 0.0,
             new_element_angle: 0.0,
+            high_contrast: false,
             show_vectors: true,
             show_streamlines: true,
             show_dye: true,
@@ -210,6 +216,17 @@ impl InteractiveTool for PotentialFlowTool {
         self.compute_state_revision()
     }
 
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot().with_shader()
+    }
+
+    fn export_glsl_shader(
+        &self,
+        dialect: crate::framework::ShaderDialect,
+    ) -> Result<String, String> {
+        self.build_glsl_shader(dialect)
+    }
+
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         self.last_canvas_id
     }
@@ -245,6 +262,8 @@ impl InteractiveTool for PotentialFlowTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
         if self.is_playing {
             self.advance_dye_step();
             ui.ctx().request_repaint();
@@ -388,40 +407,6 @@ impl PotentialFlowTool {
             DYE_MAX_SPEED,
         );
         Some(tracer.evaluate_probe(&air, freestream, 101_325.0, DYE_DT))
-    }
-
-    pub(crate) fn compute_arrow_field(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
-        if !self.view_range.is_finite()
-            || self.view_range <= 0.0
-            || !(2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_size)
-        {
-            return (Vec::new(), Vec::new());
-        }
-        let step = (2.0 * self.view_range) / (self.grid_size as f64);
-        if !step.is_finite() || step <= 0.0 {
-            return (Vec::new(), Vec::new());
-        }
-        let min = -self.view_range;
-        let cap = (self.grid_size + 1) * (self.grid_size + 1);
-        let mut origins = Vec::with_capacity(cap);
-        let mut tips = Vec::with_capacity(cap);
-        for ix in 0..=self.grid_size {
-            let x = min + (ix as f64) * step;
-            for iy in 0..=self.grid_size {
-                let y = min + (iy as f64) * step;
-                let v = self.field.velocity(x, y);
-                let mag = v.norm();
-                if v.x.is_finite() && v.y.is_finite() && mag.is_finite() && mag > 1e-6 {
-                    let len = (mag * 0.1).min(step * 0.8);
-                    let end = [x + (v.x / mag) * len, y + (v.y / mag) * len];
-                    if len > 0.0 && end[0].is_finite() && end[1].is_finite() {
-                        origins.push([x, y]);
-                        tips.push(end);
-                    }
-                }
-            }
-        }
-        (origins, tips)
     }
 
     pub(crate) fn add_element(&mut self) {

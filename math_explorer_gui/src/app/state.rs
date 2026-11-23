@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::theme::ThemeMode;
+use super::viewport::compare_sync::ComparisonSyncConfig;
 use super::viewport::ViewportLayout;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
@@ -154,7 +155,10 @@ impl AppStateFingerprint {
         let flags = u8::from(app.show_info)
             | (u8::from(app.show_warnings) << 1)
             | (u8::from(app.show_errors) << 2)
-            | (u8::from(app.show_diagnostics_panel) << 3);
+            | (u8::from(app.show_diagnostics_panel) << 3)
+            | (u8::from(app.compare_sync.link_axes) << 4)
+            | (u8::from(app.compare_sync.link_cursors) << 5)
+            | (u8::from(app.compare_sync.sync_playback) << 6);
 
         Self {
             selected_tab: app.selected_tab,
@@ -221,6 +225,8 @@ pub struct AppState {
     pub focused_pane: usize,
     #[serde(default)]
     pub pane_tab_states: Vec<HashMap<String, String>>,
+    #[serde(default)]
+    pub compare_sync: ComparisonSyncConfig,
 }
 
 impl Default for AppState {
@@ -243,6 +249,7 @@ impl Default for AppState {
             pane_tabs: vec![0, 1, 2, 3],
             focused_pane: 0,
             pane_tab_states: Vec::new(),
+            compare_sync: ComparisonSyncConfig::default(),
         }
     }
 }
@@ -297,6 +304,7 @@ impl AppState {
             pane_tabs,
             focused_pane: app.active_focused_pane(),
             pane_tab_states: app.extract_pane_tab_states(),
+            compare_sync: app.compare_sync,
         }
     }
 
@@ -336,6 +344,7 @@ impl AppState {
             self.quad_split_ratios.1.clamp(0.20, 0.80),
         );
         app.viewport_layout = self.viewport_layout;
+        app.compare_sync = self.compare_sync;
 
         if app.viewport_layout == ViewportLayout::Single
             && app.split_layout_mode != SplitLayoutMode::Single

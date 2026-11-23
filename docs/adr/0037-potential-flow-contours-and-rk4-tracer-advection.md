@@ -1,7 +1,7 @@
-# ADR 0035: Potential Flow Iso-$\psi$ Contours, Stagnation Detection, and `RungeKutta4` Dye Tracer Coupling
+# ADR 0037: Potential Flow Iso-$\psi$ Contours, Stagnation Detection, and `RungeKutta4` Dye Tracer Coupling
 
 ## Status
-Accepted (extends [ADR 0016](0016-ode-multi-solver-comparative-overlays.md) and [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md))
+Accepted (extends [ADR 0016](0016-ode-multi-solver-comparative-overlays.md), [ADR 0032](0032-high-contrast-focus-selection-and-raster-tokens.md), and [ADR 0035](0035-iterative-ast-glsl-transpiler-and-shader-exports.md))
 
 ## Context
 [`PotentialFlowField`](../../crates/domain_physics/src/physics/fluid_dynamics/potential_flow.rs) implemented analytic `velocity`, `stream_function`, and `potential` methods across `UniformFlow`, `Source`, `Vortex`, and `Doublet`, while [`FluidParticleSystem`](../../crates/domain_physics/src/physics/fluid_dynamics/solver.rs) implemented `OdeSystem<FlowState>` and `TimeStepper<FlowState>` over [`Euler`](../../crates/domain_physics/src/physics/fluid_dynamics/conservation.rs). However, `math_explorer_gui` rendered only coarse velocity `Arrows` and required sidebar spinbox coordinate entry, leaving `stream_function` and `FluidParticleSystem` uncoupled from interactive potential-flow exploration. Naive grid contouring across `Source` singularities also produces spurious contour bundles across `atan2` branch cuts and inside `TOLERANCE_HIGH` singularity cores.
@@ -14,7 +14,7 @@ Accepted (extends [ADR 0016](0016-ode-multi-solver-comparative-overlays.md) and 
    - Introduce `PotentialTracerSystem` and `TracerProbeReadout` in [`solver.rs`](../../crates/domain_physics/src/physics/fluid_dynamics/solver.rs), implementing `OdeSystem<Vector2<f64>>` and `TimeStepper<Vector2<f64>>` with `RungeKutta4` and clamping speeds near singularity cores.
    - Couple `PotentialTracerSystem::evaluate_probe` with `FluidParticleSystem<'_, Euler>` and Bernoulli's relation to evaluate convective acceleration $(\mathbf{u} \cdot \nabla)\mathbf{u}$, static pressure, and pressure coefficient $C_p$.
 3. **Modularized Tactile Wind-Tunnel GUI and WCAG 2.2 AA Reticle Navigation**:
-   - Split `math_explorer_gui/src/tabs/fluid_dynamics/potential_flow` into `{mod,canvas,controls,presets,tests,wasm_tests}.rs` (`<= 500` lines per file), adding canvas handle dragging and stamping, dynamic `Plot::allow_drag` pan locking, keyboard reticle nudging and live-region announcements, and Kutta-Joukowski lifting cylinder, Rankine oval, and Kelvin-Stuart vortex street presets in [`starter_gallery.rs`](../../math_explorer_gui/src/starter_gallery.rs).
+   - Split `math_explorer_gui/src/tabs/fluid_dynamics/potential_flow` into `{mod,cache,canvas,controls,presets,shader,tests,wasm_tests}.rs` (`<= 500` lines per file), adding canvas handle dragging and stamping, dynamic `Plot::allow_drag` pan locking, keyboard reticle nudging and live-region announcements, GLSL shader export integration, and Kutta-Joukowski lifting cylinder, Rankine oval, and Kelvin-Stuart vortex street presets in [`starter_gallery.rs`](../../math_explorer_gui/src/starter_gallery.rs).
 
 ## Consequences
 - **Positive**: `PotentialFlowField::stream_function`, `FluidParticleSystem`, and `conservation::Euler` power live iso-$\psi$ contours, stagnation markers, animated `RungeKutta4` dye streaks, and Bernoulli/convective probe telemetry without `atan2` branch-cut artifacts.

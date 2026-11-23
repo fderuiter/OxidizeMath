@@ -44,6 +44,8 @@ pub enum TokenKind {
     Comma,
     /// Equals sign `=`.
     Equals,
+    /// Vertical bar delimiter `|` for absolute values.
+    Pipe,
     /// End-of-file marker.
     Eof,
 }
@@ -62,6 +64,7 @@ impl fmt::Display for TokenKind {
             Self::RParen => write!(f, ")"),
             Self::Comma => write!(f, ","),
             Self::Equals => write!(f, "="),
+            Self::Pipe => write!(f, "|"),
             Self::Eof => write!(f, "end of expression"),
         }
     }
@@ -161,6 +164,7 @@ fn match_single_char(b: u8) -> Option<TokenKind> {
         b')' => Some(TokenKind::RParen),
         b',' => Some(TokenKind::Comma),
         b'=' => Some(TokenKind::Equals),
+        b'|' => Some(TokenKind::Pipe),
         _ => None,
     }
 }
