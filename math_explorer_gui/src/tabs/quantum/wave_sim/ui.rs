@@ -14,6 +14,7 @@ use crate::async_sim::ui::{
 };
 use crate::async_sim::{SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{PlaybackAction, PlaybackTransport};
+use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
 
@@ -306,10 +307,11 @@ fn draw_bounded_slider(
     label: &str,
     hover_desc: &str,
 ) -> bool {
-    let slider = egui::Slider::new(value, range)
+    let slider = AnimatedSlider::new(value, range.clone())
+        .hard_bounds(range)
         .step_by(step)
-        .clamping(egui::SliderClamping::Always)
-        .text(label);
+        .text(label)
+        .id_salt(("wave_sim_param", label));
     let resp = ui.add(slider);
     let _ = resp.clone().accessible_hover_text(hover_desc);
     resp.changed()

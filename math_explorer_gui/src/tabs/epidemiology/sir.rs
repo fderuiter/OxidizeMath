@@ -135,16 +135,28 @@ impl SirTool {
     }
 
     fn render_parameter_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let bounds = self.theory_parameters();
+        let get_b = |k: &str, min: f64, max: f64, step: f64| {
+            bounds
+                .get(k)
+                .cloned()
+                .unwrap_or(ParameterConstraint { min, max, step })
+        };
+        let cn = get_b("N", 100.0, 100_000.0, 100.0);
+        let cb = get_b("beta", 0.0, 5.0, 0.02);
+        let cg = get_b("gamma", 0.0, 1.0, 0.01);
+        let cd = get_b("duration", MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0);
+
         let mut changed = false;
         changed |= ui
             .add(
-                AnimatedSlider::new(&mut self.n, 100.0..=100_000.0)
-                    .hard_bounds(100.0..=100_000.0)
+                AnimatedSlider::new(&mut self.n, cn.min..=cn.max)
+                    .hard_bounds(cn.min..=cn.max)
                     .text("Population (N)")
                     .id_salt("sir_population_n"),
             )
             .changed();
-        let max_i0_soft = (self.n / 2.0).max(1.0);
+        let max_i0_soft = (self.n * 0.5).max(1.0);
         let max_i0_hard = self.n.max(1.0);
         self.i0 = self.i0.clamp(1.0, max_i0_hard);
         changed |= ui
@@ -157,24 +169,24 @@ impl SirTool {
             .changed();
         changed |= ui
             .add(
-                AnimatedSlider::new(&mut self.beta, 0.0..=5.0)
-                    .hard_bounds(0.0..=5.0)
+                AnimatedSlider::new(&mut self.beta, cb.min..=cb.max)
+                    .hard_bounds(cb.min..=cb.max)
                     .text("Transmission Rate (beta)")
                     .id_salt("sir_beta"),
             )
             .changed();
         changed |= ui
             .add(
-                AnimatedSlider::new(&mut self.gamma, 0.0..=1.0)
-                    .hard_bounds(0.0..=1.0)
+                AnimatedSlider::new(&mut self.gamma, cg.min..=cg.max)
+                    .hard_bounds(cg.min..=cg.max)
                     .text("Recovery Rate (gamma)")
                     .id_salt("sir_gamma"),
             )
             .changed();
         changed |= ui
             .add(
-                AnimatedSlider::new(&mut self.duration, MIN_SIR_DURATION..=MAX_SIR_DURATION)
-                    .hard_bounds(MIN_SIR_DURATION..=MAX_SIR_HARD_DURATION)
+                AnimatedSlider::new(&mut self.duration, cd.min..=cd.max)
+                    .hard_bounds(cd.min..=MAX_SIR_HARD_DURATION)
                     .text("Duration (days)")
                     .id_salt("sir_duration"),
             )
