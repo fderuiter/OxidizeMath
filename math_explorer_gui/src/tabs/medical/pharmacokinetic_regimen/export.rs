@@ -313,7 +313,8 @@ pub fn build_export_primitives(
             [h, state.mec],
             [h, state.mtc],
             [0.0, state.mtc],
-        ],
+        ]
+        .into(),
         color: mec_color,
         stroke_width: 1.0_f32,
         closed: true,
@@ -327,7 +328,7 @@ pub fn build_export_primitives(
     if y_top > state.mtc {
         prims.push(ExportPrimitive::Polyline {
             name: "Supratherapeutic Zone (> MTC)".to_string(),
-            points: vec![[0.0, state.mtc], [h, state.mtc], [h, y_top], [0.0, y_top]],
+            points: vec![[0.0, state.mtc], [h, state.mtc], [h, y_top], [0.0, y_top]].into(),
             color: mtc_color,
             stroke_width: 1.0_f32,
             closed: true,
@@ -337,7 +338,7 @@ pub fn build_export_primitives(
 
     prims.push(ExportPrimitive::Polyline {
         name: "MEC Threshold".to_string(),
-        points: vec![[0.0, state.mec], [h, state.mec]],
+        points: vec![[0.0, state.mec], [h, state.mec]].into(),
         color: mec_color,
         stroke_width: 1.5_f32,
         closed: false,
@@ -345,7 +346,7 @@ pub fn build_export_primitives(
     });
     prims.push(ExportPrimitive::Polyline {
         name: "MTC Threshold".to_string(),
-        points: vec![[0.0, state.mtc], [h, state.mtc]],
+        points: vec![[0.0, state.mtc], [h, state.mtc]].into(),
         color: mtc_color,
         stroke_width: 1.5_f32,
         closed: false,
@@ -371,7 +372,7 @@ fn append_curve_primitives(
     for (idx, (name, points)) in build_export_datasets(state, curves).into_iter().enumerate() {
         prims.push(ExportPrimitive::Polyline {
             name,
-            points,
+            points: points.into(),
             color: series[idx % series.len()],
             stroke_width: if idx == 0 { 2.6_f32 } else { 1.8_f32 },
             closed: false,
