@@ -9437,31 +9437,57 @@
       "signature": "pub struct Theorem12Bounds"
     },
     {
-      "signature": "pub use weierstrass :: AffinePointFp"
+      "signature": "pub use modular_bridge :: *"
     },
     {
-      "signature": "pub use weierstrass :: ChordStepFp"
+      "signature": "pub use weierstrass :: *"
+    }
+  ],
+  "crates/pure_math/src/pure_math/elliptic_curves/modular_bridge.rs": [
+    {
+      "signature": "pub const MAX_SCALED_J_PRECISION : usize"
     },
     {
-      "signature": "pub use weierstrass :: HasseSweepEntry"
+      "signature": "pub fn analyze_frobenius_prime (_ : & PrimeWeierstrassCurve ,) -> Result < FrobeniusClassSummary , EllipticCurveError >"
     },
     {
-      "signature": "pub use weierstrass :: MAX_WEIERSTRASS_PRIME"
+      "signature": "pub fn eisenstein_e4_q_series (_ : usize) -> QSeries < i64 >"
     },
     {
-      "signature": "pub use weierstrass :: WeierstrassCurveFp"
+      "signature": "pub fn frobenius_discriminant (_ : i64 , _ : u64) -> i64"
     },
     {
-      "signature": "pub use weierstrass :: mod_inv_fp"
+      "signature": "pub fn hurwitz_trace_sum (_ : u64) -> (f64 , f64 , bool)"
     },
     {
-      "signature": "pub use weierstrass :: mod_pow_fp"
+      "signature": "pub fn j_invariant_fp < const P : i64 > (_ : & FpWeierstrassCurve < P >) -> Fp < P >"
     },
     {
-      "signature": "pub use weierstrass :: sweep_hasse_bounds"
+      "signature": "pub fn j_invariant_mod_p (_ : & PrimeWeierstrassCurve) -> i64"
     },
     {
-      "signature": "pub use weierstrass :: tonelli_shanks_fp"
+      "signature": "pub fn j_invariant_q_scaled (_ : usize) -> QSeries < i64 >"
+    },
+    {
+      "signature": "pub fn j_invariant_real (_ : & WeierstrassCurve) -> f64"
+    },
+    {
+      "signature": "pub fn modular_valuation_summary (_ : & PrimeWeierstrassCurve , _ : u64 , _ : u64 , _ : u64 ,) -> Result < ModularValuationSummary , EllipticCurveError >"
+    },
+    {
+      "signature": "pub fn principal_bqf_for_discriminant (_ : i64) -> Option < BQF >"
+    },
+    {
+      "signature": "pub fn ramanujan_delta_q_series (_ : usize) -> QSeries < i64 >"
+    },
+    {
+      "signature": "pub fn ramanujan_delta_shifted_q_series (_ : usize) -> QSeries < i64 >"
+    },
+    {
+      "signature": "pub struct FrobeniusClassSummary"
+    },
+    {
+      "signature": "pub struct ModularValuationSummary"
     }
   ],
   "crates/pure_math/src/pure_math/elliptic_curves/weierstrass.rs": [
@@ -9551,6 +9577,148 @@
     },
     {
       "signature": "pub use crate :: pure_math :: elliptic_curves :: modular_fp :: tonelli_shanks_fp"
+    },
+    {
+      "signature": "pub use fp_curve :: FpWeierstrassCurve"
+    },
+    {
+      "signature": "pub use fp_curve :: MAX_LATTICE_PRIME"
+    },
+    {
+      "signature": "pub use fp_curve :: PrimeWeierstrassCurve"
+    },
+    {
+      "signature": "pub use fp_curve :: hasse_weil_bound"
+    },
+    {
+      "signature": "pub use real_curve :: CurvePoint"
+    },
+    {
+      "signature": "pub use real_curve :: WeierstrassCurve"
+    }
+  ],
+  "crates/pure_math/src/pure_math/elliptic_curves/weierstrass/fp_curve.rs": [
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn add (& self , _ : CurvePoint < Fp < P > > , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn discriminant (& self) -> Fp < P > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn double (& self , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn is_on_curve (& self , _ : CurvePoint < Fp < P > >) -> bool }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn negate (& self , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn new (_ : i64 , _ : i64) -> Result < Self , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn scalar_mul (& self , _ : i64 , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+    },
+    {
+      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn write_orbit (& self , _ : CurvePoint < Fp < P > > , _ : & mut [CurvePoint < Fp < P > >] ,) -> usize }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn add (& self , _ : CurvePoint < i64 > , _ : CurvePoint < i64 >) -> CurvePoint < i64 > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn discriminant_mod_p (& self) -> i64 }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn double (& self , _ : CurvePoint < i64 >) -> CurvePoint < i64 > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn frobenius_trace (& self) -> Result < i64 , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn is_on_curve (& self , _ : CurvePoint < i64 >) -> bool }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn negate (& self , _ : CurvePoint < i64 >) -> CurvePoint < i64 > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn new (_ : i64 , _ : i64 , _ : i64) -> Result < Self , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn point_count (& self) -> Result < u64 , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn rhs_mod_p (& self , _ : i64) -> i64 }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn satisfies_hasse_weil (& self) -> Result < bool , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn scalar_mul (& self , _ : i64 , _ : CurvePoint < i64 >) -> CurvePoint < i64 > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn slope_mod_p (& self , _ : CurvePoint < i64 > , _ : CurvePoint < i64 >) -> Option < i64 > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn write_affine_points (& self , _ : & mut [CurvePoint < i64 >] ,) -> Result < usize , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl PrimeWeierstrassCurve { pub fn write_orbit (& self , _ : CurvePoint < i64 > , _ : & mut [CurvePoint < i64 >]) -> usize }"
+    },
+    {
+      "signature": "pub const MAX_LATTICE_PRIME : i64"
+    },
+    {
+      "signature": "pub fn hasse_weil_bound (_ : u64) -> f64"
+    },
+    {
+      "signature": "pub struct FpWeierstrassCurve < const P : i64 >"
+    },
+    {
+      "signature": "pub struct PrimeWeierstrassCurve"
+    }
+  ],
+  "crates/pure_math/src/pure_math/elliptic_curves/weierstrass/real_curve.rs": [
+    {
+      "signature": "impl < T > CurvePoint < T > { pub fn coords (& self) -> Option < (T , T) > where T : Copy , }"
+    },
+    {
+      "signature": "impl < T > CurvePoint < T > { pub fn is_infinity (& self) -> bool }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn add (& self , _ : CurvePoint < f64 > , _ : CurvePoint < f64 >) -> CurvePoint < f64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn discriminant (& self) -> f64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn double (& self , _ : CurvePoint < f64 >) -> CurvePoint < f64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn is_on_curve (& self , _ : CurvePoint < f64 > , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn negate (& self , _ : CurvePoint < f64 >) -> CurvePoint < f64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn new (_ : f64 , _ : f64) -> Result < Self , EllipticCurveError > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn rhs (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn scalar_mul (& self , _ : i64 , _ : CurvePoint < f64 >) -> CurvePoint < f64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn secant_or_tangent_slope (& self , _ : CurvePoint < f64 > , _ : CurvePoint < f64 >) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl WeierstrassCurve { pub fn write_orbit (& self , _ : CurvePoint < f64 > , _ : & mut [CurvePoint < f64 >]) -> usize }"
+    },
+    {
+      "signature": "pub enum CurvePoint < T >"
+    },
+    {
+      "signature": "pub struct WeierstrassCurve"
     }
   ],
   "crates/pure_math/src/pure_math/graph_theory/dijkstra.rs": [
