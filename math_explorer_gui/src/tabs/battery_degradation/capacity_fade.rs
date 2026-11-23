@@ -54,7 +54,7 @@ impl InteractiveTool for CapacityFadeTool {
         let s: CapacityFadeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid capacity fade state: {e}"))?;
         if !s.dod.is_finite()
-            || !(0.0..=100.0).contains(&s.dod)
+            || !(1.0..=100.0).contains(&s.dod)
             || !s.temperature.is_finite()
             || !(-20.0..=60.0).contains(&s.temperature)
             || !s.cycles_to_simulate.is_finite()
@@ -73,7 +73,7 @@ impl InteractiveTool for CapacityFadeTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        self.dod = self.dod.clamp(0.0, 100.0);
+        self.dod = self.dod.clamp(1.0, 100.0);
         self.cycles_to_simulate = self.cycles_to_simulate.max(100.0);
         self.render_controls_panel(ui);
         self.render_projection_panel(ui);
@@ -115,7 +115,7 @@ impl CapacityFadeTool {
             ui.heading("Parameters");
             ui.add_space(5.0);
             ui.add(
-                egui::Slider::new(&mut self.dod, 0.0..=100.0).text("Depth of Discharge (DoD) - %"),
+                egui::Slider::new(&mut self.dod, 1.0..=100.0).text("Depth of Discharge (DoD) - %"),
             );
             ui.small("Percentage of battery capacity used per cycle.");
             ui.add_space(10.0);
@@ -191,7 +191,7 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for CapacityFadeTool {
     fn theory_description(&self) -> String {
         format!(
-            "Lithium-ion capacity fade power-law degradation: remaining capacity $C(N) = C_0 \\left(1 - 0.3 (N / N_{{70}})^z\\right)$ at {:.1}% depth of discharge and {:.1}°C operating temperature.",
+            "Lithium-ion capacity fade power-law degradation: remaining capacity $C(N) = 0.7^{{N / N_{{70}}}}$ with cycle life $N_{{70}}(\\text{{DoD}}) = \\alpha \\cdot \\text{{DoD}}^{{\\beta}}$ ($\\alpha = 1.019 \\times 10^5$, $\\beta = -1.2639$) at {:.1}% depth of discharge ({:.1}°C nominal).",
             self.dod, self.temperature
         )
     }
@@ -276,5 +276,31 @@ mod tests {
         )
         .expect("power law fit");
         assert!(fit.r_squared >= 0.99);
+    }
+
+    #[test]
+    fn test_zero_dod_prevented_and_theory_matches_power_law_solver() {
+        use scientific_metadata::theory::TheoryDescribable;
+
+        let mut tool = CapacityFadeTool {
+            dod: 0.0,
+            ..Default::default()
+        };
+        assert!(tool
+            .try_load_state(r#"{"dod":0.0,"temperature":25.0,"cycles_to_simulate":2000.0}"#)
+            .is_err());
+        tool.import_preset_json(STARTER_PRESET_JSON)
+            .expect("starter preset loads");
+
+        let ctx = egui::Context::default();
+        tool.dod = 0.0;
+        let _ = ctx.run(egui::RawInput::default(), |c| tool.show(c));
+        assert_eq!(tool.dod, 1.0);
+        let (n80, n70) = CapacityFadeTool::projected_life_cycles(tool.dod);
+        assert!(n80.is_finite() && n70.is_finite());
+
+        let desc = tool.theory_description();
+        assert!(desc.contains("0.7^{N / N_{70}}"));
+        assert!(!desc.contains("1 - 0.3"));
     }
 }

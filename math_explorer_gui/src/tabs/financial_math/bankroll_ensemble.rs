@@ -327,7 +327,7 @@ impl BankrollEnsembleLab {
             .changed();
 
         if ui
-            .button("⚡ Load Volatility-Drag Paradox (W₀=100, p=0.55, b=1.0, T=200, f=0.30)")
+            .button("⚡ Load Volatility-Drag Paradox (W₀=100, p=0.55, O=2.0, T=200, f=0.30)")
             .accessible_hover_text(
                 "Configure canonical non-ergodic overbetting divergence where E[W_200]=36,935.58 yet W_median(200)=3.9137",
             )
@@ -335,7 +335,7 @@ impl BankrollEnsembleLab {
         {
             *initial_bankroll = 100.0;
             *probability = 0.55;
-            *odds = 1.0;
+            *odds = 2.0;
             *num_bets = 200;
             self.custom_fraction = 0.30;
             changed = true;

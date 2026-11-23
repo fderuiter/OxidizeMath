@@ -133,10 +133,8 @@ impl SirTool {
     fn render_parameter_controls(&mut self, ui: &mut egui::Ui) -> bool {
         let bounds = self.theory_parameters();
         let get_b = |k: &str, min: f64, max: f64, step: f64| {
-            bounds
-                .get(k)
-                .cloned()
-                .unwrap_or(ParameterConstraint { min, max, step })
+            let fallback = ParameterConstraint { min, max, step, default: None };
+            bounds.get(k).cloned().unwrap_or(fallback)
         };
         let cn = get_b("N", 100.0, 100_000.0, 100.0);
         let cb = get_b("beta", 0.0, 5.0, 0.02);
@@ -171,7 +169,12 @@ impl SirTool {
             ("beta", self.beta),
             ("gamma", self.gamma),
         ];
-        let duration_bits = crate::sensitivity::canonical_f64_bits(self.duration);
+        let duration = if self.duration.is_finite() {
+            self.duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION)
+        } else {
+            100.0
+        };
+        let duration_bits = crate::sensitivity::canonical_f64_bits(duration);
 
         self.sensitivity_engine
             .compute_with_context(&params, &duration_bits, |p_map| {
@@ -181,9 +184,10 @@ impl SirTool {
                 let gamma = p_map.get("gamma").copied().unwrap_or(0.1).max(0.0001);
 
                 if let Ok(mut model) = SIRModel::new(n, i0, beta, gamma) {
-                    let dt = 0.2;
+                    let dt = 0.1;
+                    let steps = ((duration / dt).round() as usize).min(MAX_SIR_STEPS);
                     let mut max_i: f64 = 0.0;
-                    for _ in 0..250 {
+                    for _ in 0..=steps {
                         max_i = max_i.max(model.state().i);
                         model.step(dt);
                     }
@@ -454,12 +458,13 @@ impl TheoryDescribable for SirTool {
     }
 
     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        let pc = |min, max, step, d| ParameterConstraint { min, max, step, default: Some(d) };
         let mut map = HashMap::with_capacity(5);
-        map.insert("N".to_string(), ParameterConstraint { min: 100.0, max: 100_000.0, step: 100.0 });
-        map.insert("I0".to_string(), ParameterConstraint { min: 1.0, max: 50_000.0, step: 1.0 });
-        map.insert("beta".to_string(), ParameterConstraint { min: 0.0, max: 5.0, step: 0.02 });
-        map.insert("gamma".to_string(), ParameterConstraint { min: 0.0, max: 1.0, step: 0.01 });
-        map.insert("duration".to_string(), ParameterConstraint { min: MIN_SIR_DURATION, max: MAX_SIR_DURATION, step: 1.0 });
+        map.insert("N".to_string(), pc(100.0, 100_000.0, 100.0, 1000.0));
+        map.insert("I0".to_string(), pc(1.0, 50_000.0, 1.0, 10.0));
+        map.insert("beta".to_string(), pc(0.0, 5.0, 0.02, 0.5));
+        map.insert("gamma".to_string(), pc(0.0, 1.0, 0.01, 0.1));
+        map.insert("duration".to_string(), pc(MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0, 100.0));
         map
     }
 }

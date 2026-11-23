@@ -134,9 +134,11 @@ fn fallback_number(
     if let Some(c) = constraint {
         if c.min.is_finite() && c.max.is_finite() && c.min <= c.max {
             let v = if is_step {
-                c.min.max(1e-6)
+                c.default
+                    .filter(|d| d.is_finite() && *d > 0.0)
+                    .map_or(c.min.max(1e-6), |d| d.clamp(c.min, c.max))
             } else {
-                0.5 * (c.min + c.max)
+                c.effective_default().clamp(c.min, c.max)
             };
             if let Some(num) = Number::from_f64(v) {
                 return Value::Number(num);
@@ -361,6 +363,7 @@ mod tests {
                 min: 0.001,
                 max: 0.05,
                 step: 0.001,
+                default: Some(0.01),
             },
         )]);
 
@@ -373,5 +376,45 @@ mod tests {
         assert_eq!(parsed["speed"].as_i64(), Some(10));
         assert_eq!(parsed["execution_state"], serde_json::json!("Ready"));
         assert!(clamp_state_json(base, Some(base), &constraints).is_none());
+    }
+
+    #[test]
+    fn test_clamp_state_json_uses_calibrated_constraint_defaults_without_baseline() {
+        let dirty = r#"{"g_l":"NaN","i_ext":null,"dt":"Infinity"}"#;
+        let constraints = HashMap::from([
+            (
+                "g_l".to_string(),
+                ParameterConstraint {
+                    min: 0.0,
+                    max: 5.0,
+                    step: 0.1,
+                    default: Some(0.3),
+                },
+            ),
+            (
+                "i_ext".to_string(),
+                ParameterConstraint {
+                    min: 0.0,
+                    max: 50.0,
+                    step: 1.0,
+                    default: None,
+                },
+            ),
+            (
+                "dt".to_string(),
+                ParameterConstraint {
+                    min: 0.001,
+                    max: 0.1,
+                    step: 0.001,
+                    default: Some(0.02),
+                },
+            ),
+        ]);
+
+        let clamped = clamp_state_json(dirty, None, &constraints).expect("must clamp");
+        let parsed: Value = serde_json::from_str(&clamped).unwrap();
+        assert_eq!(parsed["g_l"].as_f64(), Some(0.3));
+        assert_eq!(parsed["i_ext"].as_f64(), Some(25.0));
+        assert_eq!(parsed["dt"].as_f64(), Some(0.02));
     }
 }

@@ -14,7 +14,7 @@ By isolating these contracts into a lightweight, standalone library, mathematica
   - Verified human-readable descriptions of states and operational regimes.
   - Screen-reader phonetic strings for accessible scientific computing.
   - Literature citations for underlying mathematical formulations.
-  - Parameter boundary constraints (`min`, `max`, `step`) for UI controls and numerical validity guards.
+  - Parameter boundary constraints (`min`, `max`, `step`, and optional calibrated `default`) for UI controls and numerical validity guards.
 - **`citation_registry`**: Provides `CitationRegistry`, a thread-safe global catalog for storing and looking up academic citations across the workspace.
 
 ---
@@ -64,6 +64,7 @@ impl TheoryDescribable for SimpleOscillator {
                 min: 0.1,
                 max: 1000.0,
                 step: 0.5,
+                default: Some(440.0),
             },
         );
         params

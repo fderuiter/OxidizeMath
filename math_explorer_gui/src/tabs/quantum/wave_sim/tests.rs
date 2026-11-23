@@ -249,3 +249,24 @@ fn test_zero_allocation_hot_path_propagator_cache_and_state_guard_rollback() {
     assert!(!fw.is_diverged());
     assert_eq!(fw.active_tool.as_ref().unwrap().save_state(), baseline);
 }
+
+#[test]
+fn test_wave_parameter_constraints_calibrated_defaults_and_on_step_dt() {
+    use scientific_metadata::theory::TheoryDescribable;
+
+    let tool = WaveSimulatorTool::new();
+    let params = tool.theory_parameters();
+    assert_eq!(params["x0"].default, Some(-2.0));
+    assert_eq!(params["k0"].default, Some(5.0));
+    assert_eq!(params["sigma"].default, Some(0.5));
+    assert_eq!(params["v0"].default, Some(11.35));
+    assert_eq!(params["width"].default, Some(0.5));
+    assert_eq!(params["dt"].default, Some(0.02));
+
+    let dt_c = &params["dt"];
+    let steps_from_min = (dt_c.effective_default() - dt_c.min) / dt_c.step;
+    assert!(
+        (steps_from_min.round() - steps_from_min).abs() < 1e-12,
+        "Default dt = 0.02 must be an exact slider step multiple from dt.min"
+    );
+}

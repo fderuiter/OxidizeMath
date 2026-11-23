@@ -16,10 +16,12 @@ use std::collections::HashMap;
 ///     min: 0.0,
 ///     max: 10.0,
 ///     step: 0.1,
+///     default: Some(2.5),
 /// };
 /// assert_eq!(constraint.min, 0.0);
 /// assert_eq!(constraint.max, 10.0);
 /// assert_eq!(constraint.step, 0.1);
+/// assert_eq!(constraint.effective_default(), 2.5);
 /// assert!(constraint.min <= constraint.max);
 /// assert!(constraint.step > 0.0);
 /// ```
@@ -31,6 +33,19 @@ pub struct ParameterConstraint {
     pub max: f64,
     /// Recommended adjustment step size for interactive UI controls.
     pub step: f64,
+    /// Optional calibrated default value overriding the `[min, max]` midpoint.
+    pub default: Option<f64>,
+}
+
+impl ParameterConstraint {
+    /// Returns the calibrated `default` value if present and finite, otherwise `0.5 * (min + max)`.
+    #[inline]
+    #[must_use]
+    pub fn effective_default(&self) -> f64 {
+        self.default
+            .filter(|d| d.is_finite())
+            .unwrap_or(0.5 * (self.min + self.max))
+    }
 }
 
 /// A standardized trait for exporting human-readable, verified descriptions
@@ -77,6 +92,7 @@ pub struct ParameterConstraint {
 ///                 min: 0.1,
 ///                 max: 10.0,
 ///                 step: 0.1,
+///                 default: Some(2.0),
 ///             },
 ///         );
 ///         params
@@ -199,5 +215,24 @@ mod tests {
             model_eq.theory_latex_equation(),
             Some("E = m c^2".to_string())
         );
+    }
+
+    #[test]
+    fn test_parameter_constraint_effective_default() {
+        let midpoint_fallback = ParameterConstraint {
+            min: 0.0,
+            max: 50.0,
+            step: 1.0,
+            default: None,
+        };
+        assert_eq!(midpoint_fallback.effective_default(), 25.0);
+
+        let calibrated = ParameterConstraint {
+            min: 0.0,
+            max: 50.0,
+            step: 1.0,
+            default: Some(10.0),
+        };
+        assert_eq!(calibrated.effective_default(), 10.0);
     }
 }

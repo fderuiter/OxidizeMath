@@ -280,6 +280,7 @@ pub fn wave_parameter_constraints() -> HashMap<String, ParameterConstraint> {
                 min: X0_MIN,
                 max: X0_MAX,
                 step: 0.05,
+                default: Some(DEFAULT_X0),
             },
         ),
         (
@@ -288,6 +289,7 @@ pub fn wave_parameter_constraints() -> HashMap<String, ParameterConstraint> {
                 min: K0_MIN,
                 max: K0_MAX,
                 step: 0.1,
+                default: Some(DEFAULT_K0),
             },
         ),
         (
@@ -296,6 +298,7 @@ pub fn wave_parameter_constraints() -> HashMap<String, ParameterConstraint> {
                 min: SIGMA_MIN,
                 max: SIGMA_MAX,
                 step: 0.05,
+                default: Some(DEFAULT_SIGMA),
             },
         ),
         (
@@ -304,6 +307,7 @@ pub fn wave_parameter_constraints() -> HashMap<String, ParameterConstraint> {
                 min: V0_MIN,
                 max: V0_MAX,
                 step: 0.05,
+                default: Some(DEFAULT_V0),
             },
         ),
         (
@@ -312,6 +316,7 @@ pub fn wave_parameter_constraints() -> HashMap<String, ParameterConstraint> {
                 min: WIDTH_MIN,
                 max: WIDTH_MAX,
                 step: 0.05,
+                default: Some(DEFAULT_WIDTH),
             },
         ),
         (
@@ -320,6 +325,7 @@ pub fn wave_parameter_constraints() -> HashMap<String, ParameterConstraint> {
                 min: DT_MIN,
                 max: DT_MAX,
                 step: 0.001,
+                default: Some(DEFAULT_DT),
             },
         ),
     ])

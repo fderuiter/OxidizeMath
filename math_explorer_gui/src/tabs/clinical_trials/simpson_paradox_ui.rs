@@ -113,11 +113,15 @@ impl SimpsonParadoxLab {
             }
             if ui
                 .button("🔄 Reset Confounded Simpson Preset")
-                .accessible_hover_text("Restore 20% Mild / 80% Severe confounded allocation")
+                .accessible_hover_text("Restore 20% Mild / 80% Severe confounded allocation and reset seed")
                 .clicked()
             {
+                *seed_counter = 0;
                 self.reset_confounded_preset();
             }
+            ui.label("Seed:");
+            ui.add(egui::DragValue::new(seed_counter).speed(1.0))
+                .accessible_hover_text("Deterministic RNG seed offset for stratified randomization");
         });
     }
 

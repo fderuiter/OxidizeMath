@@ -9254,6 +9254,9 @@
   ],
   "crates/scientific_metadata/src/theory.rs": [
     {
+      "signature": "impl ParameterConstraint { pub fn effective_default (& self) -> f64 }"
+    },
+    {
       "signature": "pub struct ParameterConstraint"
     },
     {

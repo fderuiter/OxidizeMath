@@ -15,8 +15,8 @@ By analyzing abstract syntax trees (AST) during compilation, these macros emit s
   - NASA Power of 10 Rule 4: Restricts function statement length to a maximum of 60 statements.
   - Injects runtime `ComplexityMetrics` instrumentation on non-`const` function bodies.
 - **`#[derive(Theory)]`**: Derive macro implementing `TheoryDescribable` on structs with named fields:
-  - Validates struct-level `#[theory(description = "...", phonetic = "...", citation = "...")]` and field-level `#[theory(min = ..., max = ..., step = ...)]` attributes with full `syn::Error` accumulation.
-  - Accepts finite integer and floating-point bounds (including negative literals), enforces `min <= max` and `step > 0.0` at macro-expansion time, and spans primitive numeric trait checks to each field's type token.
+  - Validates struct-level `#[theory(description = "...", phonetic = "...", citation = "...")]` and field-level `#[theory(min = ..., max = ..., step = ..., default = ...)]` attributes with full `syn::Error` accumulation.
+  - Accepts finite integer and floating-point bounds (including negative literals), enforces `min <= max`, `step > 0.0`, and `min <= default <= max` at macro-expansion time, and spans primitive numeric trait checks to each field's type token.
 - **`#[embed_theory]`**: Attribute macro dynamically resolving workspace `.tex` formulations from `CARGO_MANIFEST_DIR`, checking AST semantic integrity, and emitting unnamed `const _` file-change trackers.
 - **`runtime_violation!`**: Procedural macro generating structured JSON fatal violation payloads for runtime allocator aborts.
 
@@ -40,7 +40,7 @@ use verified_engine_macros::Theory;
     citation = "Newton, I. (1687). Philosophiae Naturalis Principia Mathematica."
 )]
 pub struct GravityModel {
-    #[theory(min = 0.0, max = 100.0, step = 0.1)]
+    #[theory(min = 0.0, max = 100.0, step = 0.1, default = 9.81)]
     pub g: f64,
     #[theory(min = 1, max = 64, step = 1)]
     pub substeps: usize,
@@ -54,7 +54,9 @@ assert_eq!(
 );
 let params = model.theory_parameters();
 assert_eq!(params["g"].max, 100.0);
+assert_eq!(params["g"].default, Some(9.81));
 assert_eq!(params["substeps"].max, 64.0);
+assert_eq!(params["substeps"].default, None);
 assert_eq!(model.g, 9.81);
 assert_eq!(model.substeps, 4);
 ```

@@ -78,6 +78,7 @@ struct RawFieldBounds {
     min: Option<(f64, Span)>,
     max: Option<(f64, Span)>,
     step: Option<(f64, Span)>,
+    default: Option<(f64, Span)>,
 }
 
 fn eval_numeric_lit(
@@ -186,7 +187,7 @@ fn validate_field_bounds(
     bounds: RawFieldBounds,
     fallback_span: Span,
     errors: &mut Option<syn::Error>,
-) -> Option<(f64, f64, f64)> {
+) -> Option<(f64, f64, f64, Option<f64>)> {
     if !bounds.has_any_key || bounds.has_invalid_value {
         return None;
     }
@@ -217,14 +218,24 @@ fn validate_field_bounds(
                 format!("`min` ({min_val}) must not exceed `max` ({max_val})"),
             ),
         );
+    } else if let Some((def_val, def_span)) = bounds.default
+        && (def_val < min_val || def_val > max_val)
+    {
+        push_error(
+            errors,
+            syn::Error::new(
+                def_span,
+                format!("`default` ({def_val}) must lie within `[{min_val}, {max_val}]`"),
+            ),
+        );
     }
-    Some((min_val, max_val, step_val))
+    Some((min_val, max_val, step_val, bounds.default.map(|(d, _)| d)))
 }
 
 fn parse_field_bounds(
     field: &syn::Field,
     errors: &mut Option<syn::Error>,
-) -> Option<(f64, f64, f64)> {
+) -> Option<(f64, f64, f64, Option<f64>)> {
     let mut bounds = RawFieldBounds::default();
     for attr in &field.attrs {
         if !attr.path().is_ident("theory") {
@@ -238,10 +249,12 @@ fn parse_field_bounds(
                 record_bound_key(&meta, &mut bounds.max, "max", h_any, h_inv, errors)
             } else if meta.path.is_ident("step") {
                 record_bound_key(&meta, &mut bounds.step, "step", h_any, h_inv, errors)
+            } else if meta.path.is_ident("default") {
+                record_bound_key(&meta, &mut bounds.default, "default", h_any, h_inv, errors)
             } else {
                 let key = meta.path.to_token_stream().to_string();
                 Err(meta.error(format!(
-                    "unknown field-level `#[theory]` key `{key}`; valid keys are `min`, `max`, `step`"
+                    "unknown field-level `#[theory]` key `{key}`; valid keys are `min`, `max`, `step`, `default`"
                 )))
             }
         });
@@ -282,7 +295,7 @@ fn build_field_tokens(
     let mut field_params = Vec::new();
 
     for field in fields {
-        let Some((min, max, step)) = parse_field_bounds(field, errors) else {
+        let Some((min, max, step, default_opt)) = parse_field_bounds(field, errors) else {
             continue;
         };
         let Some(field_ident) = field.ident.as_ref() else {
@@ -291,6 +304,10 @@ fn build_field_tokens(
         let field_name = field_ident.to_string();
         let field_ty = &field.ty;
         let ty_span = field_ty.span();
+        let default_tok = match default_opt {
+            Some(d) => quote!(::core::option::Option::Some(#d)),
+            None => quote!(::core::option::Option::None),
+        };
 
         type_checks.push(quote_spanned! {ty_span=>
             assert_theory_numeric::<#field_ty>(&self.#field_ident);
@@ -302,6 +319,7 @@ fn build_field_tokens(
                     min: #min,
                     max: #max,
                     step: #step,
+                    default: #default_tok,
                 },
             );
         });

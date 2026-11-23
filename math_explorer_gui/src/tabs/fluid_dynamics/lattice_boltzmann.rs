@@ -65,7 +65,6 @@ impl UnifiedModel for LbmUnified {
         let tau = 3.0 * viscosity + 0.5;
 
         let mut solver = LatticeBoltzmannD2Q9::new(width, height, tau);
-        solver.set_inlet(0, 20, 5, 10, 0.1, 0.0);
 
         let center_x = 30;
         let center_y = 25;
@@ -214,6 +213,7 @@ impl UnifiedModel for LbmUnified {
                 min: 0.00333,
                 max: 0.5,
                 step: 0.01,
+                default: Some(0.02),
             },
         );
         map
@@ -281,5 +281,94 @@ inventory::submit! {
         domain: "fluid_dynamics",
         tool_name: Some("LatticeBoltzmannTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+
+    #[test]
+    fn test_lbm_unified_calibrated_viscosity_and_single_uniform_inlet() {
+        let tool = UnifiedSimTool::<LbmUnified>::new();
+        let params = tool.params.read().expect("params lock").clone();
+        assert_eq!(params.get("viscosity").copied(), Some(0.02));
+
+        let reynolds = 0.1 * 10.0 / params["viscosity"];
+        assert!((reynolds - 50.0).abs() < 1e-9);
+
+        let model = LbmUnified::new(&params);
+        assert!((model.solver.collision_model.tau - 0.56).abs() < 1e-12);
+        for y in 0..50 {
+            for x in 0..2 {
+                let v = model.solver.get_velocity_magnitude(x, y);
+                assert!((v - 0.1).abs() < 1e-6, "uniform inlet expected at ({x},{y})");
+            }
+        }
+        // Columns x = 2..5 at y = 25 were previously overwritten by a narrow jet inlet; verify quiescent interior start.
+        assert!(model.solver.get_velocity_magnitude(4, 25) < 1e-9);
+
+        let mut evolved = model;
+        for _ in 0..250 {
+            evolved.step(&params);
+        }
+        let snap = evolved.get_snapshot();
+        let px = snap.pixels.read().expect("pixels lock");
+        let (w, h, scale) = (snap.width, snap.height, 6usize);
+        let mut img = eframe::egui::ColorImage::new(
+            [w * scale, h * scale],
+            vec![Color32::BLACK; w * scale * h * scale],
+        );
+        for y in 0..(h * scale) {
+            for x in 0..(w * scale) {
+                img.pixels[y * (w * scale) + x] = px[(y / scale) * w + (x / scale)];
+            }
+        }
+        if let Ok(png) = egui_plot::export::color32_image_to_png(&img) {
+            let _ = std::fs::write("/tmp/lbm_re50_calibrated_wake.png", png);
+        }
+    }
+
+    #[test]
+    fn test_hodgkin_huxley_unified_startup_fires_four_spikes_in_50ms() {
+        let tool = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
+        let params = tool.params.read().expect("params lock").clone();
+        assert_eq!(params.get("g_na").copied(), Some(120.0));
+        assert_eq!(params.get("g_k").copied(), Some(36.0));
+        assert_eq!(params.get("g_l").copied(), Some(0.3));
+        assert_eq!(params.get("i_ext").copied(), Some(10.0));
+
+        let mut model = HodgkinHuxleyUnified::new(&params);
+        let mut calibrated_trace = Vec::with_capacity(500);
+        let mut spikes = 0usize;
+        let mut armed = true;
+        for step_idx in 0..5_000 {
+            model.step(&params);
+            let snap = model.get_snapshot();
+            let v = *snap.custom_data.last().expect("voltage present");
+            if step_idx % 10 == 0 {
+                calibrated_trace.push([(step_idx + 1) as f64 * 0.01, v]);
+            }
+            if armed && v >= 0.0 {
+                spikes += 1;
+                armed = false;
+            } else if !armed && v < -20.0 {
+                armed = true;
+            }
+        }
+        assert_eq!(
+            spikes, 4,
+            "Calibrated Hodgkin-Huxley defaults must fire 4 action potentials over 50 ms"
+        );
+
+        let datasets = vec![(
+            "Calibrated Startup V(t) [mV] (g_Na=120, g_K=36, g_L=0.3, I=10)".to_string(),
+            calibrated_trace,
+        )];
+        let opts = egui_plot::export::ExportOptions::default();
+        if let Ok(png) = egui_plot::export::export_custom_png(&datasets, &opts) {
+            let _ = std::fs::write("/tmp/hodgkin_huxley_calibrated_spikes.png", png);
+        }
     }
 }

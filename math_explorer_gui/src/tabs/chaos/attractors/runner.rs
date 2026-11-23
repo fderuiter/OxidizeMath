@@ -308,6 +308,7 @@ impl scientific_metadata::theory::TheoryDescribable for super::AttractorPlotter 
                     min: 0.0,
                     max: 50.0,
                     step: 0.1,
+                    default: Some(10.0),
                 },
             ),
             (
@@ -316,6 +317,7 @@ impl scientific_metadata::theory::TheoryDescribable for super::AttractorPlotter 
                     min: 0.0,
                     max: 100.0,
                     step: 0.5,
+                    default: Some(28.0),
                 },
             ),
             (
@@ -324,6 +326,7 @@ impl scientific_metadata::theory::TheoryDescribable for super::AttractorPlotter 
                     min: 0.0,
                     max: 10.0,
                     step: 0.1,
+                    default: Some(8.0 / 3.0),
                 },
             ),
             (
@@ -332,6 +335,7 @@ impl scientific_metadata::theory::TheoryDescribable for super::AttractorPlotter 
                     min: 0.001,
                     max: 0.05,
                     step: 0.001,
+                    default: Some(0.01),
                 },
             ),
         ])

@@ -92,6 +92,7 @@ impl HodgkinHuxleyCartographer {
                     min: 0.0,
                     max: 200.0,
                     step: 1.0,
+                    default: Some(120.0),
                 },
             ),
             "g_k" => AtlasAxisSpec::from_theory(
@@ -102,6 +103,7 @@ impl HodgkinHuxleyCartographer {
                     min: 0.0,
                     max: 100.0,
                     step: 1.0,
+                    default: Some(36.0),
                 },
             ),
             _ => AtlasAxisSpec::from_theory(
@@ -112,6 +114,7 @@ impl HodgkinHuxleyCartographer {
                     min: 0.0,
                     max: 50.0,
                     step: 1.0,
+                    default: Some(10.0),
                 },
             ),
         };
@@ -334,6 +337,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
                 min: 0.0,
                 max: 200.0,
                 step: 1.0,
+                default: Some(120.0),
             },
         );
         map.insert(
@@ -342,6 +346,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
                 min: 0.0,
                 max: 100.0,
                 step: 1.0,
+                default: Some(36.0),
             },
         );
         map.insert(
@@ -350,6 +355,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
                 min: 0.0,
                 max: 5.0,
                 step: 0.1,
+                default: Some(0.3),
             },
         );
         map.insert(
@@ -358,6 +364,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
                 min: 0.0,
                 max: 50.0,
                 step: 1.0,
+                default: Some(10.0),
             },
         );
         map

@@ -231,7 +231,12 @@ fn morpho_axis_spec(
         theory_params,
         resolved_key,
         label,
-        ParameterConstraint { min, max, step },
+        ParameterConstraint {
+            min,
+            max,
+            step,
+            default: None,
+        },
     )
 }
 

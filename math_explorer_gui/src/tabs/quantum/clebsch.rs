@@ -177,14 +177,14 @@ impl InteractiveTool for ClebschGordanTool {
                 changed |= ui
                     .add(
                         egui::Slider::new(&mut self.j, 0.0..=20.0)
-                            .step_by(1.0)
+                            .step_by(0.5)
                             .text("J"),
                     )
                     .changed();
                 changed |= ui
                     .add(
                         egui::Slider::new(&mut self.m, -20.0..=20.0)
-                            .step_by(1.0)
+                            .step_by(0.5)
                             .text("M"),
                     )
                     .changed();
@@ -309,5 +309,47 @@ inventory::submit! {
         domain: "quantum",
         tool_name: Some("ClebschGordanTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::framework::InteractiveTool;
+
+    #[test]
+    fn test_half_integer_spin_couplings_and_220_of_441_pairs_reachable() {
+        let mut half_integer_pairs = 0usize;
+        let mut total_pairs = 0usize;
+        for two_j1 in 0..=20 {
+            for two_j2 in 0..=20 {
+                total_pairs += 1;
+                if (two_j1 + two_j2) % 2 == 1 {
+                    half_integer_pairs += 1;
+                    let j_max = 0.5 * f64::from(two_j1 + two_j2);
+                    // Verify j_max lies on the 0.5 slider step grid in 0.0..=20.0
+                    assert!(((j_max / 0.5).round() * 0.5 - j_max).abs() < 1e-12);
+                }
+            }
+        }
+        assert_eq!(total_pairs, 441);
+        assert_eq!(half_integer_pairs, 220);
+
+        // Verify <1.0, 0.5; 0.5, 0.0 | 1.5, 0.5> = sqrt(2/3) is non-zero and starter preset loads cleanly.
+        let mut tool = ClebschGordanTool {
+            j1: 1.0,
+            m1: 0.5,
+            j2: 0.5,
+            m2: 0.0,
+            j: 1.5,
+            m: 0.5,
+            result: 0.0,
+        };
+        tool.calculate();
+        assert!((tool.result - (2.0_f64 / 3.0).sqrt()).abs() < 1e-9);
+
+        tool.import_preset_json(STARTER_PRESET_JSON)
+            .expect("starter half-integer Clebsch-Gordan preset must load");
+        assert!((tool.result - (1.0_f64 / 3.0).sqrt()).abs() < 1e-9);
     }
 }

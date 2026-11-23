@@ -91,6 +91,7 @@ impl TheoryDescribable for MorphogenesisTheory {
                 min: 0.0,
                 max: 1.0,
                 step: 0.01,
+                default: Some(0.1),
             },
         );
         map.insert(
@@ -99,6 +100,7 @@ impl TheoryDescribable for MorphogenesisTheory {
                 min: 0.0,
                 max: 2.0,
                 step: 0.01,
+                default: Some(0.9),
             },
         );
         map.insert(
@@ -107,6 +109,7 @@ impl TheoryDescribable for MorphogenesisTheory {
                 min: 0.1,
                 max: 5.0,
                 step: 0.05,
+                default: Some(1.0),
             },
         );
         map.insert(
@@ -115,6 +118,7 @@ impl TheoryDescribable for MorphogenesisTheory {
                 min: 10.0,
                 max: 200.0,
                 step: 1.0,
+                default: Some(40.0),
             },
         );
         map.insert(
@@ -123,6 +127,7 @@ impl TheoryDescribable for MorphogenesisTheory {
                 min: 1e-4,
                 max: 0.1,
                 step: 5e-4,
+                default: Some(0.01),
             },
         );
         map

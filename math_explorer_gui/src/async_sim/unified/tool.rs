@@ -53,7 +53,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         for (name, constraint) in &param_metadata {
             let default_val = M::parameter_choices(name)
                 .first()
-                .map_or((constraint.min + constraint.max) / 2.0, |&(_, v)| v);
+                .map_or_else(|| constraint.effective_default(), |&(_, v)| v);
             initial_params.insert(name.clone(), default_val);
         }
 
@@ -135,7 +135,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                         *v = if !v.is_finite() {
                             M::parameter_choices(name)
                                 .first()
-                                .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice)
+                                .map_or_else(|| c.effective_default(), |&(_, choice)| choice)
                         } else {
                             v.clamp(c.min, c.max)
                         };
@@ -147,14 +147,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             RecoveryAction::ResetParameters => {
                 let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
                 for (name, c) in &self.param_metadata {
-                    let d = match name.as_str() {
-                        "viscosity" => 0.02,
-                        "dt" => 0.05,
-                        "potential_type" => 0.0,
-                        _ => M::parameter_choices(name)
-                            .first()
-                            .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice),
-                    };
+                    let d = M::parameter_choices(name)
+                        .first()
+                        .map_or_else(|| c.effective_default(), |&(_, choice)| choice);
                     p.insert(name.clone(), d);
                 }
                 drop(p);

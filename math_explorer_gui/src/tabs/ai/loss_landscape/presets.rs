@@ -27,8 +27,13 @@ impl PredictorMode {
 impl scientific_metadata::theory::TheoryDescribable for LossLandscapeTool {
     fn theory_description(&self) -> String {
         if self.surface == LandscapeSurface::LinearMse {
+            let eq = if self.loss_metric.is_mse() {
+                "$L(w, b) = \\frac{1}{n}\\sum_{i=1}^n (f(x_i, w, b) - y_i)^2$"
+            } else {
+                "$L(w, b) = \\frac{1}{n}\\sum_{i=1}^n \\ell(f(x_i, w, b) - y_i)$"
+            };
             format!(
-                "Empirical risk landscape $L(w, b) = \\frac{{1}}{{n}}\\sum_{{i=1}}^n \\ell(f(x_i, w, b) - y_i)$ using {} objective over {} target dataset, raced in 3D/2D by Hamiltonian and Langevin dynamics.",
+                "Empirical risk landscape {eq} using {} objective over {} target dataset, raced in 3D/2D by Hamiltonian and Langevin dynamics.",
                 self.loss_metric.label(),
                 self.target_mode.label()
             )

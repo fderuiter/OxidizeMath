@@ -89,7 +89,12 @@ impl MorphogenesisTool {
             constraints
                 .get(key)
                 .cloned()
-                .unwrap_or(ParameterConstraint { min, max, step })
+                .unwrap_or(ParameterConstraint {
+                    min,
+                    max,
+                    step,
+                    default: None,
+                })
         };
         let ca = bound("a", 0.0, 1.0, 0.01);
         let cb = bound("b", 0.0, 2.0, 0.01);

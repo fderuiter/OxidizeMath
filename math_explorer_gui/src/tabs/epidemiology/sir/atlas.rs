@@ -152,6 +152,7 @@ fn sir_axis_spec(
                 min: 0.0,
                 max: 1.0,
                 step: 0.01,
+                default: Some(0.1),
             },
         ),
         "I0" => {
@@ -163,6 +164,7 @@ fn sir_axis_spec(
                     min: 1.0,
                     max: max_i0,
                     step: 1.0,
+                    default: Some(10.0_f64.min(max_i0)),
                 },
             }
         }
@@ -174,6 +176,7 @@ fn sir_axis_spec(
                 min: 0.0,
                 max: 5.0,
                 step: 0.02,
+                default: Some(0.5),
             },
         ),
     }

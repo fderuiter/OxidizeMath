@@ -33,19 +33,44 @@ fn test_bankroll_growth_borrowed_slice_points() {
 }
 
 #[test]
-fn test_even_money_net_odds_and_net_profit_multiplier_settlement() {
+fn test_even_money_decimal_odds_and_net_profit_multiplier_settlement() {
+    use scientific_metadata::theory::TheoryDescribable;
+
+    // Default tool: W0 = 1000, p = 0.55, decimal odds O = 2.0 (net b = 1.0, f* = 0.10)
+    // Geometric expectation over 100 bets = 1000 * exp(100 * g(0.10)) = $1,650.10.
+    let default_tool = BankrollGrowthTool::default();
+    let p_def = UnitInterval::new(default_tool.probability).unwrap();
+    let o_def = Odds::new(default_tool.odds).unwrap();
+    let f_star = kelly_fraction(&p_def, &o_def).unwrap();
+    let g_star =
+        math_explorer::pure_math::statistics::kelly::expected_growth_rate(&p_def, &o_def, &f_star);
+    let geom_expected = default_tool.initial_bankroll * (100.0 * g_star).exp();
+    assert!((geom_expected - 1650.10).abs() < 0.01);
+
     let mut tool = BankrollGrowthTool {
         initial_bankroll: 1000.0,
         probability: 0.60,
-        odds: 1.0, // Even money net odds (b = 1.0 -> decimal 2.0, f* = 0.20)
+        odds: 2.0, // Even money decimal odds (O = 2.0 -> net b = 1.0, f* = 0.20)
         num_bets: 10,
         ..Default::default()
     };
     tool.recalculate();
     assert!(
         tool.error_msg.is_none(),
-        "Even-money net odds b=1.0 must succeed via Odds::from_net_odds"
+        "Even-money decimal odds O=2.0 must succeed via Odds::new"
     );
+
+    // Decimal odds <= 1.0 must be rejected by try_load_state, and theory_description must not divide by zero.
+    assert!(tool
+        .try_load_state(
+            r#"{"initial_bankroll":1000.0,"probability":0.55,"odds":1.0,"num_bets":100}"#
+        )
+        .is_err());
+    tool.odds = 1.0;
+    let desc = tool.theory_description();
+    assert!(!desc.contains("NaN") && !desc.contains("inf"));
+    tool.import_preset_json(STARTER_PRESET_JSON)
+        .expect("starter preset with odds=2.5 must load");
 
     let o = Odds::from_net_odds(2.0).unwrap();
     let frac = BankrollFraction::new(0.25).unwrap();
@@ -54,6 +79,13 @@ fn test_even_money_net_odds_and_net_profit_multiplier_settlement() {
     assert!((settled_win - 1500.0).abs() < 1e-9);
     let settled_loss = settle_bet(1000.0, &frac, o.net_profit_multiplier(), false);
     assert!((settled_loss - 750.0).abs() < 1e-9);
+
+    let default_tool = BankrollGrowthTool::default();
+    let datasets = crate::framework::InteractiveTool::export_datasets(&default_tool);
+    let opts = egui_plot::export::ExportOptions::default();
+    if let Ok(png) = egui_plot::export::export_custom_png(&datasets, &opts) {
+        let _ = std::fs::write("/tmp/bankroll_growth_kelly_calibrated.png", png);
+    }
 }
 
 #[test]
@@ -74,6 +106,15 @@ fn test_seed_counter_reruns_produce_distinct_trajectories() {
         .map(|pt| [pt.x, pt.y])
         .collect();
     assert_ne!(run_0, run_1, "Incrementing seed_counter must vary paths");
+
+    tool.reset_defaults();
+    assert_eq!(tool.seed_counter, 0);
+    let run_reset: Vec<[f64; 2]> = tool
+        .full_kelly_points
+        .iter()
+        .map(|pt| [pt.x, pt.y])
+        .collect();
+    assert_eq!(run_0, run_reset, "Reset must restore baseline seed trajectory");
 }
 
 #[test]

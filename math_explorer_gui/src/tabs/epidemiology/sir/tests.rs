@@ -176,3 +176,44 @@ fn test_sir_100k_steps_decimates_display_polylines_and_preserves_peak_and_export
     assert_eq!(exported[1].1.len(), 100_001);
     assert_eq!(exported[2].1.len(), 100_001);
 }
+
+#[test]
+fn test_sir_sensitivity_tracks_selected_duration_past_50_days() {
+    let ctx = egui::Context::default();
+    let input = egui::RawInput::default();
+
+    // Slow-spreading outbreak in large population peaks well after day 50 (~day 145).
+    let mut short_window = SirTool {
+        n: 10_000.0,
+        i0: 1.0,
+        beta: 0.16,
+        gamma: 0.08,
+        duration: 50.0,
+        ..Default::default()
+    };
+    short_window.recalculate();
+    let _ = ctx.run(input.clone(), |c| short_window.show(c));
+    let _ = ctx.run(input.clone(), |c| short_window.show(c));
+    assert!(short_window.sensitivity_engine.is_converged());
+
+    let mut full_window = SirTool {
+        n: 10_000.0,
+        i0: 1.0,
+        beta: 0.16,
+        gamma: 0.08,
+        duration: 250.0,
+        ..Default::default()
+    };
+    full_window.recalculate();
+    let _ = ctx.run(input.clone(), |c| full_window.show(c));
+    let _ = ctx.run(input, |c| full_window.show(c));
+    assert!(full_window.sensitivity_engine.is_converged());
+
+    let (_, plotted_peak) = metrics::compute_epidemic_peak(&full_window.i_points).expect("peak");
+    assert!(
+        full_window.sensitivity_engine.baseline_output
+            > short_window.sensitivity_engine.baseline_output * 5.0,
+        "Extended duration must capture late epidemic peak beyond 50 days"
+    );
+    assert!((full_window.sensitivity_engine.baseline_output - plotted_peak).abs() < 1.0);
+}

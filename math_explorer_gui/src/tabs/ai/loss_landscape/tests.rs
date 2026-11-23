@@ -453,3 +453,13 @@ fn test_loss_landscape_formula_targets_zero_alloc_and_roundtrip() {
     assert!((restored.huber_delta - 2.0).abs() < 1e-12);
     assert!(restored.evaluate_loss_at(3.0, -2.0).expect("restored") < 1e-12);
 }
+
+#[test]
+fn test_loss_landscape_theory_description_displays_exact_1_over_n_mse() {
+    use scientific_metadata::theory::TheoryDescribable;
+
+    let tool = LossLandscapeTool::default();
+    let desc = tool.theory_description();
+    assert!(desc.contains(r"\frac{1}{n}\sum_{i=1}^n (f(x_i, w, b) - y_i)^2"));
+    assert!(!desc.contains(r"\frac{1}{2n}"));
+}

@@ -29,6 +29,7 @@ impl RegimeCartographer for WasmTestCartographer {
                 min: 0.0,
                 max: 1.0,
                 step: 0.01,
+                default: None,
             },
         };
         AtlasAxisPair {

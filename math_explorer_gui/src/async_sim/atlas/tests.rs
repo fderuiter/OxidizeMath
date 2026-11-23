@@ -45,6 +45,7 @@ impl CountingCartographer {
                 min: 0.0,
                 max,
                 step: 0.01,
+                default: None,
             },
         };
         Self {

@@ -284,3 +284,50 @@ pub struct NonNumericModel {
     out.assert_has_error("the trait bound `String: TheoryNumeric` is not satisfied");
     out.assert_has_span(7, 15);
 }
+
+#[test]
+fn mode_12_theory_validates_calibrated_default_within_bounds() {
+    let bad_code = r#"use verified_engine_macros::Theory;
+
+#[derive(Theory)]
+#[theory(description = "Default checks")]
+pub struct OutOfBoundsDefault {
+    #[theory(min = 0.0, max = 5.0, step = 0.1, default = 12.0)]
+    pub g_l: f64,
+    #[theory(min = 1.0, max = 10.0, step = 1.0, default = -2.0)]
+    pub i_ext: f64,
+}
+"#;
+    let out = compile_snippet("mode_12_out_of_bounds_default", bad_code);
+    out.assert_failed_without_panic();
+    out.assert_has_error("`default` (12) must lie within `[0, 5]`");
+    out.assert_has_error("`default` (-2) must lie within `[1, 10]`");
+
+    let ok_code = r#"use scientific_metadata::theory::TheoryDescribable;
+use verified_engine_macros::Theory;
+
+#[derive(Theory)]
+#[theory(description = "Calibrated model")]
+pub struct CalibratedModel {
+    #[theory(min = 0.0, max = 5.0, step = 0.1, default = 0.3)]
+    pub g_l: f64,
+    #[theory(min = 0.0, max = 50.0, step = 1.0)]
+    pub i_ext: f64,
+}
+
+pub fn check() {
+    let m = CalibratedModel { g_l: 0.3, i_ext: 10.0 };
+    let p = m.theory_parameters();
+    assert_eq!(p["g_l"].default, Some(0.3));
+    assert_eq!(p["g_l"].effective_default(), 0.3);
+    assert_eq!(p["i_ext"].default, None);
+    assert_eq!(p["i_ext"].effective_default(), 25.0);
+}
+"#;
+    let ok_out = compile_snippet("mode_12_valid_default", ok_code);
+    assert!(
+        ok_out.success,
+        "valid calibrated default failed to compile:\n{}",
+        ok_out.stderr
+    );
+}

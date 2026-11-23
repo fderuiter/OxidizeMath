@@ -96,7 +96,7 @@ impl BankrollGrowthTool {
                 return;
             }
         };
-        let o = match Odds::from_net_odds(self.odds) {
+        let o = match Odds::new(self.odds) {
             Ok(o) => o,
             Err(e) => {
                 self.error_msg = Some(format!("Error: {e}"));
@@ -162,8 +162,10 @@ impl BankrollGrowthTool {
             .add(egui::Slider::new(&mut self.probability, 0.01..=0.99).text("Win Probability (p)"))
             .changed();
         changed |= ui
-            .add(egui::Slider::new(&mut self.odds, 0.1..=10.0).text("Net Odds (b)"))
-            .accessible_hover_text("Net profit multiplier. E.g., for +100 / even money, b = 1.0.")
+            .add(egui::Slider::new(&mut self.odds, 1.01..=10.0).text("Decimal Odds (O)"))
+            .accessible_hover_text(
+                "Decimal payout multiplier (> 1.0). E.g., for +100 / even money, O = 2.0 (net profit b = 1.0).",
+            )
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut self.num_bets, 10..=1000).text("Number of Bets"))
@@ -200,14 +202,18 @@ impl BankrollGrowthTool {
             if ui
                 .button("↻ Reset to Defaults")
                 .accessible_hover_text(
-                    "Reset initial bankroll, win probability, odds, and bet count to default values",
+                    "Reset initial bankroll, win probability, odds, bet count, and seed to default values",
                 )
                 .clicked()
             {
                 self.reset_defaults();
                 *changed = false;
             }
-            ui.label(format!("(Seed #{})", self.seed_counter));
+            ui.label("Seed:");
+            *changed |= ui
+                .add(egui::DragValue::new(&mut self.seed_counter).speed(1.0))
+                .accessible_hover_text("Deterministic RNG seed offset for reproducible trajectories")
+                .changed();
         });
     }
 
@@ -296,14 +302,14 @@ impl InteractiveTool for BankrollGrowthTool {
             .all(|v| v.is_finite())
             || !(100.0..=10_000.0).contains(&s.initial_bankroll)
             || !(0.01..=0.99).contains(&s.probability)
-            || !(0.1..=10.0).contains(&s.odds)
+            || !(1.01..=10.0).contains(&s.odds)
             || !(10..=1000).contains(&s.num_bets)
             || !(0.0..=MAX_CUSTOM_FRACTION).contains(&s.custom_fraction)
         {
             return Err("Bankroll simulation parameters out of bounds".into());
         }
         let p = UnitInterval::new(s.probability).map_err(|e| format!("Error: {e}"))?;
-        let o = Odds::from_net_odds(s.odds).map_err(|e| format!("Error: {e}"))?;
+        let o = Odds::new(s.odds).map_err(|e| format!("Error: {e}"))?;
         if s.mode == BankrollLabMode::KellyStrategies {
             kelly_fraction(&p, &o).map_err(|e| format!("Error: {e}"))?;
             variants::half_kelly(&p, &o).map_err(|e| format!("Error: {e}"))?;
@@ -370,12 +376,12 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for BankrollGrowthTool {
     fn theory_description(&self) -> String {
-        let b = self.odds.max(1e-6);
+        let b = (self.odds - 1.0).max(1e-6);
         let q = 1.0 - self.probability;
         let f_kelly = ((b * self.probability - q) / b).clamp(-10.0, 1.0);
         format!(
-            "Capital compounding trajectory under Kelly criterion betting: $W_T = W_0 \\prod_{{t=1}}^T (1 + f R_t)$ with initial capital $W_0 = {:.1}$, win probability $p = {:.2}$, net odds $b = {:.2}$, and optimal fraction $f^* = {:.3}$.",
-            self.initial_bankroll, self.probability, self.odds, f_kelly
+            "Capital compounding trajectory under Kelly criterion betting: $W_T = W_0 \\prod_{{t=1}}^T (1 + f R_t)$ with initial capital $W_0 = {:.1}$, win probability $p = {:.2}$, decimal odds $O = {:.2}$ (net odds $b = {:.2}$), and optimal fraction $f^* = {:.3}$.",
+            self.initial_bankroll, self.probability, self.odds, b, f_kelly
         )
     }
     fn phonetic_description(&self) -> String {

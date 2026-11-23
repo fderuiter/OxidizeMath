@@ -45,13 +45,20 @@ impl Default for RandomizationTool {
 }
 
 impl RandomizationTool {
-    /// Increments `seed_counter` and draws a fresh deterministic subject allocation.
-    pub fn allocate_subjects(&mut self) {
+    /// Restores baseline subject count, block size, seed counter, and stratified preset.
+    pub fn reset_defaults(&mut self) {
+        self.n_subjects = 10;
+        self.block_size = 4;
+        self.seed_counter = 0;
+        self.assignments.clear();
+        self.error_message = None;
+        self.simpson_lab.reset_confounded_preset();
+    }
+
+    fn apply_current_seed_allocation(&mut self) {
         self.error_message = None;
         self.assignments.clear();
-        self.seed_counter = self.seed_counter.wrapping_add(1);
         let mut rng = OxidizeRng::from_seed(BASE_SEED ^ self.seed_counter);
-
         match self.randomization_type {
             RandomizationType::Simple => match SimpleRandomizer.assign(&mut rng, self.n_subjects) {
                 Ok(assignments) => self.assignments = assignments,
@@ -64,10 +71,20 @@ impl RandomizationTool {
                 },
                 Err(e) => self.error_message = Some(e.to_string()),
             },
-            RandomizationType::Stratified => {
-                self.simpson_lab
-                    .balance_via_stratified_randomizer(&mut self.seed_counter);
-            }
+            RandomizationType::Stratified => {}
+        }
+    }
+
+    /// Increments `seed_counter` and draws a fresh deterministic subject allocation.
+    pub fn allocate_subjects(&mut self) {
+        if self.randomization_type == RandomizationType::Stratified {
+            self.error_message = None;
+            self.assignments.clear();
+            self.simpson_lab
+                .balance_via_stratified_randomizer(&mut self.seed_counter);
+        } else {
+            self.seed_counter = self.seed_counter.wrapping_add(1);
+            self.apply_current_seed_allocation();
         }
     }
 
@@ -109,7 +126,7 @@ impl RandomizationTool {
 
         let enter_pressed = crate::framework::is_pane_activation_shortcut_allowed(ui)
             && ui.input(|i| i.key_pressed(egui::Key::Enter));
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("▶ Allocate Subjects")
                 .accessible_hover_text("Randomly assign subjects to treatment and control groups")
@@ -118,7 +135,22 @@ impl RandomizationTool {
             {
                 self.allocate_subjects();
             }
-            ui.label(format!("(Seed #{})", self.seed_counter));
+            if ui
+                .button("↻ Reset")
+                .accessible_hover_text("Restore baseline parameters and reset deterministic seed")
+                .clicked()
+            {
+                self.reset_defaults();
+            }
+            ui.label("Seed:");
+            if ui
+                .add(egui::DragValue::new(&mut self.seed_counter).speed(1.0))
+                .accessible_hover_text("Deterministic RNG seed offset for reproducible subject allocation")
+                .changed()
+                && !self.assignments.is_empty()
+            {
+                self.apply_current_seed_allocation();
+            }
         });
     }
 
@@ -346,6 +378,18 @@ mod tests {
         assert_ne!(
             first, second,
             "Consecutive Allocate Subjects clicks must advance seed_counter"
+        );
+
+        tool.reset_defaults();
+        assert_eq!(tool.seed_counter, 0);
+        assert!(tool.assignments.is_empty());
+
+        tool.n_subjects = 40;
+        tool.allocate_subjects();
+        assert_eq!(tool.seed_counter, 1);
+        assert_eq!(
+            tool.assignments, first,
+            "Resetting seed_counter to 0 must reproduce initial allocation sequence"
         );
     }
 
