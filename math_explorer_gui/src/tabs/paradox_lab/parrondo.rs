@@ -1,11 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::parrondo_atlas::compute_abb_tensor_metrics;
+use crate::async_sim::atlas::ParameterAtlasController;
+use crate::framework::CalloutManager;
 use math_explorer::nalgebra::DMatrix;
 use math_explorer::pure_math::analysis::stochastic::{
     GillespieSolver, StochasticError, StochasticSystem,
 };
 use math_explorer::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
-use math_explorer::pure_math::statistics::markov::tensor::{TimeIndex, TransitionTensor};
 use math_explorer::rand::Rng;
 use math_explorer::rng::OxidizeRng;
 use serde::{Deserialize, Serialize};
@@ -197,10 +199,17 @@ pub struct ParrondoParadoxTool {
     pub(super) traj_mix: Vec<[f64; 2]>,
     pub(super) traj_exact: Vec<[f64; 2]>,
     pub(super) traj_ssa: Vec<[f64; 2]>,
+    /// Progressive 2D parameter regime atlas controller.
+    pub atlas: ParameterAtlasController,
+    /// Plot callout overlay manager synchronized with stories, challenges, and atlas teleports.
+    pub callouts: CalloutManager,
 }
 
+/// Canonical disambiguated type alias for [`crate::framework::ToolMetadata::id`] `"ParrondoJumpRatchetTool"`.
+pub type ParrondoJumpRatchetTool = ParrondoParadoxTool;
+
 #[inline]
-fn next_markov_state(variant: ParrondoVariant, cur: usize, won: bool) -> usize {
+pub(super) fn next_markov_state(variant: ParrondoVariant, cur: usize, won: bool) -> usize {
     match variant {
         ParrondoVariant::CapitalDependent => (cur + if won { 1 } else { 2 }) % 3,
         ParrondoVariant::HistoryDependent => {
@@ -209,7 +218,7 @@ fn next_markov_state(variant: ParrondoVariant, cur: usize, won: bool) -> usize {
     }
 }
 
-fn win_probs(variant: ParrondoVariant, eps: f64) -> ([f64; 4], [f64; 4], usize) {
+pub(super) fn win_probs(variant: ParrondoVariant, eps: f64) -> ([f64; 4], [f64; 4], usize) {
     let win_a = [(0.5 - eps).clamp(0.01, 0.99); 4];
     match variant {
         ParrondoVariant::CapitalDependent => {
@@ -244,40 +253,6 @@ fn stationary_drift(mat: &DMatrix<f64>, probs: &[f64; 4]) -> f64 {
     let chain = MarkovChain::new(mat.clone(), vec![StateType::Transient; n]).unwrap();
     let pi = chain.stationary_distribution().unwrap();
     (0..n).map(|s| pi[s] * (2.0 * probs[s] - 1.0)).sum()
-}
-
-fn compute_abb_tensor_metrics(
-    p_a: &DMatrix<f64>,
-    p_b: &DMatrix<f64>,
-    win_a: &[f64; 4],
-    win_b: &[f64; 4],
-) -> (f64, f64, f64) {
-    let n = p_a.nrows();
-    let (t_min, t_mid, t_one, t_max) = (
-        TimeIndex::new(0.0).unwrap(),
-        TimeIndex::new(0.5).unwrap(),
-        TimeIndex::new(1.0).unwrap(),
-        TimeIndex::new(2.0).unwrap(),
-    );
-    let mut tensor = TransitionTensor::new(n, t_min, t_max);
-    tensor.add_time_slice(t_min, p_a.clone()).unwrap();
-    tensor.add_time_slice(t_one, p_b.clone()).unwrap();
-    tensor.add_time_slice(t_max, p_b.clone()).unwrap();
-
-    let s0 = tensor.transition_matrix_at(t_min).unwrap();
-    let s1 = tensor.transition_matrix_at(t_one).unwrap();
-    let s2 = tensor.transition_matrix_at(t_max).unwrap();
-    let chain_abb = MarkovChain::new(&s0 * &s1 * &s2, vec![StateType::Transient; n]).unwrap();
-    let pi0 = chain_abb.stationary_distribution().unwrap();
-    let pi1 = s0.transpose() * &pi0;
-    let pi2 = s1.transpose() * &pi1;
-    let gain = |pi: &math_explorer::nalgebra::DVector<f64>, w: &[f64; 4]| -> f64 {
-        (0..n).map(|s| pi[s] * (2.0 * w[s] - 1.0)).sum()
-    };
-    let drift_abb = (gain(&pi0, win_a) + gain(&pi1, win_b) + gain(&pi2, win_b)) / 3.0;
-    let avg = tensor.average_transition(t_min, t_max, 3).unwrap();
-    let mid = tensor.transition_matrix_at(t_mid).unwrap();
-    (drift_abb, avg[(0, 1)], mid[(0, 1)])
 }
 
 fn compute_analytical_metrics(state: &ParrondoState) -> ParrondoMetrics {
@@ -330,6 +305,11 @@ impl Default for ParrondoParadoxTool {
             traj_mix: Vec::new(),
             traj_exact: Vec::new(),
             traj_ssa: Vec::new(),
+            atlas: ParameterAtlasController::new(vec![
+                ("bias_epsilon", "mix_gamma"),
+                ("bias_epsilon", "jump_switch_rate"),
+            ]),
+            callouts: CalloutManager::new(),
             state,
         };
         tool.rebuild_full_simulation();
