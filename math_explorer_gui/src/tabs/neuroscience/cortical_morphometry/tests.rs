@@ -164,6 +164,25 @@ fn test_watertight_colored_mesh_export_across_surfaces_and_overlays() {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn test_cached_thickness_workspace_reuses_buffers_with_zero_allocations() {
+    let mut tool = CorticalMorphometryTool::default();
+    tool.ensure_evaluated();
+    let white = tool.cache.white_surface.clone().expect("white mesh cached");
+    let pial = tool.cache.pial_surface.clone().expect("pial mesh cached");
+    let baseline = tool.cache.thickness_mm.clone();
+
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let ((), metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        tool.cache.evaluate_thickness(&white, &pial);
+    });
+    assert!(metrics.function_calls > 0);
+    assert_eq!(tool.cache.thickness_mm, baseline);
+}
+
 #[cfg(target_arch = "wasm32")]
 mod wasm_tests {
     use super::*;
