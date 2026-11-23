@@ -60,7 +60,7 @@ pub use manifold::{
     WatertightGridError, analyze_mesh_manifold, sample_watertight_grid,
 };
 pub use marching_cubes::{MarchingCubes, extract_isosurface};
-pub use types::{Mesh, Point3D, VoxelGrid};
+pub use types::{Mesh, Point3D, VoxelGrid, VoxelGridError};
 pub use workspace::{IsosurfaceWorkspace, extract_isosurface_into};
 
 // [cite:isosurface_extraction]

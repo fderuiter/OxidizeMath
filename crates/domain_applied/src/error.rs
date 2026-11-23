@@ -198,4 +198,24 @@ impl std::fmt::Display for IsosurfaceError {
     }
 }
 
-impl std::error::Error for IsosurfaceError {}
+impl std::error::Error for IsosurfaceError {
+    #[verified_engine::verified]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Math(err) => Some(err),
+            Self::InvalidGrid(_) => None,
+        }
+    }
+}
+
+mod submodule_diagnostics;
+mod umbrella;
+
+pub use crate::applied::{
+    algorithms::kalman::KalmanError, clinical_trials::types::ClinicalTrialError,
+    isosurface::manifold::WatertightGridError, isosurface::types::VoxelGridError,
+};
+pub use umbrella::AppliedError;
+
+#[cfg(test)]
+mod tests;

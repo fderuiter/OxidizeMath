@@ -448,6 +448,8 @@ impl PlotOverlaySnapshot {
         for ds in &self.imported_datasets {
             ds.name.hash(hasher);
             ds.visible.hash(hasher);
+            ds.show_points.hash(hasher);
+            ds.show_lines.hash(hasher);
             ds.points.len().hash(hasher);
             for pt in &ds.points {
                 norm_f64_bits(pt[0]).hash(hasher);
