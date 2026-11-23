@@ -191,6 +191,9 @@
       "signature": "impl Gaussian3D { pub fn compute_covariance (& self) -> Matrix3 < f64 > }"
     },
     {
+      "signature": "impl Gaussian3D { pub fn to_splat_ply (& self , scale_multiplier : f64) -> oxidize_core :: mesh :: GaussianSplatPly }"
+    },
+    {
       "signature": "pub struct Gaussian2D"
     },
     {
@@ -4042,16 +4045,10 @@
       "signature": "pub fn continuity_divergence (velocity_divergence : f64) -> f64"
     },
     {
-      "signature": "pub fn euler_time_derivative (rho : f64 , state : & FlowState , velocity_gradient : & nalgebra :: Matrix3 < f64 > , pressure_gradient : Vector3 < f64 > , body_force_accel : Vector3 < f64 > ,) -> Result < Vector3 < f64 > , FluidError >"
-    },
-    {
       "signature": "pub fn material_derivative_scalar (local_change : f64 , velocity : Vector3 < f64 > , gradient : Vector3 < f64 > ,) -> f64"
     },
     {
       "signature": "pub fn material_derivative_vector (local_change : Vector3 < f64 > , velocity : Vector3 < f64 > , gradient_tensor : & nalgebra :: Matrix3 < f64 > ,) -> Vector3 < f64 >"
-    },
-    {
-      "signature": "pub fn navier_stokes_time_derivative (properties : & FluidProperties , state : & FlowState , velocity_gradient : & nalgebra :: Matrix3 < f64 > , pressure_gradient : Vector3 < f64 > , laplacian_velocity : Vector3 < f64 > , body_force_accel : Vector3 < f64 > ,) -> Vector3 < f64 >"
     },
     {
       "signature": "pub struct Euler"
@@ -4107,7 +4104,21 @@
       "signature": "impl LatticeBoltzmannD2Q9 < BgkCollision > { pub fn new (width : usize , height : usize , tau : f64) -> Self }"
     }
   ],
+  "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/forces.rs": [
+    {
+      "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn compute_bounce_back_forces (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn hydrodynamic_forces (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "pub fn compute_drag_coefficient (drag_force : f64 , rho_ref : f64 , u_inlet : f64 , char_length : f64 ,) -> f64"
+    }
+  ],
   "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/mod.rs": [
+    {
+      "signature": "pub use forces :: compute_drag_coefficient"
+    },
     {
       "signature": "pub use model :: *"
     },
@@ -4587,9 +4598,6 @@
       "signature": "impl GatingLogic { pub fn is_beam_active (& self) -> bool }"
     },
     {
-      "signature": "impl GatingLogic { pub fn is_beam_on (& self) -> bool }"
-    },
-    {
       "signature": "impl GatingLogic { pub fn new (threshold : f64 , hysteresis : f64 , system_latency : f64) -> Self }"
     },
     {
@@ -4857,6 +4865,9 @@
       "signature": "impl BlochSimulator { pub fn set_relaxation (& mut self , t1 : f64 , t2 : f64) }"
     },
     {
+      "signature": "pub fn rotating_frame_effective_field (b0 : f64 , omega_rf : f64 , b1_amp : f64 , phase_rad : f64 ,) -> Vector3 < f64 >"
+    },
+    {
       "signature": "pub struct BlochSimulator"
     }
   ],
@@ -4963,21 +4974,6 @@
     }
   ],
   "crates/domain_physics/src/physics/nuclear/mod.rs": [
-    {
-      "signature": "pub mod liquid_drop"
-    },
-    {
-      "signature": "pub mod liquid_drop { pub fn binding_energy (atomic_number : AtomicNumber , mass_number : MassNumber ,) -> Result < f64 , NuclearError > }"
-    },
-    {
-      "signature": "pub mod liquid_drop { pub fn binding_energy_per_nucleon (atomic_number : AtomicNumber , mass_number : MassNumber ,) -> Result < f64 , NuclearError > }"
-    },
-    {
-      "signature": "pub mod shell_model"
-    },
-    {
-      "signature": "pub mod shell_model { pub fn spin_orbit_coupling (l : f64 , s : f64 , j : f64) -> f64 }"
-    },
     {
       "signature": "pub use models :: BindingEnergyModel"
     },
@@ -5294,9 +5290,6 @@
       "signature": "impl IsotropicBCSModel { pub fn new (energies : Vec < f64 > , potential : f64 , debye_cutoff : f64 ,) -> Result < Self , SolidStateError > }"
     },
     {
-      "signature": "pub fn coherence_factors (xi_k : f64 , delta : f64) -> Result < (f64 , f64) , String >"
-    },
-    {
       "signature": "pub fn coherence_factors_strong (xi_k : ElectronVolts , delta : ElectronVolts ,) -> Result < (f64 , f64) , String >"
     },
     {
@@ -5583,13 +5576,7 @@
   ],
   "crates/domain_physics/src/physics/stat_mech/quantum_stats.rs": [
     {
-      "signature": "pub enum ParticleType"
-    },
-    {
       "signature": "pub fn calculate_occupancy < D : StatisticalDistribution > (distribution : D , energy : f64 , chemical_potential : f64 , temperature : f64 ,) -> Result < f64 , StatMechError >"
-    },
-    {
-      "signature": "pub fn occupancy_probability (particle_type : ParticleType , energy : f64 , chemical_potential : f64 , temperature : f64 ,) -> Result < f64 , StatMechError >"
     },
     {
       "signature": "pub struct BoseEinstein"
@@ -6093,7 +6080,43 @@
   ],
   "crates/oxidize_core/src/mesh/export.rs": [
     {
-      "signature": "pub fn export_mesh_to_obj_string (mesh : & Mesh) -> Result < String , std :: io :: Error >"
+      "signature": "pub fn export_mesh_to_obj_string (mesh : & Mesh) -> Result < String , Error >"
+    }
+  ],
+  "crates/oxidize_core/src/mesh/export_ply.rs": [
+    {
+      "signature": "pub fn export_colored_mesh_to_ply_ascii (colored : & ColoredMesh) -> Result < String , Error >"
+    },
+    {
+      "signature": "pub fn export_colored_mesh_to_ply_binary (colored : & ColoredMesh) -> Result < Vec < u8 > , Error >"
+    },
+    {
+      "signature": "pub fn export_mesh_to_ply_ascii (mesh : & Mesh) -> Result < String , Error >"
+    },
+    {
+      "signature": "pub fn export_mesh_to_ply_binary (mesh : & Mesh) -> Result < Vec < u8 > , Error >"
+    }
+  ],
+  "crates/oxidize_core/src/mesh/export_splat_ply.rs": [
+    {
+      "signature": "pub const SH_C0 : f32 = 0.282_094_8"
+    },
+    {
+      "signature": "pub fn export_splats_to_ply_binary (splats : & [GaussianSplatPly]) -> Result < Vec < u8 > , Error >"
+    },
+    {
+      "signature": "pub struct GaussianSplatPly"
+    }
+  ],
+  "crates/oxidize_core/src/mesh/export_stl.rs": [
+    {
+      "signature": "pub fn export_mesh_to_stl_ascii (mesh : & Mesh) -> Result < String , Error >"
+    },
+    {
+      "signature": "pub fn export_mesh_to_stl_binary (mesh : & Mesh) -> Result < Vec < u8 > , Error >"
+    },
+    {
+      "signature": "pub fn parse_stl_ascii (stl : & str) -> Result < Mesh , Error >"
     }
   ],
   "crates/oxidize_core/src/mesh/mod.rs": [
@@ -6101,10 +6124,54 @@
       "signature": "pub use export :: *"
     },
     {
+      "signature": "pub use export_ply :: *"
+    },
+    {
+      "signature": "pub use export_splat_ply :: *"
+    },
+    {
+      "signature": "pub use export_stl :: *"
+    },
+    {
+      "signature": "pub use primitives :: *"
+    },
+    {
       "signature": "pub use types :: *"
     }
   ],
+  "crates/oxidize_core/src/mesh/primitives.rs": [
+    {
+      "signature": "pub const MAX_PRIMITIVE_SEGMENTS : usize = 1000"
+    },
+    {
+      "signature": "pub const MAX_TUBE_RADIAL_SEGMENTS : usize = 32"
+    },
+    {
+      "signature": "pub fn append_colored_part (dst : & mut ColoredMesh , src : & Mesh , color : VertexColor)"
+    },
+    {
+      "signature": "pub fn append_mesh (dst : & mut Mesh , src : & Mesh)"
+    },
+    {
+      "signature": "pub fn build_arrow (start : Point3D , end : Point3D , shaft_radius : f32 , head_radius : f32 , head_length : f32 , radial_segments : usize ,) -> Result < Mesh , Error >"
+    },
+    {
+      "signature": "pub fn build_cone (base_center : Point3D , apex : Point3D , base_radius : f32 , radial_segments : usize ,) -> Result < Mesh , Error >"
+    },
+    {
+      "signature": "pub fn build_cylinder (start : Point3D , end : Point3D , radius : f32 , radial_segments : usize ,) -> Result < Mesh , Error >"
+    },
+    {
+      "signature": "pub fn build_uv_sphere (center : Point3D , radius : f32 , u_segments : usize , v_segments : usize ,) -> Result < Mesh , Error >"
+    },
+    {
+      "signature": "pub fn extrude_polyline_tube (points : & [Point3D] , radius : f32 , radial_segments : usize , closed : bool ,) -> Result < Mesh , Error >"
+    }
+  ],
   "crates/oxidize_core/src/mesh/types.rs": [
+    {
+      "signature": "impl ColoredMesh { pub fn new (mesh : Mesh , colors : Vec < VertexColor >) -> Self }"
+    },
     {
       "signature": "impl Mesh { pub fn clear (& mut self) }"
     },
@@ -6124,6 +6191,9 @@
       "signature": "impl Point3D { pub fn dot (& self , other : Point3D) -> f32 }"
     },
     {
+      "signature": "impl Point3D { pub fn is_finite (& self) -> bool }"
+    },
+    {
       "signature": "impl Point3D { pub fn magnitude (& self) -> f32 }"
     },
     {
@@ -6133,10 +6203,19 @@
       "signature": "impl Point3D { pub fn normalize (& self) -> Point3D }"
     },
     {
+      "signature": "impl VertexColor { pub const fn new (r : u8 , g : u8 , b : u8) -> Self }"
+    },
+    {
+      "signature": "pub struct ColoredMesh"
+    },
+    {
       "signature": "pub struct Mesh"
     },
     {
       "signature": "pub struct Point3D"
+    },
+    {
+      "signature": "pub struct VertexColor"
     }
   ],
   "crates/oxidize_core/src/path_utils.rs": [
@@ -6787,13 +6866,97 @@
   ],
   "crates/pure_math/src/pure_math/algorithmic_information/fractran.rs": [
     {
+      "signature": "impl FractranCompiledVm { pub const fn num_rules (& self) -> usize }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn encode_u64 (& self , value : u64 , out_registers : & mut [u32]) -> Result < () , FractranError > }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn encode_value (& self , value : u64) -> Result < Vec < u32 > , FractranError > }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn power_of_two_exponent (& self , registers : & [u32]) -> Option < u32 > }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn primes (& self) -> & [u64] }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn rule_exponents (& self , rule_index : usize) -> Option < (& [u32] , & [u32]) > }"
+    },
+    {
+      "signature": "impl FractranCompiledVm { pub fn step_registers (& self , registers : & mut [u32]) -> Result < Option < usize > , FractranError > }"
+    },
+    {
+      "signature": "impl FractranPreset { pub const ALL : [Self ; 4] = [Self :: PrimeGame , Self :: Mult , Self :: Add , Self :: Fibonacci] }"
+    },
+    {
+      "signature": "impl FractranPreset { pub const fn default_initial_value (self) -> u64 }"
+    },
+    {
+      "signature": "impl FractranPreset { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl FractranPreset { pub fn build (self) -> (FractranProgram , FractranState , u64) }"
+    },
+    {
+      "signature": "impl FractranPreset { pub fn minsky_state (self) -> FractranState }"
+    },
+    {
+      "signature": "impl FractranPreset { pub fn program (self) -> FractranProgram }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn compile (& self) -> Result < FractranCompiledVm , FractranError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn compile_for_initial (& self , initial_value : u64 ,) -> Result < (FractranCompiledVm , Vec < u32 >) , FractranError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn compile_with_primes (& self , extra_primes : & [u64] ,) -> Result < FractranCompiledVm , FractranError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn format_fractions (& self) -> String }"
+    },
+    {
       "signature": "impl FractranProgram { pub fn new (fractions : Vec < Rational >) -> Self }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn parse_fractions (input : & str) -> Result < Self , FractranError > }"
+    },
+    {
+      "signature": "impl FractranState { pub fn decode (& self , vm : & FractranCompiledVm , registers : & [u32]) -> MinskyDecodedState }"
+    },
+    {
+      "signature": "impl FractranState { pub fn from_vm_heuristic (vm : & FractranCompiledVm) -> Self }"
+    },
+    {
+      "signature": "impl FractranState { pub fn new (state_primes : Vec < u64 > , register_primes : Vec < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl FractranState { pub fn transitions (& self , vm : & FractranCompiledVm) -> Vec < MinskyTransition > }"
+    },
+    {
+      "signature": "pub const MAX_SMOOTH_PRIME : u64 = 10_000"
+    },
+    {
+      "signature": "pub enum FractranError"
+    },
+    {
+      "signature": "pub enum FractranPreset"
+    },
+    {
+      "signature": "pub struct FractranCompiledVm"
     },
     {
       "signature": "pub struct FractranProgram"
     },
     {
       "signature": "pub struct FractranState"
+    },
+    {
+      "signature": "pub struct MinskyDecodedState"
+    },
+    {
+      "signature": "pub struct MinskyTransition"
     }
   ],
   "crates/pure_math/src/pure_math/algorithmic_information/geometry.rs": [

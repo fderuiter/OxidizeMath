@@ -1,4 +1,4 @@
-# ADR 0038: Unified 3D Volumetric Field Studio and Zero-Allocation Surface/Splat Kernels
+# ADR 0039: Unified 3D Volumetric Field Studio and Zero-Allocation Surface/Splat Kernels
 
 ## Status
 Accepted (extends [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md))

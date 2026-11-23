@@ -5,6 +5,9 @@ mod scene;
 #[path = "gaussian_splatting_ui.rs"]
 mod ui;
 
+#[path = "gaussian_splatting_export.rs"]
+mod export;
+
 use crate::framework::{
     Camera3D, ExportCapabilities, InteractiveTool, ProjectionMode, Scene3DBuilder,
 };
@@ -272,7 +275,10 @@ impl InteractiveTool for GaussianSplattingTool {
         "Gaussian Splatting"
     }
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::none()
+        ExportCapabilities::splat_ply_only()
+    }
+    fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
+        Some(self.serialize_splats_ply_binary())
     }
     fn domain(&self) -> &'static str {
         "ai"
