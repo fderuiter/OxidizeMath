@@ -1,20 +1,45 @@
 //! Root finding algorithms.
 //!
 //! This module implements the **Strategy Pattern** for root finding, allowing
-//! different algorithms (Bisection, Newton-Raphson, Brent's) to be used interchangeably.
+//! different algorithms ([`Bisection`], [`NewtonRaphson`], and [`Brent`]) to be used interchangeably.
 
 use thiserror::Error;
 
-/// Errors that can occur during numerical analysis.
-#[derive(Debug, Clone, PartialEq, Error)]
+/// Copy, zero-allocation errors that can occur during numerical root finding.
+#[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum AnalysisError {
     /// The algorithm failed to converge within the maximum number of iterations.
     /// Contains the best guess so far.
     #[error("Algorithm failed to converge. Best guess: {0}")]
     ConvergenceError(f64),
-    /// Invalid parameters were provided (e.g., root not bracketed).
-    #[error("Invalid parameters: {0}")]
-    InvalidParameters(String),
+    /// Endpoints do not bracket a sign change or evaluated to non-finite values.
+    #[error("Root not bracketed: f({min})={f_min}, f({max})={f_max}; signs must differ")]
+    RootNotBracketed {
+        /// Lower bound input.
+        min: f64,
+        /// Objective value at `min`.
+        f_min: f64,
+        /// Upper bound input.
+        max: f64,
+        /// Objective value at `max`.
+        f_max: f64,
+    },
+    /// Derivative magnitude fell below the safe division threshold in [`NewtonRaphson`].
+    #[error("Derivative too small at x={x}: {derivative}")]
+    DerivativeTooSmall {
+        /// Iterate where the derivative vanished.
+        x: f64,
+        /// Evaluated derivative value.
+        derivative: f64,
+    },
+    /// Non-finite interval bounds or non-positive solver tolerance were supplied.
+    #[error("Invalid solver bracket [{min}, {max}] or tolerance")]
+    InvalidBracket {
+        /// Lower bound input.
+        min: f64,
+        /// Upper bound input.
+        max: f64,
+    },
 }
 
 /// Strategy for finding roots of a function $f(x) = 0$.
@@ -23,20 +48,20 @@ pub enum AnalysisError {
 ///
 /// ```
 /// # use pure_math::__doctest_facade as math_explorer;
-/// use math_explorer::pure_math::analysis::roots::{RootFinder, Bisection, NewtonRaphson};
+/// use math_explorer::pure_math::analysis::roots::{Bisection, Brent, NewtonRaphson, RootFinder};
 ///
 /// fn main() -> Result<(), math_explorer::pure_math::analysis::roots::AnalysisError> {
-///     // Define the function f(x) = x^2 - 4
 ///     let f = |x: f64| x * x - 4.0;
 ///
-///     // Use Bisection (bracketing method)
 ///     let bisection = Bisection::default();
 ///     let root = bisection.find_root(f, 0.0, 5.0)?;
 ///     assert!((root - 2.0).abs() < math_explorer::registry::TOLERANCE_FAST);
 ///
-///     // Use Newton-Raphson (open method)
+///     let brent = Brent::default();
+///     let root = brent.find_root(f, 0.0, 5.0)?;
+///     assert!((root - 2.0).abs() < math_explorer::registry::TOLERANCE_STANDARD);
+///
 ///     let newton = NewtonRaphson::default();
-///     // Note: For open methods, min/max are used to determine the initial guess.
 ///     let root = newton.find_root(f, 0.0, 5.0)?;
 ///     assert!((root - 2.0).abs() < math_explorer::registry::TOLERANCE_FAST);
 ///
@@ -47,51 +72,44 @@ pub trait RootFinder {
     /// Finds a root of the function `f`.
     ///
     /// The interpretation of `min` and `max` depends on the implementation:
-    /// * **Bracketing Methods** (e.g., [`Bisection`]): The root must lie within `[min, max]`.
-    /// * **Open Methods** (e.g., [`NewtonRaphson`]): `min` and `max` are used to compute
-    ///   the initial guess (typically `(min + max) / 2`), but the search is not constrained
-    ///   to this interval.
-    ///
-    /// # Arguments
-    /// * `f` - The objective function.
-    /// * `min` - Lower bound (or parameter for initial guess).
-    /// * `max` - Upper bound (or parameter for initial guess).
-    ///
-    /// # Returns
-    /// * `Ok(f64)` - The approximate root.
-    /// * `Err(AnalysisError)` - If the root cannot be found or parameters are invalid.
+    /// * **Bracketing Methods** ([`Bisection`], [`Brent`]): The root must lie within `[min, max]`.
+    /// * **Open Methods** ([`NewtonRaphson`]): `min` and `max` are used to compute
+    ///   the initial guess `(min + max) / 2`, without constraining iterates to `[min, max]`.
     #[verified_engine::verified]
     fn find_root<F>(&self, f: F, min: f64, max: f64) -> Result<f64, AnalysisError>
     where
         F: Fn(f64) -> f64;
 }
 
+#[verified_engine::verified]
+fn validate_solver_bounds(min: f64, max: f64, tolerance: f64) -> Result<(), AnalysisError> {
+    if !min.is_finite() || !max.is_finite() || !tolerance.is_finite() || tolerance <= 0.0 {
+        return Err(AnalysisError::InvalidBracket { min, max });
+    }
+    Ok(())
+}
+
 /// Bisection method implementation.
 ///
-/// A robust but slow method that iteratively halves the interval.
-/// Guaranteed to converge if the function is continuous and changes sign over the interval.
+/// Iteratively halves a sign-changing interval `[min, max]`.
 ///
 /// # Examples
 ///
 /// ```
 /// # use pure_math::__doctest_facade as math_explorer;
-/// use math_explorer::pure_math::analysis::roots::{RootFinder, Bisection};
+/// use math_explorer::pure_math::analysis::roots::{Bisection, RootFinder};
 ///
 /// fn main() -> Result<(), math_explorer::pure_math::analysis::roots::AnalysisError> {
 ///     let solver = Bisection::default();
-///
-///     // Find root of x^2 - 2 = 0 in [1, 2]
 ///     let root = solver.find_root(|x| x * x - 2.0, 1.0, 2.0)?;
 ///     assert!((root - std::f64::consts::SQRT_2).abs() < math_explorer::registry::TOLERANCE_FAST);
 ///
-///     // Error if root is not bracketed (signs at endpoints must differ)
 ///     let result = solver.find_root(|x| x * x + 1.0, -2.0, 2.0);
 ///     assert!(result.is_err());
-///
 ///     Ok(())
 /// }
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bisection {
     /// Maximum number of iterations before giving up.
     pub max_iterations: usize,
@@ -126,93 +144,76 @@ impl RootFinder for Bisection {
     where
         F: Fn(f64) -> f64,
     {
+        validate_solver_bounds(min, max, self.tolerance)?;
         let mut low = min;
         let mut high = max;
-
         let mut f_low = f(low);
+        let f_high = f(high);
+        if !f_low.is_finite() || !f_high.is_finite() {
+            return Err(AnalysisError::RootNotBracketed {
+                min: low,
+                f_min: f_low,
+                max: high,
+                f_max: f_high,
+            });
+        }
         if f_low.abs() < self.tolerance {
             return Ok(low);
         }
-
-        let f_high = f(high);
         if f_high.abs() < self.tolerance {
             return Ok(high);
         }
-
-        // Check if root is bracketed
-        if f_low.signum() == f_high.signum() {
-            return Err(AnalysisError::InvalidParameters(format!(
-                "Root not bracketed: f({})={}, f({})={}. Signs must differ.",
-                low, f_low, high, f_high
-            )));
+        if (f_low > 0.0) == (f_high > 0.0) {
+            return Err(AnalysisError::RootNotBracketed {
+                min: low,
+                f_min: f_low,
+                max: high,
+                f_max: f_high,
+            });
         }
 
         let mut mid = low;
-
         for _ in 0..self.max_iterations {
-            mid = (low + high) / 2.0;
-
-            // Check convergence on domain (interval size)
+            mid = 0.5 * (low + high);
             if (high - low).abs() < self.tolerance {
                 return Ok(mid);
             }
-
             let f_mid = f(mid);
-
-            // Check convergence on range (function value)
+            if !f_mid.is_finite() {
+                return Err(AnalysisError::ConvergenceError(mid));
+            }
             if f_mid.abs() < self.tolerance {
                 return Ok(mid);
             }
-
-            // Narrow the interval
-            // If f(low) and f(mid) have different signs, root is in [low, mid]
-            if f_low.signum() != f_mid.signum() {
+            if (f_low > 0.0) != (f_mid > 0.0) {
                 high = mid;
-                // high moved, low stays same, so f_low is still valid for next iter
             } else {
                 low = mid;
-                f_low = f_mid; // low moved, must update f_low
+                f_low = f_mid;
             }
         }
-
-        // Return best guess (mid) if convergence not reached
         Err(AnalysisError::ConvergenceError(mid))
     }
 }
 
-/// Newton-Raphson method implementation.
+/// Newton-Raphson open root-finding implementation.
 ///
-/// Uses the derivative of the function to converge quadratically to the root.
-/// If the derivative is not provided (via `RootFinder` trait), a numerical approximation is used.
-///
-/// **Note:** This is an [Open Method](https://en.wikipedia.org/wiki/Root-finding_algorithms#Open_methods).
-/// Unlike bracketing methods (like [`Bisection`]), it does not require the root to be bracketed
-/// and does not guarantee that the result lies within the initial interval provided to [`RootFinder::find_root`].
-/// The `min` and `max` arguments are only used to compute the initial guess: `(min + max) / 2`.
+/// Uses analytical or central finite-difference derivatives starting from `(min + max) / 2`.
 ///
 /// # Examples
 ///
 /// ```
 /// # use pure_math::__doctest_facade as math_explorer;
-/// use math_explorer::pure_math::analysis::roots::{RootFinder, NewtonRaphson};
+/// use math_explorer::pure_math::analysis::roots::{NewtonRaphson, RootFinder};
 ///
 /// fn main() -> Result<(), math_explorer::pure_math::analysis::roots::AnalysisError> {
 ///     let solver = NewtonRaphson::default();
-///
-///     // Find root of x^2 - 2 = 0
-///     // Initial guess will be (1.0 + 2.0) / 2.0 = 1.5
 ///     let root = solver.find_root(|x| x * x - 2.0, 1.0, 2.0)?;
 ///     assert!((root - std::f64::consts::SQRT_2).abs() < math_explorer::registry::TOLERANCE_FAST);
-///
-///     // Example where root is outside the initial "interval"
-///     // Root of x - 10 = 0 is 10. Initial guess is 2.5.
-///     let root = solver.find_root(|x| x - 10.0, 0.0, 5.0)?;
-///     assert!((root - 10.0).abs() < math_explorer::registry::TOLERANCE_FAST);
-///
 ///     Ok(())
 /// }
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NewtonRaphson {
     /// Maximum number of iterations.
     pub max_iterations: usize,
@@ -231,11 +232,6 @@ impl NewtonRaphson {
     }
 
     /// Finds a root using an analytical derivative $f'(x)$.
-    ///
-    /// # Arguments
-    /// * `f` - The objective function.
-    /// * `f_prime` - The derivative of the objective function.
-    /// * `guess` - Initial guess for the root.
     #[verified_engine::verified]
     pub fn find_root_with_derivative<F, D>(
         &self,
@@ -247,29 +243,30 @@ impl NewtonRaphson {
         F: Fn(f64) -> f64,
         D: Fn(f64) -> f64,
     {
+        validate_solver_bounds(guess, guess, self.tolerance)?;
         let mut x = guess;
 
         for _ in 0..self.max_iterations {
             let y = f(x);
+            if !y.is_finite() {
+                return Err(AnalysisError::ConvergenceError(x));
+            }
             if y.abs() < self.tolerance {
                 return Ok(x);
             }
 
             let dy = f_prime(x);
-            if dy.abs() < 1e-14 {
-                return Err(AnalysisError::InvalidParameters(format!(
-                    "Derivative too small at x={}: {}",
-                    x, dy
-                )));
+            if !dy.is_finite() || dy.abs() < 1e-14 {
+                return Err(AnalysisError::DerivativeTooSmall { x, derivative: dy });
             }
 
             let next_x = x - y / dy;
-
-            // Check convergence on domain step
+            if !next_x.is_finite() {
+                return Err(AnalysisError::ConvergenceError(x));
+            }
             if (next_x - x).abs() < self.tolerance {
                 return Ok(next_x);
             }
-
             x = next_x;
         }
 
@@ -293,69 +290,187 @@ impl RootFinder for NewtonRaphson {
     where
         F: Fn(f64) -> f64,
     {
-        // Use midpoint as initial guess
-        let guess = (min + max) / 2.0;
-
-        // Numerical derivative step size
+        validate_solver_bounds(min, max, self.tolerance)?;
+        let guess = 0.5 * (min + max);
         let h = 1e-7;
-
         let derivative = |x: f64| (f(x + h) - f(x - h)) / (2.0 * h);
-
-        // We use the specialized method with our numerical derivative
         self.find_root_with_derivative(&f, derivative, guess)
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Bracketed Brent-Dekker root-finding solver.
+///
+/// Combines inverse quadratic interpolation, secant steps, and guaranteed bisection fallback
+/// for superlinear convergence without derivative evaluations or dynamic allocation.
+///
+/// # Examples
+///
+/// ```
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::analysis::roots::{Brent, RootFinder};
+///
+/// fn main() -> Result<(), math_explorer::pure_math::analysis::roots::AnalysisError> {
+///     let solver = Brent::default();
+///     let root = solver.find_root(|x| x.cos() - x, 0.0, 1.0)?;
+///     assert!((root - 0.739_085_133_215).abs() < math_explorer::registry::TOLERANCE_STANDARD);
+///     Ok(())
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Brent {
+    /// Maximum number of iterations before returning [`AnalysisError::ConvergenceError`].
+    pub max_iterations: usize,
+    /// Absolute bracket convergence tolerance.
+    pub tolerance: f64,
+}
 
-    #[test]
+impl Brent {
+    /// Creates a new [`Brent`] solver with explicit iteration and tolerance bounds.
     #[verified_engine::verified]
-    fn test_newton_raphson_sqrt() -> Result<(), AnalysisError> {
-        let solver = NewtonRaphson::default();
-        // x^2 - 2 = 0, derivative 2x
-        let root = solver.find_root_with_derivative(|x| x * x - 2.0, |x| 2.0 * x, 1.5)?;
-        assert!((root - std::f64::consts::SQRT_2).abs() < math_commons::registry::TOLERANCE_FAST);
-        Ok(())
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_newton_raphson_numerical() -> Result<(), AnalysisError> {
-        let solver = NewtonRaphson::default();
-        // x^2 - 2 = 0
-        let root = solver.find_root(|x| x * x - 2.0, 1.0, 2.0)?;
-        assert!((root - std::f64::consts::SQRT_2).abs() < 1e-5);
-        Ok(())
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_bisection_square_root() -> Result<(), AnalysisError> {
-        let solver = Bisection::default();
-        // x^2 - 2 = 0  => x = sqrt(2) approx 1.41421356
-        let root = solver.find_root(|x| x * x - 2.0, 1.0, 2.0)?;
-        assert!((root - std::f64::consts::SQRT_2).abs() < math_commons::registry::TOLERANCE_FAST);
-        Ok(())
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_bisection_linear() -> Result<(), AnalysisError> {
-        let solver = Bisection::default();
-        // 2x - 4 = 0 => x = 2
-        let root = solver.find_root(|x| 2.0 * x - 4.0, 0.0, 5.0)?;
-        assert!((root - 2.0).abs() < math_commons::registry::TOLERANCE_FAST);
-        Ok(())
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_not_bracketed() {
-        let solver = Bisection::default();
-        // x^2 + 1 = 0 has no real roots. And signs are always positive.
-        let result = solver.find_root(|x| x * x + 1.0, -2.0, 2.0);
-        assert!(matches!(result, Err(AnalysisError::InvalidParameters(_))));
+    pub fn new(max_iterations: usize, tolerance: f64) -> Self {
+        Self {
+            max_iterations,
+            tolerance,
+        }
     }
 }
+
+impl Default for Brent {
+    #[verified_engine::verified]
+    fn default() -> Self {
+        Self {
+            max_iterations: math_commons::registry::MAX_ITERATIONS,
+            tolerance: math_commons::registry::TOLERANCE_HIGH,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct BrentIterate {
+    a: f64,
+    b: f64,
+    c: f64,
+    fa: f64,
+    fb: f64,
+    fc: f64,
+    d: f64,
+    e: f64,
+}
+
+#[verified_engine::verified]
+fn brent_propose_step(st: &BrentIterate, xm: f64, tol1: f64) -> (f64, f64) {
+    if st.e.abs() < tol1 || st.fa.abs() <= st.fb.abs() {
+        return (xm, xm);
+    }
+    let s = st.fb / st.fa;
+    let (mut p, mut q) = if (st.a - st.c).abs() <= f64::EPSILON {
+        (2.0 * xm * s, 1.0 - s)
+    } else {
+        let qi = st.fa / st.fc;
+        let r = st.fb / st.fc;
+        (
+            s * (2.0 * xm * qi * (qi - r) - (st.b - st.a) * (r - 1.0)),
+            (qi - 1.0) * (r - 1.0) * (s - 1.0),
+        )
+    };
+    if p > 0.0 {
+        q = -q;
+    }
+    p = p.abs();
+    let bound_bracket = 3.0 * xm * q - (tol1 * q).abs();
+    let bound_prev = (st.e * q).abs();
+    if q != 0.0 && 2.0 * p < bound_bracket.min(bound_prev) {
+        (p / q, st.d)
+    } else {
+        (xm, xm)
+    }
+}
+
+impl RootFinder for Brent {
+    #[verified_engine::verified]
+    fn find_root<F>(&self, f: F, min: f64, max: f64) -> Result<f64, AnalysisError>
+    where
+        F: Fn(f64) -> f64,
+    {
+        validate_solver_bounds(min, max, self.tolerance)?;
+        let fa0 = f(min);
+        let fb0 = f(max);
+        if !fa0.is_finite() || !fb0.is_finite() {
+            return Err(AnalysisError::RootNotBracketed {
+                min,
+                f_min: fa0,
+                max,
+                f_max: fb0,
+            });
+        }
+        if fa0 == 0.0 {
+            return Ok(min);
+        }
+        if fb0 == 0.0 {
+            return Ok(max);
+        }
+        if (fa0 > 0.0) == (fb0 > 0.0) {
+            return Err(AnalysisError::RootNotBracketed {
+                min,
+                f_min: fa0,
+                max,
+                f_max: fb0,
+            });
+        }
+
+        let mut st = BrentIterate {
+            a: min,
+            b: max,
+            c: max,
+            fa: fa0,
+            fb: fb0,
+            fc: fb0,
+            d: max - min,
+            e: max - min,
+        };
+
+        for _ in 0..self.max_iterations {
+            if (st.fb > 0.0) == (st.fc > 0.0) {
+                st.c = st.a;
+                st.fc = st.fa;
+                st.d = st.b - st.a;
+                st.e = st.d;
+            }
+            if st.fc.abs() < st.fb.abs() {
+                st.a = st.b;
+                st.b = st.c;
+                st.c = st.a;
+                st.fa = st.fb;
+                st.fb = st.fc;
+                st.fc = st.fa;
+            }
+            let tol1 = 2.0 * f64::EPSILON * st.b.abs() + 0.5 * self.tolerance;
+            let xm = 0.5 * (st.c - st.b);
+            if xm.abs() <= tol1 || st.fb == 0.0 {
+                return Ok(st.b);
+            }
+            let (next_d, next_e) = brent_propose_step(&st, xm, tol1);
+            st.d = next_d;
+            st.e = next_e;
+            st.a = st.b;
+            st.fa = st.fb;
+            if st.d.abs() > tol1 {
+                st.b += st.d;
+            } else {
+                st.b += tol1.copysign(xm);
+            }
+            st.fb = f(st.b);
+            if !st.fb.is_finite() {
+                return Err(AnalysisError::ConvergenceError(st.b));
+            }
+        }
+
+        Err(AnalysisError::ConvergenceError(st.b))
+    }
+}
+
+#[cfg(test)]
+#[path = "roots_tests.rs"]
+mod tests;
+
+// [cite:advanced_linear_algebra]

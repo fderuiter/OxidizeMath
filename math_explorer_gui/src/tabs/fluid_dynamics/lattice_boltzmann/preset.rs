@@ -1,11 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::LbmUnified;
-use crate::async_sim::unified::UnifiedSimTool;
+use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     BgkCollision, LatticeBoltzmannD2Q9,
 };
-use scientific_metadata::theory::TheoryDescribable;
+use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 
 inventory::submit! {
@@ -33,6 +33,10 @@ impl TheoryDescribable for LbmUnified {
 
     fn available_descriptions(&self) -> HashMap<String, String> {
         LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).available_descriptions()
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        Self::parameters()
     }
 }
 

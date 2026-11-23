@@ -85,7 +85,6 @@ impl Default for FractalColorStyle {
         }
     }
 }
-
 /// Immutable parameter bundle describing a single progressive fractal render request.
 #[derive(Clone, Copy, Debug)]
 pub struct FractalRenderRequest {
@@ -101,7 +100,7 @@ pub struct FractalRenderRequest {
     pub zoom: f64,
     /// Escape-time iteration ceiling.
     pub max_iter: u32,
-    /// Mandelbrot, Julia, or symbolic Custom mode.
+    /// Mandelbrot, Julia, or symbolic Custom escape fractal mode.
     pub mode: FractalMode,
     /// Complex constant $c$ for Julia or Custom Julia-plane mode.
     pub julia_c: Complex<f64>,

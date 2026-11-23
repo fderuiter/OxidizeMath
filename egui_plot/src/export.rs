@@ -628,10 +628,20 @@ fn color_image_to_rgba_bytes(image: &egui::ColorImage) -> Vec<u8> {
 static NATIVE_CLIPBOARD: std::sync::Mutex<Option<arboard::Clipboard>> = std::sync::Mutex::new(None);
 
 #[cfg(not(target_arch = "wasm32"))]
+fn has_non_empty_display_vars(
+    display: Option<&std::ffi::OsStr>,
+    wayland: Option<&std::ffi::OsStr>,
+) -> bool {
+    display.is_some_and(|v| !v.is_empty()) || wayland.is_some_and(|v| !v.is_empty())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn has_native_display_clipboard() -> bool {
     cfg!(any(target_os = "macos", target_os = "windows"))
-        || std::env::var_os("DISPLAY").is_some()
-        || std::env::var_os("WAYLAND_DISPLAY").is_some()
+        || has_non_empty_display_vars(
+            std::env::var_os("DISPLAY").as_deref(),
+            std::env::var_os("WAYLAND_DISPLAY").as_deref(),
+        )
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1785,6 +1795,24 @@ mod tests {
                 .unwrap();
             assert_eq!(ds_pts, prim_pts);
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_has_non_empty_display_vars_rejects_unset_and_empty_values() {
+        use std::ffi::OsStr;
+
+        assert!(!has_non_empty_display_vars(None, None));
+        assert!(!has_non_empty_display_vars(Some(OsStr::new("")), None));
+        assert!(!has_non_empty_display_vars(
+            Some(OsStr::new("")),
+            Some(OsStr::new(""))
+        ));
+        assert!(has_non_empty_display_vars(Some(OsStr::new(":0")), None));
+        assert!(has_non_empty_display_vars(
+            Some(OsStr::new("")),
+            Some(OsStr::new("wayland-0"))
+        ));
     }
 }
 

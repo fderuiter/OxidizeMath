@@ -150,15 +150,13 @@ pub(super) fn eval_pixel_color(
     map_escape_to_color32(iter_val, req.max_iter, style.palette, req.high_contrast)
 }
 
-/// Synchronously renders a full-resolution fractal image (used for small seed previews and tests).
-#[cfg(test)]
+/// Synchronously renders a full-resolution fractal image (used for seed previews, insets, and exports).
 #[must_use]
 pub fn render_fractal_color_image(req: &FractalRenderRequest) -> egui::ColorImage {
     render_fractal_color_image_with_formula(req, None)
 }
 
 /// Synchronously renders a full-resolution fractal image with an optional [`CompiledFractalJob`].
-#[cfg(test)]
 #[must_use]
 pub fn render_fractal_color_image_with_formula(
     req: &FractalRenderRequest,
