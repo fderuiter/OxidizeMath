@@ -99,6 +99,7 @@ theory_verification!(
         THICKNESS = 2.5;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(
             THICKNESS,
             2.5,

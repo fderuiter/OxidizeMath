@@ -268,8 +268,8 @@ fn jacquelin_frequency(sorted: &[[f64; 2]]) -> Option<f64> {
         s2[i] = s2[i - 1] + 0.5 * (s1[i] + s1[i - 1]) * dx;
     }
     let x0 = sorted[0][0];
-    let mut ata = [[0.0_f64; 5]; 5];
-    let mut atb = [0.0_f64; 5];
+    let mut ata = [[0.0_f64; 6]; 6];
+    let mut atb = [0.0_f64; 6];
     for (i, p) in sorted.iter().enumerate() {
         let u = p[0] - x0;
         let row = [s2[i], u * u, u, 1.0];
@@ -298,8 +298,8 @@ fn zero_crossing_frequency(sorted: &[[f64; 2]], span: f64) -> Option<f64> {
 }
 
 fn solve_harmonic_linear(points: &[[f64; 2]], b: f64) -> Option<[f64; 4]> {
-    let mut ata = [[0.0_f64; 5]; 5];
-    let mut atb = [0.0_f64; 5];
+    let mut ata = [[0.0_f64; 6]; 6];
+    let mut atb = [0.0_f64; 6];
     for p in points {
         let (s, c) = (b * p[0]).sin_cos();
         let row = [s, c, 1.0];

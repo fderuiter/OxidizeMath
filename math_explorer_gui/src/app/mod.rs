@@ -96,6 +96,7 @@ impl Default for MathExplorerApp {
     #[allow(clippy::vec_init_then_push)]
     fn default() -> Self {
         crate::accessibility::ensure_plot_live_bridge();
+        crate::framework::ensure_custom_fit_bridge();
         let tabs: Vec<Box<dyn ExplorerTab>> = crate::tabs::instantiate_tabs();
 
         Self {

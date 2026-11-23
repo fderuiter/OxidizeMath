@@ -99,16 +99,6 @@ impl From<CanvasCallout> for crate::SavedCallout {
     }
 }
 
-impl From<crate::SavedCallout> for CanvasCallout {
-    fn from(s: crate::SavedCallout) -> Self {
-        Self {
-            target_point: s.point,
-            label_offset: s.offset,
-            text: s.label,
-        }
-    }
-}
-
 #[cfg(feature = "serde")]
 #[inline]
 fn default_grid_density() -> f32 {

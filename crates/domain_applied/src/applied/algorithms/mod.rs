@@ -110,6 +110,7 @@ theory_verification!(
         WEIGHT = 1.0;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(
             WEIGHT,
             1.0,

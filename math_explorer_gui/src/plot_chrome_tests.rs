@@ -154,10 +154,12 @@ fn test_all_app_tabs_zero_legend_button_overlap() {
 fn test_real_gistemp_anomalies_degree4_fit_accuracy() {
     let series = math_explorer::climate::dataset::get_temperature_anomalies();
     assert_eq!(series.len(), 144);
-    let fit = egui_plot::fit::fit_model(
+    let fit = egui_plot::fit_model_with_axes(
         &series,
-        egui_plot::fit::FitType::Polynomial(4),
+        egui_plot::FitType::Polynomial(4),
         "GISTEMP Temperature Anomaly",
+        false,
+        false,
         false,
     )
     .expect("ADR 0031 GISTEMP Degree 4 fit must succeed");
