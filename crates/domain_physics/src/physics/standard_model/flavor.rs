@@ -55,6 +55,28 @@ pub fn construct_ckm(
     Matrix3::new(v_ud, v_us, v_ub, v_cd, v_cs, v_cb, v_td, v_ts, v_tb)
 }
 
+/// Computes the rephasing-invariant Jarlskog CP-violation measure
+/// $J = \operatorname{Im}(V_{ud} V_{cs} V_{us}^* V_{cd}^*)$ for a $3 \times 3$ unitary mixing matrix.
+#[verified_engine::verified]
+pub fn jarlskog_invariant(matrix: &Matrix3<Complex<f64>>) -> f64 {
+    let product = matrix[(0, 0)] * matrix[(1, 1)] * matrix[(0, 1)].conj() * matrix[(1, 0)].conj();
+    product.im
+}
+
+/// Computes the rescaled CKM Unitarity Triangle apex $(\bar{\rho}, \bar{\eta})$ defined by
+/// $\bar{\rho} + i \bar{\eta} = -\frac{V_{ud} V_{ub}^*}{V_{cd} V_{cb}^*}$.
+///
+/// Returns `None` if $|V_{cd} V_{cb}^*|$ vanishes.
+#[verified_engine::verified]
+pub fn unitarity_triangle_apex(ckm: &Matrix3<Complex<f64>>) -> Option<(f64, f64)> {
+    let denom = ckm[(1, 0)] * ckm[(1, 2)].conj();
+    if denom.norm_sqr() <= math_commons::constants::EPSILON * math_commons::constants::EPSILON {
+        return None;
+    }
+    let z = -(ckm[(0, 0)] * ckm[(0, 2)].conj()) / denom;
+    Some((z.re, z.im))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,5 +122,20 @@ mod tests {
                 }
             }
         }
+
+        let expected_j = theta12.cos()
+            * theta12.sin()
+            * theta23.cos()
+            * theta23.sin()
+            * theta13.cos().powi(2)
+            * theta13.sin()
+            * delta.sin();
+        assert_relative_eq!(
+            jarlskog_invariant(&v_ckm),
+            expected_j,
+            epsilon = math_commons::registry::TOLERANCE_HIGH
+        );
+        let (rho_bar, eta_bar) = unitarity_triangle_apex(&v_ckm).unwrap();
+        assert!(eta_bar > 0.0 && rho_bar.is_finite());
     }
 }

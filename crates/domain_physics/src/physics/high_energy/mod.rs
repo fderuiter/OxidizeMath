@@ -95,15 +95,17 @@ pub mod statistics;
 // Re-export constants to match original API
 pub use math_commons::constants::{C, G, SIGMA_T, SOLAR_MASS};
 
-// Re-export SchwarzschildBlackHole and relativistic geodesic types/helpers
+// Re-export SchwarzschildBlackHole and relativistic geodesic/observer types & helpers
 pub use general_relativity::{
     GeodesicKind, KerrEquatorialMetric, MorrisThorneWormhole, SchwarzschildBlackHole,
     combined_clock_rate, effective_potential, flamm_paraboloid_z, photon_sphere_radius,
 };
+pub use observer::{
+    FourVector, apparent_transverse_beta, calculate_lorentz_factor, doppler_beaming_factor,
+    relativistic_doppler_factor,
+};
 
-// Re-export Error type
-
-// [cite:dwarf_galaxy_empirical_dependencies]
+// [cite:high_energy]
 // [cite:general_relativity_geodesics]
 
 use pure_math::theory_verification;
@@ -111,10 +113,23 @@ use pure_math::theory_verification;
 theory_verification!(
     module = "high_energy",
     constants = {
-        DUMMY = 1.0;
+        JET_BETA = 0.6;
+        EXPECTED_LORENTZ_GAMMA = 1.25;
+        EXPECTED_HEAD_ON_DOPPLER = 2.0;
     },
     test = {
         use approx::assert_relative_eq;
-        assert_relative_eq!(DUMMY, 1.0, epsilon = math_commons::registry::TOLERANCE_FAST);
+        let gamma = observer::calculate_lorentz_factor(JET_BETA * C).unwrap();
+        let doppler = observer::relativistic_doppler_factor(JET_BETA, 0.0).unwrap();
+        assert_relative_eq!(
+            gamma,
+            EXPECTED_LORENTZ_GAMMA,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
+        assert_relative_eq!(
+            doppler,
+            EXPECTED_HEAD_ON_DOPPLER,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
     }
 );

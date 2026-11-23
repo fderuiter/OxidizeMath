@@ -18,7 +18,8 @@ pub mod reactions;
 #[allow(missing_docs)]
 pub mod types;
 
-pub use models::{BindingEnergyModel, LiquidDropModel};
+pub use decay::{BatemanChain, MAX_BATEMAN_CHAIN_LEN, bateman_two_step};
+pub use models::{BindingEnergyModel, LiquidDropBreakdown, LiquidDropModel};
 pub use types::*;
 
 // Constants have been moved to math_commons::constants.
@@ -96,26 +97,85 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_liquid_drop_struct_usage() {
-        // Test the new Architect-approved way of using the struct
         let model = LiquidDropModel::new();
+        let breakdown = model
+            .binding_energy_breakdown(AtomicNumber::new(26), MassNumber::new(56).unwrap())
+            .unwrap();
         let be = model
             .binding_energy(AtomicNumber::new(26), MassNumber::new(56).unwrap())
             .unwrap();
         assert!(be > 0.0);
+        assert!(breakdown.volume > 0.0);
+        assert!(breakdown.surface < 0.0);
+        assert!(breakdown.coulomb < 0.0);
+        assert!(breakdown.asymmetry < 0.0);
+        assert!(breakdown.pairing > 0.0);
+        let sum = breakdown.volume
+            + breakdown.surface
+            + breakdown.coulomb
+            + breakdown.asymmetry
+            + breakdown.pairing;
+        assert!((sum - be).abs() < math_commons::registry::TOLERANCE_HIGH);
+        assert!((breakdown.per_nucleon - be / 56.0).abs() < math_commons::registry::TOLERANCE_HIGH);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_bateman_degenerate_and_secular_limits() {
+        let t_half = 5.0;
+        let lam = std::f64::consts::LN_2 / t_half;
+        let t = 7.5;
+        let (n1, n2) = decay::bateman_two_step(100.0, t_half, Some(t_half), t).unwrap();
+        let expected_n2 = 100.0 * lam * t * (-lam * t).exp();
+        assert!((n1 - 100.0 * (-lam * t).exp()).abs() < 1e-10);
+        assert!((n2 - expected_n2).abs() < 1e-10);
+
+        // 3-step equal-rate chain leading to a stable endpoint conserves total nuclei = 100.
+        let chain =
+            BatemanChain::from_half_lives([Some(t_half), Some(t_half), None], [100.0, 0.0, 0.0])
+                .unwrap();
+        let pops_short = chain.populations_at(0.5).unwrap();
+        let pops_long = chain.populations_at(25.0).unwrap();
+        let sum_short = pops_short[0] + pops_short[1] + pops_short[2];
+        let sum_long = pops_long[0] + pops_long[1] + pops_long[2];
+        assert!((sum_short - 100.0).abs() < 1e-10);
+        assert!((sum_long - 100.0).abs() < 1e-10);
+        assert!((pops_long[1] - 100.0 * lam * 25.0 * (-lam * 25.0).exp()).abs() < 1e-9);
+
+        // Secular equilibrium: T_parent >> T_daughter => A_daughter -> A_parent.
+        let secular =
+            BatemanChain::from_half_lives([Some(1.0e9), Some(10.0), None], [1.0e12, 0.0, 0.0])
+                .unwrap();
+        let acts = secular.activities_at(500.0).unwrap();
+        assert!(((acts[1] - acts[0]) / acts[0]).abs() < 1e-6);
     }
 }
 
-// [cite:favorite_child]
+// [cite:nuclear]
 
 use pure_math::theory_verification;
 
 theory_verification!(
     module = "nuclear",
     constants = {
-        DUMMY = 1.0;
+        R0_FM = 1.2;
+        CARBON_12_A = 12.0;
+        NUCLEAR_SATURATION_DENSITY = 0.13815533254504805;
     },
     test = {
         use approx::assert_relative_eq;
-        assert_relative_eq!(DUMMY, 1.0, epsilon = math_commons::registry::TOLERANCE_FAST);
+        let a12 = MassNumber::new(12).unwrap();
+        let radius = properties::calculate_radius(a12);
+        let density = properties::calculate_nucleon_density(a12).unwrap();
+        assert_relative_eq!(
+            radius,
+            R0_FM * CARBON_12_A.cbrt(),
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
+        assert_relative_eq!(
+            density,
+            NUCLEAR_SATURATION_DENSITY,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
     }
 );

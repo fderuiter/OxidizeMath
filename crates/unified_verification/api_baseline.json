@@ -5366,6 +5366,21 @@
     },
     {
       "signature": "pub use math_commons :: constants :: SOLAR_MASS"
+    },
+    {
+      "signature": "pub use observer :: FourVector"
+    },
+    {
+      "signature": "pub use observer :: apparent_transverse_beta"
+    },
+    {
+      "signature": "pub use observer :: calculate_lorentz_factor"
+    },
+    {
+      "signature": "pub use observer :: doppler_beaming_factor"
+    },
+    {
+      "signature": "pub use observer :: relativistic_doppler_factor"
     }
   ],
   "crates/domain_physics/src/physics/high_energy/observer.rs": [
@@ -5376,10 +5391,28 @@
       "signature": "impl FourVector { pub fn is_valid_momentum (& self , _ : f64) -> Result < bool , HighEnergyError > }"
     },
     {
+      "signature": "impl FourVector { pub fn lorentz_boost (& self , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl FourVector { pub fn lorentz_boost_spacetime (& self , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl FourVector { pub fn minkowski_norm_squared (& self) -> f64 }"
+    },
+    {
       "signature": "impl FourVector { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
     },
     {
+      "signature": "pub fn apparent_transverse_beta (_ : f64 , _ : f64) -> Result < f64 , HighEnergyError >"
+    },
+    {
       "signature": "pub fn calculate_lorentz_factor (_ : f64) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn doppler_beaming_factor (_ : f64 , _ : f64 , _ : bool ,) -> Result < f64 , HighEnergyError >"
+    },
+    {
+      "signature": "pub fn relativistic_doppler_factor (_ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
     },
     {
       "signature": "pub struct FourVector"
@@ -5963,15 +5996,54 @@
   ],
   "crates/domain_physics/src/physics/nuclear/decay.rs": [
     {
+      "signature": "impl < const N : usize > BatemanChain < N > { pub fn activities_at (& self , _ : f64) -> Result < [f64 ; N] , NuclearError > }"
+    },
+    {
+      "signature": "impl < const N : usize > BatemanChain < N > { pub fn decay_constants (& self) -> & [f64 ; N] }"
+    },
+    {
+      "signature": "impl < const N : usize > BatemanChain < N > { pub fn from_decay_constants (_ : [f64 ; N] , _ : [f64 ; N] ,) -> Result < Self , NuclearError > }"
+    },
+    {
+      "signature": "impl < const N : usize > BatemanChain < N > { pub fn from_half_lives (_ : [Option < f64 > ; N] , _ : [f64 ; N] ,) -> Result < Self , NuclearError > }"
+    },
+    {
+      "signature": "impl < const N : usize > BatemanChain < N > { pub fn initial_populations (& self) -> & [f64 ; N] }"
+    },
+    {
+      "signature": "impl < const N : usize > BatemanChain < N > { pub fn populations_at (& self , _ : f64) -> Result < [f64 ; N] , NuclearError > }"
+    },
+    {
+      "signature": "pub const MAX_BATEMAN_CHAIN_LEN : usize"
+    },
+    {
+      "signature": "pub fn bateman_two_step (_ : f64 , _ : f64 , _ : Option < f64 > , _ : f64 ,) -> Result < (f64 , f64) , NuclearError >"
+    },
+    {
       "signature": "pub fn calculate_remaining (_ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , NuclearError >"
     },
     {
       "signature": "pub fn gamow_factor (_ : AtomicNumber , _ : AtomicNumber , _ : f64 ,) -> Result < f64 , NuclearError >"
+    },
+    {
+      "signature": "pub struct BatemanChain < const N : usize >"
     }
   ],
   "crates/domain_physics/src/physics/nuclear/mod.rs": [
     {
+      "signature": "pub use decay :: BatemanChain"
+    },
+    {
+      "signature": "pub use decay :: MAX_BATEMAN_CHAIN_LEN"
+    },
+    {
+      "signature": "pub use decay :: bateman_two_step"
+    },
+    {
       "signature": "pub use models :: BindingEnergyModel"
+    },
+    {
+      "signature": "pub use models :: LiquidDropBreakdown"
     },
     {
       "signature": "pub use models :: LiquidDropModel"
@@ -5981,6 +6053,9 @@
     }
   ],
   "crates/domain_physics/src/physics/nuclear/models.rs": [
+    {
+      "signature": "impl LiquidDropModel { pub fn binding_energy_breakdown (& self , _ : AtomicNumber , _ : MassNumber ,) -> Result < LiquidDropBreakdown , NuclearError > }"
+    },
     {
       "signature": "impl LiquidDropModel { pub fn new () -> Self }"
     },
@@ -5992,6 +6067,9 @@
     },
     {
       "signature": "pub mod shell { pub fn spin_orbit_coupling (_ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub struct LiquidDropBreakdown"
     },
     {
       "signature": "pub struct LiquidDropModel"
@@ -6477,6 +6555,12 @@
   "crates/domain_physics/src/physics/standard_model/flavor.rs": [
     {
       "signature": "pub fn construct_ckm (_ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Matrix3 < Complex < f64 > >"
+    },
+    {
+      "signature": "pub fn jarlskog_invariant (_ : & Matrix3 < Complex < f64 > >) -> f64"
+    },
+    {
+      "signature": "pub fn unitarity_triangle_apex (_ : & Matrix3 < Complex < f64 > >) -> Option < (f64 , f64) >"
     }
   ],
   "crates/domain_physics/src/physics/standard_model/gauge.rs": [
@@ -6501,9 +6585,65 @@
       "signature": "pub struct HiggsPotential"
     }
   ],
+  "crates/domain_physics/src/physics/standard_model/mod.rs": [
+    {
+      "signature": "pub use gauge :: GaugeCouplings"
+    },
+    {
+      "signature": "pub use higgs :: HiggsPotential"
+    },
+    {
+      "signature": "pub use higgs :: boson_masses"
+    },
+    {
+      "signature": "pub use neutrinos :: NeutrinoFlavor"
+    },
+    {
+      "signature": "pub use neutrinos :: PmnsParameters"
+    },
+    {
+      "signature": "pub use neutrinos :: construct_pmns"
+    },
+    {
+      "signature": "pub use neutrinos :: matter_potential_ev2"
+    },
+    {
+      "signature": "pub use neutrinos :: msw_oscillation_probabilities"
+    },
+    {
+      "signature": "pub use neutrinos :: pmns_oscillation_probabilities"
+    }
+  ],
   "crates/domain_physics/src/physics/standard_model/neutrinos.rs": [
     {
+      "signature": "impl NeutrinoFlavor { pub const fn index (self) -> usize }"
+    },
+    {
+      "signature": "impl PmnsParameters { pub fn pdg_inverted_ordering () -> Self }"
+    },
+    {
+      "signature": "impl PmnsParameters { pub fn pdg_normal_ordering () -> Self }"
+    },
+    {
+      "signature": "pub enum NeutrinoFlavor"
+    },
+    {
+      "signature": "pub fn construct_pmns (_ : & PmnsParameters) -> Matrix3 < Complex < f64 > >"
+    },
+    {
+      "signature": "pub fn matter_potential_ev2 (_ : f64 , _ : f64 , _ : f64 , _ : bool ,) -> Result < f64 , StandardModelError >"
+    },
+    {
+      "signature": "pub fn msw_oscillation_probabilities (_ : & PmnsParameters , _ : NeutrinoFlavor , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : bool ,) -> Result < [f64 ; 3] , StandardModelError >"
+    },
+    {
       "signature": "pub fn oscillation_prob (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn pmns_oscillation_probabilities (_ : & PmnsParameters , _ : NeutrinoFlavor , _ : f64 , _ : f64 , _ : bool ,) -> Result < [f64 ; 3] , StandardModelError >"
+    },
+    {
+      "signature": "pub struct PmnsParameters"
     }
   ],
   "crates/domain_physics/src/physics/standard_model/qcd.rs": [

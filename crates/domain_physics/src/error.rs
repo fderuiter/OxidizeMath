@@ -45,6 +45,11 @@ pub enum StandardModelError {
     /// Invalid number of quark flavors (e.g., negative).
     #[allow(missing_docs)]
     InvalidFlavors { nf: f64 },
+    /// Invalid neutrino oscillation parameter (e.g., non-positive energy or negative baseline/density).
+    InvalidNeutrinoParameter {
+        /// Human-readable description of the violated oscillation domain constraint.
+        reason: &'static str,
+    },
 }
 
 #[derive(Error, Debug, PartialEq)]
@@ -131,6 +136,16 @@ pub enum HighEnergyError {
     InvalidVelocity { v: f64 },
     /// Momentum is invalid (e.g. m^2 + p^2 < 0 somehow? or just checking validity).
     InvalidMomentum,
+    /// Viewing angle must be finite (in radians).
+    InvalidViewingAngle {
+        /// Non-finite viewing angle supplied to the observer kernel (radians).
+        angle_rad: f64,
+    },
+    /// Doppler or beaming factor must be finite and positive.
+    InvalidBeamingFactor {
+        /// Invalid Doppler or beaming factor encountered.
+        factor: f64,
+    },
     /// Invalid statistics parameters (e.g. negative counts).
     #[allow(missing_docs)]
     InvalidStatisticsParams { reason: String },
