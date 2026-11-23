@@ -3,11 +3,11 @@
 
 use super::chord_tangent_scene::{draw_fp_scene, draw_real_scene};
 use super::chord_tangent_tool::{
-    ClickTarget, CurveFieldMode, WeierstrassPlaygroundTool, snap_real_point,
+    snap_real_point, ClickTarget, CurveFieldMode, WeierstrassPlaygroundTool,
 };
 use crate::accessibility::{
-    AccessibleHoverText, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility,
+    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility, AccessibleHoverText,
 };
 use crate::app::SemanticPalette;
 use eframe::egui;
@@ -101,7 +101,8 @@ impl CanvasViewport {
     }
 
     pub(crate) fn to_math(self, pos: egui::Pos2) -> (f64, f64) {
-        let tx = ((pos.x - self.rect.left()) / self.rect.width().max(1.0_f32)).clamp(0.0_f32, 1.0_f32);
+        let tx =
+            ((pos.x - self.rect.left()) / self.rect.width().max(1.0_f32)).clamp(0.0_f32, 1.0_f32);
         let ty = ((self.rect.bottom() - pos.y) / self.rect.height().max(1.0_f32))
             .clamp(0.0_f32, 1.0_f32);
         (
@@ -291,11 +292,8 @@ fn canvas_a11y_summary(tool: &WeierstrassPlaygroundTool) -> String {
             Err(err) => err.to_string(),
         },
         CurveFieldMode::FiniteField => {
-            match PrimeWeierstrassCurve::new(
-                tool.state.mod_a,
-                tool.state.mod_b,
-                tool.state.prime_p,
-            ) {
+            match PrimeWeierstrassCurve::new(tool.state.mod_a, tool.state.mod_b, tool.state.prime_p)
+            {
                 Ok(curve) => {
                     let (p, q) = tool.current_fp_points();
                     let sum = curve.add(p, q);
