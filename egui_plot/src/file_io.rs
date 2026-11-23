@@ -417,7 +417,11 @@ pub fn save_file_dialog(filename: &str, content: &[u8], _filter_name: &str, _fil
 
     #[cfg(all(not(test), not(target_arch = "wasm32")))]
     {
-        if std::env::var_os("CI").is_some() || std::env::var_os("RUST_TEST_THREADS").is_some() {
+        if std::env::var_os("CI").is_some()
+            || std::env::var_os("RUST_TEST_THREADS").is_some()
+            || std::env::var_os("NEXTEST").is_some()
+            || std::thread::current().name().is_some_and(|n| n != "main")
+        {
             return;
         }
 
