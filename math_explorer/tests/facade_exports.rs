@@ -15,7 +15,8 @@ mod umbrella_checks;
 fn assert_core_error_and_prelude_exports() {
     use math_explorer::diagnostics::{Diagnostic, DiagnosticBus, Severity};
     use math_explorer::error::{
-        Error, EvalError, LexError, MathCommonsError, MathError, MathResult, ParseError, Result,
+        Error, EvalError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
+        Result,
     };
     use math_explorer::math_kernel::types::Dimension;
     use math_explorer::prelude as p;
@@ -39,7 +40,11 @@ fn assert_core_error_and_prelude_exports() {
     let prelude_res: p::Result<()> = Err(p::Error::from(lex.clone()));
     assert!(facade_res.is_err() && prelude_res.is_err());
     bus.emit_diagnostic(&p::MathCommonsError::from(p::ParseError::UnexpectedEof));
-    let (_e, _l): (p::EvalError, p::LexError) = (EvalError::UnknownVariable("x".into()), lex);
+    let (_e, _g, _l): (p::EvalError, p::GlslError, p::LexError) = (
+        EvalError::UnknownVariable("x".into()),
+        GlslError::DepthLimitExceeded(64),
+        lex,
+    );
     let (_u, _m): (MathCommonsError, p::MathError) = (p::MathCommonsError::from(err.clone()), err);
     let _err_ty: Error = ParseError::UnexpectedEof.into();
 }

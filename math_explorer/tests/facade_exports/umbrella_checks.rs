@@ -38,6 +38,7 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     vec![
         check_leaf(sample_math(), bus),
         check_leaf(error::EvalError::UnknownVariable("x".to_string()), bus),
+        check_leaf(error::GlslError::DepthLimitExceeded(64), bus),
         check_leaf(
             error::LexError {
                 start: 0,
@@ -189,11 +190,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 46);
-    assert_eq!(*events.lock().unwrap(), 46);
+    assert_eq!(converted.len(), 47);
+    assert_eq!(*events.lock().unwrap(), 47);
 
     verify_six_umbrellas_and_fifteen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 52);
+    assert_eq!(*events.lock().unwrap(), 53);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -251,6 +252,7 @@ pub fn verify_prelude_error_reexports() {
     assert!(res.is_err());
     let _core = core::mem::size_of::<(
         p::EvalError,
+        p::GlslError,
         p::LexError,
         p::MathError,
         p::ParseError,

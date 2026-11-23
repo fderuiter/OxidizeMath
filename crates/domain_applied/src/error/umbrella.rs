@@ -3,7 +3,9 @@ use super::{
     KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
 };
 use diagnostics::{Diagnostic, Severity};
-use math_commons::error::{EvalError, LexError, MathCommonsError, MathError, ParseError};
+use math_commons::error::{
+    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+};
 use pure_math::error::{
     AnalysisError, EvolutionError, LinearAlgebraError, OptimizationError, PureMathError,
     StochasticError,
@@ -91,6 +93,13 @@ impl From<StochasticError> for AppliedError {
 impl From<EvalError> for AppliedError {
     #[verified_engine::verified]
     fn from(err: EvalError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<GlslError> for AppliedError {
+    #[verified_engine::verified]
+    fn from(err: GlslError) -> Self {
         Self::MathCommons(MathCommonsError::from(err))
     }
 }

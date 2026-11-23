@@ -2,6 +2,7 @@
 pub mod complex;
 pub mod evolution;
 pub mod integration;
+pub mod momentum_dynamics;
 pub mod ode;
 pub mod optimization;
 #[allow(missing_docs)]

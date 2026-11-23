@@ -23,6 +23,7 @@ macro_rules! impl_error_from {
 }
 
 impl_error_from!(EvalError => Eval);
+impl_error_from!(GlslError => Glsl);
 impl_error_from!(LexError => Lex);
 impl_error_from!(MathError => Math);
 impl_error_from!(MathCommonsError => MathCommons);

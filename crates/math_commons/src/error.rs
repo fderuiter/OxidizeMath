@@ -1,4 +1,4 @@
-pub use crate::ast::{EvalError, LexError, ParseError};
+pub use crate::ast::{EvalError, GlslError, LexError, ParseError};
 use crate::math_kernel::types::Dimension;
 use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
@@ -98,6 +98,7 @@ mod tests {
             MathCommonsError::from(parse),
             MathCommonsError::from(unknown_fn),
             MathCommonsError::from(EvalError::UnknownVariable("x".to_string())),
+            MathCommonsError::from(GlslError::DepthLimitExceeded(64)),
         ];
 
         for err in &variants {

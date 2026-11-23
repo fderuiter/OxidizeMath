@@ -1,4 +1,4 @@
-use super::{EvalError, LexError, MathError, ParseError};
+use super::{EvalError, GlslError, LexError, MathError, ParseError};
 use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -19,6 +19,9 @@ pub enum MathCommonsError {
     /// AST runtime evaluation failure.
     #[error("{0}")]
     Eval(#[from] EvalError),
+    /// AST-to-GLSL transpilation failure.
+    #[error("{0}")]
+    Glsl(#[from] GlslError),
 }
 
 impl MathCommonsError {
@@ -28,6 +31,7 @@ impl MathCommonsError {
             Self::Lex(err) => err,
             Self::Parse(err) => err,
             Self::Eval(err) => err,
+            Self::Glsl(err) => err,
         }
     }
 }

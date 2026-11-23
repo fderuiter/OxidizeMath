@@ -4,7 +4,9 @@ use super::{
     StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
-use math_commons::error::{EvalError, LexError, MathCommonsError, MathError, ParseError};
+use math_commons::error::{
+    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+};
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -74,6 +76,13 @@ pub enum PureMathError {
 impl From<EvalError> for PureMathError {
     #[verified_engine::verified]
     fn from(err: EvalError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<GlslError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: GlslError) -> Self {
         Self::MathCommons(MathCommonsError::from(err))
     }
 }

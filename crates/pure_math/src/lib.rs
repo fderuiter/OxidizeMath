@@ -24,7 +24,7 @@ pub mod __doctest_facade {
             TdaError, TensorError, TransformError, ZipError,
         };
         pub use math_commons::error::{
-            EvalError, LexError, MathCommonsError, MathError, MathResult, ParseError,
+            EvalError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
         };
         pub type Result<T, E = Error> = std::result::Result<T, E>;
     }
