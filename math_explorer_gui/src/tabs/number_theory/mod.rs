@@ -2,6 +2,11 @@
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
+pub mod elliptic_curve_canvas;
+pub mod elliptic_curve_hasse;
+pub mod elliptic_curve_playground;
+#[cfg(test)]
+mod elliptic_curve_tests;
 pub mod factorization;
 pub mod fractran_machine;
 pub mod partitions_widget;
@@ -43,6 +48,10 @@ impl ExplorerTab for NumberTheoryTab {
 
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.framework.focused_canvas_id()
     }
 
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {

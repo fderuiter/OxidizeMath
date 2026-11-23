@@ -26,8 +26,6 @@ math_explorer = { path = "../../math_explorer", features = ["pure_math", "applie
 nalgebra = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
-eframe = { workspace = true }
-egui = { workspace = true }
 
 [lints]
 workspace = true

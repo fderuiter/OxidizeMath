@@ -45,6 +45,7 @@ mod tests {
         check_tool!(crate::tabs::ai::grid_world::GridWorldTool);
         check_tool!(crate::tabs::medical::beam_profiling::BeamProfilingTool);
         check_tool!(crate::tabs::medical::dose::DoseCalculationTool);
+        check_tool!(crate::tabs::medical::radar_gating::RadarGatingTool);
         check_tool!(crate::tabs::epidemiology::network_propagation::NetworkPropagationTool);
         check_tool!(crate::tabs::number_theory::fractran_machine::FractranMachineTool);
         check_tool!(crate::tabs::number_theory::ualbf_widget::UalbfWidget);

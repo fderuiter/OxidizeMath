@@ -396,7 +396,8 @@ pub fn lint_workflows_in_dir(workflows_dir: &Path, whitelist_path: Option<&Path>
 
 /// Lints all GitHub Actions workflows in `.github/workflows` and composite actions in `.github/actions`.
 pub fn lint_workflows() -> bool {
-    lint_workflows_in_dir(Path::new(".github/workflows"), None)
+    let workflows_dir = crate::manifest_cache::resolve_workspace_path(".github/workflows");
+    lint_workflows_in_dir(&workflows_dir, None)
 }
 
 #[cfg(test)]

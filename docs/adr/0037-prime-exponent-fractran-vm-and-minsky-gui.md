@@ -1,4 +1,4 @@
-# ADR 0035: Prime-Exponent FRACTRAN Virtual Machine and Minsky Counter-Machine GUI
+# ADR 0037: Prime-Exponent FRACTRAN Virtual Machine and Minsky Counter-Machine GUI
 
 ## Status
 Accepted (extends [ADR 0023](0023-separate-metadata-ids-from-display-labels.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
