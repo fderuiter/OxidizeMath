@@ -51,6 +51,7 @@ pub enum FieldSourceMode {
     /// Two-species 3D Schnakenberg reaction-diffusion grid via `FiniteDifference3D`.
     TuringMorphogenesis,
     /// User-authored 3D implicit CAD solid $f(x, y, z) = c$ evaluated via `CompiledExpr::eval_3d`.
+    #[serde(alias = "custom_implicit_formula")]
     CustomImplicit,
     /// User-authored signed 3D implicit scalar field $f(x, y, z)$ with dual nodal shells and $20^3$ drag preview.
     CustomImplicitAst,

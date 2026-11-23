@@ -35,22 +35,26 @@ fn contrast_ratio(fg: Color32, bg: Color32) -> f64 {
     (lighter + 0.05) / (darker + 0.05)
 }
 
-const REQUIRED_CHALLENGE_IDS: &[&str] = &[
-    "bloch_pi_inversion",
-    "bloch_hahn_spin_echo",
-    "mri_kspace_radial_cs",
-    "pk_therapeutic_window",
-    "lbm_low_drag_fairing",
-    "imrt_oar_sparing",
-    "radar_cough_zero_miss",
-    "quantum_barrier_50_split",
-    "quantum_subbarrier_50_split",
-    "quantum_double_barrier_resonance",
-    "epidemiology_hub_vaccination",
-    "epidemiology_bridge_quarantine",
-    "astrophysics_mystery_halo_fit",
-    "hasse_weil_boundary_p23",
-    "lenia_orbium_tail_regeneration",
+const REQUIRED_CHALLENGES: &[(&str, &str)] = &[
+    ("mri", "bloch_pi_inversion"),
+    ("mri", "bloch_hahn_spin_echo"),
+    ("mri", "mri_kspace_radial_cs"),
+    ("clinical_trials", "pk_therapeutic_window"),
+    ("fluid_dynamics", "lbm_low_drag_fairing"),
+    ("medical", "imrt_oar_sparing"),
+    ("medical", "radar_cough_zero_miss"),
+    ("quantum", "quantum_barrier_50_split"),
+    ("quantum", "quantum_subbarrier_50_split"),
+    ("quantum", "quantum_double_barrier_resonance"),
+    ("epidemiology", "epidemiology_hub_vaccination"),
+    ("epidemiology", "epidemiology_bridge_quarantine"),
+    ("astrophysics", "astrophysics_mystery_halo_fit"),
+    ("elliptic_curves", "hasse_weil_boundary_p23"),
+    ("morphogenesis", "lenia_orbium_tail_regeneration"),
+    ("game_theory", "myerson_welfare_constrained_reserve"),
+    ("game_theory", "first_price_shading_equilibrium"),
+    ("solid_state", "ising_critical_droplet_nucleation"),
+    ("solid_state", "fermi_prisoners_dilemma_nucleation"),
 ];
 
 #[test]
@@ -59,8 +63,12 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .into_iter()
         .map(ChallengeMetadata::to_card)
         .collect();
-    assert!(cards.len() >= 15, "got {}", cards.len());
-    for &required_id in REQUIRED_CHALLENGE_IDS {
+    assert!(
+        cards.len() >= 19,
+        "Expected at least 19 registered ChallengeMetadata entries, got {}",
+        cards.len()
+    );
+    for &(_, required_id) in REQUIRED_CHALLENGES {
         let meta = find_challenge_metadata(required_id)
             .unwrap_or_else(|| panic!("Missing ChallengeMetadata '{required_id}'"));
         let baseline = meta.generate_baseline_state();
@@ -80,6 +88,8 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         ("astrophysics", 1),
         ("elliptic_curves", 1),
         ("biology", 1),
+        ("game_theory", 2),
+        ("solid_state", 2),
     ] {
         assert_eq!(get_challenge_cards_for_domain(dom).len(), expected, "{dom}");
     }
@@ -183,23 +193,7 @@ fn test_challenge_hud_wcag_contrast_reset_and_aria_across_themes() {
 #[test]
 fn test_stateless_challenge_urls_within_size_budget() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    for (slug, challenge_id) in [
-        ("mri", "bloch_pi_inversion"),
-        ("mri", "bloch_hahn_spin_echo"),
-        ("mri", "mri_kspace_radial_cs"),
-        ("clinical_trials", "pk_therapeutic_window"),
-        ("fluid_dynamics", "lbm_low_drag_fairing"),
-        ("medical", "imrt_oar_sparing"),
-        ("medical", "radar_cough_zero_miss"),
-        ("quantum", "quantum_barrier_50_split"),
-        ("quantum", "quantum_subbarrier_50_split"),
-        ("quantum", "quantum_double_barrier_resonance"),
-        ("epidemiology", "epidemiology_hub_vaccination"),
-        ("epidemiology", "epidemiology_bridge_quarantine"),
-        ("astrophysics", "astrophysics_mystery_halo_fit"),
-        ("elliptic_curves", "hasse_weil_boundary_p23"),
-        ("morphogenesis", "lenia_orbium_tail_regeneration"),
-    ] {
+    for &(slug, challenge_id) in REQUIRED_CHALLENGES {
         let bare_hash = format!("#tab={slug}&challenge={challenge_id}");
         let parsed = parse_share_location(&bare_hash, "").unwrap().unwrap();
         assert_eq!(parsed.challenge.as_deref(), Some(challenge_id));

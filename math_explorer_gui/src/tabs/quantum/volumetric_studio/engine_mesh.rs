@@ -4,7 +4,7 @@
 // [cite:isosurface_extraction]
 
 use super::super::state::{FieldSourceMode, VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT};
-use super::VolumetricEngine;
+use super::{is_signed_field, VolumetricEngine};
 use crate::camera::Camera3D;
 use crate::volumetric_scene::VolumeCutFilter;
 use eframe::egui;
@@ -45,15 +45,15 @@ pub fn project_meshes_into(
     out: &mut Vec<ProjectedFacet>,
 ) {
     out.clear();
-    let cap = out.capacity().min(MAX_RENDERED_FACETS);
-    if cap == 0 {
+    let max_cap = out.capacity().min(MAX_RENDERED_FACETS);
+    if max_cap == 0 {
         return;
     }
     let effective_cap = if let Some(c) = cut {
         let frac = (((c.max_coord / STUDIO_VIEWPORT_EXTENT.max(1e-6)) + 1.0) * 0.5).clamp(0.2, 0.9);
-        ((cap as f64) * frac).round().max(1.0) as usize
+        ((max_cap as f64) * frac).round().max(1.0) as usize
     } else {
-        cap
+        max_cap
     };
     let total_tris = (pos_mesh.indices.len() / 3)
         + if has_neg {
@@ -292,7 +292,7 @@ impl VolumetricEngine {
     /// Extracts a closed, outward-wound 2-manifold [`Mesh`] scaled to `cfg.export_size_mm` millimeters.
     pub fn export_solid_mesh_3d(&self, cfg: &VolumetricStudioConfig) -> Result<Mesh, String> {
         let cut_cap = cfg.active_cut_filter().map(to_cut_plane_cap);
-        let signed = is_signed_export_source(cfg);
+        let signed = is_signed_field(cfg);
         let mut combined = self.build_capped_export_mesh(cfg, signed, cut_cap)?;
         if combined.indices.is_empty() && cut_cap.is_some() {
             combined = self.build_capped_export_mesh(cfg, signed, None)?;
@@ -332,22 +332,60 @@ impl VolumetricEngine {
         let mesh = self.export_solid_mesh_3d(cfg)?;
         export_mesh_to_obj_string(&mesh).map_err(|e| format!("OBJ export error: {e}"))
     }
+
+    pub(super) fn extract_isosurfaces_zero_alloc(
+        &mut self,
+        cfg: &VolumetricStudioConfig,
+        iso: f32,
+        signed: bool,
+        cut: Option<VolumeCutFilter>,
+    ) {
+        if !cfg.render_mode.uses_mesh() {
+            self.pos_mesh.clear();
+            self.neg_mesh.clear();
+            self.projected_facets.clear();
+            return;
+        }
+        let cut_cap = cut.map(to_cut_plane_cap);
+        let pos_thresh = if cfg.source == FieldSourceMode::CustomImplicit {
+            0.0_f32
+        } else {
+            iso
+        };
+        let _ = extract_capped_isosurface_into(
+            &self.voxel_grid,
+            pos_thresh,
+            false,
+            cut_cap,
+            &mut self.padded_grid,
+            &mut self.iso_ws,
+            &mut self.pos_mesh,
+        );
+        if signed {
+            let _ = extract_capped_isosurface_into(
+                &self.voxel_grid,
+                -iso,
+                true,
+                cut_cap,
+                &mut self.padded_grid,
+                &mut self.iso_ws,
+                &mut self.neg_mesh,
+            );
+        } else {
+            self.neg_mesh.clear();
+        }
+        project_meshes_into(
+            &self.pos_mesh,
+            &self.neg_mesh,
+            signed,
+            cut,
+            &cfg.camera,
+            &mut self.projected_facets,
+        );
+    }
 }
 
-fn is_signed_export_source(cfg: &VolumetricStudioConfig) -> bool {
-    matches!(
-        (cfg.source, cfg.observable),
-        (
-            FieldSourceMode::QuantumSuperposition,
-            super::super::state::QuantumObservableChoice::SignedWavefunction
-        )
-    ) || matches!(
-        cfg.source,
-        FieldSourceMode::TuringMorphogenesis | FieldSourceMode::CustomImplicitAst
-    )
-}
-
-fn to_cut_plane_cap(c: VolumeCutFilter) -> CutPlaneCap {
+pub(crate) fn to_cut_plane_cap(c: VolumeCutFilter) -> CutPlaneCap {
     CutPlaneCap {
         axis: c.axis.min(2),
         max_coord: c.max_coord as f32,
@@ -410,59 +448,6 @@ pub(super) fn inject_turing_pulse(
                 sys.u_mut()[idx] = (sys.u()[idx] + 0.85 * env).clamp(0.02, 6.0);
                 sys.v_mut()[idx] = (sys.v()[idx] - 0.25 * env).clamp(0.02, 6.0);
             }
-        }
-    }
-}
-
-impl VolumetricEngine {
-    pub(super) fn extract_isosurfaces_zero_alloc(
-        &mut self,
-        cfg: &VolumetricStudioConfig,
-        iso: f32,
-        signed: bool,
-        cut: Option<VolumeCutFilter>,
-    ) {
-        if cfg.render_mode.uses_mesh() {
-            let cut_cap = cut.map(to_cut_plane_cap);
-            let pos_thresh = if cfg.source == FieldSourceMode::CustomImplicit {
-                0.0_f32
-            } else {
-                iso
-            };
-            let _ = extract_capped_isosurface_into(
-                &self.voxel_grid,
-                pos_thresh,
-                false,
-                cut_cap,
-                &mut self.padded_grid,
-                &mut self.iso_ws,
-                &mut self.pos_mesh,
-            );
-            if signed {
-                let _ = extract_capped_isosurface_into(
-                    &self.voxel_grid,
-                    -iso,
-                    true,
-                    cut_cap,
-                    &mut self.padded_grid,
-                    &mut self.iso_ws,
-                    &mut self.neg_mesh,
-                );
-            } else {
-                self.neg_mesh.clear();
-            }
-            project_meshes_into(
-                &self.pos_mesh,
-                &self.neg_mesh,
-                signed,
-                cut,
-                &cfg.camera,
-                &mut self.projected_facets,
-            );
-        } else {
-            self.pos_mesh.clear();
-            self.neg_mesh.clear();
-            self.projected_facets.clear();
         }
     }
 }

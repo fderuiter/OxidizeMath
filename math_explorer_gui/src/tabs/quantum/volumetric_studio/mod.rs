@@ -8,6 +8,7 @@
 
 pub mod ast_field;
 pub mod engine;
+mod export_3d;
 pub mod implicit;
 pub mod presets;
 mod render;
@@ -21,9 +22,9 @@ use ast_field::CustomAstFieldController;
 use eframe::egui;
 use engine::VolumetricEngine;
 use implicit::ImplicitFormulaUi;
-use oxidize_core::mesh::Mesh;
+use oxidize_core::mesh::{ColoredMesh, Mesh};
 use scientific_metadata::theory::TheoryDescribable;
-use state::{FieldSourceMode, VolumetricStudioConfig};
+use state::{FieldSourceMode, VolumetricRenderMode, VolumetricStudioConfig};
 use std::hash::{Hash, Hasher};
 
 /// Interactive 3D volumetric field and implicit CAD studio uniting $f(x, y, z) = c$ solids,
@@ -175,11 +176,30 @@ impl InteractiveTool for VolumetricFieldStudioTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot().with_3d_solid()
+        if self.config.render_mode == VolumetricRenderMode::GaussianRadianceCloud {
+            ExportCapabilities::plot().with_3d_splat_ply()
+        } else {
+            ExportCapabilities::plot().with_3d_solid()
+        }
     }
 
     fn export_mesh_3d(&self) -> Option<Result<Mesh, String>> {
-        Some(self.engine.export_solid_mesh_3d(&self.config))
+        self.config
+            .render_mode
+            .uses_mesh()
+            .then(|| self.engine.export_solid_mesh_3d(&self.config))
+    }
+
+    fn export_colored_mesh_3d(&self) -> Option<Result<ColoredMesh, String>> {
+        self.config
+            .render_mode
+            .uses_mesh()
+            .then(|| self.build_colored_solid_mesh_3d())
+    }
+
+    fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
+        (self.config.render_mode == VolumetricRenderMode::GaussianRadianceCloud)
+            .then(|| self.export_splat_ply_bytes())
     }
 
     fn state_bounds(&self) -> ToolStateBounds {
@@ -276,6 +296,16 @@ impl InteractiveTool for VolumetricFieldStudioTool {
         self.draw_side_panel(ui);
         self.draw_viewport(ui);
     }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
 }
 
 impl TheoryDescribable for VolumetricFieldStudioTool {
@@ -362,6 +392,7 @@ inventory::submit! {
             "implicit",
             "cad",
             "stl",
+            "ply",
             "gyroid",
             "tpms",
             "schwarz-p",

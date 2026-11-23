@@ -8,6 +8,7 @@
 pub mod mesh_ops;
 
 use super::ast_field::{CompiledAstFieldKernel, PREVIEW_DRAG_GRID};
+use super::export_3d::extract_implicit_splats_into;
 use super::implicit::ImplicitRuntimeEvaluator;
 use super::state::{
     FieldSourceMode, QuantumObservableChoice, VolumetricStudioConfig, MAX_VOLUMETRIC_GRID,
@@ -255,13 +256,17 @@ impl VolumetricEngine {
         let iso = (cfg.iso_threshold as f32).clamp(0.001, 2.0);
         self.extract_isosurfaces_zero_alloc(cfg, iso, signed, cut);
         if cfg.render_mode.uses_splats() {
-            extract_voxel_splats_into(
-                &self.voxel_grid,
-                iso * 0.45,
-                signed,
-                cut,
-                &mut self.splat_ws,
-            );
+            if cfg.source == FieldSourceMode::CustomImplicit {
+                extract_implicit_splats_into(&self.voxel_grid, cut, &mut self.splat_ws);
+            } else {
+                extract_voxel_splats_into(
+                    &self.voxel_grid,
+                    iso * 0.45,
+                    signed,
+                    cut,
+                    &mut self.splat_ws,
+                );
+            }
             self.splat_ws.recompute_density_counts(cfg.splat_scale);
             project_and_rasterize_workspace(
                 &mut self.splat_ws,
@@ -402,7 +407,7 @@ impl VolumetricEngine {
     }
 }
 
-fn is_signed_field(cfg: &VolumetricStudioConfig) -> bool {
+pub(super) fn is_signed_field(cfg: &VolumetricStudioConfig) -> bool {
     matches!(
         cfg.source,
         FieldSourceMode::TuringMorphogenesis | FieldSourceMode::CustomImplicitAst

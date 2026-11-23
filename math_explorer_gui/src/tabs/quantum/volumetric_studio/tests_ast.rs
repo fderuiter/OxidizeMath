@@ -6,7 +6,7 @@ use super::super::state::{
     FieldSourceMode, SliceAxis, VolumetricRenderMode, VolumetricStudioConfig,
 };
 use super::super::VolumetricFieldStudioTool;
-use super::assert_watertight_outward_solid_and_stl;
+use super::assert_watertight_outward_solid_stl_ply_and_obj;
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::InteractiveTool;
 
@@ -49,7 +49,7 @@ fn test_custom_implicit_ast_zero_alloc_48_cubed_and_20_cubed_drag_preview() {
     assert!(!tool.engine.slice_contours.is_empty());
     let obj = tool.export_obj_string().expect("AST isosurface OBJ export");
     assert!(obj.starts_with("o oxidize_mesh\n") && obj.contains("\nf "));
-    assert_watertight_outward_solid_and_stl(
+    assert_watertight_outward_solid_stl_ply_and_obj(
         &tool,
         tool.config.export_size_mm as f32,
         "48^3 Cut Gyroid AST",
