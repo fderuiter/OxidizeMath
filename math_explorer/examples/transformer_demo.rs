@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for transformer demo.
 use math_explorer::ai::transformer::Encoder;
 use math_explorer::nalgebra::DMatrix;
 

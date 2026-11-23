@@ -190,7 +190,11 @@ fn test_zero_alloc_hot_path_across_all_four_formulations() {
         .unwrap_or_else(|e| e.into_inner());
 
     for (entity, release, log10) in [
-        (EntityMode::SingleEntity, ReleaseMode::ImmediateRelease, false),
+        (
+            EntityMode::SingleEntity,
+            ReleaseMode::ImmediateRelease,
+            false,
+        ),
         (EntityMode::SingleEntity, ReleaseMode::TwoPulse, true),
         (EntityMode::Enantiomer, ReleaseMode::ImmediateRelease, false),
         (EntityMode::Enantiomer, ReleaseMode::TwoPulse, true),

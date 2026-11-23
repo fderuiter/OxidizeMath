@@ -3,6 +3,11 @@ use egui::{
     text::{LayoutJob, TextFormat},
 };
 
+#[path = "latex_delims.rs"]
+mod latex_delims;
+
+pub use latex_delims::{MathAccent, MathDelimiter};
+
 /// A 2D box node representing TeX mathematical layout elements.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MathBox {
@@ -27,6 +32,20 @@ pub enum MathBox {
         base: Option<Box<MathBox>>,
         sup: Option<Box<MathBox>>,
         sub: Option<Box<MathBox>>,
+    },
+    /// Height-scaled paired delimiters wrapping an inner `MathBox`.
+    Delimited {
+        open: MathDelimiter,
+        body: Box<MathBox>,
+        close: MathDelimiter,
+        font_id: FontId,
+        color: Color32,
+    },
+    /// Over-symbol accent (such as `\dot{x}` or `\ddot{x}`).
+    Accent {
+        base: Box<MathBox>,
+        kind: MathAccent,
+        color: Color32,
     },
 }
 
@@ -419,7 +438,7 @@ fn parse_math_expression_boxes(
             i += 1;
         }
     }
-    Ok(boxes)
+    Ok(latex_delims::upgrade_tall_plain_delimiters(boxes))
 }
 
 fn push_text_box(
@@ -464,18 +483,14 @@ fn process_command_box(
             boxes,
         );
     }
-    if let Some(mark) = accent_combining_mark(cmd) {
-        return process_accent_command(
-            cmd,
-            mark,
-            chars,
-            i,
-            base_font_id,
-            color,
-            depth,
-            remaining_nodes,
-            boxes,
-        );
+    let parse_ctx = latex_delims::LatexParseCtx {
+        chars,
+        base_font_id,
+        color,
+        depth,
+    };
+    if let Some(kind) = latex_delims::accent_kind_from_cmd(cmd) {
+        return latex_delims::process_accent_command(kind, &parse_ctx, i, remaining_nodes, boxes);
     }
     if is_upright_operator_name(cmd) {
         return push_text_box(
@@ -488,13 +503,12 @@ fn process_command_box(
         );
     }
     match cmd {
-        "text" | "mathrm" | "mathbf" | "operatorname" => {
-            process_text_command(chars, i, base_font_id, color, remaining_nodes, boxes)
+        "text" | "mathrm" | "mathbf" | "operatorname" | "mathcal" => {
+            process_text_command(cmd, chars, i, base_font_id, color, remaining_nodes, boxes)
         }
         "mathbb" => process_mathbb_command(chars, i, base_font_id, color, remaining_nodes, boxes),
-        "left" | "right" => {
-            process_left_right_command(chars, i, base_font_id, color, remaining_nodes, boxes)
-        }
+        "left" => latex_delims::process_left_command(&parse_ctx, i, remaining_nodes, boxes),
+        "right" => latex_delims::process_stray_right_command(&parse_ctx, i, remaining_nodes, boxes),
         "frac" | "dfrac" | "tfrac" => {
             process_frac_command(chars, i, base_font_id, color, depth, remaining_nodes, boxes)
         }
@@ -526,7 +540,8 @@ fn process_command_box(
             false,
             remaining_nodes,
         ),
-        "!" => Ok(()),
+        "!" | "big" | "Big" | "bigg" | "Bigg" | "bigl" | "bigr" | "Bigl" | "Bigr" | "biggl"
+        | "biggr" | "Biggl" | "Biggr" => Ok(()),
         "\\" | "newline" => push_text_box(
             boxes,
             "\n".to_string(),
@@ -608,7 +623,9 @@ fn resolve_text_escapes(raw: &str) -> String {
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn process_text_command(
+    cmd: &str,
     chars: &[char],
     i: &mut usize,
     base_font_id: &FontId,
@@ -621,7 +638,14 @@ fn process_text_command(
         let (arg, next_i) = read_group_arg(chars, *i + 1)?;
         *i = next_i;
         let resolved = resolve_text_escapes(&arg);
-        push_text_box(boxes, resolved, base_font_id, color, false, remaining_nodes)
+        push_text_box(
+            boxes,
+            resolved,
+            base_font_id,
+            color,
+            cmd == "mathcal",
+            remaining_nodes,
+        )
     } else {
         Err(())
     }
@@ -641,136 +665,8 @@ fn process_mathbb_command(
     }
     let (arg, next_i) = read_group_arg(chars, *i + 1)?;
     *i = next_i;
-    let mapped: String = arg
-        .chars()
-        .map(|ch| match ch {
-            'R' => 'ℝ',
-            'N' => 'ℕ',
-            'Z' => 'ℤ',
-            'Q' => 'ℚ',
-            'C' => 'ℂ',
-            'F' => '𝔽',
-            'E' => '𝔼',
-            'P' => 'ℙ',
-            'H' => 'ℍ',
-            other => other,
-        })
-        .collect();
+    let mapped = latex_delims::map_blackboard_bold(&arg);
     push_text_box(boxes, mapped, base_font_id, color, false, remaining_nodes)
-}
-
-fn process_left_right_command(
-    chars: &[char],
-    i: &mut usize,
-    base_font_id: &FontId,
-    color: Color32,
-    remaining_nodes: &mut usize,
-    boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
-    skip_whitespace(chars, i);
-    if *i >= chars.len() {
-        return Err(());
-    }
-    let ch = chars[*i];
-    if ch == '.' {
-        *i += 1;
-        return Ok(());
-    }
-    if ch == '\\' {
-        let (delim_cmd, next_i) = read_command(chars, *i + 1)?;
-        *i = next_i;
-        let delim = map_latex_symbol(&delim_cmd).unwrap_or(delim_cmd.as_str());
-        return push_text_box(
-            boxes,
-            delim.to_string(),
-            base_font_id,
-            color,
-            false,
-            remaining_nodes,
-        );
-    }
-    *i += 1;
-    push_text_box(
-        boxes,
-        ch.to_string(),
-        base_font_id,
-        color,
-        false,
-        remaining_nodes,
-    )
-}
-
-fn accent_combining_mark(cmd: &str) -> Option<char> {
-    match cmd {
-        "vec" => Some('\u{20D7}'),
-        "hat" => Some('\u{0302}'),
-        "bar" | "overline" => Some('\u{0304}'),
-        "dot" => Some('\u{0307}'),
-        "ddot" => Some('\u{0308}'),
-        "tilde" => Some('\u{0303}'),
-        _ => None,
-    }
-}
-
-fn apply_combining_mark(base: &str, cmd: &str, mark: char) -> String {
-    let bounded = truncate_chars(base, MAX_LAYOUT_CHARS / 2);
-    if bounded.is_empty() {
-        return format!(" {mark}");
-    }
-    if matches!(cmd, "bar" | "overline") && bounded.chars().count() > 1 {
-        let mut out = String::with_capacity(bounded.len() * 2);
-        for c in bounded.chars() {
-            out.push(c);
-            out.push(mark);
-        }
-        out
-    } else {
-        let mut out = bounded.to_string();
-        out.push(mark);
-        out
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn process_accent_command(
-    cmd: &str,
-    mark: char,
-    chars: &[char],
-    i: &mut usize,
-    base_font_id: &FontId,
-    color: Color32,
-    depth: usize,
-    remaining_nodes: &mut usize,
-    boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
-    skip_whitespace(chars, i);
-    let (arg_str, next_i) = read_script_arg(chars, *i)?;
-    *i = next_i;
-    let inner =
-        parse_latex_to_box_bounded(&arg_str, base_font_id, color, depth + 1, remaining_nodes)?;
-    match inner {
-        MathBox::Text {
-            text,
-            font_id,
-            color: inner_color,
-            italics,
-        } => {
-            boxes.push(MathBox::Text {
-                text: apply_combining_mark(&text, cmd, mark),
-                font_id,
-                color: inner_color,
-                italics,
-            });
-            Ok(())
-        }
-        other => {
-            let mut sub_job = LayoutJob::default();
-            let mut budget = MAX_LAYOUT_CHARS / 2;
-            math_box_to_layout_job_mode(&other, &mut sub_job, depth + 1, &mut budget, true);
-            let accented = apply_combining_mark(&sub_job.text, cmd, mark);
-            push_text_box(boxes, accented, base_font_id, color, false, remaining_nodes)
-        }
-    }
 }
 
 fn process_frac_command(
@@ -920,6 +816,10 @@ fn is_upright_operator_name(cmd: &str) -> bool {
             | "arcsin"
             | "arccos"
             | "arctan"
+            | "atan2"
+            | "sgn"
+            | "sign"
+            | "Pr"
             | "sinh"
             | "cosh"
             | "tanh"
@@ -1030,6 +930,9 @@ fn map_escaped_or_set_symbol(cmd: &str) -> Option<&'static str> {
         "cap" => Some("∩"),
         "forall" => Some("∀"),
         "exists" => Some("∃"),
+        "odot" => Some("⊙"),
+        "oplus" => Some("⊕"),
+        "otimes" => Some("⊗"),
         "|" => Some("‖"),
         "{" => Some("{"),
         "}" => Some("}"),
@@ -1087,6 +990,11 @@ fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
         "Rightarrow" => Some("⇒"),
         "Leftarrow" => Some("⇐"),
         "leftrightarrow" => Some("↔"),
+        "vdots" => Some("⋮"),
+        "ddots" => Some("⋱"),
+        "lvert" | "rvert" | "mid" => Some("|"),
+        "circ" => Some("∘"),
+        "vee" => Some("∨"),
         _ => None,
     }
 }
@@ -1199,7 +1107,16 @@ fn is_compound_inline_term(node: &MathBox, rendered_text: &str) -> bool {
             let trimmed = text.trim();
             trimmed.chars().count() > 1 && trimmed.contains(['+', '-', ' ', '/', '⁄'])
         }
-        MathBox::Sqrt(_) | MathBox::Script { .. } => false,
+        MathBox::Delimited {
+            open, body, close, ..
+        } => {
+            if *open != MathDelimiter::None && *close != MathDelimiter::None {
+                false
+            } else {
+                is_compound_inline_term(body, rendered_text)
+            }
+        }
+        MathBox::Sqrt(_) | MathBox::Script { .. } | MathBox::Accent { .. } => false,
     }
 }
 
@@ -1326,6 +1243,41 @@ fn append_sqrt_job(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn append_script_box_job(
+    base: Option<&MathBox>,
+    sup: Option<&MathBox>,
+    sub: Option<&MathBox>,
+    job: &mut LayoutJob,
+    depth: usize,
+    remaining_chars: &mut usize,
+    inline_fractions: bool,
+) {
+    if let Some(b) = base {
+        math_box_to_layout_job_mode(b, job, depth + 1, remaining_chars, inline_fractions);
+    }
+    if let Some(s) = sup {
+        append_script_job(
+            s,
+            job,
+            Align::Min,
+            depth + 1,
+            remaining_chars,
+            inline_fractions,
+        );
+    }
+    if let Some(s) = sub {
+        append_script_job(
+            s,
+            job,
+            Align::Max,
+            depth + 1,
+            remaining_chars,
+            inline_fractions,
+        );
+    }
+}
+
 fn math_box_to_layout_job_mode(
     box_node: &MathBox,
     job: &mut LayoutJob,
@@ -1373,31 +1325,46 @@ fn math_box_to_layout_job_mode(
         MathBox::Sqrt(radicand) => {
             append_sqrt_job(radicand, job, depth, remaining_chars, inline_fractions);
         }
-        MathBox::Script { base, sup, sub } => {
-            if let Some(b) = base {
-                math_box_to_layout_job_mode(b, job, depth + 1, remaining_chars, inline_fractions);
-            }
-            if let Some(s) = sup {
-                append_script_job(
-                    s,
-                    job,
-                    Align::Min,
-                    depth + 1,
-                    remaining_chars,
-                    inline_fractions,
-                );
-            }
-            if let Some(s) = sub {
-                append_script_job(
-                    s,
-                    job,
-                    Align::Max,
-                    depth + 1,
-                    remaining_chars,
-                    inline_fractions,
-                );
-            }
+        MathBox::Script { base, sup, sub } => append_script_box_job(
+            base.as_deref(),
+            sup.as_deref(),
+            sub.as_deref(),
+            job,
+            depth,
+            remaining_chars,
+            inline_fractions,
+        ),
+        MathBox::Delimited {
+            open,
+            body,
+            close,
+            font_id,
+            color,
+        } => {
+            let spec = latex_delims::DelimPaintSpec {
+                open: *open,
+                body,
+                close: *close,
+                font_id,
+                color: *color,
+            };
+            latex_delims::delimited_to_layout_job(
+                &spec,
+                job,
+                depth,
+                remaining_chars,
+                inline_fractions,
+            );
         }
+        MathBox::Accent { base, kind, color } => latex_delims::accent_to_layout_job(
+            base,
+            *kind,
+            *color,
+            job,
+            depth,
+            remaining_chars,
+            inline_fractions,
+        ),
     }
 }
 
@@ -1444,6 +1411,26 @@ fn measure_script_box(
     }
 }
 
+fn measure_text_box(ui: &Ui, text: &str, font_id: &FontId, color: Color32) -> BoxGeom {
+    let bounded_text = truncate_chars(text, MAX_LAYOUT_CHARS).to_owned();
+    let galley = ui
+        .painter()
+        .layout_no_wrap(bounded_text.clone(), font_id.clone(), color);
+    let raw_size = galley.size();
+    let size = if !bounded_text.is_empty() && (raw_size.x <= 0.0 || raw_size.y <= 0.0) {
+        Vec2::new(
+            (bounded_text.chars().count() as f32 * font_id.size * 0.55).max(1.0),
+            font_id.size.max(10.0),
+        )
+    } else {
+        raw_size
+    };
+    BoxGeom {
+        size,
+        children: Vec::new(),
+    }
+}
+
 fn measure_math_box_bounded(ui: &Ui, b: &MathBox, depth: usize) -> BoxGeom {
     if depth > MAX_LATEX_DEPTH {
         return BoxGeom {
@@ -1457,16 +1444,7 @@ fn measure_math_box_bounded(ui: &Ui, b: &MathBox, depth: usize) -> BoxGeom {
             font_id,
             color,
             ..
-        } => {
-            let bounded_text = truncate_chars(text, MAX_LAYOUT_CHARS).to_owned();
-            let galley = ui
-                .painter()
-                .layout_no_wrap(bounded_text, font_id.clone(), *color);
-            BoxGeom {
-                size: galley.size(),
-                children: Vec::new(),
-            }
-        }
+        } => measure_text_box(ui, text, font_id, *color),
         MathBox::Row(boxes) => {
             let (mut width, mut height, mut children) = (0.0_f32, 0.0_f32, Vec::new());
             for child in boxes {
@@ -1506,6 +1484,14 @@ fn measure_math_box_bounded(ui: &Ui, b: &MathBox, depth: usize) -> BoxGeom {
         MathBox::Script { base, sup, sub } => {
             measure_script_box(ui, base.as_deref(), sup.as_deref(), sub.as_deref(), depth)
         }
+        MathBox::Delimited {
+            open,
+            body,
+            close,
+            font_id,
+            color,
+        } => latex_delims::measure_delimited_box(ui, *open, body, *close, font_id, *color, depth),
+        MathBox::Accent { base, .. } => latex_delims::measure_accent_box(ui, base, depth),
     }
 }
 
@@ -1605,6 +1591,28 @@ fn paint_script_box(
     }
 }
 
+fn paint_row_boxes(
+    painter: &egui::Painter,
+    origin: Pos2,
+    row_height: f32,
+    boxes: &[MathBox],
+    children: &[BoxGeom],
+    depth: usize,
+) {
+    let mut x = origin.x;
+    for (child_box, child_geom) in boxes.iter().zip(children) {
+        let child_y = origin.y + (row_height - child_geom.size.y) * 0.5;
+        paint_math_box_bounded(
+            painter,
+            Pos2::new(x, child_y),
+            child_box,
+            child_geom,
+            depth + 1,
+        );
+        x += child_geom.size.x;
+    }
+}
+
 fn paint_math_box_bounded(
     painter: &egui::Painter,
     origin: Pos2,
@@ -1630,17 +1638,7 @@ fn paint_math_box_bounded(
             painter.galley(origin, galley, *color);
         }
         (MathBox::Row(boxes), children) => {
-            let mut x = origin.x;
-            for (child_box, child_geom) in boxes.iter().zip(children) {
-                paint_math_box_bounded(
-                    painter,
-                    Pos2::new(x, origin.y),
-                    child_box,
-                    child_geom,
-                    depth + 1,
-                );
-                x += child_geom.size.x;
-            }
+            paint_row_boxes(painter, origin, geom.size.y, boxes, children, depth);
         }
         (
             MathBox::Fraction {
@@ -1674,6 +1672,30 @@ fn paint_math_box_bounded(
                 depth,
             );
         }
+        (
+            MathBox::Delimited {
+                open,
+                body,
+                close,
+                font_id,
+                color,
+            },
+            [body_g],
+        ) => {
+            let spec = latex_delims::DelimPaintSpec {
+                open: *open,
+                body,
+                close: *close,
+                font_id,
+                color: *color,
+            };
+            latex_delims::paint_delimited_box(painter, origin, &spec, geom, body_g, depth);
+        }
+        (MathBox::Accent { base, kind, color }, [base_g]) => {
+            latex_delims::paint_accent_box(
+                painter, origin, base, *kind, *color, geom, base_g, depth,
+            );
+        }
         _ => {}
     }
 }
@@ -1690,8 +1712,13 @@ fn get_color(b: &MathBox, depth: usize) -> Option<Color32> {
         MathBox::Script { base, .. } => base
             .as_deref()
             .and_then(|child| get_color(child, depth + 1)),
+        MathBox::Delimited { color, .. } | MathBox::Accent { color, .. } => Some(*color),
     }
 }
+
+#[cfg(test)]
+#[path = "latex_audit_tests.rs"]
+mod latex_audit_tests;
 
 #[cfg(test)]
 mod tests {

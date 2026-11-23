@@ -29,6 +29,7 @@ mod main_wasm_tests;
 mod markup_tests;
 #[cfg(test)]
 mod modal_accessibility_tests;
+pub mod plot3d_viewport;
 #[cfg(test)]
 mod plot_chrome_tests;
 pub mod presets;
@@ -50,9 +51,12 @@ pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 use app::MathExplorerApp;
 
 #[cfg(test)]
+pub(crate) mod test_alloc;
+
+#[cfg(test)]
 #[global_allocator]
-static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
-    verified_engine::allocator::VerifiedAllocator;
+static TEST_ALLOCATOR: test_alloc::CountingVerifiedAllocator =
+    test_alloc::CountingVerifiedAllocator;
 
 #[cfg(test)]
 pub(crate) static VERIFIED_ALLOC_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());

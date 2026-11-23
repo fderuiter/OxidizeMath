@@ -1,37 +1,63 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::accessibility::AccessibleHoverText;
-use crate::app::SemanticPalette;
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
-use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints, VLine};
+use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::kelly::{
     expected_growth_rate, expected_value, kelly_fraction, variants, BankrollFraction, Odds,
     UnitInterval,
 };
+use std::sync::mpsc::Receiver;
 
-#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum OddsFormat {
+#[path = "bet_size/export.rs"]
+mod export;
+#[path = "bet_size/ui.rs"]
+mod ui;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub(crate) enum OddsFormat {
     Decimal,
     American,
     Fractional,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct KellyStrategyRow {
+    pub label: String,
+    pub fraction: f64,
+    pub bet_amount: f64,
+    pub growth_rate: f64,
+    pub ev_per_unit: f64,
+}
+
 /// Interactive Kelly Criterion bet-sizing calculator with log-growth curve and exports.
 pub struct BetSizeCalculatorTool {
-    probability_input: f64,
-    odds_format: OddsFormat,
-    decimal_odds: f64,
-    american_odds: f64,
-    fractional_numerator: f64,
-    fractional_denominator: f64,
-    bankroll: f64,
-    revision: u64,
+    pub(crate) probability_input: f64,
+    pub(crate) odds_format: OddsFormat,
+    pub(crate) decimal_odds: f64,
+    pub(crate) american_odds: f64,
+    pub(crate) fractional_numerator: f64,
+    pub(crate) fractional_denominator: f64,
+    pub(crate) bankroll: f64,
+    pub(crate) revision: u64,
+
+    // Cached plot & table series (recomputed only when inputs change)
+    pub(crate) growth_curve_points: Vec<PlotPoint>,
+    pub(crate) quarter_marker: Vec<PlotPoint>,
+    pub(crate) half_marker: Vec<PlotPoint>,
+    pub(crate) full_marker: Vec<PlotPoint>,
+    pub(crate) zero_line_points: [PlotPoint; 2],
+    pub(crate) strategy_rows: Vec<KellyStrategyRow>,
+    pub(crate) ev_per_unit: Option<f64>,
+    pub(crate) calc_error: Option<String>,
+
+    pub(crate) save_rx: Option<Receiver<Result<String, String>>>,
+    pub(crate) io_status: Option<(String, bool)>,
 }
 
 impl Default for BetSizeCalculatorTool {
     fn default() -> Self {
-        Self {
+        let mut tool = Self {
             probability_input: 55.0,
             odds_format: OddsFormat::Decimal,
             decimal_odds: 2.0,
@@ -39,7 +65,132 @@ impl Default for BetSizeCalculatorTool {
             fractional_numerator: 1.0,
             fractional_denominator: 1.0,
             bankroll: 1000.0,
-            revision: 1,
+            revision: 0,
+            growth_curve_points: Vec::new(),
+            quarter_marker: Vec::new(),
+            half_marker: Vec::new(),
+            full_marker: Vec::new(),
+            zero_line_points: [PlotPoint::new(0.0, 0.0), PlotPoint::new(0.25, 0.0)],
+            strategy_rows: Vec::new(),
+            ev_per_unit: None,
+            calc_error: None,
+            save_rx: None,
+            io_status: None,
+        };
+        tool.recalculate();
+        tool
+    }
+}
+
+impl BetSizeCalculatorTool {
+    pub(crate) fn active_odds(&self) -> Result<Odds, String> {
+        let res = match self.odds_format {
+            OddsFormat::Decimal => Odds::new(self.decimal_odds),
+            OddsFormat::American => Odds::from_american(self.american_odds),
+            OddsFormat::Fractional => {
+                Odds::from_fractional(self.fractional_numerator, self.fractional_denominator)
+            }
+        };
+        res.map_err(|e| format!("Invalid Odds: {e}"))
+    }
+
+    fn push_marker_and_row(
+        &mut self,
+        label: &str,
+        prob: &UnitInterval,
+        odds: &Odds,
+        frac: &BankrollFraction,
+        ev: f64,
+        marker_slot: usize,
+    ) {
+        let g = expected_growth_rate(prob, odds, frac);
+        let bet_amount = frac.bet_amount(self.bankroll).unwrap_or(0.0);
+        if g.is_finite() {
+            let pt = PlotPoint::new(frac.value(), g);
+            match marker_slot {
+                0 => self.quarter_marker.push(pt),
+                1 => self.half_marker.push(pt),
+                _ => self.full_marker.push(pt),
+            }
+        }
+        self.strategy_rows.push(KellyStrategyRow {
+            label: label.to_string(),
+            fraction: frac.value(),
+            bet_amount,
+            growth_rate: g,
+            ev_per_unit: ev,
+        });
+    }
+
+    fn populate_growth_curve(&mut self, prob: &UnitInterval, odds: &Odds, f_max: f64) {
+        const STEPS: usize = 120;
+        for idx in 0..=STEPS {
+            let f = f_max * (idx as f64 / STEPS as f64);
+            if let Ok(frac) = BankrollFraction::new(f) {
+                let g = expected_growth_rate(prob, odds, &frac);
+                if g.is_finite() {
+                    self.growth_curve_points.push(PlotPoint::new(f, g));
+                }
+            }
+        }
+        self.zero_line_points = [PlotPoint::new(0.0, 0.0), PlotPoint::new(f_max, 0.0)];
+    }
+
+    pub(crate) fn recalculate(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
+        self.growth_curve_points.clear();
+        self.quarter_marker.clear();
+        self.half_marker.clear();
+        self.full_marker.clear();
+        self.strategy_rows.clear();
+        self.ev_per_unit = None;
+        self.calc_error = None;
+
+        let prob = match UnitInterval::new(self.probability_input / 100.0) {
+            Ok(p) => p,
+            Err(e) => {
+                self.calc_error = Some(format!("Invalid Probability: {e}"));
+                return;
+            }
+        };
+        let odds = match self.active_odds() {
+            Ok(o) => o,
+            Err(msg) => {
+                self.calc_error = Some(msg);
+                return;
+            }
+        };
+
+        let ev = expected_value(&prob, &odds);
+        self.ev_per_unit = Some(ev);
+        let b = odds.net_profit_multiplier();
+        let f_domain_cap = (0.98 / b).clamp(1e-4, 0.98);
+
+        let full_kelly_opt = if ev > 0.0 {
+            kelly_fraction(&prob, &odds).ok()
+        } else {
+            None
+        };
+        if let Some(fk) = full_kelly_opt {
+            let f_max = (fk.value() * 2.25).clamp(0.05_f64.min(f_domain_cap), f_domain_cap);
+            self.populate_growth_curve(&prob, &odds, f_max);
+            if let Ok(qk) = variants::quarter_kelly(&prob, &odds) {
+                self.push_marker_and_row("Quarter Kelly", &prob, &odds, &qk, ev, 0);
+            }
+            if let Ok(hk) = variants::half_kelly(&prob, &odds) {
+                self.push_marker_and_row("Half Kelly", &prob, &odds, &hk, ev, 1);
+            }
+            self.push_marker_and_row("Full Kelly", &prob, &odds, &fk, ev, 2);
+        } else {
+            let f_max = f_domain_cap.min(0.50);
+            self.populate_growth_curve(&prob, &odds, f_max);
+            self.strategy_rows.push(KellyStrategyRow {
+                label: "No Wager (No Edge)".to_string(),
+                fraction: 0.0,
+                bet_amount: 0.0,
+                growth_rate: 0.0,
+                ev_per_unit: ev,
+            });
         }
     }
 }
@@ -54,232 +205,6 @@ struct BetSizeState {
     fractional_numerator: f64,
     fractional_denominator: f64,
     bankroll: f64,
-}
-
-impl BetSizeCalculatorTool {
-    fn resolve_prob_and_odds(&self) -> Result<(UnitInterval, Odds), String> {
-        let prob = UnitInterval::new(self.probability_input / 100.0).map_err(|e| e.to_string())?;
-        let odds = match self.odds_format {
-            OddsFormat::Decimal => Odds::new(self.decimal_odds),
-            OddsFormat::American => Odds::from_american(self.american_odds),
-            OddsFormat::Fractional => {
-                Odds::from_fractional(self.fractional_numerator, self.fractional_denominator)
-            }
-        }
-        .map_err(|e| e.to_string())?;
-        Ok((prob, odds))
-    }
-
-    fn compute_growth_curves(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>, f64) {
-        let (prob, odds) = match self.resolve_prob_and_odds() {
-            Ok(pair) => pair,
-            Err(_) => {
-                let fallback_p = UnitInterval::new_clamped(0.55);
-                let fallback_o = Odds::new(2.0).expect("valid fallback odds");
-                (fallback_p, fallback_o)
-            }
-        };
-        let ev = expected_value(&prob, &odds);
-        let f_star = kelly_fraction(&prob, &odds)
-            .map(|bf| bf.value())
-            .unwrap_or(0.0);
-        let samples = 81usize;
-        let mut growth_pts = Vec::with_capacity(samples);
-        let mut linear_pts = Vec::with_capacity(samples);
-        for idx in 0..samples {
-            let f = 0.96 * (idx as f64) / ((samples - 1) as f64);
-            if let Ok(frac) = BankrollFraction::new(f) {
-                let g = expected_growth_rate(&prob, &odds, &frac);
-                if g.is_finite() {
-                    growth_pts.push([f, g]);
-                }
-            }
-            linear_pts.push([f, f * ev]);
-        }
-        (growth_pts, linear_pts, f_star)
-    }
-
-    fn render_input_controls(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut changed = false;
-        ui.heading("Kelly Bet Sizing");
-        ui.label("Optimal capital allocation from edge and odds.");
-        ui.separator();
-        changed |= ui
-            .add(
-                egui::Slider::new(&mut self.probability_input, 0.0..=100.0)
-                    .text("Win Prob (%)")
-                    .suffix("%"),
-            )
-            .accessible_hover_text("Estimated true win probability in percent")
-            .changed();
-        ui.label("Odds Format:");
-        ui.horizontal(|ui| {
-            changed |= ui
-                .radio_value(&mut self.odds_format, OddsFormat::Decimal, "Decimal")
-                .changed();
-            changed |= ui
-                .radio_value(&mut self.odds_format, OddsFormat::American, "American")
-                .changed();
-            changed |= ui
-                .radio_value(&mut self.odds_format, OddsFormat::Fractional, "Fractional")
-                .changed();
-        });
-        changed |= self.render_odds_format_editor(ui);
-        changed |= ui
-            .add(
-                egui::DragValue::new(&mut self.bankroll)
-                    .speed(10.0)
-                    .range(1.0..=1_000_000.0)
-                    .prefix("Bankroll: $"),
-            )
-            .changed();
-        changed
-    }
-
-    fn render_odds_format_editor(&mut self, ui: &mut egui::Ui) -> bool {
-        match self.odds_format {
-            OddsFormat::Decimal => ui
-                .add(egui::Slider::new(&mut self.decimal_odds, 1.01..=25.0).text("Decimal Odds"))
-                .changed(),
-            OddsFormat::American => {
-                let changed = ui
-                    .add(
-                        egui::DragValue::new(&mut self.american_odds)
-                            .speed(5.0)
-                            .range(-10_000.0..=10_000.0)
-                            .prefix("American: "),
-                    )
-                    .changed();
-                if (-99.9..100.0).contains(&self.american_odds) {
-                    ui.small("Note: Valid American odds satisfy |A| >= 100.");
-                }
-                changed
-            }
-            OddsFormat::Fractional => {
-                let mut changed = false;
-                ui.horizontal(|ui| {
-                    ui.label("Fractional:");
-                    changed |= ui
-                        .add(
-                            egui::DragValue::new(&mut self.fractional_numerator)
-                                .speed(1.0)
-                                .range(1.0..=1000.0),
-                        )
-                        .changed();
-                    ui.label("/");
-                    changed |= ui
-                        .add(
-                            egui::DragValue::new(&mut self.fractional_denominator)
-                                .speed(1.0)
-                                .range(1.0..=1000.0),
-                        )
-                        .changed();
-                });
-                changed
-            }
-        }
-    }
-
-    fn render_results_summary(&self, ui: &mut egui::Ui, palette: &SemanticPalette) {
-        match self.resolve_prob_and_odds() {
-            Ok((prob, odds)) => {
-                let ev = expected_value(&prob, &odds);
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(format!(
-                        "Implied Prob: {:.2}% | EV per $1: ${:.3}",
-                        odds.implied_probability_unit().value() * 100.0,
-                        ev
-                    ));
-                    ui.separator();
-                    if ev > 0.0 {
-                        ui.colored_label(palette.success, "Positive Edge (+EV)");
-                    } else {
-                        ui.colored_label(palette.error, "No Edge (EV <= 0): Optimal Stake = $0.00");
-                    }
-                });
-                if ev > 0.0 {
-                    self.render_kelly_table(ui, &prob, &odds);
-                }
-            }
-            Err(err) => {
-                ui.colored_label(palette.error, format!("Input validation: {err}"));
-            }
-        }
-    }
-
-    fn render_kelly_table(&self, ui: &mut egui::Ui, prob: &UnitInterval, odds: &Odds) {
-        let Ok(full) = kelly_fraction(prob, odds) else {
-            return;
-        };
-        let half = variants::half_kelly(prob, odds).unwrap_or(full);
-        let quarter = variants::quarter_kelly(prob, odds).unwrap_or(full);
-        egui::Grid::new("kelly_results")
-            .num_columns(4)
-            .spacing([28.0, 6.0])
-            .show(ui, |ui| {
-                for hdr in ["Strategy", "Fraction", "Stake ($)", "Log Growth g(f)"] {
-                    ui.label(egui::RichText::new(hdr).strong());
-                }
-                ui.end_row();
-                for (label, frac) in [
-                    ("Full Kelly (1.0x)", full),
-                    ("Half Kelly (0.5x)", half),
-                    ("Quarter Kelly (0.25x)", quarter),
-                ] {
-                    ui.label(label);
-                    ui.label(format!("{:.2}%", frac.value() * 100.0));
-                    let amt = frac.bet_amount(self.bankroll).unwrap_or(0.0);
-                    ui.label(format!("${amt:.2}"));
-                    let g = expected_growth_rate(prob, odds, &frac);
-                    ui.label(format!("{g:.5}"));
-                    ui.end_row();
-                }
-            });
-    }
-
-    fn render_growth_plot(&self, ui: &mut egui::Ui, palette: &SemanticPalette) {
-        let (growth_pts, linear_pts, f_star) = self.compute_growth_curves();
-        Plot::new(ui.id().with("bet_size_kelly_growth_plot"))
-            .legend(Legend::default())
-            .x_axis_label("Bankroll Fraction Staked f")
-            .y_axis_label("Asymptotic Log-Growth g(f) vs Linear Return f·EV")
-            .show(ui, |plot_ui| {
-                plot_ui.hline(HLine::new("Break-Even (g = 0)", 0.0).color(palette.muted_text));
-                plot_ui.line(
-                    Line::new("Asymptotic Log-Growth g(f)", PlotPoints::from(growth_pts))
-                        .color(palette.series[0])
-                        .width(2.4_f32),
-                );
-                plot_ui.line(
-                    Line::new(
-                        "Linear Expected Return f * EV",
-                        PlotPoints::from(linear_pts),
-                    )
-                    .color(palette.series[1])
-                    .style(LineStyle::Dashed { length: 7.0_f32 })
-                    .width(1.8_f32),
-                );
-                if f_star > 0.0 {
-                    plot_ui.vline(
-                        VLine::new("Full Kelly f*", f_star)
-                            .color(palette.success)
-                            .width(2.0_f32),
-                    );
-                    plot_ui.vline(
-                        VLine::new("Half Kelly 0.5 f*", 0.5 * f_star)
-                            .color(palette.accent)
-                            .style(LineStyle::Dashed { length: 6.0_f32 }),
-                    );
-                    if 2.0 * f_star < 0.98 {
-                        plot_ui.vline(
-                            VLine::new("Overbet Ruin Boundary 2 f*", 2.0 * f_star)
-                                .color(palette.error)
-                                .style(LineStyle::Dashed { length: 5.0_f32 }),
-                        );
-                    }
-                }
-            });
-    }
 }
 
 impl InteractiveTool for BetSizeCalculatorTool {
@@ -299,11 +224,26 @@ impl InteractiveTool for BetSizeCalculatorTool {
         ExportCapabilities::plot()
     }
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let (growth_pts, linear_pts, _) = self.compute_growth_curves();
-        vec![
-            ("Asymptotic Log-Growth g(f)".into(), growth_pts),
-            ("Linear Expected Return f * EV".into(), linear_pts),
-        ]
+        let mut datasets = vec![(
+            "Expected Growth Rate g(f)".to_string(),
+            self.growth_curve_points
+                .iter()
+                .map(|pt| [pt.x, pt.y])
+                .collect(),
+        )];
+        for (name, pts) in [
+            ("Quarter Kelly (0.25 f*)", &self.quarter_marker),
+            ("Half Kelly (0.50 f*)", &self.half_marker),
+            ("Full Kelly (1.00 f*)", &self.full_marker),
+        ] {
+            if !pts.is_empty() {
+                datasets.push((
+                    name.to_string(),
+                    pts.iter().map(|pt| [pt.x, pt.y]).collect(),
+                ));
+            }
+        }
+        datasets
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -326,7 +266,7 @@ impl InteractiveTool for BetSizeCalculatorTool {
         self.fractional_numerator = self.fractional_numerator.clamp(1.0, 1000.0);
         self.fractional_denominator = self.fractional_denominator.clamp(1.0, 1000.0);
         self.bankroll = self.bankroll.clamp(1.0, 1_000_000.0);
-        self.revision = self.revision.wrapping_add(1);
+        self.recalculate();
         true
     }
 
@@ -375,22 +315,13 @@ impl InteractiveTool for BetSizeCalculatorTool {
         self.fractional_numerator = s.fractional_numerator;
         self.fractional_denominator = s.fractional_denominator;
         self.bankroll = s.bankroll;
-        self.revision = self.revision.wrapping_add(1);
+        self.recalculate();
         Ok(())
     }
 
-    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
-        let side_id = crate::framework::scoped_panel_id(parent_ui, "bet_size_side");
-        crate::framework::PaneSidePanel::left(side_id).show_inside(parent_ui, |ui| {
-            if self.render_input_controls(ui) {
-                self.revision = self.revision.wrapping_add(1);
-            }
-        });
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            let palette = SemanticPalette::from_visuals(ui.visuals());
-            self.render_results_summary(ui, &palette);
-            ui.separator();
-            self.render_growth_plot(ui, &palette);
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            self.render_workbench_ui(ui);
         });
     }
 }
@@ -409,19 +340,28 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
     fn theory_description(&self) -> String {
+        let net_b = self
+            .active_odds()
+            .map(|o| o.net_profit_multiplier())
+            .unwrap_or(self.decimal_odds - 1.0);
         format!(
-            "Kelly criterion optimal wagering fraction: $f^* = \\frac{{b p - q}}{{b}}$ where $p = {:.1}\\%$ is win probability, $q = 1 - p$, and decimal odds $d = {:.2}$ ($b = d - 1$), maximizing asymptotic logarithmic growth $g(f) = p \\ln(1 + b f) + q \\ln(1 - f)$.",
-            self.probability_input, self.decimal_odds
+            "Kelly criterion optimal wagering fraction $f^* = \\frac{{b p - q}}{{b}}$ and logarithmic growth rate $g(f) = p \\ln(1 + b f) + q \\ln(1 - f)$ where $p = {:.1}\\%$, $q = 1 - p$, and net odds $b = {:.2}$.",
+            self.probability_input, net_b
         )
     }
     fn phonetic_description(&self) -> String {
-        "Kelly criterion optimal bet sizing and logarithmic bankroll growth theory".into()
+        "Kelly criterion optimal bet sizing and expected logarithmic growth rate theory".into()
     }
     fn theory_citation(&self) -> String {
         "A New Interpretation of Information Rate (Kelly, 1956); Optimal Gambling Systems for Favorable Games (Thorp, 1969)".into()
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
+        let mut map = std::collections::HashMap::new();
+        map.insert(
+            "Expected Growth Rate g(f)".into(),
+            "Asymptotic logarithmic wealth growth per wager across stake fraction f".into(),
+        );
+        map
     }
 }
 
@@ -455,3 +395,7 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+#[cfg(test)]
+#[path = "bet_size/tests.rs"]
+mod tests;

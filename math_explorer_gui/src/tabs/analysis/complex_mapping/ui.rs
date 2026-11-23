@@ -135,22 +135,27 @@ impl ComplexMappingTool {
             ));
         });
 
+        let custom_invalid =
+            self.function == MappingFunction::Custom && !self.math_input.is_valid();
         let z0 = Complex64::new(self.inspection_point[0], self.inspection_point[1]);
         let w0 = self.eval_z(z0);
+        let w_finite = !custom_invalid && w0.re.is_finite() && w0.im.is_finite();
         let scale_factor = conformal_scale_factor(|z| self.deriv_z(z), z0);
-        let safe_scale = if scale_factor.is_finite() {
-            scale_factor
-        } else {
-            0.0
-        };
 
-        let w_text = if w0.re.is_finite() && w0.im.is_finite() {
+        let w_text = if custom_invalid {
+            "Undefined".to_string()
+        } else if w_finite {
             format!("{:.3} + {:.3}i", w0.re, w0.im)
         } else {
             "Pole / Undefined".to_string()
         };
+        let scale_text = if w_finite && scale_factor.is_finite() {
+            format!("{:.3}", scale_factor)
+        } else {
+            "Undefined".to_string()
+        };
         render_copyable_metric(ui, "w = f(z)", &w_text);
-        render_copyable_metric(ui, "Scale factor |f'(z)|", &format!("{:.3}", safe_scale));
+        render_copyable_metric(ui, "Scale factor |f'(z)|", &scale_text);
     }
 
     pub(super) fn draw_z_plane(
@@ -275,7 +280,7 @@ impl ComplexMappingTool {
         if self.inspection_point.iter().all(|v| v.is_finite()) {
             out.push(egui_plot::ExportPrimitive::Points {
                 name: "z".to_owned(),
-                points: vec![self.inspection_point],
+                points: egui_plot::SharedPoints::from_slice(&[self.inspection_point]),
                 color: palette.error,
                 radius: 5.0,
             });
@@ -286,7 +291,7 @@ impl ComplexMappingTool {
             if w0.re.is_finite() && w0.im.is_finite() {
                 out.push(egui_plot::ExportPrimitive::Points {
                     name: "w = f(z)".to_owned(),
-                    points: vec![[w0.re, w0.im]],
+                    points: egui_plot::SharedPoints::from_slice(&[[w0.re, w0.im]]),
                     color: palette.error,
                     radius: 5.0,
                 });
@@ -308,7 +313,7 @@ fn append_family_polylines(
             if slice.len() >= 2 {
                 out.push(egui_plot::ExportPrimitive::Polyline {
                     name: name.to_owned(),
-                    points: slice.iter().map(|p| [p.x, p.y]).collect(),
+                    points: egui_plot::SharedPoints::from_plot_points(slice),
                     color,
                     stroke_width: 1.5,
                     closed: false,

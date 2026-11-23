@@ -127,6 +127,59 @@ fn test_complex_mapping_clamps_grid_density_and_caches_contours_across_probe_mov
     assert_eq!(live.cache.eval_count, 1);
 }
 
+fn collect_rendered_texts(shapes: &[egui::epaint::Shape], out: &mut Vec<String>) {
+    for shape in shapes {
+        match shape {
+            egui::epaint::Shape::Text(t) => out.push(t.galley.job.text.clone()),
+            egui::epaint::Shape::Vec(inner) => collect_rendered_texts(inner, out),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn test_custom_complex_mapping_unbound_c_renders_scope_error_and_undefined_metrics() {
+    let _guard = crate::reflective_ui::tests::TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut tool = ComplexMappingTool {
+        function: MappingFunction::Custom,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("z^2 + c");
+    assert!(!tool.math_input.is_valid());
+    let err = tool.math_input.error_message().expect("scope error for c");
+    assert!(err.contains("Unknown variable 'c'") && err.contains("z, a"));
+
+    let w_probe = tool.eval_z(Complex64::new(1.0, 1.0));
+    assert!(w_probe.re.is_nan() && w_probe.im.is_nan());
+
+    let ctx = egui::Context::default();
+    let out = ctx.run(egui::RawInput::default(), |c| tool.show(c));
+    assert!(
+        tool.cache.w_vertical.is_empty() && tool.cache.w_horizontal.is_empty(),
+        "Invalid custom expression must omit mapped w-plane contours"
+    );
+
+    let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+    let mut texts = Vec::new();
+    collect_rendered_texts(&shapes, &mut texts);
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains("Syntax Error:") && t.contains("Unknown variable 'c'")),
+        "Expected inline scope error in {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains("Undefined")),
+        "Expected Undefined readout in {texts:?}"
+    );
+    assert!(
+        !texts.iter().any(|t| t.contains("1000000.000")),
+        "Must never render clamped 1000000.000 readout in {texts:?}"
+    );
+}
+
 fn hover_frame_input(pos: egui::Pos2) -> egui::RawInput {
     egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -190,6 +243,7 @@ fn test_conformal_cache_reuse_invalidation_and_invalid_bounds_clearing() {
     tool.math_input.set_expression("z +");
     run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
     assert_eq!(tool.cache.eval_count, 7);
+    assert!(!tool.cache.z_vertical.is_empty() && tool.cache.w_vertical.is_empty());
 
     // Invalid grid bounds clear cached contour buffers and recover cleanly once valid
     tool.grid_min = 4.0;
@@ -197,6 +251,7 @@ fn test_conformal_cache_reuse_invalidation_and_invalid_bounds_clearing() {
     run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
     assert!(tool.cache.z_vertical.is_empty() && tool.cache.w_vertical.is_empty());
 
+    tool.math_input.set_expression("z + a^2 / z");
     tool.grid_min = -2.0;
     run_tool_frame(&ctx, &mut tool, egui::RawInput::default());
     assert_eq!(tool.cache.eval_count, 8);
@@ -234,28 +289,50 @@ fn test_contour_batch_shapes_hover_log_split_and_nan_free_extract_points() {
     assert!(w_batch.extract_export_primitives().is_empty());
 
     let frame = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 400.0));
-    let lin_tf = PlotTransform::new(frame, PlotBounds::from_min_max([-5.0, -5.0], [5.0, 5.0]), true);
+    let lin_tf = PlotTransform::new(
+        frame,
+        PlotBounds::from_min_max([-5.0, -5.0], [5.0, 5.0]),
+        true,
+    );
     let mid_pos = lin_tf.position_from_point(&egui_plot::PlotPoint::new(-1.02, 0.35));
     let (snap_pt, _) = z_batch.closest_continuous_point(mid_pos, &lin_tf).unwrap();
     assert!((snap_pt.x - (-1.0)).abs() < 1e-4 && (snap_pt.y - 0.35).abs() < 1e-3);
 
-    let mut log_tf =
-        PlotTransform::new(frame, PlotBounds::from_min_max([0.01, 0.01], [10.0, 10.0]), true);
+    let mut log_tf = PlotTransform::new(
+        frame,
+        PlotBounds::from_min_max([0.01, 0.01], [10.0, 10.0]),
+        true,
+    );
     log_tf.set_log_axis(egui::Vec2b::new(true, false));
+    assert_contour_batch_shapes(&z_batch, &w_batch, &lin_tf, &log_tf);
+}
+
+fn assert_contour_batch_shapes(
+    z_batch: &cache::ContourBatch<'_>,
+    w_batch: &cache::ContourBatch<'_>,
+    lin_tf: &egui_plot::PlotTransform,
+    log_tf: &egui_plot::PlotTransform,
+) {
+    use egui_plot::PlotItem as _;
     let ctx = egui::Context::default();
     let _ = ctx.run(egui::RawInput::default(), |c| {
         egui::CentralPanel::default().show(c, |ui| {
             let mut z_shapes = Vec::new();
-            z_batch.shapes(ui, &lin_tf, &mut z_shapes);
+            z_batch.shapes(ui, lin_tf, &mut z_shapes);
             assert_eq!(z_shapes.len(), 5);
-            assert!(z_shapes.iter().all(|s| matches!(s, egui::Shape::LineSegment { .. })));
+            assert!(z_shapes
+                .iter()
+                .all(|s| matches!(s, egui::Shape::LineSegment { .. })));
 
             let mut w_log_shapes = Vec::new();
-            w_batch.shapes(ui, &log_tf, &mut w_log_shapes);
+            w_batch.shapes(ui, log_tf, &mut w_log_shapes);
             assert!(!w_log_shapes.is_empty());
             for shape in &w_log_shapes {
                 if let egui::Shape::Path(path_shape) = shape {
-                    assert!(path_shape.points.iter().all(|p| p.x.is_finite() && p.y.is_finite()));
+                    assert!(path_shape
+                        .points
+                        .iter()
+                        .all(|p| p.x.is_finite() && p.y.is_finite()));
                 }
             }
         });

@@ -166,3 +166,47 @@ fn test_ode_sensitivity_nan_initial_condition_converges_cleanly() {
         .repaint_delay
         .is_zero());
 }
+
+#[test]
+fn test_ode_custom_logistic_preset_yields_finite_sensitivity_metrics() {
+    let ctx = egui::Context::default();
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: 2.0,
+        dt: 0.05,
+        total_time: 5.0,
+        ..Default::default()
+    };
+    tool.math_input.set_expression("r * y * (1 - y / cap_k)");
+    tool.recalculate();
+
+    for _ in 0..3 {
+        let _ = ctx.run(compact_input(), |ctx| tool.show(ctx));
+        if tool.sensitivity_engine.is_converged() {
+            break;
+        }
+    }
+    assert!(tool.sensitivity_engine.is_converged());
+    assert!(tool.sensitivity_engine.baseline_output.is_finite());
+
+    let names: Vec<&str> = tool
+        .sensitivity_engine
+        .metrics
+        .iter()
+        .map(|m| m.param_name.as_str())
+        .collect();
+    assert_eq!(names, vec!["r", "cap_k", "y0"]);
+    for metric in &tool.sensitivity_engine.metrics {
+        assert!(
+            metric.partial_derivative.is_finite() && metric.elasticity.is_finite(),
+            "Non-finite sensitivity metric for {}: {metric:?}",
+            metric.param_name
+        );
+        assert!(
+            metric.partial_derivative > 0.0,
+            "Expected positive logistic partial derivative for {}, got {}",
+            metric.param_name,
+            metric.partial_derivative
+        );
+    }
+}
