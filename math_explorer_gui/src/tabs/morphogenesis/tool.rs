@@ -55,12 +55,14 @@ impl Default for MorphogenesisTool {
             d_v: 100.0,
             dt: 0.05,
             high_contrast: false,
+            periodic_boundary: false,
         }));
         let kinetics_state =
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
 
         let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
-        let runner = Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
+        let runner =
+            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
         let worker = BackgroundWorker::new(runner);
 
         Self {
@@ -103,23 +105,30 @@ impl MorphogenesisTool {
         width: usize,
         height: usize,
     ) -> MorphogenesisKineticsRunner {
+        use math_explorer::biology::diffusion::BoundaryMode;
         use math_explorer::biology::morphogenesis::DiffusionCoeff;
         use math_explorer::math_kernel::types::{Dimension, StepSize};
-        let (a, b, d_u, d_v) = {
+        let (a, b, d_u, d_v, periodic) = {
             let p = params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v)
+            (p.a, p.b, p.d_u, p.d_v, p.periodic_boundary)
         };
         let (mode, f, k) = {
             let ks = kinetics_state.read().unwrap_or_else(|e| e.into_inner());
             (ks.mode, ks.f, ks.k)
         };
         let kinetics = MorphogenesisKineticsAdapter { mode, a, b, f, k };
+        let bmode = if periodic {
+            BoundaryMode::Periodic
+        } else {
+            BoundaryMode::Neumann
+        };
         let diffusion = FiniteDifference2D::new(
             Dimension(width),
             Dimension(height),
             StepSize(1.0),
             StepSize(1.0),
         )
+        .with_boundary_mode(bmode)
         .with_mask();
         let mut system = TuringSystem::new_with_kinetics(
             Dimension(width * height),
@@ -176,9 +185,8 @@ impl MorphogenesisTool {
         let mask = Arc::clone(&self.mask_rle);
         let width = self.width;
         let height = self.height;
-        self.worker.reset_or_respawn(|| {
-            Self::create_kinetics_runner(&params, &ks, &mask, width, height)
-        });
+        self.worker
+            .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
         self.stepped_pixels = None;
         self.step_runner = None;
         self.pending_initial_start = false;
@@ -202,6 +210,17 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::raster_only()
+    }
+
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        self.build_scalar_field_2d()
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
@@ -314,6 +333,7 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u.to_bits().hash(&mut h);
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
+            p.periodic_boundary.hash(&mut h);
         }
         self.width.hash(&mut h);
         self.height.hash(&mut h);
@@ -336,9 +356,9 @@ impl InteractiveTool for MorphogenesisTool {
                 .unwrap_or_else(|e| e.into_inner());
             (ks.mode, ks.f, ks.k)
         };
-        let (a, b, d_u, d_v, dt) = {
+        let (a, b, d_u, d_v, dt, periodic_boundary) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
+            (p.a, p.b, p.d_u, p.d_v, p.dt, p.periodic_boundary)
         };
         let mask_rle = self
             .mask_rle
@@ -363,6 +383,7 @@ impl InteractiveTool for MorphogenesisTool {
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
+            periodic_boundary,
         })
         .ok()
     }
@@ -393,6 +414,7 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u = parsed.d_u;
             p.d_v = parsed.d_v;
             p.dt = parsed.dt;
+            p.periodic_boundary = parsed.periodic_boundary;
         }
         *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) = parsed.mask_rle;
         self.apply_dimensions_and_target_state(

@@ -9,7 +9,7 @@ use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisKineticsMode;
 #[cfg(test)]
 use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::diffusion::{MaskedFiniteDifference2D, ReactionCellRole};
+use math_explorer::biology::diffusion::{BoundaryMode, MaskedFiniteDifference2D, ReactionCellRole};
 use math_explorer::biology::morphogenesis::{
     GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics, TuringSystem,
 };
@@ -83,6 +83,7 @@ pub struct MorphogenesisSharedParams {
     pub d_v: f64,
     pub dt: f64,
     pub high_contrast: bool,
+    pub periodic_boundary: bool,
 }
 
 #[cfg(test)]
@@ -113,9 +114,9 @@ impl FiniteStateGuard for MorphogenesisRunner {
 #[cfg(test)]
 impl MorphogenesisRunner {
     fn sync_system_params(&mut self) -> Option<f64> {
-        let (a, b, d_u, d_v, dt) = {
+        let (a, b, d_u, d_v, dt, periodic) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
+            (p.a, p.b, p.d_u, p.d_v, p.dt, p.periodic_boundary)
         };
         if !a.is_finite() || !b.is_finite() || !d_u.is_finite() || !d_v.is_finite() {
             return None;
@@ -124,11 +125,20 @@ impl MorphogenesisRunner {
         self.system.kinetics.b = b;
         self.system.diffusion_coeffs[0] = d_u;
         self.system.diffusion_coeffs[1] = d_v;
+        self.system.diffusion.boundary_mode = if periodic {
+            BoundaryMode::Periodic
+        } else {
+            BoundaryMode::Neumann
+        };
 
         if dt.is_finite() && dt > 0.0 && is_pattern_forming_regime(a, b, d_u, d_v, dt) {
             let var_u = grid_u_variance(self.system.u());
             if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
-                MorphogenesisTool::initialize_schnakenberg(&mut self.system, self.width, self.height);
+                MorphogenesisTool::initialize_schnakenberg(
+                    &mut self.system,
+                    self.width,
+                    self.height,
+                );
             }
         }
         (dt.is_finite() && dt > 0.0).then_some(dt)
@@ -247,9 +257,9 @@ impl MorphogenesisKineticsRunner {
     }
 
     fn sync_system_params(&mut self) -> Option<f64> {
-        let (a, b, d_u, d_v, dt) = {
+        let (a, b, d_u, d_v, dt, periodic) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
+            (p.a, p.b, p.d_u, p.d_v, p.dt, p.periodic_boundary)
         };
         let (mode, f, k) = {
             let ks = self
@@ -274,6 +284,11 @@ impl MorphogenesisKineticsRunner {
         self.system.kinetics.k = k;
         self.system.diffusion_coeffs[0] = d_u;
         self.system.diffusion_coeffs[1] = d_v;
+        self.system.diffusion.base.boundary_mode = if periodic {
+            BoundaryMode::Periodic
+        } else {
+            BoundaryMode::Neumann
+        };
         if mode == MorphogenesisKineticsMode::Schnakenberg
             && dt.is_finite()
             && dt > 0.0

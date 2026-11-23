@@ -4,6 +4,7 @@ use eframe::egui;
 
 pub mod beam_profiling;
 pub mod dose;
+pub mod dose_export;
 pub mod imrt;
 pub mod radar_gating;
 

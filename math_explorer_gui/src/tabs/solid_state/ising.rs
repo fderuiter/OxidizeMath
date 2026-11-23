@@ -90,6 +90,7 @@ pub struct IsingModelTool {
     texture: Option<egui::TextureHandle>,
     pixels: Vec<egui::Color32>,
     stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
+    stepped_spins: Option<(usize, usize, Vec<i8>)>,
     last_theme: Option<crate::app::ThemeMode>,
     dirty: bool,
     params: Arc<std::sync::RwLock<IsingSharedParams>>,
@@ -111,6 +112,7 @@ impl IsingModelTool {
         };
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
         self.dirty = true;
@@ -135,6 +137,7 @@ impl IsingModelTool {
             params,
         });
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.pending_ode_resync = true;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
@@ -185,6 +188,7 @@ impl Default for IsingModelTool {
             texture: None,
             pixels: Vec::new(),
             stepped_pixels: None,
+            stepped_spins: None,
             last_theme: None,
             dirty: true,
             params,
@@ -223,6 +227,33 @@ impl InteractiveTool for IsingModelTool {
             return None;
         }
         Some(egui::ColorImage::new([snap.width, snap.height], px.clone()))
+    }
+
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        if let Some((w, h, ref spins)) = self.stepped_spins {
+            if w > 0 && h > 0 && spins.len() == w * h {
+                let values: Vec<f64> = spins.iter().map(|&s| f64::from(s)).collect();
+                return Some(crate::framework::ScalarField2D::continuous(
+                    w, h, values, true,
+                ));
+            }
+        }
+        let snap = self.worker.latest_snapshot()?;
+        if snap.width == 0 || snap.height == 0 {
+            return None;
+        }
+        let spins = snap.structured_data.as_ref()?.downcast_ref::<Vec<i8>>()?;
+        (spins.len() == snap.width * snap.height).then(|| {
+            let values: Vec<f64> = spins.iter().map(|&s| f64::from(s)).collect();
+            crate::framework::ScalarField2D::continuous(snap.width, snap.height, values, true)
+        })
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
@@ -297,12 +328,14 @@ impl InteractiveTool for IsingModelTool {
             .unwrap_or_else(|e| e.into_inner())
             .theme
             .palette();
-        let pixels: Vec<egui::Color32> = lattice
-            .spins()
+        let spins = lattice.spins().to_vec();
+        let pixels: Vec<egui::Color32> = spins
             .iter()
             .map(|&s| ising_spin_color(s, &palette))
             .collect();
-        self.stepped_pixels = Some((lattice.width(), lattice.height(), pixels));
+        let (w, h) = (lattice.width(), lattice.height());
+        self.stepped_pixels = Some((w, h, pixels));
+        self.stepped_spins = Some((w, h, spins));
         self.dirty = true;
     }
 
@@ -354,6 +387,7 @@ impl InteractiveTool for IsingModelTool {
             let _ = self.worker.send_command(SimCommand::Pause);
         }
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.dirty = true;
         Ok(())
     }
@@ -373,6 +407,7 @@ impl InteractiveTool for IsingModelTool {
             }
             self.record_snapshot_progress();
             self.stepped_pixels = None;
+            self.stepped_spins = None;
             self.dirty = true;
         }
 

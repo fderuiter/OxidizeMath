@@ -1,21 +1,28 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::AttentionMapsTool;
+use crate::framework::ScalarField2D;
+use math_commons::math_kernel::types::flatten_2d_index;
 use nalgebra::DMatrix;
 
-pub(super) fn render_attention_raster(
+fn compute_attention_grid(
     weights: &DMatrix<f64>,
     output: &DMatrix<f64>,
-) -> Option<eframe::egui::ColorImage> {
+) -> Option<(usize, usize, Vec<f64>, Vec<eframe::egui::Color32>)> {
     if weights.nrows() == 0 || weights.ncols() == 0 {
         return None;
     }
     let gap = 1usize;
     let total_cols = weights.ncols() + gap + output.ncols();
     let total_rows = weights.nrows().max(output.nrows());
-    let mut pixels = vec![eframe::egui::Color32::from_gray(24); total_cols * total_rows];
+    let cell_count = total_cols * total_rows;
+    let mut values = vec![0.0_f64; cell_count];
+    let mut pixels = vec![eframe::egui::Color32::from_gray(24); cell_count];
 
-    let paint_mat = |mat: &DMatrix<f64>, col_offset: usize, buf: &mut [eframe::egui::Color32]| {
+    let paint_mat = |mat: &DMatrix<f64>,
+                     col_offset: usize,
+                     vals: &mut [f64],
+                     buf: &mut [eframe::egui::Color32]| {
         let (min_v, max_v) = mat
             .iter()
             .copied()
@@ -35,19 +42,39 @@ pub(super) fn render_attention_raster(
                 } else {
                     0.5
                 };
-                buf[r * total_cols + col_offset + c] =
+                let idx = flatten_2d_index(col_offset + c, r, total_cols);
+                vals[idx] = norm.clamp(0.0, 1.0);
+                buf[idx] =
                     super::compute_attention_cell_color(norm, super::ThemeContrastMode::Dark);
             }
         }
     };
 
-    paint_mat(weights, 0, &mut pixels);
+    paint_mat(weights, 0, &mut values, &mut pixels);
     if output.nrows() > 0 && output.ncols() > 0 {
-        paint_mat(output, weights.ncols() + gap, &mut pixels);
+        paint_mat(output, weights.ncols() + gap, &mut values, &mut pixels);
     }
+    Some((total_cols, total_rows, values, pixels))
+}
+
+pub(super) fn render_attention_raster(
+    weights: &DMatrix<f64>,
+    output: &DMatrix<f64>,
+) -> Option<eframe::egui::ColorImage> {
+    let (total_cols, total_rows, _, pixels) = compute_attention_grid(weights, output)?;
     Some(eframe::egui::ColorImage::new(
         [total_cols, total_rows],
         pixels,
+    ))
+}
+
+pub(super) fn build_attention_scalar_field(
+    weights: &DMatrix<f64>,
+    output: &DMatrix<f64>,
+) -> Option<ScalarField2D> {
+    let (total_cols, total_rows, values, pixels) = compute_attention_grid(weights, output)?;
+    Some(ScalarField2D::discrete_lattice(
+        total_cols, total_rows, values, pixels,
     ))
 }
 

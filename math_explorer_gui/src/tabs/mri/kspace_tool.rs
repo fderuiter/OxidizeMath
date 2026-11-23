@@ -195,6 +195,26 @@ impl InteractiveTool for MriKSpaceTool {
         })
     }
 
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        let n = self.latest.grid_size;
+        if n < 2 || self.latest.recon_mag.len() != n * n {
+            return None;
+        }
+        Some(crate::framework::ScalarField2D::continuous(
+            n,
+            n,
+            self.latest.recon_mag.clone(),
+            false,
+        ))
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let n = self.latest.grid_size;
         if n == 0 || self.latest.recon_mag.len() != n * n {

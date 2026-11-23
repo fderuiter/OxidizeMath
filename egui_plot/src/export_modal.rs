@@ -115,6 +115,10 @@ pub enum ExportModalAction {
     SaveGif,
     /// Copy high-resolution PNG figure to the system clipboard.
     CopyClipboard,
+    /// Save 16-bit big-endian grayscale heightmap PNG to disk.
+    SaveHeightmapPng,
+    /// Save central-difference PBR tangent-space normal-map PNG to disk.
+    SaveNormalMapPng,
 }
 
 /// Provider interface supplying plot datasets and sampled GIF frames on demand.
@@ -128,6 +132,15 @@ pub trait ExportDataSource {
     /// Returns `(enabled, disabled_hover_reason)` for figure export buttons.
     fn figure_capability(&self) -> (bool, &'static str) {
         (true, "")
+    }
+
+    /// Returns `(enabled, disabled_hover_reason)` for 2D scalar-field procedural exports
+    /// (contour SVG, 16-bit heightmap PNG, and PBR normal-map PNG).
+    fn scalar_field_capability(&self) -> (bool, &'static str) {
+        (
+            false,
+            "16-bit heightmap and normal-map exports require a 2D scalar field tool.",
+        )
     }
 
     /// Optional status label color override (defaults to `Color32::GREEN` when `None`).
@@ -245,6 +258,7 @@ fn render_modal_settings(
     ui: &mut egui::Ui,
     scope_id: egui::Id,
     bindings: &mut ExportModalBindings<'_>,
+    scalar_enabled: bool,
 ) {
     ui.horizontal(|ui| {
         ui.label("Resolution Scale:");
@@ -291,6 +305,22 @@ fn render_modal_settings(
     ui.horizontal(|ui| {
         ui.label("GIF Frame Steps:");
         ui.add(egui::Slider::new(bindings.gif_frames, 5..=60));
+    });
+
+    if scalar_enabled {
+        render_scalar_field_settings(ui, bindings.options);
+    }
+}
+
+fn render_scalar_field_settings(ui: &mut egui::Ui, options: &mut ExportOptions) {
+    ui.checkbox(&mut options.seamless_tile, "Seamless 1:1 Tile (Unpadded)");
+    ui.horizontal(|ui| {
+        ui.label("SVG Contour Levels:");
+        ui.add(egui::Slider::new(&mut options.contour_levels, 1..=32));
+    });
+    ui.horizontal(|ui| {
+        ui.label("Normal Map Strength:");
+        ui.add(egui::Slider::new(&mut options.normal_strength, 0.5..=16.0));
     });
 }
 
@@ -488,6 +518,21 @@ fn render_action_buttons(
             close_requested = true;
         }
     });
+    let (scalar_enabled, scalar_reason) = source.scalar_field_capability();
+    if scalar_enabled || !scalar_reason.is_empty() {
+        ui.horizontal(|ui| {
+            if modal_fig_button(ui, scalar_enabled, "🏔 Save 16-bit Heightmap", scalar_reason)
+                && !source.intercept_action(ExportModalAction::SaveHeightmapPng)
+            {
+                *bindings.status_message = Some(scalar_reason.to_string());
+            }
+            if modal_fig_button(ui, scalar_enabled, "🧭 Save Normal Map", scalar_reason)
+                && !source.intercept_action(ExportModalAction::SaveNormalMapPng)
+            {
+                *bindings.status_message = Some(scalar_reason.to_string());
+            }
+        });
+    }
     close_requested
 }
 
@@ -500,6 +545,7 @@ pub fn show_export_modal(
 ) {
     poll_clipboard_status(ctx, config.id, bindings.status_message);
     let status_color = source.status_color();
+    let (scalar_enabled, _) = source.scalar_field_capability();
     let modal_id = config.id.with("export_modal_window");
     let mut modal_open = *bindings.open;
     crate::modal_lifecycle::ModalLifecycle::new(modal_id)
@@ -508,7 +554,7 @@ pub fn show_export_modal(
         .show(ctx, &mut modal_open, |ui, frame_ctx| {
             ui.label(egui::RichText::new(MODAL_HEADER_TEXT).strong());
             ui.separator();
-            render_modal_settings(ui, config.id, &mut bindings);
+            render_modal_settings(ui, config.id, &mut bindings, scalar_enabled);
             ui.separator();
             render_dimension_and_status(
                 ui,

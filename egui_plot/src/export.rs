@@ -56,6 +56,18 @@ impl AspectRatioOption {
     }
 }
 
+pub use crate::scalar_export::{
+    decode_heightmap_png_16bit, encode_heightmap_png_16bit, encode_normal_map_png,
+};
+
+const fn default_contour_levels() -> u32 {
+    8
+}
+
+const fn default_normal_strength() -> f32 {
+    4.0
+}
+
 /// Options controlling high-resolution plot PNG export rendering.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -80,6 +92,15 @@ pub struct ExportOptions {
     /// Project Y coordinates in base-10 logarithmic space.
     #[cfg_attr(feature = "serde", serde(default))]
     pub log_y: bool,
+    /// Render unpadded 1:1 edge-to-edge tiles without canvas border margins.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub seamless_tile: bool,
+    /// Number of iso-contour levels extracted for 2D scalar-field SVG exports.
+    #[cfg_attr(feature = "serde", serde(default = "default_contour_levels"))]
+    pub contour_levels: u32,
+    /// Gradient amplification factor for tangent-space PBR normal-map PNG exports.
+    #[cfg_attr(feature = "serde", serde(default = "default_normal_strength"))]
+    pub normal_strength: f32,
 }
 
 impl Default for ExportOptions {
@@ -94,6 +115,9 @@ impl Default for ExportOptions {
             aspect_ratio: AspectRatioOption::SixteenNine,
             log_x: false,
             log_y: false,
+            seamless_tile: false,
+            contour_levels: default_contour_levels(),
+            normal_strength: default_normal_strength(),
         }
     }
 }

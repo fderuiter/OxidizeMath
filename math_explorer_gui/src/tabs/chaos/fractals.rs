@@ -17,6 +17,9 @@ pub use formula::{default_fractal_input_bar, CompiledFractalJob, DEFAULT_FRACTAL
 mod runner;
 pub use runner::*;
 
+#[path = "fractals/scalar_export.rs"]
+mod scalar_export;
+
 #[path = "fractals/shader.rs"]
 mod shader;
 
@@ -159,35 +162,30 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
-        let zoom = if self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom) {
-            self.zoom
+        Some(self.render_export_image_at((480, 320)))
+    }
+
+    fn export_raster_image_sized(
+        &self,
+        target_dims: (usize, usize),
+        seamless_tile: bool,
+    ) -> Option<egui::ColorImage> {
+        if seamless_tile {
+            self.export_raster_image()
         } else {
-            1.0
-        };
-        let req = FractalRenderRequest {
-            generation: self.request_generation,
-            width: 480,
-            height: 320,
-            center: Complex::new(
-                self.center.re.clamp(COORD_MIN, COORD_MAX),
-                self.center.im.clamp(COORD_MIN, COORD_MAX),
-            ),
-            zoom,
-            max_iter: self
-                .max_iter
-                .clamp(10, math_commons::registry::MAX_ITERATIONS as u32),
-            mode: self.mode,
-            julia_c: Complex::new(
-                self.julia_c.re.clamp(COORD_MIN, COORD_MAX),
-                self.julia_c.im.clamp(COORD_MIN, COORD_MAX),
-            ),
-            high_contrast: self.high_contrast,
-        };
-        let job = self
-            .mode
-            .is_custom()
-            .then(|| CompiledFractalJob::from_bar(&self.math_input));
-        Some(render_fractal_color_image_with_formula(&req, job.as_ref()))
+            Some(self.render_export_image_at(target_dims))
+        }
+    }
+
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        Some(self.build_scalar_field_2d(target_dims))
     }
 
     fn step_simulation(&mut self) {

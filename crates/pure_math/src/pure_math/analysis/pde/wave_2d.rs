@@ -53,7 +53,9 @@ pub use masks::{
     apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_point_clamp,
     apply_sponge_layer,
 };
-pub use particles_and_contours::{ChladniSandSystem, MarchingSquares2D};
+pub use particles_and_contours::{
+    ChladniSandSystem, ContourChain, MarchingSquares2D, extract_stitched_contours,
+};
 pub use spectral::{SpectralAnalyzer2D, SpectralPeak2D};
 
 /// Zero-allocation 2D Verlet PDE solver with pre-allocated mask and stencil buffers.

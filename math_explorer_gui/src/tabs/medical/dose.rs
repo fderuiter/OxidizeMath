@@ -20,10 +20,10 @@ use math_explorer::physics::medical::dose::kernel::{DoseKernel, ExponentialKerne
 
 /// Interactive radiation therapy tool supporting point-source PSF convolution and 4-beam IMRT planning.
 pub struct DoseCalculationTool {
-    amplitude: f64,
-    beta: f64,
-    width: usize,
-    height: usize,
+    pub(super) amplitude: f64,
+    pub(super) beta: f64,
+    pub(super) width: usize,
+    pub(super) height: usize,
     /// Whether 4-beam coplanar IMRT mode is active.
     pub imrt_mode: bool,
     /// Coplanar gantry beam angles (degrees) in `[0, 360]`.
@@ -281,6 +281,17 @@ impl InteractiveTool for DoseCalculationTool {
 
     fn export_raster_image(&self) -> Option<ColorImage> {
         Some(self.compute_dose_image_for_contrast(self.high_contrast))
+    }
+
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        Some(super::dose_export::build_dose_scalar_field(self))
     }
 
     fn state_revision(&self) -> u64 {

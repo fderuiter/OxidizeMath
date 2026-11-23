@@ -15,6 +15,7 @@ use egui_plot::export_primitives::{
     ExportPrimitive,
 };
 
+use super::export_scalar_field::{scalar_field_to_svg_primitives, target_dimensions_for_options};
 use super::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework};
 
 fn resolve_tool_primitives_with_fallback(
@@ -52,33 +53,31 @@ fn valid_raster_image(tool: &dyn InteractiveTool) -> Option<egui::ColorImage> {
         .filter(|img| img.width() > 0 && img.height() > 0 && !img.pixels.is_empty())
 }
 
+fn valid_raster_image_sized(
+    tool: &dyn InteractiveTool,
+    target_dims: (usize, usize),
+    seamless_tile: bool,
+) -> Option<egui::ColorImage> {
+    tool.export_raster_image_sized(target_dims, seamless_tile)
+        .filter(|img| img.width() > 0 && img.height() > 0 && !img.pixels.is_empty())
+}
+
 fn render_tool_color_image_with_fallback(
     tool: &dyn InteractiveTool,
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<egui::ColorImage, String> {
+    let (target_w, target_h) = target_dimensions_for_options(options)?;
     let mut preloaded_prims = None;
-    if let Some(raster) = valid_raster_image(tool) {
+    if let Some(raster) =
+        valid_raster_image_sized(tool, (target_w, target_h), options.seamless_tile)
+    {
+        if options.seamless_tile {
+            return Ok(raster);
+        }
         let plot_prims = tool.export_plot_primitives();
         if !has_drawable_primitives(&plot_prims) {
-            let target_w = (options.width as f32 * options.scale).round().max(1.0) as u32;
-            let mut target_h = (options.height as f32 * options.scale).round().max(1.0) as u32;
-            if let Some(ratio) = options.aspect_ratio.ratio().filter(|&r| r > 0.0) {
-                target_h = (target_w as f32 / ratio).round().max(1.0) as u32;
-            }
-            if target_w > egui_plot::MAX_EXPORT_DIMENSION
-                || target_h > egui_plot::MAX_EXPORT_DIMENSION
-            {
-                return Err(format!(
-                    "Requested dimensions ({target_w}x{target_h}) exceed maximum limit"
-                ));
-            }
-            return Ok(scale_color_image(
-                &raster,
-                target_w as usize,
-                target_h as usize,
-                options,
-            ));
+            return Ok(scale_color_image(&raster, target_w, target_h, options));
         }
         preloaded_prims = Some(plot_prims);
     }
@@ -107,6 +106,21 @@ fn render_tool_svg_with_fallback(
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<String, String> {
+    let dims = target_dimensions_for_options(options)?;
+    let target = if options.seamless_tile {
+        None
+    } else {
+        Some(dims)
+    };
+    if let Some(field) = tool.export_scalar_field_2d(target) {
+        let mut prims = scalar_field_to_svg_primitives(tool.name(), &field, options)?;
+        for extra in tool.export_plot_primitives() {
+            if matches!(extra, ExportPrimitive::Points { .. }) {
+                prims.push(extra);
+            }
+        }
+        return export_primitives_svg(&prims, options);
+    }
     let mut preloaded_prims = None;
     if let Some(raster) = valid_raster_image(tool) {
         let plot_prims = tool.export_plot_primitives();
@@ -197,6 +211,7 @@ fn has_non_polyline_primitives(primitives: &[ExportPrimitive]) -> bool {
             ExportPrimitive::Bar { .. }
                 | ExportPrimitive::Arrow { .. }
                 | ExportPrimitive::BoxElem { .. }
+                | ExportPrimitive::ContourPath { .. }
                 | ExportPrimitive::RasterImage { .. }
         )
     })

@@ -283,6 +283,10 @@ impl MorphogenesisTool {
 
             self.draw_fault_and_recovery(ui, &ctx);
             self.draw_kinetics_selector(ui);
+            {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                ui.checkbox(&mut p.periodic_boundary, "Periodic Boundaries (Toroidal)");
+            }
             ui.separator();
             self.draw_parameter_sliders(ui);
             ui.separator();
@@ -312,31 +316,35 @@ impl MorphogenesisTool {
                 }
             }
 
-            if let Some(cmd) = draw_morpho_sculpt_controls(ui, &mut self.brush_kit) {
-                match cmd {
-                    "stamp_maze" => {
-                        *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
-                            build_maze_rle(self.width, self.height);
-                        let _ = self
-                            .worker
-                            .send_command(SimCommand::Custom("stamp_maze".to_string()));
-                        self.dirty = true;
-                        ctx.request_repaint();
-                    }
-                    "clear_mask" => {
-                        self.mask_rle
-                            .write()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .clear();
-                        let _ = self.worker.send_command(SimCommand::ClearObstacles);
-                        self.dirty = true;
-                        ctx.request_repaint();
-                    }
-                    _ => {}
-                }
-            }
+            self.draw_sculpt_section(ui, &ctx);
             self.draw_presets(ui);
         });
+    }
+
+    fn draw_sculpt_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if let Some(cmd) = draw_morpho_sculpt_controls(ui, &mut self.brush_kit) {
+            match cmd {
+                "stamp_maze" => {
+                    *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) =
+                        build_maze_rle(self.width, self.height);
+                    let _ = self
+                        .worker
+                        .send_command(SimCommand::Custom("stamp_maze".to_string()));
+                    self.dirty = true;
+                    ctx.request_repaint();
+                }
+                "clear_mask" => {
+                    self.mask_rle
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clear();
+                    let _ = self.worker.send_command(SimCommand::ClearObstacles);
+                    self.dirty = true;
+                    ctx.request_repaint();
+                }
+                _ => {}
+            }
+        }
     }
 
     fn draw_turing_field_plot(&mut self, ui: &mut egui::Ui) {

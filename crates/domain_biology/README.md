@@ -16,7 +16,7 @@ By formalizing biological dynamics into clean, verified Rust algorithms, the cra
 - **`morphogenesis`**: Mathematical models of biological tissue growth, `SchnakenbergKinetics` / `GrayScottKinetics` morphogen gradients, and cellular patterning.
 - **`lenia`**: Spectral 2D Lenia continuous cellular automata (`LeniaEngine`, concentric-ring `KernelShells`, Gaussian growth curves, and `Orbium` / `Geminium` / `Hydrogeminium` / `Scutium` solitons).
 - **`evolution`**: Replicator dynamics, selection equations, and evolutionary game theory.
-- **`diffusion`**: Molecular concentration gradient solvers and Fickian diffusion mechanics.
+- **`diffusion`**: Molecular concentration gradient solvers and Fickian diffusion mechanics (`FiniteDifference2D` and `MaskedFiniteDifference2D` supporting zero-flux `BoundaryMode::Neumann` and toroidal `BoundaryMode::Periodic` boundaries).
 
 ---
 

@@ -30,6 +30,7 @@ mod plot_overlays;
 mod plot_ui;
 pub mod poi;
 mod poi_interaction;
+pub mod scalar_export;
 pub mod sidecar_3d;
 pub mod snapshot;
 mod transform;
@@ -52,9 +53,10 @@ pub use crate::{
         AspectRatioOption, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
         color32_image_to_png, color32_images_to_gif, copy_image_to_clipboard,
         copy_image_to_clipboard_with_callback, copy_text_to_clipboard,
-        copy_text_to_clipboard_with_callback, export_csv, export_csv_3d, export_custom_gif,
-        export_custom_image, export_custom_png, export_custom_svg, export_json, export_json_3d,
-        parse_csv, save_file_dialog, trigger_import_csv_for_plot,
+        copy_text_to_clipboard_with_callback, decode_heightmap_png_16bit,
+        encode_heightmap_png_16bit, encode_normal_map_png, export_csv, export_csv_3d,
+        export_custom_gif, export_custom_image, export_custom_png, export_custom_svg, export_json,
+        export_json_3d, parse_csv, save_file_dialog, trigger_import_csv_for_plot,
     },
     export_modal::{
         CallbackExportSource, ExportDataSource, ExportModalAction, ExportModalBindings,

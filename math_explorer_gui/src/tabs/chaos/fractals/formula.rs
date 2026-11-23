@@ -10,9 +10,9 @@ pub const DEFAULT_FRACTAL_EXPR: &str = "z^3 + c";
 /// evaluated on progressive background worker passes without heap allocation.
 #[derive(Clone, Debug)]
 pub struct CompiledFractalJob {
-    compiled: CompiledExpr,
-    params: [f64; MAX_SYNTHESIZED_PARAMS],
-    param_len: usize,
+    pub(super) compiled: CompiledExpr,
+    pub(super) params: [f64; MAX_SYNTHESIZED_PARAMS],
+    pub(super) param_len: usize,
 }
 
 impl CompiledFractalJob {

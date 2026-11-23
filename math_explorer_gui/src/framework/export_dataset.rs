@@ -56,6 +56,14 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
         }
     }
 
+    fn scalar_field_capability(&self) -> (bool, &'static str) {
+        let supported = self
+            .active_tool
+            .as_ref()
+            .is_some_and(|tool| tool.supports_scalar_field_2d());
+        (supported, "")
+    }
+
     fn status_color(&self) -> Option<egui::Color32> {
         Some(self.status_color)
     }
@@ -67,6 +75,12 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
             egui_plot::ExportModalAction::SaveGif => (ExportFormat::Gif, ExportTarget::File),
             egui_plot::ExportModalAction::CopyClipboard => {
                 (ExportFormat::Png, ExportTarget::Clipboard)
+            }
+            egui_plot::ExportModalAction::SaveHeightmapPng => {
+                (ExportFormat::HeightmapPng, ExportTarget::File)
+            }
+            egui_plot::ExportModalAction::SaveNormalMapPng => {
+                (ExportFormat::NormalMapPng, ExportTarget::File)
             }
         };
         self.export_queue.push_target(format, target);

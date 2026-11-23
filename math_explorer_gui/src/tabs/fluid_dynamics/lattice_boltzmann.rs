@@ -2,24 +2,20 @@
 
 use super::lattice_boltzmann_sculpt::{
     apply_lbm_custom_action, apply_stroke_to_lbm, draw_lbm_brush_panel, export_solver_rle,
-    inspect_solver_solid_and_core, record_stroke_in_rle, reset_solver_preserving_obstacles,
-    rotate_airfoil_in_place, seed_initial_lbm_geometry,
+    record_stroke_in_rle, reset_solver_preserving_obstacles, rotate_airfoil_in_place,
+    seed_initial_lbm_geometry,
 };
-use super::lbm_fairing::{
-    decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0,
-    LBM_U_IN,
-};
+use super::lbm_export::{build_lbm_snapshot, extract_lbm_scalar_field};
+use super::lbm_fairing::{decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS};
 use super::lbm_fairing_ui::LbmUiExtension;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool, UnifiedUiExtension};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{decode_rle_mask, BrushMode, BrushStroke, SpatialBrushKit};
-use eframe::egui::Color32;
-use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-    advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_drag_coefficient,
-    compute_vorticity_into, AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9,
+    advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_vorticity_into,
+    AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
@@ -30,7 +26,7 @@ pub(crate) const LBM_HEIGHT: usize = 50;
 pub(crate) const LBM_INLET_U: f64 = 0.1;
 
 /// Live hydrodynamic force and vorticity diagnostics attached to LBM snapshots.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct LbmSnapshotMetrics {
     /// Dimensionless lift coefficient $C_L$.
     pub lift_coeff: f64,
@@ -38,6 +34,10 @@ pub struct LbmSnapshotMetrics {
     pub drag_coeff: f64,
     /// Peak vorticity magnitude $|\omega_z|$ across interior fluid cells.
     pub max_vorticity: f64,
+    /// Row-major top-down scalar field (`|u|` or `ω_z`) matching snapshot dimensions.
+    pub scalar_field: Vec<f64>,
+    /// Row-major top-down active fluid mask (`false` on solid obstacle cells).
+    pub active_mask: Vec<bool>,
 }
 
 pub struct LbmUnified {
@@ -99,7 +99,8 @@ impl LbmUnified {
                     && y < height
                     && (x - cx).pow(2) + (y - cy).pow(2) <= r * r
                 {
-                    self.solver.set_obstacle(x as usize, y as usize, is_obstacle);
+                    self.solver
+                        .set_obstacle(x as usize, y as usize, is_obstacle);
                 }
             }
         }
@@ -112,8 +113,17 @@ impl FiniteStateGuard for LbmUnified {
         if self.diverged {
             return false;
         }
-        self.solver.state.velocity_x().iter().all(|&v| v.is_finite())
-            && self.solver.state.velocity_y().iter().all(|&v| v.is_finite())
+        self.solver
+            .state
+            .velocity_x()
+            .iter()
+            .all(|&v| v.is_finite())
+            && self
+                .solver
+                .state
+                .velocity_y()
+                .iter()
+                .all(|&v| v.is_finite())
             && self.solver.state.density().iter().all(|&v| v.is_finite())
     }
 
@@ -227,59 +237,7 @@ impl UnifiedModel for LbmUnified {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let width = self.solver.width();
-        let height = self.solver.height();
-        let mut pixels = vec![Color32::BLACK; width * height];
-        let mut max_vort = 0.0_f64;
-
-        for y in 0..height {
-            let solver_y = height - 1 - y;
-            for x in 0..width {
-                let pixel_idx = flatten_2d_index(x, y, width);
-                let solver_idx = flatten_2d_index(x, solver_y, width);
-                if self.solver.is_obstacle(x, solver_y) {
-                    pixels[pixel_idx] = Color32::from_gray(50);
-                } else {
-                    let omega = self.vorticity_buf[solver_idx];
-                    let safe_w = if omega.is_finite() { omega } else { 0.0 };
-                    max_vort = max_vort.max(safe_w.abs());
-                    let norm = if self.display_vorticity {
-                        (0.5 + safe_w * 12.0).clamp(0.0, 1.0)
-                    } else {
-                        let v = self.solver.get_velocity_magnitude(x, solver_y);
-                        let safe_v = if v.is_finite() { v } else { 0.0 };
-                        (safe_v * 1000.0 / 255.0).clamp(0.0, 1.0)
-                    };
-                    let rgb = heatmap_color(norm);
-                    pixels[pixel_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
-                }
-            }
-        }
-
-        let (f_drag, f_lift) = self.solver.hydrodynamic_forces();
-        let c_d = compute_drag_coefficient(f_drag, LBM_RHO_0, LBM_U_IN, LBM_REF_DIAMETER);
-        let (n_solid, core_intact) = inspect_solver_solid_and_core(&self.solver);
-        let metrics = LbmSnapshotMetrics {
-            lift_coeff: self.latest_aero.lift_coeff,
-            drag_coeff: self.latest_aero.drag_coeff,
-            max_vorticity: max_vort,
-        };
-
-        StateSnapshot {
-            width,
-            height,
-            pixels: Arc::new(RwLock::new(pixels)),
-            custom_data: vec![
-                f_drag,
-                f_lift,
-                c_d,
-                n_solid as f64,
-                f64::from(u8::from(core_intact)),
-                self.step_count as f64,
-            ],
-            structured_data: Some(Box::new(metrics)),
-            sonification: crate::audio::SonificationFrame::silent(),
-        }
+        build_lbm_snapshot(self)
     }
 
     fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
@@ -339,6 +297,17 @@ impl UnifiedModel for LbmUnified {
         true
     }
 
+    fn supports_scalar_field_2d() -> bool {
+        true
+    }
+
+    fn extract_scalar_field_2d(
+        snapshot: &StateSnapshot,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        extract_lbm_scalar_field(snapshot)
+    }
+
     fn supports_spatial_brush() -> bool {
         true
     }
@@ -368,7 +337,11 @@ impl UnifiedModel for LbmUnified {
         record_stroke_in_rle(stroke, params, sculpt_state);
     }
 
-    fn apply_sculpt_payload(&mut self, payload: &SculptStatePayload, params: &HashMap<String, f64>) {
+    fn apply_sculpt_payload(
+        &mut self,
+        payload: &SculptStatePayload,
+        params: &HashMap<String, f64>,
+    ) {
         if payload.rle_mask.is_empty() {
             return;
         }

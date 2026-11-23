@@ -18,6 +18,7 @@ mod export_queue;
 pub(crate) use export_queue::deferred_export_tests;
 #[cfg(test)]
 mod export_queue_tests;
+pub mod export_scalar_field;
 pub(crate) mod export_shader;
 #[cfg(test)]
 mod export_shader_tests;
@@ -45,6 +46,15 @@ mod plot_persistence_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
+#[cfg(all(
+    test,
+    target_arch = "wasm32",
+    feature = "pure_math",
+    feature = "biology",
+    feature = "physics",
+    feature = "ai"
+))]
+mod scalar_export_wasm_tests;
 pub mod side_panel;
 pub mod spatial_brush;
 #[cfg(all(test, feature = "physics", feature = "biology"))]
@@ -72,6 +82,7 @@ pub use clamp::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
+pub use export_scalar_field::{ScalarField2D, ScalarFieldTopology};
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use math_input::*;
@@ -305,6 +316,28 @@ pub trait InteractiveTool {
 
     /// Optional hook for texture-backed tools to expose their rendered 2D raster field for PNG, SVG, and GIF exports.
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        None
+    }
+
+    /// Optional cold-path hook to render a 2D raster field at explicit `(width, height)` target dimensions.
+    fn export_raster_image_sized(
+        &self,
+        _target_dims: (usize, usize),
+        _seamless_tile: bool,
+    ) -> Option<egui::ColorImage> {
+        self.export_raster_image()
+    }
+
+    /// Fast zero-allocation capability query returning `true` when [`Self::export_scalar_field_2d`] is implemented.
+    fn supports_scalar_field_2d(&self) -> bool {
+        false
+    }
+
+    /// Optional cold-path hook exposing a raw `f64` 2D scalar field for stitched SVG contours, 16-bit heightmaps, and PBR normal maps.
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<ScalarField2D> {
         None
     }
 

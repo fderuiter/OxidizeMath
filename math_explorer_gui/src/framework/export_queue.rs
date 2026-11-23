@@ -25,6 +25,10 @@ pub(crate) enum ExportFormat {
     GlslWebGl2,
     /// Standalone Shadertoy (`mainImage`) fragment shader (`.frag`).
     GlslShadertoy,
+    /// 16-bit big-endian grayscale displacement heightmap PNG (`.png`).
+    HeightmapPng,
+    /// 8-bit tangent-space PBR normal-map PNG (`.png`).
+    NormalMapPng,
 }
 
 impl ExportFormat {
@@ -50,6 +54,13 @@ impl ExportFormat {
                 "Shadertoy Fragment Shader",
                 "shadertoy",
             ),
+            Self::HeightmapPng => (
+                "png",
+                "16-bit Heightmap",
+                "16-bit Heightmap PNG",
+                "heightmap",
+            ),
+            Self::NormalMapPng => ("png", "Normal Map", "PBR Normal Map PNG", "normal_map"),
         }
     }
 
@@ -254,6 +265,9 @@ impl SimulationFramework {
             }
             (ExportFormat::GlslWebGl2 | ExportFormat::GlslShadertoy, target) => {
                 self.dispatch_shader_export(req.format, target, ctx);
+            }
+            (ExportFormat::HeightmapPng | ExportFormat::NormalMapPng, target) => {
+                self.dispatch_scalar_field_export(req.format, target);
             }
         }
     }

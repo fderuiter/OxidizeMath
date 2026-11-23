@@ -42,6 +42,7 @@ classDiagram
 
 - **`MathExplorerApp`**: Root `eframe::App` shell managing navigation, starter gallery workflows, command palette search, accessibility announcements, and delegating each viewport pane's scoped `egui::Ui` to the active tab via `ExplorerTab::show_inside`.
 - **`ExplorerTab` & `framework`**: Standard visualization trait and interactive tool framework supporting single-pane and multi-pane layouts while delegating all mathematical computation to `math_explorer`.
+- **Procedural 2D Scalar-Field Exports (`framework::export_scalar_field`)**: Tools implementing `InteractiveTool::export_scalar_field_2d` export stitched Marching Squares `<path>` contour SVGs (or crisp `<rect>` discrete lattice SVGs), seamless 1:1 unpadded tile PNGs, 16-bit grayscale heightmap PNGs (`HeightmapPng`), and tangent-space PBR normal-map PNGs (`NormalMapPng`) via the deferred end-of-frame `ExportQueue` ([ADR 0047](../docs/adr/0047-scalar-field-procedural-export-pipeline.md)).
 - **`async_sim`**: Off-thread and Web Worker simulation runners preventing frame-budget stalls during heavy PDE, FFT, or Monte Carlo sweeps.
 - **`presets` & `url_state`**: Versioned JSON preset import/export and deterministic URL state encoding.
 

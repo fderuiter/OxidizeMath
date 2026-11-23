@@ -9,7 +9,7 @@ pub use crate::app::ThemeMode as ThemeContrastMode;
 mod heatmap;
 #[cfg(test)]
 pub use heatmap::cell_at_pos;
-pub use heatmap::{HeatmapTexture, compute_attention_cell_color};
+pub use heatmap::{compute_attention_cell_color, HeatmapTexture};
 
 pub struct AttentionMapsTool {
     q_matrix: DMatrix<f64>,
@@ -126,6 +126,17 @@ impl InteractiveTool for AttentionMapsTool {
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
         preset::render_attention_raster(&self.attention_weights, &self.output_matrix)
+    }
+
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        preset::build_attention_scalar_field(&self.attention_weights, &self.output_matrix)
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {

@@ -54,3 +54,32 @@ async fn wasm_clipboard_text_and_image_exports_deliver_callbacks() {
         assert!(err.contains("Clipboard write failed"));
     }
 }
+
+#[wasm_bindgen_test]
+fn wasm_scalar_heightmap_normal_map_and_contour_svg_encode() {
+    let values = [0.0, 0.25, 0.5, 0.75, 0.2, 0.4, 0.8, 1.0, 0.1];
+    let hm = crate::encode_heightmap_png_16bit(&values, 3, 3).expect("wasm 16-bit heightmap");
+    let (w, h, samples) = crate::decode_heightmap_png_16bit(&hm).expect("decode 16-bit heightmap");
+    assert_eq!((w, h), (3, 3));
+    assert_eq!(samples[0], 0);
+    assert_eq!(samples[7], u16::MAX);
+
+    let nm = crate::encode_normal_map_png(&values, 3, 3, 2.0, true).expect("wasm normal map");
+    assert!(nm.starts_with(b"\x89PNG\r\n\x1a\n"));
+
+    let prim = crate::ExportPrimitive::ContourPath {
+        name: "wasm_contour".to_string(),
+        iso_level: 0.5,
+        points: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+        closed: true,
+        color: egui::Color32::from_rgb(40, 200, 160),
+        stroke_width: 1.5,
+    };
+    let opts = crate::ExportOptions {
+        seamless_tile: true,
+        ..crate::ExportOptions::default()
+    };
+    let svg = crate::export_primitives::export_primitives_svg(&[prim], &opts).expect("wasm svg");
+    assert!(svg.contains("<path d=\"M "));
+    assert!(!svg.contains("<image"));
+}

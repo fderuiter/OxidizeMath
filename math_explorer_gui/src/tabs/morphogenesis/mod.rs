@@ -19,6 +19,7 @@ pub mod atlas;
 pub mod lenia;
 pub mod presets;
 pub mod runner;
+mod scalar_export;
 pub mod sculpt;
 mod seeding;
 pub mod tool;
@@ -163,6 +164,18 @@ impl MorphogenesisTab {
         let existing = tool
             .save_state()
             .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok());
+        let state = Self::build_state_from_config(&config, existing);
+        let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
+        tool.try_load_state(&payload)?;
+        self.sync_shared_params_from_config(&config);
+        self.sync_framework_after_direct_tool_mutation();
+        Ok(())
+    }
+
+    fn build_state_from_config(
+        config: &MorphogenesisPresetConfig,
+        existing: Option<MorphogenesisToolState>,
+    ) -> MorphogenesisToolState {
         let current_state = existing
             .as_ref()
             .and_then(|s| s.state)
@@ -174,6 +187,7 @@ impl MorphogenesisTab {
         let f = existing.as_ref().map_or(0.0367, |c| c.f);
         let k = existing.as_ref().map_or(0.0649, |c| c.k);
         let atlas_visible = existing.as_ref().is_some_and(|s| s.atlas_visible);
+        let periodic_boundary = existing.as_ref().is_some_and(|s| s.periodic_boundary);
         let (existing_mask, atlas_axes) = match existing {
             Some(s) => {
                 let keep_mask = if s.width == config.width && s.height == config.height {
@@ -190,7 +204,7 @@ impl MorphogenesisTab {
         } else {
             SimWorkerState::Ready
         };
-        let state = MorphogenesisToolState {
+        MorphogenesisToolState {
             a: config.a,
             b: config.b,
             d_u: config.d_u,
@@ -207,12 +221,8 @@ impl MorphogenesisTab {
             mask_rle: existing_mask,
             atlas_visible,
             atlas_axes,
-        };
-        let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
-        tool.try_load_state(&payload)?;
-        self.sync_shared_params_from_config(&config);
-        self.sync_framework_after_direct_tool_mutation();
-        Ok(())
+            periodic_boundary,
+        }
     }
 
     fn sync_shared_params_from_config(&mut self, cfg: &MorphogenesisPresetConfig) {

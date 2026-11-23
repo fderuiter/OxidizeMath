@@ -98,6 +98,11 @@ impl MorphogenesisTool {
                 .clone(),
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
+            periodic_boundary: self
+                .params
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .periodic_boundary,
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);
@@ -132,12 +137,12 @@ impl MorphogenesisTool {
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .clone();
-            let _ = self.worker.send_command(SimCommand::SyncSculptState(
-                SculptStatePayload {
+            let _ = self
+                .worker
+                .send_command(SimCommand::SyncSculptState(SculptStatePayload {
                     rle_mask,
                     sparse_potential: Vec::new(),
-                },
-            ));
+                }));
         }
         if target_state == SimWorkerState::Running {
             self.pending_initial_start = false;
