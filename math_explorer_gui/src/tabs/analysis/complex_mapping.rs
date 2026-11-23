@@ -7,6 +7,8 @@ use std::collections::BTreeMap;
 
 #[path = "complex_mapping/cache.rs"]
 mod cache;
+#[path = "complex_mapping/shader.rs"]
+mod shader;
 #[path = "complex_mapping/ui.rs"]
 mod ui;
 
@@ -109,6 +111,7 @@ pub struct ComplexMappingTool {
     pub(crate) grid_density: usize,
     pub(crate) inspection_point: [f64; 2],
     pub(crate) math_input: MathExpressionInputBar,
+    pub(crate) high_contrast: bool,
     pub(crate) cache: cache::ContourGridCache,
 }
 
@@ -134,6 +137,7 @@ impl Default for ComplexMappingTool {
             )
             .with_axes(&["z"])
             .with_complex_mode(true),
+            high_contrast: false,
             cache: cache::ContourGridCache::default(),
         }
     }
@@ -197,6 +201,14 @@ impl InteractiveTool for ComplexMappingTool {
 
     fn state_revision(&self) -> u64 {
         self.compute_state_revision()
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot().with_shader()
+    }
+
+    fn export_glsl_shader(&self, dialect: crate::framework::ShaderDialect) -> Result<String, String> {
+        self.build_glsl_shader(dialect)
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -273,6 +285,8 @@ impl InteractiveTool for ComplexMappingTool {
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        self.high_contrast = crate::app::ThemeMode::from_visuals(parent_ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
         self.draw_controls(parent_ui);
         let grid_ok = self.ensure_cached_contours();
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {

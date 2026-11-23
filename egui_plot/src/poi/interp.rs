@@ -107,66 +107,46 @@ pub(crate) struct SingleLineScan {
     pub(crate) extrema: Vec<([f64; 2], bool)>,
 }
 
-fn fast_forward_plateau(
-    orig: &[PlotPoint],
-    flat_y: f64,
+fn skip_plateau_chunks(
+    pts: &[PlotPoint],
+    start_idx: usize,
+    y_val: f64,
     want_y_ints: bool,
-    last: PlotPoint,
-) -> (PlotPoint, usize) {
-    let mut rem = orig;
-    macro_rules! scan_run {
-        (|$p:ident| $cond:expr) => {{
-            while let [a, b, c, d, e, f, g, h, rest @ ..] = rem {
-                let ok = ({
-                    let $p = a;
-                    $cond
-                }) & ({
-                    let $p = b;
-                    $cond
-                }) & ({
-                    let $p = c;
-                    $cond
-                }) & ({
-                    let $p = d;
-                    $cond
-                }) & ({
-                    let $p = e;
-                    $cond
-                }) & ({
-                    let $p = f;
-                    $cond
-                }) & ({
-                    let $p = g;
-                    $cond
-                }) & ({
-                    let $p = h;
-                    $cond
-                });
-                if ok {
-                    rem = rest;
-                } else {
-                    break;
-                }
-            }
-            while let [$p, rest @ ..] = rem {
-                if $cond {
-                    rem = rest;
-                } else {
-                    break;
-                }
-            }
-        }};
+    p0_x: f64,
+) -> Option<(usize, PlotPoint)> {
+    let (x_min, x_max) = if !want_y_ints {
+        (f64::MIN, f64::MAX)
+    } else if p0_x > 0.0 {
+        (f64::from_bits(1), f64::MAX)
+    } else if p0_x < 0.0 {
+        (f64::MIN, -f64::from_bits(1))
+    } else {
+        return None;
+    };
+    macro_rules! ok_pt {
+        ($p:expr) => {
+            ($p.y == y_val) & ($p.x >= x_min) & ($p.x <= x_max)
+        };
     }
-    if !want_y_ints {
-        scan_run!(|p| (p.y == flat_y) & ((p.x * 0.0) == 0.0));
-    } else if last.x > 0.0 {
-        scan_run!(|p| (p.y == flat_y) & (p.x > 0.0) & ((p.x * 0.0) == 0.0));
-    } else if last.x < 0.0 {
-        scan_run!(|p| (p.y == flat_y) & (p.x < 0.0) & ((p.x * 0.0) == 0.0));
+    let (chunks, _) = pts[start_idx..].as_chunks::<8>();
+    let mut skipped = 0usize;
+    let mut tail = PlotPoint { x: 0.0, y: 0.0 };
+    for &[a0, a1, a2, a3, a4, a5, a6, a7] in chunks {
+        if !(ok_pt!(a0)
+            & ok_pt!(a1)
+            & ok_pt!(a2)
+            & ok_pt!(a3)
+            & ok_pt!(a4)
+            & ok_pt!(a5)
+            & ok_pt!(a6)
+            & ok_pt!(a7))
+        {
+            break;
+        }
+        skipped += 8;
+        tail = a7;
     }
-    let skipped = orig.len() - rem.len();
-    let end = if skipped > 0 { orig[skipped - 1] } else { last };
-    (end, skipped)
+    (skipped > 0).then_some((start_idx + skipped, tail))
 }
 
 /// Fused single-pass streaming scan for $y = 0$ roots, $x = 0$ intercepts, and local extrema.
@@ -190,6 +170,18 @@ pub(crate) fn scan_single_line_all(
     let (mut mode, mut prev, mut start, mut second, mut last) = (0u8, dummy, dummy, dummy, dummy);
     let mut i = 1;
     while i < n {
+        if p0_fin
+            && (mode == 0 || mode == 2)
+            && n - i >= 8
+            && let Some((next_i, tail)) = skip_plateau_chunks(pts, i, p0.y, want_y_ints, p0.x)
+        {
+            if mode == 2 {
+                last = tail;
+            }
+            p0 = tail;
+            i = next_i;
+            continue;
+        }
         let idx = i - 1;
         let p1 = pts[i];
         i += 1;
@@ -217,23 +209,14 @@ pub(crate) fn scan_single_line_all(
                     out.y_ints.push(p1.y);
                 }
             }
-            let mut cur_end = p1;
             if mode != 0 && p1.y == start.y {
                 if mode == 2 {
-                    let (ff_last, skipped) =
-                        fast_forward_plateau(&pts[i..], start.y, want_y_ints, p1);
-                    last = ff_last;
-                    cur_end = ff_last;
-                    i += skipped;
+                    last = p1;
                 } else if (prev.x < start.x && start.x < p1.x)
                     || (prev.x > start.x && start.x > p1.x)
                 {
                     second = p1;
-                    let (ff_last, skipped) =
-                        fast_forward_plateau(&pts[i..], start.y, want_y_ints, p1);
-                    last = ff_last;
-                    cur_end = ff_last;
-                    i += skipped;
+                    last = p1;
                     mode = 2;
                 } else {
                     mode = 0;
@@ -248,17 +231,12 @@ pub(crate) fn scan_single_line_all(
                     start = p1;
                     last = p1;
                 } else {
-                    let (ff_last, skipped) = fast_forward_plateau(&pts[i..], p1.y, want_y_ints, p1);
-                    cur_end = ff_last;
-                    i += skipped;
                     mode = 0;
                 }
             }
-            p0 = cur_end;
-            p0_fin = true;
-            continue;
+        } else {
+            mode = 0;
         }
-        mode = 0;
         p0 = p1;
         p0_fin = p1_fin;
     }

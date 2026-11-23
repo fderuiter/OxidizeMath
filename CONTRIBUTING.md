@@ -61,10 +61,10 @@ git config core.hooksPath .githooks
 
 When configured, Git executes `.githooks/pre-commit` before completing any `git commit`. The pre-commit hook runs the fast diff-scoped suite (`cargo run -p xtask -- lint-staged`) against paths in `git diff --cached`:
 - Checks formatting (`rustfmt --check`) only on staged `.rs` files.
-- Runs `unified_verification batch-staged` (built with Cargo's default `dev` profile, skipping release fat LTO) for staged file-length limits, staged secret/entropy scanning, touched-crate policy auditing, domain/registry-scoped traceability (`traceability.toml`, `papers/`, and traceability-monitored crates), staged duplicate warnings, and `.github/`-scoped workflow linting.
+- Runs `unified_verification batch-staged` (built with Cargo's default `dev` profile, skipping release fat LTO) for staged ADR enforcement (`verify-records --staged`), staged file-length limits, staged secret/entropy scanning, touched-crate policy auditing, domain/registry-scoped traceability (`traceability.toml`, `papers/`, and traceability-monitored crates), staged duplicate warnings, and `.github/`-scoped workflow linting.
 - Validates internal relative Markdown links only when Markdown (`.md`) files are staged.
 - Runs targeted host Clippy (`-p <crate>`) only on member crates with staged `.rs` or `Cargo.toml` edits, and runs targeted `wasm32-unknown-unknown` Clippy only when web crates (`oxidize_core`, `egui_plot`, `math_explorer_gui`) change.
-- Skips network-bound OSV vulnerability queries (`check-vulnerabilities`), public API baseline drift (`check-api-drift`), and ADR enforcement (`verify-records`) so incremental offline checkpoint commits stay fast.
+- Skips network-bound OSV vulnerability queries (`check-vulnerabilities`) and public API baseline drift (`check-api-drift`) so incremental offline checkpoint commits stay fast.
 
 If any scoped check fails, `.githooks/pre-commit` exits with a non-zero status and blocks the commit.
 
@@ -88,7 +88,7 @@ This command builds `unified_verification` once with Cargo's development profile
 1. **Formatting**: `cargo fmt --all -- --check`
 2. **Batched Static & Single-Pass AST Verification** (`unified_verification batch-static`):
    - **Cargo Profile & Lint Inheritance Verification** (`check-profiles`): enforces workspace `[profile.release]` `overflow-checks = true`, rejects member `[profile.release]` overrides, and requires `[lints] workspace = true` in first-party member manifests.
-   - **Architectural Decision Records** (`verify-records`): ensures staged or branch edits to `crates/` or `math_explorer/` include an ADR under `docs/adr/`.
+   - **Architectural Decision Records** (`verify-records`): enforces `docs/adr/NNNN-slug.md` naming, `# ` and `## Status` headings outside code fences, unique 4-digit ADR prefixes (allowing legacy collisions listed under `[adr_verification]` in `verification_whitelist.toml`), and active (`--diff-filter=ACMR`) ADR updates whenever staged or branch edits modify code in `crates/` or `math_explorer/`.
    - **File Length Constraints** (`check-file-lengths`): enforces the 500-line ceiling per source file.
    - **CI Workflows** (`lint-workflows`): validates GitHub Actions workflows, local reusable workflows, and `.github/actions` composite actions for read-only permissions, concurrency controls, job timeouts, commit-pinned actions, and safe `run` expressions.
    - **Crate Documentation Audit** (`check-docs`): verifies README files and entrypoint docs.

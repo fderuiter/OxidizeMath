@@ -131,18 +131,32 @@ fn test_collect_rs_files_and_unverified_modules() {
     }
     let files = collect_rs_files();
     assert!(!files.is_empty());
+    let mut saw_egui_plot = false;
     for f in &files {
         assert!(f.extension().and_then(|s| s.to_str()) == Some("rs"));
         let p_str = crate::whitelist::lossy_slash_path(f);
         assert!(!p_str.contains("/target/"));
-        assert!(!p_str.contains("/egui_plot/"));
+        if p_str.contains("egui_plot/src/file_io.rs") {
+            saw_egui_plot = true;
+        }
+    }
+    if Path::new("egui_plot/src/file_io.rs").is_file() {
+        assert!(
+            saw_egui_plot,
+            "collect_rs_files must include egui_plot sources for WASM coverage"
+        );
     }
 
     let unverified = check_unverified_modules(&[
+        "egui_plot".to_string(),
         "crates/pure_math".to_string(),
         "crates/oxidize_core".to_string(),
     ]);
-    assert!(!unverified.iter().any(|u| u.contains("crates/pure_math")));
+    assert!(
+        !unverified
+            .iter()
+            .any(|u| u.contains("egui_plot") || u.contains("crates/pure_math"))
+    );
     assert!(
         unverified.iter().any(|u| u.contains("crates/oxidize_core")),
         "oxidize_core has no real verification macro once comment spoofs are ignored"

@@ -1,5 +1,9 @@
 # Architecture Decision Record 0010: Encapsulated AnimatedSlider Widget in Reflective UI
 
+## Status
+
+Accepted
+
 ## Context
 Parameter controls rendered via `reflective_ui.rs` in Math Explorer previously used static `egui::Slider` controls. Users had no automated way to sweep parameter values across theoretical bounds or observe parameter trajectories in real-time simulations without manual mouse dragging.
 

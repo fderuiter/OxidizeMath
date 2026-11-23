@@ -215,7 +215,8 @@ pub(crate) fn select_touched_policy_members(
     touched
 }
 
-pub(crate) fn run_batch_staged_for_paths(
+pub(crate) fn run_batch_staged_for_paths_in_dir(
+    repo_dir: &Path,
     all_staged: &[String],
     existing_staged: &[String],
     workspace_members: &[String],
@@ -226,6 +227,10 @@ pub(crate) fn run_batch_staged_for_paths(
     }
 
     let mut passed = true;
+    if !crate::records::verify_records_in_dir_opts(repo_dir, None, None, true) {
+        passed = false;
+    }
+
     let staged_rs: Vec<String> = existing_staged
         .iter()
         .filter(|p| p.ends_with(".rs"))
@@ -259,7 +264,9 @@ pub(crate) fn run_batch_staged_for_paths(
         passed = false;
     }
 
-    crate::utils::check_staged_duplicates();
+    if repo_dir == Path::new(".") {
+        crate::utils::check_staged_duplicates();
+    }
 
     if all_staged.iter().any(|p| p.starts_with(".github/"))
         && !crate::workflow_linter::lint_workflows()
@@ -270,189 +277,32 @@ pub(crate) fn run_batch_staged_for_paths(
     passed
 }
 
+pub(crate) fn run_batch_staged_for_paths(
+    all_staged: &[String],
+    existing_staged: &[String],
+    workspace_members: &[String],
+    cache: &mut AstCache,
+) -> bool {
+    run_batch_staged_for_paths_in_dir(
+        Path::new("."),
+        all_staged,
+        existing_staged,
+        workspace_members,
+        cache,
+    )
+}
+
 pub fn run_batch_staged() -> bool {
+    let _root_guard = crate::manifest_cache::WorkspaceRootGuard::enter();
     let all_staged = git_cached_paths(&[]);
     let existing_staged: Vec<String> = git_cached_paths(&["--diff-filter=ACMR"])
         .into_iter()
         .filter(|p| Path::new(p).is_file())
         .collect();
-    let (_, members) = oxidize_core::workspace::get_workspace_members();
+    let (_, members) = crate::manifest_cache::discover_workspace();
     let mut cache = AstCache::new();
     run_batch_staged_for_paths(&all_staged, &existing_staged, &members, &mut cache)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::utils::test_utils::CurrentDirGuard;
-    use std::collections::HashSet;
-    use std::env;
-    use std::fs;
-    use std::path::PathBuf;
-
-    #[test]
-    fn test_select_touched_policy_members_and_global_triggers() {
-        let members = vec![
-            "crates/pure_math".to_string(),
-            "crates/domain_physics".to_string(),
-            "math_explorer_gui".to_string(),
-        ];
-
-        assert!(select_touched_policy_members(&["README.md".to_string()], &members).is_empty());
-
-        assert_eq!(
-            select_touched_policy_members(
-                &[
-                    "crates/domain_physics/src/quantum.rs".to_string(),
-                    "docs/README.md".to_string()
-                ],
-                &members
-            ),
-            vec!["crates/domain_physics".to_string()]
-        );
-
-        assert_eq!(
-            select_touched_policy_members(&["math_explorer_gui/Cargo.toml".to_string()], &members),
-            vec!["math_explorer_gui".to_string()]
-        );
-
-        assert_eq!(
-            select_touched_policy_members(&["verification_whitelist.toml".to_string()], &members),
-            members
-        );
-
-        let full_members = vec![
-            "crates/diagnostics".to_string(),
-            "crates/domain_physics".to_string(),
-            "crates/markdown_tests".to_string(),
-            "math_explorer_gui".to_string(),
-        ];
-        assert_eq!(
-            select_touched_policy_members(
-                &["crates/diagnostics/README.md".to_string()],
-                &full_members
-            ),
-            vec![
-                "crates/diagnostics".to_string(),
-                "crates/markdown_tests".to_string()
-            ]
-        );
-        assert_eq!(
-            select_touched_policy_members(&["docs/README.md".to_string()], &full_members),
-            vec!["crates/markdown_tests".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_should_run_staged_traceability_scopes_domain_and_registry_edits() {
-        let members = vec![
-            "crates/pure_math".to_string(),
-            "crates/domain_physics".to_string(),
-            "crates/scientific_metadata".to_string(),
-            "crates/unified_verification".to_string(),
-            "apps/xtask".to_string(),
-            "math_explorer_gui".to_string(),
-        ];
-
-        assert!(!should_run_staged_traceability(
-            &[
-                "README.md".to_string(),
-                "docs/adr/0036-test.md".to_string(),
-                "crates/unified_verification/src/main.rs".to_string(),
-                "apps/xtask/src/main.rs".to_string(),
-                "math_explorer_gui/src/app/theme.rs".to_string(),
-            ],
-            &members
-        ));
-        assert!(should_run_staged_traceability(
-            &["traceability.toml".to_string()],
-            &members
-        ));
-        assert!(should_run_staged_traceability(
-            &["papers/grpo.tex".to_string()],
-            &members
-        ));
-        assert!(should_run_staged_traceability(
-            &["crates/pure_math/src/lib.rs".to_string()],
-            &members
-        ));
-        assert!(should_run_staged_traceability(
-            &["math_explorer_gui/src/tabs/neuroscience/hodgkin_huxley.rs".to_string()],
-            &members
-        ));
-    }
-
-    #[test]
-    fn test_batch_ast_and_report_parse_each_unique_workspace_file_at_most_once() {
-        let _lock = crate::DIR_LOCK.lock().unwrap();
-        let orig = env::current_dir().unwrap();
-        let _guard = CurrentDirGuard(orig);
-        let root = crate::manifest_cache::workspace_root_dir();
-        if root != Path::new(".") {
-            env::set_current_dir(root).unwrap();
-        }
-
-        let (_, members) = crate::manifest_cache::discover_workspace();
-        let mut cache = AstCache::new();
-
-        assert!(crate::ast_visitor::run_clone_detector_with_cache(
-            &mut cache
-        ));
-        let apis = crate::api_drift::extract_apis_in_dir_with_cache(Path::new("."), &mut cache);
-        assert!(!apis.is_empty());
-        assert!(run_traceability_with_cache(false, &mut cache));
-        assert!(crate::entropy_guard::check_entropy_with_cache(&[], &mut cache).is_empty());
-        let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
-        assert!(crate::policy_audit::run_policy_audit_with_cache(
-            &member_refs,
-            &mut cache
-        ));
-
-        let rs_files = crate::report::collect_rs_files();
-        let metrics = crate::report::analyze_files_with_cache(&rs_files, &mut cache);
-        assert!(metrics.total_funcs > 0.0);
-        let unverified = crate::report::find_unverified_crates_with_cache(&members, &mut cache);
-        assert!(!unverified.contains(&"crates/pure_math".to_string()));
-
-        assert!(cache.parse_calls() > 500);
-        assert_eq!(cache.parse_calls(), cache.len());
-
-        let canonical_files: HashSet<PathBuf> = cache
-            .keys()
-            .map(|k| fs::canonicalize(k).unwrap_or_else(|_| PathBuf::from(k)))
-            .collect();
-        assert_eq!(
-            canonical_files.len(),
-            cache.parse_calls(),
-            "Every physical Rust file in the workspace must be parsed by syn::parse_file at most once across batch_ast + report"
-        );
-    }
-
-    #[test]
-    fn test_batch_static_parses_each_member_manifest_and_checks_lints_once() {
-        let _lock = crate::DIR_LOCK.lock().unwrap();
-        let orig = env::current_dir().unwrap();
-        let _guard = CurrentDirGuard(orig);
-        let root = crate::manifest_cache::workspace_root_dir();
-        if root != Path::new(".") {
-            env::set_current_dir(root).unwrap();
-        }
-
-        let (_, members) = crate::manifest_cache::discover_workspace();
-        let mut ast_cache = AstCache::new();
-        let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
-
-        assert!(run_batch_static_with_caches(
-            &[],
-            &mut ast_cache,
-            &mut manifest_cache,
-        ));
-
-        assert_eq!(manifest_cache.lint_check_calls(), members.len());
-        assert_eq!(manifest_cache.parse_calls(), members.len() + 1);
-        for member in &members {
-            let manifest = Path::new(member).join("Cargo.toml");
-            assert_eq!(manifest_cache.parse_count_for(&manifest), 1);
-        }
-    }
-}
+mod tests;

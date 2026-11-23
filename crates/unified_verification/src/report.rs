@@ -84,7 +84,7 @@ pub fn get_llvm_cov_output(mode: ReportMode) -> std::process::Output {
 }
 
 pub fn collect_rs_files() -> Vec<PathBuf> {
-    crate::utils::collect_rs_files_filtered(&[Path::new(".")], &["target", ".git", "egui_plot"])
+    crate::utils::collect_rs_files_filtered(&[Path::new(".")], &["target", ".git"])
 }
 
 pub fn parse_coverage(cov_json: &serde_json::Value) -> (f64, f64) {

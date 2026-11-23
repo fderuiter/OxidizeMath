@@ -33,8 +33,8 @@ cargo check --workspace
 cargo build --workspace --all-features
 
 # Run fast diff-scoped pre-commit checks on staged paths (executed automatically by .githooks/pre-commit;
-# checks staged formatting, file lengths, entropy, policy audit, domain/registry-scoped traceability,
-# staged duplicates, .github/-gated workflows, .md-gated links, and targeted host/wasm32 Clippy)
+# checks staged formatting, ADR records, file lengths, entropy, policy audit, domain/registry-scoped traceability,
+# staged duplicates, .github/-gated workflows, .md-gated links, and targeted host/wasm32 Clippy without OSV network calls or API drift)
 cargo run -p xtask -- lint-staged
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static
@@ -91,9 +91,9 @@ cargo run -p unified_verification --release -- check-file-lengths
 cargo run -p unified_verification --release -- check-entropy
 cargo run -p unified_verification --release -- traceability
 
-# Verify architectural decision records across staged index edits or commit ranges when core crates change
+# Verify architectural decision records (NNNN-slug.md, # and ## Status headings, unique IDs, and ACMR updates) across staged index edits or commit ranges
 cargo run -p unified_verification --release -- verify-records --staged
-BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
+BASE_SHA="$(git merge-base HEAD origin/main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
 
 # Verify Verification_Certificate.json and README.md badge parity against AST metrics without llvm-cov
 cargo run -p unified_verification --release -- check-certificate

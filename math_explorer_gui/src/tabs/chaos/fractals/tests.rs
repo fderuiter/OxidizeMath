@@ -100,7 +100,7 @@ fn test_progressive_strides_and_exact_final_parity_mandelbrot_and_julia() {
         latest_gen.store(1, Ordering::Release);
 
         let mut observed_strides = Vec::new();
-        for _ in 0..64 {
+        for _ in 0..512 {
             runner.step();
             let snap = runner.get_snapshot();
             let meta = snap
@@ -334,7 +334,7 @@ fn test_generate_progressive_fractal_verification_png() {
 
     let mut pass_frames: Vec<Vec<egui::Color32>> = Vec::new();
     let mut last_stride = usize::MAX;
-    for _ in 0..64 {
+    for _ in 0..512 {
         runner.step();
         let snap = runner.get_snapshot();
         let meta = snap
