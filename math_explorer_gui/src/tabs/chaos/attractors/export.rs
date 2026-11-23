@@ -121,4 +121,79 @@ impl AttractorPlotter {
         }
         Ok(ColoredMesh::new(mesh, colors))
     }
+
+    pub(super) fn collect_export_datasets_2d(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut points_b: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+        if points_b.is_empty() && self.is_finite_state() {
+            points_b.push(self.project(self.system.state.vec));
+        }
+        if let Some(ref twin) = self.twin {
+            let mut points_a: Vec<[f64; 2]> =
+                twin.history_a.iter().map(|p| self.project(*p)).collect();
+            if points_a.is_empty() {
+                points_a.push(self.project(twin.system_a.state.vec));
+            }
+            vec![
+                ("Branch B (Active)".to_string(), points_b),
+                ("Branch A (Baseline)".to_string(), points_a),
+            ]
+        } else {
+            let mut datasets = vec![("Trajectory".to_string(), points_b)];
+            if self.shadow_enabled && self.is_finite_state() {
+                let mut sh_pts: Vec<[f64; 2]> = self
+                    .shadow_history
+                    .iter()
+                    .map(|p| self.project(*p))
+                    .collect();
+                if sh_pts.is_empty() {
+                    if let Some(curr) = self.timeline.current() {
+                        sh_pts.push(self.project(curr.shadow_vec3()));
+                    }
+                }
+                datasets.push(("Shadow Trajectory".to_string(), sh_pts));
+                datasets.push((
+                    "Log10 Divergence".to_string(),
+                    self.build_log10_divergence_series(),
+                ));
+            }
+            datasets
+        }
+    }
+
+    pub(super) fn collect_export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        let mut points_b: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
+        if points_b.is_empty() && self.is_finite_state() {
+            let v = self.system.state.vec;
+            points_b.push([v.x, v.y, v.z]);
+        }
+        if let Some(ref twin) = self.twin {
+            let mut points_a: Vec<[f64; 3]> =
+                twin.history_a.iter().map(|p| [p.x, p.y, p.z]).collect();
+            if points_a.is_empty() {
+                let va = twin.system_a.state.vec;
+                points_a.push([va.x, va.y, va.z]);
+            }
+            vec![
+                ("Branch B (Active)".to_string(), points_b),
+                ("Branch A (Baseline)".to_string(), points_a),
+            ]
+        } else {
+            let mut datasets = vec![("Trajectory".to_string(), points_b)];
+            if self.shadow_enabled && self.is_finite_state() {
+                let mut sh_pts: Vec<[f64; 3]> = self
+                    .shadow_history
+                    .iter()
+                    .map(|p| [p.x, p.y, p.z])
+                    .collect();
+                if sh_pts.is_empty() {
+                    if let Some(curr) = self.timeline.current() {
+                        let s = curr.shadow_vec3();
+                        sh_pts.push([s.x, s.y, s.z]);
+                    }
+                }
+                datasets.push(("Shadow Trajectory".to_string(), sh_pts));
+            }
+            datasets
+        }
+    }
 }

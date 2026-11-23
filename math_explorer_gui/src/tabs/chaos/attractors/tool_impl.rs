@@ -108,7 +108,7 @@ impl AttractorPlotter {
         custom_job: Option<&CompiledFlowJob>,
     ) -> ([f64; 4], [f64; 4]) {
         if let Some(job) = custom_job {
-            let pv = job.rk4_step(prev.primary_vec3(), self.dt);
+            let pv = job.rk4_step(self.system.state.vec, self.dt);
             self.system.state.vec = pv;
             let sv = if self.shadow_enabled {
                 job.rk4_step(prev.shadow_vec3(), self.dt)
@@ -174,10 +174,71 @@ impl AttractorPlotter {
         self.timeline = data.timeline;
         self.system.state.vec = data.current_vec;
         self.step_count = data.step_count;
+        self.twin = data.twin;
         self.metrics_cache.update_windowed_ftle(&self.timeline);
         if matches!(data.execution_state, SolverExecutionState::Diverged { .. }) || !was_paused {
             self.execution_state = data.execution_state;
         }
+        self.sync_local_branch_engine();
+    }
+
+    fn hash_twin_revision(&self, h: &mut impl std::hash::Hasher) {
+        use std::hash::Hash;
+        if let Some(ref twin) = self.twin {
+            (
+                true,
+                twin.fork_step,
+                twin.delta_x.to_bits(),
+                twin.system_a.sigma.to_bits(),
+                twin.system_a.rho.to_bits(),
+                twin.system_a.beta.to_bits(),
+            )
+                .hash(h);
+        } else {
+            false.hash(h);
+        }
+    }
+
+    fn step_local_tick(&mut self, cap: usize, custom_job: Option<&CompiledFlowJob>) -> bool {
+        let current_vec = self.system.state.vec;
+        if !current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite() {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: current_vec,
+                diverged_at_step: self.step_count,
+            };
+            return false;
+        }
+        if let Some(ref mut twin) = self.twin {
+            if !twin.step_branch_a(self.dt, cap) {
+                self.execution_state = SolverExecutionState::Diverged {
+                    invalid_vec: twin.system_a.state.vec,
+                    diverged_at_step: self.step_count,
+                };
+                return false;
+            }
+        }
+        if self.twin.is_none() {
+            let cursor_len = self.timeline.cursor();
+            while self.history.len() > cursor_len {
+                self.history.pop_back();
+            }
+            while self.shadow_history.len() > cursor_len {
+                self.shadow_history.pop_back();
+            }
+        }
+        let prev = self.timeline.current_copied().unwrap_or_default();
+        let (p4, s4) = self.step_local_pair(prev, custom_job);
+        let shadow_cap = self.max_points.clamp(1, DEFAULT_TIMELINE_RING_CAPACITY);
+        if !self.record_local_frame(p4, s4, cap) {
+            return false;
+        }
+        while self.shadow_history.len() > shadow_cap {
+            self.shadow_history.pop_front();
+        }
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.step_count, self.dt, Vector3::new(p4[0], p4[1], p4[2]));
+        }
+        true
     }
 
     pub(crate) fn clamp_local_parameters(&mut self) {
@@ -260,6 +321,7 @@ impl InteractiveTool for AttractorPlotter {
             y_bits.hash(&mut h);
         }
         self.camera.hash_state(&mut h);
+        self.hash_twin_revision(&mut h);
         h.finish().max(1)
     }
 
@@ -284,33 +346,39 @@ impl InteractiveTool for AttractorPlotter {
         }
         let custom_job = (self.mode == AttractorMode::Custom)
             .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
-        let cap = self.max_points.clamp(1, DEFAULT_TIMELINE_RING_CAPACITY);
+        let cap = if self.twin.is_some() {
+            self.max_points.clamp(1, super::ATTRACTOR_RING_CAPACITY)
+        } else {
+            self.max_points.clamp(1, DEFAULT_TIMELINE_RING_CAPACITY)
+        };
         for _ in 0..self.simulation_speed.clamp(1, MAX_SIMULATION_SPEED) {
-            let current_vec = self.system.state.vec;
-            if !current_vec.x.is_finite()
-                || !current_vec.y.is_finite()
-                || !current_vec.z.is_finite()
-            {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: current_vec,
-                    diverged_at_step: self.step_count,
-                };
-                break;
-            }
-            let cursor_len = self.timeline.cursor();
-            while self.history.len() > cursor_len {
-                self.history.pop_back();
-            }
-            while self.shadow_history.len() > cursor_len {
-                self.shadow_history.pop_back();
-            }
-            let prev = self.timeline.current_copied().unwrap_or_default();
-            let (p4, s4) = self.step_local_pair(prev, custom_job.as_ref());
-            if !self.record_local_frame(p4, s4, cap) {
+            if !self.step_local_tick(cap, custom_job.as_ref()) {
                 break;
             }
         }
         self.metrics_cache.update_windowed_ftle(&self.timeline);
+        self.sync_local_branch_engine();
+    }
+
+    fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
+        self.twin
+            .as_ref()
+            .map(|t| t.snapshot(self.step_count, self.dt))
+    }
+
+    fn apply_counterfactual_action(
+        &mut self,
+        action: crate::framework::BranchControlAction,
+    ) -> bool {
+        match action {
+            crate::framework::BranchControlAction::ForkHere => self.fork_here(),
+            crate::framework::BranchControlAction::SwapBranches => self.swap_branches(),
+            crate::framework::BranchControlAction::ClearFork => self.clear_fork(),
+            crate::framework::BranchControlAction::SetPerturbation(delta) => {
+                self.branch_engine.set_effective_delta(delta);
+                true
+            }
+        }
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
@@ -326,53 +394,11 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
-        if points.is_empty() && self.is_finite_state() {
-            points.push(self.project(self.system.state.vec));
-        }
-        let mut datasets = vec![("Trajectory".to_string(), points)];
-        if self.shadow_enabled && self.is_finite_state() {
-            let mut sh_pts: Vec<[f64; 2]> = self
-                .shadow_history
-                .iter()
-                .map(|p| self.project(*p))
-                .collect();
-            if sh_pts.is_empty() {
-                if let Some(curr) = self.timeline.current() {
-                    sh_pts.push(self.project(curr.shadow_vec3()));
-                }
-            }
-            datasets.push(("Shadow Trajectory".to_string(), sh_pts));
-            datasets.push((
-                "Log10 Divergence".to_string(),
-                self.build_log10_divergence_series(),
-            ));
-        }
-        datasets
+        self.collect_export_datasets_2d()
     }
 
     fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
-        let mut points: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
-        if points.is_empty() && self.is_finite_state() {
-            let v = self.system.state.vec;
-            points.push([v.x, v.y, v.z]);
-        }
-        let mut datasets = vec![("Trajectory".to_string(), points)];
-        if self.shadow_enabled && self.is_finite_state() {
-            let mut sh_pts: Vec<[f64; 3]> = self
-                .shadow_history
-                .iter()
-                .map(|p| [p.x, p.y, p.z])
-                .collect();
-            if sh_pts.is_empty() {
-                if let Some(curr) = self.timeline.current() {
-                    let s = curr.shadow_vec3();
-                    sh_pts.push([s.x, s.y, s.z]);
-                }
-            }
-            datasets.push(("Shadow Trajectory".to_string(), sh_pts));
-        }
-        datasets
+        self.collect_export_datasets_3d()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {

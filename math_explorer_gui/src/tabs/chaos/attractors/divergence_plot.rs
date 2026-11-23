@@ -6,7 +6,7 @@ use super::AttractorPlotter;
 use crate::accessibility::{announce_status, AccessibleTheoryHover};
 use crate::app::SemanticPalette;
 use crate::async_sim::ui::render_empty_plot_guidance;
-use crate::framework::Plot3DViewport;
+use crate::framework::{fork_marker_callout, Plot3DViewport};
 use eframe::egui;
 use egui_plot::{Legend, Line, LineStyle, MarkerShape, Plot, PlotPoints, Points, VLine};
 use nalgebra::Point3;
@@ -21,7 +21,7 @@ impl AttractorPlotter {
         }
 
         let avail = ui.available_size_before_wrap();
-        if self.shadow_enabled {
+        if self.shadow_enabled && self.twin.is_none() {
             let top_height = (avail.y * 0.64).clamp(180.0, (avail.y - 125.0).max(180.0));
             ui.allocate_ui_with_layout(
                 egui::vec2(avail.x, top_height),
@@ -40,9 +40,23 @@ impl AttractorPlotter {
 
     fn draw_3d_twin_viewport(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
-        let primary_color = palette.series_color(0);
-        let shadow_color = palette.series_color(1);
-        self.populate_twin_scene(primary_color, shadow_color);
+        if self.twin.is_some() {
+            self.begin_attractor_scene();
+            self.populate_counterfactual_scene(
+                palette.series_color(0),
+                palette.muted_text,
+                palette.accent,
+            );
+        } else {
+            self.populate_twin_scene(palette.series_color(0), palette.series_color(1));
+        }
+        let fork_callout = self.twin.as_ref().map(|twin| {
+            fork_marker_callout(
+                self.project(twin.fork_point),
+                twin.tracker.fork_time(),
+                &palette,
+            )
+        });
 
         let half_extent = match self.mode {
             super::AttractorMode::Lorenz => self.system_kind.viewport_half_extent(),
@@ -52,6 +66,9 @@ impl AttractorPlotter {
         let response = Plot3DViewport::new("attractor_plot", half_extent)
             .show(ui, &mut camera, |plot_ui| {
                 self.scene_builder.finish(plot_ui);
+                if let Some(callout) = fork_callout {
+                    plot_ui.callout(callout);
+                }
                 if self.mode == super::AttractorMode::Lorenz
                     && self.system_kind == AttractorSystemKind::Lorenz
                 {
@@ -208,8 +225,7 @@ impl AttractorPlotter {
         Some(best_idx)
     }
 
-    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
-    pub fn populate_scene(&mut self, series_color: egui::Color32) {
+    fn begin_attractor_scene(&mut self) {
         let origin_offset = match self.mode {
             super::AttractorMode::Lorenz => {
                 let c = self.system_kind.center_offset();
@@ -219,7 +235,16 @@ impl AttractorPlotter {
         };
         self.scene_builder.begin(self.camera);
         self.scene_builder.set_origin_offset(origin_offset);
-        self.add_trajectory_curve("Trajectory", true, series_color, 1.8_f32);
+    }
+
+    /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
+    pub fn populate_scene(&mut self, series_color: egui::Color32) {
+        self.begin_attractor_scene();
+        if self.twin.is_some() {
+            self.populate_counterfactual_scene(series_color, egui::Color32::GRAY, series_color);
+        } else {
+            self.add_trajectory_curve("Trajectory", true, series_color, 1.8_f32);
+        }
     }
 
     pub(crate) fn populate_twin_scene(

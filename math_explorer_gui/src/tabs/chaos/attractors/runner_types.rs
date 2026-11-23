@@ -110,6 +110,8 @@ pub struct AttractorSnapshot {
     pub step_count: usize,
     /// Worker solver state.
     pub execution_state: SolverExecutionState,
+    /// Optional mid-flight counterfactual shadow twin (`Branch A`).
+    pub twin: Option<super::AttractorTwinState>,
 }
 
 impl AttractorSnapshot {

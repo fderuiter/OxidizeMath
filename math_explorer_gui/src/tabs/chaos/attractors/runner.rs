@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 //! Pre-allocated twin chaotic ODE background runner with `CheckpointRing` and `TimelineRingBuffer` scrubbing.
 
-use super::flow::{AttractorMode, CompiledFlowJob};
+use super::flow::AttractorMode;
 use super::runner_types::{
     build_runner_diagnostic, build_runner_sonification, AttractorSharedParams, AttractorSnapshot,
     SolverExecutionState, SyncedStepParams, MAX_SIMULATION_SPEED,
@@ -53,6 +53,8 @@ pub struct AttractorRunner {
     pub step_count: usize,
     /// Current execution state.
     pub execution_state: SolverExecutionState,
+    /// Optional mid-flight counterfactual shadow twin (`Branch A`).
+    pub twin: Option<super::AttractorTwinState>,
     /// Deterministic PRNG captured across time-travel checkpoints.
     pub rng: OxidizeRng,
 }
@@ -79,11 +81,12 @@ impl AttractorRunner {
                 .build(DoublePendulumState::new(2.4, 2.4, 0.0, 0.0)),
             rk4_vec3: RungeKutta4::new(&init_lorenz.vec),
             params,
-            history: VecDeque::with_capacity(DEFAULT_TIMELINE_RING_CAPACITY),
+            history: VecDeque::with_capacity(super::ATTRACTOR_RING_CAPACITY),
             shadow_history: VecDeque::with_capacity(DEFAULT_TIMELINE_RING_CAPACITY),
             timeline: TimelineRingBuffer::new(TwinFrame::default()),
             step_count: 0,
             execution_state: SolverExecutionState::Ready,
+            twin: None,
             rng: OxidizeRng::new(ATTRACTOR_RNG_SEED),
         };
         runner.reset_from_shared(&p);
@@ -121,83 +124,9 @@ impl AttractorRunner {
             p.shadow_enabled,
         ));
         self.step_count = 0;
+        self.twin = None;
         self.execution_state = SolverExecutionState::Ready;
         self.rng = OxidizeRng::new(ATTRACTOR_RNG_SEED);
-    }
-
-    pub(super) fn apply_coefficients(&mut self, p: &AttractorSharedParams) {
-        self.system.sigma = p.sigma;
-        self.system.rho = p.rho;
-        self.system.beta = p.beta;
-        self.shadow_lorenz.sigma = p.sigma;
-        self.shadow_lorenz.rho = p.rho;
-        self.shadow_lorenz.beta = p.beta;
-
-        self.rossler_primary.a = p.extra.rossler_a;
-        self.rossler_primary.b = p.extra.rossler_b;
-        self.rossler_primary.c = p.extra.rossler_c;
-        self.rossler_shadow.a = p.extra.rossler_a;
-        self.rossler_shadow.b = p.extra.rossler_b;
-        self.rossler_shadow.c = p.extra.rossler_c;
-
-        for pend in [&mut self.pendulum_primary, &mut self.pendulum_shadow] {
-            pend.m1 = p.extra.pendulum_m1;
-            pend.m2 = p.extra.pendulum_m2;
-            pend.l1 = p.extra.pendulum_l1;
-            pend.l2 = p.extra.pendulum_l2;
-            pend.g = p.extra.pendulum_g;
-        }
-    }
-
-    pub(super) fn restore_solver_coordinates(&mut self, primary: [f64; 4], shadow: [f64; 4]) {
-        self.system.state.vec = Vector3::new(primary[0], primary[1], primary[2]);
-        self.shadow_lorenz.state.vec = Vector3::new(shadow[0], shadow[1], shadow[2]);
-        self.rossler_primary.state.vec = Vector3::new(primary[0], primary[1], primary[2]);
-        self.rossler_shadow.state.vec = Vector3::new(shadow[0], shadow[1], shadow[2]);
-        self.pendulum_primary.state.state.0 = primary;
-        self.pendulum_shadow.state.state.0 = shadow;
-    }
-
-    pub(super) fn sync_params(&mut self) -> SyncedStepParams {
-        let p = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        self.apply_coefficients(&p);
-        let custom_flow = (p.mode == AttractorMode::Custom)
-            .then_some(p.custom_flow)
-            .flatten();
-        SyncedStepParams {
-            mode: p.mode,
-            custom_flow,
-            kind: p.system_kind,
-            dt: p.dt,
-            speed: p.simulation_speed.clamp(1, MAX_SIMULATION_SPEED),
-            max_points: p.max_points.clamp(1, DEFAULT_TIMELINE_RING_CAPACITY),
-            shadow_enabled: p.shadow_enabled,
-        }
-    }
-
-    fn step_custom_flow(
-        &mut self,
-        custom_flow: Option<&CompiledFlowJob>,
-        dt: f64,
-        shadow_enabled: bool,
-    ) -> ([f64; 4], [f64; 4]) {
-        let mut pv = self.system.state.vec;
-        let mut sv = self.shadow_lorenz.state.vec;
-        if let Some(job) = custom_flow {
-            pv = job.rk4_step(pv, dt);
-            self.system.state.vec = pv;
-            if shadow_enabled {
-                sv = job.rk4_step(sv, dt);
-                self.shadow_lorenz.state.vec = sv;
-            } else {
-                sv = pv;
-            }
-        }
-        ([pv.x, pv.y, pv.z, 0.0], [sv.x, sv.y, sv.z, 0.0])
     }
 
     fn step_active_solvers(&mut self, sp: &SyncedStepParams) -> ([f64; 4], [f64; 4]) {
@@ -243,7 +172,7 @@ impl AttractorRunner {
         }
     }
 
-    pub(super) fn advance_tick(&mut self, sp: &SyncedStepParams) -> bool {
+    pub(super) fn advance_tick(&mut self, sp: &SyncedStepParams, step_twin_too: bool) -> bool {
         let pre_vec = self.active_primary_vec(sp.mode, sp.kind);
         if !pre_vec.x.is_finite()
             || !pre_vec.y.is_finite()
@@ -254,6 +183,9 @@ impl AttractorRunner {
                 invalid_vec: pre_vec,
                 diverged_at_step: self.step_count,
             };
+            return false;
+        }
+        if !self.step_twin_if_enabled(sp.dt, sp.max_points, step_twin_too) {
             return false;
         }
 
@@ -278,6 +210,11 @@ impl AttractorRunner {
         );
         self.timeline.push(frame);
         self.push_frame_to_trails(frame, sp.max_points);
+        if step_twin_too {
+            if let Some(ref mut twin) = self.twin {
+                twin.observe_lockstep(self.step_count, sp.dt, frame.primary_vec3());
+            }
+        }
         true
     }
 }
@@ -322,7 +259,49 @@ impl SimulationRunner for AttractorRunner {
                     .unwrap_or_else(|e| e.into_inner())
                     .simulation_speed = speed.clamp(1, MAX_SIMULATION_SPEED);
             }
+            SimCommand::Custom(ref cmd) => self.handle_custom_command(cmd),
             _ => {}
+        }
+    }
+
+    fn has_counterfactual_twin(&self) -> bool {
+        self.twin.is_some()
+    }
+
+    fn step_branch_a(&mut self) {
+        if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            return;
+        }
+        let sp = self.sync_params();
+        if let Some(ref mut twin) = self.twin {
+            for _ in 0..sp.speed {
+                if !twin.step_branch_a(sp.dt, sp.max_points) {
+                    self.execution_state = SolverExecutionState::Diverged {
+                        invalid_vec: twin.system_a.state.vec,
+                        diverged_at_step: self.step_count,
+                    };
+                    break;
+                }
+            }
+        }
+    }
+
+    fn step_branch_b(&mut self) {
+        if matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
+            return;
+        }
+        let sp = self.sync_params();
+        if self.execution_state == SolverExecutionState::Ready {
+            self.execution_state = SolverExecutionState::Running;
+        }
+        for _ in 0..sp.speed {
+            if !self.advance_tick(&sp, false) {
+                break;
+            }
+        }
+        let vb = self.active_primary_vec(sp.mode, sp.kind);
+        if let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.step_count, sp.dt, vb);
         }
     }
 
@@ -335,7 +314,7 @@ impl SimulationRunner for AttractorRunner {
             self.execution_state = SolverExecutionState::Running;
         }
         for _ in 0..sp.speed {
-            if !self.advance_tick(&sp) {
+            if !self.advance_tick(&sp, true) {
                 break;
             }
         }
@@ -346,7 +325,7 @@ impl SimulationRunner for AttractorRunner {
             return;
         }
         let sp = self.sync_params();
-        if self.advance_tick(&sp) {
+        if self.advance_tick(&sp, true) {
             self.execution_state = SolverExecutionState::Paused;
         }
     }
@@ -371,6 +350,7 @@ impl SimulationRunner for AttractorRunner {
             current_vec: v,
             step_count: self.step_count,
             execution_state: self.execution_state,
+            twin: self.twin.clone(),
         }
         .into_state_snapshot(sonification)
     }
@@ -404,7 +384,6 @@ impl SimulationRunner for AttractorRunner {
             self.is_finite_state(),
         )
     }
-
     fn checkpoint_stride(&self) -> Option<usize> {
         Some(1)
     }
@@ -437,7 +416,7 @@ impl SimulationRunner for AttractorRunner {
         let Some(sp) = self.unpack_checkpoint_params(ps) else {
             return;
         };
-        if self.advance_tick(&sp) {
+        if self.advance_tick(&sp, false) {
             self.execution_state = SolverExecutionState::Paused;
         }
     }
@@ -458,7 +437,7 @@ impl SimulationRunner for AttractorRunner {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
-        if self.advance_tick(&sp) {
+        if self.advance_tick(&sp, true) {
             super::invariants::publish_runner_landmarks(self, sp.dt, 1);
         }
     }

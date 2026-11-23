@@ -5,8 +5,8 @@ use super::twin_state::{
     AttractorSystemKind, ExtraChaosParams, DEFAULT_EPSILON, DEFAULT_PERTURBATION_EXPR,
 };
 use super::{
-    AttractorMode, AttractorPlotter, SolverExecutionState, DEFAULT_FIXED_CALLOUT_OFFSETS,
-    DEFAULT_FLOW_EXPRS, MAX_SIMULATION_SPEED,
+    AttractorForkDescriptor, AttractorMode, AttractorPlotter, SolverExecutionState,
+    DEFAULT_FIXED_CALLOUT_OFFSETS, DEFAULT_FLOW_EXPRS, MAX_SIMULATION_SPEED,
 };
 use crate::framework::Camera3D;
 use crate::starter_gallery::StarterPresetMetadata;
@@ -76,6 +76,8 @@ struct AttractorSaveState<'a> {
     rossler_params: Option<[f64; 3]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pendulum_params: Option<[f64; 5]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fork: Option<AttractorForkDescriptor>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     atlas_visible: bool,
     #[serde(skip_serializing_if = "super::atlas::is_default_attractor_atlas_axes")]
@@ -129,6 +131,8 @@ struct AttractorState {
     #[serde(default)]
     pendulum_params: Option<[f64; 5]>,
     #[serde(default)]
+    fork: Option<AttractorForkDescriptor>,
+    #[serde(default)]
     atlas_visible: bool,
     #[serde(default = "super::atlas::default_attractor_atlas_axes")]
     atlas_axes: [String; 2],
@@ -136,6 +140,7 @@ struct AttractorState {
 
 impl AttractorPlotter {
     pub(super) fn serialize_state(&self) -> Option<String> {
+        let fork = self.twin.as_ref().map(|t| t.to_descriptor(self.step_count));
         let expr_vec = self.flow_bank.expressions();
         let nondefault_exprs = expr_vec
             .iter()
@@ -188,6 +193,7 @@ impl AttractorPlotter {
             perturbation_expr: &self.perturbation_expr,
             rossler_params,
             pendulum_params,
+            fork,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
         })
@@ -291,6 +297,9 @@ impl AttractorPlotter {
             SolverExecutionState::Ready
         });
         self.execution_state = execution_state;
+        if let Some(fork_desc) = s.fork {
+            self.apply_fork_descriptor(fork_desc)?;
+        }
         if let SolverExecutionState::Diverged {
             invalid_vec,
             diverged_at_step,
@@ -371,5 +380,18 @@ inventory::submit! {
         domain: "chaos",
         tool_name: Some("AttractorPlotter"),
         preset_generator: || crate::starter_gallery::PRESET_DOUBLE_PENDULUM,
+    }
+}
+
+inventory::submit! {
+    StarterPresetMetadata {
+        id: "lorenz_butterfly_perturbation",
+        title: "Lorenz Butterfly Perturbation",
+        description: "Counterfactual shadow twin forked at t_k = 1.50 with δx = 1e-5 diverging onto opposite butterfly lobes.",
+        category: "Counterfactual Chaos",
+        icon: "⑂",
+        domain: "chaos",
+        tool_name: Some("AttractorPlotter"),
+        preset_generator: || crate::starter_gallery::PRESET_LORENZ_BUTTERFLY_PERTURBATION,
     }
 }

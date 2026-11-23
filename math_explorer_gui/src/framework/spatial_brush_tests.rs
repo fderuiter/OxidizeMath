@@ -245,3 +245,86 @@ fn test_keyboard_cursor_shift_arrow_coarse_step_and_enter_stamp() {
     assert_eq!(strokes.len(), 1);
     assert_eq!(strokes[0].end, [44.0, 37.0]);
 }
+
+fn run_brush_rect_frame(
+    ctx: &egui::Context,
+    raw: egui::RawInput,
+    kit: &mut SpatialBrushKit,
+    strokes: &mut Vec<super::spatial_brush::BrushStroke>,
+) -> (egui::Id, egui::Rect) {
+    let mut canvas_id = egui::Id::NULL;
+    let mut canvas_rect = egui::Rect::NOTHING;
+    let _ = ctx.run(raw, |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let _ = ui.button("Before Rect");
+            let (resp, _painter) =
+                ui.allocate_painter(egui::vec2(200.0, 200.0), egui::Sense::click_and_drag());
+            canvas_id = resp.id;
+            canvas_rect = resp.rect;
+            strokes.extend(kit.sample_rect(
+                ui,
+                &resp,
+                [0.0, 0.0],
+                [5.0, 5.0],
+                Some(BrushMode::Erase),
+            ));
+            let _ = ui.button("After Rect");
+        });
+    });
+    (canvas_id, canvas_rect)
+}
+
+#[test]
+fn test_sample_rect_keyboard_and_pointer_sculpt_without_trapping_tab() {
+    let ctx = egui::Context::default();
+    let mut kit = SpatialBrushKit::new(BrushMode::RlTrap, 0.5)
+        .with_radius_bounds(0.5, 3.5, 1.0)
+        .with_cursor_step(1.0, 1.0);
+    let mut strokes = Vec::new();
+    let (rect_id, rect) =
+        run_brush_rect_frame(&ctx, egui::RawInput::default(), &mut kit, &mut strokes);
+    ctx.memory_mut(|m| m.request_focus(rect_id));
+    let _ = run_brush_rect_frame(&ctx, egui::RawInput::default(), &mut kit, &mut strokes);
+
+    let kb_input = egui::RawInput {
+        events: vec![
+            key_event(Key::ArrowRight, Modifiers::NONE),
+            key_event(Key::Space, Modifiers::NONE),
+        ],
+        ..Default::default()
+    };
+    let _ = run_brush_rect_frame(&ctx, kb_input, &mut kit, &mut strokes);
+    assert_eq!(strokes.len(), 1);
+    assert_eq!(strokes[0].mode, BrushMode::RlTrap);
+    assert_eq!(
+        SpatialBrushKit::plot_to_grid_y_down(strokes[0].end, 5, 5),
+        (3, 2)
+    );
+
+    let ptr_pos = egui::pos2(rect.min.x + 20.0, rect.min.y + 20.0);
+    let ptr_input = egui::RawInput {
+        events: vec![
+            Event::PointerMoved(ptr_pos),
+            Event::PointerButton {
+                pos: ptr_pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Modifiers::NONE,
+            },
+        ],
+        ..Default::default()
+    };
+    let _ = run_brush_rect_frame(&ctx, ptr_input, &mut kit, &mut strokes);
+    assert_eq!(strokes.len(), 2);
+    assert_eq!(
+        SpatialBrushKit::plot_to_grid_y_down(strokes[1].end, 5, 5),
+        (0, 0)
+    );
+
+    let tab_input = egui::RawInput {
+        events: vec![key_event(Key::Tab, Modifiers::NONE)],
+        ..Default::default()
+    };
+    let _ = run_brush_rect_frame(&ctx, tab_input, &mut kit, &mut strokes);
+    assert_ne!(ctx.memory(|m| m.focused()), Some(rect_id));
+}

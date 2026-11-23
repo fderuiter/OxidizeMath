@@ -2,8 +2,10 @@
 //! Zero-allocation inline scalar checkpoint capture, restore, and sub-step replay
 //! for [`super::AttractorRunner`].
 
-use super::flow::AttractorMode;
-use super::runner_types::{AttractorSharedParams, SolverExecutionState, SyncedStepParams};
+use super::flow::{AttractorMode, CompiledFlowJob};
+use super::runner_types::{
+    AttractorSharedParams, SolverExecutionState, SyncedStepParams, MAX_SIMULATION_SPEED,
+};
 use super::twin_state::{AttractorSystemKind, TwinFrame};
 use super::AttractorRunner;
 use crate::async_sim::{CheckpointParams, CheckpointPayload, TimeTravelCheckpoint};
@@ -174,6 +176,7 @@ impl AttractorRunner {
         }
         self.step_count = checkpoint.step;
         self.rng = checkpoint.rng.clone();
+        self.twin = None;
         let pos = self
             .timeline
             .iter_all()
@@ -352,5 +355,100 @@ impl AttractorRunner {
         if !matches!(self.execution_state, SolverExecutionState::Diverged { .. }) {
             self.execution_state = SolverExecutionState::Paused;
         }
+    }
+
+    pub(super) fn apply_coefficients(&mut self, p: &AttractorSharedParams) {
+        self.system.sigma = p.sigma;
+        self.system.rho = p.rho;
+        self.system.beta = p.beta;
+        self.shadow_lorenz.sigma = p.sigma;
+        self.shadow_lorenz.rho = p.rho;
+        self.shadow_lorenz.beta = p.beta;
+
+        self.rossler_primary.a = p.extra.rossler_a;
+        self.rossler_primary.b = p.extra.rossler_b;
+        self.rossler_primary.c = p.extra.rossler_c;
+        self.rossler_shadow.a = p.extra.rossler_a;
+        self.rossler_shadow.b = p.extra.rossler_b;
+        self.rossler_shadow.c = p.extra.rossler_c;
+
+        for pend in [&mut self.pendulum_primary, &mut self.pendulum_shadow] {
+            pend.m1 = p.extra.pendulum_m1;
+            pend.m2 = p.extra.pendulum_m2;
+            pend.l1 = p.extra.pendulum_l1;
+            pend.l2 = p.extra.pendulum_l2;
+            pend.g = p.extra.pendulum_g;
+        }
+    }
+
+    pub(super) fn restore_solver_coordinates(&mut self, primary: [f64; 4], shadow: [f64; 4]) {
+        self.system.state.vec = Vector3::new(primary[0], primary[1], primary[2]);
+        self.shadow_lorenz.state.vec = Vector3::new(shadow[0], shadow[1], shadow[2]);
+        self.rossler_primary.state.vec = Vector3::new(primary[0], primary[1], primary[2]);
+        self.rossler_shadow.state.vec = Vector3::new(shadow[0], shadow[1], shadow[2]);
+        self.pendulum_primary.state.state.0 = primary;
+        self.pendulum_shadow.state.state.0 = shadow;
+    }
+
+    pub(super) fn sync_params(&mut self) -> SyncedStepParams {
+        let p = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        self.apply_coefficients(&p);
+        let custom_flow = (p.mode == AttractorMode::Custom)
+            .then_some(p.custom_flow)
+            .flatten();
+        SyncedStepParams {
+            mode: p.mode,
+            custom_flow,
+            kind: p.system_kind,
+            dt: p.dt,
+            speed: p.simulation_speed.clamp(1, MAX_SIMULATION_SPEED),
+            max_points: p.max_points.clamp(1, DEFAULT_TIMELINE_RING_CAPACITY),
+            shadow_enabled: p.shadow_enabled,
+        }
+    }
+
+    pub(super) fn step_twin_if_enabled(
+        &mut self,
+        dt: f64,
+        max_points: usize,
+        enabled: bool,
+    ) -> bool {
+        if enabled {
+            if let Some(ref mut twin) = self.twin {
+                if !twin.step_branch_a(dt, max_points) {
+                    self.execution_state = SolverExecutionState::Diverged {
+                        invalid_vec: twin.system_a.state.vec,
+                        diverged_at_step: self.step_count,
+                    };
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    pub(super) fn step_custom_flow(
+        &mut self,
+        custom_flow: Option<&CompiledFlowJob>,
+        dt: f64,
+        shadow_enabled: bool,
+    ) -> ([f64; 4], [f64; 4]) {
+        let mut pv = self.system.state.vec;
+        let mut sv = self.shadow_lorenz.state.vec;
+        if let Some(job) = custom_flow {
+            pv = job.rk4_step(pv, dt);
+            self.system.state.vec = pv;
+            if shadow_enabled {
+                sv = job.rk4_step(sv, dt);
+                self.shadow_lorenz.state.vec = sv;
+            } else {
+                sv = pv;
+            }
+        }
+        ([pv.x, pv.y, pv.z, 0.0], [sv.x, sv.y, sv.z, 0.0])
     }
 }

@@ -269,6 +269,10 @@ pub const PRESET_HAWK_DOVE: &str = r#"{
 mod presets_data;
 pub use presets_data::*;
 
+#[path = "starter_gallery/counterfactual_presets.rs"]
+mod counterfactual_presets;
+pub use counterfactual_presets::*;
+
 #[path = "starter_gallery/challenges.rs"]
 pub mod challenges;
 #[path = "starter_gallery/filter_ui.rs"]

@@ -289,8 +289,35 @@ impl AttractorPlotter {
                     self.handle_playback_action(action, ctx);
                 }
 
+                self.draw_counterfactual_bar(ui, ctx, worker_faulted);
                 self.draw_stepping_sliders(ui);
             });
+    }
+
+    fn draw_counterfactual_bar(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        worker_faulted: bool,
+    ) {
+        let can_fork = self.step_count > 0
+            && !self.diverged()
+            && !worker_faulted
+            && (self.mode == AttractorMode::Custom
+                || self.system_kind == AttractorSystemKind::Lorenz);
+        let is_forked = self.twin.is_some();
+        if let Some(cf_action) = crate::framework::CounterfactualTransport::new(
+            &mut self.branch_engine,
+            can_fork,
+            is_forked,
+        )
+        .show(ui)
+        {
+            let _ = <Self as crate::framework::InteractiveTool>::apply_counterfactual_action(
+                self, cf_action,
+            );
+            ctx.request_repaint();
+        }
     }
 
     pub(super) fn handle_playback_action(&mut self, action: PlaybackAction, ctx: &egui::Context) {

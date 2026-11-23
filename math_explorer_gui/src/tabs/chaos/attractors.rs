@@ -18,6 +18,10 @@ use atlas::ATTRACTOR_ATLAS_AXIS_PAIRS;
 #[cfg(test)]
 pub use atlas::{lorenz_hopf_threshold, AttractorCartographer};
 
+#[path = "attractors/counterfactual.rs"]
+mod counterfactual;
+pub use counterfactual::*;
+
 #[path = "attractors/flow.rs"]
 pub mod flow;
 pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
@@ -98,6 +102,9 @@ pub struct AttractorPlotter {
     pub(crate) last_eval_error_announced: Option<String>,
     pub(crate) extra_params: ExtraChaosParams,
     pub(crate) metrics_cache: ChaosMetricsCache,
+    pub(crate) twin: Option<AttractorTwinState>,
+    /// Counterfactual branch controller for mid-flight shadow twin forks.
+    pub branch_engine: crate::framework::CounterfactualBranchEngine,
     pub(super) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
     pub(crate) atlas: ParameterAtlasController,
@@ -130,8 +137,8 @@ impl Default for AttractorPlotter {
             simulation_speed: 5,
             dt: 0.01,
             tube_radius: export::DEFAULT_TUBE_RADIUS,
-            history: VecDeque::with_capacity(2000),
-            shadow_history: VecDeque::with_capacity(2000),
+            history: VecDeque::with_capacity(ATTRACTOR_RING_CAPACITY),
+            shadow_history: VecDeque::with_capacity(DEFAULT_TIMELINE_RING_CAPACITY),
             timeline,
             max_points: 2000,
             camera,
@@ -153,6 +160,8 @@ impl Default for AttractorPlotter {
             last_eval_error_announced: None,
             extra_params: ExtraChaosParams::default(),
             metrics_cache: ChaosMetricsCache::default(),
+            twin: None,
+            branch_engine: crate::framework::CounterfactualBranchEngine::default(),
             latest_sonification: crate::audio::mappings::attractor_frame(
                 [1.0, 1.0, 1.0],
                 [0.0, 26.0, -1.67],
@@ -357,6 +366,8 @@ impl AttractorPlotter {
             self.shadow_enabled,
         ));
         self.step_count = 0;
+        self.twin = None;
+        self.branch_engine.clear();
         self.execution_state = SolverExecutionState::Ready;
         self.metrics_cache.wolf_dirty = true;
         self.metrics_cache.windowed_ftle = 0.0;
@@ -391,6 +402,10 @@ impl AttractorPlotter {
     pub(crate) fn apply_restored_frame(&mut self, frame: TwinFrame) {
         self.step_count = frame.step;
         self.system.state.vec = frame.primary_vec3();
+        if self.twin.is_some() {
+            self.twin = None;
+            self.branch_engine.clear();
+        }
         self.history.clear();
         self.shadow_history.clear();
         let cap = self.max_points.clamp(1, DEFAULT_TIMELINE_RING_CAPACITY);
@@ -461,6 +476,10 @@ mod attractor_tests;
 #[cfg(test)]
 #[path = "attractors/twin_tests.rs"]
 mod twin_tests;
+
+#[cfg(test)]
+#[path = "attractors/counterfactual_tests.rs"]
+mod counterfactual_tests;
 
 #[cfg(test)]
 #[path = "attractors/custom_flow_tests.rs"]

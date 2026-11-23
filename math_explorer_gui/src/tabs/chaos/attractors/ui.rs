@@ -6,6 +6,7 @@ use crate::async_sim::ui::{
     render_custom_fault_banner, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::SimWorkerState;
+use crate::framework::render_divergence_strip;
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
 use egui_plot::{Callout, PlotPoint};
 use nalgebra::Vector3;
@@ -287,6 +288,9 @@ impl AttractorPlotter {
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.draw_central_fault_banner(ui, ctx);
+            if let Some(ref snap) = self.branch_engine.active_snapshot {
+                render_divergence_strip(ui, "Attractor Plotter", snap);
+            }
             if self.atlas.is_visible() && ui.available_width() >= 620.0 {
                 ui.columns(2, |cols| {
                     self.draw_twin_central_views(&mut cols[0], ctx);
