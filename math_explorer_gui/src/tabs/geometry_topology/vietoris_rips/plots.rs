@@ -1,10 +1,12 @@
-//! Dual `egui_plot` views (2D complex + persistence diagram/barcode), live Betti badges, and figure exports.
+//! Dual `egui_plot` views (2D/3D complex + persistence diagram/barcode), live Betti badges, and exports.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::io::MAX_VIETORIS_RIPS_POINTS;
 use super::presets::{GeneratorDescriptor, ShapePreset};
+use super::state::{SculptBrush, VrSourceMode};
 use super::VietorisRipsTool;
+use crate::accessibility::AccessibleTheoryHover;
 use crate::app::SemanticPalette;
 use crate::framework::bounded_drag_value;
 use eframe::egui;
@@ -35,10 +37,13 @@ impl PersistencePlotMode {
 /// Renders the full Vietoris-Rips TDA workbench inside `ui`.
 pub fn render_workbench(tool: &mut VietorisRipsTool, ui: &mut egui::Ui) {
     super::io::poll_tool_io(tool);
+    tool.poll_incoming_landmarks(ui.ctx());
     egui::CentralPanel::default().show_inside(ui, |ui| {
         ui.heading("Vietoris-Rips Complex & Persistent Homology (TDA)");
         render_cloud_toolbar(tool, ui);
-        if tool.ambient_dimension() > 2 {
+        if matches!(tool.mode, VrSourceMode::Lorenz3D | VrSourceMode::Takens3D) {
+            tool.render_chaos_toolbar(ui);
+        } else if !tool.mode.is_3d() && tool.ambient_dimension() > 2 {
             render_nd_projection_bar(tool, ui);
         }
         render_filtration_toolbar(tool, ui);
@@ -52,52 +57,65 @@ pub fn render_workbench(tool: &mut VietorisRipsTool, ui: &mut egui::Ui) {
 
 fn render_cloud_toolbar(tool: &mut VietorisRipsTool, ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
-        let active_preset = tool.active_generator().map(|g| g.preset);
-        egui::ComboBox::from_label("Shape")
-            .selected_text(active_preset.map_or("Custom Cloud", ShapePreset::label))
-            .show_ui(ui, |ui| {
-                for preset in ShapePreset::ALL {
-                    if ui
-                        .selectable_label(active_preset == Some(preset), preset.label())
-                        .clicked()
-                    {
-                        tool.select_shape_preset(preset);
-                    }
-                }
+        tool.render_source_mode_combo(ui);
+        if !tool.mode.is_3d() {
+            render_2d_preset_controls(tool, ui);
+        } else {
+            ui.menu_button("🎥 3D Camera", |ui| {
+                tool.camera.ui(ui);
             });
+            tool.refresh_projected_3d_export_geometry();
+        }
+        tool.render_sculpt_brush_controls(ui);
+    });
+}
 
-        if let Some(mut desc) = tool.active_generator() {
-            let mut count_f = desc.count as f64;
-            ui.label("Points:");
-            let resp = ui.add(bounded_drag_value(
-                &mut count_f,
-                3.0..=(MAX_VIETORIS_RIPS_POINTS as f64),
-                1.0,
-            ));
-            let new_count = (count_f.round() as usize).clamp(3, MAX_VIETORIS_RIPS_POINTS);
-            if resp.changed() && new_count != desc.count {
-                desc.count = new_count;
-                tool.apply_generator(desc);
-            }
-            if desc.preset != ShapePreset::UniformRandom {
-                let prev = desc.noise;
-                ui.add(egui::Slider::new(&mut desc.noise, 0.0..=0.5).text("Noise"));
-                if (desc.noise - prev).abs() > 1e-9 {
-                    tool.apply_generator(desc);
+fn render_2d_preset_controls(tool: &mut VietorisRipsTool, ui: &mut egui::Ui) {
+    let active_preset = tool.active_generator().map(|g| g.preset);
+    egui::ComboBox::from_label("Shape")
+        .selected_text(active_preset.map_or("Custom Cloud", ShapePreset::label))
+        .show_ui(ui, |ui| {
+            for preset in ShapePreset::ALL {
+                if ui
+                    .selectable_label(active_preset == Some(preset), preset.label())
+                    .clicked()
+                {
+                    tool.select_shape_preset(preset);
                 }
             }
-            if ui.button("Reseed").clicked() {
-                desc.seed = desc.seed.wrapping_add(1);
+        });
+
+    if let Some(mut desc) = tool.active_generator() {
+        let mut count_f = desc.count as f64;
+        ui.label("Points:");
+        let resp = ui.add(bounded_drag_value(
+            &mut count_f,
+            3.0..=(MAX_VIETORIS_RIPS_POINTS as f64),
+            1.0,
+        ));
+        let new_count = (count_f.round() as usize).clamp(3, MAX_VIETORIS_RIPS_POINTS);
+        if resp.changed() && new_count != desc.count {
+            desc.count = new_count;
+            tool.apply_generator(desc);
+        }
+        if desc.preset != ShapePreset::UniformRandom {
+            let prev = desc.noise;
+            ui.add(egui::Slider::new(&mut desc.noise, 0.0..=0.5).text("Noise"));
+            if (desc.noise - prev).abs() > 1e-9 {
                 tool.apply_generator(desc);
             }
-        } else if ui.button("Reset to Annulus").clicked() {
-            tool.apply_generator(GeneratorDescriptor::default());
         }
+        if ui.button("Reseed").clicked() {
+            desc.seed = desc.seed.wrapping_add(1);
+            tool.apply_generator(desc);
+        }
+    } else if ui.button("Reset to Annulus").clicked() {
+        tool.apply_generator(GeneratorDescriptor::default());
+    }
 
-        if ui.button("Import CSV / JSON…").clicked() {
-            tool.io_tasks.trigger_point_cloud_open();
-        }
-    });
+    if ui.button("Import CSV / JSON…").clicked() {
+        tool.io_tasks.trigger_point_cloud_open();
+    }
 }
 
 fn render_nd_projection_bar(tool: &mut VietorisRipsTool, ui: &mut egui::Ui) {
@@ -192,10 +210,11 @@ fn render_topology_readouts(tool: &VietorisRipsTool, ui: &mut egui::Ui, palette:
         ui.label(format!("Edges: {}", tool.complex.count_simplices(1)));
         ui.label(format!("Triangles: {}", tool.complex.count_simplices(2)));
         ui.label(format!("H₁ Bars: {total_h1}"));
+        tool.render_chaos_invariant_badges(ui, palette);
     });
 }
 
-fn badge_pill(ui: &mut egui::Ui, text: String, color: egui::Color32) {
+pub(super) fn badge_pill(ui: &mut egui::Ui, text: String, color: egui::Color32) {
     let bg = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 36);
     egui::Frame::NONE
         .fill(bg)
@@ -227,35 +246,50 @@ fn render_banners(tool: &VietorisRipsTool, ui: &mut egui::Ui, palette: &Semantic
     }
 }
 
-fn render_dual_plots(tool: &VietorisRipsTool, ui: &mut egui::Ui, palette: &SemanticPalette) {
+fn render_dual_plots(tool: &mut VietorisRipsTool, ui: &mut egui::Ui, palette: &SemanticPalette) {
     let avail = ui.available_size();
     let plot_h = (avail.y - 8.0).max(220.0);
     if avail.x >= 620.0 {
         ui.columns(2, |cols| {
-            render_complex_plot(tool, &mut cols[0], palette, plot_h);
+            render_active_complex_viewport(tool, &mut cols[0], palette, plot_h);
             render_persistence_plot(tool, &mut cols[1], palette, plot_h);
         });
     } else {
         let stacked_h = (plot_h * 0.5).max(180.0);
-        render_complex_plot(tool, ui, palette, stacked_h);
+        render_active_complex_viewport(tool, ui, palette, stacked_h);
         render_persistence_plot(tool, ui, palette, stacked_h);
     }
 }
 
-fn render_complex_plot(
-    tool: &VietorisRipsTool,
+fn render_active_complex_viewport(
+    tool: &mut VietorisRipsTool,
+    ui: &mut egui::Ui,
+    palette: &SemanticPalette,
+    height: f32,
+) {
+    if tool.mode.is_3d() {
+        tool.draw_3d_simplex_viewport(ui, palette, height);
+    } else {
+        render_complex_plot_2d(tool, ui, palette, height);
+    }
+}
+
+fn render_complex_plot_2d(
+    tool: &mut VietorisRipsTool,
     ui: &mut egui::Ui,
     palette: &SemanticPalette,
     height: f32,
 ) {
     let s0 = palette.series_color(0);
     let tri_fill = egui::Color32::from_rgba_unmultiplied(s0.r(), s0.g(), s0.b(), 55);
-    Plot::new("vietoris_rips_plot")
+    let allow_pan = tool.brush == SculptBrush::OrbitOrPan;
+    let resp = Plot::new("vietoris_rips_plot")
         .height(height)
         .data_aspect(1.0)
-        .allow_drag(true)
+        .allow_drag(allow_pan)
         .allow_zoom(true)
         .show(ui, |plot_ui| {
+            let cursor = tool.handle_canvas_sculpt(plot_ui, false);
             for t in &tool.cached_triangles {
                 plot_ui.polygon(
                     Polygon::new("2-Simplex", &t[..])
@@ -275,7 +309,17 @@ fn render_complex_plot(
                     .color(s0)
                     .radius(4.0_f32),
             );
-        });
+            if let Some(xy) = cursor {
+                super::ui_3d::draw_brush_ring(
+                    plot_ui,
+                    xy,
+                    tool.brush_radius,
+                    palette.series_color(2),
+                );
+            }
+        })
+        .response;
+    resp.accessible_theory_hover(tool);
 }
 
 fn render_persistence_plot(
