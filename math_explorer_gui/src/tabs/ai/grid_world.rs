@@ -413,73 +413,49 @@ inventory::submit! {
         id: "GridWorldTool",
         display_name: "Grid World (RL)",
         domain: "ai",
-        tags: &[],
+        tags: &["reinforcement learning", "q-learning", "bellman", "mdp", "policy", "epsilon-greedy"],
         build: || Box::new(GridWorldTool::default()),
     }
 }
 
-#[path = "grid_world/preset.rs"]
-mod preset;
+impl scientific_metadata::theory::TheoryDescribable for GridWorldTool {
+    fn theory_description(&self) -> String {
+        format!(
+            "Tabular Q-Learning updates state-action values via Bellman temporal difference $Q(s,a) \\leftarrow Q(s,a) + \\alpha [R + \\gamma \\max_{{a'}} Q(s',a') - Q(s,a)]$ with $\\alpha = {:.2}$, $\\gamma = {:.2}$, and $\\epsilon = {:.2}$.",
+            self.learning_rate, self.discount_factor, self.exploration_rate
+        )
+    }
+    fn phonetic_description(&self) -> String {
+        "Reinforcement Learning involves an agent that interacts with its environment to learn optimal actions, aiming to maximize a cumulative reward based on the Bellman equation.".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Sutton, R. S., & Barto, A. G. (2018). Reinforcement Learning: An Introduction. MIT press."
+            .into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("learning_rate".into(), "The step size used to update the Q-values, controlling how much new information overrides old information.".into());
+        map.insert("discount_factor".into(), "Determines the importance of future rewards. A factor of 0 makes the agent opportunistic, while 1 makes it strive for long-term high reward.".into());
+        map.insert("exploration_rate".into(), "The probability that the agent will choose a random action instead of the best known action, facilitating exploration of the state space.".into());
+        map
+    }
+}
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+#[path = "grid_world_tests.rs"]
+mod tests;
 
-    #[test]
-    fn test_grid_world_default_playback_and_rl_hyperparameters() {
-        let mut tool = GridWorldTool::default();
-        assert!(!tool.is_playing && (1.0..=20.0).contains(&tool.playback_speed));
-        assert_eq!(
-            (
-                tool.learning_rate,
-                tool.discount_factor,
-                tool.exploration_rate
-            ),
-            (0.1, 0.9, 0.1)
-        );
+const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Grid World RL","domain":"ai","timestamp":"2026-11-16T00:00:00Z"},"config":{"width":5,"height":5,"gamma":0.95,"playback_speed":8.0,"is_playing":false}}"#;
 
-        tool.learning_rate = 0.35;
-        tool.discount_factor = 0.8;
-        tool.exploration_rate = 0.25;
-        tool.sync_agent_hyperparameters();
-        assert_eq!(tool.env.gamma, 0.8);
-
-        let saved = tool.save_state().expect("save_state");
-        let mut restored = GridWorldTool::default();
-        restored.try_load_state(&saved).expect("try_load_state");
-        assert_eq!(
-            (
-                restored.learning_rate,
-                restored.discount_factor,
-                restored.exploration_rate
-            ),
-            (0.35, 0.8, 0.25)
-        );
-        restored.reset_agent();
-        assert_eq!(
-            (
-                restored.learning_rate,
-                restored.discount_factor,
-                restored.exploration_rate
-            ),
-            (0.35, 0.8, 0.25)
-        );
-    }
-
-    #[test]
-    fn test_grid_world_step_and_terminal_reset() {
-        let mut tool = GridWorldTool::default();
-        let initial_state = tool.current_state;
-        tool.step_agent();
-        assert_ne!(
-            (tool.current_state, tool.steps, tool.episodes),
-            (initial_state, 0, 0)
-        );
-        tool.current_state = tool.env.goal;
-        tool.step_agent();
-        assert_eq!(
-            (tool.current_state, tool.steps, tool.episodes),
-            (tool.env.start, 0, 1)
-        );
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "grid_world_starter",
+        title: "Grid World RL",
+        description: "Markov Decision Process navigation with obstacle avoidance and discount reward propagation.",
+        category: "Reinforcement Learning",
+        icon: "🗺️",
+        domain: "ai",
+        tool_name: Some("GridWorldTool"),
+        preset_generator: || STARTER_PRESET_JSON,
     }
 }

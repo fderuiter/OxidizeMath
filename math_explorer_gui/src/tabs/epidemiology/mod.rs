@@ -1,10 +1,10 @@
 // @explorer_feature = "epidemiology"
+// @explorer_order = 42
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod network_propagation;
 pub mod sir;
-
 
 pub struct EpidemiologyTab {
     framework: crate::framework::SimulationFramework,

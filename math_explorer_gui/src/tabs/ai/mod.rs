@@ -1,4 +1,5 @@
 // @explorer_feature = "ai"
+// @explorer_order = 60
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
