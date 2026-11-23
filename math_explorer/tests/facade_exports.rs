@@ -150,6 +150,7 @@ fn assert_pure_math_eighteen_errors() {
         e::EvolutionError::InvalidState.severity(),
         e::FractranError::InvalidFractionSyntax.severity(),
         e::OptimizationError::ConversionError.severity(),
+        e::RiskError::EmptySeries.severity(),
         e::StochasticError::InvalidReactionIndex(1).severity(),
         e::TensorError::IndexOutOfBounds.severity(),
         e::TransformError::InvalidDimension.severity(),
@@ -245,7 +246,8 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
         AppliedError, BatteryError, ClinicalTrialError, EngineeringError, Error, GameTheoryError,
-        IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
+        IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, PortfolioError,
+        VoxelGridError,
     };
 
     let model = PowerLawModel::standard();
@@ -279,6 +281,7 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
         KalmanError::MatrixInversionError.severity(),
         LoraError::EmptyEnsemble.severity(),
         PharmacokineticsError::InvalidParameter("v".to_string()).severity(),
+        PortfolioError::NotSymmetric.severity(),
         VoxelGridError::DataSizeMismatch.severity(),
         inner_error::LoraError::EmptyWeights.severity(),
     ];

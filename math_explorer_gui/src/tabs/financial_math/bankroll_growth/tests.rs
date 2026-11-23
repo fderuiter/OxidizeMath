@@ -49,7 +49,6 @@ fn test_even_money_net_odds_and_net_profit_multiplier_settlement() {
 
     let o = Odds::from_net_odds(2.0).unwrap();
     let frac = BankrollFraction::new(0.25).unwrap();
-    // Winning a 25% bet ($250) at net odds b = 2.0 pays +$500 -> $1500 (not +$750 from decimal 3.0).
     let settled_win = settle_bet(1000.0, &frac, o.net_profit_multiplier(), true);
     assert!((settled_win - 1500.0).abs() < 1e-9);
     let settled_loss = settle_bet(1000.0, &frac, o.net_profit_multiplier(), false);
@@ -99,13 +98,37 @@ fn test_f_030_overbetting_divergence_callout_and_zero_allocation() {
     assert!(lab.last_growth_rate < 0.0);
     assert!((lab.last_median_terminal - 3.9137).abs() < 1e-3);
     assert!((lab.last_expected_terminal - 36_935.58).abs() < 0.05);
-    assert!(
-        lab.callout_manager
-            .callouts()
-            .iter()
-            .any(|c| c.tag.as_deref() == Some("ruin_warning")),
-        "Ruin warning callout must be set when f > 2 * f*"
-    );
+    assert_eq!(lab.p05_points.len(), 201);
+    assert_eq!(lab.p25_points.len(), 201);
+    assert_eq!(lab.p75_points.len(), 201);
+    assert_eq!(lab.p95_points.len(), 201);
+    assert_eq!(lab.fan_5_95_poly.len(), 402);
+    assert_eq!(lab.fan_25_75_poly.len(), 402);
+    assert_eq!(lab.underwater_points.len(), 201);
+    assert!(lab.last_underwater_duration > 0);
+    assert!(lab.last_terminal_var_95 > 0.50);
+    assert!(lab.last_terminal_cvar_95 >= lab.last_terminal_var_95);
+    for required_tag in ["ruin_warning", "var_95", "cvar_95"] {
+        assert!(
+            lab.callout_manager
+                .callouts()
+                .iter()
+                .any(|c| c.tag.as_deref() == Some(required_tag)),
+            "Expected callout '{required_tag}' on canonical overbetting preset"
+        );
+    }
+
+    // Verify rendering percentile fan bands, underwater plot, and VaR/CVaR callouts succeeds cleanly.
+    let ctx = eframe::egui::Context::default();
+    let mut w0 = 100.0;
+    let mut prob = 0.55;
+    let mut net_b = 1.0;
+    let mut bets = 200_usize;
+    let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+        eframe::egui::CentralPanel::default().show(ctx, |ui| {
+            let _ = lab.show_lab_ui(ui, &mut w0, &mut prob, &mut net_b, &mut bets);
+        });
+    });
 }
 
 #[test]

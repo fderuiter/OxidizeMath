@@ -15,6 +15,7 @@ The crate spans life sciences, material engineering, distributed systems, and qu
   - Comparison strategies (`HigherIsBetter`, `LowerIsBetter`, `UnmatchedPairing`).
 - **`clinical_trials`**: Biostatistical trial design, sample size determination, and survival curves.
 - **`pharmacokinetics`**: One-compartment oral ADME kinetics (`PKParameters`, `BatemanModel`, `half_life`, `t_max`, `solve_ka`), multi-dose linear superposition (`SuperpositionModel`), biphasic extended-release formulations (`TwoPulseModel`), and stereoselective chiral mixtures (`EnantiomerModel`).
+- **`portfolio`**: Zero-allocation unconstrained Lagrangian and long-only active-set Markowitz mean-variance portfolio optimization (`PortfolioSpec`, `PortfolioAllocation`, `long_only_min_variance`, `long_only_tangency`, `long_only_frontier_in_place`).
 - **`battery_degradation`**: Lithium-ion capacity fade and solid electrolyte interphase (SEI) growth models.
 - **`isosurface`**: 3D volumetric surface extraction algorithms, including Marching Cubes and dual contouring.
 - **`freesurfer`**: Cortical surface reconstruction pipelines and geodesic cortical thickness calculators.

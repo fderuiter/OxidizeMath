@@ -102,6 +102,7 @@ pub mod kelly;
 pub mod markov;
 pub mod ou_process;
 pub mod regression;
+pub mod risk;
 pub mod tda;
 pub mod zip_regression;
 

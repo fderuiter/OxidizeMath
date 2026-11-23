@@ -1,11 +1,13 @@
-// @explorer_feature = "pure_math"
+// @explorer_feature = "applied"
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod bankroll_ensemble;
 pub mod bankroll_growth;
 pub mod bet_size;
+pub mod markowitz;
 pub mod parrondo;
+pub mod tail_risk;
 
 pub struct FinancialMathTab {
     framework: crate::framework::SimulationFramework,

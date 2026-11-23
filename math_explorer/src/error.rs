@@ -10,7 +10,7 @@ pub use domain_ai::error::AIError;
 #[cfg(feature = "applied")]
 pub use domain_applied::error::{
     AppliedError, BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError,
-    IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
+    IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, PortfolioError, VoxelGridError,
 };
 
 #[cfg(feature = "biology")]
@@ -33,7 +33,7 @@ pub use domain_physics::error::{
 pub use pure_math::error::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
     Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
+    OptimizationError, OuError, PureMathError, RiskError, StochasticError, TdaError, TensorError,
     TransformError, ZipError,
 };
 
@@ -92,6 +92,9 @@ pub enum Error {
     /// Pharmacokinetics modeling error.
     #[cfg(feature = "applied")]
     Pharmacokinetics(PharmacokineticsError),
+    /// Markowitz portfolio optimization error.
+    #[cfg(feature = "applied")]
+    Portfolio(PortfolioError),
     /// Volumetric voxel grid construction error.
     #[cfg(feature = "applied")]
     VoxelGrid(VoxelGridError),
@@ -195,6 +198,9 @@ pub enum Error {
     /// Ornstein-Uhlenbeck process error.
     #[cfg(feature = "pure_math")]
     Ou(OuError),
+    /// Statistical tail-risk, drawdown, and performance-ratio error.
+    #[cfg(feature = "pure_math")]
+    Risk(RiskError),
     /// Stochastic simulation error.
     #[cfg(feature = "pure_math")]
     Stochastic(StochasticError),

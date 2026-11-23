@@ -59,10 +59,11 @@
 //!
 //! ## Applications
 //!
-//! - **Gambling**: Blackjack, sports betting, poker
-//! - **Trading**: Position sizing in stocks, options, forex
-//! - **Investing**: Portfolio allocation with edge estimates
-//! - **Venture Capital**: Investment sizing with success probabilities
+//! - **Position Sizing**: Single-opportunity capital allocation under known payoff ratios
+//! - **Quantitative Trading**: Fractional Kelly sizing to balance log-growth against drawdown
+//! - **Venture & Project Allocation**: Discrete binary-outcome capital commitment
+//! - **Tail-Risk Companion**: Pair with [`super::risk`] for `VaR`, `CVaR`, and drawdown analysis,
+//!   or `math_explorer::applied::portfolio` for multi-asset Markowitz optimization
 //!
 //! ## Example: Basic Usage
 //!

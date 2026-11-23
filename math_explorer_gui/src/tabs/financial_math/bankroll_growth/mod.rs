@@ -1,15 +1,18 @@
-//! Kelly Criterion Bankroll Growth and Volatility-Drag Paradox Tool.
+//! Kelly Criterion Capital Growth and Volatility-Drag Paradox Tool.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-#[path = "bankroll_growth_state.rs"]
+mod plots;
 mod state;
 
+#[cfg(test)]
+mod tests;
+
 use super::bankroll_ensemble::{BankrollEnsembleLab, BankrollLabMode};
-use crate::accessibility::AccessibleHoverText;
-use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
+use crate::framework::{CalloutManager, CalloutSpec, ExportCapabilities, InteractiveTool};
+use crate::web_io::PlatformInstant;
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoint};
+use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::kelly::{
     expected_growth_rate, expected_value, kelly_fraction, variants, BankrollFraction, Odds,
     UnitInterval,
@@ -44,40 +47,41 @@ fn finite_kelly_growth_rate(p: &UnitInterval, o: &Odds, stake_fraction: f64) -> 
     }
 }
 
-fn settle_bet(bankroll: f64, fraction: &BankrollFraction, net_b: f64, win: bool) -> f64 {
+pub(crate) fn settle_bet(bankroll: f64, fraction: &BankrollFraction, net_b: f64, win: bool) -> f64 {
     settle_raw_fraction(bankroll, fraction.value(), net_b, win)
 }
 
 fn settle_raw_fraction(bankroll: f64, stake_fraction: f64, net_b: f64, win: bool) -> f64 {
-    let bet_amount = (bankroll * stake_fraction).max(0.0);
+    let allocation = (bankroll * stake_fraction).max(0.0);
     if win {
-        (bankroll + bet_amount * net_b).max(0.0)
+        (bankroll + allocation * net_b).max(0.0)
     } else {
-        (bankroll - bet_amount).max(0.0)
+        (bankroll - allocation).max(0.0)
     }
 }
 
 /// Interactive simulator for fractional Kelly trajectories and non-ergodic volatility drag.
 pub struct BankrollGrowthTool {
-    initial_bankroll: f64,
-    probability: f64,
-    odds: f64,
-    num_bets: usize,
-    stake_multiplier: f64,
-    seed_counter: u64,
-    mode: BankrollLabMode,
-    /// Hosted non-ergodic ensemble and volatility-drag laboratory.
+    pub(super) initial_bankroll: f64,
+    pub(super) probability: f64,
+    pub(super) odds: f64,
+    pub(super) num_bets: usize,
+    pub(super) stake_multiplier: f64,
+    pub(super) seed_counter: u64,
+    pub(super) mode: BankrollLabMode,
+    /// Hosted non-ergodic ensemble and percentile fan-band laboratory.
     pub ensemble_lab: BankrollEnsembleLab,
-    full_kelly_points: Vec<PlotPoint>,
-    half_kelly_points: Vec<PlotPoint>,
-    quarter_kelly_points: Vec<PlotPoint>,
-    active_stake_points: Vec<PlotPoint>,
-    kelly_f_star: f64,
-    active_fraction: f64,
-    active_growth_rate: f64,
-    unit_expected_value: f64,
-    callout_manager: CalloutManager,
-    error_msg: Option<String>,
+    pub(super) full_kelly_points: Vec<PlotPoint>,
+    pub(super) half_kelly_points: Vec<PlotPoint>,
+    pub(super) quarter_kelly_points: Vec<PlotPoint>,
+    pub(super) active_stake_points: Vec<PlotPoint>,
+    pub(super) kelly_f_star: f64,
+    pub(super) active_fraction: f64,
+    pub(super) active_growth_rate: f64,
+    pub(super) unit_expected_value: f64,
+    pub(super) last_compute_ms: f64,
+    pub(super) callout_manager: CalloutManager,
+    pub(super) error_msg: Option<String>,
 }
 
 impl Default for BankrollGrowthTool {
@@ -99,6 +103,7 @@ impl Default for BankrollGrowthTool {
             active_fraction: 0.0,
             active_growth_rate: 0.0,
             unit_expected_value: 0.0,
+            last_compute_ms: 0.0,
             callout_manager: CalloutManager::new(),
             error_msg: None,
         };
@@ -136,6 +141,7 @@ impl BankrollGrowthTool {
     }
 
     pub(super) fn recalculate(&mut self) {
+        let start = PlatformInstant::now();
         self.clear_trajectories();
         let p = match UnitInterval::new(self.probability) {
             Ok(p) => p,
@@ -162,6 +168,7 @@ impl BankrollGrowthTool {
         );
         self.ensemble_lab.sync_callouts(self.num_bets);
         self.simulate_kelly_tiers(&p, &o);
+        self.last_compute_ms = start.elapsed().as_secs_f64() * 1000.0;
     }
 
     fn simulate_kelly_tiers(&mut self, p: &UnitInterval, o: &Odds) {
@@ -206,119 +213,6 @@ impl BankrollGrowthTool {
             self.active_stake_points.push(PlotPoint::new(x, act_w));
         }
     }
-
-    fn render_parameter_sliders(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut changed = false;
-        changed |= ui
-            .add(
-                egui::Slider::new(&mut self.initial_bankroll, 100.0..=10_000.0)
-                    .text("Initial Bankroll"),
-            )
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.probability, 0.01..=0.99).text("Win Probability (p)"))
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.odds, 0.1..=10.0).text("Net Odds (b)"))
-            .accessible_hover_text("Net profit multiplier. E.g., for +100 / even money, b = 1.0.")
-            .changed();
-        changed |= ui
-            .add(egui::Slider::new(&mut self.num_bets, 10..=1000).text("Number of Bets"))
-            .changed();
-        changed |= ui
-            .add(
-                egui::Slider::new(&mut self.stake_multiplier, 0.0..=3.0)
-                    .text("Stake Multiplier (× f*)"),
-            )
-            .accessible_hover_text(
-                "Multiple of Kelly optimal stake f*. Above 2.0f*, expected log-growth turns negative.",
-            )
-            .changed();
-        changed
-    }
-
-    fn render_action_bar(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Lab Mode:");
-            *changed |= ui
-                .radio_value(
-                    &mut self.mode,
-                    BankrollLabMode::KellyStrategies,
-                    "Kelly Fractions",
-                )
-                .changed();
-            *changed |= ui
-                .radio_value(
-                    &mut self.mode,
-                    BankrollLabMode::VolatilityDrag,
-                    "Volatility-Drag Paradox Lab",
-                )
-                .changed();
-            ui.separator();
-            if ui
-                .button("🎲 Rerun Simulation")
-                .accessible_hover_text(
-                    "Advance deterministic RNG seed and draw a fresh sample trajectory",
-                )
-                .clicked()
-            {
-                self.rerun_simulation();
-                *changed = false;
-            }
-            if ui
-                .button("↻ Reset to Defaults")
-                .accessible_hover_text(
-                    "Reset initial bankroll, win probability, odds, and bet count to default values",
-                )
-                .clicked()
-            {
-                self.reset_defaults();
-                *changed = false;
-            }
-            ui.small(format!(
-                "(Seed #{}) f* = {:.3} | Active f = {:.3} | EV = {:+.3} | Log-Growth g = {:+.4}",
-                self.seed_counter,
-                self.kelly_f_star,
-                self.active_fraction,
-                self.unit_expected_value,
-                self.active_growth_rate
-            ));
-        });
-    }
-
-    fn render_kelly_plot(&mut self, ui: &mut egui::Ui, palette: &crate::app::SemanticPalette) {
-        if let Some(ref err) = self.error_msg {
-            ui.colored_label(palette.error, err);
-            return;
-        }
-        ui.heading("Bankroll Simulation");
-        Plot::new("bankroll_growth_plot")
-            .view_aspect(2.0)
-            .legend(egui_plot::Legend::default())
-            .show(ui, |plot_ui| {
-                plot_ui.line(
-                    Line::new("Full Kelly", &self.full_kelly_points[..])
-                        .color(palette.series_color(3)),
-                );
-                plot_ui.line(
-                    Line::new("Half Kelly", &self.half_kelly_points[..])
-                        .color(palette.series_color(5)),
-                );
-                plot_ui.line(
-                    Line::new("Quarter Kelly", &self.quarter_kelly_points[..])
-                        .color(palette.series_color(2)),
-                );
-                if !is_default_stake_multiplier(&self.stake_multiplier) {
-                    let label = format!("Active Stake ({:.2}× f*)", self.stake_multiplier);
-                    plot_ui.line(
-                        Line::new(label, &self.active_stake_points[..])
-                            .color(palette.series_color(0))
-                            .width(2.2_f32),
-                    );
-                }
-                self.callout_manager.render_on_plot(plot_ui);
-            });
-    }
 }
 
 impl InteractiveTool for BankrollGrowthTool {
@@ -330,6 +224,9 @@ impl InteractiveTool for BankrollGrowthTool {
     }
     fn domain(&self) -> &'static str {
         "financial_math"
+    }
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot()
     }
 
     fn observables(&self) -> Vec<(&'static str, f64)> {
@@ -347,6 +244,12 @@ impl InteractiveTool for BankrollGrowthTool {
             ("expected_growth_rate", self.active_growth_rate),
             ("expected_value", self.unit_expected_value),
             ("final_bankroll", final_w),
+            ("ensemble_var_95", self.ensemble_lab.last_terminal_var_95),
+            ("ensemble_cvar_95", self.ensemble_lab.last_terminal_cvar_95),
+            (
+                "ensemble_underwater_duration",
+                self.ensemble_lab.last_underwater_duration as f64,
+            ),
         ]
     }
 
@@ -362,39 +265,18 @@ impl InteractiveTool for BankrollGrowthTool {
         self.load_state_json(state)
     }
 
-    fn show_inside(&mut self, ui: &mut egui::Ui) {
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.heading("Parameters");
-                let mut changed = self.render_parameter_sliders(ui);
-                self.render_action_bar(ui, &mut changed);
-                if changed {
-                    self.recalculate();
-                }
-                ui.separator();
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.build_export_datasets()
+    }
 
-                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-                match self.mode {
-                    BankrollLabMode::KellyStrategies => self.render_kelly_plot(ui, &palette),
-                    BankrollLabMode::VolatilityDrag => {
-                        let lab_changed = self.ensemble_lab.show_lab_ui(
-                            ui,
-                            &mut self.initial_bankroll,
-                            &mut self.probability,
-                            &mut self.odds,
-                            &mut self.num_bets,
-                        );
-                        if lab_changed {
-                            self.recalculate();
-                        }
-                    }
-                }
-            });
-        });
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_export_primitives()
+    }
+
+    fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.render_workspace(ui);
     }
 }
-
-// [cite:clinical_trials_statistics]
 
 inventory::submit! {
     crate::framework::ToolMetadata {
@@ -406,6 +288,4 @@ inventory::submit! {
     }
 }
 
-#[cfg(test)]
-#[path = "bankroll_growth_tests.rs"]
-mod tests;
+// [cite:clinical_trials_statistics]

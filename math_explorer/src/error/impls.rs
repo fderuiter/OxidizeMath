@@ -43,6 +43,7 @@ impl Error {
             Self::NumberTheory(err) => Some(err),
             Self::Optimization(err) => Some(err),
             Self::Ou(err) => Some(err),
+            Self::Risk(err) => Some(err),
             Self::Stochastic(err) => Some(err),
             Self::Tda(err) => Some(err),
             Self::Tensor(err) => Some(err),
@@ -65,6 +66,7 @@ impl Error {
             Self::Kalman(err) => Some(err),
             Self::Lora(err) => Some(err),
             Self::Pharmacokinetics(err) => Some(err),
+            Self::Portfolio(err) => Some(err),
             Self::VoxelGrid(err) => Some(err),
             _ => None,
         }

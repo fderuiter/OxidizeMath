@@ -23,6 +23,8 @@ mod tests {
         check_tool!(crate::tabs::ai::tokenization::TokenizationTool);
         check_tool!(crate::tabs::financial_math::bet_size::BetSizeCalculatorTool);
         check_tool!(crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool);
+        check_tool!(crate::tabs::financial_math::tail_risk::TailRiskDrawdownTool);
+        check_tool!(crate::tabs::financial_math::markowitz::MarkowitzFrontierTool);
         check_tool!(crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool);
         check_tool!(crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool);
         check_tool!(crate::tabs::solid_state::band_structure::BandStructureTool);
@@ -325,6 +327,14 @@ mod tests {
         assert_tool_roundtrip(
             &mut crate::tabs::financial_math::bet_size::BetSizeCalculatorTool::default(),
             r#"{"probability_input":60.0,"odds_format":"American","decimal_odds":2.2,"american_odds":120.0,"fractional_numerator":6.0,"fractional_denominator":5.0,"bankroll":2000.0}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::financial_math::tail_risk::TailRiskDrawdownTool::default(),
+            r#"{"annual_volatility":0.26,"annual_drift":0.09,"tail_shock_prob":0.07,"tail_shock_scale":0.1,"confidence_level":0.95,"risk_free_rate":0.03,"horizon_periods":180,"seed":19}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::financial_math::markowitz::MarkowitzFrontierTool::default(),
+            r#"{"risk_free_rate":0.035,"max_asset_weight":0.75,"asset_names":["Equities","Bonds","Gold"],"expected_returns":[0.1,0.045,0.065],"volatilities":[0.18,0.06,0.15],"upper_correlations":[-0.15,0.08,0.1]}"#,
         );
         assert_tool_roundtrip(
             &mut crate::tabs::solid_state::band_structure::BandStructureTool::default(),

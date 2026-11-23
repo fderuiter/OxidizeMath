@@ -213,7 +213,7 @@ mod umbrella;
 
 pub use crate::applied::{
     algorithms::kalman::KalmanError, clinical_trials::types::ClinicalTrialError,
-    isosurface::types::VoxelGridError,
+    isosurface::types::VoxelGridError, portfolio::PortfolioError,
 };
 pub use umbrella::AppliedError;
 

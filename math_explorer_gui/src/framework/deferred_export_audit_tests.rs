@@ -150,16 +150,16 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 52, "Expected 52 Plot dataset+figure tools");
+    assert_eq!(plot_tool_count, 55, "Expected 55 Plot dataset+figure tools");
     assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
-    assert_eq!(unsupported_tool_count, 16, "Expected 16 non-figure tools");
+    assert_eq!(unsupported_tool_count, 15, "Expected 15 non-figure tools");
     assert_eq!(solid_3d_count, 5, "Expected 5 solid 3D geometric tools");
     assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
         shader_tool_count, 3,
         "Expected 3 analytical GLSL shader tools"
     );
-    assert_eq!(non_shader_tool_count, 72, "Expected 72 non-shader tools");
+    assert_eq!(non_shader_tool_count, 74, "Expected 74 non-shader tools");
 }
 
 fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
@@ -268,4 +268,41 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         .as_deref()
         .expect("3DGS PLY bytes recorded");
     assert!(splat_ply.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
+}
+
+#[test]
+fn test_financial_math_tools_csv_json_png_svg_exports() {
+    let tool_ids = [
+        "BetSizeCalculatorTool",
+        "BankrollGrowthTool",
+        "TailRiskDrawdownTool",
+        "MarkowitzFrontierTool",
+    ];
+    for id in tool_ids {
+        let meta = inventory::iter::<crate::framework::ToolMetadata>
+            .into_iter()
+            .find(|m| m.id == id)
+            .unwrap_or_else(|| panic!("Missing financial_math tool {id}"));
+        verify_single_figure_tool(id, (meta.build)());
+
+        let mut fw = SimulationFramework::new("__audit_fin_data__");
+        fw.active_tool = Some((meta.build)());
+        run_deferred_export_frame(&mut fw, ExportFormat::Csv, true);
+        assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+        let csv = fw
+            .export_queue
+            .last_exported_content
+            .as_deref()
+            .expect("CSV exported");
+        assert!(csv.lines().count() >= 5, "CSV too short for {id}");
+
+        run_deferred_export_frame(&mut fw, ExportFormat::Json, true);
+        assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+        let json = fw
+            .export_queue
+            .last_exported_content
+            .as_deref()
+            .expect("JSON exported");
+        assert!(serde_json::from_str::<serde_json::Value>(json).is_ok());
+    }
 }
