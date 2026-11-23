@@ -44,8 +44,8 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .map(ChallengeMetadata::to_card)
         .collect();
     assert!(
-        cards.len() >= 14,
-        "Expected at least 14 registered ChallengeMetadata entries, got {}",
+        cards.len() >= 15,
+        "Expected at least 15 registered ChallengeMetadata entries, got {}",
         cards.len()
     );
     for required_id in [
@@ -63,6 +63,7 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         "epidemiology_hub_vaccination",
         "epidemiology_bridge_quarantine",
         "astrophysics_mystery_halo_fit",
+        "hasse_weil_boundary_p23",
     ] {
         let meta = find_challenge_metadata(required_id)
             .unwrap_or_else(|| panic!("Missing ChallengeMetadata '{required_id}'"));
@@ -81,6 +82,7 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
     assert_eq!(get_challenge_cards_for_domain("medical").len(), 2);
     assert_eq!(get_challenge_cards_for_domain("epidemiology").len(), 2);
     assert_eq!(get_challenge_cards_for_domain("astrophysics").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("elliptic_curves").len(), 1);
 
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
