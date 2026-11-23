@@ -1,5 +1,6 @@
 //! End-to-end quantitative sports pricing, rating, parlay, and Kelly sizing pipeline.
 
+use math_explorer::nalgebra::DMatrix;
 use math_explorer::prelude::*;
 use math_explorer::sports_quant::*;
 
@@ -49,22 +50,52 @@ fn stage_score_matrix_pricing() -> Result<UnitInterval> {
 }
 
 fn stage_zip_and_copula_sgp(home_win_prob: UnitInterval) -> Result<()> {
-    println!("\n3. ZIP PLAYER PROP + GAUSSIAN COPULA SGP -> FRACTIONAL KELLY");
+    println!("\n3. ZIP PLAYER PROP + GENZ GAUSSIAN COPULA SGP -> FRACTIONAL KELLY");
     let rho_zero: ZeroInflation = UnitInterval::new(0.20)?.into();
     let zip = ZipDistribution::new(ZipParams::new(rho_zero, PoissonRate::new(2.20)?));
     let prop_over_15 = zip.over_probability_unit(Count::new(1));
 
-    let corr = CorrelationMatrix::bivariate(Correlation::new(0.28)?)?;
-    let sgp_joint = sgp_joint_probability(&[home_win_prob.into(), prop_over_15.into()], &corr)?;
+    let corr_2 = CorrelationMatrix::bivariate(Correlation::new(0.28)?)?;
+    let sgp_joint = sgp_joint_probability(&[home_win_prob.into(), prop_over_15.into()], &corr_2)?;
     let sgp_unit: UnitInterval = sgp_joint.into();
-
-    let book_sgp_odds = Odds::new(3.90)?;
-    let sgp_stake = fractional_kelly(&sgp_unit, &book_sgp_odds, 0.50)?;
+    let sgp_stake = fractional_kelly(&sgp_unit, &Odds::new(3.90)?, 0.50)?;
     println!(
-        "   ZIP Over 1.5: {:.2}% | Copula SGP: {:.2}% -> Half-Kelly @ 3.90: {:.2}%",
-        prop_over_15.value() * 100.0,
+        "   2-Leg ZIP+Match SGP: {:.2}% -> Half-Kelly @ 3.90: {:.2}%",
         sgp_unit.value() * 100.0,
         sgp_stake.value() * 100.0
+    );
+
+    let legs_3 = [
+        home_win_prob.into(),
+        prop_over_15.into(),
+        Probability::new(0.60)?,
+    ];
+    let corr_3 = CorrelationMatrix::new(DMatrix::from_row_slice(
+        3,
+        3,
+        &[1.0, 0.28, 0.20, 0.28, 1.0, 0.35, 0.20, 0.35, 1.0],
+    ))?;
+    let priced = price_correlated_parlay(&legs_3, &corr_3)?;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let mut rng = OxidizeRng::new(2026);
+    let sim = simulate_correlated_parlay(
+        &legs_3,
+        &corr_3,
+        if smoke { 2_500 } else { 25_000 },
+        &mut rng,
+    )?;
+    let sgp3_unit: UnitInterval = priced.joint_probability.into();
+    let sgp3_stake = fractional_kelly(&sgp3_unit, &Odds::new(6.25)?, 0.50)?;
+    println!(
+        "   3-Leg SGP: Naive={:.4}, Genz={:.4} (x{:.2}, Fair={:.2}), MC={:.4} ± {:.4} -> Half-Kelly: {:.2}%",
+        priced.naive_probability.value(),
+        priced.joint_probability.value(),
+        priced.correlation_multiplier,
+        priced.fair_decimal_odds,
+        sim.joint_probability.value(),
+        sim.standard_error,
+        sgp3_stake.value() * 100.0
     );
     Ok(())
 }

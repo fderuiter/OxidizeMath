@@ -1,9 +1,8 @@
-// @explorer_feature = "pure_math"
-// @explorer_order = 37
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotUi, VLine};
 use math_explorer::sports_quant::{
@@ -219,6 +218,14 @@ impl ExplorerTab for SportsAnalyticsTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "sports_analytics",
+        order: 37,
+        build: || Box::new(SportsAnalyticsTab::default()),
     }
 }
 

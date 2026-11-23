@@ -98,3 +98,5 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+// [cite:graph_parameters_rust]

@@ -47,7 +47,11 @@ pub use pure_math::pure_math::statistics::{
 };
 
 pub use copula::{
-    Correlation, CorrelationMatrix, GaussianCopula, Probability, sgp_joint_probability,
+    Correlation, CorrelationMatrix, GaussianCopula, MAX_STACK_LEGS, ParlayPricingReport,
+    Probability, RHO_SPLIT, bivariate_copula_cdf, bivariate_normal_cdf,
+    parlay_simulation_scratch_len, price_correlated_parlay, price_correlated_parlay_with_scratch,
+    sgp_joint_probability, sgp_joint_probability_with_scratch, simulate_correlated_parlay,
+    simulate_correlated_parlay_into,
 };
 pub use elo::{
     EloKFactor, EloRating, HomeAdvantage, elo_expected_score, elo_mov_multiplier,

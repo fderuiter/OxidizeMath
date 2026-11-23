@@ -33,6 +33,10 @@ impl SpinVisualizer {
         if !ex.is_finite() || !ey.is_finite() || !ez.is_finite() {
             return Err("Quantum spin expectation values are non-finite.".to_string());
         }
+        let [bx, by, bz] = self.b_field;
+        if !bx.is_finite() || !by.is_finite() || !bz.is_finite() {
+            return Err("Magnetic field vector components are non-finite.".to_string());
+        }
 
         let mut combined = ColoredMesh::default();
 
@@ -67,6 +71,19 @@ impl SpinVisualizer {
             let mixed_marker = build_uv_sphere(Point3D::new(0.0, 0.0, 0.0), 0.12, 14, 10)
                 .map_err(|e| e.to_string())?;
             append_colored_part(&mut combined, &mixed_marker, spin_color);
+        }
+
+        let b_mag = (bx * bx + by * by + bz * bz).sqrt();
+        if b_mag > 1.0e-3 {
+            let b_len = (1.18 + 0.04 * b_mag.min(5.0)) as f32;
+            let b_tip = Point3D::new(
+                (bx / b_mag) as f32,
+                (by / b_mag) as f32,
+                (bz / b_mag) as f32,
+            ) * b_len;
+            let b_arrow = build_arrow(Point3D::new(0.0, 0.0, 0.0), b_tip, 0.032, 0.084, 0.18, 14)
+                .map_err(|e| e.to_string())?;
+            append_colored_part(&mut combined, &b_arrow, VertexColor::new(64, 212, 232));
         }
 
         Ok(combined)
