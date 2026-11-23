@@ -1,6 +1,5 @@
 //! Critical points (Points of Interest) detection for 2D plot polylines and reference lines.
 
-mod interp;
 mod intersect;
 #[cfg(test)]
 mod tests;
@@ -12,8 +11,13 @@ use crate::{
     transform::{PlotBounds, PlotTransform},
 };
 
-pub use self::interp::{interpolate_threshold_crossings, interpolate_y_at_x};
 pub use self::intersect::MAX_PAIRWISE_INTERSECTION_SERIES;
+pub use math_commons::poi::{
+    LinePoiScan, LocalExtremum, closest_threshold_crossing, detect_local_extrema,
+    detect_local_extrema_into, eval_segment_at_x, interpolate_threshold_crossings,
+    interpolate_y_at_x, intersect_polylines, intersect_polylines_into, parabolic_vertex,
+    peak_extremum, scan_line_pois, segment_intersection_2d, threshold_crossings_into, y_at_x_into,
+};
 
 /// Maximum number of visible critical points returned per plot frame.
 pub const MAX_CRITICAL_POINTS: usize = 256;
@@ -184,11 +188,11 @@ fn collect_single_line_pois(
 ) {
     let want_roots = point_y_in_bounds(0.0, bounds) && (!transform.log_axis().y);
     let want_y_ints = point_x_in_bounds(0.0, bounds) && (!transform.log_axis().x);
-    let interp::SingleLineScan {
+    let LinePoiScan {
         roots,
-        y_ints,
+        y_intercepts,
         extrema,
-    } = interp::scan_single_line_all(line.points, want_roots, want_y_ints);
+    } = scan_line_pois(line.points, want_roots, want_y_ints);
     for x_root in roots {
         push_if_visible(
             out,
@@ -203,7 +207,7 @@ fn collect_single_line_pois(
             transform,
         );
     }
-    for y_int in y_ints {
+    for y_int in y_intercepts {
         push_if_visible(
             out,
             CriticalPoint {
@@ -217,16 +221,16 @@ fn collect_single_line_pois(
             transform,
         );
     }
-    for (pt, is_max) in extrema {
+    for ext in extrema {
         push_if_visible(
             out,
             CriticalPoint {
-                kind: if is_max {
+                kind: if ext.is_max {
                     CriticalPointKind::LocalMax
                 } else {
                     CriticalPointKind::LocalMin
                 },
-                point: pt,
+                point: ext.point,
                 primary_series: line.name.clone(),
                 secondary_series: None,
                 item_id: line.id,

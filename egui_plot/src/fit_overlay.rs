@@ -31,7 +31,7 @@ pub(crate) enum FitOverlayStatus {
     Hidden,
     /// Fit converged and produced a valid [`FitResult`].
     Succeeded {
-        result: FitResult,
+        result: Box<FitResult>,
         accent_color: Color32,
     },
     /// Fit was requested by the user, but failed on the active dataset.
@@ -198,7 +198,7 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
         access_state,
     );
     FitOverlayStatus::Succeeded {
-        result: fit_res,
+        result: Box::new(fit_res),
         accent_color: accent,
     }
 }
@@ -288,7 +288,7 @@ fn resolve_active_fit(
         }
     } else {
         access_state.custom_fit_error = None;
-        fit_model_with_axes(ds_pts, fit_type, ds_name, log_x, log_y, log_mode)
+        fit_model_with_axes(ds_pts, fit_type, ds_name, log_x, log_y, log_mode).ok()
     }
 }
 
@@ -336,8 +336,9 @@ fn diagnose_fit_failure(
     log_y: bool,
 ) -> String {
     let min_pts = match fit_type {
-        FitType::Logistic => 3,
-        FitType::Sinusoidal => 4,
+        FitType::Quadratic | FitType::Logistic => 3,
+        FitType::Cubic | FitType::Sinusoidal => 4,
+        FitType::Quartic => 5,
         _ => 2,
     };
     let finite: Vec<[f64; 2]> = points

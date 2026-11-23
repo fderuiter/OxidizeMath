@@ -124,13 +124,3 @@ pub(crate) fn format_fit_param(value: f64) -> String {
     let decimals = (3 - exp10).max(0) as usize;
     format!("{rounded:.decimals$}")
 }
-
-/// Formats a signed curve-fit model parameter (`+...` or `-...`) to 4 significant digits.
-#[must_use]
-pub(crate) fn format_fit_param_signed(value: f64) -> String {
-    if value < 0.0 {
-        format!("-{}", format_fit_param(-value))
-    } else {
-        format!("+{}", format_fit_param(value))
-    }
-}

@@ -8,7 +8,7 @@ use eframe::egui;
 use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints, PlotUi, Polygon};
 
 /// Renders the plasma concentration profile plot with `MEC`/`MTC` therapeutic window and overlays.
-pub(crate) fn render_concentration_plot(tool: &PharmacokineticsTool, ui: &mut egui::Ui) {
+pub(crate) fn render_concentration_plot(tool: &mut PharmacokineticsTool, ui: &mut egui::Ui) {
     let palette = SemanticPalette::from_visuals(ui.visuals());
     ui.heading("Plasma Concentration Profile");
     if let Some(ref err) = tool.solver_error {
@@ -35,16 +35,6 @@ pub(crate) fn render_concentration_plot(tool: &PharmacokineticsTool, ui: &mut eg
         plot = plot.include_y(0.0).include_y(tool.mtc * 1.1);
     }
 
-    plot.show(ui, |plot_ui| {
-        draw_window_and_curves(tool, plot_ui, palette);
-    });
-}
-
-fn draw_window_and_curves<'a>(
-    tool: &'a PharmacokineticsTool,
-    plot_ui: &mut PlotUi<'a>,
-    palette: SemanticPalette,
-) {
     let (y_mec, y_mtc) = if tool.log10_y {
         (
             tool.mec.max(LOG10_CONC_FLOOR).log10(),
@@ -53,7 +43,69 @@ fn draw_window_and_curves<'a>(
     } else {
         (tool.mec, tool.mtc)
     };
+    let horizon_hours = tool.horizon_hours;
+    let entity_mode = tool.entity_mode;
+    let log10_y = tool.log10_y;
+    let PharmacokineticsTool {
+        plot_total_points,
+        plot_d_points,
+        plot_l_points,
+        snapshot_manager,
+        callout_manager,
+        ..
+    } = tool;
 
+    plot.show(ui, |plot_ui| {
+        draw_therapeutic_window(plot_ui, palette, horizon_hours, y_mec, y_mtc);
+        draw_concentration_series(
+            plot_ui,
+            palette,
+            entity_mode,
+            plot_total_points,
+            plot_d_points,
+            plot_l_points,
+        );
+        draw_trace_overlays(snapshot_manager, log10_y, plot_ui, palette);
+        callout_manager.render_on_plot(plot_ui);
+    });
+}
+
+fn draw_concentration_series<'a>(
+    plot_ui: &mut PlotUi<'a>,
+    palette: SemanticPalette,
+    entity_mode: EntityMode,
+    total_pts: &'a [egui_plot::PlotPoint],
+    d_pts: &'a [egui_plot::PlotPoint],
+    l_pts: &'a [egui_plot::PlotPoint],
+) {
+    if !total_pts.is_empty() {
+        plot_ui.line(
+            Line::new("Total C(t)", total_pts)
+                .color(palette.series_color(0))
+                .width(2.2_f32),
+        );
+    }
+    if entity_mode == EntityMode::Enantiomer {
+        plot_ui.line(
+            Line::new("d-Isomer", d_pts)
+                .color(palette.series_color(1))
+                .style(LineStyle::Dashed { length: 6.0 }),
+        );
+        plot_ui.line(
+            Line::new("l-Isomer", l_pts)
+                .color(palette.series_color(2))
+                .style(LineStyle::Dotted { spacing: 5.0 }),
+        );
+    }
+}
+
+fn draw_therapeutic_window(
+    plot_ui: &mut PlotUi<'_>,
+    palette: SemanticPalette,
+    horizon_hours: f64,
+    y_mec: f64,
+    y_mtc: f64,
+) {
     let win_fill = egui::Color32::from_rgba_unmultiplied(
         palette.success.r(),
         palette.success.g(),
@@ -62,8 +114,8 @@ fn draw_window_and_curves<'a>(
     );
     let rect_pts = vec![
         [0.0, y_mec],
-        [tool.horizon_hours, y_mec],
-        [tool.horizon_hours, y_mtc],
+        [horizon_hours, y_mec],
+        [horizon_hours, y_mtc],
         [0.0, y_mtc],
     ];
     plot_ui.polygon(
@@ -79,43 +131,22 @@ fn draw_window_and_curves<'a>(
             .color(palette.error)
             .style(LineStyle::Dashed { length: 8.0 }),
     );
-
-    if !tool.plot_total_points.is_empty() {
-        plot_ui.line(
-            Line::new("Total C(t)", &tool.plot_total_points[..])
-                .color(palette.series_color(0))
-                .width(2.2_f32),
-        );
-    }
-    if tool.entity_mode == EntityMode::Enantiomer {
-        plot_ui.line(
-            Line::new("d-Isomer", &tool.plot_d_points[..])
-                .color(palette.series_color(1))
-                .style(LineStyle::Dashed { length: 6.0 }),
-        );
-        plot_ui.line(
-            Line::new("l-Isomer", &tool.plot_l_points[..])
-                .color(palette.series_color(2))
-                .style(LineStyle::Dotted { spacing: 5.0 }),
-        );
-    }
-    draw_trace_overlays(tool, plot_ui, palette);
 }
 
 fn draw_trace_overlays<'a>(
-    tool: &'a PharmacokineticsTool,
+    snapshot_manager: &'a crate::framework::TraceSnapshotManager,
+    log10_y: bool,
     plot_ui: &mut PlotUi<'a>,
     palette: SemanticPalette,
 ) {
-    if !tool.log10_y {
-        tool.snapshot_manager.render_on_plot(plot_ui);
+    if !log10_y {
+        snapshot_manager.render_on_plot(plot_ui);
         return;
     }
-    for (idx, snap) in tool
-        .snapshot_manager
+    for (idx, snap) in snapshot_manager
         .history_runs()
         .iter()
-        .chain(tool.snapshot_manager.snapshots().iter())
+        .chain(snapshot_manager.snapshots().iter())
         .enumerate()
     {
         if !snap.visible {

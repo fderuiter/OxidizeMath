@@ -21,7 +21,7 @@ fn test_gistemp_degree4_fit_accuracy_and_scientific_formatting() {
         .enumerate()
         .map(|(i, &y)| [(1880 + i) as f64, y])
         .collect();
-    let res = fit_model_with_axes(&pts, FitType::Polynomial(4), "GISTEMP", false, false, false)
+    let res = fit_model_with_axes(&pts, FitType::Quartic, "GISTEMP", false, false, false)
         .expect("GISTEMP Degree 4 fit should converge");
     assert!(
         (res.r_squared - 0.9158).abs() < 0.001,

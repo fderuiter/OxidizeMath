@@ -195,7 +195,7 @@ fn test_legend_and_fit_badge_zero_overlap_across_corners_and_narrow_reflow() {
             ctx.enable_accesskit();
             let plot_id = Id::new(("corner_fit_check", corner as u8, size.x as i32));
             let st = AccessState {
-                fit_model: Some(FitType::Polynomial(4)),
+                fit_model: Some(FitType::Quartic),
                 ..Default::default()
             };
             ctx.data_mut(|d| d.insert_temp(plot_id, st));

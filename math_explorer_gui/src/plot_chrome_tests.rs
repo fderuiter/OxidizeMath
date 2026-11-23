@@ -156,7 +156,7 @@ fn test_real_gistemp_anomalies_degree4_fit_accuracy() {
     assert_eq!(series.len(), 144);
     let fit = egui_plot::fit_model_with_axes(
         &series,
-        egui_plot::FitType::Polynomial(4),
+        egui_plot::FitType::Quartic,
         "GISTEMP Temperature Anomaly",
         false,
         false,
