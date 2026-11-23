@@ -4,7 +4,7 @@ use super::pane_slots::MAX_SECONDARY_PANES;
 use super::state::{AppState, SplitLayoutMode};
 use super::theme::ThemeMode;
 use super::viewport::ViewportLayout;
-use super::MathExplorerApp;
+use super::{MathExplorerApp, SharedTabJson};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -119,7 +119,10 @@ fn build_history_fingerprint(
     }
 }
 
-fn tab_maps_semantically_eq(a: &HashMap<String, String>, b: &HashMap<String, String>) -> bool {
+fn tab_maps_semantically_eq(
+    a: &HashMap<String, SharedTabJson>,
+    b: &HashMap<String, SharedTabJson>,
+) -> bool {
     if a.len() != b.len() {
         return false;
     }
@@ -130,8 +133,8 @@ fn tab_maps_semantically_eq(a: &HashMap<String, String>, b: &HashMap<String, Str
 }
 
 fn pane_tab_maps_semantically_eq(
-    a: &[HashMap<String, String>],
-    b: &[HashMap<String, String>],
+    a: &[HashMap<String, SharedTabJson>],
+    b: &[HashMap<String, SharedTabJson>],
 ) -> bool {
     let empty = HashMap::new();
     let max_len = a.len().max(b.len());

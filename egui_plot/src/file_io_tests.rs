@@ -15,7 +15,10 @@ fn test_infer_mime_type_all_supported_extensions() {
     assert_eq!(infer_mime_type("chart.png"), "image/png");
     assert_eq!(infer_mime_type("chart.svg"), "image/svg+xml");
     assert_eq!(infer_mime_type("anim.gif"), "image/gif");
-    assert_eq!(infer_mime_type("mesh.obj"), "application/octet-stream");
+    assert_eq!(infer_mime_type("surface.stl"), "model/stl");
+    assert_eq!(infer_mime_type("SCENE.PLY"), "model/ply");
+    assert_eq!(infer_mime_type("mesh.obj"), "model/obj");
+    assert_eq!(infer_mime_type("archive.bin"), "application/octet-stream");
 }
 
 #[test]

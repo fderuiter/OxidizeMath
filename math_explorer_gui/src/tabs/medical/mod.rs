@@ -4,6 +4,7 @@ use eframe::egui;
 
 pub mod beam_profiling;
 pub mod dose;
+pub mod imrt;
 pub mod radar_gating;
 
 pub struct MedicalTab {

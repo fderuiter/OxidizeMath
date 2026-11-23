@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{MathExplorerApp, ViewportLayout};
+use super::{MathExplorerApp, SharedTabJson, ViewportLayout};
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::collections::HashMap;
@@ -16,9 +16,9 @@ pub(super) struct SecondarySlot {
     /// Currently instantiated `(tab_index, tab_instance)` for this secondary pane.
     pub(super) active: Option<(usize, Box<dyn ExplorerTab>)>,
     /// Cached serialized state per tab name (`tab.name()`) within this pane.
-    pub(super) saved_states: HashMap<String, String>,
+    pub(super) saved_states: HashMap<String, SharedTabJson>,
     /// Interior cache `(tab_name, state_revision, json)` for clean active secondary pane tabs.
-    active_cache: std::cell::RefCell<Option<(String, u64, Option<String>)>>,
+    active_cache: std::cell::RefCell<Option<(String, u64, Option<SharedTabJson>)>>,
 }
 
 impl SecondarySlot {
@@ -34,7 +34,7 @@ impl SecondarySlot {
     pub(super) fn snapshot_active(&mut self) {
         if let Some((_, ref tab)) = self.active {
             let rev = tab.state_revision();
-            if let Some(state_json) = tab.save_state() {
+            if let Some(state_json) = tab.save_state().map(SharedTabJson::from) {
                 let name = tab.name().to_string();
                 *self.active_cache.borrow_mut() =
                     Some((name.clone(), rev, Some(state_json.clone())));
@@ -69,7 +69,7 @@ impl SecondarySlot {
         self.active.as_mut().map(|(_, tab)| tab)
     }
 
-    fn extract_states(&self, had_input: bool) -> HashMap<String, String> {
+    fn extract_states(&self, had_input: bool) -> HashMap<String, SharedTabJson> {
         let mut states = self.saved_states.clone();
         if let Some((_, ref tab)) = self.active {
             let rev = tab.state_revision();
@@ -88,7 +88,7 @@ impl SecondarySlot {
             let maybe_json = if let Some(cached_opt) = cached_hit {
                 cached_opt
             } else {
-                let fresh = tab.save_state();
+                let fresh = tab.save_state().map(SharedTabJson::from);
                 *self.active_cache.borrow_mut() = Some((name.to_string(), rev, fresh.clone()));
                 fresh
             };
@@ -309,7 +309,7 @@ impl MathExplorerApp {
     }
 
     /// Extracts serialized per-pane state maps for `AppState`.
-    pub(super) fn extract_pane_tab_states(&self) -> Vec<HashMap<String, String>> {
+    pub(super) fn extract_pane_tab_states(&self) -> Vec<HashMap<String, SharedTabJson>> {
         let mut all = Vec::with_capacity(4);
         all.push(HashMap::new());
         let mut any_non_empty = false;
@@ -330,8 +330,8 @@ impl MathExplorerApp {
     /// Restores serialized per-pane state maps from `AppState`, falling back to `fallback_tab_states` for legacy sessions.
     pub(super) fn restore_pane_tab_states(
         &mut self,
-        pane_tab_states: Vec<HashMap<String, String>>,
-        fallback_tab_states: &HashMap<String, String>,
+        pane_tab_states: Vec<HashMap<String, SharedTabJson>>,
+        fallback_tab_states: &HashMap<String, SharedTabJson>,
     ) {
         let pane_count = self.viewport_layout.pane_count();
         self.prune_inactive_pane_slots(pane_count);

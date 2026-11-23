@@ -12,6 +12,7 @@ mod pane_ops;
 mod pane_slots;
 pub(crate) mod session;
 mod share_link;
+pub mod shared_json;
 mod state;
 pub(crate) mod state_history;
 pub mod theme;
@@ -59,6 +60,7 @@ mod wasm_tests;
 pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
+pub use shared_json::SharedTabJson;
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
@@ -393,7 +395,6 @@ impl eframe::App for MathExplorerApp {
         }
         self.diagnostic_events.extend(new_events);
 
-        // Issues & Diagnostics Panel
         if self.show_diagnostics_panel {
             ui_panels::render_issues_panel(
                 ctx,
@@ -409,22 +410,18 @@ impl eframe::App for MathExplorerApp {
         {
             macos_menu::sync_macos_edit_menu(self);
             macos_menu::handle_macos_menu_events(self, ctx);
+            if self.session_manager.toast().is_some() {
+                egui::TopBottomPanel::top("toast_panel").show(ctx, |ui| {
+                    self.session_manager.render_toast(ui);
+                });
+            }
         }
 
-        #[cfg(target_os = "macos")]
-        if self.session_manager.toast().is_some() {
-            egui::TopBottomPanel::top("toast_panel").show(ctx, |ui| {
-                self.session_manager.render_toast(ui);
-            });
-        }
-
-        // Render Menu Bar (Native fallback for non-macOS or inside the app)
         #[cfg(not(target_os = "macos"))]
         egui::TopBottomPanel::top("main_menu").show(ctx, |ui| {
             ui_panels::render_main_menu(self, ctx, ui);
         });
 
-        // Render Persistent Categorized Domain Switcher Bar
         egui::TopBottomPanel::top("domain_switcher_bar")
             .exact_height(34.0)
             .show(ctx, |ui| {

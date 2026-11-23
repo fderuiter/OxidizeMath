@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{MathExplorerApp, ViewportLayout};
+use super::{MathExplorerApp, SharedTabJson, ViewportLayout};
 use eframe::egui;
 
 impl MathExplorerApp {
@@ -27,13 +27,16 @@ impl MathExplorerApp {
             self.secondary_tab = src_tab_idx;
         }
 
-        self.apply_cloned_state_to_pane(dst_pane, src_tab_idx, &tab_name, saved_json.as_deref());
+        self.apply_cloned_state_to_pane(dst_pane, src_tab_idx, &tab_name, saved_json.as_ref());
         self.tab_state_cache.invalidate_tab(&tab_name);
         self.clear_active_pane_caches();
         true
     }
 
-    fn snapshot_pane_for_clone(&self, src_pane: usize) -> Option<(usize, String, Option<String>)> {
+    fn snapshot_pane_for_clone(
+        &self,
+        src_pane: usize,
+    ) -> Option<(usize, String, Option<SharedTabJson>)> {
         let src_tab_idx = if src_pane == 0 {
             self.active_primary_tab_index()
         } else {
@@ -43,11 +46,11 @@ impl MathExplorerApp {
         let tab_name = primary_tab.name().to_string();
 
         let saved_json = if src_pane == 0 {
-            primary_tab.save_state()
+            primary_tab.save_state().map(SharedTabJson::from)
         } else if let Some(slot) = self.pane_slots.slot(src_pane) {
             if let Some((active_idx, ref active_tab)) = slot.active {
                 if active_idx == src_tab_idx {
-                    active_tab.save_state()
+                    active_tab.save_state().map(SharedTabJson::from)
                 } else {
                     slot.saved_states.get(&tab_name).cloned()
                 }
@@ -55,7 +58,7 @@ impl MathExplorerApp {
                 slot.saved_states
                     .get(&tab_name)
                     .cloned()
-                    .or_else(|| primary_tab.save_state())
+                    .or_else(|| primary_tab.save_state().map(SharedTabJson::from))
             }
         } else {
             None
@@ -68,7 +71,7 @@ impl MathExplorerApp {
         dst_pane: usize,
         src_tab_idx: usize,
         tab_name: &str,
-        saved_json: Option<&str>,
+        saved_json: Option<&SharedTabJson>,
     ) {
         if dst_pane == 0 {
             if let Some(json) = saved_json {
@@ -87,8 +90,7 @@ impl MathExplorerApp {
         };
         slot.initialized = true;
         if let Some(json) = saved_json {
-            slot.saved_states
-                .insert(tab_name.to_string(), json.to_string());
+            slot.saved_states.insert(tab_name.to_string(), json.clone());
         } else {
             slot.saved_states.remove(tab_name);
         }

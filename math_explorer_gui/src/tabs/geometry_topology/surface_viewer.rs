@@ -6,21 +6,16 @@ mod cache;
 mod ui;
 
 use super::custom_surface::{CustomSurfaceSandbox, SurfaceType};
-use crate::framework::{Camera3D, InteractiveTool, Scene3DBuilder};
-use crate::web_io::{spawn_save_as_file_dialog, SaveAsDialogConfig};
+use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
 use math_explorer::pure_math::differential_geometry::surface::{
     KleinBottle, ParametricSurface, Sphere, Torus,
 };
 use std::collections::BTreeMap;
-use std::sync::mpsc::{self, Receiver, TryRecvError};
 
-const OBJ_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
-    filter_name: "OBJ File",
-    extensions: &["obj"],
-    fallback_filename: "surface.obj",
-    write_error_prefix: "Failed to save OBJ mesh",
-};
+const fn default_wall_thickness() -> f64 {
+    super::export_utils::DEFAULT_WALL_THICKNESS
+}
 
 #[derive(serde::Serialize)]
 struct SurfaceViewerSaveState {
@@ -29,6 +24,7 @@ struct SurfaceViewerSaveState {
     torus_major_radius: f64,
     torus_minor_radius: f64,
     klein_radius: f64,
+    wall_thickness: f64,
     u_resolution: usize,
     v_resolution: usize,
     camera: Camera3D,
@@ -52,6 +48,8 @@ struct SurfaceViewerState {
     torus_major_radius: f64,
     torus_minor_radius: f64,
     klein_radius: f64,
+    #[serde(default = "default_wall_thickness")]
+    wall_thickness: f64,
     u_resolution: usize,
     v_resolution: usize,
     #[serde(default)]
@@ -74,20 +72,19 @@ struct SurfaceViewerState {
     v_bounds: Option<[f64; 2]>,
 }
 
-/// Interactive 3D parametric wireframe manifold viewer with asynchronous `.obj` export.
+/// Interactive 3D parametric wireframe manifold viewer with watertight `.stl`, `.ply`, and `.obj` exports.
 pub struct SurfaceViewer {
     surface_type: SurfaceType,
     sphere_radius: f64,
     torus_major_radius: f64,
     torus_minor_radius: f64,
     klein_radius: f64,
+    wall_thickness: f64,
     u_resolution: usize,
     v_resolution: usize,
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
     pub(super) custom_sandbox: CustomSurfaceSandbox,
-    pub(super) obj_export_rx: Option<Receiver<Result<String, String>>>,
-    pub(super) obj_export_status: Option<(String, bool)>,
     cache: cache::SurfaceGeometryCache,
 }
 
@@ -100,13 +97,12 @@ impl Default for SurfaceViewer {
             torus_major_radius: 2.0,
             torus_minor_radius: 0.5,
             klein_radius: 2.0,
+            wall_thickness: default_wall_thickness(),
             u_resolution: 30,
             v_resolution: 30,
             camera,
             scene_builder: Scene3DBuilder::new(camera),
             custom_sandbox: CustomSurfaceSandbox::default(),
-            obj_export_rx: None,
-            obj_export_status: None,
             cache: cache::SurfaceGeometryCache::default(),
         }
     }
@@ -130,81 +126,42 @@ impl SurfaceViewer {
         }
     }
 
-    /// Generates serialized Wavefront `.obj` text for the active parametric surface mesh.
-    pub fn build_obj_mesh_string(&self) -> Result<String, String> {
-        let surface = self.create_surface();
-        let (u_range, v_range) = self.custom_sandbox.uv_domain_for(self.surface_type);
-        let mesh = super::export_utils::surface_to_mesh_with_domain(
-            surface.as_ref(),
-            u_range,
-            v_range,
-            self.u_resolution,
-            self.v_resolution,
-        );
-        oxidize_core::mesh::export_mesh_to_obj_string(&mesh)
-            .map_err(|e| format!("Failed to serialize OBJ mesh: {e}"))
-    }
-
     #[cfg(test)]
     fn build_obj_string(&self) -> String {
-        self.build_obj_mesh_string().unwrap_or_default()
-    }
-
-    pub(super) fn trigger_obj_export(&mut self) {
-        match self.build_obj_mesh_string() {
-            Ok(obj_content) => {
-                let (tx, rx) = mpsc::channel();
-                self.obj_export_rx = Some(rx);
-                self.obj_export_status = None;
-                spawn_save_as_file_dialog(
-                    tx,
-                    OBJ_SAVE_CONFIG,
-                    "surface.obj",
-                    obj_content,
-                    |path, default_name| {
-                        path.file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or(default_name)
-                            .to_string()
-                    },
-                );
-            }
-            Err(err) => {
-                self.obj_export_status = Some((err, true));
-            }
-        }
-    }
-
-    /// Polls any in-flight asynchronous `.obj` export channel and dispatches live status updates.
-    pub fn poll_obj_export(&mut self, ctx: &egui::Context) {
-        let Some(rx) = &self.obj_export_rx else {
-            return;
-        };
-        match rx.try_recv() {
-            Ok(Ok(saved_name)) => {
-                let msg = format!("Saved OBJ mesh to {saved_name}");
-                crate::accessibility::announce_live_status(ctx, &msg);
-                self.obj_export_status = Some((msg, false));
-                self.obj_export_rx = None;
-            }
-            Ok(Err(err)) => {
-                crate::accessibility::announce_live_assertive_status(ctx, &err);
-                self.obj_export_status = Some((err, true));
-                self.obj_export_rx = None;
-            }
-            Err(TryRecvError::Empty) => {
-                ctx.request_repaint();
-            }
-            Err(TryRecvError::Disconnected) => {
-                self.obj_export_rx = None;
-            }
-        }
+        self.export_mesh_3d()
+            .and_then(Result::ok)
+            .and_then(|mesh| oxidize_core::mesh::export_mesh_to_obj_string(&mesh).ok())
+            .unwrap_or_default()
     }
 
     /// Populates `self.scene_builder` with cached world `Point3<f64>` wireframe grid polylines.
     pub fn populate_scene(&mut self, color: egui::Color32) {
         self.populate_cached_wireframe(color);
     }
+}
+
+fn validate_surface_viewer_state(loaded: &SurfaceViewerState) -> Result<(), String> {
+    if !loaded.sphere_radius.is_finite()
+        || !(0.1..=5.0).contains(&loaded.sphere_radius)
+        || !loaded.torus_major_radius.is_finite()
+        || !(1.0..=5.0).contains(&loaded.torus_major_radius)
+        || !loaded.torus_minor_radius.is_finite()
+        || !(0.1..=2.0).contains(&loaded.torus_minor_radius)
+        || !loaded.klein_radius.is_finite()
+        || !(0.5..=5.0).contains(&loaded.klein_radius)
+        || !loaded.wall_thickness.is_finite()
+        || !(super::export_utils::MIN_WALL_THICKNESS..=super::export_utils::MAX_WALL_THICKNESS)
+            .contains(&loaded.wall_thickness)
+    {
+        return Err("Surface radii or wall thickness out of valid bounds".to_string());
+    }
+    let max_res = math_commons::registry::MAX_GRID_SIZE;
+    if !(10..=max_res).contains(&loaded.u_resolution)
+        || !(10..=max_res).contains(&loaded.v_resolution)
+    {
+        return Err("Surface resolution out of valid bounds".to_string());
+    }
+    Ok(())
 }
 
 impl InteractiveTool for SurfaceViewer {
@@ -220,10 +177,30 @@ impl InteractiveTool for SurfaceViewer {
         "geometry_topology"
     }
 
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_3d_solid()
+    }
+
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        let surface = self.create_surface();
+        let (u_range, v_range) = self.custom_sandbox.uv_domain_for(self.surface_type);
+        Some(
+            super::export_utils::surface_to_mesh_with_domain_and_thickness(
+                surface.as_ref(),
+                u_range,
+                v_range,
+                self.u_resolution,
+                self.v_resolution,
+                self.wall_thickness,
+            ),
+        )
+    }
+
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash as _, Hasher as _};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.surface_geometry_key().hash(&mut h);
+        self.wall_thickness.to_bits().hash(&mut h);
         self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
@@ -238,6 +215,9 @@ impl InteractiveTool for SurfaceViewer {
             && (0.1..=2.0).contains(&self.torus_minor_radius)
             && self.klein_radius.is_finite()
             && (0.5..=5.0).contains(&self.klein_radius)
+            && self.wall_thickness.is_finite()
+            && (super::export_utils::MIN_WALL_THICKNESS..=super::export_utils::MAX_WALL_THICKNESS)
+                .contains(&self.wall_thickness)
             && (10..=max_res).contains(&self.u_resolution)
             && (10..=max_res).contains(&self.v_resolution)
             && self.camera.is_valid()
@@ -253,6 +233,7 @@ impl InteractiveTool for SurfaceViewer {
             torus_major_radius: self.torus_major_radius,
             torus_minor_radius: self.torus_minor_radius,
             klein_radius: self.klein_radius,
+            wall_thickness: self.wall_thickness,
             u_resolution: self.u_resolution,
             v_resolution: self.v_resolution,
             camera: self.camera,
@@ -269,23 +250,7 @@ impl InteractiveTool for SurfaceViewer {
         self.state_bounds().validate_json(state)?;
         let loaded: SurfaceViewerState =
             serde_json::from_str(state).map_err(|e| format!("Invalid SurfaceViewer state: {e}"))?;
-        if !loaded.sphere_radius.is_finite()
-            || !(0.1..=5.0).contains(&loaded.sphere_radius)
-            || !loaded.torus_major_radius.is_finite()
-            || !(1.0..=5.0).contains(&loaded.torus_major_radius)
-            || !loaded.torus_minor_radius.is_finite()
-            || !(0.1..=2.0).contains(&loaded.torus_minor_radius)
-            || !loaded.klein_radius.is_finite()
-            || !(0.5..=5.0).contains(&loaded.klein_radius)
-        {
-            return Err("Surface radii out of valid bounds".to_string());
-        }
-        let max_schema = math_commons::registry::MAX_GRID_SIZE;
-        if !(10..=max_schema).contains(&loaded.u_resolution)
-            || !(10..=max_schema).contains(&loaded.v_resolution)
-        {
-            return Err("Surface resolution out of valid bounds".to_string());
-        }
+        validate_surface_viewer_state(&loaded)?;
         let camera = Camera3D::from_preset_fields(
             loaded.camera,
             loaded.pitch,
@@ -304,6 +269,7 @@ impl InteractiveTool for SurfaceViewer {
         self.torus_major_radius = loaded.torus_major_radius;
         self.torus_minor_radius = loaded.torus_minor_radius;
         self.klein_radius = loaded.klein_radius;
+        self.wall_thickness = loaded.wall_thickness;
         self.u_resolution = loaded.u_resolution.min(cap);
         self.v_resolution = loaded.v_resolution.min(cap);
         self.camera.apply_pose(camera);
@@ -316,7 +282,6 @@ impl InteractiveTool for SurfaceViewer {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        self.poll_obj_export(ui.ctx());
         self.draw_side_panel(ui);
         self.draw_viewport(ui);
     }
@@ -384,8 +349,6 @@ impl scientific_metadata::theory::TheoryDescribable for SurfaceViewer {
 
 #[path = "surface_viewer/presets.rs"]
 mod presets;
-#[cfg(test)]
-use presets::{CUSTOM_RIPPLE_MANIFOLD_PRESET_JSON, STARTER_PRESET_JSON};
 
 #[cfg(test)]
 #[path = "surface_viewer_tests.rs"]
