@@ -1,7 +1,6 @@
-//! Derivative-free optimization: `NelderMead` n-D simplex search and Brent 1D core routine.
+//! Derivative-free optimization: `NelderMead` n-D simplex search.
 
 use super::OptimizationError;
-pub(in crate::pure_math::analysis) use super::brent::brent_minimize_core;
 use nalgebra::{DMatrix, DVector};
 
 /// Hyperparameters for derivative-free `NelderMead` simplex minimization.

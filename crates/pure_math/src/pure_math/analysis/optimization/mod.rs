@@ -24,11 +24,11 @@ use super::roots::AnalysisError;
 use nalgebra::{DMatrix, DVector, RealField};
 use thiserror::Error;
 
-pub use super::roots::{BrentMinimizer, OneDimMinimizer};
 pub use augmented_lagrangian::{
     AugmentedLagrangianConfig, AugmentedLagrangianSolution, AugmentedLagrangianSolver,
     AugmentedLagrangianWorkspace,
 };
+pub use brent::{BrentMinimizer, OneDimMinimizer};
 pub use derivative_free::{NelderMead, NelderMeadConfig, NelderMeadSolution, NelderMeadWorkspace};
 pub use first_order::{Adam, AdamState, AdamState2D, SGD};
 pub use lbfgsb::{LbfgsBConfig, LbfgsBSolver, LbfgsBWorkspace};
