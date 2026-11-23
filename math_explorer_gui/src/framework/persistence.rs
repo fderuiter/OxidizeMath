@@ -427,4 +427,11 @@ impl SimulationFramework {
             false
         }
     }
+
+    /// Returns the active tool's interactive canvas `Id` if applicable.
+    pub fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.active_tool
+            .as_ref()
+            .and_then(|t| t.focused_canvas_id())
+    }
 }

@@ -403,6 +403,16 @@ impl InteractiveTool for VietorisRipsTool {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         plots::render_workbench(self, ui);
     }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
 }
 
 inventory::submit! {
