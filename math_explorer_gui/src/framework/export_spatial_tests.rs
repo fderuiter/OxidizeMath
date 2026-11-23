@@ -50,16 +50,17 @@ fn test_spatial_tools_emit_pure_vector_svg_without_base64_raster() {
         ("DoseCalculationTool", "<path"),
         ("IsingModelTool", "<path"),
         ("PrimeSpiralWidget", "<path"),
+        ("OpticsWaveTool", "<path"),
         ("AttentionMapsTool", "<rect"),
     ];
 
     let copied_buf = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
     for (tool_id, expected_tag) in spatial_tools {
         let mut tool = find_registered_tool(tool_id);
-        if tool_id == "MorphogenesisTool"
-            || tool_id == "LatticeBoltzmannTool"
-            || tool_id == "IsingModelTool"
-        {
+        if matches!(
+            tool_id,
+            "MorphogenesisTool" | "LatticeBoltzmannTool" | "IsingModelTool" | "OpticsWaveTool"
+        ) {
             for _ in 0..4 {
                 tool.step_simulation();
             }

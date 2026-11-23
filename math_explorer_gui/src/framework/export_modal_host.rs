@@ -1,13 +1,7 @@
-//! Unified figure, contour SVG, and 16-bit texture export modal adapter for [`super::SimulationFramework`].
-
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::*;
 use eframe::egui;
-
-use super::{
-    ExportCapabilities, ExportFormat, ExportQueue, ExportStatusSeverity, ExportTarget,
-    InteractiveTool, SimulationFramework,
-};
 
 struct FrameworkExportSource<'a> {
     active_tool: &'a mut Option<Box<dyn InteractiveTool>>,
@@ -133,10 +127,7 @@ impl SimulationFramework {
         egui::Id::new(("framework_export", id_source, self.instance_id))
     }
 
-    pub(super) fn show_export_modal_dialog(&mut self, ctx: &egui::Context, id_source: &str) {
-        let scope_id = self.export_modal_scope_id(id_source);
-        self.sync_state.last_modal_scope_id = Some(scope_id);
-
+    fn poll_export_modal_clipboard_status(&mut self, ctx: &egui::Context, scope_id: egui::Id) {
         if let Some(msg) =
             ctx.data_mut(|d| d.remove_temp::<String>(egui_plot::clipboard_status_id(scope_id)))
         {
@@ -147,6 +138,12 @@ impl SimulationFramework {
             };
             self.set_export_status(sev, msg);
         }
+    }
+
+    pub(super) fn show_export_modal_dialog(&mut self, ctx: &egui::Context, id_source: &str) {
+        let scope_id = self.export_modal_scope_id(id_source);
+        self.sync_state.last_modal_scope_id = Some(scope_id);
+        self.poll_export_modal_clipboard_status(ctx, scope_id);
 
         let tool_name = self
             .active_tool

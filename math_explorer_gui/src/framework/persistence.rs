@@ -213,6 +213,34 @@ pub(super) fn capture_isolated_tool_datasets_3d(
     with_isolated_plot_globals(|| tool.export_datasets_3d())
 }
 
+pub(super) fn export_tool_preset_json<T: InteractiveTool + ?Sized>(
+    tool: &T,
+) -> Result<String, String> {
+    if let Some(state_str) = tool.save_state() {
+        let config: serde_json::Value =
+            serde_json::from_str(&state_str).map_err(|e| format!("Serialization error: {e}"))?;
+        crate::presets::serialize_preset_envelope(tool.name(), tool.domain(), config)
+    } else {
+        Err(format!("Preset export not supported for {}", tool.name()))
+    }
+}
+
+pub(super) fn import_tool_preset_json<T: InteractiveTool + ?Sized>(
+    tool: &mut T,
+    json_str: &str,
+) -> Result<(), String> {
+    let bounds = tool.state_bounds();
+    let config: Box<RawValue> = crate::presets::deserialize_preset_envelope_bounded(
+        json_str,
+        tool.domain(),
+        tool.name(),
+        bounds,
+    )?;
+    let config_str = config.get();
+    bounds.validate_json(config_str)?;
+    tool.try_load_state(config_str)
+}
+
 impl SimulationFramework {
     pub(super) fn bump_framework_revision(&mut self) {
         self.rev_cache.framework_revision = self.rev_cache.framework_revision.wrapping_add(1);
@@ -429,5 +457,12 @@ impl SimulationFramework {
         } else {
             false
         }
+    }
+
+    /// Returns the active tool's interactive canvas `Id` if applicable.
+    pub fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.active_tool
+            .as_ref()
+            .and_then(|t| t.focused_canvas_id())
     }
 }

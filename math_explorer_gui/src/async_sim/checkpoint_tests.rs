@@ -34,6 +34,8 @@ fn make_morpho_runner(
         d_v,
         dt,
         high_contrast: false,
+        theme_mode: crate::app::ThemeMode::Dark,
+        heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
     }));
     let mut runner = MorphogenesisTool::create_runner(&params, width, height);
     runner.noise_amplitude = noise_amplitude;
@@ -54,6 +56,8 @@ fn make_gray_scott_runner(
         d_v: 0.08,
         dt: 1.0,
         high_contrast: false,
+        theme_mode: crate::app::ThemeMode::Dark,
+        heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
     }));
     let ks = Arc::new(RwLock::new(MorphogenesisKineticsState {
         mode: MorphogenesisKineticsMode::GrayScott,

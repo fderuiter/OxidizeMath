@@ -9,7 +9,7 @@ Accepted — 2026-11-23
 
 ## Context
 
-Under [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), all seven 2D spatial/matrix tools in `math_explorer_gui` (`MorphogenesisTool`, `FractalViewer`, `LatticeBoltzmannTool` / `LbmUnified`, `DoseCalculationTool`, `IsingModelTool`, `PrimeSpiralWidget`, and `AttentionMapsTool`) declared `ExportCapabilities::raster_only()` and discarded their underlying `f64` scalar fields or discrete lattices before figure export:
+Under [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), all eight 2D spatial/matrix tools in `math_explorer_gui` (`MorphogenesisTool`, `FractalViewer`, `LatticeBoltzmannTool` / `LbmUnified`, `DoseCalculationTool`, `IsingModelTool`, `PrimeSpiralWidget`, `OpticsWaveTool`, and `AttentionMapsTool`) declared `ExportCapabilities::raster_only()` and discarded their underlying `f64` scalar fields or discrete lattices before figure export:
 
 1. **Pixelated Base64 `<image>` SVG Wrapper:** `egui_plot::export_primitives::svg::export_raster_svg` wrapped 8-bit quantized `ColorImage` buffers inside `<image image-rendering="pixelated" href="data:image/png;base64,..."/>`, preventing scalable vector isoline or lattice plotting in Inkscape, LaTeX, or pen plotters.
 2. **8-Bit Terracing and Border Padding in Texture Exports:** `egui_plot::export::color32_image_to_png` hardcoded `png::ColorType::Rgba` and `png::BitDepth::Eight`, while `scale_color_image` added border padding that broke seamless tileability and terraced 3D displacement and normal maps.
@@ -29,7 +29,7 @@ Under [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), all seven 
    - Add `egui_plot/src/export_primitives/texture_maps.rs` reusing existing `png` `0.18` (zero new dependencies) to encode borderless power-of-two (`256`, `512`, `1024`, `2048`) 16-bit grayscale heightmaps (`png::ColorType::Grayscale`, `png::BitDepth::Sixteen`) and 16-bit RGB tangent-space normal maps (`encode_normal_map_png`) with periodic or clamped central differences and adjustable normal strength.
 5. **Unified Spatial Export Hooks (`math_explorer_gui`):**
    - Extend `InteractiveTool` with `export_scalar_field`, `export_scalar_field_at`, and `export_vector_svg`, extend `ExportCapabilities` with `scalar_field()`, `discrete_lattice()`, and `vector_grid()`, and add `ExportFormat::{Heightmap16Png, NormalMapPng}` plus `Copy SVG` clipboard dispatch in `SimulationFramework`.
-   - Wire continuous `ScalarField2D` contours and 16-bit textures on `MorphogenesisTool`, `FractalViewer` (composed with `.with_shader()`), `DoseCalculationTool`, and `LbmUnified`; discrete `<path>` geometry plus 16-bit textures on `IsingModelTool` and `PrimeSpiralWidget`; and crisp `<rect>` cell SVG plus scalar-field exports on `AttentionMapsTool`. This supersedes ADR 0024's base64 PNG-in-SVG fallback for all seven spatial tools while preserving the workspace audit invariant across all registered GUI tools (`54` plot tools, `7` spatial figure tools, and `15` non-export tools).
+   - Wire continuous `ScalarField2D` contours and 16-bit textures on `MorphogenesisTool`, `FractalViewer` (composed with `.with_shader()`), `DoseCalculationTool`, `LbmUnified`, and `OpticsWaveTool`; discrete `<path>` geometry plus 16-bit textures on `IsingModelTool` and `PrimeSpiralWidget`; and crisp `<rect>` cell SVG plus scalar-field exports on `AttentionMapsTool`. This supersedes ADR 0024's base64 PNG-in-SVG fallback for all eight spatial tools while preserving the workspace audit invariant across all registered GUI tools (`68` plot tools, `8` spatial figure tools, and `12` non-figure tools).
 
 ## Verification Commands
 
@@ -37,7 +37,7 @@ Under [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), all seven 
 # Verify domain kernels, Marching Squares, and zero-allocation PDE/fractal guards
 cargo test -p pure_math -p domain_biology -p domain_physics -p math_commons -p egui_plot
 
-# Verify vector SVG and 16-bit PNG export audits across all 76 registered GUI tools
+# Verify vector SVG and 16-bit PNG export audits across all 88 registered GUI tools
 cargo test -p math_explorer_gui deferred_export
 
 # Full static, isolated-feature, and WebAssembly budget gates
@@ -49,6 +49,6 @@ cargo run -p xtask -- test-wasm
 
 ## Consequences
 
-- **Positive:** All seven 2D spatial tools now export pure `<path>` or `<rect>` vector SVGs (zero `data:image/png` base64 wrappers) alongside borderless `256`–`2048` 16-bit grayscale heightmaps and seamless normal maps suitable for Blender, Godot, Three.js, LaTeX, and pen plotters.
+- **Positive:** All eight 2D spatial tools now export pure `<path>` or `<rect>` vector SVGs (zero `data:image/png` base64 wrappers) alongside borderless `256`–`2048` 16-bit grayscale heightmaps and seamless normal maps suitable for Blender, Godot, Three.js, LaTeX, and pen plotters.
 - **Positive:** Hot-path PDE (`step_2d_coupled_periodic`, `PeriodicBoundary`, `GrayScottKinetics`) and smooth fractal kernels allocate `0` heap bytes under `VerifiedAllocator`, and reusing `png` `0.18` adds zero external crates while keeping compressed WASM output comfortably within the `3,145,728`-byte budget.
-- **Trade-offs:** Expanding public kernel, `egui_plot`, and `InteractiveTool` signatures requires regenerating `crates/unified_verification/api_baseline.json` and splitting cold-path export modules (`export_spatial.rs`, `export_ui_modal.rs`, `morphogenesis/export.rs`, `ising/export.rs`, `fd2d/tests.rs`) so every `.rs` file outside `egui_plot/` remains strictly `<= 500` lines.
+- **Trade-offs:** Expanding public kernel, `egui_plot`, and `InteractiveTool` signatures requires regenerating `crates/unified_verification/api_baseline.json` and splitting cold-path export modules (`export_spatial.rs`, `export_modal_host.rs`, `morphogenesis/export.rs`, `ising/export.rs`, `fd2d/tests.rs`) so every `.rs` file outside `egui_plot/` remains strictly `<= 500` lines.

@@ -190,6 +190,9 @@ impl MorphogenesisTool {
 
     /// Re-seeds deterministic spatial perturbations or Gray-Scott catalyst patches if washed out.
     pub fn reseed_if_washed_out_entering_pattern(&mut self) -> bool {
+        if self.is_forked() {
+            return false;
+        }
         let (mode, boundary) = {
             let ks = self
                 .kinetics_state
