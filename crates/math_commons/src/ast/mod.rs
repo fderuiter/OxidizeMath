@@ -12,7 +12,6 @@ pub mod parser;
 #[cfg(test)]
 mod compiled_tests;
 #[cfg(test)]
-#[cfg(test)]
 mod glsl_sim_test_eval;
 #[cfg(test)]
 mod glsl_tests;

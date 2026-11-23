@@ -52,10 +52,18 @@ impl VirtualFileSystem for MockVfs {
     }
 }
 
+fn workspace_prefix() -> String {
+    let (is_root, _) = oxidize_core::workspace::get_workspace_members();
+    let root = (!is_root)
+        .then(oxidize_core::workspace::find_workspace_root)
+        .flatten();
+    root.map(|p| format!("{}/", oxidize_core::path_utils::normalize_path(p)))
+        .unwrap_or_default()
+}
+
 #[test]
 fn test_traceability_engine_scan() {
-    let (is_root, _) = oxidize_core::workspace::get_workspace_members();
-    let prefix = if is_root { "" } else { "../../" };
+    let prefix = workspace_prefix();
     let engine = TraceabilityEngine::new(DefaultVfs);
     let d = format!("{prefix}crates/pure_math/src");
     let dirs_ref = [d.as_str()];
@@ -130,8 +138,7 @@ fn test_scan_repository_reports_error_when_papers_dir_missing() {
 
 #[test]
 fn test_scan_repository_with_cache_parses_each_file_at_most_once() {
-    let (is_root, _) = oxidize_core::workspace::get_workspace_members();
-    let prefix = if is_root { "" } else { "../../" };
+    let prefix = workspace_prefix();
     let engine = TraceabilityEngine::new(DefaultVfs);
     let d = format!("{prefix}crates/pure_math/src");
     let dirs_ref = [d.as_str()];

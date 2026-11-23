@@ -1,3 +1,5 @@
+// [cite:math_commons]
+
 use super::*;
 use std::collections::HashMap;
 use std::f64::consts::{E, PI, TAU};

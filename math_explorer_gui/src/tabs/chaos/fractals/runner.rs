@@ -439,6 +439,7 @@ impl SimulationRunner for FractalRunner {
             pixels: Arc::new(RwLock::new(self.buffer.clone())),
             custom_data: vec![self.active.zoom, f64::from(self.active.max_iter)],
             structured_data: Some(Box::new(meta)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

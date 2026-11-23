@@ -63,10 +63,12 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         let mut registry_content =
             futures::executor::block_on(vfs.read_to_string("traceability.toml"))
                 .unwrap_or_default();
-        if registry_content.is_empty() {
+        if registry_content.is_empty()
+            && let Some(root) = crate::workspace::find_workspace_root()
+        {
+            let candidate = crate::path_utils::normalize_path(root.join("traceability.toml"));
             registry_content =
-                futures::executor::block_on(vfs.read_to_string("../../traceability.toml"))
-                    .unwrap_or_default();
+                futures::executor::block_on(vfs.read_to_string(&candidate)).unwrap_or_default();
         }
         analysis::is_module_in_registry_toml(&registry_content, module_name)
     }
