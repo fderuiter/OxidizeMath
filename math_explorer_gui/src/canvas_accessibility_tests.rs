@@ -89,6 +89,16 @@ fn test_ai_custom_canvases_receive_tab_focus_and_accesskit_labels() {
 
     let mut grid_world = crate::tabs::ai::grid_world::GridWorldTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(&mut grid_world, "Grid World Visualization");
+
+    let mut lorahub = crate::tabs::ai::lorahub_simplex::LoraHubSimplexTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut lorahub,
+        "Merged LoRA State Dict Heatmap",
+    );
+
+    let mut sds = crate::tabs::ai::sds_nerf_distillation::SdsNeRfDistillationTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(&mut sds, "NeRF RGB Render");
+    assert_tool_canvas_tab_focus_and_accesskit_label(&mut sds, "SDS Score Gradient");
 }
 
 #[cfg(feature = "pure_math")]

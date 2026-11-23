@@ -2,12 +2,16 @@
 
 #[allow(missing_docs)]
 pub mod ensemble;
+pub mod simplex;
 #[allow(missing_docs)]
 pub mod strategies;
 #[allow(missing_docs)]
 pub mod types;
 
 pub use ensemble::LoraEnsemble;
+pub use simplex::{
+    NelderMeadConfig, NelderMeadSimplex, SimplexOptimizationSummary, SimplexStepOutcome,
+};
 pub use types::LoraStateDict;
 
 // [cite:lorahub]

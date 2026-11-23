@@ -1,9 +1,49 @@
+// [cite:domain_ai]
+// [cite:self_calibration_paper]
+
 use super::scoring::calculate_soft_self_consistency_scores;
 use super::temperature::{calculate_answer_entropy, map_entropy_to_temperature};
 use super::types::Response;
 
+use crate::error::AIError;
+
+/// Computes the dynamically temperature-scaled target probability distribution $P(y_i \mid x)$
+/// over sampled candidate responses using soft self-consistency scores and answer-level Shannon entropy.
+///
+/// First, candidate responses sharing equivalent normalized answers pool their generation
+/// probabilities via [`calculate_soft_self_consistency_scores`]. Next, the answer-group Shannon
+/// entropy $H(A)$ is mapped onto an adaptive softmax temperature $T(H)$ via
+/// [`map_entropy_to_temperature`]. When $T \approx 0$, probability mass concentrates on the
+/// highest-scoring response; otherwise a numerically stabilized Boltzmann distribution
+/// $P_i \propto \exp(S_i / T)$ is returned.
+///
+/// # Arguments
+///
+/// * `responses` - Slice of sampled [`Response`] candidates with model probabilities and extracted answers.
+///
+/// # Returns
+///
+/// A vector of target probabilities summing to `1.0` (or an empty vector if `responses` is empty).
+///
+/// # Example
+///
+/// ```
+/// # use domain_ai::__doctest_facade as math_explorer;
+/// use math_explorer::ai::self_calibration::training::calculate_target_distribution;
+/// use math_explorer::ai::self_calibration::types::Response;
+///
+/// let responses = vec![
+///     Response { text: "Step 1 -> 42".into(), probability: 0.7, answer: "42".into() },
+///     Response { text: "Alt -> 42".into(), probability: 0.2, answer: "42".into() },
+///     Response { text: "Guess -> 7".into(), probability: 0.1, answer: "7".into() },
+/// ];
+/// let target = calculate_target_distribution(&responses);
+/// assert_eq!(target.len(), 3);
+/// assert!((target.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+/// assert!(target[0] > target[2]);
+/// ```
 #[verified_engine::verified]
-fn calculate_target_distribution(responses: &[Response]) -> Vec<f64> {
+pub fn calculate_target_distribution(responses: &[Response]) -> Vec<f64> {
     let scores = calculate_soft_self_consistency_scores(responses);
     let entropy = calculate_answer_entropy(responses);
     let temperature = map_entropy_to_temperature(entropy);
@@ -20,6 +60,10 @@ fn calculate_target_distribution(responses: &[Response]) -> Vec<f64> {
         if !p.is_empty() {
             p[max_idx] = 1.0;
         }
+        debug_assert!(
+            p.len() == responses.len(),
+            "Target length matches responses"
+        );
         return p;
     }
     let temp_scores: Vec<f64> = scores.iter().map(|s| s / temperature).collect();
@@ -44,7 +88,9 @@ fn calculate_target_distribution(responses: &[Response]) -> Vec<f64> {
     }
 }
 
-/// Calculates the KL divergence loss between the predicted distribution and the target distribution.
+/// Calculates the KL divergence loss $D_{\mathrm{KL}}(Q \parallel P)$ between a predicted response
+/// distribution $Q$ and the entropy-calibrated target distribution $P$ from
+/// [`calculate_target_distribution`].
 ///
 /// # Arguments
 ///
@@ -53,10 +99,7 @@ fn calculate_target_distribution(responses: &[Response]) -> Vec<f64> {
 ///
 /// # Returns
 ///
-/// The KL divergence loss.
-use crate::error::AIError;
-
-#[allow(missing_docs)]
+/// The KL divergence loss, or [`AIError::Math`] if slice lengths mismatch.
 #[verified_engine::verified]
 pub fn calculate_kl_divergence_loss(
     responses: &[Response],
@@ -80,6 +123,7 @@ pub fn calculate_kl_divergence_loss(
             kl_divergence += q * (q / p).ln();
         }
     }
+    debug_assert!(kl_divergence.is_finite(), "KL divergence must be finite");
     Ok(kl_divergence)
 }
 
@@ -87,6 +131,7 @@ pub fn calculate_kl_divergence_loss(
 mod tests {
     use super::*;
     use crate::ai::self_calibration::types::Response;
+
     #[test]
     #[verified_engine::verified]
     fn test_kl_divergence_calculation() -> Result<(), crate::error::AIError> {
@@ -116,5 +161,51 @@ mod tests {
         let loss = calculate_kl_divergence_loss(&responses, &predicted_dist_q)?;
         assert!((loss - 0.07019869).abs() < math_commons::registry::TOLERANCE_FAST);
         Ok(())
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_target_distribution_simplex_and_consensus_concentration() {
+        assert!(calculate_target_distribution(&[]).is_empty());
+
+        let unanimous = vec![
+            Response {
+                text: "r1".to_string(),
+                probability: 0.6,
+                answer: "42".to_string(),
+            },
+            Response {
+                text: "r2".to_string(),
+                probability: 0.4,
+                answer: "42".to_string(),
+            },
+        ];
+        let p_unanimous = calculate_target_distribution(&unanimous);
+        assert_eq!(p_unanimous.len(), 2);
+        assert!((p_unanimous.iter().sum::<f64>() - 1.0).abs() < 1e-12);
+        assert!((p_unanimous[0] - p_unanimous[1]).abs() < 1e-12);
+
+        let mixed = vec![
+            Response {
+                text: "a1".to_string(),
+                probability: 0.55,
+                answer: "yes".to_string(),
+            },
+            Response {
+                text: "a2".to_string(),
+                probability: 0.30,
+                answer: "yes".to_string(),
+            },
+            Response {
+                text: "b1".to_string(),
+                probability: 0.15,
+                answer: "no".to_string(),
+            },
+        ];
+        let p_mixed = calculate_target_distribution(&mixed);
+        assert_eq!(p_mixed.len(), 3);
+        assert!((p_mixed.iter().sum::<f64>() - 1.0).abs() < 1e-12);
+        assert!(p_mixed[0] > p_mixed[2]);
+        assert!((p_mixed[0] - p_mixed[1]).abs() < 1e-12);
     }
 }

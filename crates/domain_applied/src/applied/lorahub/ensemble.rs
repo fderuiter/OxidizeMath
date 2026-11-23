@@ -1,3 +1,6 @@
+use super::simplex::{
+    NelderMeadConfig, NelderMeadSimplex, SimplexOptimizationSummary, SimplexStepOutcome,
+};
 use super::strategies::{
     CombinationStrategy, L1RegularizationStrategy, LinearCombinationStrategy, ObjectiveStrategy,
 };
@@ -83,5 +86,52 @@ impl<C: CombinationStrategy, O: ObjectiveStrategy> LoraEnsemble<C, O> {
     #[verified_engine::verified]
     pub fn evaluate(&self, weights: &[f64], mock_loss: f64) -> f64 {
         self.objective_strategy.evaluate(weights, mock_loss)
+    }
+
+    /// Returns the number of LoRA modules in this ensemble.
+    pub fn module_count(&self) -> usize {
+        self.modules.len()
+    }
+
+    /// Borrows the underlying slice of [`LoraStateDict`] modules.
+    pub fn modules(&self) -> &[LoraStateDict] {
+        &self.modules
+    }
+
+    /// Advances a pre-allocated [`NelderMeadSimplex`] by one step under [`L1RegularizationStrategy`]
+    /// with penalty coefficient `alpha` and zero heap allocations.
+    #[verified_engine::verified]
+    pub fn step_simplex_with_l1<F: FnMut(&[f64]) -> f64>(
+        &self,
+        simplex: &mut NelderMeadSimplex,
+        config: &NelderMeadConfig,
+        alpha: f64,
+        task_loss: &mut F,
+    ) -> SimplexStepOutcome {
+        let l1 = L1RegularizationStrategy::new(alpha);
+        let mut objective = |w: &[f64]| l1.evaluate(w, task_loss(w));
+        simplex.step_in_place(config, &mut objective)
+    }
+
+    /// Optimizes LoRA composition weights in place using [`NelderMeadSimplex`] and
+    /// [`L1RegularizationStrategy`] without heap allocations.
+    #[verified_engine::verified]
+    pub fn optimize_weights_in_place<F: FnMut(&[f64]) -> f64>(
+        &self,
+        simplex: &mut NelderMeadSimplex,
+        initial_weights: &[f64],
+        out_weights: &mut [f64],
+        config: &NelderMeadConfig,
+        alpha: f64,
+        task_loss: &mut F,
+    ) -> SimplexOptimizationSummary {
+        assert_eq!(initial_weights.len(), simplex.dimension());
+        assert_eq!(out_weights.len(), simplex.dimension());
+        let l1 = L1RegularizationStrategy::new(alpha);
+        let mut objective = |w: &[f64]| l1.evaluate(w, task_loss(w));
+        simplex.initialize_in_place(initial_weights, config, &mut objective);
+        let summary = simplex.optimize_in_place(config, &mut objective);
+        simplex.copy_best_weights_into(out_weights);
+        summary
     }
 }
