@@ -118,29 +118,32 @@ impl ChladniWaveTankTool {
             }
         });
 
-        ui.horizontal_wrapped(|ui| {
-            for (mode, label) in [
-                (BrushMode::Solid, "Clamp"),
-                (BrushMode::PotentialBarrier, "Spruce Rib"),
-                (BrushMode::VelocityJet, "Fast Channel"),
-                (BrushMode::PotentialWell, "Slow GRIN Lens"),
-                (BrushMode::Erase, "Erase"),
-            ] {
-                let active = self.brush_kit.is_sculpting() && self.brush_kit.mode == mode;
-                if ui.selectable_label(active, label).clicked() {
-                    self.brush_kit.mode = mode;
-                    self.brush_kit.interaction_mode = BrushInteractionMode::Sculpt;
-                    self.pickup_drag_mode = false;
-                }
-            }
-        });
-
-        ui.horizontal(|ui| {
+        if self.brush_kit.is_sculpting() {
+            let role_label = match self.brush_kit.mode {
+                BrushMode::Solid | BrushMode::ZeroFluxWall => "Clamp",
+                BrushMode::PotentialBarrier => "Spruce Rib",
+                BrushMode::VelocityJet | BrushMode::PotentialStep => "Fast Channel",
+                BrushMode::PotentialWell => "Slow GRIN Lens",
+                _ => "Erase",
+            };
+            egui::ComboBox::from_id_salt("chladni_brush_role")
+                .selected_text(format!("Brush: {role_label}"))
+                .show_ui(ui, |ui| {
+                    for (mode, label) in [
+                        (BrushMode::Solid, "Clamp"),
+                        (BrushMode::PotentialBarrier, "Spruce Rib"),
+                        (BrushMode::VelocityJet, "Fast Channel"),
+                        (BrushMode::PotentialWell, "Slow GRIN Lens"),
+                        (BrushMode::Erase, "Erase"),
+                    ] {
+                        ui.selectable_value(&mut self.brush_kit.mode, mode, label);
+                    }
+                });
             ui.add(egui::Slider::new(&mut self.brush_kit.radius, 1.0..=12.0).text("Brush R"));
-            if !self.state.sculpt_rle.is_empty() && ui.small_button("Clear Sculpt").clicked() {
-                self.clear_sculpt_mask();
-            }
-        });
+        }
+        if !self.state.sculpt_rle.is_empty() && ui.small_button("Clear Sculpt").clicked() {
+            self.clear_sculpt_mask();
+        }
     }
 
     pub(super) fn handle_sculpt_canvas_input(

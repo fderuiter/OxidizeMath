@@ -163,7 +163,7 @@ impl ChladniWaveTankTool {
     }
 
     fn paint_canvas_overlays(&self, painter: &egui::Painter, rect: Rect, palette: SemanticPalette) {
-        let to_screen = |nx: f64, ny: f64| -> Pos2 {
+        let to_screen = |nx: f64, ny: f64| {
             Pos2::new(
                 rect.left() + (nx as f32) * rect.width(),
                 rect.bottom() - (ny as f32) * rect.height(),
@@ -171,7 +171,7 @@ impl ChladniWaveTankTool {
         };
         let inv_grid = 1.0 / (GRID_SIZE as f64);
         let cell_to_screen =
-            |cx: f64, cy: f64| -> Pos2 { to_screen((cx + 0.5) * inv_grid, (cy + 0.5) * inv_grid) };
+            |cx: f64, cy: f64| to_screen((cx + 0.5) * inv_grid, (cy + 0.5) * inv_grid);
 
         if self.state.show_nodal_contours {
             let stroke = Stroke::new(1.35_f32, palette.node_stroke.gamma_multiply(0.88));
@@ -203,6 +203,10 @@ impl ChladniWaveTankTool {
             );
         }
 
+        for &[cx, cy] in &self.state.custom_clamps {
+            painter.circle_filled(to_screen(cx, cy), 3.4_f32, palette.warning);
+        }
+
         let drv_pos = to_screen(self.state.driver_x, self.state.driver_y);
         painter.circle_stroke(drv_pos, 5.0_f32, Stroke::new(1.8_f32, palette.axis_x));
         let pkp_pos = to_screen(self.state.pickup_x, self.state.pickup_y);
@@ -210,7 +214,7 @@ impl ChladniWaveTankTool {
         painter.circle_filled(pkp_pos, 1.8_f32, palette.axis_y);
     }
 
-    fn draw_secondary_analysis_plot(&self, ui: &mut egui::Ui) {
+    fn draw_secondary_analysis_plot(&mut self, ui: &mut egui::Ui) {
         match self.state.secondary_plot {
             SecondaryPlotMode::DetectorCrossSection => self.draw_detector_cross_section_plot(ui),
             SecondaryPlotMode::RadialFftSpectrum => self.draw_radial_fft_plot(ui),
@@ -223,7 +227,7 @@ impl ChladniWaveTankTool {
         }
     }
 
-    fn draw_detector_cross_section_plot(&self, ui: &mut egui::Ui) {
+    fn draw_detector_cross_section_plot(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.label(format!(
             "Detector Intensity Cross-Section I(y) at x = {}",
@@ -250,6 +254,7 @@ impl ChladniWaveTankTool {
                         .width(2.0_f32),
                 );
                 self.overlay_young_reference(plot_ui, palette, peak_i);
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 
@@ -289,7 +294,7 @@ impl ChladniWaveTankTool {
         }
     }
 
-    fn draw_radial_fft_plot(&self, ui: &mut egui::Ui) {
+    fn draw_radial_fft_plot(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.label("2D FFT Azimuthal Radial Spectrum S(|k|)");
         let pts: PlotPoints = self
@@ -313,6 +318,7 @@ impl ChladniWaveTankTool {
                             .color(palette.series_color(1)),
                     );
                 }
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 
@@ -347,16 +353,11 @@ impl ChladniWaveTankTool {
             for (i, &[p0, p1]) in self.contours.segments().iter().take(1_500).enumerate() {
                 if p0[0].is_finite() && p0[1].is_finite() && p1[0].is_finite() && p1[1].is_finite()
                 {
+                    let name = if i == 0 { "Nodal Contours" } else { "" }.into();
+                    let seg = [[p0[0] + 0.5, p0[1] + 0.5], [p1[0] + 0.5, p1[1] + 0.5]];
                     prims.push(ExportPrimitive::Polyline {
-                        name: if i == 0 {
-                            "Nodal Contours".into()
-                        } else {
-                            String::new()
-                        },
-                        points: egui_plot::SharedPoints::from_slice(&[
-                            [p0[0] + 0.5, p0[1] + 0.5],
-                            [p1[0] + 0.5, p1[1] + 0.5],
-                        ]),
+                        name,
+                        points: egui_plot::SharedPoints::from_slice(&seg),
                         color: DARK_PALETTE.node_stroke,
                         stroke_width: 1.2,
                         closed: false,
@@ -402,18 +403,12 @@ impl ChladniWaveTankTool {
     }
 
     pub(super) fn build_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let det_series: Vec<[f64; 2]> = self
-            .detector_buf
-            .iter()
-            .enumerate()
-            .map(|(y, &v)| [y as f64, if v.is_finite() { v } else { 0.0 }])
-            .collect();
-        let fft_series: Vec<[f64; 2]> = self
-            .radial_spectrum
-            .iter()
-            .enumerate()
-            .map(|(k, &v)| [k as f64, if v.is_finite() { v } else { 0.0 }])
-            .collect();
+        let finite_pairs = |vals: &[f64]| -> Vec<[f64; 2]> {
+            vals.iter()
+                .enumerate()
+                .map(|(i, &v)| [i as f64, if v.is_finite() { v } else { 0.0 }])
+                .collect()
+        };
         let mid_y = GRID_SIZE / 2;
         let disp = self.solver.displacement();
         let wave_slice: Vec<[f64; 2]> = (0..GRID_SIZE)
@@ -422,10 +417,15 @@ impl ChladniWaveTankTool {
                 [x as f64, if v.is_finite() { v } else { 0.0 }]
             })
             .collect();
-
         vec![
-            ("detector_intensity".into(), det_series),
-            ("radial_fft_spectrum".into(), fft_series),
+            (
+                "detector_intensity".into(),
+                finite_pairs(&self.detector_buf),
+            ),
+            (
+                "radial_fft_spectrum".into(),
+                finite_pairs(&self.radial_spectrum),
+            ),
             ("centerline_wave_profile".into(), wave_slice),
         ]
     }
@@ -473,22 +473,16 @@ fn populate_field_pixels(
                     ensure_dark_canvas_contrast(heatmap_color_high_contrast(t))
                 }
             };
-            let speed_scale = solver.wave_speed_mask[src_idx];
-            if speed_scale > 1.02 {
-                out_pixels[dst_idx] = Color32::from_rgb(
-                    rgb[0].saturating_add(44),
-                    rgb[1].saturating_add(30),
-                    rgb[2].saturating_add(8),
-                );
-            } else if speed_scale < 0.98 {
-                out_pixels[dst_idx] = Color32::from_rgb(
-                    rgb[0].saturating_add(16),
-                    rgb[1].saturating_add(36),
-                    rgb[2].saturating_add(56),
-                );
-            } else {
-                out_pixels[dst_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
-            }
+            let (dr, dg, db) = match solver.wave_speed_mask[src_idx] {
+                s if s > 1.02 => (44, 30, 8),
+                s if s < 0.98 => (16, 36, 56),
+                _ => (0, 0, 0),
+            };
+            out_pixels[dst_idx] = Color32::from_rgb(
+                rgb[0].saturating_add(dr),
+                rgb[1].saturating_add(dg),
+                rgb[2].saturating_add(db),
+            );
         }
     }
 }

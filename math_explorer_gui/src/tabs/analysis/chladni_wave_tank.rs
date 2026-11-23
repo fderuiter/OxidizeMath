@@ -2,27 +2,36 @@
 
 // [cite:graph_parameters_rust]
 
+use std::collections::BTreeMap;
+
 use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    apply_biconvex_lens, apply_circular_drumhead_mask, apply_multi_slit_barrier,
-    apply_sponge_layer, BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D,
-    SpectralAnalyzer2D, SpectralPeak2D, Wave2DMedium, Wave2DParams, Wave2DSolver, WaveProbeSample,
+    apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_sponge_layer, BoundaryMode2D,
+    ChladniSandSystem, MarchingSquares2D, SpectralAnalyzer2D, SpectralPeak2D, Wave2DMedium,
+    Wave2DSolver, WaveProbeSample,
 };
 
 use crate::framework::{
-    ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit, ToolStateBounds,
+    CalloutManager, CalloutSpec, ExportCapabilities, InteractionContext, InteractiveTool,
+    SpatialBrushKit, ToolStateBounds,
 };
 
 mod canvas;
+mod eigenmodes;
 #[cfg(feature = "physics")]
 mod metamaterial;
 mod presets;
+mod refractive;
 mod sculpt;
 mod sculpt_codec;
 mod sonification;
 mod ui;
 
+pub(crate) use refractive::RefractiveMode;
+
+#[cfg(test)]
+mod modal_and_lens_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
@@ -110,18 +119,33 @@ pub(crate) struct ChladniWaveTankState {
     pub show_nodal_contours: bool,
     pub show_sand_particles: bool,
     pub rng_seed: u64,
-    #[serde(default = "presets::default_pickup_x")]
+    #[serde(
+        default = "presets::default_pickup_x",
+        skip_serializing_if = "presets::is_default_pickup_x"
+    )]
     pub pickup_x: f64,
-    #[serde(default = "presets::default_pickup_y")]
+    #[serde(
+        default = "presets::default_pickup_y",
+        skip_serializing_if = "presets::is_default_pickup_y"
+    )]
     pub pickup_y: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sculpt_rle: Vec<[u32; 2]>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_clamps: Vec<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "RefractiveMode::is_default")]
+    pub refractive_mode: RefractiveMode,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub refractive_expr: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub refractive_params: BTreeMap<String, f64>,
 }
 
 pub struct ChladniWaveTankTool {
     pub(crate) state: ChladniWaveTankState,
+    pub(crate) active_mode: (usize, usize),
+    pub(crate) refractive: refractive::RefractiveSandbox,
+    pub(crate) callout_manager: CalloutManager,
     pub(crate) sculpt_mask: Vec<u8>,
     pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) last_brush_grid_pos: Option<[f64; 2]>,
@@ -162,8 +186,12 @@ impl Default for ChladniWaveTankTool {
             GRID_SIZE,
             &solver.wall_mask,
         );
+        let active_mode = eigenmodes::default_mode_for_preset(state.preset);
         let mut tool = Self {
             state,
+            active_mode,
+            refractive: refractive::RefractiveSandbox::new(),
+            callout_manager: CalloutManager::new(),
             sculpt_mask: vec![0_u8; GRID_SIZE * GRID_SIZE],
             brush_kit: sculpt::default_chladni_brush_kit(),
             last_brush_grid_pos: None,
@@ -198,31 +226,11 @@ impl Default for ChladniWaveTankTool {
 }
 
 impl ChladniWaveTankTool {
-    pub(crate) fn pde_params(&self) -> Wave2DParams {
-        Wave2DParams {
-            medium: self.state.medium,
-            boundary: self.state.boundary,
-            wave_speed: self.state.wave_speed,
-            plate_stiffness: self.state.plate_stiffness,
-            damping: self.state.damping,
-        }
-    }
-
-    pub(crate) fn driver_config(&self) -> DriverConfig2D {
-        DriverConfig2D {
-            enabled: self.state.driver_enabled,
-            line_source: self.state.line_source,
-            x_norm: self.state.driver_x,
-            y_norm: self.state.driver_y,
-            frequency: self.state.driver_frequency,
-            amplitude: self.state.driver_amplitude,
-            radius_cells: 2.0,
-        }
-    }
-
     pub(crate) fn apply_preset(&mut self, preset: TankPreset) {
         self.sculpt_mask.fill(0);
         self.state = presets::default_state_for_preset(preset);
+        self.active_mode = eigenmodes::default_mode_for_preset(preset);
+        self.refractive.sync_from_state(&self.state);
         self.state_rev = self.state_rev.wrapping_add(1);
         let warmup = match preset {
             TankPreset::DoubleSlitInterference | TankPreset::AcousticLens => 24,
@@ -246,7 +254,12 @@ impl ChladniWaveTankTool {
             self.solver.reset_all();
         }
         self.rebuild_masks();
-        presets::seed_initial_resonant_field(&mut self.solver, &self.state);
+        eigenmodes::seed_eigenmode_field(
+            &mut self.solver,
+            &self.state,
+            self.active_mode.0,
+            self.active_mode.1,
+        );
         self.sand.reseed(
             self.state.rng_seed,
             GRID_SIZE,
@@ -274,8 +287,7 @@ impl ChladniWaveTankTool {
         if self.state.boundary == BoundaryMode2D::Sponge {
             apply_sponge_layer(&mut self.solver.sponge_mask, GRID_SIZE, GRID_SIZE, 12, 1.8);
         }
-        sculpt::apply_preset_clamp_pins(self.state.clamp_layout, &mut self.solver.wall_mask);
-        sculpt::apply_custom_clamp_pins(&self.state.custom_clamps, &mut self.solver.wall_mask);
+        presets::apply_clamp_pins(&mut self.solver.wall_mask, &self.state);
         if self.state.barrier_enabled {
             apply_multi_slit_barrier(
                 &mut self.solver.wall_mask,
@@ -289,15 +301,7 @@ impl ChladniWaveTankTool {
             );
         }
         if self.state.lens_enabled {
-            apply_biconvex_lens(
-                &mut self.solver.wave_speed_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                44,
-                self.state.lens_aperture,
-                8.0,
-                self.state.refractive_index,
-            );
+            self.apply_active_lens_mask();
         }
         #[cfg(feature = "physics")]
         self.metamaterial.apply_ast_to_wave_speed_mask(
@@ -419,9 +423,19 @@ impl InteractiveTool for ChladniWaveTankTool {
         }
         sculpt::decode_sculpt_rle_into(&parsed.sculpt_rle, &mut self.sculpt_mask);
         self.state = parsed;
+        self.active_mode = eigenmodes::default_mode_for_preset(self.state.preset);
+        self.refractive.sync_from_state(&self.state);
         self.state_rev = self.state_rev.wrapping_add(1);
         self.rebuild_domain_and_warmup(0);
         Ok(())
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.compute_observables()
+    }
+
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.callout_manager.sync_specs(callouts);
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {

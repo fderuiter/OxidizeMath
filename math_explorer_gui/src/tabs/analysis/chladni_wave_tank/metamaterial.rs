@@ -367,7 +367,7 @@ impl ChladniWaveTankTool {
         (ac_pts, opt_pts, fft_pts)
     }
 
-    pub(super) fn draw_phonon_dispersion_plot(&self, ui: &mut egui::Ui) {
+    pub(super) fn draw_phonon_dispersion_plot(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.label("Phonon Dispersion ω(|k|) vs. 2D FFT Wavenumber Spectrum");
         let (ac_pts, opt_pts, fft_pts) = self.build_phonon_dispersion_series();
@@ -395,6 +395,7 @@ impl ChladniWaveTankTool {
                             .color(palette.warning),
                     );
                 }
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 }

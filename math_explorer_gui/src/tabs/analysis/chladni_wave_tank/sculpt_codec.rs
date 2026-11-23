@@ -5,9 +5,11 @@
 // [cite:graph_parameters_rust]
 
 use math_explorer::math_kernel::types::flatten_2d_index;
-use math_explorer::pure_math::analysis::pde::wave_2d::{apply_point_clamp, Wave2DSolver};
+use math_explorer::pure_math::analysis::pde::wave_2d::{
+    DriverConfig2D, Wave2DParams, Wave2DSolver,
+};
 
-use super::{ClampLayout, TankPreset, WaveColormap, GRID_SIZE};
+use super::{ChladniWaveTankTool, ClampLayout, TankPreset, WaveColormap, GRID_SIZE};
 use crate::framework::{decode_rle_mask, encode_rle_mask};
 
 /// Upper bound on RLE run pairs serialized into `sculpt_rle` to stay strictly `< 4 KiB` URL JSON.
@@ -232,21 +234,27 @@ fn dominant_block_role(
     }
 }
 
-pub(crate) fn apply_preset_clamp_pins(layout: ClampLayout, wall_mask: &mut [f64]) {
-    let (pins, radius): (&[(f64, f64)], f64) = match layout {
-        ClampLayout::None => (&[], 0.0),
-        ClampLayout::CenterPin => (&[(0.5, 0.5)], 2.0),
-        ClampLayout::QuadSymmetry => (&[(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)], 1.8),
-        ClampLayout::EdgeMidpoints => (&[(0.5, 0.04), (0.5, 0.96), (0.04, 0.5), (0.96, 0.5)], 2.2),
-    };
-    for &(cx, cy) in pins {
-        apply_point_clamp(wall_mask, GRID_SIZE, GRID_SIZE, cx, cy, radius);
+impl ChladniWaveTankTool {
+    pub(crate) fn pde_params(&self) -> Wave2DParams {
+        Wave2DParams {
+            medium: self.state.medium,
+            boundary: self.state.boundary,
+            wave_speed: self.state.wave_speed,
+            plate_stiffness: self.state.plate_stiffness,
+            damping: self.state.damping,
+        }
     }
-}
 
-pub(crate) fn apply_custom_clamp_pins(custom_clamps: &[[f64; 2]], wall_mask: &mut [f64]) {
-    for &[cx, cy] in custom_clamps {
-        apply_point_clamp(wall_mask, GRID_SIZE, GRID_SIZE, cx, cy, 1.8);
+    pub(crate) fn driver_config(&self) -> DriverConfig2D {
+        DriverConfig2D {
+            enabled: self.state.driver_enabled,
+            line_source: self.state.line_source,
+            x_norm: self.state.driver_x,
+            y_norm: self.state.driver_y,
+            frequency: self.state.driver_frequency,
+            amplitude: self.state.driver_amplitude,
+            radius_cells: 2.0,
+        }
     }
 }
 

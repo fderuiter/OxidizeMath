@@ -3,6 +3,7 @@
 // [cite:graph_parameters_rust]
 
 use eframe::egui::{self, vec2, Context, Event, Key, Modifiers, Pos2, RawInput, Rect};
+use math_explorer::pure_math::analysis::pde::wave_2d::{DriverConfig2D, Wave2DParams};
 use verified_engine::engine::VerifiedEngine;
 
 use super::*;
