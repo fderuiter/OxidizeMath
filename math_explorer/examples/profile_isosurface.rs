@@ -6,9 +6,9 @@
 use math_explorer::applied::isosurface::{Point3D, VoxelGrid, extract_isosurface};
 use std::time::Instant;
 
-fn run_micro_benchmark() {
+fn run_micro_benchmark(smoke: bool) {
     println!("\n[Micro-benchmark] Point3D::normalize");
-    let count = 50_000_000;
+    let count = if smoke { 10_000 } else { 50_000_000 };
     let mut vectors = Vec::with_capacity(count);
 
     let mut seed: u64 = 0xDEADBEEF;
@@ -37,10 +37,10 @@ fn run_micro_benchmark() {
     println!("Checksum: {}", checksum);
 }
 
-fn run_macro_benchmark() {
+fn run_macro_benchmark(smoke: bool) {
     println!("\n[Macro-benchmark] extract_isosurface (Sphere SDF)");
 
-    let size = 128;
+    let size = if smoke { 24 } else { 128 };
     println!("Grid size: {}x{}x{}", size, size, size);
 
     let mut data = Vec::with_capacity(size * size * size);
@@ -82,7 +82,9 @@ fn run_macro_benchmark() {
 }
 
 fn main() {
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
     println!("⏱️  Profiler Benchmark Starting...");
-    run_micro_benchmark();
-    run_macro_benchmark();
+    run_micro_benchmark(smoke);
+    run_macro_benchmark(smoke);
 }

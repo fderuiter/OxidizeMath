@@ -405,9 +405,9 @@ mod tests {
         let ista = lasso.solve_ista(&a, &y, &cfg).expect("ista");
         let fista = lasso.solve_fista(&a, &y, &cfg).expect("fista");
         let expected = [2.8, 0.0, 0.0, -2.0];
-        for i in 0..4 {
-            assert!((ista.x[i] - expected[i]).abs() < 1e-6);
-            assert!((fista.x[i] - expected[i]).abs() < 1e-6);
+        for (i, &exp) in expected.iter().enumerate() {
+            assert!((ista.x[i] - exp).abs() < 1e-6);
+            assert!((fista.x[i] - exp).abs() < 1e-6);
         }
     }
 

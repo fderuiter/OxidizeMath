@@ -1,4 +1,4 @@
-# ADR 0045: Modular Zero-Allocation Optimization Solvers, Domain Integrations, and Optimization Workbench Tab
+# ADR 20261123: Modular Zero-Allocation Optimization Solvers, Domain Integrations, and Optimization Workbench Tab
 
 ## Status
 Accepted (extends [ADR 0001](0001-dynamic-workspace-discovery.md), [ADR 0008](0008-finite-state-solver-guard.md), and [ADR 0037](0037-consolidate-optimizer-softmax-and-attention-kernels.md))
@@ -18,4 +18,4 @@ Accepted (extends [ADR 0001](0001-dynamic-workspace-discovery.md), [ADR 0008](00
 
 ## Consequences
 - **Positive**: Unifies first-order, proximal, linear, quadratic, nonlinear constrained, derivative-free, and multi-objective solvers under strict zero-heap-allocation hot loops across native and `wasm32-unknown-unknown` targets, with interactive visualization in `OptimizationTab`, `DoseCalculationTool`, and `LossLandscapeTool`.
-- **Neutral**: Workspace GUI inventory contracts advance to 26 `ExplorerTab` modules, 76 `InteractiveTool` entries, and 107 `StarterPresetMetadata` cards.
+- **Neutral**: Workspace GUI inventory contracts advance to 27 `ExplorerTab` modules, 80 `InteractiveTool` entries, and 113 `StarterPresetMetadata` cards.
