@@ -46,6 +46,7 @@ fn test_is_safe_bundle_filename_rejects_leading_dashes() {
         "--checkpoint-action=exec=touch CANARY_PWNED.pdf"
     ));
     assert!(!is_safe_bundle_filename("SHA256SUMS"));
+    assert!(!is_safe_bundle_filename("pages-index.html"));
     assert!(!is_safe_bundle_filename("notes.txt"));
 }
 
@@ -106,6 +107,11 @@ fn test_package_release_bundle_prevents_option_injection() {
     let temp = TempOutputDir::new("bundle_exec");
     fs::write(temp.path.join("paper_alpha.pdf"), b"%PDF-1.4 sample\n").unwrap();
     fs::write(temp.path.join("index.html"), b"<!DOCTYPE html></html>").unwrap();
+    fs::write(
+        temp.path.join("pages-index.html"),
+        b"<!DOCTYPE html></html>",
+    )
+    .unwrap();
     fs::write(temp.path.join("Verification_Certificate.json"), b"{}").unwrap();
 
     // Plant GNU tar option-injection payloads in output_dir
@@ -155,6 +161,7 @@ fn test_package_release_bundle_prevents_option_injection() {
     assert!(sums.contains("paper_alpha.pdf"));
     assert!(sums.contains("index.html"));
     assert!(sums.contains("Verification_Certificate.json"));
+    assert!(!sums.contains("pages-index.html"));
     assert!(!sums.contains("--checkpoint"));
     assert!(!sums.contains("CANARY_PWNED.pdf"));
 }
@@ -372,6 +379,15 @@ fn test_render_paper_card_escapes_and_encodes_stems() {
     let utf8_card = render_paper_card("mécanique_π", "Mécanique", "Auteur", "Résumé.");
     assert!(utf8_card.contains("<code>mécanique_π.pdf</code>"));
     assert!(utf8_card.contains(r#"href="m%C3%A9canique_%CF%80.pdf""#));
+
+    let pages_card = render_paper_card_for_target(
+        "mécanique_π",
+        "Mécanique",
+        "Auteur",
+        "Résumé.",
+        IndexTarget::GitHubPages,
+    );
+    assert!(pages_card.contains(r#"href="../m%C3%A9canique_%CF%80.pdf""#));
 }
 
 #[test]
@@ -403,6 +419,8 @@ fn test_generate_index_html_csp_and_stem_encoding() {
     assert!(html.contains(
         r#"<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">"#
     ));
+    assert!(html.contains(r#"href="papers-bundle.tar.gz""#));
+    assert!(html.contains(r#"href="SHA256SUMS""#));
     assert!(html.contains("<code>paper_&#39;&amp;d#e%25 space.pdf</code>"));
     assert!(html.contains(r#"href="paper_%27%26d%23e%2525%20space.pdf""#));
     assert!(html.contains("<h2 class=\"card-title\">Paper &#39;&amp;d#e%25 Space</h2>"));
@@ -411,6 +429,16 @@ fn test_generate_index_html_csp_and_stem_encoding() {
     assert!(html.contains("<code>synthetic_&lt;a&gt;&quot;b&quot;?q.pdf</code>"));
     assert!(html.contains(r#"href="synthetic_%3Ca%3E%22b%22%3Fq.pdf""#));
     assert!(!html.contains("<a>"));
+
+    let pages_html =
+        fs::read_to_string(out_dir.join("pages-index.html")).expect("pages-index.html missing");
+    assert!(pages_html.contains(r#"href="https://github.com/fderuiter/OxidizeMath/releases""#));
+    assert!(pages_html.contains(r#"href="../SHA256SUMS""#));
+    assert!(!pages_html.contains(r#"href="papers-bundle.tar.gz""#));
+    assert!(pages_html.contains(r#"href="../paper_%27%26d%23e%2525%20space.pdf""#));
+    assert!(pages_html.contains(r#"href="../%C3%A9tude_%CF%80.pdf""#));
+    assert!(pages_html.contains(r#"href="../synthetic_%3Ca%3E%22b%22%3Fq.pdf""#));
+    assert!(!pages_html.contains("<a>"));
 }
 
 #[test]
