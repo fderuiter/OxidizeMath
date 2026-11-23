@@ -33,10 +33,13 @@
 // [cite:dwarf_galaxy_empirical_dependencies]
 
 use super::galaxies::{GalaxyModel, Mpc};
+use super::paczynski_wiita::{
+    CentralBlackHoleConfig, is_captured_at_isco, paczynski_wiita_acceleration_kpc,
+    paczynski_wiita_circular_speed_kms,
+};
 use super::rotation_curves::{
     BaryonicDiskConfig, DwarfMorphology, HaloProfile, METERS_PER_KPC,
     MIN_GALACTOCENTRIC_RADIUS_KPC, baryons_from_distance, decompose_rotation_curve,
-    total_gravitational_potential,
 };
 
 /// Seconds per Megayear ($365.25 \times 86400 \times 10^6$).
@@ -68,6 +71,9 @@ pub struct OrbitalState {
     pub vy_kms: f64,
     /// Tracer population tag.
     pub kind: OrbitParticleKind,
+    /// Whether this tracer has plunged across $r_{\text{ISCO}} = 3 R_s$ and been captured.
+    #[serde(default)]
+    pub captured: bool,
 }
 
 /// Instantaneous conserved quantities for a tracer particle in a static axisymmetric potential.
@@ -114,14 +120,17 @@ pub struct GalacticDiskSystem {
     pub baryons: BaryonicDiskConfig,
     /// Active dark-matter halo profile.
     pub halo: HaloProfile,
-    particles: Vec<OrbitalState>,
+    /// Optional central Schwarzschild black hole with Paczyński-Wiita relativistic potential.
+    #[serde(default)]
+    pub central_bh: CentralBlackHoleConfig,
+    pub(super) particles: Vec<OrbitalState>,
     trail_ring: Vec<[f64; 2]>,
     trail_capacity: usize,
     trail_head: usize,
     trail_len: usize,
     elapsed_myr: f64,
-    initial_energy: f64,
-    initial_lz: f64,
+    pub(super) initial_energy: f64,
+    pub(super) initial_lz: f64,
 }
 
 /// Computes planar central acceleration $(a_x, a_y)$ in $(\text{km/s})^2/\text{kpc}$ with softened core $r \ge 10^{-3}\,\text{kpc}$.
@@ -141,19 +150,52 @@ pub fn planar_acceleration(
 }
 
 #[verified_engine::verified]
+fn total_planar_accel(
+    x_kpc: f64,
+    y_kpc: f64,
+    baryons: &BaryonicDiskConfig,
+    halo: &HaloProfile,
+    bh: &CentralBlackHoleConfig,
+) -> (f64, f64) {
+    let (ax_g, ay_g) = planar_acceleration(x_kpc, y_kpc, baryons, halo);
+    let (ax_b, ay_b) = paczynski_wiita_acceleration_kpc(x_kpc, y_kpc, bh);
+    (ax_g + ax_b, ay_g + ay_b)
+}
+
+#[verified_engine::verified]
 fn step_single_particle_kdk(
     p: &mut OrbitalState,
     ds_kpc_per_kms: f64,
     baryons: &BaryonicDiskConfig,
     halo: &HaloProfile,
+    bh: &CentralBlackHoleConfig,
 ) {
+    if p.captured {
+        return;
+    }
+    if is_captured_at_isco(p.x_kpc, p.y_kpc, bh) {
+        p.captured = true;
+        p.vx_kms = 0.0;
+        p.vy_kms = 0.0;
+        return;
+    }
     let half_ds = 0.5 * ds_kpc_per_kms;
-    let (ax0, ay0) = planar_acceleration(p.x_kpc, p.y_kpc, baryons, halo);
+    let (ax0, ay0) = total_planar_accel(p.x_kpc, p.y_kpc, baryons, halo, bh);
     let vx_half = p.vx_kms + half_ds * ax0;
     let vy_half = p.vy_kms + half_ds * ay0;
     let next_x = p.x_kpc + ds_kpc_per_kms * vx_half;
     let next_y = p.y_kpc + ds_kpc_per_kms * vy_half;
-    let (ax1, ay1) = planar_acceleration(next_x, next_y, baryons, halo);
+    if is_captured_at_isco(next_x, next_y, bh) {
+        let r_isco = bh.isco_radius_kpc();
+        let r_next = (next_x * next_x + next_y * next_y).sqrt().max(1.0e-9);
+        p.x_kpc = next_x * (r_isco / r_next);
+        p.y_kpc = next_y * (r_isco / r_next);
+        p.vx_kms = 0.0;
+        p.vy_kms = 0.0;
+        p.captured = true;
+        return;
+    }
+    let (ax1, ay1) = total_planar_accel(next_x, next_y, baryons, halo, bh);
     p.x_kpc = next_x;
     p.y_kpc = next_y;
     p.vx_kms = vx_half + half_ds * ax1;
@@ -205,6 +247,7 @@ impl GalacticDiskSystem {
         let mut sys = Self {
             baryons,
             halo,
+            central_bh: CentralBlackHoleConfig::default(),
             particles: vec![OrbitalState::default(); total],
             trail_ring: vec![[0.0, 0.0]; total.saturating_mul(cap)],
             trail_capacity: cap,
@@ -239,8 +282,20 @@ impl GalacticDiskSystem {
         self.trail_len = 0;
         self.elapsed_myr = 0.0;
         self.record_trail_snapshot();
+        self.refresh_invariants_baseline();
+    }
+
+    #[verified_engine::verified]
+    pub(super) fn refresh_invariants_baseline(&mut self) {
         self.initial_energy = self.total_energy();
         self.initial_lz = self.total_angular_momentum();
+    }
+
+    #[verified_engine::verified]
+    fn circular_speed_with_bh(&self, r_kpc: f64) -> f64 {
+        let v_gal = decompose_rotation_curve(r_kpc, &self.baryons, &self.halo).v_circ_kms;
+        let v_bh = paczynski_wiita_circular_speed_kms(r_kpc, &self.central_bh);
+        (v_gal * v_gal + v_bh * v_bh).sqrt()
     }
 
     #[verified_engine::verified]
@@ -248,16 +303,20 @@ impl GalacticDiskSystem {
         let r_base = self.baryons.disk_scale_kpc.max(0.25);
         let denom = disk_n.max(1) as f64;
         let mut i = 0;
+        let r_floor = if self.central_bh.enabled {
+            1.15 * self.central_bh.isco_radius_kpc()
+        } else {
+            MIN_GALACTOCENTRIC_RADIUS_KPC
+        };
         while i < disk_n {
             let u = (i as f64 + 0.5) / denom;
-            let r = (0.55 + 5.2 * u) * r_base;
-            // Align initial tracers along a two-arm bar/spiral phase to reveal differential winding
+            let r = ((0.55 + 5.2 * u) * r_base).max(r_floor);
             let phi = if i % 2 == 0 {
                 0.15 * u
             } else {
                 std::f64::consts::PI + 0.15 * u
             };
-            let v_circ = decompose_rotation_curve(r, &self.baryons, &self.halo).v_circ_kms;
+            let v_circ = self.circular_speed_with_bh(r);
             let (sin_p, cos_p) = phi.sin_cos();
             self.particles[i] = OrbitalState {
                 x_kpc: r * cos_p,
@@ -265,6 +324,7 @@ impl GalacticDiskSystem {
                 vx_kms: -v_circ * sin_p,
                 vy_kms: v_circ * cos_p,
                 kind: OrbitParticleKind::DiskTracer,
+                captured: false,
             };
             i += 1;
         }
@@ -281,7 +341,7 @@ impl GalacticDiskSystem {
             let spread = (j as f64 / denom) - 0.5;
             let r = (r_apocenter * (1.0 + 0.14 * spread)).max(MIN_GALACTOCENTRIC_RADIUS_KPC);
             let angle = 0.6 + 0.18 * spread;
-            let v_circ = decompose_rotation_curve(r, &self.baryons, &self.halo).v_circ_kms;
+            let v_circ = self.circular_speed_with_bh(r);
             let v_tan = v_circ * tang_ratio * (1.0 + 0.04 * spread);
             let (sin_a, cos_a) = angle.sin_cos();
             let idx = start_idx.saturating_add(j);
@@ -291,6 +351,7 @@ impl GalacticDiskSystem {
                 vx_kms: -v_tan * sin_a,
                 vy_kms: v_tan * cos_a,
                 kind: OrbitParticleKind::TidalStream,
+                captured: false,
             };
             j += 1;
         }
@@ -328,7 +389,13 @@ impl GalacticDiskSystem {
         let ds = clamped_dt * KPC_PER_MYR_PER_KMS;
         let mut i = 0;
         while i < self.particles.len() {
-            step_single_particle_kdk(&mut self.particles[i], ds, &self.baryons, &self.halo);
+            step_single_particle_kdk(
+                &mut self.particles[i],
+                ds,
+                &self.baryons,
+                &self.halo,
+                &self.central_bh,
+            );
             i += 1;
         }
         self.elapsed_myr += clamped_dt;
@@ -399,66 +466,5 @@ impl GalacticDiskSystem {
             k += 1;
         }
         count
-    }
-
-    /// Evaluates conserved orbital invariants for particle `index`.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn particle_invariants(&self, index: usize) -> Option<OrbitalInvariants> {
-        let p = self.particles.get(index)?;
-        let r = (p.x_kpc * p.x_kpc + p.y_kpc * p.y_kpc).sqrt();
-        let v_sq = p.vx_kms * p.vx_kms + p.vy_kms * p.vy_kms;
-        let phi = total_gravitational_potential(r, &self.baryons, &self.halo);
-        Some(OrbitalInvariants {
-            specific_energy_kms2: 0.5 * v_sq + phi,
-            angular_momentum_kpc_kms: p.x_kpc * p.vy_kms - p.y_kpc * p.vx_kms,
-            radius_kpc: r,
-            speed_kms: v_sq.sqrt(),
-        })
-    }
-
-    /// Sum of specific mechanical energies across all tracer particles in $(\text{km/s})^2$.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn total_energy(&self) -> f64 {
-        let mut sum = 0.0;
-        let mut i = 0;
-        while i < self.particles.len() {
-            if let Some(inv) = self.particle_invariants(i) {
-                sum += inv.specific_energy_kms2;
-            }
-            i += 1;
-        }
-        sum
-    }
-
-    /// Sum of planar specific angular momenta $L_z$ across all tracer particles in $\text{kpc}\cdot\text{km/s}$.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn total_angular_momentum(&self) -> f64 {
-        let mut sum = 0.0;
-        let mut i = 0;
-        while i < self.particles.len() {
-            let p = &self.particles[i];
-            sum += p.x_kpc * p.vy_kms - p.y_kpc * p.vx_kms;
-            i += 1;
-        }
-        sum
-    }
-
-    /// Dimensionless relative drift $|\Delta E| / \max(|E_0|, 10^{-12})$ from the initial ensemble energy.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn relative_energy_drift(&self) -> f64 {
-        let current = self.total_energy();
-        (current - self.initial_energy).abs() / self.initial_energy.abs().max(1.0e-12)
-    }
-
-    /// Dimensionless relative drift $|\Delta L_z| / \max(|L_{z,0}|, 10^{-12})$ from the initial ensemble angular momentum.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn relative_angular_momentum_drift(&self) -> f64 {
-        let current = self.total_angular_momentum();
-        (current - self.initial_lz).abs() / self.initial_lz.abs().max(1.0e-12)
     }
 }

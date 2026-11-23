@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::scene::{
-    GRAD_THRESHOLD_MAX, GRAD_THRESHOLD_MIN, OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN,
-    SPLAT_GRID_SIZE, VIEWPORT_HALF_EXTENT,
+    SplatLensConfig, SplatLensMode, VolumetricSplatPreset, GRAD_THRESHOLD_MAX, GRAD_THRESHOLD_MIN,
+    OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN, SPLAT_GRID_SIZE, VIEWPORT_HALF_EXTENT,
 };
 use super::GaussianSplattingTool;
 use crate::accessibility::AccessibleTheoryHover;
@@ -26,6 +26,12 @@ impl GaussianSplattingTool {
                 });
             if selected_preset != self.scene_preset {
                 self.set_scene_preset(selected_preset);
+                if selected_preset == VolumetricSplatPreset::RelativisticAccretionDisk
+                    && self.lens.mode == SplatLensMode::Off
+                {
+                    self.lens = SplatLensConfig::relativistic_disk_preset();
+                    self.invalidate_render_cache();
+                }
             }
             let prev_scale = self.scale;
             if ui
@@ -47,6 +53,8 @@ impl GaussianSplattingTool {
 
             ui.separator();
             self.draw_density_controls(ui);
+            ui.separator();
+            self.draw_lensing_controls(ui);
         });
     }
 
@@ -125,44 +133,67 @@ impl GaussianSplattingTool {
             let tex_id = self.texture.as_ref().map(egui::TextureHandle::id);
             let img_size = egui::vec2((2.0 * x_half) as f32, (2.0 * y_half) as f32);
             let mut camera = self.camera;
+            self.stage_scene_3d_overlays(camera, dark_mode, palette.accent);
 
-            self.scene_builder.begin(camera);
-            self.scene_builder.add_axes(1.4, dark_mode);
-            for (ring_3d, color) in &self.ellipse_rings_3d {
-                self.scene_builder.add_polyline(
-                    "",
-                    ring_3d,
-                    egui::Stroke::new(1.25_f32, *color),
-                    LineStyle::Solid,
-                    false,
-                );
+            let lens_drag_mode =
+                self.lens.mode != SplatLensMode::Off && self.lens.drag_lens_on_canvas;
+            let mut viewport =
+                Plot3DViewport::new("gaussian_splatting_plot", VIEWPORT_HALF_EXTENT);
+            if lens_drag_mode {
+                viewport =
+                    viewport.helper_text("Drag canvas to reposition gravitational lens | Scroll to zoom");
             }
-            self.scene_builder.add_points(
-                "Splat Means",
-                &self.world_means,
-                3.0_f32,
-                palette.accent,
-                MarkerShape::Circle,
-                true,
-            );
+            let plot_resp = viewport.show(ui, &mut camera, |plot_ui| {
+                if let Some(tid) = tex_id {
+                    plot_ui.image(PlotImage::new(
+                        "Radiance Field",
+                        tid,
+                        PlotPoint::new(0.0, 0.0),
+                        img_size,
+                    ));
+                }
+                self.scene_builder.finish(plot_ui);
+                self.draw_caustic_plot_overlays(plot_ui, &palette);
+            });
 
-            let response = Plot3DViewport::new("gaussian_splatting_plot", VIEWPORT_HALF_EXTENT)
-                .show(ui, &mut camera, |plot_ui| {
-                    if let Some(tid) = tex_id {
-                        plot_ui.image(PlotImage::new(
-                            "Radiance Field",
-                            tid,
-                            PlotPoint::new(0.0, 0.0),
-                            img_size,
-                        ));
-                    }
-                    self.scene_builder.finish(plot_ui);
-                })
-                .response;
-
-            self.camera = camera;
-            response.accessible_theory_hover(self);
+            if lens_drag_mode && plot_resp.response.dragged() {
+                if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+                    let val = plot_resp.transform.value_from_position(pos);
+                    self.drag_lens_to([val.x, val.y]);
+                }
+                self.camera.zoom = camera.zoom;
+            } else {
+                self.camera = camera;
+            }
+            plot_resp.response.accessible_theory_hover(self);
         });
+    }
+
+    fn stage_scene_3d_overlays(
+        &mut self,
+        camera: crate::camera::Camera3D,
+        dark_mode: bool,
+        accent: egui::Color32,
+    ) {
+        self.scene_builder.begin(camera);
+        self.scene_builder.add_axes(1.4, dark_mode);
+        for (ring_3d, color) in &self.ellipse_rings_3d {
+            self.scene_builder.add_polyline(
+                "",
+                ring_3d,
+                egui::Stroke::new(1.25_f32, *color),
+                LineStyle::Solid,
+                false,
+            );
+        }
+        self.scene_builder.add_points(
+            "Splat Means",
+            &self.world_means,
+            3.0_f32,
+            accent,
+            MarkerShape::Circle,
+            true,
+        );
     }
 }
 

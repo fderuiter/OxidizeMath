@@ -1,11 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::rotation_curve_relativity::RotationRelativityConfig;
 use super::{clamp_finite, HaloKindChoice};
 use crate::framework::{FiniteStateGuard, InteractiveTool, TraceSnapshotManager};
 use eframe::egui;
 use math_explorer::physics::astrophysics::{
     sample_rotation_curve_into, BaryonicDiskConfig, DwarfMorphology, Magnitude, Mpc,
-    VelocityDecomposition,
+    ThinLensSample, VelocityDecomposition,
 };
 
 const CURVE_SAMPLES: usize = 96;
@@ -25,6 +26,8 @@ pub(crate) struct RotationCurveState {
     pub(crate) halo_concentration: f64,
     pub(crate) max_radius_kpc: f64,
     pub(crate) compare_counterpart: bool,
+    #[serde(default, skip_serializing_if = "RotationRelativityConfig::is_default")]
+    pub(crate) relativity: RotationRelativityConfig,
     #[serde(default, skip_serializing_if = "TraceSnapshotManager::is_empty")]
     pub(crate) snapshot_manager: TraceSnapshotManager,
 }
@@ -34,6 +37,11 @@ pub struct RotationCurveExplorer {
     pub(crate) cfg: RotationCurveState,
     pub(super) samples: Vec<VelocityDecomposition>,
     pub(super) counterpart_samples: Vec<VelocityDecomposition>,
+    pub(super) nfw_lens_samples: Vec<ThinLensSample>,
+    pub(super) burkert_lens_samples: Vec<ThinLensSample>,
+    pub(super) dilation_samples: Vec<[f64; 2]>,
+    pub(super) nfw_crit_kpc: Option<f64>,
+    pub(super) burkert_crit_kpc: Option<f64>,
     pub(super) sensitivity_engine: crate::sensitivity::SensitivityEngine,
     pub(super) revision: u64,
 }
@@ -54,10 +62,16 @@ impl Default for RotationCurveExplorer {
                 halo_concentration: 12.0,
                 max_radius_kpc: 12.0,
                 compare_counterpart: true,
+                relativity: RotationRelativityConfig::default(),
                 snapshot_manager: TraceSnapshotManager::new(),
             },
             samples: vec![VelocityDecomposition::default(); CURVE_SAMPLES],
             counterpart_samples: vec![VelocityDecomposition::default(); CURVE_SAMPLES],
+            nfw_lens_samples: vec![ThinLensSample::default(); CURVE_SAMPLES],
+            burkert_lens_samples: vec![ThinLensSample::default(); CURVE_SAMPLES],
+            dilation_samples: vec![[0.0; 2]; CURVE_SAMPLES],
+            nfw_crit_kpc: None,
+            burkert_crit_kpc: None,
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
             revision: 1,
         };
@@ -108,6 +122,12 @@ impl RotationCurveExplorer {
         sample_rotation_curve_into(0.05, r_max, &baryons, &halo, &mut self.samples);
         let alt = self.counterpart_halo_choice().build_profile(m, rs, c);
         sample_rotation_curve_into(0.05, r_max, &baryons, &alt, &mut self.counterpart_samples);
+        self.nfw_lens_samples
+            .resize(CURVE_SAMPLES, ThinLensSample::default());
+        self.burkert_lens_samples
+            .resize(CURVE_SAMPLES, ThinLensSample::default());
+        self.dilation_samples.resize(CURVE_SAMPLES, [0.0; 2]);
+        self.recalculate_relativity_profiles(r_max);
     }
 
     fn apply_loaded_state(
@@ -127,7 +147,7 @@ impl RotationCurveExplorer {
         ]
         .into_iter()
         .all(|(v, lo, hi)| v.is_finite() && (lo..=hi).contains(&v));
-        if !valid {
+        if !valid || !s.relativity.is_valid() {
             return Err("Rotation curve parameters out of valid physical bounds".into());
         }
         if keep_snaps {
@@ -154,6 +174,7 @@ impl FiniteStateGuard for RotationCurveExplorer {
         ]
         .into_iter()
         .all(f64::is_finite)
+            && c.relativity.is_valid()
             && self.samples.iter().all(|s| s.v_circ_kms.is_finite())
     }
 
@@ -167,6 +188,7 @@ impl FiniteStateGuard for RotationCurveExplorer {
         c.halo_scale_kpc = clamp_finite(c.halo_scale_kpc, 0.3, 10.0, 2.2);
         c.halo_concentration = clamp_finite(c.halo_concentration, 4.0, 25.0, 12.0);
         c.max_radius_kpc = clamp_finite(c.max_radius_kpc, 2.0, 25.0, 12.0);
+        c.relativity.clamp_in_place();
         self.recalculate();
     }
 }
@@ -210,7 +232,7 @@ impl InteractiveTool for RotationCurveExplorer {
         if !datasets.is_empty() {
             return datasets;
         }
-        vec![
+        let mut out = vec![
             (
                 "Total v_circ (km/s)".into(),
                 self.samples
@@ -239,7 +261,9 @@ impl InteractiveTool for RotationCurveExplorer {
                     .map(|s| [s.radius_kpc, s.v_halo_kms])
                     .collect(),
             ),
-        ]
+        ];
+        self.append_relativity_export_datasets(&mut out);
+        out
     }
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
@@ -271,7 +295,14 @@ impl InteractiveTool for RotationCurveExplorer {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Dwarf-Galaxy Rotation Curve Decomposition");
             ui.label("Compare Keplerian baryonic falloff against cored (Burkert) and cuspy (NFW) dark-matter halos.");
-            self.render_curve_plot(ui);
+            if self.cfg.relativity.enabled {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    self.render_curve_plot(ui);
+                    self.render_relativity_plot(ui);
+                });
+            } else {
+                self.render_curve_plot(ui);
+            }
         });
     }
 }

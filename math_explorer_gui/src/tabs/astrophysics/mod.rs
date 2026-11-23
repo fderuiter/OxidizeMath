@@ -4,8 +4,10 @@ use eframe::egui;
 use math_explorer::physics::astrophysics::HaloProfile;
 
 pub mod galactic_orbits_tool;
+mod galactic_orbits_relativity;
 mod galactic_orbits_ui;
 pub mod rotation_curve_tool;
+mod rotation_curve_relativity;
 mod rotation_curve_ui;
 
 #[cfg(test)]

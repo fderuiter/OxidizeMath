@@ -54,6 +54,7 @@ impl RotationCurveExplorer {
         ch |= ui
             .checkbox(&mut c.compare_counterpart, "Overlay Counterpart Halo Curve")
             .changed();
+        ch |= self.render_relativity_controls(ui);
         ch
     }
 
