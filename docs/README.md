@@ -29,7 +29,8 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0016: Standardize Crate Documentation Suite](adr/0016-standardize-crate-documentation-suite.md)
 - [ADR 0035: Spatial Fermi Games and Ising Droplet Brushes](adr/0035-fermi-spatial-games-and-ising-droplet-brushes.md)
 - [ADR 0037: Glicko-2 Frozen-Period Tournament Simulator](adr/0037-glicko2-frozen-period-tournament-simulator.md)
-- [ADR 0041: SpatialBrushKit and Multi-Domain Field Sculpting](adr/0041-spatial-brush-kit-and-field-sculpting.md)
+- [ADR 0041: Volumetric Field Studio and Zero-Allocation 3D Kernels](adr/0041-volumetric-field-studio-zero-alloc-3d-kernels.md)
+- [ADR 0042: SpatialBrushKit and Multi-Domain Field Sculpting](adr/0042-spatial-brush-kit-and-field-sculpting.md)
 
 ## Contributing
 
