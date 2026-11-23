@@ -33,7 +33,7 @@ pub fn verify_records(args: &[String]) -> bool {
     let raw_base = env::var("BASE_SHA").ok();
     let raw_head = env::var("HEAD_SHA").ok();
     verify_records_in_dir_opts(
-        Path::new("."),
+        crate::manifest_cache::workspace_root_dir(),
         raw_base.as_deref(),
         raw_head.as_deref(),
         force_staged,
