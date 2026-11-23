@@ -5,6 +5,8 @@ use rustfft::FftPlanner;
 use verified_engine::engine::VerifiedEngine;
 
 use super::backend::{MuteReason, SonificationBackend};
+#[cfg(feature = "pure_math")]
+use super::chladni_tests::sample_chladni_step_frame;
 use super::controller::{
     silence_all_audio_on_webgl_loss, AudioEngineController, AutoSilenceReason,
 };
@@ -128,12 +130,14 @@ fn test_zero_alloc_1000_steps_frame_extraction_and_offline_pcm_synthesis() {
     let _ = synth.set_muted_from_user_gesture(false);
     let factors: [(u64, u32); 3] = [(2, 2), (3, 1), (5, 2)];
     let mut prev_phases = [0.0_f64; 8];
+    #[cfg(feature = "pure_math")]
+    let detector_line = [0.25_f64; 32];
 
     let (max_sample, _metrics) = VerifiedEngine::run_verified(|| {
         let mut peak = 0.0_f32;
         for step in 0..1_000usize {
             let phase = (step as f64) * 0.05;
-            let frame = match step % 7 {
+            let frame = match step % 8 {
                 0 => hodgkin_huxley_frame(30.0 * phase.sin(), -10.0, 0.8, 0.4, 0.5, 10.0),
                 1 => spike_analysis_frame(25.0 * phase.cos(), -15.0, 0.0, 42.0),
                 2 => {
@@ -149,6 +153,8 @@ fn test_zero_alloc_1000_steps_frame_extraction_and_offline_pcm_synthesis() {
                 }
                 4 => attractor_frame([12.0 * phase.sin(), 8.0, 24.0], [18.0, -12.0, 9.0], false),
                 5 => bifurcation_frame(2.9 + 0.9 * ((step % 10) as f64) * 0.1),
+                #[cfg(feature = "pure_math")]
+                6 => sample_chladni_step_frame(phase, &detector_line, step % 16 == 0),
                 _ => prime_chord_frame(&factors, WaveformPreset::JustHarmonic),
             };
             synth.apply_frame(&frame);

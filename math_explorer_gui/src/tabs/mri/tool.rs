@@ -1,9 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::pulse::{sync_mri_callouts, MriPulseMode, MriPulseWorkspace, RfPulseConfig};
-use super::runner::{
-    MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE,
-};
+use super::runner::{MriRunner, MriSharedParams, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE};
 use super::theory::MriBlochTheory;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::{CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool};
@@ -130,6 +128,9 @@ pub struct MriTool {
     pub pulse_config: RfPulseConfig,
     /// Preallocated zero-allocation workspace for pulse sequences.
     pub pulse_workspace: MriPulseWorkspace,
+    /// Latest stack-allocated sonification frame for Web Audio and `.wav` export.
+    pub latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) fault_notified: bool,
     /// Active inverse challenge identifier, if any.
     pub active_challenge: Option<&'static str>,
     theory: MriBlochTheory,
@@ -165,6 +166,13 @@ impl Default for MriTool {
             initial_m,
         );
 
+        let latest_sonification = crate::audio::mappings::mri_bloch_frame(
+            initial_m,
+            m0,
+            Vector3::new(0.0, 0.0, DEFAULT_MRI_BZ),
+            0.0,
+        );
+
         Self {
             simulator,
             solver,
@@ -181,6 +189,8 @@ impl Default for MriTool {
             callout_manager,
             pulse_config,
             pulse_workspace: MriPulseWorkspace::default(),
+            latest_sonification,
+            fault_notified: false,
             active_challenge: None,
             theory: MriBlochTheory,
         }
@@ -213,6 +223,8 @@ impl MriTool {
             current_time: self.current_time,
             history,
             max_history: self.max_history,
+            step_count: (self.current_time / 0.001).round() as usize,
+            rng: oxidize_core::rng::OxidizeRng::new(0x4D52_495F_424C_4F43),
         };
         self.worker = BackgroundWorker::new(runner);
     }
@@ -271,6 +283,8 @@ impl MriTool {
         if self.active_challenge.is_none() {
             self.pulse_config = RfPulseConfig::default();
         }
+        self.pulse_workspace.playhead_playing = false;
+        self.fault_notified = false;
         let params = Arc::clone(&self.params);
         let m0 = self.simulator.m0;
         self.worker
@@ -288,6 +302,7 @@ impl MriTool {
                 initial_m,
             );
         }
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     pub(super) fn apply_worker_state(&mut self, target_state: SimWorkerState) {
@@ -315,10 +330,7 @@ impl InteractiveTool for MriTool {
     }
 
     fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
-        Some(super::sonification::bloch_fid_sonification_frame(
-            &self.simulator,
-            self.worker.state() == SimWorkerState::Faulted,
-        ))
+        Some(self.current_sonification_frame())
     }
 
     fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
@@ -337,49 +349,7 @@ impl InteractiveTool for MriTool {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        if !self.history.is_empty() {
-            let mx: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.x]).collect();
-            let my: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.y]).collect();
-            let mz: Vec<[f64; 2]> = self.history.iter().map(|(t, m)| [*t, m.z]).collect();
-            return vec![
-                ("Mx (Transverse)".to_string(), mx),
-                ("My (Transverse)".to_string(), my),
-                ("Mz (Longitudinal)".to_string(), mz),
-            ];
-        }
-        if let Some(snap) = self.worker.latest_snapshot() {
-            if let Some(data) = snap
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<MriSnapshot>())
-            {
-                if !data.history.is_empty() {
-                    let mx = data.history.iter().map(|(t, m)| [*t, m.x]).collect();
-                    let my = data.history.iter().map(|(t, m)| [*t, m.y]).collect();
-                    let mz = data.history.iter().map(|(t, m)| [*t, m.z]).collect();
-                    return vec![
-                        ("Mx (Transverse)".to_string(), mx),
-                        ("My (Transverse)".to_string(), my),
-                        ("Mz (Longitudinal)".to_string(), mz),
-                    ];
-                }
-            }
-        }
-        let m = self.simulator.magnetization;
-        vec![
-            (
-                "Mx (Transverse)".to_string(),
-                vec![[self.current_time, m.x]],
-            ),
-            (
-                "My (Transverse)".to_string(),
-                vec![[self.current_time, m.y]],
-            ),
-            (
-                "Mz (Longitudinal)".to_string(),
-                vec![[self.current_time, m.z]],
-            ),
-        ]
+        self.collect_mri_export_datasets()
     }
 
     fn step_simulation(&mut self) {
@@ -407,6 +377,7 @@ impl InteractiveTool for MriTool {
         self.history
             .push_back((self.current_time, self.simulator.magnetization));
         self.update_plot_buffers();
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {

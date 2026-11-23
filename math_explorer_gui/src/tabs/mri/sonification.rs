@@ -1,74 +1,14 @@
-//! Zero-allocation NMR free-induction-decay (`T1`/`T2`) bell synthesis for [`crate::tabs::mri::tool::MriTool`].
+//! Zero-allocation NMR free-induction-decay (`T1`/`T2`) and RF pulse sonification helpers for [`crate::tabs::mri::tool::MriTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::pulse::MRI_PULSE_SAMPLES;
 use super::tool::MriTool;
-use crate::audio::{SonificationFrame, VoiceSpec, WaveformPreset};
-use math_explorer::physics::mri::bloch::BlochSimulator;
+use crate::audio::mappings::{mri_bloch_frame, mri_pulse_playhead_frame};
+use crate::audio::SonificationFrame;
+use math_explorer::physics::mri::bloch::{rotating_frame_effective_field, BlochSimulator};
+use math_explorer::physics::mri::proton;
 use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
-
-const FID_BELL_RATIOS: [f32; 3] = [1.0, 2.756, 5.404];
-const FID_BELL_WEIGHTS: [f32; 3] = [0.65, 0.23, 0.12];
-
-/// Maps Bloch magnetization `(Mx, My, Mz)`, static/RF field `B`, and `T1`/`T2` relaxation times
-/// into a zero-allocation polyphonic NMR free-induction-decay [`SonificationFrame`].
-#[inline]
-#[must_use]
-pub fn bloch_fid_sonification_frame(sim: &BlochSimulator, faulted: bool) -> SonificationFrame {
-    if faulted {
-        return SonificationFrame::silent();
-    }
-    let m = sim.magnetization;
-    let b = sim.b_field;
-    if !m.x.is_finite()
-        || !m.y.is_finite()
-        || !m.z.is_finite()
-        || !b.x.is_finite()
-        || !b.y.is_finite()
-        || !b.z.is_finite()
-        || !sim.t1.is_finite()
-        || !sim.t2.is_finite()
-        || !sim.m0.is_finite()
-        || sim.m0 <= 0.0
-    {
-        return SonificationFrame::silent();
-    }
-
-    let m0 = sim.m0;
-    let m_xy = (m.x.hypot(m.y) / m0).clamp(0.0, 1.5) as f32;
-    let mz_norm = (((m.z / m0) + 1.0) * 0.5).clamp(0.0, 1.0) as f32;
-    let b_mag = b.norm().clamp(0.0, 75.0) as f32;
-
-    let carrier_hz = (180.0 + b_mag * 28.0).clamp(110.0, 1_400.0);
-    let t2_damping = ((1.0 / sim.t2.clamp(0.01, 2.0)) as f32 * 0.04).clamp(0.02, 0.65);
-    let t1_factor = ((1.0 / sim.t1.clamp(0.1, 5.0)) as f32).clamp(0.2, 10.0);
-    let pan = (m.x / m0).clamp(-1.0, 1.0) as f32;
-    let filter_cutoff_hz = (600.0 + 4_200.0 * m_xy + 1_100.0 * mz_norm).clamp(350.0, 6_800.0);
-    let fm_index = (0.15 + 1.6 * m_xy * (t1_factor * 0.25).clamp(0.2, 2.0)).clamp(0.0, 4.0);
-
-    let mut frame = SonificationFrame::silent();
-    frame.waveform = WaveformPreset::FourierWarm;
-    frame.active_voices = 3;
-    frame.master_gain = (0.18 + 0.72 * m_xy).clamp(0.0, 0.90);
-
-    for (idx, (&ratio, &weight)) in FID_BELL_RATIOS
-        .iter()
-        .zip(FID_BELL_WEIGHTS.iter())
-        .enumerate()
-    {
-        let partial_decay = 1.0 / (1.0 + (idx as f32) * t2_damping);
-        frame.voices[idx] = VoiceSpec {
-            freq_hz: (carrier_hz * ratio).clamp(80.0, 7_800.0),
-            gain: (weight * partial_decay * (0.28 + 0.72 * m_xy)).clamp(0.0, 0.95),
-            pan: (pan * (1.0 - 0.2 * idx as f32)).clamp(-1.0, 1.0),
-            fm_mod_hz: (carrier_hz * 2.01).clamp(40.0, 3_800.0),
-            fm_index: if idx == 0 { fm_index } else { fm_index * 0.35 },
-            filter_cutoff_hz,
-            transient_impulse: 0.0,
-        };
-    }
-    frame.sanitize()
-}
 
 impl MriTool {
     pub(super) fn render_wav_frames(&self, frame_count: usize) -> Vec<SonificationFrame> {
@@ -76,15 +16,46 @@ impl MriTool {
         if !crate::framework::InteractiveTool::has_finite_parameters(self) {
             return vec![SonificationFrame::silent(); count];
         }
+        if !self.pulse_config.mode.is_continuous() {
+            let mut out = Vec::with_capacity(count);
+            for idx in 0..count {
+                let sample_idx = (idx * MRI_PULSE_SAMPLES / count).min(MRI_PULSE_SAMPLES - 1);
+                let t_s = self.pulse_workspace.times[sample_idx];
+                let m_sample = self.pulse_workspace.trajectory[sample_idx];
+                let disp = self.pulse_workspace.dispersion[sample_idx];
+                out.push(mri_pulse_playhead_frame(
+                    self.pulse_config.mode,
+                    t_s,
+                    m_sample,
+                    disp,
+                    self.simulator.m0,
+                    self.simulator.b_field.z,
+                    &self.pulse_config,
+                ));
+            }
+            return out;
+        }
+
+        let b_lab = self.simulator.b_field;
+        let omega_rf = proton::larmor_frequency(b_lab.z);
+        let b1_amp = b_lab.x.hypot(b_lab.y);
+        let phase_rad = b_lab.y.atan2(b_lab.x);
+        let b_rot = rotating_frame_effective_field(b_lab.z, omega_rf, b1_amp, phase_rad);
+
         let mut local_sim = BlochSimulator::new(self.simulator.magnetization, self.simulator.m0);
         local_sim.set_relaxation(self.simulator.t1, self.simulator.t2);
-        local_sim.set_b_field(self.simulator.b_field);
+        local_sim.set_b_field(b_rot);
         let mut local_solver = RungeKutta4::new(&local_sim.magnetization);
-        let dt = 0.01 * self.time_scale.clamp(1.0, 20.0);
+        let dt = 0.002 * self.time_scale.clamp(1.0, 20.0);
         let mut out = Vec::with_capacity(count);
         for _ in 0..count {
+            out.push(mri_bloch_frame(
+                local_sim.magnetization,
+                local_sim.m0,
+                b_lab,
+                self.pulse_config.detuning_hz,
+            ));
             TimeStepper::step_with(&mut local_sim, &mut local_solver, dt);
-            out.push(bloch_fid_sonification_frame(&local_sim, false));
         }
         out
     }
