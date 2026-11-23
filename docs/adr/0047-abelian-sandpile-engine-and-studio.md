@@ -1,4 +1,4 @@
-# ADR 0045: Zero-Allocation 2D Abelian Sandpile Engine, Recurrent Group Algebra, and Solid-State Studio
+# ADR 0047: Zero-Allocation 2D Abelian Sandpile Engine, Recurrent Group Algebra, and Solid-State Studio
 
 ## Status
 Accepted (extends [ADR 0040](0040-dual-backend-web-audio-sonification.md), [ADR 0040](0040-promote-zero-alloc-curve-solvers-to-math-commons.md), and [ADR 0042](0042-2d-chladni-plate-and-wave-tank-solver.md))
@@ -20,4 +20,4 @@ Accepted (extends [ADR 0040](0040-dual-backend-web-audio-sonification.md), [ADR 
 
 ## Consequences
 - **Positive**: Bridges self-organized critical statistical mechanics and abstract finite Abelian group theory in a single zero-allocation, zero-dependency implementation verified under `VerifiedAllocator` on both native and `wasm32-unknown-unknown` targets.
-- **Neutral**: Updates exact federated `ToolMetadata` (`72 -> 73`) and `StarterPresetMetadata` (`103 -> 106`) contract assertions in `math_explorer_gui` and records the new `pure_math` and `domain_physics` public exports in [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json).
+- **Neutral**: Updates exact federated `ToolMetadata` (`75 -> 76`) and `StarterPresetMetadata` (`108 -> 111`) contract assertions in `math_explorer_gui` and records the new `pure_math` and `domain_physics` public exports in [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json).

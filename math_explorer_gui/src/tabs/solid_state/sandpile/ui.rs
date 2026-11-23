@@ -6,10 +6,10 @@
 use eframe::egui;
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 use math_explorer::physics::stat_mech::sandpile::{
-    AvalancheObservable, MAX_SANDPILE_DIM, SandpileElement, SandpileGrid,
-    kirchhoff_determinant_bareiss,
+    kirchhoff_determinant_bareiss, AvalancheObservable, SandpileElement, SandpileGrid,
+    MAX_SANDPILE_DIM,
 };
-use math_explorer::pure_math::algebra::{Semigroup, Zn, generate_left_coset, is_subgroup};
+use math_explorer::pure_math::algebra::{generate_left_coset, is_subgroup, Semigroup, Zn};
 
 use super::{
     AbelianSandpileStudio, SandpileBrush, SandpileColormap, SandpilePreset, SandpileViewMode,
@@ -211,7 +211,10 @@ impl AbelianSandpileStudio {
             });
         changed |= self.state.observable != prev_obs;
         changed |= ui
-            .checkbox(&mut self.state.show_burning_overlay, "Highlight Deepest Burn Wave")
+            .checkbox(
+                &mut self.state.show_burning_overlay,
+                "Highlight Deepest Burn Wave",
+            )
             .changed();
         changed
     }
@@ -327,8 +330,7 @@ impl AbelianSandpileStudio {
             SandpileGrid::new(self.state.grid_size, self.state.grid_size, Some(1)).unwrap();
         let _ = check_grid.set_heights(&r_orig);
         let _ = check_grid.compose_with_slice(&r_inv);
-        if self.identity_cache.len() != r_orig.len()
-            || self.identity_cache.iter().all(|&v| v == 0)
+        if self.identity_cache.len() != r_orig.len() || self.identity_cache.iter().all(|&v| v == 0)
         {
             let mut id_grid =
                 SandpileGrid::new(self.state.grid_size, self.state.grid_size, Some(1)).unwrap();
@@ -337,9 +339,8 @@ impl AbelianSandpileStudio {
         }
         let exact_e = check_grid.heights() == self.identity_cache.as_slice();
         self.paused = true;
-        self.group_status = format!(
-            "Computed r⁻¹ ({inv_topples} topples) • (r + r⁻¹)° == e: {exact_e}"
-        );
+        self.group_status =
+            format!("Computed r⁻¹ ({inv_topples} topples) • (r + r⁻¹)° == e: {exact_e}");
         self.refresh_analysis_and_audio();
     }
 

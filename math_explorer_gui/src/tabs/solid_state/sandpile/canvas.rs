@@ -12,7 +12,7 @@ use math_explorer::math_kernel::colormap::{
 };
 use math_explorer::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::stat_mech::sandpile::{
-    AvalancheObservable, CRITICAL_HEIGHT, MAX_STABLE_HEIGHT, SandpileGrid,
+    AvalancheObservable, SandpileGrid, CRITICAL_HEIGHT, MAX_STABLE_HEIGHT,
 };
 
 use super::{AbelianSandpileStudio, SandpileColormap, SandpileViewMode};
@@ -198,7 +198,9 @@ impl AbelianSandpileStudio {
             AvalancheObservable::Area => "Avalanche Area A (Distinct Sites)",
             AvalancheObservable::Duration => "Avalanche Duration T (Wavefronts)",
         };
-        ui.label(format!("Log-Log Survival Scaling: log10 P(X ≥ x) vs log10({obs_label})"));
+        ui.label(format!(
+            "Log-Log Survival Scaling: log10 P(X ≥ x) vs log10({obs_label})"
+        ));
         if let Some(fit) = &self.latest_fit {
             let coeffs = fit.coefficients();
             let tau = 1.0 - coeffs[1];
@@ -225,7 +227,8 @@ impl AbelianSandpileStudio {
                         .radius(3.8_f32),
                 );
                 if let Some(fit) = &self.latest_fit {
-                    let fit_pts = build_log_log_fit_points(fit, &self.survival_points[..self.survival_len]);
+                    let fit_pts =
+                        build_log_log_fit_points(fit, &self.survival_points[..self.survival_len]);
                     plot_ui.line(
                         Line::new("FitModel::PowerLaw", PlotPoints::from(fit_pts))
                             .color(palette.series_color(1))
@@ -342,10 +345,7 @@ impl AbelianSandpileStudio {
     }
 }
 
-fn build_log_log_fit_points(
-    fit: &math_explorer::fit::CurveFit,
-    pts: &[[f64; 2]],
-) -> Vec<[f64; 2]> {
+fn build_log_log_fit_points(fit: &math_explorer::fit::CurveFit, pts: &[[f64; 2]]) -> Vec<[f64; 2]> {
     if fit.fit_model != FitModel::PowerLaw || pts.len() < 2 {
         return Vec::new();
     }

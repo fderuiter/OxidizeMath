@@ -6,8 +6,8 @@ use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::fit::{CurveFit, FitModel};
 use math_explorer::physics::stat_mech::sandpile::{
-    AvalancheObservable, BurningTestResult, MAX_POWER_LAW_FIT_POINTS, MAX_STABLE_HEIGHT,
-    SandpileGrid,
+    AvalancheObservable, BurningTestResult, SandpileGrid, MAX_POWER_LAW_FIT_POINTS,
+    MAX_STABLE_HEIGHT,
 };
 
 use crate::audio::frame::SonificationFrame;
@@ -215,7 +215,11 @@ impl AbelianSandpileStudio {
         self.grid.reseed(self.state.rng_seed);
         self.grid.fill(MAX_STABLE_HEIGHT);
         let burn_in = if self.state.grid_size > 48 { 140 } else { 220 };
-        let sample_drops = if self.state.grid_size > 48 { 650 } else { 1_400 };
+        let sample_drops = if self.state.grid_size > 48 {
+            650
+        } else {
+            1_400
+        };
         for _ in 0..burn_in {
             let _ = self.grid.drop_random_grain();
             let _ = self.grid.stabilize_wavefront();
@@ -298,7 +302,10 @@ impl AbelianSandpileStudio {
             cutoff,
             &mut self.survival_points,
         );
-        self.latest_fit = self.grid.fit_avalanche_power_law(self.state.observable).ok();
+        self.latest_fit = self
+            .grid
+            .fit_avalanche_power_law(self.state.observable)
+            .ok();
         let slope = self
             .latest_fit
             .as_ref()

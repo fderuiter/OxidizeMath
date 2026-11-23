@@ -68,7 +68,8 @@ pub fn sandpile_sonification_frame(
     };
 
     let noise_gain = (0.06 + 0.22 * wave_intensity + 0.08 * log_size).clamp(0.0, 0.32);
-    let master_gain = ((0.22 + 0.46 * activity).min(LIMITER_CEILING_LINEAR)).clamp(0.0, LIMITER_CEILING_LINEAR);
+    let master_gain =
+        ((0.22 + 0.46 * activity).min(LIMITER_CEILING_LINEAR)).clamp(0.0, LIMITER_CEILING_LINEAR);
 
     SonificationFrame {
         voices,
