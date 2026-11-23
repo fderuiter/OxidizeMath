@@ -5,7 +5,7 @@
 use eframe::egui;
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    analytic_clamped_square_omega, young_double_slit_fringe_spacing, BoundaryMode2D, Wave2DMedium,
+    young_double_slit_fringe_spacing, BoundaryMode2D, Wave2DMedium,
 };
 
 use super::*;
@@ -21,6 +21,8 @@ impl ChladniWaveTankTool {
                 ui.heading("Wave Tank & Plate");
                 ui.separator();
                 self.draw_preset_and_transport_controls(ui);
+                ui.separator();
+                self.draw_sonification_section(ui);
                 ui.separator();
                 self.draw_medium_and_clamp_controls(ui);
                 ui.separator();
@@ -68,21 +70,25 @@ impl ChladniWaveTankTool {
             let play_label = if self.paused { "▶ Play" } else { "⏸ Pause" };
             if ui.button(play_label).clicked() {
                 self.paused = !self.paused;
+                if self.paused {
+                    crate::audio::notify_playback_paused();
+                }
             }
             if ui.button("⏭ Step").clicked() {
                 self.advance_physics_step();
                 self.refresh_analysis_outputs();
             }
             if ui.button("💥 Pulse").clicked() {
-                self.solver.inject_gaussian_pulse(
+                self.trigger_mallet_pulse(
                     self.state.driver_x,
                     self.state.driver_y,
                     0.045,
                     1.0,
+                    1.0,
                 );
-                self.refresh_analysis_outputs();
             }
             if ui.button("↺ Reset").clicked() {
+                crate::audio::notify_playback_reset();
                 self.rebuild_domain_and_warmup(12);
             }
         });
@@ -136,8 +142,10 @@ impl ChladniWaveTankTool {
         } else if mask_dirty {
             self.state_rev = self.state_rev.wrapping_add(1);
             self.rebuild_masks();
+            self.analysis_dirty = true;
         } else if param_changed {
             self.state_rev = self.state_rev.wrapping_add(1);
+            self.analysis_dirty = true;
         }
     }
 
@@ -158,8 +166,8 @@ impl ChladniWaveTankTool {
                 }
             });
         mask_dirty |= self.state.clamp_layout != prev_clamp;
-        if !self.custom_clamps.is_empty() && ui.small_button("Clear Custom Pins").clicked() {
-            self.custom_clamps.clear();
+        if !self.state.custom_clamps.is_empty() && ui.small_button("Clear Custom Pins").clicked() {
+            self.state.custom_clamps.clear();
             mask_dirty = true;
         }
         mask_dirty
@@ -259,6 +267,10 @@ impl ChladniWaveTankTool {
             self.state_rev = self.state_rev.wrapping_add(1);
             self.solver.reset_detector();
         }
+        if !self.state.line_source {
+            ui.add_space(4.0);
+            self.draw_eigenmode_lattice_ui(ui);
+        }
     }
 
     fn draw_optics_and_barrier_controls(&mut self, ui: &mut egui::Ui) {
@@ -292,16 +304,7 @@ impl ChladniWaveTankTool {
             });
         }
         if self.state.lens_enabled {
-            ui.horizontal(|ui| {
-                ui.label("Refractive n:");
-                mask_changed |= ui
-                    .add(bounded_drag_value(
-                        &mut self.state.refractive_index,
-                        REFRACTIVE_MIN..=REFRACTIVE_MAX,
-                        0.05,
-                    ))
-                    .changed();
-            });
+            mask_changed |= self.draw_refractive_controls(ui);
         }
         if ui
             .add(egui::Slider::new(&mut self.state.detector_x, 16..=118).text("Detector X"))
@@ -411,14 +414,18 @@ impl ChladniWaveTankTool {
                 (self.state.detector_x.saturating_sub(self.state.barrier_x)).max(1) as f64;
             let dy = young_double_slit_fringe_spacing(lam, self.state.slit_separation, screen_d);
             render_copyable_metric(ui, "Young Fringe Δy", &format!("{dy:.2} cells"));
-        } else if self.state.medium == Wave2DMedium::BiharmonicPlate {
-            let omega11 =
-                analytic_clamped_square_omega(1, 1, 1.0, self.state.plate_stiffness.max(1.0e-9));
+        } else if self.state.lens_enabled {
+            let (gain, fwhm) = super::refractive::detector_focal_metrics(&self.detector_buf);
             render_copyable_metric(
                 ui,
-                "Clamped f(1,1)",
-                &format!("{:.2} Hz", omega11 / std::f64::consts::TAU),
+                "Focal Gain / FWHM",
+                &format!("{gain:.2}x ({fwhm:.0} cells)"),
             );
+        } else {
+            let (m, n) = self.active_mode;
+            let label = super::eigenmodes::mode_metric_label(&self.state, m, n);
+            let hz = super::eigenmodes::mode_frequency_hz(&self.state, self.solver.dx(), m, n);
+            render_copyable_metric(ui, &label, &format!("{hz:.4} Hz"));
         }
     }
 }

@@ -398,7 +398,7 @@ inventory::submit! {
         id: "PotentialFlowTool",
         display_name: "Potential Flow",
         domain: "fluid_dynamics",
-        tags: &[],
+        tags: &["laplace", "irrotational", "incompressible", "streamlines", "vortex"],
         build: || Box::new(PotentialFlowTool::default()),
     }
 }

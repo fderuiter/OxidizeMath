@@ -112,9 +112,7 @@ impl PotentialFlowTool {
                 ui.selectable_value(&mut self.brush_kit.mode, BrushMode::FlowDoublet, "Doublet");
                 ui.selectable_value(&mut self.brush_kit.mode, BrushMode::Erase, "Erase");
             });
-            ui.add(
-                egui::Slider::new(&mut self.brush_kit.radius, 0.5..=6.0).text("Capture Radius"),
-            );
+            ui.add(egui::Slider::new(&mut self.brush_kit.radius, 0.5..=6.0).text("Capture Radius"));
         }
     }
 }

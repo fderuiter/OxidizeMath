@@ -3,32 +3,32 @@
 use super::{AccessibleHoverText, BrushMode, BrushStroke, InteractiveTool, PaneSidePanel};
 use eframe::egui;
 
-/// Active pointer modality for canvas interaction events.
+/// Active pointer or touch input modality for an interactive simulation pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {
-    /// Desktop pointer/mouse interaction.
+    /// Desktop mouse or trackpad pointer input.
     Mouse,
-    /// Touch-screen gesture interaction.
+    /// Direct single- or multi-touch gesture input.
     Touch,
 }
 
 /// Event context provided to [`InteractiveTool`] interaction hooks.
 pub struct InteractionContext<'a> {
-    /// Pointer position in widget or plot coordinates, if available.
+    /// Pointer position in widget or plot coordinates, if hovering or interacting.
     pub pointer_pos: Option<egui::Pos2>,
-    /// Pointer drag delta for the current frame.
+    /// Pointer drag delta since the previous frame.
     pub delta: egui::Vec2,
-    /// Whether an active pointer drag is underway.
+    /// Whether the pointer is actively dragging on the canvas.
     pub is_dragging: bool,
-    /// Whether the canvas was clicked on this frame.
+    /// Whether the canvas was clicked during this frame.
     pub is_clicked: bool,
-    /// Underlying `egui::Response` for the interactive canvas widget.
+    /// Underlying `egui::Response` for the interactive canvas region.
     pub response: &'a egui::Response,
-    /// Active input modality (`Mouse` vs. `Touch`).
+    /// Active pointer or touch input mode (`Mouse` or `Touch`).
     pub input_mode: InputMode,
-    /// Multi-touch pinch/pan gesture metadata, if active.
+    /// Active multi-touch gesture state, when present.
     pub multi_touch: Option<egui::MultiTouchInfo>,
-    /// Set of keyboard keys pressed during this frame.
+    /// Set of keyboard keys currently held down during this frame.
     pub keys_down: std::collections::HashSet<egui::Key>,
     /// Active keyboard modifiers (`Ctrl`, `Shift`, `Alt`, `Cmd`).
     pub modifiers: egui::Modifiers,

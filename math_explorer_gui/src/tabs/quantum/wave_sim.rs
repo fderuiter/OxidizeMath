@@ -33,8 +33,8 @@ use presets::{
     DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH,
     DEFAULT_X0, DT_RECOVERY_MIN,
 };
-use sculpt::default_wave_brush_kit;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+use sculpt::default_wave_brush_kit;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 

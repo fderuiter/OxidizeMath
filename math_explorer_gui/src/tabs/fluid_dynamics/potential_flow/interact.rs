@@ -83,14 +83,23 @@ impl PotentialFlowTool {
                 .map(|el| [el.x, el.y])
                 .collect();
             if !pts.is_empty() {
-                plot_ui.points(Points::new(label, pts).shape(shape).radius(radius).color(color));
+                plot_ui.points(
+                    Points::new(label, pts)
+                        .shape(shape)
+                        .radius(radius)
+                        .color(color),
+                );
             }
         }
     }
 
     /// Finds the closest non-`Uniform` singularity handle within `capture_radius` of `pt`.
     #[must_use]
-    pub(crate) fn find_nearest_singularity(&self, pt: [f64; 2], capture_radius: f64) -> Option<usize> {
+    pub(crate) fn find_nearest_singularity(
+        &self,
+        pt: [f64; 2],
+        capture_radius: f64,
+    ) -> Option<usize> {
         let r_sq = capture_radius.max(0.5).powi(2);
         let mut best: Option<(usize, f64)> = None;
         for (idx, el) in self.elements.iter().enumerate() {
@@ -163,10 +172,9 @@ impl PotentialFlowTool {
         if ic.brush_stroke.is_some() {
             return;
         }
-        let Some(idx) = self
-            .active_drag_element
-            .filter(|&i| i < self.elements.len() && self.elements[i].element_type != ElementType::Uniform)
-        else {
+        let Some(idx) = self.active_drag_element.filter(|&i| {
+            i < self.elements.len() && self.elements[i].element_type != ElementType::Uniform
+        }) else {
             return;
         };
         let Some(pos) = ic.pointer_pos else {
@@ -211,7 +219,9 @@ impl PotentialFlowTool {
 
         let hit_idx = self
             .active_drag_element
-            .filter(|&i| i < self.elements.len() && self.elements[i].element_type != ElementType::Uniform)
+            .filter(|&i| {
+                i < self.elements.len() && self.elements[i].element_type != ElementType::Uniform
+            })
             .or_else(|| self.find_nearest_singularity(stroke.start, stroke.radius));
 
         if let Some(idx) = hit_idx {
