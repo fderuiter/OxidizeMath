@@ -1,4 +1,4 @@
-# ADR 0047: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
+# ADR 20261123: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export
 
 ## Status
 

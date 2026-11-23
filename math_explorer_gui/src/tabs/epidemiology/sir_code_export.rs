@@ -2,11 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{SirTool, MAX_SIR_DURATION, MAX_SIR_STEPS, MIN_SIR_DURATION};
+use super::{SirTool, MAX_SIR_STEPS};
 use crate::framework::{CodeArtifact, InteractiveTool};
 use math_commons::ast::{format_latex_scalar, format_python_float, format_rust_f64};
-use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
-use std::collections::HashMap;
 
 struct SirSpec {
     n: f64,
@@ -139,41 +137,6 @@ fn build_sir_python(spec: &SirSpec) -> Option<String> {
          t_eval = np.linspace(0.0, {hor_py}, {num_pts})\n\
          sol = solve_ivp(sir_rhs, (0.0, {hor_py}), [{s0_py}, {i0_py}, 0.0], t_eval=t_eval, method=\"RK45\", rtol=1e-9, atol=1e-12)\n\n\
          if __name__ == \"__main__\":\n\
-         \x20   print(f\"Final SIR({{sol.t[-1]:.1f}}) = ({{sol.y[0, -1]:.4f}}, {{sol.y[1, -1]:.4f}}, {{sol.y[2, -1]:.4f}})\")\n"
+        \x20   print(f\"Final SIR({{sol.t[-1]:.1f}}) = ({{sol.y[0, -1]:.4f}}, {{sol.y[1, -1]:.4f}}, {{sol.y[2, -1]:.4f}})\")\n"
     ))
-}
-
-impl TheoryDescribable for SirTool {
-    fn theory_description(&self) -> String {
-        let r0 = self.beta / self.gamma;
-        format!(
-            "Kermack-McKendrick SIR compartmental epidemic model: $\\frac{{dS}}{{dt}} = -\\frac{{\\beta S I}}{{N}}$, $\\frac{{dI}}{{dt}} = \\frac{{\\beta S I}}{{N}} - \\gamma I$, $\\frac{{dR}}{{dt}} = \\gamma I$. Transmission rate $\\beta = {:.3}$, recovery rate $\\gamma = {:.3}$, basic reproduction number $R_0 = {:.2}$.",
-            self.beta, self.gamma, r0
-        )
-    }
-
-    fn phonetic_description(&self) -> String {
-        "Kermack-McKendrick SIR compartmental epidemic model theory".into()
-    }
-
-    fn theory_citation(&self) -> String {
-        "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)".into()
-    }
-
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        HashMap::new()
-    }
-
-    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        [
-            ("N", 100.0, 100_000.0, 100.0),
-            ("I0", 1.0, 50_000.0, 1.0),
-            ("beta", 0.0, 5.0, 0.02),
-            ("gamma", 0.0, 1.0, 0.01),
-            ("duration", MIN_SIR_DURATION, MAX_SIR_DURATION, 1.0),
-        ]
-        .into_iter()
-        .map(|(k, min, max, step)| (k.to_string(), ParameterConstraint { min, max, step }))
-        .collect()
-    }
 }

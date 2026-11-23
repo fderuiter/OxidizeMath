@@ -6,7 +6,7 @@ use std::sync::{Mutex, OnceLock};
 
 /// Payload transferring up to `MAX_VIETORIS_RIPS_POINTS` 3D chaotic landmarks and
 /// Lorenz system parameters from `AttractorPlotter` / `AttractorRunner` to `VietorisRipsTool`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct ChaosLandmarkHandoff {
     /// Subsampled 3D landmark coordinates in state space.
     pub points: Vec<Point3D>,
@@ -51,6 +51,30 @@ pub fn submit_chaos_landmark_handoff(handoff: ChaosLandmarkHandoff) {
 pub fn take_chaos_landmark_handoff() -> Option<ChaosLandmarkHandoff> {
     let mut guard = handoff_slot().lock().unwrap_or_else(|e| e.into_inner());
     guard.take()
+}
+
+const HANDOFF_PAYLOAD_ID: &str = "CHAOS_LANDMARK_HANDOFF_PAYLOAD";
+
+/// Queues a 3D landmark handoff scoped to `ctx` when provided, or the global slot otherwise.
+#[cfg(any(feature = "physics", test))]
+pub fn submit_chaos_landmark_handoff_with_ctx(
+    ctx: Option<&egui::Context>,
+    handoff: ChaosLandmarkHandoff,
+) {
+    if let Some(c) = ctx {
+        c.data_mut(|d| {
+            d.insert_temp(egui::Id::new(HANDOFF_PAYLOAD_ID), handoff);
+        });
+        request_open_vietoris_rips(c);
+    } else {
+        submit_chaos_landmark_handoff(handoff);
+    }
+}
+
+/// Drains a 3D landmark handoff scoped to `ctx`, falling back to the global slot if unset.
+pub fn take_chaos_landmark_handoff_with_ctx(ctx: &egui::Context) -> Option<ChaosLandmarkHandoff> {
+    ctx.data_mut(|d| d.remove_temp::<ChaosLandmarkHandoff>(egui::Id::new(HANDOFF_PAYLOAD_ID)))
+        .or_else(take_chaos_landmark_handoff)
 }
 
 /// Publishes the latest live 3D landmarks from `AttractorRunner` for split-pane / live streaming.

@@ -713,7 +713,7 @@ mod tests {
             coefficients: vec![1.0, f64::NAN],
             r_squared: 0.99,
             rmse: 0.0,
-            residuals: Vec::new(),
+            residuals: crate::SharedPoints::default(),
             degree: 1,
             formula: "y = x".to_string(),
             dataset_name: "Bad".to_string(),
@@ -743,6 +743,7 @@ mod tests {
             [20.0, 560.9],
         ];
         let sample_xs = [0.5_f64, 1.0, 3.5, 12.0, 25.0];
+        let mut fits = Vec::new();
 
         for (deg, log_x, log_y) in [
             (2, false, false),
@@ -765,36 +766,20 @@ mod tests {
             if log_y {
                 assert!(latex.contains("10^{"));
             }
-
-            verify_fit_rust_parity(&fit, &sample_xs);
-            verify_fit_python_parity(&fit, &sample_xs);
+            fits.push((fit, sample_xs.as_slice()));
         }
+        verify_fit_batch_rust_parity(&fits);
+        verify_fit_batch_python_parity(&fits);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn verify_fit_rust_parity(fit: &FitResult, sample_xs: &[f64]) {
-        static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-        let run_id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "fit_export_rs_{}_{}_{}_{run_id}",
-            std::process::id(),
-            fit.log_x as u8,
-            fit.log_y as u8
-        ));
-        let _ = std::fs::create_dir_all(&dir);
+    fn compile_standalone_fit_rs(rustc: &std::ffi::OsStr, dir: &std::path::Path, fit: &FitResult) {
         let src_path = dir.join("fit_model.rs");
-        let lib_rlib = dir.join("libfit_model.rlib");
-        let harness_path = dir.join("harness.rs");
         let exe_ext = std::env::consts::EXE_SUFFIX;
         let standalone_bin = dir.join(format!("standalone_bin{exe_ext}"));
-        let bin_path = dir.join(format!("harness_bin{exe_ext}"));
-        let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
-
         let rs_src = fit.to_rust_fn().expect("rust fit source");
         std::fs::write(&src_path, &rs_src).expect("write fit_model.rs");
-
-        // Verify standalone binary compilation on Rust 2024
-        let bin_check = Command::new(&rustc)
+        let bin_check = Command::new(rustc)
             .args(["--edition", "2024", "-D", "warnings"])
             .arg(&src_path)
             .arg("-o")
@@ -806,43 +791,46 @@ mod tests {
             "standalone fit .rs must compile on Rust 2024:\n{}",
             String::from_utf8_lossy(&bin_check.stderr)
         );
-
-        // Also compile as library and verify numerical parity against FitResult::eval
-        let lib_check = Command::new(&rustc)
-            .args([
-                "--edition",
-                "2024",
-                "--crate-type",
-                "rlib",
-                "--crate-name",
-                "fit_model",
-                "-A",
-                "dead_code",
-            ])
-            .arg(&src_path)
-            .arg("-o")
-            .arg(&lib_rlib)
-            .output()
-            .expect("rustc rlib");
         assert!(
-            lib_check.status.success(),
-            "fit rlib failed:\n{}",
-            String::from_utf8_lossy(&lib_check.stderr)
+            Command::new(&standalone_bin)
+                .output()
+                .unwrap()
+                .status
+                .success()
         );
+    }
 
-        let mut checks = String::from("extern crate fit_model;\nfn main() {\n");
-        for &x in sample_xs {
-            let expected = fit.eval(x);
-            checks.push_str(&format!(
-                "    let v = fit_model::fit_eval({x:?}_f64);\n\
-                 \x20   assert!(((v - {expected:?}_f64).abs() / {expected:?}_f64.abs().max(1.0)) < 1e-9, \"Rust fit mismatch: {{v}} vs {expected:?}\");\n"
-            ));
+    #[cfg(not(target_arch = "wasm32"))]
+    fn verify_fit_batch_rust_parity(cases: &[(FitResult, &[f64])]) {
+        static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let run_id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("fit_export_rs_{}_{run_id}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+        compile_standalone_fit_rs(&rustc, &dir, &cases[0].0);
+
+        let mut mods = String::new();
+        let mut checks = String::from("fn main() {\n");
+        for (idx, (fit, sample_xs)) in cases.iter().enumerate() {
+            let rs_src = fit.to_rust_fn().expect("rust fit source");
+            let mod_src = rs_src.replacen("\nfn main()", "\npub fn run_main()", 1);
+            mods.push_str(&format!("mod fit_{idx} {{\n{mod_src}\n}}\n"));
+            checks.push_str(&format!("    fit_{idx}::run_main();\n"));
+            for &x in *sample_xs {
+                let expected = fit.eval(x);
+                checks.push_str(&format!(
+                    "    let v = fit_{idx}::fit_eval({x:?}_f64);\n\
+                     \x20   assert!(((v - {expected:?}_f64).abs() / {expected:?}_f64.abs().max(1.0)) < 1e-9, \"Rust fit mismatch: {{v}} vs {expected:?}\");\n"
+                ));
+            }
         }
         checks.push_str("}\n");
-        std::fs::write(&harness_path, checks).expect("write harness");
+        let harness_path = dir.join("harness.rs");
+        let bin_path = dir.join(format!("harness_bin{}", std::env::consts::EXE_SUFFIX));
+        std::fs::write(&harness_path, format!("{mods}\n{checks}")).expect("write harness");
         let h_out = Command::new(&rustc)
-            .args(["--edition", "2024", "--extern"])
-            .arg(format!("fit_model={}", lib_rlib.display()))
+            .args(["--edition", "2024", "-D", "warnings"])
             .arg(&harness_path)
             .arg("-o")
             .arg(&bin_path)
@@ -853,29 +841,37 @@ mod tests {
             "fit harness failed:\n{}",
             String::from_utf8_lossy(&h_out.stderr)
         );
-        assert!(Command::new(&bin_path).status().unwrap().success());
+        assert!(Command::new(&bin_path).output().unwrap().status.success());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn verify_fit_python_parity(fit: &FitResult, sample_xs: &[f64]) {
+    fn verify_fit_batch_python_parity(cases: &[(FitResult, &[f64])]) {
         let Some(py_cmd) = ["python3", "python"].into_iter().find(|cmd| {
             Command::new(cmd)
+                .env("OPENBLAS_NUM_THREADS", "1")
+                .env("OMP_NUM_THREADS", "1")
                 .args(["-c", "import numpy"])
                 .output()
                 .is_ok_and(|o| o.status.success())
         }) else {
             return;
         };
-        let mut script = fit.to_python_fn().expect("python fit source");
-        script.push('\n');
-        for &x in sample_xs {
-            let expected = fit.eval(x);
-            script.push_str(&format!(
-                "assert abs(fit_eval({x:?}) - {expected:?}) / max(abs({expected:?}), 1.0) < 1e-9\n"
-            ));
+        let mut script = String::new();
+        for (fit, sample_xs) in cases {
+            script.push_str(&fit.to_python_fn().expect("python fit source"));
+            script.push('\n');
+            for &x in *sample_xs {
+                let expected = fit.eval(x);
+                script.push_str(&format!(
+                    "assert abs(fit_eval({x:?}) - {expected:?}) / max(abs({expected:?}), 1.0) < 1e-9\n"
+                ));
+            }
         }
         let status = Command::new(py_cmd)
+            .env("OPENBLAS_NUM_THREADS", "1")
+            .env("OMP_NUM_THREADS", "1")
+            .env("MKL_NUM_THREADS", "1")
             .args(["-c", &script])
             .status()
             .expect("python fit parity");
@@ -894,6 +890,8 @@ mod tests {
             [6.0, 39.2],
         ];
         let xs = [1.0_f64, 2.5, 4.5];
+        let shifted_xs = [2020.0_f64, 2022.5, 2024.5];
+        let mut fits = Vec::new();
         for ft in [
             FitType::Exponential,
             FitType::PowerLaw,
@@ -904,8 +902,7 @@ mod tests {
             let fit = fit_model_with_axes(&pos_pts, ft, "Nonlinear", false, false, false)
                 .expect("nonlinear fit");
             assert!(fit.to_latex().unwrap().contains("R^2 &="));
-            verify_fit_rust_parity(&fit, &xs);
-            verify_fit_python_parity(&fit, &xs);
+            fits.push((fit, xs.as_slice()));
         }
 
         let shifted_pts: Vec<[f64; 2]> = (0..6)
@@ -924,8 +921,8 @@ mod tests {
         )
         .expect("shifted exponential fit");
         assert!(shifted_fit.to_latex().unwrap().contains("2020"));
-        let shifted_xs = [2020.0_f64, 2022.5, 2024.5];
-        verify_fit_rust_parity(&shifted_fit, &shifted_xs);
-        verify_fit_python_parity(&shifted_fit, &shifted_xs);
+        fits.push((shifted_fit, shifted_xs.as_slice()));
+        verify_fit_batch_rust_parity(&fits);
+        verify_fit_batch_python_parity(&fits);
     }
 }

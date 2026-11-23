@@ -2,7 +2,7 @@
 
 use super::AttractorPlotter;
 use crate::tabs::geometry_topology::vietoris_rips::{
-    handoff::{request_open_vietoris_rips, submit_chaos_landmark_handoff, ChaosLandmarkHandoff},
+    handoff::{submit_chaos_landmark_handoff_with_ctx, ChaosLandmarkHandoff},
     MAX_CHAOS_LANDMARKS,
 };
 use eframe::egui;
@@ -181,10 +181,7 @@ impl AttractorPlotter {
             beta: self.system.beta,
             dt: self.dt,
         };
-        submit_chaos_landmark_handoff(payload.clone());
-        if let Some(c) = ctx {
-            request_open_vietoris_rips(c);
-        }
+        submit_chaos_landmark_handoff_with_ctx(ctx, payload.clone());
         Ok(payload)
     }
 }

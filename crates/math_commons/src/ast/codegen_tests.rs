@@ -278,6 +278,9 @@ fn verify_python_numpy_parity(
         ));
     }
     let status = Command::new(py_cmd)
+        .env("OPENBLAS_NUM_THREADS", "1")
+        .env("OMP_NUM_THREADS", "1")
+        .env("MKL_NUM_THREADS", "1")
         .args(["-c", &script])
         .status()
         .expect("run python parity check");

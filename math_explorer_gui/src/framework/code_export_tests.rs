@@ -132,12 +132,27 @@ fn test_all_six_flagship_tools_compile_rustc_2024_and_execute_python() {
     std::fs::create_dir_all(&dir).unwrap();
 
     let (artifacts, ode_log) = build_flagship_artifacts();
+    let mut batched_rs = Vec::new();
+    let mut py_paths = Vec::new();
     for (slug, art) in &artifacts {
-        compile_and_run_rust_2024(&dir, slug, &art.rust_source);
-        run_python_script(&dir, slug, &art.python_source);
+        if matches!(*slug, "ode_custom" | "ode_log") {
+            compile_and_run_rust_2024(&dir, slug, &art.rust_source);
+        } else {
+            batched_rs.push((*slug, art.rust_source.as_str()));
+        }
+        let py_path = dir.join(format!("{slug}.py"));
+        std::fs::write(&py_path, &art.python_source).unwrap();
+        py_paths.push(py_path);
     }
+    compile_and_run_rust_2024_batch(&dir, "flagship_batch", &batched_rs);
+    run_python_scripts_batch(&py_paths);
     verify_ode_rk4_parity(&dir, &ode_log);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn default_art<T: InteractiveTool + Default>() -> crate::framework::CodeArtifact {
+    T::default().export_code_artifact().unwrap()
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -158,45 +173,24 @@ fn build_flagship_artifacts() -> (
         t.preset = OdePreset::LogisticGrowth;
         t.recalculate();
     });
-    let cmap_custom = configured::<ComplexMappingTool>(|t| {
-        t.function = MappingFunction::Custom;
-    });
+    let cmap_custom = configured::<ComplexMappingTool>(|t| t.function = MappingFunction::Custom);
     let riemann_exp = configured::<RiemannIntegrationTool>(|t| {
         t.preset = FunctionPreset::EToX;
         t.recalculate();
     });
 
     let list = vec![
-        (
-            "ode_exp",
-            OdeSolverTool::default().export_code_artifact().unwrap(),
-        ),
+        ("ode_exp", default_art::<OdeSolverTool>()),
         ("ode_custom", ode_custom.export_code_artifact().unwrap()),
         ("ode_harm", ode_harm.export_code_artifact().unwrap()),
         ("ode_log", ode_log.export_code_artifact().unwrap()),
-        (
-            "cmap_sq",
-            ComplexMappingTool::default()
-                .export_code_artifact()
-                .unwrap(),
-        ),
+        ("cmap_sq", default_art::<ComplexMappingTool>()),
         ("cmap_custom", cmap_custom.export_code_artifact().unwrap()),
-        (
-            "riemann_sin",
-            RiemannIntegrationTool::default()
-                .export_code_artifact()
-                .unwrap(),
-        ),
+        ("riemann_sin", default_art::<RiemannIntegrationTool>()),
         ("riemann_exp", riemann_exp.export_code_artifact().unwrap()),
-        (
-            "beam",
-            BeamProfilingTool::default().export_code_artifact().unwrap(),
-        ),
-        (
-            "battery",
-            CapacityFadeTool::default().export_code_artifact().unwrap(),
-        ),
-        ("sir", SirTool::default().export_code_artifact().unwrap()),
+        ("beam", default_art::<BeamProfilingTool>()),
+        ("battery", default_art::<CapacityFadeTool>()),
+        ("sir", default_art::<SirTool>()),
     ];
     (list, ode_log)
 }
@@ -227,9 +221,23 @@ fn compile_and_run_rust_2024(dir: &Path, slug: &str, rust_source: &str) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn compile_and_run_rust_2024_batch(dir: &Path, stem: &str, items: &[(&str, &str)]) {
+    let mut mods = String::new();
+    let mut main_body = String::from("fn main() {\n");
+    for (slug, src) in items {
+        let mod_src = src.replacen("\nfn main()", "\npub fn run_main()", 1);
+        mods.push_str(&format!("pub mod {slug} {{\n{mod_src}\n}}\n"));
+        main_body.push_str(&format!("    {slug}::run_main();\n"));
+    }
+    main_body.push_str("}\n");
+    compile_and_run_rust_2024(dir, stem, &format!("{mods}\n{main_body}"));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn find_python_runner(probe_code: &str) -> Option<&'static str> {
     ["python3", "python"].into_iter().find(|cmd| {
         Command::new(cmd)
+            .envs([("OPENBLAS_NUM_THREADS", "1"), ("OMP_NUM_THREADS", "1")])
             .args(["-c", probe_code])
             .output()
             .is_ok_and(|o| o.status.success())
@@ -237,35 +245,36 @@ fn find_python_runner(probe_code: &str) -> Option<&'static str> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn run_python_script(dir: &Path, slug: &str, python_source: &str) {
-    let py_path = dir.join(format!("{slug}.py"));
-    std::fs::write(&py_path, python_source).unwrap();
-    if let Some(py_cmd) = find_python_runner("import numpy, scipy") {
-        let out = Command::new(py_cmd)
-            .arg(&py_path)
-            .output()
-            .expect("invoke scientific python");
-        assert!(
-            out.status.success(),
-            "{py_cmd} failed for {slug}: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        assert!(!out.stdout.is_empty());
-    } else if let Some(py_cmd) = find_python_runner("import ast") {
-        let out = Command::new(py_cmd)
-            .args([
-                "-c",
-                "import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text('utf-8'))",
-            ])
-            .arg(&py_path)
-            .output()
-            .expect("validate python ast syntax");
-        assert!(
-            out.status.success(),
-            "Python syntax check failed for {slug}: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
+fn run_python_scripts_batch(py_paths: &[std::path::PathBuf]) {
+    let (probe, runner) = if find_python_runner("import numpy, scipy").is_some() {
+        (
+            "import numpy, scipy",
+            "import runpy, sys\nfor p in sys.argv[1:]:\n    runpy.run_path(p, run_name='__main__')",
+        )
+    } else {
+        (
+            "import ast",
+            "import ast, pathlib, sys\nfor p in sys.argv[1:]:\n    ast.parse(pathlib.Path(p).read_text('utf-8'))",
+        )
+    };
+    let Some(py_cmd) = find_python_runner(probe) else {
+        return;
+    };
+    let out = Command::new(py_cmd)
+        .envs([
+            ("OPENBLAS_NUM_THREADS", "1"),
+            ("OMP_NUM_THREADS", "1"),
+            ("MKL_NUM_THREADS", "1"),
+        ])
+        .args(["-c", runner])
+        .args(py_paths)
+        .output()
+        .expect("invoke python batch");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -340,46 +349,34 @@ fn test_code_export_modal_open_tab_switch_and_escape_close() {
         egui::Pos2::ZERO,
         egui::vec2(1400.0, 800.0),
     ));
-    let _ = ctx.run(
-        egui::RawInput {
-            screen_rect,
-            ..Default::default()
-        },
-        |ctx| {
-            fw.show(ctx, "modal_code_test");
-        },
-    );
+    let raw = || egui::RawInput {
+        screen_rect,
+        ..Default::default()
+    };
+    let _ = ctx.run(raw(), |ctx| fw.show(ctx, "modal_code_test"));
     assert!(!fw.show_code_export_modal);
 
     fw.show_code_export_modal = true;
     fw.code_export_tab = CodeExportTab::Rust;
-    let out_open = ctx.run(
-        egui::RawInput {
-            screen_rect,
-            ..Default::default()
-        },
-        |ctx| {
-            fw.show(ctx, "modal_code_test");
-        },
-    );
+    let out_open = ctx.run(raw(), |ctx| fw.show(ctx, "modal_code_test"));
     assert!(fw.show_code_export_modal);
     let ak = out_open.platform_output.accesskit_update.as_ref().unwrap();
     assert!(ak
         .nodes
         .iter()
-        .any(|(_, n)| { n.label().is_some_and(|l| l.contains("Copy Rust")) }));
+        .any(|(_, n)| n.label().is_some_and(|l| l.contains("Copy Rust"))));
 
+    let esc = egui::Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    };
     let _ = ctx.run(
         egui::RawInput {
-            screen_rect,
-            events: vec![egui::Event::Key {
-                key: egui::Key::Escape,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: egui::Modifiers::NONE,
-            }],
-            ..Default::default()
+            events: vec![esc],
+            ..raw()
         },
         |ctx| fw.show(ctx, "modal_code_test"),
     );
@@ -470,9 +467,6 @@ fn test_custom_riemann_and_joukowsky_complex_mapping_compile_and_run() {
         .export_code_artifact()
         .expect("custom riemann artifact");
     assert!(r_art.calibrated_latex.contains("3"));
-    compile_and_run_rust_2024(&dir, "riemann_custom", &r_art.rust_source);
-    run_python_script(&dir, "riemann_custom", &r_art.python_source);
-
     let joukowsky = configured::<ComplexMappingTool>(|t| {
         t.function = MappingFunction::Custom;
         t.math_input.set_expression("z + a^2 / z");
@@ -483,7 +477,18 @@ fn test_custom_riemann_and_joukowsky_complex_mapping_compile_and_run() {
         .export_code_artifact()
         .expect("joukowsky artifact");
     assert!(j_art.calibrated_latex.contains("0.85"));
-    compile_and_run_rust_2024(&dir, "cmap_joukowsky", &j_art.rust_source);
-    run_python_script(&dir, "cmap_joukowsky", &j_art.python_source);
+    let r_py = dir.join("riemann_custom.py");
+    let j_py = dir.join("cmap_joukowsky.py");
+    std::fs::write(&r_py, &r_art.python_source).unwrap();
+    std::fs::write(&j_py, &j_art.python_source).unwrap();
+    compile_and_run_rust_2024_batch(
+        &dir,
+        "custom_batch",
+        &[
+            ("riemann_custom", &r_art.rust_source),
+            ("cmap_joukowsky", &j_art.rust_source),
+        ],
+    );
+    run_python_scripts_batch(&[r_py, j_py]);
     let _ = std::fs::remove_dir_all(&dir);
 }

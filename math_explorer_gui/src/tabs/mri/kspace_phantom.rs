@@ -79,6 +79,19 @@ impl PhantomEngine {
             let _ = (rho, t1, t2);
         }
     }
+
+    /// Samples activator-inhibitor concentrations `[u, v]` at `idx` with zero heap allocation.
+    #[must_use]
+    pub fn sample_turing_uv(&self, idx: usize, fallback_rho: f64) -> [f64; 2] {
+        #[cfg(feature = "biology")]
+        if let Some(ref sys) = self.turing {
+            if let (Some(&u), Some(&v)) = (sys.u().get(idx), sys.v().get(idx)) {
+                return [u, v];
+            }
+        }
+        let r = fallback_rho.clamp(0.05, 1.0);
+        [r, (1.0 - 0.5 * r).max(0.1)]
+    }
 }
 
 #[cfg(feature = "biology")]
