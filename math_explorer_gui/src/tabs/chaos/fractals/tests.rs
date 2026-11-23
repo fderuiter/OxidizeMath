@@ -400,7 +400,10 @@ fn test_mode_switch_preserves_independent_mandelbrot_and_julia_viewports() {
 fn test_mandelbrot_hover_inset_and_click_or_enter_teleports_julia_c() {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
-    let mut viewer = FractalViewer::default();
+    let mut viewer = FractalViewer {
+        linked_explorer: true,
+        ..Default::default()
+    };
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(960.0, 720.0));
 
     let out0 = ctx.run(raw_input_for_size(960.0, 720.0, Some(2048)), |c| {
@@ -411,16 +414,16 @@ fn test_mandelbrot_hover_inset_and_click_or_enter_teleports_julia_c() {
         img_rect.min.x + img_rect.width() * 0.35,
         img_rect.min.y + img_rect.height() * 0.40,
     );
-    let expected_c = map_canvas_pos_to_complex(target_pos, img_rect, viewer.center, viewer.zoom);
+    let expected_c = screen_to_complex(target_pos, img_rect, viewer.center, viewer.zoom);
 
     let mut hover_in = raw_input_for_size(960.0, 720.0, Some(2048));
     hover_in.events = vec![egui::Event::PointerMoved(target_pos)];
     let _ = ctx.run(hover_in, |c| viewer.show(c));
-    assert!(viewer.hover_c.is_some());
+    assert!((viewer.julia_c - expected_c).norm() < 1e-6);
     let inset_tex = viewer
         .julia_inset_texture
         .as_ref()
-        .expect("hovering Mandelbrot must materialize 96x72 Julia inset texture");
+        .expect("hovering Mandelbrot must materialize 160x120 Julia inset texture");
     assert_eq!(inset_tex.size(), [JULIA_INSET_SIZE.0, JULIA_INSET_SIZE.1]);
 
     let mut click_in = raw_input_for_size(960.0, 720.0, Some(2048));
@@ -444,9 +447,8 @@ fn test_mandelbrot_hover_inset_and_click_or_enter_teleports_julia_c() {
     assert!((viewer.julia_c.re - expected_c.re).abs() < 1e-6);
     assert!((viewer.julia_c.im - expected_c.im).abs() < 1e-6);
 
-    viewer.linked_explorer = false;
     let saved = viewer.save_state().expect("save_state");
     let mut restored = FractalViewer::default();
     restored.try_load_state(&saved).expect("roundtrip load");
-    assert!(!restored.linked_explorer);
+    assert!(restored.linked_explorer);
 }

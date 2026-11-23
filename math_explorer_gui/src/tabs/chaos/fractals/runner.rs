@@ -1,7 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::formula::CompiledFractalJob;
-use super::state::FractalMode;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use eframe::egui;
@@ -30,11 +29,34 @@ pub const FRACTAL_STRIDES: [usize; 4] = [8, 4, 2, 1];
 /// Initial lightweight preview dimensions rendered on tool construction.
 pub const INITIAL_PREVIEW_SIZE: (usize, usize) = (80, 60);
 
-/// Dimensions of the live Julia hover preview inset rendered over the Mandelbrot plane.
-pub const JULIA_INSET_SIZE: (usize, usize) = (96, 72);
-
 const WORKER_STEP_BUDGET: Duration = Duration::from_millis(8);
 
+/// Fractal family selector.
+#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub enum FractalMode {
+    /// Mandelbrot set $z_{n+1} = z_n^2 + c$ from $z_0 = 0$.
+    Mandelbrot,
+    /// Julia set $z_{n+1} = z_n^2 + c$ for fixed complex constant $c$.
+    Julia,
+    /// Custom c-plane escape fractal $z_{n+1} = f(z_n, c)$ from $z_0 = 0$.
+    CustomMandelbrot,
+    /// Custom Julia escape fractal $z_{n+1} = f(z_n, c)$ for fixed complex constant $c$.
+    CustomJulia,
+}
+
+impl FractalMode {
+    /// Returns `true` when evaluating a user-authored [`CompiledFractalJob`].
+    #[must_use]
+    pub const fn is_custom(self) -> bool {
+        matches!(self, Self::CustomMandelbrot | Self::CustomJulia)
+    }
+
+    /// Returns `true` when the complex constant $c$ slider applies.
+    #[must_use]
+    pub const fn uses_julia_c(self) -> bool {
+        matches!(self, Self::Julia | Self::CustomJulia)
+    }
+}
 /// Immutable parameter bundle describing a single progressive fractal render request.
 #[derive(Clone, Copy, Debug)]
 pub struct FractalRenderRequest {
@@ -50,7 +72,7 @@ pub struct FractalRenderRequest {
     pub zoom: f64,
     /// Escape-time iteration ceiling.
     pub max_iter: u32,
-    /// Mandelbrot or Julia mode.
+    /// Mandelbrot, Julia, or custom escape fractal mode.
     pub mode: FractalMode,
     /// Complex constant $c$ for Julia mode.
     pub julia_c: Complex<f64>,
@@ -67,31 +89,6 @@ pub struct FractalPassMeta {
     pub stride: usize,
     /// `true` once the full-resolution `1x` pass has finished for `generation`.
     pub is_final: bool,
-}
-
-/// Maps a canvas screen position inside `rect` to a clamped complex coordinate `(re, im)`.
-#[must_use]
-pub fn map_canvas_pos_to_complex(
-    pos: egui::Pos2,
-    rect: egui::Rect,
-    center: Complex<f64>,
-    zoom: f64,
-) -> Complex<f64> {
-    let w = f64::from(rect.width()).max(1.0);
-    let h = f64::from(rect.height()).max(1.0);
-    let nx = (f64::from(pos.x - rect.min.x) / w).clamp(0.0, 1.0);
-    let ny = (f64::from(pos.y - rect.min.y) / h).clamp(0.0, 1.0);
-    let safe_zoom = if zoom.is_finite() {
-        zoom.clamp(ZOOM_MIN, ZOOM_MAX)
-    } else {
-        1.0
-    };
-    let scale_y = 3.0 / safe_zoom;
-    let scale_x = scale_y * (w / h);
-    Complex::new(
-        (center.re + (nx - 0.5) * scale_x).clamp(COORD_MIN, COORD_MAX),
-        (center.im + (0.5 - ny) * scale_y).clamp(COORD_MIN, COORD_MAX),
-    )
 }
 
 /// Clamps `(width, height)` proportionally so neither side exceeds `min(max_texture_side, 2048)`.
@@ -186,8 +183,7 @@ fn eval_pixel_color(
     map_iter_to_color32(iter, req.max_iter, req.high_contrast)
 }
 
-/// Synchronously renders a full-resolution fractal image (used for small seed previews and exports).
-#[cfg(test)]
+/// Synchronously renders a full-resolution fractal image (used for seed previews, insets, and exports).
 #[must_use]
 pub fn render_fractal_color_image(req: &FractalRenderRequest) -> egui::ColorImage {
     render_fractal_color_image_with_formula(req, None)

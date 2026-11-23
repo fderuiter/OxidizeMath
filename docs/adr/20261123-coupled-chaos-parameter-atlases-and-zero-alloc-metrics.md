@@ -22,7 +22,7 @@ Three correctness, allocation, and responsiveness gaps affected the chaos domain
    - Update [`math_explorer/examples/lorenz_chaos.rs`](../../math_explorer/examples/lorenz_chaos.rs) to report `lorenz_lyapunov` alongside trajectory divergence, and align `TraceabilityEngine::discover_workspace_dirs` in [`crates/oxidize_core/src/traceability.rs`](../../crates/oxidize_core/src/traceability.rs) with `IGNORED_TRACEABILITY_MEMBERS`.
 2. **Progressive Coupled Parameter Atlases in `math_explorer_gui`**:
    - Unify 2D regime cartography across `FractalCartographer`, `BifurcationCartographer`, and `AttractorCartographer` via `ParameterAtlasController`.
-   - Preserve independent $c$-plane and $z$-plane `(center, zoom)` viewports in `FractalViewer`, adding `linked_explorer` (`#[serde(default)]`) with a live `96x72` hover Julia inset and click/`Enter` progressive teleportation.
+   - Preserve independent $c$-plane and $z$-plane `(center, zoom)` viewports in `FractalViewer`, adding `linked_explorer` (`#[serde(default)]`) alongside `c_pinned` probing, a live `160x120` hover Julia inset, and progressive teleportation.
    - Offload `BifurcationDiagram` sweeps into `BifurcationRunner` under `BackgroundWorker` (`8ms` cooperative `PlatformInstant::now()` slices) with `logistic_lyapunov` overlays and side-by-side cobweb and $x_n$ iterate time-series inspectors.
    - Reuse pre-allocated scratch capacity with `correlation_dimension_in_place` in `AttractorPlotter` invariants telemetry alongside live `lorenz_lyapunov` badges and 2D $(\sigma, \rho)$ / $(\rho, \beta)$ Hopf regime atlases.
 

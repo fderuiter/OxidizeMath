@@ -243,7 +243,8 @@ impl BifurcationRunner {
         for offset in 0..count {
             let r = self.active.r_min + step_size * ((start_idx + offset) as f64);
             if let Some(lam) = burned_logistic_lyapunov(r, seed, LYAPUNOV_STEPS) {
-                self.lyapunov_buf.push(PlotPoint::new(r, lam));
+                self.lyapunov_buf
+                    .push(PlotPoint::new(r, super::compute::clamp_lyapunov_value(lam)));
             }
         }
         self.next_step_idx += count;
@@ -439,6 +440,7 @@ impl BifurcationDiagram {
                     self.lyapunov_points.clone_from(&data.lyapunov_points);
                     if data.is_final {
                         self.completed_generation = data.generation;
+                        self.recompute_coupled_views();
                     }
                 }
             }

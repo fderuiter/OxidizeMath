@@ -148,6 +148,12 @@ pub trait ExplorerTab {
         0
     }
 
+    /// Deterministic revision token excluding transient framework chrome (`show_theory_portal`, `show_starter_gallery`).
+    fn history_revision(&self) -> u64 {
+        self.framework()
+            .map_or_else(|| self.state_revision(), |fw| fw.history_revision())
+    }
+
     /// Serializes the tab's parameter and panel state into a String.
     fn save_state(&self) -> Option<String> {
         None
@@ -158,7 +164,7 @@ pub trait ExplorerTab {
 
     /// Returns the active tool's interactive canvas `Id` when focus is owned by a non-text canvas.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
-        None
+        self.framework().and_then(|fw| fw.focused_canvas_id())
     }
 
     /// Academic domain category of the tab for top navigation bar grouping.

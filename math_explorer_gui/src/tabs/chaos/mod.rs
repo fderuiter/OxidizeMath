@@ -15,8 +15,8 @@ mod wasm_tests;
 /// dynamical state orbits across [`fractals::FractalViewer`], [`bifurcation::BifurcationDiagram`],
 /// [`attractors::AttractorPlotter`], and [`hamiltonian::HamiltonianChaosLab`].
 ///
-/// - **Fractal Viewer**: Links the Mandelbrot parameter plane to live `96x72` Julia set hover
-///   insets and progressive click/`Enter` teleportation while preserving per-mode viewports.
+/// - **Fractal Viewer**: Links the Mandelbrot parameter plane to live `160x120` Julia set hover
+///   insets, critical orbit overlays, and progressive click/`Enter` pinning or teleportation while preserving per-mode viewports.
 /// - **Bifurcation Diagram**: Offloads logistic sweeps into cooperative `8ms` `BackgroundWorker`
 ///   slices with `logistic_lyapunov` stability overlays and click-linked cobweb/$x_n$ inspectors.
 /// - **Attractor Plotter**: Streams 3D Lorenz trajectories alongside live `lorenz_lyapunov` and
@@ -58,10 +58,6 @@ impl ExplorerTab for ChaosTab {
 
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework.focused_canvas_id()
     }
 
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
