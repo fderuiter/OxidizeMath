@@ -11326,6 +11326,9 @@
       "signature": "impl CorrelationMatrix { pub fn dimension (& self) -> usize }"
     },
     {
+      "signature": "impl CorrelationMatrix { pub fn equicorrelated (_ : usize , _ : Correlation) -> Result < Self , CopulaError > }"
+    },
+    {
       "signature": "impl CorrelationMatrix { pub fn get_correlation (& self , _ : usize , _ : usize) -> Option < f64 > }"
     },
     {
@@ -11339,6 +11342,9 @@
     },
     {
       "signature": "impl Probability { pub fn value (& self) -> f64 }"
+    },
+    {
+      "signature": "pub const MAX_COPULA_DIMENSION : usize"
     },
     {
       "signature": "pub struct Correlation"
@@ -11367,7 +11373,13 @@
       "signature": "impl GaussianCopula { pub fn correlation (& self) -> & CorrelationMatrix }"
     },
     {
+      "signature": "impl GaussianCopula { pub fn multivariate_cdf (& self , _ : & [Probability]) -> Result < Probability , CopulaError > }"
+    },
+    {
       "signature": "impl GaussianCopula { pub fn new (_ : CorrelationMatrix) -> Self }"
+    },
+    {
+      "signature": "impl GaussianCopula { pub fn sample_uniform_into < R : Rng > (& self , _ : & mut R , _ : & mut [f64] ,) -> Result < () , CopulaError > }"
     },
     {
       "signature": "pub const MAX_STACK_LEGS : usize"
@@ -11397,6 +11409,9 @@
     },
     {
       "signature": "pub use core :: CorrelationMatrix"
+    },
+    {
+      "signature": "pub use core :: MAX_COPULA_DIMENSION"
     },
     {
       "signature": "pub use core :: Probability"
@@ -12106,10 +12121,19 @@
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch.rs": [
     {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn baum_welch (& mut self , _ : & [usize] , _ : usize , _ : T ,) -> Result < BaumWelchReport < T > , MarkovError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn baum_welch_with_workspace (& mut self , _ : & [usize] , _ : usize , _ : T , _ : & mut BaumWelchWorkspace < T > ,) -> Result < BaumWelchReport < T > , MarkovError > }"
+    },
+    {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn fit_baum_welch (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > ,) -> Result < (BaumWelchReport < T > , Vec < T >) , MarkovError > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn fit_baum_welch_into (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > , _ : & mut BaumWelchWorkspace < T > , _ : & mut [T] ,) -> Result < BaumWelchReport < T > , MarkovError > }"
+    },
+    {
+      "signature": "pub const MAX_BAUM_WELCH_ITERATIONS : usize"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch_types.rs": [
@@ -12158,6 +12182,9 @@
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/mod.rs": [
+    {
+      "signature": "pub use baum_welch :: MAX_BAUM_WELCH_ITERATIONS"
+    },
     {
       "signature": "pub use baum_welch_types :: BaumWelchConfig"
     },
@@ -12256,6 +12283,9 @@
     },
     {
       "signature": "pub use hmm :: HiddenMarkovModel"
+    },
+    {
+      "signature": "pub use hmm :: MAX_BAUM_WELCH_ITERATIONS"
     },
     {
       "signature": "pub use hmm :: ViterbiWorkspace"
@@ -12598,6 +12628,9 @@
     },
     {
       "signature": "impl EulerMaruyama { pub fn simulate < R : Rng > (& self , _ : f64 , _ : usize , _ : & mut R) -> Vec < f64 > }"
+    },
+    {
+      "signature": "impl EulerMaruyama { pub fn simulate_into < R : Rng > (& self , _ : f64 , _ : & mut [f64] , _ : & mut R) }"
     },
     {
       "signature": "impl EulerMaruyama { pub fn simulate_paths < R : Rng > (& self , _ : f64 , _ : usize , _ : usize , _ : & mut R ,) -> Vec < Vec < f64 > > }"

@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::export::SizingExportKind;
 use super::{
     resolve_odds_for, skip_american_dead_zone, BetSizeCalculatorTool, OddsFormat,
     AMERICAN_ODDS_MAX, AMERICAN_ODDS_MIN, BANKROLL_MAX, BANKROLL_MIN, DECIMAL_ODDS_MAX,
@@ -239,28 +240,42 @@ impl BetSizeCalculatorTool {
                 .accessible_hover_text("Copy formula-safe CSV Kelly sizing table to clipboard")
                 .clicked()
             {
-                self.copy_sizing_to_clipboard(ui.ctx(), false);
+                self.copy_sizing_to_clipboard(ui.ctx(), SizingExportKind::Csv);
             }
             if ui
                 .button("💾 Save CSV")
                 .accessible_hover_text("Download or save CSV Kelly sizing table")
                 .clicked()
             {
-                self.save_sizing_file(false);
+                self.save_sizing_file(SizingExportKind::Csv);
+            }
+            if ui
+                .button("📋 Copy JSON")
+                .accessible_hover_text("Copy JSON Kelly sizing schedule to clipboard")
+                .clicked()
+            {
+                self.copy_sizing_to_clipboard(ui.ctx(), SizingExportKind::Json);
+            }
+            if ui
+                .button("💾 Save JSON")
+                .accessible_hover_text("Download or save JSON Kelly sizing schedule")
+                .clicked()
+            {
+                self.save_sizing_file(SizingExportKind::Json);
             }
             if ui
                 .button("📋 Copy Markdown")
                 .accessible_hover_text("Copy Markdown Kelly sizing table to clipboard")
                 .clicked()
             {
-                self.copy_sizing_to_clipboard(ui.ctx(), true);
+                self.copy_sizing_to_clipboard(ui.ctx(), SizingExportKind::Markdown);
             }
             if ui
                 .button("💾 Save Markdown")
                 .accessible_hover_text("Download or save Markdown Kelly sizing table")
                 .clicked()
             {
-                self.save_sizing_file(true);
+                self.save_sizing_file(SizingExportKind::Markdown);
             }
         });
         if let Some((ref msg, is_err)) = self.io_status {
@@ -313,6 +328,14 @@ impl BetSizeCalculatorTool {
                             .color(palette.series_color(3))
                             .radius(6.0_f32)
                             .shape(MarkerShape::Circle),
+                    );
+                }
+                if !self.ruin_marker.is_empty() {
+                    plot_ui.points(
+                        Points::new("Double Kelly (2.00 f* Ruin)", &self.ruin_marker[..])
+                            .color(palette.error)
+                            .radius(6.0_f32)
+                            .shape(MarkerShape::Cross),
                     );
                 }
             });

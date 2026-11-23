@@ -329,7 +329,8 @@ pub use dtmc::{MarkovChain, StateType};
 #[allow(missing_docs)]
 pub type Result<T> = std::result::Result<T, MarkovError>;
 pub use hmm::{
-    BaumWelchConfig, BaumWelchReport, BaumWelchWorkspace, HiddenMarkovModel, ViterbiWorkspace,
+    BaumWelchConfig, BaumWelchReport, BaumWelchWorkspace, HiddenMarkovModel,
+    MAX_BAUM_WELCH_ITERATIONS, ViterbiWorkspace,
 };
 pub use num_traits::ToPrimitive;
 pub use parrondo::{

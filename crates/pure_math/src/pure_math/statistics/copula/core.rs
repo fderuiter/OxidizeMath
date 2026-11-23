@@ -12,6 +12,9 @@ const PSD_PIVOT_EPS: f64 = 1e-12;
 /// Minimum diagonal threshold for accepting unpivoted strict Cholesky without spectral verification.
 const STRICT_CHOLESKY_MIN_DIAG: f64 = 1e-7;
 
+/// Maximum interactive copula dimension (`2..=8` legs) supported by risk workbenches.
+pub const MAX_COPULA_DIMENSION: usize = 8;
+
 /// A probability value in `[0, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Probability(f64);
@@ -199,6 +202,35 @@ impl CorrelationMatrix {
     pub fn bivariate(rho: Correlation) -> Result<Self, CopulaError> {
         let r = rho.value();
         let matrix = DMatrix::from_row_slice(2, 2, &[1.0, r, r, 1.0]);
+        Self::new(matrix)
+    }
+
+    /// Creates an equicorrelated `dimension x dimension` positive-definite correlation matrix
+    /// (`dimension >= 2`) with `1.0` on the diagonal and `rho` on all off-diagonal entries.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::copula::{Correlation, CorrelationMatrix};
+    ///
+    /// let corr = CorrelationMatrix::equicorrelated(4, Correlation::new(0.25).unwrap()).unwrap();
+    /// assert_eq!(corr.dimension(), 4);
+    /// assert_eq!(corr.get_correlation(0, 3), Some(0.25));
+    /// ```
+    #[verified_engine::verified]
+    pub fn equicorrelated(dimension: usize, rho: Correlation) -> Result<Self, CopulaError> {
+        if dimension < 2 {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(2),
+                actual: Dimension(dimension),
+            }));
+        }
+        let r = rho.value();
+        if 1.0 + ((dimension - 1) as f64) * r <= TOLERANCE_HIGH {
+            return Err(CopulaError::NotPositiveDefinite);
+        }
+        let matrix = DMatrix::from_fn(dimension, dimension, |i, j| if i == j { 1.0 } else { r });
         Self::new(matrix)
     }
 

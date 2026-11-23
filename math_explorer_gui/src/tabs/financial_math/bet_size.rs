@@ -92,6 +92,7 @@ pub struct BetSizeCalculatorTool {
     pub(crate) quarter_marker: Vec<PlotPoint>,
     pub(crate) half_marker: Vec<PlotPoint>,
     pub(crate) full_marker: Vec<PlotPoint>,
+    pub(crate) ruin_marker: Vec<PlotPoint>,
     pub(crate) zero_line_points: [PlotPoint; 2],
     pub(crate) strategy_rows: Vec<KellyStrategyRow>,
     pub(crate) ev_per_unit: Option<f64>,
@@ -116,6 +117,7 @@ impl Default for BetSizeCalculatorTool {
             quarter_marker: Vec::new(),
             half_marker: Vec::new(),
             full_marker: Vec::new(),
+            ruin_marker: Vec::new(),
             zero_line_points: [PlotPoint::new(0.0, 0.0), PlotPoint::new(0.25, 0.0)],
             strategy_rows: Vec::new(),
             ev_per_unit: None,
@@ -179,7 +181,8 @@ impl BetSizeCalculatorTool {
             match marker_slot {
                 0 => self.quarter_marker.push(pt),
                 1 => self.half_marker.push(pt),
-                _ => self.full_marker.push(pt),
+                2 => self.full_marker.push(pt),
+                _ => self.ruin_marker.push(pt),
             }
         }
         self.strategy_rows.push(KellyStrategyRow {
@@ -210,6 +213,7 @@ impl BetSizeCalculatorTool {
         self.quarter_marker.clear();
         self.half_marker.clear();
         self.full_marker.clear();
+        self.ruin_marker.clear();
         self.strategy_rows.clear();
         self.ev_per_unit = None;
         self.calc_error = None;
@@ -231,8 +235,7 @@ impl BetSizeCalculatorTool {
 
         let ev = expected_value(&prob, &odds);
         self.ev_per_unit = Some(ev);
-        let b = odds.net_profit_multiplier();
-        let f_domain_cap = (0.98 / b).clamp(1e-4, 0.98);
+        const F_DOMAIN_CAP: f64 = 0.99;
 
         let full_kelly_opt = if ev > 0.0 {
             kelly_fraction(&prob, &odds).ok()
@@ -240,7 +243,7 @@ impl BetSizeCalculatorTool {
             None
         };
         if let Some(fk) = full_kelly_opt {
-            let f_max = (fk.value() * 2.25).clamp(0.05_f64.min(f_domain_cap), f_domain_cap);
+            let f_max = (fk.value() * 2.25).clamp(0.05, F_DOMAIN_CAP);
             self.populate_growth_curve(&prob, &odds, f_max);
             if let Ok(qk) = variants::quarter_kelly(&prob, &odds) {
                 self.push_marker_and_row("Quarter Kelly", &prob, &odds, &qk, ev, 0);
@@ -249,9 +252,12 @@ impl BetSizeCalculatorTool {
                 self.push_marker_and_row("Half Kelly", &prob, &odds, &hk, ev, 1);
             }
             self.push_marker_and_row("Full Kelly", &prob, &odds, &fk, ev, 2);
+            let ruin_f = (fk.value() * 2.0).min(F_DOMAIN_CAP);
+            if let Ok(rk) = BankrollFraction::new(ruin_f) {
+                self.push_marker_and_row("Double Kelly (2.00 f* Ruin)", &prob, &odds, &rk, ev, 3);
+            }
         } else {
-            let f_max = f_domain_cap.min(0.50);
-            self.populate_growth_curve(&prob, &odds, f_max);
+            self.populate_growth_curve(&prob, &odds, 0.50);
             self.strategy_rows.push(KellyStrategyRow {
                 label: "No Wager (No Edge)".to_string(),
                 fraction: 0.0,
@@ -429,33 +435,6 @@ inventory::submit! {
         domain: "financial_math",
         tags: &["kelly", "kelly criterion", "wagering", "odds", "optimal fraction"],
         build: || Box::new(BetSizeCalculatorTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
-    fn theory_description(&self) -> String {
-        let net_b = self.resolve_active_odds().map_or_else(
-            |_| (self.decimal_odds - 1.0).max(0.01),
-            |o| o.net_profit_multiplier(),
-        );
-        format!(
-            "Kelly criterion optimal wagering fraction $f^* = \\frac{{b p - q}}{{b}}$ and logarithmic growth rate $g(f) = p \\ln(1 + b f) + q \\ln(1 - f)$ where $p = {:.1}\\%$, $q = 1 - p$, and net odds $b = {:.2}$.",
-            self.probability_input, net_b
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Kelly criterion optimal bet sizing and expected logarithmic growth rate theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "A New Interpretation of Information Rate (Kelly, 1956)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert(
-            "Expected Growth Rate g(f)".into(),
-            "Asymptotic logarithmic wealth growth per wager across stake fraction f".into(),
-        );
-        map
     }
 }
 

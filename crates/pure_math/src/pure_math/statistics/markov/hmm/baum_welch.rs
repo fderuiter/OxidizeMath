@@ -9,6 +9,9 @@ use math_commons::math_kernel::types::Dimension;
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
 
+/// Upper bound on bounded [`HiddenMarkovModel::baum_welch`] EM iterations (`1..=1000`).
+pub const MAX_BAUM_WELCH_ITERATIONS: usize = 1_000;
+
 fn validate_bw_inputs<T: RealField + Copy + ToPrimitive>(
     hmm: &HiddenMarkovModel<T>,
     observations: &[usize],
@@ -392,5 +395,44 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
             self.fit_baum_welch_into(observations, config, &mut workspace, &mut history)?;
         history.truncate(report.iterations);
         Ok((report, history))
+    }
+
+    /// Fits `(initial, transitions, emissions)` via bounded zero-allocation Baum-Welch EM
+    /// (`1..=MAX_BAUM_WELCH_ITERATIONS`) using caller-supplied [`BaumWelchWorkspace`] buffers.
+    #[verified_engine::verified]
+    pub fn baum_welch_with_workspace(
+        &mut self,
+        observations: &[usize],
+        max_iterations: usize,
+        tolerance: T,
+        workspace: &mut BaumWelchWorkspace<T>,
+    ) -> Result<BaumWelchReport<T>, MarkovError> {
+        if !(1..=MAX_BAUM_WELCH_ITERATIONS).contains(&max_iterations) {
+            return Err(MarkovError::InvalidState {
+                reason: format!("max_iterations must be in 1..={MAX_BAUM_WELCH_ITERATIONS}"),
+            });
+        }
+        let config = BaumWelchConfig::new(max_iterations, tolerance, T::zero())?;
+        let mut history = [T::zero(); MAX_BAUM_WELCH_ITERATIONS];
+        self.fit_baum_welch_into(
+            observations,
+            &config,
+            workspace,
+            &mut history[..max_iterations],
+        )
+    }
+
+    /// Convenience wrapper around [`HiddenMarkovModel::baum_welch_with_workspace`] that allocates
+    /// a [`BaumWelchWorkspace`] and runs bounded Baum-Welch EM (`1..=MAX_BAUM_WELCH_ITERATIONS`).
+    #[verified_engine::verified]
+    pub fn baum_welch(
+        &mut self,
+        observations: &[usize],
+        max_iterations: usize,
+        tolerance: T,
+    ) -> Result<BaumWelchReport<T>, MarkovError> {
+        let mut workspace =
+            BaumWelchWorkspace::new(self.num_states, self.num_observations, observations.len());
+        self.baum_welch_with_workspace(observations, max_iterations, tolerance, &mut workspace)
     }
 }

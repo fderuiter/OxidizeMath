@@ -31,6 +31,10 @@ fn test_financial_math_tab_selects_market_pricing_tools() {
     let mut tab = FinancialMathTab::default();
     assert!(tab.select_tool_by_name("Fair Odds & +EV Devigger"));
     assert!(tab.select_tool_by_name("Arbitrage, Dutching & Hedge"));
+    assert!(tab.select_tool_by_name("Copula Tail Risk"));
+    assert!(tab.select_tool_by_name("Ornstein-Uhlenbeck Calibration"));
+    assert!(tab.select_tool_by_name("Markov Regime Switching"));
+    assert!(tab.select_tool_by_name("Bet Size Calculator"));
     let saved = tab.save_state().expect("tab state serializes");
     tab.load_state(&saved);
 }

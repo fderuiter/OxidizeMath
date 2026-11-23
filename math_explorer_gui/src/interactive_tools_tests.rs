@@ -130,6 +130,11 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool,
         >(ctx);
+        exercise_interactive_tool::<crate::tabs::financial_math::copula_risk::CopulaRiskTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::financial_math::ou_process::OuProcessTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::financial_math::markov_regime::MarkovRegimeTool>(
+            ctx,
+        );
     }
 
     #[test]

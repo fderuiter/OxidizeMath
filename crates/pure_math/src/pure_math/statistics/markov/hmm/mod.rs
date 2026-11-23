@@ -13,6 +13,7 @@ pub mod viterbi;
 #[cfg(test)]
 mod tests;
 
+pub use baum_welch::MAX_BAUM_WELCH_ITERATIONS;
 pub use baum_welch_types::{BaumWelchConfig, BaumWelchReport, BaumWelchWorkspace};
 pub use model::HiddenMarkovModel;
 pub use viterbi::ViterbiWorkspace;

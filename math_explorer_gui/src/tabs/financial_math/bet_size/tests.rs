@@ -17,13 +17,16 @@ fn test_bet_size_default_populates_growth_curve_and_kelly_markers() {
     assert_eq!(tool.quarter_marker.len(), 1);
     assert_eq!(tool.half_marker.len(), 1);
     assert_eq!(tool.full_marker.len(), 1);
+    assert_eq!(tool.ruin_marker.len(), 1);
 
-    // Full Kelly maximizes g(f): g(0.25 f*) < g(0.50 f*) < g(1.00 f*)
+    // Full Kelly maximizes g(f): g(0.25 f*) < g(0.50 f*) < g(1.00 f*) and g(2.00 f*) <= 0
     let q_pt = tool.quarter_marker[0];
     let h_pt = tool.half_marker[0];
     let f_pt = tool.full_marker[0];
-    assert!(q_pt.x < h_pt.x && h_pt.x < f_pt.x);
+    let r_pt = tool.ruin_marker[0];
+    assert!(q_pt.x < h_pt.x && h_pt.x < f_pt.x && f_pt.x < r_pt.x);
     assert!(q_pt.y > 0.0 && q_pt.y < h_pt.y && h_pt.y < f_pt.y);
+    assert!((r_pt.x - 2.0 * f_pt.x).abs() < 1e-9 && r_pt.y <= 0.0);
 
     // Verify zero-allocation borrowed PlotPoints slice
     let slice: &[PlotPoint] = &tool.growth_curve_points[..];
@@ -31,9 +34,14 @@ fn test_bet_size_default_populates_growth_curve_and_kelly_markers() {
     assert!(matches!(plot_pts, egui_plot::PlotPoints::Borrowed(_)));
 
     let datasets = tool.export_datasets();
-    assert_eq!(datasets.len(), 5);
+    assert_eq!(datasets.len(), 6);
     assert!(egui_plot::export::format_csv(&datasets).contains("Expected Growth Rate g(f)"));
     assert!(egui_plot::export::format_json(&datasets).contains("\"Full Kelly (1.00 f*)\""));
+    assert!(egui_plot::export::format_json(&datasets).contains("\"Double Kelly (2.00 f* Ruin)\""));
+
+    let schedule_json = tool.export_sizing_json().expect("sizing JSON exports");
+    let parsed: serde_json::Value = serde_json::from_str(&schedule_json).unwrap();
+    assert_eq!(parsed["strategies"].as_array().map(Vec::len), Some(4));
 }
 
 #[test]

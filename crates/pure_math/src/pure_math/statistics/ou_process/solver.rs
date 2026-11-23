@@ -182,6 +182,39 @@ impl EulerMaruyama {
         trajectory
     }
 
+    /// Simulates a trajectory in-place into a preallocated output slice `[X_0, X_1, ..., X_{k-1}]`
+    /// with zero dynamic heap allocations.
+    ///
+    /// If `out` is empty, this method is a no-op.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::ou_process::{
+    ///     EulerMaruyama, OuParams, TimeStep
+    /// };
+    ///
+    /// let params = OuParams::from_values(0.5, 1.0, 0.3).unwrap();
+    /// let solver = EulerMaruyama::new(params, TimeStep::new(0.01).unwrap());
+    /// let mut rng = math_explorer::rng::OxidizeRng::new(7);
+    /// let mut buf = [0.0_f64; 32];
+    /// solver.simulate_into(0.6, &mut buf, &mut rng);
+    /// assert_eq!(buf[0], 0.6);
+    /// ```
+    #[verified_engine::verified]
+    pub fn simulate_into<R: Rng>(&self, x0: f64, out: &mut [f64], rng: &mut R) {
+        let Some((first, rest)) = out.split_first_mut() else {
+            return;
+        };
+        *first = x0;
+        let mut x = x0;
+        for slot in rest {
+            x = self.step(x, rng);
+            *slot = x;
+        }
+    }
+
     /// Simulates multiple trajectories (Monte Carlo paths).
     ///
     /// # Arguments

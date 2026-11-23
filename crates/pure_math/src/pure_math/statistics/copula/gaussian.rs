@@ -2,9 +2,12 @@
 
 use super::core::{Correlation, CorrelationMatrix, Probability};
 use super::multivariate::{evaluate_copula_cdf_with_scratch, required_scratch_len};
+use super::transforms::fast_norm_cdf;
 use crate::error::CopulaError;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
+use rand::Rng;
+use rand_distr::{Distribution, StandardNormal};
 
 /// Maximum number of parlay legs evaluated entirely on the stack by [`GaussianCopula::cdf`]
 /// and [`sgp_joint_probability`].
@@ -112,6 +115,87 @@ impl GaussianCopula {
         scratch: &mut [f64],
     ) -> Result<Probability, CopulaError> {
         evaluate_copula_cdf_with_scratch(u, &self.correlation, scratch)
+    }
+
+    /// Evaluates the multivariate Gaussian copula CDF `C(u_1, ..., u_d)` for `2..=16` legs
+    /// (`d >= 2`) using stack-buffered Cholesky separation-of-variables with zero heap allocation.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::copula::{
+    ///     Correlation, CorrelationMatrix, GaussianCopula, Probability,
+    /// };
+    ///
+    /// let corr = CorrelationMatrix::equicorrelated(4, Correlation::new(0.30).unwrap()).unwrap();
+    /// let copula = GaussianCopula::new(corr);
+    /// let u = [Probability::new(0.60).unwrap(); 4];
+    /// let joint = copula.multivariate_cdf(&u).unwrap();
+    /// assert!(joint.value() > 0.60_f64.powi(4));
+    /// ```
+    #[verified_engine::verified]
+    pub fn multivariate_cdf(&self, u: &[Probability]) -> Result<Probability, CopulaError> {
+        let d = self.correlation.dimension();
+        if d < 2 {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(2),
+                actual: Dimension(d),
+            }));
+        }
+        self.cdf(u)
+    }
+
+    /// Draws a single correlated uniform vector `u in [0, 1]^d` into `out_uniform` via the cached
+    /// lower-triangular Cholesky factor with zero dynamic heap allocations (`d <= MAX_STACK_LEGS`).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::copula::{
+    ///     Correlation, CorrelationMatrix, GaussianCopula,
+    /// };
+    ///
+    /// let corr = CorrelationMatrix::equicorrelated(3, Correlation::new(0.4).unwrap()).unwrap();
+    /// let copula = GaussianCopula::new(corr);
+    /// let mut rng = math_explorer::rng::OxidizeRng::new(42);
+    /// let mut u = [0.0_f64; 3];
+    /// copula.sample_uniform_into(&mut rng, &mut u).unwrap();
+    /// assert!(u.iter().all(|&x| (0.0..=1.0).contains(&x)));
+    /// ```
+    #[verified_engine::verified]
+    pub fn sample_uniform_into<R: Rng>(
+        &self,
+        rng: &mut R,
+        out_uniform: &mut [f64],
+    ) -> Result<(), CopulaError> {
+        let d = self.correlation.dimension();
+        if out_uniform.len() != d {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(d),
+                actual: Dimension(out_uniform.len()),
+            }));
+        }
+        if d > MAX_STACK_LEGS {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(MAX_STACK_LEGS),
+                actual: Dimension(d),
+            }));
+        }
+        let mut z = [0.0_f64; MAX_STACK_LEGS];
+        for slot in &mut z[..d] {
+            *slot = StandardNormal.sample(rng);
+        }
+        let lower = self.correlation.cholesky_factor();
+        for (i, out_slot) in out_uniform.iter_mut().enumerate() {
+            let mut sum = 0.0;
+            for (j, &z_j) in z[..=i].iter().enumerate() {
+                sum += lower[(i, j)] * z_j;
+            }
+            *out_slot = fast_norm_cdf(sum);
+        }
+        Ok(())
     }
 
     /// Returns the underlying correlation matrix.
@@ -270,5 +354,30 @@ mod tests {
             CorrelationMatrix::new(invalid),
             Err(CopulaError::NotPositiveDefinite)
         ));
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_equicorrelated_2_to_8_legs_and_uniform_sampling() {
+        let rho = Correlation::new(0.30).unwrap();
+        let mut rng = oxidize_core::rng::OxidizeRng::new(99);
+        for d in 2..=super::super::core::MAX_COPULA_DIMENSION {
+            let corr = CorrelationMatrix::equicorrelated(d, rho).unwrap();
+            let copula = GaussianCopula::new(corr.clone());
+            let marginals = vec![Probability::new(0.65).unwrap(); d];
+            let p_mv = copula.multivariate_cdf(&marginals).unwrap().value();
+            let p_sgp = sgp_joint_probability(&marginals, &corr).unwrap().value();
+            assert_relative_eq!(p_mv, p_sgp, epsilon = 1e-12);
+            assert!(p_mv > 0.65_f64.powi(d as i32) && p_mv <= 0.65);
+
+            let mut u_out = vec![0.0_f64; d];
+            copula.sample_uniform_into(&mut rng, &mut u_out).unwrap();
+            assert!(u_out.iter().all(|&u| (0.0..=1.0).contains(&u)));
+        }
+        // Equicorrelated lower bound violation: for d = 4, rho <= -1/3 is not positive definite
+        assert_eq!(
+            CorrelationMatrix::equicorrelated(4, Correlation::new(-0.40).unwrap()),
+            Err(CopulaError::NotPositiveDefinite)
+        );
     }
 }

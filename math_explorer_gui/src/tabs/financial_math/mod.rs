@@ -6,12 +6,22 @@ use eframe::egui;
 pub mod bankroll_ensemble;
 pub mod bankroll_growth;
 pub mod bet_size;
+pub mod copula_risk;
 pub mod correlated_risk;
 pub mod market_devig;
 pub mod market_execution;
+pub mod markov_regime;
+pub mod ou_process;
 pub mod parrondo;
 #[cfg(test)]
 mod tests;
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests;
+
+#[inline(never)]
+pub(crate) fn format_pretty_json(value: &serde_json::Value) -> Result<String, String> {
+    serde_json::to_string_pretty(value).map_err(|e| format!("JSON serialization error: {e}"))
+}
 
 pub struct FinancialMathTab {
     framework: crate::framework::SimulationFramework,
