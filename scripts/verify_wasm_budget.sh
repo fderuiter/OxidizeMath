@@ -10,6 +10,16 @@ if [ ! -d "$DIST_DIR" ]; then
     exit 1
 fi
 
+if ! command -v brotli >/dev/null 2>&1; then
+    echo "Error: 'brotli' command not found in PATH." >&2
+    exit 1
+fi
+
+if ! command -v gzip >/dev/null 2>&1; then
+    echo "Error: 'gzip' command not found in PATH." >&2
+    exit 1
+fi
+
 echo "Checking WebAssembly size budget against maximum threshold: $MAX_BYTES bytes (3 MB)..."
 
 shopt -s nullglob
@@ -22,26 +32,13 @@ fi
 passed=0
 for wasm in "${wasm_files[@]}"; do
     wasm_base=$(basename "$wasm")
-    br_file="${wasm}.br"
-    gz_file="${wasm}.gz"
-
-    if [ ! -f "$br_file" ]; then
-        echo "Error: Missing Brotli compressed file: $br_file" >&2
+    if [ ! -s "$wasm" ]; then
+        echo "Error: WebAssembly binary '$wasm' is empty." >&2
         exit 1
     fi
 
-    if [ ! -f "$gz_file" ]; then
-        echo "Error: Missing Gzip compressed file: $gz_file" >&2
-        exit 1
-    fi
-
-    if command -v stat >/dev/null 2>&1; then
-        br_size=$(stat -c%s "$br_file" 2>/dev/null || stat -f%z "$br_file")
-        gz_size=$(stat -c%s "$gz_file" 2>/dev/null || stat -f%z "$gz_file")
-    else
-        br_size=$(wc -c < "$br_file" | tr -d ' ')
-        gz_size=$(wc -c < "$gz_file" | tr -d ' ')
-    fi
+    br_size=$(brotli -9 -c < "$wasm" | wc -c | tr -d '[:space:]')
+    gz_size=$(gzip -9 -c < "$wasm" | wc -c | tr -d '[:space:]')
 
     echo "Artifact $wasm_base:"
     echo "  - Brotli compressed size: $br_size bytes"

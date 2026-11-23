@@ -74,6 +74,7 @@ impl<'a> Plot3DViewport<'a> {
             .data_aspect(1.0)
             .scene_3d_mode(true)
             .allow_2d_analysis(false)
+            .allow_csv_import(false)
             .show_x(false)
             .show_y(false)
             .show_axes(false)
