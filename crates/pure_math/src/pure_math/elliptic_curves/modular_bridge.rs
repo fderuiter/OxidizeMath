@@ -8,9 +8,8 @@
 //! (`hurwitz_class_number`, `weighted_class_number`, `verify_summation_formula`), and
 //! truncated modular $q$-series (`QSeries<i64>`).
 
-use super::weierstrass::{
-    FpWeierstrassCurve, PrimeWeierstrassCurve, WeierstrassCurve, mod_inv_i64, mod_mul_i64,
-};
+use super::modular_fp::{mod_inv_fp, mod_mul};
+use super::weierstrass::{FpWeierstrassCurve, PrimeWeierstrassCurve, WeierstrassCurve};
 use super::{
     EllipticCurveError, Theorem11Bounds, Theorem12Bounds, psi, theorem_1_1_bounds,
     theorem_1_2_bounds,
@@ -86,12 +85,12 @@ pub fn j_invariant_fp<const P: i64>(curve: &FpWeierstrassCurve<P>) -> Fp<P> {
 #[verified_engine::verified]
 pub fn j_invariant_mod_p(curve: &PrimeWeierstrassCurve) -> i64 {
     let p = curve.p;
-    let a3 = mod_mul_i64(mod_mul_i64(curve.a, curve.a, p), curve.a, p);
-    let four_a3 = mod_mul_i64(4, a3, p);
-    let b2 = mod_mul_i64(curve.b, curve.b, p);
-    let denom = (four_a3 + mod_mul_i64(27, b2, p)).rem_euclid(p);
-    let inv = mod_inv_i64(denom, p).unwrap_or(0);
-    mod_mul_i64(mod_mul_i64(1728, four_a3, p), inv, p)
+    let a3 = mod_mul(mod_mul(curve.a, curve.a, p), curve.a, p);
+    let four_a3 = mod_mul(4, a3, p);
+    let b2 = mod_mul(curve.b, curve.b, p);
+    let denom = (four_a3 + mod_mul(27, b2, p)).rem_euclid(p);
+    let inv = mod_inv_fp(denom, p).unwrap_or(0);
+    mod_mul(mod_mul(1728, four_a3, p), inv, p)
 }
 
 /// Pairs $j(E) \bmod p$ with classical modular degree $\psi(N)$ and Breuer Theorems 1.1 & 1.2 bounds.

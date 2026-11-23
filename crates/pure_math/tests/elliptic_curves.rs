@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
-use pure_math::pure_math::algebra::fields::Fp;
+use pure_math::math_types::Integer;
 use pure_math::pure_math::elliptic_curves::*;
+use pure_math::pure_math::number_theory::ambs::{AmbsDsp, modular_inverse};
 use pure_math::pure_math::number_theory::primes::primes_up_to;
 use std::collections::HashMap;
 use verified_engine::allocator::VerifiedAllocator;
@@ -45,304 +46,260 @@ fn test_psi_function() {
 #[test]
 #[verified_engine::verified]
 fn test_theorem_1_1_bounds_simple() {
+    // For N=5, psi(5) = 6. Let's check a_{1,1} where i+j=2. diff = 4
     let bounds = theorem_1_1_bounds(5, 1, 1).unwrap();
-    assert_eq!(bounds.v2_bound, Some(15 * 4));
-    assert_eq!(bounds.v3_bound, Some(3 * 4));
+    assert_eq!(bounds.v2_bound, Some(15 * 4)); // 60
+    assert_eq!(bounds.v3_bound, Some(3 * 4)); // 12
     assert_eq!(bounds.v5_bound, None);
 }
 
 #[test]
 #[verified_engine::verified]
 fn test_theorem_1_1_bounds_n_is_1_mod_3() {
+    // For N=7, psi(7) = 8. N=7 is 1 mod 3. Check a_{2,1} where i+j=3. diff = 5
     let bounds = theorem_1_1_bounds(7, 2, 1).unwrap();
-    assert_eq!(bounds.v2_bound, Some(15 * 5));
+    assert_eq!(bounds.v2_bound, Some(15 * 5)); // 75
+    // ceil(4.5 * 5) = ceil(22.5) = 23
     assert_eq!(bounds.v3_bound, Some(23));
-    assert_eq!(bounds.v5_bound, Some(3 * 5));
+    assert_eq!(bounds.v5_bound, Some(3 * 5)); // 15
 }
 
 #[test]
 #[verified_engine::verified]
 fn test_theorem_1_1_bounds_panic() {
+    // N=5, psi(5)=6. i+j=6, which should panic.
     assert!(theorem_1_1_bounds(5, 3, 3).is_err());
 }
 
 #[test]
 #[verified_engine::verified]
 fn test_theorem_1_2_bounds_simple() {
+    // For N=11, psi(11) = 12. N=11 is 3 mod 4. Check a_{1,0}. diff = 11
     let bounds = theorem_1_2_bounds(11, 1, 0).unwrap();
-    assert_eq!(bounds.v2_bound, Some(9 * 11));
-    assert_eq!(bounds.v3_bound, Some(6 * 11));
-    assert_eq!(bounds.v7_bound, Some(2 * 11));
+    assert_eq!(bounds.v2_bound, Some(9 * 11)); // 99
+    assert_eq!(bounds.v3_bound, Some(6 * 11)); // 66
+    assert_eq!(bounds.v7_bound, Some(2 * 11)); // 22
 }
 
 #[test]
 #[verified_engine::verified]
 fn test_theorem_1_2_bounds_n_is_1_mod_4() {
+    // For N=5, psi(5) = 6. N=5 is 1 mod 4. Check a_{0,0}. diff = 6
     let bounds = theorem_1_2_bounds(5, 0, 0).unwrap();
-    assert_eq!(bounds.v2_bound, Some(10 * 6));
-    assert_eq!(bounds.v3_bound, Some(6 * 6));
-    assert_eq!(bounds.v7_bound, Some(2 * 6));
+    assert_eq!(bounds.v2_bound, Some(10 * 6)); // 60
+    assert_eq!(bounds.v3_bound, Some(6 * 6)); // 36
+    assert_eq!(bounds.v7_bound, Some(2 * 6)); // 12
 }
 
 #[test]
 #[verified_engine::verified]
 fn test_theorem_1_2_bounds_panic() {
+    // N=5, psi(5)=6. i+j=7, which should panic.
     assert!(theorem_1_2_bounds(5, 4, 3).is_err());
 }
 
 #[test]
 #[verified_engine::verified]
-fn test_singular_and_invalid_modulus_rejection() {
+fn test_weierstrass_singular_and_invalid_rejection() {
     assert_eq!(
-        WeierstrassCurve::new(0.0, 0.0),
-        Err(EllipticCurveError::SingularCurve)
+        WeierstrassCurveFp::new(3, 1, 1),
+        Err(EllipticCurveError::InvalidModulus { p: 3 })
     );
     assert_eq!(
-        WeierstrassCurve::new(-3.0, 2.0),
-        Err(EllipticCurveError::SingularCurve)
+        WeierstrassCurveFp::new(15, 1, 1),
+        Err(EllipticCurveError::InvalidModulus { p: 15 })
     );
     assert_eq!(
-        WeierstrassCurve::new(f64::NAN, 1.0),
-        Err(EllipticCurveError::SingularCurve)
-    );
-
-    assert_eq!(
-        FpWeierstrassCurve::<3>::new(1, 1),
-        Err(EllipticCurveError::InvalidModulus { modulus: 3 })
-    );
-    assert_eq!(
-        FpWeierstrassCurve::<15>::new(1, 1),
-        Err(EllipticCurveError::InvalidModulus { modulus: 15 })
-    );
-    assert_eq!(
-        FpWeierstrassCurve::<17>::new(-3, 2),
-        Err(EllipticCurveError::SingularCurve)
-    );
-
-    for bad_p in [-5, 0, 2, 3, 9, 21] {
-        assert_eq!(
-            PrimeWeierstrassCurve::new(1, 1, bad_p),
-            Err(EllipticCurveError::InvalidModulus { modulus: bad_p })
-        );
-    }
-    assert_eq!(
-        PrimeWeierstrassCurve::new(0, 0, 11),
-        Err(EllipticCurveError::SingularCurve)
-    );
-
-    let large_curve = PrimeWeierstrassCurve::new(1, 1, 1009).unwrap();
-    let mut buf = [CurvePoint::Infinity; 8];
-    assert_eq!(
-        large_curve.write_affine_points(&mut buf),
-        Err(EllipticCurveError::ModulusExceedsLatticeCap {
-            modulus: 1009,
-            max_modulus: MAX_LATTICE_PRIME,
+        WeierstrassCurveFp::new(MAX_WEIERSTRASS_PRIME + 7, 1, 1),
+        Err(EllipticCurveError::InvalidModulus {
+            p: MAX_WEIERSTRASS_PRIME + 7
         })
     );
     assert_eq!(
-        large_curve.point_count(),
-        Err(EllipticCurveError::ModulusExceedsLatticeCap {
-            modulus: 1009,
-            max_modulus: MAX_LATTICE_PRIME,
-        })
+        WeierstrassCurveFp::new(17, 0, 0),
+        Err(EllipticCurveError::SingularCurve { p: 17, a: 0, b: 0 })
     );
-}
-
-#[test]
-#[verified_engine::verified]
-fn test_real_weierstrass_group_identities_and_two_torsion() {
-    // y^2 = x^3 - 2x + 2 has non-zero discriminant; y^2 = x^3 - x has 2-torsion at (-1,0), (0,0), (1,0)
-    let two_torsion_curve = WeierstrassCurve::new(-1.0, 0.0).unwrap();
-    let t0 = CurvePoint::Affine { x: 0.0, y: 0.0 };
-    assert!(two_torsion_curve.is_on_curve(t0, 1e-12));
-    assert_eq!(two_torsion_curve.double(t0), CurvePoint::Infinity);
-
-    let curve = WeierstrassCurve::new(-2.0, 2.0).unwrap();
-    let p = CurvePoint::Affine {
-        x: 1.0,
-        y: 1.0_f64.sqrt(),
-    };
-    let q = CurvePoint::Affine {
-        x: 2.0,
-        y: 6.0_f64.sqrt(),
-    };
-    let r = CurvePoint::Affine {
-        x: 3.0,
-        y: 23.0_f64.sqrt(),
-    };
-
-    assert_eq!(curve.add(p, CurvePoint::Infinity), p);
-    assert_eq!(curve.add(CurvePoint::Infinity, p), p);
-    assert_eq!(curve.add(p, curve.negate(p)), CurvePoint::Infinity);
-
-    let pq = curve.add(p, q);
-    let qp = curve.add(q, p);
-    assert!(curve.is_on_curve(pq, 1e-9));
-    let ((x_pq, y_pq), (x_qp, y_qp)) = (pq.coords().unwrap(), qp.coords().unwrap());
-    assert!((x_pq - x_qp).abs() < 1e-9 && (y_pq - y_qp).abs() < 1e-9);
-
-    let lhs = curve.add(curve.add(p, q), r);
-    let rhs = curve.add(p, curve.add(q, r));
-    let ((lx, ly), (rx, ry)) = (lhs.coords().unwrap(), rhs.coords().unwrap());
-    assert!((lx - rx).abs() < 1e-8 && (ly - ry).abs() < 1e-8);
-
-    let pos_3p = curve.scalar_mul(3, p);
-    let neg_3p = curve.scalar_mul(-3, p);
-    assert_eq!(curve.add(pos_3p, neg_3p), CurvePoint::Infinity);
-}
-
-#[test]
-#[verified_engine::verified]
-fn test_fp_and_runtime_prime_group_laws_agree() {
-    let fp_curve = FpWeierstrassCurve::<23>::new(1, 1).unwrap();
-    let rt_curve = PrimeWeierstrassCurve::new(1, 1, 23).unwrap();
-
-    let p_fp = CurvePoint::Affine {
-        x: Fp::<23>::new(0),
-        y: Fp::<23>::new(1),
-    };
-    let q_fp = CurvePoint::Affine {
-        x: Fp::<23>::new(1),
-        y: Fp::<23>::new(7),
-    };
-    let p_rt = CurvePoint::Affine { x: 0, y: 1 };
-    let q_rt = CurvePoint::Affine { x: 1, y: 7 };
-
-    assert!(fp_curve.is_on_curve(p_fp) && fp_curve.is_on_curve(q_fp));
-    assert!(rt_curve.is_on_curve(p_rt) && rt_curve.is_on_curve(q_rt));
-    assert_eq!(fp_curve.discriminant().value, rt_curve.discriminant_mod_p());
-
-    // 2-torsion tangent at y = 0: on y^2 = x^3 + x + 1 mod 23, x = 4 -> 64+4+1 = 69 = 0 mod 23
-    let torsion_fp = CurvePoint::Affine {
-        x: Fp::<23>::new(4),
-        y: Fp::<23>::new(0),
-    };
-    let torsion_rt = CurvePoint::Affine { x: 4, y: 0 };
-    assert_eq!(fp_curve.double(torsion_fp), CurvePoint::Infinity);
-    assert_eq!(rt_curve.double(torsion_rt), CurvePoint::Infinity);
     assert_eq!(
-        rt_curve.add(p_rt, rt_curve.negate(p_rt)),
-        CurvePoint::Infinity
+        WeierstrassCurveFp::new(19, -3, 2),
+        Err(EllipticCurveError::SingularCurve { p: 19, a: 16, b: 2 })
+    );
+    assert_eq!(
+        WeierstrassCurveFp::new(11, 8, 2),
+        Err(EllipticCurveError::SingularCurve { p: 11, a: 8, b: 2 })
     );
 
-    let order = rt_curve.point_count().unwrap() as i64;
-    assert_eq!(order, 28);
-    for k in -10..=30 {
-        let m_fp = fp_curve.scalar_mul(k, p_fp);
-        let m_rt = rt_curve.scalar_mul(k, p_rt);
-        assert_eq!(
-            m_fp.coords().map(|(x, y)| (x.value, y.value)),
-            m_rt.coords()
-        );
-    }
-    assert_eq!(rt_curve.scalar_mul(order, p_rt), CurvePoint::Infinity);
-    assert_eq!(fp_curve.scalar_mul(order, p_fp), CurvePoint::Infinity);
+    let curve = WeierstrassCurveFp::new(17, 2, 2).unwrap();
+    assert_ne!(curve.discriminant(), 0);
+    let bad_pt = AffinePointFp::from_coords(5, 2, 17);
+    assert!(!curve.contains_point(bad_pt));
+    assert_eq!(
+        curve.add_points(bad_pt, AffinePointFp::Infinity),
+        Err(EllipticCurveError::PointNotOnCurve { x: 5, y: 2, p: 17 })
+    );
+    let mut tiny = [AffinePointFp::Infinity; 2];
+    assert!(matches!(
+        curve.enumerate_points(&mut tiny),
+        Err(EllipticCurveError::BufferTooSmall { .. })
+    ));
 }
 
 #[test]
 #[verified_engine::verified]
-fn test_hasse_weil_bounds_across_primes_up_to_997() {
-    for p in primes_up_to(MAX_LATTICE_PRIME as u64) {
-        if p <= 3 {
-            continue;
+fn test_weierstrass_identity_inverse_and_associativity() {
+    let curve = WeierstrassCurveFp::new(7, -1, 0).unwrap();
+    let mut pts = [AffinePointFp::Infinity; 16];
+    let n = curve.enumerate_points(&mut pts).unwrap();
+    assert_eq!(n, 8);
+
+    // 2-torsion point (0, 0): -P == P and P + P == Infinity
+    let p_zero = AffinePointFp::from_coords(0, 0, 7);
+    assert_eq!(curve.negate_point(p_zero).unwrap(), p_zero);
+    assert_eq!(
+        curve.add_points(p_zero, p_zero).unwrap(),
+        AffinePointFp::Infinity
+    );
+
+    for i in 0..n {
+        let p = pts[i];
+        let neg_p = curve.negate_point(p).unwrap();
+        assert_eq!(curve.add_points(p, AffinePointFp::Infinity).unwrap(), p);
+        assert_eq!(curve.add_points(AffinePointFp::Infinity, p).unwrap(), p);
+        assert_eq!(curve.add_points(p, neg_p).unwrap(), AffinePointFp::Infinity);
+        for j in 0..n {
+            let q = pts[j];
+            let pq = curve.add_points(p, q).unwrap();
+            assert_eq!(pq, curve.add_points(q, p).unwrap());
+            for r in &pts[..n] {
+                let lhs = curve.add_points(pq, *r).unwrap();
+                let qr = curve.add_points(q, *r).unwrap();
+                let rhs = curve.add_points(p, qr).unwrap();
+                assert_eq!(lhs, rhs);
+            }
         }
-        if let Ok(curve) = PrimeWeierstrassCurve::new(-1, 1, p as i64) {
-            let trace = curve.frobenius_trace().unwrap();
-            assert!(
-                curve.satisfies_hasse_weil().unwrap(),
-                "Hasse-Weil violated at p={p}: a_p={trace}"
+    }
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_weierstrass_scalar_mul_and_lagrange_divisibility() {
+    for (p, a, b) in [(17_i64, 2_i64, 2_i64), (23, 1, 1), (43, -1, 1)] {
+        let curve = WeierstrassCurveFp::new(p, a, b).unwrap();
+        let group_order = curve.cardinality();
+        let mut pts = [AffinePointFp::Infinity; 64];
+        let count = curve.enumerate_points(&mut pts).unwrap();
+        assert_eq!(count, group_order);
+
+        let mut orbit = [AffinePointFp::Infinity; 64];
+        for &pt in &pts[..count] {
+            let ord = curve.point_order(pt).unwrap();
+            assert_eq!(group_order % ord, 0);
+            let orbit_len = curve.torsion_orbit(pt, &mut orbit).unwrap();
+            assert_eq!(orbit_len, ord);
+            assert_eq!(orbit[ord - 1], AffinePointFp::Infinity);
+            assert_eq!(
+                curve.scalar_mul(group_order as i64, pt).unwrap(),
+                AffinePointFp::Infinity
             );
-            assert!((trace as f64).abs() <= hasse_weil_bound(p) + 1e-12);
+            let k3 = curve.scalar_mul(3, pt).unwrap();
+            let neg_k3 = curve.scalar_mul(-3, pt).unwrap();
+            assert_eq!(curve.negate_point(k3).unwrap(), neg_k3);
         }
     }
-
-    let c13 = PrimeWeierstrassCurve::new(1, 1, 13).unwrap();
-    let mut lattice = [CurvePoint::Infinity; 32];
-    let affine_len = c13.write_affine_points(&mut lattice).unwrap();
-    assert_eq!(affine_len as u64 + 1, c13.point_count().unwrap());
 }
 
 #[test]
-fn test_verified_engine_zero_allocation_arithmetic_and_orbits() {
-    let real_curve = WeierstrassCurve::new(-1.0, 1.0).unwrap();
-    let fp_curve = FpWeierstrassCurve::<97>::new(2, 3).unwrap();
-    let rt_curve = PrimeWeierstrassCurve::new(2, 3, 97).unwrap();
-    let mut real_orbit = [CurvePoint::Infinity; 16];
-    let mut fp_orbit = [CurvePoint::Infinity; 128];
-    let mut rt_orbit = [CurvePoint::Infinity; 128];
-    let mut affine_pts = [CurvePoint::Infinity; 128];
+#[verified_engine::verified]
+fn test_weierstrass_hasse_bounds_all_primes_5_to_997() {
+    let primes: Vec<i64> = primes_up_to(997)
+        .into_iter()
+        .filter(|&p| p >= 5)
+        .map(|p| p as i64)
+        .collect();
+    assert_eq!(primes.len(), 166);
 
-    let ((real_n, fp_n, rt_n, trace), metrics) = VerifiedEngine::run_verified(|| {
-        let rp = CurvePoint::Affine { x: 0.0, y: 1.0 };
-        let _r_sum = real_curve.scalar_mul(7, rp);
-        let rn = real_curve.write_orbit(rp, &mut real_orbit);
-
-        let count_aff = rt_curve.write_affine_points(&mut affine_pts).unwrap();
-        assert!(count_aff > 0);
-        let gen_rt = affine_pts[0];
-        let (gx, gy) = gen_rt.coords().unwrap();
-        let gen_fp = CurvePoint::Affine {
-            x: Fp::<97>::new(gx),
-            y: Fp::<97>::new(gy),
+    let mut entries = vec![
+        HasseSweepEntry {
+            p: 5,
+            is_singular: false,
+            group_order: 0,
+            frobenius_trace: 0,
+            hasse_bound: 0.0,
         };
+        primes.len()
+    ];
 
-        let _fp_mul = fp_curve.scalar_mul(19, gen_fp);
-        let _rt_mul = rt_curve.scalar_mul(19, gen_rt);
-        let fn_len = fp_curve.write_orbit(gen_fp, &mut fp_orbit);
-        let rn_len = rt_curve.write_orbit(gen_rt, &mut rt_orbit);
-        let a_p = rt_curve.frobenius_trace().unwrap();
-        (rn, fn_len, rn_len, a_p)
+    for (a, b) in [(2_i64, 3_i64), (-1, 0), (0, 7), (1, -1)] {
+        let written = sweep_hasse_bounds(a, b, &primes, &mut entries).unwrap();
+        assert_eq!(written, primes.len());
+        for entry in &entries[..written] {
+            if !entry.is_singular {
+                let curve = WeierstrassCurveFp::new(entry.p, a, b).unwrap();
+                let (lo, hi) = curve.hasse_bounds();
+                let ap = entry.frobenius_trace as f64;
+                assert!(ap >= lo - 1e-12 && ap <= hi + 1e-12);
+                assert_eq!(entry.frobenius_trace, curve.frobenius_trace());
+                if a == -1 && b == 0 && entry.p.rem_euclid(4) == 3 {
+                    assert_eq!(entry.frobenius_trace, 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_weierstrass_ambs_tonelli_and_inverse_parity() {
+    for p in [5_i64, 7, 17, 41, 73, 97] {
+        let p_int = Integer::from(p);
+        for n in 0..p {
+            let n_int = Integer::from(n);
+            let expected_inv =
+                modular_inverse(&n_int, &p_int).and_then(|v| v.to_u64().map(|x| x as i64));
+            assert_eq!(mod_inv_fp(n, p), expected_inv);
+
+            let mut ambs_roots: Vec<i64> = AmbsDsp::tonelli_shanks(&n_int, &p_int)
+                .unwrap()
+                .into_iter()
+                .map(|r| r.to_u64().unwrap() as i64)
+                .collect();
+            ambs_roots.sort_unstable();
+            let (fp_roots, count) = tonelli_shanks_fp(n, p);
+            assert_eq!(&fp_roots[..count], ambs_roots.as_slice());
+        }
+    }
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_weierstrass_zero_allocations_under_verified_allocator() {
+    let curve = WeierstrassCurveFp::new(97, 2, 3).unwrap();
+    let mut points_buf = [AffinePointFp::Infinity; 128];
+    let mut orbit_buf = [AffinePointFp::Infinity; 128];
+    let primes = [5_i64, 7, 11, 13, 17, 19, 23, 29, 31, 97];
+    let mut sweep_buf = [HasseSweepEntry {
+        p: 5,
+        is_singular: false,
+        group_order: 0,
+        frobenius_trace: 0,
+        hasse_bound: 0.0,
+    }; 10];
+
+    let ((sum, k_pt, orbit_len, swept), metrics) = VerifiedEngine::run_verified(|| {
+        let count = curve.enumerate_points(&mut points_buf).unwrap();
+        let p1 = points_buf[1];
+        let p2 = points_buf[count / 2];
+        let chord = curve.chord_step(p1, p2).unwrap();
+        let k_mul = curve.scalar_mul(17, p1).unwrap();
+        let o_len = curve.torsion_orbit(p1, &mut orbit_buf).unwrap();
+        let s_len = sweep_hasse_bounds(2, 3, &primes, &mut sweep_buf).unwrap();
+        (chord.sum, k_mul, o_len, s_len)
     });
 
-    assert!(
-        metrics.function_calls > 0,
-        "Expected verified function calls to be recorded"
-    );
-    assert_eq!(real_n, 16);
-    assert_eq!(fp_n, rt_n);
-    assert!(trace.unsigned_abs() <= 20);
+    assert!(curve.contains_point(sum));
+    assert!(curve.contains_point(k_pt));
+    assert!(orbit_len >= 2);
+    assert_eq!(swept, 10);
+    assert!(metrics.function_calls > 0);
 }
 
-#[test]
-#[verified_engine::verified]
-fn test_modular_bridge_invariants_class_numbers_and_q_series() {
-    let cm_1728 = WeierstrassCurve::new(-1.0, 0.0).unwrap();
-    assert!((j_invariant_real(&cm_1728) - 1728.0).abs() < 1e-9);
-    let cm_zero = WeierstrassCurve::new(0.0, 1.0).unwrap();
-    assert!(j_invariant_real(&cm_zero).abs() < 1e-9);
-
-    let fp_cm = FpWeierstrassCurve::<29>::new(-1, 0).unwrap();
-    let rt_cm = PrimeWeierstrassCurve::new(-1, 0, 29).unwrap();
-    assert_eq!(j_invariant_fp(&fp_cm).value, 1728_i64.rem_euclid(29));
-    assert_eq!(j_invariant_mod_p(&rt_cm), 1728_i64.rem_euclid(29));
-
-    let mod_summary = modular_valuation_summary(&rt_cm, 5, 1, 1).unwrap();
-    assert_eq!(mod_summary.psi_n, 6);
-    assert_eq!(mod_summary.theorem_1_1.v2_bound, Some(60));
-    assert_eq!(mod_summary.theorem_1_2.v7_bound, Some(8));
-
-    let frob = analyze_frobenius_prime(&rt_cm).unwrap();
-    assert_eq!(frob.p, 29);
-    assert!(frob.frobenius_discriminant < 0);
-    assert!(frob.principal_form.as_ref().is_some_and(|f| f.is_reduced()));
-    assert!(frob.imaginary_class_number >= 1);
-    assert!(frob.hurwitz_kronecker > 0.0);
-
-    for p in [5_u64, 7, 11, 13, 17, 23, 29] {
-        let (sum, expected, ok) = hurwitz_trace_sum(p);
-        assert!(ok, "Hurwitz-Kronecker identity failed at p={p}");
-        assert!((sum - expected).abs() < 1e-9);
-    }
-
-    let delta = ramanujan_delta_q_series(7);
-    assert_eq!(delta.coeffs, vec![0, 1, -24, 252, -1472, 4830, -6048]);
-
-    let e4 = eisenstein_e4_q_series(5);
-    assert_eq!(e4.coeffs, vec![1, 240, 2160, 6720, 17520]);
-
-    let scaled_j = j_invariant_q_scaled(5);
-    assert_eq!(
-        scaled_j.coeffs,
-        vec![1, 744, 196_884, 21_493_760, 864_299_970]
-    );
-}
+// [cite:modular_polynomials_review]

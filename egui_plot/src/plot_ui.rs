@@ -15,6 +15,7 @@ pub struct PlotUi<'a> {
     pub(crate) response: Response,
     pub(crate) bounds_modifications: Vec<BoundsModification>,
     pub(crate) plot_id: egui::Id,
+    pub(crate) sidecar_3d: Option<crate::Plot3DSeriesSidecar>,
 }
 
 impl<'a> PlotUi<'a> {
@@ -33,6 +34,22 @@ impl<'a> PlotUi<'a> {
     /// Returns the unique ID of the current plot.
     pub fn plot_id(&self) -> egui::Id {
         self.plot_id
+    }
+
+    /// Attaches a world-coordinate 3D series sidecar to this plot frame.
+    pub fn set_3d_sidecar(&mut self, sidecar: crate::Plot3DSeriesSidecar) {
+        self.sidecar_3d = Some(sidecar);
+    }
+
+    /// Returns a shared reference to the 3D series sidecar if attached.
+    #[must_use]
+    pub fn sidecar_3d(&self) -> Option<&crate::Plot3DSeriesSidecar> {
+        self.sidecar_3d.as_ref()
+    }
+
+    /// Returns a mutable reference to the 3D series sidecar, initializing an empty one if needed.
+    pub fn sidecar_3d_mut(&mut self) -> &mut crate::Plot3DSeriesSidecar {
+        self.sidecar_3d.get_or_insert_with(Default::default)
     }
 
     /// The plot bounds as they were in the last frame. If called on the first frame and the bounds were not
@@ -163,7 +180,11 @@ impl<'a> PlotUi<'a> {
 
     /// Add a data line.
     pub fn line(&mut self, mut line: crate::Line<'a>) {
-        if line.series.is_empty() {
+        let has_segments = line
+            .segment_batch
+            .as_ref()
+            .is_some_and(|batch| batch.iter().any(|seg| !seg.is_empty()));
+        if line.series.is_empty() && !has_segments {
             return;
         }
 
