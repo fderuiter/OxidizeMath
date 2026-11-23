@@ -150,7 +150,9 @@ struct VietorisRipsState {
 }
 
 impl InteractiveTool for VietorisRipsTool {
-    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable { self }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
     fn name(&self) -> &'static str {
         "Vietoris-Rips Complex"
     }
@@ -170,7 +172,10 @@ impl InteractiveTool for VietorisRipsTool {
 
     fn has_finite_parameters(&self) -> bool {
         self.radius.is_finite()
-            && self.points.iter().all(|p| p.x.is_finite() && p.y.is_finite())
+            && self
+                .points
+                .iter()
+                .all(|p| p.x.is_finite() && p.y.is_finite())
     }
 
     fn save_state(&self) -> Option<String> {
@@ -303,7 +308,6 @@ impl InteractiveTool for VietorisRipsTool {
 
 // [cite:graph_parameters_rust]
 
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "VietorisRipsTool",
@@ -321,9 +325,15 @@ impl scientific_metadata::theory::TheoryDescribable for VietorisRipsTool {
             self.radius, self.points.len()
         )
     }
-    fn phonetic_description(&self) -> String { "Vietoris-Rips simplicial complex and topological data analysis theory".into() }
-    fn theory_citation(&self) -> String { "Computational Topology: An Introduction (Edelsbrunner & Harer, 2010)".into() }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> { std::collections::HashMap::new() }
+    fn phonetic_description(&self) -> String {
+        "Vietoris-Rips simplicial complex and topological data analysis theory".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Computational Topology: An Introduction (Edelsbrunner & Harer, 2010)".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 #[cfg(test)]
@@ -400,13 +410,19 @@ mod tests {
         assert!(matches!(v_plot, PlotPoints::Borrowed(_)));
         assert_eq!(v_plot.points().len(), tool.cached_vertices.len());
 
-        let edge = tool.cached_edges.first().expect("edges should not be empty with radius 15.0");
+        let edge = tool
+            .cached_edges
+            .first()
+            .expect("edges should not be empty with radius 15.0");
         let e_slice: &[PlotPoint] = &edge[..];
         let e_plot: PlotPoints<'_> = e_slice.into();
         assert!(matches!(e_plot, PlotPoints::Borrowed(_)));
         assert_eq!(e_plot.points().len(), 2);
 
-        let triangle = tool.cached_triangles.first().expect("triangles should not be empty with radius 15.0");
+        let triangle = tool
+            .cached_triangles
+            .first()
+            .expect("triangles should not be empty with radius 15.0");
         let t_slice: &[PlotPoint] = &triangle[..];
         let t_plot: PlotPoints<'_> = t_slice.into();
         assert!(matches!(t_plot, PlotPoints::Borrowed(_)));
@@ -418,7 +434,9 @@ mod tests {
         let mut tool = VietorisRipsTool::default();
         let before = tool.complex_builds;
 
-        assert!(tool.try_load_state(r#"{"radius":1.5,"points":[]}"#).is_err());
+        assert!(tool
+            .try_load_state(r#"{"radius":1.5,"points":[]}"#)
+            .is_err());
         assert!(tool
             .try_load_state(r#"{"radius":1.5,"points":[[0.0,"NaN"]]}"#)
             .is_err());

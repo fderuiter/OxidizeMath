@@ -3,6 +3,7 @@ use super::traversal::{
     ExportFilter, collect_facade_exports, flatten_use_tree, has_cfg_test, leaf_allowed_by_filter,
     resolve_child_mod_file,
 };
+use crate::ast_helpers::impl_base_ident;
 use std::path::{Path, PathBuf};
 use syn::visit::Visit;
 
@@ -47,23 +48,6 @@ pub(crate) fn find_date_pattern(s: &str) -> Option<String> {
             && is_digit(bytes[i + 9])
         {
             return Some(s[i..i + 10].to_string());
-        }
-    }
-    None
-}
-
-fn impl_base_ident(ty: &syn::Type) -> Option<String> {
-    let mut curr = ty;
-    let mut depth = 0;
-    while depth < 32 {
-        depth += 1;
-        match curr {
-            syn::Type::Group(g) => curr = &g.elem,
-            syn::Type::Paren(p) => curr = &p.elem,
-            syn::Type::Path(tp) if tp.qself.is_none() => {
-                return tp.path.segments.last().map(|seg| seg.ident.to_string());
-            }
-            _ => return None,
         }
     }
     None
