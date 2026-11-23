@@ -1,6 +1,11 @@
 use statrs::distribution::{ContinuousCDF, Normal};
 use std::marker::PhantomData;
 
+pub use super::censoring::{CensoredOutcome, RightCensoredComparator, TierCount};
+pub use super::u_statistic::{
+    SubjectMarginals, UnmatchedScratch, UnmatchedWinRatioSummary, compute_unmatched_u_statistics,
+};
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[allow(missing_docs)]
 pub enum ComparisonResult {
@@ -179,12 +184,20 @@ impl<T> WinRatioAnalysis<T> {
         self
     }
 
-    /// Compares two subjects outcome-by-outcome using the configured strategies.
+    /// Returns the number of configured priority tiers in this analysis.
     #[verified_engine::verified]
-    pub fn compare_subjects(&self, subject1: &[T], subject2: &[T]) -> ComparisonResult {
-        // Zip the outcomes with the strategies.
-        // If there are more outcomes than strategies, the extra outcomes are ignored (or we could panic/error).
-        // If there are fewer outcomes, we stop early.
+    #[must_use]
+    pub fn num_tiers(&self) -> usize {
+        self.strategies.len()
+    }
+
+    /// Compares two subjects tier-by-tier, returning both the decision and the resolving tier index.
+    #[verified_engine::verified]
+    pub fn compare_subjects_with_tier(
+        &self,
+        subject1: &[T],
+        subject2: &[T],
+    ) -> (ComparisonResult, Option<usize>) {
         let limit = self
             .strategies
             .len()
@@ -194,10 +207,16 @@ impl<T> WinRatioAnalysis<T> {
         for i in 0..limit {
             let res = self.strategies[i].compare(&subject1[i], &subject2[i]);
             if res != ComparisonResult::Tie {
-                return res;
+                return (res, Some(i));
             }
         }
-        ComparisonResult::Tie
+        (ComparisonResult::Tie, None)
+    }
+
+    /// Compares two subjects outcome-by-outcome using the configured strategies.
+    #[verified_engine::verified]
+    pub fn compare_subjects(&self, subject1: &[T], subject2: &[T]) -> ComparisonResult {
+        self.compare_subjects_with_tier(subject1, subject2).0
     }
 
     /// Evaluates pairs using the provided pairing strategy.

@@ -1,10 +1,11 @@
 //! Gauss-Legendre bivariate Gaussian & Student-t copula kernels and zero-allocation scratch workspace.
 
+use super::bivariate::{bivariate_copula_cdf, bivariate_normal_cdf};
 use super::core::{Correlation, Probability};
 use crate::error::CopulaError;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::flatten_2d_index;
-use statrs::distribution::{ContinuousCDF, Normal, StudentsT};
+use statrs::distribution::{ContinuousCDF, StudentsT};
 
 /// 16-point Gauss-Legendre nodes on `[-1, 1]`.
 const GL16_NODES: [f64; 16] = [
@@ -46,11 +47,14 @@ const GL16_WEIGHTS: [f64; 16] = [
     0.027_152_459_411_754_095,
 ];
 
-/// Allocation-free bivariate standard normal CDF $\Phi_2(z_1, z_2; \rho)$ via 16-point Gauss-Legendre
-/// quadrature on Plackett's trigonometric identity $r = \sin(\theta)$.
+/// Allocation-free bivariate standard normal CDF $\Phi_2(z_1, z_2; \rho)$ delegating to Genz's
+/// 20-point Gauss-Legendre bivariate normal solver ([`bivariate_normal_cdf`]).
 #[verified_engine::verified]
 pub fn gauss_legendre_bivariate_normal_cdf(z1: f64, z2: f64, rho: f64) -> f64 {
-    bivariate_normal_cdf_inner(z1, z2, rho)
+    if !rho.is_finite() {
+        return 0.0;
+    }
+    bivariate_normal_cdf(z1, z2, rho.clamp(-1.0, 1.0)).unwrap_or(0.0)
 }
 
 /// Allocation-free bivariate Student-t CDF $T_2(b_1, b_2; \rho, \nu)$ via Genz (2004) 16-point
@@ -58,42 +62,6 @@ pub fn gauss_legendre_bivariate_normal_cdf(z1: f64, z2: f64, rho: f64) -> f64 {
 #[verified_engine::verified]
 pub fn gauss_legendre_bivariate_student_t_cdf(b1: f64, b2: f64, rho: f64, nu: f64) -> f64 {
     bivariate_student_t_cdf_inner(b1, b2, rho, nu)
-}
-
-fn bivariate_normal_cdf_inner(z1: f64, z2: f64, rho: f64) -> f64 {
-    let Ok(std_norm) = Normal::new(0.0, 1.0) else {
-        return 0.0;
-    };
-    let u1 = std_norm.cdf(z1);
-    let u2 = std_norm.cdf(z2);
-    let r = rho.clamp(-1.0, 1.0);
-    if (r - 1.0).abs() <= 1e-12 {
-        return u1.min(u2);
-    }
-    if (r + 1.0).abs() <= 1e-12 {
-        return (u1 + u2 - 1.0).max(0.0);
-    }
-    if r.abs() <= 1e-15 {
-        return (u1 * u2).clamp(0.0, 1.0);
-    }
-
-    let theta_end = r.asin();
-    let mid = 0.5 * theta_end;
-    let half = 0.5 * theta_end;
-    let mut sum = 0.0;
-    let z_sq = z1 * z1 + z2 * z2;
-    let two_z1_z2 = 2.0 * z1 * z2;
-    for i in 0..16 {
-        let theta = mid + half * GL16_NODES[i];
-        let s = theta.sin();
-        let c2 = theta.cos().powi(2);
-        if c2 > 1e-30 {
-            let exponent = -(z_sq - s * two_z1_z2) / (2.0 * c2);
-            sum += GL16_WEIGHTS[i] * exponent.exp();
-        }
-    }
-    let integral = sum * half / (2.0 * std::f64::consts::PI);
-    (u1 * u2 + integral).clamp(0.0, 1.0)
 }
 
 fn bivariate_student_t_cdf_inner(b1: f64, b2: f64, rho: f64, nu: f64) -> f64 {
@@ -194,7 +162,7 @@ impl StudentTCopula {
 }
 
 fn gaussian_copula_cdf_raw(u1: f64, u2: f64, rho: f64) -> f64 {
-    if u1 <= 0.0 || u2 <= 0.0 {
+    if !rho.is_finite() || u1 <= 0.0 || u2 <= 0.0 {
         return 0.0;
     }
     if u1 >= 1.0 {
@@ -203,12 +171,14 @@ fn gaussian_copula_cdf_raw(u1: f64, u2: f64, rho: f64) -> f64 {
     if u2 >= 1.0 {
         return u1.clamp(0.0, 1.0);
     }
-    let Ok(std_norm) = Normal::new(0.0, 1.0) else {
+    let (Ok(p1), Ok(p2), Ok(r)) = (
+        Probability::new(u1),
+        Probability::new(u2),
+        Correlation::new(rho.clamp(-1.0, 1.0)),
+    ) else {
         return 0.0;
     };
-    let z1 = std_norm.inverse_cdf(u1);
-    let z2 = std_norm.inverse_cdf(u2);
-    bivariate_normal_cdf_inner(z1, z2, rho)
+    bivariate_copula_cdf(p1, p2, r).map_or(0.0, |p| p.value())
 }
 
 fn student_t_copula_cdf_raw(u1: f64, u2: f64, rho: f64, nu: f64) -> f64 {
