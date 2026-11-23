@@ -1,4 +1,4 @@
-# ADR 0046: `WorkspaceDataBus` Cross-Domain Graph Coupling and Zero-Allocation Graph Solvers
+# ADR 0047: `WorkspaceDataBus` Cross-Domain Graph Coupling and Zero-Allocation Graph Solvers
 
 ## Status
 Accepted (extends [ADR 0009](0009-reusable-graph-layout-algorithms.md), [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0022](0022-unify-preset-state-serialization.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
