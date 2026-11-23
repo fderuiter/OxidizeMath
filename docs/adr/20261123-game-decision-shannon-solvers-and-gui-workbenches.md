@@ -30,4 +30,4 @@ Previously, [`crates/domain_applied/src/applied/game_theory`](../../crates/domai
 
 - All new `domain_applied` and `pure_math` hot-path solvers execute with zero dynamic heap allocations under `VerifiedAllocator`.
 - `math_explorer` preserves clean feature isolation between `applied`, `pure_math`, and `ai` while exposing uniform umbrella error conversions.
-- All 93 registered `InteractiveTool` workbenches and 159 `StarterPresetMetadata` cards satisfy lossless URL state sharing, preset schema validation, deferred PNG/SVG plot export, and the 3 MB WASM bundle budget.
+- All 94 registered `InteractiveTool` workbenches and 163 `StarterPresetMetadata` cards satisfy lossless URL state sharing, preset schema validation, deferred PNG/SVG plot export, and the 3 MB WASM bundle budget.
