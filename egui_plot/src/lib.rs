@@ -19,6 +19,7 @@ pub mod export_modal;
 pub mod export_primitives;
 mod file_io;
 mod fit;
+mod fit_export;
 mod fit_overlay;
 mod format;
 mod items;
