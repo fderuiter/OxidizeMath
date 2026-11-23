@@ -48,6 +48,9 @@ mod state_bounds_tests;
 pub mod state_guard;
 #[cfg(test)]
 mod state_guard_tests;
+pub(crate) mod theory_links;
+#[cfg(test)]
+mod theory_links_tests;
 pub mod trace_overlay;
 mod ui;
 mod url_share;
@@ -443,7 +446,6 @@ impl SimulationFramework {
             .collect();
 
         available_tools.sort_by_key(|t| (t.display_name, t.id));
-
         let mut framework = Self {
             available_tools,
             active_tool: None,
@@ -481,11 +483,9 @@ impl SimulationFramework {
             sync_state: FrameworkSyncState::default(),
             rev_cache: FrameworkRevisionCache::default(),
         };
-
         if !framework.available_tools.is_empty() {
             framework.select_tool(0);
         }
-
         framework
     }
 }

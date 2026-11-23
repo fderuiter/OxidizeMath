@@ -1,114 +1,17 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{
-    default_morpho_atlas_axes, is_default_morpho_atlas_axes, MORPHO_ATLAS_AXIS_PAIRS,
-};
+use super::runner::MorphogenesisKineticsAdapter;
 use super::MorphogenesisTool;
-use crate::async_sim::{SimCommand, SimWorkerState};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::async_sim::SimCommand;
 use crate::framework::{
     decode_u8_grid, draw_brush_palette_controls, encode_u8_grid, RasterBrushStroke,
 };
+use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui;
 use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::{SpatialSchnakenbergKinetics, TuringSystem};
-use serde::{Deserialize, Serialize};
-
-fn default_grid_dim() -> usize {
-    100
-}
-
-/// Complete validated state schema for [`MorphogenesisTool`], compatible with `PRESET_TURING_*`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MorphogenesisToolState {
-    /// Schnakenberg activator production rate `a` (`0.0..=1.0`).
-    pub a: f64,
-    /// Schnakenberg inhibitor production rate `b` (`0.0..=2.0`).
-    pub b: f64,
-    /// Activator diffusion coefficient `D_u` (`0.1..=5.0`).
-    pub d_u: f64,
-    /// Inhibitor diffusion coefficient `D_v` (`10.0..=200.0`).
-    pub d_v: f64,
-    /// Integration time step `dt` (`1e-4..=0.1`).
-    pub dt: f64,
-    /// Spatial grid width (`1..=512`).
-    #[serde(default = "default_grid_dim")]
-    pub width: usize,
-    /// Spatial grid height (`1..=512`).
-    #[serde(default = "default_grid_dim")]
-    pub height: usize,
-    /// Optional worker execution state (`Running` when omitted unless `paused == Some(true)`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub state: Option<SimWorkerState>,
-    /// Legacy boolean pause flag accepted on deserialization.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub paused: Option<bool>,
-    /// Deferred start flag keeping hidden tabs idle until first rendered frame.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub pending_initial_start: bool,
-    /// Optional RLE-encoded spatial `(a, b)` reaction mask (`0`=base, `1`=stripe, `2`=spot).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mask_rle: Option<String>,
-    /// Persisted visibility of the progressive 2D parameter atlas (never raster pixels).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub atlas_visible: bool,
-    /// Persisted `(x, y)` axis parameter keys for the 2D parameter atlas.
-    #[serde(
-        default = "default_morpho_atlas_axes",
-        skip_serializing_if = "is_default_morpho_atlas_axes"
-    )]
-    pub atlas_axes: [String; 2],
-}
-
-impl MorphogenesisToolState {
-    /// Validates finiteness, parameter domain bounds, spatial mask RLE, and atlas axis keys.
-    pub fn validate(&self) -> Result<(), String> {
-        let checks = [
-            ("a", self.a, 0.0, 1.0),
-            ("b", self.b, 0.0, 2.0),
-            ("d_u", self.d_u, 0.1, 5.0),
-            ("d_v", self.d_v, 10.0, 200.0),
-            ("dt", self.dt, 1e-4, 0.1),
-        ];
-        for (name, val, min, max) in checks {
-            if !val.is_finite() || val < min || val > max {
-                return Err(format!(
-                    "Morphogenesis parameter '{name}' = {val} must be finite within [{min}, {max}]"
-                ));
-            }
-        }
-        if self.width == 0 || self.width > 512 || self.height == 0 || self.height > 512 {
-            return Err(format!(
-                "Morphogenesis dimensions {}x{} must be within 1..=512",
-                self.width, self.height
-            ));
-        }
-        if let Some(ref rle) = self.mask_rle {
-            let _ = decode_u8_grid(rle, self.width, self.height, 2)?;
-        }
-        let valid_axes = MORPHO_ATLAS_AXIS_PAIRS
-            .iter()
-            .any(|&(xk, yk)| xk == self.atlas_axes[0] && yk == self.atlas_axes[1]);
-        if !valid_axes {
-            return Err(format!(
-                "Invalid Morphogenesis atlas axes ('{}', '{}')",
-                self.atlas_axes[0], self.atlas_axes[1]
-            ));
-        }
-        Ok(())
-    }
-
-    pub(crate) fn resolve_target_state(&self) -> SimWorkerState {
-        self.state.unwrap_or_else(|| {
-            if self.paused.unwrap_or(false) {
-                SimWorkerState::Ready
-            } else {
-                SimWorkerState::Running
-            }
-        })
-    }
-}
+use math_explorer::biology::morphogenesis::{
+    ReactionKinetics, SpatialSchnakenbergKinetics, TuringSystem,
+};
 
 /// Schnakenberg `(a, b)` kinetic rates stamped by [`MorphoBrushMode::StripeMask`].
 pub const STRIPE_MASK_RATES: (f64, f64) = (0.14, 0.86);
@@ -178,14 +81,83 @@ impl MorphoBrushMode {
     }
 }
 
+/// Shared spatial kinetic mask interface implemented by [`SpatialSchnakenbergKinetics`]
+/// and [`MorphogenesisKineticsAdapter`].
+pub trait MorphoSpatialKinetics: ReactionKinetics<2> {
+    /// Clears all cell-level kinetic overrides.
+    fn clear_spatial_mask(&mut self);
+    /// Clears any kinetic override at linear `index`.
+    fn clear_cell_rate_override(&mut self, index: usize);
+    /// Assigns a local `(a, b)` kinetic override at `index`.
+    fn set_cell_rate_override(&mut self, index: usize, a: f64, b: f64);
+    /// Returns the `(u_eq, v_eq)` steady state for [`MorphoBrushMode::EraseMask`].
+    fn erase_equilibrium(&self) -> (f64, f64);
+    /// Returns `(delta, ceiling)` for chemical perturbation brush modes.
+    fn seed_perturbation(&self) -> (f64, f64);
+}
+
+impl MorphoSpatialKinetics for SpatialSchnakenbergKinetics {
+    fn clear_spatial_mask(&mut self) {
+        self.clear_mask();
+    }
+
+    fn clear_cell_rate_override(&mut self, index: usize) {
+        self.clear_cell_override(index);
+    }
+
+    fn set_cell_rate_override(&mut self, index: usize, a: f64, b: f64) {
+        self.set_cell_rates(index, a, b);
+    }
+
+    fn erase_equilibrium(&self) -> (f64, f64) {
+        let u_eq = (self.a + self.b).max(1e-3);
+        (u_eq, self.b / (u_eq * u_eq))
+    }
+
+    fn seed_perturbation(&self) -> (f64, f64) {
+        (0.75, 8.0)
+    }
+}
+
+impl MorphoSpatialKinetics for MorphogenesisKineticsAdapter {
+    fn clear_spatial_mask(&mut self) {
+        self.clear_mask();
+    }
+
+    fn clear_cell_rate_override(&mut self, index: usize) {
+        self.clear_cell_override(index);
+    }
+
+    fn set_cell_rate_override(&mut self, index: usize, a: f64, b: f64) {
+        self.set_cell_rates(index, a, b);
+    }
+
+    fn erase_equilibrium(&self) -> (f64, f64) {
+        match self.mode {
+            MorphogenesisKineticsMode::Schnakenberg => {
+                let u_eq = (self.a + self.b).max(1e-3);
+                (u_eq, self.b / (u_eq * u_eq))
+            }
+            MorphogenesisKineticsMode::GrayScott => (1.0, 0.0),
+        }
+    }
+
+    fn seed_perturbation(&self) -> (f64, f64) {
+        match self.mode {
+            MorphogenesisKineticsMode::Schnakenberg => (0.75, 8.0),
+            MorphogenesisKineticsMode::GrayScott => (0.25, 1.0),
+        }
+    }
+}
+
 /// Applies an RLE-encoded spatial mask (`0` = baseline, `1` = stripe, `2` = spot) onto `kinetics`.
-pub fn apply_mask_rle_to_kinetics(
-    kinetics: &mut SpatialSchnakenbergKinetics,
+pub fn apply_mask_rle_to_kinetics<K: MorphoSpatialKinetics>(
+    kinetics: &mut K,
     width: usize,
     height: usize,
     mask_rle: Option<&str>,
 ) {
-    kinetics.clear_mask();
+    kinetics.clear_spatial_mask();
     let Some(rle) = mask_rle else {
         return;
     };
@@ -194,22 +166,23 @@ pub fn apply_mask_rle_to_kinetics(
     };
     for (idx, sym) in decoded.into_iter().enumerate() {
         match sym {
-            1 => kinetics.set_cell_rates(idx, STRIPE_MASK_RATES.0, STRIPE_MASK_RATES.1),
-            2 => kinetics.set_cell_rates(idx, SPOT_MASK_RATES.0, SPOT_MASK_RATES.1),
+            1 => kinetics.set_cell_rate_override(idx, STRIPE_MASK_RATES.0, STRIPE_MASK_RATES.1),
+            2 => kinetics.set_cell_rate_override(idx, SPOT_MASK_RATES.0, SPOT_MASK_RATES.1),
             _ => {}
         }
     }
 }
 
 /// Applies a [`MorphoBrushMode`] cell batch directly to `TuringSystem` slices and kinetic masks.
-pub fn apply_morpho_cells_to_system(
-    system: &mut TuringSystem<2, SpatialSchnakenbergKinetics, FiniteDifference2D>,
+pub fn apply_morpho_cells_to_system<K: MorphoSpatialKinetics>(
+    system: &mut TuringSystem<2, K, FiniteDifference2D>,
     width: usize,
     height: usize,
     cells: &[(usize, usize)],
     mode: MorphoBrushMode,
 ) {
     let total = width * height;
+    let (seed_delta, ceiling) = system.kinetics.seed_perturbation();
     for &(x, y) in cells {
         if x >= width || y >= height {
             continue;
@@ -220,34 +193,74 @@ pub fn apply_morpho_cells_to_system(
         }
         match mode {
             MorphoBrushMode::ActivatorSeed => {
-                let next_u = (system.u()[idx] + 0.75).clamp(0.0, 8.0);
+                let next_u = (system.u()[idx] + seed_delta).clamp(0.0, ceiling);
                 system.u_mut()[idx] = next_u;
             }
             MorphoBrushMode::InhibitorSeed => {
-                let next_v = (system.v()[idx] + 0.75).clamp(0.0, 8.0);
+                let next_v = (system.v()[idx] + seed_delta).clamp(0.0, ceiling);
                 system.v_mut()[idx] = next_v;
             }
             MorphoBrushMode::StripeMask => {
-                system
-                    .kinetics
-                    .set_cell_rates(idx, STRIPE_MASK_RATES.0, STRIPE_MASK_RATES.1);
-                system.u_mut()[idx] = (system.u()[idx] + 0.15).clamp(0.0, 8.0);
+                system.kinetics.set_cell_rate_override(
+                    idx,
+                    STRIPE_MASK_RATES.0,
+                    STRIPE_MASK_RATES.1,
+                );
+                system.u_mut()[idx] = (system.u()[idx] + 0.15).clamp(0.0, ceiling);
             }
             MorphoBrushMode::SpotMask => {
                 system
                     .kinetics
-                    .set_cell_rates(idx, SPOT_MASK_RATES.0, SPOT_MASK_RATES.1);
-                system.u_mut()[idx] = (system.u()[idx] + 0.25).clamp(0.0, 8.0);
+                    .set_cell_rate_override(idx, SPOT_MASK_RATES.0, SPOT_MASK_RATES.1);
+                system.u_mut()[idx] = (system.u()[idx] + 0.25).clamp(0.0, ceiling);
             }
             MorphoBrushMode::EraseMask => {
-                system.kinetics.clear_cell_override(idx);
-                let a = system.kinetics.a;
-                let b = system.kinetics.b;
-                let u_eq = (a + b).max(1e-3);
+                system.kinetics.clear_cell_rate_override(idx);
+                let (u_eq, v_eq) = system.kinetics.erase_equilibrium();
                 system.u_mut()[idx] = u_eq;
-                system.v_mut()[idx] = b / (u_eq * u_eq);
+                system.v_mut()[idx] = v_eq;
             }
         }
+    }
+}
+
+/// Dispatches `clear_mask`, `ApplyBrushCells`, and `ApplyBrush` worker commands onto `system`.
+pub(crate) fn apply_brush_sim_command<K: MorphoSpatialKinetics>(
+    system: &mut TuringSystem<2, K, FiniteDifference2D>,
+    width: usize,
+    height: usize,
+    cmd: &SimCommand,
+) {
+    match cmd {
+        SimCommand::Custom(s) if s == "clear_mask" => {
+            system.kinetics.clear_spatial_mask();
+        }
+        SimCommand::ApplyBrushCells { cells, mode } => {
+            apply_morpho_cells_to_system(system, width, height, cells, MorphoBrushMode::from_code(*mode));
+        }
+        SimCommand::ApplyBrush {
+            cx,
+            cy,
+            r,
+            is_obstacle,
+        } => {
+            let cells = crate::framework::generate_brush_cells(
+                crate::framework::BrushStencil::Circle,
+                crate::framework::SymmetryMode::None,
+                ((*cx).max(0) as usize, (*cy).max(0) as usize),
+                ((*cx).max(0) as usize, (*cy).max(0) as usize),
+                (*r).max(0) as usize,
+                width,
+                height,
+            );
+            let mode = if *is_obstacle {
+                MorphoBrushMode::ActivatorSeed
+            } else {
+                MorphoBrushMode::EraseMask
+            };
+            apply_morpho_cells_to_system(system, width, height, &cells, mode);
+        }
+        _ => {}
     }
 }
 
@@ -330,51 +343,6 @@ impl MorphogenesisTool {
         if ui.button("Clear Spatial Mask").clicked() {
             self.clear_spatial_mask(Some(ctx));
         }
-    }
-}
-
-impl FiniteStateGuard for MorphogenesisTool {
-    fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.worker.diagnostic_report()
-    }
-
-    fn diverged(&self) -> bool {
-        !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn auto_scale_step_size(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.dt = (p.dt * 0.5).max(1e-4);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn clamp_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = p.a.clamp(0.0, 1.0);
-        p.b = p.b.clamp(0.0, 2.0);
-        p.d_u = p.d_u.clamp(0.1, 5.0);
-        p.d_v = p.d_v.clamp(10.0, 200.0);
-        p.dt = p.dt.clamp(0.001, 0.1);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn reset_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = 0.1;
-        p.b = 0.9;
-        p.d_u = 1.0;
-        p.d_v = 100.0;
-        p.dt = 0.05;
-        p.mask_rle = None;
-        drop(p);
-        self.mask_cells.fill(0);
-        self.reset_system();
     }
 }
 
