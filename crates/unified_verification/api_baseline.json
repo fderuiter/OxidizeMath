@@ -2194,6 +2194,20 @@
       "signature": "pub fn uncertainty_reward (_ : f64) -> f64"
     }
   ],
+  "crates/domain_applied/src/applied/isosurface/capped.rs": [
+    {
+      "signature": "pub fn extract_capped_isosurface (_ : & VoxelGrid , _ : f32 , _ : bool , _ : Option < CutPlaneCap > ,) -> Result < Mesh , IsosurfaceError >"
+    },
+    {
+      "signature": "pub fn extract_capped_isosurface_into (_ : & VoxelGrid , _ : f32 , _ : bool , _ : Option < CutPlaneCap > , _ : & mut VoxelGrid , _ : & mut IsosurfaceWorkspace , _ : & mut Mesh ,) -> Result < () , IsosurfaceError >"
+    },
+    {
+      "signature": "pub struct CappedBoxBounds"
+    },
+    {
+      "signature": "pub struct CutPlaneCap"
+    }
+  ],
   "crates/domain_applied/src/applied/isosurface/gradients.rs": [
     {
       "signature": "impl CentralDifferenceEstimator { pub fn world_normal_and_magnitude (& self , _ : & VoxelGrid , _ : usize , _ : usize , _ : usize ,) -> (Point3D , f32) }"
@@ -2226,6 +2240,18 @@
     }
   ],
   "crates/domain_applied/src/applied/isosurface/mod.rs": [
+    {
+      "signature": "pub use capped :: CappedBoxBounds"
+    },
+    {
+      "signature": "pub use capped :: CutPlaneCap"
+    },
+    {
+      "signature": "pub use capped :: extract_capped_isosurface"
+    },
+    {
+      "signature": "pub use capped :: extract_capped_isosurface_into"
+    },
     {
       "signature": "pub use gradients :: CentralDifferenceEstimator"
     },
@@ -8465,13 +8491,28 @@
   ],
   "crates/oxidize_core/src/mesh/export_stl.rs": [
     {
+      "signature": "pub const MAX_EXPORT_SPAN_MM : f32"
+    },
+    {
+      "signature": "pub const MIN_EXPORT_SPAN_MM : f32"
+    },
+    {
+      "signature": "pub const STL_HEADER_TEXT : & [u8]"
+    },
+    {
       "signature": "pub fn export_mesh_to_stl_ascii (_ : & Mesh) -> Result < String , Error >"
     },
     {
       "signature": "pub fn export_mesh_to_stl_binary (_ : & Mesh) -> Result < Vec < u8 > , Error >"
     },
     {
+      "signature": "pub fn export_mesh_to_stl_binary_scaled (_ : & Mesh , _ : f32 ,) -> Result < Vec < u8 > , Error >"
+    },
+    {
       "signature": "pub fn parse_stl_ascii (_ : & str) -> Result < Mesh , Error >"
+    },
+    {
+      "signature": "pub fn scale_mesh_to_millimeters (_ : & mut Mesh , _ : f32) -> Result < () , Error >"
     }
   ],
   "crates/oxidize_core/src/mesh/mod.rs": [
