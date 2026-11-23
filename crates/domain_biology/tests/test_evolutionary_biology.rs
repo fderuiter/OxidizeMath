@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test evolutionary biology.
 use domain_biology::biology::evolution::HawkDovePopulation;
 
 #[test]
