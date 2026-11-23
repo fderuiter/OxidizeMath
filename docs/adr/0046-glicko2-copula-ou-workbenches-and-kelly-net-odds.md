@@ -27,6 +27,9 @@ Updated GUI inventory totals:
 - StarterPresetMetadata cards: 106
 ```
 
+4. **Ignore Rustdoc Examples When Scanning `#[verified]` and `#[embed_theory]` Attributes in `oxidize_core`**:
+   - Guard `AstVisitor::inspect_fn_attr` in [`crates/oxidize_core/src/ast_visitor.rs`](../../crates/oxidize_core/src/ast_visitor.rs) so `#[doc = "..."]` attributes extract `[cite:...]` tags without misclassifying rustdoc code blocks mentioning `#[verified]` or `embed_theory` (such as procedural macro docs in `verified_engine_macros`) as unlinked verified modules in `traceability_manifest.json`.
+
 ## Consequences
 - **Positive**: Users can analyze simultaneous Glicko-2 tournaments, bivariate tail dependence, mean-reverting OU trajectories, and accurate net-odds Kelly compounding directly in the browser with full PNG, SVG, CSV, JSON, Markdown, and `#tab=...` URL share support.
 - **Negative / Trade-offs**: Adding `Odds::from_net_odds` extends the public `pure_math` and `math_explorer` API surface, requiring `api_baseline.json` regeneration. Splitting tool logic, UI, and export formatters into focused submodules preserves the 500-line file limit, 60-line function limit, zero-allocation steady-state frames, and `< 3 MB` WASM bundle budget.

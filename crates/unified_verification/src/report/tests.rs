@@ -54,7 +54,6 @@ fn test_print_report_threshold_enforcement() {
     // Coverage at or above 50.0% with valid density should pass
     let passed_high = print_report(55.0, 100.0, &metrics, &[]);
     assert!(passed_high, "Coverage at or above 50.0% should pass");
-    let _ = fs::remove_file("Verification_Certificate.json");
 }
 
 #[test]
