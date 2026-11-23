@@ -97,6 +97,7 @@ pub trait ExplorerTab {
             | "General Relativity"
             | "Medical Physics"
             | "MRI Physics"
+            | "Optics & Caustics"
             | "Quantum Mechanics"
             | "Solid State Physics" => "Physics",
 
@@ -190,6 +191,7 @@ pub trait ExplorerTab {
             "MRI Physics" => "mri",
             "Neuroscience" => "neuroscience",
             "Number Theory" => "number_theory",
+            "Optics & Caustics" => "optics",
             "Paradox Lab" => "paradox_lab",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",

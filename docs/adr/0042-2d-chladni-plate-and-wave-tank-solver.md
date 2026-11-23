@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-OxidizeMath previously modeled 1D partial differential equations (`pure_math::analysis::pde`), closed-form Fraunhofer slit intensities (`domain_physics::optics::diffraction`), and 2D Navier-Stokes fluid grids, without a unified interactive 2D wave-propagation and thin-plate modal laboratory. Simulating both second-order hyperbolic acoustic/optical waves and fourth-order Kirchhoff-Love biharmonic Chladni plates interactively at 60 FPS on both native desktop and `wasm32-unknown-unknown` requires:
+OxidizeMath previously modeled 1D partial differential equations (`pure_math::analysis::pde`), closed-form Fraunhofer slit intensities (`domain_physics::physics::optics::diffraction`), and 2D Navier-Stokes fluid grids, without a unified interactive 2D wave-propagation and thin-plate modal laboratory. Simulating both second-order hyperbolic acoustic/optical waves and fourth-order Kirchhoff-Love biharmonic Chladni plates interactively at 60 FPS on both native desktop and `wasm32-unknown-unknown` requires:
 
 1. **Zero dynamic heap allocations** inside time-stepping, Chladni sand particle drift, Marching-Squares nodal contour extraction, and 2D FFT spectral decomposition under `VerifiedAllocator::lock_allocations()` (NASA Power of 10 Rule 3).
 2. **Unconditional explicit substep stability** across both second-order Courant-Friedrichs-Lewy bounds ($c \Delta t / \min(\Delta x, \Delta y) \le 0.65$) and fourth-order biharmonic Fourier stability bounds ($\sqrt{D} \Delta t (\Delta x^{-2} + \Delta y^{-2}) \le 0.18$).

@@ -6054,6 +6054,316 @@
       "signature": "pub struct MassNumber"
     }
   ],
+  "crates/domain_physics/src/physics/optics/caustics.rs": [
+    {
+      "signature": "impl CausticEnvelopeBuffer { pub fn bin_center_y (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl CausticEnvelopeBuffer { pub fn detector_bins (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CausticEnvelopeBuffer { pub fn new (_ : usize , _ : usize , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl CausticEnvelopeBuffer { pub fn points (& self) -> & [CausticPoint] }"
+    },
+    {
+      "signature": "impl CausticEnvelopeBuffer { pub fn set_detector_span (& mut self , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "pub fn coffee_cup_cusp_x (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn extract_caustic_envelope (_ : & RayFanWorkspace , _ : f64 , _ : f64 , _ : & mut CausticEnvelopeBuffer ,) -> usize"
+    },
+    {
+      "signature": "pub fn nephroid_caustic_point (_ : f64 , _ : f64) -> [f64 ; 2]"
+    },
+    {
+      "signature": "pub fn thin_biconvex_paraxial_focal_length (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct CausticEnvelopeBuffer"
+    },
+    {
+      "signature": "pub struct CausticPoint"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/diffraction.rs": [
+    {
+      "signature": "impl DiffractionAperture { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl FraunhoferProfileBuffer { pub fn angles_rad (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl FraunhoferProfileBuffer { pub fn intensities (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl FraunhoferProfileBuffer { pub fn markers (& self) -> & [CriticalPointMarker] }"
+    },
+    {
+      "signature": "impl FraunhoferProfileBuffer { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl FraunhoferProfileBuffer { pub fn screen_y_mm (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub const AIRY_FIRST_ZERO_J1 : f64"
+    },
+    {
+      "signature": "pub const AIRY_SECOND_ZERO_J1 : f64"
+    },
+    {
+      "signature": "pub const AIRY_THIRD_ZERO_J1 : f64"
+    },
+    {
+      "signature": "pub enum CriticalPointKind"
+    },
+    {
+      "signature": "pub enum DiffractionAperture"
+    },
+    {
+      "signature": "pub fn airy_normalized_intensity (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn fraunhofer_intensity_at_angle (_ : DiffractionAperture , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn sample_fraunhofer_profile (_ : & FraunhoferConfig , _ : usize , _ : & mut FraunhoferProfileBuffer ,) -> usize"
+    },
+    {
+      "signature": "pub struct CriticalPointMarker"
+    },
+    {
+      "signature": "pub struct FraunhoferConfig"
+    },
+    {
+      "signature": "pub struct FraunhoferProfileBuffer"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/mod.rs": [
+    {
+      "signature": "pub use caustics :: CausticEnvelopeBuffer"
+    },
+    {
+      "signature": "pub use caustics :: CausticPoint"
+    },
+    {
+      "signature": "pub use caustics :: coffee_cup_cusp_x"
+    },
+    {
+      "signature": "pub use caustics :: extract_caustic_envelope"
+    },
+    {
+      "signature": "pub use caustics :: nephroid_caustic_point"
+    },
+    {
+      "signature": "pub use caustics :: thin_biconvex_paraxial_focal_length"
+    },
+    {
+      "signature": "pub use diffraction :: AIRY_FIRST_ZERO_J1"
+    },
+    {
+      "signature": "pub use diffraction :: AIRY_SECOND_ZERO_J1"
+    },
+    {
+      "signature": "pub use diffraction :: AIRY_THIRD_ZERO_J1"
+    },
+    {
+      "signature": "pub use diffraction :: CriticalPointKind"
+    },
+    {
+      "signature": "pub use diffraction :: CriticalPointMarker"
+    },
+    {
+      "signature": "pub use diffraction :: DiffractionAperture"
+    },
+    {
+      "signature": "pub use diffraction :: FraunhoferConfig"
+    },
+    {
+      "signature": "pub use diffraction :: FraunhoferProfileBuffer"
+    },
+    {
+      "signature": "pub use diffraction :: airy_normalized_intensity"
+    },
+    {
+      "signature": "pub use diffraction :: fraunhofer_intensity_at_angle"
+    },
+    {
+      "signature": "pub use diffraction :: sample_fraunhofer_profile"
+    },
+    {
+      "signature": "pub use ray_tracing :: EikonalRaySystem"
+    },
+    {
+      "signature": "pub use ray_tracing :: GrinMedium"
+    },
+    {
+      "signature": "pub use ray_tracing :: OpticalBenchScene"
+    },
+    {
+      "signature": "pub use ray_tracing :: PolarizationMode"
+    },
+    {
+      "signature": "pub use ray_tracing :: RayFanConfig"
+    },
+    {
+      "signature": "pub use ray_tracing :: RayFanWorkspace"
+    },
+    {
+      "signature": "pub use ray_tracing :: TracedRayMeta"
+    },
+    {
+      "signature": "pub use ray_tracing :: trace_ray_fan"
+    },
+    {
+      "signature": "pub use refraction :: CauchyDispersion"
+    },
+    {
+      "signature": "pub use refraction :: FresnelCoefficients"
+    },
+    {
+      "signature": "pub use refraction :: GlassMaterial"
+    },
+    {
+      "signature": "pub use refraction :: SnellOutcome"
+    },
+    {
+      "signature": "pub use refraction :: brewster_angle"
+    },
+    {
+      "signature": "pub use refraction :: cauchy_refractive_index"
+    },
+    {
+      "signature": "pub use refraction :: critical_angle"
+    },
+    {
+      "signature": "pub use refraction :: fresnel_polarized"
+    },
+    {
+      "signature": "pub use refraction :: intersect_ray_circle_arc"
+    },
+    {
+      "signature": "pub use refraction :: intersect_ray_segment"
+    },
+    {
+      "signature": "pub use refraction :: normalize_2d"
+    },
+    {
+      "signature": "pub use refraction :: reflect_vector_2d"
+    },
+    {
+      "signature": "pub use refraction :: snell_refract_angle"
+    },
+    {
+      "signature": "pub use refraction :: snell_vector_2d"
+    },
+    {
+      "signature": "pub use sensing :: lambertian_intensity"
+    },
+    {
+      "signature": "pub use sensing :: lws_range_resolution"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/ray_tracing/mod.rs": [
+    {
+      "signature": "impl GrinMedium { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl GrinMedium { pub fn grad_half_n_sq (self , _ : f64 , _ : f64) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl GrinMedium { pub fn refractive_index_at (self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl PolarizationMode { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn ray_vertices (& self , _ : usize) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn rays (& self) -> & [TracedRayMeta] }"
+    },
+    {
+      "signature": "pub enum GrinMedium"
+    },
+    {
+      "signature": "pub enum OpticalBenchScene"
+    },
+    {
+      "signature": "pub enum PolarizationMode"
+    },
+    {
+      "signature": "pub fn trace_ray_fan (_ : & RayFanConfig , _ : & mut RayFanWorkspace) -> usize"
+    },
+    {
+      "signature": "pub struct EikonalRaySystem"
+    },
+    {
+      "signature": "pub struct RayFanConfig"
+    },
+    {
+      "signature": "pub struct RayFanWorkspace"
+    },
+    {
+      "signature": "pub struct TracedRayMeta"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/refraction.rs": [
+    {
+      "signature": "impl GlassMaterial { pub const fn cauchy (self) -> CauchyDispersion }"
+    },
+    {
+      "signature": "impl GlassMaterial { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum GlassMaterial"
+    },
+    {
+      "signature": "pub enum SnellOutcome"
+    },
+    {
+      "signature": "pub fn brewster_angle (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn cauchy_refractive_index (_ : CauchyDispersion , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn critical_angle (_ : f64 , _ : f64) -> Option < f64 >"
+    },
+    {
+      "signature": "pub fn fresnel_polarized (_ : f64 , _ : f64 , _ : f64) -> FresnelCoefficients"
+    },
+    {
+      "signature": "pub fn intersect_ray_circle_arc (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2] , _ : f64 , _ : Option < f64 > , _ : f64 ,) -> Option < (f64 , [f64 ; 2] , [f64 ; 2]) >"
+    },
+    {
+      "signature": "pub fn intersect_ray_segment (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2] ,) -> Option < (f64 , [f64 ; 2] , [f64 ; 2]) >"
+    },
+    {
+      "signature": "pub fn normalize_2d (_ : [f64 ; 2]) -> Option < [f64 ; 2] >"
+    },
+    {
+      "signature": "pub fn reflect_vector_2d (_ : [f64 ; 2] , _ : [f64 ; 2]) -> [f64 ; 2]"
+    },
+    {
+      "signature": "pub fn snell_refract_angle (_ : f64 , _ : f64 , _ : f64) -> Option < f64 >"
+    },
+    {
+      "signature": "pub fn snell_vector_2d (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : f64 , _ : f64 ,) -> SnellOutcome"
+    },
+    {
+      "signature": "pub struct CauchyDispersion"
+    },
+    {
+      "signature": "pub struct FresnelCoefficients"
+    }
+  ],
   "crates/domain_physics/src/physics/optics/sensing.rs": [
     {
       "signature": "pub fn lambertian_intensity (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"

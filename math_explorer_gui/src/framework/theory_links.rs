@@ -83,6 +83,9 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
         "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
+        "CausticsRayBenchTool" | "FraunhoferDiffractionTool" => {
+            &["geometric_optics_and_caustics", "optics"]
+        }
         _ => &[],
     };
     tokens.extend(explicit.iter().map(|s| (*s).to_string()));
@@ -115,6 +118,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
             "general_relativity",
             "tensors",
         ],
+        "optics" => &["geometric_optics_and_caustics", "optics"],
         _ => &[],
     };
     tokens.extend(aliases.iter().map(|s| (*s).to_string()));

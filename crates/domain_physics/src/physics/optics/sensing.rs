@@ -2,6 +2,8 @@
 //!
 //! Models for light-based sensors and propagation.
 
+// [cite:optics]
+
 /// Calculates intensity using the Lambertian Intensity Profile.
 ///
 /// $$ I_{tx}(r_i, \phi_i) = \frac{(n + 1) P_{tx}}{2\pi r_i^2} \cos^n(\phi_i) $$
