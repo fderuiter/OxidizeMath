@@ -9,7 +9,7 @@ inventory::submit! {
         id: "HyperbolicGeometryTool",
         display_name: "Hyperbolic Geometry",
         domain: "geometry_topology",
-        tags: &["hyperbolic", "poincare-disk", "mobius", "tiling", "billiards"],
+        tags: &["hyperbolic", "poincare disk", "mobius", "tiling", "billiards"],
         build: || Box::new(HyperbolicGeometryTool::default()),
     }
 }
