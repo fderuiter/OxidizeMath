@@ -13,6 +13,7 @@ pub type Result<T> = std::result::Result<T, MarkovError>;
 use nalgebra::{DMatrix, DVector, RealField};
 use num_traits::ToPrimitive;
 
+mod serde_impl;
 /// Gillespie trajectory simulation (allocating and zero-allocation variants).
 pub mod simulation;
 /// Communicating classes and rank-checked QR linear steady-state solver.
@@ -61,6 +62,11 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     #[verified_engine::verified]
     pub fn new(generator: DMatrix<T>) -> Result<Self> {
         let n = generator.nrows();
+        if n == 0 {
+            return Err(MarkovError::InvalidGenerator {
+                reason: "Generator matrix must have at least one state".to_string(),
+            });
+        }
         if generator.ncols() != n {
             return Err(MarkovError::Math(
                 math_commons::error::MathError::DimensionMismatch {

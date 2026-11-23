@@ -6,41 +6,49 @@ use nalgebra::{DMatrix, DVector, RealField};
 use num_traits::ToPrimitive;
 
 impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
-    /// Computes the exact log-likelihood $\ln P(Y_1, \dots, Y_T)$ from forward scaling factors.
+    /// Computes $\ln P(Y_1, \dots, Y_T)$ by accumulating the log conditional scaling factors
+    /// $\sum_{t=0}^{T-1} \ln s_t = -\sum_{t=0}^{T-1} \ln c_t$ ($c_t = 1 / s_t$).
     ///
     /// Returns $-\infty$ when the observation sequence has zero probability under the model.
+    #[verified_engine::verified]
+    pub fn log_likelihood(&self, observations: &[usize]) -> Result<T> {
+        let (_, scaling_factors) = self.forward_probabilities(observations)?;
+        let zero = T::zero();
+        let neg_inf = T::from_f64(f64::NEG_INFINITY)
+            .or_else(T::min_value)
+            .unwrap_or_else(|| zero.ln());
+        let mut log_prob = zero;
+        for &s_t in &scaling_factors {
+            if s_t <= zero {
+                return Ok(neg_inf);
+            }
+            log_prob += s_t.ln();
+        }
+        Ok(log_prob)
+    }
+
+    /// Computes the exact log-likelihood $\ln P(Y_1, \dots, Y_T)$ from forward scaling factors.
     ///
     /// # Errors
     ///
     /// Returns [`MarkovError::InvalidObservation`] if `observations` is empty or out of bounds.
     #[verified_engine::verified]
     pub fn forward_log_likelihood(&self, observations: &[usize]) -> Result<T> {
-        let (_, scaling_factors) = self.forward_probabilities(observations)?;
-        let zero = T::zero();
-        let neg_inf = T::from_f64(f64::NEG_INFINITY).unwrap();
-
-        let mut log_lik = zero;
-        for &c_t in &scaling_factors {
-            if c_t <= zero {
-                return Ok(neg_inf);
-            }
-            log_lik += c_t.ln();
-        }
-        Ok(log_lik)
+        self.log_likelihood(observations)
     }
 
-    /// Computes $P(Y_1, \dots, Y_T) = \exp(\text{forward\_log\_likelihood})$ using the scaled forward pass.
+    /// Computes $P(Y_1, \dots, Y_T)$ using the scaled forward algorithm.
     ///
-    /// # Errors
-    ///
-    /// Returns [`MarkovError::InvalidObservation`] if `observations` is empty or out of bounds.
+    /// With conditional scaling factors $s_t = P(Y_t \mid Y_{1:t-1})$, the exact observation
+    /// likelihood is $P(Y_{1:T}) = \prod_{t=0}^{T-1} s_t = \exp\!\left(\sum_{t=0}^{T-1} \ln s_t\right)$.
     #[verified_engine::verified]
     pub fn forward(&self, observations: &[usize]) -> Result<T> {
-        let log_lik = self.forward_log_likelihood(observations)?;
-        if !log_lik.is_finite() {
-            return Ok(T::zero());
+        let ll = self.log_likelihood(observations)?;
+        if ll.is_finite() {
+            Ok(ll.exp())
+        } else {
+            Ok(T::zero())
         }
-        Ok(log_lik.exp())
     }
 
     /// Computes scaled forward probabilities $\hat{\alpha}(t, i)$ and step scaling factors $c_t$.

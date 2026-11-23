@@ -1,344 +1,397 @@
-//! Baum-Welch Expectation-Maximization (EM) parameter learning with probability floors.
+//! Zero-allocation Baum-Welch Expectation-Maximization (EM) parameter estimation for HMMs.
+// [cite:clinical_trials_statistics]
 
+pub use super::baum_welch_types::BaumWelchResult;
+use super::baum_welch_types::{BaumWelchConfig, BaumWelchReport, BaumWelchWorkspace};
 use super::model::HiddenMarkovModel;
 use crate::error::MarkovError;
-/// Result alias for Baum-Welch Expectation-Maximization operations.
-pub type Result<T> = std::result::Result<T, MarkovError>;
-use nalgebra::{DMatrix, DVector, RealField};
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::Dimension;
+use nalgebra::RealField;
 use num_traits::ToPrimitive;
 
-/// Summary returned by [`HiddenMarkovModel::baum_welch`].
-#[derive(Debug, Clone)]
-pub struct BaumWelchResult<T: RealField + Copy> {
-    /// Log-likelihood trace $\ln P(Y \mid \theta^{(k)})$ at each accepted EM state.
-    pub log_likelihoods: Vec<T>,
-    /// Number of parameter update iterations completed.
-    pub iterations: usize,
-    /// True if consecutive log-likelihood improvement fell within `tolerance`.
-    pub converged: bool,
+fn validate_bw_inputs<T: RealField + Copy + ToPrimitive>(
+    hmm: &HiddenMarkovModel<T>,
+    observations: &[usize],
+    config: &BaumWelchConfig<T>,
+    workspace: &BaumWelchWorkspace<T>,
+    history: &[T],
+) -> Result<(), MarkovError> {
+    BaumWelchConfig::new(
+        config.max_iterations,
+        config.tolerance,
+        config.dirichlet_alpha,
+    )?;
+    if observations.is_empty() {
+        return Err(MarkovError::InvalidObservation {
+            reason: "Observation sequence is empty".to_string(),
+        });
+    }
+    if history.len() < config.max_iterations {
+        return Err(MarkovError::Math(MathError::DimensionMismatch {
+            expected: Dimension(config.max_iterations),
+            actual: Dimension(history.len()),
+        }));
+    }
+    if workspace.num_states < hmm.num_states
+        || workspace.num_observations < hmm.num_observations
+        || workspace.max_len < observations.len()
+    {
+        return Err(MarkovError::Math(MathError::DimensionMismatch {
+            expected: Dimension(observations.len()),
+            actual: Dimension(workspace.max_len),
+        }));
+    }
+    for &obs in observations {
+        if obs >= hmm.num_observations {
+            return Err(MarkovError::InvalidObservation {
+                reason: "Observation index out of bounds".to_string(),
+            });
+        }
+    }
+    Ok(())
 }
 
-#[verified_engine::verified]
-fn project_floored_simplex<T: RealField + Copy>(probs: &mut [T], floor: T) {
-    let k = probs.len();
-    if k == 0 {
-        return;
+pub(super) fn run_forward_into<T: RealField + Copy + ToPrimitive>(
+    hmm: &HiddenMarkovModel<T>,
+    observations: &[usize],
+    ws: &mut BaumWelchWorkspace<T>,
+) -> T {
+    let n = hmm.num_states;
+    let zero = T::zero();
+    let neg_inf = T::from_f64(f64::NEG_INFINITY)
+        .or_else(T::min_value)
+        .unwrap_or_else(|| zero.ln());
+    let y0 = observations[0];
+    let mut scale0 = zero;
+    for i in 0..n {
+        let v = hmm.initial[i] * hmm.emissions[(i, y0)];
+        ws.alpha[i] = v;
+        scale0 += v;
     }
+    if scale0 <= zero {
+        return neg_inf;
+    }
+    for i in 0..n {
+        ws.alpha[i] /= scale0;
+    }
+    ws.scales[0] = scale0;
+    let mut ll = scale0.ln();
+
+    let mut prev_off = 0;
+    for (step_idx, &y_t) in observations.iter().enumerate().skip(1) {
+        let curr_off = prev_off + n;
+        let mut scale_t = zero;
+        for j in 0..n {
+            let mut sum = zero;
+            for i in 0..n {
+                sum += ws.alpha[prev_off + i] * hmm.transitions[(i, j)];
+            }
+            let v = sum * hmm.emissions[(j, y_t)];
+            ws.alpha[curr_off + j] = v;
+            scale_t += v;
+        }
+        if scale_t <= zero {
+            return neg_inf;
+        }
+        for j in 0..n {
+            ws.alpha[curr_off + j] /= scale_t;
+        }
+        ws.scales[step_idx] = scale_t;
+        ll += scale_t.ln();
+        prev_off = curr_off;
+    }
+    ll
+}
+
+fn init_backward_accumulators<T: RealField + Copy + ToPrimitive>(
+    hmm: &HiddenMarkovModel<T>,
+    observations: &[usize],
+    ws: &mut BaumWelchWorkspace<T>,
+) -> usize {
+    let n = hmm.num_states;
+    let m = hmm.num_observations;
+    let t_max = observations.len();
     let zero = T::zero();
     let one = T::one();
-    let sum = probs
-        .iter()
-        .fold(zero, |acc, &x| acc + if x > zero { x } else { zero });
 
-    if sum <= zero {
-        let unif = one / T::from_usize(k).unwrap();
-        for p in probs.iter_mut() {
-            *p = unif;
+    ws.init_gamma[..n].fill(zero);
+    ws.gamma_trans_sum[..n].fill(zero);
+    ws.gamma_all_sum[..n].fill(zero);
+    ws.xi_sum[..n * n].fill(zero);
+    ws.emission_sum[..n * m].fill(zero);
+    ws.beta_next[..n].fill(one);
+
+    let last_off = (t_max - 1) * n;
+    let y_last = observations[t_max - 1];
+    let mut emit_off = 0;
+    for i in 0..n {
+        let g = ws.alpha[last_off + i];
+        ws.gamma_all_sum[i] += g;
+        ws.emission_sum[emit_off + y_last] += g;
+        if t_max == 1 {
+            ws.init_gamma[i] = g;
         }
-        return;
+        emit_off += m;
     }
-    for p in probs.iter_mut() {
-        *p = if *p > zero { *p / sum } else { zero };
+    last_off
+}
+
+pub(super) fn accumulate_backward_stats<T: RealField + Copy + ToPrimitive>(
+    hmm: &HiddenMarkovModel<T>,
+    observations: &[usize],
+    ws: &mut BaumWelchWorkspace<T>,
+) {
+    let n = hmm.num_states;
+    let m = hmm.num_observations;
+    let t_max = observations.len();
+    let zero = T::zero();
+    let one = T::one();
+    let mut step_off = init_backward_accumulators(hmm, observations, ws);
+
+    for t in (0..t_max - 1).rev() {
+        step_off -= n;
+        let y_t = observations[t];
+        let y_next = observations[t + 1];
+        let inv_s_next = one / ws.scales[t + 1];
+        for j in 0..n {
+            ws.obs_beta[j] = hmm.emissions[(j, y_next)] * ws.beta_next[j];
+        }
+        let mut norm = zero;
+        for i in 0..n {
+            let mut sum = zero;
+            for j in 0..n {
+                sum += hmm.transitions[(i, j)] * ws.obs_beta[j];
+            }
+            ws.beta_curr[i] = sum * inv_s_next;
+            norm += ws.alpha[step_off + i] * ws.beta_curr[i];
+        }
+        let inv_norm = if norm > zero { one / norm } else { one };
+        let mut xi_row_off = 0;
+        let mut em_row_off = 0;
+        for i in 0..n {
+            let alpha_i = ws.alpha[step_off + i];
+            let gamma_i = alpha_i * ws.beta_curr[i] * inv_norm;
+            ws.gamma_trans_sum[i] += gamma_i;
+            ws.gamma_all_sum[i] += gamma_i;
+            ws.emission_sum[em_row_off + y_t] += gamma_i;
+            if t == 0 {
+                ws.init_gamma[i] = gamma_i;
+            }
+            let scale_xi = alpha_i * inv_s_next * inv_norm;
+            for j in 0..n {
+                ws.xi_sum[xi_row_off + j] += scale_xi * hmm.transitions[(i, j)] * ws.obs_beta[j];
+            }
+            xi_row_off += n;
+            em_row_off += m;
+        }
+        ws.beta_next[..n].copy_from_slice(&ws.beta_curr[..n]);
     }
-    if floor <= zero {
-        return;
+}
+
+pub(super) fn snapshot_parameters<T: RealField + Copy + ToPrimitive>(
+    hmm: &HiddenMarkovModel<T>,
+    ws: &mut BaumWelchWorkspace<T>,
+) {
+    for (dst, src) in ws.prev_initial.iter_mut().zip(hmm.initial.iter()) {
+        *dst = *src;
+    }
+    for (i, row) in ws
+        .prev_transitions
+        .chunks_mut(hmm.num_states)
+        .take(hmm.num_states)
+        .enumerate()
+    {
+        for (j, slot) in row.iter_mut().enumerate() {
+            *slot = hmm.transitions[(i, j)];
+        }
+    }
+    for (i, row) in ws
+        .prev_emissions
+        .chunks_mut(hmm.num_observations)
+        .take(hmm.num_states)
+        .enumerate()
+    {
+        for (k, slot) in row.iter_mut().enumerate() {
+            *slot = hmm.emissions[(i, k)];
+        }
+    }
+}
+
+pub(super) fn restore_parameters<T: RealField + Copy + ToPrimitive>(
+    hmm: &mut HiddenMarkovModel<T>,
+    ws: &BaumWelchWorkspace<T>,
+) {
+    for (dst, &src) in hmm.initial.iter_mut().zip(ws.prev_initial.iter()) {
+        *dst = src;
+    }
+    for (i, row) in ws
+        .prev_transitions
+        .chunks(hmm.num_states)
+        .take(hmm.num_states)
+        .enumerate()
+    {
+        for (j, &val) in row.iter().enumerate() {
+            hmm.transitions[(i, j)] = val;
+        }
+    }
+    for (i, row) in ws
+        .prev_emissions
+        .chunks(hmm.num_observations)
+        .take(hmm.num_states)
+        .enumerate()
+    {
+        for (k, &val) in row.iter().enumerate() {
+            hmm.emissions[(i, k)] = val;
+        }
+    }
+}
+
+pub(super) fn apply_m_step<T: RealField + Copy + ToPrimitive>(
+    hmm: &mut HiddenMarkovModel<T>,
+    ws: &BaumWelchWorkspace<T>,
+    prior: T,
+    has_transitions: bool,
+) {
+    let n = hmm.num_states;
+    let m = hmm.num_observations;
+    let zero = T::zero();
+
+    let mut pi_sum = zero;
+    for i in 0..n {
+        let v = ws.init_gamma[i] + prior;
+        hmm.initial[i] = v;
+        pi_sum += v;
+    }
+    if pi_sum > zero {
+        for i in 0..n {
+            hmm.initial[i] /= pi_sum;
+        }
     }
 
-    let mut fixed = vec![false; k];
-    for _ in 0..k {
-        let mut changed = false;
-        let mut fixed_count = 0_usize;
-        let mut free_sum = zero;
-        for (i, &p) in probs.iter().enumerate() {
-            if fixed[i] || p < floor {
-                if !fixed[i] {
-                    fixed[i] = true;
-                    changed = true;
+    if has_transitions {
+        let mut xi_off = 0;
+        for i in 0..n {
+            let mut row_sum = zero;
+            for j in 0..n {
+                row_sum += ws.xi_sum[xi_off + j] + prior;
+            }
+            if row_sum > zero {
+                for j in 0..n {
+                    hmm.transitions[(i, j)] = (ws.xi_sum[xi_off + j] + prior) / row_sum;
                 }
-                fixed_count += 1;
-            } else {
-                free_sum += p;
+            }
+            xi_off += n;
+        }
+    }
+
+    let mut em_off = 0;
+    for i in 0..n {
+        let mut row_sum = zero;
+        for k in 0..m {
+            row_sum += ws.emission_sum[em_off + k] + prior;
+        }
+        if row_sum > zero {
+            for k in 0..m {
+                hmm.emissions[(i, k)] = (ws.emission_sum[em_off + k] + prior) / row_sum;
             }
         }
-        if !changed {
-            break;
-        }
-        if fixed_count == k || free_sum <= zero {
-            let unif = one / T::from_usize(k).unwrap();
-            for p in probs.iter_mut() {
-                *p = unif;
-            }
-            return;
-        }
-        let remaining = one - T::from_usize(fixed_count).unwrap() * floor;
-        for (i, p) in probs.iter_mut().enumerate() {
-            *p = if fixed[i] {
-                floor
-            } else {
-                (*p / free_sum) * remaining
-            };
-        }
+        em_off += m;
     }
 }
 
 impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
-    /// Estimates $(\pi, A, B)$ via Baum-Welch Expectation-Maximization with probability floor `prob_floor`.
-    ///
-    /// Enforces simplex floor constraints $p_k \ge \text{prob\_floor}$ across initial, transition,
-    /// and emission rows to prevent zero-lock absorption during training while guaranteeing
-    /// monotonically non-decreasing log-likelihoods.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `observations` is invalid, `max_iters == 0`, `tolerance < 0`,
-    /// `prob_floor` exceeds $1 / \max(N, M)$, or the sequence has zero initial likelihood.
+    /// Fits `(initial, transitions, emissions)` via Baum-Welch EM in-place using preallocated
+    /// [`BaumWelchWorkspace`] buffers with zero heap allocations.
     #[verified_engine::verified]
-    pub fn baum_welch(
+    pub fn fit_baum_welch_into(
         &mut self,
         observations: &[usize],
-        max_iters: usize,
-        tolerance: T,
-        prob_floor: T,
-    ) -> Result<BaumWelchResult<T>> {
-        self.validate_baum_welch_args(observations, max_iters, tolerance, prob_floor)?;
-        self.apply_parameter_floors(prob_floor);
+        config: &BaumWelchConfig<T>,
+        workspace: &mut BaumWelchWorkspace<T>,
+        log_likelihood_history: &mut [T],
+    ) -> Result<BaumWelchReport<T>, MarkovError> {
+        validate_bw_inputs(
+            self,
+            observations,
+            config,
+            workspace,
+            log_likelihood_history,
+        )?;
+        let initial_ll = run_forward_into(self, observations, workspace);
+        if !initial_ll.is_finite() {
+            return Ok(BaumWelchReport {
+                iterations: 0,
+                converged: true,
+                initial_log_likelihood: initial_ll,
+                final_log_likelihood: initial_ll,
+            });
+        }
+        accumulate_backward_stats(self, observations, workspace);
 
-        let (mut alpha, mut scales) = self.forward_probabilities(observations)?;
-        let mut current_ll = Self::checked_log_likelihood(&scales)?;
-        let mut log_likelihoods = Vec::with_capacity(max_iters + 1);
-        log_likelihoods.push(current_ll);
-
-        let mut iterations = 0_usize;
+        let has_transitions = observations.len() > 1;
+        let mut prev_ll = initial_ll;
+        let mut iterations = 0;
         let mut converged = false;
 
-        for _ in 0..max_iters {
-            let beta = self.backward_probabilities(observations, &scales)?;
-            let mut candidate = self.clone();
-            candidate.em_maximization_step(observations, &alpha, &beta, prob_floor);
-
-            let (next_alpha, next_scales) = candidate.forward_probabilities(observations)?;
-            let Ok(next_ll) = Self::checked_log_likelihood(&next_scales) else {
-                converged = true;
-                break;
-            };
-
-            if next_ll < current_ll {
-                converged = true;
-                break;
-            }
-
-            *self = candidate;
-            iterations += 1;
-            log_likelihoods.push(next_ll);
-            let improvement = next_ll - current_ll;
-            alpha = next_alpha;
-            scales = next_scales;
-            current_ll = next_ll;
-
-            if improvement <= tolerance {
+        for (iter, hist_slot) in log_likelihood_history
+            .iter_mut()
+            .enumerate()
+            .take(config.max_iterations)
+        {
+            snapshot_parameters(self, workspace);
+            apply_m_step(self, workspace, config.dirichlet_alpha, has_transitions);
+            let new_ll = run_forward_into(self, observations, workspace);
+            if !new_ll.is_finite() || new_ll < prev_ll {
+                restore_parameters(self, workspace);
+                *hist_slot = prev_ll;
+                iterations = iter + 1;
                 converged = true;
                 break;
             }
+            *hist_slot = new_ll;
+            let delta = new_ll - prev_ll;
+            prev_ll = new_ll;
+            iterations = iter + 1;
+            if delta <= config.tolerance {
+                converged = true;
+                break;
+            }
+            accumulate_backward_stats(self, observations, workspace);
         }
 
-        Ok(BaumWelchResult {
-            log_likelihoods,
+        Ok(BaumWelchReport {
             iterations,
             converged,
+            initial_log_likelihood: initial_ll,
+            final_log_likelihood: prev_ll,
         })
     }
 
+    /// Convenience wrapper around [`HiddenMarkovModel::fit_baum_welch_into`] that allocates a
+    /// [`BaumWelchWorkspace`] and returns the convergence report plus per-iteration log-likelihoods.
     #[verified_engine::verified]
-    fn validate_baum_welch_args(
-        &self,
-        observations: &[usize],
-        max_iters: usize,
-        tolerance: T,
-        prob_floor: T,
-    ) -> Result<()> {
-        self.validate_observations(observations)?;
-        if max_iters == 0 {
-            return Err(MarkovError::InvalidState {
-                reason: "Baum-Welch max_iters must be at least 1".to_string(),
-            });
-        }
-        let zero = T::zero();
-        if !tolerance.is_finite() || tolerance < zero {
-            return Err(MarkovError::InvalidState {
-                reason: "Baum-Welch tolerance must be finite and non-negative".to_string(),
-            });
-        }
-        let max_dim = self.num_states.max(self.num_observations);
-        let max_floor = T::one() / T::from_usize(max_dim).unwrap();
-        if !prob_floor.is_finite() || prob_floor < zero || prob_floor >= max_floor {
-            return Err(MarkovError::InvalidProbability {
-                value: prob_floor.to_f64().unwrap_or(f64::NAN),
-            });
-        }
-        Ok(())
-    }
-
-    #[verified_engine::verified]
-    fn checked_log_likelihood(scales: &[T]) -> Result<T> {
-        let zero = T::zero();
-        let mut ll = zero;
-        for &c in scales {
-            if c <= zero {
-                return Err(MarkovError::InvalidObservation {
-                    reason: "Observation sequence has zero probability under current parameters"
-                        .to_string(),
-                });
-            }
-            ll += c.ln();
-        }
-        Ok(ll)
-    }
-
-    #[verified_engine::verified]
-    fn apply_parameter_floors(&mut self, floor: T) {
-        if floor <= T::zero() {
-            return;
-        }
-        project_floored_simplex(self.initial.as_mut_slice(), floor);
-        let mut row_buf = vec![T::zero(); self.num_states];
-        for i in 0..self.num_states {
-            for (j, slot) in row_buf.iter_mut().enumerate() {
-                *slot = self.transitions[(i, j)];
-            }
-            project_floored_simplex(&mut row_buf, floor);
-            for (j, &val) in row_buf.iter().enumerate() {
-                self.transitions[(i, j)] = val;
-            }
-        }
-
-        let mut emit_buf = vec![T::zero(); self.num_observations];
-        for i in 0..self.num_states {
-            for (k, slot) in emit_buf.iter_mut().enumerate() {
-                *slot = self.emissions[(i, k)];
-            }
-            project_floored_simplex(&mut emit_buf, floor);
-            for (k, &val) in emit_buf.iter().enumerate() {
-                self.emissions[(i, k)] = val;
-            }
-        }
-    }
-
-    #[verified_engine::verified]
-    fn em_maximization_step(
+    pub fn fit_baum_welch(
         &mut self,
         observations: &[usize],
-        alpha: &DMatrix<T>,
-        beta: &DMatrix<T>,
-        floor: T,
-    ) {
-        let gamma = Self::compute_gamma_matrix(alpha, beta);
-        self.update_initial_and_emissions(observations, &gamma, floor);
-        if observations.len() >= 2 {
-            self.update_transitions_from_xi(observations, alpha, beta, &gamma, floor);
+        config: &BaumWelchConfig<T>,
+    ) -> Result<(BaumWelchReport<T>, Vec<T>), MarkovError> {
+        if observations.is_empty() {
+            return Err(MarkovError::InvalidObservation {
+                reason: "Observation sequence is empty".to_string(),
+            });
         }
-    }
-
-    #[verified_engine::verified]
-    fn compute_gamma_matrix(alpha: &DMatrix<T>, beta: &DMatrix<T>) -> DMatrix<T> {
-        let n_states = alpha.nrows();
-        let t_max = alpha.ncols();
-        let zero = T::zero();
-        let mut gamma = DMatrix::zeros(n_states, t_max);
-        for t in 0..t_max {
-            let mut sum = zero;
-            for i in 0..n_states {
-                let g = alpha[(i, t)] * beta[(i, t)];
-                gamma[(i, t)] = g;
-                sum += g;
-            }
-            if sum > zero {
-                for i in 0..n_states {
-                    gamma[(i, t)] /= sum;
-                }
-            }
-        }
-        gamma
-    }
-
-    #[verified_engine::verified]
-    fn update_initial_and_emissions(
-        &mut self,
-        observations: &[usize],
-        gamma: &DMatrix<T>,
-        floor: T,
-    ) {
-        let zero = T::zero();
-        let mut init_vec: DVector<T> = gamma.column(0).into_owned();
-        project_floored_simplex(init_vec.as_mut_slice(), floor);
-        self.initial = init_vec;
-
-        let mut emit_row = vec![zero; self.num_observations];
-        for i in 0..self.num_states {
-            emit_row.fill(zero);
-            let mut denom = zero;
-            for (t, &obs) in observations.iter().enumerate() {
-                let g = gamma[(i, t)];
-                emit_row[obs] += g;
-                denom += g;
-            }
-            if denom > zero {
-                for val in &mut emit_row {
-                    *val /= denom;
-                }
-                project_floored_simplex(&mut emit_row, floor);
-                for (k, &val) in emit_row.iter().enumerate() {
-                    self.emissions[(i, k)] = val;
-                }
-            }
-        }
-    }
-
-    #[verified_engine::verified]
-    fn update_transitions_from_xi(
-        &mut self,
-        observations: &[usize],
-        alpha: &DMatrix<T>,
-        beta: &DMatrix<T>,
-        gamma: &DMatrix<T>,
-        floor: T,
-    ) {
-        let zero = T::zero();
-        let t_max = observations.len();
-        let mut xi_sum = DMatrix::zeros(self.num_states, self.num_states);
-        let mut xi_step = DMatrix::zeros(self.num_states, self.num_states);
-
-        for t in 0..(t_max - 1) {
-            let y_next = observations[t + 1];
-            let mut step_norm = zero;
-            for i in 0..self.num_states {
-                for j in 0..self.num_states {
-                    let w = alpha[(i, t)]
-                        * self.transitions[(i, j)]
-                        * self.emissions[(j, y_next)]
-                        * beta[(j, t + 1)];
-                    xi_step[(i, j)] = w;
-                    step_norm += w;
-                }
-            }
-            if step_norm > zero {
-                xi_sum += &xi_step / step_norm;
-            }
-        }
-
-        let mut trans_row = vec![zero; self.num_states];
-        for i in 0..self.num_states {
-            let denom = (0..(t_max - 1)).fold(zero, |acc, t| acc + gamma[(i, t)]);
-            if denom > zero {
-                for (j, slot) in trans_row.iter_mut().enumerate() {
-                    *slot = xi_sum[(i, j)] / denom;
-                }
-                project_floored_simplex(&mut trans_row, floor);
-                for (j, &val) in trans_row.iter().enumerate() {
-                    self.transitions[(i, j)] = val;
-                }
-            }
-        }
+        BaumWelchConfig::new(
+            config.max_iterations,
+            config.tolerance,
+            config.dirichlet_alpha,
+        )?;
+        let mut workspace =
+            BaumWelchWorkspace::new(self.num_states, self.num_observations, observations.len());
+        let mut history = vec![T::zero(); config.max_iterations];
+        let report =
+            self.fit_baum_welch_into(observations, config, &mut workspace, &mut history)?;
+        history.truncate(report.iterations);
+        Ok((report, history))
     }
 }
-
-// [cite:clinical_trials_statistics]

@@ -21,6 +21,7 @@ pub mod hitting;
 pub mod period;
 /// Iterative Tarjan strongly connected components and communicating classes.
 pub mod scc;
+mod serde_impl;
 /// Zero-allocation Monte Carlo trajectory and visit-count simulation.
 pub mod simulation;
 /// QR nullspace stationary and absorbing/aperiodic limiting distributions.
@@ -110,6 +111,11 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
         state_types: &[StateType],
     ) -> Result<()> {
         let n = transition_matrix.nrows();
+        if n == 0 {
+            return Err(MarkovError::InvalidState {
+                reason: "Markov chain must have at least one state".to_string(),
+            });
+        }
         if transition_matrix.ncols() != n {
             return Err(MarkovError::Math(
                 math_commons::error::MathError::DimensionMismatch {

@@ -328,7 +328,10 @@ pub use ctmc::ContinuousMarkovChain;
 pub use dtmc::{CommunicatingClass, MarkovChain, StateType};
 #[allow(missing_docs)]
 pub type Result<T> = std::result::Result<T, MarkovError>;
-pub use hmm::HiddenMarkovModel;
+pub use hmm::{
+    BaumWelchConfig, BaumWelchReport, BaumWelchResult, BaumWelchWorkspace, HiddenMarkovModel,
+    ViterbiWorkspace,
+};
 pub use num_traits::ToPrimitive;
 pub use parrondo::{
     ParrondoEnsemble, ParrondoGame, ParrondoParams, ParrondoPhaseGridConfig, ParrondoPhasePoint,
