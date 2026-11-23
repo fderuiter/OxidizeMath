@@ -4,6 +4,7 @@ pub mod accessibility;
 mod app;
 #[allow(missing_docs)]
 pub mod async_sim;
+pub mod audio;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod batch_plot_perf_and_export_tests;
 #[allow(missing_docs)]
@@ -20,6 +21,10 @@ pub mod framework;
 mod framework_tests;
 #[cfg(test)]
 mod interactive_tools_tests;
+#[cfg(test)]
+mod inverse_challenges_tests;
+#[cfg(all(test, feature = "physics", feature = "applied"))]
+mod inverse_solvers_tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod main_wasm_tests;
 #[cfg(test)]
@@ -34,6 +39,8 @@ pub mod starter_gallery;
 mod tabs;
 mod telemetry;
 pub mod url_state;
+#[cfg(any(feature = "ai", feature = "biology", feature = "physics"))]
+pub mod volumetric_scene;
 pub mod web_io;
 #[cfg(target_arch = "wasm32")]
 mod webgl_recovery;

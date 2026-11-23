@@ -111,9 +111,11 @@ fn wasm_batched_tools_headless_png_svg_obj_csv_json_exports() {
     let ctx = egui::Context::default();
     let opts = ExportOptions::default();
 
-    let mut loss = LossLandscapeTool::default();
-    loss.view_mode = LandscapeViewMode::Contour2D;
-    loss.resolution = 24;
+    let mut loss = LossLandscapeTool {
+        view_mode: LandscapeViewMode::Contour2D,
+        resolution: 24,
+        ..Default::default()
+    };
     egui_plot::clear_last_plot_datasets();
     let _ = ctx.run(wasm_raw_input(Vec::new()), |c| loss.show(c));
     assert!(egui_plot::get_last_plot_item_counts().iter().all(|&n| n <= 2));
@@ -140,7 +142,19 @@ fn wasm_batched_tools_headless_png_svg_obj_csv_json_exports() {
     assert!(loss.build_obj_mesh_string().expect("WASM Loss OBJ").contains("\nv "));
 
     let surf = crate::tabs::geometry_topology::surface_viewer::SurfaceViewer::default();
-    assert!(surf.build_obj_mesh_string().expect("WASM Surface OBJ").contains("\nf "));
+    let surf_mesh = surf
+        .export_mesh_3d()
+        .expect("WASM Surface 3D mesh hook")
+        .expect("WASM Surface mesh");
+    assert!(oxidize_core::mesh::export_mesh_to_obj_string(&surf_mesh)
+        .expect("WASM Surface OBJ")
+        .contains("\nf "));
     let curv = crate::tabs::geometry_topology::curvature_heatmap::CurvatureHeatmap::default();
-    assert!(curv.build_obj_mesh_string().expect("WASM Curvature OBJ").contains("\nf "));
+    let curv_mesh = curv
+        .export_mesh_3d()
+        .expect("WASM Curvature 3D mesh hook")
+        .expect("WASM Curvature mesh");
+    assert!(oxidize_core::mesh::export_mesh_to_obj_string(&curv_mesh)
+        .expect("WASM Curvature OBJ")
+        .contains("\nf "));
 }

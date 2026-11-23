@@ -25,9 +25,6 @@ impl CurvatureHeatmap {
                 ui.add(egui::Slider::new(&mut self.u_resolution, 10..=max_res).text("Grid Size U"));
                 ui.add(egui::Slider::new(&mut self.v_resolution, 10..=max_res).text("Grid Size V"));
             });
-
-            ui.separator();
-            self.draw_obj_export_section(ui);
         });
     }
 
@@ -63,25 +60,6 @@ impl CurvatureHeatmap {
             );
             ui.radio_value(&mut self.curvature_type, CurvatureType::Mean, "Mean");
         });
-    }
-
-    fn draw_obj_export_section(&mut self, ui: &mut egui::Ui) {
-        let is_saving = self.obj_export_rx.is_some();
-        if ui
-            .add_enabled(!is_saving, egui::Button::new("Export to OBJ"))
-            .clicked()
-        {
-            self.trigger_obj_export();
-        }
-        if let Some((message, is_error)) = &self.obj_export_status {
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            let color = if *is_error {
-                palette.error
-            } else {
-                palette.success
-            };
-            ui.colored_label(color, message);
-        }
     }
 
     fn draw_parameter_controls(&mut self, ui: &mut egui::Ui) {

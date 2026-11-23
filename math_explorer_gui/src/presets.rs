@@ -213,6 +213,13 @@ impl ReplicatorPresetConfig {
     }
 }
 
+#[path = "presets/glicko2.rs"]
+mod glicko2_preset_validation;
+pub use glicko2_preset_validation::{
+    Glicko2MatchPreset, Glicko2PairingMode, Glicko2PeriodPreset, Glicko2PlayerPreset,
+    Glicko2TournamentPresetConfig, MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS,
+};
+
 /// Packs `config` into a `"1.0"` [`PresetWrapper`] metadata envelope and serializes it as pretty JSON.
 pub fn serialize_preset_envelope<T: Serialize>(
     title: &str,

@@ -161,15 +161,21 @@ fn all_five_tools_export_valid_png_svg_obj_csv_and_json_headless() {
 
     let mut curv = CurvatureHeatmap::default();
     verify_and_save_plot_exports(&ctx, &mut curv, true, "/tmp/curvature_heatmap_batched.png");
-    assert!(curv
-        .build_obj_mesh_string()
+    let curv_mesh = curv
+        .export_mesh_3d()
+        .expect("Curvature 3D mesh hook")
+        .expect("Curvature mesh");
+    assert!(oxidize_core::mesh::export_mesh_to_obj_string(&curv_mesh)
         .expect("Curvature OBJ")
         .contains("\nf "));
 
     let mut surf = SurfaceViewer::default();
     verify_and_save_plot_exports(&ctx, &mut surf, true, "/tmp/surface_viewer_torus.png");
-    assert!(surf
-        .build_obj_mesh_string()
+    let surf_mesh = surf
+        .export_mesh_3d()
+        .expect("Surface 3D mesh hook")
+        .expect("Surface mesh");
+    assert!(oxidize_core::mesh::export_mesh_to_obj_string(&surf_mesh)
         .expect("Surface OBJ")
         .contains("\nf "));
 
