@@ -7,7 +7,6 @@ pub mod decimate;
 mod drag_bounds_and_rollback_tests;
 mod export_figure;
 mod export_queue;
-mod export_queue_io;
 #[cfg(test)]
 mod export_queue_tests;
 mod export_shader;
