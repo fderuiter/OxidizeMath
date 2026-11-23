@@ -296,38 +296,38 @@ impl AstVisitor {
         let mut is_verified = false;
         let mut has_semantic = false;
         for attr in attrs {
-            let attr_line = span_line(attr.span());
-            if attr.path().is_ident("doc") {
-                let doc_text = quote::quote!(#attr).to_string();
-                let extracted =
-                    crate::traceability::TraceabilityEngine::<crate::vfs::DefaultVfs>::extract_citations(
-                        &doc_text,
-                    );
-                if !extracted.is_empty() {
-                    has_semantic = true;
-                    for cite in extracted {
-                        self.record_module(cite, attr_line);
-                    }
-                }
-                continue;
-            }
             if attr_has_opt_out(attr) {
                 continue;
             }
-            let attr_str = quote::quote!(#attr).to_string().replace(' ', "");
+            let attr_line = span_line(attr.span());
+            if !attr.path().is_ident("doc") {
+                let attr_str = quote::quote!(#attr).to_string().replace(' ', "");
 
-            if attr_str.contains("verified_engine::verified")
-                || attr_str.contains("#[verified]")
-                || attr_str.starts_with("#[verified(")
-            {
-                is_verified = true;
-                has_semantic = true;
+                if attr_str.contains("verified_engine::verified")
+                    || attr_str.contains("#[verified]")
+                    || attr_str.starts_with("#[verified(")
+                {
+                    is_verified = true;
+                    has_semantic = true;
+                }
+
+                if attr_str.contains("embed_theory") {
+                    is_verified = true;
+                    has_semantic = true;
+                    self.extract_embed_theory(&attr_str, attr_line);
+                }
             }
 
-            if attr_str.contains("embed_theory") {
-                is_verified = true;
+            let doc_text = quote::quote!(#attr).to_string();
+            let extracted =
+                crate::traceability::TraceabilityEngine::<crate::vfs::DefaultVfs>::extract_citations(
+                    &doc_text,
+                );
+            if !extracted.is_empty() {
                 has_semantic = true;
-                self.extract_embed_theory(&attr_str, attr_line);
+                for cite in extracted {
+                    self.record_module(cite, attr_line);
+                }
             }
         }
 
