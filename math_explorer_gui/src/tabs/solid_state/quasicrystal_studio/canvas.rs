@@ -88,10 +88,7 @@ impl QuasicrystalStudio {
         lock_canvas_arrow_keys(ui, &resp);
         let is_focused = resp.has_focus() || ui.ctx().memory(|m| m.has_focus(resp.id));
         if is_focused {
-            self.focused_canvas = Some(resp.id);
             self.handle_canvas_arrow_keys(ui);
-        } else if self.focused_canvas == Some(resp.id) {
-            self.focused_canvas = None;
         }
         if resp.dragged() && self.state.mode == StudioPatternMode::Quasicrystal {
             let d = resp.drag_delta();

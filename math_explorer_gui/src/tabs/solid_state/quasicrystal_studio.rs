@@ -227,7 +227,6 @@ pub struct QuasicrystalStudio {
     pub(crate) recompute_dirty: bool,
     pub(crate) texture_dirty: bool,
     pub(crate) last_theme: Option<ThemeMode>,
-    pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) last_tick: PlatformInstant,
     pub(crate) revision: u64,
 }
@@ -244,7 +243,6 @@ impl Default for QuasicrystalStudio {
             recompute_dirty: true,
             texture_dirty: true,
             last_theme: None,
-            focused_canvas: None,
             last_tick: PlatformInstant::now(),
             revision: 1,
         }
@@ -335,10 +333,6 @@ impl InteractiveTool for QuasicrystalStudio {
 
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn state_revision(&self) -> u64 {

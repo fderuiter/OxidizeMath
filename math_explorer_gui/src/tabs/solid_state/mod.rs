@@ -7,6 +7,7 @@ pub mod band_structure;
 pub mod crystal_viewer;
 pub mod ising;
 pub mod quasicrystal_studio;
+pub mod sandpile;
 
 pub struct SolidStateTab {
     framework: crate::framework::SimulationFramework,
@@ -43,13 +44,6 @@ impl ExplorerTab for SolidStateTab {
 
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework
-            .active_tool
-            .as_ref()
-            .and_then(|tool| tool.focused_canvas_id())
     }
 
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
