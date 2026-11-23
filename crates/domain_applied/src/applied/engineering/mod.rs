@@ -23,6 +23,7 @@ theory_verification!(
         TOLERANCE = 0.001;
     },
     test = {
+        use approx::assert_relative_eq;
         assert_relative_eq!(
             TOLERANCE,
             0.001,

@@ -38,6 +38,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                             .send_command(SimCommand::Custom(action.to_string()))
                             .is_ok()
                     {
+                        if let Some(ext) = &mut self.ui_extension {
+                            ext.on_custom_action(action);
+                        }
                         ctx.request_repaint();
                     }
                 }
@@ -52,25 +55,70 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ui.label("Model Parameters");
 
         let mut reset_needed = self.draw_presets_and_actions(ui, ctx);
+        let ext_cmds = if let Some(ext) = &mut self.ui_extension {
+            ext.draw_side_panel_controls(ui, self.controller.latest_snapshot())
+        } else {
+            Vec::new()
+        };
+        if !ext_cmds.is_empty() {
+            self.dispatch_extension_commands(ext_cmds, Some(ctx));
+        }
+
         let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
 
         for (name, constraint) in &self.param_metadata {
+            let locked = self
+                .ui_extension
+                .as_ref()
+                .is_some_and(|ext| ext.is_parameter_locked(name));
             if let Some(val) = params_lock.get_mut(name) {
-                reset_needed |= Self::draw_single_parameter(
-                    ui,
-                    name,
-                    constraint,
-                    val,
-                    self.cached_descs.get(name),
-                );
+                ui.add_enabled_ui(!locked, |ui| {
+                    reset_needed |= Self::draw_single_parameter(
+                        ui,
+                        name,
+                        constraint,
+                        val,
+                        self.cached_descs.get(name),
+                    );
+                });
             }
         }
-
         drop(params_lock);
+        reset_needed |= self.draw_custom_formula_controls(ui, ctx);
+        self.draw_atlas_toggle_if_supported(ui);
         self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation(Some(ctx));
         }
+    }
+
+    fn draw_custom_formula_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
+        let Some(spec) = M::formula_spec() else {
+            return false;
+        };
+        let mut reset_needed = false;
+        ui.add_space(4.0);
+        let toggle_label = format!("Custom {} Formula", spec.lhs_label);
+        if ui
+            .checkbox(&mut self.custom_formula_enabled, toggle_label)
+            .changed()
+        {
+            self.publish_formula_update();
+            reset_needed = true;
+        }
+        if self.custom_formula_enabled {
+            let mut formula_changed = false;
+            if let Some(ref mut bar) = self.formula_bar {
+                ui.add_space(4.0);
+                formula_changed = bar.ui(ui);
+            }
+            if formula_changed {
+                self.publish_formula_update();
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+        }
+        reset_needed
     }
 
     fn draw_single_parameter(

@@ -101,90 +101,52 @@ fn finish_plateau_extremum(
     }
 }
 
-fn plateau_x_bounds(x0: f64, want_y_ints: bool) -> Option<(f64, f64)> {
-    if !want_y_ints {
-        Some((f64::NEG_INFINITY, f64::INFINITY))
-    } else if x0 > 0.0 {
-        Some((0.0, f64::INFINITY))
-    } else if x0 < 0.0 {
-        Some((f64::NEG_INFINITY, 0.0))
-    } else {
-        None
-    }
-}
-
-fn fast_forward_plateau(
-    pts: &[PlotPoint],
-    mut i: usize,
-    y_plat: f64,
-    lo_x: f64,
-    hi_x: f64,
-) -> usize {
-    while let [q0, q1, q2, q3, q4, q5, q6, q7, ..] = &pts[i..] {
-        let ok03 = (q0.y == y_plat)
-            & (q1.y == y_plat)
-            & (q2.y == y_plat)
-            & (q3.y == y_plat)
-            & (q0.x > lo_x)
-            & (q0.x < hi_x)
-            & (q1.x > lo_x)
-            & (q1.x < hi_x)
-            & (q2.x > lo_x)
-            & (q2.x < hi_x)
-            & (q3.x > lo_x)
-            & (q3.x < hi_x);
-        let ok47 = (q4.y == y_plat)
-            & (q5.y == y_plat)
-            & (q6.y == y_plat)
-            & (q7.y == y_plat)
-            & (q4.x > lo_x)
-            & (q4.x < hi_x)
-            & (q5.x > lo_x)
-            & (q5.x < hi_x)
-            & (q6.x > lo_x)
-            & (q6.x < hi_x)
-            & (q7.x > lo_x)
-            & (q7.x < hi_x);
-        if ok03 & ok47 {
-            i += 8;
-        } else {
-            break;
-        }
-    }
-    while let Some(&q) = pts.get(i) {
-        if (q.y == y_plat) & (q.x > lo_x) & (q.x < hi_x) {
-            i += 1;
-        } else {
-            break;
-        }
-    }
-    i
-}
-
-fn try_skip_flat_run(
-    pts: &[PlotPoint],
-    i: &mut usize,
-    mode: u8,
-    want_y_ints: bool,
-    p0: &mut PlotPoint,
-    last: &mut PlotPoint,
-) {
-    if let Some((lo_x, hi_x)) = plateau_x_bounds(p0.x, want_y_ints) {
-        let next_i = fast_forward_plateau(pts, *i, p0.y, lo_x, hi_x);
-        if next_i > *i {
-            *p0 = pts[next_i - 1];
-            if mode == 2 {
-                *last = *p0;
-            }
-            *i = next_i;
-        }
-    }
-}
-
 pub(crate) struct SingleLineScan {
     pub(crate) roots: Vec<f64>,
     pub(crate) y_ints: Vec<f64>,
     pub(crate) extrema: Vec<([f64; 2], bool)>,
+}
+
+fn skip_plateau_chunks(
+    pts: &[PlotPoint],
+    start_idx: usize,
+    y_val: f64,
+    want_y_ints: bool,
+    p0_x: f64,
+) -> Option<(usize, PlotPoint)> {
+    let (x_min, x_max) = if !want_y_ints {
+        (f64::MIN, f64::MAX)
+    } else if p0_x > 0.0 {
+        (f64::from_bits(1), f64::MAX)
+    } else if p0_x < 0.0 {
+        (f64::MIN, -f64::from_bits(1))
+    } else {
+        return None;
+    };
+    macro_rules! ok_pt {
+        ($p:expr) => {
+            ($p.y == y_val) & ($p.x >= x_min) & ($p.x <= x_max)
+        };
+    }
+    let (chunks, _) = pts[start_idx..].as_chunks::<8>();
+    let mut skipped = 0usize;
+    let mut tail = PlotPoint { x: 0.0, y: 0.0 };
+    for &[a0, a1, a2, a3, a4, a5, a6, a7] in chunks {
+        if !(ok_pt!(a0)
+            & ok_pt!(a1)
+            & ok_pt!(a2)
+            & ok_pt!(a3)
+            & ok_pt!(a4)
+            & ok_pt!(a5)
+            & ok_pt!(a6)
+            & ok_pt!(a7))
+        {
+            break;
+        }
+        skipped += 8;
+        tail = a7;
+    }
+    (skipped > 0).then_some((start_idx + skipped, tail))
 }
 
 /// Fused single-pass streaming scan for $y = 0$ roots, $x = 0$ intercepts, and local extrema.
@@ -208,11 +170,18 @@ pub(crate) fn scan_single_line_all(
     let (mut mode, mut prev, mut start, mut second, mut last) = (0u8, dummy, dummy, dummy, dummy);
     let mut i = 1;
     while i < n {
-        if (mode == 0 || mode == 2) && p0_fin && pts[i].y == p0.y {
-            try_skip_flat_run(pts, &mut i, mode, want_y_ints, &mut p0, &mut last);
-            if i >= n {
-                break;
+        if p0_fin
+            && (mode == 0 || mode == 2)
+            && pts[i].y == p0.y
+            && n - i >= 8
+            && let Some((next_i, tail)) = skip_plateau_chunks(pts, i, p0.y, want_y_ints, p0.x)
+        {
+            if mode == 2 {
+                last = tail;
             }
+            p0 = tail;
+            i = next_i;
+            continue;
         }
         let idx = i - 1;
         let p1 = pts[i];

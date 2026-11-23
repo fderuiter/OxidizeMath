@@ -220,7 +220,7 @@ fn test_simulation_framework_performance_benchmarks() {
     egui_plot::clear_last_plot_datasets();
     egui_plot::append_last_plot_datasets(&large_datasets);
 
-    let inspect_start = std::time::Instant::now();
+    let inspect_start = crate::web_io::PlatformInstant::now();
     let res = framework.inspect_runtime_state();
     let inspect_duration = inspect_start.elapsed();
 
@@ -239,7 +239,7 @@ fn test_simulation_framework_performance_benchmarks() {
     framework.is_diverged = true;
     framework.diagnostic_report = Some(DiagnosticReport::new(0.0, 0, "var", "err"));
 
-    let restore_start = std::time::Instant::now();
+    let restore_start = crate::web_io::PlatformInstant::now();
     let restored = framework.rollback_step_back();
     let restore_duration = restore_start.elapsed();
 

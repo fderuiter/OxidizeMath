@@ -140,6 +140,9 @@ pub struct LbmToolState {
     /// Packed `625`-byte (`834`-char `base64url`) obstacle bitmask.
     #[serde(default = "default_obstacle_mask")]
     pub obstacle_mask: String,
+    /// Optional `1,250`-char hex obstacle bitmask accepted from `lbm_low_drag_fairing` challenge baselines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask_hex: Option<String>,
 }
 
 impl LbmToolState {
@@ -175,7 +178,18 @@ impl LbmToolState {
                 self.area_budget
             ));
         }
-        let obstacles = decode_obstacle_mask(&self.obstacle_mask)?;
+        let obstacles = if let Some(hex) = &self.mask_hex {
+            let mut arr = [false; LBM_CELL_COUNT];
+            super::super::lbm_fairing::decode_mask_hex(hex, &mut arr)?;
+            for (idx, cell) in arr.iter_mut().enumerate() {
+                if idx % LBM_WIDTH < LBM_INLET_GUARD_COLS {
+                    *cell = false;
+                }
+            }
+            arr.to_vec()
+        } else {
+            decode_obstacle_mask(&self.obstacle_mask)?
+        };
         let solid = count_solid_cells(&obstacles);
         if solid > self.area_budget {
             return Err(format!(

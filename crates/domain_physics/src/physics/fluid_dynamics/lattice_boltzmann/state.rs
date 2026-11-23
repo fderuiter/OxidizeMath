@@ -21,10 +21,12 @@ pub struct LatticeState<const Q: usize> {
     pub(crate) uy: DMatrix<f64>,
     /// Boolean grid for obstacles (true = solid).
     pub(crate) obstacles: DMatrix<bool>,
-    /// Instantaneous fluid-on-obstacle horizontal momentum-exchange force.
-    pub(crate) obstacle_force_x: f64,
-    /// Instantaneous fluid-on-obstacle vertical momentum-exchange force.
-    pub(crate) obstacle_force_y: f64,
+    /// Drag force accumulated during the most recent streaming bounce-back pass.
+    pub(crate) last_drag_force: f64,
+    /// Lift force accumulated during the most recent streaming bounce-back pass.
+    pub(crate) last_lift_force: f64,
+    /// Whether `last_drag_force` and `last_lift_force` come from a completed streaming pass.
+    pub(crate) has_stepped_forces: bool,
 }
 
 impl<const Q: usize> DoubleBufferedState for LatticeState<Q> {
@@ -53,8 +55,9 @@ impl<const Q: usize> LatticeState<Q> {
             ux: DMatrix::from_element(height, width, 0.0),
             uy: DMatrix::from_element(height, width, 0.0),
             obstacles: DMatrix::from_element(height, width, false),
-            obstacle_force_x: 0.0,
-            obstacle_force_y: 0.0,
+            last_drag_force: 0.0,
+            last_lift_force: 0.0,
+            has_stepped_forces: false,
         }
     }
 

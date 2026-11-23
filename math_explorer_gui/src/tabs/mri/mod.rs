@@ -4,16 +4,25 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+pub mod kspace_bloch_view;
+pub mod kspace_phantom;
+pub mod kspace_runner;
+pub mod kspace_tool;
+pub mod kspace_types;
+pub mod kspace_ui;
+pub mod kspace_worker;
+pub mod pulse;
 pub mod runner;
+mod state;
 pub mod theory;
 pub mod tool;
 pub mod ui;
 
+#[cfg(test)]
+pub use kspace_tool::MriKSpaceTool;
 pub use runner::sanitize_mri_time_scale;
 #[cfg(test)]
-pub use runner::{
-    MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE,
-};
+pub use runner::{MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE};
 #[cfg(test)]
 pub use tool::MriTool;
 pub use tool::MriToolState;
@@ -51,6 +60,7 @@ impl MriTab {
         let Ok(legacy) = serde_json::from_str::<LegacyMriState>(state) else {
             return false;
         };
+        let _ = self.framework.select_tool_by_name("MriTool");
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return true;
         };
@@ -119,6 +129,8 @@ impl ExplorerTab for MriTab {
     }
 }
 
+#[cfg(test)]
+mod kspace_tests;
 #[cfg(test)]
 mod tests;
 

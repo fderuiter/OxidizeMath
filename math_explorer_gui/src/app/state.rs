@@ -1,7 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::theme::ThemeMode;
+use super::viewport::compare_sync::ComparisonSyncConfig;
 use super::viewport::ViewportLayout;
+use super::SharedTabJson;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::cell::RefCell;
@@ -67,7 +69,7 @@ pub(super) fn has_frame_input(ctx: &egui::Context) -> bool {
 /// Interior-mutable per-tab JSON cache avoiding redundant `ExplorerTab::save_state` calls.
 #[derive(Default)]
 pub(super) struct TabStateCache {
-    entries: RefCell<HashMap<String, (u64, Option<String>)>>,
+    entries: RefCell<HashMap<&'static str, (u64, Option<SharedTabJson>)>>,
 }
 
 impl TabStateCache {
@@ -84,7 +86,7 @@ impl TabStateCache {
         tab: &dyn ExplorerTab,
         is_active_pane: bool,
         had_input: bool,
-    ) -> Option<String> {
+    ) -> Option<SharedTabJson> {
         let rev = tab.state_revision();
         let name = tab.name();
         {
@@ -100,10 +102,8 @@ impl TabStateCache {
                 }
             }
         }
-        let fresh = tab.save_state();
-        self.entries
-            .borrow_mut()
-            .insert(name.to_string(), (rev, fresh.clone()));
+        let fresh = tab.save_state().map(SharedTabJson::from);
+        self.entries.borrow_mut().insert(name, (rev, fresh.clone()));
         fresh
     }
 }
@@ -154,7 +154,10 @@ impl AppStateFingerprint {
         let flags = u8::from(app.show_info)
             | (u8::from(app.show_warnings) << 1)
             | (u8::from(app.show_errors) << 2)
-            | (u8::from(app.show_diagnostics_panel) << 3);
+            | (u8::from(app.show_diagnostics_panel) << 3)
+            | (u8::from(app.compare_sync.link_axes) << 4)
+            | (u8::from(app.compare_sync.link_cursors) << 5)
+            | (u8::from(app.compare_sync.sync_playback) << 6);
 
         Self {
             selected_tab: app.selected_tab,
@@ -201,7 +204,7 @@ pub struct AppState {
     pub show_diagnostics_panel: bool,
     #[serde(default)]
     pub theme: ThemeMode,
-    pub tab_states: HashMap<String, String>,
+    pub tab_states: HashMap<String, SharedTabJson>,
     #[serde(default)]
     pub split_layout_mode: SplitLayoutMode,
     #[serde(default = "default_secondary_tab")]
@@ -220,7 +223,9 @@ pub struct AppState {
     #[serde(default)]
     pub focused_pane: usize,
     #[serde(default)]
-    pub pane_tab_states: Vec<HashMap<String, String>>,
+    pub pane_tab_states: Vec<HashMap<String, SharedTabJson>>,
+    #[serde(default)]
+    pub compare_sync: ComparisonSyncConfig,
 }
 
 impl Default for AppState {
@@ -243,6 +248,7 @@ impl Default for AppState {
             pane_tabs: vec![0, 1, 2, 3],
             focused_pane: 0,
             pane_tab_states: Vec::new(),
+            compare_sync: ComparisonSyncConfig::default(),
         }
     }
 }
@@ -297,6 +303,7 @@ impl AppState {
             pane_tabs,
             focused_pane: app.active_focused_pane(),
             pane_tab_states: app.extract_pane_tab_states(),
+            compare_sync: app.compare_sync,
         }
     }
 
@@ -336,6 +343,7 @@ impl AppState {
             self.quad_split_ratios.1.clamp(0.20, 0.80),
         );
         app.viewport_layout = self.viewport_layout;
+        app.compare_sync = self.compare_sync;
 
         if app.viewport_layout == ViewportLayout::Single
             && app.split_layout_mode != SplitLayoutMode::Single

@@ -113,6 +113,7 @@ fn bluff_plate_preset_json() -> &'static str {
                 area_budget: DEFAULT_AREA_BUDGET,
                 view_mode: LbmViewMode::Vorticity,
                 obstacle_mask: encode_obstacle_mask(&bluff_plate_obstacle_grid()),
+                mask_hex: None,
             },
         )
     })
@@ -131,6 +132,7 @@ fn min_drag_challenge_preset_json() -> &'static str {
                 area_budget: 220,
                 view_mode: LbmViewMode::Vorticity,
                 obstacle_mask: encode_obstacle_mask(&streamlined_airfoil_obstacle_grid()),
+                mask_hex: None,
             },
         )
     })

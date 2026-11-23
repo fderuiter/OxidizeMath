@@ -1,11 +1,15 @@
 //! Dedicated D2Q9 Lattice Boltzmann Wind Tunnel tool with live bounce-back
 //! aerodynamic telemetry (`C_D`, `C_L`, `Re`), URL-shareable obstacle sculpting,
-//! and multi-frame vortex-shedding GIF export.
+//! inverse fairing challenge (`lbm_low_drag_fairing`), and vortex-shedding GIF export.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::async_sim::{BackgroundWorker, SimCommand, StateSnapshot};
-use crate::framework::InteractiveTool;
+use super::lbm_fairing::{
+    restore_inlet_and_core_mask, FairingStamp, LbmFairingEvaluator, CHALLENGE_LBM_FAIRING,
+    CHALLENGE_LBM_VISCOSITY, LBM_U_IN,
+};
+use crate::async_sim::{BackgroundWorker, SimCommand};
+use crate::framework::{ChallengeEvaluation, InteractiveTool};
 use eframe::egui;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     BgkCollision, LatticeBoltzmannD2Q9, LatticeState,
@@ -58,6 +62,8 @@ pub struct LatticeBoltzmannTool {
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) dirty: bool,
     pub(crate) gif_solver: Option<LatticeBoltzmannD2Q9<BgkCollision>>,
+    pub(crate) active_challenge: Option<&'static str>,
+    pub(crate) challenge_evaluator: Option<LbmFairingEvaluator>,
     pub(crate) shared_config: Arc<RwLock<LbmSharedConfig>>,
     pub(crate) shared_lattice: Arc<RwLock<LatticeState<9>>>,
     pub(crate) worker: BackgroundWorker<LbmRunner>,
@@ -102,6 +108,8 @@ impl Default for LatticeBoltzmannTool {
             texture: None,
             dirty: true,
             gif_solver: None,
+            active_challenge: None,
+            challenge_evaluator: None,
             shared_config,
             shared_lattice,
             worker,
@@ -131,6 +139,21 @@ impl LatticeBoltzmannTool {
         );
     }
 
+    fn enforce_challenge_invariants_and_score(&mut self) {
+        if self.active_challenge != Some(CHALLENGE_LBM_FAIRING) {
+            return;
+        }
+        self.viscosity = CHALLENGE_LBM_VISCOSITY;
+        self.inflow_speed = LBM_U_IN;
+        self.area_budget = self.area_budget.max(DEFAULT_AREA_BUDGET);
+        let mut mask = [false; LBM_CELL_COUNT];
+        mask.copy_from_slice(&self.obstacles[..LBM_CELL_COUNT]);
+        restore_inlet_and_core_mask(&mut mask);
+        self.obstacles.copy_from_slice(&mask);
+        let evaluator = self.challenge_evaluator.get_or_insert_with(Default::default);
+        evaluator.evaluate_mask_in_place(&mask, CHALLENGE_LBM_VISCOSITY);
+    }
+
     /// Sculpts or erases solid cells around `(cx, cy)` using `brush_radius` and `area_budget`.
     pub fn sculpt_at_cell(&mut self, cx: usize, cy: usize, paint_solid: bool) {
         apply_brush_with_budget(
@@ -141,20 +164,31 @@ impl LatticeBoltzmannTool {
             paint_solid,
             self.area_budget,
         );
+        self.enforce_challenge_invariants_and_score();
         self.sync_obstacles_to_worker();
+    }
+
+    pub(crate) fn apply_fairing_stamp(&mut self, stamp: FairingStamp) {
+        let mut mask = [false; LBM_CELL_COUNT];
+        stamp.write_mask(&mut mask);
+        self.apply_obstacle_preset(mask.to_vec());
     }
 
     pub(crate) fn enforce_current_budget(&mut self) {
         enforce_area_budget(&mut self.obstacles, self.area_budget);
+        self.enforce_challenge_invariants_and_score();
         self.sync_obstacles_to_worker();
     }
 
     pub(crate) fn apply_obstacle_preset(&mut self, mut grid: Vec<bool>) {
         enforce_area_budget(&mut grid, self.area_budget);
         self.obstacles = grid;
+        self.enforce_challenge_invariants_and_score();
         self.mask_generation = self.mask_generation.wrapping_add(1);
         {
             let mut cfg = self.shared_config.write().unwrap_or_else(|e| e.into_inner());
+            cfg.viscosity = self.viscosity;
+            cfg.inflow_speed = self.inflow_speed;
             cfg.obstacles.clone_from(&self.obstacles);
             cfg.mask_generation = self.mask_generation;
         }
@@ -165,6 +199,8 @@ impl LatticeBoltzmannTool {
         self.mask_generation = self.mask_generation.wrapping_add(1);
         {
             let mut cfg = self.shared_config.write().unwrap_or_else(|e| e.into_inner());
+            cfg.viscosity = self.viscosity;
+            cfg.inflow_speed = self.inflow_speed;
             cfg.obstacles.clone_from(&self.obstacles);
             cfg.mask_generation = self.mask_generation;
         }
@@ -199,11 +235,12 @@ impl LatticeBoltzmannTool {
         self.steps_per_frame = DEFAULT_STEPS_PER_FRAME;
         self.brush_radius = DEFAULT_BRUSH_RADIUS;
         self.area_budget = DEFAULT_AREA_BUDGET;
+        self.enforce_challenge_invariants_and_score();
         self.push_shared_config();
         self.reset_flow_field();
     }
 
-    fn build_snapshot_solver(&self) -> LatticeBoltzmannD2Q9<BgkCollision> {
+    pub(super) fn build_snapshot_solver(&self) -> LatticeBoltzmannD2Q9<BgkCollision> {
         let state_clone = self
             .shared_lattice
             .read()
@@ -223,78 +260,6 @@ impl LatticeBoltzmannTool {
         solver
     }
 
-    pub(crate) fn ensure_texture(&mut self, ctx: &egui::Context) {
-        if self.texture.is_some() && !self.dirty {
-            return;
-        }
-        let image = render_lbm_color_image(
-            &self.build_snapshot_solver(),
-            self.inflow_speed,
-            self.view_mode,
-            self.high_contrast,
-        );
-        if let Some(tex) = &mut self.texture {
-            tex.set(image, egui::TextureOptions::NEAREST);
-        } else {
-            self.texture = Some(ctx.load_texture(
-                "lbm_wind_tunnel_texture",
-                image,
-                egui::TextureOptions::NEAREST,
-            ));
-        }
-        self.dirty = false;
-    }
-
-    fn sync_from_worker(&mut self, ctx: &egui::Context) {
-        if let Some(snapshot) = self.worker.update() {
-            Self::upload_worker_snapshot(
-                &mut self.telemetry,
-                &mut self.texture,
-                &mut self.dirty,
-                ctx,
-                snapshot,
-            );
-        } else if self.dirty {
-            self.ensure_texture(ctx);
-        }
-        if self.worker.is_running() {
-            ctx.request_repaint();
-        }
-    }
-
-    fn upload_worker_snapshot(
-        telemetry: &mut LbmTelemetry,
-        texture_slot: &mut Option<egui::TextureHandle>,
-        dirty: &mut bool,
-        ctx: &egui::Context,
-        snapshot: &StateSnapshot,
-    ) {
-        if let Some(telem) = snapshot
-            .structured_data
-            .as_ref()
-            .and_then(|d| d.downcast_ref::<LbmTelemetry>())
-            .copied()
-        {
-            *telemetry = telem;
-        }
-        if let Ok(pixels) = snapshot.pixels.try_read() {
-            if pixels.len() == snapshot.width * snapshot.height && !pixels.is_empty() {
-                let image =
-                    egui::ColorImage::new([snapshot.width, snapshot.height], pixels.clone());
-                if let Some(tex) = texture_slot {
-                    tex.set(image, egui::TextureOptions::NEAREST);
-                } else {
-                    *texture_slot = Some(ctx.load_texture(
-                        "lbm_wind_tunnel_texture",
-                        image,
-                        egui::TextureOptions::NEAREST,
-                    ));
-                }
-                *dirty = false;
-            }
-        }
-    }
-
     fn current_tool_state(&self) -> LbmToolState {
         LbmToolState {
             viscosity: self.viscosity,
@@ -304,6 +269,7 @@ impl LatticeBoltzmannTool {
             area_budget: self.area_budget,
             view_mode: self.view_mode,
             obstacle_mask: encode_obstacle_mask(&self.obstacles),
+            mask_hex: None,
         }
     }
 }
@@ -319,6 +285,35 @@ impl InteractiveTool for LatticeBoltzmannTool {
 
     fn domain(&self) -> &'static str {
         "fluid_dynamics"
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        match challenge_id {
+            None => {
+                self.active_challenge = None;
+                Ok(())
+            }
+            Some(CHALLENGE_LBM_FAIRING) => {
+                self.active_challenge = Some(CHALLENGE_LBM_FAIRING);
+                self.enforce_challenge_invariants_and_score();
+                self.sync_obstacles_to_worker();
+                Ok(())
+            }
+            Some(other) => Err(format!(
+                "Unsupported challenge '{other}' for LatticeBoltzmannTool"
+            )),
+        }
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.active_challenge?;
+        self.challenge_evaluator
+            .as_ref()
+            .map(LbmFairingEvaluator::challenge_evaluation)
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
@@ -384,8 +379,8 @@ impl InteractiveTool for LatticeBoltzmannTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let parsed: LbmToolState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid LBM wind-tunnel state: {e}"))?;
+        let parsed: LbmToolState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid LBM wind-tunnel state: {e}"))?;
         let decoded_obstacles = parsed.validate()?;
         self.viscosity = parsed.viscosity;
         self.inflow_speed = parsed.inflow_speed;
@@ -394,6 +389,7 @@ impl InteractiveTool for LatticeBoltzmannTool {
         self.area_budget = parsed.area_budget;
         self.view_mode = parsed.view_mode;
         self.obstacles = decoded_obstacles;
+        self.enforce_challenge_invariants_and_score();
         self.mask_generation = self.mask_generation.wrapping_add(1);
         {
             let mut cfg = self.shared_config.write().unwrap_or_else(|e| e.into_inner());

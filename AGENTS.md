@@ -10,7 +10,7 @@ All Markdown files in the repository (outside excluded build directories such as
 - Keep core engineering safety rules (such as the NASA Power of 10 standards) in [CONTRIBUTING.md](CONTRIBUTING.md) rather than duplicating them here.
 - Ensure all relative Markdown links resolve to existing files in the repository.
 - Keep every Rust source file at or below **500 lines** (`check-file-lengths`), keep functions within the **60-line** Clippy ceiling configured in `.clippy.toml`, and declare `[lints] workspace = true` in every first-party `Cargo.toml` manifest (`check-profiles` / `test-policy-audit`).
-- Do not introduce unwhitelisted `dead_code`, `unused`, or `warnings` lint suppressions (`allow`, `expect`, or `cfg_attr`), nor crate/module-level Clippy bypasses (`#![allow]` / `#![expect]` or `mod` attributes for `clippy::all`, `clippy::too_many_lines`, or `clippy::cognitive_complexity`, or item-level `clippy::all`) per [ADR 0019](docs/adr/0019-purge-dead-code-bypasses.md) and [ADR 0027](docs/adr/0027-enforce-workspace-clippy-lints.md). Gate test-only helpers with `#[cfg(test)]` or decompose large functions instead.
+- Do not introduce unwhitelisted `dead_code`, `unused`, or `warnings` lint suppressions (`allow`, `expect`, or `cfg_attr`), Clippy lint-group suppressions (`clippy::all`, `pedantic`, `nursery`, `restriction`, `complexity`, `correctness`, `suspicious`, `style`, `perf`, or `cargo`), crate/module/`impl`/`trait` complexity bypasses (`too_many_lines` or `cognitive_complexity`), `macro_rules!` Clippy suppressions, or stale `too_many_lines` attributes on functions of **60 lines or fewer** per [ADR 0019](docs/adr/0019-purge-dead-code-bypasses.md), [ADR 0027](docs/adr/0027-enforce-workspace-clippy-lints.md), and [ADR 0036](docs/adr/0036-harden-ast-and-doctest-policy-audits.md). Every dependency across `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]`, and `[target.*]` tables must be referenced in Rust AST/attributes, derive macros, or compiled `rustdoc` code blocks, or carry an explicit `[[unused_dependencies]]` entry (`crate`, `dependency`, `reason`) in [verification_whitelist.toml](verification_whitelist.toml). Gate test-only helpers with `#[cfg(test)]` or decompose large functions instead.
 - Modifying core mathematical or runtime crates (`crates/` excluding `crates/unified_verification`, or `math_explorer/`) requires creating or updating an Architectural Decision Record under `docs/adr/`.
 
 ```text
@@ -23,7 +23,7 @@ Markdown verification gates:
 
 ## 2. Local Cargo Builds & CI Quality Gates
 
-Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) restore Cargo registry sources and profile-scoped `target/` caches via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (referencing `./.github/actions/cargo-cache` without caching mutable CLI binaries).
+Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) set `CARGO_INCREMENTAL: "0"` (leaving [.cargo/config.toml](.cargo/config.toml) untouched so local developer builds remain incremental), restore Cargo registry sources and filtered profile-scoped `target/` caches (excluding `incremental/`, `doc/`, `llvm-cov-target/`, `package/`, and `tmp/`) via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (`./.github/actions/cargo-cache`), and cache pinned CLI binaries (`cargo-audit`, `cargo-llvm-cov`, `trunk`, `wasm-bindgen-cli`, and `cargo-packager`) under `~/.cache/ci-tools/` outside `~/.cargo/bin` via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml) (`./.github/actions/ci-tool-cache`).
 
 Run workspace builds, fast diff-scoped pre-commit checks (`lint-staged`), and the full PR verification suite (`lint-all`) aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [crates/unified_verification/README.md](crates/unified_verification/README.md) via `xtask` (`xtask` builds `unified_verification` with Cargo's default `dev` profile locally to skip release fat LTO):
 
@@ -33,8 +33,8 @@ cargo check --workspace
 cargo build --workspace --all-features
 
 # Run fast diff-scoped pre-commit checks on staged paths (executed automatically by .githooks/pre-commit;
-# checks staged formatting, file lengths, entropy, policy audit, staged duplicates, .github/-gated workflows,
-# .md-gated links, and targeted host/wasm32 Clippy without OSV network calls, API drift, or ADR checks)
+# checks staged formatting, ADR records, file lengths, entropy, policy audit, staged duplicates,
+# .github/-gated workflows, .md-gated links, and targeted host/wasm32 Clippy without OSV network calls or API drift)
 cargo run -p xtask -- lint-staged
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static
@@ -70,13 +70,13 @@ cargo run -p xtask -- check-api-drift
 cargo run -p unified_verification --release -- regenerate-baseline
 cargo run -p xtask -- regenerate-baseline
 
-# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA or ./ local action pins, and safe run expressions)
+# Lint GitHub Actions workflows (permissions, event-scoped concurrency, timeouts, 40-char SHA or ./ local action pins, and safe run expressions)
 cargo run -p unified_verification --release -- lint-workflows
 
 # Run workflow linter unit tests directly
 cargo test -p unified_verification workflow_linter
 
-# Audit member [lints] inheritance, AST dead_code/unused/warnings/Clippy bypasses, and unused dependencies
+# Audit member [lints] inheritance, AST/macro Clippy & dead_code bypasses, and Cargo/doctest dependency usage
 cargo run -p xtask -- test-policy-audit
 cargo run -p unified_verification --release -- test-policy-audit
 
@@ -91,9 +91,9 @@ cargo run -p unified_verification --release -- check-file-lengths
 cargo run -p unified_verification --release -- check-entropy
 cargo run -p unified_verification --release -- traceability
 
-# Verify architectural decision records across staged index edits or commit ranges when core crates change
+# Verify architectural decision records (NNNN-slug.md, # and ## Status headings, unique IDs, and ACMR updates) across staged index edits or commit ranges
 cargo run -p unified_verification --release -- verify-records --staged
-BASE_SHA="$(git merge-base HEAD main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
+BASE_SHA="$(git merge-base HEAD origin/main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
 
 # Run the full high-integrity verified suite (including cargo llvm-cov coverage and Verification_Certificate.json)
 cargo run -p unified_verification --release -- verify-suite
@@ -105,9 +105,9 @@ cargo check --workspace --target wasm32-unknown-unknown --all-features
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
 
-### Workflow `run` Script Expression & Reusable Caller Policy
+### Workflow Concurrency, `run` Script Expression & Reusable Caller Policy
 
-`lint-workflows` audits `.github/workflows` (including full permission, concurrency, timeout, pinning, and `run` expression checks on local reusable workflows) and `.github/actions` manifests. It rejects `${{ github.* }}`, `${{ inputs.* }}`, and non-static or unmapped `${{ env.* }}` expressions interpolated directly inside workflow `jobs.<id>.steps[*].run` and composite action `runs.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, `${{ github.event.* }}`, or `${{ inputs.target }}`) to prevent script and argument injection. Reusable workflow caller jobs (`jobs.<id>.uses`) are exempt from `timeout-minutes` and must omit `timeout-minutes` at the caller level (configure `timeout-minutes` on concrete jobs inside the called workflow instead). Always bind `github` and `inputs` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
+`lint-workflows` audits `.github/workflows` (including full permission, concurrency, timeout, pinning, and `run` expression checks on local reusable workflows) and `.github/actions` manifests. For workflows with `on.push.branches`, root and branch-active job `concurrency` blocks must not group runs by `github.ref` or `github.ref_name` without a run-unique `github.run_id` or `github.sha` fallback, and `cancel-in-progress` must never cancel configured push branches such as `main` or `master` (scope cancellation to `pull_request` events and isolate serialized deployments like `deploy-pages` under job-level `group: pages` with `cancel-in-progress: false`). It also rejects `${{ github.* }}`, `${{ inputs.* }}`, and non-static or unmapped `${{ env.* }}` expressions interpolated directly inside workflow `jobs.<id>.steps[*].run` and composite action `runs.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, `${{ github.event.* }}`, or `${{ inputs.target }}`) to prevent script and argument injection. Reusable workflow caller jobs (`jobs.<id>.uses`) are exempt from `timeout-minutes` and must omit `timeout-minutes` at the caller level (configure `timeout-minutes` on concrete jobs inside the called workflow instead). Always bind `github` and `inputs` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
 
 ```text
 env:
@@ -132,16 +132,18 @@ cargo run -p xtask -- test-features physics
 cargo run -p xtask -- test-features core-only
 ```
 
+In CI, all eight `feature-matrix` legs share a single `features-shared` Linux `dev` cache: the `climate` leg writes the shared `target/` archive while the remaining seven legs pass `restore-only: true` (`actions/cache/restore`) to [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml).
+
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
-In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed traceability JSON metadata and pre-compress assets), enforces the 3 MB compressed bundle budget, executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, generates `SHA256SUMS`, and uploads `wasm_web_dist` on `refs/heads/main` before `deploy-pages` stages and verifies all 28 `compiled_papers` PDFs, refreshes `SHA256SUMS`, and publishes the GitHub Pages artifact.
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` restores pinned `trunk` (`0.22.2`) and `wasm-bindgen-cli` (`0.2.130`) binaries via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml), caches `~/.cache/trunk` (keyed by runner OS, `Cargo.lock`, and [math_explorer_gui/Trunk.toml](math_explorer_gui/Trunk.toml) for `wasm-opt` `version_123`), compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed traceability JSON metadata and pre-compress assets), enforces the 3 MB compressed bundle budget, executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, generates `SHA256SUMS`, and uploads `wasm_web_dist` on `refs/heads/main` before `deploy-pages` stages and verifies all 28 `compiled_papers` PDFs, refreshes `SHA256SUMS`, and publishes the GitHub Pages artifact.
 
 ```bash
 # 1. Install the WebAssembly Rust target, Trunk, wasm-bindgen-cli, compression utilities, and Playwright Chromium (Ubuntu / Debian)
 rustup target add wasm32-unknown-unknown
 sudo apt-get update
 sudo apt-get install -y brotli
-cargo binstall --no-confirm trunk wasm-bindgen-cli@0.2.130
+cargo binstall --no-confirm trunk@0.22.2 wasm-bindgen-cli@0.2.130
 python3 -m pip install --user playwright
 python3 -m playwright install --with-deps chromium
 
@@ -175,7 +177,7 @@ cargo run -p xtask -- test-wasm
 The `package` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) defines a static three-OS matrix (`ubuntu-latest`/`deb`, `macos-latest`/`dmg`, and `windows-latest`/`wix`) so every workflow event posts deterministic `Package Installers` check runs across all three operating systems:
 
 - **Linux (`deb`)**: Runs on every `pull_request`, `merge_group`, `push`, and `workflow_dispatch` event.
-- **macOS (`dmg`) & Windows (`wix`)**: Run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `pre-flight` sets `installer_changed=true` (diffs touching `math_explorer_gui/**`, [Cargo.toml](Cargo.toml), `Cargo.lock`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when git diff falls back). On unrelated pull requests (`installer_changed=false`), the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` and skip build, manifest, and upload steps via `if:`.
+- **macOS (`dmg`) & Windows (`wix`)**: Because `pull_request` runs gate direct merges to `main` (without relying solely on `merge_group`), these legs run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `pre-flight` sets `installer_changed=true` — matching `crates/*` (after ignoring non-linked `crates/markdown_tests/*` and `crates/unified_verification/*`), `math_explorer_gui/*`, `math_explorer/*`, `egui_plot/*`, [LICENSE](LICENSE), `papers/*`, [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*` (see [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml)), and [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back because `BASE_SHA` or `HEAD_SHA` is missing or unreachable. When a `pull_request` touches only paths outside those globs (such as `docs/*`, `AGENTS.md`, [CONTRIBUTING.md](CONTRIBUTING.md), `crates/markdown_tests/*`, or `crates/unified_verification/*`), `installer_changed` is `false` and the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` to post passing check runs while skipping build, manifest, and upload steps via `if:`.
 
 ### Prerequisites (Ubuntu / Debian)
 
@@ -233,7 +235,7 @@ rm -rf math_explorer_gui/dist
 
 ## 6. Local Academic Paper Compilation Checks
 
-Because `traceability` only checks `.tex` filename presence in `papers/` and `.githooks/pre-commit` omits LaTeX builds so contributors do not need TeXLive for unrelated Rust commits, [.github/workflows/ci.yml](.github/workflows/ci.yml) enforces full paper compilation in the `compile-papers` (`Compile Academic Papers`) job whenever `pre-flight` sets `papers_changed=true` on `pull_request` (diffs touching `papers/**`, `apps/xtask/src/papers*`, [traceability.toml](traceability.toml), or [.github/workflows/ci.yml](.github/workflows/ci.yml), or on git diff fallback) and unconditionally on `merge_group`, `push`, and `workflow_dispatch`.
+Because `traceability` only checks `.tex` filename presence in `papers/` and `.githooks/pre-commit` omits LaTeX builds so contributors do not need TeXLive for unrelated Rust commits — and because `pull_request` runs gate direct merges to `main` — [.github/workflows/ci.yml](.github/workflows/ci.yml) enforces full paper compilation in the `compile-papers` (`Compile Academic Papers`) job whenever `pre-flight` sets `papers_changed=true` on `pull_request` (diffs touching `papers/*`, `apps/xtask/*`, [traceability.toml](traceability.toml), [Verification_Certificate.json](Verification_Certificate.json), [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back) and unconditionally on `merge_group`, `push`, and `workflow_dispatch`. Pull requests limited to paths outside those globs (such as `docs/*`, `crates/markdown_tests/*`, or `crates/unified_verification/*`) set `papers_changed=false` and skip `compile-papers`.
 
 ### Prerequisites (Ubuntu / Debian)
 

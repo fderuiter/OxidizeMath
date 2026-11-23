@@ -3,19 +3,20 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::runner::render_lbm_color_image;
 use super::state::{
     bluff_plate_obstacle_grid, cylinder_obstacle_grid, screen_pos_to_cell,
-    streamlined_airfoil_obstacle_grid, LbmBrushMode, LbmViewMode, AREA_BUDGET_MAX, AREA_BUDGET_MIN,
-    BRUSH_RADIUS_MAX, BRUSH_RADIUS_MIN, INFLOW_SPEED_MAX, INFLOW_SPEED_MIN, LBM_CELL_COUNT,
-    LBM_HEIGHT, LBM_INLET_GUARD_COLS, LBM_WIDTH, STEPS_PER_FRAME_MAX, STEPS_PER_FRAME_MIN,
-    VISCOSITY_MAX, VISCOSITY_MIN,
+    streamlined_airfoil_obstacle_grid, LbmBrushMode, LbmTelemetry, LbmViewMode, AREA_BUDGET_MAX,
+    AREA_BUDGET_MIN, BRUSH_RADIUS_MAX, BRUSH_RADIUS_MIN, INFLOW_SPEED_MAX, INFLOW_SPEED_MIN,
+    LBM_CELL_COUNT, LBM_HEIGHT, LBM_INLET_GUARD_COLS, LBM_WIDTH, STEPS_PER_FRAME_MAX,
+    STEPS_PER_FRAME_MIN, VISCOSITY_MAX, VISCOSITY_MIN,
 };
 use super::LatticeBoltzmannTool;
 use crate::accessibility::{
     lock_canvas_arrow_keys, paint_canvas_focus_ring, AccessibleHoverText, AccessibleTheoryHover,
 };
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
-use crate::async_sim::SimCommand;
+use crate::async_sim::{SimCommand, StateSnapshot};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use scientific_metadata::theory::TheoryDescribable;
@@ -130,8 +131,10 @@ impl LatticeBoltzmannTool {
             }
         });
 
+        let flow_unlocked = self.active_challenge.is_none();
         if ui
-            .add(
+            .add_enabled(
+                flow_unlocked,
                 egui::Slider::new(&mut self.viscosity, VISCOSITY_MIN..=VISCOSITY_MAX)
                     .logarithmic(true)
                     .text("Viscosity (ν)"),
@@ -142,7 +145,8 @@ impl LatticeBoltzmannTool {
             self.refresh_idle_telemetry();
         }
         if ui
-            .add(
+            .add_enabled(
+                flow_unlocked,
                 egui::Slider::new(&mut self.inflow_speed, INFLOW_SPEED_MIN..=INFLOW_SPEED_MAX)
                     .text("Inflow Speed (U)"),
             )
@@ -186,7 +190,11 @@ impl LatticeBoltzmannTool {
             self.enforce_current_budget();
             ctx.request_repaint();
         }
+        self.draw_profile_buttons(ui, ctx);
+        ui.small("Left-drag sculpts • Right-drag erases • Inlet x < 2 protected");
+    }
 
+    fn draw_profile_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.label("Tunnel Profiles:");
         ui.horizontal_wrapped(|ui| {
             if ui
@@ -213,6 +221,19 @@ impl LatticeBoltzmannTool {
                 self.apply_obstacle_preset(streamlined_airfoil_obstacle_grid());
                 ctx.request_repaint();
             }
+            for stamp in [
+                super::super::lbm_fairing::FairingStamp::TeardropFairing,
+                super::super::lbm_fairing::FairingStamp::SymmetricWedge,
+            ] {
+                if ui
+                    .button(format!("♦ {}", stamp.label()))
+                    .accessible_hover_text("Stamp fairing geometry around protected R_core = 4")
+                    .clicked()
+                {
+                    self.apply_fairing_stamp(stamp);
+                    ctx.request_repaint();
+                }
+            }
             if ui
                 .button("✕ Clear")
                 .accessible_hover_text("Remove all solid obstacles from the wind tunnel")
@@ -222,7 +243,6 @@ impl LatticeBoltzmannTool {
                 ctx.request_repaint();
             }
         });
-        ui.small("Left-drag sculpts • Right-drag erases • Inlet x < 2 protected");
     }
 
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -371,5 +391,77 @@ impl LatticeBoltzmannTool {
         );
         ui.painter()
             .galley(badge_rect.min + pad, galley, text_color);
+    }
+
+    pub(crate) fn ensure_texture(&mut self, ctx: &egui::Context) {
+        if self.texture.is_some() && !self.dirty {
+            return;
+        }
+        let image = render_lbm_color_image(
+            &self.build_snapshot_solver(),
+            self.inflow_speed,
+            self.view_mode,
+            self.high_contrast,
+        );
+        if let Some(tex) = &mut self.texture {
+            tex.set(image, egui::TextureOptions::NEAREST);
+        } else {
+            self.texture = Some(ctx.load_texture(
+                "lbm_wind_tunnel_texture",
+                image,
+                egui::TextureOptions::NEAREST,
+            ));
+        }
+        self.dirty = false;
+    }
+
+    pub(super) fn sync_from_worker(&mut self, ctx: &egui::Context) {
+        if let Some(snapshot) = self.worker.update() {
+            Self::upload_worker_snapshot(
+                &mut self.telemetry,
+                &mut self.texture,
+                &mut self.dirty,
+                ctx,
+                snapshot,
+            );
+        } else if self.dirty {
+            self.ensure_texture(ctx);
+        }
+        if self.worker.is_running() {
+            ctx.request_repaint();
+        }
+    }
+
+    fn upload_worker_snapshot(
+        telemetry: &mut LbmTelemetry,
+        texture_slot: &mut Option<egui::TextureHandle>,
+        dirty: &mut bool,
+        ctx: &egui::Context,
+        snapshot: &StateSnapshot,
+    ) {
+        if let Some(telem) = snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<LbmTelemetry>())
+            .copied()
+        {
+            *telemetry = telem;
+        }
+        if let Ok(pixels) = snapshot.pixels.try_read() {
+            if pixels.len() == snapshot.width * snapshot.height && !pixels.is_empty() {
+                let image =
+                    egui::ColorImage::new([snapshot.width, snapshot.height], pixels.clone());
+                if let Some(tex) = texture_slot {
+                    tex.set(image, egui::TextureOptions::NEAREST);
+                } else {
+                    *texture_slot = Some(ctx.load_texture(
+                        "lbm_wind_tunnel_texture",
+                        image,
+                        egui::TextureOptions::NEAREST,
+                    ));
+                }
+                *dirty = false;
+            }
+        }
     }
 }

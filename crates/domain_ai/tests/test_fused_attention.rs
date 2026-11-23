@@ -3,6 +3,7 @@ use approx::assert_relative_eq;
 use domain_ai::ai::transformer::MultiHeadAttention;
 use domain_ai::ai::transformer::attention::scaled_dot_product_attention;
 use nalgebra::DMatrix;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 /// Reference un-fused multi-head attention forward implementation.
@@ -153,6 +154,20 @@ fn test_forward_with_weights_visualization() {
             assert_relative_eq!(row_sum, 1.0, epsilon = 1e-10);
         }
     }
+
+    // Verify exact parity with non-zero projection weights and a causal mask
+    let mut non_zero_mha = MultiHeadAttention::new(d_model, h);
+    non_zero_mha.w_q = DMatrix::from_fn(d_model, d_model, |r, c| ((r + 1) * (c + 2)) as f64 * 1e-3);
+    non_zero_mha.w_k = DMatrix::from_fn(d_model, d_model, |r, c| ((r + 3) * (c + 1)) as f64 * 1e-3);
+    non_zero_mha.w_v = DMatrix::from_fn(d_model, d_model, |r, c| ((r + 2) * (c + 3)) as f64 * 1e-3);
+    non_zero_mha.w_o = DMatrix::from_fn(d_model, d_model, |r, c| ((r + c + 1) as f64 * 1e-3).sin());
+    let causal_mask = DMatrix::from_fn(seq_len, seq_len, |r, c| if c > r { -1e9 } else { 0.0 });
+
+    let (masked_with_weights, masked_weights) =
+        non_zero_mha.forward_with_weights(&x, &x, &x, Some(&causal_mask));
+    let masked_forward = non_zero_mha.forward(&x, &x, &x, Some(&causal_mask));
+    assert_eq!(masked_with_weights, masked_forward);
+    assert_eq!(masked_weights.len(), h);
 }
 
 #[test]
@@ -215,31 +230,37 @@ fn test_fused_projection_latency_and_throughput() {
     );
     let _ = mha.forward(&q, &k, &v, None);
 
-    // Measure unfused projection loop latency
-    let iters = 50;
-    let start_ref = Instant::now();
-    for _ in 0..iters {
-        for i in 0..h {
-            let _q_p = &q * &w_q_vec[i];
-            let _k_p = &k * &w_k_vec[i];
-            let _v_p = &v * &w_v_vec[i];
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
+    {
+        let iters = 50;
+        let start_ref = Instant::now();
+        for _ in 0..iters {
+            for w_q_i in w_q_vec.iter().take(h) {
+                let _q_p = &q * w_q_i;
+            }
+            for w_k_i in w_k_vec.iter().take(h) {
+                let _k_p = &k * w_k_i;
+            }
+            for w_v_i in w_v_vec.iter().take(h) {
+                let _v_p = &v * w_v_i;
+            }
         }
-    }
-    let ref_proj_duration = start_ref.elapsed();
+        let ref_proj_duration = start_ref.elapsed();
 
-    // Measure fused projection latency
-    let start_fused = Instant::now();
-    for _ in 0..iters {
-        let _q_p = &q * &mha.w_q;
-        let _k_p = &k * &mha.w_k;
-        let _v_p = &v * &mha.w_v;
-    }
-    let fused_proj_duration = start_fused.elapsed();
+        let start_fused = Instant::now();
+        for _ in 0..iters {
+            let _q_p = &q * &mha.w_q;
+            let _k_p = &k * &mha.w_k;
+            let _v_p = &v * &mha.w_v;
+        }
+        let fused_proj_duration = start_fused.elapsed();
 
-    println!(
-        "Projection Latency over {} iterations: Unfused loop: {:?}, Fused GEMM: {:?}",
-        iters, ref_proj_duration, fused_proj_duration
-    );
+        println!(
+            "Projection Latency over {} iterations: Unfused loop: {:?}, Fused GEMM: {:?}",
+            iters, ref_proj_duration, fused_proj_duration
+        );
+    }
 
     // Dynamic allocation count during linear projection drops from 3 * h (= 24) to 3 total.
     let old_allocations_per_forward = 3 * h;

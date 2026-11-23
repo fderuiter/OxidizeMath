@@ -275,3 +275,61 @@ fn test_export_wind_tunnel_verification_previews() {
     let _ = std::fs::write("/tmp/lbm_drag_telemetry_comparison.png", &chart_png);
     assert!(bluff_png.starts_with(b"\x89PNG") && chart_png.starts_with(b"\x89PNG"));
 }
+
+#[test]
+fn test_lbm_fairing_challenge_lifecycle_and_tampered_url_clamping() {
+    let mut fw = crate::framework::SimulationFramework::new("fluid_dynamics");
+    fw.launch_challenge_by_id("lbm_low_drag_fairing", None)
+        .expect("lbm_low_drag_fairing must launch on LatticeBoltzmannTool");
+    assert_eq!(fw.active_challenge_id(), Some("lbm_low_drag_fairing"));
+    let base_eval = fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.evaluate_challenge())
+        .expect("challenge evaluation present");
+    assert!(!base_eval.passed, "Bluff cylinder baseline must start unsolved");
+
+    {
+        let tool = fw
+            .active_tool
+            .as_mut()
+            .and_then(|t| t.as_any_mut())
+            .and_then(|a| a.downcast_mut::<LatticeBoltzmannTool>())
+            .expect("active LatticeBoltzmannTool");
+        // Attempt to erase protected R_core = 4 center (30, 25) must keep core intact.
+        tool.sculpt_at_cell(30, 25, false);
+        assert!(tool.obstacles[flatten_2d_index(30, 25, LBM_WIDTH)]);
+        tool.apply_fairing_stamp(super::super::lbm_fairing::FairingStamp::TeardropFairing);
+    }
+    let solved_eval = fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.evaluate_challenge())
+        .expect("solved evaluation");
+    assert!(solved_eval.passed && solved_eval.score >= 60.0);
+
+    // Tamper locked viscosity/inflow_speed in shared challenge URL and verify clamping.
+    let share_url = fw.encode_share_url().expect("challenge share URL");
+    let frag = &share_url[share_url.find('#').unwrap()..];
+    let params = parse_share_location(frag, "").unwrap().unwrap();
+    let mut env: serde_json::Value = serde_json::from_str(params.state_json.as_ref().unwrap()).unwrap();
+    env["config"]["viscosity"] = serde_json::json!(0.25);
+    env["config"]["inflow_speed"] = serde_json::json!(0.17);
+    let mut dest_fw = crate::framework::SimulationFramework::new("fluid_dynamics");
+    dest_fw
+        .import_url_share_params(
+            Some("LatticeBoltzmannTool"),
+            Some("lbm_low_drag_fairing"),
+            Some(&env.to_string()),
+        )
+        .expect("clamped challenge URL import must succeed");
+    let hydrated = dest_fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.as_any())
+        .and_then(|a| a.downcast_ref::<LatticeBoltzmannTool>())
+        .unwrap();
+    assert!((hydrated.viscosity - 0.02).abs() < 1e-12);
+    assert!((hydrated.inflow_speed - 0.10).abs() < 1e-12);
+    assert!(hydrated.evaluate_challenge().unwrap().passed);
+}

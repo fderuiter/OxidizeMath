@@ -5,7 +5,7 @@ impl<const Q: usize> LatticeState<Q> {
     /// Returns the net fluid-on-obstacle force `(fx, fy)` accumulated during the last stream step.
     #[verified_engine::verified]
     pub fn net_obstacle_force(&self) -> (f64, f64) {
-        (self.obstacle_force_x, self.obstacle_force_y)
+        (self.last_drag_force, self.last_lift_force)
     }
 
     /// Counts the number of solid obstacle cells currently active on the lattice.

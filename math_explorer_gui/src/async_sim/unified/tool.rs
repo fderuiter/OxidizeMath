@@ -1,9 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{UnifiedModel, UnifiedSimRunner};
+use super::persistence::build_formula_bar;
+use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimRunner, UnifiedUiExtension};
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
-use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    CalloutManager, ChallengeEvaluation, InteractiveTool, MathExpressionInputBar, PlaybackAction,
+    PlaybackTransport,
+};
 use eframe::egui::{self, ColorImage};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
@@ -13,6 +17,10 @@ use std::sync::{Arc, RwLock};
 pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) controller: BackgroundWorker<UnifiedSimRunner<M>>,
     pub(crate) params: Arc<RwLock<HashMap<String, f64>>>,
+    pub(crate) shared_formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+    pub(crate) formula_bar: Option<MathExpressionInputBar>,
+    pub(crate) custom_formula_enabled: bool,
+    pub(super) formula_revision: u64,
     pub(super) param_metadata: Vec<(String, ParameterConstraint)>,
     steps_per_frame: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
@@ -25,6 +33,9 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) cached_param_labels: Vec<String>,
     pub(super) cached_observable_label: Option<&'static str>,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(crate) callout_manager: CalloutManager,
+    pub(super) ui_extension: Option<Box<dyn UnifiedUiExtension>>,
+    pub(crate) atlas: Option<crate::async_sim::atlas::ParameterAtlasController>,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -49,8 +60,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             initial_params.insert(name.clone(), default_val);
         }
 
+        let formula_bar = M::formula_spec().as_ref().map(build_formula_bar);
         let params = Arc::new(RwLock::new(initial_params.clone()));
-        let runner = UnifiedSimRunner::<M>::new(Arc::clone(&params));
+        let shared_formula = Arc::new(RwLock::new(None));
+        let runner =
+            UnifiedSimRunner::<M>::with_formula(Arc::clone(&params), Arc::clone(&shared_formula));
         let controller = BackgroundWorker::new(runner);
         let temp_model = M::new(&initial_params);
 
@@ -58,10 +72,18 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .iter()
             .map(|(name, _)| M::parameter_label(name))
             .collect();
-
+        let mut callout_manager = CalloutManager::new();
+        let ui_extension = M::create_ui_extension();
+        if let Some(ext) = &ui_extension {
+            ext.sync_callouts(controller.latest_snapshot(), &mut callout_manager);
+        }
         Self {
             controller,
             params,
+            shared_formula,
+            formula_bar,
+            custom_formula_enabled: false,
+            formula_revision: 1,
             param_metadata,
             steps_per_frame: 5,
             texture: None,
@@ -74,6 +96,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             cached_param_labels,
             cached_observable_label: None,
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
+            callout_manager,
+            ui_extension,
+            atlas: Self::create_optional_atlas(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -83,11 +108,37 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.controller.state()
     }
 
+    pub(super) fn dispatch_extension_commands(
+        &mut self,
+        commands: Vec<SimCommand>,
+        ctx: Option<&egui::Context>,
+    ) {
+        if commands.is_empty() {
+            return;
+        }
+        for cmd in commands {
+            let _ = self.controller.send_command(cmd);
+        }
+        self.dirty = true;
+        if let Some(ext) = &self.ui_extension {
+            ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
+        }
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
+    }
+
     pub(super) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
         self.stepped_snapshot = None;
+        if let Some(ext) = &mut self.ui_extension {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            ext.on_reset(&p);
+            ext.sync_callouts(self.controller.latest_snapshot(), &mut self.callout_manager);
+        }
         let params = Arc::clone(&self.params);
+        let formula = Arc::clone(&self.shared_formula);
         self.controller
-            .reset_or_respawn(|| UnifiedSimRunner::<M>::new(params));
+            .reset_or_respawn(|| UnifiedSimRunner::<M>::with_formula(params, formula));
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
@@ -141,6 +192,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     p.insert(name.clone(), d);
                 }
                 drop(p);
+                if let Some(spec) = M::formula_spec() {
+                    self.custom_formula_enabled = false;
+                    self.formula_bar = Some(build_formula_bar(&spec));
+                    self.publish_formula_update();
+                }
                 self.reset_simulation(ctx);
                 let _ = self.controller.send_command(SimCommand::Start);
             }
@@ -263,6 +319,14 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     fn step_simulation(&mut self) {
         if let Ok(params) = self.params.read() {
             let mut model = M::new(&params);
+            if self.custom_formula_enabled {
+                let payload = self
+                    .shared_formula
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                model.apply_compiled_formula(payload.as_ref(), &params);
+            }
             for _ in 0..self.steps_per_frame.max(1) {
                 model.step(&params);
             }
@@ -280,12 +344,31 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                 val.to_bits().hash(&mut h);
             }
         }
+        if let Some(ext) = &self.ui_extension {
+            ext.state_revision_salt().hash(&mut h);
+        }
+        if let Some(atlas) = &self.atlas {
+            atlas.is_visible().hash(&mut h);
+            atlas.axis_keys().hash(&mut h);
+        }
+        self.custom_formula_enabled.hash(&mut h);
+        if let Some(ref bar) = self.formula_bar {
+            bar.raw_text.hash(&mut h);
+            for &pv in bar.param_slice() {
+                pv.to_bits().hash(&mut h);
+            }
+        }
         h.finish().max(1)
     }
 
     fn has_finite_parameters(&self) -> bool {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let formula_ok = self
+            .formula_bar
+            .as_ref()
+            .is_none_or(|b| b.param_slice().iter().all(|v| v.is_finite()));
         params.values().all(|v| v.is_finite())
+            && formula_ok
             && !matches!(
                 self.controller.state(),
                 crate::async_sim::SimWorkerState::Faulted
@@ -293,46 +376,59 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn save_state(&self) -> Option<String> {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let sorted: std::collections::BTreeMap<&String, &f64> = params.iter().collect();
-        serde_json::to_string(&sorted).ok()
+        self.serialize_tool_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let params: HashMap<String, f64> = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
-        if !self.param_metadata.is_empty() && params.is_empty() {
-            return Err(format!(
-                "Empty parameter configuration for {}; expected parameters: {}",
-                M::name(),
-                self.param_metadata
-                    .iter()
-                    .map(|m| m.0.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-        for (key, value) in &params {
-            if !self.param_metadata.iter().any(|meta| &meta.0 == key) {
-                return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
-            }
-            if !value.is_finite() {
-                return Err(format!(
-                    "Non-finite value for parameter '{}' in {}",
-                    key,
+        self.deserialize_tool_state(state)
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        let Some(ext) = &mut self.ui_extension else {
+            return if let Some(id) = challenge_id {
+                Err(format!(
+                    "Tool '{}' does not support challenge '{id}'",
                     M::name()
-                ));
-            }
-        }
-        {
-            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (key, value) in params {
-                guard.insert(key, value);
-            }
-        }
-        self.texture = None;
-        self.reset_simulation(None);
+                ))
+            } else {
+                Ok(())
+            };
+        };
+        let mut next_params = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let cmds = ext.apply_challenge(challenge_id, &mut next_params)?;
+        *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
+        self.dispatch_extension_commands(cmds, None);
         Ok(())
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.ui_extension
+            .as_ref()
+            .and_then(|ext| ext.active_challenge_id())
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        let snap = self
+            .stepped_snapshot
+            .as_ref()
+            .or_else(|| self.controller.latest_snapshot());
+        self.ui_extension
+            .as_ref()
+            .and_then(|ext| ext.evaluate_challenge(snap))
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn clamp_parameters(&mut self) -> bool {

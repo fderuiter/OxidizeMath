@@ -38,11 +38,12 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
         self.state.rho.fill(1.0);
         self.state.ux.fill(0.0);
         self.state.uy.fill(0.0);
-        self.state.obstacle_force_x = 0.0;
-        self.state.obstacle_force_y = 0.0;
         let eq = L::equilibrium(1.0, 0.0, 0.0);
         self.state.f.fill(eq);
         self.state.f_new.fill(eq);
+        self.state.last_drag_force = 0.0;
+        self.state.last_lift_force = 0.0;
+        self.state.has_stepped_forces = false;
     }
 
     /// Sets a rectangular region of velocity (e.g., inlet).
@@ -77,12 +78,17 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
     /// Performs one simulation step (Stream -> Boundary -> Macroscopic/Collision -> Buffer Swap).
     #[verified_engine::verified]
     pub fn step(&mut self) {
-        self.stream();
-        self.boundary_conditions(); // Apply macroscopic BCs if any
-        self.macroscopic_and_collision();
+        self.step_unswapped();
         pure_math::pure_math::analysis::evolution::DoubleBufferedState::swap_buffers(
             &mut self.state,
         );
+    }
+
+    #[verified_engine::verified]
+    fn step_unswapped(&mut self) {
+        self.stream();
+        self.boundary_conditions(); // Apply macroscopic BCs if any
+        self.macroscopic_and_collision();
     }
 
     /// Fused Macroscopic + Collision step.
@@ -238,8 +244,9 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
             "LatticeState invariant violated: obstacles.len() != width * height"
         );
         if width == 0 || height == 0 {
-            self.state.obstacle_force_x = 0.0;
-            self.state.obstacle_force_y = 0.0;
+            self.state.last_drag_force = 0.0;
+            self.state.last_lift_force = 0.0;
+            self.state.has_stepped_forces = true;
             return;
         }
 
@@ -272,8 +279,9 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
             }
         }
 
-        self.state.obstacle_force_x = fx;
-        self.state.obstacle_force_y = fy;
+        self.state.last_drag_force = fx;
+        self.state.last_lift_force = fy;
+        self.state.has_stepped_forces = true;
     }
 
     /// Enforce specific boundary conditions (like driving velocity).
@@ -417,8 +425,9 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
     #[verified_engine::verified]
     pub fn clear_obstacles(&mut self) {
         self.state.obstacles.fill(false);
-        self.state.obstacle_force_x = 0.0;
-        self.state.obstacle_force_y = 0.0;
+        self.state.last_drag_force = 0.0;
+        self.state.last_lift_force = 0.0;
+        self.state.has_stepped_forces = false;
     }
 }
 
@@ -436,7 +445,7 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> EvolutionEngine<L
         _dt: f64,
     ) -> Result<(), EvolutionError> {
         std::mem::swap(&mut self.state, state);
-        self.step();
+        self.step_unswapped();
         std::mem::swap(&mut self.state, state);
         Ok(())
     }

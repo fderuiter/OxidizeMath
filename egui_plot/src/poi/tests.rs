@@ -310,8 +310,11 @@ fn plateau_200k_series_detects_extrema_in_linear_time_under_5ms() {
 
     // Warm up instruction cache once before timing
     let _ = detect_critical_points(&items, &tf);
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::disallowed_methods)]
     let start = std::time::Instant::now();
     let pois = detect_critical_points(&items, &tf);
+    #[cfg(not(target_arch = "wasm32"))]
     let elapsed = start.elapsed();
 
     let max_poi = pois
@@ -326,6 +329,7 @@ fn plateau_200k_series_detects_extrema_in_linear_time_under_5ms() {
     assert!((max_poi.point[1] - 5.0).abs() < 1e-9);
     assert!((min_poi.point[0] - 149_999.5).abs() <= 1.0);
     assert!((min_poi.point[1] + 3.0).abs() < 1e-9);
+    #[cfg(not(target_arch = "wasm32"))]
     assert!(
         elapsed < std::time::Duration::from_millis(5),
         "200k plateau detect_critical_points took {elapsed:?} (>= 5ms)"
@@ -406,6 +410,45 @@ fn static_frames_reuse_cached_pois_and_defer_export_primitive_materialization() 
     assert_eq!(
         crate::export_primitives::materialized_export_primitives_call_count(),
         1
+    );
+}
+
+#[test]
+fn chunked_plateau_preserves_y_intercept_and_nan_break_semantics() {
+    // Negative-to-positive plateau crossing x = 0 must preserve YIntercept and LocalMax
+    let mut cross_pts = vec![[-30.0, 1.0]];
+    for x in -29..=29 {
+        if x != 0 {
+            cross_pts.push([x as f64, 4.0]);
+        }
+    }
+    cross_pts.push([30.0, 1.0]);
+    let tf = make_transform([-35.0, -5.0], [35.0, 10.0]);
+    let pois = detect_critical_points(&[Box::new(Line::new("CrossPlateau", cross_pts))], &tf);
+    assert!(
+        pois.iter()
+            .any(|p| p.kind == CriticalPointKind::YIntercept && (p.point[1] - 4.0).abs() < 1e-9)
+    );
+    assert!(
+        pois.iter()
+            .any(|p| p.kind == CriticalPointKind::LocalMax && p.point[0].abs() < 1e-9)
+    );
+
+    // Plateau broken by NaN must not emit a spurious extremum; terminal x = 0 emits YIntercept
+    let mut nan_plateau: Vec<[f64; 2]> = (-25..=-1).map(|x| [x as f64, 3.0]).collect();
+    nan_plateau.insert(0, [-26.0, 0.0]);
+    nan_plateau[12] = [-14.0, f64::NAN];
+    nan_plateau.push([0.0, 3.0]);
+    let nan_pois = detect_critical_points(&[Box::new(Line::new("NaNPlateau", nan_plateau))], &tf);
+    assert!(
+        nan_pois
+            .iter()
+            .all(|p| p.kind != CriticalPointKind::LocalMax)
+    );
+    assert!(
+        nan_pois
+            .iter()
+            .any(|p| p.kind == CriticalPointKind::YIntercept && (p.point[1] - 3.0).abs() < 1e-9)
     );
 }
 
