@@ -1,4 +1,4 @@
-# ADR 0037: Unify Build-Time and Runtime Traceability Scanning via `TraceabilityEngine`
+# ADR 0040: Unify Build-Time and Runtime Traceability Scanning via `TraceabilityEngine`
 
 ## Status
 Accepted (extends [ADR 0007](0007-consolidate-workspace-discovery.md), [ADR 0011](0011-ast-citation-binding-and-cli-check-enforcement.md), [ADR 0027](0027-build-rerun-directives-and-cargo-cache.md), and [ADR 0032](0032-precomputed-traceability-manifest-and-wasm-vfs-subpaths.md))
