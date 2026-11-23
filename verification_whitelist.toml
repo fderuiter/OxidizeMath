@@ -12,7 +12,10 @@ scan_paths = [
     "math_explorer_gui",
     "egui_plot",
     ".github",
+    ".githooks",
     "scripts",
+    ".env",
+    "Dockerfile",
     "Cargo.toml",
     "traceability.toml",
     "verification_whitelist.toml",
@@ -130,6 +133,11 @@ allowlist = [
     "docs/adr/0038-watertight-3d-stl-and-ply-exports.md",
     "docs/adr/0039-metric-agnostic-3d-tda-exact-z2-homology-and-chaos-mashup.md",
     "docs/adr/0039-network-epidemic-containment-primitives.md",
+    "docs/adr/0040-ast-verification-spans-optout-scoping-and-api-normalization.md",
+    "docs/adr/0040-dual-backend-web-audio-sonification.md",
+    "docs/adr/0040-galactic-dynamics-and-astrophysics-tab.md",
+    "docs/adr/0040-promote-zero-alloc-curve-solvers-to-math-commons.md",
+    "docs/adr/0040-staged-index-snapshot-and-graph-scoped-gates.md",
 ]
 
 [[unused_dependencies]]
@@ -258,13 +266,13 @@ vendored_crates = [
 "crates/math_commons/src/primitives.rs" = 11
 "crates/math_commons/src/registry.rs" = 1
 "crates/math_commons/src/wigner/mod.rs" = 7
-"crates/oxidize_core/src/ast_visitor.rs" = 12
+"crates/oxidize_core/src/ast_visitor.rs" = 15
 "crates/oxidize_core/src/boundary.rs" = 2
 "crates/oxidize_core/src/lib.rs" = 9
 "crates/oxidize_core/src/mesh/export.rs" = 1
 "crates/oxidize_core/src/mesh/mod.rs" = 2
 "crates/oxidize_core/src/mesh/types.rs" = 13
-"crates/oxidize_core/src/traceability.rs" = 20
+"crates/oxidize_core/src/traceability.rs" = 25
 "crates/oxidize_core/src/vfs.rs" = 6
 "crates/pure_math/src/error.rs" = 50
 "crates/pure_math/src/lib.rs" = 4
@@ -332,10 +340,9 @@ vendored_crates = [
 "math_explorer_gui/src/accessibility.rs" = 7
 "math_explorer_gui/src/async_sim/mod.rs" = 34
 "math_explorer_gui/src/async_sim/registry.rs" = 7
-"math_explorer_gui/src/async_sim/state.rs" = 31
+"math_explorer_gui/src/async_sim/state.rs" = 32
 "math_explorer_gui/src/async_sim/unified/mod.rs" = 4
 "math_explorer_gui/src/async_sim/unified/tool.rs" = 3
-"math_explorer_gui/src/async_sim/wasm.rs" = 1
 "math_explorer_gui/src/camera/mod.rs" = 1
 "math_explorer_gui/src/framework/mod.rs" = 9
 "math_explorer_gui/src/framework/ui.rs" = 2

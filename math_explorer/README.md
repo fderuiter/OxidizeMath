@@ -16,7 +16,7 @@ The `math_explorer` crate serves as the primary library entrypoint for downstrea
 
 - **Core Always-On Modules**:
   - `error` & `prelude`: Unified `MathError`, `MathResult`, bounded numeric primitives (`PositiveFloat`, `NonNegativeFloat`, `UnitInterval`), and `Diagnostic` traits.
-  - `ast`, `constants`, `math_kernel`, `primitives`, `registry`, `wigner`: Expression parsing/compilation, physical constants, tolerances, and Clebsch-Gordan coefficients.
+  - `ast`, `constants`, `fit`, `math_kernel`, `poi`, `primitives`, `registry`, `series`, `wigner`: Expression parsing/compilation, zero-allocation curve fitting and critical-point solvers, physical constants, tolerances, and Clebsch-Gordan coefficients.
   - `verified_engine` & `scientific_metadata`: Zero-allocation runtime verification harness (`VerifiedEngine`), `#[verified]`, `#[derive(Theory)]`, and `#[embed_theory]`.
 - **Feature-Gated Domain Modules**:
   - **`ai`**: Artificial Intelligence primitives, including Transformer components (Attention, Encoder/Decoder), Reinforcement Learning, NeRF-Diffusion, and Self-Calibration loops.
@@ -40,6 +40,28 @@ Add `math_explorer` to your `Cargo.toml` and enable the domain features required
 math_explorer = { path = "path/to/math_explorer", features = ["biology", "physics", "pure_math", "ai"] }
 ```
 
+### Example: Zero-Allocation Curve Fitting & Critical Points (Default Features)
+
+Fit polynomial or nonlinear models and locate sub-segment crossings without enabling any domain or GUI features:
+
+```rust
+use math_explorer::fit::{FitModel, fit_model};
+use math_explorer::poi::{closest_threshold_crossing, intersect_polylines};
+
+let xs = [0.0, 1.0, 2.0, 3.0, 4.0];
+let ys = [1.0, 2.7182818, 7.3890561, 20.085537, 54.59815];
+let series = (&xs[..], &ys[..]);
+
+let fit = fit_model(&series, FitModel::Exponential, false).expect("exponential fit");
+assert!(fit.r_squared > 0.999_999);
+
+let root_x = closest_threshold_crossing(&series, 10.0, 2.0).expect("threshold root");
+assert!((root_x - 10.0_f64.ln()).abs() < 0.02);
+
+let ref_line = [[0.0, 15.0], [4.0, 15.0]];
+let hits = intersect_polylines(&series, &ref_line, [0.0, 4.0]);
+assert_eq!(hits.len(), 1);
+```
 ### Example: Computational Biology (Neuroscience)
 
 Simulate a neuron's membrane potential using the Hodgkin-Huxley model:

@@ -4,16 +4,14 @@ pub(crate) mod lint_policy;
 pub(crate) mod missing_docs;
 
 pub use crate::whitelist::DeadCodeEntry;
-use crate::whitelist::{
-    PathMatchOptions, ROOT_ONLY_WHITELIST_CANDIDATES, VerificationWhitelist,
-    WORKSPACE_WHITELIST_CANDIDATES,
-};
+use crate::whitelist::{PathMatchOptions, ROOT_ONLY_WHITELIST_CANDIDATES, VerificationWhitelist};
 use dependencies::{
     DependencyVisitor, collect_expected_dependencies, is_whitelisted_unused_dep,
     manifest_package_name,
 };
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use syn::spanned::Spanned;
 use syn::visit::Visit;
 
 fn is_dead_code_lint_name(ident: &syn::Ident) -> bool {
@@ -42,9 +40,19 @@ struct DeadCodeVisitor {
     file_path: String,
     allowed: Vec<DeadCodeEntry>,
     has_unauthorized: bool,
+    violations: Vec<String>,
 }
 
 impl DeadCodeVisitor {
+    fn new(file_path: String, allowed: Vec<DeadCodeEntry>) -> Self {
+        Self {
+            file_path,
+            allowed,
+            has_unauthorized: false,
+            violations: Vec::new(),
+        }
+    }
+
     fn is_authorized(&self, ident: Option<&str>) -> bool {
         let opts = PathMatchOptions {
             trim_dot_slash: false,
@@ -64,14 +72,30 @@ impl DeadCodeVisitor {
         false
     }
 
+    fn record_violation(&mut self, line: usize, ident: Option<&str>) {
+        let loc = crate::ast_helpers::format_file_line(&self.file_path, line);
+        let (scope, wl_snippet) = match ident {
+            Some(id) => (
+                format!("identifier `{id}`"),
+                format!("file = \"{}\", identifier = \"{id}\"", self.file_path),
+            ),
+            None => (
+                "crate/module scope".to_string(),
+                format!("file = \"{}\"", self.file_path),
+            ),
+        };
+        let msg = format!(
+            "[!] Unauthorized dead code bypass at {loc} ({scope})\n  Hint: Gate test-only items with `#[cfg(test)]`, remove unused code, or add `[[dead_code]]` ({wl_snippet}) in `verification_whitelist.toml`."
+        );
+        println!("{msg}");
+        self.violations.push(msg);
+        self.has_unauthorized = true;
+    }
+
     fn check_attrs(&mut self, attrs: &[syn::Attribute], ident: Option<&str>) {
         for attr in attrs {
             if attr_suppresses_dead_code(attr) && !self.is_authorized(ident) {
-                println!(
-                    "[!] Unauthorized dead code bypass in {} (identifier: {:?})",
-                    self.file_path, ident
-                );
-                self.has_unauthorized = true;
+                self.record_violation(attr.span().start().line, ident);
             }
         }
     }
@@ -189,7 +213,8 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor {
         syn::visit::visit_foreign_item_type(self, i);
     }
     fn visit_local(&mut self, i: &'ast syn::Local) {
-        self.check_attrs(&i.attrs, None);
+        let ident = crate::ast_helpers::pat_ident_name(&i.pat);
+        self.check_attrs(&i.attrs, ident.as_deref());
         syn::visit::visit_local(self, i);
     }
 }
@@ -216,11 +241,8 @@ fn audit_member_sources(
             dep_visitor.visit_file(ast);
             doctests::audit_rs_doctests(ast, &path, ctx.member_dir, visited_md, dep_visitor);
 
-            let mut dc_visitor = DeadCodeVisitor {
-                file_path: file_path.clone(),
-                allowed: ctx.whitelist.dead_code.clone(),
-                has_unauthorized: false,
-            };
+            let mut dc_visitor =
+                DeadCodeVisitor::new(file_path.clone(), ctx.whitelist.dead_code.clone());
             dc_visitor.visit_file(ast);
             if dc_visitor.has_unauthorized {
                 success = false;
@@ -300,22 +322,42 @@ fn audit_single_member(
         doctests::audit_workspace_markdown_files(&member_dir, &mut visited_md, &mut dep_visitor);
     }
 
+    if !report_unused_dependencies(
+        member,
+        &cargo_toml_path,
+        package_name,
+        expected_deps,
+        &dep_visitor.used_deps,
+        &whitelist.unused_dependencies,
+    ) {
+        success = false;
+    }
+
+    success
+}
+
+fn report_unused_dependencies(
+    member: &str,
+    cargo_toml_path: &Path,
+    package_name: Option<&str>,
+    expected_deps: HashSet<String>,
+    used_deps: &HashSet<String>,
+    whitelist_entries: &[crate::whitelist::UnusedDependencyEntry],
+) -> bool {
+    let mut success = true;
+    let manifest_rel = crate::whitelist::lossy_slash_path(cargo_toml_path);
     let mut sorted_expected: Vec<String> = expected_deps.into_iter().collect();
     sorted_expected.sort();
     for expected in sorted_expected {
-        if !dep_visitor.used_deps.contains(&expected)
-            && !is_whitelisted_unused_dep(
-                member,
-                package_name,
-                &expected,
-                &whitelist.unused_dependencies,
-            )
+        if !used_deps.contains(&expected)
+            && !is_whitelisted_unused_dep(member, package_name, &expected, whitelist_entries)
         {
-            println!("[!] Unused dependency detected in {}: {}", member, expected);
+            println!(
+                "[!] Unused dependency detected in {manifest_rel} ({member}): `{expected}`\n  Hint: Remove `{expected}` from `{manifest_rel}`, move test-only dependencies under `[dev-dependencies]` (`#[cfg(test)]`), or add `[[unused_dependencies]]` (`crate_name = \"{member}\"`, `dependency = \"{expected}\"`) in `verification_whitelist.toml`."
+            );
             success = false;
         }
     }
-
     success
 }
 
@@ -337,13 +379,13 @@ pub(crate) fn run_policy_audit_with_caches(
     cache: &mut oxidize_core::traceability::AstCache,
     manifest_cache: &mut crate::manifest_cache::ManifestCache,
 ) -> bool {
-    let candidates = if lint_policy::cwd_is_member_crate_dir() {
-        WORKSPACE_WHITELIST_CANDIDATES
+    let resolved = if lint_policy::cwd_is_member_crate_dir() {
+        crate::whitelist::find_whitelist_path()
     } else {
-        ROOT_ONLY_WHITELIST_CANDIDATES
+        crate::whitelist::resolve_whitelist_path(ROOT_ONLY_WHITELIST_CANDIDATES)
     };
-    let whitelist_path = crate::whitelist::resolve_whitelist_path(candidates)
-        .unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
+    let whitelist_path =
+        resolved.unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
     run_policy_audit_with_whitelist_and_caches(members, &whitelist_path, cache, manifest_cache)
 }
 

@@ -239,8 +239,19 @@ pub fn audit_crate(crate_name: &str, crate_dir: &Path, is_allowlisted: bool) -> 
     report
 }
 
-/// Main entrypoint to audit all workspace crates.
+/// Main entrypoint to audit all discovered workspace crates.
 pub fn run_doc_audit(args: &[String]) -> bool {
+    let (workspace_root, members) = crate::manifest_cache::discover_workspace();
+    run_doc_audit_in_base(&workspace_root, &members, args)
+}
+
+/// Audits an explicit slice of `members` relative to the active workspace root.
+pub fn run_doc_audit_for_members(members: &[String], args: &[String]) -> bool {
+    let workspace_root = crate::manifest_cache::workspace_root_dir();
+    run_doc_audit_in_base(&workspace_root, members, args)
+}
+
+fn run_doc_audit_in_base(workspace_root: &Path, members: &[String], args: &[String]) -> bool {
     println!("=== Automated Crate Documentation Verification Gate ===");
 
     let staging_mode = args
@@ -254,8 +265,6 @@ pub fn run_doc_audit(args: &[String]) -> bool {
     if strict_mode {
         println!("Running in strict mode (all crates must satisfy full architecture headings).");
     }
-
-    let (workspace_root, members) = crate::manifest_cache::discover_workspace();
     if members.is_empty() {
         eprintln!("[!] No workspace members discovered.");
         return false;
@@ -274,13 +283,10 @@ pub fn run_doc_audit(args: &[String]) -> bool {
     };
 
     let mut report = AuditReport::new();
-
-    for member in &members {
+    for member in members {
         let crate_dir = crate::manifest_cache::resolve_workspace_path_from(workspace_root, member);
         let is_allowlisted = allowlist.contains(member) || staging_mode;
-
-        let crate_report = audit_crate(member, &crate_dir, is_allowlisted);
-        report.extend(crate_report.violations);
+        report.extend(audit_crate(member, &crate_dir, is_allowlisted).violations);
     }
 
     report.extend(facade_imports::audit_facade_import_hygiene(workspace_root));

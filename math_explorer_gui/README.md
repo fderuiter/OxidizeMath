@@ -20,17 +20,17 @@ classDiagram
     class ExplorerTab {
         <<interface>>
         +name() String
-        +show(ctx, frame)
+        +show_inside(ui, frame)
     }
 
     class MriTab {
         -simulator: BlochSimulator
-        +show()
+        +show_inside(ui, frame)
     }
 
     class MorphogenesisTab {
         -system: TuringSystem
-        +show()
+        +show_inside(ui, frame)
     }
 
     MathExplorerApp o-- ExplorerTab
@@ -40,8 +40,8 @@ classDiagram
 
 ### Key Components
 
-- **`MathExplorerApp`**: Root `eframe::App` shell managing navigation, starter gallery workflows, command palette search, accessibility announcements, and active workspace panels.
-- **`framework` & `tabs`**: Modular interactive tools implementing `InteractiveTool` / `ExplorerTab` contracts while delegating all mathematical computation to `math_explorer`.
+- **`MathExplorerApp`**: Root `eframe::App` shell managing navigation, starter gallery workflows, command palette search, accessibility announcements, and delegating each viewport pane's scoped `egui::Ui` to the active tab via `ExplorerTab::show_inside`.
+- **`ExplorerTab` & `framework`**: Standard visualization trait and interactive tool framework supporting single-pane and multi-pane layouts while delegating all mathematical computation to `math_explorer`.
 - **`async_sim`**: Off-thread and Web Worker simulation runners preventing frame-budget stalls during heavy PDE, FFT, or Monte Carlo sweeps.
 - **`presets` & `url_state`**: Versioned JSON preset import/export and deterministic URL state encoding.
 
@@ -68,17 +68,15 @@ Follow the [Interactive Tool Walkthrough](../docs/architecture/interactive_tool_
 1. **Create the Tab Module** (`src/tabs/fluid_dynamics.rs` or `src/tabs/fluid_dynamics/mod.rs`):
 
 ```text
+// @explorer_feature = "physics"
+// @explorer_order = 10
+
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
+#[derive(Default)]
 pub struct FluidDynamicsTab {
     velocity: f64,
-}
-
-impl Default for FluidDynamicsTab {
-    fn default() -> Self {
-        Self { velocity: 0.0 }
-    }
 }
 
 impl ExplorerTab for FluidDynamicsTab {
@@ -86,8 +84,8 @@ impl ExplorerTab for FluidDynamicsTab {
         "Fluid Dynamics"
     }
 
-    fn show(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Fluid Simulation");
             ui.add(egui::Slider::new(&mut self.velocity, 0.0..=100.0).text("Velocity"));
         });
@@ -95,10 +93,14 @@ impl ExplorerTab for FluidDynamicsTab {
 }
 ```
 
-2. **Register the Module & Preset Metadata**: Export the tab under `src/tabs/` and register its starter gallery preset and URL state descriptors.
+2. **Automated Plugin Discovery (`build.rs`)**:
+   Do **not** manually edit `src/tabs/mod.rs` or `src/app/mod.rs` to register your new tab. At compile time, [build.rs](build.rs) automatically scans `src/tabs` and workspace path dependencies for `impl ExplorerTab for YourStruct` (requiring `Default`) and generates `$OUT_DIR/generated_tabs.rs` (`instantiate_tabs()` and `instantiate_tab()`):
+   - `// @explorer_feature = "physics"`: Optional header comment gating the module behind a Cargo feature.
+   - `// @explorer_order = 10`: Optional header comment controlling navigation bar sort order (lower numbers appear first).
 3. **Design Principles**:
-   - **Separation of Concerns**: Keep mathematical solvers and domain physics inside `math_explorer` domain crates; keep GUI code focused on visualization and interaction.
-   - **Frame-Budget Safety**: Avoid heavy synchronous PDE/FFT work in `Default::default()` or per-frame `show()` calls; offload expensive sweeps via `async_sim`.
+   - **Separation of Concerns**: Keep mathematical solvers and domain physics inside `math_explorer`; keep GUI code focused on visualization and input handling.
+   - **Immediate Mode & Frame-Budget Safety**: `show_inside()` runs every frame. Avoid heavy synchronous PDE/FFT work in `Default::default()` or `show_inside()`; offload expensive sweeps via `async_sim`.
+   - **Lightweight Dependencies**: Avoid adding heavy dependencies (such as direct `rand`) when `math_explorer` primitives suffice.
 
 ---
 
