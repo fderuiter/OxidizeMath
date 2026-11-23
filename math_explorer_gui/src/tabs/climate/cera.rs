@@ -403,7 +403,7 @@ inventory::submit! {
         id: "CeraTool",
         display_name: "CERA Model",
         domain: "climate",
-        tags: &["cera", "climate"],
+        tags: &["cera", "climate", "earth mover", "autoencoder", "alignment"],
         build: || Box::new(CeraTool::default()),
     }
 }
