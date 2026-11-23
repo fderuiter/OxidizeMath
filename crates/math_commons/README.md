@@ -26,7 +26,10 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 - **`series`**: Zero-copy [`PointSeries`](crate::series::PointSeries) views over `[f64; 2]`, `(f64, f64)`, and paired `(&[f64], &[f64])` coordinate slices.
 - **`fit`**: Stack-allocated polynomial ordinary least squares (`1..=4`), damped Levenberg-Marquardt nonlinear regression, closed-form seed estimators, canonical [`FitModel`](crate::fit::FitModel) presets, and typed [`FitError`](crate::error::FitError) diagnostics.
 - **`poi`**: Zero-allocation sub-segment Hermite threshold crossings, vertical crossings, 3-point Lagrange parabolic extrema, and monotone/general 2D polyline intersections.
+- **`stochastic`**: `#![no_std]` zero-allocation [`SolverWorkspace`](crate::stochastic::SolverWorkspace) for iterative Tarjan SCC sink-class decomposition, scale-normalized Householder QR DTMC/CTMC stationary solvers, exact discrete-time AR(1) Ornstein-Uhlenbeck calibration, and quantile summaries.
 - **`wigner`**: Clebsch-Gordan coefficients and quantum angular momentum arithmetic.
+
+`math_commons` enables `default = ["std"]` and compiles under `#![no_std]` (`core` + `alloc` + `libm`) when built with `--no-default-features`.
 
 ---
 
