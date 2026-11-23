@@ -5,12 +5,71 @@ use super::types::{Mesh, Point3D};
 use std::fmt::Write as _;
 use std::io::{Error, ErrorKind};
 
-const STL_HEADER_TEXT: &[u8] = b"OxidizeMath binary STL export";
+/// Binary STL 80-byte header prefix declaring millimeter (`UNITS=mm`) coordinates for slicers.
+pub const STL_HEADER_TEXT: &[u8] = b"OxidizeMath binary STL export; UNITS=mm";
+
+/// Minimum supported physical print span in millimeters.
+pub const MIN_EXPORT_SPAN_MM: f32 = 5.0;
+/// Maximum supported physical print span in millimeters.
+pub const MAX_EXPORT_SPAN_MM: f32 = 250.0;
 
 fn write_point_le(buf: &mut Vec<u8>, pt: Point3D) {
     buf.extend_from_slice(&pt.x.to_le_bytes());
     buf.extend_from_slice(&pt.y.to_le_bytes());
     buf.extend_from_slice(&pt.z.to_le_bytes());
+}
+
+/// Centers `mesh` at the origin and uniformly scales its vertices so the largest bounding-box axis
+/// span equals `target_span_mm` millimeters (`5.0..=250.0 mm`).
+pub fn scale_mesh_to_millimeters(mesh: &mut Mesh, target_span_mm: f32) -> Result<(), Error> {
+    validate_mesh_geometry(mesh, true)?;
+    if !target_span_mm.is_finite()
+        || !(MIN_EXPORT_SPAN_MM..=MAX_EXPORT_SPAN_MM).contains(&target_span_mm)
+    {
+        return Err(invalid_mesh_error(
+            "Target millimeter span must be finite within [5.0, 250.0] mm",
+        ));
+    }
+    let mut min_pt = Point3D::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+    let mut max_pt = Point3D::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+    for v in &mesh.vertices {
+        min_pt.x = min_pt.x.min(v.x);
+        min_pt.y = min_pt.y.min(v.y);
+        min_pt.z = min_pt.z.min(v.z);
+        max_pt.x = max_pt.x.max(v.x);
+        max_pt.y = max_pt.y.max(v.y);
+        max_pt.z = max_pt.z.max(v.z);
+    }
+    let span_x = f64::from(max_pt.x) - f64::from(min_pt.x);
+    let span_y = f64::from(max_pt.y) - f64::from(min_pt.y);
+    let span_z = f64::from(max_pt.z) - f64::from(min_pt.z);
+    let max_span = span_x.max(span_y).max(span_z);
+    if !max_span.is_finite() || max_span <= f64::from(Point3D::EPSILON) {
+        return Err(invalid_mesh_error(
+            "Mesh bounding box has degenerate zero span",
+        ));
+    }
+    let cx = 0.5 * (f64::from(min_pt.x) + f64::from(max_pt.x));
+    let cy = 0.5 * (f64::from(min_pt.y) + f64::from(max_pt.y));
+    let cz = 0.5 * (f64::from(min_pt.z) + f64::from(max_pt.z));
+    let scale = f64::from(target_span_mm) / max_span;
+    for v in &mut mesh.vertices {
+        v.x = ((f64::from(v.x) - cx) * scale) as f32;
+        v.y = ((f64::from(v.y) - cy) * scale) as f32;
+        v.z = ((f64::from(v.z) - cz) * scale) as f32;
+    }
+    Ok(())
+}
+
+/// Scales a copy of `mesh` to `target_span_mm` millimeters (`5.0..=250.0 mm`) and serializes
+/// binary little-endian `.stl` bytes (`84 + 50 * F`) with `UNITS=mm` in the 80-byte header.
+pub fn export_mesh_to_stl_binary_scaled(
+    mesh: &Mesh,
+    target_span_mm: f32,
+) -> Result<Vec<u8>, Error> {
+    let mut scaled = mesh.clone();
+    scale_mesh_to_millimeters(&mut scaled, target_span_mm)?;
+    export_mesh_to_stl_binary(&scaled)
 }
 
 /// Serializes an indexed triangle [`Mesh`] into standard binary little-endian `.stl` bytes (`84 + 50 * F`).

@@ -76,6 +76,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         }
         "HyperbolicDiskTool" | "HyperbolicBilliardsTool" => &["modular_polynomials_review"],
         "RadarGatingTool" => &["mmwave_radiotherapy_setup"],
+        "OpticsWaveTool" => &["mmwave_radiotherapy_setup", "quantum_mechanics"],
         "TokenizationTool"
         | "FactorizationTool"
         | "FractranMachineTool"
@@ -99,7 +100,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         tokens.push(clean.clone());
     }
     let aliases: &[&str] = match clean.as_str() {
-        "algorithmic_information" => &["algorithmic_information_rust", "pure_math"],
+        "algorithmic_information" => &["algorithmic_information_rust", "pure_math", "algorithms"],
         "chaos" => &["chaos_theory"],
         "elliptic_curves" => &[
             "modular_polynomials_review",
@@ -112,6 +113,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "financial_math" => &["clinical_trials_statistics"],
         "neuroscience" => &["biology", "graph_parameters_rust"],
+        "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
         "solid_state" => &["stat_mech", "pure_math"],
         "ai" => &["graph_parameters_rust"],
         "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
