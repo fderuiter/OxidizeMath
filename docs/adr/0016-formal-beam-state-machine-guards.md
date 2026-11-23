@@ -1,5 +1,9 @@
 # ADR 0016: Formal BeamState Machine with Validation Guards
 
+## Status
+
+Accepted
+
 ## Context
 In radiotherapy respiratory gating, `GatingLogic` previously controlled linear accelerator beam delivery using an unencapsulated public boolean field (`is_beam_on`). Floating-point evaluations compared predicted amplitude against threshold boundaries without finite-value guards. Under IEEE 754 semantics, comparisons against `NaN` evaluate to `false`, causing the system to fail open and maintain radiation delivery during radar sensor phase-lock loss or numerical corruption. Furthermore, absence of formal lifecycle states allowed arbitrary external mutation and unvalidated jumps between dormant and beam-emitting states.
 

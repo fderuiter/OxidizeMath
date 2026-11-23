@@ -13,11 +13,14 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
         OdePreset::Exponential => tool.param_k.is_finite(),
         OdePreset::Custom if tool.custom_coupled => {
             tool.ic_v0.is_finite()
-                && tool.coupled_bank.param_slice().iter().all(|v| v.is_finite())
+                && tool
+                    .coupled_bank
+                    .param_slice()
+                    .iter()
+                    .all(|v| v.is_finite())
         }
         OdePreset::Custom => {
-            tool.param_k.is_finite()
-                && tool.math_input.param_slice().iter().all(|v| v.is_finite())
+            tool.param_k.is_finite() && tool.math_input.param_slice().iter().all(|v| v.is_finite())
         }
         OdePreset::HarmonicOscillator => tool.param_k.is_finite() && tool.ic_v0.is_finite(),
         OdePreset::LogisticGrowth => tool.param_r.is_finite() && tool.param_cap_k.is_finite(),

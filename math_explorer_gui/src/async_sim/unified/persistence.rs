@@ -1,17 +1,18 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
-use crate::framework::{MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
+use crate::framework::{InteractiveTool, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct UnifiedFormulaState {
+struct UnifiedExtendedState {
     params: BTreeMap<String, f64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     custom_formula_enabled: bool,
-    custom_expr: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    custom_expr: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
     #[serde(
@@ -19,6 +20,10 @@ struct UnifiedFormulaState {
         skip_serializing_if = "crate::audio::AcousticSettings::is_default"
     )]
     audio: crate::audio::AcousticSettings,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    atlas_visible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    atlas_axes: Option<[String; 2]>,
 }
 
 pub(super) fn build_formula_bar(spec: &UnifiedFormulaSpec) -> MathExpressionInputBar {
@@ -66,31 +71,29 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
     pub(super) fn serialize_tool_state(&self) -> Option<String> {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_ref()) {
-            let active = self.custom_formula_enabled;
-            let customized = bar.raw_text != spec.default_expr;
-            if active || customized {
-                let sorted_params: BTreeMap<String, f64> =
-                    params.iter().map(|(k, &v)| (k.clone(), v)).collect();
-                let custom_params = if active {
-                    bar.params_map()
-                } else {
-                    BTreeMap::new()
-                };
-                let audio = if M::supports_sonification() {
-                    self.audio_settings
-                } else {
-                    crate::audio::AcousticSettings::default()
-                };
-                return serde_json::to_string(&UnifiedFormulaState {
-                    params: sorted_params,
-                    custom_formula_enabled: active,
-                    custom_expr: bar.raw_text.clone(),
-                    custom_params,
-                    audio,
-                })
-                .ok();
-            }
+        let formula_ext =
+            M::formula_spec()
+                .zip(self.formula_bar.as_ref())
+                .and_then(|(spec, bar)| {
+                    let active = self.custom_formula_enabled;
+                    let customized = bar.raw_text != spec.default_expr;
+                    (active || customized).then(|| {
+                        let cp = if active {
+                            bar.params_map()
+                        } else {
+                            BTreeMap::new()
+                        };
+                        (active, bar.raw_text.clone(), cp)
+                    })
+                });
+        let atlas_ext = self.atlas.as_ref().and_then(|atlas| {
+            (!atlas.has_default_persisted_state()).then(|| {
+                let (xk, yk) = atlas.axis_keys();
+                (atlas.is_visible(), [xk.to_string(), yk.to_string()])
+            })
+        });
+        if formula_ext.is_some() || atlas_ext.is_some() {
+            return self.serialize_extended_state(&params, formula_ext, atlas_ext);
         }
         let mut sorted: BTreeMap<String, f64> =
             params.iter().map(|(k, &v)| (k.clone(), v)).collect();
@@ -107,17 +110,49 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         serde_json::to_string(&sorted).ok()
     }
 
+    fn serialize_extended_state(
+        &self,
+        params: &HashMap<String, f64>,
+        formula_ext: Option<(bool, String, BTreeMap<String, f64>)>,
+        atlas_ext: Option<(bool, [String; 2])>,
+    ) -> Option<String> {
+        let sorted_params = params.iter().map(|(k, &v)| (k.clone(), v)).collect();
+        let (custom_formula_enabled, custom_expr, custom_params) = match formula_ext {
+            Some((en, expr, cp)) => (en, Some(expr), cp),
+            None => (false, None, BTreeMap::new()),
+        };
+        let (atlas_visible, atlas_axes) = match atlas_ext {
+            Some((vis, axes)) => (vis, Some(axes)),
+            None => (false, None),
+        };
+        let audio = if M::supports_sonification() {
+            self.audio_settings
+        } else {
+            crate::audio::AcousticSettings::default()
+        };
+        serde_json::to_string(&UnifiedExtendedState {
+            params: sorted_params,
+            custom_formula_enabled,
+            custom_expr,
+            custom_params,
+            audio,
+            atlas_visible,
+            atlas_axes,
+        })
+        .ok()
+    }
+
     pub(super) fn deserialize_tool_state(&mut self, state: &str) -> Result<(), String> {
-        if let Some(spec) = M::formula_spec() {
-            if let Ok(fs) = serde_json::from_str::<UnifiedFormulaState>(state) {
-                return self.apply_formula_state(&spec, fs);
-            }
+        self.state_bounds().validate_json(state)?;
+        if let Ok(ext) = serde_json::from_str::<UnifiedExtendedState>(state) {
+            return self.apply_extended_state(ext);
         }
 
         let mut params: HashMap<String, f64> = serde_json::from_str(state)
             .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
         let next_audio = self.extract_audio_from_map(&mut params)?;
         self.validate_param_map(&params)?;
+        self.apply_parsed_atlas_state(None)?;
         {
             let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
             for (key, value) in params {
@@ -125,56 +160,105 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
         self.audio_settings = next_audio;
-        self.custom_formula_enabled = false;
-        if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_mut()) {
-            bar.set_expression(spec.default_expr);
-            bar.set_params_map(&BTreeMap::new());
-            self.publish_formula_update();
-        }
+        self.reset_formula_bar_to_default();
         self.texture = None;
         self.reset_simulation(None);
         Ok(())
     }
 
-    fn apply_formula_state(
-        &mut self,
-        spec: &UnifiedFormulaSpec,
-        fs: UnifiedFormulaState,
-    ) -> Result<(), String> {
-        let mut map: HashMap<String, f64> = fs.params.into_iter().collect();
-        let mut next_audio = self.extract_audio_from_map(&mut map)?;
-        if M::supports_sonification() {
-            if !fs.audio.is_default() {
-                next_audio = fs.audio;
-            }
-            next_audio.validate()?;
-        } else if !fs.audio.is_default() {
-            return Err(format!("Audio settings not supported for {}", M::name()));
-        }
+    fn apply_extended_state(&mut self, ext: UnifiedExtendedState) -> Result<(), String> {
+        self.validate_extended_capabilities(&ext)?;
+        let mut map: HashMap<String, f64> = ext.params.into_iter().collect();
+        let next_audio = self.resolve_extended_audio(&mut map, ext.audio)?;
         self.validate_param_map(&map)?;
-        if fs.custom_params.values().any(|v| !v.is_finite()) {
-            return Err(format!(
-                "Non-finite custom formula parameter in {}",
-                M::name()
-            ));
-        }
+        self.apply_parsed_atlas_state(Some((ext.atlas_visible, ext.atlas_axes)))?;
         {
             let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
             for (k, v) in map {
                 guard.insert(k, v);
             }
         }
-        let bar = self
-            .formula_bar
-            .get_or_insert_with(|| build_formula_bar(spec));
-        bar.set_expression(&fs.custom_expr);
-        bar.set_params_map(&fs.custom_params);
         self.audio_settings = next_audio;
-        self.custom_formula_enabled = fs.custom_formula_enabled;
-        self.publish_formula_update();
+        self.apply_extended_formula(
+            ext.custom_expr,
+            &ext.custom_params,
+            ext.custom_formula_enabled,
+        );
         self.texture = None;
         self.reset_simulation(None);
         Ok(())
+    }
+
+    fn validate_extended_capabilities(&self, ext: &UnifiedExtendedState) -> Result<(), String> {
+        let has_formula = ext.custom_formula_enabled
+            || ext.custom_expr.is_some()
+            || !ext.custom_params.is_empty();
+        if M::formula_spec().is_none() && has_formula {
+            return Err(format!(
+                "{} does not support custom formula state",
+                M::name()
+            ));
+        }
+        if ext.custom_params.values().any(|v| !v.is_finite()) {
+            return Err(format!(
+                "Non-finite custom formula parameter in {}",
+                M::name()
+            ));
+        }
+        if self.atlas.is_none() && (ext.atlas_visible || ext.atlas_axes.is_some()) {
+            return Err(format!(
+                "{} does not support 2D parameter atlas state",
+                M::name()
+            ));
+        }
+        Ok(())
+    }
+
+    fn apply_extended_formula(
+        &mut self,
+        custom_expr: Option<String>,
+        custom_params: &BTreeMap<String, f64>,
+        enabled: bool,
+    ) {
+        if let Some(spec) = M::formula_spec() {
+            if let Some(expr) = custom_expr {
+                let bar = self
+                    .formula_bar
+                    .get_or_insert_with(|| build_formula_bar(&spec));
+                bar.set_expression(&expr);
+                bar.set_params_map(custom_params);
+                self.custom_formula_enabled = enabled;
+                self.publish_formula_update();
+            } else {
+                self.reset_formula_bar_to_default();
+            }
+        }
+    }
+
+    fn resolve_extended_audio(
+        &self,
+        map: &mut HashMap<String, f64>,
+        ext_audio: crate::audio::AcousticSettings,
+    ) -> Result<crate::audio::AcousticSettings, String> {
+        let mut next_audio = self.extract_audio_from_map(map)?;
+        if M::supports_sonification() {
+            if !ext_audio.is_default() {
+                next_audio = ext_audio;
+            }
+            next_audio.validate()?;
+        } else if !ext_audio.is_default() {
+            return Err(format!("Audio settings not supported for {}", M::name()));
+        }
+        Ok(next_audio)
+    }
+
+    fn reset_formula_bar_to_default(&mut self) {
+        self.custom_formula_enabled = false;
+        if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_mut()) {
+            bar.set_expression(spec.default_expr);
+            bar.set_params_map(&BTreeMap::new());
+            self.publish_formula_update();
+        }
     }
 
     fn extract_audio_from_map(

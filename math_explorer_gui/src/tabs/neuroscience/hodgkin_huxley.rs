@@ -1,10 +1,22 @@
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+#[path = "hodgkin_huxley/atlas.rs"]
+mod atlas;
+#[cfg(test)]
+pub use atlas::HodgkinHuxleyRegime;
+pub use atlas::{HodgkinHuxleyCartographer, HH_ATLAS_AXIS_PAIRS};
+
+use crate::async_sim::atlas::RegimeCartographer;
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::StateSnapshot;
-use math_explorer::biology::neuroscience::{HodgkinHuxleyNeuron, HodgkinHuxleyParameters};
+use math_explorer::biology::neuroscience::{
+    HodgkinHuxleyModel, HodgkinHuxleyNeuron, HodgkinHuxleyParameters,
+};
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
+#[allow(missing_docs)]
 #[cfg_attr(any(), verified(opt_out = "gui_tool"))]
 pub struct HodgkinHuxleyUnified {
     neuron: HodgkinHuxleyNeuron,
@@ -216,6 +228,19 @@ impl UnifiedModel for HodgkinHuxleyUnified {
 
         Some(("Peak Membrane Potential (mV)", peak_v))
     }
+
+    fn atlas_axis_pairs() -> &'static [(&'static str, &'static str)] {
+        HH_ATLAS_AXIS_PAIRS
+    }
+
+    fn build_atlas_cartographer(
+        params: &HashMap<String, f64>,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<Arc<dyn RegimeCartographer>> {
+        Some(Arc::new(HodgkinHuxleyCartographer::from_params(
+            params, axis_keys,
+        )))
+    }
 }
 
 inventory::submit! {
@@ -230,35 +255,23 @@ inventory::submit! {
 
 impl scientific_metadata::theory::TheoryDescribable for HodgkinHuxleyUnified {
     fn theory_description(&self) -> String {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
-            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
-            0.0,
-        )
-        .theory_description()
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).theory_description()
     }
 
     fn phonetic_description(&self) -> String {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
-            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
-            0.0,
-        )
-        .phonetic_description()
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).phonetic_description()
     }
 
     fn theory_citation(&self) -> String {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
-            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
-            0.0,
-        )
-        .theory_citation()
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).theory_citation()
     }
 
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        math_explorer::biology::neuroscience::HodgkinHuxleyModel::new(
-            math_explorer::biology::neuroscience::HodgkinHuxleyParameters::default(),
-            0.0,
-        )
-        .available_descriptions()
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).available_descriptions()
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        Self::parameters()
     }
 }
 

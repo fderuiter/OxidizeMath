@@ -7,14 +7,14 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
+use crate::async_sim::unified::UnifiedModel;
 use crate::framework::{ExportFormat, InteractiveTool, SimulationFramework, ToolStateBounds};
 use crate::tabs::chaos::attractors::AttractorPlotter;
 use crate::tabs::mri::tool::MriTool;
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 use crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool;
 use crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget;
-use crate::tabs::quantum::wave_sim::WaveUnified;
+use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
 use std::collections::HashMap;
 
 const SONIFIED_TOOL_SPECS: [(&str, &str); 6] = [
@@ -52,7 +52,7 @@ fn build_warmed_tools() -> (
     SpikeAnalysisTool,
     HodgkinHuxleyUnified,
     AttractorPlotter,
-    WaveUnified,
+    WaveSimulatorTool,
     MriTool,
     PrimeSpiralWidget,
 ) {
@@ -72,13 +72,10 @@ fn build_warmed_tools() -> (
         lorenz.step_simulation();
     }
 
-    let wave_params = HashMap::from([
-        ("potential_type".to_string(), 1.0),
-        ("dt".to_string(), 0.03),
-    ]);
-    let mut wave = WaveUnified::new(&wave_params);
+    let mut wave = WaveSimulatorTool::new();
+    wave.apply_tunneling_split_challenge(None);
     for _ in 0..5 {
-        wave.step(&wave_params);
+        wave.step_simulation();
     }
 
     let mut mri = MriTool::default();
@@ -179,7 +176,7 @@ fn test_wav_export_riff_header_and_acoustic_energy_across_all_six_tools() {
 
 #[test]
 fn test_acoustic_parameter_changes_measurably_alter_wav_waveform() {
-    let mut tool = UnifiedSimTool::<WaveUnified>::new();
+    let mut tool = WaveSimulatorTool::new();
     let frames = tool.sample_sonification_frames(60);
     let wav_low = synthesize_wav_16bit(
         &frames,
