@@ -338,5 +338,5 @@ pub fn test_wasm(args: &[String]) {
         smoke_args.push("--screenshot-dir");
         smoke_args.push(dir);
     }
-    run_cmd_in_path("python3", &smoke_args, &ws_root);
+    run_cmd_in_path(crate::setup::resolve_python_bin(), &smoke_args, &ws_root);
 }

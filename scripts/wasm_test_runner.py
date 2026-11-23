@@ -22,7 +22,6 @@ import tempfile
 import threading
 import urllib.parse
 from pathlib import Path
-from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
 PRODUCTION_CSP = (
     "default-src 'self'; "
@@ -626,6 +625,17 @@ def _active_test_pools(
 
 
 def _launch_chromium_suite(out_dir: Path) -> tuple[str | None, str, list[str], list[str]]:
+    try:
+        from playwright.sync_api import Error as PlaywrightError, sync_playwright
+    except ImportError:
+        print(
+            "Error: Python 'playwright' package is not installed. "
+            "Install with: python3 -m pip install --user playwright && "
+            "python3 -m playwright install --with-deps chromium",
+            file=sys.stderr,
+        )
+        return None, "", [], []
+
     handler = functools.partial(WasmTestRequestHandler, directory=str(out_dir))
     server = ReusableThreadingTCPServer(("127.0.0.1", 0), handler)
     port = server.server_address[1]

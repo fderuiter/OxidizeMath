@@ -148,6 +148,21 @@ fn run_stdout_probe(program: &str, args: &[&str]) -> Result<String, String> {
     }
 }
 
+/// Selects a working Python 3 interpreter (`python3`, falling back to `python` on Windows).
+#[must_use]
+pub fn resolve_python_bin() -> &'static str {
+    if run_stdout_probe(
+        "python3",
+        &["-c", "import sys; assert sys.version_info[0] >= 3"],
+    )
+    .is_ok()
+    {
+        "python3"
+    } else {
+        "python"
+    }
+}
+
 fn probe_playwright_chromium() -> Result<String, String> {
     let script = concat!(
         "import pathlib, sys\n",
@@ -159,8 +174,7 @@ fn probe_playwright_chromium() -> Result<String, String> {
         "        sys.exit(1)\n",
         "    print(exe)\n",
     );
-    run_stdout_probe("python3", &["-c", script])
-        .or_else(|_| run_stdout_probe("python", &["-c", script]))
+    run_stdout_probe(resolve_python_bin(), &["-c", script])
 }
 
 /// Probes `wasm-bindgen`, `trunk`, `brotli`, and Playwright Chromium for `workspace_root`.
@@ -235,6 +249,8 @@ mod tests {
         let script = ws_root.join("scripts/wasm_test_runner.py");
         let py = concat!(
             "import importlib.util, pathlib, subprocess, sys, tempfile\n",
+            "sys.modules['playwright'] = None\n",
+            "sys.modules['playwright.sync_api'] = None\n",
             "spec = importlib.util.spec_from_file_location('r', sys.argv[1])\n",
             "r = importlib.util.module_from_spec(spec)\n",
             "sys.modules['r'] = r\n",
@@ -254,18 +270,22 @@ mod tests {
             "assert [t.canonical_name for t in qual_sel] == ['vfs::ab']\n",
             "skip_sel = r.filter_tests(pool, r.parse_cargo_test_args(['vfs::', '--skip', 'ab']))\n",
             "assert [t.canonical_name for t in skip_sel] == ['vfs::a', 'vfs::b']\n",
+            "no_pw = \"import runpy, sys; sys.modules['playwright'] = None; sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')\"\n",
             "with tempfile.TemporaryDirectory() as d:\n",
             "    w = pathlib.Path(d) / 'sample-0123456789abcdef.wasm'\n",
             "    w.write_bytes(b'\\x00asm\\x01\\x00\\x00\\x00\\x07\\x15\\x01\\x11__wbgt_mod::alpha\\x00\\x00')\n",
-            "    ls = subprocess.run([sys.executable, sys.argv[1], str(w), '--list'], capture_output=True, text=True, check=True)\n",
+            "    ls = subprocess.run([sys.executable, '-B', '-c', no_pw, sys.argv[1], str(w), '--list'], capture_output=True, text=True, check=True)\n",
             "    assert 'mod::alpha: test' in ls.stdout\n",
-            "    miss = subprocess.run([sys.executable, sys.argv[1], str(w), 'unmatched_filter'], capture_output=True, text=True)\n",
+            "    miss = subprocess.run([sys.executable, '-B', '-c', no_pw, sys.argv[1], str(w), 'unmatched_filter'], capture_output=True, text=True)\n",
             "    assert miss.returncode != 0\n",
+            "    st, _, _, _ = r._launch_chromium_suite(pathlib.Path(d))\n",
+            "    assert st is None\n",
         );
-        let out = Command::new("python3")
+        let python_bin = resolve_python_bin();
+        let out = Command::new(python_bin)
             .args(["-B", "-c", py, &script.to_string_lossy()])
             .output()
-            .expect("python3 must run wasm_test_runner CLI test");
+            .expect("python3/python must run wasm_test_runner CLI test");
         assert!(
             out.status.success(),
             "runner CLI test failed: {}{}",
