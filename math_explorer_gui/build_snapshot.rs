@@ -232,7 +232,6 @@ fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
 }
 
 fn write_manifest_outputs(out_dir: &Path, json: &str) {
-    let _ = fs::remove_file(out_dir.join("generated_tabs.rs"));
     write_if_changed(&out_dir.join(MANIFEST_FILENAME), json)
         .expect("Failed to write OUT_DIR/traceability_manifest.json");
 
