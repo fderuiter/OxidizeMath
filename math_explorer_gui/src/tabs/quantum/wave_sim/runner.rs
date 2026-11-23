@@ -399,9 +399,7 @@ impl SimulationRunner for WaveRunner {
     fn process_command(&mut self, cmd: SimCommand) {
         match cmd {
             SimCommand::Reset => {
-                self.diverged = false;
-                self.diagnostic_report = None;
-                self.step_count = 0;
+                self.reset_parameters();
                 let cfg = self
                     .config
                     .read()

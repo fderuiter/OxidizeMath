@@ -53,6 +53,53 @@ pub(super) fn register_shortcut_metadata(
     }
 }
 
+pub(super) fn take_dispatched_playback_action(
+    ctx: &egui::Context,
+    is_playing: bool,
+    can_toggle: bool,
+    can_step: bool,
+    can_step_back: bool,
+    can_reset: bool,
+    timeline: Option<TimelineMetadata>,
+) -> Option<PlaybackAction> {
+    use egui_plot::commands::CommandRegistryData;
+    if !CommandRegistryData::has_pending_dispatch(ctx, "Simulation Playback") {
+        return None;
+    }
+    if can_toggle
+        && CommandRegistryData::take_dispatched(ctx, "Play / Pause", "Simulation Playback")
+    {
+        return Some(if is_playing {
+            PlaybackAction::Pause
+        } else {
+            PlaybackAction::Play
+        });
+    }
+    if can_step && CommandRegistryData::take_dispatched(ctx, "Step Forward", "Simulation Playback")
+    {
+        return Some(PlaybackAction::Step);
+    }
+    if can_step_back
+        && CommandRegistryData::take_dispatched(ctx, "Step Back", "Simulation Playback")
+    {
+        return Some(PlaybackAction::StepBack);
+    }
+    if can_step_back {
+        if let Some(meta) = timeline {
+            if CommandRegistryData::take_dispatched(ctx, "Previous Keyframe", "Simulation Playback")
+            {
+                return Some(PlaybackAction::ScrubTo(meta.previous_keyframe_step()));
+            }
+        }
+    }
+    if can_reset
+        && CommandRegistryData::take_dispatched(ctx, "Reset Simulation", "Simulation Playback")
+    {
+        return Some(PlaybackAction::Reset);
+    }
+    None
+}
+
 pub(super) fn format_announcement(
     tool_name: &str,
     is_in_thread: bool,

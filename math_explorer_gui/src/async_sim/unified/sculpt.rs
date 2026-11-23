@@ -202,7 +202,7 @@ pub struct UnifiedSimRunner<M: UnifiedModel> {
 }
 
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
-    /// Creates a new runner initialized from `params` with empty sculpt and formula state.
+    /// Creates a new [`UnifiedSimRunner`] initialized from `params` with empty sculpt and formula state.
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
         Self::with_shared(
             params,

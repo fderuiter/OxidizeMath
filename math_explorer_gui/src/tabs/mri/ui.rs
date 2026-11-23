@@ -276,11 +276,8 @@ impl MriTool {
                 }
                 PlaybackAction::StepBack => {
                     self.pulse_workspace.playhead_playing = false;
-                    self.pulse_workspace.playhead_idx = if self.pulse_workspace.playhead_idx == 0 {
-                        last
-                    } else {
-                        self.pulse_workspace.playhead_idx - 1
-                    };
+                    self.pulse_workspace.playhead_idx =
+                        self.pulse_workspace.playhead_idx.saturating_sub(1);
                 }
                 PlaybackAction::ScrubTo(step) => {
                     self.pulse_workspace.playhead_playing = false;

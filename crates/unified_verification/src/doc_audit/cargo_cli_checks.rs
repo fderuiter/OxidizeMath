@@ -114,7 +114,32 @@ fn validate_parsed_cargo_cmd(
     for pkg_name in &active_pkgs {
         if !is_placeholder(pkg_name) {
             validate_pkg_target_and_features(path, line_num, pkg_name, cmd, model, &mut violations);
+        } else if let Some(ex_name) = &cmd.example
+            && cmd.features.is_empty()
+            && !cmd.has_feature_placeholder
+            && !cmd.all_features
+        {
+            violations.push(format!(
+                "{}:{}: `cargo {}` with `--example {ex_name}` omits `--features` or `--all-features`",
+                path.display(),
+                line_num,
+                cmd.subcmd
+            ));
         }
+    }
+    if active_pkgs.is_empty()
+        && cmd.workspace
+        && let Some(ex_name) = &cmd.example
+        && cmd.features.is_empty()
+        && !cmd.has_feature_placeholder
+        && !cmd.all_features
+    {
+        violations.push(format!(
+            "{}:{}: `cargo {} --workspace --example {ex_name}` omits `--features` or `--all-features`",
+            path.display(),
+            line_num,
+            cmd.subcmd
+        ));
     }
     violations
 }
@@ -370,7 +395,7 @@ fn check_inline_backtick_commands(
     }
 }
 
-/// Checks `//!` header doc comments in example `.rs` files for Cargo command feature parity.
+/// Checks `//!` and `///` doc comments in example `.rs` files for Cargo command feature parity.
 pub fn check_rustdoc_cargo_commands(
     rs_path: &Path,
     content: &str,
@@ -378,11 +403,17 @@ pub fn check_rustdoc_cargo_commands(
 ) -> Vec<String> {
     let mut violations = Vec::new();
     for (idx, line) in content.lines().enumerate() {
-        let Some(doc) = line.trim_start().strip_prefix("//!") else {
+        let trimmed_start = line.trim_start();
+        let Some(doc) = trimmed_start
+            .strip_prefix("//!")
+            .or_else(|| trimmed_start.strip_prefix("///"))
+        else {
             continue;
         };
         let trimmed = doc.trim();
-        if trimmed.starts_with("cargo ")
+        if trimmed.contains('`') {
+            check_inline_backtick_commands(rs_path, idx + 1, trimmed, model, &mut violations);
+        } else if trimmed.starts_with("cargo ")
             && let Some(parsed) = parse_cargo_invocation(&split_shell_words(trimmed))
         {
             violations.extend(validate_parsed_cargo_cmd(
