@@ -11843,12 +11843,43 @@
       "signature": "pub enum StateType"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn fit_baum_welch (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > ,) -> Result < (BaumWelchReport < T > , Vec < T >) , MarkovError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn fit_baum_welch_into (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > , _ : & mut BaumWelchWorkspace < T > , _ : & mut [T] ,) -> Result < BaumWelchReport < T > , MarkovError > }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/markov/hmm/baum_welch_types.rs": [
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > BaumWelchConfig < T > { pub fn new (_ : usize , _ : T , _ : T ,) -> Result < Self , MarkovError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > BaumWelchWorkspace < T > { pub fn ensure_capacity (& mut self , _ : usize , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > BaumWelchWorkspace < T > { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct BaumWelchConfig < T >"
+    },
+    {
+      "signature": "pub struct BaumWelchReport < T >"
+    },
+    {
+      "signature": "pub struct BaumWelchWorkspace < T >"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/forward_backward.rs": [
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn filter (& self , _ : & [usize]) -> Result < DVector < T > > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn forward (& self , _ : & [usize]) -> Result < T > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn log_likelihood (& self , _ : & [usize]) -> Result < T > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn posterior_probabilities (& self , _ : & [usize]) -> Result < DMatrix < T > > }"
@@ -11867,7 +11898,19 @@
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/mod.rs": [
     {
+      "signature": "pub use baum_welch_types :: BaumWelchConfig"
+    },
+    {
+      "signature": "pub use baum_welch_types :: BaumWelchReport"
+    },
+    {
+      "signature": "pub use baum_welch_types :: BaumWelchWorkspace"
+    },
+    {
       "signature": "pub use model :: HiddenMarkovModel"
+    },
+    {
+      "signature": "pub use viterbi :: ViterbiWorkspace"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/hmm/model.rs": [
@@ -11901,6 +11944,27 @@
       "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn viterbi (& self , _ : & [usize]) -> Result < Vec < usize > > }"
     },
     {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn viterbi_into (& self , _ : & [usize] , _ : & mut ViterbiWorkspace < T > , _ : & mut [usize] ,) -> Result < () > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn ensure_capacity (& mut self , _ : usize , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn max_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn num_observations (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn num_states (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct ViterbiWorkspace < T >"
+    },
+    {
       "signature": "pub type Result < T > = std :: result :: Result < T , MarkovError >"
     }
   ],
@@ -11921,7 +11985,19 @@
       "signature": "pub use dtmc :: StateType"
     },
     {
+      "signature": "pub use hmm :: BaumWelchConfig"
+    },
+    {
+      "signature": "pub use hmm :: BaumWelchReport"
+    },
+    {
+      "signature": "pub use hmm :: BaumWelchWorkspace"
+    },
+    {
       "signature": "pub use hmm :: HiddenMarkovModel"
+    },
+    {
+      "signature": "pub use hmm :: ViterbiWorkspace"
     },
     {
       "signature": "pub use num_traits :: ToPrimitive"
