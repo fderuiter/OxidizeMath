@@ -176,7 +176,7 @@ impl FraunhoferDiffractionTool {
             .collect();
         let mut prims = vec![ExportPrimitive::Polyline {
             name: "Fraunhofer I(y)/I0".into(),
-            points: curve,
+            points: curve.into(),
             color: DARK_PALETTE.accent,
             stroke_width: 1.8,
             closed: false,

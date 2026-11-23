@@ -286,7 +286,7 @@ impl CausticsRayBenchTool {
                     } else {
                         String::new()
                     },
-                    points: pts,
+                    points: pts.into(),
                     color: self.state.colormap.ray_stroke_color(meta.wavelength_nm),
                     stroke_width: 1.4,
                     closed: false,

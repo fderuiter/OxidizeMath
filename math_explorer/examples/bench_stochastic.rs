@@ -9,7 +9,9 @@ static ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
     verified_engine::allocator::VerifiedAllocator;
 
 fn main() {
-    let steps = 500_000;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let (warmup, steps) = if smoke { (10, 1_000) } else { (100, 500_000) };
     println!("Benchmarking Gillespie Solver with {} steps...", steps);
 
     // Setup
@@ -23,7 +25,7 @@ fn main() {
     let mut state = *model.state();
 
     // Warmup
-    for _ in 0..100 {
+    for _ in 0..warmup {
         solver.step(&model, &mut state).unwrap();
     }
 

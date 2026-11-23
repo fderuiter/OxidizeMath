@@ -105,34 +105,50 @@ impl ChladniWaveTankTool {
                 );
             }
             if pulse {
-                self.solver.inject_gaussian_pulse(
+                self.trigger_mallet_pulse(
                     self.state.driver_x,
                     self.state.driver_y,
                     0.045,
                     1.0,
+                    1.0,
                 );
-                self.refresh_analysis_outputs();
                 crate::accessibility::announce_live_status(&ctx, "Injected Gaussian wave pulse");
             }
         }
+        self.handle_canvas_pointer_input(&ctx, response, rect);
+    }
 
-        if (response.clicked() || response.dragged()) && rect.width() > 1.0 && rect.height() > 1.0 {
-            if let Some(pos) = response.interact_pointer_pos() {
-                let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
-                let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
-                let shift = ctx.input(|i| i.modifiers.shift);
-                if shift && response.clicked() && self.custom_clamps.len() < 16 {
-                    self.custom_clamps.push([nx, ny]);
-                    self.rebuild_masks();
-                } else {
-                    self.state.driver_x = nx;
-                    self.state.driver_y = ny;
-                    if response.clicked() {
-                        self.solver.inject_gaussian_pulse(nx, ny, 0.04, 0.65);
-                    }
+    fn handle_canvas_pointer_input(
+        &mut self,
+        ctx: &egui::Context,
+        response: &egui::Response,
+        rect: Rect,
+    ) {
+        if !(response.clicked() || response.dragged())
+            || rect.width() <= 1.0
+            || rect.height() <= 1.0
+        {
+            return;
+        }
+        if let Some(pos) = response.interact_pointer_pos() {
+            let nx = (((pos.x - rect.left()) / rect.width()) as f64).clamp(0.02, 0.98);
+            let ny = ((1.0 - (pos.y - rect.top()) / rect.height()) as f64).clamp(0.02, 0.98);
+            let shift = ctx.input(|i| i.modifiers.shift);
+            if shift
+                && response.clicked()
+                && self.state.custom_clamps.len() < sonification::MAX_CUSTOM_CLAMPS
+            {
+                self.state.custom_clamps.push([nx, ny]);
+                self.rebuild_masks();
+                self.analysis_dirty = true;
+            } else {
+                self.state.driver_x = nx;
+                self.state.driver_y = ny;
+                if response.clicked() {
+                    self.trigger_mallet_pulse(nx, ny, 0.04, 0.65, 0.85);
                 }
-                self.state_rev = self.state_rev.wrapping_add(1);
             }
+            self.state_rev = self.state_rev.wrapping_add(1);
         }
     }
 
@@ -177,18 +193,22 @@ impl ChladniWaveTankTool {
             );
         }
 
+        for &[cx, cy] in &self.state.custom_clamps {
+            painter.circle_filled(to_screen(cx, cy), 3.4_f32, palette.warning);
+        }
+
         let drv_pos = to_screen(self.state.driver_x, self.state.driver_y);
         painter.circle_stroke(drv_pos, 5.0_f32, Stroke::new(1.8_f32, palette.axis_x));
     }
 
-    fn draw_secondary_analysis_plot(&self, ui: &mut egui::Ui) {
+    fn draw_secondary_analysis_plot(&mut self, ui: &mut egui::Ui) {
         match self.state.secondary_plot {
             SecondaryPlotMode::DetectorCrossSection => self.draw_detector_cross_section_plot(ui),
             SecondaryPlotMode::RadialFftSpectrum => self.draw_radial_fft_plot(ui),
         }
     }
 
-    fn draw_detector_cross_section_plot(&self, ui: &mut egui::Ui) {
+    fn draw_detector_cross_section_plot(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.label(format!(
             "Detector Intensity Cross-Section I(y) at x = {}",
@@ -215,6 +235,7 @@ impl ChladniWaveTankTool {
                         .width(2.0_f32),
                 );
                 self.overlay_young_reference(plot_ui, palette, peak_i);
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 
@@ -254,7 +275,7 @@ impl ChladniWaveTankTool {
         }
     }
 
-    fn draw_radial_fft_plot(&self, ui: &mut egui::Ui) {
+    fn draw_radial_fft_plot(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.label("2D FFT Azimuthal Radial Spectrum S(|k|)");
         let pts: PlotPoints = self
@@ -278,6 +299,7 @@ impl ChladniWaveTankTool {
                             .color(palette.series_color(1)),
                     );
                 }
+                self.callout_manager.render_on_plot(plot_ui);
             });
     }
 
@@ -318,7 +340,10 @@ impl ChladniWaveTankTool {
                         } else {
                             String::new()
                         },
-                        points: vec![[p0[0] + 0.5, p0[1] + 0.5], [p1[0] + 0.5, p1[1] + 0.5]],
+                        points: egui_plot::SharedPoints::from_slice(&[
+                            [p0[0] + 0.5, p0[1] + 0.5],
+                            [p1[0] + 0.5, p1[1] + 0.5],
+                        ]),
                         color: DARK_PALETTE.node_stroke,
                         stroke_width: 1.2,
                         closed: false,
@@ -340,7 +365,7 @@ impl ChladniWaveTankTool {
             if !pts.is_empty() {
                 prims.push(ExportPrimitive::Points {
                     name: "Chladni Sand".into(),
-                    points: pts,
+                    points: pts.into(),
                     color: DARK_PALETTE.accent,
                     radius: 1.4,
                 });
@@ -350,7 +375,10 @@ impl ChladniWaveTankTool {
             let det_x = (self.state.detector_x as f64) + 0.5;
             prims.push(ExportPrimitive::Polyline {
                 name: "Detector Screen".into(),
-                points: vec![[det_x, 2.0], [det_x, (GRID_SIZE - 2) as f64]],
+                points: egui_plot::SharedPoints::from_slice(&[
+                    [det_x, 2.0],
+                    [det_x, (GRID_SIZE - 2) as f64],
+                ]),
                 color: DARK_PALETTE.success,
                 stroke_width: 1.5,
                 closed: false,

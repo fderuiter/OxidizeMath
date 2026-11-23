@@ -83,6 +83,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
         "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
+        "CorticalMorphometryTool" => &["freesurfer"],
         "CausticsRayBenchTool" | "FraunhoferDiffractionTool" => {
             &["geometric_optics_and_caustics", "optics"]
         }

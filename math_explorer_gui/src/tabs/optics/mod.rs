@@ -1,9 +1,10 @@
-// @explorer_feature = "physics"
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 // [cite:optics]
 
 use eframe::egui;
 
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 
 /// Far-field Fraunhofer single-slit, multi-slit grating, and circular Airy diffraction tool.
 pub mod diffraction_tool;
@@ -75,5 +76,13 @@ impl ExplorerTab for OpticsTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "optics",
+        order: 18,
+        build: || Box::new(OpticsTab::default()),
     }
 }

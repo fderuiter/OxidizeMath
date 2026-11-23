@@ -18,13 +18,15 @@ OxidizeMath previously modeled 1D partial differential equations (`pure_math::an
    - Reuses `StencilOperators::new_2d` (`fused_stepper.rs`) and `flatten_2d_index` over pre-allocated `Vec<f64>` displacement (`u_prev`, `u_curr`, `u_next`), intermediate Laplacian (`laplacian_buf`), energy envelope (`energy_ema`), and phase-demodulated modal (`modal_field`) buffers.
    - Evaluates fourth-order Kirchhoff-Love plate bending ($\nabla^4 u = \nabla^2(\nabla^2 u)$) in two cache-contiguous 5-point stencil passes without allocating temporary grids.
    - Supports `Dirichlet`, `Neumann`, `Clamped`, and cubic `Sponge` perimeter boundaries alongside spatial `wall_mask` (nodal clamps and multi-slit barriers) and `wave_speed_mask` ($s(x, y) = 1 / n(x, y)$ refractive lenses).
-2. **`SpectralAnalyzer2D` (`wave_2d/spectral.rs`)**:
+2. **`SpectralAnalyzer2D` and `SpectralMode2D` (`wave_2d/spectral.rs`)**:
    - Plans row and column forward 1D FFTs once at construction via `rustfft::FftPlanner` and executes `process_with_scratch` against pre-allocated complex spatial, transpose, and scratch buffers.
+   - Exposes `SpectralAnalyzer2D::extract_top_modes` to extract ranked upper-half-plane 2D local-maximum modes (`SpectralMode2D` with `kx`, `ky`, `k_radial`, `magnitude`, and complex `atan2` `phase`) into caller slices with zero heap allocations.
 3. **`ChladniSandSystem` and `MarchingSquares2D` (`wave_2d/particles_and_contours.rs`)**:
    - Seeds `4,000` SoA tracer grains deterministically via `oxidize_core::rng::OxidizeRng` and drifts grains down $-\nabla \langle u^2 \rangle$ with amplitude-proportional stochastic agitation onto nodal Chladni figures.
    - Extracts zero-level nodal isolines into a fixed-capacity segment buffer.
-4. **`ChladniWaveTankTool` in `math_explorer_gui/src/tabs/analysis/chladni_wave_tank.rs`**:
-   - Registers `ChladniWaveTankTool` and four `StarterPresetMetadata` cards (**Square Chladni Plate**, **Circular Drumhead**, **Double-Slit Interference**, and **Acoustic Lens**) in `AnalysisTab` with URL hash persistence, `ToolStateBounds` JSON validation, `AccessKit` keyboard navigation, and `SVG`, `PNG`, `CSV`, and `JSON` exports.
+4. **`ChladniWaveTankTool` and Modal Sonification (`math_explorer_gui/src/tabs/analysis/chladni_wave_tank.rs`, `audio/mappings/wave_plate.rs`)**:
+   - Registers `ChladniWaveTankTool` and four `StarterPresetMetadata` cards (**Square Chladni Plate**, **Circular Drumhead**, **Double-Slit Interference**, and **Acoustic Lens**) in `AnalysisTab` with URL hash persistence (including up to 16 `Shift+Click` `custom_clamps` nodal pins), `ToolStateBounds` JSON validation, `AccessKit` keyboard navigation, and `SVG`, `PNG`, `CSV`, `JSON`, and `.wav` exports.
+   - Couples top-K `SpectralMode2D` peaks, Kirchhoff-Love dispersion ($\omega_{m,n} \propto \sqrt{D}\lambda_{m,n}^2/L^2$), linear acoustic dispersion ($c|k|$), Young detector fringes, and mallet impulses into stack-allocated `SonificationFrame` voices under [ADR 0040](0040-dual-backend-web-audio-sonification.md).
 
 ## Consequences
 
