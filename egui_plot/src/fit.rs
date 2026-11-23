@@ -4,10 +4,8 @@
 mod tests;
 
 pub use math_commons::error::FitError;
-pub use math_commons::fit::{
-    CurveFit, FitModel, FitModel as FitType, MAX_LM_ITERATIONS, MAX_POLYNOMIAL_DEGREE,
-};
-pub use math_commons::series::{PointSeries, Sample2D};
+pub use math_commons::fit::{CurveFit, FitModel as FitType};
+pub use math_commons::series::PointSeries;
 
 thread_local! {
     static FIT_MODEL_WITH_AXES_CALL_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -112,39 +110,7 @@ impl FitResult {
     }
 }
 
-/// Computes least-squares polynomial regression (`1..=4`) over any [`PointSeries`].
-pub fn fit_dataset<P: PointSeries + ?Sized>(
-    points: &P,
-    target_degree: usize,
-    dataset_name: &str,
-) -> Result<FitResult, FitError> {
-    fit_dataset_scaled(points, target_degree, dataset_name, false, false)
-}
-
-/// Computes least-squares polynomial regression (`1..=4`) in linear, semilog, or log-log space.
-pub fn fit_dataset_scaled<P: PointSeries + ?Sized>(
-    points: &P,
-    target_degree: usize,
-    dataset_name: &str,
-    log_x: bool,
-    log_y: bool,
-) -> Result<FitResult, FitError> {
-    let curve = math_commons::fit::fit_polynomial_scaled(points, target_degree, log_x, log_y)?;
-    Ok(FitResult::from_curve_fit(curve, points, dataset_name))
-}
-
-/// Fits any canonical [`FitType`] preset to `points`, returning typed [`FitError`] on failure.
-pub fn fit_model<P: PointSeries + ?Sized>(
-    points: &P,
-    fit_type: FitType,
-    dataset_name: &str,
-    log_mode: bool,
-) -> Result<FitResult, FitError> {
-    let curve = math_commons::fit::fit_model(points, fit_type, log_mode)?;
-    Ok(FitResult::from_curve_fit(curve, points, dataset_name))
-}
-
-/// Fits a canonical [`FitType`] respecting plot logarithmic axes for polynomial presets.
+/// Fits a canonical [`FitType`] respecting plot logarithmic axes for polynomial presets and `log_mode` for nonlinear presets.
 pub fn fit_model_with_axes<P: PointSeries + ?Sized>(
     points: &P,
     fit_type: FitType,
