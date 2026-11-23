@@ -431,15 +431,16 @@ impl OdeSolverTool {
     }
 
     pub(crate) fn build_current_trace_series(&self) -> Vec<crate::framework::TraceSeries> {
-        let (py, pv) = if self
-            .series_cache
-            .matches_series(&self.time_series, &self.y_series, &self.v_series)
-        {
-            self.series_cache.shared_points()
-        } else {
-            let (y, v) = self.collect_full_xy_pairs();
-            (y.into(), v.into())
-        };
+        let (py, pv) =
+            if self
+                .series_cache
+                .matches_series(&self.time_series, &self.y_series, &self.v_series)
+            {
+                self.series_cache.shared_points()
+            } else {
+                let (y, v) = self.collect_full_xy_pairs();
+                (y.into(), v.into())
+            };
         let mut series = vec![crate::framework::TraceSeries::new("y(t)", py)];
         if self.has_second_state() && !pv.is_empty() {
             series.push(crate::framework::TraceSeries::new(

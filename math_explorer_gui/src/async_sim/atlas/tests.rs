@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-#[cfg(any(feature = "biology", feature = "epidemiology"))]
+#[cfg(any(feature = "biology", feature = "epidemiology", feature = "physics"))]
 #[path = "domain_tests.rs"]
 mod domain_tests;
 

@@ -1,4 +1,5 @@
 // @explorer_feature = "biology"
+// @explorer_order = 40
 use crate::async_sim::SimWorkerState;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
@@ -25,7 +26,7 @@ pub use lenia::LeniaTool;
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
-pub use runner::{MorphogenesisKineticsRunner, MorphogenesisRunner, MorphogenesisSharedParams};
+pub use runner::{MorphogenesisRunner, MorphogenesisSharedParams};
 pub use tool::{MorphogenesisTool, MorphogenesisToolState};
 
 /// Legacy flat `MorphoState` schema saved by pre-framework `.mws` workspaces.

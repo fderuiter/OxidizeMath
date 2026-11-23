@@ -182,7 +182,7 @@ pub struct UnifiedSimRunner<M: UnifiedModel> {
 }
 
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
-    /// Creates a new runner initialized from `params` with empty sculpt and formula state.
+    /// Creates a new [`UnifiedSimRunner`] initialized from `params` with empty sculpt and formula state.
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
         Self::with_shared(
             params,
@@ -306,6 +306,18 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
                 self.model.apply_sculpt_payload(&payload, &current_params);
                 let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
                 *guard = payload;
+            }
+            SimCommand::Custom(ref action) if action == super::SYNC_PARAMETERS_COMMAND => {
+                let had_sculpt = !self
+                    .sculpt_state
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .is_empty();
+                self.sync_formula(&current_params);
+                self.model.sync_parameters(&current_params);
+                if had_sculpt {
+                    self.sync_sculpt_from_model(&current_params);
+                }
             }
             other => {
                 self.sync_formula(&current_params);

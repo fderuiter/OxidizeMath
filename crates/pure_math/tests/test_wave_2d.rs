@@ -4,6 +4,7 @@
 
 // [cite:advanced_linear_algebra]
 
+use math_commons::math_kernel::types::flatten_2d_index;
 use pure_math::pure_math::analysis::pde::wave_2d::particles_and_contours::DEFAULT_SAND_PARTICLES;
 use pure_math::pure_math::analysis::pde::wave_2d::{
     BoundaryMode2D, ChladniSandSystem, DriverConfig2D, MarchingSquares2D, SpectralAnalyzer2D,
@@ -101,5 +102,41 @@ fn test_100_wave_sand_and_fft_steps_zero_allocations() {
             .iter()
             .all(|m| m.magnitude.is_finite() && m.phase.is_finite())
     );
+    assert!(solver.displacement().iter().all(|v| v.is_finite()));
+}
+
+#[test]
+fn test_fast_metamaterial_effective_courant_and_100_steps_zero_allocations() {
+    let grid_n = 128_usize;
+    let mut solver = Wave2DSolver::new(grid_n, grid_n, 1.0, 1.0);
+    solver.wave_speed_mask[flatten_2d_index(44, grid_n / 2, grid_n)] = 1.0 / 0.6;
+    let params = Wave2DParams {
+        medium: Wave2DMedium::AcousticWave,
+        boundary: BoundaryMode2D::Sponge,
+        wave_speed: 1.0,
+        plate_stiffness: 0.0,
+        damping: 0.002,
+    };
+    let driver = DriverConfig2D {
+        enabled: true,
+        line_source: true,
+        x_norm: 16.0 / 127.0,
+        y_norm: 0.5,
+        frequency: 0.14,
+        amplitude: 2.8,
+        radius_cells: 2.0,
+    };
+
+    let ((cfl, total_substeps), _metrics) = VerifiedEngine::run_verified(|| {
+        let cfl_now = solver.effective_courant(&params, 0.40);
+        let mut sub_sum = 0_usize;
+        for _ in 0..100 {
+            sub_sum += solver.step_driven(&params, &driver, 0.40, Some(92));
+        }
+        (cfl_now, sub_sum)
+    });
+
+    assert!((cfl - (1.0 / 3.0)).abs() < 1.0e-6);
+    assert_eq!(total_substeps, 200);
     assert!(solver.displacement().iter().all(|v| v.is_finite()));
 }

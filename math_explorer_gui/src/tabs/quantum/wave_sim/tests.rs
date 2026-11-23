@@ -85,7 +85,9 @@ fn test_wave_sculpt_brush_url_state_roundtrip() {
     assert!(!tool.sparse_potential.is_empty());
     let saved = tool.save_state().expect("save sculpted wave state");
     let mut restored = WaveSimulatorTool::new();
-    restored.try_load_state(&saved).expect("restore sculpted wave state");
+    restored
+        .try_load_state(&saved)
+        .expect("restore sculpted wave state");
     assert_eq!(restored.sparse_potential, tool.sparse_potential);
 }
 
@@ -292,4 +294,31 @@ fn test_wave_parameter_constraints_calibrated_defaults_and_on_step_dt() {
         (steps_from_min.round() - steps_from_min).abs() < 1e-12,
         "Default dt = 0.02 must be an exact slider step multiple from dt.min"
     );
+}
+
+#[test]
+fn test_wave_simulator_animated_slider_sweeps_continuous_parameters() {
+    use super::presets::wave_parameter_label;
+    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+
+    let mut tool = WaveSimulatorTool::default();
+    let initial_x0 = tool.x0;
+    let ctx = egui::Context::default();
+    save_slider_state(
+        &ctx,
+        egui::Id::new(("wave_sim_param", wave_parameter_label("x0"))),
+        AnimatedSliderState {
+            playing: true,
+            direction: 1.0,
+            sweep_mode: SweepMode::Oscillate,
+        },
+    );
+    let _ = ctx.run(
+        egui::RawInput {
+            predicted_dt: 0.1,
+            ..Default::default()
+        },
+        |ctx| tool.show(ctx),
+    );
+    assert!(tool.x0 > initial_x0);
 }

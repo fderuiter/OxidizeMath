@@ -144,8 +144,12 @@ impl MorphogenesisTool {
         let cfl_exceeded = {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             let mut slider = |val: &mut f64, c: &ParameterConstraint, label: &str| {
-                ui.add(egui::Slider::new(val, c.min..=c.max).step_by(c.step).text(label))
-                    .changed()
+                ui.add(
+                    egui::Slider::new(val, c.min..=c.max)
+                        .step_by(c.step)
+                        .text(label),
+                )
+                .changed()
             };
             changed |= slider(&mut p.a, &ca, "a");
             changed |= slider(&mut p.b, &cb, "b");

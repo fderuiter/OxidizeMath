@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::*;
+use crate::async_sim::unified::UnifiedSimTool;
 
 #[test]
 fn test_lbm_unified_calibrated_viscosity_and_single_uniform_inlet() {

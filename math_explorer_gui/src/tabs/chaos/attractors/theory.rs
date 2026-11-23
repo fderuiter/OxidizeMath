@@ -68,6 +68,24 @@ impl scientific_metadata::theory::TheoryDescribable for super::AttractorPlotter 
                     default: Some(0.01),
                 },
             ),
+            (
+                "param_0".to_string(),
+                ParameterConstraint {
+                    min: 0.0,
+                    max: 10.0,
+                    step: 0.05,
+                    default: Some(0.2),
+                },
+            ),
+            (
+                "param_1".to_string(),
+                ParameterConstraint {
+                    min: 0.0,
+                    max: 10.0,
+                    step: 0.05,
+                    default: Some(0.2),
+                },
+            ),
         ])
     }
 }

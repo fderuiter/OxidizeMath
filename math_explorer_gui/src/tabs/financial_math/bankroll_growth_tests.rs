@@ -117,7 +117,10 @@ fn test_seed_counter_reruns_produce_distinct_trajectories() {
         .iter()
         .map(|pt| [pt.x, pt.y])
         .collect();
-    assert_eq!(run_0, run_reset, "Reset must restore baseline seed trajectory");
+    assert_eq!(
+        run_0, run_reset,
+        "Reset must restore baseline seed trajectory"
+    );
 }
 
 #[test]

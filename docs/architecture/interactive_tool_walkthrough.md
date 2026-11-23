@@ -115,6 +115,7 @@ impl TheoryDescribable for HarmonicOscillatorTool {
                 min: 0.1,
                 max: 10.0,
                 step: 0.1,
+                default: Some(1.0),
             },
         );
         params.insert(
@@ -123,6 +124,7 @@ impl TheoryDescribable for HarmonicOscillatorTool {
                 min: 0.1,
                 max: 50.0,
                 step: 0.5,
+                default: Some(10.0),
             },
         );
         params.insert(
@@ -131,6 +133,7 @@ impl TheoryDescribable for HarmonicOscillatorTool {
                 min: 0.0,
                 max: 2.0,
                 step: 0.05,
+                default: Some(0.1),
             },
         );
         params

@@ -5,7 +5,7 @@ use egui_plot::{Line, Plot, PlotPoint, PlotPoints};
 use math_explorer::epidemiology::compartmental::SIRModel;
 use std::sync::Arc;
 
-use super::{SirTool, MAX_SIR_DURATION, MAX_SIR_STEPS, MIN_SIR_DURATION};
+use super::{SirTool, MAX_SIR_HARD_DURATION, MAX_SIR_STEPS, MIN_SIR_DURATION};
 use crate::reflective_ui::render_copyable_metric;
 
 impl SirTool {
@@ -60,7 +60,7 @@ impl SirTool {
             ("gamma", self.gamma),
         ];
         let duration = if self.duration.is_finite() {
-            self.duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION)
+            self.duration.clamp(MIN_SIR_DURATION, MAX_SIR_HARD_DURATION)
         } else {
             100.0
         };

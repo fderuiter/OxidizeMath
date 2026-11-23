@@ -145,7 +145,9 @@ impl RandomizationTool {
             ui.label("Seed:");
             if ui
                 .add(egui::DragValue::new(&mut self.seed_counter).speed(1.0))
-                .accessible_hover_text("Deterministic RNG seed offset for reproducible subject allocation")
+                .accessible_hover_text(
+                    "Deterministic RNG seed offset for reproducible subject allocation",
+                )
                 .changed()
                 && !self.assignments.is_empty()
             {
@@ -288,7 +290,7 @@ inventory::submit! {
         id: "RandomizationTool",
         display_name: "Randomization",
         domain: "clinical_trials",
-        tags: &[],
+        tags: &["permuted block", "stratified", "bernoulli", "allocation", "confounding", "rct"],
         build: || Box::new(RandomizationTool::default()),
     }
 }
