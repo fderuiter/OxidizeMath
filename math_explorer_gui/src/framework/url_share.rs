@@ -186,6 +186,7 @@ impl SimulationFramework {
         self.diagnostic_report = None;
         self.show_starter_gallery = false;
         self.preset_dialog.toast_error = None;
+        self.reset_active_tool_manual_bounds();
         self.sync_active_baseline();
         Ok(())
     }

@@ -62,18 +62,40 @@ if [ -f "$STAGING_DIR/icon.ico" ]; then
     mv "$STAGING_DIR/icon.ico" "$STAGING_DIR/favicon.ico"
 fi
 
+bash "$SCRIPT_DIR/compress_dist.sh" "$STAGING_DIR" wasm
+
 wasm_size=0
+wasm_brotli_size=0
+wasm_gzip_size=0
 for wf in "$STAGING_DIR"/*.wasm; do
     if [ -f "$wf" ]; then
         wasm_size=$(wc -c < "$wf" | tr -d '[:space:]')
+        if [ -f "${wf}.br" ]; then
+            wasm_brotli_size=$(wc -c < "${wf}.br" | tr -d '[:space:]')
+        fi
+        if [ -f "${wf}.gz" ]; then
+            wasm_gzip_size=$(wc -c < "${wf}.gz" | tr -d '[:space:]')
+        fi
         break
     fi
 done
 
 if [ -f "$BOOTSTRAP_JS" ] && [ "$wasm_size" -gt 0 ]; then
-    awk -v wasm_size="$wasm_size" '
+    awk \
+        -v wasm_size="$wasm_size" \
+        -v wasm_brotli_size="$wasm_brotli_size" \
+        -v wasm_gzip_size="$wasm_gzip_size" \
+        '
         /^const WASM_SOURCE_SIZE = [0-9]+;$/ {
             print "const WASM_SOURCE_SIZE = " wasm_size ";"
+            next
+        }
+        /^const WASM_BROTLI_SIZE = [0-9]+;$/ {
+            print "const WASM_BROTLI_SIZE = " wasm_brotli_size ";"
+            next
+        }
+        /^const WASM_GZIP_SIZE = [0-9]+;$/ {
+            print "const WASM_GZIP_SIZE = " wasm_gzip_size ";"
             next
         }
         { print }
@@ -100,14 +122,6 @@ if [ -f "$INDEX_HTML" ] && grep -q '<script type="module">' "$INDEX_HTML"; then
     ' "$INDEX_HTML" > "${INDEX_HTML}.tmp" && mv "${INDEX_HTML}.tmp" "$INDEX_HTML"
 
     if [ -f "$LOADER_JS" ]; then
-        wasm_size=0
-        for wf in "$STAGING_DIR"/*.wasm; do
-            if [ -f "$wf" ]; then
-                wasm_size=$(wc -c < "$wf" | tr -d '[:space:]')
-                break
-            fi
-        done
-
         awk -v wasm_size="$wasm_size" '
             {
                 if (wasm_size > 0 && $0 ~ /__trunkInitializer\(init,/) {
@@ -131,4 +145,4 @@ if [ -f "$INDEX_HTML" ] && grep -q '<script type="module">' "$INDEX_HTML"; then
     fi
 fi
 
-bash "$SCRIPT_DIR/compress_dist.sh" "$STAGING_DIR"
+bash "$SCRIPT_DIR/compress_dist.sh" "$STAGING_DIR" js html css svg webmanifest json
