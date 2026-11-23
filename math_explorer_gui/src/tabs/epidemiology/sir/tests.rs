@@ -130,8 +130,15 @@ fn test_sir_epidemic_peak_and_logistic_fit_r2() {
     assert!(peak_infected >= max_sample - 1e-6);
 
     let r_pts: Vec<[f64; 2]> = tool.r_points.iter().map(|p| [p.x, p.y]).collect();
-    let fit = egui_plot::fit_model(&r_pts, egui_plot::FitType::Logistic, "Recovered", false)
-        .expect("SIR Recovered logistic fit");
+    let fit = egui_plot::fit_model_with_axes(
+        &r_pts,
+        egui_plot::FitType::Logistic,
+        "Recovered",
+        false,
+        false,
+        false,
+    )
+    .expect("SIR Recovered logistic fit");
     assert!(
         fit.r_squared >= 0.99,
         "SIR Recovered Logistic R^2 = {}",
