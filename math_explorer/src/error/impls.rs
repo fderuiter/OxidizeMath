@@ -39,6 +39,7 @@ impl Error {
             Self::Glicko2(err) => Some(err),
             Self::Kelly(err) => Some(err),
             Self::LinearAlgebra(err) => Some(err),
+            Self::MarketPricing(err) => Some(err),
             Self::Markov(err) => Some(err),
             Self::NumberTheory(err) => Some(err),
             Self::Optimization(err) => Some(err),
