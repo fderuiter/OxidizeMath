@@ -1,5 +1,6 @@
-// @explorer_feature = "physics"
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod beam_profiling;
@@ -56,6 +57,14 @@ impl ExplorerTab for MedicalTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "medical",
+        order: 15,
+        build: || Box::new(MedicalTab::default()),
     }
 }
 

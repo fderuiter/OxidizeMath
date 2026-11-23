@@ -349,7 +349,18 @@ inventory::submit! {
         id: "PrimeSpiralWidget",
         display_name: "Prime Spiral (Ulam Spiral)",
         domain: "number_theory",
-        tags: &["ulam", "prime spiral", "euler quadratic", "polyrhythm", "sonification"],
+        tags: &[
+            "ulam",
+            "ulam spiral",
+            "prime spiral",
+            "prime",
+            "euler quadratic",
+            "quadratic",
+            "sieve",
+            "lattice",
+            "polyrhythm",
+            "sonification",
+        ],
         build: || Box::new(PrimeSpiralWidget::default()),
     }
 }
