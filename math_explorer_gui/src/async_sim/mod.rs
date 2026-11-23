@@ -31,6 +31,8 @@ pub mod checkpoint;
 pub use checkpoint::*;
 pub mod state;
 pub use state::*;
+pub mod twin;
+pub use twin::*;
 
 use std::sync::mpsc::{self, Sender};
 pub use std::sync::Arc;
@@ -43,6 +45,16 @@ pub trait SimulationRunner: Send + 'static {
     fn step(&mut self);
     #[allow(missing_docs)]
     fn step_once(&mut self) {
+        self.step();
+    }
+    /// Returns `true` when a lockstep counterfactual shadow twin (`Branch A`) is active.
+    fn has_counterfactual_twin(&self) -> bool {
+        false
+    }
+    /// Advances frozen baseline `Branch A` by one simulation tick.
+    fn step_branch_a(&mut self) {}
+    /// Advances active `Branch B` by one simulation tick and records divergence metrics.
+    fn step_branch_b(&mut self) {
         self.step();
     }
     #[allow(missing_docs)]
