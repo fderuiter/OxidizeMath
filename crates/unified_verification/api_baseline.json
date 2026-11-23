@@ -10018,6 +10018,9 @@
   ],
   "crates/oxidize_core/src/workspace.rs": [
     {
+      "signature": "pub fn build_wasm_cargo_test_invocations (_ : & [WasmCrateSpec]) -> Vec < Vec < String > >"
+    },
+    {
       "signature": "pub fn find_workspace_root () -> Option < PathBuf >"
     },
     {
@@ -10033,10 +10036,16 @@
       "signature": "pub fn parse_workspace_members (_ : & str) -> Result < Vec < String > , WorkspaceError >"
     },
     {
+      "signature": "pub use workspace_wasm :: BROWSER_WASM_PACKAGES"
+    },
+    {
       "signature": "pub use workspace_wasm :: HOST_ONLY_WORKSPACE_PACKAGES"
     },
     {
       "signature": "pub use workspace_wasm :: WasmCrateSpec"
+    },
+    {
+      "signature": "pub use workspace_wasm :: WasmExecutionRuntime"
     },
     {
       "signature": "pub use workspace_wasm :: WasmTestTargetKind"
@@ -10045,10 +10054,13 @@
       "signature": "pub use workspace_wasm :: WorkspaceError"
     },
     {
-      "signature": "pub use workspace_wasm :: build_wasm_cargo_test_invocations"
+      "signature": "pub use workspace_wasm :: build_wasm_no_run_json_invocations"
     },
     {
       "signature": "pub use workspace_wasm :: discover_wasm_crates"
+    },
+    {
+      "signature": "pub use workspace_wasm :: extract_wasm_test_executables_from_cargo_json"
     },
     {
       "signature": "pub use workspace_wasm :: parse_workspace_members_std"

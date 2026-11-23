@@ -251,8 +251,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         let mut best_final = neg_inf;
         let mut last_state = 0;
         let mut found = false;
-        for i in 0..n {
-            let val = workspace.prev_log_delta[i];
+        for (i, &val) in workspace.prev_log_delta[..n].iter().enumerate() {
             if val > neg_inf && (!found || val > best_final) {
                 found = true;
                 best_final = val;

@@ -1,7 +1,5 @@
 use super::*;
-use crate::gates::{
-    CARGO_DOC_ARGS, HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin, workspace_wasm,
-};
+use crate::gates::{CARGO_DOC_ARGS, HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin};
 use crate::markdown_links::{collect_md_files, extract_md_links};
 use crate::smoke::CHECK_BENCHES_ARGS;
 use std::process::Command;
@@ -210,43 +208,6 @@ fn test_native_bench_and_smoke_ci_parity() {
     assert!(ci_yaml.contains(
         "- name: Smoke Test Registered Examples (Native)\n        if: matrix.target != 'wasm32-unknown-unknown'\n        run: cargo run -p xtask -- smoke-examples"
     ));
-}
-
-#[test]
-fn test_wasm_test_and_smoke_ci_parity() {
-    let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let discovered = workspace_wasm::discover_wasm_crates(&ws_root)
-        .expect("must discover wasm32 workspace crates");
-    let invocations = workspace_wasm::build_wasm_cargo_test_invocations(&discovered);
-    assert_eq!(invocations.len(), 2);
-    assert!(invocations[0].contains(&"oxidize_core".to_string()));
-    assert!(invocations[0].contains(&"egui_plot".to_string()));
-    assert!(invocations[0].contains(&"--lib".to_string()));
-    assert_eq!(
-        invocations[1],
-        vec![
-            "test",
-            "--target",
-            "wasm32-unknown-unknown",
-            "-p",
-            "math_explorer_gui",
-            "--bins",
-        ]
-    );
-    let ci_path = ws_root.join(".github/workflows/ci.yml");
-    let ci_yaml = fs::read_to_string(&ci_path)
-        .expect("failed to read ci.yml")
-        .replace("\r\n", "\n");
-    let build_pos = ci_yaml
-        .find("trunk build --release")
-        .expect("ci.yml must build web app with trunk");
-    let smoke_pos = ci_yaml
-        .find("cargo run -p xtask -- test-wasm --skip-build")
-        .expect("ci.yml must run xtask test-wasm gate");
-    let upload_pos = ci_yaml
-        .find("name: Upload Web Dist Artifact")
-        .expect("ci.yml must upload wasm_web_dist artifact");
-    assert!(smoke_pos > build_pos && smoke_pos < upload_pos);
 }
 
 #[test]

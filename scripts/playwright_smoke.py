@@ -378,6 +378,18 @@ def verify_stamped_dist_artifacts(dist_dir: Path) -> tuple[int, int, int]:
     return wasm_size, br_size, gz_size
 
 
+def attach_unrouted_abort_guard(page: Page, watched_suffixes: tuple[str, ...]) -> list[str]:
+    aborted: list[str] = []
+    page.on(
+        "requestfailed",
+        lambda req: aborted.append(f"{req.url}: {req.failure}")
+        if req.failure == "net::ERR_ABORTED"
+        and any(req.url.split("?")[0].endswith(s) for s in watched_suffixes)
+        else None,
+    )
+    return aborted
+
+
 def install_telemetry_probe(page: Page, dist_dir: Path) -> None:
     reload_bytes = STARTUP_TELEMETRY_PROBE_JS + (dist_dir / "reload.js").read_bytes()
     page.route(
@@ -403,10 +415,20 @@ def run_truncated_stream_check(
         page = context.new_page()
         csp_violations: list[str] = []
         attach_csp_observer(page, csp_violations)
+        aborted_unrouted = attach_unrouted_abort_guard(
+            page, ("/bootstrap.js", "/initializer.js", "/math_explorer_gui.js")
+        )
         install_telemetry_probe(page, dist_dir)
 
         page.goto(f"{base_url}/?wasm_mode={wasm_mode}", wait_until="domcontentloaded")
-        verify_error_recovery(page, scenario, EXPECTED_FAULTS["network"])
+        try:
+            verify_error_recovery(page, scenario, EXPECTED_FAULTS["network"])
+        except AssertionError as exc:
+            if aborted_unrouted:
+                raise TransientBrowserCrashError(
+                    f"[{scenario}] Unrouted script aborted by Chromium NetworkService: {aborted_unrouted}"
+                ) from exc
+            raise
         page.wait_for_timeout(40)
 
         trace = page.evaluate("() => window.__mathExplorerSmokeTrace")
@@ -464,13 +486,23 @@ def run_compressed_progress_and_aria_check(
             lambda msg: console_errors.append(msg.text) if msg.type == "error" else None,
         )
         page.on("pageerror", lambda exc: page_errors.append(str(exc)))
+        aborted_unrouted = attach_unrouted_abort_guard(
+            page, ("/bootstrap.js", "/initializer.js", "/math_explorer_gui.js")
+        )
         install_telemetry_probe(page, dist_dir)
 
         page.goto(f"{base_url}/?wasm_mode={wasm_mode}", wait_until="domcontentloaded")
-        expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
-        expect(page.locator("#error_container")).to_be_hidden()
-        expect(page.locator("#the_canvas_id")).to_be_visible()
-        expect(page.locator("#the_canvas_id")).to_be_focused()
+        try:
+            expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+            expect(page.locator("#error_container")).to_be_hidden()
+            expect(page.locator("#the_canvas_id")).to_be_visible()
+            expect(page.locator("#the_canvas_id")).to_be_focused()
+        except AssertionError as exc:
+            if aborted_unrouted:
+                raise TransientBrowserCrashError(
+                    f"[{scenario}] Unrouted script aborted by Chromium NetworkService: {aborted_unrouted}"
+                ) from exc
+            raise
 
         trace = page.evaluate("() => window.__mathExplorerSmokeTrace")
         expected_mb = round(expected_wire_bytes / 1_000_000.0, 2)
@@ -545,6 +577,17 @@ def run_internal_error_and_fallback_compile_checks(
 
         return _fulfill
 
+    def _attach_unrouted_abort_guard(page: Page, watched_suffixes: tuple[str, ...]) -> list[str]:
+        aborted: list[str] = []
+        page.on(
+            "requestfailed",
+            lambda req: aborted.append(f"{req.url}: {req.failure}")
+            if req.failure == "net::ERR_ABORTED"
+            and any(req.url.split("?")[0].endswith(s) for s in watched_suffixes)
+            else None,
+        )
+        return aborted
+
     captured_shot = False
     for trap_msg in internal_messages:
         loader_stub = (
@@ -562,6 +605,10 @@ def run_internal_error_and_fallback_compile_checks(
                 pg = ctx.new_page()
                 csp_violations: list[str] = []
                 attach_csp_observer(pg, csp_violations)
+                watched = ("/bootstrap.js", "/initializer.js") + (
+                    () if use_fallback else ("/reload.js",)
+                )
+                aborted_unrouted = _attach_unrouted_abort_guard(pg, watched)
                 if use_fallback:
                     pg.route(
                         "**/reload.js*",
@@ -573,16 +620,23 @@ def run_internal_error_and_fallback_compile_checks(
                     )
                 pg.route("**/math_explorer_gui.js*", fulfill_loader)
                 pg.goto(f"{base_url}/", wait_until="domcontentloaded")
-                err_box = pg.locator("#error_container")
-                expect(err_box).to_be_visible(timeout=12_000)
-                expect(err_box).to_have_attribute("data-error-active", "true")
-                expect(err_box).to_have_attribute("data-error-category", "compile")
-                expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
-                expect(pg.locator("#webgl_reload_button")).to_be_focused()
-                if not use_fallback:
-                    expect(pg.locator("#aria-live-assertive")).to_contain_text(
-                        "WebAssembly startup error"
-                    )
+                try:
+                    err_box = pg.locator("#error_container")
+                    expect(err_box).to_be_visible(timeout=12_000)
+                    expect(err_box).to_have_attribute("data-error-active", "true")
+                    expect(err_box).to_have_attribute("data-error-category", "compile")
+                    expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
+                    expect(pg.locator("#webgl_reload_button")).to_be_focused()
+                    if not use_fallback:
+                        expect(pg.locator("#aria-live-assertive")).to_contain_text(
+                            "WebAssembly startup error"
+                        )
+                except AssertionError as exc:
+                    if aborted_unrouted:
+                        raise TransientBrowserCrashError(
+                            f"[internal_error_{mode_label}] Unrouted script aborted by Chromium NetworkService: {aborted_unrouted}"
+                        ) from exc
+                    raise
                 assert_zero_csp_violations(f"internal_error_{mode_label}_{trap_msg}", csp_violations)
                 if screenshot_path and not captured_shot and not use_fallback:
                     pg.screenshot(path=str(screenshot_path), full_page=True)
@@ -596,6 +650,9 @@ def run_internal_error_and_fallback_compile_checks(
         pg = ctx.new_page()
         csp_violations = []
         attach_csp_observer(pg, csp_violations)
+        aborted_unrouted = _attach_unrouted_abort_guard(
+            pg, ("/bootstrap.js", "/initializer.js", "/math_explorer_gui.js")
+        )
         pg.route(
             "**/reload.js*",
             lambda route: route.fulfill(
@@ -613,11 +670,18 @@ def run_internal_error_and_fallback_compile_checks(
             ),
         )
         pg.goto(f"{base_url}/", wait_until="domcontentloaded")
-        err_box = pg.locator("#error_container")
-        expect(err_box).to_be_visible(timeout=12_000)
-        expect(err_box).to_have_attribute("data-error-category", "compile")
-        expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
-        expect(pg.locator("#webgl_reload_button")).to_be_focused()
+        try:
+            err_box = pg.locator("#error_container")
+            expect(err_box).to_be_visible(timeout=12_000)
+            expect(err_box).to_have_attribute("data-error-category", "compile")
+            expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
+            expect(pg.locator("#webgl_reload_button")).to_be_focused()
+        except AssertionError as exc:
+            if aborted_unrouted:
+                raise TransientBrowserCrashError(
+                    f"[fallback_corrupt_wasm] Unrouted script aborted by Chromium NetworkService: {aborted_unrouted}"
+                ) from exc
+            raise
         assert_zero_csp_violations("fallback_corrupt_wasm", csp_violations)
     finally:
         ctx.close()

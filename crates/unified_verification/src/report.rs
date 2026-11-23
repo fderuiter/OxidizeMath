@@ -98,6 +98,7 @@ pub struct FileMetrics {
     pub unverified_funcs: f64,
     pub unverified_asserts: f64,
     pub opt_outs: Vec<(String, String)>,
+    pub orphaned_wasm_tests: Vec<String>,
 }
 
 struct ReportPatterns {
@@ -160,6 +161,12 @@ fn analyze_file_content(
         crate::wasm_coverage::count_file_wasm_coverage(filepath, content);
     m.wasm_paths += file_wasm_paths;
     m.wasm_covered += file_wasm_covered;
+
+    for fn_name in crate::wasm_coverage::find_orphaned_wasm_unit_tests(filepath, content) {
+        m.orphaned_wasm_tests.push(format!(
+            "Orphaned wasm32 #[test] in {norm}: `{fn_name}` (use #[wasm_bindgen_test])"
+        ));
+    }
 }
 
 pub fn analyze_files(rs_files: &[std::path::PathBuf]) -> FileMetrics {
@@ -173,6 +180,7 @@ pub fn analyze_files(rs_files: &[std::path::PathBuf]) -> FileMetrics {
         unverified_funcs: 0.0,
         unverified_asserts: 0.0,
         opt_outs: Vec::new(),
+        orphaned_wasm_tests: Vec::new(),
     };
     let patterns = ReportPatterns::new();
 
@@ -182,6 +190,7 @@ pub fn analyze_files(rs_files: &[std::path::PathBuf]) -> FileMetrics {
         }
     }
     m.opt_outs.sort();
+    m.orphaned_wasm_tests.sort();
     m
 }
 
@@ -243,10 +252,12 @@ fn ratio_or_zero(numerator: f64, denominator: f64) -> f64 {
 }
 
 fn print_debt_section(m: &FileMetrics, debt_items: &[String]) {
-    let mut all_debt = Vec::with_capacity(m.opt_outs.len() + debt_items.len());
+    let mut all_debt =
+        Vec::with_capacity(m.opt_outs.len() + m.orphaned_wasm_tests.len() + debt_items.len());
     for (file, reason) in &m.opt_outs {
         all_debt.push(format!("{} bypassed: '{}'", file, reason));
     }
+    all_debt.extend(m.orphaned_wasm_tests.iter().cloned());
     all_debt.extend(debt_items.iter().cloned());
 
     if !all_debt.is_empty() {
@@ -292,6 +303,14 @@ pub fn print_report(
     }
 
     print_debt_section(m, debt_items);
+
+    if !m.orphaned_wasm_tests.is_empty() {
+        println!(
+            "\n[!] Orphaned wasm32 #[test] Failure: {} #[cfg(target_arch = \"wasm32\")] #[test] item(s) detected; convert to #[wasm_bindgen_test].",
+            m.orphaned_wasm_tests.len()
+        );
+        passed = false;
+    }
 
     if native_cov_pct < 50.0 {
         println!(

@@ -45,6 +45,7 @@ fn test_print_report_threshold_enforcement() {
         unverified_funcs: 5.0,
         unverified_asserts: 5.0,
         opt_outs: Vec::new(),
+        orphaned_wasm_tests: Vec::new(),
     };
 
     // Coverage below 50.0% should fail
@@ -97,6 +98,7 @@ fn empty_file_metrics() -> FileMetrics {
         unverified_funcs: 0.0,
         unverified_asserts: 0.0,
         opt_outs: Vec::new(),
+        orphaned_wasm_tests: Vec::new(),
     }
 }
 
@@ -195,4 +197,27 @@ fn test_collect_llvm_cov_json_cleans_only_after_parsing() {
     );
     assert!(bad_res.is_err());
     assert!(!cleaned_on_bad_json);
+}
+
+#[test]
+fn test_report_rejects_orphaned_wasm32_unit_tests() {
+    let patterns = ReportPatterns::new();
+    let bad_src = r#"
+        #[cfg(target_arch = "wasm32")]
+        #[test]
+        fn orphaned_browser_test() {
+            assert_eq!(1, 1);
+        }
+    "#;
+    let mut m = empty_file_metrics();
+    m.verified_funcs = 2.0;
+    m.verified_asserts = 2.0;
+    analyze_file_content(
+        Path::new("egui_plot/src/probe.rs"),
+        bad_src,
+        &patterns,
+        &mut m,
+    );
+    assert_eq!(m.orphaned_wasm_tests.len(), 1);
+    assert!(!print_report(85.0, 100.0, &m, &[]));
 }

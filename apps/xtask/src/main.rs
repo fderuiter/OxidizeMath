@@ -5,6 +5,7 @@ mod papers;
 mod setup;
 mod smoke;
 mod staged;
+mod wasm_gate;
 
 use gates::{resolve_workspace_root, run_cmd};
 use markdown_links::check_markdown_links;

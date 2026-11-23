@@ -65,6 +65,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Correlated Risk & OU Workbenches, Bet-Sizing Growth Curves, and Kelly Net-Odds Semantics](adr/20261123-glicko2-copula-ou-workbenches-and-kelly-net-odds.md)
 - [ADR 20261123: Hierarchical Umbrella Error Enums, Full Submodule Error Re-Exports, and DiagnosticBus Emission Helpers](adr/20261123-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md)
 - [ADR 20261123: Hybrid Analytical and Zero-Allocation Monte Carlo Edge Validation and Bankroll Solvency](adr/20261123-hybrid-analytical-and-monte-carlo-edge-and-ruin.md)
+- [ADR 20261123: Hybrid Headless Chromium and Node.js WebAssembly Test Gate](adr/20261123-hybrid-chromium-and-nodejs-wasm-test-gate.md)
 - [ADR 20261123: Poincaré Disk Hyperbolic Geometry Kernel and Geodesic Billiard Laboratory](adr/20261123-hyperbolic-geometry-and-geodesic-billiards.md)
 - [ADR 20261123: Implicit CAD Volumetric Studio, Boundary-Capped Marching Cubes, and Millimeter STL Export](adr/20261123-implicit-cad-capped-isosurface-and-mm-stl.md)
 - [ADR 20261123: Static Inventory Tab Registration and Scoped Build Scripts](adr/20261123-inventory-tabs-and-scoped-build-scripts.md)

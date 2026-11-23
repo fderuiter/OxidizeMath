@@ -104,12 +104,10 @@ BASE_SHA="$(git merge-base HEAD origin/main)" HEAD_SHA="HEAD" cargo run -p unifi
 cargo run -p unified_verification --release -- verify-suite
 cargo run -p xtask -- verify-suite
 
-# Native unit/integration tests, benchmark targets, example smoke suite, and WebAssembly target checks
+# Native unit/integration tests, benchmark targets, and registered example suite
 cargo test --workspace --lib --tests --all-features
 cargo run -p xtask -- check-benches
 cargo run -p xtask -- smoke-examples
-cargo check --workspace --target wasm32-unknown-unknown --all-features
-cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
 
 ### Workflow Concurrency, `run` Script Expression & Reusable Caller Policy
@@ -143,23 +141,21 @@ In CI, all eight `feature-matrix` legs share a single `features-shared` Linux `d
 
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
-In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` restores pinned `trunk` (`0.22.2`) and `wasm-bindgen-cli` (`0.2.130`) binaries via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml), caches `~/.cache/trunk` (keyed by runner OS, `Cargo.lock`, and [math_explorer_gui/Trunk.toml](math_explorer_gui/Trunk.toml) for `wasm-opt` `version_123`), compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed `traceability_manifest.json`, local paper artifacts when present, and `favicon.ico` without standalone `Verification_Certificate.json` or duplicate `papers/*.pdf`, while running [scripts/compress_dist.sh](scripts/compress_dist.sh) to stamp `WASM_SOURCE_SIZE`, `WASM_BROTLI_SIZE`, and `WASM_GZIP_SIZE` into `bootstrap.js` and generate local `.gz`/`.br` assets for self-hosted servers and Playwright wire-progress smoke checks), enforces the 4 MB compressed bundle budget via temporary `brotli -9` and `gzip -9` streams in [scripts/verify_wasm_budget.sh](scripts/verify_wasm_budget.sh), executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, and uploads `wasm_web_dist` (excluding `.gz`/`.br` sidecars) on `refs/heads/main`. Subsequently, `deploy-pages` downloads `wasm_web_dist`, `compiled_papers`, and `verification-certificate-linux_artifact`, validates and injects the live `Verification_Certificate.json` object into `pages_dist/traceability_manifest.json`, strips any residual `.gz`/`.br` or standalone `Verification_Certificate.json` files, stages all 29 root PDFs at `pages_dist/{stem}.pdf` alongside `pages_dist/papers/index.html`, generates and verifies `pages_dist/SHA256SUMS` once across all served files, and publishes the GitHub Pages artifact.
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` lints workspace targets and tests with `cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings`, restores pinned `trunk` (`0.22.2`) and `wasm-bindgen-cli` (`0.2.130`) binaries via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml), caches `~/.cache/trunk` (keyed by runner OS, `Cargo.lock`, and [math_explorer_gui/Trunk.toml](math_explorer_gui/Trunk.toml) for `wasm-opt` `version_123`), compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed `traceability_manifest.json`, local paper artifacts when present, and `favicon.ico` without standalone `Verification_Certificate.json` or duplicate `papers/*.pdf`, while running [scripts/compress_dist.sh](scripts/compress_dist.sh) to stamp `WASM_SOURCE_SIZE`, `WASM_BROTLI_SIZE`, and `WASM_GZIP_SIZE` into `bootstrap.js` and generate local `.gz`/`.br` assets for self-hosted servers and Playwright wire-progress smoke checks), enforces the 4 MB compressed bundle budget via temporary `brotli -9` and `gzip -9` streams in [scripts/verify_wasm_budget.sh](scripts/verify_wasm_budget.sh), executes the hybrid `wasm32` test gate (browser `#[wasm_bindgen_test]` suites for `oxidize_core`, `egui_plot`, and `math_explorer_gui` in headless Chromium under `PRODUCTION_CSP`, plus `--lib` `libtest` suites for all 12 pure-Rust `crates/*` libraries and `math_explorer` in Node.js) and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, and uploads `wasm_web_dist` (excluding `.gz`/`.br` sidecars) on `refs/heads/main`. Subsequently, `deploy-pages` downloads `wasm_web_dist`, `compiled_papers`, and `verification-certificate-linux_artifact`, validates and injects the live `Verification_Certificate.json` object into `pages_dist/traceability_manifest.json`, strips any residual `.gz`/`.br` or standalone `Verification_Certificate.json` files, stages all 29 root PDFs at `pages_dist/{stem}.pdf` alongside `pages_dist/papers/index.html`, generates and verifies `pages_dist/SHA256SUMS` once across all served files, and publishes the GitHub Pages artifact.
 
 ```bash
-# 1. Install the WebAssembly Rust target, Trunk, wasm-bindgen-cli, compression utilities, and Playwright Chromium (Ubuntu / Debian)
+# 1. Install the WebAssembly Rust target, Node.js, Trunk, wasm-bindgen-cli, compression utilities, and Playwright Chromium (Ubuntu / Debian)
 rustup target add wasm32-unknown-unknown
 sudo apt-get update
-sudo apt-get install -y brotli
+sudo apt-get install -y nodejs brotli
 cargo binstall --no-confirm trunk@0.22.2 wasm-bindgen-cli@0.2.130
 python3 -m pip install --user playwright
 python3 -m playwright install --with-deps chromium
 
-# 2. Type-check and lint workspace crates and tests for WebAssembly
-cargo check --workspace --target wasm32-unknown-unknown --all-features --verbose
-cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
+# 2. Lint workspace crates and tests for WebAssembly
 cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
-# 3. Run wasm32 browser unit tests, build math_explorer_gui/dist, verify the 4 MB budget, and run Playwright Chromium CSP & fault-injection smoke checks
+# 3. Run hybrid wasm32 tests (Chromium #[wasm_bindgen_test] suites for oxidize_core, egui_plot, and math_explorer_gui + Node.js libtest suites for all 12 pure-Rust crates/* libraries and math_explorer), build math_explorer_gui/dist, verify the 4 MB budget, and run Playwright Chromium CSP & fault-injection smoke checks
 cargo run -p xtask -- test-wasm
 
 # 4. Generate and verify a SHA256SUMS manifest across served web dist files (excluding local .gz/.br sidecars)
