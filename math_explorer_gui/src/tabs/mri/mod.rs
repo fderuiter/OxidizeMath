@@ -1,6 +1,7 @@
-// @explorer_feature = "physics"
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::async_sim::SimWorkerState;
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
@@ -42,7 +43,7 @@ pub struct LegacyMriState {
     pub time_scale: f64,
 }
 
-/// Physics tab hosting [`tool::MriTool`] and [`kspace_scanner::tool::MriKSpaceScannerTool`] inside [`crate::framework::SimulationFramework`].
+/// Physics tab hosting [`tool::MriTool`], [`kspace_tool::MriKSpaceTool`], and [`kspace_scanner::tool::MriKSpaceScannerTool`] inside [`crate::framework::SimulationFramework`].
 pub struct MriTab {
     /// Underlying simulation framework managing exports, presets, theory portal, and state guard.
     pub framework: crate::framework::SimulationFramework,
@@ -131,6 +132,14 @@ impl ExplorerTab for MriTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "mri",
+        order: 11,
+        build: || Box::new(MriTab::default()),
     }
 }
 

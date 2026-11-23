@@ -129,7 +129,10 @@ fn test_bloch_spin_echo_tr_te_compartment_contrast() {
         te_s: 0.18,
         ..pd_like.clone()
     };
-    assert_ne!(synthesize_shepp_logan(&pd_like), synthesize_shepp_logan(&t2_weighted));
+    assert_ne!(
+        synthesize_shepp_logan(&pd_like),
+        synthesize_shepp_logan(&t2_weighted)
+    );
 }
 
 #[test]
@@ -242,7 +245,11 @@ fn test_tactile_pointer_brush_and_hex_mask_roundtrip() {
 
     assert!(tool.recon.sampled_bins < KSPACE_LEN);
     assert!(tool.recon.psnr_db < 30.0);
-    let hex = tool.state.custom_mask_hex.as_ref().expect("custom hex recorded");
+    let hex = tool
+        .state
+        .custom_mask_hex
+        .as_ref()
+        .expect("custom hex recorded");
     assert!(hex.starts_with("0x") && hex.len() == 1026);
     assert_eq!(decode_mask_hex(hex).unwrap(), tool.active_mask);
 
@@ -292,7 +299,9 @@ fn test_wcag_keyboard_reticle_arrow_navigation_and_live_announcements() {
     assert_eq!(tool.focused_canvas_id(), Some(canvas_id));
 
     let msgs = crate::accessibility::all_announcements();
-    assert!(msgs.iter().any(|(m, p)| p == "polite" && m.contains("PSNR")));
+    assert!(msgs
+        .iter()
+        .any(|(m, p)| p == "polite" && m.contains("PSNR")));
 }
 
 #[test]
@@ -336,7 +345,10 @@ fn test_three_starter_presets_and_plot_raster_exports() {
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| tab.show_inside(ui, &mut frame));
         });
-        assert_eq!(tab.framework.export_status_severity, ExportStatusSeverity::Success);
+        assert_eq!(
+            tab.framework.export_status_severity,
+            ExportStatusSeverity::Success
+        );
     }
 }
 

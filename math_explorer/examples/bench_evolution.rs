@@ -9,7 +9,9 @@ use math_explorer::primitives::UnitInterval;
 use std::time::Instant;
 
 fn main() {
-    let iterations = 10_000_000;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let iterations = if smoke { 10_000 } else { 10_000_000 };
     let v = 2.0;
     let c = 10.0;
     let population = HawkDovePopulation::new(v, c);

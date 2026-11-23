@@ -7,7 +7,7 @@ use super::{KSPACE_CENTER, KSPACE_DIM, KSPACE_LEN};
 use eframe::egui::{Color32, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::physics::mri::reconstruction::{Fft2dWorkspace, simulate_signal_2d};
+use math_explorer::physics::mri::reconstruction::{simulate_signal_2d, Fft2dWorkspace};
 use nalgebra::DMatrix;
 use num_complex::Complex;
 
@@ -240,7 +240,10 @@ pub fn reconstruct_from_forward_cache(
 pub fn render_grayscale_panel(values: &[f64], high_contrast: bool) -> ColorImage {
     let peak = values
         .iter()
-        .fold(0.0_f64, |acc, &v| if v.is_finite() { acc.max(v) } else { acc })
+        .fold(
+            0.0_f64,
+            |acc, &v| if v.is_finite() { acc.max(v) } else { acc },
+        )
         .max(1e-6);
     let floor = if high_contrast { 24.0 } else { 8.0 };
     let mut pixels = Vec::with_capacity(KSPACE_LEN);
@@ -265,7 +268,10 @@ pub fn render_grayscale_panel(values: &[f64], high_contrast: bool) -> ColorImage
 pub fn render_kspace_panel(log_power: &[f64], mask: &[bool], high_contrast: bool) -> ColorImage {
     let max_log = log_power
         .iter()
-        .fold(0.0_f64, |acc, &v| if v.is_finite() { acc.max(v) } else { acc })
+        .fold(
+            0.0_f64,
+            |acc, &v| if v.is_finite() { acc.max(v) } else { acc },
+        )
         .max(1e-6);
     let mut pixels = Vec::with_capacity(KSPACE_LEN);
     for (&lp, &sampled) in log_power.iter().zip(mask.iter()) {
@@ -301,7 +307,10 @@ pub fn render_kspace_panel(log_power: &[f64], mask: &[bool], high_contrast: bool
 pub fn render_error_panel(abs_error: &[f64], high_contrast: bool) -> ColorImage {
     let scale = abs_error
         .iter()
-        .fold(0.0_f64, |acc, &v| if v.is_finite() { acc.max(v) } else { acc })
+        .fold(
+            0.0_f64,
+            |acc, &v| if v.is_finite() { acc.max(v) } else { acc },
+        )
         .max(0.05);
     let mut pixels = Vec::with_capacity(KSPACE_LEN);
     for &err in abs_error {

@@ -3,6 +3,12 @@
 use super::recovery::*;
 use super::SimulationFramework;
 
+fn shared_ds(ds: &[(String, Vec<[f64; 2]>)]) -> Vec<(String, egui_plot::SharedPoints)> {
+    ds.iter()
+        .map(|(n, p)| (n.clone(), egui_plot::SharedPoints::from(p.as_slice())))
+        .collect()
+}
+
 fn active_json(fw: &SimulationFramework) -> serde_json::Value {
     serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap()
 }
@@ -45,7 +51,7 @@ fn test_clamp_parameters_multistep_lorenz_restores_plots_and_stabilizes() {
     let unstable = r#"{"sigma":250.0,"rho":800.0,"beta":25.0,"dt":0.25,"simulation_speed":5,"execution_state":{"Diverged":{"invalid_vec":["NaN","Infinity","-Infinity"],"diverged_at_step":10}},"show_annotations":true}"#;
     load_active(&mut fw, unstable);
     let saved_plot = vec![("Trajectory".to_string(), vec![[0.0, 1.0], [1.0, 2.5]])];
-    fw.current_valid_plot_datasets = saved_plot.clone();
+    fw.current_valid_plot_datasets = shared_ds(&saved_plot);
     fw.cache_valid_snapshot();
 
     egui_plot::clear_last_plot_datasets();
@@ -59,7 +65,7 @@ fn test_clamp_parameters_multistep_lorenz_restores_plots_and_stabilizes() {
         assert_clamp_emits(
             |f| {
                 load_active(f, unstable);
-                f.current_valid_plot_datasets = saved_plot.clone();
+                f.current_valid_plot_datasets = shared_ds(&saved_plot);
                 f.cache_valid_snapshot();
                 f.handle_state_guard_action(StateGuardAction::ClampParameters);
             },
@@ -102,7 +108,7 @@ fn test_clamp_parameters_dispatches_domain_hooks_and_restores_datasets() {
     assert!(cera_fw.select_tool_by_name("CeraTool"));
     set_unstable_cera(&mut cera_fw);
     let plots = vec![("CERA".to_string(), vec![[0.0, 0.4], [1.0, 0.8]])];
-    cera_fw.current_valid_plot_datasets = plots.clone();
+    cera_fw.current_valid_plot_datasets = shared_ds(&plots);
     cera_fw.cache_valid_snapshot();
     {
         let _g = crate::reflective_ui::tests::TEST_MUTEX
@@ -111,7 +117,7 @@ fn test_clamp_parameters_dispatches_domain_hooks_and_restores_datasets() {
         assert_clamp_emits(
             |f| {
                 set_unstable_cera(f);
-                f.current_valid_plot_datasets = plots.clone();
+                f.current_valid_plot_datasets = shared_ds(&plots);
                 f.cache_valid_snapshot();
                 f.clamp_parameters();
             },

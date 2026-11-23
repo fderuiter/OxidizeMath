@@ -186,6 +186,29 @@ pub fn cortical_thickness(
     0.5 * (dist_w_to_p + dist_p_to_w)
 }
 
+/// Computes symmetric cortical thickness across all corresponding `(white, pial)` vertex pairs,
+/// constructing a uniform `SpatialGrid` once per surface mesh.
+#[must_use]
+#[verified_engine::verified]
+pub fn cortical_thickness_map(white_surface: &Surface, pial_surface: &Surface) -> Vec<f64> {
+    let count = white_surface
+        .vertices
+        .len()
+        .min(pial_surface.vertices.len());
+    if count == 0 {
+        return Vec::new();
+    }
+    let white_grid = SpatialGrid::from_surface(white_surface);
+    let pial_grid = SpatialGrid::from_surface(pial_surface);
+    let mut thicknesses = Vec::with_capacity(count);
+    for idx in 0..count {
+        let d_wp = pial_grid.shortest_distance(&white_surface.vertices[idx]);
+        let d_pw = white_grid.shortest_distance(&pial_surface.vertices[idx]);
+        thicknesses.push(0.5 * (d_wp + d_pw));
+    }
+    thicknesses
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,16 +228,14 @@ mod tests {
 
     #[test]
     fn test_empty_surface() {
-        let surface = Surface { vertices: vec![] };
+        let surface = Surface::from_vertices(vec![]);
         let point = [1.0, 2.0, 3.0];
         assert_eq!(point_to_surface_distance(&point, &surface), f64::INFINITY);
     }
 
     #[test]
     fn test_single_vertex() {
-        let surface = Surface {
-            vertices: vec![[1.0, 2.0, 3.0]],
-        };
+        let surface = Surface::from_vertices(vec![[1.0, 2.0, 3.0]]);
         let point = [4.0, 6.0, 3.0];
         // sqrt((4-1)^2 + (6-2)^2 + (3-3)^2) = sqrt(9 + 16) = 5.0
         assert_eq!(point_to_surface_distance(&point, &surface), 5.0);
@@ -230,7 +251,7 @@ mod tests {
             let z = ((i * 47) % 100) as f64 * 0.1;
             vertices.push([x, y, z]);
         }
-        let surface = Surface { vertices };
+        let surface = Surface::from_vertices(vertices);
 
         for j in 0..50 {
             let px = ((j * 23) % 120) as f64 * 0.1 - 1.0;
@@ -247,9 +268,7 @@ mod tests {
     #[test]
     fn test_sparse_vertices_expansion() {
         // Query point far from any vertex to ensure radius expands until candidate is found
-        let surface = Surface {
-            vertices: vec![[100.0, 100.0, 100.0], [-100.0, -100.0, -100.0]],
-        };
+        let surface = Surface::from_vertices(vec![[100.0, 100.0, 100.0], [-100.0, -100.0, -100.0]]);
         let query = [0.0, 0.0, 0.0];
         let expected = naive_point_to_surface_distance(&query, &surface);
         let actual = point_to_surface_distance(&query, &surface);

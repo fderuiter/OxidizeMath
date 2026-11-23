@@ -143,15 +143,21 @@ impl MriKSpaceScannerTool {
         if gt_needs_render {
             self.cached_images[0] = render_grayscale_panel(&self.ground_truth, high_contrast);
         }
-        self.cached_images[1] =
-            render_kspace_panel(&self.recon.centered_log_kspace, &self.active_mask, high_contrast);
+        self.cached_images[1] = render_kspace_panel(
+            &self.recon.centered_log_kspace,
+            &self.active_mask,
+            high_contrast,
+        );
         self.cached_images[2] = render_grayscale_panel(&self.recon.reconstructed, high_contrast);
         self.cached_images[3] = render_error_panel(&self.recon.abs_error, high_contrast);
         self.last_high_contrast = Some(high_contrast);
         if let Some(ref mut tex) = self.textures {
             for (idx, handle) in tex.iter_mut().enumerate() {
                 if idx > 0 || gt_needs_render {
-                    handle.set(self.cached_images[idx].clone(), egui::TextureOptions::NEAREST);
+                    handle.set(
+                        self.cached_images[idx].clone(),
+                        egui::TextureOptions::NEAREST,
+                    );
                 }
             }
         }

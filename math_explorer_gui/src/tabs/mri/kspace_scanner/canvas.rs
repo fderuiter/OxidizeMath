@@ -113,18 +113,22 @@ impl MriKSpaceScannerTool {
     }
 
     fn paint_kspace_canvas(&self, ui: &egui::Ui, rect: egui::Rect, tex_id: egui::TextureId) {
-        let uv = egui::Rect::from_min_max(egui::pos2(0.0_f32, 0.0_f32), egui::pos2(1.0_f32, 1.0_f32));
-        ui.painter()
-            .image(tex_id, rect, uv, egui::Color32::WHITE);
+        let uv =
+            egui::Rect::from_min_max(egui::pos2(0.0_f32, 0.0_f32), egui::pos2(1.0_f32, 1.0_f32));
+        ui.painter().image(tex_id, rect, uv, egui::Color32::WHITE);
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let dc_frac = (KSPACE_CENTER as f32 + 0.5_f32) / (KSPACE_DIM as f32);
         let dc_x = rect.min.x + dc_frac * rect.width();
         let dc_y = rect.min.y + dc_frac * rect.height();
         let guide = egui::Stroke::new(1.0_f32, palette.graph_edge.gamma_multiply(0.45_f32));
-        ui.painter()
-            .line_segment([egui::pos2(dc_x, rect.min.y), egui::pos2(dc_x, rect.max.y)], guide);
-        ui.painter()
-            .line_segment([egui::pos2(rect.min.x, dc_y), egui::pos2(rect.max.x, dc_y)], guide);
+        ui.painter().line_segment(
+            [egui::pos2(dc_x, rect.min.y), egui::pos2(dc_x, rect.max.y)],
+            guide,
+        );
+        ui.painter().line_segment(
+            [egui::pos2(rect.min.x, dc_y), egui::pos2(rect.max.x, dc_y)],
+            guide,
+        );
 
         let cell_w = rect.width() / (KSPACE_DIM as f32);
         let cell_h = rect.height() / (KSPACE_DIM as f32);
@@ -164,10 +168,11 @@ impl MriKSpaceScannerTool {
                 egui::vec2(side, side),
                 egui::Sense::focusable_noninteractive(),
             );
-            let uv =
-                egui::Rect::from_min_max(egui::pos2(0.0_f32, 0.0_f32), egui::pos2(1.0_f32, 1.0_f32));
-            ui.painter()
-                .image(tex_id, rect, uv, egui::Color32::WHITE);
+            let uv = egui::Rect::from_min_max(
+                egui::pos2(0.0_f32, 0.0_f32),
+                egui::pos2(1.0_f32, 1.0_f32),
+            );
+            ui.painter().image(tex_id, rect, uv, egui::Color32::WHITE);
             ui.painter().rect_stroke(
                 rect,
                 2.0_f32,

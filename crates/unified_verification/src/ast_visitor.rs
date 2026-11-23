@@ -219,18 +219,20 @@ pub fn run_clone_detector_with_cache(cache: &mut oxidize_core::traceability::Ast
     println!("Running Clone Detector on first-party repository...");
     let mut flags_found = 0;
     let first_party_dirs = ["crates", "apps", "math_explorer", "math_explorer_gui"];
-    for path in crate::utils::collect_rs_files_filtered(&first_party_dirs, &["target", "egui_plot"])
-    {
-        let path_str = crate::whitelist::lossy_slash_path(&path);
-        if path_str.contains("unified_verification")
-            || path_str.contains("colormap.rs")
-            || path_str.contains("types.rs")
-        {
-            continue;
-        }
-
-        if let Some(ast) = cache.get_or_load_fs(&path).and_then(|e| e.ast.as_ref()) {
-            let findings = detect_clones_in_ast(&path, ast);
+    let scan_paths: Vec<PathBuf> =
+        crate::utils::collect_rs_files_filtered(&first_party_dirs, &["target", "egui_plot"])
+            .into_iter()
+            .filter(|path| {
+                let path_str = crate::whitelist::lossy_slash_path(path);
+                !path_str.contains("unified_verification")
+                    && !path_str.contains("colormap.rs")
+                    && !path_str.contains("types.rs")
+            })
+            .collect();
+    cache.preload_sources(&scan_paths);
+    for path in &scan_paths {
+        if let Some(ast) = cache.get_or_load_fs(path).and_then(|e| e.ast.as_ref()) {
+            let findings = detect_clones_in_ast(path, ast);
             for msg in &findings {
                 println!("{msg}");
             }

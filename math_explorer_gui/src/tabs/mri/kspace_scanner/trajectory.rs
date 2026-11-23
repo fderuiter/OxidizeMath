@@ -163,7 +163,9 @@ pub fn build_parametric_mask(state: &MriKSpaceScannerState) -> Vec<bool> {
         KSpaceTrajectory::CartesianLines => sample_cartesian_lines(state.cartesian_stride),
         KSpaceTrajectory::RadialSpokes => sample_radial_spokes(state.radial_spokes),
         KSpaceTrajectory::ArchimedeanSpiral => sample_archimedean_spiral(state.spiral_turns),
-        KSpaceTrajectory::LorenzChaotic => sample_lorenz_chaotic(state.lorenz_steps, state.lorenz_rho),
+        KSpaceTrajectory::LorenzChaotic => {
+            sample_lorenz_chaotic(state.lorenz_steps, state.lorenz_rho)
+        }
     };
     apply_mask_filter(&mut mask, state);
     mask

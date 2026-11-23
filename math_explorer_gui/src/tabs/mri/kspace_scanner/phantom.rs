@@ -225,7 +225,9 @@ pub const fn is_biology_phantom_available() -> bool {
 #[cfg(feature = "biology")]
 fn compute_turing_activator(seed: u64, steps: usize) -> Vec<f64> {
     use math_explorer::biology::diffusion::FiniteDifference2D;
-    use math_explorer::biology::morphogenesis::{DiffusionCoeff, SchnakenbergKinetics, TuringSystem};
+    use math_explorer::biology::morphogenesis::{
+        DiffusionCoeff, SchnakenbergKinetics, TuringSystem,
+    };
     use math_explorer::math_kernel::types::{Dimension, StepSize};
     use oxidize_core::rng::OxidizeRng;
     use rand::Rng;

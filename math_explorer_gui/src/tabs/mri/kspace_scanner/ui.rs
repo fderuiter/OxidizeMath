@@ -128,8 +128,7 @@ impl MriKSpaceScannerTool {
                     .changed();
                 changed |= ui
                     .add(
-                        egui::Slider::new(&mut self.state.lorenz_rho, 10.0..=60.0)
-                            .text("Lorenz ρ"),
+                        egui::Slider::new(&mut self.state.lorenz_rho, 10.0..=60.0).text("Lorenz ρ"),
                     )
                     .changed();
             }
@@ -213,9 +212,7 @@ impl MriKSpaceScannerTool {
                     if ui.button("Clear All").clicked() {
                         self.clear_all_kspace();
                     }
-                    if self.state.custom_mask_hex.is_some()
-                        && ui.button("Reset Brush").clicked()
-                    {
+                    if self.state.custom_mask_hex.is_some() && ui.button("Reset Brush").clicked() {
                         self.reset_brush_edits();
                     }
                     if ui.button("↺ Reset Scanner").clicked() {
