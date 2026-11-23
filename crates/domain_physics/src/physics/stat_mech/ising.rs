@@ -373,6 +373,8 @@ mod tests {
     use nalgebra::{DMatrix, DVector};
     use verified_engine::engine::VerifiedEngine;
 
+    static VERIFIED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn seeded_droplet(r: i32, seed: u64) -> SpinLattice {
         let mut lat = SpinLattice::new(30, 30, Some(seed));
         for y in 0..30 {
@@ -427,9 +429,7 @@ mod tests {
         let payoff =
             MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.0, -0.1, 1.35, 0.0])).unwrap();
 
-        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let ((), metrics) = VerifiedEngine::run_verified(|| {
             lattice.evolve_fermi_game(10_000, 0.0, &payoff);
         });

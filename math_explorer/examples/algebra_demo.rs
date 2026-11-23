@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for algebra demo.
 use math_explorer::pure_math::algebra::{Fp, Polynomial};
 
 fn main() {

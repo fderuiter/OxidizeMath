@@ -264,9 +264,8 @@ mod tests {
             na::Vector3::new(5.0, 0.0, 0.0),
         ];
 
-        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        static VERIFIED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let ((lam_zero, lam_sing, lam_chaos, lam_substep, lam_conv, lam_sig0, corr), m) =
             VerifiedEngine::run_verified(|| {
                 let lz = metrics::logistic_lyapunov(3.9, 0.1, 0);

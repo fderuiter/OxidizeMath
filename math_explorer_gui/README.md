@@ -3,44 +3,11 @@
 ![Status](https://img.shields.io/badge/status-active-brightgreen)
 ![Framework](https://img.shields.io/badge/framework-egui-blue)
 
-The graphical front-end for the `math_explorer` library, built using `eframe` (egui framework).
+Interactive desktop and WebAssembly graphical workbench for exploring OxidizeMath simulations with `eframe` and `egui`.
 
-##  Install
+## 1. Overview & Architecture
 
-Ensure you have the Rust toolchain installed. This crate is part of the `math_explorer` workspace.
-
-```bash
-git clone https://github.com/fderuiter/OxidizeMath.git
-cd OxidizeMath
-```
-
-##  Usage
-
-### Desktop (Native)
-
-To run the interactive application natively:
-
-```bash
-cargo run --release --package math_explorer_gui
-```
-
-### Web (WASM)
-
-To compile and run the application in your browser (requires Trunk):
-
-```bash
-# 1. Install Trunk and WASM target
-cargo install trunk
-rustup target add wasm32-unknown-unknown
-
-# 2. Serve the application locally
-cd math_explorer_gui
-trunk serve
-```
-
-##  Config (Architecture)
-
-The GUI follows a modular architecture based on the `ExplorerTab` trait. The main application `MathExplorerApp` manages a list of these tabs and handles navigation.
+The `math_explorer_gui` crate provides the immediate-mode graphical frontend for `math_explorer` across native desktop targets and WebAssembly (`wasm32-unknown-unknown`). It pairs modular simulation tabs with background worker execution, WCAG-aligned semantic palettes, AccessKit screen-reader bridges, URL-shareable preset state, and scientific theory sidecars.
 
 ```mermaid
 classDiagram
@@ -73,19 +40,33 @@ classDiagram
 
 ### Key Components
 
-*   **`MathExplorerApp`**: The root component implementing `eframe::App`. It renders the top navigation bar and delegates each viewport pane's scoped `egui::Ui` to the active tab via `ExplorerTab::show_inside`.
-*   **`ExplorerTab`**: The trait that all visualization modules must implement. It provides a standard interface for the app to interact with different simulations inside single-pane and multi-pane layouts.
-*   **`math_explorer` Dependency**: All heavy mathematical logic (physics, biology, etc.) resides in the core `math_explorer` crate. The GUI crate should focus **only** on visualization and input handling.
-*   **Coupled Chaos Parameter Atlases (`src/tabs/chaos/`)**:
-    *   **Fractal Viewer**: Preserves independent Mandelbrot and Julia `(center, zoom)` viewports, renders a live `96x72` Julia preview inset when hovering the Mandelbrot parameter plane, and teleports `julia_c` into progressive `BackgroundWorker` rendering on click or `Enter`.
-    *   **Bifurcation Diagram**: Offloads logistic map parameter sweeps into cooperative `8ms` `BackgroundWorker` slices, overlays the verified `logistic_lyapunov` curve against the $\lambda = 0$ stability threshold, and couples click-selected $r$ values to live cobweb and $x_n$ orbit inspectors.
-    *   **Attractor Plotter**: Couples 3D Lorenz trajectories to a progressive 2D $(\rho, \sigma)$ `lorenz_lyapunov` regime heatmap with click-to-teleport parameter selection alongside live $\lambda_{\max}$ and zero-allocation `correlation_dimension_in_place` $C(\epsilon)$ badges.
+- **`MathExplorerApp`**: Root `eframe::App` shell managing navigation, starter gallery workflows, command palette search, accessibility announcements, and delegating each viewport pane's scoped `egui::Ui` to the active tab via `ExplorerTab::show_inside`.
+- **`ExplorerTab` & `framework`**: Standard visualization trait and interactive tool framework supporting single-pane and multi-pane layouts while delegating all mathematical computation to `math_explorer`.
+- **`async_sim`**: Off-thread and Web Worker simulation runners preventing frame-budget stalls during heavy PDE, FFT, or Monte Carlo sweeps.
+- **`presets` & `url_state`**: Versioned JSON preset import/export and deterministic URL state encoding.
+- **Coupled Chaos Parameter Atlases (`src/tabs/chaos/`)**: Links parameter planes to live trajectories across `FractalViewer` (independent Mandelbrot/Julia viewports, live `96x72` hover Julia inset, click/`Enter` progressive teleportation), `BifurcationDiagram` (`8ms` `BackgroundWorker` sweeps, `logistic_lyapunov` stability overlay, click-linked cobweb and $x_n$ orbit inspectors), and `AttractorPlotter` (progressive 2D $(\rho, \sigma)$ `lorenz_lyapunov` regime heatmap and live zero-allocation $C(\epsilon)$ badges).
 
-##  Contributing
+---
+
+## 2. Developer Instructions
+
+### Running Desktop (Native) and Web (WASM)
+
+```bash
+# Run the native desktop application
+cargo run --release --package math_explorer_gui
+
+# Serve the WebAssembly application locally (requires trunk and wasm32-unknown-unknown)
+rustup target add wasm32-unknown-unknown
+cd math_explorer_gui
+trunk serve
+```
+
+### Adding a New Visualization Tab
 
 Follow these steps to add a new visualization tab or simulation tool to `math_explorer_gui`.
 
-### 1. Create the Tab Module
+#### 1. Create the Tab Module
 Create either a single file `src/tabs/<tab_name>.rs` or a directory `src/tabs/<tab_name>/mod.rs` implementing `ExplorerTab` and `Default`. Optional header directives configure Cargo feature gating (`// @explorer_feature = "<domain>"`) and navigation ordering (`// @explorer_order = <n>`):
 
 ```rust,ignore
@@ -115,17 +96,22 @@ impl ExplorerTab for FluidDynamicsTab {
 }
 ```
 
-### 2. Automated Plugin Discovery (`build.rs`)
+#### 2. Automated Plugin Discovery (`build.rs`)
 Do **not** manually edit `src/tabs/mod.rs` or `src/app/mod.rs` to register your new tab. At compile time, [`build.rs`](build.rs) automatically scans `src/tabs/` (and workspace path dependencies) for `impl ExplorerTab for <Struct>` definitions (requiring `Default`) and generates `$OUT_DIR/generated_tabs.rs` (`instantiate_tabs()` and `instantiate_tab()`), which [`src/tabs/mod.rs`](src/tabs/mod.rs) includes automatically:
 
-*   `// @explorer_feature = "physics"`: Optional header comment gating the module behind a Cargo feature.
-*   `// @explorer_order = 10`: Optional header comment controlling navigation bar sort order (lower numbers appear first).
+- `// @explorer_feature = "physics"`: Optional header comment gating the module behind a Cargo feature.
+- `// @explorer_order = 10`: Optional header comment controlling navigation bar sort order (lower numbers appear first).
 
-### 3. Adding Interactive Tools Within a Domain Tab
+#### 3. Adding Interactive Tools Within a Domain Tab
 Most multi-tool domain tabs wrap `SimulationFramework::new("<domain>")` and discover individual tools via `inventory::submit!`. To add a new simulation tool (implementing `InteractiveTool` and `TheoryDescribable`) inside an existing domain folder (`src/tabs/<domain>/<tool>.rs`), declare `pub mod <tool>;` in `src/tabs/<domain>/mod.rs` and follow the step-by-step [Interactive Tool Walkthrough](../docs/architecture/interactive_tool_walkthrough.md).
 
-### Design Principles
+#### 4. Design Principles
+- **Separation of Concerns**: Keep mathematical solvers and domain physics inside `math_explorer`; keep GUI code focused on visualization and input handling.
+- **Immediate Mode & Frame-Budget Safety**: `show_inside()` runs every frame. Avoid heavy synchronous PDE/FFT work in `Default::default()` or `show_inside()`; offload expensive sweeps via `async_sim`.
+- **Lightweight Dependencies**: Avoid adding heavy dependencies (such as direct `rand`) when `math_explorer` primitives suffice.
 
-1.  **Separation of Concerns**: Keep simulation logic in `math_explorer`. If you need a new simulation model, add it to the core library first, then visualize it here.
-2.  **Immediate Mode**: `egui` is an immediate mode GUI. This means the `show_inside()` function is called every frame. Avoid heavy computations directly in `show_inside()`. Use a separate thread or perform small updates per frame.
-3.  **No Heavy Dependencies**: We try to keep the GUI crate lightweight. Avoid adding heavy dependencies like `rand` if a simple internal implementation or a dependency from `math_explorer` suffices.
+---
+
+## 3. Ecosystem Integration
+
+`math_explorer_gui` consumes domain models solely through `math_explorer`, renders interactive 2D/3D plots via the workspace `egui_plot` crate, and wires runtime alerts through `diagnostics` and `federated_registry`.

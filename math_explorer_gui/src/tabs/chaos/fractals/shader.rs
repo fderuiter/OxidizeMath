@@ -12,11 +12,12 @@ const FRACTAL_RESERVED_IDENTS: &[&str] = &[
     "CENTER",
     "ESCAPE_R2",
     "HIGH_CONTRAST",
+    "IS_CUSTOM",
     "IS_JULIA",
     "JULIA_C",
     "MAX_ITER",
-    "SMOOTH_SHADE",
     "ZOOM",
+    "c",
     "cabs",
     "cacos",
     "carg",
@@ -53,6 +54,7 @@ const FRACTAL_RESERVED_IDENTS: &[&str] = &[
     "u_mouse",
     "u_resolution",
     "u_time",
+    "z",
 ];
 
 impl FractalViewer {
@@ -112,7 +114,8 @@ impl FractalViewer {
             .max_iter
             .clamp(10, math_commons::registry::MAX_ITERATIONS as u32);
         let is_julia = self.mode.uses_julia_c();
-        let escape_r2 = if needs_helpers { "4.0" } else { "256.0" };
+        let is_custom = self.mode.is_custom();
+        let escape_r2 = if is_custom { "4.0" } else { "256.0" };
 
         let mut out = String::with_capacity(4096);
         write_dialect_header(&mut out, dialect, self.mode);
@@ -120,9 +123,9 @@ impl FractalViewer {
         writeln!(out, "const float ZOOM = {zoom};").unwrap();
         writeln!(out, "const int MAX_ITER = {max_iter};").unwrap();
         writeln!(out, "const bool IS_JULIA = {is_julia};").unwrap();
+        writeln!(out, "const bool IS_CUSTOM = {is_custom};").unwrap();
         writeln!(out, "const vec2 JULIA_C = vec2({jx}, {jy});").unwrap();
         writeln!(out, "const float ESCAPE_R2 = {escape_r2};").unwrap();
-        writeln!(out, "const bool SMOOTH_SHADE = {};", !needs_helpers).unwrap();
         writeln!(out, "const bool HIGH_CONTRAST = {};\n", self.high_contrast).unwrap();
         if needs_helpers {
             out.push_str(GLSL_COMPLEX_HELPERS);
@@ -202,9 +205,9 @@ const FRACTAL_KERNEL_GLSL: &str = r#"vec4 render_fractal(vec2 frag_coord, vec2 r
     }
 
     float r2 = max(dot(z, z), 4.0001);
-    float smooth_iter = SMOOTH_SHADE
-        ? max(float(iter) - log2(max(log2(r2), 1.0e-6)) + 4.0, 0.0)
-        : float(iter);
+    float smooth_iter = IS_CUSTOM
+        ? float(iter)
+        : max(float(iter) - log2(max(log2(r2), 1.0e-6)) + 4.0, 0.0);
     vec3 col = cyclic_cosine_palette(smooth_iter);
     if (HIGH_CONTRAST) {
         col = ensure_dark_canvas_contrast(col);

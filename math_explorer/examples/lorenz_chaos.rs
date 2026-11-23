@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for lorenz chaos.
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
 use math_explorer::physics::chaos::metrics::lorenz_lyapunov;
 use math_explorer::pure_math::analysis::ode::RungeKutta4;

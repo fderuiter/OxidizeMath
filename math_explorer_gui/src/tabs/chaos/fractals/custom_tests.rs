@@ -111,9 +111,9 @@ fn test_custom_fractal_url_roundtrip() {
 }
 
 #[test]
-fn test_custom_fractal_glsl_shader_export_mandelbrot_and_julia() {
+fn test_custom_fractal_glsl_shader_export() {
     let mut pmap = BTreeMap::new();
-    pmap.insert("a".to_string(), 1.5);
+    pmap.insert("a".to_string(), 1.25);
     let mut viewer = FractalViewer {
         mode: FractalMode::CustomJulia,
         julia_c: Complex::new(-0.4, 0.6),
@@ -123,18 +123,20 @@ fn test_custom_fractal_glsl_shader_export_mandelbrot_and_julia() {
     viewer.math_input.set_expression("a * z^3 + c");
     viewer.math_input.set_params_map(&pmap);
 
-    let webgl2 = viewer
+    let glsl = viewer
         .export_glsl_shader(crate::framework::ShaderDialect::WebGl2Es300)
-        .expect("custom Julia WebGL2 shader exports");
-    assert!(webgl2.starts_with("#version 300 es"));
-    assert!(webgl2.contains("const bool IS_JULIA = true;"));
-    assert!(webgl2.contains("const vec2 a = vec2(1.5, 0.0);"));
-    assert!(webgl2.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
+        .expect("custom Julia GLSL shader compiles");
+    assert!(glsl.starts_with("#version 300 es"));
+    assert!(glsl.contains("const bool IS_JULIA = true;"));
+    assert!(glsl.contains("const bool IS_CUSTOM = true;"));
+    assert!(glsl.contains("const vec2 a = vec2(1.25, 0.0);"));
+    assert!(glsl.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
 
     viewer.mode = FractalMode::CustomMandelbrot;
     let shadertoy = viewer
         .export_glsl_shader(crate::framework::ShaderDialect::Shadertoy)
         .expect("custom Mandelbrot Shadertoy shader exports");
     assert!(shadertoy.contains("const bool IS_JULIA = false;"));
+    assert!(shadertoy.contains("const bool IS_CUSTOM = true;"));
     assert!(shadertoy.contains("void mainImage("));
 }
