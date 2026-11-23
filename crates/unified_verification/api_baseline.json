@@ -6556,6 +6556,9 @@
       "signature": "pub use schrodinger :: transmission_probability"
     },
     {
+      "signature": "pub use spin :: set_spin_bloch_angles_in_place"
+    },
+    {
       "signature": "pub use spin :: sigma_x"
     },
     {
@@ -6563,6 +6566,9 @@
     },
     {
       "signature": "pub use spin :: sigma_z"
+    },
+    {
+      "signature": "pub use spin :: spin_from_bloch_angles"
     },
     {
       "signature": "pub use types :: QuantumOperator"
@@ -6590,6 +6596,9 @@
   ],
   "crates/domain_physics/src/physics/quantum/spin.rs": [
     {
+      "signature": "pub fn set_spin_bloch_angles_in_place (_ : & mut QuantumState , _ : f64 , _ : f64)"
+    },
+    {
       "signature": "pub fn sigma_x () -> QuantumOperator"
     },
     {
@@ -6597,6 +6606,9 @@
     },
     {
       "signature": "pub fn sigma_z () -> QuantumOperator"
+    },
+    {
+      "signature": "pub fn spin_from_bloch_angles (_ : f64 , _ : f64) -> QuantumState"
     }
   ],
   "crates/domain_physics/src/physics/quantum/types.rs": [
