@@ -14,8 +14,8 @@ use verified_engine::engine::VerifiedEngine;
 use super::*;
 use crate::app::{MathExplorerApp, ThemeMode};
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
-use crate::tabs::ExplorerTab;
 use crate::tabs::solid_state::SolidStateTab;
+use crate::tabs::ExplorerTab;
 
 fn test_raw_input(events: Vec<egui::Event>) -> egui::RawInput {
     egui::RawInput {
@@ -83,14 +83,13 @@ fn starter_presets_deny_unknown_fields_url_bounds_and_rollback_guard() {
     assert!(studio.state_bounds().validate_json(&saved).is_ok());
 
     let mut app = MathExplorerApp::default();
-    assert!(
-        app.apply_share_location_strings(
+    assert!(app
+        .apply_share_location_strings(
             "#tab=solid-state-physics&tool=QuasicrystalStudio&preset=solid_state_penrose_10fold",
             "",
             None,
         )
-        .unwrap()
-    );
+        .unwrap());
 
     studio.state.edge_length = f64::NAN;
     studio.state.phason_x = f64::INFINITY;
@@ -152,7 +151,10 @@ fn direct_space_canvas_supports_arrow_key_phason_shifts_without_trapping_tab() {
     ctx.enable_accesskit();
     let mut studio = QuasicrystalStudio::default();
     let canvas_nodes = collect_direct_canvas_nodes(&ctx, &mut studio);
-    assert!(!canvas_nodes.is_empty(), "Focusable AccessKit canvas node missing");
+    assert!(
+        !canvas_nodes.is_empty(),
+        "Focusable AccessKit canvas node missing"
+    );
 
     let key_frame = |key: egui::Key| {
         test_raw_input(vec![egui::Event::Key {
@@ -178,7 +180,10 @@ fn direct_space_canvas_supports_arrow_key_phason_shifts_without_trapping_tab() {
             break;
         }
     }
-    assert!(reached_canvas, "Direct-space canvas must be reachable via Tab");
+    assert!(
+        reached_canvas,
+        "Direct-space canvas must be reachable via Tab"
+    );
     let focused_id = ctx.memory(|m| m.focused());
 
     let (wx0, wy0) = (studio.state.phason_x, studio.state.phason_y);

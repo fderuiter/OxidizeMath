@@ -4,7 +4,7 @@
 
 // [cite:solid_state]
 
-use super::{DiffractionColormap, FFT_GRID_SIZE, QuasicrystalStudio, StudioPatternMode};
+use super::{DiffractionColormap, QuasicrystalStudio, StudioPatternMode, FFT_GRID_SIZE};
 use crate::accessibility::{
     announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
     register_canvas_accessibility,
@@ -111,8 +111,12 @@ impl QuasicrystalStudio {
         let scale = 0.45 * rect.width().min(rect.height()) / (self.state.aperture_radius as f32);
         let center = rect.center();
         match self.state.mode {
-            StudioPatternMode::Quasicrystal => self.paint_quasicrystal_tiles(&painter, center, scale, palette),
-            StudioPatternMode::PeriodicBravais => self.paint_bravais_sites(&painter, center, scale, palette),
+            StudioPatternMode::Quasicrystal => {
+                self.paint_quasicrystal_tiles(&painter, center, scale, palette)
+            }
+            StudioPatternMode::PeriodicBravais => {
+                self.paint_bravais_sites(&painter, center, scale, palette)
+            }
         }
         painter.text(
             rect.left_top() + egui::vec2(8.0, 6.0),
@@ -299,8 +303,11 @@ impl QuasicrystalStudio {
         if self.state.mode == StudioPatternMode::PeriodicBravais && self.state.show_brillouin_zone {
             if let Ok(lat) = self.current_bravais_params() {
                 let bz = lat.first_brillouin_zone();
-                let mut pts: Vec<egui::Pos2> =
-                    bz.vertices().iter().map(|v| k_to_screen(v[0], v[1])).collect();
+                let mut pts: Vec<egui::Pos2> = bz
+                    .vertices()
+                    .iter()
+                    .map(|v| k_to_screen(v[0], v[1]))
+                    .collect();
                 if let Some(&first) = pts.first() {
                     pts.push(first);
                     painter.add(egui::Shape::line(

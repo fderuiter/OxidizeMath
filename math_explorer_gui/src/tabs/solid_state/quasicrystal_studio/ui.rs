@@ -10,8 +10,8 @@ use crate::accessibility::{
 };
 use crate::app::{SemanticPalette, ThemeMode};
 use crate::framework::{
-    bounded_drag_value, InteractiveTool, PaneSidePanel, PlaybackAction, PlaybackTransport,
-    scoped_panel_id,
+    bounded_drag_value, scoped_panel_id, InteractiveTool, PaneSidePanel, PlaybackAction,
+    PlaybackTransport,
 };
 use crate::web_io::PlatformInstant;
 use eframe::egui;
@@ -47,7 +47,10 @@ impl QuasicrystalStudio {
 
     fn tick_phason_playback(&mut self, ctx: &egui::Context) {
         let now = PlatformInstant::now();
-        let dt = now.duration_since(self.last_tick).as_secs_f64().clamp(0.0, 0.08);
+        let dt = now
+            .duration_since(self.last_tick)
+            .as_secs_f64()
+            .clamp(0.0, 0.08);
         self.last_tick = now;
         if self.state.is_playing && self.state.mode == StudioPatternMode::Quasicrystal {
             let (s, c) = self.state.phason_drift_angle_deg.to_radians().sin_cos();
@@ -87,7 +90,10 @@ impl QuasicrystalStudio {
                     StudioPatternMode::Quasicrystal,
                     StudioPatternMode::PeriodicBravais,
                 ] {
-                    if ui.selectable_value(&mut self.state.mode, m, m.label()).changed() {
+                    if ui
+                        .selectable_value(&mut self.state.mode, m, m.label())
+                        .changed()
+                    {
                         if m == StudioPatternMode::PeriodicBravais {
                             self.state.is_playing = false;
                         }
@@ -124,7 +130,11 @@ impl QuasicrystalStudio {
         ui.horizontal(|ui| {
             ui.label("Tile Edge (a):");
             if ui
-                .add(bounded_drag_value(&mut self.state.edge_length, 0.4..=4.0, 0.02))
+                .add(bounded_drag_value(
+                    &mut self.state.edge_length,
+                    0.4..=4.0,
+                    0.02,
+                ))
                 .changed()
             {
                 self.mark_dirty();
@@ -143,7 +153,7 @@ impl QuasicrystalStudio {
         });
     }
 
-    fn draw_bravais_params(&mut self, ui: &mut egui::Ui) {
+    fn draw_bravais_selector(&mut self, ui: &mut egui::Ui) {
         ui.label("2D Bravais Net");
         egui::ComboBox::from_id_salt("bravais_2d_combo")
             .selected_text(self.state.bravais.label())
@@ -163,11 +173,18 @@ impl QuasicrystalStudio {
                     }
                 }
             });
+    }
 
+    fn draw_bravais_params(&mut self, ui: &mut egui::Ui) {
+        self.draw_bravais_selector(ui);
         ui.horizontal(|ui| {
             ui.label("a:");
             if ui
-                .add(bounded_drag_value(&mut self.state.edge_length, 0.4..=4.0, 0.02))
+                .add(bounded_drag_value(
+                    &mut self.state.edge_length,
+                    0.4..=4.0,
+                    0.02,
+                ))
                 .changed()
             {
                 self.mark_dirty();
@@ -180,7 +197,11 @@ impl QuasicrystalStudio {
             ) {
                 ui.label("b:");
                 if ui
-                    .add(bounded_drag_value(&mut self.state.lattice_b, 0.4..=6.0, 0.02))
+                    .add(bounded_drag_value(
+                        &mut self.state.lattice_b,
+                        0.4..=6.0,
+                        0.02,
+                    ))
                     .changed()
                 {
                     self.mark_dirty();
@@ -263,7 +284,8 @@ impl QuasicrystalStudio {
 
     fn draw_perp_window_gizmo(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
-        let (rect, resp) = ui.allocate_exact_size(egui::vec2(220.0, 96.0), egui::Sense::click_and_drag());
+        let (rect, resp) =
+            ui.allocate_exact_size(egui::vec2(220.0, 96.0), egui::Sense::click_and_drag());
         let summary = format!(
             "w = ({:.3}, {:.3}), flipped tiles = {}",
             self.state.phason_x,
@@ -295,7 +317,10 @@ impl QuasicrystalStudio {
         let mut win_pts = Vec::with_capacity(sides + 1);
         for k in 0..=sides {
             let (sn, cs) = (2.0 * PI * (k as f64) / (sides as f64)).sin_cos();
-            win_pts.push(egui::pos2(center.x + rad * (cs as f32), center.y - rad * (sn as f32)));
+            win_pts.push(egui::pos2(
+                center.x + rad * (cs as f32),
+                center.y - rad * (sn as f32),
+            ));
         }
         painter.add(egui::Shape::line(
             win_pts,
@@ -325,7 +350,10 @@ impl QuasicrystalStudio {
                 "Overlay First Brillouin Zone & b1, b2",
             );
         }
-        ui.checkbox(&mut self.state.show_bragg_rings, "Overlay Bragg Peak Callouts");
+        ui.checkbox(
+            &mut self.state.show_bragg_rings,
+            "Overlay Bragg Peak Callouts",
+        );
 
         egui::ComboBox::from_id_salt("qc_colormap_combo")
             .selected_text(self.state.colormap.label())

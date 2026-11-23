@@ -374,8 +374,8 @@ impl InteractiveTool for QuasicrystalStudio {
 
     fn try_load_state(&mut self, raw: &str) -> Result<(), String> {
         self.state_bounds().validate_json(raw)?;
-        let parsed: QuasicrystalStudioState =
-            serde_json::from_str(raw).map_err(|e| format!("Invalid quasicrystal state JSON: {e}"))?;
+        let parsed: QuasicrystalStudioState = serde_json::from_str(raw)
+            .map_err(|e| format!("Invalid quasicrystal state JSON: {e}"))?;
         parsed.validate()?;
         self.state = parsed;
         self.recompute_dirty = true;
