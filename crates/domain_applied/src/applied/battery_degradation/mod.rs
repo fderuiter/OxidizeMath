@@ -1,13 +1,25 @@
 #![doc = include_str!("README.md")]
 
+/// Stack-allocated Levenberg-Marquardt calibration for [`ElectrochemicalAgingModel`].
+pub mod calibration;
+/// Coupled multi-segment duty-cycle state-of-health evaluation and warranty solvers.
+pub mod duty;
 pub mod model;
 #[allow(missing_docs)]
 pub mod types;
 
-pub use model::PowerLawModel;
+pub use calibration::{CalibratedAgingFit, calibrate_electrochemical_model};
+pub use duty::{
+    DAYS_PER_YEAR, DutyLifetimeSummary, DutyPointBreakdown, DutySegment, MAX_DUTY_SEGMENTS,
+    estimate_duty_lifetime, evaluate_duty_point,
+};
+pub use model::{
+    ChemistryPreset, DegradationModel, ElectrochemicalAgingModel, MAX_C_RATE, MAX_EXPONENT_Z,
+    MAX_TEMPERATURE_C, MIN_C_RATE, MIN_EXPONENT_Z, MIN_TEMPERATURE_C, PowerLawModel,
+};
 pub use types::{BatteryError, Capacity, Cycles, DepthOfDischarge};
 
-// [cite:algorithmic_information_rust]
+// [cite:battery_degradation]
 
 use pure_math::theory_verification;
 

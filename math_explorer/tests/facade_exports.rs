@@ -238,7 +238,8 @@ fn ai_facade_exports_adam_and_ai_error_without_internal_crate_imports() {
 #[test]
 fn applied_facade_exports_all_nine_errors_and_umbrella() {
     use math_explorer::applied::battery_degradation::{
-        BatteryError as SubBatteryError, Capacity, Cycles, DepthOfDischarge, PowerLawModel,
+        BatteryError as SubBatteryError, Capacity, ChemistryPreset, Cycles, DepthOfDischarge,
+        ElectrochemicalAgingModel, PowerLawModel,
     };
     use math_explorer::applied::error as inner_error;
     use math_explorer::applied::game_theory::mechanism_design::{ContinuousCDF, Distribution};
@@ -254,6 +255,8 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
         DepthOfDischarge::new_clamped(0.8),
     );
     assert!(cap / Capacity::new_clamped(1.0) > 0.0);
+    let coupled = ElectrochemicalAgingModel::from_preset(ChemistryPreset::Lfp);
+    assert!(coupled.n70(DepthOfDischarge::new_clamped(60.0)).as_f64() > 0.0);
     let bad_err: SubBatteryError = Cycles::new(-1.0).expect_err("negative cycles must fail");
     let root_err: BatteryError = bad_err;
     assert_eq!(root_err.severity(), Severity::Error);

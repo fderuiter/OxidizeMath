@@ -150,9 +150,9 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 58, "Expected 58 Plot dataset+figure tools");
+    assert_eq!(plot_tool_count, 59, "Expected 59 Plot dataset+figure tools");
     assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
-    assert_eq!(unsupported_tool_count, 14, "Expected 14 non-figure tools");
+    assert_eq!(unsupported_tool_count, 13, "Expected 13 non-figure tools");
     assert_eq!(solid_3d_count, 6, "Expected 6 solid 3D geometric tools");
     assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
