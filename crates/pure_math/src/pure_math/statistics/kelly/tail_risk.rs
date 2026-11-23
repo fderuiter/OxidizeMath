@@ -5,7 +5,7 @@ use super::portfolio::{
     PortfolioKellyWorkspace, cholesky_into_flat, evaluate_portfolio_kelly_metrics,
 };
 use crate::error::KellyError;
-use crate::pure_math::statistics::copula::qmc::{fast_inverse_normal, fast_normal_cdf};
+use crate::pure_math::statistics::copula::transforms::{fast_norm_cdf, fast_norm_inv};
 use math_commons::math_kernel::types::flatten_2d_index;
 use nalgebra::DMatrix;
 use oxidize_core::rng::OxidizeRng;
@@ -159,10 +159,10 @@ fn lognormal_var_cvar_at(
             cvar: loss,
         };
     }
-    let z_alpha = fast_inverse_normal(tail_prob);
+    let z_alpha = fast_norm_inv(tail_prob);
     let var = bankroll * (1.0 - (drift + vol_horizon * z_alpha).exp());
     let expected_tail_wealth_ratio = (drift + 0.5 * vol_horizon * vol_horizon).exp()
-        * fast_normal_cdf(z_alpha - vol_horizon)
+        * fast_norm_cdf(z_alpha - vol_horizon)
         / tail_prob;
     let cvar = bankroll * (1.0 - expected_tail_wealth_ratio);
     TailRiskEstimate {
@@ -203,7 +203,7 @@ pub fn parametric_lognormal_tail_risk(
 #[inline]
 fn next_standard_normal(rng: &mut OxidizeRng) -> f64 {
     let u = ((rng.next_u64() as f64) + 0.5) / ((u64::MAX as f64) + 1.0);
-    fast_inverse_normal(u)
+    fast_norm_inv(u)
 }
 
 /// Simulates correlated multi-asset log-wealth dollar losses into `out_losses` with zero heap

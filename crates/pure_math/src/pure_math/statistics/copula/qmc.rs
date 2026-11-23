@@ -2,10 +2,10 @@
 //! for multivariate Gaussian copulas.
 
 use super::core::{CorrelationMatrix, Probability};
+use super::transforms::{fast_norm_cdf, fast_norm_inv};
 use crate::error::CopulaError;
-use oxidize_core::rng::{BASE_SEED, OxidizeRng};
+use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
-use std::f64::consts::FRAC_1_SQRT_2;
 
 /// Maximum copula dimension handled purely on the stack with zero heap allocations.
 pub const MAX_INLINE_COPULA_LEGS: usize = 12;
@@ -44,63 +44,6 @@ impl CopulaQmcWorkspace {
             self.y_state.resize(dim, 0.0);
             self.shifts.resize(dim, 0.0);
         }
-    }
-}
-
-#[inline]
-pub(crate) fn fast_normal_cdf(z: f64) -> f64 {
-    0.5 * statrs::function::erf::erfc(-z * FRAC_1_SQRT_2)
-}
-
-/// Peter J. Acklam's rational approximation for the standard normal quantile function.
-#[inline]
-pub(crate) fn fast_inverse_normal(p: f64) -> f64 {
-    const A: [f64; 6] = [
-        -3.969_683_028_665_376e1,
-        2.209_460_984_245_205e2,
-        -2.759_285_104_469_687e2,
-        1.383_577_518_672_69e2,
-        -3.066_479_806_614_716e1,
-        2.506_628_277_459_239,
-    ];
-    const B: [f64; 5] = [
-        -5.447_609_879_822_406e1,
-        1.615_858_368_580_409e2,
-        -1.556_989_798_598_866e2,
-        6.680_131_188_771_972e1,
-        -1.328_068_155_288_572e1,
-    ];
-    const C: [f64; 6] = [
-        -7.784_894_002_430_293e-3,
-        -3.223_964_580_411_365e-1,
-        -2.400_758_277_161_838,
-        -2.549_732_539_343_734,
-        4.374_664_141_464_968,
-        2.938_163_982_698_783,
-    ];
-    const D: [f64; 4] = [
-        7.784_695_709_041_462e-3,
-        3.224_671_290_700_398e-1,
-        2.445_134_137_142_996,
-        3.754_408_661_907_416,
-    ];
-    const P_LOW: f64 = 0.02425;
-    const P_HIGH: f64 = 1.0 - P_LOW;
-
-    let pc = p.clamp(PROB_CLAMP_EPS, 1.0 - PROB_CLAMP_EPS);
-    if pc < P_LOW {
-        let q = (-2.0 * pc.ln()).sqrt();
-        (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
-            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
-    } else if pc <= P_HIGH {
-        let q = pc - 0.5;
-        let r = q * q;
-        (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q
-            / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
-    } else {
-        let q = (-2.0 * (1.0 - pc).ln()).sqrt();
-        -(((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
-            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
     }
 }
 
@@ -160,15 +103,26 @@ fn eval_single_genz_point(
             for (j, &yj) in y_state.iter().enumerate().take(i) {
                 dot += chol_l[(i, j)] * yj;
             }
-            let val = fast_normal_cdf((z_scores[i] - dot) / chol_l[(i, i)]);
+            let diag = chol_l[(i, i)];
+            let val = if diag > 0.0 {
+                fast_norm_cdf((z_scores[i] - dot) / diag)
+            } else if dot <= z_scores[i] {
+                1.0
+            } else {
+                0.0
+            };
             prod *= val;
             val
         };
         if prod <= 0.0 {
             return 0.0;
         }
-        let p = (u_q * ei).clamp(PROB_CLAMP_EPS, 1.0 - PROB_CLAMP_EPS);
-        y_state[i] = fast_inverse_normal(p);
+        if chol_l[(i, i)] > 0.0 {
+            let p = (u_q * ei).clamp(PROB_CLAMP_EPS, 1.0 - PROB_CLAMP_EPS);
+            y_state[i] = fast_norm_inv(p);
+        } else {
+            y_state[i] = 0.0;
+        }
     }
 
     let last = dim - 1;
@@ -176,7 +130,15 @@ fn eval_single_genz_point(
     for (j, &yj) in y_state.iter().enumerate().take(last) {
         last_dot += chol_l[(last, j)] * yj;
     }
-    prod * fast_normal_cdf((z_scores[last] - last_dot) / chol_l[(last, last)])
+    let last_diag = chol_l[(last, last)];
+    let last_prob = if last_diag > 0.0 {
+        fast_norm_cdf((z_scores[last] - last_dot) / last_diag)
+    } else if last_dot <= z_scores[last] {
+        1.0
+    } else {
+        0.0
+    };
+    prod * last_prob
 }
 
 fn integrate_genz_slices(
@@ -206,14 +168,20 @@ fn integrate_genz_slices(
         *dst = if ui.value() >= 1.0 - PROB_CLAMP_EPS {
             8.5
         } else {
-            fast_inverse_normal(ui.value())
+            fast_norm_inv(ui.value())
         };
     }
 
     let pairs = n_pairs.max(1);
     fill_cranley_patterson_shifts(&mut shifts[..dim - 1], seed);
     let chol_l = corr.cholesky_factor();
-    let e0 = fast_normal_cdf(z_scores[0] / chol_l[(0, 0)]);
+    let e0 = if chol_l[(0, 0)] > 0.0 {
+        fast_norm_cdf(z_scores[0] / chol_l[(0, 0)])
+    } else if z_scores[0] >= 0.0 {
+        1.0
+    } else {
+        0.0
+    };
 
     let mut total = 0.0;
     for m in 1..=pairs {
@@ -278,11 +246,6 @@ pub(crate) fn multivariate_cdf_with_workspace(
         &mut workspace.y_state[..dim],
         &mut workspace.shifts[..dim],
     )
-}
-
-#[inline]
-pub(crate) const fn default_copula_seed() -> u64 {
-    BASE_SEED
 }
 
 // [cite:clinical_trials_statistics]

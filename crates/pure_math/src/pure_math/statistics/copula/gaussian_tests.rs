@@ -1,4 +1,4 @@
-use super::qmc::{fast_inverse_normal, fast_normal_cdf};
+use super::transforms::{fast_norm_cdf, fast_norm_inv};
 use super::{
     CopulaQmcWorkspace, Correlation, CorrelationMatrix, DEFAULT_COPULA_QMC_PAIRS, GaussianCopula,
     Probability, sgp_joint_probability,
@@ -12,7 +12,7 @@ fn exact_equicorrelated_gaussian_copula(u_val: f64, d: usize, rho: f64) -> f64 {
     if rho.abs() <= 1e-12 {
         return u_val.powi(d as i32);
     }
-    let x = fast_inverse_normal(u_val);
+    let x = fast_norm_inv(u_val);
     let sqrt_rho = rho.sqrt();
     let sqrt_one_minus_rho = (1.0 - rho).sqrt();
     let z_max = 9.0;
@@ -22,7 +22,7 @@ fn exact_equicorrelated_gaussian_copula(u_val: f64, d: usize, rho: f64) -> f64 {
 
     let eval_integrand = |z: f64| -> f64 {
         let phi = inv_sqrt_2pi * (-0.5 * z * z).exp();
-        let cond = fast_normal_cdf((x - sqrt_rho * z) / sqrt_one_minus_rho);
+        let cond = fast_norm_cdf((x - sqrt_rho * z) / sqrt_one_minus_rho);
         phi * cond.powi(d as i32)
     };
 
@@ -122,13 +122,23 @@ fn test_multivariate_copula_zero_allocation_in_verified_engine() {
     let copula_12 = GaussianCopula::new(corr_12);
     let marginals_12 = [Probability::new(0.60).unwrap(); 12];
 
-    // Stack-buffered fast path for <= 12 legs allocates 0 bytes!
+    // Stack-buffered fast paths for <= 12 legs allocate 0 bytes!
     let (res_inline, _) = VerifiedEngine::run_verified(|| copula_12.cdf(&marginals_12));
     let val_inline = res_inline.unwrap().value();
     let exact_12 = exact_equicorrelated_gaussian_copula(0.60, 12, 0.50);
     assert!((val_inline - exact_12).abs() <= 0.005);
 
-    // Preallocated workspace path also allocates 0 bytes!
+    let (res_seed, _) = VerifiedEngine::run_verified(|| {
+        copula_12.cdf_with_seed(
+            &marginals_12,
+            oxidize_core::rng::BASE_SEED,
+            DEFAULT_COPULA_QMC_PAIRS,
+        )
+    });
+    let val_seed = res_seed.unwrap().value();
+    assert!((val_seed - exact_12).abs() <= 0.005);
+
+    // Preallocated workspace path also allocates 0 bytes and matches stack-buffered Halton QMC!
     let mut workspace = CopulaQmcWorkspace::with_capacity(16);
     let (res_ws, _) = VerifiedEngine::run_verified(|| {
         copula_12.cdf_with_workspace(
@@ -138,7 +148,7 @@ fn test_multivariate_copula_zero_allocation_in_verified_engine() {
             &mut workspace,
         )
     });
-    assert!((res_ws.unwrap().value() - val_inline).abs() < 1e-12);
+    assert!((res_ws.unwrap().value() - val_seed).abs() < 1e-12);
 
     // Bivariate copula also remains zero-allocation.
     let copula_2 = GaussianCopula::bivariate(Correlation::new(0.4).unwrap()).unwrap();
