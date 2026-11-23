@@ -8,7 +8,7 @@ use crate::accessibility::{
 use crate::app::SemanticPalette;
 use eframe::egui;
 use math_explorer::pure_math::hyperbolic::{
-    DiskPoint, GeodesicSegment, HorocycleDisk, TiledPolygon, sample_disk_geodesic_into,
+    sample_disk_geodesic_into, DiskPoint, GeodesicSegment, HorocycleDisk, TiledPolygon,
 };
 use num_complex::Complex64;
 
@@ -158,7 +158,9 @@ impl HyperbolicGeometryTool {
         radius: f32,
         palette: &SemanticPalette,
     ) {
-        let count = self.transformed_tile_count.min(self.transformed_tiles.len());
+        let count = self
+            .transformed_tile_count
+            .min(self.transformed_tiles.len());
         let mut arc = [[0.0_f64; 2]; CANVAS_ARC_PTS];
         let mut pts = Vec::with_capacity(16 * CANVAS_ARC_PTS);
         for (idx, tile) in self.transformed_tiles[..count].iter().enumerate() {
@@ -181,7 +183,10 @@ impl HyperbolicGeometryTool {
         }
 
         if self.state.show_horocycles {
-            let xi = self.state.disk_isometry.apply_complex(Complex64::new(0.0, 1.0));
+            let xi = self
+                .state
+                .disk_isometry
+                .apply_complex(Complex64::new(0.0, 1.0));
             if let Ok(horo) = HorocycleDisk::from_radius(xi, self.state.horocycle_radius) {
                 let hc = disk_to_screen(horo.euclidean_center, center, radius);
                 let hr = (horo.euclidean_radius as f32) * radius;
@@ -241,7 +246,8 @@ impl HyperbolicGeometryTool {
         );
 
         let p_head = disk_to_screen(
-            iso.apply(self.billiards.primary_ray().position).as_complex(),
+            iso.apply(self.billiards.primary_ray().position)
+                .as_complex(),
             center,
             radius,
         );

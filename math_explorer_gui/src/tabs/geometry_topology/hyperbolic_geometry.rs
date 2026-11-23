@@ -12,10 +12,10 @@ use crate::framework::{ExportCapabilities, InteractiveTool};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use math_explorer::pure_math::hyperbolic::{
-    BilliardDomainKind, DiskPoint, GeodesicSegment, HalfPlanePoint, HyperbolicTilingBuffer,
-    MAX_BILLIARD_SEGMENTS, MAX_POLYGON_VERTICES, MAX_TILING_DEPTH, MAX_TILING_POLYGONS, Psl2R,
-    Psu11, TiledPolygon, TilingKind, TwinBilliardSystem, gauss_bonnet_polygon_area,
-    validate_hyperbolic_schlafli,
+    gauss_bonnet_polygon_area, validate_hyperbolic_schlafli, BilliardDomainKind, DiskPoint,
+    GeodesicSegment, HalfPlanePoint, HyperbolicTilingBuffer, Psl2R, Psu11, TiledPolygon,
+    TilingKind, TwinBilliardSystem, MAX_BILLIARD_SEGMENTS, MAX_POLYGON_VERTICES, MAX_TILING_DEPTH,
+    MAX_TILING_POLYGONS,
 };
 
 /// Primary laboratory mode inside [`HyperbolicGeometryTool`].
@@ -278,7 +278,11 @@ impl HyperbolicGeometryTool {
         let kind = self.state.resolved_billiard_kind();
         if self
             .billiards
-            .reconfigure(kind, self.state.billiard_seed, self.state.perturbation_rad())
+            .reconfigure(
+                kind,
+                self.state.billiard_seed,
+                self.state.perturbation_rad(),
+            )
             .is_ok()
         {
             self.billiards.advance_reflections(18);

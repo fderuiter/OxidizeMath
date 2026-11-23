@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{HyperbolicGeometryTool, LabMode};
-use crate::app::{SemanticPalette, palette::DARK_PALETTE};
+use crate::app::{palette::DARK_PALETTE, SemanticPalette};
 use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::pure_math::hyperbolic::{
-    GeodesicSegment, HorocycleDisk, MAX_BILLIARD_SEGMENTS, TiledPolygon,
-    cayley_complex_to_half_plane_clamped, sample_disk_geodesic_into,
+    cayley_complex_to_half_plane_clamped, sample_disk_geodesic_into, GeodesicSegment,
+    HorocycleDisk, TiledPolygon, MAX_BILLIARD_SEGMENTS,
 };
 use num_complex::Complex64;
 use std::f64::consts::TAU;
@@ -41,7 +41,10 @@ impl HyperbolicGeometryTool {
         }
 
         if self.state.show_horocycles {
-            let base = self.state.disk_isometry.apply_complex(Complex64::new(0.0, 1.0));
+            let base = self
+                .state
+                .disk_isometry
+                .apply_complex(Complex64::new(0.0, 1.0));
             if let Ok(horo) = HorocycleDisk::from_radius(base, self.state.horocycle_radius) {
                 let mut pts = vec![[0.0; 2]; 65];
                 horo.sample_into(&mut pts);
@@ -112,7 +115,9 @@ impl HyperbolicGeometryTool {
         prims: &mut Vec<ExportPrimitive>,
         palette: &SemanticPalette,
     ) {
-        let count = self.transformed_tile_count.min(self.transformed_tiles.len());
+        let count = self
+            .transformed_tile_count
+            .min(self.transformed_tiles.len());
         for (idx, tile) in self.transformed_tiles[..count].iter().enumerate() {
             if tile.vertex_count < 3 {
                 continue;
@@ -128,7 +133,10 @@ impl HyperbolicGeometryTool {
             });
         }
         if self.state.show_horocycles {
-            let base = self.state.disk_isometry.apply_complex(Complex64::new(0.0, 1.0));
+            let base = self
+                .state
+                .disk_isometry
+                .apply_complex(Complex64::new(0.0, 1.0));
             if let Ok(horo) = HorocycleDisk::from_radius(base, self.state.horocycle_radius) {
                 let mut pts = vec![[0.0; 2]; 72];
                 horo.sample_into(&mut pts);

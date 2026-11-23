@@ -2,8 +2,8 @@
 
 use super::presets::{PRESET_CHAOTIC_BILLIARDS_JSON, PRESET_ESCHER_TILING_JSON};
 use super::*;
-use crate::tabs::ExplorerTab;
 use crate::tabs::geometry_topology::GeometryTopologyTab;
+use crate::tabs::ExplorerTab;
 use crate::url_state::parse_share_location;
 use verified_engine::engine::VerifiedEngine;
 
@@ -21,7 +21,10 @@ fn test_save_load_state_and_deny_unknown_fields() {
         .try_load_state(&saved)
         .expect("try_load_state must restore valid snapshot");
     assert_eq!(restored.state.mode, LabMode::ChaoticBilliards);
-    assert_eq!(restored.state.billiard_preset, BilliardPreset::IdealTriangle);
+    assert_eq!(
+        restored.state.billiard_preset,
+        BilliardPreset::IdealTriangle
+    );
     assert_eq!(restored.state.billiard_seed, 777);
 
     let unknown_json = r#"{"mode":"TilingExplorer","unknown_extra_key":123}"#;
@@ -96,11 +99,9 @@ fn test_svg_png_and_csv_dataset_exports_across_modes() {
         .expect("load chaotic billiards preset");
     tool.step_simulation();
     let billiard_ds = tool.export_datasets();
-    assert!(
-        billiard_ds
-            .iter()
-            .any(|(name, pts)| name.contains("Log Separation") && !pts.is_empty())
-    );
+    assert!(billiard_ds
+        .iter()
+        .any(|(name, pts)| name.contains("Log Separation") && !pts.is_empty()));
     let billiard_prims = tool.export_plot_primitives();
     let billiard_svg = egui_plot::export_primitives::export_primitives_svg(&billiard_prims, &opts)
         .expect("billiard SVG export");

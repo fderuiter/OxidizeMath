@@ -1,20 +1,18 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{
-    BilliardPreset, ChartLayout, HyperbolicGeometryTool, LabMode, TilingPreset,
-};
+use super::{BilliardPreset, ChartLayout, HyperbolicGeometryTool, LabMode, TilingPreset};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use math_explorer::pure_math::hyperbolic::{
-    MAX_POLYGON_VERTICES, MAX_TILING_DEPTH, Psu11, validate_hyperbolic_schlafli,
+    validate_hyperbolic_schlafli, Psu11, MAX_POLYGON_VERTICES, MAX_TILING_DEPTH,
 };
 
 impl HyperbolicGeometryTool {
     pub(super) fn tick_realtime(&mut self, ctx: &egui::Context) {
         let now = PlatformInstant::now();
-        let dt = self
-            .last_frame_instant
-            .map_or(1.0 / 60.0, |prev| prev.elapsed().as_secs_f64().clamp(0.0, 0.05));
+        let dt = self.last_frame_instant.map_or(1.0 / 60.0, |prev| {
+            prev.elapsed().as_secs_f64().clamp(0.0, 0.05)
+        });
         self.last_frame_instant = Some(now);
 
         if self.state.mode == LabMode::ChaoticBilliards && self.state.billiards_running {
@@ -284,7 +282,9 @@ impl HyperbolicGeometryTool {
             }
         });
 
-        let n_codes = self.billiards.copy_edge_hits_into(&mut self.edge_hit_scratch);
+        let n_codes = self
+            .billiards
+            .copy_edge_hits_into(&mut self.edge_hit_scratch);
         let tail_start = n_codes.saturating_sub(12);
         let code_str: String = self.edge_hit_scratch[tail_start..n_codes]
             .iter()
@@ -322,7 +322,9 @@ impl HyperbolicGeometryTool {
             self.refresh_transformed_tiles();
             self.bump_revision();
         }
-        ui.small("Drag inside D or H (or focus canvas + Arrow keys) to apply live Möbius isometries.");
+        ui.small(
+            "Drag inside D or H (or focus canvas + Arrow keys) to apply live Möbius isometries.",
+        );
     }
 }
 

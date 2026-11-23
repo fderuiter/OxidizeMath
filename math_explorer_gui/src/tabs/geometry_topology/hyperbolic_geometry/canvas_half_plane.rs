@@ -9,8 +9,8 @@ use crate::accessibility::{
 use crate::app::SemanticPalette;
 use eframe::egui;
 use math_explorer::pure_math::hyperbolic::{
-    GeodesicSegment, HalfPlanePoint, HorocycleDisk, HorocycleHalfPlane,
-    cayley_complex_to_half_plane_clamped, sample_disk_geodesic_into,
+    cayley_complex_to_half_plane_clamped, sample_disk_geodesic_into, GeodesicSegment,
+    HalfPlanePoint, HorocycleDisk, HorocycleHalfPlane,
 };
 use num_complex::Complex64;
 use std::f64::consts::TAU;
@@ -127,7 +127,9 @@ impl HyperbolicGeometryTool {
         span: f64,
         palette: &SemanticPalette,
     ) {
-        let count = self.transformed_tile_count.min(self.transformed_tiles.len());
+        let count = self
+            .transformed_tile_count
+            .min(self.transformed_tiles.len());
         let mut arc = [[0.0_f64; 2]; CANVAS_ARC_PTS];
         let mut pts = Vec::with_capacity(16 * CANVAS_ARC_PTS);
         for (idx, tile) in self.transformed_tiles[..count].iter().enumerate() {
@@ -153,7 +155,10 @@ impl HyperbolicGeometryTool {
         }
 
         if self.state.show_horocycles {
-            let xi = self.state.disk_isometry.apply_complex(Complex64::new(0.0, 1.0));
+            let xi = self
+                .state
+                .disk_isometry
+                .apply_complex(Complex64::new(0.0, 1.0));
             if let Ok(horo) = HorocycleDisk::from_radius(xi, self.state.horocycle_radius) {
                 paint_half_plane_horocycle(
                     painter,
@@ -276,7 +281,8 @@ impl HyperbolicGeometryTool {
 fn half_plane_to_screen(w: Complex64, rect: egui::Rect, span: f64) -> egui::Pos2 {
     let axis_y = rect.bottom() - 18.0;
     let scale = (rect.width() * 0.5) / (span as f32);
-    let x = (rect.center().x + (w.re as f32) * scale).clamp(rect.left() - 50.0, rect.right() + 50.0);
+    let x =
+        (rect.center().x + (w.re as f32) * scale).clamp(rect.left() - 50.0, rect.right() + 50.0);
     let y = (axis_y - (w.im as f32) * scale).clamp(rect.top() - 50.0, axis_y);
     egui::pos2(x, y)
 }

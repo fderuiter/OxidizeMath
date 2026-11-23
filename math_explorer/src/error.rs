@@ -18,6 +18,9 @@ pub use domain_biology::error::{
     BiologyError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
 };
 
+#[cfg(feature = "climate")]
+pub use domain_climate::error::ClimateError;
+
 #[cfg(feature = "epidemiology")]
 pub use domain_epidemiology::error::{
     EpidemiologyDomainError, EpidemiologyError, NetworkModelError,
@@ -108,6 +111,10 @@ pub enum Error {
     /// Generic reaction-diffusion system error.
     #[cfg(feature = "biology")]
     ReactionDiffusion(ReactionDiffusionError),
+
+    /// Climate modeling and representation alignment error.
+    #[cfg(feature = "climate")]
+    Climate(ClimateError),
 
     /// Epidemiology crate umbrella error.
     #[cfg(feature = "epidemiology")]
