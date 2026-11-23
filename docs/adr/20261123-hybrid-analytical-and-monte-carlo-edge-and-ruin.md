@@ -1,7 +1,7 @@
-# ADR 0047: Hybrid Analytical and Zero-Allocation Monte Carlo Edge Validation and Bankroll Solvency
+# ADR 20261123: Hybrid Analytical and Zero-Allocation Monte Carlo Edge Validation and Bankroll Solvency
 
 ## Status
-Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md), and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
+Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md), [ADR 20261123](20261123-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md), and [ADR 20261123](20261123-glicko2-copula-ou-workbenches-and-kelly-net-odds.md))
 
 ## Context
 Previously, `pure_math::statistics::kelly` computed optimal Kelly wagering fractions (`kelly_fraction`, `fractional_kelly`, `expected_growth_rate`) and stated in [`crates/pure_math/src/pure_math/statistics/kelly/mod.rs`](../../crates/pure_math/src/pure_math/statistics/kelly/mod.rs) that for $f \le f^*$ the probability of ruin is zero. While true for continuous zero-wealth bankruptcy ($\lim_{t \to \infty} P(W_t = 0) = 0$) under infinitely divisible stakes, real bankrolls face finite drawdown barriers (e.g., a 50% loss floor or table minimum stake) where Full Kelly incurs an exact **50%** asymptotic drawdown probability and ~38% finite-horizon hit rate over 200 even-money bets at $p = 0.55$. In addition, OxidizeMath lacked post-bet pricing validation (Closing Line Value, Brier/log-loss calibration against devigged closing lines, and heterogeneous-odds Bernoulli yield significance) and relied on a GUI-only 64-path simulator in `BankrollEnsembleLab`.

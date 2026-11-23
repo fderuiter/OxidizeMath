@@ -1,61 +1,82 @@
-//! Kelly Criterion Bet Size, Solvency Barrier, and Closing Line Value Calculator.
+//! Kelly Criterion Bet Size, Growth Curve, Solvency Barrier, and Closing Line Value Calculator.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::InteractiveTool;
+use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
-use math_explorer::pure_math::statistics::kelly::{expected_value, Odds, UnitInterval};
+use egui_plot::PlotPoint;
+use math_explorer::pure_math::statistics::kelly::{
+    expected_growth_rate, expected_value, kelly_fraction, variants, BankrollFraction, Odds,
+    UnitInterval,
+};
+use math_explorer::pure_math::statistics::ruin::{
+    kelly_barrier_risk, solve_single_bet_lundberg, LundbergSolution,
+};
+use math_explorer::pure_math::statistics::validation::{
+    devig_two_way, required_bets_for_95_significance, single_bet_clv, ClvMetrics, SampleSize95,
+};
+use std::sync::mpsc::Receiver;
 
-#[path = "bet_size_ui.rs"]
+#[path = "bet_size/export.rs"]
+mod export;
+#[path = "bet_size/state.rs"]
+mod state;
+#[path = "bet_size/ui.rs"]
 mod ui;
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub(super) enum OddsFormat {
+#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub(crate) enum OddsFormat {
     Decimal,
     American,
     Fractional,
 }
 
-const DEFAULT_CLOSING_DECIMAL: f64 = 1.91;
-const DEFAULT_DRAWDOWN_FLOOR_PCT: f64 = 50.0;
+pub(crate) const DEFAULT_CLOSING_DECIMAL: f64 = 1.91;
+pub(crate) const DEFAULT_DRAWDOWN_FLOOR_PCT: f64 = 50.0;
 
-fn default_closing_decimal() -> f64 {
-    DEFAULT_CLOSING_DECIMAL
-}
-
-fn default_drawdown_floor_pct() -> f64 {
-    DEFAULT_DRAWDOWN_FLOOR_PCT
-}
-
-fn is_false(val: &bool) -> bool {
-    !*val
-}
-
-fn is_default_closing(val: &f64) -> bool {
-    (*val - DEFAULT_CLOSING_DECIMAL).abs() < 1e-12
-}
-
-fn is_default_drawdown_floor(val: &f64) -> bool {
-    (*val - DEFAULT_DRAWDOWN_FLOOR_PCT).abs() < 1e-12
+#[derive(Debug, Clone)]
+pub(crate) struct KellyStrategyRow {
+    pub label: String,
+    pub fraction: f64,
+    pub bet_amount: f64,
+    pub growth_rate: f64,
+    pub ev_per_unit: f64,
+    pub barrier_bound: Option<f64>,
 }
 
 pub struct BetSizeCalculatorTool {
-    pub(super) probability_input: f64,
-    pub(super) odds_format: OddsFormat,
-    pub(super) decimal_odds: f64,
-    pub(super) american_odds: f64,
-    pub(super) fractional_numerator: f64,
-    pub(super) fractional_denominator: f64,
-    pub(super) bankroll: f64,
-    pub(super) drawdown_floor_pct: f64,
-    pub(super) closing_line_enabled: bool,
-    pub(super) closing_for_decimal: f64,
-    pub(super) closing_against_decimal: f64,
+    pub(crate) probability_input: f64,
+    pub(crate) odds_format: OddsFormat,
+    pub(crate) decimal_odds: f64,
+    pub(crate) american_odds: f64,
+    pub(crate) fractional_numerator: f64,
+    pub(crate) fractional_denominator: f64,
+    pub(crate) bankroll: f64,
+    pub(crate) drawdown_floor_pct: f64,
+    pub(crate) closing_line_enabled: bool,
+    pub(crate) closing_for_decimal: f64,
+    pub(crate) closing_against_decimal: f64,
+
+    // Cached plot, table, solvency, sample-size & CLV results (recomputed only when inputs change)
+    pub(crate) growth_curve_points: Vec<PlotPoint>,
+    pub(crate) quarter_marker: Vec<PlotPoint>,
+    pub(crate) half_marker: Vec<PlotPoint>,
+    pub(crate) full_marker: Vec<PlotPoint>,
+    pub(crate) zero_line_points: [PlotPoint; 2],
+    pub(crate) strategy_rows: Vec<KellyStrategyRow>,
+    pub(crate) ev_per_unit: Option<f64>,
+    pub(crate) lundberg_summary: Option<LundbergSolution>,
+    pub(crate) sample_size_95: Option<SampleSize95>,
+    pub(crate) clv_audit: Option<Result<(f64, ClvMetrics), &'static str>>,
+    pub(crate) calc_error: Option<String>,
+
+    pub(crate) save_rx: Option<Receiver<Result<String, String>>>,
+    pub(crate) io_status: Option<(String, bool)>,
 }
 
 impl Default for BetSizeCalculatorTool {
     fn default() -> Self {
-        Self {
+        let mut tool = Self {
             probability_input: 55.0,
             odds_format: OddsFormat::Decimal,
             decimal_odds: 2.0,
@@ -67,47 +88,193 @@ impl Default for BetSizeCalculatorTool {
             closing_line_enabled: false,
             closing_for_decimal: DEFAULT_CLOSING_DECIMAL,
             closing_against_decimal: DEFAULT_CLOSING_DECIMAL,
-        }
+            growth_curve_points: Vec::new(),
+            quarter_marker: Vec::new(),
+            half_marker: Vec::new(),
+            full_marker: Vec::new(),
+            zero_line_points: [PlotPoint::new(0.0, 0.0), PlotPoint::new(0.25, 0.0)],
+            strategy_rows: Vec::new(),
+            ev_per_unit: None,
+            lundberg_summary: None,
+            sample_size_95: None,
+            clv_audit: None,
+            calc_error: None,
+            save_rx: None,
+            io_status: None,
+        };
+        tool.recalculate();
+        tool
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct BetSizeState {
-    probability_input: f64,
-    odds_format: OddsFormat,
-    decimal_odds: f64,
-    american_odds: f64,
-    fractional_numerator: f64,
-    fractional_denominator: f64,
-    bankroll: f64,
-    #[serde(
-        default = "default_drawdown_floor_pct",
-        skip_serializing_if = "is_default_drawdown_floor"
-    )]
-    drawdown_floor_pct: f64,
-    #[serde(default, skip_serializing_if = "is_false")]
-    closing_line_enabled: bool,
-    #[serde(
-        default = "default_closing_decimal",
-        skip_serializing_if = "is_default_closing"
-    )]
-    closing_for_decimal: f64,
-    #[serde(
-        default = "default_closing_decimal",
-        skip_serializing_if = "is_default_closing"
-    )]
-    closing_against_decimal: f64,
-}
-
 impl BetSizeCalculatorTool {
-    pub(super) fn current_placed_odds(&self) -> Result<Odds, math_explorer::error::KellyError> {
+    pub(crate) fn current_placed_odds(&self) -> Result<Odds, math_explorer::error::KellyError> {
         match self.odds_format {
             OddsFormat::Decimal => Odds::new(self.decimal_odds),
             OddsFormat::American => Odds::from_american(self.american_odds),
             OddsFormat::Fractional => {
                 Odds::from_fractional(self.fractional_numerator, self.fractional_denominator)
             }
+        }
+    }
+
+    pub(crate) fn active_odds(&self) -> Result<Odds, String> {
+        self.current_placed_odds()
+            .map_err(|e| format!("Invalid Odds: {e}"))
+    }
+
+    fn push_marker_and_row(
+        &mut self,
+        label: &str,
+        prob: &UnitInterval,
+        odds: &Odds,
+        frac: &BankrollFraction,
+        ev: f64,
+        marker_slot: usize,
+    ) {
+        let g = expected_growth_rate(prob, odds, frac);
+        let bet_amount = frac.bet_amount(self.bankroll).unwrap_or(0.0);
+        let floor_ratio = (self.drawdown_floor_pct / 100.0).clamp(0.05, 0.95);
+        let barrier_bound = kelly_barrier_risk(prob, odds, frac, floor_ratio)
+            .ok()
+            .map(|r| r.lundberg_barrier_bound);
+        if g.is_finite() {
+            let pt = PlotPoint::new(frac.value(), g);
+            match marker_slot {
+                0 => self.quarter_marker.push(pt),
+                1 => self.half_marker.push(pt),
+                _ => self.full_marker.push(pt),
+            }
+        }
+        self.strategy_rows.push(KellyStrategyRow {
+            label: label.to_string(),
+            fraction: frac.value(),
+            bet_amount,
+            growth_rate: g,
+            ev_per_unit: ev,
+            barrier_bound,
+        });
+    }
+
+    fn populate_growth_curve(&mut self, prob: &UnitInterval, odds: &Odds, f_max: f64) {
+        const STEPS: usize = 120;
+        for idx in 0..=STEPS {
+            let f = f_max * (idx as f64 / STEPS as f64);
+            if let Ok(frac) = BankrollFraction::new(f) {
+                let g = expected_growth_rate(prob, odds, &frac);
+                if g.is_finite() {
+                    self.growth_curve_points.push(PlotPoint::new(f, g));
+                }
+            }
+        }
+        self.zero_line_points = [PlotPoint::new(0.0, 0.0), PlotPoint::new(f_max, 0.0)];
+    }
+
+    fn recompute_clv_audit(&mut self, placed_odds: &Odds) {
+        if !self.closing_line_enabled {
+            self.clv_audit = None;
+            return;
+        }
+        let pair = (
+            Odds::new(self.closing_for_decimal),
+            Odds::new(self.closing_against_decimal),
+        );
+        let (Ok(c_for), Ok(c_against)) = pair else {
+            self.clv_audit = Some(Err("Invalid closing decimal odds."));
+            return;
+        };
+        let Ok((p_close, _)) = devig_two_way(&c_for, &c_against) else {
+            self.clv_audit = Some(Err("Unable to devig closing market."));
+            return;
+        };
+        let Ok(clv) = single_bet_clv(placed_odds, &p_close) else {
+            self.clv_audit = Some(Err("Closing probability lies on boundary."));
+            return;
+        };
+        self.clv_audit = Some(Ok((p_close.value(), clv)));
+    }
+
+    fn reset_cached_outputs(&mut self) {
+        self.growth_curve_points.clear();
+        self.quarter_marker.clear();
+        self.half_marker.clear();
+        self.full_marker.clear();
+        self.strategy_rows.clear();
+        self.ev_per_unit = None;
+        self.lundberg_summary = None;
+        self.sample_size_95 = None;
+        self.clv_audit = None;
+        self.calc_error = None;
+    }
+
+    fn populate_positive_edge_metrics(
+        &mut self,
+        prob: &UnitInterval,
+        odds: &Odds,
+        fk: &BankrollFraction,
+        ev: f64,
+        f_domain_cap: f64,
+    ) {
+        let f_max = (fk.value() * 2.25).clamp(0.05_f64.min(f_domain_cap), f_domain_cap);
+        self.populate_growth_curve(prob, odds, f_max);
+        if let Ok(qk) = variants::quarter_kelly(prob, odds) {
+            self.push_marker_and_row("Quarter Kelly", prob, odds, &qk, ev, 0);
+        }
+        if let Ok(hk) = variants::half_kelly(prob, odds) {
+            self.push_marker_and_row("Half Kelly", prob, odds, &hk, ev, 1);
+        }
+        self.push_marker_and_row("Full Kelly", prob, odds, fk, ev, 2);
+        let unit_stake = (0.01 * self.bankroll).max(1e-6);
+        self.lundberg_summary =
+            solve_single_bet_lundberg(prob, odds, unit_stake, self.bankroll).ok();
+        let odds_arr = [*odds];
+        let prob_arr = [*prob];
+        self.sample_size_95 =
+            required_bets_for_95_significance(ev, &odds_arr, Some(&prob_arr)).ok();
+    }
+
+    pub(crate) fn recalculate(&mut self) {
+        self.reset_cached_outputs();
+
+        let prob = match UnitInterval::new(self.probability_input / 100.0) {
+            Ok(p) => p,
+            Err(e) => {
+                self.calc_error = Some(format!("Invalid Probability: {e}"));
+                return;
+            }
+        };
+        let odds = match self.active_odds() {
+            Ok(o) => o,
+            Err(msg) => {
+                self.calc_error = Some(msg);
+                return;
+            }
+        };
+
+        let ev = expected_value(&prob, &odds);
+        self.ev_per_unit = Some(ev);
+        self.recompute_clv_audit(&odds);
+        let b = odds.net_profit_multiplier();
+        let f_domain_cap = (0.98 / b).clamp(1e-4, 0.98);
+
+        let full_kelly_opt = if ev > 0.0 {
+            kelly_fraction(&prob, &odds).ok()
+        } else {
+            None
+        };
+        if let Some(fk) = full_kelly_opt {
+            self.populate_positive_edge_metrics(&prob, &odds, &fk, ev, f_domain_cap);
+        } else {
+            let f_max = f_domain_cap.min(0.50);
+            self.populate_growth_curve(&prob, &odds, f_max);
+            self.strategy_rows.push(KellyStrategyRow {
+                label: "No Wager (No Edge)".to_string(),
+                fraction: 0.0,
+                bet_amount: 0.0,
+                growth_rate: 0.0,
+                ev_per_unit: ev,
+                barrier_bound: None,
+            });
         }
     }
 }
@@ -122,109 +289,36 @@ impl InteractiveTool for BetSizeCalculatorTool {
     fn domain(&self) -> &'static str {
         "financial_math"
     }
-    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot()
     }
-
-    fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&BetSizeState {
-            probability_input: self.probability_input,
-            odds_format: self.odds_format,
-            decimal_odds: self.decimal_odds,
-            american_odds: self.american_odds,
-            fractional_numerator: self.fractional_numerator,
-            fractional_denominator: self.fractional_denominator,
-            bankroll: self.bankroll,
-            drawdown_floor_pct: self.drawdown_floor_pct,
-            closing_line_enabled: self.closing_line_enabled,
-            closing_for_decimal: self.closing_for_decimal,
-            closing_against_decimal: self.closing_against_decimal,
-        })
-        .ok()
-    }
-
-    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: BetSizeState =
-            serde_json::from_str(state).map_err(|e| format!("Invalid bet size state: {e}"))?;
-        if ![
-            s.probability_input,
-            s.decimal_odds,
-            s.american_odds,
-            s.fractional_numerator,
-            s.fractional_denominator,
-            s.bankroll,
-            s.drawdown_floor_pct,
-            s.closing_for_decimal,
-            s.closing_against_decimal,
+    fn has_finite_parameters(&self) -> bool {
+        [
+            self.probability_input,
+            self.decimal_odds,
+            self.american_odds,
+            self.fractional_numerator,
+            self.fractional_denominator,
+            self.bankroll,
+            self.drawdown_floor_pct,
+            self.closing_for_decimal,
+            self.closing_against_decimal,
         ]
         .iter()
         .all(|v| v.is_finite())
-            || !(0.0..=100.0).contains(&s.probability_input)
-            || !(1.01..=1000.0).contains(&s.decimal_odds)
-            || !(-10_000.0..=10_000.0).contains(&s.american_odds)
-            || !(1.0..=1000.0).contains(&s.fractional_numerator)
-            || !(1.0..=1000.0).contains(&s.fractional_denominator)
-            || !(1.0..=1_000_000.0).contains(&s.bankroll)
-            || !(5.0..=95.0).contains(&s.drawdown_floor_pct)
-            || !(1.01..=1000.0).contains(&s.closing_for_decimal)
-            || !(1.01..=1000.0).contains(&s.closing_against_decimal)
-        {
-            return Err("Bet size parameters out of bounds".into());
-        }
-        self.probability_input = s.probability_input;
-        self.odds_format = s.odds_format;
-        self.decimal_odds = s.decimal_odds;
-        self.american_odds = s.american_odds;
-        self.fractional_numerator = s.fractional_numerator;
-        self.fractional_denominator = s.fractional_denominator;
-        self.bankroll = s.bankroll;
-        self.drawdown_floor_pct = s.drawdown_floor_pct;
-        self.closing_line_enabled = s.closing_line_enabled;
-        self.closing_for_decimal = s.closing_for_decimal;
-        self.closing_against_decimal = s.closing_against_decimal;
-        Ok(())
+    }
+
+    fn save_state(&self) -> Option<String> {
+        self.save_state_json()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.load_state_json(state)
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.heading("Kelly Criterion Bet Size, Solvency & CLV Calculator");
-                ui.label(
-                    "Calculate optimal sizing, drawdown barrier bounds, sample sizes, and CLV.",
-                );
-                ui.separator();
-                self.render_primary_inputs(ui);
-                self.render_closing_line_inputs(ui);
-                ui.separator();
-                ui.heading("Results");
-
-                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-                let prob_res = UnitInterval::new(self.probability_input / 100.0);
-                let odds_res = self.current_placed_odds();
-                match (prob_res, odds_res) {
-                    (Ok(prob), Ok(odds)) => {
-                        let ev = expected_value(&prob, &odds);
-                        ui.label(format!("Expected Value (per $1 staked): ${ev:.3}"));
-                        if ev > 0.0 {
-                            ui.colored_label(palette.success, "Positive Edge!");
-                            self.render_kelly_strategy_table(ui, &prob, &odds);
-                            self.render_solvency_and_sample_size(ui, &prob, &odds, ev);
-                        } else {
-                            ui.colored_label(
-                                palette.error,
-                                "No Edge (Negative or Zero EV). Do not bet.",
-                            );
-                        }
-                        self.render_clv_panel(ui, &odds);
-                    }
-                    (Err(e), _) => {
-                        ui.colored_label(palette.error, format!("Invalid Probability: {e}"));
-                    }
-                    (_, Err(e)) => {
-                        ui.colored_label(palette.error, format!("Invalid Odds: {e}"));
-                    }
-                }
-            });
+            self.render_workbench_ui(ui);
         });
     }
 }
@@ -241,55 +335,6 @@ inventory::submit! {
     }
 }
 
-impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
-    fn theory_description(&self) -> String {
-        format!(
-            "Kelly criterion optimal wagering fraction: $f^* = \\frac{{b p - q}}{{b}}$ where $p = {:.1}\\%$ is win probability, $q = 1 - p$, and decimal odds $b = {:.2}$, maximizing expected asymptotic logarithmic bankroll growth.",
-            self.probability_input, self.decimal_odds
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Kelly criterion optimal bet sizing theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "A New Interpretation of Information Rate (Kelly, 1956); Beat the Bookmaker (Kaunitz et al., 2017)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
-    }
-}
-
 #[cfg(test)]
-#[path = "bet_size_tests.rs"]
+#[path = "bet_size/tests.rs"]
 mod tests;
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Kelly Criterion Allocation",
-    "domain": "financial_math",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "probability_input": 60.0,
-    "odds_format": "Decimal",
-    "decimal_odds": 2.0,
-    "american_odds": 100.0,
-    "fractional_numerator": 1.0,
-    "fractional_denominator": 1.0,
-    "bankroll": 2500.0
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "bet_size_starter",
-        title: "Kelly Criterion Allocation",
-        description: "f* = (bp - q)/b: Optimal leverage fraction maximizing long-term asymptotic capital growth rate.",
-        category: "Risk Management",
-        icon: "⚖️",
-        domain: "financial_math",
-        tool_name: Some("BetSizeCalculatorTool"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}

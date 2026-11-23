@@ -53,6 +53,18 @@ fn test_even_money_net_odds_and_net_profit_multiplier_settlement() {
     assert!((settled_win - 1500.0).abs() < 1e-9);
     let settled_loss = settle_bet(1000.0, &frac, o.net_profit_multiplier(), false);
     assert!((settled_loss - 750.0).abs() < 1e-9);
+
+    tool.try_load_state(r#"{"initial_bankroll":100.0,"probability":0.6,"odds":1.0,"num_bets":10}"#)
+        .expect("b = 1.0 even-money net odds must be accepted");
+    assert_eq!(tool.full_kelly_points.len(), 11);
+    let after_win = tool
+        .evaluate_full_kelly_bet(100.0, true)
+        .expect("single win evaluation must succeed");
+    assert!((after_win - 120.0).abs() < 1e-12);
+    let after_loss = tool
+        .evaluate_full_kelly_bet(100.0, false)
+        .expect("single loss evaluation must succeed");
+    assert!((after_loss - 80.0).abs() < 1e-12);
 }
 
 #[test]

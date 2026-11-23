@@ -173,7 +173,7 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "initial_bankroll": 5000.0,
     "probability": 0.6,
-    "odds": 2.5,
+    "odds": 1.5,
     "num_bets": 150
   }
 }"#;
