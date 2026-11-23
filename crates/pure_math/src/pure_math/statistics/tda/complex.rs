@@ -46,10 +46,12 @@ impl SimplicialComplex {
                 self.simplices.push(HashSet::new());
             }
 
-            if self.simplices[dim].insert(current.clone()) {
-                for face in current.faces()? {
-                    stack.push(face);
-                }
+            if dim == 0 {
+                self.simplices[0].insert(current);
+            } else if !self.simplices[dim].contains(&current) {
+                let faces = current.faces()?;
+                self.simplices[dim].insert(current);
+                stack.extend(faces);
             }
         }
         Ok(())
@@ -222,23 +224,29 @@ pub fn vietoris_rips_from_distance_matrix(
     validate_distance_matrix(dist)?;
 
     let n = dist.len();
-    let mut complex = SimplicialComplex::new();
-    complex.simplices = vec![HashSet::with_capacity(n), HashSet::new(), HashSet::new()];
-
+    let mut vertices = HashSet::with_capacity(n);
     for i in 0..n {
-        complex.simplices[0].insert(Simplex { vertices: vec![i] });
+        vertices.insert(Simplex { vertices: vec![i] });
     }
 
-    add_edges_within_radius(&mut complex, dist, radius);
-    let truncated = add_triangles_bounded(&mut complex, dist, radius, max_triangles);
-    if complex.simplices[2].is_empty() {
-        complex.simplices.pop();
-        if complex.simplices[1].is_empty() {
-            complex.simplices.pop();
+    let (neighbors, edge_count) = collect_forward_neighbors(dist, radius);
+    let mut simplices = Vec::with_capacity(3);
+    simplices.push(vertices);
+
+    let mut truncated = false;
+    if edge_count > 0 {
+        simplices.push(build_edge_set(&neighbors, edge_count));
+        if edge_count >= 3 {
+            let (triangles, was_truncated) =
+                build_triangle_set(dist, &neighbors, radius, max_triangles);
+            truncated = was_truncated;
+            if !triangles.is_empty() {
+                simplices.push(triangles);
+            }
         }
     }
 
-    Ok((complex, truncated))
+    Ok((SimplicialComplex { simplices }, truncated))
 }
 
 /// Builds a Vietoris-Rips simplicial complex (up to 2-simplices) from any precomputed
@@ -301,40 +309,54 @@ pub(crate) fn validate_distance_matrix(dist: &[Vec<f64>]) -> Result<(), TdaError
 }
 
 #[verified_engine::verified]
-fn add_edges_within_radius(complex: &mut SimplicialComplex, dist: &[Vec<f64>], radius: f64) {
+fn collect_forward_neighbors(dist: &[Vec<f64>], radius: f64) -> (Vec<Vec<usize>>, usize) {
     let n = dist.len();
+    let mut neighbors = Vec::with_capacity(n);
+    let mut edge_count = 0_usize;
     for (i, row) in dist.iter().enumerate().take(n) {
+        let mut nbrs = Vec::new();
         for (j, &d) in row.iter().enumerate().take(n).skip(i + 1) {
             if d <= radius {
-                complex.simplices[1].insert(Simplex {
-                    vertices: vec![i, j],
-                });
+                nbrs.push(j);
             }
         }
+        edge_count += nbrs.len();
+        neighbors.push(nbrs);
     }
+    (neighbors, edge_count)
 }
 
 #[verified_engine::verified]
-fn add_triangles_bounded(
-    complex: &mut SimplicialComplex,
+fn build_edge_set(neighbors: &[Vec<usize>], edge_count: usize) -> HashSet<Simplex> {
+    let mut edges = HashSet::with_capacity(edge_count);
+    for (i, nbrs) in neighbors.iter().enumerate() {
+        for &j in nbrs {
+            edges.insert(Simplex {
+                vertices: vec![i, j],
+            });
+        }
+    }
+    edges
+}
+
+#[verified_engine::verified]
+fn build_triangle_set(
     dist: &[Vec<f64>],
+    neighbors: &[Vec<usize>],
     radius: f64,
     max_triangles: usize,
-) -> bool {
-    let n = dist.len();
+) -> (HashSet<Simplex>, bool) {
+    let mut triangles = HashSet::new();
     let mut added = 0_usize;
-    for (i, row) in dist.iter().enumerate().take(n) {
-        for (j, &d_ij) in row.iter().enumerate().take(n).skip(i + 1) {
-            if d_ij > radius {
-                continue;
-            }
+    for (i, nbrs_i) in neighbors.iter().enumerate() {
+        for (pos_j, &j) in nbrs_i.iter().enumerate() {
             let row_j = &dist[j];
-            for (k, &d_ik) in row.iter().enumerate().take(n).skip(j + 1) {
-                if d_ik <= radius && row_j[k] <= radius {
+            for &k in &nbrs_i[(pos_j + 1)..] {
+                if row_j[k] <= radius {
                     if added >= max_triangles {
-                        return true;
+                        return (triangles, true);
                     }
-                    complex.simplices[2].insert(Simplex {
+                    triangles.insert(Simplex {
                         vertices: vec![i, j, k],
                     });
                     added += 1;
@@ -342,7 +364,7 @@ fn add_triangles_bounded(
             }
         }
     }
-    false
+    (triangles, false)
 }
 
 #[cfg(test)]
