@@ -132,8 +132,14 @@ fn visit_doctest_snippet(snippet: &str, dep_visitor: &mut DependencyVisitor) {
 }
 
 pub(crate) fn audit_markdown_text(markdown: &str, dep_visitor: &mut DependencyVisitor) {
+    if dep_visitor.all_deps_matched() {
+        return;
+    }
     for block in extract_compiled_rustdoc_blocks(markdown) {
         visit_doctest_snippet(&block, dep_visitor);
+        if dep_visitor.all_deps_matched() {
+            break;
+        }
     }
 }
 
@@ -309,6 +315,9 @@ pub(crate) fn audit_rs_doctests(
     visited_md: &mut HashSet<PathBuf>,
     dep_visitor: &mut DependencyVisitor,
 ) {
+    if dep_visitor.all_deps_matched() {
+        return;
+    }
     let rs_dir = rs_path.parent().unwrap_or(member_dir);
     let mut collector = DocCollector {
         rs_dir,
@@ -320,9 +329,15 @@ pub(crate) fn audit_rs_doctests(
 
     for chunk in &collector.doc_chunks {
         audit_markdown_text(chunk, dep_visitor);
+        if dep_visitor.all_deps_matched() {
+            return;
+        }
     }
 
     for md_path in collector.included_files {
+        if dep_visitor.all_deps_matched() {
+            return;
+        }
         let key = fs::canonicalize(&md_path).unwrap_or_else(|_| md_path.clone());
         if visited_md.insert(key)
             && let Ok(content) = fs::read_to_string(&md_path)
@@ -383,10 +398,16 @@ pub(crate) fn audit_workspace_markdown_files(
     visited_md: &mut HashSet<PathBuf>,
     dep_visitor: &mut DependencyVisitor,
 ) {
+    if dep_visitor.all_deps_matched() {
+        return;
+    }
     let ws_root = resolve_markdown_workspace_root(member_dir);
     let mut md_files = Vec::new();
     collect_workspace_markdown_files(&ws_root, &mut md_files);
     for md_path in md_files {
+        if dep_visitor.all_deps_matched() {
+            break;
+        }
         let key = fs::canonicalize(&md_path).unwrap_or_else(|_| md_path.clone());
         if visited_md.insert(key)
             && let Ok(content) = fs::read_to_string(&md_path)

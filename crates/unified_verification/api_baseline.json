@@ -7848,6 +7848,9 @@
       "signature": "impl AstCache { pub fn parse_calls (& self) -> usize }"
     },
     {
+      "signature": "impl AstCache { pub fn preload_sources < P : AsRef < Path > > (& mut self , _ : & [P]) }"
+    },
+    {
       "signature": "pub struct AstCache"
     },
     {
