@@ -445,6 +445,9 @@ pub fn get_starter_cards_for_domain(
 
 #[path = "starter_gallery/challenges.rs"]
 pub mod challenges;
+#[cfg(feature = "pure_math")]
+#[path = "starter_gallery/elliptic_packs.rs"]
+mod elliptic_packs;
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
 #[path = "starter_gallery/stories.rs"]

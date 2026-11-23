@@ -19,9 +19,14 @@ use super::elliptic_curve_canvas::{
 };
 use super::elliptic_curve_hasse::{fmt_point, render_hasse_plot, HassePlotBuffers};
 use crate::accessibility::AccessibleHoverText;
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::framework::{
-    scoped_panel_id, ExportCapabilities, InteractiveTool, PaneSidePanel, ToolMetadata,
-    ToolStateBounds,
+    scoped_panel_id, CalloutSpec, ChallengeEvaluation, ExportCapabilities, InteractiveTool,
+    PaneSidePanel, ToolMetadata, ToolStateBounds,
+};
+use crate::tabs::elliptic_curves::atlas::{
+    default_elliptic_atlas_axes, evaluate_hasse_weil_p23, is_default_elliptic_atlas_axes,
+    ELLIPTIC_ATLAS_AXIS_PAIRS,
 };
 use crate::web_io::PlatformInstant;
 
@@ -54,6 +59,13 @@ struct EllipticCurvePlaygroundState {
     point_q: AffinePointFp,
     scalar_k: i64,
     hasse_p_max: i64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    atlas_visible: bool,
+    #[serde(
+        default = "default_elliptic_atlas_axes",
+        skip_serializing_if = "is_default_elliptic_atlas_axes"
+    )]
+    atlas_axes: [String; 2],
 }
 
 /// Interactive finite-field elliptic curve group law and Hasse-Weil Frobenius trace explorer.
@@ -73,10 +85,10 @@ pub struct EllipticCurvePlayground {
     pub(crate) p_order: usize,
     pub(crate) scalar_kp: AffinePointFp,
     pub(crate) chord: Option<ChordStepFp>,
-    pub(super) ray_progress: f32,
+    pub(crate) ray_progress: f32,
     orbit_step_accum: f32,
     pub(super) last_frame_instant: Option<PlatformInstant>,
-    primes_table: Vec<i64>,
+    pub(crate) primes_table: Vec<i64>,
     pub(crate) points_buf: Vec<AffinePointFp>,
     pub(crate) points_len: usize,
     pub(crate) orbit_buf: Vec<AffinePointFp>,
@@ -87,6 +99,9 @@ pub struct EllipticCurvePlayground {
     pub(crate) plot_buffers: HassePlotBuffers,
     pub(crate) status_summary: String,
     pub(super) focused_canvas: Option<egui::Id>,
+    pub(crate) atlas: ParameterAtlasController,
+    pub(crate) active_challenge: Option<&'static str>,
+    pub(crate) callouts: Vec<CalloutSpec>,
     revision: u64,
 }
 
@@ -104,6 +119,8 @@ impl Default for EllipticCurvePlayground {
             frobenius_trace: 0,
             hasse_bound: 0.0,
         };
+        let mut atlas = ParameterAtlasController::new(ELLIPTIC_ATLAS_AXIS_PAIRS.to_vec());
+        let _ = atlas.set_axis_keys("mod_a", "mod_b");
         let mut tool = Self {
             p: 17,
             a: 2,
@@ -134,6 +151,9 @@ impl Default for EllipticCurvePlayground {
             plot_buffers: HassePlotBuffers::with_capacity(MAX_HASSE_PRIMES_CAP),
             status_summary: String::with_capacity(256),
             focused_canvas: None,
+            atlas,
+            active_challenge: None,
+            callouts: Vec::new(),
             revision: 1,
         };
         tool.recompute_all();
@@ -164,15 +184,7 @@ impl EllipticCurvePlayground {
         if let Ok(curve) = WeierstrassCurveFp::new(self.p, self.a, self.b) {
             self.populate_nonsingular_curve(curve);
         } else {
-            self.is_singular = true;
-            self.points_len = 0;
-            self.orbit_len = 0;
-            self.group_order = 0;
-            self.frobenius_trace = 0;
-            self.p_order = 1;
-            self.scalar_kp = AffinePointFp::Infinity;
-            self.chord = None;
-            self.ray_segments.clear();
+            self.populate_singular_curve_hot_loop();
         }
 
         let count = self
@@ -189,35 +201,7 @@ impl EllipticCurvePlayground {
             .refresh(&self.hasse_buf[..self.hasse_len], self.p);
     }
 
-    fn populate_nonsingular_curve(&mut self, curve: WeierstrassCurveFp) {
-        self.is_singular = false;
-        self.points_len = curve.enumerate_points(&mut self.points_buf).unwrap_or(0);
-        if !curve.contains_point(self.point_p) {
-            self.point_p = self.points_buf.get(1).copied().unwrap_or_default();
-        }
-        if !curve.contains_point(self.point_q) {
-            let idx = if self.points_len > 2 {
-                2
-            } else {
-                1.min(self.points_len.saturating_sub(1))
-            };
-            self.point_q = self.points_buf[idx];
-        }
-        self.group_order = self.points_len;
-        self.frobenius_trace = self.p + 1 - (self.group_order as i64);
-        self.p_order = curve.point_order(self.point_p).unwrap_or(1);
-        self.scalar_k = self.scalar_k.clamp(1, MAX_SCALAR_K);
-        self.scalar_kp = curve
-            .scalar_mul(self.scalar_k, self.point_p)
-            .unwrap_or_default();
-        self.orbit_len = curve
-            .torsion_orbit(self.point_p, &mut self.orbit_buf)
-            .unwrap_or(0);
-        self.chord = curve.chord_step(self.point_p, self.point_q).ok();
-        self.rebuild_ray_segments();
-    }
-
-    fn rebuild_ray_segments(&mut self) {
+    pub(crate) fn rebuild_ray_segments(&mut self) {
         self.ray_segments.clear();
         if let (Some(step), Some(start)) = (self.chord, self.point_p.coordinates()) {
             populate_torus_ray_segments(
@@ -228,45 +212,6 @@ impl EllipticCurvePlayground {
                 MAX_RAY_SEGMENTS_CAP,
                 &mut self.ray_segments,
             );
-        }
-    }
-
-    /// Steps the cyclic subgroup multiplier `k` by one step using preallocated buffers (zero heap allocations).
-    pub(crate) fn step_orbit_hot_loop(&mut self) {
-        let Ok(curve) = WeierstrassCurveFp::new(self.p, self.a, self.b) else {
-            return;
-        };
-        self.scalar_k = (self.scalar_k % (self.p_order.max(1) as i64)) + 1;
-        self.scalar_kp = curve
-            .scalar_mul(self.scalar_k, self.point_p)
-            .unwrap_or_default();
-        self.ray_progress = 1.0_f32;
-        self.rebuild_ray_segments();
-    }
-
-    pub(super) fn snap_nearest_prime(&self, candidate: i64) -> i64 {
-        let c = candidate.clamp(MIN_PLAYGROUND_PRIME, MAX_PLAYGROUND_PRIME);
-        let pos = self.primes_table.partition_point(|&q| q < c);
-        let hi = self.primes_table.get(pos).copied();
-        let lo = pos
-            .checked_sub(1)
-            .and_then(|i| self.primes_table.get(i).copied());
-        match (lo, hi) {
-            (Some(l), Some(h)) if (c - l).abs() <= (h - c).abs() => l,
-            (_, Some(h)) => h,
-            (Some(l), None) => l,
-            (None, None) => 17,
-        }
-    }
-
-    pub(super) fn step_prime(&mut self, delta: isize) {
-        let pos = self.primes_table.partition_point(|&q| q < self.p);
-        let max_idx = self.primes_table.len().saturating_sub(1) as isize;
-        let next = ((pos as isize) + delta).clamp(0, max_idx) as usize;
-        if let Some(&next_p) = self.primes_table.get(next) {
-            self.p = next_p;
-            self.ray_progress = 1.0_f32;
-            self.recompute_all();
         }
     }
 
@@ -342,6 +287,25 @@ impl InteractiveTool for EllipticCurvePlayground {
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.nt_observables()
+    }
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.callouts = callouts.to_vec();
+    }
+    fn apply_challenge(&mut self, id: Option<&str>) -> Result<(), String> {
+        self.apply_nt_challenge(id)
+    }
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.active_challenge
+            .map(|_| evaluate_hasse_weil_p23(self.a, self.b, self.p))
+    }
+    fn save_recovery_state(&self) -> Option<String> {
+        (!self.is_singular).then(|| self.save_state()).flatten()
+    }
 
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -360,6 +324,7 @@ impl InteractiveTool for EllipticCurvePlayground {
     }
 
     fn save_state(&self) -> Option<String> {
+        let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&EllipticCurvePlaygroundState {
             p: self.p,
             a: self.a,
@@ -368,6 +333,8 @@ impl InteractiveTool for EllipticCurvePlayground {
             point_q: self.point_q,
             scalar_k: self.scalar_k,
             hasse_p_max: self.hasse_p_max,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
     }
@@ -390,7 +357,14 @@ impl InteractiveTool for EllipticCurvePlayground {
         if !curve.contains_point(s.point_p) || !curve.contains_point(s.point_q) {
             return Err("Selected point P or Q does not lie on E(F_p)".into());
         }
-        self.p = s.p;
+        self.atlas
+            .set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1])?;
+        self.atlas.set_visible(s.atlas_visible);
+        self.p = if self.active_challenge.is_some() {
+            23
+        } else {
+            s.p
+        };
         self.a = s.a;
         self.b = s.b;
         self.point_p = s.point_p;
@@ -439,6 +413,7 @@ impl InteractiveTool for EllipticCurvePlayground {
             self.render_controls_panel(ui);
         });
         egui::CentralPanel::default().show_inside(ui, |ui| {
+            self.render_nt_atlas_split(ui);
             let model = TorusCanvasModel {
                 p: self.p,
                 a: self.a,
@@ -472,11 +447,9 @@ impl InteractiveTool for EllipticCurvePlayground {
         });
     }
 
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
-    #[cfg(test)]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }

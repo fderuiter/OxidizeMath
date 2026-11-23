@@ -278,6 +278,18 @@ impl MriTool {
                     self.pulse_workspace.playhead_playing = false;
                     self.pulse_workspace.playhead_idx = 0;
                 }
+                PlaybackAction::StepBack => {
+                    self.pulse_workspace.playhead_playing = false;
+                    self.pulse_workspace.playhead_idx = self
+                        .pulse_workspace
+                        .playhead_idx
+                        .checked_sub(1)
+                        .unwrap_or(last);
+                }
+                PlaybackAction::ScrubTo(idx) => {
+                    self.pulse_workspace.playhead_playing = false;
+                    self.pulse_workspace.playhead_idx = idx.min(last);
+                }
             }
         }
         let max_idx = MRI_PULSE_SAMPLES - 1;

@@ -379,14 +379,12 @@ pub trait InteractiveTool {
         frames
     }
 
-    /// Returns a type-erased reference for test inspection of concrete tool state.
-    #[cfg(test)]
+    /// Returns a type-erased reference for concrete tool state inspection.
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         None
     }
 
-    /// Returns a mutable type-erased reference for test manipulation of concrete tool state.
-    #[cfg(test)]
+    /// Returns a mutable type-erased reference for concrete tool state updates (e.g. cross-tab handoffs).
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
     }
