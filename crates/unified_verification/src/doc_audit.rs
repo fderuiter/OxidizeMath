@@ -7,6 +7,9 @@
 //! 4. Crate root entrypoints (`src/lib.rs` or `src/main.rs`) include localized documentation
 //!    via `#![doc = include_str!("../README.md")]`.
 //! 5. Documented allowlist and staging flag support for transitional legacy crates.
+//! 6. Static guide and manifest gates blocking unapproved `rust,ignore` fences, invalid
+//!    binary-only `math_explorer_gui::` imports, retired `Tectonic` instructions, and stale
+//!    workspace crate counts (excluding historical `docs/adr/` records).
 
 use regex::Regex;
 use std::collections::HashSet;
@@ -19,11 +22,14 @@ pub mod catalog_and_guide_checks;
 pub mod facade_imports;
 pub mod manifest_model;
 pub mod staged_guides;
+pub mod static_gates;
 pub mod toml_dep_checks;
 pub mod trait_contracts;
 
 #[cfg(test)]
 mod guide_gate_tests;
+#[cfg(test)]
+mod static_gates_tests;
 #[cfg(test)]
 mod tests;
 

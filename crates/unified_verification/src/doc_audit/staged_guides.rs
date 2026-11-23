@@ -120,6 +120,23 @@ fn collect_staged_active_md(workspace_root: &Path, existing_staged: &[String]) -
         .collect()
 }
 
+fn collect_staged_gui_rs(workspace_root: &Path, existing_staged: &[String]) -> Vec<PathBuf> {
+    existing_staged
+        .iter()
+        .map(|p| p.replace('\\', "/"))
+        .filter(|p| {
+            let rel = normalize_rel(p);
+            rel.ends_with(".rs")
+                && !has_excluded_segment(rel)
+                && (rel.starts_with("math_explorer_gui/src/")
+                    || rel.starts_with("math_explorer/src/")
+                    || rel.starts_with("math_explorer/examples/"))
+        })
+        .map(|p| workspace_root.join(normalize_rel(&p)))
+        .filter(|p| p.is_file())
+        .collect()
+}
+
 fn collect_staged_example_rs(workspace_root: &Path, existing_staged: &[String]) -> Vec<PathBuf> {
     existing_staged
         .iter()
@@ -196,11 +213,16 @@ fn audit_staged_md_contracts(
 fn load_staged_manifest_model_if_needed(
     workspace_root: &Path,
     catalog_touched: bool,
+    overview_touched: bool,
     staged_ex: &[PathBuf],
     staged_md: &[PathBuf],
+    staged_gui_rs: &[PathBuf],
 ) -> Result<Option<WorkspaceManifestModel>, String> {
+    let has_root_manifest = workspace_root.join("Cargo.toml").is_file();
     let needs_model = catalog_touched
+        || overview_touched
         || !staged_ex.is_empty()
+        || (has_root_manifest && (!staged_md.is_empty() || !staged_gui_rs.is_empty()))
         || staged_md.iter().any(|p| {
             fs::read_to_string(p)
                 .map(|c| c.contains("cargo ") || c.contains("```toml"))
@@ -210,6 +232,61 @@ fn load_staged_manifest_model_if_needed(
         WorkspaceManifestModel::load(workspace_root).map(Some)
     } else {
         Ok(None)
+    }
+}
+
+fn audit_staged_static_doc_gates(
+    workspace_root: &Path,
+    staged_md: &[PathBuf],
+    staged_gui_rs: &[PathBuf],
+    overview_touched: bool,
+    model: Option<&WorkspaceManifestModel>,
+    violations: &mut Vec<String>,
+) {
+    if staged_md.is_empty() && staged_gui_rs.is_empty() && !overview_touched {
+        return;
+    }
+    let approved_caps = super::static_gates::load_approved_ignore_fences(workspace_root);
+    let default_model = WorkspaceManifestModel::default();
+    let binary_pkgs =
+        super::static_gates::collect_binary_only_packages(model.unwrap_or(&default_model));
+    let expected_crates = model.map_or(0, |m| m.packages_by_dir.len());
+
+    for md_path in staged_md {
+        let Ok(content) = fs::read_to_string(md_path) else {
+            continue;
+        };
+        violations.extend(super::static_gates::check_markdown_ignore_fences(
+            md_path,
+            workspace_root,
+            &content,
+            &approved_caps,
+        ));
+        violations.extend(super::static_gates::check_markdown_binary_gui_imports(
+            md_path,
+            &content,
+            &binary_pkgs,
+        ));
+        violations.extend(super::static_gates::check_markdown_crate_counts(
+            md_path,
+            &content,
+            expected_crates,
+        ));
+    }
+    for rs_path in staged_gui_rs {
+        if let Ok(src) = fs::read_to_string(rs_path) {
+            violations.extend(super::static_gates::check_rs_binary_gui_imports(
+                rs_path,
+                &src,
+                &binary_pkgs,
+            ));
+        }
+    }
+    if overview_touched && let Some(m) = model {
+        violations.extend(super::static_gates::audit_system_overview_crate_catalog(
+            workspace_root,
+            m,
+        ));
     }
 }
 
@@ -274,16 +351,15 @@ pub fn audit_staged_guides_and_manifests(
     let mut violations = Vec::new();
     let staged_md = collect_staged_active_md(workspace_root, existing_staged);
     let staged_ex = collect_staged_example_rs(workspace_root, existing_staged);
-    let catalog_touched = all_staged.iter().any(|p| {
-        let rel = normalize_rel(p);
-        rel == "math_explorer/Cargo.toml" || rel.starts_with("math_explorer/examples/")
-    });
-    let trait_src_touched = all_staged
-        .iter()
-        .any(|p| TRACKED_TRAIT_SOURCES.contains(&normalize_rel(p)));
-    let gate_infra_touched = all_staged.iter().any(|p| {
+    let staged_gui_rs = collect_staged_gui_rs(workspace_root, existing_staged);
+    let has_staged = |pred: fn(&str) -> bool| all_staged.iter().any(|p| pred(normalize_rel(p)));
+    let catalog_touched =
+        has_staged(|r| r == "math_explorer/Cargo.toml" || r.starts_with("math_explorer/examples/"));
+    let overview_touched = has_staged(|r| r == "docs/architecture/system_overview.md");
+    let trait_src_touched = has_staged(|r| TRACKED_TRAIT_SOURCES.contains(&r));
+    let gate_infra_touched = has_staged(|r| {
         matches!(
-            normalize_rel(p),
+            r,
             "apps/xtask/src/papers.rs"
                 | "apps/xtask/src/main.rs"
                 | "apps/xtask/src/gates.rs"
@@ -294,28 +370,36 @@ pub fn audit_staged_guides_and_manifests(
     let model = match load_staged_manifest_model_if_needed(
         workspace_root,
         catalog_touched,
+        overview_touched,
         &staged_ex,
         &staged_md,
+        &staged_gui_rs,
     ) {
         Ok(m) => m,
-        Err(err) => {
-            violations.push(err);
-            return violations;
-        }
+        Err(err) => return vec![err],
     };
 
+    let m_ref = model.as_ref();
+    audit_staged_static_doc_gates(
+        workspace_root,
+        &staged_md,
+        &staged_gui_rs,
+        overview_touched,
+        m_ref,
+        &mut violations,
+    );
     audit_staged_md_contracts(
         workspace_root,
         &staged_md,
         trait_src_touched,
-        model.as_ref(),
+        m_ref,
         &mut violations,
     );
     audit_staged_examples(
         workspace_root,
         &staged_ex,
         catalog_touched,
-        model.as_ref(),
+        m_ref,
         &mut violations,
     );
     audit_staged_paper_guides(
@@ -325,6 +409,5 @@ pub fn audit_staged_guides_and_manifests(
         gate_infra_touched,
         &mut violations,
     );
-
     violations
 }

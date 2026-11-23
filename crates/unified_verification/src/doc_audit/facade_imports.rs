@@ -291,8 +291,41 @@ pub fn audit_facade_import_hygiene(workspace_root: &Path) -> Vec<String> {
     violations
 }
 
+fn audit_active_markdown_contracts(
+    workspace_root: &Path,
+    active_md: &[PathBuf],
+    model: &super::manifest_model::WorkspaceManifestModel,
+    violations: &mut Vec<String>,
+) {
+    let trait_registry = super::trait_contracts::TraitContractRegistry::load(workspace_root);
+    for md_path in active_md {
+        let Ok(content) = fs::read_to_string(md_path) else {
+            continue;
+        };
+        violations.extend(super::cargo_cli_checks::check_markdown_cargo_commands(
+            md_path,
+            workspace_root,
+            &content,
+            model,
+        ));
+        violations.extend(super::toml_dep_checks::check_markdown_toml_dependencies(
+            md_path,
+            workspace_root,
+            &content,
+            model,
+        ));
+        violations.extend(
+            super::trait_contracts::check_markdown_trait_and_gui_contracts(
+                md_path,
+                &content,
+                &trait_registry,
+            ),
+        );
+    }
+}
+
 /// Audits Cargo CLI commands, TOML `[dependencies]` blocks, examples catalog parity,
-/// paper/rustdoc gate instructions, and trait/GUI onboarding contracts across `workspace_root`.
+/// paper/rustdoc gate instructions, trait/GUI onboarding contracts, and static doc gates.
 pub fn audit_workspace_guides_and_manifests(workspace_root: &Path) -> Vec<String> {
     let mut violations = Vec::new();
     let model = match super::manifest_model::WorkspaceManifestModel::load(workspace_root) {
@@ -304,32 +337,7 @@ pub fn audit_workspace_guides_and_manifests(workspace_root: &Path) -> Vec<String
     };
 
     let active_md = super::cargo_cli_checks::collect_active_markdown_files(workspace_root);
-    let trait_registry = super::trait_contracts::TraitContractRegistry::load(workspace_root);
-
-    for md_path in &active_md {
-        let Ok(content) = fs::read_to_string(md_path) else {
-            continue;
-        };
-        violations.extend(super::cargo_cli_checks::check_markdown_cargo_commands(
-            md_path,
-            workspace_root,
-            &content,
-            &model,
-        ));
-        violations.extend(super::toml_dep_checks::check_markdown_toml_dependencies(
-            md_path,
-            workspace_root,
-            &content,
-            &model,
-        ));
-        violations.extend(
-            super::trait_contracts::check_markdown_trait_and_gui_contracts(
-                md_path,
-                &content,
-                &trait_registry,
-            ),
-        );
-    }
+    audit_active_markdown_contracts(workspace_root, &active_md, &model, &mut violations);
 
     let mut ex_files = Vec::new();
     collect_files_with_ext(
@@ -355,6 +363,11 @@ pub fn audit_workspace_guides_and_manifests(workspace_root: &Path) -> Vec<String
             &active_md,
         ),
     );
+    violations.extend(super::static_gates::audit_static_doc_gates(
+        workspace_root,
+        &active_md,
+        &model,
+    ));
     violations
 }
 

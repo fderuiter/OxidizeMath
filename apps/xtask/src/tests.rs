@@ -142,6 +142,9 @@ fn test_verification_gates() {
         "verify-records",
         "verify-suite",
         "regenerate-baseline",
+        "--hooks-only",
+        "--check-only",
+        "--web",
     ] {
         assert!(help.contains(cmd), "Missing help entry for {cmd}");
     }

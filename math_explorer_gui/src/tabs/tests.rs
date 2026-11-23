@@ -53,7 +53,7 @@ fn test_inventory_tabs_preserve_deterministic_slug_order() {
         feature = "physics"
     ))]
     {
-        assert_eq!(tabs.len(), 27, "All 27 GUI domain tabs must register");
+        assert_eq!(tabs.len(), 28, "All 28 GUI domain tabs must register");
         assert_eq!(slugs.first().copied(), Some("quantum"));
         assert_eq!(slugs.last().copied(), Some("ai"));
     }
@@ -183,8 +183,8 @@ fn test_static_tab_modules_match_filesystem_tabs_and_inventory_descriptors() {
     let declared_names: std::collections::BTreeSet<String> = declared.keys().cloned().collect();
     assert_eq!(
         discovered.len(),
-        27,
-        "Expected all 27 local GUI tab modules"
+        28,
+        "Expected all 28 local GUI tab modules"
     );
     assert_eq!(
         declared_names, discovered,
