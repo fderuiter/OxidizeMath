@@ -114,8 +114,155 @@ pub enum ExportPrimitive {
     },
 }
 
+/// Deferred offscreen primitive handle stored during interactive frame rendering and materialized on export.
+#[derive(Clone, Debug)]
+pub enum DeferredPlotPrimitive {
+    /// Zero-copy shared polyline or polygon series.
+    Polyline {
+        /// Series name.
+        name: String,
+        /// Shared plot-space points.
+        points: Arc<Vec<crate::PlotPoint>>,
+        /// Stroke color.
+        color: egui::Color32,
+        /// Stroke width in UI points.
+        stroke_width: f32,
+        /// Whether the polyline is closed.
+        closed: bool,
+        /// Optional polygon fill color.
+        fill: Option<egui::Color32>,
+    },
+    /// Zero-copy batch of disjoint polyline segments sharing stroke style.
+    PolylineBatch {
+        /// Series name.
+        name: String,
+        /// Disjoint polyline segments in plot space.
+        segments: Arc<Vec<Vec<crate::PlotPoint>>>,
+        /// Stroke color.
+        color: egui::Color32,
+        /// Stroke width in UI points.
+        stroke_width: f32,
+    },
+    /// Zero-copy shared scatter marker series.
+    Points {
+        /// Series name.
+        name: String,
+        /// Shared plot-space points.
+        points: Arc<Vec<crate::PlotPoint>>,
+        /// Marker color.
+        color: egui::Color32,
+        /// Marker radius in UI points.
+        radius: f32,
+    },
+    /// Zero-copy shared vector field arrows.
+    Arrows {
+        /// Series name.
+        name: String,
+        /// Shared arrow tail coordinates.
+        origins: Arc<Vec<crate::PlotPoint>>,
+        /// Shared arrow head coordinates.
+        tips: Arc<Vec<crate::PlotPoint>>,
+        /// Optional arrowhead wing length in UI points.
+        tip_length: Option<f32>,
+        /// Arrow stroke color.
+        color: egui::Color32,
+    },
+    /// Pre-built export primitives (e.g., bars, box plots, or explicit caller primitives).
+    Eager(Vec<ExportPrimitive>),
+}
+
+impl DeferredPlotPrimitive {
+    fn materialize_into(&self, out: &mut Vec<ExportPrimitive>) {
+        match self {
+            Self::Polyline {
+                name,
+                points,
+                color,
+                stroke_width,
+                closed,
+                fill,
+            } => {
+                if !points.is_empty() {
+                    out.push(ExportPrimitive::Polyline {
+                        name: name.clone(),
+                        points: points.iter().map(|p| [p.x, p.y]).collect(),
+                        color: *color,
+                        stroke_width: *stroke_width,
+                        closed: *closed,
+                        fill: *fill,
+                    });
+                }
+            }
+            Self::PolylineBatch {
+                name,
+                segments,
+                color,
+                stroke_width,
+            } => {
+                for seg in segments.iter().filter(|seg| !seg.is_empty()) {
+                    out.push(ExportPrimitive::Polyline {
+                        name: name.clone(),
+                        points: seg.iter().map(|p| [p.x, p.y]).collect(),
+                        color: *color,
+                        stroke_width: *stroke_width,
+                        closed: false,
+                        fill: None,
+                    });
+                }
+            }
+            Self::Points {
+                name,
+                points,
+                color,
+                radius,
+            } => {
+                if !points.is_empty() {
+                    out.push(ExportPrimitive::Points {
+                        name: name.clone(),
+                        points: points.iter().map(|p| [p.x, p.y]).collect(),
+                        color: *color,
+                        radius: *radius,
+                    });
+                }
+            }
+            Self::Arrows {
+                name,
+                origins,
+                tips,
+                tip_length,
+                color,
+            } => {
+                for (origin, tip) in origins.iter().zip(tips.iter()) {
+                    out.push(ExportPrimitive::Arrow {
+                        name: name.clone(),
+                        origin: [origin.x, origin.y],
+                        tip: [tip.x, tip.y],
+                        tip_length: *tip_length,
+                        color: *color,
+                    });
+                }
+            }
+            Self::Eager(items) => out.extend(items.iter().cloned()),
+        }
+    }
+}
+
 thread_local! {
-    static LAST_PLOT_PRIMITIVES: RefCell<Vec<ExportPrimitive>> = const { RefCell::new(Vec::new()) };
+    static MATERIALIZED_EXPORT_PRIMITIVES_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[doc(hidden)]
+pub fn materialized_export_primitives_call_count() -> usize {
+    MATERIALIZED_EXPORT_PRIMITIVES_COUNT.with(std::cell::Cell::get)
+}
+
+#[doc(hidden)]
+pub fn reset_materialized_export_primitives_call_count() {
+    MATERIALIZED_EXPORT_PRIMITIVES_COUNT.with(|c| c.set(0));
+}
+
+thread_local! {
+    static LAST_PLOT_PRIMITIVES: RefCell<Vec<DeferredPlotPrimitive>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Clears thread-local offscreen plot primitives captured during the current frame.
@@ -125,14 +272,35 @@ pub fn clear_last_plot_primitives() {
 
 /// Appends offscreen plot primitives captured from a rendered [`crate::Plot`] widget.
 pub fn append_last_plot_primitives(primitives: &[ExportPrimitive]) {
+    if primitives.is_empty() {
+        return;
+    }
     LAST_PLOT_PRIMITIVES.with(|p| {
-        p.borrow_mut().extend(primitives.iter().cloned());
+        p.borrow_mut()
+            .push(DeferredPlotPrimitive::Eager(primitives.to_vec()));
+    });
+}
+
+pub(crate) fn append_deferred_plot_primitives(primitives: Vec<DeferredPlotPrimitive>) {
+    if primitives.is_empty() {
+        return;
+    }
+    LAST_PLOT_PRIMITIVES.with(|p| {
+        p.borrow_mut().extend(primitives);
     });
 }
 
 /// Returns all offscreen plot primitives captured across [`crate::Plot`] widgets in the current frame.
 pub fn get_last_plot_primitives() -> Vec<ExportPrimitive> {
-    LAST_PLOT_PRIMITIVES.with(|p| p.borrow().clone())
+    MATERIALIZED_EXPORT_PRIMITIVES_COUNT.with(|c| c.set(c.get() + 1));
+    LAST_PLOT_PRIMITIVES.with(|p| {
+        let borrowed = p.borrow();
+        let mut out = Vec::with_capacity(borrowed.len());
+        for entry in borrowed.iter() {
+            entry.materialize_into(&mut out);
+        }
+        out
+    })
 }
 
 /// Returns `true` if `datasets` contains at least one finite `[x, y]` coordinate pair.
