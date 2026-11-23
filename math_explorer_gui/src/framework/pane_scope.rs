@@ -3,12 +3,12 @@
 use super::{AccessibleHoverText, BrushMode, BrushStroke, InteractiveTool, PaneSidePanel};
 use eframe::egui;
 
-/// Primary pointer input device modality for canvas interaction hooks.
+/// Active pointer/touch input modality for an interactive simulation pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {
-    /// Desktop pointer / mouse interaction.
+    /// Desktop mouse/trackpad pointer input.
     Mouse,
-    /// Single- or multi-touch gesture interaction.
+    /// Direct multi-touch gesture input.
     Touch,
 }
 
@@ -18,21 +18,21 @@ pub struct InteractionContext<'a> {
     pub pointer_pos: Option<egui::Pos2>,
     /// Pointer drag delta since the previous frame.
     pub delta: egui::Vec2,
-    /// Whether the primary or secondary pointer button is actively dragging.
+    /// Whether the pointer is actively dragging on the canvas.
     pub is_dragging: bool,
-    /// Whether the canvas response registered a click this frame.
+    /// Whether the canvas was clicked during this frame.
     pub is_clicked: bool,
-    /// Underlying egui widget response for the interactive canvas.
+    /// Underlying `egui` widget response for the canvas region.
     pub response: &'a egui::Response,
-    /// Active input modality (`Mouse` or `Touch`).
+    /// Active pointer or touch input mode.
     pub input_mode: InputMode,
-    /// Multi-touch pinch/pan gesture metadata when available.
+    /// Active multi-touch gesture state, when present.
     pub multi_touch: Option<egui::MultiTouchInfo>,
-    /// Set of keyboard keys held down during this frame.
+    /// Set of keyboard keys currently held down.
     pub keys_down: std::collections::HashSet<egui::Key>,
-    /// Active keyboard modifier state (`Shift`, `Ctrl`, `Alt`, `Cmd`).
+    /// Active keyboard modifiers (`Ctrl`, `Shift`, `Alt`, `Cmd`).
     pub modifiers: egui::Modifiers,
-    /// Optional interpolated [`BrushStroke`] sampled from canvas pointer or keyboard input.
+    /// Optional spatial brush stroke synthesized from pointer drag events.
     pub brush_stroke: Option<BrushStroke>,
 }
 
