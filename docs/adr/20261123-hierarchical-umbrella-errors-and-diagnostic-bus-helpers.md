@@ -1,4 +1,4 @@
-# 0042. Hierarchical Umbrella Error Enums, Full Submodule Error Re-Exports, and DiagnosticBus Emission Helpers
+# ADR 20261123: Hierarchical Umbrella Error Enums, Full Submodule Error Re-Exports, and DiagnosticBus Emission Helpers
 
 ## Status
 

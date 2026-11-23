@@ -1,4 +1,4 @@
-# ADR 0047: Precompiled Verification Patterns, AST Source Prefetch, and Zero-Allocation Scans
+# ADR 20261123: Precompiled Verification Patterns, AST Source Prefetch, and Zero-Allocation Scans
 
 ## Status
 
