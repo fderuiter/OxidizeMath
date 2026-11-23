@@ -22,6 +22,8 @@ mod glsl_sim_test_eval;
 #[cfg(test)]
 mod glsl_tests;
 #[cfg(test)]
+mod planar_tests;
+#[cfg(test)]
 mod tests;
 
 pub use codegen::{format_latex_scalar, format_python_float, format_rust_f64};

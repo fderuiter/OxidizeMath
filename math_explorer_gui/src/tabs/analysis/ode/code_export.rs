@@ -21,6 +21,7 @@ struct ScalarOdeSpec<'a> {
 }
 
 struct CoupledOdeExportSpec<'a> {
+    lhs_vars: (&'a str, &'a str),
     dy_sym: String,
     dv_sym: String,
     dy_cal: String,
@@ -115,7 +116,48 @@ impl OdeSolverTool {
                 self.total_time,
                 steps,
             ),
+            OdePreset::LinearSystem2D => build_linear_2d_ode_artifact(
+                self.matrix_a,
+                [self.ic_y0, self.ic_v0],
+                self.dt,
+                self.total_time,
+                steps,
+            ),
+            OdePreset::PlanarCustom => self.build_planar_custom_artifact(&params, steps),
         }
+    }
+
+    fn build_planar_custom_artifact(
+        &self,
+        params: &HashMap<String, f64>,
+        steps: usize,
+    ) -> Option<CodeArtifact> {
+        let dx_expr = self.planar_x_input.expr()?;
+        let dy_expr = self.planar_y_input.expr()?;
+        let vars = ["t", "x", "y"];
+        let dx_fn = dx_expr.to_rust_fn("dx_rhs", &vars, params).ok()?;
+        let dy_fn = dy_expr.to_rust_fn("dy_rhs", &vars, params).ok()?;
+        let rust_rhs_defs = format!(
+            "{dx_fn}\n\n{dy_fn}\n\n\
+             pub fn rhs(t: f64, state: [f64; 2]) -> [f64; 2] {{\n\
+             \x20   [dx_rhs(t, state[0], state[1]), dy_rhs(t, state[0], state[1])]\n\
+             }}"
+        );
+        build_coupled_2d_artifact(&CoupledOdeExportSpec {
+            lhs_vars: ("x", "y"),
+            dy_sym: dx_expr.to_latex(),
+            dv_sym: dy_expr.to_latex(),
+            dy_cal: dx_expr.to_latex_with_params(params).ok()?,
+            dv_cal: dy_expr.to_latex_with_params(params).ok()?,
+            rust_rhs_defs,
+            py_dy: dx_expr.to_python_expr_with_vars(&vars, params).ok()?,
+            py_dv: dy_expr.to_python_expr_with_vars(&vars, params).ok()?,
+            init: [self.ic_y0, self.ic_v0],
+            dt: self.dt,
+            total_time: self.total_time,
+            steps,
+            comment: "Planar 2D AST",
+        })
     }
 
     fn build_coupled_custom_artifact(&self, steps: usize) -> Option<CodeArtifact> {
@@ -135,6 +177,7 @@ impl OdeSolverTool {
              }}"
         );
         build_coupled_2d_artifact(&CoupledOdeExportSpec {
+            lhs_vars: ("y", "v"),
             dy_sym: dy_expr.to_latex(),
             dv_sym: dv_expr.to_latex(),
             dy_cal: dy_expr.to_latex_with_params(&params).ok()?,
@@ -240,6 +283,7 @@ fn build_harmonic_ode_artifact(
          }}"
     );
     build_coupled_2d_artifact(&CoupledOdeExportSpec {
+        lhs_vars: ("y", "v"),
         dy_sym: "v".to_string(),
         dv_sym: r"-k \cdot y".to_string(),
         dy_cal: "v".to_string(),
@@ -255,19 +299,68 @@ fn build_harmonic_ode_artifact(
     })
 }
 
+fn build_linear_2d_ode_artifact(
+    matrix_a: [[f64; 2]; 2],
+    init: [f64; 2],
+    dt: f64,
+    total_time: f64,
+    steps: usize,
+) -> Option<CodeArtifact> {
+    let [[a11, a12], [a21, a22]] = matrix_a;
+    let (t11, t12) = (
+        format_latex_scalar(a11).ok()?,
+        format_latex_scalar(a12).ok()?,
+    );
+    let (t21, t22) = (
+        format_latex_scalar(a21).ok()?,
+        format_latex_scalar(a22).ok()?,
+    );
+    let (r11, r12) = (format_rust_f64(a11).ok()?, format_rust_f64(a12).ok()?);
+    let (r21, r22) = (format_rust_f64(a21).ok()?, format_rust_f64(a22).ok()?);
+    let (p11, p12) = (
+        format_python_float(a11).ok()?,
+        format_python_float(a12).ok()?,
+    );
+    let (p21, p22) = (
+        format_python_float(a21).ok()?,
+        format_python_float(a22).ok()?,
+    );
+    let rust_rhs_defs = format!(
+        "pub fn rhs(_t: f64, state: [f64; 2]) -> [f64; 2] {{\n\
+         \x20   [({r11}) * state[0] + ({r12}) * state[1], ({r21}) * state[0] + ({r22}) * state[1]]\n\
+         }}"
+    );
+    build_coupled_2d_artifact(&CoupledOdeExportSpec {
+        lhs_vars: ("x", "y"),
+        dy_sym: r"a_{11} x + a_{12} y".to_string(),
+        dv_sym: r"a_{21} x + a_{22} y".to_string(),
+        dy_cal: format!(r"{t11} \cdot x + {t12} \cdot y"),
+        dv_cal: format!(r"{t21} \cdot x + {t22} \cdot y"),
+        rust_rhs_defs,
+        py_dy: format!("({p11}) * x + ({p12}) * y"),
+        py_dv: format!("({p21}) * x + ({p22}) * y"),
+        init,
+        dt,
+        total_time,
+        steps,
+        comment: "2x2 Linear Planar",
+    })
+}
+
 fn build_coupled_2d_artifact(spec: &CoupledOdeExportSpec<'_>) -> Option<CodeArtifact> {
     let [y0, v0] = spec.init;
+    let (v1, v2) = spec.lhs_vars;
     let y0_tex = format_latex_scalar(y0).ok()?;
     let v0_tex = format_latex_scalar(v0).ok()?;
     let dt_tex = format_latex_scalar(spec.dt).ok()?;
     let t_tex = format_latex_scalar(spec.total_time).ok()?;
 
     let symbolic_latex = format!(
-        "\\begin{{aligned}}\n\\frac{{dy}}{{dt}} &= {} \\\\\n\\frac{{dv}}{{dt}} &= {} \\\\\ny(0) &= y_0, \\quad v(0) = v_0\n\\end{{aligned}}",
+        "\\begin{{aligned}}\n\\frac{{d{v1}}}{{dt}} &= {} \\\\\n\\frac{{d{v2}}}{{dt}} &= {} \\\\\n{v1}(0) &= {v1}_0, \\quad {v2}(0) = {v2}_0\n\\end{{aligned}}",
         spec.dy_sym, spec.dv_sym
     );
     let calibrated_latex = format!(
-        "\\begin{{aligned}}\n\\frac{{dy}}{{dt}} &= {} \\\\\n\\frac{{dv}}{{dt}} &= {} \\\\\ny(0) &= {y0_tex}, \\quad v(0) = {v0_tex}, \\quad \\Delta t = {dt_tex}, \\quad t \\in [0, {t_tex}]\n\\end{{aligned}}",
+        "\\begin{{aligned}}\n\\frac{{d{v1}}}{{dt}} &= {} \\\\\n\\frac{{d{v2}}}{{dt}} &= {} \\\\\n{v1}(0) &= {y0_tex}, \\quad {v2}(0) = {v0_tex}, \\quad \\Delta t = {dt_tex}, \\quad t \\in [0, {t_tex}]\n\\end{{aligned}}",
         spec.dy_cal, spec.dv_cal
     );
     let rust_source = build_coupled_2d_rust(spec)?;
@@ -319,6 +412,7 @@ fn build_coupled_2d_rust(spec: &CoupledOdeExportSpec<'_>) -> Option<String> {
 
 fn build_coupled_2d_python(spec: &CoupledOdeExportSpec<'_>) -> Option<String> {
     let [y0, v0] = spec.init;
+    let (v1, v2) = spec.lhs_vars;
     let y0_py = format_python_float(y0).ok()?;
     let v0_py = format_python_float(v0).ok()?;
     let t_py = format_python_float(spec.total_time).ok()?;
@@ -331,11 +425,11 @@ fn build_coupled_2d_python(spec: &CoupledOdeExportSpec<'_>) -> Option<String> {
          import numpy as np\n\
          from scipy.integrate import solve_ivp\n\n\
          def rhs(t: float, state: np.ndarray) -> list[float]:\n\
-         \x20   y, v = float(state[0]), float(state[1])\n\
+         \x20   {v1}, {v2} = float(state[0]), float(state[1])\n\
          \x20   return [float({py_dy}), float({py_dv})]\n\n\
          t_eval = np.linspace(0.0, {t_py}, {num_pts})\n\
          sol = solve_ivp(rhs, (0.0, {t_py}), [{y0_py}, {v0_py}], t_eval=t_eval, method=\"RK45\", rtol=1e-9, atol=1e-12)\n\n\
          if __name__ == \"__main__\":\n\
-         \x20   print(f\"Final state y({{sol.t[-1]:.4f}}) = {{sol.y[0, -1]:.9f}}\")\n"
+         \x20   print(f\"Final state {v1}({{sol.t[-1]:.4f}}) = {{sol.y[0, -1]:.9f}}\")\n"
     ))
 }

@@ -2,7 +2,7 @@
 
 use super::AttractorPlotter;
 use crate::tabs::geometry_topology::vietoris_rips::{
-    handoff::{submit_chaos_landmark_handoff_with_ctx, ChaosLandmarkHandoff},
+    handoff::{request_open_vietoris_rips, submit_chaos_landmark_handoff, ChaosLandmarkHandoff},
     MAX_CHAOS_LANDMARKS,
 };
 use eframe::egui;
@@ -23,7 +23,7 @@ pub(crate) struct CachedAttractorInvariants {
 }
 
 impl AttractorPlotter {
-    fn flow_config_hash(&self) -> u64 {
+    pub(super) fn flow_config_hash(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         (self.mode as u8).hash(&mut h);
@@ -134,7 +134,7 @@ impl AttractorPlotter {
         out
     }
 
-    fn collect_or_seed_trajectory(&self, fallback_steps: usize) -> Vec<Vector3<f64>> {
+    pub(super) fn collect_or_seed_trajectory(&self, fallback_steps: usize) -> Vec<Vector3<f64>> {
         let finite_hist: Vec<Vector3<f64>> = self
             .history
             .iter()
@@ -194,7 +194,10 @@ impl AttractorPlotter {
             beta: self.system.beta,
             dt: self.dt,
         };
-        submit_chaos_landmark_handoff_with_ctx(ctx, payload.clone());
+        if let Some(c) = ctx {
+            submit_chaos_landmark_handoff(c, payload.clone());
+            request_open_vietoris_rips(c);
+        }
         Ok(payload)
     }
 }
