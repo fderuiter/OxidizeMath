@@ -3,21 +3,26 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Discovers the workspace root path (`"."` or `"../.."`) and member list via
+/// Discovers the workspace root path and member list via
 /// [`oxidize_core::workspace::get_workspace_members`].
-pub(crate) fn discover_workspace() -> (&'static Path, Vec<String>) {
+pub(crate) fn discover_workspace() -> (PathBuf, Vec<String>) {
     let (is_root, members) = oxidize_core::workspace::get_workspace_members();
     let root = if is_root {
-        Path::new(".")
+        PathBuf::from(".")
     } else {
-        Path::new("../..")
+        oxidize_core::workspace::find_workspace_root().unwrap_or_else(|| PathBuf::from("../.."))
     };
     (root, members)
 }
 
-/// Resolves the workspace root directory (`"."` or `"../.."`) relative to the current directory.
-pub(crate) fn workspace_root_dir() -> &'static Path {
-    discover_workspace().0
+/// Resolves the workspace root directory relative to the current directory.
+pub(crate) fn workspace_root_dir() -> PathBuf {
+    let (is_root, _) = oxidize_core::workspace::get_workspace_members();
+    if is_root {
+        PathBuf::from(".")
+    } else {
+        oxidize_core::workspace::find_workspace_root().unwrap_or_else(|| PathBuf::from("../.."))
+    }
 }
 
 /// Resolves a workspace-relative path against an already-discovered `workspace_root`.
@@ -31,7 +36,7 @@ pub(crate) fn resolve_workspace_path_from(workspace_root: &Path, rel: &str) -> P
 
 /// Resolves a workspace-relative path against [`workspace_root_dir`].
 pub(crate) fn resolve_workspace_path(rel: &str) -> PathBuf {
-    resolve_workspace_path_from(workspace_root_dir(), rel)
+    resolve_workspace_path_from(&workspace_root_dir(), rel)
 }
 
 /// RAII guard that temporarily switches the working directory to [`workspace_root_dir`]
@@ -47,7 +52,7 @@ impl WorkspaceRootGuard {
             return Self { prev_dir: None };
         }
         let prev_dir = std::env::current_dir().ok();
-        if std::env::set_current_dir(root).is_err() {
+        if std::env::set_current_dir(&root).is_err() {
             return Self { prev_dir: None };
         }
         Self { prev_dir }
