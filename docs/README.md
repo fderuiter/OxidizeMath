@@ -27,10 +27,8 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0013: Scientific Metadata Documentation Standard](adr/0013-scientific-metadata-documentation-standard.md)
 - [ADR 0013: Trait-Level Executable Doc-Test Suites](adr/0013-trait-level-runnable-doctests.md)
 - [ADR 0016: Standardize Crate Documentation Suite](adr/0016-standardize-crate-documentation-suite.md)
-- [ADR 0034: Curate `math_explorer` Facade Exports and Facade-Canonical Doctests](adr/0034-curate-math-explorer-facade-exports-and-doctests.md)
 - [ADR 0035: Spatial Fermi Games and Ising Droplet Brushes](adr/0035-fermi-spatial-games-and-ising-droplet-brushes.md)
-- [ADR 0037: Validated Glicko-2 Primitives and Frozen-Period Tournament Simulator](adr/0037-glicko2-frozen-period-tournament-simulator.md)
-- [ADR 0038: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0038-symplectic-hamiltonian-solvers-and-poincare-lab.md)
+- [ADR 0040: Symplectic Hamiltonian Integrators and Poincaré Section Lab](adr/0040-symplectic-hamiltonian-solvers-and-poincare-lab.md)
 
 ## Contributing
 
