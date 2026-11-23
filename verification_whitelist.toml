@@ -138,6 +138,10 @@ allowlist = [
     "docs/adr/0040-galactic-dynamics-and-astrophysics-tab.md",
     "docs/adr/0040-promote-zero-alloc-curve-solvers-to-math-commons.md",
     "docs/adr/0040-staged-index-snapshot-and-graph-scoped-gates.md",
+    "docs/adr/0042-2d-chladni-plate-and-wave-tank-solver.md",
+    "docs/adr/0042-fft-lenia-engine-and-gray-scott-kinetics.md",
+    "docs/adr/0042-fractran-vm-kolmogorov-and-algorithmic-info-tab.md",
+    "docs/adr/0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md",
 ]
 
 [[unused_dependencies]]
@@ -284,9 +288,6 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/algebra/polynomial.rs" = 3
 "crates/pure_math/src/pure_math/algebra/traits.rs" = 1
 "crates/pure_math/src/pure_math/algorithmic_information/combinatorics.rs" = 1
-"crates/pure_math/src/pure_math/algorithmic_information/geometry.rs" = 4
-"crates/pure_math/src/pure_math/algorithmic_information/kolmogorov.rs" = 1
-"crates/pure_math/src/pure_math/algorithmic_information/mod.rs" = 2
 "crates/pure_math/src/pure_math/analysis/complex/mapping.rs" = 1
 "crates/pure_math/src/pure_math/analysis/complex/mod.rs" = 4
 "crates/pure_math/src/pure_math/analysis/complex/surfaces.rs" = 2
@@ -318,7 +319,7 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/number_theory/mod.rs" = 3
 "crates/pure_math/src/pure_math/number_theory/partitions.rs" = 1
 "crates/pure_math/src/pure_math/number_theory/q_series.rs" = 1
-"crates/pure_math/src/pure_math/number_theory/ualbf.rs" = 10
+"crates/pure_math/src/pure_math/number_theory/ualbf.rs" = 8
 "crates/pure_math/src/pure_math/special_functions/mod.rs" = 4
 "crates/pure_math/src/pure_math/statistics/markov/ctmc/mod.rs" = 1
 "crates/pure_math/src/pure_math/statistics/markov/dtmc/mod.rs" = 1
@@ -333,7 +334,6 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/statistics/tda/core.rs" = 3
 "crates/pure_math/src/pure_math/tensor/metric.rs" = 1
 "crates/pure_math/src/pure_math/tensor/mod.rs" = 3
-"crates/pure_math/src/pure_math/tensor/types.rs" = 1
 "crates/pure_math/src/pure_math/vector_calculus/mod.rs" = 3
 "crates/pure_math/src/pure_math/vector_calculus/theorems.rs" = 2
 "crates/pure_math/src/theory_macro.rs" = 2

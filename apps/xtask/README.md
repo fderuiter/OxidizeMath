@@ -20,6 +20,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `check-profiles` | Verifies Cargo `[profile.release]` `overflow-checks = true` and rejects member overrides. | Active |
 | `check-staged-duplicates` | Checks for duplicated patterns in git staging (non-blocking helper). | Active |
 | `check-vulnerabilities` | Scans workspace dependencies for known OSV vulnerabilities. | Active |
+| `compile-papers` | Compiles all 28 academic papers with multi-pass `pdflatex` and `bibtex`, emits archive and GitHub Pages HTML catalogs (`index.html` and `pages-index.html`), and packages `papers-bundle.tar.gz` with `SHA256SUMS`. | Active |
 | `lint-all` | Runs the full PR verification suite (formatting, single-pass batched static & AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift, traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, markdown links, and OSV vulnerabilities). | Active |
 | `lint-staged` | Syncs the staged Git index into `<target_dir>/lint-staged-snapshot` and runs offline pre-commit gates (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged` (staged ADR verification, profiles, file lengths, docs, AST clones, traceability, entropy, policy audit), single `.github/` workflow linting, `.md` or deletion/rename link scans, and reverse-dependent + 17-web-crate host/`wasm32` Clippy with root config escalation. | Active |
 | `lint-workflows` | Validates GitHub Actions workflow definitions and permissions. | Active |
@@ -34,9 +35,8 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 
 | Command | Operational Role | Status |
 |---|---|---|
-| `compile-papers` | Compiles academic `.tex` manuscripts in `papers/` using Tectonic or TeXLive. | Maintenance |
 | `regenerate-baseline` | Regenerates `crates/unified_verification/api_baseline.json`. | Maintenance |
-| `setup` | Installs `wasm32-unknown-unknown`, checks prerequisites, builds and tests the workspace, and configures `.githooks/pre-commit`. | Maintenance |
+| `setup` | Installs `wasm32-unknown-unknown`, validates `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites, builds and tests the workspace, and configures `.githooks/pre-commit`. | Maintenance |
 
 ---
 
