@@ -271,7 +271,7 @@ impl SolitonCollisionTool {
         vec![
             ExportPrimitive::Polyline {
                 name: "Initial Wave u(x, 0)".into(),
-                points: init,
+                points: init.into(),
                 color: DARK_PALETTE.node_stroke,
                 stroke_width: 1.2,
                 closed: false,
@@ -279,7 +279,7 @@ impl SolitonCollisionTool {
             },
             ExportPrimitive::Polyline {
                 name: "Live Wave u(x, t)".into(),
-                points: live,
+                points: live.into(),
                 color: DARK_PALETTE.info,
                 stroke_width: 2.0,
                 closed: false,

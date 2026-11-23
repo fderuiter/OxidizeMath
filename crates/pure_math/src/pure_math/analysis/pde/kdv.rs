@@ -461,12 +461,12 @@ impl KdvSolver1D {
             StageSlot::C => &mut self.stage_c,
             StageSlot::D => &mut self.stage_d,
         };
-        for i in 0..n {
+        for (i, dst) in out.iter_mut().enumerate().take(n) {
             if self.dealias_mask[i] {
                 let factor = Complex::new(0.0, -3.0 * h * self.k_deriv[i]);
-                out[i] = factor * self.work_spec[i];
+                *dst = factor * self.work_spec[i];
             } else {
-                out[i] = Complex::new(0.0, 0.0);
+                *dst = Complex::new(0.0, 0.0);
             }
         }
     }

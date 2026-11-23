@@ -1,4 +1,4 @@
-# ADR 0045: Zero-Allocation 1D KdV / Cubic NLS Soliton and 2D Gross–Pitaevskii Superfluid Vortex Studios
+# ADR 20261123: Zero-Allocation 1D KdV / Cubic NLS Soliton and 2D Gross–Pitaevskii Superfluid Vortex Studios
 
 ## Status
 

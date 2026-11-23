@@ -260,7 +260,7 @@ impl SuperfluidVortexTool {
             .collect();
         let mut prims = vec![ExportPrimitive::Polyline {
             name: "Midplane Density |psi(x, 0)|^2".into(),
-            points: slice_pts,
+            points: slice_pts.into(),
             color: DARK_PALETTE.info,
             stroke_width: 2.0,
             closed: false,
@@ -277,7 +277,7 @@ impl SuperfluidVortexTool {
         if !pos_cores.is_empty() {
             prims.push(ExportPrimitive::Points {
                 name: "Positive +2pi Vortices".into(),
-                points: pos_cores,
+                points: pos_cores.into(),
                 color: DARK_PALETTE.success,
                 radius: 3.5,
             });
@@ -292,7 +292,7 @@ impl SuperfluidVortexTool {
         if !neg_cores.is_empty() {
             prims.push(ExportPrimitive::Points {
                 name: "Negative -2pi Antivortices".into(),
-                points: neg_cores,
+                points: neg_cores.into(),
                 color: DARK_PALETTE.warning,
                 radius: 3.5,
             });
