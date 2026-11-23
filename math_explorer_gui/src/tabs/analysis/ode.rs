@@ -3,6 +3,7 @@
 mod annotations;
 pub mod atlas;
 mod canvas;
+mod code_export;
 pub mod comparison;
 mod custom_spec;
 mod persistence;
