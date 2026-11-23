@@ -1,4 +1,4 @@
-# ADR 0045: Batched Plot Primitives, Interactive Grid Caching, and Doc-Attribute Traceability Guard
+# ADR 20261123: Batched Plot Primitives, Interactive Grid Caching, and Doc-Attribute Traceability Guard
 
 ## Status
 Accepted (extends [ADR 0011](0011-ast-citation-binding-and-cli-check-enforcement.md), [ADR 0012](0012-background-simulation-worker-offload.md), and [ADR 0044](0044-unify-build-time-traceability-engine.md))

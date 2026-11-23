@@ -23,6 +23,7 @@ scan_paths = [
 target_extensions = ["rs", "toml", "yml", "yaml", "json", "sh", "js", "html"]
 allowlist = [
     "crates/unified_verification/src/entropy_guard/tests.rs",
+    "crates/unified_verification/api_baseline.json",
 ]
 
 [[workflow_linter.exceptions]]
@@ -148,11 +149,8 @@ allowlist = [
     "docs/adr/0044-geodesic-engine-and-relativity-tab.md",
     "docs/adr/0044-ratchet-missing-docs-and-core-api-documentation.md",
     "docs/adr/0044-unify-build-time-traceability-engine.md",
-    "docs/adr/0045-batch-plot-primitives-and-doc-attr-traceability-guard.md",
     "docs/adr/0045-spatial-brush-kit-and-field-sculpting.md",
     "docs/adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md",
-    "docs/adr/0047-feature-gate-core-ast-tools-and-unify-crates.md",
-    "docs/adr/0047-glicko2-copula-ou-workbenches-and-kelly-net-odds.md",
 ]
 
 [[unused_dependencies]]

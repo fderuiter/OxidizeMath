@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn test_morphogenesis_runner_offload() {
     use crate::tabs::morphogenesis::{
-        MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
+        MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTool,
     };
     use math_explorer::biology::diffusion::FiniteDifference2D;
     use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
@@ -25,7 +25,7 @@ fn test_morphogenesis_runner_offload() {
         kinetics,
         diffusion,
     );
-    MorphogenesisTab::initialize_system(&mut system, width, height);
+    MorphogenesisTool::initialize_system(&mut system, width, height);
 
     let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
         a: 0.1,
