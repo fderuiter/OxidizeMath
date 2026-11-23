@@ -7,7 +7,7 @@ pub const BASE_SEED: u64 = 0x0001_D1CE_CAFE_BABE;
 /// A standard deterministic random number generator provider for the `oxidize` framework.
 /// This enforces the "No-Entropy" policy by relying exclusively on explicit seeds
 /// and preventing direct OS-level random calls via getrandom.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OxidizeRng {
     inner: ChaCha8Rng,
 }
