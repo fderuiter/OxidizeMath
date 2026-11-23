@@ -119,6 +119,12 @@ fn test_pure_math_custom_canvases_and_rasters_receive_tab_focus_and_labels() {
         &mut hyp_billiards,
         "Hyperbolic Geodesic Billiards Canvas",
     );
+
+    let mut fractran = crate::tabs::number_theory::fractran_machine::FractranMachineTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut fractran,
+        "FRACTRAN Minsky Counter-Machine Graph",
+    );
 }
 
 #[cfg(feature = "biology")]
