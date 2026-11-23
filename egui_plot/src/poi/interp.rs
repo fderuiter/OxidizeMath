@@ -101,6 +101,95 @@ fn finish_plateau_extremum(
     }
 }
 
+#[cold]
+fn record_segment_root(
+    pts: &[PlotPoint],
+    idx: usize,
+    n: usize,
+    p0: PlotPoint,
+    p1: PlotPoint,
+    roots: &mut Vec<f64>,
+) {
+    if p0.y == 0.0 {
+        roots.push(p0.x);
+    } else if (p0.y > 0.0) != (p1.y > 0.0) && p1.y != 0.0 {
+        if let Some(x) = solve_segment_crossing(pts, idx, 0.0) {
+            roots.push(x);
+        }
+    } else if idx + 2 == n && p1.y == 0.0 {
+        roots.push(p1.x);
+    }
+}
+
+#[cold]
+fn record_segment_y_int(
+    pts: &[PlotPoint],
+    idx: usize,
+    n: usize,
+    p0: PlotPoint,
+    p1: PlotPoint,
+    y_ints: &mut Vec<f64>,
+) {
+    if p0.x == 0.0 {
+        y_ints.push(p0.y);
+    } else if (p0.x > 0.0) != (p1.x > 0.0) && p1.x != 0.0 {
+        if let Some(y) = eval_segment_at_x(pts, idx, 0.0) {
+            y_ints.push(y);
+        }
+    } else if idx + 2 == n && p1.x == 0.0 {
+        y_ints.push(p1.y);
+    }
+}
+
+#[inline(always)]
+fn skip_flat_plateau(pts: &[PlotPoint], i: usize, sy: f64, p0_x: f64, want_y_ints: bool) -> usize {
+    let min_pos = f64::from_bits(1);
+    let (x_lo, x_hi) = if !want_y_ints {
+        (-f64::MAX, f64::MAX)
+    } else if p0_x > 0.0 {
+        (min_pos, f64::MAX)
+    } else if p0_x < 0.0 {
+        (-f64::MAX, -min_pos)
+    } else {
+        return 0;
+    };
+    let (chunks, _) = pts[i..].as_chunks::<8>();
+    let n_chunks = chunks.len();
+    let mut k = 0_usize;
+    while k < n_chunks {
+        let c = &chunks[k];
+        let ok = (c[0].y == sy)
+            & (c[0].x >= x_lo)
+            & (c[0].x <= x_hi)
+            & (c[1].y == sy)
+            & (c[1].x >= x_lo)
+            & (c[1].x <= x_hi)
+            & (c[2].y == sy)
+            & (c[2].x >= x_lo)
+            & (c[2].x <= x_hi)
+            & (c[3].y == sy)
+            & (c[3].x >= x_lo)
+            & (c[3].x <= x_hi)
+            & (c[4].y == sy)
+            & (c[4].x >= x_lo)
+            & (c[4].x <= x_hi)
+            & (c[5].y == sy)
+            & (c[5].x >= x_lo)
+            & (c[5].x <= x_hi)
+            & (c[6].y == sy)
+            & (c[6].x >= x_lo)
+            & (c[6].x <= x_hi)
+            & (c[7].y == sy)
+            & (c[7].x >= x_lo)
+            & (c[7].x <= x_hi);
+        if !ok {
+            break;
+        }
+        k += 1;
+    }
+    k * 8
+}
+
 pub(crate) struct SingleLineScan {
     pub(crate) roots: Vec<f64>,
     pub(crate) y_ints: Vec<f64>,
@@ -124,42 +213,43 @@ pub(crate) fn scan_single_line_all(
     }
     let dummy = PlotPoint { x: 0.0, y: 0.0 };
     let mut p0 = pts[0];
-    let mut p0_fin = (p0.x * 0.0 + p0.y * 0.0) == 0.0;
+    let mut p0_fin = (p0.x.abs() <= f64::MAX) & (p0.y.abs() <= f64::MAX);
     let (mut mode, mut prev, mut start, mut second, mut last) = (0u8, dummy, dummy, dummy, dummy);
     let mut i = 1;
     while i < n {
+        if mode == 2 {
+            let jump = skip_flat_plateau(pts, i, start.y, p0.x, want_y_ints);
+            if jump > 0 {
+                i += jump;
+                last = pts[i - 1];
+                p0 = last;
+                if i >= n {
+                    break;
+                }
+            }
+        }
         let idx = i - 1;
         let p1 = pts[i];
         i += 1;
-        let p1_fin = (p1.x * 0.0 + p1.y * 0.0) == 0.0;
-        if p0_fin && p1_fin {
-            if want_roots && p0.y != p1.y {
-                if p0.y == 0.0 {
-                    out.roots.push(p0.x);
-                } else if (p0.y > 0.0) != (p1.y > 0.0) && p1.y != 0.0 {
-                    if let Some(x) = solve_segment_crossing(pts, idx, 0.0) {
-                        out.roots.push(x);
-                    }
-                } else if idx + 2 == n && p1.y == 0.0 {
-                    out.roots.push(p1.x);
-                }
+        let p1_fin = (p1.x.abs() <= f64::MAX) & (p1.y.abs() <= f64::MAX);
+        if p0_fin & p1_fin {
+            if want_roots
+                & (p0.y != p1.y)
+                & (((p0.y <= 0.0) & (p1.y >= 0.0)) | ((p0.y >= 0.0) & (p1.y <= 0.0)))
+            {
+                record_segment_root(pts, idx, n, p0, p1, &mut out.roots);
             }
-            if want_y_ints && p0.x != p1.x {
-                if p0.x == 0.0 {
-                    out.y_ints.push(p0.y);
-                } else if (p0.x > 0.0) != (p1.x > 0.0) && p1.x != 0.0 {
-                    if let Some(y) = eval_segment_at_x(pts, idx, 0.0) {
-                        out.y_ints.push(y);
-                    }
-                } else if idx + 2 == n && p1.x == 0.0 {
-                    out.y_ints.push(p1.y);
-                }
+            if want_y_ints
+                & (p0.x != p1.x)
+                & (((p0.x <= 0.0) & (p1.x >= 0.0)) | ((p0.x >= 0.0) & (p1.x <= 0.0)))
+            {
+                record_segment_y_int(pts, idx, n, p0, p1, &mut out.y_ints);
             }
-            if mode != 0 && p1.y == start.y {
+            if (mode != 0) & (p1.y == start.y) {
                 if mode == 2 {
                     last = p1;
-                } else if (prev.x < start.x && start.x < p1.x)
-                    || (prev.x > start.x && start.x > p1.x)
+                } else if ((prev.x < start.x) & (start.x < p1.x))
+                    | ((prev.x > start.x) & (start.x > p1.x))
                 {
                     second = p1;
                     last = p1;
@@ -168,7 +258,10 @@ pub(crate) fn scan_single_line_all(
                     mode = 0;
                 }
             } else {
-                if mode != 0 {
+                if (mode != 0)
+                    & (((start.y > prev.y) & (start.y > p1.y))
+                        | ((start.y < prev.y) & (start.y < p1.y)))
+                {
                     finish_plateau_extremum(mode, prev, start, second, last, p1, &mut out.extrema);
                 }
                 if p1.y != p0.y {

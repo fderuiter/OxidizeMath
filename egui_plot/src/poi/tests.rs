@@ -408,3 +408,51 @@ fn static_frames_reuse_cached_pois_and_defer_export_primitive_materialization() 
         1
     );
 }
+
+#[test]
+fn plateau_chunk_skip_preserves_y_intercept_zero_roots_and_nan_breaks() {
+    let mut pts = Vec::new();
+    pts.push([-30.0, -2.0]);
+    for i in -29..=25 {
+        pts.push([i as f64, 4.0]);
+    }
+    pts.push([26.0, 0.0]);
+    for i in 27..=48 {
+        pts.push([i as f64, 0.0]);
+    }
+    pts.push([49.0, -3.0]);
+    for i in 50..=62 {
+        pts.push([i as f64, 2.0]);
+    }
+    pts.push([63.0, f64::NAN]);
+    for i in 64..=80 {
+        pts.push([i as f64, 2.0]);
+    }
+    pts.push([81.0, -1.0]);
+
+    let items: Vec<Box<dyn PlotItem>> = vec![Box::new(Line::new("ChunkEdgePlateau", pts))];
+    let tf = make_transform([-35.0, -5.0], [85.0, 6.0]);
+    let pois = detect_critical_points(&items, &tf);
+
+    let y_ints: Vec<[f64; 2]> = pois
+        .iter()
+        .filter(|p| p.kind == CriticalPointKind::YIntercept)
+        .map(|p| p.point)
+        .collect();
+    assert_eq!(y_ints, vec![[0.0, 4.0]]);
+
+    let maxes: Vec<[f64; 2]> = pois
+        .iter()
+        .filter(|p| p.kind == CriticalPointKind::LocalMax)
+        .map(|p| p.point)
+        .collect();
+    assert_eq!(maxes, vec![[-2.0, 4.0]]);
+
+    let roots: Vec<f64> = pois
+        .iter()
+        .filter(|p| p.kind == CriticalPointKind::Root)
+        .map(|p| p.point[0])
+        .collect();
+    assert_eq!(roots.len(), 4, "got roots: {roots:?}");
+    assert_eq!(roots[1], 48.0, "got roots: {roots:?}");
+}
