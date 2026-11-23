@@ -16,8 +16,13 @@ pub(super) enum CodeFrame<'a> {
 
 #[derive(Clone, Copy)]
 pub(super) enum CodeTarget<'a> {
-    Rust { allowed_args: Option<&'a [&'a str]> },
-    Python { ode_state_index: bool },
+    Rust {
+        allowed_args: Option<&'a [&'a str]>,
+    },
+    Python {
+        ode_state_index: bool,
+        allowed_args: Option<&'a [&'a str]>,
+    },
 }
 
 /// Formats a finite `f64` scalar using compact LaTeX integer/decimal notation.
@@ -67,6 +72,24 @@ impl Expr {
         emit_code_iterative(self, params, CodeTarget::Rust { allowed_args: None })
     }
 
+    /// Converts the AST to a standalone Rust `f64` expression over explicit bound `vars`.
+    pub fn to_rust_expr_with_vars(
+        &self,
+        vars: &[&str],
+        params: &HashMap<String, f64>,
+    ) -> Result<String, EvalError> {
+        for v in vars {
+            validate_rust_ident(v)?;
+        }
+        emit_code_iterative(
+            self,
+            params,
+            CodeTarget::Rust {
+                allowed_args: Some(vars),
+            },
+        )
+    }
+
     /// Converts the AST to a standalone public Rust `f64` function iteratively up to [`MAX_EVAL_DEPTH`].
     pub fn to_rust_fn(
         &self,
@@ -108,6 +131,26 @@ impl Expr {
             params,
             CodeTarget::Python {
                 ode_state_index: false,
+                allowed_args: None,
+            },
+        )
+    }
+
+    /// Converts the AST to a `numpy`-compatible Python expression over explicit bound `vars`.
+    pub fn to_python_expr_with_vars(
+        &self,
+        vars: &[&str],
+        params: &HashMap<String, f64>,
+    ) -> Result<String, EvalError> {
+        for v in vars {
+            validate_rust_ident(v)?;
+        }
+        emit_code_iterative(
+            self,
+            params,
+            CodeTarget::Python {
+                ode_state_index: false,
+                allowed_args: Some(vars),
             },
         )
     }
@@ -119,6 +162,7 @@ impl Expr {
             params,
             CodeTarget::Python {
                 ode_state_index: true,
+                allowed_args: None,
             },
         )
     }
@@ -303,9 +347,10 @@ fn write_code_symbol(
         }
         return write_code_scalar(val, parent_prec, target, out);
     }
-    if let CodeTarget::Rust {
-        allowed_args: Some(args),
-    } = target
+    let allowed_opt = match target {
+        CodeTarget::Rust { allowed_args } | CodeTarget::Python { allowed_args, .. } => allowed_args,
+    };
+    if let Some(args) = allowed_opt
         && let Some(&arg) = args.iter().find(|a| a.eq_ignore_ascii_case(name))
     {
         out.push_str(arg);
@@ -322,6 +367,10 @@ fn write_bound_code_symbol(
     match target {
         CodeTarget::Rust {
             allowed_args: Some(args),
+        }
+        | CodeTarget::Python {
+            ode_state_index: false,
+            allowed_args: Some(args),
         } => {
             if let Some(&arg) = args.iter().find(|a| a.eq_ignore_ascii_case(name)) {
                 out.push_str(arg);
@@ -334,7 +383,9 @@ fn write_bound_code_symbol(
             out.push_str(&name.to_ascii_lowercase());
             Ok(())
         }
-        CodeTarget::Python { ode_state_index } => {
+        CodeTarget::Python {
+            ode_state_index, ..
+        } => {
             if ode_state_index && name.eq_ignore_ascii_case("y") {
                 out.push_str("y[0]");
             } else {

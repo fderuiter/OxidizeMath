@@ -2,7 +2,7 @@
 
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
-use math_explorer::pure_math::analysis::integration::{Integrator, Trapezoidal};
+use math_explorer::pure_math::analysis::integration::{ClenshawCurtis, Integrator, Trapezoidal};
 use std::collections::BTreeMap;
 
 #[path = "riemann/ui.rs"]
@@ -14,7 +14,27 @@ mod code_export;
 pub(crate) const RIEMANN_X_MIN_BOUND: f64 = -50.0;
 pub(crate) const RIEMANN_X_MAX_BOUND: f64 = 50.0;
 pub(super) const RIEMANN_MIN_SPAN: f64 = 0.1;
+pub(crate) const DEFAULT_CC_TOLERANCE: f64 = 1e-8;
+pub(crate) const MIN_CC_TOLERANCE: f64 = 1e-13;
+pub(crate) const MAX_CC_TOLERANCE: f64 = 1e-2;
 const DEFAULT_RIEMANN_EXPR: &str = "clamp(sin(k * x), -0.5, 0.8)";
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub enum QuadratureMethod {
+    #[default]
+    Trapezoidal,
+    ClenshawCurtis,
+}
+
+impl QuadratureMethod {
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Trapezoidal => "Composite Trapezoidal",
+            Self::ClenshawCurtis => "Clenshaw-Curtis (Adaptive Chebyshev)",
+        }
+    }
+}
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) enum FunctionPreset {
@@ -52,10 +72,13 @@ impl FunctionPreset {
 
 pub struct RiemannIntegrationTool {
     pub(crate) preset: FunctionPreset,
+    pub(crate) quadrature_method: QuadratureMethod,
+    pub(crate) cc_tolerance: f64,
     pub(crate) min_x: f64,
     pub(crate) max_x: f64,
     pub(crate) steps: usize,
     pub(crate) result: f64,
+    pub(crate) error_estimate: f64,
     pub(crate) math_input: MathExpressionInputBar,
     cached_trapezoid_polygons: Vec<Vec<[f64; 2]>>,
     cached_true_curve: Vec<[f64; 2]>,
@@ -65,10 +88,13 @@ impl Default for RiemannIntegrationTool {
     fn default() -> Self {
         let mut tool = Self {
             preset: FunctionPreset::SinX,
+            quadrature_method: QuadratureMethod::Trapezoidal,
+            cc_tolerance: DEFAULT_CC_TOLERANCE,
             min_x: 0.0,
             max_x: std::f64::consts::PI,
             steps: 10,
             result: 0.0,
+            error_estimate: 0.0,
             math_input: MathExpressionInputBar::new(
                 "f(x)",
                 DEFAULT_RIEMANN_EXPR,
@@ -106,6 +132,32 @@ impl RiemannIntegrationTool {
         }
     }
 
+    fn compute_quadrature(&self, a: f64, b: f64) -> (f64, f64) {
+        if a >= b {
+            return (0.0, 0.0);
+        }
+        let f = |x: f64| self.evaluate_at(x);
+        match self.quadrature_method {
+            QuadratureMethod::Trapezoidal => {
+                let val_n = Trapezoidal::new(self.steps).integrate(f, a, b, 1e-6).value;
+                let val_2n = Trapezoidal::new(self.steps.saturating_mul(2))
+                    .integrate(f, a, b, 1e-6)
+                    .value;
+                let est = ((val_2n - val_n).abs() * (4.0 / 3.0)).max(0.0);
+                (val_n, est)
+            }
+            QuadratureMethod::ClenshawCurtis => {
+                let eps = if self.cc_tolerance.is_finite() {
+                    self.cc_tolerance.clamp(MIN_CC_TOLERANCE, MAX_CC_TOLERANCE)
+                } else {
+                    DEFAULT_CC_TOLERANCE
+                };
+                let res = ClenshawCurtis.integrate(f, a, b, eps);
+                (res.value, res.error.abs())
+            }
+        }
+    }
+
     pub(crate) fn recalculate(&mut self) {
         if !self.min_x.is_finite()
             || !self.max_x.is_finite()
@@ -113,31 +165,24 @@ impl RiemannIntegrationTool {
             || self.steps == 0
         {
             self.result = 0.0;
+            self.error_estimate = 0.0;
             self.cached_trapezoid_polygons.clear();
             self.cached_true_curve.clear();
             return;
         }
 
-        let clamped_min = self.min_x.clamp(-700.0, 80.0);
-        let clamped_max = self.max_x.clamp(-700.0, 80.0);
-        let integrator = Trapezoidal::new(self.steps);
-        let res = {
-            let f = |x: f64| self.evaluate_at(x);
-            if matches!(self.preset, FunctionPreset::EToX)
-                && (clamped_min != self.min_x || clamped_max != self.max_x)
-            {
-                if clamped_min < clamped_max {
-                    integrator
-                        .integrate(f, clamped_min, clamped_max, 1e-6)
-                        .value
-                } else {
-                    0.0
-                }
-            } else {
-                integrator.integrate(f, self.min_x, self.max_x, 1e-6).value
-            }
+        let (eval_min, eval_max) = if matches!(self.preset, FunctionPreset::EToX) {
+            (
+                self.min_x.clamp(-700.0, 80.0),
+                self.max_x.clamp(-700.0, 80.0),
+            )
+        } else {
+            (self.min_x, self.max_x)
         };
-        self.result = if res.is_finite() { res } else { 0.0 };
+
+        let (val, err) = self.compute_quadrature(eval_min, eval_max);
+        self.result = if val.is_finite() { val } else { 0.0 };
+        self.error_estimate = if err.is_finite() { err } else { 0.0 };
 
         let span = self.max_x - self.min_x;
         if !span.is_finite() || span <= 0.0 {
@@ -156,11 +201,27 @@ impl RiemannIntegrationTool {
             .filter(|pt| pt[0].is_finite() && pt[1].is_finite())
             .collect();
 
-        let dx = span / (self.steps as f64);
-        self.cached_trapezoid_polygons = (0..self.steps)
+        self.rebuild_partition_polygons(span);
+    }
+
+    fn rebuild_partition_polygons(&mut self, span: f64) {
+        let n = self.steps;
+        let mid = 0.5 * (self.min_x + self.max_x);
+        let half = 0.5 * span;
+        self.cached_trapezoid_polygons = (0..n)
             .filter_map(|i| {
-                let x0 = self.min_x + (i as f64) * dx;
-                let x1 = x0 + dx;
+                let (x0, x1) = match self.quadrature_method {
+                    QuadratureMethod::Trapezoidal => {
+                        let dx = span / (n as f64);
+                        let left = self.min_x + (i as f64) * dx;
+                        (left, left + dx)
+                    }
+                    QuadratureMethod::ClenshawCurtis => {
+                        let t0 = std::f64::consts::PI * (i as f64) / (n as f64);
+                        let t1 = std::f64::consts::PI * ((i + 1) as f64) / (n as f64);
+                        (mid - half * t0.cos(), mid - half * t1.cos())
+                    }
+                };
                 let y0 = self.evaluate_at(x0);
                 let y1 = self.evaluate_at(x1);
                 [x0, x1, y0, y1]
@@ -172,10 +233,29 @@ impl RiemannIntegrationTool {
     }
 }
 
+fn default_cc_tolerance() -> f64 {
+    DEFAULT_CC_TOLERANCE
+}
+
+fn is_default_quadrature(m: &QuadratureMethod) -> bool {
+    matches!(m, QuadratureMethod::Trapezoidal)
+}
+
+fn is_default_cc_tolerance(v: &f64) -> bool {
+    (*v - DEFAULT_CC_TOLERANCE).abs() < 1e-15
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RiemannState {
     preset: FunctionPreset,
+    #[serde(default, skip_serializing_if = "is_default_quadrature")]
+    quadrature_method: QuadratureMethod,
+    #[serde(
+        default = "default_cc_tolerance",
+        skip_serializing_if = "is_default_cc_tolerance"
+    )]
+    cc_tolerance: f64,
     min_x: f64,
     max_x: f64,
     steps: usize,
@@ -213,7 +293,10 @@ impl InteractiveTool for RiemannIntegrationTool {
             && (RIEMANN_X_MIN_BOUND..=RIEMANN_X_MAX_BOUND).contains(&self.max_x)
             && self.min_x < self.max_x
             && (1..=200).contains(&self.steps)
+            && self.cc_tolerance.is_finite()
+            && (MIN_CC_TOLERANCE..=MAX_CC_TOLERANCE).contains(&self.cc_tolerance)
             && self.result.is_finite()
+            && self.error_estimate.is_finite()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -227,6 +310,8 @@ impl InteractiveTool for RiemannIntegrationTool {
         };
         serde_json::to_string(&RiemannState {
             preset: self.preset,
+            quadrature_method: self.quadrature_method,
+            cc_tolerance: self.cc_tolerance,
             min_x: self.min_x,
             max_x: self.max_x,
             steps: self.steps,
@@ -245,10 +330,16 @@ impl InteractiveTool for RiemannIntegrationTool {
             || !(RIEMANN_X_MIN_BOUND..=RIEMANN_X_MAX_BOUND).contains(&s.max_x)
             || s.min_x >= s.max_x
             || !(1..=200).contains(&s.steps)
+            || !s.cc_tolerance.is_finite()
+            || !(MIN_CC_TOLERANCE..=MAX_CC_TOLERANCE).contains(&s.cc_tolerance)
         {
-            return Err("Riemann integration interval or partition count invalid".into());
+            return Err(
+                "Riemann integration interval, partition count, or tolerance invalid".into(),
+            );
         }
         self.preset = s.preset;
+        self.quadrature_method = s.quadrature_method;
+        self.cc_tolerance = s.cc_tolerance;
         self.min_x = s.min_x;
         self.max_x = s.max_x;
         self.steps = s.steps;
@@ -292,20 +383,22 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for RiemannIntegrationTool {
     fn theory_description(&self) -> String {
         format!(
-            "Numerical approximation of the definite integral $\\int_a^b f(x) dx$ for {} using composite trapezoidal rule: $T_n = \\sum_{{i=1}}^n \\frac{{f(x_{{i-1}}) + f(x_i)}}{{2}} \\Delta x$ with {} steps over interval [{:.2}, {:.2}].",
+            "Numerical approximation of the definite integral $\\int_a^b f(x) dx$ for {} using {} over interval [{:.2}, {:.2}] (estimated error {:.2e}).",
             self.preset.name(),
-            self.steps,
+            self.quadrature_method.name(),
             self.min_x,
-            self.max_x
+            self.max_x,
+            self.error_estimate
         )
     }
 
     fn phonetic_description(&self) -> String {
-        "Riemann integration and composite trapezoidal approximation theory".into()
+        "Riemann integration, composite trapezoidal, and Clenshaw-Curtis Chebyshev quadrature theory"
+            .into()
     }
 
     fn theory_citation(&self) -> String {
-        "Calculus, Vol. 1 (Apostol, 1967); Principles of Mathematical Analysis (Rudin, 1976)".into()
+        "Calculus, Vol. 1 (Apostol, 1967); Clenshaw & Curtis (1960), Numerische Mathematik".into()
     }
 
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
@@ -324,7 +417,7 @@ impl scientific_metadata::theory::TheoryDescribable for RiemannIntegrationTool {
         );
         map.insert(
             "Custom".into(),
-            "Composite quadrature over compiled user-defined formulas and parameter sliders".into(),
+            "Composite trapezoidal and Clenshaw-Curtis quadrature over compiled formulas".into(),
         );
         map
     }

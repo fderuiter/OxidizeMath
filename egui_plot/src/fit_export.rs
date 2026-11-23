@@ -36,6 +36,7 @@ fn dataset_slug(name: &str) -> String {
 
 fn required_coeff_count(fit_type: FitType) -> usize {
     match fit_type {
+        FitType::Custom => 0,
         FitType::Linear | FitType::Polynomial(_) => 1,
         FitType::Exponential | FitType::PowerLaw | FitType::Logarithmic => 2,
         FitType::Logistic => 3,
@@ -59,10 +60,18 @@ impl FitResult {
                 && !c.is_empty()
                 && c.iter().all(|v| v.is_finite())
         });
+        let custom_ok = self.fit_type != FitType::Custom
+            || self.custom_evaluator.as_ref().is_some_and(|h| {
+                self.coefficients.len() >= h.0.param_names().len()
+                    && h.0.export_latex(&self.coefficients).is_some()
+                    && h.0.export_rust_body(&self.coefficients).is_some()
+                    && h.0.export_python_body(&self.coefficients).is_some()
+            });
         self.coefficients.len() >= required_coeff_count(self.fit_type)
             && self.coefficients.iter().all(|c| c.is_finite())
             && self.r_squared.is_finite()
             && centered_ok
+            && custom_ok
     }
 
     fn validate_exportable(&self) -> Result<(), String> {
@@ -92,6 +101,15 @@ impl FitResult {
                     format!("y(x) &= {poly_latex}")
                 }
             }
+            FitType::Custom => format!(
+                "y(x) &= {}",
+                self.custom_evaluator
+                    .as_ref()
+                    .and_then(|h| h.0.export_latex(&self.coefficients))
+                    .ok_or_else(|| {
+                        "Custom FitResult evaluator does not provide LaTeX export.".to_string()
+                    })?
+            ),
             _ => format!(
                 "y(x) &= {}",
                 format_nonlinear_latex(self.fit_type, &self.coefficients)
@@ -114,6 +132,13 @@ impl FitResult {
             };
         let body = match self.fit_type {
             FitType::Linear | FitType::Polynomial(_) => format_poly_rust_body(self),
+            FitType::Custom => self
+                .custom_evaluator
+                .as_ref()
+                .and_then(|h| h.0.export_rust_body(&self.coefficients))
+                .ok_or_else(|| {
+                    "Custom FitResult evaluator does not provide Rust export.".to_string()
+                })?,
             _ => format_nonlinear_rust_body(self.fit_type, &self.coefficients),
         };
         Ok(format!(
@@ -138,6 +163,13 @@ impl FitResult {
             };
         let body = match self.fit_type {
             FitType::Linear | FitType::Polynomial(_) => format_poly_python_body(self),
+            FitType::Custom => self
+                .custom_evaluator
+                .as_ref()
+                .and_then(|h| h.0.export_python_body(&self.coefficients))
+                .ok_or_else(|| {
+                    "Custom FitResult evaluator does not provide Python export.".to_string()
+                })?,
             _ => format_nonlinear_python_body(self.fit_type, &self.coefficients),
         };
         Ok(format!(
@@ -268,7 +300,7 @@ fn format_nonlinear_latex(fit_type: FitType, c: &[f64]) -> String {
             format_tex_num(c[2]),
             format_tex_num(c[3])
         ),
-        FitType::Linear | FitType::Polynomial(_) => String::new(),
+        FitType::Linear | FitType::Polynomial(_) | FitType::Custom => String::new(),
     }
 }
 
@@ -302,7 +334,7 @@ fn format_nonlinear_rust_body(fit_type: FitType, c: &[f64]) -> String {
             format_rs_f64(c[0]),
             format_rs_f64(c[3])
         ),
-        FitType::Linear | FitType::Polynomial(_) => "    f64::NAN".to_string(),
+        FitType::Linear | FitType::Polynomial(_) | FitType::Custom => "    f64::NAN".to_string(),
     }
 }
 
@@ -336,7 +368,9 @@ fn format_nonlinear_python_body(fit_type: FitType, c: &[f64]) -> String {
             format_py_f64(c[0]),
             format_py_f64(c[3])
         ),
-        FitType::Linear | FitType::Polynomial(_) => "    return float(\"nan\")".to_string(),
+        FitType::Linear | FitType::Polynomial(_) | FitType::Custom => {
+            "    return float(\"nan\")".to_string()
+        }
     }
 }
 
@@ -623,6 +657,7 @@ mod tests {
             log_x: false,
             log_y: false,
             log_mode: false,
+            custom_evaluator: None,
             poly_centered: None,
         };
         assert!(!bad.has_finite_coefficients());

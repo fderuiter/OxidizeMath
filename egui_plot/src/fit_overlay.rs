@@ -1,4 +1,7 @@
-//! Hoverable fitted curve & residual stem series injection, badge rendering, and Fit Curve menus.
+//! Hoverable fitted curve & residual stem series injection, badge rendering, Fit Curve menus,
+//! and custom regression callback registration.
+
+use std::sync::{Arc, RwLock};
 
 use std::hash::{Hash, Hasher};
 
@@ -7,12 +10,72 @@ use egui::{Color32, Rect, RichText, Stroke, Ui, vec2};
 use crate::{
     AccessState,
     a11y::{self, AccessibleTooltipExt as _},
-    fit::{FitResult, FitType, fit_model_with_axes},
+    fit::{
+        CustomFitCallback, CustomFitEvaluator, FitResult, FitType, MAX_FIT_PARAMS,
+        fit_custom_evaluator, fit_model_with_axes,
+    },
     items::{Line, LineStyle, MarkerShape, PlotItem, Points},
     transform::PlotTransform,
 };
 
 pub(crate) type BaseDatasetTuple = (String, Vec<[f64; 2]>, Color32);
+
+static CUSTOM_FIT_CALLBACK: RwLock<Option<CustomFitCallback>> = RwLock::new(None);
+
+/// Registers an application-level custom formula compiler callback for `FitType::Custom` overlays.
+pub fn register_custom_fit_callback(
+    callback: impl Fn(&str) -> Result<Arc<dyn CustomFitEvaluator>, String> + Send + Sync + 'static,
+) {
+    if let Ok(mut slot) = CUSTOM_FIT_CALLBACK.write() {
+        *slot = Some(Arc::new(callback));
+    }
+}
+
+/// Returns `true` when an application-level custom regression callback has been registered.
+#[must_use]
+pub fn has_custom_fit_callback() -> bool {
+    CUSTOM_FIT_CALLBACK
+        .read()
+        .ok()
+        .is_some_and(|slot| slot.is_some())
+}
+
+/// Compiles `formula` via the registered callback and fits it to `points` using 6-parameter LM.
+pub fn fit_custom_with_registered_callback(
+    points: &[[f64; 2]],
+    formula: &str,
+    initial_seeds: &[f64],
+    dataset_name: &str,
+) -> Result<FitResult, String> {
+    let cb = CUSTOM_FIT_CALLBACK
+        .read()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .ok_or_else(|| "No custom regression callback registered".to_owned())?;
+    let evaluator = cb(formula)?;
+    fit_custom_evaluator(points, evaluator, formula, initial_seeds, dataset_name)
+}
+
+fn parse_seed_list(raw: &str) -> Result<Vec<f64>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for tok in trimmed.split([',', ';', ' ']).filter(|s| !s.is_empty()) {
+        let val: f64 = tok
+            .parse()
+            .map_err(|_| format!("Invalid initial seed '{tok}'"))?;
+        if !val.is_finite() {
+            return Err("Initial seeds must be finite".to_owned());
+        }
+        out.push(val);
+        if out.len() > MAX_FIT_PARAMS {
+            return Err(format!("At most {MAX_FIT_PARAMS} seeds are supported"));
+        }
+    }
+    Ok(out)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct FitCacheKey {
@@ -22,6 +85,7 @@ pub(crate) struct FitCacheKey {
     pub(crate) log_y: bool,
     pub(crate) log_mode: bool,
     pub(crate) dataset_hash: u64,
+    pub(crate) custom_hash: u64,
 }
 
 fn hash_fit_dataset(name: &str, points: &[[f64; 2]]) -> u64 {
@@ -32,6 +96,17 @@ fn hash_fit_dataset(name: &str, points: &[[f64; 2]]) -> u64 {
         pt[0].to_bits().hash(&mut hasher);
         pt[1].to_bits().hash(&mut hasher);
     }
+    hasher.finish()
+}
+
+fn hash_custom_fit_config(access_state: &AccessState, fit_type: FitType) -> u64 {
+    if fit_type != FitType::Custom {
+        return 0;
+    }
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    access_state.custom_fit_formula.hash(&mut hasher);
+    access_state.custom_fit_seeds_text.hash(&mut hasher);
+    has_custom_fit_callback().hash(&mut hasher);
     hasher.finish()
 }
 
@@ -46,18 +121,7 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
     log_x: bool,
     log_y: bool,
 ) -> Option<(FitResult, Color32)> {
-    let valid_first = base_datasets
-        .iter()
-        .enumerate()
-        .find(|(_, (_, pts, _))| pts.len() >= 2)
-        .map(|(idx, _)| idx);
-    if let Some(first_idx) = valid_first
-        && base_datasets
-            .get(access_state.fit_dataset_idx)
-            .is_none_or(|(_, pts, _)| pts.len() < 2)
-    {
-        access_state.fit_dataset_idx = first_idx;
-    }
+    select_valid_dataset_index(base_datasets, access_state);
 
     let fit_type = access_state.fit_model?;
     if !access_state.show_fit_overlay {
@@ -72,13 +136,22 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
         log_y,
         log_mode,
         dataset_hash: hash_fit_dataset(ds_name, ds_pts),
+        custom_hash: hash_custom_fit_config(access_state, fit_type),
     };
     let fit_res = if let Some((ref prev_key, ref prev_res)) = access_state.cached_fit
         && *prev_key == cache_key
     {
         prev_res.clone()?
     } else {
-        let solved = fit_model_with_axes(ds_pts, fit_type, ds_name, log_x, log_y, log_mode);
+        let solved = resolve_active_fit(
+            ds_pts,
+            ds_name,
+            fit_type,
+            access_state,
+            log_x,
+            log_y,
+            log_mode,
+        );
         access_state.cached_fit = Some((cache_key, solved.clone()));
         solved?
     };
@@ -88,8 +161,82 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
         *ds_color
     };
 
+    inject_fit_series(
+        ui,
+        items,
+        ds_name,
+        access_state,
+        &fit_res,
+        transform,
+        accent,
+    );
+    Some((fit_res, accent))
+}
+
+fn select_valid_dataset_index(base_datasets: &[BaseDatasetTuple], access_state: &mut AccessState) {
+    let valid_first = base_datasets
+        .iter()
+        .enumerate()
+        .find(|(_, (_, pts, _))| pts.len() >= 2)
+        .map(|(idx, _)| idx);
+    if let Some(first_idx) = valid_first
+        && base_datasets
+            .get(access_state.fit_dataset_idx)
+            .is_none_or(|(_, pts, _)| pts.len() < 2)
+    {
+        access_state.fit_dataset_idx = first_idx;
+    }
+}
+
+fn resolve_active_fit(
+    ds_pts: &[[f64; 2]],
+    ds_name: &str,
+    fit_type: FitType,
+    access_state: &mut AccessState,
+    log_x: bool,
+    log_y: bool,
+    log_mode: bool,
+) -> Option<FitResult> {
+    if fit_type == FitType::Custom {
+        let seeds = match parse_seed_list(&access_state.custom_fit_seeds_text) {
+            Ok(s) => s,
+            Err(err) => {
+                access_state.custom_fit_error = Some(err);
+                return None;
+            }
+        };
+        match fit_custom_with_registered_callback(
+            ds_pts,
+            &access_state.custom_fit_formula,
+            &seeds,
+            ds_name,
+        ) {
+            Ok(res) => {
+                access_state.custom_fit_error = None;
+                Some(res)
+            }
+            Err(err) => {
+                access_state.custom_fit_error = Some(err);
+                None
+            }
+        }
+    } else {
+        access_state.custom_fit_error = None;
+        fit_model_with_axes(ds_pts, fit_type, ds_name, log_x, log_y, log_mode)
+    }
+}
+
+fn inject_fit_series<'a>(
+    ui: &Ui,
+    items: &mut Vec<Box<dyn PlotItem + 'a>>,
+    ds_name: &str,
+    access_state: &AccessState,
+    fit_res: &FitResult,
+    transform: &PlotTransform,
+    accent: Color32,
+) {
     let disp_name = display_dataset_name(ds_name, access_state.fit_dataset_idx);
-    let curve_pts = sample_fit_curve(&fit_res, transform);
+    let curve_pts = sample_fit_curve(fit_res, transform);
     if curve_pts.len() >= 2 {
         let line_name = format!("Fit ({}): {disp_name}", fit_res.fit_type.short_label());
         let line = Line::new(line_name, curve_pts)
@@ -107,7 +254,6 @@ pub(crate) fn compute_and_inject_fit_items<'a>(
             .stems(0.0_f32);
         items.push(Box::new(stems));
     }
-    Some((fit_res, accent))
 }
 
 fn sample_fit_curve(fit_res: &FitResult, transform: &PlotTransform) -> Vec<[f64; 2]> {
@@ -169,7 +315,7 @@ pub(crate) fn paint_fit_formula_badge(
     import_toast: &mut Option<(String, bool)>,
 ) {
     let badge_pos = plot_rect.min + vec2(12.0_f32, 36.0_f32);
-    let badge_width = 280.0_f32.min((plot_rect.width() - 24.0_f32).max(160.0_f32));
+    let badge_width = 296.0_f32.min((plot_rect.width() - 24.0_f32).max(160.0_f32));
     let badge_height = 126.0_f32.min((plot_rect.height() - 44.0_f32).max(65.0_f32));
     let badge_rect = Rect::from_min_size(badge_pos, vec2(badge_width, badge_height));
     ui.scope_builder(egui::UiBuilder::new().max_rect(badge_rect), |ui| {
@@ -248,6 +394,7 @@ pub(crate) fn render_fit_curve_menu(
             ui.close();
         }
     }
+    render_custom_fit_controls(ui, access_state);
     ui.separator();
     ui.checkbox(&mut access_state.show_fit_residuals, "Show Residuals");
     let log_supported = access_state
@@ -262,6 +409,38 @@ pub(crate) fn render_fit_curve_menu(
         if ui.button("Clear Fit Overlay").clicked() {
             access_state.fit_model = None;
             ui.close();
+        }
+    }
+}
+
+fn render_custom_fit_controls(ui: &mut Ui, access_state: &mut AccessState) {
+    if !has_custom_fit_callback() {
+        return;
+    }
+    let selected = access_state.fit_model == Some(FitType::Custom);
+    if ui
+        .selectable_label(selected, FitType::Custom.label())
+        .clicked()
+    {
+        access_state.fit_model = Some(FitType::Custom);
+        access_state.show_fit_overlay = true;
+    }
+    if access_state.fit_model == Some(FitType::Custom) {
+        ui.add_space(4.0);
+        ui.label(RichText::new("Formula y = f(x) (up to 6 params):").small());
+        ui.add(
+            egui::TextEdit::singleline(&mut access_state.custom_fit_formula)
+                .desired_width(210.0)
+                .font(egui::TextStyle::Monospace),
+        );
+        ui.label(RichText::new("Initial Seeds (optional CSV):").small());
+        ui.add(
+            egui::TextEdit::singleline(&mut access_state.custom_fit_seeds_text)
+                .hint_text("e.g. 1.0, 0.5, 0.0")
+                .desired_width(210.0),
+        );
+        if let Some(ref err) = access_state.custom_fit_error {
+            ui.colored_label(ui.visuals().error_fg_color, err);
         }
     }
 }

@@ -5441,10 +5441,16 @@
       "signature": "impl Expr { pub fn to_python_expr (& self , params : & HashMap < String , f64 >) -> Result < String , EvalError > }"
     },
     {
+      "signature": "impl Expr { pub fn to_python_expr_with_vars (& self , vars : & [& str] , params : & HashMap < String , f64 > ,) -> Result < String , EvalError > }"
+    },
+    {
       "signature": "impl Expr { pub fn to_python_ode_rhs (& self , params : & HashMap < String , f64 >) -> Result < String , EvalError > }"
     },
     {
       "signature": "impl Expr { pub fn to_rust_expr (& self , params : & HashMap < String , f64 >) -> Result < String , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_rust_expr_with_vars (& self , vars : & [& str] , params : & HashMap < String , f64 > ,) -> Result < String , EvalError > }"
     },
     {
       "signature": "impl Expr { pub fn to_rust_fn (& self , fn_name : & str , args : & [& str] , params : & HashMap < String , f64 > ,) -> Result < String , EvalError > }"
