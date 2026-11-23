@@ -1,7 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoint};
+use egui_plot::{Line, Plot, PlotPoint, PlotPoints};
+use std::sync::Arc;
 
 use super::SirTool;
 use crate::reflective_ui::render_copyable_metric;
@@ -168,9 +169,27 @@ pub(super) fn render_simulation_plot(
         .legend(egui_plot::Legend::default());
 
     plot.show(ui, |plot_ui| {
-        plot_ui.line(Line::new("Susceptible", &tool.s_points[..]).color(palette.axis_z));
-        plot_ui.line(Line::new("Infected", &tool.i_points[..]).color(palette.axis_x));
-        plot_ui.line(Line::new("Recovered", &tool.r_points[..]).color(palette.axis_y));
+        plot_ui.line(
+            Line::new(
+                "Susceptible",
+                PlotPoints::from_shared(Arc::clone(&tool.display_s)),
+            )
+            .color(palette.axis_z),
+        );
+        plot_ui.line(
+            Line::new(
+                "Infected",
+                PlotPoints::from_shared(Arc::clone(&tool.display_i)),
+            )
+            .color(palette.axis_x),
+        );
+        plot_ui.line(
+            Line::new(
+                "Recovered",
+                PlotPoints::from_shared(Arc::clone(&tool.display_r)),
+            )
+            .color(palette.axis_y),
+        );
         if tool.show_network_overlay {
             if let Some(trace) = net_trace {
                 render_empirical_overlay_lines(plot_ui, &palette, tool.n, trace);

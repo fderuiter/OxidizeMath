@@ -236,13 +236,23 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
             OdePreset::Custom => "Custom user-defined ordinary differential equation: y' = f(t, y)".into(),
         }
     }
-    fn phonetic_description(&self) -> String { "Ordinary differential equations theory".into() }
+    fn phonetic_description(&self) -> String {
+        "Ordinary differential equations theory".into()
+    }
     fn theory_citation(&self) -> String {
         match self.preset {
-            OdePreset::Exponential => "Differential Equations and Dynamical Systems (Perko, 2001)".into(),
-            OdePreset::HarmonicOscillator => "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into(),
-            OdePreset::LogisticGrowth => "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into(),
-            OdePreset::Custom => "Differential Equations and Dynamical Systems (Perko, 2001)".into(),
+            OdePreset::Exponential => {
+                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
+            }
+            OdePreset::HarmonicOscillator => {
+                "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into()
+            }
+            OdePreset::LogisticGrowth => {
+                "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into()
+            }
+            OdePreset::Custom => {
+                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
+            }
         }
     }
     fn theory_latex_equation(&self) -> Option<String> {
@@ -256,10 +266,22 @@ impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("Exponential".into(), "First-order linear ODE representing exponential growth or decay".into());
-        map.insert("Harmonic Oscillator".into(), "Second-order linear ODE representing simple harmonic motion".into());
-        map.insert("Logistic Growth".into(), "Nonlinear first-order ODE modeling population growth with carrying capacity".into());
-        map.insert("Custom".into(), "Custom user-defined ordinary differential equation".into());
+        map.insert(
+            "Exponential".into(),
+            "First-order linear ODE representing exponential growth or decay".into(),
+        );
+        map.insert(
+            "Harmonic Oscillator".into(),
+            "Second-order linear ODE representing simple harmonic motion".into(),
+        );
+        map.insert(
+            "Logistic Growth".into(),
+            "Nonlinear first-order ODE modeling population growth with carrying capacity".into(),
+        );
+        map.insert(
+            "Custom".into(),
+            "Custom user-defined ordinary differential equation".into(),
+        );
         map
     }
 }
