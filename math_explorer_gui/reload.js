@@ -569,6 +569,22 @@
         return getFailedResourceStatus(urlHint) >= 400;
     }
 
+    const STREAM_TRUNCATION_PATTERN =
+        /stream truncated|truncated stream|stream interrupted|stream closed early|ended early|empty response|0 bytes received|unexpected eof|unexpected end of|premature eof|incomplete download|incomplete transfer|err_incomplete_chunked_encoding|err_content_decoding_failed|err_http2_protocol_error|failed to read from a readablestream|buffersource argument is empty|fell off end|extends past end of the module/i;
+
+    const FIREFOX_INTERNAL_ERROR_PATTERN =
+        /internalerror|out of memory|too much recursion|allocation size overflow/i;
+
+    function isFirefoxInternalError(reason, text) {
+        if (typeof InternalError !== 'undefined' && reason instanceof InternalError) {
+            return true;
+        }
+        if (reason && typeof reason === 'object' && reason.name === 'InternalError') {
+            return true;
+        }
+        return FIREFOX_INTERNAL_ERROR_PATTERN.test(text);
+    }
+
     function classifyError(reason, resourceUrl) {
         const text = formatReason(reason);
         if (/timeout|timed out|stalled/i.test(text)) {
@@ -578,6 +594,7 @@
             return 'network';
         }
         if (
+            STREAM_TRUNCATION_PATTERN.test(text) ||
             /http\s+[45]\d\d|status code is not ok|failed to fetch|networkerror|network error|load failed|error loading dynamically imported module|importing a module script failed|failed to load module|dynamically imported module|aborted|aborterror|err_aborted|err_failed|err_connection|err_internet|err_content_length_mismatch|failed to load required startup|failed to load startup/i.test(
                 text
             )
@@ -593,6 +610,7 @@
             return 'isolation';
         }
         if (
+            isFirefoxInternalError(reason, text) ||
             (typeof WebAssembly !== 'undefined' &&
                 (reason instanceof WebAssembly.CompileError ||
                     reason instanceof WebAssembly.LinkError ||
@@ -601,7 +619,7 @@
             reason instanceof RangeError ||
             reason instanceof ReferenceError ||
             reason instanceof TypeError ||
-            /compileerror|linkerror|runtimeerror|rangeerror|referenceerror|typeerror|unreachable|out of bounds|call stack|magic word|webassembly\.instantiate|webassembly\.compile|wasm|integrity|content security policy/i.test(
+            /compileerror|linkerror|runtimeerror|internalerror|out of memory|too much recursion|allocation size overflow|rangeerror|referenceerror|typeerror|unreachable|out of bounds|call stack|magic word|magic number|webassembly\.instantiate|webassembly\.compile|wasm|integrity|content security policy/i.test(
                 text
             )
         ) {
