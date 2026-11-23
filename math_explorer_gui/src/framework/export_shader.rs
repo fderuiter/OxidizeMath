@@ -5,44 +5,13 @@
 use super::export_ui::export_action_button;
 use super::*;
 use eframe::egui;
-/// Compiles a complex [`MathExpressionInputBar`] into GLSL `const vec2` parameter declarations
-/// and a `vec2` expression restricted to `base_vars` plus synthesized free parameters.
-#[cfg(any(feature = "physics", feature = "pure_math"))]
-pub(crate) fn compile_complex_glsl_bar(
-    bar: &MathExpressionInputBar,
-    base_vars: &[&str],
-    reserved: &[&str],
-) -> Result<(String, String), String> {
-    use math_commons::ast::format_glsl_float;
-    use std::fmt::Write;
 
-    let invalid_err = || {
-        bar.error_message()
-            .unwrap_or_else(|| "Custom complex expression is invalid".to_string())
-    };
-    let expr = bar.expr().ok_or_else(invalid_err)?;
-    let compiled = bar.compiled().ok_or_else(invalid_err)?;
-    let param_names = compiled.param_names();
-    let param_vals = bar.param_slice();
-
-    let mut allowed_vars = Vec::with_capacity(base_vars.len() + param_names.len());
-    allowed_vars.extend_from_slice(base_vars);
-    let mut param_decls = String::new();
-    for (idx, name) in param_names.iter().enumerate() {
-        if reserved.contains(&name.as_str()) {
-            return Err(format!(
-                "Parameter '{name}' collides with a reserved GLSL shader symbol"
-            ));
-        }
-        let val = param_vals.get(idx).copied().unwrap_or(1.0);
-        let lit = format_glsl_float(val).map_err(|e| e.to_string())?;
-        writeln!(param_decls, "    const vec2 {name} = vec2({lit}, 0.0);").unwrap();
-        allowed_vars.push(name.as_str());
+fn format_clipboard_error(err: &str) -> String {
+    if err.contains("Export CSV") {
+        format!("Clipboard unavailable: {err}")
+    } else {
+        format!("Clipboard unavailable ({err}). Please use Export CSV to save to disk.")
     }
-    let expr_glsl = expr
-        .to_glsl_complex_with_vars(&allowed_vars)
-        .map_err(|e| e.to_string())?;
-    Ok((param_decls, expr_glsl))
 }
 
 impl SimulationFramework {
@@ -159,72 +128,76 @@ impl SimulationFramework {
         }
     }
 
-    pub(super) fn complete_file_export(
+    pub(super) fn dispatch_clipboard_text_request(
         &mut self,
         format: ExportFormat,
-        filename: &str,
-        bytes: &[u8],
-        text_content: Option<String>,
-        ok_label: &str,
-        err_prefix: &str,
+        content: String,
+        ctx: Option<&egui::Context>,
     ) {
-        match self.persist_export_bytes(format, filename, bytes, text_content) {
-            Ok(()) => self.set_export_status(
-                ExportStatusSeverity::Success,
-                format!("{ok_label} saved successfully."),
-            ),
+        let label = format.label();
+        let noun = format.clipboard_item_noun();
+        let res = if let Some(ref writer) = self.export_queue.custom_clipboard_writer {
+            writer(&content)
+        } else {
+            self.write_system_text_clipboard(label, noun, &content, ctx)
+        };
+        match res {
+            Ok(()) => {
+                self.export_queue.last_exported_content = Some(content.clone());
+                self.export_queue.last_clipboard_content = Some(content);
+                let msg = if cfg!(target_arch = "wasm32")
+                    && self.export_queue.custom_clipboard_writer.is_none()
+                {
+                    format!("Copying {label} {noun} to clipboard...")
+                } else {
+                    format!("Copied {label} {noun} to clipboard!")
+                };
+                self.set_export_status(ExportStatusSeverity::Success, msg);
+            }
             Err(err) => {
-                self.set_export_status(ExportStatusSeverity::Error, format!("{err_prefix}: {err}"))
+                self.set_export_status(ExportStatusSeverity::Error, format_clipboard_error(&err));
             }
         }
     }
 
-    pub(super) fn build_export_filename(tool_name: &str, format: ExportFormat) -> String {
-        let slug: String = tool_name
-            .to_lowercase()
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-            .collect();
-        let trimmed = slug.trim_matches('_');
-        let base = if trimmed.is_empty() {
-            "simulation"
-        } else {
-            trimmed
-        };
-        format!("{base}_{}.{}", format.stem_suffix(), format.extension())
-    }
-
-    fn persist_export_bytes(
-        &mut self,
-        format: ExportFormat,
-        filename: &str,
-        bytes: &[u8],
-        text_content: Option<String>,
+    fn write_system_text_clipboard(
+        &self,
+        label: &'static str,
+        noun: &'static str,
+        content: &str,
+        ctx: Option<&egui::Context>,
     ) -> Result<(), String> {
-        if bytes.is_empty() {
-            return Err("Refusing to write empty export payload".to_string());
+        #[cfg(test)]
+        {
+            let _ = (label, noun, content, ctx);
+            Ok(())
         }
-        self.export_queue.last_exported_filename = Some(filename.to_string());
-        self.export_queue.last_exported_content = text_content;
-        self.export_queue.last_exported_bytes = Some(bytes.to_vec());
-
-        if let Some(ref dir) = self.export_queue.destination_dir {
-            let path = dir.join(filename);
-            std::fs::write(&path, bytes)
-                .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
-        } else if let Some(ref writer) = self.export_queue.custom_writer {
-            writer(filename, bytes);
-        } else {
-            #[cfg(not(test))]
-            egui_plot::export::save_file_dialog(
-                filename,
-                bytes,
-                format.filter_name(),
-                &[format.extension()],
-            );
-            #[cfg(test)]
-            let _ = format;
+        #[cfg(not(test))]
+        {
+            if let Some(egui_ctx) = ctx.cloned() {
+                let status_id =
+                    egui::Id::new(("framework_action_bar_clipboard_status", self.instance_id));
+                egui_plot::export::copy_text_to_clipboard_with_callback(content, move |cb| {
+                    egui_ctx.data_mut(|d| {
+                        let status = match cb {
+                            Ok(()) => ActionBarExportStatus {
+                                message: format!("Copied {label} {noun} to clipboard!"),
+                                is_error: false,
+                                expires_at_time: None,
+                            },
+                            Err(err) => ActionBarExportStatus {
+                                message: format_clipboard_error(&err),
+                                is_error: true,
+                                expires_at_time: None,
+                            },
+                        };
+                        d.insert_temp(status_id, status);
+                    });
+                    egui_ctx.request_repaint();
+                })
+            } else {
+                egui_plot::export::copy_text_to_clipboard(content)
+            }
         }
-        Ok(())
     }
 }

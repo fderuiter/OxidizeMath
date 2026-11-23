@@ -47,8 +47,6 @@ pub use clamp::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
-#[cfg(any(feature = "physics", feature = "pure_math"))]
-pub(crate) use export_shader::compile_complex_glsl_bar;
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use math_input::*;

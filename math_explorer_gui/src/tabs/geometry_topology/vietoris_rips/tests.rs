@@ -224,13 +224,9 @@ fn test_interval_csv_json_exports_and_svg_png_figure_primitives() {
         let svg = export_primitives_svg(&prims, &opts).unwrap();
         assert!(svg.contains("<svg") && svg.len() > 250);
         let img = render_primitives_image(&prims, &opts).unwrap();
+        assert!(img.width() > 0 && img.height() > 0 && img.pixels.len() == img.width() * img.height());
         let png = color32_image_to_png(&img).unwrap();
-        assert!(
-            png.starts_with(b"\x89PNG\r\n\x1a\n")
-                && img.width() > 0
-                && img.height() > 0
-                && img.pixels.len() == img.width() * img.height()
-        );
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
 }
 

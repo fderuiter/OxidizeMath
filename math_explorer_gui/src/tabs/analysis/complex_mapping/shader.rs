@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{ComplexMappingTool, MappingFunction, COMPLEX_COORD_MAX, COMPLEX_COORD_MIN};
+use super::{COMPLEX_COORD_MAX, COMPLEX_COORD_MIN, ComplexMappingTool, MappingFunction};
 use crate::framework::{InteractiveTool, ShaderDialect};
-use math_commons::ast::{format_glsl_float, GLSL_COMPLEX_HELPERS};
+use math_commons::ast::{GLSL_COMPLEX_HELPERS, format_glsl_float};
 use math_commons::math_kernel::glsl_colormap::{
     glsl_cyclic_cosine_palette_fn, glsl_ensure_dark_canvas_contrast_fn,
 };
@@ -64,7 +64,34 @@ impl ComplexMappingTool {
     }
 
     fn compile_custom_mapping_glsl(&self) -> Result<(String, String), String> {
-        crate::framework::compile_complex_glsl_bar(&self.math_input, &["z"], SHADER_RESERVED_IDENTS)
+        let invalid_err = || {
+            self.math_input
+                .error_message()
+                .unwrap_or_else(|| "Custom complex expression is invalid".to_string())
+        };
+        let expr = self.math_input.expr().ok_or_else(invalid_err)?;
+        let compiled = self.math_input.compiled().ok_or_else(invalid_err)?;
+        let param_names = compiled.param_names();
+        let param_vals = self.math_input.param_slice();
+
+        let mut allowed_vars = Vec::with_capacity(1 + param_names.len());
+        allowed_vars.push("z");
+        let mut param_decls = String::new();
+        for (idx, name) in param_names.iter().enumerate() {
+            if SHADER_RESERVED_IDENTS.contains(&name.as_str()) {
+                return Err(format!(
+                    "Parameter '{name}' collides with a reserved GLSL shader symbol"
+                ));
+            }
+            let val = param_vals.get(idx).copied().unwrap_or(1.0);
+            let lit = format_glsl_float(val).map_err(|e| e.to_string())?;
+            writeln!(param_decls, "    const vec2 {name} = vec2({lit}, 0.0);").unwrap();
+            allowed_vars.push(name.as_str());
+        }
+        let expr_glsl = expr
+            .to_glsl_complex_with_vars(&allowed_vars)
+            .map_err(|e| e.to_string())?;
+        Ok((param_decls, expr_glsl))
     }
 
     pub(super) fn build_glsl_shader(&self, dialect: ShaderDialect) -> Result<String, String> {
