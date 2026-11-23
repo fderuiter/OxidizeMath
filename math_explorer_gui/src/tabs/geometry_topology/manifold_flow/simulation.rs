@@ -283,15 +283,15 @@ impl ManifoldFlowStudio {
         let dyn_surf = DynSurface(surface);
         let sandbox_uv = self.custom_sandbox.uv_domain_for(self.surface_type);
         let (u_range, v_range, _, _) = flow_uv_domain_and_closure(self.surface_type, sandbox_uv);
-        let mut solver = HeatEquationSolver {
-            surface: &dyn_surf,
-            alpha: self.alpha,
-            u_grid: std::mem::take(&mut self.temp_grid),
-            next_grid: std::mem::take(&mut self.temp_scratch),
-            grid_res: (self.u_res, self.v_res),
-            range_u: u_range,
-            range_v: v_range,
-        };
+        let mut solver = HeatEquationSolver::from_buffers(
+            &dyn_surf,
+            self.alpha,
+            u_range,
+            v_range,
+            (self.u_res, self.v_res),
+            std::mem::take(&mut self.temp_grid),
+            std::mem::take(&mut self.temp_scratch),
+        );
         self.cfl_dt = solver.recommended_cfl_dt();
         self.effective_dt = self.dt.min(self.cfl_dt);
         for _ in 0..count {

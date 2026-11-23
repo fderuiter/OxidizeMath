@@ -8,6 +8,9 @@ use std::collections::BTreeMap;
 #[path = "riemann/ui.rs"]
 mod ui;
 
+#[path = "riemann_code_export.rs"]
+mod code_export;
+
 pub(crate) const RIEMANN_X_MIN_BOUND: f64 = -50.0;
 pub(crate) const RIEMANN_X_MAX_BOUND: f64 = 50.0;
 pub(super) const RIEMANN_MIN_SPAN: f64 = 0.1;
@@ -273,6 +276,14 @@ impl InteractiveTool for RiemannIntegrationTool {
 
     fn domain(&self) -> &'static str {
         "analysis"
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot_with_code()
+    }
+
+    fn export_code_artifact(&self) -> Option<crate::framework::CodeArtifact> {
+        self.build_code_artifact()
     }
 
     fn has_finite_parameters(&self) -> bool {

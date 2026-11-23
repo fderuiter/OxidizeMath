@@ -2,11 +2,12 @@
 //! `HeatEquationSolver`, and curvilinear `helmholtz_decompose`.
 
 use nalgebra::{Point3, Vector3};
+use pure_math::pure_math::differential_geometry::buckled_flow::SurfaceTopology;
 use pure_math::pure_math::differential_geometry::heat_equation::HeatEquationSolver;
 use pure_math::pure_math::differential_geometry::mean_curvature_flow::{
     DiscreteSurface, MeanCurvatureFlow,
 };
-use pure_math::pure_math::differential_geometry::surface::Torus;
+use pure_math::pure_math::differential_geometry::surface::{KleinBottle, Sphere, Torus};
 use pure_math::pure_math::vector_calculus::coordinates::{Cylindrical, Spherical};
 use pure_math::pure_math::vector_calculus::theorems::{
     Domain, HelmholtzWorkspace, helmholtz_decompose,
@@ -103,4 +104,61 @@ fn test_helmholtz_decompose_zero_alloc_curvilinear() {
     });
     assert!(metrics.function_calls > 0);
     assert!(e1 < 1e-12 && e2 < 1e-12);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_heat_equation_topologies_zero_alloc_steps() {
+    let torus = Torus {
+        major_radius: 2.5,
+        minor_radius: 0.75,
+    };
+    let mut torus_solver = HeatEquationSolver::new(
+        &torus,
+        0.04,
+        (0.0, 2.0 * PI),
+        (0.0, 2.0 * PI),
+        (12, 12),
+        |u, v| 1.0 + 0.5 * u.cos() * v.sin(),
+    )
+    .with_topology(SurfaceTopology::PeriodicTorus);
+
+    let sphere = Sphere { radius: 1.5 };
+    let mut sphere_solver = HeatEquationSolver::new(
+        &sphere,
+        0.03,
+        (0.0, 2.0 * PI),
+        (0.0, PI),
+        (12, 11),
+        |u, v| 1.0 + 0.4 * v.cos() + 0.1 * u.sin(),
+    )
+    .with_topology(SurfaceTopology::PolarSphere);
+
+    let klein = KleinBottle { radius: 2.0 };
+    let mut klein_solver = HeatEquationSolver::new(
+        &klein,
+        0.02,
+        (0.0, 2.0 * PI),
+        (0.0, 2.0 * PI),
+        (12, 12),
+        |u, v| 1.0 + 0.3 * (u - PI).sin() * v.cos(),
+    )
+    .with_topology(SurfaceTopology::TwistedKlein);
+
+    let ((h_torus, h_sphere, h_klein), metrics) = VerifiedEngine::run_verified(|| {
+        for _ in 0..5 {
+            torus_solver.step(0.002);
+            sphere_solver.step(0.002);
+            klein_solver.step(0.001);
+        }
+        (
+            torus_solver.total_heat(),
+            sphere_solver.total_heat(),
+            klein_solver.total_heat(),
+        )
+    });
+    assert!(metrics.function_calls > 0);
+    assert!(h_torus.is_finite() && h_torus > 0.0);
+    assert!(h_sphere.is_finite() && h_sphere > 0.0);
+    assert!(h_klein.is_finite() && h_klein > 0.0);
 }

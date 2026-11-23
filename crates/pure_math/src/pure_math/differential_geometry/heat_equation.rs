@@ -1,5 +1,6 @@
 //! Flat-slice zero-allocation Heat Equation solver ($\partial_t u = \alpha \Delta_S u$) on parametric surfaces.
 
+use super::buckled_flow::{SurfaceTopology, detect_twisted_seam_map};
 use super::surface::{ParametricSurface, SurfaceAnalysis};
 use math_commons::math_kernel::types::flatten_2d_index;
 
@@ -20,6 +21,10 @@ pub struct HeatEquationSolver<'a, S: ParametricSurface> {
     pub range_u: (f64, f64),
     /// Parameter interval `(v_min, v_max)`.
     pub range_v: (f64, f64),
+    /// Boundary topology applied across parameter seams and polar caps.
+    pub topology: SurfaceTopology,
+    seam_fwd: Vec<usize>,
+    seam_rev: Vec<usize>,
 }
 
 impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
@@ -96,7 +101,65 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
             grid_res,
             range_u,
             range_v,
+            topology: SurfaceTopology::OpenNeumann,
+            seam_fwd: Vec::new(),
+            seam_rev: Vec::new(),
         }
+    }
+
+    /// Wraps pre-allocated flat `u_grid` and `next_grid` buffers with **zero heap allocations**.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn from_buffers(
+        surface: &'a S,
+        alpha: f64,
+        range_u: (f64, f64),
+        range_v: (f64, f64),
+        grid_res: (usize, usize),
+        u_grid: Vec<f64>,
+        next_grid: Vec<f64>,
+    ) -> Self {
+        let (nu, nv) = grid_res;
+        assert!(nu >= 2 && nv >= 2);
+        assert_eq!(u_grid.len(), nu * nv);
+        assert_eq!(next_grid.len(), nu * nv);
+        assert!(alpha.is_finite() && alpha >= 0.0);
+        Self {
+            surface,
+            alpha,
+            u_grid,
+            next_grid,
+            grid_res,
+            range_u,
+            range_v,
+            topology: SurfaceTopology::OpenNeumann,
+            seam_fwd: Vec::new(),
+            seam_rev: Vec::new(),
+        }
+    }
+
+    /// Configures intrinsic seam/polar boundary topology on this solver.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn with_topology(mut self, topology: SurfaceTopology) -> Self {
+        let (nu, nv) = self.grid_res;
+        self.topology = topology;
+        if topology == SurfaceTopology::TwistedKlein {
+            let (fwd, rev) = detect_twisted_seam_map(self.surface, self.range_u, self.range_v, nv);
+            self.seam_fwd = fwd;
+            self.seam_rev = rev;
+        }
+        if topology == SurfaceTopology::PolarSphere && nu > 0 && nv >= 2 {
+            for pole_j in [0_usize, nv - 1] {
+                let cap_mean: f64 = (0..nu).map(|i| self.value(i, pole_j)).sum::<f64>() / nu as f64;
+                for i in 0..nu {
+                    let idx = flatten_2d_index(pole_j, i, nv);
+                    self.u_grid[idx] = cap_mean;
+                    self.next_grid[idx] = cap_mean;
+                }
+            }
+        }
+        self
     }
 
     /// Reads temperature at `(i, j)` via [`flatten_2d_index`].
@@ -119,15 +182,26 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
     pub fn total_heat(&self) -> f64 {
         let (nu, nv) = self.grid_res;
         assert_eq!(self.u_grid.len(), nu * nv);
-        let du = (self.range_u.1 - self.range_u.0) / (nu as f64 - 1.0);
-        let dv = (self.range_v.1 - self.range_v.0) / (nv as f64 - 1.0);
+        let (du, dv) = self.grid_spacings();
         let mut sum = 0.0;
         for i in 0..nu {
             let u = self.range_u.0 + i as f64 * du;
-            let wu = if i == 0 || i + 1 == nu { 0.5 } else { 1.0 };
+            let wu = if self.topology == SurfaceTopology::OpenNeumann && (i == 0 || i + 1 == nu) {
+                0.5
+            } else {
+                1.0
+            };
             for j in 0..nv {
                 let v = self.range_v.0 + j as f64 * dv;
-                let wv = if j == 0 || j + 1 == nv { 0.5 } else { 1.0 };
+                let wv = if matches!(
+                    self.topology,
+                    SurfaceTopology::OpenNeumann | SurfaceTopology::PolarSphere
+                ) && (j == 0 || j + 1 == nv)
+                {
+                    0.5
+                } else {
+                    1.0
+                };
                 let area = self.surface.area_element(u, v);
                 if area.is_finite() {
                     sum += wu * wv * self.value(i, j) * area * du * dv;
@@ -145,8 +219,7 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         let (nu, nv) = self.grid_res;
         assert!(nu >= 2 && nv >= 2);
         let alpha_eff = self.alpha.max(1e-6);
-        let du = (self.range_u.1 - self.range_u.0) / (nu as f64 - 1.0);
-        let dv = (self.range_v.1 - self.range_v.0) / (nv as f64 - 1.0);
+        let (du, dv) = self.grid_spacings();
         let mut max_rate = 0.0_f64;
 
         for i in 0..nu {
@@ -170,15 +243,44 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
     }
 
     #[inline]
-    fn clamped_get(&self, i: i32, j: i32) -> f64 {
-        let (nu, nv) = self.grid_res;
-        let i_idx = i.clamp(0, (nu - 1) as i32) as usize;
-        let j_idx = j.clamp(0, (nv - 1) as i32) as usize;
-        self.u_grid[flatten_2d_index(j_idx, i_idx, nv)]
+    fn grid_spacings(&self) -> (f64, f64) {
+        self.topology
+            .grid_spacings(self.range_u, self.range_v, self.grid_res.0, self.grid_res.1)
+    }
+
+    #[inline]
+    fn sample_cell(&self, i: i32, j: i32) -> f64 {
+        let (nu, nv) = (self.grid_res.0 as i32, self.grid_res.1 as i32);
+        let (wi, wj) = match self.topology {
+            SurfaceTopology::PeriodicTorus => {
+                (i.rem_euclid(nu) as usize, j.rem_euclid(nv) as usize)
+            }
+            SurfaceTopology::TwistedKlein => {
+                let base_j = j.rem_euclid(nv) as usize;
+                if i < 0 {
+                    ((i + nu) as usize, self.seam_rev[base_j])
+                } else if i >= nu {
+                    ((i - nu) as usize, self.seam_fwd[base_j])
+                } else {
+                    (i as usize, base_j)
+                }
+            }
+            SurfaceTopology::PolarSphere => {
+                (i.rem_euclid(nu) as usize, j.clamp(0, nv - 1) as usize)
+            }
+            SurfaceTopology::OpenNeumann => {
+                (i.clamp(0, nu - 1) as usize, j.clamp(0, nv - 1) as usize)
+            }
+        };
+        self.u_grid[flatten_2d_index(wj, wi, self.grid_res.1)]
     }
 
     #[inline]
     fn compute_flux_u(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
+        let nu = self.grid_res.0 as i32;
+        if self.topology == SurfaceTopology::OpenNeumann && (i_base < 0 || i_base + 1 >= nu) {
+            return 0.0;
+        }
         let u_half = self.range_u.0 + (i_base as f64 + 0.5) * du;
         let v_curr = self.range_v.0 + j_base as f64 * dv;
         let (e, f, g_metric) = self.surface.first_fundamental_form(u_half, v_curr);
@@ -187,18 +289,33 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
             return 0.0;
         }
         let sqrt_g = det_g.sqrt();
-        let f_u = (self.clamped_get(i_base + 1, j_base) - self.clamped_get(i_base, j_base)) / du;
-        let f_v_i = (self.clamped_get(i_base, j_base + 1) - self.clamped_get(i_base, j_base - 1))
+        let f_u = (self.sample_cell(i_base + 1, j_base) - self.sample_cell(i_base, j_base)) / du;
+        let nv = self.grid_res.1;
+        let seam_reverses = self.seam_fwd.len() == nv
+            && nv >= 3
+            && (self.seam_fwd[1] + nv - self.seam_fwd[0]) % nv == nv - 1;
+        let v_sign = if self.topology == SurfaceTopology::TwistedKlein
+            && seam_reverses
+            && (i_base < 0 || i_base + 1 >= nu)
+        {
+            -1.0
+        } else {
+            1.0
+        };
+        let f_v_i = (self.sample_cell(i_base, j_base + 1) - self.sample_cell(i_base, j_base - 1))
             / (2.0 * dv);
-        let f_v_ip1 = (self.clamped_get(i_base + 1, j_base + 1)
-            - self.clamped_get(i_base + 1, j_base - 1))
+        let f_v_ip1 = v_sign
+            * (self.sample_cell(i_base + 1, j_base + 1) - self.sample_cell(i_base + 1, j_base - 1))
             / (2.0 * dv);
-        let f_v = 0.5 * (f_v_i + f_v_ip1);
-        (g_metric * f_u - f * f_v) / sqrt_g
+        (g_metric * f_u - f * 0.5 * (f_v_i + f_v_ip1)) / sqrt_g
     }
 
     #[inline]
     fn compute_flux_v(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
+        let nv = self.grid_res.1 as i32;
+        if self.topology == SurfaceTopology::OpenNeumann && (j_base < 0 || j_base + 1 >= nv) {
+            return 0.0;
+        }
         let u_curr = self.range_u.0 + i_base as f64 * du;
         let v_half = self.range_v.0 + (j_base as f64 + 0.5) * dv;
         let (e, f, g_metric) = self.surface.first_fundamental_form(u_curr, v_half);
@@ -207,14 +324,13 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
             return 0.0;
         }
         let sqrt_g = det_g.sqrt();
-        let f_v = (self.clamped_get(i_base, j_base + 1) - self.clamped_get(i_base, j_base)) / dv;
-        let f_u_j = (self.clamped_get(i_base + 1, j_base) - self.clamped_get(i_base - 1, j_base))
+        let f_v = (self.sample_cell(i_base, j_base + 1) - self.sample_cell(i_base, j_base)) / dv;
+        let f_u_j = (self.sample_cell(i_base + 1, j_base) - self.sample_cell(i_base - 1, j_base))
             / (2.0 * du);
-        let f_u_jp1 = (self.clamped_get(i_base + 1, j_base + 1)
-            - self.clamped_get(i_base - 1, j_base + 1))
+        let f_u_jp1 = (self.sample_cell(i_base + 1, j_base + 1)
+            - self.sample_cell(i_base - 1, j_base + 1))
             / (2.0 * du);
-        let f_u = 0.5 * (f_u_j + f_u_jp1);
-        (e * f_v - f * f_u) / sqrt_g
+        (e * f_v - f * 0.5 * (f_u_j + f_u_jp1)) / sqrt_g
     }
 
     /// Advances the simulation by time step `dt` with **zero heap allocations**.
@@ -230,12 +346,16 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         assert_eq!(self.u_grid.len(), nu * nv);
         assert_eq!(self.next_grid.len(), nu * nv);
 
-        let du = (self.range_u.1 - self.range_u.0) / (nu as f64 - 1.0);
-        let dv = (self.range_v.1 - self.range_v.0) / (nv as f64 - 1.0);
+        let (du, dv) = self.grid_spacings();
+        let j_range = if self.topology == SurfaceTopology::PolarSphere {
+            1..nv.saturating_sub(1)
+        } else {
+            0..nv
+        };
 
         for i in 0..nu {
             let u = self.range_u.0 + i as f64 * du;
-            for j in 0..nv {
+            for j in j_range.clone() {
                 let v = self.range_v.0 + j as f64 * dv;
                 let idx = flatten_2d_index(j, i, nv);
 
@@ -253,7 +373,27 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
                 self.next_grid[idx] = self.u_grid[idx] + dt * self.alpha * laplacian;
             }
         }
-
+        if self.topology == SurfaceTopology::PolarSphere && nv >= 3 {
+            self.step_polar_caps(dt, dv);
+        }
         std::mem::swap(&mut self.u_grid, &mut self.next_grid);
+    }
+
+    fn step_polar_caps(&mut self, dt: f64, dv: f64) {
+        let (nu, nv) = self.grid_res;
+        for (pole_j, ring_j, probe_v) in [
+            (0_usize, 1_usize, self.range_v.0 + 1e-4),
+            (nv - 1, nv - 2, self.range_v.1 - 1e-4),
+        ] {
+            let (_, _, g_mer) = self.surface.first_fundamental_form(self.range_u.0, probe_v);
+            let ring_mean: f64 =
+                (0..nu).map(|i| self.value(i, ring_j)).sum::<f64>() / nu.max(1) as f64;
+            let pole_val = self.value(0, pole_j);
+            let lap = 4.0 * (ring_mean - pole_val) / (g_mer.max(1e-6) * dv * dv);
+            let updated = pole_val + dt * self.alpha * lap;
+            for i in 0..nu {
+                self.next_grid[flatten_2d_index(pole_j, i, nv)] = updated;
+            }
+        }
     }
 }

@@ -1,5 +1,6 @@
 //! Flat-slice discrete 2-manifolds and zero-allocation Mean Curvature Flow (`MeanCurvatureFlow`).
 
+pub use super::buckled_flow::{BuckledSurfaceFlow, SurfaceTopology};
 use math_commons::math_kernel::types::flatten_2d_index;
 use nalgebra::{Point3, Vector3};
 

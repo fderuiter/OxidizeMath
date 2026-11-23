@@ -71,6 +71,8 @@ fn test_all_6_plot_3d_viewport_tools_hide_2d_plot_chrome() {
         "SpinVisualizer",
         "SurfaceViewer",
         "CurvatureHeatmap",
+        #[cfg(feature = "biology")]
+        "SurfaceMorphogenesisTool",
         "Gaussian Splatting",
         "CurvilinearVectorStudio",
         "ManifoldFlowStudio",
@@ -86,7 +88,7 @@ fn test_all_6_plot_3d_viewport_tools_hide_2d_plot_chrome() {
         assert_no_2d_plot_chrome(&mut *tool, target_id);
         verified += 1;
     }
-    assert_eq!(verified, 9);
+    assert_eq!(verified, expected_3d_ids.len());
 }
 
 const PLOT_CHROME_BUTTON_LABELS: &[&str] = &[
