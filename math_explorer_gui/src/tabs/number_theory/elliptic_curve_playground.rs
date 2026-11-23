@@ -420,14 +420,13 @@ impl InteractiveTool for EllipticCurvePlayground {
         PaneSidePanel::left(scoped_panel_id(ui, "ec_fp_controls")).show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading(self.name());
-                if ui
+                let help_btn = ui
                     .add(egui::Button::new("❓").small())
-                    .accessible_hover_text("Toggle Theory Context Portal")
-                    .clicked()
-                {
+                    .accessible_hover_text("Toggle Theory Context Portal");
+                if help_btn.clicked() {
                     let key = egui::Id::new("SHOW_THEORY_PORTAL");
                     let next = !ui.ctx().data(|d| d.get_temp::<bool>(key).unwrap_or(false));
-                    ui.ctx().data_mut(|d| d.insert_temp(key, next));
+                    crate::framework::record_theory_portal_toggle(ui.ctx(), help_btn.id, next);
                 }
             });
             ui.separator();
