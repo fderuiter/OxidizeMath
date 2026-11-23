@@ -85,22 +85,18 @@ fn test_progressive_strides_and_exact_final_parity_mandelbrot_and_julia() {
             mode,
             julia_c: Complex::new(-0.7, 0.27015),
             high_contrast: false,
-            smooth_coloring: true,
-            palette: ShaderPalette::CyclicCosine,
-            custom_expr: None,
-            custom_julia_seed: false,
         };
         let init_req = FractalRenderRequest {
             generation: 0,
             width: 16,
             height: 12,
-            ..req.clone()
+            ..req
         };
         let shared = Arc::new(RwLock::new(init_req));
         let latest_gen = Arc::new(AtomicU64::new(0));
         let mut runner = FractalRunner::new(Arc::clone(&shared), Arc::clone(&latest_gen));
 
-        *shared.write().unwrap() = req.clone();
+        *shared.write().unwrap() = req;
         latest_gen.store(1, Ordering::Release);
 
         let mut observed_strides = Vec::new();
@@ -327,16 +323,12 @@ fn test_generate_progressive_fractal_verification_png() {
         mode: FractalMode::Mandelbrot,
         julia_c: Complex::new(-0.7, 0.27015),
         high_contrast: false,
-        smooth_coloring: true,
-        palette: ShaderPalette::CyclicCosine,
-        custom_expr: None,
-        custom_julia_seed: false,
     };
     let seed = FractalRenderRequest {
         generation: 0,
         width: 16,
         height: 12,
-        ..req.clone()
+        ..req
     };
     let shared = Arc::new(RwLock::new(seed));
     let latest = Arc::new(AtomicU64::new(0));

@@ -1,12 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::*;
-use crate::framework::shader_foundry::validate_complex_shader_vars;
+use crate::framework::shader_foundry::{bind_complex_shader_params, validate_complex_shader_vars};
 use crate::framework::MAX_SYNTHESIZED_PARAMS;
-use math_commons::ast::{
-    is_universal_constant, parse_equation, BinaryOp, CompiledExpr, Expr, Func, UnaryOp,
-    MAX_EVAL_DEPTH,
-};
+use math_commons::ast::{parse_equation, CompiledExpr};
 use math_commons::math_kernel::colormap::ShaderPalette;
 use std::collections::BTreeMap;
 
@@ -45,112 +42,6 @@ pub(super) struct ComplexMappingState {
         skip_serializing_if = "is_default_phase_palette"
     )]
     pub(super) palette: String,
-}
-
-enum BindFrame<'a> {
-    Visit { expr: &'a Expr, depth: usize },
-    Unary(UnaryOp),
-    Binary(BinaryOp),
-    Func { func: Func, arity: usize },
-}
-
-fn visit_bind_node<'a>(
-    expr: &'a Expr,
-    depth: usize,
-    params: &BTreeMap<String, f64>,
-    work: &mut Vec<BindFrame<'a>>,
-    out: &mut Vec<Expr>,
-) -> Result<(), String> {
-    if depth > MAX_EVAL_DEPTH {
-        return Err(format!(
-            "Custom complex expression exceeds depth limit {MAX_EVAL_DEPTH}"
-        ));
-    }
-    match expr {
-        Expr::Number(v) => out.push(Expr::Number(*v)),
-        Expr::Variable(name) => {
-            let is_reserved = name.eq_ignore_ascii_case("z")
-                || name.eq_ignore_ascii_case("i")
-                || is_universal_constant(name);
-            if !is_reserved {
-                if let Some(&val) = params.get(name) {
-                    if !val.is_finite() {
-                        return Err(format!("Non-finite parameter '{name}'"));
-                    }
-                    out.push(Expr::Number(val));
-                    return Ok(());
-                }
-            }
-            out.push(Expr::Variable(name.clone()));
-        }
-        Expr::Unary { op, expr: inner } => {
-            work.push(BindFrame::Unary(*op));
-            work.push(BindFrame::Visit {
-                expr: inner,
-                depth: depth + 1,
-            });
-        }
-        Expr::Binary { op, left, right } => {
-            work.push(BindFrame::Binary(*op));
-            work.push(BindFrame::Visit {
-                expr: right,
-                depth: depth + 1,
-            });
-            work.push(BindFrame::Visit {
-                expr: left,
-                depth: depth + 1,
-            });
-        }
-        Expr::Function { func, args } => {
-            work.push(BindFrame::Func {
-                func: *func,
-                arity: args.len(),
-            });
-            for arg in args.iter().rev() {
-                work.push(BindFrame::Visit {
-                    expr: arg,
-                    depth: depth + 1,
-                });
-            }
-        }
-    }
-    Ok(())
-}
-
-pub(super) fn bind_complex_shader_params(
-    root: &Expr,
-    params: &BTreeMap<String, f64>,
-) -> Result<Expr, String> {
-    let mut work = vec![BindFrame::Visit {
-        expr: root,
-        depth: 0,
-    }];
-    let mut out = Vec::new();
-    while let Some(frame) = work.pop() {
-        match frame {
-            BindFrame::Visit { expr, depth } => {
-                visit_bind_node(expr, depth, params, &mut work, &mut out)?;
-            }
-            BindFrame::Unary(op) => {
-                let inner = out.pop().ok_or("Shader AST stack underflow")?;
-                out.push(Expr::unary(op, inner));
-            }
-            BindFrame::Binary(op) => {
-                let rhs = out.pop().ok_or("Shader AST stack underflow")?;
-                let lhs = out.pop().ok_or("Shader AST stack underflow")?;
-                out.push(Expr::binary(op, lhs, rhs));
-            }
-            BindFrame::Func { func, arity } => {
-                let split = out
-                    .len()
-                    .checked_sub(arity)
-                    .ok_or("Shader AST stack underflow")?;
-                let args = out.split_off(split);
-                out.push(Expr::function(func, args));
-            }
-        }
-    }
-    out.pop().ok_or_else(|| "Empty shader AST".to_string())
 }
 
 impl ComplexMappingState {
@@ -202,7 +93,7 @@ impl ComplexMappingState {
                     self.custom_params.get(name).copied().unwrap_or(1.0),
                 );
             }
-            let bound = bind_complex_shader_params(&expr, &effective)?;
+            let bound = bind_complex_shader_params(&expr, &effective, &["z"])?;
             validate_complex_shader_vars(&bound)?;
         }
         Ok(palette)

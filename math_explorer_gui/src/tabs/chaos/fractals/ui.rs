@@ -27,62 +27,54 @@ impl FractalViewer {
     }
 
     fn draw_mode_controls(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            if ui
-                .radio_value(&mut self.mode, FractalMode::Mandelbrot, "Mandelbrot")
-                .clicked()
-            {
-                self.center = Complex::new(-0.75, 0.0);
-                self.zoom = 1.0;
-                self.mark_dirty();
-            }
-            if ui
-                .radio_value(&mut self.mode, FractalMode::Julia, "Julia")
-                .clicked()
-            {
-                self.center = Complex::new(0.0, 0.0);
-                self.zoom = 1.0;
-                self.mark_dirty();
-            }
-            if ui
-                .radio_value(&mut self.mode, FractalMode::Custom, "Custom")
-                .clicked()
-            {
-                self.center = Complex::new(0.0, 0.0);
-                self.zoom = 1.0;
-                self.mark_dirty();
-            }
-        });
-
-        if self.mode == FractalMode::Custom {
-            ui.add_space(4.0);
+        self.draw_mode_selector(ui);
+        if self.mode.is_custom() {
+            ui.separator();
             if self.math_input.ui(ui) {
                 self.mark_dirty();
             }
-            if ui
-                .checkbox(
-                    &mut self.custom_julia_seed,
-                    "Julia plane (seed z₀ = pixel, fixed c)",
-                )
-                .changed()
-            {
-                self.mark_dirty();
-            }
         }
-
-        if self.mode == FractalMode::Julia
-            || (self.mode == FractalMode::Custom && self.custom_julia_seed)
-        {
+        if self.mode.uses_julia_c() {
             ui.separator();
-            ui.label("Complex Constant (c):");
-            let re_drag = bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.005)
+            ui.label("Julia Constant (c):");
+            let re_drag = bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.01)
                 .prefix("Re: ");
-            let im_drag = bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.005)
+            let im_drag = bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.01)
                 .prefix("Im: ");
             if ui.add(re_drag).changed() | ui.add(im_drag).changed() {
                 self.mark_dirty();
             }
         }
+    }
+
+    fn draw_mode_selector(&mut self, ui: &mut egui::Ui) {
+        let options = [
+            (
+                FractalMode::Mandelbrot,
+                "Mandelbrot",
+                Complex::new(-0.75, 0.0),
+            ),
+            (FractalMode::Julia, "Julia", Complex::new(0.0, 0.0)),
+            (
+                FractalMode::CustomMandelbrot,
+                "Custom (c-plane)",
+                Complex::new(0.0, 0.0),
+            ),
+            (
+                FractalMode::CustomJulia,
+                "Custom (Julia)",
+                Complex::new(0.0, 0.0),
+            ),
+        ];
+        ui.horizontal_wrapped(|ui| {
+            for (mode, label, default_center) in options {
+                if ui.radio_value(&mut self.mode, mode, label).clicked() {
+                    self.center = default_center;
+                    self.zoom = 1.0;
+                    self.mark_dirty();
+                }
+            }
+        });
     }
 
     fn draw_coloring_controls(&mut self, ui: &mut egui::Ui) {
@@ -145,7 +137,9 @@ impl FractalViewer {
         if ui.button("↻ Reset View").clicked() {
             self.center = match self.mode {
                 FractalMode::Mandelbrot => Complex::new(-0.75, 0.0),
-                FractalMode::Julia | FractalMode::Custom => Complex::new(0.0, 0.0),
+                FractalMode::Julia | FractalMode::CustomMandelbrot | FractalMode::CustomJulia => {
+                    Complex::new(0.0, 0.0)
+                }
             };
             self.zoom = 1.0;
             self.mark_dirty();
@@ -157,7 +151,7 @@ impl FractalViewer {
     }
 
     fn draw_shader_preview(&mut self, ui: &mut egui::Ui) {
-        let rev = self.request_generation;
+        let rev = self.shader_revision();
         let expr_res = self.resolve_active_shader_expr();
         let defaults = self.shader_uniform_defaults();
         render_shader_preview_section(

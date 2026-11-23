@@ -68,44 +68,7 @@ impl ShaderPreviewState {
     }
 }
 
-/// Iteratively verifies that every variable in `root` is bound by the complex shader harness.
-pub fn validate_complex_shader_vars(root: &Expr) -> Result<(), String> {
-    let mut stack = vec![root];
-    while let Some(node) = stack.pop() {
-        match node {
-            Expr::Number(v) => {
-                if !v.is_finite() {
-                    return Err(ShaderEmitError::NonFiniteLiteral.to_string());
-                }
-            }
-            Expr::Variable(name) => {
-                let allowed = name.eq_ignore_ascii_case("z")
-                    || name.eq_ignore_ascii_case("c")
-                    || name == "t"
-                    || name.eq_ignore_ascii_case("pi")
-                    || name.eq_ignore_ascii_case("e")
-                    || name.eq_ignore_ascii_case("tau")
-                    || name.eq_ignore_ascii_case("i");
-                if !allowed {
-                    return Err(format!(
-                        "Unsupported variable '{name}' in complex shader (allowed: z, c, t, i, pi, e, tau)"
-                    ));
-                }
-            }
-            Expr::Unary { expr, .. } => stack.push(expr),
-            Expr::Binary { left, right, .. } => {
-                stack.push(right);
-                stack.push(left);
-            }
-            Expr::Function { args, .. } => {
-                for arg in args.iter().rev() {
-                    stack.push(arg);
-                }
-            }
-        }
-    }
-    Ok(())
-}
+pub use super::shader_params::{bind_complex_shader_params, validate_complex_shader_vars};
 
 struct FormattedDefaults {
     res_w: String,

@@ -4,6 +4,7 @@ use super::*;
 use crate::framework::{ExportFormat, InteractiveTool, ShaderExportFormat, SimulationFramework};
 use crate::url_state::{encode_share_fragment, parse_share_location, validate_url_preset_json};
 use eframe::egui;
+use std::collections::BTreeMap;
 
 #[test]
 fn test_full_viewport_raster_export_clamps_up_to_2048_instead_of_480x320() {
@@ -32,9 +33,9 @@ fn test_full_viewport_raster_export_clamps_up_to_2048_instead_of_480x320() {
 }
 
 #[test]
-fn test_custom_recurrence_smooth_coloring_and_palette_variation() {
+fn test_custom_recurrence_smooth_coloring_zero_alloc_and_palette_variation() {
     let mut viewer = FractalViewer {
-        mode: FractalMode::Custom,
+        mode: FractalMode::CustomMandelbrot,
         max_iter: 60,
         smooth_coloring: true,
         palette: ShaderPalette::Heatmap,
@@ -42,8 +43,22 @@ fn test_custom_recurrence_smooth_coloring_and_palette_variation() {
         ..Default::default()
     };
     viewer.math_input.set_expression("z^3 + c");
-    let smooth_img = viewer.export_raster_image().expect("smooth custom export");
 
+    let job = CompiledFractalJob::from_bar(&viewer.math_input);
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let ((s0, s1), _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        (
+            job.smooth_escape_time(Complex::new(0.0, 0.0), Complex::new(0.1, 0.1), 80),
+            job.smooth_escape_time(Complex::new(0.0, 0.0), Complex::new(2.0, 1.5), 80),
+        )
+    });
+    drop(_alloc_guard);
+    assert!((s0 - 80.0).abs() < 1.0e-9);
+    assert!(s1.is_finite() && s1 < 10.0);
+
+    let smooth_img = viewer.export_raster_image().expect("smooth custom export");
     viewer.smooth_coloring = false;
     let discrete_img = viewer
         .export_raster_image()
@@ -54,15 +69,17 @@ fn test_custom_recurrence_smooth_coloring_and_palette_variation() {
 
 #[test]
 fn test_fractal_wgsl_and_glsl_standalone_exports_and_url_roundtrip() {
+    let mut pmap = BTreeMap::new();
+    pmap.insert("a".to_string(), 1.25);
     let mut viewer = FractalViewer {
-        mode: FractalMode::Custom,
+        mode: FractalMode::CustomJulia,
         smooth_coloring: false,
         palette: ShaderPalette::MappedGradient,
-        custom_julia_seed: true,
         julia_c: Complex::new(-0.35, 0.62),
         ..Default::default()
     };
-    viewer.math_input.set_expression("sin(z^3) + c");
+    viewer.math_input.set_expression("a * sin(z^3) + c");
+    viewer.math_input.set_params_map(&pmap);
 
     let wgsl = viewer
         .export_shader_source(ShaderExportFormat::Wgsl)
@@ -70,6 +87,7 @@ fn test_fractal_wgsl_and_glsl_standalone_exports_and_url_roundtrip() {
     assert!(wgsl.contains("struct ShaderUniforms"));
     assert!(wgsl.contains("@fragment"));
     assert!(wgsl.contains("c_sin(c_pow(z, vec2<f32>(3.0, 0.0)))"));
+    assert!(wgsl.contains("1.25"));
 
     let glsl = viewer
         .export_shader_source(ShaderExportFormat::Glsl)
@@ -77,6 +95,7 @@ fn test_fractal_wgsl_and_glsl_standalone_exports_and_url_roundtrip() {
     assert!(glsl.starts_with("#version 300 es"));
     assert!(glsl.contains("void mainImage(out vec4 fragColor, in vec2 fragCoord)"));
     assert!(glsl.contains("c_sin(c_pow(z, vec2(3.0, 0.0)))"));
+    assert!(glsl.contains("1.25"));
 
     let preset = viewer.export_preset_json().expect("export preset JSON");
     validate_url_preset_json(&preset).expect("fits within 4096-byte URL budget");
@@ -89,11 +108,11 @@ fn test_fractal_wgsl_and_glsl_standalone_exports_and_url_roundtrip() {
     restored
         .import_preset_json(parsed.state_json.as_deref().unwrap())
         .expect("restore fractal state");
-    assert_eq!(restored.mode, FractalMode::Custom);
+    assert_eq!(restored.mode, FractalMode::CustomJulia);
     assert!(!restored.smooth_coloring);
     assert_eq!(restored.palette, ShaderPalette::MappedGradient);
-    assert!(restored.custom_julia_seed);
-    assert_eq!(restored.math_input.raw_text, "sin(z^3) + c");
+    assert_eq!(restored.math_input.raw_text, "a * sin(z^3) + c");
+    assert_eq!(restored.math_input.params_map(), pmap);
 }
 
 #[test]

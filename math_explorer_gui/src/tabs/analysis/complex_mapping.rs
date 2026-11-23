@@ -1,7 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::framework::shader_foundry::{
-    emit_domain_coloring_shader, ShaderPreviewState, ShaderUniformDefaults,
+    bind_complex_shader_params, emit_domain_coloring_shader, ShaderPreviewState,
+    ShaderUniformDefaults,
 };
 use crate::framework::{
     ExportCapabilities, InteractiveTool, MathExpressionInputBar, ShaderExportFormat,
@@ -16,7 +17,7 @@ use std::hash::{Hash, Hasher};
 
 #[path = "complex_mapping/state.rs"]
 mod state;
-use state::{bind_complex_shader_params, ComplexMappingState};
+use state::ComplexMappingState;
 
 #[path = "complex_mapping/cache.rs"]
 mod cache;
@@ -225,7 +226,7 @@ impl ComplexMappingTool {
                         .error_message()
                         .unwrap_or_else(|| "Invalid custom complex mapping expression".to_string())
                 })?;
-                bind_complex_shader_params(expr, &self.math_input.params_map())
+                bind_complex_shader_params(expr, &self.math_input.params_map(), &["z"])
             }
         }
     }
