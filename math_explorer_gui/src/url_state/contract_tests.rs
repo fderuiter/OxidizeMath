@@ -86,7 +86,7 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
 fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut source_app = MathExplorerApp::default();
-    assert_eq!(source_app.tabs.len(), 22, "Expected all 22 ExplorerTabs");
+    assert_eq!(source_app.tabs.len(), 23, "Expected all 23 ExplorerTabs");
 
     let mut slugs = HashSet::new();
     for tab in &source_app.tabs {
