@@ -37,6 +37,8 @@ mod persistence;
 pub mod playback;
 #[cfg(test)]
 mod playback_tests;
+#[cfg(test)]
+mod playback_time_travel_tests;
 pub mod plot_persistence;
 #[cfg(test)]
 mod plot_persistence_session_tests;
