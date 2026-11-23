@@ -217,7 +217,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 68, "Expected 68 Plot dataset+figure tools");
+    assert_eq!(plot_tool_count, 69, "Expected 69 Plot dataset+figure tools");
     assert_eq!(raster_tool_count, 8, "Expected 8 raster figure tools");
     assert_eq!(
         dataset_only_tool_count, 0,
@@ -230,7 +230,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         shader_tool_count, 3,
         "Expected 3 analytical GLSL shader tools"
     );
-    assert_eq!(non_shader_tool_count, 85, "Expected 85 non-shader tools");
+    assert_eq!(non_shader_tool_count, 86, "Expected 86 non-shader tools");
 }
 
 #[derive(Default)]

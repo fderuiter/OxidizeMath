@@ -30,7 +30,7 @@ fn test_means_and_proportions_power_curves_monotone_and_exportable() {
     tool.recalculate();
     let req_props = *tool.result.as_ref().expect("valid proportions sample size");
     assert!(req_props > 50);
-    assert_eq!(tool.export_datasets().len(), 2);
+    assert_eq!(tool.export_datasets().len(), 3);
 
     let csv = format_protocol_csv(&tool);
     assert!(csv.starts_with(
@@ -56,6 +56,36 @@ fn test_sample_size_preset_and_bounds_validation() {
 
     let equal_props = r#"{"mode":"Proportions","alpha":0.05,"power":0.8,"delta":0.5,"sigma":1.0,"p1":0.4,"p2":0.4}"#;
     assert!(tool.try_load_state(equal_props).is_err());
+}
+
+#[test]
+fn test_legacy_roundtrip_power_curves_and_hypothesis_cards() {
+    let mut tool = SampleSizeCalculatorTool::default();
+    let legacy = r#"{"mode":"Proportions","alpha":0.01,"power":0.9,"delta":0.4,"sigma":1.2,"p1":0.3,"p2":0.5}"#;
+    tool.try_load_state(legacy)
+        .expect("legacy proportions state loads");
+    assert_eq!(tool.save_state().as_deref(), Some(legacy));
+
+    let datasets = tool.export_datasets();
+    assert_eq!(datasets.len(), 3);
+    assert!(datasets.iter().all(|(_, pts)| pts.len() >= 20));
+    let req_n = *tool.result.as_ref().expect("valid sample size");
+    assert!(tool.evaluate_power_at(req_n).is_some_and(|p| p >= 0.9));
+
+    let t_res = tool.cards_eval.t_test.as_ref().expect("t-test evaluated");
+    assert!(t_res.statistic > 0.0 && t_res.is_significant);
+    let chi_res = tool
+        .cards_eval
+        .chi_square
+        .as_ref()
+        .expect("chi-square evaluated");
+    assert!(chi_res.statistic > 0.0);
+    let rm = tool
+        .cards_eval
+        .risk_metrics
+        .as_ref()
+        .expect("risk metrics evaluated");
+    assert!(rm.relative_risk < 1.0 && rm.odds_ratio < 1.0);
 }
 
 #[cfg(target_arch = "wasm32")]

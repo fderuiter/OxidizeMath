@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub mod cards;
 pub mod export;
 pub mod ui;
 
@@ -10,6 +11,7 @@ mod tests;
 
 use super::clinical_io::ClinicalIoState;
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
+use cards::{evaluate_hypothesis_cards, HypothesisCardsEval, HypothesisCardsState};
 use eframe::egui;
 use math_explorer::applied::clinical_trials::sample_size::{
     calculate_power_means, calculate_power_proportions, calculate_sample_size_means,
@@ -40,6 +42,16 @@ impl CalculationMode {
     }
 }
 
+/// Plot view mode for `SampleSizeCalculatorTool`.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+pub enum PowerPlotView {
+    /// Analytical statistical power `1 - beta` as a function of sample size per arm `N`.
+    #[default]
+    PowerBySampleSize,
+    /// Required per-arm `n` and total `2n` sample size as a function of target power `1 - beta`.
+    SampleSizeByPower,
+}
+
 /// One row of the protocol sample-size sizing schedule at a target power `1 - beta`.
 #[derive(Clone, Copy, Debug)]
 pub struct ProtocolSizingRow {
@@ -53,10 +65,12 @@ pub struct ProtocolSizingRow {
     pub achieved_power: f64,
 }
 
-/// Interactive two-arm sample size calculator with power-vs-`N` curve and protocol table exports.
+/// Interactive two-arm sample size calculator with power-vs-`N` curve, hypothesis cards, and protocol table exports.
 pub struct SampleSizeCalculatorTool {
     /// Active hypothesis-testing calculation mode (`Means` vs `Proportions`).
     pub mode: CalculationMode,
+    /// Active central plot view (`PowerBySampleSize` vs `SampleSizeByPower`).
+    pub plot_view: PowerPlotView,
     /// Two-sided Type I error rate `alpha`.
     pub alpha: f64,
     /// Target statistical power `1 - beta`.
@@ -69,29 +83,44 @@ pub struct SampleSizeCalculatorTool {
     pub p1: f64,
     /// Treatment arm event proportion `p2` (`Proportions` mode).
     pub p2: f64,
+    /// Interactive `TTestIndependent` and 2x2 contingency card state.
+    pub cards: HypothesisCardsState,
     /// Required per-arm sample size at `(alpha, power)` or domain validation error.
     pub result: Result<usize, String>,
-    /// Swept `[n_per_arm, power]` curve across `1 - beta in [0.50, 0.99]`.
+    /// Swept `[n_per_arm, power]` curve across `N`.
     pub(crate) power_curve: Vec<[f64; 2]>,
+    /// Swept `[power, n_per_arm]` curve across `1 - beta in [0.50, 0.98]`.
+    pub(crate) per_arm_curve: Vec<[f64; 2]>,
+    /// Swept `[power, 2 * n_per_arm]` curve across `1 - beta in [0.50, 0.98]`.
+    pub(crate) total_curve: Vec<[f64; 2]>,
     /// Evaluated protocol sizing milestones across [`POWER_MILESTONES`].
     pub(crate) protocol_rows: Vec<ProtocolSizingRow>,
+    /// Cached evaluation outputs for `TTestIndependent`, `ChiSquare2x2`, and `RiskMetrics`.
+    pub(crate) cards_eval: HypothesisCardsEval,
     /// Non-blocking save/status helper for `.csv` and `.md` protocol sizing cards.
     pub(crate) io_state: ClinicalIoState,
 }
 
 impl Default for SampleSizeCalculatorTool {
     fn default() -> Self {
+        let cards = HypothesisCardsState::default();
+        let cards_eval = evaluate_hypothesis_cards(&cards, 0.05);
         let mut tool = Self {
             mode: CalculationMode::Means,
+            plot_view: PowerPlotView::PowerBySampleSize,
             alpha: 0.05,
             power: 0.80,
             delta: 0.5,
             sigma: 1.0,
             p1: 0.5,
             p2: 0.6,
+            cards,
             result: Ok(0),
             power_curve: Vec::with_capacity(POWER_CURVE_STEPS),
+            per_arm_curve: Vec::with_capacity(25),
+            total_curve: Vec::with_capacity(25),
             protocol_rows: Vec::with_capacity(POWER_MILESTONES.len()),
+            cards_eval,
             io_state: ClinicalIoState::default(),
         };
         tool.recalculate();
@@ -109,6 +138,8 @@ struct SampleSizeState {
     sigma: f64,
     p1: f64,
     p2: f64,
+    #[serde(default, skip_serializing_if = "HypothesisCardsState::is_default")]
+    cards: HypothesisCardsState,
 }
 
 impl SampleSizeCalculatorTool {
@@ -139,10 +170,13 @@ impl SampleSizeCalculatorTool {
         }
     }
 
-    /// Recomputes required `N`, the analytical `[N, 1 - beta]` power curve, and protocol milestones.
+    /// Recomputes required `N`, analytical power and required-`N` curves, hypothesis cards, and protocol milestones.
     pub fn recalculate(&mut self) {
         self.result = self.evaluate_at_power(self.power);
+        self.cards_eval = evaluate_hypothesis_cards(&self.cards, self.alpha);
         self.power_curve.clear();
+        self.per_arm_curve.clear();
+        self.total_curve.clear();
         self.protocol_rows.clear();
 
         let Ok(req_n) = self.result else {
@@ -160,6 +194,15 @@ impl SampleSizeCalculatorTool {
                 if let Some(pwr) = self.evaluate_power_at(n) {
                     self.power_curve.push([n as f64, pwr]);
                 }
+            }
+        }
+
+        let steps = 24usize;
+        for idx in 0..=steps {
+            let pwr = 0.50 + 0.48 * (idx as f64 / steps as f64);
+            if let Ok(n) = self.evaluate_at_power(pwr) {
+                self.per_arm_curve.push([pwr, n as f64]);
+                self.total_curve.push([pwr, (n * 2) as f64]);
             }
         }
 
@@ -239,6 +282,7 @@ impl InteractiveTool for SampleSizeCalculatorTool {
             sigma: self.sigma,
             p1: self.p1,
             p2: self.p2,
+            cards: self.cards.clone(),
         })
         .ok()
     }
@@ -259,6 +303,7 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         {
             return Err("Sample size parameters out of bounds".into());
         }
+        s.cards.validate()?;
         let result = match s.mode {
             CalculationMode::Means => {
                 calculate_sample_size_means(s.alpha, s.power, s.delta, s.sigma)
@@ -276,8 +321,9 @@ impl InteractiveTool for SampleSizeCalculatorTool {
         self.sigma = s.sigma;
         self.p1 = s.p1;
         self.p2 = s.p2;
-        self.result = Ok(result);
+        self.cards = s.cards;
         self.recalculate();
+        self.result = Ok(result);
         Ok(())
     }
 

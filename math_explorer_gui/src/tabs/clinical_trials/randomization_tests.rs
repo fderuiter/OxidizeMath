@@ -6,6 +6,29 @@ use crate::tabs::clinical_trials::randomization_schedule::{
 };
 
 #[test]
+fn test_legacy_block_state_roundtrip_and_seeded_stratified_export() {
+    let mut tool = RandomizationTool::default();
+    let legacy = r#"{"randomization_type":"Block","n_subjects":24,"block_size":6}"#;
+    tool.try_load_state(legacy)
+        .expect("legacy block state loads");
+    assert_eq!(tool.save_state().as_deref(), Some(legacy));
+    assert_eq!(tool.schedule.len(), 24);
+
+    let stratified = r#"{"randomization_type":"Stratified","n_subjects":24,"block_size":4,"seed":77,"strata_spec":"SiteA:8, SiteB:12"}"#;
+    tool.try_load_state(stratified)
+        .expect("stratified state loads");
+    assert_eq!(tool.schedule.len(), 20);
+    let csv = format_schedule_csv(
+        tool.randomization_type.label(),
+        tool.effective_seed(),
+        &tool.schedule,
+    );
+    assert!(csv.contains("SiteA"));
+    assert!(csv.contains("SiteB"));
+    assert_eq!(tool.export_datasets().len(), 3);
+}
+
+#[test]
 fn test_randomization_seed_counter_produces_distinct_allocations() {
     let mut tool = RandomizationTool {
         randomization_type: RandomizationType::Simple,

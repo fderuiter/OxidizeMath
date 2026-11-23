@@ -29,10 +29,19 @@ fn parse_event_flag(line_idx: usize, event_str: &str) -> Result<bool, String> {
 fn is_header_line(parts: &[&str]) -> bool {
     parts.iter().any(|raw| {
         matches!(
-            raw.trim().to_ascii_lowercase().as_str(),
-            "time" | "survival_time" | "arm" | "group" | "cohort"
+            raw.trim().trim_matches('"').to_ascii_lowercase().as_str(),
+            "time" | "duration" | "t" | "survival_time" | "arm" | "group" | "cohort"
         )
     })
+}
+
+fn canonicalize_arm_label(raw: &str) -> String {
+    let trimmed = raw.trim().trim_matches('"');
+    match trimmed.to_ascii_lowercase().as_str() {
+        "treatment" | "treated" | "trt" | "active" | "1" => "Treatment".to_string(),
+        "control" | "ctrl" | "placebo" | "0" => "Control".to_string(),
+        _ => trimmed.to_string(),
+    }
 }
 
 fn split_fields(line: &str) -> Vec<&str> {
@@ -49,7 +58,11 @@ fn parse_survival_row(
     allow_three_col: bool,
 ) -> Result<(String, Observation), String> {
     let (arm_name, time_str, event_str) = match parts.len() {
-        2 => ("Cohort".to_string(), parts[0].trim(), parts[1].trim()),
+        2 => (
+            "Cohort".to_string(),
+            parts[0].trim().trim_matches('"'),
+            parts[1].trim().trim_matches('"'),
+        ),
         3 if allow_three_col => parse_three_col_fields(line_idx, parts)?,
         _ if allow_three_col => {
             return Err(format!(
@@ -81,22 +94,22 @@ fn parse_three_col_fields<'a>(
     line_idx: usize,
     parts: &[&'a str],
 ) -> Result<(String, &'a str, &'a str), String> {
-    let p0 = parts[0].trim();
-    let p1 = parts[1].trim();
-    let p2 = parts[2].trim();
+    let p0 = parts[0].trim().trim_matches('"');
+    let p1 = parts[1].trim().trim_matches('"');
+    let p2 = parts[2].trim().trim_matches('"');
     if p1.parse::<f64>().is_ok() && parse_event_flag(line_idx, p2).is_ok() {
         if p0.is_empty() {
             return Err(format!("Line {}: Arm label cannot be empty", line_idx + 1));
         }
-        Ok((p0.to_string(), p1, p2))
+        Ok((canonicalize_arm_label(p0), p1, p2))
     } else if p0.parse::<f64>().is_ok() && parse_event_flag(line_idx, p1).is_ok() {
         if p2.is_empty() {
             return Err(format!("Line {}: Arm label cannot be empty", line_idx + 1));
         }
-        Ok((p2.to_string(), p0, p1))
+        Ok((canonicalize_arm_label(p2), p0, p1))
     } else {
         Err(format!(
-            "Line {}: Invalid 3-column survival row (expected 'arm, time, event')",
+            "Line {}: Invalid 3-column survival row (expected 'arm, time, event' or 'time, event, arm')",
             line_idx + 1
         ))
     }

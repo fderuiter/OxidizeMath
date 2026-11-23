@@ -1,6 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::export::{format_markdown_summary, format_risk_set_csv, render_survival_svg};
+use super::export::{
+    format_markdown_summary, format_risk_set_csv, format_risk_table_csv, render_survival_svg,
+};
 use super::*;
 use egui_plot::{HLine, Line};
 
@@ -90,6 +92,42 @@ fn test_two_arm_kaplan_meier_estimates_hazard_ratio() {
     assert!(!tool.arms[1].curve.is_empty());
     let hr = tool.hazard_ratio.as_ref().unwrap().as_ref().unwrap();
     assert!(*hr < 1.0 && hr.is_finite());
+
+    let inline_prefix = serde_json::to_string(&SurvivalState {
+        input_text: "Treatment, 10.0, 1\nTreatment, 14.0, 0\nControl, 4.0, 1\nControl, 5.0, 1"
+            .to_string(),
+        control_text: String::new(),
+    })
+    .unwrap();
+    tool.try_load_state(&inline_prefix).unwrap();
+    assert_eq!(tool.arms.len(), 2);
+    assert_eq!(tool.observations.len(), 2);
+    assert_eq!(tool.control_observations.len(), 2);
+}
+
+#[test]
+fn test_two_arm_tsv_bom_log_rank_hazard_ratio_and_risk_table_exports() {
+    let bom_tsv = format!("\u{feff}{}", TWO_ARM_SAMPLE_TEXT.replace(',', "\t"));
+    let state = serde_json::to_string(&SurvivalState {
+        input_text: bom_tsv,
+        control_text: String::new(),
+    })
+    .unwrap();
+    let mut tool = SurvivalAnalysisTool::default();
+    tool.try_load_state(&state)
+        .expect("two-arm TSV state valid");
+    assert_eq!(tool.arms.len(), 2);
+    let hr = tool.hazard_ratio.as_ref().unwrap().as_ref().unwrap();
+    assert!(*hr < 1.0 && hr.is_finite());
+    let lr = tool.log_rank.as_ref().unwrap().as_ref().unwrap();
+    assert!(lr.statistic > 0.0 && (0.0..=1.0).contains(&lr.p_value));
+
+    let csv = format_risk_table_csv(&tool.arms);
+    assert!(csv.starts_with("arm,time,survival_probability,n_at_risk,n_events,n_censored\n"));
+    assert!(csv.contains("Treatment,"));
+    assert!(csv.contains("Control,"));
+    let datasets = tool.export_datasets();
+    assert_eq!(datasets.len(), 8);
 }
 
 #[test]
@@ -151,7 +189,7 @@ fn test_multi_arm_csv_and_tsv_import_hazard_ratio_and_exports() {
 
     let svg = render_survival_svg(&tool).expect("SVG export succeeds");
     assert!(svg.contains("<svg") && svg.len() > 250);
-    assert_eq!(tool.export_datasets().len(), 2);
+    assert_eq!(tool.export_datasets().len(), 8);
 }
 
 #[cfg(target_arch = "wasm32")]

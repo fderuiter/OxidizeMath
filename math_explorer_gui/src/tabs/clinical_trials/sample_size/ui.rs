@@ -2,13 +2,16 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::cards::{
+    draw_analytical_power_plot, draw_required_n_curve_plot, render_contingency_and_risk_card,
+    render_t_test_card,
+};
 use super::export::{format_protocol_csv, format_protocol_markdown};
-use super::{CalculationMode, SampleSizeCalculatorTool};
+use super::{CalculationMode, PowerPlotView, SampleSizeCalculatorTool};
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints, Points};
 
 /// Renders the `SampleSizeCalculatorTool` sidebar, interactive power curve, and protocol sizing table.
 pub fn show_sample_size_inside(tool: &mut SampleSizeCalculatorTool, ui: &mut egui::Ui) {
@@ -47,6 +50,13 @@ fn render_sidebar_controls(tool: &mut SampleSizeCalculatorTool, ui: &mut egui::U
     ui.separator();
     render_protocol_export_buttons(tool, ui);
     tool.io_state.render_status(ui);
+    ui.separator();
+    let mut cards_changed = render_t_test_card(ui, &mut tool.cards, &tool.cards_eval);
+    ui.add_space(4.0);
+    cards_changed |= render_contingency_and_risk_card(ui, &mut tool.cards, &tool.cards_eval);
+    if cards_changed {
+        tool.recalculate();
+    }
 }
 
 fn render_mode_and_error_controls(tool: &mut SampleSizeCalculatorTool, ui: &mut egui::Ui) -> bool {
@@ -162,45 +172,33 @@ fn render_protocol_export_buttons(tool: &mut SampleSizeCalculatorTool, ui: &mut 
     });
 }
 
-fn render_power_curve_plot(tool: &SampleSizeCalculatorTool, ui: &mut egui::Ui) {
-    ui.heading("Statistical Power Curve (1 - β vs Sample Size per Arm N)");
-    let palette = SemanticPalette::from_visuals(ui.visuals());
-
-    Plot::new("sample_size_power_curve_plot")
-        .height(310.0)
-        .legend(Legend::default())
-        .x_axis_label("Sample Size per Arm (N)")
-        .y_axis_label("Statistical Power (1 - β)")
-        .include_y(0.0)
-        .include_y(1.0)
-        .show(ui, |plot_ui| {
-            if !tool.power_curve.is_empty() {
-                plot_ui.line(
-                    Line::new(
-                        "Analytical Power Curve (1 - β)",
-                        PlotPoints::new(tool.power_curve.clone()),
-                    )
-                    .color(palette.series_color(0))
-                    .width(2.4_f32),
-                );
-            }
-            plot_ui.hline(
-                HLine::new(format!("Target Power = {:.2}", tool.power), tool.power)
-                    .color(palette.warning)
-                    .style(LineStyle::Dashed { length: 8.0 }),
-            );
-            if let Ok(req_n) = tool.result {
-                let op_pwr = tool.evaluate_power_at(req_n).unwrap_or(tool.power);
-                plot_ui.points(
-                    Points::new(
-                        format!("Operating Point (N = {req_n}, 1-β = {op_pwr:.3})"),
-                        vec![[req_n as f64, op_pwr]],
-                    )
-                    .radius(5.5_f32)
-                    .color(palette.success),
-                );
-            }
-        });
+fn render_power_curve_plot(tool: &mut SampleSizeCalculatorTool, ui: &mut egui::Ui) {
+    ui.horizontal_wrapped(|ui| {
+        ui.heading("Statistical Power & Sample Size Curves");
+        ui.separator();
+        ui.selectable_value(
+            &mut tool.plot_view,
+            PowerPlotView::PowerBySampleSize,
+            "Power (1 - β) vs N",
+        );
+        ui.selectable_value(
+            &mut tool.plot_view,
+            PowerPlotView::SampleSizeByPower,
+            "Required N vs Power",
+        );
+    });
+    if tool.plot_view == PowerPlotView::PowerBySampleSize {
+        let req_marker = tool
+            .result
+            .as_ref()
+            .ok()
+            .and_then(|&n| tool.evaluate_power_at(n).map(|p| vec![[n as f64, p]]))
+            .unwrap_or_default();
+        draw_analytical_power_plot(ui, tool.power_curve.clone(), req_marker, tool.power);
+    } else {
+        let operating_pt = tool.result.as_ref().ok().map(|&n| [tool.power, n as f64]);
+        draw_required_n_curve_plot(ui, &tool.per_arm_curve, &tool.total_curve, operating_pt);
+    }
 }
 
 fn render_protocol_sizing_table(tool: &SampleSizeCalculatorTool, ui: &mut egui::Ui) {

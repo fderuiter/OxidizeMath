@@ -2,13 +2,15 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::export::{format_markdown_summary, format_risk_set_csv, render_survival_svg};
-use super::{SurvivalAnalysisTool, TWO_ARM_EXAMPLE_CSV};
+use super::export::{
+    format_markdown_summary, format_risk_set_csv, format_risk_table_csv, render_survival_svg,
+};
+use super::{SurvivalAnalysisTool, TWO_ARM_EXAMPLE_CSV, TWO_ARM_SAMPLE_TEXT};
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints};
+use egui_plot::{HLine, Legend, Line, LineStyle, MarkerShape, Plot, PlotPoints, Points};
 
 /// Renders the complete `SurvivalAnalysisTool` split-pane workspace.
 pub fn show_survival_inside(tool: &mut SurvivalAnalysisTool, ui: &mut egui::Ui) {
@@ -33,9 +35,24 @@ pub fn show_survival_inside(tool: &mut SurvivalAnalysisTool, ui: &mut egui::Ui) 
 fn render_sidebar(tool: &mut SurvivalAnalysisTool, ui: &mut egui::Ui) {
     ui.heading("Survival Cohort Input");
     ui.label("Single-arm: Time, Event (1=Event, 0=Censored)");
-    ui.label("Multi-arm CSV/TSV: Arm, Time, Event");
+    ui.label("Multi-arm CSV/TSV: Arm, Time, Event (or Time, Event, Arm)");
     ui.add_space(4.0);
+    render_cohort_preset_buttons(tool, ui);
+    if render_cohort_text_inputs(tool, ui) {
+        tool.recalculate();
+    }
+    if let Some(err) = &tool.error_message {
+        let palette = SemanticPalette::from_visuals(ui.visuals());
+        ui.colored_label(palette.error, format!("⚠ {err}"));
+    }
+    ui.separator();
+    render_summary_metrics(tool, ui);
+    ui.separator();
+    render_export_actions(tool, ui);
+    tool.io_state.render_status(ui);
+}
 
+fn render_cohort_preset_buttons(tool: &mut SurvivalAnalysisTool, ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
         if ui
             .button("📂 Import Cohort (.csv / .tsv)")
@@ -48,17 +65,26 @@ fn render_sidebar(tool: &mut SurvivalAnalysisTool, ui: &mut egui::Ui) {
         }
         if ui
             .button("📊 Load Two-Arm Example")
-            .accessible_hover_text(
-                "Load Treatment vs Control censored survival data to compare curves and HR",
-            )
+            .accessible_hover_text("Load Treatment vs Control survival cohort (Arm, Time, Event)")
             .clicked()
         {
             tool.input_text = TWO_ARM_EXAMPLE_CSV.to_string();
             tool.control_text.clear();
             tool.recalculate();
         }
+        if ui
+            .button("🧪 Load Sample (time,event,arm)")
+            .accessible_hover_text("Load two-arm oncology sample in time,event,arm column order")
+            .clicked()
+        {
+            tool.input_text = TWO_ARM_SAMPLE_TEXT.to_string();
+            tool.control_text.clear();
+            tool.recalculate();
+        }
     });
+}
 
+fn render_cohort_text_inputs(tool: &mut SurvivalAnalysisTool, ui: &mut egui::Ui) -> bool {
     let mut changed = ui
         .add(
             egui::TextEdit::multiline(&mut tool.input_text)
@@ -82,24 +108,11 @@ fn render_sidebar(tool: &mut SurvivalAnalysisTool, ui: &mut egui::Ui) {
                 changed = true;
             }
         });
-    if changed {
-        tool.recalculate();
-    }
-
-    if let Some(err) = &tool.error_message {
-        let palette = SemanticPalette::from_visuals(ui.visuals());
-        ui.colored_label(palette.error, format!("⚠ {err}"));
-    }
-
-    ui.separator();
-    render_summary_metrics(tool, ui);
-    ui.separator();
-    render_export_actions(tool, ui);
-    tool.io_state.render_status(ui);
+    changed
 }
 
 fn render_summary_metrics(tool: &SurvivalAnalysisTool, ui: &mut egui::Ui) {
-    render_copyable_metric(ui, "Observations", &tool.observations.len().to_string());
+    render_copyable_metric(ui, "Observations", &tool.total_observations().to_string());
     render_copyable_metric(ui, "Study Arms", &tool.arms.len().to_string());
 
     if tool.arms.len() <= 1 {
@@ -131,6 +144,19 @@ fn render_summary_metrics(tool: &SurvivalAnalysisTool, ui: &mut egui::Ui) {
             &format!("Hazard Ratio ({}/{})", tool.arms[0].name, tool.arms[1].name),
             &hr_str,
         );
+    }
+
+    if let Some(ref lr_res) = tool.log_rank {
+        match lr_res {
+            Ok(lr) => {
+                render_copyable_metric(ui, "Log-Rank χ²", &format!("{:.3}", lr.statistic));
+                render_copyable_metric(ui, "Log-Rank p-value", &format!("{:.4}", lr.p_value));
+            }
+            Err(err) => {
+                let palette = SemanticPalette::from_visuals(ui.visuals());
+                ui.colored_label(palette.warning, err);
+            }
+        }
     }
 }
 
@@ -168,6 +194,15 @@ fn render_export_actions(tool: &mut SurvivalAnalysisTool, ui: &mut egui::Ui) {
             }
         }
         if ui
+            .button("📋 Copy Risk CSV")
+            .accessible_hover_text("Copy Kaplan-Meier risk table CSV to clipboard")
+            .clicked()
+        {
+            ui.ctx().copy_text(format_risk_table_csv(&tool.arms));
+            tool.io_state
+                .record_info("Copied risk-table CSV to clipboard".into());
+        }
+        if ui
             .button("📋 Copy Summary")
             .accessible_hover_text("Copy Markdown summary card to clipboard")
             .clicked()
@@ -191,20 +226,25 @@ fn render_km_plot(tool: &SurvivalAnalysisTool, ui: &mut egui::Ui) {
         .include_y(0.0)
         .include_y(1.0)
         .show(ui, |plot_ui| {
-            if tool.arms.len() <= 1 {
-                let pts = tool.build_step_points();
+            for (idx, arm) in tool.arms.iter().enumerate() {
+                let color = palette.series_color(idx * 2);
+                let label = if tool.arms.len() == 1 {
+                    "Survival Probability".to_string()
+                } else {
+                    format!("{} S(t)", arm.name)
+                };
                 plot_ui.line(
-                    Line::new("Survival Probability", PlotPoints::new(pts))
-                        .color(palette.series_color(0))
+                    Line::new(label, PlotPoints::new(arm.build_step_points()))
+                        .color(color)
                         .width(2.2_f32),
                 );
-            } else {
-                for (idx, arm) in tool.arms.iter().enumerate() {
-                    let label = format!("{} S(t)", arm.name);
-                    plot_ui.line(
-                        Line::new(label, PlotPoints::new(arm.build_step_points()))
-                            .color(palette.series_color(idx * 2))
-                            .width(2.2_f32),
+                let censor_pts = arm.build_censor_points();
+                if !censor_pts.is_empty() {
+                    plot_ui.points(
+                        Points::new(format!("{} Censored", arm.name), censor_pts)
+                            .shape(MarkerShape::Plus)
+                            .radius(4.5_f32)
+                            .color(color),
                     );
                 }
             }

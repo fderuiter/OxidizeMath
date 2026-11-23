@@ -1,5 +1,6 @@
 //! Multi-arm Kaplan-Meier survival analysis tool with `try_estimate_hazard_ratio`,
-//! `TimePoint` risk-set tables, local CSV/TSV cohort import, and `.csv`/`.md`/`.svg` exports.
+//! Mantel-Haenszel `log_rank_test`, `TimePoint` risk-set tables, local CSV/TSV cohort import,
+//! and `.csv`/`.md`/`.svg` exports.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -14,8 +15,27 @@ use super::clinical_io::ClinicalIoState;
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 use eframe::egui;
 use math_explorer::applied::clinical_trials::survival_analysis::{
-    kaplan_meier, try_estimate_hazard_ratio, Observation, TimePoint,
+    kaplan_meier, log_rank_test, try_estimate_hazard_ratio, LogRankResult, Observation, TimePoint,
 };
+
+/// Sample two-arm oncology cohort (`time, event, arm`) for quick workbench exploration.
+pub const TWO_ARM_SAMPLE_TEXT: &str = "time,event,arm\n\
+4.0,1,Treatment\n\
+7.0,0,Treatment\n\
+11.0,1,Treatment\n\
+15.0,0,Treatment\n\
+19.0,1,Treatment\n\
+24.0,0,Treatment\n\
+28.0,0,Treatment\n\
+33.0,1,Treatment\n\
+2.0,1,Control\n\
+5.0,1,Control\n\
+6.0,1,Control\n\
+9.0,0,Control\n\
+12.0,1,Control\n\
+14.0,1,Control\n\
+17.0,1,Control\n\
+21.0,0,Control";
 
 /// Canonical two-arm survival cohort example (`Arm, Time, Event`) for comparative KM & HR analysis.
 pub const TWO_ARM_EXAMPLE_CSV: &str = "\
@@ -63,6 +83,16 @@ impl ArmSurvival {
     pub fn build_step_points(&self) -> Vec<[f64; 2]> {
         build_curve_step_points(&self.curve)
     }
+
+    /// Extracts censored observation coordinates `(t, S(t))` for censor tick markers.
+    #[must_use]
+    pub fn build_censor_points(&self) -> Vec<[f64; 2]> {
+        self.curve
+            .iter()
+            .filter(|pt| pt.n_censored > 0)
+            .map(|pt| [pt.time, pt.survival_probability])
+            .collect()
+    }
 }
 
 pub(crate) fn build_curve_step_points(curve: &[TimePoint]) -> Vec<[f64; 2]> {
@@ -85,14 +115,20 @@ pub struct SurvivalAnalysisTool {
     pub input_text: String,
     /// Optional separate Control arm (`time, event`) text.
     pub control_text: String,
-    /// Flattened validated observations across all arms (capped at `MAX_ITERATIONS`).
+    /// Primary arm validated observations (single-arm cohort or first study arm).
     pub(crate) observations: Vec<Observation>,
+    /// Secondary arm validated observations when two or more arms are loaded.
+    pub(crate) control_observations: Vec<Observation>,
     /// Primary arm Kaplan-Meier curve (single-arm curve or first study arm).
     pub(crate) curve: Vec<TimePoint>,
+    /// Secondary arm Kaplan-Meier curve when two or more arms are loaded.
+    pub(crate) control_curve: Vec<TimePoint>,
     /// Per-arm Kaplan-Meier curves in display order.
     pub arms: Vec<ArmSurvival>,
     /// Incidence-density hazard ratio `HR` between `arms[0]` and `arms[1]` when `arms.len() >= 2`.
     pub hazard_ratio: Option<Result<f64, String>>,
+    /// Mantel-Haenszel two-arm log-rank test summary when `arms.len() >= 2`.
+    pub log_rank: Option<Result<LogRankResult, String>>,
     /// Parse or validation error message when `input_text` or `control_text` is malformed.
     pub(crate) error_message: Option<String>,
     /// Non-blocking file picker and `.csv`/`.md`/`.svg` download state.
@@ -106,9 +142,12 @@ impl Default for SurvivalAnalysisTool {
             input_text: default_text.to_string(),
             control_text: String::new(),
             observations: Vec::new(),
+            control_observations: Vec::new(),
             curve: Vec::new(),
+            control_curve: Vec::new(),
             arms: Vec::new(),
             hazard_ratio: None,
+            log_rank: None,
             error_message: None,
             io_state: ClinicalIoState::default(),
         };
@@ -126,12 +165,11 @@ struct SurvivalState {
 }
 
 impl SurvivalAnalysisTool {
-    /// Recomputes single-arm or multi-arm Kaplan-Meier curves and two-arm hazard ratio.
+    /// Recomputes single-arm or multi-arm Kaplan-Meier curves, log-rank test, and hazard ratio.
     pub fn recalculate(&mut self) {
         self.clear_computed();
         match parser::parse_survival_cohorts(&self.input_text, &self.control_text) {
-            Ok((all_obs, arm_buckets)) => {
-                self.observations = all_obs;
+            Ok((_all_obs, arm_buckets)) => {
                 self.finalize_arms(arm_buckets);
             }
             Err(err) => {
@@ -143,9 +181,12 @@ impl SurvivalAnalysisTool {
 
     fn clear_computed(&mut self) {
         self.observations.clear();
+        self.control_observations.clear();
         self.curve.clear();
+        self.control_curve.clear();
         self.arms.clear();
         self.hazard_ratio = None;
+        self.log_rank = None;
         self.error_message = None;
     }
 
@@ -167,14 +208,27 @@ impl SurvivalAnalysisTool {
         }
 
         if let Some(first) = self.arms.first() {
+            self.observations = first.observations.clone();
             self.curve = first.curve.clone();
+        }
+        if let Some(second) = self.arms.get(1) {
+            self.control_observations = second.observations.clone();
+            self.control_curve = second.curve.clone();
         }
         if self.arms.len() >= 2 {
             self.hazard_ratio = Some(
                 try_estimate_hazard_ratio(&self.arms[0].observations, &self.arms[1].observations)
                     .map_err(|e| e.to_string()),
             );
+            self.log_rank = Some(
+                log_rank_test(&self.arms[0].observations, &self.arms[1].observations)
+                    .map_err(|e| e.to_string()),
+            );
         }
+    }
+
+    pub(crate) fn total_observations(&self) -> usize {
+        self.arms.iter().map(|a| a.observations.len()).sum()
     }
 
     /// Atomically validates and imports a CSV or TSV survival cohort string.
@@ -190,13 +244,16 @@ impl SurvivalAnalysisTool {
         if candidate.observations.is_empty() {
             return Err("Imported survival file contains no observations".into());
         }
-        let summary = (candidate.arms.len(), candidate.observations.len());
+        let summary = (candidate.arms.len(), candidate.total_observations());
         self.input_text = candidate.input_text;
         self.control_text.clear();
         self.observations = candidate.observations;
+        self.control_observations = candidate.control_observations;
         self.curve = candidate.curve;
+        self.control_curve = candidate.control_curve;
         self.arms = candidate.arms;
         self.hazard_ratio = candidate.hazard_ratio;
+        self.log_rank = candidate.log_rank;
         self.error_message = None;
         Ok(summary)
     }
@@ -316,8 +373,8 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for SurvivalAnalysisTool {
     fn theory_description(&self) -> String {
         format!(
-            "Kaplan-Meier non-parametric maximum likelihood estimator of survival function $S(t) = \\prod_{{t_i \\le t}} \\left(1 - \\frac{{d_i}}{{n_i}}\\right)$ and incidence-density hazard ratio across {} observations ({} arm(s)).",
-            self.observations.len(),
+            "Kaplan-Meier non-parametric maximum likelihood estimator of survival function $S(t) = \\prod_{{t_i \\le t}} \\left(1 - \\frac{{d_i}}{{n_i}}\\right)$ across {} observations ({} arm(s)), paired with Mantel-Haenszel log-rank testing and incidence-density hazard ratio estimation.",
+            self.total_observations(),
             self.arms.len().max(1)
         )
     }

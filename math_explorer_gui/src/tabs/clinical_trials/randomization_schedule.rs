@@ -7,11 +7,84 @@ use super::clinical_io::ClinicalIoState;
 use super::simpson_paradox::TableCounts;
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
+use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints};
 use math_explorer::applied::clinical_trials::design::{Group, Patient};
 use std::collections::HashMap;
 use std::fmt::Write as _;
+
+/// Default deterministic RNG seed for trial subject allocation.
+pub const DEFAULT_RNG_SEED: u64 = 42;
+
+/// Default multi-stratum enrollment specification.
+pub const DEFAULT_STRATA_SPEC: &str = "Age<65:12, Age>=65:12";
+
+/// Returns [`DEFAULT_RNG_SEED`] for `serde(default)`.
+#[must_use]
+pub const fn default_seed() -> u64 {
+    DEFAULT_RNG_SEED
+}
+
+/// Returns `true` when `seed` equals [`DEFAULT_RNG_SEED`].
+#[must_use]
+pub const fn is_default_seed(seed: &u64) -> bool {
+    *seed == DEFAULT_RNG_SEED
+}
+
+/// Returns [`DEFAULT_STRATA_SPEC`] as an owned `String` for `serde(default)`.
+#[must_use]
+pub fn default_strata_spec() -> String {
+    DEFAULT_STRATA_SPEC.to_string()
+}
+
+/// Returns `true` when `spec` matches [`DEFAULT_STRATA_SPEC`].
+#[must_use]
+pub fn is_default_strata_spec(spec: &str) -> bool {
+    spec == DEFAULT_STRATA_SPEC
+}
+
+/// Parses comma- or newline-delimited `'StratumName:Count'` specifications into `Patient` records.
+pub fn parse_strata_patients(spec: &str) -> Result<Vec<Patient>, String> {
+    let mut patients = Vec::new();
+    for raw_token in spec.split([',', '\n']) {
+        let token = raw_token.trim();
+        if token.is_empty() {
+            continue;
+        }
+        let (name_raw, count_raw) = token.split_once(':').ok_or_else(|| {
+            format!("Invalid stratum entry '{token}' (expected 'StratumName:Count')")
+        })?;
+        let stratum = name_raw.trim();
+        if stratum.is_empty() || stratum.len() > 64 {
+            return Err("Stratum name must be 1..=64 characters".into());
+        }
+        let count = count_raw
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| format!("Invalid count in stratum '{token}'"))?;
+        if count == 0 {
+            return Err(format!("Stratum '{stratum}' count must be at least 1"));
+        }
+        if patients.len().saturating_add(count) > math_commons::registry::MAX_ITERATIONS {
+            return Err(format!(
+                "Total stratified subjects exceed maximum limit ({})",
+                math_commons::registry::MAX_ITERATIONS
+            ));
+        }
+        for _ in 0..count {
+            let idx = patients.len() + 1;
+            patients.push(Patient {
+                id: format!("S{idx:04}"),
+                stratum: stratum.to_string(),
+            });
+        }
+    }
+    if patients.is_empty() {
+        return Err("At least one stratum ('Name:Count') is required".into());
+    }
+    Ok(patients)
+}
 
 /// Single subject-level randomization assignment retained for audit and `.csv`/`.json` export.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -263,5 +336,69 @@ pub fn render_schedule_export_bar(
         }
     });
 }
+
+/// Renders the per-subject roster summary and scrollable enrollment sequence list.
+pub fn render_roster_summary(
+    ui: &mut egui::Ui,
+    error_message: Option<&str>,
+    roster: &[SubjectAllocationRecord],
+) {
+    let palette = SemanticPalette::from_visuals(ui.visuals());
+    if let Some(err) = error_message {
+        ui.colored_label(palette.error, format!("Error: {err}"));
+        return;
+    }
+    let trt_n = roster.iter().filter(|r| r.arm == "Treatment").count();
+    let ctrl_n = roster.len().saturating_sub(trt_n);
+    render_copyable_metric(ui, "Treatment / Control", &format!("{trt_n} / {ctrl_n}"));
+    egui::ScrollArea::vertical()
+        .id_salt("randomization_roster_scroll")
+        .max_height(200.0)
+        .show(ui, |ui| {
+            for rec in roster {
+                ui.label(format!(
+                    "#{} | {} ({}): {}",
+                    rec.sequence, rec.subject_id, rec.stratum, rec.arm
+                ));
+            }
+        });
+}
+
+/// Returns mode-level theory descriptions for `RandomizationTool`.
+#[must_use]
+pub fn randomization_available_descriptions() -> HashMap<String, String> {
+    [
+        (
+            "Simple",
+            "Independent coin-toss allocation with potential small-sample imbalance",
+        ),
+        (
+            "Block",
+            "Permuted block allocation ensuring exact balance at block boundaries",
+        ),
+        (
+            "Stratified",
+            "Within-stratum permuted block randomization preventing Simpson's paradox reversals",
+        ),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect()
+}
+
+/// Starter preset JSON payload for permuted block randomization.
+pub const STARTER_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Permuted Block Randomization",
+    "domain": "clinical_trials",
+    "timestamp": "2026-11-16T00:00:00Z"
+  },
+  "config": {
+    "randomization_type": "Block",
+    "n_subjects": 24,
+    "block_size": 4
+  }
+}"#;
 
 // [cite:clinical_trials_statistics]

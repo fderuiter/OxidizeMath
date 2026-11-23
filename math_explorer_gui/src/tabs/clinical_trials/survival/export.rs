@@ -2,8 +2,25 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::SurvivalAnalysisTool;
+use super::{ArmSurvival, SurvivalAnalysisTool};
 use std::fmt::Write as _;
+
+/// Formats all arm `TimePoint` records (`survival_probability`, `n_at_risk`, `n_events`, `n_censored`) as CSV.
+#[must_use]
+pub fn format_risk_table_csv(arms: &[ArmSurvival]) -> String {
+    let mut out = String::from("arm,time,survival_probability,n_at_risk,n_events,n_censored\n");
+    for arm in arms {
+        let safe_arm = sanitize_csv_cell(&arm.name);
+        for pt in &arm.curve {
+            let _ = writeln!(
+                out,
+                "{safe_arm},{:.6},{:.6},{},{},{}",
+                pt.time, pt.survival_probability, pt.n_at_risk, pt.n_events, pt.n_censored
+            );
+        }
+    }
+    out
+}
 
 /// Formats all arm `TimePoint` risk-set steps as a HIPAA-safe CSV table.
 #[must_use]
@@ -46,7 +63,7 @@ pub fn format_markdown_summary(tool: &SurvivalAnalysisTool) -> String {
     let _ = writeln!(
         out,
         "- **Total Observations**: {} across {} study arm(s)",
-        tool.observations.len(),
+        tool.total_observations(),
         tool.arms.len()
     );
     if let Some(ref hr_res) = tool.hazard_ratio {
@@ -67,6 +84,20 @@ pub fn format_markdown_summary(tool: &SurvivalAnalysisTool) -> String {
             }
             Err(err) => {
                 let _ = writeln!(out, "- **Hazard Ratio Status**: {err}");
+            }
+        }
+    }
+    if let Some(ref lr_res) = tool.log_rank {
+        match lr_res {
+            Ok(lr) => {
+                let _ = writeln!(
+                    out,
+                    "- **Mantel-Haenszel Log-Rank Test**: χ² = {:.4}, p = {:.4}",
+                    lr.statistic, lr.p_value
+                );
+            }
+            Err(err) => {
+                let _ = writeln!(out, "- **Log-Rank Test Status**: {err}");
             }
         }
     }
@@ -125,24 +156,55 @@ fn append_markdown_risk_set_table(out: &mut String, tool: &SurvivalAnalysisTool)
     }
 }
 
-/// Collects step-curve `[time, S(t)]` series across all study arms for plot/SVG/CSV exports.
+/// Collects Kaplan-Meier step curves and `TimePoint` risk-set series (`n_at_risk`, `n_events`, `n_censored`) for dataset exports.
 #[must_use]
 pub fn collect_export_datasets(tool: &SurvivalAnalysisTool) -> Vec<(String, Vec<[f64; 2]>)> {
-    if tool.arms.len() <= 1 {
+    let mut datasets = Vec::with_capacity(tool.arms.len().saturating_mul(4));
+    for arm in &tool.arms {
+        if arm.curve.is_empty() {
+            continue;
+        }
+        datasets.push((
+            format!("{} Survival Probability", arm.name),
+            arm.build_step_points(),
+        ));
+        datasets.push((
+            format!("{} n_at_risk", arm.name),
+            arm.curve
+                .iter()
+                .map(|p| [p.time, p.n_at_risk as f64])
+                .collect(),
+        ));
+        datasets.push((
+            format!("{} n_events", arm.name),
+            arm.curve
+                .iter()
+                .map(|p| [p.time, p.n_events as f64])
+                .collect(),
+        ));
+        datasets.push((
+            format!("{} n_censored", arm.name),
+            arm.curve
+                .iter()
+                .map(|p| [p.time, p.n_censored as f64])
+                .collect(),
+        ));
+    }
+    datasets
+}
+
+/// Renders a standalone vector SVG of the active Kaplan-Meier survival step curve(s).
+pub fn render_survival_svg(tool: &SurvivalAnalysisTool) -> Result<String, String> {
+    let step_datasets: Vec<(String, Vec<[f64; 2]>)> = if tool.arms.len() <= 1 {
         vec![("Survival Probability".to_string(), tool.build_step_points())]
     } else {
         tool.arms
             .iter()
             .map(|arm| (format!("{} S(t)", arm.name), arm.build_step_points()))
             .collect()
-    }
-}
-
-/// Renders a standalone vector SVG of the active Kaplan-Meier curve(s).
-pub fn render_survival_svg(tool: &SurvivalAnalysisTool) -> Result<String, String> {
-    let datasets = collect_export_datasets(tool);
+    };
     let opts = egui_plot::export::ExportOptions::default();
-    egui_plot::export::export_custom_svg(&datasets, &opts)
+    egui_plot::export::export_custom_svg(&step_datasets, &opts)
 }
 
 // [cite:clinical_trials_statistics]

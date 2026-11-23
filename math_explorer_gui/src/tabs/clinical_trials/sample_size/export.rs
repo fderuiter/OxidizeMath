@@ -110,21 +110,24 @@ fn append_protocol_milestone_table(out: &mut String, tool: &SampleSizeCalculator
     }
 }
 
-/// Collects `[n_per_arm, power]` curve datasets for `ExportCapabilities::plot()`.
+/// Collects analytical power and required sample-size curve datasets for `ExportCapabilities::plot()`.
 #[must_use]
 pub fn collect_export_datasets(tool: &SampleSizeCalculatorTool) -> Vec<(String, Vec<[f64; 2]>)> {
-    let mut ds = Vec::new();
+    let mut ds = Vec::with_capacity(3);
     if !tool.power_curve.is_empty() {
         ds.push((
-            "Statistical Power (1 - β) vs N per Arm".to_string(),
+            "Analytical Power Curve".to_string(),
             tool.power_curve.clone(),
         ));
     }
-    if let Ok(req_n) = tool.result {
-        let op_pwr = tool.evaluate_power_at(req_n).unwrap_or(tool.power);
+    if !tool.per_arm_curve.is_empty() {
         ds.push((
-            "Selected Protocol Operating Point".to_string(),
-            vec![[req_n as f64, op_pwr]],
+            "Sample Size per Group (n)".to_string(),
+            tool.per_arm_curve.clone(),
+        ));
+        ds.push((
+            "Total Study Size (2n)".to_string(),
+            tool.total_curve.clone(),
         ));
     }
     ds

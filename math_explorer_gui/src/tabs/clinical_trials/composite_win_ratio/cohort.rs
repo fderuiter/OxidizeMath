@@ -272,7 +272,7 @@ pub fn parse_composite_cohort(
 pub const COMPOSITE_STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Composite Endpoint Win Ratio",
+    "title": "Cardiovascular Composite Hierarchy",
     "domain": "clinical_trials",
     "timestamp": "2026-11-20T00:00:00Z"
   },

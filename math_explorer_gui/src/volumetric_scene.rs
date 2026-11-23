@@ -4,6 +4,8 @@
 // [cite:gaussian_splatting]
 // [cite:isosurface_extraction]
 
+#[path = "volumetric_scene_lensing.rs"]
+pub mod lensing;
 #[path = "volumetric_scene_presets.rs"]
 pub mod presets;
 
@@ -77,14 +79,15 @@ impl VolumetricSplatWorkspace {
     /// Pre-allocates all vectors for up to `max_splats` with zero runtime reallocation.
     pub fn with_capacity(max_splats: usize) -> Self {
         let cap = max_splats.max(16);
+        let dual_cap = cap.saturating_mul(2);
         Self {
             scene: Scene {
                 gaussians: Vec::with_capacity(cap),
             },
             grad_magnitudes: Vec::with_capacity(cap),
-            projected_splats: Vec::with_capacity(cap),
-            ellipse_rings: Vec::with_capacity(cap),
-            splat_centers: Vec::with_capacity(cap),
+            projected_splats: Vec::with_capacity(dual_cap),
+            ellipse_rings: Vec::with_capacity(dual_cap),
+            splat_centers: Vec::with_capacity(dual_cap),
             pixel_buffer: vec![egui::Color32::TRANSPARENT; SPLAT_GRID_SIZE * SPLAT_GRID_SIZE],
             density_counts: DensityActionCounts::default(),
         }

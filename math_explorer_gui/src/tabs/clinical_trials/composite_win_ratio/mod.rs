@@ -433,7 +433,7 @@ inventory::submit! {
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "win_ratio_composite_starter",
-        title: "Composite Endpoint Win Ratio",
+        title: "Cardiovascular Composite Hierarchy",
         description: "R = N_w / N_l: Prioritized fatal, hospitalization, and threshold biomarker pairwise evaluation with 95% CIs.",
         category: "Composite Endpoints",
         icon: "🏆",

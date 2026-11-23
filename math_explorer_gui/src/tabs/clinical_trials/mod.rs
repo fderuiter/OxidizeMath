@@ -4,6 +4,7 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod clinical_io;
+pub mod composite_win_ratio;
 pub mod pharmacokinetics;
 pub mod randomization;
 pub mod randomization_schedule;
@@ -11,6 +12,8 @@ pub mod sample_size;
 pub mod simpson_paradox;
 pub mod survival;
 pub mod win_ratio;
+pub mod win_ratio_io;
+pub mod win_ratio_weibull;
 pub mod win_ratio_workbench;
 
 pub struct ClinicalTrialsTab {
