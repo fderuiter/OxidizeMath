@@ -52,6 +52,7 @@ fn wasm_chaos_hamiltonian_billiards_and_lyapunov_smoke() {
     // 3. BifurcationDiagram: Lyapunov overlay
     let mut bif = BifurcationDiagram {
         show_lyapunov: true,
+        selected_r: 4.0,
         probe_r: 4.0,
         ..Default::default()
     };

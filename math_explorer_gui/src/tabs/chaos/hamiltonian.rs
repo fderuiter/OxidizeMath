@@ -368,6 +368,13 @@ impl TheoryDescribable for HamiltonianChaosTool {
     }
 }
 
+impl HamiltonianChaosTool {
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+}
+
 impl InteractiveTool for HamiltonianChaosTool {
     fn name(&self) -> &'static str {
         "Hamiltonian Chaos Lab"
@@ -383,10 +390,6 @@ impl InteractiveTool for HamiltonianChaosTool {
 
     fn state_revision(&self) -> u64 {
         self.state_rev
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {

@@ -194,6 +194,13 @@ impl TheoryDescribable for DynamicalBilliardsTool {
     }
 }
 
+impl DynamicalBilliardsTool {
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+}
+
 impl InteractiveTool for DynamicalBilliardsTool {
     fn name(&self) -> &'static str {
         "Dynamical Billiards Lab"
@@ -209,10 +216,6 @@ impl InteractiveTool for DynamicalBilliardsTool {
 
     fn state_revision(&self) -> u64 {
         self.state_rev
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn has_finite_parameters(&self) -> bool {

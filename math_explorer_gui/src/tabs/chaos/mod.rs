@@ -54,10 +54,6 @@ impl ExplorerTab for ChaosTab {
         self.framework.select_tool_by_name(normalized)
     }
 
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.framework.focused_canvas_id()
-    }
-
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
         Some(&self.framework)
     }
