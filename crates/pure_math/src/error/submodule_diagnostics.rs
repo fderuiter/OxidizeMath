@@ -1,6 +1,6 @@
 use super::{
-    CopulaError, Glicko2Error, KellyError, MarkovError, NumberTheoryError, OuError, TdaError,
-    ZipError,
+    CopulaError, Glicko2Error, KellyError, MarketPricingError, MarkovError, NumberTheoryError,
+    OuError, TdaError, ZipError,
 };
 use crate::pure_math::{
     algebra::linear_algebra::numerical::LinearAlgebraError,
@@ -47,6 +47,18 @@ impl Diagnostic for KellyError {
     }
 }
 
+impl Diagnostic for MarketPricingError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("MarketPricingError", self.to_string())
+    }
+}
+
 impl Diagnostic for MarkovError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
@@ -55,7 +67,13 @@ impl Diagnostic for MarkovError {
 
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("MarkovError", self.to_string())
+        let mut map = error_metadata("MarkovError", self.to_string());
+        if let Self::Math(math_err) = self {
+            for (k, v) in math_err.metadata() {
+                map.entry(k).or_insert(v);
+            }
+        }
+        map
     }
 }
 
@@ -103,7 +121,13 @@ impl Diagnostic for CopulaError {
 
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("CopulaError", self.to_string())
+        let mut map = error_metadata("CopulaError", self.to_string());
+        if let Self::Math(math_err) = self {
+            for (k, v) in math_err.metadata() {
+                map.entry(k).or_insert(v);
+            }
+        }
+        map
     }
 }
 

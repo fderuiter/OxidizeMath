@@ -165,6 +165,19 @@ fn test_win_ratio_workbench_portal_paper_links() {
     }
 }
 
+#[test]
+fn test_cortical_morphometry_resolves_freesurfer_paper_and_doi_links() {
+    let cortical_links = resolve_portal_paper_links("CorticalMorphometryTool", "neuroscience");
+    assert!(!cortical_links.is_empty());
+    assert_eq!(cortical_links[0].paper_name, "freesurfer.tex");
+    let ext = resolve_citation_reference_links(
+        "Cortical Surface-Based Analysis I: Segmentation and Surface Reconstruction (Dale, Fischl & Sereno, 1999, https://doi.org/10.1006/nimg.1998.0395)",
+    );
+    assert!(ext
+        .iter()
+        .any(|e| e.url == "https://doi.org/10.1006/nimg.1998.0395"));
+}
+
 fn assert_clean_portal_output(tool_id: &str, out: &egui::FullOutput) -> usize {
     const FORBIDDEN_RAW_TEX: &[&str] = &[
         r"\hbar", r"\langle", r"\rangle", r"\vec", r"\hat", r"\bar", r"\dot", r"\ddot", r"\tilde",
