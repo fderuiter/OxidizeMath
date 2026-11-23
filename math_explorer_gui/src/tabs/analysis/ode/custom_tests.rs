@@ -99,7 +99,10 @@ fn test_ode_sin_x_and_incomplete_sin_hide_solver_divergence_warning() {
         };
         tool.math_input.set_expression("1 / (y - 1)");
         tool.recalculate();
-        assert!(tool.diverged(), "1 / (y - 1) at y0=1 must numerically blow up");
+        assert!(
+            tool.diverged(),
+            "1 / (y - 1) at y0=1 must numerically blow up"
+        );
 
         tool.math_input.set_expression(bad_expr);
         tool.recalculate();
@@ -121,7 +124,9 @@ fn test_ode_sin_x_and_incomplete_sin_hide_solver_divergence_warning() {
             "expected inline error badge for '{bad_expr}'"
         );
         assert!(
-            !texts.iter().any(|t| t.contains("Solver Divergence Warning")),
+            !texts
+                .iter()
+                .any(|t| t.contains("Solver Divergence Warning")),
             "must hide Solver Divergence Warning for '{bad_expr}', got {texts:?}"
         );
     }
