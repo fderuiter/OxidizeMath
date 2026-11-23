@@ -294,7 +294,6 @@ fn test_workspace_build_script_outputs_emit_rerun_directives() {
         for expected in [
             "build.rs",
             "build_snapshot.rs",
-            "build_snapshot_scan.rs",
             "src/tabs/mod.rs",
             "../traceability.toml",
             "../papers",

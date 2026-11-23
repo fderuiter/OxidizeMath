@@ -1,6 +1,4 @@
-//! Plot rendering and offscreen export builders for [`super::ParrondoParadoxTool`].
-
-mod export;
+//! Plot rendering for [`super::ParrondoParadoxTool`].
 
 use super::{ParrondoParadoxTool, ParrondoViewMode};
 use crate::accessibility::{paint_canvas_focus_ring, register_canvas_accessibility};

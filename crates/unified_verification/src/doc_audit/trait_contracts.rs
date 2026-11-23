@@ -342,8 +342,8 @@ fn inspect_trait_fence(
 
 fn check_gui_guide_invariants(md_path: &Path, content: &str, violations: &mut Vec<String>) {
     let norm = md_path.to_string_lossy().replace('\\', "/");
-    let is_gui_guide = norm.ends_with("math_explorer_gui/README.md")
-        || norm.ends_with("docs/architecture/interactive_tool_walkthrough.md");
+    let is_walkthrough = norm.ends_with("docs/architecture/interactive_tool_walkthrough.md");
+    let is_gui_guide = norm.ends_with("math_explorer_gui/README.md") || is_walkthrough;
     if !is_gui_guide {
         return;
     }
@@ -353,18 +353,28 @@ fn check_gui_guide_invariants(md_path: &Path, content: &str, violations: &mut Ve
         r"(?i)(?:in\s+`?(?:math_explorer_gui/)?src/tabs/mod\.rs`?,\s*add|register\s+the\s+module\s+inside\s+`?(?:math_explorer_gui/)?src/tabs/mod\.rs`?)",
     )
     .expect("Valid regex");
+    let retired_tab_codegen_re =
+        Regex::new(r"(?:generated_tabs\.rs|@explorer_feature|@explorer_order)")
+            .expect("Valid regex");
 
     for (idx, line) in content.lines().enumerate() {
         if app_rs_re.is_match(line) {
             violations.push(format!(
-                "{}:{}: GUI guide references non-existent `src/app.rs` (`build.rs` auto-discovers tabs)",
+                "{}:{}: GUI guide references non-existent `src/app.rs` (`TabDescriptor` inventory registers tabs)",
                 md_path.display(),
                 idx + 1
             ));
         }
-        if manual_tabs_mod_re.is_match(line) {
+        if is_walkthrough && manual_tabs_mod_re.is_match(line) {
             violations.push(format!(
-                "{}:{}: GUI guide instructs manual edits to `src/tabs/mod.rs` (`build.rs` auto-generates tab registration)",
+                "{}:{}: InteractiveTool walkthrough instructs adding tool modules to `src/tabs/mod.rs` instead of `src/tabs/<domain>/mod.rs`",
+                md_path.display(),
+                idx + 1
+            ));
+        }
+        if retired_tab_codegen_re.is_match(line) {
+            violations.push(format!(
+                "{}:{}: GUI guide references retired `build.rs` tab-scraping directive (`generated_tabs.rs` / `@explorer_*`)",
                 md_path.display(),
                 idx + 1
             ));

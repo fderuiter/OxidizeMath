@@ -283,27 +283,19 @@ pub(super) async fn execute_workspace_scan<V: VirtualFileSystem>(
     vfs: V,
     base_dir: String,
 ) -> Result<oxidize_core::traceability::TraceabilityReport, String> {
-    let code_dirs = [
-        format!("{base_dir}math_explorer/src"),
-        format!("{base_dir}math_explorer_gui/src/tabs"),
-    ];
-    let papers_dir = format!("{base_dir}papers");
-    let crate_base = format!("{base_dir}crates");
     let engine = oxidize_core::traceability::TraceabilityEngine::new(vfs);
-
-    let mut crate_dirs = Vec::new();
-    if let Ok(crates) = engine.vfs.list_dir(&crate_base).await {
-        for crate_name in crates {
-            if !HOST_ONLY_WORKSPACE_CRATES.contains(&crate_name.as_str()) {
-                crate_dirs.push(format!("{crate_base}/{crate_name}/src"));
-            }
-        }
-    }
-
-    let mut all_dirs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
-    all_dirs.extend(crate_dirs.iter().map(String::as_str));
+    let (discovered_dirs, papers_dir) = engine.discover_workspace_dirs(&base_dir).await;
+    let filtered_dirs: Vec<&str> = discovered_dirs
+        .iter()
+        .map(String::as_str)
+        .filter(|dir| {
+            !HOST_ONLY_WORKSPACE_CRATES
+                .iter()
+                .any(|host_crate| dir.ends_with(&format!("crates/{host_crate}/src")))
+        })
+        .collect();
     engine
-        .scan_repository(&all_dirs, &papers_dir, false)
+        .scan_repository(&filtered_dirs, &papers_dir, false)
         .await
         .map_err(|e| e.to_string())
 }

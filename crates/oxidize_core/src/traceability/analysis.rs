@@ -129,6 +129,12 @@ pub(super) fn finalize_report_orphans(report: &mut TraceabilityReport) {
     report.unlinked_module_details.dedup();
     report.invalid_links.sort();
     report.invalid_links.dedup();
+    report.unverified_modules.sort();
+    report.unverified_modules.dedup();
+    report.invalid_tiers.sort();
+    report.invalid_tiers.dedup();
+    report.vacuous_bypasses.sort();
+    report.vacuous_bypasses.dedup();
 }
 
 pub(super) fn collect_valid_citations(

@@ -1,312 +1,227 @@
 //! Deterministic build-time generator for `traceability_manifest.json`.
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-#[path = "build_snapshot_scan.rs"]
-mod build_snapshot_scan;
-
-use build_snapshot_scan::{
-    discover_workspace_active_files, emit_rerun, extract_citations, extract_macro_modules,
+use oxidize_core::path_utils;
+use oxidize_core::traceability::{
+    TraceabilityEngine, TraceabilityManifestPayload, VerificationCertificate,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use oxidize_core::vfs::VirtualFileSystem;
+use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 
 const MANIFEST_FILENAME: &str = "traceability_manifest.json";
 
-/// Aggregated build-time traceability manifest written for WebAssembly static hosting.
-#[derive(Default)]
-struct ManifestBuilder {
-    scanned_files: usize,
-    paper_coverage: BTreeMap<String, Vec<String>>,
-    orphaned_papers: Vec<String>,
-    unlinked_code: Vec<String>,
-    invalid_links: Vec<(String, String)>,
-    semantic_integrity_status: BTreeMap<String, String>,
-    certificate_raw: Option<String>,
+const CORE_DEP_CRATES: &[&str] = &[
+    "diagnostics",
+    "federated_registry",
+    "math_commons",
+    "oxidize_core",
+    "scientific_metadata",
+];
+
+const FEATURE_DEP_CRATES: &[(&str, &str)] = &[
+    ("CARGO_FEATURE_AI", "crates/domain_ai/src"),
+    ("CARGO_FEATURE_APPLIED", "crates/domain_applied/src"),
+    ("CARGO_FEATURE_BIOLOGY", "crates/domain_biology/src"),
+    ("CARGO_FEATURE_CLIMATE", "crates/domain_climate/src"),
+    (
+        "CARGO_FEATURE_EPIDEMIOLOGY",
+        "crates/domain_epidemiology/src",
+    ),
+    ("CARGO_FEATURE_MATH_EXPLORER", "math_explorer/src"),
+    ("CARGO_FEATURE_PHYSICS", "crates/domain_physics/src"),
+    ("CARGO_FEATURE_PURE_MATH", "crates/pure_math/src"),
+];
+
+/// Read-only build-script [`VirtualFileSystem`] adapter rooted at `..` that emits
+/// deduplicated forward-slash `cargo:rerun-if-changed` directives for existing paths.
+struct BuildSnapshotVfs {
+    root: PathBuf,
+    emitted: RefCell<BTreeSet<String>>,
+    enabled_features: BTreeSet<String>,
+}
+
+impl BuildSnapshotVfs {
+    fn new(root: &Path) -> Self {
+        let enabled_features = env::vars_os()
+            .filter_map(|(k, _)| {
+                k.to_str()?
+                    .strip_prefix("CARGO_FEATURE_")
+                    .map(|f| f.to_ascii_lowercase())
+            })
+            .collect();
+        Self {
+            root: root.to_path_buf(),
+            emitted: RefCell::new(BTreeSet::new()),
+            enabled_features,
+        }
+    }
+
+    fn resolve_path(&self, rel: &str) -> PathBuf {
+        let clean = rel.trim_start_matches("./").trim_start_matches(['/', '\\']);
+        if clean.is_empty() {
+            self.root.clone()
+        } else if self.root == Path::new("..") && clean == "math_explorer_gui" {
+            PathBuf::from(".")
+        } else if self.root == Path::new("..") && clean.starts_with("math_explorer_gui/") {
+            PathBuf::from(&clean["math_explorer_gui/".len()..])
+        } else {
+            self.root.join(clean)
+        }
+    }
+
+    fn emit_if_exists(&self, path: &Path) {
+        if !path.exists() {
+            return;
+        }
+        let normalized = path_utils::normalize_path(path);
+        if !normalized.trim().is_empty() && self.emitted.borrow_mut().insert(normalized.clone()) {
+            println!("cargo:rerun-if-changed={normalized}");
+        }
+    }
+}
+
+fn filter_disabled_tab_mods(content: &str, enabled_features: &BTreeSet<String>) -> String {
+    let mut out = String::with_capacity(content.len());
+    let mut skip_next_mod = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(feat) = trimmed
+            .strip_prefix("#[cfg(feature = \"")
+            .and_then(|rest| rest.strip_suffix("\")]"))
+        {
+            if !enabled_features.contains(feat) {
+                skip_next_mod = true;
+                out.push('\n');
+                continue;
+            }
+        }
+        if skip_next_mod && trimmed.starts_with("pub mod ") && trimmed.ends_with(';') {
+            skip_next_mod = false;
+            out.push('\n');
+            continue;
+        }
+        skip_next_mod = false;
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+impl VirtualFileSystem for BuildSnapshotVfs {
+    fn read_to_string(
+        &self,
+        path: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, std::io::Error>> + '_>> {
+        let clean = path
+            .trim_start_matches("./")
+            .trim_start_matches(['/', '\\'])
+            .to_string();
+        let disk_path = self.resolve_path(path);
+        Box::pin(async move {
+            let content = fs::read_to_string(&disk_path)?;
+            self.emit_if_exists(&disk_path);
+            if clean == "math_explorer_gui/src/tabs/mod.rs" {
+                Ok(filter_disabled_tab_mods(&content, &self.enabled_features))
+            } else {
+                Ok(content)
+            }
+        })
+    }
+
+    fn write_to_file(
+        &self,
+        _path: &str,
+        _content: &[u8],
+    ) -> Pin<Box<dyn Future<Output = Result<(), std::io::Error>> + '_>> {
+        Box::pin(async {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "Read-only build snapshot VFS",
+            ))
+        })
+    }
+
+    fn list_dir(
+        &self,
+        path: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<String>, std::io::Error>> + '_>> {
+        let disk_path = self.resolve_path(path);
+        Box::pin(async move {
+            let entries = fs::read_dir(&disk_path)?;
+            self.emit_if_exists(&disk_path);
+            let mut names = Vec::new();
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    names.push(name.to_string());
+                }
+            }
+            names.sort();
+            Ok(names)
+        })
+    }
+}
+
+fn active_code_dirs(vfs: &BuildSnapshotVfs) -> Vec<String> {
+    let mut dirs = Vec::new();
+    for crate_name in CORE_DEP_CRATES {
+        let dir = format!("crates/{crate_name}/src");
+        vfs.emit_if_exists(&vfs.resolve_path(&dir));
+        dirs.push(dir);
+    }
+    for &(feature_env, dir) in FEATURE_DEP_CRATES {
+        if env::var_os(feature_env).is_some() {
+            vfs.emit_if_exists(&vfs.resolve_path(dir));
+            dirs.push(dir.to_string());
+        }
+    }
+    dirs.push("math_explorer_gui/src/tabs".to_string());
+    dirs.sort();
+    dirs
 }
 
 /// Generates `traceability_manifest.json` into `out_dir` and Cargo's target directory.
 pub fn generate_traceability_snapshot(out_dir: &Path) {
-    emit_rerun(Path::new("build_snapshot.rs"));
-    emit_rerun(Path::new("build_snapshot_scan.rs"));
     let ws_root = Path::new("..");
-    let registry_path = ws_root.join("traceability.toml");
+    let vfs = BuildSnapshotVfs::new(ws_root);
+    vfs.emit_if_exists(Path::new("build_snapshot.rs"));
+
     let cert_path = ws_root.join("Verification_Certificate.json");
-    let papers_dir = ws_root.join("papers");
+    vfs.emit_if_exists(&cert_path);
+    let certificate = read_optional_certificate(&cert_path);
 
-    emit_if_exists(&registry_path);
-    emit_if_exists(&cert_path);
-    emit_if_exists(&papers_dir);
+    let code_dirs = active_code_dirs(&vfs);
+    let code_dir_refs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
+    let engine = TraceabilityEngine::new(vfs);
+    let report =
+        futures::executor::block_on(engine.scan_repository(&code_dir_refs, "papers", false))
+            .expect("Failed to execute TraceabilityEngine scan in build.rs");
 
-    let valid_papers = collect_valid_papers(&papers_dir);
-    let registry_links = parse_registry_links(&registry_path);
-    let registered_modules: BTreeSet<String> = registry_links.keys().cloned().collect();
-
-    let mut builder = ManifestBuilder {
-        certificate_raw: read_optional_certificate_object(&cert_path),
-        ..ManifestBuilder::default()
+    let payload = TraceabilityManifestPayload {
+        report,
+        certificate,
     };
-    for paper in &valid_papers {
-        builder.paper_coverage.insert(paper.clone(), Vec::new());
-    }
-    link_registry_entries(&valid_papers, &registry_links, &mut builder);
-
-    let active_files = discover_workspace_active_files(ws_root);
-    for (disk_path, repo_rel_path) in active_files {
-        process_source_file(
-            &disk_path,
-            &repo_rel_path,
-            &registered_modules,
-            &mut builder,
-        );
-    }
-
-    finalize_manifest(&valid_papers, &registry_links, &mut builder);
-    let json = serialize_manifest_json(&builder);
+    let json = serialize_sorted_manifest(&payload);
     write_manifest_outputs(out_dir, &json);
 }
 
-fn emit_if_exists(path: &Path) {
-    if path.exists() {
-        emit_rerun(path);
-    }
-}
-
-fn read_optional_certificate_object(cert_path: &Path) -> Option<String> {
+fn read_optional_certificate(cert_path: &Path) -> Option<VerificationCertificate> {
     let raw = fs::read_to_string(cert_path).ok()?;
-    let trimmed = raw.trim();
-    (trimmed.starts_with('{') && trimmed.ends_with('}') && trimmed.contains("\"passed\""))
-        .then(|| trimmed.to_string())
+    serde_json::from_str::<VerificationCertificate>(&raw).ok()
 }
 
-fn collect_valid_papers(papers_dir: &Path) -> BTreeSet<String> {
-    let mut papers = BTreeSet::new();
-    let Ok(entries) = fs::read_dir(papers_dir) else {
-        return papers;
-    };
-    let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
-    paths.sort();
-    for path in paths {
-        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("tex") {
-            emit_rerun(&path);
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                papers.insert(name.to_string());
-            }
-        }
-    }
-    papers
-}
-
-fn parse_registry_links(registry_path: &Path) -> BTreeMap<String, String> {
-    let mut links = BTreeMap::new();
-    let Ok(content) = fs::read_to_string(registry_path) else {
-        return links;
-    };
-    let mut in_links = false;
-    for raw_line in content.lines() {
-        let line = strip_toml_comment(raw_line).trim();
-        if line.is_empty() {
-            continue;
-        }
-        if line.starts_with('[') && line.ends_with(']') {
-            in_links = line[1..line.len() - 1].trim() == "links";
-            continue;
-        }
-        if !in_links {
-            continue;
-        }
-        if let Some((raw_key, raw_val)) = line.split_once('=') {
-            let key = raw_key.trim().trim_matches('"');
-            let val = raw_val.trim();
-            if let Some(unquoted) = val.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-                links.insert(key.to_string(), unquoted.to_string());
-            } else if !key.is_empty() {
-                links.insert(key.to_string(), "INVALID_FORMAT".to_string());
-            }
-        }
-    }
-    links
-}
-
-fn strip_toml_comment(line: &str) -> &str {
-    let mut in_quotes = false;
-    let mut escaped = false;
-    for (idx, ch) in line.char_indices() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        if ch == '\\' && in_quotes {
-            escaped = true;
-        } else if ch == '"' {
-            in_quotes = !in_quotes;
-        } else if ch == '#' && !in_quotes {
-            return &line[..idx];
-        }
-    }
-    line
-}
-
-fn link_registry_entries(
-    valid_papers: &BTreeSet<String>,
-    registry_links: &BTreeMap<String, String>,
-    builder: &mut ManifestBuilder,
-) {
-    for (module_name, paper_name) in registry_links {
-        if paper_name == "INVALID_FORMAT" {
-            builder
-                .invalid_links
-                .push((module_name.clone(), paper_name.clone()));
-        } else if valid_papers.contains(paper_name)
-            || paper_name.starts_with("spec:")
-            || paper_name.starts_with("registry:")
-        {
-            builder
-                .paper_coverage
-                .entry(paper_name.clone())
-                .or_default()
-                .push(module_name.clone());
-        } else {
-            builder
-                .invalid_links
-                .push((module_name.clone(), paper_name.clone()));
-        }
-    }
-}
-
-fn process_source_file(
-    disk_path: &Path,
-    repo_rel_path: &str,
-    registered_modules: &BTreeSet<String>,
-    builder: &mut ManifestBuilder,
-) {
-    builder.scanned_files += 1;
-    let Ok(content) = fs::read_to_string(disk_path) else {
-        return;
-    };
-
-    let is_module = repo_rel_path.ends_with("mod.rs")
-        || repo_rel_path.contains("/tabs/")
-        || repo_rel_path.ends_with("lib.rs");
-
-    let mut verified_modules = Vec::new();
-    for cite in extract_citations(&content) {
-        if registered_modules.contains(&cite) {
-            verified_modules.push(cite);
-        } else {
-            builder
-                .invalid_links
-                .push((repo_rel_path.to_string(), cite));
-        }
-    }
-    verified_modules.extend(extract_macro_modules(&content));
-
-    for module in &verified_modules {
-        builder
-            .semantic_integrity_status
-            .insert(module.clone(), "Verified".to_string());
-        if is_module && !registered_modules.contains(module) {
-            builder.unlinked_code.push(repo_rel_path.to_string());
-        }
-    }
-}
-
-fn finalize_manifest(
-    valid_papers: &BTreeSet<String>,
-    registry_links: &BTreeMap<String, String>,
-    builder: &mut ManifestBuilder,
-) {
-    for paper in valid_papers {
-        let stem = paper.strip_suffix(".tex").unwrap_or(paper);
-        if builder.semantic_integrity_status.contains_key(stem) {
-            continue;
-        }
-        let verified = registry_links.iter().any(|(module, target)| {
-            let clean = target.strip_suffix(".tex").unwrap_or(target);
-            (target == paper || clean == stem)
-                && builder
-                    .semantic_integrity_status
-                    .get(module)
-                    .is_some_and(|s| s == "Verified")
-        });
-        builder.semantic_integrity_status.insert(
-            stem.to_string(),
-            if verified { "Verified" } else { "Unverified" }.to_string(),
-        );
-    }
-
-    for (paper, linked) in &mut builder.paper_coverage {
-        linked.sort();
-        linked.dedup();
-        if linked.is_empty() {
-            builder.orphaned_papers.push(paper.clone());
-        }
-    }
-    builder.orphaned_papers.sort();
-    builder.orphaned_papers.dedup();
-    builder.unlinked_code.sort();
-    builder.unlinked_code.dedup();
-    builder.invalid_links.sort();
-    builder.invalid_links.dedup();
-}
-
-fn json_escape(raw: &str) -> String {
-    let mut escaped = String::with_capacity(raw.len() + 2);
-    escaped.push('"');
-    for ch in raw.chars() {
-        match ch {
-            '"' => escaped.push_str("\\\""),
-            '\\' => escaped.push_str("\\\\"),
-            '\n' => escaped.push_str("\\n"),
-            '\r' => escaped.push_str("\\r"),
-            '\t' => escaped.push_str("\\t"),
-            c if c.is_control() => escaped.push_str(&format!("\\u{:04x}", c as u32)),
-            c => escaped.push(c),
-        }
-    }
-    escaped.push('"');
-    escaped
-}
-
-fn serialize_string_array(items: &[String]) -> String {
-    let inner: Vec<String> = items.iter().map(|s| json_escape(s)).collect();
-    format!("[{}]", inner.join(","))
-}
-
-fn serialize_manifest_json(builder: &ManifestBuilder) -> String {
-    let coverage_entries: Vec<String> = builder
-        .paper_coverage
-        .iter()
-        .map(|(paper, modules)| {
-            format!("{}:{}", json_escape(paper), serialize_string_array(modules))
-        })
-        .collect();
-    let invalid_entries: Vec<String> = builder
-        .invalid_links
-        .iter()
-        .map(|(f, p)| format!("[{},{}]", json_escape(f), json_escape(p)))
-        .collect();
-    let semantic_entries: Vec<String> = builder
-        .semantic_integrity_status
-        .iter()
-        .map(|(k, v)| format!("{}:{}", json_escape(k), json_escape(v)))
-        .collect();
-    let cert_suffix = builder
-        .certificate_raw
-        .as_deref()
-        .map_or_else(String::new, |raw| format!(",\"certificate\":{raw}"));
-
-    format!(
-        "{{\"scanned_files\":{},\"invalid_links\":[{}],\"orphaned_papers\":{},\"unlinked_code\":{},\"unverified_modules\":[],\"paper_coverage\":{{{}}},\"total_funcs\":0,\"total_asserts\":0,\"verified_funcs\":0,\"verified_asserts\":0,\"invalid_tiers\":[],\"vacuous_bypasses\":[],\"semantic_integrity_status\":{{{}}}{}}}\n",
-        builder.scanned_files,
-        invalid_entries.join(","),
-        serialize_string_array(&builder.orphaned_papers),
-        serialize_string_array(&builder.unlinked_code),
-        coverage_entries.join(","),
-        semantic_entries.join(","),
-        cert_suffix
-    )
+fn serialize_sorted_manifest(payload: &TraceabilityManifestPayload) -> String {
+    let sorted_value = serde_json::to_value(payload)
+        .expect("Failed to convert TraceabilityManifestPayload to JSON value");
+    let mut json = serde_json::to_string(&sorted_value)
+        .expect("Failed to serialize TraceabilityManifestPayload JSON");
+    json.push('\n');
+    json
 }
 
 fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {

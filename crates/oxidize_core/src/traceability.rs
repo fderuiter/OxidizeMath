@@ -1,9 +1,11 @@
 mod analysis;
 mod cache;
+mod manifest;
 mod module_tree;
 mod runner;
 
 pub use cache::{AstCache, CachedRustFile};
+pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
 pub use runner::{
     check_and_print_traceability_errors, discover_workspace_code_dirs, format_traceability_errors,
     print_traceability_dashboard, run_workspace_traceability,
@@ -172,7 +174,7 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         }
     }
 
-    async fn load_cached_optional(
+    pub(super) async fn load_cached_optional(
         &self,
         norm_path: &str,
         cache: &mut AstCache,
@@ -188,59 +190,37 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         Ok(false)
     }
 
-    async fn gather_active_files(
-        &self,
-        code_dirs: &[&str],
-        active_files: &mut HashSet<String>,
-        cache: &mut AstCache,
-    ) -> Result<(), std::io::Error> {
-        for dir in code_dirs {
-            let normalized = crate::path_utils::normalize_path(dir);
-            let mut has_entrypoint = false;
-            for entry_name in ["lib.rs", "main.rs", "mod.rs"] {
-                let entry = crate::path_utils::join_and_normalize(&normalized, entry_name);
-                if self.load_cached_optional(&entry, cache).await? {
-                    self.parse_module_tree(&entry, active_files, cache).await?;
-                    has_entrypoint = true;
-                }
-            }
-            if !has_entrypoint {
-                self.gather_files_fallback(&normalized, active_files)
-                    .await?;
+    /// Discovers workspace code directories (`math_explorer/src`, `math_explorer_gui/src/tabs`,
+    /// and `crates/*/src`) and the `papers` directory relative to `base_dir`.
+    pub async fn discover_workspace_dirs(&self, base_dir: &str) -> (Vec<String>, String) {
+        let prefix = if base_dir.is_empty() || base_dir.ends_with('/') {
+            base_dir.to_string()
+        } else {
+            format!("{base_dir}/")
+        };
+        let mut code_dirs = vec![
+            format!("{prefix}math_explorer/src"),
+            format!("{prefix}math_explorer_gui/src/tabs"),
+        ];
+        let crate_base = format!("{prefix}crates");
+        if let Ok(mut crates) = self.vfs.list_dir(&crate_base).await {
+            crates.sort();
+            for crate_name in crates {
+                code_dirs.push(format!("{crate_base}/{crate_name}/src"));
             }
         }
-        Ok(())
+        (code_dirs, format!("{prefix}papers"))
     }
 
-    async fn gather_files_fallback(
+    /// Scans all discovered workspace code directories and `papers` under `base_dir`.
+    pub async fn scan_workspace(
         &self,
-        start_dir: &str,
-        active_files: &mut HashSet<String>,
-    ) -> Result<(), std::io::Error> {
-        let mut stack = vec![start_dir.to_string()];
-        while let Some(current_dir) = stack.pop() {
-            let entries = match self.vfs.list_dir(&current_dir).await {
-                Ok(entries) => entries,
-                Err(err)
-                    if matches!(
-                        err.kind(),
-                        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
-                    ) =>
-                {
-                    continue;
-                }
-                Err(err) => return Err(err),
-            };
-            for name in entries {
-                let path = crate::path_utils::join_and_normalize(&current_dir, &name);
-                if name.ends_with(".rs") {
-                    active_files.insert(path);
-                } else if !name.contains('.') {
-                    stack.push(path);
-                }
-            }
-        }
-        Ok(())
+        base_dir: &str,
+        auto_fix: bool,
+    ) -> Result<TraceabilityReport, std::io::Error> {
+        let (code_dirs, papers_dir) = self.discover_workspace_dirs(base_dir).await;
+        let all_dirs: Vec<&str> = code_dirs.iter().map(String::as_str).collect();
+        self.scan_repository(&all_dirs, &papers_dir, auto_fix).await
     }
 
     #[allow(missing_docs)]
@@ -386,56 +366,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
             registered_modules,
             report,
         );
-        Ok(())
-    }
-
-    #[allow(clippy::double_must_use)]
-    #[async_recursion::async_recursion(?Send)]
-    async fn parse_module_tree(
-        &self,
-        file_path: &str,
-        active_files: &mut HashSet<String>,
-        cache: &mut AstCache,
-    ) -> Result<(), std::io::Error> {
-        let norm_file_path = crate::path_utils::normalize_path(file_path);
-        if active_files.contains(&norm_file_path) {
-            return Ok(());
-        }
-        let key = AstCache::normalize_key(&norm_file_path);
-        if cache.get(&key).is_none() {
-            let content = self.vfs.read_to_string(&norm_file_path).await?;
-            cache.insert_source(key.clone(), content);
-        }
-        active_files.insert(norm_file_path.clone());
-
-        let submodules =
-            module_tree::collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
-        let parent_dir = module_tree::module_parent_dir(&norm_file_path);
-        let dir_path = module_tree::module_child_dir(&norm_file_path);
-        for submodule in submodules {
-            if let Some(rel_path) = submodule.custom_path {
-                let custom = crate::path_utils::join_and_normalize(
-                    &parent_dir,
-                    rel_path.trim_start_matches("./"),
-                );
-                if self.load_cached_optional(&custom, cache).await? {
-                    self.parse_module_tree(&custom, active_files, cache).await?;
-                }
-                continue;
-            }
-            let path1 =
-                crate::path_utils::join_and_normalize(&dir_path, format!("{}.rs", submodule.ident));
-            let path2 = crate::path_utils::join_and_normalize(
-                &dir_path,
-                format!("{}/mod.rs", submodule.ident),
-            );
-
-            if self.load_cached_optional(&path1, cache).await? {
-                self.parse_module_tree(&path1, active_files, cache).await?;
-            } else if self.load_cached_optional(&path2, cache).await? {
-                self.parse_module_tree(&path2, active_files, cache).await?;
-            }
-        }
         Ok(())
     }
 }
