@@ -31,6 +31,7 @@ pub struct PlotItemBase {
     id: Id,
     highlight: bool,
     allow_hover: bool,
+    companion_visual_only: bool,
 }
 
 impl PlotItemBase {
@@ -41,6 +42,7 @@ impl PlotItemBase {
             id,
             highlight: false,
             allow_hover: true,
+            companion_visual_only: false,
         }
     }
 }
@@ -126,17 +128,23 @@ pub trait PlotItem {
         vec![]
     }
 
+    fn is_companion_visual_only(&self) -> bool {
+        self.base().companion_visual_only
+    }
+
     fn append_deferred_export(
         &mut self,
         datasets: &mut Vec<crate::DeferredDatasetEntry>,
         primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
     ) {
-        let pts = self.extract_points();
-        if !pts.is_empty() {
-            datasets.push(crate::DeferredDatasetEntry::Owned {
-                name: self.name().to_owned(),
-                points: pts,
-            });
+        if !self.is_companion_visual_only() {
+            let pts = self.extract_points();
+            if !pts.is_empty() {
+                datasets.push(crate::DeferredDatasetEntry::Owned {
+                    name: self.name().to_owned(),
+                    points: pts,
+                });
+            }
         }
         let prims = self.extract_export_primitives();
         if !prims.is_empty() {
@@ -638,6 +646,12 @@ pub struct Line<'a> {
 }
 
 impl<'a> Line<'a> {
+    #[inline]
+    pub(crate) fn companion_visual_only(mut self, companion: bool) -> Self {
+        self.base.companion_visual_only = companion;
+        self
+    }
+
     pub fn new(name: impl Into<String>, series: impl Into<PlotPoints<'a>>) -> Self {
         Self {
             base: PlotItemBase::new(name.into()),
@@ -2487,7 +2501,7 @@ pub(super) fn rulers_and_tooltip_at_value(
     );
 }
 
-fn format_value_tooltip_content(
+pub(crate) fn format_value_tooltip_content(
     value: PlotPoint,
     name: &str,
     plot: &PlotConfig<'_>,
@@ -2531,10 +2545,12 @@ fn format_value_tooltip_content(
 
     let mut lines = Vec::with_capacity(2);
     if plot.show_x {
-        lines.push((format!("x = {:.*}", x_decimals, value.x), true));
+        let x_str = crate::format::format_readout_value(value.x, x_decimals, 4);
+        lines.push((format!("x = {x_str}"), true));
     }
     if plot.show_y {
-        lines.push((format!("y = {:.*}", y_decimals, value.y), true));
+        let y_str = crate::format::format_readout_value(value.y, y_decimals, 4);
+        lines.push((format!("y = {y_str}"), true));
     }
     (name.to_owned(), lines)
 }

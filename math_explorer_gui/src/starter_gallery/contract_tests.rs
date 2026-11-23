@@ -56,7 +56,7 @@ fn test_all_57_starter_cards_launch_and_sync_framework_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(presets.len(), 67);
+    assert_eq!(presets.len(), 99);
 
     for preset in presets {
         let json = preset.generate_preset();
@@ -105,7 +105,7 @@ fn test_all_52_tools_export_and_import_preset_roundtrip() {
         );
         let starter = presets
             .iter()
-            .find(|p| p.tool_name == Some(meta.id))
+            .find(|p| p.tool_name == Some(meta.id) && p.domain == meta.domain)
             .expect("starter preset exists");
         tool.import_preset_json(starter.generate_preset())
             .unwrap_or_else(|e| panic!("Tool '{}' starter import failed: {}", meta.id, e));
@@ -272,7 +272,11 @@ fn test_single_starter_gallery_button_per_simulation_view() {
             screen_rect: Some(screen_rect),
             ..Default::default()
         },
-        |ctx| morph.show(ctx, &mut frame),
+        |ctx| {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show(ctx, |ui| morph.show_inside(ui, &mut frame));
+        },
     );
     assert_eq!(
         count_gallery_buttons(&morph_out),

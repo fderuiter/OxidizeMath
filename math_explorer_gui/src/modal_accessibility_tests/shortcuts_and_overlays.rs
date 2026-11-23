@@ -325,7 +325,7 @@ fn verify_theory_portal_in_tab(tab_idx: usize) {
 }
 
 #[test]
-fn test_theory_context_portal_close_button_escape_and_focus_return_across_all_20_framework_tabs() {
+fn test_theory_context_portal_close_button_escape_and_focus_return_across_all_23_framework_tabs() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let probe_app = MathExplorerApp::default();
     let fw_tab_indices: Vec<usize> = probe_app
@@ -336,8 +336,8 @@ fn test_theory_context_portal_close_button_escape_and_focus_return_across_all_20
         .collect();
     assert_eq!(
         fw_tab_indices.len(),
-        20,
-        "Expected all 20 SimulationFramework tabs to be registered"
+        23,
+        "Expected all 23 SimulationFramework tabs to be registered"
     );
     for tab_idx in fw_tab_indices {
         verify_theory_portal_in_tab(tab_idx);

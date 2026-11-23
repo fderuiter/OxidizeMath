@@ -72,8 +72,7 @@ fn test_coupled_ode_persistence_and_url_roundtrip() {
         comparison_mode: true,
         ..Default::default()
     };
-    tool.coupled_bank
-        .set_expressions(&["v", "-k * y - c * v"]);
+    tool.coupled_bank.set_expressions(&["v", "-k * y - c * v"]);
     tool.coupled_bank.set_param("k", 2.25);
     tool.coupled_bank.set_param("c", 0.35);
     tool.recalculate();

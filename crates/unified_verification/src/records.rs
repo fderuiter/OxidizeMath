@@ -32,8 +32,9 @@ pub fn verify_records(args: &[String]) -> bool {
     let force_staged = args.iter().any(|a| a == "--staged");
     let raw_base = env::var("BASE_SHA").ok();
     let raw_head = env::var("HEAD_SHA").ok();
+    let root = crate::manifest_cache::workspace_root_dir();
     verify_records_in_dir_opts(
-        crate::manifest_cache::workspace_root_dir(),
+        &root,
         raw_base.as_deref(),
         raw_head.as_deref(),
         force_staged,

@@ -367,7 +367,7 @@ fn test_all_six_pane_modals_across_all_four_viewport_layouts() {
         let mut app = MathExplorerApp::default();
         let modal_pane = configure_layout_with_canary_panes(&mut app, layout);
         let (plot_id, plot_rect) = locate_target_pane_plot(&ctx, &mut app, modal_pane);
-        let baseline_states = snapshot_all_pane_states(&app);
+        let baseline_states = snapshot_all_pane_states(&app, Some(modal_pane));
 
         verify_data_table_modal(&ctx, &mut app, modal_pane);
         verify_plot_export_modal(&ctx, &mut app, modal_pane);
@@ -377,10 +377,15 @@ fn test_all_six_pane_modals_across_all_four_viewport_layouts() {
         verify_framework_export_modal(&ctx, &mut app, modal_pane, plot_id);
 
         assert_eq!(
-            snapshot_all_pane_states(&app),
+            snapshot_all_pane_states(&app, Some(modal_pane)),
             baseline_states,
             "Background controls in active and inactive panes must receive zero events in {layout:?}"
         );
+        let modal_pane_saved = app
+            .pane_tab(modal_pane)
+            .and_then(|t| t.save_state())
+            .unwrap_or_default();
+        assert!(modal_pane_saved.contains("\"label\":\"Edit! B\""));
     }
 }
 

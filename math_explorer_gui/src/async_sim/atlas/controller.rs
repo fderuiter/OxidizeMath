@@ -349,5 +349,6 @@ fn clone_snapshot_lightweight(s: &StateSnapshot) -> StateSnapshot {
         pixels: Arc::clone(&s.pixels),
         custom_data: Vec::new(),
         structured_data: meta.map(|m| Box::new(m) as Box<dyn std::any::Any + Send>),
+        sonification: s.sonification,
     }
 }

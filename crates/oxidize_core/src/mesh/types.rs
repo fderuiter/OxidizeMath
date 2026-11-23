@@ -48,6 +48,12 @@ impl Point3D {
             Point3D::new(0.0, 0.0, 0.0)
         }
     }
+    /// Returns `true` when all three coordinates are finite numbers.
+    #[inline]
+    #[must_use]
+    pub fn is_finite(&self) -> bool {
+        self.x.is_finite() && self.y.is_finite() && self.z.is_finite()
+    }
 }
 
 impl Add for Point3D {
@@ -102,4 +108,66 @@ pub struct Mesh {
     pub normals: Vec<Point3D>,
     #[allow(missing_docs)]
     pub indices: Vec<usize>,
+}
+
+impl Mesh {
+    /// Creates an empty [`Mesh`] without heap allocation.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Pre-allocates vertex/normal and index buffers for zero-allocation reuse.
+    #[must_use]
+    pub fn with_capacity(vertex_capacity: usize, index_capacity: usize) -> Self {
+        Self {
+            vertices: Vec::with_capacity(vertex_capacity),
+            normals: Vec::with_capacity(vertex_capacity),
+            indices: Vec::with_capacity(index_capacity),
+        }
+    }
+
+    /// Clears vertices, normals, and triangle indices while retaining allocated capacity.
+    pub fn clear(&mut self) {
+        self.vertices.clear();
+        self.normals.clear();
+        self.indices.clear();
+    }
+}
+
+/// An 8-bit per-channel RGB color attribute for a 3D mesh vertex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct VertexColor {
+    /// Red channel (`0..=255`).
+    pub r: u8,
+    /// Green channel (`0..=255`).
+    pub g: u8,
+    /// Blue channel (`0..=255`).
+    pub b: u8,
+}
+
+impl VertexColor {
+    /// Constructs a new RGB vertex color.
+    #[inline]
+    #[must_use]
+    pub const fn new(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b }
+    }
+}
+
+/// An indexed 3D triangle mesh paired with per-vertex RGB color attributes.
+#[derive(Debug, Clone, Default)]
+pub struct ColoredMesh {
+    /// Indexed triangle geometry and normals.
+    pub mesh: Mesh,
+    /// Per-vertex RGB colors aligned with `mesh.vertices`.
+    pub colors: Vec<VertexColor>,
+}
+
+impl ColoredMesh {
+    /// Constructs a [`ColoredMesh`] from an indexed [`Mesh`] and per-vertex colors.
+    #[must_use]
+    pub fn new(mesh: Mesh, colors: Vec<VertexColor>) -> Self {
+        Self { mesh, colors }
+    }
 }

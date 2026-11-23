@@ -47,16 +47,53 @@ fn test_render_formula_with_export() {
 #[test]
 fn test_render_theory_summary_with_export() {
     let ctx = egui::Context::default();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+    ctx.enable_accesskit();
+    let out = ctx.run(egui::RawInput::default(), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| {
-            let r1 = render_theory_summary_with_export(ui, "Euler identity", Some("e^{i\\pi}+1=0"));
+            let r1 = render_theory_summary_with_export(
+                ui,
+                r"Zeeman spin $H = -\vec{\mu}\cdot\vec{B}$ with ratio $\frac{a + b}{c + d}$",
+                Some(r"i\hbar \frac{d|\psi\rangle}{dt} = H|\psi\rangle"),
+            );
             let r2 = render_theory_summary_with_export(ui, "", None);
-            let r3 = render_theory_summary_with_export(ui, "Model: $\\frac{dy}{dt} = -k y$", None);
+            let r3 = render_theory_summary_with_export(ui, r"Model: $\frac{dy}{dt} = -k y$", None);
             let r4 = render_theory_summary_with_export(ui, "Unclosed $formula fallback", None);
+            let r5 = render_theory_summary_with_export(
+                ui,
+                "A Quantitative Description of g_na_bar (Hodgkin & Huxley, 1952)",
+                None,
+            );
             assert!(r1.rect.width() >= 0.0 && r2.rect.width() >= 0.0);
-            assert!(r3.rect.width() >= 0.0 && r4.rect.width() >= 0.0);
+            assert!(r3.rect.width() >= 0.0 && r4.rect.width() >= 0.0 && r5.rect.width() >= 0.0);
         });
     });
+
+    let ak = out
+        .platform_output
+        .accesskit_update
+        .as_ref()
+        .expect("AccessKit tree must be populated");
+    let labels: Vec<&str> = ak
+        .nodes
+        .iter()
+        .flat_map(|(_, n)| n.label().into_iter().chain(n.value()))
+        .collect();
+    assert!(
+        labels
+            .iter()
+            .any(|l| l.contains("μ\u{20D7}·B\u{20D7}") && l.contains("(a + b)⁄(c + d)")),
+        "Some(latex) branch must parse inline prose math: {labels:?}"
+    );
+    assert!(
+        labels
+            .iter()
+            .any(|l| l.contains("Model: dy⁄dt = -k y") && !l.contains('─')),
+        "None branch must format inline fractions on one line: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"A Quantitative Description of g_na_bar (Hodgkin & Huxley, 1952)"),
+        "Plain citation without '$' must preserve underscores verbatim: {labels:?}"
+    );
 }
 
 #[test]

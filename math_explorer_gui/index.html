@@ -1090,11 +1090,13 @@
     <script src="reload.js" defer></script>
     <link data-trunk rel="copy-file" href="reload.js"/>
     <link data-trunk rel="copy-file" href="sw.js"/>
+    <link rel="modulepreload" href="initializer.js">
+    <link rel="modulepreload" href="math_explorer_gui.js">
+    <link rel="preload" href="math_explorer_gui_bg.wasm" as="fetch" type="application/wasm" crossorigin>
     <script type="module" src="bootstrap.js" defer></script>
     <link data-trunk rel="copy-file" href="bootstrap.js"/>
     <link data-trunk rel="copy-file" href="initializer.js"/>
     <link data-trunk rel="rust" href="Cargo.toml" data-bin="math_explorer_gui" data-wasm-opt="z" data-reference-types data-initializer="initializer.js"/>
-    <link data-trunk rel="copy-file" href="worker.js"/>
 </head>
 <body>
     <noscript>

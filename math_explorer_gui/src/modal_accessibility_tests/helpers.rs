@@ -240,14 +240,25 @@ pub(super) fn configure_layout_with_canary_panes(
     }
 }
 
-pub(super) fn snapshot_all_pane_states(app: &MathExplorerApp) -> Vec<(usize, String)> {
+pub(super) fn snapshot_all_pane_states(
+    app: &MathExplorerApp,
+    exclude_plot_states_pane: Option<usize>,
+) -> Vec<(usize, String)> {
     let count = app.viewport_layout.pane_count();
     (0..count)
         .map(|idx| {
-            let state = app
+            let mut state = app
                 .pane_tab(idx)
                 .and_then(|t| t.save_state())
                 .unwrap_or_default();
+            if exclude_plot_states_pane == Some(idx) {
+                if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&state) {
+                    if let Some(obj) = val.as_object_mut() {
+                        obj.remove("plot_states");
+                        state = serde_json::to_string(&val).unwrap_or(state);
+                    }
+                }
+            }
             (idx, state)
         })
         .collect()

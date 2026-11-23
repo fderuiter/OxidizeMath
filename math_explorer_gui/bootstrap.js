@@ -3,6 +3,9 @@
 // progress with AbortSignal cancellation, and transitions cleanly to recovery on failure.
 
 const WASM_SOURCE_SIZE = 0;
+const WASM_BROTLI_SIZE = 0;
+const WASM_GZIP_SIZE = 0;
+const WASM_MAGIC_BYTES = [0x00, 0x61, 0x73, 0x6d];
 const INITIALIZER_PATH = './initializer.js';
 const MODULE_PATH = './math_explorer_gui.js';
 const WASM_PATH = './math_explorer_gui_bg.wasm';
@@ -166,6 +169,22 @@ function enrichAssetError(err, assetPath) {
     return baseText;
 }
 
+const STREAM_TRUNCATION_PATTERN =
+    /stream truncated|truncated stream|stream interrupted|stream closed early|ended early|empty response|0 bytes received|unexpected eof|unexpected end of|premature eof|incomplete download|incomplete transfer|err_incomplete_chunked_encoding|err_content_decoding_failed|err_http2_protocol_error|failed to read from a readablestream|buffersource argument is empty|fell off end|extends past end of the module/i;
+
+const FIREFOX_INTERNAL_ERROR_PATTERN =
+    /internalerror|out of memory|too much recursion|allocation size overflow/i;
+
+function isFirefoxInternalError(err, detailText) {
+    if (typeof InternalError !== 'undefined' && err instanceof InternalError) {
+        return true;
+    }
+    if (err && typeof err === 'object' && err.name === 'InternalError') {
+        return true;
+    }
+    return FIREFOX_INTERNAL_ERROR_PATTERN.test(detailText || formatError(err));
+}
+
 function classifyFallbackCategory(err, detailText, assetPath) {
     if (/timeout|timed out|stalled/i.test(detailText)) {
         return 'timeout';
@@ -174,8 +193,9 @@ function classifyFallbackCategory(err, detailText, assetPath) {
         return 'network';
     }
     if (
-        /http\s+[45]\d\d|status code is not ok|failed to fetch|networkerror|network error|load failed|dynamically imported module|importing a module script failed|failed to load startup|aborted|aborterror/i.test(
-            detailText
+        STREAM_TRUNCATION_PATTERN.test(detailText) ||
+        /http\s+[45]\d\d|status code is not ok|failed to fetch|networkerror|network error|load failed|dynamically imported module|importing a module script failed|failed to load startup|aborted|aborterror|err_aborted|err_failed|err_connection|err_internet|err_content_length_mismatch/i.test(
+            detailText,
         )
     ) {
         return 'network';
@@ -187,6 +207,7 @@ function classifyFallbackCategory(err, detailText, assetPath) {
         return 'isolation';
     }
     if (
+        isFirefoxInternalError(err, detailText) ||
         (typeof WebAssembly !== 'undefined' &&
             (err instanceof WebAssembly.CompileError ||
                 err instanceof WebAssembly.LinkError ||
@@ -329,7 +350,172 @@ function resolveFallbackTimeout(paramName, fallbackMs) {
     return fallbackMs;
 }
 
-async function fetchWasmWithProgress(source, hooks, signal) {
+function normalizeContentEncoding(rawHeader) {
+    return typeof rawHeader === 'string' ? rawHeader.trim().toLowerCase() : '';
+}
+
+function isCompressedContentEncoding(encoding) {
+    return Boolean(encoding && encoding !== 'identity');
+}
+
+function resolveWireByteTotal(encoding, rawContentLength) {
+    const hasContentLength = Number.isFinite(rawContentLength) && rawContentLength > 0;
+    if (!isCompressedContentEncoding(encoding)) {
+        return hasContentLength ? Math.floor(rawContentLength) : WASM_SOURCE_SIZE;
+    }
+    if (hasContentLength) {
+        return Math.floor(rawContentLength);
+    }
+    if (/\bbr\b/.test(encoding)) {
+        return WASM_BROTLI_SIZE;
+    }
+    if (/\b(?:x-)?gzip\b/.test(encoding)) {
+        return WASM_GZIP_SIZE;
+    }
+    return 0;
+}
+
+function lookupResourceEncodedBodySize(assetPath) {
+    if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') {
+        return 0;
+    }
+    const targetName = assetBaseName(assetPath);
+    if (!targetName) {
+        return 0;
+    }
+    const entries = performance.getEntriesByType('resource') || [];
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+        const entry = entries[i];
+        if (
+            entry &&
+            typeof entry.name === 'string' &&
+            entry.name.indexOf(targetName) !== -1 &&
+            typeof entry.encodedBodySize === 'number' &&
+            Number.isFinite(entry.encodedBodySize) &&
+            entry.encodedBodySize > 0
+        ) {
+            return Math.floor(entry.encodedBodySize);
+        }
+    }
+    return 0;
+}
+
+function appendHeaderBytes(headerBytes, chunk) {
+    if (!chunk || headerBytes.length >= 4) {
+        return;
+    }
+    const needed = 4 - headerBytes.length;
+    const count = Math.min(needed, chunk.byteLength || chunk.length || 0);
+    for (let i = 0; i < count; i += 1) {
+        headerBytes.push(chunk[i]);
+    }
+}
+
+function evaluateStreamCompletion(
+    decodedBytes,
+    headerBytes,
+    expectedIdentityBytes,
+    expectedWasmBytes,
+) {
+    if (decodedBytes <= 0) {
+        return {
+            status: 'truncated',
+            error: new Error(
+                'WebAssembly download stream closed early: 0 bytes received (empty response).',
+            ),
+        };
+    }
+    if (expectedIdentityBytes > 0 && decodedBytes < expectedIdentityBytes) {
+        return {
+            status: 'truncated',
+            error: new Error(
+                `WebAssembly download stream truncated: received ${decodedBytes} of ${expectedIdentityBytes} bytes.`,
+            ),
+        };
+    }
+    if (headerBytes.length < 4) {
+        return {
+            status: 'truncated',
+            error: new Error(
+                `WebAssembly download stream truncated before 4-byte \\0asm header completed (${decodedBytes} bytes received).`,
+            ),
+        };
+    }
+    let hasWasmMagic = true;
+    for (let i = 0; i < 4; i += 1) {
+        if (headerBytes[i] !== WASM_MAGIC_BYTES[i]) {
+            hasWasmMagic = false;
+            break;
+        }
+    }
+    if (!hasWasmMagic) {
+        return { status: 'invalid_header', error: null };
+    }
+    if (expectedWasmBytes > 0 && decodedBytes < expectedWasmBytes) {
+        return {
+            status: 'truncated',
+            error: new Error(
+                `WebAssembly download stream truncated: received ${decodedBytes} of ${expectedWasmBytes} decoded bytes.`,
+            ),
+        };
+    }
+    if (decodedBytes < 8) {
+        return {
+            status: 'truncated',
+            error: new Error(
+                `WebAssembly download stream truncated: received ${decodedBytes} bytes (incomplete module header).`,
+            ),
+        };
+    }
+    return { status: 'complete', error: null };
+}
+
+function scaleInFlightWireProgress(decodedBytes, wireTotal, expectedWasmBytes, isCompressed) {
+    if (wireTotal <= 0) {
+        return {
+            current: isCompressed ? 0 : decodedBytes,
+            total: 0,
+        };
+    }
+    const ceiling = wireTotal > 1 ? wireTotal - 1 : 0;
+    if (!isCompressed) {
+        return {
+            current: Math.min(ceiling, decodedBytes),
+            total: wireTotal,
+        };
+    }
+    if (expectedWasmBytes <= 0) {
+        return {
+            current: 0,
+            total: 0,
+        };
+    }
+    const ratio = Math.min(1, decodedBytes / expectedWasmBytes);
+    const scaledWireOctets = Math.floor(ratio * wireTotal);
+    return {
+        current: Math.min(ceiling, scaledWireOctets),
+        total: wireTotal,
+    };
+}
+
+function reconcileCompletedWireTotal(source, wireTotal, decodedBytes, isCompressed) {
+    const encodedBodySize = lookupResourceEncodedBodySize(source);
+    if (isCompressed) {
+        if (encodedBodySize > 0) {
+            return { total: encodedBodySize, encodedBodySize };
+        }
+        return { total: wireTotal > 0 ? wireTotal : decodedBytes, encodedBodySize: 0 };
+    }
+    if (wireTotal > 0) {
+        return { total: wireTotal, encodedBodySize };
+    }
+    if (encodedBodySize > 0) {
+        return { total: encodedBodySize, encodedBodySize };
+    }
+    return { total: decodedBytes, encodedBodySize: 0 };
+}
+
+async function fetchWasmWithProgress(source, hooks, signal, recordStreamError) {
     if (isBootAborted(signal)) {
         throw new DOMException('Startup aborted before WebAssembly fetch.', 'AbortError');
     }
@@ -355,20 +541,57 @@ async function fetchWasmWithProgress(source, hooks, signal) {
         );
     }
 
-    const contentEncoding = response.headers.get('content-encoding');
+    const contentEncoding = normalizeContentEncoding(response.headers.get('content-encoding'));
+    const isCompressed = isCompressedContentEncoding(contentEncoding);
     const rawContentLength = Number(response.headers.get('content-length') || 0);
-    const total =
-        !contentEncoding && Number.isFinite(rawContentLength) && rawContentLength > 0
-            ? rawContentLength
-            : WASM_SOURCE_SIZE;
+    const expectedIdentityBytes =
+        !isCompressed && Number.isFinite(rawContentLength) && rawContentLength > 0
+            ? Math.floor(rawContentLength)
+            : 0;
+    const expectedWasmBytes =
+        WASM_SOURCE_SIZE > 0 ? WASM_SOURCE_SIZE : expectedIdentityBytes;
+    const wireTotal = resolveWireByteTotal(contentEncoding, rawContentLength);
 
     if (!response.body || typeof response.body.getReader !== 'function') {
-        window.__mathExplorerBoot?.enterPhase?.('compile', 'Compiling WebAssembly module');
-        return response;
+        const buffer = await response.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        const headerBytes = [];
+        appendHeaderBytes(headerBytes, bytes);
+        const verdict = evaluateStreamCompletion(
+            bytes.byteLength,
+            headerBytes,
+            expectedIdentityBytes,
+            expectedWasmBytes,
+        );
+        if (verdict.status === 'truncated') {
+            hooks?.cancelPendingAnnouncements?.();
+            if (typeof recordStreamError === 'function') {
+                recordStreamError(verdict.error);
+            }
+            throw verdict.error;
+        }
+        if (verdict.status === 'complete') {
+            const reconciled = reconcileCompletedWireTotal(
+                source,
+                wireTotal,
+                bytes.byteLength,
+                isCompressed,
+            );
+            hooks?.onProgress?.({ current: reconciled.total, total: reconciled.total });
+            window.__mathExplorerBoot?.enterPhase?.('compile', 'Compiling WebAssembly module');
+        } else {
+            hooks?.cancelPendingAnnouncements?.();
+        }
+        return new Response(buffer, {
+            status,
+            statusText,
+            headers: response.headers,
+        });
     }
 
     const reader = response.body.getReader();
-    let current = 0;
+    const headerBytes = [];
+    let decodedBytes = 0;
     let settled = false;
 
     const stream = new ReadableStream({
@@ -385,6 +608,7 @@ async function fetchWasmWithProgress(source, hooks, signal) {
                 }
                 settled = true;
                 cleanupAbortListener();
+                hooks?.cancelPendingAnnouncements?.();
                 const abortErr = new DOMException('WebAssembly stream aborted.', 'AbortError');
                 void reader.cancel(abortErr).catch(() => {});
                 try {
@@ -421,11 +645,53 @@ async function fetchWasmWithProgress(source, hooks, signal) {
                         if (done) {
                             settled = true;
                             cleanupAbortListener();
-                            const completedBytes = total > 0 ? total : current;
+                            const verdict = evaluateStreamCompletion(
+                                decodedBytes,
+                                headerBytes,
+                                expectedIdentityBytes,
+                                expectedWasmBytes,
+                            );
+                            if (verdict.status === 'truncated') {
+                                hooks?.cancelPendingAnnouncements?.();
+                                if (typeof recordStreamError === 'function') {
+                                    recordStreamError(verdict.error);
+                                }
+                                controller.error(verdict.error);
+                                return;
+                            }
+                            if (verdict.status === 'invalid_header') {
+                                hooks?.cancelPendingAnnouncements?.();
+                                controller.close();
+                                return;
+                            }
+                            const reconciled = reconcileCompletedWireTotal(
+                                source,
+                                wireTotal,
+                                decodedBytes,
+                                isCompressed,
+                            );
                             hooks?.onProgress?.({
-                                current: completedBytes,
-                                total: total > 0 ? total : completedBytes,
+                                current: reconciled.total,
+                                total: reconciled.total,
                             });
+                            if (
+                                isCompressed &&
+                                reconciled.encodedBodySize <= 0 &&
+                                typeof window !== 'undefined'
+                            ) {
+                                window.setTimeout(() => {
+                                    if (isBootAborted(signal) || hooks?.isSettled?.()) {
+                                        return;
+                                    }
+                                    const lateEncoded = lookupResourceEncodedBodySize(source);
+                                    if (lateEncoded > 0 && lateEncoded !== reconciled.total) {
+                                        hooks?.onProgress?.({
+                                            current: lateEncoded,
+                                            total: lateEncoded,
+                                        });
+                                    }
+                                }, 0);
+                            }
                             window.__mathExplorerBoot?.enterPhase?.(
                                 'compile',
                                 'Compiling WebAssembly module',
@@ -434,8 +700,17 @@ async function fetchWasmWithProgress(source, hooks, signal) {
                             return;
                         }
 
-                        current += value.byteLength;
-                        hooks?.onProgress?.({ current, total });
+                        if (value && value.byteLength > 0) {
+                            appendHeaderBytes(headerBytes, value);
+                            decodedBytes += value.byteLength;
+                            const scaled = scaleInFlightWireProgress(
+                                decodedBytes,
+                                wireTotal,
+                                expectedWasmBytes,
+                                isCompressed,
+                            );
+                            hooks?.onProgress?.(scaled);
+                        }
                         controller.enqueue(value);
                         push();
                     })
@@ -445,6 +720,17 @@ async function fetchWasmWithProgress(source, hooks, signal) {
                         }
                         settled = true;
                         cleanupAbortListener();
+                        hooks?.cancelPendingAnnouncements?.();
+                        if (!isBootAborted(signal)) {
+                            const streamErr = new Error(
+                                `WebAssembly download stream interrupted after ${decodedBytes} bytes: ${formatError(err)}`,
+                            );
+                            if (typeof recordStreamError === 'function') {
+                                recordStreamError(streamErr);
+                            }
+                            controller.error(streamErr);
+                            return;
+                        }
                         controller.error(err);
                     });
             }
@@ -453,6 +739,7 @@ async function fetchWasmWithProgress(source, hooks, signal) {
         },
         cancel(reason) {
             settled = true;
+            hooks?.cancelPendingAnnouncements?.();
             void reader.cancel(reason).catch(() => {});
         },
     });
@@ -462,6 +749,87 @@ async function fetchWasmWithProgress(source, hooks, signal) {
         statusText,
         headers: response.headers,
     });
+}
+
+function attachAssetPath(promise, assetPath) {
+    return promise.then(
+        (value) => value,
+        (error) => Promise.reject({ __startupAssetFailure: true, error, assetPath }),
+    );
+}
+
+function createStartupProgressProxy(boot, onTransferActivity) {
+    let activeHooks = null;
+    let cancelled = false;
+    let transferComplete = false;
+    let maxInFlightBytes = 0;
+    let bufferedEvent = null;
+
+    function normalizeProgressEvent(event) {
+        const rawCurrent =
+            event && Number.isFinite(event.current) && event.current > 0
+                ? Math.floor(event.current)
+                : 0;
+        const rawTotal =
+            event && Number.isFinite(event.total) && event.total > 0
+                ? Math.floor(event.total)
+                : 0;
+        if (rawTotal > 0 && rawCurrent >= rawTotal) {
+            transferComplete = true;
+            maxInFlightBytes = Math.max(maxInFlightBytes, rawTotal);
+            return { current: rawTotal, total: rawTotal };
+        }
+        maxInFlightBytes = Math.max(maxInFlightBytes, rawCurrent);
+        return { current: maxInFlightBytes, total: rawTotal };
+    }
+
+    return {
+        attach(hooksInstance) {
+            if (cancelled) {
+                hooksInstance?.cancelPendingAnnouncements?.();
+                return;
+            }
+            activeHooks = hooksInstance || null;
+            if (activeHooks && bufferedEvent !== null) {
+                const pending = bufferedEvent;
+                bufferedEvent = null;
+                activeHooks.onProgress?.(pending);
+            }
+        },
+        isCancelled() {
+            return cancelled;
+        },
+        isTransferComplete() {
+            return transferComplete;
+        },
+        onProgress(event) {
+            if (cancelled) {
+                return;
+            }
+            const normalized = normalizeProgressEvent(event);
+            if (typeof onTransferActivity === 'function') {
+                onTransferActivity(normalized);
+            }
+            if (activeHooks) {
+                activeHooks.onProgress?.(normalized);
+                return;
+            }
+            bufferedEvent = normalized;
+            if (transferComplete) {
+                boot?.enterPhase?.('compile', 'Compiling WebAssembly module');
+            } else {
+                boot?.recordProgress?.(`Downloading WebAssembly (${normalized.current} bytes)`);
+            }
+        },
+        cancelPendingAnnouncements() {
+            cancelled = true;
+            bufferedEvent = null;
+            activeHooks?.cancelPendingAnnouncements?.();
+        },
+        isSettled() {
+            return activeHooks ? Boolean(activeHooks.isSettled?.()) : false;
+        },
+    };
 }
 
 async function bootstrap() {
@@ -509,61 +877,71 @@ async function bootstrap() {
         }
     };
 
+    const stallTimeoutMs = resolveFallbackTimeout('stall_timeout_ms', FALLBACK_STALL_TIMEOUT_MS);
+    const compileTimeoutMs = resolveFallbackTimeout(
+        'compile_timeout_ms',
+        FALLBACK_COMPILE_TIMEOUT_MS,
+    );
+
     let hooks = null;
-    let currentAssetPath = INITIALIZER_PATH;
+    let currentAssetPath = WASM_PATH;
+    let capturedStreamError = null;
+    const recordStreamError = (streamErr) => {
+        if (streamErr && !capturedStreamError) {
+            capturedStreamError = streamErr;
+        }
+    };
+
+    const hooksProxy = createStartupProgressProxy(boot, (progress) => {
+        if (progress.total > 0 && progress.current >= progress.total) {
+            armLocalFallbackTimer(compileTimeoutMs, 'Compiling WebAssembly module');
+        } else {
+            armLocalFallbackTimer(stallTimeoutMs, WASM_PATH);
+        }
+    });
 
     try {
-        boot?.enterPhase?.('transfer', `Loading ${assetBaseName(INITIALIZER_PATH)}`);
-        armLocalFallbackTimer(
-            resolveFallbackTimeout('stall_timeout_ms', FALLBACK_STALL_TIMEOUT_MS),
+        boot?.enterPhase?.('transfer', `Downloading ${assetBaseName(WASM_PATH)}`);
+        armLocalFallbackTimer(stallTimeoutMs, WASM_PATH);
+
+        const initializerTask = attachAssetPath(
+            import(INITIALIZER_PATH).then((initializerModule) => {
+                if (!hooksProxy.isCancelled() && !capturedStreamError && !isBootAborted(signal)) {
+                    const createInitializer = initializerModule?.default;
+                    hooks = typeof createInitializer === 'function' ? createInitializer() : null;
+                    hooks?.onStart?.();
+                    hooksProxy.attach(hooks);
+                }
+                return initializerModule;
+            }),
             INITIALIZER_PATH,
         );
-
-        const initializerModule = await import(INITIALIZER_PATH);
-        if (isBootAborted(signal)) {
-            clearLocalFallbackTimer();
-            return;
-        }
-
-        const createInitializer = initializerModule?.default;
-        hooks = typeof createInitializer === 'function' ? createInitializer() : null;
-        hooks?.onStart?.();
-
-        currentAssetPath = MODULE_PATH;
-        boot?.enterPhase?.('transfer', `Loading ${assetBaseName(MODULE_PATH)}`);
-        armLocalFallbackTimer(
-            resolveFallbackTimeout('stall_timeout_ms', FALLBACK_STALL_TIMEOUT_MS),
-            MODULE_PATH,
+        const bindingsTask = attachAssetPath(import(MODULE_PATH), MODULE_PATH);
+        const wasmResponseTask = attachAssetPath(
+            fetchWasmWithProgress(WASM_PATH, hooksProxy, signal, recordStreamError),
+            WASM_PATH,
         );
 
-        const bindings = await import(MODULE_PATH);
+        const [, bindings, wasmResponse] = await Promise.all([
+            initializerTask,
+            bindingsTask,
+            wasmResponseTask,
+        ]);
         if (isBootAborted(signal)) {
             clearLocalFallbackTimer();
             return;
         }
 
-        const init = bindings.default;
+        currentAssetPath = MODULE_PATH;
+        const init = bindings?.default;
         if (typeof init !== 'function') {
             throw new Error('WebAssembly module initializer export is missing.');
         }
 
         currentAssetPath = WASM_PATH;
-        boot?.enterPhase?.('transfer', `Downloading ${assetBaseName(WASM_PATH)}`);
-        armLocalFallbackTimer(
-            resolveFallbackTimeout('stall_timeout_ms', FALLBACK_STALL_TIMEOUT_MS),
-            WASM_PATH,
-        );
-
-        const wasmResponse = await fetchWasmWithProgress(WASM_PATH, hooks, signal);
-        if (isBootAborted(signal)) {
-            clearLocalFallbackTimer();
-            return;
+        if (hooksProxy.isTransferComplete()) {
+            armLocalFallbackTimer(compileTimeoutMs, 'Compiling WebAssembly module');
         }
-
-        armLocalFallbackTimer(
-            resolveFallbackTimeout('compile_timeout_ms', FALLBACK_COMPILE_TIMEOUT_MS),
-            'Compiling WebAssembly module',
-        );
 
         const wasm = await init({ module_or_path: wasmResponse });
         clearLocalFallbackTimer();
@@ -588,40 +966,58 @@ async function bootstrap() {
         window.dispatchEvent(
             new CustomEvent('TrunkApplicationStarted', { detail: { wasm } }),
         );
-    } catch (error) {
+    } catch (caught) {
         clearLocalFallbackTimer();
+        hooksProxy.cancelPendingAnnouncements();
+        hooks?.cancelPendingAnnouncements?.();
+
+        const unwrappedError =
+            caught && caught.__startupAssetFailure ? caught.error : caught;
+        const failedAssetPath = capturedStreamError
+            ? WASM_PATH
+            : (caught && caught.__startupAssetFailure && caught.assetPath) || currentAssetPath;
+        const effectiveError = capturedStreamError || unwrappedError;
 
         if (
+            !capturedStreamError &&
             isBootAborted(signal) &&
-            (error === (signal && signal.reason) || (error && error.name === 'AbortError'))
+            (unwrappedError === (signal && signal.reason) ||
+                (unwrappedError && unwrappedError.name === 'AbortError'))
         ) {
             return;
         }
         if (!window.__mathExplorerBoot && isBootAborted(signal)) {
             return;
         }
+        if (localAbort && !localAbort.signal.aborted) {
+            try {
+                localAbort.abort(effectiveError);
+            } catch (_) {
+                localAbort.abort();
+            }
+        }
 
-        console.error('Failed to bootstrap Math Explorer WebAssembly bundle:', error);
+        console.error('Failed to bootstrap Math Explorer WebAssembly bundle:', effectiveError);
 
         const activeBoot = window.__mathExplorerBoot;
-        const enrichedDetail = enrichAssetError(error, currentAssetPath);
+        const enrichedDetail = enrichAssetError(effectiveError, failedAssetPath);
         if (
             activeBoot &&
             typeof activeBoot.showError === 'function' &&
             typeof activeBoot.classifyError === 'function'
         ) {
-            const category = activeBoot.classifyError(error, currentAssetPath);
+            const category = activeBoot.classifyError(effectiveError, failedAssetPath);
             activeBoot.showError(category, enrichedDetail);
-            if (lookupResourceHttpStatus(currentAssetPath) === 0) {
+            if (lookupResourceHttpStatus(failedAssetPath) === 0) {
                 window.setTimeout(() => {
-                    const lateDetail = enrichAssetError(error, currentAssetPath);
+                    const lateDetail = enrichAssetError(effectiveError, failedAssetPath);
                     if (lateDetail !== enrichedDetail) {
                         activeBoot.showError('network', lateDetail);
                     }
                 }, 0);
             }
         } else {
-            showBootstrapRecovery(error, currentAssetPath);
+            showBootstrapRecovery(effectiveError, failedAssetPath);
         }
     }
 }

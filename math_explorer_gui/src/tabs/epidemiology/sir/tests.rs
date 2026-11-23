@@ -129,13 +129,9 @@ fn test_sir_epidemic_peak_and_logistic_fit_r2() {
     assert!(peak_day > 10.0 && peak_day < 40.0);
     assert!(peak_infected >= max_sample - 1e-6);
 
-    let r_pts: Vec<[f64; 2]> = tool.r_points.iter().map(|p| [p.x, p.y]).collect();
-    let fit = egui_plot::fit_model_with_axes(
-        &r_pts,
-        egui_plot::FitType::Logistic,
-        "Recovered",
-        false,
-        false,
+    let fit = math_explorer::fit::fit_model(
+        &tool.r_points[..],
+        math_explorer::fit::FitModel::Logistic,
         false,
     )
     .expect("SIR Recovered logistic fit");
@@ -144,6 +140,17 @@ fn test_sir_epidemic_peak_and_logistic_fit_r2() {
         "SIR Recovered Logistic R^2 = {}",
         fit.r_squared
     );
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            let pk = metrics::compute_epidemic_peak(&tool.i_points);
+            assert!(pk.is_some());
+        });
+    }
 }
 
 #[test]
@@ -175,4 +182,32 @@ fn test_sir_100k_steps_decimates_display_polylines_and_preserves_peak_and_export
     assert_eq!(exported[0].1.len(), 100_001);
     assert_eq!(exported[1].1.len(), 100_001);
     assert_eq!(exported[2].1.len(), 100_001);
+}
+
+#[test]
+fn test_sir_plot_uses_shared_import_csv_toolbar_without_duplicate_header_button() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 800.0),
+        )),
+        ..Default::default()
+    };
+    let mut tool = SirTool::default();
+    let out = ctx.run(input, |c| tool.show(c));
+    let ak = out
+        .platform_output
+        .accesskit_update
+        .as_ref()
+        .expect("AccessKit update");
+    let labels: Vec<&str> = ak
+        .nodes
+        .iter()
+        .filter(|(_, n)| n.role() == egui::accesskit::Role::Button)
+        .filter_map(|(_, n)| n.label())
+        .collect();
+    assert!(labels.contains(&"Import CSV"));
+    assert!(!labels.contains(&"Import Dataset (CSV)"));
 }

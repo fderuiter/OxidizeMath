@@ -16,14 +16,14 @@ All Markdown files in the repository (outside excluded build directories such as
 ```text
 Markdown verification gates:
 - cargo run -p unified_verification --release -- check-docs
-- RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+- RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 - cargo test --doc --workspace --all-features
 - cargo run -p xtask -- check-markdown-links
 ```
 
 ## 2. Local Cargo Builds & CI Quality Gates
 
-Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) restore Cargo registry sources and profile-scoped `target/` caches via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (referencing `./.github/actions/cargo-cache` without caching mutable CLI binaries).
+Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) set `CARGO_INCREMENTAL: "0"` (leaving [.cargo/config.toml](.cargo/config.toml) untouched so local developer builds remain incremental), restore Cargo registry sources and filtered profile-scoped `target/` caches (excluding `incremental/`, `doc/`, `llvm-cov-target/`, `package/`, and `tmp/`) via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (`./.github/actions/cargo-cache`), and cache pinned CLI binaries (`cargo-audit`, `cargo-llvm-cov`, `trunk`, `wasm-bindgen-cli`, and `cargo-packager`) under `~/.cache/ci-tools/` outside `~/.cargo/bin` via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml) (`./.github/actions/ci-tool-cache`).
 
 Run workspace builds, fast diff-scoped pre-commit checks (`lint-staged`), and the full PR verification suite (`lint-all`) aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [crates/unified_verification/README.md](crates/unified_verification/README.md) via `xtask` (`xtask` builds `unified_verification` with Cargo's default `dev` profile locally to skip release fat LTO):
 
@@ -32,9 +32,10 @@ Run workspace builds, fast diff-scoped pre-commit checks (`lint-staged`), and th
 cargo check --workspace
 cargo build --workspace --all-features
 
-# Run fast diff-scoped pre-commit checks on staged paths (executed automatically by .githooks/pre-commit;
-# checks staged formatting, ADR records, file lengths, entropy, policy audit, staged duplicates,
-# .github/-gated workflows, .md-gated links, and targeted host/wasm32 Clippy without OSV network calls or API drift)
+# Run fast offline snapshot-backed pre-commit checks on the staged Git index (executed automatically by
+# .githooks/pre-commit; syncs <target_dir>/lint-staged-snapshot, runs rustfmt, batch-staged profiles/ADR records/
+# lengths/docs/duplicates/traceability/entropy/policy, single .github/ workflow lint, .md or deletion/rename link
+# scans, and reverse-dependent + 17-web-crate host/wasm32 Clippy without OSV network calls or API drift)
 cargo run -p xtask -- lint-staged
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static
@@ -70,7 +71,7 @@ cargo run -p xtask -- check-api-drift
 cargo run -p unified_verification --release -- regenerate-baseline
 cargo run -p xtask -- regenerate-baseline
 
-# Lint GitHub Actions workflows (permissions, concurrency, timeouts, 40-char SHA or ./ local action pins, and safe run expressions)
+# Lint GitHub Actions workflows (permissions, event-scoped concurrency, timeouts, 40-char SHA or ./ local action pins, and safe run expressions)
 cargo run -p unified_verification --release -- lint-workflows
 
 # Run workflow linter unit tests directly
@@ -82,7 +83,7 @@ cargo run -p unified_verification --release -- test-policy-audit
 
 # Verify crate documentation and workspace rustdoc builds
 cargo run -p unified_verification --release -- check-docs
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 cargo test --doc --workspace --all-features
 
 # Validate relative Markdown links, file lengths (500-line ceiling), entropy/secrets, and traceability
@@ -105,9 +106,9 @@ cargo check --workspace --target wasm32-unknown-unknown --all-features
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features
 ```
 
-### Workflow `run` Script Expression & Reusable Caller Policy
+### Workflow Concurrency, `run` Script Expression & Reusable Caller Policy
 
-`lint-workflows` audits `.github/workflows` (including full permission, concurrency, timeout, pinning, and `run` expression checks on local reusable workflows) and `.github/actions` manifests. It rejects `${{ github.* }}`, `${{ inputs.* }}`, and non-static or unmapped `${{ env.* }}` expressions interpolated directly inside workflow `jobs.<id>.steps[*].run` and composite action `runs.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, `${{ github.event.* }}`, or `${{ inputs.target }}`) to prevent script and argument injection. Reusable workflow caller jobs (`jobs.<id>.uses`) are exempt from `timeout-minutes` and must omit `timeout-minutes` at the caller level (configure `timeout-minutes` on concrete jobs inside the called workflow instead). Always bind `github` and `inputs` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
+`lint-workflows` audits `.github/workflows` (including full permission, concurrency, timeout, pinning, and `run` expression checks on local reusable workflows) and `.github/actions` manifests. For workflows with `on.push.branches`, root and branch-active job `concurrency` blocks must not group runs by `github.ref` or `github.ref_name` without a run-unique `github.run_id` or `github.sha` fallback, and `cancel-in-progress` must never cancel configured push branches such as `main` or `master` (scope cancellation to `pull_request` events and isolate serialized deployments like `deploy-pages` under job-level `group: pages` with `cancel-in-progress: false`). It also rejects `${{ github.* }}`, `${{ inputs.* }}`, and non-static or unmapped `${{ env.* }}` expressions interpolated directly inside workflow `jobs.<id>.steps[*].run` and composite action `runs.steps[*].run` shell scripts (such as `${{ github.ref_name }}`, `${{ github.head_ref }}`, `${{ github.event.* }}`, or `${{ inputs.target }}`) to prevent script and argument injection. Reusable workflow caller jobs (`jobs.<id>.uses`) are exempt from `timeout-minutes` and must omit `timeout-minutes` at the caller level (configure `timeout-minutes` on concrete jobs inside the called workflow instead). Always bind `github` and `inputs` context values through a step `env:` block and validate untrusted inputs in `bash` before passing them to CLI tools:
 
 ```text
 env:
@@ -132,16 +133,18 @@ cargo run -p xtask -- test-features physics
 cargo run -p xtask -- test-features core-only
 ```
 
+In CI, all eight `feature-matrix` legs share a single `features-shared` Linux `dev` cache: the `climate` leg writes the shared `target/` archive while the remaining seven legs pass `restore-only: true` (`actions/cache/restore`) to [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml).
+
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
-In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed traceability JSON metadata and pre-compress assets), enforces the 3 MB compressed bundle budget, executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, generates `SHA256SUMS`, and uploads `wasm_web_dist` on `refs/heads/main` before `deploy-pages` stages and verifies all 28 `compiled_papers` PDFs, refreshes `SHA256SUMS`, and publishes the GitHub Pages artifact.
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` restores pinned `trunk` (`0.22.2`) and `wasm-bindgen-cli` (`0.2.130`) binaries via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml), caches `~/.cache/trunk` (keyed by runner OS, `Cargo.lock`, and [math_explorer_gui/Trunk.toml](math_explorer_gui/Trunk.toml) for `wasm-opt` `version_123`), compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed `traceability_manifest.json`, local paper artifacts when present, and `favicon.ico` without standalone `Verification_Certificate.json` or duplicate `papers/*.pdf`, while running [scripts/compress_dist.sh](scripts/compress_dist.sh) to stamp `WASM_SOURCE_SIZE`, `WASM_BROTLI_SIZE`, and `WASM_GZIP_SIZE` into `bootstrap.js` and generate local `.gz`/`.br` assets for self-hosted servers and Playwright wire-progress smoke checks), enforces the 3 MB compressed bundle budget via temporary `brotli -9` and `gzip -9` streams in [scripts/verify_wasm_budget.sh](scripts/verify_wasm_budget.sh), executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, and uploads `wasm_web_dist` (excluding `.gz`/`.br` sidecars) on `refs/heads/main`. Subsequently, `deploy-pages` downloads `wasm_web_dist`, `compiled_papers`, and `verification-certificate-linux_artifact`, validates and injects the live `Verification_Certificate.json` object into `pages_dist/traceability_manifest.json`, strips any residual `.gz`/`.br` or standalone `Verification_Certificate.json` files, stages all 28 root PDFs at `pages_dist/{stem}.pdf` alongside `pages_dist/papers/index.html`, generates and verifies `pages_dist/SHA256SUMS` once across all served files, and publishes the GitHub Pages artifact.
 
 ```bash
 # 1. Install the WebAssembly Rust target, Trunk, wasm-bindgen-cli, compression utilities, and Playwright Chromium (Ubuntu / Debian)
 rustup target add wasm32-unknown-unknown
 sudo apt-get update
 sudo apt-get install -y brotli
-cargo binstall --no-confirm trunk wasm-bindgen-cli@0.2.130
+cargo binstall --no-confirm trunk@0.22.2 wasm-bindgen-cli@0.2.130
 python3 -m pip install --user playwright
 python3 -m playwright install --with-deps chromium
 
@@ -153,19 +156,15 @@ cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --
 # 3. Run wasm32 browser unit tests, build math_explorer_gui/dist, verify the 3 MB budget, and run Playwright Chromium CSP & fault-injection smoke checks
 cargo run -p xtask -- test-wasm
 
-# 4. Generate and verify the Pages SHA256SUMS manifest
+# 4. Generate and verify a SHA256SUMS manifest across served web dist files (excluding local .gz/.br sidecars)
 (
   cd math_explorer_gui/dist
-  shopt -s nullglob
-  shopt -u dotglob
   files=()
-  for f in *; do
-    if [ -f "$f" ] && [ "$f" != "SHA256SUMS" ]; then
-      files+=("$f")
-    fi
-  done
+  while IFS= read -r f; do
+    [ -n "$f" ] && files+=("$f")
+  done < <(find . -mindepth 1 -not -path '*/.*' -type f ! -name 'SHA256SUMS' ! -name '*.gz' ! -name '*.br' | sed 's|^\./||' | LC_ALL=C sort)
   test "${#files[@]}" -gt 0
-  sha256sum "${files[@]}" > SHA256SUMS
+  sha256sum -- "${files[@]}" > SHA256SUMS
   sha256sum -c SHA256SUMS
 )
 ```
@@ -175,7 +174,7 @@ cargo run -p xtask -- test-wasm
 The `package` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) defines a static three-OS matrix (`ubuntu-latest`/`deb`, `macos-latest`/`dmg`, and `windows-latest`/`wix`) so every workflow event posts deterministic `Package Installers` check runs across all three operating systems:
 
 - **Linux (`deb`)**: Runs on every `pull_request`, `merge_group`, `push`, and `workflow_dispatch` event.
-- **macOS (`dmg`) & Windows (`wix`)**: Run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `pre-flight` sets `installer_changed=true` (diffs touching `math_explorer_gui/**`, [Cargo.toml](Cargo.toml), `Cargo.lock`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when git diff falls back). On unrelated pull requests (`installer_changed=false`), the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` and skip build, manifest, and upload steps via `if:`.
+- **macOS (`dmg`) & Windows (`wix`)**: Because `pull_request` runs gate direct merges to `main` (without relying solely on `merge_group`), these legs run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `pre-flight` sets `installer_changed=true` — matching `crates/*` (after ignoring non-linked `crates/markdown_tests/*` and `crates/unified_verification/*`), `math_explorer_gui/*`, `math_explorer/*`, `egui_plot/*`, [LICENSE](LICENSE), `papers/*`, [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*` (see [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml)), and [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back because `BASE_SHA` or `HEAD_SHA` is missing or unreachable. When a `pull_request` touches only paths outside those globs (such as `docs/*`, `AGENTS.md`, [CONTRIBUTING.md](CONTRIBUTING.md), `crates/markdown_tests/*`, or `crates/unified_verification/*`), `installer_changed` is `false` and the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` to post passing check runs while skipping build, manifest, and upload steps via `if:`.
 
 ### Prerequisites (Ubuntu / Debian)
 
@@ -233,7 +232,7 @@ rm -rf math_explorer_gui/dist
 
 ## 6. Local Academic Paper Compilation Checks
 
-Because `traceability` only checks `.tex` filename presence in `papers/` and `.githooks/pre-commit` omits LaTeX builds so contributors do not need TeXLive for unrelated Rust commits, [.github/workflows/ci.yml](.github/workflows/ci.yml) enforces full paper compilation in the `compile-papers` (`Compile Academic Papers`) job whenever `pre-flight` sets `papers_changed=true` on `pull_request` (diffs touching `papers/**`, `apps/xtask/src/papers*`, [traceability.toml](traceability.toml), or [.github/workflows/ci.yml](.github/workflows/ci.yml), or on git diff fallback) and unconditionally on `merge_group`, `push`, and `workflow_dispatch`.
+Because `traceability` only checks `.tex` filename presence in `papers/` and `.githooks/pre-commit` omits LaTeX builds so contributors do not need TeXLive for unrelated Rust commits — and because `pull_request` runs gate direct merges to `main` — [.github/workflows/ci.yml](.github/workflows/ci.yml) enforces full paper compilation in the `compile-papers` (`Compile Academic Papers`) job whenever `pre-flight` sets `papers_changed=true` on `pull_request` (diffs touching `papers/*`, `apps/xtask/*`, [traceability.toml](traceability.toml), [Verification_Certificate.json](Verification_Certificate.json), [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back) and unconditionally on `merge_group`, `push`, and `workflow_dispatch`. Pull requests limited to paths outside those globs (such as `docs/*`, `crates/markdown_tests/*`, or `crates/unified_verification/*`) set `papers_changed=false` and skip `compile-papers`.
 
 ### Prerequisites (Ubuntu / Debian)
 
@@ -246,7 +245,7 @@ sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fon
 
 ### Compile All 28 Academic Papers via `xtask`
 
-Run the paper compiler defined in [apps/xtask/src/papers.rs](apps/xtask/src/papers.rs) to execute multi-pass `pdflatex` (`-no-shell-escape -interaction=nonstopmode -halt-on-error`) and `bibtex`, verify `.blg` and `.log` outputs for unresolved citations or undefined references across all 28 `.tex` manuscripts, generate `papers/output/index.html`, and package `papers/output/papers-bundle.tar.gz` alongside `papers/output/SHA256SUMS`:
+Run the paper compiler defined in [apps/xtask/src/papers.rs](apps/xtask/src/papers.rs) to execute multi-pass `pdflatex` (`-no-shell-escape -interaction=nonstopmode -halt-on-error`) and `bibtex`, verify `.blg` and `.log` outputs for unresolved citations or undefined references across all 28 `.tex` manuscripts, generate `papers/output/index.html` (archive catalog) and `papers/output/pages-index.html` (GitHub Pages catalog), and package `papers/output/papers-bundle.tar.gz` alongside `papers/output/SHA256SUMS`:
 
 ```bash
 cargo run -p xtask -- compile-papers
