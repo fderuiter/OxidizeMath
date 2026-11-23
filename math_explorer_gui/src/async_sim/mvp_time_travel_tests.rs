@@ -2,10 +2,10 @@ use super::*;
 use crate::async_sim::unified::UnifiedSimTool;
 use crate::framework::{InteractiveTool, MAX_TOOL_STATE_BYTES};
 use crate::tabs::chaos::attractors::AttractorPlotter;
+use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
 use crate::tabs::morphogenesis::MorphogenesisTool;
 use crate::tabs::mri::MriTool;
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
-use crate::tabs::quantum::wave_sim::WaveUnified;
 use eframe::egui;
 use std::time::Duration;
 
@@ -113,9 +113,9 @@ fn test_hodgkin_huxley_vs_non_opted_in_unified_and_morphogenesis_k16() {
     hh.controller.send_command(SimCommand::SeekStep(6)).unwrap();
     wait_for_step(hh.controller.controller_mut(), 6);
 
-    let wave = UnifiedSimTool::<WaveUnified>::new();
+    let lbm = UnifiedSimTool::<LbmUnified>::new();
     assert!(
-        wave.controller.timeline_metadata().is_none(),
+        lbm.controller.timeline_metadata().is_none(),
         "Non-opted-in UnifiedModel must have timeline_metadata() == None"
     );
 
