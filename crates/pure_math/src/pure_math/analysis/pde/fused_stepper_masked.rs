@@ -1,7 +1,7 @@
 //! Masked 2D zero-flux and 3D neighbor stencil helpers for [`super::FusedStencilStepper`].
 
 use super::{FusedStencilStepper, StencilOperators};
-use math_commons::math_kernel::types::flatten_2d_index;
+use math_commons::math_kernel::types::{flatten_2d_index, flatten_3d_index};
 
 /// Four-neighbor 2D axial state values and open-face flags around a central grid cell.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -73,6 +73,55 @@ impl FusedStencilStepper {
                 for s in 0..N {
                     if idx < dst[s].len() {
                         dst[s][idx] = curr[s] + dir * dt * rhs[s];
+                    }
+                }
+            }
+        }
+    }
+
+    /// Applies a 3D 7-point fused stencil pass over coupled species with zero-flux Neumann boundaries.
+    #[verified_engine::verified]
+    pub fn step_3d_coupled_neumann<const N: usize, F>(
+        &self,
+        dim: (usize, usize, usize),
+        src: [&[f64]; N],
+        dst: [&mut [f64]; N],
+        dt: f64,
+        dir: f64,
+        mut op: F,
+    ) where
+        F: FnMut(usize, [f64; N], StencilNeighbors3D<N>, &StencilOperators) -> [f64; N],
+    {
+        let (width, height, depth) = dim;
+        let slice_stride = width * height;
+        if slice_stride * depth == 0 {
+            return;
+        }
+        for z in 0..depth {
+            for y in 0..height {
+                for x in 0..width {
+                    let idx = flatten_3d_index(x, y, z, width, height);
+                    let neighbors = StencilNeighbors3D {
+                        xm: read_coupled_cell(&src, if x > 0 { idx - 1 } else { idx }),
+                        xp: read_coupled_cell(&src, if x + 1 < width { idx + 1 } else { idx }),
+                        ym: read_coupled_cell(&src, if y > 0 { idx - width } else { idx }),
+                        yp: read_coupled_cell(&src, if y + 1 < height { idx + width } else { idx }),
+                        zm: read_coupled_cell(&src, if z > 0 { idx - slice_stride } else { idx }),
+                        zp: read_coupled_cell(
+                            &src,
+                            if z + 1 < depth {
+                                idx + slice_stride
+                            } else {
+                                idx
+                            },
+                        ),
+                    };
+                    let curr = read_coupled_cell(&src, idx);
+                    let rhs = op(idx, curr, neighbors, &self.ops);
+                    for s in 0..N {
+                        if idx < dst[s].len() {
+                            dst[s][idx] = curr[s] + dir * dt * rhs[s];
+                        }
                     }
                 }
             }

@@ -2,7 +2,8 @@
 mod fused_stepper_masked;
 
 pub use fused_stepper_masked::{StencilNeighbors2D, StencilNeighbors3D};
-use math_commons::math_kernel::types::{StepSize, flatten_2d_index, flatten_3d_index};
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::{StepSize, flatten_2d_index};
 
 /// Standard spatial numerical operators for fused stencil evaluations.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -30,24 +31,42 @@ pub struct StencilOperators {
 }
 
 impl StencilOperators {
-    #[allow(missing_docs)]
+    /// Creates 1D stencil operators after validating that `dx` is finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `dx <= 0.0` or non-finite.
     #[verified_engine::verified]
-    pub fn new(dx: StepSize) -> Self {
-        Self::new_3d(dx, StepSize(1.0), StepSize(1.0))
+    pub fn try_new(dx: StepSize) -> Result<Self, MathError> {
+        Self::try_new_3d(dx, StepSize(1.0), StepSize(1.0))
     }
 
-    #[allow(missing_docs)]
+    /// Creates 2D stencil operators after validating that `dx` and `dy` are finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `dx <= 0.0`, `dy <= 0.0`, or either is non-finite.
     #[verified_engine::verified]
-    pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
-        Self::new_3d(dx, dy, StepSize(1.0))
+    pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, MathError> {
+        Self::try_new_3d(dx, dy, StepSize(1.0))
     }
 
-    /// Precomputes 3D finite-difference reciprocal spacings for `(dx, dy, dz)`.
+    /// Creates 3D stencil operators after validating that `dx`, `dy`, and `dz` are finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when any step size is `<= 0.0` or non-finite.
     #[verified_engine::verified]
-    pub fn new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Self {
-        assert!(*dx > 0.0, "Step size dx must be positive and non-zero");
-        assert!(*dy > 0.0, "Step size dy must be positive and non-zero");
-        assert!(*dz > 0.0, "Step size dz must be positive and non-zero");
+    pub fn try_new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Result<Self, MathError> {
+        for step in [*dx, *dy, *dz] {
+            if !(step > 0.0 && step.is_finite()) {
+                return Err(MathError::StrictlyOutOfBounds {
+                    value: step,
+                    min: 0.0,
+                    max: f64::INFINITY,
+                });
+            }
+        }
         let inv_dx = 1.0 / *dx;
         let inv_dy = 1.0 / *dy;
         let inv_two_dx = 1.0 / (2.0 * *dx);
@@ -55,7 +74,7 @@ impl StencilOperators {
         let inv_dx_sq = 1.0 / (*dx * *dx);
         let inv_dy_sq = 1.0 / (*dy * *dy);
         let inv_dz_sq = 1.0 / (*dz * *dz);
-        Self {
+        Ok(Self {
             dx,
             dy,
             dz,
@@ -66,7 +85,49 @@ impl StencilOperators {
             inv_dx_sq,
             inv_dy_sq,
             inv_dz_sq,
-        }
+        })
+    }
+
+    /// Creates 1D stencil operators.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `*dx <= 0.0` or non-finite. Prefer [`Self::try_new`].
+    #[verified_engine::verified]
+    pub fn new(dx: StepSize) -> Self {
+        Self::new_3d(dx, StepSize(1.0), StepSize(1.0))
+    }
+
+    /// Creates 2D stencil operators.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `*dx <= 0.0`, `*dy <= 0.0`, or either is non-finite. Prefer [`Self::try_new_2d`].
+    #[verified_engine::verified]
+    pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
+        Self::new_3d(dx, dy, StepSize(1.0))
+    }
+
+    /// Precomputes 3D finite-difference reciprocal spacings for `(dx, dy, dz)`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any step size is `<= 0.0` or non-finite. Prefer [`Self::try_new_3d`].
+    #[verified_engine::verified]
+    pub fn new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Self {
+        assert!(
+            *dx > 0.0 && dx.is_finite(),
+            "Step size dx must be positive and non-zero"
+        );
+        assert!(
+            *dy > 0.0 && dy.is_finite(),
+            "Step size dy must be positive and non-zero"
+        );
+        assert!(
+            *dz > 0.0 && dz.is_finite(),
+            "Step size dz must be positive and non-zero"
+        );
+        Self::try_new_3d(dx, dy, dz).expect("Step sizes validated positive")
     }
 
     /// Central difference for 1st derivative (gradient): (u_{i+1} - u_{i-1}) / 2dx
@@ -168,6 +229,42 @@ pub struct FusedStencilStepper {
 }
 
 impl FusedStencilStepper {
+    /// Creates a 1D fused stencil stepper after validating `dx > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `*dx <= 0.0` or non-finite.
+    #[verified_engine::verified]
+    pub fn try_new(dx: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new(dx)?,
+        })
+    }
+
+    /// Creates a 2D fused stencil stepper after validating `dx > 0.0` and `dy > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `*dx <= 0.0`, `*dy <= 0.0`, or either is non-finite.
+    #[verified_engine::verified]
+    pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new_2d(dx, dy)?,
+        })
+    }
+
+    /// Creates a 3D fused stencil stepper after validating `dx > 0.0`, `dy > 0.0`, and `dz > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when any step size is `<= 0.0` or non-finite.
+    #[verified_engine::verified]
+    pub fn try_new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new_3d(dx, dy, dz)?,
+        })
+    }
+
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(dx: StepSize) -> Self {
@@ -340,61 +437,6 @@ impl FusedStencilStepper {
                 for s in 0..N {
                     if idx < dst[s].len() {
                         dst[s][idx] = curr[s] + dir * dt * rhs[s];
-                    }
-                }
-            }
-        }
-    }
-
-    /// Applies a 3D 7-point fused stencil pass over coupled species with zero-flux Neumann boundaries.
-    #[verified_engine::verified]
-    pub fn step_3d_coupled_neumann<const N: usize, F>(
-        &self,
-        dim: (usize, usize, usize),
-        src: [&[f64]; N],
-        dst: [&mut [f64]; N],
-        dt: f64,
-        dir: f64,
-        mut op: F,
-    ) where
-        F: FnMut(usize, [f64; N], StencilNeighbors3D<N>, &StencilOperators) -> [f64; N],
-    {
-        let (width, height, depth) = dim;
-        let slice_stride = width * height;
-        if slice_stride * depth == 0 {
-            return;
-        }
-        let get_state = |idx: usize| {
-            let mut val = [0.0; N];
-            for s in 0..N {
-                if idx < src[s].len() {
-                    val[s] = src[s][idx];
-                }
-            }
-            val
-        };
-        for z in 0..depth {
-            for y in 0..height {
-                for x in 0..width {
-                    let idx = flatten_3d_index(x, y, z, width, height);
-                    let neighbors = StencilNeighbors3D {
-                        xm: get_state(if x > 0 { idx - 1 } else { idx }),
-                        xp: get_state(if x + 1 < width { idx + 1 } else { idx }),
-                        ym: get_state(if y > 0 { idx - width } else { idx }),
-                        yp: get_state(if y + 1 < height { idx + width } else { idx }),
-                        zm: get_state(if z > 0 { idx - slice_stride } else { idx }),
-                        zp: get_state(if z + 1 < depth {
-                            idx + slice_stride
-                        } else {
-                            idx
-                        }),
-                    };
-                    let curr = get_state(idx);
-                    let rhs = op(idx, curr, neighbors, &self.ops);
-                    for s in 0..N {
-                        if idx < dst[s].len() {
-                            dst[s][idx] = curr[s] + dir * dt * rhs[s];
-                        }
                     }
                 }
             }

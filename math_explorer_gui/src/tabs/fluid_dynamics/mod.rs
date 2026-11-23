@@ -1,5 +1,5 @@
-// @explorer_feature = "physics"
-// @explorer_order = 12
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 #[cfg(feature = "biology")]
 use crate::accessibility::{announce_live_status, AccessibleHoverText};
 #[cfg(feature = "biology")]
@@ -7,7 +7,7 @@ use crate::framework::{
     request_open_advective_morphogenesis, AdvectiveMorphogenesisHandoff, FairingStamp,
     LBM_CELL_COUNT,
 };
-use crate::tabs::ExplorerTab;
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod lattice_boltzmann;
@@ -115,6 +115,14 @@ impl ExplorerTab for FluidDynamicsTab {
 
     fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
         Some(&mut self.framework)
+    }
+}
+
+inventory::submit! {
+    TabDescriptor {
+        id: "fluid_dynamics",
+        order: 12,
+        build: || Box::new(FluidDynamicsTab::default()),
     }
 }
 

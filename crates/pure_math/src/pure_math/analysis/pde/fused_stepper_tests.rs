@@ -11,6 +11,12 @@ fn test_stencil_operators_precomputation() {
     assert!((ops.inv_two_dy - 2.0).abs() < 1e-12);
     assert!((ops.inv_dx_sq - 4.0).abs() < 1e-12);
     assert!((ops.inv_dy_sq - 16.0).abs() < 1e-12);
+    assert!((ops.inv_dz_sq - 1.0).abs() < 1e-12);
+
+    let ops_3d =
+        StencilOperators::try_new_3d(StepSize(0.5), StepSize(0.25), StepSize(0.2)).unwrap();
+    assert!((ops_3d.inv_dz_sq - 25.0).abs() < 1e-12);
+    assert!(FusedStencilStepper::try_new_3d(StepSize(1.0), StepSize(1.0), StepSize(0.0)).is_err());
 
     let ops_1d = StencilOperators::new(StepSize(2.0));
     assert!((ops_1d.inv_dx - 0.5).abs() < 1e-12);

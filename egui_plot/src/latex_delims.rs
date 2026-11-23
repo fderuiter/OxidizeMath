@@ -1,7 +1,7 @@
 use super::{
-    BoxGeom, MAX_LATEX_DEPTH, MathBox, append_bounded, consume_node, math_box_to_layout_job_mode,
-    measure_math_box_bounded, paint_math_box_bounded, parse_latex_to_box_bounded, read_command,
-    read_group_arg, skip_whitespace,
+    BoxGeom, LatexParseError, MAX_LATEX_DEPTH, MathBox, append_bounded, consume_node,
+    math_box_to_layout_job_mode, measure_math_box_bounded, paint_math_box_bounded,
+    parse_latex_to_box_bounded, read_command, read_group_arg, skip_whitespace,
 };
 use egui::{
     Align, Color32, FontId, Pos2, Stroke, Ui, Vec2,
@@ -109,10 +109,13 @@ pub(super) fn accent_kind_from_cmd(cmd: &str) -> Option<MathAccent> {
     }
 }
 
-pub(super) fn read_delimiter(chars: &[char], i: &mut usize) -> Result<MathDelimiter, ()> {
+pub(super) fn read_delimiter(
+    chars: &[char],
+    i: &mut usize,
+) -> Result<MathDelimiter, LatexParseError> {
     skip_whitespace(chars, i);
     if *i >= chars.len() {
-        return Err(());
+        return Err(LatexParseError::SyntaxError);
     }
     let c = chars[*i];
     *i += 1;
@@ -140,7 +143,7 @@ pub(super) fn read_delimiter(chars: &[char], i: &mut usize) -> Result<MathDelimi
                 _ => Ok(MathDelimiter::None),
             }
         }
-        _ => Err(()),
+        _ => Err(LatexParseError::SyntaxError),
     }
 }
 
@@ -198,7 +201,7 @@ pub(super) fn process_left_command(
     i: &mut usize,
     remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     let open = read_delimiter(ctx.chars, i)?;
     if let Some((body_str, after_right)) = find_matching_right(ctx.chars, *i) {
         let mut next_pos = after_right;
@@ -236,7 +239,7 @@ pub(super) fn process_stray_right_command(
     i: &mut usize,
     remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     if let Ok(close) = read_delimiter(ctx.chars, i)
         && !close.glyph().is_empty()
     {
@@ -257,10 +260,10 @@ pub(super) fn process_accent_command(
     i: &mut usize,
     remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     skip_whitespace(ctx.chars, i);
     if *i >= ctx.chars.len() {
-        return Err(());
+        return Err(LatexParseError::SyntaxError);
     }
     let arg = if ctx.chars[*i] == '{' {
         let (group, next_i) = read_group_arg(ctx.chars, *i + 1)?;
