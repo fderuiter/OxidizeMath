@@ -157,23 +157,23 @@ fn test_command_palette_synchronizes_active_domain_and_module() {
     let ctx = egui::Context::default();
     let mut app = MathExplorerApp::default();
 
-    // Initially at tab 0 (AI)
+    // Initially at tab 0 (Quantum Mechanics -> Physics)
     let initial_domain = AcademicDomain::from_str(app.tabs[app.selected_tab].academic_domain());
-    assert_eq!(initial_domain, Some(AcademicDomain::Ai));
+    assert_eq!(initial_domain, Some(AcademicDomain::Physics));
 
-    // Switch to Fluid Dynamics (Physics)
-    let physics_idx = app
+    // Switch to Number Theory (Pure Math)
+    let pure_math_idx = app
         .tabs
         .iter()
-        .position(|t| t.name() == "Fluid Dynamics")
-        .expect("Fluid Dynamics tab must exist");
+        .position(|t| t.name() == "Number Theory")
+        .expect("Number Theory tab must exist");
 
-    app.select_tab(&ctx, physics_idx);
+    app.select_tab(&ctx, pure_math_idx);
 
     let current_domain = AcademicDomain::from_str(app.tabs[app.selected_tab].academic_domain());
-    assert_eq!(current_domain, Some(AcademicDomain::Physics));
+    assert_eq!(current_domain, Some(AcademicDomain::PureMath));
     assert_ne!(initial_domain, current_domain);
-    assert_eq!(app.selected_tab, physics_idx);
+    assert_eq!(app.selected_tab, pure_math_idx);
 }
 
 #[test]
