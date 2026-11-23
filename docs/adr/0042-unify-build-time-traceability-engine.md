@@ -1,4 +1,4 @@
-# ADR 0040: Unify Build-Time and Runtime Traceability Scanning via `TraceabilityEngine`
+# ADR 0042: Unify Build-Time and Runtime Traceability Scanning via `TraceabilityEngine`
 
 ## Status
 Accepted (extends [ADR 0007](0007-consolidate-workspace-discovery.md), [ADR 0011](0011-ast-citation-binding-and-cli-check-enforcement.md), [ADR 0027](0027-build-rerun-directives-and-cargo-cache.md), and [ADR 0032](0032-precomputed-traceability-manifest-and-wasm-vfs-subpaths.md))
@@ -15,10 +15,10 @@ Accepted (extends [ADR 0007](0007-consolidate-workspace-discovery.md), [ADR 0011
 2. **Execute `TraceabilityEngine` in `math_explorer_gui/build.rs` via `[build-dependencies]`**:
    - Declare `oxidize_core`, `futures`, and `serde_json` under `[build-dependencies]` in [`math_explorer_gui/Cargo.toml`](../../math_explorer_gui/Cargo.toml), scope `scan_cargo_toml_deps` in [`math_explorer_gui/build.rs`](../../math_explorer_gui/build.rs) to `[dependencies]`, and import `oxidize_core::path_utils` directly.
    - Delete `math_explorer_gui/build_snapshot_scan.rs` and replace custom parsers/serializers in [`math_explorer_gui/build_snapshot.rs`](../../math_explorer_gui/build_snapshot.rs) with a read-only `BuildSnapshotVfs` (`VirtualFileSystem` rooted at `..`) that emits deduplicated forward-slash `cargo:rerun-if-changed` directives only for existing paths, runs `TraceabilityEngine::scan_workspace`, sorts JSON keys via `serde_json::to_value`, and writes `traceability_manifest.json` across `OUT_DIR` and Cargo target directories.
-3. **Enforce Full 13-Field Report Parity**:
+3. **Enforce Full `TraceabilityReport` Parity**:
    - Update [`math_explorer_gui/src/tabs/traceability/snapshot_tests.rs`](../../math_explorer_gui/src/tabs/traceability/snapshot_tests.rs) to assert full `TraceabilityReport` equality between `OUT_DIR/traceability_manifest.json` and live `execute_workspace_scan`, including non-zero `syn` AST function and assertion counts.
 
 ## Consequences
-- **Positive**: Removes ~700 lines of duplicate Rust/TOML/JSON parsing logic while guaranteeing identical 13-field `TraceabilityReport` outputs across build-time web/desktop snapshots and live native scans.
+- **Positive**: Removes ~700 lines of duplicate Rust/TOML/JSON parsing logic while guaranteeing identical `TraceabilityReport` outputs across build-time web/desktop snapshots and live native scans.
 - **Positive**: Preserves Cargo incremental cache validity by emitting forward-slash `cargo:rerun-if-changed` directives strictly for existing files and directories.
 - **Neutral**: Host-only `[build-dependencies]` leave WebAssembly runtime dependencies unchanged within the 3 MiB compressed bundle budget, and [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json) records the new `oxidize_core::traceability` public items.

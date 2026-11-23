@@ -142,7 +142,6 @@ allowlist = [
     "docs/adr/0040-galactic-dynamics-and-astrophysics-tab.md",
     "docs/adr/0040-promote-zero-alloc-curve-solvers-to-math-commons.md",
     "docs/adr/0040-staged-index-snapshot-and-graph-scoped-gates.md",
-    "docs/adr/0040-unify-build-time-traceability-engine.md",
 ]
 
 [[unused_dependencies]]
