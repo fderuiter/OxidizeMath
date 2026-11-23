@@ -153,6 +153,17 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
         .any(|e| e.url == "https://doi.org/10.1007/s40065-022-00360-6"));
 }
 
+#[test]
+fn test_algorithmic_information_portal_links() {
+    let links = resolve_portal_paper_links("AlgorithmicFractranTool", "algorithmic_information");
+    assert!(!links.is_empty());
+    assert_eq!(links[0].paper_name, "algorithmic_information_rust.tex");
+    assert!(links[0]
+        .pdf_url
+        .as_deref()
+        .is_some_and(|u| u.ends_with("/algorithmic_information_rust.pdf")));
+}
+
 fn assert_clean_portal_output(tool_id: &str, out: &egui::FullOutput) -> usize {
     const FORBIDDEN_RAW_TEX: &[&str] = &[
         r"\hbar", r"\langle", r"\rangle", r"\vec", r"\hat", r"\bar", r"\dot", r"\ddot", r"\tilde",
