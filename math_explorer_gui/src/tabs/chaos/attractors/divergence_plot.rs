@@ -123,9 +123,15 @@ impl AttractorPlotter {
             .y_axis_label("log₁₀(||δx(t)||)")
             .legend(Legend::default())
             .allow_2d_analysis(false)
+            .allow_csv_import(false)
             .allow_drag(false)
             .allow_zoom(false)
             .allow_scroll(false)
+            .allow_boxed_zoom(false)
+            .allow_double_click_reset(false)
+            .show_navigation_controls(false)
+            .show_toolbar(false)
+            .show_settings_button(false)
             .show(ui, |plot_ui| {
                 let maybe_t = Self::render_divergence_plot_series(
                     plot_ui,
