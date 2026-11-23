@@ -386,3 +386,51 @@ fn test_vietoris_rips_handoff_contains_zero_oncelock_and_isolates_contexts() {
     assert_eq!(take_chaos_landmark_handoff(&ctx_a), Some(sample));
     assert!(take_chaos_landmark_handoff(&ctx_a).is_none());
 }
+
+#[cfg(all(feature = "pure_math", feature = "epidemiology", feature = "biology"))]
+#[test]
+fn test_pipeline_links_undo_redo_and_challenge_lock_guard() {
+    use crate::tabs::epidemiology::network_propagation::challenge::CHALLENGE_EPI_HUB_VACCINATION;
+    use eframe::App;
+
+    let ctx = egui::Context::default();
+    let mut frame = eframe::Frame::_new_kittest();
+    let mut app = MathExplorerApp::default();
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    select_pane_tool(&mut app, 0, "GraphEditorTool");
+    select_pane_tool(&mut app, 1, "NetworkPropagationTool");
+
+    let _ = ctx.run(egui::RawInput::default(), |c| app.update(c, &mut frame));
+    assert!(app.pipeline_dag.is_empty());
+
+    assert!(app
+        .connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
+        .is_ok());
+    let _ = ctx.run(egui::RawInput::default(), |c| app.update(c, &mut frame));
+    assert_eq!(app.pipeline_dag.links().len(), 1);
+
+    app.undo();
+    let _ = ctx.run(egui::RawInput::default(), |c| app.update(c, &mut frame));
+    assert!(app.pipeline_dag.is_empty());
+
+    app.redo();
+    let _ = ctx.run(egui::RawInput::default(), |c| app.update(c, &mut frame));
+    assert_eq!(app.pipeline_dag.links().len(), 1);
+
+    if let Some(fw) = app.pane_tab_mut(1).and_then(|t| t.framework_mut()) {
+        assert!(fw
+            .launch_challenge_by_id(CHALLENGE_EPI_HUB_VACCINATION, Some(&ctx))
+            .is_ok());
+    }
+    let _ = ctx.run(egui::RawInput::default(), |c| app.update(c, &mut frame));
+    let locked_nodes = app
+        .pane_tab(1)
+        .and_then(|t| t.framework())
+        .and_then(|fw| fw.active_tool.as_ref()?.as_any())
+        .and_then(|a| {
+            a.downcast_ref::<crate::tabs::epidemiology::network_propagation::NetworkPropagationTool>()
+        })
+        .unwrap()
+        .active_node_count();
+    assert_eq!(locked_nodes, 72);
+}

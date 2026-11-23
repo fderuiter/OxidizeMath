@@ -25,6 +25,10 @@ fn build_symmetric_adjacency(n: usize, edges: &[(usize, usize, f64)]) -> Vec<Vec
 impl NetworkPropagationTool {
     /// Polls `PaneDataflowBus` and rebuilds the contact graph only when `revision` advances.
     pub(super) fn poll_upstream_graph(&mut self, ctx: &egui::Context) {
+        if self.is_challenge_locked() {
+            self.upstream_linked = false;
+            return;
+        }
         let Some(payload) = poll_pane_graph(ctx) else {
             self.upstream_linked = false;
             return;
@@ -51,7 +55,43 @@ impl NetworkPropagationTool {
             .filter_map(|&idx| self.model.edges().get(idx).copied())
             .collect();
         let states = self.seed_states_for_topology(n, &adjacency);
+        let (next_model, unmitigated_twin) =
+            self.build_topology_models(n, positions, adjacency, states)?;
 
+        self.apply_rebuilt_topology_model(
+            next_model,
+            unmitigated_twin,
+            &prev_quarantined_pairs,
+            payload.revision,
+        );
+        Ok(())
+    }
+
+    fn build_topology_models(
+        &self,
+        n: usize,
+        positions: Vec<[f32; 2]>,
+        adjacency: Vec<Vec<usize>>,
+        states: Vec<NodeState>,
+    ) -> Result<(NetworkEpidemicModel, NetworkEpidemicModel), String> {
+        let unmitigated_states: Vec<NodeState> = states
+            .iter()
+            .map(|&st| {
+                if st == NodeState::Vaccinated {
+                    NodeState::Susceptible
+                } else {
+                    st
+                }
+            })
+            .collect();
+        let unmitigated_twin = NetworkEpidemicModel::builder()
+            .num_nodes(n)
+            .parameters(self.model.beta(), self.model.gamma())
+            .states(unmitigated_states)
+            .positions(positions.clone())
+            .adjacency(adjacency.clone())
+            .build()
+            .map_err(|e| e.to_string())?;
         let next_model = NetworkEpidemicModel::builder()
             .num_nodes(n)
             .parameters(self.model.beta(), self.model.gamma())
@@ -60,9 +100,7 @@ impl NetworkPropagationTool {
             .adjacency(adjacency)
             .build()
             .map_err(|e| e.to_string())?;
-
-        self.apply_rebuilt_topology_model(next_model, &prev_quarantined_pairs, payload.revision);
-        Ok(())
+        Ok((next_model, unmitigated_twin))
     }
 
     fn seed_states_for_topology(&self, n: usize, adjacency: &[Vec<usize>]) -> Vec<NodeState> {
@@ -89,6 +127,7 @@ impl NetworkPropagationTool {
     fn apply_rebuilt_topology_model(
         &mut self,
         mut next_model: NetworkEpidemicModel,
+        unmitigated_twin: NetworkEpidemicModel,
         prev_quarantined_pairs: &[[usize; 2]],
         revision: u64,
     ) {
@@ -112,11 +151,22 @@ impl NetworkPropagationTool {
         }
         self.quarantined_edges.sort_unstable();
         self.quarantined_edges.dedup();
+        self.baseline_model = unmitigated_twin;
         self.model = next_model;
         self.enforce_budget_cap();
         self.clamp_focus_indices();
         self.last_upstream_graph_rev = revision;
         self.bump_revision();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn sim_steps(&self) -> u64 {
+        self.sim_steps
+    }
+
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.canvas_id
     }
 
     #[cfg(test)]
