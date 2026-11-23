@@ -109,7 +109,7 @@ fn unmodified_key_pressed(i: &egui::InputState, key: egui::Key, suppressed_mask:
 impl Camera3D {
     /// Handles canvas pointer, multi-touch, gizmo, and keyboard interactions for standalone rects.
     pub fn handle_interaction(&mut self, response: &egui::Response, ui: &egui::Ui) {
-        self.handle_interaction_with_plot(response, ui, None);
+        self.handle_interaction_with_plot(response, ui, None, true);
     }
 
     pub(crate) fn handle_interaction_with_plot(
@@ -117,23 +117,64 @@ impl Camera3D {
         response: &egui::Response,
         ui: &egui::Ui,
         plot_id: Option<egui::Id>,
+        allow_camera_drag: bool,
     ) {
         let prev = *self;
         let gizmo_handled = self.draw_gizmo_overlay(response, ui);
         let is_dragging_callout = Self::is_callout_drag_active(response, ui, plot_id);
         let multi_touch = ui.input(|i| i.multi_touch());
 
-        if !gizmo_handled && !is_dragging_callout {
+        if allow_camera_drag && !gizmo_handled && !is_dragging_callout {
             self.apply_canvas_pointer(response, ui, multi_touch, plot_id.is_none());
+        } else if !gizmo_handled && (response.clicked() || response.dragged()) {
+            response.request_focus();
         }
 
         self.apply_pointer_zoom(response, ui, multi_touch.is_some());
         self.register_camera_commands(ui);
+        self.apply_dispatched_camera_commands(ui.ctx());
         if response.has_focus() {
             self.handle_keyboard_interaction(ui, response.id);
         }
         if *self != prev {
             ui.ctx().request_repaint();
+        }
+    }
+
+    fn apply_dispatched_camera_commands(&mut self, ctx: &egui::Context) {
+        use egui_plot::commands::CommandRegistryData;
+        if !CommandRegistryData::has_pending_dispatch(ctx, "Camera 3D") {
+            return;
+        }
+        let step_px = 12.0_f32;
+        if CommandRegistryData::take_dispatched(ctx, "Reset View", "Camera 3D") {
+            self.reset();
+        } else if CommandRegistryData::take_dispatched(ctx, "Toggle Projection", "Camera 3D") {
+            self.projection = self.projection.toggle();
+        } else if CommandRegistryData::take_dispatched(ctx, "Zoom In", "Camera 3D") {
+            self.zoom = (self.zoom * 1.15_f32).clamp(CAMERA_3D_ZOOM_MIN, CAMERA_3D_ZOOM_MAX);
+        } else if CommandRegistryData::take_dispatched(ctx, "Zoom Out", "Camera 3D") {
+            self.zoom = (self.zoom / 1.15_f32).clamp(CAMERA_3D_ZOOM_MIN, CAMERA_3D_ZOOM_MAX);
+        } else if CommandRegistryData::take_dispatched(ctx, "Pitch Up", "Camera 3D") {
+            self.pitch =
+                (self.pitch - 0.1_f32).clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
+        } else if CommandRegistryData::take_dispatched(ctx, "Pitch Down", "Camera 3D") {
+            self.pitch =
+                (self.pitch + 0.1_f32).clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
+        } else if CommandRegistryData::take_dispatched(ctx, "Yaw Left", "Camera 3D") {
+            self.yaw =
+                (self.yaw - 0.1_f32).clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
+        } else if CommandRegistryData::take_dispatched(ctx, "Yaw Right", "Camera 3D") {
+            self.yaw =
+                (self.yaw + 0.1_f32).clamp(-CAMERA_3D_MAX_ANGLE_RAD, CAMERA_3D_MAX_ANGLE_RAD);
+        } else if CommandRegistryData::take_dispatched(ctx, "Pan Up", "Camera 3D") {
+            self.pan_by_pixels(egui::vec2(0.0, -step_px));
+        } else if CommandRegistryData::take_dispatched(ctx, "Pan Down", "Camera 3D") {
+            self.pan_by_pixels(egui::vec2(0.0, step_px));
+        } else if CommandRegistryData::take_dispatched(ctx, "Pan Left", "Camera 3D") {
+            self.pan_by_pixels(egui::vec2(-step_px, 0.0));
+        } else if CommandRegistryData::take_dispatched(ctx, "Pan Right", "Camera 3D") {
+            self.pan_by_pixels(egui::vec2(step_px, 0.0));
         }
     }
 

@@ -280,7 +280,17 @@ inventory::submit! {
         id: "BandStructureTool",
         display_name: "Band Structure",
         domain: "solid_state",
-        tags: &["quasiperiodic", "fibonacci", "aubry-andre", "cantor"],
+        tags: &[
+            "tight-binding",
+            "brillouin zone",
+            "dispersion",
+            "bloch",
+            "effective mass",
+            "quasiperiodic",
+            "fibonacci",
+            "aubry-andre",
+            "cantor",
+        ],
         build: || Box::new(BandStructureTool::default()),
     }
 }
@@ -311,14 +321,13 @@ impl scientific_metadata::theory::TheoryDescribable for BandStructureTool {
             ),
         }
     }
-
     fn phonetic_description(&self) -> String {
         "Electronic band structure, Fibonacci Cantor spectrum, and Aubry-Andre localization theory"
             .into()
     }
 
     fn theory_citation(&self) -> String {
-        "Localization Problem in One Dimension: Mapping and Escape (Kohmoto, Kadanoff & Tang, 1983); Analyticity breaking and Anderson localization in incommensurate lattices (Aubry & Andre, 1980); Introduction to Solid State Physics (Kittel, 2004)".into()
+        "Localization Problem in One Dimension: Mapping and Escape (Kohmoto, Kadanoff & Tang, 1983); Analyticity breaking and Anderson localization in incommensurate lattices (Aubry & Andre, 1980); Introduction to Solid State Physics (Kittel, 2004); Solid State Physics (Ashcroft & Mermin, 1976)".into()
     }
 
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
@@ -326,6 +335,10 @@ impl scientific_metadata::theory::TheoryDescribable for BandStructureTool {
         map.insert(
             "TightBinding".into(),
             "E(k) = E_0 - 2t cos(ka) periodic Bloch orbital overlap dispersion".into(),
+        );
+        map.insert(
+            "FreeElectron".into(),
+            "E(k) = hbar^2 k^2 / (2m) parabolic free Fermi gas dispersion".into(),
         );
         map.insert(
             "FibonacciCantor".into(),
