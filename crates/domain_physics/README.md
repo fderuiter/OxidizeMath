@@ -16,7 +16,7 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
-- **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
+- **`solid_state`**: Periodic Bravais lattices (`SimpleCubic`, `BodyCenteredCubic`, `FaceCenteredCubic`), cut-and-project quasicrystals (`Fibonacci1D`, `Penrose5Fold`, `AmmannBeenker8Fold`, `Penrose10Fold`, `Stampfli12Fold`) with phason flip tracking, reciprocal-lattice bases, Brillouin zones, zero-allocation kinematic Bragg structure factors (`BraggWorkspace`), 1D Fibonacci and Aubry-André quasiperiodic eigensolvers (`QuasiperiodicWorkspace`), isotropic s-wave BCS pairing (`BcsGapSolver`, `IsotropicBCSModel`, `coherence_factors_strong`), Debye/Einstein phonons, Fröhlich coupling, and Thomas-Fermi/Yukawa screening.
 - **`stat_mech`**: Ising spin lattices and canonical ensemble thermodynamic calculations.
 - **`optics`**: Geometric ray tracing, refractive boundary equations, and closed-form Fraunhofer wave diffraction (complemented by full-field 2D time-domain multi-slit and refractive-lens wave tank simulation in `pure_math::analysis::pde::wave_2d`).
 
@@ -81,6 +81,32 @@ let mut disk = GalacticDiskSystem::from_galaxy_model(
 disk.step_n_leapfrog(2.0, 20);
 assert!(disk.relative_energy_drift() < 1.0e-3);
 assert!(disk.relative_angular_momentum_drift() < 1.0e-11);
+```
+
+### Cut-and-Project Quasicrystals and Zero-Allocation Bragg Diffraction
+
+Project higher-dimensional $\mathbb{Z}^D$ lattices onto physical and perpendicular subspaces, track discrete phason vertex flips, and evaluate kinematic Bragg structure factors $S(\mathbf{q})$ in preallocated workspaces:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::solid_state::quasicrystal::{
+    QuasicrystalPatchConfig, QuasicrystalSymmetry, QuasicrystalWorkspace,
+};
+use math_explorer::physics::solid_state::reciprocal::BraggWorkspace;
+
+let mut qc = QuasicrystalWorkspace::new();
+let cfg = QuasicrystalPatchConfig {
+    symmetry: QuasicrystalSymmetry::Penrose5Fold,
+    patch_radius: 3.5,
+    phason_shift: [0.2, 0.1],
+    ..QuasicrystalPatchConfig::default()
+};
+qc.generate_into(&cfg);
+assert!(qc.sites().len() > 20 && qc.flipped_in_count > 0);
+
+let mut bragg = BraggWorkspace::new(64);
+bragg.evaluate_grid_verified(qc.parallel_points(), 64, 14.0, true);
+assert!(bragg.peak_intensity() > 1.0);
 ```
 
 ---

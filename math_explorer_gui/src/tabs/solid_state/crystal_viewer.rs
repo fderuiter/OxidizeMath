@@ -154,10 +154,32 @@ impl CrystalViewer {
             );
 
             ui.separator();
+            egui::CollapsingHeader::new("Reciprocal Lattice & Extinction")
+                .default_open(true)
+                .show(ui, |ui| self.draw_reciprocal_summary(ui));
+
+            ui.separator();
             egui::CollapsingHeader::new("View")
                 .default_open(true)
                 .show(ui, |ui| self.camera.ui(ui));
         });
+    }
+
+    fn draw_reciprocal_summary(&self, ui: &mut egui::Ui) {
+        use math_explorer::physics::solid_state::reciprocal::{
+            reciprocal_basis_3d, unit_cell_structure_factor,
+        };
+        let cell = self.system.generate(self.lattice_constant);
+        if let Some([b1, b2, b3]) = reciprocal_basis_3d(&cell.lattice_vectors) {
+            let bz_vol = b1.dot(&b2.cross(&b3)).abs();
+            ui.small(format!("Reciprocal |b₁| = 2π/a = {:.3} Å⁻¹", b1.norm()));
+            ui.small(format!("1st BZ volume = {bz_vol:.3} Å⁻³"));
+        }
+        for (h, k, l) in [(1, 0, 0), (1, 1, 0), (1, 1, 1), (2, 0, 0)] {
+            let f_sq = unit_cell_structure_factor(&cell, [h, k, l]);
+            let status = if f_sq < 1e-9 { "extinct" } else { "allowed" };
+            ui.small(format!("({h}{k}{l}): |F|² = {f_sq:.2} ({status})"));
+        }
     }
 }
 
@@ -270,7 +292,7 @@ impl InteractiveTool for CrystalViewer {
     }
 }
 
-// [cite:modular_polynomials_review]
+// [cite:solid_state]
 
 inventory::submit! {
     crate::framework::ToolMetadata {

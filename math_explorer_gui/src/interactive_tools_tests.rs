@@ -330,6 +330,19 @@ mod tests {
             &mut crate::tabs::solid_state::band_structure::BandStructureTool::default(),
             r#"{"e0":0.5,"t":1.5,"a":1.2,"hbar":1.0,"m":0.8,"show_free_electron":true}"#,
         );
+        assert_tool_roundtrip(
+            &mut crate::tabs::solid_state::band_structure::BandStructureTool::default(),
+            r#"{"e0":0.0,"t":1.0,"a":1.0,"hbar":1.0,"m":1.0,"show_free_electron":false,"regime":"FibonacciChain","plot_view":"IdosStaircase","chain_sites":55,"modulation":0.45,"aubry_lambda":2.0,"phason_phase":0.0}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::solid_state::quasicrystal_diffraction::QuasicrystalDiffractionTool::default(),
+            r#"{"structure":"AmmannBeenker8Fold","patch_radius":3.6,"window_scale":1.0,"phason_x":0.25,"phason_y":-0.15,"q_max":15.0,"grid_res":64,"gamma":0.5,"show_tile_edges":true,"show_bz_overlay":true,"show_perp_window":false}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::solid_state::bcs_superconductivity::BcsSuperconductivityTool::default(
+            ),
+            r#"{"view":"GapAndCoherence","pairing_potential":0.5,"debye_cutoff":3.0,"half_bandwidth":4.5,"mixing_param":0.5,"sound_velocity":2.4,"einstein_freq":4.8,"debye_temp":360.0,"frohlich_alpha":1.1,"k_tf":1.5}"#,
+        );
         let mut crystal = crate::tabs::solid_state::crystal_viewer::CrystalViewer::default();
         assert!(crate::framework::InteractiveTool::try_load_state(
             &mut crystal,

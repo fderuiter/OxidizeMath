@@ -3,8 +3,13 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod band_structure;
+pub mod bcs_superconductivity;
 pub mod crystal_viewer;
 pub mod ising;
+pub mod quasicrystal_diffraction;
+
+#[cfg(test)]
+mod tests;
 
 pub struct SolidStateTab {
     framework: crate::framework::SimulationFramework,
@@ -52,4 +57,4 @@ impl ExplorerTab for SolidStateTab {
     }
 }
 
-// [cite:graph_parameters_rust]
+// [cite:solid_state]
