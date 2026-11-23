@@ -11,7 +11,7 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 ### Module Structure
 
 - **`algebra`**: Abstract algebraic structures and type hierarchies:
-  - Groups, rings, and finite fields (`Fp`).
+  - Semigroups, monoids, groups (`Group`, `AbelianGroup`, `Zn<N>`, `is_subgroup`, `generate_left_coset`), rings, and finite fields (`Fp`).
   - Polynomial rings and polynomial arithmetic over arbitrary fields.
 - **`number_theory`**: Prime number generation (`primes_up_to`), primality testing, integer partition theory, and Q-series.
 - **`analysis`**: Differential equation solvers (`OdeSystem`, Runge-Kutta steppers), 1D and zero-allocation 2D partial differential equation solvers (`pde::wave_2d::Wave2DSolver` for hyperbolic wave tanks, Kirchhoff-Love biharmonic Chladni plates, Chladni sand drift, Marching-Squares nodal contours, and pre-planned 2D FFT spectra), numerical integration, and calculus algorithms.

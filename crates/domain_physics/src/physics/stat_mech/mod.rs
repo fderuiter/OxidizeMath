@@ -14,6 +14,7 @@ pub mod ensembles;
 pub mod ising;
 #[allow(missing_docs)]
 pub mod quantum_stats;
+pub mod sandpile;
 
 // [cite:graph_parameters_rust]
 

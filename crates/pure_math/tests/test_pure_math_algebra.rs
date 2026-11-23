@@ -146,3 +146,20 @@ fn test_normal_subgroup_check() {
 
     assert!(is_normal_subgroup(&g, &h));
 }
+
+fn assert_abelian_commutativity<G: AbelianGroup + PartialEq + core::fmt::Debug>(a: &G, b: &G) {
+    assert_eq!(G::operate(a, b), G::operate(b, a));
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_abelian_group_reexport_and_left_cosets() {
+    let a = Zn::<6>::new(2);
+    let b = Zn::<6>::new(5);
+    assert_abelian_commutativity(&a, &b);
+
+    let subgroup = [Zn::<6>::new(0), Zn::<6>::new(3)];
+    assert!(is_subgroup(&subgroup));
+    let left = generate_left_coset(&subgroup, &a);
+    assert_eq!(left, vec![Zn::<6>::new(2), Zn::<6>::new(5)]);
+}

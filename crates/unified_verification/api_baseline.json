@@ -4181,6 +4181,9 @@
       "signature": "pub use crate :: physics :: nuclear :: types :: NuclearError"
     },
     {
+      "signature": "pub use crate :: physics :: stat_mech :: sandpile :: SandpileError"
+    },
+    {
       "signature": "pub use umbrella :: PhysicsError"
     }
   ],
@@ -6392,6 +6395,197 @@
       "signature": "pub trait StatisticalDistribution { fn occupancy (& self , _ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , StatMechError > }"
     }
   ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/algebra.rs": [
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub const fn heights (& self) -> & [[u32 ; W] ; H] }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn burning_waves (& self) -> (bool , [[u16 ; W] ; H] , u16) }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn cyclic_subgroup (& self , _ : usize) -> Vec < Self > }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn from_stabilized_raw (_ : [[u32 ; W] ; H]) -> Self }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn group_order () -> Result < i128 , SandpileError > }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn identity_element () -> Self }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn is_recurrent (& self) -> bool }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn new (_ : [[u32 ; W] ; H]) -> Self }"
+    },
+    {
+      "signature": "impl < const W : usize , const H : usize > SandpileElement < W , H > { pub fn zn_homomorphism < const N : usize > (& self , _ : Zn < N >) -> Self }"
+    },
+    {
+      "signature": "pub struct SandpileElement < const W : usize , const H : usize >"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/kirchhoff.rs": [
+    {
+      "signature": "pub const MAX_BAREISS_CELLS : usize"
+    },
+    {
+      "signature": "pub enum SandpileError"
+    },
+    {
+      "signature": "pub fn kirchhoff_determinant_bareiss (_ : usize , _ : usize) -> Result < i128 , SandpileError >"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/mod.rs": [
+    {
+      "signature": "impl SandpileGrid { pub const fn has_active_wavefront (& self) -> bool }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub const fn height (& self) -> usize }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub const fn telemetry (& self) -> & AvalancheTelemetry }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub const fn width (& self) -> usize }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn add_grains (& mut self , _ : usize , _ : usize , _ : u32) -> Result < () , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn burn_depths (& self) -> & [u16] }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn drop_random_grain (& mut self) -> (usize , usize) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn fill (& mut self , _ : u32) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn fit_avalanche_power_law (& self , _ : AvalancheObservable ,) -> Result < CurveFit , FitError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn height_at (& self , _ : usize , _ : usize) -> Result < u32 , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn heights (& self) -> & [u32] }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn new (_ : usize , _ : usize , _ : Option < u64 >) -> Result < Self , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn reseed (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn scaling_cutoff (& self , _ : AvalancheObservable) -> usize }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn set_heights (& mut self , _ : & [u32]) -> Result < () , SandpileError > }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn stabilize_wavefront (& mut self) -> AvalancheStats }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn step_wavefront (& mut self) -> (usize , u64) }"
+    },
+    {
+      "signature": "impl SandpileGrid { pub fn telemetry_mut (& mut self) -> & mut AvalancheTelemetry }"
+    },
+    {
+      "signature": "pub const CRITICAL_HEIGHT : u32"
+    },
+    {
+      "signature": "pub const MAX_SANDPILE_DIM : usize"
+    },
+    {
+      "signature": "pub const MAX_STABLE_HEIGHT : u32"
+    },
+    {
+      "signature": "pub struct BurningTestResult"
+    },
+    {
+      "signature": "pub struct SandpileGrid"
+    },
+    {
+      "signature": "pub use algebra :: SandpileElement"
+    },
+    {
+      "signature": "pub use kirchhoff :: MAX_BAREISS_CELLS"
+    },
+    {
+      "signature": "pub use kirchhoff :: SandpileError"
+    },
+    {
+      "signature": "pub use kirchhoff :: kirchhoff_determinant_bareiss"
+    },
+    {
+      "signature": "pub use telemetry :: AvalancheObservable"
+    },
+    {
+      "signature": "pub use telemetry :: AvalancheStats"
+    },
+    {
+      "signature": "pub use telemetry :: AvalancheTelemetry"
+    },
+    {
+      "signature": "pub use telemetry :: EXACT_AVALANCHE_BUCKET_CAP"
+    },
+    {
+      "signature": "pub use telemetry :: MAX_POWER_LAW_FIT_POINTS"
+    },
+    {
+      "signature": "pub use telemetry :: WAVEFRONT_TRACE_CAP"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/sandpile/telemetry.rs": [
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn last_stats (& self) -> AvalancheStats }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn total_avalanches (& self) -> u64 }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub const fn zero_topple_drops (& self) -> u64 }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn fit_power_law (& self , _ : AvalancheObservable , _ : usize ,) -> Result < CurveFit , FitError > }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn record (& mut self , _ : AvalancheStats) }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn survival_curve_into (& self , _ : AvalancheObservable , _ : usize , _ : & mut [[f64 ; 2]] ,) -> usize }"
+    },
+    {
+      "signature": "impl AvalancheTelemetry { pub fn wavefront_trace (& self) -> & [u32] }"
+    },
+    {
+      "signature": "pub const EXACT_AVALANCHE_BUCKET_CAP : usize"
+    },
+    {
+      "signature": "pub const MAX_POWER_LAW_FIT_POINTS : usize"
+    },
+    {
+      "signature": "pub const WAVEFRONT_TRACE_CAP : usize"
+    },
+    {
+      "signature": "pub enum AvalancheObservable"
+    },
+    {
+      "signature": "pub struct AvalancheStats"
+    },
+    {
+      "signature": "pub struct AvalancheTelemetry"
+    }
+  ],
   "crates/federated_registry/src/lib.rs": [
     {
       "signature": "impl FederatedRegistry { pub fn emit (& self , _ : TelemetryEvent) }"
@@ -8080,10 +8274,25 @@
       "signature": "pub use group :: Zn"
     },
     {
+      "signature": "pub use group :: generate_left_coset"
+    },
+    {
+      "signature": "pub use group :: generate_right_coset"
+    },
+    {
+      "signature": "pub use group :: is_normal_subgroup"
+    },
+    {
+      "signature": "pub use group :: is_subgroup"
+    },
+    {
       "signature": "pub use linear_algebra :: LinearAlgebraError"
     },
     {
       "signature": "pub use polynomial :: Polynomial"
+    },
+    {
+      "signature": "pub use traits :: AbelianGroup"
     },
     {
       "signature": "pub use traits :: EuclideanDomain"
@@ -11787,6 +11996,9 @@
     },
     {
       "signature": "pub use domain_physics :: error :: RadarError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: SandpileError"
     },
     {
       "signature": "pub use domain_physics :: error :: SolidStateError"

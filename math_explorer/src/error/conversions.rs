@@ -77,6 +77,7 @@ impl_error_from!(@cfg "physics":
     HighEnergyError => HighEnergy,
     NuclearError => Nuclear,
     RadarError => Radar,
+    SandpileError => Sandpile,
     SolidStateError => SolidState,
     StandardModelError => StandardModel,
     StatMechError => StatMech,

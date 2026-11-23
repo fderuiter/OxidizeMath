@@ -7,7 +7,7 @@
 //! - **Symmetric Groups ($S_n$)**: Implemented as `Permutation`.
 //! - **Analysis Tools**: Functions to check for subgroups, normal subgroups, and generate cosets.
 
-use crate::pure_math::algebra::traits::{Group, Monoid, Semigroup};
+use crate::pure_math::algebra::traits::{AbelianGroup, Group, Monoid, Semigroup};
 use std::collections::HashSet;
 use std::hash::Hash;
 
@@ -131,6 +131,8 @@ impl<const N: usize> Group for Zn<N> {
         }
     }
 }
+
+impl<const N: usize> AbelianGroup for Zn<N> {}
 
 // ============================================================================
 // Symmetric Group (Permutations)

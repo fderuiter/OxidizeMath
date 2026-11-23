@@ -26,7 +26,7 @@ pub use domain_epidemiology::error::{
 #[cfg(feature = "physics")]
 pub use domain_physics::error::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-    PhysicsError, RadarError, SolidStateError, StandardModelError, StatMechError,
+    PhysicsError, RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
 
 #[cfg(feature = "pure_math")]
@@ -143,6 +143,9 @@ pub enum Error {
     /// Radar array estimation error.
     #[cfg(feature = "physics")]
     Radar(RadarError),
+    /// Abelian sandpile lattice and group error.
+    #[cfg(feature = "physics")]
+    Sandpile(SandpileError),
     /// Solid-state physics solver error.
     #[cfg(feature = "physics")]
     SolidState(SolidStateError),
