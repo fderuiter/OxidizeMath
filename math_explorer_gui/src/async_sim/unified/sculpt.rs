@@ -152,18 +152,14 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ));
         }
 
+        self.apply_parsed_atlas_state(None)?;
         {
             let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
             for (key, value) in parsed_params {
                 guard.insert(key, value);
             }
         }
-        self.custom_formula_enabled = false;
-        if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_mut()) {
-            bar.set_expression(spec.default_expr);
-            bar.set_params_map(&BTreeMap::new());
-            self.publish_formula_update();
-        }
+        self.reset_formula_bar_to_default();
         {
             let mut s_guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
             s_guard.rle_mask = parsed_rle;

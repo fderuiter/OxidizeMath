@@ -66,15 +66,16 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
         drop(params_lock);
-        reset_needed |= self.draw_formula_controls(ui, ctx);
+        reset_needed |= self.draw_custom_formula_controls(ui, ctx);
         self.draw_spatial_brush_section(ui, ctx);
+        self.draw_atlas_toggle_if_supported(ui);
         self.draw_observable_sensitivity(ui);
         if reset_needed {
             self.reset_simulation(Some(ctx));
         }
     }
 
-    fn draw_formula_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
+    fn draw_custom_formula_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
         let Some(spec) = M::formula_spec() else {
             return false;
         };
@@ -122,7 +123,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
     }
-
     fn draw_single_parameter(
         ui: &mut egui::Ui,
         name: &str,

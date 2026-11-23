@@ -5,20 +5,24 @@
 //! hover-persistent, `Escape`-dismissible tooltips (SC 1.4.13 / SCR39).
 
 use egui::{
-    AreaState, Button, Color32, Context, Id, Key, LayerId, Modifiers, PopupAnchor, Pos2, Response,
-    RichText, Sense, Stroke, Tooltip, Ui, WidgetInfo, WidgetText, WidgetType,
+    AreaState, Button, Color32, Context, EventFilter, FocusDirection, Id, Key, LayerId, Modifiers,
+    PopupAnchor, Pos2, Rect, Response, RichText, Sense, Stroke, StrokeKind, Tooltip, Ui, UiBuilder,
+    WidgetInfo, WidgetText, WidgetType,
 };
 
 #[derive(Clone, Default)]
 pub(crate) struct PointTooltipState {
     pub anchor_pos: Pos2,
     pub point: [f64; 2],
+    pub world_point: Option<[f64; 3]>,
+    pub suppress_rulers: bool,
     pub title: String,
     pub body_lines: Vec<(String, bool)>,
     pub active_last_frame: bool,
     pub dismissed: bool,
     pub dismissed_anchor: Option<Pos2>,
     pub dismissed_point: Option<[f64; 2]>,
+    pub dismissed_world_point: Option<[f64; 3]>,
     pub announced_text: Option<String>,
 }
 
@@ -48,15 +52,38 @@ pub fn contrast_ratio(fg: Color32, bg: Color32) -> f32 {
     (lighter + 0.05) / (darker + 0.05)
 }
 
+/// Composites a premultiplied `fg` color (including additive fills) over an opaque `bg` color.
+#[must_use]
+pub(crate) fn composite_over(fg: Color32, bg: Color32) -> Color32 {
+    if fg == Color32::TRANSPARENT {
+        return bg;
+    }
+    if fg.a() == u8::MAX {
+        return fg;
+    }
+    let inv_a = 1.0 - f32::from(fg.a()) / 255.0;
+    let r = (f32::from(fg.r()) + f32::from(bg.r()) * inv_a)
+        .round()
+        .clamp(0.0, 255.0) as u8;
+    let g = (f32::from(fg.g()) + f32::from(bg.g()) * inv_a)
+        .round()
+        .clamp(0.0, 255.0) as u8;
+    let b = (f32::from(fg.b()) + f32::from(bg.b()) * inv_a)
+        .round()
+        .clamp(0.0, 255.0) as u8;
+    Color32::from_rgb(r, g, b)
+}
+
 /// Returns a focus border stroke derived from `visuals.selection.stroke`
 /// guaranteed to achieve at least 3:1 contrast against `bg`.
 #[must_use]
 pub fn focus_ring_stroke(visuals: &egui::Visuals, bg: Color32) -> Stroke {
+    let resolved_bg = composite_over(bg, visuals.window_fill);
     let mut stroke = visuals.selection.stroke;
     stroke.width = stroke.width.max(2.0);
-    if contrast_ratio(stroke.color, bg) < 3.0 {
-        let white_contrast = contrast_ratio(Color32::WHITE, bg);
-        let black_contrast = contrast_ratio(Color32::BLACK, bg);
+    if contrast_ratio(stroke.color, resolved_bg) < 3.0 {
+        let white_contrast = contrast_ratio(Color32::WHITE, resolved_bg);
+        let black_contrast = contrast_ratio(Color32::BLACK, resolved_bg);
         stroke.color = if white_contrast >= black_contrast {
             Color32::WHITE
         } else {
@@ -64,6 +91,25 @@ pub fn focus_ring_stroke(visuals: &egui::Visuals, bg: Color32) -> Stroke {
         };
     }
     stroke
+}
+
+/// Returns `preferred` when it achieves at least 3:1 contrast against `bg`,
+/// falling back to [`focus_ring_stroke`]'s guaranteed `>= 3:1` color otherwise.
+#[must_use]
+pub(crate) fn accessible_marker_color(
+    visuals: &egui::Visuals,
+    preferred: Color32,
+    bg: Color32,
+) -> Color32 {
+    if preferred == Color32::TRANSPARENT {
+        return Color32::TRANSPARENT;
+    }
+    let resolved_bg = composite_over(bg, visuals.window_fill);
+    if contrast_ratio(preferred, resolved_bg) >= 3.0 {
+        preferred
+    } else {
+        focus_ring_stroke(visuals, resolved_bg).color
+    }
 }
 
 fn layer_may_handle_escape(ctx: &Context, layer_id: LayerId) -> bool {
@@ -129,8 +175,262 @@ pub(crate) fn focusable_action_button(
         })
         .inner
     };
-    attach_button_semantics(&response, enabled && ui.is_enabled(), a11y_label);
+    let effective_enabled = enabled && ui.is_enabled();
+    attach_button_semantics(&response, effective_enabled, a11y_label);
+    if response.has_focus() {
+        let ring = focus_ring_stroke(ui.visuals(), ui.visuals().window_fill);
+        ui.painter()
+            .rect_stroke(response.rect, 2.0, ring, StrokeKind::Inside);
+    }
     response
+}
+
+pub(crate) fn lock_horizontal_arrows_for_tab(ctx: &Context, id: Id) {
+    ctx.memory_mut(|m| {
+        m.set_focus_lock_filter(
+            id,
+            EventFilter {
+                tab: false,
+                horizontal_arrows: true,
+                vertical_arrows: false,
+                escape: false,
+            },
+        );
+    });
+}
+
+/// Renders a keyboard-focusable `Role::Tab` button with `aria-selected` state,
+/// horizontal arrow key locking for `TabList` roving, and a `>= 3:1` focus ring.
+pub(crate) fn focusable_tab_button(ui: &mut Ui, selected: bool, label: &str) -> Response {
+    let response = focusable_action_button(ui, true, Button::selectable(selected, label), None);
+    let enabled = ui.is_enabled();
+    let owned = label.to_owned();
+    response.widget_info({
+        let info_label = owned.clone();
+        move || {
+            WidgetInfo::selected(
+                WidgetType::SelectableLabel,
+                enabled,
+                selected,
+                info_label.clone(),
+            )
+        }
+    });
+    response.ctx.accesskit_node_builder(response.id, |builder| {
+        builder.set_role(egui::accesskit::Role::Tab);
+        builder.set_label(owned);
+        builder.set_selected(selected);
+        builder.clear_toggled();
+    });
+    if response.has_focus() {
+        lock_horizontal_arrows_for_tab(&response.ctx, response.id);
+        let bg = if selected {
+            ui.visuals().selection.bg_fill
+        } else {
+            ui.visuals().window_fill
+        };
+        let ring = focus_ring_stroke(ui.visuals(), bg);
+        ui.painter()
+            .rect_stroke(response.rect, 2.0, ring, StrokeKind::Inside);
+    }
+    response
+}
+
+/// Renders a modal action button that stays keyboard-focusable as `aria-disabled`
+/// when `!enabled`, exposing `disabled_reason` via an `Escape`-dismissible tooltip.
+pub(crate) fn modal_action_button(
+    ui: &mut Ui,
+    enabled: bool,
+    label: &str,
+    disabled_reason: &str,
+) -> Response {
+    let mut response = focusable_action_button(ui, enabled, Button::new(label), Some(label));
+    if !enabled && !disabled_reason.is_empty() {
+        response = response.accessible_tooltip(disabled_reason);
+    }
+    response
+}
+
+/// Renders a modal status message label tagged with `Role::Status` and polite/assertive live metadata.
+pub(crate) fn status_message_label(ui: &mut Ui, msg: &str, is_err: bool) -> Response {
+    let base = if is_err {
+        ui.visuals().error_fg_color
+    } else {
+        ui.visuals().selection.stroke.color
+    };
+    let fg = accessible_marker_color(ui.visuals(), base, ui.visuals().window_fill);
+    let response = ui.colored_label(fg, msg);
+    let owned = msg.to_owned();
+    response.ctx.accesskit_node_builder(response.id, |builder| {
+        builder.set_role(egui::accesskit::Role::Status);
+        builder.set_label(owned.clone());
+        builder.set_value(owned);
+        builder.set_live(if is_err {
+            egui::accesskit::Live::Assertive
+        } else {
+            egui::accesskit::Live::Polite
+        });
+        builder.set_live_atomic();
+    });
+    response
+}
+
+/// Handles `ArrowLeft`/`ArrowRight` roving selection across a rendered `Role::TabList`.
+pub(crate) fn step_tablist_on_arrow_keys(ui: &Ui, tab_responses: &[Response]) -> Option<usize> {
+    let n = tab_responses.len();
+    if n < 2 {
+        return None;
+    }
+    let cur = tab_responses.iter().position(Response::has_focus)?;
+    let next = if ui
+        .ctx()
+        .input_mut(|i| i.consume_key(Modifiers::NONE, Key::ArrowRight))
+    {
+        (cur + 1) % n
+    } else if ui
+        .ctx()
+        .input_mut(|i| i.consume_key(Modifiers::NONE, Key::ArrowLeft))
+    {
+        (cur + n - 1) % n
+    } else {
+        return None;
+    };
+    let target_id = tab_responses[next].id;
+    ui.ctx().memory_mut(|m| {
+        m.move_focus(FocusDirection::None);
+        m.request_focus(target_id);
+    });
+    lock_horizontal_arrows_for_tab(ui.ctx(), target_id);
+    ui.ctx().request_repaint();
+    Some(next)
+}
+
+pub(crate) fn set_accesskit_bounds(ctx: &Context, id: Id, rect: Rect) {
+    ctx.accesskit_node_builder(id, |builder| {
+        builder.set_bounds(egui::accesskit::Rect {
+            x0: f64::from(rect.min.x),
+            y0: f64::from(rect.min.y),
+            x1: f64::from(rect.max.x),
+            y1: f64::from(rect.max.y),
+        });
+    });
+}
+
+pub(crate) fn register_table_node(
+    ctx: &Context,
+    table_id: Id,
+    label: &str,
+    row_count: usize,
+    column_count: usize,
+) {
+    let owned = label.to_owned();
+    ctx.accesskit_node_builder(table_id, |builder| {
+        builder.set_role(egui::accesskit::Role::Table);
+        builder.set_label(owned);
+        builder.set_row_count(row_count);
+        builder.set_column_count(column_count);
+    });
+}
+
+pub(crate) fn register_row_node(
+    ui: &mut Ui,
+    resp: &Response,
+    label: String,
+    row_index: usize,
+    selected: Option<bool>,
+) {
+    let enabled = ui.is_enabled();
+    resp.widget_info({
+        let info_label = label.clone();
+        move || match selected {
+            Some(sel) => WidgetInfo::selected(WidgetType::Other, enabled, sel, info_label.clone()),
+            None => WidgetInfo::labeled(WidgetType::Other, enabled, info_label.clone()),
+        }
+    });
+    ui.ctx().accesskit_node_builder(resp.id, |builder| {
+        builder.set_role(egui::accesskit::Role::Row);
+        builder.set_label(label);
+        builder.set_row_index(row_index);
+        builder.clear_toggled();
+        if let Some(sel) = selected {
+            builder.set_selected(sel);
+        }
+    });
+    if resp.has_focus() {
+        ui.memory_mut(|m| {
+            m.set_focus_lock_filter(
+                resp.id,
+                EventFilter {
+                    tab: false,
+                    horizontal_arrows: false,
+                    vertical_arrows: true,
+                    escape: false,
+                },
+            );
+        });
+    }
+}
+
+pub(crate) fn scope_table_row(
+    ui: &mut Ui,
+    table_id: Id,
+    row_salt: impl std::hash::Hash,
+    size: egui::Vec2,
+    sense: Sense,
+    row_index: usize,
+    add_cells: impl FnOnce(&mut Ui, Rect, &Response) -> (String, Option<bool>),
+) -> Response {
+    let mut row_meta: Option<(String, Option<bool>)> = None;
+    let ir = ui.scope_builder(
+        UiBuilder::new()
+            .id_salt(row_salt)
+            .sense(sense)
+            .accessibility_parent(table_id),
+        |row_ui| {
+            let (_, rect) = row_ui.allocate_space(size);
+            let pre_resp = row_ui.response();
+            row_meta = Some(add_cells(row_ui, rect, &pre_resp));
+        },
+    );
+    let (label, selected) = row_meta.unwrap_or_default();
+    register_row_node(ui, &ir.response, label, row_index, selected);
+    ir.response
+}
+
+pub(crate) fn register_cell_node(
+    row_ui: &Ui,
+    cell_id: Id,
+    cell_rect: Rect,
+    role: egui::accesskit::Role,
+    col_index: usize,
+    label: String,
+    focusable: bool,
+    row_bg: Color32,
+) -> Response {
+    let sense = if focusable {
+        Sense::focusable_noninteractive()
+    } else {
+        Sense::hover()
+    };
+    let resp = row_ui.interact(cell_rect, cell_id, sense);
+    let enabled = row_ui.is_enabled();
+    resp.widget_info({
+        let info_label = label.clone();
+        move || WidgetInfo::labeled(WidgetType::Label, enabled, info_label.clone())
+    });
+    row_ui.ctx().accesskit_node_builder(resp.id, |builder| {
+        builder.set_role(role);
+        builder.set_label(label);
+        builder.clear_value();
+        builder.set_column_index(col_index);
+    });
+    if focusable && resp.has_focus() {
+        let ring = focus_ring_stroke(row_ui.visuals(), row_bg);
+        row_ui
+            .painter()
+            .rect_stroke(cell_rect, 2.0, ring, StrokeKind::Inside);
+    }
+    resp
 }
 
 /// Extension trait adding WCAG 2.2 SC 1.4.13 compliant tooltips to [`Response`].
@@ -241,6 +541,7 @@ pub(crate) fn preprocess_point_tooltip_frame(
         state.dismissed = true;
         state.dismissed_anchor = Some(state.anchor_pos);
         state.dismissed_point = Some(state.point);
+        state.dismissed_world_point = state.world_point;
         state.active_last_frame = false;
         state.announced_text = None;
         plot_area_response
@@ -253,6 +554,7 @@ pub(crate) fn preprocess_point_tooltip_frame(
         state.dismissed = false;
         state.dismissed_anchor = None;
         state.dismissed_point = None;
+        state.dismissed_world_point = None;
         state.active_last_frame = false;
         state.announced_text = None;
         plot_area_response
@@ -264,15 +566,33 @@ pub(crate) fn preprocess_point_tooltip_frame(
     (popup_hovered && !state.dismissed && state.active_last_frame).then_some(state)
 }
 
+pub(crate) struct SnappedTooltipArgs<'a> {
+    pub anchor_pos: Pos2,
+    pub point: [f64; 2],
+    pub world_point: Option<[f64; 3]>,
+    pub suppress_rulers: bool,
+    pub title: &'a str,
+    pub body_lines: &'a [(String, bool)],
+    pub announce_on_open: bool,
+}
+
+fn world_point_changed(prev: Option<[f64; 3]>, curr: Option<[f64; 3]>) -> bool {
+    match (prev, curr) {
+        (Some(a), Some(b)) => {
+            (a[0] - b[0]).abs() > 1e-12
+                || (a[1] - b[1]).abs() > 1e-12
+                || (a[2] - b[2]).abs() > 1e-12
+        }
+        (None, None) => false,
+        _ => true,
+    }
+}
+
 /// Renders a point tooltip anchored at `anchor_pos` (snapped data point screen
 /// coordinates) unless dismissed by `Escape`, updating hover-persistence state.
 pub(crate) fn show_snapped_point_tooltip(
     plot_area_response: &Response,
-    anchor_pos: Pos2,
-    point: [f64; 2],
-    title: &str,
-    body_lines: &[(String, bool)],
-    announce_on_open: bool,
+    args: SnappedTooltipArgs<'_>,
 ) {
     let state_id = plot_area_response.id.with("a11y_point_tooltip_state");
     let mut state = plot_area_response
@@ -282,14 +602,17 @@ pub(crate) fn show_snapped_point_tooltip(
 
     let anchor_moved = state
         .dismissed_anchor
-        .is_some_and(|prev| prev.distance(anchor_pos) > 2.5);
+        .is_some_and(|prev| prev.distance(args.anchor_pos) > 2.5);
     let point_changed = state.dismissed_point.is_some_and(|prev| {
-        (prev[0] - point[0]).abs() > 1e-12 || (prev[1] - point[1]).abs() > 1e-12
+        (prev[0] - args.point[0]).abs() > 1e-12
+            || (prev[1] - args.point[1]).abs() > 1e-12
+            || world_point_changed(state.dismissed_world_point, args.world_point)
     });
     if anchor_moved || point_changed {
         state.dismissed = false;
         state.dismissed_anchor = None;
         state.dismissed_point = None;
+        state.dismissed_world_point = None;
     }
     if state.dismissed {
         state.active_last_frame = false;
@@ -299,14 +622,16 @@ pub(crate) fn show_snapped_point_tooltip(
         return;
     }
 
-    state.anchor_pos = anchor_pos;
-    state.point = point;
-    state.title = title.to_owned();
-    state.body_lines = body_lines.to_vec();
+    state.anchor_pos = args.anchor_pos;
+    state.point = args.point;
+    state.world_point = args.world_point;
+    state.suppress_rulers = args.suppress_rulers;
+    state.title = args.title.to_owned();
+    state.body_lines = args.body_lines.to_vec();
     state.active_last_frame = true;
 
-    let summary = format_point_tooltip_summary(title, body_lines);
-    if announce_on_open && state.announced_text.as_deref() != Some(summary.as_str()) {
+    let summary = format_point_tooltip_summary(args.title, args.body_lines);
+    if args.announce_on_open && state.announced_text.as_deref() != Some(summary.as_str()) {
         if !summary.is_empty() {
             crate::emit_plot_live_message(&plot_area_response.ctx, summary.clone(), false);
         }
@@ -316,7 +641,12 @@ pub(crate) fn show_snapped_point_tooltip(
     plot_area_response
         .ctx
         .data_mut(|d| d.insert_temp(state_id, state));
-    paint_anchored_point_popup(plot_area_response, anchor_pos, title, body_lines);
+    paint_anchored_point_popup(
+        plot_area_response,
+        args.anchor_pos,
+        args.title,
+        args.body_lines,
+    );
 }
 
 /// Formats a polite ARIA live announcement for a focused or snapped critical point.
@@ -354,11 +684,15 @@ pub(crate) fn show_critical_point_tooltip(
     }
     show_snapped_point_tooltip(
         plot_area_response,
-        anchor_pos,
-        poi.point,
-        &poi.tooltip_title(),
-        &body_lines,
-        announce_on_open,
+        SnappedTooltipArgs {
+            anchor_pos,
+            point: poi.point,
+            world_point: None,
+            suppress_rulers: false,
+            title: &poi.tooltip_title(),
+            body_lines: &body_lines,
+            announce_on_open,
+        },
     );
 }
 

@@ -15,12 +15,19 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod atlas;
 pub mod presets;
 pub mod runner;
 pub mod sculpt;
 pub mod tool;
 pub mod ui;
 
+#[cfg(test)]
+pub use atlas::{
+    classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+};
+#[cfg(test)]
+pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
 pub use runner::MorphogenesisRunner;
@@ -140,17 +147,25 @@ impl MorphogenesisTab {
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
-        let (current_state, existing_mask) = tool
+        let existing = tool
             .save_state()
-            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok())
-            .map_or((SimWorkerState::Ready, Vec::new()), |s| {
+            .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok());
+        let current_state = existing
+            .as_ref()
+            .and_then(|s| s.state)
+            .unwrap_or(SimWorkerState::Ready);
+        let atlas_visible = existing.as_ref().is_some_and(|s| s.atlas_visible);
+        let (existing_mask, atlas_axes) = match existing {
+            Some(s) => {
                 let keep_mask = if s.width == config.width && s.height == config.height {
                     s.mask_rle
                 } else {
                     Vec::new()
                 };
-                (s.state.unwrap_or(SimWorkerState::Ready), keep_mask)
-            });
+                (keep_mask, s.atlas_axes)
+            }
+            None => (Vec::new(), atlas::default_morpho_atlas_axes()),
+        };
         let target_state = if current_state == SimWorkerState::Running {
             SimWorkerState::Running
         } else {
@@ -168,6 +183,8 @@ impl MorphogenesisTab {
             paused: None,
             pending_initial_start: false,
             mask_rle: existing_mask,
+            atlas_visible,
+            atlas_axes,
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;

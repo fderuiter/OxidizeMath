@@ -52,29 +52,6 @@ impl PotentialFlowTool {
         h.finish().max(1)
     }
 
-    pub(crate) fn ensure_cached_arrows(&mut self) -> (Arc<Vec<PlotPoint>>, Arc<Vec<PlotPoint>>) {
-        let key = self.field_geometry_key();
-        if self.cache.key != Some(key) {
-            let (raw_origins, raw_tips) = self.compute_arrow_field();
-            let origins = raw_origins
-                .into_iter()
-                .map(|[x, y]| PlotPoint::new(x, y))
-                .collect();
-            let tips = raw_tips
-                .into_iter()
-                .map(|[x, y]| PlotPoint::new(x, y))
-                .collect();
-            self.cache.origins = Arc::new(origins);
-            self.cache.tips = Arc::new(tips);
-            self.cache.key = Some(key);
-            self.cache.eval_count += 1;
-        }
-        (
-            Arc::clone(&self.cache.origins),
-            Arc::clone(&self.cache.tips),
-        )
-    }
-
     pub(crate) fn compute_arrow_field(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
         if !self.view_range.is_finite()
             || self.view_range <= 0.0
@@ -116,5 +93,28 @@ impl PotentialFlowTool {
             }
         }
         (origins, tips)
+    }
+
+    pub(crate) fn ensure_cached_arrows(&mut self) -> (Arc<Vec<PlotPoint>>, Arc<Vec<PlotPoint>>) {
+        let key = self.field_geometry_key();
+        if self.cache.key != Some(key) {
+            let (raw_origins, raw_tips) = self.compute_arrow_field();
+            let origins = raw_origins
+                .into_iter()
+                .map(|[x, y]| PlotPoint::new(x, y))
+                .collect();
+            let tips = raw_tips
+                .into_iter()
+                .map(|[x, y]| PlotPoint::new(x, y))
+                .collect();
+            self.cache.origins = Arc::new(origins);
+            self.cache.tips = Arc::new(tips);
+            self.cache.key = Some(key);
+            self.cache.eval_count += 1;
+        }
+        (
+            Arc::clone(&self.cache.origins),
+            Arc::clone(&self.cache.tips),
+        )
     }
 }

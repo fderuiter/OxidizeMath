@@ -1,5 +1,9 @@
 # Architecture Decision Record: Portable Build Paths
 
+## Status
+
+Accepted
+
 ## Context
 Previously, build scripts (`crates/markdown_tests/build.rs`, `math_explorer_gui/build.rs`) and procedural macros (`crates/verified_engine_macros/src/embed_theory.rs`) generated Rust code using hardcoded absolute filesystem paths derived via `fs::canonicalize`. This caused issues with isolated sandboxed CI/CD builds where the filesystem layout differs at test execution time, and prevented remote caching systems from sharing artifacts because generated file contents were machine-specific.
 

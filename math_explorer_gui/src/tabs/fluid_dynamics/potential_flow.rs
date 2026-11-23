@@ -13,6 +13,10 @@ use std::f64::consts::PI;
 
 #[path = "potential_flow/cache.rs"]
 mod cache;
+#[path = "potential_flow/shader.rs"]
+mod shader;
+#[cfg(test)]
+pub(crate) use shader::MAX_SHADER_SINGULARITIES;
 
 pub(crate) const FLOW_STRENGTH_MIN: f64 = -1_000.0;
 pub(crate) const FLOW_STRENGTH_MAX: f64 = 1_000.0;
@@ -34,6 +38,7 @@ pub struct PotentialFlowTool {
     pub(crate) new_element_y: f64,
     pub(crate) new_element_angle: f64,
     pub(crate) brush_kit: SpatialBrushKit,
+    pub(crate) high_contrast: bool,
     pub(crate) cache: cache::ArrowFieldCache,
 }
 
@@ -144,6 +149,7 @@ impl Default for PotentialFlowTool {
             new_element_y: 0.0,
             new_element_angle: 0.0,
             brush_kit: Self::default_flow_brush_kit(),
+            high_contrast: false,
             cache: cache::ArrowFieldCache::default(),
         };
         tool.rebuild_field();
@@ -166,6 +172,14 @@ impl InteractiveTool for PotentialFlowTool {
 
     fn state_revision(&self) -> u64 {
         self.compute_state_revision()
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::plot().with_shader()
+    }
+
+    fn export_glsl_shader(&self, dialect: crate::framework::ShaderDialect) -> Result<String, String> {
+        self.build_glsl_shader(dialect)
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -242,6 +256,8 @@ impl InteractiveTool for PotentialFlowTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
         self.draw_controls(ui);
         let (origins, tips) = self.ensure_cached_arrows();
         let allow_pan = !self.brush_kit.is_sculpting();

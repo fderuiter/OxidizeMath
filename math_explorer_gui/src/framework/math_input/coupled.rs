@@ -197,6 +197,11 @@ impl CoupledExpressionBank {
         self.slider_bank.set_params_map(&map);
     }
 
+    /// Clamps active shared parameter values to `range`, replacing non-finite values with default.
+    pub fn clamp_active_params(&mut self, range: RangeInclusive<f64>) {
+        self.slider_bank.clamp_active_values(range);
+    }
+
     /// Recompiles all bars against their deduplicated union of free parameters.
     ///
     /// Preserves `active_compiled` and `slider_bank` unchanged if any bar has a syntax error

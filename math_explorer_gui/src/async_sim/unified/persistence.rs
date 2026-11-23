@@ -2,23 +2,28 @@
 
 use super::sculpt::{validate_rle_mask_entries, validate_sparse_potential_entries};
 use super::{CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
-use crate::framework::{MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
+use crate::framework::{InteractiveTool, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct UnifiedFormulaState {
+struct UnifiedExtendedState {
     params: BTreeMap<String, f64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     custom_formula_enabled: bool,
-    custom_expr: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    custom_expr: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     rle_mask: Vec<[u32; 2]>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     sparse_potential: Vec<(u16, f64)>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    atlas_visible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    atlas_axes: Option<[String; 2]>,
 }
 
 pub(super) fn build_formula_bar(spec: &UnifiedFormulaSpec) -> MathExpressionInputBar {
@@ -65,78 +70,148 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 
     pub(super) fn serialize_tool_state(&self) -> Option<String> {
-        if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_ref()) {
-            let active = self.custom_formula_enabled;
-            let customized = bar.raw_text != spec.default_expr;
-            if active || customized {
-                let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-                let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
-                let sorted_params: BTreeMap<String, f64> =
-                    params.iter().map(|(k, &v)| (k.clone(), v)).collect();
-                let custom_params = if active {
-                    bar.params_map()
-                } else {
-                    BTreeMap::new()
-                };
-                return serde_json::to_string(&UnifiedFormulaState {
-                    params: sorted_params,
-                    custom_formula_enabled: active,
-                    custom_expr: bar.raw_text.clone(),
-                    custom_params,
-                    rle_mask: sculpt.rle_mask.clone(),
-                    sparse_potential: sculpt.sparse_potential.clone(),
-                })
-                .ok();
-            }
+        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let formula_ext =
+            M::formula_spec()
+                .zip(self.formula_bar.as_ref())
+                .and_then(|(spec, bar)| {
+                    let active = self.custom_formula_enabled;
+                    let customized = bar.raw_text != spec.default_expr;
+                    (active || customized).then(|| {
+                        let cp = if active {
+                            bar.params_map()
+                        } else {
+                            BTreeMap::new()
+                        };
+                        (active, bar.raw_text.clone(), cp)
+                    })
+                });
+        let atlas_ext = self.atlas.as_ref().and_then(|atlas| {
+            (!atlas.has_default_persisted_state()).then(|| {
+                let (xk, yk) = atlas.axis_keys();
+                (atlas.is_visible(), [xk.to_string(), yk.to_string()])
+            })
+        });
+        if formula_ext.is_some() || atlas_ext.is_some() {
+            let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+            let sorted_params = params.iter().map(|(k, &v)| (k.clone(), v)).collect();
+            let (custom_formula_enabled, custom_expr, custom_params) = match formula_ext {
+                Some((en, expr, cp)) => (en, Some(expr), cp),
+                None => (false, None, BTreeMap::new()),
+            };
+            let (atlas_visible, atlas_axes) = match atlas_ext {
+                Some((vis, axes)) => (vis, Some(axes)),
+                None => (false, None),
+            };
+            return serde_json::to_string(&UnifiedExtendedState {
+                params: sorted_params,
+                custom_formula_enabled,
+                custom_expr,
+                custom_params,
+                rle_mask: sculpt.rle_mask.clone(),
+                sparse_potential: sculpt.sparse_potential.clone(),
+                atlas_visible,
+                atlas_axes,
+            })
+            .ok();
         }
+        drop(params);
         self.serialize_unified_state()
     }
 
     pub(super) fn deserialize_tool_state(&mut self, state: &str) -> Result<(), String> {
-        if let Some(spec) = M::formula_spec() {
-            if let Ok(fs) = serde_json::from_str::<UnifiedFormulaState>(state) {
-                return self.apply_deserialized_formula_state(&spec, fs);
-            }
+        self.state_bounds().validate_json(state)?;
+        if let Ok(ext) = serde_json::from_str::<UnifiedExtendedState>(state) {
+            return self.apply_extended_state(ext);
         }
         self.deserialize_unified_state(state)
     }
 
-    fn apply_deserialized_formula_state(
-        &mut self,
-        spec: &UnifiedFormulaSpec,
-        fs: UnifiedFormulaState,
+    fn validate_sculpt_for_extended_state(
+        &self,
+        rle_mask: &[[u32; 2]],
+        sparse_potential: &[(u16, f64)],
     ) -> Result<(), String> {
-        let map: HashMap<String, f64> = fs.params.into_iter().collect();
+        if !rle_mask.is_empty() {
+            if !(M::supports_spatial_brush() && M::is_raster_model()) {
+                return Err(format!("{} does not support rle_mask state", M::name()));
+            }
+            validate_rle_mask_entries(rle_mask)?;
+        }
+        if !sparse_potential.is_empty() {
+            if !(M::supports_spatial_brush() && !M::is_raster_model()) {
+                return Err(format!(
+                    "{} does not support sparse_potential state",
+                    M::name()
+                ));
+            }
+            validate_sparse_potential_entries(sparse_potential, M::name())?;
+        }
+        Ok(())
+    }
+
+    fn apply_extended_state(&mut self, ext: UnifiedExtendedState) -> Result<(), String> {
+        let map: HashMap<String, f64> = ext.params.into_iter().collect();
         self.validate_param_map(&map)?;
-        if fs.custom_params.values().any(|v| !v.is_finite()) {
+        let has_formula = ext.custom_formula_enabled
+            || ext.custom_expr.is_some()
+            || !ext.custom_params.is_empty();
+        if M::formula_spec().is_none() && has_formula {
+            return Err(format!(
+                "{} does not support custom formula state",
+                M::name()
+            ));
+        }
+        if ext.custom_params.values().any(|v| !v.is_finite()) {
             return Err(format!(
                 "Non-finite custom formula parameter in {}",
                 M::name()
             ));
         }
-        validate_rle_mask_entries(&fs.rle_mask)?;
-        validate_sparse_potential_entries(&fs.sparse_potential, M::name())?;
+        if self.atlas.is_none() && (ext.atlas_visible || ext.atlas_axes.is_some()) {
+            return Err(format!(
+                "{} does not support 2D parameter atlas state",
+                M::name()
+            ));
+        }
+        self.validate_sculpt_for_extended_state(&ext.rle_mask, &ext.sparse_potential)?;
+        self.apply_parsed_atlas_state(Some((ext.atlas_visible, ext.atlas_axes)))?;
         {
             let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
             for (k, v) in map {
                 guard.insert(k, v);
             }
         }
-        let bar = self
-            .formula_bar
-            .get_or_insert_with(|| build_formula_bar(spec));
-        bar.set_expression(&fs.custom_expr);
-        bar.set_params_map(&fs.custom_params);
-        self.custom_formula_enabled = fs.custom_formula_enabled;
-        self.publish_formula_update();
+        if let Some(spec) = M::formula_spec() {
+            if let Some(expr) = ext.custom_expr {
+                let bar = self
+                    .formula_bar
+                    .get_or_insert_with(|| build_formula_bar(&spec));
+                bar.set_expression(&expr);
+                bar.set_params_map(&ext.custom_params);
+                self.custom_formula_enabled = ext.custom_formula_enabled;
+                self.publish_formula_update();
+            } else {
+                self.reset_formula_bar_to_default();
+            }
+        }
         {
             let mut s_guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
-            s_guard.rle_mask = fs.rle_mask;
-            s_guard.sparse_potential = fs.sparse_potential;
+            s_guard.rle_mask = ext.rle_mask;
+            s_guard.sparse_potential = ext.sparse_potential;
         }
         self.texture = None;
         self.respawn_preserving_sculpt(None);
         Ok(())
+    }
+
+    pub(super) fn reset_formula_bar_to_default(&mut self) {
+        self.custom_formula_enabled = false;
+        if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_mut()) {
+            bar.set_expression(spec.default_expr);
+            bar.set_params_map(&BTreeMap::new());
+            self.publish_formula_update();
+        }
     }
 
     fn validate_param_map(&self, params: &HashMap<String, f64>) -> Result<(), String> {
