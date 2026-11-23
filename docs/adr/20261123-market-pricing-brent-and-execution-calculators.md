@@ -19,4 +19,4 @@ Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctes
 
 ## Consequences
 - **Positive**: `Bisection`, `NewtonRaphson`, `Brent`, and every `market_pricing` routine execute with zero heap allocations inside `VerifiedEngine::run_verified` while matching analytical devigging, `+EV`, arbitrage, Dutching, middle, and hedge benchmarks within `1e-9`.
-- **Neutral**: Workspace contract suites now track 29 crate error enums (51 leaf errors), 27 `ExplorerTab` modules, 81 registered `InteractiveTool` implementations (60 plot-exportable tools), and 120 `StarterPresetMetadata` cards.
+- **Neutral**: Workspace contract suites now track 30 crate error enums (52 leaf errors), 27 `ExplorerTab` modules, 86 registered `InteractiveTool` implementations (65 plot-exportable tools), and 138 `StarterPresetMetadata` cards.
