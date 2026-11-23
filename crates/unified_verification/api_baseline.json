@@ -3507,6 +3507,12 @@
   ],
   "crates/domain_epidemiology/src/epidemiology/networks.rs": [
     {
+      "signature": "impl NetworkEpidemicModel { pub fn active_degree (& self , node : usize) -> usize }"
+    },
+    {
+      "signature": "impl NetworkEpidemicModel { pub fn active_degree_moments (& self) -> (f64 , f64) }"
+    },
+    {
       "signature": "impl NetworkEpidemicModel { pub fn adjacency (& self) -> & [Vec < usize >] }"
     },
     {
@@ -3514,6 +3520,12 @@
     },
     {
       "signature": "impl NetworkEpidemicModel { pub fn builder () -> NetworkEpidemicModelBuilder }"
+    },
+    {
+      "signature": "impl NetworkEpidemicModel { pub fn edges (& self) -> & [[usize ; 2]] }"
+    },
+    {
+      "signature": "impl NetworkEpidemicModel { pub fn effective_r0 (& self) -> f64 }"
     },
     {
       "signature": "impl NetworkEpidemicModel { pub fn gamma (& self) -> f64 }"
@@ -3525,6 +3537,9 @@
       "signature": "impl NetworkEpidemicModel { pub fn initialize_geometric_graph_with_rng < R : Rng > (& mut self , rng : & mut R) }"
     },
     {
+      "signature": "impl NetworkEpidemicModel { pub fn is_edge_quarantined (& self , u : usize , v : usize) -> bool }"
+    },
+    {
       "signature": "impl NetworkEpidemicModel { pub fn new (num_nodes : usize , beta : f64 , gamma : f64) -> Self }"
     },
     {
@@ -3534,13 +3549,22 @@
       "signature": "impl NetworkEpidemicModel { pub fn num_nodes (& self) -> usize }"
     },
     {
+      "signature": "impl NetworkEpidemicModel { pub fn patient_zero (& self) -> Option < usize > }"
+    },
+    {
       "signature": "impl NetworkEpidemicModel { pub fn positions (& self) -> & [[f32 ; 2]] }"
     },
     {
       "signature": "impl NetworkEpidemicModel { pub fn set_beta (& mut self , beta : f64) -> Result < () , NetworkModelError > }"
     },
     {
+      "signature": "impl NetworkEpidemicModel { pub fn set_edge_quarantined (& mut self , u : usize , v : usize , quarantined : bool ,) -> Result < () , NetworkModelError > }"
+    },
+    {
       "signature": "impl NetworkEpidemicModel { pub fn set_gamma (& mut self , gamma : f64) -> Result < () , NetworkModelError > }"
+    },
+    {
+      "signature": "impl NetworkEpidemicModel { pub fn set_node_vaccinated (& mut self , node : usize , vaccinated : bool ,) -> Result < () , NetworkModelError > }"
     },
     {
       "signature": "impl NetworkEpidemicModel { pub fn set_num_nodes (& mut self , num : usize) -> Result < () , NetworkModelError > }"
@@ -3557,6 +3581,23 @@
     {
       "signature": "impl NetworkEpidemicModel { pub fn step_with_rng < R : Rng > (& mut self , rng : & mut R) }"
     },
+    {
+      "signature": "pub enum NodeState"
+    },
+    {
+      "signature": "pub fn heterogeneous_r0 (beta : f64 , gamma : f64 , mean_degree : f64 , degree_variance : f64) -> f64"
+    },
+    {
+      "signature": "pub struct NetworkEpidemicModel"
+    },
+    {
+      "signature": "pub use builder :: NetworkEpidemicModelBuilder"
+    },
+    {
+      "signature": "pub use builder :: NetworkModelError"
+    }
+  ],
+  "crates/domain_epidemiology/src/epidemiology/networks/builder.rs": [
     {
       "signature": "impl NetworkEpidemicModelBuilder { pub fn adjacency (mut self , adjacency : Vec < Vec < usize > >) -> Self }"
     },
@@ -3580,15 +3621,6 @@
     },
     {
       "signature": "pub enum NetworkModelError"
-    },
-    {
-      "signature": "pub enum NodeState"
-    },
-    {
-      "signature": "pub fn heterogeneous_r0 (beta : f64 , gamma : f64 , mean_degree : f64 , degree_variance : f64) -> f64"
-    },
-    {
-      "signature": "pub struct NetworkEpidemicModel"
     },
     {
       "signature": "pub struct NetworkEpidemicModelBuilder"
