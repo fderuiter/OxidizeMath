@@ -5,6 +5,7 @@ use crate::tabs::ExplorerTab;
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+pub mod advection;
 pub mod atlas;
 #[cfg(test)]
 mod legacy_runner;
@@ -136,6 +137,8 @@ impl ExplorerTab for MorphogenesisTab {
     }
 }
 
+#[cfg(test)]
+mod advection_tests;
 #[cfg(test)]
 mod tests;
 

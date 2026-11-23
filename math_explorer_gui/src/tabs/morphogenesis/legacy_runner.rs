@@ -133,6 +133,8 @@ impl SimulationRunner for MorphogenesisRunner {
             structured_data: Some(Box::new(MorphoSnapshotData {
                 u_data: u_vec,
                 mask_roles: Vec::new(),
+                max_abs_ux: 0.0,
+                max_abs_uy: 0.0,
             })),
             sonification: crate::audio::SonificationFrame::silent(),
         }

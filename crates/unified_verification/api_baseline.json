@@ -2991,6 +2991,20 @@
       "signature": "pub struct FiniteDifference1D"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/fd2d/advection.rs": [
+    {
+      "signature": "impl FiniteDifference2D { pub fn step_advected_fused < const N : usize , K : ReactionKinetics < N > > (& self , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : & [f64] , _ : & [f64] , _ : f64 , _ : [f64 ; N] , _ : & K ,) }"
+    },
+    {
+      "signature": "impl MaskedFiniteDifference2D { pub fn step_advected_fused < const N : usize , K : ReactionKinetics < N > > (& self , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : & [f64] , _ : & [f64] , _ : f64 , _ : [f64 ; N] , _ : & K ,) }"
+    },
+    {
+      "signature": "pub trait AdvectedSpatialDiffusion < const N : usize > : SpatialDiffusion < N >"
+    },
+    {
+      "signature": "pub trait AdvectedSpatialDiffusion < const N : usize > { fn step_advected_fused < K : ReactionKinetics < N > > (& self , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : & [f64] , _ : & [f64] , _ : f64 , _ : [f64 ; N] , _ : & K ,) }"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/fd2d/boundary.rs": [
     {
       "signature": "pub struct NeumannBoundary"
@@ -3097,6 +3111,9 @@
       "signature": "pub struct FiniteDifference2D"
     },
     {
+      "signature": "pub use advection :: AdvectedSpatialDiffusion"
+    },
+    {
       "signature": "pub use mask :: CellMask2D"
     },
     {
@@ -3138,6 +3155,9 @@
     },
     {
       "signature": "pub use fd1d :: FiniteDifference1D"
+    },
+    {
+      "signature": "pub use fd2d :: AdvectedSpatialDiffusion"
     },
     {
       "signature": "pub use fd2d :: CellMask2D"
@@ -3386,6 +3406,11 @@
     },
     {
       "signature": "pub use reaction_diffusion :: ReactionDiffusionError"
+    }
+  ],
+  "crates/domain_biology/src/biology/morphogenesis/advection.rs": [
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : AdvectedSpatialDiffusion < N > > TuringSystem < N , K , D , FusedEulerSolver > { pub fn step_advected (& mut self , _ : f64 , _ : & [f64] , _ : & [f64]) }"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/mod.rs": [
@@ -5233,10 +5258,19 @@
       "signature": "pub fn inject_velocity_jet < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : i32 , _ : i32 , _ : i32 , _ : f64 , _ : f64 ,)"
     },
     {
+      "signature": "pub fn project_obstacles_row_major_into < C : CollisionModel < 9 , D2Q9 > > (_ : & LatticeBoltzmannD2Q9 < C > , _ : & mut [bool] ,)"
+    },
+    {
+      "signature": "pub fn project_velocity_row_major_into < C : CollisionModel < 9 , D2Q9 > > (_ : & LatticeBoltzmannD2Q9 < C > , _ : & mut [f64] , _ : & mut [f64] ,)"
+    },
+    {
       "signature": "pub fn stamp_naca4_airfoil < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : & Naca4Airfoil ,)"
     },
     {
       "signature": "pub fn stamp_venturi_nozzle < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : f64 ,)"
+    },
+    {
+      "signature": "pub fn sync_obstacles_row_major < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : & [bool] ,)"
     },
     {
       "signature": "pub struct AerodynamicCoefficients"
@@ -9457,6 +9491,26 @@
     },
     {
       "signature": "pub trait Trainable < T : nalgebra :: RealField + Copy = f64 > { fn forward (& self , _ : & nalgebra :: DVector < T >) -> nalgebra :: DVector < T > }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/advection_2d.rs": [
+    {
+      "signature": "pub fn advection_courant_number (_ : f64 , _ : StepSize , _ : StepSize , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn advection_diffusion_cfl_limit (_ : StepSize , _ : StepSize , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn donor_cell_face_flux (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn grid_peclet_number (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn upwind_advection_2d (_ : (usize , usize) , _ : & [f64] , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : & StencilOperators ,)"
+    },
+    {
+      "signature": "pub fn upwind_advection_cell_2d (_ : f64 , _ : [f64 ; 4] , _ : [f64 ; 4] , _ : f64 , _ : f64 ,) -> f64"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs": [

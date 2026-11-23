@@ -1,23 +1,19 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::advection::MorphogenesisAdvectionState;
 use super::atlas::MORPHO_ATLAS_AXIS_PAIRS;
 use super::presets::MorphogenesisTheory;
 pub use super::presets::MorphogenesisToolState;
 use super::runner::{
-    MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
-    MorphogenesisSharedParams,
+    MorphogenesisKineticsRunner, MorphogenesisKineticsState, MorphogenesisSharedParams,
 };
 use super::sculpt::default_morpho_brush_kit;
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::recovery::FiniteStateGuard;
-use crate::framework::{
-    decode_rle_mask, ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit,
-};
+use crate::framework::{ExportCapabilities, InteractionContext, InteractiveTool, SpatialBrushKit};
 use eframe::egui;
 use eframe::egui::ColorImage;
-use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::TuringSystem;
 use scientific_metadata::theory::TheoryDescribable;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -30,12 +26,14 @@ pub struct MorphogenesisTool {
     pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+    pub(crate) advection_state: Arc<std::sync::RwLock<MorphogenesisAdvectionState>>,
     pub(crate) mask_rle: Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
     pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) width: usize,
     pub(crate) height: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) pixels: Vec<egui::Color32>,
+    pub(crate) live_velocity_peaks: [f64; 2],
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
     pub(crate) step_runner: Option<MorphogenesisKineticsRunner>,
@@ -58,10 +56,19 @@ impl Default for MorphogenesisTool {
         }));
         let kinetics_state =
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
+        let advection_state = Arc::new(std::sync::RwLock::new(
+            MorphogenesisAdvectionState::default(),
+        ));
 
         let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
-        let runner =
-            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
+        let runner = Self::create_kinetics_runner_with_advection(
+            &params,
+            &kinetics_state,
+            &advection_state,
+            &mask_rle,
+            width,
+            height,
+        );
         let worker = BackgroundWorker::new(runner);
 
         Self {
@@ -69,12 +76,14 @@ impl Default for MorphogenesisTool {
             atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
             kinetics_state,
+            advection_state,
             mask_rle,
             brush_kit: default_morpho_brush_kit(),
             width,
             height,
             texture: None,
             pixels: Vec::new(),
+            live_velocity_peaks: [0.0, 0.0],
             dirty: true,
             stepped_pixels: None,
             step_runner: None,
@@ -87,75 +96,12 @@ impl Default for MorphogenesisTool {
 
 impl MorphogenesisTool {
     #[cfg(test)]
-    pub(crate) fn create_runner(
-        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
-        width: usize,
-        height: usize,
-    ) -> MorphogenesisKineticsRunner {
-        let ks = Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
-        let mask = Arc::new(std::sync::RwLock::new(Vec::new()));
-        Self::create_kinetics_runner(params, &ks, &mask, width, height)
-    }
-
-    pub(crate) fn create_kinetics_runner(
-        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
-        kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
-        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
-        width: usize,
-        height: usize,
-    ) -> MorphogenesisKineticsRunner {
-        use math_explorer::biology::morphogenesis::DiffusionCoeff;
-        use math_explorer::math_kernel::types::{Dimension, StepSize};
-        let (a, b, d_u, d_v) = {
-            let p = params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v)
-        };
-        let (mode, f, k) = {
-            let ks = kinetics_state.read().unwrap_or_else(|e| e.into_inner());
-            (ks.mode, ks.f, ks.k)
-        };
-        let kinetics = MorphogenesisKineticsAdapter { mode, a, b, f, k };
-        let diffusion = FiniteDifference2D::new(
-            Dimension(width),
-            Dimension(height),
-            StepSize(1.0),
-            StepSize(1.0),
-        )
-        .with_mask();
-        let mut system = TuringSystem::new_with_kinetics(
-            Dimension(width * height),
-            DiffusionCoeff(d_u),
-            DiffusionCoeff(d_v),
-            kinetics,
-            diffusion,
-        );
-        Self::initialize_adapter_system(&mut system, width, height);
-        let rle = mask_rle.read().unwrap_or_else(|e| e.into_inner()).clone();
-        if !rle.is_empty() {
-            if let Ok(bytes) = decode_rle_mask(&rle, width * height) {
-                let _ = system.diffusion.mask.set_roles_slice(&bytes);
-            }
-        }
-        let mut runner = MorphogenesisKineticsRunner {
-            system,
-            params: Arc::clone(params),
-            kinetics_state: Arc::clone(kinetics_state),
-            width,
-            height,
-            step_count: 0,
-            rng: oxidize_core::rng::OxidizeRng::new(super::runner::DEFAULT_MORPHOGENESIS_SEED),
-            noise_amplitude: 0.0,
-        };
-        runner.enforce_mask_concentrations();
-        runner
-    }
-
-    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
-        let runner = Self::create_kinetics_runner(
+        let runner = Self::create_kinetics_runner_with_advection(
             &self.params,
             &self.kinetics_state,
+            &self.advection_state,
             &self.mask_rle,
             self.width,
             self.height,
@@ -163,6 +109,7 @@ impl MorphogenesisTool {
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
         self.step_runner = None;
+        self.live_velocity_peaks = [0.0, 0.0];
         self.pending_initial_start = false;
         self.dirty = true;
     }
@@ -177,13 +124,16 @@ impl MorphogenesisTool {
     pub fn reset(&mut self) {
         let params = Arc::clone(&self.params);
         let ks = Arc::clone(&self.kinetics_state);
+        let adv = Arc::clone(&self.advection_state);
         let mask = Arc::clone(&self.mask_rle);
         let width = self.width;
         let height = self.height;
-        self.worker
-            .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
+        self.worker.reset_or_respawn(|| {
+            Self::create_kinetics_runner_with_advection(&params, &ks, &adv, &mask, width, height)
+        });
         self.stepped_pixels = None;
         self.step_runner = None;
+        self.live_velocity_peaks = [0.0, 0.0];
         self.pending_initial_start = false;
         self.dirty = true;
     }
@@ -241,9 +191,10 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn step_simulation(&mut self) {
         let runner = self.step_runner.get_or_insert_with(|| {
-            Self::create_kinetics_runner(
+            Self::create_kinetics_runner_with_advection(
                 &self.params,
                 &self.kinetics_state,
+                &self.advection_state,
                 &self.mask_rle,
                 self.width,
                 self.height,
@@ -318,6 +269,15 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
         }
+        {
+            let adv = self
+                .advection_state
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            adv.enabled.hash(&mut h);
+            adv.inlet_u.to_bits().hash(&mut h);
+            adv.viscosity.to_bits().hash(&mut h);
+        }
         self.width.hash(&mut h);
         self.height.hash(&mut h);
         self.mask_rle
@@ -343,6 +303,10 @@ impl InteractiveTool for MorphogenesisTool {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.dt)
         };
+        let adv = *self
+            .advection_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         let mask_rle = self
             .mask_rle
             .read()
@@ -366,6 +330,9 @@ impl InteractiveTool for MorphogenesisTool {
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
+            advection_enabled: adv.enabled,
+            inlet_u: adv.inlet_u,
+            viscosity: adv.viscosity,
         })
         .ok()
     }
@@ -397,6 +364,15 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_v = parsed.d_v;
             p.dt = parsed.dt;
         }
+        {
+            let mut adv = self
+                .advection_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            adv.enabled = parsed.advection_enabled;
+            adv.inlet_u = parsed.inlet_u;
+            adv.viscosity = parsed.viscosity;
+        }
         *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) = parsed.mask_rle;
         self.apply_dimensions_and_target_state(
             parsed.width,
@@ -423,6 +399,10 @@ impl InteractiveTool for MorphogenesisTool {
             .read()
             .unwrap_or_else(|e| e.into_inner());
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let adv = self
+            .advection_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         ks.f.is_finite()
             && ks.k.is_finite()
             && p.a.is_finite()
@@ -430,6 +410,8 @@ impl InteractiveTool for MorphogenesisTool {
             && p.d_u.is_finite()
             && p.d_v.is_finite()
             && p.dt.is_finite()
+            && adv.inlet_u.is_finite()
+            && adv.viscosity.is_finite()
     }
 
     fn clamp_parameters(&mut self) -> bool {

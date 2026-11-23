@@ -65,6 +65,8 @@
 //! println!("Concentration of Activator at center: {:.4}", u_center);
 //! ```
 
+/// Coupled 2D velocity-advected reaction-diffusion stepping for [`TuringSystem`].
+pub mod advection;
 #[allow(missing_docs)]
 pub mod reaction;
 #[allow(missing_docs)]

@@ -181,3 +181,69 @@ impl super::MorphogenesisTool {
         }
     }
 }
+
+impl super::runner::MorphogenesisKineticsRunner {
+    pub(crate) fn enforce_mask_concentrations(&mut self) {
+        if !self.system.diffusion.mask.has_active_cells() {
+            return;
+        }
+        let emit_u = self.system.diffusion.mask.emitter_u_level;
+        let emit_v = self.system.diffusion.mask.emitter_v_level;
+        for idx in 0..(self.width * self.height) {
+            match ReactionCellRole::from_u8(self.system.diffusion.mask.roles()[idx]) {
+                ReactionCellRole::ZeroFluxWall | ReactionCellRole::Sink => {
+                    self.system.u_mut()[idx] = 0.0;
+                    self.system.v_mut()[idx] = 0.0;
+                }
+                ReactionCellRole::EmitterU => self.system.u_mut()[idx] = emit_u,
+                ReactionCellRole::EmitterV => self.system.v_mut()[idx] = emit_v,
+                ReactionCellRole::Free => {}
+            }
+        }
+    }
+
+    pub(crate) fn apply_sculpt_command(&mut self, cmd: &crate::async_sim::SimCommand) {
+        use crate::async_sim::SimCommand;
+        let mut mask_changed = true;
+        match cmd {
+            SimCommand::ApplyBrush {
+                cx,
+                cy,
+                r,
+                is_obstacle,
+            } => {
+                let role = if *is_obstacle {
+                    ReactionCellRole::ZeroFluxWall
+                } else {
+                    ReactionCellRole::Free
+                };
+                self.system.diffusion.mask.paint_disk(*cx, *cy, *r, role);
+                self.enforce_mask_concentrations();
+            }
+            SimCommand::ApplyBrushStroke(stroke) => {
+                apply_stroke_to_morpho_system(&mut self.system, self.width, self.height, stroke);
+            }
+            SimCommand::SyncSculptState(payload) => {
+                if payload.rle_mask.is_empty() {
+                    self.system.diffusion.mask.clear();
+                } else if let Ok(bytes) =
+                    decode_rle_mask(&payload.rle_mask, self.width * self.height)
+                {
+                    let _ = self.system.diffusion.mask.set_roles_slice(&bytes);
+                }
+                self.enforce_mask_concentrations();
+            }
+            SimCommand::ClearObstacles => self.system.diffusion.mask.clear(),
+            SimCommand::Custom(s) if s == "clear_mask" => self.system.diffusion.mask.clear(),
+            SimCommand::Custom(s) if s == "stamp_maze" => {
+                self.system.diffusion.mask.stamp_microfluidic_maze();
+                self.enforce_mask_concentrations();
+            }
+            _ => mask_changed = false,
+        }
+        if mask_changed {
+            self.wind_tunnel
+                .sync_from_cell_mask(&self.system.diffusion.mask);
+        }
+    }
+}

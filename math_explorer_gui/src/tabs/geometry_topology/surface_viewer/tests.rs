@@ -54,7 +54,11 @@ fn surface_viewer_custom_parametric_union_parameter_cap_preserves_valid_mesh() {
     assert!((preserved_pos - baseline_pos).norm() < 1e-12);
 }
 
-fn open_parameters_header(ctx: &egui::Context, tool: &mut SurfaceViewer, screen: Option<egui::Rect>) {
+fn open_parameters_header(
+    ctx: &egui::Context,
+    tool: &mut SurfaceViewer,
+    screen: Option<egui::Rect>,
+) {
     let out = ctx.run(
         egui::RawInput {
             screen_rect: screen,

@@ -1,18 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::advection::{MorphoWindTunnel, MorphogenesisAdvectionState};
 use super::atlas::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
-use super::sculpt::{apply_stroke_to_morpho_system, overlay_cell_mask_colors};
+use super::sculpt::overlay_cell_mask_colors;
 use super::MorphogenesisTool;
 use crate::async_sim::{
     CheckpointParams, CheckpointPayload, SimCommand, SimulationRunner, StateSnapshot,
     TimeTravelCheckpoint,
 };
-use crate::framework::decode_rle_mask;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisKineticsMode;
-use math_explorer::biology::diffusion::{
-    MaskedFiniteDifference2D, ReactionCellRole, SpatialDiffusion,
-};
+use math_explorer::biology::diffusion::{MaskedFiniteDifference2D, SpatialDiffusion};
 use math_explorer::biology::morphogenesis::{
     GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics, TuringSystem,
 };
@@ -33,6 +31,10 @@ pub struct MorphoSnapshotData {
     pub u_data: Vec<f64>,
     /// Optional row-major `ReactionCellRole` byte grid when any cell is non-`Free`.
     pub mask_roles: Vec<u8>,
+    /// Peak horizontal Lattice Boltzmann speed `|ux|_max` on the worker grid.
+    pub max_abs_ux: f64,
+    /// Peak vertical Lattice Boltzmann speed `|uy|_max` on the worker grid.
+    pub max_abs_uy: f64,
 }
 
 pub(crate) fn apply_uniform_noise<K: ReactionKinetics<2>, D: SpatialDiffusion<2>>(
@@ -126,8 +128,10 @@ pub struct MorphogenesisSharedParams {
 /// time-travel checkpoint replay.
 pub struct MorphogenesisKineticsRunner {
     pub(crate) system: TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D>,
+    pub(crate) wind_tunnel: MorphoWindTunnel,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+    pub(crate) advection_state: Arc<std::sync::RwLock<MorphogenesisAdvectionState>>,
     pub(crate) width: usize,
     pub(crate) height: usize,
     pub(crate) step_count: usize,
@@ -139,6 +143,7 @@ impl FiniteStateGuard for MorphogenesisKineticsRunner {
     fn is_finite_state(&self) -> bool {
         self.system.u().iter().all(|&x| x.is_finite())
             && self.system.v().iter().all(|&x| x.is_finite())
+            && self.wind_tunnel.is_finite_state()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -171,25 +176,6 @@ impl MorphogenesisKineticsRunner {
             .kinetics_state
             .read()
             .unwrap_or_else(|e| e.into_inner())
-    }
-
-    pub(crate) fn enforce_mask_concentrations(&mut self) {
-        if !self.system.diffusion.mask.has_active_cells() {
-            return;
-        }
-        let emit_u = self.system.diffusion.mask.emitter_u_level;
-        let emit_v = self.system.diffusion.mask.emitter_v_level;
-        for idx in 0..(self.width * self.height) {
-            match ReactionCellRole::from_u8(self.system.diffusion.mask.roles()[idx]) {
-                ReactionCellRole::ZeroFluxWall | ReactionCellRole::Sink => {
-                    self.system.u_mut()[idx] = 0.0;
-                    self.system.v_mut()[idx] = 0.0;
-                }
-                ReactionCellRole::EmitterU => self.system.u_mut()[idx] = emit_u,
-                ReactionCellRole::EmitterV => self.system.v_mut()[idx] = emit_v,
-                ReactionCellRole::Free => {}
-            }
-        }
     }
 
     fn sync_system_params(&mut self) -> Option<f64> {
@@ -258,7 +244,7 @@ impl MorphogenesisKineticsRunner {
 
     fn advance_grid_step(&mut self, dt: f64, noise_amp: f64) {
         self.enforce_mask_concentrations();
-        self.system.step(dt);
+        self.step_coupled_or_isotropic(dt);
         apply_uniform_noise(
             &mut self.system,
             self.width * self.height,
@@ -275,47 +261,11 @@ impl MorphogenesisKineticsRunner {
         let _ = self.sync_system_params();
         MorphogenesisTool::initialize_adapter_system(&mut self.system, self.width, self.height);
         self.enforce_mask_concentrations();
+        let visc = self.read_advection().viscosity;
+        self.wind_tunnel
+            .reset_preserving_mask(&self.system.diffusion.mask, visc);
         self.step_count = 0;
         self.rng = OxidizeRng::new(DEFAULT_MORPHOGENESIS_SEED);
-    }
-
-    fn apply_sculpt_command(&mut self, cmd: &SimCommand) {
-        match cmd {
-            SimCommand::ApplyBrush {
-                cx,
-                cy,
-                r,
-                is_obstacle,
-            } => {
-                let role = if *is_obstacle {
-                    ReactionCellRole::ZeroFluxWall
-                } else {
-                    ReactionCellRole::Free
-                };
-                self.system.diffusion.mask.paint_disk(*cx, *cy, *r, role);
-                self.enforce_mask_concentrations();
-            }
-            SimCommand::ApplyBrushStroke(stroke) => {
-                apply_stroke_to_morpho_system(&mut self.system, self.width, self.height, stroke);
-            }
-            SimCommand::SyncSculptState(payload) => {
-                if payload.rle_mask.is_empty() {
-                    self.system.diffusion.mask.clear();
-                } else if let Ok(bytes) =
-                    decode_rle_mask(&payload.rle_mask, self.width * self.height)
-                {
-                    let _ = self.system.diffusion.mask.set_roles_slice(&bytes);
-                }
-                self.enforce_mask_concentrations();
-            }
-            SimCommand::ClearObstacles => self.system.diffusion.mask.clear(),
-            SimCommand::Custom(s) if s == "clear_mask" => self.system.diffusion.mask.clear(),
-            SimCommand::Custom(s) if s == "stamp_maze" => {
-                self.system.diffusion.mask.stamp_microfluidic_maze();
-                self.enforce_mask_concentrations();
-            }
-            _ => {}
-        }
     }
 }
 
@@ -384,6 +334,8 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             structured_data: Some(Box::new(MorphoSnapshotData {
                 u_data: field_vec,
                 mask_roles,
+                max_abs_ux: self.wind_tunnel.max_abs_ux,
+                max_abs_uy: self.wind_tunnel.max_abs_uy,
             })),
             sonification: crate::audio::SonificationFrame::silent(),
         }
@@ -401,7 +353,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
     }
 
     fn checkpoint_stride(&self) -> Option<usize> {
-        Some(16)
+        (!self.read_advection().enabled).then_some(16)
     }
 
     fn current_step(&self) -> usize {
@@ -468,6 +420,8 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
                     }
                     _ => self.system.diffusion.mask.clear(),
                 }
+                self.wind_tunnel
+                    .sync_from_cell_mask(&self.system.diffusion.mask);
             }
         }
         if let Some(p) = checkpoint.params.as_scalars() {

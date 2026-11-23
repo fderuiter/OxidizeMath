@@ -28,6 +28,8 @@ pub struct StencilOperators {
     pub dz: StepSize,
     #[allow(missing_docs)]
     pub inv_dx: f64,
+    /// Precomputed inverse vertical grid spacing `1.0 / *dy`.
+    pub inv_dy: f64,
     #[allow(missing_docs)]
     pub inv_two_dx: f64,
     #[allow(missing_docs)]
@@ -58,6 +60,7 @@ impl StencilOperators {
         assert!(*dy > 0.0, "Step size dy must be positive and non-zero");
         assert!(*dz > 0.0, "Step size dz must be positive and non-zero");
         let inv_dx = 1.0 / *dx;
+        let inv_dy = 1.0 / *dy;
         let inv_two_dx = 1.0 / (2.0 * *dx);
         let inv_dx_sq = 1.0 / (*dx * *dx);
         let inv_dy_sq = 1.0 / (*dy * *dy);
@@ -67,6 +70,7 @@ impl StencilOperators {
             dy,
             dz,
             inv_dx,
+            inv_dy,
             inv_two_dx,
             inv_dx_sq,
             inv_dy_sq,
@@ -371,12 +375,14 @@ mod tests {
     fn test_stencil_operators_precomputation() {
         let ops = StencilOperators::new_2d(StepSize(0.5), StepSize(0.25));
         assert!((ops.inv_dx - 2.0).abs() < 1e-12);
+        assert!((ops.inv_dy - 4.0).abs() < 1e-12);
         assert!((ops.inv_two_dx - 1.0).abs() < 1e-12);
         assert!((ops.inv_dx_sq - 4.0).abs() < 1e-12);
         assert!((ops.inv_dy_sq - 16.0).abs() < 1e-12);
 
         let ops_1d = StencilOperators::new(StepSize(2.0));
         assert!((ops_1d.inv_dx - 0.5).abs() < 1e-12);
+        assert!((ops_1d.inv_dy - 1.0).abs() < 1e-12);
         assert!((ops_1d.inv_two_dx - 0.25).abs() < 1e-12);
         assert!((ops_1d.inv_dx_sq - 0.25).abs() < 1e-12);
         assert!((ops_1d.inv_dy_sq - 1.0).abs() < 1e-12);
