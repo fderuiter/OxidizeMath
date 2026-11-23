@@ -22,7 +22,8 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `check-vulnerabilities` | Scans workspace dependencies for known OSV vulnerabilities. | Active |
 | `compile-papers` | Compiles all 28 academic papers with multi-pass TeXLive `pdflatex` and `bibtex`, emits archive and GitHub Pages HTML catalogs (`index.html` and `pages-index.html`), and packages `papers-bundle.tar.gz` with `SHA256SUMS`. | Active |
 | `lint-all` | Runs the full PR verification suite (formatting, single-pass batched static & AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift, traceability, entropy, and policy audit, plus host & WASM clippy, rustdoc, doctests, markdown links, and OSV vulnerabilities). | Active |
-| `lint-staged` | Syncs the staged Git index into `<target_dir>/lint-staged-snapshot` and runs offline pre-commit gates (`.githooks/pre-commit`): staged `rustfmt`, `batch-staged` (staged ADR verification, profiles, file lengths, docs, AST clones, traceability, entropy, policy audit), single `.github/` workflow linting, `.md` or deletion/rename link scans, and reverse-dependent + 17-web-crate host/`wasm32` Clippy with root config escalation. | Active |
+| `lint-push` | Runs offline pre-push gates (`.githooks/pre-push`) across pushed commits: reverse-dependent host Clippy, web-reachable `wasm32-unknown-unknown` Clippy, and full workspace `traceability` (escalating root config edits to `--workspace`). | Active |
+| `lint-staged` | Syncs the staged Git index into `<target_dir>/lint-staged-snapshot` and runs offline pre-commit gates (`.githooks/pre-commit`) scoped to staged files and directly touched crates: staged `rustfmt`, scoped `batch-staged` (staged ADRs, touched-crate profiles/docs, staged `.rs` clones/citations/entropy, staged `.md` fences, touched-crate policy audit), single `.github/` workflow linting, `.md` or deletion/rename link scans, and `direct_crates` host Clippy (plus `wasm32` Clippy when `math_explorer_gui` or `wasm32` sources change) with root config escalation. | Active |
 | `lint-workflows` | Validates GitHub Actions workflow definitions and permissions. | Active |
 | `test-features` | Exercises isolated Cargo domain feature flags (`pure_math`, `physics`, `core-only`, etc.). | Active |
 | `test-policy-audit` | Audits workspace crates for unauthorized lint/dead-code/`missing_docs` bypasses and unused dependencies. | Active |
@@ -36,7 +37,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | Command | Operational Role | Status |
 |---|---|---|
 | `regenerate-baseline` | Regenerates `crates/unified_verification/api_baseline.json`. | Maintenance |
-| `setup` | Installs `wasm32-unknown-unknown`, validates `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites, builds and tests the workspace, and configures `.githooks/pre-commit`. | Maintenance |
+| `setup` | Installs `wasm32-unknown-unknown`, validates `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites, builds and tests the workspace, and configures `0755` executable permissions on `.githooks/pre-commit` and `.githooks/pre-push`. | Maintenance |
 
 ---
 
@@ -47,11 +48,14 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 Run `xtask` commands from the workspace root using `cargo run -p xtask -- <command>`:
 
 ```bash
-# Bootstrap local git hooks and wasm32 target
+# Bootstrap local git hooks (.githooks/pre-commit and .githooks/pre-push) and wasm32 target
 cargo run -p xtask -- setup
 
-# Run fast scoped checks on staged changes
+# Run fast scoped pre-commit checks on staged changes
 cargo run -p xtask -- lint-staged
+
+# Run offline pre-push reverse-dependent Clippy and full traceability checks
+cargo run -p xtask -- lint-push
 
 # Run the complete pre-PR verification suite
 cargo run -p xtask -- lint-all
@@ -74,4 +78,4 @@ cargo run -p xtask -- test-wasm
 
 ## 3. Ecosystem Integration
 
-`xtask` delegates AST and repository policy analysis to `unified_verification` while coordinating Cargo subcommands, `.githooks/pre-commit`, and `.github/workflows/ci.yml` jobs across Linux, macOS, Windows, and WebAssembly targets.
+`xtask` delegates AST and repository policy analysis to `unified_verification` while coordinating Cargo subcommands, `.githooks/pre-commit`, `.githooks/pre-push`, and `.github/workflows/ci.yml` jobs across Linux, macOS, Windows, and WebAssembly targets.

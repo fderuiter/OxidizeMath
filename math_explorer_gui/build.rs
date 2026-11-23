@@ -1,5 +1,6 @@
 //! Build script for dynamic tab discovery in math_explorer_gui.
 mod build_snapshot;
+mod build_stage;
 
 use oxidize_core::path_utils;
 use std::env;
@@ -15,6 +16,8 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/tabs");
     println!("cargo:rerun-if-changed=Cargo.toml");
+
+    build_stage::stage_gui_inputs_to_out_dir(out_path);
 
     let mut discovered_tabs = Vec::new();
     let mut generated_mods = String::new();
@@ -32,7 +35,7 @@ fn main() {
     discovered_tabs.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
 
     let generated_code = render_generated_tabs_code(&discovered_tabs, &generated_mods);
-    fs::write(&dest_path, generated_code).unwrap();
+    build_stage::write_if_changed(&dest_path, generated_code.as_bytes());
 
     // 3. Generate deterministic precomputed traceability snapshot for static web builds
     build_snapshot::generate_traceability_snapshot(out_path);
@@ -150,7 +153,7 @@ fn register_local_tab(
             generated_mods.push_str(&format!("#[cfg(feature = \"{}\")]\n", feat));
         }
         generated_mods.push_str(&format!(
-            "pub mod {} {{\n    include!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/\", \"{}\"));\n}}\n",
+            "pub mod {} {{\n    include!(concat!(env!(\"OUT_DIR\"), \"/\", \"{}\"));\n}}\n",
             mod_name, rel_path_str
         ));
 

@@ -52,7 +52,7 @@ fn test_select_touched_policy_members_and_global_triggers() {
 }
 
 #[test]
-fn test_select_touched_policy_members_includes_markdown_tests_for_md_edits() {
+fn test_select_touched_policy_members_scopes_md_edits_away_from_markdown_tests() {
     let full_members = vec![
         "crates/diagnostics".to_string(),
         "crates/domain_physics".to_string(),
@@ -61,14 +61,122 @@ fn test_select_touched_policy_members_includes_markdown_tests_for_md_edits() {
     ];
     assert_eq!(
         select_touched_policy_members(&["crates/diagnostics/README.md".to_string()], &full_members),
-        vec![
-            "crates/diagnostics".to_string(),
-            "crates/markdown_tests".to_string()
-        ]
+        vec!["crates/diagnostics".to_string()]
+    );
+    assert!(
+        select_touched_policy_members(&["docs/README.md".to_string()], &full_members).is_empty()
     );
     assert_eq!(
-        select_touched_policy_members(&["docs/README.md".to_string()], &full_members),
+        select_touched_policy_members(
+            &["crates/markdown_tests/build.rs".to_string()],
+            &full_members
+        ),
         vec!["crates/markdown_tests".to_string()]
+    );
+}
+
+#[test]
+fn test_readme_only_batch_staged_parses_zero_rust_files_and_catches_staged_md_fence_bypass() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let orig = env::current_dir().unwrap();
+    let _guard = CurrentDirGuard(orig);
+    let root = crate::manifest_cache::workspace_root_dir();
+    if root != Path::new(".") {
+        env::set_current_dir(root).unwrap();
+    }
+
+    let (_, members) = crate::manifest_cache::discover_workspace();
+    let staged = vec!["README.md".to_string()];
+    let mut cache = AstCache::new();
+    assert!(run_batch_staged_for_paths(
+        &staged, &staged, &members, &mut cache
+    ));
+    assert_eq!(
+        cache.parse_calls(),
+        0,
+        "Staging README.md alone must not parse workspace Rust files"
+    );
+}
+
+fn setup_minimal_staged_physics_workspace() {
+    fs::create_dir_all("papers").unwrap();
+    fs::write("papers/quantum.tex", "% quantum\n").unwrap();
+    fs::write("traceability.toml", "[links]\nquantum = \"quantum.tex\"\n").unwrap();
+    fs::write(
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"crates/domain_physics\"]\n\n[profile.release]\noverflow-checks = true\n",
+    )
+    .unwrap();
+    fs::create_dir_all("crates/domain_physics/src").unwrap();
+    fs::write(
+        "crates/domain_physics/Cargo.toml",
+        "[package]\nname = \"domain_physics\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lints]\nworkspace = true\n",
+    )
+    .unwrap();
+    let valid_readme = (1..=35)
+        .map(|i| match i {
+            1 => "# domain_physics".to_string(),
+            3 => "## 1. Overview".to_string(),
+            10 => "## 2. Developer Instructions".to_string(),
+            _ => format!("Documentation line {i}."),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(
+        "crates/domain_physics/README.md",
+        format!("{valid_readme}\n"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_staged_markdown_fence_policy_and_staged_rs_citation_gate() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let tmp = TempTestDir::new("batch_staged_md_and_cite");
+    let orig = env::current_dir().unwrap();
+    let _guard = CurrentDirGuard(orig);
+    env::set_current_dir(&*tmp).unwrap();
+    setup_minimal_staged_physics_workspace();
+
+    fs::write(
+        "README.md",
+        "```rust\n#[allow(clippy::all)]\nfn bad() {}\n```\n",
+    )
+    .unwrap();
+    let members = vec!["crates/domain_physics".to_string()];
+    let md_staged = vec!["README.md".to_string()];
+    assert!(!run_batch_staged_for_paths(
+        &md_staged,
+        &md_staged,
+        &members,
+        &mut AstCache::new()
+    ));
+
+    fs::write(
+        "crates/domain_physics/src/lib.rs",
+        "#![doc = include_str!(\"../README.md\")]\n/// Bad cite [cite:nonexistent_paper]\n#[verified]\npub fn f(x: f64) -> f64 { assert!(x.is_finite()); x }\n",
+    )
+    .unwrap();
+    let rs_staged = vec!["crates/domain_physics/src/lib.rs".to_string()];
+    assert!(
+        !crate::staged_traceability::run_staged_traceability_with_cache(
+            &rs_staged,
+            &members,
+            &mut AstCache::new(),
+        )
+    );
+
+    fs::write(
+        "crates/domain_physics/src/lib.rs",
+        "#![doc = include_str!(\"../README.md\")]\n/// Valid cite [cite:quantum]\n#[verified]\npub fn f(x: f64) -> f64 { assert!(x.is_finite()); x }\n",
+    )
+    .unwrap();
+    assert!(
+        crate::staged_traceability::run_staged_traceability_with_cache(
+            &rs_staged,
+            &members,
+            &mut AstCache::new(),
+        )
     );
 }
 

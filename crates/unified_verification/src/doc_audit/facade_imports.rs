@@ -2,7 +2,7 @@ use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DOMAIN_CRATES: &[&str] = &[
+pub(super) const DOMAIN_CRATES: &[&str] = &[
     "pure_math",
     "domain_ai",
     "domain_applied",

@@ -18,6 +18,7 @@ mod cargo_cli_parser;
 pub mod catalog_and_guide_checks;
 pub mod facade_imports;
 pub mod manifest_model;
+pub mod staged_guides;
 pub mod toml_dep_checks;
 pub mod trait_contracts;
 
@@ -303,6 +304,52 @@ fn run_doc_audit_in_base(workspace_root: &Path, members: &[String], args: &[Stri
     ));
 
     print_doc_audit_summary(&report, members.len())
+}
+
+/// Audits only touched crates and staged active guides/facade files for `batch-staged`.
+pub fn run_staged_doc_audit(
+    touched_members: &[String],
+    all_staged: &[String],
+    existing_staged: &[String],
+) -> bool {
+    let workspace_root = crate::manifest_cache::workspace_root_dir();
+    let mut report = AuditReport::new();
+
+    if !touched_members.is_empty() {
+        let candidate = crate::manifest_cache::resolve_workspace_path_from(
+            &workspace_root,
+            crate::whitelist::WHITELIST_FILE_NAME,
+        );
+        let whitelist_file =
+            crate::whitelist::resolve_whitelist_path(&[candidate.as_path()]).unwrap_or(candidate);
+        let allowlist = load_allowlist(&whitelist_file);
+        for member in touched_members {
+            let crate_dir =
+                crate::manifest_cache::resolve_workspace_path_from(&workspace_root, member);
+            let is_allowlisted = allowlist.contains(member);
+            report.extend(audit_crate(member, &crate_dir, is_allowlisted).violations);
+        }
+    }
+
+    report.extend(staged_guides::audit_staged_facade_import_hygiene(
+        &workspace_root,
+        existing_staged,
+    ));
+    report.extend(staged_guides::audit_staged_guides_and_manifests(
+        &workspace_root,
+        all_staged,
+        existing_staged,
+    ));
+
+    if report.is_success() {
+        println!(
+            "[OK] Scoped documentation verification passed ({} touched crate(s)).",
+            touched_members.len()
+        );
+        true
+    } else {
+        print_doc_audit_summary(&report, touched_members.len())
+    }
 }
 
 fn print_doc_audit_summary(report: &AuditReport, member_count: usize) -> bool {

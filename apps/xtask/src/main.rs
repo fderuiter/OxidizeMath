@@ -30,6 +30,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
     match cmd {
         "setup" => setup(rest),
         "lint-all" | "lint" => gates::lint_all(),
+        "lint-push" => staged::lint_push(rest),
         "lint-staged" => staged::lint_staged(),
         "check-cargo-docs" | "check-workspace-docs" => gates::check_cargo_docs(),
         "check-docs" => gates::check_docs(),
@@ -82,6 +83,9 @@ fn print_help() {
     println!(
         "  lint-all                 - Run format, profile, AST duplicate, API drift, ADR, file-length, clippy, doc, doctest, markdown-link, workflow, traceability, entropy, vulnerability, and policy audit checks"
     );
+    println!(
+        "  lint-push                - Run offline pre-push reverse-dependent Clippy and full workspace traceability"
+    );
     println!("  lint-staged              - Run fast scoped pre-commit checks on staged files only");
     println!("  lint-workflows           - Lint CI workflow definitions");
     println!("  test-features            - Run tests across feature combinations");
@@ -101,6 +105,37 @@ fn print_help() {
     println!("  setup                    - Run setup script and configure git hooks");
 }
 
+fn ensure_hook_executable(hook_path: &Path, label: &str) {
+    if !hook_path.exists() {
+        eprintln!(
+            "Warning: Expected {label} hook script not found at {}.",
+            hook_path.display()
+        );
+    } else {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(metadata) = fs::metadata(hook_path) {
+                let mut perms = metadata.permissions();
+                if perms.mode() & 0o111 == 0 {
+                    perms.set_mode(0o755);
+                    if let Err(e) = fs::set_permissions(hook_path, perms) {
+                        eprintln!(
+                            "Warning: Failed to set executable permissions on {}: {}",
+                            hook_path.display(),
+                            e
+                        );
+                    } else {
+                        println!("{label} hook permissions set to executable (0755).");
+                    }
+                } else {
+                    println!("{label} hook executable permissions verified.");
+                }
+            }
+        }
+    }
+}
+
 pub(crate) fn configure_git_hooks_in_dir(repo_dir: &Path) {
     println!("\n--- Configuring Git Hooks ---");
     let status = Command::new("git")
@@ -112,36 +147,9 @@ pub(crate) fn configure_git_hooks_in_dir(repo_dir: &Path) {
         exit(1);
     }
 
-    let hook_path = repo_dir.join(".githooks/pre-commit");
-    if hook_path.exists() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Ok(metadata) = fs::metadata(&hook_path) {
-                let mut perms = metadata.permissions();
-                if perms.mode() & 0o111 == 0 {
-                    perms.set_mode(0o755);
-                    if let Err(e) = fs::set_permissions(&hook_path, perms) {
-                        eprintln!(
-                            "Warning: Failed to set executable permissions on {}: {}",
-                            hook_path.display(),
-                            e
-                        );
-                    } else {
-                        println!("Pre-commit hook permissions set to executable (0755).");
-                    }
-                } else {
-                    println!("Pre-commit hook executable permissions verified.");
-                }
-            }
-        }
-        println!("Git core.hooksPath configured to .githooks");
-    } else {
-        eprintln!(
-            "Warning: Expected hook script not found at {}.",
-            hook_path.display()
-        );
-    }
+    ensure_hook_executable(&repo_dir.join(".githooks/pre-commit"), "Pre-commit");
+    ensure_hook_executable(&repo_dir.join(".githooks/pre-push"), "Pre-push");
+    println!("Git core.hooksPath configured to .githooks");
 }
 
 fn setup(args: &[String]) {
@@ -222,10 +230,7 @@ fn test_features(args: &[String]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gates::{
-        CARGO_DOC_ARGS, HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin,
-        workspace_wasm,
-    };
+    use crate::gates::unified_verification_bin;
     use crate::markdown_links::{collect_md_files, extract_md_links};
 
     fn local_hooks_path(dir: &Path) -> Option<String> {
@@ -247,14 +252,18 @@ mod tests {
         let temp_dir = env::temp_dir().join(format!("xtask_hook_test_{}", std::process::id()));
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(temp_dir.join(".githooks")).expect("failed to create temp .githooks");
-        let hook_file = temp_dir.join(".githooks/pre-commit");
-        fs::write(&hook_file, "#!/bin/sh\nexit 0\n").expect("failed to write temp hook");
+        let pre_commit = temp_dir.join(".githooks/pre-commit");
+        let pre_push = temp_dir.join(".githooks/pre-push");
+        fs::write(&pre_commit, "#!/bin/sh\nexit 0\n").expect("failed to write pre-commit");
+        fs::write(&pre_push, "#!/bin/sh\nexit 0\n").expect("failed to write pre-push");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&hook_file).unwrap().permissions();
-            perms.set_mode(0o644);
-            fs::set_permissions(&hook_file, perms).unwrap();
+            for hook in [&pre_commit, &pre_push] {
+                let mut perms = fs::metadata(hook).unwrap().permissions();
+                perms.set_mode(0o644);
+                fs::set_permissions(hook, perms).unwrap();
+            }
         }
 
         let init_status = Command::new("git")
@@ -270,8 +279,10 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = fs::metadata(&hook_file).unwrap().permissions().mode();
-            assert_ne!(mode & 0o111, 0, "Temp hook should be made executable");
+            for hook in [&pre_commit, &pre_push] {
+                let mode = fs::metadata(hook).unwrap().permissions().mode() & 0o777;
+                assert_eq!(mode, 0o755, "Hook {} should be set to 0755", hook.display());
+            }
         }
 
         let _ = fs::remove_dir_all(&temp_dir);
@@ -303,15 +314,17 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn test_pre_commit_hook_executable() {
+    fn test_git_hooks_executable() {
         use std::os::unix::fs::PermissionsExt;
-        let hook_path = Path::new(".githooks/pre-commit");
-        if hook_path.exists() {
-            let metadata = fs::metadata(hook_path).expect("failed to read metadata");
+        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        for rel in [".githooks/pre-commit", ".githooks/pre-push"] {
+            let hook_path = ws_root.join(rel);
+            assert!(hook_path.exists(), "Expected hook file {rel} to exist");
+            let metadata = fs::metadata(&hook_path).expect("failed to read metadata");
             assert_ne!(
                 metadata.permissions().mode() & 0o111,
                 0,
-                "Hook should be executable"
+                "{rel} should be executable"
             );
         }
     }
@@ -343,6 +356,7 @@ mod tests {
             "check-cargo-docs",
             "traceability",
             "lint-all",
+            "lint-push",
             "lint-staged",
             "check-entropy",
             "check-vulnerabilities",
@@ -356,126 +370,6 @@ mod tests {
             assert!(help.contains(cmd), "Missing help entry for {cmd}");
         }
         assert!(!help.contains("Tectonic"));
-    }
-
-    #[test]
-    fn test_wasm_clippy_args_and_ci_parity() {
-        assert_eq!(
-            HOST_CLIPPY_ARGS,
-            &[
-                "clippy",
-                "--workspace",
-                "--all-targets",
-                "--all-features",
-                "--",
-                "-D",
-                "warnings",
-            ]
-        );
-        assert_eq!(
-            WASM_CLIPPY_ARGS,
-            &[
-                "clippy",
-                "--workspace",
-                "--lib",
-                "--bins",
-                "--tests",
-                "--target",
-                "wasm32-unknown-unknown",
-                "--all-features",
-                "--",
-                "-D",
-                "warnings",
-            ]
-        );
-        assert!(!WASM_CLIPPY_ARGS.contains(&"--all-targets"));
-        assert!(!WASM_CLIPPY_ARGS.contains(&"--benches"));
-
-        let ci_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/ci.yml");
-        let ci_yaml = fs::read_to_string(&ci_path)
-            .expect("failed to read ci.yml")
-            .replace("\r\n", "\n");
-        let expected_host_cmd = format!("cargo {}", HOST_CLIPPY_ARGS.join(" "));
-        assert!(ci_yaml.contains("name: Run Clippy (Native)"));
-        assert!(ci_yaml.contains(&expected_host_cmd));
-        let expected_wasm_cmd = format!("cargo {}", WASM_CLIPPY_ARGS.join(" "));
-        assert!(ci_yaml.contains("name: Run Clippy (WASM)"));
-        assert!(ci_yaml.contains(&expected_wasm_cmd));
-        let expected_doc_cmd = format!("cargo {}", CARGO_DOC_ARGS.join(" "));
-        assert!(ci_yaml.contains("name: Check Workspace Documentation"));
-        assert!(ci_yaml.contains(&expected_doc_cmd));
-        assert!(ci_yaml.contains(
-            "- name: Run Workspace Tests (Native)\n        if: runner.os != 'Linux' && matrix.target != 'wasm32-unknown-unknown'\n        run: cargo test --workspace --lib --tests --all-features"
-        ));
-
-        for preflight_cmd in [
-            "cargo run -p unified_verification --release -- check-profiles",
-            "cargo run -p unified_verification --release -- check-duplicates",
-            "cargo run -p unified_verification --release -- check-api-drift",
-        ] {
-            assert!(
-                ci_yaml.contains(preflight_cmd),
-                "ci.yml missing pre-flight command: {preflight_cmd}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_wasm_test_and_smoke_ci_parity() {
-        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let discovered = workspace_wasm::discover_wasm_crates(&ws_root)
-            .expect("must discover wasm32 workspace crates");
-        let invocations = workspace_wasm::build_wasm_cargo_test_invocations(&discovered);
-        assert_eq!(invocations.len(), 2);
-        assert!(invocations[0].contains(&"oxidize_core".to_string()));
-        assert!(invocations[0].contains(&"egui_plot".to_string()));
-        assert!(invocations[0].contains(&"--lib".to_string()));
-        assert_eq!(
-            invocations[1],
-            vec![
-                "test",
-                "--target",
-                "wasm32-unknown-unknown",
-                "-p",
-                "math_explorer_gui",
-                "--bins",
-            ]
-        );
-        let ci_path = ws_root.join(".github/workflows/ci.yml");
-        let ci_yaml = fs::read_to_string(&ci_path)
-            .expect("failed to read ci.yml")
-            .replace("\r\n", "\n");
-        let build_pos = ci_yaml
-            .find("trunk build --release")
-            .expect("ci.yml must build web app with trunk");
-        let smoke_pos = ci_yaml
-            .find("cargo run -p xtask -- test-wasm --skip-build")
-            .expect("ci.yml must run xtask test-wasm gate");
-        let upload_pos = ci_yaml
-            .find("name: Upload Web Dist Artifact")
-            .expect("ci.yml must upload wasm_web_dist artifact");
-        assert!(smoke_pos > build_pos && smoke_pos < upload_pos);
-    }
-
-    #[test]
-    fn test_setup_browser_prerequisite_checks_and_remediation() {
-        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let root_toml = fs::read_to_string(ws_root.join("Cargo.toml")).unwrap();
-        let expected = setup::parse_expected_wasm_bindgen_version(&root_toml).unwrap();
-        assert_eq!(expected, "0.2.130");
-
-        let ok_wb = setup::check_wasm_bindgen_version(Ok("wasm-bindgen 0.2.130".into()), &expected);
-        assert!(ok_wb.failure.is_none());
-
-        let mismatch_wb =
-            setup::check_wasm_bindgen_version(Ok("wasm-bindgen 0.2.100".into()), &expected);
-        let (ok, report) = setup::format_probe_report(&[
-            mismatch_wb,
-            setup::check_presence_probe("trunk", Err("not found".into()), "cargo binstall trunk"),
-        ]);
-        assert!(!ok);
-        assert!(report.contains("0.2.130"));
-        assert!(report.contains("Fix:"));
     }
 
     #[test]
@@ -495,3 +389,5 @@ mod tests {
 
 #[cfg(test)]
 mod ci_filter_tests;
+#[cfg(test)]
+mod ci_parity_tests;

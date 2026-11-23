@@ -137,27 +137,36 @@ fn serialize_sorted_manifest(payload: &TraceabilityManifestPayload) -> String {
     json
 }
 
+fn write_manifest_if_changed(path: &Path, json: &str) {
+    if fs::read_to_string(path).ok().as_deref() == Some(json) {
+        return;
+    }
+    let _ = fs::write(path, json);
+}
+
 fn write_manifest_outputs(out_dir: &Path, json: &str) {
-    fs::write(out_dir.join(MANIFEST_FILENAME), json)
-        .expect("Failed to write OUT_DIR/traceability_manifest.json");
+    let out_manifest = out_dir.join(MANIFEST_FILENAME);
+    if fs::read_to_string(&out_manifest).ok().as_deref() != Some(json) {
+        fs::write(&out_manifest, json).expect("Failed to write OUT_DIR/traceability_manifest.json");
+    }
 
     if let Some(profile_dir) = out_dir
         .ancestors()
         .find(|p| p.file_name().and_then(|n| n.to_str()) == Some("build"))
         .and_then(Path::parent)
     {
-        let _ = fs::write(profile_dir.join(MANIFEST_FILENAME), json);
+        write_manifest_if_changed(&profile_dir.join(MANIFEST_FILENAME), json);
         if let Some(parent_target) = profile_dir.parent() {
-            let _ = fs::write(parent_target.join(MANIFEST_FILENAME), json);
+            write_manifest_if_changed(&parent_target.join(MANIFEST_FILENAME), json);
         }
     }
 
     if let Some(custom_target) = env::var_os("CARGO_TARGET_DIR") {
         let target_path = PathBuf::from(custom_target);
         if target_path.is_dir() {
-            let _ = fs::write(target_path.join(MANIFEST_FILENAME), json);
+            write_manifest_if_changed(&target_path.join(MANIFEST_FILENAME), json);
         }
     } else if Path::new("../target").is_dir() {
-        let _ = fs::write(Path::new("../target").join(MANIFEST_FILENAME), json);
+        write_manifest_if_changed(&Path::new("../target").join(MANIFEST_FILENAME), json);
     }
 }

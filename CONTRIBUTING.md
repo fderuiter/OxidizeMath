@@ -49,30 +49,41 @@ graph TD
 
 ## Git Hooks & Guardrails
 
-To ensure immediate feedback and high integrity, repository quality standards (including code formatting, clippy lints, file-length limits, and staged duplicate checks) are enforced automatically at the commit level.
+To ensure immediate commit feedback and high pre-push integrity, repository quality standards are enforced automatically across two 100% offline Git hook tiers: `.githooks/pre-commit` (`lint-staged`) for scoped staged-file and direct-crate checks, and `.githooks/pre-push` (`lint-push`) for reverse-dependent Clippy and full workspace traceability.
 
 ### Version-Controlled Hooks via `core.hooksPath`
 
-Pre-commit hooks are tracked directly under version control in the `.githooks/` directory instead of untracked local directories like `.git/hooks/`. Git is configured to use this version-controlled directory through the `core.hooksPath` setting:
+Both `.githooks/pre-commit` and `.githooks/pre-push` are tracked directly under version control in the `.githooks/` directory instead of untracked local directories like `.git/hooks/`. Git is configured to use this version-controlled directory through the `core.hooksPath` setting:
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-When configured, Git executes `.githooks/pre-commit` before completing any `git commit`. The pre-commit hook runs the fast, offline, snapshot-backed suite (`cargo run -p xtask -- lint-staged`), anchored to the workspace root so nested crate invocations behave identically:
-- Synchronizes the exact staged Git index (`git ls-files --stage` + `git cat-file --batch` with `--no-optional-locks`) into a stable reusable snapshot directory (`<target_dir>/lint-staged-snapshot`) and prunes untracked/deleted paths without touching or stashing the developer working tree, sharing Cargo compilation caches via `CARGO_TARGET_DIR`.
+#### Tier 1: Scoped Pre-Commit (`.githooks/pre-commit` -> `xtask lint-staged`)
+
+Git executes `.githooks/pre-commit` before completing any `git commit`. The pre-commit hook runs the fast, offline, snapshot-backed suite (`cargo run -p xtask -- lint-staged`), anchored to the workspace root so nested crate invocations behave identically:
+- Synchronizes the exact staged Git index (`git ls-files --stage` + `git cat-file --batch` with `--no-optional-locks`) into a stable reusable snapshot directory (`<target_dir>/lint-staged-snapshot`) and prunes untracked/deleted paths without touching or stashing the developer working tree, sharing Cargo compilation caches via `CARGO_TARGET_DIR` (with `OUT_DIR`-staged build scripts preventing `CARGO_MANIFEST_DIR` fingerprint drift).
 - Checks formatting (`rustfmt --check`) on staged `.rs` files in the snapshot, escalating to `cargo fmt --all -- --check` when `.rustfmt.toml` or `rustfmt.toml` is staged.
-- Runs `unified_verification batch-staged` (built with Cargo's default `dev` profile) against the snapshot for staged ADR enforcement (`verify-records --staged`), Cargo release profile & lint inheritance checks (`check-profiles`), file-length limits (`check-file-lengths`), crate documentation audits (`check-docs`), AST clone detection (`check-duplicates`), in-process citation & module traceability (`traceability`), staged secret/entropy scanning (`check-entropy`), touched-crate policy auditing (`test-policy-audit`), and staged duplicate warnings.
+- Runs `unified_verification batch-staged` (built with Cargo's default `dev` profile) scoped to staged files and directly touched crates when unescalated: staged ADR enforcement (`verify-records --staged`), touched-crate Cargo profile & lint inheritance checks (`check-profiles`), staged file-length limits (`check-file-lengths`), touched-crate & staged-guide documentation audits (`check-docs`), staged `.rs` AST clone detection (`check-duplicates`), staged `.rs` `@cite` citation verification (deferring full 804-file `traceability` unless `traceability.toml` or `papers/` changes), staged secret/entropy scanning (`check-entropy`), touched-crate & staged-`.md` fence policy auditing (`test-policy-audit`), and staged duplicate warnings.
 - Runs `.github/` workflow and composite action linting (`lint-workflows`) once via `xtask` when `.github/` paths are staged.
 - Validates internal relative Markdown links against the snapshot when `.md` files are staged, escalating to a full-repository Markdown link scan whenever tracked files are deleted or renamed.
-- Dynamically expands modified member crates across workspace reverse dependents and all 17 web-compiled crates reachable from `math_explorer_gui/Cargo.toml` for targeted host and `wasm32-unknown-unknown` Clippy, and escalates root manifest (`Cargo.toml`), lockfile (`Cargo.lock`), toolchain (`rust-toolchain*`, `.cargo/*`), or lint configuration (`.clippy.toml`, `.rustfmt.toml`, `verification_whitelist.toml`) edits to full-workspace host and `wasm32` Clippy.
-- Keeps pre-commit 100% offline by deferring network-bound OSV vulnerability queries (`check-vulnerabilities`) and public API baseline drift (`check-api-drift`) to `cargo run -p xtask -- lint-all`.
+- Restricts pre-commit host Clippy to directly modified member crates (`direct_crates`), running `wasm32-unknown-unknown` Clippy at commit time only when `math_explorer_gui` or `wasm32`-specific sources change, and escalates root manifest (`Cargo.toml`), lockfile (`Cargo.lock`), toolchain (`rust-toolchain*`, `.cargo/*`), or lint configuration (`.clippy.toml`, `.rustfmt.toml`, `verification_whitelist.toml`) edits to full-workspace static checks and host/`wasm32` Clippy.
+- Keeps pre-commit 100% offline by deferring reverse-dependent Clippy and full workspace traceability to `.githooks/pre-push` (`lint-push`), and deferring network-bound OSV vulnerability queries (`check-vulnerabilities`) and public API baseline drift (`check-api-drift`) to `cargo run -p xtask -- lint-all`.
 
 If any scoped check fails, `.githooks/pre-commit` exits with a non-zero status and blocks the commit.
 
+#### Tier 2: Pre-Push Reverse-Dependent & Traceability Gate (`.githooks/pre-push` -> `xtask lint-push`)
+
+Git executes `.githooks/pre-push` before pushing commits to a remote (`cargo run -p xtask -- lint-push`), remaining 100% offline:
+- Resolves changed paths across the commits being pushed (via `pre-push` stdin OID ranges or diffing against the upstream tracking ref / `origin/main` / `main`).
+- Expands modified crates across workspace reverse dependents for host Clippy (`--all-targets --all-features -- -D warnings`), and runs `--target wasm32-unknown-unknown` Clippy across impacted web-compiled crates reachable from `math_explorer_gui/Cargo.toml` (escalating root manifest, lockfile, toolchain, or lint configuration edits to `--workspace`).
+- Runs full 804-file in-process literature citation and module verification coverage (`unified_verification traceability`) whenever Rust sources, `traceability.toml`, or `papers/` change in the pushed range.
+
+If any pre-push check fails, `.githooks/pre-push` exits with a non-zero status and aborts the push.
+
 ### Automated Activation
 
-Running the workspace setup command installs the `wasm32-unknown-unknown` target, compiles the codebase, executes tests, configures `core.hooksPath` to `.githooks`, and validates executable permissions on Unix platforms:
+Running the workspace setup command installs the `wasm32-unknown-unknown` target, compiles the codebase, executes tests, configures `core.hooksPath` to `.githooks`, and ensures `0755` executable permissions on both `.githooks/pre-commit` and `.githooks/pre-push` on Unix platforms:
 
 ```bash
 cargo run -p xtask -- setup
@@ -124,7 +135,7 @@ cargo run -p unified_verification --release -- verify-suite
 
 ### Troubleshooting
 
-- **Pre-commit hook does not execute on `git commit`**:
+- **Git hooks do not execute on `git commit` or `git push`**:
   Verify your local Git configuration points to `.githooks`:
   ```bash
   git config core.hooksPath
@@ -136,14 +147,14 @@ cargo run -p unified_verification --release -- verify-suite
   git config core.hooksPath .githooks
   ```
 
-- **Permission denied when committing (Unix / macOS)**:
-  Ensure the hook script has executable permissions:
+- **Permission denied when committing or pushing (Unix / macOS)**:
+  Ensure both hook scripts have executable permissions:
   ```bash
-  chmod +x .githooks/pre-commit
+  chmod +x .githooks/pre-commit .githooks/pre-push
   ```
 
-- **Emergency Commit Bypass**:
-  In rare situations where a local commit must be made without running verification checks (such as an emergency work-in-progress checkpoint on a private development branch), use `git commit --no-verify`:
+- **Emergency Hook Bypass**:
+  In rare situations where a local commit or push must be made without running verification checks (such as an emergency work-in-progress checkpoint on a private development branch), pass `--no-verify` (`git commit --no-verify` or `git push --no-verify`):
   ```bash
   git commit --no-verify -m "wip: checkpoint"
   ```

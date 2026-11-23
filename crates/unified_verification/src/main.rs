@@ -11,6 +11,7 @@ mod policy_audit;
 mod profile;
 mod records;
 mod report;
+mod staged_traceability;
 mod utils;
 mod vulnerabilities;
 mod wasm_coverage;

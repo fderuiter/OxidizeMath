@@ -30,7 +30,7 @@ Alternatively, you can manually build the library using Cargo:
 cargo build --release --package math_explorer
 ```
 
-**Note:** `cargo run -p xtask -- setup` installs the `wasm32-unknown-unknown` target and configures Git hooks (`.githooks/pre-commit`) to run `cargo run -p xtask -- lint-staged` on staged files at commit time for fast offline feedback. Before opening or updating a pull request, run `cargo run -p xtask -- lint-all` to execute the full workspace verification suite.
+**Note:** `cargo run -p xtask -- setup` installs the `wasm32-unknown-unknown` target and configures version-controlled Git hooks with executable permissions (`.githooks/pre-commit` and `.githooks/pre-push`): `.githooks/pre-commit` runs `cargo run -p xtask -- lint-staged` scoped to staged files and directly touched crates for sub-second to fast offline commit feedback, while `.githooks/pre-push` runs `cargo run -p xtask -- lint-push` for offline reverse-dependent host/`wasm32` Clippy and full workspace traceability before pushing. Before opening or updating a pull request, run `cargo run -p xtask -- lint-all` to execute the full workspace verification suite.
 
 ## Usage
 

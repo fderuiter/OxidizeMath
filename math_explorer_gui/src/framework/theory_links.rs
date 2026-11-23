@@ -324,10 +324,7 @@ fn extract_first_author_surname(author_field: &str) -> String {
 fn embedded_bib_entries() -> &'static [BibEntry] {
     static BIB_CACHE: OnceLock<Vec<BibEntry>> = OnceLock::new();
     BIB_CACHE.get_or_init(|| {
-        const RAW_BIB: &str = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../papers/references.bib"
-        ));
+        const RAW_BIB: &str = include_str!(concat!(env!("OUT_DIR"), "/references.bib"));
         let mut entries = Vec::new();
         for chunk in RAW_BIB.split('@').skip(1) {
             let Some((header, rest)) = chunk.split_once('{') else {
