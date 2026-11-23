@@ -219,7 +219,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
 
     let expected_raster = 8 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
     let expected_non_shader = 84 + usize::from(cfg!(all(feature = "physics", feature = "biology")));
-    assert_eq!(plot_tool_count, 65, "Expected 65 Plot dataset+figure tools");
+    assert_eq!(plot_tool_count, 66, "Expected 66 Plot dataset+figure tools");
     assert_eq!(
         raster_tool_count, expected_raster,
         "Unexpected raster figure tool count"
@@ -228,7 +228,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         dataset_only_tool_count, 0,
         "Expected 0 dataset-only registered tools"
     );
-    assert_eq!(unsupported_tool_count, 14, "Expected 14 non-figure tools");
+    assert_eq!(unsupported_tool_count, 13, "Expected 13 non-figure tools");
     assert_eq!(solid_3d_count, 7, "Expected 7 solid 3D geometric tools");
     assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
