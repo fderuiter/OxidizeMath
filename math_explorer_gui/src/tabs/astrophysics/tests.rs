@@ -29,7 +29,11 @@ fn test_type_code_95_to_99_renders_unestablished_badge_without_panic() {
     tool.cfg.morphology = DwarfMorphology::TypeCode95To99;
     tool.cfg.use_absolute_magnitude = false;
     tool.recalculate();
-    assert!(tool.current_baryons().scaling.apparent_magnitude_b.is_none());
+    assert!(tool
+        .current_baryons()
+        .scaling
+        .apparent_magnitude_b
+        .is_none());
 
     let raw = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -39,7 +43,10 @@ fn test_type_code_95_to_99_renders_unestablished_badge_without_panic() {
         ..Default::default()
     };
     let out = ctx.run(raw, |ctx| tool.show(ctx));
-    let ak = out.platform_output.accesskit_update.expect("AccessKit output");
+    let ak = out
+        .platform_output
+        .accesskit_update
+        .expect("AccessKit output");
     let found_badge = ak.nodes.iter().any(|(_, n)| {
         n.label()
             .or_else(|| n.value())

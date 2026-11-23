@@ -2,8 +2,10 @@
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
+pub mod pharmacokinetics;
 pub mod randomization;
 pub mod sample_size;
+pub mod simpson_paradox;
 pub mod survival;
 
 

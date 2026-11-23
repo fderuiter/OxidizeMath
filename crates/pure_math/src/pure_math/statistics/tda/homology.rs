@@ -1,6 +1,8 @@
 //! Homology computations and Betti numbers.
 
+use super::boundary::Z2BoundaryWorkspace;
 use super::complex::SimplicialComplex;
+use super::core::Simplex;
 use crate::error::TdaError;
 use std::collections::{HashMap, HashSet};
 
@@ -119,18 +121,15 @@ pub fn betti_number_0(complex: &SimplicialComplex) -> Result<usize, TdaError> {
     Ok(uf.count_components())
 }
 
-/// Computes the 1st Betti number (number of 1-dimensional holes/cycles).
+/// Computes the 1st Betti number (number of 1-dimensional holes/cycles) over $\mathbb{Z}_2$.
 ///
-/// β₁ counts the number of independent cycles (loops) in the complex.
-/// This is computed using the formula:
+/// Uses the exact rank-nullity identity on the simplicial chain complex:
 ///
-/// β₁ = (number of edges) - (number of vertices) + (number of components) - (number of triangles)
+/// $$\beta_1 = \dim(\ker \partial_1) - \dim(\operatorname{im} \partial_2) = (|E| - |V| + \beta_0) - \operatorname{rank}_{\mathbb{Z}_2}(\partial_2)$$
 ///
-/// More precisely, for a 2D complex:
-/// β₁ = dim(ker ∂₁) - dim(im ∂₂)
-///    = (|E| - rank(∂₁)) - rank(∂₂)
-///
-/// For simplicity, we use the Euler characteristic approach for 2D complexes.
+/// Unlike raw triangle subtraction, $\mathbb{Z}_2$ column reduction of $\partial_2$ accounts for
+/// linearly dependent 2-cycles (such as the fourth face of a $K_4$ clique) without erasing
+/// independent 1-cycles elsewhere in the complex.
 ///
 /// # Example
 ///
@@ -152,57 +151,69 @@ pub fn betti_number_0(complex: &SimplicialComplex) -> Result<usize, TdaError> {
 /// // Radius 1.1 connects adjacent points (dist=1.0) but not diagonals (dist=1.414)
 /// let complex = vietoris_rips_complex(&cloud, 1.1).unwrap();
 /// let beta1 = betti_number_1(&complex).unwrap();
-/// assert_eq!(beta1, 1); // One hole
+/// assert_eq!(beta1, 1);
 /// ```
 #[verified_engine::verified]
 pub fn betti_number_1(complex: &SimplicialComplex) -> Result<usize, TdaError> {
-    let v = complex.count_simplices(0); // Vertices
-    let e = complex.count_simplices(1); // Edges
-    let t = complex.count_simplices(2); // Triangles
-
+    let v = complex.count_simplices(0);
     if v == 0 {
         return Ok(0);
     }
 
-    // Compute β₀ (connected components)
-    let beta0 = betti_number_0(complex)?;
-
-    // For a 2D complex, we use the formula:
-    // β₁ = e - v + β₀ - 2t
-    //
-    // This comes from the Euler characteristic:
-    // χ = β₀ - β₁ = v - e + t
-    // Therefore: β₁ = v - e + t - β₀ (for regular boundary)
-    //
-    // But we need to account for filled triangles differently.
-    // Each triangle "fills" a potential hole.
-
-    // Simple approximation for 2D:
-    // β₁ = number of cycles - number of filled regions
-    // β₁ = (e - v + 1) - t for a single component
-
-    // More generally:
-    // β₁ = e - v + β₀ - t (for simple 2D complexes)
-
-    if e < v {
-        return Ok(0); // Not enough edges to form cycles
+    let mut edges = complex.get_simplices(1);
+    let e = edges.len();
+    if e == 0 {
+        return Ok(0);
     }
 
-    // Euler characteristic: χ = v - e + t = β₀ - β₁
-    // Solving for β₁: β₁ = v - e + t - β₀
-    // But this needs correction for our specific case
+    let beta0 = betti_number_0(complex)?;
+    let cycles = (e + beta0).saturating_sub(v);
+    if cycles == 0 {
+        return Ok(0);
+    }
 
-    // For a connected graph: β₁ = e - v + 1
-    // For multiple components: β₁ = e - v + β₀
-    // But we need to subtract filled triangles
+    let mut triangles = complex.get_simplices(2);
+    if triangles.is_empty() {
+        return Ok(cycles);
+    }
 
-    // Each triangle fills one potential cycle
-    // So: β₁ = (e - v + β₀) - t
+    edges.sort_unstable();
+    triangles.sort_unstable();
+    let rank_partial_2 = compute_partial_2_rank(&edges, &triangles)?;
+    Ok(cycles.saturating_sub(rank_partial_2))
+}
 
-    let cycles = if e >= v { e - v + beta0 } else { 0 };
-    let beta1 = cycles.saturating_sub(t);
+#[verified_engine::verified]
+fn compute_partial_2_rank(edges: &[Simplex], triangles: &[Simplex]) -> Result<usize, TdaError> {
+    let mut workspace = Z2BoundaryWorkspace::new(edges.len(), triangles.len())?;
+    for (col_idx, tri) in triangles.iter().enumerate() {
+        if tri.vertices.len() != 3 {
+            return Err(TdaError::InvalidSimplex {
+                reason: format!(
+                    "expected 2-simplex with 3 vertices, got {}",
+                    tri.vertices.len()
+                ),
+            });
+        }
+        let v0 = tri.vertices[0];
+        let v1 = tri.vertices[1];
+        let v2 = tri.vertices[2];
+        let f0 = find_edge_row(edges, v0, v1)?;
+        let f1 = find_edge_row(edges, v0, v2)?;
+        let f2 = find_edge_row(edges, v1, v2)?;
+        workspace.set_column_faces(col_idx, &[f0, f1, f2])?;
+    }
+    Ok(workspace.reduce())
+}
 
-    Ok(beta1)
+#[verified_engine::verified]
+fn find_edge_row(edges: &[Simplex], u: usize, v: usize) -> Result<usize, TdaError> {
+    let (a, b) = if u <= v { (u, v) } else { (v, u) };
+    edges
+        .binary_search_by(|edge| edge.vertices.as_slice().cmp(&[a, b]))
+        .map_err(|_| TdaError::InvalidSimplex {
+            reason: format!("missing boundary edge [{a}, {b}] in simplicial complex"),
+        })
 }
 
 /// Computes Betti numbers up to dimension 1.
@@ -379,4 +390,56 @@ mod tests {
         assert_eq!(beta0, 1); // Connected
         assert_eq!(beta1, 0); // No holes
     }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_betti_number_1_retains_cycle_near_k4_clique() {
+        // Vertices 0, 1, 2, 3 form a complete K4 clique (6 edges, 4 triangles, rank(partial_2) = 3).
+        // Vertices 3, 4, 5, 6 form an attached hollow 4-cycle (edges [3,4], [4,5], [5,6], [6,3], 0 triangles).
+        // Total: V = 7, E = 10, T = 4, beta_0 = 1.
+        // Heuristic (E - V + beta_0).saturating_sub(T) = (10 - 7 + 1) - 4 = 0 (WRONG: erases the real hole!).
+        // Exact Z_2 reduction: (10 - 7 + 1) - rank_z2(partial_2) = 4 - 3 = 1.
+        let mut complex = SimplicialComplex::new();
+        for &(u, v, w) in &[(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)] {
+            complex
+                .add_simplex(Simplex::new(vec![u, v, w]).unwrap())
+                .unwrap();
+        }
+        for &(u, v) in &[(3, 4), (4, 5), (5, 6), (6, 3)] {
+            complex
+                .add_simplex(Simplex::new(vec![u, v]).unwrap())
+                .unwrap();
+        }
+
+        assert_eq!(complex.count_simplices(0), 7);
+        assert_eq!(complex.count_simplices(1), 10);
+        assert_eq!(complex.count_simplices(2), 4);
+        let (beta0, beta1) = betti_numbers(&complex).unwrap();
+        assert_eq!(beta0, 1);
+        assert_eq!(beta1, 1);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_betti_number_1_with_isolated_vertices_and_k4() {
+        // Hollow triangle [0,1],[1,2],[2,0] + disjoint K4 [3,4,5,6] + isolated vertex [7].
+        let mut complex = SimplicialComplex::new();
+        for &(u, v) in &[(0, 1), (1, 2), (2, 0)] {
+            complex
+                .add_simplex(Simplex::new(vec![u, v]).unwrap())
+                .unwrap();
+        }
+        for &(u, v, w) in &[(3, 4, 5), (3, 4, 6), (3, 5, 6), (4, 5, 6)] {
+            complex
+                .add_simplex(Simplex::new(vec![u, v, w]).unwrap())
+                .unwrap();
+        }
+        complex.add_simplex(Simplex::new(vec![7]).unwrap()).unwrap();
+
+        let (beta0, beta1) = betti_numbers(&complex).unwrap();
+        assert_eq!(beta0, 3);
+        assert_eq!(beta1, 1);
+    }
 }
+
+// [cite:clinical_trials_statistics]

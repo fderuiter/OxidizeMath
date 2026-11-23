@@ -1,5 +1,9 @@
 # ADR 0007: In-Place Complex Phasor Recurrence for Steering Vector Generation
 
+## Status
+
+Accepted
+
 ## Context
 In `crates/domain_physics/src/physics/medical/radar_gating/super_resolution.rs`, `MusicEstimator::compute_spectrum` was calculating steering vectors $a(R)$ using explicit exponential function calls `Complex::new(0.0, phase).exp()` for every sample point in the inner range sweep loop.
 For typical spectrum sweeps (e.g., 10,000 range steps with $N = 64$), this evaluated transcendental `sin` and `cos` functions 640,000 times per invocation, creating a major performance bottleneck in MUSIC spectrum calculation.

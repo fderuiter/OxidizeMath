@@ -4,7 +4,9 @@ use eframe::egui;
 use math_explorer::physics::astrophysics::HaloProfile;
 
 pub mod galactic_orbits_tool;
+mod galactic_orbits_ui;
 pub mod rotation_curve_tool;
+mod rotation_curve_ui;
 
 #[cfg(test)]
 mod tests;
@@ -42,7 +44,12 @@ impl HaloKindChoice {
 
     /// Builds a [`HaloProfile`] from log10 virial mass, scale/core radius, and concentration.
     #[must_use]
-    pub fn build_profile(self, log10_m200: f64, radius_kpc: f64, concentration: f64) -> HaloProfile {
+    pub fn build_profile(
+        self,
+        log10_m200: f64,
+        radius_kpc: f64,
+        concentration: f64,
+    ) -> HaloProfile {
         let m200 = 10.0_f64.powf(log10_m200.clamp(6.0, 14.0));
         let r_scale = radius_kpc.clamp(0.1, 25.0);
         let c = concentration.clamp(1.0, 40.0);
