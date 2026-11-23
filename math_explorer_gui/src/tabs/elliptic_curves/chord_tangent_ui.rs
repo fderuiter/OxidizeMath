@@ -162,6 +162,7 @@ fn render_orbit_and_transport(tool: &mut WeierstrassPlaygroundTool, ui: &mut egu
                 tool.state.scalar_k = 1;
                 changed = true;
             }
+            PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
         }
     }
     changed

@@ -142,6 +142,9 @@ impl MorphogenesisTool {
             kinetics_state: Arc::clone(kinetics_state),
             width,
             height,
+            step_count: 0,
+            rng: oxidize_core::rng::OxidizeRng::new(super::runner::DEFAULT_MORPHOGENESIS_SEED),
+            noise_amplitude: 0.0,
         };
         runner.enforce_mask_concentrations();
         runner

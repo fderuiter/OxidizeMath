@@ -4,6 +4,16 @@ use super::{SirTool, MAX_SIR_DURATION, MIN_SIR_DURATION};
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 
+inventory::submit! {
+    crate::framework::ToolMetadata {
+        id: "SirTool",
+        display_name: "SIR Model",
+        domain: "epidemiology",
+        tags: &[],
+        build: || Box::new(SirTool::default()),
+    }
+}
+
 impl TheoryDescribable for SirTool {
     fn theory_description(&self) -> String {
         let r0 = self.beta / self.gamma;

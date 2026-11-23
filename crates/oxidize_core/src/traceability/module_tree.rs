@@ -121,50 +121,65 @@ impl<V: crate::vfs::VirtualFileSystem> super::TraceabilityEngine<V> {
         Ok(())
     }
 
-    #[allow(clippy::double_must_use)]
-    #[async_recursion::async_recursion(?Send)]
+    async fn resolve_submodule_target(
+        &self,
+        parent_dir: &str,
+        dir_path: &str,
+        submodule: ExternalSubmodule,
+        cache: &mut super::AstCache,
+    ) -> Result<Option<String>, std::io::Error> {
+        if let Some(rel_path) = submodule.custom_path {
+            let custom = crate::path_utils::join_and_normalize(
+                parent_dir,
+                rel_path.trim_start_matches("./"),
+            );
+            return Ok(self
+                .load_cached_optional(&custom, cache)
+                .await?
+                .then_some(custom));
+        }
+        let path1 =
+            crate::path_utils::join_and_normalize(dir_path, format!("{}.rs", submodule.ident));
+        if self.load_cached_optional(&path1, cache).await? {
+            return Ok(Some(path1));
+        }
+        let path2 =
+            crate::path_utils::join_and_normalize(dir_path, format!("{}/mod.rs", submodule.ident));
+        Ok(self
+            .load_cached_optional(&path2, cache)
+            .await?
+            .then_some(path2))
+    }
+
     async fn parse_module_tree(
         &self,
         file_path: &str,
         active_files: &mut std::collections::HashSet<String>,
         cache: &mut super::AstCache,
     ) -> Result<(), std::io::Error> {
-        let norm_file_path = crate::path_utils::normalize_path(file_path);
-        if active_files.contains(&norm_file_path) {
-            return Ok(());
-        }
-        let key = super::AstCache::normalize_key(&norm_file_path);
-        if cache.get(&key).is_none() {
-            let content = self.vfs.read_to_string(&norm_file_path).await?;
-            cache.insert_source(key.clone(), content);
-        }
-        active_files.insert(norm_file_path.clone());
-
-        let submodules = collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
-        let parent_dir = module_parent_dir(&norm_file_path);
-        let dir_path = module_child_dir(&norm_file_path);
-        for submodule in submodules {
-            if let Some(rel_path) = submodule.custom_path {
-                let custom = crate::path_utils::join_and_normalize(
-                    &parent_dir,
-                    rel_path.trim_start_matches("./"),
-                );
-                if self.load_cached_optional(&custom, cache).await? {
-                    self.parse_module_tree(&custom, active_files, cache).await?;
-                }
+        let mut stack = vec![crate::path_utils::normalize_path(file_path)];
+        while let Some(norm_file_path) = stack.pop() {
+            if active_files.contains(&norm_file_path) {
                 continue;
             }
-            let path1 =
-                crate::path_utils::join_and_normalize(&dir_path, format!("{}.rs", submodule.ident));
-            let path2 = crate::path_utils::join_and_normalize(
-                &dir_path,
-                format!("{}/mod.rs", submodule.ident),
-            );
+            let key = super::AstCache::normalize_key(&norm_file_path);
+            if cache.get(&key).is_none() {
+                let content = self.vfs.read_to_string(&norm_file_path).await?;
+                cache.insert_source(key.clone(), content);
+            }
+            active_files.insert(norm_file_path.clone());
 
-            if self.load_cached_optional(&path1, cache).await? {
-                self.parse_module_tree(&path1, active_files, cache).await?;
-            } else if self.load_cached_optional(&path2, cache).await? {
-                self.parse_module_tree(&path2, active_files, cache).await?;
+            let submodules =
+                collect_external_submodules(cache.get(&key).and_then(|e| e.ast.as_ref()));
+            let parent_dir = module_parent_dir(&norm_file_path);
+            let dir_path = module_child_dir(&norm_file_path);
+            for submodule in submodules.into_iter().rev() {
+                if let Some(target) = self
+                    .resolve_submodule_target(&parent_dir, &dir_path, submodule, cache)
+                    .await?
+                {
+                    stack.push(target);
+                }
             }
         }
         Ok(())

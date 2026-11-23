@@ -3,6 +3,7 @@
 use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
+pub mod elliptic_curve_audio;
 pub mod elliptic_curve_canvas;
 pub mod elliptic_curve_hasse;
 pub mod elliptic_curve_playground;

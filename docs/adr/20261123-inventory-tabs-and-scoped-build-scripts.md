@@ -1,10 +1,10 @@
-# 47. Static Inventory Tab Registration and Scoped Build Scripts
+# ADR 20261123: Static Inventory Tab Registration and Scoped Build Scripts
 
 Date: 2026-11-23
 
 ## Status
 
-Accepted (Refines [ADR 0001](./0001-dynamic-workspace-discovery.md), complements [ADR 0037](./0037-remove-vfs-codegen-and-reject-wasm-list-dir.md) and [ADR 0044](./0044-unify-build-time-traceability-engine.md), and scopes the remaining build-script watchers in [ADR 0027](./0027-build-rerun-directives-and-cargo-cache.md))
+Accepted (Refines [ADR 0001](./0001-dynamic-workspace-discovery.md), complements [ADR 0037](./0037-remove-vfs-codegen-and-reject-wasm-list-dir.md), [ADR 0044](./0044-unify-build-time-traceability-engine.md), and [ADR 20261123](./20261123-feature-gate-core-ast-tools-and-unify-crates.md), and scopes the remaining build-script watchers in [ADR 0027](./0027-build-rerun-directives-and-cargo-cache.md))
 
 ## Context
 

@@ -1,11 +1,16 @@
 mod analysis;
+#[cfg(feature = "ast-analysis")]
 mod cache;
 mod manifest;
+#[cfg(feature = "ast-analysis")]
 mod module_tree;
+#[cfg(feature = "ast-analysis")]
 mod runner;
 
+#[cfg(feature = "ast-analysis")]
 pub use cache::{AstCache, CachedRustFile};
 pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
+#[cfg(feature = "ast-analysis")]
 pub use runner::{
     check_and_print_traceability_errors, discover_workspace_code_dirs, format_traceability_errors,
     print_traceability_dashboard, run_workspace_traceability,
@@ -13,7 +18,9 @@ pub use runner::{
 };
 
 use crate::vfs::VirtualFileSystem;
-use std::collections::{BTreeMap, HashMap, HashSet};
+#[cfg(feature = "ast-analysis")]
+use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -77,16 +84,12 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     #[cfg(not(target_arch = "wasm32"))]
     #[allow(missing_docs)]
     pub fn verify_module_registered(module_name: &str) -> bool {
-        let vfs = crate::vfs::DefaultVfs;
-        let mut registry_content =
-            futures::executor::block_on(vfs.read_to_string("traceability.toml"))
-                .unwrap_or_default();
+        let mut registry_content = std::fs::read_to_string("traceability.toml").unwrap_or_default();
         if registry_content.is_empty()
             && let Some(root) = crate::workspace::find_workspace_root()
         {
-            let candidate = crate::path_utils::normalize_path(root.join("traceability.toml"));
             registry_content =
-                futures::executor::block_on(vfs.read_to_string(&candidate)).unwrap_or_default();
+                std::fs::read_to_string(root.join("traceability.toml")).unwrap_or_default();
         }
         analysis::is_module_in_registry_toml(&registry_content, module_name)
     }
@@ -106,7 +109,10 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
             .map(|(cite, _)| cite)
             .collect()
     }
+}
 
+#[cfg(feature = "ast-analysis")]
+impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     async fn scan_papers_dir(
         &self,
         papers_dir: &str,
