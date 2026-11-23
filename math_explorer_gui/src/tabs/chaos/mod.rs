@@ -6,13 +6,14 @@ use eframe::egui;
 pub mod attractors;
 pub mod bifurcation;
 pub mod fractals;
+pub mod hamiltonian;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
 /// Interactive Chaos Theory exploration suite coupling spatial parameter atlases to live
 /// dynamical state orbits across [`fractals::FractalViewer`], [`bifurcation::BifurcationDiagram`],
-/// and [`attractors::AttractorPlotter`].
+/// [`attractors::AttractorPlotter`], and [`hamiltonian::HamiltonianChaosLab`].
 ///
 /// - **Fractal Viewer**: Links the Mandelbrot parameter plane to live `96x72` Julia set hover
 ///   insets and progressive click/`Enter` teleportation while preserving per-mode viewports.
@@ -20,6 +21,8 @@ mod wasm_tests;
 ///   slices with `logistic_lyapunov` stability overlays and click-linked cobweb/$x_n$ inspectors.
 /// - **Attractor Plotter**: Streams 3D Lorenz trajectories alongside live `lorenz_lyapunov` and
 ///   zero-allocation `correlation_dimension_in_place` readouts plus a 2D $(\rho, \sigma)$ regime map.
+/// - **Hamiltonian Chaos Lab**: Pairs zero-allocation symplectic solvers (`StormerVerlet`,
+///   `Yoshida4`, `GaussLegendre4`) with cubic-Hermite Poincaré sections and `RungeKutta4` drift comparisons.
 pub struct ChaosTab {
     framework: crate::framework::SimulationFramework,
 }
@@ -55,6 +58,10 @@ impl ExplorerTab for ChaosTab {
 
     fn select_tool_by_name(&mut self, name: &str) -> bool {
         self.framework.select_tool_by_name(name)
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.framework.focused_canvas_id()
     }
 
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {

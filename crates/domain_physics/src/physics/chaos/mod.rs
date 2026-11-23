@@ -28,10 +28,13 @@
 //!
 //! ## Modules
 //!
+//! *   **[Double Pendulum](double_pendulum)**: Canonical non-separable Hamiltonian double pendulum.
 //! *   **[Fractals](fractals)**: Geometric structures with fractional dimension (e.g., Cantor Set).
+//! *   **[Hénon-Heiles](henon_heiles)**: Separable 2-DOF galactic Hamiltonian with KAM islands and chaotic seas.
 //! *   **[Logistic Map](logistic)**: Discrete-time demographic model $x_{n+1} = r x_n (1 - x_n)$.
 //! *   **[Lorenz System](lorenz)**: Continuous-time atmospheric convection model (The "Butterfly" attractor).
 //! *   **[Metrics](metrics)**: Tools to quantify chaos (Lyapunov Exponents, Correlation Dimension).
+//! *   **[Poincaré Sections](poincare)**: Zero-allocation cubic-Hermite surface-of-section detector.
 //!
 //! ##  Deep Dive: The Lorenz Attractor
 //!
@@ -69,10 +72,13 @@
 //! assert!(system.state.vec.norm() < 100.0); // Simple boundedness check
 //! ```
 
+pub mod double_pendulum;
 pub mod fractals;
+pub mod henon_heiles;
 pub mod logistic;
 pub mod lorenz;
 pub mod metrics;
+pub mod poincare;
 
 #[cfg(test)]
 mod tests {

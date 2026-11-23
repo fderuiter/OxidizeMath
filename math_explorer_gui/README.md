@@ -44,7 +44,7 @@ classDiagram
 - **`ExplorerTab` & `framework`**: Standard visualization trait and interactive tool framework supporting single-pane and multi-pane layouts while delegating all mathematical computation to `math_explorer`.
 - **`async_sim`**: Off-thread and Web Worker simulation runners preventing frame-budget stalls during heavy PDE, FFT, or Monte Carlo sweeps.
 - **`presets` & `url_state`**: Versioned JSON preset import/export and deterministic URL state encoding.
-- **Coupled Chaos Parameter Atlases (`src/tabs/chaos/`)**: Links parameter planes to live trajectories across `FractalViewer` (independent Mandelbrot/Julia viewports, live `96x72` hover Julia inset, click/`Enter` progressive teleportation), `BifurcationDiagram` (`8ms` `BackgroundWorker` sweeps, `logistic_lyapunov` stability overlay, click-linked cobweb and $x_n$ orbit inspectors), and `AttractorPlotter` (progressive 2D $(\rho, \sigma)$ `lorenz_lyapunov` regime heatmap and live zero-allocation $C(\epsilon)$ badges).
+- **Coupled Chaos Parameter Atlases (`src/tabs/chaos/`)**: Links parameter planes to live trajectories across `FractalViewer` (independent Mandelbrot/Julia viewports, live `96x72` hover Julia inset, click/`Enter` progressive teleportation), `BifurcationDiagram` (`8ms` `BackgroundWorker` sweeps, `logistic_lyapunov` stability overlay, click-linked cobweb and $x_n$ orbit inspectors), `AttractorPlotter` (progressive 2D $(\rho, \sigma)$ `lorenz_lyapunov` regime heatmap and live zero-allocation $C(\epsilon)$ badges), and `HamiltonianChaosLab` (symplectic Poincaré surface-of-section lab and energy-drift comparator).
 
 ---
 

@@ -172,7 +172,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 }
 
-/// Background simulation runner driving a [`UnifiedModel`] with shared parameter, sculpt, and formula state.
+/// Background worker runner driving a [`UnifiedModel`] with shared parameters, formulas, and sculpt state.
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,
@@ -183,7 +183,7 @@ pub struct UnifiedSimRunner<M: UnifiedModel> {
 }
 
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
-    /// Creates a [`UnifiedSimRunner`] sharing `params` with default sculpt and formula slots.
+    /// Creates a new runner initialized from `params` with empty sculpt and formula state.
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
         Self::with_shared(
             params,

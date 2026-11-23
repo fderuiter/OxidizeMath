@@ -1,4 +1,4 @@
-# ADR 0046: Coupled Chaos Parameter Atlases and Zero-Allocation Lyapunov Kernels
+# ADR 0047: Coupled Chaos Parameter Atlases and Zero-Allocation Lyapunov Kernels
 
 ## Status
 Accepted (extends [ADR 0012](0012-background-simulation-worker-offload.md), [ADR 0021](0021-inplace-row-softmax-allocation-elimination.md), and [ADR 0044](0044-unify-build-time-traceability-engine.md))
