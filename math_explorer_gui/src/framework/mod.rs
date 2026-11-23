@@ -48,6 +48,9 @@ mod state_bounds_tests;
 pub mod state_guard;
 #[cfg(test)]
 mod state_guard_tests;
+pub(crate) mod theory_links;
+#[cfg(test)]
+mod theory_links_tests;
 pub mod trace_overlay;
 mod ui;
 mod url_share;
@@ -327,7 +330,6 @@ pub trait InteractiveTool {
     ) -> Vec<egui_plot::export::DatasetFrame> {
         let count = num_frames.max(1);
         let mut frames = Vec::with_capacity(count);
-
         for _ in 0..count {
             self.step_simulation();
             let ds = self.export_datasets();
@@ -335,14 +337,12 @@ pub trait InteractiveTool {
                 frames.push(ds);
             }
         }
-
         if frames.is_empty() {
             let ds = self.export_datasets();
             if !ds.is_empty() {
                 frames = egui_plot::export::sample_progressive_frames(&ds, count);
             }
         }
-
         frames
     }
 

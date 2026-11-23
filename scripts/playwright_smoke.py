@@ -980,6 +980,301 @@ def verify_disabled_webgl_regression_detection(
     print("[PASS] regression_detection: missing .wasm, broken loader, and disabled WebGL fail when recovery breaks")
 
 
+def run_parallel_preload_and_sw_http_cache_check(
+    browser: Browser,
+    dist_dir: Path,
+    csp: str,
+) -> None:
+    origin_hits: list[tuple[str, int]] = []
+    origin_lock = threading.Lock()
+    revision_state = {"rev": 1}
+
+    class CacheableOriginHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self) -> None:
+            clean_path = self.path.split("?")[0]
+            rel_name = "index.html" if clean_path in ("", "/") else clean_path.lstrip("/")
+            target = (dist_dir / rel_name).resolve()
+            if not str(target).startswith(str(dist_dir.resolve())) or not target.is_file():
+                with origin_lock:
+                    origin_hits.append((clean_path, 404))
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Security-Policy", csp)
+                self.end_headers()
+                self.wfile.write(b"Not Found")
+                return
+
+            rev = revision_state["rev"]
+            encoding: str | None = None
+            accept_enc = self.headers.get("Accept-Encoding", "")
+            if clean_path == "/bootstrap.js" and rev > 1:
+                payload = target.read_bytes() + f"\n// origin-rev-{rev}\n".encode("utf-8")
+            else:
+                br_sidecar = Path(f"{target}.br")
+                gz_sidecar = Path(f"{target}.gz")
+                if "br" in accept_enc and br_sidecar.is_file():
+                    payload = br_sidecar.read_bytes()
+                    encoding = "br"
+                elif "gzip" in accept_enc and gz_sidecar.is_file():
+                    payload = gz_sidecar.read_bytes()
+                    encoding = "gzip"
+                else:
+                    payload = target.read_bytes()
+            etag = f'"{rel_name}-v{rev}-{encoding or "id"}-{len(payload)}"'
+            content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+
+            if self.headers.get("If-None-Match") == etag:
+                with origin_lock:
+                    origin_hits.append((clean_path, 304))
+                self.send_response(304)
+                self.send_header("ETag", etag)
+                self.send_header("Vary", "Accept-Encoding")
+                self.send_header("Cache-Control", "public, max-age=600")
+                self.send_header("Content-Security-Policy", csp)
+                self.end_headers()
+                return
+
+            with origin_lock:
+                origin_hits.append((clean_path, 200))
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            if encoding is not None:
+                self.send_header("Content-Encoding", encoding)
+            self.send_header("Vary", "Accept-Encoding")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "public, max-age=600")
+            self.send_header("Content-Security-Policy", csp)
+            self.end_headers()
+            try:
+                self.wfile.write(payload)
+            except OSError:
+                pass
+
+        def log_message(self, fmt: str, *args: object) -> None:
+            return
+
+    cache_server = ReusableThreadingTCPServer(("127.0.0.1", 0), CacheableOriginHandler)
+    cache_url = f"http://127.0.0.1:{cache_server.server_address[1]}"
+    threading.Thread(target=cache_server.serve_forever, daemon=True).start()
+
+    context = browser.new_context(viewport={"width": 1280, "height": 800})
+    try:
+        page1 = context.new_page()
+        csp_violations: list[str] = []
+        preload_warnings: list[str] = []
+        pre_sw_requests: list[str] = []
+        saw_sw_request = False
+        attach_csp_observer(page1, csp_violations)
+
+        def on_console(msg: object) -> None:
+            text = getattr(msg, "text", "")
+            if "preload" in text.lower() and (
+                "not used" in text.lower() or "credentials mode" in text.lower()
+            ):
+                preload_warnings.append(text)
+
+        def on_request(req: object) -> None:
+            nonlocal saw_sw_request
+            url_path = urllib.parse.urlsplit(getattr(req, "url", "")).path
+            if url_path.endswith("/sw.js"):
+                saw_sw_request = True
+                return
+            if not saw_sw_request:
+                pre_sw_requests.append(url_path)
+
+        page1.on("console", on_console)
+        page1.on("request", on_request)
+
+        page1.goto(f"{cache_url}/", wait_until="domcontentloaded")
+        expect(page1.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+        expect(page1.locator("#the_canvas_id")).to_be_focused()
+        assert_zero_csp_violations("cold_parallel_wave", csp_violations)
+        if preload_warnings:
+            raise AssertionError(
+                f"[cold_parallel_wave] Preload credential/reuse warnings detected: {preload_warnings}"
+            )
+
+        expected_preboot = {
+            "/",
+            "/reload.js",
+            "/bootstrap.js",
+            "/initializer.js",
+            "/math_explorer_gui.js",
+            "/math_explorer_gui_bg.wasm",
+        }
+        if len(pre_sw_requests) != 6 or set(pre_sw_requests) != expected_preboot:
+            raise AssertionError(
+                f"[cold_parallel_wave] Expected 6 pre-boot requests {sorted(expected_preboot)}, got {pre_sw_requests}"
+            )
+
+        # Wait for post-boot sw.js registration, precacheShell completion, and client claim.
+        page1.wait_for_function(
+            """async () => {
+                if (!navigator.serviceWorker) return false;
+                await navigator.serviceWorker.ready;
+                if (!navigator.serviceWorker.controller) return false;
+                const cache = await caches.open('math-explorer-shell-v1');
+                const keys = (await cache.keys()).map((r) => new URL(r.url).pathname);
+                return keys.includes('/index.html') && keys.includes('/bootstrap.js');
+            }""",
+            timeout=10_000,
+        )
+
+        with origin_lock:
+            post_install_hits = list(origin_hits)
+        for boot_asset in (
+            "/",
+            "/reload.js",
+            "/bootstrap.js",
+            "/initializer.js",
+            "/math_explorer_gui.js",
+            "/math_explorer_gui_bg.wasm",
+        ):
+            asset_hits = [code for path, code in post_install_hits if path == boot_asset]
+            if asset_hits != [200]:
+                raise AssertionError(
+                    f"[sw_precache_http_reuse] Expected single origin 200 for {boot_asset} across boot+precacheShell, got {asset_hits}"
+                )
+
+        # Repeat navigation within max-age must trigger zero 304s and zero origin fetches for cached boot assets.
+        with origin_lock:
+            origin_hits.clear()
+
+        page2 = context.new_page()
+        repeat_statuses: list[tuple[str, int]] = []
+        attach_csp_observer(page2, csp_violations)
+        page2.on(
+            "response",
+            lambda resp: repeat_statuses.append(
+                (urllib.parse.urlsplit(resp.url).path, resp.status)
+            ),
+        )
+        page2.goto(f"{cache_url}/", wait_until="domcontentloaded")
+        expect(page2.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+        expect(page2.locator("#the_canvas_id")).to_be_focused()
+        assert_zero_csp_violations("warm_repeat_navigation", csp_violations)
+
+        revalidations_304 = [(p, c) for p, c in repeat_statuses if c == 304]
+        if revalidations_304:
+            raise AssertionError(
+                f"[warm_repeat_navigation] Unexpected 304 responses on warm navigation: {revalidations_304}"
+            )
+        with origin_lock:
+            warm_origin_hits = list(origin_hits)
+        cached_boot_hits = [
+            (p, c)
+            for p, c in warm_origin_hits
+            if p in expected_preboot
+        ]
+        if cached_boot_hits:
+            raise AssertionError(
+                f"[warm_repeat_navigation] Expected zero origin requests within max-age, got {cached_boot_hits}"
+            )
+
+        # Explicit reload and no-cache modes must forward through sw.js to origin.
+        revision_state["rev"] = 2
+        with origin_lock:
+            origin_hits.clear()
+
+        reload_probe = page2.evaluate(
+            """async () => {
+                const reloadResp = await fetch('./bootstrap.js', { cache: 'reload' });
+                const reloadText = await reloadResp.text();
+                const revalidateResp = await fetch('./math_explorer_gui_bg.wasm', { cache: 'no-cache' });
+                return {
+                    reloadStatus: reloadResp.status,
+                    hasUpdatedMarker: reloadText.includes('// origin-rev-2'),
+                    revalidateStatus: revalidateResp.status,
+                };
+            }"""
+        )
+        with origin_lock:
+            bypass_hits = list(origin_hits)
+        if not reload_probe["hasUpdatedMarker"] or reload_probe["reloadStatus"] != 200:
+            raise AssertionError(
+                f"[sw_hard_refresh_passthrough] cache:'reload' did not fetch updated origin asset: {reload_probe}"
+            )
+        if not any(p == "/bootstrap.js" and c == 200 for p, c in bypass_hits) or not any(
+            p == "/math_explorer_gui_bg.wasm" for p, _ in bypass_hits
+        ):
+            raise AssertionError(
+                f"[sw_hard_refresh_passthrough] Expected origin hits for reload/no-cache modes, got {bypass_hits}"
+            )
+
+        print(
+            "[PASS] parallel_preload_and_sw_http_cache: 6 pre-boot requests in 1 wave, HTTP-cached precacheShell, 0 warm 304s, reload/no-cache forwarded"
+        )
+    finally:
+        context.close()
+        cache_server.shutdown()
+        cache_server.server_close()
+
+
+def run_offline_sw_shell_recovery_check(
+    browser: Browser,
+    base_url: str,
+    screenshot_path: Path | None = None,
+) -> None:
+    context = browser.new_context(viewport={"width": 1280, "height": 800})
+    try:
+        page = context.new_page()
+        csp_violations: list[str] = []
+        attach_csp_observer(page, csp_violations)
+
+        page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+        expect(page.locator("#the_canvas_id")).to_be_focused()
+
+        page.wait_for_function(
+            """async () => {
+                if (!navigator.serviceWorker) return false;
+                await navigator.serviceWorker.ready;
+                if (!navigator.serviceWorker.controller) return false;
+                const cache = await caches.open('math-explorer-shell-v1');
+                const keys = (await cache.keys()).map((r) => new URL(r.url).pathname);
+                return (
+                    keys.includes('/index.html') &&
+                    keys.includes('/reload.js') &&
+                    keys.includes('/bootstrap.js') &&
+                    keys.includes('/initializer.js')
+                );
+            }""",
+            timeout=10_000,
+        )
+
+        offline_statuses: dict[str, list[int]] = {}
+        page.on(
+            "response",
+            lambda resp: offline_statuses.setdefault(
+                urllib.parse.urlsplit(resp.url).path, []
+            ).append(resp.status),
+        )
+
+        context.set_offline(True)
+        doc_resp = page.reload(wait_until="domcontentloaded")
+        if doc_resp is None or doc_resp.status != 200:
+            raise AssertionError(
+                f"[offline_sw_shell_recovery] Expected HTTP 200 shell navigation from SHELL_CACHE_NAME, got {doc_resp.status if doc_resp else None}"
+            )
+
+        verify_error_recovery(page, "offline_sw_shell_recovery", EXPECTED_FAULTS["network"])
+        wasm_codes = offline_statuses.get("/math_explorer_gui_bg.wasm", [])
+        if 503 not in wasm_codes:
+            raise AssertionError(
+                f"[offline_sw_shell_recovery] Expected HTTP 503 for uncached .wasm offline, observed: {offline_statuses}"
+            )
+        assert_zero_csp_violations("offline_sw_shell_recovery", csp_violations)
+
+        if screenshot_path is not None:
+            page.screenshot(path=str(screenshot_path))
+        print(
+            "[PASS] offline_sw_shell_recovery: cached shell 200, uncached .wasm 503, #error_container active"
+        )
+    finally:
+        context.close()
+
+
 def run_smoke_suite(
     dist_dir: Path,
     trunk_toml: Path,
@@ -1015,6 +1310,24 @@ def run_smoke_suite(
                     webgl_pool,
                     "happy_path",
                     lambda b: run_happy_path_check(b, base_url, csp, screenshot_dir),
+                )
+
+                run_with_crash_retry(
+                    webgl_pool,
+                    "parallel_preload_and_sw_http_cache",
+                    lambda b: run_parallel_preload_and_sw_http_cache_check(b, dist_dir, csp),
+                )
+
+                run_with_crash_retry(
+                    webgl_pool,
+                    "offline_sw_shell_recovery",
+                    lambda b: run_offline_sw_shell_recovery_check(
+                        b,
+                        base_url,
+                        screenshot_dir / "smoke_offline_sw_shell_recovery.png"
+                        if screenshot_dir
+                        else None,
+                    ),
                 )
 
                 run_with_crash_retry(

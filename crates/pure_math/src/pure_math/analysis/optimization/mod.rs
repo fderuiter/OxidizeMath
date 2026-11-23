@@ -64,12 +64,9 @@ pub enum OptimizationError {
     /// Objective evaluation, Jacobian finite differencing, or linear step encountered non-finite values.
     #[error("Numerical instability or non-finite model state during optimization")]
     NumericalInstability,
-}
-
-impl From<EvolutionError> for OptimizationError {
-    fn from(_: EvolutionError) -> Self {
-        OptimizationError::ConversionError
-    }
+    /// Wrapped evolution engine error preserving causal source.
+    #[error("Evolution solver error: {0}")]
+    Evolution(#[from] EvolutionError),
 }
 
 #[allow(missing_docs)]

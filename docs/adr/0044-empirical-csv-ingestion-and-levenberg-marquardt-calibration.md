@@ -1,4 +1,4 @@
-# ADR 0042: Inbound Empirical CSV Ingestion and Zero-Allocation Levenberg-Marquardt Model Calibration
+# ADR 0044: Inbound Empirical CSV Ingestion and Zero-Allocation Levenberg-Marquardt Model Calibration
 
 ## Status
 Accepted (extends [ADR 0008](0008-finite-state-solver-guard.md), [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), and [ADR 0033](0033-wasm32-browser-tests-and-playwright-ci-smoke-gate.md))
@@ -29,5 +29,5 @@ OxidizeMath previously supported outbound plot/residual data export via `egui_pl
 
 ## Consequences
 - **Positive**: Empirical parameter estimation, uncertainty quantification, and AIC model selection run natively and in WebAssembly without external servers, new crate dependencies, or hot-path heap allocations.
-- **Positive**: Calibrated models round-trip deterministically through [ADR 0022](0022-unify-preset-state-serialization.md) JSON presets and shareable URLs, bringing registered GUI tools to `66` (`43` plot-export tools and `86` starter presets).
+- **Positive**: Calibrated models round-trip deterministically through [ADR 0022](0022-unify-preset-state-serialization.md) JSON presets and shareable URLs, bringing registered GUI tools to `71` (`48` plot-export tools and `100` starter presets).
 - **Neutral**: Raw uploaded CSV observations remain session-local rather than embedded in URL fragments to preserve strict URL length and privacy guarantees.

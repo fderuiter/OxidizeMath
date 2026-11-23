@@ -26,20 +26,16 @@ pub(super) fn render_epidemic_metrics(ui: &mut egui::Ui, tool: &SirTool) {
     }
 }
 
-/// Renders the SIR simulation plot, empirical outbreak CSV trigger, and scatter overlay.
-pub(super) fn render_simulation_plot(ui: &mut egui::Ui, tool: &mut SirTool) {
+/// Renders the SIR simulation plot and empirical outbreak scatter overlay.
+pub(super) fn render_simulation_plot(ui: &mut egui::Ui, tool: &SirTool) {
     let plot_id = ui.make_persistent_id("sir_plot");
-    ui.horizontal(|ui| {
-        ui.heading("Simulation");
-        if ui.button("Import Outbreak CSV...").clicked() {
-            tool.empirical_csv.trigger_open_dialog();
-        }
-    });
+    ui.heading("Simulation");
 
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+    let plot_height = (ui.available_width() * 0.5).clamp(220.0, 340.0);
     let plot = Plot::new("sir_plot")
         .id(plot_id)
-        .view_aspect(2.0)
+        .height(plot_height)
         .legend(egui_plot::Legend::default());
 
     plot.show(ui, |plot_ui| {
