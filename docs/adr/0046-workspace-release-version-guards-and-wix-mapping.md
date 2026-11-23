@@ -1,4 +1,4 @@
-# ADR 0045: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping
+# ADR 0046: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping
 
 ## Status
 

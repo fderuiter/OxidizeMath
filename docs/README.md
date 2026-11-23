@@ -30,13 +30,16 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0034: Curate `math_explorer` Facade Exports and Doctests](adr/0034-curate-math-explorer-facade-exports-and-doctests.md)
 - [ADR 0035: Spatial Fermi Games and Ising Droplet Brushes](adr/0035-fermi-spatial-games-and-ising-droplet-brushes.md)
 - [ADR 0037: Glicko-2 Frozen-Period Tournament Simulator](adr/0037-glicko2-frozen-period-tournament-simulator.md)
+- [ADR 0041: Volumetric Field Studio and Zero-Allocation 3D Kernels](adr/0041-volumetric-field-studio-zero-alloc-3d-kernels.md)
 - [ADR 0042: Zero-Allocation 2D Chladni Plate and Wave Tank Solver](adr/0042-2d-chladni-plate-and-wave-tank-solver.md)
 - [ADR 0043: Auto-Discovered Paradox Lab Tab for Stochastic Ratchets and Network Congestion](adr/0043-paradox-lab-interactive-tab.md)
 - [ADR 0043: Repair Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates](adr/0043-repair-guides-and-enforce-static-doc-gates.md)
 - [ADR 0044: Stack-Allocated General Relativity Geodesic Engine and Interactive Relativity Tab](adr/0044-geodesic-engine-and-relativity-tab.md)
 - [ADR 0044: Ratchet `missing_docs` Exemptions and Document Core API Entrypoints](adr/0044-ratchet-missing-docs-and-core-api-documentation.md)
 - [ADR 0044: Unify Build-Time Traceability Manifest Generation via `oxidize_core`](adr/0044-unify-build-time-traceability-engine.md)
-- [ADR 0045: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/0045-workspace-release-version-guards-and-wix-mapping.md)
+- [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](adr/0045-spatial-brush-kit-and-field-sculpting.md)
+- [ADR 0045: Zero-Allocation Weierstrass Elliptic Curves and Modular GUI Tab](adr/0045-weierstrass-elliptic-curves-and-modular-gui-tab.md)
+- [ADR 0046: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/0046-workspace-release-version-guards-and-wix-mapping.md)
 
 ## Contributing
 
