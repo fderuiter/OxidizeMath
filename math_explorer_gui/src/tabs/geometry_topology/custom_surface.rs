@@ -1,22 +1,29 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 //! Shared `CompiledExpr`-backed custom heightfield `z = f(x, y)` and parametric triple
-//! `(x(u, v), y(u, v), z(u, v))` formula controls for `SurfaceViewer` and `CurvatureHeatmap`.
+//! `(x(u, v), y(u, v), z(u, v))` formula and domain bound controls for `SurfaceViewer`
+//! and `CurvatureHeatmap`.
 
 use crate::framework::math_input::{ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
-use crate::framework::MathExpressionInputBar;
+use crate::framework::{bounded_drag_value, enforce_ordered_drag_range, MathExpressionInputBar};
 use eframe::egui;
 use math_commons::ast::{is_universal_constant, parse, CompiledExpr};
 use math_explorer::pure_math::differential_geometry::surface::{
     CompiledHeightfieldSurface, CompiledParametricSurface, ParametricSurfaceKind,
 };
 use std::collections::BTreeMap;
+use std::f64::consts::PI;
 
 pub const DEFAULT_HEIGHTFIELD_EXPR: &str = "a * (x^2 - y^2)";
 pub const DEFAULT_PARAM_X_EXPR: &str = "(2 + a * cos(v)) * cos(u)";
 pub const DEFAULT_PARAM_Y_EXPR: &str = "(2 + a * cos(v)) * sin(u)";
 pub const DEFAULT_PARAM_Z_EXPR: &str = "a * sin(v) + 0.3 * sin(2 * u)";
 
+pub const CUSTOM_DOMAIN_MIN_BOUND: f64 = -50.0;
+pub const CUSTOM_DOMAIN_MAX_BOUND: f64 = 50.0;
+pub const CUSTOM_DOMAIN_MIN_SPAN: f64 = 0.05;
+pub const DEFAULT_HF_BOUNDS: [f64; 2] = [-2.0, 2.0];
+pub const DEFAULT_PARAM_BOUNDS: [f64; 2] = [0.0, 2.0 * PI];
 pub struct CustomSurfaceSandbox {
     pub heightfield_bar: MathExpressionInputBar,
     pub param_x_bar: MathExpressionInputBar,
@@ -24,6 +31,10 @@ pub struct CustomSurfaceSandbox {
     pub param_z_bar: MathExpressionInputBar,
     pub param_sliders: ParameterSliderBank,
     pub parametric_error: Option<String>,
+    pub hf_u_bounds: [f64; 2],
+    pub hf_v_bounds: [f64; 2],
+    pub param_u_bounds: [f64; 2],
+    pub param_v_bounds: [f64; 2],
     cached_heightfield_zero: CompiledExpr,
     cached_parametric: (CompiledExpr, CompiledExpr, CompiledExpr),
 }
@@ -63,6 +74,10 @@ impl Default for CustomSurfaceSandbox {
             param_z_bar,
             param_sliders: ParameterSliderBank::new().with_range(-3.0..=3.0, 0.6),
             parametric_error: None,
+            hf_u_bounds: DEFAULT_HF_BOUNDS,
+            hf_v_bounds: DEFAULT_HF_BOUNDS,
+            param_u_bounds: DEFAULT_PARAM_BOUNDS,
+            param_v_bounds: DEFAULT_PARAM_BOUNDS,
             cached_heightfield_zero: zero_hf,
             cached_parametric: fallback,
         };
@@ -72,10 +87,58 @@ impl Default for CustomSurfaceSandbox {
 }
 
 impl CustomSurfaceSandbox {
+    #[must_use]
+    pub const fn uv_domain_for(
+        &self,
+        surface_type: ParametricSurfaceKind,
+    ) -> ((f64, f64), (f64, f64)) {
+        match surface_type {
+            ParametricSurfaceKind::CustomHeightfield => (
+                (self.hf_u_bounds[0], self.hf_u_bounds[1]),
+                (self.hf_v_bounds[0], self.hf_v_bounds[1]),
+            ),
+            ParametricSurfaceKind::CustomParametric => (
+                (self.param_u_bounds[0], self.param_u_bounds[1]),
+                (self.param_v_bounds[0], self.param_v_bounds[1]),
+            ),
+            other => other.uv_domain(),
+        }
+    }
+
+    pub fn set_uv_bounds(
+        &mut self,
+        surface_type: ParametricSurfaceKind,
+        u_bounds: [f64; 2],
+        v_bounds: [f64; 2],
+    ) -> Result<(), String> {
+        validate_domain_pair(u_bounds, "u")?;
+        validate_domain_pair(v_bounds, "v")?;
+        match surface_type {
+            ParametricSurfaceKind::CustomHeightfield => {
+                self.hf_u_bounds = u_bounds;
+                self.hf_v_bounds = v_bounds;
+            }
+            ParametricSurfaceKind::CustomParametric => {
+                self.param_u_bounds = u_bounds;
+                self.param_v_bounds = v_bounds;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     pub fn state_fingerprint(&self, surface_type: ParametricSurfaceKind) -> u64 {
         use std::hash::{Hash as _, Hasher as _};
         match surface_type {
-            ParametricSurfaceKind::CustomHeightfield => self.heightfield_bar.state_fingerprint(),
+            ParametricSurfaceKind::CustomHeightfield => {
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                self.heightfield_bar.state_fingerprint().hash(&mut h);
+                self.hf_u_bounds[0].to_bits().hash(&mut h);
+                self.hf_u_bounds[1].to_bits().hash(&mut h);
+                self.hf_v_bounds[0].to_bits().hash(&mut h);
+                self.hf_v_bounds[1].to_bits().hash(&mut h);
+                h.finish().max(1)
+            }
             ParametricSurfaceKind::CustomParametric => {
                 let mut h = std::collections::hash_map::DefaultHasher::new();
                 self.param_x_bar.raw_text.hash(&mut h);
@@ -83,6 +146,10 @@ impl CustomSurfaceSandbox {
                 self.param_z_bar.raw_text.hash(&mut h);
                 self.parametric_error.is_some().hash(&mut h);
                 self.param_sliders.state_fingerprint().hash(&mut h);
+                self.param_u_bounds[0].to_bits().hash(&mut h);
+                self.param_u_bounds[1].to_bits().hash(&mut h);
+                self.param_v_bounds[0].to_bits().hash(&mut h);
+                self.param_v_bounds[1].to_bits().hash(&mut h);
                 h.finish().max(1)
             }
             _ => 0,
@@ -93,6 +160,14 @@ impl CustomSurfaceSandbox {
         match surface_type {
             ParametricSurfaceKind::CustomHeightfield => {
                 self.heightfield_bar.ui(ui);
+                ui.add_space(6.0);
+                draw_domain_bounds_editor(
+                    ui,
+                    "Domain Bounds",
+                    ("x [u_min, u_max]:", &mut self.hf_u_bounds),
+                    ("y [v_min, v_max]:", &mut self.hf_v_bounds),
+                    DEFAULT_HF_BOUNDS,
+                );
             }
             ParametricSurfaceKind::CustomParametric => {
                 let mut edited = false;
@@ -107,6 +182,14 @@ impl CustomSurfaceSandbox {
                     ui.colored_label(palette.error, format!("⚠️ {err}"));
                 }
                 self.param_sliders.ui(ui);
+                ui.add_space(6.0);
+                draw_domain_bounds_editor(
+                    ui,
+                    "Domain Bounds",
+                    ("u [u_min, u_max]:", &mut self.param_u_bounds),
+                    ("v [v_min, v_max]:", &mut self.param_v_bounds),
+                    DEFAULT_PARAM_BOUNDS,
+                );
             }
             _ => {}
         }
@@ -195,6 +278,26 @@ impl CustomSurfaceSandbox {
         (custom_expr, parametric_exprs, custom_params)
     }
 
+    #[must_use]
+    pub fn export_domain_bounds(
+        &self,
+        surface_type: ParametricSurfaceKind,
+    ) -> (Option<[f64; 2]>, Option<[f64; 2]>) {
+        match surface_type {
+            ParametricSurfaceKind::CustomHeightfield => (
+                (!approx_pair(self.hf_u_bounds, DEFAULT_HF_BOUNDS)).then_some(self.hf_u_bounds),
+                (!approx_pair(self.hf_v_bounds, DEFAULT_HF_BOUNDS)).then_some(self.hf_v_bounds),
+            ),
+            ParametricSurfaceKind::CustomParametric => (
+                (!approx_pair(self.param_u_bounds, DEFAULT_PARAM_BOUNDS))
+                    .then_some(self.param_u_bounds),
+                (!approx_pair(self.param_v_bounds, DEFAULT_PARAM_BOUNDS))
+                    .then_some(self.param_v_bounds),
+            ),
+            _ => (None, None),
+        }
+    }
+
     pub fn load_fields(
         &mut self,
         custom_expr: Option<&str>,
@@ -218,6 +321,94 @@ impl CustomSurfaceSandbox {
         self.param_z_bar.set_expression(pz);
         self.param_sliders.set_params_map(custom_params);
         self.recompile_parametric_triple();
+    }
+
+    pub fn load_domain_bounds(
+        &mut self,
+        surface_type: ParametricSurfaceKind,
+        u_bounds: Option<[f64; 2]>,
+        v_bounds: Option<[f64; 2]>,
+    ) -> Result<(), String> {
+        self.hf_u_bounds = DEFAULT_HF_BOUNDS;
+        self.hf_v_bounds = DEFAULT_HF_BOUNDS;
+        self.param_u_bounds = DEFAULT_PARAM_BOUNDS;
+        self.param_v_bounds = DEFAULT_PARAM_BOUNDS;
+        if u_bounds.is_none() && v_bounds.is_none() {
+            return Ok(());
+        }
+        let default_pair = match surface_type {
+            ParametricSurfaceKind::CustomHeightfield => DEFAULT_HF_BOUNDS,
+            _ => DEFAULT_PARAM_BOUNDS,
+        };
+        let u = u_bounds.unwrap_or(default_pair);
+        let v = v_bounds.unwrap_or(default_pair);
+        self.set_uv_bounds(surface_type, u, v)
+    }
+}
+
+fn approx_pair(a: [f64; 2], b: [f64; 2]) -> bool {
+    (a[0] - b[0]).abs() < 1e-12 && (a[1] - b[1]).abs() < 1e-12
+}
+
+fn validate_domain_pair(bounds: [f64; 2], axis: &str) -> Result<(), String> {
+    let [lo, hi] = bounds;
+    if !lo.is_finite()
+        || !hi.is_finite()
+        || !(CUSTOM_DOMAIN_MIN_BOUND..=CUSTOM_DOMAIN_MAX_BOUND).contains(&lo)
+        || !(CUSTOM_DOMAIN_MIN_BOUND..=CUSTOM_DOMAIN_MAX_BOUND).contains(&hi)
+        || lo + CUSTOM_DOMAIN_MIN_SPAN > hi
+    {
+        return Err(format!(
+            "Custom surface {axis}_bounds out of valid ordered range"
+        ));
+    }
+    Ok(())
+}
+
+fn draw_domain_bounds_editor(
+    ui: &mut egui::Ui,
+    heading: &str,
+    u_axis: (&str, &mut [f64; 2]),
+    v_axis: (&str, &mut [f64; 2]),
+    defaults: [f64; 2],
+) {
+    ui.label(heading);
+    for (label, bounds) in [(u_axis.0, &mut *u_axis.1), (v_axis.0, &mut *v_axis.1)] {
+        let mut min_changed = false;
+        let mut max_changed = false;
+        ui.horizontal(|ui| {
+            ui.label(label);
+            min_changed = ui
+                .add(bounded_drag_value(
+                    &mut bounds[0],
+                    CUSTOM_DOMAIN_MIN_BOUND..=CUSTOM_DOMAIN_MAX_BOUND,
+                    0.1,
+                ))
+                .changed();
+            ui.label("to");
+            max_changed = ui
+                .add(bounded_drag_value(
+                    &mut bounds[1],
+                    CUSTOM_DOMAIN_MIN_BOUND..=CUSTOM_DOMAIN_MAX_BOUND,
+                    0.1,
+                ))
+                .changed();
+        });
+        let (mut lo, mut hi) = (bounds[0], bounds[1]);
+        enforce_ordered_drag_range(
+            &mut lo,
+            &mut hi,
+            CUSTOM_DOMAIN_MIN_BOUND,
+            CUSTOM_DOMAIN_MAX_BOUND,
+            CUSTOM_DOMAIN_MIN_SPAN,
+            min_changed,
+            max_changed,
+        );
+        *bounds = [lo, hi];
+    }
+    if ui.small_button("Reset Domain").clicked() {
+        *u_axis.1 = defaults;
+        *v_axis.1 = defaults;
     }
 }
 

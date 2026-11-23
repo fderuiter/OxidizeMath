@@ -1,11 +1,16 @@
 //! Curve fitting and nonlinear regression analysis for discrete 2D plot datasets.
 
+mod custom;
 mod lm;
 mod nonlinear;
 mod poly;
 mod seeds;
 #[cfg(test)]
 mod tests;
+
+pub use custom::{
+    CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, fit_custom_evaluator,
+};
 
 thread_local! {
     static FIT_MODEL_WITH_AXES_CALL_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -27,7 +32,10 @@ pub fn reset_fit_model_with_axes_call_count() {
 /// Maximum Levenberg-Marquardt iterations per nonlinear fit.
 pub const MAX_LM_ITERATIONS: usize = 50;
 
-/// Supported preset curve fitting models.
+/// Maximum number of free parameters supported by Levenberg-Marquardt nonlinear regression.
+pub const MAX_FIT_PARAMS: usize = 6;
+
+/// Supported curve fitting models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum FitType {
@@ -45,6 +53,8 @@ pub enum FitType {
     Logistic,
     /// Four-parameter sinusoidal model ($y = a \sin(b x + c) + d$)
     Sinusoidal,
+    /// Callback-compiled custom formula ($1 \le k \le 6$ parameters)
+    Custom,
 }
 
 impl FitType {
@@ -76,6 +86,7 @@ impl FitType {
             Self::Logarithmic => "Logarithmic (a·ln(x)+b)",
             Self::Logistic => "Logistic (L/(1+a·exp(-kx)))",
             Self::Sinusoidal => "Sinusoidal (a·sin(bx+c)+d)",
+            Self::Custom => "Custom Formula f(x)",
         }
     }
 
@@ -93,6 +104,7 @@ impl FitType {
             Self::Logarithmic => "Log",
             Self::Logistic => "Logistic",
             Self::Sinusoidal => "Sinusoidal",
+            Self::Custom => "Custom",
         }
     }
 
@@ -129,6 +141,9 @@ pub struct FitResult {
     pub log_y: bool,
     /// Whether transformed linearized fitting (Desmos Log Mode) was used.
     pub log_mode: bool,
+    /// Optional compiled callback evaluator when `fit_type == FitType::Custom`.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub custom_evaluator: Option<CustomEvaluatorHandle>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) poly_centered: Option<(f64, f64, Vec<f64>)>,
 }
@@ -157,6 +172,11 @@ impl FitResult {
             | FitType::Sinusoidal => {
                 nonlinear::eval_nonlinear_model(self.fit_type, &self.coefficients, x)
             }
+            FitType::Custom => self
+                .custom_evaluator
+                .as_ref()
+                .and_then(|h| h.0.eval(x, &self.coefficients))
+                .unwrap_or(f64::NAN),
         }
     }
 }
@@ -177,6 +197,7 @@ pub fn fit_model_with_axes(
         FitType::Polynomial(deg) => {
             poly::fit_polynomial_scaled(points, deg.clamp(1, 4), dataset_name, log_x, log_y)
         }
+        FitType::Custom => None,
         _ => nonlinear::fit_nonlinear(points, fit_type, dataset_name, log_mode),
     }
 }
@@ -187,7 +208,10 @@ mod serde_tests {
 
     #[test]
     fn fit_type_and_result_roundtrip_json() {
-        for preset in FitType::MENU_PRESETS {
+        for preset in FitType::MENU_PRESETS
+            .into_iter()
+            .chain(std::iter::once(FitType::Custom))
+        {
             let encoded = serde_json::to_string(&preset).expect("serialize FitType");
             let decoded: FitType = serde_json::from_str(&encoded).expect("deserialize FitType");
             assert_eq!(decoded, preset);

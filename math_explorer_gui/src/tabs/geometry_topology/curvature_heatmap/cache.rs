@@ -78,7 +78,7 @@ impl CurvatureHeatmap {
     }
 
     fn evaluate_surface_curvature(&mut self) {
-        let uv = self.surface_type.uv_domain();
+        let uv = self.custom_sandbox.uv_domain_for(self.surface_type);
         let u_res = self.u_resolution;
         let v_res = self.v_resolution;
         let ctype = self.curvature_type;
