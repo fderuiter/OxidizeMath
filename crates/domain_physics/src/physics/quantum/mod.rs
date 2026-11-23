@@ -76,6 +76,7 @@ pub mod coupling;
 #[allow(missing_docs)]
 pub mod fourier;
 pub mod hamiltonian;
+pub mod hydrogenic;
 pub mod schrodinger;
 #[allow(missing_docs)]
 pub mod spin;
@@ -88,7 +89,11 @@ pub use fourier::{dft_operator, idft_operator};
 pub use hamiltonian::{
     MAX_SCULPT_POTENTIAL, MIN_SCULPT_POTENTIAL, PotentialPreset1D,
     apply_bresenham_potential_stroke, build_1d_potential_preset, construct_1d_hamiltonian,
-    gaussian_wavepacket, partition_region_probabilities,
+    construct_two_state_eigen_hamiltonian, gaussian_wavepacket, partition_region_probabilities,
+};
+pub use hydrogenic::{
+    HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumFieldObservable, hydrogenic_energy_au,
+    hydrogenic_orbital_cartesian, hydrogenic_radial_wavefunction,
 };
 pub use schrodinger::{evolve_state, evolve_state_in_place, time_evolution_operator};
 pub use spin::{sigma_x, sigma_y, sigma_z};

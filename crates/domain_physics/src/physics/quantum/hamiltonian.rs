@@ -100,6 +100,25 @@ pub fn construct_1d_hamiltonian(
     QuantumOperator::new(matrix)
 }
 
+/// Constructs a $2 \times 2$ Hamiltonian in the two-eigenstate subspace $\{|\psi_1\rangle, |\psi_2\rangle\}$.
+///
+/// Diagonal elements store the unperturbed eigenenergies $(E_1, E_2)$, while `coupling` adds a
+/// real symmetric off-diagonal dipole interaction $V_{12} = V_{21}$ (e.g. $0.0$ for free phase beating).
+#[verified_engine::verified]
+pub fn construct_two_state_eigen_hamiltonian(e1: f64, e2: f64, coupling: f64) -> QuantumOperator {
+    let matrix = DMatrix::from_row_slice(
+        2,
+        2,
+        &[
+            Complex::new(e1, 0.0),
+            Complex::new(coupling, 0.0),
+            Complex::new(coupling, 0.0),
+            Complex::new(e2, 0.0),
+        ],
+    );
+    QuantumOperator::new(matrix)
+}
+
 /// Creates a normalized 1D Gaussian wavepacket state
 /// $\psi(x) = A \exp\left(-\frac{(x - x_0)^2}{2\sigma^2}\right)\exp(i k_0 x)$.
 ///
