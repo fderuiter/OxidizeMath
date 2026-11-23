@@ -2742,6 +2742,9 @@
       "signature": "impl CellMask2D { pub fn paint_disk (& mut self , _ : i32 , _ : i32 , _ : i32 , _ : ReactionCellRole) }"
     },
     {
+      "signature": "impl CellMask2D { pub fn pin_turing_state (& self , _ : & mut crate :: biology :: morphogenesis :: TuringState < 2 >) }"
+    },
+    {
       "signature": "impl CellMask2D { pub fn roles (& self) -> & [u8] }"
     },
     {
@@ -3197,6 +3200,9 @@
     },
     {
       "signature": "impl < const N : usize > TuringState < N > { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl TuringState < 2 > { pub fn pin_cell_mask (& mut self , _ : & crate :: biology :: diffusion :: CellMask2D) }"
     },
     {
       "signature": "impl TuringState < 2 > { pub fn u (& self) -> & [f64] }"

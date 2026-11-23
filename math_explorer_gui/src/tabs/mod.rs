@@ -78,7 +78,7 @@ pub trait ExplorerTab {
 
     /// Returns the active tool's interactive canvas `Id` when focus is owned by a non-text canvas.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
-        None
+        self.framework().and_then(|f| f.focused_canvas_id())
     }
 
     /// Academic domain category of the tab for top navigation bar grouping.

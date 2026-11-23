@@ -1,13 +1,13 @@
 //! Live 1D potential $V(x)$ sculpting, resonant double-barrier cavity stamping,
-//! and sparse tuple persistence for [`super::wave_sim::WaveSimulatorTool`] and [`super::wave_sim::WaveRunner`].
+//! and sparse tuple persistence for [`super::WaveSimulatorTool`] and [`super::WaveRunner`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::wave_sim::presets::{
+use super::presets::{
     barrier_interval_for_preset, clamp_potential_sample, evaluate_potential_grid, DEFAULT_DT,
-    GRID_POINTS, GRID_X_MAX, GRID_X_MIN, POTENTIAL_DISPLAY_SCALE, V0_MAX,
+    GRID_POINTS, GRID_X_MAX, GRID_X_MIN, POTENTIAL_DISPLAY_SCALE,
 };
-use super::wave_sim::{WaveRunner, WaveSimulatorTool};
+use super::{WaveRunner, WaveSimulatorTool};
 use crate::async_sim::SimCommand;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{
@@ -84,20 +84,20 @@ pub(crate) fn apply_stroke_to_potential_slice(
 
     match stroke.mode {
         BrushMode::PotentialBarrier | BrushMode::Solid => {
-            let v_bar = if is_stamp {
+            let v_bar = if is_stamp && plot_v.abs() <= 1.0 {
                 16.0
+            } else if plot_v >= 0.0 {
+                clamp_potential_sample(plot_v.max(4.0))
             } else {
-                clamp_potential_sample(plot_v.clamp(6.0, V0_MAX))
+                clamp_potential_sample(plot_v)
             };
             for v in &mut potential[lo..=hi] {
                 *v = v_bar;
             }
         }
         BrushMode::PotentialWell => {
-            let v_well = if is_stamp {
-                -12.0
-            } else if plot_v < -1.0 {
-                clamp_potential_sample(plot_v.clamp(-V0_MAX, -1.0))
+            let v_well = if plot_v < -1.0 {
+                clamp_potential_sample(plot_v)
             } else {
                 -12.0
             };
@@ -106,10 +106,10 @@ pub(crate) fn apply_stroke_to_potential_slice(
             }
         }
         BrushMode::PotentialStep => {
-            let v_step = if is_stamp {
+            let v_step = if is_stamp && plot_v.abs() <= 1.0 {
                 12.0
             } else {
-                clamp_potential_sample(plot_v.clamp(4.0, V0_MAX))
+                clamp_potential_sample(plot_v)
             };
             for v in &mut potential[lo..n] {
                 *v = v_step;
@@ -209,7 +209,12 @@ impl WaveRunner {
         }
         construct_1d_hamiltonian_into(&self.potential, dx, 1.0, 1.0, &mut self.hamiltonian);
         self.cached_dt = None;
+        let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
+        if dt.is_finite() && dt > 0.0 {
+            self.refresh_propagator(dt);
+        }
         self.update_observables_in_place();
+        self.refresh_sonification(dt);
     }
 
     pub(crate) fn handle_sculpt_command(&mut self, cmd: SimCommand) {
@@ -304,7 +309,7 @@ impl WaveSimulatorTool {
 
     pub(crate) fn apply_ui_brush_context(&mut self, ic: &InteractionContext) {
         if let Some(stroke) = ic.brush_stroke {
-            self.apply_ui_brush_stroke(stroke, None);
+            self.apply_ui_brush_stroke(stroke, Some(&ic.response.ctx));
         }
     }
 

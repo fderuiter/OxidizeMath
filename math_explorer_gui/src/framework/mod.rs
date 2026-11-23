@@ -1,4 +1,7 @@
 pub mod brush_codec;
+pub mod brush_dispatch;
+#[cfg(all(test, feature = "physics", feature = "biology"))]
+mod brush_dispatch_tests;
 pub mod callout_overlay;
 pub mod challenge;
 mod challenge_hud;
@@ -66,6 +69,7 @@ mod ui;
 mod url_share;
 
 pub use brush_codec::*;
+pub use brush_dispatch::{PlotBrushController, PlotBrushFrame};
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;

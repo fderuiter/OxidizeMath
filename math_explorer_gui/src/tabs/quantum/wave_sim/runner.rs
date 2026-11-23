@@ -220,7 +220,7 @@ impl WaveRunner {
         );
     }
 
-    fn refresh_propagator(&mut self, dt: f64) {
+    pub(crate) fn refresh_propagator(&mut self, dt: f64) {
         if self.cached_dt != Some(dt) {
             self.propagator = time_evolution_operator(&self.hamiltonian, dt, 1.0);
             self.cached_dt = Some(dt);

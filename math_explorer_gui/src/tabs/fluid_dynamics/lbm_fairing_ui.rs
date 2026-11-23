@@ -388,6 +388,13 @@ impl UnifiedUiExtension for LbmUiExtension {
     }
 
     fn on_brush_stroke(&mut self, stroke: &BrushStroke) -> bool {
+        let (gx, gy) = crate::framework::SpatialBrushKit::plot_to_grid_y_up(
+            stroke.end,
+            LBM_WIDTH,
+            LBM_HEIGHT,
+        );
+        self.cursor_x = gx.clamp(LBM_INLET_COLS as i32, LBM_WIDTH as i32 - 1);
+        self.cursor_y = gy.clamp(0, LBM_HEIGHT as i32 - 1);
         if apply_stroke_to_fairing_mask(&mut self.mask, stroke, self.active_challenge.is_some()) {
             self.evaluator
                 .evaluate_mask_in_place(&self.mask, CHALLENGE_LBM_VISCOSITY);
@@ -436,11 +443,17 @@ impl UnifiedUiExtension for LbmUiExtension {
 
     fn handle_canvas_overlay(
         &mut self,
-        ctx: &egui::Context,
+        _ctx: &egui::Context,
         visuals: &egui::Visuals,
         plot_ui: &mut egui_plot::PlotUi,
     ) -> Vec<SimCommand> {
         let palette = crate::app::SemanticPalette::from_visuals(visuals);
+        let warn_rgb = math_commons::math_kernel::colormap::ensure_dark_canvas_contrast([
+            palette.warning.r(),
+            palette.warning.g(),
+            palette.warning.b(),
+        ]);
+        let core_color = egui::Color32::from_rgb(warn_rgb[0], warn_rgb[1], warn_rgb[2]);
         let ring_pts: Vec<[f64; 2]> = (0..24)
             .map(|k| {
                 let theta = std::f64::consts::TAU * (k as f64) / 24.0;
@@ -453,18 +466,17 @@ impl UnifiedUiExtension for LbmUiExtension {
         plot_ui.polygon(
             Polygon::new("Protected Core (R=4)", ring_pts)
                 .fill_color(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::new(1.5_f32, palette.warning)),
+                .stroke(egui::Stroke::new(1.5_f32, core_color)),
         );
         plot_ui.points(
             Points::new(
                 "Sculpt Cursor",
                 vec![[self.cursor_x as f64 + 0.5, self.cursor_y as f64 + 0.5]],
             )
-            .radius(5.0_f32)
+            .radius(4.0_f32)
             .color(palette.accent),
         );
-        let resp = plot_ui.response().clone();
-        self.handle_sculpt_keys_ctx(ctx, &resp)
+        Vec::new()
     }
 
     fn sync_callouts(&self, _snap: Option<&StateSnapshot>, callouts: &mut CalloutManager) {

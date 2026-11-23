@@ -9,7 +9,7 @@ use crate::async_sim::ui::{
 use crate::async_sim::SimCommand;
 use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
 use crate::framework::{
-    BrushMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
+    BrushMode, PlaybackAction, PlaybackTransport, PlotBrushController, PlotBrushFrame,
 };
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui;
@@ -344,7 +344,7 @@ impl MorphogenesisTool {
             let w = self.width as f32;
             let h = self.height as f32;
             let allow_pan = !self.brush_kit.is_sculpting();
-            let mut strokes = Vec::new();
+            let mut brush_frame: Option<PlotBrushFrame> = None;
             let plot_resp = Plot::new("morphogenesis_plot")
                 .data_aspect(1.0)
                 .view_aspect(1.0)
@@ -359,16 +359,16 @@ impl MorphogenesisTool {
                         PlotPoint::new(f64::from(w) / 2.0, f64::from(h) / 2.0),
                         [w, h],
                     ));
-                    strokes = self.brush_kit.sample_plot(
+                    brush_frame = Some(PlotBrushController::capture_plot(
+                        &mut self.brush_kit,
                         plot_ui,
                         [0.5, 0.5],
                         [f64::from(w) - 0.5, f64::from(h) - 0.5],
                         Some(BrushMode::Erase),
-                    );
+                    ));
                 });
-            for stroke in strokes {
-                let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
-                self.on_brush(&ic);
+            if let Some(frame) = brush_frame {
+                frame.dispatch(ui, &plot_resp.response, self);
             }
         } else {
             render_empty_plot_guidance(

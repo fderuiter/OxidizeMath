@@ -2,7 +2,8 @@
 
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::{
-    BrushMode, CalloutManager, CalloutSpec, InteractionContext, InteractiveTool, SpatialBrushKit,
+    BrushMode, CalloutManager, CalloutSpec, InteractionContext, InteractiveTool,
+    PlotBrushController, PlotBrushFrame, SpatialBrushKit,
 };
 use eframe::egui;
 use egui_plot::{Arrows, Legend, Line, MarkerShape, Plot, Points};
@@ -13,6 +14,8 @@ use std::f64::consts::PI;
 
 #[path = "potential_flow/cache.rs"]
 mod cache;
+#[path = "potential_flow/interact.rs"]
+mod interact;
 #[path = "potential_flow/shader.rs"]
 mod shader;
 #[path = "potential_flow/streamlines.rs"]
@@ -40,6 +43,7 @@ pub struct PotentialFlowTool {
     pub(crate) new_element_y: f64,
     pub(crate) new_element_angle: f64,
     pub(crate) brush_kit: SpatialBrushKit,
+    pub(crate) active_drag_element: Option<usize>,
     pub(crate) show_streamlines: bool,
     pub(crate) show_stagnation_points: bool,
     pub(crate) cached_polylines: Vec<Vec<[f64; 2]>>,
@@ -129,6 +133,7 @@ impl Default for PotentialFlowTool {
             new_element_y: 0.0,
             new_element_angle: 0.0,
             brush_kit: Self::default_flow_brush_kit(),
+            active_drag_element: None,
             show_streamlines: true,
             show_stagnation_points: true,
             cached_polylines: Vec::new(),
@@ -213,10 +218,16 @@ impl InteractiveTool for PotentialFlowTool {
         Some(self)
     }
 
+    fn on_click(&mut self, ctx: &InteractionContext) {
+        self.handle_flow_click(ctx);
+    }
+
+    fn on_drag(&mut self, ctx: &InteractionContext) {
+        self.handle_flow_drag(ctx);
+    }
+
     fn on_brush(&mut self, ctx: &InteractionContext) {
-        if let Some(ref stroke) = ctx.brush_stroke {
-            self.apply_flow_brush_stroke(stroke);
-        }
+        self.apply_flow_brush_context(ctx);
     }
 
     fn focused_canvas_id(&self) -> Option<egui::Id> {
@@ -233,8 +244,9 @@ impl InteractiveTool for PotentialFlowTool {
         let (origins, tips) = self.ensure_cached_arrows();
         let allow_pan = !self.brush_kit.is_sculpting();
         let vr = self.view_range.max(1.0);
-        let mut strokes = Vec::new();
+        let mut brush_frame: Option<PlotBrushFrame> = None;
         egui::CentralPanel::default().show_inside(ui, |ui| {
+            let dark_mode = ui.visuals().dark_mode || self.high_contrast;
             let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
             let plot_resp = Plot::new("potential_flow_plot")
                 .data_aspect(1.0)
@@ -243,14 +255,20 @@ impl InteractiveTool for PotentialFlowTool {
                 .allow_zoom(allow_pan)
                 .legend(Legend::default())
                 .show(ui, |plot_ui| {
-                    self.render_flow_plot_layers(plot_ui, &palette, origins, tips);
-                    strokes =
-                        self.brush_kit
-                            .sample_plot(plot_ui, [-vr, -vr], [vr, vr], Some(BrushMode::Erase));
+                    self.render_flow_plot_layers(plot_ui, &palette, dark_mode, origins, tips);
+                    brush_frame = Some(PlotBrushController::capture_plot(
+                        &mut self.brush_kit,
+                        plot_ui,
+                        [-vr, -vr],
+                        [vr, vr],
+                        Some(BrushMode::Erase),
+                    ));
                 });
-            for stroke in strokes {
-                let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
-                self.on_brush(&ic);
+            if let Some(frame) = brush_frame {
+                if !frame.is_dragging {
+                    self.active_drag_element = None;
+                }
+                frame.dispatch(ui, &plot_resp.response, self);
             }
         });
     }
@@ -261,6 +279,7 @@ impl PotentialFlowTool {
         &mut self,
         plot_ui: &mut egui_plot::PlotUi<'_>,
         palette: &crate::app::SemanticPalette,
+        dark_mode: bool,
         origins: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
         tips: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
     ) {
@@ -290,6 +309,7 @@ impl PotentialFlowTool {
                     .color(palette.warning),
             );
         }
+        self.render_singularity_handles(plot_ui, palette, dark_mode);
         self.callout_manager.render_on_plot(plot_ui);
     }
 
@@ -363,6 +383,7 @@ impl PotentialFlowTool {
     }
 
     fn clear(&mut self) {
+        self.active_drag_element = None;
         self.elements.clear();
         self.field.clear();
         self.cached_polylines.clear();

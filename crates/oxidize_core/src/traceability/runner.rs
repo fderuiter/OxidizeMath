@@ -46,16 +46,21 @@ impl VirtualFileSystem for LocalFsVfs {
     }
 }
 
-const IGNORED_TRACEABILITY_MEMBERS: &[&str] = &[
+pub(super) const IGNORED_TRACEABILITY_MEMBERS: &[&str] = &[
     "crates/unified_verification",
     "crates/diagnostics",
     "crates/federated_registry",
     "crates/oxidize_core",
     "crates/verified_engine",
     "crates/verified_engine_macros",
+    "crates/markdown_tests",
     "apps/xtask",
     "egui_plot",
 ];
+
+pub(super) fn is_ignored_traceability_member(member: &str) -> bool {
+    IGNORED_TRACEABILITY_MEMBERS.contains(&member)
+}
 
 fn scan_src_dir(src_path: PathBuf, strip_root: Option<&Path>, code_dirs: &mut Vec<String>) {
     let mut stack = vec![src_path];

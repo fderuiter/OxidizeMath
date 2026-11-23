@@ -228,22 +228,7 @@ impl FiniteStateGuard for MorphogenesisKineticsRunner {
 
 impl MorphogenesisKineticsRunner {
     pub(crate) fn enforce_mask_concentrations(&mut self) {
-        if !self.system.diffusion.mask.has_active_cells() {
-            return;
-        }
-        let emit_u = self.system.diffusion.mask.emitter_u_level;
-        let emit_v = self.system.diffusion.mask.emitter_v_level;
-        for idx in 0..(self.width * self.height) {
-            match ReactionCellRole::from_u8(self.system.diffusion.mask.roles()[idx]) {
-                ReactionCellRole::ZeroFluxWall | ReactionCellRole::Sink => {
-                    self.system.u_mut()[idx] = 0.0;
-                    self.system.v_mut()[idx] = 0.0;
-                }
-                ReactionCellRole::EmitterU => self.system.u_mut()[idx] = emit_u,
-                ReactionCellRole::EmitterV => self.system.v_mut()[idx] = emit_v,
-                ReactionCellRole::Free => {}
-            }
-        }
+        self.system.state.pin_cell_mask(&self.system.diffusion.mask);
     }
 
     fn sync_system_params(&mut self) -> Option<f64> {
@@ -373,6 +358,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
         if let Some(dt) = self.sync_system_params() {
             self.enforce_mask_concentrations();
             self.system.step(dt);
+            self.enforce_mask_concentrations();
         }
     }
 

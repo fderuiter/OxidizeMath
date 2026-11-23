@@ -10,7 +10,10 @@ use crate::framework::{
     decode_rle_mask, encode_rle_mask, rasterize_disk_stroke, BrushInteractionMode, BrushMode,
     BrushStroke, SpatialBrushKit,
 };
-use eframe::egui;
+use eframe::egui::{self, Color32};
+use math_commons::math_kernel::colormap::{
+    ensure_dark_canvas_contrast, heatmap_color, heatmap_color_high_contrast,
+};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     inject_velocity_jet, stamp_naca4_airfoil, stamp_venturi_nozzle, BgkCollision,
@@ -89,6 +92,51 @@ pub(crate) fn inspect_solver_solid_and_core(
         }
     }
     (n_solid, core_intact)
+}
+
+pub(crate) fn render_lbm_snapshot_pixels(
+    solver: &LatticeBoltzmannD2Q9<BgkCollision>,
+    vorticity_buf: &[f64],
+    display_vorticity: bool,
+    high_contrast: bool,
+) -> (Vec<Color32>, f64) {
+    let width = solver.width();
+    let height = solver.height();
+    let mut pixels = vec![Color32::BLACK; width * height];
+    let mut max_vort = 0.0_f64;
+    let obs_color = if high_contrast {
+        let rgb = ensure_dark_canvas_contrast([180, 180, 180]);
+        Color32::from_rgb(rgb[0], rgb[1], rgb[2])
+    } else {
+        Color32::from_gray(50)
+    };
+    for y in 0..height {
+        let solver_y = height - 1 - y;
+        for x in 0..width {
+            let pixel_idx = flatten_2d_index(x, y, width);
+            let solver_idx = flatten_2d_index(x, solver_y, width);
+            if solver.is_obstacle(x, solver_y) {
+                pixels[pixel_idx] = obs_color;
+            } else {
+                let omega = vorticity_buf[solver_idx];
+                let safe_w = if omega.is_finite() { omega } else { 0.0 };
+                max_vort = max_vort.max(safe_w.abs());
+                let norm = if display_vorticity {
+                    (0.5 + safe_w * 12.0).clamp(0.0, 1.0)
+                } else {
+                    let v = solver.get_velocity_magnitude(x, solver_y);
+                    (if v.is_finite() { v } else { 0.0 } * 1000.0 / 255.0).clamp(0.0, 1.0)
+                };
+                let rgb = if high_contrast {
+                    heatmap_color_high_contrast(norm)
+                } else {
+                    heatmap_color(norm)
+                };
+                pixels[pixel_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+            }
+        }
+    }
+    (pixels, max_vort)
 }
 
 pub(crate) fn build_default_obstacle_bytes(params: &HashMap<String, f64>) -> Vec<u8> {
@@ -183,14 +231,11 @@ pub(crate) fn record_stroke_in_rle(
 }
 
 pub(crate) fn export_solver_rle(solver: &LatticeBoltzmannD2Q9<BgkCollision>) -> Vec<[u32; 2]> {
-    let w = solver.width();
-    let h = solver.height();
+    let (w, h) = (solver.width(), solver.height());
     let mut bytes = vec![0_u8; w * h];
     for y in 0..h {
         for x in 0..w {
-            if solver.is_obstacle(x, y) {
-                bytes[flatten_2d_index(x, y, w)] = 1;
-            }
+            bytes[flatten_2d_index(x, y, w)] = u8::from(solver.is_obstacle(x, y));
         }
     }
     encode_rle_mask(&bytes)
@@ -202,22 +247,10 @@ pub(crate) fn stamp_airfoil_on_solver(
     aoa_deg: f64,
 ) {
     solver.clear_obstacles();
-    let airfoil = Naca4Airfoil::from_code(
-        code,
-        26.0,
-        0.32 * solver.width() as f64,
-        0.5 * solver.height() as f64,
-        aoa_deg,
-    );
-    stamp_naca4_airfoil(solver, &airfoil);
-    solver.set_inlet(
-        0,
-        0,
-        solver.width(),
-        solver.height(),
-        super::lattice_boltzmann::LBM_INLET_U,
-        0.0,
-    );
+    let (w, h) = (solver.width(), solver.height());
+    let af = Naca4Airfoil::from_code(code, 26.0, 0.32 * w as f64, 0.5 * h as f64, aoa_deg);
+    stamp_naca4_airfoil(solver, &af);
+    solver.set_inlet(0, 0, w, h, super::lattice_boltzmann::LBM_INLET_U, 0.0);
 }
 
 pub(crate) fn rotate_airfoil_in_place(
@@ -283,19 +316,17 @@ pub(crate) fn draw_lbm_brush_panel(
     snapshot: Option<&StateSnapshot>,
 ) -> Vec<SimCommand> {
     let mut cmds = Vec::new();
+    let hc = crate::app::ThemeMode::from_visuals(ui.visuals()) == crate::app::ThemeMode::HighContrast;
+    let hc_id = ui.id().with("lbm_last_hc");
+    if ui.ctx().data_mut(|d| d.get_temp::<bool>(hc_id)) != Some(hc) {
+        ui.ctx().data_mut(|d| d.insert_temp(hc_id, hc));
+        cmds.push(SimCommand::Custom(format!("HighContrast:{}", u8::from(hc))));
+    }
     ui.label("Wind-Tunnel Sculpting");
-
     ui.horizontal(|ui| {
-        ui.selectable_value(
-            &mut brush_kit.interaction_mode,
-            BrushInteractionMode::Sculpt,
-            "🖌 Sculpt",
-        );
-        ui.selectable_value(
-            &mut brush_kit.interaction_mode,
-            BrushInteractionMode::Pan,
-            "✋ Pan",
-        );
+        for (m, lbl) in [(BrushInteractionMode::Sculpt, "🖌 Sculpt"), (BrushInteractionMode::Pan, "✋ Pan")] {
+            ui.selectable_value(&mut brush_kit.interaction_mode, m, lbl);
+        }
     });
 
     ui.horizontal(|ui| {
@@ -376,6 +407,12 @@ fn draw_aerodynamic_metrics(ui: &mut egui::Ui, snapshot: Option<&StateSnapshot>)
     } else {
         0.0
     };
+    if let Some(s) = snapshot.filter(|s| s.custom_data.len() >= 3) {
+        ui.small(format!(
+            "Forces F_D: {:+.4}   F_L: {:+.4}   C_D(core): {:+.3}",
+            s.custom_data[0], s.custom_data[1], s.custom_data[2]
+        ));
+    }
     ui.colored_label(
         palette.info,
         format!(

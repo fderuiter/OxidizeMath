@@ -3,8 +3,9 @@
 use super::persistence::truncate_utf8_bytes;
 use super::presets::{
     wave_parameter_label, WavePotentialPreset, DT_MAX, DT_MIN, GRID_X_MAX, GRID_X_MIN, K0_MAX,
-    K0_MIN, MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME, POTENTIAL_DISPLAY_SCALE, SIGMA_MAX,
-    SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN, X0_MAX, X0_MIN,
+    K0_MIN, MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME, POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN,
+    POTENTIAL_DISPLAY_SCALE, SIGMA_MAX, SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN, X0_MAX,
+    X0_MIN,
 };
 use super::runner::WaveData;
 use super::WaveSimulatorTool;
@@ -14,7 +15,8 @@ use crate::async_sim::ui::{
 };
 use crate::async_sim::{SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{
-    BrushMode, BrushStroke, PlaybackAction, PlaybackTransport, SpatialBrushKit,
+    BrushMode, PlaybackAction, PlaybackTransport, PlotBrushController, PlotBrushFrame,
+    SpatialBrushKit,
 };
 use eframe::egui;
 use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
@@ -295,8 +297,6 @@ impl WaveSimulatorTool {
     }
 
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui) {
-        let ctx = parent_ui.ctx().clone();
-        let mut pending_strokes = Vec::new();
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             let Some(wave_data) = self.latest_wave_data().cloned() else {
                 render_empty_plot_guidance(
@@ -305,11 +305,11 @@ impl WaveSimulatorTool {
                 );
                 return;
             };
-            pending_strokes = render_wave_plot(ui, &wave_data, &mut self.brush_kit);
+            let (plot_resp, frame) = render_wave_plot(ui, &wave_data, &mut self.brush_kit);
+            if let Some(brush_frame) = frame {
+                brush_frame.dispatch(ui, &plot_resp, self);
+            }
         });
-        for stroke in pending_strokes {
-            self.apply_ui_brush_stroke(stroke, Some(&ctx));
-        }
     }
 
     fn latest_wave_data(&self) -> Option<&WaveData> {
@@ -356,17 +356,7 @@ fn draw_wave_plot_header(
     });
 }
 
-fn render_wave_plot(
-    ui: &mut egui::Ui,
-    wave_data: &WaveData,
-    brush_kit: &mut SpatialBrushKit,
-) -> Vec<BrushStroke> {
-    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-    let psi_color = palette.series_color(0);
-    let potential_color = palette.series_color(1);
-    let energy_color = palette.series_color(2);
-    draw_wave_plot_header(ui, wave_data, psi_color, potential_color, energy_color);
-
+fn sample_wave_series_points(wave_data: &WaveData) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
     let len = wave_data
         .x_axis
         .len()
@@ -379,13 +369,34 @@ fn render_wave_plot(
         psi_points.push([x, wave_data.prob_density[i]]);
         v_points.push([x, wave_data.potential[i] * POTENTIAL_DISPLAY_SCALE]);
     }
+    (psi_points, v_points)
+}
+
+fn render_wave_plot(
+    ui: &mut egui::Ui,
+    wave_data: &WaveData,
+    brush_kit: &mut SpatialBrushKit,
+) -> (egui::Response, Option<PlotBrushFrame>) {
+    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+    let (psi_color, potential_color, energy_color) = (
+        palette.series_color(0),
+        palette.series_color(1),
+        palette.series_color(2),
+    );
+    draw_wave_plot_header(ui, wave_data, psi_color, potential_color, energy_color);
+
+    let (psi_points, v_points) = sample_wave_series_points(wave_data);
     let x_start = wave_data.x_axis.first().copied().unwrap_or(-5.0);
     let x_end = wave_data.x_axis.last().copied().unwrap_or(5.0);
     let e0_scaled = wave_data.kinetic_energy * POTENTIAL_DISPLAY_SCALE;
     let allow_pan = !brush_kit.is_sculpting();
-    let mut strokes = Vec::new();
+    let mut brush_frame = None;
+    let (y_min, y_max) = (
+        POTENTIAL_CLAMP_MIN * POTENTIAL_DISPLAY_SCALE,
+        POTENTIAL_CLAMP_MAX * POTENTIAL_DISPLAY_SCALE,
+    );
 
-    Plot::new("quantum_plot")
+    let plot_resp = Plot::new("quantum_plot")
         .legend(Legend::default())
         .x_axis_label("Position (x)")
         .y_axis_label("Probability Density |ψ|² / Scaled Energy")
@@ -414,12 +425,13 @@ fn render_wave_plot(
                 .style(LineStyle::Dashed { length: 6.0_f32 })
                 .color(energy_color),
             );
-            strokes = brush_kit.sample_plot(
+            brush_frame = Some(PlotBrushController::capture_plot(
+                brush_kit,
                 plot_ui,
-                [GRID_X_MIN, -0.5],
-                [GRID_X_MAX, 2.5],
+                [GRID_X_MIN, y_min],
+                [GRID_X_MAX, y_max],
                 Some(BrushMode::Erase),
-            );
+            ));
         });
-    strokes
+    (plot_resp.response, brush_frame)
 }
