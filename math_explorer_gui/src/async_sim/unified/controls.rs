@@ -2,11 +2,52 @@
 
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::SimCommand;
+use crate::async_sim::{SimCommand, SimWorkerState};
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
+    pub(super) fn draw_left_panel(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let panel_id = crate::framework::scoped_panel_id(ui, format!("{}_controls", M::name()));
+        crate::framework::PaneSidePanel::left(panel_id).show_inside(ui, |ui| {
+            ui.heading(M::name());
+            ui.separator();
+            self.draw_status_and_transport(ui, &ctx);
+            if let Some(tool_id) = M::sonification_tool_id() {
+                let worker_state = self.controller.state();
+                if matches!(worker_state, SimWorkerState::Faulted) {
+                    crate::audio::notify_solver_diverged();
+                }
+                let frame = self
+                    .stepped_snapshot
+                    .as_ref()
+                    .or_else(|| self.controller.latest_snapshot())
+                    .map_or_else(crate::audio::SonificationFrame::silent, |s| s.sonification);
+                let is_idle = !matches!(
+                    worker_state,
+                    SimWorkerState::Running | SimWorkerState::Stepping
+                ) && self.stepped_snapshot.is_none();
+                ui.separator();
+                crate::audio::render_sonification_panel(ui, tool_id, &frame, is_idle);
+            }
+            ui.separator();
+            ui.label("Simulation Constants");
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.steps_per_frame, 1..=100)
+                        .text("Speed (Steps/Frame)"),
+                )
+                .changed()
+            {
+                let _ = self
+                    .controller
+                    .send_command(SimCommand::SetSpeed(self.steps_per_frame));
+            }
+            self.draw_model_parameters(ui, &ctx);
+        });
+    }
+
     fn draw_presets_and_actions(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
         let mut reset_needed = false;
         let presets = M::presets();
@@ -38,6 +79,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                             .send_command(SimCommand::Custom(action.to_string()))
                             .is_ok()
                     {
+                        if let Some(ext) = &mut self.ui_extension {
+                            ext.on_custom_action(action);
+                        }
                         ctx.request_repaint();
                     }
                 }
@@ -52,17 +96,32 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ui.label("Model Parameters");
 
         let mut reset_needed = self.draw_presets_and_actions(ui, ctx);
+        let ext_cmds = if let Some(ext) = &mut self.ui_extension {
+            ext.draw_side_panel_controls(ui, self.controller.latest_snapshot())
+        } else {
+            Vec::new()
+        };
+        if !ext_cmds.is_empty() {
+            self.dispatch_extension_commands(ext_cmds, Some(ctx));
+        }
+
         let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
 
         for (name, constraint) in &self.param_metadata {
+            let locked = self
+                .ui_extension
+                .as_ref()
+                .is_some_and(|ext| ext.is_parameter_locked(name));
             if let Some(val) = params_lock.get_mut(name) {
-                reset_needed |= Self::draw_single_parameter(
-                    ui,
-                    name,
-                    constraint,
-                    val,
-                    self.cached_descs.get(name),
-                );
+                ui.add_enabled_ui(!locked, |ui| {
+                    reset_needed |= Self::draw_single_parameter(
+                        ui,
+                        name,
+                        constraint,
+                        val,
+                        self.cached_descs.get(name),
+                    );
+                });
             }
         }
         drop(params_lock);

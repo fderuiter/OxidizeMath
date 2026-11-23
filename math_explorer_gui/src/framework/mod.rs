@@ -1,10 +1,13 @@
 pub mod callout_overlay;
+pub mod challenge;
+mod challenge_hud;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
+mod export_3d;
 mod export_dataset;
 mod export_figure;
 mod export_queue;
@@ -14,12 +17,15 @@ mod export_shader;
 #[cfg(test)]
 mod export_shader_tests;
 mod export_spatial;
+#[cfg(test)]
+mod export_spatial_tests;
 pub mod export_types;
 mod export_ui;
 mod export_ui_modal;
 #[cfg(test)]
 mod export_ui_tests;
 pub mod fit_bridge;
+mod init;
 pub mod math_input;
 #[cfg(test)]
 mod metadata_label_tests;
@@ -46,6 +52,7 @@ mod ui;
 mod url_share;
 
 pub use callout_overlay::*;
+pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
@@ -68,6 +75,7 @@ pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
+use init::FrameworkRevisionCache;
 use overlay_sync::FrameworkSyncState;
 use scientific_metadata::theory::TheoryDescribable;
 
@@ -80,7 +88,7 @@ pub struct ToolMetadata {
 }
 
 inventory::collect!(ToolMetadata);
-pub use crate::starter_gallery::StarterPresetMetadata;
+pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputMode {
@@ -229,6 +237,21 @@ pub trait InteractiveTool {
         ""
     }
 
+    /// Activates or clears an inverse challenge contract (`None` exits challenge mode).
+    fn apply_challenge(&mut self, _challenge_id: Option<&str>) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Returns the canonical ID of the active challenge on this tool, if any.
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Evaluates live `0..=100` score and pass/residual status for the active inverse challenge.
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        None
+    }
+
     /// Serializes active parameter preset state to a formatted JSON string with metadata envelope.
     fn export_preset_json(&self) -> Result<String, String> {
         if let Some(state_str) = self.save_state() {
@@ -310,6 +333,21 @@ pub trait InteractiveTool {
         None
     }
 
+    /// Optional cold-path hook to build a watertight 3D triangle [`oxidize_core::mesh::Mesh`] for `.stl`, `.ply`, and `.obj` exports.
+    fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
+        None
+    }
+
+    /// Optional cold-path hook to build a per-vertex colored 3D [`oxidize_core::mesh::ColoredMesh`] for `.ply` exports.
+    fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
+        None
+    }
+
+    /// Optional cold-path hook to serialize an INRIA-standard 3D Gaussian Splatting binary `.ply` scene.
+    fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
+        None
+    }
+
     /// Optional hook to emit a standalone GLSL fragment shader for the requested [`ShaderDialect`].
     fn export_glsl_shader(&self, _dialect: ShaderDialect) -> Result<String, String> {
         Err(format!(
@@ -360,17 +398,6 @@ pub trait InteractiveTool {
     }
 }
 
-#[derive(Default)]
-pub(super) struct FrameworkRevisionCache {
-    pub(super) framework_revision: u64,
-    pub(super) untracked_tool_revision: u64,
-    pub(super) active_tool_json:
-        std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
-    pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
-    pub(super) last_plot_capture_hash: Option<(&'static str, u64)>,
-    pub(super) last_snapshot_plot_sig: Option<u64>,
-}
-
 #[allow(missing_docs)]
 pub struct SimulationFramework {
     pub available_tools: Vec<&'static ToolMetadata>,
@@ -381,8 +408,8 @@ pub struct SimulationFramework {
     pub show_starter_gallery: bool,
     pub saved_tool_states: std::collections::HashMap<String, String>,
     pub search_query: String,
-    last_announced_count: Option<usize>,
-    last_announced_query: String,
+    pub(super) last_announced_count: Option<usize>,
+    pub(super) last_announced_query: String,
     pub show_export_modal: bool,
     pub export_options: egui_plot::export::ExportOptions,
     pub export_bg_dark: bool,
@@ -413,64 +440,12 @@ pub struct SimulationFramework {
     pub step_counter: usize,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
+    /// Active inverse challenge contract displayed in the Challenge HUD, if any.
+    pub active_challenge: Option<&'static ChallengeMetadata>,
+    pub(super) challenge_was_passed: bool,
     pub(super) instance_id: u64,
     pub(super) sync_state: FrameworkSyncState,
     pub(super) rev_cache: FrameworkRevisionCache,
-}
-
-impl SimulationFramework {
-    #[allow(missing_docs)]
-    pub fn new(domain: &str) -> Self {
-        let mut available_tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>
-            .into_iter()
-            .filter(|t| t.domain == domain)
-            .collect();
-
-        available_tools.sort_by_key(|t| (t.display_name, t.id));
-
-        let mut framework = Self {
-            available_tools,
-            active_tool: None,
-            selected_tool_index: None,
-            input_mode: InputMode::Mouse,
-            show_theory_portal: false,
-            show_starter_gallery: false,
-            saved_tool_states: std::collections::HashMap::new(),
-            search_query: String::new(),
-            last_announced_count: None,
-            last_announced_query: String::new(),
-            show_export_modal: false,
-            export_options: egui_plot::export::ExportOptions::default(),
-            export_bg_dark: true,
-            export_gif_fps: 15,
-            export_gif_frames: 20,
-            export_contour_levels: 8,
-            export_texture_size: 1024,
-            export_normal_strength: 2.0,
-            export_status_message: None,
-            export_status_severity: ExportStatusSeverity::Success,
-            domain: domain.to_string(),
-            preset_dialog: crate::presets::PresetDialogState::default(),
-            export_queue: ExportQueue::default(),
-            last_valid_snapshot: None,
-            baseline_tool_state: None,
-            current_valid_plot_datasets: Vec::new(),
-            current_valid_plot_datasets_3d: Vec::new(),
-            is_diverged: false,
-            diagnostic_report: None,
-            step_counter: 0,
-            start_time: crate::web_io::PlatformInstant::now(),
-            instance_id: overlay_sync::next_framework_id(),
-            sync_state: FrameworkSyncState::default(),
-            rev_cache: FrameworkRevisionCache::default(),
-        };
-
-        if !framework.available_tools.is_empty() {
-            framework.select_tool(0);
-        }
-
-        framework
-    }
 }
 
 pub use crate::camera::{

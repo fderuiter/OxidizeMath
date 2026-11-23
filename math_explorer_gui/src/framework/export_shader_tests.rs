@@ -275,6 +275,6 @@ fn test_fractal_viewer_custom_ast_glsl_shader_and_scalar_field_composition() {
         .unwrap();
     assert!(glsl.contains("const bool IS_JULIA = true;"));
     assert!(glsl.contains("const vec2 a = vec2(1.25, 0.0);"));
-    assert!(glsl.contains("eval_custom_fractal(z, c)"));
+    assert!(glsl.contains("step_fractal(z, c)"));
     assert!(glsl.contains("cmul(a, cpow(z, vec2(3.0, 0.0))) + c"));
 }

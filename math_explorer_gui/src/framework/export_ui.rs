@@ -130,6 +130,7 @@ impl SimulationFramework {
         if export_action_button(ui, caps.figure, "Export PNG Image", fig_tip, close_on_click) {
             self.open_export_modal_for_active_tool();
         }
+        self.render_3d_export_action_items(ui, caps, close_on_click);
         self.render_shader_export_items(ui, caps, close_on_click);
     }
 

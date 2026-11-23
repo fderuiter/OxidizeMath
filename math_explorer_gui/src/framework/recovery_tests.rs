@@ -9,7 +9,7 @@ use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
 use crate::tabs::morphogenesis::{
     MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTab,
 };
-use crate::tabs::quantum::wave_sim::WaveUnified;
+use crate::tabs::quantum::wave_sim::{WavePotentialPreset, WaveRunner, WaveSimConfig};
 use eframe::egui;
 use math_explorer::biology::diffusion::FiniteDifference2D;
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
@@ -125,33 +125,36 @@ fn test_lattice_boltzmann_divergence_and_recovery() {
 
 #[test]
 fn test_quantum_wave_sim_divergence_and_recovery() {
-    let mut params = HashMap::new();
-    params.insert("potential_type".to_string(), 0.0);
-    params.insert("dt".to_string(), 0.05);
+    use crate::async_sim::SimulationRunner;
+    use std::sync::{Arc, RwLock};
 
-    let mut wave = WaveUnified::new(&params);
+    let cfg = Arc::new(RwLock::new(WaveSimConfig {
+        preset: WavePotentialPreset::InfiniteWell,
+        dt: 0.05,
+        ..Default::default()
+    }));
+
+    let mut wave = WaveRunner::new(Arc::clone(&cfg));
     assert!(FiniteStateGuard::is_finite_state(&wave));
     assert!(!wave.diverged());
 
     // Normal step works
-    wave.step(&params);
+    wave.step();
     assert!(FiniteStateGuard::is_finite_state(&wave));
     assert!(!wave.diverged());
 
     // Step with non-finite dt halts and diverges
-    let mut bad_params = HashMap::new();
-    bad_params.insert("dt".to_string(), f64::NAN);
-    wave.step(&bad_params);
+    wave.step_with_dt(f64::NAN);
 
     assert!(wave.diverged());
     assert!(!FiniteStateGuard::is_finite_state(&wave));
-    let report = wave.diagnostic_report().expect("Report expected");
+    let report = FiniteStateGuard::diagnostic_report(&wave).expect("Report expected");
     assert_eq!(report.variable, "dt");
 
     // Test non-finite wave function normalization protection
-    let mut wave2 = WaveUnified::new(&params);
+    let mut wave2 = WaveRunner::new(Arc::clone(&cfg));
     wave2.psi.vector[0] = Complex::new(f64::NAN, 0.0);
-    wave2.step(&params);
+    wave2.step();
     assert!(wave2.diverged());
     assert!(!FiniteStateGuard::is_finite_state(&wave2));
 
@@ -167,37 +170,46 @@ fn test_quantum_wave_sim_divergence_and_recovery() {
     }
 
     // Reset restores valid baseline state
-    wave2.process_command(SimCommand::Reset, &params);
+    wave2.process_command(SimCommand::Reset);
     assert!(!wave2.diverged());
 }
 
 #[test]
 fn test_quantum_wave_sim_cached_propagator_recovery_paths() {
-    let mut params = HashMap::new();
-    params.insert("potential_type".to_string(), 1.0);
-    params.insert("dt".to_string(), 0.05);
+    use crate::async_sim::SimulationRunner;
+    use std::sync::{Arc, RwLock};
 
-    let mut wave = WaveUnified::new(&params);
+    let cfg = Arc::new(RwLock::new(WaveSimConfig {
+        preset: WavePotentialPreset::HarmonicOscillator,
+        dt: 0.05,
+        ..Default::default()
+    }));
+
+    let mut wave = WaveRunner::new(Arc::clone(&cfg));
     for bad_dt in [0.0, -0.02, f64::INFINITY, f64::NEG_INFINITY] {
-        let mut invalid = HashMap::new();
-        invalid.insert("dt".to_string(), bad_dt);
-        wave.step(&invalid);
+        wave.step_with_dt(bad_dt);
         assert!(wave.diverged());
-        assert_eq!(wave.diagnostic_report().unwrap().variable, "dt");
-        wave.process_command(SimCommand::Reset, &params);
+        assert_eq!(
+            FiniteStateGuard::diagnostic_report(&wave).unwrap().variable,
+            "dt"
+        );
+        wave.process_command(SimCommand::Reset);
         assert!(!wave.diverged());
-        assert!(wave.diagnostic_report().is_none());
+        assert!(FiniteStateGuard::diagnostic_report(&wave).is_none());
     }
 
     // Warm propagator once, then verify psi_norm overflow and post-reset recovery
-    wave.step(&params);
+    wave.step();
     assert!(!wave.diverged());
     wave.psi.vector.fill(Complex::new(1e200, 0.0));
-    wave.step(&params);
+    wave.step();
     assert!(wave.diverged());
-    assert_eq!(wave.diagnostic_report().unwrap().variable, "psi_norm");
+    assert_eq!(
+        FiniteStateGuard::diagnostic_report(&wave).unwrap().variable,
+        "psi_norm"
+    );
 
-    wave.process_command(SimCommand::Reset, &params);
+    wave.process_command(SimCommand::Reset);
     assert!(!wave.diverged());
     assert_eq!(wave.step_count, 0);
 }

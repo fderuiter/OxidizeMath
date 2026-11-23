@@ -226,7 +226,7 @@ impl FrankWolfeScratch {
             }
             self.visited[u] = true;
 
-            for (e, &flow) in flows.iter().enumerate().take(self.edge_u.len()) {
+            for (e, flow) in flows.iter().copied().enumerate().take(self.edge_u.len()) {
                 if !self.edge_active[e] || skip_edge == Some(e) || self.edge_u[e] != u {
                     continue;
                 }
@@ -325,7 +325,7 @@ pub fn solve_wardrop_in_place(
 
 fn compute_fw_gap(scratch: &FrankWolfeScratch, flows: &[f64], skip_edge: Option<usize>) -> f64 {
     let mut gap = 0.0;
-    for (e, &flow) in flows.iter().enumerate() {
+    for (e, flow) in flows.iter().copied().enumerate() {
         if !scratch.edge_active[e] || skip_edge == Some(e) {
             continue;
         }
@@ -342,7 +342,7 @@ fn exact_line_search_step(
     skip_edge: Option<usize>,
 ) -> f64 {
     let mut curvature = 0.0;
-    for (e, &flow) in flows.iter().enumerate() {
+    for (e, flow) in flows.iter().copied().enumerate() {
         if !scratch.edge_active[e] || skip_edge == Some(e) {
             continue;
         }

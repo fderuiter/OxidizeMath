@@ -1,4 +1,4 @@
-//! Tabular 2D and 3D dataset export serialization and dispatch helpers for [`super::SimulationFramework`].
+//! Tabular 2D and 3D dataset (`CSV`, `JSON`) export serialization for [`super::SimulationFramework`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -39,7 +39,7 @@ impl SimulationFramework {
         }
     }
 
-    fn serialize_active_dataset_export(
+    pub(super) fn serialize_active_dataset_export(
         &self,
         tool_name: &str,
         format: ExportFormat,
