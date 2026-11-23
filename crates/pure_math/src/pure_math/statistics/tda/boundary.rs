@@ -191,7 +191,11 @@ impl Z2BoundaryWorkspace {
             top_word = p_word;
             let existing_slot = self.row_to_slot[p_row];
             if existing_slot != NO_INDEX {
-                self.xor_pivot_slot(existing_slot, p_word);
+                let start = existing_slot * self.words_per_col;
+                let pivot_slice = &self.pivot_words[start..(start + p_word + 1)];
+                for (dst, &src) in self.work_col[..=p_word].iter_mut().zip(pivot_slice) {
+                    *dst ^= src;
+                }
             } else {
                 self.store_new_pivot(col, p_row, p_word);
                 break;
@@ -222,16 +226,6 @@ impl Z2BoundaryWorkspace {
     }
 
     #[verified_engine::verified]
-    fn xor_pivot_slot(&mut self, slot: usize, up_to_word: usize) {
-        let start = slot * self.words_per_col;
-        let end = start + up_to_word + 1;
-        let pivot_slice = &self.pivot_words[start..end];
-        for (dst, &src) in self.work_col[..=up_to_word].iter_mut().zip(pivot_slice) {
-            *dst ^= src;
-        }
-    }
-
-    #[verified_engine::verified]
     fn store_new_pivot(&mut self, col: usize, pivot_row: usize, top_word: usize) {
         let slot = self.rank;
         assert!(slot < self.max_pivots, "pivot slot within max_pivots bound");
@@ -252,9 +246,14 @@ impl Z2BoundaryWorkspace {
 }
 
 #[verified_engine::verified]
-fn highest_set_bit(words: &[u64], max_word: usize) -> Option<(usize, usize)> {
-    let limit = max_word.min(words.len().saturating_sub(1));
-    for rev in 0..=limit {
+const fn highest_set_bit(words: &[u64], max_word: usize) -> Option<(usize, usize)> {
+    if words.is_empty() {
+        return None;
+    }
+    let last = words.len() - 1;
+    let limit = if max_word < last { max_word } else { last };
+    let mut rev = 0_usize;
+    while rev <= limit {
         let w_idx = limit - rev;
         let word = words[w_idx];
         if word != 0 {
@@ -262,6 +261,7 @@ fn highest_set_bit(words: &[u64], max_word: usize) -> Option<(usize, usize)> {
             let row = (w_idx << 6) + bit_in_word;
             return Some((w_idx, row));
         }
+        rev += 1;
     }
     None
 }
@@ -287,28 +287,10 @@ pub(super) struct FilteredEdge {
     pub(super) v: u16,
 }
 
-impl FilteredEdge {
-    #[verified_engine::verified]
-    pub(super) fn cmp_filtration(&self, other: &Self) -> std::cmp::Ordering {
-        self.diameter
-            .total_cmp(&other.diameter)
-            .then_with(|| (self.u, self.v).cmp(&(other.u, other.v)))
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FilteredTriangle {
     pub(super) diameter: f64,
     pub(super) vertices: [u16; 3],
-}
-
-impl FilteredTriangle {
-    #[verified_engine::verified]
-    pub(super) fn cmp_filtration(&self, other: &Self) -> std::cmp::Ordering {
-        self.diameter
-            .total_cmp(&other.diameter)
-            .then_with(|| self.vertices.cmp(&other.vertices))
-    }
 }
 
 #[verified_engine::verified]
@@ -328,7 +310,11 @@ pub(super) fn collect_sorted_edges(dist: &[Vec<f64>]) -> (Vec<FilteredEdge>, Vec
             });
         }
     }
-    edges.sort_unstable_by(FilteredEdge::cmp_filtration);
+    edges.sort_unstable_by(|a, b| {
+        a.diameter
+            .total_cmp(&b.diameter)
+            .then_with(|| (a.u, a.v).cmp(&(b.u, b.v)))
+    });
     let mut lookup = vec![u32::MAX; n * n];
     for (idx, edge) in edges.iter().enumerate() {
         let u = edge.u as usize;
@@ -366,7 +352,11 @@ pub(super) fn collect_sorted_triangles(
                 });
                 if buf.len() >= flush_cap && buf.len() > max_triangles {
                     truncated = true;
-                    buf.select_nth_unstable_by(max_triangles, FilteredTriangle::cmp_filtration);
+                    buf.select_nth_unstable_by(max_triangles, |a, b| {
+                        a.diameter
+                            .total_cmp(&b.diameter)
+                            .then_with(|| a.vertices.cmp(&b.vertices))
+                    });
                     buf.truncate(max_triangles);
                 }
             }
@@ -374,10 +364,18 @@ pub(super) fn collect_sorted_triangles(
     }
     if buf.len() > max_triangles {
         truncated = true;
-        buf.select_nth_unstable_by(max_triangles, FilteredTriangle::cmp_filtration);
+        buf.select_nth_unstable_by(max_triangles, |a, b| {
+            a.diameter
+                .total_cmp(&b.diameter)
+                .then_with(|| a.vertices.cmp(&b.vertices))
+        });
         buf.truncate(max_triangles);
     }
-    buf.sort_unstable_by(FilteredTriangle::cmp_filtration);
+    buf.sort_unstable_by(|a, b| {
+        a.diameter
+            .total_cmp(&b.diameter)
+            .then_with(|| a.vertices.cmp(&b.vertices))
+    });
     (buf, truncated)
 }
 

@@ -254,28 +254,13 @@ pub struct LbmFairingEvaluator {
     pub latest: LbmFairingMetrics,
 }
 
-fn cached_cylinder_baseline_cd() -> f64 {
-    static CYL_CD: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
-    *CYL_CD.get_or_init(|| {
-        let tau = 3.0 * CHALLENGE_LBM_VISCOSITY + 0.5;
-        let solver = LatticeBoltzmannD2Q9::new(LBM_WIDTH, LBM_HEIGHT, tau);
-        let mut eval = LbmFairingEvaluator {
-            solver,
-            c_d_cylinder: 1.0,
-            latest: LbmFairingMetrics::default(),
-        };
-        let mut cyl_mask = [false; LBM_CELL_COUNT];
-        FairingStamp::BluffCylinder.write_mask(&mut cyl_mask);
-        let (_, _, cd) = eval.simulate_mask_forces(&cyl_mask, CHALLENGE_LBM_VISCOSITY);
-        cd.max(1e-6)
-    })
-}
+static CYL_CD: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
 
 impl Default for LbmFairingEvaluator {
     fn default() -> Self {
         let tau = 3.0 * CHALLENGE_LBM_VISCOSITY + 0.5;
         let solver = LatticeBoltzmannD2Q9::new(LBM_WIDTH, LBM_HEIGHT, tau);
-        let c_d_cylinder = cached_cylinder_baseline_cd();
+        let c_d_cylinder = CYL_CD.get().copied().unwrap_or(0.0);
         Self {
             solver,
             c_d_cylinder,
@@ -294,9 +279,24 @@ impl Default for LbmFairingEvaluator {
 }
 
 impl LbmFairingEvaluator {
-    /// Calibrated bluff-cylinder baseline drag coefficient `C_D_cylinder`.
-    #[must_use]
-    pub fn cylinder_baseline_cd(&self) -> f64 {
+    /// Lazily resolves `C_D_cylinder` in place using `self.solver` with zero heap allocations.
+    pub fn ensure_baseline(&mut self) -> f64 {
+        if self.c_d_cylinder <= 0.0 {
+            let cd = *CYL_CD.get_or_init(|| {
+                let mut cyl_mask = [false; LBM_CELL_COUNT];
+                FairingStamp::BluffCylinder.write_mask(&mut cyl_mask);
+                self.simulate_mask_forces(&cyl_mask, CHALLENGE_LBM_VISCOSITY)
+                    .2
+                    .max(1e-6)
+            });
+            self.c_d_cylinder = cd;
+            if self.latest.c_d_cylinder <= 0.0 {
+                self.latest.c_d_cylinder = cd;
+                if self.latest.c_d <= 0.0 {
+                    self.latest.c_d = cd;
+                }
+            }
+        }
         self.c_d_cylinder
     }
 
@@ -342,9 +342,9 @@ impl LbmFairingEvaluator {
         mask: &[bool; LBM_CELL_COUNT],
         viscosity: f64,
     ) -> LbmFairingMetrics {
+        let cd_cyl = self.ensure_baseline();
         let (n_solid, core_intact) = inspect_mask_geometry(mask);
         let (f_drag, f_lift, c_d) = self.simulate_mask_forces(mask, viscosity);
-        let cd_cyl = self.cylinder_baseline_cd();
         let raw_score = 100.0 * (cd_cyl - c_d) / (0.30 * cd_cyl);
         let geom_valid = n_solid >= LBM_MIN_SOLID_CELLS && core_intact;
         let score = if geom_valid {

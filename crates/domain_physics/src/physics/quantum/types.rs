@@ -146,6 +146,34 @@ impl QuantumState {
     pub fn probability_density(&self) -> DVector<f64> {
         self.vector.map(|c| c.norm_sqr())
     }
+
+    /// Projects the complex state vector onto the first `M` discrete orthonormal
+    /// standing-wave spatial eigenmodes `<phi_m | psi>` without heap allocation,
+    /// preserving complex amplitudes and phases prior to Born-rule norm collapse.
+    #[verified_engine::verified]
+    #[must_use]
+    pub fn project_spatial_modes<const M: usize>(&self) -> [Complex<f64>; M] {
+        let mut modes = [Complex::new(0.0, 0.0); M];
+        let n = self.vector.len();
+        if n == 0 || M == 0 {
+            return modes;
+        }
+        let denom = (n + 1) as f64;
+        let norm_factor = (2.0 / denom).sqrt();
+        for (m, slot) in modes.iter_mut().enumerate() {
+            if m >= n {
+                break;
+            }
+            let k_pi = ((m + 1) as f64) * std::f64::consts::PI / denom;
+            let mut acc = Complex::new(0.0, 0.0);
+            for (j, amp) in self.vector.iter().enumerate() {
+                let basis = norm_factor * (((j + 1) as f64) * k_pi).sin();
+                acc += (*amp) * basis;
+            }
+            *slot = acc;
+        }
+        modes
+    }
 }
 
 /// Represents a linear operator acting on the Hilbert space.
@@ -194,5 +222,43 @@ impl QuantumOperator {
         let ab = &self.matrix * &other.matrix;
         let ba = &other.matrix * &self.matrix;
         QuantumOperator { matrix: ab - ba }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_project_spatial_modes_orthonormal_and_phase_preserving() {
+        let n = 31usize;
+        let denom = (n + 1) as f64;
+        let norm = (2.0 / denom).sqrt();
+        let phase = Complex::from_polar(1.0, 0.75);
+        let vec = DVector::from_fn(n, |j, _| {
+            let s1 = norm * (((j + 1) as f64) * std::f64::consts::PI / denom).sin();
+            let s3 = norm * (3.0 * ((j + 1) as f64) * std::f64::consts::PI / denom).sin();
+            Complex::new(0.6 * s1, 0.0) + phase * (0.8 * s3)
+        });
+        let state = QuantumState::new(vec);
+        let modes = state.project_spatial_modes::<4>();
+        assert!((modes[0].re - 0.6).abs() < 1e-12);
+        assert!(modes[0].im.abs() < 1e-12);
+        assert!(modes[1].norm() < 1e-12);
+        assert!((modes[2] - phase * 0.8).norm() < 1e-12);
+        assert!(modes[3].norm() < 1e-12);
+    }
+
+    #[test]
+    fn test_project_spatial_modes_empty_and_oversized_basis() {
+        let empty = QuantumState::new(DVector::zeros(0));
+        let empty_modes = empty.project_spatial_modes::<3>();
+        assert_eq!(empty_modes, [Complex::new(0.0, 0.0); 3]);
+
+        let spin = QuantumState::spin_zero();
+        let spin_modes = spin.project_spatial_modes::<4>();
+        assert!(spin_modes[0].re > 0.5);
+        assert_eq!(spin_modes[2], Complex::new(0.0, 0.0));
+        assert_eq!(spin_modes[3], Complex::new(0.0, 0.0));
     }
 }

@@ -347,6 +347,7 @@ impl SimulationRunner for LbmRunner {
                 telemetry.solid_cells as f64,
             ],
             structured_data: Some(Box::new(telemetry)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

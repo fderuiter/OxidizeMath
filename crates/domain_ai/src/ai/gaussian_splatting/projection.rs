@@ -1,4 +1,5 @@
-use nalgebra::{Matrix2, Matrix3, Matrix4, SMatrix, Vector3};
+use super::structs::{Gaussian2D, Gaussian3D, Scene};
+use nalgebra::{Matrix2, Matrix3, Matrix4, Point2, SMatrix, Vector3};
 
 /// Computes the Jacobian of the affine approximation of the projective transformation.
 ///
@@ -52,6 +53,67 @@ pub fn project_covariance(
 
     // Sigma' = J * T * J^T
     jacobian * t * jacobian.transpose()
+}
+
+/// Camera pose and projection parameters for zero-allocation 3D Gaussian splat projection.
+#[derive(Clone, Copy, Debug)]
+pub struct SplatCameraProjection {
+    /// World-to-camera rigid view matrix $W$ (upper-left $3 \times 3$ rotation, translation in column 3).
+    pub view_matrix: Matrix4<f64>,
+    /// Focal length $(f_x, f_y)$ in plot/viewport coordinates.
+    pub focal: (f64, f64),
+    /// Uniform scale multiplier applied to each 3D Gaussian's principal semi-axes.
+    pub scale_multiplier: f64,
+}
+
+/// Projects `scene` into `out_splats` in-place (clearing first) and sorts front-to-back by depth.
+///
+/// Performs zero heap allocations when `out_splats.capacity() >= scene.gaussians.len()`.
+#[verified_engine::verified]
+pub fn project_scene_into(
+    scene: &Scene,
+    cam: &SplatCameraProjection,
+    out_splats: &mut Vec<Gaussian2D>,
+) {
+    out_splats.clear();
+    let rot = cam.view_matrix.fixed_view::<3, 3>(0, 0);
+    let trans = cam.view_matrix.fixed_view::<3, 1>(0, 3);
+    let scale_factor = if cam.scale_multiplier.is_finite() {
+        cam.scale_multiplier.clamp(0.05, 20.0)
+    } else {
+        1.0
+    };
+    let cap = out_splats.capacity();
+    for g in &scene.gaussians {
+        if out_splats.len() >= cap && cap > 0 && scene.gaussians.len() > cap {
+            break;
+        }
+        let scaled = Gaussian3D {
+            mean: g.mean,
+            scale: g.scale * scale_factor,
+            rotation: g.rotation,
+            opacity: g.opacity,
+            color: g.color,
+        };
+        let p_cam = rot * scaled.mean.coords + trans;
+        let tz = p_cam.z.max(0.25);
+        let cam_vec = Vector3::new(p_cam.x, p_cam.y, tz);
+        let jacobian = compute_jacobian(&cam_vec, cam.focal.0, cam.focal.1);
+        let cov3d = scaled.compute_covariance();
+        let cov2d = project_covariance(&cov3d, &cam.view_matrix, &jacobian)
+            + Matrix2::from_diagonal_element(1e-4);
+        let Some(inv_cov) = cov2d.try_inverse() else {
+            continue;
+        };
+        out_splats.push(Gaussian2D {
+            mean: Point2::new(cam.focal.0 * p_cam.x / tz, cam.focal.1 * p_cam.y / tz),
+            conic: -0.5 * inv_cov,
+            opacity: scaled.opacity,
+            color: scaled.color,
+            depth: tz,
+        });
+    }
+    out_splats.sort_unstable_by(|a, b| a.depth.total_cmp(&b.depth));
 }
 
 #[cfg(test)]
