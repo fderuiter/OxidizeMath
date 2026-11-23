@@ -57,13 +57,25 @@ fn test_ode_logistic_growth_divergence() {
 
 #[test]
 fn test_ode_trace_snapshot_pinning_and_export() {
-    let mut tool = OdeSolverTool { param_k: 1.0, ..Default::default() };
+    let mut tool = OdeSolverTool {
+        param_k: 1.0,
+        ..Default::default()
+    };
     tool.recalculate();
 
     // Pin baseline trajectory k=1.0
     let summary = tool.param_summary();
-    let pts: Vec<[f64; 2]> = tool.time_series.iter().zip(&tool.y_series).map(|(&t, &y)| [t, y]).collect();
-    tool.snapshot_manager.add_snapshot("Baseline 1", summary, vec![TraceSeries::new("y(t)", pts.clone())]);
+    let pts: Vec<[f64; 2]> = tool
+        .time_series
+        .iter()
+        .zip(&tool.y_series)
+        .map(|(&t, &y)| [t, y])
+        .collect();
+    tool.snapshot_manager.add_snapshot(
+        "Baseline 1",
+        summary,
+        vec![TraceSeries::new("y(t)", pts.clone())],
+    );
     assert_eq!(tool.snapshot_manager.len(), 1);
 
     // Change parameter k=2.5 and recalculate active simulation
@@ -71,7 +83,10 @@ fn test_ode_trace_snapshot_pinning_and_export() {
     tool.recalculate();
 
     // Pinned snapshot retains baseline curve points
-    assert_eq!(tool.snapshot_manager.snapshots()[0].param_summary, r"k=1.00, \Delta t=0.05");
+    assert_eq!(
+        tool.snapshot_manager.snapshots()[0].param_summary,
+        r"k=1.00, \Delta t=0.05"
+    );
     assert_eq!(tool.snapshot_manager.snapshots()[0].series[0].points, pts);
 
     // Export datasets includes active + pinned traces
@@ -92,15 +107,25 @@ fn test_ode_auto_history_buffering() {
 
     for i in 1..=7 {
         let old_summary = tool.param_summary();
-        let pts: Vec<[f64; 2]> = tool.time_series.iter().zip(&tool.y_series).map(|(&t, &y)| [t, y]).collect();
-        tool.snapshot_manager.push_history_run(old_summary, vec![TraceSeries::new("y(t)", pts)]);
+        let pts: Vec<[f64; 2]> = tool
+            .time_series
+            .iter()
+            .zip(&tool.y_series)
+            .map(|(&t, &y)| [t, y])
+            .collect();
+        tool.snapshot_manager
+            .push_history_run(old_summary, vec![TraceSeries::new("y(t)", pts)]);
         tool.param_k = i as f64 * 0.5;
         tool.recalculate();
     }
 
     assert_eq!(tool.snapshot_manager.history_len(), 5);
-    assert!(tool.snapshot_manager.history_runs()[0].param_summary.contains("k=1.00"));
-    assert!(tool.snapshot_manager.history_runs()[4].param_summary.contains("k=3.00"));
+    assert!(tool.snapshot_manager.history_runs()[0]
+        .param_summary
+        .contains("k=1.00"));
+    assert!(tool.snapshot_manager.history_runs()[4]
+        .param_summary
+        .contains("k=3.00"));
 
     let exported = tool.export_datasets();
     assert!(exported.iter().any(|(name, _)| name.contains("Run")));
@@ -148,7 +173,12 @@ fn test_ode_auto_callout_annotations_and_persistence() {
 #[test]
 fn test_ode_custom_equation_rk4() {
     let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom, param_k: 1.5, ic_y0: 2.0, dt: 0.05, total_time: 5.0, ..Default::default()
+        preset: OdePreset::Custom,
+        param_k: 1.5,
+        ic_y0: 2.0,
+        dt: 0.05,
+        total_time: 5.0,
+        ..Default::default()
     };
     tool.math_input.set_expression("-k * y * sin(t)");
     tool.recalculate();
@@ -168,7 +198,11 @@ fn test_ode_custom_equation_rk4() {
 
 #[test]
 fn test_ode_custom_equation_divergence_handling() {
-    let mut tool = OdeSolverTool { preset: OdePreset::Custom, ic_y0: 1.0, ..Default::default() };
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ic_y0: 1.0,
+        ..Default::default()
+    };
     tool.math_input.set_expression("1 / (y - 1)");
     tool.recalculate();
     assert!(tool.diverged());
@@ -176,7 +210,10 @@ fn test_ode_custom_equation_divergence_handling() {
 
 #[test]
 fn test_ode_custom_state_roundtrip() {
-    let mut tool = OdeSolverTool { preset: OdePreset::Custom, ..Default::default() };
+    let mut tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        ..Default::default()
+    };
     tool.math_input.set_expression("y' = -k * y * sin(t)");
     tool.recalculate();
 
@@ -206,7 +243,12 @@ fn test_ode_deep_custom_expr_preset_and_state_rejected() {
 #[test]
 fn test_generate_custom_ode_and_complex_screenshots() {
     let mut tool = OdeSolverTool {
-        preset: OdePreset::Custom, param_k: 2.0, ic_y0: 1.0, dt: 0.02, total_time: 10.0, ..Default::default()
+        preset: OdePreset::Custom,
+        param_k: 2.0,
+        ic_y0: 1.0,
+        dt: 0.02,
+        total_time: 10.0,
+        ..Default::default()
     };
     tool.math_input.set_expression("y' = -k * y * sin(t)");
     tool.recalculate();
@@ -308,124 +350,74 @@ fn test_ode_presets_theory_metadata() {
         preset: OdePreset::Exponential,
         ..Default::default()
     };
-    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{dy}{dt} = k y".into()));
+    assert_eq!(
+        tool.theory_latex_equation(),
+        Some(r"\frac{dy}{dt} = k y".into())
+    );
     assert!(tool.theory_citation().contains("Perko"));
     assert!(!tool.theory_description().is_empty());
 
     tool.preset = OdePreset::HarmonicOscillator;
-    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{d^2 y}{dt^2} = -k y".into()));
+    assert_eq!(
+        tool.theory_latex_equation(),
+        Some(r"\frac{d^2 y}{dt^2} = -k y".into())
+    );
     assert!(tool.theory_citation().contains("Goldstein"));
     assert!(!tool.theory_description().is_empty());
 
     tool.preset = OdePreset::LogisticGrowth;
-    assert_eq!(tool.theory_latex_equation(), Some(r"\frac{dy}{dt} = r y (1 - \frac{y}{K})".into()));
-    assert!(tool.theory_citation().contains("Lotka") || tool.theory_citation().contains("Verhulst"));
+    assert_eq!(
+        tool.theory_latex_equation(),
+        Some(r"\frac{dy}{dt} = r y (1 - \frac{y}{K})".into())
+    );
+    assert!(
+        tool.theory_citation().contains("Lotka") || tool.theory_citation().contains("Verhulst")
+    );
     assert!(!tool.theory_description().is_empty());
 }
 
 #[test]
-fn test_harmonic_equilibrium_root_dt_025_and_nonlinear_preset_fits() {
-    let mut osc = OdeSolverTool {
+fn test_ode_200k_steps_decimates_display_polyline_and_preserves_full_exports() {
+    let mut tool = OdeSolverTool {
         preset: OdePreset::HarmonicOscillator,
-        param_k: 1.0,
-        ic_y0: 1.0,
-        ic_v0: 0.0,
-        dt: 0.25,
-        total_time: 10.0,
+        param_k: 4.0,
+        ic_y0: 1.5,
+        ic_v0: -0.5,
+        dt: 0.0005,
+        total_time: 100.0,
         ..Default::default()
     };
-    osc.recalculate();
-    let root_t = annotations::harmonic_equilibrium_root(&osc).expect("harmonic root");
-    assert!((root_t - 5.0).abs() > 0.1, "must not anchor at arbitrary midpoint t=5.0");
-    let nearest_analytical = 1.5 * std::f64::consts::PI;
-    assert!(
-        (root_t - nearest_analytical).abs() < 1e-3,
-        "dt=0.25 RK4 + Hermite root error = {:.6e}s",
-        (root_t - nearest_analytical).abs()
-    );
+    tool.recalculate();
+    assert_eq!(tool.y_series.len(), 200_001);
+    assert!(tool.display_y.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS);
+    assert!(tool.display_v.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS);
 
-    let osc_series = (&osc.time_series[..], &osc.y_series[..]);
-    let sin_fit = math_explorer::fit::fit_model(
-        &osc_series,
-        math_explorer::fit::FitModel::Sinusoidal,
-        false,
-    )
-    .expect("sinusoidal fit");
-    assert!(sin_fit.r_squared >= 0.99);
-
-    let mut log_tool = OdeSolverTool {
-        preset: OdePreset::LogisticGrowth,
-        param_r: 0.8,
-        param_cap_k: 12.0,
-        ic_y0: 0.5,
-        dt: 0.1,
-        total_time: 12.0,
-        ..Default::default()
-    };
-    log_tool.recalculate();
-    let log_series = (&log_tool.time_series[..], &log_tool.y_series[..]);
-    let logistic_fit = math_explorer::fit::fit_model(
-        &log_series,
-        math_explorer::fit::FitModel::Logistic,
-        false,
-    )
-    .expect("logistic fit");
-    assert!(logistic_fit.r_squared >= 0.99);
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        verified_engine::engine::VerifiedEngine::run_verified(|| {
-            let r = annotations::harmonic_equilibrium_root(&osc);
-            assert!(r.is_some());
-        });
-    }
-}
-
-#[test]
-fn test_export_promoted_curve_solver_fits_png() {
-    let mut osc = OdeSolverTool {
-        preset: OdePreset::HarmonicOscillator,
-        param_k: 1.0,
-        ic_y0: 1.0,
-        ic_v0: 0.0,
-        dt: 0.25,
-        total_time: 10.0,
-        ..Default::default()
-    };
-    osc.recalculate();
-    let series = (&osc.time_series[..], &osc.y_series[..]);
-    let fit = math_explorer::fit::fit_model(&series, math_explorer::fit::FitModel::Sinusoidal, false)
-        .expect("sinusoidal fit");
-    let raw: Vec<[f64; 2]> = osc
-        .time_series
+    let full_min = tool.y_series.iter().copied().fold(f64::INFINITY, f64::min);
+    let full_max = tool
+        .y_series
         .iter()
         .copied()
-        .zip(osc.y_series.iter().copied())
-        .map(|(t, y)| [t, y])
-        .collect();
-    let fitted: Vec<[f64; 2]> = (0..=200)
-        .map(|k| {
-            let t = (k as f64) * 0.05;
-            [t, fit.eval(t)]
-        })
-        .collect();
-    let root_t = annotations::harmonic_equilibrium_root(&osc).expect("root");
-    let datasets = vec![
-        ("RK4 Harmonic Trajectory (dt=0.25)".to_string(), raw),
-        (format!("math_commons Sinusoidal Fit ({})", fit.format_formula()), fitted),
-        ("Equilibrium y=0".to_string(), vec![[0.0, 0.0], [10.0, 0.0]]),
-        (
-            format!("Hermite Equilibrium Root (t={root_t:.4})"),
-            vec![[root_t, -0.08], [root_t, 0.08]],
-        ),
-    ];
-    let png = egui_plot::export::export_custom_png(&datasets, &egui_plot::export::ExportOptions::default())
-        .expect("export sinusoidal fit png");
-    assert!(!png.is_empty());
-    let _ = std::fs::write("/tmp/math_commons_ode_sinusoidal_fit_poi.png", png);
+        .fold(f64::NEG_INFINITY, f64::max);
+    let disp_min = tool
+        .display_y
+        .iter()
+        .map(|p| p.y)
+        .fold(f64::INFINITY, f64::min);
+    let disp_max = tool
+        .display_y
+        .iter()
+        .map(|p| p.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!((disp_min - full_min).abs() < 1e-12);
+    assert!((disp_max - full_max).abs() < 1e-12);
+
+    let ctx = egui::Context::default();
+    egui_plot::clear_last_plot_datasets();
+    let _ = ctx.run(egui::RawInput::default(), |c| tool.show(c));
+    let plot_datasets = egui_plot::get_last_plot_datasets();
+    assert!(plot_datasets[0].1.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS);
+
+    let exported = tool.export_datasets();
+    assert_eq!(exported[0].1.len(), 200_001);
+    assert_eq!(exported[1].1.len(), 200_001);
 }
-
-

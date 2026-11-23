@@ -1,9 +1,11 @@
 //! Sub-segment critical-point and polyline intersection solvers (`poi`).
 //!
 //! Provides zero-allocation monotone cubic Hermite root finding, vertical line crossings,
-//! 3-point Lagrange parabolic extrema refinement, and monotone/general 2D polyline intersections.
+//! 3-point Lagrange parabolic and linear-time plateau extrema refinement, single-pass
+//! critical-point scanning, and monotone/general 2D polyline intersections.
 // [cite:math_commons]
 
+mod extrema;
 mod interp;
 mod intersect;
 
@@ -11,9 +13,12 @@ mod intersect;
 mod tests;
 
 pub use crate::series::{PointSeries, Sample2D};
+pub use extrema::{
+    LinePoiScan, detect_local_extrema, detect_local_extrema_into, parabolic_vertex, peak_extremum,
+    scan_line_pois,
+};
 pub use interp::{
-    closest_threshold_crossing, detect_local_extrema, detect_local_extrema_into,
-    interpolate_threshold_crossings, interpolate_y_at_x, parabolic_vertex, peak_extremum,
+    closest_threshold_crossing, interpolate_threshold_crossings, interpolate_y_at_x,
     threshold_crossings_into, y_at_x_into,
 };
 pub use intersect::{

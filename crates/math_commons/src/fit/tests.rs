@@ -46,6 +46,19 @@ fn test_polynomial_regression_degrees_1_through_4() {
         fit_polynomial(&pts, 6),
         Err(FitError::UnsupportedDegree { degree: 6 })
     );
+
+    let x0 = 1_000_000.0_f64;
+    let shifted: Vec<[f64; 2]> = (0..=40)
+        .map(|i| {
+            let u = -2.0 + (i as f64) * 0.1;
+            let x = x0 + u;
+            let y = 1.5 - 0.8 * u + 2.2 * u * u - 0.35 * u.powi(3) + 0.12 * u.powi(4);
+            [x, y]
+        })
+        .collect();
+    let shifted_fit = fit_polynomial(&shifted, 4).expect("centered high-offset quartic");
+    assert!(shifted_fit.r_squared > 0.999_999);
+    assert!((shifted_fit.eval(x0) - 1.5).abs() < 1e-6);
 }
 
 #[test]

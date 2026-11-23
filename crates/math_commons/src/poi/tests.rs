@@ -78,3 +78,28 @@ fn test_vertical_line_crossings_with_tuple_series() {
     assert_eq!(ys.len(), 1);
     assert!((ys[0] - 3.0).abs() < 1e-12);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_plateau_extrema_and_fused_line_scan() {
+    let pts = [
+        [-1.0, -1.0],
+        [1.0, 4.0],
+        [2.0, 4.0],
+        [3.0, 4.0],
+        [4.0, 1.0],
+        [5.0, -2.0],
+        [6.0, -2.0],
+        [7.0, 1.0],
+    ];
+    let scan = scan_line_pois(&pts, true, true);
+    assert_eq!(scan.roots.len(), 3);
+    assert_eq!(scan.y_intercepts.len(), 1);
+    assert_eq!(scan.extrema.len(), 2);
+    assert!(scan.extrema[0].is_max);
+    assert!((scan.extrema[0].point[0] - 2.0).abs() < 1e-12);
+    assert!((scan.extrema[0].point[1] - 4.0).abs() < 1e-12);
+    assert!(!scan.extrema[1].is_max);
+    assert!((scan.extrema[1].point[0] - 5.5).abs() < 1e-12);
+    assert!((scan.extrema[1].point[1] + 2.0).abs() < 1e-12);
+}

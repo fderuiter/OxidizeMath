@@ -1,7 +1,6 @@
-//! Sub-segment Hermite threshold crossings, vertical crossings, and parabolic extrema.
+//! Sub-segment Hermite threshold crossings and vertical line crossings.
 // [cite:math_commons]
 
-use super::LocalExtremum;
 use crate::series::PointSeries;
 
 /// Writes sub-segment `x` coordinates where `pts` crosses `y = y_target` into `out`.
@@ -15,37 +14,35 @@ pub fn threshold_crossings_into<P: PointSeries + ?Sized>(
     y_target: f64,
     out: &mut [f64],
 ) -> usize {
+    threshold_crossings_into_raw(pts, y_target, out)
+}
+
+pub(super) fn threshold_crossings_into_raw<P: PointSeries + ?Sized>(
+    pts: &P,
+    y_target: f64,
+    out: &mut [f64],
+) -> usize {
     let n = pts.len();
     if n < 2 || out.is_empty() || !y_target.is_finite() {
         return 0;
     }
     let mut written = 0;
+    let mut p0 = pts.point_at(0);
+    let mut p0_fin = is_finite_pair(p0);
     for i in 0..(n - 1) {
-        let p0 = pts.point_at(i);
         let p1 = pts.point_at(i + 1);
-        if !is_finite_pair(p0) || !is_finite_pair(p1) {
-            continue;
-        }
-        let d0 = p0[1] - y_target;
-        let d1 = p1[1] - y_target;
-        if d0.abs() <= 1e-12 && d1.abs() <= 1e-12 {
-            continue;
-        }
-        let next_x = if d0.abs() <= 1e-12 {
-            Some(p0[0])
-        } else if d1.abs() <= 1e-12 {
-            (i + 2 == n).then_some(p1[0])
-        } else if (d0 < 0.0 && d1 > 0.0) || (d0 > 0.0 && d1 < 0.0) {
-            Some(crossing_on_segment(pts, i, p0, p1, y_target))
-        } else {
-            None
-        };
-        if let Some(x_hit) = next_x {
+        let p1_fin = is_finite_pair(p1);
+        if p0_fin
+            && p1_fin
+            && let Some(x_hit) = segment_threshold_hit(pts, i, n, p0, p1, y_target)
+        {
             written = push_unique_scalar(out, written, x_hit);
             if written == out.len() {
                 break;
             }
         }
+        p0 = p1;
+        p0_fin = p1_fin;
     }
     written
 }
@@ -57,37 +54,33 @@ pub fn closest_threshold_crossing<P: PointSeries + ?Sized>(
     y_target: f64,
     x_ref: f64,
 ) -> Option<f64> {
+    closest_threshold_crossing_raw(pts, y_target, x_ref)
+}
+
+fn closest_threshold_crossing_raw<P: PointSeries + ?Sized>(
+    pts: &P,
+    y_target: f64,
+    x_ref: f64,
+) -> Option<f64> {
     let n = pts.len();
     if n < 2 || !y_target.is_finite() || !x_ref.is_finite() {
         return None;
     }
     let mut best: Option<f64> = None;
+    let mut p0 = pts.point_at(0);
+    let mut p0_fin = is_finite_pair(p0);
     for i in 0..(n - 1) {
-        let p0 = pts.point_at(i);
         let p1 = pts.point_at(i + 1);
-        if !is_finite_pair(p0) || !is_finite_pair(p1) {
-            continue;
+        let p1_fin = is_finite_pair(p1);
+        if p0_fin
+            && p1_fin
+            && let Some(x_hit) = segment_threshold_hit(pts, i, n, p0, p1, y_target)
+            && best.is_none_or(|prev| (x_hit - x_ref).abs() < (prev - x_ref).abs())
+        {
+            best = Some(x_hit);
         }
-        let d0 = p0[1] - y_target;
-        let d1 = p1[1] - y_target;
-        if d0.abs() <= 1e-12 && d1.abs() <= 1e-12 {
-            continue;
-        }
-        let candidate = if d0.abs() <= 1e-12 {
-            Some(p0[0])
-        } else if d1.abs() <= 1e-12 {
-            (i + 2 == n).then_some(p1[0])
-        } else if (d0 < 0.0 && d1 > 0.0) || (d0 > 0.0 && d1 < 0.0) {
-            Some(crossing_on_segment(pts, i, p0, p1, y_target))
-        } else {
-            None
-        };
-        if let Some(x_hit) = candidate {
-            let replace = best.is_none_or(|prev| (x_hit - x_ref).abs() < (prev - x_ref).abs());
-            if replace {
-                best = Some(x_hit);
-            }
-        }
+        p0 = p1;
+        p0_fin = p1_fin;
     }
     best
 }
@@ -97,18 +90,53 @@ pub fn interpolate_threshold_crossings<P: PointSeries + ?Sized>(
     pts: &P,
     y_target: f64,
 ) -> Vec<f64> {
-    let cap = pts.len();
-    if cap < 2 {
-        return Vec::new();
+    let n = pts.len();
+    let mut out = Vec::new();
+    if n < 2 || !y_target.is_finite() {
+        return out;
     }
-    let mut buf = vec![0.0; cap];
-    let count = threshold_crossings_into(pts, y_target, &mut buf);
-    buf.truncate(count);
-    buf
+    let mut p0 = pts.point_at(0);
+    let mut p0_fin = is_finite_pair(p0);
+    for i in 0..(n - 1) {
+        let p1 = pts.point_at(i + 1);
+        let p1_fin = is_finite_pair(p1);
+        if p0_fin
+            && p1_fin
+            && let Some(x_hit) = segment_threshold_hit(pts, i, n, p0, p1, y_target)
+        {
+            push_unique_vec(&mut out, x_hit);
+        }
+        p0 = p1;
+        p0_fin = p1_fin;
+    }
+    out
 }
 
-#[verified_engine::verified]
-fn crossing_on_segment<P: PointSeries + ?Sized>(
+#[inline]
+pub(super) fn segment_threshold_hit<P: PointSeries + ?Sized>(
+    pts: &P,
+    i: usize,
+    n: usize,
+    p0: [f64; 2],
+    p1: [f64; 2],
+    y_target: f64,
+) -> Option<f64> {
+    let d0 = p0[1] - y_target;
+    let d1 = p1[1] - y_target;
+    if d0.abs() <= 1e-12 && d1.abs() <= 1e-12 {
+        None
+    } else if d0.abs() <= 1e-12 {
+        Some(p0[0])
+    } else if d1.abs() <= 1e-12 {
+        (i + 2 == n).then_some(p1[0])
+    } else if (d0 < 0.0 && d1 > 0.0) || (d0 > 0.0 && d1 < 0.0) {
+        Some(crossing_on_segment(pts, i, p0, p1, y_target))
+    } else {
+        None
+    }
+}
+
+pub(super) fn crossing_on_segment<P: PointSeries + ?Sized>(
     pts: &P,
     i: usize,
     p0: [f64; 2],
@@ -117,7 +145,7 @@ fn crossing_on_segment<P: PointSeries + ?Sized>(
 ) -> f64 {
     let dx = p1[0] - p0[0];
     if dx > 1e-12
-        && let Some(xh) = hermite_root_on_segment(pts, i, y_target)
+        && let Some(xh) = hermite_root_on_segment(pts, i, p0, p1, y_target)
     {
         return xh;
     }
@@ -125,14 +153,13 @@ fn crossing_on_segment<P: PointSeries + ?Sized>(
     p0[0] + t * dx
 }
 
-#[verified_engine::verified]
 fn hermite_root_on_segment<P: PointSeries + ?Sized>(
     pts: &P,
     i: usize,
+    p0: [f64; 2],
+    p1: [f64; 2],
     y_target: f64,
 ) -> Option<f64> {
-    let p0 = pts.point_at(i);
-    let p1 = pts.point_at(i + 1);
     let h = p1[0] - p0[0];
     if h <= 1e-12 {
         return None;
@@ -143,7 +170,6 @@ fn hermite_root_on_segment<P: PointSeries + ?Sized>(
     solve_hermite_bracket(p0, p1, h, m0, m1, y_target)
 }
 
-#[verified_engine::verified]
 fn endpoint_monotone_slope_left<P: PointSeries + ?Sized>(
     pts: &P,
     i: usize,
@@ -165,7 +191,6 @@ fn endpoint_monotone_slope_left<P: PointSeries + ?Sized>(
     })
 }
 
-#[verified_engine::verified]
 fn endpoint_monotone_slope_right<P: PointSeries + ?Sized>(
     pts: &P,
     i: usize,
@@ -187,7 +212,6 @@ fn endpoint_monotone_slope_right<P: PointSeries + ?Sized>(
     })
 }
 
-#[verified_engine::verified]
 fn solve_hermite_bracket(
     p0: [f64; 2],
     p1: [f64; 2],
@@ -238,8 +262,7 @@ fn solve_hermite_bracket(
     Some(p0[0] + t.clamp(0.0, 1.0) * h)
 }
 
-#[inline]
-#[verified_engine::verified]
+#[inline(always)]
 fn eval_hermite_val_deriv(
     y0: f64,
     y1: f64,
@@ -266,184 +289,101 @@ fn eval_hermite_val_deriv(
 /// Writes interpolated `y` values where `pts` crosses vertical line `x = x_target` into `out`.
 #[verified_engine::verified]
 pub fn y_at_x_into<P: PointSeries + ?Sized>(pts: &P, x_target: f64, out: &mut [f64]) -> usize {
+    y_at_x_into_raw(pts, x_target, out)
+}
+
+fn y_at_x_into_raw<P: PointSeries + ?Sized>(pts: &P, x_target: f64, out: &mut [f64]) -> usize {
     let n = pts.len();
     if n < 2 || out.is_empty() || !x_target.is_finite() {
         return 0;
     }
     let mut written = 0;
+    let mut p0 = pts.point_at(0);
+    let mut p0_fin = is_finite_pair(p0);
     for i in 0..(n - 1) {
-        let p0 = pts.point_at(i);
         let p1 = pts.point_at(i + 1);
-        if !is_finite_pair(p0) || !is_finite_pair(p1) {
-            continue;
-        }
-        let d0 = p0[0] - x_target;
-        let d1 = p1[0] - x_target;
-        if d0.abs() <= 1e-12 && d1.abs() <= 1e-12 {
-            continue;
-        }
-        let next_y = if d0.abs() <= 1e-12 {
-            Some(p0[1])
-        } else if d1.abs() <= 1e-12 {
-            (i + 2 == n).then_some(p1[1])
-        } else if (d0 < 0.0 && d1 > 0.0) || (d0 > 0.0 && d1 < 0.0) {
-            let t = ((x_target - p0[0]) / (p1[0] - p0[0])).clamp(0.0, 1.0);
-            Some(p0[1] + t * (p1[1] - p0[1]))
-        } else {
-            None
-        };
-        if let Some(yh) = next_y {
+        let p1_fin = is_finite_pair(p1);
+        if p0_fin
+            && p1_fin
+            && let Some(yh) = segment_vertical_hit(i, n, p0, p1, x_target)
+        {
             written = push_unique_scalar(out, written, yh);
             if written == out.len() {
                 break;
             }
         }
+        p0 = p1;
+        p0_fin = p1_fin;
     }
     written
 }
 
 /// Convenience wrapper collecting interpolated `y` values at `x = x_target` into a `Vec<f64>`.
 pub fn interpolate_y_at_x<P: PointSeries + ?Sized>(pts: &P, x_target: f64) -> Vec<f64> {
-    let cap = pts.len();
-    if cap < 2 {
-        return Vec::new();
-    }
-    let mut buf = vec![0.0; cap];
-    let count = y_at_x_into(pts, x_target, &mut buf);
-    buf.truncate(count);
-    buf
-}
-
-/// Writes interior local extrema refined via 3-point parabolic interpolation into `out`.
-#[verified_engine::verified]
-pub fn detect_local_extrema_into<P: PointSeries + ?Sized>(
-    pts: &P,
-    out: &mut [LocalExtremum],
-) -> usize {
     let n = pts.len();
-    if n < 3 || out.is_empty() {
-        return 0;
+    let mut out = Vec::new();
+    if n < 2 || !x_target.is_finite() {
+        return out;
     }
-    let mut written = 0;
-    for i in 1..(n - 1) {
-        let p0 = pts.point_at(i - 1);
-        let p1 = pts.point_at(i);
-        let p2 = pts.point_at(i + 1);
-        if !is_finite_pair(p0) || !is_finite_pair(p1) || !is_finite_pair(p2) {
-            continue;
-        }
-        let is_max = p1[1] >= p0[1] && p1[1] >= p2[1] && (p1[1] > p0[1] || p1[1] > p2[1]);
-        let is_min = p1[1] <= p0[1] && p1[1] <= p2[1] && (p1[1] < p0[1] || p1[1] < p2[1]);
-        if is_max || is_min {
-            out[written] = LocalExtremum {
-                point: parabolic_vertex(p0, p1, p2),
-                is_max,
-            };
-            written += 1;
-            if written == out.len() {
-                break;
-            }
-        }
-    }
-    written
-}
-
-/// Convenience wrapper collecting interior local extrema into a `Vec<LocalExtremum>`.
-pub fn detect_local_extrema<P: PointSeries + ?Sized>(pts: &P) -> Vec<LocalExtremum> {
-    let cap = pts.len().saturating_sub(2);
-    if cap == 0 {
-        return Vec::new();
-    }
-    let mut buf = vec![
-        LocalExtremum {
-            point: [0.0, 0.0],
-            is_max: true,
-        };
-        cap
-    ];
-    let count = detect_local_extrema_into(pts, &mut buf);
-    buf.truncate(count);
-    buf
-}
-
-/// Finds the global maximum in `pts`, refining interior peaks via [`parabolic_vertex`].
-///
-/// Executes with zero heap allocations on any [`PointSeries`].
-#[verified_engine::verified]
-pub fn peak_extremum<P: PointSeries + ?Sized>(pts: &P) -> Option<[f64; 2]> {
-    let n = pts.len();
-    if n == 0 {
-        return None;
-    }
-    let mut best_idx: Option<usize> = None;
-    let mut best_pt = [0.0_f64; 2];
-    for i in 0..n {
-        let p = pts.point_at(i);
-        if is_finite_pair(p) && best_idx.is_none_or(|_| p[1] > best_pt[1]) {
-            best_idx = Some(i);
-            best_pt = p;
-        }
-    }
-    let idx = best_idx?;
-    if idx > 0 && idx + 1 < n {
-        let p0 = pts.point_at(idx - 1);
-        let p2 = pts.point_at(idx + 1);
-        if is_finite_pair(p0)
-            && is_finite_pair(p2)
-            && p0[0] < best_pt[0]
-            && best_pt[0] < p2[0]
-            && (best_pt[1] > p0[1] || best_pt[1] > p2[1])
+    let mut p0 = pts.point_at(0);
+    let mut p0_fin = is_finite_pair(p0);
+    for i in 0..(n - 1) {
+        let p1 = pts.point_at(i + 1);
+        let p1_fin = is_finite_pair(p1);
+        if p0_fin
+            && p1_fin
+            && let Some(yh) = segment_vertical_hit(i, n, p0, p1, x_target)
         {
-            let [vx, vy] = parabolic_vertex(p0, best_pt, p2);
-            return Some([vx, vy.max(best_pt[1])]);
+            push_unique_vec(&mut out, yh);
         }
+        p0 = p1;
+        p0_fin = p1_fin;
     }
-    Some(best_pt)
+    out
 }
 
-/// Fits a 3-point Lagrange parabola through `(p0, p1, p2)` and returns its clamped vertex `[x, y]`.
-#[verified_engine::verified]
-pub fn parabolic_vertex(p0: [f64; 2], p1: [f64; 2], p2: [f64; 2]) -> [f64; 2] {
-    let (x0, y0) = (p0[0], p0[1]);
-    let (x1, y1) = (p1[0], p1[1]);
-    let (x2, y2) = (p2[0], p2[1]);
-    let denom = (x0 - x1) * (x0 - x2) * (x1 - x2);
-    if denom.abs() <= 1e-15 || x2 <= x0 {
-        return p1;
-    }
-    let a = (x2 * (y1 - y0) + x1 * (y0 - y2) + x0 * (y2 - y1)) / denom;
-    let b = (x2 * x2 * (y0 - y1) + x1 * x1 * (y2 - y0) + x0 * x0 * (y1 - y2)) / denom;
-    if a.abs() <= 1e-15 {
-        return p1;
-    }
-    let vx = (-b / (2.0 * a)).clamp(x0, x2);
-    let d01 = x0 - x1;
-    let d02 = x0 - x2;
-    let d12 = x1 - x2;
-    let l0 = ((vx - x1) * (vx - x2)) / (d01 * d02);
-    let l1 = ((vx - x0) * (vx - x2)) / (-d01 * d12);
-    let l2 = ((vx - x0) * (vx - x1)) / (d02 * d12);
-    let vy = y0 * l0 + y1 * l1 + y2 * l2;
-    if vx.is_finite() && vy.is_finite() {
-        [vx, vy]
+#[inline]
+pub(super) fn segment_vertical_hit(
+    i: usize,
+    n: usize,
+    p0: [f64; 2],
+    p1: [f64; 2],
+    x_target: f64,
+) -> Option<f64> {
+    let d0 = p0[0] - x_target;
+    let d1 = p1[0] - x_target;
+    if d0.abs() <= 1e-12 && d1.abs() <= 1e-12 {
+        None
+    } else if d0.abs() <= 1e-12 {
+        Some(p0[1])
+    } else if d1.abs() <= 1e-12 {
+        (i + 2 == n).then_some(p1[1])
+    } else if (d0 < 0.0 && d1 > 0.0) || (d0 > 0.0 && d1 < 0.0) {
+        let t = ((x_target - p0[0]) / (p1[0] - p0[0])).clamp(0.0, 1.0);
+        Some(p0[1] + t * (p1[1] - p0[1]))
     } else {
-        p1
+        None
     }
 }
 
-#[inline]
-#[verified_engine::verified]
-fn is_finite_pair(p: [f64; 2]) -> bool {
-    p[0].is_finite() && p[1].is_finite()
+#[inline(always)]
+pub(super) fn is_finite_pair(p: [f64; 2]) -> bool {
+    (p[0] * 0.0 + p[1] * 0.0) == 0.0
 }
 
-#[inline]
-#[verified_engine::verified]
+#[inline(always)]
 fn push_unique_scalar(out: &mut [f64], written: usize, val: f64) -> usize {
     if written > 0 && (out[written - 1] - val).abs() <= 1e-9 {
         written
     } else {
         out[written] = val;
         written + 1
+    }
+}
+
+#[inline(always)]
+pub(super) fn push_unique_vec(out: &mut Vec<f64>, val: f64) {
+    if out.last().is_none_or(|&prev| (prev - val).abs() > 1e-9) {
+        out.push(val);
     }
 }

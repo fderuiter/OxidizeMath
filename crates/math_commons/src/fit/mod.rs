@@ -161,6 +161,7 @@ pub struct CurveFit {
     pub log_y: bool,
     /// Whether linearized log-space regression was used.
     pub log_mode: bool,
+    poly_center_scale: Option<(f64, f64, [f64; 5])>,
 }
 
 impl CurveFit {
@@ -191,7 +192,18 @@ impl CurveFit {
             log_x,
             log_y,
             log_mode,
+            poly_center_scale: None,
         }
+    }
+
+    pub(super) fn with_centered_poly(
+        mut self,
+        u_mean: f64,
+        u_scale: f64,
+        centered: [f64; 5],
+    ) -> Self {
+        self.poly_center_scale = Some((u_mean, u_scale, centered));
+        self
     }
 
     /// Returns the active fitted parameter slice (`c_0..=c_d` or nonlinear parameters).
@@ -211,14 +223,27 @@ impl CurveFit {
 
     #[inline]
     fn eval_raw(&self, x: f64) -> f64 {
+        if !x.is_finite() {
+            return f64::NAN;
+        }
         match self.fit_model {
             FitModel::Linear | FitModel::Quadratic | FitModel::Cubic | FitModel::Quartic => {
                 if self.log_x && x <= 0.0 {
                     return f64::NAN;
                 }
                 let tx = if self.log_x { x.log10() } else { x };
-                let ty = poly::eval_polynomial_horner_raw(&self.coeffs[..self.coeff_len], tx);
-                if self.log_y { 10.0_f64.powf(ty) } else { ty }
+                let ty = if let Some((u_mean, u_scale, ref centered)) = self.poly_center_scale {
+                    let z = (tx - u_mean) / u_scale;
+                    poly::eval_polynomial_horner_raw(&centered[..self.coeff_len], z)
+                } else {
+                    poly::eval_polynomial_horner_raw(&self.coeffs[..self.coeff_len], tx)
+                };
+                let out = if self.log_y {
+                    10.0_f64.powf(ty.clamp(-300.0, 300.0)).clamp(1e-300, 1e300)
+                } else {
+                    ty
+                };
+                if out.is_finite() { out } else { f64::NAN }
             }
             FitModel::Exponential
             | FitModel::PowerLaw

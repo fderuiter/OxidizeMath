@@ -30,12 +30,12 @@ impl From<[f64; 2]> for PlotPoint {
 }
 
 impl math_commons::series::Sample2D for PlotPoint {
-    #[inline]
+    #[inline(always)]
     fn sample_x(&self) -> f64 {
         self.x
     }
 
-    #[inline]
+    #[inline(always)]
     fn sample_y(&self) -> f64 {
         self.y
     }
@@ -177,11 +177,13 @@ pub enum Orientation {
 ///
 /// These can be an owned `Vec`
 /// or generated on-the-fly by a function
-/// or borrowed from a slice.
+/// or borrowed from a slice
+/// or shared via `Arc`.
 pub enum PlotPoints<'a> {
     Owned(Vec<PlotPoint>),
     Generator(ExplicitGenerator<'a>),
     Borrowed(&'a [PlotPoint]),
+    Shared(std::sync::Arc<Vec<PlotPoint>>),
 }
 
 impl Default for PlotPoints<'_> {
@@ -203,6 +205,13 @@ impl From<Vec<[f64; 2]>> for PlotPoints<'_> {
     }
 }
 
+impl From<std::sync::Arc<Vec<PlotPoint>>> for PlotPoints<'_> {
+    #[inline]
+    fn from(points: std::sync::Arc<Vec<PlotPoint>>) -> Self {
+        Self::Shared(points)
+    }
+}
+
 impl<'a> From<&'a [PlotPoint]> for PlotPoints<'a> {
     #[inline]
     fn from(points: &'a [PlotPoint]) -> Self {
@@ -221,11 +230,26 @@ impl<'a> PlotPoints<'a> {
         Self::from_iter(points)
     }
 
+    #[inline]
+    pub fn from_shared(points: std::sync::Arc<Vec<PlotPoint>>) -> Self {
+        Self::Shared(points)
+    }
+
     pub fn points(&self) -> &[PlotPoint] {
         match self {
             Self::Owned(points) => points.as_slice(),
             Self::Generator(_) => &[],
             Self::Borrowed(points) => points,
+            Self::Shared(points) => points.as_slice(),
+        }
+    }
+
+    pub(crate) fn take_shared_points(&mut self) -> std::sync::Arc<Vec<PlotPoint>> {
+        match self {
+            Self::Shared(points) => std::sync::Arc::clone(points),
+            Self::Owned(points) => std::sync::Arc::new(std::mem::take(points)),
+            Self::Borrowed(points) => std::sync::Arc::new(points.to_vec()),
+            Self::Generator(_) => std::sync::Arc::new(Vec::new()),
         }
     }
 
@@ -303,6 +327,7 @@ impl<'a> PlotPoints<'a> {
     pub(crate) fn is_empty(&self) -> bool {
         match self {
             Self::Owned(points) => points.is_empty(),
+            Self::Shared(points) => points.is_empty(),
             Self::Generator(_) => false,
             Self::Borrowed(points) => points.is_empty(),
         }
@@ -338,11 +363,25 @@ impl<'a> PlotPoints<'a> {
         (start < end).then_some(start..=end)
     }
 
+    pub(super) fn shared_ptr_id(&self) -> Option<usize> {
+        match self {
+            Self::Shared(points) => Some(std::sync::Arc::as_ptr(points) as usize),
+            Self::Owned(_) | Self::Generator(_) | Self::Borrowed(_) => None,
+        }
+    }
+
     pub(super) fn bounds(&self) -> PlotBounds {
         match self {
             Self::Owned(points) => {
                 let mut bounds = PlotBounds::NOTHING;
                 for point in points {
+                    bounds.extend_with(point);
+                }
+                bounds
+            }
+            Self::Shared(points) => {
+                let mut bounds = PlotBounds::NOTHING;
+                for point in points.iter() {
                     bounds.extend_with(point);
                 }
                 bounds

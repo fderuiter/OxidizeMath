@@ -9,6 +9,23 @@ pub use math_commons::fit::{
 };
 pub use math_commons::series::{PointSeries, Sample2D};
 
+thread_local! {
+    static FIT_MODEL_WITH_AXES_CALL_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Returns the total number of [`fit_model_with_axes`] solver executions on the current thread for regression diagnostics.
+#[doc(hidden)]
+#[must_use]
+pub fn fit_model_with_axes_call_count() -> usize {
+    FIT_MODEL_WITH_AXES_CALL_COUNT.with(std::cell::Cell::get)
+}
+
+/// Resets the [`fit_model_with_axes`] solver invocation counter on the current thread to zero.
+#[doc(hidden)]
+pub fn reset_fit_model_with_axes_call_count() {
+    FIT_MODEL_WITH_AXES_CALL_COUNT.with(|c| c.set(0));
+}
+
 /// UI regression summary bundling fitted parameters, formula text, and residual stems.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FitResult {
@@ -34,6 +51,7 @@ pub struct FitResult {
     pub log_y: bool,
     /// Whether transformed linearized fitting (Log Mode) was used.
     pub log_mode: bool,
+    curve_fit: Option<CurveFit>,
 }
 
 impl FitResult {
@@ -56,6 +74,7 @@ impl FitResult {
             log_x: curve.log_x,
             log_y: curve.log_y,
             log_mode: curve.log_mode,
+            curve_fit: Some(curve),
         }
     }
 
@@ -65,6 +84,9 @@ impl FitResult {
         if !x.is_finite() {
             return f64::NAN;
         }
+        if let Some(ref curve) = self.curve_fit {
+            return curve.eval(x);
+        }
         match self.fit_type {
             FitType::Linear | FitType::Quadratic | FitType::Cubic | FitType::Quartic => {
                 if self.log_x && x <= 0.0 {
@@ -72,7 +94,12 @@ impl FitResult {
                 }
                 let tx = if self.log_x { x.log10() } else { x };
                 let ty = math_commons::fit::eval_polynomial_horner(&self.coefficients, tx);
-                if self.log_y { 10.0_f64.powf(ty) } else { ty }
+                let out = if self.log_y {
+                    10.0_f64.powf(ty.clamp(-300.0, 300.0)).clamp(1e-300, 1e300)
+                } else {
+                    ty
+                };
+                if out.is_finite() { out } else { f64::NAN }
             }
             FitType::Exponential
             | FitType::PowerLaw
@@ -126,6 +153,7 @@ pub fn fit_model_with_axes<P: PointSeries + ?Sized>(
     log_y: bool,
     log_mode: bool,
 ) -> Result<FitResult, FitError> {
+    FIT_MODEL_WITH_AXES_CALL_COUNT.with(|c| c.set(c.get() + 1));
     let curve = math_commons::fit::fit_model_with_axes(points, fit_type, log_mode, log_x, log_y)?;
     Ok(FitResult::from_curve_fit(curve, points, dataset_name))
 }

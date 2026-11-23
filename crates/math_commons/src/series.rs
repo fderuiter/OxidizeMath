@@ -11,24 +11,24 @@ pub trait Sample2D {
 }
 
 impl Sample2D for [f64; 2] {
-    #[inline]
+    #[inline(always)]
     fn sample_x(&self) -> f64 {
         self[0]
     }
 
-    #[inline]
+    #[inline(always)]
     fn sample_y(&self) -> f64 {
         self[1]
     }
 }
 
 impl Sample2D for (f64, f64) {
-    #[inline]
+    #[inline(always)]
     fn sample_x(&self) -> f64 {
         self.0
     }
 
-    #[inline]
+    #[inline(always)]
     fn sample_y(&self) -> f64 {
         self.1
     }
@@ -44,7 +44,7 @@ pub trait PointSeries {
     fn len(&self) -> usize;
 
     /// Returns `true` when the series contains zero points.
-    #[inline]
+    #[inline(always)]
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -56,29 +56,29 @@ pub trait PointSeries {
     fn y_at(&self, index: usize) -> f64;
 
     /// Returns `[x, y]` at `index`.
-    #[inline]
+    #[inline(always)]
     fn point_at(&self, index: usize) -> [f64; 2] {
         [self.x_at(index), self.y_at(index)]
     }
 }
 
 impl<S: Sample2D> PointSeries for [S] {
-    #[inline]
+    #[inline(always)]
     fn len(&self) -> usize {
         <[S]>::len(self)
     }
 
-    #[inline]
+    #[inline(always)]
     fn x_at(&self, index: usize) -> f64 {
         self[index].sample_x()
     }
 
-    #[inline]
+    #[inline(always)]
     fn y_at(&self, index: usize) -> f64 {
         self[index].sample_y()
     }
 
-    #[inline]
+    #[inline(always)]
     fn point_at(&self, index: usize) -> [f64; 2] {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
@@ -86,22 +86,22 @@ impl<S: Sample2D> PointSeries for [S] {
 }
 
 impl<S: Sample2D, const N: usize> PointSeries for [S; N] {
-    #[inline]
+    #[inline(always)]
     fn len(&self) -> usize {
         N
     }
 
-    #[inline]
+    #[inline(always)]
     fn x_at(&self, index: usize) -> f64 {
         self[index].sample_x()
     }
 
-    #[inline]
+    #[inline(always)]
     fn y_at(&self, index: usize) -> f64 {
         self[index].sample_y()
     }
 
-    #[inline]
+    #[inline(always)]
     fn point_at(&self, index: usize) -> [f64; 2] {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
@@ -109,22 +109,22 @@ impl<S: Sample2D, const N: usize> PointSeries for [S; N] {
 }
 
 impl<S: Sample2D> PointSeries for Vec<S> {
-    #[inline]
+    #[inline(always)]
     fn len(&self) -> usize {
         Vec::len(self)
     }
 
-    #[inline]
+    #[inline(always)]
     fn x_at(&self, index: usize) -> f64 {
         self[index].sample_x()
     }
 
-    #[inline]
+    #[inline(always)]
     fn y_at(&self, index: usize) -> f64 {
         self[index].sample_y()
     }
 
-    #[inline]
+    #[inline(always)]
     fn point_at(&self, index: usize) -> [f64; 2] {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
@@ -132,66 +132,66 @@ impl<S: Sample2D> PointSeries for Vec<S> {
 }
 
 impl<T: PointSeries + ?Sized> PointSeries for &T {
-    #[inline]
+    #[inline(always)]
     fn len(&self) -> usize {
         (**self).len()
     }
 
-    #[inline]
+    #[inline(always)]
     fn x_at(&self, index: usize) -> f64 {
         (**self).x_at(index)
     }
 
-    #[inline]
+    #[inline(always)]
     fn y_at(&self, index: usize) -> f64 {
         (**self).y_at(index)
     }
 
-    #[inline]
+    #[inline(always)]
     fn point_at(&self, index: usize) -> [f64; 2] {
         (**self).point_at(index)
     }
 }
 
 impl PointSeries for (&[f64], &[f64]) {
-    #[inline]
+    #[inline(always)]
     fn len(&self) -> usize {
         self.0.len().min(self.1.len())
     }
 
-    #[inline]
+    #[inline(always)]
     fn x_at(&self, index: usize) -> f64 {
         self.0[index]
     }
 
-    #[inline]
+    #[inline(always)]
     fn y_at(&self, index: usize) -> f64 {
         self.1[index]
     }
 
-    #[inline]
+    #[inline(always)]
     fn point_at(&self, index: usize) -> [f64; 2] {
         [self.0[index], self.1[index]]
     }
 }
 
 impl PointSeries for (&Vec<f64>, &Vec<f64>) {
-    #[inline]
+    #[inline(always)]
     fn len(&self) -> usize {
         self.0.len().min(self.1.len())
     }
 
-    #[inline]
+    #[inline(always)]
     fn x_at(&self, index: usize) -> f64 {
         self.0[index]
     }
 
-    #[inline]
+    #[inline(always)]
     fn y_at(&self, index: usize) -> f64 {
         self.1[index]
     }
 
-    #[inline]
+    #[inline(always)]
     fn point_at(&self, index: usize) -> [f64; 2] {
         [self.0[index], self.1[index]]
     }

@@ -59,6 +59,17 @@ fn verify_zero_alloc_fits(
         let fit = fit_polynomial(poly_pts, deg).expect("poly fit");
         assert!(fit.eval(1.5).is_finite());
     }
+    let mut shifted_quartic = [[0.0_f64; 2]; 21];
+    for (i, slot) in shifted_quartic.iter_mut().enumerate() {
+        let u = -1.0 + (i as f64) * 0.1;
+        let x = 1_000_000.0 + u;
+        *slot = [
+            x,
+            1.5 - 0.8 * u + 2.2 * u * u - 0.35 * u.powi(3) + 0.12 * u.powi(4),
+        ];
+    }
+    let sq_fit = fit_polynomial(&shifted_quartic, 4).expect("centered quartic");
+    assert!((sq_fit.eval(1_000_000.0) - 1.5).abs() < 1e-6);
     let log_poly = fit_polynomial_scaled(exp_pts, 1, false, true).expect("semilog poly");
     assert!(log_poly.r_squared > 0.999);
     assert_eq!(

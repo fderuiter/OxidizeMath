@@ -1,6 +1,7 @@
 //! Pairwise curve-curve and curve-reference-line intersection UI adapters delegating to `math_commons::poi`.
 
 use crate::{
+    items::PlotPoint,
     poi::{
         CriticalPoint, CriticalPointKind, LineSeriesRef, MAX_CRITICAL_POINTS, RefLineEntry,
         interpolate_threshold_crossings, interpolate_y_at_x, intersect_polylines_into,
@@ -69,18 +70,82 @@ pub(crate) fn collect_reference_intersections(
     }
 }
 
+/// Maximum number of hoverable line series eligible for $O(K^2)$ pairwise intersection scans.
+pub const MAX_PAIRWISE_INTERSECTION_SERIES: usize = 16;
+
+#[derive(Clone, Copy)]
+struct SeriesBoundsSummary {
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+    visible: bool,
+}
+
+fn summarize_series_bounds(pts: &[PlotPoint], bounds: &PlotBounds) -> SeriesBoundsSummary {
+    let mut min_x = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut finite_count = 0_usize;
+    for &pt in pts {
+        if !pt.x.is_finite() || !pt.y.is_finite() {
+            continue;
+        }
+        finite_count += 1;
+        min_x = min_x.min(pt.x);
+        max_x = max_x.max(pt.x);
+        min_y = min_y.min(pt.y);
+        max_y = max_y.max(pt.y);
+    }
+    let tol_x = (bounds.width().abs() * 1e-9).max(1e-12);
+    let tol_y = (bounds.height().abs() * 1e-9).max(1e-12);
+    let visible = finite_count >= 2
+        && max_x >= bounds.min[0] - tol_x
+        && min_x <= bounds.max[0] + tol_x
+        && max_y >= bounds.min[1] - tol_y
+        && min_y <= bounds.max[1] + tol_y;
+    SeriesBoundsSummary {
+        min_x,
+        max_x,
+        min_y,
+        max_y,
+        visible,
+    }
+}
+
 pub(crate) fn collect_pairwise_line_intersections(
     lines: &[LineSeriesRef<'_>],
     bounds: &PlotBounds,
     transform: &PlotTransform,
     out: &mut Vec<CriticalPoint>,
 ) {
+    if lines.len() < 2 || lines.len() > MAX_PAIRWISE_INTERSECTION_SERIES {
+        return;
+    }
+    let summaries: Vec<SeriesBoundsSummary> = lines
+        .iter()
+        .map(|line| summarize_series_bounds(line.points, bounds))
+        .collect();
     let mut stack_hits = [[0.0_f64; 2]; MAX_CRITICAL_POINTS];
     let x_bounds = [bounds.min[0], bounds.max[0]];
     for i in 0..lines.len() {
+        let sa = summaries[i];
+        if !sa.visible {
+            continue;
+        }
         for j in (i + 1)..lines.len() {
             if out.len() >= MAX_CRITICAL_POINTS * 2 {
                 return;
+            }
+            let sb = summaries[j];
+            if !sb.visible
+                || sa.max_y < sb.min_y
+                || sb.max_y < sa.min_y
+                || sa.max_x < sb.min_x
+                || sb.max_x < sa.min_x
+            {
+                continue;
             }
             let a = &lines[i];
             let b = &lines[j];

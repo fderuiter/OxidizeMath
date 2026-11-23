@@ -1,4 +1,4 @@
-//! Stack-allocated polynomial ordinary least-squares regression (degrees 1–4).
+//! Stack-allocated centered polynomial ordinary least-squares regression (degrees 1–4).
 // [cite:math_commons]
 
 use super::{CurveFit, FitModel};
@@ -24,8 +24,8 @@ pub fn fit_polynomial_scaled<P: PointSeries + ?Sized>(
 ) -> Result<CurveFit, FitError> {
     let fit_model = FitModel::from_degree(degree)?;
     let required = degree + 1;
-    let (sum_x_pow, rhs, finite_count, valid_count, sum_ty) =
-        accumulate_poly_moments(points, degree, log_x, log_y);
+    let (finite_count, valid_count, sum_tx, sum_ty, min_tx, max_tx) =
+        scan_poly_domain(points, log_x, log_y);
 
     if finite_count < required {
         return Err(FitError::InsufficientPoints {
@@ -39,19 +39,20 @@ pub fn fit_polynomial_scaled<P: PointSeries + ?Sized>(
         });
     }
 
-    let mut mat = [[0.0_f64; 5]; 5];
-    for r in 0..required {
-        for c in 0..required {
-            mat[r][c] = sum_x_pow[r + c];
-        }
+    let u_mean = sum_tx / (valid_count as f64);
+    let u_scale = (u_mean - min_tx).abs().max((max_tx - u_mean).abs());
+    if !u_mean.is_finite() || !u_scale.is_finite() || u_scale <= 1e-12 {
+        return Err(FitError::SingularMatrix);
     }
-    let coeffs = solve_dense_small_raw(&mut mat, &rhs, required)?;
+
+    let centered = solve_centered_poly_system(points, degree, (log_x, log_y), (u_mean, u_scale))?;
+    let coeffs = uncenter_polynomial_coeffs(u_mean, u_scale, &centered, required);
     let mean_ty = sum_ty / (valid_count as f64);
     let (r_squared, rmse) = compute_poly_metrics(
         points,
-        &coeffs[..required],
-        log_x,
-        log_y,
+        &centered[..required],
+        (u_mean, u_scale),
+        (log_x, log_y),
         mean_ty,
         valid_count,
     );
@@ -67,20 +68,21 @@ pub fn fit_polynomial_scaled<P: PointSeries + ?Sized>(
         log_x,
         log_y,
         log_x || log_y,
-    ))
+    )
+    .with_centered_poly(u_mean, u_scale, centered))
 }
 
-fn accumulate_poly_moments<P: PointSeries + ?Sized>(
+fn scan_poly_domain<P: PointSeries + ?Sized>(
     points: &P,
-    deg: usize,
     log_x: bool,
     log_y: bool,
-) -> ([f64; 9], [f64; 5], usize, usize, f64) {
-    let mut sum_x_pow = [0.0_f64; 9];
-    let mut rhs = [0.0_f64; 5];
+) -> (usize, usize, f64, f64, f64, f64) {
     let mut finite_count = 0usize;
     let mut valid_count = 0usize;
+    let mut sum_tx = 0.0_f64;
     let mut sum_ty = 0.0_f64;
+    let mut min_tx = f64::INFINITY;
+    let mut max_tx = f64::NEG_INFINITY;
 
     for idx in 0..points.len() {
         let p = points.point_at(idx);
@@ -94,28 +96,89 @@ fn accumulate_poly_moments<P: PointSeries + ?Sized>(
         let tx = if log_x { p[0].log10() } else { p[0] };
         let ty = if log_y { p[1].log10() } else { p[1] };
         valid_count += 1;
+        sum_tx += tx;
         sum_ty += ty;
+        min_tx = min_tx.min(tx);
+        max_tx = max_tx.max(tx);
+    }
+    (finite_count, valid_count, sum_tx, sum_ty, min_tx, max_tx)
+}
 
-        let mut xp = 1.0_f64;
-        for (k, slot) in sum_x_pow.iter_mut().enumerate().take(2 * deg + 1) {
-            *slot += xp;
-            if k <= deg {
-                rhs[k] += xp * ty;
+fn solve_centered_poly_system<P: PointSeries + ?Sized>(
+    points: &P,
+    deg: usize,
+    axes: (bool, bool),
+    center_scale: (f64, f64),
+) -> Result<[f64; 5], FitError> {
+    let required = deg + 1;
+    let (log_x, log_y) = axes;
+    let (u_mean, u_scale) = center_scale;
+    let mut sum_z_pow = [0.0_f64; 9];
+    let mut rhs = [0.0_f64; 5];
+
+    for idx in 0..points.len() {
+        let p = points.point_at(idx);
+        if !p[0].is_finite() || !p[1].is_finite() {
+            continue;
+        }
+        if (log_x && p[0] <= 0.0) || (log_y && p[1] <= 0.0) {
+            continue;
+        }
+        let tx = if log_x { p[0].log10() } else { p[0] };
+        let ty = if log_y { p[1].log10() } else { p[1] };
+        let z = (tx - u_mean) / u_scale;
+        let mut zp = 1.0_f64;
+        for (k, slot) in sum_z_pow.iter_mut().enumerate().take(2 * deg + 1) {
+            *slot += zp;
+            if k < required {
+                rhs[k] += zp * ty;
             }
-            xp *= tx;
+            zp *= z;
         }
     }
-    (sum_x_pow, rhs, finite_count, valid_count, sum_ty)
+
+    let mut mat = [[0.0_f64; 5]; 5];
+    for (r, row) in mat.iter_mut().enumerate().take(required) {
+        row[..required].copy_from_slice(&sum_z_pow[r..(r + required)]);
+    }
+    solve_dense_small_raw(&mut mat, &rhs, required)
+}
+
+fn uncenter_polynomial_coeffs(
+    u_mean: f64,
+    u_scale: f64,
+    centered: &[f64; 5],
+    count: usize,
+) -> [f64; 5] {
+    let mut out = [0.0_f64; 5];
+    if count == 0 {
+        return out;
+    }
+    let deg = count - 1;
+    let mut k = count;
+    while k > 0 {
+        k -= 1;
+        let b_k = centered[k];
+        let mut j = deg;
+        while j >= 1 {
+            out[j] = (out[j - 1] - u_mean * out[j]) / u_scale;
+            j -= 1;
+        }
+        out[0] = (-u_mean * out[0]) / u_scale + b_k;
+    }
+    out
 }
 
 fn compute_poly_metrics<P: PointSeries + ?Sized>(
     points: &P,
-    coeffs: &[f64],
-    log_x: bool,
-    log_y: bool,
+    centered_coeffs: &[f64],
+    center_scale: (f64, f64),
+    axes: (bool, bool),
     mean_ty: f64,
     valid_count: usize,
 ) -> (f64, f64) {
+    let (u_mean, u_scale) = center_scale;
+    let (log_x, log_y) = axes;
     let mut ss_tot = 0.0_f64;
     let mut ss_res = 0.0_f64;
     for idx in 0..points.len() {
@@ -128,7 +191,8 @@ fn compute_poly_metrics<P: PointSeries + ?Sized>(
         }
         let tx = if log_x { p[0].log10() } else { p[0] };
         let ty = if log_y { p[1].log10() } else { p[1] };
-        let pred = eval_polynomial_horner_raw(coeffs, tx);
+        let z = (tx - u_mean) / u_scale;
+        let pred = eval_polynomial_horner_raw(centered_coeffs, z);
         let diff = ty - pred;
         let tot = ty - mean_ty;
         ss_res += diff * diff;
@@ -153,7 +217,7 @@ pub fn eval_polynomial_horner(coeffs: &[f64], x: f64) -> f64 {
     eval_polynomial_horner_raw(coeffs, x)
 }
 
-#[inline]
+#[inline(always)]
 pub(super) fn eval_polynomial_horner_raw(coeffs: &[f64], x: f64) -> f64 {
     let mut acc = 0.0_f64;
     let mut k = coeffs.len();

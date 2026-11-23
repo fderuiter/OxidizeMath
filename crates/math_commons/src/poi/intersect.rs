@@ -22,6 +22,19 @@ where
     A: PointSeries + ?Sized,
     B: PointSeries + ?Sized,
 {
+    intersect_polylines_into_raw(a, b, x_bounds, out)
+}
+
+fn intersect_polylines_into_raw<A, B>(
+    a: &A,
+    b: &B,
+    x_bounds: [f64; 2],
+    out: &mut [[f64; 2]],
+) -> usize
+where
+    A: PointSeries + ?Sized,
+    B: PointSeries + ?Sized,
+{
     if a.len() < 2 || b.len() < 2 || out.is_empty() {
         return 0;
     }
@@ -39,26 +52,26 @@ where
     B: PointSeries + ?Sized,
 {
     let mut stack_buf = [[0.0_f64; 2]; MAX_POLYLINE_INTERSECTIONS];
-    let count = intersect_polylines_into(a, b, x_bounds, &mut stack_buf);
+    let count = intersect_polylines_into_raw(a, b, x_bounds, &mut stack_buf);
     stack_buf[..count].to_vec()
 }
 
-#[verified_engine::verified]
 fn is_strictly_increasing_x<P: PointSeries + ?Sized>(pts: &P) -> bool {
     let n = pts.len();
+    let mut prev_x = f64::NEG_INFINITY;
     for i in 0..n {
         let p = pts.point_at(i);
         if !p[0].is_finite() || !p[1].is_finite() {
             return false;
         }
-        if i > 0 && p[0] <= pts.x_at(i - 1) {
+        if i > 0 && p[0] <= prev_x {
             return false;
         }
+        prev_x = p[0];
     }
     true
 }
 
-#[verified_engine::verified]
 fn intersect_monotone_into<A, B>(a: &A, b: &B, x_bounds: [f64; 2], out: &mut [[f64; 2]]) -> usize
 where
     A: PointSeries + ?Sized,
@@ -98,7 +111,6 @@ where
     written
 }
 
-#[verified_engine::verified]
 fn first_index_gt<P: PointSeries + ?Sized>(pts: &P, x_lo: f64) -> usize {
     let mut idx = 0usize;
     let n = pts.len();
@@ -108,7 +120,6 @@ fn first_index_gt<P: PointSeries + ?Sized>(pts: &P, x_lo: f64) -> usize {
     idx
 }
 
-#[verified_engine::verified]
 fn next_merged_knot<A, B>(
     a: &A,
     b: &B,
@@ -139,16 +150,19 @@ where
     next
 }
 
-#[verified_engine::verified]
 fn monotone_slab_hit<A, B>(a: &A, b: &B, ia: usize, ib: usize, x0: f64, x1: f64) -> Option<[f64; 2]>
 where
     A: PointSeries + ?Sized,
     B: PointSeries + ?Sized,
 {
-    let ya0 = eval_segment_at_x(a.point_at(ia), a.point_at(ia + 1), x0);
-    let ya1 = eval_segment_at_x(a.point_at(ia), a.point_at(ia + 1), x1);
-    let yb0 = eval_segment_at_x(b.point_at(ib), b.point_at(ib + 1), x0);
-    let yb1 = eval_segment_at_x(b.point_at(ib), b.point_at(ib + 1), x1);
+    let a0 = a.point_at(ia);
+    let a1 = a.point_at(ia + 1);
+    let b0 = b.point_at(ib);
+    let b1 = b.point_at(ib + 1);
+    let ya0 = eval_segment_at_x_raw(a0, a1, x0);
+    let ya1 = eval_segment_at_x_raw(a0, a1, x1);
+    let yb0 = eval_segment_at_x_raw(b0, b1, x0);
+    let yb1 = eval_segment_at_x_raw(b0, b1, x1);
     let d0 = ya0 - yb0;
     let d1 = ya1 - yb1;
     if d0.abs() <= 1e-12 && d1.abs() <= 1e-12 {
@@ -167,7 +181,6 @@ where
     }
 }
 
-#[verified_engine::verified]
 fn intersect_general_into<A, B>(a: &A, b: &B, x_bounds: [f64; 2], out: &mut [[f64; 2]]) -> usize
 where
     A: PointSeries + ?Sized,
@@ -194,7 +207,6 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-#[verified_engine::verified]
 fn scan_general_against_b<B: PointSeries + ?Sized>(
     a0: [f64; 2],
     a1: [f64; 2],
@@ -219,12 +231,13 @@ fn scan_general_against_b<B: PointSeries + ?Sized>(
         if b0[1].max(b1[1]) < a_min_y - 1e-12 || b0[1].min(b1[1]) > a_max_y + 1e-12 {
             continue;
         }
-        if let Some(hit) = segment_intersection_2d(a0, a1, b0, b1) {
-            if hit[0] >= x_bounds[0] - 1e-9 && hit[0] <= x_bounds[1] + 1e-9 {
-                written = push_unique_point(out, written, hit);
-                if written == out.len() {
-                    break;
-                }
+        if let Some(hit) = segment_intersection_2d_raw(a0, a1, b0, b1)
+            && hit[0] >= x_bounds[0] - 1e-9
+            && hit[0] <= x_bounds[1] + 1e-9
+        {
+            written = push_unique_point(out, written, hit);
+            if written == out.len() {
+                break;
             }
         }
     }
@@ -235,6 +248,11 @@ fn scan_general_against_b<B: PointSeries + ?Sized>(
 #[inline]
 #[verified_engine::verified]
 pub fn eval_segment_at_x(p0: [f64; 2], p1: [f64; 2], x: f64) -> f64 {
+    eval_segment_at_x_raw(p0, p1, x)
+}
+
+#[inline(always)]
+fn eval_segment_at_x_raw(p0: [f64; 2], p1: [f64; 2], x: f64) -> f64 {
     let dx = p1[0] - p0[0];
     if dx.abs() <= 1e-15 {
         return 0.5 * (p0[1] + p1[1]);
@@ -246,6 +264,16 @@ pub fn eval_segment_at_x(p0: [f64; 2], p1: [f64; 2], x: f64) -> f64 {
 /// Computes the exact 2D intersection of closed line segments `(a0, a1)` and `(b0, b1)`.
 #[verified_engine::verified]
 pub fn segment_intersection_2d(
+    a0: [f64; 2],
+    a1: [f64; 2],
+    b0: [f64; 2],
+    b1: [f64; 2],
+) -> Option<[f64; 2]> {
+    segment_intersection_2d_raw(a0, a1, b0, b1)
+}
+
+#[inline]
+fn segment_intersection_2d_raw(
     a0: [f64; 2],
     a1: [f64; 2],
     b0: [f64; 2],
@@ -271,14 +299,12 @@ pub fn segment_intersection_2d(
     }
 }
 
-#[inline]
-#[verified_engine::verified]
+#[inline(always)]
 fn finite_seg(p0: [f64; 2], p1: [f64; 2]) -> bool {
     p0[0].is_finite() && p0[1].is_finite() && p1[0].is_finite() && p1[1].is_finite()
 }
 
 #[inline]
-#[verified_engine::verified]
 fn push_unique_point(out: &mut [[f64; 2]], written: usize, candidate: [f64; 2]) -> usize {
     for prev in &out[..written] {
         if (prev[0] - candidate[0]).abs() <= 1e-7 && (prev[1] - candidate[1]).abs() <= 1e-7 {

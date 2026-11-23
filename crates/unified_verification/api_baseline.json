@@ -6017,10 +6017,7 @@
       "signature": "pub struct StepSize"
     }
   ],
-  "crates/math_commons/src/poi/interp.rs": [
-    {
-      "signature": "pub fn closest_threshold_crossing < P : PointSeries + ? Sized > (pts : & P , y_target : f64 , x_ref : f64 ,) -> Option < f64 >"
-    },
+  "crates/math_commons/src/poi/extrema.rs": [
     {
       "signature": "pub fn detect_local_extrema < P : PointSeries + ? Sized > (pts : & P) -> Vec < LocalExtremum >"
     },
@@ -6028,16 +6025,27 @@
       "signature": "pub fn detect_local_extrema_into < P : PointSeries + ? Sized > (pts : & P , out : & mut [LocalExtremum] ,) -> usize"
     },
     {
-      "signature": "pub fn interpolate_threshold_crossings < P : PointSeries + ? Sized > (pts : & P , y_target : f64 ,) -> Vec < f64 >"
-    },
-    {
-      "signature": "pub fn interpolate_y_at_x < P : PointSeries + ? Sized > (pts : & P , x_target : f64) -> Vec < f64 >"
-    },
-    {
       "signature": "pub fn parabolic_vertex (p0 : [f64 ; 2] , p1 : [f64 ; 2] , p2 : [f64 ; 2]) -> [f64 ; 2]"
     },
     {
       "signature": "pub fn peak_extremum < P : PointSeries + ? Sized > (pts : & P) -> Option < [f64 ; 2] >"
+    },
+    {
+      "signature": "pub fn scan_line_pois < P : PointSeries + ? Sized > (pts : & P , want_roots : bool , want_y_intercepts : bool ,) -> LinePoiScan"
+    },
+    {
+      "signature": "pub struct LinePoiScan"
+    }
+  ],
+  "crates/math_commons/src/poi/interp.rs": [
+    {
+      "signature": "pub fn closest_threshold_crossing < P : PointSeries + ? Sized > (pts : & P , y_target : f64 , x_ref : f64 ,) -> Option < f64 >"
+    },
+    {
+      "signature": "pub fn interpolate_threshold_crossings < P : PointSeries + ? Sized > (pts : & P , y_target : f64 ,) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn interpolate_y_at_x < P : PointSeries + ? Sized > (pts : & P , x_target : f64) -> Vec < f64 >"
     },
     {
       "signature": "pub fn threshold_crossings_into < P : PointSeries + ? Sized > (pts : & P , y_target : f64 , out : & mut [f64] ,) -> usize"
@@ -6074,25 +6082,31 @@
       "signature": "pub use crate :: series :: Sample2D"
     },
     {
+      "signature": "pub use extrema :: LinePoiScan"
+    },
+    {
+      "signature": "pub use extrema :: detect_local_extrema"
+    },
+    {
+      "signature": "pub use extrema :: detect_local_extrema_into"
+    },
+    {
+      "signature": "pub use extrema :: parabolic_vertex"
+    },
+    {
+      "signature": "pub use extrema :: peak_extremum"
+    },
+    {
+      "signature": "pub use extrema :: scan_line_pois"
+    },
+    {
       "signature": "pub use interp :: closest_threshold_crossing"
-    },
-    {
-      "signature": "pub use interp :: detect_local_extrema"
-    },
-    {
-      "signature": "pub use interp :: detect_local_extrema_into"
     },
     {
       "signature": "pub use interp :: interpolate_threshold_crossings"
     },
     {
       "signature": "pub use interp :: interpolate_y_at_x"
-    },
-    {
-      "signature": "pub use interp :: parabolic_vertex"
-    },
-    {
-      "signature": "pub use interp :: peak_extremum"
     },
     {
       "signature": "pub use interp :: threshold_crossings_into"
