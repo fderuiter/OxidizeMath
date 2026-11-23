@@ -1,11 +1,118 @@
+//! Decomposed egui rendering helpers for [`super::BetSizeCalculatorTool`].
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{BetSizeCalculatorTool, OddsFormat};
+use super::{
+    resolve_odds_for, skip_american_dead_zone, BetSizeCalculatorTool, OddsFormat,
+    AMERICAN_ODDS_MAX, AMERICAN_ODDS_MIN, BANKROLL_MAX, BANKROLL_MIN, DECIMAL_ODDS_MAX,
+    DECIMAL_ODDS_MIN, FRACTIONAL_MAX, FRACTIONAL_MAX_DENOMINATOR, FRACTIONAL_MIN, IMPLIED_PROB_MAX,
+    IMPLIED_PROB_MIN, PROBABILITY_MAX, PROBABILITY_MIN,
+};
 use crate::accessibility::AccessibleHoverText;
+use crate::framework::bounded_drag_value;
 use eframe::egui;
 use egui_plot::{Legend, Line, LineStyle, MarkerShape, Plot, Points};
+use math_explorer::pure_math::statistics::kelly::Odds;
 
 impl BetSizeCalculatorTool {
+    fn render_format_selector(&mut self, ui: &mut egui::Ui) -> bool {
+        let prev = self.odds_format;
+        ui.horizontal_wrapped(|ui| {
+            ui.radio_value(&mut self.odds_format, OddsFormat::Decimal, "Decimal");
+            ui.radio_value(&mut self.odds_format, OddsFormat::American, "American");
+            ui.radio_value(&mut self.odds_format, OddsFormat::Fractional, "Fractional");
+            ui.radio_value(
+                &mut self.odds_format,
+                OddsFormat::ImpliedProbability,
+                "Implied Prob",
+            );
+        });
+        if self.odds_format != prev {
+            if let Ok(odds) = resolve_odds_for(
+                prev,
+                self.decimal_odds,
+                self.american_odds,
+                self.fractional_numerator,
+                self.fractional_denominator,
+                self.implied_probability_input,
+            ) {
+                self.sync_from_odds(odds, prev);
+            }
+            return true;
+        }
+        false
+    }
+
+    fn render_fractional_editor(&mut self, ui: &mut egui::Ui) -> bool {
+        ui.horizontal(|ui| {
+            let mut c = ui
+                .add(bounded_drag_value(
+                    &mut self.fractional_numerator,
+                    FRACTIONAL_MIN..=FRACTIONAL_MAX,
+                    1.0,
+                ))
+                .accessible_hover_text("Fractional profit numerator")
+                .changed();
+            ui.label("/");
+            c |= ui
+                .add(bounded_drag_value(
+                    &mut self.fractional_denominator,
+                    FRACTIONAL_MIN..=FRACTIONAL_MAX,
+                    1.0,
+                ))
+                .accessible_hover_text("Fractional stake denominator")
+                .changed();
+            c
+        })
+        .inner
+    }
+
+    fn show_odds_value_editor(&mut self, ui: &mut egui::Ui) -> bool {
+        let changed = match self.odds_format {
+            OddsFormat::Decimal => ui
+                .add(bounded_drag_value(
+                    &mut self.decimal_odds,
+                    DECIMAL_ODDS_MIN..=DECIMAL_ODDS_MAX,
+                    0.01,
+                ))
+                .accessible_hover_text("Decimal payout including returned stake (2.0 = even money)")
+                .changed(),
+            OddsFormat::American => {
+                let prev = self.american_odds;
+                let edited = ui
+                    .add(bounded_drag_value(
+                        &mut self.american_odds,
+                        AMERICAN_ODDS_MIN..=AMERICAN_ODDS_MAX,
+                        1.0,
+                    ))
+                    .accessible_hover_text("American moneyline odds (>= +100 or <= -100)")
+                    .changed();
+                if edited {
+                    self.american_odds = skip_american_dead_zone(prev, self.american_odds);
+                }
+                edited
+            }
+            OddsFormat::Fractional => self.render_fractional_editor(ui),
+            OddsFormat::ImpliedProbability => ui
+                .add(
+                    bounded_drag_value(
+                        &mut self.implied_probability_input,
+                        IMPLIED_PROB_MIN..=IMPLIED_PROB_MAX,
+                        0.1,
+                    )
+                    .suffix("%"),
+                )
+                .accessible_hover_text("Bookmaker implied win probability (0.1% to 99.0%)")
+                .changed(),
+        };
+        if changed {
+            if let Ok(odds) = self.resolve_active_odds() {
+                self.sync_from_odds(odds, self.odds_format);
+            }
+        }
+        changed
+    }
+
     fn show_input_grid(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         egui::Grid::new("bet_size_inputs")
@@ -15,10 +122,12 @@ impl BetSizeCalculatorTool {
                 ui.label("Win Probability (%):");
                 changed |= ui
                     .add(
-                        egui::DragValue::new(&mut self.probability_input)
-                            .speed(0.1)
-                            .range(0.0..=100.0)
-                            .suffix("%"),
+                        bounded_drag_value(
+                            &mut self.probability_input,
+                            PROBABILITY_MIN..=PROBABILITY_MAX,
+                            0.1,
+                        )
+                        .suffix("%"),
                     )
                     .accessible_hover_text(
                         "Estimated probability of winning the wager (0% to 100%)",
@@ -27,17 +136,7 @@ impl BetSizeCalculatorTool {
                 ui.end_row();
 
                 ui.label("Odds Format:");
-                ui.horizontal(|ui| {
-                    changed |= ui
-                        .radio_value(&mut self.odds_format, OddsFormat::Decimal, "Decimal")
-                        .changed();
-                    changed |= ui
-                        .radio_value(&mut self.odds_format, OddsFormat::American, "American")
-                        .changed();
-                    changed |= ui
-                        .radio_value(&mut self.odds_format, OddsFormat::Fractional, "Fractional")
-                        .changed();
-                });
+                changed |= self.render_format_selector(ui);
                 ui.end_row();
 
                 ui.label("Placed Odds:");
@@ -47,9 +146,7 @@ impl BetSizeCalculatorTool {
                 ui.label("Total Bankroll ($):");
                 changed |= ui
                     .add(
-                        egui::DragValue::new(&mut self.bankroll)
-                            .speed(10.0)
-                            .range(1.0..=1_000_000.0)
+                        bounded_drag_value(&mut self.bankroll, BANKROLL_MIN..=BANKROLL_MAX, 10.0)
                             .prefix("$"),
                     )
                     .accessible_hover_text("Available bankroll capital in dollars")
@@ -58,12 +155,7 @@ impl BetSizeCalculatorTool {
 
                 ui.label("Drawdown Wealth Floor (% W₀):");
                 changed |= ui
-                    .add(
-                        egui::DragValue::new(&mut self.drawdown_floor_pct)
-                            .speed(1.0)
-                            .range(5.0..=95.0)
-                            .suffix("%"),
-                    )
+                    .add(egui::Slider::new(&mut self.drawdown_floor_pct, 5.0..=95.0).suffix("%"))
                     .accessible_hover_text(
                         "Wealth floor percentage used for proportional-Kelly barrier solvency bounds",
                     )
@@ -73,48 +165,28 @@ impl BetSizeCalculatorTool {
         changed
     }
 
-    fn show_odds_value_editor(&mut self, ui: &mut egui::Ui) -> bool {
-        match self.odds_format {
-            OddsFormat::Decimal => ui
-                .add(
-                    egui::DragValue::new(&mut self.decimal_odds)
-                        .speed(0.01)
-                        .range(1.01..=1000.0),
-                )
-                .accessible_hover_text("Decimal payout including returned stake (2.0 = even money)")
-                .changed(),
-            OddsFormat::American => ui
-                .add(
-                    egui::DragValue::new(&mut self.american_odds)
-                        .speed(1.0)
-                        .range(-10000.0..=10000.0),
-                )
-                .accessible_hover_text("American moneyline odds (+100 or <= -100)")
-                .changed(),
-            OddsFormat::Fractional => {
-                ui.horizontal(|ui| {
-                    let mut c = ui
-                        .add(
-                            egui::DragValue::new(&mut self.fractional_numerator)
-                                .speed(1.0)
-                                .range(1.0..=1000.0),
-                        )
-                        .accessible_hover_text("Fractional odds numerator")
-                        .changed();
-                    ui.label("/");
-                    c |= ui
-                        .add(
-                            egui::DragValue::new(&mut self.fractional_denominator)
-                                .speed(1.0)
-                                .range(1.0..=1000.0),
-                        )
-                        .accessible_hover_text("Fractional odds denominator")
-                        .changed();
-                    c
-                })
-                .inner
-            }
-        }
+    fn render_converted_readout(&self, ui: &mut egui::Ui, odds: &Odds) {
+        let (num, den) = odds.to_fractional(FRACTIONAL_MAX_DENOMINATOR);
+        let american = if self.odds_format == OddsFormat::American {
+            self.american_odds
+        } else {
+            odds.to_american()
+        };
+        ui.horizontal_wrapped(|ui| {
+            ui.strong("Equivalent Odds:");
+            ui.label(format!("Decimal {:.3}", odds.value()));
+            ui.separator();
+            ui.label(format!("American {:+.0}", american));
+            ui.separator();
+            ui.label(format!("Fractional {num}/{den}"));
+            ui.separator();
+            ui.label(format!(
+                "Implied {:.2}%",
+                odds.implied_probability() * 100.0
+            ));
+            ui.separator();
+            ui.label(format!("Net b = {:.3}", odds.net_profit_multiplier()));
+        });
     }
 
     fn show_closing_line_inputs(&mut self, ui: &mut egui::Ui) -> bool {
@@ -132,20 +204,20 @@ impl BetSizeCalculatorTool {
             if self.closing_line_enabled {
                 ui.label("Closing For:");
                 changed |= ui
-                    .add(
-                        egui::DragValue::new(&mut self.closing_for_decimal)
-                            .speed(0.01)
-                            .range(1.01..=1000.0),
-                    )
+                    .add(bounded_drag_value(
+                        &mut self.closing_for_decimal,
+                        DECIMAL_ODDS_MIN..=DECIMAL_ODDS_MAX,
+                        0.01,
+                    ))
                     .accessible_hover_text("Closing decimal odds on your selected outcome")
                     .changed();
                 ui.label("Closing Against:");
                 changed |= ui
-                    .add(
-                        egui::DragValue::new(&mut self.closing_against_decimal)
-                            .speed(0.01)
-                            .range(1.01..=1000.0),
-                    )
+                    .add(bounded_drag_value(
+                        &mut self.closing_against_decimal,
+                        DECIMAL_ODDS_MIN..=DECIMAL_ODDS_MAX,
+                        0.01,
+                    ))
                     .accessible_hover_text("Closing decimal odds on the opposing outcome")
                     .changed();
             }
@@ -158,6 +230,11 @@ impl BetSizeCalculatorTool {
         if let Some(ref err) = self.calc_error {
             ui.colored_label(palette.error, err);
             return;
+        }
+
+        if let Ok(odds) = self.resolve_active_odds() {
+            self.render_converted_readout(ui, &odds);
+            ui.add_space(4.0);
         }
 
         let ev = self.ev_per_unit.unwrap_or(0.0);
@@ -363,7 +440,7 @@ impl BetSizeCalculatorTool {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading("Kelly Criterion Bet Size, Solvency & CLV Calculator");
             ui.label(
-                "Calculate optimal sizing, logarithmic growth g(f), drawdown barrier bounds, sample sizes, and CLV.",
+                "Calculate optimal wager sizing across synchronized odds formats, growth g(f), drawdown bounds, and CLV.",
             );
             ui.separator();
 

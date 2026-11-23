@@ -1,10 +1,11 @@
-//! Kelly Criterion Bet Size, Growth Curve, Solvency Barrier, and Closing Line Value Calculator.
+//! Kelly Criterion Bet Size, Synchronized Odds, Solvency Barrier, and Closing Line Value Calculator.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use egui_plot::PlotPoint;
+use math_explorer::error::KellyError;
 use math_explorer::pure_math::statistics::kelly::{
     expected_growth_rate, expected_value, kelly_fraction, variants, BankrollFraction, Odds,
     UnitInterval,
@@ -24,11 +25,54 @@ mod state;
 #[path = "bet_size/ui.rs"]
 mod ui;
 
+pub(super) const PROBABILITY_MIN: f64 = 0.0;
+pub(super) const PROBABILITY_MAX: f64 = 100.0;
+pub(super) const DECIMAL_ODDS_MIN: f64 = 1.01;
+pub(super) const DECIMAL_ODDS_MAX: f64 = 1000.0;
+pub(super) const AMERICAN_ODDS_MIN: f64 = -10_000.0;
+pub(super) const AMERICAN_ODDS_MAX: f64 = 10_000.0;
+pub(super) const FRACTIONAL_MIN: f64 = 1.0;
+pub(super) const FRACTIONAL_MAX: f64 = 1000.0;
+pub(super) const FRACTIONAL_MAX_DENOMINATOR: u64 = 1000;
+pub(super) const IMPLIED_PROB_MIN: f64 = 0.1;
+pub(super) const IMPLIED_PROB_MAX: f64 = 99.0;
+pub(super) const BANKROLL_MIN: f64 = 1.0;
+pub(super) const BANKROLL_MAX: f64 = 1_000_000.0;
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub(crate) enum OddsFormat {
     Decimal,
     American,
     Fractional,
+    ImpliedProbability,
+}
+
+/// Jumps `american_odds` across the invalid `(-100.0, 100.0)` moneyline dead zone during scrubs.
+pub(crate) fn skip_american_dead_zone(prev: f64, next: f64) -> f64 {
+    let clamped = next.clamp(AMERICAN_ODDS_MIN, AMERICAN_ODDS_MAX);
+    if clamped.abs() >= 100.0 {
+        clamped
+    } else if prev <= -100.0 || (prev < 100.0 && clamped >= 0.0) {
+        100.0
+    } else {
+        -100.0
+    }
+}
+
+pub(super) fn resolve_odds_for(
+    format: OddsFormat,
+    dec: f64,
+    am: f64,
+    num: f64,
+    den: f64,
+    imp_pct: f64,
+) -> Result<Odds, KellyError> {
+    match format {
+        OddsFormat::Decimal => Odds::new(dec),
+        OddsFormat::American => Odds::from_american(am),
+        OddsFormat::Fractional => Odds::from_fractional(num, den),
+        OddsFormat::ImpliedProbability => Odds::from_implied_probability(imp_pct / 100.0),
+    }
 }
 
 pub(crate) const DEFAULT_CLOSING_DECIMAL: f64 = 1.91;
@@ -44,6 +88,7 @@ pub(crate) struct KellyStrategyRow {
     pub barrier_bound: Option<f64>,
 }
 
+/// Interactive Kelly Criterion bet-sizing calculator supporting synchronized odds formats and growth curves.
 pub struct BetSizeCalculatorTool {
     pub(crate) probability_input: f64,
     pub(crate) odds_format: OddsFormat,
@@ -51,6 +96,7 @@ pub struct BetSizeCalculatorTool {
     pub(crate) american_odds: f64,
     pub(crate) fractional_numerator: f64,
     pub(crate) fractional_denominator: f64,
+    pub(crate) implied_probability_input: f64,
     pub(crate) bankroll: f64,
     pub(crate) drawdown_floor_pct: f64,
     pub(crate) closing_line_enabled: bool,
@@ -83,6 +129,7 @@ impl Default for BetSizeCalculatorTool {
             american_odds: 100.0,
             fractional_numerator: 1.0,
             fractional_denominator: 1.0,
+            implied_probability_input: 50.0,
             bankroll: 1000.0,
             drawdown_floor_pct: DEFAULT_DRAWDOWN_FLOOR_PCT,
             closing_line_enabled: false,
@@ -108,19 +155,38 @@ impl Default for BetSizeCalculatorTool {
 }
 
 impl BetSizeCalculatorTool {
-    pub(crate) fn current_placed_odds(&self) -> Result<Odds, math_explorer::error::KellyError> {
-        match self.odds_format {
-            OddsFormat::Decimal => Odds::new(self.decimal_odds),
-            OddsFormat::American => Odds::from_american(self.american_odds),
-            OddsFormat::Fractional => {
-                Odds::from_fractional(self.fractional_numerator, self.fractional_denominator)
-            }
-        }
+    pub(crate) fn resolve_active_odds(&self) -> Result<Odds, KellyError> {
+        resolve_odds_for(
+            self.odds_format,
+            self.decimal_odds,
+            self.american_odds,
+            self.fractional_numerator,
+            self.fractional_denominator,
+            self.implied_probability_input,
+        )
     }
 
     pub(crate) fn active_odds(&self) -> Result<Odds, String> {
-        self.current_placed_odds()
+        self.resolve_active_odds()
             .map_err(|e| format!("Invalid Odds: {e}"))
+    }
+
+    pub(crate) fn sync_from_odds(&mut self, odds: Odds, source: OddsFormat) {
+        if source != OddsFormat::Decimal {
+            self.decimal_odds = odds.value().clamp(DECIMAL_ODDS_MIN, DECIMAL_ODDS_MAX);
+        }
+        if source != OddsFormat::American {
+            self.american_odds = skip_american_dead_zone(100.0, odds.to_american());
+        }
+        if source != OddsFormat::Fractional {
+            let (num, den) = odds.to_fractional(FRACTIONAL_MAX_DENOMINATOR);
+            self.fractional_numerator = (num as f64).clamp(FRACTIONAL_MIN, FRACTIONAL_MAX);
+            self.fractional_denominator = (den as f64).clamp(FRACTIONAL_MIN, FRACTIONAL_MAX);
+        }
+        if source != OddsFormat::ImpliedProbability {
+            self.implied_probability_input =
+                (odds.implied_probability() * 100.0).clamp(IMPLIED_PROB_MIN, IMPLIED_PROB_MAX);
+        }
     }
 
     fn push_marker_and_row(
@@ -283,29 +349,25 @@ impl InteractiveTool for BetSizeCalculatorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }
+
     fn name(&self) -> &'static str {
         "Bet Size Calculator"
     }
+
     fn domain(&self) -> &'static str {
         "financial_math"
     }
+
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }
+
     fn has_finite_parameters(&self) -> bool {
-        [
-            self.probability_input,
-            self.decimal_odds,
-            self.american_odds,
-            self.fractional_numerator,
-            self.fractional_denominator,
-            self.bankroll,
-            self.drawdown_floor_pct,
-            self.closing_for_decimal,
-            self.closing_against_decimal,
-        ]
-        .iter()
-        .all(|v| v.is_finite())
+        self.has_valid_state()
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.build_export_datasets()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -314,6 +376,16 @@ impl InteractiveTool for BetSizeCalculatorTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.load_state_json(state)
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
