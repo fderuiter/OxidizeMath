@@ -13,10 +13,14 @@ impl FractalViewer {
         match self.mode {
             FractalMode::Mandelbrot => self.mandelbrot_viewport = (self.center, self.zoom),
             FractalMode::Julia => self.julia_viewport = (self.center, self.zoom),
+            FractalMode::CustomMandelbrot => {
+                self.custom_mandelbrot_viewport = (self.center, self.zoom);
+            }
+            FractalMode::CustomJulia => self.custom_julia_viewport = (self.center, self.zoom),
         }
     }
 
-    /// Switches between Mandelbrot and Julia modes while preserving each mode's `(center, zoom)`.
+    /// Switches between fractal modes while preserving each mode's `(center, zoom)`.
     pub fn switch_mode(&mut self, next_mode: FractalMode) {
         if self.mode == next_mode {
             return;
@@ -26,6 +30,8 @@ impl FractalViewer {
         let (cached_center, cached_zoom) = match next_mode {
             FractalMode::Mandelbrot => self.mandelbrot_viewport,
             FractalMode::Julia => self.julia_viewport,
+            FractalMode::CustomMandelbrot => self.custom_mandelbrot_viewport,
+            FractalMode::CustomJulia => self.custom_julia_viewport,
         };
         self.center = cached_center;
         self.zoom = cached_zoom;
@@ -44,8 +50,16 @@ impl FractalViewer {
         );
         self.sync_active_viewport_cache();
         self.julia_c = clamped_c;
-        self.mode = FractalMode::Julia;
-        let (julia_center, julia_zoom) = self.julia_viewport;
+        let target_mode = if self.mode.is_custom() {
+            FractalMode::CustomJulia
+        } else {
+            FractalMode::Julia
+        };
+        self.mode = target_mode;
+        let (julia_center, julia_zoom) = match target_mode {
+            FractalMode::CustomJulia => self.custom_julia_viewport,
+            _ => self.julia_viewport,
+        };
         self.center = julia_center;
         self.zoom = julia_zoom;
         self.dirty = true;
@@ -56,37 +70,57 @@ impl FractalViewer {
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Settings");
             ui.separator();
-            let mut next_mode = self.mode;
-            ui.horizontal(|ui| {
-                ui.radio_value(&mut next_mode, FractalMode::Mandelbrot, "Mandelbrot");
-                ui.radio_value(&mut next_mode, FractalMode::Julia, "Julia");
-            });
-            if next_mode != self.mode {
-                self.switch_mode(next_mode);
-            }
-
+            self.draw_mode_selector(ui);
             ui.checkbox(&mut self.linked_explorer, "Linked Julia Explorer");
 
-            if self.mode == FractalMode::Julia {
+            if self.mode.is_custom() {
+                ui.separator();
+                if self.math_input.ui(ui) {
+                    self.dirty = true;
+                }
+            }
+
+            if self.mode.uses_julia_c() {
                 ui.separator();
                 ui.label("Julia Constant (c):");
-                let re_drag =
-                    bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.005)
-                        .prefix("Re: ");
-                let im_drag =
-                    bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.005)
-                        .prefix("Im: ");
+                let re_drag = bounded_drag_value(&mut self.julia_c.re, COORD_MIN..=COORD_MAX, 0.01)
+                    .prefix("Re: ");
+                let im_drag = bounded_drag_value(&mut self.julia_c.im, COORD_MIN..=COORD_MAX, 0.01)
+                    .prefix("Im: ");
                 if ui.add(re_drag).changed() | ui.add(im_drag).changed() {
                     self.dirty = true;
                 }
                 if self.linked_explorer && ui.button("← Back to Mandelbrot Atlas").clicked() {
-                    self.switch_mode(FractalMode::Mandelbrot);
+                    let target = if self.mode.is_custom() {
+                        FractalMode::CustomMandelbrot
+                    } else {
+                        FractalMode::Mandelbrot
+                    };
+                    self.switch_mode(target);
                 }
-            } else if self.linked_explorer {
+            } else if self.linked_explorer && self.mode == FractalMode::Mandelbrot {
                 ui.small("Hover Mandelbrot to preview Julia; click or press Enter to inspect.");
             }
             self.draw_view_controls(ui);
         });
+    }
+
+    fn draw_mode_selector(&mut self, ui: &mut egui::Ui) {
+        let options = [
+            (FractalMode::Mandelbrot, "Mandelbrot"),
+            (FractalMode::Julia, "Julia"),
+            (FractalMode::CustomMandelbrot, "Custom (c-plane)"),
+            (FractalMode::CustomJulia, "Custom (Julia)"),
+        ];
+        let mut next_mode = self.mode;
+        ui.horizontal_wrapped(|ui| {
+            for (mode, label) in options {
+                ui.radio_value(&mut next_mode, mode, label);
+            }
+        });
+        if next_mode != self.mode {
+            self.switch_mode(next_mode);
+        }
     }
 
     fn draw_view_controls(&mut self, ui: &mut egui::Ui) {
@@ -128,7 +162,9 @@ impl FractalViewer {
         if ui.button("↻ Reset View").clicked() {
             self.center = match self.mode {
                 FractalMode::Mandelbrot => Complex::new(-0.75, 0.0),
-                FractalMode::Julia => Complex::new(0.0, 0.0),
+                FractalMode::Julia | FractalMode::CustomMandelbrot | FractalMode::CustomJulia => {
+                    Complex::new(0.0, 0.0)
+                }
             };
             self.zoom = 1.0;
             self.sync_active_viewport_cache();
@@ -249,7 +285,7 @@ impl FractalViewer {
             julia_c: hover_c,
             high_contrast: self.high_contrast,
         };
-        let img = render_fractal_color_image(&req);
+        let img = render_fractal_color_image_with_formula(&req, None);
         let opts = egui::TextureOptions::LINEAR;
         if let Some(tex) = &mut self.julia_inset_texture {
             tex.set(img, opts);
@@ -281,7 +317,10 @@ impl FractalViewer {
             return;
         }
         let box_rect = egui::Rect::from_min_size(
-            egui::pos2(canvas_rect.max.x - inset_size.x - 12.0, canvas_rect.min.y + 12.0),
+            egui::pos2(
+                canvas_rect.max.x - inset_size.x - 12.0,
+                canvas_rect.min.y + 12.0,
+            ),
             egui::vec2(inset_size.x + 8.0, inset_size.y + 22.0),
         );
         let img_rect = egui::Rect::from_min_size(box_rect.min + egui::vec2(4.0, 4.0), inset_size);

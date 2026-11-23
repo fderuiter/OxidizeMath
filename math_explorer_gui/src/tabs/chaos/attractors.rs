@@ -1,13 +1,19 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::framework::InteractiveTool;
+use crate::async_sim::{BackgroundWorker, SimCommand};
+use crate::framework::{CoupledExpressionBank, InteractiveTool};
 use eframe::egui;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::Vector3;
 use std::collections::VecDeque;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+
+#[path = "attractors/flow.rs"]
+pub mod flow;
+pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
+
+#[path = "attractors/serde_vec3.rs"]
+mod serde_vec3;
 
 #[path = "attractors/runner.rs"]
 mod runner;
@@ -17,10 +23,15 @@ pub use runner::*;
 mod regime_map;
 pub use regime_map::*;
 
+#[path = "attractors/regime_ui.rs"]
+mod regime_ui;
+
 #[path = "attractors/ui.rs"]
 mod ui;
 
 pub struct AttractorPlotter {
+    pub(crate) mode: AttractorMode,
+    pub(crate) flow_bank: CoupledExpressionBank,
     pub(crate) system: LorenzSystem,
     pub(crate) execution_state: SolverExecutionState,
     pub(crate) step_count: usize,
@@ -43,23 +54,27 @@ impl Default for AttractorPlotter {
     fn default() -> Self {
         let initial_state = LorenzState::new(1.0, 1.0, 1.0);
         let system = LorenzBuilder::new().build(initial_state);
-        let sigma = system.sigma;
-        let rho = system.rho;
-        let beta = system.beta;
+        let flow_bank = default_flow_bank();
+        let custom_flow = Some(Arc::new(CompiledFlowJob::from_bank(&flow_bank)));
         let params = Arc::new(std::sync::RwLock::new(AttractorSharedParams {
-            sigma,
-            rho,
-            beta,
+            sigma: system.sigma,
+            rho: system.rho,
+            beta: system.beta,
             dt: 0.01,
             simulation_speed: 5,
             max_points: 2000,
+            mode: AttractorMode::Lorenz,
+            custom_flow,
         }));
         let runner = AttractorRunner::from_params(Arc::clone(&params));
         let worker = BackgroundWorker::new(runner);
         let empty_hist = VecDeque::new();
         let (initial_lyap, _) = compute_cached_attractor_metrics(&system, 0.01, &empty_hist);
+        let initial_beta = system.beta;
 
         Self {
+            mode: AttractorMode::Lorenz,
+            flow_bank,
             system,
             execution_state: SolverExecutionState::Ready,
             step_count: 0,
@@ -72,7 +87,7 @@ impl Default for AttractorPlotter {
             worker,
             latest_lyapunov: initial_lyap,
             latest_correlation_sum: None,
-            regime_atlas: LorenzRegimeAtlasState::new(beta),
+            regime_atlas: LorenzRegimeAtlasState::new(initial_beta),
             show_annotations: true,
             fixed_callout_offsets: [egui::Vec2::new(35.0, -25.0), egui::Vec2::new(-35.0, 25.0)],
             dragged_callout: None,
@@ -97,13 +112,16 @@ impl AttractorPlotter {
     #[must_use]
     pub fn is_finite_state(&self) -> bool {
         let v = self.system.state.vec;
+        let lorenz_ok = self.mode != AttractorMode::Lorenz
+            || (self.system.sigma.is_finite()
+                && self.system.rho.is_finite()
+                && self.system.beta.is_finite());
         v.x.is_finite()
             && v.y.is_finite()
             && v.z.is_finite()
-            && self.system.sigma.is_finite()
-            && self.system.rho.is_finite()
-            && self.system.beta.is_finite()
+            && lorenz_ok
             && self.dt.is_finite()
+            && self.flow_bank.param_slice().iter().all(|x| x.is_finite())
     }
 
     pub fn try_resume(&mut self) -> Result<(), &'static str> {
@@ -111,11 +129,7 @@ impl AttractorPlotter {
         if !v.x.is_finite() || !v.y.is_finite() || !v.z.is_finite() {
             return Err("Cannot resume simulation: state coordinates are non-finite.");
         }
-        if !self.system.sigma.is_finite()
-            || !self.system.rho.is_finite()
-            || !self.system.beta.is_finite()
-            || !self.dt.is_finite()
-        {
+        if !self.is_finite_state() {
             return Err("Cannot resume simulation: system parameters are non-finite.");
         }
         self.execution_state = SolverExecutionState::Running;
@@ -124,6 +138,7 @@ impl AttractorPlotter {
     }
 
     pub fn on_slider_changed(&mut self) {
+        let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.sigma = self.system.sigma;
@@ -132,6 +147,8 @@ impl AttractorPlotter {
             p.dt = self.dt;
             p.simulation_speed = self.simulation_speed;
             p.max_points = self.max_points;
+            p.mode = self.mode;
+            p.custom_flow = Some(job);
         }
         if self.diverged() && self.is_finite_state() {
             self.execution_state = SolverExecutionState::Ready;
@@ -143,6 +160,9 @@ impl AttractorPlotter {
         if self.diverged() || !self.is_finite_state() {
             self.latest_lyapunov = None;
             self.latest_correlation_sum = None;
+        } else if self.mode == AttractorMode::Custom {
+            self.latest_lyapunov = None;
+            self.latest_correlation_sum = compute_cached_correlation_only(&self.history);
         } else {
             let (lyap, corr) =
                 compute_cached_attractor_metrics(&self.system, self.dt, &self.history);
@@ -180,6 +200,7 @@ impl AttractorPlotter {
         self.history.clear();
         self.step_count = 0;
         self.execution_state = SolverExecutionState::Ready;
+        let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.sigma = sigma;
@@ -188,6 +209,8 @@ impl AttractorPlotter {
             p.dt = self.dt;
             p.simulation_speed = self.simulation_speed;
             p.max_points = self.max_points;
+            p.mode = self.mode;
+            p.custom_flow = Some(job);
         }
         let params = Arc::clone(&self.params);
         self.worker
@@ -199,106 +222,20 @@ impl AttractorPlotter {
         self.system.sigma = 10.0;
         self.system.rho = 28.0;
         self.system.beta = 8.0 / 3.0;
+        self.flow_bank = default_flow_bank();
         self.dt = 0.01;
         self.reset();
     }
 
-    /// Projects 3D point to 2D screen space based on rotation
+    /// Projects 3D point to 2D screen space based on rotation.
     pub(crate) fn project(&self, p: Vector3<f64>) -> [f64; 2] {
-        let center_offset = Vector3::new(0.0, 0.0, 25.0);
+        let center_offset = match self.mode {
+            AttractorMode::Lorenz => Vector3::new(0.0, 0.0, 25.0),
+            AttractorMode::Custom => Vector3::zeros(),
+        };
         let p_centered = p - center_offset;
         self.camera
             .project(&[p_centered.x, p_centered.y, p_centered.z])
-    }
-
-    /// Teleports `(rho, sigma)` onto a new parameter point and restarts the 3D trajectory cleanly.
-    pub fn teleport_regime(&mut self, rho: f64, sigma: f64) {
-        if !rho.is_finite() || !sigma.is_finite() {
-            return;
-        }
-        let was_running = self.execution_state == SolverExecutionState::Running;
-        self.system.rho = rho.clamp(REGIME_RHO_RANGE.0, REGIME_RHO_RANGE.1);
-        self.system.sigma = sigma.clamp(REGIME_SIGMA_RANGE.0, REGIME_SIGMA_RANGE.1);
-        self.reset();
-        if was_running {
-            let _ = self.try_resume();
-        }
-    }
-
-    fn pull_regime_atlas_snapshot(&mut self, ctx: &egui::Context) {
-        let Some(snap) = self.regime_atlas.worker.update() else {
-            return;
-        };
-        if let Ok(px) = snap.pixels.try_read() {
-            if px.len() == snap.width * snap.height && snap.width > 0 {
-                let img = egui::ColorImage::new([snap.width, snap.height], px.clone());
-                let opts = egui::TextureOptions::NEAREST;
-                if let Some(tex) = &mut self.regime_atlas.texture {
-                    tex.set(img, opts);
-                } else {
-                    self.regime_atlas.texture =
-                        Some(ctx.load_texture("lorenz_regime_atlas", img, opts));
-                }
-            }
-        }
-        if let Some(meta) = snap
-            .structured_data
-            .as_ref()
-            .and_then(|d| d.downcast_ref::<LorenzRegimeSnapshot>())
-        {
-            self.regime_atlas.lambdas = Arc::clone(&meta.lambdas);
-            self.regime_atlas.current_stride = meta.stride;
-            if meta.is_final {
-                self.regime_atlas.completed_generation = meta.generation;
-            }
-        }
-    }
-
-    pub(crate) fn sync_regime_atlas(&mut self, ctx: &egui::Context, high_contrast: bool) {
-        self.pull_regime_atlas_snapshot(ctx);
-        let safe_beta = if self.system.beta.is_finite() {
-            self.system.beta.clamp(0.0, 10.0)
-        } else {
-            8.0 / 3.0
-        };
-        if safe_beta.to_bits() != self.regime_atlas.last_beta_bits
-            || high_contrast != self.regime_atlas.high_contrast
-        {
-            self.regime_atlas.last_beta_bits = safe_beta.to_bits();
-            self.regime_atlas.high_contrast = high_contrast;
-            self.regime_atlas.request_generation =
-                self.regime_atlas.request_generation.wrapping_add(1).max(1);
-            *self
-                .regime_atlas
-                .shared_request
-                .write()
-                .unwrap_or_else(|e| e.into_inner()) = LorenzRegimeRequest {
-                generation: self.regime_atlas.request_generation,
-                beta: safe_beta,
-                width: REGIME_GRID_SIZE.0,
-                height: REGIME_GRID_SIZE.1,
-                high_contrast,
-            };
-            self.regime_atlas
-                .latest_generation
-                .store(self.regime_atlas.request_generation, Ordering::Release);
-            if self.regime_atlas.worker.is_running() {
-                let _ = self
-                    .regime_atlas
-                    .worker
-                    .send_command(SimCommand::Custom("cancel_regime".to_string()));
-            }
-        }
-        if self.regime_atlas.completed_generation != self.regime_atlas.request_generation
-            && self.regime_atlas.worker.state() == SimWorkerState::Ready
-        {
-            let _ = self.regime_atlas.worker.send_command(SimCommand::Start);
-        }
-        if self.regime_atlas.completed_generation != self.regime_atlas.request_generation
-            || self.regime_atlas.worker.is_running()
-        {
-            ctx.request_repaint();
-        }
     }
 
     fn sync_worker_snapshot(&mut self) {
@@ -354,6 +291,13 @@ impl InteractiveTool for AttractorPlotter {
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
+        (self.mode as u8).hash(&mut h);
+        for bar in self.flow_bank.bars() {
+            bar.raw_text.hash(&mut h);
+        }
+        for &pv in self.flow_bank.param_slice() {
+            pv.to_bits().hash(&mut h);
+        }
         self.system.sigma.to_bits().hash(&mut h);
         self.system.rho.to_bits().hash(&mut h);
         self.system.beta.to_bits().hash(&mut h);
@@ -390,6 +334,8 @@ impl InteractiveTool for AttractorPlotter {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
+        let custom_job = (self.mode == AttractorMode::Custom)
+            .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
         for _ in 0..self.simulation_speed.clamp(1, MAX_SIMULATION_SPEED) {
             let current_vec = self.system.state.vec;
             if !current_vec.x.is_finite()
@@ -403,7 +349,11 @@ impl InteractiveTool for AttractorPlotter {
                 break;
             }
 
-            self.system.step(self.dt);
+            if let Some(ref job) = custom_job {
+                self.system.state.vec = job.rk4_step(current_vec, self.dt);
+            } else {
+                self.system.step(self.dt);
+            }
             self.step_count += 1;
 
             let vec = self.system.state.vec;
@@ -434,8 +384,8 @@ impl InteractiveTool for AttractorPlotter {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.sync_worker_snapshot();
-        let high_contrast =
-            crate::app::ThemeMode::from_visuals(ui.visuals()) == crate::app::ThemeMode::HighContrast;
+        let high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
         self.sync_regime_atlas(&ctx, high_contrast);
 
         let worker_faulted = self.worker.state().is_faulted();
@@ -477,3 +427,7 @@ mod attractor_tests;
 #[cfg(test)]
 #[path = "attractors/lyapunov_bridge_tests.rs"]
 mod lyapunov_bridge_tests;
+
+#[cfg(test)]
+#[path = "attractors/custom_flow_tests.rs"]
+mod custom_flow_tests;

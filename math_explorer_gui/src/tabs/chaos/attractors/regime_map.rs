@@ -126,6 +126,13 @@ pub fn evaluate_attractor_metrics_in_place(
     (lyapunov, compute_correlation_in_place(history, scratch))
 }
 
+pub(super) fn compute_cached_correlation_only(history: &VecDeque<Vector3<f64>>) -> Option<f64> {
+    ATTRACTOR_METRICS_SCRATCH.with(|cell| {
+        let mut s = cell.borrow_mut();
+        compute_correlation_in_place(history, &mut s.trajectory_buf)
+    })
+}
+
 pub(super) fn compute_cached_attractor_metrics(
     system: &LorenzSystem,
     dt: f64,
@@ -313,13 +320,17 @@ impl LorenzRegimeMapRunner {
         let w = self.active.width;
         let h = self.active.height;
         let prev = stride.saturating_mul(2);
-        let reuse = stride < REGIME_STRIDES[0] && sx.is_multiple_of(prev) && sy.is_multiple_of(prev);
+        let reuse =
+            stride < REGIME_STRIDES[0] && sx.is_multiple_of(prev) && sy.is_multiple_of(prev);
         let (lambda, color) = if reuse {
             let idx = flatten_2d_index(sx, sy, w);
             (self.lambdas[idx], self.pixels[idx])
         } else {
             let lam = self.eval_cell(sx, sy);
-            (lam, map_lyapunov_to_regime_color(lam, self.active.high_contrast))
+            (
+                lam,
+                map_lyapunov_to_regime_color(lam, self.active.high_contrast),
+            )
         };
         let y_end = sy.saturating_add(stride).min(h);
         let x_end = sx.saturating_add(stride).min(w);
@@ -404,7 +415,12 @@ impl SimulationRunner for LorenzRegimeMapRunner {
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
         (!self.is_finite_state()).then(|| {
-            DiagnosticReport::new(0.0, 0, "lorenz_regime_beta", "Non-finite beta for regime map")
+            DiagnosticReport::new(
+                0.0,
+                0,
+                "lorenz_regime_beta",
+                "Non-finite beta for regime map",
+            )
         })
     }
 }

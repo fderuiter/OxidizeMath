@@ -240,7 +240,7 @@ fn test_mri_runner_offload() {
 #[test]
 fn test_physics_and_chaos_runners_step_once() {
     use crate::tabs::chaos::attractors::{
-        AttractorRunner, AttractorSharedParams, SolverExecutionState,
+        AttractorMode, AttractorRunner, AttractorSharedParams, SolverExecutionState,
     };
     use crate::tabs::mri::{MriRunner, MriSharedParams};
     use crate::tabs::solid_state::ising::{IsingRunner, IsingSharedParams};
@@ -291,6 +291,8 @@ fn test_physics_and_chaos_runners_step_once() {
             dt: 0.01,
             simulation_speed: 5,
             max_points: 500,
+            mode: AttractorMode::Lorenz,
+            custom_flow: None,
         })),
         history: VecDeque::new(),
         step_count: 0,

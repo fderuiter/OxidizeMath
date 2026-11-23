@@ -30,9 +30,17 @@ fn test_evaluate_attractor_metrics_in_place_zero_allocations_and_signs() {
     let mut solver = RungeKutta4::new(&Vector3::zeros());
     let mut scratch = [Vector3::zeros(); 64];
 
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let ((lam_chaos, corr_chaos, lam_stable), _) = VerifiedEngine::run_verified(|| {
-        let (lc, cc) =
-            evaluate_attractor_metrics_in_place(&chaotic, 0.01, &history, &mut solver, &mut scratch);
+        let (lc, cc) = evaluate_attractor_metrics_in_place(
+            &chaotic,
+            0.01,
+            &history,
+            &mut solver,
+            &mut scratch,
+        );
         let (ls, _) =
             evaluate_attractor_metrics_in_place(&stable, 0.01, &history, &mut solver, &mut scratch);
         (lc, cc, ls)

@@ -1,10 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{
-    AttractorPlotter, CORRELATION_EPSILON, REGIME_GRID_SIZE, REGIME_RHO_RANGE, REGIME_SIGMA_RANGE,
-    SolverExecutionState,
-};
-use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
+use super::{AttractorPlotter, SolverExecutionState};
+use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::{
     render_custom_fault_banner, render_empty_plot_guidance, render_worker_fault_banner,
     WorkerFaultAction,
@@ -13,7 +10,6 @@ use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Vec2};
 use egui_plot::{Callout, Line, PlotPoint, PlotPoints, Points};
-use math_commons::math_kernel::types::flatten_2d_index;
 use nalgebra::Vector3;
 
 impl AttractorPlotter {
@@ -21,7 +17,7 @@ impl AttractorPlotter {
         let worker_faulted = self.worker.state() == SimWorkerState::Faulted;
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "attractor_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Lorenz Attractor");
+            ui.heading("3D Chaotic Attractor");
             ui.separator();
 
             if worker_faulted && !self.diverged() {
@@ -36,16 +32,37 @@ impl AttractorPlotter {
                 }
             }
 
+            ui.horizontal(|ui| {
+                let prev_mode = self.mode;
+                ui.radio_value(&mut self.mode, super::AttractorMode::Lorenz, "Lorenz");
+                ui.radio_value(
+                    &mut self.mode,
+                    super::AttractorMode::Custom,
+                    "Custom 3D Flow",
+                );
+                if self.mode != prev_mode {
+                    self.reset();
+                    ctx.request_repaint();
+                }
+            });
+            ui.separator();
+
             self.draw_parameter_sliders(ui);
-            self.draw_lyapunov_badges_and_regime_atlas(ui, ctx);
+            if self.mode == super::AttractorMode::Lorenz {
+                self.draw_lyapunov_badges_and_regime_atlas(ui, ctx);
+            } else {
+                self.draw_custom_correlation_badge(ui);
+            }
             self.draw_simulation_controls(ui, ctx, worker_faulted);
 
             egui::CollapsingHeader::new("View")
                 .default_open(true)
                 .show(ui, |ui| self.camera.ui(ui));
 
-            ui.separator();
-            ui.checkbox(&mut self.show_annotations, "Show Fixed Points");
+            if self.mode == super::AttractorMode::Lorenz {
+                ui.separator();
+                ui.checkbox(&mut self.show_annotations, "Show Fixed Points");
+            }
 
             ui.separator();
             let state = self.system.state.vec;
@@ -56,11 +73,22 @@ impl AttractorPlotter {
     }
 
     fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
+        if self.mode == super::AttractorMode::Custom {
+            egui::CollapsingHeader::new("Vector Field Equations")
+                .default_open(true)
+                .show(ui, |ui| {
+                    if self.flow_bank.ui(ui) {
+                        self.on_slider_changed();
+                    }
+                });
+            return;
+        }
         ui.collapsing("Parameters", |ui| {
             if ui
                 .add(
-                    egui::Slider::new(&mut self.system.sigma, 0.0..=50.0)
-                        .text("Prandtl Number (σ)"),
+                    crate::reflective_ui::AnimatedSlider::new(&mut self.system.sigma, 0.0..=50.0)
+                        .text("Prandtl Number (σ)")
+                        .id_salt("lorenz_sigma"),
                 )
                 .changed()
             {
@@ -68,8 +96,9 @@ impl AttractorPlotter {
             }
             if ui
                 .add(
-                    egui::Slider::new(&mut self.system.rho, 0.0..=100.0)
-                        .text("Rayleigh Number (ρ)"),
+                    crate::reflective_ui::AnimatedSlider::new(&mut self.system.rho, 0.0..=100.0)
+                        .text("Rayleigh Number (ρ)")
+                        .id_salt("lorenz_rho"),
                 )
                 .changed()
             {
@@ -77,104 +106,15 @@ impl AttractorPlotter {
             }
             if ui
                 .add(
-                    egui::Slider::new(&mut self.system.beta, 0.0..=10.0)
-                        .text("Geometric Factor (β)"),
+                    crate::reflective_ui::AnimatedSlider::new(&mut self.system.beta, 0.0..=10.0)
+                        .text("Geometric Factor (β)")
+                        .id_salt("lorenz_beta"),
                 )
                 .changed()
             {
                 self.on_slider_changed();
             }
         });
-    }
-
-    fn draw_lyapunov_badges(&self, ui: &mut egui::Ui) {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let (lyap_text, lyap_color) = if self.diverged() {
-            ("λ_max: Halted (diverged)".to_string(), palette.error)
-        } else if let Some(lam) = self.latest_lyapunov {
-            let tag = if lam > 0.01 { "Chaotic" } else { "Stable" };
-            let col = if lam > 0.01 {
-                palette.series_color(1)
-            } else {
-                palette.series_color(2)
-            };
-            (format!("λ_max: {lam:+.3} ({tag})"), col)
-        } else {
-            ("λ_max: Pending…".to_string(), ui.visuals().text_color())
-        };
-        ui.colored_label(lyap_color, lyap_text);
-        let corr_text = match self.latest_correlation_sum {
-            Some(c) if !self.diverged() => format!("C(ε={CORRELATION_EPSILON:.1}): {c:.4}"),
-            _ => format!("C(ε={CORRELATION_EPSILON:.1}): —"),
-        };
-        ui.small(corr_text);
-        if self.regime_atlas.completed_generation != self.regime_atlas.request_generation {
-            ui.small(format!("Regime sweep: {}x pass", self.regime_atlas.current_stride));
-        }
-    }
-
-    pub(super) fn draw_lyapunov_badges_and_regime_atlas(
-        &mut self,
-        ui: &mut egui::Ui,
-        ctx: &egui::Context,
-    ) {
-        self.draw_lyapunov_badges(ui);
-        egui::CollapsingHeader::new("2D Regime Map (ρ × σ)")
-            .default_open(true)
-            .show(ui, |ui| {
-                let desired = Vec2::new(ui.available_width().clamp(140.0, 210.0), 104.0);
-                let (rect, resp) = ui.allocate_exact_size(desired, egui::Sense::click());
-                if let Some(tex) = &self.regime_atlas.texture {
-                    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-                    ui.painter().image(tex.id(), rect, uv, Color32::WHITE);
-                } else {
-                    ui.painter().rect_filled(rect, 2.0, Color32::from_gray(24));
-                }
-                let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
-                ui.painter().rect_stroke(rect, 2.0, stroke, egui::StrokeKind::Inside);
-
-                let tx = ((self.system.rho - REGIME_RHO_RANGE.0)
-                    / (REGIME_RHO_RANGE.1 - REGIME_RHO_RANGE.0))
-                    .clamp(0.0, 1.0) as f32;
-                let ty = (1.0
-                    - (self.system.sigma - REGIME_SIGMA_RANGE.0)
-                        / (REGIME_SIGMA_RANGE.1 - REGIME_SIGMA_RANGE.0))
-                    .clamp(0.0, 1.0) as f32;
-                let marker = egui::pos2(
-                    rect.left() + tx * rect.width(),
-                    rect.top() + ty * rect.height(),
-                );
-                ui.painter()
-                    .circle_stroke(marker, 4.5_f32, Stroke::new(1.8_f32, Color32::WHITE));
-
-                if let Some(pos) = resp.interact_pointer_pos().or_else(|| resp.hover_pos()) {
-                    let rx = ((pos.x - rect.left()) / rect.width().max(1.0)).clamp(0.0, 1.0) as f64;
-                    let ry =
-                        (1.0 - (pos.y - rect.top()) / rect.height().max(1.0)).clamp(0.0, 1.0) as f64;
-                    let hover_rho =
-                        REGIME_RHO_RANGE.0 + rx * (REGIME_RHO_RANGE.1 - REGIME_RHO_RANGE.0);
-                    let hover_sigma =
-                        REGIME_SIGMA_RANGE.0 + ry * (REGIME_SIGMA_RANGE.1 - REGIME_SIGMA_RANGE.0);
-                    let gx = ((rx * (REGIME_GRID_SIZE.0 - 1) as f64).round() as usize)
-                        .min(REGIME_GRID_SIZE.0 - 1);
-                    let gy = (((1.0 - ry) * (REGIME_GRID_SIZE.1 - 1) as f64).round() as usize)
-                        .min(REGIME_GRID_SIZE.1 - 1);
-                    let cell_lam = self
-                        .regime_atlas
-                        .lambdas
-                        .get(flatten_2d_index(gx, gy, REGIME_GRID_SIZE.0))
-                        .copied()
-                        .unwrap_or(0.0);
-                    if resp.clicked() {
-                        self.teleport_regime(hover_rho, hover_sigma);
-                        ctx.request_repaint();
-                    }
-                    let tip = format!(
-                        "ρ={hover_rho:.1}, σ={hover_sigma:.1}, λ≈{cell_lam:+.2} (click to teleport)"
-                    );
-                    let _ = resp.accessible_hover_text(tip);
-                }
-            });
     }
 
     fn draw_simulation_controls(
@@ -223,28 +163,32 @@ impl AttractorPlotter {
                     }
                 }
 
-                if ui
-                    .add(
-                        egui::Slider::new(&mut self.simulation_speed, 1..=super::MAX_SIMULATION_SPEED)
-                            .text("Speed (steps/frame)"),
-                    )
-                    .changed()
-                {
-                    self.on_slider_changed();
-                }
-                if ui
-                    .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
-                    .changed()
-                {
-                    self.on_slider_changed();
-                }
-                if ui
-                    .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
-                    .changed()
-                {
-                    self.on_slider_changed();
-                }
+                self.draw_simulation_sliders(ui);
             });
+    }
+
+    fn draw_simulation_sliders(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Slider::new(&mut self.simulation_speed, 1..=super::MAX_SIMULATION_SPEED)
+                    .text("Speed (steps/frame)"),
+            )
+            .changed()
+        {
+            self.on_slider_changed();
+        }
+        if ui
+            .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
+            .changed()
+        {
+            self.on_slider_changed();
+        }
+        if ui
+            .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
+            .changed()
+        {
+            self.on_slider_changed();
+        }
     }
 
     fn apply_fault_action(&mut self, action: WorkerFaultAction, ctx: &egui::Context) {
@@ -337,8 +281,7 @@ impl AttractorPlotter {
     ) -> egui::Rect {
         let ctx = plot_ui.ctx();
         let font_id = egui::TextStyle::Small.resolve(&ctx.style());
-        let galley =
-            ctx.fonts_mut(|f| f.layout_no_wrap(label.to_owned(), font_id, Color32::WHITE));
+        let galley = ctx.fonts_mut(|f| f.layout_no_wrap(label.to_owned(), font_id, Color32::WHITE));
         let target_pos = plot_ui.screen_from_plot(PlotPoint::new(target[0], target[1]));
         let padding = Vec2::new(6.0, 4.0);
         egui::Align2::CENTER_CENTER.anchor_size(target_pos + offset, galley.size() + 2.0 * padding)
@@ -392,7 +335,8 @@ impl AttractorPlotter {
     }
 
     fn draw_fixed_point_callouts(&mut self, plot_ui: &mut egui_plot::PlotUi<'_>) {
-        if !self.show_annotations
+        if self.mode != super::AttractorMode::Lorenz
+            || !self.show_annotations
             || self.system.rho <= 1.0
             || self.system.beta <= 0.0
             || !self.system.rho.is_finite()
