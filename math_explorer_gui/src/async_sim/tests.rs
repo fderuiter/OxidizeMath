@@ -355,7 +355,7 @@ fn test_domain_simulation_tools_initialization() {
     use crate::async_sim::unified::UnifiedSimTool;
     use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
     use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
-    use crate::tabs::quantum::wave_sim::WaveUnified;
+    use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
 
     let lbm_tool = UnifiedSimTool::<LbmUnified>::new();
     assert_eq!(lbm_tool.state(), SimWorkerState::Ready);
@@ -363,7 +363,7 @@ fn test_domain_simulation_tools_initialization() {
     let hh_tool = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
     assert_eq!(hh_tool.state(), SimWorkerState::Ready);
 
-    let wave_tool = UnifiedSimTool::<WaveUnified>::new();
+    let wave_tool = WaveSimulatorTool::new();
     assert_eq!(wave_tool.state(), SimWorkerState::Ready);
 }
 
@@ -373,17 +373,10 @@ fn test_unified_model_observable_hook_and_voltage_derivatives() {
     use crate::sensitivity::SensitivityEngine;
     use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
     use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
-    use crate::tabs::quantum::wave_sim::WaveUnified;
     use std::collections::HashMap;
 
     let lbm_params = HashMap::from([("viscosity".to_string(), 0.02)]);
     assert!(LbmUnified::evaluate_observable(&lbm_params).is_none());
-
-    let wave_params = HashMap::from([
-        ("dt".to_string(), 0.05),
-        ("potential_type".to_string(), 0.0),
-    ]);
-    assert!(WaveUnified::evaluate_observable(&wave_params).is_none());
 
     // Verify negative conductance perturbations near zero clamp cleanly instead of failing builder
     let zero_perturbation = HashMap::from([
@@ -433,7 +426,7 @@ fn test_unified_sim_tool_panel_gating() {
     use crate::framework::InteractiveTool;
     use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
     use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
-    use crate::tabs::quantum::wave_sim::WaveUnified;
+    use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
 
     let render_texts = |tool: &mut dyn InteractiveTool| -> Vec<String> {
         let ctx = eframe::egui::Context::default();
@@ -449,7 +442,7 @@ fn test_unified_sim_tool_panel_gating() {
         .iter()
         .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
 
-    let wave_texts = render_texts(&mut UnifiedSimTool::<WaveUnified>::new());
+    let wave_texts = render_texts(&mut WaveSimulatorTool::new());
     assert!(!wave_texts
         .iter()
         .any(|t| t.contains("Sensitivity & Perturbation Analysis")));

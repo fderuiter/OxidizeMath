@@ -273,7 +273,7 @@ fn test_custom_fractal_modes_emit_complex_ast_glsl_and_reject_reserved_params() 
         .expect("custom mandelbrot glsl");
     assert!(glsl_mb.contains("// OxidizeMath Analytical Custom Mandelbrot Escape-Time Shader"));
     assert!(glsl_mb.contains("const bool IS_JULIA = false;"));
-    assert!(glsl_mb.contains("vec2 eval_fractal_step(vec2 z, vec2 c)"));
+    assert!(glsl_mb.contains("vec2 step_fractal(vec2 z, vec2 c)"));
     assert!(glsl_mb.contains("const vec2 a = vec2(1.25, 0.0);"));
 
     let mut custom_julia = FractalViewer::default();
