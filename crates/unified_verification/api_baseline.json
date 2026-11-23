@@ -2849,6 +2849,21 @@
       "signature": "pub use marching_cubes :: extract_isosurface"
     },
     {
+      "signature": "pub use solid_closure :: CuttingPlane"
+    },
+    {
+      "signature": "pub use solid_closure :: SolidClosureConfig"
+    },
+    {
+      "signature": "pub use solid_closure :: SolidPolarity"
+    },
+    {
+      "signature": "pub use solid_closure :: extract_solid_isosurface"
+    },
+    {
+      "signature": "pub use solid_closure :: extract_solid_isosurface_into"
+    },
+    {
       "signature": "pub use types :: Mesh"
     },
     {
@@ -2865,6 +2880,38 @@
     },
     {
       "signature": "pub use workspace :: extract_isosurface_into"
+    }
+  ],
+  "crates/domain_applied/src/applied/isosurface/solid_closure.rs": [
+    {
+      "signature": "impl < 'a , G : GradientEstimator > MarchingCubes < 'a , G > { pub fn extract_solid (& self , _ : f32 , _ : SolidClosureConfig ,) -> Result < Mesh , IsosurfaceError > }"
+    },
+    {
+      "signature": "impl < 'a , G : GradientEstimator > MarchingCubes < 'a , G > { pub fn extract_solid_into (& self , _ : f32 , _ : SolidClosureConfig , _ : & mut IsosurfaceWorkspace , _ : & mut Mesh ,) -> Result < () , IsosurfaceError > }"
+    },
+    {
+      "signature": "impl SolidClosureConfig { pub const fn sublevel () -> Self }"
+    },
+    {
+      "signature": "impl SolidClosureConfig { pub const fn superlevel () -> Self }"
+    },
+    {
+      "signature": "impl SolidClosureConfig { pub const fn with_cutting_plane (self , _ : Option < CuttingPlane >) -> Self }"
+    },
+    {
+      "signature": "pub enum SolidPolarity"
+    },
+    {
+      "signature": "pub fn extract_solid_isosurface (_ : & VoxelGrid , _ : f32 , _ : SolidClosureConfig ,) -> Result < Mesh , IsosurfaceError >"
+    },
+    {
+      "signature": "pub fn extract_solid_isosurface_into (_ : & VoxelGrid , _ : f32 , _ : SolidClosureConfig , _ : & mut IsosurfaceWorkspace , _ : & mut Mesh ,) -> Result < () , IsosurfaceError >"
+    },
+    {
+      "signature": "pub struct CuttingPlane"
+    },
+    {
+      "signature": "pub struct SolidClosureConfig"
     }
   ],
   "crates/domain_applied/src/applied/isosurface/tables.rs": [
