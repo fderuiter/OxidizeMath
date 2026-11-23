@@ -3,14 +3,15 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::AtlasCache;
+use super::cartographer::MORPHO_ATLAS_AXIS_PAIRS;
 use super::presets::MorphogenesisTheory;
 use super::runner::{MorphogenesisRunner, MorphogenesisSharedParams};
 use super::state::{
     initialize_for_kinetics, CanvasInteractionMode, MorphogenesisKinetics, MorphogenesisToolState,
-    DEFAULT_GRAY_SCOTT_F, DEFAULT_GRAY_SCOTT_K,
 };
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui::{self, ColorImage};
 use math_explorer::biology::diffusion::FiniteDifference2D;
@@ -27,6 +28,8 @@ use std::sync::Arc;
 pub struct MorphogenesisTool {
     /// Asynchronous simulation worker controller.
     pub worker: BackgroundWorker<MorphogenesisRunner>,
+    /// Progressive 2D parameter regime atlas controller.
+    pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) width: usize,
     pub(crate) height: usize,
@@ -41,7 +44,7 @@ pub struct MorphogenesisTool {
     pub(crate) canvas_mode: CanvasInteractionMode,
     pub(crate) brush_radius: i32,
     pub(crate) pending_brush_frames: u8,
-    theory: MorphogenesisTheory,
+    pub(crate) theory: MorphogenesisTheory,
 }
 
 impl Default for MorphogenesisTool {
@@ -55,6 +58,7 @@ impl Default for MorphogenesisTool {
 
         Self {
             worker,
+            atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
             width,
             height,
@@ -149,6 +153,7 @@ impl MorphogenesisTool {
 
     pub(crate) fn switch_kinetics(&mut self, next: MorphogenesisKinetics) {
         let was_running = self.worker.is_running();
+        let was_pending = self.pending_initial_start;
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.kinetics = next;
@@ -167,6 +172,17 @@ impl MorphogenesisTool {
                 }
             }
         }
+        if self.atlas.is_visible() {
+            match (next, self.atlas.axis_keys()) {
+                (MorphogenesisKinetics::GrayScott, ("a", "b")) => {
+                    let _ = self.atlas.set_axis_keys("f", "k");
+                }
+                (MorphogenesisKinetics::Schnakenberg, ("f", "k")) => {
+                    let _ = self.atlas.set_axis_keys("a", "b");
+                }
+                _ => {}
+            }
+        }
         scientific_metadata::citation_registry::CitationRegistry::register(
             self.name().to_string(),
             self.theory.theory_citation(),
@@ -174,6 +190,8 @@ impl MorphogenesisTool {
         self.reset();
         if was_running {
             let _ = self.worker.send_command(SimCommand::Start);
+        } else if was_pending {
+            self.pending_initial_start = true;
         }
     }
 
@@ -197,56 +215,6 @@ impl MorphogenesisTool {
             .send_command(SimCommand::Custom("ensure_nucleated".to_string()));
         self.pending_brush_frames = 2;
         self.dirty = true;
-    }
-}
-
-impl FiniteStateGuard for MorphogenesisTool {
-    fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted && self.worker.diagnostic_report().is_none()
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.worker.diagnostic_report()
-    }
-
-    fn diverged(&self) -> bool {
-        !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn auto_scale_step_size(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.dt = (p.dt * 0.5).max(1e-5);
-        drop(p);
-        self.reset_system();
-    }
-
-    fn clamp_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.a = p.a.clamp(0.0, 1.0);
-        p.b = p.b.clamp(0.0, 2.0);
-        p.f = p.f.clamp(0.0, 0.2);
-        p.k = p.k.clamp(0.0, 0.2);
-        p.d_u = p.d_u.clamp(0.01, 5.0);
-        p.d_v = p.d_v.clamp(0.01, 200.0);
-        p.dt = p.dt.clamp(1e-4, 2.0);
-        p.auto_dt = true;
-        drop(p);
-        self.reset_system();
-    }
-
-    fn reset_parameters(&mut self) {
-        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-        p.kinetics = MorphogenesisKinetics::Schnakenberg;
-        p.a = 0.1;
-        p.b = 0.9;
-        p.f = DEFAULT_GRAY_SCOTT_F;
-        p.k = DEFAULT_GRAY_SCOTT_K;
-        p.d_u = 1.0;
-        p.d_v = 100.0;
-        p.dt = 0.05;
-        p.auto_dt = true;
-        drop(p);
-        self.reset_system();
     }
 }
 
@@ -282,7 +250,9 @@ impl InteractiveTool for MorphogenesisTool {
         }
         let snapshot = self.worker.latest_snapshot()?;
         let px = snapshot.pixels.read().unwrap_or_else(|e| e.into_inner());
-        if snapshot.width == 0 || snapshot.height == 0 || px.len() != snapshot.width * snapshot.height
+        if snapshot.width == 0
+            || snapshot.height == 0
+            || px.len() != snapshot.width * snapshot.height
         {
             return None;
         }
@@ -359,11 +329,18 @@ impl InteractiveTool for MorphogenesisTool {
         self.height.hash(&mut h);
         std::mem::discriminant(&self.worker.state()).hash(&mut h);
         self.pending_initial_start.hash(&mut h);
+        self.atlas.is_visible().hash(&mut h);
+        self.atlas.axis_keys().hash(&mut h);
         h.finish().max(1)
     }
 
     fn save_state(&self) -> Option<String> {
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let p = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let (xk, yk) = self.atlas.axis_keys();
         serde_json::to_string(&MorphogenesisToolState {
             kinetics: p.kinetics,
             a: p.a,
@@ -379,14 +356,20 @@ impl InteractiveTool for MorphogenesisTool {
             state: Some(self.worker.state()),
             paused: None,
             pending_initial_start: self.pending_initial_start,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         })
         .ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let parsed: MorphogenesisToolState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
+        self.state_bounds().validate_json(state)?;
+        let parsed: MorphogenesisToolState =
+            serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
+        self.atlas
+            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.atlas.set_visible(parsed.atlas_visible);
         let (target_state, next_pending) = parsed.resolve_target_state(self.pending_initial_start);
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
@@ -427,6 +410,16 @@ impl InteractiveTool for MorphogenesisTool {
             }
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn has_finite_parameters(&self) -> bool {

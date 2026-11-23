@@ -27,10 +27,7 @@ impl SimpleRng {
 
     /// Samples a uniform `f64` in `[0.0, 1.0]`.
     pub fn next_f64(&mut self) -> f64 {
-        self.state = self
-            .state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1);
+        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1);
         let x = self.state;
         let x = x ^ (x >> 18);
         let rot = (x >> 27) as u32;
@@ -57,7 +54,13 @@ impl MorphogenesisTheory {
         Self { params }
     }
 
-    fn snapshot(&self) -> (MorphogenesisKinetics, SchnakenbergKinetics, GrayScottKinetics) {
+    fn snapshot(
+        &self,
+    ) -> (
+        MorphogenesisKinetics,
+        SchnakenbergKinetics,
+        GrayScottKinetics,
+    ) {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         (
             p.kinetics,
@@ -100,36 +103,106 @@ impl TheoryDescribable for MorphogenesisTheory {
 
     fn available_descriptions(&self) -> HashMap<String, String> {
         let (mode, schnak, gs) = self.snapshot();
-        match mode {
+        let mut descs = match mode {
             MorphogenesisKinetics::Schnakenberg => {
-                let mut descs = schnak.available_descriptions();
-                descs.insert(
+                let mut d = schnak.available_descriptions();
+                d.insert(
                     "activator_diffusion".to_string(),
                     "Short-range spatial diffusion coefficient D_u of autocatalytic activator u."
                         .to_string(),
                 );
-                descs.insert(
+                d.insert(
                     "inhibitor_diffusion".to_string(),
                     "Long-range spatial diffusion coefficient D_v driving Turing instability."
                         .to_string(),
                 );
-                descs
+                d
             }
             MorphogenesisKinetics::GrayScott => {
-                let mut descs = gs.available_descriptions();
-                descs.insert(
+                let mut d = gs.available_descriptions();
+                d.insert(
                     "substrate_diffusion".to_string(),
                     "Fast substrate diffusion coefficient D_u replenishing autocatalytic fronts."
                         .to_string(),
                 );
-                descs.insert(
+                d.insert(
                     "catalyst_diffusion".to_string(),
                     "Slow autocatalyst diffusion coefficient D_v localizing spots and waves."
                         .to_string(),
                 );
-                descs
+                d
             }
-        }
+        };
+        descs.insert(
+            "dt".to_string(),
+            "Explicit Forward Euler integration time step bounded by the 2D diffusion CFL limit."
+                .to_string(),
+        );
+        descs
+    }
+
+    fn theory_parameters(
+        &self,
+    ) -> HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use scientific_metadata::theory::ParameterConstraint;
+        HashMap::from([
+            (
+                "a".to_string(),
+                ParameterConstraint {
+                    min: 0.0,
+                    max: 1.0,
+                    step: 0.01,
+                },
+            ),
+            (
+                "b".to_string(),
+                ParameterConstraint {
+                    min: 0.0,
+                    max: 2.0,
+                    step: 0.01,
+                },
+            ),
+            (
+                "f".to_string(),
+                ParameterConstraint {
+                    min: 0.005,
+                    max: 0.085,
+                    step: 0.001,
+                },
+            ),
+            (
+                "k".to_string(),
+                ParameterConstraint {
+                    min: 0.030,
+                    max: 0.070,
+                    step: 0.001,
+                },
+            ),
+            (
+                "d_u".to_string(),
+                ParameterConstraint {
+                    min: 0.1,
+                    max: 5.0,
+                    step: 0.05,
+                },
+            ),
+            (
+                "d_v".to_string(),
+                ParameterConstraint {
+                    min: 10.0,
+                    max: 200.0,
+                    step: 1.0,
+                },
+            ),
+            (
+                "dt".to_string(),
+                ParameterConstraint {
+                    min: 1e-4,
+                    max: 0.1,
+                    step: 5e-4,
+                },
+            ),
+        ])
     }
 
     fn theory_latex_equation(&self) -> Option<String> {
@@ -285,17 +358,19 @@ impl MorphogenesisTool {
     pub(crate) fn apply_named_preset(&mut self, a: f64, b: f64, d_u: f64, d_v: f64, dt: f64) {
         let f = self.params.read().unwrap_or_else(|e| e.into_inner()).f;
         let k = self.params.read().unwrap_or_else(|e| e.into_inner()).k;
-        self.load_preset_state(MorphogenesisKinetics::Schnakenberg, a, b, f, k, d_u, d_v, dt);
+        self.load_preset_state(
+            MorphogenesisKinetics::Schnakenberg,
+            a,
+            b,
+            f,
+            k,
+            d_u,
+            d_v,
+            dt,
+        );
     }
 
-    pub(crate) fn apply_gray_scott_preset(
-        &mut self,
-        f: f64,
-        k: f64,
-        d_u: f64,
-        d_v: f64,
-        dt: f64,
-    ) {
+    pub(crate) fn apply_gray_scott_preset(&mut self, f: f64, k: f64, d_u: f64, d_v: f64, dt: f64) {
         let a = self.params.read().unwrap_or_else(|e| e.into_inner()).a;
         let b = self.params.read().unwrap_or_else(|e| e.into_inner()).b;
         self.load_preset_state(MorphogenesisKinetics::GrayScott, a, b, f, k, d_u, d_v, dt);
@@ -320,6 +395,7 @@ impl MorphogenesisTool {
         };
         let pending_initial_start =
             target_state != SimWorkerState::Running && self.pending_initial_start;
+        let (xk, yk) = self.atlas.axis_keys();
         let preset_state = MorphogenesisToolState {
             kinetics,
             a,
@@ -335,6 +411,8 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);

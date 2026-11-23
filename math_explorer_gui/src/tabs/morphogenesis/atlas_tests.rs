@@ -176,7 +176,10 @@ fn test_atlas_click_updates_state_revision_in_both_kinetics_modes() {
 
     click_accesskit_label(&ctx, &mut tab, "2D Turing Atlas (a, b)");
     let rev1 = tab.state_revision();
-    assert_ne!(rev1, rev0, "Clicking Schnakenberg atlas must update state_revision");
+    assert_ne!(
+        rev1, rev0,
+        "Clicking Schnakenberg atlas must update state_revision"
+    );
 
     click_accesskit_label(&ctx, &mut tab, "Gray-Scott");
     let rev2 = tab.state_revision();
@@ -188,7 +191,10 @@ fn test_atlas_click_updates_state_revision_in_both_kinetics_modes() {
 
     click_accesskit_label(&ctx, &mut tab, "2D Gray-Scott Atlas (F, k)");
     let rev3 = tab.state_revision();
-    assert_ne!(rev3, rev2, "Clicking Gray-Scott atlas must update state_revision");
+    assert_ne!(
+        rev3, rev2,
+        "Clicking Gray-Scott atlas must update state_revision"
+    );
 }
 
 #[test]
@@ -221,7 +227,13 @@ fn test_all_five_starter_presets_evolve_without_fault_and_roundtrip_urls() {
             .expect("URL import");
         assert_eq!(restored.export_config(), tab.export_config());
         let restored_state: MorphogenesisToolState = serde_json::from_str(
-            &restored.framework.active_tool.as_ref().unwrap().save_state().unwrap(),
+            &restored
+                .framework
+                .active_tool
+                .as_ref()
+                .unwrap()
+                .save_state()
+                .unwrap(),
         )
         .unwrap();
         assert_eq!(restored_state.state, Some(SimWorkerState::Ready));
@@ -289,8 +301,10 @@ fn test_apply_brush_injection_erasure_and_paused_worker_snapshots() {
     assert!(runner.system.v()[idx].abs() < 1e-12);
 
     // Verify paused worker (Ready) emits immediate snapshot upon ApplyBrush without unpausing
-    let mut tool = MorphogenesisTool::default();
-    tool.pending_initial_start = false;
+    let mut tool = MorphogenesisTool {
+        pending_initial_start: false,
+        ..Default::default()
+    };
     tool.apply_gray_scott_preset(0.0367, 0.0649, 0.2, 0.1, 1.0);
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
     while tool.worker.update().is_some() {}
@@ -312,7 +326,10 @@ fn test_apply_brush_injection_erasure_and_paused_worker_snapshots() {
         }
         thread::sleep(Duration::from_millis(5));
     }
-    assert!(got_paused_snapshot, "Paused brush stroke must emit snapshot");
+    assert!(
+        got_paused_snapshot,
+        "Paused brush stroke must emit snapshot"
+    );
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 }
 
@@ -346,10 +363,18 @@ fn test_morphogenesis_theory_and_canvas_pointer_drag_brush_dispatch() {
     // Verify MorphogenesisTheory switches dynamically between Schnakenberg and Gray-Scott
     let mut tool = MorphogenesisTool::default();
     assert!(tool.theory().theory_citation().contains("Schnakenberg"));
-    assert!(tool.theory().theory_latex_equation().unwrap().contains("u^2 v"));
+    assert!(tool
+        .theory()
+        .theory_latex_equation()
+        .unwrap()
+        .contains("u^2 v"));
     tool.switch_kinetics(MorphogenesisKinetics::GrayScott);
     assert!(tool.theory().theory_citation().contains("Pearson"));
-    assert!(tool.theory().theory_latex_equation().unwrap().contains("F(1 - u)"));
+    assert!(tool
+        .theory()
+        .theory_latex_equation()
+        .unwrap()
+        .contains("F(1 - u)"));
 
     // Render tool in Brush mode while paused with initial Reset snapshot and drag across canvas center
     for _ in 0..1000 {
@@ -389,4 +414,58 @@ fn test_morphogenesis_theory_and_canvas_pointer_drag_brush_dispatch() {
         },
     );
     assert!(tool.pending_brush_frames > 0);
+}
+
+#[test]
+fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
+    use super::tests::{active_morpho_tool_state, render_tool_frame};
+
+    let ctx = egui::Context::default();
+    let mut tab = MorphogenesisTab::default();
+    let mut tool = MorphogenesisTool::default();
+    assert_eq!(
+        active_morpho_tool_state(&tab).state,
+        Some(SimWorkerState::Ready)
+    );
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
+
+    thread::sleep(Duration::from_millis(40));
+    assert_eq!(
+        active_morpho_tool_state(&tab).state,
+        Some(SimWorkerState::Ready)
+    );
+    assert_eq!(tool.worker.state(), SimWorkerState::Ready);
+
+    let mut frame = eframe::Frame::_new_kittest();
+    for _ in 0..8 {
+        let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+        let _ = render_tool_frame(&ctx, &mut tool);
+        thread::sleep(Duration::from_millis(8));
+    }
+    assert_eq!(
+        active_morpho_tool_state(&tab).state,
+        Some(SimWorkerState::Running)
+    );
+    assert_eq!(tool.worker.state(), SimWorkerState::Running);
+    assert!(tool.worker.diagnostic_report().is_none());
+
+    tab.params.write().unwrap().auto_dt = false;
+    tool.params.write().unwrap().auto_dt = false;
+    for _ in 0..1200 {
+        let _ = ctx.run(egui::RawInput::default(), |ctx| tab.show(ctx, &mut frame));
+        let _ = render_tool_frame(&ctx, &mut tool);
+        if active_morpho_tool_state(&tab).state == Some(SimWorkerState::Faulted)
+            && tool.worker.state() == SimWorkerState::Faulted
+        {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    assert_eq!(
+        active_morpho_tool_state(&tab).state,
+        Some(SimWorkerState::Faulted)
+    );
+    assert_eq!(tool.worker.state(), SimWorkerState::Faulted);
+    assert!(tool.worker.diagnostic_report().is_some());
 }

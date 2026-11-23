@@ -316,13 +316,13 @@ fn test_runtime_overhead_less_than_one_percent() {
     lbm.step(&params);
 
     let n = 50;
-    let step_start = std::time::Instant::now();
+    let step_start = crate::web_io::PlatformInstant::now();
     for _ in 0..n {
         lbm.step(&params);
     }
     let step_elapsed = step_start.elapsed();
 
-    let guard_start = std::time::Instant::now();
+    let guard_start = crate::web_io::PlatformInstant::now();
     for _ in 0..n {
         assert!(FiniteStateGuard::is_finite_state(&lbm));
     }

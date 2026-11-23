@@ -1,11 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::formula::CompiledFractalJob;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::DiagnosticReport;
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::chaos::fractals::{escape_time_julia, escape_time_mandelbrot};
 use num_complex::Complex;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -37,6 +39,24 @@ pub enum FractalMode {
     Mandelbrot,
     /// Julia set $z_{n+1} = z_n^2 + c$ for fixed complex constant $c$.
     Julia,
+    /// Custom c-plane escape fractal $z_{n+1} = f(z_n, c)$ from $z_0 = 0$.
+    CustomMandelbrot,
+    /// Custom Julia escape fractal $z_{n+1} = f(z_n, c)$ for fixed complex constant $c$.
+    CustomJulia,
+}
+
+impl FractalMode {
+    /// Returns `true` when evaluating a user-authored [`CompiledFractalJob`].
+    #[must_use]
+    pub const fn is_custom(self) -> bool {
+        matches!(self, Self::CustomMandelbrot | Self::CustomJulia)
+    }
+
+    /// Returns `true` when the complex constant $c$ slider applies.
+    #[must_use]
+    pub const fn uses_julia_c(self) -> bool {
+        matches!(self, Self::Julia | Self::CustomJulia)
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -49,22 +69,22 @@ pub(super) struct FractalState {
     pub(super) mode: FractalMode,
     pub(super) julia_re: f64,
     pub(super) julia_im: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) custom_expr: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(super) custom_params: BTreeMap<String, f64>,
 }
 
 impl FractalState {
     pub(super) fn validate(&self) -> Result<(), String> {
-        let coords_valid = [
-            self.center_re,
-            self.center_im,
-            self.julia_re,
-            self.julia_im,
-        ]
-        .iter()
-        .all(|v| v.is_finite() && (COORD_MIN..=COORD_MAX).contains(v));
+        let coords_valid = [self.center_re, self.center_im, self.julia_re, self.julia_im]
+            .iter()
+            .all(|v| v.is_finite() && (COORD_MIN..=COORD_MAX).contains(v));
         let zoom_valid = self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom);
         let iter_valid =
             (10..=math_commons::registry::MAX_ITERATIONS as u32).contains(&self.max_iter);
-        if !coords_valid || !zoom_valid || !iter_valid {
+        let params_valid = self.custom_params.values().all(|v| v.is_finite());
+        if !coords_valid || !zoom_valid || !iter_valid || !params_valid {
             return Err("Fractal view parameters out of bounds".into());
         }
         Ok(())
@@ -151,7 +171,8 @@ pub(super) fn snapshot_to_clamped_color_image(
         let src_y = (y * snapshot.height / clamped_h).min(snapshot.height - 1);
         for x in 0..clamped_w {
             let src_x = (x * snapshot.width / clamped_w).min(snapshot.width - 1);
-            out[flatten_2d_index(x, y, clamped_w)] = px[flatten_2d_index(src_x, src_y, snapshot.width)];
+            out[flatten_2d_index(x, y, clamped_w)] =
+                px[flatten_2d_index(src_x, src_y, snapshot.width)];
         }
     }
     Some(egui::ColorImage::new([clamped_w, clamped_h], out))
@@ -174,18 +195,41 @@ pub fn map_iter_to_color32(iter: u32, max_iter: u32, high_contrast: bool) -> egu
     }
 }
 
-fn eval_pixel_color(re: f64, im: f64, req: &FractalRenderRequest) -> egui::Color32 {
+fn eval_pixel_color(
+    re: f64,
+    im: f64,
+    req: &FractalRenderRequest,
+    formula: Option<&CompiledFractalJob>,
+) -> egui::Color32 {
     let pt = Complex::new(re, im);
     let iter = match req.mode {
         FractalMode::Mandelbrot => escape_time_mandelbrot(pt, req.max_iter),
         FractalMode::Julia => escape_time_julia(pt, req.julia_c, req.max_iter),
+        FractalMode::CustomMandelbrot => formula.map_or_else(
+            || escape_time_mandelbrot(pt, req.max_iter),
+            |job| job.escape_time(Complex::new(0.0, 0.0), pt, req.max_iter),
+        ),
+        FractalMode::CustomJulia => formula.map_or_else(
+            || escape_time_julia(pt, req.julia_c, req.max_iter),
+            |job| job.escape_time(pt, req.julia_c, req.max_iter),
+        ),
     };
     map_iter_to_color32(iter, req.max_iter, req.high_contrast)
 }
 
 /// Synchronously renders a full-resolution fractal image (used for small seed previews and exports).
+#[cfg(test)]
 #[must_use]
 pub fn render_fractal_color_image(req: &FractalRenderRequest) -> egui::ColorImage {
+    render_fractal_color_image_with_formula(req, None)
+}
+
+/// Synchronously renders a full-resolution fractal image with an optional [`CompiledFractalJob`].
+#[must_use]
+pub fn render_fractal_color_image_with_formula(
+    req: &FractalRenderRequest,
+    formula: Option<&CompiledFractalJob>,
+) -> egui::ColorImage {
     let (width, height) = clamp_fractal_dimensions(req.width, req.height, MAX_FRACTAL_TEXTURE_SIDE);
     if width == 0 || height == 0 {
         return egui::ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
@@ -205,7 +249,7 @@ pub fn render_fractal_color_image(req: &FractalRenderRequest) -> egui::ColorImag
         let im = y_start - (y as f64 / height as f64) * scale_y;
         for x in 0..width {
             let re = x_start + (x as f64 / width as f64) * scale_x;
-            pixels[flatten_2d_index(x, y, width)] = eval_pixel_color(re, im, req);
+            pixels[flatten_2d_index(x, y, width)] = eval_pixel_color(re, im, req, formula);
         }
     }
     egui::ColorImage::new([width, height], pixels)
@@ -214,8 +258,10 @@ pub fn render_fractal_color_image(req: &FractalRenderRequest) -> egui::ColorImag
 /// Background worker runner executing cancellable `8x -> 4x -> 2x -> 1x` fractal passes.
 pub struct FractalRunner {
     shared_request: Arc<RwLock<FractalRenderRequest>>,
+    shared_formula: Arc<RwLock<Option<Arc<CompiledFractalJob>>>>,
     latest_generation: Arc<AtomicU64>,
     active: FractalRenderRequest,
+    active_formula: Option<Arc<CompiledFractalJob>>,
     stride_idx: usize,
     pub(super) next_sample_y: usize,
     completed_stride: usize,
@@ -224,21 +270,42 @@ pub struct FractalRunner {
 
 impl FractalRunner {
     /// Creates a new [`FractalRunner`] seeded with an initial lightweight coarse preview.
+    #[cfg(test)]
     #[must_use]
     pub fn new(
         shared_request: Arc<RwLock<FractalRenderRequest>>,
         latest_generation: Arc<AtomicU64>,
     ) -> Self {
+        Self::with_formula(
+            shared_request,
+            latest_generation,
+            Arc::new(RwLock::new(None)),
+        )
+    }
+
+    /// Creates a [`FractalRunner`] sharing an `Arc`-backed custom [`CompiledFractalJob`] slot.
+    #[must_use]
+    pub fn with_formula(
+        shared_request: Arc<RwLock<FractalRenderRequest>>,
+        latest_generation: Arc<AtomicU64>,
+        shared_formula: Arc<RwLock<Option<Arc<CompiledFractalJob>>>>,
+    ) -> Self {
         let initial = *shared_request.read().unwrap_or_else(|e| e.into_inner());
-        let seed_img = render_fractal_color_image(&initial);
+        let formula = shared_formula
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let seed_img = render_fractal_color_image_with_formula(&initial, formula.as_deref());
         Self {
             shared_request,
+            shared_formula,
             latest_generation,
             active: FractalRenderRequest {
                 width: seed_img.size[0],
                 height: seed_img.size[1],
                 ..initial
             },
+            active_formula: formula,
             stride_idx: FRACTAL_STRIDES.len(),
             next_sample_y: 0,
             completed_stride: 1,
@@ -255,6 +322,11 @@ impl FractalRunner {
             .shared_request
             .read()
             .unwrap_or_else(|e| e.into_inner());
+        let formula = self
+            .shared_formula
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let (w, h) = clamp_fractal_dimensions(req.width, req.height, MAX_FRACTAL_TEXTURE_SIDE);
         req.width = w;
         req.height = h;
@@ -263,6 +335,7 @@ impl FractalRunner {
             self.buffer.resize(needed, egui::Color32::BLACK);
         }
         self.active = req;
+        self.active_formula = formula;
         self.stride_idx = 0;
         self.next_sample_y = 0;
         self.completed_stride = FRACTAL_STRIDES[0];
@@ -287,7 +360,7 @@ impl FractalRunner {
                 self.buffer[flatten_2d_index(sx, sy, width)]
             } else {
                 let re = x_start + (sx as f64 / width as f64) * scale_x;
-                eval_pixel_color(re, im, &self.active)
+                eval_pixel_color(re, im, &self.active, self.active_formula.as_deref())
             };
 
             if stride == 1 {

@@ -2,10 +2,11 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::cartographer::{grid_u_variance, is_pattern_forming_regime, WASHOUT_VARIANCE_THRESHOLD};
 use super::state::{
     apply_chemical_brush, ensure_nucleated_for_kinetics, initialize_for_kinetics,
-    plot_concentration_with_contrast, MorphogenesisKinetics, DEFAULT_GRAY_SCOTT_F,
-    DEFAULT_GRAY_SCOTT_K,
+    initialize_schnakenberg_system, plot_concentration_with_contrast, MorphogenesisKinetics,
+    DEFAULT_GRAY_SCOTT_F, DEFAULT_GRAY_SCOTT_K,
 };
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -87,7 +88,11 @@ impl FiniteStateGuard for MorphogenesisRunner {
 
 impl MorphogenesisRunner {
     fn sync_system_params(&mut self) -> Option<(f64, bool)> {
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let p = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         if !p.a.is_finite()
             || !p.b.is_finite()
             || !p.f.is_finite()
@@ -108,6 +113,21 @@ impl MorphogenesisRunner {
         if self.kinetics != p.kinetics {
             self.kinetics = p.kinetics;
             initialize_for_kinetics(&mut self.system, self.kinetics, self.width, self.height);
+        } else if self.kinetics == MorphogenesisKinetics::Schnakenberg
+            && p.dt.is_finite()
+            && p.dt > 0.0
+        {
+            let eff_dt = if p.auto_dt {
+                FusedEulerSolver::cfl_substeps_2d(p.dt, 1.0, p.d_u, p.d_v, MAX_CFL_SUBSTEPS).1
+            } else {
+                p.dt
+            };
+            if is_pattern_forming_regime(p.a, p.b, p.d_u, p.d_v, eff_dt) {
+                let var_u = grid_u_variance(self.system.u());
+                if var_u.is_finite() && var_u < WASHOUT_VARIANCE_THRESHOLD {
+                    initialize_schnakenberg_system(&mut self.system, self.width, self.height);
+                }
+            }
         }
         (p.dt.is_finite() && p.dt > 0.0).then_some((p.dt, p.auto_dt))
     }
@@ -220,7 +240,8 @@ impl SimulationRunner for MorphogenesisRunner {
             .unwrap_or_else(|e| e.into_inner())
             .high_contrast;
         let u_vec = self.system.u().to_vec();
-        let image = plot_concentration_with_contrast(&u_vec, self.width, self.height, high_contrast);
+        let image =
+            plot_concentration_with_contrast(&u_vec, self.width, self.height, high_contrast);
         StateSnapshot {
             width: self.width,
             height: self.height,

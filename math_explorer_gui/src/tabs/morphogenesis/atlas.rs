@@ -167,7 +167,9 @@ fn build_atlas_image_for_theme(
         for col in 0..ATLAS_TEX_W {
             let tx = (col as f64 + 0.5) / (ATLAS_TEX_W as f64);
             let x_val = x_range.0 + tx * (x_range.1 - x_range.0);
-            pixels.push(regime_color(kinetics, x_val, y_val, d_u, d_v, palette, mode));
+            pixels.push(regime_color(
+                kinetics, x_val, y_val, d_u, d_v, palette, mode,
+            ));
         }
     }
     ColorImage {

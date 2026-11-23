@@ -16,12 +16,20 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub mod atlas;
+pub mod cartographer;
 pub mod presets;
 pub mod runner;
 pub mod state;
+pub mod teleport;
 pub mod tool;
 pub mod ui;
 
+#[cfg(test)]
+pub use cartographer::{
+    classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+};
+#[cfg(test)]
+pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;
 #[cfg(test)]
 pub use runner::MorphogenesisRunner;
@@ -152,20 +160,24 @@ impl MorphogenesisTab {
         let Some(tool) = self.framework.active_tool.as_mut() else {
             return Err("No active MorphogenesisTool".to_string());
         };
-        let saved = tool
+        let existing = tool
             .save_state()
             .and_then(|s| serde_json::from_str::<MorphogenesisToolState>(&s).ok());
-        let current_state = saved
+        let current_state = existing
             .as_ref()
             .and_then(|s| s.state)
             .unwrap_or(SimWorkerState::Ready);
+        let atlas_visible = existing.as_ref().is_some_and(|s| s.atlas_visible);
         let target_state = if current_state == SimWorkerState::Running {
             SimWorkerState::Running
         } else {
             SimWorkerState::Ready
         };
         let pending_initial_start = target_state != SimWorkerState::Running
-            && saved.is_some_and(|s| s.pending_initial_start);
+            && existing.as_ref().is_some_and(|s| s.pending_initial_start);
+        let atlas_axes = existing
+            .map(|s| s.atlas_axes)
+            .unwrap_or_else(cartographer::default_morpho_atlas_axes);
         let state = MorphogenesisToolState {
             kinetics: config.kinetics,
             a: config.a,
@@ -181,6 +193,8 @@ impl MorphogenesisTab {
             state: Some(target_state),
             paused: None,
             pending_initial_start,
+            atlas_visible,
+            atlas_axes,
         };
         let payload = serde_json::to_string(&state).map_err(|e| e.to_string())?;
         tool.try_load_state(&payload)?;
@@ -356,7 +370,8 @@ impl ExplorerTab for MorphogenesisTab {
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.framework.import_url_preset_json(tool_id, preset_json)?;
+        self.framework
+            .import_url_preset_json(tool_id, preset_json)?;
         let cfg = self.export_config();
         let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
         p.kinetics = cfg.kinetics;

@@ -81,6 +81,15 @@ pub struct MorphogenesisToolState {
     /// Deferred start flag keeping hidden tabs idle until first rendered frame.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending_initial_start: bool,
+    /// Persisted visibility of the progressive 2D parameter atlas (never raster pixels).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub atlas_visible: bool,
+    /// Persisted `(x, y)` axis parameter keys for the 2D parameter atlas.
+    #[serde(
+        default = "super::cartographer::default_morpho_atlas_axes",
+        skip_serializing_if = "super::cartographer::is_default_morpho_atlas_axes"
+    )]
+    pub atlas_axes: [String; 2],
 }
 
 impl MorphogenesisToolState {
@@ -106,6 +115,15 @@ impl MorphogenesisToolState {
             return Err(format!(
                 "Morphogenesis dimensions {}x{} must be within 1..=512",
                 self.width, self.height
+            ));
+        }
+        let valid_axes = super::cartographer::MORPHO_ATLAS_AXIS_PAIRS
+            .iter()
+            .any(|&(xk, yk)| xk == self.atlas_axes[0] && yk == self.atlas_axes[1]);
+        if !valid_axes {
+            return Err(format!(
+                "Invalid Morphogenesis atlas axes ('{}', '{}')",
+                self.atlas_axes[0], self.atlas_axes[1]
             ));
         }
         Ok(())
@@ -249,12 +267,10 @@ pub(crate) fn ensure_nucleated_for_kinetics(
 ) {
     let var_u = spatial_variance(system.u());
     let catalyst_extinct = kinetics == MorphogenesisKinetics::GrayScott
-        && system
-            .v()
-            .iter()
-            .copied()
-            .fold(0.0_f64, |acc, v| if v.is_finite() { acc.max(v) } else { acc })
-            < 1e-3;
+        && system.v().iter().copied().fold(
+            0.0_f64,
+            |acc, v| if v.is_finite() { acc.max(v) } else { acc },
+        ) < 1e-3;
     if var_u < 1e-7 || catalyst_extinct {
         initialize_for_kinetics(system, kinetics, width, height);
     }

@@ -153,6 +153,7 @@ fn test_ising_runner_offload() {
         h_field: 0.0,
         steps_per_frame: 500,
         theme: crate::app::ThemeMode::Dark,
+        ..Default::default()
     }));
     let mut runner = IsingRunner {
         lattice: SpinLattice::new(20, 20, Some(42)),
@@ -234,7 +235,7 @@ fn test_mri_runner_offload() {
 #[test]
 fn test_physics_and_chaos_runners_step_once() {
     use crate::tabs::chaos::attractors::{
-        AttractorRunner, AttractorSharedParams, SolverExecutionState,
+        AttractorMode, AttractorRunner, AttractorSharedParams, SolverExecutionState,
     };
     use crate::tabs::mri::{MriRunner, MriSharedParams};
     use crate::tabs::solid_state::ising::{IsingRunner, IsingSharedParams};
@@ -253,6 +254,7 @@ fn test_physics_and_chaos_runners_step_once() {
             h_field: 0.0,
             steps_per_frame: 5000,
             theme: crate::app::ThemeMode::Dark,
+            ..Default::default()
         })),
     };
     ising.step_once();
@@ -285,6 +287,8 @@ fn test_physics_and_chaos_runners_step_once() {
             dt: 0.01,
             simulation_speed: 5,
             max_points: 500,
+            mode: AttractorMode::Lorenz,
+            custom_flow: None,
         })),
         history: VecDeque::new(),
         step_count: 0,
