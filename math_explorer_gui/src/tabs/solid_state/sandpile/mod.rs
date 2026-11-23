@@ -132,7 +132,6 @@ pub struct AbelianSandpileStudio {
     pub(crate) paused: bool,
     pub(crate) last_wavefront_sites: usize,
     pub(crate) state_rev: u64,
-    pub(crate) focused_canvas: Option<egui::Id>,
 }
 
 impl Default for AbelianSandpileStudio {
@@ -157,7 +156,6 @@ impl Default for AbelianSandpileStudio {
             paused: false,
             last_wavefront_sites: 0,
             state_rev: 1,
-            focused_canvas: None,
         };
         studio.rebuild_for_current_state();
         studio
@@ -337,10 +335,6 @@ impl InteractiveTool for AbelianSandpileStudio {
 
     fn state_revision(&self) -> u64 {
         self.state_rev
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
     }
 
     fn state_bounds(&self) -> ToolStateBounds {

@@ -33,11 +33,16 @@ impl PotentialFlowTool {
     }
 
     fn draw_playback_and_stamp_bar(&mut self, ui: &mut egui::Ui) {
+        let canvas_sculpt_focused = self.brush_kit.is_sculpting()
+            && self
+                .last_canvas_id
+                .is_some_and(|id| ui.ctx().memory(|m| m.has_focus(id)));
         if let Some(action) = PlaybackTransport::in_thread(
             "potential_flow_transport",
             "Potential Flow",
             self.is_playing,
         )
+        .allow_space_shortcut(!canvas_sculpt_focused)
         .show(ui)
         {
             match action {

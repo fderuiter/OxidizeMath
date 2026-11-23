@@ -241,6 +241,11 @@ impl MriKSpaceScannerTool {
         self.recon_dirty = true;
         let _ = self.recompute_if_dirty(self.last_high_contrast.unwrap_or(false));
     }
+
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_kspace_id
+    }
 }
 
 impl InteractiveTool for MriKSpaceScannerTool {
@@ -258,10 +263,6 @@ impl InteractiveTool for MriKSpaceScannerTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.show_scanner_inside(ui);
-    }
-
-    fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_kspace_id
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
