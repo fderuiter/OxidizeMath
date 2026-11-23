@@ -52,14 +52,16 @@ pub mod marching_cubes;
 pub mod tables;
 #[allow(missing_docs)]
 pub mod types;
+pub mod workspace;
 
 pub use gradients::{CentralDifferenceEstimator, GradientEstimator};
 pub use manifold::{
     IsosurfaceMode, MAX_SYNC_INTERIOR_DIM, MIN_INTERIOR_DIM, ManifoldStats, WatertightGridConfig,
     WatertightGridError, analyze_mesh_manifold, sample_watertight_grid,
 };
-pub use marching_cubes::extract_isosurface;
+pub use marching_cubes::{MarchingCubes, extract_isosurface};
 pub use types::{Mesh, Point3D, VoxelGrid};
+pub use workspace::{IsosurfaceWorkspace, extract_isosurface_into};
 
 // [cite:isosurface_extraction]
 

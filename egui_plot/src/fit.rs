@@ -32,6 +32,7 @@ pub fn reset_fit_model_with_axes_call_count() {
 
 /// Supported curve fitting models for interactive plot overlays and programmatic regression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum FitType {
     /// Degree-1 polynomial regression ($y = c_0 + c_1 x$).
     Linear,

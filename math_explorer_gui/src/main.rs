@@ -37,6 +37,8 @@ pub mod starter_gallery;
 mod tabs;
 mod telemetry;
 pub mod url_state;
+#[cfg(any(feature = "ai", feature = "biology", feature = "physics"))]
+pub mod volumetric_scene;
 pub mod web_io;
 pub mod web_io_bytes;
 #[cfg(target_arch = "wasm32")]

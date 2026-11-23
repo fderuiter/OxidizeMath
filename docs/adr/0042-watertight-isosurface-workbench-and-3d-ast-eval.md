@@ -1,4 +1,4 @@
-# ADR 0041: Watertight Isosurface Workbench, Padded Box-SDF Sampling, and Zero-Allocation 3D AST Evaluation
+# ADR 0042: Watertight Isosurface Workbench, Padded Box-SDF Sampling, and Zero-Allocation 3D AST Evaluation
 
 ## Status
 Accepted (extends [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md), and [ADR 0038](0038-watertight-3d-stl-and-ply-exports.md))
