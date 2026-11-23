@@ -137,6 +137,22 @@ fn test_neuroscience_canvas_receives_tab_focus_and_accesskit_label() {
         &mut lenia,
         "Lenia Studio Continuous Automaton Canvas",
     );
+
+    let mut sheet = crate::tabs::neuroscience::excitable_sheet::ExcitableSheetTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut sheet,
+        "2D Excitable Sheet & Virtual Electrodes Visualization",
+    );
+}
+
+#[cfg(feature = "physics")]
+#[test]
+fn test_medical_bioelectric_canvas_receives_tab_focus_and_accesskit_label() {
+    let mut bio = crate::tabs::medical::bioelectric_leads::BioelectricLeadTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut bio,
+        "Bioelectric 3-Lead Dipole Mapper Visualization",
+    );
 }
 
 #[cfg(feature = "epidemiology")]

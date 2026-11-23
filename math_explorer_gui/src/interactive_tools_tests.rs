@@ -108,6 +108,9 @@ mod tests {
 
     fn exercise_interactive_tools_part_3(ctx: &eframe::egui::Context) {
         exercise_interactive_tool::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::medical::bioelectric_leads::BioelectricLeadTool>(
+            ctx,
+        );
         exercise_interactive_tool::<crate::tabs::medical::dose::DoseCalculationTool>(ctx);
         exercise_interactive_tool::<
             crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool,
@@ -131,6 +134,9 @@ mod tests {
             ctx,
         );
         exercise_interactive_tool::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::neuroscience::excitable_sheet::ExcitableSheetTool>(
+            ctx,
+        );
         exercise_interactive_tool::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(
             ctx,
         );

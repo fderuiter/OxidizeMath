@@ -4,6 +4,8 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod beam_profiling;
+pub mod bioelectric_leads;
+pub mod bioelectric_presets;
 pub mod dose;
 pub mod imrt;
 pub mod link_bus;
