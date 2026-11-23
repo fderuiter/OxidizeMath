@@ -253,36 +253,52 @@ pub enum CopulaError {
 #[allow(missing_docs)]
 pub enum Glicko2Error {
     /// Invalid rating value.
-    #[error("Invalid Glicko-2 rating {value} (must be finite)")]
+    #[error("rating must be finite (got {value})")]
     #[allow(missing_docs)]
     InvalidRating { value: f64 },
     /// Invalid rating deviation (must be positive).
-    #[error("Invalid Glicko-2 rating deviation {value} (must be positive)")]
+    #[error("rating deviation must be positive and finite (got {value})")]
     #[allow(missing_docs)]
     InvalidRatingDeviation { value: f64 },
     /// Invalid volatility (must be positive).
-    #[error("Invalid Glicko-2 volatility {value} (must be positive)")]
+    #[error("volatility must be positive and finite (got {value})")]
     #[allow(missing_docs)]
     InvalidVolatility { value: f64 },
     /// Invalid system constant tau (must be between 0.3 and 1.2).
-    #[error("Invalid Glicko-2 system constant tau={value} (must be between 0.3 and 1.2)")]
+    #[error("system constant tau must be in [0.3, 1.2] and finite (got {value})")]
     #[allow(missing_docs)]
     InvalidSystemConstant { value: f64 },
     /// Invalid opponent count (must be at least 1).
-    #[error("Invalid opponent count {count} (must be at least 1)")]
+    #[error("invalid opponent count ({count})")]
     #[allow(missing_docs)]
     InvalidOpponentCount { count: usize },
     /// Volatility convergence failed after maximum iterations.
-    #[error("Glicko-2 volatility iteration failed to converge after {iterations} steps")]
+    #[error("volatility iteration failed to converge after {iterations} steps")]
     #[allow(missing_docs)]
     VolatilityConvergenceFailed { iterations: usize },
     /// Invalid score (must be between 0 and 1).
-    #[error("Invalid match score {value} (must be between 0 and 1)")]
+    #[error("match score must be in [0.0, 1.0] and finite (got {value})")]
     #[allow(missing_docs)]
     InvalidScore { value: f64 },
     /// Empty match results provided.
-    #[error("Match results cannot be empty")]
+    #[error("match results cannot be empty")]
     EmptyMatchResults,
+    /// Roster index referenced by a tournament match or pairing is out of bounds.
+    #[error("player index {index} is out of bounds for roster of length {roster_len}")]
+    #[allow(missing_docs)]
+    PlayerIndexOutOfBounds { index: usize, roster_len: usize },
+    /// A tournament match or pairing pitted a player against themselves.
+    #[error("self-match is not permitted for player index {player_index}")]
+    #[allow(missing_docs)]
+    SelfMatch { player_index: usize },
+    /// Tournament schedule or pairing requires at least two players.
+    #[error("at least 2 players are required for tournament pairings (got {count})")]
+    #[allow(missing_docs)]
+    InsufficientPlayers { count: usize },
+    /// Slice dimensions passed to a batch tournament routine did not match.
+    #[error("buffer length mismatch (expected {expected}, got {actual})")]
+    #[allow(missing_docs)]
+    DimensionMismatch { expected: usize, actual: usize },
 }
 
 impl Diagnostic for NumberTheoryError {

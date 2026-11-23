@@ -27,15 +27,6 @@ pub const K0_MAX: f64 = 10.0;
 /// Default initial momentum wave number $k_0$.
 pub const DEFAULT_K0: f64 = 5.0;
 
-/// Returns `val` if finite, otherwise `fallback`.
-pub(super) fn finite_or(val: f64, fallback: f64) -> f64 {
-    if val.is_finite() {
-        val
-    } else {
-        fallback
-    }
-}
-
 /// Minimum Gaussian packet width $\sigma$.
 pub const SIGMA_MIN: f64 = 0.25;
 /// Maximum Gaussian packet width $\sigma$.
@@ -392,4 +383,58 @@ pub fn build_wave_datasets(wave_data: &WaveData) -> Vec<(String, Vec<[f64; 2]>)>
             vec![[x_start, e0_y], [x_end, e0_y]],
         ),
     ]
+}
+
+/// Threshold on interior barrier probability $B(t)$ indicating packet transit completion.
+pub const BARRIER_TRANSIT_THRESHOLD: f64 = 0.02;
+/// Right-wall proximity coordinate above which boundary reflection begins.
+pub const RIGHT_WALL_GUARD_X: f64 = 4.25;
+/// Threshold on $\sum_{x > 4.25} |\psi|^2$ before right-wall bounce freezes $T_{\text{scatter}}$.
+pub const WALL_ARRIVAL_THRESHOLD: f64 = 0.02;
+
+/// Integrated Born probabilities across reflection, barrier, transmission, and wall zones.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TunnelingObservables {
+    /// Reflected Born probability $\sum_{x < x_{\text{left}}} |\psi(x)|^2$.
+    pub reflection: f64,
+    /// Interior barrier probability $\sum_{x_{\text{left}} \le x \le x_{\text{right}}} |\psi(x)|^2$.
+    pub barrier_prob: f64,
+    /// Transmitted Born probability $\sum_{x > x_{\text{right}}} |\psi(x)|^2$.
+    pub transmission: f64,
+    /// Right-wall arrival indicator $\sum_{x > 4.25} |\psi(x)|^2$.
+    pub right_wall_prob: f64,
+    /// Left-wall arrival indicator $\sum_{x < -4.25} |\psi(x)|^2$.
+    pub left_wall_prob: f64,
+}
+
+/// Integrates `QuantumState::probability_density` into reflection, barrier, and transmission sums.
+#[must_use]
+pub fn compute_tunneling_observables(
+    x_axis: &[f64],
+    prob_density: &DVector<f64>,
+    x_left: f64,
+    x_right: f64,
+) -> TunnelingObservables {
+    let mut obs = TunnelingObservables::default();
+    let len = x_axis.len().min(prob_density.len());
+    for i in 0..len {
+        let p = prob_density[i];
+        if !p.is_finite() {
+            continue;
+        }
+        let x = x_axis[i];
+        if x < x_left {
+            obs.reflection += p;
+        } else if x <= x_right {
+            obs.barrier_prob += p;
+        } else {
+            obs.transmission += p;
+        }
+        if x > RIGHT_WALL_GUARD_X {
+            obs.right_wall_prob += p;
+        } else if x < -RIGHT_WALL_GUARD_X {
+            obs.left_wall_prob += p;
+        }
+    }
+    obs
 }

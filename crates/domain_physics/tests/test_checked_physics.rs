@@ -11,8 +11,9 @@ use domain_physics::physics::medical::radar_gating::tracking::{
     ConstantVelocityModel, TrackingFilter,
 };
 use domain_physics::physics::mri::proton::boltzmann_ratio;
-use domain_physics::physics::solid_state::bcs::coherence_factors;
+use domain_physics::physics::solid_state::bcs::coherence_factors_strong;
 use domain_physics::physics::solid_state::second_quantization::{Boson, Fermion, FockState};
+use domain_physics::physics::solid_state::types::ElectronVolts;
 use domain_physics::physics::standard_model::higgs::HiggsPotential;
 
 #[test]
@@ -69,7 +70,7 @@ fn medical_mri_solid_state_and_higgs_return_typed_domain_errors() {
         Err(StatMechError::InvalidTemperature(0.0))
     );
     assert!(matches!(
-        coherence_factors(f64::NAN, 0.2),
+        coherence_factors_strong(ElectronVolts::new(f64::NAN), ElectronVolts::new(0.2)),
         Err(SolidStateError::Math(_))
     ));
 

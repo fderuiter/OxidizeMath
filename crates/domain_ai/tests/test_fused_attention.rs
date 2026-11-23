@@ -155,6 +155,20 @@ fn test_forward_with_weights_visualization() {
             assert_relative_eq!(row_sum, 1.0, epsilon = 1e-10);
         }
     }
+
+    // Verify exact parity with non-zero projection weights and a causal mask
+    let mut non_zero_mha = MultiHeadAttention::new(d_model, h);
+    non_zero_mha.w_q = DMatrix::from_fn(d_model, d_model, |r, c| ((r + 1) * (c + 2)) as f64 * 1e-3);
+    non_zero_mha.w_k = DMatrix::from_fn(d_model, d_model, |r, c| ((r + 3) * (c + 1)) as f64 * 1e-3);
+    non_zero_mha.w_v = DMatrix::from_fn(d_model, d_model, |r, c| ((r + 2) * (c + 3)) as f64 * 1e-3);
+    non_zero_mha.w_o = DMatrix::from_fn(d_model, d_model, |r, c| ((r + c + 1) as f64 * 1e-3).sin());
+    let causal_mask = DMatrix::from_fn(seq_len, seq_len, |r, c| if c > r { -1e9 } else { 0.0 });
+
+    let (masked_with_weights, masked_weights) =
+        non_zero_mha.forward_with_weights(&x, &x, &x, Some(&causal_mask));
+    let masked_forward = non_zero_mha.forward(&x, &x, &x, Some(&causal_mask));
+    assert_eq!(masked_with_weights, masked_forward);
+    assert_eq!(masked_weights.len(), h);
 }
 
 #[test]

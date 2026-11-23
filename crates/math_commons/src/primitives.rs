@@ -1,3 +1,4 @@
+// [cite:math_commons]
 use std::ops::Deref;
 
 #[macro_export]

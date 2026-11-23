@@ -1,4 +1,4 @@
-//! Verifies that all 27 public error enums re-exported by `math_explorer::error`
+//! Verifies that all 28 public error enums re-exported by `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -14,7 +14,7 @@
 use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
     AIError, BatteryError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
-    EngineeringError, EpidemiologyError, FluidError, GameTheoryError, Glicko2Error,
+    EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error,
     HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarkovError,
     MathError, NumberTheoryError, OuError, PharmacokineticsError, RadarError, SolidStateError,
     StandardModelError, StatMechError, TdaError, ZipError,
@@ -58,6 +58,7 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
             max: 1.0,
         },
     );
+    assert_readable_diagnostic("FitError", &FitError::UnsupportedDegree { degree: 5 });
     assert_readable_diagnostic(
         "NumberTheoryError",
         &NumberTheoryError::DivisionByZeroQSeries,
