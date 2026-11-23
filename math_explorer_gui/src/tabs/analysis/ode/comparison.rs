@@ -61,7 +61,8 @@ pub fn simulate_preset(
     };
     if traj.time_series.try_reserve(point_cap).is_err()
         || traj.y_series.try_reserve(point_cap).is_err()
-        || (preset == OdePreset::HarmonicOscillator && traj.v_series.try_reserve(point_cap).is_err())
+        || (preset == OdePreset::HarmonicOscillator
+            && traj.v_series.try_reserve(point_cap).is_err())
     {
         return traj;
     }

@@ -16,6 +16,8 @@ theory_verification!(
         N_VESELAGO = -1.0;
     },
     test = {
+        use approx::assert_relative_eq;
+
         let theta_inc = std::f64::consts::FRAC_PI_6;
         let theta_glass = refraction::snell_refracted_angle(N_AIR, N_GLASS, theta_inc)
             .expect("dielectric transmission");
