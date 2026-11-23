@@ -1,20 +1,24 @@
 //! Depth-sorted shaded 3D mesh projection onto [`crate::camera::Plot3DViewport`].
 //!
-//! Consolidates all 3D rotation and depth ordering through [`crate::camera::Camera3D::rotate_to_camera_space`]
-//! without duplicating camera trigonometry, and shades facets using WCAG-compliant [`crate::app::SemanticPalette`]
-//! colors across Dark, Light, and HighContrast themes.
+//! Consolidates all 3D rotation, pan, perspective/parallel projection, and depth ordering through
+//! [`crate::camera::Camera3D::project_with_depth`] without duplicating camera trigonometry, attaches
+//! a camera-invariant [`egui_plot::Plot3DSeriesSidecar`], and shades facets using WCAG-compliant
+//! [`crate::app::SemanticPalette`] colors across Dark, Light, and HighContrast themes.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::app::SemanticPalette;
 use crate::camera::Camera3D;
 use eframe::egui::{Color32, Stroke};
-use egui_plot::{Line, PlotPoints, PlotUi, Polygon};
+use egui_plot::{Line, Plot3DSeries, Plot3DSeriesSidecar, PlotPoints, PlotUi, Polygon};
 use oxidize_core::mesh::{Mesh, Point3D};
 
 /// Upper bound on interactive viewport polygons drawn per frame so `64^3` TPMS
 /// meshes remain responsive while `.stl` and `.obj` exports preserve 100% of triangles.
 const MAX_VIEWPORT_POLYGONS: usize = 9_000;
+
+/// Maximum deterministic world-vertex samples recorded in [`Plot3DSeriesSidecar`] per frame.
+const MAX_SIDECAR_VERTICES: usize = 2_048;
 
 /// Threshold above which occluded back-facing facets are culled prior to depth sorting.
 const BACKFACE_CULL_THRESHOLD: usize = 6_000;
@@ -136,7 +140,6 @@ pub fn project_mesh_facets(
         return Vec::new();
     }
     let cull_backfaces = total_tris > BACKFACE_CULL_THRESHOLD;
-    let zoom = f64::from(camera.zoom);
     let mut candidate_facets = Vec::with_capacity(total_tris.min(MAX_VIEWPORT_POLYGONS * 2));
 
     let raw_stride = if cull_backfaces {
@@ -166,9 +169,9 @@ pub fn project_mesh_facets(
         let mut z_sum = 0.0_f64;
         for (slot, &vi) in pts.iter_mut().zip(&[i0, i1, i2]) {
             let v = mesh.vertices[vi];
-            let [rx, ry, rz] =
-                camera.rotate_to_camera_space(&[f64::from(v.x), f64::from(v.y), f64::from(v.z)]);
-            *slot = [rx * zoom, ry * zoom];
+            let (proj, rz) =
+                camera.project_with_depth(&[f64::from(v.x), f64::from(v.y), f64::from(v.z)]);
+            *slot = proj;
             z_sum += rz;
         }
         let (fill, stroke) = shade_facet(n_cam, palette, dark_mode, show_wireframe);
@@ -193,9 +196,33 @@ pub fn project_mesh_facets(
     candidate_facets
 }
 
-/// Draws the cubic domain bounding box and depth-sorted shaded mesh facets into `plot_ui`.
+fn build_mesh_sidecar(mesh: &Mesh, camera: &Camera3D, color: Color32) -> Plot3DSeriesSidecar {
+    let mut sidecar = Plot3DSeriesSidecar::new();
+    if mesh.vertices.is_empty() {
+        return sidecar;
+    }
+    let step = mesh.vertices.len().div_ceil(MAX_SIDECAR_VERTICES).max(1);
+    let cap = mesh.vertices.len().div_ceil(step);
+    let mut projected = Vec::with_capacity(cap);
+    let mut world = Vec::with_capacity(cap);
+    for v in mesh.vertices.iter().step_by(step) {
+        let w = [f64::from(v.x), f64::from(v.y), f64::from(v.z)];
+        projected.push(camera.project(&w));
+        world.push(w);
+    }
+    sidecar.push_series(Plot3DSeries::new(
+        "Isosurface Mesh",
+        projected,
+        world,
+        color,
+    ));
+    sidecar
+}
+
+/// Draws the cubic domain bounding box, depth-sorted shaded mesh facets, and 3D world sidecar into `plot_ui`.
 pub fn draw_isosurface_scene(
     plot_ui: &mut PlotUi<'_>,
+    mesh: &Mesh,
     facets: &[ProjectedFacet],
     half_extent: f64,
     camera: &Camera3D,
@@ -226,4 +253,6 @@ pub fn draw_isosurface_scene(
                 .allow_hover(false),
         );
     }
+
+    plot_ui.set_3d_sidecar(build_mesh_sidecar(mesh, camera, palette.series[0]));
 }

@@ -6,10 +6,10 @@
 
 use super::presets::{
     expression_bar_presets, find_preset_by_expression, parse_validated_state, IsosurfacePresetSpec,
-    IsosurfaceState, BUILTIN_ISOSURFACE_PRESETS,
+    IsosurfaceState, BUILTIN_ISOSURFACE_PRESETS, MAX_GUI_RESOLUTION, MIN_GUI_RESOLUTION,
 };
 use crate::accessibility::announce_live_status;
-use crate::camera::Camera3D;
+use crate::camera::{Camera3D, CAMERA_3D_PERSPECTIVE_DISTANCE};
 use crate::framework::{ExportCapabilities, InteractiveTool, MathExpressionInputBar, ToolMetadata};
 use crate::web_io::{spawn_save_as_file_dialog, PlatformInstant, SaveAsDialogConfig};
 use crate::web_io_bytes::{spawn_save_as_bytes_dialog, SaveAsBytesDialogConfig};
@@ -82,19 +82,22 @@ impl Default for IsosurfaceTool {
         let (mesh, stats) = DEFAULT_GYROID_MESH
             .get_or_init(|| build_preset_mesh(spec))
             .clone();
+        let persp_dist = (spec.half_extent * 3.2).max(CAMERA_3D_PERSPECTIVE_DISTANCE);
         Self {
             input_bar: MathExpressionInputBar::new(
                 "f(x, y, z)",
                 spec.expression,
                 expression_bar_presets(),
-            ),
+            )
+            .with_axes(&["x", "y", "z"])
+            .with_param_range(-5.0..=5.0, 1.0),
             half_extent: spec.half_extent,
             iso_level: spec.iso_level,
             thickness: spec.thickness,
             resolution: spec.resolution,
             sheet_mode: spec.sheet_mode,
             show_wireframe: false,
-            camera: Camera3D::new(0.55, 0.65, 1.0),
+            camera: Camera3D::new(0.55, 0.65, 1.0).with_perspective_distance(persp_dist),
             mesh,
             stats,
             extraction_ms: 0.0,
@@ -127,7 +130,7 @@ impl IsosurfaceTool {
     /// Re-evaluates the 3D AST across the `(N + 2)^3` padded grid and extracts the watertight mesh.
     pub fn rebuild_mesh(&mut self, announce: bool) {
         let start = PlatformInstant::now();
-        let Some(expr) = self.input_bar.expr().cloned() else {
+        let Some(compiled) = self.input_bar.compiled().cloned() else {
             let msg = self
                 .input_bar
                 .error_message()
@@ -135,14 +138,7 @@ impl IsosurfaceTool {
             self.record_extraction_failure(start, msg);
             return;
         };
-
-        let compiled = match CompiledExpr::compile_with_vars(&expr, &["x", "y", "z"]) {
-            Ok(c) => c,
-            Err(err) => {
-                self.record_extraction_failure(start, err.to_string());
-                return;
-            }
-        };
+        let params = self.input_bar.param_slice().to_vec();
 
         let cfg = grid_config(
             self.half_extent,
@@ -151,7 +147,7 @@ impl IsosurfaceTool {
             self.sheet_mode,
             self.thickness,
         );
-        match sample_watertight_grid(&cfg, |x, y, z| compiled.eval_3d(x, y, z, &[])) {
+        match sample_watertight_grid(&cfg, |x, y, z| compiled.eval_3d(x, y, z, &params)) {
             Ok(grid) => match extract_isosurface(&grid, 0.0) {
                 Ok(mesh) => self.finish_mesh_update(start, mesh, announce),
                 Err(err) => self.record_extraction_failure(start, err.to_string()),
@@ -303,15 +299,21 @@ impl InteractiveTool for IsosurfaceTool {
         self.resolution.hash(&mut h);
         self.sheet_mode.hash(&mut h);
         self.show_wireframe.hash(&mut h);
-        self.input_bar.raw_text.hash(&mut h);
-        self.camera.pitch.to_bits().hash(&mut h);
-        self.camera.yaw.to_bits().hash(&mut h);
-        self.camera.zoom.to_bits().hash(&mut h);
+        self.input_bar.state_fingerprint().hash(&mut h);
+        self.camera.hash_state(&mut h);
         h.finish().max(1)
     }
 
     fn has_finite_parameters(&self) -> bool {
-        self.half_extent.is_finite() && self.iso_level.is_finite() && self.thickness.is_finite()
+        self.half_extent.is_finite()
+            && (0.25..=20.0).contains(&self.half_extent)
+            && self.iso_level.is_finite()
+            && (-20.0..=20.0).contains(&self.iso_level)
+            && self.thickness.is_finite()
+            && (0.02..=5.0).contains(&self.thickness)
+            && (MIN_GUI_RESOLUTION..=MAX_GUI_RESOLUTION).contains(&self.resolution)
+            && self.input_bar.param_slice().iter().all(|v| v.is_finite())
+            && self.camera.is_valid()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -323,6 +325,7 @@ impl InteractiveTool for IsosurfaceTool {
             sheet_mode: self.sheet_mode,
             show_wireframe: self.show_wireframe,
             expression: self.input_bar.raw_text.clone(),
+            params: self.input_bar.params_map(),
             camera: Some(self.camera),
             pitch: None,
             yaw: None,
@@ -332,6 +335,7 @@ impl InteractiveTool for IsosurfaceTool {
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let (loaded, camera) = parse_validated_state(state)?;
         self.half_extent = loaded.half_extent;
         self.iso_level = loaded.iso_level;
@@ -341,6 +345,7 @@ impl InteractiveTool for IsosurfaceTool {
         self.show_wireframe = loaded.show_wireframe;
         self.camera.apply_pose(camera);
         self.input_bar.set_expression(&loaded.expression);
+        self.input_bar.set_params_map(&loaded.params);
         self.rebuild_mesh(false);
         Ok(())
     }

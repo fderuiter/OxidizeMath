@@ -4,9 +4,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::camera::Camera3D;
+use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
 use crate::framework::MathExpressionInputBar;
 use crate::starter_gallery::StarterPresetMetadata;
 use math_explorer::applied::isosurface::MAX_SYNC_INTERIOR_DIM;
+use std::collections::BTreeMap;
 
 /// Minimum interactive interior grid resolution per axis.
 pub const MIN_GUI_RESOLUTION: usize = 16;
@@ -27,6 +29,8 @@ pub(crate) struct IsosurfaceState {
     pub sheet_mode: bool,
     pub show_wireframe: bool,
     pub expression: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, f64>,
     #[serde(default)]
     pub camera: Option<Camera3D>,
     #[serde(default, skip_serializing)]
@@ -50,11 +54,20 @@ pub(crate) fn parse_validated_state(raw: &str) -> Result<(IsosurfaceState, Camer
     {
         return Err("Isosurface parameters out of valid bounds".to_string());
     }
+    if loaded.params.len() > MAX_SYNTHESIZED_PARAMS
+        || loaded
+            .params
+            .values()
+            .any(|v| !v.is_finite() || !(-100.0..=100.0).contains(v))
+    {
+        return Err("Isosurface free parameter values out of valid bounds".to_string());
+    }
     let expr_trimmed = loaded.expression.trim().to_string();
     if expr_trimmed.is_empty() || expr_trimmed.chars().count() > MAX_ISOSURFACE_EXPR_CHARS {
         return Err("Isosurface expression empty or exceeds maximum length".to_string());
     }
-    let test_bar = MathExpressionInputBar::new("f(x, y, z)", &expr_trimmed, Vec::new());
+    let test_bar = MathExpressionInputBar::new("f(x, y, z)", &expr_trimmed, Vec::new())
+        .with_axes(&["x", "y", "z"]);
     if let Some(err) = test_bar.error_message() {
         return Err(format!("Invalid isosurface expression: {err}"));
     }

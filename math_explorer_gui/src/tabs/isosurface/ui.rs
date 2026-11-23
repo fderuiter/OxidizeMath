@@ -9,7 +9,7 @@ use super::render::{draw_isosurface_scene, project_mesh_facets};
 use super::tool::IsosurfaceTool;
 use crate::accessibility::announce_live_status;
 use crate::app::SemanticPalette;
-use crate::camera::Plot3DViewport;
+use crate::camera::{Plot3DViewport, CAMERA_3D_PERSPECTIVE_DISTANCE};
 use crate::framework::{scoped_panel_id, PaneSidePanel};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
@@ -167,6 +167,9 @@ impl IsosurfaceTool {
             ui.add_space(4.0);
         }
 
+        self.camera = self.camera.with_perspective_distance(
+            (self.half_extent * 3.2).max(CAMERA_3D_PERSPECTIVE_DISTANCE),
+        );
         let facets = project_mesh_facets(
             &self.mesh,
             &self.camera,
@@ -177,12 +180,20 @@ impl IsosurfaceTool {
         let viewport_extent = (self.half_extent * 1.45).max(1.0);
         let half_extent = self.half_extent;
         let cam_snapshot = self.camera;
+        let mesh_ref = &self.mesh;
 
         Plot3DViewport::new("isosurface_3d_viewport", viewport_extent).show(
             ui,
             &mut self.camera,
             |plot_ui| {
-                draw_isosurface_scene(plot_ui, &facets, half_extent, &cam_snapshot, &palette);
+                draw_isosurface_scene(
+                    plot_ui,
+                    mesh_ref,
+                    &facets,
+                    half_extent,
+                    &cam_snapshot,
+                    &palette,
+                );
             },
         );
     }

@@ -1,4 +1,4 @@
-# ADR 0045: Watertight Isosurface Workbench, Padded Box-SDF Sampling, and Zero-Allocation 3D AST Evaluation
+# ADR 0046: Watertight Isosurface Workbench, Padded Box-SDF Sampling, and Zero-Allocation 3D AST Evaluation
 
 ## Status
 Accepted (extends [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-compiled-ast-bytecode-and-unified-formula-sandboxes.md), and [ADR 0038](0038-watertight-3d-stl-and-ply-exports.md))
@@ -19,7 +19,7 @@ Accepted (extends [ADR 0025](0025-rolling-slice-edge-cache-marching-cubes.md), [
 3. **Outward Winding, Unified 3D Framework Export, and `IsosurfaceTab`**:
    - Orient `MarchingCubes::triangulate_cube` in [`crates/domain_applied/src/applied/isosurface/marching_cubes.rs`](../../crates/domain_applied/src/applied/isosurface/marching_cubes.rs) with outward right-hand-rule facet winding (`signed_volume > 0`) aligned with $+\nabla f$, and delegate binary `.stl` serialization to `export_mesh_to_stl_binary` in [`crates/oxidize_core/src/mesh/export_stl.rs`](../../crates/oxidize_core/src/mesh/export_stl.rs).
    - Add `spawn_save_as_bytes_dialog` and `spawn_save_direct_bytes` in [`math_explorer_gui/src/web_io_bytes.rs`](../../math_explorer_gui/src/web_io_bytes.rs) bridging native `rfd` file dialogs and WebAssembly `Blob` downloads.
-   - Expose `IsosurfaceTab` (`#tab=isosurface`, `applied` feature) and `IsosurfaceTool` (`ExportCapabilities::plot().with_3d_solid()` + `export_mesh_3d`) under [`math_explorer_gui/src/tabs/isosurface/`](../../math_explorer_gui/src/tabs/isosurface/mod.rs), reusing `MathExpressionInputBar`, `Camera3D::rotate_to_camera_space`, `Camera3D::project`, and `Plot3DViewport` with AccessKit canvas focus, polite ARIA live announcements, and `PlatformInstant` latency telemetry.
+   - Expose `IsosurfaceTab` (`#tab=isosurface`, `applied` feature) and `IsosurfaceTool` (`ExportCapabilities::plot().with_3d_solid()` + `export_mesh_3d`) under [`math_explorer_gui/src/tabs/isosurface/`](../../math_explorer_gui/src/tabs/isosurface/mod.rs), reusing `MathExpressionInputBar::with_axes(&["x", "y", "z"])`, `Camera3D::project_with_depth`, `Plot3DSeriesSidecar`, and `Plot3DViewport` with AccessKit canvas focus, polite ARIA live announcements, and `PlatformInstant` latency telemetry.
 
 ## Consequences
 - **Positive**: TPMS lattices (Gyroid, Schwarz P, Schwarz D), algebraic surfaces, and CSG signed-distance equations evaluate with `0` per-voxel heap allocations and extract into closed 2-manifold `.stl` and `.obj` solids directly in desktop and WebAssembly builds.
