@@ -16,7 +16,7 @@ impl SimulationFramework {
             && self.sync_state.datasets_owner_tool == Some(tool.name())
             && !self.current_valid_plot_datasets.is_empty()
         {
-            self.current_valid_plot_datasets.clone()
+            super::export_queue::materialize_shared_datasets(&self.current_valid_plot_datasets)
         } else {
             datasets
         }

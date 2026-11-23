@@ -225,3 +225,62 @@ fn test_data_table_2d_poi_and_3d_ignore_arrows_and_copy_when_covered() {
         "Covered 3D Data Table must ignore ArrowUp"
     );
 }
+
+#[test]
+fn test_shared_pois_data_table_ignores_arrows_and_copy_when_covered() {
+    let ctx = Context::default();
+    let shared_ds = vec![(
+        "SharedS".to_string(),
+        crate::SharedPoints::from(vec![[0.0, 1.0], [1.0, 2.0], [2.0, 3.0]]),
+        egui::Color32::GREEN,
+    )];
+    let (_, pois, _) = sample_2d_and_3d_table_data();
+    let mut open = true;
+    let mut state = crate::data_table::DataTableState::default();
+    let mut cover_open = false;
+
+    let step = |raw: RawInput,
+                state: &mut crate::data_table::DataTableState,
+                open: &mut bool,
+                cover: &mut bool| {
+        let _ = ctx.run(raw, |ctx| {
+            egui::CentralPanel::default().show(ctx, |_ui| {
+                crate::with_masked_pane_input(ctx, false, || {
+                    crate::data_table::show_data_table_modal_with_shared_pois(
+                        ctx,
+                        Id::new("dt_shared_2d"),
+                        "Data Table Shared 2D",
+                        open,
+                        state,
+                        &shared_ds,
+                        &pois,
+                    );
+                });
+            });
+            ModalLifecycle::new("covering_shared_modal")
+                .title("Cover")
+                .show(ctx, cover, |ui, _| {
+                    let _ = ui.button("Foreground Cover");
+                });
+        });
+    };
+
+    step(screen_input(), &mut state, &mut open, &mut cover_open);
+    step(
+        key_input(Key::ArrowDown),
+        &mut state,
+        &mut open,
+        &mut cover_open,
+    );
+    assert_eq!(state.selected_row, 1);
+
+    cover_open = true;
+    step(screen_input(), &mut state, &mut open, &mut cover_open);
+    let mut arrow_and_copy = key_input(Key::ArrowDown);
+    arrow_and_copy.events.push(Event::Copy);
+    step(arrow_and_copy, &mut state, &mut open, &mut cover_open);
+    assert_eq!(
+        state.selected_row, 1,
+        "Covered SharedPoints 2D Data Table must ignore ArrowDown and Copy"
+    );
+}

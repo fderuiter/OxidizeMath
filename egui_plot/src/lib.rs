@@ -30,6 +30,7 @@ mod plot_overlays;
 mod plot_ui;
 pub mod poi;
 mod poi_interaction;
+mod runtime_cache;
 pub mod sidecar_3d;
 pub mod snapshot;
 mod transform;
@@ -63,7 +64,7 @@ pub use crate::{
     export_primitives::{
         ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,
         export_primitives_svg, export_raster_gif, export_raster_svg, get_last_plot_primitives,
-        render_primitives_image,
+        has_finite_shared_dataset_points, render_primitives_image, shared_datasets_to_primitives,
     },
     fit::{
         CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, FitError, FitResult, FitType,
@@ -75,7 +76,8 @@ pub use crate::{
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
         LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
-        PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, Text, VLine,
+        PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, SharedPoints, Text,
+        VLine,
     },
     latex::{parse_latex_to_layout_job, parse_prose_with_inline_math, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
@@ -1385,6 +1387,7 @@ impl<'a> Plot<'a> {
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
             last_right_click_coord: None,
+            runtime_cache: Default::default(),
         });
         let allow_bounds_persist = allow_drag.any()
             || allow_zoom.any()
@@ -1610,6 +1613,7 @@ impl<'a> Plot<'a> {
             mem.auto_bounds,
             any_dynamic_modifications,
             &items,
+            mem.runtime_cache.peek_matching_series(&items),
             &mem.hidden_items,
             margin_fraction,
             log_axes,
@@ -1620,6 +1624,7 @@ impl<'a> Plot<'a> {
                 &min_auto_bounds,
                 default_auto_bounds,
                 &items,
+                mem.runtime_cache.peek_matching_series(&items),
                 &mem.hidden_items,
                 margin_fraction,
                 log_axes,
@@ -1905,6 +1910,7 @@ impl<'a> Plot<'a> {
             &min_auto_bounds,
             default_auto_bounds,
             &items,
+            mem.runtime_cache.peek_matching_series(&items),
             &mem.hidden_items,
             margin_fraction,
             log_axes,
@@ -1928,35 +1934,51 @@ impl<'a> Plot<'a> {
             access_state.show_add_callout_modal = false;
             access_state.show_edit_callout_modal = false;
             access_state.focused_poi = None;
+            mem.runtime_cache.clear_fit();
         }
         let export_datasets_3d: Vec<(String, Vec<[f64; 3]>)> = sidecar_3d
             .as_ref()
             .map_or_else(Vec::new, Plot3DSeriesSidecar::export_datasets_3d);
         append_last_plot_datasets_3d(&export_datasets_3d);
 
-        let base_items_hash = hash_visible_plot_items(&items, &mem.hidden_items);
-        let fit_status = if !allow_2d_analysis || access_state.fit_model.is_none() {
+        let base_count = items.len();
+        let mut item_shared_points: Vec<SharedPoints> = Vec::new();
+        let mut base_series_for_menu: Vec<runtime_cache::CachedItemSeries> = Vec::new();
+        let fit_status = if allow_2d_analysis {
+            item_shared_points.reserve(base_count + 2);
+            let resolved = mem.runtime_cache.resolve_base_series(&items);
+            for entry in resolved {
+                item_shared_points.push(entry.points.clone());
+                if !entry.companion_visual_only && !mem.hidden_items.contains(&entry.id) {
+                    base_series_for_menu.push(entry.clone());
+                }
+            }
+            if access_state.fit_model.is_some() {
+                fit_overlay::compute_and_inject_fit_items(
+                    ui,
+                    &mut items,
+                    &base_series_for_menu,
+                    &mut mem.runtime_cache,
+                    &mut access_state,
+                    &mem.transform,
+                    mem.log_x,
+                    mem.log_y,
+                )
+            } else {
+                access_state.custom_fit_error = None;
+                access_state.last_fit_error_announced = None;
+                mem.runtime_cache.clear_fit();
+                fit_overlay::FitOverlayStatus::Inactive
+            }
+        } else {
             access_state.last_fit_error_announced = None;
             fit_overlay::FitOverlayStatus::Inactive
-        } else if !access_state.show_fit_overlay {
-            fit_overlay::FitOverlayStatus::Hidden
-        } else {
-            let base_ds = Arc::clone(get_or_populate_visible_base_datasets(
-                &items,
-                &mem.hidden_items,
-                base_items_hash,
-                &mut access_state.cached_base_datasets,
-            ));
-            fit_overlay::compute_and_inject_fit_items(
-                ui,
-                &mut items,
-                &base_ds,
-                &mut access_state,
-                &mem.transform,
-                mem.log_x,
-                mem.log_y,
-            )
         };
+        if allow_2d_analysis {
+            for item in &items[base_count..] {
+                item_shared_points.push(item.extract_shared_points());
+            }
+        }
 
         let right_ctrl_rect =
             right_controls_rect(plot_rect, show_settings_button, show_navigation_controls);
@@ -1964,45 +1986,19 @@ impl<'a> Plot<'a> {
             let safe_rect = legend_safe_rect(plot_rect, config.position, right_ctrl_rect);
             LegendWidget::try_new(plot_id, safe_rect, config, &items, &mem.hidden_items)
         });
-        items.retain(|item| !mem.hidden_items.contains(&item.id()));
-        if let Some(item_id) = &mem.hovered_legend_item {
-            items
-                .iter_mut()
-                .filter(|entry| &entry.id() == item_id)
-                .for_each(|entry| entry.highlight());
-        }
-        items.sort_by_key(|item| item.highlighted());
+        retain_and_highlight_legend_items(
+            &mut items,
+            &mut item_shared_points,
+            &mem.hidden_items,
+            mem.hovered_legend_item,
+        );
 
-        let items_hash = if fit_status.did_inject_items() || mem.hovered_legend_item.is_some() {
-            hash_plot_items(&items)
-        } else {
-            base_items_hash
-        };
+        let items_hash = hash_plot_items(&items);
         let critical_points: Arc<[poi::CriticalPoint]> = if !allow_2d_analysis {
             Arc::from(&[][..])
         } else {
-            let bounds_val = *mem.transform.bounds();
-            let poi_key = PoiCacheKey {
-                items_hash,
-                bounds_bits: [
-                    bounds_val.min[0].to_bits(),
-                    bounds_val.min[1].to_bits(),
-                    bounds_val.max[0].to_bits(),
-                    bounds_val.max[1].to_bits(),
-                ],
-                log_x: mem.log_x,
-                log_y: mem.log_y,
-            };
-            if let Some((cached_key, cached_pts)) = &access_state.cached_pois
-                && *cached_key == poi_key
-            {
-                Arc::clone(cached_pts)
-            } else {
-                let detected: Arc<[poi::CriticalPoint]> =
-                    Arc::from(poi::detect_critical_points(&items, &mem.transform));
-                access_state.cached_pois = Some((poi_key, Arc::clone(&detected)));
-                detected
-            }
+            mem.runtime_cache
+                .resolve_critical_points(&items, &item_shared_points, &mem.transform)
         };
         if response.has_focus() {
             let arrow_pressed = ui.input(|i| {
@@ -2050,15 +2046,15 @@ impl<'a> Plot<'a> {
         if !critical_points.is_empty() {
             commands::CommandRegistryData::register_poi_navigation(ui.ctx());
         }
-        let lazy_accessible_datasets: Option<BaseDatasetList> =
+        let lazy_accessible_datasets: Option<Vec<(String, SharedPoints, Color32)>> =
             (response.has_focus() || access_state.show_table).then(|| {
                 if let Some(ref sidecar) = sidecar_3d {
-                    let ds = sidecar.accessible_datasets_2d();
+                    let ds = sidecar.accessible_shared_datasets_2d();
                     if !ds.is_empty() {
                         return ds;
                     }
                 }
-                collect_accessible_datasets(&items)
+                collect_shared_accessible_datasets(&items, &item_shared_points)
             });
         if response.has_focus() {
             if allow_2d_analysis {
@@ -2221,8 +2217,10 @@ impl<'a> Plot<'a> {
                 .data_mut(|d| d.insert_temp(plot_id.with("toggle_settings"), false));
         }
 
-        let has_fit_candidates =
-            allow_2d_analysis && items.iter().any(|it| item_point_count(&**it) >= 2);
+        let has_fit_candidates = allow_2d_analysis
+            && base_series_for_menu
+                .iter()
+                .any(|entry| entry.points.len() >= 2);
         if allow_2d_analysis {
             let fit_layout = fit_overlay::FitOverlayLayout {
                 plot_rect,
@@ -2271,8 +2269,9 @@ impl<'a> Plot<'a> {
                 scene_3d_mode,
                 has_table_content,
                 has_fit_candidates,
-                base_items_hash,
                 items: &items,
+                item_shared_points: &item_shared_points,
+                base_series_for_menu: &base_series_for_menu,
                 export_datasets_3d: &export_datasets_3d,
                 fit_status: &fit_status,
                 viewport_sync: plot_overlays::OverlayViewportSync {
@@ -2310,16 +2309,17 @@ impl<'a> Plot<'a> {
                 );
             } else {
                 let table_datasets_storage;
-                let table_datasets: &[(String, Vec<[f64; 2]>, Color32)] =
+                let table_datasets: &[(String, SharedPoints, Color32)] =
                     if let Some(ref ds) = lazy_accessible_datasets {
                         ds.as_slice()
                     } else if access_state.show_table {
-                        table_datasets_storage = collect_accessible_datasets(&items);
+                        table_datasets_storage =
+                            collect_shared_accessible_datasets(&items, &item_shared_points);
                         table_datasets_storage.as_slice()
                     } else {
                         &[]
                     };
-                data_table::show_data_table_modal_with_pois(
+                data_table::show_data_table_modal_with_shared_pois(
                     ui.ctx(),
                     plot_id,
                     &table_window_title,
@@ -2343,9 +2343,9 @@ impl<'a> Plot<'a> {
                 gif_filename: "plot.gif",
             };
             let mut export_source = export_modal::CallbackExportSource {
-                datasets_fn: || collect_export_datasets(&items),
+                datasets_fn: || collect_export_datasets(&items, &item_shared_points),
                 sample_frames_fn: |num_frames| {
-                    let ds = collect_export_datasets(&items);
+                    let ds = collect_export_datasets(&items, &item_shared_points);
                     export::sample_progressive_frames(&ds, num_frames)
                 },
             };
@@ -2843,7 +2843,7 @@ impl<'a> Plot<'a> {
                 if !export_datasets_3d.is_empty() {
                     export::export_csv_3d(&export_datasets_3d);
                 } else {
-                    let export_datasets = collect_export_datasets(&items);
+                    let export_datasets = collect_export_datasets(&items, &item_shared_points);
                     export::export_csv(&export_datasets);
                 }
                 ui.close();
@@ -2852,7 +2852,7 @@ impl<'a> Plot<'a> {
                 if !export_datasets_3d.is_empty() {
                     export::export_json_3d(&export_datasets_3d);
                 } else {
-                    let export_datasets = collect_export_datasets(&items);
+                    let export_datasets = collect_export_datasets(&items, &item_shared_points);
                     export::export_json(&export_datasets);
                 }
                 ui.close();
@@ -2897,14 +2897,9 @@ impl<'a> Plot<'a> {
                 ui.separator();
 
                 ui.menu_button("Fit Curve", |ui| {
-                    let base_ds = Arc::clone(get_or_populate_base_datasets(
-                        &items,
-                        base_items_hash,
-                        &mut access_state.cached_base_datasets,
-                    ));
                     fit_overlay::render_fit_curve_menu(
                         ui,
-                        &base_ds,
+                        &base_series_for_menu,
                         &mut access_state,
                         true,
                         &fit_status,
@@ -2927,16 +2922,30 @@ impl<'a> Plot<'a> {
                 }
             }
             let mut ignored_datasets = Vec::new();
-            for item in &mut items {
-                item.append_deferred_export(&mut ignored_datasets, &mut deferred_primitives);
+            for (idx, item) in items.iter_mut().enumerate() {
+                let cached = item_shared_points.get(idx).filter(|pts| !pts.is_empty());
+                item.append_deferred_export_with_cached(
+                    cached,
+                    &mut ignored_datasets,
+                    &mut deferred_primitives,
+                );
             }
         } else {
             let mut ignored_datasets = Vec::new();
-            for item in &mut items {
+            for (idx, item) in items.iter_mut().enumerate() {
+                let cached = item_shared_points.get(idx).filter(|pts| !pts.is_empty());
                 if item.is_companion_visual_only() {
-                    item.append_deferred_export(&mut ignored_datasets, &mut deferred_primitives);
+                    item.append_deferred_export_with_cached(
+                        cached,
+                        &mut ignored_datasets,
+                        &mut deferred_primitives,
+                    );
                 } else {
-                    item.append_deferred_export(&mut deferred_datasets, &mut deferred_primitives);
+                    item.append_deferred_export_with_cached(
+                        cached,
+                        &mut deferred_datasets,
+                        &mut deferred_primitives,
+                    );
                 }
             }
         }
@@ -3497,93 +3506,75 @@ fn hash_plot_items(items: &[Box<dyn PlotItem + '_>]) -> u64 {
     hasher.finish()
 }
 
-fn hash_visible_plot_items(
-    items: &[Box<dyn PlotItem + '_>],
+fn retain_and_highlight_legend_items<'a>(
+    items: &mut Vec<Box<dyn PlotItem + 'a>>,
+    item_shared_points: &mut Vec<SharedPoints>,
     hidden_items: &ahash::HashSet<Id>,
-) -> u64 {
-    use std::hash::{Hash as _, Hasher as _};
-    let mut hasher = ahash::AHasher::default();
-    let visible_count = items
-        .iter()
-        .filter(|it| !it.is_companion_visual_only() && !hidden_items.contains(&it.id()))
-        .count();
-    visible_count.hash(&mut hasher);
-    for item in items {
-        if !item.is_companion_visual_only() && !hidden_items.contains(&item.id()) {
-            item.item_content_hash().hash(&mut hasher);
+    hovered_legend_item: Option<Id>,
+) {
+    if !hidden_items.is_empty() {
+        let mut idx = 0;
+        items.retain(|item| {
+            let keep = !hidden_items.contains(&item.id());
+            if !keep && idx < item_shared_points.len() {
+                item_shared_points.remove(idx);
+            } else {
+                idx += 1;
+            }
+            keep
+        });
+    }
+    if let Some(item_id) = hovered_legend_item {
+        for entry in items.iter_mut() {
+            if entry.id() == item_id {
+                entry.highlight();
+            }
+        }
+        if items.len() == item_shared_points.len() {
+            let mut paired: Vec<_> = items.drain(..).zip(item_shared_points.drain(..)).collect();
+            paired.sort_by_key(|(item, _)| item.highlighted());
+            for (it, pts) in paired {
+                items.push(it);
+                item_shared_points.push(pts);
+            }
+        } else {
+            items.sort_by_key(|item| item.highlighted());
         }
     }
-    hasher.finish()
 }
 
-fn item_point_count(item: &dyn PlotItem) -> usize {
-    if let Some(segs) = item.line_segments() {
-        return segs.iter().map(Vec::len).sum();
-    }
-    match item.geometry() {
-        PlotGeometry::Points(pts) => pts.len(),
-        PlotGeometry::None | PlotGeometry::Rects => item.extract_points().len(),
-    }
-}
-
-type BaseDatasetList = Vec<fit_overlay::BaseDatasetTuple>;
-type BaseDatasetCache = Option<(u64, Arc<BaseDatasetList>)>;
-
-fn get_or_populate_visible_base_datasets<'c>(
+fn collect_shared_accessible_datasets(
     items: &[Box<dyn PlotItem + '_>],
-    hidden_items: &ahash::HashSet<Id>,
-    base_items_hash: u64,
-    cache: &'c mut BaseDatasetCache,
-) -> &'c Arc<BaseDatasetList> {
-    let needs_refresh = cache
-        .as_ref()
-        .is_none_or(|(cached_hash, _)| *cached_hash != base_items_hash);
-    if needs_refresh {
-        let built: BaseDatasetList = items
-            .iter()
-            .filter(|it| !it.is_companion_visual_only() && !hidden_items.contains(&it.id()))
-            .map(|it| (it.name().to_owned(), it.extract_points(), it.color()))
-            .collect();
-        *cache = Some((base_items_hash, Arc::new(built)));
-    }
-    &cache.as_ref().expect("populated base datasets").1
-}
-
-pub(crate) fn get_or_populate_base_datasets<'c>(
-    items: &[Box<dyn PlotItem + '_>],
-    base_items_hash: u64,
-    cache: &'c mut BaseDatasetCache,
-) -> &'c Arc<BaseDatasetList> {
-    let needs_refresh = cache
-        .as_ref()
-        .is_none_or(|(cached_hash, _)| *cached_hash != base_items_hash);
-    if needs_refresh {
-        let built: BaseDatasetList = items
-            .iter()
-            .filter(|it| !it.is_companion_visual_only())
-            .map(|it| (it.name().to_owned(), it.extract_points(), it.color()))
-            .collect();
-        *cache = Some((base_items_hash, Arc::new(built)));
-    }
-    &cache.as_ref().expect("populated base datasets").1
-}
-
-fn collect_accessible_datasets(items: &[Box<dyn PlotItem + '_>]) -> BaseDatasetList {
+    cached_points: &[SharedPoints],
+) -> Vec<(String, SharedPoints, Color32)> {
     items
         .iter()
-        .filter(|item| !item.is_companion_visual_only())
-        .map(|item| (item.name().to_owned(), item.extract_points(), item.color()))
+        .enumerate()
+        .filter(|(_, item)| !item.is_companion_visual_only())
+        .map(|(idx, item)| {
+            let pts = match cached_points.get(idx).filter(|p| !p.is_empty()) {
+                Some(shared) => shared.clone(),
+                None if item.line_segments().is_some() => SharedPoints::from(item.extract_points()),
+                None => item.extract_shared_points(),
+            };
+            (item.name().to_owned(), pts, item.color())
+        })
         .collect()
 }
 
 pub(crate) fn collect_export_datasets(
     items: &[Box<dyn PlotItem + '_>],
+    cached_points: &[SharedPoints],
 ) -> Vec<(String, Vec<[f64; 2]>)> {
     items
         .iter()
-        .filter(|item| !item.is_companion_visual_only())
-        .filter_map(|item| {
-            let pts = item.extract_points();
+        .enumerate()
+        .filter(|(_, item)| !item.is_companion_visual_only())
+        .filter_map(|(idx, item)| {
+            let pts = match cached_points.get(idx).filter(|p| !p.is_empty()) {
+                Some(shared) => shared.to_vec(),
+                None => item.extract_points(),
+            };
             (!pts.is_empty()).then(|| (item.name().to_owned(), pts))
         })
         .collect()
@@ -3650,7 +3641,7 @@ fn register_plot_dataset_commands_from_items(
 
 fn handle_focused_plot_dataset_keys(
     ui: &Ui,
-    accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    accessible_datasets: &[(String, SharedPoints, Color32)],
     sidecar_3d: Option<&Plot3DSeriesSidecar>,
     access_state: &mut AccessState,
 ) {
@@ -3714,7 +3705,7 @@ fn handle_focused_plot_dataset_keys(
 
 fn announce_focused_dataset_point(
     ctx: &egui::Context,
-    accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    accessible_datasets: &[(String, SharedPoints, Color32)],
     sidecar_3d: Option<&Plot3DSeriesSidecar>,
     focused_item: usize,
     focused_point: usize,
@@ -3780,7 +3771,7 @@ fn step_focused_point_index(ui: &Ui, num_pts: usize, focused_point: &mut usize) 
 
 fn resolve_focused_plot_point<'a>(
     items: &[Box<dyn PlotItem + 'a>],
-    accessible_datasets: &[(String, Vec<[f64; 2]>, Color32)],
+    accessible_datasets: &[(String, SharedPoints, Color32)],
     sidecar_3d: Option<&Plot3DSeriesSidecar>,
     access_state: &mut AccessState,
 ) -> Option<FocusedPlotPoint> {
@@ -4101,6 +4092,13 @@ fn collect_positive_axis_bounds(
                     }
                 }
             }
+            PlotGeometry::Shared(pts) => {
+                for pt in pts {
+                    if pt[0].is_finite() && pt[1].is_finite() {
+                        consider(pt[axis]);
+                    }
+                }
+            }
             PlotGeometry::None | PlotGeometry::Rects => {
                 let ib = item.bounds();
                 consider(ib.min[axis]);
@@ -4157,6 +4155,7 @@ fn apply_plot_bounds_with_scale(
     auto_bounds: Vec2b,
     any_dynamic_modifications: bool,
     items: &[Box<dyn PlotItem + '_>],
+    cached_series: Option<&[runtime_cache::CachedItemSeries]>,
     hidden_items: &ahash::HashSet<Id>,
     margin_fraction: Vec2,
     log_axes: Vec2b,
@@ -4170,8 +4169,14 @@ fn apply_plot_bounds_with_scale(
     let auto_x = auto_bounds.x && (!min_auto_bounds.is_valid_x() || default_auto_bounds.x);
     let auto_y = auto_bounds.y && (!min_auto_bounds.is_valid_y() || default_auto_bounds.y);
     if (!log_axes.x && auto_x) || (!log_axes.y && auto_y) {
-        for item in items.iter().filter(|it| !hidden_items.contains(&it.id())) {
-            let item_bounds = item.bounds();
+        for (idx, item) in items.iter().enumerate() {
+            if hidden_items.contains(&item.id()) {
+                continue;
+            }
+            let item_bounds = cached_series
+                .and_then(|cs| cs.get(idx))
+                .filter(|_| item.is_line_item())
+                .map_or_else(|| item.bounds(), |entry| entry.bounds);
             if !log_axes.x && auto_x {
                 bounds.merge_x(&item_bounds);
             }
@@ -4265,11 +4270,13 @@ fn sync_linked_auto_bounds_envelope(
     union_auto
 }
 
+#[expect(clippy::too_many_arguments)]
 fn compute_auto_content_bounds(
     current_bounds: PlotBounds,
     min_auto_bounds: &PlotBounds,
     default_auto_bounds: Vec2b,
     items: &[Box<dyn PlotItem + '_>],
+    cached_series: Option<&[runtime_cache::CachedItemSeries]>,
     hidden_items: &ahash::HashSet<Id>,
     margin_fraction: Vec2,
     log_axes: Vec2b,
@@ -4279,8 +4286,15 @@ fn compute_auto_content_bounds(
         if default_auto_bounds.x || min_auto_bounds.is_valid_x() {
             out.set_x(min_auto_bounds);
         }
-        for item in items.iter().filter(|it| !hidden_items.contains(&it.id())) {
-            out.merge_x(&item.bounds());
+        for (idx, item) in items.iter().enumerate() {
+            if hidden_items.contains(&item.id()) {
+                continue;
+            }
+            let ib = cached_series
+                .and_then(|cs| cs.get(idx))
+                .filter(|_| item.is_line_item())
+                .map_or_else(|| item.bounds(), |entry| entry.bounds);
+            out.merge_x(&ib);
         }
         if !out.is_valid_x() {
             out.set_x(&PlotBounds::NOTHING);
@@ -4294,8 +4308,15 @@ fn compute_auto_content_bounds(
         if default_auto_bounds.y || min_auto_bounds.is_valid_y() {
             out.set_y(min_auto_bounds);
         }
-        for item in items.iter().filter(|it| !hidden_items.contains(&it.id())) {
-            out.merge_y(&item.bounds());
+        for (idx, item) in items.iter().enumerate() {
+            if hidden_items.contains(&item.id()) {
+                continue;
+            }
+            let ib = cached_series
+                .and_then(|cs| cs.get(idx))
+                .filter(|_| item.is_line_item())
+                .map_or_else(|| item.bounds(), |entry| entry.bounds);
+            out.merge_y(&ib);
         }
         if !out.is_valid_y() {
             out.set_y(&PlotBounds::NOTHING);
@@ -4984,6 +5005,10 @@ pub fn color_from_strength(ui: &Ui, strength: f32) -> Color32 {
 #[doc(hidden)]
 #[derive(Clone)]
 pub enum DeferredDatasetEntry {
+    SharedCoords {
+        name: String,
+        points: SharedPoints,
+    },
     SharedPoints {
         name: String,
         points: Arc<Vec<PlotPoint>>,
@@ -5006,6 +5031,7 @@ pub enum DeferredDatasetEntry {
 impl DeferredDatasetEntry {
     fn materialize(&self) -> (String, Vec<[f64; 2]>) {
         match self {
+            Self::SharedCoords { name, points } => (name.clone(), points.to_vec()),
             Self::SharedPoints { name, points } => {
                 (name.clone(), points.iter().map(|p| [p.x, p.y]).collect())
             }
@@ -5033,8 +5059,44 @@ impl DeferredDatasetEntry {
         }
     }
 
+    fn materialize_shared(&self) -> (String, SharedPoints) {
+        match self {
+            Self::SharedCoords { name, points } => (name.clone(), points.clone()),
+            Self::SharedPoints { name, points } => {
+                (name.clone(), SharedPoints::from_plot_points(points))
+            }
+            Self::SharedSegments { name, segments } => {
+                let total: usize = segments.iter().map(Vec::len).sum();
+                let mut out = Vec::with_capacity(total);
+                for seg in segments.iter() {
+                    out.extend(seg.iter().map(|p| [p.x, p.y]));
+                }
+                (name.clone(), SharedPoints::from(out))
+            }
+            Self::SharedArrows {
+                name,
+                origins,
+                tips,
+            } => {
+                let mut out = Vec::with_capacity(origins.len().min(tips.len()) * 2);
+                for (origin, tip) in origins.iter().zip(tips.iter()) {
+                    out.push([origin.x, origin.y]);
+                    out.push([tip.x, tip.y]);
+                }
+                (name.clone(), SharedPoints::from(out))
+            }
+            Self::Owned { name, points } => (name.clone(), SharedPoints::from_slice(points)),
+        }
+    }
+
     fn check_finite(&self) -> Result<(), (&str, char, usize, f64)> {
         match self {
+            Self::SharedCoords { name, points } => {
+                for (idx, pt) in points.iter().enumerate() {
+                    check_xy_finite(name.as_str(), idx, pt[0], pt[1])?;
+                }
+                Ok(())
+            }
             Self::SharedPoints { name, points } => {
                 for (idx, pt) in points.iter().enumerate() {
                     check_xy_finite(name.as_str(), idx, pt.x, pt.y)?;
@@ -5103,8 +5165,8 @@ pub fn clear_last_plot_datasets() {
     clear_last_plot_primitives();
 }
 
-/// Appends datasets captured from an `egui_plot::Plot` widget.
-pub fn append_last_plot_datasets(datasets: &[(String, Vec<[f64; 2]>)]) {
+/// Appends shared datasets captured from an `egui_plot::Plot` widget without cloning coordinate slices.
+pub fn append_last_plot_shared_datasets(datasets: &[(String, SharedPoints)]) {
     if datasets.is_empty() {
         return;
     }
@@ -5116,6 +5178,7 @@ pub fn append_last_plot_datasets(datasets: &[(String, Vec<[f64; 2]>)]) {
         for (name, pts) in datasets {
             name.hash(&mut hasher);
             pts.len().hash(&mut hasher);
+            (pts.as_slice().as_ptr() as usize).hash(&mut hasher);
             if let Some(first) = pts.first() {
                 first[0].to_bits().hash(&mut hasher);
                 first[1].to_bits().hash(&mut hasher);
@@ -5124,9 +5187,41 @@ pub fn append_last_plot_datasets(datasets: &[(String, Vec<[f64; 2]>)]) {
                 last[0].to_bits().hash(&mut hasher);
                 last[1].to_bits().hash(&mut hasher);
             }
-            guard.0.push(DeferredDatasetEntry::Owned {
+            guard.0.push(DeferredDatasetEntry::SharedCoords {
                 name: name.clone(),
                 points: pts.clone(),
+            });
+        }
+        guard.1 = hasher.finish().max(1);
+    });
+}
+
+/// Appends datasets captured from an `egui_plot::Plot` widget.
+pub fn append_last_plot_datasets(datasets: &[(String, Vec<[f64; 2]>)]) {
+    if datasets.is_empty() {
+        return;
+    }
+    LAST_PLOT_DATASETS.with(|d| {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut guard = d.borrow_mut();
+        let mut hasher = ahash::AHasher::default();
+        guard.1.hash(&mut hasher);
+        for (name, pts) in datasets {
+            let shared = SharedPoints::from_slice(pts);
+            name.hash(&mut hasher);
+            pts.len().hash(&mut hasher);
+            (shared.as_slice().as_ptr() as usize).hash(&mut hasher);
+            if let Some(first) = pts.first() {
+                first[0].to_bits().hash(&mut hasher);
+                first[1].to_bits().hash(&mut hasher);
+            }
+            if let Some(last) = pts.last() {
+                last[0].to_bits().hash(&mut hasher);
+                last[1].to_bits().hash(&mut hasher);
+            }
+            guard.0.push(DeferredDatasetEntry::SharedCoords {
+                name: name.clone(),
+                points: shared,
             });
         }
         guard.1 = hasher.finish().max(1);
@@ -5159,17 +5254,44 @@ pub fn last_plot_capture_hash() -> u64 {
 /// Returns `Ok(true)` if at least one dataset was captured and all points are finite,
 /// `Ok(false)` if no datasets were captured, or `Err((series_name, axis, index, bad_value))` on `NaN`/`Inf`.
 pub fn check_last_plot_datasets_finite() -> Result<bool, (String, char, usize, f64)> {
+    check_last_plot_datasets_finite_skipping(&[])
+}
+
+/// Checks captured plot datasets for non-finite coordinates without cloning point buffers,
+/// skipping any [`SharedPoints`] entry whose underlying `Arc` pointer matches `already_verified`.
+pub fn check_last_plot_datasets_finite_skipping(
+    already_verified: &[(String, SharedPoints)],
+) -> Result<bool, (String, char, usize, f64)> {
     LAST_PLOT_DATASETS.with(|d| {
         let guard = d.borrow();
         if guard.0.is_empty() {
             return Ok(false);
         }
         for entry in &guard.0 {
+            if let DeferredDatasetEntry::SharedCoords { points, .. } = entry
+                && already_verified
+                    .iter()
+                    .any(|(_, valid)| points.ptr_eq(valid))
+            {
+                continue;
+            }
             if let Err((name, axis, idx, bad)) = entry.check_finite() {
                 return Err((name.to_owned(), axis, idx, bad));
             }
         }
         Ok(true)
+    })
+}
+
+/// Retrieves all shared plot datasets captured across `egui_plot::Plot` widgets rendered in the active session.
+pub fn get_last_plot_shared_datasets() -> Vec<(String, SharedPoints)> {
+    LAST_PLOT_DATASETS.with(|d| {
+        let guard = d.borrow();
+        guard
+            .0
+            .iter()
+            .map(DeferredDatasetEntry::materialize_shared)
+            .collect()
     })
 }
 
@@ -5270,6 +5392,7 @@ fn test_plot_memory_grid_settings_persistence() {
         show_grid: Vec2b::new(true, false),
         show_settings_modal: true,
         last_right_click_coord: None,
+        runtime_cache: Default::default(),
     };
 
     mem.clone().store(&ctx, id);
@@ -5596,6 +5719,7 @@ mod callout_context_menu_tests {
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
             last_right_click_coord: None,
+            runtime_cache: Default::default(),
         };
         mem.store(&ctx, id);
 
@@ -5652,6 +5776,7 @@ mod callout_context_menu_tests {
             show_grid: Vec2b::new(true, true),
             show_settings_modal: false,
             last_right_click_coord: None,
+            runtime_cache: Default::default(),
         };
         mem.store(&ctx, id);
 
@@ -6703,14 +6828,6 @@ mod log_space_projection_tests {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct PoiCacheKey {
-    pub(crate) items_hash: u64,
-    pub(crate) bounds_bits: [u64; 4],
-    pub(crate) log_x: bool,
-    pub(crate) log_y: bool,
-}
-
 #[derive(Clone)]
 pub(crate) struct AccessState {
     pub(crate) show_table: bool,
@@ -6727,9 +6844,6 @@ pub(crate) struct AccessState {
     pub(crate) custom_fit_formula: String,
     pub(crate) custom_fit_seeds_text: String,
     pub(crate) custom_fit_error: Option<String>,
-    pub(crate) cached_fit: Option<(fit_overlay::FitCacheKey, Option<FitResult>)>,
-    pub(crate) cached_pois: Option<(PoiCacheKey, Arc<[poi::CriticalPoint]>)>,
-    pub(crate) cached_base_datasets: BaseDatasetCache,
     pub(crate) show_settings_modal: bool,
     pub(crate) log_x: bool,
     pub(crate) log_y: bool,
@@ -6768,9 +6882,6 @@ impl Default for AccessState {
             custom_fit_formula: "a * exp(-b * x) + c".to_owned(),
             custom_fit_seeds_text: String::new(),
             custom_fit_error: None,
-            cached_fit: None,
-            cached_pois: None,
-            cached_base_datasets: None,
             show_settings_modal: false,
             log_x: false,
             log_y: false,
@@ -6798,6 +6909,8 @@ impl Default for AccessState {
 mod ambient_link_tests;
 #[cfg(test)]
 mod docked_header_and_fit_tests;
+#[cfg(test)]
+mod memo_tests;
 #[cfg(test)]
 mod modal_lifecycle_tests;
 #[cfg(test)]
