@@ -1,6 +1,14 @@
 use super::*;
 use eframe::egui;
 
+fn capitalize_word(w: &str) -> String {
+    let mut chars = w.chars();
+    match chars.next() {
+        Some(c) if c.is_lowercase() => format!("{}{}", c.to_uppercase(), chars.as_str()),
+        _ => w.to_string(),
+    }
+}
+
 pub(crate) fn format_theory_context_key(key: &str) -> String {
     match key.trim() {
         "g_na" => "Sodium Conductance".to_string(),
@@ -14,22 +22,10 @@ pub(crate) fn format_theory_context_key(key: &str) -> String {
         other if other.contains('_') => other
             .split('_')
             .filter(|s| !s.is_empty())
-            .map(|w| {
-                let mut chars = w.chars();
-                match chars.next() {
-                    Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
-                    None => String::new(),
-                }
-            })
+            .map(capitalize_word)
             .collect::<Vec<_>>()
             .join(" "),
-        other => {
-            let mut chars = other.chars();
-            match chars.next() {
-                Some(c) if c.is_lowercase() => format!("{}{}", c.to_uppercase(), chars.as_str()),
-                _ => other.to_string(),
-            }
-        }
+        other => capitalize_word(other),
     }
 }
 
@@ -67,20 +63,16 @@ impl SimulationFramework {
                     ui.separator();
 
                     let theory = tool.theory();
-                    // Requirement 4 & Acceptance Criteria 3: On-demand registration of bibliographic details when active/loaded
                     scientific_metadata::citation_registry::CitationRegistry::register(
                         tool.name().to_string(),
                         theory.theory_citation(),
                     );
-                    // Requirement 5: Screen readers can successfully navigate the theory text and citations
                     use crate::accessibility::AccessibleHoverText;
                     use crate::reflective_ui::render_theory_summary_with_export;
-
                     let theory_desc = theory.theory_description();
                     let latex_eq = theory.theory_latex_equation();
                     render_theory_summary_with_export(ui, &theory_desc, latex_eq.as_deref())
                         .accessible_hover_text("Theoretical background description");
-
                     ui.separator();
                     ui.heading("Citations");
                     let citation_text = theory.theory_citation();
@@ -142,24 +134,19 @@ impl SimulationFramework {
             .iter()
             .enumerate()
             .filter(|(_, meta)| {
-                if query.is_empty() {
-                    true
-                } else {
-                    meta.display_name.to_lowercase().contains(&query)
-                        || meta.id.to_lowercase().contains(&query)
-                        || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
-                }
+                query.is_empty()
+                    || meta.display_name.to_lowercase().contains(&query)
+                    || meta.id.to_lowercase().contains(&query)
+                    || meta.tags.iter().any(|t| t.to_lowercase().contains(&query))
             })
             .collect();
-
         let count = filtered_tools.len();
-
         if self.last_announced_count != Some(count) || self.last_announced_query != query {
             if !query.is_empty() {
                 let msg = if count == 1 {
                     "1 tool matches filter".to_string()
                 } else {
-                    format!("{} tools match filter", count)
+                    format!("{count} tools match filter")
                 };
                 crate::accessibility::announce_status(&msg);
             }
@@ -223,12 +210,8 @@ impl SimulationFramework {
                         .accessible_hover_text("Toggle Theory Context Portal");
                     if help_btn.clicked() {
                         self.show_theory_portal = !self.show_theory_portal;
-                        ctx.data_mut(|d| {
-                            d.insert_temp(
-                                egui::Id::new("SHOW_THEORY_PORTAL"),
-                                self.show_theory_portal,
-                            )
-                        });
+                        let show = self.show_theory_portal;
+                        ctx.data_mut(|d| d.insert_temp(egui::Id::new("SHOW_THEORY_PORTAL"), show));
                     }
                 });
                 self.render_search_bar(ui);
@@ -328,8 +311,20 @@ impl SimulationFramework {
                 is_open = false;
                 ctx.request_repaint();
             }
+            Some(crate::starter_gallery::GallerySelection::Story(story)) => {
+                let _ = self.launch_story(story, 0);
+                self.flush_hud_announcements(ctx);
+                is_open = false;
+                ctx.request_repaint();
+            }
             Some(crate::starter_gallery::GallerySelection::Challenge(ch)) => {
                 let _ = self.launch_challenge_by_id(ch.id, Some(ctx));
+                is_open = false;
+                ctx.request_repaint();
+            }
+            Some(crate::starter_gallery::GallerySelection::GoalChallenge(goal)) => {
+                let _ = self.launch_challenge(goal);
+                self.flush_hud_announcements(ctx);
                 is_open = false;
                 ctx.request_repaint();
             }
@@ -402,9 +397,12 @@ impl SimulationFramework {
                 crate::audio::notify_solver_diverged();
                 ctx.request_repaint();
             }
-        } else if was_diverged {
-            self.cache_valid_snapshot();
-            ctx.request_repaint();
+        } else {
+            if was_diverged {
+                self.cache_valid_snapshot();
+                ctx.request_repaint();
+            }
+            let _ = self.evaluate_challenge_predicates(Some(ctx));
         }
     }
 
@@ -469,6 +467,7 @@ impl SimulationFramework {
         self.sync_overlays_before_frame(&ctx, id_source);
         self.show_export_action_bar(ui, id_source);
         self.show_challenge_hud(ui, id_source);
+        self.render_challenge_hud_panel(ui, &ctx, id_source);
         self.show_side_panel(ui, id_source);
         self.show_theory_portal(ui, id_source);
         self.begin_plot_scope(&ctx);

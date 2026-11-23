@@ -18,9 +18,13 @@ pub use presets::wave_parameter_label;
 pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
 
+use super::wave_sim_sculpt::default_wave_brush_kit;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::recovery::DiagnosticReport;
-use crate::framework::{ExportCapabilities, InteractiveTool, MathExpressionInputBar};
+use crate::framework::{
+    ExportCapabilities, InteractionContext, InteractiveTool, MathExpressionInputBar,
+    SpatialBrushKit,
+};
 use eframe::egui;
 use math_commons::ast::Expr;
 use presets::{
@@ -44,6 +48,8 @@ pub struct WaveSimulatorTool {
     pub(crate) steps_per_frame: usize,
     pub(crate) math_input: MathExpressionInputBar,
     pub(crate) last_valid_expr: Expr,
+    pub(crate) brush_kit: SpatialBrushKit,
+    pub(crate) sparse_potential: Vec<(u16, f64)>,
     pub(crate) shared_config: Arc<RwLock<WaveSimConfig>>,
     pub(crate) worker: BackgroundWorker<WaveRunner>,
     pub(crate) export_runner: Option<WaveRunner>,
@@ -63,7 +69,8 @@ impl WaveSimulatorTool {
     #[must_use]
     pub fn new() -> Self {
         let math_input =
-            MathExpressionInputBar::new("V(x)", DEFAULT_CUSTOM_EXPR, custom_formula_presets());
+            MathExpressionInputBar::new("V(x)", DEFAULT_CUSTOM_EXPR, custom_formula_presets())
+                .with_allowed_vars(&["x", "v0", "width"]);
         let last_valid_expr = math_input
             .expr()
             .cloned()
@@ -78,6 +85,7 @@ impl WaveSimulatorTool {
             dt: DEFAULT_DT,
             steps_per_frame: DEFAULT_STEPS_PER_FRAME,
             custom_expr: last_valid_expr.clone(),
+            sparse_potential: Vec::new(),
         };
         let shared_config = Arc::new(RwLock::new(initial_cfg));
         let worker = BackgroundWorker::new(WaveRunner::new(Arc::clone(&shared_config)));
@@ -95,6 +103,8 @@ impl WaveSimulatorTool {
             steps_per_frame: DEFAULT_STEPS_PER_FRAME,
             math_input,
             last_valid_expr,
+            brush_kit: default_wave_brush_kit(),
+            sparse_potential: Vec::new(),
             shared_config,
             worker,
             export_runner: None,
@@ -124,6 +134,7 @@ impl WaveSimulatorTool {
         self.v0 = DEFAULT_V0;
         self.width = DEFAULT_WIDTH;
         self.dt = DEFAULT_DT;
+        self.sparse_potential.clear();
         self.sync_config_and_reset(ctx);
     }
 
@@ -142,6 +153,7 @@ impl WaveSimulatorTool {
             dt: self.dt,
             steps_per_frame: self.steps_per_frame,
             custom_expr: self.last_valid_expr.clone(),
+            sparse_potential: self.sparse_potential.clone(),
         };
         if let Ok(mut guard) = self.shared_config.write() {
             *guard = next_cfg;
@@ -172,6 +184,10 @@ impl InteractiveTool for WaveSimulatorTool {
 
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
+    }
+
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        self.apply_ui_brush_context(ctx);
     }
 
     fn step_simulation(&mut self) {
@@ -301,7 +317,7 @@ impl InteractiveTool for WaveSimulatorTool {
 
 impl TheoryDescribable for WaveSimulatorTool {
     fn theory_description(&self) -> String {
-        "Time-dependent 1D Schrödinger wavepacket evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ with unitary propagation, custom AST barriers, and Born tunneling integrals.".to_string()
+        "Time-dependent 1D Schrödinger wavepacket evolution $i\\hbar \\partial_t \\psi(x,t) = [-\\frac{\\hbar^2}{2m}\\partial_x^2 + V(x)]\\psi(x,t)$ with unitary propagation, custom AST barriers, live potential sculpting, and Born tunneling integrals.".to_string()
     }
 
     fn phonetic_description(&self) -> String {
@@ -339,7 +355,7 @@ inventory::submit! {
         id: "WaveSimulator",
         display_name: "Wave Simulator",
         domain: "quantum",
-        tags: &["tunneling", "schrodinger", "wavepacket"],
+        tags: &["tunneling", "schrodinger", "wavepacket", "sculpt"],
         build: || Box::new(WaveSimulatorTool::new()),
     }
 }

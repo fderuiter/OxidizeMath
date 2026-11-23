@@ -3,7 +3,7 @@
 use super::presets::{evaluate_potential_grid, POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN};
 use super::*;
 use crate::async_sim::SimulationRunner;
-use crate::framework::{InteractiveTool, SimulationFramework};
+use crate::framework::{BrushMode, BrushStroke, InteractiveTool, SimulationFramework};
 use eframe::egui;
 use math_commons::ast::parse_equation;
 use math_explorer::physics::quantum::evolve_state;
@@ -68,6 +68,30 @@ fn test_legacy_starter_json_and_custom_url_state_roundtrip() {
 }
 
 #[test]
+fn test_wave_sculpt_brush_url_state_roundtrip() {
+    let mut tool = WaveSimulatorTool::new();
+    tool.preset = WavePotentialPreset::Custom;
+    tool.sync_config_and_reset(None);
+    tool.apply_ui_brush_stroke(
+        BrushStroke {
+            start: [0.0, 0.08],
+            end: [0.25, 0.08],
+            radius: 0.2,
+            mode: BrushMode::PotentialBarrier,
+            drag_vector: [0.25, 0.0],
+        },
+        None,
+    );
+    assert!(!tool.sparse_potential.is_empty());
+    let saved = tool.save_state().expect("save sculpted wave state");
+    let mut restored = WaveSimulatorTool::new();
+    restored
+        .try_load_state(&saved)
+        .expect("restore sculpted wave state");
+    assert_eq!(restored.sparse_potential, tool.sparse_potential);
+}
+
+#[test]
 fn test_rectangular_barrier_tunneling_benchmarks_and_pre_wall_latch() {
     for (v0, target_t) in [(11.35, 0.50), (15.0, 0.32)] {
         let cfg = WaveSimConfig {
@@ -80,6 +104,7 @@ fn test_rectangular_barrier_tunneling_benchmarks_and_pre_wall_latch() {
             dt: 0.02,
             steps_per_frame: 5,
             custom_expr: presets::default_compiled_expr(),
+            sparse_potential: Vec::new(),
         };
         let mut runner = WaveRunner::new(Arc::new(RwLock::new(cfg)));
         assert!(runner.latched_transmission().is_none());

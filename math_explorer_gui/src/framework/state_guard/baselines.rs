@@ -57,6 +57,7 @@ impl SimulationFramework {
         self.apply_target_parameter_state(&preset_state);
         self.clear_runtime_plots_and_divergence();
         self.reset_active_tool_manual_bounds();
+        self.on_hud_parameters_reset();
         self.refresh_saved_and_snapshot_after_reset();
         emit_recovery_telemetry(
             "SimulationFramework",
@@ -89,6 +90,7 @@ impl SimulationFramework {
         }
         self.clear_runtime_plots_and_divergence();
         self.reset_active_tool_manual_bounds();
+        self.on_hud_parameters_reset();
         self.refresh_saved_and_snapshot_after_reset();
         emit_recovery_telemetry(
             "SimulationFramework",
@@ -120,6 +122,7 @@ impl SimulationFramework {
         }
         self.clear_runtime_plots_and_divergence();
         self.reset_active_tool_manual_bounds();
+        self.on_hud_parameters_reset();
         self.refresh_saved_and_snapshot_after_reset();
         emit_recovery_telemetry(
             "SimulationFramework",
@@ -324,11 +327,22 @@ impl SimulationFramework {
     }
 
     /// Rebuilds a clean target tool instance for a starter card, applies its preset JSON,
-    /// and synchronizes dual baseline/reset snapshots.
+    /// and synchronizes dual baseline/reset snapshots (activating Guided Story or Challenge HUDs when matched).
     pub fn launch_starter_card(
         &mut self,
         card: &crate::starter_gallery::StarterCard,
     ) -> Result<(), String> {
+        if let Some(story) =
+            crate::starter_gallery::find_story_by_id(card.id, Some(self.domain.as_str()))
+        {
+            return self.launch_story(story, 0);
+        }
+        if let Some(challenge) =
+            crate::starter_gallery::find_challenge_by_id(card.id, Some(self.domain.as_str()))
+        {
+            return self.launch_challenge(challenge);
+        }
+        self.clear_challenge_hud();
         self.apply_starter_card(card.title, card.tool_name, card.preset_json)
     }
 }

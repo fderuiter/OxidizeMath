@@ -37,7 +37,7 @@ fn run_deferred_frame(framework: &mut SimulationFramework, format: ExportFormat)
     });
 }
 
-pub(super) fn decode_rgba_pixels(png_bytes: &[u8]) -> Result<Vec<[u8; 4]>, String> {
+pub(crate) fn decode_rgba_pixels(png_bytes: &[u8]) -> Result<Vec<[u8; 4]>, String> {
     let mut reader = png::Decoder::new(std::io::Cursor::new(png_bytes))
         .read_info()
         .map_err(|e| format!("Failed to parse PNG header: {e}"))?;

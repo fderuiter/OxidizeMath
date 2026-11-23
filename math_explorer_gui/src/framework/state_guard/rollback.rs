@@ -182,6 +182,7 @@ impl SimulationFramework {
         self.current_valid_plot_datasets = plot_datasets;
         self.is_diverged = false;
         self.diagnostic_report = None;
+        self.resync_active_hud_callouts();
     }
 
     /// Coordinates parameter clamping on the active tool via domain hooks or JSON bounds fallback.
