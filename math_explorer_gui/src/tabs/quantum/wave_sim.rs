@@ -332,17 +332,16 @@ impl InteractiveTool for WaveSimulatorTool {
                 arr
             },
         );
-        let (trans, refl, bar, latched) = self.current_wave_data().map_or(
-            (0.0, 1.0, 0.0, steady_t),
-            |d| {
-                (
-                    d.transmission,
-                    d.reflection,
-                    d.barrier_prob,
-                    d.latched_transmission.unwrap_or(d.transmission),
-                )
-            },
-        );
+        let (trans, refl, bar, latched) =
+            self.current_wave_data()
+                .map_or((0.0, 1.0, 0.0, steady_t), |d| {
+                    (
+                        d.transmission,
+                        d.reflection,
+                        d.barrier_prob,
+                        d.latched_transmission.unwrap_or(d.transmission),
+                    )
+                });
         vec![
             ("kinetic_energy", e0),
             ("v0", self.v0),

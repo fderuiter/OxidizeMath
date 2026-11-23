@@ -15,7 +15,8 @@ use std::collections::BTreeMap;
 /// Default 3D Schwarz P minimal-surface implicit formula.
 pub const DEFAULT_CUSTOM_3D_EXPR: &str = "cos(k * x) + cos(k * y) + cos(k * z)";
 /// Triply-periodic Schoen Gyroid minimal-surface formula.
-pub const GYROID_3D_EXPR: &str = "sin(k * x) * cos(k * y) + sin(k * y) * cos(k * z) + sin(k * z) * cos(k * x)";
+pub const GYROID_3D_EXPR: &str =
+    "sin(k * x) * cos(k * y) + sin(k * y) * cos(k * z) + sin(k * z) * cos(k * x)";
 /// Hydrogenic-like `4f_xyz` octant nodal orbital formula.
 pub const ORBITAL_4F_XYZ_EXPR: &str = "x * y * z * exp(-a * sqrt(x^2 + y^2 + z^2))";
 /// Singular inverse-square pole formula used to verify finite clamping before `FiniteStateGuard`.

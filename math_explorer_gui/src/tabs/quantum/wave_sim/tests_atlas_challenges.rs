@@ -3,9 +3,7 @@
 //! unsolved inverse `ChallengeMetadata`, and `QuantumTab` `observables()` contract tests.
 
 use super::super::atlas::{compute_lattice_steady_transmission_from_slice, WaveCartographer};
-use super::super::challenges::{
-    CHALLENGE_DOUBLE_BARRIER_RESONANCE, CHALLENGE_SUBBARRIER_50_SPLIT,
-};
+use super::super::challenges::{CHALLENGE_DOUBLE_BARRIER_RESONANCE, CHALLENGE_SUBBARRIER_50_SPLIT};
 use super::super::presets::{evaluate_potential_grid, GRID_POINTS, GRID_X_MAX, GRID_X_MIN};
 use super::super::*;
 use crate::async_sim::atlas::{
@@ -38,7 +36,9 @@ fn contrast_ratio(a: Color32, b: Color32) -> f64 {
 #[test]
 fn test_zero_alloc_lattice_recurrence_and_double_barrier_resonances() {
     let dx = (GRID_X_MAX - GRID_X_MIN) / (GRID_POINTS as f64 - 1.0);
-    let x_axis: Vec<f64> = (0..GRID_POINTS).map(|i| GRID_X_MIN + i as f64 * dx).collect();
+    let x_axis: Vec<f64> = (0..GRID_POINTS)
+        .map(|i| GRID_X_MIN + i as f64 * dx)
+        .collect();
     let pot_vec = evaluate_potential_grid(
         WavePotentialPreset::DoubleBarrier,
         &x_axis,
@@ -72,9 +72,18 @@ fn test_zero_alloc_lattice_recurrence_and_double_barrier_resonances() {
         });
     }
 
-    assert!(t_r1 >= 0.99, "Expected k0=2.898 resonance >= 0.99, got {t_r1:.6}");
-    assert!(t_r2 >= 0.99, "Expected k0=5.671 resonance >= 0.99, got {t_r2:.6}");
-    assert!(t_off < 0.03, "Expected k0=4.20 off-resonance < 0.03, got {t_off:.6}");
+    assert!(
+        t_r1 >= 0.99,
+        "Expected k0=2.898 resonance >= 0.99, got {t_r1:.6}"
+    );
+    assert!(
+        t_r2 >= 0.99,
+        "Expected k0=5.671 resonance >= 0.99, got {t_r2:.6}"
+    );
+    assert!(
+        t_off < 0.03,
+        "Expected k0=4.20 off-resonance < 0.03, got {t_off:.6}"
+    );
     assert!(cell_sample >= 0.95);
 }
 
@@ -197,7 +206,9 @@ fn test_wave_parameter_atlas_axes_contour_contrast_and_teleport_all_presets() {
     tool.atlas.select_axis_pair_index(1);
     let saved = tool.save_state().expect("save atlas state");
     let mut restored = WaveSimulatorTool::new();
-    restored.try_load_state(&saved).expect("restore atlas state");
+    restored
+        .try_load_state(&saved)
+        .expect("restore atlas state");
     assert!(restored.atlas.is_visible());
     assert_eq!(restored.atlas.axis_keys(), ("k0", "width"));
 }
@@ -254,8 +265,11 @@ fn test_subbarrier_50_split_and_double_barrier_challenge_hud_and_url_clamping() 
 
     let db_meta = find_challenge_metadata(CHALLENGE_DOUBLE_BARRIER_RESONANCE)
         .expect("double barrier resonance card");
-    let tampered = r#"{"preset":"InfiniteWell","x0":1.2,"k0":5.671,"sigma":1.2,"v0":2.0,"width":0.2}"#;
-    let clamped = db_meta.clamp_state_json(tampered).expect("clamp locked fields");
+    let tampered =
+        r#"{"preset":"InfiniteWell","x0":1.2,"k0":5.671,"sigma":1.2,"v0":2.0,"width":0.2}"#;
+    let clamped = db_meta
+        .clamp_state_json(tampered)
+        .expect("clamp locked fields");
     let parsed: serde_json::Value = serde_json::from_str(&clamped).unwrap();
     assert_eq!(parsed["preset"], "DoubleBarrier");
     assert_eq!(parsed["v0"], 28.0);

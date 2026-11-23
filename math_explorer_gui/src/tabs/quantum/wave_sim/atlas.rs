@@ -69,11 +69,7 @@ pub fn exact_single_k_lattice_transmission(potential: &[f64], dx: f64, k: f64) -
 /// Computes exact lattice `steady_transmission` on `potential` with zero dynamic allocations,
 /// resolving 3-decimal rounded resonant wave numbers (such as `k0 = 2.898` and `5.671`).
 #[must_use]
-pub fn compute_lattice_steady_transmission_from_slice(
-    potential: &[f64],
-    dx: f64,
-    k0: f64,
-) -> f64 {
+pub fn compute_lattice_steady_transmission_from_slice(potential: &[f64], dx: f64, k0: f64) -> f64 {
     if !k0.is_finite() || k0 <= 1.0e-6 {
         return 0.0;
     }
@@ -207,7 +203,8 @@ impl WaveCartographer {
                 },
             )
         };
-        let custom_compiled = CompiledExpr::compile_with_vars(custom_expr, &["x", "v0", "width"]).ok();
+        let custom_compiled =
+            CompiledExpr::compile_with_vars(custom_expr, &["x", "v0", "width"]).ok();
         let mut sparse_overrides = [None; GRID_POINTS];
         for &(idx, val) in sparse_potential {
             let slot = usize::from(idx);

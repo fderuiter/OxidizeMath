@@ -450,7 +450,10 @@ fn render_wave_plot(
             );
             plot_ui.line(
                 Line::new(
-                    format!("Kinetic Energy E0 = {:.2} (scaled)", wave_data.kinetic_energy),
+                    format!(
+                        "Kinetic Energy E0 = {:.2} (scaled)",
+                        wave_data.kinetic_energy
+                    ),
                     PlotPoints::new(vec![[x_start, e0_scaled], [x_end, e0_scaled]]),
                 )
                 .style(LineStyle::Dashed { length: 6.0_f32 })

@@ -207,7 +207,10 @@ impl WaveSimulatorTool {
     }
 
     /// Applies or clears an inverse challenge, enforcing locked inputs.
-    pub(crate) fn apply_wave_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+    pub(crate) fn apply_wave_challenge(
+        &mut self,
+        challenge_id: Option<&str>,
+    ) -> Result<(), String> {
         let Some(id) = challenge_id else {
             self.active_challenge = None;
             return Ok(());
@@ -257,8 +260,13 @@ impl WaveSimulatorTool {
             .current_wave_data()
             .and_then(|d| d.latched_transmission);
         let latched_t = live_latched.unwrap_or_else(|| {
-            self.latch_cache
-                .eval_latched_transmission(self.preset, self.k0, self.v0, self.width, self.dt)
+            self.latch_cache.eval_latched_transmission(
+                self.preset,
+                self.k0,
+                self.v0,
+                self.width,
+                self.dt,
+            )
         });
         let err = (latched_t - SUBBARRIER_TARGET_TRANSMISSION).abs();
         if !subbarrier_ok {
