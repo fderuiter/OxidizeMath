@@ -1,4 +1,5 @@
 // @explorer_feature = "pure_math"
+// @explorer_order = 26
 // [cite:modular_polynomials_review]
 // [cite:hurwitz_kronecker]
 
