@@ -1,4 +1,4 @@
-# ADR 0037: AST Verification Spans, Opt-Out Scoping, and API Signature Normalization
+# ADR 0040: AST Verification Spans, Opt-Out Scoping, and API Signature Normalization
 
 ## Status
 
