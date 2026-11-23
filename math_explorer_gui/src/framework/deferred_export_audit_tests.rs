@@ -1,10 +1,18 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use crate::accessibility::{all_announcements, clear_test_announcements, with_live_region};
+use crate::tabs::geometry_topology::export_utils::{
+    count_open_and_nonmanifold_edges, signed_volume,
+};
 use eframe::egui;
 use std::collections::HashSet;
 
-fn run_modal_export_after_clear(framework: &mut SimulationFramework, format: ExportFormat) {
+fn run_deferred_export_frame(
+    framework: &mut SimulationFramework,
+    format: ExportFormat,
+    open_modal: bool,
+) {
     let ctx = egui::Context::default();
     let raw_input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -15,7 +23,7 @@ fn run_modal_export_after_clear(framework: &mut SimulationFramework, format: Exp
     };
     let _ = ctx.run(raw_input, |ctx| {
         egui_plot::clear_last_plot_datasets();
-        framework.show_export_modal = true;
+        framework.show_export_modal = open_modal;
         framework.queue_export(format);
         framework.show(ctx, "audit_framework");
     });
@@ -27,7 +35,7 @@ fn verify_single_figure_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
     framework.export_options.height = 240;
     framework.active_tool = Some(tool);
 
-    run_modal_export_after_clear(&mut framework, ExportFormat::Png);
+    run_deferred_export_frame(&mut framework, ExportFormat::Png, true);
     assert_eq!(
         framework.export_status_severity,
         ExportStatusSeverity::Success,
@@ -47,7 +55,7 @@ fn verify_single_figure_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
         "Deferred modal PNG for {meta_name} was blank (single solid color)"
     );
 
-    run_modal_export_after_clear(&mut framework, ExportFormat::Svg);
+    run_deferred_export_frame(&mut framework, ExportFormat::Svg, true);
     assert_eq!(
         framework.export_status_severity,
         ExportStatusSeverity::Success,
@@ -103,12 +111,19 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     let mut plot_tool_count = 0usize;
     let mut raster_tool_count = 0usize;
     let mut unsupported_tool_count = 0usize;
+    let mut solid_3d_count = 0usize;
+    let mut splat_3d_count = 0usize;
     let mut shader_tool_count = 0usize;
     let mut non_shader_tool_count = 0usize;
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         let tool = (meta.build)();
         let caps = tool.export_capabilities();
+        if caps.stl && caps.ply && caps.obj {
+            solid_3d_count += 1;
+        } else if caps.ply {
+            splat_3d_count += 1;
+        }
         if verify_shader_capability(meta.id, tool.as_ref(), caps) {
             shader_tool_count += 1;
         } else {
@@ -137,10 +152,120 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
 
     assert_eq!(plot_tool_count, 39, "Expected 39 Plot dataset+figure tools");
     assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
-    assert_eq!(unsupported_tool_count, 16, "Expected 16 non-export tools");
+    assert_eq!(unsupported_tool_count, 16, "Expected 16 non-figure tools");
+    assert_eq!(solid_3d_count, 5, "Expected 5 solid 3D geometric tools");
+    assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
         shader_tool_count, 3,
         "Expected 3 analytical GLSL shader tools"
     );
     assert_eq!(non_shader_tool_count, 59, "Expected 59 non-shader tools");
+}
+
+fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
+    let mesh = tool
+        .export_mesh_3d()
+        .unwrap_or_else(|| panic!("{meta_id} must implement export_mesh_3d"))
+        .unwrap_or_else(|e| panic!("{meta_id} mesh generation failed: {e}"));
+    assert!(
+        mesh.normals.iter().all(|n| n.is_finite()),
+        "{meta_id} emitted non-finite vertex normal"
+    );
+    assert_eq!(
+        count_open_and_nonmanifold_edges(&mesh),
+        (0, 0),
+        "{meta_id} mesh is not a closed 2-manifold"
+    );
+    assert!(
+        signed_volume(&mesh) > 0.0,
+        "{meta_id} mesh winding is not outward"
+    );
+    let expected_stl_len = 84 + 50 * (mesh.indices.len() / 3);
+
+    let mut fw = SimulationFramework::new("__audit_3d__");
+    fw.active_tool = Some(tool);
+
+    clear_test_announcements();
+    let slot_before = with_live_region(|r| r.active_slot);
+    run_deferred_export_frame(&mut fw, ExportFormat::Stl, false);
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    assert_ne!(with_live_region(|r| r.active_slot), slot_before);
+    assert!(all_announcements()
+        .iter()
+        .any(|(msg, prio)| msg.contains("STL 3D Mesh saved successfully") && prio == "polite"));
+    let stl_bytes = fw
+        .export_queue
+        .last_exported_bytes
+        .as_deref()
+        .expect("STL bytes recorded");
+    assert_eq!(stl_bytes.len(), expected_stl_len);
+
+    clear_test_announcements();
+    run_deferred_export_frame(&mut fw, ExportFormat::Ply, false);
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    assert!(all_announcements()
+        .iter()
+        .any(|(msg, prio)| msg.contains("PLY 3D Model saved successfully") && prio == "polite"));
+    let ply_bytes = fw
+        .export_queue
+        .last_exported_bytes
+        .as_deref()
+        .expect("PLY bytes recorded");
+    assert!(ply_bytes.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
+
+    run_deferred_export_frame(&mut fw, ExportFormat::Obj, false);
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    let obj_text = fw
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .expect("OBJ text recorded");
+    assert!(obj_text.contains("\nf ") && !obj_text.contains("NaN"));
+}
+
+#[test]
+fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
+    let solid_ids = [
+        "SurfaceViewer",
+        "CurvatureHeatmap",
+        "AttractorPlotter",
+        "CrystalViewer",
+        "SpinVisualizer",
+    ];
+    for id in solid_ids {
+        let meta = inventory::iter::<crate::framework::ToolMetadata>
+            .into_iter()
+            .find(|m| m.id == id)
+            .unwrap_or_else(|| panic!("Missing registered 3D tool {id}"));
+        verify_solid_3d_tool_exports(id, (meta.build)());
+    }
+
+    let gs_meta = inventory::iter::<crate::framework::ToolMetadata>
+        .into_iter()
+        .find(|m| m.id == "Gaussian Splatting")
+        .expect("Gaussian Splatting registered");
+    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
+    gs_fw.active_tool = Some((gs_meta.build)());
+
+    clear_test_announcements();
+    run_deferred_export_frame(&mut gs_fw, ExportFormat::Stl, false);
+    assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
+    assert!(all_announcements()
+        .iter()
+        .any(|(_, prio)| prio == "assertive"));
+
+    clear_test_announcements();
+    let slot_before = with_live_region(|r| r.active_slot);
+    run_deferred_export_frame(&mut gs_fw, ExportFormat::Ply, false);
+    assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Success);
+    assert_ne!(with_live_region(|r| r.active_slot), slot_before);
+    assert!(all_announcements()
+        .iter()
+        .any(|(msg, prio)| msg.contains("PLY 3D Model saved successfully") && prio == "polite"));
+    let splat_ply = gs_fw
+        .export_queue
+        .last_exported_bytes
+        .as_deref()
+        .expect("3DGS PLY bytes recorded");
+    assert!(splat_ply.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
 }
