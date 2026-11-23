@@ -87,6 +87,16 @@ pub fn checked_ode_step_count(dt: f64, total_time: f64) -> Option<usize> {
     Some(steps as usize)
 }
 
+/// Reaction kinetics model selector for 2D morphogenesis presets.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum MorphogenesisKineticsMode {
+    /// Classical activator-inhibitor Turing spots and stripes (`SchnakenbergKinetics`).
+    #[default]
+    Schnakenberg,
+    /// Autocatalytic substrate-depletion mitosis and coral waves (`GrayScottKinetics`).
+    GrayScott,
+}
+
 /// Configuration struct for Turing Morphogenesis simulation parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]

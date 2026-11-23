@@ -94,6 +94,63 @@ pub fn parse_latex_to_layout_job(
     parse_latex_with_font(text, font_id, default_color)
 }
 
+/// Parses prose containing optional `$...$` or `$$...$$` inline LaTeX math into a `LayoutJob`.
+///
+/// Text outside `$...$` delimiters renders as upright prose without math italicization or
+/// `_`/`^` script parsing, and inline `\frac{num}{den}` terms format on one line with `⁄`.
+pub fn parse_prose_with_inline_math(
+    text: &str,
+    style: TextStyle,
+    ui: &Ui,
+    default_color: Color32,
+) -> LayoutJob {
+    let font_id = style.resolve(ui.style());
+    parse_prose_with_font(text, font_id, default_color)
+}
+
+/// Parses prose with optional `$...$` inline math using an explicit `FontId` and `Color32`.
+pub fn parse_prose_with_font(text: &str, font_id: FontId, color: Color32) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    if text.is_empty() {
+        return job;
+    }
+    if !text.contains('$') {
+        let cap = if text.len() > MAX_LATEX_INPUT_BYTES {
+            MAX_FALLBACK_CHARS
+        } else {
+            MAX_LAYOUT_CHARS
+        };
+        append_upright_fallback(&mut job, text, font_id, color, cap);
+        return job;
+    }
+    match parse_prose_to_box(text, &font_id, color) {
+        Ok(math_box) => {
+            let mut remaining_chars = MAX_LAYOUT_CHARS;
+            math_box_to_layout_job_mode(&math_box, &mut job, 0, &mut remaining_chars, true);
+        }
+        Err(()) => append_upright_fallback(&mut job, text, font_id, color, MAX_FALLBACK_CHARS),
+    }
+    job
+}
+
+fn append_upright_fallback(
+    job: &mut LayoutJob,
+    text: &str,
+    font_id: FontId,
+    color: Color32,
+    max_chars: usize,
+) {
+    job.append(
+        truncate_chars(text, max_chars),
+        0.0,
+        TextFormat {
+            font_id,
+            color,
+            ..Default::default()
+        },
+    );
+}
+
 /// Parses a LaTeX string using a specific `FontId` and base `Color32`.
 pub fn parse_latex_with_font(text: &str, font_id: FontId, color: Color32) -> LayoutJob {
     let mut job = LayoutJob::default();
@@ -105,20 +162,64 @@ pub fn parse_latex_with_font(text: &str, font_id: FontId, color: Color32) -> Lay
         Ok(math_box) => {
             math_box_to_layout_job(&math_box, &mut job);
         }
-        Err(_) => {
-            job.append(
-                truncate_chars(text, MAX_FALLBACK_CHARS),
-                0.0,
-                TextFormat {
-                    font_id,
-                    color,
-                    ..Default::default()
-                },
-            );
-        }
+        Err(_) => append_upright_fallback(&mut job, text, font_id, color, MAX_FALLBACK_CHARS),
     }
 
     job
+}
+
+fn split_prose_math_spans(text: &str) -> Result<Vec<(bool, &str)>, ()> {
+    let mut spans = Vec::new();
+    let mut cursor = 0;
+    while let Some(rel_dollar) = text[cursor..].find('$') {
+        let dollar_idx = cursor + rel_dollar;
+        if dollar_idx > cursor {
+            spans.push((false, &text[cursor..dollar_idx]));
+        }
+        if text[dollar_idx..].starts_with("$$") {
+            let math_start = dollar_idx + 2;
+            let rel_end = text[math_start..].find("$$").ok_or(())?;
+            spans.push((true, &text[math_start..math_start + rel_end]));
+            cursor = math_start + rel_end + 2;
+        } else {
+            let math_start = dollar_idx + 1;
+            let rel_end = text[math_start..].find('$').ok_or(())?;
+            spans.push((true, &text[math_start..math_start + rel_end]));
+            cursor = math_start + rel_end + 1;
+        }
+    }
+    if cursor < text.len() {
+        spans.push((false, &text[cursor..]));
+    }
+    Ok(spans)
+}
+
+fn parse_prose_to_box(text: &str, base_font_id: &FontId, color: Color32) -> Result<MathBox, ()> {
+    if text.len() > MAX_LATEX_INPUT_BYTES {
+        return Err(());
+    }
+    let mut remaining_nodes = MAX_MATH_BOX_NODES;
+    let spans = split_prose_math_spans(text)?;
+    let mut boxes = Vec::new();
+    for (is_math, part) in spans {
+        if part.is_empty() {
+            continue;
+        }
+        if is_math {
+            let sub =
+                parse_math_expression_boxes(part, base_font_id, color, 1, &mut remaining_nodes)?;
+            boxes.extend(sub);
+        } else {
+            consume_node(&mut remaining_nodes)?;
+            boxes.push(MathBox::Text {
+                text: part.to_string(),
+                font_id: base_font_id.clone(),
+                color,
+                italics: false,
+            });
+        }
+    }
+    simplify_boxes(boxes, &mut remaining_nodes)
 }
 
 /// Parses LaTeX string into `MathBox` AST tree.
@@ -158,8 +259,7 @@ fn parse_latex_to_box_bounded(
                 if part.is_empty() {
                     continue;
                 }
-                let is_math = idx % 2 == 1;
-                if is_math {
+                if idx % 2 == 1 {
                     let sub_boxes = parse_math_expression_boxes(
                         part,
                         base_font_id,
@@ -195,6 +295,46 @@ fn simplify_boxes(boxes: Vec<MathBox>, remaining_nodes: &mut usize) -> Result<Ma
     }
 }
 
+fn attach_script_box(
+    boxes: &mut Vec<MathBox>,
+    script_box: MathBox,
+    is_sup: bool,
+    remaining_nodes: &mut usize,
+) -> Result<(), ()> {
+    let prev_box = boxes.pop();
+    let (sup_val, sub_val) = if is_sup {
+        (Some(Box::new(script_box)), None)
+    } else {
+        (None, Some(Box::new(script_box)))
+    };
+    match prev_box {
+        Some(MathBox::Script { base, sup, sub }) => {
+            boxes.push(MathBox::Script {
+                base,
+                sup: if is_sup { sup_val } else { sup },
+                sub: if !is_sup { sub_val } else { sub },
+            });
+        }
+        Some(b) => {
+            consume_node(remaining_nodes)?;
+            boxes.push(MathBox::Script {
+                base: Some(Box::new(b)),
+                sup: sup_val,
+                sub: sub_val,
+            });
+        }
+        None => {
+            consume_node(remaining_nodes)?;
+            boxes.push(MathBox::Script {
+                base: None,
+                sup: sup_val,
+                sub: sub_val,
+            });
+        }
+    }
+    Ok(())
+}
+
 fn parse_math_expression_boxes(
     expr: &str,
     base_font_id: &FontId,
@@ -205,69 +345,30 @@ fn parse_math_expression_boxes(
     if depth > MAX_LATEX_DEPTH {
         return Err(());
     }
-
     let chars: Vec<char> = expr.chars().collect();
-    let mut i = 0;
-    let len = chars.len();
+    let (mut i, len) = (0, chars.len());
     let mut boxes = Vec::new();
-
-    let script_font_size = (base_font_id.size * 0.75).max(8.0);
-    let script_font_id = FontId::new(script_font_size, base_font_id.family.clone());
+    let script_font_id = FontId::new(
+        (base_font_id.size * 0.75).max(8.0),
+        base_font_id.family.clone(),
+    );
 
     while i < len {
         let c = chars[i];
-
         if c == '^' || c == '_' {
             let is_sup = c == '^';
-            i += 1;
-            let (script_str, next_i) = read_script_arg(&chars, i)?;
+            let (script_str, next_i) = read_script_arg(&chars, i + 1)?;
             i = next_i;
-
-            let script_box = parse_latex_to_box_bounded(
+            let sbox = parse_latex_to_box_bounded(
                 &script_str,
                 &script_font_id,
                 color,
                 depth + 1,
                 remaining_nodes,
             )?;
-            let prev_box = if !boxes.is_empty() { boxes.pop() } else { None };
-
-            let (sup_val, sub_val) = if is_sup {
-                (Some(Box::new(script_box)), None)
-            } else {
-                (None, Some(Box::new(script_box)))
-            };
-
-            match prev_box {
-                Some(MathBox::Script { base, sup, sub }) => {
-                    let new_sup = if is_sup { sup_val } else { sup };
-                    let new_sub = if !is_sup { sub_val } else { sub };
-                    boxes.push(MathBox::Script {
-                        base,
-                        sup: new_sup,
-                        sub: new_sub,
-                    });
-                }
-                Some(b) => {
-                    consume_node(remaining_nodes)?;
-                    boxes.push(MathBox::Script {
-                        base: Some(Box::new(b)),
-                        sup: sup_val,
-                        sub: sub_val,
-                    });
-                }
-                None => {
-                    consume_node(remaining_nodes)?;
-                    boxes.push(MathBox::Script {
-                        base: None,
-                        sup: sup_val,
-                        sub: sub_val,
-                    });
-                }
-            }
+            attach_script_box(&mut boxes, sbox, is_sup, remaining_nodes)?;
         } else if c == '\\' {
-            i += 1;
-            let (cmd, next_i) = read_command(&chars, i)?;
+            let (cmd, next_i) = read_command(&chars, i + 1)?;
             i = next_i;
             process_command_box(
                 &cmd,
@@ -280,17 +381,16 @@ fn parse_math_expression_boxes(
                 &mut boxes,
             )?;
         } else if c == '{' {
-            i += 1;
-            let (group_str, next_i) = read_group_arg(&chars, i)?;
+            let (group_str, next_i) = read_group_arg(&chars, i + 1)?;
             i = next_i;
-            let group_box = parse_latex_to_box_bounded(
+            let gbox = parse_latex_to_box_bounded(
                 &group_str,
                 base_font_id,
                 color,
                 depth + 1,
                 remaining_nodes,
             )?;
-            boxes.push(group_box);
+            boxes.push(gbox);
         } else if c == '}' {
             return Err(());
         } else if c.is_ascii_alphabetic() {
@@ -299,30 +399,48 @@ fn parse_math_expression_boxes(
                 i += 1;
             }
             let word: String = chars[start..i].iter().collect();
-            let italics = word.len() == 1;
-            consume_node(remaining_nodes)?;
-            boxes.push(MathBox::Text {
-                text: word,
-                font_id: base_font_id.clone(),
+            push_text_box(
+                &mut boxes,
+                word.clone(),
+                base_font_id,
                 color,
-                italics,
-            });
+                word.len() == 1,
+                remaining_nodes,
+            )?;
         } else {
-            let s: String = std::iter::once(c).collect();
-            consume_node(remaining_nodes)?;
-            boxes.push(MathBox::Text {
-                text: s,
-                font_id: base_font_id.clone(),
+            push_text_box(
+                &mut boxes,
+                c.to_string(),
+                base_font_id,
                 color,
-                italics: false,
-            });
+                false,
+                remaining_nodes,
+            )?;
             i += 1;
         }
     }
-
     Ok(boxes)
 }
 
+fn push_text_box(
+    boxes: &mut Vec<MathBox>,
+    text: String,
+    font_id: &FontId,
+    color: Color32,
+    italics: bool,
+    remaining_nodes: &mut usize,
+) -> Result<(), ()> {
+    consume_node(remaining_nodes)?;
+    boxes.push(MathBox::Text {
+        text,
+        font_id: font_id.clone(),
+        color,
+        italics,
+    });
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 fn process_command_box(
     cmd: &str,
     chars: &[char],
@@ -334,148 +452,478 @@ fn process_command_box(
     boxes: &mut Vec<MathBox>,
 ) -> Result<(), ()> {
     if let Some(sym) = map_latex_symbol(cmd) {
-        if cmd == "sqrt" {
-            skip_whitespace(chars, i);
-            if *i < chars.len() && chars[*i] == '{' {
-                *i += 1;
-                let (arg, next_i) = read_group_arg(chars, *i)?;
-                *i = next_i;
-                let radicand_box = parse_latex_to_box_bounded(
-                    &arg,
-                    base_font_id,
-                    color,
-                    depth + 1,
-                    remaining_nodes,
-                )?;
-                consume_node(remaining_nodes)?;
-                boxes.push(MathBox::Sqrt(Box::new(radicand_box)));
-                return Ok(());
-            }
-        }
-        consume_node(remaining_nodes)?;
-        boxes.push(MathBox::Text {
-            text: sym.to_string(),
-            font_id: base_font_id.clone(),
+        return process_symbol_or_sqrt(
+            cmd,
+            sym,
+            chars,
+            i,
+            base_font_id,
             color,
-            italics: false,
-        });
+            depth,
+            remaining_nodes,
+            boxes,
+        );
+    }
+    if let Some(mark) = accent_combining_mark(cmd) {
+        return process_accent_command(
+            cmd,
+            mark,
+            chars,
+            i,
+            base_font_id,
+            color,
+            depth,
+            remaining_nodes,
+            boxes,
+        );
+    }
+    if is_upright_operator_name(cmd) {
+        return push_text_box(
+            boxes,
+            cmd.to_string(),
+            base_font_id,
+            color,
+            false,
+            remaining_nodes,
+        );
+    }
+    match cmd {
+        "text" | "mathrm" | "mathbf" | "operatorname" => {
+            process_text_command(chars, i, base_font_id, color, remaining_nodes, boxes)
+        }
+        "mathbb" => process_mathbb_command(chars, i, base_font_id, color, remaining_nodes, boxes),
+        "left" | "right" => {
+            process_left_right_command(chars, i, base_font_id, color, remaining_nodes, boxes)
+        }
+        "frac" | "dfrac" | "tfrac" => {
+            process_frac_command(chars, i, base_font_id, color, depth, remaining_nodes, boxes)
+        }
+        "pmod" => {
+            process_pmod_command(chars, i, base_font_id, color, depth, remaining_nodes, boxes)
+        }
+        "not" => process_not_command(chars, i, base_font_id, color, remaining_nodes, boxes),
+        "quad" => push_text_box(
+            boxes,
+            "  ".to_string(),
+            base_font_id,
+            color,
+            false,
+            remaining_nodes,
+        ),
+        "qquad" => push_text_box(
+            boxes,
+            "    ".to_string(),
+            base_font_id,
+            color,
+            false,
+            remaining_nodes,
+        ),
+        "," | ":" | ";" | " " => push_text_box(
+            boxes,
+            " ".to_string(),
+            base_font_id,
+            color,
+            false,
+            remaining_nodes,
+        ),
+        "!" => Ok(()),
+        "\\" | "newline" => push_text_box(
+            boxes,
+            "\n".to_string(),
+            base_font_id,
+            color,
+            false,
+            remaining_nodes,
+        ),
+        _ => push_text_box(
+            boxes,
+            cmd.to_string(),
+            base_font_id,
+            color,
+            false,
+            remaining_nodes,
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn process_symbol_or_sqrt(
+    cmd: &str,
+    sym: &str,
+    chars: &[char],
+    i: &mut usize,
+    base_font_id: &FontId,
+    color: Color32,
+    depth: usize,
+    remaining_nodes: &mut usize,
+    boxes: &mut Vec<MathBox>,
+) -> Result<(), ()> {
+    if cmd == "sqrt" {
+        skip_whitespace(chars, i);
+        if *i < chars.len() && chars[*i] == '{' {
+            let (arg, next_i) = read_group_arg(chars, *i + 1)?;
+            *i = next_i;
+            let radicand_box =
+                parse_latex_to_box_bounded(&arg, base_font_id, color, depth + 1, remaining_nodes)?;
+            consume_node(remaining_nodes)?;
+            boxes.push(MathBox::Sqrt(Box::new(radicand_box)));
+            return Ok(());
+        }
+    }
+    push_text_box(
+        boxes,
+        sym.to_string(),
+        base_font_id,
+        color,
+        false,
+        remaining_nodes,
+    )
+}
+
+fn resolve_text_escapes(raw: &str) -> String {
+    let chars: Vec<char> = raw.chars().collect();
+    let mut out = String::with_capacity(raw.len());
+    let mut idx = 0;
+    while idx < chars.len() {
+        if chars[idx] != '\\' || idx + 1 >= chars.len() {
+            out.push(chars[idx]);
+            idx += 1;
+            continue;
+        }
+        if let Ok((cmd, next_i)) = read_command(&chars, idx + 1) {
+            idx = next_i;
+            match cmd.as_str() {
+                "AA" => out.push('Å'),
+                "deg" => out.push('°'),
+                "dots" | "ldots" => out.push('…'),
+                "," | ":" | ";" | " " => out.push(' '),
+                "%" | "_" | "#" | "&" | "{" | "}" => out.push_str(&cmd),
+                other => out.push_str(map_latex_symbol(other).unwrap_or(other)),
+            }
+        } else {
+            out.push(chars[idx]);
+            idx += 1;
+        }
+    }
+    out
+}
+
+fn process_text_command(
+    chars: &[char],
+    i: &mut usize,
+    base_font_id: &FontId,
+    color: Color32,
+    remaining_nodes: &mut usize,
+    boxes: &mut Vec<MathBox>,
+) -> Result<(), ()> {
+    skip_whitespace(chars, i);
+    if *i < chars.len() && chars[*i] == '{' {
+        let (arg, next_i) = read_group_arg(chars, *i + 1)?;
+        *i = next_i;
+        let resolved = resolve_text_escapes(&arg);
+        push_text_box(boxes, resolved, base_font_id, color, false, remaining_nodes)
+    } else {
+        Err(())
+    }
+}
+
+fn process_mathbb_command(
+    chars: &[char],
+    i: &mut usize,
+    base_font_id: &FontId,
+    color: Color32,
+    remaining_nodes: &mut usize,
+    boxes: &mut Vec<MathBox>,
+) -> Result<(), ()> {
+    skip_whitespace(chars, i);
+    if *i >= chars.len() || chars[*i] != '{' {
+        return Err(());
+    }
+    let (arg, next_i) = read_group_arg(chars, *i + 1)?;
+    *i = next_i;
+    let mapped: String = arg
+        .chars()
+        .map(|ch| match ch {
+            'R' => 'ℝ',
+            'N' => 'ℕ',
+            'Z' => 'ℤ',
+            'Q' => 'ℚ',
+            'C' => 'ℂ',
+            'F' => '𝔽',
+            'E' => '𝔼',
+            'P' => 'ℙ',
+            'H' => 'ℍ',
+            other => other,
+        })
+        .collect();
+    push_text_box(boxes, mapped, base_font_id, color, false, remaining_nodes)
+}
+
+fn process_left_right_command(
+    chars: &[char],
+    i: &mut usize,
+    base_font_id: &FontId,
+    color: Color32,
+    remaining_nodes: &mut usize,
+    boxes: &mut Vec<MathBox>,
+) -> Result<(), ()> {
+    skip_whitespace(chars, i);
+    if *i >= chars.len() {
+        return Err(());
+    }
+    let ch = chars[*i];
+    if ch == '.' {
+        *i += 1;
         return Ok(());
     }
+    if ch == '\\' {
+        let (delim_cmd, next_i) = read_command(chars, *i + 1)?;
+        *i = next_i;
+        let delim = map_latex_symbol(&delim_cmd).unwrap_or(delim_cmd.as_str());
+        return push_text_box(
+            boxes,
+            delim.to_string(),
+            base_font_id,
+            color,
+            false,
+            remaining_nodes,
+        );
+    }
+    *i += 1;
+    push_text_box(
+        boxes,
+        ch.to_string(),
+        base_font_id,
+        color,
+        false,
+        remaining_nodes,
+    )
+}
 
+fn accent_combining_mark(cmd: &str) -> Option<char> {
     match cmd {
-        "text" | "mathrm" | "mathbf" => {
-            skip_whitespace(chars, i);
-            if *i < chars.len() && chars[*i] == '{' {
-                *i += 1;
-                let (arg, next_i) = read_group_arg(chars, *i)?;
-                *i = next_i;
-                consume_node(remaining_nodes)?;
-                boxes.push(MathBox::Text {
-                    text: arg,
-                    font_id: base_font_id.clone(),
-                    color,
-                    italics: false,
-                });
-            } else {
-                return Err(());
-            }
-        }
-        "frac" => {
-            skip_whitespace(chars, i);
-            if *i < chars.len() && chars[*i] == '{' {
-                *i += 1;
-                let (num, next_i) = read_group_arg(chars, *i)?;
-                *i = next_i;
-                skip_whitespace(chars, i);
-                if *i < chars.len() && chars[*i] == '{' {
-                    *i += 1;
-                    let (den, next_i) = read_group_arg(chars, *i)?;
-                    *i = next_i;
+        "vec" => Some('\u{20D7}'),
+        "hat" => Some('\u{0302}'),
+        "bar" | "overline" => Some('\u{0304}'),
+        "dot" => Some('\u{0307}'),
+        "ddot" => Some('\u{0308}'),
+        "tilde" => Some('\u{0303}'),
+        _ => None,
+    }
+}
 
-                    let num_box = parse_latex_to_box_bounded(
-                        &num,
-                        base_font_id,
-                        color,
-                        depth + 1,
-                        remaining_nodes,
-                    )?;
-                    let den_box = parse_latex_to_box_bounded(
-                        &den,
-                        base_font_id,
-                        color,
-                        depth + 1,
-                        remaining_nodes,
-                    )?;
-                    consume_node(remaining_nodes)?;
-                    boxes.push(MathBox::Fraction {
-                        numerator: Box::new(num_box),
-                        denominator: Box::new(den_box),
-                    });
-                } else {
-                    return Err(());
-                }
-            } else {
-                return Err(());
-            }
+fn apply_combining_mark(base: &str, cmd: &str, mark: char) -> String {
+    let bounded = truncate_chars(base, MAX_LAYOUT_CHARS / 2);
+    if bounded.is_empty() {
+        return format!(" {mark}");
+    }
+    if matches!(cmd, "bar" | "overline") && bounded.chars().count() > 1 {
+        let mut out = String::with_capacity(bounded.len() * 2);
+        for c in bounded.chars() {
+            out.push(c);
+            out.push(mark);
         }
-        "sin" | "cos" | "tan" | "exp" | "ln" | "log" | "lim" | "max" | "min" | "det" | "arcsin"
-        | "arccos" | "arctan" | "sinh" | "cosh" | "tanh" => {
-            consume_node(remaining_nodes)?;
+        out
+    } else {
+        let mut out = bounded.to_string();
+        out.push(mark);
+        out
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn process_accent_command(
+    cmd: &str,
+    mark: char,
+    chars: &[char],
+    i: &mut usize,
+    base_font_id: &FontId,
+    color: Color32,
+    depth: usize,
+    remaining_nodes: &mut usize,
+    boxes: &mut Vec<MathBox>,
+) -> Result<(), ()> {
+    skip_whitespace(chars, i);
+    let (arg_str, next_i) = read_script_arg(chars, *i)?;
+    *i = next_i;
+    let inner =
+        parse_latex_to_box_bounded(&arg_str, base_font_id, color, depth + 1, remaining_nodes)?;
+    match inner {
+        MathBox::Text {
+            text,
+            font_id,
+            color: inner_color,
+            italics,
+        } => {
             boxes.push(MathBox::Text {
-                text: cmd.to_string(),
-                font_id: base_font_id.clone(),
-                color,
-                italics: false,
+                text: apply_combining_mark(&text, cmd, mark),
+                font_id,
+                color: inner_color,
+                italics,
             });
+            Ok(())
         }
-        "quad" => {
-            consume_node(remaining_nodes)?;
-            boxes.push(MathBox::Text {
-                text: "  ".to_string(),
-                font_id: base_font_id.clone(),
-                color,
-                italics: false,
-            });
-        }
-        "qquad" => {
-            consume_node(remaining_nodes)?;
-            boxes.push(MathBox::Text {
-                text: "    ".to_string(),
-                font_id: base_font_id.clone(),
-                color,
-                italics: false,
-            });
-        }
-        "," | ":" | ";" => {
-            consume_node(remaining_nodes)?;
-            boxes.push(MathBox::Text {
-                text: " ".to_string(),
-                font_id: base_font_id.clone(),
-                color,
-                italics: false,
-            });
-        }
-        "\\" | "newline" => {
-            consume_node(remaining_nodes)?;
-            boxes.push(MathBox::Text {
-                text: "\n".to_string(),
-                font_id: base_font_id.clone(),
-                color,
-                italics: false,
-            });
-        }
-        _ => {
-            consume_node(remaining_nodes)?;
-            boxes.push(MathBox::Text {
-                text: cmd.to_string(),
-                font_id: base_font_id.clone(),
-                color,
-                italics: false,
-            });
+        other => {
+            let mut sub_job = LayoutJob::default();
+            let mut budget = MAX_LAYOUT_CHARS / 2;
+            math_box_to_layout_job_mode(&other, &mut sub_job, depth + 1, &mut budget, true);
+            let accented = apply_combining_mark(&sub_job.text, cmd, mark);
+            push_text_box(boxes, accented, base_font_id, color, false, remaining_nodes)
         }
     }
+}
 
+fn process_frac_command(
+    chars: &[char],
+    i: &mut usize,
+    base_font_id: &FontId,
+    color: Color32,
+    depth: usize,
+    remaining_nodes: &mut usize,
+    boxes: &mut Vec<MathBox>,
+) -> Result<(), ()> {
+    skip_whitespace(chars, i);
+    if *i >= chars.len() || chars[*i] != '{' {
+        return Err(());
+    }
+    let (num, after_num) = read_group_arg(chars, *i + 1)?;
+    *i = after_num;
+    skip_whitespace(chars, i);
+    if *i >= chars.len() || chars[*i] != '{' {
+        return Err(());
+    }
+    let (den, after_den) = read_group_arg(chars, *i + 1)?;
+    *i = after_den;
+    let num_box =
+        parse_latex_to_box_bounded(&num, base_font_id, color, depth + 1, remaining_nodes)?;
+    let den_box =
+        parse_latex_to_box_bounded(&den, base_font_id, color, depth + 1, remaining_nodes)?;
+    consume_node(remaining_nodes)?;
+    boxes.push(MathBox::Fraction {
+        numerator: Box::new(num_box),
+        denominator: Box::new(den_box),
+    });
     Ok(())
+}
+
+fn process_pmod_command(
+    chars: &[char],
+    i: &mut usize,
+    base_font_id: &FontId,
+    color: Color32,
+    depth: usize,
+    remaining_nodes: &mut usize,
+    boxes: &mut Vec<MathBox>,
+) -> Result<(), ()> {
+    skip_whitespace(chars, i);
+    if *i >= chars.len() || chars[*i] != '{' {
+        return Err(());
+    }
+    let (arg, next_i) = read_group_arg(chars, *i + 1)?;
+    *i = next_i;
+    push_text_box(
+        boxes,
+        " (mod ".to_string(),
+        base_font_id,
+        color,
+        false,
+        remaining_nodes,
+    )?;
+    let inner = parse_latex_to_box_bounded(&arg, base_font_id, color, depth + 1, remaining_nodes)?;
+    boxes.push(inner);
+    push_text_box(
+        boxes,
+        ")".to_string(),
+        base_font_id,
+        color,
+        false,
+        remaining_nodes,
+    )
+}
+
+fn process_not_command(
+    chars: &[char],
+    i: &mut usize,
+    base_font_id: &FontId,
+    color: Color32,
+    remaining_nodes: &mut usize,
+    boxes: &mut Vec<MathBox>,
+) -> Result<(), ()> {
+    skip_whitespace(chars, i);
+    if *i < chars.len() && chars[*i] == '\\' {
+        let (next_cmd, next_i) = read_command(chars, *i + 1)?;
+        let negated = match next_cmd.as_str() {
+            "equiv" => Some("≢"),
+            "in" => Some("∉"),
+            "approx" => Some("≉"),
+            _ => None,
+        };
+        if let Some(sym) = negated {
+            *i = next_i;
+            return push_text_box(
+                boxes,
+                sym.to_string(),
+                base_font_id,
+                color,
+                false,
+                remaining_nodes,
+            );
+        }
+    } else if *i < chars.len() && chars[*i] == '=' {
+        *i += 1;
+        return push_text_box(
+            boxes,
+            "≠".to_string(),
+            base_font_id,
+            color,
+            false,
+            remaining_nodes,
+        );
+    }
+    push_text_box(
+        boxes,
+        "¬".to_string(),
+        base_font_id,
+        color,
+        false,
+        remaining_nodes,
+    )
+}
+
+fn is_upright_operator_name(cmd: &str) -> bool {
+    matches!(
+        cmd,
+        "sin"
+            | "cos"
+            | "tan"
+            | "sec"
+            | "csc"
+            | "cot"
+            | "exp"
+            | "ln"
+            | "log"
+            | "lim"
+            | "max"
+            | "min"
+            | "sup"
+            | "inf"
+            | "det"
+            | "gcd"
+            | "lcm"
+            | "mod"
+            | "bmod"
+            | "arg"
+            | "dim"
+            | "ker"
+            | "erf"
+            | "erfc"
+            | "arcsin"
+            | "arccos"
+            | "arctan"
+            | "sinh"
+            | "cosh"
+            | "tanh"
+    )
 }
 
 fn read_script_arg(chars: &[char], i: usize) -> Result<(String, usize), ()> {
@@ -533,7 +981,7 @@ fn skip_whitespace(chars: &[char], i: &mut usize) {
     }
 }
 
-fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
+fn map_greek_symbol(cmd: &str) -> Option<&'static str> {
     match cmd {
         "alpha" => Some("α"),
         "beta" => Some("β"),
@@ -558,7 +1006,6 @@ fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
         "chi" => Some("χ"),
         "psi" => Some("ψ"),
         "omega" => Some("ω"),
-
         "Gamma" => Some("Γ"),
         "Delta" => Some("Δ"),
         "Theta" => Some("Θ"),
@@ -570,7 +1017,50 @@ fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
         "Phi" => Some("Φ"),
         "Psi" => Some("Ψ"),
         "Omega" => Some("Ω"),
+        _ => None,
+    }
+}
 
+fn map_escaped_or_set_symbol(cmd: &str) -> Option<&'static str> {
+    match cmd {
+        "in" => Some("∈"),
+        "notin" => Some("∉"),
+        "subset" => Some("⊂"),
+        "cup" => Some("∪"),
+        "cap" => Some("∩"),
+        "forall" => Some("∀"),
+        "exists" => Some("∃"),
+        "|" => Some("‖"),
+        "{" => Some("{"),
+        "}" => Some("}"),
+        "#" => Some("#"),
+        "%" => Some("%"),
+        "_" => Some("_"),
+        "&" => Some("&"),
+        _ => None,
+    }
+}
+
+fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
+    if let Some(greek) = map_greek_symbol(cmd) {
+        return Some(greek);
+    }
+    if let Some(sym) = map_escaped_or_set_symbol(cmd) {
+        return Some(sym);
+    }
+    match cmd {
+        "hbar" => Some("ℏ"),
+        "ell" => Some("ℓ"),
+        "AA" => Some("Å"),
+        "deg" => Some("°"),
+        "langle" => Some("⟨"),
+        "rangle" => Some("⟩"),
+        "lfloor" => Some("⌊"),
+        "rfloor" => Some("⌋"),
+        "lceil" => Some("⌈"),
+        "rceil" => Some("⌉"),
+        "dots" | "ldots" => Some("…"),
+        "cdots" => Some("⋯"),
         "cdot" => Some("·"),
         "times" => Some("×"),
         "div" => Some("÷"),
@@ -582,6 +1072,7 @@ fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
         "sum" => Some("∑"),
         "prod" => Some("∏"),
         "int" => Some("∫"),
+        "iint" => Some("∬"),
         "sqrt" => Some("√"),
         "leq" | "le" => Some("≤"),
         "geq" | "ge" => Some("≥"),
@@ -589,15 +1080,13 @@ fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
         "approx" => Some("≈"),
         "equiv" => Some("≡"),
         "sim" => Some("~"),
+        "propto" => Some("∝"),
+        "perp" => Some("⊥"),
         "to" | "rightarrow" => Some("→"),
         "leftarrow" => Some("←"),
         "Rightarrow" => Some("⇒"),
         "Leftarrow" => Some("⇐"),
-        "in" => Some("∈"),
-        "notin" => Some("∉"),
-        "subset" => Some("⊂"),
-        "forall" => Some("∀"),
-        "exists" => Some("∃"),
+        "leftrightarrow" => Some("↔"),
         _ => None,
     }
 }
@@ -606,7 +1095,7 @@ fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
 pub fn math_box_to_layout_job(box_node: &MathBox, job: &mut LayoutJob) {
     let existing_chars = job.text.chars().take(MAX_LAYOUT_CHARS + 1).count();
     let mut remaining_chars = MAX_LAYOUT_CHARS.saturating_sub(existing_chars);
-    math_box_to_layout_job_bounded(box_node, job, 0, &mut remaining_chars);
+    math_box_to_layout_job_mode(box_node, job, 0, &mut remaining_chars, false);
 }
 
 fn append_bounded(
@@ -627,40 +1116,226 @@ fn append_bounded(
     }
 }
 
+fn append_job_sections(
+    src: &LayoutJob,
+    dst: &mut LayoutJob,
+    override_valign: Option<Align>,
+    remaining_chars: &mut usize,
+) {
+    for section in &src.sections {
+        if *remaining_chars == 0 {
+            break;
+        }
+        let txt = &src.text[section.byte_range.clone()];
+        let mut fmt = section.format.clone();
+        if let Some(valign) = override_valign {
+            fmt.valign = valign;
+        }
+        append_bounded(dst, txt, section.leading_space, fmt, remaining_chars);
+    }
+}
+
 fn append_script_job(
     script_box: &MathBox,
     job: &mut LayoutJob,
     valign: Align,
     depth: usize,
     remaining_chars: &mut usize,
+    inline_fractions: bool,
 ) {
     if *remaining_chars == 0 {
         return;
     }
     let mut sub_budget = *remaining_chars;
     let mut script_job = LayoutJob::default();
-    math_box_to_layout_job_bounded(script_box, &mut script_job, depth, &mut sub_budget);
-    for section in script_job.sections {
-        if *remaining_chars == 0 {
-            break;
+    math_box_to_layout_job_mode(
+        script_box,
+        &mut script_job,
+        depth,
+        &mut sub_budget,
+        inline_fractions,
+    );
+    append_job_sections(&script_job, job, Some(valign), remaining_chars);
+}
+
+fn has_balanced_outer_parens(text: &str) -> bool {
+    let trimmed = text.trim();
+    if !trimmed.starts_with('(') || !trimmed.ends_with(')') {
+        return false;
+    }
+    let mut depth = 0_i32;
+    let total = trimmed.chars().count();
+    for (idx, ch) in trimmed.chars().enumerate() {
+        if ch == '(' {
+            depth += 1;
+        } else if ch == ')' {
+            depth -= 1;
+            if depth == 0 && idx + 1 < total {
+                return false;
+            }
         }
-        let txt = &script_job.text[section.byte_range];
-        let mut fmt = section.format;
-        fmt.valign = valign;
-        append_bounded(job, txt, section.leading_space, fmt, remaining_chars);
+    }
+    depth == 0
+}
+
+fn is_compound_inline_term(node: &MathBox, rendered_text: &str) -> bool {
+    if has_balanced_outer_parens(rendered_text) {
+        return false;
+    }
+    match node {
+        MathBox::Fraction { .. } => true,
+        MathBox::Row(items) => {
+            let non_ws: Vec<&MathBox> = items
+                .iter()
+                .filter(|b| !matches!(b, MathBox::Text { text, .. } if text.trim().is_empty()))
+                .collect();
+            if non_ws.len() == 1 {
+                is_compound_inline_term(non_ws[0], rendered_text)
+            } else {
+                non_ws.len() > 1
+            }
+        }
+        MathBox::Text { text, .. } => {
+            let trimmed = text.trim();
+            trimmed.chars().count() > 1 && trimmed.contains(['+', '-', ' ', '/', '⁄'])
+        }
+        MathBox::Sqrt(_) | MathBox::Script { .. } => false,
     }
 }
 
-fn math_box_to_layout_job_bounded(
-    box_node: &MathBox,
+fn append_inline_fraction(
+    numerator: &MathBox,
+    denominator: &MathBox,
     job: &mut LayoutJob,
     depth: usize,
     remaining_chars: &mut usize,
 ) {
+    let mut sub_budget = *remaining_chars;
+    let mut num_job = LayoutJob::default();
+    math_box_to_layout_job_mode(numerator, &mut num_job, depth + 1, &mut sub_budget, true);
+    let mut den_job = LayoutJob::default();
+    math_box_to_layout_job_mode(denominator, &mut den_job, depth + 1, &mut sub_budget, true);
+
+    let mut upright_fmt = num_job
+        .sections
+        .first()
+        .or_else(|| den_job.sections.first())
+        .map(|s| s.format.clone())
+        .unwrap_or_default();
+    upright_fmt.italics = false;
+    upright_fmt.valign = Align::Center;
+
+    let wrap_num = is_compound_inline_term(numerator, &num_job.text);
+    let wrap_den = is_compound_inline_term(denominator, &den_job.text);
+    if wrap_num {
+        append_bounded(job, "(", 0.0, upright_fmt.clone(), remaining_chars);
+    }
+    append_job_sections(&num_job, job, None, remaining_chars);
+    if wrap_num {
+        append_bounded(job, ")", 0.0, upright_fmt.clone(), remaining_chars);
+    }
+    append_bounded(job, "⁄", 0.0, upright_fmt.clone(), remaining_chars);
+    if wrap_den {
+        append_bounded(job, "(", 0.0, upright_fmt.clone(), remaining_chars);
+    }
+    append_job_sections(&den_job, job, None, remaining_chars);
+    if wrap_den {
+        append_bounded(job, ")", 0.0, upright_fmt, remaining_chars);
+    }
+}
+
+fn append_display_fraction(
+    numerator: &MathBox,
+    denominator: &MathBox,
+    job: &mut LayoutJob,
+    depth: usize,
+    remaining_chars: &mut usize,
+) {
+    let mut sub_budget = *remaining_chars;
+    let mut num_job = LayoutJob::default();
+    math_box_to_layout_job_mode(numerator, &mut num_job, depth + 1, &mut sub_budget, false);
+    let mut den_job = LayoutJob::default();
+    math_box_to_layout_job_mode(denominator, &mut den_job, depth + 1, &mut sub_budget, false);
+
+    let width_chars = num_job
+        .text
+        .chars()
+        .count()
+        .max(den_job.text.chars().count())
+        .clamp(1, MAX_LAYOUT_CHARS);
+    let first_fmt = num_job
+        .sections
+        .first()
+        .or_else(|| den_job.sections.first())
+        .map(|s| s.format.clone())
+        .unwrap_or_default();
+
+    append_bounded(job, &num_job.text, 0.0, first_fmt.clone(), remaining_chars);
+    if *remaining_chars > 0 {
+        let bar = "─".repeat(width_chars.min(*remaining_chars));
+        append_bounded(
+            job,
+            &format!("\n{bar}\n"),
+            0.0,
+            first_fmt.clone(),
+            remaining_chars,
+        );
+    }
+    append_bounded(job, &den_job.text, 0.0, first_fmt, remaining_chars);
+}
+
+fn append_sqrt_job(
+    radicand: &MathBox,
+    job: &mut LayoutJob,
+    depth: usize,
+    remaining_chars: &mut usize,
+    inline_fractions: bool,
+) {
+    let mut rad_budget = *remaining_chars;
+    let mut rad_job = LayoutJob::default();
+    math_box_to_layout_job_mode(
+        radicand,
+        &mut rad_job,
+        depth + 1,
+        &mut rad_budget,
+        inline_fractions,
+    );
+    let first_fmt = rad_job
+        .sections
+        .first()
+        .map(|s| s.format.clone())
+        .unwrap_or_default();
+
+    append_bounded(job, "√", 0.0, first_fmt.clone(), remaining_chars);
+    let mut overbar_text = String::new();
+    let mut count = 0;
+    for c in rad_job.text.chars().filter(|&c| c != '\u{0305}') {
+        if count >= *remaining_chars {
+            break;
+        }
+        overbar_text.push(c);
+        count += 1;
+        if count < *remaining_chars {
+            overbar_text.push('\u{0305}');
+            count += 1;
+        }
+    }
+    if !overbar_text.is_empty() {
+        job.append(&overbar_text, 0.0, first_fmt);
+        *remaining_chars = remaining_chars.saturating_sub(count);
+    }
+}
+
+fn math_box_to_layout_job_mode(
+    box_node: &MathBox,
+    job: &mut LayoutJob,
+    depth: usize,
+    remaining_chars: &mut usize,
+    inline_fractions: bool,
+) {
     if depth > MAX_LATEX_DEPTH || *remaining_chars == 0 {
         return;
     }
-
     match box_node {
         MathBox::Text {
             text,
@@ -668,105 +1343,59 @@ fn math_box_to_layout_job_bounded(
             color,
             italics,
         } => {
-            append_bounded(
-                job,
-                text,
-                0.0,
-                TextFormat {
-                    font_id: font_id.clone(),
-                    color: *color,
-                    italics: *italics,
-                    valign: Align::Center,
-                    ..Default::default()
-                },
-                remaining_chars,
-            );
+            let fmt = TextFormat {
+                font_id: font_id.clone(),
+                color: *color,
+                italics: *italics,
+                valign: Align::Center,
+                ..Default::default()
+            };
+            append_bounded(job, text, 0.0, fmt, remaining_chars);
         }
         MathBox::Row(boxes) => {
             for b in boxes {
                 if *remaining_chars == 0 {
                     break;
                 }
-                math_box_to_layout_job_bounded(b, job, depth + 1, remaining_chars);
+                math_box_to_layout_job_mode(b, job, depth + 1, remaining_chars, inline_fractions);
             }
         }
         MathBox::Fraction {
             numerator,
             denominator,
         } => {
-            let mut sub_budget = *remaining_chars;
-            let mut num_job = LayoutJob::default();
-            math_box_to_layout_job_bounded(numerator, &mut num_job, depth + 1, &mut sub_budget);
-            let mut den_job = LayoutJob::default();
-            math_box_to_layout_job_bounded(denominator, &mut den_job, depth + 1, &mut sub_budget);
-
-            let num_text = &num_job.text;
-            let den_text = &den_job.text;
-            let width_chars = num_text
-                .chars()
-                .count()
-                .max(den_text.chars().count())
-                .clamp(1, MAX_LAYOUT_CHARS);
-
-            let first_fmt = num_job
-                .sections
-                .first()
-                .or_else(|| den_job.sections.first())
-                .map(|s| s.format.clone())
-                .unwrap_or_default();
-
-            append_bounded(job, num_text, 0.0, first_fmt.clone(), remaining_chars);
-            if *remaining_chars > 0 {
-                let bar_len = width_chars.min(*remaining_chars);
-                let bar = "─".repeat(bar_len);
-                append_bounded(
-                    job,
-                    &format!("\n{bar}\n"),
-                    0.0,
-                    first_fmt.clone(),
-                    remaining_chars,
-                );
+            if inline_fractions {
+                append_inline_fraction(numerator, denominator, job, depth, remaining_chars);
+            } else {
+                append_display_fraction(numerator, denominator, job, depth, remaining_chars);
             }
-            append_bounded(job, den_text, 0.0, first_fmt, remaining_chars);
         }
         MathBox::Sqrt(radicand) => {
-            let mut rad_budget = *remaining_chars;
-            let mut rad_job = LayoutJob::default();
-            math_box_to_layout_job_bounded(radicand, &mut rad_job, depth + 1, &mut rad_budget);
-            let first_fmt = rad_job
-                .sections
-                .first()
-                .map(|s| s.format.clone())
-                .unwrap_or_default();
-
-            append_bounded(job, "√", 0.0, first_fmt.clone(), remaining_chars);
-            let mut overbar_text = String::new();
-            let mut count = 0;
-            for c in rad_job.text.chars().filter(|&c| c != '\u{0305}') {
-                if count >= *remaining_chars {
-                    break;
-                }
-                overbar_text.push(c);
-                count += 1;
-                if count < *remaining_chars {
-                    overbar_text.push('\u{0305}');
-                    count += 1;
-                }
-            }
-            if !overbar_text.is_empty() {
-                job.append(&overbar_text, 0.0, first_fmt);
-                *remaining_chars = remaining_chars.saturating_sub(count);
-            }
+            append_sqrt_job(radicand, job, depth, remaining_chars, inline_fractions);
         }
         MathBox::Script { base, sup, sub } => {
             if let Some(b) = base {
-                math_box_to_layout_job_bounded(b, job, depth + 1, remaining_chars);
+                math_box_to_layout_job_mode(b, job, depth + 1, remaining_chars, inline_fractions);
             }
             if let Some(s) = sup {
-                append_script_job(s, job, Align::Min, depth + 1, remaining_chars);
+                append_script_job(
+                    s,
+                    job,
+                    Align::Min,
+                    depth + 1,
+                    remaining_chars,
+                    inline_fractions,
+                );
             }
             if let Some(s) = sub {
-                append_script_job(s, job, Align::Max, depth + 1, remaining_chars);
+                append_script_job(
+                    s,
+                    job,
+                    Align::Max,
+                    depth + 1,
+                    remaining_chars,
+                    inline_fractions,
+                );
             }
         }
     }
@@ -782,6 +1411,39 @@ fn measure_math_box(ui: &Ui, b: &MathBox) -> BoxGeom {
     measure_math_box_bounded(ui, b, 0)
 }
 
+fn measure_script_box(
+    ui: &Ui,
+    base: Option<&MathBox>,
+    sup: Option<&MathBox>,
+    sub: Option<&MathBox>,
+    depth: usize,
+) -> BoxGeom {
+    let mut children = Vec::new();
+    let mut width: f32 = 0.0;
+    let mut base_h: f32 = 12.0;
+    if let Some(b) = base {
+        let bg = measure_math_box_bounded(ui, b, depth + 1);
+        width += bg.size.x;
+        base_h = bg.size.y;
+        children.push(bg);
+    }
+    let mut script_w: f32 = 0.0;
+    if let Some(sp) = sup {
+        let spg = measure_math_box_bounded(ui, sp, depth + 1);
+        script_w = script_w.max(spg.size.x);
+        children.push(spg);
+    }
+    if let Some(sb) = sub {
+        let sbg = measure_math_box_bounded(ui, sb, depth + 1);
+        script_w = script_w.max(sbg.size.x);
+        children.push(sbg);
+    }
+    BoxGeom {
+        size: Vec2::new(width + script_w, base_h * 1.2),
+        children,
+    }
+}
+
 fn measure_math_box_bounded(ui: &Ui, b: &MathBox, depth: usize) -> BoxGeom {
     if depth > MAX_LATEX_DEPTH {
         return BoxGeom {
@@ -789,7 +1451,6 @@ fn measure_math_box_bounded(ui: &Ui, b: &MathBox, depth: usize) -> BoxGeom {
             children: Vec::new(),
         };
     }
-
     match b {
         MathBox::Text {
             text,
@@ -801,24 +1462,19 @@ fn measure_math_box_bounded(ui: &Ui, b: &MathBox, depth: usize) -> BoxGeom {
             let galley = ui
                 .painter()
                 .layout_no_wrap(bounded_text, font_id.clone(), *color);
-            let size = galley.size();
             BoxGeom {
-                size,
+                size: galley.size(),
                 children: Vec::new(),
             }
         }
         MathBox::Row(boxes) => {
-            let mut width: f32 = 0.0;
-            let mut height: f32 = 0.0;
-            let mut children = Vec::new();
-
+            let (mut width, mut height, mut children) = (0.0_f32, 0.0_f32, Vec::new());
             for child in boxes {
                 let cg = measure_math_box_bounded(ui, child, depth + 1);
                 width += cg.size.x;
                 height = height.max(cg.size.y);
                 children.push(cg);
             }
-
             BoxGeom {
                 size: Vec2::new(width, height.max(12.0)),
                 children,
@@ -830,62 +1486,123 @@ fn measure_math_box_bounded(ui: &Ui, b: &MathBox, depth: usize) -> BoxGeom {
         } => {
             let num_g = measure_math_box_bounded(ui, numerator, depth + 1);
             let den_g = measure_math_box_bounded(ui, denominator, depth + 1);
-
-            let width = num_g.size.x.max(den_g.size.x) + 6.0;
-            let height = num_g.size.y + den_g.size.y + 4.0;
-
+            let size = Vec2::new(
+                num_g.size.x.max(den_g.size.x) + 6.0,
+                num_g.size.y + den_g.size.y + 4.0,
+            );
             BoxGeom {
-                size: Vec2::new(width, height),
+                size,
                 children: vec![num_g, den_g],
             }
         }
         MathBox::Sqrt(radicand) => {
             let rad_g = measure_math_box_bounded(ui, radicand, depth + 1);
-            let sqrt_w = rad_g.size.y * 0.6;
-            let width = sqrt_w + rad_g.size.x + 4.0;
-            let height = rad_g.size.y + 3.0;
-
+            let size = Vec2::new(rad_g.size.y * 0.6 + rad_g.size.x + 4.0, rad_g.size.y + 3.0);
             BoxGeom {
-                size: Vec2::new(width, height),
+                size,
                 children: vec![rad_g],
             }
         }
         MathBox::Script { base, sup, sub } => {
-            let mut children = Vec::new();
-            let mut width: f32 = 0.0;
-            let mut base_h: f32 = 12.0;
-
-            if let Some(b) = base {
-                let bg = measure_math_box_bounded(ui, b, depth + 1);
-                width += bg.size.x;
-                base_h = bg.size.y;
-                children.push(bg);
-            }
-
-            let mut script_w: f32 = 0.0;
-            if let Some(sp) = sup {
-                let spg = measure_math_box_bounded(ui, sp, depth + 1);
-                script_w = script_w.max(spg.size.x);
-                children.push(spg);
-            }
-            if let Some(sb) = sub {
-                let sbg = measure_math_box_bounded(ui, sb, depth + 1);
-                script_w = script_w.max(sbg.size.x);
-                children.push(sbg);
-            }
-
-            width += script_w;
-
-            BoxGeom {
-                size: Vec2::new(width, base_h * 1.2),
-                children,
-            }
+            measure_script_box(ui, base.as_deref(), sup.as_deref(), sub.as_deref(), depth)
         }
     }
 }
 
 fn paint_math_box(painter: &egui::Painter, origin: Pos2, math_box: &MathBox, geom: &BoxGeom) {
     paint_math_box_bounded(painter, origin, math_box, geom, 0);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_fraction_box(
+    painter: &egui::Painter,
+    origin: Pos2,
+    width: f32,
+    numerator: &MathBox,
+    denominator: &MathBox,
+    num_g: &BoxGeom,
+    den_g: &BoxGeom,
+    depth: usize,
+) {
+    let num_x = origin.x + (width - num_g.size.x) / 2.0;
+    paint_math_box_bounded(
+        painter,
+        Pos2::new(num_x, origin.y),
+        numerator,
+        num_g,
+        depth + 1,
+    );
+    let line_y = origin.y + num_g.size.y + 2.0;
+    let stroke_color = get_color(numerator, depth + 1).unwrap_or(Color32::WHITE);
+    painter.line_segment(
+        [
+            Pos2::new(origin.x, line_y),
+            Pos2::new(origin.x + width, line_y),
+        ],
+        Stroke::new(1.2_f32, stroke_color),
+    );
+    let den_x = origin.x + (width - den_g.size.x) / 2.0;
+    paint_math_box_bounded(
+        painter,
+        Pos2::new(den_x, line_y + 2.0),
+        denominator,
+        den_g,
+        depth + 1,
+    );
+}
+
+fn paint_sqrt_box(
+    painter: &egui::Painter,
+    origin: Pos2,
+    radicand: &MathBox,
+    rad_g: &BoxGeom,
+    depth: usize,
+) {
+    let sqrt_w = rad_g.size.y * 0.5;
+    let color = get_color(radicand, depth + 1).unwrap_or(Color32::WHITE);
+    let galley = painter.layout_no_wrap(
+        "√".to_string(),
+        FontId::proportional(rad_g.size.y.max(1.0)),
+        color,
+    );
+    painter.galley(origin, galley, color);
+    let rad_origin = Pos2::new(origin.x + sqrt_w + 2.0, origin.y + 3.0);
+    paint_math_box_bounded(painter, rad_origin, radicand, rad_g, depth + 1);
+    let bar_y = origin.y + 2.0;
+    let bar_start = origin.x + sqrt_w + 1.0;
+    painter.line_segment(
+        [
+            Pos2::new(bar_start, bar_y),
+            Pos2::new(bar_start + rad_g.size.x + 2.0, bar_y),
+        ],
+        Stroke::new(1.2_f32, color),
+    );
+}
+
+fn paint_script_box(
+    painter: &egui::Painter,
+    origin: Pos2,
+    geom: &BoxGeom,
+    base: Option<&MathBox>,
+    sup: Option<&MathBox>,
+    sub: Option<&MathBox>,
+    depth: usize,
+) {
+    let mut idx = 0;
+    let mut x = origin.x;
+    if let (Some(b), Some(bg)) = (base, geom.children.get(idx)) {
+        paint_math_box_bounded(painter, Pos2::new(x, origin.y), b, bg, depth + 1);
+        x += bg.size.x;
+        idx += 1;
+    }
+    if let (Some(sp), Some(spg)) = (sup, geom.children.get(idx)) {
+        paint_math_box_bounded(painter, Pos2::new(x, origin.y), sp, spg, depth + 1);
+        idx += 1;
+    }
+    if let (Some(sb), Some(sbg)) = (sub, geom.children.get(idx)) {
+        let sub_y = origin.y + geom.size.y - sbg.size.y;
+        paint_math_box_bounded(painter, Pos2::new(x, sub_y), sb, sbg, depth + 1);
+    }
 }
 
 fn paint_math_box_bounded(
@@ -898,7 +1615,6 @@ fn paint_math_box_bounded(
     if depth > MAX_LATEX_DEPTH {
         return;
     }
-
     match (math_box, geom.children.as_slice()) {
         (
             MathBox::Text {
@@ -933,79 +1649,30 @@ fn paint_math_box_bounded(
             },
             [num_g, den_g],
         ) => {
-            let width = geom.size.x;
-
-            let num_x = origin.x + (width - num_g.size.x) / 2.0;
-            paint_math_box_bounded(
+            paint_fraction_box(
                 painter,
-                Pos2::new(num_x, origin.y),
+                origin,
+                geom.size.x,
                 numerator,
-                num_g,
-                depth + 1,
-            );
-
-            let line_y = origin.y + num_g.size.y + 2.0;
-            let stroke_color = get_color(numerator, depth + 1).unwrap_or(Color32::WHITE);
-            painter.line_segment(
-                [
-                    Pos2::new(origin.x, line_y),
-                    Pos2::new(origin.x + width, line_y),
-                ],
-                Stroke::new(1.2_f32, stroke_color),
-            );
-
-            let den_x = origin.x + (width - den_g.size.x) / 2.0;
-            let den_y = line_y + 2.0;
-            paint_math_box_bounded(
-                painter,
-                Pos2::new(den_x, den_y),
                 denominator,
+                num_g,
                 den_g,
-                depth + 1,
+                depth,
             );
         }
         (MathBox::Sqrt(radicand), [rad_g]) => {
-            let sqrt_w = rad_g.size.y * 0.5;
-            let color = get_color(radicand, depth + 1).unwrap_or(Color32::WHITE);
-
-            let galley = painter.layout_no_wrap(
-                "√".to_string(),
-                FontId::proportional(rad_g.size.y.max(1.0)),
-                color,
-            );
-            painter.galley(origin, galley, color);
-
-            let rad_origin = Pos2::new(origin.x + sqrt_w + 2.0, origin.y + 3.0);
-            paint_math_box_bounded(painter, rad_origin, radicand, rad_g, depth + 1);
-
-            let bar_y = origin.y + 2.0;
-            let bar_start = origin.x + sqrt_w + 1.0;
-            let bar_end = bar_start + rad_g.size.x + 2.0;
-            painter.line_segment(
-                [Pos2::new(bar_start, bar_y), Pos2::new(bar_end, bar_y)],
-                Stroke::new(1.2_f32, color),
-            );
+            paint_sqrt_box(painter, origin, radicand, rad_g, depth);
         }
-        (MathBox::Script { base, sup, sub }, children) => {
-            let mut idx = 0;
-            let mut x = origin.x;
-
-            if let (Some(b), Some(bg)) = (base, children.get(idx)) {
-                paint_math_box_bounded(painter, Pos2::new(x, origin.y), b, bg, depth + 1);
-                x += bg.size.x;
-                idx += 1;
-            }
-
-            let script_x = x;
-            if let (Some(sp), Some(spg)) = (sup, children.get(idx)) {
-                paint_math_box_bounded(painter, Pos2::new(script_x, origin.y), sp, spg, depth + 1);
-                idx += 1;
-            }
-
-            if let (Some(sb), Some(sbg)) = (sub, children.get(idx)) {
-                let sub_y = origin.y + geom.size.y - sbg.size.y;
-                paint_math_box_bounded(painter, Pos2::new(script_x, sub_y), sb, sbg, depth + 1);
-            }
+        (MathBox::Script { base, sup, sub }, _) => {
+            paint_script_box(
+                painter,
+                origin,
+                geom,
+                base.as_deref(),
+                sup.as_deref(),
+                sub.as_deref(),
+                depth,
+            );
         }
         _ => {}
     }
@@ -1283,6 +1950,108 @@ mod tests {
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 render_math_box_ui(ui, &deep_box);
+            });
+        });
+    }
+
+    #[test]
+    fn test_latex_quantum_symbols_blackboard_and_text_angstrom() {
+        let font = test_font();
+        let sym_job = parse_latex_with_font(
+            r"\hbar \langle S_x \rangle + \dots + 90\deg + \AA",
+            font.clone(),
+            Color32::WHITE,
+        );
+        assert_eq!(sym_job.text, "ℏ ⟨ Sx ⟩ + … + 90° + Å");
+
+        let bb_job = parse_latex_with_font(
+            r"\mathbb{R} \times \mathbb{N} \times \mathbb{Z} \times \mathbb{Q} \times \mathbb{C}",
+            font.clone(),
+            Color32::WHITE,
+        );
+        assert_eq!(bb_job.text, "ℝ × ℕ × ℤ × ℚ × ℂ");
+
+        let crystal_job = parse_latex_with_font(r"a = 5.43\ \text{\AA}", font, Color32::WHITE);
+        assert_eq!(crystal_job.text, "a = 5.43 Å");
+    }
+
+    #[test]
+    fn test_latex_delimiters_and_combining_accents() {
+        let font = test_font();
+        let delim_job = parse_latex_with_font(
+            r"\left( x \right) + \left[ y \right] + \left\{ z \right\} + \left. \frac{a}{b} \right|",
+            font.clone(),
+            Color32::WHITE,
+        );
+        assert!(delim_job.text.contains("( x ) + [ y ] + { z } +"));
+        assert!(delim_job.text.ends_with('|'));
+        assert!(!delim_job.text.contains("left") && !delim_job.text.contains("right"));
+        assert!(!delim_job.text.contains('.'));
+
+        let accent_job = parse_latex_with_font(
+            r"-\vec{\mu}\cdot\vec{B} + \hat{z} + \bar{g}_{Na} + \dot{x} + \ddot{\mathbf{x}} + \tilde{\psi}",
+            font,
+            Color32::WHITE,
+        );
+        assert!(accent_job.text.contains("μ\u{20D7}·B\u{20D7}"));
+        assert!(accent_job.text.contains("z\u{0302}"));
+        assert!(accent_job.text.contains("g\u{0304}Na"));
+        assert!(accent_job.text.contains("x\u{0307}"));
+        assert!(accent_job.text.contains("x\u{0308}"));
+        assert!(accent_job.text.contains("ψ\u{0303}"));
+    }
+
+    #[test]
+    fn test_prose_with_inline_math_plain_and_fractions() {
+        let font = test_font();
+        let citation = "A Quantitative Description of g_na_bar (Hodgkin & Huxley, 1952)";
+        let plain_job = parse_prose_with_font(citation, font.clone(), Color32::WHITE);
+        assert_eq!(plain_job.text, citation);
+        assert!(plain_job.sections.iter().all(|s| !s.format.italics));
+
+        let inline_job = parse_prose_with_font(
+            r"Slope $\frac{dy}{dt}$ and ratio $\frac{a + b}{c + d}$ with $\frac{(x + 1)}{2}$.",
+            font,
+            Color32::WHITE,
+        );
+        assert_eq!(
+            inline_job.text,
+            "Slope dy⁄dt and ratio (a + b)⁄(c + d) with (x + 1)⁄2."
+        );
+        assert!(!inline_job.text.contains('\n') && !inline_job.text.contains('─'));
+        assert!(!inline_job.sections[0].format.italics);
+    }
+
+    #[test]
+    fn test_prose_with_inline_math_fallbacks_and_caps() {
+        let font = test_font();
+        let unclosed =
+            parse_prose_with_font("Unclosed $formula fallback", font.clone(), Color32::WHITE);
+        assert_eq!(unclosed.text, "Unclosed $formula fallback");
+        assert!(unclosed.sections.iter().all(|s| !s.format.italics));
+
+        let bad_brace =
+            parse_prose_with_font(r"Broken $\frac{a}{b$ end", font.clone(), Color32::WHITE);
+        assert_eq!(bad_brace.text, r"Broken $\frac{a}{b$ end");
+
+        let too_many_nodes = format!("Val ${}$", "+".repeat(MAX_MATH_BOX_NODES + 8));
+        let capped_nodes = parse_prose_with_font(&too_many_nodes, font.clone(), Color32::WHITE);
+        assert_eq!(capped_nodes.text, too_many_nodes);
+
+        let huge_prose = format!("$x$ {}", "αβγ".repeat(900));
+        let capped_bytes = parse_prose_with_font(&huge_prose, font, Color32::WHITE);
+        assert_eq!(capped_bytes.text.chars().count(), MAX_FALLBACK_CHARS);
+
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let job = parse_prose_with_inline_math(
+                    r"Spin $H = -\vec{\mu}\cdot\vec{B}$ in $\mathbb{R}^3$.",
+                    TextStyle::Body,
+                    ui,
+                    Color32::WHITE,
+                );
+                assert!(job.text.contains("ℝ3") && job.text.contains("μ\u{20D7}"));
             });
         });
     }
