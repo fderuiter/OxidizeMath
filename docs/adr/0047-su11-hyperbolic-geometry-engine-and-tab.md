@@ -1,4 +1,4 @@
-# ADR 0043: Intrinsic `SU(1,1)` Hyperbolic Geometry Engine and Standalone Playground Tab
+# ADR 0047: Intrinsic `SU(1,1)` Hyperbolic Geometry Engine and Standalone Playground Tab
 
 ## Status
 Accepted (extends [ADR 0001](0001-dynamic-workspace-discovery.md), [ADR 0008](0008-finite-state-guard-solver-divergence.md), [ADR 0033](0033-wasm32-browser-tests-and-playwright-ci-smoke-gate.md), and [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md))
@@ -19,4 +19,4 @@ Accepted (extends [ADR 0001](0001-dynamic-workspace-discovery.md), [ADR 0008](00
 ## Consequences
 - **Positive**: Users and SDK consumers gain a globally complete, allocation-free hyperbolic geometry kernel ($K = -1.0$) with exact $\mathrm{SU}(1,1)$ group closure, Gauss-Bonnet defect rulers, $\{p, q\}$ Fuchsian tilings, and chaotic geodesic billiards verified under both native `VerifiedAllocator` and `wasm32` headless browser tests.
 - **Positive**: Auto-discovery isolates all GUI additions inside `math_explorer_gui/src/tabs/hyperbolic_geometry/`, preventing merge conflicts with extrinsic 3D surface and TDA modules.
-- **Neutral**: Adding 1 tab, 2 interactive plot tools, and 3 starter presets increments workspace contract counts (`24` tabs, `70` tools, `100` starter presets) and updates `crates/unified_verification/api_baseline.json`.
+- **Neutral**: Adding 1 tab, 2 interactive plot tools, and 3 starter presets increments workspace contract counts (`27` tabs, `77` tools, `111` starter presets) and updates `crates/unified_verification/api_baseline.json`.

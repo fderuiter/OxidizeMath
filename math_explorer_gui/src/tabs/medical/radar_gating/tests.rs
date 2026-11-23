@@ -9,7 +9,7 @@ use crate::framework::{InteractiveTool, SimulationFramework};
 use crate::tabs::medical::MedicalTab;
 use crate::tabs::ExplorerTab;
 use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES};
-use eframe::egui::{self, Event, Key, Modifiers, Pos2, RawInput, Rect, vec2};
+use eframe::egui::{self, vec2, Event, Key, Modifiers, Pos2, RawInput, Rect};
 use math_explorer::physics::medical::radar_gating::{
     BeamState, ConstantVelocityModel, TrackingFilter,
 };
@@ -17,7 +17,9 @@ use math_explorer::physics::medical::radar_gating::{
 #[test]
 fn test_medical_tab_registers_radar_gating_and_starter_resolves_sub_rayleigh() {
     let mut tab = MedicalTab::default();
-    let fw = tab.framework().expect("MedicalTab uses SimulationFramework");
+    let fw = tab
+        .framework()
+        .expect("MedicalTab uses SimulationFramework");
     let ids: Vec<&str> = fw.available_tools.iter().map(|m| m.id).collect();
     assert!(ids.contains(&"BeamProfilingTool"));
     assert!(ids.contains(&"DoseCalculationTool"));
@@ -100,17 +102,19 @@ fn test_cough_clutter_and_nan_faults_drive_beam_hold_interlock_and_reset() {
             break;
         }
     }
-    assert!(entered_hold, "Cough excursion must move GatingLogic to BeamHold");
+    assert!(
+        entered_hold,
+        "Cough excursion must move GatingLogic to BeamHold"
+    );
 
     // Toggle extra static couch reflector and verify finite unwrapped displacement
     tool.pipeline.extra_clutter_active = true;
     let _ = tool.step_gating();
-    assert!(
-        tool.pipeline
-            .measured_trace_mm
-            .iter()
-            .all(|pt| pt[0].is_finite() && pt[1].is_finite())
-    );
+    assert!(tool
+        .pipeline
+        .measured_trace_mm
+        .iter()
+        .all(|pt| pt[0].is_finite() && pt[1].is_finite()));
 
     // Inject NaN fault -> SafetyInterlock -> Reset to Standby -> Arm to Armed
     tool.inject_nan_fault();
@@ -263,7 +267,9 @@ fn test_canvas_arrow_nudge_and_non_trapping_escape_and_tab() {
             break;
         }
     }
-    let canvas_id = tool.focused_canvas_id().expect("canvas must receive Tab focus");
+    let canvas_id = tool
+        .focused_canvas_id()
+        .expect("canvas must receive Tab focus");
     let y_before = tool.state.primary_target.y_m;
 
     let mut up_raw = RawInput {

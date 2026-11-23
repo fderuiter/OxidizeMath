@@ -1,9 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::{bounded_drag_value, InteractiveTool};
+use crate::framework::{
+    BrushMode, CalloutManager, CalloutSpec, InteractionContext, InteractiveTool, SpatialBrushKit,
+};
 use eframe::egui;
-use egui_plot::{Arrows, Plot};
+use egui_plot::{Arrows, Legend, Line, MarkerShape, Plot, Points};
 use math_explorer::physics::fluid_dynamics::potential_flow::{
     Doublet, FlowElement, PotentialFlowField, Source, UniformFlow, Vortex,
 };
@@ -13,6 +15,8 @@ use std::f64::consts::PI;
 mod cache;
 #[path = "potential_flow/shader.rs"]
 mod shader;
+#[path = "potential_flow/streamlines.rs"]
+mod streamlines;
 #[cfg(test)]
 pub(crate) use shader::MAX_SHADER_SINGULARITIES;
 
@@ -20,10 +24,10 @@ pub(crate) const FLOW_STRENGTH_MIN: f64 = -1_000.0;
 pub(crate) const FLOW_STRENGTH_MAX: f64 = 1_000.0;
 pub(crate) const FLOW_POS_MIN: f64 = -50.0;
 pub(crate) const FLOW_POS_MAX: f64 = 50.0;
-const FLOW_ANGLE_MIN: f64 = -180.0;
-const FLOW_ANGLE_MAX: f64 = 180.0;
-const FLOW_VIEW_MIN: f64 = 0.1;
-const FLOW_VIEW_MAX: f64 = 50.0;
+pub(crate) const FLOW_ANGLE_MIN: f64 = -180.0;
+pub(crate) const FLOW_ANGLE_MAX: f64 = 180.0;
+pub(crate) const FLOW_VIEW_MIN: f64 = 0.1;
+pub(crate) const FLOW_VIEW_MAX: f64 = 50.0;
 
 pub struct PotentialFlowTool {
     pub(crate) field: PotentialFlowField,
@@ -35,6 +39,13 @@ pub struct PotentialFlowTool {
     pub(crate) new_element_x: f64,
     pub(crate) new_element_y: f64,
     pub(crate) new_element_angle: f64,
+    pub(crate) brush_kit: SpatialBrushKit,
+    pub(crate) show_streamlines: bool,
+    pub(crate) show_stagnation_points: bool,
+    pub(crate) cached_polylines: Vec<Vec<[f64; 2]>>,
+    pub(crate) cached_stagnation: Vec<[f64; 2]>,
+    pub(crate) cached_view_range: f64,
+    pub(crate) callout_manager: CalloutManager,
     pub(crate) high_contrast: bool,
     pub(crate) cache: cache::ArrowFieldCache,
 }
@@ -48,6 +59,18 @@ pub(crate) enum ElementType {
     Sink,
     Vortex,
     Doublet,
+}
+
+impl ElementType {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Uniform => "Uniform",
+            Self::Source => "Source",
+            Self::Sink => "Sink",
+            Self::Vortex => "Vortex",
+            Self::Doublet => "Doublet",
+        }
+    }
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -64,7 +87,7 @@ pub(crate) struct SerializedFlowElement {
 }
 
 impl SerializedFlowElement {
-    fn is_valid(&self) -> bool {
+    pub(crate) fn is_valid(&self) -> bool {
         self.strength.is_finite()
             && (FLOW_STRENGTH_MIN..=FLOW_STRENGTH_MAX).contains(&self.strength)
             && self.x.is_finite()
@@ -73,46 +96,6 @@ impl SerializedFlowElement {
             && (FLOW_POS_MIN..=FLOW_POS_MAX).contains(&self.y)
             && self.angle.is_finite()
             && (FLOW_ANGLE_MIN..=FLOW_ANGLE_MAX).contains(&self.angle)
-    }
-}
-
-const fn default_element_strength() -> f64 {
-    10.0
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PotentialFlowState {
-    elements: Vec<SerializedFlowElement>,
-    grid_size: usize,
-    view_range: f64,
-    #[serde(default)]
-    selected_element_type: ElementType,
-    #[serde(default = "default_element_strength")]
-    new_element_strength: f64,
-    #[serde(default)]
-    new_element_x: f64,
-    #[serde(default)]
-    new_element_y: f64,
-    #[serde(default)]
-    new_element_angle: f64,
-}
-
-impl PotentialFlowState {
-    fn is_valid(&self) -> bool {
-        (2..=math_commons::registry::MAX_GRID_SIZE).contains(&self.grid_size)
-            && self.view_range.is_finite()
-            && (FLOW_VIEW_MIN..=FLOW_VIEW_MAX).contains(&self.view_range)
-            && self.new_element_strength.is_finite()
-            && (FLOW_STRENGTH_MIN..=FLOW_STRENGTH_MAX).contains(&self.new_element_strength)
-            && self.new_element_x.is_finite()
-            && (FLOW_POS_MIN..=FLOW_POS_MAX).contains(&self.new_element_x)
-            && self.new_element_y.is_finite()
-            && (FLOW_POS_MIN..=FLOW_POS_MAX).contains(&self.new_element_y)
-            && self.new_element_angle.is_finite()
-            && (FLOW_ANGLE_MIN..=FLOW_ANGLE_MAX).contains(&self.new_element_angle)
-            && self.elements.len() <= crate::framework::MAX_JSON_ARRAY_LEN
-            && self.elements.iter().all(SerializedFlowElement::is_valid)
     }
 }
 
@@ -145,6 +128,13 @@ impl Default for PotentialFlowTool {
             new_element_x: 0.0,
             new_element_y: 0.0,
             new_element_angle: 0.0,
+            brush_kit: Self::default_flow_brush_kit(),
+            show_streamlines: true,
+            show_stagnation_points: true,
+            cached_polylines: Vec::new(),
+            cached_stagnation: Vec::new(),
+            cached_view_range: 10.0,
+            callout_manager: CalloutManager::new(),
             high_contrast: false,
             cache: cache::ArrowFieldCache::default(),
         };
@@ -170,11 +160,22 @@ impl InteractiveTool for PotentialFlowTool {
         self.compute_state_revision()
     }
 
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.flow_observables()
+    }
+
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.callout_manager.sync_specs(callouts);
+    }
+
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::plot().with_shader()
     }
 
-    fn export_glsl_shader(&self, dialect: crate::framework::ShaderDialect) -> Result<String, String> {
+    fn export_glsl_shader(
+        &self,
+        dialect: crate::framework::ShaderDialect,
+    ) -> Result<String, String> {
         self.build_glsl_shader(dialect)
     }
 
@@ -195,40 +196,11 @@ impl InteractiveTool for PotentialFlowTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&PotentialFlowState {
-            elements: self.elements.clone(),
-            grid_size: self.grid_size,
-            view_range: self.view_range,
-            selected_element_type: self.selected_element_type,
-            new_element_strength: self.new_element_strength,
-            new_element_x: self.new_element_x,
-            new_element_y: self.new_element_y,
-            new_element_angle: self.new_element_angle,
-        })
-        .ok()
+        self.save_state_json()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded: PotentialFlowState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid PotentialFlowTool state: {}", e))?;
-        if !loaded.is_valid() {
-            return Err(
-                "PotentialFlowTool parameters must be finite and within valid grid/view bounds"
-                    .to_string(),
-            );
-        }
-        self.elements = loaded.elements;
-        self.grid_size = loaded
-            .grid_size
-            .min(crate::presets::MAX_INTERACTIVE_GRID_SIZE);
-        self.view_range = loaded.view_range;
-        self.selected_element_type = loaded.selected_element_type;
-        self.new_element_strength = loaded.new_element_strength;
-        self.new_element_x = loaded.new_element_x;
-        self.new_element_y = loaded.new_element_y;
-        self.new_element_angle = loaded.new_element_angle;
-        self.rebuild_field();
-        Ok(())
+        self.load_state_json(state)
     }
 
     #[cfg(test)]
@@ -241,81 +213,84 @@ impl InteractiveTool for PotentialFlowTool {
         Some(self)
     }
 
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(ref stroke) = ctx.brush_stroke {
+            self.apply_flow_brush_stroke(stroke);
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
             == crate::app::ThemeMode::HighContrast;
         self.draw_controls(ui);
+        if (self.cached_view_range - self.view_range).abs() > 1e-9 {
+            self.refresh_streamline_cache();
+        }
         let (origins, tips) = self.ensure_cached_arrows();
+        let allow_pan = !self.brush_kit.is_sculpting();
+        let vr = self.view_range.max(1.0);
+        let mut strokes = Vec::new();
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            Plot::new("potential_flow_plot")
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            let plot_resp = Plot::new("potential_flow_plot")
                 .data_aspect(1.0)
                 .view_aspect(1.0)
+                .allow_drag(allow_pan)
+                .allow_zoom(allow_pan)
+                .legend(Legend::default())
                 .show(ui, |plot_ui| {
-                    let arrow_color =
-                        crate::app::SemanticPalette::from_visuals(&plot_ui.ctx().style().visuals)
-                            .series_color(0);
-                    plot_ui.arrows(
-                        Arrows::new(
-                            "Vector Field",
-                            egui_plot::PlotPoints::from_shared(origins),
-                            egui_plot::PlotPoints::from_shared(tips),
-                        )
-                        .color(arrow_color),
-                    );
+                    self.render_flow_plot_layers(plot_ui, &palette, origins, tips);
+                    strokes =
+                        self.brush_kit
+                            .sample_plot(plot_ui, [-vr, -vr], [vr, vr], Some(BrushMode::Erase));
                 });
+            for stroke in strokes {
+                let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
+                self.on_brush(&ic);
+            }
         });
     }
 }
 
 impl PotentialFlowTool {
-    fn draw_add_element_controls(&mut self, ui: &mut egui::Ui) {
-        ui.collapsing("Add Element", |ui| {
-            for (elem, label) in [
-                (ElementType::Uniform, "Uniform Flow"),
-                (ElementType::Source, "Source"),
-                (ElementType::Sink, "Sink"),
-                (ElementType::Vortex, "Vortex"),
-                (ElementType::Doublet, "Doublet"),
-            ] {
-                ui.radio_value(&mut self.selected_element_type, elem, label);
-            }
-
-            ui.separator();
-            ui.label("Strength / Velocity");
-            ui.add(bounded_drag_value(
-                &mut self.new_element_strength,
-                FLOW_STRENGTH_MIN..=FLOW_STRENGTH_MAX,
-                0.1,
-            ));
-
-            if self.selected_element_type == ElementType::Uniform {
-                ui.add(
-                    egui::Slider::new(&mut self.new_element_angle, FLOW_ANGLE_MIN..=FLOW_ANGLE_MAX)
-                        .text("Angle (degrees)"),
+    fn render_flow_plot_layers(
+        &mut self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        palette: &crate::app::SemanticPalette,
+        origins: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
+        tips: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
+    ) {
+        if self.show_streamlines {
+            for (idx, poly) in self.cached_polylines.iter().enumerate() {
+                let name = if idx == 0 { "Streamlines (ψ)" } else { "" };
+                plot_ui.line(
+                    Line::new(name, poly.clone())
+                        .color(palette.series_color(2))
+                        .width(1.4_f32),
                 );
-            } else {
-                ui.label("Position X");
-                ui.add(bounded_drag_value(
-                    &mut self.new_element_x,
-                    FLOW_POS_MIN..=FLOW_POS_MAX,
-                    0.1,
-                ));
-                ui.label("Position Y");
-                ui.add(bounded_drag_value(
-                    &mut self.new_element_y,
-                    FLOW_POS_MIN..=FLOW_POS_MAX,
-                    0.1,
-                ));
             }
-
-            if ui
-                .button("➕ Add Element")
-                .accessible_hover_text("Add the selected flow element to the field")
-                .clicked()
-            {
-                self.add_element();
-            }
-        });
+        }
+        plot_ui.arrows(
+            Arrows::new(
+                "Vector Field",
+                egui_plot::PlotPoints::from_shared(origins),
+                egui_plot::PlotPoints::from_shared(tips),
+            )
+            .color(palette.series_color(0)),
+        );
+        if self.show_stagnation_points && !self.cached_stagnation.is_empty() {
+            plot_ui.points(
+                Points::new("Stagnation (|V|=0)", self.cached_stagnation.clone())
+                    .shape(MarkerShape::Diamond)
+                    .radius(5.5_f32)
+                    .color(palette.warning),
+            );
+        }
+        self.callout_manager.render_on_plot(plot_ui);
     }
 
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
@@ -324,8 +299,9 @@ impl PotentialFlowTool {
             ui.heading("Potential Flow Controls");
             ui.separator();
             self.draw_add_element_controls(ui);
-
+            self.draw_brush_toolbar(ui);
             ui.separator();
+            self.draw_active_element_sliders(ui);
             if ui
                 .button("🔄 Clear All")
                 .accessible_hover_text("Remove all potential flow elements and reset the field")
@@ -333,8 +309,9 @@ impl PotentialFlowTool {
             {
                 self.clear();
             }
-
             ui.separator();
+            ui.checkbox(&mut self.show_streamlines, "Show Streamlines (ψ)");
+            ui.checkbox(&mut self.show_stagnation_points, "Show Stagnation Points");
             let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
             self.grid_size = self.grid_size.clamp(2, max_grid);
             ui.add(
@@ -342,6 +319,17 @@ impl PotentialFlowTool {
                     .text("Visualization - Grid Density"),
             );
             ui.add(egui::Slider::new(&mut self.view_range, 5.0..=FLOW_VIEW_MAX).text("View Range"));
+            let (u_inf, gamma, lift, drag) = self.aerodynamic_summary();
+            ui.separator();
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(format!(
+                        "U∞={u_inf:.1} | Γ={gamma:.1} | L'={lift:.1} | D'={drag:.1}"
+                    ))
+                    .small(),
+                )
+                .wrap(),
+            );
         });
     }
 
@@ -358,6 +346,7 @@ impl PotentialFlowTool {
             field.add(elem);
         }
         self.field = field;
+        self.refresh_streamline_cache();
     }
 
     pub(crate) fn add_element(&mut self) {
@@ -376,6 +365,8 @@ impl PotentialFlowTool {
     fn clear(&mut self) {
         self.elements.clear();
         self.field.clear();
+        self.cached_polylines.clear();
+        self.cached_stagnation.clear();
     }
 }
 
@@ -395,15 +386,12 @@ impl scientific_metadata::theory::TheoryDescribable for PotentialFlowTool {
     fn theory_description(&self) -> String {
         "Two-dimensional incompressible irrotational potential flow governed by Laplace's equation $\\nabla^2 \\phi = 0$ for velocity potential $\\phi$, where fluid velocity is given by $\\vec{V} = \\nabla \\phi = (u, v)$ with linear superposition of elementary solutions.".into()
     }
-
     fn phonetic_description(&self) -> String {
         "Incompressible irrotational potential flow and Laplace equation theory".into()
     }
-
     fn theory_citation(&self) -> String {
         "Elementary Fluid Dynamics (Acheson, 1990); An Introduction to Fluid Dynamics (Batchelor, 1967)".into()
     }
-
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
         map.insert(

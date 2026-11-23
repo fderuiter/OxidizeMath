@@ -1,7 +1,20 @@
-/// Solves the final size equation for S_inf using Newton-Raphson.
+/// Solves the final size equation for $S_\infty$ using Newton-Raphson.
 ///
 /// Equation: $\ln(S_0 / S_\infty) = R_0 (1 - S_\infty / N)$
 /// Rearranged for root finding: $f(x) = \ln(S_0 / x) - R_0 (1 - x / N) = 0$
+///
+/// # Examples
+///
+/// ```rust
+/// # use domain_epidemiology::__doctest_facade as math_explorer;
+/// use math_explorer::epidemiology::analytics::calculate_final_size;
+///
+/// let s_inf = calculate_final_size(2.5, 999.0, 1000.0).unwrap();
+/// assert!(s_inf > 0.0 && s_inf < 200.0);
+///
+/// // Non-positive basic reproduction numbers are rejected
+/// assert!(calculate_final_size(0.0, 999.0, 1000.0).is_err());
+/// ```
 #[verified_engine::verified]
 pub fn calculate_final_size(r0: f64, s0: f64, n: f64) -> Result<f64, String> {
     if r0 <= 0.0 {

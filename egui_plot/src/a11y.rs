@@ -44,7 +44,7 @@ fn relative_luminance(color: Color32) -> f32 {
 
 /// Computes the WCAG 2.2 relative luminance contrast ratio between two colors.
 #[must_use]
-pub(crate) fn contrast_ratio(fg: Color32, bg: Color32) -> f32 {
+pub fn contrast_ratio(fg: Color32, bg: Color32) -> f32 {
     let lum_a = relative_luminance(fg);
     let lum_b = relative_luminance(bg);
     let lighter = lum_a.max(lum_b);
@@ -77,7 +77,7 @@ pub(crate) fn composite_over(fg: Color32, bg: Color32) -> Color32 {
 /// Returns a focus border stroke derived from `visuals.selection.stroke`
 /// guaranteed to achieve at least 3:1 contrast against `bg`.
 #[must_use]
-pub(crate) fn focus_ring_stroke(visuals: &egui::Visuals, bg: Color32) -> Stroke {
+pub fn focus_ring_stroke(visuals: &egui::Visuals, bg: Color32) -> Stroke {
     let resolved_bg = composite_over(bg, visuals.window_fill);
     let mut stroke = visuals.selection.stroke;
     stroke.width = stroke.width.max(2.0);
@@ -656,14 +656,14 @@ pub(crate) fn format_critical_point_live_summary(
     index: usize,
     total: usize,
 ) -> String {
+    let x_str = crate::format::format_readout_value(poi.point[0], 4, 4);
+    let y_str = crate::format::format_readout_value(poi.point[1], 4, 4);
     format!(
-        "Critical point {} of {}: {} ({}), X: {:.4}, Y: {:.4}",
+        "Critical point {} of {}: {} ({}), X: {x_str}, Y: {y_str}",
         index + 1,
         total,
         poi.kind.label(),
         poi.series_summary(),
-        poi.point[0],
-        poi.point[1]
     )
 }
 
@@ -675,9 +675,11 @@ pub(crate) fn show_critical_point_tooltip(
     announce_on_open: bool,
     include_pin_hint: bool,
 ) {
+    let x_str = crate::format::format_readout_value(poi.point[0], 6, 4);
+    let y_str = crate::format::format_readout_value(poi.point[1], 6, 4);
     let mut body_lines = vec![
-        (format!("x = {:.6}", poi.point[0]), true),
-        (format!("y = {:.6}", poi.point[1]), true),
+        (format!("x = {x_str}"), true),
+        (format!("y = {y_str}"), true),
     ];
     if include_pin_hint {
         body_lines.push(("Click marker to pin callout".to_owned(), false));
