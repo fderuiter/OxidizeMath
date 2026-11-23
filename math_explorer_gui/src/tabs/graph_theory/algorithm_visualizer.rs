@@ -225,25 +225,64 @@ impl AlgorithmVisualizerTool {
             ui.separator();
             self.render_start_node_selector(ui);
             ui.separator();
-            self.render_playback_controls(ui);
+
+            if !self.visit_order.is_empty() {
+                self.render_playback_controls(ui);
+            }
             ui.separator();
             ui.label("Click a node or use Arrow keys + Enter on the canvas to set the start node.");
         });
     }
 
+    fn stop_at_step(&mut self, step: usize) {
+        self.animation_step = step;
+        self.is_playing = false;
+        self.step_timer = 0.0;
+    }
+
     fn render_playback_controls(&mut self, ui: &mut egui::Ui) {
-        if self.visit_order.is_empty() {
-            return;
-        }
-        ui.label(format!(
-            "Animation Step: {} / {}",
-            self.animation_step,
-            self.visit_order.len()
-        ));
-        ui.horizontal(|ui| self.render_playback_buttons(ui));
-        let slider =
-            egui::Slider::new(&mut self.animation_step, 0..=self.visit_order.len()).text("Step");
-        if ui.add(slider).changed() {
+        let total = self.visit_order.len();
+        ui.label(format!("Animation Step: {} / {total}", self.animation_step));
+        ui.horizontal(|ui| {
+            if ui
+                .button("↻ Reset")
+                .accessible_hover_text("Restart the algorithm visualization")
+                .clicked()
+            {
+                self.stop_at_step(0);
+            }
+            let (label, hover) = if self.is_playing {
+                ("⏸ Pause", "Pause the algorithm visualization")
+            } else {
+                ("▶ Play", "Start or resume continuous visualization")
+            };
+            if ui.button(label).accessible_hover_text(hover).clicked() {
+                if !self.is_playing && self.animation_step >= total {
+                    self.animation_step = 0;
+                }
+                self.is_playing = !self.is_playing;
+                self.step_timer = 0.0;
+            }
+            let can_step = self.animation_step < total;
+            if ui
+                .add_enabled(can_step, eframe::egui::Button::new("▶ Step"))
+                .accessible_hover_text("Advance visualization by one step")
+                .clicked()
+            {
+                self.stop_at_step(self.animation_step + 1);
+            }
+            if ui
+                .add_enabled(can_step, eframe::egui::Button::new("⏹ Finish"))
+                .accessible_hover_text("Skip to the end of the visualization")
+                .clicked()
+            {
+                self.stop_at_step(total);
+            }
+        });
+        if ui
+            .add(egui::Slider::new(&mut self.animation_step, 0..=total).text("Step"))
+            .changed()
+        {
             self.step_timer = 0.0;
         }
         ui.add(
@@ -251,56 +290,6 @@ impl AlgorithmVisualizerTool {
                 .text("Speed")
                 .suffix("x"),
         );
-    }
-
-    fn render_playback_buttons(&mut self, ui: &mut egui::Ui) {
-        if ui
-            .button("↻ Reset")
-            .accessible_hover_text("Restart the algorithm visualization")
-            .clicked()
-        {
-            self.animation_step = 0;
-            self.is_playing = false;
-            self.step_timer = 0.0;
-        }
-        let (label, hover) = if self.is_playing {
-            ("⏸ Pause", "Pause the algorithm visualization")
-        } else {
-            (
-                "▶ Play",
-                "Start or resume continuous algorithm visualization",
-            )
-        };
-        if ui.button(label).accessible_hover_text(hover).clicked() {
-            if self.is_playing {
-                self.is_playing = false;
-            } else {
-                if self.animation_step >= self.visit_order.len() {
-                    self.animation_step = 0;
-                }
-                self.is_playing = true;
-            }
-            self.step_timer = 0.0;
-        }
-        let can_step = self.animation_step < self.visit_order.len();
-        if ui
-            .add_enabled(can_step, eframe::egui::Button::new("▶ Step"))
-            .accessible_hover_text("Advance visualization by one step")
-            .clicked()
-        {
-            self.animation_step += 1;
-            self.is_playing = false;
-            self.step_timer = 0.0;
-        }
-        if ui
-            .add_enabled(can_step, eframe::egui::Button::new("⏹ Finish"))
-            .accessible_hover_text("Skip to the end of the visualization")
-            .clicked()
-        {
-            self.animation_step = self.visit_order.len();
-            self.is_playing = false;
-            self.step_timer = 0.0;
-        }
     }
 
     fn render_start_node_selector(&mut self, ui: &mut egui::Ui) {
@@ -371,10 +360,9 @@ impl InteractiveTool for AlgorithmVisualizerTool {
             ));
         }
         if let Some(id) = loaded.start_node
-            && !self.node_indices.contains_key(&id)
-        {
-            return Err(format!("Unknown start_node id: {id}"));
-        }
+            && !self.node_indices.contains_key(&id) {
+                return Err(format!("Unknown start_node id: {id}"));
+            }
         self.selected_algorithm = loaded.selected_algorithm;
         self.start_node = loaded.start_node;
         if let Some(id) = loaded.start_node {
@@ -408,21 +396,13 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool {
     fn theory_description(&self) -> String {
         let algo_str = match self.selected_algorithm {
-            Algorithm::Dijkstra => {
-                "Dijkstra shortest path algorithm via priority relaxation $d(v) = \\min(d(v), d(u) + w(u, v))$"
-            }
-            Algorithm::Bfs => {
-                "Breadth-First Search level-order queue traversal computing unweighted shortest path distances"
-            }
-            Algorithm::Dfs => {
-                "Depth-First Search recursive stack traversal exploring graph connectivity and cycles"
-            }
+            Algorithm::Dijkstra => "Dijkstra shortest path algorithm via priority relaxation $d(v) = \\min(d(v), d(u) + w(u, v))$",
+            Algorithm::Bfs => "Breadth-First Search level-order queue traversal computing unweighted shortest path distances",
+            Algorithm::Dfs => "Depth-First Search recursive stack traversal exploring graph connectivity and cycles",
         };
         format!(
             "Graph traversal and pathfinding analysis executing {} across $|V| = {}$ nodes and $|E| = {}$ edges.",
-            algo_str,
-            self.node_positions.len(),
-            self.edges.len()
+            algo_str, self.node_positions.len(), self.edges.len()
         )
     }
     fn phonetic_description(&self) -> String {

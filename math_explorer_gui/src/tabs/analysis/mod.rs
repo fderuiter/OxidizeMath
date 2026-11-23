@@ -1,6 +1,7 @@
 // @explorer_feature = "pure_math"
 // @explorer_domain = "Pure Math"
 // @explorer_slug = "analysis"
+// @explorer_order = 20
 
 pub mod chladni_wave_tank;
 pub mod complex_mapping;

@@ -2,14 +2,14 @@
 // [cite:hurwitz_kronecker]
 
 use super::modular_invariants_ui;
-use crate::framework::{InteractiveTool, PaneSidePanel, ToolStateBounds, scoped_panel_id};
+use crate::framework::{scoped_panel_id, InteractiveTool, PaneSidePanel, ToolStateBounds};
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{
-    FrobeniusClassSummary, MAX_LATTICE_PRIME, MAX_SCALED_J_PRECISION, ModularValuationSummary,
-    PrimeWeierstrassCurve, WeierstrassCurve, analyze_frobenius_prime, eisenstein_e4_q_series,
-    hasse_weil_bound, hurwitz_trace_sum, j_invariant_q_scaled, j_invariant_real,
-    modular_valuation_summary, psi, ramanujan_delta_q_series, theorem_1_1_bounds,
-    theorem_1_2_bounds,
+    analyze_frobenius_prime, eisenstein_e4_q_series, hasse_weil_bound, hurwitz_trace_sum,
+    j_invariant_q_scaled, j_invariant_real, modular_valuation_summary, psi,
+    ramanujan_delta_q_series, theorem_1_1_bounds, theorem_1_2_bounds, FrobeniusClassSummary,
+    ModularValuationSummary, PrimeWeierstrassCurve, WeierstrassCurve, MAX_LATTICE_PRIME,
+    MAX_SCALED_J_PRECISION,
 };
 use math_explorer::pure_math::number_theory::primes::{is_prime, primes_up_to};
 use serde::{Deserialize, Serialize};

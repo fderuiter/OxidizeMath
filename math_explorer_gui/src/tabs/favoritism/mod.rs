@@ -1,6 +1,7 @@
 // @explorer_feature = "applied"
 // @explorer_domain = "Applied Math"
 // @explorer_slug = "favoritism"
+// @explorer_order = 32
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 

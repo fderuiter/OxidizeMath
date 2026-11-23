@@ -2,10 +2,10 @@
 // [cite:modular_polynomials_review]
 
 use super::{chord_tangent_canvas, chord_tangent_scene, chord_tangent_ui};
-use crate::framework::{InteractiveTool, PaneSidePanel, ToolStateBounds, scoped_panel_id};
+use crate::framework::{scoped_panel_id, InteractiveTool, PaneSidePanel, ToolStateBounds};
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{
-    CurvePoint, MAX_LATTICE_PRIME, PrimeWeierstrassCurve, WeierstrassCurve,
+    CurvePoint, PrimeWeierstrassCurve, WeierstrassCurve, MAX_LATTICE_PRIME,
 };
 use math_explorer::pure_math::number_theory::primes::is_prime;
 use serde::{Deserialize, Serialize};

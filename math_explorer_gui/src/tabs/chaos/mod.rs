@@ -1,6 +1,7 @@
 // @explorer_feature = "physics"
 // @explorer_domain = "Physics"
 // @explorer_slug = "chaos"
+// @explorer_order = 13
 
 pub mod attractors;
 pub mod bifurcation;

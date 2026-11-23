@@ -109,6 +109,7 @@ impl TrainingMonitorTool {
                     PlaybackAction::Play => self.is_training = true,
                     PlaybackAction::Pause => self.is_training = false,
                     PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset(),
                 }
             }
@@ -255,8 +256,8 @@ impl InteractiveTool for TrainingMonitorTool {
 }
 
 fn generate_spiral_data(points_per_class: usize) -> Vec<(Vector, Vector)> {
-    use rand::Rng;
     use rand::seq::SliceRandom;
+    use rand::Rng;
 
     let mut rng = oxidize_core::rng::OxidizeRng::default();
     let mut data = Vec::new();
@@ -303,7 +304,7 @@ inventory::submit! {
         id: "TrainingMonitorTool",
         display_name: "Training Monitor",
         domain: "ai",
-        tags: &[],
+        tags: &["gradient descent", "sgd", "adam", "loss curve", "mlp", "backpropagation"],
         build: || Box::new(TrainingMonitorTool::default()),
     }
 }

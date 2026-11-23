@@ -70,6 +70,18 @@ RUSTDOCFLAGS=\"-D warnings\" cargo doc --workspace --no-deps --all-features
         check_rustdoc_cargo_commands(Path::new("transformer_simple.rs"), bad_ex, &model);
     assert_eq!(ex_violations.len(), 1);
     assert!(ex_violations[0].contains("requires feature(s) [\"ai\"]"));
+
+    let bad_backtick_ex =
+        "//! To run:\n//! `cargo run --package math_explorer --example transformer_simple`\n";
+    let bt_violations =
+        check_rustdoc_cargo_commands(Path::new("transformer_simple.rs"), bad_backtick_ex, &model);
+    assert_eq!(bt_violations.len(), 1);
+    assert!(bt_violations[0].contains("requires feature(s) [\"ai\"]"));
+
+    let bad_ws_ex = "```bash\ncargo run --workspace --example hello_world\n```\n";
+    let ws_violations = check_markdown_cargo_commands(&md_path, &root, bad_ws_ex, &model);
+    assert_eq!(ws_violations.len(), 1);
+    assert!(ws_violations[0].contains("omits `--features` or `--all-features`"));
 }
 
 #[test]

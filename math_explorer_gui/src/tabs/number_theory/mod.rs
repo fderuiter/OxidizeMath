@@ -1,7 +1,9 @@
 // @explorer_feature = "pure_math"
 // @explorer_domain = "Pure Math"
 // @explorer_slug = "number_theory"
+// @explorer_order = 21
 
+pub mod elliptic_curve_audio;
 pub mod elliptic_curve_canvas;
 pub mod elliptic_curve_hasse;
 pub mod elliptic_curve_playground;

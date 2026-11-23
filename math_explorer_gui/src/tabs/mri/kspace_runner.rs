@@ -14,6 +14,7 @@ use nalgebra::{DMatrix, Vector3};
 use num_complex::Complex;
 use std::collections::VecDeque;
 use std::f64::consts::PI;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 /// Rotating-frame $\Delta B_0$ pocket amplitude in Tesla (`0.22 uT`, $\gamma \Delta B_0 \approx 58.9\,\text{rad/s}$).
@@ -60,6 +61,7 @@ pub struct MriKSpaceRunner {
     pub(crate) recon_grid: DMatrix<Complex<f64>>,
     pub(crate) recon_mag: Vec<f64>,
     pub(crate) selected_trajectory: VecDeque<Vector3<f64>>,
+    pub(crate) rf_spike_pending: AtomicBool,
 }
 
 impl MriKSpaceRunner {
@@ -110,6 +112,7 @@ impl MriKSpaceRunner {
             recon_grid: DMatrix::zeros(size, size),
             recon_mag: vec![0.0; total],
             selected_trajectory: traj,
+            rf_spike_pending: AtomicBool::new(false),
         };
         runner.rebuild_from_config(&cfg);
         runner
@@ -434,5 +437,40 @@ impl MriKSpaceRunner {
             guard.config.grad_gy_integral,
             guard.config.selected_voxel,
         )
+    }
+
+    pub(crate) fn build_audio_input(
+        &self,
+        sel_voxel: [usize; 2],
+        rf_spike_triggered: bool,
+    ) -> crate::audio::mappings::MriKSpaceAudioInput {
+        let sr = sel_voxel[0].min(self.size.saturating_sub(1));
+        let sc = sel_voxel[1].min(self.size.saturating_sub(1));
+        let sidx = sr * self.size + sc;
+        let idx = if self.rho[sidx] > 1e-4 && self.delta_b0[sidx].abs() > 0.0 {
+            sidx
+        } else if let Some(p_idx) =
+            (0..self.rho.len()).find(|&i| self.rho[i] > 1e-4 && self.delta_b0[i].abs() > 0.0)
+        {
+            p_idx
+        } else if self.rho[sidx] > 1e-4 {
+            sidx
+        } else {
+            (0..self.rho.len())
+                .find(|&i| self.rho[i] > 1e-4)
+                .unwrap_or(sidx)
+        };
+        crate::audio::mappings::MriKSpaceAudioInput {
+            spins: self.spins[idx],
+            rho: self.rho[idx],
+            t2: self.t2[idx],
+            delta_b0: self.delta_b0[idx],
+            turing_uv: self.phantom_engine.sample_turing_uv(idx, self.rho[idx]),
+            current_time: self.current_time,
+            echo_tau: self.echo_tau,
+            k_coord_cycles_per_m: self.k_coord_cycles_per_m,
+            selected_grad_phase_rad: self.selected_grad_phase_rad,
+            rf_spike_triggered,
+        }
     }
 }

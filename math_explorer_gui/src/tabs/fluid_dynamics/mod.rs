@@ -1,6 +1,7 @@
 // @explorer_feature = "physics"
 // @explorer_domain = "Physics"
 // @explorer_slug = "fluid_dynamics"
+// @explorer_order = 12
 
 pub mod lattice_boltzmann;
 pub mod lattice_boltzmann_sculpt;

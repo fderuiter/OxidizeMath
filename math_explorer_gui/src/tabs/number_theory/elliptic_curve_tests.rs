@@ -202,9 +202,52 @@ fn test_hot_loop_recompute_and_orbit_stepping_zero_heap_allocations() {
         tool.recompute_curve_hot_loop();
         for _ in 0..8 {
             tool.step_orbit_hot_loop();
+            let _ = tool.current_sonification_frame();
         }
     });
     assert!(metrics.function_calls > 0);
+}
+
+#[test]
+fn test_elliptic_torsion_sonification_periodicity_singular_silence_and_meter() {
+    let mut tool = EllipticCurvePlayground::default();
+    let order = tool.p_order;
+    assert!(order >= 2);
+
+    tool.scalar_k = 1;
+    tool.recompute_all();
+    let mut first_cycle = Vec::with_capacity(order);
+    for _ in 0..order {
+        first_cycle.push(tool.current_sonification_frame());
+        tool.step_simulation();
+    }
+    for expected in &first_cycle {
+        assert_eq!(&tool.current_sonification_frame(), expected);
+        tool.step_simulation();
+    }
+
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let out = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
+    });
+    let ak = out.platform_output.accesskit_update.unwrap();
+    assert!(ak
+        .nodes
+        .iter()
+        .any(|(_, n)| n.role() == egui::accesskit::Role::Meter));
+    crate::audio::export_current_tool_wav("elliptic_curve_playground");
+
+    // Singular curve emits silent sonification frame
+    tool.p = 17;
+    tool.a = -3;
+    tool.b = 2;
+    tool.recompute_all();
+    assert!(tool.is_singular);
+    assert_eq!(
+        tool.current_sonification_frame(),
+        crate::audio::SonificationFrame::silent()
+    );
 }
 
 // [cite:modular_polynomials_review]

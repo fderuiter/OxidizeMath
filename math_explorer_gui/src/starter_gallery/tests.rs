@@ -34,12 +34,17 @@ fn test_starter_cards_presence_and_metadata() {
             .iter()
             .any(|c| c.title == "Crisis & Proximity Showdown")
     );
+
+    let can_cards = get_starter_cards_for_domain("cannibalism", &[]);
+    assert!(
+        can_cards
+            .iter()
+            .any(|c| c.title == "Dwarf & Giant Hopf Cycles")
+    );
 }
 
 #[test]
 fn test_preset_json_validity() {
-    use crate::presets::{MorphogenesisPresetConfig, deserialize_preset_envelope};
-
     let ode_meta = inventory::iter::<ToolMetadata>
         .into_iter()
         .find(|t| t.id == "OdeSolverTool")
@@ -50,10 +55,19 @@ fn test_preset_json_validity() {
         .unwrap();
     ode_tool.import_preset_json(PRESET_LOGISTIC_GROWTH).unwrap();
 
-    let morph_cfg: MorphogenesisPresetConfig =
-        deserialize_preset_envelope(PRESET_TURING_SPOTS, "biology", "Morphogenesis").unwrap();
-    assert_eq!(morph_cfg.width, 100);
-    assert_eq!(morph_cfg.height, 100);
+    let morph_meta = inventory::iter::<ToolMetadata>
+        .into_iter()
+        .find(|t| t.id == "MorphogenesisTool")
+        .expect("MorphogenesisTool must be registered");
+    let mut morph_tool = (morph_meta.build)();
+    morph_tool.import_preset_json(PRESET_TURING_SPOTS).unwrap();
+    morph_tool
+        .import_preset_json(PRESET_TURING_STRIPES)
+        .unwrap();
+    let morph_state: crate::tabs::morphogenesis::MorphogenesisToolState =
+        serde_json::from_str(&morph_tool.save_state().unwrap()).unwrap();
+    assert_eq!(morph_state.width, 100);
+    assert_eq!(morph_state.height, 100);
 }
 
 #[test]

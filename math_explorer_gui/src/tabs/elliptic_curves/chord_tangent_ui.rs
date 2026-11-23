@@ -3,13 +3,13 @@
 
 use super::chord_tangent_canvas::{fmt_fp_pt, fmt_real_pt};
 use super::chord_tangent_tool::{
-    ClickTarget, CurveFieldMode, WeierstrassPlaygroundTool, snap_prime_i64, snap_real_point,
+    snap_prime_i64, snap_real_point, ClickTarget, CurveFieldMode, WeierstrassPlaygroundTool,
 };
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport, bounded_drag_value};
+use crate::framework::{bounded_drag_value, InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{
-    MAX_LATTICE_PRIME, PrimeWeierstrassCurve, WeierstrassCurve, j_invariant_mod_p, j_invariant_real,
+    j_invariant_mod_p, j_invariant_real, PrimeWeierstrassCurve, WeierstrassCurve, MAX_LATTICE_PRIME,
 };
 
 pub(crate) fn render_side_panel(tool: &mut WeierstrassPlaygroundTool, ui: &mut egui::Ui) {
@@ -162,6 +162,7 @@ fn render_orbit_and_transport(tool: &mut WeierstrassPlaygroundTool, ui: &mut egu
                 tool.state.scalar_k = 1;
                 changed = true;
             }
+            PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
         }
     }
     changed

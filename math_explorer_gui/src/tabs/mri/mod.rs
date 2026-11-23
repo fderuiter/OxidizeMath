@@ -1,6 +1,7 @@
 // @explorer_feature = "physics"
 // @explorer_domain = "Physics"
 // @explorer_slug = "mri"
+// @explorer_order = 11
 use crate::async_sim::SimWorkerState;
 use crate::tabs::ExplorerTab;
 use eframe::egui;

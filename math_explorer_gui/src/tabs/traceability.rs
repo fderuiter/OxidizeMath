@@ -1,5 +1,6 @@
 // @explorer_domain = "Applied Math"
 // @explorer_slug = "traceability"
+// @explorer_order = 34
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::collections::HashMap;

@@ -1,6 +1,7 @@
 // @explorer_feature = "applied"
 // @explorer_domain = "Applied Math"
 // @explorer_slug = "clinical_trials"
+// @explorer_order = 31
 
 pub mod pharmacokinetics;
 pub mod randomization;

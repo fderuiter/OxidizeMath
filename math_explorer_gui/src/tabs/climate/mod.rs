@@ -1,6 +1,7 @@
 // @explorer_feature = "climate"
 // @explorer_domain = "Climate"
 // @explorer_slug = "climate"
+// @explorer_order = 50
 
 pub mod cera;
 pub mod co2_projections;

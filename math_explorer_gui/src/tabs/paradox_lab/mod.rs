@@ -1,6 +1,7 @@
 // @explorer_feature = "applied"
 // @explorer_domain = "Applied Math"
 // @explorer_slug = "paradox_lab"
+// @explorer_order = 35
 use crate::accessibility::AccessibleHoverText;
 #[cfg(test)]
 use crate::tabs::ExplorerTab;

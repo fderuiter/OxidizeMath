@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::ui::CONTOUR_RESOLUTION;
-use super::{COMPLEX_COORD_MAX, COMPLEX_COORD_MIN, ComplexMappingTool, MappingFunction};
+use super::{ComplexMappingTool, MappingFunction, COMPLEX_COORD_MAX, COMPLEX_COORD_MIN};
 use eframe::egui;
 use egui::emath::Float as _;
 use egui_plot::{PlotBounds, PlotGeometry, PlotItem, PlotItemBase, PlotPoint};

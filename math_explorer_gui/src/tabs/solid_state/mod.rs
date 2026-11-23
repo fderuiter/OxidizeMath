@@ -1,6 +1,7 @@
 // @explorer_feature = "physics"
 // @explorer_domain = "Physics"
 // @explorer_slug = "solid_state"
+// @explorer_order = 14
 
 pub mod band_structure;
 pub mod crystal_viewer;

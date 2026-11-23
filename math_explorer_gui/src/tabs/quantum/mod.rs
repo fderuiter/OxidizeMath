@@ -1,6 +1,7 @@
 // @explorer_feature = "physics"
 // @explorer_domain = "Physics"
 // @explorer_slug = "quantum"
+// @explorer_order = 10
 
 pub mod clebsch;
 pub mod spin_viz;

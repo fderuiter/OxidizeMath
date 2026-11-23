@@ -1,6 +1,7 @@
 // @explorer_feature = "physics"
 // @explorer_domain = "Physics"
 // @explorer_slug = "relativity"
+// @explorer_order = 17
 // Interactive General Relativity tab exposing 3D geodesic integration, Flamm/wormhole
 // embeddings, radial effective potentials, twin clocks, and Christoffel tensor inspection.
 

@@ -1,6 +1,7 @@
 // @explorer_feature = "physics"
 // @explorer_domain = "Physics"
 // @explorer_slug = "astrophysics"
+// @explorer_order = 16
 
 #[cfg(test)]
 use crate::tabs::ExplorerTab;

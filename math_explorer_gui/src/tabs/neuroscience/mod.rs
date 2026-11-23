@@ -1,6 +1,7 @@
 // @explorer_feature = "biology"
 // @explorer_domain = "Biology"
 // @explorer_slug = "neuroscience"
+// @explorer_order = 41
 
 pub mod hodgkin_huxley;
 pub mod neural_network_viz;

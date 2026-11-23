@@ -27,6 +27,7 @@ impl GalacticOrbitSimulator {
                     self.cfg.is_playing = false;
                     self.advance_burst();
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.cfg.is_playing = false;
                     self.rebuild_system(0);

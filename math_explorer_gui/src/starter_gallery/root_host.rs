@@ -4,13 +4,10 @@
 mod cards;
 
 use super::{
-    ChallengeCard, GallerySelection, StarterCard, goal_challenge_to_starter_card,
-    story_to_starter_card,
+    ChallengeCard, GallerySelection, GoalChallengeMetadata, PresetStoryMetadata, StarterCard,
+    goal_challenge_to_starter_card, story_to_starter_card,
 };
-use cards::{
-    GalleryOverlayMetrics, compute_gallery_metrics, render_challenges_grid, render_starter_card,
-    render_stories_grid,
-};
+use cards::{FilteredGalleryItems, GalleryOverlayMetrics, compute_gallery_metrics};
 use eframe::egui;
 
 const DEFER_STARTER_GALLERY_TO_ROOT_KEY: &str = "DEFER_STARTER_GALLERY_TO_ROOT";
@@ -43,6 +40,31 @@ struct DeferredStarterGalleryRequest {
     challenges: Vec<ChallengeCard>,
 }
 
+fn is_cross_domain_gallery(
+    id_source: &str,
+    cards: &[StarterCard],
+    challenges: &[ChallengeCard],
+) -> bool {
+    if id_source == "global_workspace" {
+        return true;
+    }
+    if let Some(first) = cards.first()
+        && cards
+            .iter()
+            .any(|c| !super::domain_matches_gallery(c.domain, first.domain))
+    {
+        return true;
+    }
+    if let Some(first_ch) = challenges.first()
+        && challenges
+            .iter()
+            .any(|c| !super::domain_matches_gallery(c.domain, first_ch.domain))
+    {
+        return true;
+    }
+    false
+}
+
 fn resolve_gallery_domain<'a>(
     id_source: &'a str,
     cards: &'a [StarterCard],
@@ -64,13 +86,32 @@ fn resolve_gallery_domain<'a>(
     }
 }
 
+fn load_gallery_stories_and_goals(
+    id_source: &str,
+    cards: &[StarterCard],
+    challenges: &[ChallengeCard],
+) -> (
+    Vec<&'static PresetStoryMetadata>,
+    Vec<&'static GoalChallengeMetadata>,
+) {
+    if is_cross_domain_gallery(id_source, cards, challenges) {
+        (super::get_all_stories(), super::get_all_goal_challenges())
+    } else {
+        let domain = resolve_gallery_domain(id_source, cards, challenges);
+        (
+            super::get_stories_for_domain(domain),
+            super::get_goal_challenges_for_domain(domain),
+        )
+    }
+}
+
 fn load_active_gallery_tab(
     ctx: &egui::Context,
     modal_id: egui::Id,
     id_source: &str,
-    counts: (usize, usize, usize),
+    total_counts: (usize, usize, usize),
 ) -> (egui::Id, egui::Id, StarterGalleryTab) {
-    let (starter_count, story_count, challenge_count) = counts;
+    let (starter_count, story_count, challenge_count) = total_counts;
     let tab_key = modal_id.with("gallery_active_tab");
     let legacy_key = egui::Id::new((id_source, "starter_gallery_active_tab"));
     let default_tab = if starter_count == 0 && challenge_count > 0 {
@@ -94,12 +135,13 @@ fn render_gallery_header_and_tabs(
     frame_ctx: &mut crate::ModalFrameContext,
     modal_id: egui::Id,
     id_source: &str,
-    counts: (usize, usize, usize),
+    total_counts: (usize, usize, usize),
+    filtered_counts: (usize, usize, usize),
     inner_w: f32,
 ) -> StarterGalleryTab {
-    let (starter_count, story_count, challenge_count) = counts;
+    let (starter_count, story_count, challenge_count) = filtered_counts;
     let (tab_key, legacy_key, mut active_tab) =
-        load_active_gallery_tab(ui.ctx(), modal_id, id_source, counts);
+        load_active_gallery_tab(ui.ctx(), modal_id, id_source, total_counts);
 
     ui.horizontal(|ui| {
         ui.set_width(inner_w);
@@ -139,7 +181,7 @@ fn render_gallery_header_and_tabs(
     });
     let subtitle = match active_tab {
         StarterGalleryTab::Starters => {
-            "Choose a guided starter model to launch pre-configured simulation parameters:"
+            "Search or filter across domains to launch pre-configured simulation templates:"
         }
         StarterGalleryTab::GuidedStories => {
             "Walk through a multi-step mathematical paradox tour with synchronized plot callouts:"
@@ -150,9 +192,7 @@ fn render_gallery_header_and_tabs(
     };
     let sub_text = egui::RichText::new(subtitle).color(ui.visuals().weak_text_color());
     ui.add(egui::Label::new(sub_text).wrap());
-    ui.add_space(6.0);
-    ui.separator();
-    ui.add_space(8.0);
+    ui.add_space(4.0);
     active_tab
 }
 
@@ -165,49 +205,48 @@ fn render_starter_gallery_body(
     challenges: &[ChallengeCard],
     m: &GalleryOverlayMetrics,
 ) -> Option<GallerySelection> {
-    let domain = resolve_gallery_domain(id_source, cards, challenges);
-    let stories = super::get_stories_for_domain(domain);
-    let goal_challenges = super::get_goal_challenges_for_domain(domain);
+    let (stories, goal_challenges) = load_gallery_stories_and_goals(id_source, cards, challenges);
     let mut selected = None;
+    let top_y = ui.cursor().top();
     ui.set_max_width(m.inner_w);
     ui.set_width(m.inner_w);
-    let counts = (
+
+    let mut filter_state = super::filter_ui::load_gallery_filter_state(ui.ctx(), modal_id);
+    let filtered =
+        FilteredGalleryItems::build(cards, &stories, challenges, &goal_challenges, &filter_state);
+    let total_counts = (
         cards.len(),
         stories.len(),
         challenges.len() + goal_challenges.len(),
     );
-    let active_tab =
-        render_gallery_header_and_tabs(ui, frame_ctx, modal_id, id_source, counts, m.inner_w);
+    let active_tab = render_gallery_header_and_tabs(
+        ui,
+        frame_ctx,
+        modal_id,
+        id_source,
+        total_counts,
+        filtered.counts(),
+        m.inner_w,
+    );
+    super::filter_ui::render_gallery_filter_bar(ui, frame_ctx, &mut filter_state, m.inner_w);
+    ui.add_space(4.0);
+    ui.separator();
+    ui.add_space(6.0);
+
+    let header_used = (ui.cursor().top() - top_y).max(0.0);
+    let scroll_h = (m.max_h - 32.0 - header_used)
+        .max(88.0)
+        .min(m.scroll_h.max(220.0));
 
     egui::ScrollArea::vertical()
-        .max_height(m.scroll_h)
+        .max_height(scroll_h)
         .auto_shrink([false, true])
         .show(ui, |ui| {
             ui.set_max_width(m.inner_w);
             ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-            match active_tab {
-                StarterGalleryTab::Starters => {
-                    for row in cards.chunks(m.cols.max(1)) {
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-                            for card in row {
-                                if render_starter_card(ui, card, m.card_w, "▶ Launch") {
-                                    selected = Some(GallerySelection::Starter(card.clone()));
-                                    frame_ctx.close();
-                                }
-                            }
-                        });
-                    }
-                }
-                StarterGalleryTab::GuidedStories => {
-                    selected = render_stories_grid(ui, frame_ctx, &stories, m);
-                }
-                StarterGalleryTab::Challenges => {
-                    selected =
-                        render_challenges_grid(ui, frame_ctx, challenges, &goal_challenges, m);
-                }
-            }
+            selected = filtered.render_tab(ui, frame_ctx, active_tab, &mut filter_state, m);
         });
+    super::filter_ui::store_gallery_filter_state(ui.ctx(), modal_id, filter_state);
     selected
 }
 
@@ -219,17 +258,17 @@ pub fn show_starter_gallery_with_challenges(
     challenges: &[ChallengeCard],
     is_open: &mut bool,
 ) -> Option<GallerySelection> {
-    let domain = resolve_gallery_domain(id_source, cards, challenges);
-    if cards.is_empty()
-        && challenges.is_empty()
-        && super::get_stories_for_domain(domain).is_empty()
-        && super::get_goal_challenges_for_domain(domain).is_empty()
+    let modal_id = egui::Id::new(format!("{id_source}_starter_gallery_overlay"));
+    if !*is_open {
+        super::filter_ui::clear_gallery_filter_state(ctx, modal_id);
+    }
+    let (stories, goal_challenges) = load_gallery_stories_and_goals(id_source, cards, challenges);
+    if cards.is_empty() && challenges.is_empty() && stories.is_empty() && goal_challenges.is_empty()
     {
         return None;
     }
     let m = compute_gallery_metrics(ctx);
     let mut selected = None;
-    let modal_id = egui::Id::new(format!("{id_source}_starter_gallery_overlay"));
     let frame = egui::Frame::window(&ctx.style())
         .inner_margin(16)
         .corner_radius(12.0)
@@ -246,6 +285,9 @@ pub fn show_starter_gallery_with_challenges(
             );
         });
 
+    if !*is_open || selected.is_some() {
+        super::filter_ui::clear_gallery_filter_state(ctx, modal_id);
+    }
     selected
 }
 
@@ -256,14 +298,26 @@ pub fn show_starter_gallery_overlay(
     cards: &[StarterCard],
     is_open: &mut bool,
 ) -> Option<StarterCard> {
-    let domain = resolve_gallery_domain(id_source, cards, &[]);
-    let challenges = super::get_challenge_cards_for_domain(domain);
+    let challenges = if is_cross_domain_gallery(id_source, cards, &[]) {
+        super::get_all_challenge_cards()
+    } else {
+        let domain = resolve_gallery_domain(id_source, cards, &[]);
+        super::get_challenge_cards_for_domain(domain)
+    };
     match show_starter_gallery_with_challenges(ctx, id_source, cards, &challenges, is_open) {
         Some(GallerySelection::Starter(card)) => Some(card),
         Some(GallerySelection::Story(story)) => Some(story_to_starter_card(story)),
         Some(GallerySelection::GoalChallenge(goal)) => Some(goal_challenge_to_starter_card(goal)),
         Some(GallerySelection::Challenge(_)) | None => None,
     }
+}
+
+/// Returns whether a root-level `StarterGallery` hoisting scope is currently active on `ctx`.
+pub(crate) fn is_root_starter_gallery_scope_active(ctx: &egui::Context) -> bool {
+    ctx.data(|d| {
+        d.get_temp::<bool>(egui::Id::new(DEFER_STARTER_GALLERY_TO_ROOT_KEY))
+            .unwrap_or(false)
+    })
 }
 
 /// Enables root-level hoisting of `StarterGallery` modals rendered during pane updates.
@@ -336,8 +390,12 @@ pub(crate) fn flush_deferred_starter_galleries(
         if selected.is_some() {
             is_open = false;
         }
-        if let Some(tab) = app.pane_tab_mut(req.pane_idx) {
-            tab.apply_starter_gallery_selection(ctx, &req.id_source, is_open, selected);
-        }
+        app.apply_deferred_starter_gallery_selection(
+            ctx,
+            req.pane_idx,
+            &req.id_source,
+            is_open,
+            selected,
+        );
     }
 }

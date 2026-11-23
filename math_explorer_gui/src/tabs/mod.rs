@@ -225,11 +225,6 @@ pub trait ExplorerTab {
         self.framework().and_then(|fw| fw.active_tool_id())
     }
 
-    /// Active inverse `ChallengeMetadata` identifier for `#challenge=<id>` share links.
-    fn active_challenge_id(&self) -> Option<&'static str> {
-        self.framework().and_then(|fw| fw.active_challenge_id())
-    }
-
     /// Deterministic parameter-only revision token for 300 ms debounced URL sync.
     fn url_state_revision(&self) -> u64 {
         self.framework()

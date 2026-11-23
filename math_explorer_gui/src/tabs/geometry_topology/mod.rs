@@ -1,6 +1,7 @@
 // @explorer_feature = "pure_math"
 // @explorer_domain = "Pure Math"
 // @explorer_slug = "geometry_topology"
+// @explorer_order = 22
 
 pub mod curvature_heatmap;
 pub mod custom_surface;

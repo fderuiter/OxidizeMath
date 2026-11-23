@@ -1,6 +1,7 @@
 // @explorer_feature = "ai"
 // @explorer_domain = "AI"
 // @explorer_slug = "ai"
+// @explorer_order = 60
 
 pub mod activation_functions;
 pub mod attention_maps;

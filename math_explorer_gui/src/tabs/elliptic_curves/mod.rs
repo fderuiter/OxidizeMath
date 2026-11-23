@@ -1,6 +1,7 @@
 // @explorer_feature = "pure_math"
 // @explorer_domain = "Pure Math"
 // @explorer_slug = "elliptic_curves"
+// @explorer_order = 26
 // [cite:modular_polynomials_review]
 // [cite:hurwitz_kronecker]
 

@@ -3,11 +3,11 @@ use crate::framework::{InputMode, InteractiveTool};
 use eframe::egui;
 use math_commons::primitives::UnitInterval;
 use math_explorer::ai::reinforcement_learning::{
-    MarkovDecisionProcess,
     algorithms::TabularQAgent,
     grid_world::{GridState, GridWorldEnv, Move},
     q_function::TabularQFunction,
     strategies::EpsilonGreedy,
+    MarkovDecisionProcess,
 };
 
 pub struct GridWorldTool {
@@ -199,11 +199,11 @@ impl GridWorldTool {
                 self.reset_agent();
             }
             ui.separator();
-            self.draw_hyperparameter_controls(ui);
+            self.draw_hyperparameter_sliders(ui);
         });
     }
 
-    fn draw_hyperparameter_controls(&mut self, ui: &mut egui::Ui) {
+    fn draw_hyperparameter_sliders(&mut self, ui: &mut egui::Ui) {
         ui.heading("RL Hyperparameters");
         let mut hp_changed = ui
             .add(egui::Slider::new(&mut self.learning_rate, 0.01..=1.0).text("Learning Rate (α)"))
@@ -413,7 +413,7 @@ inventory::submit! {
         id: "GridWorldTool",
         display_name: "Grid World (RL)",
         domain: "ai",
-        tags: &[],
+        tags: &["reinforcement learning", "q-learning", "bellman", "mdp", "policy", "epsilon-greedy"],
         build: || Box::new(GridWorldTool::default()),
     }
 }

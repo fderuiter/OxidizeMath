@@ -280,6 +280,7 @@ impl RewardPlotsTool {
             PlaybackAction::Step => {
                 let _ = self.controller.send_command(SimCommand::Step(1));
             }
+            PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
             PlaybackAction::Reset => {
                 self.reset();
                 ctx.request_repaint();
@@ -385,7 +386,7 @@ inventory::submit! {
         id: "RewardPlotsTool",
         display_name: "Reward Plots",
         domain: "ai",
-        tags: &[],
+        tags: &["reinforcement learning", "episodic return", "discounted reward", "convergence", "policy"],
         build: || Box::new(RewardPlotsTool::default()),
     }
 }

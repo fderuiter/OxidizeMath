@@ -163,6 +163,7 @@ impl SpinVisualizer {
                     PlaybackAction::Play => self.paused = false,
                     PlaybackAction::Pause => self.paused = true,
                     PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset(),
                 }
             }
@@ -309,7 +310,7 @@ inventory::submit! {
         id: "SpinVisualizer",
         display_name: "Spin Dynamics (Bloch Sphere)",
         domain: "quantum",
-        tags: &[],
+        tags: &["bloch sphere", "qubit", "zeeman", "larmor", "precession", "pauli"],
         build: || Box::new(SpinVisualizer::default()),
     }
 }

@@ -46,6 +46,7 @@ pub(super) fn is_valid_state(s: &ChladniWaveTankState) -> bool {
         && (REFRACTIVE_MIN..=REFRACTIVE_MAX).contains(&s.refractive_index)
         && s.lens_aperture.is_finite()
         && (8.0..=56.0).contains(&s.lens_aperture)
+        && super::sonification::are_custom_clamps_valid(&s.custom_clamps)
 }
 
 pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
@@ -64,6 +65,7 @@ pub(super) fn clamp_state_fields(s: &mut ChladniWaveTankState) {
     s.detector_x = s.detector_x.clamp(8, GRID_SIZE - 4);
     s.refractive_index = sanitize_bounded(s.refractive_index, REFRACTIVE_MIN, REFRACTIVE_MAX, 1.6);
     s.lens_aperture = sanitize_bounded(s.lens_aperture, 8.0, 56.0, 34.0);
+    super::sonification::sanitize_custom_clamps(&mut s.custom_clamps);
 }
 
 fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
@@ -96,6 +98,7 @@ fn base_tank_state(preset: TankPreset) -> ChladniWaveTankState {
         show_nodal_contours: true,
         show_sand_particles: false,
         rng_seed: 0xC41A_D21E,
+        custom_clamps: Vec::new(),
     }
 }
 

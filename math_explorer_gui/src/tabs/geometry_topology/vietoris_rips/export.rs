@@ -68,7 +68,7 @@ fn append_complex_primitives(
     for tri in &tool.cached_triangles {
         prims.push(ExportPrimitive::Polyline {
             name: "2-Simplex".to_string(),
-            points: vec![map_pt(tri[0]), map_pt(tri[1]), map_pt(tri[2])],
+            points: vec![map_pt(tri[0]), map_pt(tri[1]), map_pt(tri[2])].into(),
             color: egui::Color32::TRANSPARENT,
             stroke_width: 0.5,
             closed: true,
@@ -78,7 +78,7 @@ fn append_complex_primitives(
     for edge in &tool.cached_edges {
         prims.push(ExportPrimitive::Polyline {
             name: "1-Simplex".to_string(),
-            points: vec![map_pt(edge[0]), map_pt(edge[1])],
+            points: vec![map_pt(edge[0]), map_pt(edge[1])].into(),
             color: palette.graph_edge,
             stroke_width: 1.5,
             closed: false,
@@ -87,7 +87,13 @@ fn append_complex_primitives(
     }
     prims.push(ExportPrimitive::Points {
         name: "Vertices".to_string(),
-        points: tool.cached_vertices.iter().copied().map(map_pt).collect(),
+        points: tool
+            .cached_vertices
+            .iter()
+            .copied()
+            .map(map_pt)
+            .collect::<Vec<_>>()
+            .into(),
         color: s0,
         radius: 4.0,
     });
@@ -117,7 +123,7 @@ fn append_diagram_primitives(
     let eps_n = (tool.radius / max_s).clamp(0.0, 1.0);
     prims.push(ExportPrimitive::Polyline {
         name: "Diagonal y = x".to_string(),
-        points: vec![[x0, 0.0], [x0 + 1.0, 1.0]],
+        points: vec![[x0, 0.0], [x0 + 1.0, 1.0]].into(),
         color: palette.muted_text,
         stroke_width: 1.2,
         closed: false,
@@ -125,7 +131,7 @@ fn append_diagram_primitives(
     });
     prims.push(ExportPrimitive::Polyline {
         name: "Active ε Quadrant".to_string(),
-        points: vec![[x0, eps_n], [x0 + eps_n, eps_n], [x0 + eps_n, 1.0]],
+        points: vec![[x0, eps_n], [x0 + eps_n, eps_n], [x0 + eps_n, 1.0]].into(),
         color: palette.accent,
         stroke_width: 1.6,
         closed: false,
@@ -145,7 +151,7 @@ fn append_diagram_primitives(
         if !pts.is_empty() {
             prims.push(ExportPrimitive::Points {
                 name: format!("H{dim} Diagram"),
-                points: pts,
+                points: pts.into(),
                 color: palette.series_color(dim),
                 radius: if dim == 0 { 4.5 } else { 5.2 },
             });
@@ -169,7 +175,7 @@ fn append_barcode_primitives(
         let d = x0 + (iv.death.max(iv.birth) / max_s).clamp(0.0, 1.0);
         prims.push(ExportPrimitive::Polyline {
             name: format!("H{} Interval", iv.dimension),
-            points: vec![[b, y], [d.max(b + 0.005), y]],
+            points: vec![[b, y], [d.max(b + 0.005), y]].into(),
             color: palette.series_color(iv.dimension.min(1)),
             stroke_width: if iv.is_alive_at(tool.radius) {
                 3.0
@@ -182,7 +188,7 @@ fn append_barcode_primitives(
     }
     prims.push(ExportPrimitive::Polyline {
         name: "ε Threshold".to_string(),
-        points: vec![[x0 + eps_n, 0.0], [x0 + eps_n, 1.0]],
+        points: vec![[x0 + eps_n, 0.0], [x0 + eps_n, 1.0]].into(),
         color: palette.accent,
         stroke_width: 2.0,
         closed: false,

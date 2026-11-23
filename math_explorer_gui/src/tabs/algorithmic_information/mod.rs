@@ -1,6 +1,7 @@
 // @explorer_feature = "pure_math"
 // @explorer_domain = "Pure Math"
 // @explorer_slug = "algorithmic_information"
+// @explorer_order = 25
 
 pub mod controls;
 pub mod plots;
