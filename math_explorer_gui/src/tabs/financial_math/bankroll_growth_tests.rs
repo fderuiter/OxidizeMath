@@ -69,7 +69,7 @@ fn test_even_money_decimal_odds_and_net_profit_multiplier_settlement() {
     tool.odds = 1.0;
     let desc = tool.theory_description();
     assert!(!desc.contains("NaN") && !desc.contains("inf"));
-    tool.import_preset_json(STARTER_PRESET_JSON)
+    tool.import_preset_json(state::STARTER_PRESET_JSON)
         .expect("starter preset with odds=2.5 must load");
 
     let o = Odds::from_net_odds(2.0).unwrap();
@@ -147,6 +147,29 @@ fn test_f_030_overbetting_divergence_callout_and_zero_allocation() {
             .any(|c| c.tag.as_deref() == Some("ruin_warning")),
         "Ruin warning callout must be set when f > 2 * f*"
     );
+}
+
+#[test]
+fn test_stake_multiplier_observables_and_overbet_growth_rate() {
+    let mut tool = BankrollGrowthTool::default();
+    tool.try_load_state(
+        r#"{"initial_bankroll":1000.0,"probability":0.6,"odds":2.0,"num_bets":120,"stake_multiplier":2.5}"#,
+    )
+    .expect("overbet state loads");
+    let obs = tool.observables();
+    let ev = obs.iter().find(|(k, _)| *k == "expected_value").unwrap().1;
+    let g = obs
+        .iter()
+        .find(|(k, _)| *k == "expected_growth_rate")
+        .unwrap()
+        .1;
+    assert!(
+        ev > 0.15 && g < -0.02,
+        "above 2f*, EV > 0 yet log-growth g < 0"
+    );
+
+    tool.reset_defaults();
+    assert_eq!(tool.stake_multiplier, 1.0);
 }
 
 // [cite:clinical_trials_statistics]

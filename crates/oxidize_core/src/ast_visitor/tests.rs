@@ -120,3 +120,29 @@ fn test_ast_visitor_allow_recursion_preserves_verification_counts() {
     assert_eq!(visitor.verified_asserts, 2);
     assert!(!visitor.opted_out);
 }
+
+#[test]
+fn test_ast_visitor_ignores_verified_and_embed_theory_in_doc_comments() {
+    let code = r#"
+        /// Example macro usage:
+        /// ```rust
+        /// use verified_engine_macros::{embed_theory, verified};
+        /// #[embed_theory("papers/mmwave_radiotherapy_setup.tex", label = "eq:range")]
+        /// #[verified]
+        /// pub fn example() {}
+        /// ```
+        pub fn documented_macro_entrypoint() {}
+    "#;
+    let file = syn::parse_file(code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&file);
+
+    assert_eq!(visitor.total_funcs, 1);
+    assert_eq!(visitor.verified_funcs, 0);
+    assert_eq!(visitor.semantic_integrity_funcs, 0);
+    assert!(
+        visitor.verified_modules.is_empty(),
+        "Doc-comment macro examples must not pollute verified_modules: {:?}",
+        visitor.verified_modules
+    );
+}

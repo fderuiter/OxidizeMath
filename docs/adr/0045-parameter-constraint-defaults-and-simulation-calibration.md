@@ -1,4 +1,4 @@
-# ADR 0044: Calibrated `ParameterConstraint` Defaults and Domain Simulation Calibration
+# ADR 0045: Calibrated `ParameterConstraint` Defaults and Domain Simulation Calibration
 
 ## Status
 Accepted (extends [ADR 0007](0007-reflective-ui-fallback-constraints.md), [ADR 0034](0034-harden-verification-macros-and-facade-reexports.md), and [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md))
@@ -19,6 +19,7 @@ Reflective UI initialization, recovery resets, and non-finite JSON state sanitiz
    - Calibrate `ParameterConstraint` defaults on `HodgkinHuxleyUnified` (`120.0, 36.0, 0.3, 10.0` firing 4 spikes in `50 ms`), `LbmUnified` (`viscosity = 0.02`, $Re = 50$, single uniform inlet), and `WaveSimulatorTool` (`dt = 0.02` on `0.001` step grid).
    - Bound `BankrollGrowthTool` decimal odds to `1.01..=10.0` via `Odds::new` with zero-division-safe `theory_description`, and add editable `seed_counter` `DragValue` + baseline seed reset controls to both `BankrollGrowthTool` and `RandomizationTool`.
    - Set `ClebschGordanTool` $J$ and $M$ slider steps to `0.5`, clamp `CapacityFadeTool` $\text{DoD} \in [1.0, 100.0]$ with exact $C(N) = 0.7^{N / N_{70}}$ theory metadata, display $\frac{1}{n}$ MSE in `LossLandscapeTool`, and integrate `SirTool::evaluate_sensitivity` over `self.duration`.
+   - Guard `AstVisitor::process_fn_attrs` in [`crates/oxidize_core/src/ast_visitor.rs`](../../crates/oxidize_core/src/ast_visitor.rs) so `#[doc = "..."]` examples containing `#[verified]` or `#[embed_theory(...)]` (such as [`crates/verified_engine_macros/src/lib.rs`](../../crates/verified_engine_macros/src/lib.rs)) are not parsed as active macro attributes during `TraceabilityEngine::scan_workspace`.
 
 ## Consequences
 - **Positive**: Startup states, fault recovery resets, and non-finite JSON fallbacks honor domain-calibrated operating points without sacrificing midpoint fallback for unconstrained symmetric parameters or breaking saved `.json` / `.mws` and starter gallery presets.
