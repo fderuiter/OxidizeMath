@@ -1,4 +1,4 @@
-# ADR 0045: Zero-Allocation Upwind McKendrick-von Foerster PDE Solver and Cannibalism Lexis Lab
+# ADR 20261123: Zero-Allocation Upwind McKendrick-von Foerster PDE Solver and Cannibalism Lexis Lab
 
 ## Status
 

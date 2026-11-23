@@ -5,14 +5,16 @@
 use super::presets::MorphogenesisToolState;
 use super::runner::MorphogenesisKineticsAdapter;
 use super::{MorphogenesisTool, SimpleRng};
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
+use crate::async_sim::{BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState};
 use crate::framework::InteractiveTool;
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui;
 use eframe::egui::ColorImage;
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
+#[cfg(test)]
 use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::diffusion::SpatialDiffusion;
 #[cfg(test)]
 use math_explorer::biology::morphogenesis::SchnakenbergKinetics;
 use math_explorer::biology::morphogenesis::TuringSystem;
@@ -89,6 +91,11 @@ impl MorphogenesisTool {
             state: Some(target_state),
             paused: None,
             pending_initial_start: false,
+            mask_rle: self
+                .mask_rle
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
         };
@@ -110,6 +117,7 @@ impl MorphogenesisTool {
             let runner = Self::create_kinetics_runner(
                 &self.params,
                 &self.kinetics_state,
+                &self.mask_rle,
                 self.width,
                 self.height,
             );
@@ -119,6 +127,17 @@ impl MorphogenesisTool {
             self.dirty = true;
         } else {
             self.reset();
+            let rle_mask = self
+                .mask_rle
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            let _ = self
+                .worker
+                .send_command(SimCommand::SyncSculptState(SculptStatePayload {
+                    rle_mask,
+                    sparse_potential: Vec::new(),
+                }));
         }
         if target_state == SimWorkerState::Running {
             self.pending_initial_start = false;
@@ -164,8 +183,8 @@ impl MorphogenesisTool {
         Self::initialize_schnakenberg(system, width, height);
     }
 
-    pub(crate) fn initialize_adapter_system(
-        system: &mut TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
+    pub(crate) fn initialize_adapter_system<D: SpatialDiffusion<2>>(
+        system: &mut TuringSystem<2, MorphogenesisKineticsAdapter, D>,
         width: usize,
         height: usize,
     ) {
@@ -190,8 +209,8 @@ impl MorphogenesisTool {
         }
     }
 
-    fn seed_gray_scott_patches(
-        system: &mut TuringSystem<2, MorphogenesisKineticsAdapter, FiniteDifference2D>,
+    fn seed_gray_scott_patches<D: SpatialDiffusion<2>>(
+        system: &mut TuringSystem<2, MorphogenesisKineticsAdapter, D>,
         width: usize,
         height: usize,
     ) {
