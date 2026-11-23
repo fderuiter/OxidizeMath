@@ -69,6 +69,16 @@ fn wasm_smoke_chladni_wave_tank_presets_stepping_and_exports() {
     assert_eq!(&midi[0..4], b"MThd");
     let (scl, kbm) = tool.export_scala_tuning().expect("WASM Chladni Scala");
     assert!(!scl.is_empty() && !kbm.is_empty());
+
+    let theory = super::atlas::chladni_parameter_constraints();
+    let cart = std::sync::Arc::new(super::atlas::ChladniModalCartographer::new(
+        &theory,
+        ("driver_frequency", "plate_stiffness"),
+        &tool.state,
+        tool.domain_physical_length(),
+    ));
+    let cell = crate::async_sim::atlas::RegimeCartographer::evaluate_cell(&*cart, 0.565, 0.0004);
+    assert!(cell.primary.is_finite());
 }
 
 #[wasm_bindgen_test]

@@ -7,12 +7,9 @@
 use eframe::egui::{self, EventFilter, Key, Modifiers, Pos2, Rect, Shape};
 use egui_plot::focus_ring_stroke;
 use math_explorer::math_kernel::types::flatten_2d_index;
-use math_explorer::pure_math::analysis::pde::wave_2d::{
-    apply_circular_drumhead_mask, apply_multi_slit_barrier, apply_sponge_layer, BoundaryMode2D,
-};
 
 pub(crate) use super::sculpt_codec::*;
-use super::{presets, ChladniWaveTankTool, TankPreset, GRID_SIZE};
+use super::{ChladniWaveTankTool, GRID_SIZE};
 use crate::accessibility::announce_live_status;
 use crate::framework::{
     rasterize_disk_stroke, BrushInteractionMode, BrushMode, BrushStroke, InteractionContext,
@@ -324,41 +321,5 @@ impl ChladniWaveTankTool {
         let arm = 4.5_f32;
         clipped.line_segment([Pos2::new(cx - arm, cy), Pos2::new(cx + arm, cy)], stroke);
         clipped.line_segment([Pos2::new(cx, cy - arm), Pos2::new(cx, cy + arm)], stroke);
-    }
-
-    pub(crate) fn rebuild_masks(&mut self) {
-        self.solver.wall_mask.fill(1.0);
-        self.solver.sponge_mask.fill(0.0);
-        self.solver.wave_speed_mask.fill(1.0);
-
-        if self.state.preset == TankPreset::CircularDrumhead {
-            apply_circular_drumhead_mask(&mut self.solver.wall_mask, GRID_SIZE, GRID_SIZE, 0.45);
-        }
-        if self.state.boundary == BoundaryMode2D::Sponge {
-            apply_sponge_layer(&mut self.solver.sponge_mask, GRID_SIZE, GRID_SIZE, 12, 1.8);
-        }
-        presets::apply_clamp_pins(&mut self.solver.wall_mask, &self.state);
-        if self.state.barrier_enabled {
-            apply_multi_slit_barrier(
-                &mut self.solver.wall_mask,
-                GRID_SIZE,
-                GRID_SIZE,
-                self.state.barrier_x,
-                2,
-                self.state.slit_count,
-                self.state.slit_width,
-                self.state.slit_separation,
-            );
-        }
-        if self.state.lens_enabled {
-            self.apply_active_lens_mask();
-        }
-        #[cfg(feature = "physics")]
-        self.metamaterial.apply_ast_to_wave_speed_mask(
-            &mut self.solver.wave_speed_mask,
-            GRID_SIZE,
-            GRID_SIZE,
-        );
-        replay_sculpt_mask_on_solver(&self.sculpt_mask, &mut self.solver);
     }
 }

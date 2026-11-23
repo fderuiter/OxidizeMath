@@ -378,6 +378,7 @@ impl ChladniWaveTankTool {
         } else if shift
             && clicked
             && self.state.custom_clamps.len() < super::sonification::MAX_CUSTOM_CLAMPS
+            && self.active_challenge.is_none()
         {
             self.state.custom_clamps.push([nx, ny]);
             self.rebuild_masks();
