@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 
 pub mod braess;
 mod braess_host;
+mod dataflow;
 mod io_export;
 mod keyboard;
 mod snapshot;
@@ -87,12 +88,10 @@ impl InteractiveTool for GraphEditorTool {
         self.serialize_borrowed_state()
     }
 
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
 
-    #[cfg(test)]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
@@ -187,6 +186,7 @@ impl InteractiveTool for GraphEditorTool {
             self.braess
                 .draw_canvas_banner(painter, response.rect, &palette);
         }
+        self.publish_dataflow_topology(ui.ctx());
     }
 }
 
