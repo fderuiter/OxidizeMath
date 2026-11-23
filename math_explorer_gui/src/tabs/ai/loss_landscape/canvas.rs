@@ -35,6 +35,7 @@ impl LossLandscapeTool {
                     multi_touch: ui.input(|i| i.multi_touch()),
                     keys_down: ui.input(|i| i.keys_down.clone()),
                     modifiers: ui.input(|i| i.modifiers),
+                    brush_stroke: None,
                 };
                 self.on_brush(&ctx);
             } else {

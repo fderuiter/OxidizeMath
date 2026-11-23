@@ -57,6 +57,7 @@ impl PotentialFlowTool {
             ui.heading("Potential Flow Controls");
             ui.separator();
             self.draw_add_element_controls(ui);
+            self.draw_brush_toolbar(ui);
 
             ui.separator();
             self.draw_active_elements_list(ui);

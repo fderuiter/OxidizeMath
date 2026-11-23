@@ -1,6 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
+use crate::framework::{
+    BrushMode, CalloutManager, CalloutSpec, InteractionContext, InteractiveTool, SpatialBrushKit,
+};
 use eframe::egui;
 use egui_plot::{Arrows, Legend, Line, MarkerShape, Plot, Points};
 use math_explorer::physics::fluid_dynamics::potential_flow::{
@@ -38,6 +40,7 @@ pub struct PotentialFlowTool {
     pub(crate) new_element_x: f64,
     pub(crate) new_element_y: f64,
     pub(crate) new_element_angle: f64,
+    pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) show_streamlines: bool,
     pub(crate) show_stagnation_points: bool,
     pub(crate) cached_polylines: Vec<Vec<[f64; 2]>>,
@@ -126,6 +129,7 @@ impl Default for PotentialFlowTool {
             new_element_x: 0.0,
             new_element_y: 0.0,
             new_element_angle: 0.0,
+            brush_kit: Self::default_flow_brush_kit(),
             show_streamlines: true,
             show_stagnation_points: true,
             cached_polylines: Vec::new(),
@@ -210,6 +214,16 @@ impl InteractiveTool for PotentialFlowTool {
         Some(self)
     }
 
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(ref stroke) = ctx.brush_stroke {
+            self.apply_flow_brush_stroke(stroke);
+        }
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.high_contrast = crate::app::ThemeMode::from_visuals(ui.visuals())
             == crate::app::ThemeMode::HighContrast;
@@ -225,38 +239,72 @@ impl InteractiveTool for PotentialFlowTool {
         let stagnation = self
             .show_stagnation_points
             .then(|| self.ensure_cached_stagnation());
+        let allow_pan = !self.brush_kit.is_sculpting();
+        let vr = self.view_range.max(1.0);
+        let mut strokes = Vec::new();
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            Plot::new("potential_flow_plot")
+            let plot_resp = Plot::new("potential_flow_plot")
                 .data_aspect(1.0)
                 .view_aspect(1.0)
+                .allow_drag(allow_pan)
+                .allow_zoom(allow_pan)
                 .legend(Legend::default())
                 .show(ui, |plot_ui| {
-                    if let Some(segs) = streamlines.filter(|s| !s.is_empty()) {
-                        plot_ui.line(Line::from_colored_segments("Streamlines (ψ)", segs).width(1.4_f32));
-                    }
-                    plot_ui.arrows(
-                        Arrows::new(
-                            "Vector Field",
-                            egui_plot::PlotPoints::from_shared(origins),
-                            egui_plot::PlotPoints::from_shared(tips),
-                        )
-                        .color(palette.series_color(0)),
+                    self.render_flow_plot_layers(
+                        plot_ui,
+                        &palette,
+                        streamlines,
+                        origins,
+                        tips,
+                        stagnation,
                     );
-                    if let Some(pts) = stagnation.filter(|p| !p.is_empty()) {
-                        plot_ui.points(
-                            Points::new("Stagnation (|V|=0)", egui_plot::PlotPoints::from_shared(pts))
-                                .shape(MarkerShape::Diamond)
-                                .radius(5.5_f32)
-                                .color(palette.warning),
-                        );
-                    }
-                    self.callout_manager.render_on_plot(plot_ui);
+                    strokes =
+                        self.brush_kit
+                            .sample_plot(plot_ui, [-vr, -vr], [vr, vr], Some(BrushMode::Erase));
                 });
+            for stroke in strokes {
+                let ic = InteractionContext::from_brush_stroke(&plot_resp.response, stroke);
+                self.on_brush(&ic);
+            }
         });
     }
 }
 
 impl PotentialFlowTool {
+    fn render_flow_plot_layers(
+        &mut self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        palette: &crate::app::SemanticPalette,
+        streamlines: Option<std::sync::Arc<Vec<egui_plot::ColoredSegment>>>,
+        origins: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
+        tips: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
+        stagnation: Option<std::sync::Arc<Vec<egui_plot::PlotPoint>>>,
+    ) {
+        if let Some(segs) = streamlines.filter(|s| !s.is_empty()) {
+            plot_ui.line(Line::from_colored_segments("Streamlines (ψ)", segs).width(1.4_f32));
+        }
+        plot_ui.arrows(
+            Arrows::new(
+                "Vector Field",
+                egui_plot::PlotPoints::from_shared(origins),
+                egui_plot::PlotPoints::from_shared(tips),
+            )
+            .color(palette.series_color(0)),
+        );
+        if let Some(pts) = stagnation.filter(|p| !p.is_empty()) {
+            plot_ui.points(
+                Points::new(
+                    "Stagnation (|V|=0)",
+                    egui_plot::PlotPoints::from_shared(pts),
+                )
+                .shape(MarkerShape::Diamond)
+                .radius(5.5_f32)
+                .color(palette.warning),
+            );
+        }
+        self.callout_manager.render_on_plot(plot_ui);
+    }
+
     pub(crate) fn rebuild_field(&mut self) {
         let mut field = PotentialFlowField::new();
         for el in &self.elements {
