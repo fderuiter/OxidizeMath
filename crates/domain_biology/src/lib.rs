@@ -7,11 +7,15 @@ pub mod error;
 #[allow(missing_docs)]
 pub mod __doctest_facade {
     pub mod error {
-        pub use crate::error::HodgkinHuxleyError;
+        pub use crate::error::{
+            BiologyError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
+        };
         pub use ::domain_applied::__doctest_facade::error::*;
     }
     pub mod prelude {
-        pub use crate::error::HodgkinHuxleyError;
+        pub use crate::error::{
+            BiologyError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
+        };
         pub use ::domain_applied::__doctest_facade::prelude::*;
     }
     pub use crate::biology;

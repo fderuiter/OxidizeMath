@@ -53,6 +53,7 @@ mod tests {
         check_tool!(crate::tabs::number_theory::ualbf_widget::UalbfWidget);
         check_tool!(crate::tabs::number_theory::partitions_widget::PartitionsWidget);
         check_tool!(crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget);
+        check_tool!(crate::tabs::morphogenesis::lenia::LeniaTool);
         check_tool!(crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool);
         check_tool!(crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool);
     }
