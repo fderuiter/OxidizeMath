@@ -5,11 +5,12 @@ use super::lattice_boltzmann_sculpt::{
     export_solver_rle, inspect_solver_solid_and_core, record_stroke_in_rle,
     reset_solver_preserving_obstacles, seed_initial_lbm_geometry, sync_lbm_parameters,
 };
+use super::lbm_atlas::{resolve_inlet_velocity, LbmCartographer, LBM_ATLAS_AXIS_PAIRS};
 use super::lbm_fairing::{
     decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0,
-    LBM_U_IN,
 };
 use super::lbm_fairing_ui::LbmUiExtension;
+use crate::async_sim::atlas::RegimeCartographer;
 use crate::async_sim::unified::{UnifiedModel, UnifiedUiExtension};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -44,6 +45,7 @@ pub struct LbmUnified {
     pub(crate) solver: LatticeBoltzmannD2Q9<BgkCollision>,
     pub(crate) vorticity_buf: Vec<f64>,
     pub(crate) latest_aero: AerodynamicCoefficients,
+    pub(crate) inlet_velocity: f64,
     pub(crate) stamped_airfoil: Option<(u16, f64)>,
     pub(crate) active_profile_param: f64,
     pub(crate) challenge_core_locked: bool,
@@ -56,7 +58,8 @@ pub struct LbmUnified {
 impl LbmUnified {
     fn refresh_diagnostics(&mut self) {
         compute_vorticity_into(&self.solver, &mut self.vorticity_buf);
-        self.latest_aero = compute_aerodynamic_coefficients(&self.solver, LBM_INLET_U, 24.0, 3);
+        let u_ref = self.inlet_velocity.max(1e-4);
+        self.latest_aero = compute_aerodynamic_coefficients(&self.solver, u_ref, 24.0, 3);
     }
 
     /// Re-initializes equilibrium populations via `init_equilibrium` and restores
@@ -69,6 +72,7 @@ impl LbmUnified {
             .filter(|v| v.is_finite() && *v > 0.0)
             .unwrap_or(0.02);
         let restore_core = self.stamped_airfoil.is_none();
+        self.inlet_velocity = resolve_inlet_velocity(params);
         reset_solver_preserving_obstacles(&mut self.solver, viscosity, restore_core);
         self.diverged = false;
         self.diagnostic_report = None;
@@ -159,6 +163,7 @@ impl UnifiedModel for LbmUnified {
             solver,
             vorticity_buf: vec![0.0; LBM_WIDTH * LBM_HEIGHT],
             latest_aero: AerodynamicCoefficients::default(),
+            inlet_velocity: resolve_inlet_velocity(params),
             stamped_airfoil,
             active_profile_param,
             challenge_core_locked: false,
@@ -184,6 +189,7 @@ impl UnifiedModel for LbmUnified {
             self.solver.init_equilibrium();
             self.stamped_airfoil = seed_initial_lbm_geometry(&mut self.solver, params);
             self.active_profile_param = next_profile;
+            self.inlet_velocity = resolve_inlet_velocity(params);
             self.diverged = false;
             self.diagnostic_report = None;
             self.step_count = 0;
@@ -218,8 +224,9 @@ impl UnifiedModel for LbmUnified {
             &mut self.display_vorticity,
             params,
         );
+        self.inlet_velocity = resolve_inlet_velocity(params);
         self.step_count += 1;
-        advance_wind_tunnel_step(&mut self.solver, LBM_INLET_U);
+        advance_wind_tunnel_step(&mut self.solver, self.inlet_velocity);
         self.refresh_diagnostics();
 
         if !FiniteStateGuard::is_finite_state(self) {
@@ -240,6 +247,7 @@ impl UnifiedModel for LbmUnified {
             &mut self.display_vorticity,
             params,
         );
+        self.inlet_velocity = resolve_inlet_velocity(params);
         self.refresh_diagnostics();
     }
 
@@ -274,7 +282,12 @@ impl UnifiedModel for LbmUnified {
         }
 
         let (f_drag, f_lift) = self.solver.hydrodynamic_forces();
-        let c_d = compute_drag_coefficient(f_drag, LBM_RHO_0, LBM_U_IN, LBM_REF_DIAMETER);
+        let c_d = compute_drag_coefficient(
+            f_drag,
+            LBM_RHO_0,
+            self.inlet_velocity.max(1e-4),
+            LBM_REF_DIAMETER,
+        );
         let (n_solid, core_intact) = inspect_solver_solid_and_core(&self.solver);
         let metrics = LbmSnapshotMetrics {
             lift_coeff: self.latest_aero.lift_coeff,
@@ -412,6 +425,7 @@ impl UnifiedModel for LbmUnified {
         let c = |min, max, step| ParameterConstraint { min, max, step };
         HashMap::from([
             ("viscosity".to_string(), c(0.00333, 0.5, 0.005)),
+            ("inlet_velocity".to_string(), c(0.015, 0.185, 0.005)),
             ("angle_of_attack".to_string(), c(-25.0, 25.0, 1.0)),
             ("naca_profile".to_string(), c(0.0, 4412.0, 1.0)),
             ("field_view".to_string(), c(0.0, 1.0, 1.0)),
@@ -421,6 +435,7 @@ impl UnifiedModel for LbmUnified {
     fn parameter_label(name: &str) -> String {
         match name {
             "viscosity" => "Kinematic Viscosity (ν)".to_string(),
+            "inlet_velocity" => "Inlet Velocity (U)".to_string(),
             "angle_of_attack" => "Angle of Attack α (°)".to_string(),
             "naca_profile" => "Obstacle / Airfoil Profile".to_string(),
             "field_view" => "Scalar Field View".to_string(),
@@ -439,6 +454,18 @@ impl UnifiedModel for LbmUnified {
             "field_view" => &[("Velocity |u|", 0.0), ("Vorticity ω_z", 1.0)],
             _ => &[],
         }
+    }
+
+    fn atlas_axis_pairs() -> &'static [(&'static str, &'static str)] {
+        LBM_ATLAS_AXIS_PAIRS
+    }
+
+    fn build_atlas_cartographer(
+        params: &HashMap<String, f64>,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<Arc<dyn RegimeCartographer>> {
+        LbmCartographer::from_params(params, axis_keys)
+            .map(|c| Arc::new(c) as Arc<dyn RegimeCartographer>)
     }
 
     fn name() -> &'static str {
