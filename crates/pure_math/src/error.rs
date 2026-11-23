@@ -38,6 +38,36 @@ pub enum KellyError {
     #[error("Invalid odds: {value} (must be > 1.0)")]
     #[allow(missing_docs)]
     InvalidOdds { value: f64 },
+    /// Invalid net profit multiplier (must be finite and strictly positive).
+    #[error("Invalid net odds: {value} (must be finite and > 0.0)")]
+    InvalidNetOdds {
+        /// Rejected net profit multiplier `b`.
+        value: f64,
+    },
+    /// Invalid American odds (must be finite with magnitude at least 100).
+    #[error("Invalid American odds: {value} (must be finite with |odds| >= 100.0)")]
+    InvalidAmericanOdds {
+        /// Rejected American odds input.
+        value: f64,
+    },
+    /// Invalid fractional odds (numerator and denominator must both be finite and strictly positive).
+    #[error(
+        "Invalid fractional odds: {numerator}/{denominator} (numerator and denominator must be finite and > 0.0)"
+    )]
+    InvalidFractionalOdds {
+        /// Rejected fractional profit numerator.
+        numerator: f64,
+        /// Rejected fractional stake denominator.
+        denominator: f64,
+    },
+    /// Invalid implied probability (must be finite and strictly inside `(0.0, 1.0)`).
+    #[error(
+        "Invalid implied probability: {value} (must be finite and strictly between 0.0 and 1.0)"
+    )]
+    InvalidImpliedProbability {
+        /// Rejected implied probability input.
+        value: f64,
+    },
     /// Invalid fraction (must be between 0 and 1).
     #[error("Invalid fraction: {value} (must be between 0 and 1)")]
     #[allow(missing_docs)]

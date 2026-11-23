@@ -1,0 +1,24 @@
+# ADR 0043: Bidirectional Zero-Allocation Odds Conversions, Format-Aware Kelly Errors, and Bet Size Calculator Synchronization
+
+## Status
+Accepted (extends [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md) and [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md))
+
+## Context
+Four mathematical and interactive-state defects affected [`pure_math::statistics::kelly`](../../crates/pure_math/src/pure_math/statistics/kelly/core.rs) and [`BetSizeCalculatorTool`](../../math_explorer_gui/src/tabs/financial_math/bet_size.rs):
+1. **Incomplete `Odds` Conversions and Unvalidated `serde` Support**: `Odds` omitted `to_american`, GCD-reduced `to_fractional`, and `from_implied_probability`, and neither `Odds` nor `BankrollFraction` implemented `Serialize` or invariant-checked `Deserialize`.
+2. **Asymmetric Boundary Guards and Hardcoded Decimal Error Text**: `Odds::from_american` rejected `-100.0` via the half-open range `(-100.0..100.0)` while accepting `+100.0`; `Odds::from_fractional` evaluated `numerator / denominator` before guarding `0.0` inputs; and [`KellyError`](../../crates/pure_math/src/error.rs) hardcoded `(must be > 1.0)` for every non-decimal constructor failure.
+3. **Unsynchronized `BetSizeCalculatorTool` Inputs, Dead-Zone Scrubbing, and Stale `theory_description`**: `BetSizeCalculatorTool` kept independent odds fields without `ImpliedProbability` input or cross-format synchronization, scrubbed across `200` invalid steps in `(-100.0, 100.0)`, accepted dead-zone JSON in `try_load_state`, carried a legacy `#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]` bypass on `show_inside`, and formatted stale `self.decimal_odds` as net profit multiplier $b$ in `theory_description`.
+4. **Disabled Tabular Exports on Analytical Calculators**: `BetSizeCalculatorTool` returned `ExportCapabilities::none()`, disabling `CSV` and `JSON` exports of Kelly sizing fractions and dollar wagers.
+
+## Decision
+1. **Complete Zero-Allocation `Odds` Conversions, Guards, `serde` Traits, and `KellyError` Variants**:
+   - Add `#[verified_engine::verified]` methods `Odds::to_american`, `Odds::to_fractional(max_denominator: u64)` (bounded continued-fraction approximation with `max_denominator.max(1)` clamping, `u128` overflow protection, semiconvergent comparison, and Euclidean GCD reduction), and `Odds::from_implied_probability` in [`crates/pure_math/src/pure_math/statistics/kelly/core.rs`](../../crates/pure_math/src/pure_math/statistics/kelly/core.rs).
+   - Guard `Odds::from_american` with `american.abs() < 100.0` so both `-100.0` and `+100.0` map to decimal `2.0`, validate `numerator <= 0.0 || denominator <= 0.0` prior to division in `Odds::from_fractional`, implement `Serialize` and invariant-checked `Deserialize` on `Odds` and `BankrollFraction`, and add `InvalidNetOdds`, `InvalidAmericanOdds`, `InvalidFractionalOdds`, and `InvalidImpliedProbability` to [`KellyError`](../../crates/pure_math/src/error.rs) while retaining `InvalidOdds { value }`.
+2. **Synchronize `BetSizeCalculatorTool` State, Skip the American Dead Zone, and Fix `theory_description`**:
+   - Synchronize `Decimal`, `American`, `Fractional`, and `ImpliedProbability` inputs via `Odds` in [`bet_size.rs`](../../math_explorer_gui/src/tabs/financial_math/bet_size.rs), jump `american_odds` across `(-100.0, 100.0)` during `DragValue` scrubs, reject `american_odds.abs() < 100.0` in `try_load_state` and `has_finite_parameters`, preserve legacy JSON compatibility via `#[serde(default, skip_serializing_if = "Option::is_none")]`, decompose `show_inside` into helpers of `60` lines or fewer without Clippy lint suppressions, and report live `b = odds.net_profit_multiplier()` in `theory_description`.
+3. **Introduce `ExportCapabilities::dataset_only()`**:
+   - Add `ExportCapabilities::dataset_only()` in [`export_types.rs`](../../math_explorer_gui/src/framework/export_types.rs), implement `export_datasets`, `has_finite_parameters`, `as_any`, and `as_any_mut` on `BetSizeCalculatorTool`, update [`deferred_export_audit_tests.rs`](../../math_explorer_gui/src/framework/deferred_export_audit_tests.rs) and [`drag_bounds_and_rollback_tests.rs`](../../math_explorer_gui/src/framework/drag_bounds_and_rollback_tests.rs), and regenerate [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json).
+
+## Consequences
+- **Positive**: All four odds representations convert bidirectionally with zero heap allocations under `VerifiedEngine::run_verified`, `-100.0` and `+100.0` behave symmetrically, `BetSizeCalculatorTool` keeps readouts and Kelly theory metadata synchronized without dead-zone errors, and users can export Kelly sizing tables to `CSV` and `JSON`.
+- **Neutral**: Inventory export capability audits track `47` plot tools, `7` raster tools, `1` dataset-only calculator tool, and `15` non-exportable tools across the `70` registered `InteractiveTool` implementations.

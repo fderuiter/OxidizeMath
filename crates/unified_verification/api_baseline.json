@@ -10027,6 +10027,9 @@
       "signature": "impl Odds { pub fn from_fractional (_ : f64 , _ : f64) -> Result < Self , KellyError > }"
     },
     {
+      "signature": "impl Odds { pub fn from_implied_probability (_ : f64) -> Result < Self , KellyError > }"
+    },
+    {
       "signature": "impl Odds { pub fn from_net_odds (_ : f64) -> Result < Self , KellyError > }"
     },
     {
@@ -10037,6 +10040,12 @@
     },
     {
       "signature": "impl Odds { pub fn new (_ : f64) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl Odds { pub fn to_american (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Odds { pub fn to_fractional (& self , _ : u64) -> (u64 , u64) }"
     },
     {
       "signature": "impl Odds { pub fn value (& self) -> f64 }"

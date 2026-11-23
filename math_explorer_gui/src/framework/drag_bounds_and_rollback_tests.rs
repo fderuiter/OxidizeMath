@@ -6,6 +6,7 @@ use crate::tabs::ai::loss_landscape::LossLandscapeTool;
 use crate::tabs::analysis::complex_mapping::ComplexMappingTool;
 use crate::tabs::analysis::riemann::RiemannIntegrationTool;
 use crate::tabs::chaos::fractals::{FractalMode, FractalViewer};
+use crate::tabs::financial_math::bet_size::{BetSizeCalculatorTool, OddsFormat};
 use crate::tabs::fluid_dynamics::potential_flow::{ElementType, PotentialFlowTool};
 use eframe::egui;
 
@@ -248,6 +249,49 @@ fn test_all_19_drag_value_widgets_reject_1e400_and_preserve_strict_ordering() {
     assert_eq!(total, 19);
 }
 
+#[test]
+fn test_bet_size_drag_values_sync_formats_and_skip_american_dead_zone() {
+    let ctx = egui::Context::default();
+    let mut tool = BetSizeCalculatorTool::default();
+    let dec_centers = find_drag_value_centers(&ctx, &mut |c| tool.show(c));
+    assert_eq!(dec_centers.len(), 3);
+    for &pos in &dec_centers {
+        submit_drag_value_text(&ctx, pos, "1e400", &mut |c| tool.show(c));
+        assert!(tool.has_finite_parameters());
+    }
+    submit_drag_value_text(&ctx, dec_centers[1], "2.5", &mut |c| tool.show(c));
+    assert!((tool.american_odds - 150.0).abs() < 1e-6);
+    assert!((tool.fractional_numerator - 3.0).abs() < 1e-6);
+    assert!((tool.fractional_denominator - 2.0).abs() < 1e-6);
+    assert!((tool.implied_probability_input - 40.0).abs() < 1e-6);
+
+    tool.odds_format = OddsFormat::American;
+    let am_centers = find_drag_value_centers(&ctx, &mut |c| tool.show(c));
+    assert_eq!(am_centers.len(), 3);
+    submit_drag_value_text(&ctx, am_centers[1], "99.0", &mut |c| tool.show(c));
+    assert!((tool.american_odds - (-100.0)).abs() < 1e-6);
+    assert!((tool.decimal_odds - 2.0).abs() < 1e-6);
+    submit_drag_value_text(&ctx, am_centers[1], "-99.0", &mut |c| tool.show(c));
+    assert!((tool.american_odds - 100.0).abs() < 1e-6);
+    assert!(tool.has_finite_parameters());
+
+    tool.odds_format = OddsFormat::Fractional;
+    let frac_centers = find_drag_value_centers(&ctx, &mut |c| tool.show(c));
+    assert_eq!(frac_centers.len(), 4);
+    for &pos in &frac_centers {
+        submit_drag_value_text(&ctx, pos, "1e400", &mut |c| tool.show(c));
+        assert!(tool.has_finite_parameters());
+    }
+
+    tool.odds_format = OddsFormat::ImpliedProbability;
+    let imp_centers = find_drag_value_centers(&ctx, &mut |c| tool.show(c));
+    assert_eq!(imp_centers.len(), 3);
+    submit_drag_value_text(&ctx, imp_centers[1], "25.0", &mut |c| tool.show(c));
+    assert!((tool.decimal_odds - 4.0).abs() < 1e-6);
+    assert!((tool.american_odds - 300.0).abs() < 1e-6);
+    assert!(tool.has_finite_parameters());
+}
+
 fn verify_tool_snapshot_gate_and_rollback(
     ctx: &egui::Context,
     domain: &str,
@@ -276,6 +320,15 @@ fn verify_tool_snapshot_gate_and_rollback(
             .downcast_mut::<ActivationFunctionsTool>()
             .unwrap()
             .x_max = 500.0;
+    } else if tool_id == "BetSizeCalculatorTool" {
+        fw.active_tool
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .unwrap()
+            .downcast_mut::<BetSizeCalculatorTool>()
+            .unwrap()
+            .american_odds = 0.0;
     }
     if !fw.active_tool.as_ref().unwrap().has_finite_parameters() {
         fw.cache_valid_snapshot();
@@ -310,7 +363,7 @@ fn verify_tool_snapshot_gate_and_rollback(
 
 #[test]
 fn test_cache_valid_snapshot_gates_on_has_finite_parameters_and_rollback_validates_snapshot() {
-    let cases: [(&str, &str, &str); 6] = [
+    let cases: [(&str, &str, &str); 7] = [
         (
             "chaos",
             "FractalViewer",
@@ -340,6 +393,11 @@ fn test_cache_valid_snapshot_gates_on_has_finite_parameters_and_rollback_validat
             "fluid_dynamics",
             "PotentialFlowTool",
             r#"{"elements":[],"grid_size":20,"view_range":500.0,"selected_element_type":"Source","new_element_strength":50000.0,"new_element_x":0.0,"new_element_y":0.0,"new_element_angle":0.0}"#,
+        ),
+        (
+            "financial_math",
+            "BetSizeCalculatorTool",
+            r#"{"probability_input":55.0,"odds_format":"American","decimal_odds":2.0,"american_odds":50.0,"fractional_numerator":1.0,"fractional_denominator":1.0,"bankroll":1000.0}"#,
         ),
     ];
 

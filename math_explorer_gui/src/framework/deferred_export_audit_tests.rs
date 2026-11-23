@@ -106,15 +106,85 @@ fn verify_shader_capability(
     true
 }
 
+fn verify_dataset_only_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
+    let mut framework = SimulationFramework::new("__audit_dataset_only__");
+    framework.active_tool = Some(tool);
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Csv, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Success,
+        "Deferred CSV failed for {meta_name}: {:?}",
+        framework.export_status_message
+    );
+    let csv = framework
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .unwrap_or_else(|| panic!("Missing CSV content for {meta_name}"));
+    assert!(
+        csv.starts_with("Dataset,X,Y\n") && csv.lines().count() >= 2,
+        "Invalid CSV content for {meta_name}: {csv}"
+    );
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Json, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Success,
+        "Deferred JSON failed for {meta_name}: {:?}",
+        framework.export_status_message
+    );
+    let json = framework
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .unwrap_or_else(|| panic!("Missing JSON content for {meta_name}"));
+    assert!(
+        json.contains("\"dataset\":") && !json.contains("NaN"),
+        "Invalid JSON content for {meta_name}: {json}"
+    );
+
+    run_deferred_export_frame(&mut framework, ExportFormat::Png, false);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Warning,
+        "Expected Warning on PNG export for dataset_only tool {meta_name}"
+    );
+}
+
+fn verify_non_figure_tool(
+    meta_id: &str,
+    tool: Box<dyn InteractiveTool>,
+    caps: ExportCapabilities,
+    dataset_only_tool_count: &mut usize,
+    unsupported_tool_count: &mut usize,
+) {
+    assert!(
+        !caps.figure_disabled_reason.is_empty(),
+        "{meta_id} disables figure export without an explanatory reason"
+    );
+    if caps.dataset {
+        *dataset_only_tool_count += 1;
+        assert!(
+            caps.dataset_disabled_reason.is_empty(),
+            "{meta_id} advertises dataset export but has non-empty disabled reason"
+        );
+        verify_dataset_only_tool(meta_id, tool);
+    } else {
+        *unsupported_tool_count += 1;
+        assert!(
+            !caps.dataset_disabled_reason.is_empty(),
+            "{meta_id} disables dataset export without an explanatory reason"
+        );
+    }
+}
+
 #[test]
 fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
-    let mut plot_tool_count = 0usize;
-    let mut raster_tool_count = 0usize;
-    let mut unsupported_tool_count = 0usize;
-    let mut solid_3d_count = 0usize;
-    let mut splat_3d_count = 0usize;
-    let mut shader_tool_count = 0usize;
-    let mut non_shader_tool_count = 0usize;
+    let (mut plot_tool_count, mut raster_tool_count) = (0usize, 0usize);
+    let (mut dataset_only_tool_count, mut unsupported_tool_count) = (0usize, 0usize);
+    let (mut solid_3d_count, mut splat_3d_count) = (0usize, 0usize);
+    let (mut shader_tool_count, mut non_shader_tool_count) = (0usize, 0usize);
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         let tool = (meta.build)();
@@ -129,19 +199,16 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         } else {
             non_shader_tool_count += 1;
         }
-
         if !caps.figure {
-            unsupported_tool_count += 1;
-            assert!(
-                !caps.dataset,
-                "{} should disable dataset export when figure is unsupported",
-                meta.id
+            verify_non_figure_tool(
+                meta.id,
+                tool,
+                caps,
+                &mut dataset_only_tool_count,
+                &mut unsupported_tool_count,
             );
-            assert!(!caps.dataset_disabled_reason.is_empty());
-            assert!(!caps.figure_disabled_reason.is_empty());
             continue;
         }
-
         if caps.dataset {
             plot_tool_count += 1;
         } else {
@@ -152,7 +219,11 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
 
     assert_eq!(plot_tool_count, 47, "Expected 47 Plot dataset+figure tools");
     assert_eq!(raster_tool_count, 7, "Expected 7 raster figure tools");
-    assert_eq!(unsupported_tool_count, 16, "Expected 16 non-figure tools");
+    assert_eq!(dataset_only_tool_count, 1, "Expected 1 dataset-only tool");
+    assert_eq!(
+        unsupported_tool_count, 15,
+        "Expected 15 non-exportable tools"
+    );
     assert_eq!(solid_3d_count, 5, "Expected 5 solid 3D geometric tools");
     assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(
