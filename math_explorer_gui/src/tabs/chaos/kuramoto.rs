@@ -202,6 +202,7 @@ impl KuramotoOscillatorTool {
                     self.is_running = false;
                     let _ = self.step_once();
                 }
+                PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.reset_simulation();
                     *reset_bus_series = true;

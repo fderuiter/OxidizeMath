@@ -317,76 +317,166 @@ fn test_shared_url_clamps_high_res_surface_and_flow_grids_to_interactive_caps() 
     assert_eq!(flow_cfg["config"]["grid_size"], 100);
 }
 
-#[cfg(all(feature = "physics", feature = "pure_math"))]
-#[test]
-fn test_workspace_share_url_clamps_high_res_pane_presets_and_preserves_links() {
-    let flow_preset: serde_json::Value = serde_json::from_str(
-        &crate::presets::serialize_compact_preset_envelope(
-            "Flow",
-            "fluid_dynamics",
-            serde_json::json!({
-                "elements": [{"element_type": "Uniform", "strength": 10.0, "x": 0.0, "y": 0.0, "angle": 0.0}],
-                "grid_size": 1000,
-                "view_range": 10.0
-            }),
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    let ws_json = serde_json::json!({
-        "layout": "h",
-        "links": [true, false],
-        "focus": 1,
-        "ratio": 0.5,
-        "quad": [0.5, 0.5],
-        "panes": [
-            { "tab": "graph_theory", "tool": "GraphEditorTool" },
-            { "tab": "fluid_dynamics", "tool": "PotentialFlowTool", "preset": flow_preset }
-        ]
-    })
-    .to_string();
-    let frag =
-        encode_share_fragment_with_workspace("fluid_dynamics", None, None, Some(&ws_json)).unwrap();
-    let mut app = crate::app::MathExplorerApp::default();
-    assert_eq!(app.apply_share_location_strings(&frag, "", None), Ok(true));
-    assert_eq!(app.pane_bus_links, [true, false, false, false]);
-    let exported = app
-        .pane_tab(1)
-        .unwrap()
-        .export_url_preset_json()
-        .unwrap()
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&exported).unwrap();
-    assert_eq!(parsed["config"]["grid_size"], 100);
+struct MockUrlTool {
+    url_payload: Option<String>,
+}
+
+impl scientific_metadata::theory::TheoryDescribable for MockUrlTool {
+    fn theory_description(&self) -> String {
+        "Mock URL tool".to_string()
+    }
+    fn phonetic_description(&self) -> String {
+        "Mock URL tool".to_string()
+    }
+    fn theory_citation(&self) -> String {
+        "Mock (2026)".to_string()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+
+impl crate::framework::InteractiveTool for MockUrlTool {
+    fn name(&self) -> &'static str {
+        "MockUrlTool"
+    }
+    fn domain(&self) -> &'static str {
+        "chaos"
+    }
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+    fn save_state(&self) -> Option<String> {
+        self.url_payload.clone()
+    }
 }
 
 #[test]
-fn test_hud_story_and_workspace_share_url_roundtrip() {
-    let base_hud = encode_share_fragment_with_hud(
-        "game_theory",
-        Some("ReplicatorDynamicsTool"),
-        Some("prisoners_dilemma_tragedy"),
-        None,
-        Some(1),
-        None,
+fn test_streaming_url_validator_zero_alloc_and_structural_limits() {
+    use crate::framework::ToolStateBounds;
+
+    let valid_envelope = concat!(
+        "\u{feff}{\"metadata\":{\"schema_version\":\"1.0\",\"title\":\"ODE Solvers\",",
+        "\"domain\":\"analysis\",\"timestamp\":\"1970-01-01T00:00:00Z\"},",
+        "\"config\":{\"dt\":0.0005,\"total_time\":100.0,\"flags\":[true,false,null],",
+        "\"counts\":[-42,0,999],\"expr\":\"-k * y * sin(t)\"}}"
+    );
+    validate_url_preset_json(valid_envelope).expect("valid streaming envelope");
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            assert!(validate_url_preset_json(valid_envelope).is_ok());
+        });
+    }
+
+    let over_bytes = format!(r#"{{"pad":"{}"}}"#, "a".repeat(MAX_DECODED_URL_STATE_BYTES));
+    assert!(validate_url_preset_json(&over_bytes)
+        .unwrap_err()
+        .contains("4096"));
+
+    let deep_depth = URL_JSON_BOUNDS.max_depth + 1;
+    let too_deep = format!("{}0{}", "[".repeat(deep_depth), "]".repeat(deep_depth));
+    assert!(validate_url_preset_json(&too_deep)
+        .unwrap_err()
+        .contains("nesting depth"));
+
+    let tight_array = ToolStateBounds::new(512, 8, 3);
+    assert!(json_validator::validate_json_streaming_with_bounds("[1,2,3]", tight_array).is_ok());
+    assert!(
+        json_validator::validate_json_streaming_with_bounds("[1,2,3,4]", tight_array)
+            .unwrap_err()
+            .contains("array length")
+    );
+    assert!(json_validator::validate_json_streaming_with_bounds(
+        "[]",
+        ToolStateBounds::new(512, 8, 0)
     )
-    .unwrap();
-    let ws_json = serde_json::json!({
-        "layout": "h",
-        "links": [true, true],
-        "focus": 0,
-        "ratio": 0.5,
-        "quad": [0.5, 0.5],
-        "panes": [
-            { "tab": "game_theory", "tool": "ReplicatorDynamicsTool" },
-            { "tab": "chaos", "tool": "KuramotoOscillatorTool" }
-        ]
-    })
-    .to_string();
-    let combined = append_workspace_to_share_fragment(&base_hud, Some(&ws_json)).unwrap();
-    let parsed = parse_share_location(&combined, "").unwrap().unwrap();
-    assert_eq!(parsed.tab, "game_theory");
-    assert_eq!(parsed.preset.as_deref(), Some("prisoners_dilemma_tragedy"));
-    assert_eq!(parsed.step, Some(1));
-    assert_eq!(parsed.workspace_json.as_deref(), Some(ws_json.as_str()));
+    .is_ok());
+    assert!(json_validator::validate_json_streaming_with_bounds(
+        "[1]",
+        ToolStateBounds::new(512, 8, 0)
+    )
+    .is_err());
+
+    for invalid in [
+        "",
+        "{\"x\":1e309}",
+        "{\"x\":-1e309}",
+        "{\"x\":NaN}",
+        "{\"x\":Infinity}",
+        "{\"a\":1}{\"b\":2}",
+        "{\"a\":1} trailing",
+        "[1,2,]",
+    ] {
+        assert!(validate_url_preset_json(invalid).is_err());
+    }
+}
+
+#[test]
+fn test_export_url_preset_checks_4096_cap_before_parse_and_embeds_raw_value() {
+    let mut fw = crate::framework::SimulationFramework::new("chaos");
+
+    fw.active_tool = Some(Box::new(MockUrlTool {
+        url_payload: Some("NOT_JSON!".repeat(600)),
+    }));
+    let err = fw.export_url_preset_json().unwrap_err();
+    assert!(
+        err.contains("4096") && err.contains("exceeds maximum allowed limit"),
+        "Expected 4096-byte budget error before JSON parsing, got: {err}"
+    );
+
+    fw.active_tool = Some(Box::new(MockUrlTool {
+        url_payload: Some(r#"{"z_first":1.25,"a_second":2.5}"#.to_string()),
+    }));
+    let exported = fw
+        .export_url_preset_json()
+        .expect("valid export")
+        .expect("some preset");
+    assert!(
+        exported.contains(r#""config":{"z_first":1.25,"a_second":2.5}"#),
+        "Expected RawValue to preserve exact tool JSON slice: {exported}"
+    );
+
+    let near_cap = format!(r#"{{"pad":"{}"}}"#, "x".repeat(4_020));
+    assert!(near_cap.len() < MAX_DECODED_URL_STATE_BYTES);
+    fw.active_tool = Some(Box::new(MockUrlTool {
+        url_payload: Some(near_cap),
+    }));
+    assert!(fw.export_url_preset_json().unwrap_err().contains("4096"));
+}
+
+#[cfg(feature = "physics")]
+#[test]
+fn test_rotation_curve_omits_snapshots_in_url_while_preserving_in_session_and_presets() {
+    use crate::framework::{InteractiveTool, SimulationFramework, TraceSeries};
+    use crate::tabs::astrophysics::rotation_curve_tool::RotationCurveExplorer;
+
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let mut tool = RotationCurveExplorer::default();
+    assert!(tool.cfg.snapshot_manager.add_snapshot(
+        "Pinned curve",
+        "M_disk=5.0",
+        vec![TraceSeries::new(
+            "v_total",
+            vec![[1.0, 210.0], [5.0, 225.0]]
+        )],
+    ));
+    assert!(tool.save_state().unwrap().contains("snapshot_manager"));
+    assert!(tool
+        .export_preset_json()
+        .unwrap()
+        .contains("snapshot_manager"));
+    assert!(!tool.save_url_state().unwrap().contains("snapshot_manager"));
+
+    let mut fw = SimulationFramework::new("astrophysics");
+    assert!(fw.select_tool_by_name("RotationCurveExplorer"));
+    fw.active_tool = Some(Box::new(tool));
+    assert!(fw.save_state().unwrap().contains("snapshot_manager"));
+    let preset_json = fw.export_url_preset_json().unwrap().unwrap();
+    assert!(!preset_json.contains("snapshot_manager"));
+    assert!(preset_json.len() <= MAX_DECODED_URL_STATE_BYTES);
 }

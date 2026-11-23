@@ -30,13 +30,20 @@ pub(crate) fn clamp_decoded_url_grid_state(
     json_str: &str,
 ) -> Result<String, String> {
     let cleaned = egui_plot::export::strip_utf8_bom(json_str);
+    let is_fluid = matches_tab_slug(tab, "fluid_dynamics", "Fluid Dynamics")
+        || tool.is_some_and(|t| matches_tab_slug(t, "PotentialFlowTool", "Potential Flow"));
+    let has_grid_key = cleaned.contains("\"u_resolution\"")
+        || cleaned.contains("\"v_resolution\"")
+        || cleaned.contains("\"grid_density\"")
+        || (is_fluid && cleaned.contains("\"grid_size\""));
+    if !has_grid_key {
+        return Ok(json_str.to_string());
+    }
     let mut root: serde_json::Value =
         serde_json::from_str(cleaned).map_err(|e| format!("Invalid URL state JSON: {e}"))?;
     let max_schema = math_commons::registry::MAX_GRID_SIZE as u64;
     let surf_cap = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION as u64;
     let grid_cap = crate::presets::MAX_INTERACTIVE_GRID_SIZE as u64;
-    let is_fluid = matches_tab_slug(tab, "fluid_dynamics", "Fluid Dynamics")
-        || tool.is_some_and(|t| matches_tab_slug(t, "PotentialFlowTool", "Potential Flow"));
 
     let target_map = if root.get("config").is_some_and(serde_json::Value::is_object) {
         root.get_mut("config")

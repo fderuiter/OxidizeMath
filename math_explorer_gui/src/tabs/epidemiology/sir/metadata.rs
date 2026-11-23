@@ -1,5 +1,3 @@
-//! Theory metadata and starter gallery preset registration for [`super::SirTool`].
-
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{SirTool, MAX_SIR_DURATION, MIN_SIR_DURATION};
@@ -100,5 +98,3 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
-
-// [cite:graph_parameters_rust]

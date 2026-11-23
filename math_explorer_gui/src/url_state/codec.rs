@@ -84,36 +84,7 @@ fn percent_decode_component(raw: &str) -> Result<String, String> {
     String::from_utf8(out).map_err(|_| "URL parameter is not valid UTF-8".to_string())
 }
 
-fn ensure_all_json_numbers_finite(val: &serde_json::Value) -> Result<(), String> {
-    match val {
-        serde_json::Value::Number(num) => {
-            let finite = num.as_f64().is_none_or(f64::is_finite);
-            if !finite
-                || (num.as_i64().is_none() && num.as_u64().is_none() && num.as_f64().is_none())
-            {
-                return Err(
-                    "URL state contains non-finite or out-of-range numeric value".to_string(),
-                );
-            }
-            Ok(())
-        }
-        serde_json::Value::Array(items) => {
-            items.iter().try_for_each(ensure_all_json_numbers_finite)
-        }
-        serde_json::Value::Object(map) => map.values().try_for_each(ensure_all_json_numbers_finite),
-        _ => Ok(()),
-    }
-}
-
-/// Validates that `json_str` fits within the 4,096-byte URL state cap, obeys structural nesting
-/// bounds, and parses as JSON containing only finite numbers.
-pub fn validate_url_preset_json(json_str: &str) -> Result<(), String> {
-    let cleaned = egui_plot::export::strip_utf8_bom(json_str);
-    URL_JSON_BOUNDS.validate_json(cleaned)?;
-    let parsed: serde_json::Value =
-        serde_json::from_str(cleaned).map_err(|e| format!("Invalid URL state JSON: {e}"))?;
-    ensure_all_json_numbers_finite(&parsed)
-}
+pub use super::json_validator::validate_url_preset_json;
 
 /// Encodes `tab_slug`, optional `tool_id`, and optional compact `preset_json` into a
 /// `#tab=...&tool=...&state=...` URL fragment while enforcing the 4 KiB and 8 KiB caps.

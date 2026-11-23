@@ -146,6 +146,7 @@ fn apply_snapshot_to_memory_and_access(
     mem.clamp_grid = snap.clamp_grid;
     mem.show_grid = Vec2b::new(snap.show_grid[0], snap.show_grid[1]);
     mem.transform.set_log_axis(Vec2b::new(mem.log_x, mem.log_y));
+    mem.runtime_cache = crate::runtime_cache::PlotRuntimeCache::default();
 
     if params.allow_bounds_persist {
         if let Some(saved_bounds) = snap.bounds.filter(|b| b.is_valid() && b.is_finite()) {
@@ -175,8 +176,6 @@ fn apply_snapshot_to_memory_and_access(
         access.custom_fit_formula = snap.custom_fit_formula.clone();
         access.custom_fit_seeds_text = snap.custom_fit_seeds_text.clone();
         access.custom_fit_error = None;
-        access.cached_fit = None;
-        access.cached_pois = None;
         access.log_x = snap.log_x;
         access.log_y = snap.log_y;
         access.grid_density = mem.grid_density;

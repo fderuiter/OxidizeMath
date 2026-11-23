@@ -8,6 +8,7 @@ mod base64url;
 mod browser;
 mod codec;
 mod grid_clamp;
+mod json_validator;
 mod sync;
 
 #[cfg(all(
@@ -22,7 +23,11 @@ mod sync;
 ))]
 mod contract_tests;
 #[cfg(test)]
+mod param_only_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod workspace_tests;
 
 pub use base64url::{decode as decode_base64url, encode as encode_base64url};
 #[cfg(target_arch = "wasm32")]
