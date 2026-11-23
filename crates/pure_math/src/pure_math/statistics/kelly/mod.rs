@@ -54,7 +54,14 @@
 //!
 //! 1. **Maximizes long-term growth**: Geometric mean return is maximized
 //! 2. **Minimizes time to goal**: Reaches any wealth goal in minimum expected time
-//! 3. **Never risks ruin**: For f ≤ f*, probability of ruin is zero
+//! 3. **Avoids continuous zero-wealth bankruptcy, but NOT finite drawdowns**: Under infinitely
+//!    divisible stakes, $\lim_{t \to \infty} P(W_t = 0) = 0$ for $0 < f \le f^*$. However,
+//!    hitting a finite wealth floor $B_{\text{floor}} < W_0$ (e.g., a 50% drawdown or minimum-bet
+//!    table limit) has strictly positive probability bounded by the log-return Lundberg exponent
+//!    $(B_{\text{floor}} / W_0)^{\theta^*}$ and Brownian diffusion $(B_{\text{floor}} / W_0)^{2\mu/\sigma^2}$
+//!    (see [`crate::pure_math::statistics::ruin::kelly_barrier_risk`]). At Full Kelly ($f = f^*$),
+//!    $\theta^* = 1$ so the asymptotic probability of halving one's bankroll is **50%** (~38%
+//!    over 200 even-money bets at $p = 0.55$).
 //! 4. **Information-theoretic**: Related to Shannon entropy and channel capacity
 //!
 //! ## Applications
@@ -200,6 +207,7 @@ pub mod core;
 pub mod criterion;
 
 // Re-export main types and functions
+pub use super::{ruin, validation};
 pub use core::{BankrollFraction, Odds, UnitInterval};
 pub use criterion::{
     expected_growth_rate, expected_value, fractional_kelly, kelly_fraction, variants,

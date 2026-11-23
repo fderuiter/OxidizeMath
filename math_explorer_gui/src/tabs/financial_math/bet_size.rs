@@ -1,36 +1,72 @@
+//! Kelly Criterion Bet Size, Solvency Barrier, and Closing Line Value Calculator.
+
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
 use crate::framework::InteractiveTool;
 use eframe::egui;
-use math_explorer::pure_math::statistics::kelly::{
-    expected_value, kelly_fraction, variants, Odds, UnitInterval,
-};
+use math_explorer::pure_math::statistics::kelly::{expected_value, Odds, UnitInterval};
 
-#[derive(PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum OddsFormat {
+#[path = "bet_size_ui.rs"]
+mod ui;
+
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub(super) enum OddsFormat {
     Decimal,
     American,
     Fractional,
 }
 
+const DEFAULT_CLOSING_DECIMAL: f64 = 1.91;
+const DEFAULT_DRAWDOWN_FLOOR_PCT: f64 = 50.0;
+
+fn default_closing_decimal() -> f64 {
+    DEFAULT_CLOSING_DECIMAL
+}
+
+fn default_drawdown_floor_pct() -> f64 {
+    DEFAULT_DRAWDOWN_FLOOR_PCT
+}
+
+fn is_false(val: &bool) -> bool {
+    !*val
+}
+
+fn is_default_closing(val: &f64) -> bool {
+    (*val - DEFAULT_CLOSING_DECIMAL).abs() < 1e-12
+}
+
+fn is_default_drawdown_floor(val: &f64) -> bool {
+    (*val - DEFAULT_DRAWDOWN_FLOOR_PCT).abs() < 1e-12
+}
+
 pub struct BetSizeCalculatorTool {
-    probability_input: f64,
-    odds_format: OddsFormat,
-    decimal_odds: f64,
-    american_odds: f64,
-    fractional_numerator: f64,
-    fractional_denominator: f64,
-    bankroll: f64,
+    pub(super) probability_input: f64,
+    pub(super) odds_format: OddsFormat,
+    pub(super) decimal_odds: f64,
+    pub(super) american_odds: f64,
+    pub(super) fractional_numerator: f64,
+    pub(super) fractional_denominator: f64,
+    pub(super) bankroll: f64,
+    pub(super) drawdown_floor_pct: f64,
+    pub(super) closing_line_enabled: bool,
+    pub(super) closing_for_decimal: f64,
+    pub(super) closing_against_decimal: f64,
 }
 
 impl Default for BetSizeCalculatorTool {
     fn default() -> Self {
         Self {
-            probability_input: 55.0, // 55%
+            probability_input: 55.0,
             odds_format: OddsFormat::Decimal,
             decimal_odds: 2.0,
             american_odds: 100.0,
             fractional_numerator: 1.0,
             fractional_denominator: 1.0,
             bankroll: 1000.0,
+            drawdown_floor_pct: DEFAULT_DRAWDOWN_FLOOR_PCT,
+            closing_line_enabled: false,
+            closing_for_decimal: DEFAULT_CLOSING_DECIMAL,
+            closing_against_decimal: DEFAULT_CLOSING_DECIMAL,
         }
     }
 }
@@ -45,6 +81,35 @@ struct BetSizeState {
     fractional_numerator: f64,
     fractional_denominator: f64,
     bankroll: f64,
+    #[serde(
+        default = "default_drawdown_floor_pct",
+        skip_serializing_if = "is_default_drawdown_floor"
+    )]
+    drawdown_floor_pct: f64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    closing_line_enabled: bool,
+    #[serde(
+        default = "default_closing_decimal",
+        skip_serializing_if = "is_default_closing"
+    )]
+    closing_for_decimal: f64,
+    #[serde(
+        default = "default_closing_decimal",
+        skip_serializing_if = "is_default_closing"
+    )]
+    closing_against_decimal: f64,
+}
+
+impl BetSizeCalculatorTool {
+    pub(super) fn current_placed_odds(&self) -> Result<Odds, math_explorer::error::KellyError> {
+        match self.odds_format {
+            OddsFormat::Decimal => Odds::new(self.decimal_odds),
+            OddsFormat::American => Odds::from_american(self.american_odds),
+            OddsFormat::Fractional => {
+                Odds::from_fractional(self.fractional_numerator, self.fractional_denominator)
+            }
+        }
+    }
 }
 
 impl InteractiveTool for BetSizeCalculatorTool {
@@ -70,6 +135,10 @@ impl InteractiveTool for BetSizeCalculatorTool {
             fractional_numerator: self.fractional_numerator,
             fractional_denominator: self.fractional_denominator,
             bankroll: self.bankroll,
+            drawdown_floor_pct: self.drawdown_floor_pct,
+            closing_line_enabled: self.closing_line_enabled,
+            closing_for_decimal: self.closing_for_decimal,
+            closing_against_decimal: self.closing_against_decimal,
         })
         .ok()
     }
@@ -84,6 +153,9 @@ impl InteractiveTool for BetSizeCalculatorTool {
             s.fractional_numerator,
             s.fractional_denominator,
             s.bankroll,
+            s.drawdown_floor_pct,
+            s.closing_for_decimal,
+            s.closing_against_decimal,
         ]
         .iter()
         .all(|v| v.is_finite())
@@ -93,6 +165,9 @@ impl InteractiveTool for BetSizeCalculatorTool {
             || !(1.0..=1000.0).contains(&s.fractional_numerator)
             || !(1.0..=1000.0).contains(&s.fractional_denominator)
             || !(1.0..=1_000_000.0).contains(&s.bankroll)
+            || !(5.0..=95.0).contains(&s.drawdown_floor_pct)
+            || !(1.01..=1000.0).contains(&s.closing_for_decimal)
+            || !(1.01..=1000.0).contains(&s.closing_against_decimal)
         {
             return Err("Bet size parameters out of bounds".into());
         }
@@ -103,190 +178,53 @@ impl InteractiveTool for BetSizeCalculatorTool {
         self.fractional_numerator = s.fractional_numerator;
         self.fractional_denominator = s.fractional_denominator;
         self.bankroll = s.bankroll;
+        self.drawdown_floor_pct = s.drawdown_floor_pct;
+        self.closing_line_enabled = s.closing_line_enabled;
+        self.closing_for_decimal = s.closing_for_decimal;
+        self.closing_against_decimal = s.closing_against_decimal;
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.heading("Kelly Criterion Bet Size Calculator");
-            ui.label("Calculate optimal bet sizing based on your edge and odds.");
-            ui.separator();
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.heading("Kelly Criterion Bet Size, Solvency & CLV Calculator");
+                ui.label(
+                    "Calculate optimal sizing, drawdown barrier bounds, sample sizes, and CLV.",
+                );
+                ui.separator();
+                self.render_primary_inputs(ui);
+                self.render_closing_line_inputs(ui);
+                ui.separator();
+                ui.heading("Results");
 
-            egui::Grid::new("bet_size_inputs")
-                .num_columns(2)
-                .spacing([40.0, 10.0])
-                .show(ui, |ui| {
-                    // Probability
-                    ui.label("Win Probability (%):");
-                    ui.add(
-                        egui::DragValue::new(&mut self.probability_input)
-                            .speed(0.1)
-                            .range(0.0..=100.0)
-                            .suffix("%"),
-                    );
-                    ui.end_row();
-
-                    // Odds Format Selector
-                    ui.label("Odds Format:");
-                    ui.horizontal(|ui| {
-                        ui.radio_value(&mut self.odds_format, OddsFormat::Decimal, "Decimal");
-                        ui.radio_value(&mut self.odds_format, OddsFormat::American, "American");
-                        ui.radio_value(&mut self.odds_format, OddsFormat::Fractional, "Fractional");
-                    });
-                    ui.end_row();
-
-                    // Odds Input based on format
-                    ui.label("Odds:");
-                    match self.odds_format {
-                        OddsFormat::Decimal => {
-                            ui.add(
-                                egui::DragValue::new(&mut self.decimal_odds)
-                                    .speed(0.01)
-                                    .range(1.01..=1000.0),
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                let prob_res = UnitInterval::new(self.probability_input / 100.0);
+                let odds_res = self.current_placed_odds();
+                match (prob_res, odds_res) {
+                    (Ok(prob), Ok(odds)) => {
+                        let ev = expected_value(&prob, &odds);
+                        ui.label(format!("Expected Value (per $1 staked): ${ev:.3}"));
+                        if ev > 0.0 {
+                            ui.colored_label(palette.success, "Positive Edge!");
+                            self.render_kelly_strategy_table(ui, &prob, &odds);
+                            self.render_solvency_and_sample_size(ui, &prob, &odds, ev);
+                        } else {
+                            ui.colored_label(
+                                palette.error,
+                                "No Edge (Negative or Zero EV). Do not bet.",
                             );
                         }
-                        OddsFormat::American => {
-                            ui.add(
-                                egui::DragValue::new(&mut self.american_odds)
-                                    .speed(1.0)
-                                    .range(-10000.0..=10000.0),
-                            );
-                        }
-                        OddsFormat::Fractional => {
-                            ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::DragValue::new(&mut self.fractional_numerator)
-                                        .speed(1.0)
-                                        .range(1.0..=1000.0),
-                                );
-                                ui.label("/");
-                                ui.add(
-                                    egui::DragValue::new(&mut self.fractional_denominator)
-                                        .speed(1.0)
-                                        .range(1.0..=1000.0),
-                                );
-                            });
-                        }
+                        self.render_clv_panel(ui, &odds);
                     }
-                    ui.end_row();
-
-                    // Bankroll
-                    ui.label("Total Bankroll ($):");
-                    ui.add(
-                        egui::DragValue::new(&mut self.bankroll)
-                            .speed(10.0)
-                            .range(1.0..=1_000_000.0)
-                            .prefix("$"),
-                    );
-                    ui.end_row();
-                });
-
-            ui.separator();
-            ui.heading("Results");
-
-            // Compute mathematical values safely
-            let prob_result = UnitInterval::new(self.probability_input / 100.0);
-
-            let odds_result = match self.odds_format {
-                OddsFormat::Decimal => Odds::new(self.decimal_odds),
-                OddsFormat::American => Odds::from_american(self.american_odds),
-                OddsFormat::Fractional => {
-                    Odds::from_fractional(self.fractional_numerator, self.fractional_denominator)
-                }
-            };
-
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            match (prob_result, odds_result) {
-                (Ok(prob), Ok(odds)) => {
-                    let ev = expected_value(&prob, &odds);
-                    ui.label(format!("Expected Value (per $1 staked): ${:.3}", ev));
-
-                    if ev > 0.0 {
-                        ui.label(egui::RichText::new("Positive Edge!").color(palette.success));
-
-                        match kelly_fraction(&prob, &odds) {
-                            Ok(full_kelly) => {
-                                egui::Grid::new("kelly_results")
-                                    .num_columns(3)
-                                    .spacing([40.0, 10.0])
-                                    .show(ui, |ui| {
-                                        ui.label(egui::RichText::new("Strategy").strong());
-                                        ui.label(
-                                            egui::RichText::new("Fraction of Bankroll").strong(),
-                                        );
-                                        ui.label(egui::RichText::new("Bet Amount").strong());
-                                        ui.end_row();
-
-                                        // Full Kelly
-                                        ui.label("Full Kelly:");
-                                        ui.label(format!("{:.2}%", full_kelly.value() * 100.0));
-                                        if let Ok(amount) = full_kelly.bet_amount(self.bankroll) {
-                                            ui.label(format!("${:.2}", amount));
-                                        } else {
-                                            ui.label("Invalid bankroll");
-                                        }
-                                        ui.end_row();
-
-                                        // Half Kelly
-                                        if let Ok(half_kelly) = variants::half_kelly(&prob, &odds) {
-                                            ui.label("Half Kelly:");
-                                            ui.label(format!("{:.2}%", half_kelly.value() * 100.0));
-                                            if let Ok(amount) = half_kelly.bet_amount(self.bankroll)
-                                            {
-                                                ui.label(format!("${:.2}", amount));
-                                            } else {
-                                                ui.label("Invalid bankroll");
-                                            }
-                                            ui.end_row();
-                                        }
-
-                                        // Quarter Kelly
-                                        if let Ok(quarter_kelly) =
-                                            variants::quarter_kelly(&prob, &odds)
-                                        {
-                                            ui.label("Quarter Kelly:");
-                                            ui.label(format!(
-                                                "{:.2}%",
-                                                quarter_kelly.value() * 100.0
-                                            ));
-                                            if let Ok(amount) =
-                                                quarter_kelly.bet_amount(self.bankroll)
-                                            {
-                                                ui.label(format!("${:.2}", amount));
-                                            } else {
-                                                ui.label("Invalid bankroll");
-                                            }
-                                            ui.end_row();
-                                        }
-                                    });
-                            }
-                            Err(e) => {
-                                ui.label(
-                                    egui::RichText::new(format!("Error calculating Kelly: {}", e))
-                                        .color(palette.error),
-                                );
-                            }
-                        }
-                    } else {
-                        ui.label(
-                            egui::RichText::new("No Edge (Negative or Zero EV). Do not bet.")
-                                .color(palette.error),
-                        );
+                    (Err(e), _) => {
+                        ui.colored_label(palette.error, format!("Invalid Probability: {e}"));
+                    }
+                    (_, Err(e)) => {
+                        ui.colored_label(palette.error, format!("Invalid Odds: {e}"));
                     }
                 }
-                (Err(e), _) => {
-                    ui.label(
-                        egui::RichText::new(format!("Invalid Probability: {}", e))
-                            .color(palette.error),
-                    );
-                }
-                (_, Err(e)) => {
-                    ui.label(
-                        egui::RichText::new(format!("Invalid Odds: {}", e)).color(palette.error),
-                    );
-                }
-            }
+            });
         });
     }
 }
@@ -314,12 +252,16 @@ impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
         "Kelly criterion optimal bet sizing theory".into()
     }
     fn theory_citation(&self) -> String {
-        "A New Interpretation of Information Rate (Kelly, 1956)".into()
+        "A New Interpretation of Information Rate (Kelly, 1956); Beat the Bookmaker (Kaunitz et al., 2017)".into()
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
     }
 }
+
+#[cfg(test)]
+#[path = "bet_size_tests.rs"]
+mod tests;
 
 const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {

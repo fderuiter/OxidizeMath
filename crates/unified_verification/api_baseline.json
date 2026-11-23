@@ -10098,6 +10098,12 @@
     },
     {
       "signature": "pub use criterion :: variants"
+    },
+    {
+      "signature": "pub use super :: ruin"
+    },
+    {
+      "signature": "pub use super :: validation"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/ctmc/mod.rs": [
@@ -10633,6 +10639,158 @@
       "signature": "pub fn multivariate_linear_regression (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Option < DVector < f64 > >"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/ruin/analytical.rs": [
+    {
+      "signature": "impl PortfolioBet { pub fn new (_ : UnitInterval , _ : Odds , _ : f64 , _ : f64 ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl PortfolioBet { pub fn unit_weight (_ : UnitInterval , _ : Odds , _ : f64) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn gamblers_ruin_infinite (_ : f64 , _ : & UnitInterval ,) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn gamblers_ruin_with_target (_ : f64 , _ : f64 , _ : f64 , _ : & UnitInterval ,) -> Result < GamblersRuinResult , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_lundberg_ruin (_ : & [PortfolioBet] , _ : f64 ,) -> Result < LundbergSolution , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_single_bet_lundberg (_ : & UnitInterval , _ : & Odds , _ : f64 , _ : f64 ,) -> Result < LundbergSolution , KellyError >"
+    },
+    {
+      "signature": "pub struct GamblersRuinResult"
+    },
+    {
+      "signature": "pub struct LundbergSolution"
+    },
+    {
+      "signature": "pub struct PortfolioBet"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/ruin/barrier.rs": [
+    {
+      "signature": "impl ProportionalPortfolioBet { pub fn new (_ : UnitInterval , _ : Odds , _ : BankrollFraction , _ : f64 ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl ProportionalPortfolioBet { pub fn unit_weight (_ : UnitInterval , _ : Odds , _ : BankrollFraction ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn kelly_barrier_risk (_ : & UnitInterval , _ : & Odds , _ : & BankrollFraction , _ : f64 ,) -> Result < KellyBarrierRisk , KellyError >"
+    },
+    {
+      "signature": "pub fn portfolio_kelly_barrier_risk (_ : & [ProportionalPortfolioBet] , _ : f64 ,) -> Result < KellyBarrierRisk , KellyError >"
+    },
+    {
+      "signature": "pub struct KellyBarrierRisk"
+    },
+    {
+      "signature": "pub struct ProportionalPortfolioBet"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/ruin/ensemble.rs": [
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn drawdown_quantile (& mut self , _ : f64) -> Result < f64 , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn max_drawdowns (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn median_trajectory (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn reset (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn simulate_fixed_stake_portfolio (& mut self , _ : f64 , _ : f64 , _ : Option < f64 > , _ : & [PortfolioBet] , _ : usize , _ : & mut OxidizeRng ,) -> Result < EnsembleSolvencyReport , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn simulate_proportional (& mut self , _ : f64 , _ : f64 , _ : & ProportionalPortfolioBet , _ : usize , _ : & mut OxidizeRng ,) -> Result < EnsembleSolvencyReport , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn simulate_proportional_portfolio (& mut self , _ : f64 , _ : f64 , _ : & [ProportionalPortfolioBet] , _ : usize , _ : & mut OxidizeRng ,) -> Result < EnsembleSolvencyReport , KellyError > }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn terminal_wealths (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BankrollEnsembleWorkspace { pub fn with_capacity (_ : usize , _ : usize) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl WilsonInterval { pub fn width (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn wilson_interval_95 (_ : usize , _ : usize) -> Result < WilsonInterval , KellyError >"
+    },
+    {
+      "signature": "pub fn wilson_score_interval (_ : usize , _ : usize , _ : f64 ,) -> Result < WilsonInterval , KellyError >"
+    },
+    {
+      "signature": "pub struct BankrollEnsembleWorkspace"
+    },
+    {
+      "signature": "pub struct DrawdownQuantiles"
+    },
+    {
+      "signature": "pub struct EnsembleSolvencyReport"
+    },
+    {
+      "signature": "pub struct WilsonInterval"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/ruin/mod.rs": [
+    {
+      "signature": "pub use analytical :: GamblersRuinResult"
+    },
+    {
+      "signature": "pub use analytical :: LundbergSolution"
+    },
+    {
+      "signature": "pub use analytical :: PortfolioBet"
+    },
+    {
+      "signature": "pub use analytical :: gamblers_ruin_infinite"
+    },
+    {
+      "signature": "pub use analytical :: gamblers_ruin_with_target"
+    },
+    {
+      "signature": "pub use analytical :: solve_lundberg_ruin"
+    },
+    {
+      "signature": "pub use analytical :: solve_single_bet_lundberg"
+    },
+    {
+      "signature": "pub use barrier :: KellyBarrierRisk"
+    },
+    {
+      "signature": "pub use barrier :: ProportionalPortfolioBet"
+    },
+    {
+      "signature": "pub use barrier :: kelly_barrier_risk"
+    },
+    {
+      "signature": "pub use barrier :: portfolio_kelly_barrier_risk"
+    },
+    {
+      "signature": "pub use ensemble :: BankrollEnsembleWorkspace"
+    },
+    {
+      "signature": "pub use ensemble :: DrawdownQuantiles"
+    },
+    {
+      "signature": "pub use ensemble :: EnsembleSolvencyReport"
+    },
+    {
+      "signature": "pub use ensemble :: WilsonInterval"
+    },
+    {
+      "signature": "pub use ensemble :: wilson_interval_95"
+    },
+    {
+      "signature": "pub use ensemble :: wilson_score_interval"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/tda/boundary.rs": [
     {
       "signature": "impl Z2BoundaryWorkspace { pub fn clear_column (& mut self , _ : usize) }"
@@ -11055,6 +11213,143 @@
     },
     {
       "signature": "pub struct TdaFiltrationWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/calibration.rs": [
+    {
+      "signature": "pub fn binary_log_loss (_ : & [f64] , _ : & [bool]) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn brier_score (_ : & [f64] , _ : & [bool]) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn compare_calibration (_ : & [f64] , _ : & [f64] , _ : & [bool] ,) -> Result < CalibrationComparison , KellyError >"
+    },
+    {
+      "signature": "pub fn settled_closing_calibration (_ : & [SettledBet]) -> Result < (f64 , f64) , KellyError >"
+    },
+    {
+      "signature": "pub struct CalibrationComparison"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/clv.rs": [
+    {
+      "signature": "impl SettledBet { pub fn new (_ : Odds , _ : UnitInterval , _ : f64 , _ : bool ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn devig_multi_way (_ : & [Odds]) -> Result < Vec < UnitInterval > , KellyError >"
+    },
+    {
+      "signature": "pub fn devig_multi_way_into (_ : & [Odds] , _ : & mut [UnitInterval] ,) -> Result < f64 , KellyError >"
+    },
+    {
+      "signature": "pub fn devig_two_way (_ : & Odds , _ : & Odds ,) -> Result < (UnitInterval , UnitInterval) , KellyError >"
+    },
+    {
+      "signature": "pub fn single_bet_clv (_ : & Odds , _ : & UnitInterval ,) -> Result < ClvMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn single_bet_clv_two_way (_ : & Odds , _ : & Odds , _ : & Odds ,) -> Result < ClvMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn summarize_clv (_ : & [SettledBet]) -> Result < ClvSummary , KellyError >"
+    },
+    {
+      "signature": "pub struct ClvMetrics"
+    },
+    {
+      "signature": "pub struct ClvSummary"
+    },
+    {
+      "signature": "pub struct SettledBet"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/mod.rs": [
+    {
+      "signature": "pub use calibration :: CalibrationComparison"
+    },
+    {
+      "signature": "pub use calibration :: binary_log_loss"
+    },
+    {
+      "signature": "pub use calibration :: brier_score"
+    },
+    {
+      "signature": "pub use calibration :: compare_calibration"
+    },
+    {
+      "signature": "pub use calibration :: settled_closing_calibration"
+    },
+    {
+      "signature": "pub use clv :: ClvMetrics"
+    },
+    {
+      "signature": "pub use clv :: ClvSummary"
+    },
+    {
+      "signature": "pub use clv :: SettledBet"
+    },
+    {
+      "signature": "pub use clv :: devig_multi_way"
+    },
+    {
+      "signature": "pub use clv :: devig_multi_way_into"
+    },
+    {
+      "signature": "pub use clv :: devig_two_way"
+    },
+    {
+      "signature": "pub use clv :: single_bet_clv"
+    },
+    {
+      "signature": "pub use clv :: single_bet_clv_two_way"
+    },
+    {
+      "signature": "pub use clv :: summarize_clv"
+    },
+    {
+      "signature": "pub use significance :: SampleSize95"
+    },
+    {
+      "signature": "pub use significance :: YieldSignificance"
+    },
+    {
+      "signature": "pub use significance :: Z_95_ONE_SIDED"
+    },
+    {
+      "signature": "pub use significance :: Z_95_TWO_SIDED"
+    },
+    {
+      "signature": "pub use significance :: evaluate_yield_against_closing"
+    },
+    {
+      "signature": "pub use significance :: evaluate_yield_significance"
+    },
+    {
+      "signature": "pub use significance :: required_bets_for_95_significance"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/validation/significance.rs": [
+    {
+      "signature": "pub const Z_95_ONE_SIDED : f64"
+    },
+    {
+      "signature": "pub const Z_95_TWO_SIDED : f64"
+    },
+    {
+      "signature": "pub fn evaluate_yield_against_closing (_ : & [SettledBet] ,) -> Result < YieldSignificance , KellyError >"
+    },
+    {
+      "signature": "pub fn evaluate_yield_significance (_ : & [SettledBet]) -> Result < YieldSignificance , KellyError >"
+    },
+    {
+      "signature": "pub fn required_bets_for_95_significance (_ : f64 , _ : & [Odds] , _ : Option < & [UnitInterval] > ,) -> Result < SampleSize95 , KellyError >"
+    },
+    {
+      "signature": "pub struct SampleSize95"
+    },
+    {
+      "signature": "pub struct YieldSignificance"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/zip_regression/core.rs": [

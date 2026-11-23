@@ -20,6 +20,10 @@
 //!
 //! ###  Risk & Decision Theory
 //! *   **[Kelly Criterion](kelly)**: Optimal capital allocation strategy to maximize logarithmic wealth growth.
+//! *   **[Risk of Ruin & Solvency](ruin)**: Exact Gambler's Ruin, Cramér-Lundberg adjustment coefficients,
+//!     proportional-Kelly drawdown barrier bounds, and zero-allocation Monte Carlo bankroll ensembles.
+//! *   **[Edge Validation & Calibration](validation)**: Closing Line Value (CLV), market vigorish removal,
+//!     Brier/log-loss proper scoring rules, and realized yield statistical significance.
 //! *   **[Copulas](copula)**: sophisticated dependency modeling (e.g., Gaussian Copula) for correlated events,
 //!     critical for pricing derivatives or "Same Game Parlays".
 //!
@@ -102,7 +106,9 @@ pub mod kelly;
 pub mod markov;
 pub mod ou_process;
 pub mod regression;
+pub mod ruin;
 pub mod tda;
+pub mod validation;
 pub mod zip_regression;
 
 // [cite:clinical_trials_statistics]

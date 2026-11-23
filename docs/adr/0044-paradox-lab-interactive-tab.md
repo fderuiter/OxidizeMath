@@ -1,4 +1,4 @@
-# ADR 0043: Auto-Discovered Paradox Lab Tab for Stochastic Ratchets and Network Congestion
+# ADR 0044: Auto-Discovered Paradox Lab Tab for Stochastic Ratchets and Network Congestion
 
 ## Status
 Accepted (extends [ADR 0001](0001-dynamic-workspace-discovery.md), [ADR 0008](0008-finite-state-solver-guard.md), and [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md))

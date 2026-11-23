@@ -1,10 +1,10 @@
-//! Kelly Criterion Bankroll Growth and Volatility-Drag Paradox Tool.
+//! Kelly Criterion Bankroll Growth and Solvency Barrier Paradox Tool.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::bankroll_ensemble::{
-    BankrollEnsembleLab, BankrollLabMode, VolatilityHypothesis, DEFAULT_CUSTOM_FRACTION,
-    MAX_CUSTOM_FRACTION,
+    BankrollEnsembleLab, BankrollLabMode, VolatilityHypothesis, DEFAULT_BARRIER_FLOOR_RATIO,
+    DEFAULT_CUSTOM_FRACTION, MAX_BARRIER_FLOOR_RATIO, MAX_CUSTOM_FRACTION, MIN_BARRIER_FLOOR_RATIO,
 };
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::InteractiveTool;
@@ -13,11 +13,16 @@ use egui_plot::{Line, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::kelly::{
     kelly_fraction, variants, BankrollFraction, Odds, UnitInterval,
 };
+use math_explorer::pure_math::statistics::ruin::kelly_barrier_risk;
 use oxidize_core::rng::{OxidizeRng, BASE_SEED};
 use rand::Rng;
 
 fn default_custom_fraction() -> f64 {
     DEFAULT_CUSTOM_FRACTION
+}
+
+fn default_barrier_floor_ratio() -> f64 {
+    DEFAULT_BARRIER_FLOOR_RATIO
 }
 
 fn is_default_mode(mode: &BankrollLabMode) -> bool {
@@ -28,6 +33,10 @@ fn is_default_fraction(val: &f64) -> bool {
     (*val - DEFAULT_CUSTOM_FRACTION).abs() < 1e-12
 }
 
+fn is_default_barrier_floor_ratio(val: &f64) -> bool {
+    (*val - DEFAULT_BARRIER_FLOOR_RATIO).abs() < 1e-12
+}
+
 /// Interactive simulator for fractional Kelly trajectories and non-ergodic volatility drag.
 pub struct BankrollGrowthTool {
     initial_bankroll: f64,
@@ -36,11 +45,12 @@ pub struct BankrollGrowthTool {
     num_bets: usize,
     seed_counter: u64,
     mode: BankrollLabMode,
-    /// Hosted non-ergodic ensemble and volatility-drag laboratory.
+    /// Hosted non-ergodic ensemble and drawdown barrier laboratory.
     pub ensemble_lab: BankrollEnsembleLab,
     full_kelly_points: Vec<PlotPoint>,
     half_kelly_points: Vec<PlotPoint>,
     quarter_kelly_points: Vec<PlotPoint>,
+    tier_50pct_drawdown_bounds: Option<[f64; 3]>,
     error_msg: Option<String>,
 }
 
@@ -57,6 +67,7 @@ impl Default for BankrollGrowthTool {
             full_kelly_points: Vec::with_capacity(1001),
             half_kelly_points: Vec::with_capacity(1001),
             quarter_kelly_points: Vec::with_capacity(1001),
+            tier_50pct_drawdown_bounds: None,
             error_msg: None,
         };
         tool.recalculate();
@@ -87,6 +98,7 @@ impl BankrollGrowthTool {
         self.full_kelly_points.clear();
         self.half_kelly_points.clear();
         self.quarter_kelly_points.clear();
+        self.tier_50pct_drawdown_bounds = None;
         self.error_msg = None;
 
         let p = match UnitInterval::new(self.probability) {
@@ -128,6 +140,18 @@ impl BankrollGrowthTool {
                 return;
             }
         };
+
+        if let (Ok(b_fk), Ok(b_hk), Ok(b_qk)) = (
+            kelly_barrier_risk(p, o, &fk, 0.50),
+            kelly_barrier_risk(p, o, &hk, 0.50),
+            kelly_barrier_risk(p, o, &qk, 0.50),
+        ) {
+            self.tier_50pct_drawdown_bounds = Some([
+                b_fk.lundberg_barrier_bound,
+                b_hk.lundberg_barrier_bound,
+                b_qk.lundberg_barrier_bound,
+            ]);
+        }
 
         let mut rng = OxidizeRng::from_seed(BASE_SEED ^ self.seed_counter);
         let net_multiplier = o.net_profit_multiplier();
@@ -185,7 +209,7 @@ impl BankrollGrowthTool {
                 .radio_value(
                     &mut self.mode,
                     BankrollLabMode::VolatilityDrag,
-                    "Volatility-Drag Paradox Lab",
+                    "Volatility-Drag & Solvency Lab",
                 )
                 .changed();
             ui.separator();
@@ -217,6 +241,14 @@ impl BankrollGrowthTool {
             return;
         }
         ui.heading("Bankroll Simulation");
+        if let Some([fk_b, hk_b, qk_b]) = self.tier_50pct_drawdown_bounds {
+            ui.label(format!(
+                "Asymptotic 50%-Drawdown Barrier Bound (W ≤ 0.5 W₀): Full Kelly {:.1}% | Half Kelly {:.1}% | Quarter Kelly {:.2}%",
+                fk_b * 100.0,
+                hk_b * 100.0,
+                qk_b * 100.0
+            ));
+        }
         Plot::new("bankroll_growth_plot")
             .view_aspect(2.0)
             .legend(egui_plot::Legend::default())
@@ -260,6 +292,11 @@ struct BankrollState {
         skip_serializing_if = "is_default_fraction"
     )]
     custom_fraction: f64,
+    #[serde(
+        default = "default_barrier_floor_ratio",
+        skip_serializing_if = "is_default_barrier_floor_ratio"
+    )]
+    barrier_floor_ratio: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hypothesis: Option<VolatilityHypothesis>,
 }
@@ -283,6 +320,7 @@ impl InteractiveTool for BankrollGrowthTool {
             num_bets: self.num_bets,
             mode: self.mode,
             custom_fraction: self.ensemble_lab.custom_fraction,
+            barrier_floor_ratio: self.ensemble_lab.barrier_floor_ratio,
             hypothesis: self.ensemble_lab.hypothesis,
         })
         .ok()
@@ -291,14 +329,21 @@ impl InteractiveTool for BankrollGrowthTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: BankrollState =
             serde_json::from_str(state).map_err(|e| format!("Invalid bankroll state: {e}"))?;
-        if ![s.initial_bankroll, s.probability, s.odds, s.custom_fraction]
-            .iter()
-            .all(|v| v.is_finite())
+        if ![
+            s.initial_bankroll,
+            s.probability,
+            s.odds,
+            s.custom_fraction,
+            s.barrier_floor_ratio,
+        ]
+        .iter()
+        .all(|v| v.is_finite())
             || !(100.0..=10_000.0).contains(&s.initial_bankroll)
             || !(0.01..=0.99).contains(&s.probability)
             || !(0.1..=10.0).contains(&s.odds)
             || !(10..=1000).contains(&s.num_bets)
             || !(0.0..=MAX_CUSTOM_FRACTION).contains(&s.custom_fraction)
+            || !(MIN_BARRIER_FLOOR_RATIO..=MAX_BARRIER_FLOOR_RATIO).contains(&s.barrier_floor_ratio)
         {
             return Err("Bankroll simulation parameters out of bounds".into());
         }
@@ -315,6 +360,9 @@ impl InteractiveTool for BankrollGrowthTool {
         self.num_bets = s.num_bets;
         self.mode = s.mode;
         self.ensemble_lab.custom_fraction = s.custom_fraction.clamp(0.0, MAX_CUSTOM_FRACTION);
+        self.ensemble_lab.barrier_floor_ratio = s
+            .barrier_floor_ratio
+            .clamp(MIN_BARRIER_FLOOR_RATIO, MAX_BARRIER_FLOOR_RATIO);
         self.ensemble_lab.hypothesis = s.hypothesis;
         self.recalculate();
         Ok(())
@@ -384,15 +432,15 @@ impl scientific_metadata::theory::TheoryDescribable for BankrollGrowthTool {
         let mut map = std::collections::HashMap::new();
         map.insert(
             "Full Kelly".into(),
-            "Maximizes expected logarithmic growth rate".into(),
+            "Maximizes expected logarithmic growth rate (50% asymptotic probability of a 50% drawdown)".into(),
         );
         map.insert(
             "Half Kelly".into(),
-            "Reduces variance and drawdowns by half while retaining 75% of growth rate".into(),
+            "Retains ~75% of growth rate while cutting 50%-drawdown risk to ~12.5%".into(),
         );
         map.insert(
             "Quarter Kelly".into(),
-            "Conservative wagering for high volatility protection".into(),
+            "Conservative wagering with <2% asymptotic 50%-drawdown risk".into(),
         );
         map
     }

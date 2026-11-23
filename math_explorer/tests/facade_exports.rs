@@ -157,6 +157,49 @@ fn assert_pure_math_eighteen_errors() {
         umbrella.severity(),
     ];
     assert!(severities.iter().all(|s| *s == Severity::Error));
+    assert_kelly_validation_and_ruin_exports();
+}
+
+#[cfg(feature = "pure_math")]
+fn assert_kelly_validation_and_ruin_exports() {
+    use math_explorer::diagnostics::{Diagnostic, Severity};
+    use math_explorer::error as e;
+
+    let k_stake: e::Error = e::KellyError::InvalidStake { value: 0.0 }.into();
+    let k_barrier: e::Error = e::KellyError::InvalidBarrier {
+        floor: 1.2,
+        initial_wealth: 1.0,
+    }
+    .into();
+    let k_bets: e::PureMathError = e::KellyError::InsufficientBets {
+        required: 2,
+        actual: 1,
+    }
+    .into();
+    let k_dim: e::PureMathError = e::KellyError::DimensionMismatch {
+        expected: 3,
+        actual: 2,
+    }
+    .into();
+    let k_conv: e::PureMathError = e::KellyError::ConvergenceFailed {
+        reason: "bracket failed",
+    }
+    .into();
+    assert!(!format!("{k_stake:?}{k_barrier:?}").is_empty());
+    assert_eq!(k_bets.severity(), Severity::Error);
+    assert_eq!(k_dim.severity(), Severity::Error);
+    assert_eq!(k_conv.severity(), Severity::Error);
+
+    let placed = math_explorer::pure_math::statistics::kelly::Odds::new(2.10).unwrap();
+    let close = math_explorer::pure_math::statistics::kelly::UnitInterval::new(0.50).unwrap();
+    let clv = math_explorer::pure_math::statistics::validation::single_bet_clv(&placed, &close)
+        .expect("facade single_bet_clv");
+    assert!((clv.ev_pct - 5.0).abs() < 1e-9);
+    let fk = math_explorer::pure_math::statistics::kelly::kelly_fraction(&close, &placed).unwrap();
+    let barrier =
+        math_explorer::pure_math::statistics::ruin::kelly_barrier_risk(&close, &placed, &fk, 0.5)
+            .expect("facade kelly_barrier_risk");
+    assert!((barrier.lundberg_barrier_bound - 0.5).abs() < 1e-6);
 }
 
 #[cfg(feature = "pure_math")]
