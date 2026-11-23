@@ -4,8 +4,10 @@ version = "0.4.0"
 edition = "2024"
 
 [dependencies]
+diagnostics = { path = "../diagnostics" }
 nalgebra = { workspace = true }
 rand = { workspace = true }
+thiserror = { workspace = true }
 oxidize_core = { path = "../oxidize_core" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
 

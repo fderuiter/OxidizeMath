@@ -1,4 +1,6 @@
 use super::integration::path_integrate;
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::Dimension;
 use num_complex::Complex64;
 
 /// Calculates the linear magnification factor of a conformal map w = f(z) at z0.
@@ -39,20 +41,41 @@ pub struct SchwarzChristoffel {
 }
 
 impl SchwarzChristoffel {
-    #[allow(missing_docs)]
+    /// Constructs a Schwarz-Christoffel map after validating prevertex and exponent lengths.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::DimensionMismatch`] when `prevertices.len() != exponents.len()`.
     #[verified_engine::verified]
-    pub fn new(prevertices: Vec<f64>, exponents: Vec<f64>, a: Complex64, b: Complex64) -> Self {
-        assert_eq!(
-            prevertices.len(),
-            exponents.len(),
-            "Must have same number of prevertices and exponents"
-        );
-        Self {
+    pub fn try_new(
+        prevertices: Vec<f64>,
+        exponents: Vec<f64>,
+        a: Complex64,
+        b: Complex64,
+    ) -> Result<Self, MathError> {
+        if prevertices.len() != exponents.len() {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(prevertices.len()),
+                actual: Dimension(exponents.len()),
+            });
+        }
+        Ok(Self {
             prevertices,
             exponents,
             a,
             b,
-        }
+        })
+    }
+
+    /// Constructs a Schwarz-Christoffel map.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `prevertices.len() != exponents.len()`. Prefer [`Self::try_new`].
+    #[verified_engine::verified]
+    pub fn new(prevertices: Vec<f64>, exponents: Vec<f64>, a: Complex64, b: Complex64) -> Self {
+        Self::try_new(prevertices, exponents, a, b)
+            .expect("Must have same number of prevertices and exponents")
     }
 
     /// Evaluates the derivative dw/dz at z.

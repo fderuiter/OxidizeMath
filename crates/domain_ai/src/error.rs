@@ -19,6 +19,56 @@ pub enum AIError {
     #[allow(missing_docs)]
     UninitializedState { name: String },
 
+    /// Model dimension is incompatible with the requested attention head count.
+    #[error(
+        "Model dimension d_model ({d_model}) must be divisible by positive head count h ({heads})"
+    )]
+    #[allow(missing_docs)]
+    InvalidHeadConfiguration { d_model: usize, heads: usize },
+
+    /// Number of per-head weight matrices did not match head count `h`.
+    #[error(
+        "Expected {expected} weight matrices per projection type, got w_q: {got_q}, w_k: {got_k}, w_v: {got_v}"
+    )]
+    #[allow(missing_docs)]
+    HeadCountMismatch {
+        expected: usize,
+        got_q: usize,
+        got_k: usize,
+        got_v: usize,
+    },
+
+    /// Output projection weight matrix had incompatible dimensions.
+    #[error(
+        "{projection} dimension mismatch: expected ({}, {}), got ({}, {})",
+        expected.0,
+        expected.1,
+        actual.0,
+        actual.1
+    )]
+    #[allow(missing_docs)]
+    ProjectionShapeMismatch {
+        projection: &'static str,
+        expected: (usize, usize),
+        actual: (usize, usize),
+    },
+
+    /// Per-head projection weight matrix had incompatible dimensions.
+    #[error(
+        "Head {head} {projection} dimension mismatch: expected ({}, {}), got ({}, {})",
+        expected.0,
+        expected.1,
+        actual.0,
+        actual.1
+    )]
+    #[allow(missing_docs)]
+    HeadProjectionShapeMismatch {
+        head: usize,
+        projection: &'static str,
+        expected: (usize, usize),
+        actual: (usize, usize),
+    },
+
     #[error(transparent)]
     #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),

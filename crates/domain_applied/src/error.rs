@@ -29,23 +29,64 @@ pub enum BatteryError {
     NegativeCycles(f64),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 #[allow(missing_docs)]
 pub enum GameTheoryError {
     /// Payoff matrix is not square.
+    #[error("Payoff matrix must be square, got {rows}x{cols}")]
     #[allow(missing_docs)]
     NonSquarePayoffMatrix { rows: usize, cols: usize },
     /// Invalid parameter value (e.g. frequency outside [0, 1]).
+    #[error("Invalid game theory parameter {name}: {value}")]
     #[allow(missing_docs)]
     InvalidParameter { name: String, value: f64 },
+    /// Lower and upper bound vectors had different lengths.
+    #[error(
+        "Box constraint bound lengths must match: min has {min_len} elements, max has {max_len}"
+    )]
+    #[allow(missing_docs)]
+    BoundsDimensionMismatch { min_len: usize, max_len: usize },
+    /// Lower bound exceeded upper bound or was non-finite along a dimension.
+    #[error(
+        "Invalid box bounds at dimension {dimension}: min ({min}) must be finite and <= max ({max})"
+    )]
+    #[allow(missing_docs)]
+    InvalidBoxBounds {
+        dimension: usize,
+        min: f64,
+        max: f64,
+    },
+    /// Wrapped centralized mathematical error.
+    #[error(transparent)]
+    #[allow(missing_docs)]
+    Math(#[from] math_commons::error::MathError),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 #[allow(missing_docs)]
 pub enum EngineeringError {
     /// Invalid parameter value (e.g. TotalBits = 0).
+    #[error("Invalid engineering parameter {name}: {value}")]
     #[allow(missing_docs)]
     InvalidParameter { name: String, value: f64 },
+    /// Design matrix normal equations `X^T * X` are singular and cannot be inverted.
+    #[error("Design matrix normal equations X^T * X are singular and not invertible")]
+    SingularDesignMatrix,
+    /// Contrast variance denominator is zero or negative, leaving the t-statistic undefined.
+    #[error("Contrast standard error denominator is zero; t-statistic is undefined")]
+    ZeroContrastVariance,
+    /// Matrix or vector dimensions are non-conformable.
+    #[error("{context}: expected {expected}, got {actual}")]
+    #[allow(missing_docs)]
+    DimensionMismatch {
+        context: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+    /// Wrapped centralized mathematical error.
+    #[error(transparent)]
+    #[allow(missing_docs)]
+    Math(#[from] math_commons::error::MathError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -68,13 +109,15 @@ pub enum LoraError {
     KeyMismatch,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 #[allow(missing_docs)]
 pub enum IsosurfaceError {
     /// The grid dimensions are too small (must be at least 2x2x2).
+    #[error("Invalid isosurface grid: {0}")]
     InvalidGrid(String),
     /// Wrapped centralized mathematical error.
-    Math(math_commons::error::MathError),
+    #[error(transparent)]
+    Math(#[from] math_commons::error::MathError),
 }
 
 impl Diagnostic for PharmacokineticsError {
@@ -111,12 +154,18 @@ impl Diagnostic for BatteryError {
 impl Diagnostic for GameTheoryError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
-        Severity::Error
+        match self {
+            Self::Math(err) => err.severity(),
+            _ => Severity::Error,
+        }
     }
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "GameTheoryError".to_string());
+        if let Self::Math(math_err) = self {
+            map.extend(math_err.metadata());
+        }
         map.insert("description".to_string(), self.to_string());
         map
     }
@@ -125,12 +174,18 @@ impl Diagnostic for GameTheoryError {
 impl Diagnostic for EngineeringError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
-        Severity::Error
+        match self {
+            Self::Math(err) => err.severity(),
+            _ => Severity::Error,
+        }
     }
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "EngineeringError".to_string());
+        if let Self::Math(math_err) = self {
+            map.extend(math_err.metadata());
+        }
         map.insert("description".to_string(), self.to_string());
         map
     }
@@ -153,7 +208,10 @@ impl Diagnostic for LoraError {
 impl Diagnostic for IsosurfaceError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
-        Severity::Error
+        match self {
+            Self::Math(err) => err.severity(),
+            _ => Severity::Error,
+        }
     }
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
@@ -166,36 +224,3 @@ impl Diagnostic for IsosurfaceError {
         map
     }
 }
-
-impl From<math_commons::error::MathError> for IsosurfaceError {
-    fn from(err: math_commons::error::MathError) -> Self {
-        IsosurfaceError::Math(err)
-    }
-}
-
-impl std::fmt::Display for GameTheoryError {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for GameTheoryError {}
-
-impl std::fmt::Display for EngineeringError {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for EngineeringError {}
-
-impl std::fmt::Display for IsosurfaceError {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for IsosurfaceError {}

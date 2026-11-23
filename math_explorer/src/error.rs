@@ -14,6 +14,9 @@ pub use domain_applied::error::{
 #[cfg(feature = "biology")]
 pub use domain_biology::error::HodgkinHuxleyError;
 
+#[cfg(feature = "climate")]
+pub use domain_climate::error::ClimateError;
+
 #[cfg(feature = "epidemiology")]
 pub use domain_epidemiology::error::EpidemiologyError;
 

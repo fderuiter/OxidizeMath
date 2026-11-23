@@ -27,6 +27,15 @@ pub const K0_MAX: f64 = 10.0;
 /// Default initial momentum wave number $k_0$.
 pub const DEFAULT_K0: f64 = 5.0;
 
+/// Returns `val` if finite, otherwise `fallback`.
+pub(super) fn finite_or(val: f64, fallback: f64) -> f64 {
+    if val.is_finite() {
+        val
+    } else {
+        fallback
+    }
+}
+
 /// Minimum Gaussian packet width $\sigma$.
 pub const SIGMA_MIN: f64 = 0.25;
 /// Maximum Gaussian packet width $\sigma$.

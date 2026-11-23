@@ -1,3 +1,4 @@
+use crate::error::GameTheoryError;
 use nalgebra::DVector;
 
 /// Represents a compact, convex subset of Euclidean space.
@@ -22,6 +23,7 @@ pub trait ConvexSet {
 ///
 /// A hyper-rectangle is always convex and compact (closed and bounded), making it
 /// a valid domain for standard fixed-point theorems.
+#[derive(Debug, Clone, PartialEq)]
 pub struct BoxSet {
     #[allow(missing_docs)]
     pub min_bounds: DVector<f64>,
@@ -30,6 +32,34 @@ pub struct BoxSet {
 }
 
 impl BoxSet {
+    /// Fallibly constructs a `BoxSet` hyper-rectangle $[min, max]^n$.
+    ///
+    /// Returns [`GameTheoryError::BoundsDimensionMismatch`] if `min_vals` and `max_vals` differ in
+    /// length, or [`GameTheoryError::InvalidBoxBounds`] if any coordinate has non-finite bounds or
+    /// `min_vals[i] > max_vals[i]`.
+    #[verified_engine::verified]
+    pub fn try_new(min_vals: Vec<f64>, max_vals: Vec<f64>) -> Result<Self, GameTheoryError> {
+        if min_vals.len() != max_vals.len() {
+            return Err(GameTheoryError::BoundsDimensionMismatch {
+                min_len: min_vals.len(),
+                max_len: max_vals.len(),
+            });
+        }
+        for (dimension, (&min, &max)) in min_vals.iter().zip(max_vals.iter()).enumerate() {
+            if !min.is_finite() || !max.is_finite() || min > max {
+                return Err(GameTheoryError::InvalidBoxBounds {
+                    dimension,
+                    min,
+                    max,
+                });
+            }
+        }
+        Ok(Self {
+            min_bounds: DVector::from_vec(min_vals),
+            max_bounds: DVector::from_vec(max_vals),
+        })
+    }
+
     /// Creates a new `BoxSet` representing a hyper-rectangle.
     ///
     /// The resulting `BoxSet` constrains the domain across $n$ dimensions,
@@ -37,9 +67,7 @@ impl BoxSet {
     ///
     /// # Panics
     ///
-    /// Panics if `min_vals` and `max_vals` have different lengths,
-    /// because a hyper-rectangle must have consistent dimensionality for
-    /// its lower and upper bounds.
+    /// Panics if `min_vals` and `max_vals` have different lengths or invalid bounds.
     ///
     /// # Examples
     ///
@@ -55,11 +83,7 @@ impl BoxSet {
     /// ```
     #[verified_engine::verified]
     pub fn new(min_vals: Vec<f64>, max_vals: Vec<f64>) -> Self {
-        assert_eq!(min_vals.len(), max_vals.len());
-        Self {
-            min_bounds: DVector::from_vec(min_vals),
-            max_bounds: DVector::from_vec(max_vals),
-        }
+        Self::try_new(min_vals, max_vals).unwrap_or_else(|e| panic!("{e}"))
     }
 }
 

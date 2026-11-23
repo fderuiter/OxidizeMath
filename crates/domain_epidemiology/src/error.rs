@@ -1,25 +1,45 @@
 use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
+use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 #[allow(missing_docs)]
 pub enum EpidemiologyError {
     /// Matrix V (Transition Matrix) is singular and cannot be inverted.
+    #[error("Transition matrix V is singular and cannot be inverted")]
     SingularTransitionMatrix,
     /// Invalid Parameter (e.g., negative rate).
+    #[error("Invalid epidemiological parameter {name}: {value}")]
     #[allow(missing_docs)]
     InvalidParameter { name: String, value: f64 },
     /// Missing Parameter (e.g., required field not set in builder).
+    #[error("Missing required epidemiological parameter: {name}")]
     #[allow(missing_docs)]
     MissingParameter { name: String },
+    /// Basic reproduction number `R0` was non-positive or non-finite.
+    #[error("Basic reproduction number R0 must be finite and positive, got {r0}")]
+    #[allow(missing_docs)]
+    InvalidReproductionNumber { r0: f64 },
+    /// Newton-Raphson derivative approached zero during final-size iteration.
+    #[error("Final-size solver derivative ({derivative}) approached zero at S_inf = {x}")]
+    #[allow(missing_docs)]
+    NearZeroDerivative { x: f64, derivative: f64 },
+    /// Newton-Raphson final-size solver failed to converge within maximum iterations.
+    #[error("Final-size Newton-Raphson solver failed to converge within {iterations} iterations")]
+    #[allow(missing_docs)]
+    ConvergenceFailure { iterations: usize },
     /// Wrapped centralized mathematical error.
-    Math(math_commons::error::MathError),
+    #[error(transparent)]
+    Math(#[from] math_commons::error::MathError),
 }
 
 impl Diagnostic for EpidemiologyError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
-        Severity::Error
+        match self {
+            Self::Math(err) => err.severity(),
+            _ => Severity::Error,
+        }
     }
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
@@ -30,20 +50,5 @@ impl Diagnostic for EpidemiologyError {
         }
         map.insert("description".to_string(), self.to_string());
         map
-    }
-}
-
-impl std::fmt::Display for EpidemiologyError {
-    #[verified_engine::verified]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for EpidemiologyError {}
-
-impl From<math_commons::error::MathError> for EpidemiologyError {
-    fn from(err: math_commons::error::MathError) -> Self {
-        EpidemiologyError::Math(err)
     }
 }

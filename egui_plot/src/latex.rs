@@ -43,9 +43,35 @@ fn truncate_chars(text: &str, max_chars: usize) -> &str {
     }
 }
 
-fn consume_node(remaining_nodes: &mut usize) -> Result<(), ()> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Error returned when bounded LaTeX math parsing fails.
+pub enum LatexParseError {
+    /// Input string exceeded maximum byte budget.
+    InputTooLong,
+    /// Expression nesting exceeded maximum recursion depth.
+    DepthLimitExceeded,
+    /// Parsed `MathBox` AST exceeded maximum node budget.
+    NodeBudgetExceeded,
+    /// Malformed LaTeX syntax (unbalanced braces or missing command argument).
+    SyntaxError,
+}
+
+impl std::fmt::Display for LatexParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InputTooLong => f.write_str("LaTeX input exceeds maximum length"),
+            Self::DepthLimitExceeded => f.write_str("LaTeX nesting exceeds maximum depth"),
+            Self::NodeBudgetExceeded => f.write_str("LaTeX AST exceeds maximum node budget"),
+            Self::SyntaxError => f.write_str("Malformed LaTeX math expression"),
+        }
+    }
+}
+
+impl std::error::Error for LatexParseError {}
+
+fn consume_node(remaining_nodes: &mut usize) -> Result<(), LatexParseError> {
     if *remaining_nodes == 0 {
-        return Err(());
+        return Err(LatexParseError::NodeBudgetExceeded);
     }
     *remaining_nodes -= 1;
     Ok(())
@@ -122,14 +148,13 @@ pub fn parse_latex_with_font(text: &str, font_id: FontId, color: Color32) -> Lay
 }
 
 /// Parses LaTeX string into `MathBox` AST tree.
-#[allow(clippy::result_unit_err)]
 pub fn parse_latex_to_box(
     text: &str,
     base_font_id: &FontId,
     color: Color32,
-) -> Result<MathBox, ()> {
+) -> Result<MathBox, LatexParseError> {
     if text.len() > MAX_LATEX_INPUT_BYTES {
-        return Err(());
+        return Err(LatexParseError::InputTooLong);
     }
     let mut remaining_nodes = MAX_MATH_BOX_NODES;
     parse_latex_to_box_bounded(text, base_font_id, color, 0, &mut remaining_nodes)
@@ -141,9 +166,12 @@ fn parse_latex_to_box_bounded(
     color: Color32,
     depth: usize,
     remaining_nodes: &mut usize,
-) -> Result<MathBox, ()> {
-    if text.len() > MAX_LATEX_INPUT_BYTES || depth > MAX_LATEX_DEPTH {
-        return Err(());
+) -> Result<MathBox, LatexParseError> {
+    if text.len() > MAX_LATEX_INPUT_BYTES {
+        return Err(LatexParseError::InputTooLong);
+    }
+    if depth > MAX_LATEX_DEPTH {
+        return Err(LatexParseError::DepthLimitExceeded);
     }
     if text.is_empty() {
         consume_node(remaining_nodes)?;
@@ -186,7 +214,10 @@ fn parse_latex_to_box_bounded(
     simplify_boxes(boxes, remaining_nodes)
 }
 
-fn simplify_boxes(boxes: Vec<MathBox>, remaining_nodes: &mut usize) -> Result<MathBox, ()> {
+fn simplify_boxes(
+    boxes: Vec<MathBox>,
+    remaining_nodes: &mut usize,
+) -> Result<MathBox, LatexParseError> {
     if boxes.len() == 1 {
         Ok(boxes.into_iter().next().unwrap())
     } else {
@@ -201,9 +232,9 @@ fn parse_math_expression_boxes(
     color: Color32,
     depth: usize,
     remaining_nodes: &mut usize,
-) -> Result<Vec<MathBox>, ()> {
+) -> Result<Vec<MathBox>, LatexParseError> {
     if depth > MAX_LATEX_DEPTH {
-        return Err(());
+        return Err(LatexParseError::DepthLimitExceeded);
     }
 
     let chars: Vec<char> = expr.chars().collect();
@@ -292,7 +323,7 @@ fn parse_math_expression_boxes(
             )?;
             boxes.push(group_box);
         } else if c == '}' {
-            return Err(());
+            return Err(LatexParseError::SyntaxError);
         } else if c.is_ascii_alphabetic() {
             let start = i;
             while i < len && chars[i].is_ascii_alphabetic() {
@@ -332,7 +363,7 @@ fn process_command_box(
     depth: usize,
     remaining_nodes: &mut usize,
     boxes: &mut Vec<MathBox>,
-) -> Result<(), ()> {
+) -> Result<(), LatexParseError> {
     if let Some(sym) = map_latex_symbol(cmd) {
         if cmd == "sqrt" {
             skip_whitespace(chars, i);
@@ -377,7 +408,7 @@ fn process_command_box(
                     italics: false,
                 });
             } else {
-                return Err(());
+                return Err(LatexParseError::SyntaxError);
             }
         }
         "frac" => {
@@ -412,10 +443,10 @@ fn process_command_box(
                         denominator: Box::new(den_box),
                     });
                 } else {
-                    return Err(());
+                    return Err(LatexParseError::SyntaxError);
                 }
             } else {
-                return Err(());
+                return Err(LatexParseError::SyntaxError);
             }
         }
         "sin" | "cos" | "tan" | "exp" | "ln" | "log" | "lim" | "max" | "min" | "det" | "arcsin"
@@ -478,9 +509,9 @@ fn process_command_box(
     Ok(())
 }
 
-fn read_script_arg(chars: &[char], i: usize) -> Result<(String, usize), ()> {
+fn read_script_arg(chars: &[char], i: usize) -> Result<(String, usize), LatexParseError> {
     if i >= chars.len() {
-        return Err(());
+        return Err(LatexParseError::SyntaxError);
     }
     if chars[i] == '{' {
         read_group_arg(chars, i + 1)
@@ -493,7 +524,7 @@ fn read_script_arg(chars: &[char], i: usize) -> Result<(String, usize), ()> {
     }
 }
 
-fn read_group_arg(chars: &[char], mut i: usize) -> Result<(String, usize), ()> {
+fn read_group_arg(chars: &[char], mut i: usize) -> Result<(String, usize), LatexParseError> {
     let mut depth = 1;
     let start = i;
     while i < chars.len() {
@@ -508,12 +539,12 @@ fn read_group_arg(chars: &[char], mut i: usize) -> Result<(String, usize), ()> {
         }
         i += 1;
     }
-    Err(())
+    Err(LatexParseError::SyntaxError)
 }
 
-fn read_command(chars: &[char], mut i: usize) -> Result<(String, usize), ()> {
+fn read_command(chars: &[char], mut i: usize) -> Result<(String, usize), LatexParseError> {
     if i >= chars.len() {
-        return Err(());
+        return Err(LatexParseError::SyntaxError);
     }
     if !chars[i].is_ascii_alphabetic() {
         let s: String = std::iter::once(chars[i]).collect();

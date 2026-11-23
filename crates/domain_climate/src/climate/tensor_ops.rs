@@ -2,7 +2,39 @@
 //! A 1D convolution with kernel size 1 is equivalent to a linear transformation (dense layer)
 //! applied at each position.
 
+use crate::error::ClimateError;
 use nalgebra::{DMatrix, DVector, Dyn, Matrix, Storage};
+
+/// Fallible 1D convolution with kernel size 1 (`output = input * kernel^T + bias`).
+///
+/// Returns [`ClimateError::ChannelMismatch`] if input channels or bias length do not match `kernel`.
+#[verified_engine::verified]
+pub fn try_conv1d<S: Storage<f32, Dyn, Dyn>>(
+    input: &Matrix<f32, Dyn, Dyn, S>,
+    kernel: &DMatrix<f32>,
+    bias: &DVector<f32>,
+) -> Result<DMatrix<f32>, ClimateError> {
+    if input.ncols() != kernel.ncols() {
+        return Err(ClimateError::ChannelMismatch {
+            context: "Input channels must match kernel input channels.",
+            expected: kernel.ncols(),
+            actual: input.ncols(),
+        });
+    }
+    if kernel.nrows() != bias.len() {
+        return Err(ClimateError::ChannelMismatch {
+            context: "Kernel output channels must match bias length.",
+            expected: kernel.nrows(),
+            actual: bias.len(),
+        });
+    }
+
+    let kernel_t = kernel.transpose();
+    let mut output = input * &kernel_t;
+    let bias_t = bias.transpose();
+    output.row_iter_mut().for_each(|mut row| row += &bias_t);
+    Ok(output)
+}
 
 /// Performs a 1D convolution with kernel size 1.
 /// This is equivalent to a matrix multiplication.
@@ -22,27 +54,37 @@ pub fn conv1d<S: Storage<f32, Dyn, Dyn>>(
     kernel: &DMatrix<f32>,
     bias: &DVector<f32>,
 ) -> DMatrix<f32> {
-    // Check dimensions
-    assert_eq!(
-        input.ncols(),
-        kernel.ncols(),
-        "Input channels must match kernel input channels."
-    );
-    assert_eq!(
-        kernel.nrows(),
-        bias.len(),
-        "Kernel output channels must match bias length."
-    );
+    try_conv1d(input, kernel, bias).unwrap_or_else(|e| panic!("{e}"))
+}
 
-    // The core operation is `output = input * kernel^T + bias`
-    let kernel_t = kernel.transpose();
-    let mut output = input * &kernel_t;
+/// Fallible 1D transposed convolution with kernel size 1 (`output = input * kernel + bias`).
+///
+/// Returns [`ClimateError::ChannelMismatch`] if input channels or bias length do not match `kernel`.
+#[verified_engine::verified]
+pub fn try_conv_transpose1d<S: Storage<f32, Dyn, Dyn>>(
+    input: &Matrix<f32, Dyn, Dyn, S>,
+    kernel: &DMatrix<f32>,
+    bias: &DVector<f32>,
+) -> Result<DMatrix<f32>, ClimateError> {
+    if input.ncols() != kernel.nrows() {
+        return Err(ClimateError::ChannelMismatch {
+            context: "Input channels must match kernel output channels.",
+            expected: kernel.nrows(),
+            actual: input.ncols(),
+        });
+    }
+    if kernel.ncols() != bias.len() {
+        return Err(ClimateError::ChannelMismatch {
+            context: "Kernel input channels must match bias length.",
+            expected: kernel.ncols(),
+            actual: bias.len(),
+        });
+    }
 
-    // Add bias to each row
+    let mut output = input * kernel;
     let bias_t = bias.transpose();
     output.row_iter_mut().for_each(|mut row| row += &bias_t);
-
-    output
+    Ok(output)
 }
 
 /// Performs a 1D transposed convolution with kernel size 1.
@@ -64,28 +106,7 @@ pub fn conv_transpose1d<S: Storage<f32, Dyn, Dyn>>(
     kernel: &DMatrix<f32>, // Shape (out_channels, in_channels) from the original conv
     bias: &DVector<f32>,
 ) -> DMatrix<f32> {
-    // Check dimensions
-    assert_eq!(
-        input.ncols(),
-        kernel.nrows(),
-        "Input channels must match kernel output channels."
-    );
-    assert_eq!(
-        kernel.ncols(),
-        bias.len(),
-        "Kernel input channels must match bias length."
-    );
-
-    // The core operation is `output = input * kernel + bias`
-    // Note: This is not a true transposed convolution, but what's needed for a symmetric decoder
-    // with kernel size 1 layers. The operation is `input * W`, not `input * W^T`.
-    let mut output = input * kernel;
-
-    // Add bias to each row
-    let bias_t = bias.transpose();
-    output.row_iter_mut().for_each(|mut row| row += &bias_t);
-
-    output
+    try_conv_transpose1d(input, kernel, bias).unwrap_or_else(|e| panic!("{e}"))
 }
 
 #[cfg(test)]

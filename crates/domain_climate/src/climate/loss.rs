@@ -1,6 +1,30 @@
 //! This module implements the loss functions for the CERA framework.
 
+use crate::error::ClimateError;
 use nalgebra::{Dyn, Matrix, Storage};
+
+/// Fallible Mean Squared Error (MSE) between two matrices of identical shape.
+///
+/// Returns [`ClimateError::ShapeMismatch`] if `y_true` and `y_pred` differ in dimensions.
+#[verified_engine::verified]
+pub fn try_mse_loss<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
+    y_true: &Matrix<f32, Dyn, Dyn, S1>,
+    y_pred: &Matrix<f32, Dyn, Dyn, S2>,
+) -> Result<f32, ClimateError> {
+    if y_true.shape() != y_pred.shape() {
+        return Err(ClimateError::ShapeMismatch {
+            context: "Matrices must have the same shape for MSE.",
+            expected: y_true.shape(),
+            actual: y_pred.shape(),
+        });
+    }
+    let count = y_true.nrows() * y_true.ncols();
+    if count == 0 {
+        return Ok(0.0);
+    }
+    let diff = y_true - y_pred;
+    Ok(diff.norm_squared() / count as f32)
+}
 
 /// Computes the Mean Squared Error (MSE) between two matrices.
 ///
@@ -17,13 +41,51 @@ pub fn mse_loss<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
     y_true: &Matrix<f32, Dyn, Dyn, S1>,
     y_pred: &Matrix<f32, Dyn, Dyn, S2>,
 ) -> f32 {
-    assert_eq!(
-        y_true.shape(),
-        y_pred.shape(),
-        "Matrices must have the same shape for MSE."
-    );
-    let diff = y_true - y_pred;
-    diff.norm_squared() / (diff.nrows() * diff.ncols()) as f32
+    try_mse_loss(y_true, y_pred).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Fallible Earth Mover's Distance (EMD) across paired 1D column distributions.
+///
+/// Returns [`ClimateError::ShapeMismatch`] if `z1` and `z2` differ in dimensions.
+#[verified_engine::verified]
+pub fn try_earth_movers_distance<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, Dyn>>(
+    z1: &Matrix<f32, Dyn, Dyn, S1>,
+    z2: &Matrix<f32, Dyn, Dyn, S2>,
+) -> Result<f32, ClimateError> {
+    if z1.shape() != z2.shape() {
+        return Err(ClimateError::ShapeMismatch {
+            context: "Matrices must have the same shape for EMD.",
+            expected: z1.shape(),
+            actual: z2.shape(),
+        });
+    }
+    if z1.ncols() == 0 || z1.nrows() == 0 {
+        return Ok(0.0);
+    }
+
+    let mut total_emd = 0.0;
+    let mut col1 = Vec::with_capacity(z1.nrows());
+    let mut col2 = Vec::with_capacity(z2.nrows());
+
+    for i in 0..z1.ncols() {
+        col1.clear();
+        col1.extend(z1.column(i).iter().copied());
+
+        col2.clear();
+        col2.extend(z2.column(i).iter().copied());
+
+        col1.sort_unstable_by(|a, b| a.total_cmp(b));
+        col2.sort_unstable_by(|a, b| a.total_cmp(b));
+
+        let emd_i: f32 = col1
+            .iter()
+            .zip(col2.iter())
+            .map(|(a, b)| (a - b).abs())
+            .sum();
+        total_emd += emd_i / col1.len() as f32;
+    }
+
+    Ok(total_emd / z1.ncols() as f32)
 }
 
 /// Computes the Earth Mover's Distance (EMD) for multiple 1D distributions.
@@ -44,46 +106,7 @@ pub fn earth_movers_distance<S1: Storage<f32, Dyn, Dyn>, S2: Storage<f32, Dyn, D
     z1: &Matrix<f32, Dyn, Dyn, S1>,
     z2: &Matrix<f32, Dyn, Dyn, S2>,
 ) -> f32 {
-    assert_eq!(
-        z1.shape(),
-        z2.shape(),
-        "Matrices must have the same shape for EMD."
-    );
-    if z1.ncols() == 0 {
-        return 0.0;
-    }
-
-    let mut total_emd = 0.0;
-
-    // ⚡ Bolt Optimization:
-    // 1. Allocate buffers outside the loop to prevent repeated heap allocations.
-    // 2. Use `copied()` instead of `cloned()` for primitives (f32).
-    // 3. Use `sort_unstable_by` instead of `sort_by` since relative order of
-    //    equal f32 elements doesn't matter, saving CPU cycles.
-    let mut col1 = Vec::with_capacity(z1.nrows());
-    let mut col2 = Vec::with_capacity(z2.nrows());
-
-    for i in 0..z1.ncols() {
-        col1.clear();
-        col1.extend(z1.column(i).iter().copied());
-
-        col2.clear();
-        col2.extend(z2.column(i).iter().copied());
-
-        // The EMD for 1D distributions is the L1 norm of the difference
-        // between the sorted samples.
-        col1.sort_unstable_by(|a, b| a.total_cmp(b));
-        col2.sort_unstable_by(|a, b| a.total_cmp(b));
-
-        let emd_i: f32 = col1
-            .iter()
-            .zip(col2.iter())
-            .map(|(a, b)| (a - b).abs())
-            .sum();
-        total_emd += emd_i / col1.len() as f32;
-    }
-
-    total_emd / z1.ncols() as f32
+    try_earth_movers_distance(z1, z2).unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// Computes the combined loss for the CERA framework.

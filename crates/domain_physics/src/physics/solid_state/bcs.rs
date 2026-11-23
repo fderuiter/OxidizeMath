@@ -154,7 +154,7 @@ impl GapEquation for IsotropicBCSModel {
 
 #[allow(missing_docs)]
 #[verified_engine::verified]
-pub fn coherence_factors(xi_k: f64, delta: f64) -> Result<(f64, f64), String> {
+pub fn coherence_factors(xi_k: f64, delta: f64) -> Result<(f64, f64), SolidStateError> {
     let xi = ElectronVolts::new(xi_k);
     let d = ElectronVolts::new(delta);
     coherence_factors_strong(xi, d)
@@ -165,7 +165,7 @@ pub fn coherence_factors(xi_k: f64, delta: f64) -> Result<(f64, f64), String> {
 pub fn coherence_factors_strong(
     xi_k: ElectronVolts,
     delta: ElectronVolts,
-) -> Result<(f64, f64), String> {
+) -> Result<(f64, f64), SolidStateError> {
     let e_k = (xi_k.powf(2.0) + delta.powf(2.0)).sqrt();
     let raw_v_sq = 0.5 * (1.0 - (xi_k / e_k));
 

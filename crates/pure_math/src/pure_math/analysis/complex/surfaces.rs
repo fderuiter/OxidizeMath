@@ -1,3 +1,4 @@
+use math_commons::error::MathError;
 use num_complex::Complex64;
 use std::f64::consts::PI;
 
@@ -27,11 +28,31 @@ pub struct NthRootSurface {
 }
 
 impl NthRootSurface {
-    #[allow(missing_docs)]
+    /// Creates an $n$-sheeted Riemann surface for $z^{1/n}$ after verifying `n > 0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `n == 0`.
+    #[verified_engine::verified]
+    pub fn try_new(n: usize) -> Result<Self, MathError> {
+        if n == 0 {
+            return Err(MathError::StrictlyOutOfBounds {
+                value: 0.0,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        Ok(Self { n })
+    }
+
+    /// Creates an $n$-sheeted Riemann surface for $z^{1/n}$.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `n == 0`. Prefer [`Self::try_new`] for unvalidated runtime inputs.
     #[verified_engine::verified]
     pub fn new(n: usize) -> Self {
-        assert!(n > 0);
-        Self { n }
+        Self::try_new(n).expect("NthRootSurface sheet count n must be positive")
     }
 }
 

@@ -213,8 +213,10 @@ fn biology_facade_exports_hodgkin_huxley_error() {
 #[cfg(feature = "climate")]
 #[test]
 fn climate_facade_exports_error_module_and_cera_types() {
-    use math_explorer::climate::cera::CeraConfig;
-    use math_explorer::climate::error as climate_error;
+    use math_explorer::climate::cera::{Cera, CeraConfig};
+    use math_explorer::climate::error::ClimateError as InnerClimateError;
+    use math_explorer::diagnostics::{Diagnostic, Severity};
+    use math_explorer::error::{ClimateError, MathError};
 
     let cfg = CeraConfig {
         learning_rate: 1e-3,
@@ -223,14 +225,23 @@ fn climate_facade_exports_error_module_and_cera_types() {
         epochs: 2,
         batch_size: 4,
         in_channels: 3,
-        latent_channels: 4,
-        aligned_channels: 2,
+        latent_channels: 2,
+        aligned_channels: 4,
         num_levels: 5,
         output_size: 2,
     };
-    assert_eq!(cfg.latent_channels, 4);
-    #[allow(unused_imports)]
-    use climate_error::*;
+    let Err(err) = Cera::new(cfg) else {
+        panic!("expected aligned_channels > latent_channels error");
+    };
+    let inner: InnerClimateError = err.clone();
+    assert_eq!(inner.severity(), Severity::Error);
+    assert!(!err.to_string().contains('{'));
+    let converted = ClimateError::from(MathError::OutOfBounds {
+        value: 1.5,
+        min: 0.0,
+        max: 1.0,
+    });
+    assert_eq!(converted.severity(), Severity::Error);
 }
 
 #[cfg(feature = "epidemiology")]
@@ -282,17 +293,17 @@ fn physics_facade_exports_all_eight_physics_errors() {
     feature = "physics"
 ))]
 #[test]
-fn all_twenty_six_crate_error_enums_constructible_from_math_explorer_error() {
+fn all_twenty_seven_crate_error_enums_constructible_from_math_explorer_error() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
-        AIError, BatteryError, ChaosError, CopulaError, DoseFluenceError, EngineeringError,
-        EpidemiologyError, FluidError, GameTheoryError, Glicko2Error, HighEnergyError,
-        HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarkovError, MathError,
-        NumberTheoryError, OuError, PharmacokineticsError, RadarError, SolidStateError,
+        AIError, BatteryError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
+        EngineeringError, EpidemiologyError, FluidError, GameTheoryError, Glicko2Error,
+        HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarkovError,
+        MathError, NumberTheoryError, OuError, PharmacokineticsError, RadarError, SolidStateError,
         StandardModelError, StatMechError, TdaError, ZipError,
     };
 
-    let all_26_severities = [
+    let all_27_severities = [
         MathError::ConversionError {
             reason: "bad".to_string(),
         }
@@ -310,6 +321,7 @@ fn all_twenty_six_crate_error_enums_constructible_from_math_explorer_error() {
         Glicko2Error::EmptyMatchResults.severity(),
         AIError::OptimizationDivergence.severity(),
         BatteryError::NegativeCycles(-5.0).severity(),
+        ClimateError::ZeroLevels.severity(),
         EngineeringError::InvalidParameter {
             name: "n".to_string(),
             value: 0.0,
@@ -330,6 +342,6 @@ fn all_twenty_six_crate_error_enums_constructible_from_math_explorer_error() {
         StandardModelError::InvalidFlavors { nf: -1.0 }.severity(),
         StatMechError::InvalidTemperature(-5.0).severity(),
     ];
-    assert_eq!(all_26_severities.len(), 26);
-    assert!(all_26_severities.iter().all(|s| *s == Severity::Error));
+    assert_eq!(all_27_severities.len(), 27);
+    assert!(all_27_severities.iter().all(|s| *s == Severity::Error));
 }

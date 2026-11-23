@@ -7,7 +7,10 @@
 //! - **Symmetric Groups ($S_n$)**: Implemented as `Permutation`.
 //! - **Analysis Tools**: Functions to check for subgroups, normal subgroups, and generate cosets.
 
+use crate::error::NumberTheoryError;
 use crate::pure_math::algebra::traits::{Group, Monoid, Semigroup};
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::Dimension;
 use std::collections::HashSet;
 use std::hash::Hash;
 
@@ -32,27 +35,64 @@ pub struct CyclicElement {
 }
 
 impl CyclicElement {
-    /// Creates a new element in $Z_n$.
+    /// Creates a new element in $Z_n$ after validating that `modulo > 0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NumberTheoryError::ZeroModulus`] when `modulo == 0`.
     #[verified_engine::verified]
-    pub fn new(value: usize, modulo: usize) -> Self {
-        CyclicElement {
+    pub fn try_new(value: usize, modulo: usize) -> Result<Self, NumberTheoryError> {
+        if modulo == 0 {
+            return Err(NumberTheoryError::ZeroModulus);
+        }
+        Ok(CyclicElement {
             value: value % modulo,
             modulo,
+        })
+    }
+
+    /// Combines two cyclic elements if they share the same non-zero modulus.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::DimensionMismatch`] when `a.modulo != b.modulo` or
+    /// [`MathError::StrictlyOutOfBounds`] when `a.modulo == 0`.
+    #[verified_engine::verified]
+    pub fn try_operate(a: &Self, b: &Self) -> Result<Self, MathError> {
+        if a.modulo != b.modulo {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(a.modulo),
+                actual: Dimension(b.modulo),
+            });
         }
+        if a.modulo == 0 {
+            return Err(MathError::StrictlyOutOfBounds {
+                value: 0.0,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        Ok(CyclicElement {
+            value: (a.value + b.value) % a.modulo,
+            modulo: a.modulo,
+        })
+    }
+
+    /// Creates a new element in $Z_n$.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `modulo == 0`. Prefer [`Self::try_new`] for untrusted moduli.
+    #[verified_engine::verified]
+    pub fn new(value: usize, modulo: usize) -> Self {
+        Self::try_new(value, modulo).expect("CyclicElement modulo must be non-zero")
     }
 }
 
 impl Semigroup for CyclicElement {
     #[verified_engine::verified]
     fn operate(a: &Self, b: &Self) -> Self {
-        assert_eq!(
-            a.modulo, b.modulo,
-            "Cannot operate on elements from different groups"
-        );
-        CyclicElement {
-            value: (a.value + b.value) % a.modulo,
-            modulo: a.modulo,
-        }
+        Self::try_operate(a, b).expect("Cannot operate on elements from different groups")
     }
 }
 
@@ -96,10 +136,23 @@ pub struct Zn<const N: usize> {
 }
 
 impl<const N: usize> Zn<N> {
+    /// Creates a new element in $Z_N$ after verifying `N > 0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NumberTheoryError::ZeroModulus`] if `N == 0`.
+    #[verified_engine::verified]
+    pub fn try_new(value: usize) -> Result<Self, NumberTheoryError> {
+        if N == 0 {
+            return Err(NumberTheoryError::ZeroModulus);
+        }
+        Ok(Zn { value: value % N })
+    }
+
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(value: usize) -> Self {
-        Zn { value: value % N }
+        Self::try_new(value).expect("Zn<N> modulus N must be non-zero")
     }
 }
 
@@ -144,19 +197,60 @@ pub struct Permutation {
 }
 
 impl Permutation {
-    #[allow(missing_docs)]
+    /// Constructs a validated permutation of `0..map.len()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::InvalidPermutation`] if any entry is `>= map.len()` or duplicated.
     #[verified_engine::verified]
-    pub fn new(map: Vec<usize>) -> Self {
-        // Validation: map must contain 0..n
+    pub fn try_new(map: Vec<usize>) -> Result<Self, MathError> {
         let n = map.len();
         let mut seen = vec![false; n];
-        for &x in &map {
+        for (idx, &x) in map.iter().enumerate() {
             if x >= n || seen[x] {
-                panic!("Invalid permutation");
+                return Err(MathError::InvalidPermutation {
+                    index: idx,
+                    value: x,
+                    len: n,
+                });
             }
             seen[x] = true;
         }
-        Permutation { map }
+        Ok(Permutation { map })
+    }
+
+    /// Composes two permutations `(a * b)(i) = a(b(i))` when their domain sizes match.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::DimensionMismatch`] when `a.map.len() != b.map.len()`.
+    #[verified_engine::verified]
+    pub fn try_operate(a: &Self, b: &Self) -> Result<Self, MathError> {
+        if a.map.len() != b.map.len() {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(a.map.len()),
+                actual: Dimension(b.map.len()),
+            });
+        }
+        let n = a.map.len();
+        let mut new_map = vec![0; n];
+        for (i, val) in new_map.iter_mut().enumerate().take(n) {
+            *val = a.map[b.map[i]];
+        }
+        Ok(Permutation { map: new_map })
+    }
+
+    /// Constructs a permutation of `0..map.len()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `map` is not a bijection on `0..map.len()`. Prefer [`Self::try_new`].
+    #[verified_engine::verified]
+    pub fn new(map: Vec<usize>) -> Self {
+        match Self::try_new(map) {
+            Ok(perm) => perm,
+            Err(_) => panic!("Invalid permutation"),
+        }
     }
 
     #[allow(missing_docs)]
@@ -171,18 +265,7 @@ impl Permutation {
 impl Semigroup for Permutation {
     #[verified_engine::verified]
     fn operate(a: &Self, b: &Self) -> Self {
-        // Function composition: (a * b)(x) = a(b(x))
-        assert_eq!(
-            a.map.len(),
-            b.map.len(),
-            "Permutations must be of same size"
-        );
-        let n = a.map.len();
-        let mut new_map = vec![0; n];
-        for (i, val) in new_map.iter_mut().enumerate().take(n) {
-            *val = a.map[b.map[i]];
-        }
-        Permutation { map: new_map }
+        Self::try_operate(a, b).expect("Permutations must be of same size")
     }
 }
 

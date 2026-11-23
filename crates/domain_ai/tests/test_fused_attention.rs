@@ -2,6 +2,7 @@
 use approx::assert_relative_eq;
 use domain_ai::ai::transformer::MultiHeadAttention;
 use domain_ai::ai::transformer::attention::scaled_dot_product_attention;
+use domain_ai::error::AIError;
 use nalgebra::DMatrix;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -159,12 +160,30 @@ fn test_forward_with_weights_visualization() {
 #[test]
 #[verified_engine::verified]
 fn test_error_on_incompatible_dimensions() {
+    assert_eq!(
+        MultiHeadAttention::try_new(65, 8).unwrap_err(),
+        AIError::InvalidHeadConfiguration {
+            d_model: 65,
+            heads: 8,
+        }
+    );
+    assert_eq!(
+        MultiHeadAttention::try_new(64, 0).unwrap_err(),
+        AIError::InvalidHeadConfiguration {
+            d_model: 64,
+            heads: 0,
+        }
+    );
+    assert!(MultiHeadAttention::try_new(64, 8).is_ok());
+
     // Non-divisible d_model
     let res = MultiHeadAttention::from_head_weights(65, 8, &[], &[], &[], DMatrix::zeros(65, 65));
-    assert!(res.is_err());
     assert_eq!(
         res.unwrap_err(),
-        "d_model must be divisible by the number of heads h"
+        AIError::InvalidHeadConfiguration {
+            d_model: 65,
+            heads: 8,
+        }
     );
 
     // Mismatched head count
@@ -174,7 +193,15 @@ fn test_error_on_incompatible_dimensions() {
     let w_o = DMatrix::zeros(64, 64);
 
     let res = MultiHeadAttention::from_head_weights(64, 4, &w_q, &w_k, &w_v, w_o);
-    assert!(res.is_err());
+    assert_eq!(
+        res.unwrap_err(),
+        AIError::HeadCountMismatch {
+            expected: 4,
+            got_q: 3,
+            got_k: 4,
+            got_v: 4,
+        }
+    );
 }
 
 #[test]

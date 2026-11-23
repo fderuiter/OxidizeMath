@@ -1,3 +1,4 @@
+use math_commons::error::MathError;
 use math_commons::math_kernel::types::{StepSize, flatten_2d_index};
 
 /// Standard spatial numerical operators for fused stencil evaluations.
@@ -18,29 +19,77 @@ pub struct StencilOperators {
 }
 
 impl StencilOperators {
-    #[allow(missing_docs)]
+    /// Creates 1D stencil operators after validating that `dx` is finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `dx <= 0.0` or non-finite.
     #[verified_engine::verified]
-    pub fn new(dx: StepSize) -> Self {
-        Self::new_2d(dx, StepSize(1.0))
+    pub fn try_new(dx: StepSize) -> Result<Self, MathError> {
+        Self::try_new_2d(dx, StepSize(1.0))
     }
 
-    #[allow(missing_docs)]
+    /// Creates 2D stencil operators after validating that `dx` and `dy` are finite and strictly positive.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `dx <= 0.0`, `dy <= 0.0`, or either is non-finite.
     #[verified_engine::verified]
-    pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
-        assert!(*dx > 0.0, "Step size dx must be positive and non-zero");
-        assert!(*dy > 0.0, "Step size dy must be positive and non-zero");
+    pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, MathError> {
+        if !(*dx > 0.0 && dx.is_finite()) {
+            return Err(MathError::StrictlyOutOfBounds {
+                value: *dx,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        if !(*dy > 0.0 && dy.is_finite()) {
+            return Err(MathError::StrictlyOutOfBounds {
+                value: *dy,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
         let inv_dx = 1.0 / *dx;
         let inv_two_dx = 1.0 / (2.0 * *dx);
         let inv_dx_sq = 1.0 / (*dx * *dx);
         let inv_dy_sq = 1.0 / (*dy * *dy);
-        Self {
+        Ok(Self {
             dx,
             dy,
             inv_dx,
             inv_two_dx,
             inv_dx_sq,
             inv_dy_sq,
-        }
+        })
+    }
+
+    /// Creates 1D stencil operators.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `*dx <= 0.0` or non-finite. Prefer [`Self::try_new`].
+    #[verified_engine::verified]
+    pub fn new(dx: StepSize) -> Self {
+        Self::new_2d(dx, StepSize(1.0))
+    }
+
+    /// Creates 2D stencil operators.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `*dx <= 0.0`, `*dy <= 0.0`, or either is non-finite. Prefer [`Self::try_new_2d`].
+    #[verified_engine::verified]
+    pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
+        assert!(
+            *dx > 0.0 && dx.is_finite(),
+            "Step size dx must be positive and non-zero"
+        );
+        assert!(
+            *dy > 0.0 && dy.is_finite(),
+            "Step size dy must be positive and non-zero"
+        );
+        Self::try_new_2d(dx, dy).expect("Step sizes validated positive")
     }
 
     /// Central difference for 1st derivative (gradient): (u_{i+1} - u_{i-1}) / 2dx
@@ -88,6 +137,30 @@ pub struct FusedStencilStepper {
 }
 
 impl FusedStencilStepper {
+    /// Creates a 1D fused stencil stepper after validating `dx > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `*dx <= 0.0` or non-finite.
+    #[verified_engine::verified]
+    pub fn try_new(dx: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new(dx)?,
+        })
+    }
+
+    /// Creates a 2D fused stencil stepper after validating `dx > 0.0` and `dy > 0.0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MathError::StrictlyOutOfBounds`] when `*dx <= 0.0`, `*dy <= 0.0`, or either is non-finite.
+    #[verified_engine::verified]
+    pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, MathError> {
+        Ok(Self {
+            ops: StencilOperators::try_new_2d(dx, dy)?,
+        })
+    }
+
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(dx: StepSize) -> Self {

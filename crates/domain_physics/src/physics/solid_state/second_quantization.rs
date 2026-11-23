@@ -3,14 +3,16 @@
 //! The framework for Many-Body systems where states are defined by occupation numbers
 //! rather than individual particle coordinates.
 
+use crate::error::SolidStateError;
+
 /// Particle statistics type.
 pub trait ParticleStatistics {
     #[verified_engine::verified]
     #[allow(missing_docs)]
-    fn validate_set_occupation(current: u8, count: u8) -> Result<(), String>;
+    fn validate_set_occupation(current: u8, count: u8) -> Result<(), SolidStateError>;
     #[verified_engine::verified]
     #[allow(missing_docs)]
-    fn validate_create_particle(current: u8) -> Result<u8, String>;
+    fn validate_create_particle(current: u8) -> Result<u8, SolidStateError>;
     #[verified_engine::verified]
     #[allow(missing_docs)]
     fn check_commutation(op1: &Operator, op2: &Operator) -> f64;
@@ -80,9 +82,10 @@ impl FockState {
         &mut self,
         index: usize,
         count: u8,
-    ) -> Result<(), String> {
-        if index >= self.occupations.len() {
-            return Err(format!("Index {} out of bounds", index));
+    ) -> Result<(), SolidStateError> {
+        let len = self.occupations.len();
+        if index >= len {
+            return Err(SolidStateError::FockIndexOutOfBounds { index, len });
         }
         P::validate_set_occupation(self.occupations[index], count)?;
         self.occupations[index] = count;
@@ -94,9 +97,13 @@ impl FockState {
     /// The `P` type parameter specifies the particle statistics (e.g., `Fermion`, `Boson`)
     /// which will validate the creation rules.
     #[verified_engine::verified]
-    pub fn create_particle<P: ParticleStatistics>(&mut self, index: usize) -> Result<(), String> {
-        if index >= self.occupations.len() {
-            return Err(format!("Index {} out of bounds", index));
+    pub fn create_particle<P: ParticleStatistics>(
+        &mut self,
+        index: usize,
+    ) -> Result<(), SolidStateError> {
+        let len = self.occupations.len();
+        if index >= len {
+            return Err(SolidStateError::FockIndexOutOfBounds { index, len });
         }
         let current = self.occupations[index];
         let next = P::validate_create_particle(current)?;
@@ -107,19 +114,19 @@ impl FockState {
 
 impl ParticleStatistics for Fermion {
     #[verified_engine::verified]
-    fn validate_set_occupation(_current: u8, count: u8) -> Result<(), String> {
+    fn validate_set_occupation(_current: u8, count: u8) -> Result<(), SolidStateError> {
         if count > 1 {
-            return Err(
-                "Pauli Exclusion Principle: Fermions cannot occupy same state > 1".to_string(),
-            );
+            return Err(SolidStateError::PauliExclusionViolation { requested: count });
         }
         Ok(())
     }
 
     #[verified_engine::verified]
-    fn validate_create_particle(current: u8) -> Result<u8, String> {
+    fn validate_create_particle(current: u8) -> Result<u8, SolidStateError> {
         if current >= 1 {
-            return Err("Pauli Exclusion: State already occupied".to_string());
+            return Err(SolidStateError::PauliExclusionViolation {
+                requested: current.saturating_add(1),
+            });
         }
         Ok(1)
     }
@@ -142,14 +149,14 @@ impl ParticleStatistics for Fermion {
 
 impl ParticleStatistics for Boson {
     #[verified_engine::verified]
-    fn validate_set_occupation(_current: u8, _count: u8) -> Result<(), String> {
+    fn validate_set_occupation(_current: u8, _count: u8) -> Result<(), SolidStateError> {
         Ok(())
     }
 
     #[verified_engine::verified]
-    fn validate_create_particle(current: u8) -> Result<u8, String> {
+    fn validate_create_particle(current: u8) -> Result<u8, SolidStateError> {
         if current == u8::MAX {
-            return Err("Boson saturation (u8 max)".to_string());
+            return Err(SolidStateError::BosonOccupationOverflow { max: u8::MAX });
         }
         Ok(current + 1)
     }

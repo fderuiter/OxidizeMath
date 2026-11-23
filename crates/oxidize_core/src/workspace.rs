@@ -4,7 +4,7 @@
 mod workspace_wasm;
 
 pub use workspace_wasm::{
-    HOST_ONLY_WORKSPACE_PACKAGES, WasmCrateSpec, WasmTestTargetKind,
+    HOST_ONLY_WORKSPACE_PACKAGES, WasmCrateSpec, WasmTestTargetKind, WorkspaceError,
     build_wasm_cargo_test_invocations, discover_wasm_crates, find_workspace_root,
     parse_workspace_members_std,
 };
@@ -55,17 +55,18 @@ pub fn get_workspace_members_from_paths(primary: &Path, fallback: &Path) -> (boo
 }
 
 /// Parses the `workspace.members` array from a TOML string.
-pub fn parse_workspace_members(content: &str) -> Result<Vec<String>, String> {
+pub fn parse_workspace_members(content: &str) -> Result<Vec<String>, WorkspaceError> {
     let table = content
         .parse::<toml::Table>()
-        .map_err(|e| format!("Failed to parse Cargo.toml: {e}"))?;
+        .map_err(|e| WorkspaceError::InvalidManifestSyntax(e.to_string()))?;
 
     let members = table
         .get("workspace")
         .and_then(|w| w.as_table())
-        .and_then(|w| w.get("members"))
+        .ok_or(WorkspaceError::MissingWorkspaceSection)?
+        .get("members")
         .and_then(|m| m.as_array())
-        .ok_or_else(|| "Could not find workspace.members array in Cargo.toml".to_string())?
+        .ok_or(WorkspaceError::MissingMembersArray)?
         .iter()
         .filter_map(|v| v.as_str().map(String::from))
         .collect();
@@ -111,7 +112,11 @@ name = "non_workspace"
 version = "0.1.0"
 "#;
         let err = parse_workspace_members(content).unwrap_err();
-        assert!(err.contains("Could not find workspace.members array"));
+        assert_eq!(err, WorkspaceError::MissingWorkspaceSection);
+        assert!(
+            err.to_string()
+                .contains("Could not find [workspace] section")
+        );
         assert!(parse_workspace_members_std(content).is_err());
     }
 
@@ -119,7 +124,8 @@ version = "0.1.0"
     fn test_parse_workspace_members_invalid_toml() {
         let content = "this is not valid toml = [[[";
         let err = parse_workspace_members(content).unwrap_err();
-        assert!(err.contains("Failed to parse Cargo.toml"));
+        assert!(matches!(err, WorkspaceError::InvalidManifestSyntax(_)));
+        assert!(err.to_string().contains("Failed to parse Cargo.toml"));
     }
 
     #[cfg(not(target_arch = "wasm32"))]

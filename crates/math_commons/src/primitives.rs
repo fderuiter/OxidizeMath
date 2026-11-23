@@ -5,19 +5,19 @@ use std::ops::Deref;
 macro_rules! impl_binop {
     ($name:ident) => {
         impl std::ops::Mul<f64> for $name {
-            type Output = Result<Self, String>;
+            type Output = Result<Self, $crate::error::MathError>;
             fn mul(self, rhs: f64) -> Self::Output {
                 Self::new(self.0 * rhs)
             }
         }
         impl std::ops::Mul<$name> for f64 {
-            type Output = Result<$name, String>;
+            type Output = Result<$name, $crate::error::MathError>;
             fn mul(self, rhs: $name) -> Self::Output {
                 $name::new(self * rhs.0)
             }
         }
         impl std::ops::Div<f64> for $name {
-            type Output = Result<Self, String>;
+            type Output = Result<Self, $crate::error::MathError>;
             fn div(self, rhs: f64) -> Self::Output {
                 Self::new(self.0 / rhs)
             }
@@ -66,14 +66,15 @@ macro_rules! define_bounded_float {
 
         impl $name {
             /// Creates a new instance, validating bounds.
-            pub fn new(value: f64) -> Result<Self, String> {
+            pub fn new(value: f64) -> Result<Self, $crate::error::MathError> {
                 if ($min..=$max).contains(&value) && value.is_finite() {
                     Ok(Self(value))
                 } else {
-                    Err(format!(
-                        "Value {} is outside the allowed range [{}, {}]",
-                        value, $min, $max
-                    ))
+                    Err($crate::error::MathError::OutOfBounds {
+                        value,
+                        min: $min,
+                        max: $max,
+                    })
                 }
             }
 
@@ -83,27 +84,27 @@ macro_rules! define_bounded_float {
             }
 
             #[allow(missing_docs)]
-            pub fn powf(&self, n: f64) -> Result<Self, String> {
+            pub fn powf(&self, n: f64) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.powf(n))
             }
 
             #[allow(missing_docs)]
-            pub fn sqrt(&self) -> Result<Self, String> {
+            pub fn sqrt(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.sqrt())
             }
 
             #[allow(missing_docs)]
-            pub fn ln(&self) -> Result<Self, String> {
+            pub fn ln(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.ln())
             }
 
             #[allow(missing_docs)]
-            pub fn exp(&self) -> Result<Self, String> {
+            pub fn exp(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.exp())
             }
 
             #[allow(missing_docs)]
-            pub fn abs(&self) -> Result<Self, String> {
+            pub fn abs(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.abs())
             }
         }
@@ -140,14 +141,15 @@ macro_rules! define_strictly_bounded_float {
 
         impl $name {
             /// Creates a new instance, validating bounds strictly.
-            pub fn new(value: f64) -> Result<Self, String> {
+            pub fn new(value: f64) -> Result<Self, $crate::error::MathError> {
                 if value > $min && value < $max && value.is_finite() {
                     Ok(Self(value))
                 } else {
-                    Err(format!(
-                        "Value {} is outside the strictly allowed range ({}, {})",
-                        value, $min, $max
-                    ))
+                    Err($crate::error::MathError::StrictlyOutOfBounds {
+                        value,
+                        min: $min,
+                        max: $max,
+                    })
                 }
             }
 
@@ -157,27 +159,27 @@ macro_rules! define_strictly_bounded_float {
             }
 
             #[allow(missing_docs)]
-            pub fn powf(&self, n: f64) -> Result<Self, String> {
+            pub fn powf(&self, n: f64) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.powf(n))
             }
 
             #[allow(missing_docs)]
-            pub fn sqrt(&self) -> Result<Self, String> {
+            pub fn sqrt(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.sqrt())
             }
 
             #[allow(missing_docs)]
-            pub fn ln(&self) -> Result<Self, String> {
+            pub fn ln(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.ln())
             }
 
             #[allow(missing_docs)]
-            pub fn exp(&self) -> Result<Self, String> {
+            pub fn exp(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.exp())
             }
 
             #[allow(missing_docs)]
-            pub fn abs(&self) -> Result<Self, String> {
+            pub fn abs(&self) -> Result<Self, $crate::error::MathError> {
                 Self::new(self.0.abs())
             }
         }

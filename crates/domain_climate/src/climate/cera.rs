@@ -3,6 +3,7 @@
 
 use crate::climate::autoencoder::{Autoencoder, AutoencoderModel};
 use crate::climate::predictor::{Predictor, PredictorModel};
+use crate::error::ClimateError;
 use nalgebra::{DMatrix, Dyn, Matrix, Storage};
 // Re-export CeraConfig for backward compatibility (or convenience)
 pub use crate::climate::config::CeraConfig;
@@ -32,9 +33,9 @@ impl Cera<Autoencoder, Predictor> {
     ///
     /// # Returns
     ///
-    /// A result containing the new `Cera` instance or an error message.
+    /// A result containing the new `Cera` instance or a [`ClimateError`].
     #[verified_engine::verified]
-    pub fn new(config: CeraConfig) -> Result<Self, String> {
+    pub fn new(config: CeraConfig) -> Result<Self, ClimateError> {
         // Validation logic delegated to new_with_models
         let autoencoder = Autoencoder::new(config.in_channels, config.latent_channels);
         let predictor_input_size = config.num_levels * config.aligned_channels;
@@ -54,9 +55,9 @@ impl<P: PredictorModel> Cera<Autoencoder, P> {
     ///
     /// # Returns
     ///
-    /// A result containing the new `Cera` instance or an error message.
+    /// A result containing the new `Cera` instance or a [`ClimateError`].
     #[verified_engine::verified]
-    pub fn new_with_predictor(config: CeraConfig, predictor: P) -> Result<Self, String> {
+    pub fn new_with_predictor(config: CeraConfig, predictor: P) -> Result<Self, ClimateError> {
         let autoencoder = Autoencoder::new(config.in_channels, config.latent_channels);
         Self::new_with_models(config, autoencoder, predictor)
     }
@@ -73,24 +74,24 @@ impl<A: AutoencoderModel, P: PredictorModel> Cera<A, P> {
     ///
     /// # Returns
     ///
-    /// A result containing the new `Cera` instance or an error message.
+    /// A result containing the new `Cera` instance or a [`ClimateError`].
     #[verified_engine::verified]
     pub fn new_with_models(
         config: CeraConfig,
         autoencoder: A,
         predictor: P,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, ClimateError> {
         if config.aligned_channels > config.latent_channels {
-            return Err(format!(
-                "aligned_channels ({}) cannot be greater than latent_channels ({})",
-                config.aligned_channels, config.latent_channels
-            ));
+            return Err(ClimateError::ChannelAlignmentExceeded {
+                aligned_channels: config.aligned_channels,
+                latent_channels: config.latent_channels,
+            });
         }
         if config.aligned_channels == 0 {
-            return Err("aligned_channels must be greater than 0".to_string());
+            return Err(ClimateError::ZeroAlignedChannels);
         }
         if config.num_levels == 0 {
-            return Err("num_levels must be greater than 0".to_string());
+            return Err(ClimateError::ZeroLevels);
         }
 
         Ok(Self {

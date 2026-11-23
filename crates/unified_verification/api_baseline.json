@@ -577,7 +577,7 @@
       "signature": "impl MultiHeadAttention { pub fn forward_with_weights (& self , q : & DMatrix < f64 > , k : & DMatrix < f64 > , v : & DMatrix < f64 > , mask : Option < & DMatrix < f64 > > ,) -> (DMatrix < f64 > , Vec < DMatrix < f64 > >) }"
     },
     {
-      "signature": "impl MultiHeadAttention { pub fn from_head_weights (d_model : usize , h : usize , w_q : & [DMatrix < f64 >] , w_k : & [DMatrix < f64 >] , w_v : & [DMatrix < f64 >] , w_o : DMatrix < f64 > ,) -> Result < Self , String > }"
+      "signature": "impl MultiHeadAttention { pub fn from_head_weights (d_model : usize , h : usize , w_q : & [DMatrix < f64 >] , w_k : & [DMatrix < f64 >] , w_v : & [DMatrix < f64 >] , w_o : DMatrix < f64 > ,) -> Result < Self , AIError > }"
     },
     {
       "signature": "impl MultiHeadAttention { pub fn h (& self) -> usize }"
@@ -587,6 +587,9 @@
     },
     {
       "signature": "impl MultiHeadAttention { pub fn to_head_weights (& self) -> (Vec < DMatrix < f64 > > , Vec < DMatrix < f64 > > , Vec < DMatrix < f64 > >) }"
+    },
+    {
+      "signature": "impl MultiHeadAttention { pub fn try_new (d_model : usize , h : usize) -> Result < Self , AIError > }"
     },
     {
       "signature": "pub fn scaled_dot_product_attention (q : & DMatrix < f64 > , k : & DMatrix < f64 > , v : & DMatrix < f64 > , mask : Option < & DMatrix < f64 > > ,) -> (DMatrix < f64 > , DMatrix < f64 >)"
@@ -1532,10 +1535,10 @@
   ],
   "crates/domain_applied/src/applied/freesurfer/glm.rs": [
     {
-      "signature": "pub fn estimate_beta < T : RealField > (x : & DMatrix < T > , y : & DVector < T > ,) -> Result < DVector < T > , & 'static str >"
+      "signature": "pub fn estimate_beta < T : RealField > (x : & DMatrix < T > , y : & DVector < T > ,) -> Result < DVector < T > , EngineeringError >"
     },
     {
-      "signature": "pub fn t_statistic < T : RealField + Copy > (c : & DVector < T > , beta : & DVector < T > , x : & DMatrix < T > , residual_variance : T ,) -> Result < T , & 'static str >"
+      "signature": "pub fn t_statistic < T : RealField + Copy > (c : & DVector < T > , beta : & DVector < T > , x : & DMatrix < T > , residual_variance : T ,) -> Result < T , EngineeringError >"
     }
   ],
   "crates/domain_applied/src/applied/freesurfer/mod.rs": [
@@ -1591,6 +1594,9 @@
   "crates/domain_applied/src/applied/game_theory/equilibrium.rs": [
     {
       "signature": "impl BoxSet { pub fn new (min_vals : Vec < f64 > , max_vals : Vec < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl BoxSet { pub fn try_new (min_vals : Vec < f64 > , max_vals : Vec < f64 >) -> Result < Self , GameTheoryError > }"
     },
     {
       "signature": "pub fn is_fixed_point < C : Correspondence > (correspondence : & C , point : & DVector < f64 >) -> bool"
@@ -3172,7 +3178,7 @@
   ],
   "crates/domain_climate/src/climate/cera.rs": [
     {
-      "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn new_with_models (config : CeraConfig , autoencoder : A , predictor : P ,) -> Result < Self , String > }"
+      "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn new_with_models (config : CeraConfig , autoencoder : A , predictor : P ,) -> Result < Self , ClimateError > }"
     },
     {
       "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn predict < S : Storage < f32 , Dyn , Dyn > > (& self , inputs : & Matrix < f32 , Dyn , Dyn , S > ,) -> DMatrix < f32 > }"
@@ -3181,10 +3187,10 @@
       "signature": "impl < A : AutoencoderModel , P : PredictorModel > Cera < A , P > { pub fn reshape_for_predictor < S : Storage < f32 , Dyn , Dyn > > (& self , latent_matrix : & Matrix < f32 , Dyn , Dyn , S > , batch_size : usize ,) -> DMatrix < f32 > }"
     },
     {
-      "signature": "impl < P : PredictorModel > Cera < Autoencoder , P > { pub fn new_with_predictor (config : CeraConfig , predictor : P) -> Result < Self , String > }"
+      "signature": "impl < P : PredictorModel > Cera < Autoencoder , P > { pub fn new_with_predictor (config : CeraConfig , predictor : P) -> Result < Self , ClimateError > }"
     },
     {
-      "signature": "impl Cera < Autoencoder , Predictor > { pub fn new (config : CeraConfig) -> Result < Self , String > }"
+      "signature": "impl Cera < Autoencoder , Predictor > { pub fn new (config : CeraConfig) -> Result < Self , ClimateError > }"
     },
     {
       "signature": "pub struct Cera < A : AutoencoderModel , P : PredictorModel >"
@@ -3221,6 +3227,12 @@
     },
     {
       "signature": "pub fn mse_loss < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (y_true : & Matrix < f32 , Dyn , Dyn , S1 > , y_pred : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> f32"
+    },
+    {
+      "signature": "pub fn try_earth_movers_distance < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (z1 : & Matrix < f32 , Dyn , Dyn , S1 > , z2 : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> Result < f32 , ClimateError >"
+    },
+    {
+      "signature": "pub fn try_mse_loss < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (y_true : & Matrix < f32 , Dyn , Dyn , S1 > , y_pred : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> Result < f32 , ClimateError >"
     }
   ],
   "crates/domain_climate/src/climate/mod.rs": [
@@ -3251,6 +3263,12 @@
     },
     {
       "signature": "pub fn conv_transpose1d < S : Storage < f32 , Dyn , Dyn > > (input : & Matrix < f32 , Dyn , Dyn , S > , kernel : & DMatrix < f32 > , bias : & DVector < f32 > ,) -> DMatrix < f32 >"
+    },
+    {
+      "signature": "pub fn try_conv1d < S : Storage < f32 , Dyn , Dyn > > (input : & Matrix < f32 , Dyn , Dyn , S > , kernel : & DMatrix < f32 > , bias : & DVector < f32 > ,) -> Result < DMatrix < f32 > , ClimateError >"
+    },
+    {
+      "signature": "pub fn try_conv_transpose1d < S : Storage < f32 , Dyn , Dyn > > (input : & Matrix < f32 , Dyn , Dyn , S > , kernel : & DMatrix < f32 > , bias : & DVector < f32 > ,) -> Result < DMatrix < f32 > , ClimateError >"
     }
   ],
   "crates/domain_climate/src/climate/training.rs": [
@@ -3267,9 +3285,32 @@
       "signature": "pub struct CeraTrainer < 'a , A : AutoencoderModel + Trainable < f32 > , P : PredictorModel + Trainable < f32 > , O : Optimizer < f32 > , >"
     }
   ],
+  "crates/domain_climate/src/error.rs": [
+    {
+      "signature": "pub enum ClimateError"
+    }
+  ],
   "crates/domain_climate/src/lib.rs": [
     {
       "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ClimateError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: ClimateError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use pure_math :: __doctest_facade :: prelude :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use crate :: climate }"
@@ -3282,9 +3323,6 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
-    },
-    {
-      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: error }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_kernel }"
@@ -3305,9 +3343,6 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: petgraph }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: prelude }"
-    },
-    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: primitives }"
     },
     {
@@ -3324,11 +3359,20 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: wigner }"
+    },
+    {
+      "signature": "pub mod prelude"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: climate :: * }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: error :: ClimateError }"
     }
   ],
   "crates/domain_epidemiology/src/epidemiology/analytics.rs": [
     {
-      "signature": "pub fn calculate_final_size (r0 : f64 , s0 : f64 , n : f64) -> Result < f64 , String >"
+      "signature": "pub fn calculate_final_size (r0 : f64 , s0 : f64 , n : f64) -> Result < f64 , EpidemiologyError >"
     }
   ],
   "crates/domain_epidemiology/src/epidemiology/compartmental/common.rs": [
@@ -4100,6 +4144,9 @@
       "signature": "impl < const Q : usize > LatticeState < Q > { pub fn obstacles (& self) -> & [bool] }"
     },
     {
+      "signature": "impl < const Q : usize > LatticeState < Q > { pub fn try_new (width : usize , height : usize) -> Result < Self , FluidError > }"
+    },
+    {
       "signature": "impl < const Q : usize > LatticeState < Q > { pub fn velocity_x (& self) -> & [f64] }"
     },
     {
@@ -4333,7 +4380,7 @@
   ],
   "crates/domain_physics/src/physics/medical/calibration.rs": [
     {
-      "signature": "pub fn hu_to_density (hu : f64) -> Result < NonNegativeFloat , String >"
+      "signature": "pub fn hu_to_density (hu : f64) -> Result < NonNegativeFloat , DoseFluenceError >"
     }
   ],
   "crates/domain_physics/src/physics/medical/dose/algorithm.rs": [
@@ -4387,7 +4434,7 @@
       "signature": "impl LinearCalibrator { pub fn calibrate (& self , voltage : f64) -> f64 }"
     },
     {
-      "signature": "impl LinearCalibrator { pub fn fit (voltages : & [f64] , distances : & [f64]) -> Result < Self , String > }"
+      "signature": "impl LinearCalibrator { pub fn fit (voltages : & [f64] , distances : & [f64]) -> Result < Self , DoseFluenceError > }"
     },
     {
       "signature": "impl LinearCalibrator { pub fn new (slope : f64 , intercept : f64) -> Self }"
@@ -4575,7 +4622,7 @@
       "signature": "impl Beamformer { pub fn new_ula (num_antennas : usize , spacing : f64 , wavelength : f64) -> Self }"
     },
     {
-      "signature": "impl Beamformer { pub fn set_weights (& mut self , weights : & [f64]) -> Result < () , & 'static str > }"
+      "signature": "impl Beamformer { pub fn set_weights (& mut self , weights : & [f64]) -> Result < () , RadarError > }"
     },
     {
       "signature": "impl Beamformer { pub fn steer (& self , signals : & [Complex < f64 >] , angle_rad : f64) -> Complex < f64 > }"
@@ -4740,6 +4787,9 @@
       "signature": "impl TrackingFilter { pub fn predict (& mut self) }"
     },
     {
+      "signature": "impl TrackingFilter { pub fn try_new (initial_amplitude : f64 , dt : f64 , model : ConstantVelocityModel ,) -> Result < Self , RadarError > }"
+    },
+    {
       "signature": "impl TrackingFilter { pub fn update (& mut self , measured_amplitude : f64) }"
     },
     {
@@ -4826,7 +4876,7 @@
       "signature": "pub const K_B : f64 = 1.380649e-23"
     },
     {
-      "signature": "pub fn boltzmann_ratio (temperature : f64 , b0 : f64) -> Result < f64 , String >"
+      "signature": "pub fn boltzmann_ratio (temperature : f64 , b0 : f64) -> Result < f64 , StatMechError >"
     },
     {
       "signature": "pub fn larmor_frequency (b0 : f64) -> f64"
@@ -5153,10 +5203,10 @@
       "signature": "impl IsotropicBCSModel { pub fn new (energies : Vec < f64 > , potential : f64 , debye_cutoff : f64 ,) -> Result < Self , SolidStateError > }"
     },
     {
-      "signature": "pub fn coherence_factors (xi_k : f64 , delta : f64) -> Result < (f64 , f64) , String >"
+      "signature": "pub fn coherence_factors (xi_k : f64 , delta : f64) -> Result < (f64 , f64) , SolidStateError >"
     },
     {
-      "signature": "pub fn coherence_factors_strong (xi_k : ElectronVolts , delta : ElectronVolts ,) -> Result < (f64 , f64) , String >"
+      "signature": "pub fn coherence_factors_strong (xi_k : ElectronVolts , delta : ElectronVolts ,) -> Result < (f64 , f64) , SolidStateError >"
     },
     {
       "signature": "pub struct BcsGapSolver"
@@ -5231,13 +5281,13 @@
   ],
   "crates/domain_physics/src/physics/solid_state/second_quantization.rs": [
     {
-      "signature": "impl FockState { pub fn create_particle < P : ParticleStatistics > (& mut self , index : usize) -> Result < () , String > }"
+      "signature": "impl FockState { pub fn create_particle < P : ParticleStatistics > (& mut self , index : usize ,) -> Result < () , SolidStateError > }"
     },
     {
       "signature": "impl FockState { pub fn new (size : usize) -> Self }"
     },
     {
-      "signature": "impl FockState { pub fn set_occupation < P : ParticleStatistics > (& mut self , index : usize , count : u8 ,) -> Result < () , String > }"
+      "signature": "impl FockState { pub fn set_occupation < P : ParticleStatistics > (& mut self , index : usize , count : u8 ,) -> Result < () , SolidStateError > }"
     },
     {
       "signature": "impl Operator { pub fn new (op_type : QuantumOperatorType , index : usize) -> Self }"
@@ -5267,10 +5317,10 @@
       "signature": "pub trait ParticleStatistics { fn check_commutation (op1 : & Operator , op2 : & Operator) -> f64 }"
     },
     {
-      "signature": "pub trait ParticleStatistics { fn validate_create_particle (current : u8) -> Result < u8 , String > }"
+      "signature": "pub trait ParticleStatistics { fn validate_create_particle (current : u8) -> Result < u8 , SolidStateError > }"
     },
     {
-      "signature": "pub trait ParticleStatistics { fn validate_set_occupation (current : u8 , count : u8) -> Result < () , String > }"
+      "signature": "pub trait ParticleStatistics { fn validate_set_occupation (current : u8 , count : u8) -> Result < () , SolidStateError > }"
     }
   ],
   "crates/domain_physics/src/physics/solid_state/types.rs": [
@@ -5341,7 +5391,7 @@
   ],
   "crates/domain_physics/src/physics/standard_model/higgs.rs": [
     {
-      "signature": "impl HiggsPotential { pub fn vev (& self) -> Result < f64 , String > }"
+      "signature": "impl HiggsPotential { pub fn vev (& self) -> Result < f64 , StandardModelError > }"
     },
     {
       "signature": "pub fn boson_masses (vev : f64 , couplings : & GaugeCouplings) -> (f64 , f64)"
@@ -6141,7 +6191,7 @@
       "signature": "pub fn get_workspace_members_from_paths (primary : & Path , fallback : & Path) -> (bool , Vec < String >)"
     },
     {
-      "signature": "pub fn parse_workspace_members (content : & str) -> Result < Vec < String > , String >"
+      "signature": "pub fn parse_workspace_members (content : & str) -> Result < Vec < String > , WorkspaceError >"
     },
     {
       "signature": "pub use workspace_wasm :: HOST_ONLY_WORKSPACE_PACKAGES"
@@ -6151,6 +6201,9 @@
     },
     {
       "signature": "pub use workspace_wasm :: WasmTestTargetKind"
+    },
+    {
+      "signature": "pub use workspace_wasm :: WorkspaceError"
     },
     {
       "signature": "pub use workspace_wasm :: build_wasm_cargo_test_invocations"
@@ -6354,10 +6407,10 @@
       "signature": "impl Integer { pub fn from < T > (v : T) -> Self where IBig : From < T > , }"
     },
     {
-      "signature": "impl Integer { pub fn from_str_radix (s : & str , radix : u32) -> Result < Self , () > }"
+      "signature": "impl Integer { pub fn from_str_radix (s : & str , radix : u32) -> Result < Self , NumberTheoryError > }"
     },
     {
-      "signature": "impl Integer { pub fn invert (& self , m : & Integer) -> Result < Self , () > }"
+      "signature": "impl Integer { pub fn invert (& self , m : & Integer) -> Result < Self , NumberTheoryError > }"
     },
     {
       "signature": "impl Integer { pub fn is_divisible (& self , other : & Integer) -> bool }"
@@ -6369,10 +6422,10 @@
       "signature": "impl Integer { pub fn new () -> Self }"
     },
     {
-      "signature": "impl Integer { pub fn parse (s : & str) -> Result < Self , () > }"
+      "signature": "impl Integer { pub fn parse (s : & str) -> Result < Self , NumberTheoryError > }"
     },
     {
-      "signature": "impl Integer { pub fn pow_mod (& self , exp : & Integer , m : & Integer) -> Result < Self , () > }"
+      "signature": "impl Integer { pub fn pow_mod (& self , exp : & Integer , m : & Integer) -> Result < Self , NumberTheoryError > }"
     },
     {
       "signature": "impl Integer { pub fn sqrt (& self) -> Self }"
@@ -6437,6 +6490,9 @@
   ],
   "crates/pure_math/src/pure_math/algebra/fields.rs": [
     {
+      "signature": "impl < const P : i64 > Fp < P > { pub fn checked_inverse (& self) -> Result < Self , NumberTheoryError > }"
+    },
+    {
       "signature": "impl < const P : i64 > Fp < P > { pub fn new (value : i64) -> Self }"
     },
     {
@@ -6448,13 +6504,28 @@
       "signature": "impl < const N : usize > Zn < N > { pub fn new (value : usize) -> Self }"
     },
     {
+      "signature": "impl < const N : usize > Zn < N > { pub fn try_new (value : usize) -> Result < Self , NumberTheoryError > }"
+    },
+    {
       "signature": "impl CyclicElement { pub fn new (value : usize , modulo : usize) -> Self }"
+    },
+    {
+      "signature": "impl CyclicElement { pub fn try_new (value : usize , modulo : usize) -> Result < Self , NumberTheoryError > }"
+    },
+    {
+      "signature": "impl CyclicElement { pub fn try_operate (a : & Self , b : & Self) -> Result < Self , MathError > }"
     },
     {
       "signature": "impl Permutation { pub fn identity (n : usize) -> Self }"
     },
     {
       "signature": "impl Permutation { pub fn new (map : Vec < usize >) -> Self }"
+    },
+    {
+      "signature": "impl Permutation { pub fn try_new (map : Vec < usize >) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl Permutation { pub fn try_operate (a : & Self , b : & Self) -> Result < Self , MathError > }"
     },
     {
       "signature": "pub fn generate_left_coset < G : Group > (subgroup : & [G] , a : & G) -> Vec < G >"
@@ -6689,6 +6760,9 @@
       "signature": "impl SchwarzChristoffel { pub fn transform (& self , z : Complex64 , integration_start : Complex64 , steps : usize) -> Complex64 }"
     },
     {
+      "signature": "impl SchwarzChristoffel { pub fn try_new (prevertices : Vec < f64 > , exponents : Vec < f64 > , a : Complex64 , b : Complex64 ,) -> Result < Self , MathError > }"
+    },
+    {
       "signature": "pub fn area_magnification < F > (derivative_f : F , z0 : Complex64) -> f64 where F : Fn (Complex64) -> Complex64 ,"
     },
     {
@@ -6701,6 +6775,9 @@
   "crates/pure_math/src/pure_math/analysis/complex/surfaces.rs": [
     {
       "signature": "impl NthRootSurface { pub fn new (n : usize) -> Self }"
+    },
+    {
+      "signature": "impl NthRootSurface { pub fn try_new (n : usize) -> Result < Self , MathError > }"
     },
     {
       "signature": "pub struct LogSurface"
@@ -7058,6 +7135,12 @@
       "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_neumann < const N : usize , F > (& self , dim : (usize , usize) , src : [& [f64] ; N] , dst : [& mut [f64] ; N] , dt : f64 , dir : f64 , mut op : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
     },
     {
+      "signature": "impl FusedStencilStepper { pub fn try_new (dx : StepSize) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn try_new_2d (dx : StepSize , dy : StepSize) -> Result < Self , MathError > }"
+    },
+    {
       "signature": "impl StencilOperators { pub fn central_diff_1st (& self , prev : f64 , next : f64) -> f64 }"
     },
     {
@@ -7071,6 +7154,12 @@
     },
     {
       "signature": "impl StencilOperators { pub fn new_2d (dx : StepSize , dy : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new (dx : StepSize) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new_2d (dx : StepSize , dy : StepSize) -> Result < Self , MathError > }"
     },
     {
       "signature": "impl StencilOperators { pub fn upwind_flux (& self , v : f64 , prev : f64 , curr : f64 , next : f64) -> f64 }"
@@ -7733,6 +7822,9 @@
     }
   ],
   "crates/pure_math/src/pure_math/number_theory/q_series.rs": [
+    {
+      "signature": "impl < T : EuclideanDomain > QSeries < T > { pub fn checked_div (& self , other : & Self) -> Result < QSeries < T > , NumberTheoryError > }"
+    },
     {
       "signature": "impl < T : EuclideanDomain > QSeries < T > { pub fn from_vec (coeffs : Vec < T >) -> Self }"
     },
@@ -9387,6 +9479,9 @@
     },
     {
       "signature": "pub use domain_biology :: error :: HodgkinHuxleyError"
+    },
+    {
+      "signature": "pub use domain_climate :: error :: ClimateError"
     },
     {
       "signature": "pub use domain_epidemiology :: error :: EpidemiologyError"

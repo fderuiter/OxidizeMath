@@ -1,3 +1,4 @@
+use crate::error::FluidError;
 use nalgebra::DMatrix;
 use pure_math::pure_math::analysis::evolution::DoubleBufferedState;
 
@@ -30,17 +31,21 @@ impl<const Q: usize> DoubleBufferedState for LatticeState<Q> {
 }
 
 impl<const Q: usize> LatticeState<Q> {
-    /// Creates a new state with the given dimensions.
-    /// Initialized with:
-    /// - Density = 1.0
-    /// - Velocity = 0.0
-    /// - f = 0.0 (Caller must initialize equilibrium)
+    /// Fallibly constructs a new Lattice Boltzmann state grid with checked allocation bounds.
+    ///
+    /// Returns [`FluidError::GridDimensionsOverflow`] if `width * height` or the byte footprint of
+    /// a distribution buffer overflows addressable memory (`isize::MAX`).
     #[verified_engine::verified]
-    pub fn new(width: usize, height: usize) -> Self {
-        let _ = width
+    pub fn try_new(width: usize, height: usize) -> Result<Self, FluidError> {
+        let cell_bytes = std::mem::size_of::<[f64; Q]>().max(1);
+        let valid_capacity = width
             .checked_mul(height)
-            .expect("Grid dimensions too large");
-        Self {
+            .and_then(|cells| cells.checked_mul(cell_bytes))
+            .is_some_and(|bytes| bytes <= isize::MAX as usize);
+        if !valid_capacity {
+            return Err(FluidError::GridDimensionsOverflow { width, height });
+        }
+        Ok(Self {
             width,
             height,
             f: DMatrix::from_element(height, width, [0.0; Q]),
@@ -49,7 +54,17 @@ impl<const Q: usize> LatticeState<Q> {
             ux: DMatrix::from_element(height, width, 0.0),
             uy: DMatrix::from_element(height, width, 0.0),
             obstacles: DMatrix::from_element(height, width, false),
-        }
+        })
+    }
+
+    /// Creates a new state with the given dimensions.
+    /// Initialized with:
+    /// - Density = 1.0
+    /// - Velocity = 0.0
+    /// - f = 0.0 (Caller must initialize equilibrium)
+    #[verified_engine::verified]
+    pub fn new(width: usize, height: usize) -> Self {
+        Self::try_new(width, height).expect("Grid dimensions too large")
     }
 
     /// Checks if the coordinates are within the grid.

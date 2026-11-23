@@ -1,3 +1,4 @@
+use crate::error::NumberTheoryError;
 use dashu::base::Abs;
 use dashu::float::FBig;
 pub use dashu::integer::IBig;
@@ -50,15 +51,18 @@ impl Integer {
     pub fn assign(&mut self, v: i128) {
         self.0 = IBig::from(v);
     }
-    #[allow(clippy::result_unit_err)]
     #[allow(missing_docs)]
-    pub fn parse(s: &str) -> Result<Self, ()> {
-        IBig::from_str_radix(s, 10).map(Integer).map_err(|_| ())
+    pub fn parse(s: &str) -> Result<Self, NumberTheoryError> {
+        Self::from_str_radix(s, 10)
     }
-    #[allow(clippy::result_unit_err)]
     #[allow(missing_docs)]
-    pub fn from_str_radix(s: &str, radix: u32) -> Result<Self, ()> {
-        IBig::from_str_radix(s, radix).map(Integer).map_err(|_| ())
+    pub fn from_str_radix(s: &str, radix: u32) -> Result<Self, NumberTheoryError> {
+        if !(2..=36).contains(&radix) {
+            return Err(NumberTheoryError::InvalidRadix { radix });
+        }
+        IBig::from_str_radix(s, radix)
+            .map(Integer)
+            .map_err(|_| NumberTheoryError::InvalidIntegerLiteral { radix })
     }
     #[allow(missing_docs)]
     #[verified_engine::verified]
@@ -75,22 +79,18 @@ impl Integer {
     pub fn sqrt(&self) -> Self {
         Integer(self.0.nth_root(2))
     }
-    #[allow(clippy::result_unit_err)]
     #[allow(missing_docs)]
     #[verified_engine::verified]
-    pub fn pow_mod(&self, exp: &Integer, m: &Integer) -> Result<Self, ()> {
+    pub fn pow_mod(&self, exp: &Integer, m: &Integer) -> Result<Self, NumberTheoryError> {
         if m.0 == IBig::from(0u8) {
-            return Err(());
+            return Err(NumberTheoryError::ZeroModulus);
         }
         let mut base = &self.0 % &m.0;
         let mut exp_val = exp.0.clone();
         if exp_val < IBig::from(0u8) {
-            if let Ok(inv) = self.invert(m) {
-                base = inv.0;
-                exp_val = -exp_val;
-            } else {
-                return Err(());
-            }
+            let inv = self.invert(m)?;
+            base = inv.0;
+            exp_val = -exp_val;
         }
         let mut result = IBig::from(1u8);
         while exp_val > IBig::from(0u8) {
@@ -102,10 +102,12 @@ impl Integer {
         }
         Ok(Integer(result))
     }
-    #[allow(clippy::result_unit_err)]
     #[allow(missing_docs)]
     #[verified_engine::verified]
-    pub fn invert(&self, m: &Integer) -> Result<Self, ()> {
+    pub fn invert(&self, m: &Integer) -> Result<Self, NumberTheoryError> {
+        if m.0 == IBig::from(0u8) {
+            return Err(NumberTheoryError::ZeroModulus);
+        }
         let (gcd, x, _y) = self.extended_gcd(m);
         if gcd.0 == IBig::from(1u8) {
             let mut r = x.0 % &m.0;
@@ -114,7 +116,7 @@ impl Integer {
             }
             Ok(Integer(r))
         } else {
-            Err(())
+            Err(NumberTheoryError::NoModularInverse)
         }
     }
     #[allow(missing_docs)]
