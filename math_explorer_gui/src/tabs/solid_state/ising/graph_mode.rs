@@ -40,8 +40,29 @@ impl IsingModelTool {
         self.graph_system.as_ref().map(GraphSpinSystem::n_nodes)
     }
 
+    pub(super) fn detach_shared_csr_graph(&mut self, refresh_lattice_overlays: bool) {
+        if self.synced_bus_revision.take().is_some()
+            || self.graph_system.is_some()
+            || self.shared_topology.is_some()
+        {
+            self.graph_system = None;
+            self.shared_topology = None;
+            self.graph_running = false;
+            self.graph_sweeps = 0.0;
+            if refresh_lattice_overlays {
+                self.sync_metrics_from_latest();
+                self.reset_trajectory_overlays();
+            }
+            self.dirty = true;
+        }
+    }
+
     /// Synchronizes [`GraphSpinSystem`] with [`SharedSimulationBus`] or reverts to the 100x100 lattice.
     pub fn sync_shared_topology(&mut self, ctx: &egui::Context) {
+        if self.active_challenge.is_some() {
+            self.detach_shared_csr_graph(true);
+            return;
+        }
         match SharedSimulationBus::active_graph_for(ctx, self.topology_source) {
             Some(snap) => {
                 if self.synced_bus_revision != Some(snap.revision)
@@ -50,17 +71,7 @@ impl IsingModelTool {
                     self.synced_bus_revision = Some(snap.revision);
                 }
             }
-            None => {
-                if self.synced_bus_revision.take().is_some() {
-                    self.graph_system = None;
-                    self.shared_topology = None;
-                    self.graph_running = false;
-                    self.graph_sweeps = 0.0;
-                    self.sync_metrics_from_latest();
-                    self.reset_trajectory_overlays();
-                    self.dirty = true;
-                }
-            }
+            None => self.detach_shared_csr_graph(true),
         }
     }
 
@@ -92,7 +103,10 @@ impl IsingModelTool {
             return;
         };
         let n = sys.n_nodes().max(1) as f64;
-        self.magnetization = sys.normalized_magnetization();
+        let norm_m = sys.normalized_magnetization();
+        self.magnetization = norm_m;
+        self.uniform_magnetization = norm_m;
+        self.staggered_magnetization = norm_m;
         self.energy = match self.mode {
             IsingInteractionMode::Ferromagnetic => {
                 sys.total_energy(self.j_coupling, self.h_field) / n
@@ -117,8 +131,7 @@ impl IsingModelTool {
         let n = sys.n_nodes().max(1);
         match mode {
             IsingInteractionMode::Ferromagnetic => {
-                let j_scale = if j.abs() < 1e-6 { 1.0 } else { j.abs() };
-                let t_phys = temp.max(1e-3) * j_scale / KB;
+                let t_phys = temp.max(1e-3) / KB;
                 sys.evolve(num_trials, t_phys, j, h);
             }
             IsingInteractionMode::FermiGame => {
@@ -138,13 +151,17 @@ impl IsingModelTool {
     }
 
     pub(super) fn draw_topology_source_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if render_topology_source_bar(
-            ui,
-            "ising_model",
-            &mut self.topology_source,
-            self.synced_bus_revision,
-            None,
-        ) {
+        let mut changed = false;
+        ui.add_enabled_ui(self.active_challenge.is_none(), |ui| {
+            changed = render_topology_source_bar(
+                ui,
+                "ising_model",
+                &mut self.topology_source,
+                self.synced_bus_revision,
+                None,
+            );
+        });
+        if changed {
             self.sync_shared_topology(ctx);
         }
         if let Some(ref snap) = self.shared_topology {
