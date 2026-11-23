@@ -9,7 +9,7 @@ use crate::{
     AccessState, Line, Plot, PlotIdSource, PlotImage, PlotMemory, PlotPoint,
     data_table::{
         DataTableState, TableSeriesRef, data_table_clipboard_status_id, format_table_value,
-        format_tsv, series_share_x, show_data_table_modal,
+        format_tsv, series_share_x, show_data_table_modal_with_pois,
     },
     humanize_plot_label,
     items::SavedCallout,
@@ -70,7 +70,7 @@ fn run_modal(
     ds: &[(String, Vec<[f64; 2]>, Color32)],
 ) -> FullOutput {
     ctx.run(raw, |c| {
-        show_data_table_modal(c, id, "Data Table - SIR Plot", open, st, ds)
+        show_data_table_modal_with_pois(c, id, "Data Table - SIR Plot", open, st, ds, &[])
     })
 }
 
@@ -357,7 +357,15 @@ fn test_csv_copy_clipboard_status_and_close_button() {
 
     let csv_pos = find_text_center(&out1, "Copy CSV").unwrap();
     let out_csv = click_at(&ctx, csv_pos, PointerButton::Primary, |c| {
-        show_data_table_modal(c, id, "Data Table - SIR Plot", &mut open, &mut st, &ds);
+        show_data_table_modal_with_pois(
+            c,
+            id,
+            "Data Table - SIR Plot",
+            &mut open,
+            &mut st,
+            &ds,
+            &[],
+        );
     });
     assert!(out_csv.platform_output.commands.iter().any(
         |cmd| matches!(cmd, OutputCommand::CopyText(t) if t.starts_with("Dataset,X,Y\n") && t.contains("Susceptible,0.1,9985.5"))
@@ -374,7 +382,15 @@ fn test_csv_copy_clipboard_status_and_close_button() {
 
     let close_pos = find_text_center(&out_status, "Close").unwrap();
     let _ = click_at(&ctx, close_pos, PointerButton::Primary, |c| {
-        show_data_table_modal(c, id, "Data Table - SIR Plot", &mut open, &mut st, &ds);
+        show_data_table_modal_with_pois(
+            c,
+            id,
+            "Data Table - SIR Plot",
+            &mut open,
+            &mut st,
+            &ds,
+            &[],
+        );
     });
     assert!(!open);
 }
