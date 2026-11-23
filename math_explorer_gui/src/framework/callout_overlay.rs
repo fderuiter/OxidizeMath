@@ -11,6 +11,19 @@ fn default_true() -> bool {
     true
 }
 
+/// Static specification for a declarative story or challenge plot callout pin.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CalloutSpec {
+    /// Semantic tag used to update automated pins without removing manual user annotations.
+    pub tag: &'static str,
+    /// Target coordinates in plot space `[x, y]`.
+    pub target_point: [f64; 2],
+    /// Screen pixel displacement `[dx, dy]` from the target coordinate.
+    pub label_offset: [f32; 2],
+    /// Concise annotation label text.
+    pub text: &'static str,
+}
+
 /// Stored annotation payload for plot coordinates.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CalloutData {
@@ -192,6 +205,14 @@ impl CalloutManager {
     /// Clear only automated feature annotations while preserving manual user annotations.
     pub fn clear_auto(&mut self) {
         self.callouts.retain(|c| c.tag.is_none());
+    }
+
+    /// Synchronize declarative story/challenge callout pins without removing manual user pins.
+    pub fn sync_specs(&mut self, specs: &[CalloutSpec]) {
+        self.clear_auto();
+        for spec in specs {
+            self.set_auto_callout(spec.tag, spec.target_point, spec.text, spec.label_offset);
+        }
     }
 
     /// Toggle visibility state of a callout.

@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests verifying zero-allocation 3D Gaussian splatting projection and blending.
 use domain_ai::ai::gaussian_splatting::{
     Gaussian2D, Gaussian3D, Scene,
     optimization::{DensityAction, determine_density_action},

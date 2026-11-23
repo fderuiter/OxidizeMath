@@ -45,42 +45,25 @@ pub enum ParseError {
         /// Source character span of the identifier.
         span: Span,
     },
-}
 
-impl diagnostics::Diagnostic for ParseError {
-    fn severity(&self) -> diagnostics::Severity {
-        diagnostics::Severity::Error
-    }
-
-    fn metadata(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        if let Self::Lex(lex_err) = self {
-            map.extend(lex_err.metadata());
-            map.insert("cause_error_type".to_string(), "LexError".to_string());
-        }
-        map.insert("error_type".to_string(), "ParseError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        match self {
-            Self::UnexpectedToken {
-                expected,
-                found,
-                span,
-            } => {
-                map.insert("expected".to_string(), expected.clone());
-                map.insert("found".to_string(), found.clone());
-                map.insert("start".to_string(), span.start.to_string());
-            }
-            Self::RecursionLimitExceeded(max_depth) => {
-                map.insert("max_depth".to_string(), max_depth.to_string());
-            }
-            Self::UnknownFunction { name, span } => {
-                map.insert("function".to_string(), name.clone());
-                map.insert("start".to_string(), span.start.to_string());
-            }
-            Self::Lex(_) | Self::UnexpectedEof | Self::EmptyExpression => {}
-        }
-        map
-    }
+    /// Built-in function invoked with the wrong number of arguments.
+    #[error(
+        "At character {}: function '{}' expected {} {}, found {found}",
+        span.start + 1,
+        func.as_str(),
+        expected,
+        if *expected == 1 { "argument" } else { "arguments" }
+    )]
+    WrongArgumentCount {
+        /// Function invoked with mismatched argument count.
+        func: Func,
+        /// Expected argument count for `func`.
+        expected: usize,
+        /// Actual argument count provided.
+        found: usize,
+        /// Source character span of the function identifier.
+        span: Span,
+    },
 }
 
 fn format_found_token(found: &str) -> String {
@@ -342,11 +325,11 @@ impl Parser {
         };
 
         if self.peek().kind == TokenKind::LParen {
-            return self.parse_parenthesized_func(func, depth);
+            return self.parse_parenthesized_func(func, span, depth);
         }
 
         if func.arity() == 1 && self.peek().kind == TokenKind::Caret {
-            return self.parse_unary_func_power(func, depth);
+            return self.parse_unary_func_power(func, span, depth);
         }
 
         // Support unary function without parens e.g. "sin x" if followed by atom
@@ -377,6 +360,7 @@ impl Parser {
     fn parse_unary_func_power(
         &mut self,
         func: Func,
+        span: Span,
         depth: usize,
     ) -> Result<(Expr, usize), ParseError> {
         if depth >= MAX_PARSE_DEPTH {
@@ -385,7 +369,7 @@ impl Parser {
         self.advance(); // consume '^'
         let (exponent, exp_height) = self.parse_expr(7, depth + 1)?;
         let (call_expr, call_height) = if self.peek().kind == TokenKind::LParen {
-            self.parse_parenthesized_func(func, depth + 1)?
+            self.parse_parenthesized_func(func, span, depth + 1)?
         } else if self.can_start_atom() {
             self.parse_unparenthesized_unary_func(func, depth + 1)?
         } else {
@@ -401,6 +385,7 @@ impl Parser {
     fn parse_parenthesized_func(
         &mut self,
         func: Func,
+        span: Span,
         depth: usize,
     ) -> Result<(Expr, usize), ParseError> {
         self.advance(); // consume '('
@@ -417,11 +402,15 @@ impl Parser {
             });
         }
         self.advance(); // consume ')'
-        let next_height = if args.is_empty() {
-            0
-        } else {
-            max_arg_height + 1
-        };
+        if args.len() != func.arity() {
+            return Err(ParseError::WrongArgumentCount {
+                func,
+                expected: func.arity(),
+                found: args.len(),
+                span,
+            });
+        }
+        let next_height = max_arg_height + 1;
         if next_height > MAX_PARSE_DEPTH {
             return Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH));
         }

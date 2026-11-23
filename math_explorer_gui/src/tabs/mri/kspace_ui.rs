@@ -396,6 +396,7 @@ impl MriKSpaceTool {
             multi_touch: ui.input(|i| i.multi_touch()),
             keys_down,
             modifiers,
+            brush_stroke: None,
         };
         if response.has_focus() {
             self.on_keyboard(&ictx);

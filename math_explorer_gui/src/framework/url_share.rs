@@ -60,7 +60,8 @@ impl SimulationFramework {
     pub fn url_state_revision(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.selected_tool_index.hash(&mut hasher);
-        self.active_challenge_id().hash(&mut hasher);
+        self.active_challenge.map(|m| m.id).hash(&mut hasher);
+        self.hash_hud_for_url(&mut hasher);
         if let Some(tool) = &self.active_tool {
             tool.name().hash(&mut hasher);
             let tool_rev = tool.state_revision();
@@ -90,6 +91,68 @@ impl SimulationFramework {
         Ok(Some(envelope_json))
     }
 
+    /// Encodes a `#tab=...` fragment for `tab_slug`, supporting active inverse challenges, guided stories, and AST challenges.
+    pub fn encode_share_fragment_for_tab(&self, tab_slug: &str) -> Result<String, String> {
+        if let Some(inv_meta) = self.active_challenge {
+            let preset_json = self.export_url_preset_json()?;
+            return crate::url_state::encode_share_fragment_with_challenge(
+                tab_slug,
+                self.active_tool_id(),
+                Some(inv_meta.id),
+                preset_json.as_deref(),
+            );
+        }
+        let current_tool_state = self.active_tool.as_ref().and_then(|t| t.save_state());
+        match &self.challenge_hud.mode {
+            super::ChallengeHudMode::Story {
+                story,
+                step_index,
+                step_state,
+            } => {
+                let extra_json = if current_tool_state == *step_state {
+                    None
+                } else {
+                    self.export_url_preset_json()?
+                };
+                crate::url_state::encode_share_fragment_with_hud(
+                    tab_slug,
+                    self.active_tool_id(),
+                    Some(story.id),
+                    None,
+                    Some(*step_index),
+                    extra_json.as_deref(),
+                )
+            }
+            super::ChallengeHudMode::Challenge {
+                challenge,
+                initial_state,
+                ..
+            } => {
+                let extra_json = if current_tool_state == *initial_state {
+                    None
+                } else {
+                    self.export_url_preset_json()?
+                };
+                crate::url_state::encode_share_fragment_with_hud(
+                    tab_slug,
+                    self.active_tool_id(),
+                    None,
+                    Some(challenge.id),
+                    None,
+                    extra_json.as_deref(),
+                )
+            }
+            super::ChallengeHudMode::Inactive => {
+                let preset_json = self.export_url_preset_json()?;
+                crate::url_state::encode_share_fragment(
+                    tab_slug,
+                    self.active_tool_id(),
+                    preset_json.as_deref(),
+                )
+            }
+        }
+    }
+
     /// Encodes a full shareable web URL (`https://...#tab=...&tool=...&state=...`) for the active tool.
     pub fn encode_share_url(&self) -> Result<String, String> {
         let tab_slug = if self.domain == "biology" {
@@ -97,17 +160,11 @@ impl SimulationFramework {
         } else {
             self.domain.as_str()
         };
-        let preset_json = self.export_url_preset_json()?;
-        let fragment = crate::url_state::encode_share_fragment_with_challenge(
-            tab_slug,
-            self.active_tool_id(),
-            self.active_challenge_id(),
-            preset_json.as_deref(),
-        )?;
+        let fragment = self.encode_share_fragment_for_tab(tab_slug)?;
         Ok(crate::url_state::build_share_url_from_fragment(&fragment))
     }
 
-    fn resolve_url_tool_index(&self, tool_id: Option<&str>) -> Result<usize, String> {
+    pub(super) fn resolve_url_tool_index(&self, tool_id: Option<&str>) -> Result<usize, String> {
         match tool_id {
             Some(requested) => self
                 .available_tools
@@ -131,29 +188,11 @@ impl SimulationFramework {
     }
 
     /// Validates and atomically applies a shared URL tool identifier and `PresetWrapper` JSON payload.
-    ///
-    /// Builds and validates a candidate tool instance prior to committing so malformed, mismatched,
-    /// or non-finite states never mutate the currently active tool.
     pub fn import_url_preset_json(
         &mut self,
         tool_id: Option<&str>,
         preset_json: Option<&str>,
     ) -> Result<(), String> {
-        self.import_url_share_params(tool_id, None, preset_json)
-    }
-
-    /// Validates and atomically applies a shared URL tool identifier, optional inverse challenge ID,
-    /// and optional `PresetWrapper` JSON payload, clamping any tampered locked fields back to the
-    /// canonical [`crate::starter_gallery::ChallengeMetadata`] definition.
-    pub fn import_url_share_params(
-        &mut self,
-        tool_id: Option<&str>,
-        challenge_id: Option<&str>,
-        preset_json: Option<&str>,
-    ) -> Result<(), String> {
-        if let Some(cid) = challenge_id {
-            return self.import_url_challenge(tool_id, cid, preset_json);
-        }
         let target_idx = self.resolve_url_tool_index(tool_id)?;
         let meta = self.available_tools[target_idx];
         let mut candidate = (meta.build)();
@@ -167,7 +206,17 @@ impl SimulationFramework {
                 ));
             }
         }
+        self.commit_validated_url_candidate(target_idx, candidate);
+        self.clear_challenge_hud();
+        self.sync_active_baseline();
+        Ok(())
+    }
 
+    pub(super) fn commit_validated_url_candidate(
+        &mut self,
+        target_idx: usize,
+        candidate: Box<dyn super::InteractiveTool>,
+    ) {
         if self.selected_tool_index != Some(target_idx) {
             if let Some((old_name, old_json)) = self.serialized_active_tool() {
                 self.saved_tool_states
@@ -182,85 +231,14 @@ impl SimulationFramework {
         self.challenge_was_passed = false;
         self.selected_tool_index = Some(target_idx);
         self.active_tool = Some(candidate);
+        self.promote_legacy_plot_keys_for_active_tool();
         self.is_diverged = false;
         self.diagnostic_report = None;
         self.show_starter_gallery = false;
         self.preset_dialog.toast_error = None;
         self.reset_active_tool_manual_bounds();
-        self.sync_active_baseline();
-        Ok(())
-    }
-
-    fn import_url_challenge(
-        &mut self,
-        tool_id: Option<&str>,
-        challenge_id: &str,
-        preset_json: Option<&str>,
-    ) -> Result<(), String> {
-        let Some(ch_meta) = crate::starter_gallery::find_challenge_metadata(challenge_id) else {
-            return Err(format!("Unknown challenge '{challenge_id}' in shared URL"));
-        };
-        if !crate::starter_gallery::challenge_matches_domain(ch_meta, &self.domain) {
-            return Err(format!(
-                "Challenge '{}' belongs to domain '{}', not '{}'",
-                ch_meta.id, ch_meta.domain, self.domain
-            ));
-        }
-        let target_idx = self.resolve_challenge_tool_index(ch_meta)?;
-        if let Some(explicit_tool) = tool_id {
-            let requested_idx = self.resolve_url_tool_index(Some(explicit_tool))?;
-            if requested_idx != target_idx {
-                return Err(format!(
-                    "Challenge '{}' belongs to tool '{}', not '{explicit_tool}'",
-                    ch_meta.id, ch_meta.tool_name
-                ));
-            }
-        }
-        let clamped_config_json = match preset_json {
-            Some(json_str) => extract_and_clamp_challenge_json(
-                json_str,
-                self.available_tools[target_idx],
-                ch_meta,
-            )?,
-            None => {
-                let raw_base = ch_meta.generate_baseline_state();
-                ch_meta.clamp_state_json(&raw_base)?
-            }
-        };
-        self.commit_challenge_instance(target_idx, ch_meta, &clamped_config_json)?;
-        self.show_starter_gallery = false;
-        crate::framework::challenge::dispatch_challenge_announcement(
-            None,
-            &format!("Hydrated challenge from URL: {}", ch_meta.title),
-        );
-        Ok(())
     }
 }
 
-fn extract_and_clamp_challenge_json(
-    json_str: &str,
-    tool_meta: &super::ToolMetadata,
-    ch_meta: &crate::starter_gallery::ChallengeMetadata,
-) -> Result<String, String> {
-    crate::url_state::validate_url_preset_json(json_str)?;
-    let probe = (tool_meta.build)();
-    let bounds = probe.state_bounds();
-    let parsed: serde_json::Value =
-        serde_json::from_str(egui_plot::export::strip_utf8_bom(json_str))
-            .map_err(|e| format!("Invalid URL challenge JSON: {e}"))?;
-    let raw_inner = if parsed.get("metadata").is_some() || parsed.get("config").is_some() {
-        let raw_cfg: Box<serde_json::value::RawValue> =
-            crate::presets::deserialize_preset_envelope_bounded(
-                json_str,
-                probe.domain(),
-                probe.name(),
-                bounds,
-            )?;
-        raw_cfg.get().to_string()
-    } else {
-        json_str.to_string()
-    };
-    let clamped = ch_meta.clamp_state_json(&raw_inner)?;
-    crate::url_state::validate_url_preset_json(&clamped)?;
-    Ok(clamped)
-}
+#[path = "url_share/hydrate.rs"]
+mod hydrate;

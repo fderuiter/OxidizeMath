@@ -26,6 +26,8 @@ mod tests {
         check_tools!(
             ctx;
             crate::tabs::algorithmic_information::state::FractranMachineTool,
+            crate::tabs::elliptic_curves::chord_tangent_tool::WeierstrassPlaygroundTool,
+            crate::tabs::elliptic_curves::modular_invariants_tool::ModularInvariantsTool,
             crate::tabs::financial_math::bet_size::BetSizeCalculatorTool,
             crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool,
             crate::tabs::graph_theory::network_metrics::NetworkMetricsTool,
@@ -89,6 +91,8 @@ mod tests {
             crate::tabs::medical::beam_profiling::BeamProfilingTool,
             crate::tabs::medical::dose::DoseCalculationTool,
             crate::tabs::medical::radar_gating::RadarGatingTool,
+            crate::tabs::relativity::inspector::ChristoffelInspectorTool,
+            crate::tabs::relativity::playground::GeodesicPlaygroundTool,
         );
     }
 

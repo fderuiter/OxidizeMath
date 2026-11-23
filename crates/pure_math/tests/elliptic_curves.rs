@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for elliptic curves.
 use pure_math::math_types::Integer;
 use pure_math::pure_math::elliptic_curves::*;
 use pure_math::pure_math::number_theory::ambs::{AmbsDsp, modular_inverse};

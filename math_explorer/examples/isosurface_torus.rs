@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for isosurface torus.
 use math_explorer::applied::isosurface::{Point3D, VoxelGrid, extract_isosurface};
 use std::fmt;
 use std::fs::File;

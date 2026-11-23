@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for bench reaction diffusion.
 #[cfg(not(target_arch = "wasm32"))]
 use domain_biology::biology::diffusion::FiniteDifference2D;
 #[cfg(not(target_arch = "wasm32"))]

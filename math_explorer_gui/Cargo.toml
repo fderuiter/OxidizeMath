@@ -130,5 +130,10 @@ verified_engine = { path = "../crates/verified_engine" }
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = { workspace = true }
 
+[build-dependencies]
+futures = { workspace = true }
+oxidize_core = { path = "../crates/oxidize_core" }
+serde_json = { workspace = true }
+
 [lints]
 workspace = true

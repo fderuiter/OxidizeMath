@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Example target for glicko2 demo.
 use math_explorer::pure_math::statistics::glicko2::{
     GlickoPlayer, MatchResult, Rating, RatingDeviation, SystemConstant, Volatility, update_rating,
 };
