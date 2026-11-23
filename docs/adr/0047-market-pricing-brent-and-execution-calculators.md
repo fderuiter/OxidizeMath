@@ -1,4 +1,4 @@
-# ADR 0046: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators
+# ADR 0047: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators
 
 ## Status
 Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), [ADR 0035](0035-kelly-net-odds-seeded-rng-and-paradox-labs.md), and [ADR 0042](0042-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
@@ -11,7 +11,7 @@ Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctes
    - Replace `AnalysisError::InvalidParameters(String)` and runtime `format!` calls with `Copy` scalar variants (`ConvergenceError(f64)`, `RootNotBracketed { min, f_min, max, f_max }`, `DerivativeTooSmall { x, derivative }`, and `InvalidBracket { min, max }`).
    - Implement `Brent` (`RootFinder`) combining inverse quadratic interpolation, secant steps, and guaranteed bisection fallback within zero-allocation `#[verified_engine::verified]` bounds.
 2. **Slice-Based `pure_math::statistics::market_pricing` and `MarketPricingError`**:
-   - Add zero-allocation `&[Odds]` routines bounded by `MAX_MARKET_OUTCOMES = 64` for `booksum`, `overround`, `turnover_margin`, `Multiplicative`, `Additive` (emitting `SimplexViolationDiagnostic` alongside raw and simplex-clamped probabilities when longshots fall `<= 0.0`), `Power` (dynamic analytical upper bracket solved via `Brent`), and `Shin` (closed-form 2-way `z` and rationalized `N`-way `Brent` solver on `[0.0, 1.0]`).
+   - Add zero-allocation `&[Odds]` routines bounded by `MAX_MARKET_OUTCOMES = 64` for `booksum`, `overround`, `turnover_margin`, `Multiplicative`, `Additive` (emitting `SimplexViolationDiagnostic` alongside raw and simplex-clamped probabilities when longshots fall `<= 0.0`), `Power` (dynamic analytical upper bracket solved via `Brent`), and `Shin` (closed-form 2-way `z` and rationalized `N`-way `Brent` solver on `[0.0, 1.0)`).
    - Pair devigged fair probabilities with `kelly_fraction` (`evaluate_outcome_ev`, `compare_outcome_ev_all_methods`) and add `evaluate_arbitrage_into`, `dutch_outcomes_into`, `dutch_subset_into`, `evaluate_middle`, and `evaluate_hedge`.
    - Expose `Copy` `MarketPricingError` through `PureMathError` and `math_explorer::error::Error`.
 3. **Interactive `FinancialMathTab` Calculators (`math_explorer_gui`)**:
@@ -19,4 +19,4 @@ Accepted (extends [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctes
 
 ## Consequences
 - **Positive**: `Bisection`, `NewtonRaphson`, `Brent`, and every `market_pricing` routine execute with zero heap allocations inside `VerifiedEngine::run_verified` while matching analytical devigging, `+EV`, arbitrage, Dutching, middle, and hedge benchmarks within `1e-9`.
-- **Neutral**: Workspace contract suites now track 28 crate error enums (50 leaf errors), 76 registered `InteractiveTool` implementations (53 plot-exportable tools), and 109 `StarterPresetMetadata` cards.
+- **Neutral**: Workspace contract suites now track 28 crate error enums (50 leaf errors), 77 registered `InteractiveTool` implementations (54 plot-exportable tools), and 112 `StarterPresetMetadata` cards.
