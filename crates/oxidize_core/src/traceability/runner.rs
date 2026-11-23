@@ -53,6 +53,7 @@ const IGNORED_TRACEABILITY_MEMBERS: &[&str] = &[
     "crates/oxidize_core",
     "crates/verified_engine",
     "crates/verified_engine_macros",
+    "crates/markdown_tests",
     "apps/xtask",
     "egui_plot",
 ];

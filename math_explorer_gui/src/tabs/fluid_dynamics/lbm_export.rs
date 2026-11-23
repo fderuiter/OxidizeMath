@@ -2,32 +2,21 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::lattice_boltzmann::render::{inspect_solver_solid_and_core, render_lbm_snapshot_pixels};
 use super::lattice_boltzmann::{LbmSnapshotMetrics, LbmUnified};
-use super::lattice_boltzmann_sculpt::inspect_solver_solid_and_core;
 use super::lbm_fairing::{LBM_REF_DIAMETER, LBM_RHO_0};
 use crate::async_sim::StateSnapshot;
 use crate::framework::ScalarField2D;
-use eframe::egui::Color32;
-use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::compute_drag_coefficient;
 use std::sync::{Arc, RwLock};
 
-struct SampledLbmGrid {
-    pixels: Vec<Color32>,
-    scalar_field: Vec<f64>,
-    active_mask: Vec<bool>,
-    max_vort: f64,
-}
-
-fn sample_lbm_grid(model: &LbmUnified) -> SampledLbmGrid {
+fn sample_lbm_scalar_and_mask(model: &LbmUnified) -> (Vec<f64>, Vec<bool>) {
     let width = model.solver.width();
     let height = model.solver.height();
     let cell_count = width * height;
-    let mut pixels = vec![Color32::BLACK; cell_count];
     let mut scalar_field = vec![0.0_f64; cell_count];
     let mut active_mask = vec![true; cell_count];
-    let mut max_vort = 0.0_f64;
 
     for y in 0..height {
         let solver_y = height - 1 - y;
@@ -35,33 +24,18 @@ fn sample_lbm_grid(model: &LbmUnified) -> SampledLbmGrid {
             let pixel_idx = flatten_2d_index(x, y, width);
             let solver_idx = flatten_2d_index(x, solver_y, width);
             if model.solver.is_obstacle(x, solver_y) {
-                pixels[pixel_idx] = Color32::from_gray(50);
                 active_mask[pixel_idx] = false;
-                scalar_field[pixel_idx] = 0.0;
-            } else {
+            } else if model.display_vorticity {
                 let omega = model.vorticity_buf[solver_idx];
-                let safe_w = if omega.is_finite() { omega } else { 0.0 };
-                max_vort = max_vort.max(safe_w.abs());
+                scalar_field[pixel_idx] = if omega.is_finite() { omega } else { 0.0 };
+            } else {
                 let v = model.solver.get_velocity_magnitude(x, solver_y);
-                let safe_v = if v.is_finite() { v } else { 0.0 };
-                let (sample, norm) = if model.display_vorticity {
-                    (safe_w, (0.5 + safe_w * 12.0).clamp(0.0, 1.0))
-                } else {
-                    (safe_v, (safe_v * 1000.0 / 255.0).clamp(0.0, 1.0))
-                };
-                scalar_field[pixel_idx] = sample;
-                let rgb = heatmap_color(norm);
-                pixels[pixel_idx] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+                scalar_field[pixel_idx] = if v.is_finite() { v } else { 0.0 };
             }
         }
     }
 
-    SampledLbmGrid {
-        pixels,
-        scalar_field,
-        active_mask,
-        max_vort,
-    }
+    (scalar_field, active_mask)
 }
 
 /// Builds a [`StateSnapshot`] for [`LbmUnified`] including top-down hydrodynamic scalar samples
@@ -69,7 +43,13 @@ fn sample_lbm_grid(model: &LbmUnified) -> SampledLbmGrid {
 pub(super) fn build_lbm_snapshot(model: &LbmUnified) -> StateSnapshot {
     let width = model.solver.width();
     let height = model.solver.height();
-    let grid = sample_lbm_grid(model);
+    let (pixels, max_vort) = render_lbm_snapshot_pixels(
+        &model.solver,
+        &model.vorticity_buf,
+        model.display_vorticity,
+        model.high_contrast,
+    );
+    let (scalar_field, active_mask) = sample_lbm_scalar_and_mask(model);
     let (f_drag, f_lift) = model.solver.hydrodynamic_forces();
     let c_d = compute_drag_coefficient(
         f_drag,
@@ -81,15 +61,15 @@ pub(super) fn build_lbm_snapshot(model: &LbmUnified) -> StateSnapshot {
     let metrics = LbmSnapshotMetrics {
         lift_coeff: model.latest_aero.lift_coeff,
         drag_coeff: model.latest_aero.drag_coeff,
-        max_vorticity: grid.max_vort,
-        scalar_field: grid.scalar_field,
-        active_mask: grid.active_mask,
+        max_vorticity: max_vort,
+        scalar_field,
+        active_mask,
     };
 
     StateSnapshot {
         width,
         height,
-        pixels: Arc::new(RwLock::new(grid.pixels)),
+        pixels: Arc::new(RwLock::new(pixels)),
         custom_data: vec![
             f_drag,
             f_lift,

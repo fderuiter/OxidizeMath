@@ -51,6 +51,7 @@ pub struct LbmUnified {
     pub(crate) active_profile_param: f64,
     pub(crate) challenge_core_locked: bool,
     pub(crate) display_vorticity: bool,
+    pub(crate) high_contrast: bool,
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
@@ -169,6 +170,7 @@ impl UnifiedModel for LbmUnified {
             active_profile_param,
             challenge_core_locked: false,
             display_vorticity,
+            high_contrast: false,
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
@@ -277,6 +279,9 @@ impl UnifiedModel for LbmUnified {
             }
             SimCommand::Custom(ref action) if action.starts_with("ChallengeLockCore:") => {
                 self.challenge_core_locked = action.ends_with('1');
+            }
+            SimCommand::Custom(ref action) if action.starts_with("HighContrast:") => {
+                self.high_contrast = action.ends_with('1');
             }
             SimCommand::Custom(ref action)
                 if apply_lbm_custom_action(
@@ -430,3 +435,5 @@ impl UnifiedModel for LbmUnified {
 
 #[path = "lattice_boltzmann/preset.rs"]
 mod preset;
+#[path = "lattice_boltzmann/render.rs"]
+pub(crate) mod render;

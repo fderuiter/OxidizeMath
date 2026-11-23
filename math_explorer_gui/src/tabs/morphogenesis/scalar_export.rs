@@ -2,7 +2,6 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use eframe::egui::ColorImage;
 use math_explorer::biology::diffusion::ReactionCellRole;
 
 use super::counterfactual::active_morphogen_slice;
@@ -37,41 +36,6 @@ fn extract_runner_field(runner: &MorphogenesisKineticsRunner, periodic: bool) ->
 }
 
 impl MorphogenesisTool {
-    pub(crate) fn build_raster_export_image(&self) -> Option<ColorImage> {
-        if self.is_forked() {
-            return Some(self.render_current_heatmap_image());
-        }
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && px.len() == w * h {
-                return Some(ColorImage {
-                    size: [w, h],
-                    pixels: px.clone(),
-                    ..Default::default()
-                });
-            }
-        }
-        if !self.dirty && self.pixels.len() == self.width * self.height && !self.pixels.is_empty() {
-            return Some(ColorImage {
-                size: [self.width, self.height],
-                pixels: self.pixels.clone(),
-                ..Default::default()
-            });
-        }
-        let snapshot = self.worker.latest_snapshot()?;
-        let px = snapshot.pixels.read().unwrap_or_else(|e| e.into_inner());
-        if snapshot.width == 0
-            || snapshot.height == 0
-            || px.len() != snapshot.width * snapshot.height
-        {
-            return None;
-        }
-        Some(ColorImage {
-            size: [snapshot.width, snapshot.height],
-            pixels: px.clone(),
-            ..Default::default()
-        })
-    }
-
     pub(crate) fn build_scalar_field_2d(&self) -> Option<ScalarField2D> {
         let periodic = self
             .params

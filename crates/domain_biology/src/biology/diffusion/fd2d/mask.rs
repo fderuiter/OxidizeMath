@@ -201,6 +201,30 @@ impl CellMask2D {
             .iter()
             .any(|&b| b != ReactionCellRole::Free as u8);
     }
+
+    /// Pins persistent emitter, sink, and zero-flux wall concentrations onto `state` in place
+    /// with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn pin_turing_state(&self, state: &mut crate::biology::morphogenesis::TuringState<2>) {
+        if !self.has_active {
+            return;
+        }
+        let len = self.roles.len().min(state.len());
+        let emit_u = self.emitter_u_level;
+        let emit_v = self.emitter_v_level;
+        let [ref mut u, ref mut v] = state.concentrations;
+        for idx in 0..len {
+            match ReactionCellRole::from_u8(self.roles[idx]) {
+                ReactionCellRole::ZeroFluxWall | ReactionCellRole::Sink => {
+                    u[idx] = 0.0;
+                    v[idx] = 0.0;
+                }
+                ReactionCellRole::EmitterU => u[idx] = emit_u,
+                ReactionCellRole::EmitterV => v[idx] = emit_v,
+                ReactionCellRole::Free => {}
+            }
+        }
+    }
 }
 
 /// Masked 2D finite-difference operator enforcing internal zero-flux walls,

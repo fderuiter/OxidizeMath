@@ -4,6 +4,8 @@
 // [cite:gaussian_splatting]
 // [cite:isosurface_extraction]
 
+#[path = "volumetric_scene_lensing.rs"]
+pub mod lensing;
 #[path = "volumetric_scene_presets.rs"]
 pub mod presets;
 
@@ -77,14 +79,15 @@ impl VolumetricSplatWorkspace {
     /// Pre-allocates all vectors for up to `max_splats` with zero runtime reallocation.
     pub fn with_capacity(max_splats: usize) -> Self {
         let cap = max_splats.max(16);
+        let dual_cap = cap.saturating_mul(2);
         Self {
             scene: Scene {
                 gaussians: Vec::with_capacity(cap),
             },
             grad_magnitudes: Vec::with_capacity(cap),
-            projected_splats: Vec::with_capacity(cap),
-            ellipse_rings: Vec::with_capacity(cap),
-            splat_centers: Vec::with_capacity(cap),
+            projected_splats: Vec::with_capacity(dual_cap),
+            ellipse_rings: Vec::with_capacity(dual_cap),
+            splat_centers: Vec::with_capacity(dual_cap),
             pixel_buffer: vec![egui::Color32::TRANSPARENT; SPLAT_GRID_SIZE * SPLAT_GRID_SIZE],
             density_counts: DensityActionCounts::default(),
         }
@@ -139,6 +142,18 @@ pub fn rotation_from_normal(normal: Point3D) -> UnitQuaternion<f64> {
     }
 }
 
+fn splat_grid_steps(w: usize, h: usize, d: usize, cap: usize) -> (usize, usize, usize) {
+    let total = w * h * d;
+    let iso_step = ((total / cap.max(1)).max(1) as f64).cbrt().ceil() as usize;
+    let step = iso_step.max(1);
+    if step >= d {
+        let xy_step = (((w * h) / cap.max(1)).max(1) as f64).sqrt().ceil() as usize;
+        (d / 2, step, xy_step.max(1))
+    } else {
+        (0, step, step)
+    }
+}
+
 /// Extracts gradient-aligned `Gaussian3D` splats from `grid` into `ws` with zero heap allocations.
 pub fn extract_voxel_splats_into(
     grid: &VoxelGrid,
@@ -154,31 +169,23 @@ pub fn extract_voxel_splats_into(
         .gaussians
         .capacity()
         .min(ws.grad_magnitudes.capacity());
-    if cap == 0 {
-        return;
-    }
     let (w, h, d) = (grid.width(), grid.height(), grid.depth());
-    let total = w * h * d;
-    if total == 0 {
+    if cap == 0 || w * h * d == 0 {
         return;
     }
-    let mut peak = 1e-6_f32;
-    for &v in grid.data() {
-        peak = peak.max(v.abs());
-    }
+    let peak = grid.data().iter().fold(1e-6_f32, |m, &v| m.max(v.abs()));
     let threshold = min_abs_value.max(peak * 0.14);
-    let stride = ((total / cap.max(1)).max(1) as f64).cbrt().ceil() as usize;
-    let step = stride.max(1);
+    let (z_start, z_step, xy_step) = splat_grid_steps(w, h, d, cap);
     let vs = grid.voxel_size();
     let orig = grid.origin();
-    let base_r = ((vs.x.max(vs.y).max(vs.z)) as f64) * (step as f64) * 0.72;
+    let base_r = ((vs.x.max(vs.y).max(vs.z)) as f64) * (xy_step as f64) * 0.72;
     let estimator = CentralDifferenceEstimator;
 
-    for z in (0..d).step_by(step) {
+    for z in (z_start..d).step_by(z_step) {
         let wz = (orig.z + (z as f32) * vs.z) as f64;
-        for y in (0..h).step_by(step) {
+        for y in (0..h).step_by(xy_step) {
             let wy = (orig.y + (y as f32) * vs.y) as f64;
-            for x in (0..w).step_by(step) {
+            for x in (0..w).step_by(xy_step) {
                 if ws.scene.gaussians.len() >= cap {
                     return;
                 }
