@@ -139,6 +139,47 @@ impl TheoryDescribable for ParrondoParadoxTool {
         );
         map
     }
+
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use math_explorer::pure_math::statistics::markov::parrondo::ParrondoParams;
+        use scientific_metadata::theory::ParameterConstraint;
+        let canonical = ParrondoParams::canonical();
+        let c = |min, max, step, default| ParameterConstraint {
+            min,
+            max,
+            step,
+            default: Some(default),
+        };
+        std::collections::HashMap::from([
+            (
+                "p_a_base".to_string(),
+                c(0.40, 0.60, 0.002, canonical.p_a_base()),
+            ),
+            (
+                "p_a".to_string(),
+                c(
+                    0.42,
+                    0.51,
+                    0.002,
+                    (canonical.p_a_base() - canonical.epsilon()).clamp(0.42, 0.51),
+                ),
+            ),
+            (
+                "p_b0_base".to_string(),
+                c(0.05, 0.45, 0.005, canonical.p_b0_base()),
+            ),
+            (
+                "p_b1_base".to_string(),
+                c(0.55, 0.95, 0.005, canonical.p_b1_base()),
+            ),
+            (
+                "epsilon".to_string(),
+                c(-0.02, 0.05, 0.001, canonical.epsilon()),
+            ),
+        ])
+    }
 }
 
 inventory::submit! {

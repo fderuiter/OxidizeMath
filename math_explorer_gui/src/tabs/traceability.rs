@@ -1,14 +1,12 @@
-// @explorer_order = 34
-use crate::tabs::ExplorerTab;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use std::collections::HashMap;
 
-#[path = "traceability/presets.rs"]
-mod presets_impl;
-pub use presets_impl::*;
-#[path = "traceability/scanner.rs"]
+mod presets;
+pub use presets::*;
 mod scanner;
-#[path = "traceability/web_snapshot.rs"]
 mod web_snapshot;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -241,8 +239,9 @@ impl TraceabilityTab {
     }
 
     fn render_portal_toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.heading("Theory-to-Code Traceability Portal");
+            crate::framework::render_workspace_history_buttons(ui);
             if ui.button("Refresh").clicked() {
                 self.refresh();
             }
@@ -394,8 +393,15 @@ impl ExplorerTab for TraceabilityTab {
     }
 }
 
+inventory::submit! {
+    TabDescriptor {
+        id: "traceability",
+        order: 34,
+        build: || Box::new(TraceabilityTab::default()),
+    }
+}
+
 #[cfg(test)]
-#[path = "traceability/tests.rs"]
 mod tests;
 
 // [cite:essay]

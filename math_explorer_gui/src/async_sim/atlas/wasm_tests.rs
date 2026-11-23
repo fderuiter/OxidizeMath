@@ -200,3 +200,51 @@ fn wasm_flagship_state_bounds_and_washout_reseed() {
     }
     assert!(grid_u_variance(runner.system.u()) > 1e-4);
 }
+
+#[cfg(all(feature = "biology", feature = "pure_math"))]
+#[wasm_bindgen_test]
+fn wasm_framework_hosted_atlases_gray_scott_lenia_and_parrondo() {
+    use crate::framework::SimulationFramework;
+    use crate::tabs::financial_math::parrondo::ParrondoParadoxTool;
+    use crate::tabs::morphogenesis::lenia::LeniaTool;
+    use crate::tabs::morphogenesis::{GrayScottCartographer, MorphogenesisTheory};
+    use scientific_metadata::theory::TheoryDescribable;
+
+    let mut m_theory = MorphogenesisTheory::default();
+    m_theory.mode = crate::presets::MorphogenesisKineticsMode::GrayScott;
+    let gs_cart = GrayScottCartographer::new(
+        &m_theory.theory_parameters(),
+        ("f", "k"),
+        0.0367,
+        0.0649,
+        0.16,
+        0.08,
+        1.0,
+    );
+    assert!(gs_cart.overlay_contour().is_some());
+    let gs_cell = gs_cart.evaluate_cell(0.04, 0.09);
+    assert!(gs_cart.color_for_cell(gs_cell, true).a() == 255);
+
+    let lenia = LeniaTool::default();
+    let lenia_cart = lenia
+        .build_atlas_cartographer(("mu", "sigma"))
+        .expect("wasm lenia cartographer");
+    assert!(lenia_cart.overlay_contour().is_some());
+
+    let mut parrondo = ParrondoParadoxTool::default();
+    assert!(parrondo.teleport_phase_wedge(0.495, 0.005, None));
+
+    let mut fw = SimulationFramework::new("biology");
+    assert!(fw.select_tool_by_name("Lenia Studio"));
+    fw.set_parameter_atlas_visible(true);
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |egui_ctx| {
+        egui::CentralPanel::default().show(egui_ctx, |ui| {
+            fw.show_inside(ui, "wasm_lenia_fw");
+        });
+    });
+    let json = fw.active_tool.as_ref().unwrap().save_state().unwrap();
+    crate::url_state::URL_JSON_BOUNDS
+        .validate_json(&json)
+        .unwrap();
+}

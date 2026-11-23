@@ -286,7 +286,7 @@ inventory::submit! {
 }
 ```
 
-Finally, expose your submodule (`pub mod <tool_name>;`) inside its enclosing domain tab's `math_explorer_gui/src/tabs/<domain>/mod.rs` so the module compiles and registers with `inventory`. Do **not** manually edit `math_explorer_gui/src/tabs/mod.rs` — top-level `ExplorerTab` modules are discovered automatically at build time by `math_explorer_gui/build.rs`.
+Finally, expose your submodule (`pub mod <tool_name>;`) inside its enclosing domain tab's `math_explorer_gui/src/tabs/<domain>/mod.rs` so the module compiles and registers with `inventory` (only new top-level `ExplorerTab` domains declare `pub mod <domain>;` in `math_explorer_gui/src/tabs/mod.rs` and submit a `TabDescriptor` via `inventory::submit!`).
 
 ## Event Handling Hooks
 

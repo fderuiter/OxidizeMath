@@ -52,7 +52,17 @@ impl SirTool {
         }
     }
 
-    pub(super) fn evaluate_sensitivity(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn evaluate_sensitivity(&mut self, ui: &mut egui::Ui, defer_gesture: bool) {
+        if defer_gesture {
+            self.sensitivity_engine.defer_for_gesture();
+            crate::sensitivity::render_sensitivity_panel_ui(
+                ui,
+                &self.sensitivity_engine,
+                "sir_tool",
+            );
+            return;
+        }
+
         let params = [
             ("N", self.n),
             ("I0", self.i0),

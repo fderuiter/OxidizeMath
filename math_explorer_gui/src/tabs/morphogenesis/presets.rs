@@ -226,6 +226,7 @@ impl MorphogenesisToolState {
         }
         let valid_axes = super::atlas::MORPHO_ATLAS_AXIS_PAIRS
             .iter()
+            .chain(super::gray_scott_atlas::GRAY_SCOTT_ATLAS_AXIS_PAIRS.iter())
             .any(|&(xk, yk)| xk == self.atlas_axes[0] && yk == self.atlas_axes[1]);
         if !valid_axes {
             return Err(format!(
@@ -314,53 +315,40 @@ impl TheoryDescribable for MorphogenesisTheory {
         &self,
     ) -> HashMap<String, scientific_metadata::theory::ParameterConstraint> {
         use scientific_metadata::theory::ParameterConstraint;
-        let mut map = HashMap::with_capacity(5);
-        map.insert(
-            "a".to_string(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 1.0,
-                step: 0.01,
-                default: Some(0.1),
-            },
-        );
-        map.insert(
-            "b".to_string(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 2.0,
-                step: 0.01,
-                default: Some(0.9),
-            },
-        );
-        map.insert(
-            "d_u".to_string(),
-            ParameterConstraint {
-                min: 0.1,
-                max: 5.0,
-                step: 0.05,
-                default: Some(1.0),
-            },
-        );
-        map.insert(
-            "d_v".to_string(),
-            ParameterConstraint {
-                min: 10.0,
-                max: 200.0,
-                step: 1.0,
-                default: Some(40.0),
-            },
-        );
-        map.insert(
-            "dt".to_string(),
-            ParameterConstraint {
-                min: 1e-4,
-                max: 0.1,
-                step: 5e-4,
-                default: Some(0.01),
-            },
-        );
-        map
+        let c = |min, max, step, default| ParameterConstraint {
+            min,
+            max,
+            step,
+            default: Some(default),
+        };
+        match self.mode {
+            MorphogenesisKineticsMode::Schnakenberg => {
+                let mut map = self.schnakenberg.theory_parameters();
+                if let Some(a) = map.get_mut("a") {
+                    a.default = Some(0.1);
+                }
+                if let Some(b) = map.get_mut("b") {
+                    b.default = Some(0.9);
+                }
+                map.insert("d_u".to_string(), c(0.1, 5.0, 0.05, 1.0));
+                map.insert("d_v".to_string(), c(10.0, 200.0, 1.0, 40.0));
+                map.insert("dt".to_string(), c(1e-4, 0.1, 5e-4, 0.01));
+                map
+            }
+            MorphogenesisKineticsMode::GrayScott => {
+                let mut map = self.gray_scott.theory_parameters();
+                if let Some(f) = map.get_mut("f") {
+                    f.default = Some(self.gray_scott.f);
+                }
+                if let Some(k) = map.get_mut("k") {
+                    k.default = Some(self.gray_scott.k);
+                }
+                map.insert("d_u".to_string(), c(0.02, 0.50, 0.005, 0.16));
+                map.insert("d_v".to_string(), c(0.01, 0.25, 0.005, 0.08));
+                map.insert("dt".to_string(), c(0.05, 1.60, 0.01, 1.0));
+                map
+            }
+        }
     }
 
     fn theory_latex_equation(&self) -> Option<String> {

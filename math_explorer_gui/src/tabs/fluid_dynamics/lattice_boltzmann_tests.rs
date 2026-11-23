@@ -8,6 +8,7 @@ fn test_lbm_unified_calibrated_viscosity_and_single_uniform_inlet() {
     let tool = UnifiedSimTool::<LbmUnified>::new();
     let params = tool.params.read().expect("params lock").clone();
     assert_eq!(params.get("viscosity").copied(), Some(0.02));
+    assert_eq!(params.get("inlet_velocity").copied(), Some(LBM_INLET_U));
     assert_eq!(params.get("angle_of_attack").copied(), Some(0.0));
     assert_eq!(params.get("naca_profile").copied(), Some(0.0));
     assert_eq!(params.get("field_view").copied(), Some(0.0));

@@ -1,7 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::runner::{burned_logistic_lyapunov, CompiledMap1DJob};
-use super::{BifurcationDiagram, BifurcationMapMode};
+use super::{
+    BifurcationDiagram, BifurcationMapMode, CUSTOM_R_BOUND, DEFAULT_CUSTOM_EXPR, DEFAULT_X0,
+};
 use crate::async_sim::atlas::{
     atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
     RegimeCartographer,
@@ -58,17 +60,9 @@ impl BifurcationRegime {
     }
 }
 
-/// Default serialized initial seed `x0` for [`BifurcationState`].
-pub const fn default_x0() -> f64 {
-    0.5
-}
+const MAX_CUSTOM_EXPR_BYTES: usize = 256;
 
-/// Predicate skipping default `x0` during JSON serialization for backward compatibility.
-pub fn is_default_x0(v: &f64) -> bool {
-    (*v - 0.5).abs() < 1e-12
-}
-
-/// Default serialized atlas axis keys for [`BifurcationState`].
+/// Default serialized atlas axis keys for `BifurcationState`.
 #[must_use]
 pub fn default_bifurcation_atlas_axes() -> [String; 2] {
     ["r".to_string(), "x0".to_string()]
@@ -89,11 +83,17 @@ pub(super) struct BifurcationState {
     #[serde(default, skip_serializing_if = "BifurcationMapMode::is_logistic")]
     pub map_mode: BifurcationMapMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_r: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x0: Option<f64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub r_pinned: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub use_custom_map: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_expr: Option<String>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub custom_params: std::collections::BTreeMap<String, f64>,
-    #[serde(default = "default_x0", skip_serializing_if = "is_default_x0")]
-    pub x0: f64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub atlas_visible: bool,
     #[serde(
@@ -101,6 +101,55 @@ pub(super) struct BifurcationState {
         skip_serializing_if = "is_default_bifurcation_atlas_axes"
     )]
     pub atlas_axes: [String; 2],
+}
+
+impl BifurcationState {
+    pub(super) fn validate(&self) -> Result<(BifurcationMapMode, f64, f64, String), String> {
+        let mode = if self.use_custom_map {
+            BifurcationMapMode::Custom
+        } else {
+            self.map_mode
+        };
+        let r_bounds = match mode {
+            BifurcationMapMode::Logistic => 0.0..=4.0,
+            BifurcationMapMode::Custom => -CUSTOM_R_BOUND..=CUSTOM_R_BOUND,
+        };
+        let x0_bounds = match mode {
+            BifurcationMapMode::Logistic => -0.25..=1.25,
+            BifurcationMapMode::Custom => -10.0..=10.0,
+        };
+        if !self.r_min.is_finite()
+            || !self.r_max.is_finite()
+            || !r_bounds.contains(&self.r_min)
+            || !r_bounds.contains(&self.r_max)
+            || self.r_min >= self.r_max
+            || !(100..=2000).contains(&self.steps)
+            || !self.custom_params.values().all(|v| v.is_finite())
+        {
+            return Err("Bifurcation r bounds, parameters, or step count invalid".into());
+        }
+        let sel_r = self.selected_r.unwrap_or((self.r_min + self.r_max) * 0.5);
+        if !sel_r.is_finite() || !r_bounds.contains(&sel_r) {
+            return Err("Bifurcation selected_r out of bounds".into());
+        }
+        let x0 = self.x0.unwrap_or(DEFAULT_X0);
+        if !x0.is_finite() || !x0_bounds.contains(&x0) {
+            return Err("Bifurcation x0 out of bounds".into());
+        }
+        let expr_str = self
+            .custom_expr
+            .as_deref()
+            .unwrap_or(DEFAULT_CUSTOM_EXPR)
+            .trim()
+            .to_string();
+        if expr_str.len() > MAX_CUSTOM_EXPR_BYTES {
+            return Err("Custom map expression exceeds maximum length".into());
+        }
+        if mode.is_custom() && math_commons::ast::parse_equation(&expr_str).is_err() {
+            return Err("Invalid custom 1D map syntax in state".into());
+        }
+        Ok((mode, sel_r, x0, expr_str))
+    }
 }
 
 fn bifurcation_axis_spec(
@@ -288,43 +337,21 @@ impl RegimeCartographer for BifurcationCartographer {
 
 impl BifurcationDiagram {
     pub(crate) fn build_theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        let mut map = HashMap::new();
-        let (r_lo, r_hi, r_step, x_lo, x_hi) = match self.map_mode {
-            BifurcationMapMode::Logistic => (0.0, 4.0, 0.01, -0.25, 1.25),
-            BifurcationMapMode::Custom => (-6.0, 6.0, 0.02, -2.0, 2.0),
+        let (r_lo, r_hi, r_step, r_def, x_lo, x_hi) = match self.map_mode {
+            BifurcationMapMode::Logistic => (0.0, 4.0, 0.01, 3.5, -0.25, 1.25),
+            BifurcationMapMode::Custom => (-6.0, 6.0, 0.02, 1.0, -2.0, 2.0),
         };
-        let r_default = match self.map_mode {
-            BifurcationMapMode::Logistic => 3.5,
-            BifurcationMapMode::Custom => 1.0,
+        let c = |min, max, step, default| ParameterConstraint {
+            min,
+            max,
+            step,
+            default: Some(default),
         };
-        map.insert(
-            "r".to_string(),
-            ParameterConstraint {
-                min: r_lo,
-                max: r_hi,
-                step: r_step,
-                default: Some(r_default),
-            },
-        );
-        map.insert(
-            "x0".to_string(),
-            ParameterConstraint {
-                min: x_lo,
-                max: x_hi,
-                step: 0.01,
-                default: Some(0.5),
-            },
-        );
-        map.insert(
-            "param_0".to_string(),
-            ParameterConstraint {
-                min: -2.0,
-                max: 2.0,
-                step: 0.05,
-                default: Some(0.05),
-            },
-        );
-        map
+        HashMap::from([
+            ("r".to_string(), c(r_lo, r_hi, r_step, r_def)),
+            ("x0".to_string(), c(x_lo, x_hi, 0.01, 0.5)),
+            ("param_0".to_string(), c(-2.0, 2.0, 0.05, 0.05)),
+        ])
     }
 
     fn first_custom_param(&self) -> f64 {
@@ -343,7 +370,7 @@ impl BifurcationDiagram {
         }
     }
 
-    /// Applies an [`AtlasTeleportEvent`] to `probe_r`, `x0`, or `param_0` and refreshes live orbits.
+    /// Applies an [`AtlasTeleportEvent`] to `selected_r`/`probe_r`, `x0`, or `param_0` and refreshes coupled orbits.
     pub fn apply_atlas_teleport(&mut self, ctx: Option<&egui::Context>, ev: AtlasTeleportEvent) {
         let mut needs_sweep = false;
         let (r_lo, r_hi) = match self.map_mode {
@@ -361,13 +388,18 @@ impl BifurcationDiagram {
                         self.r_max = target_r;
                         needs_sweep = true;
                     }
-                    self.probe_r = target_r.clamp(self.r_min, self.r_max);
+                    let clamped_r = target_r.clamp(self.r_min, self.r_max);
+                    self.selected_r = clamped_r;
+                    self.probe_r = clamped_r;
+                    self.r_from_hover = false;
                 }
                 "x0" => {
-                    self.x0 = val.clamp(-10.0, 10.0);
-                    if self.map_mode == BifurcationMapMode::Custom {
-                        needs_sweep = true;
-                    }
+                    let x_bounds = match self.map_mode {
+                        BifurcationMapMode::Logistic => (-0.25, 1.25),
+                        BifurcationMapMode::Custom => (-10.0, 10.0),
+                    };
+                    self.x0 = val.clamp(x_bounds.0, x_bounds.1);
+                    needs_sweep = true;
                 }
                 "param_0" => {
                     self.set_first_custom_param(val);
@@ -378,13 +410,13 @@ impl BifurcationDiagram {
                 _ => {}
             }
         }
-        self.reset_live_orbit();
         if needs_sweep {
+            self.recompute();
             if let Some(c) = ctx {
                 self.dispatch_sweep_request(c);
-            } else {
-                self.recompute();
             }
+        } else {
+            self.recompute_coupled_views();
         }
     }
 
@@ -396,7 +428,7 @@ impl BifurcationDiagram {
         let (xk, yk) = self.atlas.axis_keys();
         let p0 = self.first_custom_param();
         let get_val = |k: &str| match k {
-            "r" => self.probe_r,
+            "r" => self.selected_r,
             "x0" => self.x0,
             "param_0" => p0,
             _ => 0.0,
@@ -412,7 +444,7 @@ impl BifurcationDiagram {
             }
         }
         if xk != "r" && yk != "r" {
-            self.probe_r.to_bits().hash(&mut h);
+            self.selected_r.to_bits().hash(&mut h);
         }
         if xk != "x0" && yk != "x0" {
             self.x0.to_bits().hash(&mut h);
@@ -422,7 +454,7 @@ impl BifurcationDiagram {
         let mode = self.map_mode;
         let custom_job = (mode == BifurcationMapMode::Custom)
             .then(|| CompiledMap1DJob::from_bar(&self.math_input));
-        let (base_r, base_x0) = (self.probe_r, self.x0);
+        let (base_r, base_x0) = (self.selected_r, self.x0);
         if let Some(ev) = self.atlas.show_panel(
             ui,
             "bifurcation",
