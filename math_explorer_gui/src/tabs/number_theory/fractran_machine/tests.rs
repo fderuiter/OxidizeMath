@@ -158,3 +158,59 @@ fn test_state_revision_tracks_persisted_fields_and_ignores_runtime_steps() {
     let rev3 = tool.state_revision();
     assert!(rev3 > 0 && rev3 != rev2);
 }
+
+#[test]
+fn test_fractran_sonification_chords_pow2_chime_halt_mute_and_meter() {
+    let mut tool = FractranMachineTool::default();
+    let _ = tool.run_until_power_of_two();
+    let pow2_frame = tool.current_sonification_frame();
+    assert!(pow2_frame.is_audible());
+    assert!(pow2_frame.voices[0].transient_impulse >= 0.85);
+
+    tool.select_preset(PresetChoice::Fibonacci);
+    let _ = tool.step_once();
+    let fib_frame = tool.current_sonification_frame();
+    assert!(fib_frame.is_audible());
+    assert!(fib_frame.active_voices >= 2);
+
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (frame_check, _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        let mut last = crate::audio::SonificationFrame::silent();
+        for _ in 0..200 {
+            last = tool.current_sonification_frame();
+        }
+        last
+    });
+    assert_eq!(frame_check, fib_frame);
+    drop(_alloc_guard);
+
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let out = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
+    });
+    let ak = out.platform_output.accesskit_update.unwrap();
+    assert!(ak
+        .nodes
+        .iter()
+        .any(|(_, n)| n.role() == egui::accesskit::Role::Meter));
+
+    tool.select_preset(PresetChoice::Mult);
+    if crate::audio::snapshot_ui_state().muted {
+        crate::audio::toggle_mute_from_user_gesture();
+    }
+    tool.is_playing = true;
+    while tool.step_once() == MachineStopReason::Running {}
+    assert_eq!(tool.stop_reason, MachineStopReason::Halted);
+    assert_eq!(
+        tool.current_sonification_frame(),
+        crate::audio::SonificationFrame::silent()
+    );
+    assert!(
+        crate::audio::snapshot_ui_state().muted,
+        "Halting during live FRACTRAN playback must suspend audio cleanly"
+    );
+    crate::audio::export_current_tool_wav("fractran_machine");
+}

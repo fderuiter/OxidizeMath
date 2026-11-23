@@ -4,19 +4,26 @@ use math_explorer::physics::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannD
 use std::time::Instant;
 
 fn main() {
-    let width = 100;
-    let height = 100;
+    let smoke = std::env::var("MATH_EXPLORER_SMOKE")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let (width, height, warmup, iterations) = if smoke {
+        (24, 24, 5, 20)
+    } else {
+        (100, 100, 100, 2000)
+    };
     let tau = 0.6;
     let mut solver = LatticeBoltzmannD2Q9::new(width, height, tau);
 
-    println!("Running LBM Benchmark (100x100 grid, tau=0.6)...");
+    println!(
+        "Running LBM Benchmark ({}x{} grid, tau=0.6)...",
+        width, height
+    );
 
     // Warmup
-    for _ in 0..100 {
+    for _ in 0..warmup {
         solver.step();
     }
 
-    let iterations = 2000;
     let start = Instant::now();
     for _ in 0..iterations {
         solver.step();

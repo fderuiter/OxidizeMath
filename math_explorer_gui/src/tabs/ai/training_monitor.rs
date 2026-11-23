@@ -107,6 +107,7 @@ impl TrainingMonitorTool {
                     PlaybackAction::Play => self.is_training = true,
                     PlaybackAction::Pause => self.is_training = false,
                     PlaybackAction::Step => self.step_once(),
+                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                     PlaybackAction::Reset => self.reset(),
                 }
             }

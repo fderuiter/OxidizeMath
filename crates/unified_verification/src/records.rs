@@ -69,7 +69,9 @@ pub fn verify_records_in_dir_opts(
         return false;
     };
 
-    if !adr_validation::validate_repository_adrs(repo_dir, &source) {
+    let repo_adrs_ok = adr_validation::validate_repository_adrs(repo_dir, &source);
+    let active_additions_ok = adr_validation::validate_no_new_legacy_adrs(repo_dir, &source);
+    if !repo_adrs_ok || !active_additions_ok {
         return false;
     }
 
@@ -100,7 +102,7 @@ pub fn verify_records_in_dir_opts(
         .any(|p| adr_validation::is_valid_adr_rel_path(p));
     if !adr_modified {
         println!(
-            "Verification failed! An active Markdown ADR in docs/adr/ must be created or updated when modifying core logic."
+            "Verification failed! An active Markdown ADR in docs/adr/ (docs/adr/YYYYMMDD-slug.md) must be created or updated when modifying core logic."
         );
         return false;
     }
