@@ -213,14 +213,14 @@ impl BifurcationDiagram {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_canvas
-    }
-
     pub(crate) fn reset_live_orbit(&mut self) {
         self.selected_r = self.probe_r;
         self.recompute_coupled_views();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
     }
 
     fn build_state_json(&self, include_hover_r: bool) -> Option<String> {

@@ -95,7 +95,7 @@ impl OdeSolverTool {
         let is_plot_focused = self
             .focused_canvas
             .is_some_and(|id| ui.memory(|m| m.has_focus(id)));
-        if !is_plot_focused {
+        if !is_plot_focused || !ui.is_enabled() || !crate::framework::is_pane_shortcut_allowed(ui) {
             return;
         }
         let ctx = ui.ctx().clone();
