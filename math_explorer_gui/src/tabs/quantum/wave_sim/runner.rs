@@ -192,32 +192,25 @@ impl WaveRunner {
     pub(crate) fn record_divergence(&mut self, param: &'static str, message: impl Into<String>) {
         self.diverged = true;
         self.sonification = crate::audio::SonificationFrame::silent();
-        self.diagnostic_report = Some(DiagnosticReport::new(
-            self.time,
-            self.step_count,
-            param,
-            message.into(),
-        ));
+        let report = DiagnosticReport::new(self.time, self.step_count, param, message.into());
+        self.diagnostic_report = Some(report);
     }
 
     /// Rebuilds the spatial grid, clamped potential, Hamiltonian, and initial Gaussian wavepacket.
     pub fn init_from_config(&mut self, cfg: &WaveSimConfig) {
         let n = self.n_points;
-        let span = self.x_max - self.x_min;
-        if n < 2 || !span.is_finite() || span <= 0.0 {
-            self.record_divergence(
-                "dx",
-                format!("Invalid spatial grid (n={n}, span={span}): requires n >= 2 and dx > 0."),
-            );
+        let Some(dx) = self.checked_dx() else {
+            let span = self.x_max - self.x_min;
+            let msg = format!("Invalid spatial grid (n={n}, span={span}): requires n >= 2, dx > 0");
+            self.record_divergence("dx", msg);
             return;
-        }
-        let dx = span / (n as f64 - 1.0);
+        };
         self.x_axis.resize(n, 0.0);
         for (i, slot) in self.x_axis.iter_mut().enumerate() {
             *slot = self.x_min + i as f64 * dx;
         }
         (self.x_left, self.x_right) = barrier_interval_for_preset(cfg.preset, cfg.width, dx);
-        self.potential = evaluate_potential_grid(
+        let grid = evaluate_potential_grid(
             cfg.preset,
             &self.x_axis,
             cfg.v0,
@@ -225,6 +218,7 @@ impl WaveRunner {
             dx,
             &cfg.custom_expr,
         );
+        self.potential = grid;
         self.sync_base_and_sparse_potential(&cfg.sparse_potential);
         if !self
             .solver
@@ -247,12 +241,13 @@ impl WaveRunner {
         self.kinetic_energy = 0.5 * self.k0 * self.k0;
         self.steps_per_frame = cfg.steps_per_frame.max(1);
         gaussian_wavepacket_into(&self.x_axis, self.x0, self.k0, self.sigma, &mut self.psi);
-        self.time = 0.0;
-        self.entered_barrier = false;
-        self.wall_arrived = false;
-        self.quasi_bound_latched = false;
+        (self.time, self.prev_mode_phases) = (0.0, [0.0; 8]);
+        (
+            self.entered_barrier,
+            self.wall_arrived,
+            self.quasi_bound_latched,
+        ) = (false, false, false);
         self.latched_transmission = None;
-        self.prev_mode_phases = [0.0; 8];
         self.update_observables_in_place();
         self.refresh_sonification(cfg.dt);
     }
@@ -413,15 +408,11 @@ impl WaveRunner {
             self.x_right,
         );
         for p in &mut safe_prob {
-            if !p.is_finite() {
-                *p = 0.0;
-            }
+            *p = if p.is_finite() { *p } else { 0.0 };
         }
-        let safe_potential: Vec<f64> = self
-            .potential
-            .iter()
-            .map(|&v| if v.is_finite() { v } else { 0.0 })
-            .collect();
+        let pot = self.potential.as_slice();
+        let sanitize = |&v: &f64| if v.is_finite() { v } else { 0.0 };
+        let safe_potential: Vec<f64> = pot.iter().map(sanitize).collect();
 
         WaveData {
             time: self.time,
@@ -456,16 +447,12 @@ impl SimulationRunner for WaveRunner {
         match cmd {
             SimCommand::Reset => {
                 self.reset_parameters();
-                let cfg = self
-                    .config
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone();
+                let guard = self.config.read().unwrap_or_else(|e| e.into_inner());
+                let cfg = guard.clone();
+                drop(guard);
                 self.init_from_config(&cfg);
             }
-            SimCommand::SetSpeed(speed) => {
-                self.steps_per_frame = speed.max(1);
-            }
+            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed.max(1),
             other => self.handle_sculpt_command(other),
         }
     }
@@ -481,13 +468,12 @@ impl SimulationRunner for WaveRunner {
         } else {
             self.sonification
         };
-        let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
         StateSnapshot {
             width: 0,
             height: 0,
             pixels: Arc::new(RwLock::new(Vec::new())),
             custom_data: Vec::new(),
-            structured_data: Some(structured_data),
+            structured_data: Some(Box::new(self.build_wave_data()) as Box<dyn Any + Send>),
             sonification,
         }
     }

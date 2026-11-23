@@ -23,6 +23,14 @@ pub mod code_export_modal;
 mod code_export_tests;
 pub mod counterfactual;
 pub mod decimate;
+#[cfg(all(
+    test,
+    feature = "biology",
+    feature = "climate",
+    feature = "physics",
+    feature = "pure_math"
+))]
+mod divergence_unification_tests;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_3d;
@@ -31,6 +39,7 @@ mod export_figure;
 mod export_gif_job;
 mod export_modal_host;
 mod export_persistence;
+mod export_preset_bar;
 mod export_queue;
 #[cfg(test)]
 pub(crate) use export_queue::deferred_export_tests;
@@ -147,28 +156,18 @@ pub trait InteractiveTool {
 
     /// Provide theoretical context.
     fn theory(&self) -> &dyn TheoryDescribable;
-
     /// Show the tool at the root `egui::Context` level by delegating to [`Self::show_inside`].
     fn show(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
-            .show(ctx, |ui| {
-                self.show_inside(ui);
-            });
+            .show(ctx, |ui| self.show_inside(ui));
     }
 
-    /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
+    /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts).
     ///
-    /// # Accessibility Requirements for Custom `show_inside` Overrides
-    ///
-    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`],
-    ///   or [`egui::Sense::click_and_drag`] instead of `Sense::hover()` so `Tab` traversal reaches the visualization.
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` so `AccessKit`
-    ///   exposes `Role::Image` and non-empty alternative text.
-    /// - Populate `AccessKit` metadata via `crate::accessibility::register_canvas_accessibility` and draw a
-    ///   high-contrast focus ring when `response.has_focus()`.
-    /// - When consuming arrow keys, set `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
-    ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
+    /// Custom overrides must keep canvases keyboard-focusable (`Sense::focusable_noninteractive` /
+    /// `Sense::click_and_drag`), render textures with `.alt_text(...)`, register `AccessKit`
+    /// metadata + focus ring via `crate::accessibility`, and never trap `Tab` / `Escape`.
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
@@ -211,6 +210,17 @@ pub trait InteractiveTool {
     /// Direct numeric parameter finiteness hook without JSON serialization.
     fn has_finite_parameters(&self) -> bool {
         true
+    }
+
+    /// Structured solver divergence report (`t_diverged`, `step_index`, `variable`, `message`)
+    /// surfaced to the shared framework recovery banner without wall-clock session uptime.
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        None
+    }
+
+    /// Optional hook to halve or scale down numerical step size on solver divergence, returning true if handled.
+    fn auto_scale_step_size(&mut self) -> bool {
+        false
     }
 
     /// Named scalar observables exposed to the Challenge HUD and `math_commons::ast` evaluator.
@@ -448,8 +458,14 @@ pub struct SimulationFramework {
     gif_job: Option<export_gif_job::FrameworkGifJob>,
     /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
-    /// Baseline parameters snapshot on tool load.
+    /// Active reset baseline parameters (loaded preset when present, otherwise factory defaults).
     pub baseline_tool_state: Option<String>,
+    /// Pristine initial factory default parameters from `ToolMetadata::build` for the active tool.
+    pub factory_tool_state: Option<String>,
+    /// Active loaded preset parameters for the active tool (`None` until a preset is loaded).
+    pub preset_tool_state: Option<String>,
+    /// Per-tool map of active loaded preset baselines preserved across tool switches and sessions.
+    pub preset_tool_states: std::collections::HashMap<String, String>,
     /// Last validated finite plot datasets.
     pub current_valid_plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
     /// Last validated finite 3D world-coordinate plot datasets.

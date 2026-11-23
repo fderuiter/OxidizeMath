@@ -7,10 +7,11 @@ use super::phase_plane::{
 use super::poincare_map::DEFAULT_MATRIX_A;
 use super::systems::default_coupled_ode_bank;
 use super::OdeSolverTool;
-use crate::framework::recovery::{
-    render_recovery_banner, DiagnosticReport, FiniteStateGuard, RecoveryAction,
-};
+#[cfg(test)]
+use crate::framework::recovery::{render_recovery_banner, RecoveryAction};
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::OdePreset;
+#[cfg(test)]
 use eframe::egui;
 
 impl OdeSolverTool {
@@ -341,23 +342,6 @@ pub fn render_recovery_ui(
 ) {
     if let Some(action) = render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(tool)) {
         apply_recovery_action(tool, action, changed, plot_points_y, plot_points_v);
-        tool.run_sensitivity_analysis(false);
-    }
-}
-
-pub(super) fn render_recovery_ui_in_place(
-    ui: &mut egui::Ui,
-    tool: &mut super::OdeSolverTool,
-    changed: &mut bool,
-) {
-    if let Some(action) = render_recovery_banner(ui, FiniteStateGuard::diagnostic_report(tool)) {
-        match action {
-            RecoveryAction::AutoScaleStepSize => FiniteStateGuard::auto_scale_step_size(tool),
-            RecoveryAction::ClampParameters => FiniteStateGuard::clamp_parameters(tool),
-            RecoveryAction::ResetParameters => FiniteStateGuard::reset_parameters(tool),
-        }
-        *changed = true;
-        tool.sync_series_cache();
         tool.run_sensitivity_analysis(false);
     }
 }

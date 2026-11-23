@@ -3,10 +3,7 @@
 use super::state::{PopulationViewMode, MAX_AGE_BINS, MIN_AGE_BINS};
 use super::tool::PopulationStructureTool;
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
-use crate::framework::{
-    render_recovery_banner, FiniteStateGuard, InteractiveTool, PlaybackAction, PlaybackTransport,
-    RecoveryAction,
-};
+use crate::framework::{FiniteStateGuard, InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, Points};
 
@@ -27,24 +24,8 @@ pub fn render_tool_inside(tool: &mut PopulationStructureTool, parent_ui: &mut eg
     render_controls_panel(tool, parent_ui);
 
     egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-        if tool.diverged() {
-            if let Some(action) = render_recovery_banner(ui, tool.diagnostic_report()) {
-                apply_recovery(tool, action);
-            }
-            ui.add_space(6.0);
-        }
         render_active_viewport(tool, ui, &ctx);
     });
-}
-
-fn apply_recovery(tool: &mut PopulationStructureTool, action: RecoveryAction) {
-    match action {
-        RecoveryAction::AutoScaleStepSize => tool.auto_scale_step_size(),
-        RecoveryAction::ClampParameters => {
-            <PopulationStructureTool as FiniteStateGuard>::clamp_parameters(tool)
-        }
-        RecoveryAction::ResetParameters => tool.reset_parameters(),
-    }
 }
 
 fn render_controls_panel(tool: &mut PopulationStructureTool, parent_ui: &mut egui::Ui) {

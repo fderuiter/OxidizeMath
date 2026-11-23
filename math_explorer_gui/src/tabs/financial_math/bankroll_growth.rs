@@ -111,19 +111,6 @@ impl Default for BankrollGrowthTool {
 }
 
 impl BankrollGrowthTool {
-    /// Resets parameters, RNG rerun counter, and ensemble lab state to baseline defaults.
-    pub fn reset_defaults(&mut self) {
-        self.initial_bankroll = 1000.0;
-        self.probability = 0.55;
-        self.odds = 2.0;
-        self.num_bets = 100;
-        self.stake_multiplier = 1.0;
-        self.seed_counter = 0;
-        self.mode = BankrollLabMode::KellyStrategies;
-        self.ensemble_lab.reset_defaults();
-        self.recalculate();
-    }
-
     /// Advances the deterministic `seed_counter` and recomputes stochastic sample paths.
     pub fn rerun_simulation(&mut self) {
         self.seed_counter = self.seed_counter.wrapping_add(1);
@@ -304,17 +291,6 @@ impl BankrollGrowthTool {
             {
                 self.rerun_simulation();
                 announce_live_status(ui.ctx(), "Recomputed Kelly bankroll growth paths");
-                *changed = false;
-            }
-            if ui
-                .button("↻ Reset to Defaults")
-                .accessible_hover_text(
-                    "Reset initial bankroll, win probability, net odds, and bet count to defaults",
-                )
-                .clicked()
-            {
-                self.reset_defaults();
-                announce_live_status(ui.ctx(), "Reset bankroll growth parameters to defaults");
                 *changed = false;
             }
             ui.small(format!(

@@ -7,8 +7,9 @@ use super::pulse::{
     CHALLENGE_BLOCH_PI_INVERSION, CHALLENGE_MRI_B0, CHALLENGE_MRI_T1, CHALLENGE_MRI_T2,
     CHALLENGE_MRI_TE, MRI_PULSE_SAMPLES,
 };
+use super::runner::MriSnapshot;
 use super::tool::{MriTool, MriToolState};
-use crate::async_sim::{SimCommand, SimWorkerState};
+use crate::async_sim::SimWorkerState;
 use crate::framework::ChallengeEvaluation;
 use nalgebra::Vector3;
 
@@ -106,20 +107,67 @@ impl MriTool {
             p.b_field = self.simulator.b_field;
             p.time_scale = self.time_scale;
         }
-        self.pulse_workspace.playhead_playing = false;
+        self.reset_dynamic_trajectory(true);
         if let Some(desc) = parsed.fork {
             self.apply_mri_fork_descriptor(desc)?;
-        } else {
-            let _ = self.clear_fork();
         }
-        if !self.pulse_config.mode.is_continuous() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-            self.recompute_pulse_sequence();
-        } else {
+        if self.pulse_config.mode.is_continuous() {
             self.apply_worker_state(target_state);
             self.latest_sonification = self.current_sonification_frame();
         }
         Ok(())
+    }
+
+    pub(super) fn export_mri_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let map_xyz = |hist: &std::collections::VecDeque<(f64, Vector3<f64>)>,
+                       labels: [&str; 3]| {
+            vec![
+                (
+                    labels[0].to_string(),
+                    hist.iter().map(|(t, m)| [*t, m.x]).collect(),
+                ),
+                (
+                    labels[1].to_string(),
+                    hist.iter().map(|(t, m)| [*t, m.y]).collect(),
+                ),
+                (
+                    labels[2].to_string(),
+                    hist.iter().map(|(t, m)| [*t, m.z]).collect(),
+                ),
+            ]
+        };
+        let std_labels = ["Mx (Transverse)", "My (Transverse)", "Mz (Longitudinal)"];
+        if let Some(ref twin) = self.twin {
+            if !self.history.is_empty() {
+                let mut out = map_xyz(
+                    &self.history,
+                    ["Mx (Branch B)", "My (Branch B)", "Mz (Branch B)"],
+                );
+                out.extend(map_xyz(
+                    &twin.history_a,
+                    ["Mx (Branch A)", "My (Branch A)", "Mz (Branch A)"],
+                ));
+                return out;
+            }
+        }
+        if !self.history.is_empty() {
+            return map_xyz(&self.history, std_labels);
+        }
+        if let Some(data) = self
+            .worker
+            .latest_snapshot()
+            .and_then(|s| s.structured_data.as_ref())
+            .and_then(|d| d.downcast_ref::<MriSnapshot>())
+            .filter(|d| !d.history.is_empty())
+        {
+            return map_xyz(&data.history, std_labels);
+        }
+        let m = self.simulator.magnetization;
+        vec![
+            (std_labels[0].to_string(), vec![[self.current_time, m.x]]),
+            (std_labels[1].to_string(), vec![[self.current_time, m.y]]),
+            (std_labels[2].to_string(), vec![[self.current_time, m.z]]),
+        ]
     }
 
     pub(super) fn set_mri_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {

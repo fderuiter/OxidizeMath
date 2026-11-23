@@ -47,10 +47,7 @@ impl HamiltonianChaosLab {
             Some(PlaybackAction::Play) => self.is_playing = true,
             Some(PlaybackAction::Pause) => self.is_playing = false,
             Some(PlaybackAction::Step) => self.step_batch(self.steps_per_frame.clamp(1, 128)),
-            Some(PlaybackAction::Reset) => {
-                self.is_playing = false;
-                self.seed_default_showcase();
-            }
+            Some(PlaybackAction::Reset) => self.reset(),
             Some(PlaybackAction::StepBack | PlaybackAction::ScrubTo(_)) | None => {}
         }
     }

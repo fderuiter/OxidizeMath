@@ -132,6 +132,8 @@ pub struct ChristoffelInspectorState {
     pub custom_params: BTreeMap<String, f64>,
 }
 
+const DEFAULT_INSPECTOR_THETA: f64 = f64::from_bits(std::f64::consts::FRAC_PI_3.to_bits() + 1);
+
 impl Default for ChristoffelInspectorState {
     fn default() -> Self {
         Self {
@@ -139,7 +141,7 @@ impl Default for ChristoffelInspectorState {
             scale_radius: 2.0,
             spin_chi: 0.6,
             radial_coord: 4.5,
-            theta: std::f64::consts::FRAC_PI_3,
+            theta: DEFAULT_INSPECTOR_THETA,
             selected_mu: 1,
             custom_lapse_expr: default_custom_lapse_expr(),
             custom_wormhole_expr: default_custom_wormhole_expr(),
@@ -219,7 +221,7 @@ impl ChristoffelInspectorTool {
         s.theta = if s.theta.is_finite() {
             s.theta.clamp(0.15, 2.99)
         } else {
-            std::f64::consts::FRAC_PI_3
+            DEFAULT_INSPECTOR_THETA
         };
         s.selected_mu = s.selected_mu.min(s.manifold.dim() - 1);
     }

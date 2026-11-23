@@ -72,6 +72,10 @@ impl IsingModelTool {
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
+        self.reinitialize_lattice_and_metrics();
+    }
+
+    fn reinitialize_lattice_and_metrics(&mut self) {
         self.params
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -83,6 +87,7 @@ impl IsingModelTool {
         };
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
+        self.pending_ode_resync = false;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
         self.dirty = true;

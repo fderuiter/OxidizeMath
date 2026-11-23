@@ -4,10 +4,9 @@ use super::comparison::{
     build_view_trace_series, compute_series_discrepancy, simulate_ode, OdeSimSpec,
     SolverTrajectory, TrajectoryView,
 };
-use super::recovery;
 use super::systems::CustomOdeSpec;
 use super::OdeSolverTool;
-use crate::framework::recovery::FiniteStateGuard;
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{InteractiveTool, TraceSeries};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
@@ -65,6 +64,30 @@ impl InteractiveTool for OdeSolverTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.deserialize_state(state, false)
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        OdeSolverTool::diagnostic_report(self).cloned().or_else(|| {
+            (!FiniteStateGuard::is_finite_state(self)).then(|| {
+                let t_div = self
+                    .time_series
+                    .last()
+                    .copied()
+                    .filter(|t| t.is_finite())
+                    .unwrap_or(0.0);
+                DiagnosticReport::new(
+                    t_div,
+                    self.time_series.len(),
+                    "parameters",
+                    "Non-finite ODE solver parameter or state detected.",
+                )
+            })
+        })
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        OdeSolverTool::auto_scale_step_size(self);
+        true
     }
 
     fn clamp_parameters(&mut self) -> bool {
@@ -282,10 +305,6 @@ impl OdeSolverTool {
         let (t1_lbl, t2_lbl, _, _) = self.active_state_labels();
         let has_v = self.has_second_state();
         ui.heading("Solution Trajectory");
-
-        if FiniteStateGuard::diverged(self) {
-            recovery::render_recovery_ui_in_place(ui, self, changed);
-        }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let line_y = Line::new(t1_lbl, PlotPoints::from_shared(Arc::clone(&self.display_y)))

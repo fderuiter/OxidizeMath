@@ -150,7 +150,7 @@ impl MathExplorerApp {
             "Global",
         );
         let question_triggered = help_allowed
-            && !ctx.wants_keyboard_input()
+            && !crate::framework::is_text_edit_focused(ctx)
             && ctx.input_mut(|i| {
                 i.consume_key(egui::Modifiers::NONE, egui::Key::Questionmark)
                     || i.consume_key(egui::Modifiers::SHIFT, egui::Key::Questionmark)

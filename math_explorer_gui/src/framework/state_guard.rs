@@ -3,6 +3,8 @@
 use super::recovery::*;
 use super::SimulationFramework;
 
+#[path = "state_guard/baselines.rs"]
+mod baselines;
 #[path = "state_guard/rollback.rs"]
 mod rollback;
 
@@ -30,6 +32,43 @@ pub(super) fn shared_datasets_ptr_eq(
         && a.iter()
             .zip(b.iter())
             .all(|((na, pa), (nb, pb))| na == nb && pa.ptr_eq(pb))
+}
+
+fn with_isolated_plot_capture<T>(f: impl FnOnce() -> T) -> T {
+    let prev = egui_plot::get_last_plot_shared_datasets();
+    let prev_3d = egui_plot::get_last_plot_datasets_3d();
+    let prev_prims = egui_plot::get_last_plot_primitives();
+    egui_plot::clear_last_plot_datasets();
+    egui_plot::clear_last_plot_primitives();
+    let out = f();
+    egui_plot::clear_last_plot_datasets();
+    if !prev.is_empty() {
+        egui_plot::append_last_plot_shared_datasets(&prev);
+    }
+    if !prev_3d.is_empty() {
+        egui_plot::append_last_plot_datasets_3d(&prev_3d);
+    }
+    if !prev_prims.is_empty() {
+        egui_plot::append_last_plot_primitives(&prev_prims);
+    }
+    out
+}
+
+pub(super) fn capture_isolated_tool_datasets(
+    tool: &dyn super::InteractiveTool,
+) -> Vec<(String, egui_plot::SharedPoints)> {
+    with_isolated_plot_capture(|| {
+        tool.export_datasets()
+            .into_iter()
+            .map(|(name, pts)| (name, egui_plot::SharedPoints::from(pts)))
+            .collect()
+    })
+}
+
+pub(super) fn capture_isolated_tool_datasets_3d(
+    tool: &dyn super::InteractiveTool,
+) -> Vec<(String, Vec<[f64; 3]>)> {
+    with_isolated_plot_capture(|| tool.export_datasets_3d())
 }
 
 impl StateSnapshot {
@@ -187,6 +226,11 @@ impl SimulationFramework {
     fn check_captured_or_tool_divergence(
         &self,
     ) -> Result<(bool, Vec<(String, egui_plot::SharedPoints)>), DiagnosticReport> {
+        if let Some(tool) = &self.active_tool {
+            if let Some(report) = tool.diagnostic_report() {
+                return Err(report);
+            }
+        }
         let has_plot_datasets = match egui_plot::check_last_plot_datasets_finite_skipping(
             &self.current_valid_plot_datasets,
         ) {
@@ -206,7 +250,7 @@ impl SimulationFramework {
         if let Some(tool) = &self.active_tool {
             if !tool.has_finite_parameters() {
                 return Err(DiagnosticReport::new(
-                    self.start_time.elapsed().as_secs_f64(),
+                    0.0,
                     self.step_counter,
                     "state",
                     "Non-finite floating-point state encountered in active tool parameters.",
@@ -271,21 +315,27 @@ impl SimulationFramework {
     pub fn inspect_runtime_state(&mut self) -> Result<(), DiagnosticReport> {
         match self.check_captured_or_tool_divergence() {
             Ok((has_plot_datasets, tool_datasets)) => {
+                self.is_diverged = false;
+                self.diagnostic_report = None;
                 self.commit_valid_runtime_datasets(has_plot_datasets, tool_datasets);
                 Ok(())
             }
             Err(report) => {
-                let tool_name = self
-                    .active_tool
-                    .as_ref()
-                    .map_or("SimulationFramework", |t| t.name());
-                emit_divergence_telemetry(
-                    tool_name,
-                    report.t_diverged,
-                    report.step_index,
-                    &report.variable,
-                    &report.message,
-                );
+                let should_emit =
+                    !self.is_diverged || self.diagnostic_report.as_ref() != Some(&report);
+                if should_emit {
+                    let tool_name = self
+                        .active_tool
+                        .as_ref()
+                        .map_or("SimulationFramework", |t| t.name());
+                    emit_divergence_telemetry(
+                        tool_name,
+                        report.t_diverged,
+                        report.step_index,
+                        &report.variable,
+                        &report.message,
+                    );
+                }
                 self.is_diverged = true;
                 self.diagnostic_report = Some(report.clone());
                 Err(report)

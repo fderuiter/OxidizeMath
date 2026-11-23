@@ -43,7 +43,6 @@ impl LeniaTool {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.heading("Lenia Studio");
                 ui.separator();
-                self.draw_recovery_banner(ui);
                 self.draw_playback_and_species(ui);
                 ui.separator();
                 self.draw_kernel_and_growth_sliders(ui);
@@ -53,33 +52,6 @@ impl LeniaTool {
                 self.draw_brush_and_grid_controls(ui);
             });
         });
-    }
-
-    fn draw_recovery_banner(&mut self, ui: &mut egui::Ui) {
-        if !FiniteStateGuard::diverged(self) {
-            return;
-        }
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        egui::Frame::group(ui.style())
-            .stroke(egui::Stroke::new(1.5_f32, palette.error))
-            .show(ui, |ui| {
-                ui.colored_label(palette.error, "⚠ Instability Guard Triggered");
-                if let Some(diag) = &self.diagnostic {
-                    ui.small(&diag.message);
-                }
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("Auto-Scale dt").clicked() {
-                        FiniteStateGuard::auto_scale_step_size(self);
-                    }
-                    if ui.button("Clamp Params").clicked() {
-                        FiniteStateGuard::clamp_parameters(self);
-                    }
-                    if ui.button("Reset Orbium").clicked() {
-                        FiniteStateGuard::reset_parameters(self);
-                    }
-                });
-            });
-        ui.separator();
     }
 
     fn draw_playback_and_species(&mut self, ui: &mut egui::Ui) {

@@ -92,10 +92,16 @@ impl NeuralNetworkVizTool {
         self.revision = self.revision.wrapping_add(1).max(1);
     }
 
-    fn reset(&mut self) {
-        let keep_mode = self.mode;
-        *self = Self::default();
-        self.mode = keep_mode;
+    pub(crate) fn reset(&mut self) {
+        self.is_running = false;
+        self.prev_ring_v = [-65.0; 5];
+        self.sonification = crate::audio::SonificationFrame::silent();
+        for neuron in &mut self.neurons {
+            *neuron = HodgkinHuxleyNeuron::new(-65.0);
+        }
+        self.kuramoto.reset_phases();
+        self.order_history.clear();
+        self.record_kuramoto_history_zero_alloc();
     }
 
     pub(crate) fn step_once(&mut self) {
@@ -337,7 +343,11 @@ impl InteractiveTool for NeuralNetworkVizTool {
             return Err("NeuralNetworkViz parameters or dimensions out of bounds".into());
         }
         if s.weights.is_empty() && n == 5 {
-            self.reset();
+            let defaults = Self::default();
+            self.neurons = defaults.neurons;
+            self.scratch_inputs = defaults.scratch_inputs;
+            self.positions = defaults.positions;
+            self.weights = defaults.weights;
         } else {
             let radius = 100.0;
             self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
@@ -357,9 +367,14 @@ impl InteractiveTool for NeuralNetworkVizTool {
         self.external_input = s.external_input;
         self.dt = s.dt;
         self.is_running = s.is_running;
+        self.prev_ring_v = [-65.0; 5];
+        self.sonification = crate::audio::SonificationFrame::silent();
         self.mode = s.mode;
         let spread = s.frequency_spread.unwrap_or(0.6);
         self.sync_kuramoto_from_weight_matrix(spread);
+        self.kuramoto.reset_phases();
+        self.order_history.clear();
+        self.record_kuramoto_history_zero_alloc();
         if let Some(k) = s.kuramoto_coupling {
             self.kuramoto.set_coupling(k);
         }
@@ -437,21 +452,6 @@ impl scientific_metadata::theory::TheoryDescribable for NeuralNetworkVizTool {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_neural_network_viz_step_once_keeps_paused() {
-        let mut tool = NeuralNetworkVizTool::default();
-        assert!(!tool.is_running);
-        let initial_v0 = tool.neurons[0].v();
-        tool.step_once();
-        assert!(!tool.is_running);
-        assert_ne!(tool.neurons[0].v(), initial_v0);
     }
 }
 

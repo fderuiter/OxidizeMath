@@ -216,3 +216,41 @@ impl NeuralNetworkVizTool {
             });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_neural_network_viz_step_once_keeps_paused() {
+        let mut tool = NeuralNetworkVizTool::default();
+        assert!(!tool.is_running);
+        let initial_v0 = tool.neurons[0].v();
+        tool.step_once();
+        assert!(!tool.is_running);
+        assert_ne!(tool.neurons[0].v(), initial_v0);
+    }
+
+    #[test]
+    fn test_neural_network_viz_reset_preserves_sliders_and_custom_weights() {
+        let mut tool = NeuralNetworkVizTool::default();
+        let custom_inputs = vec![24.0, -5.0, 12.5, 8.0, 31.0];
+        tool.external_input = custom_inputs.clone();
+        tool.weights[1][0] = 4.25;
+        tool.weights[3][2] = -2.75;
+        let expected_weights = tool.weights.clone();
+        tool.is_running = true;
+        for _ in 0..10 {
+            tool.step();
+        }
+        assert!(tool.neurons.iter().any(|n| (n.v() + 65.0).abs() > 1e-3));
+
+        tool.reset();
+        assert!(!tool.is_running);
+        assert_eq!(tool.external_input, custom_inputs);
+        assert_eq!(tool.weights, expected_weights);
+        for neuron in &tool.neurons {
+            assert!((neuron.v() + 65.0).abs() < 1e-9);
+        }
+    }
+}

@@ -324,6 +324,7 @@ impl SimulationFramework {
         let target_idx = self.resolve_url_tool_index(tool_id)?;
         let meta = self.available_tools[target_idx];
         let mut candidate = (meta.build)();
+        let factory_state = candidate.save_state();
         if let Some(json_str) = preset_json {
             if allow_workspace_bounds {
                 crate::url_state::validate_workspace_url_preset_json(json_str)?;
@@ -338,9 +339,18 @@ impl SimulationFramework {
                 ));
             }
         }
-        self.commit_validated_url_candidate(target_idx, candidate);
+        self.commit_validated_url_candidate(target_idx, candidate, factory_state.clone());
         self.clear_challenge_hud();
-        self.sync_active_baseline();
+        if preset_json.is_some() {
+            self.sync_active_baseline_with_persistence(false);
+        } else {
+            self.preset_tool_state = None;
+            if let Some(tool) = &self.active_tool {
+                self.preset_tool_states.remove(tool.name());
+            }
+            self.baseline_tool_state = factory_state;
+            self.refresh_saved_and_snapshot_after_reset();
+        }
         Ok(())
     }
 
@@ -348,6 +358,7 @@ impl SimulationFramework {
         &mut self,
         target_idx: usize,
         candidate: Box<dyn super::InteractiveTool>,
+        factory_state: Option<String>,
     ) {
         if self.selected_tool_index != Some(target_idx) {
             if let Some((old_name, old_json)) = self.serialized_active_tool() {
@@ -362,6 +373,7 @@ impl SimulationFramework {
         self.active_challenge = None;
         self.challenge_was_passed = false;
         self.selected_tool_index = Some(target_idx);
+        self.factory_tool_state = factory_state;
         self.active_tool = Some(candidate);
         self.promote_legacy_plot_keys_for_active_tool();
         self.is_diverged = false;

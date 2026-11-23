@@ -133,6 +133,77 @@ fn test_finite_state_guard_clamps_non_finite_parameters_and_meshes() {
     assert!(tool.has_finite_parameters());
 }
 
+fn run_neuroscience_frame(fw: &mut crate::framework::SimulationFramework) -> egui::FullOutput {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let raw = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 800.0),
+        )),
+        ..Default::default()
+    };
+    ctx.run(raw, |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            fw.show_inside(ui, "neuroscience");
+        });
+    })
+}
+
+fn count_shape_text(output: &egui::FullOutput, needle: &str) -> usize {
+    let mut count = 0;
+    let mut stack: Vec<&egui::epaint::Shape> = output.shapes.iter().map(|c| &c.shape).collect();
+    while let Some(shape) = stack.pop() {
+        match shape {
+            egui::epaint::Shape::Text(t) if t.galley.job.text.contains(needle) => count += 1,
+            egui::epaint::Shape::Vec(v) => stack.extend(v.iter()),
+            _ => {}
+        }
+    }
+    count
+}
+
+#[test]
+fn test_framework_surfaces_single_cortical_diagnostic_banner_and_auto_dismisses() {
+    let mut fw = crate::framework::SimulationFramework::new("neuroscience");
+    let idx = fw
+        .available_tools
+        .iter()
+        .position(|m| m.id == "CorticalMorphometryTool")
+        .expect("CorticalMorphometryTool registered");
+    fw.select_tool(idx);
+    let _ = run_neuroscience_frame(&mut fw);
+    assert!(!fw.is_diverged());
+
+    {
+        let tool = fw
+            .active_tool
+            .as_mut()
+            .and_then(|t| t.as_any_mut())
+            .and_then(|a| a.downcast_mut::<CorticalMorphometryTool>())
+            .expect("CorticalMorphometryTool active");
+        tool.diagnostic_report = Some(crate::framework::DiagnosticReport::new(
+            4.0,
+            4,
+            "white_surface.vertices",
+            "Simulated non-finite vertex evolution",
+        ));
+    }
+
+    let out = run_neuroscience_frame(&mut fw);
+    assert!(fw.is_diverged());
+    let report = fw.diagnostic_report().expect("DiagnosticReport surfaced");
+    assert!((report.t_diverged - 4.0).abs() < 1e-9);
+    assert_eq!(report.step_index, 4);
+    assert_eq!(report.variable, "white_surface.vertices");
+    assert_eq!(count_shape_text(&out, "Solver Divergence Warning"), 1);
+
+    fw.rollback_auto_scale_step_size();
+    let out_after = run_neuroscience_frame(&mut fw);
+    assert!(!fw.is_diverged());
+    assert_eq!(count_shape_text(&out_after, "Solver Divergence Warning"), 0);
+}
+
 #[test]
 fn test_watertight_colored_mesh_export_across_surfaces_and_overlays() {
     let mut tool = CorticalMorphometryTool {

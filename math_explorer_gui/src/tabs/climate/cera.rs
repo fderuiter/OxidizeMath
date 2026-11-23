@@ -1,5 +1,5 @@
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard, RecoveryAction};
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
@@ -193,6 +193,8 @@ impl CeraTool {
             .changed();
 
         if arch_changed {
+            self.diverged = false;
+            self.diagnostic_report = None;
             self.clear_persisted_model();
             self.prediction_result = None;
         }
@@ -212,6 +214,8 @@ impl CeraTool {
                 .accessible_hover_text("Reset persisted CERA model weights and loss history")
                 .clicked()
             {
+                self.diverged = false;
+                self.diagnostic_report = None;
                 self.clear_persisted_model();
                 self.prediction_result = None;
             }
@@ -360,33 +364,45 @@ impl InteractiveTool for CeraTool {
         Ok(())
     }
 
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.diagnostic_report.clone().or_else(|| {
+            self.diverged.then(|| {
+                DiagnosticReport::new(
+                    0.0,
+                    self.epochs_trained,
+                    "prediction",
+                    "CERA neural network output diverged: non-finite loss or prediction detected.",
+                )
+            })
+        })
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.num_levels = (self.num_levels / 2).max(1);
+        self.diverged = false;
+        self.diagnostic_report = None;
+        self.clear_persisted_model();
+        true
+    }
+
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true
     }
 
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("CERA Climate Representation Alignment");
-            if self.diverged {
-                if let Some(action) = crate::framework::recovery::render_recovery_banner(
-                    ui,
-                    self.diagnostic_report.as_ref(),
-                ) {
-                    match action {
-                        RecoveryAction::AutoScaleStepSize => {
-                            self.num_levels = (self.num_levels / 2).max(1);
-                            self.diverged = false;
-                            self.diagnostic_report = None;
-                            self.clear_persisted_model();
-                        }
-                        RecoveryAction::ClampParameters => FiniteStateGuard::clamp_parameters(self),
-                        RecoveryAction::ResetParameters => self.reset_parameters(),
-                    }
-                }
-                ui.separator();
-            }
-
             self.draw_controls(ui);
             ui.separator();
             if !self.diverged {

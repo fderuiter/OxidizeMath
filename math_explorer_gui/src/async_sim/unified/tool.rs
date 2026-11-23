@@ -5,6 +5,7 @@ use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimRunner, UnifiedUiExt
 use crate::async_sim::{
     BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState, StateSnapshot,
 };
+use crate::framework::recovery::DiagnosticReport;
 use crate::framework::{
     BrushStroke, CalloutManager, ChallengeEvaluation, InteractionContext, InteractiveTool,
     MathExpressionInputBar, SpatialBrushKit,
@@ -409,11 +410,41 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         Some(self)
     }
 
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        if let Some(report) = self.controller.diagnostic_report() {
+            return Some(report.clone());
+        }
+        if !self.has_finite_parameters() {
+            let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+            let bad_var = self
+                .param_metadata
+                .iter()
+                .map(|(k, _)| k.as_str())
+                .find(|&k| params.get(k).is_some_and(|v| !v.is_finite()))
+                .or_else(|| {
+                    params
+                        .iter()
+                        .find(|(_, v)| !v.is_finite())
+                        .map(|(k, _)| k.as_str())
+                })
+                .unwrap_or("state");
+            return Some(DiagnosticReport::new(
+                0.0,
+                0,
+                bad_var,
+                format!("{} encountered non-finite solver state.", M::name()),
+            ));
+        }
+        None
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.auto_scale_model_step(None);
+        true
+    }
+
     fn clamp_parameters(&mut self) -> bool {
-        self.handle_recovery_action(
-            crate::framework::recovery::RecoveryAction::ClampParameters,
-            None,
-        );
+        self.clamp_model_parameters(None);
         true
     }
 

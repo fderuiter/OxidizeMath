@@ -152,21 +152,60 @@ fn test_lenia_mouse_brushing_and_keyboard_stamping() {
     assert!(tool.engine.telemetry().total_mass > sliced_mass);
 }
 
+fn count_shape_text(out: &egui::FullOutput, needle: &str) -> usize {
+    let mut count = 0;
+    let mut stack: Vec<&egui::epaint::Shape> = out.shapes.iter().map(|c| &c.shape).collect();
+    while let Some(shape) = stack.pop() {
+        match shape {
+            egui::epaint::Shape::Text(t) if t.galley.job.text.contains(needle) => count += 1,
+            egui::epaint::Shape::Vec(v) => stack.extend(v.iter()),
+            _ => {}
+        }
+    }
+    count
+}
+
 #[test]
 fn test_lenia_finite_state_guard_divergence_and_recovery() {
-    let mut tool = LeniaTool {
-        dt: 2.5,
-        sigma: -0.05,
-        playing: true,
-        ..Default::default()
-    };
-    tool.step_once();
-    assert!(FiniteStateGuard::diverged(&tool));
-    assert!(!tool.playing);
-    assert!(tool.diagnostic_report().is_some());
+    let ctx = egui::Context::default();
+    let mut framework = SimulationFramework::new("biology");
+    assert!(framework.select_tool_by_name("LeniaTool"));
+    {
+        let tool = framework
+            .active_tool
+            .as_mut()
+            .and_then(|t| t.as_any_mut())
+            .and_then(|a| a.downcast_mut::<LeniaTool>())
+            .expect("active LeniaTool");
+        tool.dt = 2.5;
+        tool.sigma = -0.05;
+        tool.playing = true;
+        tool.step_once();
+        assert!(FiniteStateGuard::diverged(tool));
+        assert!(!tool.playing);
+        assert!(FiniteStateGuard::diagnostic_report(tool).is_some());
+        assert!(InteractiveTool::diagnostic_report(tool).is_some());
+    }
 
-    FiniteStateGuard::auto_scale_step_size(&mut tool);
-    assert!(FiniteStateGuard::is_finite_state(&tool));
+    let out = ctx.run(screen_input(Vec::new()), |ctx| {
+        framework.show(ctx, "biology")
+    });
+    assert!(framework.is_diverged());
+    assert_eq!(count_shape_text(&out, "Solver Divergence Warning"), 1);
+    assert_eq!(count_shape_text(&out, "Instability Guard Triggered"), 0);
+
+    assert!(framework.rollback_auto_scale_step_size());
+    let _ = ctx.run(screen_input(Vec::new()), |ctx| {
+        framework.show(ctx, "biology")
+    });
+    assert!(!framework.is_diverged());
+    let tool = framework
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.as_any())
+        .and_then(|a| a.downcast_ref::<LeniaTool>())
+        .expect("active LeniaTool");
+    assert!(FiniteStateGuard::is_finite_state(tool));
     assert!((0.005..=0.25).contains(&tool.dt));
     assert!((0.002..=0.15).contains(&tool.sigma));
 }

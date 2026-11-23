@@ -194,6 +194,7 @@ impl IsingModelTool {
         self.steps_per_frame = s.steps_per_frame;
         self.enforce_ising_challenge_locks();
         self.sync_shared_params();
+        self.reinitialize_lattice_and_metrics();
         if self.defector_sea || !self.droplet_seeds.is_empty() {
             self.push_seed_layout_to_worker();
         }

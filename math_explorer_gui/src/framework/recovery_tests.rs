@@ -274,11 +274,11 @@ fn test_morphogenesis_divergence_and_recovery() {
     // Test MorphogenesisTool recovery remedies
     let mut tool = MorphogenesisTool::default();
     tool.params.write().unwrap().dt = 0.05;
-    tool.auto_scale_step_size();
+    FiniteStateGuard::auto_scale_step_size(&mut tool);
     assert_eq!(tool.params.read().unwrap().dt, 0.025);
 
     tool.params.write().unwrap().dt = 1e-5;
-    tool.auto_scale_step_size();
+    FiniteStateGuard::auto_scale_step_size(&mut tool);
     assert_eq!(tool.params.read().unwrap().dt, 1e-4);
 
     tool.params.write().unwrap().a = 50.0;

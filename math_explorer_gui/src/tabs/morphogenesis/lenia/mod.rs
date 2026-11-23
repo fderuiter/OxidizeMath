@@ -161,6 +161,9 @@ impl LeniaTool {
 
     /// Re-seeds the active species spatial pattern while preserving current custom kernel/growth sliders.
     pub fn reseed_current_genome(&mut self) {
+        if self.parameters_within_safe_bounds() {
+            self.diagnostic = None;
+        }
         self.rng = OxidizeRng::new(self.rng_seed);
         if self.engine.width() != self.grid_size || self.engine.height() != self.grid_size {
             self.engine = LeniaEngine::new(
@@ -300,6 +303,15 @@ impl InteractiveTool for LeniaTool {
         FiniteStateGuard::is_finite_state(self)
     }
 
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.diagnostic.clone()
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        FiniteStateGuard::auto_scale_step_size(self);
+        true
+    }
+
     fn observables(&self) -> Vec<(&'static str, f64)> {
         self.collect_observables()
     }
@@ -330,13 +342,7 @@ impl InteractiveTool for LeniaTool {
     }
 
     fn active_atlas_coords(&self, axis_keys: (&'static str, &'static str)) -> (f64, f64) {
-        let get = |k: &str| match k {
-            "mu" => self.mu,
-            "sigma" => self.sigma,
-            "radius" => self.radius,
-            _ => 0.0,
-        };
-        (get(axis_keys.0), get(axis_keys.1))
+        self.active_lenia_atlas_coords(axis_keys)
     }
 
     fn atlas_context_signature(&self, axis_keys: (&'static str, &'static str)) -> u64 {

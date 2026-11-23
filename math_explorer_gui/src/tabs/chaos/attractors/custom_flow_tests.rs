@@ -70,6 +70,36 @@ fn test_custom_3d_flow_worker_streaming_zero_alloc_and_roundtrip() {
 }
 
 #[test]
+fn test_attractor_ready_and_reset_hold_paused_at_initial_coords_across_frames() {
+    let ctx = eframe::egui::Context::default();
+    let mut plotter = AttractorPlotter::default();
+    for _ in 0..5 {
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| plotter.show(ctx));
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
+    assert!(plotter.is_paused());
+    assert_eq!(plotter.step_count, 0);
+    assert!(plotter.history.is_empty());
+    assert_eq!(plotter.system.state.vec, Vector3::new(1.0, 1.0, 1.0));
+
+    plotter.step_simulation();
+    assert!(plotter.step_count > 0);
+    assert_ne!(plotter.system.state.vec, Vector3::new(1.0, 1.0, 1.0));
+
+    plotter.reset();
+    for _ in 0..5 {
+        let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| plotter.show(ctx));
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
+    assert!(plotter.is_paused());
+    assert_eq!(plotter.step_count, 0);
+    assert!(plotter.history.is_empty());
+    assert_eq!(plotter.system.state.vec, Vector3::new(1.0, 1.0, 1.0));
+}
+
+#[test]
 fn test_custom_3d_flow_lyapunov_exponent() {
     let mut rossler = AttractorPlotter {
         mode: AttractorMode::Custom,

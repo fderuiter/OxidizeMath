@@ -10,9 +10,7 @@ use super::presets::{
 use super::runner::WaveData;
 use super::WaveSimulatorTool;
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
-};
+use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::async_sim::{SimCommand, SimWorkerState, StateSnapshot};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use crate::reflective_ui::AnimatedSlider;
@@ -72,18 +70,6 @@ impl WaveSimulatorTool {
     }
 
     fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let state = self.worker.state();
-        if let Some(fault_action) =
-            render_worker_fault_banner(ui, state, self.worker.diagnostic_report(), true)
-        {
-            match fault_action {
-                WorkerFaultAction::Reset => self.sync_config_and_reset(Some(ctx)),
-                WorkerFaultAction::ResetParameters => self.reset_to_defaults(Some(ctx)),
-                WorkerFaultAction::Recovery(action) => self.handle_recovery_action(action, ctx),
-            }
-            ui.separator();
-        }
-
         let state = self.worker.state();
         Self::draw_worker_status_badge(ui, state);
 

@@ -2,6 +2,7 @@
 
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand};
+use crate::framework::recovery::DiagnosticReport;
 use crate::framework::{
     Camera3D, CoupledExpressionBank, ExportCapabilities, InteractiveTool, Scene3DBuilder,
 };
@@ -139,7 +140,9 @@ impl AttractorPlotter {
     pub fn is_paused(&self) -> bool {
         matches!(
             self.execution_state,
-            SolverExecutionState::Paused | SolverExecutionState::Diverged { .. }
+            SolverExecutionState::Ready
+                | SolverExecutionState::Paused
+                | SolverExecutionState::Diverged { .. }
         )
     }
 
@@ -167,9 +170,43 @@ impl AttractorPlotter {
         if !self.is_finite_state() {
             return Err("Cannot resume simulation: system parameters are non-finite.");
         }
+        let _ = self.worker.update();
         self.execution_state = SolverExecutionState::Running;
         let _ = self.worker.send_command(SimCommand::Start);
         Ok(())
+    }
+
+    fn sync_worker_snapshot(&mut self, ui_diverged: bool, was_paused: bool) {
+        let Some(snapshot) = self.worker.update() else {
+            return;
+        };
+        self.latest_sonification = snapshot.sonification;
+        if ui_diverged {
+            return;
+        }
+        let Some(data) = snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
+        else {
+            return;
+        };
+        let stale_pre_start = !was_paused
+            && matches!(
+                data.execution_state,
+                SolverExecutionState::Ready | SolverExecutionState::Paused
+            );
+        if stale_pre_start {
+            return;
+        }
+        self.history = data.history.clone();
+        self.system.state.vec = data.current_vec;
+        self.step_count = data.step_count;
+        self.twin = data.twin.clone();
+        if matches!(data.execution_state, SolverExecutionState::Diverged { .. }) || !was_paused {
+            self.execution_state = data.execution_state;
+        }
+        self.sync_local_branch_engine();
     }
 
     pub fn on_slider_changed(&mut self) {
@@ -238,6 +275,7 @@ impl AttractorPlotter {
             .reset_or_respawn(|| AttractorRunner::from_params(params));
     }
 
+    #[cfg(test)]
     pub fn reset_parameters(&mut self) {
         self.system.sigma = 10.0;
         self.system.rho = 28.0;
@@ -247,17 +285,6 @@ impl AttractorPlotter {
         self.tube_radius = export::DEFAULT_TUBE_RADIUS;
         self.fixed_callout_offsets = DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from);
         self.reset();
-    }
-
-    /// Projects 3D point to 2D screen space based on rotation, pan, zoom, and projection mode.
-    pub(crate) fn project(&self, p: Vector3<f64>) -> [f64; 2] {
-        let center_offset = match self.mode {
-            AttractorMode::Lorenz => Vector3::new(0.0, 0.0, 25.0),
-            AttractorMode::Custom => Vector3::zeros(),
-        };
-        let p_centered = p - center_offset;
-        self.camera
-            .project(&[p_centered.x, p_centered.y, p_centered.z])
     }
 }
 
@@ -277,7 +304,21 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn has_finite_parameters(&self) -> bool {
-        !self.diverged() && self.is_finite_state()
+        !self.diverged() && !self.worker.state().is_faulted() && self.is_finite_state()
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.build_diagnostic_report()
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.dt = if self.dt.is_finite() && self.dt > 0.0 {
+            (self.dt * 0.5).max(0.001)
+        } else {
+            0.005
+        };
+        self.reset();
+        true
     }
 
     fn save_state(&self) -> Option<String> {
@@ -286,6 +327,16 @@ impl InteractiveTool for AttractorPlotter {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.deserialize_state(state)
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn step_simulation(&mut self) {
@@ -346,28 +397,14 @@ impl InteractiveTool for AttractorPlotter {
         }
 
         let ui_diverged = self.diverged();
-        let was_paused = self.is_paused();
-        if let Some(snapshot) = self.worker.update() {
-            self.latest_sonification = snapshot.sonification;
-            if !ui_diverged {
-                if let Some(data) = snapshot
-                    .structured_data
-                    .as_ref()
-                    .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
-                {
-                    self.history = data.history.clone();
-                    self.system.state.vec = data.current_vec;
-                    self.step_count = data.step_count;
-                    self.twin = data.twin.clone();
-                    if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
-                        || !was_paused
-                    {
-                        self.execution_state = data.execution_state;
-                    }
-                }
-                self.sync_local_branch_engine();
-            }
+        if !ui_diverged
+            && self.execution_state == SolverExecutionState::Ready
+            && self.worker.is_running()
+        {
+            self.execution_state = SolverExecutionState::Running;
         }
+        let was_paused = self.is_paused();
+        self.sync_worker_snapshot(ui_diverged, was_paused);
 
         let worker_faulted = self.worker.state().is_faulted();
         if self.diverged() || worker_faulted {
@@ -389,17 +426,7 @@ impl InteractiveTool for AttractorPlotter {
 
         self.publish_bus_landmarks(&ctx);
         self.draw_side_panel(ui, &ctx);
-        self.draw_central_panel(ui, &ctx);
-    }
-
-    #[cfg(test)]
-    fn as_any(&self) -> Option<&dyn std::any::Any> {
-        Some(self)
-    }
-
-    #[cfg(test)]
-    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
-        Some(self)
+        self.draw_central_panel(ui);
     }
 }
 

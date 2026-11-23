@@ -1,10 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{AttractorPlotter, SolverExecutionState};
+use super::AttractorPlotter;
 use crate::accessibility::AccessibleTheoryHover;
-use crate::async_sim::ui::{
-    render_custom_fault_banner, render_empty_plot_guidance, render_worker_fault_banner,
-};
+use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::async_sim::SimWorkerState;
 use crate::framework::{
     fork_marker_callout, render_divergence_strip, CounterfactualTransport, InteractiveTool,
@@ -21,18 +19,6 @@ impl AttractorPlotter {
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("3D Chaotic Attractor");
             ui.separator();
-
-            if worker_faulted && !self.diverged() {
-                if let Some(action) = render_worker_fault_banner(
-                    ui,
-                    self.worker.state(),
-                    self.worker.diagnostic_report(),
-                    false,
-                ) {
-                    self.apply_fault_action(action, ctx);
-                    ui.separator();
-                }
-            }
 
             ui.horizontal(|ui| {
                 let prev_mode = self.mode;
@@ -241,36 +227,6 @@ impl AttractorPlotter {
             });
     }
 
-    fn draw_central_fault_banner(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if let SolverExecutionState::Diverged {
-            invalid_vec,
-            diverged_at_step,
-        } = self.execution_state
-        {
-            let detail = format!(
-                "Step {} | Coordinates: [{:.2}, {:.2}, {:.2}]",
-                diverged_at_step, invalid_vec.x, invalid_vec.y, invalid_vec.z
-            );
-            if let Some(action) = render_custom_fault_banner(
-                ui,
-                "⚠ Solver Divergence Warning: Non-finite state detected. Simulation halted.",
-                Some(&detail),
-                true,
-            ) {
-                self.apply_fault_action(action, ctx);
-            }
-        } else if self.worker.state() == SimWorkerState::Faulted {
-            if let Some(action) = render_worker_fault_banner(
-                ui,
-                self.worker.state(),
-                self.worker.diagnostic_report(),
-                false,
-            ) {
-                self.apply_fault_action(action, ctx);
-            }
-        }
-    }
-
     fn clear_callout_drag(&mut self, plot_ui: &egui_plot::PlotUi<'_>) {
         if self.dragged_callout.take().is_some() {
             let pid = plot_ui.plot_id();
@@ -432,9 +388,8 @@ impl AttractorPlotter {
         }
     }
 
-    pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
+    pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            self.draw_central_fault_banner(ui, ctx);
             if let Some(ref snap) = self.branch_engine.active_snapshot {
                 render_divergence_strip(ui, "Attractor Plotter", snap);
             }
@@ -451,5 +406,16 @@ impl AttractorPlotter {
                 self.draw_3d_viewport(ui);
             }
         });
+    }
+
+    /// Projects 3D point to 2D screen space based on rotation, pan, zoom, and projection mode.
+    pub(crate) fn project(&self, p: Vector3<f64>) -> [f64; 2] {
+        let center_offset = match self.mode {
+            super::AttractorMode::Lorenz => Vector3::new(0.0, 0.0, 25.0),
+            super::AttractorMode::Custom => Vector3::zeros(),
+        };
+        let p_centered = p - center_offset;
+        self.camera
+            .project(&[p_centered.x, p_centered.y, p_centered.z])
     }
 }

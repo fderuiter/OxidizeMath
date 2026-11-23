@@ -91,6 +91,7 @@ impl SimulationFramework {
         self.rev_cache.framework_revision.hash(hasher);
         self.selected_tool_index.hash(hasher);
         self.saved_tool_states.len().hash(hasher);
+        self.preset_tool_states.len().hash(hasher);
         self.hash_saved_plot_states(hasher);
         if let Some(tool) = &self.active_tool {
             tool.name().hash(hasher);
