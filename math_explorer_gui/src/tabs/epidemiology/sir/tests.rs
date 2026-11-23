@@ -129,13 +129,9 @@ fn test_sir_epidemic_peak_and_logistic_fit_r2() {
     assert!(peak_day > 10.0 && peak_day < 40.0);
     assert!(peak_infected >= max_sample - 1e-6);
 
-    let r_pts: Vec<[f64; 2]> = tool.r_points.iter().map(|p| [p.x, p.y]).collect();
-    let fit = egui_plot::fit_model_with_axes(
-        &r_pts,
-        egui_plot::FitType::Logistic,
-        "Recovered",
-        false,
-        false,
+    let fit = math_explorer::fit::fit_model(
+        &tool.r_points[..],
+        math_explorer::fit::FitModel::Logistic,
         false,
     )
     .expect("SIR Recovered logistic fit");
@@ -144,6 +140,17 @@ fn test_sir_epidemic_peak_and_logistic_fit_r2() {
         "SIR Recovered Logistic R^2 = {}",
         fit.r_squared
     );
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            let pk = metrics::compute_epidemic_peak(&tool.i_points);
+            assert!(pk.is_some());
+        });
+    }
 }
 
 #[test]

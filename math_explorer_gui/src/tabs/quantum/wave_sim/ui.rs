@@ -33,6 +33,17 @@ impl WaveSimulatorTool {
                     ui.separator();
                     self.draw_wavepacket_and_barrier_sliders(ui, &ctx);
                     ui.separator();
+                    let is_paused = !matches!(
+                        self.worker.state(),
+                        SimWorkerState::Running | SimWorkerState::Stepping
+                    );
+                    crate::audio::render_sonification_panel(
+                        ui,
+                        "wave_sim",
+                        &self.latest_sonification,
+                        is_paused,
+                    );
+                    ui.separator();
                     self.draw_tunneling_readouts(ui);
                 });
         });

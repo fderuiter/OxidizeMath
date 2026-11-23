@@ -30,6 +30,7 @@ mod plot_ui;
 pub mod poi;
 mod poi_interaction;
 pub mod sidecar_3d;
+pub mod snapshot;
 mod transform;
 
 use std::{cmp::Ordering, ops::RangeInclusive, sync::Arc};
@@ -63,7 +64,7 @@ pub use crate::{
         render_primitives_image,
     },
     fit::{
-        CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, FitResult, FitType,
+        CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, FitError, FitResult, FitType,
         MAX_FIT_PARAMS, fit_custom_evaluator, fit_model_with_axes,
     },
     fit_overlay::{
@@ -83,6 +84,9 @@ pub use crate::{
     sidecar_3d::{
         Plot3DSeries, Plot3DSeriesSidecar, append_last_plot_datasets_3d,
         clear_last_plot_datasets_3d, format_world_coord, get_last_plot_datasets_3d,
+    },
+    snapshot::{
+        OrderedId, PlotOverlaySnapshot, begin_plot_persistence_scope, end_plot_persistence_scope,
     },
     transform::{PlotBounds, PlotTransform},
 };
@@ -279,9 +283,15 @@ pub struct PlotResponse<R> {
 /// String identifiers (`&str`, `String`, `&String`, [`std::borrow::Cow`]) are humanized into
 /// readable titles (for example, `"sir_plot"` becomes `Some("SIR Plot")`), whereas raw
 /// [`egui::Id`] callers retain `None` unless overridden via [`Plot::title`].
-pub trait PlotIdSource {
+pub trait PlotIdSource: Sized {
+    /// Resolve the hashed plot identifier, deterministic snapshot key, and optional humanized title.
+    fn into_plot_id_key_and_title(self) -> (Id, String, Option<String>);
+
     /// Resolve the hashed plot identifier and optional humanized display title.
-    fn into_plot_id_and_title(self) -> (Id, Option<String>);
+    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
+        let (id, _key, title) = self.into_plot_id_key_and_title();
+        (id, title)
+    }
 }
 
 /// Humanizes a snake_case, kebab-case, or plain-text plot label into a readable title.
@@ -338,46 +348,50 @@ fn format_modal_title(base: &str, plot_title: Option<&str>) -> String {
 }
 
 impl PlotIdSource for &str {
-    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
-        (Id::new(self), humanize_plot_label(self))
+    fn into_plot_id_key_and_title(self) -> (Id, String, Option<String>) {
+        (Id::new(self), self.to_owned(), humanize_plot_label(self))
     }
 }
 
 impl PlotIdSource for String {
-    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
+    fn into_plot_id_key_and_title(self) -> (Id, String, Option<String>) {
         let title = humanize_plot_label(&self);
-        (Id::new(self), title)
+        let id = Id::new(&self);
+        (id, self, title)
     }
 }
 
 impl PlotIdSource for &String {
-    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
-        (Id::new(self), humanize_plot_label(self))
+    fn into_plot_id_key_and_title(self) -> (Id, String, Option<String>) {
+        (Id::new(self), self.clone(), humanize_plot_label(self))
     }
 }
 
 impl PlotIdSource for std::borrow::Cow<'_, str> {
-    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
+    fn into_plot_id_key_and_title(self) -> (Id, String, Option<String>) {
         let title = humanize_plot_label(self.as_ref());
-        (Id::new(self), title)
+        let key = self.into_owned();
+        let id = Id::new(&key);
+        (id, key, title)
     }
 }
 
 impl PlotIdSource for &std::borrow::Cow<'_, str> {
-    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
-        (Id::new(self), humanize_plot_label(self.as_ref()))
+    fn into_plot_id_key_and_title(self) -> (Id, String, Option<String>) {
+        let raw = self.as_ref();
+        (Id::new(raw), raw.to_owned(), humanize_plot_label(raw))
     }
 }
 
 impl PlotIdSource for Id {
-    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
-        (Id::new(self), None)
+    fn into_plot_id_key_and_title(self) -> (Id, String, Option<String>) {
+        (Id::new(self), format!("id:{:016x}", self.value()), None)
     }
 }
 
 impl PlotIdSource for &Id {
-    fn into_plot_id_and_title(self) -> (Id, Option<String>) {
-        (Id::new(self), None)
+    fn into_plot_id_key_and_title(self) -> (Id, String, Option<String>) {
+        (Id::new(self), format!("id:{:016x}", self.value()), None)
     }
 }
 
@@ -399,6 +413,7 @@ impl PlotIdSource for &Id {
 /// ```
 pub struct Plot<'a> {
     id_source: Id,
+    plot_key: String,
     id: Option<Id>,
     title: Option<String>,
 
@@ -453,9 +468,10 @@ pub struct Plot<'a> {
 impl<'a> Plot<'a> {
     /// Give a unique id for each plot within the same [`Ui`].
     pub fn new(id_source: impl PlotIdSource) -> Self {
-        let (id_source, title) = id_source.into_plot_id_and_title();
+        let (id_source, plot_key, title) = id_source.into_plot_id_key_and_title();
         Self {
             id_source,
+            plot_key,
             id: None,
             title,
 
@@ -516,6 +532,13 @@ impl<'a> Plot<'a> {
     #[inline]
     pub fn id(mut self, id: Id) -> Self {
         self.id = Some(id);
+        self
+    }
+
+    /// Override the deterministic key used when persisting scoped [`PlotOverlaySnapshot`] state.
+    #[inline]
+    pub fn plot_key(mut self, key: impl Into<String>) -> Self {
+        self.plot_key = key.into();
         self
     }
 
@@ -1105,6 +1128,7 @@ impl<'a> Plot<'a> {
     ) -> PlotResponse<R> {
         let Self {
             id_source,
+            plot_key,
             id,
             title,
             center_axis,
@@ -1244,7 +1268,7 @@ impl<'a> Plot<'a> {
         // Load or initialize the memory.
         ui.ctx().check_for_id_clash(plot_id, plot_rect, "Plot");
 
-        let mut mem = if reset {
+        let loaded_mem = if reset {
             if let Some((name, _)) = linked_axes.as_ref() {
                 ui.data_mut(|data| {
                     let link_groups: &mut BoundsLinkGroups = data.get_temp_mut_or_default(Id::NULL);
@@ -1254,8 +1278,9 @@ impl<'a> Plot<'a> {
             None
         } else {
             PlotMemory::load(ui.ctx(), plot_id)
-        }
-        .unwrap_or_else(|| PlotMemory {
+        };
+        let had_existing_mem = loaded_mem.is_some();
+        let mut mem = loaded_mem.unwrap_or_else(|| PlotMemory {
             auto_bounds: default_auto_bounds,
             hovered_legend_item: None,
             hidden_items: Default::default(),
@@ -1280,6 +1305,25 @@ impl<'a> Plot<'a> {
             show_settings_modal: false,
             last_right_click_coord: None,
         });
+
+        let allow_bounds_persist = allow_drag.any()
+            || allow_zoom.any()
+            || allow_axis_zoom_drag.any()
+            || allow_scroll.any()
+            || allow_boxed_zoom;
+        snapshot::sync_plot_before_show(
+            ui.ctx(),
+            &snapshot::BeforeShowSyncParams {
+                plot_id,
+                plot_key: &plot_key,
+                had_existing_mem,
+                default_auto_bounds,
+                min_auto_bounds,
+                allow_bounds_persist,
+                allow_2d_analysis,
+            },
+            &mut mem,
+        );
 
         // Drain any newly imported CSV datasets for this plot
         let newly_imported = export::drain_imported_datasets(plot_id);
@@ -2732,6 +2776,19 @@ impl<'a> Plot<'a> {
         append_deferred_plot_datasets(deferred_datasets, items_hash);
         export_primitives::append_deferred_plot_primitives(deferred_primitives);
 
+        snapshot::sync_plot_after_show(
+            ui.ctx(),
+            &snapshot::AfterShowSyncParams {
+                plot_key: &plot_key,
+                default_auto_bounds,
+                min_auto_bounds,
+                has_data_aspect: data_aspect.is_some(),
+                allow_bounds_persist: allow_bounds_persist && sidecar_3d.is_none(),
+                allow_2d_analysis,
+            },
+            &mem,
+            &access_state,
+        );
         ui.data_mut(|d| d.insert_temp(plot_id, access_state));
         // --- END ACCESSIBILITY LOGIC ---
         mem.store(ui.ctx(), plot_id);
@@ -6423,3 +6480,5 @@ impl Default for AccessState {
 mod ambient_link_tests;
 #[cfg(test)]
 mod modal_lifecycle_tests;
+#[cfg(test)]
+mod snapshot_tests;
