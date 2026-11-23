@@ -52,8 +52,7 @@ pub(super) fn canonical_workspace_root() -> Option<PathBuf> {
     cwd.ancestors()
         .take(64)
         .find(|dir| {
-            std::fs::read_to_string(dir.join("Cargo.toml"))
-                .is_ok_and(|m| has_workspace_header(&m))
+            std::fs::read_to_string(dir.join("Cargo.toml")).is_ok_and(|m| has_workspace_header(&m))
         })
         .map(Path::to_path_buf)
 }
@@ -109,13 +108,21 @@ pub(super) fn validate_picked_repo_path(path: &Path) -> Result<String, String> {
     if trimmed.is_empty() || has_traversal_sequence(trimmed) {
         return Err("Selected directory path is empty or contains traversal segments.".to_string());
     }
-    let meta = std::fs::symlink_metadata(path)
-        .map_err(|err| format!("Selected path cannot be accessed ({}): {}", path.display(), err))?;
+    let meta = std::fs::symlink_metadata(path).map_err(|err| {
+        format!(
+            "Selected path cannot be accessed ({}): {}",
+            path.display(),
+            err
+        )
+    })?;
     if meta.file_type().is_symlink() {
         return Err("Selected codebase path must not be a symbolic link.".to_string());
     }
     if !meta.is_dir() {
-        return Err(format!("Selected path is not a directory: {}", path.display()));
+        return Err(format!(
+            "Selected path is not a directory: {}",
+            path.display()
+        ));
     }
     let canonical = path
         .canonicalize()
@@ -215,7 +222,9 @@ impl VirtualFileSystem for RootedVfs {
             match self.resolve_confined(&path) {
                 Ok(resolved) => std::fs::read_to_string(resolved),
                 Err(err) => {
-                    let clean = path.trim_start_matches("./").trim_start_matches(['/', '\\']);
+                    let clean = path
+                        .trim_start_matches("./")
+                        .trim_start_matches(['/', '\\']);
                     if clean == "traceability.toml"
                         && matches!(err.kind(), std::io::ErrorKind::NotFound)
                     {

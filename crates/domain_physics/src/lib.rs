@@ -14,15 +14,15 @@ pub mod prelude {
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{
-            ChaosError, DoseFluenceError, FluidError, HighEnergyError, RadarError, SolidStateError,
-            StandardModelError, StatMechError,
+            ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
+            PhysicsError, RadarError, SolidStateError, StandardModelError, StatMechError,
         };
         pub use ::domain_applied::__doctest_facade::error::*;
     }
     pub mod prelude {
         pub use crate::error::{
-            ChaosError, DoseFluenceError, FluidError, HighEnergyError, RadarError, SolidStateError,
-            StandardModelError, StatMechError,
+            ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
+            PhysicsError, RadarError, SolidStateError, StandardModelError, StatMechError,
         };
         pub use ::domain_applied::__doctest_facade::prelude::*;
     }
