@@ -12,8 +12,8 @@ pub(crate) use super::sculpt_codec::*;
 use super::{ChladniWaveTankTool, GRID_SIZE};
 use crate::accessibility::announce_live_status;
 use crate::framework::{
-    rasterize_disk_stroke, BrushInteractionMode, BrushMode, BrushStroke, InteractionContext,
-    InteractiveTool, SpatialBrushKit,
+    BrushInteractionMode, BrushMode, BrushStroke, InteractionContext, InteractiveTool,
+    SpatialBrushKit, rasterize_disk_stroke,
 };
 
 pub(crate) fn default_chladni_brush_kit() -> SpatialBrushKit {

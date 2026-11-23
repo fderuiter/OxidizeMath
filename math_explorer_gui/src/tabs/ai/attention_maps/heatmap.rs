@@ -272,15 +272,14 @@ impl HeatmapTexture {
         self.cursor.1 = self.cursor.1.min(matrix.ncols() - 1);
         let mut announce = false;
 
-        if response.clicked() {
-            if let Some(rc) = response
+        if response.clicked()
+            && let Some(rc) = response
                 .interact_pointer_pos()
                 .and_then(|pos| cell_at_pos(matrix.ncols(), matrix.nrows(), rect, pos))
-            {
-                self.cursor = rc;
-                response.request_focus();
-                announce = true;
-            }
+        {
+            self.cursor = rc;
+            response.request_focus();
+            announce = true;
         }
 
         if response.has_focus() {

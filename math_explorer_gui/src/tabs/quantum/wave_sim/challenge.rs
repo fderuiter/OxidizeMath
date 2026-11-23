@@ -2,13 +2,13 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::WaveSimulatorTool;
 use super::presets::{
-    WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME,
-    DEFAULT_WIDTH, DEFAULT_X0, DT_MAX, DT_RECOVERY_MIN, MAX_STEPS_PER_FRAME,
-    POTENTIAL_DISPLAY_SCALE, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN,
+    DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_WIDTH, DEFAULT_X0,
+    DT_MAX, DT_RECOVERY_MIN, MAX_STEPS_PER_FRAME, POTENTIAL_DISPLAY_SCALE, V0_MAX, V0_MIN,
+    WIDTH_MAX, WIDTH_MIN, WavePotentialPreset,
 };
 use super::runner::WaveData;
-use super::WaveSimulatorTool;
 use crate::framework::{ChallengeEvaluation, ChallengeMetadata, InteractiveTool};
 
 /// Canonical challenge ID for the 50/50 sub-barrier quantum tunneling split puzzle.

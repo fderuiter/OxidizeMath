@@ -4,9 +4,9 @@
 
 pub use super::challenge::FastCvKalman;
 use super::challenge::{
-    should_trigger_scheduled_cough, step_physical_beam_delay, GEOGRAPHIC_MISS_CEILING_MM,
+    GEOGRAPHIC_MISS_CEILING_MM, should_trigger_scheduled_cough, step_physical_beam_delay,
 };
-use super::spectra::{build_fmcw_config, compute_range_spectra, SpectralSnapshot};
+use super::spectra::{SpectralSnapshot, build_fmcw_config, compute_range_spectra};
 use super::state::RadarGatingState;
 use crate::tabs::medical::link_bus::GatingTelemetry;
 use math_explorer::physics::medical::evaluation::{

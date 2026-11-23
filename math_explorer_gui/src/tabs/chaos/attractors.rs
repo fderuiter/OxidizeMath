@@ -15,7 +15,7 @@ use std::sync::Arc;
 pub mod atlas;
 use atlas::ATTRACTOR_ATLAS_AXIS_PAIRS;
 #[cfg(test)]
-pub use atlas::{lorenz_hopf_threshold, AttractorCartographer};
+pub use atlas::{AttractorCartographer, lorenz_hopf_threshold};
 
 #[path = "attractors/counterfactual.rs"]
 mod counterfactual;
@@ -23,7 +23,7 @@ pub use counterfactual::*;
 
 #[path = "attractors/flow.rs"]
 pub mod flow;
-pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
+pub use flow::{AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS, default_flow_bank};
 
 #[path = "attractors/dataflow.rs"]
 mod dataflow;

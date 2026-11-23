@@ -10,9 +10,9 @@ use math_explorer::applied::clinical_trials::sample_size::{
 };
 
 use super::sample_size_cards::{
-    draw_analytical_power_plot, draw_required_n_curve_plot, evaluate_hypothesis_cards,
-    render_contingency_and_risk_card, render_t_test_card, HypothesisCardsEval,
-    HypothesisCardsState,
+    HypothesisCardsEval, HypothesisCardsState, draw_analytical_power_plot,
+    draw_required_n_curve_plot, evaluate_hypothesis_cards, render_contingency_and_risk_card,
+    render_t_test_card,
 };
 
 #[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]

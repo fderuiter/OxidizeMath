@@ -4,8 +4,8 @@
 //! 2D algebraic moduli and finite-field point-count cartographer for short-Weierstrass curves.
 
 use crate::async_sim::atlas::{
-    atlas_regime_color, atlas_scalar_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell,
-    RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer, atlas_regime_color,
+    atlas_scalar_color,
 };
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{
@@ -436,5 +436,5 @@ impl RegimeCartographer for WeierstrassRegimeCartographer {
 }
 
 pub use super::observables::{
-    build_real_and_fp_observables, evaluate_hasse_weil_p23, CHALLENGE_HASSE_WEIL_BOUNDARY_P23,
+    CHALLENGE_HASSE_WEIL_BOUNDARY_P23, build_real_and_fp_observables, evaluate_hasse_weil_p23,
 };

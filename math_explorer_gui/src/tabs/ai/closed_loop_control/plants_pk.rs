@@ -2,9 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::ekf::{pk_rhs_and_jac, rk4_step_with_jacobian, FastEkf, PkKalmanModel};
+use super::ekf::{FastEkf, PkKalmanModel, pk_rhs_and_jac, rk4_step_with_jacobian};
 use super::plants::{
-    positive_control_fraction, quantize_bin, sample_standard_normal, PlantStepOutput,
+    PlantStepOutput, positive_control_fraction, quantize_bin, sample_standard_normal,
 };
 use super::state::{ClosedLoopState, PlantKind};
 use math_explorer::applied::pharmacokinetics::{

@@ -3,7 +3,7 @@
 // theory_verification!
 
 use super::backend::SonificationBackend;
-use super::frame::{SonificationFrame, LIMITER_CEILING_LINEAR};
+use super::frame::{LIMITER_CEILING_LINEAR, SonificationFrame};
 use super::synth::OfflinePcmSynthesizer;
 
 /// Default sample rate (`44.1 kHz`) used when exporting `.wav` clips.

@@ -3,10 +3,10 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{
-    gaussian_vacuum_boundary_slope, LeniaCartographer, LeniaRegime, WASHOUT_MASS_THRESHOLD,
-};
 use super::LeniaTool;
+use super::atlas::{
+    LeniaCartographer, LeniaRegime, WASHOUT_MASS_THRESHOLD, gaussian_vacuum_boundary_slope,
+};
 use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::framework::recovery::FiniteStateGuard;
 use math_explorer::biology::lenia::{CompiledGrowthRule, MAX_KERNEL_RADIUS, MIN_KERNEL_RADIUS};

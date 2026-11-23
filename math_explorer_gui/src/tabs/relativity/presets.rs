@@ -136,22 +136,41 @@ const CRITICAL_LENSING_STEPS: &[StoryStep] = &[
         title: "Weak-Field Centrifugal Reflection",
         narrative: "At b = 6.8 > b_crit = 5.196, the horizontal 0.5 e^2 = 0.50 line lies well below the V_eff(1.5 Rs) barrier peak, so both twin light rays reflect cleanly near r_min = 5.65.",
         preset_generator: || STORY_STEP_WEAK_LENSING,
-        callouts: &[pin("relativity_step", [3.0, 0.856], [18.0, -24.0], "Centrifugal peak at r_ph = 1.5 Rs")],
+        callouts: &[pin(
+            "relativity_step",
+            [3.0, 0.856],
+            [18.0, -24.0],
+            "Centrifugal peak at r_ph = 1.5 Rs",
+        )],
         focus_observables: &["launch_energy", "r_min", "delta_phi"],
     },
     StoryStep {
         title: "Critical Photon-Ring Twin Bifurcation",
         narrative: "Lowering b to 5.205 brings 0.5 e^2 tangent to V_eff(3.0): the primary ray grazes r_min = 3.13 and whipsaws past the photon sphere while its b - 0.03 twin plunges across r+ = 2.0.",
         preset_generator: || PRESET_PHOTON_RING_LENSING,
-        callouts: &[pin("relativity_step", [3.0, 0.501], [20.0, -26.0], "0.5 e^2 grazes V_eff(1.5 Rs) Saddle")],
+        callouts: &[pin(
+            "relativity_step",
+            [3.0, 0.501],
+            [20.0, -26.0],
+            "0.5 e^2 grazes V_eff(1.5 Rs) Saddle",
+        )],
         focus_observables: &["r_min", "twin_captured", "delta_phi"],
     },
     StoryStep {
         title: "Kerr Frame Dragging & Shrinking Horizon",
         narrative: "Spinning up to chi = 0.90 shrinks the outer horizon to r+ = 1.436 inside the r_ergo = 2.0 static limit, shifting the prograde photon ring inward to b_crit = 2.91.",
         preset_generator: || STORY_STEP_KERR_DRAG,
-        callouts: &[pin("relativity_step", [2.0, 0.50], [22.0, -24.0], "Static limit r_ergo = 2.0 > r+ = 1.436")],
-        focus_observables: &["outer_horizon_radius", "ergosphere_radius", "frame_dragging_omega"],
+        callouts: &[pin(
+            "relativity_step",
+            [2.0, 0.50],
+            [22.0, -24.0],
+            "Static limit r_ergo = 2.0 > r+ = 1.436",
+        )],
+        focus_observables: &[
+            "outer_horizon_radius",
+            "ergosphere_radius",
+            "frame_dragging_omega",
+        ],
     },
 ];
 

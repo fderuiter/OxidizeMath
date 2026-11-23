@@ -3,9 +3,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 
-use crate::web_io::{spawn_save_as_file_dialog, SaveAsDialogConfig};
+use crate::web_io::{SaveAsDialogConfig, spawn_save_as_file_dialog};
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, PlotPoints};
 use math_explorer::applied::clinical_trials::design::{Group, Patient};

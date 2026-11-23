@@ -3,7 +3,7 @@
 // [cite:modular_polynomials_review]
 //! Real and $\mathbb{F}_p$ singular locus (`Cusp`, `Crunode`, `Acnode`) canvas renderers and exports.
 
-use super::chord_tangent_canvas::{toroidal_secant_segments, CanvasViewport, REAL_VIEW_LIMIT};
+use super::chord_tangent_canvas::{CanvasViewport, REAL_VIEW_LIMIT, toroidal_secant_segments};
 use super::chord_tangent_tool::WeierstrassPlaygroundTool;
 use crate::app::SemanticPalette;
 use eframe::egui;
@@ -210,20 +210,20 @@ fn draw_real_singular_secant_and_points(
     let sum = cubic.add_smooth(p, q).unwrap_or(CurvePoint::Infinity);
     let neg_sum = cubic.negate(sum);
 
-    if tool.state.show_secant {
-        if let (Some((x1, y1)), Some(m)) = (p.coords(), cubic.secant_or_tangent_slope(p, q)) {
-            let ya = y1 + m * (vp.x_min - x1);
-            let yb = y1 + m * (vp.x_max - x1);
+    if tool.state.show_secant
+        && let (Some((x1, y1)), Some(m)) = (p.coords(), cubic.secant_or_tangent_slope(p, q))
+    {
+        let ya = y1 + m * (vp.x_min - x1);
+        let yb = y1 + m * (vp.x_max - x1);
+        painter.line_segment(
+            [vp.to_screen(vp.x_min, ya), vp.to_screen(vp.x_max, yb)],
+            egui::Stroke::new(1.6_f32, palette.warning),
+        );
+        if let (Some((rx, ry)), Some((sx, sy))) = (neg_sum.coords(), sum.coords()) {
             painter.line_segment(
-                [vp.to_screen(vp.x_min, ya), vp.to_screen(vp.x_max, yb)],
-                egui::Stroke::new(1.6_f32, palette.warning),
+                [vp.to_screen(rx, ry), vp.to_screen(sx, sy)],
+                egui::Stroke::new(1.4_f32, palette.success),
             );
-            if let (Some((rx, ry)), Some((sx, sy))) = (neg_sum.coords(), sum.coords()) {
-                painter.line_segment(
-                    [vp.to_screen(rx, ry), vp.to_screen(sx, sy)],
-                    egui::Stroke::new(1.4_f32, palette.success),
-                );
-            }
         }
     }
     for (pt, col, lbl) in [
@@ -231,18 +231,19 @@ fn draw_real_singular_secant_and_points(
         (q, palette.warning, "Q"),
         (sum, palette.success, "P+Q"),
     ] {
-        if let Some((x, y)) = pt.coords() {
-            if (vp.x_min..=vp.x_max).contains(&x) && (vp.y_min..=vp.y_max).contains(&y) {
-                let sc = vp.to_screen(x, y);
-                painter.circle_filled(sc, 5.2_f32, col);
-                painter.text(
-                    sc + egui::vec2(7.0_f32, 8.0_f32),
-                    egui::Align2::LEFT_TOP,
-                    lbl,
-                    egui::FontId::proportional(12.5_f32),
-                    visuals.text_color(),
-                );
-            }
+        if let Some((x, y)) = pt.coords()
+            && (vp.x_min..=vp.x_max).contains(&x)
+            && (vp.y_min..=vp.y_max).contains(&y)
+        {
+            let sc = vp.to_screen(x, y);
+            painter.circle_filled(sc, 5.2_f32, col);
+            painter.text(
+                sc + egui::vec2(7.0_f32, 8.0_f32),
+                egui::Align2::LEFT_TOP,
+                lbl,
+                egui::FontId::proportional(12.5_f32),
+                visuals.text_color(),
+            );
         }
     }
 }
@@ -266,14 +267,14 @@ pub(crate) fn draw_fp_singular_scene(
     let (p, q) = tool.current_fp_points();
     let sum = sing.add_smooth(p, q).unwrap_or(CurvePoint::Infinity);
 
-    if tool.state.show_secant {
-        if let (Some((x1, y1)), Some(m)) = (p.coords(), sing.slope_mod_p(p, q)) {
-            for (a, b) in toroidal_secant_segments(sing.p, x1, y1, m) {
-                painter.line_segment(
-                    [vp.to_screen(a[0], a[1]), vp.to_screen(b[0], b[1])],
-                    egui::Stroke::new(1.5_f32, palette.warning),
-                );
-            }
+    if tool.state.show_secant
+        && let (Some((x1, y1)), Some(m)) = (p.coords(), sing.slope_mod_p(p, q))
+    {
+        for (a, b) in toroidal_secant_segments(sing.p, x1, y1, m) {
+            painter.line_segment(
+                [vp.to_screen(a[0], a[1]), vp.to_screen(b[0], b[1])],
+                egui::Stroke::new(1.5_f32, palette.warning),
+            );
         }
     }
     for (pt, col, lbl) in [

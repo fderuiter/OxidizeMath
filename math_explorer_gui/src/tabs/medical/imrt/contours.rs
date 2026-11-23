@@ -4,11 +4,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    voxel_coord_cm, IMRT_GRID_DIM, IMRT_OAR_CENTER, IMRT_OAR_RADIUS_CM, IMRT_PHANTOM_SIZE_CM,
-    IMRT_TUMOR_CENTER, IMRT_TUMOR_RADIUS_CM, IMRT_VOXEL_COUNT,
+    IMRT_GRID_DIM, IMRT_OAR_CENTER, IMRT_OAR_RADIUS_CM, IMRT_PHANTOM_SIZE_CM, IMRT_TUMOR_CENTER,
+    IMRT_TUMOR_RADIUS_CM, IMRT_VOXEL_COUNT, voxel_coord_cm,
 };
 use crate::framework::{
-    decode_rle_mask, encode_rle_mask, rasterize_disk_stroke, BrushMode, BrushStroke,
+    BrushMode, BrushStroke, decode_rle_mask, encode_rle_mask, rasterize_disk_stroke,
 };
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::medical::optical_motion::validation::dice_similarity_coefficient;

@@ -8,8 +8,8 @@ use super::{
 use crate::app::SemanticPalette;
 use crate::async_sim::SimCommand;
 use crate::framework::{
-    l2_distance_3d, sanitize_perturbation_delta, DivergenceSnapshot, Scene3DBuilder,
-    SeparationTracker,
+    DivergenceSnapshot, Scene3DBuilder, SeparationTracker, l2_distance_3d,
+    sanitize_perturbation_delta,
 };
 use eframe::egui;
 use egui_plot::{LineStyle, MarkerShape};

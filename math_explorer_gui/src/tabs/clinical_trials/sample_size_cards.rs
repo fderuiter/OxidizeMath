@@ -6,7 +6,7 @@
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, Points};
-use math_explorer::applied::clinical_trials::analysis::{calculate_risk_metrics, RiskMetrics};
+use math_explorer::applied::clinical_trials::analysis::{RiskMetrics, calculate_risk_metrics};
 use math_explorer::applied::clinical_trials::hypothesis_testing::{
     ChiSquare2x2, HypothesisTest, TTestIndependent, TestResult,
 };

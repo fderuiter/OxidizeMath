@@ -8,15 +8,15 @@
 use super::LeniaSpeciesPreset;
 use super::LeniaTool;
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer, atlas_regime_color,
 };
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::biology::lenia::{
-    evaluate_lenia_probe_32_preseeded, fft_2d_forward_32, fft_2d_inverse_32,
-    precompute_probe_kernel_hat_32, seed_probe_species_32, CompiledGrowthRule, CompiledKernelRule,
-    GrowthParams, LeniaProbeOutcome, LeniaProbeSpec, LeniaSpecies, MAX_KERNEL_RADIUS,
-    MAX_KERNEL_RINGS, MAX_LENIA_RULE_PARAMS, MIN_KERNEL_RADIUS, PROBE_CELLS, PROBE_STEPS,
+    CompiledGrowthRule, CompiledKernelRule, GrowthParams, LeniaProbeOutcome, LeniaProbeSpec,
+    LeniaSpecies, MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MAX_LENIA_RULE_PARAMS, MIN_KERNEL_RADIUS,
+    PROBE_CELLS, PROBE_STEPS, evaluate_lenia_probe_32_preseeded, fft_2d_forward_32,
+    fft_2d_inverse_32, precompute_probe_kernel_hat_32, seed_probe_species_32,
 };
 use num_complex::Complex;
 use scientific_metadata::theory::ParameterConstraint;

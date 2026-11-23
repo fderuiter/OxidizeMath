@@ -22,11 +22,7 @@ pub(super) struct SurfaceGeometryCache {
 }
 
 fn canonical_bits(val: f64) -> u64 {
-    if val == 0.0 {
-        0
-    } else {
-        val.to_bits()
-    }
+    if val == 0.0 { 0 } else { val.to_bits() }
 }
 
 impl SurfaceViewer {

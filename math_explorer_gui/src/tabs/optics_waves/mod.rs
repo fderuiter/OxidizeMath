@@ -2,8 +2,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::tabs::{ExplorerTab, TabDescriptor};
-use eframe::egui;
 
 pub mod overlays;
 pub mod presets;
@@ -15,19 +13,14 @@ pub mod ui;
 #[cfg(test)]
 pub use tool::OpticsWaveTool;
 
-/// Static-inventory Physics tab for 2D FDTD wave propagation, ray caustics, and optical sensing.
-pub struct OpticsWaveTab {
-    /// Underlying simulation framework managing presets, exports, URL sharing, and recovery.
-    pub framework: crate::framework::SimulationFramework,
-}
-
-impl Default for OpticsWaveTab {
-    fn default() -> Self {
-        Self {
-            framework: crate::framework::SimulationFramework::new("optics_waves"),
-        }
-    }
-}
+crate::declare_simulation_tab!(
+    /// Static-inventory Physics tab for 2D FDTD wave propagation, ray caustics, and optical sensing.
+    pub struct OpticsWaveTab,
+    name: "Optics & Waves",
+    domain: "Physics",
+    slug: "optics_waves",
+    order: 18,
+);
 
 impl FiniteStateGuard for OpticsWaveTab {
     fn is_finite_state(&self) -> bool {
@@ -59,48 +52,6 @@ impl FiniteStateGuard for OpticsWaveTab {
 
     fn reset_parameters(&mut self) {
         self.framework = crate::framework::SimulationFramework::new("optics_waves");
-    }
-}
-
-impl ExplorerTab for OpticsWaveTab {
-    fn name(&self) -> &'static str {
-        "Optics & Waves"
-    }
-
-    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.framework.show_inside(ui, "optics_waves");
-    }
-
-    fn state_revision(&self) -> u64 {
-        self.framework.state_revision()
-    }
-
-    fn save_state(&self) -> Option<String> {
-        self.framework.save_state()
-    }
-
-    fn load_state(&mut self, state: &str) {
-        self.framework.load_state(state);
-    }
-
-    fn select_tool_by_name(&mut self, name: &str) -> bool {
-        self.framework.select_tool_by_name(name)
-    }
-
-    fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
-        Some(&self.framework)
-    }
-
-    fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
-        Some(&mut self.framework)
-    }
-}
-
-inventory::submit! {
-    TabDescriptor {
-        id: "optics_waves",
-        order: 18,
-        build: || Box::new(OpticsWaveTab::default()),
     }
 }
 

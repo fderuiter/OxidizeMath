@@ -160,13 +160,12 @@ fn test_quantum_wave_sim_divergence_and_recovery() {
 
     // Snapshot never leaks non-finite float to visual data
     let snapshot = wave2.get_snapshot();
-    if let Some(structured) = snapshot.structured_data {
-        if let Some(wdata) =
+    if let Some(structured) = snapshot.structured_data
+        && let Some(wdata) =
             structured.downcast_ref::<super::super::tabs::quantum::wave_sim::WaveData>()
-        {
-            assert!(wdata.prob_density.iter().all(|&p| p.is_finite()));
-            assert!(wdata.potential.iter().all(|&v| v.is_finite()));
-        }
+    {
+        assert!(wdata.prob_density.iter().all(|&p| p.is_finite()));
+        assert!(wdata.potential.iter().all(|&v| v.is_finite()));
     }
 
     // Reset restores valid baseline state

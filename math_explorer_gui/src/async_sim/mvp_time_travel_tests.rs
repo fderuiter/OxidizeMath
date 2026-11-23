@@ -201,7 +201,7 @@ fn test_preset_save_state_and_ctrl_z_remain_parameter_only_after_scrubbing() {
 #[test]
 fn test_attractor_running_checkpoint_substeps_stream_live_tda_landmarks() {
     use crate::app::dataflow_bus::{
-        commit_pane_outputs, stage_pane_inputs, PaneDataflowBus, PanePipelineDag,
+        PaneDataflowBus, PanePipelineDag, commit_pane_outputs, stage_pane_inputs,
     };
     use crate::app::viewport::focus::CURRENT_RENDERING_PANE_KEY;
 
@@ -226,14 +226,13 @@ fn test_attractor_running_checkpoint_substeps_stream_live_tda_landmarks() {
     let mut streamed = None;
     for _ in 0..400 {
         render_pane(&mut attractor, &mut bus);
-        if attractor.step_count >= 32 {
-            if let Some(hit) = bus
+        if attractor.step_count >= 32
+            && let Some(hit) = bus
                 .latest_landmarks(0)
                 .filter(|p| p.revision != baseline_rev)
-            {
-                streamed = Some(Arc::clone(hit));
-                break;
-            }
+        {
+            streamed = Some(Arc::clone(hit));
+            break;
         }
         std::thread::sleep(Duration::from_millis(5));
     }

@@ -180,11 +180,7 @@ impl Default for SurfaceMorphogenesisTool {
 }
 
 fn canonical_bits(v: f64) -> u64 {
-    if v == 0.0 {
-        0
-    } else {
-        v.to_bits()
-    }
+    if v == 0.0 { 0 } else { v.to_bits() }
 }
 
 impl SurfaceMorphogenesisTool {

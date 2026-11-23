@@ -8,14 +8,14 @@ use super::lattice_boltzmann::{LBM_HEIGHT, LBM_INLET_U, LBM_WIDTH};
 use super::lbm_fairing::{LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y, LBM_INLET_COLS};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::{
-    decode_rle_mask, encode_rle_mask, rasterize_disk_stroke, BrushInteractionMode, BrushMode,
-    BrushStroke, SpatialBrushKit,
+    BrushInteractionMode, BrushMode, BrushStroke, SpatialBrushKit, decode_rle_mask,
+    encode_rle_mask, rasterize_disk_stroke,
 };
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-    inject_velocity_jet, stamp_naca4_airfoil, stamp_venturi_nozzle, BgkCollision,
-    LatticeBoltzmannD2Q9, Naca4Airfoil,
+    BgkCollision, LatticeBoltzmannD2Q9, Naca4Airfoil, inject_velocity_jet, stamp_naca4_airfoil,
+    stamp_venturi_nozzle,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -247,10 +247,10 @@ fn sync_live_aoa_slider(
         d.insert_temp(aoa_id, aoa);
         old
     });
-    if let Some(prev_aoa) = prev {
-        if (aoa - prev_aoa).abs() > 1e-6 {
-            cmds.push(SimCommand::Custom(format!("rotate_naca:{code}:{aoa:.2}")));
-        }
+    if let Some(prev_aoa) = prev
+        && (aoa - prev_aoa).abs() > 1e-6
+    {
+        cmds.push(SimCommand::Custom(format!("rotate_naca:{code}:{aoa:.2}")));
     }
 }
 

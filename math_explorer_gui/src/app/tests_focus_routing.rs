@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::accessibility::{all_announcements, clear_test_announcements};
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 
 fn run_frame(
     ctx: &egui::Context,
@@ -38,12 +38,12 @@ fn find_pane0_formula_input_center(out: &egui::FullOutput) -> Option<egui::Pos2>
     for (_, node) in &ak.nodes {
         if node.role() == egui::accesskit::Role::TextInput {
             let val = node.value().unwrap_or_default();
-            if val.contains("sin(t)") {
-                if let Some(bounds) = node.bounds() {
-                    let cx = ((bounds.x0 + bounds.x1) * 0.5) as f32;
-                    let cy = ((bounds.y0 + bounds.y1) * 0.5) as f32;
-                    return Some(egui::pos2(cx, cy));
-                }
+            if val.contains("sin(t)")
+                && let Some(bounds) = node.bounds()
+            {
+                let cx = ((bounds.x0 + bounds.x1) * 0.5) as f32;
+                let cy = ((bounds.y0 + bounds.y1) * 0.5) as f32;
+                return Some(egui::pos2(cx, cy));
             }
         }
     }

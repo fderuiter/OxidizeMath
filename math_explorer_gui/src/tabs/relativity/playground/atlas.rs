@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer, atlas_regime_color,
 };
 use eframe::egui;
 use math_commons::ast::CompiledExpr;

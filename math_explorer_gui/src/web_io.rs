@@ -15,7 +15,7 @@ pub use egui_plot::export::{infer_mime_type, sanitize_download_filename, strip_u
 
 #[cfg(target_arch = "wasm32")]
 pub use egui_plot::export::{
-    download_browser_file, open_browser_file_picker, request_browser_repaint, PickerOutcome,
+    PickerOutcome, download_browser_file, open_browser_file_picker, request_browser_repaint,
 };
 
 /// Cross-platform timestamp abstraction safe on both desktop (`std::time::Instant`) and

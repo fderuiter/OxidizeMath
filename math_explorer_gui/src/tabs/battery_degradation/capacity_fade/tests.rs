@@ -2,7 +2,7 @@
 
 // [cite:battery_degradation]
 
-use super::io::{parse_calibration_csv, MAX_CALIBRATION_CSV_ROWS};
+use super::io::{MAX_CALIBRATION_CSV_ROWS, parse_calibration_csv};
 use super::*;
 use crate::framework::InteractiveTool;
 use crate::tabs::battery_degradation::cell_card::ChemistryChoice;
@@ -40,7 +40,7 @@ fn test_first_life_80_threshold_error_and_power_law_fit() {
 
 #[test]
 fn test_capacity_fade_animated_dod_sweep() {
-    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+    use crate::reflective_ui::slider::{AnimatedSliderState, SweepMode, save_slider_state};
 
     let mut tool = CapacityFadeTool::default();
     let initial_dod = tool.dod;
@@ -145,12 +145,14 @@ fn test_csv_bom_2000_row_cap_lm_calibration_rollback_and_cell_card() {
     // Verify rollback on both CSV parse failure and LM solver domain failure (all zero cycles).
     let saved_alpha = tool.calibrated_alpha;
     let saved_z = tool.exponent_z;
-    assert!(tool
-        .import_calibration_csv("short.csv", "cycles,soh\n10,0.99\n")
-        .is_err());
-    assert!(tool
-        .import_calibration_csv("zero_cyc.csv", "cycles,soh\n0,1.0\n0,0.99\n0,0.98\n")
-        .is_err());
+    assert!(
+        tool.import_calibration_csv("short.csv", "cycles,soh\n10,0.99\n")
+            .is_err()
+    );
+    assert!(
+        tool.import_calibration_csv("zero_cyc.csv", "cycles,soh\n0,1.0\n0,0.99\n0,0.98\n")
+            .is_err()
+    );
     assert_eq!(tool.calibrated_alpha, saved_alpha);
     assert_eq!(tool.exponent_z, saved_z);
 

@@ -53,8 +53,8 @@ fn verify_cartographer_zero_alloc_and_wcag(cart: &dyn RegimeCartographer) {
 fn test_biology_theory_bounds_and_gray_scott_regimes() {
     use crate::presets::MorphogenesisKineticsMode;
     use crate::tabs::morphogenesis::{
-        classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, LeniaTool,
-        MorphogenesisTheory, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
+        GRAY_SCOTT_ATLAS_AXIS_PAIRS, GrayScottCartographer, GrayScottRegime, LeniaTool,
+        MorphogenesisTheory, classify_gray_scott_regime,
     };
 
     let mut m_theory = MorphogenesisTheory::default();
@@ -185,7 +185,7 @@ fn test_gray_scott_washout_auto_reseed_and_mode_preserving_teleport() {
 #[test]
 fn test_lenia_cartographer_zero_alloc_and_contour() {
     use crate::tabs::morphogenesis::lenia::{
-        LeniaCartographer, LeniaRegime, LeniaSpeciesPreset, LeniaTool, LENIA_ATLAS_AXIS_PAIRS,
+        LENIA_ATLAS_AXIS_PAIRS, LeniaCartographer, LeniaRegime, LeniaSpeciesPreset, LeniaTool,
     };
     use math_explorer::biology::lenia::GrowthParams;
 
@@ -268,11 +268,11 @@ fn test_lenia_url_bounds_and_extinct_auto_reseed() {
 #[test]
 fn test_parrondo_9_state_stack_solver_parity_zero_alloc_and_wedge_teleport() {
     use crate::tabs::financial_math::parrondo::{
-        solve_parrondo_ratchet_stack, ParrondoCartographer, ParrondoParadoxTool,
-        PARRONDO_ATLAS_AXIS_PAIRS,
+        PARRONDO_ATLAS_AXIS_PAIRS, ParrondoCartographer, ParrondoParadoxTool,
+        solve_parrondo_ratchet_stack,
     };
     use math_explorer::pure_math::statistics::markov::parrondo::{
-        solve_parrondo_ratchet, ParrondoParams, ParrondoSchedule, ALLOWED_MODULI,
+        ALLOWED_MODULI, ParrondoParams, ParrondoSchedule, solve_parrondo_ratchet,
     };
 
     let mut tool = ParrondoParadoxTool::default();
@@ -400,10 +400,10 @@ fn test_turbulence_cartographer_zero_alloc_and_teleport() {
 #[cfg(feature = "applied")]
 #[test]
 fn test_pharmacokinetics_cartographer_and_challenge_locks() {
+    use crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool;
     use crate::tabs::clinical_trials::pharmacokinetics::challenge::{
         CHALLENGE_PK_KE, CHALLENGE_PK_THERAPEUTIC_WINDOW,
     };
-    use crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool;
 
     let mut pk = PharmacokineticsTool::default();
     assert_finite_constraints(

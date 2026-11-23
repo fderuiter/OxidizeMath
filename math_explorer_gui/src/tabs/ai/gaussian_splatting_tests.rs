@@ -203,16 +203,18 @@ fn test_gaussian_splatting_state_persistence_and_legacy_presets() {
 
     // Out-of-bounds scale or zoom is rejected
     assert!(restored.try_load_state(r#"{"scale":0.0}"#).is_err());
-    assert!(restored
-        .try_load_state(r#"{"scale":1.0,"camera":{"pitch":0.0,"yaw":0.0,"zoom":150.0}}"#)
-        .is_err());
+    assert!(
+        restored
+            .try_load_state(r#"{"scale":1.0,"camera":{"pitch":0.0,"yaw":0.0,"zoom":150.0}}"#)
+            .is_err()
+    );
 }
 
 #[test]
 fn test_gaussian_splatting_animated_scale_sweep_updates_density_counts() {
     use crate::reflective_ui::slider::{
-        has_active_sweeps, reset_frame_sweep_flags, save_slider_state, AnimatedSliderState,
-        SweepMode,
+        AnimatedSliderState, SweepMode, has_active_sweeps, reset_frame_sweep_flags,
+        save_slider_state,
     };
 
     let mut tool = GaussianSplattingTool::default();

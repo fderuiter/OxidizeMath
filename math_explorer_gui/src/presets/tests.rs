@@ -47,9 +47,11 @@ fn test_corrupted_json_and_empty_domain_graceful_failure() {
         "Dummy Tool",
         ToolStateBounds::DEFAULT,
     );
-    assert!(bad_schema
-        .unwrap_err()
-        .contains("Invalid JSON preset schema"));
+    assert!(
+        bad_schema
+            .unwrap_err()
+            .contains("Invalid JSON preset schema")
+    );
 
     let valid_json = serialize_preset_envelope(
         "Dummy Tool",
@@ -164,7 +166,7 @@ fn test_checked_ode_step_count_bounds_and_step_caps() {
 
 #[test]
 fn test_morphogenesis_tool_state_envelope_roundtrip() {
-    use crate::tabs::morphogenesis::{atlas::default_morpho_atlas_axes, MorphogenesisToolState};
+    use crate::tabs::morphogenesis::{MorphogenesisToolState, atlas::default_morpho_atlas_axes};
 
     let config = MorphogenesisToolState {
         a: 0.14,
@@ -336,10 +338,12 @@ fn test_preset_dialog_invalid_json_and_export_error_toasts() {
     }));
     assert_eq!(state.value, 12.5);
     assert_eq!(state.name, "Baseline");
-    assert!(dialog
-        .toast_error
-        .as_deref()
-        .is_some_and(|m| m.contains("Invalid JSON preset schema")));
+    assert!(
+        dialog
+            .toast_error
+            .as_deref()
+            .is_some_and(|m| m.contains("Invalid JSON preset schema"))
+    );
     assert!(dialog.toast_info.is_none());
 
     // Direct export serialization failure records error toast immediately

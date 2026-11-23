@@ -23,7 +23,7 @@ pub use ui::render_sonification_panel;
 
 use crate::accessibility::announce_status;
 #[cfg(not(all(test, not(target_arch = "wasm32"))))]
-use crate::web_io::{spawn_save_binary_file_dialog, SaveAsDialogConfig};
+use crate::web_io::{SaveAsDialogConfig, spawn_save_binary_file_dialog};
 
 const HISTORY_CAPACITY: usize = 180;
 const EXPORT_SAMPLES_PER_FRAME: usize = 735; // 44_100 Hz / 60 fps = 735 samples per frame (~3s clip)
@@ -274,11 +274,11 @@ pub fn notify_window_blurred() {
 pub fn notify_tool_switched(new_tool_id: &'static str) {
     AUDIO_CONTROLLER.with(|cell| {
         let mut ctrl = cell.borrow_mut();
-        if let Some(prev) = ctrl.active_tool_id {
-            if prev != new_tool_id {
-                ctrl.active_tool_id = Some(new_tool_id);
-                ctrl.suspend_with_reason(MuteReason::ToolSwitched, false);
-            }
+        if let Some(prev) = ctrl.active_tool_id
+            && prev != new_tool_id
+        {
+            ctrl.active_tool_id = Some(new_tool_id);
+            ctrl.suspend_with_reason(MuteReason::ToolSwitched, false);
         }
     });
 }

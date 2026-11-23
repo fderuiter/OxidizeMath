@@ -7,11 +7,11 @@
 mod volume_glm;
 
 use super::CorticalMorphometryTool;
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::InteractiveTool;
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_explorer::applied::freesurfer::{
-    cortical_thickness_map_into, evolve_surface_deformable, external_energy_volume,
-    internal_energy, mrf_segment_volume, MriVolume, Surface, ThicknessWorkspace,
+    MriVolume, Surface, ThicknessWorkspace, cortical_thickness_map_into, evolve_surface_deformable,
+    external_energy_volume, internal_energy, mrf_segment_volume,
 };
 use nalgebra::Vector3;
 use std::f64::consts::{PI, TAU};
@@ -82,11 +82,7 @@ impl CorticalPhantomCache {
 }
 
 pub(super) fn canonical_bits(v: f64) -> u64 {
-    if v == 0.0 {
-        0
-    } else {
-        v.to_bits()
-    }
+    if v == 0.0 { 0 } else { v.to_bits() }
 }
 
 pub(super) fn gyral_and_atrophy_pattern(u: f64, v: f64) -> (f64, f64) {
@@ -263,7 +259,7 @@ impl CorticalMorphometryTool {
             self.u_resolution.clamp(12, 48),
             self.v_resolution.clamp(12, 36),
         );
-        let mut gen =
+        let mut surfaces =
             generate_cortical_surfaces(nu, nv, self.sulcal_depth_mm, self.base_thickness_mm);
         let (volume, truth) = synthesize_mri_and_truth(
             self.sulcal_depth_mm,
@@ -278,26 +274,27 @@ impl CorticalMorphometryTool {
             pred.iter().zip(&truth).filter(|(a, b)| a == b).count() as f64
                 / truth.len().max(1) as f64
         };
-        self.evolve_white_surface_steps(&mut gen.white, &volume);
-        self.cache.evaluate_thickness(&gen.white, &gen.pial);
-        let e_int = internal_energy(&gen.white, self.alpha, self.beta);
-        let e_ext = external_energy_volume(&gen.white, &volume, self.sigma);
+        self.evolve_white_surface_steps(&mut surfaces.white, &volume);
+        self.cache
+            .evaluate_thickness(&surfaces.white, &surfaces.pial);
+        let e_int = internal_energy(&surfaces.white, self.alpha, self.beta);
+        let e_ext = external_energy_volume(&surfaces.white, &volume, self.sigma);
         let gm_post = sample_gm_posteriors_on_cortex(
-            &gen.white,
-            &gen.pial,
+            &surfaces.white,
+            &surfaces.pial,
             &volume,
             &mrf_labels,
             self.potts_beta,
         );
         let glm = evaluate_cohort_glm(
             &self.cache.thickness_mm,
-            &gen.atrophy_weights,
+            &surfaces.atrophy_weights,
             self.atrophy_effect_mm,
             self.collinear_glm_design,
         );
         self.store_evaluation_cache(
             key,
-            (gen, volume, gm_post),
+            (surfaces, volume, gm_post),
             (acc(&ml_labels), acc(&mrf_labels), mrf_labels),
             (e_int, e_ext, glm),
         );
@@ -310,14 +307,14 @@ impl CorticalMorphometryTool {
         mrf: (f64, f64, Vec<u8>),
         stats: (f64, f64, (Vec<f64>, f64, Option<String>)),
     ) {
-        let (gen, volume, gm_post) = geom;
+        let (surfaces, volume, gm_post) = geom;
         self.cache.mean_thickness_mm = self.cache.thickness_mm.iter().sum::<f64>()
             / self.cache.thickness_mm.len().max(1) as f64;
-        self.cache.white_surface = Some(gen.white);
-        self.cache.pial_surface = Some(gen.pial);
-        self.cache.white_inflated = gen.white_inflated;
-        self.cache.pial_inflated = gen.pial_inflated;
-        self.cache.sulcal_depth_mm = gen.sulcal_depth_mm;
+        self.cache.white_surface = Some(surfaces.white);
+        self.cache.pial_surface = Some(surfaces.pial);
+        self.cache.white_inflated = surfaces.white_inflated;
+        self.cache.pial_inflated = surfaces.pial_inflated;
+        self.cache.sulcal_depth_mm = surfaces.sulcal_depth_mm;
         self.cache.gm_posteriors = gm_post;
         self.cache.ml_accuracy = mrf.0;
         self.cache.mrf_accuracy = mrf.1;

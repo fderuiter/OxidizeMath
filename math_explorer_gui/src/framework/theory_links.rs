@@ -2,7 +2,7 @@
 
 use super::{InteractiveTool, SimulationFramework, ToolMetadata};
 use crate::tabs::traceability::{
-    embedded_traceability_report, paper_tex_url, render_paper_links, TraceabilityTab,
+    TraceabilityTab, embedded_traceability_report, paper_tex_url, render_paper_links,
 };
 use eframe::egui;
 use std::collections::{BTreeSet, HashMap};
@@ -58,10 +58,10 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
     let snake = camel_or_space_to_snake(tool_id);
     let mut tokens = vec![tool_id.trim().to_ascii_lowercase(), snake.clone()];
     for suffix in ["_tool", "_widget", "_viewer", "_plotter", "_simulator"] {
-        if let Some(stem) = snake.strip_suffix(suffix) {
-            if !stem.is_empty() {
-                tokens.push(stem.to_string());
-            }
+        if let Some(stem) = snake.strip_suffix(suffix)
+            && !stem.is_empty()
+        {
+            tokens.push(stem.to_string());
         }
     }
     let explicit: &[&str] = match tool_id.trim() {
@@ -396,13 +396,14 @@ fn extract_inline_citation_links(citation: &str) -> Vec<ExternalCitationLink> {
             });
         }
     }
-    if let Some(url) = extract_http_url(citation) {
-        if !url.contains("doi.org/") && !url.contains("arxiv.org/") {
-            links.push(ExternalCitationLink {
-                label: "External Reference".to_string(),
-                url,
-            });
-        }
+    if let Some(url) = extract_http_url(citation)
+        && !url.contains("doi.org/")
+        && !url.contains("arxiv.org/")
+    {
+        links.push(ExternalCitationLink {
+            label: "External Reference".to_string(),
+            url,
+        });
     }
     links
 }

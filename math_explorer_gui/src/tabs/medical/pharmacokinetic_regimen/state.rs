@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use math_explorer::applied::pharmacokinetics::{
-    DoseEvent, ReleaseFormulation, TherapeuticWindow, MAX_REGIMEN_EVENTS,
+    DoseEvent, MAX_REGIMEN_EVENTS, ReleaseFormulation, TherapeuticWindow,
 };
 use serde::{Deserialize, Serialize};
 

@@ -8,7 +8,7 @@ use eframe::egui;
 use egui_plot::{Line, LineStyle, Plot, PlotPoints};
 use math_explorer::constants::SOLAR_MASS;
 use math_explorer::physics::astrophysics::{
-    sample_halo_lensing_into, tangential_critical_radius_kpc, HaloProfile, ThinLensSample,
+    HaloProfile, ThinLensSample, sample_halo_lensing_into, tangential_critical_radius_kpc,
 };
 use math_explorer::physics::high_energy::general_relativity::SchwarzschildBlackHole;
 

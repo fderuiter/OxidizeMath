@@ -13,12 +13,12 @@ mod ui;
 
 use super::cell_card::{BatteryCellCard, BatteryDialogIo, ChemistryChoice};
 use crate::framework::{ExportCapabilities, InteractiveTool};
-use duty::{validate_duty_segments, DutyPhaseKind, DutySegmentSpec};
+use duty::{DutyPhaseKind, DutySegmentSpec, validate_duty_segments};
 use eframe::egui;
 use math_explorer::applied::battery_degradation::{
-    estimate_duty_lifetime, evaluate_duty_point, Capacity, ChemistryPreset, DutyLifetimeSummary,
-    DutySegment, ElectrochemicalAgingModel, DAYS_PER_YEAR, MAX_C_RATE, MAX_DUTY_SEGMENTS,
-    MAX_EXPONENT_Z, MAX_TEMPERATURE_C, MIN_C_RATE, MIN_EXPONENT_Z, MIN_TEMPERATURE_C,
+    Capacity, ChemistryPreset, DAYS_PER_YEAR, DutyLifetimeSummary, DutySegment,
+    ElectrochemicalAgingModel, MAX_C_RATE, MAX_DUTY_SEGMENTS, MAX_EXPONENT_Z, MAX_TEMPERATURE_C,
+    MIN_C_RATE, MIN_EXPONENT_Z, MIN_TEMPERATURE_C, estimate_duty_lifetime, evaluate_duty_point,
 };
 
 const PLOT_SAMPLES: usize = 240;
@@ -173,10 +173,10 @@ fn validate_lifetime_state(s: &LifetimeEstimatorState) -> Result<(), String> {
     if !scalar_ok {
         return Err("Lifetime estimator parameters out of bounds".into());
     }
-    if let Some(z) = s.exponent_z {
-        if !z.is_finite() || !(MIN_EXPONENT_Z..=MAX_EXPONENT_Z).contains(&z) {
-            return Err("Stretched exponent z out of bounds [0.1, 2.0]".into());
-        }
+    if let Some(z) = s.exponent_z
+        && (!z.is_finite() || !(MIN_EXPONENT_Z..=MAX_EXPONENT_Z).contains(&z))
+    {
+        return Err("Stretched exponent z out of bounds [0.1, 2.0]".into());
     }
     validate_duty_segments(&s.duty_segments)
 }

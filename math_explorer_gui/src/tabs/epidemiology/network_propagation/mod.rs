@@ -15,7 +15,7 @@ pub(crate) use analytics::compute_network_analytics;
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
-use presets::{build_validated_candidate, NetPropState};
+use presets::{NetPropState, build_validated_candidate};
 use std::hash::{Hash, Hasher};
 
 /// Default deterministic seed matching [`oxidize_core::rng::OxidizeRng::default`].

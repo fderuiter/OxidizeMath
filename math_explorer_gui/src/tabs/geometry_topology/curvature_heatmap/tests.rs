@@ -50,10 +50,12 @@ fn curvature_heatmap_camera_preset_and_export_work() {
         ((0.0, 3.0), (0.5, 2.5))
     );
     custom_restored.populate_scene(egui::Color32::WHITE);
-    assert!(!custom_restored
-        .scene_builder
-        .sorted_projected_segments()
-        .is_empty());
+    assert!(
+        !custom_restored
+            .scene_builder
+            .sorted_projected_segments()
+            .is_empty()
+    );
 }
 
 fn open_parameters_header(
@@ -103,7 +105,7 @@ fn open_parameters_header(
 
 #[test]
 fn curvature_heatmap_animated_slider_sweeps_continuous_radii() {
-    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+    use crate::reflective_ui::slider::{AnimatedSliderState, SweepMode, save_slider_state};
 
     let mut tool = CurvatureHeatmap::default();
     let initial_r = tool.torus_minor_radius;

@@ -4,14 +4,14 @@
 
 use eframe::egui::{self, RichText, Slider, SliderClamping};
 use math_explorer::applied::pharmacokinetics::{
-    calibrate_ka_from_half_life, half_life, t_max, MAX_REGIMEN_EVENTS,
+    MAX_REGIMEN_EVENTS, calibrate_ka_from_half_life, half_life, t_max,
 };
 
 use crate::accessibility::AccessibleHoverText;
 
+use super::PharmacokineticRegimenTool;
 use super::export::{spawn_csv_schedule_download, spawn_json_report_download};
 use super::state::{CompactDoseEvent, PkModelKind, RegimenState};
-use super::PharmacokineticRegimenTool;
 
 impl PharmacokineticRegimenTool {
     pub(super) fn render_inside(&mut self, parent_ui: &mut egui::Ui) {
@@ -364,12 +364,11 @@ impl PharmacokineticRegimenTool {
                 .button("Save JSON Exposure Report...")
                 .accessible_hover_text("Export PK parameters, schedule, and exposure metrics JSON")
                 .clicked()
+                && let Some(summary) = &self.curves.summary
             {
-                if let Some(summary) = &self.curves.summary {
-                    let (tx, rx) = std::sync::mpsc::channel();
-                    self.io_rx = Some(rx);
-                    spawn_json_report_download(tx, &self.state, summary);
-                }
+                let (tx, rx) = std::sync::mpsc::channel();
+                self.io_rx = Some(rx);
+                spawn_json_report_download(tx, &self.state, summary);
             }
         });
         if let Some(status) = &self.io_status {

@@ -11,14 +11,14 @@ pub use state::{DoseState, ImrtSummary};
 use crate::framework::{BrushStroke, CalloutManager, ChallengeEvaluation};
 use crate::tabs::medical::link_bus::GatingTelemetry;
 use contours::{
-    compute_isodose_dice, decode_bool_mask_rle, encode_bool_mask_rle, mask_centroid_cm,
-    paint_contour_stroke, rebuild_indices_from_masks, reset_circular_contours, RleMaskRuns,
+    RleMaskRuns, compute_isodose_dice, decode_bool_mask_rle, encode_bool_mask_rle,
+    mask_centroid_cm, paint_contour_stroke, rebuild_indices_from_masks, reset_circular_contours,
 };
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::nalgebra::DVector;
 use math_explorer::physics::medical::dose::kernel::{DoseKernel, ExponentialKernel};
 use math_explorer::physics::medical::optimization::{calculate_cost, update_weights};
-use motion::{accumulate_4d_step_in_place, DoseAccumBuffers, Imrt4dTracker};
+use motion::{DoseAccumBuffers, Imrt4dTracker, accumulate_4d_step_in_place};
 
 /// IMRT phantom grid dimension (`64 x 64 = 4,096` voxels).
 pub const IMRT_GRID_DIM: usize = 64;

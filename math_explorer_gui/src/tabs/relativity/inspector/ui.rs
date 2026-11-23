@@ -4,7 +4,7 @@
 
 use crate::accessibility::AccessibleTheoryHover;
 use crate::app::SemanticPalette;
-use crate::framework::{scoped_panel_id, PaneSidePanel};
+use crate::framework::{PaneSidePanel, scoped_panel_id};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints, Points};
 use math_explorer::nalgebra::SVector;

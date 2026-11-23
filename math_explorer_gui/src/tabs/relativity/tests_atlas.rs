@@ -11,13 +11,13 @@ use eframe::egui;
 use super::tests::test_raw_input;
 use super::*;
 use crate::app::MathExplorerApp;
-use crate::async_sim::atlas::{AtlasRenderRequest, AtlasRunner, AtlasTeleportEvent};
 use crate::async_sim::SimulationRunner;
-use crate::framework::state_guard::MAX_SNAPSHOT_BYTES;
+use crate::async_sim::atlas::{AtlasRenderRequest, AtlasRunner, AtlasTeleportEvent};
 use crate::framework::InteractiveTool;
+use crate::framework::state_guard::MAX_SNAPSHOT_BYTES;
 use crate::starter_gallery::{get_goal_challenges_for_domain, get_stories_for_domain};
 use crate::tabs::ExplorerTab;
-use crate::url_state::{encode_share_fragment, parse_share_location, URL_JSON_BOUNDS};
+use crate::url_state::{URL_JSON_BOUNDS, encode_share_fragment, parse_share_location};
 
 #[test]
 fn relativity_atlas_converges_zero_alloc_under_verified_allocator() {
@@ -133,7 +133,7 @@ fn find_atlas_click_pos(out: &egui::FullOutput) -> egui::Pos2 {
 
 #[test]
 fn relativity_atlas_canvas_click_updates_state_and_syncs_url_fragment() {
-    use crate::url_state::{UrlSyncController, URL_SYNC_DEBOUNCE_MS};
+    use crate::url_state::{URL_SYNC_DEBOUNCE_MS, UrlSyncController};
     use eframe::App as _;
 
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
@@ -185,10 +185,11 @@ fn relativity_atlas_canvas_click_updates_state_and_syncs_url_fragment() {
         URL_SYNC_DEBOUNCE_MS,
         || app.encode_current_share_fragment(),
     );
-    assert!(sync
-        .last_synced_fragment()
-        .unwrap()
-        .starts_with("#tab=relativity&tool=GeodesicPlaygroundTool&state="));
+    assert!(
+        sync.last_synced_fragment()
+            .unwrap()
+            .starts_with("#tab=relativity&tool=GeodesicPlaygroundTool&state=")
+    );
 }
 
 #[test]

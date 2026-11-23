@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{SirTool, MAX_SIR_STEPS};
+use super::{MAX_SIR_STEPS, SirTool};
 use crate::framework::{CodeArtifact, InteractiveTool};
 use math_commons::ast::{format_latex_scalar, format_python_float, format_rust_f64};
 

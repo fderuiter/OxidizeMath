@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    solve_wardrop_in_place, AffineLatency, BraessCongestionLab, ShortcutPrediction, WardropError,
-    DEMAND_CURVE_SAMPLES,
+    AffineLatency, BraessCongestionLab, DEMAND_CURVE_SAMPLES, ShortcutPrediction, WardropError,
+    solve_wardrop_in_place,
 };
 use crate::accessibility::AccessibleHoverText;
 use eframe::egui::{self, Pos2};
@@ -123,8 +123,8 @@ impl BraessCongestionLab {
                 self.active_curve
                     .push(PlotPoint::new(d, act.commuter_latency));
             }
-            if let Some(skip) = shortcut_idx {
-                if let Ok(base) = solve_wardrop_in_place(
+            if let Some(skip) = shortcut_idx
+                && let Ok(base) = solve_wardrop_in_place(
                     &mut self.scratch,
                     self.config.source_node,
                     self.config.sink_node,
@@ -132,10 +132,10 @@ impl BraessCongestionLab {
                     Some(skip),
                     &mut flows,
                     &mut lats,
-                ) {
-                    self.no_shortcut_curve
-                        .push(PlotPoint::new(d, base.commuter_latency));
-                }
+                )
+            {
+                self.no_shortcut_curve
+                    .push(PlotPoint::new(d, base.commuter_latency));
             }
         }
         self.scratch.sweep_flows = flows;

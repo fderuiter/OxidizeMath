@@ -163,11 +163,7 @@ pub fn sir_peak_infections_averted(i_branch_a: &[[f64; 2]], i_branch_b: &[[f64; 
         .filter(|v| v.is_finite())
         .fold(0.0_f64, f64::max);
     let delta = peak_a - peak_b;
-    if delta.is_finite() {
-        delta
-    } else {
-        0.0
-    }
+    if delta.is_finite() { delta } else { 0.0 }
 }
 
 /// Computes transverse magnetization echo gain `ΔM_xy = ||M_xy,B||_2 - ||M_xy,A||_2`.
@@ -176,9 +172,5 @@ pub fn mri_transverse_echo_gain(m_branch_a: [f64; 3], m_branch_b: [f64; 3]) -> f
     let mxy_a = m_branch_a[0].hypot(m_branch_a[1]);
     let mxy_b = m_branch_b[0].hypot(m_branch_b[1]);
     let delta = mxy_b - mxy_a;
-    if delta.is_finite() {
-        delta
-    } else {
-        0.0
-    }
+    if delta.is_finite() { delta } else { 0.0 }
 }

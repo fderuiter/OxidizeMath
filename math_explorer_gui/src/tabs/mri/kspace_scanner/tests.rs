@@ -5,15 +5,15 @@
 
 use super::phantom::{spin_echo_weight_from_bloch, synthesize_phantom, synthesize_shepp_logan};
 use super::state::{
-    decode_mask_hex, KSpaceBrushMode, KSpaceMaskFilter, KSpaceTrajectory, MriKSpaceScannerState,
-    PhantomSource,
+    KSpaceBrushMode, KSpaceMaskFilter, KSpaceTrajectory, MriKSpaceScannerState, PhantomSource,
+    decode_mask_hex,
 };
 use super::trajectory::{build_parametric_mask, evaluate_bin_scanner_physics};
-use super::{MriKSpaceScannerTool, KSPACE_CENTER, KSPACE_DIM, KSPACE_LEN};
+use super::{KSPACE_CENTER, KSPACE_DIM, KSPACE_LEN, MriKSpaceScannerTool};
 use crate::async_sim::SimulationRunner;
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
-use crate::tabs::mri::{MriRunner, MriSharedParams, MriTab};
 use crate::tabs::ExplorerTab;
+use crate::tabs::mri::{MriRunner, MriSharedParams, MriTab};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -299,9 +299,10 @@ fn test_wcag_keyboard_reticle_arrow_navigation_and_live_announcements() {
     assert_eq!(tool.focused_canvas_id(), Some(canvas_id));
 
     let msgs = crate::accessibility::all_announcements();
-    assert!(msgs
-        .iter()
-        .any(|(m, p)| p == "polite" && m.contains("PSNR")));
+    assert!(
+        msgs.iter()
+            .any(|(m, p)| p == "polite" && m.contains("PSNR"))
+    );
 }
 
 #[test]

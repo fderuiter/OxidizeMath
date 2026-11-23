@@ -112,17 +112,17 @@ impl AttractorRunner {
     }
 
     pub(super) fn restore_time_travel_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
-        if let Some(s) = checkpoint.state.as_scalars() {
-            if s.len() >= 3 {
-                self.system.state.vec = Vector3::new(s[0], s[1], s[2]);
-            }
+        if let Some(s) = checkpoint.state.as_scalars()
+            && s.len() >= 3
+        {
+            self.system.state.vec = Vector3::new(s[0], s[1], s[2]);
         }
-        if let Some(p) = checkpoint.params.as_scalars() {
-            if p.len() >= 3 {
-                self.system.sigma = p[0];
-                self.system.rho = p[1];
-                self.system.beta = p[2];
-            }
+        if let Some(p) = checkpoint.params.as_scalars()
+            && p.len() >= 3
+        {
+            self.system.sigma = p[0];
+            self.system.rho = p[1];
+            self.system.beta = p[2];
         }
         self.step_count = checkpoint.step;
         self.rng = checkpoint.rng.clone();

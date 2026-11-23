@@ -24,13 +24,13 @@ pub mod ui;
 
 #[cfg(test)]
 pub use atlas::{
-    classify_schnakenberg_regime, grid_u_variance, MorphogenesisCartographer, MorphogenesisRegime,
+    MorphogenesisCartographer, MorphogenesisRegime, classify_schnakenberg_regime, grid_u_variance,
 };
 #[cfg(test)]
 pub use counterfactual::MorphogenesisHeatmapMode;
 #[cfg(test)]
 pub use gray_scott_atlas::{
-    classify_gray_scott_regime, GrayScottCartographer, GrayScottRegime, GRAY_SCOTT_ATLAS_AXIS_PAIRS,
+    GRAY_SCOTT_ATLAS_AXIS_PAIRS, GrayScottCartographer, GrayScottRegime, classify_gray_scott_regime,
 };
 #[cfg(test)]
 pub use lenia::LeniaTool;
@@ -97,16 +97,16 @@ impl MorphogenesisTab {
         current_state.state = legacy.state;
         current_state.paused = legacy.paused;
         current_state.pending_initial_start = legacy.pending_initial_start;
-        if let Ok(updated_json) = serde_json::to_string(&current_state) {
-            if tool.try_load_state(&updated_json).is_ok() {
-                self.framework.show_starter_gallery = false;
-                if let Some(saved) = tool.save_state() {
-                    self.framework
-                        .saved_tool_states
-                        .insert(tool.name().to_string(), saved);
-                }
-                self.framework.cache_valid_snapshot();
+        if let Ok(updated_json) = serde_json::to_string(&current_state)
+            && tool.try_load_state(&updated_json).is_ok()
+        {
+            self.framework.show_starter_gallery = false;
+            if let Some(saved) = tool.save_state() {
+                self.framework
+                    .saved_tool_states
+                    .insert(tool.name().to_string(), saved);
             }
+            self.framework.cache_valid_snapshot();
         }
         true
     }
@@ -115,6 +115,14 @@ impl MorphogenesisTab {
 impl ExplorerTab for MorphogenesisTab {
     fn name(&self) -> &'static str {
         "Morphogenesis"
+    }
+
+    fn academic_domain(&self) -> &'static str {
+        "Biology"
+    }
+
+    fn url_slug(&self) -> &'static str {
+        "morphogenesis"
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {

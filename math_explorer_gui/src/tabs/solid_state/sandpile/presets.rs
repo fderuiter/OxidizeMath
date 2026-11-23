@@ -5,8 +5,8 @@
 use math_explorer::physics::stat_mech::sandpile::{AvalancheObservable, MAX_SANDPILE_DIM};
 
 use super::{
-    AbelianSandpileStudio, SandpileBrush, SandpileColormap, SandpilePreset, SandpileStudioState,
-    SandpileViewMode, MIN_SANDPILE_DIM,
+    AbelianSandpileStudio, MIN_SANDPILE_DIM, SandpileBrush, SandpileColormap, SandpilePreset,
+    SandpileStudioState, SandpileViewMode,
 };
 
 pub(super) fn is_valid_state(s: &SandpileStudioState) -> bool {

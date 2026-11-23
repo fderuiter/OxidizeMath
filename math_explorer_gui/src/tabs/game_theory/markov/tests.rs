@@ -25,9 +25,10 @@ fn test_utf8_and_bom_csv_and_json_imports_plus_atomic_rollback() {
 
     // Atomic rollback on malformed CSV observation symbol
     let snapshot_after_valid = tool.save_state().unwrap();
-    assert!(tool
-        .import_file_str("step,observation\n0,NOT_A_SYMBOL\n")
-        .is_err());
+    assert!(
+        tool.import_file_str("step,observation\n0,NOT_A_SYMBOL\n")
+            .is_err()
+    );
     assert_eq!(tool.save_state().unwrap(), snapshot_after_valid);
 
     // UTF-8 BOM-prefixed standalone HiddenMarkovModel JSON import and roundtrip

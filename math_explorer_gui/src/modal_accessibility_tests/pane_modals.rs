@@ -6,7 +6,7 @@ use super::helpers::{
     key_evt, run_app, secondary_click_pos, snapshot_all_pane_states, target_pane_rect,
 };
 use crate::app::{MathExplorerApp, ViewportLayout};
-use eframe::egui::{self, accesskit, Context, Event, Id, Key, Modifiers, Rect};
+use eframe::egui::{self, Context, Event, Id, Key, Modifiers, Rect, accesskit};
 
 fn locate_target_pane_plot(
     ctx: &Context,

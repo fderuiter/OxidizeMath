@@ -165,9 +165,10 @@ fn test_invalid_external_folders_show_inline_error_feedback() {
         tab.select_directory(candidate);
         assert!(tab.state.is_failed());
         assert_eq!(tab.repo_path, None);
-        assert!(tab
-            .error_message()
-            .is_some_and(|msg| msg.contains(expected_fragment)));
+        assert!(
+            tab.error_message()
+                .is_some_and(|msg| msg.contains(expected_fragment))
+        );
         assert!(render_tab_text_hit(&mut tab, expected_fragment));
     }
 

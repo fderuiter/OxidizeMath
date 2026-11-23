@@ -19,7 +19,7 @@ mod ui;
 
 #[cfg(test)]
 pub use presets::wave_parameter_label;
-pub use presets::{wave_parameter_constraints, WavePotentialPreset};
+pub use presets::{WavePotentialPreset, wave_parameter_constraints};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
 
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
@@ -31,9 +31,9 @@ use crate::framework::{
 use eframe::egui;
 use math_commons::ast::Expr;
 use presets::{
-    build_wave_datasets, custom_formula_presets, default_compiled_expr, DEFAULT_CUSTOM_EXPR,
-    DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH,
-    DEFAULT_X0, DT_RECOVERY_MIN,
+    DEFAULT_CUSTOM_EXPR, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME,
+    DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, DT_RECOVERY_MIN, build_wave_datasets,
+    custom_formula_presets, default_compiled_expr,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use sculpt::default_wave_brush_kit;

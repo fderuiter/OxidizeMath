@@ -2,16 +2,16 @@
 
 use super::kspace_runner::MriKSpaceRunner;
 use super::kspace_types::{
-    KSpaceMaskPreset, MriKSpaceSharedParams, MriKSpaceToolState, PhantomPreset, StudioBrushMode,
-    MAX_STUDIO_STROKES, PRESET_MRI_KSPACE_STUDIO,
+    KSpaceMaskPreset, MAX_STUDIO_STROKES, MriKSpaceSharedParams, MriKSpaceToolState,
+    PRESET_MRI_KSPACE_STUDIO, PhantomPreset, StudioBrushMode,
 };
 use super::{MriKSpaceTool, MriTab};
 use crate::async_sim::{SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::InteractiveTool;
 use crate::tabs::ExplorerTab;
 use crate::url_state::{
-    encode_share_fragment, parse_share_location, validate_url_preset_json,
-    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
+    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, encode_share_fragment,
+    parse_share_location, validate_url_preset_json,
 };
 use eframe::egui;
 use std::sync::{Arc, RwLock};
@@ -311,7 +311,7 @@ fn test_runner_pass_latency_budget_64_and_128() {
 
 #[test]
 fn test_mri_kspace_radial_cs_challenge_zero_alloc_metrics_and_clamping() {
-    use super::challenge::{score_kspace_cs, CHALLENGE_MRI_KSPACE_RADIAL_CS};
+    use super::challenge::{CHALLENGE_MRI_KSPACE_RADIAL_CS, score_kspace_cs};
     use super::kspace_types::MriKSpaceSnapshot;
     use crate::starter_gallery::find_challenge_metadata;
 
@@ -396,7 +396,7 @@ fn wasm_mri_kspace_radial_cs_challenge_roundtrip() {
 #[test]
 fn test_mri_hahn_echo_scrub_sonification_and_zero_alloc_pulse() {
     use super::pulse::{
-        MriPulseMode, MriPulseWorkspace, CHALLENGE_BLOCH_HAHN_ECHO, MRI_PULSE_SAMPLES,
+        CHALLENGE_BLOCH_HAHN_ECHO, MRI_PULSE_SAMPLES, MriPulseMode, MriPulseWorkspace,
     };
     use super::tool::MriTool;
 

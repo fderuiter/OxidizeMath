@@ -4,8 +4,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::framework::{
-    decode_rle_mask, encode_rle_mask, rasterize_disk_stroke, BrushInteractionMode, BrushMode,
-    BrushStroke, SpatialBrushKit,
+    BrushInteractionMode, BrushMode, BrushStroke, SpatialBrushKit, decode_rle_mask,
+    encode_rle_mask, rasterize_disk_stroke,
 };
 use eframe::egui::{self, Color32, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
@@ -92,11 +92,11 @@ pub(crate) fn apply_sculpt_sim_command<K: ReactionKinetics<2>>(
             enforce_system_mask(system, width, height);
             true
         }
-        crate::async_sim::SimCommand::ApplyBrushStroke(ref stroke) => {
+        crate::async_sim::SimCommand::ApplyBrushStroke(stroke) => {
             apply_stroke_to_morpho_system(system, width, height, stroke);
             true
         }
-        crate::async_sim::SimCommand::SyncSculptState(ref payload) => {
+        crate::async_sim::SimCommand::SyncSculptState(payload) => {
             if payload.rle_mask.is_empty() {
                 system.diffusion.mask.clear();
             } else if let Ok(bytes) = decode_rle_mask(&payload.rle_mask, width * height) {

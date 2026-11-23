@@ -10,12 +10,12 @@
 use std::f64::consts::TAU;
 
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    analytic_clamped_square_omega, SpectralPeak2D, Wave2DMedium, WaveProbeSample,
+    SpectralPeak2D, Wave2DMedium, WaveProbeSample, analytic_clamped_square_omega,
 };
 
 use crate::audio::frame::{
-    clamp_freq_hz, HarmonicWeights, SonificationFrame, VoiceSpec, WaveformPreset, MAX_VOICES,
-    NUM_HARMONICS,
+    HarmonicWeights, MAX_VOICES, NUM_HARMONICS, SonificationFrame, VoiceSpec, WaveformPreset,
+    clamp_freq_hz,
 };
 
 /// Luthiery concert-pitch scale factor mapping `D = 4e-4` clamped `(1, 1)` plates near `A3 = 220 Hz`.
@@ -149,11 +149,7 @@ fn build_modal_voice(
 
 #[inline]
 fn finite_or(val: f64, fallback: f64) -> f64 {
-    if val.is_finite() {
-        val
-    } else {
-        fallback
-    }
+    if val.is_finite() { val } else { fallback }
 }
 
 fn compute_audible_root_hz(

@@ -3,8 +3,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    BankrollEnsembleLab, VolatilityHypothesis, ENSEMBLE_PATH_COUNT, MAX_BARRIER_FLOOR_RATIO,
-    MAX_CUSTOM_FRACTION, MIN_BARRIER_FLOOR_RATIO,
+    BankrollEnsembleLab, ENSEMBLE_PATH_COUNT, MAX_BARRIER_FLOOR_RATIO, MAX_CUSTOM_FRACTION,
+    MIN_BARRIER_FLOOR_RATIO, VolatilityHypothesis,
 };
 use crate::accessibility::AccessibleHoverText;
 use eframe::egui;

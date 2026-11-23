@@ -228,14 +228,13 @@ impl SimulationFramework {
         let active_tool = self.active_tool.as_ref()?;
         let name = active_tool.name();
         let rev = active_tool.state_revision();
-        if rev > 0 {
-            if let Some((cached_name, cached_rev, cached_json)) =
+        if rev > 0
+            && let Some((cached_name, cached_rev, cached_json)) =
                 self.rev_cache.active_tool_json.borrow().as_ref()
-            {
-                if *cached_name == name && *cached_rev == rev {
-                    return Some((name, Arc::clone(cached_json)));
-                }
-            }
+            && *cached_name == name
+            && *cached_rev == rev
+        {
+            return Some((name, Arc::clone(cached_json)));
         }
         let state_str = active_tool.save_state()?;
         let arc_json: Arc<str> = Arc::from(state_str);

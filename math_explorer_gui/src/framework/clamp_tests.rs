@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::recovery::*;
 use super::SimulationFramework;
+use super::recovery::*;
 
 fn shared_ds(ds: &[(String, Vec<[f64; 2]>)]) -> Vec<(String, egui_plot::SharedPoints)> {
     ds.iter()
@@ -145,13 +145,15 @@ fn test_clamp_parameters_dispatches_domain_hooks_and_restores_datasets() {
     );
 
     let mut lbm_fw = SimulationFramework::new("fluid_dynamics");
-    assert!(!lbm_fw
-        .active_tool
-        .as_ref()
-        .unwrap()
-        .theory()
-        .theory_parameters()
-        .is_empty());
+    assert!(
+        !lbm_fw
+            .active_tool
+            .as_ref()
+            .unwrap()
+            .theory()
+            .theory_parameters()
+            .is_empty()
+    );
     load_active(&mut lbm_fw, r#"{"viscosity":99.0}"#);
     lbm_fw.cache_valid_snapshot();
     lbm_fw.clamp_parameters();

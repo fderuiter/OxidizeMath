@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use math_commons::ast::{parse, CompiledExpr};
+use math_commons::ast::{CompiledExpr, parse};
 use math_explorer::pure_math::differential_geometry::surface::{
     CompiledHeightfieldSurface, CompiledParametricSurface, KleinBottle, Sphere, Torus,
 };

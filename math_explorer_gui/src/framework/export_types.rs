@@ -24,11 +24,9 @@ impl ShaderDialect {
     }
 }
 
-const DEFAULT_CODE_DISABLED_REASON: &str =
-    "Code and LaTeX model export is unavailable: this tool does not expose a parameterized symbolic solver template.";
+const DEFAULT_CODE_DISABLED_REASON: &str = "Code and LaTeX model export is unavailable: this tool does not expose a parameterized symbolic solver template.";
 
-const DEFAULT_SHADER_DISABLED_REASON: &str =
-    "GLSL shader export is unavailable: this tool does not expose a closed-form analytical 2D fragment field.";
+const DEFAULT_SHADER_DISABLED_REASON: &str = "GLSL shader export is unavailable: this tool does not expose a closed-form analytical 2D fragment field.";
 
 /// Declares dataset, figure, code, 3D mesh/splat, and analytical GLSL shader export capabilities for an [`super::InteractiveTool`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -194,10 +192,8 @@ impl ExportCapabilities {
         let mut caps = Self::none();
         caps.ply = true;
         caps.ply_disabled_reason = "";
-        caps.stl_disabled_reason =
-            "STL export is unavailable: Gaussian Splatting scenes represent volumetric splats rather than triangle meshes; use Export PLY.";
-        caps.obj_disabled_reason =
-            "OBJ export is unavailable: Gaussian Splatting scenes represent volumetric splats rather than triangle meshes; use Export PLY.";
+        caps.stl_disabled_reason = "STL export is unavailable: Gaussian Splatting scenes represent volumetric splats rather than triangle meshes; use Export PLY.";
+        caps.obj_disabled_reason = "OBJ export is unavailable: Gaussian Splatting scenes represent volumetric splats rather than triangle meshes; use Export PLY.";
         caps
     }
 

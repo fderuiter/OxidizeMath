@@ -2,7 +2,7 @@
 
 // theory_verification!
 
-use super::frame::{HarmonicWeights, WaveformPreset, NUM_HARMONICS};
+use super::frame::{HarmonicWeights, NUM_HARMONICS, WaveformPreset};
 
 /// Precomputed bank of stack-resident [`HarmonicWeights`] indexed by [`WaveformPreset::index`].
 #[derive(Clone, Copy, Debug)]

@@ -2,7 +2,7 @@
 
 // theory_verification!
 
-use crate::audio::frame::{clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset};
+use crate::audio::frame::{SonificationFrame, VoiceSpec, WaveformPreset, clamp_freq_hz};
 
 /// Maps surface morphogen spatial variance, activator mean, mean-curvature shift, and buckling RMS
 /// into a zero-allocation stereo polyphonic [`SonificationFrame`].

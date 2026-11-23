@@ -3,8 +3,8 @@
 use super::controller::{AtlasTeleportEvent, ParameterAtlasController};
 use super::{AtlasAxisPair, RegimeCartographer};
 use crate::accessibility::{
-    lock_canvas_arrow_keys, paint_canvas_focus_ring, register_canvas_accessibility,
-    AccessibleHoverText,
+    AccessibleHoverText, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use eframe::egui;
 use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points, VLine};
@@ -256,16 +256,15 @@ impl ParameterAtlasController {
             if let Some([hx, hy]) = hover_coord {
                 teleport = self.teleport_to(Some(&ctx), hx, hy);
             }
-        } else if focus_resp.has_focus() {
-            if let Some(activate) = self.step_keyboard_cursor(ui, &axes, clamped[0], clamped[1]) {
-                if let Some([kx, ky]) = self.keyboard_cursor {
-                    if activate {
-                        teleport = self.teleport_to(Some(&ctx), kx, ky);
-                    } else if let Some(cell) = self.lookup_or_evaluate_cell(kx, ky) {
-                        let tip = cartographer.format_hover_tooltip(kx, ky, cell);
-                        crate::accessibility::announce_live_status(&ctx, tip.replace('\n', " — "));
-                    }
-                }
+        } else if focus_resp.has_focus()
+            && let Some(activate) = self.step_keyboard_cursor(ui, &axes, clamped[0], clamped[1])
+            && let Some([kx, ky]) = self.keyboard_cursor
+        {
+            if activate {
+                teleport = self.teleport_to(Some(&ctx), kx, ky);
+            } else if let Some(cell) = self.lookup_or_evaluate_cell(kx, ky) {
+                let tip = cartographer.format_hover_tooltip(kx, ky, cell);
+                crate::accessibility::announce_live_status(&ctx, tip.replace('\n', " — "));
             }
         }
 
@@ -275,12 +274,12 @@ impl ParameterAtlasController {
                 .then_some(self.keyboard_cursor)
                 .flatten()
         });
-        if let Some([px, py]) = preview {
-            if let Some(cell) = self.lookup_or_evaluate_cell(px, py) {
-                let tooltip = cartographer.format_hover_tooltip(px, py, cell);
-                ui.small(tooltip.replace('\n', "  |  "));
-                let _ = focus_resp.on_hover_text(tooltip);
-            }
+        if let Some([px, py]) = preview
+            && let Some(cell) = self.lookup_or_evaluate_cell(px, py)
+        {
+            let tooltip = cartographer.format_hover_tooltip(px, py, cell);
+            ui.small(tooltip.replace('\n', "  |  "));
+            let _ = focus_resp.on_hover_text(tooltip);
         }
         teleport
     }

@@ -6,8 +6,8 @@ use super::runner::MorphogenesisKineticsAdapter;
 use super::runner_twin::clone_turing_system;
 use crate::app::ThemeMode;
 use crate::framework::{
-    field_difference_norms, sanitize_perturbation_delta, DivergenceSnapshot,
-    DomainInterventionDelta, SeparationTracker,
+    DivergenceSnapshot, DomainInterventionDelta, SeparationTracker, field_difference_norms,
+    sanitize_perturbation_delta,
 };
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui::{Color32, ColorImage};
@@ -99,12 +99,12 @@ impl MorphogenesisForkDescriptor {
             ("baseline_f", self.baseline_f),
             ("baseline_k", self.baseline_k),
         ] {
-            if let Some(val) = opt {
-                if !val.is_finite() || !(0.0..=0.12).contains(&val) {
-                    return Err(format!(
-                        "Invalid morphogenesis fork field '{name}' = {val} (expected [0, 0.12])"
-                    ));
-                }
+            if let Some(val) = opt
+                && (!val.is_finite() || !(0.0..=0.12).contains(&val))
+            {
+                return Err(format!(
+                    "Invalid morphogenesis fork field '{name}' = {val} (expected [0, 0.12])"
+                ));
             }
         }
         Ok(())

@@ -10,21 +10,21 @@ mod ui;
 #[cfg(test)]
 mod tests;
 
-use std::sync::mpsc::Receiver;
 use std::sync::OnceLock;
+use std::sync::mpsc::Receiver;
 
 use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::applied::win_ratio::censoring::TierCount;
 use math_explorer::applied::win_ratio::power_sweep::{
-    run_power_sweep_into, run_weibull_power_sweep, PowerSweepConfig, PowerSweepReport,
-    PowerSweepWorkspace, MAX_ARM_SIZE, MAX_SWEEP_REPLICATES, MAX_SWEEP_STEPS,
+    MAX_ARM_SIZE, MAX_SWEEP_REPLICATES, MAX_SWEEP_STEPS, PowerSweepConfig, PowerSweepReport,
+    PowerSweepWorkspace, run_power_sweep_into, run_weibull_power_sweep,
 };
-use math_explorer::applied::win_ratio::simulation::{win_ratio_parameter, SimulationParams};
+use math_explorer::applied::win_ratio::simulation::{SimulationParams, win_ratio_parameter};
 use math_explorer::applied::win_ratio::u_statistic::UnmatchedWinRatioSummary;
 
-use self::cohort_io::{evaluate_loaded_cohort, LoadedCohortAnalysis};
-use self::protocol_export::{format_protocol_csv, format_protocol_json, ProtocolExportContext};
+use self::cohort_io::{LoadedCohortAnalysis, evaluate_loaded_cohort};
+use self::protocol_export::{ProtocolExportContext, format_protocol_csv, format_protocol_json};
 use crate::framework::{ExportCapabilities, InteractiveTool};
 
 /// Active chart tab inside [`WinRatioStressTesterTool`].

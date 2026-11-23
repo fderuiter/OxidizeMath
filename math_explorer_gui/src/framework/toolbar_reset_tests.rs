@@ -140,9 +140,11 @@ fn test_toolbar_reset_button_click_restores_baseline_and_requests_repaint() {
             .map(|v| v.repaint_delay),
         Some(std::time::Duration::ZERO)
     );
-    assert!(crate::accessibility::all_announcements()
-        .iter()
-        .any(|(msg, _)| msg.contains("Parameters reset to baseline defaults")));
+    assert!(
+        crate::accessibility::all_announcements()
+            .iter()
+            .any(|(msg, _)| msg.contains("Parameters reset to baseline defaults"))
+    );
 }
 
 #[test]

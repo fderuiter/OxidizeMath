@@ -3,9 +3,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::pipeline::{RadarPipeline, BEAM_DELAY_RING_LEN, SIM_DT};
-use super::state::{RadarGatingState, ScattererPoint};
 use super::RadarGatingTool;
+use super::pipeline::{BEAM_DELAY_RING_LEN, RadarPipeline, SIM_DT};
+use super::state::{RadarGatingState, ScattererPoint};
 use crate::framework::{ChallengeEvaluation, ChallengeMetadata, InteractiveTool};
 use math_explorer::physics::medical::radar_gating::TrackingFilter;
 

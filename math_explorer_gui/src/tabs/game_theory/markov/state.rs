@@ -5,16 +5,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
+    CtmcComputed, DtmcComputed, HmmComputed, MarkovScenario, MarkovSequenceWorkbenchTool,
     basketball_epv_dtmc_config, birth_death_ctmc_config, gamblers_ruin_dtmc_config,
-    hot_hand_hmm_config, market_regime_hmm_config, redundant_server_ctmc_config, CtmcComputed,
-    DtmcComputed, HmmComputed, MarkovScenario, MarkovSequenceWorkbenchTool,
+    hot_hand_hmm_config, market_regime_hmm_config, redundant_server_ctmc_config,
 };
 use crate::presets::{
-    DtmcStateKind, MarkovWorkbenchMode, MarkovWorkbenchPresetConfig, MAX_OBSERVATION_SEQUENCE_LEN,
+    DtmcStateKind, MAX_OBSERVATION_SEQUENCE_LEN, MarkovWorkbenchMode, MarkovWorkbenchPresetConfig,
 };
 use crate::web_io::{
-    spawn_open_file_dialog, spawn_save_as_file_dialog, OpenDialogConfig, PlatformInstant,
-    SaveAsDialogConfig,
+    OpenDialogConfig, PlatformInstant, SaveAsDialogConfig, spawn_open_file_dialog,
+    spawn_save_as_file_dialog,
 };
 use eframe::egui;
 use math_explorer::nalgebra::{DMatrix, DVector};
@@ -23,7 +23,7 @@ use math_explorer::pure_math::statistics::markov::{
     StateType,
 };
 use oxidize_core::rng::OxidizeRng;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 
 const WORKBENCH_OPEN_CONFIG: OpenDialogConfig = OpenDialogConfig {
     filter_name: "Markov Sequence, Matrix, or Preset (.csv, .json)",

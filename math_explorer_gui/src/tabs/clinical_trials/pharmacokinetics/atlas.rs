@@ -5,12 +5,12 @@
 
 use super::challenge::CHALLENGE_PK_THERAPEUTIC_WINDOW;
 use super::{
-    AbsorptionMode, PharmacokineticsTool, MAX_DOSE_MG, MAX_INTERVAL_H, MAX_KA, MAX_KE, MAX_MEC,
-    MAX_MTC, MAX_VOLUME_L, MIN_INTERVAL_H, MIN_RATE, MIN_VOLUME_L,
+    AbsorptionMode, MAX_DOSE_MG, MAX_INTERVAL_H, MAX_KA, MAX_KE, MAX_MEC, MAX_MTC, MAX_VOLUME_L,
+    MIN_INTERVAL_H, MIN_RATE, MIN_VOLUME_L, PharmacokineticsTool,
 };
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
-    RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent, RegimeCartographer,
+    atlas_regime_color,
 };
 use eframe::egui;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};

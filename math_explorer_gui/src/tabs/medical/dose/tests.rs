@@ -15,7 +15,7 @@ use crate::framework::{BrushMode, BrushStroke, InteractionContext, InteractiveTo
 use crate::tabs::medical::imrt::{CHALLENGE_IMRT_OAR_LIMIT_GY, CHALLENGE_IMRT_OAR_SPARING};
 use crate::tabs::medical::link_bus::{clear_link_bus, current_write_seq, latest_gating_telemetry};
 use crate::tabs::medical::radar_gating::RadarGatingTool;
-use crate::url_state::{encode_share_fragment, parse_share_location, URL_JSON_BOUNDS};
+use crate::url_state::{URL_JSON_BOUNDS, encode_share_fragment, parse_share_location};
 use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect};
 use math_explorer::physics::medical::accelerator::beam_loading_energy;
 use math_explorer::physics::medical::radar_gating::BeamState;
@@ -282,12 +282,13 @@ fn verify_split_horizontal_mws_roundtrip(sculpted_dose_json: &str) {
     app.set_layout(ViewportLayout::SplitHorizontal);
     app.set_pane_tab(0, med_idx);
     app.set_pane_tab(1, med_idx);
-    assert!(app
-        .pane_tab_mut(0)
-        .unwrap()
-        .framework_mut()
-        .unwrap()
-        .select_tool_by_name("RadarGatingTool"));
+    assert!(
+        app.pane_tab_mut(0)
+            .unwrap()
+            .framework_mut()
+            .unwrap()
+            .select_tool_by_name("RadarGatingTool")
+    );
     let fw1 = app.pane_tab_mut(1).unwrap().framework_mut().unwrap();
     assert!(fw1.select_tool_by_name("DoseCalculationTool"));
     fw1.active_tool

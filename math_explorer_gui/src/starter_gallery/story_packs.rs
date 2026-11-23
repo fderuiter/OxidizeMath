@@ -51,21 +51,36 @@ mod kelly_packs {
             title: "Half-Kelly Cushion",
             narrative: "A 60% coin at even-money (net odds b = 1.0) has f* = 20%. Betting 0.5f* (10%) compounds steadily with low volatility.",
             preset_generator: || STEP_HALF,
-            callouts: &[pin("kelly_step", [140.0, 2200.0], [-20.0, -28.0], "0.5f* retains 75% log-growth")],
+            callouts: &[pin(
+                "kelly_step",
+                [140.0, 2200.0],
+                [-20.0, -28.0],
+                "0.5f* retains 75% log-growth",
+            )],
             focus_observables: &["kelly_fraction", "stake_multiplier", "expected_growth_rate"],
         },
         StoryStep {
             title: "Optimal Full Kelly Peak",
             narrative: "At 1.0f* (20% stake), expected logarithmic growth g = p ln(1+bf) + q ln(1-f) reaches its global maximum (+0.0201/bet).",
             preset_generator: || STEP_FULL,
-            callouts: &[pin("kelly_step", [140.0, 4500.0], [-24.0, -28.0], "Optimal f* = 20% maximizes g > 0")],
+            callouts: &[pin(
+                "kelly_step",
+                [140.0, 4500.0],
+                [-24.0, -28.0],
+                "Optimal f* = 20% maximizes g > 0",
+            )],
             focus_observables: &["kelly_fraction", "stake_multiplier", "expected_growth_rate"],
         },
         StoryStep {
             title: "Overbetting Past 2f* Triggers Ruin",
             narrative: "Above 2f* (40% stake), volatility drag overwhelms positive expected value: g turns negative (-0.0340 at 2.5f*) and wealth decays toward zero.",
             preset_generator: || STEP_RUIN,
-            callouts: &[pin("kelly_step", [140.0, 120.0], [18.0, -26.0], "2.5f* overbet: EV > 0 yet g < 0")],
+            callouts: &[pin(
+                "kelly_step",
+                [140.0, 120.0],
+                [18.0, -26.0],
+                "2.5f* overbet: EV > 0 yet g < 0",
+            )],
             focus_observables: &["expected_value", "stake_multiplier", "expected_growth_rate"],
         },
     ];
@@ -117,21 +132,36 @@ mod chladni_wave_tank_packs {
             title: "Detuned Nodal Forcing Scatters Sand",
             narrative: "Driving (0.22, 0.50) along a nodal symmetry axis at detuned 0.56 Hz starves the (1, 3) cosine mode and leaves sand grains agitated.",
             preset_generator: || PLATE_NODAL_DETUNED,
-            callouts: &[pin("chladni_fft", [3.0, 0.02], [28.0, -22.0], "Detuned forcing splits modal energy")],
+            callouts: &[pin(
+                "chladni_fft",
+                [3.0, 0.02],
+                [28.0, -22.0],
+                "Detuned forcing splits modal energy",
+            )],
             focus_observables: &["driver_frequency", "sand_nodal_energy", "dominant_k"],
         },
         StoryStep {
             title: "Resonant Mode (1, 3) Antinode Lock",
             narrative: "Clicking mode (1, 3) moves the driver to antinode (0.35, 0.08) at f₁,₃ = 0.3142 Hz, locking crisp fourfold Chladni nodal contours.",
             preset_generator: || PLATE_RESONANT_13,
-            callouts: &[pin("chladni_fft", [3.16, 0.05], [28.0, -24.0], "Sharp |k| peak at mode (1, 3)")],
+            callouts: &[pin(
+                "chladni_fft",
+                [3.16, 0.05],
+                [28.0, -24.0],
+                "Sharp |k| peak at mode (1, 3)",
+            )],
             focus_observables: &["driver_frequency", "sand_nodal_energy", "dominant_k"],
         },
         StoryStep {
             title: "Continuous Luneburg GRIN Focusing",
             narrative: "Replacing a sharp biconvex boundary with n(x, y) = √(1 + a(1 - r²/R²)) bends wavefronts without spherical aberration into a >= 3.3x focal peak.",
             preset_generator: || LENS_LUNEBURG_AST,
-            callouts: &[pin("lens_focus", [63.5, 1.5], [32.0, -24.0], "Aberration-free Luneburg focus at y = 63.5")],
+            callouts: &[pin(
+                "lens_focus",
+                [63.5, 1.5],
+                [32.0, -24.0],
+                "Aberration-free Luneburg focus at y = 63.5",
+            )],
             focus_observables: &["focal_gain", "focal_fwhm", "effective_courant"],
         },
     ];
@@ -206,23 +236,47 @@ mod replicator_packs {
             narrative: "Starting with 90% Cooperators gives high mean fitness xᵀAx = 2.89, yet individual selection favors Defectors until xᵀAx plunges to 1.00.",
             preset_generator: || PD_COOP,
             callouts: &[
-                pin("pd_start", [0.3, 2.89], [36.0, -18.0], "Initial xᵀAx = 2.89"),
-                pin("pd_end", [7.5, 1.0], [-24.0, -26.0], "Defection lowers xᵀAx to 1.00"),
+                pin(
+                    "pd_start",
+                    [0.3, 2.89],
+                    [36.0, -18.0],
+                    "Initial xᵀAx = 2.89",
+                ),
+                pin(
+                    "pd_end",
+                    [7.5, 1.0],
+                    [-24.0, -26.0],
+                    "Defection lowers xᵀAx to 1.00",
+                ),
             ],
-            focus_observables: &["initial_mean_fitness", "final_mean_fitness", "fitness_change"],
+            focus_observables: &[
+                "initial_mean_fitness",
+                "final_mean_fitness",
+                "fitness_change",
+            ],
         },
         StoryStep {
             title: "Stag Hunt Trust Breakdown",
             narrative: "In Stag Hunt, when initial Stag trust (55%) sits below the unstable 2/3 invasion threshold, risk-dominant Hare wins (xᵀAx = 2.0).",
             preset_generator: || STAG_LOW,
-            callouts: &[pin("stag_low", [6.0, 2.0], [10.0, -24.0], "Below x* = 2/3: Hare basin (xᵀAx = 2.0)")],
+            callouts: &[pin(
+                "stag_low",
+                [6.0, 2.0],
+                [10.0, -24.0],
+                "Below x* = 2/3: Hare basin (xᵀAx = 2.0)",
+            )],
             focus_observables: &["x0_initial", "x0_final", "final_mean_fitness"],
         },
         StoryStep {
             title: "Stag Hunt Cooperative Escape",
             narrative: "Crossing x₀ = 0.75 > 2/3 flips the replicator vector field into the payoff-dominant Stag basin, doubling mean fitness to 4.0.",
             preset_generator: || STAG_HIGH,
-            callouts: &[pin("stag_high", [6.0, 4.0], [10.0, -24.0], "Above x* = 2/3: Stag optimum (xᵀAx = 4.0)")],
+            callouts: &[pin(
+                "stag_high",
+                [6.0, 4.0],
+                [10.0, -24.0],
+                "Above x* = 2/3: Stag optimum (xᵀAx = 4.0)",
+            )],
             focus_observables: &["x0_initial", "x0_final", "final_mean_fitness"],
         },
     ];
@@ -232,21 +286,36 @@ mod replicator_packs {
             title: "Zero-Sum Neutral Cycle",
             narrative: "Symmetric zero-sum Rock-Paper-Scissors conserves a Hamiltonian invariant, locking strategies into closed periodic orbits with xᵀAx = 0.",
             preset_generator: || RPS_NEUTRAL,
-            callouts: &[pin("rps_step", [20.0, 0.33], [12.0, -24.0], "Closed neutral oscillations around 1/3")],
+            callouts: &[pin(
+                "rps_step",
+                [20.0, 0.33],
+                [12.0, -24.0],
+                "Closed neutral oscillations around 1/3",
+            )],
             focus_observables: &["final_mean_fitness", "oscillation_span"],
         },
         StoryStep {
             title: "Positive-Sum Inward Spiral",
             narrative: "Softening loss penalties to -0.7 makes coexistence (1/3, 1/3, 1/3) a stable spiral attractor with positive mean fitness (+0.10).",
             preset_generator: || RPS_INWARD,
-            callouts: &[pin("rps_step", [30.0, 0.33], [12.0, -24.0], "Damped spiral converges to coexistence")],
+            callouts: &[pin(
+                "rps_step",
+                [30.0, 0.33],
+                [12.0, -24.0],
+                "Damped spiral converges to coexistence",
+            )],
             focus_observables: &["final_mean_fitness", "oscillation_span"],
         },
         StoryStep {
             title: "Negative-Sum Heteroclinic Spiral",
             narrative: "Harsher loss penalties (-1.3) destabilize coexistence, flinging the population outward toward boundary dominance eras.",
             preset_generator: || RPS_OUTWARD,
-            callouts: &[pin("rps_step", [35.0, 0.90], [-20.0, -24.0], "Expanding heteroclinic boundary waves")],
+            callouts: &[pin(
+                "rps_step",
+                [35.0, 0.90],
+                [-20.0, -24.0],
+                "Expanding heteroclinic boundary waves",
+            )],
             focus_observables: &["final_mean_fitness", "oscillation_span"],
         },
     ];
@@ -330,8 +399,18 @@ mod potential_flow_packs {
             narrative: "Fore-and-aft streamline symmetry around an inviscid cylinder (R = 2) places stagnation points at (±2, 0), yielding zero lift and zero drag.",
             preset_generator: || CYL_SYM,
             callouts: &[
-                pin("stag_front", [-2.0, 0.0], [-42.0, -26.0], "Front stagnation (-2, 0)"),
-                pin("stag_rear", [2.0, 0.0], [42.0, -26.0], "Rear stagnation (+2, 0): D' = 0"),
+                pin(
+                    "stag_front",
+                    [-2.0, 0.0],
+                    [-42.0, -26.0],
+                    "Front stagnation (-2, 0)",
+                ),
+                pin(
+                    "stag_rear",
+                    [2.0, 0.0],
+                    [42.0, -26.0],
+                    "Rear stagnation (+2, 0): D' = 0",
+                ),
             ],
             focus_observables: &["circulation", "kutta_joukowski_lift", "pressure_drag"],
         },
@@ -339,14 +418,24 @@ mod potential_flow_packs {
             title: "Circulation Breaks Top-Bottom Symmetry",
             narrative: "Adding clockwise circulation (Γ = -40π) accelerates streamlines over the top and shifts stagnation points downward, creating upward lift L' = -ρUΓ.",
             preset_generator: || CYL_SUB,
-            callouts: &[pin("lift_peak", [0.0, 2.1], [0.0, -28.0], "Packed upper streamlines -> upward lift")],
+            callouts: &[pin(
+                "lift_peak",
+                [0.0, 2.1],
+                [0.0, -28.0],
+                "Packed upper streamlines -> upward lift",
+            )],
             focus_observables: &["circulation", "kutta_joukowski_lift", "pressure_drag"],
         },
         StoryStep {
             title: "Supercritical Spin Detaches Stagnation",
             narrative: "Exceeding |Γ| = 4πRU merges surface stagnation points and detaches a saddle stagnation point into the fluid at (0, -3.69).",
             preset_generator: || CYL_SUP,
-            callouts: &[pin("detached_saddle", [0.0, -3.69], [44.0, 22.0], "Detached saddle point (0, -3.69)")],
+            callouts: &[pin(
+                "detached_saddle",
+                [0.0, -3.69],
+                [44.0, 22.0],
+                "Detached saddle point (0, -3.69)",
+            )],
             focus_observables: &["circulation", "kutta_joukowski_lift", "stagnation_count"],
         },
     ];
@@ -385,67 +474,5 @@ mod potential_flow_packs {
 }
 
 #[cfg(feature = "biology")]
-mod lenia_packs {
-    use super::*;
-
-    const LENIA_STEP_ORBIUM: &str = r#"{"metadata":{"schema_version":"1.0","title":"Orbium Soliton Niche","domain":"biology","timestamp":"2026-11-23T00:00:00Z"},"config":{"radius":13.0,"mu":0.15,"sigma":0.015,"dt":0.1,"ring_weights":[1.0],"grid_size":128,"species":"Orbium","rng_seed":42,"perturbation":0.0,"brush_radius":4.0,"brush_mode":"Deposit","playing":true}}"#;
-    const LENIA_STEP_STARVE: &str = r#"{"metadata":{"schema_version":"1.0","title":"Orbium Niche Starvation","domain":"biology","timestamp":"2026-11-23T00:00:00Z"},"config":{"radius":13.0,"mu":0.28,"sigma":0.015,"dt":0.1,"ring_weights":[1.0],"grid_size":128,"species":"Orbium","rng_seed":42,"perturbation":0.0,"brush_radius":4.0,"brush_mode":"Deposit","playing":true}}"#;
-    const LENIA_STEP_GEMINIUM: &str = r#"{"metadata":{"schema_version":"1.0","title":"Multi-Ring Geminium Fission","domain":"biology","timestamp":"2026-11-23T00:00:00Z"},"config":{"radius":16.0,"mu":0.24,"sigma":0.036,"dt":0.1,"ring_weights":[1.0,0.55,0.75],"grid_size":128,"species":"Geminium","rng_seed":42,"perturbation":0.01,"brush_radius":4.0,"brush_mode":"Deposit","playing":true}}"#;
-    const LENIA_GEMINIUM_INIT: &str = r#"{"metadata":{"schema_version":"1.0","title":"Subcritical Geminium Twin","domain":"biology","timestamp":"2026-11-23T00:00:00Z"},"config":{"radius":16.0,"mu":0.34,"sigma":0.020,"dt":0.1,"ring_weights":[1.0,0.55,0.75],"grid_size":128,"species":"Geminium","rng_seed":42,"perturbation":0.01,"brush_radius":4.0,"brush_mode":"Deposit","playing":true}}"#;
-
-    const LENIA_VIABILITY_STEPS: &[StoryStep] = &[
-        StoryStep {
-            title: "Orbium Potential Niche Alignment",
-            narrative: "Orbium's ring convolution U = A * K peaks near max(U) ≈ 0.225, straddling the positive Gaussian growth peak at μ = 0.15 (σ = 0.015) while empty space decays at G(0) = -1.",
-            preset_generator: || LENIA_STEP_ORBIUM,
-            callouts: &[pin("lenia_niche", [0.15, 1.0], [18.0, -24.0], "Peak G(μ = 0.15) = +1 inside max(U) ≈ 0.225")],
-            focus_observables: &["mu", "sigma", "max_potential", "total_mass"],
-        },
-        StoryStep {
-            title: "Starvation Above Peak Potential",
-            narrative: "Shifting μ = 0.28 above max(U) ≈ 0.225 leaves every active cell in the negative decay zone G(U) < 0, collapsing the soliton to Extinction.",
-            preset_generator: || LENIA_STEP_STARVE,
-            callouts: &[pin("lenia_niche", [0.28, 1.0], [-28.0, -24.0], "μ = 0.28 > max(U): soliton starves")],
-            focus_observables: &["mu", "max_potential", "total_mass"],
-        },
-        StoryStep {
-            title: "Three-Ring Geminium Lobe Fission",
-            narrative: "Expanding to three concentric rings [1.0, 0.55, 0.75] (R = 16) with wider σ = 0.036 at μ = 0.24 sustains twin-lobed Geminium budding and self-division.",
-            preset_generator: || LENIA_STEP_GEMINIUM,
-            callouts: &[pin("lenia_niche", [0.24, 1.0], [14.0, -24.0], "3-ring shell drives twin-lobe fission")],
-            focus_observables: &["radius", "mu", "sigma", "total_mass"],
-        },
-    ];
-
-    inventory::submit! {
-        PresetStoryMetadata {
-            id: "lenia_soliton_viability_tour",
-            title: "Lenia Soliton Viability & Fission Tour",
-            description: "Explore how neighborhood potential U = A * K aligns with Growth G(u) to sustain Orbium gliding, starvation, and Geminium fission.",
-            category: "Guided Story",
-            icon: "🛸",
-            domain: "biology",
-            tool_name: "LeniaTool",
-            steps: LENIA_VIABILITY_STEPS,
-        }
-    }
-
-    inventory::submit! {
-        GoalChallengeMetadata {
-            id: "lenia_geminium_fission",
-            title: "Geminium Twin-Lobe Fission",
-            description: "Align the 3-ring Geminium growth niche (μ, σ) with U = A * K so the twin-lobed organism expands and divides without exploding vacuum.",
-            category: "Challenge",
-            icon: "🧬",
-            domain: "biology",
-            tool_name: "LeniaTool",
-            initial_preset_generator: || LENIA_GEMINIUM_INIT,
-            goal_summary: "Lower Growth μ near 0.24 and widen Width σ near 0.036 so Geminium undergoes lobe expansion/fission (220 < total_mass < 700, active_area > 340, centroid_speed > 0.04).",
-            predicate_expr: "total_mass > 220.0 && total_mass < 700.0 && active_area > 340.0 && centroid_speed > 0.04",
-            hint: "Drag Growth μ down from 0.34 to ~0.24 and Width σ up from 0.020 to ~0.036 (or open the 2D Parameter Atlas and click Stable Soliton Niche).",
-            win_message: "Challenge solved: Geminium's 3-ring neighborhood potential entered the viable growth window and triggered twin-lobe fission!",
-            callouts: &[pin("geminium_fission_niche", [0.24, 1.0], [16.0, -24.0], "Target fission niche (μ ≈ 0.24, σ ≈ 0.036)")],
-            focus_observables: &["mu", "sigma", "max_potential", "total_mass", "active_area"],
-        }
-    }
-}
+#[path = "lenia_story_packs.rs"]
+mod lenia_packs;

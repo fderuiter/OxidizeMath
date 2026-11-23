@@ -10,8 +10,8 @@ use serde::Deserializer;
 use serde_json::value::RawValue;
 
 use super::{
-    SimulationFramework, ToolStateBounds, MAX_SESSION_STATE_BYTES, MAX_SESSION_TOOL_ENTRIES,
-    MAX_TOOL_KEY_BYTES,
+    MAX_SESSION_STATE_BYTES, MAX_SESSION_TOOL_ENTRIES, MAX_TOOL_KEY_BYTES, SimulationFramework,
+    ToolStateBounds,
 };
 
 /// Maximum number of distinct `Plot` keys persisted for a single tool.
@@ -153,13 +153,12 @@ pub(crate) fn merge_migrated_callouts_into_tab_json(
     if root_obj
         .get("selected_tool_name")
         .is_none_or(serde_json::Value::is_null)
+        && let Some(tool_name) = preferred_tool_name
     {
-        if let Some(tool_name) = preferred_tool_name {
-            root_obj.insert(
-                "selected_tool_name".to_owned(),
-                serde_json::Value::String(tool_name.to_owned()),
-            );
-        }
+        root_obj.insert(
+            "selected_tool_name".to_owned(),
+            serde_json::Value::String(tool_name.to_owned()),
+        );
     }
     let target_tool = root_obj
         .get("selected_tool_name")

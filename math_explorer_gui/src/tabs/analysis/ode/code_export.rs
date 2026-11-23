@@ -6,7 +6,7 @@ use super::OdeSolverTool;
 use crate::framework::{CodeArtifact, InteractiveTool};
 use crate::presets::OdePreset;
 use math_commons::ast::{
-    format_latex_scalar, format_python_float, format_rust_f64, parse_equation, Expr,
+    Expr, format_latex_scalar, format_python_float, format_rust_f64, parse_equation,
 };
 use std::collections::HashMap;
 

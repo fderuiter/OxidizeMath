@@ -7,8 +7,8 @@
 use std::collections::BTreeMap;
 use std::f64::consts::FRAC_PI_2;
 
-use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
 use crate::framework::MathExpressionInputBar;
+use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
 use eframe::egui;
 use math_commons::ast::CompiledExpr;
 use math_explorer::nalgebra::{SMatrix, SVector};
@@ -19,7 +19,7 @@ use math_explorer::pure_math::tensor::{
 };
 
 use super::sim::refine_halt_4d;
-use super::telemetry::{push_custom_lapse_sample, push_custom_wormhole_sample, CustomSampleCtx};
+use super::telemetry::{CustomSampleCtx, push_custom_lapse_sample, push_custom_wormhole_sample};
 use super::{GeodesicMode, GeodesicPlaygroundTool, TrajectorySample};
 
 /// Default custom 4D radial lapse expression $f(r)$ ($g_{00} = -f(r)$, $g_{11} = 1/f(r)$).
@@ -349,10 +349,8 @@ impl GeodesicPlaygroundTool {
                 GeodesicStepStatus::HaltedSingularity => {
                     let (did_adv, sub_lam) =
                         refine_halt_4d(&sys, &mut solver, lambda, &mut state, dt);
-                    if did_adv {
-                        if let Ok(n_end) = sys.metric_norm(&state) {
-                            push_custom_lapse_sample(out, ctx, sub_lam, &state, n_end);
-                        }
+                    if did_adv && let Ok(n_end) = sys.metric_norm(&state) {
+                        push_custom_lapse_sample(out, ctx, sub_lam, &state, n_end);
                     }
                     return true;
                 }

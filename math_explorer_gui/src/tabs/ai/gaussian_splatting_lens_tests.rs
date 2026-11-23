@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::scene::{
-    SplatLensConfig, SplatLensMode, VolumetricSplatPreset, CAMERA_DISTANCE, MAX_DYNAMIC_SPLATS,
-    VIEWPORT_HALF_EXTENT,
+    CAMERA_DISTANCE, MAX_DYNAMIC_SPLATS, SplatLensConfig, SplatLensMode, VIEWPORT_HALF_EXTENT,
+    VolumetricSplatPreset,
 };
 use super::*;
 use crate::volumetric_scene::lensing::project_and_rasterize_lensed_workspace;
-use crate::volumetric_scene::{VolumetricSplatWorkspace, SPLAT_GRID_SIZE as VOL_SPLAT_GRID_SIZE};
+use crate::volumetric_scene::{SPLAT_GRID_SIZE as VOL_SPLAT_GRID_SIZE, VolumetricSplatWorkspace};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::wasm_bindgen_test;

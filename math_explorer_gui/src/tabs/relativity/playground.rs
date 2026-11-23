@@ -28,9 +28,9 @@ mod telemetry;
 #[path = "playground/ui.rs"]
 mod ui;
 
-pub use atlas::{kerr_prograde_critical_b, RELATIVITY_ATLAS_AXIS_PAIRS};
+pub use atlas::{RELATIVITY_ATLAS_AXIS_PAIRS, kerr_prograde_critical_b};
 pub use sandbox::MetricSandbox;
-pub use sim::{TrajectorySample, MAX_TRAJECTORY_SAMPLES};
+pub use sim::{MAX_TRAJECTORY_SAMPLES, TrajectorySample};
 
 use atlas::{default_relativity_atlas_axes, is_default_relativity_atlas_axes};
 use sandbox::{

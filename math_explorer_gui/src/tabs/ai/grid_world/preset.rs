@@ -4,8 +4,8 @@
 
 use super::GridWorldTool;
 use crate::tabs::ai::rl_sculpt::{
-    apply_rle_to_mdp, encode_custom_cells_rle, is_zero_f64, solve_bellman_with_policy,
-    RlOverlayMode, RlSolverMode,
+    RlOverlayMode, RlSolverMode, apply_rle_to_mdp, encode_custom_cells_rle, is_zero_f64,
+    solve_bellman_with_policy,
 };
 use math_commons::primitives::UnitInterval;
 use math_explorer::ai::reinforcement_learning::{DenseRlWorkspace, SculptedGridMdp};

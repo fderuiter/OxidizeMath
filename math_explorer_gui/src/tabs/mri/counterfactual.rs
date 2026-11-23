@@ -4,10 +4,10 @@
 
 use super::runner::MriRunner;
 use crate::framework::{
-    l2_distance_3d, mri_transverse_echo_gain, sanitize_perturbation_delta, DivergenceSnapshot,
-    DomainInterventionDelta, SeparationTracker,
+    DivergenceSnapshot, DomainInterventionDelta, SeparationTracker, l2_distance_3d,
+    mri_transverse_echo_gain, sanitize_perturbation_delta,
 };
-use math_explorer::physics::mri::bloch::{rotating_frame_effective_field, BlochSimulator};
+use math_explorer::physics::mri::bloch::{BlochSimulator, rotating_frame_effective_field};
 use math_explorer::physics::mri::proton;
 use math_explorer::pure_math::analysis::ode::{RungeKutta4, TimeStepper};
 use nalgebra::Vector3;

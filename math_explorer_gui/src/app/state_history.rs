@@ -214,10 +214,10 @@ impl LiveChromeSnapshot {
             app.focused_pane = self.focused_pane.min(max_pane);
         }
         for tab in &mut app.tabs {
-            if let Some(&(portal, gallery)) = self.primary_overlays.get(tab.name()) {
-                if let Some(fw) = tab.framework_mut() {
-                    fw.restore_overlay_chrome(portal, gallery);
-                }
+            if let Some(&(portal, gallery)) = self.primary_overlays.get(tab.name())
+                && let Some(fw) = tab.framework_mut()
+            {
+                fw.restore_overlay_chrome(portal, gallery);
             }
         }
         for (idx, entry) in self.secondary_overlays.into_iter().enumerate() {

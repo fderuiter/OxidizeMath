@@ -4,8 +4,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    ElementType, PotentialFlowTool, SerializedFlowElement, FLOW_POS_MAX, FLOW_POS_MIN,
-    FLOW_STRENGTH_MAX, FLOW_STRENGTH_MIN,
+    ElementType, FLOW_POS_MAX, FLOW_POS_MIN, FLOW_STRENGTH_MAX, FLOW_STRENGTH_MIN,
+    PotentialFlowTool, SerializedFlowElement,
 };
 use crate::accessibility::announce_live_status;
 use crate::app::SemanticPalette;

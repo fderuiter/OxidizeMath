@@ -67,12 +67,14 @@ fn wasm_preboot_dom_flags_and_js_boot_notifications_work() {
         &wasm_bindgen::JsValue::from_str("stub"),
     );
     clear_global_wasm_bindings(Some(&window));
-    assert!(js_sys::Reflect::get(
-        window.as_ref(),
-        &wasm_bindgen::JsValue::from_str("wasmBindings")
-    )
-    .expect("Reflect::get should succeed")
-    .is_undefined());
+    assert!(
+        js_sys::Reflect::get(
+            window.as_ref(),
+            &wasm_bindgen::JsValue::from_str("wasmBindings")
+        )
+        .expect("Reflect::get should succeed")
+        .is_undefined()
+    );
 
     let called = Rc::new(Cell::new(false));
     let called_clone = Rc::clone(&called);
@@ -187,12 +189,14 @@ fn wasm_finish_startup_focuses_canvas_on_ok_and_respects_active_error_boundary()
         doc.get_element_by_id("loading_indicator").is_some(),
         "active error boundary must abort finish_wasm_startup before mutating loading state"
     );
-    assert!(js_sys::Reflect::get(
-        window.as_ref(),
-        &wasm_bindgen::JsValue::from_str("wasmBindings")
-    )
-    .unwrap()
-    .is_undefined());
+    assert!(
+        js_sys::Reflect::get(
+            window.as_ref(),
+            &wasm_bindgen::JsValue::from_str("wasmBindings")
+        )
+        .unwrap()
+        .is_undefined()
+    );
     let _ = doc
         .get_element_by_id("the_canvas_id")
         .and_then(|c| c.dyn_into::<web_sys::HtmlElement>().ok())
@@ -239,26 +243,11 @@ fn wasm_webgl_context_lost_prevents_default_and_reveals_recovery_overlay() {
 }
 
 #[cfg(feature = "biology")]
-#[wasm_bindgen_test]
-fn wasm_lenia_studio_stepping_exports_and_url_roundtrip() {
-    use crate::framework::{ExportFormat, ExportStatusSeverity, SimulationFramework};
-    use crate::tabs::morphogenesis::lenia::presets::PRESET_LENIA_HYDROGEMINIUM;
-
-    let ctx = eframe::egui::Context::default();
-    let mut framework = SimulationFramework::new("biology");
-    framework.export_options.width = 160;
-    framework.export_options.height = 120;
-    framework.export_gif_frames = 3;
-    assert!(framework.select_tool_by_name("LeniaTool"));
-    let fast_preset = PRESET_LENIA_HYDROGEMINIUM.replace("\"grid_size\": 128", "\"grid_size\": 32");
-    framework
-        .apply_starter_card(
-            "Lenia Hydrogeminium Swimmer",
-            Some("LeniaTool"),
-            Some(&fast_preset),
-        )
-        .expect("Hydrogeminium preset must load in WASM");
-
+fn assert_wasm_lenia_exports(
+    ctx: &eframe::egui::Context,
+    framework: &mut crate::framework::SimulationFramework,
+) {
+    use crate::framework::{ExportFormat, ExportStatusSeverity};
     for fmt in [
         ExportFormat::Png,
         ExportFormat::Gif,
@@ -282,6 +271,30 @@ fn wasm_lenia_studio_stepping_exports_and_url_roundtrip() {
             ExportStatusSeverity::Success
         );
     }
+}
+
+#[cfg(feature = "biology")]
+#[wasm_bindgen_test]
+fn wasm_lenia_studio_stepping_exports_and_url_roundtrip() {
+    use crate::framework::SimulationFramework;
+    use crate::tabs::morphogenesis::lenia::presets::PRESET_LENIA_HYDROGEMINIUM;
+
+    let ctx = eframe::egui::Context::default();
+    let mut framework = SimulationFramework::new("biology");
+    framework.export_options.width = 160;
+    framework.export_options.height = 120;
+    framework.export_gif_frames = 3;
+    assert!(framework.select_tool_by_name("LeniaTool"));
+    let fast_preset = PRESET_LENIA_HYDROGEMINIUM.replace("\"grid_size\": 128", "\"grid_size\": 32");
+    framework
+        .apply_starter_card(
+            "Lenia Hydrogeminium Swimmer",
+            Some("LeniaTool"),
+            Some(&fast_preset),
+        )
+        .expect("Hydrogeminium preset must load in WASM");
+
+    assert_wasm_lenia_exports(&ctx, &mut framework);
 
     framework
         .apply_starter_card(
@@ -297,9 +310,11 @@ fn wasm_lenia_studio_stepping_exports_and_url_roundtrip() {
     assert!(fragment.len() < 4096);
 
     let mut restored = crate::app::MathExplorerApp::default();
-    assert!(restored
-        .apply_share_location_strings(fragment, "", None)
-        .expect("WASM URL decode"));
+    assert!(
+        restored
+            .apply_share_location_strings(fragment, "", None)
+            .expect("WASM URL decode")
+    );
     let bio_idx = restored
         .tabs
         .iter()

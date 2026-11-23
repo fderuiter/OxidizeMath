@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::runner::{AtlasPassMeta, AtlasRenderRequest, AtlasRunner, DEFAULT_ATLAS_SIDE};
-use super::{AtlasCell, RegimeCartographer, ATLAS_STRIDES};
+use super::{ATLAS_STRIDES, AtlasCell, RegimeCartographer};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -84,10 +84,10 @@ impl ParameterAtlasController {
         self.visible = visible;
         if visible {
             self.dirty = true;
-        } else if let Some(worker) = &mut self.worker {
-            if worker.is_running() {
-                let _ = worker.send_command(SimCommand::Pause);
-            }
+        } else if let Some(worker) = &mut self.worker
+            && worker.is_running()
+        {
+            let _ = worker.send_command(SimCommand::Pause);
         }
     }
 
@@ -179,16 +179,15 @@ impl ParameterAtlasController {
 
     pub(super) fn lookup_or_evaluate_cell(&self, p1: f64, p2: f64) -> Option<AtlasCell> {
         let cartographer = self.active_cartographer.as_ref()?;
-        if let Some(meta) = &self.latest_meta {
-            if meta.generation == self.request_generation
-                && meta.is_final
-                && meta.width > 0
-                && meta.height > 0
-                && meta.cells.len() == meta.width * meta.height
-            {
-                let (sx, sy) = meta.axes.coords_to_pixel(p1, p2, meta.width, meta.height);
-                return Some(meta.cells[flatten_2d_index(sx, sy, meta.width)]);
-            }
+        if let Some(meta) = &self.latest_meta
+            && meta.generation == self.request_generation
+            && meta.is_final
+            && meta.width > 0
+            && meta.height > 0
+            && meta.cells.len() == meta.width * meta.height
+        {
+            let (sx, sy) = meta.axes.coords_to_pixel(p1, p2, meta.width, meta.height);
+            return Some(meta.cells[flatten_2d_index(sx, sy, meta.width)]);
         }
         let axes = cartographer.axes();
         Some(cartographer.evaluate_cell(axes.x.clamp(p1), axes.y.clamp(p2)))

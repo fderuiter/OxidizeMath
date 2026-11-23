@@ -30,10 +30,12 @@ fn test_attractor_divergence_detection() {
     }
 
     // Verify history contains no non-finite values
-    assert!(plotter
-        .history
-        .iter()
-        .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+    assert!(
+        plotter
+            .history
+            .iter()
+            .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+    );
 
     // Reset clears diverged flag cleanly and restores Ready
     plotter.reset();
@@ -412,10 +414,10 @@ fn test_attractor_camera_preset_roundtrip_and_validation() {
 
 fn find_callout_center(shapes: &[egui::epaint::ClippedShape], needle: &str) -> egui::Pos2 {
     for clipped in shapes {
-        if let egui::epaint::Shape::Text(text) = &clipped.shape {
-            if text.galley.text().contains(needle) {
-                return text.visual_bounding_rect().center();
-            }
+        if let egui::epaint::Shape::Text(text) = &clipped.shape
+            && text.galley.text().contains(needle)
+        {
+            return text.visual_bounding_rect().center();
         }
     }
     panic!("Callout containing '{needle}' not found in output shapes");

@@ -1,9 +1,9 @@
 //! Coupled multi-equation expression bank sharing a single [`ParameterSliderBank`]
 //! and synchronized [`CompiledExpr`] parameter indices across $N$ equations.
 
-use super::{MathExpressionInputBar, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS};
+use super::{MAX_SYNTHESIZED_PARAMS, MathExpressionInputBar, ParameterSliderBank};
 use eframe::egui;
-use math_commons::ast::{is_universal_constant, parse, CompiledExpr, Expr};
+use math_commons::ast::{CompiledExpr, Expr, is_universal_constant, parse};
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 

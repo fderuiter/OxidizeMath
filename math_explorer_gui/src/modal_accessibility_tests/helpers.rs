@@ -1,11 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use crate::app::{MathExplorerApp, ViewportLayout};
-use eframe::egui::{
-    self, accesskit, vec2, Context, Event, FullOutput, Id, Key, Modifiers, PointerButton, Pos2,
-    RawInput, Rect,
-};
 use eframe::App;
+use eframe::egui::{
+    self, Context, Event, FullOutput, Id, Key, Modifiers, PointerButton, Pos2, RawInput, Rect,
+    accesskit, vec2,
+};
 
 pub(super) fn screen_rect() -> Rect {
     Rect::from_min_size(Pos2::ZERO, vec2(2000.0, 3000.0))
@@ -265,13 +265,12 @@ pub(super) fn snapshot_all_pane_states(
                 .pane_tab(idx)
                 .and_then(|t| t.save_state())
                 .unwrap_or_default();
-            if exclude_plot_states_pane == Some(idx) {
-                if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&state) {
-                    if let Some(obj) = val.as_object_mut() {
-                        obj.remove("plot_states");
-                        state = serde_json::to_string(&val).unwrap_or(state);
-                    }
-                }
+            if exclude_plot_states_pane == Some(idx)
+                && let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&state)
+                && let Some(obj) = val.as_object_mut()
+            {
+                obj.remove("plot_states");
+                state = serde_json::to_string(&val).unwrap_or(state);
             }
             (idx, state)
         })

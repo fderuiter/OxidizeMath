@@ -16,7 +16,7 @@ mod tests;
 #[cfg(test)]
 mod ui_tests;
 
-pub use atlas::{PharmacokineticsCartographer, PK_ATLAS_AXIS_PAIRS};
+pub use atlas::{PK_ATLAS_AXIS_PAIRS, PharmacokineticsCartographer};
 pub use persistence::STARTER_PRESET_JSON;
 
 use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};

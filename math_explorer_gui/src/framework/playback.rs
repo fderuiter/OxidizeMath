@@ -3,7 +3,7 @@
 #[path = "playback_helpers.rs"]
 mod helpers;
 
-use crate::accessibility::{announce_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_status};
 use crate::async_sim::{SimWorkerState, TimelineMetadata};
 use eframe::egui;
 
@@ -157,12 +157,11 @@ impl<'a> PlaybackTransport<'a> {
         let ui_enabled = ui.is_enabled();
         let mut action = self.render_button_row(ui, base_id, min_size, ui_enabled);
 
-        if let Some(meta) = self.timeline {
-            if let Some(scrub) = self.render_timeline_scrubber(ui, base_id, meta, min_size) {
-                if action.is_none() {
-                    action = Some(scrub);
-                }
-            }
+        if let Some(meta) = self.timeline
+            && let Some(scrub) = self.render_timeline_scrubber(ui, base_id, meta, min_size)
+            && action.is_none()
+        {
+            action = Some(scrub);
         }
 
         let mut should_announce = true;
@@ -318,10 +317,10 @@ impl<'a> PlaybackTransport<'a> {
             claim_pending_sync_key, emit_playback_broadcast, poll_playback_broadcast,
         };
         let ctx = ui.ctx();
-        if let Some((bcast_action, announce)) = poll_playback_broadcast(ctx, base_id) {
-            if self.is_action_applicable(bcast_action) {
-                return (Some(bcast_action), announce);
-            }
+        if let Some((bcast_action, announce)) = poll_playback_broadcast(ctx, base_id)
+            && self.is_action_applicable(bcast_action)
+        {
+            return (Some(bcast_action), announce);
         }
         if let Some(clicked) = clicked_action {
             let announce = emit_playback_broadcast(ctx, base_id, clicked, None);
@@ -424,13 +423,11 @@ impl<'a> PlaybackTransport<'a> {
             if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Comma)) {
                 return Some(PlaybackAction::StepBack);
             }
-            if let Some(meta) = self.timeline {
-                if super::is_pane_activation_shortcut_allowed(ui)
-                    && ui
-                        .input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::OpenBracket))
-                {
-                    return Some(PlaybackAction::ScrubTo(meta.previous_keyframe_step()));
-                }
+            if let Some(meta) = self.timeline
+                && super::is_pane_activation_shortcut_allowed(ui)
+                && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::OpenBracket))
+            {
+                return Some(PlaybackAction::ScrubTo(meta.previous_keyframe_step()));
             }
         }
         None

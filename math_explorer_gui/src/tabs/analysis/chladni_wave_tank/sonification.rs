@@ -8,9 +8,9 @@ use math_explorer::pure_math::analysis::pde::wave_2d::SpectralMode2D;
 use super::{ChladniWaveTankTool, GRID_SIZE};
 use crate::audio::mappings::{
     chladni_plate_frame,
-    wave_plate::{chladni_wave_tank_frame, MAX_CHLADNI_MODES},
+    wave_plate::{MAX_CHLADNI_MODES, chladni_wave_tank_frame},
 };
-use crate::audio::{render_sonification_panel, SonificationFrame};
+use crate::audio::{SonificationFrame, render_sonification_panel};
 
 pub(crate) const SONIFICATION_TOOL_ID: &str = "chladni_wave_tank";
 pub(crate) const MAX_CUSTOM_CLAMPS: usize = 16;

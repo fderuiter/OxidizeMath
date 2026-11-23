@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::{
-    atlas_regime_color, atlas_scalar_color, clamp_atlas_dimensions, AtlasAxisPair, AtlasAxisSpec,
-    AtlasCell, AtlasPassMeta, AtlasRenderRequest, AtlasRunner, ParameterAtlasController,
-    RegimeCartographer, ATLAS_STRIDES, MAX_ATLAS_SIDE,
+    ATLAS_STRIDES, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasPassMeta, AtlasRenderRequest,
+    AtlasRunner, MAX_ATLAS_SIDE, ParameterAtlasController, RegimeCartographer, atlas_regime_color,
+    atlas_scalar_color, clamp_atlas_dimensions,
 };
 use crate::async_sim::SimulationRunner;
 use eframe::egui;
@@ -75,10 +75,10 @@ impl RegimeCartographer for CountingCartographer {
 
     fn evaluate_cell(&self, p1: f64, p2: f64) -> AtlasCell {
         let prev = self.eval_count.fetch_add(1, Ordering::Relaxed);
-        if let Some((limit, ref gen_atom, next_gen)) = self.bump_after {
-            if prev + 1 == limit {
-                gen_atom.store(next_gen, Ordering::Release);
-            }
+        if let Some((limit, ref gen_atom, next_gen)) = self.bump_after
+            && prev + 1 == limit
+        {
+            gen_atom.store(next_gen, Ordering::Release);
         }
         if !self.spin_per_eval.is_zero() {
             let t0 = crate::web_io::PlatformInstant::now();

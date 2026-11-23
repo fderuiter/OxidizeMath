@@ -1,15 +1,15 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::MorphogenesisTool;
 pub use super::counterfactual::MorphogenesisSnapshotData as MorphoSnapshotData;
 use super::counterfactual::{
-    active_morphogen_slice, render_morphogenesis_heatmap, MorphogenesisHeatmapMode,
-    MorphogenesisTwinState,
+    MorphogenesisHeatmapMode, MorphogenesisTwinState, active_morphogen_slice,
+    render_morphogenesis_heatmap,
 };
 #[cfg(test)]
 pub use super::legacy_runner::MorphogenesisRunner;
 pub(crate) use super::runner_twin::apply_uniform_noise;
 use super::sculpt::{apply_sculpt_sim_command, enforce_system_mask, overlay_cell_mask_colors};
-use super::MorphogenesisTool;
 use crate::app::ThemeMode;
 use crate::async_sim::{
     CheckpointParams, CheckpointPayload, SimCommand, SimulationRunner, StateSnapshot,
@@ -287,11 +287,11 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             return;
         }
         let noise_amp = self.noise_amplitude;
-        if let Some(dt) = self.sync_system_params() {
-            if let Some(ref mut twin) = self.twin {
-                enforce_system_mask(&mut twin.system_a, self.width, self.height);
-                twin.step_branch_a(dt, self.width, self.height, noise_amp);
-            }
+        if let Some(dt) = self.sync_system_params()
+            && let Some(ref mut twin) = self.twin
+        {
+            enforce_system_mask(&mut twin.system_a, self.width, self.height);
+            twin.step_branch_a(dt, self.width, self.height, noise_amp);
         }
     }
 
@@ -437,20 +437,18 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             ref v,
             ref mask,
         } = checkpoint.state
+            && width == self.width
+            && height == self.height
+            && u.len() == self.system.u().len()
+            && v.len() == self.system.v().len()
         {
-            if width == self.width
-                && height == self.height
-                && u.len() == self.system.u().len()
-                && v.len() == self.system.v().len()
-            {
-                self.system.u_mut().copy_from_slice(u);
-                self.system.v_mut().copy_from_slice(v);
-                match mask {
-                    Some(bytes) if bytes.len() == width * height => {
-                        let _ = self.system.diffusion.mask.set_roles_slice(bytes);
-                    }
-                    _ => self.system.diffusion.mask.clear(),
+            self.system.u_mut().copy_from_slice(u);
+            self.system.v_mut().copy_from_slice(v);
+            match mask {
+                Some(bytes) if bytes.len() == width * height => {
+                    let _ = self.system.diffusion.mask.set_roles_slice(bytes);
                 }
+                _ => self.system.diffusion.mask.clear(),
             }
         }
         if let Some(p) = checkpoint.params.as_scalars() {

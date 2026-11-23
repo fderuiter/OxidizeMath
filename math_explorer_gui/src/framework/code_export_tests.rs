@@ -15,7 +15,6 @@ use crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool;
 use crate::tabs::epidemiology::sir::SirTool;
 use crate::tabs::medical::beam_profiling::BeamProfilingTool;
 use eframe::egui;
-use std::collections::HashMap;
 use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
 use std::process::Command;
@@ -41,24 +40,30 @@ fn test_ode_custom_bookmark_calibrated_latex_rust_and_python_exact() {
 
     let art = tool.export_code_artifact().expect("bookmark code artifact");
     assert!(art.validate().is_ok());
-    assert!(art
-        .calibrated_latex
-        .contains(r"\frac{dy}{dt} &= -1.85 \cdot y \cdot \sin\left(t\right)"));
-    assert!(art
-        .calibrated_latex
-        .contains(r"y(0) &= 1, \quad \Delta t = 0.05, \quad t \in [0, 10]"));
-    assert!(art
-        .rust_source
-        .contains("pub fn rhs(t: f64, y: f64) -> f64 {\n    (-1.85_f64 * y) * t.sin()\n}"));
-    assert!(art
-        .rust_source
-        .contains("pub fn rk4_step(t: f64, y: f64, dt: f64) -> f64"));
-    assert!(art
-        .python_source
-        .contains("from scipy.integrate import solve_ivp"));
-    assert!(art
-        .python_source
-        .contains("return [(-1.85 * y[0]) * np.sin(t)]"));
+    assert!(
+        art.calibrated_latex
+            .contains(r"\frac{dy}{dt} &= -1.85 \cdot y \cdot \sin\left(t\right)")
+    );
+    assert!(
+        art.calibrated_latex
+            .contains(r"y(0) &= 1, \quad \Delta t = 0.05, \quad t \in [0, 10]")
+    );
+    assert!(
+        art.rust_source
+            .contains("pub fn rhs(t: f64, y: f64) -> f64 {\n    (-1.85_f64 * y) * t.sin()\n}")
+    );
+    assert!(
+        art.rust_source
+            .contains("pub fn rk4_step(t: f64, y: f64, dt: f64) -> f64")
+    );
+    assert!(
+        art.python_source
+            .contains("from scipy.integrate import solve_ivp")
+    );
+    assert!(
+        art.python_source
+            .contains("return [(-1.85 * y[0]) * np.sin(t)]")
+    );
 }
 
 #[test]
@@ -117,9 +122,11 @@ fn verify_tool_exports_in_framework(
         let expected_file = format!("{expected_stem}.{}", fmt.extension());
         let written = std::fs::read_to_string(temp_dir.join(&expected_file)).unwrap();
         assert!(!written.trim().is_empty());
-        assert!(crate::accessibility::all_announcements()
-            .iter()
-            .any(|(msg, prio)| prio == "polite" && msg.contains("clipboard")));
+        assert!(
+            crate::accessibility::all_announcements()
+                .iter()
+                .any(|(msg, prio)| prio == "polite" && msg.contains("clipboard"))
+        );
     }
     assert_eq!(clip_buf.lock().unwrap().len(), 3);
 }
@@ -320,9 +327,11 @@ fn test_nonfinite_parameters_and_unsupported_tools_are_guarded() {
     fw.dispatch_pending_exports_with_ctx(&ctx);
     assert_eq!(fw.export_status_severity, ExportStatusSeverity::Error);
     assert!(fw.export_queue.last_exported_filename.is_none());
-    assert!(crate::accessibility::all_announcements()
-        .iter()
-        .any(|(msg, prio)| prio == "assertive" && msg.contains("finite")));
+    assert!(
+        crate::accessibility::all_announcements()
+            .iter()
+            .any(|(msg, prio)| prio == "assertive" && msg.contains("finite"))
+    );
 
     let bad_ode = configured::<OdeSolverTool>(|t| {
         t.preset = OdePreset::Custom;
@@ -338,116 +347,8 @@ fn test_nonfinite_parameters_and_unsupported_tools_are_guarded() {
     assert!(fw.export_queue.last_exported_filename.is_none());
 }
 
-#[test]
-fn test_code_export_modal_open_tab_switch_and_escape_close() {
-    let ctx = egui::Context::default();
-    ctx.enable_accesskit();
-    let mut fw = SimulationFramework::new("non_existent_domain_xyz");
-    fw.active_tool = Some(Box::new(OdeSolverTool::default()));
-
-    let screen_rect = Some(egui::Rect::from_min_size(
-        egui::Pos2::ZERO,
-        egui::vec2(1400.0, 800.0),
-    ));
-    let raw = || egui::RawInput {
-        screen_rect,
-        ..Default::default()
-    };
-    let _ = ctx.run(raw(), |ctx| fw.show(ctx, "modal_code_test"));
-    assert!(!fw.show_code_export_modal);
-
-    fw.show_code_export_modal = true;
-    fw.code_export_tab = CodeExportTab::Rust;
-    let out_open = ctx.run(raw(), |ctx| fw.show(ctx, "modal_code_test"));
-    assert!(fw.show_code_export_modal);
-    let ak = out_open.platform_output.accesskit_update.as_ref().unwrap();
-    assert!(ak
-        .nodes
-        .iter()
-        .any(|(_, n)| n.label().is_some_and(|l| l.contains("Copy Rust"))));
-
-    let esc = egui::Event::Key {
-        key: egui::Key::Escape,
-        physical_key: None,
-        pressed: true,
-        repeat: false,
-        modifiers: egui::Modifiers::NONE,
-    };
-    let _ = ctx.run(
-        egui::RawInput {
-            events: vec![esc],
-            ..raw()
-        },
-        |ctx| fw.show(ctx, "modal_code_test"),
-    );
-    assert!(!fw.show_code_export_modal);
-}
-
-#[test]
-fn test_math_input_with_params_inline_copy_buttons() {
-    let mut bar = MathExpressionInputBar::new("y'", "-k * y * sin(t)", vec![]);
-    let mut params = HashMap::new();
-    params.insert("k".to_string(), 1.85);
-
-    let ctx = egui::Context::default();
-    ctx.enable_accesskit();
-    let screen_rect = Some(egui::Rect::from_min_size(
-        egui::Pos2::ZERO,
-        egui::vec2(800.0, 300.0),
-    ));
-    let out = ctx.run(
-        egui::RawInput {
-            screen_rect,
-            ..Default::default()
-        },
-        |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                bar.ui_with_params(ui, &params);
-            });
-        },
-    );
-    let ak = out.platform_output.accesskit_update.as_ref().unwrap();
-    let py_pos = ak
-        .nodes
-        .iter()
-        .find_map(|(_, n)| {
-            (n.role() == egui::accesskit::Role::Button && n.label() == Some("📋 Python"))
-                .then(|| n.bounds().unwrap())
-        })
-        .map(|b| egui::pos2(((b.x0 + b.x1) * 0.5) as f32, ((b.y0 + b.y1) * 0.5) as f32))
-        .expect("📋 Python button");
-
-    crate::accessibility::clear_test_announcements();
-    let mut copied_py = String::new();
-    for pressed in [true, false] {
-        let step_out = ctx.run(
-            egui::RawInput {
-                screen_rect,
-                events: vec![
-                    egui::Event::PointerMoved(py_pos),
-                    egui::Event::PointerButton {
-                        pos: py_pos,
-                        button: egui::PointerButton::Primary,
-                        pressed,
-                        modifiers: egui::Modifiers::NONE,
-                    },
-                ],
-                ..Default::default()
-            },
-            |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    bar.ui_with_params(ui, &params);
-                });
-            },
-        );
-        for cmd in &step_out.platform_output.commands {
-            if let egui::OutputCommand::CopyText(txt) = cmd {
-                copied_py.clone_from(txt);
-            }
-        }
-    }
-    assert_eq!(copied_py, "(-1.85 * y) * np.sin(t)");
-}
+#[path = "code_export_ui_tests.rs"]
+mod ui_tests;
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]

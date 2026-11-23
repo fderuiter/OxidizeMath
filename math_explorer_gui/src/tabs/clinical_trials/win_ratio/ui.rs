@@ -11,12 +11,12 @@ use math_explorer::applied::win_ratio::power_sweep::{
     MAX_ARM_SIZE, MAX_SWEEP_REPLICATES, MAX_SWEEP_STEPS,
 };
 
-use super::cohort_io::{load_and_analyze_cohort, SAMPLE_COHORT_CSV};
+use super::cohort_io::{SAMPLE_COHORT_CSV, load_and_analyze_cohort};
 use super::protocol_export::{trigger_save_protocol_csv, trigger_save_protocol_json};
 use super::{ChartMode, WinRatioStressTesterTool};
 use crate::accessibility::AccessibleHoverText;
 use crate::reflective_ui::render_copyable_metric;
-use crate::web_io::{spawn_open_file_dialog, OpenDialogConfig};
+use crate::web_io::{OpenDialogConfig, spawn_open_file_dialog};
 
 const COHORT_OPEN_CONFIG: OpenDialogConfig = OpenDialogConfig {
     filter_name: "Two-Arm Clinical Cohort (.csv, .json)",

@@ -13,13 +13,13 @@ use math_explorer::nalgebra::SVector;
 use math_explorer::physics::high_energy::{
     KerrEquatorialMetric, MorrisThorneWormhole, SchwarzschildBlackHole,
 };
-use math_explorer::pure_math::tensor::{static_christoffel_symbols, StaticMetric, TwoSphereMetric};
+use math_explorer::pure_math::tensor::{StaticMetric, TwoSphereMetric, static_christoffel_symbols};
 use scientific_metadata::theory::ParameterConstraint;
 use serde::{Deserialize, Serialize};
 
 use super::playground::sandbox::{
-    default_custom_lapse_expr, default_custom_wormhole_expr, is_default_custom_lapse_expr,
-    is_default_custom_wormhole_expr, MetricSandbox,
+    MetricSandbox, default_custom_lapse_expr, default_custom_wormhole_expr,
+    is_default_custom_lapse_expr, is_default_custom_wormhole_expr,
 };
 
 #[path = "inspector/sandbox.rs"]

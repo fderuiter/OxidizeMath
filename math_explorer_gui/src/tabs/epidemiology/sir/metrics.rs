@@ -5,11 +5,11 @@ use egui_plot::{Line, Plot, PlotPoint, PlotPoints};
 use math_explorer::epidemiology::compartmental::SIRModel;
 use std::sync::Arc;
 
-use super::{SirForkDescriptor, SirTool, SIR_STEP_DT};
+use super::{SIR_STEP_DT, SirForkDescriptor, SirTool};
 use crate::app::SemanticPalette;
 use crate::framework::{
-    branch_a_ghost_line, branch_b_solid_line, fork_marker_callout, fork_marker_vline,
-    render_divergence_strip, InteractiveTool, TraceSeries,
+    InteractiveTool, TraceSeries, branch_a_ghost_line, branch_b_solid_line, fork_marker_callout,
+    fork_marker_vline, render_divergence_strip,
 };
 use crate::reflective_ui::render_copyable_metric;
 

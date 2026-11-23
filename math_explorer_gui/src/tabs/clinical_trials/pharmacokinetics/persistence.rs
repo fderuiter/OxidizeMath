@@ -3,10 +3,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    AbsorptionMode, EntityMode, PharmacokineticsTool, ReleaseMode, MAX_DOSES, MAX_DOSE_MG,
-    MAX_HORIZON_H, MAX_INTERVAL_H, MAX_KA, MAX_KE, MAX_LAG_H, MAX_MEC, MAX_MTC, MAX_SAMPLE_POINTS,
-    MAX_TARGET_TMAX_H, MAX_VOLUME_L, MIN_HORIZON_H, MIN_INTERVAL_H, MIN_RATE, MIN_SAMPLE_POINTS,
-    MIN_VOLUME_L,
+    AbsorptionMode, EntityMode, MAX_DOSE_MG, MAX_DOSES, MAX_HORIZON_H, MAX_INTERVAL_H, MAX_KA,
+    MAX_KE, MAX_LAG_H, MAX_MEC, MAX_MTC, MAX_SAMPLE_POINTS, MAX_TARGET_TMAX_H, MAX_VOLUME_L,
+    MIN_HORIZON_H, MIN_INTERVAL_H, MIN_RATE, MIN_SAMPLE_POINTS, MIN_VOLUME_L, PharmacokineticsTool,
+    ReleaseMode,
 };
 use crate::framework::{InteractiveTool, TraceSnapshotManager};
 use std::hash::{Hash, Hasher};

@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::counterfactual::step_bloch_rotating_frame;
-use super::pulse::{sync_mri_callouts, MriPulseMode, MriPulseWorkspace, RfPulseConfig};
+use super::pulse::{MriPulseMode, MriPulseWorkspace, RfPulseConfig, sync_mri_callouts};
 use super::runner::{
-    MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE,
+    MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE, MriRunner, MriSharedParams, MriSnapshot,
 };
 use super::theory::MriBlochTheory;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
@@ -325,18 +325,18 @@ impl InteractiveTool for MriTool {
             ]
         };
         let std_labels = ["Mx (Transverse)", "My (Transverse)", "Mz (Longitudinal)"];
-        if let Some(ref twin) = self.twin {
-            if !self.history.is_empty() {
-                let mut out = map_xyz(
-                    &self.history,
-                    ["Mx (Branch B)", "My (Branch B)", "Mz (Branch B)"],
-                );
-                out.extend(map_xyz(
-                    &twin.history_a,
-                    ["Mx (Branch A)", "My (Branch A)", "Mz (Branch A)"],
-                ));
-                return out;
-            }
+        if let Some(ref twin) = self.twin
+            && !self.history.is_empty()
+        {
+            let mut out = map_xyz(
+                &self.history,
+                ["Mx (Branch B)", "My (Branch B)", "Mz (Branch B)"],
+            );
+            out.extend(map_xyz(
+                &twin.history_a,
+                ["Mx (Branch A)", "My (Branch A)", "Mz (Branch A)"],
+            ));
+            return out;
         }
         if !self.history.is_empty() {
             return map_xyz(&self.history, std_labels);

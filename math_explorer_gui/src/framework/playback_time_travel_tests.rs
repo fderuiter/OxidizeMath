@@ -1,5 +1,5 @@
-use super::playback::{PlaybackAction, PlaybackTransport};
 use super::InputMode;
+use super::playback::{PlaybackAction, PlaybackTransport};
 use crate::accessibility::{all_announcements, clear_test_announcements};
 use crate::async_sim::{SimWorkerState, TimelineMetadata};
 use eframe::egui;
@@ -158,9 +158,11 @@ fn test_opted_in_scrubber_touch_targets_commands_and_aria_announcements() {
         .data(|d| d.get_temp::<CommandRegistryData>(egui::Id::new("CMD_REGISTRY")))
         .unwrap_or_default()
         .commands;
-    assert!(cmds
-        .iter()
-        .any(|c| { c.name == "Step Back" && c.trigger == CommandTrigger::Key(egui::Key::Comma) }));
+    assert!(
+        cmds.iter().any(|c| {
+            c.name == "Step Back" && c.trigger == CommandTrigger::Key(egui::Key::Comma)
+        })
+    );
     assert!(cmds.iter().any(|c| {
         c.name == "Previous Keyframe" && c.trigger == CommandTrigger::Key(egui::Key::OpenBracket)
     }));

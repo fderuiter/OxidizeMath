@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::OdeSolverTool;
 use super::comparison::{
-    build_view_trace_series, compute_series_discrepancy, simulate_ode, OdeSimSpec,
-    SolverTrajectory, TrajectoryView,
+    OdeSimSpec, SolverTrajectory, TrajectoryView, build_view_trace_series,
+    compute_series_discrepancy, simulate_ode,
 };
 use super::recovery;
 use super::systems::CustomOdeSpec;
-use super::OdeSolverTool;
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{InteractiveTool, TraceSeries};
 use crate::reflective_ui::render_copyable_metric;

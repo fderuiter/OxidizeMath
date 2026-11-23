@@ -2,8 +2,8 @@
 
 use super::{ChallengeHudMode, CompiledGoalPredicate, SimulationFramework};
 use crate::starter_gallery::{
-    find_challenge_by_id, find_story_by_id, get_story_cards_for_domain,
-    show_starter_gallery_overlay, StarterGalleryTab,
+    StarterGalleryTab, find_challenge_by_id, find_story_by_id, get_story_cards_for_domain,
+    show_starter_gallery_overlay,
 };
 use crate::web_io::PlatformInstant;
 use eframe::egui;
@@ -41,9 +41,11 @@ fn test_compiled_goal_predicate_ast_eval_depth_finite_and_latency() {
 
     let bounded_nested = format!("{}x{} > -2.0", "sin(".repeat(32), ")".repeat(32));
     let bounded_pred = CompiledGoalPredicate::compile(&bounded_nested).expect("parses depth 32");
-    assert!(bounded_pred
-        .eval_observables(&[("x", 1.0)], &mut scratch)
-        .unwrap());
+    assert!(
+        bounded_pred
+            .eval_observables(&[("x", 1.0)], &mut scratch)
+            .unwrap()
+    );
 
     let start = PlatformInstant::now();
     for _ in 0..200 {
@@ -78,9 +80,10 @@ fn test_kelly_challenge_completes_and_announces_once_via_live_region() {
     ctx.data_mut(|d| d.remove::<bool>(egui::Id::new("aria_live_dispatched")));
     assert_eq!(fw.evaluate_challenge_predicates(Some(&ctx)), Some(true));
     let msg: Option<String> = ctx.data(|d| d.get_temp(egui::Id::new("aria_live_message")));
-    assert!(msg
-        .as_deref()
-        .is_some_and(|m| m.contains("Kelly Ruin Trap")));
+    assert!(
+        msg.as_deref()
+            .is_some_and(|m| m.contains("Kelly Ruin Trap"))
+    );
 
     ctx.data_mut(|d| d.remove::<bool>(egui::Id::new("aria_live_dispatched")));
     assert_eq!(fw.evaluate_challenge_predicates(Some(&ctx)), Some(true));
@@ -102,9 +105,11 @@ fn test_story_transitions_announce_each_step_once_and_pause_on_diverged() {
     ctx.data_mut(|d| d.remove::<bool>(egui::Id::new("aria_live_dispatched")));
     fw.flush_hud_announcements(&ctx);
     let first_msg: Option<String> = ctx.data(|d| d.get_temp(egui::Id::new("aria_live_message")));
-    assert!(first_msg
-        .as_deref()
-        .is_some_and(|m| m.contains("step 1 of 3")));
+    assert!(
+        first_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("step 1 of 3"))
+    );
 
     ctx.data_mut(|d| d.remove::<bool>(egui::Id::new("aria_live_dispatched")));
     fw.flush_hud_announcements(&ctx);
@@ -116,9 +121,11 @@ fn test_story_transitions_announce_each_step_once_and_pause_on_diverged() {
     fw.step_story(1).expect("advances to step 1");
     fw.flush_hud_announcements(&ctx);
     let second_msg: Option<String> = ctx.data(|d| d.get_temp(egui::Id::new("aria_live_message")));
-    assert!(second_msg
-        .as_deref()
-        .is_some_and(|m| m.contains("step 2 of 3")));
+    assert!(
+        second_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("step 2 of 3"))
+    );
 
     let challenge =
         find_challenge_by_id("kutta_joukowski_lift", Some("fluid_dynamics")).expect("challenge");
@@ -176,10 +183,11 @@ fn test_url_hydration_for_challenge_and_story_and_unknown_id_warning_toast() {
         Some(&ctx),
     );
     assert!(bad.is_err());
-    assert!(app
-        .session_manager
-        .toast()
-        .is_some_and(|(msg, is_err)| *is_err && msg.contains("nonexistent_id")));
+    assert!(
+        app.session_manager
+            .toast()
+            .is_some_and(|(msg, is_err)| *is_err && msg.contains("nonexistent_id"))
+    );
 }
 
 #[test]

@@ -2,13 +2,13 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::MorphogenesisTool;
 use super::counterfactual::{
-    active_morphogen_slice, active_morphogen_slice_mut, render_morphogenesis_heatmap,
     MorphogenesisForkDescriptor, MorphogenesisHeatmapMode, MorphogenesisSnapshotData,
+    active_morphogen_slice, active_morphogen_slice_mut, render_morphogenesis_heatmap,
 };
 use super::sculpt::overlay_cell_mask_colors;
-use super::MorphogenesisTool;
-use crate::accessibility::{announce_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_status};
 use crate::app::ThemeMode;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimulationRunner};
 use crate::framework::BranchControlAction;
@@ -54,10 +54,10 @@ impl MorphogenesisTool {
     /// Forks a counterfactual shadow twin at `step_count > 0`.
     pub fn fork_here(&mut self) -> bool {
         self.pull_latest_worker_snapshot();
-        if let Some(ref sr) = self.step_runner {
-            if sr.step_count > self.local_runner.step_count {
-                self.local_runner = sr.clone_outside_step();
-            }
+        if let Some(ref sr) = self.step_runner
+            && sr.step_count > self.local_runner.step_count
+        {
+            self.local_runner = sr.clone_outside_step();
         }
         let delta = self.branch_engine.effective_delta();
         if !self.local_runner.fork_here(delta) {
@@ -146,12 +146,12 @@ impl MorphogenesisTool {
                     .mask
                     .set_roles_slice(&data.mask_roles);
             }
-            if let (Some(ref mut twin), Some(ref ua)) = (&mut self.local_runner.twin, &data.u_a) {
-                if ua.len() == self.width * self.height {
-                    active_morphogen_slice_mut(&mut twin.system_a).copy_from_slice(ua);
-                    let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
-                    twin.observe_lockstep(data.step_count, dt, &data.u_data);
-                }
+            if let (Some(twin), Some(ua)) = (&mut self.local_runner.twin, &data.u_a)
+                && ua.len() == self.width * self.height
+            {
+                active_morphogen_slice_mut(&mut twin.system_a).copy_from_slice(ua);
+                let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+                twin.observe_lockstep(data.step_count, dt, &data.u_data);
             }
             if let Some(ref div) = data.divergence {
                 self.branch_engine.sync_snapshot(Some(div.clone()));
@@ -245,30 +245,29 @@ impl MorphogenesisTool {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.heatmap_mode, p.theme_mode)
         };
-        if let Some(snap) = self.worker.latest_snapshot() {
-            if let Some(data) = snap
+        if let Some(snap) = self.worker.latest_snapshot()
+            && let Some(data) = snap
                 .structured_data
                 .as_ref()
                 .and_then(|d| d.downcast_ref::<MorphogenesisSnapshotData>())
                 .filter(|d| d.step_count >= self.local_runner.step_count)
-            {
-                let mut img = render_morphogenesis_heatmap(
-                    &data.u_data,
-                    data.u_a.as_deref(),
-                    self.width,
-                    self.height,
-                    mode,
-                    theme,
+        {
+            let mut img = render_morphogenesis_heatmap(
+                &data.u_data,
+                data.u_a.as_deref(),
+                self.width,
+                self.height,
+                mode,
+                theme,
+            );
+            if mode == MorphogenesisHeatmapMode::ActiveUb && !data.mask_roles.is_empty() {
+                overlay_cell_mask_colors(
+                    &mut img,
+                    &data.mask_roles,
+                    theme == ThemeMode::HighContrast,
                 );
-                if mode == MorphogenesisHeatmapMode::ActiveUb && !data.mask_roles.is_empty() {
-                    overlay_cell_mask_colors(
-                        &mut img,
-                        &data.mask_roles,
-                        theme == ThemeMode::HighContrast,
-                    );
-                }
-                return img;
             }
+            return img;
         }
         let ua = self
             .local_runner

@@ -1,5 +1,5 @@
 use crate::framework::InteractiveTool;
-use eframe::egui::{self, vec2, Context, Event, Key, Modifiers, Pos2, RawInput, Rect};
+use eframe::egui::{self, Context, Event, Key, Modifiers, Pos2, RawInput, Rect, vec2};
 
 fn screen_raw() -> RawInput {
     RawInput {
@@ -63,11 +63,11 @@ fn assert_tool_canvas_tab_focus_and_accesskit_label(
     let mut reached_via_tab = false;
     for _ in 0..80 {
         let tab_out = ctx.run(tab_raw(), |ctx| tool.show(ctx));
-        if let Some(upd) = tab_out.platform_output.accesskit_update {
-            if matching_nodes.contains(&upd.focus) {
-                reached_via_tab = true;
-                break;
-            }
+        if let Some(upd) = tab_out.platform_output.accesskit_update
+            && matching_nodes.contains(&upd.focus)
+        {
+            reached_via_tab = true;
+            break;
         }
     }
 

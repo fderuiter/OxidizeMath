@@ -5,7 +5,7 @@
 
 use super::contours::compute_isodose_dice;
 use super::{
-    voxel_coord_cm, IMRT_GRID_DIM, IMRT_OAR_CENTER, IMRT_PHANTOM_SIZE_CM, IMRT_VOXEL_COUNT,
+    IMRT_GRID_DIM, IMRT_OAR_CENTER, IMRT_PHANTOM_SIZE_CM, IMRT_VOXEL_COUNT, voxel_coord_cm,
 };
 use crate::tabs::medical::link_bus::GatingTelemetry;
 use crate::tabs::medical::radar_gating::pipeline::{FastCvKalman, HISTORY_LEN, SIM_DT};

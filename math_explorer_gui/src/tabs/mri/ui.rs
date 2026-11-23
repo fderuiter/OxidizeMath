@@ -1,16 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::counterfactual_tool::render_mri_plot_curves;
-use super::pulse::{MriPulseMode, MRI_PULSE_SAMPLES};
+use super::pulse::{MRI_PULSE_SAMPLES, MriPulseMode};
 use super::runner::MriSnapshot;
 use super::tool::MriTool;
 use crate::app::SemanticPalette;
 use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+    WorkerFaultAction, render_empty_plot_guidance, render_worker_fault_banner,
 };
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{
-    render_divergence_strip, CounterfactualTransport, PlaybackAction, PlaybackTransport,
+    CounterfactualTransport, PlaybackAction, PlaybackTransport, render_divergence_strip,
 };
 use eframe::egui;
 use egui_plot::{Legend, Plot, Points, VLine};

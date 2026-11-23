@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::app::domain_bar::AcademicDomain;
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 use std::collections::HashSet;
 
 fn collect_text_rects(shapes: &[egui::epaint::ClippedShape], out: &mut Vec<(String, egui::Rect)>) {
@@ -183,8 +183,8 @@ fn test_primary_module_each_domain_shows_only_belonging_modules() {
 
     assert_eq!(
         discovered_modules.len(),
-        28,
-        "All 28 simulation modules must appear under their academic domain"
+        app.tabs.len(),
+        "All instantiated simulation modules must appear under their academic domain"
     );
 }
 

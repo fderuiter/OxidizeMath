@@ -5,7 +5,7 @@ use super::io::{
 use super::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 use crate::app::{AppState, MathExplorerApp, SharedTabJson};
 use eframe::egui;
-use std::sync::mpsc::{channel, TryRecvError};
+use std::sync::mpsc::{TryRecvError, channel};
 
 fn resolve_legacy_callout_target(app_state: &AppState) -> Option<(String, Option<String>)> {
     let tabs = crate::tabs::instantiate_tabs();
@@ -86,10 +86,10 @@ fn migrate_legacy_callout_manager(
         app_state
             .tab_states
             .insert(tab_name.clone(), merged.clone());
-        if let Some(primary_pane) = app_state.pane_tab_states.first_mut() {
-            if primary_pane.contains_key(&tab_name) {
-                primary_pane.insert(tab_name, merged);
-            }
+        if let Some(primary_pane) = app_state.pane_tab_states.first_mut()
+            && primary_pane.contains_key(&tab_name)
+        {
+            primary_pane.insert(tab_name, merged);
         }
     }
 }

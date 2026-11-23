@@ -1,8 +1,8 @@
 use super::{SimCommand, SimStateSender, SimulationRunner};
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::Receiver;
-use std::sync::Mutex;
 
 #[allow(missing_docs)]
 pub struct WorkerContext {
@@ -40,8 +40,8 @@ pub fn unregister_worker_context(handle: u32) -> Option<WorkerContext> {
 mod tests {
     use super::*;
     use crate::async_sim::StateSnapshot;
-    use std::sync::mpsc;
     use std::sync::Arc;
+    use std::sync::mpsc;
 
     struct DummyRunner;
 

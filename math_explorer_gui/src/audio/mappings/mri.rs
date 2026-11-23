@@ -11,8 +11,8 @@ use nalgebra::Vector3;
 use math_explorer::biology::morphogenesis::{ReactionKinetics, SchnakenbergKinetics};
 
 use crate::audio::frame::{
-    clamp_freq_hz, HarmonicWeights, SonificationFrame, VoiceSpec, WaveformPreset, MAX_VOICES,
-    NUM_HARMONICS,
+    HarmonicWeights, MAX_VOICES, NUM_HARMONICS, SonificationFrame, VoiceSpec, WaveformPreset,
+    clamp_freq_hz,
 };
 use crate::tabs::mri::kspace_types::ISOCHROMAT_COUNT;
 use crate::tabs::mri::pulse::{MriPulseMode, RfPulseConfig};

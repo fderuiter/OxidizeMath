@@ -6,6 +6,12 @@ impl crate::tabs::ExplorerTab for MockTab {
     fn name(&self) -> &'static str {
         self.0
     }
+    fn academic_domain(&self) -> &'static str {
+        "Applied Math"
+    }
+    fn url_slug(&self) -> &'static str {
+        self.0
+    }
     fn show_inside(&mut self, _ui: &mut egui::Ui, _frame: &mut eframe::Frame) {}
 }
 

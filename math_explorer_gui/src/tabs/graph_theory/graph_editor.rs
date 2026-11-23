@@ -20,7 +20,7 @@ pub use braess::{AffineLatency, BraessCongestionConfig, BraessCongestionLab};
 #[allow(unused_imports)]
 pub use keyboard::{TRANSLATE_STEP_NORMAL, TRANSLATE_STEP_SHIFT};
 #[allow(unused_imports)]
-pub use snapshot::{GraphSnapshot, SerializedGraphState, MAX_SNAPSHOTS};
+pub use snapshot::{GraphSnapshot, MAX_SNAPSHOTS, SerializedGraphState};
 
 #[derive(PartialEq, Default)]
 pub(crate) enum EditorMode {
@@ -131,19 +131,18 @@ impl InteractiveTool for GraphEditorTool {
 
     fn on_drag(&mut self, ctx: &InteractionContext) {
         if self.mode == EditorMode::AddNode {
-            if ctx.response.drag_started() {
-                if let Some(id) = self.hovered_node {
-                    self.push_undo_snapshot();
-                    self.dragged_node = Some(id);
-                }
+            if ctx.response.drag_started()
+                && let Some(id) = self.hovered_node
+            {
+                self.push_undo_snapshot();
+                self.dragged_node = Some(id);
             }
-            if ctx.response.dragged() {
-                if let Some(dragged_id) = self.dragged_node {
-                    if let Some(node_pos) = self.node_positions.get_mut(&dragged_id) {
-                        *node_pos += ctx.delta;
-                        self.bump_revision();
-                    }
-                }
+            if ctx.response.dragged()
+                && let Some(dragged_id) = self.dragged_node
+                && let Some(node_pos) = self.node_positions.get_mut(&dragged_id)
+            {
+                *node_pos += ctx.delta;
+                self.bump_revision();
             }
             if ctx.response.drag_stopped() {
                 self.dragged_node = None;

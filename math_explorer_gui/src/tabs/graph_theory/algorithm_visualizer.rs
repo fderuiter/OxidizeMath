@@ -151,7 +151,7 @@ impl AlgorithmVisualizerTool {
             Algorithm::Bfs => {
                 let mut bfs = Bfs::new(&self.graph.graph, start_idx);
                 while let Some(nx) = bfs.next(&self.graph.graph) {
-                    if let Some((&id, _)) = self.node_indices.iter().find(|(_, &idx)| idx == nx) {
+                    if let Some((&id, _)) = self.node_indices.iter().find(|&(_, &idx)| idx == nx) {
                         self.visit_order.push(id);
                     }
                 }
@@ -159,7 +159,7 @@ impl AlgorithmVisualizerTool {
             Algorithm::Dfs => {
                 let mut dfs = Dfs::new(&self.graph.graph, start_idx);
                 while let Some(nx) = dfs.next(&self.graph.graph) {
-                    if let Some((&id, _)) = self.node_indices.iter().find(|(_, &idx)| idx == nx) {
+                    if let Some((&id, _)) = self.node_indices.iter().find(|&(_, &idx)| idx == nx) {
                         self.visit_order.push(id);
                     }
                 }
@@ -350,10 +350,10 @@ impl InteractiveTool for AlgorithmVisualizerTool {
                 loaded.playback_speed
             ));
         }
-        if let Some(id) = loaded.start_node {
-            if !self.node_indices.contains_key(&id) {
-                return Err(format!("Unknown start_node id: {id}"));
-            }
+        if let Some(id) = loaded.start_node
+            && !self.node_indices.contains_key(&id)
+        {
+            return Err(format!("Unknown start_node id: {id}"));
         }
         self.selected_algorithm = loaded.selected_algorithm;
         self.start_node = loaded.start_node;
@@ -388,13 +388,21 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for AlgorithmVisualizerTool {
     fn theory_description(&self) -> String {
         let algo_str = match self.selected_algorithm {
-            Algorithm::Dijkstra => "Dijkstra shortest path algorithm via priority relaxation $d(v) = \\min(d(v), d(u) + w(u, v))$",
-            Algorithm::Bfs => "Breadth-First Search level-order queue traversal computing unweighted shortest path distances",
-            Algorithm::Dfs => "Depth-First Search recursive stack traversal exploring graph connectivity and cycles",
+            Algorithm::Dijkstra => {
+                "Dijkstra shortest path algorithm via priority relaxation $d(v) = \\min(d(v), d(u) + w(u, v))$"
+            }
+            Algorithm::Bfs => {
+                "Breadth-First Search level-order queue traversal computing unweighted shortest path distances"
+            }
+            Algorithm::Dfs => {
+                "Depth-First Search recursive stack traversal exploring graph connectivity and cycles"
+            }
         };
         format!(
             "Graph traversal and pathfinding analysis executing {} across $|V| = {}$ nodes and $|E| = {}$ edges.",
-            algo_str, self.node_positions.len(), self.edges.len()
+            algo_str,
+            self.node_positions.len(),
+            self.edges.len()
         )
     }
     fn phonetic_description(&self) -> String {

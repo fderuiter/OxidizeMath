@@ -1,8 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::tabs::{ExplorerTab, TabDescriptor};
-use eframe::egui;
-
 pub mod lattice_boltzmann;
 pub mod lattice_boltzmann_sculpt;
 pub mod lbm_atlas;
@@ -13,58 +10,12 @@ mod potential_flow_brush;
 pub mod turbulence;
 pub mod turbulence_atlas;
 
-pub struct FluidDynamicsTab {
-    framework: crate::framework::SimulationFramework,
-}
-
-impl Default for FluidDynamicsTab {
-    fn default() -> Self {
-        Self {
-            framework: crate::framework::SimulationFramework::new("fluid_dynamics"),
-        }
-    }
-}
-
-impl ExplorerTab for FluidDynamicsTab {
-    fn name(&self) -> &'static str {
-        "Fluid Dynamics"
-    }
-
-    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.framework.show_inside(ui, "fluid_dynamics");
-    }
-
-    fn state_revision(&self) -> u64 {
-        self.framework.state_revision()
-    }
-
-    fn save_state(&self) -> Option<String> {
-        self.framework.save_state()
-    }
-
-    fn load_state(&mut self, state: &str) {
-        self.framework.load_state(state);
-    }
-
-    fn select_tool_by_name(&mut self, name: &str) -> bool {
-        self.framework.select_tool_by_name(name)
-    }
-
-    fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
-        Some(&self.framework)
-    }
-
-    fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
-        Some(&mut self.framework)
-    }
-}
-
-inventory::submit! {
-    TabDescriptor {
-        id: "fluid_dynamics",
-        order: 12,
-        build: || Box::new(FluidDynamicsTab::default()),
-    }
-}
+crate::declare_simulation_tab!(
+    pub struct FluidDynamicsTab,
+    name: "Fluid Dynamics",
+    domain: "Physics",
+    slug: "fluid_dynamics",
+    order: 12,
+);
 
 // [cite:graph_parameters_rust]

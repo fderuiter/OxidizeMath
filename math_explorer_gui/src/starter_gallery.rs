@@ -417,20 +417,20 @@ pub mod stories;
 #[path = "starter_gallery/story_packs.rs"]
 mod story_packs;
 pub use challenges::{
-    challenge_matches_domain, find_challenge_metadata, get_all_challenge_cards,
-    get_challenge_cards_for_domain, ChallengeCard, ChallengeMetadata, GallerySelection,
+    ChallengeCard, ChallengeMetadata, GallerySelection, challenge_matches_domain,
+    find_challenge_metadata, get_all_challenge_cards, get_challenge_cards_for_domain,
 };
 pub use filter_ui::{
     card_academic_domain, filter_challenge_cards, filter_goal_challenges, filter_starter_cards,
     filter_stories, get_all_starter_cards, get_all_starter_cards_with_tools,
     get_starter_cards_for_domain,
 };
+pub use root_host::{
+    StarterGalleryTab, show_starter_gallery_overlay, show_starter_gallery_with_challenges,
+};
 pub(crate) use root_host::{
     begin_root_starter_gallery_scope, flush_deferred_starter_galleries,
     is_root_starter_gallery_scope_active, try_defer_starter_gallery,
-};
-pub use root_host::{
-    show_starter_gallery_overlay, show_starter_gallery_with_challenges, StarterGalleryTab,
 };
 pub use stories::*;
 

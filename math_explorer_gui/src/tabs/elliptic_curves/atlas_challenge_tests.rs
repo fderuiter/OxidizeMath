@@ -1,19 +1,19 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::EllipticCurvesTab;
 use super::atlas::{WeierstrassAtlasRegime, WeierstrassRegimeCartographer};
 use super::chord_tangent_tool::{CurveFieldMode, WeierstrassPlaygroundTool};
-use super::handoff::{request_elliptic_torus_handoff, EllipticHandoffTarget, EllipticTorusHandoff};
+use super::handoff::{EllipticHandoffTarget, EllipticTorusHandoff, request_elliptic_torus_handoff};
 use super::modular_invariants_tool::{ModularInvariantsTool, ModularPlotMode};
 use super::observables::CHALLENGE_HASSE_WEIL_BOUNDARY_P23;
-use super::EllipticCurvesTab;
 use crate::app::domain_bar::poll_cross_tab_tool_handoffs;
 use crate::async_sim::atlas::RegimeCartographer;
 use crate::framework::{CompiledGoalPredicate, InteractiveTool};
 use crate::starter_gallery::{
     find_challenge_metadata, find_goal_challenge_by_id, find_story_by_id,
 };
-use crate::tabs::number_theory::elliptic_curve_playground::EllipticCurvePlayground;
 use crate::tabs::ExplorerTab;
+use crate::tabs::number_theory::elliptic_curve_playground::EllipticCurvePlayground;
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{AffinePointFp, CurvePoint, PrimeWeierstrassCurve};
 use verified_engine::engine::VerifiedEngine;
@@ -134,10 +134,12 @@ fn test_real_singular_crunode_acnode_cusp_rendering_and_exports() {
     tool.state.real_b = 2.0;
     tool.state.real_px = 1.0;
     tool.state.real_qx = 2.0;
-    assert!(!tool
-        .export_datasets()
-        .iter()
-        .any(|(name, _)| name.contains("Secant / Tangent")));
+    assert!(
+        !tool
+            .export_datasets()
+            .iter()
+            .any(|(name, _)| name.contains("Secant / Tangent"))
+    );
 }
 
 #[test]
@@ -154,9 +156,10 @@ fn test_fp_singular_torus_rendering_across_playgrounds() {
     let _ = play.atlas.set_axis_keys("mod_a", "mod_b");
     play.rebuild_lattice();
     assert_eq!(play.lattice_points.len(), 18);
-    assert!(play
-        .lattice_points
-        .contains(&CurvePoint::Affine { x: 1, y: 0 }));
+    assert!(
+        play.lattice_points
+            .contains(&CurvePoint::Affine { x: 1, y: 0 })
+    );
     let _ = ctx.run(
         egui::RawInput {
             screen_rect: Some(screen),
@@ -164,10 +167,11 @@ fn test_fp_singular_torus_rendering_across_playgrounds() {
         },
         |ctx| play.show(ctx),
     );
-    assert!(play
-        .export_datasets()
-        .iter()
-        .any(|(n, pts)| n.contains("Singular Vertex") && pts == &vec![[1.0, 0.0]]));
+    assert!(
+        play.export_datasets()
+            .iter()
+            .any(|(n, pts)| n.contains("Singular Vertex") && pts == &vec![[1.0, 0.0]])
+    );
     assert_nine_finite_observables(&play.observables());
 
     let mut nt = EllipticCurvePlayground::default();
@@ -184,10 +188,11 @@ fn test_fp_singular_torus_rendering_across_playgrounds() {
         },
         |ctx| nt.show(ctx),
     );
-    assert!(nt
-        .export_datasets()
-        .iter()
-        .any(|(n, pts)| n.contains("Singular") && !pts.is_empty()));
+    assert!(
+        nt.export_datasets()
+            .iter()
+            .any(|(n, pts)| n.contains("Singular") && !pts.is_empty())
+    );
     assert_nine_finite_observables(&nt.observables());
 }
 
@@ -337,9 +342,11 @@ fn test_guided_stories_and_ast_goal_challenges() {
         tool.import_preset_json((goal.initial_preset_generator)())
             .unwrap();
         let mut scratch = std::collections::HashMap::new();
-        assert!(!pred
-            .eval_observables(&tool.observables(), &mut scratch)
-            .unwrap());
+        assert!(
+            !pred
+                .eval_observables(&tool.observables(), &mut scratch)
+                .unwrap()
+        );
     }
 }
 

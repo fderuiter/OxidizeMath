@@ -2,7 +2,7 @@
 
 // theory_verification!
 
-use crate::audio::frame::{clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset};
+use crate::audio::frame::{SonificationFrame, VoiceSpec, WaveformPreset, clamp_freq_hz};
 
 /// Synthesizes a zero-allocation [`SonificationFrame`] from reinforcement learning step telemetry.
 ///

@@ -5,7 +5,7 @@ use super::kspace_types::{KSpaceMaskPreset, PhantomPreset, StudioBrushMode};
 use crate::accessibility::{
     lock_canvas_arrow_keys, paint_canvas_focus_ring, register_canvas_accessibility,
 };
-use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
+use crate::async_sim::ui::{WorkerFaultAction, render_worker_fault_banner};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{
     InputMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,

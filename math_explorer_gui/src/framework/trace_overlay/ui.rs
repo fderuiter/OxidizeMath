@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{resolve_trace_color, TraceSeries, TraceSnapshot, TraceSnapshotManager};
+use super::{TraceSeries, TraceSnapshot, TraceSnapshotManager, resolve_trace_color};
 use crate::accessibility::AccessibleHoverText;
 use eframe::egui;
-use egui_plot::{render_math_label, Line, LineStyle, PlotPoints, PlotUi};
+use egui_plot::{Line, LineStyle, PlotPoints, PlotUi, render_math_label};
 
 impl TraceSnapshotManager {
     pub fn render_on_plot(&self, plot_ui: &mut PlotUi) {
@@ -113,12 +113,12 @@ impl TraceSnapshotManager {
                 .add_enabled(!full, egui::Button::new(btn_text))
                 .accessible_hover_text(pin_hover);
 
-            if pin_btn.clicked() && !full {
-                if let Some((label, param_summary, series)) = pin_callback() {
-                    if self.add_snapshot(label, param_summary, series) {
-                        changed = true;
-                    }
-                }
+            if pin_btn.clicked()
+                && !full
+                && let Some((label, param_summary, series)) = pin_callback()
+                && self.add_snapshot(label, param_summary, series)
+            {
+                changed = true;
             }
             ui.label(format!("{}/10 pinned", self.snapshots.len()));
         });

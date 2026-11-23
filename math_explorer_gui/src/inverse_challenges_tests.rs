@@ -9,7 +9,7 @@ use crate::starter_gallery::{
     find_challenge_metadata, get_challenge_cards_for_domain, show_starter_gallery_with_challenges,
 };
 use crate::url_state::{
-    encode_base64url, parse_share_location, MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
+    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, encode_base64url, parse_share_location,
 };
 use eframe::egui::{self, Color32};
 
@@ -35,6 +35,20 @@ fn contrast_ratio(fg: Color32, bg: Color32) -> f64 {
     (lighter + 0.05) / (darker + 0.05)
 }
 
+const ALL_STUDIO_CHALLENGES: &[(&str, &str)] = &[
+    ("mri", "bloch_pi_inversion"),
+    ("mri", "bloch_hahn_spin_echo"),
+    ("mri", "mri_kspace_radial_cs"),
+    ("clinical_trials", "pk_therapeutic_window"),
+    ("fluid_dynamics", "lbm_low_drag_fairing"),
+    ("medical", "imrt_oar_sparing"),
+    ("medical", "radar_cough_zero_miss"),
+    ("quantum", "quantum_barrier_50_split"),
+    ("epidemiology", "epidemiology_hub_vaccination"),
+    ("epidemiology", "epidemiology_bridge_quarantine"),
+    ("astrophysics", "astrophysics_mystery_halo_fit"),
+];
+
 #[test]
 fn test_federated_challenge_registry_and_gallery_tab_switch() {
     let cards: Vec<_> = inventory::iter::<ChallengeMetadata>
@@ -46,19 +60,7 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         "Expected at least 11 registered ChallengeMetadata entries, got {}",
         cards.len()
     );
-    for required_id in [
-        "bloch_pi_inversion",
-        "bloch_hahn_spin_echo",
-        "mri_kspace_radial_cs",
-        "pk_therapeutic_window",
-        "lbm_low_drag_fairing",
-        "imrt_oar_sparing",
-        "radar_cough_zero_miss",
-        "quantum_barrier_50_split",
-        "epidemiology_hub_vaccination",
-        "epidemiology_bridge_quarantine",
-        "astrophysics_mystery_halo_fit",
-    ] {
+    for &(_, required_id) in ALL_STUDIO_CHALLENGES {
         let meta = find_challenge_metadata(required_id)
             .unwrap_or_else(|| panic!("Missing ChallengeMetadata '{required_id}'"));
         let baseline = meta.generate_baseline_state();
@@ -68,13 +70,18 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         assert!(clamped.len() <= MAX_DECODED_URL_STATE_BYTES);
     }
 
-    assert_eq!(get_challenge_cards_for_domain("quantum").len(), 1);
-    assert_eq!(get_challenge_cards_for_domain("mri").len(), 3);
-    assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 1);
-    assert_eq!(get_challenge_cards_for_domain("fluid_dynamics").len(), 1);
-    assert_eq!(get_challenge_cards_for_domain("medical").len(), 2);
-    assert_eq!(get_challenge_cards_for_domain("epidemiology").len(), 2);
-    assert_eq!(get_challenge_cards_for_domain("astrophysics").len(), 1);
+    let mut expected_by_domain: std::collections::BTreeMap<&'static str, usize> =
+        std::collections::BTreeMap::new();
+    for meta in inventory::iter::<ChallengeMetadata> {
+        *expected_by_domain.entry(meta.domain).or_insert(0) += 1;
+    }
+    let mut domain_total = 0usize;
+    for (domain, expected_count) in &expected_by_domain {
+        let domain_cards = get_challenge_cards_for_domain(domain);
+        assert_eq!(domain_cards.len(), *expected_count);
+        domain_total += domain_cards.len();
+    }
+    assert_eq!(domain_total, cards.len());
 
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
@@ -87,10 +94,11 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .platform_output
         .accesskit_update
         .expect("AccessKit nodes expected");
-    assert!(ak.nodes.iter().any(|(_, n)| n
-        .label()
-        .unwrap_or("")
-        .contains("Bloch 180° Spin Inversion")));
+    assert!(ak.nodes.iter().any(|(_, n)| {
+        n.label()
+            .unwrap_or("")
+            .contains("Bloch 180° Spin Inversion")
+    }));
 }
 
 fn assert_theme_hud_contrast(theme: ThemeMode, ctx: &egui::Context) {
@@ -154,9 +162,11 @@ fn test_challenge_hud_wcag_contrast_reset_and_aria_across_themes() {
             fw.show(ctx, "clinical_trials");
         });
         let announcements = crate::accessibility::all_announcements();
-        assert!(announcements
-            .iter()
-            .any(|(msg, prio)| msg.contains("Challenge passed") && prio == "polite"));
+        assert!(
+            announcements
+                .iter()
+                .any(|(msg, prio)| msg.contains("Challenge passed") && prio == "polite")
+        );
 
         fw.reset_active_challenge_baseline(Some(&ctx)).unwrap();
         assert!(
@@ -175,27 +185,16 @@ fn test_challenge_hud_wcag_contrast_reset_and_aria_across_themes() {
 #[test]
 fn test_stateless_challenge_urls_within_size_budget() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    for (slug, challenge_id) in [
-        ("mri", "bloch_pi_inversion"),
-        ("mri", "bloch_hahn_spin_echo"),
-        ("mri", "mri_kspace_radial_cs"),
-        ("clinical_trials", "pk_therapeutic_window"),
-        ("fluid_dynamics", "lbm_low_drag_fairing"),
-        ("medical", "imrt_oar_sparing"),
-        ("medical", "radar_cough_zero_miss"),
-        ("quantum", "quantum_barrier_50_split"),
-        ("epidemiology", "epidemiology_hub_vaccination"),
-        ("epidemiology", "epidemiology_bridge_quarantine"),
-        ("astrophysics", "astrophysics_mystery_halo_fit"),
-    ] {
+    for &(slug, challenge_id) in ALL_STUDIO_CHALLENGES {
         let bare_hash = format!("#tab={slug}&challenge={challenge_id}");
         let parsed = parse_share_location(&bare_hash, "").unwrap().unwrap();
         assert_eq!(parsed.challenge.as_deref(), Some(challenge_id));
 
         let mut app = MathExplorerApp::default();
-        assert!(app
-            .apply_share_location_strings(&bare_hash, "", None)
-            .unwrap());
+        assert!(
+            app.apply_share_location_strings(&bare_hash, "", None)
+                .unwrap()
+        );
         let active_fw = app.tabs[app.selected_tab].framework().unwrap();
         assert_eq!(active_fw.active_challenge_id(), Some(challenge_id));
 
@@ -233,9 +232,11 @@ fn test_tampered_challenge_url_clamps_locked_parameters() {
     );
 
     let mut hydrated_app = MathExplorerApp::default();
-    assert!(hydrated_app
-        .apply_share_location_strings(&tampered_hash, "", None)
-        .unwrap());
+    assert!(
+        hydrated_app
+            .apply_share_location_strings(&tampered_hash, "", None)
+            .unwrap()
+    );
     let fw = hydrated_app.tabs[hydrated_app.selected_tab]
         .framework()
         .unwrap();
@@ -406,19 +407,25 @@ fn test_six_new_studio_challenges_start_unsolved_and_announce_aria_on_solve() {
             .and_then(|t| t.evaluate_challenge())
             .unwrap();
         assert!(solved_eval.passed, "{id} did not pass: {solved_eval:?}");
-        assert!(crate::accessibility::all_announcements()
-            .iter()
-            .any(|(msg, prio)| msg.contains("Challenge passed") && prio == "polite"));
+        assert!(
+            crate::accessibility::all_announcements()
+                .iter()
+                .any(|(msg, prio)| msg.contains("Challenge passed") && prio == "polite")
+        );
     }
 }
 
 fn assert_locked_field_clamped(
-    slug: &str,
-    id: &str,
-    key: &str,
+    spec: &str,
     bad_val: serde_json::Value,
     expected_val: serde_json::Value,
 ) {
+    let mut parts = spec.split(':');
+    let (slug, id, key) = (
+        parts.next().unwrap(),
+        parts.next().unwrap(),
+        parts.next().unwrap(),
+    );
     let mut app = MathExplorerApp::default();
     app.apply_share_location_strings(&format!("#tab={slug}&challenge={id}"), "", None)
         .unwrap();
@@ -431,67 +438,58 @@ fn assert_locked_field_clamped(
     env["config"][key] = bad_val;
     let b64 = encode_base64url(env.to_string().as_bytes());
     let mut restored = MathExplorerApp::default();
-    assert!(restored
-        .apply_share_location_strings(&format!("#tab={slug}&challenge={id}&state={b64}"), "", None)
-        .unwrap());
+    let hash = format!("#tab={slug}&challenge={id}&state={b64}");
+    assert!(
+        restored
+            .apply_share_location_strings(&hash, "", None)
+            .unwrap()
+    );
     let fw = restored.tabs[restored.selected_tab].framework().unwrap();
     let cfg: serde_json::Value =
         serde_json::from_str(&fw.active_tool.as_ref().unwrap().save_state().unwrap()).unwrap();
     assert_eq!(
         cfg.get(key).cloned().unwrap_or(serde_json::Value::Null),
         expected_val,
-        "{id}:{key}"
+        "{spec}"
     );
 }
 
 #[test]
 fn test_tampered_locked_fields_clamped_across_five_studios() {
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    for (slug, id, key, bad, exp) in [
+    for (spec, bad, expected) in [
         (
-            "quantum",
-            "quantum_barrier_50_split",
-            "k0",
+            "quantum:quantum_barrier_50_split:k0",
             json!(9.5),
             json!(5.0),
         ),
         (
-            "mri",
-            "mri_kspace_radial_cs",
-            "phantom",
+            "mri:mri_kspace_radial_cs:phantom",
             json!("turing_spots"),
             json!("shepp_logan"),
         ),
         (
-            "medical",
-            "radar_cough_zero_miss",
-            "system_latency_ms",
+            "medical:radar_cough_zero_miss:system_latency_ms",
             json!(0.0),
             json!(60.0),
         ),
         (
-            "epidemiology",
-            "epidemiology_hub_vaccination",
-            "seed",
+            "epidemiology:epidemiology_hub_vaccination:seed",
             json!(999),
             json!(20261121),
         ),
         (
-            "epidemiology",
-            "epidemiology_bridge_quarantine",
-            "budget",
+            "epidemiology:epidemiology_bridge_quarantine:budget",
             json!(25),
             Value::Null,
         ),
         (
-            "astrophysics",
-            "astrophysics_mystery_halo_fit",
-            "distance_mpc",
+            "astrophysics:astrophysics_mystery_halo_fit:distance_mpc",
             json!(99.0),
             json!(14.5),
         ),
     ] {
-        assert_locked_field_clamped(slug, id, key, bad, exp);
+        assert_locked_field_clamped(spec, bad, expected);
     }
 }

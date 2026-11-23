@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::super::{
-    goal_challenge_to_starter_card, story_to_starter_card, ChallengeCard, GallerySelection,
-    GoalChallengeMetadata, PresetStoryMetadata, StarterCard,
+    ChallengeCard, GallerySelection, GoalChallengeMetadata, PresetStoryMetadata, StarterCard,
+    goal_challenge_to_starter_card, story_to_starter_card,
 };
 use crate::app::SemanticPalette;
 use eframe::egui;

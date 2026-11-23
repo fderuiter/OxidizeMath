@@ -12,11 +12,11 @@ use math_explorer::math_kernel::colormap::{
 };
 use math_explorer::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::stat_mech::sandpile::{
-    AvalancheObservable, SandpileGrid, CRITICAL_HEIGHT, MAX_STABLE_HEIGHT,
+    AvalancheObservable, CRITICAL_HEIGHT, MAX_STABLE_HEIGHT, SandpileGrid,
 };
 
 use super::{AbelianSandpileStudio, SandpileColormap, SandpileViewMode};
-use crate::app::{palette::DARK_PALETTE, SemanticPalette};
+use crate::app::{SemanticPalette, palette::DARK_PALETTE};
 
 impl AbelianSandpileStudio {
     pub(super) fn draw_central_workspace(&mut self, parent_ui: &mut egui::Ui) {
@@ -118,17 +118,19 @@ impl AbelianSandpileStudio {
             }
         }
 
-        if (response.clicked() || response.dragged()) && rect.width() > 1.0 && rect.height() > 1.0 {
-            if let Some(pos) = response.interact_pointer_pos() {
-                let fx = ((pos.x - rect.left()) / rect.width()).clamp(0.0, 0.9999);
-                let fy = (1.0 - (pos.y - rect.top()) / rect.height()).clamp(0.0, 0.9999);
-                let cx = ((fx * (n as f32)) as usize).min(n - 1);
-                let cy = ((fy * (n as f32)) as usize).min(n - 1);
-                self.state.cursor_x = cx;
-                self.state.cursor_y = cy;
-                self.apply_brush_at(cx, cy);
-                self.state_rev = self.state_rev.wrapping_add(1);
-            }
+        if (response.clicked() || response.dragged())
+            && rect.width() > 1.0
+            && rect.height() > 1.0
+            && let Some(pos) = response.interact_pointer_pos()
+        {
+            let fx = ((pos.x - rect.left()) / rect.width()).clamp(0.0, 0.9999);
+            let fy = (1.0 - (pos.y - rect.top()) / rect.height()).clamp(0.0, 0.9999);
+            let cx = ((fx * (n as f32)) as usize).min(n - 1);
+            let cy = ((fy * (n as f32)) as usize).min(n - 1);
+            self.state.cursor_x = cx;
+            self.state.cursor_y = cy;
+            self.apply_brush_at(cx, cy);
+            self.state_rev = self.state_rev.wrapping_add(1);
         }
     }
 

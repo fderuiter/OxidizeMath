@@ -16,7 +16,7 @@ mod atlas_sandbox_tests;
 mod tests;
 
 #[cfg(test)]
-pub use atlas::{LeniaCartographer, LeniaRegime, LENIA_ATLAS_AXIS_PAIRS};
+pub use atlas::{LENIA_ATLAS_AXIS_PAIRS, LeniaCartographer, LeniaRegime};
 pub use presets::{LeniaBrushMode, LeniaSpeciesPreset, LeniaTheory, LeniaToolState};
 #[cfg(test)]
 pub use sandbox::compute_potential_distribution;

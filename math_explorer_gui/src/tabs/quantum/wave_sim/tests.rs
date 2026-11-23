@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::presets::{evaluate_potential_grid, POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN};
+use super::presets::{POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN, evaluate_potential_grid};
 use super::*;
 use crate::async_sim::SimulationRunner;
 use crate::framework::{BrushMode, BrushStroke, InteractiveTool, SimulationFramework};
@@ -178,9 +178,11 @@ fn test_ast_syntax_aria_announcement_and_singular_potential_clamping() {
         0.05,
         &pole_expr,
     );
-    assert!(clamped
-        .iter()
-        .all(|&v| v.is_finite() && (POTENTIAL_CLAMP_MIN..=POTENTIAL_CLAMP_MAX).contains(&v)));
+    assert!(
+        clamped
+            .iter()
+            .all(|&v| v.is_finite() && (POTENTIAL_CLAMP_MIN..=POTENTIAL_CLAMP_MAX).contains(&v))
+    );
     assert!((clamped[dense_grid.len() - 3] - (-500.0)).abs() < 1e-12);
     assert!((clamped[dense_grid.len() - 2] - 0.0).abs() < 1e-12);
     assert!((clamped[dense_grid.len() - 1] - 500.0).abs() < 1e-12);
@@ -340,11 +342,12 @@ fn test_quantum_barrier_50_split_challenge_scoring_and_callouts() {
         .unwrap()
         .downcast_ref::<WaveSimulatorTool>()
         .unwrap();
-    assert!(wave
-        .callout_manager
-        .callouts()
-        .iter()
-        .any(|c| c.tag.is_some()));
+    assert!(
+        wave.callout_manager
+            .callouts()
+            .iter()
+            .any(|c| c.tag.is_some())
+    );
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -366,7 +369,7 @@ fn test_wasm_quantum_barrier_50_split_clamp_and_step() {
 #[test]
 fn test_wave_simulator_animated_slider_sweeps_continuous_parameters() {
     use super::presets::wave_parameter_label;
-    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+    use crate::reflective_ui::slider::{AnimatedSliderState, SweepMode, save_slider_state};
 
     let mut tool = WaveSimulatorTool::default();
     let initial_x0 = tool.x0;

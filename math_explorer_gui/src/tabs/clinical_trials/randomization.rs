@@ -3,9 +3,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::randomization_io::{
-    build_cumulative_series, default_seed, default_strata_spec, draw_balance_plot,
-    format_schedule_csv, format_schedule_json, is_default_seed, is_default_strata_spec,
-    parse_strata_patients, ScheduleRow, ScheduleSaveIo, DEFAULT_RNG_SEED, STARTER_PRESET_JSON,
+    DEFAULT_RNG_SEED, STARTER_PRESET_JSON, ScheduleRow, ScheduleSaveIo, build_cumulative_series,
+    default_seed, default_strata_spec, draw_balance_plot, format_schedule_csv,
+    format_schedule_json, is_default_seed, is_default_strata_spec, parse_strata_patients,
 };
 use super::simpson_paradox::{SimpsonParadoxConfig, SimpsonParadoxLab};
 use crate::accessibility::AccessibleHoverText;
@@ -15,7 +15,7 @@ use eframe::egui;
 use math_explorer::applied::clinical_trials::design::{
     AllocationStrategy, BlockRandomizer, Group, SimpleRandomizer, StratifiedRandomizer,
 };
-use oxidize_core::rng::{OxidizeRng, BASE_SEED};
+use oxidize_core::rng::{BASE_SEED, OxidizeRng};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum RandomizationType {

@@ -2,9 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::controllers::{DiscreteQController, GrpoController, GRPO_GROUP_SIZE, ROLLOUT_HORIZON};
+use super::controllers::{DiscreteQController, GRPO_GROUP_SIZE, GrpoController, ROLLOUT_HORIZON};
 use super::plants::{
-    sample_standard_normal, LorenzPlantTwin, PkPlantTwin, PlantStepOutput, SeirPlantTwin,
+    LorenzPlantTwin, PkPlantTwin, PlantStepOutput, SeirPlantTwin, sample_standard_normal,
 };
 pub use super::runner::{ClosedLoopRunner, ClosedLoopTrainingSnapshot};
 use super::state::{ClosedLoopState, ControllerKind, PlantKind};
@@ -193,11 +193,7 @@ impl ClosedLoopPipeline {
     ) -> PlantStepOutput {
         let mag = cfg.kick_magnitude.clamp(0.05, 3.0);
         let eff_dx = if dx_norm.abs() < 0.20 {
-            if dx_norm >= 0.0 {
-                0.45
-            } else {
-                -0.45
-            }
+            if dx_norm >= 0.0 { 0.45 } else { -0.45 }
         } else {
             dx_norm.clamp(-1.0, 1.0)
         };

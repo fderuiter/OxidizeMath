@@ -1,15 +1,15 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::HaloKindChoice;
 use super::challenge::MYSTERY_DWARF_TARGETS;
 use super::rotation_curve_tool::RotationCurveExplorer;
-use super::HaloKindChoice;
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::TraceSeries;
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, LineStyle, Plot, PlotPoints, Points};
 use math_explorer::physics::astrophysics::{
-    decompose_rotation_curve, BaryonicDiskConfig, DwarfMorphology, Mpc,
+    BaryonicDiskConfig, DwarfMorphology, Mpc, decompose_rotation_curve,
 };
 
 impl RotationCurveExplorer {

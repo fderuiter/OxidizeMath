@@ -8,18 +8,18 @@ pub mod state;
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
-pub use state::{active_sweep_count, SweepFrameFlags};
 pub use state::{
-    begin_pane_sweep_scope, current_pass_active_sweep_count, has_active_sweeps, has_sweep_mutation,
-    live_sweep_mutation_count, load_slider_settings, load_slider_state, merge_pane_sweep_flags,
-    reset_frame_sweep_flags, resolve_scoped_slider_id, save_slider_settings, save_slider_state,
-    AnimatedSliderState, SweepMode,
+    AnimatedSliderState, SweepMode, begin_pane_sweep_scope, current_pass_active_sweep_count,
+    has_active_sweeps, has_sweep_mutation, live_sweep_mutation_count, load_slider_settings,
+    load_slider_state, merge_pane_sweep_flags, reset_frame_sweep_flags, resolve_scoped_slider_id,
+    save_slider_settings, save_slider_state,
 };
+#[cfg(test)]
+pub use state::{SweepFrameFlags, active_sweep_count};
 
-use crate::accessibility::{announce_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_status};
 use eframe::egui;
-use popover::{render_settings_popover, SliderPopoverContext};
+use popover::{SliderPopoverContext, render_settings_popover};
 use state::record_slider_frame;
 use std::ops::RangeInclusive;
 
@@ -135,11 +135,7 @@ impl<'a> AnimatedSlider<'a> {
 }
 
 fn sanitize_endpoint(v: f64, fallback: f64) -> f64 {
-    if v.is_finite() {
-        v
-    } else {
-        fallback
-    }
+    if v.is_finite() { v } else { fallback }
 }
 
 fn apply_sweep_step(

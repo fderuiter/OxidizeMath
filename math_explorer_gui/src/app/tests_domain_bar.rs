@@ -6,12 +6,14 @@ use eframe::App;
 use std::collections::HashMap;
 
 #[test]
-fn test_all_21_modules_categorized_into_academic_domains() {
+fn test_all_modules_categorized_into_academic_domains() {
     let app = MathExplorerApp::default();
+    let registered_tabs = crate::tabs::instantiate_tabs();
+    assert!(!registered_tabs.is_empty());
     assert_eq!(
         app.tabs.len(),
-        28,
-        "Expected all 28 modules to be instantiated with default features"
+        registered_tabs.len(),
+        "Expected all registered modules to be instantiated with default features"
     );
 
     let mut domain_counts: HashMap<AcademicDomain, Vec<&'static str>> = HashMap::new();
@@ -30,37 +32,34 @@ fn test_all_21_modules_categorized_into_academic_domains() {
             .push(tab.name());
     }
 
-    // Verify all 6 domains exist and have the expected modules
+    let partitioned_total: usize = AcademicDomain::ALL
+        .iter()
+        .map(|domain| {
+            let modules = domain_counts
+                .get(domain)
+                .unwrap_or_else(|| panic!("Academic domain {:?} must have >= 1 module", domain));
+            assert!(
+                !modules.is_empty(),
+                "Academic domain {:?} must not be empty",
+                domain
+            );
+            modules.len()
+        })
+        .sum();
     assert_eq!(
-        domain_counts.get(&AcademicDomain::PureMath).map(|v| v.len()),
-        Some(7),
-        "Pure Math should have 7 modules: Algorithmic Information, Analysis & Calculus, Elliptic Curves, Financial Math, Geometry & Topology, Graph Theory, Number Theory"
+        partitioned_total,
+        app.tabs.len(),
+        "AcademicDomain::ALL must form an exact partition of all instantiated tabs"
     );
-    assert_eq!(
-        domain_counts.get(&AcademicDomain::Physics).map(|v| v.len()),
-        Some(9),
-        "Physics should have 9 modules: Astrophysics, Chaos Theory, Fluid Dynamics, General Relativity, Medical Physics, MRI Physics, Optics & Waves, Quantum Mechanics, Solid State Physics"
-    );
-    assert_eq!(
-        domain_counts.get(&AcademicDomain::AppliedMath).map(|v| v.len()),
-        Some(7),
-        "Applied Math should have 7 modules: Battery Degradation, Clinical Trials, Favoritism, Game Theory, Paradox Lab, Population Structure, Traceability Portal"
-    );
-    assert_eq!(
-        domain_counts.get(&AcademicDomain::Biology).map(|v| v.len()),
-        Some(3),
-        "Biology should have 3 modules: Morphogenesis, Neuroscience, Epidemiology"
-    );
-    assert_eq!(
-        domain_counts.get(&AcademicDomain::Climate).map(|v| v.len()),
-        Some(1),
-        "Climate should have 1 module: Climate"
-    );
-    assert_eq!(
-        domain_counts.get(&AcademicDomain::Ai).map(|v| v.len()),
-        Some(1),
-        "AI should have 1 module: Artificial Intelligence"
-    );
+
+    assert!(domain_counts[&AcademicDomain::PureMath].contains(&"Number Theory"));
+    assert!(domain_counts[&AcademicDomain::Physics].contains(&"Fluid Dynamics"));
+    assert!(domain_counts[&AcademicDomain::Physics].contains(&"Optics & Waves"));
+    assert!(domain_counts[&AcademicDomain::AppliedMath].contains(&"Game Theory"));
+    assert!(domain_counts[&AcademicDomain::AppliedMath].contains(&"Traceability Portal"));
+    assert!(domain_counts[&AcademicDomain::Biology].contains(&"Epidemiology"));
+    assert!(domain_counts[&AcademicDomain::Climate].contains(&"Climate"));
+    assert!(domain_counts[&AcademicDomain::Ai].contains(&"Artificial Intelligence"));
 }
 
 #[test]

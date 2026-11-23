@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::counterfactual::{render_morphogenesis_heatmap, MorphogenesisHeatmapMode};
+use super::counterfactual::{MorphogenesisHeatmapMode, render_morphogenesis_heatmap};
 use super::*;
 use crate::app::ThemeMode;
 use crate::async_sim::SimulationRunner;
@@ -239,14 +239,16 @@ fn test_morphogenesis_sculpted_maze_twin_parity_and_zero_alloc() {
         runner.step();
     }
     assert!(runner.fork_here(0.0));
-    assert!(runner
-        .twin
-        .as_ref()
-        .unwrap()
-        .system_a
-        .diffusion
-        .mask
-        .has_active_cells());
+    assert!(
+        runner
+            .twin
+            .as_ref()
+            .unwrap()
+            .system_a
+            .diffusion
+            .mask
+            .has_active_cells()
+    );
     for _ in 0..100 {
         runner.step();
     }
@@ -286,11 +288,13 @@ fn test_morphogenesis_fork_and_brush_mask_state_roundtrip() {
         .expect("fork + mask state restores");
     assert!(restored.is_forked());
     assert!(!restored.mask_rle.read().unwrap().is_empty());
-    assert!(restored
-        .local_runner
-        .system
-        .diffusion
-        .mask
-        .has_active_cells());
+    assert!(
+        restored
+            .local_runner
+            .system
+            .diffusion
+            .mask
+            .has_active_cells()
+    );
     assert!(restored.counterfactual_snapshot().unwrap().l2_separation > 0.0);
 }

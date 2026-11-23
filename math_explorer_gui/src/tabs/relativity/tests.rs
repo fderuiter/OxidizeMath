@@ -83,9 +83,10 @@ fn geodesic_playground_camera3d_scroll_zoom_and_drag_orbit_update_state() {
 fn relativity_presets_url_hydration_and_finite_state_guard_rollback() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut app = MathExplorerApp::default();
-    assert!(app
-        .apply_share_location_strings("#tab=relativity&tool=GeodesicPlaygroundTool", "", None)
-        .unwrap());
+    assert!(
+        app.apply_share_location_strings("#tab=relativity&tool=GeodesicPlaygroundTool", "", None)
+            .unwrap()
+    );
     let active_tab = &mut app.tabs[app.selected_tab];
     assert_eq!(active_tab.url_slug(), "relativity");
 
@@ -264,10 +265,12 @@ fn custom_ast_lapse_matches_schwarzschild_christoffel_and_steps_720_zero_alloc()
         });
     }
     assert_eq!(playground.samples.len(), 721);
-    assert!(playground
-        .samples
-        .iter()
-        .all(|s| s.radial_coord.is_finite() && s.metric_norm.is_finite()));
+    assert!(
+        playground
+            .samples
+            .iter()
+            .all(|s| s.radial_coord.is_finite() && s.metric_norm.is_finite())
+    );
 
     // Plunging custom Reissner-Nordstrom ray halts cleanly when f(r) <= 0.02 without NaNs
     playground
@@ -278,8 +281,10 @@ fn custom_ast_lapse_matches_schwarzschild_christoffel_and_steps_720_zero_alloc()
     playground.state.step_size = 0.05;
     playground.rebuild_trajectory(600);
     assert!(playground.halted_near_singularity);
-    assert!(playground
-        .samples
-        .iter()
-        .all(|s| s.radial_coord.is_finite() && s.embed_xyz[2].is_finite()));
+    assert!(
+        playground
+            .samples
+            .iter()
+            .all(|s| s.radial_coord.is_finite() && s.embed_xyz[2].is_finite())
+    );
 }

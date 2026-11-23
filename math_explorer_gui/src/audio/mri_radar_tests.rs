@@ -12,8 +12,8 @@ use verified_engine::engine::VerifiedEngine;
 use super::backend::{MuteReason, SonificationBackend};
 use super::frame::{LIMITER_CEILING_DBFS, LIMITER_CEILING_LINEAR};
 use super::mappings::{
-    doppler_shift_60ghz_hz, medical_radar_frame, mri_bloch_frame, mri_kspace_frame,
-    mri_pulse_playhead_frame, MriKSpaceAudioInput, RadarDopplerAudioInput, RADAR_CARRIER_60GHZ_HZ,
+    MriKSpaceAudioInput, RADAR_CARRIER_60GHZ_HZ, RadarDopplerAudioInput, doppler_shift_60ghz_hz,
+    medical_radar_frame, mri_bloch_frame, mri_kspace_frame, mri_pulse_playhead_frame,
 };
 use super::synth::OfflinePcmSynthesizer;
 use crate::async_sim::{SimCommand, SimulationRunner};
@@ -24,8 +24,8 @@ use crate::tabs::mri::kspace_types::{
     MriKSpaceSharedParams, MriKSpaceToolState, PhantomPreset, StudioBrushMode,
 };
 use crate::tabs::mri::pulse::{
-    MriPulseMode, RfPulseConfig, CHALLENGE_BLOCH_HAHN_ECHO, CHALLENGE_BLOCH_PI_INVERSION,
-    MRI_PULSE_SAMPLES,
+    CHALLENGE_BLOCH_HAHN_ECHO, CHALLENGE_BLOCH_PI_INVERSION, MRI_PULSE_SAMPLES, MriPulseMode,
+    RfPulseConfig,
 };
 use crate::tabs::mri::{MriKSpaceTool, MriTool};
 

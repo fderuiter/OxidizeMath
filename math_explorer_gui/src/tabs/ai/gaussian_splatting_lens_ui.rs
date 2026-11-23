@@ -7,10 +7,10 @@
 use eframe::egui;
 use egui_plot::{Line, LineStyle, MarkerShape, PlotPoints, Points};
 
-use crate::web_io::{spawn_save_binary_file_dialog, SaveAsDialogConfig};
+use crate::web_io::{SaveAsDialogConfig, spawn_save_binary_file_dialog};
 
-use super::scene::{build_circle_ring, SplatLensMode};
 use super::GaussianSplattingTool;
+use super::scene::{SplatLensMode, build_circle_ring};
 
 const PNG_SAVE_CFG: SaveAsDialogConfig = SaveAsDialogConfig {
     filter_name: "PNG Image",

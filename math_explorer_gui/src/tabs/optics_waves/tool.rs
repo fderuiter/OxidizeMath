@@ -2,9 +2,9 @@
 
 use super::presets::OpticsWaveTheory;
 use super::runner::{
-    render_wavefield_image, OpticsFrameData, OpticsSharedParams, OpticsWaveRunner, WaveRenderInput,
+    OpticsFrameData, OpticsSharedParams, OpticsWaveRunner, WaveRenderInput, render_wavefield_image,
 };
-use super::state::{default_grid_size, OpticsWaveToolState};
+use super::state::{OpticsWaveToolState, default_grid_size};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{ExportCapabilities, InteractiveTool};
@@ -226,14 +226,16 @@ impl InteractiveTool for OpticsWaveTool {
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && px.len() == w * h {
-                return Some(ColorImage {
-                    size: [w, h],
-                    pixels: px.clone(),
-                    ..Default::default()
-                });
-            }
+        if let Some((w, h, ref px)) = self.stepped_pixels
+            && w > 0
+            && h > 0
+            && px.len() == w * h
+        {
+            return Some(ColorImage {
+                size: [w, h],
+                pixels: px.clone(),
+                ..Default::default()
+            });
         }
         if let Some(ref frame) = self.latest_frame {
             let (show_irradiance, high_contrast) = {

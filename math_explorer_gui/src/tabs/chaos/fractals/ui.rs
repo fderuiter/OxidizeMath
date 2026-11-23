@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleHoverText, AccessibleTheoryHover,
+    AccessibleHoverText, AccessibleTheoryHover, announce_live_status, lock_canvas_arrow_keys,
+    paint_canvas_focus_ring, register_canvas_accessibility,
 };
 use crate::framework::bounded_drag_value;
 use eframe::egui;

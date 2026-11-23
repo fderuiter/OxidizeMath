@@ -98,13 +98,13 @@ fn build_calibrated_preview(
     raw: &str,
     params: &HashMap<String, f64>,
 ) -> String {
-    if !params.is_empty() {
-        if let Ok(cal_rhs) = expr.to_latex_with_params(params) {
-            return match lhs_prefix {
-                Some(prefix) => format!("{prefix} = {cal_rhs}"),
-                None => cal_rhs,
-            };
-        }
+    if !params.is_empty()
+        && let Ok(cal_rhs) = expr.to_latex_with_params(params)
+    {
+        return match lhs_prefix {
+            Some(prefix) => format!("{prefix} = {cal_rhs}"),
+            None => cal_rhs,
+        };
     }
     if !symbolic_latex.is_empty() {
         symbolic_latex.to_string()

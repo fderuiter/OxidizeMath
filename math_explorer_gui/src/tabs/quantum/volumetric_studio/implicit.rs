@@ -4,15 +4,15 @@
 // [cite:isosurface_extraction]
 
 use super::state::{
-    clamp_finite, ImplicitClosureMode, VolumetricStudioConfig, DEFAULT_EXPORT_SIZE_MM,
-    DEFAULT_IMPLICIT_BOUNDS, DEFAULT_IMPLICIT_EXPR, DEFAULT_IMPLICIT_WALL, IMPLICIT_DOMAIN_MAX,
-    IMPLICIT_DOMAIN_MIN, IMPLICIT_DOMAIN_MIN_SPAN, MAX_EXPORT_SIZE_MM, MAX_IMPLICIT_WALL,
-    MIN_EXPORT_SIZE_MM, MIN_IMPLICIT_WALL,
+    DEFAULT_EXPORT_SIZE_MM, DEFAULT_IMPLICIT_BOUNDS, DEFAULT_IMPLICIT_EXPR, DEFAULT_IMPLICIT_WALL,
+    IMPLICIT_DOMAIN_MAX, IMPLICIT_DOMAIN_MIN, IMPLICIT_DOMAIN_MIN_SPAN, ImplicitClosureMode,
+    MAX_EXPORT_SIZE_MM, MAX_IMPLICIT_WALL, MIN_EXPORT_SIZE_MM, MIN_IMPLICIT_WALL,
+    VolumetricStudioConfig, clamp_finite,
 };
 use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
-use crate::framework::{bounded_drag_value, enforce_ordered_drag_range, MathExpressionInputBar};
+use crate::framework::{MathExpressionInputBar, bounded_drag_value, enforce_ordered_drag_range};
 use eframe::egui;
-use math_commons::ast::{parse, parse_equation, BinaryOp, CompiledExpr, Expr};
+use math_commons::ast::{BinaryOp, CompiledExpr, Expr, parse, parse_equation};
 use math_explorer::applied::isosurface::VoxelGrid;
 
 const MAX_IMPLICIT_SCALAR: f64 = 1.0e4;
@@ -64,12 +64,11 @@ pub fn compile_implicit_formula(raw: &str) -> Result<CompiledExpr, String> {
     let expr = match parse_equation(trimmed) {
         Ok((_, ast)) => ast,
         Err(primary_err) => {
-            if let Some((lhs, rhs)) = trimmed.split_once('=') {
-                if !rhs.contains('=') {
-                    if let (Ok(l_ast), Ok(r_ast)) = (parse(lhs.trim()), parse(rhs.trim())) {
-                        return compile_ast_with_limit(&Expr::binary(BinaryOp::Sub, l_ast, r_ast));
-                    }
-                }
+            if let Some((lhs, rhs)) = trimmed.split_once('=')
+                && !rhs.contains('=')
+                && let (Ok(l_ast), Ok(r_ast)) = (parse(lhs.trim()), parse(rhs.trim()))
+            {
+                return compile_ast_with_limit(&Expr::binary(BinaryOp::Sub, l_ast, r_ast));
             }
             return Err(primary_err.user_message_for_input(trimmed));
         }
@@ -115,12 +114,12 @@ impl ImplicitRuntimeEvaluator {
 
     /// Synchronizes bytecode (only when `implicit_expr` text changed) and parameter slots with zero heap allocations on unchanged text.
     pub fn sync_zero_alloc(&mut self, cfg: &VolumetricStudioConfig) {
-        if self.cached_expr != cfg.implicit_expr {
-            if let Ok(compiled) = compile_implicit_formula(&cfg.implicit_expr) {
-                self.compiled = compiled;
-                self.cached_expr.clear();
-                self.cached_expr.push_str(&cfg.implicit_expr);
-            }
+        if self.cached_expr != cfg.implicit_expr
+            && let Ok(compiled) = compile_implicit_formula(&cfg.implicit_expr)
+        {
+            self.compiled = compiled;
+            self.cached_expr.clear();
+            self.cached_expr.push_str(&cfg.implicit_expr);
         }
         self.refresh_param_slots_zero_alloc(cfg);
     }
@@ -343,10 +342,12 @@ fn normalize_for_input_bar(raw: &str) -> String {
     if parse_equation(trimmed).is_ok() {
         return trimmed.to_string();
     }
-    if let Some((lhs, rhs)) = trimmed.split_once('=') {
-        if !rhs.contains('=') && parse(lhs.trim()).is_ok() && parse(rhs.trim()).is_ok() {
-            return format!("({}) - ({})", lhs.trim(), rhs.trim());
-        }
+    if let Some((lhs, rhs)) = trimmed.split_once('=')
+        && !rhs.contains('=')
+        && parse(lhs.trim()).is_ok()
+        && parse(rhs.trim()).is_ok()
+    {
+        return format!("({}) - ({})", lhs.trim(), rhs.trim());
     }
     trimmed.to_string()
 }

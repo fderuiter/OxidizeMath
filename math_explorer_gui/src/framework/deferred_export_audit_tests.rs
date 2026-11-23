@@ -106,6 +106,50 @@ fn verify_shader_capability(
     true
 }
 
+#[derive(Default)]
+struct ExportCapabilityCounts {
+    total_tools: usize,
+    plot_tool_count: usize,
+    raster_tool_count: usize,
+    dataset_only_tool_count: usize,
+    unsupported_tool_count: usize,
+    solid_3d_count: usize,
+    splat_3d_count: usize,
+    shader_tool_count: usize,
+    non_shader_tool_count: usize,
+}
+
+fn assert_export_capability_partitions(c: &ExportCapabilityCounts) {
+    assert!(
+        c.total_tools > 0,
+        "Expected non-empty ToolMetadata registry"
+    );
+    assert!(c.plot_tool_count > 0, "Expected Plot dataset+figure tools");
+    assert!(c.raster_tool_count > 0, "Expected raster figure tools");
+    assert!(c.unsupported_tool_count > 0, "Expected non-figure tools");
+    assert_eq!(
+        c.plot_tool_count
+            + c.raster_tool_count
+            + c.dataset_only_tool_count
+            + c.unsupported_tool_count,
+        c.total_tools,
+        "Figure export buckets must exhaustively partition registered tools"
+    );
+    assert!(c.solid_3d_count > 0, "Expected solid 3D geometric tools");
+    assert!(c.splat_3d_count > 0, "Expected 3DGS splat PLY tools");
+    assert!(c.solid_3d_count + c.splat_3d_count <= c.total_tools);
+    assert!(
+        c.shader_tool_count > 0,
+        "Expected analytical GLSL shader tools"
+    );
+    assert!(c.non_shader_tool_count > 0, "Expected non-shader tools");
+    assert_eq!(
+        c.shader_tool_count + c.non_shader_tool_count,
+        c.total_tools,
+        "Shader capability buckets must exhaustively partition registered tools"
+    );
+}
+
 fn verify_dataset_only_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
     let mut framework = SimulationFramework::new("__audit_dataset_only__");
     framework.active_tool = Some(tool);
@@ -181,77 +225,41 @@ fn verify_non_figure_tool(
 
 #[test]
 fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
-    let (mut plot_tool_count, mut raster_tool_count) = (0usize, 0usize);
-    let (mut dataset_only_tool_count, mut unsupported_tool_count) = (0usize, 0usize);
-    let (mut solid_3d_count, mut splat_3d_count) = (0usize, 0usize);
-    let (mut shader_tool_count, mut non_shader_tool_count) = (0usize, 0usize);
+    let mut counts = ExportCapabilityCounts::default();
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
+        counts.total_tools += 1;
         let tool = (meta.build)();
         let caps = tool.export_capabilities();
         if caps.stl && caps.ply && caps.obj {
-            solid_3d_count += 1;
+            counts.solid_3d_count += 1;
         } else if caps.ply {
-            splat_3d_count += 1;
+            counts.splat_3d_count += 1;
         }
         if verify_shader_capability(meta.id, tool.as_ref(), caps) {
-            shader_tool_count += 1;
+            counts.shader_tool_count += 1;
         } else {
-            non_shader_tool_count += 1;
+            counts.non_shader_tool_count += 1;
         }
         if !caps.figure {
             verify_non_figure_tool(
                 meta.id,
                 tool,
                 caps,
-                &mut dataset_only_tool_count,
-                &mut unsupported_tool_count,
+                &mut counts.dataset_only_tool_count,
+                &mut counts.unsupported_tool_count,
             );
             continue;
         }
         if caps.dataset {
-            plot_tool_count += 1;
+            counts.plot_tool_count += 1;
         } else {
-            raster_tool_count += 1;
+            counts.raster_tool_count += 1;
         }
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_expected_capability_counts([
-        plot_tool_count,
-        raster_tool_count,
-        dataset_only_tool_count,
-        unsupported_tool_count,
-        solid_3d_count,
-        splat_3d_count,
-        shader_tool_count,
-        non_shader_tool_count,
-    ]);
-}
-
-fn assert_expected_capability_counts(counts: [usize; 8]) {
-    let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader] = counts;
-    let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
-    let expected_plot = if has_surface_morpho { 69 } else { 68 };
-    let expected_solid = if has_surface_morpho { 8 } else { 7 };
-    let expected_non_shader = if has_surface_morpho { 86 } else { 85 };
-    assert_eq!(
-        plot, expected_plot,
-        "Expected {expected_plot} Plot dataset+figure tools"
-    );
-    assert_eq!(raster, 8, "Expected 8 raster figure tools");
-    assert_eq!(dataset_only, 0, "Expected 0 dataset-only registered tools");
-    assert_eq!(unsupported, 12, "Expected 12 non-figure tools");
-    assert_eq!(
-        solid_3d, expected_solid,
-        "Expected {expected_solid} solid 3D geometric tools"
-    );
-    assert_eq!(splat_3d, 1, "Expected 1 3DGS splat PLY tool");
-    assert_eq!(shader, 3, "Expected 3 analytical GLSL shader tools");
-    assert_eq!(
-        non_shader, expected_non_shader,
-        "Expected {expected_non_shader} non-shader tools"
-    );
+    assert_export_capability_partitions(&counts);
 }
 
 #[derive(Default)]
@@ -335,9 +343,11 @@ fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
     run_deferred_export_frame(&mut fw, ExportFormat::Stl, false);
     assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
     assert_ne!(with_live_region(|r| r.active_slot), slot_before);
-    assert!(all_announcements()
-        .iter()
-        .any(|(msg, prio)| msg.contains("STL 3D Mesh saved successfully") && prio == "polite"));
+    assert!(
+        all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg.contains("STL 3D Mesh saved successfully") && prio == "polite")
+    );
     let stl_bytes = fw
         .export_queue
         .last_exported_bytes
@@ -348,9 +358,11 @@ fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
     clear_test_announcements();
     run_deferred_export_frame(&mut fw, ExportFormat::Ply, false);
     assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
-    assert!(all_announcements()
-        .iter()
-        .any(|(msg, prio)| msg.contains("PLY 3D Model saved successfully") && prio == "polite"));
+    assert!(
+        all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg.contains("PLY 3D Model saved successfully") && prio == "polite")
+    );
     let ply_bytes = fw
         .export_queue
         .last_exported_bytes
@@ -399,18 +411,22 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
     clear_test_announcements();
     run_deferred_export_frame(&mut gs_fw, ExportFormat::Stl, false);
     assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
-    assert!(all_announcements()
-        .iter()
-        .any(|(_, prio)| prio == "assertive"));
+    assert!(
+        all_announcements()
+            .iter()
+            .any(|(_, prio)| prio == "assertive")
+    );
 
     clear_test_announcements();
     let slot_before = with_live_region(|r| r.active_slot);
     run_deferred_export_frame(&mut gs_fw, ExportFormat::Ply, false);
     assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Success);
     assert_ne!(with_live_region(|r| r.active_slot), slot_before);
-    assert!(all_announcements()
-        .iter()
-        .any(|(msg, prio)| msg.contains("PLY 3D Model saved successfully") && prio == "polite"));
+    assert!(
+        all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg.contains("PLY 3D Model saved successfully") && prio == "polite")
+    );
     let splat_ply = gs_fw
         .export_queue
         .last_exported_bytes

@@ -200,17 +200,16 @@ impl TraceabilityTab {
         if let Some((is_err, msg)) = ui
             .ctx()
             .data_mut(|d| d.get_temp::<(bool, String)>(toast_id))
+            && !msg.is_empty()
         {
-            if !msg.is_empty() {
-                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-                let color = if is_err {
-                    palette.error
-                } else {
-                    palette.success
-                };
-                let prefix = if is_err { "⚠️" } else { "✓" };
-                ui.colored_label(color, format!("{prefix} {msg}"));
-            }
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            let color = if is_err {
+                palette.error
+            } else {
+                palette.success
+            };
+            let prefix = if is_err { "⚠️" } else { "✓" };
+            ui.colored_label(color, format!("{prefix} {msg}"));
         }
     }
 }

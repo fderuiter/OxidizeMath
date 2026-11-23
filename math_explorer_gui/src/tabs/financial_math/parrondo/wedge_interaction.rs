@@ -4,7 +4,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::atlas::{
-    solve_parrondo_ratchet_stack, WEDGE_EPS_MAX, WEDGE_EPS_MIN, WEDGE_PA_MAX, WEDGE_PA_MIN,
+    WEDGE_EPS_MAX, WEDGE_EPS_MIN, WEDGE_PA_MAX, WEDGE_PA_MIN, solve_parrondo_ratchet_stack,
 };
 use super::{KellyEdgeBadge, ParrondoParadoxTool};
 use crate::accessibility::{
@@ -17,7 +17,7 @@ use eframe::egui;
 use eframe::egui::accesskit::Role;
 use egui_plot::{Legend, Line, MarkerShape, Plot, PlotPoint, Points};
 use math_explorer::pure_math::statistics::markov::parrondo::{
-    scan_parrondo_phase_region, ParrondoParams, ParrondoPhaseGridConfig, ParrondoReport,
+    ParrondoParams, ParrondoPhaseGridConfig, ParrondoReport, scan_parrondo_phase_region,
 };
 use std::hash::{Hash, Hasher};
 
@@ -170,12 +170,11 @@ impl ParrondoParadoxTool {
             .legend(Legend::default())
             .show(ui, |plot_ui| {
                 self.draw_phase_wedge_series(plot_ui, palette, &active_pt, cursor_pt.as_ref());
-                if let Some(pt) = plot_ui.pointer_coordinate() {
-                    if (WEDGE_PA_MIN..=WEDGE_PA_MAX).contains(&pt.x)
-                        && (WEDGE_EPS_MIN..=WEDGE_EPS_MAX).contains(&pt.y)
-                    {
-                        hover_coord = Some([pt.x, pt.y]);
-                    }
+                if let Some(pt) = plot_ui.pointer_coordinate()
+                    && (WEDGE_PA_MIN..=WEDGE_PA_MAX).contains(&pt.x)
+                    && (WEDGE_EPS_MIN..=WEDGE_EPS_MAX).contains(&pt.y)
+                {
+                    hover_coord = Some([pt.x, pt.y]);
                 }
             });
 
@@ -274,14 +273,14 @@ impl ParrondoParadoxTool {
         inspect_target: Option<[f64; 2]>,
         sched_str: &str,
     ) {
-        if let Some([pa, eps]) = inspect_target {
-            if let Some(msg) = self.format_wedge_preview(pa, eps) {
-                ui.colored_label(palette.accent, &msg);
-                if resp.hovered() {
-                    resp.clone().on_hover_text(msg);
-                }
-                return;
+        if let Some([pa, eps]) = inspect_target
+            && let Some(msg) = self.format_wedge_preview(pa, eps)
+        {
+            ui.colored_label(palette.accent, &msg);
+            if resp.hovered() {
+                resp.clone().on_hover_text(msg);
             }
+            return;
         }
         ui.small(format!(
             "Click any (p_A, ε) point or focus plot & press Arrows + Enter to teleport {sched_str} parameters."

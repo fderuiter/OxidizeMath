@@ -4,11 +4,11 @@
 
 use super::base64url;
 use super::codec::{
-    decode_optional_state_json, percent_encode_component, validate_url_preset_json,
-    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
+    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, decode_optional_state_json,
+    percent_encode_component, validate_url_preset_json,
 };
-use crate::app::dataflow_bus::{PaneLink, PanePipelineDag, MAX_DATAFLOW_GRAPH_NODES};
 use crate::app::ViewportLayout;
+use crate::app::dataflow_bus::{MAX_DATAFLOW_GRAPH_NODES, PaneLink, PanePipelineDag};
 use serde::{Deserialize, Serialize};
 
 /// Per-pane serialized entry inside a multi-pane pipeline share URL.
@@ -64,13 +64,13 @@ pub struct ValidatedPipelineUrl {
 fn check_graph_nodes_cap_recursive(val: &serde_json::Value) -> Result<(), String> {
     match val {
         serde_json::Value::Object(map) => {
-            if let Some(serde_json::Value::Array(nodes)) = map.get("nodes") {
-                if nodes.len() > MAX_DATAFLOW_GRAPH_NODES {
-                    return Err(format!(
-                        "Pipeline URL graph state ({} nodes) exceeds {MAX_DATAFLOW_GRAPH_NODES}-node limit",
-                        nodes.len()
-                    ));
-                }
+            if let Some(serde_json::Value::Array(nodes)) = map.get("nodes")
+                && nodes.len() > MAX_DATAFLOW_GRAPH_NODES
+            {
+                return Err(format!(
+                    "Pipeline URL graph state ({} nodes) exceeds {MAX_DATAFLOW_GRAPH_NODES}-node limit",
+                    nodes.len()
+                ));
             }
             for child in map.values() {
                 check_graph_nodes_cap_recursive(child)?;

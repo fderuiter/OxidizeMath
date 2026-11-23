@@ -11,7 +11,7 @@ use math_explorer::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::analysis::pde::wave_2d::young_double_slit_fringe_spacing;
 
 use super::*;
-use crate::app::{palette::DARK_PALETTE, SemanticPalette};
+use crate::app::{SemanticPalette, palette::DARK_PALETTE};
 
 impl ChladniWaveTankTool {
     pub(super) fn draw_central_workspace(&mut self, parent_ui: &mut egui::Ui) {
@@ -372,7 +372,7 @@ impl ChladniWaveTankTool {
                 .iter()
                 .zip(self.sand.positions_y().iter())
                 .step_by(2)
-                .filter(|(&px, &py)| px.is_finite() && py.is_finite())
+                .filter(|&(&px, &py)| px.is_finite() && py.is_finite())
                 .map(|(&px, &py)| [px + 0.5, py + 0.5])
                 .collect();
             if !pts.is_empty() {

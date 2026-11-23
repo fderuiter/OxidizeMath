@@ -6,11 +6,11 @@
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
 
-use super::playhead::{eval_ulam_quadratic, UlamPlayheadMode};
 use super::PrimeSpiralWidget;
+use super::playhead::{UlamPlayheadMode, eval_ulam_quadratic};
 use crate::framework::InteractiveTool;
-use crate::tabs::number_theory::NumberTheoryTab;
 use crate::tabs::ExplorerTab;
+use crate::tabs::number_theory::NumberTheoryTab;
 
 #[test]
 fn test_prime_spiral_widget_buffer_reuse() {
@@ -141,10 +141,11 @@ fn test_ulam_keyboard_navigation_and_role_meter_presence() {
         .platform_output
         .accesskit_update
         .expect("AccessKit tree");
-    assert!(ak
-        .nodes
-        .iter()
-        .any(|(_, n)| n.role() == egui::accesskit::Role::Meter));
+    assert!(
+        ak.nodes
+            .iter()
+            .any(|(_, n)| n.role() == egui::accesskit::Role::Meter)
+    );
 
     let canvas_id = ak
         .nodes

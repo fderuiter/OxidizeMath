@@ -7,7 +7,7 @@ use super::{KSPACE_CENTER, KSPACE_DIM, KSPACE_LEN};
 use eframe::egui::{Color32, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::physics::mri::reconstruction::{simulate_signal_2d, Fft2dWorkspace};
+use math_explorer::physics::mri::reconstruction::{Fft2dWorkspace, simulate_signal_2d};
 use nalgebra::DMatrix;
 use num_complex::Complex;
 

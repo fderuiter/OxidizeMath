@@ -3,7 +3,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::super::lbm_fairing::{LbmFairingMetrics, LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y};
+use super::super::lbm_fairing::{LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y, LbmFairingMetrics};
 use super::LbmSnapshotMetrics;
 use crate::async_sim::StateSnapshot;
 use crate::framework::CalloutManager;

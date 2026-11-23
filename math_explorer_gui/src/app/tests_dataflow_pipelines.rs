@@ -10,8 +10,8 @@ use crate::tabs::geometry_topology::surface_viewer::SurfaceViewer;
 use crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool;
 use crate::tabs::graph_theory::graph_editor::SerializedGraphState;
 use crate::tabs::neuroscience::neural_network_viz::{NeuralDynamicsMode, NeuralNetworkVizTool};
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 use std::collections::BTreeMap;
 
 fn run_frame(ctx: &egui::Context, app: &mut MathExplorerApp) {
@@ -110,9 +110,10 @@ fn test_live_graph_editor_updates_epidemic_effective_r0_in_pane_1() {
 
     // Sparse dyads: 8 vertices with only two isolated edges (low mean degree & variance).
     load_pane_graph(&mut app, 0, 8, vec![(0, 1, 1.0), (2, 3, 1.0)]);
-    assert!(app
-        .connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
-        .is_ok());
+    assert!(
+        app.connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
+            .is_ok()
+    );
 
     run_frame(&ctx, &mut app);
     run_frame(&ctx, &mut app);
@@ -154,9 +155,10 @@ fn test_live_graph_editor_updates_kuramoto_synchronization_in_pane_1() {
     }
 
     load_pane_graph(&mut app, 0, 6, Vec::new());
-    assert!(app
-        .connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
-        .is_ok());
+    assert!(
+        app.connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
+            .is_ok()
+    );
     run_frame(&ctx, &mut app);
     run_frame(&ctx, &mut app);
 
@@ -228,9 +230,10 @@ fn test_live_attractor_streams_landmarks_into_vietoris_rips() {
     app.set_layout(ViewportLayout::SplitHorizontal);
     assign_tool(&mut app, 0, "AttractorPlotter");
     assign_tool(&mut app, 1, "VietorisRipsTool");
-    assert!(app
-        .connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
-        .is_ok());
+    assert!(
+        app.connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
+            .is_ok()
+    );
 
     run_frame(&ctx, &mut app);
     {
@@ -257,12 +260,14 @@ fn test_live_morphogenesis_streams_field_into_surface_viewer_and_vietoris_rips()
     assign_tool(&mut app, 0, "MorphogenesisTool");
     assign_tool(&mut app, 1, "SurfaceViewer");
     assign_tool(&mut app, 2, "VietorisRipsTool");
-    assert!(app
-        .connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
-        .is_ok());
-    assert!(app
-        .connect_pane_pipeline_interactive(Some(&ctx), 0, 2)
-        .is_ok());
+    assert!(
+        app.connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
+            .is_ok()
+    );
+    assert!(
+        app.connect_pane_pipeline_interactive(Some(&ctx), 0, 2)
+            .is_ok()
+    );
 
     run_frame(&ctx, &mut app);
     app.pane_tab_mut(0)

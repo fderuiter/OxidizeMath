@@ -142,11 +142,12 @@ fn potential_flow_skips_source_singularity_and_rebuilds_in_place_without_allocat
 
     // (0.0, 0.0) lands on the central grid node where Source::velocity returns zero.
     assert_eq!(tool.origins.len(), (10_usize + 1).pow(2) - 1);
-    assert!(tool
-        .origins
-        .iter()
-        .chain(tool.tips.iter())
-        .all(|p| p.x.is_finite() && p.y.is_finite()));
+    assert!(
+        tool.origins
+            .iter()
+            .chain(tool.tips.iter())
+            .all(|p| p.x.is_finite() && p.y.is_finite())
+    );
 
     #[cfg(not(target_arch = "wasm32"))]
     {

@@ -2,12 +2,12 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::counterfactual::{active_morphogen_slice, MorphogenesisTwinState};
-use super::runner::{
-    MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
-    MorphogenesisSharedParams, DEFAULT_MORPHOGENESIS_SEED,
-};
 use super::MorphogenesisTool;
+use super::counterfactual::{MorphogenesisTwinState, active_morphogen_slice};
+use super::runner::{
+    DEFAULT_MORPHOGENESIS_SEED, MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner,
+    MorphogenesisKineticsState, MorphogenesisSharedParams,
+};
 use crate::framework::decode_rle_mask;
 use crate::framework::recovery::FiniteStateGuard;
 use math_explorer::biology::diffusion::{
@@ -88,10 +88,10 @@ impl MorphogenesisKineticsRunner {
         );
         MorphogenesisTool::initialize_adapter_system(&mut system, width, height);
         let rle = mask_rle.read().unwrap_or_else(|e| e.into_inner()).clone();
-        if !rle.is_empty() {
-            if let Ok(bytes) = decode_rle_mask(&rle, width * height) {
-                let _ = system.diffusion.mask.set_roles_slice(&bytes);
-            }
+        if !rle.is_empty()
+            && let Ok(bytes) = decode_rle_mask(&rle, width * height)
+        {
+            let _ = system.diffusion.mask.set_roles_slice(&bytes);
         }
         let mut runner = Self {
             system,

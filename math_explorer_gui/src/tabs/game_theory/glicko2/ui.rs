@@ -9,8 +9,8 @@ use crate::framework::InteractiveTool;
 use crate::presets::{Glicko2PairingMode, MAX_TOURNAMENT_PERIODS, MAX_TOURNAMENT_PLAYERS};
 use eframe::egui;
 use math_explorer::pure_math::statistics::glicko2::{
-    head_to_head_win_probability, pairwise_win_matrix, GlickoPlayer, Rating, RatingDeviation,
-    Volatility,
+    GlickoPlayer, Rating, RatingDeviation, Volatility, head_to_head_win_probability,
+    pairwise_win_matrix,
 };
 
 fn io_btn(ui: &mut egui::Ui, label: &str, tip: &str) -> bool {
@@ -124,19 +124,17 @@ impl Glicko2TournamentTool {
                 ui,
                 "▶ Simulate Period",
                 "Simulate next scheduled rating period with OxidizeRng",
-            ) {
-                if let Err(err) = self.simulate_next_period() {
-                    self.io_state.status_message = Some((true, err));
-                }
+            ) && let Err(err) = self.simulate_next_period()
+            {
+                self.io_state.status_message = Some((true, err));
             }
             if io_btn(
                 ui,
                 "⏩ Run to Target",
                 "Simulate remaining periods up to Target Rounds",
-            ) {
-                if let Err(err) = self.simulate_to_target_rounds() {
-                    self.io_state.status_message = Some((true, err));
-                }
+            ) && let Err(err) = self.simulate_to_target_rounds()
+            {
+                self.io_state.status_message = Some((true, err));
             }
             if io_btn(
                 ui,
@@ -405,10 +403,8 @@ impl Glicko2TournamentTool {
                     ui.end_row();
                 }
             });
-        if commit_clicked {
-            if let Err(err) = self.commit_manual_period() {
-                self.io_state.status_message = Some((true, err));
-            }
+        if commit_clicked && let Err(err) = self.commit_manual_period() {
+            self.io_state.status_message = Some((true, err));
         }
     }
 

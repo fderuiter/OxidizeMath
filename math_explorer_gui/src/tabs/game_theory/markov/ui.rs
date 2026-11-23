@@ -6,7 +6,7 @@
 use super::{MarkovScenario, MarkovSequenceWorkbenchTool};
 use crate::app::SemanticPalette;
 use crate::presets::{
-    MarkovWorkbenchMode, MAX_BAUM_WELCH_ITERATIONS, MAX_OBSERVATION_SEQUENCE_LEN,
+    MAX_BAUM_WELCH_ITERATIONS, MAX_OBSERVATION_SEQUENCE_LEN, MarkovWorkbenchMode,
 };
 use eframe::egui;
 
@@ -179,10 +179,10 @@ impl MarkovSequenceWorkbenchTool {
                     .text("Dirichlet α"),
             )
             .changed();
-        if ui.button("▶ Run Baum-Welch EM").clicked() {
-            if let Err(err) = self.run_baum_welch() {
-                self.io_state.status_message = Some((true, err));
-            }
+        if ui.button("▶ Run Baum-Welch EM").clicked()
+            && let Err(err) = self.run_baum_welch()
+        {
+            self.io_state.status_message = Some((true, err));
         }
         ui.separator();
         changed |= ui

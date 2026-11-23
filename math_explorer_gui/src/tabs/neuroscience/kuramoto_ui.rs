@@ -3,10 +3,10 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{NeuralDynamicsMode, NeuralNetworkVizTool, MAX_ORDER_HISTORY};
+use super::{MAX_ORDER_HISTORY, NeuralDynamicsMode, NeuralNetworkVizTool};
 use crate::accessibility::AccessibleHoverText;
-use crate::app::dataflow_bus::{poll_pane_graph, GraphTopologyPayload, MAX_DATAFLOW_GRAPH_NODES};
 use crate::app::SemanticPalette;
+use crate::app::dataflow_bus::{GraphTopologyPayload, MAX_DATAFLOW_GRAPH_NODES, poll_pane_graph};
 use eframe::egui::{self, Color32, Pos2};
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;

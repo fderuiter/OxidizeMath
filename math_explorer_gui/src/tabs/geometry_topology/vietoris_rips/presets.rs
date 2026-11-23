@@ -2,8 +2,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use math_explorer::pure_math::statistics::tda::core::Point2D;
 use math_explorer::pure_math::statistics::tda::MAX_TDA_POINTS;
+use math_explorer::pure_math::statistics::tda::core::Point2D;
 use rand::Rng;
 use std::f64::consts::TAU;
 

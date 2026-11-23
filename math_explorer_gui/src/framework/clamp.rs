@@ -132,21 +132,23 @@ fn fallback_number(
     constraint: Option<&ParameterConstraint>,
     is_step: bool,
 ) -> Value {
-    if let Some(b @ Value::Number(n)) = base {
-        if n.as_f64().is_some_and(f64::is_finite) {
-            return b.clone();
-        }
+    if let Some(b @ Value::Number(n)) = base
+        && n.as_f64().is_some_and(f64::is_finite)
+    {
+        return b.clone();
     }
-    if let Some(c) = constraint {
-        if c.min.is_finite() && c.max.is_finite() && c.min <= c.max {
-            let v = if is_step {
-                c.min.max(1e-6)
-            } else {
-                0.5 * (c.min + c.max)
-            };
-            if let Some(num) = Number::from_f64(v) {
-                return Value::Number(num);
-            }
+    if let Some(c) = constraint
+        && c.min.is_finite()
+        && c.max.is_finite()
+        && c.min <= c.max
+    {
+        let v = if is_step {
+            c.min.max(1e-6)
+        } else {
+            0.5 * (c.min + c.max)
+        };
+        if let Some(num) = Number::from_f64(v) {
+            return Value::Number(num);
         }
     }
     if is_step {
@@ -164,10 +166,12 @@ fn contract_value(
     allow_contract: bool,
 ) -> f64 {
     let mut next = raw;
-    if let Some(c) = constraint {
-        if c.min.is_finite() && c.max.is_finite() && c.min <= c.max {
-            next = next.clamp(c.min, c.max);
-        }
+    if let Some(c) = constraint
+        && c.min.is_finite()
+        && c.max.is_finite()
+        && c.min <= c.max
+    {
+        next = next.clamp(c.min, c.max);
     }
     if is_step {
         if next <= 0.0 {
@@ -179,25 +183,26 @@ fn contract_value(
         if let Some(b) = base_f64.filter(|&b| b > 0.0) {
             next = next.min(b);
         }
-    } else if allow_contract {
-        if let Some(b) = base_f64 {
-            if (next - b).abs() > 1e-12 {
-                if constraint.is_none() {
-                    let span = b.abs().max(1.0) * 10.0;
-                    let low = if b >= 0.0 && next >= 0.0 {
-                        0.0
-                    } else {
-                        b - span
-                    };
-                    next = next.clamp(low, b + span);
-                }
-                next = b + 0.5 * (next - b);
-                if let Some(c) = constraint {
-                    if c.min.is_finite() && c.max.is_finite() && c.min <= c.max {
-                        next = next.clamp(c.min, c.max);
-                    }
-                }
-            }
+    } else if allow_contract
+        && let Some(b) = base_f64
+        && (next - b).abs() > 1e-12
+    {
+        if constraint.is_none() {
+            let span = b.abs().max(1.0) * 10.0;
+            let low = if b >= 0.0 && next >= 0.0 {
+                0.0
+            } else {
+                b - span
+            };
+            next = next.clamp(low, b + span);
+        }
+        next = b + 0.5 * (next - b);
+        if let Some(c) = constraint
+            && c.min.is_finite()
+            && c.max.is_finite()
+            && c.min <= c.max
+        {
+            next = next.clamp(c.min, c.max);
         }
     }
     next
@@ -264,7 +269,7 @@ fn sanitize_nested_container(
             continue;
         }
         match cur {
-            Value::Number(ref n) => {
+            Value::Number(n) => {
                 if let Some(updated) = clamp_scalar_number(key, n, cur_base, None, contract) {
                     *cur = updated;
                     changed = true;

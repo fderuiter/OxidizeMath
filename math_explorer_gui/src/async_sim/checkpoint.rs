@@ -328,10 +328,10 @@ impl CheckpointRing {
         if self.current_step > self.max_reached_step {
             self.max_reached_step = self.current_step;
         }
-        if self.current_step.is_multiple_of(self.stride) {
-            if let Some(cp) = runner.capture_checkpoint() {
-                self.push_keyframe(cp);
-            }
+        if self.current_step.is_multiple_of(self.stride)
+            && let Some(cp) = runner.capture_checkpoint()
+        {
+            self.push_keyframe(cp);
         }
     }
 
@@ -351,10 +351,9 @@ impl CheckpointRing {
             .keyframes
             .back()
             .is_some_and(|back| back.step == cp.step)
+            && let Some(removed) = self.keyframes.pop_back()
         {
-            if let Some(removed) = self.keyframes.pop_back() {
-                self.keyframe_bytes = self.keyframe_bytes.saturating_sub(removed.byte_size());
-            }
+            self.keyframe_bytes = self.keyframe_bytes.saturating_sub(removed.byte_size());
         }
         self.push_keyframe(cp);
     }
@@ -477,10 +476,10 @@ impl CheckpointRing {
             let removed = self.epochs.pop_front().expect("at least 2 epochs");
             self.epoch_bytes = self.epoch_bytes.saturating_sub(removed.byte_size());
         }
-        if let Some(front) = self.epochs.front_mut() {
-            if front.start_step < min_step {
-                front.start_step = min_step;
-            }
+        if let Some(front) = self.epochs.front_mut()
+            && front.start_step < min_step
+        {
+            front.start_step = min_step;
         }
     }
 }

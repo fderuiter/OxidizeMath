@@ -4,13 +4,13 @@
 
 use super::phantom::synthesize_phantom;
 use super::recon::{
-    compose_quad_export_image, compute_forward_kspace, reconstruct_from_forward_cache,
-    render_error_panel, render_grayscale_panel, render_kspace_panel, ForwardKSpaceCache,
-    ReconOutput,
+    ForwardKSpaceCache, ReconOutput, compose_quad_export_image, compute_forward_kspace,
+    reconstruct_from_forward_cache, render_error_panel, render_grayscale_panel,
+    render_kspace_panel,
 };
 use super::state::{
-    decode_mask_hex, encode_mask_hex, KSpaceBrushMode, KSpaceMaskFilter, KSpaceTrajectory,
-    MriKSpaceScannerState, PhantomSource, SCANNER_STATE_BOUNDS,
+    KSpaceBrushMode, KSpaceMaskFilter, KSpaceTrajectory, MriKSpaceScannerState, PhantomSource,
+    SCANNER_STATE_BOUNDS, decode_mask_hex, encode_mask_hex,
 };
 use super::theory::MriKSpaceScannerTheory;
 use super::trajectory::{apply_brush_stroke, build_parametric_mask};

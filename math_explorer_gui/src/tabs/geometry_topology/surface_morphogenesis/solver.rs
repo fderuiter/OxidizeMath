@@ -11,7 +11,7 @@ use crate::tabs::geometry_topology::export_utils::{
     has_direct_periodic_seams, has_klein_seam_topology, has_polar_singularities,
     is_standard_tau_domain,
 };
-use math_commons::math_kernel::types::{flatten_2d_index, Dimension};
+use math_commons::math_kernel::types::{Dimension, flatten_2d_index};
 use math_explorer::biology::diffusion::LaplaceBeltramiDiffusion2D;
 use math_explorer::biology::morphogenesis::reaction::{GrayScottKinetics, SchnakenbergKinetics};
 use math_explorer::biology::morphogenesis::{DiffusionCoeff, TuringSystem};

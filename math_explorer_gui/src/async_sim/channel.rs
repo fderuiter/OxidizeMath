@@ -208,12 +208,14 @@ mod tests {
         for step in 1..=64 {
             assert!(tx.send_snapshot(sample_snapshot(f64::from(step))).is_ok());
         }
-        assert!(tx
-            .send_status(WorkerStatusEvent::Faulted("NaN".to_string()))
-            .is_ok());
-        assert!(tx
-            .send_divergence(DiagnosticReport::new(0.5, 64, "u", "NaN"))
-            .is_ok());
+        assert!(
+            tx.send_status(WorkerStatusEvent::Faulted("NaN".to_string()))
+                .is_ok()
+        );
+        assert!(
+            tx.send_divergence(DiagnosticReport::new(0.5, 64, "u", "NaN"))
+                .is_ok()
+        );
 
         let batch = rx.drain();
         assert!(!batch.disconnected);

@@ -227,10 +227,9 @@ impl VirtualFileSystem for RootedVfs {
                         .trim_start_matches(['/', '\\']);
                     if clean == "traceability.toml"
                         && matches!(err.kind(), std::io::ErrorKind::NotFound)
+                        && let Some(fallback) = &self.fallback_registry
                     {
-                        if let Some(fallback) = &self.fallback_registry {
-                            return std::fs::read_to_string(fallback);
-                        }
+                        return std::fs::read_to_string(fallback);
                     }
                     Err(err)
                 }

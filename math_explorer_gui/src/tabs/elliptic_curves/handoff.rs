@@ -4,8 +4,8 @@
 //! Bidirectional cross-tab state handoff transferring `(p, a, b, P, Q, k)` across
 //! `WeierstrassPlaygroundTool`, `ModularInvariantsTool`, and `EllipticCurvePlayground`.
 
-use super::chord_tangent_tool::{snap_prime_i64, CurveFieldMode, WeierstrassPlaygroundTool};
-use super::modular_invariants_tool::{snap_prime_u64, ModularInvariantsTool};
+use super::chord_tangent_tool::{CurveFieldMode, WeierstrassPlaygroundTool, snap_prime_i64};
+use super::modular_invariants_tool::{ModularInvariantsTool, snap_prime_u64};
 use crate::accessibility::AccessibleHoverText;
 use crate::tabs::number_theory::elliptic_curve_playground::EllipticCurvePlayground;
 use eframe::egui;
@@ -99,27 +99,27 @@ pub fn apply_to_weierstrass_playground(
     tool.state.real_b = (payload.b as f64).clamp(-20.0, 20.0);
     tool.state.scalar_k = payload.scalar_k.clamp(1, 1024);
     tool.rebuild_lattice();
-    if let AffinePointFp::Finite { x, y } = payload.point_p {
-        if let Some(idx) = tool.lattice_points.iter().position(|pt| {
+    if let AffinePointFp::Finite { x, y } = payload.point_p
+        && let Some(idx) = tool.lattice_points.iter().position(|pt| {
             pt.coords()
                 == Some((
                     x.rem_euclid(tool.state.prime_p),
                     y.rem_euclid(tool.state.prime_p),
                 ))
-        }) {
-            tool.state.selected_p_idx = idx;
-        }
+        })
+    {
+        tool.state.selected_p_idx = idx;
     }
-    if let AffinePointFp::Finite { x, y } = payload.point_q {
-        if let Some(idx) = tool.lattice_points.iter().position(|pt| {
+    if let AffinePointFp::Finite { x, y } = payload.point_q
+        && let Some(idx) = tool.lattice_points.iter().position(|pt| {
             pt.coords()
                 == Some((
                     x.rem_euclid(tool.state.prime_p),
                     y.rem_euclid(tool.state.prime_p),
                 ))
-        }) {
-            tool.state.selected_q_idx = idx;
-        }
+        })
+    {
+        tool.state.selected_q_idx = idx;
     }
     tool.bump_revision();
 }

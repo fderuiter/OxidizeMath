@@ -2,7 +2,7 @@
 
 //! Playback, 3D camera, plot viewport, accessibility, and curve-fitting command specs.
 
-use super::actions::{spec, BuiltinCommandSpec, PaletteAction as A};
+use super::actions::{BuiltinCommandSpec, PaletteAction as A, spec};
 
 static PLAYBACK_AND_CAMERA_SPECS: &[BuiltinCommandSpec] = &[
     spec(

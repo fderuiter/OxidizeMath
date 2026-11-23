@@ -28,11 +28,11 @@ fn test_q_table_inspector_background_offload() {
     let mut completed = false;
     for _ in 0..100 {
         std::thread::sleep(std::time::Duration::from_millis(15));
-        if let Some(snap) = tool.worker.update() {
-            if snap.custom_data.first().copied().unwrap_or(0.0) >= 10.0 {
-                completed = true;
-                break;
-            }
+        if let Some(snap) = tool.worker.update()
+            && snap.custom_data.first().copied().unwrap_or(0.0) >= 10.0
+        {
+            completed = true;
+            break;
         }
     }
     assert!(completed);

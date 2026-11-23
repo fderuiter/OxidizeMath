@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::framework::MAX_SYNTHESIZED_PARAMS;
-use math_commons::ast::{parse_equation, CompiledExpr};
+use math_commons::ast::{CompiledExpr, parse_equation};
 use math_explorer::biology::lenia::{
     GrowthParams, LeniaSpecies, MAX_GRID_SIZE, MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MIN_GRID_SIZE,
     MIN_KERNEL_RADIUS,

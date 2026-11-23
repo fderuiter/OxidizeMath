@@ -3,11 +3,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::super::bankroll_ensemble::{
-    BankrollLabMode, VolatilityHypothesis, DEFAULT_BARRIER_FLOOR_RATIO, DEFAULT_CUSTOM_FRACTION,
-    MAX_BARRIER_FLOOR_RATIO, MAX_CUSTOM_FRACTION, MIN_BARRIER_FLOOR_RATIO,
+    BankrollLabMode, DEFAULT_BARRIER_FLOOR_RATIO, DEFAULT_CUSTOM_FRACTION, MAX_BARRIER_FLOOR_RATIO,
+    MAX_CUSTOM_FRACTION, MIN_BARRIER_FLOOR_RATIO, VolatilityHypothesis,
 };
-use super::{is_default_stake_multiplier, BankrollGrowthTool};
-use math_explorer::pure_math::statistics::kelly::{kelly_fraction, variants, Odds, UnitInterval};
+use super::{BankrollGrowthTool, is_default_stake_multiplier};
+use math_explorer::pure_math::statistics::kelly::{Odds, UnitInterval, kelly_fraction, variants};
 
 const fn default_stake_multiplier() -> f64 {
     1.0

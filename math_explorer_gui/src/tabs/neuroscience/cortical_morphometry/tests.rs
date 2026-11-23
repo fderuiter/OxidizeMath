@@ -4,8 +4,8 @@ use super::presets::{
     PRESET_GLM_ATROPHY_JSON, PRESET_MRF_DEFORMABLE_JSON, PRESET_SULCAL_THICKNESS_JSON,
 };
 use super::{CorticalMorphometryTool, CorticalOverlayMode, SurfaceDisplayMode};
-use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::InteractiveTool;
+use crate::framework::recovery::FiniteStateGuard;
 use crate::tabs::geometry_topology::export_utils::{
     count_open_and_nonmanifold_edges, signed_volume,
 };

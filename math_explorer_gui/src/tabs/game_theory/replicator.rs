@@ -1,5 +1,5 @@
 use crate::framework::math_input::{
-    MathExpressionInputBar, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS,
+    MAX_SYNTHESIZED_PARAMS, MathExpressionInputBar, ParameterSliderBank,
 };
 use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use crate::presets::ReplicatorPresetConfig;

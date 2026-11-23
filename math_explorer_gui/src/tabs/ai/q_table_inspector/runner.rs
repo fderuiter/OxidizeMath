@@ -1,19 +1,19 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
-use crate::audio::{mappings::rl_td_surprise_frame, SonificationFrame};
+use crate::audio::{SonificationFrame, mappings::rl_td_surprise_frame};
 use crate::tabs::ai::rl_sculpt::{
-    apply_rl_brush_stroke, apply_rl_sculpt_payload, solve_bellman_with_policy, RlSolverMode,
+    RlSolverMode, apply_rl_brush_stroke, apply_rl_sculpt_payload, solve_bellman_with_policy,
 };
 use math_commons::primitives::UnitInterval;
 use math_explorer::ai::reinforcement_learning::grid_world::Move;
 #[cfg(test)]
 use math_explorer::ai::reinforcement_learning::grid_world::{GridState, GridWorldEnv};
-#[cfg(test)]
-use math_explorer::ai::reinforcement_learning::{algorithms::TabularQAgent, MarkovDecisionProcess};
 use math_explorer::ai::reinforcement_learning::{
-    step_softmax_pg_into, step_tabular_q_into, BellmanSolution, DenseRlWorkspace, SculptedGridMdp,
+    BellmanSolution, DenseRlWorkspace, SculptedGridMdp, step_softmax_pg_into, step_tabular_q_into,
 };
+#[cfg(test)]
+use math_explorer::ai::reinforcement_learning::{MarkovDecisionProcess, algorithms::TabularQAgent};
 #[cfg(test)]
 use std::collections::HashMap;
 use std::sync::Arc;

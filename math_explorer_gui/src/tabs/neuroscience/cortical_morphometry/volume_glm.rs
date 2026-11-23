@@ -3,9 +3,9 @@
 //! Synthetic 3D T1 MRI volume generator, Potts MRF gray-matter posterior sampler,
 //! and multi-subject general linear model (GLM) cohort contrast evaluator.
 
-use super::{gyral_and_atrophy_pattern, MRI_DIMS, MRI_ORIGIN_MM, MRI_VOXEL_MM, SEMI_AXES_MM};
+use super::{MRI_DIMS, MRI_ORIGIN_MM, MRI_VOXEL_MM, SEMI_AXES_MM, gyral_and_atrophy_pattern};
 use math_explorer::applied::freesurfer::{
-    estimate_beta, mrf_voxel_posteriors, t_statistic, MriVolume, Surface, TissueClass,
+    MriVolume, Surface, TissueClass, estimate_beta, mrf_voxel_posteriors, t_statistic,
 };
 use nalgebra::{DMatrix, DVector, Vector3};
 use std::f64::consts::TAU;

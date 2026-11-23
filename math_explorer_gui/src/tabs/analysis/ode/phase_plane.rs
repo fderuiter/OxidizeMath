@@ -3,10 +3,10 @@
 //! 2D phase-portrait canvas, bounded quiver vector field (`egui_plot::Arrows`),
 //! marching-squares nullclines, click-to-seed orbits, and synchronized $(x(t), y(t))$ twin timelines.
 
-use super::comparison::{simulate_ode, OdeSimSpec, SolverTrajectory};
+use super::OdeSolverTool;
+use super::comparison::{OdeSimSpec, SolverTrajectory, simulate_ode};
 use super::recovery;
 use super::systems::build_ode_param_map;
-use super::OdeSolverTool;
 use crate::framework::recovery::FiniteStateGuard;
 use eframe::egui;
 use egui_plot::{Arrows, Legend, Line, LineStyle, Plot, PlotPoints, Points};
@@ -337,12 +337,12 @@ impl OdeSolverTool {
                     render_nullcline_lines(plot_ui, y_segs, "y-nullcline (y'=0)", palette.success);
                 }
                 self.draw_phase_orbits(plot_ui, palette, px_lbl, py_lbl);
-                if plot_ui.response().clicked() {
-                    if let Some(pt) = plot_ui.pointer_coordinate() {
-                        if pt.x.is_finite() && pt.y.is_finite() {
-                            clicked_seed = Some([pt.x, pt.y]);
-                        }
-                    }
+                if plot_ui.response().clicked()
+                    && let Some(pt) = plot_ui.pointer_coordinate()
+                    && pt.x.is_finite()
+                    && pt.y.is_finite()
+                {
+                    clicked_seed = Some([pt.x, pt.y]);
                 }
             });
         clicked_seed

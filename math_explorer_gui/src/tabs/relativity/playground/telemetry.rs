@@ -11,14 +11,14 @@ use crate::async_sim::atlas::AtlasTeleportEvent;
 use eframe::egui;
 use math_commons::ast::CompiledExpr;
 use math_explorer::physics::high_energy::{
-    photon_sphere_radius, KerrEquatorialMetric, SchwarzschildBlackHole,
+    KerrEquatorialMetric, SchwarzschildBlackHole, photon_sphere_radius,
 };
 use math_explorer::pure_math::analysis::ode::ArrayState;
 use scientific_metadata::theory::ParameterConstraint;
 
 use super::{
-    kerr_prograde_critical_b, GeodesicMode, GeodesicPlaygroundTool, SpacetimePreset,
-    TrajectorySample, MAX_TRAJECTORY_SAMPLES,
+    GeodesicMode, GeodesicPlaygroundTool, MAX_TRAJECTORY_SAMPLES, SpacetimePreset,
+    TrajectorySample, kerr_prograde_critical_b,
 };
 
 #[derive(Clone, Copy)]
@@ -403,9 +403,5 @@ fn kerr_bpt_isco(m_geom: f64, chi: f64, impact_or_momentum: f64) -> f64 {
 
 #[inline]
 fn clean_finite(val: f64, fallback: f64) -> f64 {
-    if val.is_finite() {
-        val
-    } else {
-        fallback
-    }
+    if val.is_finite() { val } else { fallback }
 }

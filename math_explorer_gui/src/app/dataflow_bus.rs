@@ -14,7 +14,7 @@ pub use staging::poll_pane_graph;
 pub use staging::publish_pane_landmarks;
 #[cfg(any(test, feature = "biology"))]
 pub use staging::publish_pane_scalar_field;
-pub use staging::{commit_pane_outputs, stage_pane_inputs, PaneDataflowBus};
+pub use staging::{PaneDataflowBus, commit_pane_outputs, stage_pane_inputs};
 #[cfg(any(test, feature = "pure_math"))]
 pub use staging::{poll_pane_landmarks, poll_pane_scalar_field, publish_pane_graph};
 
@@ -432,10 +432,10 @@ impl PanePipelineDag {
     /// Mirrors an upstream feed when cloning `src_pane` into `dst_pane` if valid and acyclic.
     pub fn on_clone_pane(&mut self, src_pane: usize, dst_pane: usize) {
         self.disconnect_target(dst_pane);
-        if let Some(up) = self.upstream_for(src_pane) {
-            if up.from_pane != dst_pane {
-                let _ = self.connect(up.from_pane, dst_pane, up.kind);
-            }
+        if let Some(up) = self.upstream_for(src_pane)
+            && up.from_pane != dst_pane
+        {
+            let _ = self.connect(up.from_pane, dst_pane, up.kind);
         }
     }
 

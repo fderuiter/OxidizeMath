@@ -3,14 +3,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::handoff::{
-    landmarks_from_scalar_field, take_chaos_landmark_handoff, ChaosLandmarkHandoff,
+    ChaosLandmarkHandoff, landmarks_from_scalar_field, take_chaos_landmark_handoff,
 };
 use super::presets::GeneratorDescriptor;
 use super::state::{SculptBrush, VrSourceMode};
-use super::{CloudSource, VietorisRipsTool, MAX_CHAOS_LANDMARKS};
+use super::{CloudSource, MAX_CHAOS_LANDMARKS, VietorisRipsTool};
 use crate::accessibility::AccessibleTheoryHover;
-use crate::app::dataflow_bus::{poll_pane_landmarks, poll_pane_scalar_field};
 use crate::app::SemanticPalette;
+use crate::app::dataflow_bus::{poll_pane_landmarks, poll_pane_scalar_field};
 use crate::framework::Plot3DViewport;
 use eframe::egui;
 use egui_plot::{Line, Points, Polygon};

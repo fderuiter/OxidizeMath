@@ -2,12 +2,12 @@
 
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
 
-use super::spin_interaction::{b_field_visual_tip, BlochSteerTarget};
+use super::spin_interaction::{BlochSteerTarget, b_field_visual_tip};
 use super::*;
 use crate::camera::ProjectionMode;
 use crate::framework::Plot3DViewport;
 use crate::url_state::{
-    encode_share_fragment, parse_share_location, validate_url_preset_json, MAX_URL_FRAGMENT_BYTES,
+    MAX_URL_FRAGMENT_BYTES, encode_share_fragment, parse_share_location, validate_url_preset_json,
 };
 use verified_engine::engine::VerifiedEngine;
 
@@ -314,9 +314,11 @@ fn test_bloch_keyboard_arrow_stepping_and_non_trapping_tab_focus() {
         );
         if key == egui::Key::ArrowDown {
             assert!(viz.current_initial_angles()[0] > theta_before + 0.04);
-            assert!(crate::accessibility::all_announcements()
-                .iter()
-                .any(|(msg, prio)| prio == "polite" && msg.contains("theta")));
+            assert!(
+                crate::accessibility::all_announcements()
+                    .iter()
+                    .any(|(msg, prio)| prio == "polite" && msg.contains("theta"))
+            );
         } else {
             assert_ne!(ctx.memory(|m| m.focused()), focused_before);
         }
@@ -350,11 +352,13 @@ fn test_initial_bloch_angles_preset_url_round_trip_and_zero_alloc_step() {
     assert!((th - FRAC_PI_2).abs() < 1e-12 && (ph - FRAC_PI_4).abs() < 1e-12);
     assert!((restored.sx.expectation_value(&restored.psi).re - FRAC_PI_4.cos()).abs() < 1e-12);
 
-    assert!(restored
-        .try_load_state(
-            r#"{"b_field":[0.0,0.0,1.0],"paused":true,"initial_bloch_angles":[9.0,0.0]}"#
-        )
-        .is_err());
+    assert!(
+        restored
+            .try_load_state(
+                r#"{"b_field":[0.0,0.0,1.0],"paused":true,"initial_bloch_angles":[9.0,0.0]}"#
+            )
+            .is_err()
+    );
 
     let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
         .lock()

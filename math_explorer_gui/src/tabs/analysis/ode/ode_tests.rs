@@ -120,12 +120,16 @@ fn test_ode_auto_history_buffering() {
     }
 
     assert_eq!(tool.snapshot_manager.history_len(), 5);
-    assert!(tool.snapshot_manager.history_runs()[0]
-        .param_summary
-        .contains("k=1.00"));
-    assert!(tool.snapshot_manager.history_runs()[4]
-        .param_summary
-        .contains("k=3.00"));
+    assert!(
+        tool.snapshot_manager.history_runs()[0]
+            .param_summary
+            .contains("k=1.00")
+    );
+    assert!(
+        tool.snapshot_manager.history_runs()[4]
+            .param_summary
+            .contains("k=3.00")
+    );
 
     let exported = tool.export_datasets();
     assert!(exported.iter().any(|(name, _)| name.contains("Run")));
@@ -163,11 +167,13 @@ fn test_ode_auto_callout_annotations_and_persistence() {
     let mut restored = OdeSolverTool::default();
     restored.load_state(&state);
     assert_eq!(restored.callout_manager.len(), 3);
-    assert!(restored
-        .callout_manager
-        .callouts()
-        .iter()
-        .any(|c| c.text == "Equilibrium Y=2.0"));
+    assert!(
+        restored
+            .callout_manager
+            .callouts()
+            .iter()
+            .any(|c| c.text == "Equilibrium Y=2.0")
+    );
 }
 
 #[test]

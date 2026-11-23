@@ -11,7 +11,7 @@ pub mod io;
 mod tests;
 mod ui;
 
-use super::capacity_fade_atlas::{CapacityFadeCartographer, CAPACITY_FADE_ATLAS_AXIS_PAIRS};
+use super::capacity_fade_atlas::{CAPACITY_FADE_ATLAS_AXIS_PAIRS, CapacityFadeCartographer};
 use super::cell_card::{BatteryCellCard, BatteryDialogIo, ChemistryChoice};
 use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::framework::{CodeArtifact, ExportCapabilities, InteractiveTool};
@@ -238,15 +238,15 @@ fn validate_capacity_fade_state(s: &CapacityFadeState) -> Result<(), String> {
     if !basic_valid {
         return Err("Capacity fade parameters out of bounds".into());
     }
-    if let Some(z) = s.exponent_z {
-        if !z.is_finite() || !(MIN_EXPONENT_Z..=MAX_EXPONENT_Z).contains(&z) {
-            return Err("Stretched exponent z out of bounds [0.1, 2.0]".into());
-        }
+    if let Some(z) = s.exponent_z
+        && (!z.is_finite() || !(MIN_EXPONENT_Z..=MAX_EXPONENT_Z).contains(&z))
+    {
+        return Err("Stretched exponent z out of bounds [0.1, 2.0]".into());
     }
-    if let Some(alpha) = s.calibrated_alpha {
-        if !alpha.is_finite() || !(1.0..=1.0e9).contains(&alpha) {
-            return Err("Calibrated prefactor alpha out of bounds".into());
-        }
+    if let Some(alpha) = s.calibrated_alpha
+        && (!alpha.is_finite() || !(1.0..=1.0e9).contains(&alpha))
+    {
+        return Err("Calibrated prefactor alpha out of bounds".into());
     }
     Ok(())
 }

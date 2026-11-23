@@ -1,11 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::cohort_io::{load_and_analyze_cohort, SAMPLE_COHORT_CSV};
-use super::{ChartMode, WinRatioStressTesterTool, STARTER_PRESET_JSON};
+use super::cohort_io::{SAMPLE_COHORT_CSV, load_and_analyze_cohort};
+use super::{ChartMode, STARTER_PRESET_JSON, WinRatioStressTesterTool};
 use crate::framework::InteractiveTool;
 use crate::url_state::{
-    encode_share_fragment, parse_share_location, validate_url_preset_json,
-    MAX_DECODED_URL_STATE_BYTES,
+    MAX_DECODED_URL_STATE_BYTES, encode_share_fragment, parse_share_location,
+    validate_url_preset_json,
 };
 
 #[test]

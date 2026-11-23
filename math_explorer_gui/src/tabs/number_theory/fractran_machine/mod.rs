@@ -4,7 +4,7 @@ pub mod diagram;
 mod panels;
 
 use crate::framework::{ExportCapabilities, InteractiveTool};
-use diagram::{draw_minsky_diagram, MinskyDiagramModel};
+use diagram::{MinskyDiagramModel, draw_minsky_diagram};
 use eframe::egui;
 use math_explorer::pure_math::algorithmic_information::fractran::{
     FractranCompiledVm, FractranError, FractranPreset, FractranProgram, FractranState,
@@ -14,8 +14,8 @@ use math_explorer::pure_math::algorithmic_information::kolmogorov::{
     bdm_complexity, exponents_to_bits, lz76_complexity,
 };
 use panels::{
-    build_export_datasets, build_trace_row, draw_fraction_rules_strip, draw_register_bar_plot,
-    draw_status_banner, draw_trace_inspector, TraceRow,
+    TraceRow, build_export_datasets, build_trace_row, draw_fraction_rules_strip,
+    draw_register_bar_plot, draw_status_banner, draw_trace_inspector,
 };
 use std::collections::VecDeque;
 

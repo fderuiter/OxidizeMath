@@ -1,7 +1,7 @@
 [package]
 name = "math_explorer_gui"
 version.workspace = true
-edition = "2021"
+edition = "2024"
 authors = ["Frederick de Ruiter <127706008+fderuiter@users.noreply.github.com>"]
 description = "Interactive scientific simulation and mathematical visualization desktop and web GUI"
 homepage = "https://github.com/fderuiter/OxidizeMath"

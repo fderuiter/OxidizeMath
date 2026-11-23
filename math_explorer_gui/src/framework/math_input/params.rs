@@ -1,9 +1,9 @@
 //! Free-parameter discovery and `AnimatedSlider` bank for `MathExpressionInputBar`.
 
+use crate::reflective_ui::AnimatedSlider;
 use crate::reflective_ui::slider::{
     load_slider_settings, resolve_scoped_slider_id, save_slider_settings,
 };
-use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
@@ -297,15 +297,17 @@ impl ParameterSliderBank {
         let slider_id = resolve_scoped_slider_id(ui, Some(salt), &display_label);
 
         let mut mem_settings = load_slider_settings(ui.ctx(), slider_id);
-        if mem_settings.min.is_none() && mem_settings.max.is_none() && mem_settings.step.is_none() {
-            if let Some(ovr) = self.bounds_overrides.get(name) {
-                mem_settings.min = Some(ovr.min);
-                mem_settings.max = Some(ovr.max);
-                if ovr.step > 0.0 {
-                    mem_settings.step = Some(ovr.step);
-                }
-                save_slider_settings(ui.ctx(), slider_id, mem_settings);
+        if mem_settings.min.is_none()
+            && mem_settings.max.is_none()
+            && mem_settings.step.is_none()
+            && let Some(ovr) = self.bounds_overrides.get(name)
+        {
+            mem_settings.min = Some(ovr.min);
+            mem_settings.max = Some(ovr.max);
+            if ovr.step > 0.0 {
+                mem_settings.step = Some(ovr.step);
             }
+            save_slider_settings(ui.ctx(), slider_id, mem_settings);
         }
 
         let (lo, hi) = (base_lo.min(val), base_hi.max(val));

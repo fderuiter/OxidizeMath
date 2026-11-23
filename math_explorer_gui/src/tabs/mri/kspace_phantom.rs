@@ -84,10 +84,10 @@ impl PhantomEngine {
     #[must_use]
     pub fn sample_turing_uv(&self, idx: usize, fallback_rho: f64) -> [f64; 2] {
         #[cfg(feature = "biology")]
-        if let Some(ref sys) = self.turing {
-            if let (Some(&u), Some(&v)) = (sys.u().get(idx), sys.v().get(idx)) {
-                return [u, v];
-            }
+        if let Some(ref sys) = self.turing
+            && let (Some(&u), Some(&v)) = (sys.u().get(idx), sys.v().get(idx))
+        {
+            return [u, v];
         }
         #[cfg(not(feature = "biology"))]
         let _ = idx;

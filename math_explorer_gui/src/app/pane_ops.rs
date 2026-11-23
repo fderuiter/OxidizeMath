@@ -130,7 +130,7 @@ impl MathExplorerApp {
         from_pane: usize,
         to_pane: usize,
     ) -> Result<super::DataflowStreamKind, super::dataflow_bus::DagLinkError> {
-        use super::dataflow_bus::{compatible_stream_kind, DagLinkError};
+        use super::dataflow_bus::{DagLinkError, compatible_stream_kind};
         let count = self.viewport_layout.pane_count();
         if from_pane >= count || to_pane >= count {
             Self::announce_pipeline_error(ctx, DagLinkError::OutOfBounds);

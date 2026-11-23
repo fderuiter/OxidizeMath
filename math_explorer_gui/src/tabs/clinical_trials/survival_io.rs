@@ -3,14 +3,14 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 
 use crate::web_io::{
-    spawn_open_file_dialog, spawn_save_as_file_dialog, strip_utf8_bom, OpenDialogConfig,
-    SaveAsDialogConfig,
+    OpenDialogConfig, SaveAsDialogConfig, spawn_open_file_dialog, spawn_save_as_file_dialog,
+    strip_utf8_bom,
 };
 use math_explorer::applied::clinical_trials::survival_analysis::{
-    kaplan_meier, log_rank_test, try_estimate_hazard_ratio, LogRankResult, Observation, TimePoint,
+    LogRankResult, Observation, TimePoint, kaplan_meier, log_rank_test, try_estimate_hazard_ratio,
 };
 use math_explorer::applied::clinical_trials::types::SurvivalTime;
 
@@ -209,10 +209,10 @@ pub fn parse_survival_with_control(
         if !saw_first {
             saw_first = true;
             let delimiter = if line.contains('\t') { '\t' } else { ',' };
-            if let Some(first_col) = line.split(delimiter).next() {
-                if is_survival_header(first_col) {
-                    continue;
-                }
+            if let Some(first_col) = line.split(delimiter).next()
+                && is_survival_header(first_col)
+            {
+                continue;
             }
         }
         if all_observations.len() >= math_commons::registry::MAX_ITERATIONS {
@@ -270,10 +270,10 @@ fn parse_control_block(
         if !saw_first {
             saw_first = true;
             let delimiter = if line.contains('\t') { '\t' } else { ',' };
-            if let Some(first_col) = line.split(delimiter).next() {
-                if is_survival_header(first_col) {
-                    continue;
-                }
+            if let Some(first_col) = line.split(delimiter).next()
+                && is_survival_header(first_col)
+            {
+                continue;
             }
         }
         if all_observations.len() >= math_commons::registry::MAX_ITERATIONS {
@@ -433,25 +433,25 @@ impl SurvivalDialogIo {
     /// Polls channels and returns newly loaded cohort text if ready.
     pub fn poll(&mut self) -> Option<String> {
         let mut loaded_text = None;
-        if let Some(rx) = &self.open_rx {
-            if let Ok(res) = rx.try_recv() {
-                self.open_rx = None;
-                match res {
-                    Ok((name, text)) => {
-                        self.status = Some((false, format!("Loaded {name}")));
-                        loaded_text = Some(text);
-                    }
-                    Err(err) => self.status = Some((true, err)),
+        if let Some(rx) = &self.open_rx
+            && let Ok(res) = rx.try_recv()
+        {
+            self.open_rx = None;
+            match res {
+                Ok((name, text)) => {
+                    self.status = Some((false, format!("Loaded {name}")));
+                    loaded_text = Some(text);
                 }
+                Err(err) => self.status = Some((true, err)),
             }
         }
-        if let Some(rx) = &self.save_rx {
-            if let Ok(res) = rx.try_recv() {
-                self.save_rx = None;
-                match res {
-                    Ok(name) => self.status = Some((false, format!("Saved {name}"))),
-                    Err(err) => self.status = Some((true, err)),
-                }
+        if let Some(rx) = &self.save_rx
+            && let Ok(res) = rx.try_recv()
+        {
+            self.save_rx = None;
+            match res {
+                Ok(name) => self.status = Some((false, format!("Saved {name}"))),
+                Err(err) => self.status = Some((true, err)),
             }
         }
         loaded_text

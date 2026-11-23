@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::runner::WaveData;
-use math_commons::ast::{parse_equation, Expr};
+use math_commons::ast::{Expr, parse_equation};
 use nalgebra::DVector;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;

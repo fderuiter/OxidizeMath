@@ -6,7 +6,7 @@ use super::{Glicko2PlotMode, Glicko2TournamentTool};
 use crate::app::SemanticPalette;
 use eframe::egui;
 use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints, Points};
-use math_explorer::pure_math::statistics::glicko2::{pairwise_win_matrix, GlickoPlayer};
+use math_explorer::pure_math::statistics::glicko2::{GlickoPlayer, pairwise_win_matrix};
 
 impl Glicko2TournamentTool {
     pub(super) fn show_central_plot(&mut self, ui: &mut egui::Ui) {

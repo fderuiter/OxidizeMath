@@ -3,15 +3,15 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::MorphogenesisTool;
 use super::atlas::{
-    grid_u_variance, is_pattern_forming_regime, MorphogenesisCartographer, MORPHO_ATLAS_AXIS_PAIRS,
-    WASHOUT_VARIANCE_THRESHOLD,
+    MORPHO_ATLAS_AXIS_PAIRS, MorphogenesisCartographer, WASHOUT_VARIANCE_THRESHOLD,
+    grid_u_variance, is_pattern_forming_regime,
 };
 use super::gray_scott_atlas::{
-    is_gray_scott_pattern_viable, is_gray_scott_v_washed_out, GrayScottCartographer,
-    GRAY_SCOTT_ATLAS_AXIS_PAIRS,
+    GRAY_SCOTT_ATLAS_AXIS_PAIRS, GrayScottCartographer, is_gray_scott_pattern_viable,
+    is_gray_scott_v_washed_out,
 };
-use super::MorphogenesisTool;
 use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::presets::MorphogenesisKineticsMode;

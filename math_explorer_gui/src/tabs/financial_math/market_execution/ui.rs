@@ -3,14 +3,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::secondary_panels::{render_hedge_panel, render_middle_panel};
-use super::{ExecutionCalculatorMode, MarketExecutionTool, MAX_EXEC_LEGS, MIN_EXEC_LEGS};
+use super::{ExecutionCalculatorMode, MAX_EXEC_LEGS, MIN_EXEC_LEGS, MarketExecutionTool};
 use crate::app::SemanticPalette;
 use eframe::egui;
 use egui_plot::{Bar, BarChart, HLine, Legend, Plot};
 use math_explorer::pure_math::statistics::kelly::Odds;
 use math_explorer::pure_math::statistics::market_pricing::{
-    booksum, dutch_subset_into, evaluate_arbitrage_into, DutchingMode, DutchingReport,
-    MAX_MARKET_OUTCOMES,
+    DutchingMode, DutchingReport, MAX_MARKET_OUTCOMES, booksum, dutch_subset_into,
+    evaluate_arbitrage_into,
 };
 
 pub(super) fn render_execution_tool(tool: &mut MarketExecutionTool, ui: &mut egui::Ui) {

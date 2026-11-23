@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::framework::{PlaybackAction, PlaybackTransport};
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 
 fn run_app_events(
     ctx: &egui::Context,
@@ -103,10 +103,12 @@ fn test_duplicate_focused_pane_shortcut_clones_tool_and_registers_command() {
         d.get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new("CMD_REGISTRY"))
             .unwrap_or_default()
     });
-    assert!(registry
-        .commands
-        .iter()
-        .any(|c| c.name == "Duplicate Focused Pane" && !c.description.is_empty()));
+    assert!(
+        registry
+            .commands
+            .iter()
+            .any(|c| c.name == "Duplicate Focused Pane" && !c.description.is_empty())
+    );
 }
 
 #[test]

@@ -3,7 +3,7 @@
 use super::*;
 use crate::async_sim::{SimCommand, SimulationRunner};
 use crate::tabs::chaos::attractors::{
-    AttractorPlotter, AttractorRunner, SolverExecutionState, MAX_SIMULATION_SPEED,
+    AttractorPlotter, AttractorRunner, MAX_SIMULATION_SPEED, SolverExecutionState,
 };
 use crate::tabs::number_theory::factorization::{FactorizationTool, MAX_SYNC_FACTORIZATION_INPUT};
 use std::collections::VecDeque;
@@ -38,9 +38,13 @@ fn make_framework_session(tool_name: &str, config: serde_json::Value) -> String 
 #[test]
 fn test_tool_state_bounds_scanner_bytes_depth_arrays_and_strings() {
     let bounds = ToolStateBounds::new(128, 4, 3);
-    assert!(bounds
-        .validate_json("\u{feff}{\"pts\":[[1,2],[3,4]],\"note\":\"[[[[1,2,3,4,5]]]]\\\"comma,ok\"}")
-        .is_ok());
+    assert!(
+        bounds
+            .validate_json(
+                "\u{feff}{\"pts\":[[1,2],[3,4]],\"note\":\"[[[[1,2,3,4,5]]]]\\\"comma,ok\"}"
+            )
+            .is_ok()
+    );
 
     let oversized = format!("{{\"pad\":\"{}\"}}", "x".repeat(200));
     assert!(bounds.validate_json(&oversized).is_err());
@@ -69,12 +73,13 @@ fn test_import_preset_and_framework_session_reject_bounds_before_deserialization
         "0",
         "]".repeat(MAX_JSON_NESTING_DEPTH + 4)
     );
-    assert!(fw
-        .active_tool
-        .as_mut()
-        .unwrap()
-        .import_preset_json(&deep_nested)
-        .is_err());
+    assert!(
+        fw.active_tool
+            .as_mut()
+            .unwrap()
+            .import_preset_json(&deep_nested)
+            .is_err()
+    );
 
     // 2. Oversized array rejected on both import_preset_json and SimulationFramework::load_state
     let huge_array_items: String = (0..=MAX_JSON_ARRAY_LEN)
@@ -84,12 +89,13 @@ fn test_import_preset_and_framework_session_reject_bounds_before_deserialization
     let huge_array_preset = format!(
         "{{\"metadata\":{{\"schema_version\":\"1.0\",\"title\":\"Array\",\"domain\":\"analysis\",\"timestamp\":\"2026-11-19T00:00:00Z\"}},\"config\":{{\"arr\":[{huge_array_items}]}}}}"
     );
-    assert!(fw
-        .active_tool
-        .as_mut()
-        .unwrap()
-        .import_preset_json(&huge_array_preset)
-        .is_err());
+    assert!(
+        fw.active_tool
+            .as_mut()
+            .unwrap()
+            .import_preset_json(&huge_array_preset)
+            .is_err()
+    );
 
     let huge_array_session = format!(
         "{{\"selected_tool_index\":0,\"selected_tool_name\":\"OdeSolverTool\",\"show_theory_portal\":true,\"tool_states\":{{\"ODE Solvers\":{{\"arr\":[{huge_array_items}]}}}}}}"
@@ -158,12 +164,14 @@ fn assert_vr_and_cera_proof_cases() {
         "Unbounded VR",
         serde_json::json!({"radius": 10.0, "points": pts}),
     );
-    assert!(vr_fw
-        .active_tool
-        .as_mut()
-        .unwrap()
-        .import_preset_json(&vr_preset)
-        .is_err());
+    assert!(
+        vr_fw
+            .active_tool
+            .as_mut()
+            .unwrap()
+            .import_preset_json(&vr_preset)
+            .is_err()
+    );
 
     let vr_session = make_framework_session(
         "Vietoris-Rips Complex",
@@ -175,6 +183,10 @@ fn assert_vr_and_cera_proof_cases() {
         Some(vr_baseline.as_str())
     );
 
+    assert_cera_proof_cases();
+}
+
+fn assert_cera_proof_cases() {
     let mut cera_fw = SimulationFramework::new("climate");
     assert!(cera_fw.select_tool_by_name("CeraTool"));
     let cera_preset = make_preset(
@@ -188,12 +200,14 @@ fn assert_vr_and_cera_proof_cases() {
             "output_size": 2_usize
         }),
     );
-    assert!(cera_fw
-        .active_tool
-        .as_mut()
-        .unwrap()
-        .import_preset_json(&cera_preset)
-        .is_err());
+    assert!(
+        cera_fw
+            .active_tool
+            .as_mut()
+            .unwrap()
+            .import_preset_json(&cera_preset)
+            .is_err()
+    );
     let misaligned = make_preset(
         "climate",
         "Aligned > Latent",
@@ -201,12 +215,14 @@ fn assert_vr_and_cera_proof_cases() {
             "in_channels": 2, "latent_channels": 4, "aligned_channels": 5, "num_levels": 10, "output_size": 2
         }),
     );
-    assert!(cera_fw
-        .active_tool
-        .as_mut()
-        .unwrap()
-        .import_preset_json(&misaligned)
-        .is_err());
+    assert!(
+        cera_fw
+            .active_tool
+            .as_mut()
+            .unwrap()
+            .import_preset_json(&misaligned)
+            .is_err()
+    );
 }
 
 fn assert_attractor_and_factorization_proof_cases() {
@@ -233,12 +249,14 @@ fn assert_attractor_and_factorization_proof_cases() {
         "Max Prime Factorization",
         serde_json::json!({"input_text": "18446744073709551557"}),
     );
-    assert!(nt_fw
-        .active_tool
-        .as_mut()
-        .unwrap()
-        .import_preset_json(&fact_preset)
-        .is_err());
+    assert!(
+        nt_fw
+            .active_tool
+            .as_mut()
+            .unwrap()
+            .import_preset_json(&fact_preset)
+            .is_err()
+    );
 }
 
 #[test]
@@ -275,9 +293,10 @@ fn test_attractor_runner_set_speed_and_factorization_boundary_caps() {
         MAX_SYNC_FACTORIZATION_INPUT + 1
     );
     assert!(fact.try_load_state(&over_cap).is_err());
-    assert!(fact
-        .try_load_state(&format!(
+    assert!(
+        fact.try_load_state(&format!(
             "{{\"input_text\":\"{MAX_SYNC_FACTORIZATION_INPUT}\"}}"
         ))
-        .is_ok());
+        .is_ok()
+    );
 }

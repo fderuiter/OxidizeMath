@@ -81,22 +81,28 @@ fn test_parse_share_location_hash_precedence_and_query_fallback() {
 #[test]
 fn test_parse_share_location_enforces_size_caps_and_syntax_rules() {
     let huge_hash = format!("#tab=chaos&state={}", "A".repeat(MAX_URL_FRAGMENT_BYTES));
-    assert!(parse_share_location(&huge_hash, "")
-        .unwrap_err()
-        .contains("8192"));
+    assert!(
+        parse_share_location(&huge_hash, "")
+            .unwrap_err()
+            .contains("8192")
+    );
 
     let huge_query = format!("?tab=chaos&state={}", "A".repeat(MAX_URL_FRAGMENT_BYTES));
-    assert!(parse_share_location("", &huge_query)
-        .unwrap_err()
-        .contains("8192"));
+    assert!(
+        parse_share_location("", &huge_query)
+            .unwrap_err()
+            .contains("8192")
+    );
 
     let oversized_json = format!(r#"{{"pad":"{}"}}"#, "x".repeat(MAX_DECODED_URL_STATE_BYTES));
     assert!(encode_share_fragment("chaos", None, Some(&oversized_json)).is_err());
     let oversized_b64 = encode_base64url(oversized_json.as_bytes());
     let oversized_frag = format!("#tab=chaos&state={oversized_b64}");
-    assert!(parse_share_location(&oversized_frag, "")
-        .unwrap_err()
-        .contains("4096"));
+    assert!(
+        parse_share_location(&oversized_frag, "")
+            .unwrap_err()
+            .contains("4096")
+    );
 
     assert!(parse_share_location("#tool=AttractorPlotter", "").is_err());
     assert!(parse_share_location("#tab=&tool=AttractorPlotter", "").is_err());
@@ -134,12 +140,13 @@ fn test_url_sync_controller_debounces_300ms_and_defers_pointer_drag() {
     assert_eq!(encode_calls, 0);
 
     for (rev, dragging, now_ms) in [(2, false, 50), (3, true, 400), (3, false, 650)] {
-        assert!(sync
-            .poll_at_millis(sig(rev), dragging, now_ms, URL_SYNC_DEBOUNCE_MS, || {
+        assert!(
+            sync.poll_at_millis(sig(rev), dragging, now_ms, URL_SYNC_DEBOUNCE_MS, || {
                 encode_calls += 1;
                 Ok("#tab=a&state=2".to_string())
             })
-            .is_some());
+            .is_some()
+        );
         assert_eq!(encode_calls, 0);
     }
 
@@ -211,9 +218,10 @@ fn test_tick_url_sync_defers_during_active_animated_slider_sweeps() {
         crate::reflective_ui::slider::reset_frame_sweep_flags(egui_ctx);
         app.tick_url_sync(egui_ctx);
     });
-    assert!(app
-        .url_sync_last_fragment_for_test()
-        .is_some_and(|frag| frag.starts_with("#tab=")));
+    assert!(
+        app.url_sync_last_fragment_for_test()
+            .is_some_and(|frag| frag.starts_with("#tab="))
+    );
 }
 
 #[test]
@@ -374,15 +382,19 @@ fn test_streaming_url_validator_zero_alloc_and_structural_limits() {
     }
 
     let over_bytes = format!(r#"{{"pad":"{}"}}"#, "a".repeat(MAX_DECODED_URL_STATE_BYTES));
-    assert!(validate_url_preset_json(&over_bytes)
-        .unwrap_err()
-        .contains("4096"));
+    assert!(
+        validate_url_preset_json(&over_bytes)
+            .unwrap_err()
+            .contains("4096")
+    );
 
     let deep_depth = URL_JSON_BOUNDS.max_depth + 1;
     let too_deep = format!("{}0{}", "[".repeat(deep_depth), "]".repeat(deep_depth));
-    assert!(validate_url_preset_json(&too_deep)
-        .unwrap_err()
-        .contains("nesting depth"));
+    assert!(
+        validate_url_preset_json(&too_deep)
+            .unwrap_err()
+            .contains("nesting depth")
+    );
 
     let tight_array = ToolStateBounds::new(512, 8, 3);
     assert!(json_validator::validate_json_streaming_with_bounds("[1,2,3]", tight_array).is_ok());
@@ -391,16 +403,14 @@ fn test_streaming_url_validator_zero_alloc_and_structural_limits() {
             .unwrap_err()
             .contains("array length")
     );
-    assert!(json_validator::validate_json_streaming_with_bounds(
-        "[]",
-        ToolStateBounds::new(512, 8, 0)
-    )
-    .is_ok());
-    assert!(json_validator::validate_json_streaming_with_bounds(
-        "[1]",
-        ToolStateBounds::new(512, 8, 0)
-    )
-    .is_err());
+    assert!(
+        json_validator::validate_json_streaming_with_bounds("[]", ToolStateBounds::new(512, 8, 0))
+            .is_ok()
+    );
+    assert!(
+        json_validator::validate_json_streaming_with_bounds("[1]", ToolStateBounds::new(512, 8, 0))
+            .is_err()
+    );
 
     for invalid in [
         "",
@@ -466,10 +476,11 @@ fn test_rotation_curve_omits_snapshots_in_url_while_preserving_in_session_and_pr
         )],
     ));
     assert!(tool.save_state().unwrap().contains("snapshot_manager"));
-    assert!(tool
-        .export_preset_json()
-        .unwrap()
-        .contains("snapshot_manager"));
+    assert!(
+        tool.export_preset_json()
+            .unwrap()
+            .contains("snapshot_manager")
+    );
     assert!(!tool.save_url_state().unwrap().contains("snapshot_manager"));
 
     let mut fw = SimulationFramework::new("astrophysics");

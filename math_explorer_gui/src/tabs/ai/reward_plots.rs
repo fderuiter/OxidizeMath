@@ -2,12 +2,12 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::rl_sculpt::{build_rl_sculpt_payload, RlMazePreset, RlSolverMode};
+use super::rl_sculpt::{RlMazePreset, RlSolverMode, build_rl_sculpt_payload};
 use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+    WorkerFaultAction, render_empty_plot_guidance, render_worker_fault_banner,
 };
 use crate::async_sim::{SimCommand, SimWorkerState, SimulationController};
-use crate::audio::{render_sonification_panel, SonificationFrame};
+use crate::audio::{SonificationFrame, render_sonification_panel};
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};

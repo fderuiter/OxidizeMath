@@ -3,7 +3,7 @@
 
 // theory_verification!
 
-use crate::audio::frame::{clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset};
+use crate::audio::frame::{SonificationFrame, VoiceSpec, WaveformPreset, clamp_freq_hz};
 
 /// Feature-independent LINAC gating phase mirrored from `domain_physics` `BeamState`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]

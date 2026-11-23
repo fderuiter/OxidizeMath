@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    render_fractal_color_image, CompiledFractalJob, FractalMode, FractalRenderRequest,
-    FractalViewer, COORD_MAX, COORD_MIN, ZOOM_MAX, ZOOM_MIN,
+    COORD_MAX, COORD_MIN, CompiledFractalJob, FractalMode, FractalRenderRequest, FractalViewer,
+    ZOOM_MAX, ZOOM_MIN, render_fractal_color_image,
 };
 use crate::app::SemanticPalette;
 use eframe::egui;
@@ -111,14 +111,14 @@ impl FractalViewer {
             self.high_contrast,
         );
         if self.julia_inset_key == Some(key) {
-            if self.julia_inset_texture.is_none() {
-                if let Some(img) = self.julia_inset_image.clone() {
-                    self.julia_inset_texture = Some(ctx.load_texture(
-                        "fractal_julia_inset",
-                        img,
-                        egui::TextureOptions::LINEAR,
-                    ));
-                }
+            if self.julia_inset_texture.is_none()
+                && let Some(img) = self.julia_inset_image.clone()
+            {
+                self.julia_inset_texture = Some(ctx.load_texture(
+                    "fractal_julia_inset",
+                    img,
+                    egui::TextureOptions::LINEAR,
+                ));
             }
             return;
         }

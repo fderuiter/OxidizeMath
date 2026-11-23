@@ -3,26 +3,27 @@
 // [cite:gaussian_splatting]
 
 pub use crate::volumetric_scene::lensing::{
-    build_circle_ring, LensedFrameTelemetry, SplatLensConfig, SplatLensMode,
+    LensedFrameTelemetry, SplatLensConfig, SplatLensMode, build_circle_ring,
 };
 pub use crate::volumetric_scene::presets::{
-    build_preset_scene_and_gradients, VolumetricSplatPreset,
+    VolumetricSplatPreset, build_preset_scene_and_gradients,
 };
 pub use crate::volumetric_scene::{
-    covariance_ellipse_ring, splat_stroke_color, DensityActionCounts, ELLIPSE_POINTS,
-    MAX_DYNAMIC_SPLATS,
+    DensityActionCounts, ELLIPSE_POINTS, MAX_DYNAMIC_SPLATS, covariance_ellipse_ring,
+    splat_stroke_color,
 };
 
 use crate::framework::{Camera3D, ProjectionMode};
 use crate::volumetric_scene::lensing::{compute_splat_beaming_weight, evaluate_lens_mode_outcome};
 use eframe::egui;
 use math_explorer::ai::gaussian_splatting::{
-    optimization::{determine_density_action, DensityAction},
-    projection, rendering, Gaussian2D, Gaussian3D, Scene,
+    Gaussian2D, Gaussian3D, Scene,
+    optimization::{DensityAction, determine_density_action},
+    projection, rendering,
 };
 use math_explorer::constants::SOLAR_MASS;
 use math_explorer::physics::astrophysics::{
-    tangential_critical_radius_kpc, validate_christoffel_radial_connection, HaloProfile,
+    HaloProfile, tangential_critical_radius_kpc, validate_christoffel_radial_connection,
 };
 use math_explorer::physics::high_energy::general_relativity::SchwarzschildBlackHole;
 use nalgebra::{Matrix2, Matrix2x3, Point2, Point3, Vector2, Vector3};

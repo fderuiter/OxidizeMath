@@ -8,8 +8,8 @@ use eframe::egui;
 use egui_plot::{Line, LineStyle, MarkerShape, PlotPoints, Points};
 use math_explorer::constants::C;
 use math_explorer::physics::astrophysics::{
-    evaluate_relativistic_beaming, tangential_critical_radius_kpc,
-    validate_christoffel_radial_connection, CentralBlackHoleConfig, HaloProfile, OrbitParticleKind,
+    CentralBlackHoleConfig, HaloProfile, OrbitParticleKind, evaluate_relativistic_beaming,
+    tangential_critical_radius_kpc, validate_christoffel_radial_connection,
 };
 
 use crate::reflective_ui::render_copyable_metric;
@@ -215,14 +215,14 @@ impl GalacticOrbitSimulator {
             "Captured at ISCO",
             &format!("{captured} / {}", self.system.particles().len()),
         );
-        if let Ok(bh) = self.cfg.central_bh.to_schwarzschild_bh() {
-            if let Ok((gamma_r00, _pw)) = validate_christoffel_radial_connection(&bh, 6.0) {
-                render_copyable_metric(
-                    ui,
-                    "Christoffel Γ^r_00 (6 R_s)",
-                    &format!("{gamma_r00:.3e} m⁻¹"),
-                );
-            }
+        if let Ok(bh) = self.cfg.central_bh.to_schwarzschild_bh()
+            && let Ok((gamma_r00, _pw)) = validate_christoffel_radial_connection(&bh, 6.0)
+        {
+            render_copyable_metric(
+                ui,
+                "Christoffel Γ^r_00 (6 R_s)",
+                &format!("{gamma_r00:.3e} m⁻¹"),
+            );
         }
     }
 

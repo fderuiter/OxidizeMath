@@ -4,14 +4,14 @@
 
 use super::lattice_boltzmann::render::{draw_fairing_canvas_overlay, sync_fairing_callouts};
 use super::lbm_fairing::{
-    apply_stroke_to_fairing_mask, decode_mask_hex, encode_fairing_mask_rle, encode_mask_hex,
-    restore_inlet_and_core_mask, FairingStamp, LbmFairingEvaluator, LbmSerializedState,
-    CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY, LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X,
-    LBM_CORE_Y, LBM_HEIGHT, LBM_INLET_COLS, LBM_MIN_SOLID_CELLS, LBM_U_IN, LBM_WIDTH,
+    CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY, FairingStamp, LBM_CELL_COUNT, LBM_CORE_RADIUS,
+    LBM_CORE_X, LBM_CORE_Y, LBM_HEIGHT, LBM_INLET_COLS, LBM_MIN_SOLID_CELLS, LBM_U_IN, LBM_WIDTH,
+    LbmFairingEvaluator, LbmSerializedState, apply_stroke_to_fairing_mask, decode_mask_hex,
+    encode_fairing_mask_rle, encode_mask_hex, restore_inlet_and_core_mask,
 };
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleHoverText,
+    AccessibleHoverText, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use crate::async_sim::unified::UnifiedUiExtension;
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
@@ -284,10 +284,10 @@ impl UnifiedUiExtension for LbmUiExtension {
             )));
         }
         let mut next_mask = self.default_mask;
-        if let Some(hex) = &parsed.mask_hex {
-            if let Err(err) = decode_mask_hex(hex, &mut next_mask) {
-                return Some(Err(err));
-            }
+        if let Some(hex) = &parsed.mask_hex
+            && let Err(err) = decode_mask_hex(hex, &mut next_mask)
+        {
+            return Some(Err(err));
         }
         for x in 0..LBM_INLET_COLS {
             for y in 0..LBM_HEIGHT {

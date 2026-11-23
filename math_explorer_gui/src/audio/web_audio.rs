@@ -12,9 +12,9 @@ use web_sys::{
 use super::backend::{MuteReason, SonificationBackend};
 use super::fourier::PresetHarmonicBank;
 use super::frame::{
-    clamp_freq_hz, sanitize_f32, HarmonicWeights, MeterReading, SonificationFrame, VoiceSpec,
-    WaveformPreset, LIMITER_CEILING_DBFS, LIMITER_CEILING_LINEAR, MAX_VOICES, MUTE_RAMP_TAU_SEC,
-    NUM_HARMONICS, PARAM_SMOOTH_TAU_SEC,
+    HarmonicWeights, LIMITER_CEILING_DBFS, LIMITER_CEILING_LINEAR, MAX_VOICES, MUTE_RAMP_TAU_SEC,
+    MeterReading, NUM_HARMONICS, PARAM_SMOOTH_TAU_SEC, SonificationFrame, VoiceSpec,
+    WaveformPreset, clamp_freq_hz, sanitize_f32,
 };
 
 struct WebVoiceNodes {
@@ -156,10 +156,10 @@ impl SonificationBackend for WebAudioNodeBackend {
         let clean = frame.sanitize();
         self.current_frame = clean;
         self.last_meter = clean.estimate_meter(self.master_volume, self.muted);
-        if !self.muted {
-            if let Some(graph) = &mut self.graph {
-                let _ = apply_frame_to_graph(graph, &clean, self.master_volume);
-            }
+        if !self.muted
+            && let Some(graph) = &mut self.graph
+        {
+            let _ = apply_frame_to_graph(graph, &clean, self.master_volume);
         }
     }
 
@@ -168,16 +168,15 @@ impl SonificationBackend for WebAudioNodeBackend {
         self.last_meter = self
             .current_frame
             .estimate_meter(self.master_volume, self.muted);
-        if !self.muted {
-            if let Some(graph) = &self.graph {
-                let now = graph.ctx.current_time();
-                let target = self.current_frame.master_gain * self.master_volume;
-                let _ =
-                    graph
-                        .master_gain
-                        .gain()
-                        .set_target_at_time(target, now, PARAM_SMOOTH_TAU_SEC);
-            }
+        if !self.muted
+            && let Some(graph) = &self.graph
+        {
+            let now = graph.ctx.current_time();
+            let target = self.current_frame.master_gain * self.master_volume;
+            let _ = graph
+                .master_gain
+                .gain()
+                .set_target_at_time(target, now, PARAM_SMOOTH_TAU_SEC);
         }
     }
 

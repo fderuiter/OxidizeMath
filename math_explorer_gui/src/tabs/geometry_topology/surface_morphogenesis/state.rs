@@ -4,8 +4,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    MorphogenesisKineticsKind, SurfaceMorphogenesisTool, SurfaceOverlayMode,
-    MAX_SURFACE_MORPHO_RES, MIN_SURFACE_MORPHO_RES,
+    MAX_SURFACE_MORPHO_RES, MIN_SURFACE_MORPHO_RES, MorphogenesisKineticsKind,
+    SurfaceMorphogenesisTool, SurfaceOverlayMode,
 };
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{Camera3D, InteractiveTool};

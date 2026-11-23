@@ -7,8 +7,8 @@
 
 use super::capacity_fade::CapacityFadeTool;
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
-    RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent, RegimeCartographer,
+    atlas_regime_color,
 };
 use eframe::egui;
 use math_explorer::applied::battery_degradation::{

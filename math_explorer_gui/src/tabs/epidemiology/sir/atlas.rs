@@ -2,8 +2,8 @@
 
 use super::SirTool;
 use crate::async_sim::atlas::{
-    atlas_scalar_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
-    RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent, RegimeCartographer,
+    atlas_scalar_color,
 };
 use crate::framework::TraceSeries;
 use crate::reflective_ui::render_copyable_metric;

@@ -4,12 +4,12 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::state::dmatrix_to_rows;
 use super::MarkovSequenceWorkbenchTool;
+use super::state::dmatrix_to_rows;
 use crate::framework::{InteractiveTool, ToolStateBounds};
 use crate::presets::{
-    deserialize_preset_envelope_bounded, DtmcStateKind, MarkovWorkbenchMode,
-    MarkovWorkbenchPresetConfig, MAX_OBSERVATION_SEQUENCE_LEN,
+    DtmcStateKind, MAX_OBSERVATION_SEQUENCE_LEN, MarkovWorkbenchMode, MarkovWorkbenchPresetConfig,
+    deserialize_preset_envelope_bounded,
 };
 use crate::web_io::strip_utf8_bom;
 use math_explorer::pure_math::statistics::markov::{

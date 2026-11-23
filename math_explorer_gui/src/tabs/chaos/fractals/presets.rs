@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    FractalMode, FractalViewer, COORD_MAX, COORD_MIN, DEFAULT_FRACTAL_EXPR, DEFAULT_JULIA_CENTER,
-    DEFAULT_MANDELBROT_CENTER, ZOOM_MAX, ZOOM_MIN,
+    COORD_MAX, COORD_MIN, DEFAULT_FRACTAL_EXPR, DEFAULT_JULIA_CENTER, DEFAULT_MANDELBROT_CENTER,
+    FractalMode, FractalViewer, ZOOM_MAX, ZOOM_MIN,
 };
 use std::collections::BTreeMap;
 

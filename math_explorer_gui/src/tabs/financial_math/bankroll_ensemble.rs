@@ -9,13 +9,13 @@
 use crate::framework::CalloutManager;
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::kelly::{
-    expected_growth_rate, expected_value, kelly_fraction, BankrollFraction, Odds, UnitInterval,
+    BankrollFraction, Odds, UnitInterval, expected_growth_rate, expected_value, kelly_fraction,
 };
 use math_explorer::pure_math::statistics::ruin::{
-    kelly_barrier_risk, BankrollEnsembleWorkspace, EnsembleSolvencyReport, KellyBarrierRisk,
-    ProportionalPortfolioBet,
+    BankrollEnsembleWorkspace, EnsembleSolvencyReport, KellyBarrierRisk, ProportionalPortfolioBet,
+    kelly_barrier_risk,
 };
-use oxidize_core::rng::{OxidizeRng, BASE_SEED};
+use oxidize_core::rng::{BASE_SEED, OxidizeRng};
 
 #[path = "bankroll_ensemble_ui.rs"]
 mod ui;

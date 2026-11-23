@@ -1,13 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::galactic_orbits_tool::{GalacticOrbitSimulator, TRAIL_CAPACITY};
 use super::HaloKindChoice;
+use super::galactic_orbits_tool::{GalacticOrbitSimulator, TRAIL_CAPACITY};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, LineStyle, MarkerShape, Plot, PlotPoints, Points};
 use math_explorer::physics::astrophysics::{
-    decompose_rotation_curve, DwarfMorphology, OrbitParticleKind,
+    DwarfMorphology, OrbitParticleKind, decompose_rotation_curve,
 };
 
 impl GalacticOrbitSimulator {
@@ -195,11 +195,12 @@ impl GalacticOrbitSimulator {
                 }
                 self.draw_relativistic_orbit_overlays(plot_ui, &palette);
             });
-        if drag_lens && plot_resp.response.dragged() {
-            if let Some(pos) = plot_resp.response.interact_pointer_pos() {
-                let val = plot_resp.transform.value_from_position(pos);
-                self.drag_orbit_lens_to([val.x, val.y]);
-            }
+        if drag_lens
+            && plot_resp.response.dragged()
+            && let Some(pos) = plot_resp.response.interact_pointer_pos()
+        {
+            let val = plot_resp.transform.value_from_position(pos);
+            self.drag_orbit_lens_to([val.x, val.y]);
         }
     }
 

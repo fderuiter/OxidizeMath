@@ -320,11 +320,21 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for SurfaceViewer {
     fn theory_description(&self) -> String {
         let surf_desc = match self.surface_type {
-            SurfaceType::Sphere => "sphere $S^2$: $\\vec{r}(u, v) = (R \\sin u \\cos v, R \\sin u \\sin v, R \\cos u)$",
-            SurfaceType::Torus => "torus $T^2$: $\\vec{r}(u, v) = ((R + r \\cos v)\\cos u, (R + r \\cos v)\\sin u, r \\sin v)$",
-            SurfaceType::KleinBottle => "non-orientable Klein bottle embedded in 3D: $\\chi(M) = 0$",
-            SurfaceType::CustomHeightfield => "custom Monge heightfield $z = f(x, y)$ compiled to stack bytecode",
-            SurfaceType::CustomParametric => "custom 3D parametric immersion $\\vec{r}(u, v) = (x(u,v), y(u,v), z(u,v))$",
+            SurfaceType::Sphere => {
+                "sphere $S^2$: $\\vec{r}(u, v) = (R \\sin u \\cos v, R \\sin u \\sin v, R \\cos u)$"
+            }
+            SurfaceType::Torus => {
+                "torus $T^2$: $\\vec{r}(u, v) = ((R + r \\cos v)\\cos u, (R + r \\cos v)\\sin u, r \\sin v)$"
+            }
+            SurfaceType::KleinBottle => {
+                "non-orientable Klein bottle embedded in 3D: $\\chi(M) = 0$"
+            }
+            SurfaceType::CustomHeightfield => {
+                "custom Monge heightfield $z = f(x, y)$ compiled to stack bytecode"
+            }
+            SurfaceType::CustomParametric => {
+                "custom 3D parametric immersion $\\vec{r}(u, v) = (x(u,v), y(u,v), z(u,v))$"
+            }
         };
         format!("Parametric 2-manifold surface representation: {surf_desc}.")
     }

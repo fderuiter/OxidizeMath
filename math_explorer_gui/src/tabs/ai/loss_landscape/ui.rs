@@ -2,19 +2,19 @@
 
 //! Side-panel controls for [`LossLandscapeTool`] (arena transport, empirical dataset/loss, physics, sculpting).
 
-use super::arena::{RacerKind, LR_MAX, LR_MIN};
-use super::data::{LossMetric, TargetDataMode, MAX_TABLE_ROWS};
+use super::arena::{LR_MAX, LR_MIN, RacerKind};
+use super::data::{LossMetric, MAX_TABLE_ROWS, TargetDataMode};
 use super::surfaces::{
     LandscapeSurface, MAX_SCULPT_BUMPS, SCULPT_AMP_MAX, SCULPT_AMP_MIN, SCULPT_SIGMA_MAX,
     SCULPT_SIGMA_MIN,
 };
 use super::{
-    CanvasInteractionMode, LandscapeViewMode, LossLandscapeTool, PredictorMode, LOSS_MIN_SPAN,
-    LOSS_PARAM_MAX_BOUND, LOSS_PARAM_MIN_BOUND,
+    CanvasInteractionMode, LOSS_MIN_SPAN, LOSS_PARAM_MAX_BOUND, LOSS_PARAM_MIN_BOUND,
+    LandscapeViewMode, LossLandscapeTool, PredictorMode,
 };
 use crate::framework::{
-    bounded_drag_value, enforce_ordered_drag_range, InteractiveTool, PlaybackAction,
-    PlaybackTransport,
+    InteractiveTool, PlaybackAction, PlaybackTransport, bounded_drag_value,
+    enforce_ordered_drag_range,
 };
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;

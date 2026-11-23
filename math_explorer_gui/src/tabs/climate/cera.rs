@@ -1,6 +1,6 @@
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard, RecoveryAction};
 use crate::framework::InteractiveTool;
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard, RecoveryAction};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::climate::{

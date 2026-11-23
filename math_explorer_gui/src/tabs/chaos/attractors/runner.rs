@@ -105,16 +105,15 @@ impl AttractorRunner {
     }
 
     fn step_twin_if_enabled(&mut self, dt: f64, max_points: usize, enabled: bool) -> bool {
-        if enabled {
-            if let Some(ref mut twin) = self.twin {
-                if !twin.step_branch_a(dt, max_points) {
-                    self.execution_state = SolverExecutionState::Diverged {
-                        invalid_vec: twin.system_a.state.vec,
-                        diverged_at_step: self.step_count,
-                    };
-                    return false;
-                }
-            }
+        if enabled
+            && let Some(ref mut twin) = self.twin
+            && !twin.step_branch_a(dt, max_points)
+        {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: twin.system_a.state.vec,
+                diverged_at_step: self.step_count,
+            };
+            return false;
         }
         true
     }
@@ -171,10 +170,8 @@ impl AttractorRunner {
             self.history.pop_front();
         }
         self.history.push_back(vec);
-        if step_twin_too {
-            if let Some(ref mut twin) = self.twin {
-                twin.observe_lockstep(self.step_count, dt, vec);
-            }
+        if step_twin_too && let Some(ref mut twin) = self.twin {
+            twin.observe_lockstep(self.step_count, dt, vec);
         }
         true
     }

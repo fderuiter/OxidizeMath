@@ -5,7 +5,7 @@
 use super::CrystalViewer;
 use nalgebra::Vector3;
 use oxidize_core::mesh::{
-    append_colored_part, build_cylinder, build_uv_sphere, ColoredMesh, Point3D, VertexColor,
+    ColoredMesh, Point3D, VertexColor, append_colored_part, build_cylinder, build_uv_sphere,
 };
 
 impl CrystalViewer {

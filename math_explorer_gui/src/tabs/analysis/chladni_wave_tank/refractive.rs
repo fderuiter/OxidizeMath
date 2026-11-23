@@ -9,7 +9,7 @@ use math_explorer::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::analysis::pde::wave_2d::apply_biconvex_lens;
 
 use super::{ChladniWaveTankState, ChladniWaveTankTool, GRID_SIZE, REFRACTIVE_MAX, REFRACTIVE_MIN};
-use crate::framework::{bounded_drag_value, MathExpressionInputBar};
+use crate::framework::{MathExpressionInputBar, bounded_drag_value};
 
 pub(crate) const MAX_REFRACTIVE_EXPR_BYTES: usize = 256;
 pub(crate) const MAX_REFRACTIVE_PARAMS: usize = 6;

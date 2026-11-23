@@ -3,14 +3,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    metrics, AbsorptionMode, FormulationKind, PharmacokineticsTool, LOG10_CONC_FLOOR, MAX_DOSES,
-    MAX_SAMPLE_POINTS, MIN_SAMPLE_POINTS, SOLVE_KA_MAX_ITER,
+    AbsorptionMode, FormulationKind, LOG10_CONC_FLOOR, MAX_DOSES, MAX_SAMPLE_POINTS,
+    MIN_SAMPLE_POINTS, PharmacokineticsTool, SOLVE_KA_MAX_ITER, metrics,
 };
 use egui_plot::PlotPoint;
 use math_commons::registry::TOLERANCE_FAST;
 use math_explorer::applied::pharmacokinetics::{
-    solve_ka, BatemanModel, EnantiomerModel, PKParameters, PharmacokineticModel,
-    SuperpositionModel, TwoPulseModel,
+    BatemanModel, EnantiomerModel, PKParameters, PharmacokineticModel, SuperpositionModel,
+    TwoPulseModel, solve_ka,
 };
 use math_explorer::error::PharmacokineticsError;
 
@@ -25,10 +25,10 @@ impl<M: PharmacokineticModel> CompiledRegimen<M> {
     #[inline]
     pub(crate) fn concentration(&self, t: f64) -> f64 {
         let base = self.maintenance.concentration(t);
-        let load =
-            self.loading
-                .as_ref()
-                .map_or(0.0, |m| if t >= 0.0 { m.concentration(t) } else { 0.0 });
+        let load = self
+            .loading
+            .as_ref()
+            .map_or(0.0, |m| if t >= 0.0 { m.concentration(t) } else { 0.0 });
         base + load
     }
 }

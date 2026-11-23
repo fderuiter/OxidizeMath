@@ -2,14 +2,14 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::state::{VrSourceMode, MAX_VR_RADIUS};
-use super::{CloudSource, VietorisRipsTool, FILTRATION_RADII_STEPS, MAX_CHAOS_LANDMARKS};
+use super::state::{MAX_VR_RADIUS, VrSourceMode};
+use super::{CloudSource, FILTRATION_RADII_STEPS, MAX_CHAOS_LANDMARKS, VietorisRipsTool};
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::tda::core::{NdPointCloud, Point2D, PointCloud};
 use math_explorer::pure_math::statistics::tda::{
+    MAX_FILTRATION_TRIANGLES, Point3D, PointCloud3D, SimplicialComplex,
     compute_rips_persistence_from_distances, vietoris_rips_from_distance_matrix,
-    vietoris_rips_from_distances, Point3D, PointCloud3D, SimplicialComplex,
-    MAX_FILTRATION_TRIANGLES,
+    vietoris_rips_from_distances,
 };
 
 impl VietorisRipsTool {
@@ -233,10 +233,11 @@ impl VietorisRipsTool {
     fn sync_barcode_intervals_from_rips(&mut self) {
         self.barcode_intervals.clear();
         for iv in &self.persistence.intervals {
-            if (iv.death > iv.birth || iv.is_essential) && iv.birth.is_finite() {
-                if let Ok(mapped) = iv.to_persistence_interval() {
-                    self.barcode_intervals.push(mapped);
-                }
+            if (iv.death > iv.birth || iv.is_essential)
+                && iv.birth.is_finite()
+                && let Ok(mapped) = iv.to_persistence_interval()
+            {
+                self.barcode_intervals.push(mapped);
             }
         }
     }

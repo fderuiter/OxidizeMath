@@ -281,11 +281,11 @@ pub(super) fn score_builtin_command(spec: &BuiltinCommandSpec, query: &str) -> O
             best = Some(best.map_or(s, |cur| cur.min(s)));
         }
     }
-    if let Some(sc) = spec.shortcut {
-        if let Some(s) = fuzzy_match_score(sc, query) {
-            let weighted = s.saturating_add(4);
-            best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
-        }
+    if let Some(sc) = spec.shortcut
+        && let Some(s) = fuzzy_match_score(sc, query)
+    {
+        let weighted = s.saturating_add(4);
+        best = Some(best.map_or(weighted, |cur| cur.min(weighted)));
     }
     for extra in [spec.category, spec.description] {
         if let Some(s) = fuzzy_match_score(extra, query) {

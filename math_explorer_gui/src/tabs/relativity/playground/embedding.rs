@@ -8,14 +8,14 @@ use std::f64::consts::TAU;
 use crate::app::SemanticPalette;
 use egui_plot::{Line, LineStyle, PlotPoints};
 use math_explorer::physics::high_energy::{
-    combined_clock_rate, effective_potential, flamm_paraboloid_z, GeodesicKind,
-    MorrisThorneWormhole, C,
+    C, GeodesicKind, MorrisThorneWormhole, combined_clock_rate, effective_potential,
+    flamm_paraboloid_z,
 };
 use math_explorer::pure_math::analysis::ode::ArrayState;
 
 use super::sim::Sample4dMeta;
 use super::{
-    GeodesicMode, GeodesicPlaygroundTool, SpacetimePreset, TrajectorySample, MAX_TRAJECTORY_SAMPLES,
+    GeodesicMode, GeodesicPlaygroundTool, MAX_TRAJECTORY_SAMPLES, SpacetimePreset, TrajectorySample,
 };
 
 impl GeodesicPlaygroundTool {
@@ -111,11 +111,13 @@ impl GeodesicPlaygroundTool {
         } else {
             self.state.scale_radius
         };
-        let mut rings = vec![Line::new(
-            "Outer Horizon / Throat r+",
-            PlotPoints::new(self.reference_ring_projected(throat_r, 0.0, 56)),
-        )
-        .color(palette.error)];
+        let mut rings = vec![
+            Line::new(
+                "Outer Horizon / Throat r+",
+                PlotPoints::new(self.reference_ring_projected(throat_r, 0.0, 56)),
+            )
+            .color(palette.error),
+        ];
         if self.state.spacetime == SpacetimePreset::KerrEquatorial
             && (r_ergo - throat_r).abs() > 1e-4
         {

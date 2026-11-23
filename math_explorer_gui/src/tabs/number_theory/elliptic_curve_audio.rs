@@ -5,8 +5,8 @@
 use eframe::egui;
 
 use super::elliptic_curve_playground::EllipticCurvePlayground;
-use crate::audio::mappings::{elliptic_torsion_frame, EllipticTorsionSample};
-use crate::audio::{render_sonification_panel, SonificationFrame};
+use crate::audio::mappings::{EllipticTorsionSample, elliptic_torsion_frame};
+use crate::audio::{SonificationFrame, render_sonification_panel};
 
 impl EllipticCurvePlayground {
     /// Extracts the current stateless torsion `SonificationFrame` (`SonificationFrame::silent()` when singular).

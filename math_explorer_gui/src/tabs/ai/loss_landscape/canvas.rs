@@ -2,10 +2,10 @@
 
 //! `Plot3DViewport` 3D wireframe rendering, 2D contour view, racer overlays, and canvas gestures.
 
-use super::surfaces::{lerp_color, SurfaceGrid, ARENA_3D_HALF_EXTENT};
+use super::surfaces::{ARENA_3D_HALF_EXTENT, SurfaceGrid, lerp_color};
 use super::{CanvasInteractionMode, LossLandscapeTool};
 use crate::app::SemanticPalette;
-use crate::camera::{Camera3D, Plot3DViewport, CAMERA_3D_HELPER_TEXT};
+use crate::camera::{CAMERA_3D_HELPER_TEXT, Camera3D, Plot3DViewport};
 use crate::framework::{InputMode, InteractionContext, InteractiveTool};
 use eframe::egui;
 use egui_plot::{Line, MarkerShape, Plot, PlotUi, Points};
@@ -50,26 +50,25 @@ impl LossLandscapeTool {
             if let Some(pos) = pointer_pos {
                 self.slingshot_current = Some(self.pointer_to_wb(response.rect, pos));
             }
-        } else if response.drag_stopped_by(egui::PointerButton::Primary) {
-            if let (Some(a), Some(c)) =
+        } else if response.drag_stopped_by(egui::PointerButton::Primary)
+            && let (Some(a), Some(c)) =
                 (self.slingshot_anchor.take(), self.slingshot_current.take())
-            {
-                let vel = [(a[0] - c[0]) * 2.5, (a[1] - c[1]) * 2.5];
-                let bounds = self.domain_bounds();
-                let emp = Self::build_empirical(
-                    self.surface,
-                    self.predictor_mode,
-                    self.target_mode,
-                    self.loss_metric,
-                    self.huber_delta,
-                    &self.cached_targets,
-                    &self.math_input,
-                );
-                let eval =
-                    super::surfaces::SurfaceEvaluator::new(self.surface, &self.sculpt_bumps, emp);
-                self.arena
-                    .launch_slingshot(&mut self.arena_config, a, vel, eval, bounds);
-            }
+        {
+            let vel = [(a[0] - c[0]) * 2.5, (a[1] - c[1]) * 2.5];
+            let bounds = self.domain_bounds();
+            let emp = Self::build_empirical(
+                self.surface,
+                self.predictor_mode,
+                self.target_mode,
+                self.loss_metric,
+                self.huber_delta,
+                &self.cached_targets,
+                &self.math_input,
+            );
+            let eval =
+                super::surfaces::SurfaceEvaluator::new(self.surface, &self.sculpt_bumps, emp);
+            self.arena
+                .launch_slingshot(&mut self.arena_config, a, vel, eval, bounds);
         }
     }
 

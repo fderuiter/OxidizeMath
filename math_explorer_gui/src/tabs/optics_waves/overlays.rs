@@ -2,9 +2,9 @@
 
 use super::runner::OpticsFrameData;
 use super::tool::OpticsWaveTool;
-use crate::app::palette::SemanticPalette;
 use crate::app::ThemeMode;
-use eframe::egui::{self, pos2, Color32, Pos2, Rect, Stroke};
+use crate::app::palette::SemanticPalette;
+use eframe::egui::{self, Color32, Pos2, Rect, Stroke, pos2};
 use math_explorer::physics::optics::refraction::{OpticalMediumConfig, OpticsPreset};
 
 /// Theme-aware high-contrast colors for geometric ray, caustic, medium, and detector overlays.

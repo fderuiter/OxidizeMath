@@ -1,8 +1,8 @@
 use super::*;
+use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
 use std::time::Duration;
@@ -440,22 +440,30 @@ fn test_unified_sim_tool_panel_gating() {
     };
 
     let lbm_texts = render_texts(&mut UnifiedSimTool::<LbmUnified>::new());
-    assert!(!lbm_texts
-        .iter()
-        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+    assert!(
+        !lbm_texts
+            .iter()
+            .any(|t| t.contains("Sensitivity & Perturbation Analysis"))
+    );
 
     let wave_texts = render_texts(&mut WaveSimulatorTool::new());
-    assert!(!wave_texts
-        .iter()
-        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+    assert!(
+        !wave_texts
+            .iter()
+            .any(|t| t.contains("Sensitivity & Perturbation Analysis"))
+    );
 
     let hh_texts = render_texts(&mut UnifiedSimTool::<HodgkinHuxleyUnified>::new());
-    assert!(hh_texts
-        .iter()
-        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
-    assert!(hh_texts
-        .iter()
-        .any(|t| t.contains("Baseline Peak Membrane Potential (mV):")));
+    assert!(
+        hh_texts
+            .iter()
+            .any(|t| t.contains("Sensitivity & Perturbation Analysis"))
+    );
+    assert!(
+        hh_texts
+            .iter()
+            .any(|t| t.contains("Baseline Peak Membrane Potential (mV):"))
+    );
 
     let ctx = eframe::egui::Context::default();
     let input = eframe::egui::RawInput {
@@ -468,13 +476,17 @@ fn test_unified_sim_tool_panel_gating() {
     let mut hh_tool = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
     let out1 = ctx.run(input.clone(), |ctx| hh_tool.show(ctx));
     assert!(!hh_tool.sensitivity_engine.is_converged());
-    assert!(out1.viewport_output[&eframe::egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
+    assert!(
+        out1.viewport_output[&eframe::egui::ViewportId::ROOT]
+            .repaint_delay
+            .is_zero()
+    );
     let _ = ctx.run(input.clone(), |ctx| hh_tool.show(ctx));
     assert!(hh_tool.sensitivity_engine.is_converged());
     let out_idle = ctx.run(input, |ctx| hh_tool.show(ctx));
-    assert!(!out_idle.viewport_output[&eframe::egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
+    assert!(
+        !out_idle.viewport_output[&eframe::egui::ViewportId::ROOT]
+            .repaint_delay
+            .is_zero()
+    );
 }

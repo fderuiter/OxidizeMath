@@ -282,11 +282,7 @@ fn build_wall_shell_indices(nu: usize, nv: usize, seam_map: &[(usize, bool)]) ->
             i * nv + jj
         } else {
             let (m, same_orient) = seam_map[jj];
-            if same_orient {
-                m
-            } else {
-                sheet_len + m
-            }
+            if same_orient { m } else { sheet_len + m }
         }
     };
     let inner_at = |i: usize, j: usize| -> usize {
@@ -295,11 +291,7 @@ fn build_wall_shell_indices(nu: usize, nv: usize, seam_map: &[(usize, bool)]) ->
             sheet_len + i * nv + jj
         } else {
             let (m, same_orient) = seam_map[jj];
-            if same_orient {
-                sheet_len + m
-            } else {
-                m
-            }
+            if same_orient { sheet_len + m } else { m }
         }
     };
 

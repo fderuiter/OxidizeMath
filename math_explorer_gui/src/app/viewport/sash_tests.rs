@@ -1,11 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::sash::{focus_outline_color, split_sash_id};
 use super::ViewportLayout;
+use super::sash::{focus_outline_color, split_sash_id};
 use crate::accessibility::{all_announcements, clear_test_announcements};
-use crate::app::{contrast_ratio, MathExplorerApp, ThemeMode};
-use eframe::egui;
+use crate::app::{MathExplorerApp, ThemeMode, contrast_ratio};
 use eframe::App;
+use eframe::egui;
 
 fn run_app_frame(
     ctx: &egui::Context,

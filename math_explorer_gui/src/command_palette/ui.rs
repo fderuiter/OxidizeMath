@@ -3,7 +3,7 @@
 //! Modal rendering and keyboard navigation for [`super::CommandPalette`].
 
 use super::{
-    format_domain_title, CommandPalette, PaletteItem, PaletteSelection, SEARCH_WIDGET_INFO_ID,
+    CommandPalette, PaletteItem, PaletteSelection, SEARCH_WIDGET_INFO_ID, format_domain_title,
 };
 use eframe::egui;
 

@@ -184,10 +184,11 @@ pub(super) fn sync_focused_pane_from_widget_focus(
     if let Some(idx) = pane_rects
         .iter()
         .position(|&rect| response_belongs_to_pane(&resp, rect))
+        && !modal_or_popup
+        && !sash_active
+        && !has_pending_pane_focus
     {
-        if !modal_or_popup && !sash_active && !has_pending_pane_focus {
-            app.focus_pane(idx);
-        }
+        app.focus_pane(idx);
     }
     modal_or_popup
 }

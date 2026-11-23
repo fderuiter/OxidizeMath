@@ -31,13 +31,13 @@ fn key_event(key: egui::Key) -> Vec<egui::Event> {
 fn find_canvas_rect(out: &egui::FullOutput) -> egui::Rect {
     let ak = out.platform_output.accesskit_update.as_ref().unwrap();
     for (_, node) in &ak.nodes {
-        if node.role() == egui::accesskit::Role::Image {
-            if let Some(b) = node.bounds() {
-                return egui::Rect::from_min_max(
-                    egui::pos2(b.x0 as f32, b.y0 as f32),
-                    egui::pos2(b.x1 as f32, b.y1 as f32),
-                );
-            }
+        if node.role() == egui::accesskit::Role::Image
+            && let Some(b) = node.bounds()
+        {
+            return egui::Rect::from_min_max(
+                egui::pos2(b.x0 as f32, b.y0 as f32),
+                egui::pos2(b.x1 as f32, b.y1 as f32),
+            );
         }
     }
     panic!("FractalViewer Role::Image node not found");

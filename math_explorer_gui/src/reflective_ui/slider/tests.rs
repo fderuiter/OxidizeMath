@@ -1,11 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::state::{
-    frame_sweep_mutation_count, load_slider_settings, load_slider_state, reset_frame_sweep_flags,
-    save_slider_settings, save_slider_state, AnimatedSliderSettings, AnimatedSliderState,
-    SweepMode,
-};
 use super::AnimatedSlider;
+use super::state::{
+    AnimatedSliderSettings, AnimatedSliderState, SweepMode, frame_sweep_mutation_count,
+    load_slider_settings, load_slider_state, reset_frame_sweep_flags, save_slider_settings,
+    save_slider_state,
+};
 use eframe::egui;
 
 const SCREEN_RECT: Option<egui::Rect> = Some(egui::Rect {

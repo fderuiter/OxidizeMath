@@ -3,11 +3,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::plots::PersistencePlotMode;
-use super::presets::{generate_preset_points, GeneratorDescriptor};
-use super::{CloudSource, VietorisRipsTool, MAX_CHAOS_LANDMARKS, MAX_VIETORIS_RIPS_POINTS};
+use super::presets::{GeneratorDescriptor, generate_preset_points};
+use super::{CloudSource, MAX_CHAOS_LANDMARKS, MAX_VIETORIS_RIPS_POINTS, VietorisRipsTool};
 use crate::framework::Camera3D;
-use math_explorer::pure_math::statistics::tda::core::{NdPointCloud, Point2D};
 use math_explorer::pure_math::statistics::tda::Point3D;
+use math_explorer::pure_math::statistics::tda::core::{NdPointCloud, Point2D};
 
 /// Maximum valid filtration radius in 3D chaos/sculpt modes.
 pub const MAX_VR_RADIUS: f64 = 30.0;
@@ -303,10 +303,10 @@ pub(super) fn deserialize_tool_state(
             loaded.min_persistence
         ));
     }
-    if let Some(cam) = loaded.camera {
-        if !cam.is_valid() {
-            return Err("camera parameters out of valid bounds".to_string());
-        }
+    if let Some(cam) = loaded.camera
+        && !cam.is_valid()
+    {
+        return Err("camera parameters out of valid bounds".to_string());
     }
     let (plot_mode, min_p) = (loaded.plot_mode, loaded.min_persistence);
     match mode {

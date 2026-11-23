@@ -4,15 +4,15 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::{
-    barrier_interval_for_preset, clamp_potential_sample, evaluate_potential_grid, DEFAULT_DT,
-    GRID_POINTS, GRID_X_MAX, GRID_X_MIN, POTENTIAL_DISPLAY_SCALE,
+    DEFAULT_DT, GRID_POINTS, GRID_X_MAX, GRID_X_MIN, POTENTIAL_DISPLAY_SCALE,
+    barrier_interval_for_preset, clamp_potential_sample, evaluate_potential_grid,
 };
 use super::{WaveRunner, WaveSimulatorTool};
 use crate::async_sim::SimCommand;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{
-    apply_sparse_potential, encode_sparse_potential, interpolate_1d_span, BrushInteractionMode,
-    BrushMode, BrushStroke, InteractionContext, SpatialBrushKit,
+    BrushInteractionMode, BrushMode, BrushStroke, InteractionContext, SpatialBrushKit,
+    apply_sparse_potential, encode_sparse_potential, interpolate_1d_span,
 };
 use eframe::egui;
 use math_explorer::physics::quantum::gaussian_wavepacket;
@@ -189,15 +189,14 @@ impl WaveRunner {
         self.base_potential = self.potential.as_slice().to_vec();
         if !sparse.is_empty()
             && apply_sparse_potential(self.potential.as_mut_slice(), sparse).is_ok()
-        {
-            if let Some((xl, xr)) = detect_sculpted_interval(
+            && let Some((xl, xr)) = detect_sculpted_interval(
                 self.potential.as_slice(),
                 &self.base_potential,
                 &self.x_axis,
-            ) {
-                self.x_left = xl;
-                self.x_right = xr;
-            }
+            )
+        {
+            self.x_left = xl;
+            self.x_right = xr;
         }
     }
 

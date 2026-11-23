@@ -9,7 +9,7 @@ use math_commons::math_kernel::colormap::{
 use math_explorer::physics::optics::caustics::HamiltonianRayTracer;
 use math_explorer::physics::optics::refraction::{OpticalMediumConfig, OpticsPreset};
 use math_explorer::physics::optics::sensing::{
-    sample_detector_line_in_place, DetectorConfig, DetectorReadout,
+    DetectorConfig, DetectorReadout, sample_detector_line_in_place,
 };
 use math_explorer::pure_math::analysis::pde::wave::{WaveField2D, WaveFieldConfig2D};
 use std::sync::Arc;

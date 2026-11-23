@@ -206,19 +206,19 @@ impl MathExplorerApp {
             return;
         }
         self.select_tab(ctx, selection.tab_index);
-        if let Some(tool_name) = &selection.tool_name {
-            if let Some(tab) = self.focused_pane_tab_mut() {
-                tab.select_tool_by_name(tool_name);
-                let label = inventory::iter::<crate::framework::ToolMetadata>
-                    .into_iter()
-                    .find(|m| {
-                        m.id.eq_ignore_ascii_case(tool_name)
-                            || m.display_name.eq_ignore_ascii_case(tool_name)
-                    })
-                    .map_or(tool_name.as_str(), |m| m.display_name);
-                let msg = format!("Switched to tool {} in tab {}", label, tab.name());
-                crate::accessibility::announce_live_status(ctx, msg);
-            }
+        if let Some(tool_name) = &selection.tool_name
+            && let Some(tab) = self.focused_pane_tab_mut()
+        {
+            tab.select_tool_by_name(tool_name);
+            let label = inventory::iter::<crate::framework::ToolMetadata>
+                .into_iter()
+                .find(|m| {
+                    m.id.eq_ignore_ascii_case(tool_name)
+                        || m.display_name.eq_ignore_ascii_case(tool_name)
+                })
+                .map_or(tool_name.as_str(), |m| m.display_name);
+            let msg = format!("Switched to tool {} in tab {}", label, tab.name());
+            crate::accessibility::announce_live_status(ctx, msg);
         }
         self.clear_active_pane_caches();
         let target_pane = self.active_focused_pane();
@@ -365,10 +365,10 @@ impl MathExplorerApp {
     }
 
     fn execute_dispatched_widget_action(ctx: &egui::Context, action: PaletteAction) {
-        use egui_plot::{
-            commands::CommandRegistryData, dispatch_plot_ui_action, DispatchedPlotUiAction, FitType,
-        };
         use PaletteAction as A;
+        use egui_plot::{
+            DispatchedPlotUiAction, FitType, commands::CommandRegistryData, dispatch_plot_ui_action,
+        };
         if let Some((context, name)) = dispatched_command_pair(&action) {
             CommandRegistryData::dispatch(ctx, name, context);
             return;

@@ -20,6 +20,8 @@ classDiagram
     class ExplorerTab {
         <<interface>>
         +name() String
+        +academic_domain() String
+        +url_slug() String
         +show_inside(ui, frame)
     }
 
@@ -66,7 +68,26 @@ trunk serve
 Follow these steps to add a new domain tab or simulation tool to `math_explorer_gui` (using crate-local `crate::` paths rather than `math_explorer_gui::`).
 
 #### 1. Create the Tab Module
-Create either a single file `src/tabs/<tab_name>.rs` or a directory `src/tabs/<tab_name>/mod.rs` implementing `ExplorerTab` and `Default`. Multi-tool domain tabs wrap `SimulationFramework::new("<domain>")`:
+Create either a single file `src/tabs/<tab_name>.rs` or a directory `src/tabs/<tab_name>/mod.rs`.
+
+For standard `SimulationFramework` domain tabs, use [`crate::declare_simulation_tab!`](src/tabs/mod.rs), which generates the struct, `Default`, `ExplorerTab`, and static [`TabDescriptor`](src/tabs/mod.rs) registration (`inventory::submit!`):
+
+```rust,ignore
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+pub mod navier_stokes;
+
+crate::declare_simulation_tab!(
+    /// Fluid Dynamics Interactive Explorer.
+    pub struct FluidDynamicsTab,
+    name: "Fluid Dynamics",
+    domain: "Physics",
+    slug: "fluid_dynamics",
+    order: 12,
+);
+```
+
+For custom single-view or legacy-migrated tabs, implement `ExplorerTab` (including `academic_domain` and `url_slug`) and `Default`, and submit a static [`TabDescriptor`](src/tabs/mod.rs):
 
 ```rust,ignore
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
@@ -92,6 +113,14 @@ impl ExplorerTab for FluidDynamicsTab {
         "Fluid Dynamics"
     }
 
+    fn academic_domain(&self) -> &'static str {
+        "Physics"
+    }
+
+    fn url_slug(&self) -> &'static str {
+        "fluid_dynamics"
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.framework.show_inside(ui, "fluid_dynamics");
     }
@@ -104,20 +133,7 @@ impl ExplorerTab for FluidDynamicsTab {
         Some(&mut self.framework)
     }
 }
-```
 
-#### 2. Register the Module
-In [`src/tabs/mod.rs`](src/tabs/mod.rs), declare your feature-gated module:
-
-```rust,ignore
-#[cfg(feature = "physics")]
-pub mod fluid_dynamics;
-```
-
-#### 3. Submit to Inventory
-In `src/tabs/fluid_dynamics.rs` (or `mod.rs`), register a static [`TabDescriptor`](src/tabs/mod.rs) (lower `order` values appear earlier in the navigation bar):
-
-```rust,ignore
 inventory::submit! {
     crate::tabs::TabDescriptor {
         id: "fluid_dynamics",
@@ -127,10 +143,18 @@ inventory::submit! {
 }
 ```
 
-#### 4. Adding Interactive Tools Within a Domain Tab
+#### 2. Expose the Module
+In [`src/tabs/mod.rs`](src/tabs/mod.rs), declare your feature-gated module:
+
+```rust,ignore
+#[cfg(feature = "physics")]
+pub mod fluid_dynamics;
+```
+
+#### 3. Adding Interactive Tools Within a Domain Tab
 Most multi-tool domain tabs wrap `SimulationFramework::new("<domain>")` and discover individual tools via `inventory::submit!`. To add a new simulation tool (implementing `TheoryDescribable` and `InteractiveTool::show_inside`) inside an existing domain folder (`src/tabs/<domain>/<tool>.rs`), declare `pub mod <tool>;` in `src/tabs/<domain>/mod.rs` and follow the step-by-step [Interactive Tool Walkthrough](../docs/architecture/interactive_tool_walkthrough.md).
 
-#### 5. Design Principles
+#### 4. Design Principles
 - **Separation of Concerns**: Keep mathematical solvers and domain physics inside `math_explorer`; keep GUI code focused on visualization and input handling.
 - **Immediate Mode & Frame-Budget Safety**: `show_inside()` runs every frame. Avoid heavy synchronous PDE/FFT work in `Default::default()` or `show_inside()`; offload expensive sweeps via `async_sim`.
 - **Deterministic Seeded Randomness & Dependency Reuse**: Reuse workspace crates declared in `math_explorer_gui/Cargo.toml` (including `rand` paired with explicit `oxidize_core::rng::OxidizeRng` seeds so `check-entropy` remains deterministic, `nalgebra`, and `petgraph`) rather than introducing unseeded RNG calls or duplicate dependencies.

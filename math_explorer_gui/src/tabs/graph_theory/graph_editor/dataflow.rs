@@ -4,7 +4,7 @@
 
 use super::GraphEditorTool;
 use crate::app::dataflow_bus::{
-    publish_pane_graph, GraphTopologyPayload, MAX_DATAFLOW_GRAPH_NODES,
+    GraphTopologyPayload, MAX_DATAFLOW_GRAPH_NODES, publish_pane_graph,
 };
 use eframe::egui;
 use std::collections::HashMap;

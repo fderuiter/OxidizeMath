@@ -5,15 +5,15 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::atlas::{
-    gaussian_vacuum_boundary_slope, LeniaRegime, LeniaSpectralCartographer, WASHOUT_MASS_THRESHOLD,
+    LeniaRegime, LeniaSpectralCartographer, WASHOUT_MASS_THRESHOLD, gaussian_vacuum_boundary_slope,
 };
 use super::challenge::CHALLENGE_ORBIUM_TAIL_REGEN;
 use super::sandbox::{CHAN_POLYNOMIAL_GROWTH_EXPR, CHAN_POLYNOMIAL_KERNEL_EXPR};
 use super::*;
 use crate::async_sim::atlas::RegimeCartographer;
 use crate::framework::{InteractiveTool, SimulationFramework};
-use crate::starter_gallery::{find_challenge_metadata, GoalChallengeMetadata, PresetStoryMetadata};
-use crate::url_state::{encode_base64url, MAX_DECODED_URL_STATE_BYTES};
+use crate::starter_gallery::{GoalChallengeMetadata, PresetStoryMetadata, find_challenge_metadata};
+use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, encode_base64url};
 
 fn screen_input() -> egui::RawInput {
     egui::RawInput {
@@ -209,9 +209,10 @@ fn test_chan_polynomial_sandbox_synthesizes_sliders_roundtrips_url_and_sustains_
     let fragment = &share_url[hash_idx..];
 
     let mut app = crate::app::MathExplorerApp::default();
-    assert!(app
-        .apply_share_location_strings(fragment, "", None)
-        .expect("hydrate share URL"));
+    assert!(
+        app.apply_share_location_strings(fragment, "", None)
+            .expect("hydrate share URL")
+    );
     let bio_idx = app
         .tabs
         .iter()
@@ -248,9 +249,10 @@ fn assert_tampered_challenge_url_clamps_radius(meta: &crate::framework::Challeng
     );
 
     let mut app = crate::app::MathExplorerApp::default();
-    assert!(app
-        .apply_share_location_strings(&fragment, "", None)
-        .expect("hydrate challenge URL"));
+    assert!(
+        app.apply_share_location_strings(&fragment, "", None)
+            .expect("hydrate challenge URL")
+    );
     let bio_idx = app
         .tabs
         .iter()

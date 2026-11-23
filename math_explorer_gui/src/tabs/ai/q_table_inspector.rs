@@ -3,13 +3,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::rl_sculpt::{
-    apply_rl_brush_stroke, build_rl_sculpt_payload, new_rl_brush_kit, render_rl_sculpt_toolbar,
-    solve_bellman_with_policy, RlMazePreset, RlSolverMode,
+    RlMazePreset, RlSolverMode, apply_rl_brush_stroke, build_rl_sculpt_payload, new_rl_brush_kit,
+    render_rl_sculpt_toolbar, solve_bellman_with_policy,
 };
 use crate::accessibility::AccessibleHoverText;
-use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
+use crate::async_sim::ui::{WorkerFaultAction, render_worker_fault_banner};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
-use crate::audio::{render_sonification_panel, SonificationFrame};
+use crate::audio::{SonificationFrame, render_sonification_panel};
 use crate::framework::{
     InputMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
     SpatialBrushKit,
@@ -17,7 +17,7 @@ use crate::framework::{
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::ai::reinforcement_learning::grid_world::{GridState, Move};
-use math_explorer::ai::reinforcement_learning::{move_to_index, DenseRlWorkspace, SculptedGridMdp};
+use math_explorer::ai::reinforcement_learning::{DenseRlWorkspace, SculptedGridMdp, move_to_index};
 
 #[path = "q_table_inspector/canvas.rs"]
 mod canvas;

@@ -1,11 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::state::{PopulationViewMode, MAX_AGE_BINS, MIN_AGE_BINS};
+use super::state::{MAX_AGE_BINS, MIN_AGE_BINS, PopulationViewMode};
 use super::tool::PopulationStructureTool;
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
 use crate::framework::{
-    render_recovery_banner, FiniteStateGuard, InteractiveTool, PlaybackAction, PlaybackTransport,
-    RecoveryAction,
+    FiniteStateGuard, InteractiveTool, PlaybackAction, PlaybackTransport, RecoveryAction,
+    render_recovery_banner,
 };
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, Points};

@@ -5,7 +5,7 @@
 //! progressive, non-blocking 2D regime explorer inside [`SimulationFramework`] without needing
 //! bespoke UI wiring or extra fields in `#[serde(deny_unknown_fields)]` state structs.
 
-use super::{scoped_panel_id, AccessibleHoverText, InteractiveTool, SimulationFramework};
+use super::{AccessibleHoverText, InteractiveTool, SimulationFramework, scoped_panel_id};
 use crate::async_sim::atlas::ParameterAtlasController;
 use eframe::egui;
 

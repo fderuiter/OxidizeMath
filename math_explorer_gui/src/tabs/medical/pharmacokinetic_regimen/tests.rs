@@ -4,17 +4,17 @@
 
 use egui_plot::export::ExportOptions;
 use egui_plot::export_primitives::{export_primitives_svg, render_primitives_image};
-use math_explorer::applied::pharmacokinetics::{t_max, MAX_REGIMEN_EVENTS};
+use math_explorer::applied::pharmacokinetics::{MAX_REGIMEN_EVENTS, t_max};
 
 use crate::framework::{InteractiveTool, StarterPresetMetadata};
 use crate::url_state::{
-    encode_share_fragment, parse_share_location, MAX_DECODED_URL_STATE_BYTES,
-    MAX_URL_FRAGMENT_BYTES,
+    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, encode_share_fragment,
+    parse_share_location,
 };
 
+use super::PharmacokineticRegimenTool;
 use super::export::{format_exposure_report_json, format_schedule_csv};
 use super::state::{CompactDoseEvent, RegimenState};
-use super::PharmacokineticRegimenTool;
 
 #[test]
 fn test_max_64_events_fits_url_json_bounds_and_roundtrips_share_link() {

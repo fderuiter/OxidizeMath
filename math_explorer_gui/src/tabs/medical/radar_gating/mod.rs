@@ -14,7 +14,7 @@ pub mod ui;
 use crate::framework::{
     CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool, ToolStateBounds,
 };
-use crate::tabs::medical::link_bus::{publish_gating_telemetry, GatingTelemetry};
+use crate::tabs::medical::link_bus::{GatingTelemetry, publish_gating_telemetry};
 use eframe::egui;
 use math_explorer::physics::medical::radar_gating::BeamState;
 use pipeline::RadarPipeline;

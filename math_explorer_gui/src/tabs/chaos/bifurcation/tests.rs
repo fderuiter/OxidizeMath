@@ -63,13 +63,12 @@ fn find_bifurcation_canvas_bounds(out: &egui::FullOutput) -> egui::Rect {
             && node
                 .label()
                 .is_some_and(|l| l.contains("Bifurcation Diagram Canvas"))
+            && let Some(b) = node.bounds()
         {
-            if let Some(b) = node.bounds() {
-                return egui::Rect::from_min_max(
-                    egui::pos2(b.x0 as f32, b.y0 as f32),
-                    egui::pos2(b.x1 as f32, b.y1 as f32),
-                );
-            }
+            return egui::Rect::from_min_max(
+                egui::pos2(b.x0 as f32, b.y0 as f32),
+                egui::pos2(b.x1 as f32, b.y1 as f32),
+            );
         }
     }
     panic!("Bifurcation Diagram Canvas AccessKit node not found");
@@ -144,10 +143,11 @@ fn test_period3_window_r_3_83_matches_logistic_lyapunov_and_cobweb_cycle() {
     let expected_lyap = logistic_lyapunov(3.83, 0.1, LYAPUNOV_ITERATIONS);
     assert!((expected_lyap - (-0.344_763_888)).abs() < 1e-5);
     assert!((tool.selected_lyapunov - expected_lyap).abs() < 1e-12);
-    assert!(tool
-        .lyapunov_points
-        .iter()
-        .any(|p| (p.x - 3.83).abs() < 1e-9 && (p.y - expected_lyap).abs() < 1e-12));
+    assert!(
+        tool.lyapunov_points
+            .iter()
+            .any(|p| (p.x - 3.83).abs() < 1e-9 && (p.y - expected_lyap).abs() < 1e-12)
+    );
 
     let settled = tool.sample_settled_orbit(12);
     assert_eq!(settled.len(), 12);
@@ -302,10 +302,11 @@ fn test_bifurcation_custom_1d_map_zero_alloc_and_state_roundtrip() {
     tool.math_input.set_params_map(&pmap);
     tool.recompute();
     assert!(!tool.points.is_empty());
-    assert!(tool
-        .points
-        .iter()
-        .all(|pt| pt.x.is_finite() && pt.y.is_finite()));
+    assert!(
+        tool.points
+            .iter()
+            .all(|pt| pt.x.is_finite() && pt.y.is_finite())
+    );
 
     // Verify transient syntax error keeps last valid cascade points
     let prev_len = tool.points.len();

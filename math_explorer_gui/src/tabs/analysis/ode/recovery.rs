@@ -1,14 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::OdeSolverTool;
 use super::phase_plane::{
     DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID, MAX_QUIVER_GRID,
     MAX_SEEDED_ORBITS,
 };
 use super::poincare_map::DEFAULT_MATRIX_A;
 use super::systems::default_coupled_ode_bank;
-use super::OdeSolverTool;
 use crate::framework::recovery::{
-    render_recovery_banner, DiagnosticReport, FiniteStateGuard, RecoveryAction,
+    DiagnosticReport, FiniteStateGuard, RecoveryAction, render_recovery_banner,
 };
 use crate::presets::OdePreset;
 use eframe::egui;

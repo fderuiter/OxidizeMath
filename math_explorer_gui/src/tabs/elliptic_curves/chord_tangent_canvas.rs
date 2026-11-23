@@ -3,11 +3,11 @@
 
 use super::chord_tangent_scene::{draw_fp_scene, draw_real_scene};
 use super::chord_tangent_tool::{
-    snap_real_point, ClickTarget, CurveFieldMode, WeierstrassPlaygroundTool,
+    ClickTarget, CurveFieldMode, WeierstrassPlaygroundTool, snap_real_point,
 };
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleHoverText,
+    AccessibleHoverText, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use crate::app::SemanticPalette;
 use eframe::egui;
@@ -140,11 +140,11 @@ pub(crate) fn render_interactive_canvas(tool: &mut WeierstrassPlaygroundTool, ui
         }
     };
 
-    if response.clicked() {
-        if let Some(pos) = response.interact_pointer_pos() {
-            response.request_focus();
-            handle_canvas_click(tool, ui.ctx(), vp, pos, ui.input(|i| i.modifiers.shift));
-        }
+    if response.clicked()
+        && let Some(pos) = response.interact_pointer_pos()
+    {
+        response.request_focus();
+        handle_canvas_click(tool, ui.ctx(), vp, pos, ui.input(|i| i.modifiers.shift));
     }
 
     let summary = canvas_a11y_summary(tool);

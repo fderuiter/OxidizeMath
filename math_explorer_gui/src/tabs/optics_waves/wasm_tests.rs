@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::OpticsWaveTab;
 use super::presets::PRESET_OPTICS_VESELAGO;
 use super::tool::OpticsWaveTool;
-use super::OpticsWaveTab;
 use crate::app::ThemeMode;
 use crate::framework::InteractiveTool;
 use crate::tabs::ExplorerTab;
-use eframe::egui::{vec2, Context, Pos2, RawInput, Rect};
+use eframe::egui::{Context, Pos2, RawInput, Rect, vec2};
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);

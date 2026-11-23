@@ -3,21 +3,21 @@
 //! and watertight millimeter-scaled 3D solid mesh export for [`super::VolumetricEngine`].
 // [cite:isosurface_extraction]
 
-use super::super::state::{FieldSourceMode, VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT};
+use super::super::state::{FieldSourceMode, STUDIO_VIEWPORT_EXTENT, VolumetricStudioConfig};
 use super::VolumetricEngine;
 use crate::camera::Camera3D;
 use crate::volumetric_scene::VolumeCutFilter;
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::applied::isosurface::{
-    extract_capped_isosurface, extract_capped_isosurface_into, CutPlaneCap, VoxelGrid,
+    CutPlaneCap, VoxelGrid, extract_capped_isosurface, extract_capped_isosurface_into,
 };
 use math_explorer::biology::diffusion::FiniteDifference3D;
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use math_explorer::math_kernel::types::flatten_3d_index;
 #[cfg(test)]
 use oxidize_core::mesh::export_mesh_to_obj_string;
-use oxidize_core::mesh::{scale_mesh_to_millimeters, Mesh, Point3D as CorePoint3D};
+use oxidize_core::mesh::{Mesh, Point3D as CorePoint3D, scale_mesh_to_millimeters};
 
 /// Maximum painter facets emitted per frame to keep `egui_plot::Polygon` crisp at 60 FPS.
 pub const MAX_RENDERED_FACETS: usize = 2_400;

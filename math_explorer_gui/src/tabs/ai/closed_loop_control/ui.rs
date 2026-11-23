@@ -2,12 +2,12 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::ClosedLoopControlTool;
 use super::canvas::show_phase_kick_canvas;
 use super::pipeline::ClosedLoopPipeline;
 use super::state::{ClosedLoopState, ControllerKind, PlantKind};
-use super::ClosedLoopControlTool;
 use crate::app::theme::SemanticPalette;
-use crate::framework::{bounded_drag_value, PaneSidePanel, PlaybackAction, PlaybackTransport};
+use crate::framework::{PaneSidePanel, PlaybackAction, PlaybackTransport, bounded_drag_value};
 use eframe::egui::{self, Color32, RichText};
 use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints, Polygon};
 

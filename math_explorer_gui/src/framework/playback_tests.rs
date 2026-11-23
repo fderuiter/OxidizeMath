@@ -1,5 +1,5 @@
-use super::playback::{PlaybackAction, PlaybackTransport};
 use super::InputMode;
+use super::playback::{PlaybackAction, PlaybackTransport};
 use crate::accessibility::{all_announcements, clear_test_announcements};
 use crate::async_sim::SimWorkerState;
 use eframe::egui;
@@ -288,10 +288,14 @@ fn test_playback_transport_registers_frame_commands() {
         .data(|d| d.get_temp::<CommandRegistryData>(egui::Id::new("CMD_REGISTRY")))
         .unwrap_or_default()
         .commands;
-    assert!(running_cmds
-        .iter()
-        .any(|c| c.context == "Simulation Playback" && c.name == "Play / Pause"));
-    assert!(!running_cmds
-        .iter()
-        .any(|c| c.context == "Simulation Playback" && c.name == "Step Forward"));
+    assert!(
+        running_cmds
+            .iter()
+            .any(|c| c.context == "Simulation Playback" && c.name == "Play / Pause")
+    );
+    assert!(
+        !running_cmds
+            .iter()
+            .any(|c| c.context == "Simulation Playback" && c.name == "Step Forward")
+    );
 }

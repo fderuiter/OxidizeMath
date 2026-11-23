@@ -5,7 +5,7 @@ use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
 use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 use crate::tabs::quantum::wave_sim::{
-    wave_parameter_constraints, wave_parameter_label, WavePotentialPreset, WaveSimulatorTool,
+    WavePotentialPreset, WaveSimulatorTool, wave_parameter_constraints, wave_parameter_label,
 };
 use crate::tabs::solid_state::crystal_viewer::CrystalSystemEnum;
 use eframe::egui;
@@ -13,12 +13,11 @@ use scientific_metadata::theory::TheoryDescribable;
 
 fn has_raw_struct_suffix(label: &str) -> bool {
     for suffix in ["Tool", "Widget", "Plotter", "Viewer", "Simulator"] {
-        if let Some(prefix) = label.strip_suffix(suffix) {
-            if let Some(last_char) = prefix.chars().last() {
-                if !last_char.is_whitespace() {
-                    return true;
-                }
-            }
+        if let Some(prefix) = label.strip_suffix(suffix)
+            && let Some(last_char) = prefix.chars().last()
+            && !last_char.is_whitespace()
+        {
+            return true;
         }
     }
     false

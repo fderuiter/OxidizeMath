@@ -238,7 +238,9 @@ fn find_literal_from_rgb_lines(prod_part: &str) -> Vec<usize> {
 #[test]
 fn test_no_unguarded_hardcoded_color32_regressions() {
     assert_eq!(
-        find_literal_from_rgb_lines("let a = egui::Color32::from_rgb(\n 200, 50, 50);\nlet b = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);"),
+        find_literal_from_rgb_lines(
+            "let a = egui::Color32::from_rgb(\n 200, 50, 50);\nlet b = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);"
+        ),
         vec![1]
     );
     const BANNED: &[&str] = &[
@@ -341,10 +343,12 @@ fn test_high_contrast_rasters_and_progress_bars_meet_wcag() {
         1,
         true,
     );
-    assert!(morpho
-        .pixels
-        .iter()
-        .all(|&c| contrast_ratio(c, black) >= 3.0));
+    assert!(
+        morpho
+            .pixels
+            .iter()
+            .all(|&c| contrast_ratio(c, black) >= 3.0)
+    );
 
     for iter in 0..50_u32 {
         let c = crate::tabs::chaos::fractals::map_iter_to_color32(iter, 50, true);

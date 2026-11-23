@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::challenge::ChallengeEvaluation;
-use super::{scoped_panel_id, AccessibleHoverText, SimulationFramework};
+use super::{AccessibleHoverText, SimulationFramework, scoped_panel_id};
 use crate::app::SemanticPalette;
 use crate::starter_gallery::ChallengeMetadata;
 use eframe::egui;

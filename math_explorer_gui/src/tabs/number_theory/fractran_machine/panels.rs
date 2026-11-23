@@ -1,8 +1,8 @@
 //! Control toolbars, status banners, register bar plot, trace view, and tool metadata.
 
 use super::{
-    FractranMachineTool, MachineStopReason, PresetChoice, MAX_BREAKPOINT_STEPS_PER_FRAME,
-    MAX_STEPS_PER_FRAME,
+    FractranMachineTool, MAX_BREAKPOINT_STEPS_PER_FRAME, MAX_STEPS_PER_FRAME, MachineStopReason,
+    PresetChoice,
 };
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
@@ -59,7 +59,7 @@ pub fn build_trace_row(
         .primes()
         .iter()
         .zip(registers)
-        .filter(|(_, &e)| e > 0)
+        .filter(|&(_, &e)| e > 0)
         .map(|(&p, &e)| format!("{p}^{e}"))
         .collect();
     let register_summary = if non_zero.is_empty() {
@@ -295,10 +295,11 @@ pub fn draw_register_bar_plot(ui: &mut egui::Ui, vm: &FractranCompiledVm, regist
         .include_y(4.0)
         .x_axis_formatter(move |mark, _range| {
             let idx = mark.value.round() as isize;
-            if idx >= 0 && (mark.value - idx as f64).abs() < 1e-3 {
-                if let Some(&p) = primes_snapshot.get(idx as usize) {
-                    return format!("p={p}");
-                }
+            if idx >= 0
+                && (mark.value - idx as f64).abs() < 1e-3
+                && let Some(&p) = primes_snapshot.get(idx as usize)
+            {
+                return format!("p={p}");
             }
             String::new()
         })

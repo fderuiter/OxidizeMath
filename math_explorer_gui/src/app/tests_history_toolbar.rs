@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 
 #[cfg(target_os = "macos")]
 use super::macos_menu::edit::{edit_menu_enabled_states, handle_edit_menu_action};
@@ -144,19 +144,14 @@ fn test_all_tabs_render_undo_and_redo_buttons_matching_can_undo_and_can_redo() {
         let _ = run_frame(&ctx, &mut app, Vec::new());
         let out_undoable = run_frame(&ctx, &mut app, Vec::new());
         assert!(app.can_undo() && !app.can_redo());
-        assert!(!find_buttons_matching(&out_undoable, "↩ Undo")[0]
-            .1
-            .is_disabled());
-        assert!(find_buttons_matching(&out_undoable, "↪ Redo")[0]
-            .1
-            .is_disabled());
+        let btn_enabled = |out: &egui::FullOutput, label: &str| {
+            !find_buttons_matching(out, label)[0].1.is_disabled()
+        };
+        assert!(btn_enabled(&out_undoable, "↩ Undo") && !btn_enabled(&out_undoable, "↪ Redo"));
 
         let _ = click_ak_button(&ctx, &mut app, &out_undoable, "↩ Undo");
         let out_redone = run_frame(&ctx, &mut app, Vec::new());
-        assert!(app.can_redo());
-        assert!(!find_buttons_matching(&out_redone, "↪ Redo")[0]
-            .1
-            .is_disabled());
+        assert!(app.can_redo() && btn_enabled(&out_redone, "↪ Redo"));
     }
     let _ = out0;
 }
@@ -299,24 +294,19 @@ fn test_focused_slider_and_sash_allow_period_and_history_shortcuts() {
     ctx.enable_accesskit();
     let mut app = MathExplorerApp::default();
     let mods = shortcut_mods();
-    let chaos_idx = app
-        .tabs
-        .iter()
-        .position(|t| t.name() == "Chaos Theory")
-        .unwrap();
-    let ai_idx = app
-        .tabs
-        .iter()
-        .position(|t| t.name() == "Artificial Intelligence")
-        .unwrap();
+    let find_tab =
+        |a: &MathExplorerApp, name: &str| a.tabs.iter().position(|t| t.name() == name).unwrap();
+    let chaos_idx = find_tab(&app, "Chaos Theory");
+    let ai_idx = find_tab(&app, "Artificial Intelligence");
 
     app.set_layout(ViewportLayout::SplitHorizontal);
     app.set_pane_tab(0, ai_idx);
     app.set_pane_tab(1, chaos_idx);
-    assert!(app
-        .pane_tab_mut(0)
-        .unwrap()
-        .select_tool_by_name("TrainingMonitorTool"));
+    assert!(
+        app.pane_tab_mut(0)
+            .unwrap()
+            .select_tool_by_name("TrainingMonitorTool")
+    );
     viewport::focus::focus_pane_interactive(&mut app, &ctx, 0);
     let out0 = run_frame(&ctx, &mut app, Vec::new());
     assert!(has_rendered_text(&out0, "Epoch: 0"));

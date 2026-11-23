@@ -4,19 +4,15 @@
 //! Finite scalar observables and locked-prime Hasse-Weil challenge evaluation for elliptic tools.
 
 use math_explorer::pure_math::elliptic_curves::{
-    j_invariant_mod_p, FpSingularCubic, PrimeWeierstrassCurve, RealSingularCubic,
-    WeierstrassCurveFp,
+    FpSingularCubic, PrimeWeierstrassCurve, RealSingularCubic, WeierstrassCurveFp,
+    j_invariant_mod_p,
 };
 
 /// Canonical `ChallengeMetadata` ID for the locked-prime $p = 23$ Hasse-Weil boundary challenge.
 pub const CHALLENGE_HASSE_WEIL_BOUNDARY_P23: &str = "hasse_weil_boundary_p23";
 
 fn sanitize_finite(val: f64) -> f64 {
-    if val.is_finite() {
-        val
-    } else {
-        0.0
-    }
+    if val.is_finite() { val } else { 0.0 }
 }
 
 fn compute_fp_observable_tuple(

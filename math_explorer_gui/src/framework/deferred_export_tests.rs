@@ -322,11 +322,13 @@ fn test_deferred_png_clipboard_and_raster_csv_clipboard_capability_guard() {
         ok_fw.show(ctx, "export_clipboard_img_test");
     });
     assert_eq!(ok_fw.export_status_severity, ExportStatusSeverity::Success);
-    assert!(ok_fw
-        .export_status_message
-        .as_deref()
-        .unwrap_or("")
-        .contains("clipboard"));
+    assert!(
+        ok_fw
+            .export_status_message
+            .as_deref()
+            .unwrap_or("")
+            .contains("clipboard")
+    );
 
     let mut raster_fw = new_framework_with_tool(build_registered_tool("DoseCalculationTool"));
     raster_fw.queue_clipboard_export();

@@ -7,21 +7,21 @@
 
 use crate::camera::Camera3D;
 use math_explorer::ai::gaussian_splatting::projection::{
-    project_scene_lensed_into, LensedProjectionOutcome, LensedSplatImageSpec, SplatCameraProjection,
+    LensedProjectionOutcome, LensedSplatImageSpec, SplatCameraProjection, project_scene_lensed_into,
 };
 use math_explorer::constants::{C, SOLAR_MASS};
 use math_explorer::physics::astrophysics::{
-    evaluate_relativistic_beaming, halo_lens_deflection_and_jacobian,
+    HaloProfile, evaluate_relativistic_beaming, halo_lens_deflection_and_jacobian,
     schwarzschild_thin_lens_images, tangential_critical_radius_kpc,
-    validate_christoffel_radial_connection, HaloProfile,
+    validate_christoffel_radial_connection,
 };
 use math_explorer::physics::high_energy::general_relativity::SchwarzschildBlackHole;
 use nalgebra::{Point2, Vector2, Vector3};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    covariance_ellipse_ring, presets::ACCRETION_WORLD_RS, rasterize_splats_with_pan_into,
-    splat_stroke_color, VolumetricSplatWorkspace,
+    VolumetricSplatWorkspace, covariance_ellipse_ring, presets::ACCRETION_WORLD_RS,
+    rasterize_splats_with_pan_into, splat_stroke_color,
 };
 
 /// Number of vertices in closed circular critical/shadow/caustic overlay rings.

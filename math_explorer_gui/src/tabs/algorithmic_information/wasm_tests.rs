@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::state::{FractranMachineTool, FractranPreset, FractranToolConfig};
 use super::AlgorithmicInfoTab;
+use super::state::{FractranMachineTool, FractranPreset, FractranToolConfig};
 use crate::tabs::ExplorerTab;
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 

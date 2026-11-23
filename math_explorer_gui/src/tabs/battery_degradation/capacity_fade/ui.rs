@@ -8,7 +8,7 @@
 use super::CapacityFadeTool;
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
-use crate::reflective_ui::{render_copyable_metric, AnimatedSlider};
+use crate::reflective_ui::{AnimatedSlider, render_copyable_metric};
 use crate::tabs::battery_degradation::cell_card::ChemistryChoice;
 use eframe::egui;
 use egui_plot::{HLine, Line, Plot, PlotPoints, Points};

@@ -2,7 +2,7 @@
 
 //! ODE model definitions and planar AST evaluation helpers.
 
-pub use super::custom_spec::{default_coupled_ode_bank, CustomOdeSpec};
+pub use super::custom_spec::{CustomOdeSpec, default_coupled_ode_bank};
 
 use super::OdeSolverTool;
 use crate::presets::OdePreset;

@@ -58,10 +58,11 @@ impl SimulationFramework {
     fn cached_untracked_url_digest(&self, tool: &dyn super::InteractiveTool) -> u64 {
         let current_rev = self.rev_cache.untracked_tool_revision;
         let name = tool.name();
-        if let Some(cached) = self.rev_cache.untracked_url_digest.get() {
-            if cached.tool_name == name && cached.checked_untracked_rev == current_rev {
-                return cached.url_digest;
-            }
+        if let Some(cached) = self.rev_cache.untracked_url_digest.get()
+            && cached.tool_name == name
+            && cached.checked_untracked_rev == current_rev
+        {
+            return cached.url_digest;
         }
         let digest = compute_untracked_tool_url_digest(tool);
         self.rev_cache
@@ -250,11 +251,11 @@ impl SimulationFramework {
         target_idx: usize,
         candidate: Box<dyn super::InteractiveTool>,
     ) {
-        if self.selected_tool_index != Some(target_idx) {
-            if let Some((old_name, old_json)) = self.serialized_active_tool() {
-                self.saved_tool_states
-                    .insert(old_name.to_string(), old_json.to_string());
-            }
+        if self.selected_tool_index != Some(target_idx)
+            && let Some((old_name, old_json)) = self.serialized_active_tool()
+        {
+            self.saved_tool_states
+                .insert(old_name.to_string(), old_json.to_string());
         }
         scientific_metadata::citation_registry::CitationRegistry::register(
             candidate.name().to_string(),

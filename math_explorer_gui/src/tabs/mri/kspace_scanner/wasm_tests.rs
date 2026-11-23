@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::{MriKSpaceScannerTool, KSPACE_CENTER, KSPACE_DIM, KSPACE_LEN};
+use super::{KSPACE_CENTER, KSPACE_DIM, KSPACE_LEN, MriKSpaceScannerTool};
 use crate::accessibility::init_accessibility_bridge;
 use crate::framework::InteractiveTool;
 use eframe::egui;

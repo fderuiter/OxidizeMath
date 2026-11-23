@@ -3,7 +3,7 @@ use crate::async_sim::unified::{UnifiedModel, UnifiedSimRunner};
 use crate::framework::{BrushMode, BrushStroke};
 use crate::presets::MorphogenesisKineticsMode;
 use crate::tabs::chaos::attractors::{
-    default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
+    AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob, default_flow_bank,
 };
 use crate::tabs::morphogenesis::runner::{
     MorphoSnapshotData, MorphogenesisKineticsRunner, MorphogenesisKineticsState,

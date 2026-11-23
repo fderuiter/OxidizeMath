@@ -5,11 +5,11 @@
 
 use super::ParrondoParadoxTool;
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer, atlas_regime_color,
 };
 use eframe::egui;
 use math_explorer::pure_math::statistics::markov::parrondo::{
-    ParrondoGame, ALLOWED_MODULI, MAX_MODULUS, MAX_SCHEDULE_LEN,
+    ALLOWED_MODULI, MAX_MODULUS, MAX_SCHEDULE_LEN, ParrondoGame,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 

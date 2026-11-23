@@ -185,9 +185,15 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for BandStructureTool {
     fn theory_description(&self) -> String {
         let model_str = if self.show_free_electron {
-            format!("parabolic free-electron dispersion $E(k) = \\frac{{\\hbar^2 k^2}}{{2m}}$ with effective mass $m = {:.2}$", self.m)
+            format!(
+                "parabolic free-electron dispersion $E(k) = \\frac{{\\hbar^2 k^2}}{{2m}}$ with effective mass $m = {:.2}$",
+                self.m
+            )
         } else {
-            format!("1D tight-binding nearest-neighbor dispersion $E(k) = E_0 - 2t \\cos(ka)$ with $E_0 = {:.2}$, hopping $t = {:.2}$, lattice constant $a = {:.2}$", self.e0, self.t, self.a)
+            format!(
+                "1D tight-binding nearest-neighbor dispersion $E(k) = E_0 - 2t \\cos(ka)$ with $E_0 = {:.2}$, hopping $t = {:.2}$, lattice constant $a = {:.2}$",
+                self.e0, self.t, self.a
+            )
         };
         format!(
             "Solid state electronic band structure dispersion relation in the first Brillouin zone $[-\\pi/a, \\pi/a]$: {}.",

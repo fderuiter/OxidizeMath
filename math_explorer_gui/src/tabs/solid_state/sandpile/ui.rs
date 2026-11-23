@@ -6,14 +6,14 @@
 use eframe::egui;
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 use math_explorer::physics::stat_mech::sandpile::{
-    kirchhoff_determinant_bareiss, AvalancheObservable, SandpileElement, SandpileGrid,
-    MAX_SANDPILE_DIM,
+    AvalancheObservable, MAX_SANDPILE_DIM, SandpileElement, SandpileGrid,
+    kirchhoff_determinant_bareiss,
 };
-use math_explorer::pure_math::algebra::{generate_left_coset, is_subgroup, Semigroup, Zn};
+use math_explorer::pure_math::algebra::{Semigroup, Zn, generate_left_coset, is_subgroup};
 
 use super::{
-    AbelianSandpileStudio, SandpileBrush, SandpileColormap, SandpilePreset, SandpileViewMode,
-    MIN_SANDPILE_DIM,
+    AbelianSandpileStudio, MIN_SANDPILE_DIM, SandpileBrush, SandpileColormap, SandpilePreset,
+    SandpileViewMode,
 };
 use crate::reflective_ui::render_copyable_metric;
 
@@ -345,15 +345,15 @@ impl AbelianSandpileStudio {
     }
 
     pub(super) fn refresh_zn_subgroup_summary(&mut self) {
-        let gen = SandpileElement::<2, 2>::new([[3, 1], [1, 3]]);
-        let subgroup = gen.cyclic_subgroup(64);
+        let generator = SandpileElement::<2, 2>::new([[3, 1], [1, 3]]);
+        let subgroup = generator.cyclic_subgroup(64);
         let valid_sub = is_subgroup(&subgroup);
         let coset = generate_left_coset(&subgroup, &SandpileElement::<2, 2>::new([[3, 2], [2, 1]]));
         let z_sum = Zn::<24>::operate(&Zn::<24>::new(3), &Zn::<24>::new(5));
-        let hom_ok = gen.zn_homomorphism(z_sum)
+        let hom_ok = generator.zn_homomorphism(z_sum)
             == SandpileElement::operate(
-                &gen.zn_homomorphism(Zn::<24>::new(3)),
-                &gen.zn_homomorphism(Zn::<24>::new(5)),
+                &generator.zn_homomorphism(Zn::<24>::new(3)),
+                &generator.zn_homomorphism(Zn::<24>::new(5)),
             );
         let det_curr = kirchhoff_determinant_bareiss(self.state.grid_size, self.state.grid_size)
             .map(|d| format!(" • |G|={d}"))

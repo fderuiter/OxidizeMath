@@ -10,8 +10,8 @@ use math_explorer::applied::clinical_trials::survival_analysis::{
 };
 
 use super::survival_io::{
-    build_censor_points, build_km_step_points, format_risk_table_csv, parse_survival_with_control,
-    ArmSurvivalSummary, SurvivalDialogIo, TWO_ARM_SAMPLE_TEXT,
+    ArmSurvivalSummary, SurvivalDialogIo, TWO_ARM_SAMPLE_TEXT, build_censor_points,
+    build_km_step_points, format_risk_table_csv, parse_survival_with_control,
 };
 
 const DEFAULT_TREATMENT_TEXT: &str = "6.0, 1\n6.0, 1\n6.0, 1\n7.0, 1\n10.0, 1\n13.0, 1\n16.0, 1\n22.0, 1\n23.0, 1\n6.0, 0\n9.0, 0\n10.0, 0\n11.0, 0\n17.0, 0\n19.0, 0\n20.0, 0\n25.0, 0\n32.0, 0\n32.0, 0\n34.0, 0\n35.0, 0";

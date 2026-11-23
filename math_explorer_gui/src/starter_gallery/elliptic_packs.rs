@@ -5,10 +5,10 @@
 
 use super::{ChallengeMetadata, GoalChallengeMetadata, PresetStoryMetadata, StoryStep};
 use crate::framework::{CalloutSpec, InteractiveTool};
+use crate::tabs::elliptic_curves::CHALLENGE_HASSE_WEIL_BOUNDARY_P23;
 use crate::tabs::elliptic_curves::chord_tangent_tool::{
     CurveFieldMode, WeierstrassPlaygroundState, WeierstrassPlaygroundTool,
 };
-use crate::tabs::elliptic_curves::CHALLENGE_HASSE_WEIL_BOUNDARY_P23;
 
 const fn pin(
     tag: &'static str,
@@ -53,21 +53,41 @@ const CUSP_TOUR_STEPS: &[StoryStep] = &[
         title: "Two-Component Smooth Cubic (Δ > 0)",
         narrative: "Inside the left discriminant wedge 27b² < -4a³, x³ - 3x + 1 has three distinct real roots, splitting E(R) into a compact egg oval plus an unbounded branch.",
         preset_generator: || WEIERSTRASS_SMOOTH_TWO_COMP,
-        callouts: &[pin("oval_branch", [-1.5, 1.46], [-18.0, -24.0], "Δ = +1296 > 0: compact oval + smooth branch")],
-        focus_observables: &["discriminant", "real_components", "j_invariant", "is_singular"],
+        callouts: &[pin(
+            "oval_branch",
+            [-1.5, 1.46],
+            [-18.0, -24.0],
+            "Δ = +1296 > 0: compact oval + smooth branch",
+        )],
+        focus_observables: &[
+            "discriminant",
+            "real_components",
+            "j_invariant",
+            "is_singular",
+        ],
     },
     StoryStep {
         title: "Self-Intersecting Crunode at (1, 0)",
         narrative: "Sliding b up to +2 hits 4(-3)³ + 27(2)² = 0: the oval pinches the unbounded branch at double root (1, 0) with crossing tangents y = ±√3(x - 1) (split G_m).",
         preset_generator: || WEIERSTRASS_CRUNODE,
-        callouts: &[pin("crunode_vertex", [1.0, 0.0], [18.0, -26.0], "Crunode (1, 0): slopes ±√3")],
+        callouts: &[pin(
+            "crunode_vertex",
+            [1.0, 0.0],
+            [18.0, -26.0],
+            "Crunode (1, 0): slopes ±√3",
+        )],
         focus_observables: &["discriminant", "real_components", "is_singular"],
     },
     StoryStep {
         title: "Triple-Root Semicubical Cusp at (0, 0)",
         narrative: "At the apex (a, b) = (0, 0) where both CM rays J = 0 and J = 1728 collide, all three roots coalesce at (0, 0) on y² = x³ (additive smooth group G_a).",
         preset_generator: || WEIERSTRASS_ORIGIN_CUSP,
-        callouts: &[pin("cusp_origin", [0.0, 0.0], [22.0, -26.0], "Origin Cusp (0, 0): y² = x³")],
+        callouts: &[pin(
+            "cusp_origin",
+            [0.0, 0.0],
+            [22.0, -26.0],
+            "Origin Cusp (0, 0): y² = x³",
+        )],
         focus_observables: &["discriminant", "real_components", "is_singular"],
     },
     StoryStep {
@@ -75,8 +95,18 @@ const CUSP_TOUR_STEPS: &[StoryStep] = &[
         narrative: "On the lower cusp arm (a, b) = (-3, -2), y² = (x + 1)²(x - 2) isolates (-1, 0) with conjugate imaginary tangents ±i√3 while the continuous real branch begins at x = 2.",
         preset_generator: || WEIERSTRASS_ACNODE,
         callouts: &[
-            pin("acnode_pt", [-1.0, 0.0], [-18.0, -26.0], "Isolated Acnode (-1, 0)"),
-            pin("acnode_branch", [2.0, 0.0], [20.0, -24.0], "Smooth branch x ≥ 2"),
+            pin(
+                "acnode_pt",
+                [-1.0, 0.0],
+                [-18.0, -26.0],
+                "Isolated Acnode (-1, 0)",
+            ),
+            pin(
+                "acnode_branch",
+                [2.0, 0.0],
+                [20.0, -24.0],
+                "Smooth branch x ≥ 2",
+            ),
         ],
         focus_observables: &["discriminant", "real_components", "is_singular"],
     },
@@ -87,21 +117,41 @@ const MODULAR_TOUR_STEPS: &[StoryStep] = &[
         title: "Equianharmonic CM Ray (J = 0, a = 0)",
         narrative: "Curves y² = x³ + b carry complex multiplication by Z[ω]. For every prime p ≡ 2 (mod 3) such as p = 23, Frobenius trace vanishes (a_23 = 0, #E(F_23) = 24).",
         preset_generator: || MODULAR_CM_J0,
-        callouts: &[pin("ss_p23", [23.0, 0.0], [18.0, -24.0], "Supersingular at p = 23: a_23 = 0")],
+        callouts: &[pin(
+            "ss_p23",
+            [23.0, 0.0],
+            [18.0, -24.0],
+            "Supersingular at p = 23: a_23 = 0",
+        )],
         focus_observables: &["j_invariant", "group_order", "frobenius_trace", "hasse_gap"],
     },
     StoryStep {
         title: "Harmonic CM Ray (J = 1728, b = 0) & Breuer Valuations",
         narrative: "Curves y² = x³ + ax have CM by Z[i] (J = 1728) and control 2-, 3-, 5-, and 7-adic divisibility lower bounds of classical modular polynomial coefficients Φ_N(X, Y).",
         preset_generator: || MODULAR_CM_J1728,
-        callouts: &[pin("breuer_v", [2.0, 12.0], [16.0, -22.0], "Breuer p-adic valuation bounds")],
-        focus_observables: &["j_invariant", "group_order", "frobenius_trace", "is_singular"],
+        callouts: &[pin(
+            "breuer_v",
+            [2.0, 12.0],
+            [16.0, -22.0],
+            "Breuer p-adic valuation bounds",
+        )],
+        focus_observables: &[
+            "j_invariant",
+            "group_order",
+            "frobenius_trace",
+            "is_singular",
+        ],
     },
     StoryStep {
         title: "Hurwitz-Kronecker Class Number Trace Sum",
         narrative: "Summing imaginary quadratic Hurwitz class numbers H(t² - p) across every Frobenius trace |t| < 2√p recovers all isomorphism classes of elliptic curves over F_p.",
         preset_generator: || MODULAR_HURWITZ,
-        callouts: &[pin("hurwitz_id", [23.0, 7.0], [16.0, -22.0], "Kronecker-Hurwitz trace sum")],
+        callouts: &[pin(
+            "hurwitz_id",
+            [23.0, 7.0],
+            [16.0, -22.0],
+            "Kronecker-Hurwitz trace sum",
+        )],
         focus_observables: &["group_order", "frobenius_trace", "hasse_gap"],
     },
 ];
@@ -111,21 +161,36 @@ const NT_TORUS_STEPS: &[StoryStep] = &[
         title: "Ordinary Cyclic Subgroup on F_23 × F_23",
         narrative: "On y² ≡ x³ + x + 1 (mod 23), #E(F_23) = 28 (a_23 = -4) inside Hasse bound |a_23| ≤ 9, and geodesic secants wrap periodically across the torus.",
         preset_generator: || NT_TORUS_ORDINARY,
-        callouts: &[pin("hasse_p23", [23.0, -4.0], [16.0, -22.0], "#E(F_23) = 28, a_23 = -4")],
+        callouts: &[pin(
+            "hasse_p23",
+            [23.0, -4.0],
+            [16.0, -22.0],
+            "#E(F_23) = 28, a_23 = -4",
+        )],
         focus_observables: &["group_order", "frobenius_trace", "point_order", "cofactor"],
     },
     StoryStep {
         title: "Supersingular Midline Symmetry (a_23 = 0)",
         narrative: "Switching to y² ≡ x³ + 1 (mod 23) lands squarely on the Hasse midline #E(F_23) = p + 1 = 24 with trace a_23 = 0.",
         preset_generator: || NT_TORUS_SUPERSINGULAR,
-        callouts: &[pin("hasse_ss", [23.0, 0.0], [16.0, -22.0], "Supersingular midline a_23 = 0")],
+        callouts: &[pin(
+            "hasse_ss",
+            [23.0, 0.0],
+            [16.0, -22.0],
+            "Supersingular midline a_23 = 0",
+        )],
         focus_observables: &["j_invariant", "group_order", "frobenius_trace", "hasse_gap"],
     },
     StoryStep {
         title: "Harmonic Two-Torsion & Cross-Tab Handoff",
         narrative: "On y² ≡ x³ + x (mod 23), Q = (0, 0) is a 2-torsion point with vertical tangent, and one click hands (p, a, b, P, Q, k) directly into Elliptic Curves.",
         preset_generator: || NT_TORUS_J1728,
-        callouts: &[pin("hasse_j1728", [23.0, 0.0], [16.0, -22.0], "J = 1728 harmonic curve over F_23")],
+        callouts: &[pin(
+            "hasse_j1728",
+            [23.0, 0.0],
+            [16.0, -22.0],
+            "J = 1728 harmonic curve over F_23",
+        )],
         focus_observables: &["j_invariant", "point_order", "cofactor", "is_singular"],
     },
 ];

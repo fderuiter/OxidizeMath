@@ -4,7 +4,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::analytics::compute_network_analytics;
-use super::{ContainmentMode, NetPropState, NetworkPropagationTool, DEFAULT_CONTAINMENT_BUDGET};
+use super::{ContainmentMode, DEFAULT_CONTAINMENT_BUDGET, NetPropState, NetworkPropagationTool};
 use crate::framework::{ChallengeEvaluation, ChallengeMetadata, InteractiveTool};
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 use oxidize_core::rng::OxidizeRng;
@@ -222,10 +222,10 @@ fn sanitize_usize_array(val: Option<&serde_json::Value>) -> Vec<usize> {
     let mut out = Vec::new();
     if let Some(arr) = val.and_then(serde_json::Value::as_array) {
         for item in arr {
-            if let Some(idx) = item.as_u64().map(|n| n as usize) {
-                if !out.contains(&idx) {
-                    out.push(idx);
-                }
+            if let Some(idx) = item.as_u64().map(|n| n as usize)
+                && !out.contains(&idx)
+            {
+                out.push(idx);
             }
         }
     }

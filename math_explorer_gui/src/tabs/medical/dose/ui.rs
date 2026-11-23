@@ -4,12 +4,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{CanvasKeyTarget, DoseCalculationTool, DoseDisplayMode};
-use crate::accessibility::{announce_live_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_live_status};
 use crate::app::{SemanticPalette, ThemeMode};
-use crate::audio::mappings::{imrt_delivery_frame, radar_linac_frame, LinacGatePhase};
+use crate::audio::mappings::{LinacGatePhase, imrt_delivery_frame, radar_linac_frame};
 use crate::framework::{
-    bounded_drag_value, scoped_panel_id, BrushInteractionMode, BrushMode, InteractiveTool,
-    PaneSidePanel, PlaybackAction, PlaybackTransport,
+    BrushInteractionMode, BrushMode, InteractiveTool, PaneSidePanel, PlaybackAction,
+    PlaybackTransport, bounded_drag_value, scoped_panel_id,
 };
 use crate::tabs::medical::imrt::IMRT_BEAM_COUNT;
 use eframe::egui::{self, Color32, RichText};

@@ -14,9 +14,11 @@ fn wasm_app_as_any_mut_downcasts_and_roundtrips_recovery_snapshot() {
 
     app.theme = ThemeMode::Light;
     let snapshot = app.capture_recovery_snapshot();
-    assert!(snapshot
-        .envelope_json
-        .contains("\"schema_version\": \"1.0\""));
+    assert!(
+        snapshot
+            .envelope_json
+            .contains("\"schema_version\": \"1.0\"")
+    );
 
     let mut restored = MathExplorerApp::default();
     let ctx = eframe::egui::Context::default();

@@ -2,11 +2,11 @@
 
 use super::phase_plane::{MAX_QUIVER_GRID, MAX_SEEDED_ORBITS};
 use super::poincare_map::{
-    classify_equilibrium, companion_matrix_from_trace_det, trace_det_from_matrix, EquilibriumRegime,
+    EquilibriumRegime, classify_equilibrium, companion_matrix_from_trace_det, trace_det_from_matrix,
 };
 use super::*;
 use crate::framework::{InteractiveTool, SimulationFramework, TraceSeries};
-use crate::presets::{OdePreset, MAX_ODE_STEPS};
+use crate::presets::{MAX_ODE_STEPS, OdePreset};
 use eframe::egui;
 
 fn collect_shape_texts(shapes: &[egui::epaint::Shape], out: &mut Vec<(String, egui::Pos2)>) {
@@ -113,11 +113,12 @@ fn test_planar_custom_vdp_and_lotka_volterra_quiver_and_nullclines() {
     tool.planar_y_input.set_expression("k * x * y - y");
     tool.recalculate();
     assert!(!tool.diverged());
-    assert!(tool
-        .y_series
-        .iter()
-        .chain(&tool.v_series)
-        .all(|v| v.is_finite()));
+    assert!(
+        tool.y_series
+            .iter()
+            .chain(&tool.v_series)
+            .all(|v| v.is_finite())
+    );
 }
 
 #[test]

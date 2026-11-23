@@ -272,11 +272,13 @@ fn test_contour_batch_shapes_hover_log_split_and_nan_free_extract_points() {
     let (blue, g) = (egui::Color32::LIGHT_BLUE, tool.cache.generation);
     let z_batch = cache::ContourBatch::new("Re(z) grid", &tool.cache.z_vertical, blue, g);
     let w_batch = cache::ContourBatch::new("u-contours", &tool.cache.w_vertical, blue, g);
-    assert!(z_batch
-        .extract_points()
-        .into_iter()
-        .chain(w_batch.extract_points())
-        .all(|pt| pt[0].is_finite() && pt[1].is_finite()));
+    assert!(
+        z_batch
+            .extract_points()
+            .into_iter()
+            .chain(w_batch.extract_points())
+            .all(|pt| pt[0].is_finite() && pt[1].is_finite())
+    );
     assert!(w_batch.extract_export_primitives().is_empty());
 
     let frame = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 400.0));
@@ -310,19 +312,23 @@ fn assert_contour_batch_shapes(
             let mut z_shapes = Vec::new();
             z_batch.shapes(ui, lin_tf, &mut z_shapes);
             assert_eq!(z_shapes.len(), 5);
-            assert!(z_shapes
-                .iter()
-                .all(|s| matches!(s, egui::Shape::LineSegment { .. })));
+            assert!(
+                z_shapes
+                    .iter()
+                    .all(|s| matches!(s, egui::Shape::LineSegment { .. }))
+            );
 
             let mut w_log_shapes = Vec::new();
             w_batch.shapes(ui, log_tf, &mut w_log_shapes);
             assert!(!w_log_shapes.is_empty());
             for shape in &w_log_shapes {
                 if let egui::Shape::Path(path_shape) = shape {
-                    assert!(path_shape
-                        .points
-                        .iter()
-                        .all(|p| p.x.is_finite() && p.y.is_finite()));
+                    assert!(
+                        path_shape
+                            .points
+                            .iter()
+                            .all(|p| p.x.is_finite() && p.y.is_finite())
+                    );
                 }
             }
         });

@@ -3,9 +3,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::pulse::{
-    score_hahn_spin_echo, score_pi_inversion, MriPulseMode, CHALLENGE_BLOCH_HAHN_ECHO,
-    CHALLENGE_BLOCH_PI_INVERSION, CHALLENGE_MRI_B0, CHALLENGE_MRI_T1, CHALLENGE_MRI_T2,
-    CHALLENGE_MRI_TE, MRI_PULSE_SAMPLES,
+    CHALLENGE_BLOCH_HAHN_ECHO, CHALLENGE_BLOCH_PI_INVERSION, CHALLENGE_MRI_B0, CHALLENGE_MRI_T1,
+    CHALLENGE_MRI_T2, CHALLENGE_MRI_TE, MRI_PULSE_SAMPLES, MriPulseMode, score_hahn_spin_echo,
+    score_pi_inversion,
 };
 use super::tool::{MriTool, MriToolState};
 use crate::async_sim::{SimCommand, SimWorkerState};

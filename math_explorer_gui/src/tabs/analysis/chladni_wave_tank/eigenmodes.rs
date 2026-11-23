@@ -8,10 +8,10 @@ use eframe::egui;
 use math_explorer::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::analysis::pde::wave_2d::masks::clamped_beam_eigenfunction;
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    analytic_clamped_square_omega, BoundaryMode2D, Wave2DMedium, Wave2DSolver,
+    BoundaryMode2D, Wave2DMedium, Wave2DSolver, analytic_clamped_square_omega,
 };
 
-use super::{ChladniWaveTankState, ChladniWaveTankTool, TankPreset, FREQ_MAX, FREQ_MIN, GRID_SIZE};
+use super::{ChladniWaveTankState, ChladniWaveTankTool, FREQ_MAX, FREQ_MIN, GRID_SIZE, TankPreset};
 
 const DRUM_RADIUS_NORM: f64 = 0.45;
 
@@ -202,11 +202,7 @@ fn clamped_square_sample(m: usize, n: usize, xn: f64, yn: f64) -> f64 {
 fn trig_square_sample(m: usize, n: usize, xn: f64, yn: f64, use_cos: bool) -> f64 {
     let f = |k: usize, u: f64| -> f64 {
         let arg = (k as f64) * PI * u;
-        if use_cos {
-            arg.cos()
-        } else {
-            arg.sin()
-        }
+        if use_cos { arg.cos() } else { arg.sin() }
     };
     if m == n {
         0.45 * f(m, xn) * f(n, yn)

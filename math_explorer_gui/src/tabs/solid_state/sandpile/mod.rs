@@ -6,8 +6,8 @@ use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::fit::{CurveFit, FitModel};
 use math_explorer::physics::stat_mech::sandpile::{
-    AvalancheObservable, BurningTestResult, SandpileGrid, MAX_POWER_LAW_FIT_POINTS,
-    MAX_STABLE_HEIGHT,
+    AvalancheObservable, BurningTestResult, MAX_POWER_LAW_FIT_POINTS, MAX_STABLE_HEIGHT,
+    SandpileGrid,
 };
 
 use crate::audio::frame::SonificationFrame;

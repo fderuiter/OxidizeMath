@@ -1,7 +1,7 @@
 //! Unit tests verifying the `HarmonicOscillatorTool` example in `docs/architecture/interactive_tool_walkthrough.md`.
 
 use crate::accessibility::{paint_canvas_focus_ring, register_canvas_accessibility};
-use crate::framework::{scoped_panel_id, InteractiveTool, PaneSidePanel, ToolMetadata};
+use crate::framework::{InteractiveTool, PaneSidePanel, ToolMetadata, scoped_panel_id};
 use crate::starter_gallery::StarterPresetMetadata;
 use eframe::egui;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
@@ -265,10 +265,12 @@ fn test_walkthrough_harmonic_oscillator_tool_contract_and_rendering() {
         .export_preset_json()
         .expect("preset export must succeed");
     assert!(exported.contains("2.5") && exported.contains("\"physics\""));
-    assert!(tool
-        .try_load_state(r#"{"mass":0.0,"spring_k":10.0,"damping":0.1}"#)
-        .is_err());
-    assert!(tool
-        .try_load_state(r#"{"mass":1.0,"spring_k":10.0,"damping":0.1,"unknown":true}"#)
-        .is_err());
+    assert!(
+        tool.try_load_state(r#"{"mass":0.0,"spring_k":10.0,"damping":0.1}"#)
+            .is_err()
+    );
+    assert!(
+        tool.try_load_state(r#"{"mass":1.0,"spring_k":10.0,"damping":0.1,"unknown":true}"#)
+            .is_err()
+    );
 }

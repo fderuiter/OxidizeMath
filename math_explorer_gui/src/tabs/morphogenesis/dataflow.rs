@@ -2,9 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::runner::MorphoSnapshotData;
 use super::MorphogenesisTool;
-use crate::app::dataflow_bus::{publish_pane_scalar_field, ScalarField2DPayload};
+use super::runner::MorphoSnapshotData;
+use crate::app::dataflow_bus::{ScalarField2DPayload, publish_pane_scalar_field};
 use crate::async_sim::StateSnapshot;
 use eframe::egui;
 
@@ -107,14 +107,16 @@ impl MorphogenesisTool {
         if self.is_forked() {
             return Some(self.render_current_heatmap_image());
         }
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && px.len() == w * h {
-                return Some(egui::ColorImage {
-                    size: [w, h],
-                    pixels: px.clone(),
-                    ..Default::default()
-                });
-            }
+        if let Some((w, h, ref px)) = self.stepped_pixels
+            && w > 0
+            && h > 0
+            && px.len() == w * h
+        {
+            return Some(egui::ColorImage {
+                size: [w, h],
+                pixels: px.clone(),
+                ..Default::default()
+            });
         }
         if !self.dirty && self.pixels.len() == self.width * self.height && !self.pixels.is_empty() {
             return Some(egui::ColorImage {

@@ -2,22 +2,22 @@
 // [cite:hurwitz_kronecker]
 
 use super::atlas::{
-    build_real_and_fp_observables, default_elliptic_atlas_axes, evaluate_hasse_weil_p23,
-    is_default_elliptic_atlas_axes, CHALLENGE_HASSE_WEIL_BOUNDARY_P23, ELLIPTIC_ATLAS_AXIS_PAIRS,
+    CHALLENGE_HASSE_WEIL_BOUNDARY_P23, ELLIPTIC_ATLAS_AXIS_PAIRS, build_real_and_fp_observables,
+    default_elliptic_atlas_axes, evaluate_hasse_weil_p23, is_default_elliptic_atlas_axes,
 };
 use super::modular_invariants_ui;
 use crate::async_sim::atlas::{AtlasTeleportEvent, ParameterAtlasController};
 use crate::framework::{
-    scoped_panel_id, CalloutSpec, ChallengeEvaluation, InteractiveTool, PaneSidePanel,
-    ToolStateBounds,
+    CalloutSpec, ChallengeEvaluation, InteractiveTool, PaneSidePanel, ToolStateBounds,
+    scoped_panel_id,
 };
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{
-    analyze_frobenius_prime, eisenstein_e4_q_series, hasse_weil_bound, hurwitz_trace_sum,
-    j_invariant_q_scaled, j_invariant_real, modular_valuation_summary, psi,
-    ramanujan_delta_q_series, theorem_1_1_bounds, theorem_1_2_bounds, FrobeniusClassSummary,
-    ModularValuationSummary, PrimeWeierstrassCurve, WeierstrassCurve, MAX_LATTICE_PRIME,
-    MAX_SCALED_J_PRECISION,
+    FrobeniusClassSummary, MAX_LATTICE_PRIME, MAX_SCALED_J_PRECISION, ModularValuationSummary,
+    PrimeWeierstrassCurve, WeierstrassCurve, analyze_frobenius_prime, eisenstein_e4_q_series,
+    hasse_weil_bound, hurwitz_trace_sum, j_invariant_q_scaled, j_invariant_real,
+    modular_valuation_summary, psi, ramanujan_delta_q_series, theorem_1_1_bounds,
+    theorem_1_2_bounds,
 };
 use math_explorer::pure_math::number_theory::primes::{is_prime, primes_up_to};
 use serde::{Deserialize, Serialize};
@@ -263,12 +263,11 @@ impl ModularInvariantsTool {
 
             if let Ok(curve) =
                 PrimeWeierstrassCurve::new(self.state.coeff_a, self.state.coeff_b, p as i64)
+                && let Ok(summary) = analyze_frobenius_prime(&curve)
             {
-                if let Ok(summary) = analyze_frobenius_prime(&curve) {
-                    self.trace_pts.push([x, summary.frobenius_trace as f64]);
-                    self.class_num_pts
-                        .push([x, summary.imaginary_class_number as f64]);
-                }
+                self.trace_pts.push([x, summary.frobenius_trace as f64]);
+                self.class_num_pts
+                    .push([x, summary.imaginary_class_number as f64]);
             }
         }
 

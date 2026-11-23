@@ -4,7 +4,7 @@
 // theory_verification!
 
 use crate::audio::frame::{
-    clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset, MAX_VOICES,
+    MAX_VOICES, SonificationFrame, VoiceSpec, WaveformPreset, clamp_freq_hz,
 };
 
 /// Root reference pitch (`A3 = 220.0 Hz`) for prime-power harmonic chords.
@@ -248,10 +248,9 @@ fn collect_top_prime_registers(
             len += 1;
         } else if let Some((min_idx, &(_, min_e))) =
             buf.iter().enumerate().min_by_key(|&(_, &(_, e))| e)
+            && exp > min_e
         {
-            if exp > min_e {
-                buf[min_idx] = (prime, exp);
-            }
+            buf[min_idx] = (prime, exp);
         }
     }
     for i in 1..len {

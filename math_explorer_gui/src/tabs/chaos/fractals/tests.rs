@@ -21,13 +21,13 @@ fn raw_input_for_size(width: f32, height: f32, max_texture_side: Option<usize>) 
 fn find_image_rect(output: &egui::FullOutput, screen: egui::Rect) -> egui::Rect {
     if let Some(update) = &output.platform_output.accesskit_update {
         for (_id, node) in &update.nodes {
-            if node.role() == egui::accesskit::Role::Image {
-                if let Some(b) = node.bounds() {
-                    return egui::Rect::from_min_max(
-                        egui::pos2(b.x0 as f32, b.y0 as f32),
-                        egui::pos2(b.x1 as f32, b.y1 as f32),
-                    );
-                }
+            if node.role() == egui::accesskit::Role::Image
+                && let Some(b) = node.bounds()
+            {
+                return egui::Rect::from_min_max(
+                    egui::pos2(b.x0 as f32, b.y0 as f32),
+                    egui::pos2(b.x1 as f32, b.y1 as f32),
+                );
             }
         }
     }

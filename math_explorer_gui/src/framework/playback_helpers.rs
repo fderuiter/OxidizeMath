@@ -84,13 +84,11 @@ pub(super) fn take_dispatched_playback_action(
     {
         return Some(PlaybackAction::StepBack);
     }
-    if can_step_back {
-        if let Some(meta) = timeline {
-            if CommandRegistryData::take_dispatched(ctx, "Previous Keyframe", "Simulation Playback")
-            {
-                return Some(PlaybackAction::ScrubTo(meta.previous_keyframe_step()));
-            }
-        }
+    if can_step_back
+        && let Some(meta) = timeline
+        && CommandRegistryData::take_dispatched(ctx, "Previous Keyframe", "Simulation Playback")
+    {
+        return Some(PlaybackAction::ScrubTo(meta.previous_keyframe_step()));
     }
     if can_reset
         && CommandRegistryData::take_dispatched(ctx, "Reset Simulation", "Simulation Playback")

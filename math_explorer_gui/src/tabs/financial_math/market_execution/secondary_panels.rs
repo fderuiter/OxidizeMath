@@ -8,7 +8,7 @@ use eframe::egui;
 use egui_plot::{HLine, Legend, Line, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::kelly::{Odds, UnitInterval};
 use math_explorer::pure_math::statistics::market_pricing::{
-    evaluate_hedge, evaluate_middle, HedgeMode, HedgeReport, MiddleReport,
+    HedgeMode, HedgeReport, MiddleReport, evaluate_hedge, evaluate_middle,
 };
 
 pub(super) fn render_middle_panel(

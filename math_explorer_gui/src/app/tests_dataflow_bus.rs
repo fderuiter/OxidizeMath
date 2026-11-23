@@ -3,14 +3,14 @@
 
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::dataflow_bus::{
-    commit_pane_outputs, poll_pane_graph, poll_pane_landmarks, poll_pane_scalar_field,
-    publish_pane_graph, publish_pane_landmarks, publish_pane_scalar_field, stage_pane_inputs,
-    DataflowStreamKind, GraphTopologyPayload, LandmarkCloud3DPayload, PaneDataflowBus,
-    PanePipelineDag, ScalarField2DPayload,
-};
 #[cfg(all(feature = "pure_math", feature = "epidemiology", feature = "biology"))]
-use super::dataflow_bus::{DagLinkError, PaneLink, MAX_DATAFLOW_GRAPH_NODES};
+use super::dataflow_bus::{DagLinkError, MAX_DATAFLOW_GRAPH_NODES, PaneLink};
+use super::dataflow_bus::{
+    DataflowStreamKind, GraphTopologyPayload, LandmarkCloud3DPayload, PaneDataflowBus,
+    PanePipelineDag, ScalarField2DPayload, commit_pane_outputs, poll_pane_graph,
+    poll_pane_landmarks, poll_pane_scalar_field, publish_pane_graph, publish_pane_landmarks,
+    publish_pane_scalar_field, stage_pane_inputs,
+};
 use crate::app::viewport::focus::CURRENT_RENDERING_PANE_KEY;
 use eframe::egui;
 
@@ -20,16 +20,16 @@ use super::{MathExplorerApp, ViewportLayout};
 use crate::accessibility::with_live_region;
 #[cfg(feature = "pure_math")]
 use crate::tabs::geometry_topology::vietoris_rips::handoff::{
-    submit_chaos_landmark_handoff, take_chaos_landmark_handoff, ChaosLandmarkHandoff,
+    ChaosLandmarkHandoff, submit_chaos_landmark_handoff, take_chaos_landmark_handoff,
 };
 #[cfg(all(feature = "pure_math", feature = "epidemiology", feature = "biology"))]
 use crate::tabs::graph_theory::graph_editor::SerializedGraphState;
 #[cfg(all(feature = "pure_math", feature = "epidemiology", feature = "biology"))]
 use crate::url_state::pipeline::{
-    build_pane_url_entry, encode_pipeline_share_fragment, PipelineUrlEnvelope,
+    PipelineUrlEnvelope, build_pane_url_entry, encode_pipeline_share_fragment,
 };
 #[cfg(all(feature = "pure_math", feature = "epidemiology", feature = "biology"))]
-use crate::url_state::{encode_base64url, MAX_DECODED_URL_STATE_BYTES};
+use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, encode_base64url};
 #[cfg(feature = "pure_math")]
 use math_explorer::pure_math::statistics::tda::Point3D;
 #[cfg(all(feature = "pure_math", feature = "epidemiology", feature = "biology"))]
@@ -126,9 +126,10 @@ fn test_pipeline_dag_rejects_self_loops_and_cycles_with_twin_slot_aria() {
     select_pane_tool(&mut app, 1, "NetworkPropagationTool");
 
     let slot_before = with_live_region(|r| r.active_slot);
-    assert!(app
-        .connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
-        .is_ok());
+    assert!(
+        app.connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
+            .is_ok()
+    );
     with_live_region(|r| {
         assert_ne!(r.active_slot, slot_before);
         assert!(r.slots[1 - r.active_slot].is_empty());
@@ -141,9 +142,11 @@ fn test_pipeline_dag_rejects_self_loops_and_cycles_with_twin_slot_aria() {
     );
     let assertive =
         ctx.data(|d| d.get_temp::<String>(egui::Id::new("aria_live_assertive_message")));
-    assert!(assertive
-        .as_deref()
-        .is_some_and(|m| m.contains("cycle") || m.contains("rejected")));
+    assert!(
+        assertive
+            .as_deref()
+            .is_some_and(|m| m.contains("cycle") || m.contains("rejected"))
+    );
 
     assert!(app.disconnect_pane_pipeline_interactive(Some(&ctx), 1));
     assert!(app.pipeline_dag.is_empty());
@@ -206,15 +209,7 @@ fn test_pipeline_dag_remaps_swap_rotate_clone_and_prune_inactive() {
 }
 
 #[cfg(all(feature = "pure_math", feature = "epidemiology", feature = "biology"))]
-#[test]
-fn test_pipeline_mws_envelope_and_share_url_roundtrip_and_200_node_cap() {
-    let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    let ctx = egui::Context::default();
-    let mut app = MathExplorerApp::default();
-    app.set_layout(ViewportLayout::SplitHorizontal);
-    select_pane_tool(&mut app, 0, "GraphEditorTool");
-    select_pane_tool(&mut app, 1, "NeuralNetworkVizTool");
-
+fn seed_pane_six_node_graph(app: &mut MathExplorerApp, pane: usize) {
     let mut pos = BTreeMap::new();
     for i in 0..6 {
         pos.insert(i, (i as f32 * 25.0, 10.0));
@@ -228,7 +223,7 @@ fn test_pipeline_mws_envelope_and_share_url_roundtrip_and_200_node_cap() {
         congestion: Default::default(),
     })
     .unwrap();
-    app.pane_tab_mut(0)
+    app.pane_tab_mut(pane)
         .unwrap()
         .framework_mut()
         .unwrap()
@@ -237,13 +232,26 @@ fn test_pipeline_mws_envelope_and_share_url_roundtrip_and_200_node_cap() {
         .unwrap()
         .try_load_state(&graph_json)
         .unwrap();
+}
+
+#[cfg(all(feature = "pure_math", feature = "epidemiology", feature = "biology"))]
+#[test]
+fn test_pipeline_mws_envelope_and_share_url_roundtrip_and_200_node_cap() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    select_pane_tool(&mut app, 0, "GraphEditorTool");
+    select_pane_tool(&mut app, 1, "NeuralNetworkVizTool");
+    seed_pane_six_node_graph(&mut app, 0);
 
     let unlinked_frag = app.encode_current_share_fragment().unwrap();
     assert!(!unlinked_frag.contains("&pipe="));
 
-    assert!(app
-        .connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
-        .is_ok());
+    assert!(
+        app.connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
+            .is_ok()
+    );
 
     let mws_json = app.save_state_to_json();
     let mut from_mws = MathExplorerApp::default();
@@ -314,9 +322,10 @@ fn test_tampered_cyclic_pipeline_url_rejected_atomically() {
 
     let cyclic_b64 = encode_base64url(&serde_json::to_vec(&cyclic_env).unwrap());
     let tampered_cyclic_frag = format!("#tab=graph-theory&tool=GraphEditorTool&pipe={cyclic_b64}");
-    assert!(app
-        .apply_share_location_strings(&tampered_cyclic_frag, "", Some(&ctx))
-        .is_err());
+    assert!(
+        app.apply_share_location_strings(&tampered_cyclic_frag, "", Some(&ctx))
+            .is_err()
+    );
     assert_eq!(app.selected_tab, baseline_tab);
     assert!(app.pipeline_dag.is_empty());
 }
@@ -357,9 +366,10 @@ fn test_over_200_node_pipeline_url_rejected_atomically() {
     };
     let over_b64 = encode_base64url(&serde_json::to_vec(&over_cap_env).unwrap());
     let tampered_over_frag = format!("#tab=graph-theory&tool=GraphEditorTool&pipe={over_b64}");
-    assert!(app
-        .apply_share_location_strings(&tampered_over_frag, "", Some(&ctx))
-        .is_err());
+    assert!(
+        app.apply_share_location_strings(&tampered_over_frag, "", Some(&ctx))
+            .is_err()
+    );
     assert!(app.pipeline_dag.is_empty());
 }
 
@@ -403,9 +413,10 @@ fn test_pipeline_links_undo_redo_and_challenge_lock_guard() {
     let _ = ctx.run(egui::RawInput::default(), |c| app.update(c, &mut frame));
     assert!(app.pipeline_dag.is_empty());
 
-    assert!(app
-        .connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
-        .is_ok());
+    assert!(
+        app.connect_pane_pipeline_interactive(Some(&ctx), 0, 1)
+            .is_ok()
+    );
     let _ = ctx.run(egui::RawInput::default(), |c| app.update(c, &mut frame));
     assert_eq!(app.pipeline_dag.links().len(), 1);
 
@@ -418,9 +429,10 @@ fn test_pipeline_links_undo_redo_and_challenge_lock_guard() {
     assert_eq!(app.pipeline_dag.links().len(), 1);
 
     if let Some(fw) = app.pane_tab_mut(1).and_then(|t| t.framework_mut()) {
-        assert!(fw
-            .launch_challenge_by_id(CHALLENGE_EPI_HUB_VACCINATION, Some(&ctx))
-            .is_ok());
+        assert!(
+            fw.launch_challenge_by_id(CHALLENGE_EPI_HUB_VACCINATION, Some(&ctx))
+                .is_ok()
+        );
     }
     let _ = ctx.run(egui::RawInput::default(), |c| app.update(c, &mut frame));
     let locked_nodes = app

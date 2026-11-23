@@ -142,10 +142,12 @@ fn assert_ode_3x200k_snapshot(framework: &SimulationFramework) {
         .expect("ODE snapshot must exist");
     assert!(snap.memory_size() <= MAX_SNAPSHOT_BYTES);
     assert_eq!(framework.current_valid_plot_datasets.len(), 3);
-    assert!(framework
-        .current_valid_plot_datasets
-        .iter()
-        .all(|(_, pts)| pts.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS));
+    assert!(
+        framework
+            .current_valid_plot_datasets
+            .iter()
+            .all(|(_, pts)| pts.len() <= crate::framework::MAX_DISPLAY_POLYLINE_POINTS)
+    );
     let exported = framework
         .active_tool
         .as_ref()

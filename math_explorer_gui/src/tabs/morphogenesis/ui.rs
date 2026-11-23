@@ -1,19 +1,19 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::MorphogenesisTool;
 use super::counterfactual::{
-    render_morphogenesis_heatmap, MorphogenesisHeatmapMode, MorphogenesisSnapshotData,
+    MorphogenesisHeatmapMode, MorphogenesisSnapshotData, render_morphogenesis_heatmap,
 };
 use super::sculpt::{draw_morpho_sculpt_controls, overlay_cell_mask_colors};
-use super::MorphogenesisTool;
 use crate::app::ThemeMode;
 use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
+    WorkerFaultAction, render_empty_plot_guidance, render_worker_fault_banner,
 };
 use crate::async_sim::{SimCommand, SimulationRunner};
 use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
 use crate::framework::{
-    fork_marker_callout, render_divergence_strip, BrushMode, CounterfactualTransport,
-    InteractiveTool, PlaybackAction, PlaybackTransport, PlotBrushController, PlotBrushFrame,
+    BrushMode, CounterfactualTransport, InteractiveTool, PlaybackAction, PlaybackTransport,
+    PlotBrushController, PlotBrushFrame, fork_marker_callout, render_divergence_strip,
 };
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui;
@@ -55,14 +55,15 @@ impl MorphogenesisTool {
                 }
                 return Some(img);
             }
-            if let Ok(px) = snapshot.pixels.try_read() {
-                if px.len() == num_pixels && !self.is_forked() {
-                    return Some(ColorImage {
-                        size: [self.width, self.height],
-                        pixels: px.clone(),
-                        ..Default::default()
-                    });
-                }
+            if let Ok(px) = snapshot.pixels.try_read()
+                && px.len() == num_pixels
+                && !self.is_forked()
+            {
+                return Some(ColorImage {
+                    size: [self.width, self.height],
+                    pixels: px.clone(),
+                    ..Default::default()
+                });
             }
             return None;
         }
@@ -265,22 +266,22 @@ impl MorphogenesisTool {
                 self.apply_gray_scott_preset(c.f, c.k);
             }
         });
-        if let Some(snapshot) = self.worker.latest_snapshot() {
-            if let Some(u_data) = snapshot.structured_data.as_ref().and_then(|d| {
+        if let Some(snapshot) = self.worker.latest_snapshot()
+            && let Some(u_data) = snapshot.structured_data.as_ref().and_then(|d| {
                 d.downcast_ref::<MorphogenesisSnapshotData>()
                     .map(|s| s.u_data.as_slice())
                     .or_else(|| d.downcast_ref::<Vec<f64>>().map(Vec::as_slice))
-            }) {
-                let splat_count =
-                    crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
-                        u_data,
-                        snapshot.width,
-                        snapshot.height,
-                    )
-                    .gaussians
-                    .len();
-                ui.small(format!("Extruded 3D Gaussian splats: {splat_count}"));
-            }
+            })
+        {
+            let splat_count =
+                crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice(
+                    u_data,
+                    snapshot.width,
+                    snapshot.height,
+                )
+                .gaussians
+                .len();
+            ui.small(format!("Extruded 3D Gaussian splats: {splat_count}"));
         }
         ui.separator();
         let _ = self.atlas.show_toggle_button(ui);

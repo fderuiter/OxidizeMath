@@ -11,12 +11,16 @@ fn test_zero_prefix_palette_unifies_tabs_tools_presets_and_commands() {
 
     assert!(items.iter().any(|i| matches!(i, PaletteItem::Tab { .. })));
     assert!(items.iter().any(|i| matches!(i, PaletteItem::Tool { .. })));
-    assert!(items
-        .iter()
-        .any(|i| matches!(i, PaletteItem::Preset { .. })));
-    assert!(items
-        .iter()
-        .any(|i| matches!(i, PaletteItem::Command { .. })));
+    assert!(
+        items
+            .iter()
+            .any(|i| matches!(i, PaletteItem::Preset { .. }))
+    );
+    assert!(
+        items
+            .iter()
+            .any(|i| matches!(i, PaletteItem::Command { .. }))
+    );
 }
 
 #[test]

@@ -3,11 +3,11 @@
 // theory_verification!
 
 use super::worker::{
-    advance_running_frame, drain_worker_commands, make_worker_ring, sync_worker_timeline,
-    FrameTickOutcome,
+    FrameTickOutcome, advance_running_frame, drain_worker_commands, make_worker_ring,
+    sync_worker_timeline,
 };
 use super::{
-    take_worker_context, SimCommand, SimWorkerState, WorkerStatusEvent, WASM_FRAME_SLICE_BUDGET,
+    SimCommand, SimWorkerState, WASM_FRAME_SLICE_BUDGET, WorkerStatusEvent, take_worker_context,
 };
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};

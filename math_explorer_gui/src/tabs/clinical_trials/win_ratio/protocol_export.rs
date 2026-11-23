@@ -11,7 +11,7 @@ use math_explorer::applied::win_ratio::simulation::SimulationParams;
 use math_explorer::applied::win_ratio::u_statistic::UnmatchedWinRatioSummary;
 
 use super::cohort_io::LoadedCohortAnalysis;
-use crate::web_io::{spawn_save_as_file_dialog, SaveAsDialogConfig};
+use crate::web_io::{SaveAsDialogConfig, spawn_save_as_file_dialog};
 
 const CSV_SAVE_CONFIG: SaveAsDialogConfig = SaveAsDialogConfig {
     filter_name: "CSV Protocol Table",

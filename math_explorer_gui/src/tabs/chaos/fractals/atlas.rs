@@ -1,11 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::FractalViewer;
 use super::formula::CompiledFractalJob;
 use super::runner::{COORD_MAX, COORD_MIN, ZOOM_MAX, ZOOM_MIN};
-use super::FractalViewer;
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
-    RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent, RegimeCartographer,
+    atlas_regime_color,
 };
 use eframe::egui;
 use num_complex::Complex;

@@ -3,7 +3,7 @@
 
 use federated_registry::Severity;
 use serde::{Deserialize, Serialize};
-use std::sync::mpsc::{channel, Receiver, TryRecvError};
+use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 // theory_verification!
 
@@ -45,8 +45,8 @@ pub use glicko2_preset_validation::{
 mod markov_preset_validation;
 pub use markov_preset_validation::{
     AbsorbingDtmcWorkbenchConfig, CtmcWorkbenchConfig, DtmcStateKind, HmmWorkbenchConfig,
-    MarkovWorkbenchMode, MarkovWorkbenchPresetConfig, MAX_BAUM_WELCH_ITERATIONS, MAX_HMM_SYMBOLS,
-    MAX_MARKOV_STATES, MAX_OBSERVATION_SEQUENCE_LEN,
+    MAX_BAUM_WELCH_ITERATIONS, MAX_HMM_SYMBOLS, MAX_MARKOV_STATES, MAX_OBSERVATION_SEQUENCE_LEN,
+    MarkovWorkbenchMode, MarkovWorkbenchPresetConfig,
 };
 
 /// Packs `config` into a `"1.0"` [`PresetWrapper`] metadata envelope and serializes it as pretty JSON.

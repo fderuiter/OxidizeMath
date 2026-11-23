@@ -11,12 +11,12 @@ mod tests;
 
 pub use coupled::CoupledExpressionBank;
 pub use params::{
-    ParamSliderSpec, ParameterRangeConfig, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS,
+    MAX_SYNTHESIZED_PARAMS, ParamSliderSpec, ParameterRangeConfig, ParameterSliderBank,
 };
 use scope::VariableScopePolicy;
 
 use eframe::egui;
-use math_commons::ast::{parse_equation, CompiledExpr, Expr, ParseError};
+use math_commons::ast::{CompiledExpr, Expr, ParseError, parse_equation};
 use preview::{render_presets, render_status_row, update_latex_preview};
 use std::collections::{BTreeMap, HashMap};
 use std::ops::RangeInclusive;

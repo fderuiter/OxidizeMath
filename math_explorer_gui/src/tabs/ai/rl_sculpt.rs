@@ -7,13 +7,13 @@ use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
 use crate::async_sim::SculptStatePayload;
 use crate::framework::{
-    decode_rle_mask, encode_rle_mask, rasterize_disk_stroke, BrushMode, BrushStroke,
-    SpatialBrushKit,
+    BrushMode, BrushStroke, SpatialBrushKit, decode_rle_mask, encode_rle_mask,
+    rasterize_disk_stroke,
 };
 use eframe::egui;
 use math_explorer::ai::reinforcement_learning::{
-    BellmanSolution, DenseRlWorkspace, GridCellRole, GridState, MarkovDecisionProcess, Move,
-    SculptedGridMdp, TabularGridPolicy, MAX_RL_GRID_DIM, MIN_RL_GRID_DIM,
+    BellmanSolution, DenseRlWorkspace, GridCellRole, GridState, MAX_RL_GRID_DIM, MIN_RL_GRID_DIM,
+    MarkovDecisionProcess, Move, SculptedGridMdp, TabularGridPolicy,
 };
 
 /// Active reinforcement learning update rule across AI tab tools.

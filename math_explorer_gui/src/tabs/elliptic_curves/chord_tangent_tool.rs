@@ -2,20 +2,20 @@
 // [cite:modular_polynomials_review]
 
 use super::atlas::{
-    build_real_and_fp_observables, default_elliptic_atlas_axes, evaluate_hasse_weil_p23,
-    is_default_elliptic_atlas_axes, CHALLENGE_HASSE_WEIL_BOUNDARY_P23, ELLIPTIC_ATLAS_AXIS_PAIRS,
+    CHALLENGE_HASSE_WEIL_BOUNDARY_P23, ELLIPTIC_ATLAS_AXIS_PAIRS, build_real_and_fp_observables,
+    default_elliptic_atlas_axes, evaluate_hasse_weil_p23, is_default_elliptic_atlas_axes,
 };
 use super::handoff::curve_point_to_affine_fp;
 use super::{chord_tangent_canvas, chord_tangent_scene, chord_tangent_ui};
 use crate::async_sim::atlas::{AtlasTeleportEvent, ParameterAtlasController};
 use crate::framework::{
-    scoped_panel_id, CalloutSpec, ChallengeEvaluation, InteractiveTool, PaneSidePanel,
-    ToolStateBounds,
+    CalloutSpec, ChallengeEvaluation, InteractiveTool, PaneSidePanel, ToolStateBounds,
+    scoped_panel_id,
 };
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{
-    CurvePoint, FpSingularCubic, PrimeWeierstrassCurve, WeierstrassCurve, WeierstrassCurveFp,
-    MAX_LATTICE_PRIME,
+    CurvePoint, FpSingularCubic, MAX_LATTICE_PRIME, PrimeWeierstrassCurve, WeierstrassCurve,
+    WeierstrassCurveFp,
 };
 use math_explorer::pure_math::number_theory::primes::is_prime;
 use serde::{Deserialize, Serialize};
@@ -252,11 +252,10 @@ impl WeierstrassPlaygroundTool {
             }
         } else if let Ok(Some(sing)) =
             FpSingularCubic::classify(self.state.mod_a, self.state.mod_b, self.state.prime_p)
+            && let Ok(written) = sing.write_affine_points(&mut scratch)
         {
-            if let Ok(written) = sing.write_affine_points(&mut scratch) {
-                scratch.truncate(written);
-                self.lattice_points = scratch;
-            }
+            scratch.truncate(written);
+            self.lattice_points = scratch;
         }
         if !self.lattice_points.is_empty() {
             let len = self.lattice_points.len();

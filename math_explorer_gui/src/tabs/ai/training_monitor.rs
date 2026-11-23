@@ -256,8 +256,8 @@ impl InteractiveTool for TrainingMonitorTool {
 }
 
 fn generate_spiral_data(points_per_class: usize) -> Vec<(Vector, Vector)> {
-    use rand::seq::SliceRandom;
     use rand::Rng;
+    use rand::seq::SliceRandom;
 
     let mut rng = oxidize_core::rng::OxidizeRng::default();
     let mut data = Vec::new();
@@ -268,8 +268,8 @@ fn generate_spiral_data(points_per_class: usize) -> Vec<(Vector, Vector)> {
             let r = i as f64 / n as f64;
             let t = 2.5 * r * 2.0 * PI + (class_idx as f64 * PI);
 
-            let x = r * t.sin() + rng.gen::<f64>() * 0.1;
-            let y = r * t.cos() + rng.gen::<f64>() * 0.1;
+            let x = r * t.sin() + rng.r#gen::<f64>() * 0.1;
+            let y = r * t.cos() + rng.r#gen::<f64>() * 0.1;
 
             let input = Vector::from_vec(vec![x, y]);
             let target = if class_idx == 0 {

@@ -2,9 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::FinancialMathTab;
 use super::market_devig::MarketDeviggingTool;
 use super::market_execution::{ExecutionCalculatorMode, MarketExecutionTool};
-use super::FinancialMathTab;
 use crate::framework::{ExportFormat, InteractiveTool, SimulationFramework};
 use crate::tabs::ExplorerTab;
 use eframe::egui;

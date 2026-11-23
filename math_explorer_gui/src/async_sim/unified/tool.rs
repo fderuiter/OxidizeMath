@@ -185,10 +185,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
     /// Dispatches an interpolated [`BrushStroke`] to both UI sculpt state and the background worker.
     pub fn dispatch_brush_stroke(&mut self, stroke: BrushStroke, ctx: Option<&egui::Context>) {
-        if let Some(ext) = &mut self.ui_extension {
-            if !ext.on_brush_stroke(&stroke) {
-                return;
-            }
+        if let Some(ext) = &mut self.ui_extension
+            && !ext.on_brush_stroke(&stroke)
+        {
+            return;
         }
         if M::supports_spatial_brush() {
             let params_snap = self

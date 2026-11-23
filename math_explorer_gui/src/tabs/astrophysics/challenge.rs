@@ -4,10 +4,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::rotation_curve_tool::{RotationCurveExplorer, RotationCurveState};
-use super::{clamp_finite, HaloKindChoice};
+use super::{HaloKindChoice, clamp_finite};
 use crate::framework::{ChallengeEvaluation, ChallengeMetadata, InteractiveTool};
 use math_explorer::physics::astrophysics::{
-    decompose_rotation_curve, BaryonicDiskConfig, DwarfMorphology, HaloProfile,
+    BaryonicDiskConfig, DwarfMorphology, HaloProfile, decompose_rotation_curve,
 };
 
 /// Canonical challenge ID for fitting the mystery irregular dwarf-galaxy dark-matter halo.

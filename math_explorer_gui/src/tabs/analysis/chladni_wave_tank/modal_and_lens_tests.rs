@@ -4,23 +4,23 @@
 
 use std::f64::consts::TAU;
 
-use eframe::egui::{vec2, Context, Pos2, RawInput, Rect};
+use eframe::egui::{Context, Pos2, RawInput, Rect, vec2};
 use math_explorer::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::analysis::pde::wave_2d::masks::clamped_beam_eigenfunction;
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    analytic_clamped_square_omega, BoundaryMode2D,
+    BoundaryMode2D, analytic_clamped_square_omega,
 };
 
 use super::eigenmodes::{
     eigenmode_sample, mode_frequency_hz, mode_metric_label, seed_eigenmode_field,
 };
 use super::refractive::{
-    detector_focal_metrics, DEFAULT_BICONVEX_EXPR, DEFAULT_GRIN_EXPR, DEFAULT_LUNEBURG_EXPR,
+    DEFAULT_BICONVEX_EXPR, DEFAULT_GRIN_EXPR, DEFAULT_LUNEBURG_EXPR, detector_focal_metrics,
 };
 use super::*;
 use crate::app::MathExplorerApp;
 use crate::framework::SimulationFramework;
-use crate::starter_gallery::{find_challenge_by_id, find_story_by_id, StarterPresetMetadata};
+use crate::starter_gallery::{StarterPresetMetadata, find_challenge_by_id, find_story_by_id};
 use crate::url_state::URL_JSON_BOUNDS;
 
 fn raw_frame() -> RawInput {
@@ -261,9 +261,11 @@ fn test_sixteen_custom_clamps_byte_budget_and_formula_url_roundtrip() {
     let hash = &url[url.find('#').unwrap()..];
 
     let mut restored_app = MathExplorerApp::default();
-    assert!(restored_app
-        .apply_share_location_strings(hash, "", None)
-        .unwrap());
+    assert!(
+        restored_app
+            .apply_share_location_strings(hash, "", None)
+            .unwrap()
+    );
     let restored = restored_app.tabs[idx]
         .framework()
         .unwrap()

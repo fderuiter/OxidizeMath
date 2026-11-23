@@ -285,15 +285,15 @@ impl OdeSolverTool {
                 );
 
                 let resp = plot_ui.response();
-                if resp.clicked() || resp.dragged() {
-                    if let Some(pt) = plot_ui.pointer_coordinate() {
-                        if pt.x.is_finite() && pt.y.is_finite() {
-                            picked = Some([
-                                pt.x.clamp(-MINIMAP_TAU_BOUND, MINIMAP_TAU_BOUND),
-                                pt.y.clamp(MINIMAP_DELTA_MIN, MINIMAP_DELTA_MAX),
-                            ]);
-                        }
-                    }
+                if (resp.clicked() || resp.dragged())
+                    && let Some(pt) = plot_ui.pointer_coordinate()
+                    && pt.x.is_finite()
+                    && pt.y.is_finite()
+                {
+                    picked = Some([
+                        pt.x.clamp(-MINIMAP_TAU_BOUND, MINIMAP_TAU_BOUND),
+                        pt.y.clamp(MINIMAP_DELTA_MIN, MINIMAP_DELTA_MAX),
+                    ]);
                 }
             });
 

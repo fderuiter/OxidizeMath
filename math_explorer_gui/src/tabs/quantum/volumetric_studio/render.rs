@@ -3,18 +3,17 @@
 // [cite:isosurface_extraction]
 // [cite:gaussian_splatting]
 
-use super::state::{
-    SliceAxis, VolumetricRenderMode, VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT,
-};
 use super::VolumetricFieldStudioTool;
+use super::state::{
+    STUDIO_VIEWPORT_EXTENT, SliceAxis, VolumetricRenderMode, VolumetricStudioConfig,
+};
 use crate::accessibility::AccessibleTheoryHover;
 use crate::camera::{Camera3D, Plot3DViewport};
 use crate::volumetric_scene::SPLAT_GRID_SIZE;
 use eframe::egui;
 use egui_plot::{Line, PlotImage, PlotPoint, PlotPoints, Points, Polygon};
 
-const VIEWPORT_HELPER: &str =
-    "Drag or WASD to orbit, scroll or Q/E to zoom, click volume to probe/perturb, double-click or R to reset.";
+const VIEWPORT_HELPER: &str = "Drag or WASD to orbit, scroll or Q/E to zoom, click volume to probe/perturb, double-click or R to reset.";
 
 impl VolumetricFieldStudioTool {
     pub(super) fn draw_viewport(&mut self, parent_ui: &mut egui::Ui) {
@@ -45,13 +44,14 @@ impl VolumetricFieldStudioTool {
                 self.engine.step_and_extract_zero_alloc(&self.config, false);
                 self.splat_dirty = true;
             }
-            if response.clicked() && !response.dragged() {
-                if let Some(pt2d) = hover_plot_coord {
-                    let world_pt = unproject_click_to_world([pt2d.x, pt2d.y], &self.config);
-                    self.engine.apply_probe_or_pulse(&mut self.config, world_pt);
-                    self.splat_dirty = true;
-                    ui.ctx().request_repaint();
-                }
+            if response.clicked()
+                && !response.dragged()
+                && let Some(pt2d) = hover_plot_coord
+            {
+                let world_pt = unproject_click_to_world([pt2d.x, pt2d.y], &self.config);
+                self.engine.apply_probe_or_pulse(&mut self.config, world_pt);
+                self.splat_dirty = true;
+                ui.ctx().request_repaint();
             }
             response.accessible_theory_hover(self);
         });

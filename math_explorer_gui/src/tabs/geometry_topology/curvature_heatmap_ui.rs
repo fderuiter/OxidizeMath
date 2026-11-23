@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{CurvatureHeatmap, CurvatureType, SurfaceType};
-use crate::framework::{Plot3DViewport, CAMERA_3D_HELPER_TEXT};
+use crate::framework::{CAMERA_3D_HELPER_TEXT, Plot3DViewport};
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 

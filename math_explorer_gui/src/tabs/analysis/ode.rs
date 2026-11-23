@@ -15,16 +15,16 @@ pub mod ui;
 
 #[cfg(test)]
 use comparison::simulate_preset;
-use comparison::{simulate_ode, SolverDiscrepancy, SolverTrajectory};
+use comparison::{SolverDiscrepancy, SolverTrajectory, simulate_ode};
 use phase_plane::{DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID};
-use poincare_map::{trace_det_from_matrix, DEFAULT_MATRIX_A};
-use systems::{default_coupled_ode_bank, CustomOdeSpec};
+use poincare_map::{DEFAULT_MATRIX_A, trace_det_from_matrix};
+use systems::{CustomOdeSpec, default_coupled_ode_bank};
 
+#[cfg(test)]
+use crate::framework::InteractiveTool;
 use crate::framework::math_input::CoupledExpressionBank;
 use crate::framework::recovery::emit_divergence_telemetry;
 pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-#[cfg(test)]
-use crate::framework::InteractiveTool;
 use crate::framework::{CalloutManager, MathExpressionInputBar, TraceSeries, TraceSnapshotManager};
 use crate::presets::OdePreset;
 #[cfg(test)]

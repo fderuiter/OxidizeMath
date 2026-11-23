@@ -7,8 +7,8 @@ use std::sync::OnceLock;
 
 use scientific_metadata::theory::TheoryDescribable;
 
-use super::state::RegimenState;
 use super::PharmacokineticRegimenTool;
+use super::state::RegimenState;
 
 fn preset_loading_dose_json() -> &'static str {
     static JSON: OnceLock<String> = OnceLock::new();

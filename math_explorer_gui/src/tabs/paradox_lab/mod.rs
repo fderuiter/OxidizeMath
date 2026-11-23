@@ -1,7 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::accessibility::AccessibleHoverText;
-use crate::tabs::{ExplorerTab, TabDescriptor};
+#[cfg(test)]
+use crate::tabs::ExplorerTab;
 use eframe::egui;
 
 pub mod braess;
@@ -9,20 +10,16 @@ mod braess_ui;
 pub mod parrondo;
 mod parrondo_ui;
 
-/// Interactive Paradox Lab tab hosting Parrondo's ratchet and Braess's congestion paradox.
-pub struct ParadoxLabTab {
-    framework: crate::framework::SimulationFramework,
-}
+crate::declare_simulation_tab!(
+    /// Interactive Paradox Lab tab hosting Parrondo's ratchet and Braess's congestion paradox (`[cite:paradox_lab]`).
+    pub struct ParadoxLabTab,
+    name: "Paradox Lab",
+    domain: "Applied Math",
+    slug: "paradox_lab",
+    order: 35,
+);
 
-impl Default for ParadoxLabTab {
-    /// Instantiates the Paradox Lab framework domain (`[cite:paradox_lab]`).
-    fn default() -> Self {
-        Self {
-            framework: crate::framework::SimulationFramework::new("paradox_lab"),
-        }
-    }
-}
-
+/// Renders the Paradox Lab tool header and theory trigger (`[cite:paradox_lab]`).
 pub(super) fn render_tool_header(ui: &mut egui::Ui, tool_name: &str) {
     ui.horizontal(|ui| {
         ui.heading(tool_name);
@@ -41,56 +38,6 @@ pub(super) fn render_tool_header(ui: &mut egui::Ui, tool_name: &str) {
     ui.separator();
 }
 
-impl ExplorerTab for ParadoxLabTab {
-    fn name(&self) -> &'static str {
-        "Paradox Lab"
-    }
-
-    fn academic_domain(&self) -> &'static str {
-        "Applied Math"
-    }
-
-    fn url_slug(&self) -> &'static str {
-        "paradox_lab"
-    }
-
-    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.framework.show_inside(ui, "paradox_lab");
-    }
-
-    fn state_revision(&self) -> u64 {
-        self.framework.state_revision()
-    }
-
-    fn save_state(&self) -> Option<String> {
-        self.framework.save_state()
-    }
-
-    fn load_state(&mut self, state: &str) {
-        self.framework.load_state(state);
-    }
-
-    fn select_tool_by_name(&mut self, name: &str) -> bool {
-        self.framework.select_tool_by_name(name)
-    }
-
-    fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
-        Some(&self.framework)
-    }
-
-    fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
-        Some(&mut self.framework)
-    }
-}
-
-inventory::submit! {
-    TabDescriptor {
-        id: "paradox_lab",
-        order: 35,
-        build: || Box::new(ParadoxLabTab::default()),
-    }
-}
-
 // [cite:paradox_lab]
 // [cite:graph_parameters_rust]
 
@@ -98,7 +45,7 @@ inventory::submit! {
 mod tests {
     #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-    use super::braess::{check_braess_fixed_point, BraessNetworkParadoxTool};
+    use super::braess::{BraessNetworkParadoxTool, check_braess_fixed_point};
     use super::parrondo::{ParrondoParadoxTool, ParrondoVariant};
     use super::*;
     use crate::app::{MathExplorerApp, ThemeMode};

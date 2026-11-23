@@ -1,15 +1,15 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::challenge::{
-    evaluate_mystery_residuals_into, MYSTERY_DWARF_TARGETS, NUM_MYSTERY_TARGETS,
+    MYSTERY_DWARF_TARGETS, NUM_MYSTERY_TARGETS, evaluate_mystery_residuals_into,
 };
 use super::rotation_curve_relativity::RotationRelativityConfig;
-use super::{clamp_finite, HaloKindChoice};
+use super::{HaloKindChoice, clamp_finite};
 use crate::framework::{CalloutManager, FiniteStateGuard, InteractiveTool, TraceSnapshotManager};
 use eframe::egui;
 use math_explorer::physics::astrophysics::{
-    sample_rotation_curve_into, BaryonicDiskConfig, DwarfMorphology, Magnitude, Mpc,
-    ThinLensSample, VelocityDecomposition,
+    BaryonicDiskConfig, DwarfMorphology, Magnitude, Mpc, ThinLensSample, VelocityDecomposition,
+    sample_rotation_curve_into,
 };
 
 const CURVE_SAMPLES: usize = 96;

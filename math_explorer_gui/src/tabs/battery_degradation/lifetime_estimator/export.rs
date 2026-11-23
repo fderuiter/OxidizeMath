@@ -8,7 +8,7 @@
 use super::LifetimeEstimatorTool;
 use crate::tabs::battery_degradation::cell_card::sanitize_csv_text_cell;
 use math_explorer::applied::battery_degradation::{
-    evaluate_duty_point, DutyPointBreakdown, DAYS_PER_YEAR,
+    DAYS_PER_YEAR, DutyPointBreakdown, evaluate_duty_point,
 };
 
 const MAX_EXPORT_YEARS: usize = 50;

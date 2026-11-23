@@ -10,10 +10,10 @@ use std::f64::consts::{PI, TAU};
 use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
 use egui_plot::{LineStyle, MarkerShape};
-use math_explorer::physics::quantum::{evolve_state_in_place, spin, QuantumOperator, QuantumState};
+use math_explorer::physics::quantum::{QuantumOperator, QuantumState, evolve_state_in_place, spin};
 use nalgebra::{DMatrix, DVector, Point3};
 use num_complex::Complex;
-use spin_interaction::{b_field_visual_tip, BlochSteerTarget};
+use spin_interaction::{BlochSteerTarget, b_field_visual_tip};
 
 /// Interactive quantum spin-1/2 Bloch sphere visualizer built on `Plot3DViewport` and `Scene3DBuilder`.
 pub struct SpinVisualizer {
@@ -272,17 +272,16 @@ impl InteractiveTool for SpinVisualizer {
         {
             return Err("b_field components must be finite in [-5.0, 5.0]".to_string());
         }
-        if let Some([theta, phi]) = loaded.initial_bloch_angles {
-            if !theta.is_finite()
+        if let Some([theta, phi]) = loaded.initial_bloch_angles
+            && (!theta.is_finite()
                 || !(0.0..=PI).contains(&theta)
                 || !phi.is_finite()
-                || !(-TAU..=TAU).contains(&phi)
-            {
-                return Err(
-                    "initial_bloch_angles must have finite theta in [0, pi] and phi in [-2pi, 2pi]"
-                        .to_string(),
-                );
-            }
+                || !(-TAU..=TAU).contains(&phi))
+        {
+            return Err(
+                "initial_bloch_angles must have finite theta in [0, pi] and phi in [-2pi, 2pi]"
+                    .to_string(),
+            );
         }
         let camera = Camera3D::from_preset_fields(
             loaded.camera,

@@ -4,7 +4,7 @@ use super::galactic_orbits_tool::GalacticOrbitSimulator;
 use super::rotation_curve_tool::RotationCurveExplorer;
 use super::*;
 use crate::framework::{FiniteStateGuard, InteractiveTool};
-use egui_plot::export::{color32_image_to_png, format_csv, ExportOptions};
+use egui_plot::export::{ExportOptions, color32_image_to_png, format_csv};
 use egui_plot::export_primitives::{
     datasets_to_primitives, export_primitives_svg, render_primitives_image,
 };
@@ -33,11 +33,12 @@ fn test_type_code_95_to_99_renders_unestablished_badge_without_panic() {
     tool.cfg.morphology = DwarfMorphology::TypeCode95To99;
     tool.cfg.use_absolute_magnitude = false;
     tool.recalculate();
-    assert!(tool
-        .current_baryons()
-        .scaling
-        .apparent_magnitude_b
-        .is_none());
+    assert!(
+        tool.current_baryons()
+            .scaling
+            .apparent_magnitude_b
+            .is_none()
+    );
 
     let raw = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -145,12 +146,16 @@ fn test_interactive_orbit_caustic_drag_and_nfw_vs_burkert_exports() {
 
     egui_plot::clear_last_plot_datasets();
     let orbit_ds = sim.export_datasets();
-    assert!(orbit_ds
-        .iter()
-        .any(|(n, _)| n.contains("NFW Cusp Critical")));
-    assert!(orbit_ds
-        .iter()
-        .any(|(n, _)| n.contains("Burkert Core Critical")));
+    assert!(
+        orbit_ds
+            .iter()
+            .any(|(n, _)| n.contains("NFW Cusp Critical"))
+    );
+    assert!(
+        orbit_ds
+            .iter()
+            .any(|(n, _)| n.contains("Burkert Core Critical"))
+    );
     assert_valid_dataset_and_figure_exports(&orbit_ds);
 
     let mut rc = RotationCurveExplorer::default();
@@ -179,9 +184,11 @@ fn test_interactive_orbit_caustic_drag_and_nfw_vs_burkert_exports() {
 
     egui_plot::clear_last_plot_datasets();
     let rc_ds = rc.export_datasets();
-    assert!(rc_ds
-        .iter()
-        .any(|(n, _)| n.contains("Schwarzschild Time Dilation")));
+    assert!(
+        rc_ds
+            .iter()
+            .any(|(n, _)| n.contains("Schwarzschild Time Dilation"))
+    );
     assert_valid_dataset_and_figure_exports(&rc_ds);
 }
 

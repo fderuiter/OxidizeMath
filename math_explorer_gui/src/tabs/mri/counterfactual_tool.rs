@@ -3,16 +3,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::counterfactual::{
-    step_bloch_rotating_frame, MriForkDescriptor, MriTwinState, MRI_STEP_DT,
+    MRI_STEP_DT, MriForkDescriptor, MriTwinState, step_bloch_rotating_frame,
 };
 use super::runner::MriRunner;
 use super::tool::MriTool;
-use crate::accessibility::{announce_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_status};
 use crate::app::SemanticPalette;
 use crate::async_sim::SimCommand;
 use crate::framework::{
-    branch_a_ghost_line, branch_b_solid_line, fork_marker_callout, fork_marker_vline,
-    BranchControlAction,
+    BranchControlAction, branch_a_ghost_line, branch_b_solid_line, fork_marker_callout,
+    fork_marker_vline,
 };
 use eframe::egui;
 use egui_plot::{Line, PlotPoint};

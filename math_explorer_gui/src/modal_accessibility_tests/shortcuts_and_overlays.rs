@@ -6,7 +6,7 @@ use super::helpers::{
     has_rendered_text, key_evt, run_app, screen_rect,
 };
 use crate::app::{MathExplorerApp, ViewportLayout};
-use eframe::egui::{self, accesskit, Context, Id, Key, Modifiers};
+use eframe::egui::{self, Context, Id, Key, Modifiers, accesskit};
 use egui_plot::commands::CommandRegistryData;
 use std::collections::HashSet;
 
@@ -266,12 +266,13 @@ fn test_command_palette_full_app_close_button_covered_guard_and_selected_pane_fo
     let _ = run_app(&ctx, &mut app, Vec::new());
     assert!(!app.command_palette.is_open);
     assert_eq!(app.focused_pane, 1);
-    assert!(app
-        .pane_tab(1)
-        .unwrap()
-        .name()
-        .to_lowercase()
-        .contains("fluid"));
+    assert!(
+        app.pane_tab(1)
+            .unwrap()
+            .name()
+            .to_lowercase()
+            .contains("fluid")
+    );
     let focused_after = ctx
         .memory(|m| m.focused())
         .expect("Selected pane must receive focus");
@@ -287,10 +288,11 @@ fn verify_theory_portal_in_tab(tab_idx: usize) {
     let mut app = MathExplorerApp::default();
     let tab_name = app.tabs[tab_idx].name();
     app.select_tab(&ctx, tab_idx);
-    if let Some(fw) = app.tabs[tab_idx].framework_mut() {
-        if fw.active_tool.is_none() && !fw.available_tools.is_empty() {
-            fw.select_tool(0);
-        }
+    if let Some(fw) = app.tabs[tab_idx].framework_mut()
+        && fw.active_tool.is_none()
+        && !fw.available_tools.is_empty()
+    {
+        fw.select_tool(0);
     }
 
     let out0 = run_app(&ctx, &mut app, Vec::new());

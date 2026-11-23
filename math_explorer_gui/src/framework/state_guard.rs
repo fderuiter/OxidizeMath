@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::recovery::*;
 use super::SimulationFramework;
+use super::recovery::*;
 
 #[path = "state_guard/rollback.rs"]
 mod rollback;

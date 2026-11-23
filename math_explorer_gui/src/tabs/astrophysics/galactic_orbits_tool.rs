@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::galactic_orbits_relativity::{
-    clamp_bh_config, is_valid_bh_config, OrbitLensOverlayConfig,
+    OrbitLensOverlayConfig, clamp_bh_config, is_valid_bh_config,
 };
-use super::{clamp_finite, HaloKindChoice};
+use super::{HaloKindChoice, clamp_finite};
 use crate::framework::{FiniteStateGuard, InteractiveTool};
 use eframe::egui;
 use math_explorer::physics::astrophysics::{

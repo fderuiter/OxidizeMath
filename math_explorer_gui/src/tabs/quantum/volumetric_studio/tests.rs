@@ -1,16 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 //! Unit, zero-allocation (`VerifiedAllocator`), cutting-plane, `.obj` export, and contract tests.
 
+use super::VolumetricFieldStudioTool;
 use super::presets::{
-    PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3DZ2_CONE_JSON, PRESET_3D_TURING_GYROID_JSON,
+    PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3D_TURING_GYROID_JSON, PRESET_3DZ2_CONE_JSON,
     PRESET_CSG_BOOLEAN_SOLID_JSON, PRESET_GYROID_TPMS_JSON, PRESET_SCHWARZ_P_SHELL_JSON,
 };
 use super::state::{
     FieldSourceMode, ImplicitClosureMode, SliceAxis, VolumetricRenderMode, VolumetricStudioConfig,
 };
-use super::VolumetricFieldStudioTool;
-use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::InteractiveTool;
+use crate::framework::recovery::FiniteStateGuard;
 use crate::tabs::geometry_topology::export_utils::{
     count_open_and_nonmanifold_edges, signed_volume,
 };
@@ -264,9 +264,11 @@ fn assert_watertight_outward_solid_and_stl(
     );
     let stl = export_mesh_to_stl_binary(&mesh).expect("binary STL serialization");
     assert_eq!(stl.len(), 84 + 50 * (mesh.indices.len() / 3));
-    assert!(std::str::from_utf8(&stl[..80])
-        .unwrap_or("")
-        .contains("UNITS=mm"));
+    assert!(
+        std::str::from_utf8(&stl[..80])
+            .unwrap_or("")
+            .contains("UNITS=mm")
+    );
     let max_span = compute_mesh_max_span(&mesh);
     assert!(
         (max_span - expected_span_mm).abs() <= 0.01,

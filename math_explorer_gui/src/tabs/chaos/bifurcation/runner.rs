@@ -8,12 +8,12 @@ use crate::async_sim::{
     BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner, StateSnapshot,
 };
 use crate::framework::recovery::DiagnosticReport;
-use crate::framework::{MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
+use crate::framework::{MAX_SYNTHESIZED_PARAMS, MathExpressionInputBar};
 use eframe::egui;
 use egui_plot::PlotPoint;
-use math_commons::ast::{parse, CompiledExpr};
+use math_commons::ast::{CompiledExpr, parse};
 use math_explorer::physics::chaos::logistic::{
-    self, LogisticMap, ATTRACTOR_POINTS, TRANSIENT_STEPS,
+    self, ATTRACTOR_POINTS, LogisticMap, TRANSIENT_STEPS,
 };
 use math_explorer::physics::chaos::metrics::logistic_lyapunov;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -56,10 +56,10 @@ impl CompiledMap1DJob {
     #[must_use]
     pub fn eval(&self, r: f64, x: f64, param0_override: Option<f64>) -> f64 {
         let mut p = self.params;
-        if let Some(p0) = param0_override {
-            if self.param_len > 0 {
-                p[0] = p0;
-            }
+        if let Some(p0) = param0_override
+            && self.param_len > 0
+        {
+            p[0] = p0;
         }
         self.compiled.eval_2d(r, x, &p[..self.param_len])
     }
@@ -418,20 +418,18 @@ impl BifurcationDiagram {
     }
 
     pub(super) fn sync_from_worker(&mut self, ctx: &egui::Context) {
-        if let Some(snap) = self.worker.update() {
-            if let Some(data) = snap
+        if let Some(snap) = self.worker.update()
+            && let Some(data) = snap
                 .structured_data
                 .as_ref()
                 .and_then(|d| d.downcast_ref::<BifurcationSweepSnapshot>())
-            {
-                if data.generation == self.request_generation {
-                    self.points.clone_from(&data.points);
-                    self.lyapunov_points.clone_from(&data.lyapunov_points);
-                    if data.is_final {
-                        self.completed_generation = data.generation;
-                        self.recompute_coupled_views();
-                    }
-                }
+            && data.generation == self.request_generation
+        {
+            self.points.clone_from(&data.points);
+            self.lyapunov_points.clone_from(&data.lyapunov_points);
+            if data.is_final {
+                self.completed_generation = data.generation;
+                self.recompute_coupled_views();
             }
         }
         if self.completed_generation != self.request_generation && self.worker.state().is_ready() {

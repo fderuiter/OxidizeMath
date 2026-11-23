@@ -7,9 +7,9 @@ use std::f64::consts::TAU;
 use super::backend::{MuteReason, SonificationBackend};
 use super::fourier::PresetHarmonicBank;
 use super::frame::{
-    clamp_freq_hz, linear_to_dbfs, sanitize_f32, soft_limit_sample, HarmonicWeights, MeterReading,
-    SonificationFrame, FLOOR_DBFS, LIMITER_CEILING_LINEAR, MAX_VOICES, MUTE_RAMP_TAU_SEC,
-    NUM_HARMONICS, PARAM_SMOOTH_TAU_SEC,
+    FLOOR_DBFS, HarmonicWeights, LIMITER_CEILING_LINEAR, MAX_VOICES, MUTE_RAMP_TAU_SEC,
+    MeterReading, NUM_HARMONICS, PARAM_SMOOTH_TAU_SEC, SonificationFrame, clamp_freq_hz,
+    linear_to_dbfs, sanitize_f32, soft_limit_sample,
 };
 
 #[derive(Clone, Copy, Debug)]

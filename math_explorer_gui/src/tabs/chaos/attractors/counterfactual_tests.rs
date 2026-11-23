@@ -102,11 +102,12 @@ fn test_attractor_swap_clear_reset_zero_alloc_and_twin_exports() {
 
     assert!(fw.dispatch_branch_action(BranchControlAction::SwapBranches));
     assert!(fw.dispatch_branch_action(BranchControlAction::ClearFork));
-    assert!(fw
-        .active_tool
-        .as_ref()
-        .and_then(|t| t.counterfactual_snapshot())
-        .is_none());
+    assert!(
+        fw.active_tool
+            .as_ref()
+            .and_then(|t| t.counterfactual_snapshot())
+            .is_none()
+    );
 }
 
 #[cfg(feature = "epidemiology")]
@@ -239,11 +240,12 @@ fn test_sir_swap_clear_reset_and_exports() {
     assert!(swapped.primary_delta.unwrap().raw_value < 0.0);
 
     assert!(fw.dispatch_branch_action(BranchControlAction::ClearFork));
-    assert!(fw
-        .active_tool
-        .as_ref()
-        .and_then(|t| t.counterfactual_snapshot())
-        .is_none());
+    assert!(
+        fw.active_tool
+            .as_ref()
+            .and_then(|t| t.counterfactual_snapshot())
+            .is_none()
+    );
 }
 
 #[cfg(feature = "epidemiology")]

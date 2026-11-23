@@ -3,7 +3,7 @@
 //! Stack-resident seismic crackle and modal resonance sonification for Abelian sandpile avalanches.
 
 use crate::audio::frame::{
-    SonificationFrame, VoiceSpec, WaveformPreset, LIMITER_CEILING_LINEAR, MAX_VOICES,
+    LIMITER_CEILING_LINEAR, MAX_VOICES, SonificationFrame, VoiceSpec, WaveformPreset,
 };
 
 /// Synthesizes a zero-allocation [`SonificationFrame`] mapping sandpile wavefront topples,

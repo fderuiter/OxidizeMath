@@ -4,14 +4,15 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::{bounded_drag_value, ExportCapabilities, InteractiveTool, ToolStateBounds};
+use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds, bounded_drag_value};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 
 use super::win_ratio_io::{
-    evaluate_cohort, evaluate_weibull_simulator, format_waterfall_csv, format_waterfall_json,
-    parse_win_ratio_cohort, CohortEvaluation, FileDialogChannels, PairingMode, TierComparatorKind,
-    TierSpec, WeibullEvaluation, WeibullSimConfig, WinRatioView, MAX_WIN_RATIO_TIERS,
+    CohortEvaluation, FileDialogChannels, MAX_WIN_RATIO_TIERS, PairingMode, TierComparatorKind,
+    TierSpec, WeibullEvaluation, WeibullSimConfig, WinRatioView, evaluate_cohort,
+    evaluate_weibull_simulator, format_waterfall_csv, format_waterfall_json,
+    parse_win_ratio_cohort,
 };
 use super::win_ratio_weibull::{
     render_waterfall_bar_plot, render_weibull_controls_grid, render_weibull_curves_plot,
@@ -150,23 +151,21 @@ impl WinRatioWorkbenchTool {
                 .add_enabled(has_eval, egui::Button::new("💾 Save CSV"))
                 .accessible_hover_text("Download tier waterfall summary as CSV")
                 .clicked()
+                && let Some(eval) = &self.cohort_eval
             {
-                if let Some(eval) = &self.cohort_eval {
-                    let csv = format_waterfall_csv(eval, &self.tier_specs);
-                    self.io_channels
-                        .trigger_save_csv("win_ratio_waterfall.csv", csv);
-                }
+                let csv = format_waterfall_csv(eval, &self.tier_specs);
+                self.io_channels
+                    .trigger_save_csv("win_ratio_waterfall.csv", csv);
             }
             if ui
                 .add_enabled(has_eval, egui::Button::new("💾 Save JSON"))
                 .accessible_hover_text("Download tier waterfall summary and CI as JSON")
                 .clicked()
+                && let Some(eval) = &self.cohort_eval
             {
-                if let Some(eval) = &self.cohort_eval {
-                    let json = format_waterfall_json(eval, &self.tier_specs);
-                    self.io_channels
-                        .trigger_save_json("win_ratio_waterfall.json", json);
-                }
+                let json = format_waterfall_json(eval, &self.tier_specs);
+                self.io_channels
+                    .trigger_save_json("win_ratio_waterfall.json", json);
             }
         });
     }
@@ -310,14 +309,14 @@ impl InteractiveTool for WinRatioWorkbenchTool {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        if self.active_view == WinRatioView::WeibullSimulator {
-            if let Some(sim) = &self.weibull_eval {
-                return vec![
-                    ("Control Survival S0(t)".into(), sim.s0_curve.clone()),
-                    ("Treatment Survival S1(t)".into(), sim.s1_curve.clone()),
-                    ("Probability Win Ratio PR(t)".into(), sim.pr_curve.clone()),
-                ];
-            }
+        if self.active_view == WinRatioView::WeibullSimulator
+            && let Some(sim) = &self.weibull_eval
+        {
+            return vec![
+                ("Control Survival S0(t)".into(), sim.s0_curve.clone()),
+                ("Treatment Survival S1(t)".into(), sim.s1_curve.clone()),
+                ("Probability Win Ratio PR(t)".into(), sim.pr_curve.clone()),
+            ];
         }
         let Some(eval) = &self.cohort_eval else {
             return Vec::new();

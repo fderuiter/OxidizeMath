@@ -3,10 +3,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    sanitize_perturbation_delta, BranchControlAction, CounterfactualBranchEngine,
-    DivergenceSnapshot, MAX_PERTURBATION_DELTA, MIN_PERTURBATION_DELTA,
+    BranchControlAction, CounterfactualBranchEngine, DivergenceSnapshot, MAX_PERTURBATION_DELTA,
+    MIN_PERTURBATION_DELTA, sanitize_perturbation_delta,
 };
-use crate::accessibility::{announce_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_status};
 use crate::app::palette::SemanticPalette;
 use crate::framework::InputMode;
 use eframe::egui;
@@ -80,11 +80,10 @@ impl<'a> CounterfactualTransport<'a> {
             if render_swap_and_clear_buttons(ui, self.is_forked, btn_min, &mut action) {
                 return;
             }
-            if self.show_delta_control {
-                if let Some(delta_action) = render_delta_perturbation_widget(ui, self.engine) {
+            if self.show_delta_control
+                && let Some(delta_action) = render_delta_perturbation_widget(ui, self.engine) {
                     action = Some(delta_action);
                 }
-            }
         });
         action
     }

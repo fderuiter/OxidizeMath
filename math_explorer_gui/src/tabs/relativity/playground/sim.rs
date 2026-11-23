@@ -271,10 +271,8 @@ impl GeodesicPlaygroundTool {
                 GeodesicStepStatus::HaltedSingularity => {
                     let (did_adv, sub_lam) =
                         refine_halt_4d(&sys, &mut solver, lambda, &mut state, dt);
-                    if did_adv {
-                        if let Ok(n_end) = sys.metric_norm(&state) {
-                            Self::push_4d_sample(out, meta, sub_lam, &state, n_end);
-                        }
+                    if did_adv && let Ok(n_end) = sys.metric_norm(&state) {
+                        Self::push_4d_sample(out, meta, sub_lam, &state, n_end);
                     }
                     return true;
                 }

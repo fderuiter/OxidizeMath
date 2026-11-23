@@ -173,11 +173,7 @@ impl PotentialFlowTool {
         }
         let jump_cap = {
             let q = self.max_source_jump();
-            if q > 1e-6 {
-                0.42 * q
-            } else {
-                f64::INFINITY
-            }
+            if q > 1e-6 { 0.42 * q } else { f64::INFINITY }
         };
         let step = (2.0 * self.view_range) / (CONTOUR_GRID_N as f64);
         let min = -self.view_range;
@@ -247,10 +243,10 @@ impl PotentialFlowTool {
                 levels.push(psi_s);
             }
         }
-        if let Some((cx, cy, r)) = cyl {
-            if let Some(psi_cyl) = self.sample_psi(cx, cy + r * 1.001, None) {
-                levels.push(psi_cyl);
-            }
+        if let Some((cx, cy, r)) = cyl
+            && let Some(psi_cyl) = self.sample_psi(cx, cy + r * 1.001, None)
+        {
+            levels.push(psi_cyl);
         }
         levels.sort_by(|a, b| a.total_cmp(b));
         levels.dedup_by(|a, b| (*a - *b).abs() < span * 1e-3);
@@ -274,13 +270,12 @@ impl PotentialFlowTool {
                 if self.field.velocity(seed[0], seed[1]).norm() > ref_speed * 0.65 {
                     continue;
                 }
-                if let Some(pt) = self.refine_stagnation(seed, ref_speed, cyl) {
-                    if found
+                if let Some(pt) = self.refine_stagnation(seed, ref_speed, cyl)
+                    && found
                         .iter()
                         .all(|p| (p[0] - pt[0]).hypot(p[1] - pt[1]) > 0.25)
-                    {
-                        found.push(pt);
-                    }
+                {
+                    found.push(pt);
                 }
             }
         }

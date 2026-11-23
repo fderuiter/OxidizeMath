@@ -2,7 +2,7 @@
 
 use super::sculpt::{validate_rle_mask_entries, validate_sparse_potential_entries};
 use super::{CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
-use crate::framework::{InteractiveTool, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
+use crate::framework::{InteractiveTool, MAX_SYNTHESIZED_PARAMS, MathExpressionInputBar};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -72,10 +72,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
     pub(super) fn serialize_tool_state(&self) -> Option<String> {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        if let Some(ext) = &self.ui_extension {
-            if let Some(custom) = ext.save_extra_state(&params) {
-                return Some(custom);
-            }
+        if let Some(ext) = &self.ui_extension
+            && let Some(custom) = ext.save_extra_state(&params)
+        {
+            return Some(custom);
         }
         let formula_ext =
             M::formula_spec()

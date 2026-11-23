@@ -4,17 +4,17 @@ use verified_engine::engine::VerifiedEngine;
 
 use super::backend::{MuteReason, SonificationBackend};
 use super::frame::{
-    SonificationFrame, VoiceSpec, WaveformPreset, FLOOR_DBFS, LIMITER_CEILING_DBFS,
-    LIMITER_CEILING_LINEAR,
+    FLOOR_DBFS, LIMITER_CEILING_DBFS, LIMITER_CEILING_LINEAR, SonificationFrame, VoiceSpec,
+    WaveformPreset,
 };
 #[cfg(feature = "pure_math")]
 use super::frame::{MAX_FREQ_HZ, MIN_FREQ_HZ};
 #[cfg(feature = "pure_math")]
 use super::mappings::chladni_wave_tank_frame;
 use super::mappings::{
-    attractor_frame, bifurcation_frame, hodgkin_huxley_frame, imrt_delivery_frame,
+    LinacGatePhase, attractor_frame, bifurcation_frame, hodgkin_huxley_frame, imrt_delivery_frame,
     just_intonation_ratio, neural_ring_frame, prime_chord_frame, quantum_wavepacket_frame,
-    radar_linac_frame, spike_analysis_frame, LinacGatePhase,
+    radar_linac_frame, spike_analysis_frame,
 };
 use super::synth::OfflinePcmSynthesizer;
 use super::ui::{format_meter_readout, meter_fill_fraction, render_sonification_panel};
@@ -282,9 +282,10 @@ fn test_mute_within_30ms_wav_encoding_and_accessible_ui_themes() {
     super::toggle_mute_from_user_gesture();
     super::on_webgl_context_lost();
     let msgs = crate::accessibility::all_announcements();
-    assert!(msgs
-        .iter()
-        .any(|(text, prio)| prio == "polite" && text.contains("suspended cleanly")));
+    assert!(
+        msgs.iter()
+            .any(|(text, prio)| prio == "polite" && text.contains("suspended cleanly"))
+    );
 }
 
 fn sample_medical_step_frame(step: usize, phase: f64) -> SonificationFrame {
@@ -343,7 +344,7 @@ fn build_free_and_pinned_plate_solvers(
     math_explorer::pure_math::analysis::pde::wave_2d::Wave2DSolver,
     math_explorer::pure_math::analysis::pde::wave_2d::Wave2DSolver,
 ) {
-    use math_explorer::pure_math::analysis::pde::wave_2d::{apply_point_clamp, Wave2DSolver};
+    use math_explorer::pure_math::analysis::pde::wave_2d::{Wave2DSolver, apply_point_clamp};
     let mut free_solver = Wave2DSolver::new_unit_square(n);
     let mut pinned_solver = Wave2DSolver::new_unit_square(n);
     for (cx, cy) in [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)] {

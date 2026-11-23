@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{focus, CURRENT_PANE_RECT_KEY};
+use super::{CURRENT_PANE_RECT_KEY, focus};
 use crate::app::dataflow_bus::{
     commit_pane_outputs, compatible_stream_kind, stage_pane_inputs, tool_accepted_streams,
     tool_produced_stream,

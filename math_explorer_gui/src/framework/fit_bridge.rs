@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use egui_plot::{CustomFitEvaluator, MAX_FIT_PARAMS};
-use math_commons::ast::{is_universal_constant, parse_equation, CompiledExpr, Expr};
+use math_commons::ast::{CompiledExpr, Expr, is_universal_constant, parse_equation};
 
 #[derive(Debug)]
 struct CompiledCustomFitEvaluator {

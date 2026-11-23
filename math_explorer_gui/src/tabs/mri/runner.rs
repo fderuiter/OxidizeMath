@@ -105,10 +105,8 @@ impl MriRunner {
         let dt = 0.001;
         for _ in 0..ticks {
             let next_time = self.current_time + dt;
-            if step_twin_too {
-                if let Some(ref mut twin) = self.twin {
-                    twin.step_branch_a(next_time, dt, self.max_history);
-                }
+            if step_twin_too && let Some(ref mut twin) = self.twin {
+                twin.step_branch_a(next_time, dt, self.max_history);
             }
             let used_spin_echo = self.twin.as_mut().is_some_and(|twin| {
                 twin.step_branch_b_spin_echo(&mut self.simulator, &mut self.solver, dt)
@@ -126,10 +124,8 @@ impl MriRunner {
                 self.history.pop_front();
             }
             self.history.push_back((self.current_time, m));
-            if step_twin_too {
-                if let Some(ref mut twin) = self.twin {
-                    twin.observe_lockstep(self.current_time, m);
-                }
+            if step_twin_too && let Some(ref mut twin) = self.twin {
+                twin.observe_lockstep(self.current_time, m);
             }
         }
     }
@@ -288,19 +284,19 @@ impl SimulationRunner for MriRunner {
     }
 
     fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
-        if let Some(s) = checkpoint.state.as_scalars() {
-            if s.len() >= 4 {
-                self.simulator.magnetization = Vector3::new(s[0], s[1], s[2]);
-                self.current_time = s[3];
-            }
+        if let Some(s) = checkpoint.state.as_scalars()
+            && s.len() >= 4
+        {
+            self.simulator.magnetization = Vector3::new(s[0], s[1], s[2]);
+            self.current_time = s[3];
         }
-        if let Some(p) = checkpoint.params.as_scalars() {
-            if p.len() >= 6 {
-                self.simulator.m0 = p[0];
-                self.simulator.t1 = p[1];
-                self.simulator.t2 = p[2];
-                self.simulator.b_field = Vector3::new(p[3], p[4], p[5]);
-            }
+        if let Some(p) = checkpoint.params.as_scalars()
+            && p.len() >= 6
+        {
+            self.simulator.m0 = p[0];
+            self.simulator.t1 = p[1];
+            self.simulator.t2 = p[2];
+            self.simulator.b_field = Vector3::new(p[3], p[4], p[5]);
         }
         self.step_count = checkpoint.step;
         self.rng = checkpoint.rng.clone();
@@ -326,23 +322,23 @@ impl SimulationRunner for MriRunner {
             .filter(|cp| include_zero || cp.step >= 1)
             .skip(skip)
         {
-            if let Some(s) = cp.state.as_scalars() {
-                if s.len() >= 4 {
-                    self.history
-                        .push_back((s[3], Vector3::new(s[0], s[1], s[2])));
-                }
+            if let Some(s) = cp.state.as_scalars()
+                && s.len() >= 4
+            {
+                self.history
+                    .push_back((s[3], Vector3::new(s[0], s[1], s[2])));
             }
         }
     }
 
     fn replay_step(&mut self, params: &CheckpointParams) {
-        if let Some(p) = params.as_scalars() {
-            if p.len() >= 6 {
-                self.simulator.m0 = p[0];
-                self.simulator.t1 = p[1];
-                self.simulator.t2 = p[2];
-                self.simulator.b_field = Vector3::new(p[3], p[4], p[5]);
-            }
+        if let Some(p) = params.as_scalars()
+            && p.len() >= 6
+        {
+            self.simulator.m0 = p[0];
+            self.simulator.t1 = p[1];
+            self.simulator.t2 = p[2];
+            self.simulator.b_field = Vector3::new(p[3], p[4], p[5]);
         }
         self.advance_bloch_ticks(1, false);
     }

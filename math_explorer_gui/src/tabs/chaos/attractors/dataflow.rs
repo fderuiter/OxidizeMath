@@ -3,13 +3,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    AttractorMode, AttractorPlotter, CompiledFlowJob, SolverExecutionState,
-    ATTRACTOR_RING_CAPACITY, MAX_SIMULATION_SPEED,
+    ATTRACTOR_RING_CAPACITY, AttractorMode, AttractorPlotter, CompiledFlowJob,
+    MAX_SIMULATION_SPEED, SolverExecutionState,
 };
-use crate::app::dataflow_bus::{publish_pane_landmarks, LandmarkCloud3DPayload};
+use crate::app::dataflow_bus::{LandmarkCloud3DPayload, publish_pane_landmarks};
 use crate::tabs::geometry_topology::vietoris_rips::MAX_CHAOS_LANDMARKS;
 use eframe::egui;
-use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
+use math_explorer::pure_math::statistics::tda::{Point3D, farthest_point_landmarks};
 
 /// Cached landmark frame for throttling farthest-point subsampling when publishing to `PaneDataflowBus`.
 #[derive(Default, Clone)]
@@ -28,14 +28,14 @@ impl AttractorPlotter {
             };
             return false;
         }
-        if let Some(ref mut twin) = self.twin {
-            if !twin.step_branch_a(self.dt, cap) {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: twin.system_a.state.vec,
-                    diverged_at_step: self.step_count,
-                };
-                return false;
-            }
+        if let Some(ref mut twin) = self.twin
+            && !twin.step_branch_a(self.dt, cap)
+        {
+            self.execution_state = SolverExecutionState::Diverged {
+                invalid_vec: twin.system_a.state.vec,
+                diverged_at_step: self.step_count,
+            };
+            return false;
         }
         if let Some(job) = custom_job {
             self.system.state.vec = job.rk4_step(current_vec, self.dt);

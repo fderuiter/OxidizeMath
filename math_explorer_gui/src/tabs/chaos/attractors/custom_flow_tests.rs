@@ -40,10 +40,12 @@ fn test_custom_3d_flow_worker_streaming_zero_alloc_and_roundtrip() {
     runner.step();
     assert_eq!(runner.execution_state, SolverExecutionState::Running);
     assert_eq!(runner.history.len(), plotter.simulation_speed);
-    assert!(runner
-        .history
-        .iter()
-        .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
+    assert!(
+        runner
+            .history
+            .iter()
+            .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite())
+    );
 
     // Verify UI render hides Lorenz fixed-point callouts in custom mode without stalling
     let ctx = eframe::egui::Context::default();

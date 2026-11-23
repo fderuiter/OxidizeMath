@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::framework::recovery::{
-    emit_recovery_telemetry, render_recovery_action_buttons, render_recovery_banner,
-    DiagnosticReport, FiniteStateGuard, RecoveryAction,
+    DiagnosticReport, FiniteStateGuard, RecoveryAction, emit_recovery_telemetry,
+    render_recovery_action_buttons, render_recovery_banner,
 };
 use crate::presets::OdePreset;
 use eframe::egui;
@@ -387,17 +387,19 @@ fn test_ode_multi_solver_divergence_warning() {
     assert!(tool.y_series.iter().all(|y| y.is_finite()));
     for snapshot in tool.comparison_manager().snapshots() {
         for series in &snapshot.series {
-            assert!(series
-                .points
-                .iter()
-                .all(|pt| pt[0].is_finite() && pt[1].is_finite()));
+            assert!(
+                series
+                    .points
+                    .iter()
+                    .all(|pt| pt[0].is_finite() && pt[1].is_finite())
+            );
         }
     }
 }
 
 #[test]
 fn test_ode_autoscale_and_clamp_align_with_max_steps() {
-    use crate::presets::{checked_ode_step_count, MAX_ODE_STEPS};
+    use crate::presets::{MAX_ODE_STEPS, checked_ode_step_count};
 
     let mut tool = OdeSolverTool {
         dt: 0.001,

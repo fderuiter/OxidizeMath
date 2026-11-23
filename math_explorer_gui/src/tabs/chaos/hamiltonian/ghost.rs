@@ -4,8 +4,8 @@
 
 use super::simulation::{push_capped_ring, push_sliding_trail};
 use super::{
-    GhostComparator, HamiltonianChaosLab, OrbitSlot, MAX_DRIFT_SAMPLES, MAX_GHOST_SECTION_POINTS,
-    MAX_TRAIL_POINTS,
+    GhostComparator, HamiltonianChaosLab, MAX_DRIFT_SAMPLES, MAX_GHOST_SECTION_POINTS,
+    MAX_TRAIL_POINTS, OrbitSlot,
 };
 use math_explorer::pure_math::analysis::ode::{
     HamiltonianSystem, OdeSystem, Solver, VectorOperations,

@@ -1,10 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::state::{VrChaosConfig, VrSourceMode};
 use super::MAX_CHAOS_LANDMARKS;
+use super::state::{VrChaosConfig, VrSourceMode};
 use crate::web_io::PlatformInstant;
 use math_explorer::pure_math::statistics::tda::{
-    farthest_point_landmarks_into, takens_delay_embedding_3d, Point3D,
+    Point3D, farthest_point_landmarks_into, takens_delay_embedding_3d,
 };
 
 const WARMUP_STEPS: usize = 600;

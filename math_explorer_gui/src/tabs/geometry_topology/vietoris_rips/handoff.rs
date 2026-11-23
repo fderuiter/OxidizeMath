@@ -5,7 +5,7 @@
 use super::MAX_CHAOS_LANDMARKS;
 use crate::app::dataflow_bus::{LandmarkCloud3DPayload, ScalarField2DPayload};
 use eframe::egui;
-use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
+use math_explorer::pure_math::statistics::tda::{Point3D, farthest_point_landmarks};
 
 const OPEN_VR_REQUEST_ID: &str = "OPEN_VIETORIS_RIPS_HANDOFF";
 const CHAOS_HANDOFF_PAYLOAD_ID: &str = "CHAOS_LANDMARK_HANDOFF_PAYLOAD";

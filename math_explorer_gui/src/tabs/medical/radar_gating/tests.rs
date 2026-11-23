@@ -3,13 +3,13 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::pipeline::{FastCvKalman, SIM_DT};
-use super::state::{RadarGatingState, MAX_SAMPLES_PER_CHIRP, MAX_SNAPSHOTS, MAX_SWEEP_BINS};
+use super::state::{MAX_SAMPLES_PER_CHIRP, MAX_SNAPSHOTS, MAX_SWEEP_BINS, RadarGatingState};
 use super::{RadarGatingTool, STARTER_PRESET_JSON};
 use crate::framework::{InteractiveTool, SimulationFramework};
-use crate::tabs::medical::MedicalTab;
 use crate::tabs::ExplorerTab;
+use crate::tabs::medical::MedicalTab;
 use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES};
-use eframe::egui::{self, vec2, Event, Key, Modifiers, Pos2, RawInput, Rect};
+use eframe::egui::{self, Event, Key, Modifiers, Pos2, RawInput, Rect, vec2};
 use math_explorer::physics::medical::radar_gating::{
     BeamState, ConstantVelocityModel, TrackingFilter,
 };
@@ -110,11 +110,12 @@ fn test_cough_clutter_and_nan_faults_drive_beam_hold_interlock_and_reset() {
     // Toggle extra static couch reflector and verify finite unwrapped displacement
     tool.pipeline.extra_clutter_active = true;
     let _ = tool.step_gating();
-    assert!(tool
-        .pipeline
-        .measured_trace_mm
-        .iter()
-        .all(|pt| pt[0].is_finite() && pt[1].is_finite()));
+    assert!(
+        tool.pipeline
+            .measured_trace_mm
+            .iter()
+            .all(|pt| pt[0].is_finite() && pt[1].is_finite())
+    );
 
     // Inject NaN fault -> SafetyInterlock -> Reset to Standby -> Arm to Armed
     tool.inject_nan_fault();

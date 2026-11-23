@@ -9,14 +9,15 @@ mod tests;
 pub mod ui;
 
 use super::imrt::motion::{
-    linac_energy_and_fluence_scale, Standalone4dStepper, NOMINAL_BEAM_CURRENT_MA,
+    NOMINAL_BEAM_CURRENT_MA, Standalone4dStepper, linac_energy_and_fluence_scale,
 };
 use super::imrt::{
-    DoseState, ImrtWorkspace, BASELINE_IMRT_ANGLES_DEG, BASELINE_IMRT_WEIGHTS, CHALLENGE_IMRT_BETA,
+    BASELINE_IMRT_ANGLES_DEG, BASELINE_IMRT_WEIGHTS, CHALLENGE_IMRT_BETA,
     CHALLENGE_IMRT_OAR_LIMIT_GY, CHALLENGE_IMRT_OAR_SPARING, CHALLENGE_IMRT_PRESCRIPTION_GY,
-    IMRT_BEAM_COUNT, IMRT_GRID_DIM, OAR_SPARING_4D_ANGLES_DEG, OAR_SPARING_4D_WEIGHTS,
+    DoseState, IMRT_BEAM_COUNT, IMRT_GRID_DIM, ImrtWorkspace, OAR_SPARING_4D_ANGLES_DEG,
+    OAR_SPARING_4D_WEIGHTS,
 };
-use super::link_bus::{current_write_seq, drain_gating_telemetry_into, GatingTelemetry};
+use super::link_bus::{GatingTelemetry, current_write_seq, drain_gating_telemetry_into};
 use crate::framework::{
     BrushMode, CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractionContext,
     InteractiveTool, SpatialBrushKit, ToolStateBounds,
@@ -296,10 +297,10 @@ impl InteractiveTool for DoseCalculationTool {
         if !self.imrt_mode || self.active_challenge.is_some() {
             return;
         }
-        if let Some(stroke) = ctx.brush_stroke {
-            if self.imrt_workspace.apply_brush_stroke(&stroke) {
-                self.refresh_model();
-            }
+        if let Some(stroke) = ctx.brush_stroke
+            && self.imrt_workspace.apply_brush_stroke(&stroke)
+        {
+            self.refresh_model();
         }
     }
 

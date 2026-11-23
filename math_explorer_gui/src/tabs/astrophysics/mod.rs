@@ -1,6 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::tabs::{ExplorerTab, TabDescriptor};
+#[cfg(test)]
+use crate::tabs::ExplorerTab;
+#[cfg(test)]
 use eframe::egui;
 use math_explorer::physics::astrophysics::HaloProfile;
 
@@ -73,67 +75,13 @@ impl HaloKindChoice {
     }
 }
 
-/// Interactive Astrophysics & Dwarf-Galaxy Dynamics tab backed by [`crate::framework::SimulationFramework`].
-pub struct AstrophysicsTab {
-    framework: crate::framework::SimulationFramework,
-}
-
-impl Default for AstrophysicsTab {
-    fn default() -> Self {
-        Self {
-            framework: crate::framework::SimulationFramework::new("astrophysics"),
-        }
-    }
-}
-
-impl ExplorerTab for AstrophysicsTab {
-    fn name(&self) -> &'static str {
-        "Astrophysics"
-    }
-
-    fn academic_domain(&self) -> &'static str {
-        "Physics"
-    }
-
-    fn url_slug(&self) -> &'static str {
-        "astrophysics"
-    }
-
-    fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.framework.show_inside(ui, "astrophysics");
-    }
-
-    fn state_revision(&self) -> u64 {
-        self.framework.state_revision()
-    }
-
-    fn save_state(&self) -> Option<String> {
-        self.framework.save_state()
-    }
-
-    fn load_state(&mut self, state: &str) {
-        self.framework.load_state(state);
-    }
-
-    fn select_tool_by_name(&mut self, name: &str) -> bool {
-        self.framework.select_tool_by_name(name)
-    }
-
-    fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
-        Some(&self.framework)
-    }
-
-    fn framework_mut(&mut self) -> Option<&mut crate::framework::SimulationFramework> {
-        Some(&mut self.framework)
-    }
-}
-
-inventory::submit! {
-    TabDescriptor {
-        id: "astrophysics",
-        order: 16,
-        build: || Box::new(AstrophysicsTab::default()),
-    }
-}
+crate::declare_simulation_tab!(
+    /// Interactive Astrophysics & Dwarf-Galaxy Dynamics tab.
+    pub struct AstrophysicsTab,
+    name: "Astrophysics",
+    domain: "Physics",
+    slug: "astrophysics",
+    order: 16,
+);
 
 // [cite:dwarf_galaxy_empirical_dependencies]

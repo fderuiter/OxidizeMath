@@ -2,9 +2,9 @@
 
 // theory_verification!
 
-use math_explorer::physics::medical::radar_gating::{BeamState, FmcwConfig, C};
+use math_explorer::physics::medical::radar_gating::{BeamState, C, FmcwConfig};
 
-use crate::audio::frame::{clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset};
+use crate::audio::frame::{SonificationFrame, VoiceSpec, WaveformPreset, clamp_freq_hz};
 
 /// Center carrier frequency (`60 GHz`) of the clinical MIMO respiratory radar.
 pub const RADAR_CARRIER_60GHZ_HZ: f64 = 60.0e9;

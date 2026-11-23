@@ -1,6 +1,5 @@
-use super::session::SessionLifecycleState;
-use super::session::WorkspaceSessionManager;
 use super::AppState;
+use super::session::{SessionLifecycleState, WorkspaceSessionManager};
 use crate::app::ThemeMode;
 use eframe::egui;
 use std::collections::HashMap;
@@ -460,9 +459,10 @@ fn test_poll_invalid_workspace_json_and_save_error_toasts() {
         .unwrap();
     mgr.poll(&mut app, &ctx);
     assert_eq!(mgr.lifecycle_state(), SessionLifecycleState::Error);
-    assert!(mgr
-        .toast()
-        .is_some_and(|(m, err)| *err && m.contains("Invalid workspace file format")));
+    assert!(
+        mgr.toast()
+            .is_some_and(|(m, err)| *err && m.contains("Invalid workspace file format"))
+    );
     mgr.clear_toast();
 
     let (save_tx, save_rx) = channel();

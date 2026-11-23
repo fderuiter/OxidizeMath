@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::base64url;
-use crate::framework::{ToolStateBounds, MAX_JSON_ARRAY_LEN, MAX_JSON_NESTING_DEPTH};
+use crate::framework::{MAX_JSON_ARRAY_LEN, MAX_JSON_NESTING_DEPTH, ToolStateBounds};
 
 /// Maximum UTF-8 byte length permitted for raw URL fragments or query strings (`8 KiB`).
 pub const MAX_URL_FRAGMENT_BYTES: usize = 8_192;

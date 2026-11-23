@@ -4,10 +4,10 @@
 mod cards;
 
 use super::{
-    goal_challenge_to_starter_card, story_to_starter_card, ChallengeCard, GallerySelection,
-    GoalChallengeMetadata, PresetStoryMetadata, StarterCard,
+    ChallengeCard, GallerySelection, GoalChallengeMetadata, PresetStoryMetadata, StarterCard,
+    goal_challenge_to_starter_card, story_to_starter_card,
 };
-use cards::{compute_gallery_metrics, FilteredGalleryItems, GalleryOverlayMetrics};
+use cards::{FilteredGalleryItems, GalleryOverlayMetrics, compute_gallery_metrics};
 use eframe::egui;
 
 const DEFER_STARTER_GALLERY_TO_ROOT_KEY: &str = "DEFER_STARTER_GALLERY_TO_ROOT";
@@ -48,21 +48,19 @@ fn is_cross_domain_gallery(
     if id_source == "global_workspace" {
         return true;
     }
-    if let Some(first) = cards.first() {
-        if cards
+    if let Some(first) = cards.first()
+        && cards
             .iter()
             .any(|c| !super::domain_matches_gallery(c.domain, first.domain))
-        {
-            return true;
-        }
+    {
+        return true;
     }
-    if let Some(first_ch) = challenges.first() {
-        if challenges
+    if let Some(first_ch) = challenges.first()
+        && challenges
             .iter()
             .any(|c| !super::domain_matches_gallery(c.domain, first_ch.domain))
-        {
-            return true;
-        }
+    {
+        return true;
     }
     false
 }

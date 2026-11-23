@@ -2,9 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use math_explorer::applied::clinical_trials::analysis::{calculate_risk_metrics, RiskMetrics};
+use math_explorer::applied::clinical_trials::analysis::{RiskMetrics, calculate_risk_metrics};
 use math_explorer::applied::clinical_trials::survival_analysis::{
-    kaplan_meier, try_estimate_hazard_ratio, Observation, TimePoint,
+    Observation, TimePoint, kaplan_meier, try_estimate_hazard_ratio,
 };
 use math_explorer::applied::clinical_trials::types::ContingencyTable;
 use math_explorer::applied::win_ratio::censoring::{

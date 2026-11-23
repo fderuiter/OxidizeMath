@@ -314,12 +314,11 @@ fn step_running_frame_loop<R: SimulationRunner + ?Sized>(
     };
     let total_ticks = steps_per_frame.saturating_mul(substeps);
     for tick in 0..total_ticks {
-        if tick > 0 {
-            if let (Some(budget), Some(start)) = (max_slice, slice_start) {
-                if start.elapsed() >= budget {
-                    break;
-                }
-            }
+        if tick > 0
+            && let (Some(budget), Some(start)) = (max_slice, slice_start)
+            && start.elapsed() >= budget
+        {
+            break;
         }
         if let Some(r) = ring.as_mut() {
             r.record_active_params(runner);
@@ -398,8 +397,8 @@ pub(super) fn spawn_native_worker<T: SimulationRunner>(
                 break;
             };
 
-            if let Some(first_cmd) = maybe_cmd {
-                if !drain_worker_commands(
+            if let Some(first_cmd) = maybe_cmd
+                && !drain_worker_commands(
                     first_cmd,
                     &cmd_rx,
                     &mut runner,
@@ -407,9 +406,9 @@ pub(super) fn spawn_native_worker<T: SimulationRunner>(
                     &mut state,
                     &mut steps_per_frame,
                     &state_tx,
-                ) {
-                    break;
-                }
+                )
+            {
+                break;
             }
 
             if state.is_running() {

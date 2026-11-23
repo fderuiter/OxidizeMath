@@ -9,7 +9,7 @@ use math_explorer::pure_math::analysis::pde::wave_2d::{
     DriverConfig2D, Wave2DParams, Wave2DSolver,
 };
 
-use super::{ChladniWaveTankTool, ClampLayout, TankPreset, WaveColormap, GRID_SIZE};
+use super::{ChladniWaveTankTool, ClampLayout, GRID_SIZE, TankPreset, WaveColormap};
 use crate::framework::{decode_rle_mask, encode_rle_mask};
 
 /// Upper bound on RLE run pairs serialized into `sculpt_rle` to stay strictly `< 4 KiB` URL JSON.

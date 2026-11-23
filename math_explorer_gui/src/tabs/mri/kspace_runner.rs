@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::kspace_phantom::{build_preset_mask_into, PhantomEngine};
+use super::kspace_phantom::{PhantomEngine, build_preset_mask_into};
 use super::kspace_types::{
-    KSpaceMaskPreset, MriKSpaceSharedParams, MriKSpaceToolState, PhantomPreset, ISOCHROMAT_COUNT,
-    MAX_TRAJECTORY_POINTS, STUDIO_FOV_METERS,
+    ISOCHROMAT_COUNT, KSpaceMaskPreset, MAX_TRAJECTORY_POINTS, MriKSpaceSharedParams,
+    MriKSpaceToolState, PhantomPreset, STUDIO_FOV_METERS,
 };
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::mri::bloch::BlochSimulator;
@@ -15,8 +15,8 @@ use nalgebra::{DMatrix, Vector3};
 use num_complex::Complex;
 use std::collections::VecDeque;
 use std::f64::consts::PI;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 /// Rotating-frame $\Delta B_0$ pocket amplitude in Tesla (`0.22 uT`, $\gamma \Delta B_0 \approx 58.9\,\text{rad/s}$).
 pub(crate) const DELTA_B0_POCKET_TESLA: f64 = 2.2e-7;

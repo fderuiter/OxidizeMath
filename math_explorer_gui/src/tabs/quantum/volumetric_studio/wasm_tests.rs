@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 //! Headless WebAssembly (`wasm32-unknown-unknown`) browser tests for `VolumetricFieldStudioTool`.
 
+use super::VolumetricFieldStudioTool;
 use super::presets::{
     PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3D_TURING_GYROID_JSON, PRESET_CSG_BOOLEAN_SOLID_JSON,
     PRESET_GYROID_TPMS_JSON,
 };
 use super::state::{SliceAxis, VolumetricRenderMode};
-use super::VolumetricFieldStudioTool;
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use oxidize_core::mesh::export_mesh_to_stl_binary;
@@ -59,9 +59,11 @@ fn wasm_volumetric_studio_quantum_turing_and_implicit_cad_export_stl_and_obj() {
             .expect("closed solid mesh on wasm32");
         let stl = export_mesh_to_stl_binary(&mesh).expect("binary STL on wasm32");
         assert_eq!(stl.len(), 84 + 50 * (mesh.indices.len() / 3));
-        assert!(std::str::from_utf8(&stl[..80])
-            .unwrap_or("")
-            .contains("UNITS=mm"));
+        assert!(
+            std::str::from_utf8(&stl[..80])
+                .unwrap_or("")
+                .contains("UNITS=mm")
+        );
     }
 
     let obj = tool

@@ -6,7 +6,7 @@
 use crate::accessibility::AccessibleTheoryHover;
 use crate::app::SemanticPalette;
 use crate::camera::Plot3DViewport;
-use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
+use crate::framework::{PaneSidePanel, PlaybackAction, PlaybackTransport, scoped_panel_id};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use egui_plot::{Line, LineStyle, Plot, PlotPoints, Points, VLine};

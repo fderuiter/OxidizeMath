@@ -3,11 +3,11 @@
 // theory_verification!
 
 use math_explorer::pure_math::analysis::pde::wave_2d::{
-    analytic_clamped_square_omega, SpectralMode2D, Wave2DMedium, Wave2DParams,
+    SpectralMode2D, Wave2DMedium, Wave2DParams, analytic_clamped_square_omega,
 };
 
 use crate::audio::frame::{
-    clamp_freq_hz, HarmonicWeights, SonificationFrame, VoiceSpec, WaveformPreset, NUM_HARMONICS,
+    HarmonicWeights, NUM_HARMONICS, SonificationFrame, VoiceSpec, WaveformPreset, clamp_freq_hz,
 };
 
 /// Maximum polyphonic spatial Fourier modes mapped per [`chladni_wave_tank_frame`] call.

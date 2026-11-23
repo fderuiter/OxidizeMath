@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::mappings::{imrt_delivery_frame, radar_linac_frame, LinacGatePhase};
+use super::mappings::{LinacGatePhase, imrt_delivery_frame, radar_linac_frame};
 
 #[test]
 fn test_medical_radar_and_imrt_sonification_frames() {

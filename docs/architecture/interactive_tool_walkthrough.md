@@ -329,9 +329,19 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+// When creating a brand-new domain directory (`src/tabs/<domain>/mod.rs`), register its ExplorerTab:
+crate::declare_simulation_tab!(
+    /// Classical Mechanics Interactive Explorer.
+    pub struct MechanicsTab,
+    name: "Classical Mechanics",
+    domain: "Physics",
+    slug: "mechanics",
+    order: 10,
+);
 ```
 
-Finally, expose your submodule (`pub mod <tool_name>;`) inside its enclosing domain tab's `math_explorer_gui/src/tabs/<domain>/mod.rs` so the module compiles and registers with `inventory` (only new top-level `ExplorerTab` domains declare `pub mod <domain>;` in `math_explorer_gui/src/tabs/mod.rs` and submit a `TabDescriptor` via `inventory::submit!`).
+Finally, expose your submodule (`pub mod <tool_name>;`) inside its enclosing domain tab's `math_explorer_gui/src/tabs/<domain>/mod.rs` so the module compiles and registers with `inventory`. If you are creating a brand-new `SimulationFramework` domain directory (`math_explorer_gui/src/tabs/<domain>/mod.rs`), declare its `ExplorerTab` adapter and static [`TabDescriptor`](../../math_explorer_gui/src/tabs/mod.rs) registration with [`crate::declare_simulation_tab!`](../../math_explorer_gui/src/tabs/mod.rs) as shown above and expose `#[cfg(feature = "...")] pub mod <domain>;` in [`math_explorer_gui/src/tabs/mod.rs`](../../math_explorer_gui/src/tabs/mod.rs).
 
 ## Event Handling Hooks
 

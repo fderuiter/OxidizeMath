@@ -8,7 +8,7 @@ use super::{
     CHALLENGE_IMRT_OAR_LIMIT_GY, CHALLENGE_IMRT_OAR_SPARING, CHALLENGE_IMRT_PRESCRIPTION_GY,
     IMRT_BEAM_COUNT, IMRT_GRID_DIM, IMRT_VOXEL_COUNT,
 };
-use crate::framework::{decode_rle_mask, ChallengeMetadata, ToolStateBounds};
+use crate::framework::{ChallengeMetadata, ToolStateBounds, decode_rle_mask};
 
 /// Summary dosimetric observables from a 4-beam IMRT evaluation.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -128,36 +128,34 @@ impl DoseState {
     }
 
     fn validate_imrt_scalars(&self) -> Result<(), String> {
-        if let Some(angles) = &self.beam_angles_deg {
-            if !angles
+        if let Some(angles) = &self.beam_angles_deg
+            && !angles
                 .iter()
                 .all(|a| a.is_finite() && (0.0..=360.0).contains(a))
-            {
-                return Err("beam_angles_deg must be finite in [0, 360]".to_string());
-            }
+        {
+            return Err("beam_angles_deg must be finite in [0, 360]".to_string());
         }
-        if let Some(weights) = &self.beam_weights {
-            if !weights
+        if let Some(weights) = &self.beam_weights
+            && !weights
                 .iter()
                 .all(|w| w.is_finite() && (0.0..=10.0).contains(w))
-            {
-                return Err("beam_weights must be finite in [0, 10]".to_string());
-            }
+        {
+            return Err("beam_weights must be finite in [0, 10]".to_string());
         }
-        if let Some(rx) = self.prescription_gy {
-            if !rx.is_finite() || !(1.0..=120.0).contains(&rx) {
-                return Err("prescription_gy out of [1, 120]".to_string());
-            }
+        if let Some(rx) = self.prescription_gy
+            && (!rx.is_finite() || !(1.0..=120.0).contains(&rx))
+        {
+            return Err("prescription_gy out of [1, 120]".to_string());
         }
-        if let Some(lim) = self.oar_limit_gy {
-            if !lim.is_finite() || !(1.0..=100.0).contains(&lim) {
-                return Err("oar_limit_gy out of [1, 100]".to_string());
-            }
+        if let Some(lim) = self.oar_limit_gy
+            && (!lim.is_finite() || !(1.0..=100.0).contains(&lim))
+        {
+            return Err("oar_limit_gy out of [1, 100]".to_string());
         }
-        if let Some(curr) = self.beam_current_ma {
-            if !curr.is_finite() || !(0.0..=400.0).contains(&curr) {
-                return Err("beam_current_ma out of [0, 400]".to_string());
-            }
+        if let Some(curr) = self.beam_current_ma
+            && (!curr.is_finite() || !(0.0..=400.0).contains(&curr))
+        {
+            return Err("beam_current_ma out of [0, 400]".to_string());
         }
         Ok(())
     }

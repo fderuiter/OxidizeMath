@@ -3,7 +3,7 @@
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use math_explorer::applied::game_theory::equilibrium::{
-    is_fixed_point, BestResponseCorrespondence, BoxSet, ConvexSet,
+    BestResponseCorrespondence, BoxSet, ConvexSet, is_fixed_point,
 };
 use math_explorer::applied::game_theory::mean_field::{
     Density, FixedPointSolver, MFGConfigBuilder, MFGSolver, Position,

@@ -3,7 +3,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::accessibility::{announce_live_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_live_status};
 use crate::app::SemanticPalette;
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use crate::web_io::PlatformInstant;

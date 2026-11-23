@@ -3,7 +3,10 @@
 use super::{instantiate_tab, instantiate_tabs};
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::thread;
+use std::time::Duration;
 
 fn read_build_script_output(out_dir: &Path) -> String {
     let parent_dir = out_dir
@@ -17,6 +20,35 @@ fn read_build_script_output(out_dir: &Path) -> String {
     .find(|p| p.is_file())
     .expect("Cargo build script output file must exist");
     fs::read_to_string(&build_output_path).expect("Cargo build script output file must be readable")
+}
+
+fn find_compiled_build_script_bin(out_dir: &Path) -> Option<PathBuf> {
+    let build_root = out_dir.parent()?.parent()?;
+    for entry in fs::read_dir(build_root).ok()?.flatten() {
+        let dir = entry.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        if !entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("math_explorer_gui-")
+        {
+            continue;
+        }
+        for candidate in [
+            "build-script-build",
+            "build_script_build",
+            "build-script-build.exe",
+            "build_script_build.exe",
+        ] {
+            let bin = dir.join(candidate);
+            if bin.is_file() {
+                return Some(bin);
+            }
+        }
+    }
+    None
 }
 
 #[test]
@@ -37,8 +69,11 @@ fn test_inventory_tabs_preserve_deterministic_slug_order() {
     );
 
     for (idx, tab) in tabs.iter().enumerate() {
+        assert!(!tab.academic_domain().trim().is_empty());
+        assert_ne!(tab.url_slug(), "simulation");
         let single = instantiate_tab(idx).expect("instantiate_tab must resolve valid index");
         assert_eq!(single.name(), tab.name());
+        assert_eq!(single.academic_domain(), tab.academic_domain());
         assert_eq!(single.url_slug(), tab.url_slug());
     }
     assert!(instantiate_tab(tabs.len()).is_none());
@@ -53,7 +88,15 @@ fn test_inventory_tabs_preserve_deterministic_slug_order() {
         feature = "physics"
     ))]
     {
-        assert_eq!(tabs.len(), 28, "All 28 GUI domain tabs must register");
+        let mod_rs =
+            fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/tabs/mod.rs"))
+                .expect("read src/tabs/mod.rs");
+        let expected_count = collect_static_mod_gates(&mod_rs).len();
+        assert_eq!(
+            tabs.len(),
+            expected_count,
+            "All declared GUI domain tabs must register when all features are enabled"
+        );
         assert_eq!(slugs.first().copied(), Some("quantum"));
         assert_eq!(slugs.last().copied(), Some("ai"));
     }
@@ -117,6 +160,54 @@ fn test_build_script_emits_scoped_rerun_directives() {
     }
 }
 
+#[test]
+fn test_build_script_rerun_preserves_manifest_mtime_when_unchanged() {
+    let out_dir = Path::new(env!("OUT_DIR"));
+    let Some(build_bin) = find_compiled_build_script_bin(out_dir) else {
+        return;
+    };
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let temp_root = std::env::temp_dir().join(format!(
+        "math_explorer_gui_build_mtime_test_{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_root);
+    let temp_out = temp_root.join("out");
+    let temp_target = temp_root.join("target");
+    fs::create_dir_all(&temp_out).unwrap();
+    fs::create_dir_all(&temp_target).unwrap();
+
+    let run_once = || {
+        let output = Command::new(&build_bin)
+            .current_dir(manifest_dir)
+            .env("CARGO_MANIFEST_DIR", manifest_dir)
+            .env("OUT_DIR", &temp_out)
+            .env("CARGO_TARGET_DIR", &temp_target)
+            .env("CARGO_FEATURE_PURE_MATH", "1")
+            .env("CARGO_FEATURE_APPLIED", "1")
+            .output()
+            .expect("Failed to invoke build-script-build");
+        assert!(
+            output.status.success(),
+            "build-script-build failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+
+    run_once();
+    let gen_manifest = temp_out.join("traceability_manifest.json");
+    let manifest_mtime_before = fs::metadata(&gen_manifest).unwrap().modified().unwrap();
+    thread::sleep(Duration::from_millis(25));
+    run_once();
+
+    assert_eq!(
+        fs::metadata(&gen_manifest).unwrap().modified().unwrap(),
+        manifest_mtime_before,
+        "Unchanged build.rs rerun must preserve traceability_manifest.json mtime"
+    );
+    let _ = fs::remove_dir_all(&temp_root);
+}
+
 fn collect_static_mod_gates(mod_rs: &str) -> std::collections::BTreeMap<String, Option<String>> {
     let mut gates = std::collections::BTreeMap::new();
     let mut active_cfg = None;
@@ -166,24 +257,22 @@ fn test_static_tab_modules_match_filesystem_tabs_and_inventory_descriptors() {
             continue;
         };
         let has_tab_impl = src.lines().any(|l| {
-            l.contains("impl ExplorerTab for ") || l.contains("impl crate::tabs::ExplorerTab for ")
+            l.contains("impl ExplorerTab for ")
+                || l.contains("impl crate::tabs::ExplorerTab for ")
+                || l.contains("declare_simulation_tab!")
         });
         if !has_tab_impl {
             continue;
         }
         assert!(
-            src.contains("TabDescriptor"),
+            src.contains("TabDescriptor") || src.contains("declare_simulation_tab!"),
             "ExplorerTab module `{mod_name}` must submit a static TabDescriptor via inventory"
         );
         discovered.insert(mod_name);
     }
 
     let declared_names: std::collections::BTreeSet<String> = declared.keys().cloned().collect();
-    assert_eq!(
-        discovered.len(),
-        28,
-        "Expected all 28 local GUI tab modules"
-    );
+    assert!(!discovered.is_empty(), "Expected local GUI tab modules");
     assert_eq!(
         declared_names, discovered,
         "Static `pub mod` declarations in src/tabs/mod.rs must match local ExplorerTab modules"

@@ -3,8 +3,8 @@
 
 use super::*;
 use crate::app::viewport::{calculate_pane_rects, calculate_pane_rects_with_ratio};
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 
 #[test]
 fn test_viewport_layout_presets_and_names() {

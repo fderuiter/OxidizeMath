@@ -249,11 +249,11 @@ impl CommandPalette {
             let tab_name = tab.name();
             let mut score = fuzzy_match_score(tab_name, &self.query);
             let domain = tab.academic_domain();
-            if !domain.is_empty() {
-                if let Some(ds) = fuzzy_match_score(domain, &self.query) {
-                    let weighted = ds.saturating_add(40);
-                    score = Some(score.map_or(weighted, |s| s.min(weighted)));
-                }
+            if !domain.is_empty()
+                && let Some(ds) = fuzzy_match_score(domain, &self.query)
+            {
+                let weighted = ds.saturating_add(40);
+                score = Some(score.map_or(weighted, |s| s.min(weighted)));
             }
             if let Some(s) = score {
                 matched.push((

@@ -16,8 +16,8 @@ use std::sync::mpsc::Receiver;
 use eframe::egui;
 use egui_plot::ExportPrimitive;
 use math_explorer::applied::pharmacokinetics::{
-    summarize_exposure, BatemanModel, EnantiomerModel, ExposureSummary, PKParameters,
-    PharmacokineticModel, RegimenSuperposition, SuperpositionModel, TherapeuticWindow,
+    BatemanModel, EnantiomerModel, ExposureSummary, PKParameters, PharmacokineticModel,
+    RegimenSuperposition, SuperpositionModel, TherapeuticWindow, summarize_exposure,
 };
 
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};

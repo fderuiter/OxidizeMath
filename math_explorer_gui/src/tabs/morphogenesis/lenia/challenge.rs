@@ -3,8 +3,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::presets::{default_brush_radius, LeniaSpeciesPreset, LeniaToolState};
-use super::{sandbox, LeniaTool};
+use super::presets::{LeniaSpeciesPreset, LeniaToolState, default_brush_radius};
+use super::{LeniaTool, sandbox};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{CalloutSpec, ChallengeEvaluation, ChallengeMetadata};
 use math_explorer::biology::lenia::{MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MIN_KERNEL_RADIUS};

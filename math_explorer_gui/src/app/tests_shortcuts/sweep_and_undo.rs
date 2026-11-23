@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::*;
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 
 fn shortcut_mods() -> egui::Modifiers {
     if cfg!(target_os = "macos") {
@@ -319,7 +319,7 @@ fn test_single_layout_ctrl_z_and_ctrl_y_across_all_explorer_tabs_and_strip_short
     let mods = shortcut_mods();
 
     #[cfg(all(feature = "pure_math", feature = "physics"))]
-    assert_eq!(app.tabs.len(), 28);
+    assert_eq!(app.tabs.len(), crate::tabs::instantiate_tabs().len());
 
     app.set_layout(ViewportLayout::Single);
     let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
@@ -455,10 +455,11 @@ fn test_ctrl_z_in_split_and_quad_layouts_undoes_one_edit_in_focused_pane() {
         app.set_layout(layout);
         app.set_pane_tab(target_pane, graph_idx);
         app.focus_pane(target_pane);
-        assert!(app
-            .pane_tab_mut(target_pane)
-            .unwrap()
-            .select_tool_by_name("GraphEditorTool"));
+        assert!(
+            app.pane_tab_mut(target_pane)
+                .unwrap()
+                .select_tool_by_name("GraphEditorTool")
+        );
         let _ = step_events(&ctx, &mut app, &mut frame, Vec::new());
 
         insert_node_in_pane(&mut app, target_pane);

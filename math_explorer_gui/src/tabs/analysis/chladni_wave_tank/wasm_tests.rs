@@ -2,13 +2,13 @@
 
 // [cite:graph_parameters_rust]
 
-use eframe::egui::{self, vec2, Context, Event, Key, Modifiers, Pos2, RawInput, Rect};
-use egui_plot::export::{color32_image_to_png, format_csv, format_json, ExportOptions};
+use eframe::egui::{self, Context, Event, Key, Modifiers, Pos2, RawInput, Rect, vec2};
+use egui_plot::export::{ExportOptions, color32_image_to_png, format_csv, format_json};
 use egui_plot::export_primitives::export_primitives_svg;
 use wasm_bindgen_test::*;
 
 use super::*;
-use crate::audio::{web_audio::WebAudioNodeBackend, MuteReason, SonificationBackend};
+use crate::audio::{MuteReason, SonificationBackend, web_audio::WebAudioNodeBackend};
 use crate::framework::{BrushInteractionMode, BrushMode, InteractiveTool};
 
 fn wasm_key(key: Key) -> RawInput {
@@ -84,10 +84,11 @@ fn wasm_chladni_sculpt_accesskit_meter_and_tab_traversal() {
         .platform_output
         .accesskit_update
         .expect("AccessKit tree");
-    assert!(ak
-        .nodes
-        .iter()
-        .any(|(_, n)| n.role() == egui::accesskit::Role::Meter));
+    assert!(
+        ak.nodes
+            .iter()
+            .any(|(_, n)| n.role() == egui::accesskit::Role::Meter)
+    );
 
     let canvas_ids: Vec<egui::accesskit::NodeId> = ak
         .nodes

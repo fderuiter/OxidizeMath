@@ -6,12 +6,12 @@
 // [cite:battery_degradation]
 
 use crate::web_io::{
-    spawn_open_file_dialog, spawn_save_as_file_dialog, OpenDialogConfig, SaveAsDialogConfig,
+    OpenDialogConfig, SaveAsDialogConfig, spawn_open_file_dialog, spawn_save_as_file_dialog,
 };
 use math_explorer::applied::battery_degradation::{
     Capacity, ChemistryPreset, DepthOfDischarge, ElectrochemicalAgingModel,
 };
-use std::sync::mpsc::{channel, Receiver, TryRecvError};
+use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 /// Serde-serializable mirror of [`ChemistryPreset`] for URL state, presets, and JSON cell cards.
 #[derive(

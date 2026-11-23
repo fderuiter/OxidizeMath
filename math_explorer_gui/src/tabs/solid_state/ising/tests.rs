@@ -246,7 +246,7 @@ fn test_ising_poisoned_lock_recovery() {
 
 #[test]
 fn test_ising_animated_slider_sweeps_sync_shared_params() {
-    use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+    use crate::reflective_ui::slider::{AnimatedSliderState, SweepMode, save_slider_state};
 
     let mut tool = IsingModelTool::default();
     let initial_t = tool.temperature;

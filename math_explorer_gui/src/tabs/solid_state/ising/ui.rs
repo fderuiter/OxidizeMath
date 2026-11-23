@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::preset::{FermiGamePreset, IsingInteractionMode};
-use super::{ising_spin_color, IsingModelTool};
+use super::{IsingModelTool, ising_spin_color};
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
-use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
-};
 use crate::async_sim::SimCommand;
+use crate::async_sim::ui::{
+    WorkerFaultAction, render_empty_plot_guidance, render_worker_fault_banner,
+};
 use crate::framework::{
     InputMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
 };

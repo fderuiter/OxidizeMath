@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::ekf::{
-    lorenz_rhs_and_jac, seir_rhs_and_jac, FastEkf, LorenzKalmanModel, SeirKalmanModel,
+    FastEkf, LorenzKalmanModel, SeirKalmanModel, lorenz_rhs_and_jac, seir_rhs_and_jac,
 };
 pub use super::plants_pk::PkPlantTwin;
 use super::state::{ClosedLoopState, PlantKind};

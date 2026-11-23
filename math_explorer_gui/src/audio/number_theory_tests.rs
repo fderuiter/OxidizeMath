@@ -9,11 +9,11 @@ use verified_engine::engine::VerifiedEngine;
 
 use super::backend::SonificationBackend;
 use super::frame::{
-    SonificationFrame, WaveformPreset, LIMITER_CEILING_DBFS, LIMITER_CEILING_LINEAR,
+    LIMITER_CEILING_DBFS, LIMITER_CEILING_LINEAR, SonificationFrame, WaveformPreset,
 };
 use super::mappings::{
-    elliptic_torsion_frame, fractran_register_frame, just_intonation_ratio, ulam_spiral_frame,
-    EllipticTorsionSample, UlamPolySample,
+    EllipticTorsionSample, UlamPolySample, elliptic_torsion_frame, fractran_register_frame,
+    just_intonation_ratio, ulam_spiral_frame,
 };
 use super::synth::OfflinePcmSynthesizer;
 use super::wav::synthesize_frames_to_wav;

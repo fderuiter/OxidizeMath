@@ -3,7 +3,7 @@
 use super::{HeatmapView, QTableInspectorTool, SculptedQTableRunner};
 use crate::async_sim::{BackgroundWorker, SimulationRunner};
 use crate::tabs::ai::rl_sculpt::{
-    apply_rle_to_mdp, encode_custom_cells_rle, is_zero_f64, RlSolverMode,
+    RlSolverMode, apply_rle_to_mdp, encode_custom_cells_rle, is_zero_f64,
 };
 use math_explorer::ai::reinforcement_learning::SculptedGridMdp;
 

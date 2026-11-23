@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::state::{AnimatedSliderSettings, AnimatedSliderState, SweepMode};
-use crate::accessibility::{announce_live_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_live_status};
 use crate::framework::{bounded_drag_value, enforce_ordered_drag_range};
 use eframe::egui;
 

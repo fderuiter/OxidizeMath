@@ -106,16 +106,16 @@ pub use math_input::*;
 #[cfg(any(feature = "pure_math", feature = "applied"))]
 pub(crate) use overlay_sync::record_theory_portal_toggle;
 pub use pane_scope::{
-    is_button_activation_focused, is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed,
-    is_text_edit_focused, record_focused_widget_type_from_output, scoped_panel_id, InputMode,
-    InteractionContext,
+    InputMode, InteractionContext, is_button_activation_focused,
+    is_pane_activation_shortcut_allowed, is_pane_shortcut_allowed, is_text_edit_focused,
+    record_focused_widget_type_from_output, scoped_panel_id,
 };
 pub(crate) use persistence::framework_json_semantically_eq;
 pub use playback::*;
 pub use recovery::*;
 pub use side_panel::{
-    clear_pane_side_panel_records, pane_side_panel_records, PaneSidePanel, PaneSidePanelRecord,
-    MAX_PANE_SIDE_PANEL_WIDTH_RATIO,
+    MAX_PANE_SIDE_PANEL_WIDTH_RATIO, PaneSidePanel, PaneSidePanelRecord,
+    clear_pane_side_panel_records, pane_side_panel_records,
 };
 pub use spatial_brush::*;
 pub use state_bounds::*;
@@ -474,6 +474,6 @@ pub struct SimulationFramework {
 }
 
 pub use crate::camera::{
-    Camera3D, Plot3DViewport, ProjectionMode, Scene3DBuilder, CAMERA_3D_HELPER_TEXT,
-    CAMERA_3D_MAX_PAN, CAMERA_3D_PERSPECTIVE_DISTANCE, CAMERA_3D_ZOOM_MAX, CAMERA_3D_ZOOM_MIN,
+    CAMERA_3D_HELPER_TEXT, CAMERA_3D_MAX_PAN, CAMERA_3D_PERSPECTIVE_DISTANCE, CAMERA_3D_ZOOM_MAX,
+    CAMERA_3D_ZOOM_MIN, Camera3D, Plot3DViewport, ProjectionMode, Scene3DBuilder,
 };

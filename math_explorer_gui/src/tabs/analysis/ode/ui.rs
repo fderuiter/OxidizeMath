@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::phase_plane::PLANAR_COUPLED_PRESETS;
 use super::OdeSolverTool;
+use super::phase_plane::PLANAR_COUPLED_PRESETS;
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
 use crate::reflective_ui::AnimatedSlider;

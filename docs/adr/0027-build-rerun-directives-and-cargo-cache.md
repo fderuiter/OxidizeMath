@@ -1,7 +1,7 @@
 # ADR 0027: Complete Build Rerun Directives and Upgrade Cargo Cache to Node 20
 
 ## Status
-Accepted (extends [ADR 0002](0002-portable-build-paths.md))
+Accepted (extends [ADR 0002](0002-portable-build-paths.md); partially superseded by [ADR 0037](0037-remove-vfs-codegen-and-reject-wasm-list-dir.md), [ADR 20261123](20261123-inventory-tabs-and-scoped-build-scripts.md), and [ADR 20261123](20261123-scoped-gui-rerun-directives-and-declarative-tabs.md))
 
 ## Context
 Restored `target/` build caches in `.github/actions/cargo-cache/action.yml` and local incremental builds exposed three cache-invalidation and runner-runtime gaps:

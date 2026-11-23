@@ -3,17 +3,17 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::io::{
-    format_intervals_csv, format_intervals_json, parse_point_cloud_text, IntervalExportRow,
-    MAX_IMPORT_BYTES, MAX_VIETORIS_RIPS_POINTS,
+    IntervalExportRow, MAX_IMPORT_BYTES, MAX_VIETORIS_RIPS_POINTS, format_intervals_csv,
+    format_intervals_json, parse_point_cloud_text,
 };
 use super::plots::PersistencePlotMode;
-use super::presets::{ShapePreset, DEFAULT_PRESET_POINTS};
+use super::presets::{DEFAULT_PRESET_POINTS, ShapePreset};
 use super::*;
 use crate::framework::{InteractiveTool, SimulationFramework};
-use crate::url_state::{UrlStateSignature, UrlSyncController, MAX_DECODED_URL_STATE_BYTES};
-use egui_plot::export::{color32_image_to_png, ExportOptions};
-use egui_plot::export_primitives::{export_primitives_svg, render_primitives_image};
+use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, UrlStateSignature, UrlSyncController};
 use egui_plot::PlotPoints;
+use egui_plot::export::{ExportOptions, color32_image_to_png};
+use egui_plot::export_primitives::{export_primitives_svg, render_primitives_image};
 use std::f64::consts::{E, PI};
 
 #[test]
@@ -63,31 +63,37 @@ fn test_csv_tsv_json_import_bounds_bom_and_state_preservation() {
 
     let oversized = "x,y\n".to_string() + &"1.0,2.0\n".repeat(MAX_IMPORT_BYTES / 6);
     assert!(oversized.len() > MAX_IMPORT_BYTES);
-    assert!(tool
-        .import_point_cloud_text("huge.csv", &oversized)
-        .is_err());
+    assert!(
+        tool.import_point_cloud_text("huge.csv", &oversized)
+            .is_err()
+    );
 
     let mut over_rows = String::from("x,y\n");
     for i in 0..=MAX_VIETORIS_RIPS_POINTS {
         over_rows.push_str(&format!("{i}.0,1.0\n"));
     }
-    assert!(tool
-        .import_point_cloud_text("many.csv", &over_rows)
-        .is_err());
+    assert!(
+        tool.import_point_cloud_text("many.csv", &over_rows)
+            .is_err()
+    );
 
-    assert!(tool
-        .import_point_cloud_text("bad_hdr.csv", "x,1.0\n2.0,3.0\n")
-        .is_err());
-    assert!(tool
-        .import_point_cloud_text("jagged.csv", "x,y,z\n1,2,3\n4,5\n")
-        .is_err());
-    assert!(tool
-        .import_point_cloud_text("nan.json", "[[0.0, 1.0], [2.0, null]]")
-        .is_err());
+    assert!(
+        tool.import_point_cloud_text("bad_hdr.csv", "x,1.0\n2.0,3.0\n")
+            .is_err()
+    );
+    assert!(
+        tool.import_point_cloud_text("jagged.csv", "x,y,z\n1,2,3\n4,5\n")
+            .is_err()
+    );
+    assert!(
+        tool.import_point_cloud_text("nan.json", "[[0.0, 1.0], [2.0, null]]")
+            .is_err()
+    );
     let wide_json = serde_json::json!([vec![1.0_f64; 33], vec![2.0_f64; 33]]).to_string();
-    assert!(tool
-        .import_point_cloud_text("wide.json", &wide_json)
-        .is_err());
+    assert!(
+        tool.import_point_cloud_text("wide.json", &wide_json)
+            .is_err()
+    );
 
     assert_eq!(tool.save_state().as_deref(), Some(baseline_state.as_str()));
     assert_eq!(tool.complex_builds, builds_before);
@@ -212,9 +218,10 @@ fn test_interval_csv_json_exports_and_svg_png_figure_primitives() {
     let json = format_intervals_json(&tool.persistence).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     let rows: Vec<IntervalExportRow> = serde_json::from_value(parsed["intervals"].clone()).unwrap();
-    assert!(rows
-        .iter()
-        .any(|r| r.dimension == 0 && r.is_essential && r.death > 1.4));
+    assert!(
+        rows.iter()
+            .any(|r| r.dimension == 0 && r.is_essential && r.death > 1.4)
+    );
     assert!(rows.iter().any(|r| r.dimension == 1 && !r.is_essential));
 
     for mode in [PersistencePlotMode::Diagram, PersistencePlotMode::Barcode] {

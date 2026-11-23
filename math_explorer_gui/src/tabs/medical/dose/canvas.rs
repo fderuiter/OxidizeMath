@@ -7,7 +7,7 @@ use super::{CanvasKeyTarget, DoseCalculationTool, DoseDisplayMode};
 use crate::accessibility::{announce_live_status, register_canvas_accessibility};
 use crate::app::SemanticPalette;
 use crate::framework::{
-    scoped_panel_id, BrushMode, BrushStroke, InteractionContext, InteractiveTool,
+    BrushMode, BrushStroke, InteractionContext, InteractiveTool, scoped_panel_id,
 };
 use crate::tabs::medical::imrt::contours::extract_mask_boundary_segments;
 use crate::tabs::medical::imrt::{
@@ -251,26 +251,25 @@ fn sample_gantry_pointer(
         )
     });
     let resp = plot_ui.response();
-    if pressed && (resp.hovered() || resp.dragged()) {
-        if let Some(coord) = plot_ui.pointer_coordinate() {
-            if let Some(hit) = hit_test_gantry_handle(&tool.beam_angles_deg, [coord.x, coord.y]) {
-                tool.selected_beam = hit;
-                tool.dragging_beam = Some(hit);
-                tool.canvas_key_target = CanvasKeyTarget::Gantry;
-            }
-        }
+    if pressed
+        && (resp.hovered() || resp.dragged())
+        && let Some(coord) = plot_ui.pointer_coordinate()
+        && let Some(hit) = hit_test_gantry_handle(&tool.beam_angles_deg, [coord.x, coord.y])
+    {
+        tool.selected_beam = hit;
+        tool.dragging_beam = Some(hit);
+        tool.canvas_key_target = CanvasKeyTarget::Gantry;
     }
     let mut changed = false;
     if let Some(b) = tool.dragging_beam {
-        if down {
-            if let Some(coord) = plot_ui.pointer_coordinate() {
-                if coord.x.hypot(coord.y) > 0.25 {
-                    let deg = coord.y.atan2(coord.x).to_degrees().rem_euclid(360.0);
-                    if (tool.beam_angles_deg[b] - deg).abs() > 1.0e-3 {
-                        tool.beam_angles_deg[b] = (deg * 2.0).round() * 0.5;
-                        changed = true;
-                    }
-                }
+        if down
+            && let Some(coord) = plot_ui.pointer_coordinate()
+            && coord.x.hypot(coord.y) > 0.25
+        {
+            let deg = coord.y.atan2(coord.x).to_degrees().rem_euclid(360.0);
+            if (tool.beam_angles_deg[b] - deg).abs() > 1.0e-3 {
+                tool.beam_angles_deg[b] = (deg * 2.0).round() * 0.5;
+                changed = true;
             }
         }
         if released || !down {
@@ -356,14 +355,14 @@ fn consume_gantry_key_inputs(
             ));
         }
     }
-    if tool.canvas_key_target == CanvasKeyTarget::Gantry || tool.active_challenge.is_some() {
-        if let Some(delta) = consume_gantry_arrow_delta(i) {
-            let b = tool.selected_beam;
-            let next = (tool.beam_angles_deg[b] + delta).rem_euclid(360.0);
-            tool.beam_angles_deg[b] = next;
-            changed = true;
-            msg = Some(format!("Beam {} gantry angle {:.0} degrees", b + 1, next));
-        }
+    if (tool.canvas_key_target == CanvasKeyTarget::Gantry || tool.active_challenge.is_some())
+        && let Some(delta) = consume_gantry_arrow_delta(i)
+    {
+        let b = tool.selected_beam;
+        let next = (tool.beam_angles_deg[b] + delta).rem_euclid(360.0);
+        tool.beam_angles_deg[b] = next;
+        changed = true;
+        msg = Some(format!("Beam {} gantry angle {:.0} degrees", b + 1, next));
     }
     (changed, msg)
 }

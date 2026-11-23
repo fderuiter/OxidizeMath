@@ -2,7 +2,7 @@
 
 // [cite:graph_parameters_rust]
 
-use eframe::egui::{self, vec2, Context, Event, Key, Modifiers, Pos2, RawInput, Rect};
+use eframe::egui::{self, Context, Event, Key, Modifiers, Pos2, RawInput, Rect, vec2};
 
 use super::*;
 use crate::app::MathExplorerApp;
@@ -98,9 +98,11 @@ fn test_chladni_url_hash_hydration_roundtrip() {
     let hash = &share_url[hash_pos..];
 
     let mut restored_app = MathExplorerApp::default();
-    assert!(restored_app
-        .apply_share_location_strings(hash, "", None)
-        .unwrap());
+    assert!(
+        restored_app
+            .apply_share_location_strings(hash, "", None)
+            .unwrap()
+    );
     assert_eq!(restored_app.selected_tab, analysis_idx);
     assert_eq!(
         restored_app.tabs[analysis_idx].active_tool_id(),
@@ -317,9 +319,11 @@ fn test_custom_clamps_url_roundtrip_and_bounds_validation() {
     let share_url = source_app.encode_current_share_url().unwrap();
     let hash = &share_url[share_url.find('#').unwrap()..];
     let mut restored_app = MathExplorerApp::default();
-    assert!(restored_app
-        .apply_share_location_strings(hash, "", None)
-        .unwrap());
+    assert!(
+        restored_app
+            .apply_share_location_strings(hash, "", None)
+            .unwrap()
+    );
     let restored_tool = restored_app.tabs[analysis_idx]
         .framework()
         .unwrap()

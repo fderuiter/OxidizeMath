@@ -11,8 +11,8 @@ use nalgebra::Point3;
 
 use super::SpinVisualizer;
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleTheoryHover,
+    AccessibleTheoryHover, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
 

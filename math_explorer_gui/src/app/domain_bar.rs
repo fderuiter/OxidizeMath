@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::accessibility::{announce_live_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_live_status};
 use crate::app::MathExplorerApp;
 use eframe::egui;
 
@@ -106,15 +106,13 @@ pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Conte
     {
         if crate::tabs::geometry_topology::vietoris_rips::handoff::take_open_vietoris_rips_request(
             ctx,
-        ) {
-            if let Some(tab_idx) = app
-                .tabs
-                .iter()
-                .position(|t| t.name() == "Geometry & Topology")
-            {
-                select_primary_tab(app, ctx, tab_idx);
-                let _ = app.tabs[tab_idx].select_tool_by_name("VietorisRipsTool");
-            }
+        ) && let Some(tab_idx) = app
+            .tabs
+            .iter()
+            .position(|t| t.name() == "Geometry & Topology")
+        {
+            select_primary_tab(app, ctx, tab_idx);
+            let _ = app.tabs[tab_idx].select_tool_by_name("VietorisRipsTool");
         }
         if let Some(payload) =
             crate::tabs::elliptic_curves::handoff::take_elliptic_torus_handoff(ctx)
@@ -134,8 +132,8 @@ fn apply_elliptic_torus_handoff(
 ) {
     use crate::tabs::elliptic_curves::chord_tangent_tool::WeierstrassPlaygroundTool;
     use crate::tabs::elliptic_curves::handoff::{
-        apply_to_modular_invariants, apply_to_number_theory_torus, apply_to_weierstrass_playground,
-        EllipticHandoffTarget,
+        EllipticHandoffTarget, apply_to_modular_invariants, apply_to_number_theory_torus,
+        apply_to_weierstrass_playground,
     };
     use crate::tabs::elliptic_curves::modular_invariants_tool::ModularInvariantsTool;
     use crate::tabs::number_theory::elliptic_curve_playground::EllipticCurvePlayground;
@@ -169,11 +167,11 @@ fn apply_elliptic_torus_handoff(
                 }
             }
         }
-        if let Some(active) = &fw.active_tool {
-            if let Some(saved) = active.save_state() {
-                fw.saved_tool_states
-                    .insert(active.name().to_string(), saved);
-            }
+        if let Some(active) = &fw.active_tool
+            && let Some(saved) = active.save_state()
+        {
+            fw.saved_tool_states
+                .insert(active.name().to_string(), saved);
         }
     }
 }
@@ -401,10 +399,11 @@ fn render_domain_button(
     });
 
     // Direct switch for single-module domains on domain button click
-    if module_count == 1 && is_clicked {
-        if let Some(first_idx) = first_module_idx {
-            select_tab(app, ctx, first_idx);
-        }
+    if module_count == 1
+        && is_clicked
+        && let Some(first_idx) = first_module_idx
+    {
+        select_tab(app, ctx, first_idx);
     }
 }
 
@@ -413,18 +412,18 @@ fn render_active_path_label(
     active_domain: Option<AcademicDomain>,
     active_tab_name: &str,
 ) {
-    if let Some(active_dom) = active_domain {
-        if ui.available_width() > 200.0 {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Active: {} › {}",
-                        active_dom.name(),
-                        active_tab_name
-                    ))
-                    .weak(),
-                );
-            });
-        }
+    if let Some(active_dom) = active_domain
+        && ui.available_width() > 200.0
+    {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(
+                egui::RichText::new(format!(
+                    "Active: {} › {}",
+                    active_dom.name(),
+                    active_tab_name
+                ))
+                .weak(),
+            );
+        });
     }
 }

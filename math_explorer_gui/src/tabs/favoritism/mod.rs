@@ -44,15 +44,15 @@ impl FavoritismTab {
             current_state.children.len(),
         );
         current_state.new_child_name = legacy.new_child_name;
-        if let Ok(updated_json) = serde_json::to_string(&current_state) {
-            if tool.try_load_state(&updated_json).is_ok() {
-                if let Some(saved) = tool.save_state() {
-                    self.framework
-                        .saved_tool_states
-                        .insert(tool.name().to_string(), saved);
-                }
-                self.framework.cache_valid_snapshot();
+        if let Ok(updated_json) = serde_json::to_string(&current_state)
+            && tool.try_load_state(&updated_json).is_ok()
+        {
+            if let Some(saved) = tool.save_state() {
+                self.framework
+                    .saved_tool_states
+                    .insert(tool.name().to_string(), saved);
             }
+            self.framework.cache_valid_snapshot();
         }
         true
     }
@@ -61,6 +61,14 @@ impl FavoritismTab {
 impl ExplorerTab for FavoritismTab {
     fn name(&self) -> &'static str {
         "Favoritism"
+    }
+
+    fn academic_domain(&self) -> &'static str {
+        "Applied Math"
+    }
+
+    fn url_slug(&self) -> &'static str {
+        "favoritism"
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {

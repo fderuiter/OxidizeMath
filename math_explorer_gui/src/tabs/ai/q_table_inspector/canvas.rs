@@ -2,9 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{q_value_cell_color, HeatmapView, QTableInspectorTool};
-use crate::accessibility::{register_canvas_accessibility, AccessibleHoverText};
-use crate::app::{contrasting_text_color, SemanticPalette};
+use super::{HeatmapView, QTableInspectorTool, q_value_cell_color};
+use crate::accessibility::{AccessibleHoverText, register_canvas_accessibility};
+use crate::app::{SemanticPalette, contrasting_text_color};
 use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::framework::{BrushMode, InteractionContext, InteractiveTool};
 use crate::tabs::ai::rl_sculpt::{paint_policy_arrow, role_base_fill, role_glyph};

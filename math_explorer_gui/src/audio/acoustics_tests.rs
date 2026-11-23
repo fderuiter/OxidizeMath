@@ -5,7 +5,7 @@ use rustfft::FftPlanner;
 use verified_engine::engine::VerifiedEngine;
 
 use super::backend::SonificationBackend;
-use super::frame::{SonificationFrame, LIMITER_CEILING_LINEAR};
+use super::frame::{LIMITER_CEILING_LINEAR, SonificationFrame};
 use super::synth::OfflinePcmSynthesizer;
 use super::wav::synthesize_frames_to_wav;
 

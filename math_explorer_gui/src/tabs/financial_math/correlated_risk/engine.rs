@@ -3,7 +3,7 @@
 use super::{CorrelatedRiskScenarioTool, RiskAnalysisMode};
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::copula::{
-    sgp_joint_probability, Correlation, CorrelationMatrix, GaussianCopula, Probability,
+    Correlation, CorrelationMatrix, GaussianCopula, Probability, sgp_joint_probability,
 };
 use math_explorer::pure_math::statistics::ou_process::{
     EulerMaruyama, MomentumType, OuParams, TimeStep,

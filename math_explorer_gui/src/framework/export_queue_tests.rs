@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::framework::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn test_export_queue_deduplication_on_rapid_clicks() {

@@ -8,18 +8,18 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 
 use eframe::egui;
-use egui_plot::export::{color32_image_to_png, ExportOptions};
+use egui_plot::export::{ExportOptions, color32_image_to_png};
 use egui_plot::export_primitives::{
-    export_primitives_svg, render_primitives_image, ExportPrimitive,
+    ExportPrimitive, export_primitives_svg, render_primitives_image,
 };
-use oxidize_core::mesh::{export_splats_to_ply_binary, GaussianSplatPly};
+use oxidize_core::mesh::{GaussianSplatPly, export_splats_to_ply_binary};
 
-use super::scene::{
-    build_circle_ring, rasterize_splats_into, SplatLensConfig, SplatLensMode,
-    VolumetricSplatPreset, DEFAULT_GRAD_THRESHOLD, DEFAULT_OPACITY_THRESHOLD, GRAD_THRESHOLD_MAX,
-    GRAD_THRESHOLD_MIN, OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN, SPLAT_GRID_SIZE,
-};
 use super::GaussianSplattingTool;
+use super::scene::{
+    DEFAULT_GRAD_THRESHOLD, DEFAULT_OPACITY_THRESHOLD, GRAD_THRESHOLD_MAX, GRAD_THRESHOLD_MIN,
+    OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN, SPLAT_GRID_SIZE, SplatLensConfig, SplatLensMode,
+    VolumetricSplatPreset, build_circle_ring, rasterize_splats_into,
+};
 use crate::framework::{Camera3D, InteractiveTool};
 
 const fn default_grad_threshold() -> f64 {

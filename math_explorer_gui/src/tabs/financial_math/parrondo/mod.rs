@@ -10,7 +10,7 @@ pub mod wedge_interaction;
 
 #[cfg(test)]
 pub use atlas::solve_parrondo_ratchet_stack;
-pub use atlas::{ParrondoCartographer, PARRONDO_ATLAS_AXIS_PAIRS};
+pub use atlas::{PARRONDO_ATLAS_AXIS_PAIRS, ParrondoCartographer};
 use state::ParrondoToolState;
 pub use state::{KellyEdgeBadge, ParrondoViewMode};
 
@@ -20,8 +20,8 @@ use crate::web_io::PlatformInstant;
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::markov::parrondo::{
-    solve_parrondo_ratchet, ParrondoEnsemble, ParrondoGame, ParrondoParams, ParrondoPhasePoint,
-    ParrondoReport, ParrondoSchedule, ALLOWED_MODULI, MAX_MODULUS,
+    ALLOWED_MODULI, MAX_MODULUS, ParrondoEnsemble, ParrondoGame, ParrondoParams,
+    ParrondoPhasePoint, ParrondoReport, ParrondoSchedule, solve_parrondo_ratchet,
 };
 use oxidize_core::rng::OxidizeRng;
 use scientific_metadata::theory::TheoryDescribable;
@@ -176,20 +176,20 @@ impl ParrondoParadoxTool {
 
     fn ensure_ensemble_capacity(&mut self) {
         let req_steps = self.num_steps.max(MAX_STEPS);
-        if self.ensemble_cap_walkers != self.num_walkers || self.ensemble_cap_steps < req_steps {
-            if let (Ok(ea), Ok(eb), Ok(em), Ok(es)) = (
+        if (self.ensemble_cap_walkers != self.num_walkers || self.ensemble_cap_steps < req_steps)
+            && let (Ok(ea), Ok(eb), Ok(em), Ok(es)) = (
                 ParrondoEnsemble::with_capacity(self.num_walkers, req_steps),
                 ParrondoEnsemble::with_capacity(self.num_walkers, req_steps),
                 ParrondoEnsemble::with_capacity(self.num_walkers, req_steps),
                 ParrondoEnsemble::with_capacity(self.num_walkers, req_steps),
-            ) {
-                self.ensemble_a = ea;
-                self.ensemble_b = eb;
-                self.ensemble_mix = em;
-                self.ensemble_schedule = es;
-                self.ensemble_cap_walkers = self.num_walkers;
-                self.ensemble_cap_steps = req_steps;
-            }
+            )
+        {
+            self.ensemble_a = ea;
+            self.ensemble_b = eb;
+            self.ensemble_mix = em;
+            self.ensemble_schedule = es;
+            self.ensemble_cap_walkers = self.num_walkers;
+            self.ensemble_cap_steps = req_steps;
         }
     }
 

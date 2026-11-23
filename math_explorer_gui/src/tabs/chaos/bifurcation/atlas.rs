@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::runner::{burned_logistic_lyapunov, CompiledMap1DJob};
+use super::runner::{CompiledMap1DJob, burned_logistic_lyapunov};
 use super::{
     BifurcationDiagram, BifurcationMapMode, CUSTOM_R_BOUND, DEFAULT_CUSTOM_EXPR, DEFAULT_X0,
 };
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
-    RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent, RegimeCartographer,
+    atlas_regime_color,
 };
 use eframe::egui;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};

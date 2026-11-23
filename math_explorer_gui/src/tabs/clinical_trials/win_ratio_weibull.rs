@@ -7,9 +7,9 @@ use crate::framework::bounded_drag_value;
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotPoints};
 use math_explorer::applied::win_ratio::probability_win_ratio::{
-    calculate_probability_win_ratio, ProbabilityWinRatioContext,
+    ProbabilityWinRatioContext, calculate_probability_win_ratio,
 };
-use math_explorer::applied::win_ratio::simulation::{win_ratio_parameter, SimulationParams};
+use math_explorer::applied::win_ratio::simulation::{SimulationParams, win_ratio_parameter};
 
 use super::win_ratio_io::{CohortEvaluation, TierSpec};
 

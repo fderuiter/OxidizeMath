@@ -11,7 +11,7 @@ use crate::accessibility::{
 };
 use crate::app::theme::SemanticPalette;
 use crate::framework::CalloutManager;
-use eframe::egui::{self, accesskit::Role, Color32, Key, Pos2, Rect, Sense, Stroke, Vec2};
+use eframe::egui::{self, Color32, Key, Pos2, Rect, Sense, Stroke, Vec2, accesskit::Role};
 use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints, VLine};
 
 const ROOM_HALF_WIDTH_M: f32 = 1.25;
@@ -130,14 +130,14 @@ fn handle_pointer_interaction(
             }
         }
     }
-    if response.dragged() {
-        if let (Some(target_idx), Some(pos)) = (*dragging_target, response.interact_pointer_pos()) {
-            let (wx, wy) = screen_to_world(rect, pos);
-            let target = target_mut(state, target_idx);
-            target.x_m = wx;
-            target.y_m = wy;
-            changed = true;
-        }
+    if response.dragged()
+        && let (Some(target_idx), Some(pos)) = (*dragging_target, response.interact_pointer_pos())
+    {
+        let (wx, wy) = screen_to_world(rect, pos);
+        let target = target_mut(state, target_idx);
+        target.x_m = wx;
+        target.y_m = wy;
+        changed = true;
     }
     if response.drag_stopped() {
         *dragging_target = None;

@@ -68,7 +68,7 @@ fn sample_crates() -> Vec<WorkspaceCrate> {
         make_crate(
             "math_explorer_gui",
             "math_explorer_gui",
-            "2021",
+            "2024",
             false,
             true,
             true,
@@ -78,7 +78,7 @@ fn sample_crates() -> Vec<WorkspaceCrate> {
         make_crate(
             "crates/markdown_tests",
             "markdown_tests",
-            "2021",
+            "2024",
             true,
             false,
             false,
@@ -96,10 +96,7 @@ fn test_host_only_leaf_crate_skips_wasm_workflows_and_markdown() {
     let plan = build_staged_plan(&staged, &staged, &crates);
 
     assert!(!plan.full_workspace);
-    assert_eq!(
-        plan.rustfmt_by_edition.get("2024"),
-        Some(&vec!["apps/xtask/src/main.rs".to_string()])
-    );
+    assert_eq!(plan.rustfmt_files, vec!["apps/xtask/src/main.rs"]);
     assert!(!plan.run_workflows);
     assert!(!plan.scan_all_markdown);
     assert!(plan.markdown_files.is_empty());
@@ -141,8 +138,8 @@ fn test_web_leaf_and_library_target_flags() {
     let gui_only = vec!["math_explorer_gui/src/main.rs".to_string()];
     let gui_plan = build_staged_plan(&gui_only, &gui_only, &crates);
     assert_eq!(
-        gui_plan.rustfmt_by_edition.get("2021"),
-        Some(&vec!["math_explorer_gui/src/main.rs".to_string()])
+        gui_plan.rustfmt_files,
+        vec!["math_explorer_gui/src/main.rs"]
     );
     assert_eq!(gui_plan.host_clippy_packages, vec!["math_explorer_gui"]);
     let gui_wasm = gui_plan
@@ -175,7 +172,7 @@ fn test_workflow_triggers_and_deleted_file_markdown_escalation() {
     ];
     let plan = build_staged_plan(&staged, &staged, &crates);
 
-    assert!(plan.rustfmt_by_edition.is_empty());
+    assert!(plan.rustfmt_files.is_empty());
     assert!(plan.run_workflows);
     assert!(!plan.scan_all_markdown);
     assert_eq!(
@@ -244,6 +241,13 @@ fn test_load_real_workspace_discovers_all_17_web_crates_and_dependents() {
     let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let crates = load_workspace_crates(&ws_root);
     assert_eq!(crates.len(), 20);
+    for krate in &crates {
+        assert_eq!(
+            krate.edition, "2024",
+            "Workspace crate {} must use Rust edition 2024",
+            krate.package_name
+        );
+    }
 
     let mut web_names: Vec<&str> = crates
         .iter()

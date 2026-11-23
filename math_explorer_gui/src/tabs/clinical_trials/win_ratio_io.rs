@@ -3,22 +3,22 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 
 use crate::web_io::{
-    spawn_open_file_dialog, spawn_save_as_file_dialog, strip_utf8_bom, OpenDialogConfig,
-    SaveAsDialogConfig,
+    OpenDialogConfig, SaveAsDialogConfig, spawn_open_file_dialog, spawn_save_as_file_dialog,
+    strip_utf8_bom,
 };
 use math_explorer::applied::win_ratio::pair_comparison::{
-    calculate_statistics, HigherIsBetter, LowerIsBetter, MatchedPairing, OutcomeComparator,
-    ThresholdComparator, TierOutcomeCounts, UnmatchedPairing, WinRatioAnalysis, WinRatioStats,
+    HigherIsBetter, LowerIsBetter, MatchedPairing, OutcomeComparator, ThresholdComparator,
+    TierOutcomeCounts, UnmatchedPairing, WinRatioAnalysis, WinRatioStats, calculate_statistics,
 };
 use math_explorer::applied::win_ratio::sample_win_ratio::{
-    calculate_sample_win_ratio, calculate_win_proportion, WinLossCounts,
+    WinLossCounts, calculate_sample_win_ratio, calculate_win_proportion,
 };
 
 pub use super::win_ratio_weibull::{
-    evaluate_weibull_simulator, WeibullEvaluation, WeibullSimConfig,
+    WeibullEvaluation, WeibullSimConfig, evaluate_weibull_simulator,
 };
 
 /// Maximum number of prioritized composite endpoint tiers supported in the workbench.

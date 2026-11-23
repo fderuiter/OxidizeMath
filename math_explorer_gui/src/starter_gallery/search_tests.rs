@@ -61,9 +61,11 @@ fn test_per_tool_fallback_generated_even_when_sibling_tools_have_presets() {
     tools.push(&SYNTHETIC_TOOL_WITHOUT_PRESET);
 
     let cards = get_starter_cards_for_domain("analysis", &tools);
-    assert!(cards
-        .iter()
-        .any(|c| c.title == "Harmonic Oscillator" && c.preset_json.is_some()));
+    assert!(
+        cards
+            .iter()
+            .any(|c| c.title == "Harmonic Oscillator" && c.preset_json.is_some())
+    );
     let fallback = cards
         .iter()
         .find(|c| c.id == "SyntheticFallbackSolver")
@@ -79,9 +81,11 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
 
     let physics_cards = filter_starter_cards(&all_cards, "", Some(AcademicDomain::Physics));
     assert!(!physics_cards.is_empty());
-    assert!(physics_cards
-        .iter()
-        .all(|c| card_academic_domain(c.domain) == AcademicDomain::Physics));
+    assert!(
+        physics_cards
+            .iter()
+            .all(|c| card_academic_domain(c.domain) == AcademicDomain::Physics)
+    );
 
     let lorenz = filter_starter_cards(&all_cards, "lorenz", None);
     assert!(lorenz.iter().any(|c| c.title.contains("Attractor")));
@@ -97,9 +101,11 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
     let physics_challenges =
         filter_challenge_cards(&all_challenges, "", Some(AcademicDomain::Physics));
     assert!(!physics_challenges.is_empty());
-    assert!(physics_challenges
-        .iter()
-        .all(|c| card_academic_domain(c.domain) == AcademicDomain::Physics));
+    assert!(
+        physics_challenges
+            .iter()
+            .all(|c| card_academic_domain(c.domain) == AcademicDomain::Physics)
+    );
     let bloch = filter_challenge_cards(&all_challenges, "bloch", Some(AcademicDomain::Physics));
     assert!(bloch.iter().any(|c| c.id.contains("bloch")));
     let no_ai_challenges = filter_challenge_cards(&all_challenges, "", Some(AcademicDomain::Ai));
@@ -113,14 +119,18 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
     let all_stories = get_all_stories();
     assert!(!all_stories.is_empty());
     let filtered_stories = filter_stories(&all_stories, "", Some(AcademicDomain::PureMath));
-    assert!(filtered_stories
-        .iter()
-        .all(|s| card_academic_domain(s.domain) == AcademicDomain::PureMath));
+    assert!(
+        filtered_stories
+            .iter()
+            .all(|s| card_academic_domain(s.domain) == AcademicDomain::PureMath)
+    );
 
     let all_goals = get_all_goal_challenges();
     assert!(!all_goals.is_empty());
     let filtered_goals = filter_goal_challenges(&all_goals, "", Some(AcademicDomain::AppliedMath));
-    assert!(filtered_goals
-        .iter()
-        .all(|g| card_academic_domain(g.domain) == AcademicDomain::AppliedMath));
+    assert!(
+        filtered_goals
+            .iter()
+            .all(|g| card_academic_domain(g.domain) == AcademicDomain::AppliedMath)
+    );
 }

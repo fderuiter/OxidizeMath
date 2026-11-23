@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use eframe::egui;
 use eframe::App;
+use eframe::egui;
 
 #[test]
 fn test_split_layout_mode_defaults_and_labels() {

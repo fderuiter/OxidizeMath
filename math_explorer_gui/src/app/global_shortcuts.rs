@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{ui_panels, viewport, MathExplorerApp, ViewportLayout};
+use super::{MathExplorerApp, ViewportLayout, ui_panels, viewport};
 use eframe::egui;
 use egui_plot::commands::{CommandRegistryData, CommandTrigger};
 use federated_registry::Severity;
@@ -102,8 +102,7 @@ impl MathExplorerApp {
             ctx,
             DesktopShortcutSpec {
                 name: "Command Palette",
-                description:
-                    "Open unified command palette for actions, tabs, tools, and starter presets",
+                description: "Open unified command palette for actions, tabs, tools, and starter presets",
                 trigger: CommandTrigger::Shortcut(modifiers, egui::Key::K),
                 context_name: "Global",
             },

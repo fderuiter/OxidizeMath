@@ -16,19 +16,19 @@ use crate::framework::{
     PlotBrushFrame, ShaderDialect, SimulationFramework,
 };
 use crate::presets::MorphogenesisKineticsMode;
+use crate::tabs::ExplorerTab;
+use crate::tabs::fluid_dynamics::FluidDynamicsTab;
 use crate::tabs::fluid_dynamics::lattice_boltzmann::{
-    LbmSnapshotMetrics, LbmUnified, LBM_HEIGHT, LBM_WIDTH,
+    LBM_HEIGHT, LBM_WIDTH, LbmSnapshotMetrics, LbmUnified,
 };
 use crate::tabs::fluid_dynamics::potential_flow::{
-    ElementType, PotentialFlowTool, FLOW_POS_MAX, FLOW_POS_MIN,
+    ElementType, FLOW_POS_MAX, FLOW_POS_MIN, PotentialFlowTool,
 };
-use crate::tabs::fluid_dynamics::FluidDynamicsTab;
 use crate::tabs::morphogenesis::{MorphogenesisTab, MorphogenesisTool};
+use crate::tabs::quantum::QuantumTab;
 use crate::tabs::quantum::wave_sim::presets::POTENTIAL_DISPLAY_SCALE;
 use crate::tabs::quantum::wave_sim::{WaveData, WaveRunner, WaveSimConfig};
-use crate::tabs::quantum::QuantumTab;
-use crate::tabs::ExplorerTab;
-use crate::url_state::{parse_share_location, MAX_DECODED_URL_STATE_BYTES};
+use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, parse_share_location};
 use crate::volumetric_scene::presets::build_scene_from_2d_morphogenesis_slice;
 use eframe::egui::{self, Event, Key, Modifiers, Pos2, RawInput, Vec2};
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -352,11 +352,12 @@ fn test_wave_freehand_500_hills_wells_unitarity_rt_and_sonification() {
     assert!(wdata.reflection.is_finite() && wdata.transmission.is_finite());
     assert!(wdata.reflection + wdata.transmission <= 1.0 + 1e-6);
     assert!(snap.sonification.active_voices > 0);
-    assert!(snap
-        .sonification
-        .voices
-        .iter()
-        .all(|v| v.freq_hz.is_finite() && v.gain.is_finite()));
+    assert!(
+        snap.sonification
+            .voices
+            .iter()
+            .all(|v| v.freq_hz.is_finite() && v.gain.is_finite())
+    );
 }
 
 #[test]

@@ -4,17 +4,18 @@
 
 use super::arena::ArenaConfig;
 use super::data::{
-    default_huber_delta, format_target_table, is_default_huber_delta, LossMetric, TargetDataMode,
-    DEFAULT_TARGET_EXPR, DEFAULT_TARGET_SAMPLES, DEFAULT_TARGET_X_BOUNDS, MAX_TABLE_ROWS,
+    DEFAULT_TARGET_EXPR, DEFAULT_TARGET_SAMPLES, DEFAULT_TARGET_X_BOUNDS, LossMetric,
+    MAX_TABLE_ROWS, TargetDataMode, default_huber_delta, format_target_table,
+    is_default_huber_delta,
 };
-use super::presets::{PredictorMode, DEFAULT_LOSS_EXPR};
+use super::presets::{DEFAULT_LOSS_EXPR, PredictorMode};
 use super::surfaces::{
-    LandscapeSurface, SculptBump, MAX_SCULPT_BUMPS, SCULPT_AMP_MAX, SCULPT_AMP_MIN,
-    SCULPT_SIGMA_MAX, SCULPT_SIGMA_MIN,
+    LandscapeSurface, MAX_SCULPT_BUMPS, SCULPT_AMP_MAX, SCULPT_AMP_MIN, SCULPT_SIGMA_MAX,
+    SCULPT_SIGMA_MIN, SculptBump,
 };
 use super::{
-    default_arena_camera, default_sculpt_amplitude, default_sculpt_sigma, LandscapeViewMode,
-    LossLandscapeTool, LOSS_PARAM_MAX_BOUND, LOSS_PARAM_MIN_BOUND,
+    LOSS_PARAM_MAX_BOUND, LOSS_PARAM_MIN_BOUND, LandscapeViewMode, LossLandscapeTool,
+    default_arena_camera, default_sculpt_amplitude, default_sculpt_sigma,
 };
 use crate::camera::Camera3D;
 use std::collections::BTreeMap;
@@ -185,30 +186,28 @@ fn validate_bounds_and_expressions(p: &LossLandscapeState) -> Result<(), String>
 }
 
 fn validate_target_and_arena(p: &LossLandscapeState) -> Result<(), String> {
-    if let Some([x0, x1]) = p.target_x_bounds {
-        if !x0.is_finite()
+    if let Some([x0, x1]) = p.target_x_bounds
+        && (!x0.is_finite()
             || !x1.is_finite()
             || !(LOSS_PARAM_MIN_BOUND..=LOSS_PARAM_MAX_BOUND).contains(&x0)
             || !(LOSS_PARAM_MIN_BOUND..=LOSS_PARAM_MAX_BOUND).contains(&x1)
-            || x0 >= x1
-        {
-            return Err("Target x range invalid".into());
-        }
+            || x0 >= x1)
+    {
+        return Err("Target x range invalid".into());
     }
     if p.target_sample_count
         .is_some_and(|c| !(2..=MAX_TABLE_ROWS).contains(&c))
     {
         return Err("Target sample count out of valid range".into());
     }
-    if let Some(ref rows) = p.target_table {
-        if rows.is_empty()
+    if let Some(ref rows) = p.target_table
+        && (rows.is_empty()
             || rows.len() > MAX_TABLE_ROWS
             || rows
                 .iter()
-                .any(|[x, y]| !x.is_finite() || !y.is_finite() || x.abs() > 1e6 || y.abs() > 1e6)
-        {
-            return Err("Target table rows invalid".into());
-        }
+                .any(|[x, y]| !x.is_finite() || !y.is_finite() || x.abs() > 1e6 || y.abs() > 1e6))
+    {
+        return Err("Target table rows invalid".into());
     }
     let arena_ok = p.camera.is_valid()
         && p.arena.is_valid()

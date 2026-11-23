@@ -125,19 +125,15 @@ pub(super) fn notify_js_begin_recovery(
 }
 
 pub(super) fn notify_recovery_completed(window: Option<&web_sys::Window>, doc: &web_sys::Document) {
-    if let Some(boot) = boot_api(window) {
-        if let Ok(func_val) =
+    if let Some(boot) = boot_api(window)
+        && let Ok(func_val) =
             js_sys::Reflect::get(&boot, &JsValue::from_str("completeWebglContextRecovery"))
-        {
-            if let Ok(func) = func_val.dyn_into::<js_sys::Function>() {
-                if func
-                    .call1(&boot, &JsValue::from_str(RESTORED_STATUS_MSG))
-                    .is_ok()
-                {
-                    return;
-                }
-            }
-        }
+        && let Ok(func) = func_val.dyn_into::<js_sys::Function>()
+        && func
+            .call1(&boot, &JsValue::from_str(RESTORED_STATUS_MSG))
+            .is_ok()
+    {
+        return;
     }
     set_overlay_visible(doc, false);
     if let Some(canvas) = doc
@@ -162,24 +158,21 @@ pub(super) fn notify_recovery_failed(
     if let Some(boot) = boot_api(window) {
         if let Ok(set_env_val) =
             js_sys::Reflect::get(&boot, &JsValue::from_str("setSavedWorkspaceEnvelope"))
+            && let Ok(set_env_fn) = set_env_val.dyn_into::<js_sys::Function>()
         {
-            if let Ok(set_env_fn) = set_env_val.dyn_into::<js_sys::Function>() {
-                let _ = set_env_fn.call3(
-                    &boot,
-                    &JsValue::from_str(envelope_json),
-                    &JsValue::from_str(filename),
-                    &JsValue::from_bool(storage_blocked),
-                );
-            }
+            let _ = set_env_fn.call3(
+                &boot,
+                &JsValue::from_str(envelope_json),
+                &JsValue::from_str(filename),
+                &JsValue::from_bool(storage_blocked),
+            );
         }
         if let Ok(fail_val) =
             js_sys::Reflect::get(&boot, &JsValue::from_str("failWebglContextRecovery"))
+            && let Ok(fail_fn) = fail_val.dyn_into::<js_sys::Function>()
+            && fail_fn.call1(&boot, &JsValue::from_str(detail)).is_ok()
         {
-            if let Ok(fail_fn) = fail_val.dyn_into::<js_sys::Function>() {
-                if fail_fn.call1(&boot, &JsValue::from_str(detail)).is_ok() {
-                    return;
-                }
-            }
+            return;
         }
     }
     crate::handle_webgl_failure(Some(doc), detail);

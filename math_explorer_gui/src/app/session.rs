@@ -189,10 +189,10 @@ impl WorkspaceSessionManager {
             if !continuous_edit {
                 app.clear_active_pane_caches();
                 let current_state = app.get_app_state();
-                if let Some(ref last_state) = self.last_committed_state {
-                    if !current_state.semantically_eq(last_state) {
-                        self.push_undo(last_state.clone());
-                    }
+                if let Some(ref last_state) = self.last_committed_state
+                    && !current_state.semantically_eq(last_state)
+                {
+                    self.push_undo(last_state.clone());
                 }
                 self.last_committed_state = Some(current_state);
                 self.last_committed_fingerprint = Some(AppStateFingerprint::capture(app));
@@ -201,17 +201,18 @@ impl WorkspaceSessionManager {
             return;
         }
 
-        if let Some(last_fp) = self.last_committed_fingerprint {
-            if fingerprint.all_revisions_tracked && fingerprint.same_history_as(&last_fp) {
-                if fingerprint != last_fp {
-                    self.last_committed_state = Some(app.get_app_state());
-                    self.last_committed_fingerprint = Some(fingerprint);
-                }
-                if sweep_active && self.last_committed_state.is_some() {
-                    self.lifecycle_state = SessionLifecycleState::DragEditing;
-                }
-                return;
+        if let Some(last_fp) = self.last_committed_fingerprint
+            && fingerprint.all_revisions_tracked
+            && fingerprint.same_history_as(&last_fp)
+        {
+            if fingerprint != last_fp {
+                self.last_committed_state = Some(app.get_app_state());
+                self.last_committed_fingerprint = Some(fingerprint);
             }
+            if sweep_active && self.last_committed_state.is_some() {
+                self.lifecycle_state = SessionLifecycleState::DragEditing;
+            }
+            return;
         }
 
         if continuous_edit && self.last_committed_state.is_some() {
@@ -229,13 +230,13 @@ impl WorkspaceSessionManager {
         if self.lifecycle_state == SessionLifecycleState::DragEditing {
             app.clear_active_pane_caches();
             let current = app.get_app_state();
-            if let Some(prev) = self.last_committed_state.clone() {
-                if !prev.semantically_eq(&current) {
-                    self.push_redo(current);
-                    prev.apply_preserving_chrome(app);
-                    self.set_is_restoring(true);
-                    return;
-                }
+            if let Some(prev) = self.last_committed_state.clone()
+                && !prev.semantically_eq(&current)
+            {
+                self.push_redo(current);
+                prev.apply_preserving_chrome(app);
+                self.set_is_restoring(true);
+                return;
             }
         }
         let Some(prev) = self.pop_undo() else {

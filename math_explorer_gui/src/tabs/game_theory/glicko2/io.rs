@@ -2,8 +2,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-pub(crate) use super::state::TournamentIoState;
 use super::Glicko2TournamentTool;
+pub(crate) use super::state::TournamentIoState;
 use crate::framework::InteractiveTool;
 use crate::presets::{
     Glicko2MatchPreset, Glicko2PeriodPreset, Glicko2PlayerPreset, Glicko2TournamentPresetConfig,

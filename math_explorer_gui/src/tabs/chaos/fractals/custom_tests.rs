@@ -144,9 +144,11 @@ fn test_custom_fractal_glsl_shader_export() {
     assert!(st.contains("void mainImage("));
 
     viewer.math_input.set_expression("z^2 + c + MAX_ITER");
-    assert!(viewer
-        .export_glsl_shader(ShaderDialect::WebGl2Es300)
-        .is_err());
+    assert!(
+        viewer
+            .export_glsl_shader(ShaderDialect::WebGl2Es300)
+            .is_err()
+    );
 }
 
 #[test]

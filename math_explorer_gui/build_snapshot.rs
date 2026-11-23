@@ -94,12 +94,11 @@ fn filter_disabled_tab_mods(content: &str, enabled_features: &BTreeSet<String>) 
         if let Some(feat) = trimmed
             .strip_prefix("#[cfg(feature = \"")
             .and_then(|rest| rest.strip_suffix("\")]"))
+            && !enabled_features.contains(feat)
         {
-            if !enabled_features.contains(feat) {
-                skip_next_mod = true;
-                out.push('\n');
-                continue;
-            }
+            skip_next_mod = true;
+            out.push('\n');
+            continue;
         }
         if skip_next_mod && trimmed.starts_with("pub mod ") && trimmed.ends_with(';') {
             skip_next_mod = false;
@@ -224,11 +223,13 @@ fn serialize_sorted_manifest(payload: &TraceabilityManifestPayload) -> String {
     json
 }
 
-fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
+/// Writes `content` to `path` only when the file is missing or its bytes differ, preserving `mtime`.
+pub(crate) fn write_if_changed(path: &Path, content: &str) -> std::io::Result<bool> {
     if fs::read(path).is_ok_and(|existing| existing == content.as_bytes()) {
-        return Ok(());
+        return Ok(false);
     }
-    fs::write(path, content)
+    fs::write(path, content)?;
+    Ok(true)
 }
 
 fn write_manifest_outputs(out_dir: &Path, json: &str) {

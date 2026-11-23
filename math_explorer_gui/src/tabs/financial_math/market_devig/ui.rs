@@ -2,16 +2,16 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{MarketDeviggingTool, QuoteFormat, MAX_GUI_OUTCOMES, MIN_OUTCOMES};
+use super::{MAX_GUI_OUTCOMES, MIN_OUTCOMES, MarketDeviggingTool, QuoteFormat};
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Legend, Plot};
 use math_explorer::pure_math::statistics::kelly::Odds;
 use math_explorer::pure_math::statistics::market_pricing::{
+    AllMethodsEvReport, DevigMetadata, DevigMethod, MAX_MARKET_OUTCOMES,
     compare_outcome_ev_all_methods, devig_additive_detailed_into, devig_into,
-    devig_multiplicative_into, devig_power_into, devig_shin_into, AllMethodsEvReport,
-    DevigMetadata, DevigMethod, MAX_MARKET_OUTCOMES,
+    devig_multiplicative_into, devig_power_into, devig_shin_into,
 };
 
 fn decimal_to_american(dec: f64) -> f64 {

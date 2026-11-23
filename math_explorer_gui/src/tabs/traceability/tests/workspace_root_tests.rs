@@ -113,14 +113,16 @@ pub(super) fn assert_mws_session_rejected(
         ..Default::default()
     };
     let out = ctx.run(raw, |ctx| app.update(ctx, &mut frame));
-    assert!(out
-        .shapes
-        .iter()
-        .any(|cs| shape_has_text(&cs.shape, "Scanning: default workspace")));
-    assert!(!out
-        .shapes
-        .iter()
-        .any(|cs| shape_has_text(&cs.shape, canary_tex)));
+    assert!(
+        out.shapes
+            .iter()
+            .any(|cs| shape_has_text(&cs.shape, "Scanning: default workspace"))
+    );
+    assert!(
+        !out.shapes
+            .iter()
+            .any(|cs| shape_has_text(&cs.shape, canary_tex))
+    );
 
     let mut tab = TraceabilityTab {
         repo_path: Some(canary_dir.to_string_lossy().into_owned()),

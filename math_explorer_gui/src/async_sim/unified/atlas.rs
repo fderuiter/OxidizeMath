@@ -1,8 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{UnifiedModel, UnifiedSimTool};
-use crate::async_sim::atlas::{AtlasTeleportEvent, ParameterAtlasController};
 use crate::async_sim::SimCommand;
+use crate::async_sim::atlas::{AtlasTeleportEvent, ParameterAtlasController};
 use eframe::egui;
 use std::hash::{Hash, Hasher};
 
@@ -47,10 +47,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                     .ui_extension
                     .as_ref()
                     .is_some_and(|ext| ext.is_parameter_locked(key));
-                if !locked {
-                    if let Some((_, c)) = self.param_metadata.iter().find(|(k, _)| k == key) {
-                        guard.insert(key.to_string(), val.clamp(c.min, c.max));
-                    }
+                if !locked && let Some((_, c)) = self.param_metadata.iter().find(|(k, _)| k == key)
+                {
+                    guard.insert(key.to_string(), val.clamp(c.min, c.max));
                 }
             }
         }

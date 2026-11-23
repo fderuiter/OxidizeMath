@@ -6,9 +6,9 @@ use super::lattice_boltzmann_sculpt::{
     export_solver_rle, record_stroke_in_rle, reset_solver_preserving_obstacles,
     seed_initial_lbm_geometry, sync_lbm_parameters,
 };
-use super::lbm_atlas::{resolve_inlet_velocity, LbmCartographer, LBM_ATLAS_AXIS_PAIRS};
+use super::lbm_atlas::{LBM_ATLAS_AXIS_PAIRS, LbmCartographer, resolve_inlet_velocity};
 use super::lbm_fairing::{
-    decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0,
+    FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0, decode_mask_hex,
 };
 use super::lbm_fairing_ui::LbmUiExtension;
 use crate::async_sim::atlas::RegimeCartographer;
@@ -18,8 +18,8 @@ use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{BrushMode, BrushStroke, SpatialBrushKit};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-    advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_drag_coefficient,
-    compute_vorticity_into, AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9,
+    AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9, advance_wind_tunnel_step,
+    compute_aerodynamic_coefficients, compute_drag_coefficient, compute_vorticity_into,
 };
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;

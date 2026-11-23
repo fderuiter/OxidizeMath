@@ -28,7 +28,7 @@ pub use counterfactual::*;
 pub use kspace_tool::MriKSpaceTool;
 pub use runner::sanitize_mri_time_scale;
 #[cfg(test)]
-pub use runner::{MriRunner, MriSharedParams, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE};
+pub use runner::{MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE, MriRunner, MriSharedParams, MriSnapshot};
 #[cfg(test)]
 pub use tool::MriTool;
 pub use tool::MriToolState;
@@ -85,15 +85,15 @@ impl MriTab {
             }
         }));
         current_state.paused = None;
-        if let Ok(updated_json) = serde_json::to_string(&current_state) {
-            if tool.try_load_state(&updated_json).is_ok() {
-                if let Some(saved) = tool.save_state() {
-                    self.framework
-                        .saved_tool_states
-                        .insert(tool.name().to_string(), saved);
-                }
-                self.framework.cache_valid_snapshot();
+        if let Ok(updated_json) = serde_json::to_string(&current_state)
+            && tool.try_load_state(&updated_json).is_ok()
+        {
+            if let Some(saved) = tool.save_state() {
+                self.framework
+                    .saved_tool_states
+                    .insert(tool.name().to_string(), saved);
             }
+            self.framework.cache_valid_snapshot();
         }
         true
     }
@@ -102,6 +102,14 @@ impl MriTab {
 impl ExplorerTab for MriTab {
     fn name(&self) -> &'static str {
         "MRI Physics"
+    }
+
+    fn academic_domain(&self) -> &'static str {
+        "Physics"
+    }
+
+    fn url_slug(&self) -> &'static str {
+        "mri"
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {

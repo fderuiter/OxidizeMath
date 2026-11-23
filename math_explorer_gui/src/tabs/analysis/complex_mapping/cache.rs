@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::ui::CONTOUR_RESOLUTION;
-use super::{ComplexMappingTool, MappingFunction, COMPLEX_COORD_MAX, COMPLEX_COORD_MIN};
+use super::{COMPLEX_COORD_MAX, COMPLEX_COORD_MIN, ComplexMappingTool, MappingFunction};
 use eframe::egui;
 use egui::emath::Float as _;
 use egui_plot::{PlotBounds, PlotGeometry, PlotItem, PlotItemBase, PlotPoint};
@@ -83,11 +83,11 @@ impl ContourFamily {
                 prev = None;
                 continue;
             }
-            if let Some(p) = prev {
-                if (w.re - p.x).hypot(w.im - p.y) > max_jump {
-                    Self::finish_run(pts, &mut self.ranges, &mut self.bounds, seg_start);
-                    seg_start = pts.len();
-                }
+            if let Some(p) = prev
+                && (w.re - p.x).hypot(w.im - p.y) > max_jump
+            {
+                Self::finish_run(pts, &mut self.ranges, &mut self.bounds, seg_start);
+                seg_start = pts.len();
             }
             let pt = PlotPoint::new(w.re, w.im);
             pts.push(pt);

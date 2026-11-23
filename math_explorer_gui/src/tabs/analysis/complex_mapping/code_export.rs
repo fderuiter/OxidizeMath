@@ -5,8 +5,8 @@
 use super::{ComplexMappingTool, MappingFunction};
 use crate::framework::{CodeArtifact, InteractiveTool};
 use math_commons::ast::{
-    format_latex_scalar, format_python_float, format_rust_f64, parse_equation, BinaryOp, Expr,
-    Func, UnaryOp, MAX_EVAL_DEPTH,
+    BinaryOp, Expr, Func, MAX_EVAL_DEPTH, UnaryOp, format_latex_scalar, format_python_float,
+    format_rust_f64, parse_equation,
 };
 use std::collections::HashMap;
 

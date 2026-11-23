@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::recovery::*;
 use super::SimulationFramework;
+use super::recovery::*;
 
 #[test]
 fn test_simulation_framework_state_snapshot_caching_and_memory_limit() {
@@ -156,8 +156,8 @@ fn test_simulation_framework_auto_scale_step_size_halves_dt_and_restarts() {
     assert!(framework.diagnostic_report().is_none());
 
     // Verify step size halved in serialized state
-    if let Some(state_str) = framework.active_tool.as_ref().unwrap().save_state() {
-        if let (Some(_init), Ok(init_val), Ok(post_val)) = (
+    if let Some(state_str) = framework.active_tool.as_ref().unwrap().save_state()
+        && let (Some(_init), Ok(init_val), Ok(post_val)) = (
             initial_state,
             serde_json::from_str::<serde_json::Value>(
                 framework
@@ -168,19 +168,18 @@ fn test_simulation_framework_auto_scale_step_size_halves_dt_and_restarts() {
                     .unwrap(),
             ),
             serde_json::from_str::<serde_json::Value>(&state_str),
-        ) {
-            if let (Some(init_dt), Some(post_dt)) = (
-                init_val.get("dt").and_then(|v| v.as_f64()),
-                post_val.get("dt").and_then(|v| v.as_f64()),
-            ) {
-                assert!(
-                    (post_dt - init_dt * 0.5).abs() < 1e-6,
-                    "dt must be halved from {} to {}",
-                    init_dt,
-                    post_dt
-                );
-            }
-        }
+        )
+        && let (Some(init_dt), Some(post_dt)) = (
+            init_val.get("dt").and_then(|v| v.as_f64()),
+            post_val.get("dt").and_then(|v| v.as_f64()),
+        )
+    {
+        assert!(
+            (post_dt - init_dt * 0.5).abs() < 1e-6,
+            "dt must be halved from {} to {}",
+            init_dt,
+            post_dt
+        );
     }
 }
 
@@ -471,9 +470,10 @@ fn test_starter_card_launch_isolates_cross_pane_plot_datasets_and_syncs_owner() 
     // NetworkPropagationTool uses default egui_plot export_datasets(), so foreign pane data must
     // neither leak into its snapshot/cache nor be wiped from egui_plot's global buffer.
     assert!(fw.current_valid_plot_datasets.is_empty());
-    assert!(fw
-        .last_valid_snapshot()
-        .is_some_and(|s| s.plot_datasets.is_empty()));
+    assert!(
+        fw.last_valid_snapshot()
+            .is_some_and(|s| s.plot_datasets.is_empty())
+    );
     assert_eq!(
         fw.sync_state.datasets_owner_tool,
         Some("Network Propagation")

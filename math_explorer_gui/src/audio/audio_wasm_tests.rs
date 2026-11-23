@@ -1,12 +1,12 @@
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use super::{
-    export_current_tool_wav, notify_playback_paused, notify_solver_diverged, on_webgl_context_lost,
-    snapshot_ui_state, submit_tool_frame, toggle_mute_from_user_gesture, WaveformPreset,
+    WaveformPreset, export_current_tool_wav, notify_playback_paused, notify_solver_diverged,
+    on_webgl_context_lost, snapshot_ui_state, submit_tool_frame, toggle_mute_from_user_gesture,
 };
 use crate::audio::mappings::{
-    attractor_frame, elliptic_torsion_frame, fractran_register_frame, ulam_spiral_frame,
-    EllipticTorsionSample, UlamPolySample,
+    EllipticTorsionSample, UlamPolySample, attractor_frame, elliptic_torsion_frame,
+    fractran_register_frame, ulam_spiral_frame,
 };
 
 #[wasm_bindgen_test]
@@ -77,8 +77,8 @@ fn wasm_mri_kspace_and_60ghz_radar_sonification_lifecycle() {
     use nalgebra::Vector3;
 
     use crate::audio::mappings::{
-        medical_radar_frame, mri_bloch_frame, mri_kspace_frame, MriKSpaceAudioInput,
-        RadarDopplerAudioInput,
+        MriKSpaceAudioInput, RadarDopplerAudioInput, medical_radar_frame, mri_bloch_frame,
+        mri_kspace_frame,
     };
 
     if !snapshot_ui_state().muted {

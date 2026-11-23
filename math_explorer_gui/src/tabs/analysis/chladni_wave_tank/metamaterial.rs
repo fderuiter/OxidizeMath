@@ -8,7 +8,7 @@
 
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints, VLine};
-use math_commons::ast::{parse_equation, CompiledExpr};
+use math_commons::ast::{CompiledExpr, parse_equation};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::solid_state::lattice::{
     BodyCenteredCubic, CrystalSystem, FaceCenteredCubic, SimpleCubic, UnitCell,
@@ -17,8 +17,8 @@ use math_explorer::physics::solid_state::phonons::{
     acoustic_dispersion, debye_heat_capacity_low_temp, optical_dispersion,
 };
 
-use super::sculpt::{encode_bounded_sculpt_rle, AcousticCellRole};
-use super::{ChladniWaveTankTool, SecondaryPlotMode, GRID_SIZE};
+use super::sculpt::{AcousticCellRole, encode_bounded_sculpt_rle};
+use super::{ChladniWaveTankTool, GRID_SIZE, SecondaryPlotMode};
 use crate::app::SemanticPalette;
 use crate::framework::rasterize_disk_stroke;
 use crate::reflective_ui::render_copyable_metric;

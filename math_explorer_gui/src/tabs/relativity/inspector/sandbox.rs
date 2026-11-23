@@ -5,10 +5,10 @@
 use eframe::egui;
 use math_explorer::nalgebra::SVector;
 use math_explorer::physics::high_energy::{MorrisThorneWormhole, SchwarzschildBlackHole};
-use math_explorer::pure_math::tensor::{static_christoffel_symbols, StaticMetric};
+use math_explorer::pure_math::tensor::{StaticMetric, static_christoffel_symbols};
 
 use super::super::playground::sandbox::{
-    build_lapse_static_metric, build_wormhole_static_metric, MIN_REGULAR_LAPSE, MIN_REGULAR_THROAT,
+    MIN_REGULAR_LAPSE, MIN_REGULAR_THROAT, build_lapse_static_metric, build_wormhole_static_metric,
 };
 use super::{ChristoffelEvaluation, ChristoffelInspectorTool, InspectorManifold};
 

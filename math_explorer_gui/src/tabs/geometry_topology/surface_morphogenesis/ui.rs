@@ -4,13 +4,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    MorphogenesisKineticsKind, PulseBrushAction, SurfaceMorphogenesisTool, SurfaceOverlayMode,
-    ViewportInteractionMode, MAX_SURFACE_MORPHO_RES, MIN_SURFACE_MORPHO_RES,
+    MAX_SURFACE_MORPHO_RES, MIN_SURFACE_MORPHO_RES, MorphogenesisKineticsKind, PulseBrushAction,
+    SurfaceMorphogenesisTool, SurfaceOverlayMode, ViewportInteractionMode,
 };
 use crate::audio::mappings::surface_morphogenesis_frame;
 use crate::audio::render_sonification_panel;
 use crate::framework::playback::{PlaybackAction, PlaybackTransport};
-use crate::framework::{Plot3DViewport, CAMERA_3D_HELPER_TEXT};
+use crate::framework::{CAMERA_3D_HELPER_TEXT, Plot3DViewport};
 use crate::tabs::geometry_topology::custom_surface::SurfaceType;
 use crate::tabs::geometry_topology::export_utils::{MAX_WALL_THICKNESS, MIN_WALL_THICKNESS};
 use eframe::egui;

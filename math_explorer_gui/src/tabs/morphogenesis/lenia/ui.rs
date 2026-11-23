@@ -3,7 +3,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::sandbox::{compute_potential_distribution, POTENTIAL_HIST_BINS};
+use super::sandbox::{POTENTIAL_HIST_BINS, compute_potential_distribution};
 use super::{LeniaBrushMode, LeniaSpeciesPreset, LeniaTool};
 use crate::async_sim::SimWorkerState;
 use crate::framework::recovery::FiniteStateGuard;

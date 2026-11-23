@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::export::{format_kelly_rows_csv, format_kelly_rows_markdown};
-use super::{skip_american_dead_zone, BetSizeCalculatorTool, KellyStrategyRow, OddsFormat};
+use super::{BetSizeCalculatorTool, KellyStrategyRow, OddsFormat, skip_american_dead_zone};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use egui_plot::PlotPoint;

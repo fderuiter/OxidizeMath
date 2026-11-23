@@ -1,10 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::flow::{AttractorMode, CompiledFlowJob};
 use super::AttractorPlotter;
+use super::flow::{AttractorMode, CompiledFlowJob};
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
-    RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent, RegimeCartographer,
+    atlas_regime_color,
 };
 use eframe::egui;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
@@ -341,10 +341,10 @@ impl RegimeCartographer for AttractorCartographer {
                 }
                 for i in 0..=96 {
                     let s = s_min + (i as f64 / 96.0) * (s_max - s_min);
-                    if let Some(rh) = lorenz_hopf_threshold(s, self.base_beta) {
-                        if (self.axes.y.constraint.min..=self.axes.y.constraint.max).contains(&rh) {
-                            pts.push([s, rh]);
-                        }
+                    if let Some(rh) = lorenz_hopf_threshold(s, self.base_beta)
+                        && (self.axes.y.constraint.min..=self.axes.y.constraint.max).contains(&rh)
+                    {
+                        pts.push([s, rh]);
                     }
                 }
             }
@@ -356,10 +356,10 @@ impl RegimeCartographer for AttractorCartographer {
                 }
                 for i in 0..=96 {
                     let b = b_min + (i as f64 / 96.0) * (b_max - b_min);
-                    if let Some(rh) = lorenz_hopf_threshold(self.base_sigma, b) {
-                        if (self.axes.x.constraint.min..=self.axes.x.constraint.max).contains(&rh) {
-                            pts.push([rh, b]);
-                        }
+                    if let Some(rh) = lorenz_hopf_threshold(self.base_sigma, b)
+                        && (self.axes.x.constraint.min..=self.axes.x.constraint.max).contains(&rh)
+                    {
+                        pts.push([rh, b]);
                     }
                 }
             }

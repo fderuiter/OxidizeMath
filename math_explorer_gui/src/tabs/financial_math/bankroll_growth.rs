@@ -6,16 +6,16 @@
 mod state;
 
 use super::bankroll_ensemble::{BankrollEnsembleLab, BankrollLabMode};
-use crate::accessibility::{announce_live_status, AccessibleHoverText};
+use crate::accessibility::{AccessibleHoverText, announce_live_status};
 use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use eframe::egui;
 use egui_plot::{Legend, Line, Plot, PlotPoint};
 use math_explorer::pure_math::statistics::kelly::{
-    expected_growth_rate, expected_value, kelly_fraction, variants, BankrollFraction, Odds,
-    UnitInterval,
+    BankrollFraction, Odds, UnitInterval, expected_growth_rate, expected_value, kelly_fraction,
+    variants,
 };
 use math_explorer::pure_math::statistics::ruin::kelly_barrier_risk;
-use oxidize_core::rng::{OxidizeRng, BASE_SEED};
+use oxidize_core::rng::{BASE_SEED, OxidizeRng};
 use rand::Rng;
 
 pub(crate) fn is_default_stake_multiplier(val: &f64) -> bool {

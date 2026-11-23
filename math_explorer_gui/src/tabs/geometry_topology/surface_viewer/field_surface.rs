@@ -4,7 +4,7 @@
 
 use super::SurfaceViewer;
 use crate::app::dataflow_bus::{
-    poll_pane_landmarks, poll_pane_scalar_field, LandmarkCloud3DPayload, ScalarField2DPayload,
+    LandmarkCloud3DPayload, ScalarField2DPayload, poll_pane_landmarks, poll_pane_scalar_field,
 };
 use eframe::egui;
 use math_explorer::pure_math::differential_geometry::surface::ParametricSurface;

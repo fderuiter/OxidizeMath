@@ -2,16 +2,16 @@
 // [cite:hurwitz_kronecker]
 
 use super::atlas::WeierstrassRegimeCartographer;
-use super::handoff::{render_handoff_buttons, EllipticHandoffTarget, EllipticTorusHandoff};
+use super::handoff::{EllipticHandoffTarget, EllipticTorusHandoff, render_handoff_buttons};
 use super::modular_invariants_tool::{
-    snap_prime_u64, ModularInvariantsTool, ModularPlotMode, ModularQSeriesKind,
+    ModularInvariantsTool, ModularPlotMode, ModularQSeriesKind, snap_prime_u64,
 };
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::scoped_panel_id;
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, Points};
 use math_explorer::pure_math::elliptic_curves::{
-    hurwitz_trace_sum, psi, AffinePointFp, FpSingularCubic, RealSingularCubic, MAX_LATTICE_PRIME,
+    AffinePointFp, FpSingularCubic, MAX_LATTICE_PRIME, RealSingularCubic, hurwitz_trace_sum, psi,
 };
 use std::sync::Arc;
 

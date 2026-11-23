@@ -6,13 +6,13 @@ use std::sync::Arc;
 
 use eframe::egui;
 use egui_plot::export::{
-    color32_image_to_png, color32_images_to_gif, export_custom_gif, ExportOptions,
+    ExportOptions, color32_image_to_png, color32_images_to_gif, export_custom_gif,
 };
 use egui_plot::export_primitives::{
-    compute_primitive_bounds_for_options, datasets_to_primitives, export_primitives_svg,
-    export_raster_gif, export_raster_svg, has_drawable_primitives, has_finite_dataset_points,
-    render_primitives_image, render_primitives_image_with_bounds, scale_color_image,
-    ExportPrimitive,
+    ExportPrimitive, compute_primitive_bounds_for_options, datasets_to_primitives,
+    export_primitives_svg, export_raster_gif, export_raster_svg, has_drawable_primitives,
+    has_finite_dataset_points, render_primitives_image, render_primitives_image_with_bounds,
+    scale_color_image,
 };
 
 use super::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework};

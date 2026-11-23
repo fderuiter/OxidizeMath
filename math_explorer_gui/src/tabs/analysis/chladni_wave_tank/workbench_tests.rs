@@ -2,7 +2,7 @@
 
 // [cite:graph_parameters_rust]
 
-use eframe::egui::{self, vec2, Context, Event, Key, Modifiers, Pos2, RawInput, Rect};
+use eframe::egui::{self, Context, Event, Key, Modifiers, Pos2, RawInput, Rect, vec2};
 use math_explorer::pure_math::analysis::pde::wave_2d::{DriverConfig2D, Wave2DParams};
 use verified_engine::engine::VerifiedEngine;
 
@@ -139,10 +139,12 @@ fn test_chladni_sculpt_rle_and_pickup_url_roundtrip_under_4kib() {
     use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
 
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    assert!(!ChladniWaveTankTool::default()
-        .save_state()
-        .unwrap()
-        .contains("sculpt_rle"));
+    assert!(
+        !ChladniWaveTankTool::default()
+            .save_state()
+            .unwrap()
+            .contains("sculpt_rle")
+    );
 
     let mut source_app = MathExplorerApp::default();
     let analysis_idx = source_app
@@ -171,9 +173,11 @@ fn test_chladni_sculpt_rle_and_pickup_url_roundtrip_under_4kib() {
     let share_url = source_app.encode_current_share_url().unwrap();
     let hash = &share_url[share_url.find('#').unwrap()..];
     let mut restored_app = MathExplorerApp::default();
-    assert!(restored_app
-        .apply_share_location_strings(hash, "", None)
-        .unwrap());
+    assert!(
+        restored_app
+            .apply_share_location_strings(hash, "", None)
+            .unwrap()
+    );
     let restored = active_chladni_mut(&mut restored_app, analysis_idx);
     assert_eq!(
         restored.save_state().as_deref(),

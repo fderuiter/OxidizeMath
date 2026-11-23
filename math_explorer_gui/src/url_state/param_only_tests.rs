@@ -20,7 +20,7 @@ fn write_restored_plot_png(path: &str, datasets: &[(String, Vec<[f64; 2]>)]) {
 #[cfg(feature = "pure_math")]
 fn build_populated_ode_200k_with_15_runs() -> crate::tabs::analysis::ode::OdeSolverTool {
     use crate::framework::TraceSeries;
-    use crate::presets::{OdePreset, MAX_ODE_STEPS};
+    use crate::presets::{MAX_ODE_STEPS, OdePreset};
     use crate::tabs::analysis::ode::OdeSolverTool;
     use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 
@@ -111,10 +111,11 @@ fn test_ode_200k_steps_15_runs_exports_url_under_4kib_and_1ms_and_skips_pin_sync
     assert_eq!(ode.snapshot_manager.history_len(), 5);
     assert_eq!(ode.snapshot_manager.len(), 10);
     assert!(ode.save_state().unwrap().len() > MAX_DECODED_URL_STATE_BYTES);
-    assert!(ode
-        .export_preset_json()
-        .unwrap()
-        .contains("snapshot_manager"));
+    assert!(
+        ode.export_preset_json()
+            .unwrap()
+            .contains("snapshot_manager")
+    );
 
     let mut fw = SimulationFramework::new("analysis");
     assert!(fw.select_tool_by_name("OdeSolverTool"));
@@ -236,10 +237,11 @@ fn test_sir_15_runs_exports_url_under_4kib_and_1ms_and_skips_pin_sync() {
     assert_eq!(sir.snapshot_manager.history_len(), 5);
     assert_eq!(sir.snapshot_manager.len(), 10);
     assert!(sir.save_state().unwrap().contains("snapshot_manager"));
-    assert!(sir
-        .export_preset_json()
-        .unwrap()
-        .contains("snapshot_manager"));
+    assert!(
+        sir.export_preset_json()
+            .unwrap()
+            .contains("snapshot_manager")
+    );
 
     let mut fw = SimulationFramework::new("epidemiology");
     assert!(fw.select_tool_by_name("SirTool"));
@@ -278,7 +280,7 @@ fn test_sir_15_runs_exports_url_under_4kib_and_1ms_and_skips_pin_sync() {
 mod full_app_tests {
     use super::*;
     use crate::app::MathExplorerApp;
-    use eframe::{egui, App};
+    use eframe::{App, egui};
 
     fn build_untracked_nav_inputs(screen: egui::Rect) -> [egui::RawInput; 3] {
         let hover = egui::pos2(800.0, 400.0);
@@ -382,13 +384,10 @@ mod full_app_tests {
     fn find_fractal_canvas_center(out: &egui::FullOutput) -> egui::Pos2 {
         if let Some(update) = &out.platform_output.accesskit_update {
             for (_id, node) in &update.nodes {
-                if node.role() == egui::accesskit::Role::Image {
-                    if let Some(b) = node.bounds() {
-                        return egui::pos2(
-                            ((b.x0 + b.x1) * 0.5) as f32,
-                            ((b.y0 + b.y1) * 0.5) as f32,
-                        );
-                    }
+                if node.role() == egui::accesskit::Role::Image
+                    && let Some(b) = node.bounds()
+                {
+                    return egui::pos2(((b.x0 + b.x1) * 0.5) as f32, ((b.y0 + b.y1) * 0.5) as f32);
                 }
             }
         }
@@ -431,12 +430,13 @@ mod full_app_tests {
         let _ = ctx.run(zoom_in, |c| app.update(c, &mut frame));
         let zoomed_sig = app.current_url_signature();
         assert_ne!(zoomed_sig, base_sig);
-        assert!(sync
-            .poll_at_millis(zoomed_sig, false, 100, URL_SYNC_DEBOUNCE_MS, || {
+        assert!(
+            sync.poll_at_millis(zoomed_sig, false, 100, URL_SYNC_DEBOUNCE_MS, || {
                 encode_calls += 1;
                 app.encode_current_share_fragment()
             })
-            .is_some());
+            .is_some()
+        );
         assert_eq!(encode_calls, 0);
 
         let flush_ms = 100 + URL_SYNC_DEBOUNCE_MS + 10;
@@ -446,9 +446,10 @@ mod full_app_tests {
         });
         assert_eq!(after, None);
         assert_eq!(encode_calls, 1);
-        assert!(sync
-            .last_synced_fragment()
-            .unwrap()
-            .starts_with("#tab=chaos&tool=FractalViewer&state="));
+        assert!(
+            sync.last_synced_fragment()
+                .unwrap()
+                .starts_with("#tab=chaos&tool=FractalViewer&state=")
+        );
     }
 }

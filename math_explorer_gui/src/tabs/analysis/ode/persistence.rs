@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::OdeSolverTool;
 use super::custom_spec::default_ode_custom_params;
 use super::phase_plane::{
     DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID, MAX_QUIVER_GRID,
     MAX_SEEDED_ORBITS,
 };
 use super::poincare_map::DEFAULT_MATRIX_A;
-use super::OdeSolverTool;
 use crate::framework::{CalloutManager, TraceSnapshotManager};
 use crate::presets::OdePreset;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;

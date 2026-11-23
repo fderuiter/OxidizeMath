@@ -2,7 +2,7 @@
 
 //! Viewport layout, multi-pane focus, synchronization, export, and preset command specs.
 
-use super::actions::{cmd_key, spec, BuiltinCommandSpec, PaletteAction as A};
+use super::actions::{BuiltinCommandSpec, PaletteAction as A, cmd_key, spec};
 
 pub(super) static LAYOUT_AND_EXPORT_SPECS: &[BuiltinCommandSpec] = &[
     spec(

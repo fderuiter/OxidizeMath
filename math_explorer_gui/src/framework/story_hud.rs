@@ -6,7 +6,7 @@
 use super::{CalloutSpec, SimulationFramework};
 use crate::starter_gallery::{GoalChallengeMetadata, PresetStoryMetadata};
 use eframe::egui;
-use math_commons::ast::{parse as parse_ast, Expr};
+use math_commons::ast::{Expr, parse as parse_ast};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -303,16 +303,15 @@ impl SimulationFramework {
             tool.sync_callouts(step.callouts);
         }
         let step_state = self.active_tool.as_ref().and_then(|t| t.save_url_state());
-        if self.challenge_hud.sandbox.formula.is_empty() {
-            if let Some((obs, _)) = self
+        if self.challenge_hud.sandbox.formula.is_empty()
+            && let Some((obs, _)) = self
                 .active_tool
                 .as_ref()
                 .and_then(|t| t.observables().first().copied())
-            {
-                self.challenge_hud
-                    .sandbox
-                    .set_formula(&format!("{obs} > 0.0"));
-            }
+        {
+            self.challenge_hud
+                .sandbox
+                .set_formula(&format!("{obs} > 0.0"));
         }
         self.challenge_hud.announced_challenge_win = None;
         self.challenge_hud.mode = ChallengeHudMode::Story {
@@ -407,11 +406,11 @@ impl SimulationFramework {
         *currently_satisfied = satisfied;
         if satisfied {
             *solved = true;
-            if let Some(egui_ctx) = ctx {
-                if self.challenge_hud.announced_challenge_win != Some(challenge.id) {
-                    crate::accessibility::announce_live_status(egui_ctx, challenge.win_message);
-                    self.challenge_hud.announced_challenge_win = Some(challenge.id);
-                }
+            if let Some(egui_ctx) = ctx
+                && self.challenge_hud.announced_challenge_win != Some(challenge.id)
+            {
+                crate::accessibility::announce_live_status(egui_ctx, challenge.win_message);
+                self.challenge_hud.announced_challenge_win = Some(challenge.id);
             }
         }
         Some(satisfied)
@@ -447,21 +446,19 @@ impl SimulationFramework {
         if let ChallengeHudMode::Story {
             story, step_index, ..
         } = self.challenge_hud.mode
+            && self.challenge_hud.last_announced_story != Some((story.id, step_index))
+            && let Some(step) = story.steps.get(step_index)
         {
-            if self.challenge_hud.last_announced_story != Some((story.id, step_index)) {
-                if let Some(step) = story.steps.get(step_index) {
-                    let msg = format!(
-                        "Guided story {}, step {} of {}: {}. {}",
-                        story.title,
-                        step_index + 1,
-                        story.steps.len(),
-                        step.title,
-                        step.narrative
-                    );
-                    crate::accessibility::announce_live_status(ctx, msg);
-                    self.challenge_hud.last_announced_story = Some((story.id, step_index));
-                }
-            }
+            let msg = format!(
+                "Guided story {}, step {} of {}: {}. {}",
+                story.title,
+                step_index + 1,
+                story.steps.len(),
+                step.title,
+                step.narrative
+            );
+            crate::accessibility::announce_live_status(ctx, msg);
+            self.challenge_hud.last_announced_story = Some((story.id, step_index));
         }
         let _ = self.evaluate_challenge_predicates(Some(ctx));
     }

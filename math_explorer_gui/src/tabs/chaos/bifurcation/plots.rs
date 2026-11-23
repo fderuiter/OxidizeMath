@@ -2,8 +2,8 @@
 
 use super::{BifurcationDiagram, BifurcationMapMode, CUSTOM_ESCAPE_GUARD};
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleTheoryHover,
+    AccessibleTheoryHover, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use crate::app::SemanticPalette;
 use eframe::egui;
@@ -64,31 +64,33 @@ impl BifurcationDiagram {
 
         if !announce && resp.clicked() && pointer_released {
             resp.request_focus();
-            if let Some(coord) = plot_ui.pointer_coordinate() {
-                if coord.x.is_finite() {
-                    let target_r = coord.x.clamp(self.r_min, self.r_max);
-                    let tol = (self.r_max - self.r_min).abs() * 0.015;
-                    if self.r_pinned && (self.selected_r - target_r).abs() <= tol {
-                        self.r_pinned = false;
-                    } else {
-                        self.selected_r = target_r;
-                        self.r_pinned = true;
-                    }
-                    self.r_from_hover = false;
-                    r_changed = true;
-                    announce = true;
+            if let Some(coord) = plot_ui.pointer_coordinate()
+                && coord.x.is_finite()
+            {
+                let target_r = coord.x.clamp(self.r_min, self.r_max);
+                let tol = (self.r_max - self.r_min).abs() * 0.015;
+                if self.r_pinned && (self.selected_r - target_r).abs() <= tol {
+                    self.r_pinned = false;
+                } else {
+                    self.selected_r = target_r;
+                    self.r_pinned = true;
                 }
+                self.r_from_hover = false;
+                r_changed = true;
+                announce = true;
             }
-        } else if !announce && resp.hovered() && !resp.dragged() && !self.r_pinned {
-            if let Some(coord) = plot_ui.pointer_coordinate() {
-                if coord.x.is_finite() {
-                    let next_r = coord.x.clamp(self.r_min, self.r_max);
-                    self.r_from_hover = true;
-                    if (next_r - self.selected_r).abs() > 1e-9 {
-                        self.selected_r = next_r;
-                        r_changed = true;
-                    }
-                }
+        } else if !announce
+            && resp.hovered()
+            && !resp.dragged()
+            && !self.r_pinned
+            && let Some(coord) = plot_ui.pointer_coordinate()
+            && coord.x.is_finite()
+        {
+            let next_r = coord.x.clamp(self.r_min, self.r_max);
+            self.r_from_hover = true;
+            if (next_r - self.selected_r).abs() > 1e-9 {
+                self.selected_r = next_r;
+                r_changed = true;
             }
         }
 
@@ -288,13 +290,12 @@ impl BifurcationDiagram {
             .x_axis_label("x_n")
             .y_axis_label("x_{n+1} = f(x_n, r)")
             .show(ui, |plot_ui| {
-                if plot_ui.response().clicked() {
-                    if let Some(coord) = plot_ui.pointer_coordinate() {
-                        if coord.x.is_finite() {
-                            self.x0 = coord.x.clamp(x_lo, x_hi);
-                            self.recompute();
-                        }
-                    }
+                if plot_ui.response().clicked()
+                    && let Some(coord) = plot_ui.pointer_coordinate()
+                    && coord.x.is_finite()
+                {
+                    self.x0 = coord.x.clamp(x_lo, x_hi);
+                    self.recompute();
                 }
                 plot_ui.line(
                     Line::new("y = x", &self.cobweb_diagonal[..])

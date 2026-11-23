@@ -3,8 +3,8 @@
 #[cfg(test)]
 use super::poincare_map::DEFAULT_MATRIX_A;
 use super::systems::{
-    build_ode_param_map, CustomOdeSpec, ExponentialOde, HarmonicOscillatorOde, Linear2DOde,
-    LogisticGrowthOde, PlanarAstOde,
+    CustomOdeSpec, ExponentialOde, HarmonicOscillatorOde, Linear2DOde, LogisticGrowthOde,
+    PlanarAstOde, build_ode_param_map,
 };
 use crate::presets::OdePreset;
 use math_commons::ast::Expr;

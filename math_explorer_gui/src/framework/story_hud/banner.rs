@@ -4,7 +4,7 @@
 
 use super::ChallengeHudMode;
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::{scoped_panel_id, SimulationFramework};
+use crate::framework::{SimulationFramework, scoped_panel_id};
 use crate::starter_gallery::{GoalChallengeMetadata, PresetStoryMetadata};
 use eframe::egui;
 

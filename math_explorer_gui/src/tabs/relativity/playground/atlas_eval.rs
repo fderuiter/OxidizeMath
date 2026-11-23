@@ -7,8 +7,8 @@ use std::f64::consts::PI;
 use crate::async_sim::atlas::AtlasCell;
 use math_commons::ast::CompiledExpr;
 
-use super::super::sandbox::MIN_REGULAR_LAPSE;
 use super::super::GeodesicMode;
+use super::super::sandbox::MIN_REGULAR_LAPSE;
 use super::{LensingRegime, RelativityCartographer};
 
 #[derive(Clone, Copy)]

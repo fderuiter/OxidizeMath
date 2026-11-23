@@ -7,7 +7,7 @@
 use super::MarkovSequenceWorkbenchTool;
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use crate::presets::{
-    MarkovWorkbenchPresetConfig, MAX_BAUM_WELCH_ITERATIONS, MAX_OBSERVATION_SEQUENCE_LEN,
+    MAX_BAUM_WELCH_ITERATIONS, MAX_OBSERVATION_SEQUENCE_LEN, MarkovWorkbenchPresetConfig,
 };
 use eframe::egui;
 

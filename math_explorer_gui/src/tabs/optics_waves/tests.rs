@@ -1,18 +1,18 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::OpticsWaveTab;
 use super::overlays::optics_overlay_palette;
 use super::presets::{PRESET_OPTICS_DOUBLE_SLIT, PRESET_OPTICS_LUNEBURG, PRESET_OPTICS_VESELAGO};
 use super::runner::{OpticsSharedParams, OpticsWaveRunner};
 use super::state::OpticsWaveToolState;
 use super::tool::OpticsWaveTool;
-use super::OpticsWaveTab;
-use crate::app::theme::contrast_ratio;
 use crate::app::ThemeMode;
+use crate::app::theme::contrast_ratio;
 use crate::async_sim::SimulationRunner;
-use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::InteractiveTool;
+use crate::framework::recovery::FiniteStateGuard;
 use crate::tabs::ExplorerTab;
-use eframe::egui::{self, vec2, Color32, Context, Event, Key, Modifiers, Pos2, RawInput, Rect};
+use eframe::egui::{self, Color32, Context, Event, Key, Modifiers, Pos2, RawInput, Rect, vec2};
 use math_explorer::physics::optics::refraction::OpticsPreset;
 use std::sync::Arc;
 
@@ -128,11 +128,11 @@ fn test_optics_canvas_focus_arrow_nudge_and_no_tab_trap() {
     let mut focused = false;
     for _ in 0..80 {
         let step = ctx.run(key_frame(Key::Tab), |ctx| tool.show(ctx));
-        if let Some(upd) = step.platform_output.accesskit_update {
-            if image_nodes.contains(&upd.focus) {
-                focused = true;
-                break;
-            }
+        if let Some(upd) = step.platform_output.accesskit_update
+            && image_nodes.contains(&upd.focus)
+        {
+            focused = true;
+            break;
         }
     }
     assert!(focused, "Wave canvas must be reachable via Key::Tab");

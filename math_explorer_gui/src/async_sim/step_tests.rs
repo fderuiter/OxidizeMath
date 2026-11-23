@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 use super::*;
+use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
 #[cfg(not(target_arch = "wasm32"))]
@@ -133,9 +133,11 @@ fn test_step_command_advances_once_and_returns_to_ready() {
     assert_eq!(steps.load(Ordering::SeqCst), 1);
     assert_eq!(controller.state(), SimWorkerState::Ready);
     assert_eq!(controller.latest_snapshot().unwrap().custom_data, vec![1.0]);
-    assert!(crate::accessibility::all_announcements()
-        .iter()
-        .any(|(msg, prio)| msg == "Simulation step completed" && prio == "polite"));
+    assert!(
+        crate::accessibility::all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg == "Simulation step completed" && prio == "polite")
+    );
 
     assert!(controller.send_command(SimCommand::Step(3)).is_ok());
     for _ in 0..400 {
@@ -191,9 +193,11 @@ fn test_step_divergence_transitions_to_faulted_and_emits_diagnostic() {
 
     assert_eq!(controller.state(), SimWorkerState::Faulted);
     assert!(controller.diagnostic_report().is_some());
-    assert!(crate::accessibility::all_announcements()
-        .iter()
-        .any(|(msg, prio)| msg.contains("faulted") && prio == "polite"));
+    assert!(
+        crate::accessibility::all_announcements()
+            .iter()
+            .any(|(msg, prio)| msg.contains("faulted") && prio == "polite")
+    );
 }
 
 static COUNTING_INIT_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -237,8 +241,8 @@ impl crate::async_sim::unified::UnifiedModel for CountingModel {
             sonification: crate::audio::SonificationFrame::silent(),
         }
     }
-    fn parameters(
-    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+    fn parameters()
+    -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
         std::collections::HashMap::from([(
             "rate".to_string(),
             scientific_metadata::theory::ParameterConstraint {

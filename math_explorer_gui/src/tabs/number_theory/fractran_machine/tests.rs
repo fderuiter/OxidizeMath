@@ -192,10 +192,11 @@ fn test_fractran_sonification_chords_pow2_chime_halt_mute_and_meter() {
         egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
     });
     let ak = out.platform_output.accesskit_update.unwrap();
-    assert!(ak
-        .nodes
-        .iter()
-        .any(|(_, n)| n.role() == egui::accesskit::Role::Meter));
+    assert!(
+        ak.nodes
+            .iter()
+            .any(|(_, n)| n.role() == egui::accesskit::Role::Meter)
+    );
 
     tool.select_preset(PresetChoice::Mult);
     if crate::audio::snapshot_ui_state().muted {

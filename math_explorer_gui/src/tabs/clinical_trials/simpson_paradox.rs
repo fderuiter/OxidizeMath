@@ -9,12 +9,12 @@
 
 use crate::framework::CalloutManager;
 use math_explorer::applied::clinical_trials::{
-    analysis::{calculate_risk_metrics, RiskMetrics},
+    analysis::{RiskMetrics, calculate_risk_metrics},
     design::{BlockRandomizer, Group, Patient, StratifiedRandomizer},
     hypothesis_testing::{ChiSquare2x2, HypothesisTest, TestResult},
     types::ContingencyTable,
 };
-use oxidize_core::rng::{OxidizeRng, BASE_SEED};
+use oxidize_core::rng::{BASE_SEED, OxidizeRng};
 use rand::Rng;
 
 const ALPHA: f64 = 0.05;

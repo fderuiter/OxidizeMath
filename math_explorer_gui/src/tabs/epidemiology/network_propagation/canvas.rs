@@ -3,8 +3,8 @@
 use super::analytics::compute_network_analytics;
 use super::{ContainmentMode, NetworkPropagationTool};
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleHoverText,
+    AccessibleHoverText, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use crate::app::SemanticPalette;
 use eframe::egui::{self, Pos2, Vec2};

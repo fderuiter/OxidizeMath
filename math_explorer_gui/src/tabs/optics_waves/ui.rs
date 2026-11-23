@@ -1,19 +1,19 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::runner::{render_wavefield_image, OpticsFrameData, WaveRenderInput};
+use super::runner::{OpticsFrameData, WaveRenderInput, render_wavefield_image};
 use super::tool::OpticsWaveTool;
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleTheoryHover,
+    AccessibleTheoryHover, announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    register_canvas_accessibility,
 };
 use crate::app::ThemeMode;
-use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
-};
 use crate::async_sim::SimCommand;
+use crate::async_sim::ui::{
+    WorkerFaultAction, render_empty_plot_guidance, render_worker_fault_banner,
+};
 use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
 use crate::framework::{PlaybackAction, PlaybackTransport};
-use eframe::egui::{self, vec2, ColorImage};
+use eframe::egui::{self, ColorImage, vec2};
 use math_explorer::physics::optics::refraction::OpticsPreset;
 
 impl OpticsWaveTool {
@@ -30,10 +30,10 @@ impl OpticsWaveTool {
             .and_then(|d| d.downcast_ref::<OpticsFrameData>())
         {
             self.latest_frame = Some(data.clone());
-        } else if let Ok(px) = snapshot.pixels.try_read() {
-            if px.len() == snapshot.width * snapshot.height {
-                self.pixels = px.clone();
-            }
+        } else if let Ok(px) = snapshot.pixels.try_read()
+            && px.len() == snapshot.width * snapshot.height
+        {
+            self.pixels = px.clone();
         }
     }
 
@@ -306,13 +306,12 @@ impl OpticsWaveTool {
     }
 
     fn handle_canvas_interaction(&mut self, ui: &egui::Ui, response: &egui::Response) {
-        if response.dragged() {
-            if let Some(pos) = response.interact_pointer_pos() {
-                let rel_x =
-                    ((pos.x - response.rect.left()) / response.rect.width().max(1.0)) as f64;
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                p.detector_x = rel_x.clamp(0.45, 0.90);
-            }
+        if response.dragged()
+            && let Some(pos) = response.interact_pointer_pos()
+        {
+            let rel_x = ((pos.x - response.rect.left()) / response.rect.width().max(1.0)) as f64;
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.detector_x = rel_x.clamp(0.45, 0.90);
         }
         lock_canvas_arrow_keys(ui, response);
         if response.has_focus() {

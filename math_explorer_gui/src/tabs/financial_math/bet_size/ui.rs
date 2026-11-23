@@ -3,10 +3,10 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    resolve_odds_for, skip_american_dead_zone, BetSizeCalculatorTool, OddsFormat,
-    AMERICAN_ODDS_MAX, AMERICAN_ODDS_MIN, BANKROLL_MAX, BANKROLL_MIN, DECIMAL_ODDS_MAX,
-    DECIMAL_ODDS_MIN, FRACTIONAL_MAX, FRACTIONAL_MAX_DENOMINATOR, FRACTIONAL_MIN, IMPLIED_PROB_MAX,
-    IMPLIED_PROB_MIN, PROBABILITY_MAX, PROBABILITY_MIN,
+    AMERICAN_ODDS_MAX, AMERICAN_ODDS_MIN, BANKROLL_MAX, BANKROLL_MIN, BetSizeCalculatorTool,
+    DECIMAL_ODDS_MAX, DECIMAL_ODDS_MIN, FRACTIONAL_MAX, FRACTIONAL_MAX_DENOMINATOR, FRACTIONAL_MIN,
+    IMPLIED_PROB_MAX, IMPLIED_PROB_MIN, OddsFormat, PROBABILITY_MAX, PROBABILITY_MIN,
+    resolve_odds_for, skip_american_dead_zone,
 };
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::bounded_drag_value;
@@ -105,10 +105,8 @@ impl BetSizeCalculatorTool {
                 .accessible_hover_text("Bookmaker implied win probability (0.1% to 99.0%)")
                 .changed(),
         };
-        if changed {
-            if let Ok(odds) = self.resolve_active_odds() {
-                self.sync_from_odds(odds, self.odds_format);
-            }
+        if changed && let Ok(odds) = self.resolve_active_odds() {
+            self.sync_from_odds(odds, self.odds_format);
         }
         changed
     }

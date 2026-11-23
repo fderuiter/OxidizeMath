@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{build_static_symbolic_grid, ReplicatorDynamicsTool};
+use super::{ReplicatorDynamicsTool, build_static_symbolic_grid};
 use crate::framework::math_input::{MathExpressionInputBar, ParameterSliderBank};
 use math_commons::ast::Expr;
 use nalgebra::{DMatrix, DVector};

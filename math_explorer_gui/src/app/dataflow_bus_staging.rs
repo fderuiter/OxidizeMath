@@ -3,8 +3,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    DataflowStreamKind, GraphTopologyPayload, LandmarkCloud3DPayload, PanePipelineDag,
-    ScalarField2DPayload, MAX_DATAFLOW_PANES,
+    DataflowStreamKind, GraphTopologyPayload, LandmarkCloud3DPayload, MAX_DATAFLOW_PANES,
+    PanePipelineDag, ScalarField2DPayload,
 };
 use crate::app::viewport::focus::CURRENT_RENDERING_PANE_KEY;
 use eframe::egui;

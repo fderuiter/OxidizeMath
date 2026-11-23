@@ -10,8 +10,8 @@ use serde::Serialize;
 
 use crate::app::{SemanticPalette, ThemeMode};
 
-use super::state::{PkModelKind, RegimenState};
 use super::ComputedCurves;
+use super::state::{PkModelKind, RegimenState};
 
 const DISCLAIMER: &str =
     "Educational ADME mathematical simulation only; not clinical prescribing advice.";

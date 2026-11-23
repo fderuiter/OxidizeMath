@@ -186,9 +186,11 @@ fn test_four_param_progressive_convergence_and_repaint_gating() {
             render_sensitivity_panel_ui(ui, &engine, "conv_test");
         });
     });
-    assert!(out1.viewport_output[&egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
+    assert!(
+        out1.viewport_output[&egui::ViewportId::ROOT]
+            .repaint_delay
+            .is_zero()
+    );
 
     let mut frame2_calls = 0;
     engine.compute(&params, |p| eval_sum(p, &mut frame2_calls));
@@ -211,9 +213,11 @@ fn test_four_param_progressive_convergence_and_repaint_gating() {
             render_sensitivity_panel_ui(ui, &engine, "conv_test");
         });
     });
-    assert!(!out_idle.viewport_output[&egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
+    assert!(
+        !out_idle.viewport_output[&egui::ViewportId::ROOT]
+            .repaint_delay
+            .is_zero()
+    );
 }
 
 #[test]
@@ -312,9 +316,11 @@ fn test_defer_for_gesture_retains_metrics_and_suppresses_repaint_until_release()
             render_sensitivity_panel_ui(ui, &engine, "defer_repaint_gate");
         });
     });
-    assert!(!out_deferred.viewport_output[&egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
+    assert!(
+        !out_deferred.viewport_output[&egui::ViewportId::ROOT]
+            .repaint_delay
+            .is_zero()
+    );
     assert!((engine.metrics[0].partial_derivative - settled_p1).abs() < 1e-6);
 
     // Release clears deferral, reuses baseline hint, and converges across 2 batches
@@ -359,8 +365,8 @@ fn test_compute_with_baseline_reuses_finite_hint_and_falls_back_on_nan() {
 #[test]
 fn test_pane_scoped_sweep_isolation() {
     use crate::reflective_ui::slider::{
-        begin_pane_sweep_scope, current_pass_active_sweep_count, merge_pane_sweep_flags,
-        save_slider_state, AnimatedSlider, AnimatedSliderState, SweepMode,
+        AnimatedSlider, AnimatedSliderState, SweepMode, begin_pane_sweep_scope,
+        current_pass_active_sweep_count, merge_pane_sweep_flags, save_slider_state,
     };
 
     let ctx = egui::Context::default();

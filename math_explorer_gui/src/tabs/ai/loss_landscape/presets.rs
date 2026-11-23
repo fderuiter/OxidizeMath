@@ -3,8 +3,8 @@
 //! Predictor formula mode, scientific theory metadata, and starter gallery presets
 //! for [`LossLandscapeTool`].
 
-use super::surfaces::LandscapeSurface;
 use super::LossLandscapeTool;
+use super::surfaces::LandscapeSurface;
 
 pub(crate) const DEFAULT_LOSS_EXPR: &str = "w * sin(b * x)";
 

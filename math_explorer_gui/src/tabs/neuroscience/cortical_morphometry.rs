@@ -251,11 +251,7 @@ impl FiniteStateGuard for CorticalMorphometryTool {
 
     fn clamp_parameters(&mut self) {
         let clamp_f = |v: f64, lo: f64, hi: f64, def: f64| {
-            if v.is_finite() {
-                v.clamp(lo, hi)
-            } else {
-                def
-            }
+            if v.is_finite() { v.clamp(lo, hi) } else { def }
         };
         self.inflation = clamp_f(self.inflation, 0.0, 1.0, 0.0);
         self.u_resolution = self.u_resolution.clamp(12, 48);

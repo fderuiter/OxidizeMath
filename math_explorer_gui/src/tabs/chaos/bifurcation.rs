@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::BackgroundWorker;
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use egui_plot::PlotPoint;
@@ -20,7 +20,7 @@ pub use runner::{BifurcationRunner, BifurcationSweepRequest, CompiledMap1DJob};
 pub mod atlas;
 #[cfg(test)]
 pub use atlas::BifurcationCartographer;
-use atlas::{BifurcationState, BIFURCATION_ATLAS_AXIS_PAIRS};
+use atlas::{BIFURCATION_ATLAS_AXIS_PAIRS, BifurcationState};
 
 #[path = "bifurcation/compute.rs"]
 mod compute;

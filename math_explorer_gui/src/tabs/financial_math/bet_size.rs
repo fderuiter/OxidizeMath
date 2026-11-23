@@ -7,14 +7,14 @@ use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::error::KellyError;
 use math_explorer::pure_math::statistics::kelly::{
-    expected_growth_rate, expected_value, kelly_fraction, variants, BankrollFraction, Odds,
-    UnitInterval,
+    BankrollFraction, Odds, UnitInterval, expected_growth_rate, expected_value, kelly_fraction,
+    variants,
 };
 use math_explorer::pure_math::statistics::ruin::{
-    kelly_barrier_risk, solve_single_bet_lundberg, LundbergSolution,
+    LundbergSolution, kelly_barrier_risk, solve_single_bet_lundberg,
 };
 use math_explorer::pure_math::statistics::validation::{
-    devig_two_way, required_bets_for_95_significance, single_bet_clv, ClvMetrics, SampleSize95,
+    ClvMetrics, SampleSize95, devig_two_way, required_bets_for_95_significance, single_bet_clv,
 };
 use std::sync::mpsc::Receiver;
 

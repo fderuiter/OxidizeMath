@@ -6,8 +6,8 @@ use super::export_ui::export_action_button;
 use super::*;
 use eframe::egui;
 use oxidize_core::mesh::{
-    export_colored_mesh_to_ply_binary, export_mesh_to_obj_string, export_mesh_to_ply_binary,
-    export_mesh_to_stl_binary, ColoredMesh, Mesh,
+    ColoredMesh, Mesh, export_colored_mesh_to_ply_binary, export_mesh_to_obj_string,
+    export_mesh_to_ply_binary, export_mesh_to_stl_binary,
 };
 
 fn resolve_solid_mesh(tool: &dyn InteractiveTool) -> Option<Result<Mesh, String>> {

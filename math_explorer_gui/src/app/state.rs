@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::theme::ThemeMode;
-use super::viewport::compare_sync::ComparisonSyncConfig;
-use super::viewport::ViewportLayout;
 use super::SharedTabJson;
+use super::theme::ThemeMode;
+use super::viewport::ViewportLayout;
+use super::viewport::compare_sync::ComparisonSyncConfig;
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 use std::cell::RefCell;
@@ -337,15 +337,16 @@ impl AppState {
             if let Some(idx) = self.selected_tab_name.as_deref().and_then(find_tab) {
                 return idx;
             }
-            if self.tab_states.len() == 1 {
-                if let Some(idx) = self.tab_states.keys().next().and_then(|n| find_tab(n)) {
-                    return idx;
-                }
-            }
-        } else if pane_idx == 1 && app.viewport_layout != ViewportLayout::QuadGrid {
-            if let Some(idx) = self.secondary_tab_name.as_deref().and_then(find_tab) {
+            if self.tab_states.len() == 1
+                && let Some(idx) = self.tab_states.keys().next().and_then(|n| find_tab(n))
+            {
                 return idx;
             }
+        } else if pane_idx == 1
+            && app.viewport_layout != ViewportLayout::QuadGrid
+            && let Some(idx) = self.secondary_tab_name.as_deref().and_then(find_tab)
+        {
+            return idx;
         }
         if pane_idx >= 1 {
             if let Some(idx) = self
@@ -357,10 +358,10 @@ impl AppState {
             {
                 return idx;
             }
-            if pane_idx == 1 {
-                if let Some(idx) = self.secondary_tab_name.as_deref().and_then(find_tab) {
-                    return idx;
-                }
+            if pane_idx == 1
+                && let Some(idx) = self.secondary_tab_name.as_deref().and_then(find_tab)
+            {
+                return idx;
             }
         }
         if fallback_idx < app.tabs.len() {

@@ -94,10 +94,10 @@ pub fn record_focused_widget_type_from_output(ctx: &egui::Context) {
 }
 
 fn focused_widget_type(ctx: &egui::Context, fid: egui::Id) -> Option<egui::WidgetType> {
-    if ctx.read_response(fid).is_some_and(|r| r.gained_focus()) {
-        if let Some(typ) = output_focused_widget_type(ctx) {
-            return Some(typ);
-        }
+    if ctx.read_response(fid).is_some_and(|r| r.gained_focus())
+        && let Some(typ) = output_focused_widget_type(ctx)
+    {
+        return Some(typ);
     }
     ctx.data(|d| {
         d.get_temp::<(egui::Id, egui::WidgetType)>(egui::Id::new(FOCUSED_WIDGET_TYPE_KEY))

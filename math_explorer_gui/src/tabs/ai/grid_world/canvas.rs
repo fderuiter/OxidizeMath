@@ -3,13 +3,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::GridWorldTool;
-use crate::accessibility::{register_canvas_accessibility, AccessibleHoverText};
-use crate::app::{contrasting_text_color, SemanticPalette};
+use crate::accessibility::{AccessibleHoverText, register_canvas_accessibility};
+use crate::app::{SemanticPalette, contrasting_text_color};
 use crate::framework::{BrushMode, InputMode, InteractionContext, InteractiveTool};
 use crate::tabs::ai::q_table_inspector::q_value_cell_color;
 use crate::tabs::ai::rl_sculpt::{
-    mean_bellman_residual, paint_policy_arrow, role_base_fill, role_glyph, RlOverlayMode,
-    RlSolverMode,
+    RlOverlayMode, RlSolverMode, mean_bellman_residual, paint_policy_arrow, role_base_fill,
+    role_glyph,
 };
 use eframe::egui;
 use math_explorer::ai::reinforcement_learning::{GridCellRole, GridState, MarkovDecisionProcess};
@@ -38,11 +38,11 @@ impl GridWorldTool {
         let mut hi = f64::NEG_INFINITY;
         for y in 0..self.mdp.height {
             for x in 0..self.mdp.width {
-                if let Some(v) = self.overlay_scalar(GridState { x, y }) {
-                    if v.is_finite() {
-                        lo = lo.min(v);
-                        hi = hi.max(v);
-                    }
+                if let Some(v) = self.overlay_scalar(GridState { x, y })
+                    && v.is_finite()
+                {
+                    lo = lo.min(v);
+                    hi = hi.max(v);
                 }
             }
         }

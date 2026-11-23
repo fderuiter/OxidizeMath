@@ -100,15 +100,14 @@ impl ClosedLoopControlTool {
         let mut updated = false;
         let mut finished = false;
         if let Some(worker) = self.worker.as_mut() {
-            if let Some(snap) = worker.update() {
-                if let Some(payload) = snap
+            if let Some(snap) = worker.update()
+                && let Some(payload) = snap
                     .structured_data
                     .as_ref()
                     .and_then(|d| d.downcast_ref::<ClosedLoopTrainingSnapshot>())
-                {
-                    self.pipeline.apply_training_snapshot(payload);
-                    updated = true;
-                }
+            {
+                self.pipeline.apply_training_snapshot(payload);
+                updated = true;
             }
             finished = !worker.is_running();
         }

@@ -5,7 +5,7 @@
 
 use super::OdeSolverTool;
 use crate::framework::math_input::{
-    CoupledExpressionBank, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS,
+    CoupledExpressionBank, MAX_SYNTHESIZED_PARAMS, MathExpressionInputBar,
 };
 use math_commons::ast::CompiledExpr;
 use math_explorer::pure_math::analysis::ode::{ArrayState, OdeSystem, VecState};

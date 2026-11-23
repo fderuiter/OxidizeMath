@@ -3,11 +3,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::potential_flow::{
-    ElementType, PotentialFlowTool, FLOW_ANGLE_MAX, FLOW_ANGLE_MIN, FLOW_POS_MAX, FLOW_POS_MIN,
-    FLOW_STRENGTH_MAX, FLOW_STRENGTH_MIN,
+    ElementType, FLOW_ANGLE_MAX, FLOW_ANGLE_MIN, FLOW_POS_MAX, FLOW_POS_MIN, FLOW_STRENGTH_MAX,
+    FLOW_STRENGTH_MIN, PotentialFlowTool,
 };
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::{bounded_drag_value, BrushInteractionMode, BrushMode, SpatialBrushKit};
+use crate::framework::{BrushInteractionMode, BrushMode, SpatialBrushKit, bounded_drag_value};
 use eframe::egui;
 
 impl PotentialFlowTool {

@@ -58,6 +58,85 @@ pub mod relativity;
 pub mod solid_state;
 pub mod traceability;
 
+/// Declares a [`crate::framework::SimulationFramework`]-backed [`ExplorerTab`] struct, forwards
+/// standard lifecycle, state persistence, and framework inspection methods, and registers
+/// its static [`TabDescriptor`] via [`inventory::submit!`].
+#[macro_export]
+macro_rules! declare_simulation_tab {
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $tab_ty:ident,
+        name: $display_name:expr,
+        domain: $academic_domain:expr,
+        slug: $url_slug:expr,
+        order: $order:expr $(,)?
+    ) => {
+        $(#[$meta])*
+        $vis struct $tab_ty {
+            /// Underlying simulation framework managing tools, presets, theory portal, and exports.
+            pub framework: $crate::framework::SimulationFramework,
+        }
+
+        impl Default for $tab_ty {
+            fn default() -> Self {
+                Self {
+                    framework: $crate::framework::SimulationFramework::new($url_slug),
+                }
+            }
+        }
+
+        impl $crate::tabs::ExplorerTab for $tab_ty {
+            fn name(&self) -> &'static str {
+                $display_name
+            }
+
+            fn academic_domain(&self) -> &'static str {
+                $academic_domain
+            }
+
+            fn url_slug(&self) -> &'static str {
+                $url_slug
+            }
+
+            fn show_inside(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
+                self.framework.show_inside(ui, $url_slug);
+            }
+
+            fn state_revision(&self) -> u64 {
+                self.framework.state_revision()
+            }
+
+            fn save_state(&self) -> Option<String> {
+                self.framework.save_state()
+            }
+
+            fn load_state(&mut self, state: &str) {
+                self.framework.load_state(state);
+            }
+
+            fn select_tool_by_name(&mut self, name: &str) -> bool {
+                self.framework.select_tool_by_name(name)
+            }
+
+            fn framework(&self) -> Option<&$crate::framework::SimulationFramework> {
+                Some(&self.framework)
+            }
+
+            fn framework_mut(&mut self) -> Option<&mut $crate::framework::SimulationFramework> {
+                Some(&mut self.framework)
+            }
+        }
+
+        inventory::submit! {
+            $crate::tabs::TabDescriptor {
+                id: $url_slug,
+                order: $order,
+                build: || Box::new(<$tab_ty>::default()),
+            }
+        }
+    };
+}
+
 /// Static registration descriptor for a GUI domain tab collected via [`inventory`].
 #[derive(Clone, Copy)]
 pub struct TabDescriptor {
@@ -94,14 +173,16 @@ pub fn instantiate_tab(index: usize) -> Option<Box<dyn ExplorerTab>> {
 /// A trait for defining a tab in the Math Explorer application.
 ///
 /// This trait serves as the primary extension point for the GUI. Each mathematical domain
-/// (e.g., MRI Physics, Game Theory) implements this trait as a standalone struct.
+/// (e.g., MRI Physics, Game Theory) implements this trait either via [`crate::declare_simulation_tab!`]
+/// or as a standalone struct in `src/tabs/`.
 ///
 /// # Static Inventory Registration
 ///
 /// To add a new tab to `math_explorer_gui`:
 /// 1. Declare a feature-gated `pub mod your_tab;` item in `src/tabs/mod.rs`.
-/// 2. Implement [`ExplorerTab`] and [`Default`] on your tab struct.
-/// 3. Register a [`TabDescriptor`] via `inventory::submit!`.
+/// 2. Either invoke [`crate::declare_simulation_tab!`] (for `SimulationFramework`-backed domain tabs)
+///    or implement [`ExplorerTab`] and [`Default`] on your tab struct and submit a [`TabDescriptor`]
+///    via `inventory::submit!`.
 ///
 /// # Example
 ///
@@ -125,6 +206,14 @@ pub fn instantiate_tab(index: usize) -> Option<Box<dyn ExplorerTab>> {
 /// impl ExplorerTab for MyDomainTab {
 ///     fn name(&self) -> &'static str {
 ///         "Physics"
+///     }
+///
+///     fn academic_domain(&self) -> &'static str {
+///         "Physics"
+///     }
+///
+///     fn url_slug(&self) -> &'static str {
+///         "my_domain"
 ///     }
 ///
 ///     fn show_inside(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -152,6 +241,12 @@ pub trait ExplorerTab {
     /// Returns the name of the tab, displayed in the navigation bar.
     fn name(&self) -> &'static str;
 
+    /// Academic domain category of the tab for top navigation bar grouping.
+    fn academic_domain(&self) -> &'static str;
+
+    /// Canonical URL slug identifying this tab in `#tab=<slug>` share links.
+    fn url_slug(&self) -> &'static str;
+
     /// Renders the content of the tab inside a scoped parent `egui::Ui` (such as a multi-pane viewport region).
     fn show_inside(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame);
 
@@ -177,45 +272,6 @@ pub trait ExplorerTab {
     /// Returns the active tool's interactive canvas `Id` when focus is owned by a non-text canvas.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         self.framework().and_then(|f| f.focused_canvas_id())
-    }
-
-    /// Academic domain category of the tab for top navigation bar grouping.
-    fn academic_domain(&self) -> &'static str {
-        match self.name() {
-            "Algorithmic Information"
-            | "Analysis & Calculus"
-            | "Elliptic Curves"
-            | "Financial Math"
-            | "Geometry & Topology"
-            | "Graph Theory"
-            | "Number Theory" => "Pure Math",
-
-            "Astrophysics"
-            | "Chaos Theory"
-            | "Fluid Dynamics"
-            | "General Relativity"
-            | "Medical Physics"
-            | "MRI Physics"
-            | "Optics & Waves"
-            | "Quantum Mechanics"
-            | "Solid State Physics" => "Physics",
-
-            "Battery Degradation"
-            | "Clinical Trials"
-            | "Favoritism"
-            | "Game Theory"
-            | "Paradox Lab"
-            | "Population Structure"
-            | "Traceability Portal" => "Applied Math",
-
-            "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
-
-            "Climate" => "Climate",
-
-            "Artificial Intelligence" => "AI",
-
-            _ => "Applied Math",
-        }
     }
 
     /// Activates a tool within this tab by name.
@@ -264,41 +320,6 @@ pub trait ExplorerTab {
                     fw.apply_starter_gallery_selection(ctx, id_source, is_open, other);
                 }
             }
-        }
-    }
-
-    /// Canonical URL slug identifying this tab in `#tab=<slug>` share links.
-    fn url_slug(&self) -> &'static str {
-        match self.name() {
-            "Artificial Intelligence" => "ai",
-            "Algorithmic Information" => "algorithmic_information",
-            "Analysis & Calculus" => "analysis",
-            "Astrophysics" => "astrophysics",
-            "Battery Degradation" => "battery_degradation",
-            "Chaos Theory" => "chaos",
-            "Climate" => "climate",
-            "Clinical Trials" => "clinical_trials",
-            "Elliptic Curves" => "elliptic_curves",
-            "Epidemiology" => "epidemiology",
-            "Favoritism" => "favoritism",
-            "Financial Math" => "financial_math",
-            "Fluid Dynamics" => "fluid_dynamics",
-            "Game Theory" => "game_theory",
-            "General Relativity" => "relativity",
-            "Geometry & Topology" => "geometry_topology",
-            "Graph Theory" => "graph_theory",
-            "Medical Physics" => "medical",
-            "Morphogenesis" => "morphogenesis",
-            "MRI Physics" => "mri",
-            "Neuroscience" => "neuroscience",
-            "Number Theory" => "number_theory",
-            "Optics & Waves" => "optics_waves",
-            "Paradox Lab" => "paradox_lab",
-            "Population Structure" => "cannibalism",
-            "Quantum Mechanics" => "quantum",
-            "Solid State Physics" => "solid_state",
-            "Traceability Portal" => "traceability",
-            _ => "simulation",
         }
     }
 

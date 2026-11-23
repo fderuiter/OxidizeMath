@@ -14,7 +14,7 @@ use crate::async_sim::{
     TimeTravelCheckpoint,
 };
 use crate::framework::{
-    BrushStroke, CalloutManager, ChallengeEvaluation, SpatialBrushKit, MAX_SYNTHESIZED_PARAMS,
+    BrushStroke, CalloutManager, ChallengeEvaluation, MAX_SYNTHESIZED_PARAMS, SpatialBrushKit,
 };
 use eframe::egui;
 use math_commons::ast::CompiledExpr;

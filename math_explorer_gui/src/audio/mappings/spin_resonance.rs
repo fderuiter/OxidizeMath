@@ -8,8 +8,8 @@ use std::f64::consts::TAU;
 use nalgebra::Vector3;
 
 use crate::audio::frame::{
-    clamp_freq_hz, HarmonicWeights, SonificationFrame, VoiceSpec, WaveformPreset, MAX_VOICES,
-    NUM_HARMONICS,
+    HarmonicWeights, MAX_VOICES, NUM_HARMONICS, SonificationFrame, VoiceSpec, WaveformPreset,
+    clamp_freq_hz,
 };
 
 /// Hydrogen proton gyromagnetic ratio $\gamma$ in $\text{rad}\cdot\text{s}^{-1}\cdot\text{T}^{-1}$ (`2.675e8`).

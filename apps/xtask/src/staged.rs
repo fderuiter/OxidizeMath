@@ -11,7 +11,7 @@ pub(crate) use graph::load_workspace_crates;
 pub(crate) use graph::parse_workspace_members;
 use graph::{expand_reverse_dependents, is_root_config_escalation};
 use snapshot::{GitSnapshotEnv, sync_index_snapshot};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
 
@@ -30,7 +30,7 @@ pub(crate) struct WorkspaceCrate {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct StagedLintPlan {
     pub full_workspace: bool,
-    pub rustfmt_by_edition: BTreeMap<String, Vec<String>>,
+    pub rustfmt_files: Vec<String>,
     pub run_workflows: bool,
     pub scan_all_markdown: bool,
     pub markdown_files: Vec<PathBuf>,
@@ -64,15 +64,6 @@ fn git_staged_paths_in(repo_root: &Path, extra_args: &[&str]) -> Vec<String> {
         .map(|l| l.trim().replace('\\', "/"))
         .filter(|l| !l.is_empty())
         .collect()
-}
-
-fn find_owning_crate<'a>(path: &str, crates: &'a [WorkspaceCrate]) -> Option<&'a WorkspaceCrate> {
-    crates
-        .iter()
-        .filter(|c| {
-            path == format!("{}/Cargo.toml", c.dir) || path.starts_with(&format!("{}/", c.dir))
-        })
-        .max_by_key(|c| c.dir.len())
 }
 
 fn build_wasm_clippy_args(touched_web: &[&WorkspaceCrate]) -> Option<Vec<String>> {
@@ -123,21 +114,12 @@ fn build_host_clippy_args(packages: &[String]) -> Option<Vec<String>> {
     Some(args)
 }
 
-fn collect_rustfmt_by_edition(
-    existing_staged: &[String],
-    crates: &[WorkspaceCrate],
-) -> BTreeMap<String, Vec<String>> {
-    let mut rustfmt_by_edition: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for path in existing_staged.iter().filter(|p| p.ends_with(".rs")) {
-        let edition = find_owning_crate(path, crates)
-            .map(|c| c.edition.clone())
-            .unwrap_or_else(|| "2024".to_string());
-        rustfmt_by_edition
-            .entry(edition)
-            .or_default()
-            .push(path.clone());
-    }
-    rustfmt_by_edition
+fn collect_rustfmt_files(existing_staged: &[String]) -> Vec<String> {
+    existing_staged
+        .iter()
+        .filter(|p| p.ends_with(".rs"))
+        .cloned()
+        .collect()
 }
 
 fn select_direct_touched_crates<'a>(
@@ -165,7 +147,7 @@ pub(crate) fn build_staged_plan(
     crates: &[WorkspaceCrate],
 ) -> StagedLintPlan {
     let full_workspace = all_staged.iter().any(|p| is_root_config_escalation(p));
-    let rustfmt_by_edition = collect_rustfmt_by_edition(existing_staged, crates);
+    let rustfmt_files = collect_rustfmt_files(existing_staged);
     let markdown_files: Vec<PathBuf> = existing_staged
         .iter()
         .filter(|p| p.ends_with(".md"))
@@ -180,7 +162,7 @@ pub(crate) fn build_staged_plan(
     if full_workspace {
         return StagedLintPlan {
             full_workspace: true,
-            rustfmt_by_edition,
+            rustfmt_files,
             run_workflows: true,
             scan_all_markdown: true,
             markdown_files,
@@ -202,7 +184,7 @@ pub(crate) fn build_staged_plan(
 
     StagedLintPlan {
         full_workspace: false,
-        rustfmt_by_edition,
+        rustfmt_files,
         run_workflows: all_staged.iter().any(|p| p.starts_with(".github/")),
         scan_all_markdown: has_deleted_or_renamed,
         markdown_files,
@@ -227,10 +209,10 @@ fn run_staged_format_gates(
         );
         return;
     }
-    for (edition, files) in &plan.rustfmt_by_edition {
-        println!("\n--- Staged Format Check (edition {edition}) ---");
-        let mut args = vec!["--edition", edition.as_str(), "--check"];
-        let file_refs: Vec<&str> = files.iter().map(String::as_str).collect();
+    if !plan.rustfmt_files.is_empty() {
+        println!("\n--- Staged Format Check (edition 2024) ---");
+        let mut args = vec!["--edition", "2024", "--check"];
+        let file_refs: Vec<&str> = plan.rustfmt_files.iter().map(String::as_str).collect();
         args.extend(file_refs);
         run_cmd_in_dir_with_env("rustfmt", &args, snapshot_dir, &[]);
     }

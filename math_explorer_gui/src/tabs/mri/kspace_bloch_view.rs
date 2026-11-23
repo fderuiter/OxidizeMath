@@ -4,7 +4,7 @@ use super::kspace_tool::MriKSpaceTool;
 use super::kspace_types::ISOCHROMAT_COUNT;
 use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::SimWorkerState;
-use crate::framework::{bounded_drag_value, Plot3DViewport};
+use crate::framework::{Plot3DViewport, bounded_drag_value};
 use eframe::egui;
 use egui_plot::{Line, PlotPoint, Points};
 

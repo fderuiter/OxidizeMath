@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::NetworkPropagationTool;
-use crate::app::dataflow_bus::{poll_pane_graph, GraphTopologyPayload, MAX_DATAFLOW_GRAPH_NODES};
+use crate::app::dataflow_bus::{GraphTopologyPayload, MAX_DATAFLOW_GRAPH_NODES, poll_pane_graph};
 use eframe::egui;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 
@@ -140,13 +140,12 @@ impl NetworkPropagationTool {
         self.quarantined_edges.clear();
         let new_edges = next_model.edges().to_vec();
         for &pair in prev_quarantined_pairs {
-            if let Ok(edge_idx) = new_edges.binary_search(&pair) {
-                if next_model
+            if let Ok(edge_idx) = new_edges.binary_search(&pair)
+                && next_model
                     .set_edge_quarantined(pair[0], pair[1], true)
                     .is_ok()
-                {
-                    self.quarantined_edges.push(edge_idx);
-                }
+            {
+                self.quarantined_edges.push(edge_idx);
             }
         }
         self.quarantined_edges.sort_unstable();

@@ -6,7 +6,7 @@ use crate::framework::{StarterPresetMetadata, ToolMetadata};
 use eframe::egui;
 use egui_plot::{ExportPrimitive, PlotPoint};
 use math_explorer::error::KellyError;
-use math_explorer::pure_math::statistics::kelly::{kelly_fraction, Odds, UnitInterval};
+use math_explorer::pure_math::statistics::kelly::{Odds, UnitInterval, kelly_fraction};
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
 

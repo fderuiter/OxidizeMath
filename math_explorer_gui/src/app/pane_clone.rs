@@ -100,10 +100,10 @@ impl MathExplorerApp {
         slot.clear_active_cache();
 
         if is_active_pane {
-            if let Some(dst_tab) = slot.ensure_tab(src_tab_idx) {
-                if let Some(json) = saved_json {
-                    dst_tab.load_state(json);
-                }
+            if let Some(dst_tab) = slot.ensure_tab(src_tab_idx)
+                && let Some(json) = saved_json
+            {
+                dst_tab.load_state(json);
             }
             slot.snapshot_active();
         } else if slot

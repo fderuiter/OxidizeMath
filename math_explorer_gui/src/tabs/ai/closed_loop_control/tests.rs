@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::ClosedLoopControlTool;
 use super::ekf::{FastEkf, LorenzKalmanModel, PkKalmanModel, SeirKalmanModel};
 use super::pipeline::ClosedLoopRunner;
 use super::plants::PkPlantTwin;
@@ -9,11 +10,10 @@ use super::state::{
     ClosedLoopState, ControllerKind, PlantKind, STARTER_LORENZ_OGY_JSON, STARTER_PK_DOSING_JSON,
     STARTER_SEIR_OUTBREAK_JSON,
 };
-use super::ClosedLoopControlTool;
 use crate::async_sim::SimulationRunner;
 use crate::framework::{InteractiveTool, SimulationFramework};
 use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, URL_JSON_BOUNDS};
-use eframe::egui::{self, vec2, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect};
+use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect, vec2};
 use math_explorer::applied::algorithms::kalman::{KalmanFilter, KalmanSystem};
 use math_explorer::applied::pharmacokinetics::PharmacokineticModel;
 use math_explorer::nalgebra::{DMatrix, DVector};

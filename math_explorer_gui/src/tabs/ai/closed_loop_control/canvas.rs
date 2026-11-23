@@ -8,7 +8,7 @@ use crate::accessibility::{
     lock_canvas_arrow_keys, paint_canvas_focus_ring, register_canvas_accessibility,
 };
 use crate::app::theme::SemanticPalette;
-use eframe::egui::{self, accesskit::Role, Color32, Key, Pos2, Rect, Sense, Stroke, Vec2};
+use eframe::egui::{self, Color32, Key, Pos2, Rect, Sense, Stroke, Vec2, accesskit::Role};
 
 /// Outcome of rendering and interacting with the 2D phase-portrait perturbation pad.
 pub struct PhaseCanvasInteraction {

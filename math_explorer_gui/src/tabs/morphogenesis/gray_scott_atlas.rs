@@ -3,9 +3,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::atlas::{grid_u_variance, mode_growth_and_euler_amp, WASHOUT_VARIANCE_THRESHOLD};
+use super::atlas::{WASHOUT_VARIANCE_THRESHOLD, grid_u_variance, mode_growth_and_euler_amp};
 use crate::async_sim::atlas::{
-    atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
+    AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer, atlas_regime_color,
 };
 use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
@@ -316,15 +316,31 @@ impl RegimeCartographer for GrayScottCartographer {
         match reg {
             GrayScottRegime::EulerCflUnstable => format!(
                 "{} = {:.4}, {} = {:.4}\nRegime: {}\nEuler Amplification |G|: {:.3} (> 1.0 unstable)",
-                self.axes.x.key, p1, self.axes.y.key, p2, reg.label(), cell.primary
+                self.axes.x.key,
+                p1,
+                self.axes.y.key,
+                p2,
+                reg.label(),
+                cell.primary
             ),
             GrayScottRegime::SaddleNodeWashout => format!(
                 "{} = {:.4}, {} = {:.4}\nRegime: {}\nFold Margin √f/2 − (f + k): {:+.4}",
-                self.axes.x.key, p1, self.axes.y.key, p2, reg.label(), cell.primary
+                self.axes.x.key,
+                p1,
+                self.axes.y.key,
+                p2,
+                reg.label(),
+                cell.primary
             ),
             _ => format!(
                 "{} = {:.4}, {} = {:.4}\nRegime: {}\nDominant Growth Re(λ): {:+.5} (k² = {:.3})",
-                self.axes.x.key, p1, self.axes.y.key, p2, reg.label(), cell.primary, cell.secondary
+                self.axes.x.key,
+                p1,
+                self.axes.y.key,
+                p2,
+                reg.label(),
+                cell.primary,
+                cell.secondary
             ),
         }
     }

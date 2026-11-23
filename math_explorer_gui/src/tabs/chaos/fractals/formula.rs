@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use crate::framework::{MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
-use math_commons::ast::{parse, CompiledExpr};
+use crate::framework::{MAX_SYNTHESIZED_PARAMS, MathExpressionInputBar};
+use math_commons::ast::{CompiledExpr, parse};
 use num_complex::Complex;
 
 pub const DEFAULT_FRACTAL_EXPR: &str = "z^3 + c";

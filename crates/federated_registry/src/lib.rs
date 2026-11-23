@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 use std::collections::HashMap;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, OnceLock};
 
 pub use diagnostics::Severity;
