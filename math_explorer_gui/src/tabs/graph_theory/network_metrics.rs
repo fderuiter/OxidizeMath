@@ -250,10 +250,8 @@ impl NetworkMetricsTool {
 
     fn render_canvas(&self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            let (response, painter) = ui.allocate_painter(
-                ui.available_size(),
-                egui::Sense::focusable_noninteractive(),
-            );
+            let (response, painter) =
+                ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
             let label = "Network Metrics Visualization";
             let _ = response.clone().accessible_hover_text(label);
             let summary = format!(
@@ -283,13 +281,17 @@ impl NetworkMetricsTool {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let center = rect.center();
         let half_span = (0.40 * rect.width().min(rect.height())).max(24.0);
-        let to_screen = |norm: Pos2| Pos2::new(center.x + norm.x * half_span, center.y + norm.y * half_span);
+        let to_screen =
+            |norm: Pos2| Pos2::new(center.x + norm.x * half_span, center.y + norm.y * half_span);
 
         for &(u, v, _) in &self.edges {
             if let (Some(&pos_u), Some(&pos_v)) =
                 (self.node_positions.get(&u), self.node_positions.get(&v))
             {
-                painter.line_segment([to_screen(pos_u), to_screen(pos_v)], (2.0, palette.graph_edge));
+                painter.line_segment(
+                    [to_screen(pos_u), to_screen(pos_v)],
+                    (2.0, palette.graph_edge),
+                );
             }
         }
 
@@ -308,7 +310,12 @@ impl NetworkMetricsTool {
                 0.5
             };
             let fill_color = interpolate_color(palette.axis_z, palette.axis_x, t);
-            painter.circle(screen_pos, node_radius, fill_color, (1.0, palette.node_stroke));
+            painter.circle(
+                screen_pos,
+                node_radius,
+                fill_color,
+                (1.0, palette.node_stroke),
+            );
             if node_radius >= 14.0 {
                 painter.text(
                     screen_pos,
@@ -338,7 +345,8 @@ impl NetworkMetricsTool {
 
 fn interpolate_color(low: egui::Color32, high: egui::Color32, t: f32) -> egui::Color32 {
     let clamped = t.clamp(0.0, 1.0);
-    let lerp = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * clamped).round() as u8;
+    let lerp =
+        |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * clamped).round() as u8;
     egui::Color32::from_rgb(
         lerp(low.r(), high.r()),
         lerp(low.g(), high.g()),

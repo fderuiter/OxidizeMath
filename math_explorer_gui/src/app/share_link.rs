@@ -48,13 +48,10 @@ impl MathExplorerApp {
         let (_, tab) = self
             .active_share_tab()
             .ok_or_else(|| "No active simulation tab selected".to_string())?;
-        let preset_json = tab.export_url_preset_json()?;
+        let base_fragment = tab.encode_url_share_fragment()?;
         let workspace_json = self.encode_workspace_link_url_json()?;
-        crate::url_state::encode_share_fragment_with_challenge_and_workspace(
-            tab.url_slug(),
-            tab.active_tool_id(),
-            tab.active_challenge_id(),
-            preset_json.as_deref(),
+        crate::url_state::append_workspace_to_share_fragment(
+            &base_fragment,
             workspace_json.as_deref(),
         )
     }
@@ -148,28 +145,23 @@ impl MathExplorerApp {
         };
 
         if let Some(ref ws_json) = params.workspace_json {
+            let rollback = self.get_app_state();
             if let Err(err) = self.apply_workspace_link_url_json(ws_json) {
                 self.record_invalid_share_url(err.clone(), ctx);
                 return Err(err);
             }
-            if let Some(ref ch) = params.challenge {
+            if params.preset.is_some() || params.challenge.is_some() {
                 if let Some(tab) = self.focused_pane_tab_mut() {
-                    if let Err(err) = tab.import_url_share_params(
-                        params.tool.as_deref(),
-                        Some(ch.as_str()),
-                        params.state_json.as_deref(),
-                    ) {
+                    if let Err(err) = tab.import_url_share_params(&params, ctx) {
+                        self.apply_app_state(rollback);
                         self.record_invalid_share_url(err.clone(), ctx);
                         return Err(err);
                     }
                 }
+                self.sync_linked_panes_bus();
             }
         } else {
-            if let Err(err) = self.tabs[tab_idx].import_url_share_params(
-                params.tool.as_deref(),
-                params.challenge.as_deref(),
-                params.state_json.as_deref(),
-            ) {
+            if let Err(err) = self.tabs[tab_idx].import_url_share_params(&params, ctx) {
                 self.record_invalid_share_url(err.clone(), ctx);
                 return Err(err);
             }

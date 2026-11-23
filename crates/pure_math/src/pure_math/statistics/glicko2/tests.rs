@@ -190,10 +190,12 @@ fn test_serde_roundtrip_and_validation_all_six_core_types() {
         )
         .is_err()
     );
-    assert!(serde_json::from_str::<MatchResult>(
-        r#"{"opponent":{"rating":1500.0,"rating_deviation":200.0,"volatility":0.06},"score":1.5}"#
-    )
-    .is_err());
+    assert!(
+        serde_json::from_str::<MatchResult>(
+            r#"{"opponent":{"rating":1500.0,"rating_deviation":200.0,"volatility":0.06},"score":1.5}"#
+        )
+        .is_err()
+    );
     assert!(
         serde_json::from_str::<PeriodMatch>(r#"{"player_a":1,"player_b":1,"score_a":0.5}"#)
             .is_err()

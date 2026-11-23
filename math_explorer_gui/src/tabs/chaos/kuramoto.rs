@@ -91,7 +91,8 @@ fn circular_normalized_positions(n: usize) -> Vec<[f32; 2]> {
     }
     (0..n)
         .map(|i| {
-            let angle = std::f32::consts::TAU * (i as f32) / (n as f32) - std::f32::consts::FRAC_PI_2;
+            let angle =
+                std::f32::consts::TAU * (i as f32) / (n as f32) - std::f32::consts::FRAC_PI_2;
             [0.82 * angle.cos(), 0.82 * angle.sin()]
         })
         .collect()

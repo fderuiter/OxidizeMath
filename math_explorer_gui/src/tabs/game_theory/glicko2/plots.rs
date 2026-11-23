@@ -1,4 +1,4 @@
-//! Central plot rendering modes for [`super::Glicko2TournamentTool`].
+//! Central trajectory, volatility, pairwise win-matrix, and drift plots for [`super::Glicko2TournamentTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -9,7 +9,7 @@ use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints, Points};
 use math_explorer::pure_math::statistics::glicko2::{pairwise_win_matrix, GlickoPlayer};
 
 impl Glicko2TournamentTool {
-    pub(crate) fn show_central_plot(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn show_central_plot(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             for (mode, label) in [
                 (Glicko2PlotMode::ConfidenceBands, "r ± 2RD Confidence Bands"),

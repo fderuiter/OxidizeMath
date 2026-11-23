@@ -7,6 +7,7 @@
 mod base64url;
 mod browser;
 mod codec;
+mod grid_clamp;
 mod sync;
 
 #[cfg(all(
@@ -31,13 +32,14 @@ pub use browser::{
 };
 #[cfg(test)]
 pub use browser::{take_last_copied_share_url, with_mock_web_base_url};
-pub(crate) use codec::clamp_decoded_url_grid_state;
 pub use codec::{
-    encode_share_fragment, encode_share_fragment_with_challenge,
-    encode_share_fragment_with_challenge_and_workspace, encode_share_fragment_with_workspace,
-    matches_tab_slug, parse_share_location, validate_url_preset_json, ShareUrlParams,
-    CANONICAL_WEB_BASE_URL, MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, URL_JSON_BOUNDS,
+    append_workspace_to_share_fragment, encode_share_fragment,
+    encode_share_fragment_with_challenge, encode_share_fragment_with_hud,
+    encode_share_fragment_with_workspace, matches_tab_slug, parse_share_location,
+    validate_url_preset_json, ShareUrlParams, CANONICAL_WEB_BASE_URL, MAX_DECODED_URL_STATE_BYTES,
+    MAX_URL_FRAGMENT_BYTES, URL_JSON_BOUNDS,
 };
+pub(crate) use grid_clamp::clamp_decoded_url_grid_state;
 pub use sync::{UrlStateSignature, UrlSyncController, URL_SYNC_DEBOUNCE_MS};
 
 // theory_verification!

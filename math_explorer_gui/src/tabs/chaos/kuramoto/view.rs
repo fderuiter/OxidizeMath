@@ -51,10 +51,8 @@ impl KuramotoOscillatorTool {
     }
 
     fn render_phase_canvas(&self, ui: &mut egui::Ui) {
-        let (response, painter) = ui.allocate_painter(
-            ui.available_size(),
-            egui::Sense::focusable_noninteractive(),
-        );
+        let (response, painter) =
+            ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
         let label = "Kuramoto Phase Oscillator Network";
         let _ = response.clone().accessible_hover_text(label);
         let (r, _) = self.system.order_parameter();
@@ -79,18 +77,16 @@ impl KuramotoOscillatorTool {
 
         self.paint_coupled_network(ui, &painter, net_rect);
         painter.line_segment(
-            [Pos2::new(mid_x, rect.min.y + 6.0), Pos2::new(mid_x, rect.max.y - 6.0)],
+            [
+                Pos2::new(mid_x, rect.min.y + 6.0),
+                Pos2::new(mid_x, rect.max.y - 6.0),
+            ],
             ui.visuals().widgets.noninteractive.bg_stroke,
         );
         self.paint_order_parameter_circle(ui, &painter, ring_rect);
     }
 
-    fn paint_coupled_network(
-        &self,
-        ui: &egui::Ui,
-        painter: &egui::Painter,
-        rect: egui::Rect,
-    ) {
+    fn paint_coupled_network(&self, ui: &egui::Ui, painter: &egui::Painter, rect: egui::Rect) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let center = rect.center();
         let span = (0.38 * rect.width().min(rect.height())).max(16.0);
@@ -142,20 +138,19 @@ impl KuramotoOscillatorTool {
 
     fn render_coherence_plot(&self, ui: &mut egui::Ui) {
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let points: PlotPoints<'_> = self
-            .coherence_trace
-            .iter()
-            .map(|&[t, r]| [t, r])
-            .collect();
+        let points: PlotPoints<'_> = self.coherence_trace.iter().map(|&[t, r]| [t, r]).collect();
         let line = Line::new("Coherence R(t)", points).color(palette.series_color(0));
-        Plot::new(crate::framework::scoped_panel_id(ui, "kuramoto_coherence_plot"))
-            .include_y(0.0)
-            .include_y(1.05)
-            .x_axis_label("Time t")
-            .y_axis_label("Order Parameter R(t)")
-            .show(ui, |plot_ui| {
-                plot_ui.line(line);
-            });
+        Plot::new(crate::framework::scoped_panel_id(
+            ui,
+            "kuramoto_coherence_plot",
+        ))
+        .include_y(0.0)
+        .include_y(1.05)
+        .x_axis_label("Time t")
+        .y_axis_label("Order Parameter R(t)")
+        .show(ui, |plot_ui| {
+            plot_ui.line(line);
+        });
     }
 }
 

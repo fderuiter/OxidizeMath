@@ -20,12 +20,10 @@ use std::collections::HashSet;
 
 #[path = "glicko2/io.rs"]
 pub(crate) mod io;
-#[path = "glicko2/io_dialog.rs"]
-mod io_dialog;
 #[path = "glicko2/plots.rs"]
 mod plots;
-#[path = "glicko2/registration.rs"]
-mod registration;
+#[path = "glicko2/state.rs"]
+mod state;
 #[path = "glicko2/ui.rs"]
 mod ui;
 
@@ -108,7 +106,7 @@ pub struct Glicko2TournamentTool {
     pub(crate) focus_player: Option<usize>,
     pub(crate) new_player_name: String,
     pub(crate) state_rev: u64,
-    pub(crate) io_state: io_dialog::TournamentIoState,
+    pub(crate) io_state: io::TournamentIoState,
 }
 
 pub(crate) fn match_preset(player_a: usize, player_b: usize, score_a: f64) -> Glicko2MatchPreset {
@@ -143,7 +141,7 @@ impl Default for Glicko2TournamentTool {
             focus_player: None,
             new_player_name: "Challenger".to_string(),
             state_rev: 1,
-            io_state: io_dialog::TournamentIoState::default(),
+            io_state: io::TournamentIoState::default(),
         };
         let _ = tool.apply_config(default_preset_config());
         tool

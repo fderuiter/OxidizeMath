@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Integration tests for test music safety.
 use domain_physics::error::RadarError;
 use domain_physics::physics::medical::radar_gating::super_resolution::MusicEstimator;
 use nalgebra::{DMatrix, DVector};

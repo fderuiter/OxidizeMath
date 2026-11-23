@@ -216,7 +216,8 @@ fn paint_torus_backdrop(
         _ => 100,
     };
     let grid_stroke = Stroke::new(0.6_f32, palette.surface_fill);
-    for idx in (step..model.p).step_by(step as usize) {
+    let mut idx = step;
+    while idx < model.p {
         let f = idx as f32;
         painter.line_segment(
             [vp.to_screen(f, 0.0_f32), vp.to_screen(f, vp.p_f)],
@@ -226,38 +227,37 @@ fn paint_torus_backdrop(
             [vp.to_screen(0.0_f32, f), vp.to_screen(vp.p_f, f)],
             grid_stroke,
         );
+        idx += step;
     }
-    let mid_y = vp.p_f * 0.5_f32;
-    let mid_stroke = Stroke::new(0.8_f32, palette.muted_text.gamma_multiply(0.35_f32));
     painter.line_segment(
-        [vp.to_screen(0.0_f32, mid_y), vp.to_screen(vp.p_f, mid_y)],
-        mid_stroke,
+        [
+            vp.to_screen(0.0_f32, vp.p_f * 0.5_f32),
+            vp.to_screen(vp.p_f, vp.p_f * 0.5_f32),
+        ],
+        Stroke::new(0.8_f32, palette.muted_text.gamma_multiply(0.35_f32)),
     );
-    let hdr_pos = Pos2::new(
-        response.rect.left() + 10.0_f32,
-        response.rect.top() + 8.0_f32,
-    );
-    let hdr = format!(
-        "Torus F_{0} x F_{0}  (y^2 = x^3 + {1}x + {2})",
-        model.p, model.a, model.b
-    );
-    let text_col = ui.visuals().text_color();
     painter.text(
-        hdr_pos,
+        Pos2::new(
+            response.rect.left() + 10.0_f32,
+            response.rect.top() + 8.0_f32,
+        ),
         egui::Align2::LEFT_TOP,
-        hdr,
+        format!(
+            "Torus F_{0} x F_{0}  (y^2 = x^3 + {1}x + {2})",
+            model.p, model.a, model.b
+        ),
         egui::FontId::proportional(13.0_f32),
-        text_col,
+        ui.visuals().text_color(),
     );
-    paint_identity_badge(painter, vp, model, palette, text_col);
+    paint_infinity_badge(painter, vp, model, palette, ui.visuals().text_color());
 }
 
-fn paint_identity_badge(
+fn paint_infinity_badge(
     painter: &egui::Painter,
     vp: &TorusViewport,
     model: &TorusCanvasModel<'_>,
     palette: &SemanticPalette,
-    text_col: Color32,
+    text_color: Color32,
 ) {
     let inf_stroke = if model.point_p.is_infinity() || model.point_q.is_infinity() {
         palette.accent
@@ -276,7 +276,7 @@ fn paint_identity_badge(
         egui::Align2::CENTER_CENTER,
         "Identity O",
         egui::FontId::proportional(11.5_f32),
-        text_col,
+        text_color,
     );
 }
 

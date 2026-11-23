@@ -49,7 +49,7 @@ fn edit_initial_player(ui: &mut egui::Ui, initial: &mut GlickoPlayer) -> bool {
 }
 
 impl Glicko2TournamentTool {
-    fn show_preset_buttons(&mut self, ui: &mut egui::Ui) {
+    fn show_starter_scenario_buttons(&mut self, ui: &mut egui::Ui) {
         ui.label("Starter Scenarios:");
         ui.horizontal_wrapped(|ui| {
             if io_btn(
@@ -70,7 +70,8 @@ impl Glicko2TournamentTool {
         });
     }
 
-    fn show_schedule_controls(&mut self, ui: &mut egui::Ui) {
+    fn show_preset_and_schedule_controls(&mut self, ui: &mut egui::Ui) {
+        self.show_starter_scenario_buttons(ui);
         ui.separator();
         ui.heading("System & Schedule");
         let rebuild = ui
@@ -271,17 +272,16 @@ impl Glicko2TournamentTool {
         }
     }
 
-    pub(crate) fn show_side_controls(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn show_side_controls(&mut self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            self.show_preset_buttons(ui);
-            self.show_schedule_controls(ui);
+            self.show_preset_and_schedule_controls(ui);
             self.show_execution_controls(ui);
             self.show_io_controls(ui);
             self.show_roster_editor(ui);
         });
     }
 
-    pub(crate) fn show_bottom_dock(&mut self, parent_ui: &mut egui::Ui) {
+    pub(super) fn show_bottom_dock(&mut self, parent_ui: &mut egui::Ui) {
         let dock_id = crate::framework::scoped_panel_id(parent_ui, "glicko2_bottom_dock");
         egui::TopBottomPanel::bottom(dock_id)
             .resizable(true)

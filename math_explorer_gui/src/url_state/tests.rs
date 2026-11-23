@@ -217,6 +217,48 @@ fn test_tick_url_sync_defers_during_active_animated_slider_sweeps() {
 }
 
 #[test]
+fn test_preset_challenge_and_step_url_codec_roundtrip_and_bounds() {
+    let ch_frag = encode_share_fragment_with_hud(
+        "financial_math",
+        Some("BankrollGrowthTool"),
+        None,
+        Some("kelly_ruin_trap"),
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(ch_frag.len() <= MAX_URL_FRAGMENT_BYTES);
+    let parsed_ch = parse_share_location(&ch_frag, "").unwrap().unwrap();
+    assert_eq!(parsed_ch.tab, "financial_math");
+    assert_eq!(parsed_ch.tool.as_deref(), Some("BankrollGrowthTool"));
+    assert_eq!(parsed_ch.challenge.as_deref(), Some("kelly_ruin_trap"));
+    assert_eq!(parsed_ch.preset, None);
+    assert_eq!(parsed_ch.step, None);
+
+    let st_frag = encode_share_fragment_with_hud(
+        "game_theory",
+        Some("ReplicatorDynamicsTool"),
+        Some("prisoners_dilemma_tragedy"),
+        None,
+        Some(2),
+        None,
+    )
+    .unwrap();
+    let parsed_st = parse_share_location(&st_frag, "").unwrap().unwrap();
+    assert_eq!(
+        parsed_st.preset.as_deref(),
+        Some("prisoners_dilemma_tragedy")
+    );
+    assert_eq!(parsed_st.step, Some(2));
+
+    // Reject simultaneous preset + challenge, step without preset, or malformed step
+    assert!(parse_share_location("#tab=chaos&preset=a&challenge=b", "").is_err());
+    assert!(parse_share_location("#tab=chaos&challenge=b&step=1", "").is_err());
+    assert!(parse_share_location("#tab=chaos&preset=a&step=999", "").is_err());
+    assert!(parse_share_location("#tab=chaos&preset=", "").is_err());
+}
+
+#[test]
 fn test_shared_url_clamps_high_res_surface_and_flow_grids_to_interactive_caps() {
     let curv_json = crate::presets::serialize_compact_preset_envelope(
         "Curvature",
@@ -316,4 +358,35 @@ fn test_workspace_share_url_clamps_high_res_pane_presets_and_preserves_links() {
         .unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&exported).unwrap();
     assert_eq!(parsed["config"]["grid_size"], 100);
+}
+
+#[test]
+fn test_hud_story_and_workspace_share_url_roundtrip() {
+    let base_hud = encode_share_fragment_with_hud(
+        "game_theory",
+        Some("ReplicatorDynamicsTool"),
+        Some("prisoners_dilemma_tragedy"),
+        None,
+        Some(1),
+        None,
+    )
+    .unwrap();
+    let ws_json = serde_json::json!({
+        "layout": "h",
+        "links": [true, true],
+        "focus": 0,
+        "ratio": 0.5,
+        "quad": [0.5, 0.5],
+        "panes": [
+            { "tab": "game_theory", "tool": "ReplicatorDynamicsTool" },
+            { "tab": "chaos", "tool": "KuramotoOscillatorTool" }
+        ]
+    })
+    .to_string();
+    let combined = append_workspace_to_share_fragment(&base_hud, Some(&ws_json)).unwrap();
+    let parsed = parse_share_location(&combined, "").unwrap().unwrap();
+    assert_eq!(parsed.tab, "game_theory");
+    assert_eq!(parsed.preset.as_deref(), Some("prisoners_dilemma_tragedy"));
+    assert_eq!(parsed.step, Some(1));
+    assert_eq!(parsed.workspace_json.as_deref(), Some(ws_json.as_str()));
 }

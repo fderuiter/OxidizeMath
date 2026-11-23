@@ -21,6 +21,12 @@ pub const URL_JSON_BOUNDS: ToolStateBounds = ToolStateBounds::new(
     MAX_JSON_ARRAY_LEN,
 );
 
+/// Maximum character/byte length permitted for `preset` or `challenge` slug identifiers.
+pub const MAX_URL_ID_PARAM_BYTES: usize = 128;
+
+/// Maximum story step index permitted in `&step=<idx>` URL parameters.
+pub const MAX_URL_STORY_STEPS: usize = 64;
+
 /// Parsed simulation share-link parameters extracted from `location.hash` or `location.search`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShareUrlParams {
@@ -28,12 +34,16 @@ pub struct ShareUrlParams {
     pub tab: String,
     /// Optional target `InteractiveTool` identifier or display name.
     pub tool: Option<String>,
-    /// Optional inverse `ChallengeMetadata` identifier (`challenge=<id>`).
-    pub challenge: Option<String>,
     /// Optional decoded and structurally validated `PresetWrapper` JSON string.
     pub state_json: Option<String>,
     /// Optional decoded and structurally validated multi-pane workspace link descriptor JSON.
     pub workspace_json: Option<String>,
+    /// Optional registered starter snapshot or guided story identifier (`&preset=<id>`).
+    pub preset: Option<String>,
+    /// Optional registered inverse or AST goal challenge identifier (`&challenge=<id>`).
+    pub challenge: Option<String>,
+    /// Optional 0-based guided story step index (`&step=<idx>`).
+    pub step: Option<usize>,
 }
 
 fn percent_encode_component(raw: &str) -> String {
@@ -112,7 +122,7 @@ pub fn encode_share_fragment(
     tool_id: Option<&str>,
     preset_json: Option<&str>,
 ) -> Result<String, String> {
-    encode_share_fragment_with_challenge_and_workspace(tab_slug, tool_id, None, preset_json, None)
+    encode_share_fragment_with_hud(tab_slug, tool_id, None, None, None, preset_json)
 }
 
 /// Encodes `tab_slug`, optional `tool_id`, optional `challenge_id`, and optional compact
@@ -123,60 +133,16 @@ pub fn encode_share_fragment_with_challenge(
     challenge_id: Option<&str>,
     preset_json: Option<&str>,
 ) -> Result<String, String> {
-    encode_share_fragment_with_challenge_and_workspace(
-        tab_slug,
-        tool_id,
-        challenge_id,
-        preset_json,
-        None,
-    )
+    encode_share_fragment_with_hud(tab_slug, tool_id, None, challenge_id, None, preset_json)
 }
 
-/// Encodes `tab_slug`, optional `tool_id`, optional `preset_json`, and optional multi-pane
-/// `workspace_json` (`&ws=<base64url>`) while enforcing the 4 KiB and 8 KiB caps.
-pub fn encode_share_fragment_with_workspace(
-    tab_slug: &str,
-    tool_id: Option<&str>,
-    preset_json: Option<&str>,
+/// Appends an optional `&ws=<base64url>` multi-pane workspace descriptor to `base_fragment`
+/// while enforcing the 4 KiB JSON cap and 8 KiB total URL fragment cap.
+pub fn append_workspace_to_share_fragment(
+    base_fragment: &str,
     workspace_json: Option<&str>,
 ) -> Result<String, String> {
-    encode_share_fragment_with_challenge_and_workspace(
-        tab_slug,
-        tool_id,
-        None,
-        preset_json,
-        workspace_json,
-    )
-}
-
-/// Encodes `tab_slug`, optional `tool_id`, optional `challenge_id`, optional `preset_json`, and
-/// optional multi-pane `workspace_json` (`&ws=<base64url>`) while enforcing the 4 KiB and 8 KiB caps.
-pub fn encode_share_fragment_with_challenge_and_workspace(
-    tab_slug: &str,
-    tool_id: Option<&str>,
-    challenge_id: Option<&str>,
-    preset_json: Option<&str>,
-    workspace_json: Option<&str>,
-) -> Result<String, String> {
-    if tab_slug.trim().is_empty() {
-        return Err("Cannot encode share URL with an empty tab slug".to_string());
-    }
-    let mut fragment = format!("#tab={}", percent_encode_component(tab_slug));
-    if let Some(tool) = tool_id.filter(|t| !t.trim().is_empty()) {
-        fragment.push_str("&tool=");
-        fragment.push_str(&percent_encode_component(tool));
-    }
-    if let Some(ch) = challenge_id.filter(|c| !c.trim().is_empty()) {
-        validate_challenge_id(ch.trim())?;
-        fragment.push_str("&challenge=");
-        fragment.push_str(&percent_encode_component(ch.trim()));
-    }
-    if let Some(json) = preset_json {
-        validate_url_preset_json(json)?;
-        let encoded_state = base64url::encode(json.as_bytes());
-        fragment.push_str("&state=");
-        fragment.push_str(&encoded_state);
-    }
+    let mut fragment = base_fragment.to_string();
     if let Some(ws_json) = workspace_json {
         validate_url_preset_json(ws_json)?;
         let encoded_ws = base64url::encode(ws_json.as_bytes());
@@ -192,21 +158,64 @@ pub fn encode_share_fragment_with_challenge_and_workspace(
     Ok(fragment)
 }
 
-fn validate_challenge_id(raw_id: &str) -> Result<String, String> {
-    let trimmed = raw_id.trim();
-    if trimmed.is_empty() {
-        return Err("Shared URL contains an empty 'challenge' parameter".to_string());
+/// Encodes `tab_slug`, optional `tool_id`, optional `preset_json`, and optional multi-pane
+/// `workspace_json` (`&ws=<base64url>`) while enforcing the 4 KiB and 8 KiB caps.
+pub fn encode_share_fragment_with_workspace(
+    tab_slug: &str,
+    tool_id: Option<&str>,
+    preset_json: Option<&str>,
+    workspace_json: Option<&str>,
+) -> Result<String, String> {
+    let base = encode_share_fragment(tab_slug, tool_id, preset_json)?;
+    append_workspace_to_share_fragment(&base, workspace_json)
+}
+
+/// Encodes a `#tab=...` URL fragment including optional `preset`, `challenge`, `step`, and `state` parameters.
+pub fn encode_share_fragment_with_hud(
+    tab_slug: &str,
+    tool_id: Option<&str>,
+    preset_id: Option<&str>,
+    challenge_id: Option<&str>,
+    step_idx: Option<usize>,
+    preset_json: Option<&str>,
+) -> Result<String, String> {
+    if tab_slug.trim().is_empty() {
+        return Err("Cannot encode share URL with an empty tab slug".to_string());
     }
-    if trimmed.len() > 64
-        || !trimmed
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
-    {
+    if preset_id.is_some() && challenge_id.is_some() {
+        return Err("Cannot encode both 'preset' and 'challenge' in one share URL".to_string());
+    }
+    let mut fragment = format!("#tab={}", percent_encode_component(tab_slug));
+    if let Some(tool) = tool_id.filter(|t| !t.trim().is_empty()) {
+        fragment.push_str("&tool=");
+        fragment.push_str(&percent_encode_component(tool));
+    }
+    if let Some(pid) = preset_id.filter(|p| !p.trim().is_empty()) {
+        validate_url_identifier(pid, "preset")?;
+        fragment.push_str("&preset=");
+        fragment.push_str(&percent_encode_component(pid.trim()));
+        if let Some(step) = step_idx.filter(|&s| s > 0) {
+            fragment.push_str(&format!("&step={step}"));
+        }
+    }
+    if let Some(cid) = challenge_id.filter(|c| !c.trim().is_empty()) {
+        validate_url_identifier(cid, "challenge")?;
+        fragment.push_str("&challenge=");
+        fragment.push_str(&percent_encode_component(cid.trim()));
+    }
+    if let Some(json) = preset_json {
+        validate_url_preset_json(json)?;
+        let encoded_state = base64url::encode(json.as_bytes());
+        fragment.push_str("&state=");
+        fragment.push_str(&encoded_state);
+    }
+    if fragment.len() > MAX_URL_FRAGMENT_BYTES {
         return Err(format!(
-            "Invalid 'challenge' identifier '{trimmed}' in shared URL"
+            "Encoded URL fragment ({} bytes) exceeds maximum allowed limit ({MAX_URL_FRAGMENT_BYTES} bytes)",
+            fragment.len()
         ));
     }
-    Ok(trimmed.to_string())
+    Ok(fragment)
 }
 
 /// Parses `location.hash` first, falling back to `location.search` (ignoring unrelated query
@@ -236,12 +245,31 @@ pub fn parse_share_location(hash: &str, search: &str) -> Result<Option<ShareUrlP
     parse_param_pairs(raw_search, false)
 }
 
+#[derive(Default)]
+struct RawParamAccum {
+    tab: Option<String>,
+    tool: Option<String>,
+    state_b64: Option<String>,
+    ws_b64: Option<String>,
+    preset: Option<String>,
+    challenge: Option<String>,
+    step_raw: Option<String>,
+}
+
+impl RawParamAccum {
+    fn is_empty(&self) -> bool {
+        self.tab.is_none()
+            && self.tool.is_none()
+            && self.state_b64.is_none()
+            && self.ws_b64.is_none()
+            && self.preset.is_none()
+            && self.challenge.is_none()
+            && self.step_raw.is_none()
+    }
+}
+
 fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlParams>, String> {
-    let mut tab: Option<String> = None;
-    let mut tool: Option<String> = None;
-    let mut challenge: Option<String> = None;
-    let mut state_b64: Option<String> = None;
-    let mut ws_b64: Option<String> = None;
+    let mut acc = RawParamAccum::default();
 
     for pair in raw.split('&').filter(|s| !s.is_empty()) {
         let Some((k_raw, v_raw)) = pair.split_once('=') else {
@@ -251,11 +279,13 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
             continue;
         };
         match k_raw {
-            "tab" => set_unique_param(&mut tab, v_raw, "tab")?,
-            "tool" => set_unique_param(&mut tool, v_raw, "tool")?,
-            "challenge" => set_unique_param(&mut challenge, v_raw, "challenge")?,
-            "state" => set_unique_param(&mut state_b64, v_raw, "state")?,
-            "ws" => set_unique_param(&mut ws_b64, v_raw, "ws")?,
+            "tab" => set_unique_param(&mut acc.tab, v_raw, "tab")?,
+            "tool" => set_unique_param(&mut acc.tool, v_raw, "tool")?,
+            "state" => set_unique_param(&mut acc.state_b64, v_raw, "state")?,
+            "ws" => set_unique_param(&mut acc.ws_b64, v_raw, "ws")?,
+            "preset" => set_unique_param(&mut acc.preset, v_raw, "preset")?,
+            "challenge" => set_unique_param(&mut acc.challenge, v_raw, "challenge")?,
+            "step" => set_unique_param(&mut acc.step_raw, v_raw, "step")?,
             _ if strict_keys => {
                 return Err(format!("Unknown URL fragment parameter '{k_raw}'"));
             }
@@ -263,15 +293,10 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
         }
     }
 
-    if tab.is_none()
-        && tool.is_none()
-        && challenge.is_none()
-        && state_b64.is_none()
-        && ws_b64.is_none()
-    {
+    if acc.is_empty() {
         return Ok(None);
     }
-    build_validated_share_params(tab, tool, challenge, state_b64, ws_b64)
+    build_validated_share_params(acc)
 }
 
 fn set_unique_param(slot: &mut Option<String>, raw_val: &str, name: &str) -> Result<(), String> {
@@ -293,100 +318,105 @@ fn decode_validated_b64_json(raw_b64: &str, label: &str) -> Result<String, Strin
     Ok(json_str)
 }
 
-fn clamp_json_u64_in_range(
-    map: &mut serde_json::Map<String, serde_json::Value>,
-    key: &str,
-    cap: u64,
-    max_allowed: u64,
-) -> bool {
-    let Some(slot) = map.get_mut(key) else {
-        return false;
-    };
-    let Some(raw) = slot.as_u64() else {
-        return false;
-    };
-    if raw > cap && raw <= max_allowed {
-        *slot = serde_json::Value::Number(serde_json::Number::from(cap));
-        true
-    } else {
-        false
+fn validate_url_identifier(raw: &str, label: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(format!("Shared URL contains an empty '{label}' parameter"));
     }
+    if trimmed.len() > MAX_URL_ID_PARAM_BYTES {
+        return Err(format!(
+            "Shared URL '{label}' identifier exceeds {MAX_URL_ID_PARAM_BYTES} bytes"
+        ));
+    }
+    if !trimmed
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+    {
+        return Err(format!(
+            "Shared URL '{label}' identifier contains invalid characters"
+        ));
+    }
+    Ok(trimmed.to_string())
 }
 
-pub(crate) fn clamp_decoded_url_grid_state(
+fn parse_optional_step(
+    step_raw: Option<String>,
+    has_preset: bool,
+) -> Result<Option<usize>, String> {
+    let Some(raw) = step_raw else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("Shared URL contains an empty 'step' parameter".to_string());
+    }
+    if !has_preset {
+        return Err("Shared URL 'step' parameter requires a 'preset' story identifier".to_string());
+    }
+    let idx = trimmed
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid non-negative integer '{trimmed}' for URL 'step'"))?;
+    if idx > MAX_URL_STORY_STEPS {
+        return Err(format!(
+            "Shared URL 'step' index ({idx}) exceeds maximum ({MAX_URL_STORY_STEPS})"
+        ));
+    }
+    Ok(Some(idx))
+}
+
+fn decode_optional_state_json(
     tab: &str,
     tool: Option<&str>,
-    json_str: &str,
-) -> Result<String, String> {
-    let cleaned = egui_plot::export::strip_utf8_bom(json_str);
-    let mut root: serde_json::Value =
-        serde_json::from_str(cleaned).map_err(|e| format!("Invalid URL state JSON: {e}"))?;
-    let max_schema = math_commons::registry::MAX_GRID_SIZE as u64;
-    let surf_cap = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION as u64;
-    let grid_cap = crate::presets::MAX_INTERACTIVE_GRID_SIZE as u64;
-    let is_fluid = matches_tab_slug(tab, "fluid_dynamics", "Fluid Dynamics")
-        || tool.is_some_and(|t| matches_tab_slug(t, "PotentialFlowTool", "Potential Flow"));
-
-    let target_map = if root.get("config").is_some_and(serde_json::Value::is_object) {
-        root.get_mut("config")
-            .and_then(serde_json::Value::as_object_mut)
-    } else {
-        root.as_object_mut()
+    state_b64: Option<String>,
+) -> Result<Option<String>, String> {
+    let Some(raw_b64) = state_b64 else {
+        return Ok(None);
     };
-    let mut clamped = false;
-    if let Some(cfg) = target_map {
-        clamped |= clamp_json_u64_in_range(cfg, "u_resolution", surf_cap, max_schema);
-        clamped |= clamp_json_u64_in_range(cfg, "v_resolution", surf_cap, max_schema);
-        clamped |= clamp_json_u64_in_range(cfg, "grid_density", grid_cap, max_schema);
-        if is_fluid {
-            clamped |= clamp_json_u64_in_range(cfg, "grid_size", grid_cap, max_schema);
-        }
-    }
-    if clamped {
-        serde_json::to_string(&root).map_err(|e| format!("Invalid URL state JSON: {e}"))
-    } else {
-        Ok(json_str.to_string())
-    }
+    let json_str = decode_validated_b64_json(&raw_b64, "state")?;
+    Ok(Some(super::clamp_decoded_url_grid_state(
+        tab, tool, &json_str,
+    )?))
 }
 
-fn build_validated_share_params(
-    tab: Option<String>,
-    tool: Option<String>,
-    challenge: Option<String>,
-    state_b64: Option<String>,
-    ws_b64: Option<String>,
-) -> Result<Option<ShareUrlParams>, String> {
-    let tab_val = tab
+fn build_validated_share_params(acc: RawParamAccum) -> Result<Option<ShareUrlParams>, String> {
+    let tab_val = acc
+        .tab
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
         .ok_or_else(|| "Shared URL is missing a valid 'tab' parameter".to_string())?;
-    let tool_val = match tool {
+    let tool_val = match acc.tool {
         Some(t) if t.trim().is_empty() => {
             return Err("Shared URL contains an empty 'tool' parameter".to_string());
         }
         Some(t) => Some(t.trim().to_string()),
         None => None,
     };
-    let challenge_val = match challenge {
-        Some(c) => Some(validate_challenge_id(&c)?),
-        None => None,
-    };
-    let state_json = state_b64
-        .as_deref()
-        .map(|s| decode_validated_b64_json(s, "state"))
-        .transpose()?
-        .map(|json_str| clamp_decoded_url_grid_state(&tab_val, tool_val.as_deref(), &json_str))
+    let preset_val = acc
+        .preset
+        .map(|p| validate_url_identifier(&p, "preset"))
         .transpose()?;
-    let workspace_json = ws_b64
+    let challenge_val = acc
+        .challenge
+        .map(|c| validate_url_identifier(&c, "challenge"))
+        .transpose()?;
+    if preset_val.is_some() && challenge_val.is_some() {
+        return Err("Shared URL cannot specify both 'preset' and 'challenge'".to_string());
+    }
+    let step_val = parse_optional_step(acc.step_raw, preset_val.is_some())?;
+    let state_json = decode_optional_state_json(&tab_val, tool_val.as_deref(), acc.state_b64)?;
+    let workspace_json = acc
+        .ws_b64
         .as_deref()
         .map(|s| decode_validated_b64_json(s, "ws"))
         .transpose()?;
     Ok(Some(ShareUrlParams {
         tab: tab_val,
         tool: tool_val,
-        challenge: challenge_val,
         state_json,
         workspace_json,
+        preset: preset_val,
+        challenge: challenge_val,
+        step: step_val,
     }))
 }
 
