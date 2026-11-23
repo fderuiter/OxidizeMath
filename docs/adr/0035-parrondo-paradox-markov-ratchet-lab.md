@@ -1,7 +1,6 @@
 # ADR 0035: Parrondo's Paradox Discrete-Time Markov Ratchet Solver and Financial Math Lab
 
 ## Status
-
 Accepted (2026-11-21)
 
 ## Context

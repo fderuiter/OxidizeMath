@@ -111,6 +111,7 @@ allowlist = [
     "docs/adr/0035-fermi-spatial-games-and-ising-droplet-brushes.md",
     "docs/adr/0035-finite-field-weierstrass-curves-and-hasse-explorer.md",
     "docs/adr/0035-hamiltonian-langevin-momentum-dynamics-and-loss-arena.md",
+    "docs/adr/0035-harden-playwright-wasm-runner-and-workspace-gates.md",
     "docs/adr/0035-iterative-ast-glsl-transpiler-and-shader-exports.md",
     "docs/adr/0035-kelly-net-odds-seeded-rng-and-paradox-labs.md",
     "docs/adr/0035-parrondo-paradox-markov-ratchet-lab.md",
@@ -122,6 +123,7 @@ allowlist = [
     "docs/adr/0036-delete-dead-theory-accessors-and-description-macro.md",
     "docs/adr/0036-delete-simulation-model-traits-and-physics-adapters.md",
     "docs/adr/0036-harden-ast-and-doctest-policy-audits.md",
+    "docs/adr/0036-scoped-ode-sandboxes-and-extended-ast-grammar.md",
 ]
 
 [[unused_dependencies]]
