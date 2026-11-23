@@ -5,7 +5,6 @@ use crate::framework::{
     Camera3D, CoupledExpressionBank, ExportCapabilities, InteractiveTool, Scene3DBuilder,
 };
 use eframe::egui;
-use egui_plot::{LineStyle, MarkerShape};
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use nalgebra::{Point3, Vector3};
 use std::collections::VecDeque;
@@ -14,6 +13,10 @@ use std::sync::Arc;
 #[path = "attractors/flow.rs"]
 pub mod flow;
 pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
+
+#[path = "attractors/twin.rs"]
+pub mod twin;
+pub use twin::{TwinConfig, TwinRunnerState};
 
 #[path = "attractors/invariants.rs"]
 mod invariants;
@@ -27,6 +30,9 @@ pub use runner::*;
 #[path = "attractors/theory.rs"]
 mod theory;
 
+#[path = "attractors/divergence_plot.rs"]
+mod divergence_plot;
+
 #[path = "attractors/ui.rs"]
 mod ui;
 
@@ -39,6 +45,8 @@ pub struct AttractorPlotter {
     pub(crate) mode: AttractorMode,
     pub(crate) flow_bank: CoupledExpressionBank,
     pub(crate) system: LorenzSystem,
+    pub(crate) twin: TwinConfig,
+    pub(crate) twin_state: TwinRunnerState,
     pub(crate) execution_state: SolverExecutionState,
     pub(crate) step_count: usize,
     pub(crate) simulation_speed: usize,
@@ -49,6 +57,7 @@ pub struct AttractorPlotter {
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
     trajectory_scratch: Vec<Point3<f64>>,
+    twin_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
     pub show_annotations: bool,
@@ -60,8 +69,9 @@ pub struct AttractorPlotter {
 
 impl Default for AttractorPlotter {
     fn default() -> Self {
-        let initial_state = LorenzState::new(1.0, 1.0, 1.0);
-        let system = LorenzBuilder::new().build(initial_state);
+        let twin = TwinConfig::default();
+        let init = twin.initial_state;
+        let system = LorenzBuilder::new().build(LorenzState::new(init.x, init.y, init.z));
         let flow_bank = default_flow_bank();
         let custom_flow = Some(Arc::new(CompiledFlowJob::from_bank(&flow_bank)));
         let params = Arc::new(std::sync::RwLock::new(AttractorSharedParams {
@@ -73,6 +83,7 @@ impl Default for AttractorPlotter {
             max_points: 2000,
             mode: AttractorMode::Lorenz,
             custom_flow,
+            twin,
         }));
         let runner = AttractorRunner::from_params(Arc::clone(&params));
         let worker = BackgroundWorker::new(runner);
@@ -82,6 +93,8 @@ impl Default for AttractorPlotter {
             mode: AttractorMode::Lorenz,
             flow_bank,
             system,
+            twin,
+            twin_state: TwinRunnerState::from_config(twin, 2000),
             execution_state: SolverExecutionState::Ready,
             step_count: 0,
             simulation_speed: 5,
@@ -92,13 +105,14 @@ impl Default for AttractorPlotter {
             camera,
             scene_builder: Scene3DBuilder::new(camera),
             trajectory_scratch: Vec::with_capacity(2000),
+            twin_scratch: Vec::new(),
             params,
             worker,
             show_annotations: true,
             fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
             latest_sonification: crate::audio::mappings::attractor_frame(
-                [1.0, 1.0, 1.0],
+                [init.x, init.y, init.z],
                 [0.0, 26.0, -1.67],
                 false,
             ),
@@ -124,6 +138,9 @@ impl AttractorPlotter {
     #[must_use]
     pub fn is_finite_state(&self) -> bool {
         let v = self.system.state.vec;
+        let sv = self.twin_state.shadow_vec;
+        let shadow_ok =
+            !self.twin.enabled || (sv.x.is_finite() && sv.y.is_finite() && sv.z.is_finite());
         let lorenz_ok = self.mode != AttractorMode::Lorenz
             || (self.system.sigma.is_finite()
                 && self.system.rho.is_finite()
@@ -131,6 +148,8 @@ impl AttractorPlotter {
         v.x.is_finite()
             && v.y.is_finite()
             && v.z.is_finite()
+            && shadow_ok
+            && self.twin.is_finite()
             && lorenz_ok
             && self.dt.is_finite()
             && self.tube_radius.is_finite()
@@ -162,6 +181,7 @@ impl AttractorPlotter {
             p.max_points = self.max_points;
             p.mode = self.mode;
             p.custom_flow = Some(job);
+            p.twin = self.twin;
         }
         if self.diverged() && self.is_finite_state() {
             self.execution_state = SolverExecutionState::Ready;
@@ -169,7 +189,8 @@ impl AttractorPlotter {
     }
 
     pub fn reset(&mut self) {
-        let initial_state = LorenzState::new(1.0, 1.0, 1.0);
+        self.twin = self.twin.sanitized();
+        let init = self.twin.initial_state;
         let sigma = if self.system.sigma.is_finite() {
             self.system.sigma
         } else {
@@ -193,8 +214,9 @@ impl AttractorPlotter {
             .sigma(sigma)
             .rho(rho)
             .beta(beta)
-            .build(initial_state);
+            .build(LorenzState::new(init.x, init.y, init.z));
         self.history.clear();
+        self.twin_state.reset(self.twin, self.max_points);
         self.step_count = 0;
         self.execution_state = SolverExecutionState::Ready;
         let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
@@ -208,6 +230,7 @@ impl AttractorPlotter {
             p.max_points = self.max_points;
             p.mode = self.mode;
             p.custom_flow = Some(job);
+            p.twin = self.twin;
         }
         let params = Arc::clone(&self.params);
         self.worker
@@ -218,6 +241,7 @@ impl AttractorPlotter {
         self.system.sigma = 10.0;
         self.system.rho = 28.0;
         self.system.beta = 8.0 / 3.0;
+        self.twin = TwinConfig::default();
         self.flow_bank = default_flow_bank();
         self.dt = 0.01;
         self.tube_radius = export::DEFAULT_TUBE_RADIUS;
@@ -237,46 +261,36 @@ impl AttractorPlotter {
     }
 
     /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.
+    #[cfg(test)]
     pub fn populate_scene(&mut self, series_color: egui::Color32) {
-        let origin_offset = match self.mode {
-            AttractorMode::Lorenz => Point3::new(0.0, 0.0, 25.0),
-            AttractorMode::Custom => Point3::origin(),
+        self.populate_scene_with_twin(series_color, series_color);
+    }
+
+    /// Populates `self.scene_builder` with primary and optional twin trajectories + head markers.
+    pub fn populate_scene_with_twin(
+        &mut self,
+        series_color: egui::Color32,
+        twin_color: egui::Color32,
+    ) {
+        let is_finite = self.is_finite_state();
+        let args = twin::ScenePopulateArgs {
+            mode: self.mode,
+            camera: self.camera,
+            is_finite,
+            primary_vec: self.system.state.vec,
+            history: &self.history,
+            twin_enabled: self.twin.enabled,
+            shadow_vec: self.twin_state.shadow_vec,
+            twin_history: &self.twin_state.twin_history,
+            primary_color: series_color,
+            twin_color,
         };
-        self.scene_builder.begin(self.camera);
-        self.scene_builder.set_origin_offset(origin_offset);
-        self.trajectory_scratch.clear();
-        self.trajectory_scratch
-            .extend(self.history.iter().map(|v| Point3::new(v.x, v.y, v.z)));
-        if !self.trajectory_scratch.is_empty() {
-            if self.trajectory_scratch.len() == 1 {
-                self.scene_builder.add_points(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    4.0_f32,
-                    series_color,
-                    MarkerShape::Circle,
-                    true,
-                );
-            } else {
-                self.scene_builder.add_polyline(
-                    "Trajectory",
-                    &self.trajectory_scratch,
-                    egui::Stroke::new(1.5_f32, series_color),
-                    LineStyle::Solid,
-                    true,
-                );
-            }
-        } else if self.is_finite_state() {
-            let v = self.system.state.vec;
-            self.scene_builder.add_points(
-                "Initial State",
-                &[Point3::new(v.x, v.y, v.z)],
-                4.0_f32,
-                series_color,
-                MarkerShape::Circle,
-                true,
-            );
-        }
+        twin::populate_attractor_scene(
+            &mut self.scene_builder,
+            &mut self.trajectory_scratch,
+            &mut self.twin_scratch,
+            args,
+        );
     }
 }
 
@@ -304,6 +318,11 @@ impl InteractiveTool for AttractorPlotter {
         self.system.sigma.to_bits().hash(&mut h);
         self.system.rho.to_bits().hash(&mut h);
         self.system.beta.to_bits().hash(&mut h);
+        self.twin.initial_state.x.to_bits().hash(&mut h);
+        self.twin.initial_state.y.to_bits().hash(&mut h);
+        self.twin.initial_state.z.to_bits().hash(&mut h);
+        self.twin.enabled.hash(&mut h);
+        self.twin.epsilon.to_bits().hash(&mut h);
         self.dt.to_bits().hash(&mut h);
         self.tube_radius.to_bits().hash(&mut h);
         self.simulation_speed.hash(&mut h);
@@ -342,48 +361,7 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn step_simulation(&mut self) {
-        if self.diverged() {
-            return;
-        }
-        if self.execution_state == SolverExecutionState::Ready {
-            self.execution_state = SolverExecutionState::Running;
-        }
-        let custom_job = (self.mode == AttractorMode::Custom)
-            .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
-        for _ in 0..self.simulation_speed.clamp(1, MAX_SIMULATION_SPEED) {
-            let current_vec = self.system.state.vec;
-            if !current_vec.x.is_finite()
-                || !current_vec.y.is_finite()
-                || !current_vec.z.is_finite()
-            {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: current_vec,
-                    diverged_at_step: self.step_count,
-                };
-                break;
-            }
-
-            if let Some(ref job) = custom_job {
-                self.system.state.vec = job.rk4_step(current_vec, self.dt);
-            } else {
-                self.system.step(self.dt);
-            }
-            self.step_count += 1;
-
-            let vec = self.system.state.vec;
-            if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: vec,
-                    diverged_at_step: self.step_count,
-                };
-                break;
-            }
-
-            if self.history.len() >= self.max_points {
-                self.history.pop_front();
-            }
-            self.history.push_back(vec);
-        }
+        self.step_in_thread_simulation();
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
@@ -399,20 +377,11 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
-        if points.is_empty() && self.is_finite_state() {
-            points.push(self.project(self.system.state.vec));
-        }
-        vec![("Trajectory".to_string(), points)]
+        self.collect_datasets_2d()
     }
 
     fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
-        let mut points: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
-        if points.is_empty() && self.is_finite_state() {
-            let v = self.system.state.vec;
-            points.push([v.x, v.y, v.z]);
-        }
-        vec![("Trajectory".to_string(), points)]
+        self.collect_datasets_3d()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -439,6 +408,10 @@ impl InteractiveTool for AttractorPlotter {
                 {
                     self.history = data.history.clone();
                     self.system.state.vec = data.current_vec;
+                    self.twin_state.twin_history = data.twin_history.clone();
+                    self.twin_state.shadow_vec = data.shadow_vec;
+                    self.twin_state.divergence_history = data.divergence_history.clone();
+                    self.twin_state.enabled = data.twin_enabled;
                     self.step_count = data.step_count;
                     if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
                         || !was_paused
@@ -477,13 +450,14 @@ inventory::submit! {
         id: "AttractorPlotter",
         display_name: "Attractor Plotter",
         domain: "chaos",
-        tags: &["lorenz", "attractor", "chaos"],
+        tags: &["lorenz", "attractor", "chaos", "butterfly", "lyapunov"],
         build: || Box::new(AttractorPlotter::default()),
     }
 }
 
 #[path = "attractors/preset.rs"]
 mod preset;
+pub use preset::PRESET_3D_ATTRACTOR_TWIN;
 
 #[cfg(test)]
 #[path = "attractors/attractor_tests.rs"]
@@ -496,3 +470,7 @@ mod custom_flow_tests;
 #[cfg(test)]
 #[path = "attractors/export_tests.rs"]
 mod export_tests;
+
+#[cfg(test)]
+#[path = "attractors/twin_tests.rs"]
+mod twin_tests;

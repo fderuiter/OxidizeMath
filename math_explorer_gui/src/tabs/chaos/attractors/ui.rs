@@ -48,6 +48,7 @@ impl AttractorPlotter {
             ui.separator();
 
             self.draw_parameter_sliders(ui);
+            self.draw_initial_and_twin_controls(ui, ctx);
             self.draw_simulation_controls(ui, ctx, worker_faulted);
             ui.separator();
             crate::audio::render_sonification_panel(
@@ -76,6 +77,12 @@ impl AttractorPlotter {
         ui.label(format!("X: {:.2}", state.x));
         ui.label(format!("Y: {:.2}", state.y));
         ui.label(format!("Z: {:.2}", state.z));
+        if self.twin.enabled {
+            let sep = (self.twin_state.shadow_vec - state).norm();
+            if sep.is_finite() {
+                ui.label(format!("||Δx||: {sep:.2e}"));
+            }
+        }
         if let Some(lyap) = self.current_lyapunov_exponent() {
             ui.label(format!("Lorenz Lyapunov λ₁: {lyap:+.3}"));
         }
@@ -440,18 +447,21 @@ impl AttractorPlotter {
     }
 
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
+        self.draw_divergence_panel(parent_ui);
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.draw_central_fault_banner(ui, ctx);
 
             if self.history.is_empty() && !self.diverged() {
-                render_empty_plot_guidance(
-                    ui,
-                    "Initial Lorenz state (1, 1, 1) ready — click ▶ Play or ⏭ Step to trace the strange attractor.",
+                let init = self.twin.initial_state;
+                let msg = format!(
+                    "Initial state ({:.2}, {:.2}, {:.2}) ready — click ▶ Play or ⏭ Step to trace the strange attractor.",
+                    init.x, init.y, init.z
                 );
+                render_empty_plot_guidance(ui, &msg);
             }
 
-            let series0 = crate::app::SemanticPalette::from_visuals(ui.visuals()).series_color(0);
-            self.populate_scene(series0);
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            self.populate_scene_with_twin(palette.series_color(0), palette.series_color(1));
             let mut camera = self.camera;
             let response = Plot3DViewport::new("attractor_plot", 32.0)
                 .show(ui, &mut camera, |plot_ui| {

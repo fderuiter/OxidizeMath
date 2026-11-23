@@ -121,4 +121,118 @@ impl AttractorPlotter {
         }
         Ok(ColoredMesh::new(mesh, colors))
     }
+
+    pub(super) fn collect_datasets_2d(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut points: Vec<[f64; 2]> = self.history.iter().map(|p| self.project(*p)).collect();
+        if points.is_empty() && self.is_finite_state() {
+            points.push(self.project(self.system.state.vec));
+        }
+        let mut out = vec![("Trajectory".to_string(), points)];
+        if self.twin.enabled {
+            let mut twin_pts: Vec<[f64; 2]> = self
+                .twin_state
+                .twin_history
+                .iter()
+                .map(|p| self.project(*p))
+                .collect();
+            if twin_pts.is_empty() && self.is_finite_state() {
+                twin_pts.push(self.project(self.twin_state.shadow_vec));
+            }
+            out.push(("Twin Trajectory".to_string(), twin_pts));
+        }
+        out
+    }
+
+    pub(super) fn collect_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        let mut points: Vec<[f64; 3]> = self.history.iter().map(|p| [p.x, p.y, p.z]).collect();
+        if points.is_empty() && self.is_finite_state() {
+            let v = self.system.state.vec;
+            points.push([v.x, v.y, v.z]);
+        }
+        let mut out = vec![("Trajectory".to_string(), points)];
+        if self.twin.enabled {
+            let mut twin_pts: Vec<[f64; 3]> = self
+                .twin_state
+                .twin_history
+                .iter()
+                .map(|p| [p.x, p.y, p.z])
+                .collect();
+            if twin_pts.is_empty() && self.is_finite_state() {
+                let sv = self.twin_state.shadow_vec;
+                twin_pts.push([sv.x, sv.y, sv.z]);
+            }
+            out.push(("Twin Trajectory".to_string(), twin_pts));
+        }
+        out
+    }
+
+    pub(super) fn step_in_thread_simulation(&mut self) {
+        if self.diverged() {
+            return;
+        }
+        if self.execution_state == super::SolverExecutionState::Ready {
+            self.execution_state = super::SolverExecutionState::Running;
+        }
+        let custom_job = (self.mode == AttractorMode::Custom)
+            .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
+        for _ in 0..self.simulation_speed.clamp(1, super::MAX_SIMULATION_SPEED) {
+            if !self.step_in_thread_substep(custom_job.as_ref()) {
+                break;
+            }
+        }
+    }
+
+    fn step_in_thread_substep(&mut self, custom_job: Option<&CompiledFlowJob>) -> bool {
+        let current_vec = self.system.state.vec;
+        if !(current_vec.x.is_finite() && current_vec.y.is_finite() && current_vec.z.is_finite()) {
+            self.execution_state = super::SolverExecutionState::Diverged {
+                invalid_vec: current_vec,
+                diverged_at_step: self.step_count,
+            };
+            return false;
+        }
+        let lorenz = [self.system.sigma, self.system.rho, self.system.beta];
+        let (vec, next_shadow) = if self.twin.enabled {
+            super::twin::step_twin_pair(
+                self.mode,
+                lorenz,
+                self.dt,
+                custom_job,
+                current_vec,
+                self.twin_state.shadow_vec,
+            )
+        } else {
+            let next_p = super::twin::step_flow_vec(
+                self.mode,
+                lorenz[0],
+                lorenz[1],
+                lorenz[2],
+                self.dt,
+                custom_job,
+                current_vec,
+            );
+            (next_p, self.twin_state.shadow_vec)
+        };
+        self.system.state.vec = vec;
+        self.step_count += 1;
+        let shadow_ok = !self.twin.enabled
+            || (next_shadow.x.is_finite()
+                && next_shadow.y.is_finite()
+                && next_shadow.z.is_finite());
+        if !(vec.x.is_finite() && vec.y.is_finite() && vec.z.is_finite() && shadow_ok) {
+            self.execution_state = super::SolverExecutionState::Diverged {
+                invalid_vec: if shadow_ok { vec } else { next_shadow },
+                diverged_at_step: self.step_count,
+            };
+            return false;
+        }
+        if self.history.len() >= self.max_points {
+            self.history.pop_front();
+        }
+        self.history.push_back(vec);
+        self.twin_state.enabled = self.twin.enabled;
+        self.twin_state
+            .record_step(self.step_count, self.dt, self.max_points, vec, next_shadow);
+        true
+    }
 }

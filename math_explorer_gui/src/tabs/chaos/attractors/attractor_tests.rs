@@ -323,6 +323,7 @@ fn test_attractor_poisoned_lock_recovery() {
         system: LorenzBuilder::new().build(LorenzState::new(1.0, 1.0, 1.0)),
         params: Arc::clone(&plotter.params),
         history: VecDeque::with_capacity(100),
+        twin: TwinRunnerState::default(),
         step_count: 0,
         execution_state: SolverExecutionState::Ready,
         rng: oxidize_core::rng::OxidizeRng::default(),

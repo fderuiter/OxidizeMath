@@ -245,7 +245,7 @@ impl<'a> PlaybackTransport<'a> {
         meta: TimelineMetadata,
         min_size: egui::Vec2,
     ) -> Option<PlaybackAction> {
-        let enabled = ui.is_enabled() && self.can_toggle && meta.max_step > meta.min_step;
+        let enabled = ui.is_enabled() && self.can_step && meta.max_step > meta.min_step;
         let mut step_val = meta.current_step.clamp(meta.min_step, meta.max_step);
         let a11y_label = format!(
             "Scrub {} timeline step ({}..={})",
@@ -299,6 +299,7 @@ impl<'a> PlaybackTransport<'a> {
     ) -> (Option<PlaybackAction>, bool) {
         use crate::app::viewport::compare_sync::{
             claim_pending_sync_key, emit_playback_broadcast, poll_playback_broadcast,
+            SyncTransportCaps,
         };
         let ctx = ui.ctx();
         if let Some((bcast_action, announce)) = poll_playback_broadcast(ctx, base_id) {
@@ -310,9 +311,14 @@ impl<'a> PlaybackTransport<'a> {
             let announce = emit_playback_broadcast(ctx, base_id, clicked, None);
             return (Some(clicked), announce);
         }
-        if let Some((sync_key_action, key)) =
-            claim_pending_sync_key(ctx, self.can_toggle, self.is_playing, self.can_step)
-        {
+        let sync_caps = SyncTransportCaps {
+            can_toggle: self.can_toggle,
+            is_playing: self.is_playing,
+            can_step: self.can_step,
+            can_step_back: self.can_step_back(),
+            prev_keyframe_step: self.timeline.map(|m| m.previous_keyframe_step()),
+        };
+        if let Some((sync_key_action, key)) = claim_pending_sync_key(ctx, sync_caps) {
             let announce = emit_playback_broadcast(ctx, base_id, sync_key_action, Some(key));
             return (Some(sync_key_action), announce);
         }

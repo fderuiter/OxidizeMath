@@ -80,3 +80,16 @@ inventory::submit! {
         preset_generator: || crate::starter_gallery::PRESET_3D_ATTRACTOR,
     }
 }
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "3d_attractor_twin",
+        title: "Lorenz Butterfly Twin",
+        description: "Δx₀=10⁻⁹: Twin Lorenz trajectories diverging exponentially across butterfly lobes at Wolf rate λ₁.",
+        category: "Chaos Theory",
+        icon: "🦋",
+        domain: "chaos",
+        tool_name: Some("AttractorPlotter"),
+        preset_generator: || crate::starter_gallery::PRESET_3D_ATTRACTOR_TWIN,
+    }
+}

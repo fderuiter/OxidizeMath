@@ -1,12 +1,44 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::twin::{
+    is_default_initial_state, is_default_twin_epsilon, TwinConfig, DEFAULT_INITIAL_STATE,
+    DEFAULT_TWIN_EPSILON, MAX_INITIAL_COORD, MAX_TWIN_EPSILON, MIN_INITIAL_COORD, MIN_TWIN_EPSILON,
+};
 use super::{
     AttractorMode, AttractorPlotter, SolverExecutionState, DEFAULT_FIXED_CALLOUT_OFFSETS,
     DEFAULT_FLOW_EXPRS,
 };
 use crate::framework::Camera3D;
 use eframe::egui;
+use nalgebra::Vector3;
 use std::collections::BTreeMap;
+
+/// JSON preset envelope for Lorenz Butterfly Effect Twin Trajectory divergence.
+pub const PRESET_3D_ATTRACTOR_TWIN: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Lorenz Butterfly Effect - Twin Trajectories",
+    "domain": "chaos",
+    "timestamp": "2026-11-23T00:00:00Z"
+  },
+  "config": {
+    "sigma": 10.0,
+    "rho": 28.0,
+    "beta": 2.6666666666666665,
+    "dt": 0.01,
+    "simulation_speed": 8,
+    "execution_state": "Running",
+    "show_annotations": true,
+    "initial_state": [1.0, 1.0, 1.0],
+    "twin_enabled": true,
+    "epsilon": 1e-9,
+    "camera": {
+      "pitch": 0.35,
+      "yaw": -0.45,
+      "zoom": 1.0
+    }
+  }
+}"#;
 
 const fn default_annotations_enabled() -> bool {
     true
@@ -14,6 +46,18 @@ const fn default_annotations_enabled() -> bool {
 
 const fn default_tube_radius() -> f64 {
     super::export::DEFAULT_TUBE_RADIUS
+}
+
+const fn default_initial_state() -> [f64; 3] {
+    DEFAULT_INITIAL_STATE
+}
+
+const fn default_twin_epsilon() -> f64 {
+    DEFAULT_TWIN_EPSILON
+}
+
+const fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 fn is_default_fixed_callout_offsets(v: &[[f32; 2]; 2]) -> bool {
@@ -41,6 +85,12 @@ struct AttractorSaveState {
     custom_exprs: Option<[String; 3]>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "is_default_initial_state")]
+    initial_state: [f64; 3],
+    #[serde(skip_serializing_if = "is_false")]
+    twin_enabled: bool,
+    #[serde(skip_serializing_if = "is_default_twin_epsilon")]
+    epsilon: f64,
 }
 
 #[derive(serde::Deserialize)]
@@ -75,6 +125,12 @@ struct AttractorState {
     custom_exprs: Option<[String; 3]>,
     #[serde(default)]
     custom_params: BTreeMap<String, f64>,
+    #[serde(default = "default_initial_state")]
+    initial_state: [f64; 3],
+    #[serde(default)]
+    twin_enabled: bool,
+    #[serde(default = "default_twin_epsilon")]
+    epsilon: f64,
 }
 
 impl AttractorPlotter {
@@ -110,6 +166,9 @@ impl AttractorPlotter {
             mode: self.mode,
             custom_exprs,
             custom_params,
+            initial_state: self.twin.initial_array(),
+            twin_enabled: self.twin.enabled,
+            epsilon: self.twin.epsilon,
         })
         .ok()
     }
@@ -138,6 +197,11 @@ impl AttractorPlotter {
         self.show_annotations = s.show_annotations;
         self.fixed_callout_offsets = offsets.map(egui::Vec2::from);
         self.camera.apply_pose(camera);
+        self.twin = TwinConfig {
+            initial_state: Vector3::new(s.initial_state[0], s.initial_state[1], s.initial_state[2]),
+            enabled: s.twin_enabled,
+            epsilon: s.epsilon,
+        };
         self.dragged_callout = None;
         self.reset();
         let _ = self.worker.update();
@@ -179,6 +243,12 @@ impl AttractorPlotter {
 }
 
 fn validate_attractor_state(s: &AttractorState) -> Result<[[f32; 2]; 2], String> {
+    let coords_valid = s
+        .initial_state
+        .iter()
+        .all(|v| v.is_finite() && (MIN_INITIAL_COORD..=MAX_INITIAL_COORD).contains(v));
+    let eps_valid =
+        s.epsilon.is_finite() && (MIN_TWIN_EPSILON..=MAX_TWIN_EPSILON).contains(&s.epsilon);
     if !s.sigma.is_finite()
         || !s.rho.is_finite()
         || !s.beta.is_finite()
@@ -189,9 +259,11 @@ fn validate_attractor_state(s: &AttractorState) -> Result<[[f32; 2]; 2], String>
             .contains(&s.tube_radius)
         || !(1..=super::MAX_SIMULATION_SPEED).contains(&s.simulation_speed)
         || s.custom_params.values().any(|v| !v.is_finite())
+        || !coords_valid
+        || !eps_valid
     {
         return Err(format!(
-            "AttractorPlotter parameters must be finite with dt > 0 and simulation_speed in 1..={}",
+            "AttractorPlotter parameters must be finite with dt > 0, simulation_speed in 1..={}, initial_state in [{MIN_INITIAL_COORD}, {MAX_INITIAL_COORD}], and epsilon in [{MIN_TWIN_EPSILON:e}, {MAX_TWIN_EPSILON:e}]",
             super::MAX_SIMULATION_SPEED
         ));
     }

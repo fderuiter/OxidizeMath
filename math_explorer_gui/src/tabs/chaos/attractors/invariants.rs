@@ -1,8 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::AttractorPlotter;
+use super::{AttractorPlotter, AttractorRunner};
 use crate::tabs::geometry_topology::vietoris_rips::{
-    handoff::{request_open_vietoris_rips, submit_chaos_landmark_handoff, ChaosLandmarkHandoff},
+    handoff::{
+        publish_live_attractor_landmarks, request_open_vietoris_rips,
+        submit_chaos_landmark_handoff, ChaosLandmarkHandoff,
+    },
     MAX_CHAOS_LANDMARKS,
 };
 use eframe::egui;
@@ -15,7 +18,7 @@ use nalgebra::Vector3;
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct CachedAttractorInvariants {
-    param_key: Option<(u64, u64, u64, u64)>,
+    param_key: Option<(u64, u64, u64, u64, u64, u64, u64)>,
     lyapunov: Option<f64>,
     corr_key: Option<(u64, usize)>,
     correlation_sum: Option<f64>,
@@ -23,6 +26,10 @@ pub(crate) struct CachedAttractorInvariants {
 }
 
 impl AttractorPlotter {
+    fn configured_initial_vec(&self) -> Vector3<f64> {
+        self.twin.sanitized().initial_state
+    }
+
     fn flow_config_hash(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -31,6 +38,10 @@ impl AttractorPlotter {
         self.system.rho.to_bits().hash(&mut h);
         self.system.beta.to_bits().hash(&mut h);
         self.dt.to_bits().hash(&mut h);
+        let init = self.configured_initial_vec();
+        init.x.to_bits().hash(&mut h);
+        init.y.to_bits().hash(&mut h);
+        init.z.to_bits().hash(&mut h);
         if self.mode == super::AttractorMode::Custom {
             for bar in self.flow_bank.bars() {
                 bar.raw_text.hash(&mut h);
@@ -47,23 +58,34 @@ impl AttractorPlotter {
         if self.mode != super::AttractorMode::Lorenz || !self.is_finite_state() || self.diverged() {
             return None;
         }
+        let init = self.configured_initial_vec();
         let key = (
             self.system.sigma.to_bits(),
             self.system.rho.to_bits(),
             self.system.beta.to_bits(),
             self.dt.to_bits(),
+            init.x.to_bits(),
+            init.y.to_bits(),
+            init.z.to_bits(),
         );
         if self.invariants_cache.param_key != Some(key) {
             let step = self.dt.clamp(0.002, 0.02);
-            let probe = LorenzBuilder::new()
+            let mut probe = LorenzBuilder::new()
                 .sigma(self.system.sigma)
                 .rho(self.system.rho)
                 .beta(self.system.beta)
-                .build(LorenzState::new(1.0, 1.0, 1.0));
-            let init = Vector3::new(1.0, 1.0, 1.0);
-            let mut rk4 = RungeKutta4::new(&init);
+                .build(LorenzState::new(init.x, init.y, init.z));
+            for _ in 0..1200 {
+                probe.step(step);
+                let v = probe.state.vec;
+                if !(v.x.is_finite() && v.y.is_finite() && v.z.is_finite()) {
+                    break;
+                }
+            }
+            let settled = probe.state.vec;
+            let mut rk4 = RungeKutta4::new(&settled);
             self.invariants_cache.lyapunov =
-                lorenz_lyapunov(&probe, &mut rk4, init, step, 60, 0.25)
+                lorenz_lyapunov(&probe, &mut rk4, settled, step, 160, 0.25)
                     .ok()
                     .filter(|v| v.is_finite());
             self.invariants_cache.param_key = Some(key);
@@ -98,7 +120,8 @@ impl AttractorPlotter {
 
     fn seed_custom_trajectory(&self, dt: f64, fallback_steps: usize) -> Vec<Vector3<f64>> {
         let job = super::CompiledFlowJob::from_bank(&self.flow_bank);
-        let mut pos = Vector3::new(1.0, 1.0, 1.0);
+        let init = self.configured_initial_vec();
+        let mut pos = init;
         for _ in 0..400 {
             let next = job.rk4_step(pos, dt);
             if !(next.x.is_finite() && next.y.is_finite() && next.z.is_finite()) {
@@ -116,7 +139,7 @@ impl AttractorPlotter {
             }
         }
         if out.is_empty() {
-            out.push(Vector3::new(1.0, 1.0, 1.0));
+            out.push(init);
         }
         out
     }
@@ -135,11 +158,12 @@ impl AttractorPlotter {
         if self.mode == super::AttractorMode::Custom {
             return self.seed_custom_trajectory(dt, fallback_steps);
         }
+        let init = self.configured_initial_vec();
         let mut sim = LorenzBuilder::new()
             .sigma(self.system.sigma)
             .rho(self.system.rho)
             .beta(self.system.beta)
-            .build(LorenzState::new(1.0, 1.0, 1.0));
+            .build(LorenzState::new(init.x, init.y, init.z));
         for _ in 0..400 {
             sim.step(dt);
         }
@@ -154,7 +178,7 @@ impl AttractorPlotter {
             }
         }
         if out.is_empty() {
-            out.push(Vector3::new(1.0, 1.0, 1.0));
+            out.push(init);
         }
         out
     }
@@ -186,5 +210,24 @@ impl AttractorPlotter {
             request_open_vietoris_rips(c);
         }
         Ok(payload)
+    }
+}
+
+impl AttractorRunner {
+    pub(super) fn publish_live_landmarks(&self, dt: f64) {
+        let pts: Vec<Point3D> = self
+            .history
+            .iter()
+            .map(|v| Point3D::new(v.x, v.y, v.z))
+            .collect();
+        if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
+            publish_live_attractor_landmarks(ChaosLandmarkHandoff {
+                points: landmarks,
+                sigma: self.system.sigma,
+                rho: self.system.rho,
+                beta: self.system.beta,
+                dt,
+            });
+        }
     }
 }

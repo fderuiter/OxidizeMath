@@ -5,10 +5,10 @@ use crate::presets::MorphogenesisKineticsMode;
 use crate::tabs::chaos::attractors::{
     default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
 };
-use crate::tabs::morphogenesis::runner::{MorphoSnapshotData, MorphogenesisKineticsState};
-use crate::tabs::morphogenesis::{
-    MorphogenesisKineticsRunner, MorphogenesisSharedParams, MorphogenesisTab, MorphogenesisTool,
+use crate::tabs::morphogenesis::runner::{
+    MorphoSnapshotData, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
 };
+use crate::tabs::morphogenesis::{MorphogenesisSharedParams, MorphogenesisTool};
 use crate::tabs::mri::{MriRunner, MriSharedParams};
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 use nalgebra::Vector3;
@@ -34,7 +34,7 @@ fn make_morpho_runner(
         dt,
         high_contrast: false,
     }));
-    let mut runner = MorphogenesisTab::create_runner(&params, width, height);
+    let mut runner = MorphogenesisTool::create_runner(&params, width, height);
     runner.noise_amplitude = noise_amplitude;
     (runner, params)
 }
@@ -95,6 +95,7 @@ fn test_attractor_k1_bit_exact_backward_and_forward_scrub() {
         max_points: 60,
         mode: AttractorMode::Lorenz,
         custom_flow: None,
+        ..Default::default()
     }));
     let mut runner = AttractorRunner::from_params(Arc::clone(&params));
     let mut ring = CheckpointRing::new(1);
@@ -147,6 +148,7 @@ fn test_attractor_custom_flow_checkpoint_and_substep_replay() {
         max_points: 50,
         mode: AttractorMode::Custom,
         custom_flow: Some(job),
+        ..Default::default()
     }));
     let mut runner = AttractorRunner::from_params(Arc::clone(&params));
     let mut ring = CheckpointRing::new(4);
