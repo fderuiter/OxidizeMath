@@ -9,7 +9,7 @@ use math_explorer::nalgebra::SVector;
 use math_explorer::physics::high_energy::{
     KerrEquatorialMetric, MorrisThorneWormhole, SchwarzschildBlackHole,
 };
-use math_explorer::pure_math::tensor::{StaticMetric, TwoSphereMetric, static_christoffel_symbols};
+use math_explorer::pure_math::tensor::{static_christoffel_symbols, StaticMetric, TwoSphereMetric};
 use serde::{Deserialize, Serialize};
 
 #[path = "inspector/ui.rs"]

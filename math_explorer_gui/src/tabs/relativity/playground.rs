@@ -120,15 +120,13 @@ pub struct GeodesicPlaygroundTool {
 
 impl Default for GeodesicPlaygroundTool {
     fn default() -> Self {
-        let mut tool = Self {
+        Self {
             state: GeodesicPlaygroundState::default(),
             samples: Vec::with_capacity(MAX_TRAJECTORY_SAMPLES),
             halted_near_singularity: false,
             last_tick: PlatformInstant::now(),
             revision: 1,
-        };
-        tool.rebuild_trajectory(260);
-        tool
+        }
     }
 }
 

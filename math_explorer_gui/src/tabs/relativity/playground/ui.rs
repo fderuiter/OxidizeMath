@@ -7,16 +7,19 @@ use std::f64::consts::TAU;
 use crate::accessibility::AccessibleTheoryHover;
 use crate::app::SemanticPalette;
 use crate::camera::Plot3DViewport;
-use crate::framework::{PaneSidePanel, PlaybackAction, PlaybackTransport, scoped_panel_id};
+use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints, Points};
-use math_explorer::physics::high_energy::{MorrisThorneWormhole, flamm_paraboloid_z};
+use math_explorer::physics::high_energy::{flamm_paraboloid_z, MorrisThorneWormhole};
 
 use super::{GeodesicMode, GeodesicPlaygroundTool, SpacetimePreset, TrajectorySample};
 
 impl GeodesicPlaygroundTool {
     pub(super) fn render_tool(&mut self, parent_ui: &mut egui::Ui) {
+        if self.samples.is_empty() {
+            self.rebuild_trajectory(260);
+        }
         let ctx = parent_ui.ctx().clone();
         if self.state.is_playing {
             let now = PlatformInstant::now();
@@ -49,7 +52,11 @@ impl GeodesicPlaygroundTool {
                         SpacetimePreset::MorrisThorneWormhole,
                     ] {
                         if ui
-                            .selectable_value(&mut self.state.spacetime, candidate, candidate.label())
+                            .selectable_value(
+                                &mut self.state.spacetime,
+                                candidate,
+                                candidate.label(),
+                            )
                             .changed()
                         {
                             recompute = true;
@@ -92,7 +99,9 @@ impl GeodesicPlaygroundTool {
 
         if self.state.spacetime == SpacetimePreset::KerrEquatorial {
             changed |= ui
-                .add(egui::Slider::new(&mut self.state.spin_chi, -0.92..=0.92).text("Kerr Spin chi"))
+                .add(
+                    egui::Slider::new(&mut self.state.spin_chi, -0.92..=0.92).text("Kerr Spin chi"),
+                )
                 .changed();
         }
 
@@ -238,7 +247,10 @@ impl GeodesicPlaygroundTool {
         );
         ui.colored_label(
             palette.success,
-            format!("Metric Tangent Norm g_munu u^mu u^nu: {:.6}", sample.metric_norm),
+            format!(
+                "Metric Tangent Norm g_munu u^mu u^nu: {:.6}",
+                sample.metric_norm
+            ),
         );
         if self.halted_near_singularity {
             ui.colored_label(
@@ -249,7 +261,10 @@ impl GeodesicPlaygroundTool {
     }
 
     fn active_sample(&self) -> Option<TrajectorySample> {
-        let idx = self.state.scrub_index.min(self.samples.len().saturating_sub(1));
+        let idx = self
+            .state
+            .scrub_index
+            .min(self.samples.len().saturating_sub(1));
         self.samples.get(idx).copied()
     }
 

@@ -21,20 +21,24 @@ pub mod __doctest_facade {
             CopulaError, Glicko2Error, KellyError, MarkovError, NumberTheoryError, OuError,
             TdaError, ZipError,
         };
-        pub use math_commons::error::{MathError, MathResult};
+        pub use math_commons::error::{FitError, MathError, MathResult};
     }
     pub mod prelude {
         pub use super::error::*;
         pub use crate::math_types::{Float, Integer, Rational};
         pub use diagnostics::{Diagnostic, Severity};
+        pub use math_commons::fit::FitModel;
         pub use math_commons::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
+        pub use math_commons::series::{PointSeries, Sample2D};
         pub use nalgebra::{self, DMatrix, DVector};
         pub use oxidize_core::mesh::{Mesh, Point3D};
         pub use oxidize_core::rng::OxidizeRng;
     }
     pub use crate::{math_types, pure_math};
     pub use diagnostics;
-    pub use math_commons::{ast, constants, math_kernel, primitives, registry, wigner};
+    pub use math_commons::{
+        ast, constants, fit, math_kernel, poi, primitives, registry, series, wigner,
+    };
     pub use nalgebra;
     pub use num_complex;
     pub use oxidize_core::{mesh, rng};

@@ -10,8 +10,8 @@ fn test_all_21_modules_categorized_into_academic_domains() {
     let app = MathExplorerApp::default();
     assert_eq!(
         app.tabs.len(),
-        22,
-        "Expected all 22 modules to be instantiated with default features"
+        23,
+        "Expected all 23 modules to be instantiated with default features"
     );
 
     let mut domain_counts: HashMap<AcademicDomain, Vec<&'static str>> = HashMap::new();
@@ -38,8 +38,8 @@ fn test_all_21_modules_categorized_into_academic_domains() {
     );
     assert_eq!(
         domain_counts.get(&AcademicDomain::Physics).map(|v| v.len()),
-        Some(7),
-        "Physics should have 7 modules: Chaos Theory, Fluid Dynamics, General Relativity, Medical Physics, MRI Physics, Quantum Mechanics, Solid State Physics"
+        Some(8),
+        "Physics should have 8 modules: Astrophysics, Chaos Theory, Fluid Dynamics, General Relativity, Medical Physics, MRI Physics, Quantum Mechanics, Solid State Physics"
     );
     assert_eq!(
         domain_counts.get(&AcademicDomain::AppliedMath).map(|v| v.len()),

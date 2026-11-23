@@ -4,7 +4,7 @@
 
 use crate::accessibility::AccessibleTheoryHover;
 use crate::app::SemanticPalette;
-use crate::framework::{PaneSidePanel, scoped_panel_id};
+use crate::framework::{scoped_panel_id, PaneSidePanel};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints, Points};
 use math_explorer::nalgebra::SVector;
@@ -109,31 +109,36 @@ impl ChristoffelInspectorTool {
             if let Some(ev) = eval {
                 self.draw_matrix_comparison_grid(ui, ev, &palette);
             } else {
-                ui.colored_label(palette.warning, "Point lies inside horizon or singular locus.");
+                ui.colored_label(
+                    palette.warning,
+                    "Point lies inside horizon or singular locus.",
+                );
             }
             ui.separator();
             ui.strong("Connection Component Profiles Along Coordinate Curve");
             let datasets = self.profile_datasets();
             let plot_id = scoped_panel_id(ui, "christoffel_profile_plot");
-            let response = Plot::new(plot_id).allow_boxed_zoom(false).show(ui, |plot_ui| {
-                for (idx, (name, pts)) in datasets.into_iter().enumerate() {
-                    plot_ui.line(
-                        Line::new(name, PlotPoints::new(pts))
-                            .color(palette.series_color(idx))
-                            .width(2.0_f32),
+            let response = Plot::new(plot_id)
+                .allow_boxed_zoom(false)
+                .show(ui, |plot_ui| {
+                    for (idx, (name, pts)) in datasets.into_iter().enumerate() {
+                        plot_ui.line(
+                            Line::new(name, PlotPoints::new(pts))
+                                .color(palette.series_color(idx))
+                                .width(2.0_f32),
+                        );
+                    }
+                    let x_cur = if self.state.manifold == InspectorManifold::TwoSphere2D {
+                        self.state.theta
+                    } else {
+                        self.state.radial_coord
+                    };
+                    plot_ui.points(
+                        Points::new("Evaluation Coordinate", vec![[x_cur, 0.0]])
+                            .radius(4.5_f32)
+                            .color(palette.accent),
                     );
-                }
-                let x_cur = if self.state.manifold == InspectorManifold::TwoSphere2D {
-                    self.state.theta
-                } else {
-                    self.state.radial_coord
-                };
-                plot_ui.points(
-                    Points::new("Evaluation Coordinate", vec![[x_cur, 0.0]])
-                        .radius(4.5_f32)
-                        .color(palette.accent),
-                );
-            });
+                });
             response.response.accessible_theory_hover(self);
         });
     }
@@ -147,7 +152,10 @@ impl ChristoffelInspectorTool {
         let coords = self.state.manifold.coord_labels();
         let mu = self.state.selected_mu.min(ev.dim - 1);
         ui.horizontal_wrapped(|ui| {
-            ui.strong(format!("Slice Gamma^{}_(alpha beta) (Analytical)", coords[mu]));
+            ui.strong(format!(
+                "Slice Gamma^{}_(alpha beta) (Analytical)",
+                coords[mu]
+            ));
             ui.separator();
             ui.colored_label(
                 palette.success,
@@ -159,32 +167,35 @@ impl ChristoffelInspectorTool {
         });
 
         let grid_id = scoped_panel_id(ui, "christoffel_matrix_grid");
-        egui::Grid::new(grid_id).striped(true).spacing([14.0, 6.0]).show(ui, |ui| {
-            ui.strong("alpha \\ beta");
-            for &col in coords {
-                ui.strong(col);
-            }
-            ui.strong("Max Row Residual");
-            ui.end_row();
-
-            for (a, &row_label) in coords.iter().enumerate() {
-                ui.strong(row_label);
-                let mut row_err = 0.0_f64;
-                for b in 0..ev.dim {
-                    let val = ev.analytical[mu][a][b];
-                    let diff = (val - ev.numerical[mu][a][b]).abs();
-                    row_err = row_err.max(diff);
-                    let color = if val.abs() > 1e-9 {
-                        palette.info
-                    } else {
-                        palette.muted_text
-                    };
-                    ui.colored_label(color, format!("{val:+.6}"));
+        egui::Grid::new(grid_id)
+            .striped(true)
+            .spacing([14.0, 6.0])
+            .show(ui, |ui| {
+                ui.strong("alpha \\ beta");
+                for &col in coords {
+                    ui.strong(col);
                 }
-                ui.colored_label(palette.muted_text, format!("{row_err:.2e}"));
+                ui.strong("Max Row Residual");
                 ui.end_row();
-            }
-        });
+
+                for (a, &row_label) in coords.iter().enumerate() {
+                    ui.strong(row_label);
+                    let mut row_err = 0.0_f64;
+                    for b in 0..ev.dim {
+                        let val = ev.analytical[mu][a][b];
+                        let diff = (val - ev.numerical[mu][a][b]).abs();
+                        row_err = row_err.max(diff);
+                        let color = if val.abs() > 1e-9 {
+                            palette.info
+                        } else {
+                            palette.muted_text
+                        };
+                        ui.colored_label(color, format!("{val:+.6}"));
+                    }
+                    ui.colored_label(palette.muted_text, format!("{row_err:.2e}"));
+                    ui.end_row();
+                }
+            });
     }
 
     pub(super) fn profile_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {

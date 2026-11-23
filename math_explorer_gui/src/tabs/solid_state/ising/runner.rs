@@ -207,6 +207,7 @@ impl SimulationRunner for IsingRunner {
             pixels: Arc::new(std::sync::RwLock::new(pixels)),
             custom_data: vec![m_avg, energy],
             structured_data: Some(Box::new(spins_vec)),
+            sonification: crate::audio::SonificationFrame::silent(),
         }
     }
 

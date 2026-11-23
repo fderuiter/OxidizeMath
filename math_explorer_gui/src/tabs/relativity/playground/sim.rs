@@ -106,6 +106,9 @@ impl GeodesicPlaygroundTool {
 
     /// Appends up to `extra_steps` RK4 steps onto the active trajectory during live playback.
     pub fn advance_steps(&mut self, extra_steps: usize) {
+        if self.samples.is_empty() {
+            self.rebuild_trajectory(260);
+        }
         let current_len = self.samples.len();
         if self.halted_near_singularity || current_len >= MAX_TRAJECTORY_SAMPLES {
             self.state.is_playing = false;
@@ -202,7 +205,8 @@ impl GeodesicPlaygroundTool {
         let uphi = ell / r2;
         let e_sq = kappa + (ell * ell) / r2 + self.state.radial_bias * self.state.radial_bias;
         let ut = e_sq.sqrt();
-        let ul = self.state.radial_bias.signum() * (e_sq - kappa - (ell * ell) / r2).max(0.0).sqrt();
+        let ul =
+            self.state.radial_bias.signum() * (e_sq - kappa - (ell * ell) / r2).max(0.0).sqrt();
 
         let sys = GeodesicSystem::new(wh);
         let mut state = ArrayState::<6>::from_pos_vel(
@@ -279,7 +283,9 @@ impl GeodesicPlaygroundTool {
         let phi = state.0[3];
         let z = flamm_paraboloid_z(rs, r).unwrap_or(0.0);
         let (sin_p, cos_p) = phi.sin_cos();
-        let grav = bh.gravitational_time_dilation(r.max(1.001 * rs)).unwrap_or(0.0);
+        let grav = bh
+            .gravitational_time_dilation(r.max(1.001 * rs))
+            .unwrap_or(0.0);
         let ut = state.0[4].max(1e-6);
         let dtau_dt = match self.state.mode {
             GeodesicMode::NullPhoton => 0.0,
@@ -346,6 +352,17 @@ impl GeodesicPlaygroundTool {
 
     /// Generates projected 2D curves for CSV/PNG/SVG export and `Plot3DViewport` rendering.
     pub(super) fn collect_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        if self.samples.is_empty() {
+            let mut seeded = Self {
+                state: self.state.clone(),
+                samples: Vec::with_capacity(MAX_TRAJECTORY_SAMPLES),
+                halted_near_singularity: false,
+                last_tick: self.last_tick,
+                revision: self.revision,
+            };
+            seeded.rebuild_trajectory(260);
+            return seeded.collect_export_datasets();
+        }
         let mut datasets = Vec::with_capacity(3);
         let limit = self
             .state
@@ -377,7 +394,11 @@ impl GeodesicPlaygroundTool {
         for i in 0..=n {
             let angle = TAU * (i as f64) / (n as f64);
             let (s, c) = angle.sin_cos();
-            pts.push(self.state.camera.project(&[radius * c, radius * s, z_height]));
+            pts.push(
+                self.state
+                    .camera
+                    .project(&[radius * c, radius * s, z_height]),
+            );
         }
         pts
     }
