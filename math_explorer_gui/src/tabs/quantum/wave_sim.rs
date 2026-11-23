@@ -63,6 +63,7 @@ pub struct WaveSimulatorTool {
     pub(crate) worker: BackgroundWorker<WaveRunner>,
     pub(crate) export_runner: Option<WaveRunner>,
     pub(crate) export_data: Option<WaveData>,
+    pub(crate) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) revision: u64,
 }
 
@@ -96,6 +97,9 @@ impl WaveSimulatorTool {
         };
         let shared_config = Arc::new(RwLock::new(initial_cfg));
         let worker = BackgroundWorker::new(WaveRunner::new(Arc::clone(&shared_config)));
+        let latest_sonification = worker
+            .latest_snapshot()
+            .map_or_else(crate::audio::SonificationFrame::silent, |s| s.sonification);
         Self {
             preset: WavePotentialPreset::InfiniteWell,
             x0: DEFAULT_X0,
@@ -112,6 +116,7 @@ impl WaveSimulatorTool {
             worker,
             export_runner: None,
             export_data: None,
+            latest_sonification,
             revision: 1,
         }
     }
@@ -371,10 +376,18 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        let has_update = self.worker.update().is_some();
+        let mut has_update = false;
+        if let Some(snapshot) = self.worker.update() {
+            self.latest_sonification = snapshot.sonification;
+            has_update = true;
+        }
         if has_update {
             self.export_runner = None;
             self.export_data = None;
+        }
+        if self.worker.state().is_faulted() {
+            self.latest_sonification = crate::audio::SonificationFrame::silent();
+            crate::audio::notify_solver_diverged();
         }
         self.draw_left_panel(ui);
         self.draw_central_panel(ui);

@@ -52,6 +52,8 @@ pub struct WaveRunner {
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
+    prev_mode_phases: [f64; 8],
+    sonification: crate::audio::SonificationFrame,
 }
 
 impl WaveRunner {
@@ -89,6 +91,8 @@ impl WaveRunner {
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
+            prev_mode_phases: [0.0; 8],
+            sonification: crate::audio::SonificationFrame::silent(),
         };
         runner.init_from_config(&cfg);
         runner
@@ -143,7 +147,18 @@ impl WaveRunner {
         self.psi = gaussian_wavepacket(&self.x_axis, sx0, sk0, ssigma);
         self.time = 0.0;
         self.latch = ScatterLatchState::default();
+        self.prev_mode_phases = [0.0; 8];
         self.update_observables_in_place();
+        self.refresh_sonification(cfg.dt);
+    }
+
+    fn refresh_sonification(&mut self, dt: f64) {
+        let modes = self.psi.project_spatial_modes::<8>();
+        self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
+            &modes,
+            &mut self.prev_mode_phases,
+            dt.max(1.0e-4),
+        );
     }
 
     pub(crate) fn refresh_propagator(&mut self, dt: f64) {
@@ -265,9 +280,11 @@ impl WaveRunner {
                 "psi_norm",
                 "Wave function normalization diverged: non-finite norm encountered.",
             ));
+            self.sonification = crate::audio::SonificationFrame::silent();
             return;
         }
         self.update_observables_in_place();
+        self.refresh_sonification(dt);
     }
 
     /// Builds a structured [`WaveData`] snapshot integrating [`QuantumState::probability_density`].
@@ -382,7 +399,10 @@ impl SimulationRunner for WaveRunner {
                 self.diverged = false;
                 self.diagnostic_report = None;
                 self.latch = ScatterLatchState::default();
+                self.prev_mode_phases = [0.0; 8];
                 self.update_observables_in_place();
+                let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
+                self.refresh_sonification(dt);
             }
             SimCommand::ClearObstacles => self.restore_base_potential(),
             SimCommand::Custom(ref action) if action == "Reset Potential" => {
@@ -398,6 +418,11 @@ impl SimulationRunner for WaveRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
+        let sonification = if self.diverged {
+            crate::audio::SonificationFrame::silent()
+        } else {
+            self.sonification
+        };
         let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
         StateSnapshot {
             width: 0,
@@ -405,6 +430,7 @@ impl SimulationRunner for WaveRunner {
             pixels: Arc::new(RwLock::new(Vec::new())),
             custom_data: Vec::new(),
             structured_data: Some(structured_data),
+            sonification,
         }
     }
 
