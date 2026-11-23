@@ -94,11 +94,6 @@ impl Default for MriKSpaceScannerTool {
 }
 
 impl MriKSpaceScannerTool {
-    #[cfg(test)]
-    pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.focused_kspace_id
-    }
-
     /// Marks spatial phantom + forward/inverse 2D FFT caches dirty.
     pub fn mark_phantom_dirty(&mut self) {
         self.phantom_dirty = true;
@@ -245,6 +240,11 @@ impl MriKSpaceScannerTool {
         self.mask_dirty = true;
         self.recon_dirty = true;
         let _ = self.recompute_if_dirty(self.last_high_contrast.unwrap_or(false));
+    }
+
+    #[cfg(test)]
+    pub(super) fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_kspace_id
     }
 }
 

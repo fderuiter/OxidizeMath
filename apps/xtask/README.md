@@ -39,7 +39,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | Command | Operational Role | Status |
 |---|---|---|
 | `regenerate-baseline` | Regenerates `crates/unified_verification/api_baseline.json`. | Maintenance |
-| `setup` | Installs `wasm32-unknown-unknown`, validates `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites, builds and tests the workspace, and configures `.githooks/pre-commit`. | Maintenance |
+| `setup` | Configures `.githooks/pre-commit` first, then (unless `--hooks-only`) adds `wasm32-unknown-unknown`, checks `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites (warning by default or enforcing with `--web`), and runs `cargo check --workspace` (unless `--check-only`). | Maintenance |
 
 ---
 
@@ -50,8 +50,17 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 Run `xtask` commands from the workspace root using `cargo run -p xtask -- <command>`:
 
 ```bash
-# Bootstrap local git hooks and wasm32 target
+# Configure local .githooks first, probe optional browser tools, and run cargo check --workspace
 cargo run -p xtask -- setup
+
+# Configure .githooks/pre-commit only (instant, skips rustup/browser probes and cargo check)
+cargo run -p xtask -- setup --hooks-only
+
+# Configure .githooks and probe toolchains without running cargo check --workspace
+cargo run -p xtask -- setup --check-only
+
+# Enforce WebAssembly & Playwright browser prerequisites (exits 1 with install fixes if missing)
+cargo run -p xtask -- setup --web
 
 # Run fast scoped checks on staged changes
 cargo run -p xtask -- lint-staged
