@@ -320,6 +320,10 @@ impl<'a> PlaybackTransport<'a> {
             let announce = emit_playback_broadcast(ctx, base_id, clicked, None);
             return (Some(clicked), announce);
         }
+        if let Some(dispatched) = self.check_dispatched_playback_commands(ctx) {
+            let announce = emit_playback_broadcast(ctx, base_id, dispatched, None);
+            return (Some(dispatched), announce);
+        }
         if let Some((sync_key_action, key)) = claim_pending_sync_key(
             ctx,
             self.can_toggle && self.allow_space_shortcut,
@@ -375,6 +379,18 @@ impl<'a> PlaybackTransport<'a> {
             d.insert_temp(base_id.with("play_button_info"), info);
         });
         resp.accessible_hover_text(&a11y_label).clicked()
+    }
+
+    fn check_dispatched_playback_commands(&self, ctx: &egui::Context) -> Option<PlaybackAction> {
+        helpers::take_dispatched_playback_action(
+            ctx,
+            self.is_playing,
+            self.can_toggle,
+            self.can_step,
+            self.can_step_back(),
+            self.can_reset,
+            self.timeline,
+        )
     }
 
     fn check_keyboard_shortcuts(&self, ui: &egui::Ui) -> Option<PlaybackAction> {

@@ -123,6 +123,7 @@ impl MathExplorerApp {
 
     pub(crate) fn wants_non_canvas_keyboard_input(&self, ctx: &egui::Context) -> bool {
         if self.command_palette.is_open
+            || self.show_starter_gallery
             || self.show_help_menu
             || egui::Popup::is_any_open(ctx)
             || ctx.memory(|m| m.top_modal_layer().is_some())

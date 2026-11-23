@@ -1,4 +1,5 @@
 // @explorer_feature = "applied"
+// @explorer_order = 35
 use crate::accessibility::AccessibleHoverText;
 use crate::tabs::ExplorerTab;
 use eframe::egui;

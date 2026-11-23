@@ -1,4 +1,5 @@
 // @explorer_feature = "physics"
+// @explorer_order = 13
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 

@@ -63,14 +63,24 @@ fn find_buttons_matching<'a>(
     let Some(ak) = out.platform_output.accesskit_update.as_ref() else {
         return Vec::new();
     };
-    ak.nodes
+    let mut matches: Vec<_> = ak
+        .nodes
         .iter()
         .filter(|(_, node)| {
             node.role() == egui::accesskit::Role::Button
                 && node.label().is_some_and(|l| l.contains(needle))
         })
         .map(|(id, node)| (*id, node))
-        .collect()
+        .collect();
+    matches.sort_by_key(|(id, n)| {
+        let b = n.bounds();
+        (
+            b.map_or(i64::MAX, |r| r.y0.round() as i64),
+            b.map_or(i64::MAX, |r| r.x0.round() as i64),
+            id.0,
+        )
+    });
+    matches
 }
 
 fn ak_action(action: egui::accesskit::Action, target: egui::accesskit::NodeId) -> egui::Event {
@@ -115,7 +125,7 @@ fn test_all_tabs_render_undo_and_redo_buttons_matching_can_undo_and_can_redo() {
     let mut app = MathExplorerApp::default();
 
     #[cfg(all(feature = "pure_math", feature = "physics"))]
-    assert_eq!(app.tabs.len(), 26);
+    assert_eq!(app.tabs.len(), 27);
 
     let out0 = run_frame(&ctx, &mut app, Vec::new());
     for tab_idx in 0..app.tabs.len() {
@@ -367,7 +377,7 @@ fn test_playback_transport_allows_space_on_canvas_and_slider_but_reserves_focuse
     assert!(!is_ai_training(&app, 0));
 
     let out = run_frame(&ctx, &mut app, Vec::new());
-    let (theory_id, _) = find_buttons_matching(&out, "Theory")[0];
+    let (theory_id, _) = find_buttons_matching(&out, "📖 Theory")[0];
     let _ = run_frame(
         &ctx,
         &mut app,
@@ -401,7 +411,7 @@ fn test_chrome_toggles_and_focused_pane_leave_undo_depth_and_redo_stack_intact()
     assert!(baseline_undo_depth >= 1 && baseline_redo_depth == 1);
 
     let out = run_frame(&ctx, &mut app, Vec::new());
-    let _ = click_ak_button(&ctx, &mut app, &out, "Theory");
+    let _ = click_ak_button(&ctx, &mut app, &out, "📖 Theory");
     let _ = run_frame(&ctx, &mut app, Vec::new());
     assert_eq!(app.session_manager.undo_stack.len(), baseline_undo_depth);
     assert_eq!(app.session_manager.redo_stack.len(), baseline_redo_depth);
@@ -410,6 +420,7 @@ fn test_chrome_toggles_and_focused_pane_leave_undo_depth_and_redo_stack_intact()
         fw.show_starter_gallery = true;
     }
     let _ = run_frame(&ctx, &mut app, Vec::new());
+    app.show_starter_gallery = true;
     app.show_diagnostics_panel = true;
     app.show_info = false;
     app.show_warnings = false;
@@ -425,7 +436,7 @@ fn test_chrome_toggles_and_focused_pane_leave_undo_depth_and_redo_stack_intact()
     assert!((app.split_ratio - 0.72).abs() < 1e-5);
     assert_eq!(app.theme, ThemeMode::HighContrast);
     assert_eq!(app.focused_pane, 1);
-    assert!(app.show_diagnostics_panel);
+    assert!(app.show_diagnostics_panel && app.show_starter_gallery);
     if let Some(fw) = app.pane_tab(0).and_then(|t| t.framework()) {
         assert!(fw.show_theory_portal);
     }

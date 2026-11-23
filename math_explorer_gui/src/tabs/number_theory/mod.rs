@@ -1,4 +1,5 @@
 // @explorer_feature = "pure_math"
+// @explorer_order = 21
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 

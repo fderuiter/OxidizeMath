@@ -69,6 +69,7 @@ fn hash_app_chrome_fields(app: &MathExplorerApp, hasher: &mut impl Hasher) {
     app.show_warnings.hash(hasher);
     app.show_errors.hash(hasher);
     app.show_diagnostics_panel.hash(hasher);
+    app.show_starter_gallery.hash(hasher);
     let theme_disc: u8 = match app.theme {
         ThemeMode::Dark => 0,
         ThemeMode::Light => 1,
@@ -150,6 +151,7 @@ struct LiveChromeSnapshot {
     show_warnings: bool,
     show_errors: bool,
     show_diagnostics_panel: bool,
+    show_starter_gallery: bool,
     theme: ThemeMode,
     focused_pane: usize,
     primary_overlays: HashMap<String, (bool, bool)>,
@@ -181,6 +183,7 @@ impl LiveChromeSnapshot {
             show_warnings: app.show_warnings,
             show_errors: app.show_errors,
             show_diagnostics_panel: app.show_diagnostics_panel,
+            show_starter_gallery: app.show_starter_gallery,
             theme: app.theme,
             focused_pane: app.active_focused_pane(),
             primary_overlays,
@@ -193,6 +196,7 @@ impl LiveChromeSnapshot {
         app.show_warnings = self.show_warnings;
         app.show_errors = self.show_errors;
         app.show_diagnostics_panel = self.show_diagnostics_panel;
+        app.show_starter_gallery = self.show_starter_gallery;
         app.theme = self.theme;
         if app.viewport_layout == ViewportLayout::Single {
             app.focused_pane = 0;
