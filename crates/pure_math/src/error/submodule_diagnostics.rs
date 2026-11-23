@@ -1,6 +1,6 @@
 use super::{
-    CopulaError, Glicko2Error, KellyError, MarkovError, NumberTheoryError, OuError, TdaError,
-    ZipError,
+    CopulaError, Glicko2Error, KellyError, MarketPricingError, MarkovError, NumberTheoryError,
+    OuError, TdaError, ZipError,
 };
 use crate::pure_math::{
     algebra::linear_algebra::numerical::LinearAlgebraError,
@@ -44,6 +44,18 @@ impl Diagnostic for KellyError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("KellyError", self.to_string())
+    }
+}
+
+impl Diagnostic for MarketPricingError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("MarketPricingError", self.to_string())
     }
 }
 

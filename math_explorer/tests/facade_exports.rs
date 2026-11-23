@@ -128,7 +128,7 @@ fn default_headless_curve_fitting_and_poi_solvers_work_without_gui_deps() {
 }
 
 #[cfg(feature = "pure_math")]
-fn assert_pure_math_eighteen_errors() {
+fn assert_pure_math_nineteen_errors() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error as e;
     use math_explorer::prelude::PureMathError as PreludePureMathError;
@@ -139,6 +139,10 @@ fn assert_pure_math_eighteen_errors() {
     let severities = [
         e::NumberTheoryError::ModuloError.severity(),
         e::KellyError::InvalidOdds { value: 0.5 }.severity(),
+        e::MarketPricingError::NoArbitrage {
+            reciprocal_sum: 1.05,
+        }
+        .severity(),
         e::MarkovError::InvalidProbability { value: -0.1 }.severity(),
         e::OuError::InvalidTimeStep { value: 0.0 }.severity(),
         e::ZipError::InvalidCount { value: -1.0 }.severity(),
@@ -161,7 +165,7 @@ fn assert_pure_math_eighteen_errors() {
 
 #[cfg(feature = "pure_math")]
 #[test]
-fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors() {
+fn pure_math_facade_exports_containers_third_party_types_and_all_nineteen_errors() {
     use math_explorer::math_types::{Float, IBig, Integer, Rational};
     use math_explorer::mesh::{Mesh, Point3D};
     use math_explorer::nalgebra::{DMatrix, DVector};
@@ -197,7 +201,7 @@ fn pure_math_facade_exports_containers_third_party_types_and_all_eighteen_errors
     let (a, b) = (g.add_node("a"), g.add_node("b"));
     g.add_edge(a, b, 1.0);
     assert_eq!(g.node_count(), 2);
-    assert_pure_math_eighteen_errors();
+    assert_pure_math_nineteen_errors();
 }
 
 #[cfg(feature = "ai")]
@@ -385,7 +389,7 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     feature = "physics"
 ))]
 #[test]
-fn all_forty_nine_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
+fn all_fifty_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
     umbrella_checks::verify_prelude_error_reexports();
     umbrella_checks::verify_bus_capture_and_zero_alloc_facade_result();
 }

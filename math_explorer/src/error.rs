@@ -32,9 +32,9 @@ pub use domain_physics::error::{
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EvolutionError, FractranError,
-    Glicko2Error, KellyError, LinearAlgebraError, MarkovError, NumberTheoryError,
-    OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
-    TransformError, ZipError,
+    Glicko2Error, KellyError, LinearAlgebraError, MarketPricingError, MarkovError,
+    NumberTheoryError, OptimizationError, OuError, PureMathError, StochasticError, TdaError,
+    TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -183,6 +183,9 @@ pub enum Error {
     /// Numerical linear algebra error.
     #[cfg(feature = "pure_math")]
     LinearAlgebra(LinearAlgebraError),
+    /// Market pricing, devigging, and cross-book execution error.
+    #[cfg(feature = "pure_math")]
+    MarketPricing(MarketPricingError),
     /// Markov process error.
     #[cfg(feature = "pure_math")]
     Markov(MarkovError),

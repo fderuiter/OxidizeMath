@@ -77,7 +77,11 @@ pub fn optimal_reserve_price<D: ValuationDistribution>(
     match optimal_reserve_price_with_solver(dist, lower_bound, upper_bound, &solver) {
         Ok(root) => root,
         Err(AnalysisError::ConvergenceError(best_guess)) => best_guess,
-        Err(AnalysisError::InvalidParameters(_)) => {
+        Err(
+            AnalysisError::RootNotBracketed { .. }
+            | AnalysisError::DerivativeTooSmall { .. }
+            | AnalysisError::InvalidBracket { .. },
+        ) => {
             // Fallback for unbracketed roots to match legacy behavior
             let j_low = dist.virtual_valuation(lower_bound);
             if j_low > 0.0 {

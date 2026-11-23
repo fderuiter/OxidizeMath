@@ -32,6 +32,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 0037: Glicko-2 Frozen-Period Tournament Simulator](adr/0037-glicko2-frozen-period-tournament-simulator.md)
 - [ADR 0042: Zero-Allocation 2D Chladni Plate and Wave Tank Solver](adr/0042-2d-chladni-plate-and-wave-tank-solver.md)
 - [ADR 0043: Repair Guides, Enable Full-Feature Rustdoc, and Enforce Static Documentation Gates](adr/0043-repair-guides-and-enforce-static-doc-gates.md)
+- [ADR 0044: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators](adr/0044-market-pricing-brent-and-execution-calculators.md)
 
 ## Contributing
 

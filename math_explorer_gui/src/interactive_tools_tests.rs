@@ -23,6 +23,8 @@ mod tests {
         check_tool!(crate::tabs::ai::tokenization::TokenizationTool);
         check_tool!(crate::tabs::financial_math::bet_size::BetSizeCalculatorTool);
         check_tool!(crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool);
+        check_tool!(crate::tabs::financial_math::market_devig::MarketDeviggingTool);
+        check_tool!(crate::tabs::financial_math::market_execution::MarketExecutionTool);
         check_tool!(crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool);
         check_tool!(crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool);
         check_tool!(crate::tabs::solid_state::band_structure::BandStructureTool);
@@ -324,6 +326,14 @@ mod tests {
         assert_tool_roundtrip(
             &mut crate::tabs::financial_math::bet_size::BetSizeCalculatorTool::default(),
             r#"{"probability_input":60.0,"odds_format":"American","decimal_odds":2.2,"american_odds":120.0,"fractional_numerator":6.0,"fractional_denominator":5.0,"bankroll":2000.0}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::financial_math::market_devig::MarketDeviggingTool::default(),
+            r#"{"bankroll":2500.0,"quote_format":"Decimal","method":"Additive","decimal_quotes":[1.9,3.25,6.5,10.0,21.0,101.0],"target_outcome":5,"offered_decimal_odds":110.0}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::financial_math::market_execution::MarketExecutionTool::default(),
+            r#"{"budget":500.0,"mode":"Hedge","arb_odds":[2.1,1.98],"dutch_odds":[2.2,3.5,4.2],"dutch_selected":[false,true,true],"dutch_target_profit_mode":false,"dutch_target_profit":50.0,"middle_odds_a":1.91,"middle_odds_b":1.91,"middle_hit_prob_pct":9.0,"hedge_orig_stake":100.0,"hedge_orig_odds":9.0,"hedge_live_odds":1.67,"hedge_use_target_floor":true,"hedge_target_floor":0.0}"#,
         );
         assert_tool_roundtrip(
             &mut crate::tabs::solid_state::band_structure::BandStructureTool::default(),

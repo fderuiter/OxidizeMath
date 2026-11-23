@@ -5,7 +5,11 @@ use eframe::egui;
 pub mod bankroll_ensemble;
 pub mod bankroll_growth;
 pub mod bet_size;
+pub mod market_devig;
+pub mod market_execution;
 pub mod parrondo;
+#[cfg(test)]
+mod tests;
 
 pub struct FinancialMathTab {
     framework: crate::framework::SimulationFramework,

@@ -7456,6 +7456,9 @@
       "signature": "pub enum KellyError"
     },
     {
+      "signature": "pub enum MarketPricingError"
+    },
+    {
       "signature": "pub enum MarkovError"
     },
     {
@@ -7545,6 +7548,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: LinearAlgebraError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: MarketPricingError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: MarkovError } }"
@@ -9066,6 +9072,9 @@
       "signature": "impl Bisection { pub fn new (_ : usize , _ : f64) -> Self }"
     },
     {
+      "signature": "impl Brent { pub fn new (_ : usize , _ : f64) -> Self }"
+    },
+    {
       "signature": "impl NewtonRaphson { pub fn find_root_with_derivative < F , D > (& self , _ : F , _ : D , _ : f64 ,) -> Result < f64 , AnalysisError > where F : Fn (f64) -> f64 , D : Fn (f64) -> f64 , }"
     },
     {
@@ -9076,6 +9085,9 @@
     },
     {
       "signature": "pub struct Bisection"
+    },
+    {
+      "signature": "pub struct Brent"
     },
     {
       "signature": "pub struct NewtonRaphson"
@@ -10098,6 +10110,246 @@
     },
     {
       "signature": "pub use criterion :: variants"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/devig.rs": [
+    {
+      "signature": "pub enum DevigMethod"
+    },
+    {
+      "signature": "pub fn devig_additive_detailed_into (_ : & [Odds] , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_additive_into (_ : & [Odds] , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_into (_ : & [Odds] , _ : DevigMethod , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_multiplicative_into (_ : & [Odds] , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_power_into (_ : & [Odds] , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_shin_into (_ : & [Odds] , _ : & mut [f64] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn fair_decimal_odds_into (_ : & [f64] , _ : & mut [f64] ,) -> Result < () , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn fair_odds_from_probabilities_into (_ : & [f64] , _ : & mut [Odds] ,) -> Result < () , MarketPricingError >"
+    },
+    {
+      "signature": "pub struct DevigMetadata"
+    },
+    {
+      "signature": "pub struct SimplexViolationDiagnostic"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/dutching.rs": [
+    {
+      "signature": "pub enum DutchingMode"
+    },
+    {
+      "signature": "pub fn dutch_outcomes_into (_ : & [Odds] , _ : DutchingMode , _ : & mut [f64] ,) -> Result < DutchingReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn dutch_subset_into (_ : & [Odds] , _ : & [usize] , _ : DutchingMode , _ : & mut [f64] ,) -> Result < DutchingReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_arbitrage_into (_ : & [Odds] , _ : f64 , _ : & mut [f64] ,) -> Result < ArbitrageReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_two_way_arbitrage (_ : Odds , _ : Odds , _ : f64 ,) -> Result < (ArbitrageReport , [f64 ; 2]) , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn is_arbitrage (_ : & [Odds]) -> Result < bool , MarketPricingError >"
+    },
+    {
+      "signature": "pub struct ArbitrageReport"
+    },
+    {
+      "signature": "pub struct DutchingReport"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/ev.rs": [
+    {
+      "signature": "impl AllMethodsEvReport { pub fn for_method (& self , _ : DevigMethod) -> & EvEvaluation }"
+    },
+    {
+      "signature": "impl EvEvaluation { pub fn recommended_stakes (& self , _ : f64) -> Result < (f64 , f64 , f64) , KellyError > }"
+    },
+    {
+      "signature": "pub fn compare_outcome_ev_all_methods (_ : & [Odds] , _ : usize , _ : Odds ,) -> Result < AllMethodsEvReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_ev_from_probability (_ : UnitInterval , _ : Odds ,) -> Result < EvEvaluation , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_outcome_ev (_ : & [Odds] , _ : usize , _ : Odds , _ : DevigMethod ,) -> Result < EvEvaluation , MarketPricingError >"
+    },
+    {
+      "signature": "pub struct AllMethodsEvReport"
+    },
+    {
+      "signature": "pub struct EvEvaluation"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/execution.rs": [
+    {
+      "signature": "pub enum HedgeMode"
+    },
+    {
+      "signature": "pub fn evaluate_hedge (_ : f64 , _ : Odds , _ : Odds , _ : HedgeMode ,) -> Result < HedgeReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_middle (_ : Odds , _ : Odds , _ : f64 , _ : Option < UnitInterval > ,) -> Result < MiddleReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn evaluate_middle_custom_stakes (_ : Odds , _ : f64 , _ : Odds , _ : f64 , _ : Option < UnitInterval > ,) -> Result < MiddleReport , MarketPricingError >"
+    },
+    {
+      "signature": "pub struct HedgeReport"
+    },
+    {
+      "signature": "pub struct MiddleReport"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/mod.rs": [
+    {
+      "signature": "pub const MAX_MARKET_OUTCOMES : usize"
+    },
+    {
+      "signature": "pub use crate :: error :: MarketPricingError"
+    },
+    {
+      "signature": "pub use devig :: DevigMetadata"
+    },
+    {
+      "signature": "pub use devig :: DevigMethod"
+    },
+    {
+      "signature": "pub use devig :: SimplexViolationDiagnostic"
+    },
+    {
+      "signature": "pub use devig :: devig_additive_detailed_into"
+    },
+    {
+      "signature": "pub use devig :: devig_additive_into"
+    },
+    {
+      "signature": "pub use devig :: devig_into"
+    },
+    {
+      "signature": "pub use devig :: devig_multiplicative_into"
+    },
+    {
+      "signature": "pub use devig :: devig_power_into"
+    },
+    {
+      "signature": "pub use devig :: devig_shin_into"
+    },
+    {
+      "signature": "pub use devig :: fair_decimal_odds_into"
+    },
+    {
+      "signature": "pub use devig :: fair_odds_from_probabilities_into"
+    },
+    {
+      "signature": "pub use dutching :: ArbitrageReport"
+    },
+    {
+      "signature": "pub use dutching :: DutchingMode"
+    },
+    {
+      "signature": "pub use dutching :: DutchingReport"
+    },
+    {
+      "signature": "pub use dutching :: dutch_outcomes_into"
+    },
+    {
+      "signature": "pub use dutching :: dutch_subset_into"
+    },
+    {
+      "signature": "pub use dutching :: evaluate_arbitrage_into"
+    },
+    {
+      "signature": "pub use dutching :: evaluate_two_way_arbitrage"
+    },
+    {
+      "signature": "pub use dutching :: is_arbitrage"
+    },
+    {
+      "signature": "pub use ev :: AllMethodsEvReport"
+    },
+    {
+      "signature": "pub use ev :: EvEvaluation"
+    },
+    {
+      "signature": "pub use ev :: compare_outcome_ev_all_methods"
+    },
+    {
+      "signature": "pub use ev :: evaluate_ev_from_probability"
+    },
+    {
+      "signature": "pub use ev :: evaluate_outcome_ev"
+    },
+    {
+      "signature": "pub use execution :: HedgeMode"
+    },
+    {
+      "signature": "pub use execution :: HedgeReport"
+    },
+    {
+      "signature": "pub use execution :: MiddleReport"
+    },
+    {
+      "signature": "pub use execution :: evaluate_hedge"
+    },
+    {
+      "signature": "pub use execution :: evaluate_middle"
+    },
+    {
+      "signature": "pub use execution :: evaluate_middle_custom_stakes"
+    },
+    {
+      "signature": "pub use overround :: MarketOverround"
+    },
+    {
+      "signature": "pub use overround :: booksum"
+    },
+    {
+      "signature": "pub use overround :: implied_probabilities_into"
+    },
+    {
+      "signature": "pub use overround :: market_overround"
+    },
+    {
+      "signature": "pub use overround :: overround"
+    },
+    {
+      "signature": "pub use overround :: turnover_margin"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/overround.rs": [
+    {
+      "signature": "pub fn booksum (_ : & [Odds]) -> Result < f64 , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn implied_probabilities_into (_ : & [Odds] , _ : & mut [f64] ,) -> Result < MarketOverround , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn market_overround (_ : & [Odds]) -> Result < MarketOverround , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn overround (_ : & [Odds]) -> Result < f64 , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn turnover_margin (_ : & [Odds]) -> Result < f64 , MarketPricingError >"
+    },
+    {
+      "signature": "pub struct MarketOverround"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/ctmc/mod.rs": [
@@ -11613,6 +11865,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: LinearAlgebraError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: MarketPricingError"
     },
     {
       "signature": "pub use pure_math :: error :: MarkovError"

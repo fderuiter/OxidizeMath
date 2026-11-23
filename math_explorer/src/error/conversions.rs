@@ -93,6 +93,7 @@ impl_error_from!(@cfg "pure_math":
     Glicko2Error => Glicko2,
     KellyError => Kelly,
     LinearAlgebraError => LinearAlgebra,
+    MarketPricingError => MarketPricing,
     MarkovError => Markov,
     NumberTheoryError => NumberTheory,
     OptimizationError => Optimization,

@@ -20,6 +20,7 @@
 //!
 //! ###  Risk & Decision Theory
 //! *   **[Kelly Criterion](kelly)**: Optimal capital allocation strategy to maximize logarithmic wealth growth.
+//! *   **[Market Pricing & Devigging](market_pricing)**: Zero-allocation bookmaker overround removal (`Multiplicative`, `Additive`, `Power`, `Shin`), `+EV` valuation, arbitrage, subset Dutching, middling, and live hedging.
 //! *   **[Copulas](copula)**: sophisticated dependency modeling (e.g., Gaussian Copula) for correlated events,
 //!     critical for pricing derivatives or "Same Game Parlays".
 //!
@@ -99,6 +100,7 @@
 pub mod copula;
 pub mod glicko2;
 pub mod kelly;
+pub mod market_pricing;
 pub mod markov;
 pub mod ou_process;
 pub mod regression;

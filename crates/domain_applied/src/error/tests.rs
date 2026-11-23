@@ -43,7 +43,13 @@ fn test_applied_umbrella_variants_preserve_source_and_diagnostics() {
         PharmacokineticsError::from(AnalysisError::ConvergenceError(1.0)).into(),
         VoxelGridError::InvalidDimensions.into(),
         sample_math_err().into(),
-        AnalysisError::InvalidParameters("unbracketed".to_string()).into(),
+        AnalysisError::RootNotBracketed {
+            min: -1.0,
+            f_min: 2.0,
+            max: 1.0,
+            f_max: 2.0,
+        }
+        .into(),
     ];
 
     let bus = DiagnosticBus::new();

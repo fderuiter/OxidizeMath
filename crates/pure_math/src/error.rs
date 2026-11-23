@@ -52,6 +52,43 @@ pub enum KellyError {
     InvalidBankroll { value: f64 },
 }
 
+/// Errors returned by bookmaker devigging, `+EV`, arbitrage, Dutching, middle, and hedge calculators.
+#[derive(Debug, Clone, Copy, PartialEq, Error)]
+#[allow(missing_docs)]
+pub enum MarketPricingError {
+    #[error("Insufficient outcomes: got {count}, require at least {min_required}")]
+    InsufficientOutcomes { count: usize, min_required: usize },
+    #[error("Too many outcomes: got {count}, maximum zero-allocation capacity is {max_supported}")]
+    TooManyOutcomes { count: usize, max_supported: usize },
+    #[error("Slice length mismatch: expected {expected}, got {actual}")]
+    SliceLengthMismatch { expected: usize, actual: usize },
+    #[error("Outcome index {index} is out of bounds for market of {outcome_count} outcomes")]
+    OutcomeIndexOutOfBounds { index: usize, outcome_count: usize },
+    #[error("Duplicate outcome index {index} in subset selection")]
+    DuplicateOutcomeIndex { index: usize },
+    #[error("Invalid decimal odds: {value} (must be finite and > 1.0)")]
+    InvalidOdds { value: f64 },
+    #[error("Market booksum must be finite and positive (got {booksum})")]
+    NonPositiveOverround { booksum: f64 },
+    #[error("No arbitrage opportunity: reciprocal sum {reciprocal_sum} >= 1.0")]
+    NoArbitrage { reciprocal_sum: f64 },
+    #[error("Target profit is infeasible when reciprocal sum {reciprocal_sum} >= 1.0")]
+    InfeasibleTargetProfit { reciprocal_sum: f64 },
+    #[error("Stake or budget must be finite and positive (got {value})")]
+    InvalidStakeOrBudget { value: f64 },
+    #[error(
+        "Target profit floor {floor} exceeds maximum attainable guaranteed profit {max_guaranteed_profit}"
+    )]
+    UnattainableFloor {
+        floor: f64,
+        max_guaranteed_profit: f64,
+    },
+    #[error("Invalid probability: {value} (must be finite and in [0.0, 1.0])")]
+    InvalidProbability { value: f64 },
+    #[error("Root-finding solver failed during devigging: {0}")]
+    Solver(#[from] AnalysisError),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub enum MarkovError {
